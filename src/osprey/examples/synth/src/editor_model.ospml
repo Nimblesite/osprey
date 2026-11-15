@@ -16,7 +16,7 @@ type NodePosition =
     layoutX : float
     layoutY : float
 
-type Editor G C =
+type Editor G P =
     graph : G
     positions : List<NodePosition>
     dragging : int
@@ -36,12 +36,10 @@ type Editor G C =
     pluginSerial : int
     pluginTicket : string
     pluginClassId : string
-    renderGraph : G
-    renderClips : List<C>
+    renderPending : List<P>
     renderBindings : List<PluginBinding>
     renderSerial : int
     renderTicket : string
-    renderNode : int
 
 type EditorAction =
     Add

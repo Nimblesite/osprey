@@ -7,7 +7,7 @@ import ui::Scenes
 
 (** The modular patch's component menu, canvas, ports and parameter inspector. *)
 module EditorView
-    editorSlice () = perform Signal<Editor<Graph, NodeClip>>.read ()
+    editorSlice () = perform Signal<Editor<Graph, GraphPending<Graph, KernelState>>>.read ()
 
     processorTitle processor = match processor
         Lfo => "LFO"
@@ -128,7 +128,7 @@ module EditorView
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =
-        handle static Signal<Editor<Graph, NodeClip>>
+        handle static Signal<Editor<Graph, GraphPending<Graph, KernelState>>>
             read => editor
         changed = signalChanges before editor stamp (signalDependencies editorSlice)
         [Keyed::region (frames, "root", changed, root)]

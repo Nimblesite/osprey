@@ -8,47 +8,47 @@ import ui::Requests
 module GraphPreview
     frames = 12288
 
-    problem (editor, why) = Runtime::step (editor(renderTicket = "", renderClips = [], message = "Graph playback failed: ${why}"))
+    problem (editor, why) = Runtime::step (editor(renderTicket = "", renderPending = [], message = "Graph playback failed: ${why}"))
 
     header (key, value) = ui::Header(headerName = key, headerValue = value)
 
-    request (editor, n, clips, binding, hex) =
+    request (editor, n, pending, binding, hex) =
         ticket = "prism-audio:${editor.renderSerial}:${n.identity}"
         input = "${ticket}:input"
         arguments = [header ("executable", editor.workerPath), header ("argv", "stream-text"), header ("argv", binding.pluginModule), header ("argv", binding.pluginClass), header ("stdinSlice", input)]
         capability = ui::HostCall(hostNamespace = "process", hostOperation = "input", hostArguments = arguments, hostTimeout = 10000, hostLimit = 4194304, hostSlice = ticket)
-        next = editor(renderTicket = ticket, renderNode = n.identity, renderClips = clips, message = "Rendering ${binding.pluginName}. The audition uses the patch as it was when started.")
+        next = editor(renderTicket = ticket, renderPending = [pending], message = "Rendering ${binding.pluginName}. The audition uses the patch as it was when started.")
         ui::Step(stepStore = next, requests = [Requests::ask (ticket, capability)], writes = [Requests::write (input, hex)])
 
-    encoded (editor, n, block, clips, binding) = match ClipInputs::layout n
+    encoded (editor, n, block, pending, binding) = match ClipInputs::layout n
         Error why => problem (editor, why)
         Success layout => match HostPackets::clip (layout, block)
             Error why => problem (editor, why)
-            Success hex => request (editor, n, clips, binding, hex)
+            Success hex => request (editor, n, pending, binding, hex)
 
-    waiting (editor, identity, block, clips) = match Graphs::node (editor.renderGraph, identity)
+    waiting (editor, block, pending) = match Graphs::node (pending.pendingGraph, pending.pendingNode)
         Invalid _ => problem (editor, "The scheduled VST node is absent.")
-        Valid n => match filterList (editor.renderBindings, \binding => binding.pluginNode == identity)
+        Valid n => match filterList (editor.renderBindings, \binding => binding.pluginNode == pending.pendingNode)
             [binding] => match n.processor
                 External identifier => match identifier == binding.pluginClass && editor.workerPath != ""
-                    true => encoded (editor, n, block, clips, binding)
+                    true => encoded (editor, n, block, pending, binding)
                     false => problem (editor, "The VST binding differs from the graph node.")
                 _ => problem (editor, "Only VST nodes may request the native worker.")
             _ => problem (editor, "The VST node has no unique module binding.")
 
-    finished (editor, clips) = match filterList (editor.renderGraph.nodes, \n => n.processor == Sink)
+    finished (editor, graph, clips) = match filterList (graph.nodes, \n => n.processor == Sink)
         [sink] => match ClipInputs::completed (clips, sink.identity)
             Error why => problem (editor, why)
             Success clip => match WaveFiles::interleaved (48000, clip.clipChannels, clip.clipSamples)
                 Error why => problem (editor, why)
-                Success hex => Preview::playWave (editor(renderTicket = "", renderClips = []), hex)
+                Success hex => Preview::playWave (editor(renderTicket = "", renderPending = []), hex)
         _ => problem (editor, "The graph needs exactly one audio output.")
 
-    advance editor = match GraphClips::advance (editor.renderGraph, editor.renderClips, frames)
+    advance (editor, graph, outcome) = match outcome
         Error why => problem (editor, why)
         Success action => match action
-            ClipReady clips => finished (editor, clips)
-            ClipWaiting identity block clips => waiting (editor, identity, block, clips)
+            BlockReady _ clips => finished (editor, graph, clips)
+            BlockWaiting block pending => waiting (editor, block, pending)
 
     requiresHost n = match n.processor
         Lfo => true
@@ -67,21 +67,25 @@ module GraphPreview
                 true => Preview::play (editor, platform)
                 false => match editor.renderSerial == 9223372036854775807
                     true => problem (editor, "No more render identities are available.")
-                    false => advance (editor(renderGraph = editor.graph, renderBindings = editor.pluginBindings, renderClips = [], renderSerial = satAdd editor.renderSerial 1))
+                    false => advance (editor(renderBindings = editor.pluginBindings, renderPending = [], renderSerial = satAdd editor.renderSerial 1), editor.graph, GraphClips::start (editor.graph, frames))
 
-    decoded (editor, n, layout, text) = match HostResponses::clip (text, layout, frames)
+    decoded (editor, pending, n, layout, text) = match HostResponses::clip (text, layout, pending.pendingFrames)
         Error why => problem (editor, why)
         Success rendered => match rendered.renderLatency == 0
             false => problem (editor, "This clip renderer cannot yet compensate plug-in latency.")
             true =>
                 clip = NodeClip(clipNode = n.identity, clipChannels = rendered.renderChannels, clipSamples = rendered.renderSamples, clipNotes = [])
-                advance (editor(renderClips = listAppend editor.renderClips clip, renderTicket = ""))
+                advance (editor(renderPending = [], renderTicket = ""), pending.pendingGraph, GraphClips::replied (pending, clip))
 
-    received (editor, text) = match Graphs::node (editor.renderGraph, editor.renderNode)
+    receivedPending (editor, pending, text) = match Graphs::node (pending.pendingGraph, pending.pendingNode)
         Invalid _ => problem (editor, "The completed VST node is absent.")
         Valid n => match ClipInputs::layout n
             Error why => problem (editor, why)
-            Success layout => decoded (editor, n, layout, text)
+            Success layout => decoded (editor, pending, n, layout, text)
+
+    received (editor, text) = match editor.renderPending
+        [pending] => receivedPending (editor, pending, text)
+        _ => problem (editor, "The worker reply has no unique pending graph request.")
 
     (** A stale or duplicate completion never advances the current graph. *)
     export completed (editor, ticket, outcome) = match ticket == editor.renderTicket && ticket != ""

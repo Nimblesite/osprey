@@ -161,3 +161,14 @@ The 22 package journeys pass under ARC. Coverage of the production change passes
 - [ ] Adopt the pending-request state directly in Prism and connect a persistent worker/device transport; current auditions remain bounded.
 
 Evidence is retained under `target/pr-validation/synth-stream-*`. Full CI, the repository duplication gate, windowed verification and continuous device playback remain unfinished.
+
+### Prism pending-request integration [PRISM-ROUTING-AUDIO-PENDING]
+
+- [x] Replace separate render graph, clip-cache and node fields with the library's typed pending request, generated into the editor model through typeDiagram.
+- [x] Start graph blocks through `GraphClips.start` and return worker responses through `GraphClips.replied`, preserving the frozen graph and retained kernels across hosted nodes.
+- [x] Retain deletion-during-audition and stale-reply assertions, and reject missing/duplicate pending requests explicitly while clearing the render ticket.
+- [x] Pass all twelve app journeys under ARC, then the expanded suite under GC; strict checks and formatting pass.
+- [x] Rebuild the native host and pass its 44-step real VST/audio journey with exact effect PCM checks.
+- [ ] Retain workers across blocks and feed a continuous audio device queue; this change still uses bounded auditions.
+
+Evidence is retained under `target/pr-validation/prism-pending-*`. This removes duplicated controller bookkeeping; it does not establish continuous playback or windowed screenshot verification.

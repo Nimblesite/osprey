@@ -239,10 +239,20 @@ pluginUiJourney () =
             _ => expect (false, true)
     busy = Drive::press (audition, "Audition patch")
     expect (length busy.drivenSurface.surfaceAsked, 0)
+    heldAudition = audition.drivenSurface.surfaceSession.sessionStore
+    forEachList ([[], listConcat heldAudition.renderPending heldAudition.renderPending], \pending =>
+        lost = synth::GraphPreview::completed (heldAudition(renderPending = pending), heldAudition.renderTicket, Success(value = "{\"status\":0,\"stderr\":\"\"}"))
+        expect (contains lost.stepStore.message "no unique pending graph request", true)
+        expect (length lost.stepStore.renderPending, 0)
+        expect (lost.stepStore.renderTicket, ""))
     changed = Drive::press (Drive::press (audition, "Select 1"), "Remove selected")
     expect (length changed.drivenSurface.surfaceSession.sessionStore.pluginBindings, 1)
     nextEffect = Drive::completed (changed, "prism-audio:1:0", true, "{\"status\":0,\"stderr\":\"\"}")
-    expect (nextEffect.drivenSurface.surfaceSession.sessionStore.renderNode, 1)
+    match nextEffect.drivenSurface.surfaceSession.sessionStore.renderPending
+        [pending] =>
+            expect (pending.pendingNode, 1)
+            expect (length pending.pendingGraph.nodes, length audition.drivenSurface.surfaceSession.sessionStore.graph.nodes)
+        _ => expect (false, true)
     expect (length nextEffect.drivenSurface.surfaceAsked, 1)
     staleAudio = Drive::completed (nextEffect, "prism-audio:1:0", true, "{\"status\":0,\"stderr\":\"\"}")
     expect (staleAudio.drivenSurface.surfaceSession.sessionStore.renderTicket, "prism-audio:1:1")
@@ -252,7 +262,7 @@ pluginUiJourney () =
     expect (played.drivenSurface.surfaceSession.sessionStore.renderTicket, "")
     crashed = Drive::completed (audition, "prism-audio:1:0", true, "{\"status\":1,\"stderr\":\"plug-in failed\"}")
     expect (Drive::shows (crashed, "Graph playback failed: plug-in failed"), true)
-    expect (length crashed.drivenSurface.surfaceSession.sessionStore.renderClips, 0)
+    expect (length crashed.drivenSurface.surfaceSession.sessionStore.renderPending, 0)
     thirdLoading = Drive::choose (twice, "Add VST3", "0CDBB66985D548A9BFD8371909D24BB3")
     malformed = Drive::completed (thirdLoading, "prism-vst:describe:5", true, "{\"status\":0,\"stderr\":\"\"}")
     expect (structuralEquals (malformed.drivenSurface.surfaceSession.sessionStore.graph, twice.drivenSurface.surfaceSession.sessionStore.graph), true)
