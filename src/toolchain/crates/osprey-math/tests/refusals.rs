@@ -31,7 +31,16 @@ fn refuses(cases: &[&str]) {
 #[test]
 fn commands_outside_the_fragment_are_refused_by_name() {
     refuses(&[
-        "1:0 UnsupportedCommand | open Float\n",
+        "1:10 UnsupportedCommand | open Float\n",
+        "1:5 UnsupportedCommand | open Nat (succ)\n",
+        "1:11 UnsupportedCommand | open Float in\ndef f : Float := 1\n",
+        "1:12 UnsupportedFunction | open Float (cbrt)\n",
+        "1:15 UnexpectedToken | open Float (exp\n",
+        "1:15 UnexpectedToken | open Float (exp, log)\n",
+        "2:16 DuplicateName | def exp_of : Float := 1\nopen Float (exp exp)\n",
+        "2:4 DuplicateName | open Float (exp)\ndef exp (x : Float) : Float := x\n",
+        "2:7 ShadowedName | open Float (log)\ndef f (log : Float) : Float := log\n",
+        "2:17 UnknownName | open Float (exp)\ndef f : Float := log 1\n",
         "1:0 UnsupportedCommand | import Mathlib\ndef f : Float := 1\n",
         "1:0 UnsupportedCommand | structure P where\n  x : Float\n",
         "1:0 UnsupportedCommand | @[simp] def f : Float := 1\n",

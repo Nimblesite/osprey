@@ -44,6 +44,7 @@ The reader accepts the constructs below and refuses everything else by name ([MA
 | `namespace N` … `end N` | at most one block, holding every definition; `N` has one or two components |
 | `def name (a b : T) (c : T) : T := term` | one generated function; no parameters gives a constant |
 | `private def …` | generated, not exported |
+| `open Float (exp log)` | the listed `Float` functions may be written unqualified from there on, as Mathlib writes them under `open Real`; the list is required, so no other name changes meaning |
 | `/-- text -/` before a `def` | the documentation of the generated function |
 | `#eval`, `#check`, `#guard`, `#print` | checked by Lean; generate nothing |
 | `--`, `/- … -/`, `/-! … -/` | comments |

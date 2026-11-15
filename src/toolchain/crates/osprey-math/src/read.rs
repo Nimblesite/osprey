@@ -38,6 +38,7 @@ pub(crate) fn read(file_stem: &str, tokens: &[Token]) -> Result<Module, Refusal>
                 "def" | "private" => defs.push(reader.definition(documented, &block)?),
                 "namespace" => reader.open(&mut block, defs.is_empty())?,
                 "end" => reader.close(&mut block)?,
+                "open" => reader.opening()?,
                 _ => return reader.unsupported_command(),
             },
             _ => return reader.unsupported_command(),
@@ -96,6 +97,31 @@ impl Reader<'_> {
             "{found} does not begin a command of the fragment: a math source holds `def`, one `namespace` and `#eval`, `#check`, `#guard`; a statement about its definitions belongs in a proof file that imports it"
         );
         self.refuse(Code::UnsupportedCommand, fix)
+    }
+
+    /// `open Float (exp log)`: the listed `Float` functions, unqualified from
+    /// here on. The list is required, so no other name changes its meaning.
+    fn opening(&mut self) -> Result<(), Refusal> {
+        self.at += 1;
+        let float = self.word("Float");
+        self.at += usize::from(float);
+        if !float || !self.eat("(") {
+            let fix =
+                "open only the `Float` functions the source uses, by name: `open Float (exp log)`";
+            return self.refuse(Code::UnsupportedCommand, fix);
+        }
+        while let Some(name) = self.ident().filter(|_| self.at_name()) {
+            let _ = crate::term::float_function(self.place(), name, Vec::new())?;
+            if self.in_scope(name) {
+                return self.refuse(
+                    Code::DuplicateName,
+                    format!("`{name}` already has a meaning above"),
+                );
+            }
+            self.opened.push(name.to_owned());
+            self.at += 1;
+        }
+        self.expect(")", "close the list of opened functions")
     }
 
     fn open(&mut self, block: &mut Block, first: bool) -> Result<(), Refusal> {

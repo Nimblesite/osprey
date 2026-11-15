@@ -15,7 +15,7 @@ pub(crate) struct Signature {
 /// The words that begin a command of the fragment. Any other command is
 /// refused by the word the source itself uses, so no vocabulary beyond
 /// definitions lives here ([TYPES-DISCIPLINE-REGISTRY]).
-const COMMANDS: &[&str] = &["def", "private", "namespace", "end"];
+const COMMANDS: &[&str] = &["def", "private", "namespace", "end", "open"];
 
 /// Words that are part of a term's own grammar.
 const TERM_WORDS: &[&str] = &[
@@ -32,6 +32,8 @@ pub(crate) struct Reader<'a> {
     pub(crate) let_columns: Vec<usize>,
     /// The Lean namespace the definitions are in, for qualified references.
     pub(crate) namespace: Option<String>,
+    /// `Float` functions an `open Float (…)` lets the source write unqualified.
+    pub(crate) opened: Vec<String>,
 }
 
 impl<'a> Reader<'a> {
@@ -43,6 +45,7 @@ impl<'a> Reader<'a> {
             locals: Vec::new(),
             let_columns: Vec::new(),
             namespace: None,
+            opened: Vec::new(),
         }
     }
 
@@ -160,10 +163,11 @@ impl<'a> Reader<'a> {
         Ok(name.to_owned())
     }
 
-    /// Whether `name` is a parameter, a `let` name or a definition.
+    /// Whether `name` is a parameter, a `let` name, a definition or an opened function.
     pub(crate) fn in_scope(&self, name: &str) -> bool {
         self.locals.iter().any(|(local, _)| local == name)
             || self.defs.iter().any(|def| def.name == name)
+            || self.opened.iter().any(|opened| opened == name)
     }
 }
 

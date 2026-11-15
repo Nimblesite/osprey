@@ -10,14 +10,14 @@ use crate::refusal::{Code, Refusal};
 type Typed<T> = Result<(T, Ty), Refusal>;
 
 /// What a name at the head of an application is.
-enum Head {
+pub(crate) enum Head {
     /// A value: nothing may be applied to it.
     Value(Expr, Ty),
     /// A function awaiting arguments, with any receiver already bound.
     Function(Function),
 }
 
-struct Function {
+pub(crate) struct Function {
     callee: String,
     bound: Vec<Expr>,
     params: Vec<Ty>,
@@ -368,7 +368,8 @@ impl Reader<'_> {
         if let Some(head) = self.defined(name) {
             return Ok(head);
         }
-        if let Some(method) = name.strip_prefix("Float.") {
+        let opened = self.opened.iter().any(|opened| opened == name);
+        if let Some(method) = name.strip_prefix("Float.").or(opened.then_some(name)) {
             return float_function(place, method, Vec::new());
         }
         let Some((receiver, method)) = name.rsplit_once('.') else {
@@ -415,7 +416,11 @@ fn method_of(place: (usize, usize), method: &str, receiver: Expr, ty: Ty) -> Res
 }
 
 /// Lean's `Float.<method>` with `bound` as its leading arguments.
-fn float_function(place: (usize, usize), method: &str, bound: Vec<Expr>) -> Result<Head, Refusal> {
+pub(crate) fn float_function(
+    place: (usize, usize),
+    method: &str,
+    bound: Vec<Expr>,
+) -> Result<Head, Refusal> {
     let Some((callee, count)) = function(method) else {
         let message = format!(
             "no Osprey operation computes the same value as `Float.{method}`; write the formula with the functions of [MATH-CODE-MEANING]"

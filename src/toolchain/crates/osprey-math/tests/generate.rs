@@ -260,6 +260,14 @@ fn a_namespace_names_the_module_and_qualifies_its_definitions() {
 }
 
 #[test]
+fn opened_float_functions_are_written_as_mathlib_writes_them() {
+    let source = "open Float (exp log sqrt atan2)\nnamespace Tools\nopen Float (pow)\nprivate def f (b x : Float) : Float := log x / log b + sqrt (exp x) + atan2 x b + pow x 2 + x.exp + Float.exp x\nend Tools\n";
+    let text = generate("Case.lean", source).unwrap_or_else(|refusal| panic!("{refusal}"));
+    let line = "    f (b, x) = floatDiv (ln x, ln b) + sqrt (exp x) + atan2 (x, b) + pow (x, 2.0) + exp x + exp x\n";
+    assert!(text.ends_with(line), "{text}");
+}
+
+#[test]
 fn what_only_lean_checks_generates_nothing() {
     let source = "/-! Module docs with a `def` inside. -/\n-- a comment with def and /- no opening\n/- block /- nested -/ still a comment def -/\n#eval \"a string -- not a comment \\\" def\"\n#check @Float.sqrt\n  -- an indented continuation\n  |>.toString\n#print Float\n/-- A doc before a check is dropped. -/\n#guard 'x' == 'x' ∧ [1, 2].length == 2\nprivate def k : Float := 1 -- trailing\n#eval k\n";
     assert_eq!(body(source), ["k = 1.0"]);
