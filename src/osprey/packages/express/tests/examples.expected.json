@@ -3,6 +3,11 @@
   "description": "Replies of the pinned real Express to tests/corpus.json. Written by oracle/record.mjs; never edited by hand.",
   "express": "5.3.0",
   "node": "v24.19.0",
+  "unchanged": {
+    "example": "hello-world",
+    "from": "express@5.3.0 Readme.md",
+    "sha256": "bd0adeddbe442bbe1ecef9d265c0fbca5a1f1b4911e67a7b493ebf338fddd314"
+  },
   "examples": {
     "hello-world": [
       {
@@ -14,11 +19,11 @@
           "status": 200,
           "headers": {
             "content-type": "text/html; charset=utf-8",
-            "content-length": "12",
+            "content-length": "11",
             "x-powered-by": "Express"
           },
           "etag": true,
-          "body": "Hello World!"
+          "body": "Hello World"
         }
       },
       {
@@ -30,11 +35,11 @@
           "status": 200,
           "headers": {
             "content-type": "text/html; charset=utf-8",
-            "content-length": "12",
+            "content-length": "11",
             "x-powered-by": "Express"
           },
           "etag": true,
-          "body": "Hello World!"
+          "body": "Hello World"
         }
       },
       {
@@ -182,7 +187,7 @@
         }
       }
     ],
-    "basic-routing": [
+    "routes": [
       {
         "request": {
           "method": "GET",
@@ -190,85 +195,131 @@
         },
         "reply": {
           "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "36",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Osprey serves these routes natively."
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/health"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "2",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "ok"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/HEALTH/"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "2",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "ok"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/tasks"
+        },
+        "reply": {
+          "status": 201,
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "12",
             "x-powered-by": "Express"
           },
           "etag": true,
-          "body": "Hello World!"
+          "body": "Task created"
         }
       },
       {
         "request": {
           "method": "POST",
-          "path": "/"
+          "path": "/tasks/"
         },
         "reply": {
-          "status": 200,
+          "status": 201,
           "headers": {
             "content-type": "text/html; charset=utf-8",
-            "content-length": "18",
+            "content-length": "12",
             "x-powered-by": "Express"
           },
           "etag": true,
-          "body": "Got a POST request"
+          "body": "Task created"
         }
       },
       {
         "request": {
           "method": "PUT",
-          "path": "/user"
+          "path": "/tasks/current"
         },
         "reply": {
           "status": 200,
           "headers": {
             "content-type": "text/html; charset=utf-8",
-            "content-length": "26",
+            "content-length": "13",
             "x-powered-by": "Express"
           },
           "etag": true,
-          "body": "Got a PUT request at /user"
+          "body": "Task replaced"
         }
       },
       {
         "request": {
           "method": "DELETE",
-          "path": "/user"
+          "path": "/tasks/current"
         },
         "reply": {
-          "status": 200,
+          "status": 410,
           "headers": {
             "content-type": "text/html; charset=utf-8",
-            "content-length": "29",
+            "content-length": "12",
             "x-powered-by": "Express"
           },
           "etag": true,
-          "body": "Got a DELETE request at /user"
+          "body": "Task removed"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/tasks/current?force=true"
+        },
+        "reply": {
+          "status": 410,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "12",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Task removed"
         }
       },
       {
         "request": {
           "method": "GET",
-          "path": "/user"
-        },
-        "reply": {
-          "status": 404,
-          "headers": {
-            "content-type": "text/html; charset=utf-8",
-            "content-length": "143",
-            "x-powered-by": "Express",
-            "content-security-policy": "default-src 'none'",
-            "x-content-type-options": "nosniff"
-          },
-          "etag": false,
-          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /user</pre>\n</body>\n</html>\n"
-        }
-      },
-      {
-        "request": {
-          "method": "POST",
-          "path": "/user"
+          "path": "/tasks"
         },
         "reply": {
           "status": 404,
@@ -280,109 +331,131 @@
             "x-content-type-options": "nosniff"
           },
           "etag": false,
-          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot POST /user</pre>\n</body>\n</html>\n"
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /tasks</pre>\n</body>\n</html>\n"
         }
       },
       {
         "request": {
-          "method": "PUT",
-          "path": "/"
+          "method": "GET",
+          "path": "/tasks/current"
         },
         "reply": {
           "status": 404,
           "headers": {
             "content-type": "text/html; charset=utf-8",
-            "content-length": "139",
+            "content-length": "152",
             "x-powered-by": "Express",
             "content-security-policy": "default-src 'none'",
             "x-content-type-options": "nosniff"
           },
           "etag": false,
-          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot PUT /</pre>\n</body>\n</html>\n"
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /tasks/current</pre>\n</body>\n</html>\n"
         }
       },
       {
         "request": {
-          "method": "DELETE",
-          "path": "/"
+          "method": "PUT",
+          "path": "/tasks"
         },
         "reply": {
           "status": 404,
           "headers": {
             "content-type": "text/html; charset=utf-8",
-            "content-length": "142",
+            "content-length": "144",
             "x-powered-by": "Express",
             "content-security-policy": "default-src 'none'",
             "x-content-type-options": "nosniff"
           },
           "etag": false,
-          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot DELETE /</pre>\n</body>\n</html>\n"
-        }
-      },
-      {
-        "request": {
-          "method": "PUT",
-          "path": "/user/"
-        },
-        "reply": {
-          "status": 200,
-          "headers": {
-            "content-type": "text/html; charset=utf-8",
-            "content-length": "26",
-            "x-powered-by": "Express"
-          },
-          "etag": true,
-          "body": "Got a PUT request at /user"
-        }
-      },
-      {
-        "request": {
-          "method": "PUT",
-          "path": "/USER"
-        },
-        "reply": {
-          "status": 200,
-          "headers": {
-            "content-type": "text/html; charset=utf-8",
-            "content-length": "26",
-            "x-powered-by": "Express"
-          },
-          "etag": true,
-          "body": "Got a PUT request at /user"
-        }
-      },
-      {
-        "request": {
-          "method": "DELETE",
-          "path": "/user?confirm=yes"
-        },
-        "reply": {
-          "status": 200,
-          "headers": {
-            "content-type": "text/html; charset=utf-8",
-            "content-length": "29",
-            "x-powered-by": "Express"
-          },
-          "etag": true,
-          "body": "Got a DELETE request at /user"
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot PUT /tasks</pre>\n</body>\n</html>\n"
         }
       },
       {
         "request": {
           "method": "PATCH",
-          "path": "/user"
+          "path": "/tasks/current"
         },
         "reply": {
           "status": 404,
           "headers": {
             "content-type": "text/html; charset=utf-8",
-            "content-length": "145",
+            "content-length": "154",
             "x-powered-by": "Express",
             "content-security-policy": "default-src 'none'",
             "x-content-type-options": "nosniff"
           },
           "etag": false,
-          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot PATCH /user</pre>\n</body>\n</html>\n"
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot PATCH /tasks/current</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/tasks/other"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "153",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot DELETE /tasks/other</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "140",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot POST /</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/current/extra"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "158",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /tasks/current/extra</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "//"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "36",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Osprey serves these routes natively."
         }
       }
     ]

@@ -72,7 +72,7 @@ fastapi-e2e:
 ## express-e2e: Compile the Express examples under GC and ARC, serve them
 ##              natively and compare every reply over real HTTP with what the
 ##              pinned real Express replied to the same files. Expected result:
-##              "44 replies matched, 0 failed".
+##              "52 replies matched, 0 failed".
 .PHONY: express-e2e
 express-e2e:
 	cd $(ROOT) && node src/osprey/packages/express/tests/e2e.mjs

@@ -6,6 +6,7 @@
 // [TS-PORT-EXPRESS-ORACLE], [TS-PORT-EXPRESS]
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, openSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,6 +68,16 @@ async function serve(example, memory) {
   }
   return checked;
 }
+
+// The hello-world example is Express's own README example, unmodified: the
+// recording names its hash, so an edit to the file fails here.
+const unchanged = readFileSync(path.join(pkg, "examples", expected.unchanged.example, "index.ts"));
+assert.equal(
+  createHash("sha256").update(unchanged).digest("hex"),
+  expected.unchanged.sha256,
+  `examples/${expected.unchanged.example}/index.ts must stay identical to ${expected.unchanged.from}`,
+);
+console.log(`ok ${expected.unchanged.example} is ${expected.unchanged.from}, byte for byte`);
 
 mkdirSync(out, { recursive: true });
 let total = 0;
