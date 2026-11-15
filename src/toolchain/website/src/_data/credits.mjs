@@ -28,6 +28,11 @@ const PACKAGES = {
     authors: "Alex Rogozhnikov and the einops contributors",
     relationship: "port",
   },
+  express: {
+    project: "Express",
+    authors: "TJ Holowaychuk, Roman Shtylman, Douglas Christopher Wilson and the Express contributors",
+    relationship: "port",
+  },
   faiss: {
     project: "Faiss",
     authors: "Meta Platforms, Inc. and the Faiss contributors",

@@ -9,6 +9,7 @@ permalink: /docs/typescript/flavor/
 tags: [flavors, typescript, express, http, video, tutorials]
 ---
 
+{% from "native-capture.njk" import capture %}
 {% videoPlayer video %}
 
 **Safe, elegant, fast:** the TypeScript flavor is Osprey written in TypeScript syntax. The film opens on the Express port's comparison bench, run live: the same Express applications, served by Osprey and by Express on Node.js, under the same load. Then it serves the Express README example natively, requests it, runs Express's own web-service example as ported, and changes a reply.
@@ -28,6 +29,8 @@ The run the film shows, on an Apple M4 Max with Node.js 24.19.0 on 15 November 2
 | hello-world | 22,691/s · 3 MiB | 17,669/s · 103 MiB | 22,432/s · 144 MiB |
 | routes | 22,545/s · 3 MiB | 17,928/s · 107 MiB | 21,942/s · 152 MiB |
 | web-service | 20,957/s · 3 MiB | 12,845/s · 214 MiB | 21,058/s · 130 MiB |
+
+{{ capture("/assets/images/guides/typescript-express-bench.png", "The editor shows the Express README example in index.ts. Below it, the terminal prints the bench table: hello-world, routes and web-service, each served by osprey-gc, osprey-arc and node-express, with requests per second, median and 95th-percentile latency in microseconds, and peak RSS in MiB.", "The bench as the film runs it: the same three applications served by Osprey (GC and ARC) and by Express on Node.js.", 1600, 900) }}
 
 Median latency was between 650 and 700 µs for every server except the GC build of web-service, at 1,065 µs. The [package README](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/express#measured-against-real-express-ts-port-express-bench) has the full table with 95th-percentile latency.
 
@@ -83,6 +86,8 @@ Hello World
 ```
 
 The process keeps serving until you stop it, as the same file does under Node.js. A path with no route gets Express's own 404 page and security headers. The package's end-to-end test compares 164 replies from four example applications with what Express 5.3.0 sent: status line, body and the headers Express sets. `ETag` and `Date` are not sent yet ([issue 398](https://github.com/Nimblesite/osprey/issues/398)), so the replies are not byte-identical to Express.
+
+{{ capture("/assets/images/guides/typescript-express-port.png", "Lines 131 to 142 of src/osprey/packages/express/src/express.ts: the function signalled returns a response record whose status, set, send and json fields each build a new response with one thing changed.", "The port itself is TypeScript-flavor code: each Express response method returns a new, immutable response.", 1600, 900) }}
 
 ## How the TypeScript flavor differs from TypeScript
 

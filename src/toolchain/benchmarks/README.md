@@ -49,7 +49,7 @@ language's tracked record survives byte-for-byte — and if any case fails to
 build, mismatches its oracle or fails timing, nothing is published at all. It needs one prior
 `make -C src/toolchain/benchmarks bench` for the baseline. Every run, including a full `make -C src/toolchain/benchmarks bench`, stages and merges this way. Missing toolchains, skipped cases and unavailable measurements preserve the last recorded values. Replacements require complete, finite timing measurements; published files are replaced atomically.
 
-The **`TypeScript (Node.js)`** column runs each `<name>.ts` with `node`, which strips the types and runs the file. There is no ahead-of-time build, so its time includes Node's start-up and JIT warm-up, about 40 ms on the recorded machine, and its memory is the whole Node.js process. Where a value can pass 2^53 the TypeScript case uses `bigint`; everywhere else it uses `number`. `BENCH_LANGS=typescript zsh src/toolchain/benchmarks/run.sh` re-times this column alone.
+The **`TypeScript`** column runs each `<name>.ts` with `node`, which strips the types and runs the file. There is no ahead-of-time build, so its time includes Node's start-up and JIT warm-up, about 40 ms on the recorded machine, and its memory is the whole Node.js process. Where a value can pass 2^53 the TypeScript case uses `bigint`; everywhere else it uses `number`. `BENCH_LANGS=typescript zsh src/toolchain/benchmarks/run.sh` re-times this column alone.
 
 All WebAssembly columns run under Wasmtime with an explicit 4 MiB call-stack budget (`-W max-wasm-stack=4194304`). The `ackermann` workload exhausts Wasmtime's default budget; with the shared budget it prints the required `8189`. This changes host capacity, not the workload or correctness oracle.
 

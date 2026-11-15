@@ -33,7 +33,7 @@ ORDER: list[str] = ["osprey-arc", "osprey-gc", "rust", "rust-checked", "c", "csh
 LABEL: dict[str, str] = {"osprey-arc": "Osprey (ARC)",
                          "osprey-gc": "Osprey (GC)",
                          "rust": "Rust", "rust-checked": "Rust (checked)", "c": "C",
-                         "csharp": "C# (AOT)", "dart": "Dart (AOT)", "typescript": "TypeScript (Node.js)",
+                         "csharp": "C# (AOT)", "dart": "Dart (AOT)", "typescript": "TypeScript",
                          "codon": "Codon",
                          "ocaml": "OCaml", "haskell": "Haskell",
                          "osprey-wasm": "Osprey (wasm)", "rust-wasm": "Rust (wasm)",
