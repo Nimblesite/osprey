@@ -23,7 +23,7 @@ Osprey is for **apps, backends, ML and AI, and mathematics**, and it is built to
 1. **What it's for**, with one real example.
 2. **Effects:** `effect` declares a need, `perform` requests it, a `handler` or `handle` block implements it. Show the benefit with storage, logging, platform services or tests.
 3. **Types:** inference removes annotations; exhaustive matching and `Result` keep cases and failures visible.
-4. **Three syntax flavors, one language:** Default braces, ML indentation or Python-style syntax. Say **syntax flavor** and define it on first mention. Show all three; the initial selection is Default (.osp).
+4. **Syntax flavors, one language:** Default braces, ML indentation, Python-style syntax or TypeScript syntax. Say **syntax flavor** and define it on first mention. Show them together; the initial selection is Default (.osp). Never imply that an arbitrary TypeScript/Python etc program or package runs unchanged.
 5. **Platforms:** Osprey Native apps, WebAssembly, and C ABI libraries for mobile hosts.
 
 A short introduction needs only the first point, proof, and a next step. Homepage section labels are words, never numbers. A video demonstrates one change, narrating what is on screen.

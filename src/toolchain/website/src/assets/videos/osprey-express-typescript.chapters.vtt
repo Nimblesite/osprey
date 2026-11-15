@@ -1,0 +1,31 @@
+WEBVTT
+
+00:00.000 --> 00:14.598
+Express on Osprey
+
+00:14.598 --> 02:14.465
+Run: the comparison bench
+
+02:14.465 --> 02:33.555
+Goal: Express code, compiled
+
+02:33.555 --> 03:12.855
+Run: serve the example
+
+03:12.855 --> 03:51.055
+Run: request it
+
+03:51.055 --> 04:52.281
+Code: the port
+
+04:52.281 --> 05:51.481
+Run: an API with middleware
+
+05:51.481 --> 06:09.602
+Code: how it was measured
+
+06:09.602 --> 06:38.569
+Change it: a new reply
+
+06:38.569 --> 07:07.459
+Try it
