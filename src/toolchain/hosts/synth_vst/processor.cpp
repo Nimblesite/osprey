@@ -208,5 +208,5 @@ int verifyState(const std::string& path, const std::string& identifier) {
 int streamPlugin(const std::string& path, const std::string& identifier) {
     osprey::vst::Plugin plugin;
     if (!plugin.open(path, identifier)) return failed(plugin.error);
-    return plugin.stream() ? 0 : failed(plugin.error);
+    return plugin.stream(std::cin, std::cout) ? 0 : failed(plugin.error);
 }

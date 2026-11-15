@@ -1,9 +1,9 @@
 //! Direct process launch with bounded, concurrently drained output.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::time::{Duration, Instant};
 
 use serde_json::json;
@@ -39,6 +39,18 @@ struct Collected {
 
 /// Runs one executable without a shell and writes its UTF-8 stdout to a slice.
 pub fn run(ask: &Ask) -> Result<String, String> {
+    execute(ask, None)
+}
+
+/// Writes bounded UTF-8 input while draining both outputs concurrently.
+pub(super) fn with_input(ask: &Ask, input: String) -> Result<String, String> {
+    if input.len() > 2 * 1024 * 1024 {
+        return Err("Process input exceeds the 2 MiB limit".to_owned());
+    }
+    execute(ask, Some(input))
+}
+
+fn execute(ask: &Ask, input: Option<String>) -> Result<String, String> {
     let executable = text(ask, 1, "executable")?;
     if !Path::new(&executable).is_absolute() {
         return Err("Executable must be an absolute path".to_owned());
@@ -48,6 +60,7 @@ pub fn run(ask: &Ask) -> Result<String, String> {
         &ask.texts(2),
         number(ask, 3, "timeout")?,
         number(ask, 4, "limit")?,
+        input,
     )?;
     let stdout = String::from_utf8(launched.stdout).map_err(|_| "Not UTF-8 text".to_owned())?;
     ffi::put_slice(&text(ask, 6, "slice")?, &stdout)?;
@@ -60,25 +73,47 @@ fn launch(
     arguments: &[String],
     timeout: u64,
     limit: u64,
+    input: Option<String>,
 ) -> Result<Launched, String> {
     let mut child = Command::new(executable)
         .args(arguments)
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|problem| problem.to_string())?;
     let stdout = child.stdout.take().ok_or("run stdout is unavailable")?;
     let stderr = child.stderr.take().ok_or("run stderr is unavailable")?;
-    let (sender, receiver) = mpsc::channel();
+    let (sender, receiver) = mpsc::sync_channel(4);
+    let streams = if let Some(input) = input {
+        let Some(mut stdin) = child.stdin.take() else {
+            stop(&mut child);
+            return Err("Process input pipe is unavailable".to_owned());
+        };
+        let inbox = sender.clone();
+        std::thread::spawn(move || {
+            let result = stdin
+                .write_all(input.as_bytes())
+                .map_err(|error| error.to_string());
+            drop(stdin);
+            let _ = inbox.send(Event::Finished(result));
+        });
+        3
+    } else {
+        2
+    };
     let outbox = sender.clone();
     std::thread::spawn(move || drain(stdout, Stream::Stdout, outbox));
     std::thread::spawn(move || drain(stderr, Stream::Stderr, sender));
-    collect(&mut child, receiver, timeout, limit)
+    collect(&mut child, receiver, timeout, limit, streams)
 }
 
 /// Drains one pipe in blocks so neither output stream can deadlock the child.
-fn drain(mut pipe: impl Read, stream: Stream, sender: Sender<Event>) {
+fn drain(mut pipe: impl Read, stream: Stream, sender: SyncSender<Event>) {
     let mut buffer = vec![0; READ_BLOCK];
     loop {
         match pipe.read(&mut buffer) {
@@ -108,6 +143,7 @@ fn collect(
     receiver: Receiver<Event>,
     timeout: u64,
     limit: u64,
+    streams: usize,
 ) -> Result<Launched, String> {
     let started = Instant::now();
     let duration = Duration::from_millis(timeout.max(1));
@@ -119,7 +155,7 @@ fn collect(
         bytes: Vec::new(),
         size: 0,
     };
-    let mut open = 2;
+    let mut open = streams;
     let mut failure = None;
     while open > 0 {
         let Some(remaining) = duration.checked_sub(started.elapsed()) else {
@@ -153,7 +189,7 @@ fn collect(
             }
         }
     }
-    let status = child.wait().map_err(|problem| problem.to_string())?;
+    let status = wait_before_deadline(child, started, duration, timeout)?;
     match failure {
         Some(problem) => Err(problem),
         None => Ok(Launched {
@@ -161,6 +197,25 @@ fn collect(
             stdout: stdout.bytes,
             stderr: stderr.bytes,
         }),
+    }
+}
+
+/// Output EOF is not process exit; preserve the deadline after both pipes close.
+fn wait_before_deadline(
+    child: &mut Child,
+    started: Instant,
+    duration: Duration,
+    timeout: u64,
+) -> Result<std::process::ExitStatus, String> {
+    loop {
+        if let Some(status) = child.try_wait().map_err(|problem| problem.to_string())? {
+            return Ok(status);
+        }
+        let Some(remaining) = duration.checked_sub(started.elapsed()) else {
+            stop(child);
+            return Err(format!("Timed out after {timeout} ms"));
+        };
+        std::thread::sleep(remaining.min(Duration::from_millis(2)));
     }
 }
 
@@ -288,6 +343,82 @@ mod tests {
     /// Truncates stderr at the protocol's 64 KiB boundary.
     fn run_truncates_stderr() {
         assert_eq!(stderr_text(&vec![b'x'; STDERR_TEST_SIZE]).len(), 65_536);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    /// A child that closes both output pipes must still obey its deadline.
+    fn run_deadline_survives_closed_output_pipes() {
+        let started = std::time::Instant::now();
+        let request = run_request("/bin/sh", &["-c", "exec 1>&- 2>&-; exec sleep 2"], 20, 100);
+        let result = answer(&request);
+        assert!(result.is_err_and(|problem| problem.contains("Timed out")));
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    /// Input larger than a pipe buffer must not deadlock while output is produced.
+    fn input_drains_large_echo_and_enforces_bounds() {
+        let input = "samples".repeat(100_000);
+        let request = run_request("/bin/cat", &[], 2_000, 1_000_000);
+        let result = super::with_input(&request, input.clone());
+        assert!(result.is_ok());
+        assert_eq!(ffi::get_slice("run-test-/bin/cat-1000000"), Some(input));
+        assert!(super::with_input(&request, "x".repeat(2 * 1024 * 1024 + 1)).is_err());
+        let sleeping = run_request("/bin/sleep", &["2"], 20, 100);
+        assert!(super::with_input(&sleeping, "x".repeat(100_000)).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    /// The public capability boundary transfers a slice without exposing it in argv.
+    fn process_input_host_call_uses_real_stdin() {
+        let fields = [
+            (1, "process"),
+            (2, "input"),
+            (3, "executable"),
+            (3, "/bin/cat"),
+            (3, "stdinSlice"),
+            (3, "process-input-test"),
+            (6, "process-input-output"),
+        ];
+        let mut request = Ask {
+            code: 11,
+            ticket: "stdin-test".to_owned(),
+            fields: fields
+                .into_iter()
+                .map(|(field, text)| Field {
+                    field,
+                    text: text.to_owned(),
+                    number: 0,
+                })
+                .collect(),
+        };
+        request.fields.extend([
+            Field {
+                field: 4,
+                number: 1000,
+                text: String::new(),
+            },
+            Field {
+                field: 5,
+                number: 1000,
+                text: String::new(),
+            },
+        ]);
+        assert!(ffi::put_slice("process-input-test", "a sample buffer\n").is_ok());
+        assert!(answer(&request).is_ok());
+        assert_eq!(
+            ffi::get_slice("process-input-output").as_deref(),
+            Some("a sample buffer\n")
+        );
+        request.fields.push(Field {
+            field: 3,
+            text: "unpaired".to_owned(),
+            number: 0,
+        });
+        assert!(answer(&request).is_err());
     }
 
     const STDERR_TEST_SIZE: usize = 65_537;

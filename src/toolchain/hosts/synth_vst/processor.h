@@ -48,7 +48,7 @@ public:
     bool run(double& peak);
     bool stateRoundTrip();
     bool synchronizeController();
-    bool stream();
+    bool stream(std::istream& input, std::ostream& output, uint64_t frameLimit = 0);
 };
 
 bool measured(const HostProcessData& data, double& peak);

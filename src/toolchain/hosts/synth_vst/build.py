@@ -44,25 +44,28 @@ def packet(frames, inputs=(), events=(), parameters=()):
             struct.pack(f"<{len(inputs)}f", *inputs))
 
 
-def streamed(bundle, identifier, payload, valid=True):
-    result = subprocess.run([str(BUILD / "osprey-vst-worker"), "stream", str(bundle), identifier],
+def streamed(bundle, identifier, payload, valid=True, mode="stream"):
+    if mode == "stream-text":
+        payload = payload.hex().encode()
+    result = subprocess.run([str(BUILD / "osprey-vst-worker"), mode, str(bundle), identifier],
                             input=payload, capture_output=True, timeout=15)
     if not valid:
         assert result.returncode != 0 and b"vst.failure" in result.stderr, result
         return []
     assert result.returncode == 0, result.stderr.decode(errors="replace")
-    magic, inputs, outputs, notes = struct.unpack_from("<4sIII", result.stdout)
+    output = bytes.fromhex(result.stdout.decode()) if mode == "stream-text" else result.stdout
+    magic, inputs, outputs, notes = struct.unpack_from("<4sIII", output)
     assert magic == b"OSV1" and outputs == 2 and inputs <= 2 and notes <= 1
     position, blocks = 16, []
-    while position < len(result.stdout):
-        frames, latency = struct.unpack_from("<II", result.stdout, position)
+    while position < len(output):
+        frames, latency = struct.unpack_from("<II", output, position)
         assert 0 < frames <= 256 and latency < 480000
         position += 8
-        values = struct.unpack_from(f"<{frames * outputs}f", result.stdout, position)
+        values = struct.unpack_from(f"<{frames * outputs}f", output, position)
         assert all(math.isfinite(value) and abs(value) <= 1000000 for value in values)
         blocks.append(values)
         position += frames * outputs * 4
-    assert position == len(result.stdout)
+    assert position == len(output)
     return blocks
 
 
@@ -82,6 +85,9 @@ def stream_tests():
     audio = streamed(effect, delay_id, packet(256, samples, parameters=[(100, 0, 0.0)]) + packet(128, [0.0] * 256))
     assert len(audio) == 2 and list(audio[0]) == [0.0, 0.0] + samples[:-2]
     assert list(audio[1]) == [0.5, -0.25] + [0.0] * 254
+    text_audio = streamed(effect, delay_id, packet(256, samples, parameters=[(100, 0, 0.0)]) + packet(128, [0.0] * 256), mode="stream-text")
+    assert text_audio == audio
+    streamed(instrument, synth_id, packet(256) * 129, False, "stream-text")
     # One instance retains the held note through many blocks, then receives its note-off.
     note = (1, 17, 60, 0, 42, 0.8)
     release = (2, 0, 60, 0, 42, 0.0)

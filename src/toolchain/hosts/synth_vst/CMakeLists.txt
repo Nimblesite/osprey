@@ -9,7 +9,7 @@ endif()
 set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "" FORCE)
 set(SMTG_CREATE_PLUGIN_LINK OFF CACHE BOOL "" FORCE)
 add_subdirectory("${VST3_SDK}" sdk EXCLUDE_FROM_ALL)
-add_executable(osprey-vst-worker main.cpp processor.cpp stream.cpp descriptor.cpp
+add_executable(osprey-vst-worker main.cpp processor.cpp stream.cpp descriptor.cpp stream_text.cpp
     "${VST3_SDK}/public.sdk/source/common/memorystream.cpp"
     "${VST3_SDK}/public.sdk/source/vst/hosting/plugprovider.cpp")
 target_compile_features(osprey-vst-worker PRIVATE cxx_std_20)

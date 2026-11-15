@@ -133,7 +133,7 @@ impl HostView {
                     let completion = clock::answer(self, &ask);
                     self.send(completion, window, cx);
                 }
-                "run" | "list-directories" | "read-texts" => {
+                "run" | "list-directories" | "read-texts" | "host-call" => {
                     self.answer_in_background(ask, window, cx);
                 }
                 "cancel" => self.send(adapters::completion(&ask), window, cx),
@@ -142,9 +142,7 @@ impl HostView {
                 }
                 // [CAST-MOBILE-DELIVERY] iOS has no GPUI path prompt: its document
                 // picker is answered across the OS bridge like any blocking adapter.
-                "choose-file" | "host-call"
-                    if cfg!(any(target_os = "ios", target_os = "android")) =>
-                {
+                "choose-file" if cfg!(any(target_os = "ios", target_os = "android")) => {
                     self.answer_in_background(ask, window, cx);
                 }
                 "choose-file" | "choose-folder" | "save-file" | "reveal" => {

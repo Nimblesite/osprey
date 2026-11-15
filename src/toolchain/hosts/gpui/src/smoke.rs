@@ -318,7 +318,9 @@ fn answer_one(shown: &mut Shown, now: i64, ask: &Ask) -> Result<(), String> {
 
 /// Builds the generic smoke answer for one supported capability.
 fn completion(ask: &Ask) -> Result<Touch, String> {
-    if ask.kind() == "run" && std::env::args().any(|argument| argument == "--live-processes") {
+    if matches!(ask.kind(), "run" | "host-call")
+        && std::env::args().any(|argument| argument == "--live-processes")
+    {
         return Ok(crate::adapters::completion(ask));
     }
     let outcome = match ask.kind() {
