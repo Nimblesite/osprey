@@ -407,7 +407,9 @@ fn spelled_graph_ir(choice: [usize; 2]) -> Result<String, String> {
         .iter()
         .zip(choice)
         .map(|((stem, spellings), index)| {
-            let (source, flavor) = spellings[index];
+            let (source, flavor) = *spellings
+                .get(index)
+                .ok_or_else(|| format!("{stem}: no spelling {index}"))?;
             let extension = match flavor {
                 Flavor::Ml => "ospml",
                 Flavor::TypeScript => "ts",
@@ -417,7 +419,8 @@ fn spelled_graph_ir(choice: [usize; 2]) -> Result<String, String> {
         })
         .collect::<Result<Vec<_>, _>>()?;
     let mut config = osprey_project::ProjectConfig::for_root(Path::new("app"));
-    config.entry = Some(PathBuf::from(&sources[0].path));
+    let entry = sources.first().ok_or("the graph has no files")?;
+    config.entry = Some(entry.path.clone());
     let project = osprey_project::assemble(&config, &sources)
         .map_err(|errors| format!("graph {choice:?}: {errors:?}"))?;
     let errors = osprey_types::check_program(&project.program);
