@@ -69,6 +69,8 @@ A command of the fragment is recognised by its word. Any other command, and anyt
 | `Float.sqrt a`, `a.sqrt` | the functions of [MATH-CODE-MEANING]; both spellings |
 | `( a )` | |
 
+A definition may take the name of an Osprey builtin, as Mathlib names its own `sinh`, provided the source never calls that builtin: the generated call would reach the definition instead, so a source that does both is refused (`ReservedName`). A parameter or a `let` never takes a builtin's name.
+
 The reader checks what it reads: every name resolves, every call has its declared arity and argument types, both branches of an `if` have one type, and a body has its declared result type.
 
 ## Meaning [MATH-CODE-MEANING]

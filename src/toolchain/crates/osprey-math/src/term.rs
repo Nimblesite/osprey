@@ -3,26 +3,12 @@
 
 use crate::lex::Tok;
 use crate::literal;
-use crate::model::{function, Expr, Op, Tail, Ty};
+use crate::model::{Expr, Op, Tail, Ty};
+use crate::names::{arity, method_of, Function, Head};
 use crate::reader::Reader;
 use crate::refusal::{Code, Refusal};
 
 type Typed<T> = Result<(T, Ty), Refusal>;
-
-/// What a name at the head of an application is.
-pub(crate) enum Head {
-    /// A value: nothing may be applied to it.
-    Value(Expr, Ty),
-    /// A function awaiting arguments, with any receiver already bound.
-    Function(Function),
-}
-
-pub(crate) struct Function {
-    callee: String,
-    bound: Vec<Expr>,
-    params: Vec<Ty>,
-    result: Ty,
-}
 
 /// Lean's binary operators: the fragment's operator, how tightly it binds and
 /// the least binding its right operand may have. Lean declares `||` and `&&`
@@ -64,7 +50,12 @@ fn mismatch(place: (usize, usize), found: Ty, wanted: Ty, what: &str) -> Refusal
     Refusal::at(Code::TypeMismatch, place, message)
 }
 
-fn require(place: (usize, usize), found: Ty, wanted: Ty, what: &str) -> Result<(), Refusal> {
+pub(crate) fn require(
+    place: (usize, usize),
+    found: Ty,
+    wanted: Ty,
+    what: &str,
+) -> Result<(), Refusal> {
     if found == wanted {
         Ok(())
     } else {
@@ -156,7 +147,7 @@ impl Reader<'_> {
             let fix = format!("`{name}` is already in scope; a `let` takes a new name");
             return self.refuse(Code::ShadowedName, fix);
         }
-        self.fresh_name()
+        self.fresh_name(crate::model::reserved)
     }
 
     /// The value of a `let` at `column`: an argument may not start at or left
@@ -190,6 +181,9 @@ impl Reader<'_> {
             let place = self.place();
             self.at += 1;
             let right = self.expr(next)?;
+            if matches!(infix, Infix::Pow) {
+                self.uses_builtin(place, "pow")?;
+            }
             left = combine(place, infix, left, right)?;
         }
         if self.sym("=") {
@@ -354,91 +348,13 @@ impl Reader<'_> {
         {
             Some((Tok::Field(method), place)) => {
                 self.at += 1;
-                method_of(place, method, term, ty)
+                let function = method_of(place, method, term, ty)?;
+                self.called(place, function)
             }
             _ => Ok(Head::Value(term, ty)),
         }
     }
-
-    /// What `name` means: a local, a definition, `Float.f`, or `value.f`.
-    fn resolve(&self, place: (usize, usize), name: &str) -> Result<Head, Refusal> {
-        if let Some((_, ty)) = self.locals.iter().find(|(local, _)| local == name) {
-            return Ok(Head::Value(Expr::Name(name.to_owned()), *ty));
-        }
-        if let Some(head) = self.defined(name) {
-            return Ok(head);
-        }
-        let opened = self.opened.iter().any(|opened| opened == name);
-        if let Some(method) = name.strip_prefix("Float.").or(opened.then_some(name)) {
-            return float_function(place, method, Vec::new());
-        }
-        let Some((receiver, method)) = name.rsplit_once('.') else {
-            let fix = format!("`{name}` is not defined above; definitions are read in order");
-            return Err(Refusal::at(Code::UnknownName, place, fix));
-        };
-        match self.resolve(place, receiver)? {
-            Head::Value(term, ty) => method_of(place, method, term, ty),
-            Head::Function(function) => Err(arity(place, &function.callee, function.params.len())),
-        }
-    }
-
-    /// A definition of this file, by its name or its namespace-qualified name.
-    fn defined(&self, name: &str) -> Option<Head> {
-        let local = self
-            .namespace
-            .as_deref()
-            .and_then(|namespace| name.strip_prefix(namespace)?.strip_prefix('.'))
-            .unwrap_or(name);
-        let def = self.defs.iter().find(|def| def.name == local)?;
-        let callee = def.name.clone();
-        Some(if def.params.is_empty() {
-            Head::Value(Expr::Call(callee, Vec::new()), def.result)
-        } else {
-            Head::Function(Function {
-                callee,
-                bound: Vec::new(),
-                params: def.params.clone(),
-                result: def.result,
-            })
-        })
-    }
 }
-
-fn arity(place: (usize, usize), callee: &str, wanted: usize) -> Refusal {
-    let message = format!("`{callee}` takes exactly {wanted} argument(s), all on its line");
-    Refusal::at(Code::ArityMismatch, place, message)
-}
-
-/// `receiver.method`: Lean's `Float.method receiver`.
-fn method_of(place: (usize, usize), method: &str, receiver: Expr, ty: Ty) -> Result<Head, Refusal> {
-    require(place, ty, Ty::Float, "the receiver of a `Float` function")?;
-    float_function(place, method, vec![receiver])
-}
-
-/// Lean's `Float.<method>` with `bound` as its leading arguments.
-pub(crate) fn float_function(
-    place: (usize, usize),
-    method: &str,
-    bound: Vec<Expr>,
-) -> Result<Head, Refusal> {
-    let Some((callee, count)) = function(method) else {
-        let message = format!(
-            "no Osprey operation computes the same value as `Float.{method}`; write the formula with the functions of [MATH-CODE-MEANING]"
-        );
-        return Err(Refusal::at(Code::UnsupportedFunction, place, message));
-    };
-    let params = vec![Ty::Float; count.saturating_sub(bound.len())];
-    if params.is_empty() {
-        return Ok(Head::Value(Expr::Call(callee.to_owned(), bound), Ty::Float));
-    }
-    Ok(Head::Function(Function {
-        callee: callee.to_owned(),
-        bound,
-        params,
-        result: Ty::Float,
-    }))
-}
-
 fn combine(
     place: (usize, usize),
     infix: Infix,

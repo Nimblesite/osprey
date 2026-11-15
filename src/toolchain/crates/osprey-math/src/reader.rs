@@ -34,6 +34,8 @@ pub(crate) struct Reader<'a> {
     pub(crate) namespace: Option<String>,
     /// `Float` functions an `open Float (…)` lets the source write unqualified.
     pub(crate) opened: Vec<String>,
+    /// Osprey builtins the generated bodies call.
+    pub(crate) builtins: Vec<String>,
 }
 
 impl<'a> Reader<'a> {
@@ -46,6 +48,7 @@ impl<'a> Reader<'a> {
             let_columns: Vec::new(),
             namespace: None,
             opened: Vec::new(),
+            builtins: Vec::new(),
         }
     }
 
@@ -143,8 +146,8 @@ impl<'a> Reader<'a> {
         Ok(ty)
     }
 
-    /// A new value name Osprey can spell that hides nothing in scope.
-    pub(crate) fn fresh_name(&mut self) -> Result<String, Refusal> {
+    /// A new value name Osprey can spell and that `taken` does not claim.
+    pub(crate) fn fresh_name(&mut self, taken: fn(&str) -> bool) -> Result<String, Refusal> {
         let Some(name) = self.ident().filter(|_| self.at_name()) else {
             return self.refuse(
                 Code::UnexpectedToken,
@@ -155,12 +158,29 @@ impl<'a> Reader<'a> {
             let fix = format!("Osprey cannot spell `{name}`; use a lowercase ASCII letter, then letters, digits and `_`");
             return self.refuse(Code::UnsupportedName, fix);
         }
-        if crate::model::reserved(name) {
+        if taken(name) {
             let fix = format!("`{name}` is an Osprey keyword or builtin; choose another name");
             return self.refuse(Code::ReservedName, fix);
         }
         self.at += 1;
         Ok(name.to_owned())
+    }
+
+    /// Record that a generated body calls Osprey's builtin `callee`. A
+    /// definition of the same name would capture that call, so a source may
+    /// define a builtin's name or call the builtin, never both.
+    pub(crate) fn uses_builtin(
+        &mut self,
+        place: (usize, usize),
+        callee: &str,
+    ) -> Result<(), Refusal> {
+        if self.defs.iter().any(|def| def.name == callee) {
+            return Err(captured(place, callee));
+        }
+        if !self.builtins.iter().any(|used| used == callee) {
+            self.builtins.push(callee.to_owned());
+        }
+        Ok(())
     }
 
     /// Whether `name` is a parameter, a `let` name, a definition or an opened function.
@@ -178,4 +198,12 @@ fn spellable(name: &str) -> bool {
         .next()
         .is_some_and(|first| first.is_ascii_lowercase() || first == '_')
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// The refusal for a definition that would capture a generated builtin call.
+pub(crate) fn captured(place: (usize, usize), callee: &str) -> Refusal {
+    let fix = format!(
+        "this source both defines `{callee}` and calls Osprey's builtin `{callee}`, which the definition would capture; rename the definition"
+    );
+    Refusal::at(Code::ReservedName, place, fix)
 }

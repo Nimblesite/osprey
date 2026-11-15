@@ -147,8 +147,7 @@ pub(crate) fn function(name: &str) -> Option<(&'static str, usize)> {
         .map(|(_, osprey, arity)| (*osprey, *arity))
 }
 
-/// Words a generated name may not be: ML-flavor keywords and the builtins a
-/// generated body calls, which a definition of the same name would capture.
+/// ML-flavor keywords, and `floatDiv`, which the emitter writes for `/`.
 const KEYWORDS: &[&str] = &[
     "mut",
     "true",
@@ -181,7 +180,13 @@ const KEYWORDS: &[&str] = &[
     "floatDiv",
 ];
 
-/// Whether `name` is taken by Osprey itself.
+/// Whether `name` is a word of the ML flavor, which no generated name may be.
+pub(crate) fn keyword(name: &str) -> bool {
+    KEYWORDS.contains(&name)
+}
+
+/// Whether `name` is taken by Osprey itself: a keyword, or a builtin a
+/// generated body may call.
 pub(crate) fn reserved(name: &str) -> bool {
-    KEYWORDS.contains(&name) || FUNCTIONS.iter().any(|(_, osprey, _)| *osprey == name)
+    keyword(name) || FUNCTIONS.iter().any(|(_, osprey, _)| *osprey == name)
 }

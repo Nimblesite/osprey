@@ -8,6 +8,7 @@ mod emit;
 mod lex;
 mod literal;
 mod model;
+mod names;
 mod read;
 mod reader;
 mod refusal;

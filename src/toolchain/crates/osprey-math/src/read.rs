@@ -111,7 +111,7 @@ impl Reader<'_> {
             return self.refuse(Code::UnsupportedCommand, fix);
         }
         while let Some(name) = self.ident().filter(|_| self.at_name()) {
-            let _ = crate::term::float_function(self.place(), name, Vec::new())?;
+            let _ = crate::names::float_function(self.place(), name, Vec::new())?;
             if self.in_scope(name) {
                 return self.refuse(
                     Code::DuplicateName,
@@ -162,10 +162,14 @@ impl Reader<'_> {
             return self.unsupported_command();
         }
         self.at += 1;
+        let place = self.place();
         let name = self.definition_name()?;
         let params = self.parameters()?;
         let result = self.result_type()?;
         let body = self.body(&params, result)?;
+        if self.builtins.contains(&name) {
+            return Err(crate::reader::captured(place, &name));
+        }
         let types = params.iter().map(|(_, ty)| *ty).collect();
         self.defs.push(Signature {
             name: name.clone(),
@@ -189,7 +193,7 @@ impl Reader<'_> {
                 format!("`{name}` is already defined above"),
             );
         }
-        self.fresh_name()
+        self.fresh_name(crate::model::keyword)
     }
 
     /// Zero or more `(a b : T)` groups.
@@ -219,7 +223,7 @@ impl Reader<'_> {
             let fix = format!("`{name}` is already in scope; a parameter takes a new name");
             return self.refuse(Code::ShadowedName, fix);
         }
-        self.fresh_name()
+        self.fresh_name(crate::model::reserved)
     }
 
     fn result_type(&mut self) -> Result<Ty, Refusal> {

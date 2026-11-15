@@ -268,6 +268,19 @@ fn opened_float_functions_are_written_as_mathlib_writes_them() {
 }
 
 #[test]
+fn a_source_may_define_a_builtins_name_when_it_never_calls_that_builtin() {
+    let source = "open Float (exp)\nprivate def sinh (x : Float) : Float := (exp x - exp (-x)) / 2\nprivate def cosh (x : Float) : Float := (exp x + exp (-x)) / 2\nprivate def tanh (x : Float) : Float := sinh x / cosh x\n";
+    let lines = [
+        "sinh x = (exp x - exp ((-1.0) * x)) / 2.0",
+        "",
+        "cosh x = (exp x + exp ((-1.0) * x)) / 2.0",
+        "",
+        "tanh x = floatDiv (sinh x, cosh x)",
+    ];
+    assert_eq!(body(source), lines);
+}
+
+#[test]
 fn what_only_lean_checks_generates_nothing() {
     let source = "/-! Module docs with a `def` inside. -/\n-- a comment with def and /- no opening\n/- block /- nested -/ still a comment def -/\n#eval \"a string -- not a comment \\\" def\"\n#check @Float.sqrt\n  -- an indented continuation\n  |>.toString\n#print Float\n/-- A doc before a check is dropped. -/\n#guard 'x' == 'x' ∧ [1, 2].length == 2\nprivate def k : Float := 1 -- trailing\n#eval k\n";
     assert_eq!(body(source), ["k = 1.0"]);
