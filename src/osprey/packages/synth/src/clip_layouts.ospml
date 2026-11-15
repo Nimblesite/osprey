@@ -73,15 +73,18 @@ module ClipLayouts
     (** Bound all per-channel delay state before any buffer is allocated. *)
     export bounded (graph, frames) = frames > 0 && frames <= 32768 && foldList (graph.nodes, 0, \(total, n) => satAdd total (delay n)) <= 1920000 && length (filterList (graph.nodes, \n => supported n)) == length graph.nodes
 
-    noteClip (n, frames, clip) = match n.processor
-        MidiNotes => match MidiClips::window (n, 0, frames)
+    noteClip (n, first, frames, clip) = match n.processor
+        MidiNotes => match MidiClips::timeline (n, first, frames)
             Error _ => false
             Success notes => structuralEquals (notes, clip.clipNotes)
         _ => length clip.clipNotes == 0
 
     (** Revalidate public cached buffers before allowing them to feed another node. *)
-    export validClip (graph, frames, clip) = match Graphs::node (graph, clip.clipNode)
+    export validClipAt (graph, first, frames, clip) = match Graphs::node (graph, clip.clipNode)
         Invalid _ => false
         Valid n => match channels n
             Error _ => false
-            Success count => clip.clipChannels == count && length clip.clipSamples == satMul frames count && length clip.clipSamples <= 65536 && length (filterList (clip.clipSamples, \sample => sample == sample && abs sample <= 1000000.0)) == length clip.clipSamples && noteClip (n, frames, clip)
+            Success count => clip.clipChannels == count && length clip.clipSamples == satMul frames count && length clip.clipSamples <= 65536 && length (filterList (clip.clipSamples, \sample => sample == sample && abs sample <= 1000000.0)) == length clip.clipSamples && noteClip (n, first, frames, clip)
+
+    (** Whole-clip caches use the zero-origin event clock. *)
+    export validClip (graph, frames, clip) = validClipAt (graph, 0, frames, clip)

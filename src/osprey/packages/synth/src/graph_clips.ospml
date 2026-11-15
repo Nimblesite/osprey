@@ -1,7 +1,7 @@
 // [SYNTH-HOST-GRAPH] Pure graph scheduling pauses only at an actual external processor.
 namespace synth
 
-(** Bounded acyclic clip rendering; the caller supplies each external node's checked response. *)
+(** Checked acyclic graph blocks; the caller supplies each external node's response. *)
 module GraphClips
     acyclic n = match n.processor
         Delay _ => n(processor = Amplifier)
@@ -17,52 +17,103 @@ module GraphClips
 
     ready (graph, n) = length (filterList (toList (range (0, length n.inputs)), \inlet => connected (graph, n, inlet))) == length n.inputs
 
+    stateful n = match n.processor
+        Stereo => false
+        Sink => false
+        MidiNotes => false
+        External _ => false
+        _ => true
+
+    validBank (graph, bank) = match Graphs::node (graph, bank.kernelNode)
+        Invalid _ => false
+        Valid n => match ClipLayouts::channels n
+            Error _ => false
+            Success count => stateful n && length bank.kernelStates == count && length (filterList (bank.kernelStates, \saved => saved.identity == n.identity)) == count
+
+    validState (graph, held, frames) = held.graphPosition >= 0 && held.graphPosition <= satSub 9223372036854775807 frames && length (filterList (held.graphKernels, \bank => validBank (graph, bank) && length (filterList (held.graphKernels, \other => other.kernelNode == bank.kernelNode)) == 1)) == length held.graphKernels && (held.graphPosition == 0 || length held.graphKernels == length (filterList (graph.nodes, stateful)))
+
     converted (graph, clips, n) = match ClipInputs::routed (graph, clips, n.identity, 0)
         Error why => Error(message = why)
         Success clip => match clip.clipChannels == 1
             false => Error(message = "Mono-to-stereo requires one audio channel.")
             true => Success(value = foldList (clip.clipSamples, [], \(samples, value) => listConcat samples [value, value]))
 
-    audio (plan, clips, n, frames, channels) = match n.processor
-        Stereo => converted (plan.graph, clips, n)
+    emitted (plan, clips, held, frames, n, channels, samples, notes, remaining) =
+        clip = NodeClip(clipNode = n.identity, clipChannels = channels, clipSamples = samples, clipNotes = notes)
+        scheduled (plan, listAppend clips clip, held, frames, remaining)
+
+    kernels (held, n, channels) = match filterList (held.graphKernels, \bank => bank.kernelNode == n.identity)
+        [bank] => Success(value = bank.kernelStates)
+        [] => match held.graphPosition == 0
+            true => Success(value = mapList (toList (range (0, channels)), \_ => RenderInputs::initialState n))
+            false => Error(message = "A continuing graph lost its component state.")
+        _ => Error(message = "A component has duplicate kernel state.")
+
+    processed (plan, clips, held, frames, n, channels, remaining) = match kernels (held, n, channels)
+        Error why => Error(message = why)
+        Success saved => match ClipKernels::block (plan, clips, n, frames, saved)
+            Error why => Error(message = why)
+            Success rendered =>
+                bank = NodeKernels(kernelNode = n.identity, kernelStates = rendered.heldKernel)
+                nextHeld = held(graphKernels = listAppend (filterList (held.graphKernels, \old => old.kernelNode != n.identity)) bank)
+                emitted (plan, clips, nextHeld, frames, n, channels, rendered.kernelSamples, [], remaining)
+
+    routed (plan, clips, held, frames, n, channels, remaining) = match n.processor
+        Stereo => match converted (plan.graph, clips, n)
+            Error why => Error(message = why)
+            Success samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining)
         Sink => match ClipInputs::routed (plan.graph, clips, n.identity, 0)
             Error why => Error(message = why)
-            Success clip => Success(value = clip.clipSamples)
-        _ => ClipKernels::render (plan, clips, n, frames, channels)
+            Success clip => emitted (plan, clips, held, frames, n, channels, clip.clipSamples, [], remaining)
+        _ => processed (plan, clips, held, frames, n, channels, remaining)
 
-    built (plan, clips, n, frames) = match n.processor
-        MidiNotes => match MidiClips::window (n, 0, frames)
+    node (plan, clips, held, frames, n, remaining) = match n.processor
+        External _ => match ClipInputs::requestAt (plan.graph, clips, n, held.graphPosition, frames)
             Error why => Error(message = why)
-            Success notes => Success(value = NodeClip(clipNode = n.identity, clipChannels = 0, clipSamples = [], clipNotes = notes))
+            Success request => Success(value = BlockWaiting(request = request, pending = GraphPending(pendingGraph = plan.graph, pendingState = held, pendingClips = clips, pendingFrames = frames, pendingNode = n.identity)))
+        MidiNotes => match MidiClips::timeline (n, held.graphPosition, frames)
+            Error why => Error(message = why)
+            Success notes => emitted (plan, clips, held, frames, n, 0, [], notes, remaining)
         _ => match ClipLayouts::channels n
             Error why => Error(message = why)
-            Success count => match audio (plan, clips, n, frames, count)
-                Error why => Error(message = why)
-                Success samples => Success(value = NodeClip(clipNode = n.identity, clipChannels = count, clipSamples = samples, clipNotes = []))
+            Success count => routed (plan, clips, held, frames, n, count, remaining)
 
-    node (plan, clips, frames, n, remaining) = match n.processor
-        External _ => match ClipInputs::request (plan.graph, clips, n, frames)
-            Error why => Error(message = why)
-            Success request => Success(value = ClipWaiting(node = n.identity, request = request, clips = clips))
-        _ => match built (plan, clips, n, frames)
-            Error why => Error(message = why)
-            Success clip => scheduled (plan, listAppend clips clip, frames, remaining)
-
-    scheduled (plan, clips, frames, identities) = match identities
-        [] => Success(value = ClipReady(clips = clips))
+    scheduled (plan, clips, held, frames, identities) = match identities
+        [] => Success(value = BlockReady(held = held(graphPosition = satAdd held.graphPosition frames), clips = clips))
         [identity, ...remaining] => match length (filterList (clips, \clip => clip.clipNode == identity)) == 1
-            true => scheduled (plan, clips, frames, remaining)
+            true => scheduled (plan, clips, held, frames, remaining)
             false => match RenderInputs::component (plan, identity)
                 Error why => Error(message = why)
-                Success n => node (plan, clips, frames, n, remaining)
+                Success n => node (plan, clips, held, frames, n, remaining)
 
-    prepared (graph, clips, frames) = match Graphs::prepare graph
+    prepared (graph, clips, held, frames) = match Graphs::prepare graph
         Invalid _ => Error(message = "The graph has invalid nodes or routes.")
         Valid _ => match Graphs::prepare (graph(nodes = mapList (graph.nodes, acyclic)))
-            Invalid _ => Error(message = "Offline VST audition requires an acyclic graph.")
-            Valid plan => scheduled (plan(graph = graph), clips, frames, plan.order)
+            Invalid _ => Error(message = "Hosted graph rendering requires an acyclic graph.")
+            Valid plan => scheduled (plan(graph = graph), clips, held, frames, plan.order)
 
-    (** Resume a frozen graph after a worker reply; cycles require the separate streaming engine. *)
-    export advance (graph, clips, frames) = match ClipLayouts::bounded (graph, frames) && length (filterList (graph.nodes, \n => n.processor == Sink)) == 1 && length (filterList (graph.nodes, \n => ready (graph, n))) == length graph.nodes && length (filterList (clips, \clip => ClipLayouts::validClip (graph, frames, clip) && length (filterList (clips, \other => other.clipNode == clip.clipNode)) == 1)) == length clips
-        false => Error(message = "The clip needs one output, connected inputs and valid bounded source buffers.")
-        true => prepared (graph, clips, frames)
+    checked (graph, clips, held, frames) = match ClipLayouts::bounded (graph, frames) && validState (graph, held, frames) && length (filterList (graph.nodes, \n => n.processor == Sink)) == 1 && length (filterList (graph.nodes, \n => ready (graph, n))) == length graph.nodes && length (filterList (clips, \clip => ClipLayouts::validClipAt (graph, held.graphPosition, frames, clip) && length (filterList (clips, \other => other.clipNode == clip.clipNode)) == 1)) == length clips
+        false => Error(message = "The block needs one output, connected inputs and valid bounded buffers and state.")
+        true => prepared (graph, clips, held, frames)
+
+    (** Continue a graph clock and its independent channel states into a fresh block. *)
+    export next (graph, held, frames) = checked (graph, [], held, frames)
+
+    (** Start an acyclic graph at sample zero; hosted instances belong to the caller. *)
+    export start (graph, frames) = next (graph, GraphState(graphPosition = 0, graphKernels = []), frames)
+
+    (** Resume only the pending external node, using its frozen graph and exact response shape. *)
+    export replied (pending, clip) = match clip.clipNode == pending.pendingNode && length (filterList (pending.pendingClips, \old => old.clipNode == clip.clipNode)) == 0
+        false => Error(message = "The worker response does not belong to the pending node.")
+        true => match Graphs::node (pending.pendingGraph, pending.pendingNode)
+            Invalid _ => Error(message = "The pending component is absent.")
+            Valid n => match n.processor
+                External _ => checked (pending.pendingGraph, listAppend pending.pendingClips clip, pending.pendingState, pending.pendingFrames)
+                _ => Error(message = "Only an external component can resume a worker response.")
+
+    (** Whole-clip execution uses the same scheduler, with a zero-origin clock. *)
+    export advance (graph, clips, frames) = match checked (graph, clips, GraphState(graphPosition = 0, graphKernels = []), frames)
+        Error why => Error(message = why)
+        Success action => match action
+            BlockReady _ rendered => Success(value = ClipReady(clips = rendered))
+            BlockWaiting request pending => Success(value = ClipWaiting(node = pending.pendingNode, request = request, clips = pending.pendingClips))

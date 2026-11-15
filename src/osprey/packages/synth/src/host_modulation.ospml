@@ -52,10 +52,10 @@ module HostModulation
                 false => Error(message = "VST parameter identity is outside its native range.")
                 true => Success(value = listAppend values (HostParameter(identity = identity, offset = offset, value = number)))
 
-    sampled (graph, clips, n, offset, outcome, p) = match outcome
+    sampled (graph, clips, n, first, offset, outcome, p) = match outcome
         Error why => Error(message = why)
         Success values => match binding (graph, n, p.key)
-            [] => match offset == 0
+            [] => match first == 0 && offset == 0
                 true => point (values, p, offset, p.initial)
                 false => Success(value = values)
             [cable] => match value (clips, cable, offset)
@@ -63,9 +63,18 @@ module HostModulation
                 Success number => point (values, p, offset, number)
             _ => Error(message = "A parameter has more than one modulation source.")
 
-    frame (graph, clips, n, outcome, offset) = foldList (filterList (n.parameters, \p => p.automatable), outcome, \(values, p) => sampled (graph, clips, n, offset, values, p))
+    frame (graph, clips, n, first, outcome, offset) = foldList (filterList (n.parameters, \p => p.automatable), outcome, \(values, p) => sampled (graph, clips, n, first, offset, values, p))
+
+    aligned first = match first % 128 == 0
+        true => 0
+        false => satSub 128 (first % 128)
+
+    (** Anchor automation to the graph clock, even across unequal block partitions. *)
+    export window (graph, clips, n, first, frames) = match first >= 0 && frames > 0 && frames <= 32768 && first <= satSub 9223372036854775807 frames
+        false => Error(message = "Invalid automation clip length or timeline.")
+        true =>
+            offsets = mapList (toList (range (0, intDiv (satAdd frames 127) 128)), \index => satAdd (aligned first) (satMul index 128))
+            foldList (filterList (offsets, \offset => offset < frames), Success(value = []), \(outcome, offset) => frame (graph, clips, n, first, outcome, offset))
 
     (** Emit a stable 128-frame automation grid, with defaults once and exact event offsets. *)
-    export points (graph, clips, n, frames) = match frames > 0 && frames <= 32768
-        false => Error(message = "Invalid automation clip length.")
-        true => foldList (toList (range (0, intDiv (satAdd frames 127) 128)), Success(value = []), \(outcome, index) => frame (graph, clips, n, outcome, satMul index 128))
+    export points (graph, clips, n, frames) = window (graph, clips, n, 0, frames)

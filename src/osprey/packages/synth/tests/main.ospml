@@ -533,6 +533,30 @@ partitionedKernel (component, channels) =
     renderRefused (synth::ClipKernels::block (plan, [source], component(outputs = []), 1, initial))
     renderRefused (synth::ClipKernels::block (plan, [source], component(processor = synth::Sink), 1, initial))
 
+// [SYNTH-RENDER-BLOCKS] The complete graph advances one clock across block partitions.
+partitionedGraph (graph, output) =
+    match synth::GraphClips::start (graph, 31)
+        Error why => expect (why, "first graph block")
+        Success first => match first
+            synth::BlockWaiting _ _ => expect (false, true)
+            synth::BlockReady held clips =>
+                expect (held.graphPosition, 31)
+                match synth::GraphClips::next (graph, held, 225)
+                    Error why => expect (why, "continued graph block")
+                    Success last => match last
+                        synth::BlockWaiting _ _ => expect (false, true)
+                        synth::BlockReady finished buffers =>
+                            expect (finished.graphPosition, 256)
+                            match synth::ClipInputs::completed (clips, output)
+                                Error why => expect (why, "first output")
+                                Success a => match synth::ClipInputs::completed (buffers, output)
+                                    Error why => expect (why, "last output")
+                                    Success b => match synth::GraphClips::advance (graph, [], 256)
+                                        Error why => expect (why, "reference graph clip")
+                                        Success reference => match reference
+                                            synth::ClipWaiting _ _ _ => expect (false, true)
+                                            synth::ClipReady all => succeeds (synth::ClipInputs::completed (all, output), \whole => sameSamples (whole.clipSamples, listConcat a.clipSamples b.clipSamples))
+
 // [SYNTH-HOST-GRAPH] A complete stereo/modulation chain shares the reusable kernels.
 test ("offline clips render filters, delays, mixing, stereo conversion and independent control signals", \() => arithmetic (\() =>
     forEachList ([Components::sine (1, 440.0), Components::lfo (1, 2.0), Components::lowpass (1, 4000.0, 0.7), Components::delay (1, 17), Components::gain (1, 0.5)], \n => partitionedKernel (n, 1))
@@ -541,6 +565,7 @@ test ("offline clips render filters, delays, mixing, stereo conversion and indep
     nodes = [Components::sine (1, 440.0), Components::lowpass (2, 4000.0, 0.7), Components::gain (3, 0.5), Components::delay (4, 2), Components::mixer 5, Components::stereo 6, Components::modulatedGain (7, 2, 0.5), Components::lfo (8, 2.0), Components::stereoOutput 9, Components::midiNote (10, 60.0, 0.8, 128.0)]
     routes = [cable (1, 2), cable (2, 3), cable (3, 4), cable (4, 5), Components::route (3, 0, 5, 1), cable (5, 6), cable (6, 7), Components::route (8, 0, 7, 1), cable (7, 9)]
     graph = built (nodes, routes)
+    partitionedGraph (graph, 9)
     match synth::GraphClips::advance (graph, [], 256)
         Error why => expect (why, "rendered clip")
         Success action => match action
@@ -567,11 +592,57 @@ hostGraph () = built ([Components::midiNote (1, 60.0, 0.8, 128.0), hostNode (syn
 
 hostReply () = "4F5356310000000002000000010000000001000000000000" + join (mapList (toList (range (0, 256)), \_ => "0000803E000000BF")) ""
 
+streamedHost graph =
+    match synth::GraphClips::start (graph, 64)
+        Error why => expect (why, "first hosted block")
+        Success first => match first
+            synth::BlockReady _ _ => expect (false, true)
+            synth::BlockWaiting request pending =>
+                expect (pending.pendingNode, 2)
+                expect (length request.notes, 1)
+                succeeds (listGet request.notes 0, \note => expect (note.kind == 1 && note.offset == 0, true))
+                succeeds (listGet request.parameters 0, \point => expect (point.offset == 0 && point.value == 0.5, true))
+                reply = synth::NodeClip(clipNode = 2, clipChannels = 2, clipSamples = mapList (toList (range (0, 128)), \_ => 0.25), clipNotes = [])
+                renderRefused (synth::GraphClips::replied (pending, reply(clipNode = 99)))
+                renderRefused (synth::GraphClips::replied (pending, reply(clipSamples = [])))
+                renderRefused (synth::GraphClips::replied (pending(pendingNode = 4), reply(clipNode = 4)))
+                renderRefused (synth::GraphClips::replied (pending(pendingNode = 99), reply(clipNode = 99)))
+                renderRefused (synth::GraphClips::replied (pending(pendingClips = listAppend pending.pendingClips reply), reply))
+                match synth::GraphClips::replied (pending, reply)
+                    Error why => expect (why, "completed first hosted block")
+                    Success completed => match completed
+                        synth::BlockWaiting _ _ => expect (false, true)
+                        synth::BlockReady held _ =>
+                            expect (held.graphPosition, 64)
+                            renderRefused (synth::GraphClips::next (graph, held(graphKernels = []), 192))
+                            renderRefused (synth::GraphClips::next (graph, held(graphKernels = listConcat held.graphKernels held.graphKernels), 192))
+                            renderRefused (synth::GraphClips::next (graph, held(graphPosition = 9223372036854775807), 1))
+                            streamedHostTail (graph, held)
+
+streamedHostTail (graph, held) = match synth::GraphClips::next (graph, held, 192)
+    Error why => expect (why, "continued hosted block")
+    Success action => match action
+        synth::BlockReady _ _ => expect (false, true)
+        synth::BlockWaiting request pending =>
+            expect (length request.notes, 1)
+            succeeds (listGet request.notes 0, \note => expect (note.kind == 2 && note.offset == 64, true))
+            expect (length request.parameters, 1)
+            succeeds (listGet request.parameters 0, \point => expect (point.offset == 64 && point.value > 0.5, true))
+            reply = synth::NodeClip(clipNode = 2, clipChannels = 2, clipSamples = mapList (toList (range (0, 384)), \_ => -0.25), clipNotes = [])
+            match synth::GraphClips::replied (pending, reply)
+                Error why => expect (why, "completed second hosted block")
+                Success completed => match completed
+                    synth::BlockWaiting _ _ => expect (false, true)
+                    synth::BlockReady finished clips =>
+                        expect (finished.graphPosition, 256)
+                        succeeds (synth::ClipInputs::completed (clips, 4), \output => sameSamples (output.clipSamples, reply.clipSamples))
+
 // [SYNTH-HOST-STREAM] Independent fixture words exercise suspension, transport and resumption.
 test ("MIDI and modulation become checked native packets, then real-shaped stereo responses resume the graph", \() => arithmetic (\() =>
     original = hostGraph ()
     graph = accepted (synth::HostModulation::connect (original, 3, 0, 2, "vst:100"))
     expect (length graph.cables, 3)
+    streamedHost graph
     match synth::GraphClips::advance (graph, [], 256)
         Error why => expect (why, "hosted clip")
         Success action => match action
@@ -619,7 +690,11 @@ test ("MIDI windows preserve note ownership and reject malformed control values"
     forEachList ([0, 256], \first => succeeds (synth::MidiClips::window (note, first, 256), \notes => expect (length notes, 1)))
     succeeds (synth::MidiClips::window (note, 512, 256), \notes => expect (length notes, 0))
     forEachList ([Components::midiNote (5, -1.0, 0.75, 256.0), Components::midiNote (5, 60.5, 0.75, 256.0), Components::midiNote (5, 60.0, 1.1, 256.0), Components::midiNote (5, 60.0, 0.75, 1.5), note(parameters = []), Components::sine (5, 440.0)], \bad => renderRefused (synth::MidiClips::window (bad, 0, 512)))
-    renderRefused (synth::MidiClips::window (note, 65535, 2))))
+    renderRefused (synth::MidiClips::window (note, 65535, 2))
+    succeeds (synth::MidiClips::timeline (note, 65535, 2), \notes => expect (length notes, 0))
+    succeeds (synth::MidiClips::timeline (note, 9223372036854775806, 1), \notes => expect (length notes, 0))
+    renderRefused (synth::MidiClips::timeline (note, 9223372036854775807, 1))
+    renderRefused (synth::MidiClips::timeline (note, 0, 65537))))
 
 // [SYNTH-HOST-STREAM] Malformed native data must fail before it becomes playable audio.
 test ("worker transport rejects malformed headers, nonfinite PCM, bad events and excessive automation", \() => arithmetic (\() =>

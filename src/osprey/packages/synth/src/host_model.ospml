@@ -62,3 +62,26 @@ type ClipAction =
 type ClipKernel K =
     heldKernel : K
     kernelSamples : List<float>
+
+type NodeKernels K =
+    kernelNode : int
+    kernelStates : List<K>
+
+type GraphState K =
+    graphPosition : int
+    graphKernels : List<NodeKernels<K>>
+
+type GraphPending G K =
+    pendingGraph : G
+    pendingState : GraphState<K>
+    pendingClips : List<NodeClip>
+    pendingFrames : int
+    pendingNode : int
+
+type BlockAction G K =
+    BlockReady
+        held : GraphState<K>
+        clips : List<NodeClip>
+    BlockWaiting
+        request : HostBlock
+        pending : GraphPending<G, K>

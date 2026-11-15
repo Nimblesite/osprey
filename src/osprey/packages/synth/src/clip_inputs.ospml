@@ -55,10 +55,13 @@ module ClipInputs
             Success clip => Success(value = clip.clipNotes)
 
     (** Assemble audio, events and current normalized controls into one bounded worker request. *)
-    export request (graph, clips, n, frames) = match audioInput (graph, clips, n)
+    export requestAt (graph, clips, n, first, frames) = match audioInput (graph, clips, n)
         Error why => Error(message = why)
         Success samples => match noteInput (graph, clips, n)
             Error why => Error(message = why)
-            Success notes => match HostModulation::points (graph, clips, n, frames)
+            Success notes => match HostModulation::window (graph, clips, n, first, frames)
                 Error why => Error(message = why)
                 Success parameters => Success(value = HostBlock(frames = frames, notes = notes, parameters = parameters, samples = samples))
+
+    (** A whole clip starts its event and automation clock at zero. *)
+    export request (graph, clips, n, frames) = requestAt (graph, clips, n, 0, frames)

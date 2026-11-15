@@ -117,7 +117,7 @@ All twelve app journeys pass under ARC, including frozen graph ownership, stale 
 - [x] Expand the existing package suite to 22 loaded journeys, covering stereo kernel chains, MIDI window boundaries, hosted modulation, native packet round trips, malformed buffers and invalid public graph records.
 - [x] Run coverage independently under GC and ARC: both report 848/913 own source lines (92.9%), exceeding the unchanged 92.2% package gate.
 - [x] Check formatting and compile the expanded suite with warnings treated as errors.
-- [ ] Resolve the expanded single test file's 686-line size while retaining its assertions and useful comments; this conflicts with the instruction to expand existing test files rather than create new ones.
+- [ ] Resolve the expanded single test file's 761-line size while retaining its assertions and useful comments; this conflicts with the instruction to expand existing test files rather than create new ones.
 - [ ] Finish repository-wide CI preparation; package coverage alone does not establish readiness to push.
 
 Evidence is retained under `target/pr-validation/synth-coverage` and `target/pr-validation/synth-coverage-arc`. The app still provides bounded offline auditions; continuous audio and persistent hosted instances remain unfinished.
@@ -148,3 +148,16 @@ The UI model is generated from `editor.td`; the synth library remains UI-free. E
 - [ ] Connect retained built-in states and persistent VST workers to graph-wide streaming and the device queue.
 
 The 22 package journeys pass under ARC. Coverage of the production change passes independently under GC and ARC at 859/926 own-source lines (92.8%, unchanged 92.2% gate); the subsequent stereo test expansion also passes under ARC. Evidence is retained under `target/pr-validation/synth-blocks-*` and `prism-blocks-*`. This is a necessary streaming foundation, not a claim that continuous playback is complete.
+
+
+### Graph block scheduling [SYNTH-RENDER-BLOCKS-GRAPH]
+
+- [x] Share one scheduler between whole clips and stateful graph blocks, retaining independent channel kernels and one absolute sample clock.
+- [x] Declare graph state and pending external requests in typeDiagram; a pending request carries its frozen graph, state, exact node and block shape.
+- [x] Compare a complete oscillator/filter/gain/delay/mixer/stereo/LFO graph across 31 + 225 frames against an uninterrupted 256-frame reference.
+- [x] Verify hosted 64 + 192-frame blocks, note-off at local offset 64, automation at the absolute 128-frame boundary, malformed replies and lost/duplicate state rejection.
+- [x] Keep the original clip-window bound while allowing timeline events beyond frame 65,536 with explicit integer-overflow checks.
+- [x] Pass all 22 package journeys under ARC and collect GC source coverage: 899/973 lines (92.4%, unchanged 92.2% gate); formatting and strict app source checks pass.
+- [ ] Adopt the pending-request state directly in Prism and connect a persistent worker/device transport; current auditions remain bounded.
+
+Evidence is retained under `target/pr-validation/synth-stream-*`. Full CI, the repository duplication gate, windowed verification and continuous device playback remain unfinished.
