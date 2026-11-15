@@ -15,5 +15,10 @@ ok 14 - edit routes and remove connected components without corrupting the previ
 ok 15 - replace a playing graph without resetting phase, lose deleted state and refuse incomplete audio routes
 ok 16 - float PCM export retains sample precision and rejects invalid rates and samples
 ok 17 - external descriptors preserve channel types, MIDI ports and independent parameter identities
-1..17
-# tests=17 passed=17 failed=0 skipped=0
+ok 18 - offline clips render filters, delays, mixing, stereo conversion and independent control signals
+ok 19 - MIDI and modulation become checked native packets, then real-shaped stereo responses resume the graph
+ok 20 - MIDI windows preserve note ownership and reject malformed control values
+ok 21 - worker transport rejects malformed headers, nonfinite PCM, bad events and excessive automation
+ok 22 - corrupt graph layouts, buffers and kernel states return explicit failures
+1..22
+# tests=22 passed=22 failed=0 skipped=0
