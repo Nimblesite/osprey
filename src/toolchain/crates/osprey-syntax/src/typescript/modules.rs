@@ -46,7 +46,10 @@ impl Lowerer<'_> {
             }
         }
         self.rename_exports(&mut file);
-        let first = program.body.first().map_or(u32::MAX, |first| first.span().start);
+        let first = program
+            .body
+            .first()
+            .map_or(u32::MAX, |first| first.span().start);
         let doc = self.file_doc(first);
         let in_module = header.module.is_some();
         let exports = std::mem::take(&mut self.exports);

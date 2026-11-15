@@ -278,12 +278,17 @@ impl Lowerer<'_> {
     }
 
     fn branch(&mut self, statement: &Statement<'_>, tail: bool) -> Result<Expr> {
-        self.scoped(false, tail, |lowerer| match statement {
+        self.scoped(false, tail, |lowerer| lowerer.statements_of(statement))
+    }
+
+    /// The block a braced body is, or the one statement written without braces.
+    fn statements_of(&mut self, statement: &Statement<'_>) -> Result<Expr> {
+        match statement {
             Statement::BlockStatement(block) => {
-                lowerer.block(&block.body.iter().collect::<Vec<_>>(), block.span)
+                self.block(&block.body.iter().collect::<Vec<_>>(), block.span)
             }
-            other => lowerer.block(&[other], other.span()),
-        })
+            other => self.block(&[other], other.span()),
+        }
     }
 
     pub(super) fn statement(&mut self, statement: &Statement<'_>) -> Result<Vec<Stmt>> {
@@ -395,7 +400,7 @@ impl Lowerer<'_> {
         let body = self.scoped(true, false, |lowerer| {
             lowerer.bind(&name);
             lowerer.set_function_result(None, None);
-            lowerer.block(&[&each.body], each.body.span())
+            lowerer.statements_of(&each.body)
         })?;
         let callback = Expr::Lambda {
             parameters: vec![Parameter {
@@ -454,11 +459,7 @@ impl Lowerer<'_> {
         let body = self.scoped(false, tail, |lowerer| lowerer.block(&statements, case.span));
         let fields = self.narrowed.pop().map(|narrowing| narrowing.fields);
         Ok(MatchArm {
-            pattern: Pattern::Constructor {
-                name,
-                fields: fields.unwrap_or_default(),
-                sub_patterns: Vec::new(),
-            },
+            pattern: variant_pattern(name, fields.unwrap_or_default()),
             body: crate::desugar::positioned(body?, Some(self.at(case.span))),
         })
     }
@@ -486,6 +487,19 @@ impl Lowerer<'_> {
             ));
         }
         Ok(statements)
+    }
+}
+
+/// A case's pattern binds the fields its body reads; one that reads none is
+/// the bare constructor name, as the Default flavor spells it.
+fn variant_pattern(name: String, fields: Vec<String>) -> Pattern {
+    if fields.is_empty() {
+        return Pattern::Binding(name);
+    }
+    Pattern::Constructor {
+        name,
+        fields,
+        sub_patterns: Vec::new(),
     }
 }
 

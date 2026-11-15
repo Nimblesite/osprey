@@ -397,6 +397,86 @@ mod tests {
         std::fs::remove_dir_all(root)
     }
 
+    /// [FLAVOR-TS-SELECT]: `.ts` is a common extension, so only listed files
+    /// and an explicit `.ts` entry are sources; a declaration file never is.
+    #[test]
+    fn typescript_sources_are_opt_in_and_never_declaration_files() -> std::io::Result<()> {
+        let root = std::env::temp_dir().join(format!("osprey_ts_sources_{}", std::process::id()));
+        std::fs::create_dir_all(root.join("src"))?;
+        for path in [
+            "src/main.ts",
+            "src/routes.ts",
+            "src/webpack.config.ts",
+            "src/lib.d.ts",
+            "src/model.py",
+            "src/normal.osp",
+            "outside.ts",
+        ] {
+            std::fs::write(root.join(path), "deliberately invalid source")?;
+        }
+        let mut config = ProjectConfig::for_root(&root);
+        config.typescript_sources = vec!["src/routes.ts".into()];
+        config.python_sources = vec!["src/model.py".into()];
+        config.entry = Some("src/main.ts".into());
+        let found = discover(&root, &config).map(|paths| {
+            let mut names: Vec<_> = paths
+                .iter()
+                .filter_map(|path| path.file_name()?.to_str().map(str::to_owned))
+                .collect();
+            names.sort();
+            names
+        });
+        assert_eq!(
+            found.ok(),
+            Some(vec![
+                "main.ts".to_owned(),
+                "model.py".to_owned(),
+                "normal.osp".to_owned(),
+                "routes.ts".to_owned()
+            ])
+        );
+        for (relative, selected) in [
+            ("src/routes.ts", true),
+            ("src/main.ts", true),
+            ("src/webpack.config.ts", false),
+            ("src/lib.d.ts", false),
+            ("src/../routes.ts", false),
+        ] {
+            let path = root.join(relative);
+            assert_eq!(config.contains_source(&root, &path), selected, "{relative}");
+        }
+        for rejected in [
+            vec!["src/missing.ts"],
+            vec!["src/lib.d.ts"],
+            vec!["src/normal.osp"],
+            vec!["outside.ts"],
+            vec!["src/routes.ts", "src/./routes.ts"],
+        ] {
+            config.typescript_sources = rejected.into_iter().map(PathBuf::from).collect();
+            let listed = &config.typescript_sources;
+            assert!(discover(&root, &config).is_err(), "accepted {listed:?}");
+        }
+        config.typescript_sources = vec!["src/routes.ts".into()];
+        config.flavor = Some(osprey_syntax::Flavor::Python);
+        assert!(
+            discover(&root, &config).is_err(),
+            "a Python override would parse .ts as Python"
+        );
+        config.flavor = Some(osprey_syntax::Flavor::TypeScript);
+        assert!(
+            discover(&root, &config).is_err(),
+            "a TypeScript override would parse .osp as TypeScript"
+        );
+        let manifest =
+            "[project]\nsource_roots = [\"src\"]\ntypescript_sources = [\"src/routes.ts\"]\n";
+        let parsed = ProjectConfig::parse(manifest, &root.join("osprey.toml"));
+        assert_eq!(
+            parsed.ok().map(|config| config.typescript_sources),
+            Some(vec![PathBuf::from("src/routes.ts")])
+        );
+        std::fs::remove_dir_all(root)
+    }
+
     #[test]
     fn python_source_membership_requires_an_explicit_manifest_selection(
     ) -> Result<(), Vec<ProjectError>> {

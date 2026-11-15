@@ -3,8 +3,8 @@
 use super::context::{Expected, Lowerer, Result};
 use osprey_ast::{EffectRef, Stmt, TypeExpr, TypeField, TypeParam, TypeVariant, Variance};
 use oxc_ast::ast::{
-    FormalParameters, PropertyKey, TSFunctionType, TSInterfaceDeclaration, TSLiteral, TSSignature, TSType,
-    TSTypeAliasDeclaration, TSTypeAnnotation, TSTypeName, TSTypeOperatorOperator,
+    FormalParameters, PropertyKey, TSFunctionType, TSInterfaceDeclaration, TSLiteral, TSSignature,
+    TSType, TSTypeAliasDeclaration, TSTypeAnnotation, TSTypeName, TSTypeOperatorOperator,
     TSTypeParameterDeclaration, TSTypeParameterInstantiation,
 };
 use oxc_span::{GetSpan, Span};
@@ -145,7 +145,10 @@ impl Lowerer<'_> {
         let TSType::TSTypeReference(reference) = result else {
             return Ok((result, None));
         };
-        let arguments = reference.type_arguments.as_deref().map(|list| list.params.as_slice());
+        let arguments = reference
+            .type_arguments
+            .as_deref()
+            .map(|list| list.params.as_slice());
         match (self.type_name(&reference.type_name)?.as_str(), arguments) {
             (REQUIRES, Some([value, TSType::TSTupleType(row)])) => {
                 let effects = row

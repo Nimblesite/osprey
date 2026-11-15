@@ -4,7 +4,8 @@ use super::context::{apply, Expected, Lowerer, Result};
 use super::types::{variant_name, KIND};
 use osprey_ast::{Expr, FieldAssignment};
 use oxc_ast::ast::{
-    CallExpression, Expression, NewExpression, ObjectExpression, ObjectProperty, ObjectPropertyKind, PropertyKind,
+    CallExpression, Expression, NewExpression, ObjectExpression, ObjectProperty,
+    ObjectPropertyKind, PropertyKind,
 };
 use oxc_span::GetSpan;
 
@@ -42,6 +43,8 @@ impl Lowerer<'_> {
             return Ok(Expr::Update { record, fields });
         }
         let (name, type_args) = match (variant, expected) {
+            // A variant with no fields is its bare constructor, as in Default.
+            (Some(variant), _) if fields.is_empty() => return Ok(Expr::Identifier(variant)),
             (Some(variant), _) => (variant, Vec::new()),
             (None, Some(expected)) => (expected.name.clone(), expected.type_args.clone()),
             (None, None) => {
