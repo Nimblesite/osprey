@@ -102,11 +102,35 @@ def stream_tests():
     print("Persistent VST audio, note lifecycle, automation and malformed-frame journeys passed")
 
 
+def prism_test(host, headless):
+    destination = ROOT / "target/pr-validation/prism-vst-ui"
+    destination.mkdir(parents=True, exist_ok=True)
+    class_id = "0CDBB66985D548A9BFD8371909D24BB3"
+    steps = [{"wait": "Scan VST3"}, {"type": ["VST3 bundle", str(BUILD / "VST3/Release/adelay.vst3")]},
+             {"invoke": "Scan VST3"}, {"wait": "Choose a VST3 instrument or effect to add."},
+             {"type": ["Add VST3", class_id]}, {"wait": "ADelay 0"}, {"type": ["0: Delay", "0.5"]},
+             {"type": ["Add VST3", class_id]}, {"wait": "ADelay 1"}, {"invoke": "Source 0: audio"},
+             {"invoke": "Connect 1: audio"}, {"wait": "Patch updated."}, {"shot": "vst-routed"},
+             {"invoke": "Remove selected"}, {"gone": "ADelay 1"}, {"wait": "ADelay 0"}, {"shot": "vst-removed"}]
+    script = destination / "journey.json"
+    script.write_text(json.dumps({"steps": steps}))
+    arguments = [str(host), "--self-test", str(script), str(destination), "--live-processes",
+                 "--empty", "--vst-worker", str(BUILD / "osprey-vst-worker")]
+    if headless:
+        arguments.append("--headless")
+    run(*arguments, timeout=180)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--test", action="store_true")
     parser.add_argument("--stream-test", action="store_true")
+    parser.add_argument("--prism-test", type=pathlib.Path)
+    parser.add_argument("--headless", action="store_true")
     args = parser.parse_args()
+    if args.prism_test:
+        prism_test(args.prism_test, args.headless)
+        return
     if args.stream_test:
         stream_tests()
         return

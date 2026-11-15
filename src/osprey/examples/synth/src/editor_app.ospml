@@ -6,21 +6,35 @@ import ui::Messages
 
 (** The modular graph editor's host-independent application boundary. *)
 module EditorApp
-    initial context = match length (filterList (context.arguments, \arg => arg == "--empty")) > 0
-        true => Runtime::step (EditorState::initial ())
-        false => Runtime::step (EditorState::preset ())
+    initial context =
+        editor = match length (filterList (context.arguments, \arg => arg == "--empty")) > 0
+            true => EditorState::initial ()
+            false => EditorState::preset ()
+        at = ui::Lists::position (context.arguments, \arg => arg == "--vst-worker")
+        worker = match at >= 0
+            true => listGet context.arguments (satAdd at 1) ?: ""
+            false => ""
+        Runtime::step (editor(workerPath = worker))
 
     tapped (context, editor, action) = match action
+        ScanVst => Plugins::scan editor
         Audition => Preview::play (editor, context.platform)
         _ => Runtime::step (EditorState::tapped (editor, action))
 
-    typed (editor, action, value) = Runtime::step (EditorState::typed (editor, action, value))
+    typed (editor, action, value) = match action
+        PluginPath => Runtime::step (Plugins::path (editor, value))
+        CreateVst _ => Plugins::create (editor, value)
+        _ => Runtime::step (EditorState::typed (editor, action, value))
+
+    completed (editor, ticket, outcome) = match startsWith ticket "prism-vst:"
+        true => Plugins::completed (editor, ticket, outcome)
+        false => Preview::completed (editor, ticket, outcome)
 
     controlled (editor, action, input) = match action
         Surface => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => Runtime::step (EditorView::pointed (editor, x, y, down)), \(_, _) => Runtime::step editor)
         _ => Runtime::step editor
 
-    update (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => Preview::completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(action, input) => controlled (editor, action, input))
+    update (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(action, input) => controlled (editor, action, input))
 
     (** Native controls and the canvas observe the same typed graph and applied edit revision. *)
     export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => EditorView::theme ())

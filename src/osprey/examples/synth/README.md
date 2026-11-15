@@ -22,3 +22,8 @@ make -C src/toolchain/targets/tests synth-vst
 The application tests exercise both the existing fixed-patch interaction coverage and the new modular surface through real host events. The modular journey creates independent components, wires a chain, renders a playback request, changes parameters, rejects invalid input and removes a connected node. The synth package separately checks graph replacement, DSP state continuity, sample output and float32 RIFF bytes.
 
 The VST target builds a separate worker against a pinned official SDK, scans actual ADelay and mda binaries, processes audio/MIDI and checks automation/state restoration. That worker is not yet connected to Prism's component menu or its graph audio transport. See the [delivery checklist](../../../../docs/plans/prism-synth-routing.md) and [worker scope](../../../toolchain/hosts/synth_vst/README.md) for verified capabilities and remaining work.
+
+
+VST3 bundles can now be scanned from the native **VST3 bundle** field. **Add VST3** lists the actual classes; choosing one loads its checked stereo/MIDI ports and normalized controls into an independent graph node. The worker is packaged beside Prism. Scan failures remain visible, and stale responses cannot add nodes to a newer module selection. External-node audio is not yet connected to the preview engine.
+
+`make -C src/toolchain/targets/macos/tests synth-vst-headless` drives the native application against real SDK plug-ins and real bounded worker processes. `synth-vst` runs the same journey in a window. The headless records are accessibility trees; the windowed run records screenshots. These commands do not substitute a fake successful scan or descriptor.

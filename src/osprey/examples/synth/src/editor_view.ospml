@@ -18,7 +18,11 @@ module EditorView
         Delay _ => "Delay"
         External identifier => identifier
 
-    componentName n = "${processorTitle n.processor} ${n.identity}"
+    componentName (editor, n) = match listGet (filterList (editor.pluginBindings, \binding => binding.pluginNode == n.identity)) 0
+        Success binding => "${binding.pluginName} ${n.identity}"
+        Error _ => "${processorTitle n.processor} ${n.identity}"
+
+    plugins editor = Ui::row [Ui::field ("VST3 bundle", editor.pluginPath, "Path to a .vst3 bundle", PluginPath), Ui::button ("Scan VST3", "", ScanVst), Ui::picker ("Add VST3", mapList (editor.catalog, \entry => Ui::choice (entry.classId, entry.className)), "", CreateVst(identifier = ""))]
 
     menu () = Ui::picker ("Add component", mapList (EditorState::kinds, \kind => Ui::choice (kind, EditorState::title kind)), "", Add(kind = ""))
 
@@ -34,7 +38,7 @@ module EditorView
 
     ports n = listConcat (mapList (toList (range (0, length n.outputs)), \index => sourcePort (n, index))) (mapList (toList (range (0, length n.inputs)), \index => inputPort (n, index)))
 
-    component n = Ui::section (componentName n, "", listConcat [Ui::button ("Select ${n.identity}", "", Select(identity = n.identity))] (listConcat (ports n) (mapList (n.parameters, \p => parameter (n, p)))))
+    component (editor, n) = Ui::section (componentName (editor, n), "", listConcat [Ui::button ("Select ${n.identity}", "", Select(identity = n.identity))] (listConcat (ports n) (mapList (n.parameters, \p => parameter (n, p)))))
 
     indexOf (graph, identity) = ui::Lists::position (graph.nodes, \n => n.identity == identity)
 
@@ -62,7 +66,7 @@ module EditorView
 
     nodeAccess (editor, n) =
         index = indexOf (editor.graph, n.identity)
-        listConcat [accessible ("Canvas ${componentName n}", x index - 70.0, y index - 35.0, 140.0, 70.0, editor.selected == n.identity)] (listConcat (portAccess (n, index, n.inputs, false)) (portAccess (n, index, n.outputs, true)))
+        listConcat [accessible ("Canvas ${componentName (editor, n)}", x index - 70.0, y index - 35.0, 140.0, 70.0, editor.selected == n.identity)] (listConcat (portAccess (n, index, n.inputs, false)) (portAccess (n, index, n.outputs, true)))
 
     inside (px, py, cx, cy, halfWidth, halfHeight) = px >= cx - halfWidth && px <= cx + halfWidth && py >= cy - halfHeight && py <= cy + halfHeight
 
@@ -88,7 +92,7 @@ module EditorView
         fill = match editor.selected == n.identity
             true => Scenes::rgb (88, 59, 164)
             false => Scenes::rgb (40, 34, 66)
-        listConcat (listConcat (portShapes (index, n.inputs, false)) (portShapes (index, n.outputs, true))) [Scenes::rect (x index, y index, 170.0, 80.0, 12.0, fill, 1), Scenes::glyphs (componentName n, x index - 68.0, y index - 8.0, 14.0, Scenes::rgb (242, 237, 255), 2)]
+        listConcat (listConcat (portShapes (index, n.inputs, false)) (portShapes (index, n.outputs, true))) [Scenes::rect (x index, y index, 170.0, 80.0, 12.0, fill, 1), Scenes::glyphs (componentName (editor, n), x index - 68.0, y index - 8.0, 14.0, Scenes::rgb (242, 237, 255), 2)]
 
     wire (graph, cable) =
         source = indexOf (graph, cable.source)
@@ -102,9 +106,9 @@ module EditorView
 
     root () =
         editor = editorSlice ()
-        Ui::column [Ui::row [Ui::styled ("PRISM", ui::Title, ui::Accent), menu (), Ui::button ("Audition patch", "", Audition), Ui::button ("Remove selected", "", Remove)], Ui::caption editor.message, canvas editor, Ui::column (mapList (editor.graph.nodes, component))]
+        Ui::column [Ui::row [Ui::styled ("PRISM", ui::Title, ui::Accent), menu (), Ui::button ("Audition patch", "", Audition), Ui::button ("Remove selected", "", Remove)], plugins editor, Ui::caption editor.message, canvas editor, Ui::column (mapList (editor.graph.nodes, \n => component (editor, n)))]
 
-    stamp editor = JsonString "${editor.revision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.message}"
+    stamp editor = JsonString "${editor.revision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =

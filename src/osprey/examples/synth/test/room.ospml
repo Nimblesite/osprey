@@ -104,3 +104,60 @@ editorUiJourney () =
     expect (length removed.drivenSurface.surfaceSession.sessionStore.graph.nodes, 2)
     expect (length removed.drivenSurface.surfaceSession.sessionStore.graph.cables, 0)
     expect (uitest::Views::letters (removed.drivenSeen, "Gain 1"), false)
+
+descriptorFixture = "{\"id\":\"0CDBB66985D548A9BFD8371909D24BB3\",\"name\":\"ADelay\",\"inputs\":2,\"outputs\":2,\"notes\":false,\"parameters\":[{\"id\":100,\"name\":\"Delay\",\"initial\":1.0,\"automatable\":true}]}"
+
+// [PRISM-ROUTING-VST] Discovery and creation travel through host requests, receipts and slices.
+pluginUiJourney () =
+    handle ui::Slices
+        fetch key => match key
+            "prism-vst:scan:2" => "{\"event\":\"vst.class\",\"id\":\"0CDBB66985D548A9BFD8371909D24BB3\",\"name\":\"ADelay\",\"categories\":\"Fx|Delay\"}\n"
+            "prism-vst:describe:3" => descriptorFixture
+            "prism-vst:describe:4" => descriptorFixture
+            _ => "malformed metadata"
+    idle = Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ())
+    opened = Drive::launched (idle, "macos", ["--empty", "--vst-worker", "/worker/osprey-vst-worker"])
+    expect (Drive::shows (opened, "Scan VST3"), true)
+    path = Drive::choose (opened, "VST3 bundle", "/plugins/adelay.vst3")
+    scanning = Drive::press (path, "Scan VST3")
+    expect (length scanning.drivenSurface.surfaceAsked, 1)
+    match listGet scanning.drivenSurface.surfaceAsked 0
+        Error _ => expect (false, true)
+        Success request => match request.capability
+            ui::Run executable arguments timeout limit _ _ =>
+                expect (executable, "/worker/osprey-vst-worker")
+                expect (structuralEquals (arguments, ["scan", "/plugins/adelay.vst3"]), true)
+                expect (timeout, 10000)
+                expect (limit, 1048576)
+            _ => expect (false, true)
+    scanned = Drive::completed (scanning, "prism-vst:scan:2", true, "{\"status\":0,\"stderr\":\"\"}")
+    loading = Drive::choose (scanned, "Add VST3", "0CDBB66985D548A9BFD8371909D24BB3")
+    expect (length loading.drivenSurface.surfaceAsked, 1)
+    added = Drive::completed (loading, "prism-vst:describe:3", true, "{\"status\":0,\"stderr\":\"\"}")
+    expect (length added.drivenSurface.surfaceSession.sessionStore.graph.nodes, 1)
+    expect (Drive::shows (added, "0: Delay"), true)
+    expect (Drive::letters (added, "ADelay 0"), true)
+    invalid = Drive::choose (added, "0: Delay", "1.5")
+    expect (structuralEquals (invalid.drivenSurface.surfaceSession.sessionStore.graph, added.drivenSurface.surfaceSession.sessionStore.graph), true)
+    stale = Drive::completed (added, "prism-vst:describe:3", true, "{\"status\":0,\"stderr\":\"\"}")
+    expect (length stale.drivenSurface.surfaceSession.sessionStore.graph.nodes, 1)
+    secondLoading = Drive::choose (added, "Add VST3", "0CDBB66985D548A9BFD8371909D24BB3")
+    twice = Drive::completed (secondLoading, "prism-vst:describe:4", true, "{\"status\":0,\"stderr\":\"\"}")
+    expect (length twice.drivenSurface.surfaceSession.sessionStore.graph.nodes, 2)
+    expect (length twice.drivenSurface.surfaceSession.sessionStore.pluginBindings, 2)
+    connected = Drive::press (Drive::press (twice, "Source 0: audio"), "Connect 1: audio")
+    expect (length connected.drivenSurface.surfaceSession.sessionStore.graph.cables, 1)
+    thirdLoading = Drive::choose (twice, "Add VST3", "0CDBB66985D548A9BFD8371909D24BB3")
+    malformed = Drive::completed (thirdLoading, "prism-vst:describe:5", true, "{\"status\":0,\"stderr\":\"\"}")
+    expect (structuralEquals (malformed.drivenSurface.surfaceSession.sessionStore.graph, twice.drivenSurface.surfaceSession.sessionStore.graph), true)
+    failed = Drive::completed (scanning, "prism-vst:scan:2", true, "{\"status\":1,\"stderr\":\"module unavailable\"}")
+    expect (Drive::shows (failed, "VST3 inspection failed: module unavailable"), true)
+    replaced = Drive::choose (scanning, "VST3 bundle", "/different.vst3")
+    ignored = Drive::completed (replaced, "prism-vst:scan:2", true, "{\"status\":0,\"stderr\":\"\"}")
+    expect (length ignored.drivenSurface.surfaceSession.sessionStore.catalog, 0)
+    removedSecond = Drive::press (connected, "Remove selected")
+    expect (length removedSecond.drivenSurface.surfaceSession.sessionStore.pluginBindings, 1)
+    expect (length removedSecond.drivenSurface.surfaceSession.sessionStore.graph.cables, 0)
+    removed = Drive::press (added, "Remove selected")
+    expect (length removed.drivenSurface.surfaceSession.sessionStore.graph.nodes, 0)
+    expect (length removed.drivenSurface.surfaceSession.sessionStore.pluginBindings, 0)

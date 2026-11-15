@@ -280,3 +280,11 @@ _synth_vst_build:
 ## _synth_vst_test: Scan and process real SDK instruments/effects without a window or audio device.
 _synth_vst_test:
 	python3 src/toolchain/hosts/synth_vst/build.py --test
+
+## _prism_vst_ui_test: Drive Prism's native VST menu against real SDK modules and worker processes.
+.PHONY: _prism_vst_ui_test
+_prism_vst_ui_test: _runtime_macos_arc
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	python3 src/toolchain/hosts/synth_vst/build.py --test
+	OSPREY_BIN="$(CURDIR)/$(BIN)" CARGO_TARGET_DIR="$(CURDIR)/target/gpui" bash src/osprey/examples/synth/run.sh --bundle
+	python3 src/toolchain/hosts/synth_vst/build.py --prism-test "$(CURDIR)/target/gpui/release/osprey-gpui" $(PRISM_TEST_MODE)

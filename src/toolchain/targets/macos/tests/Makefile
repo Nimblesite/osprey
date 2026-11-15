@@ -140,3 +140,12 @@ _workbench_interactions: _workbench_linked
 _workbench_memory: _workbench_linked
 	swift test --package-path src/toolchain/hosts/swift --filter '$(WORKBENCH_SOAK)'
 endif
+
+.PHONY: synth-vst synth-vst-headless
+## synth-vst: Prism's real VST discovery, parameter and routing journey in a native window.
+synth-vst:
+	$(MAKE) -C $(ROOT) _prism_vst_ui_test
+
+## synth-vst-headless: The same Prism VST journey without a window, using real worker processes.
+synth-vst-headless:
+	$(MAKE) -C $(ROOT) _prism_vst_ui_test PRISM_TEST_MODE=--headless

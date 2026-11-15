@@ -1,6 +1,16 @@
 namespace synth
 
 // Generated from typeDiagram [CONV-OSPREY].
+type PluginClass =
+    classId : string
+    className : string
+
+type PluginBinding =
+    pluginNode : int
+    pluginModule : string
+    pluginClass : string
+    pluginName : string
+
 type Editor G =
     graph : G
     selected : int
@@ -9,6 +19,13 @@ type Editor G =
     outlet : int
     revision : int
     message : string
+    workerPath : string
+    pluginPath : string
+    catalog : List<PluginClass>
+    pluginBindings : List<PluginBinding>
+    pluginSerial : int
+    pluginTicket : string
+    pluginClassId : string
 
 type EditorAction =
     Add
@@ -30,4 +47,7 @@ type EditorAction =
         key : string
     Audition
     Surface
-
+    PluginPath
+    ScanVst
+    CreateVst
+        identifier : string
