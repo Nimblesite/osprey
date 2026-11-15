@@ -13,6 +13,7 @@ pub(crate) const USAGE: &str =
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
 [--coverage-json <path>] [--memory=gc|arc|none]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml|python] <path...>\n\
+       osprey math <file.lean>\n\
        osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] [--input-bytes <n>] [--out <dir>] [--json] [--no-replay] [--quiet]\n\
        osprey --hover <name>\n\
        osprey --docs [<file-or-project> | --source <file-or-project>] --docs-dir <dir> \

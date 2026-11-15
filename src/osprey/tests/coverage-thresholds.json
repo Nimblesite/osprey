@@ -48,6 +48,10 @@
         "threshold": 95,
         "language": "rust"
       },
+      "osprey-math": {
+        "threshold": 99,
+        "language": "rust"
+      },
       "osprey-lsp": {
         "threshold": 98,
         "language": "rust"

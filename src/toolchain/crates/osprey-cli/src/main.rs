@@ -55,6 +55,7 @@ use std::process::ExitCode;
 mod executable_cache;
 mod invocation;
 mod linking;
+mod math;
 mod native;
 mod pipeline;
 mod profiling;
@@ -109,6 +110,7 @@ fn run_command() -> ExitCode {
         Some(("fmt", rest)) => fmt::run(rest),
         Some(("test", rest)) => test_cmd::run(rest),
         Some(("hunt", rest)) => hunt::run(rest),
+        Some(("math", rest)) => math::run(rest),
         _ if args.iter().any(|arg| arg == "--docs") => docs::run(&args),
         _ => run_arguments(&args),
     }

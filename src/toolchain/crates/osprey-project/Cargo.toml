@@ -9,6 +9,9 @@ repository.workspace = true
 [dependencies]
 osprey-ast = { workspace = true }
 osprey-syntax = { workspace = true }
+# A `.lean` math source is read here and compiled as the module it generates
+# ([MATH-CODE-SOURCES]).
+osprey-math = { workspace = true }
 # The discipline seam infers the export signature of an `hm` module a checker
 # imports ([TYPES-DISCIPLINE-PROTOCOL]); the module-boundary tests type-check
 # the ASSEMBLED program for the same reason.

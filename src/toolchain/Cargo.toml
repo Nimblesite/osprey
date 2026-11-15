@@ -8,6 +8,7 @@ members = [
     "tree-sitter-osprey",
     "crates/osprey-ast",
     "crates/osprey-syntax",
+    "crates/osprey-math",
     "crates/osprey-project",
     "crates/osprey-types",
     "crates/osprey-debug",
@@ -35,6 +36,7 @@ streaming-iterator = "0.1"
 num-traits = "0.2.19"
 osprey-ast = { path = "crates/osprey-ast" }
 osprey-syntax = { path = "crates/osprey-syntax" }
+osprey-math = { path = "crates/osprey-math" }
 osprey-project = { path = "crates/osprey-project" }
 osprey-types = { path = "crates/osprey-types" }
 osprey-debug = { path = "crates/osprey-debug" }

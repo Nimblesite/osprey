@@ -23,7 +23,7 @@ The source format is Lean 4, exactly as the pinned toolchain reads it (`leanprov
 
 **Osprey-specific formats for mathematics are prohibited.** No notation, sentence format, definition document, keyword, marker, header, dialect or extension of Lean may be designed, specified, implemented or extended. The single exception: functionality Lean's format cannot express. An exception needs an entry in this specification that names the missing Lean capability and cites a Lean source showing the gap, and it ends the day Lean gains the capability. "Lean is verbose", "the reader does not support it yet" and "a custom notation is nicer" are not gaps: the remedy for an unread Lean construct is to extend the reader ([MATH-CODE-FRAGMENT]).
 
-Reasons: proofs are already `.lean` and nothing else ([PROOF-SOURCE-DELETED](../language/0049-DependentTypesAndProofs.md)), so one format serves statements, proofs and programs; a definition and a theorem about it sit in one file; Lean's own checker, editor support and libraries apply to every source with no work here.
+Reasons: proofs are already `.lean` and nothing else ([PROOF-SOURCE-DELETED](../language/0049-DependentTypesAndProofs.md)), so one format serves statements, proofs and programs; a theorem about a definition imports the very file the program is generated from; Lean's own checker, editor support and libraries apply to every source with no work here.
 
 ### Deleted format [MATH-CODE-DELETED]
 
@@ -45,10 +45,14 @@ The reader accepts the constructs below and refuses everything else by name ([MA
 | `def name (a b : T) (c : T) : T := term` | one generated function; no parameters gives a constant |
 | `private def …` | generated, not exported |
 | `/-- text -/` before a `def` | the documentation of the generated function |
-| `theorem`, `example`, `#eval`, `#check`, `#guard`, `#print` | checked by Lean; generate nothing |
+| `#eval`, `#check`, `#guard`, `#print` | checked by Lean; generate nothing |
 | `--`, `/- … -/`, `/-! … -/` | comments |
 
 `T` is `Float` or `Bool`.
+
+A command of the fragment is recognised by its word. Any other command, and anything else that starts a line in column 0, ends the command before it and is refused by the word the source uses.
+
+**A math source holds no theorem and no proof.** A statement about its definitions lives in a proof file outside the source roots that imports the math source, and the proof side checks it ([PROOF-SOURCE](../language/0049-DependentTypesAndProofs.md)). The toolchain crates therefore name no proof vocabulary ([TYPES-DISCIPLINE-REGISTRY](../language/0050-TypeDisciplines.md)).
 
 | Term | Notes |
 | --- | --- |
