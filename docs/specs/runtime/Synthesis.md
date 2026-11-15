@@ -66,6 +66,12 @@ The native worker accepts binary persistent streams or bounded hexadecimal clips
 
 Prism snapshots the graph and plug-in bindings when an audition begins. Editing or deleting a live node cannot change the running snapshot; stale/duplicate process completions cannot advance it. The native journey drives a real mda JX10 through two real ADelay instances and stereo playback, independently checking every effect's PCM against the preceding output. This proves hosted graph playback, not continuous device callbacks or persistence across auditions.
 
+## Stateful multichannel blocks [SYNTH-RENDER-BLOCKS]
+
+`ClipKernels.block` accepts and returns independent per-channel kernel state alongside interleaved samples at the hosted path's 48 kHz rate. Unequal block partitions retain oscillator/LFO phase, filter integrators and delay history. The component must exactly match its prepared graph entry, and state identities, channel counts and block capacities are checked before processing. The existing whole-clip entry point initializes state and delegates to this same implementation.
+
+This is producer-side, allocating reference execution. It does not establish allocation-free device callbacks, persistent VST sessions in Prism, graph-wide streaming scheduling or uninterrupted device playback; those integration steps remain required.
+
 ## MIDI generators [SYNTH-HOST-MIDI]
 
 A MIDI note component exposes whole-number pitch, normalized velocity and an exact gate length in frames. `MidiClips.window` assigns note-on and note-off to half-open sample windows, preserving ownership at block boundaries. Fractional pitches/gates, invalid velocities and out-of-range windows return errors. Event outputs connect only to compatible event inputs; audio outputs remain separate. Sequencing, polyphonic generators and continuous live note control remain delivery work.

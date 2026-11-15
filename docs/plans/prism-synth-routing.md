@@ -117,7 +117,7 @@ All twelve app journeys pass under ARC, including frozen graph ownership, stale 
 - [x] Expand the existing package suite to 22 loaded journeys, covering stereo kernel chains, MIDI window boundaries, hosted modulation, native packet round trips, malformed buffers and invalid public graph records.
 - [x] Run coverage independently under GC and ARC: both report 848/913 own source lines (92.9%), exceeding the unchanged 92.2% package gate.
 - [x] Check formatting and compile the expanded suite with warnings treated as errors.
-- [ ] Resolve the expanded single test file's 655-line size while retaining its assertions and useful comments; this conflicts with the instruction to expand existing test files rather than create new ones.
+- [ ] Resolve the expanded single test file's 686-line size while retaining its assertions and useful comments; this conflicts with the instruction to expand existing test files rather than create new ones.
 - [ ] Finish repository-wide CI preparation; package coverage alone does not establish readiness to push.
 
 Evidence is retained under `target/pr-validation/synth-coverage` and `target/pr-validation/synth-coverage-arc`. The app still provides bounded offline auditions; continuous audio and persistent hosted instances remain unfinished.
@@ -137,3 +137,14 @@ The full CI, Windows, GPUI, WinUI, release, release-scope and Dependabot workflo
 - [ ] Verify actual window screenshots; the previously confirmed locked desktop still leaves this unproved.
 
 The UI model is generated from `editor.td`; the synth library remains UI-free. Evidence is in `target/pr-validation/prism-drag-*`. Continuous device rendering, persistent hosted instances, saved patches, full CI and the repository duplication gate remain unfinished.
+
+
+### Stateful block foundation [SYNTH-RENDER-BLOCKS]
+
+- [x] Expose multichannel kernel continuation without introducing parallel DSP implementations; whole-clip rendering delegates to the same path.
+- [x] Compare 256-frame execution against 31 + 225 frames for oscillators, LFOs, filters, delays and gain, including a stereo filter with different channel inputs.
+- [x] Reject wrong state identities, missing/excess channels, invalid capacities and components that differ from their prepared graph entry; the last case was reproduced as a failing regression before its fix.
+- [x] Retain the rebuilt native host's 44-step actual VST/audio journey and strict source checks.
+- [ ] Connect retained built-in states and persistent VST workers to graph-wide streaming and the device queue.
+
+The 22 package journeys pass under ARC. Coverage of the production change passes independently under GC and ARC at 859/926 own-source lines (92.8%, unchanged 92.2% gate); the subsequent stereo test expansion also passes under ARC. Evidence is retained under `target/pr-validation/synth-blocks-*` and `prism-blocks-*`. This is a necessary streaming foundation, not a claim that continuous playback is complete.

@@ -505,8 +505,39 @@ succeeds (outcome, check) = match outcome
     Error why => expect (why, "successful operation")
     Success value => check value
 
+// [SYNTH-RENDER-BLOCKS] Kernel state must survive unequal streaming block boundaries.
+partitionedKernel (component, channels) =
+    routes = match length component.inputs > 0
+        true => [cable (0, 1)]
+        false => []
+    generator = Components::sine (0, 440.0)
+    graph = built ([generator(outputs = [synth::Port(name = "audio", rate = synth::Audio, channels = channels, unit = synth::Amplitude)]), component], routes)
+    plan = planFor graph
+    initial = mapList (toList (range (0, channels)), \_ => synth::RenderInputs::initialState component)
+    samples = mapList (toList (range (0, 256 * channels)), \i => (toFloat (i % channels) + 1.0) * 0.25)
+    source = synth::NodeClip(clipNode = 0, clipChannels = channels, clipSamples = samples, clipNotes = [])
+    match synth::ClipKernels::block (plan, [source], component, 256, initial)
+        Error why => expect (why, "whole kernel block")
+        Success whole => match synth::ClipKernels::block (plan, [source], component, 31, initial)
+            Error why => expect (why, "first kernel block")
+            Success first => match synth::ClipKernels::block (plan, [source], component, 225, first.heldKernel)
+                Error why => expect (why, "continued kernel block")
+                Success last =>
+                    sameSamples (whole.kernelSamples, listConcat first.kernelSamples last.kernelSamples)
+                    expect (structuralEquals (whole.heldKernel, last.heldKernel), true)
+                    expect (length last.heldKernel, channels)
+    renderRefused (synth::ClipKernels::block (plan, [source], component, 1, []))
+    renderRefused (synth::ClipKernels::block (plan, [source], component, 1, [synth::RenderInputs::initialState (Components::sine (99, 440.0))]))
+    renderRefused (synth::ClipKernels::block (plan, [source], component, 0, initial))
+    renderRefused (synth::ClipKernels::block (plan, [source], component, 1, listConcat initial initial))
+    renderRefused (synth::ClipKernels::block (plan, [source], component(outputs = []), 1, initial))
+    renderRefused (synth::ClipKernels::block (plan, [source], component(processor = synth::Sink), 1, initial))
+
 // [SYNTH-HOST-GRAPH] A complete stereo/modulation chain shares the reusable kernels.
 test ("offline clips render filters, delays, mixing, stereo conversion and independent control signals", \() => arithmetic (\() =>
+    forEachList ([Components::sine (1, 440.0), Components::lfo (1, 2.0), Components::lowpass (1, 4000.0, 0.7), Components::delay (1, 17), Components::gain (1, 0.5)], \n => partitionedKernel (n, 1))
+    stereoFilter = Components::lowpass (1, 4000.0, 0.7)
+    partitionedKernel (stereoFilter(inputs = [audio(channels = 2)], outputs = [audio(channels = 2)]), 2)
     nodes = [Components::sine (1, 440.0), Components::lowpass (2, 4000.0, 0.7), Components::gain (3, 0.5), Components::delay (4, 2), Components::mixer 5, Components::stereo 6, Components::modulatedGain (7, 2, 0.5), Components::lfo (8, 2.0), Components::stereoOutput 9, Components::midiNote (10, 60.0, 0.8, 128.0)]
     routes = [cable (1, 2), cable (2, 3), cable (3, 4), cable (4, 5), Components::route (3, 0, 5, 1), cable (5, 6), cable (6, 7), Components::route (8, 0, 7, 1), cable (7, 9)]
     graph = built (nodes, routes)
