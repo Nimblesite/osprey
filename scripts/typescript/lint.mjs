@@ -144,6 +144,7 @@ function lint(name, lib, files) {
     strict: true,
     noImplicitAny: false,
     noEmit: true,
+    allowImportingTsExtensions: true,
     target: "esnext",
     module: "esnext",
     moduleResolution: "bundler",

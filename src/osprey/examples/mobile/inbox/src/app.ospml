@@ -1,17 +1,192 @@
-namespace mobile
+// Implements [MOBILE-REACTIVE-HOST] and plan 0037 section 9: the Issue Inbox as one Osprey
+// Native application. The store is typed and stays in the library; GitHub is reached over the
+// `Http` capability and the cache is one document in the app store via `StoreRead` and
+// `StoreWrite`, each read becoming a list function here. Every accepted event yields immutable
+// state; every failure is a message a person reads.
+namespace inbox
 
-import bank::Json
-import mobile::Model
-import mobile::Update
-import mobile::View
-import mobile::Ui
-import mobile::Storage
+import ui::Doc
+import ui::Lists
+import ui::Requests
+import ui::Runtime
+import inbox::Snapshot
+import inbox::Github
+import inbox::Notes
+import inbox::Text
 
-module App
-    export initial () = Storage::commands Update::initial
+type Store =
+    issues : List<Issue>
+    saved : List<int>
+    notes : List<Note>
+    repo : string
+    search : string
+    filter : string
+    selected : int
+    status : string
+    problem : string
+    storeProblem : string
+    loading : bool
+    stage : string
+    seq : int
+    loadTicket : string
+    fetchTicket : string
+    saveTicket : string
+    storageReady : bool
+    platform : string
+    dark : bool
+    autoOpen : bool
+    launch : List<string>
 
-    export dispatch model event = Storage::commands (\() => Update::dispatch model event)
+module Inbox
+    reading = "Opening the app store…"
 
-    export envelope update =
-        view = View::render update.model
-        Json::obj (Json::strField "model" (Model::encode update.model) + "," + Json::rawField "view" view + "," + Json::rawField "commands" update.commands + "," + Json::rawField "ui" (Ui::render view))
+    export blank () = Store(issues = [], saved = [], notes = [], repo = "swiftlang/swift", search = "", filter = "all", selected = 0, status = reading, problem = "", storeProblem = "", loading = true, stage = "opening", seq = 0, loadTicket = "", fetchTicket = "", saveTicket = "", storageReady = true, platform = "", dark = false, autoOpen = false, launch = [])
+
+    (** One more launch argument, in order, before the inbox opens. *)
+    export argued (store, text) = store(launch = listAppend store.launch text)
+
+    // The store-read the inbox opens with: one document, one bounded read.
+    export opened (store, _now, _offset, platform, _home, dark) =
+        begun = store(platform = platform, dark = dark, autoOpen = listContains store.launch "--open-first", launch = [], seq = 1, loadTicket = "load:1")
+        Runtime::asking (begun, [Requests::ask ("load:1", ui::StoreRead(readName = Snapshot::fileName, readLimit = Snapshot::byteLimit, readSlice = Snapshot::readSlice))])
+
+    // A fresh request number, or why the inbox must stop asking.
+    counted store = match checkedAdd store.seq 1
+        Error _why => Error(message = "Request counter exhausted. Close and reopen the app.")
+        Success number => Success(value = number)
+
+    // A refresh: one bounded page of the repository's open issues.
+    fetchFrom store = match counted store
+        Error why => Runtime::step (store(problem = why))
+        Success number =>
+            ticket = "fetch:${toString number}"
+            begun = store(seq = number, fetchTicket = ticket, loading = true, problem = "", status = "Refreshing ${store.repo}…")
+            Runtime::asking (begun, [Requests::ask (ticket, ui::Http(method = "GET", url = Github::url store.repo, headers = [], body = "", responseLimit = 262144, deadline = 15000, httpSlice = "inbox-http"))])
+
+    // The cache the opening read found, or a refresh when there is none to trust.
+    loadedFrom store ok text = match ok
+        false => fetchFrom (store(storageReady = false, storeProblem = "App storage is unavailable; these changes are only in memory."))
+        true => match Doc::flag (Doc::parse text) "found"
+            false => fetchFrom store
+            true => match Snapshot::restore (perform ui::Slices.fetch Snapshot::readSlice)
+                Error _why => fetchFrom (store(status = "The stored inbox needs a refresh"))
+                Success cache => autoOpened (Runtime::step (store(issues = cache.cacheIssues, saved = cache.cacheSaved, notes = cache.cacheNotes, repo = cache.cacheRepo, status = "Loaded from the app store · refresh when ready", loading = false, stage = "ready")))
+
+    // `--open-first` opens the first issue once the inbox holds one, as the capture flows do.
+    autoOpened step = match step.stepStore.autoOpen && step.stepStore.selected == 0
+        false => step
+        true => match listGet step.stepStore.issues 0
+            Error _missing => step
+            Success first =>
+                opened = step.stepStore
+                Runtime::step (opened(selected = first.issueId, autoOpen = false))
+
+    // A selection that survives only while its issue does.
+    kept store issues = match store.selected == 0
+        true => 0
+        false => match Lists::any (issues, \issue => issue.issueId == store.selected)
+            true => store.selected
+            false => 0
+
+    // One page of open issues, or the reason it cannot become the inbox.
+    fetchedFrom store ok text = match ok
+        false => Runtime::step (store(loading = false, fetchTicket = "", status = "Refresh failed · cached issues retained", problem = "Network request failed: ${text}"))
+        true =>
+            code = Doc::number (Doc::parse text) "status"
+            match code >= 200 && code < 300
+                false => Runtime::step (store(loading = false, fetchTicket = "", status = "Refresh failed · cached issues retained", problem = refusal code (perform ui::Slices.fetch "inbox-http")))
+                true => match Github::decode (perform ui::Slices.fetch "inbox-http")
+                    Error why => Runtime::step (store(loading = false, fetchTicket = "", status = "Refresh failed · cached issues retained", problem = why))
+                    Success issues => autoOpened (persist (store(issues = issues, selected = kept store issues, loading = false, fetchTicket = "", problem = "", status = "Open issues · synced with GitHub")))
+
+    // Why GitHub refused the page, in GitHub's own words when it gave any.
+    refusal code body = match Doc::text (Doc::parse body) "message"
+        "" => "GitHub returned HTTP ${toString code}. Refresh to try again."
+        detail => "GitHub HTTP ${toString code}: ${detail}"
+
+    // The document written back: the issues, the bookmarks and the notes, as one bounded page.
+    persist store = match store.storageReady
+        false => Runtime::step (store(storeProblem = "App storage is unavailable; these changes are only in memory."))
+        true => match counted store
+            Error _why => Runtime::step (store(storeProblem = "Request counter exhausted; changes were not saved. Close and reopen the app."))
+            Success number =>
+                ticket = "save:${toString number}"
+                document = Doc::write (Snapshot::document (Cache(cacheRepo = store.repo, cacheIssues = store.issues, cacheSaved = store.saved, cacheNotes = store.notes)))
+                written = store(seq = number, saveTicket = ticket)
+                ui::Step(stepStore = written, requests = [Requests::ask (ticket, ui::StoreWrite(writeName = Snapshot::fileName, writeSlice = Snapshot::writeSlice))], writes = [Requests::write (Snapshot::writeSlice, document)])
+
+    stored store ok text = match ok
+        false => Runtime::step (store(storeProblem = "App storage failed: ${text}"))
+        true => Runtime::step (store(storeProblem = ""))
+
+    (** One capability's completion under `ticket`: the opening read, a page of issues, or a write. *)
+    export completed (store, ticket, ok, text) = match ticket
+        "load:1" => match store.stage == "opening"
+            true => loadedFrom store ok text
+            false => Runtime::step store
+        _other => match ticket == store.fetchTicket && store.fetchTicket != ""
+            true => fetchedFrom store ok text
+            false => match ticket == store.saveTicket && store.saveTicket != ""
+                true => stored store ok text
+                false => Runtime::step store
+
+    holds store id = Lists::any (store.issues, \issue => issue.issueId == id)
+
+    // `ids` without `id`, in order.
+    without : List<int> -> int -> int -> List<int>
+    without ids id index = match listGet ids index
+        Error _missing => []
+        Success head => match head == id
+            true => without ids id (satAdd index 1)
+            false => listAppend (without ids id (satAdd index 1)) head
+
+    // A bookmark toggles and persists.
+    bookmarked store id = match holds store id
+        false => Runtime::step (store(problem = "That issue is no longer in the current inbox. Refresh and try again."))
+        true => persist (store(saved = toggled store.saved id))
+
+    // The bookmark list with `id`'s mark turned over.
+    toggled ids id = match listContains ids id
+        true => without ids id 0
+        false => listAppend ids id
+
+    // A note or a rank replaces the issue's triage and persists.
+    annotated store id note rank = match holds store id && Notes::room store.notes id
+        false => Runtime::step (store(problem = "Cannot annotate this issue: it is missing or the 200-issue local note limit is reached."))
+        true => persist (store(notes = Notes::set store.notes id note rank))
+
+    // The triage the note keeps, and the triage the rank keeps.
+    triagedNote store id words =
+        present = Notes::find store.notes id
+        annotated store id words present.noteRank
+
+    triagedRank store id rank =
+        present = Notes::find store.notes id
+        annotated store id present.noteText rank
+
+    repository store raw = match Github::validRepository (trim raw)
+        false => Runtime::step (store(problem = "Use owner/repository with letters, numbers, hyphens, underscores or dots."))
+        true => match trim raw == store.repo
+            true => fetchFrom store
+            false => fetchFrom (store(repo = trim raw, issues = [], selected = 0))
+
+    (** One control's action with its edited `words`. Events before the inbox is ready change nothing. *)
+    export update (store, action, words) = match store.stage == "ready"
+        false => Runtime::step store
+        true => match action
+            Refresh => fetchFrom store
+            Repository => repository store words
+            Searching => Runtime::step (store(search = Text::prefix words 256))
+            ShowAll => Runtime::step (store(filter = "all"))
+            ShowSaved => Runtime::step (store(filter = "saved"))
+            KeepIssue id => bookmarked store id
+            OpenIssue id => match holds store id
+                true => Runtime::step (store(selected = id))
+                false => Runtime::step (store(problem = "This issue is no longer in the inbox. Refresh to find current issues."))
+            CloseDetail => Runtime::step (store(selected = 0))
+            NoteIssue id => match Text::within words 2000
+                false => Runtime::step (store(problem = "Keep local notes within 2000 characters."))
+                true => triagedNote store id words
+            RankIssue id rank => match rank == "normal" || rank == "high"
+                false => Runtime::step (store(problem = "Choose Normal or High priority."))
+                true => triagedRank store id rank

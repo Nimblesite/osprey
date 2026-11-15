@@ -1,69 +1,442 @@
-namespace mobile
+// Implements [MOBILE-REACTIVE-UI] on the shared frame ([NATIVE-SHM-VIEW]): the whole screen is
+// plain view rows, and every colour, size, inset, gap, corner, weight and flag is decided here.
+// The iOS look reproduces the Issue Inbox's light lavender theme (its dark shades included) and
+// the Android look its dark navy theme; `macos` uses the iOS look. A host applies the rows and
+// holds no style of its own.
+namespace inbox
 
-import bank::Json
-import mobile::Annotations
+import ui::Views
+import ui::Lists
+import inbox::Markdown
 
-type IssueRows =
-    elements : string
-    total : int
-    bookmarked : int
+(** What a person can do: refresh, change the repository, search, filter, save an issue, open one,
+note one or rank one. A field's action delivers its edited words with it. *)
+type Act =
+    Refresh
+    Repository
+    Searching
+    ShowAll
+    ShowSaved
+    KeepIssue
+        keptId : int
+    OpenIssue
+        openedId : int
+    CloseDetail
+    NoteIssue
+        notedId : int
+    RankIssue
+        rankedId : int
+        rankedLevel : string
+
+(** The colours one platform's look uses, as packed `0xRRGGBBAA` values. *)
+type Skin =
+    paper : int
+    card : int
+    field : int
+    words : int
+    quiet : int
+    accent : int
+    onAccent : int
+    wash : int
+    outline : int
+    danger : int
+    android : bool
+
+(** `#RRGGBB` at `alpha` (0 to 255), as a `Look` carries it. *)
+tinted hex alpha = satAdd (satSub (Views::colour hex) 255) alpha
 
 module View
-    export saved model id = contains model.saved ("|" + id + "|")
+    // The Android theme: fixed navy and teal whatever the appearance.
+    export phone () = Skin(paper = Views::colour "#0C1422", card = Views::colour "#19273B", field = Views::colour "#121C2C", words = Views::colour "#E8EFFA", quiet = Views::colour "#9FB1C9", accent = Views::colour "#46DFC2", onAccent = Views::colour "#0C1E24", wash = Views::colour "#19273B", outline = Views::colour "#354A64", danger = Views::colour "#FF8F8F", android = true)
 
-    export exists model wanted =
-        doc = jsonParse model.items ?: 0
-        found = containsId doc 0 (jsonLength doc "") wanted
-        freed = jsonFree doc ?: 0
-        found
+    export tablet () = Skin(paper = Views::colour "#F2F2F7", card = Views::colour "#FFFFFF", field = Views::colour "#F2F2F7", words = Views::colour "#000000", quiet = tinted "#3C3C43" 153, accent = Views::colour "#4A40CF", onAccent = Views::colour "#FFFFFF", wash = tinted "#4A40CF" 23, outline = 0, danger = Views::colour "#FF3B30", android = false)
 
-    containsId doc index count wanted = match index >= count
-        true => false
-        false => Json::scalar doc "[${index}].id" == wanted || containsId doc ((satAdd index 1) ) count wanted
+    export night () = Skin(paper = Views::colour "#000000", card = Views::colour "#1C1C1E", field = Views::colour "#2C2C2E", words = Views::colour "#FFFFFF", quiet = tinted "#EBEBF5" 153, accent = Views::colour "#ADA6FF", onAccent = Views::colour "#FFFFFF", wash = tinted "#ADA6FF" 23, outline = 0, danger = Views::colour "#FF453A", android = false)
 
-    visible model doc prefix bookmarked =
-        title = Json::scalar doc (prefix + ".title")
-        author = Json::scalar doc (prefix + ".author")
-        number = Json::scalar doc (prefix + ".number")
-        matchesSearch = contains (toLowerCase (title + " " + author + " #" + number)) (toLowerCase model.search)
-        matchesSearch && (model.filter != "saved" || bookmarked)
+    export skin platform dark = match platform
+        "android" => phone ()
+        _other => match dark
+            true => night ()
+            false => tablet ()
 
-    metadata model doc prefix =
-        local = Annotations::get model.annotations (Json::scalar doc (prefix + ".id"))
-        Json::members [Json::strField "body" (Json::scalar doc (prefix + ".body")), Json::strField "labels" (Json::scalar doc (prefix + ".labels")), Json::strField "note" local.note, Json::strField "priority" local.priority]
+    // The depth a container's children add on Android, and the gap between them.
+    wide s = match s.android
+        true => 4.0
+        false => 0.0
 
-    item model doc prefix bookmarked = Json::obj (Json::members [Json::strField "id" (Json::scalar doc (prefix + ".id")), Json::numField "number" (parseInt (Json::scalar doc (prefix + ".number")) ?: 0), Json::strField "title" (Json::scalar doc (prefix + ".title")), Json::strField "url" ("https://github.com/" + model.repo + "/issues/" + Json::scalar doc (prefix + ".number")), Json::strField "author" (Json::scalar doc (prefix + ".author")), Json::numField "comments" (parseInt (Json::scalar doc (prefix + ".comments")) ?: 0), Json::rawField "bookmarked" (toString bookmarked), metadata model doc prefix])
+    room s = match s.android
+        true => 8.0
+        false => 14.0
 
-    detail model doc index count = match index >= count
-        true => "null"
-        false =>
-            prefix = "[${index}]"
-            match Json::scalar doc (prefix + ".id") == model.selected
-                true => item model doc prefix (saved model model.selected)
-                false => detail model doc ((satAdd index 1) ) count
+    insetOf s = match s.android
+        true => 20.0
+        false => 0.0
 
-    rows model doc index count output marked = match index >= count
-        true => IssueRows(elements = output, total = count, bookmarked = marked)
-        false =>
-            prefix = "[${index}]"
-            bookmarked = saved model (Json::scalar doc (prefix + ".id"))
-            nextMarked = match bookmarked
-                true => (satAdd marked 1)
-                false => marked
-            nextOutput = match visible model doc prefix bookmarked
-                true => Json::append output (item model doc prefix bookmarked)
-                false => output
-            rows model doc ((satAdd index 1) ) count nextOutput nextMarked
+    side s = match s.android
+        true => 0.0
+        false => 20.0
 
-    errors model = match length model.storageError > 0 && length model.error > 0
-        true => "${model.error} ${model.storageError}"
-        false => "${model.error}${model.storageError}"
+    // The screen: fills the window and pads the page it scrolls.
+    export scroll s = ui::Look(ink = 0, fill = s.paper, points = 0.0, inset = insetOf s, gap = 0.0, corner = 0.0, heft = 400)
 
-    document model result selected = Json::obj (Json::members [Json::strField "repo" model.repo, Json::strField "search" model.search, Json::strField "filter" model.filter, Json::strField "status" model.status, Json::strField "error" (errors model), Json::rawField "loading" model.loading, Json::rawField "items" (Json::arr result.elements), Json::numField "total" result.total, Json::numField "bookmarked" result.bookmarked, Json::strField "selected" model.selected, Json::rawField "detail" selected])
+    export page s = ui::Look(ink = 0, fill = 0, points = wide s, inset = side s, gap = room s, corner = 0.0, heft = 400)
 
-    export render model =
-        doc = jsonParse model.items ?: 0
-        result = rows model doc 0 (jsonLength doc "") "" 0
-        output = document model result (detail model doc 0 (jsonLength doc ""))
-        freed = jsonFree doc ?: 0
-        output
+    headingDepth s = match s.android
+        true => 4.0
+        false => 14.0
+
+    // The heading block sits clear of the page above and below it.
+    export heading s = ui::Look(ink = 0, fill = 0, points = headingDepth s, inset = 0.0, gap = room s, corner = 0.0, heft = 400)
+
+    // A plain stack of blocks, and a row of controls beside each other.
+    export stack s = ui::Look(ink = 0, fill = 0, points = wide s, inset = 0.0, gap = room s, corner = 0.0, heft = 400)
+
+    export bar s = ui::Look(ink = 0, fill = 0, points = wide s, inset = 0.0, gap = room s, corner = 0.0, heft = 400)
+
+    cardInset s = match s.android
+        true => 14.0
+        false => 18.0
+
+    cardCorner s = match s.android
+        true => 14.0
+        false => 20.0
+
+    export card s = ui::Look(ink = 0, fill = s.card, points = wide s, inset = cardInset s, gap = room s, corner = cardCorner s, heft = 400)
+
+    smallText s = match s.android
+        true => 13.0
+        false => 12.0
+
+    export caption s = ui::Look(ink = s.quiet, fill = 0, points = smallText s, inset = 0.0, gap = 0.0, corner = 0.0, heft = 400)
+
+    export note s = ui::Look(ink = s.accent, fill = 0, points = smallText s, inset = 0.0, gap = 0.0, corner = 0.0, heft = 700)
+
+    titleText s = match s.android
+        true => 19.0
+        false => 17.0
+
+    titleHeft s = match s.android
+        true => 700
+        false => 600
+
+    export title s = ui::Look(ink = s.words, fill = 0, points = titleText s, inset = 0.0, gap = 0.0, corner = 0.0, heft = titleHeft s)
+
+    export hero s = ui::Look(ink = s.words, fill = 0, points = 36.0, inset = 0.0, gap = 0.0, corner = 0.0, heft = 700)
+
+    bodyText s = match s.android
+        true => 16.0
+        false => 17.0
+
+    export body s = ui::Look(ink = s.words, fill = 0, points = bodyText s, inset = 0.0, gap = 0.0, corner = 0.0, heft = 400)
+
+    // A body-sized run in the quiet colour, as a quotation or a bullet's mark reads.
+    export muted s = ui::Look(ink = s.quiet, fill = 0, points = bodyText s, inset = 0.0, gap = 0.0, corner = 0.0, heft = 400)
+
+    headText s = match s.android
+        true => 22.0
+        false => 20.0
+
+    headHeft s = match s.android
+        true => 700
+        false => 600
+
+    export headingText s = ui::Look(ink = s.words, fill = 0, points = headText s, inset = 0.0, gap = 0.0, corner = 0.0, heft = headHeft s)
+
+    subText s = match s.android
+        true => 18.0
+        false => 17.0
+
+    export subheadingText s = ui::Look(ink = s.words, fill = 0, points = subText s, inset = 0.0, gap = 0.0, corner = 0.0, heft = headHeft s)
+
+    export failure s = ui::Look(ink = s.danger, fill = 0, points = 16.0, inset = 0.0, gap = 0.0, corner = 0.0, heft = 400)
+
+    export field s = match s.android
+        true => ui::Look(ink = s.words, fill = 0, points = 16.0, inset = 0.0, gap = 0.0, corner = 0.0, heft = 400)
+        false => ui::Look(ink = s.words, fill = s.field, points = 17.0, inset = 13.0, gap = 0.0, corner = 12.0, heft = 400)
+
+    codePoints s = match s.android
+        true => 14.0
+        false => 13.0
+
+    codeCorner s = match s.android
+        true => 14.0
+        false => 10.0
+
+    export codeBlock s = ui::Look(ink = s.words, fill = s.field, points = codePoints s, inset = 12.0, gap = 0.0, corner = codeCorner s, heft = 400)
+
+    // The accent button: its words on the accent, a capsule on Apple, a tile on Android.
+    export primary s = match s.android
+        true => ui::Look(ink = s.onAccent, fill = s.accent, points = 16.0, inset = 14.0, gap = 0.0, corner = 24.0, heft = 500)
+        false => ui::Look(ink = s.onAccent, fill = s.accent, points = 15.0, inset = 10.0, gap = 16.0, corner = 50.0, heft = 600)
+
+    export secondary s = match s.android
+        true => ui::Look(ink = s.words, fill = s.wash, points = 16.0, inset = 14.0, gap = 0.0, corner = 14.0, heft = 500)
+        false => ui::Look(ink = s.accent, fill = s.wash, points = 15.0, inset = 10.0, gap = 12.0, corner = 50.0, heft = 500)
+
+    // One styled run over a base look: the run's kind carries its weight, slant, face or link.
+    run s base held = match held.spanKind
+        "bold" => base(heft = 700)
+        "link" => base(ink = s.accent)
+        _other => base
+
+    runTraits kind = match kind
+        "italic" => Views::slanted
+        "code" => Views::fixedWidth
+        _other => 0
+
+    runHint held = match held.spanKind
+        "link" => held.spanUrl
+        _other => ""
+
+    phrase s base held = ui::Fitted(fit = ui::Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = runTraits held.spanKind, edge = 0, hint = runHint held), fitted = ui::Phrase(phraseLook = run s base held, phraseText = held.spanText))
+
+    commitFlag commit = match commit
+        true => Views::onCommit
+        false => 0
+
+    // A field: its look fills it on Apple and leaves the platform's underline on Android; its
+    // hint is its prompt, and a commit field also delivers its text when committed.
+    entry s text prompt action commit =
+        ui::Fitted(fit = ui::Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = commitFlag commit, edge = 0, hint = prompt), fitted = ui::Typing(typingLook = field s, typingText = text, typingAction = action))
+
+    // A press. On Android the platform's button metrics arrive through the fit: a 48-point
+    // height, words centred, and `least` as the width floor the platform's own buttons keep.
+    press s look words action least edged =
+        ui::Fitted(fit = ui::Fit(wide = floorWidth s least, tall = tileHeight s, share = 0.0, traits = centredFlag s, edge = edgeColour s edged, hint = ""), fitted = ui::Press(pressLook = look, pressWords = words, pressAction = action))
+
+    floorWidth s least = match s.android
+        true => least
+        false => 0.0
+
+    tileHeight s = match s.android
+        true => 48.0
+        false => 0.0
+
+    centredFlag s = match s.android
+        true => Views::centred
+        false => 0
+
+    edgeColour s edged = match s.android && edged
+        true => s.outline
+        false => 0
+
+    // The chosen filter or priority wears the accent; the other waits outlined.
+    choice s picked words action least = match picked
+        true => press s (primary s) words action least false
+        false => press s (secondary s) words action least true
+
+    soft s words action least = press s (secondary s) words action least true
+
+    // The GitHub link reads like a secondary button but only carries the words away.
+    link s words = ui::Fitted(fit = ui::Fit(wide = floorWidth s 92.0, tall = tileHeight s, share = 0.0, traits = centredFlag s, edge = edgeColour s true, hint = ""), fitted = ui::Wording(wordsLook = secondary s, wordsText = words))
+
+    heroFace s = match s.android
+        true => 0
+        false => Views::rounded
+
+    heroWords s words =
+        ui::Fitted(fit = ui::Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = heroFace s, edge = 0, hint = ""), fitted = ui::Wording(wordsLook = hero s, wordsText = words))
+
+    bookmarkWords kept = match kept
+        true => "★ Saved"
+        false => "☆ Save"
+
+    rankWords rank = match rank
+        "high" => "HIGH PRIORITY"
+        _other => "Normal priority"
+
+    triageWords note = match note == ""
+        true => ""
+        false => " · Local note saved"
+
+    quoteLeadWidth s = match s.android
+        true => 12.0
+        false => 3.0
+
+    quoteBarColour s = match s.android
+        true => 0
+        false => tinted "#4A40CF" 153
+
+    quoteLead s = ui::Fitted(fit = ui::Fit(wide = quoteLeadWidth s, tall = 0.0, share = 0.0, traits = 0, edge = 0, hint = ""), fitted = ui::Wording(wordsLook = ui::Look(ink = 0, fill = quoteBarColour s, points = 12.0, inset = 0.0, gap = 0.0, corner = 2.0, heft = 400), wordsText = " "))
+
+    // One block of a description as rows: paragraphs and headings are phrase runs, code one
+    // wording, a quotation leads with its bar, a rule is a hairline, an item leads with its mark.
+    block s one = match one
+        Passage spans => mapList (spans, \held => phrase s (body s) held)
+        Heading major spans => match major
+            true => mapList (spans, \held => phrase s (headingText s) held)
+            false => mapList (spans, \held => phrase s (subheadingText s) held)
+        CodeBlock code => [ui::Fitted(fit = ui::Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = Views::fixedWidth, edge = 0, hint = ""), fitted = ui::Wording(wordsLook = codeBlock s, wordsText = code))]
+        Quotation spans => [ui::Across(acrossLook = ui::Look(ink = 0, fill = 0, points = 0.0, inset = 0.0, gap = quoteGap s, corner = 0.0, heft = 400), acrossItems = listConcat [quoteLead s] (mapList (spans, \held => phrase s (muted s) held)))]
+        Divider => [ui::Rule(ruleLook = ui::Look(ink = ruleColour s, fill = 0, points = 1.0, inset = 0.0, gap = 0.0, corner = 0.0, heft = 400))]
+        Bullet mark spans => [ui::Across(acrossLook = ui::Look(ink = 0, fill = 0, points = wide s, inset = 0.0, gap = 8.0, corner = 0.0, heft = 400), acrossItems = listConcat [ui::Wording(wordsLook = muted s, wordsText = mark)] (mapList (spans, \held => phrase s (body s) held)))]
+
+    blocks s all = Lists::flatten (mapList (all, \one => block s one))
+
+    quoteGap s = match s.android
+        true => 0.0
+        false => 9.0
+
+    ruleColour s = match s.android
+        true => s.quiet
+        false => tinted "#3C3C43" 79
+
+    // The heading block: what the inbox holds, in the workspace's own voice.
+    headingBlock s store shown marked = ui::Column(columnLook = heading s, columnItems = [
+        ui::Wording(wordsLook = note s, wordsText = "YOUR OPEN SOURCE WORKSPACE"),
+        heroWords s "Issue Inbox",
+        ui::Across(acrossLook = bar s, acrossItems = [
+            ui::Wording(wordsLook = title s, wordsText = "${shown} open issues"),
+            ui::Wording(wordsLook = caption s, wordsText = "${marked} saved for later"),
+        ]),
+    ])
+
+    refreshWords store = match store.loading
+        true => "Refreshing…"
+        false => "↻ Refresh"
+
+    // The controls card: the repository, the search and the two filters.
+    controlsBlock s store = ui::Column(columnLook = card s, columnItems = [
+        ui::Across(acrossLook = bar s, acrossItems = [
+            ui::Wording(wordsLook = caption s, wordsText = "PUBLIC REPOSITORY"),
+            soft s (refreshWords store) Refresh 0.0,
+        ]),
+        entry s store.repo "owner/repository · press Done to load" Repository true,
+        entry s store.search "Search issue titles or authors" Searching false,
+        ui::Across(acrossLook = bar s, acrossItems = [
+            choice s (store.filter == "all") "All issues" ShowAll 0.0,
+            choice s (store.filter == "saved") "★ Saved" ShowSaved 92.0,
+        ]),
+    ])
+
+    // The status line, with the failure under it when there is one.
+    noticeBlock s store = match store.problem
+        "" => ui::Wording(wordsLook = caption s, wordsText = store.status)
+        _failed => ui::Column(columnLook = stack s, columnItems = [
+            ui::Wording(wordsLook = caption s, wordsText = store.status),
+            ui::Wording(wordsLook = failure s, wordsText = store.problem),
+        ])
+
+    // One issue as a card: its number and author, its title, its triage and what a person can do.
+    issueCard s store saved issue = ui::Column(columnLook = card s, columnItems = [
+        ui::Across(acrossLook = bar s, acrossItems = [
+            ui::Wording(wordsLook = note s, wordsText = "#${toString issue.issueNumber}"),
+            ui::Wording(wordsLook = caption s, wordsText = "${issue.issueAuthor} · ${toString issue.issueComments} comments"),
+        ]),
+        ui::Wording(wordsLook = title s, wordsText = issue.issueTitle),
+        ui::Wording(wordsLook = caption s, wordsText = rankWords (triageOf store issue).noteRank + triageWords (triageOf store issue).noteText),
+        ui::Across(acrossLook = bar s, acrossItems = [
+            choice s saved (bookmarkWords saved) (KeepIssue(keptId = issue.issueId)) 92.0,
+            soft s "Details →" (OpenIssue(openedId = issue.issueId)) 0.0,
+        ]),
+    ])
+
+    issueCards s store issues = mapList (issues, \issue => issueCard s store (listContains store.saved issue.issueId) issue)
+
+    emptyWords store = match store.loading
+        true => "Fetching the latest issues…"
+        false => "No matching issues. Try another search, switch filters, or refresh."
+
+    // The list, or the promise of one.
+    contentBlock s store issues = match issues
+        [] => ui::Column(columnLook = card s, columnItems = [
+            ui::Wording(wordsLook = title s, wordsText = "Your inbox"),
+            ui::Wording(wordsLook = body s, wordsText = emptyWords store),
+        ])
+        _shown => ui::Column(columnLook = stack s, columnItems = issueCards s store issues)
+
+    labelsWords issue = match issue.issueLabels
+        "" => "No labels"
+        found => found
+
+    // The open issue: what it is, the local triage and its description.
+    summaryCard s store saved issue = ui::Column(columnLook = card s, columnItems = [
+        ui::Across(acrossLook = bar s, acrossItems = [
+            ui::Wording(wordsLook = note s, wordsText = "#${toString issue.issueNumber}"),
+            ui::Wording(wordsLook = caption s, wordsText = "${issue.issueAuthor} · ${toString issue.issueComments} comments"),
+        ]),
+        ui::Wording(wordsLook = title s, wordsText = issue.issueTitle),
+        ui::Wording(wordsLook = note s, wordsText = labelsWords issue),
+        ui::Across(acrossLook = bar s, acrossItems = [
+            choice s saved (bookmarkWords saved) (KeepIssue(keptId = issue.issueId)) 92.0,
+            link s "View on GitHub ↗",
+        ]),
+    ])
+
+    triageOf store issue = Notes::find store.notes issue.issueId
+
+    rankedNormal store issue = (triageOf store issue).noteRank != "high"
+
+    rankedHigh store issue = (triageOf store issue).noteRank == "high"
+
+    triageCard s store issue = ui::Column(columnLook = card s, columnItems = [
+        ui::Wording(wordsLook = note s, wordsText = "YOUR TRIAGE"),
+        ui::Across(acrossLook = bar s, acrossItems = [
+            choice s (rankedNormal store issue) "Normal" (RankIssue(rankedId = issue.issueId, rankedLevel = "normal")) 88.0,
+            choice s (rankedHigh store issue) "↑ High priority" (RankIssue(rankedId = issue.issueId, rankedLevel = "high")) 0.0,
+        ]),
+        entry s (triageOf store issue).noteText "Your note · press Done to save" (NoteIssue(notedId = issue.issueId)) true,
+        ui::Wording(wordsLook = caption s, wordsText = "Notes and priority stay in your inbox. They do not change the GitHub issue."),
+    ])
+
+    descriptionRows s issue = match Markdown::render issue.issueBody
+        [] => [ui::Wording(wordsLook = body s, wordsText = "The author has not added a description.")]
+        rendered => blocks s rendered
+
+    // The description is Markdown: Osprey renders it to rows ([MOBILE-MARKDOWN]).
+    descriptionCard s issue = ui::Column(columnLook = card s, columnItems = listConcat [ui::Wording(wordsLook = note s, wordsText = "DESCRIPTION")] (descriptionRows s issue))
+
+    // The detail screen: the way back, and the three cards of the open issue.
+    detailScreen s store issue = [
+        ui::Across(acrossLook = bar s, acrossItems = [soft s "← Inbox" CloseDetail 0.0, ui::Wording(wordsLook = caption s, wordsText = store.repo)]),
+        ui::Wording(wordsLook = note s, wordsText = "ISSUE DETAILS"),
+        noticeBlock s store,
+        summaryCard s store (listContains store.saved issue.issueId) issue,
+        triageCard s store issue,
+        descriptionCard s issue,
+    ]
+
+    // The inbox screen: the heading, the controls, the status and the list.
+    listScreen s store issues = [
+        headingBlock s store (length issues) (markedCount store),
+        controlsBlock s store,
+        noticeBlock s store,
+        contentBlock s store issues,
+    ]
+
+    // The issues the search and the filter leave, in the page's order.
+    findable store issue = match contains (toLowerCase (issue.issueTitle + " " + issue.issueAuthor + " #" + toString issue.issueNumber)) (toLowerCase store.search)
+        true => match store.filter
+            "saved" => listContains store.saved issue.issueId
+            _other => true
+        false => false
+
+    foundFrom : Store -> List<Issue> -> int -> List<Issue> -> List<Issue>
+    foundFrom store issues index output = match listGet issues index
+        Error _missing => output
+        Success issue => foundWith store issue issues index output
+
+    foundWith store issue issues index output = match findable store issue
+        true => foundFrom store issues (satAdd index 1) (listAppend output issue)
+        false => foundFrom store issues (satAdd index 1) output
+
+    export found store = foundFrom store store.issues 0 []
+
+    countedFrom : Store -> List<Issue> -> int -> int -> int
+    countedFrom store issues index total = match listGet issues index
+        Error _missing => total
+        Success issue => countedWith store issue issues index total
+
+    countedWith store issue issues index total = match listContains store.saved issue.issueId
+        true => countedFrom store issues (satAdd index 1) (satAdd total 1)
+        false => countedFrom store issues (satAdd index 1) total
+
+    export markedCount store = countedFrom store store.issues 0 0
+
+    (** The whole screen for `store`, as plain rows: the detail when an issue is open, the list otherwise. *)
+    export screen store =
+        s = skin store.platform store.dark
+        body = match Lists::find (store.issues, \issue => issue.issueId == store.selected)
+            Error _missing => listScreen s store (found store)
+            Success issue => detailScreen s store issue
+        ui::Scrolling(scrollLook = scroll s, scrollItems = [ui::Column(columnLook = page s, columnItems = body)])

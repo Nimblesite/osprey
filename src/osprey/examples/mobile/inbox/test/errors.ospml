@@ -1,63 +1,85 @@
-namespace inboxtests
+// Storage failures, hostile documents, rate limits and capacity, none of which may lose data.
+namespace inbox
 
-import bank::Json
-import mobile::App
-import mobile::Model
-import mobile::Storage
-import mobile::View
-import mobile::Annotations
-import inboxtests::Support
-import inboxtests::TriageSupport
+import inbox::Inbox
+import inbox::Notes
+import inbox::Snapshot
+import inbox::View
+import inbox::Support
 
-controlRoundTrip code = match code >= 32
-    true => true
-    false =>
-        character = fromCodePoint code ?: ""
-        source = "é🦉" + character + "\"\\"
-        encoded = Json::obj (Json::strField "value" source)
-        source == Json::getOr encoded "value" "INVALID" && controlRoundTrip ((satAdd code 1) )
-
-allControlCase () = check "all representable JSON controls and Unicode round trip" true (controlRoundTrip 1)
-
-schemaFailureCase () =
-    initial = App::initial ()
-    failed = App::dispatch initial.model (Support::sql "schema" false "[]" "permission denied")
-    refreshed = Support::refresh failed
-    response = App::dispatch refreshed.model (Support::http refreshed.model.pending 200 (Support::fixture ()) "")
-    Support::each [Support::it "schema failure visible" "true" (toString (contains (View::render failed.model) "permission denied")), Support::it "memory only storage warning truthful" "true" (toString (contains response.model.storageError "only in memory"))]
-    Support::each [Support::it "network remains usable" "2" (Support::projected (View::render response.model) "total"), Support::it "no write to broken database" "[]" response.commands]
+storeFailureCase () =
+    opened = Support::opened ()
+    empty = Support::fresh ()
+    refused = Support::settled (empty, opened.stepStore, "load:1", false, "permission denied")
+    here = Support::holding (empty, "inbox-http", Support::fixture ())
+    page = Support::settled (here, refused.stepStore, refused.stepStore.fetchTicket, true, Support::receipt 200)
+    Support::each [Support::it "a refused store read is visible" "true" (toString (contains refused.stepStore.storeProblem "only in memory")), Support::it "the network remains usable" "2" (toString (length page.stepStore.issues)), Support::it "a broken store is never written" "0" (toString (length page.requests))]
 
 staleSaveCase () =
     loaded = Support::loaded ()
-    saved = App::dispatch loaded.model (Support::bookmark "101")
-    stale = App::dispatch saved.model (Support::sql loaded.model.write false "[]" "old write failed")
-    Support::each [Support::it "older save cannot replace latest status" (Model::encode saved.model) (Model::encode stale.model), Support::it "older save emits nothing" "[]" stale.commands]
-
-invalidCacheCase () =
-    model = Model::initial ()
-    invalid = Storage::restore model "{\"version\":99,\"repo\":\"owner/repo\",\"items\":\"[]\"}"
-    malformed = Storage::restore model "{\"version\":1,\"repo\":\"owner/repo\",\"items\":\"[{\\\"id\\\":7}]\"}"
-    Support::each [Support::it "new schema cannot be misread" "false" (toString (invalid.valid)), Support::it "malformed cached issues rejected" "false" (toString (malformed.valid))]
-    check "invalid cache does not change state" (Model::encode model) (Model::encode malformed.model)
-
-rateLimitCase () =
-    awaiting = Support::awaiting ()
-    response = App::dispatch awaiting.model (Support::http awaiting.model.pending 403 "{\"message\":\"API rate limit exceeded\"}" "")
-    Support::each [Support::it "HTTP status visible" "true" (toString (contains response.model.error "403")), Support::it "GitHub failure detail visible" "true" (toString (contains response.model.error "rate limit"))]
-
-clearAnnotationCase () =
-    notes = Annotations::set "[]" "101" "Remember" "high"
-    cleared = Annotations::set notes "101" "" "normal"
-    Support::each [Support::it "clearing annotation releases local capacity" "[]" cleared, Support::it "normal default survives removal" "normal" (Annotations::get cleared "101").priority]
+    saved = Inbox::update (loaded.stepStore, KeepIssue(keptId = 101), "")
+    again = Inbox::update (saved.stepStore, KeepIssue(keptId = 102), "")
+    empty = Support::fresh ()
+    stale = Support::settled (empty, again.stepStore, saved.stepStore.saveTicket, false, "old write failed")
+    Support::each [Support::it "an older save cannot replace the latest status" again.stepStore.storeProblem stale.stepStore.storeProblem, Support::it "an older save cannot disturb the newer document" "true" (toString (contains (Support::written again 0) "[101,102]"))]
 
 saveDuringRefreshCase () =
     loaded = Support::loaded ()
-    refreshing = Support::refresh loaded
-    failed = App::dispatch refreshing.model (Support::sql loaded.model.write false "[]" "disk full")
-    Support::each [Support::it "save failure cannot end an independent HTTP request" "true" failed.model.loading, Support::it "pending HTTP correlation remains intact" refreshing.model.pending failed.model.pending]
+    refreshing = Inbox::update (loaded.stepStore, Refresh, "")
+    empty = Support::fresh ()
+    failed = Support::settled (empty, refreshing.stepStore, loaded.stepStore.saveTicket, false, "disk full")
+    Support::each [Support::it "a failed save cannot end an independent fetch" "true" (toString refreshing.stepStore.loading), Support::it "the fetch's correlation remains intact" refreshing.stepStore.fetchTicket failed.stepStore.fetchTicket]
+
+saveFailureCase () =
+    loaded = Support::loaded ()
+    saved = Inbox::update (loaded.stepStore, KeepIssue(keptId = 101), "")
+    empty = Support::fresh ()
+    failed = Support::settled (empty, saved.stepStore, saved.stepStore.saveTicket, false, "disk full")
+    Support::each [Support::it "a failed save is visible" "true" (toString (contains failed.stepStore.storeProblem "disk full")), Support::it "a failed save retains the bookmark" "1" (toString (View::markedCount failed.stepStore)), Support::it "a failed save is not retried silently" "0" (toString (length failed.requests))]
+
+kept result = match result
+    Error _why => "false"
+    Success _cache => "true"
+
+invalidCacheCase () =
+    newer = Snapshot::restore "{\"version\":99,\"repo\":\"owner/repo\",\"issues\":[],\"saved\":[],\"notes\":[]}"
+    malformed = Snapshot::restore "{\"version\":1,\"repo\":\"owner/repo\",\"issues\":[{\"id\":7}],\"saved\":[],\"notes\":[]}"
+    Support::each [Support::it "a newer schema cannot be misread" "false" (kept newer), Support::it "malformed cached issues are rejected" "false" (kept malformed)]
+
+rateLimitCase () =
+    asking = Support::fetchAsked ()
+    here = Support::holding (Support::fresh (), "inbox-http", "{\"message\":\"API rate limit exceeded\"}")
+    refused = Support::settled (here, asking.stepStore, asking.stepStore.fetchTicket, true, Support::receipt 403)
+    Support::each [Support::it "HTTP status visible" "true" (toString (contains refused.stepStore.problem "403")), Support::it "GitHub's failure detail is visible" "true" (toString (contains refused.stepStore.problem "rate limit"))]
+
+clearAnnotationCase () =
+    noted = Notes::set [] 101 "Remember" "high"
+    cleared = Notes::set noted 101 "" "normal"
+    plain = Notes::find cleared 101
+    Support::each [Support::it "clearing an annotation releases local capacity" "0" (toString (length cleared)), Support::it "the normal default survives removal" "normal" plain.noteRank]
+
+capacityCase () =
+    filled = filledNotes 0 []
+    own = Notes::find filled 199
+    Support::each [Support::it "two hundred notes fill the inbox" "200" (toString (length filled)), Support::it "a full inbox still serves its own note" "true" own.noteText, Support::it "a full inbox refuses a new note" "false" (toString (Notes::room filled 999))]
+
+filledNotes : int -> List<Note> -> List<Note>
+filledNotes index notes = match index >= 200
+    true => notes
+    false => filledNotes (satAdd index 1) (Notes::set notes (satAdd index 1) "held" "high")
 
 removedSelectionCase () =
-    selected = TriageSupport::selected ()
-    refreshing = Support::refresh selected
-    empty = App::dispatch refreshing.model (Support::http refreshing.model.pending 200 "[]" "")
-    Support::each [Support::it "removed issue closes its detail" "" empty.model.selected, Support::it "valid empty issue page replaces cache" "[]" empty.model.items]
+    loaded = Support::loaded ()
+    selected = Support::updated (loaded.stepStore, OpenIssue(openedId = 101), "")
+    refreshing = Inbox::update (selected, Refresh, "")
+    here = Support::holding (Support::fresh (), "inbox-http", "[]")
+    emptied = Support::settled (here, refreshing.stepStore, refreshing.stepStore.fetchTicket, true, Support::receipt 200)
+    Support::each [Support::it "a removed issue closes its detail" "0" (toString emptied.stepStore.selected), Support::it "a valid empty page replaces the cache" "0" (toString (length emptied.stepStore.issues))]
+
+controlCharacterCase () =
+    loaded = Support::loaded ()
+    selected = Support::updated (loaded.stepStore, OpenIssue(openedId = 101), "")
+    note = "bell(" + (fromCodePoint 7 ?: "") + ") and text"
+    edited = Support::updated (selected, NoteIssue(notedId = 101), note)
+    triage = Notes::find edited.notes 101
+    Support::each [Support::it "control characters survive the note" note triage.noteText]

@@ -8,7 +8,7 @@ namespace ui
 // Each control crosses through the runtime's typed `nativeViewRow`, `nativeViewExtend` and
 // `nativeAsk` builtins: -1 or nonzero refuses the view, and the host then refuses the frame.
 
-(** How one control looks: `ink` and `fill` are `0xRRGGBBAA` text and background colours (a zero fill draws none), `points` the text size, `inset` the padding, `gap` the space between children, `corner` the corner radius and `heft` the font weight from 100 to 900 ([NATIVE-SHM-VIEW]). *)
+(** How one control looks: `ink` and `fill` are `0xRRGGBBAA` text and background colours (a zero fill draws none), `points` the text size, `inset` the padding, `gap` the space between children, `corner` the corner radius and `heft` the font weight from 100 to 900 ([NATIVE-SHM-VIEW]). Two fields carry a second meaning where their first cannot apply: on a control with no children of its own `gap` is its horizontal padding, so a capsule can stand wider than its words, and on a container that draws no text of its own — a column, an across, a scroll or a layer — `points` adds to its vertical padding, so a card can sit deeper than it stands. Both default to changing nothing. *)
 type Look =
     ink : int
     fill : int
@@ -38,6 +38,9 @@ type View A =
     Wording
         wordsLook : Look
         wordsText : string
+    Phrase
+        phraseLook : Look
+        phraseText : string
     Press
         pressLook : Look
         pressWords : string
@@ -139,6 +142,11 @@ module Views
     (** The row `kind` of a `Wording`: text to read. *)
     export label = 2
 
+    (** The row `kind` of a `Phrase`: one styled run of a paragraph. Consecutive phrase rows with
+    one parent draw as one wrapping paragraph, each run wearing its own row's look, and a run's
+    hint names the `https` address it opens. *)
+    export phrase = 17
+
     (** The row `kind` of a `Press`: a button. *)
     export press = 3
 
@@ -202,6 +210,9 @@ module Views
     (** The `traits` flag of a field that delivers its text when committed, not on every edit. *)
     export onCommit = 64
 
+    (** The `traits` flag of text set in the platform's rounded face. *)
+    export rounded = 128
+
     (** A fit that changes nothing. *)
     export natural = Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = 0, edge = 0, hint = "")
 
@@ -253,6 +264,7 @@ module Views
         Column look items => each (seat (walk, column, parent, none, "", look), walk.walkNext, items, 0)
         Across look items => each (seat (walk, line, parent, none, "", look), walk.walkNext, items, 0)
         Wording look words => seat (walk, label, parent, none, words, look)
+        Phrase look words => seat (walk, phrase, parent, none, words, look)
         Press look words action => acting (walk, press, parent, action, words, look)
         Typing look words action => acting (walk, entry, parent, action, words, look)
         Gap => seat (walk, gap, parent, none, "", plain)
