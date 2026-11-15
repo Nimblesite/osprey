@@ -172,3 +172,14 @@ Evidence is retained under `target/pr-validation/synth-stream-*`. Full CI, the r
 - [ ] Retain workers across blocks and feed a continuous audio device queue; this change still uses bounded auditions.
 
 Evidence is retained under `target/pr-validation/prism-pending-*`. This removes duplicated controller bookkeeping; it does not establish continuous playback or windowed screenshot verification.
+
+### Persistent text worker sessions [SYNTH-HOST-STREAM-SESSION]
+
+- [x] Add newline-framed bounded text transactions using the existing packet processor and one retained VST instance.
+- [x] Apply audio limits per transaction while retaining the plug-in sample clock and DSP state across transactions.
+- [x] Require replies before stdin closes; compare exact ADelay continuation and 162 JX10 transactions against a single binary stream, including held-note audio and release to silence.
+- [x] Reject blank, malformed, odd-length, oversized and unterminated transactions without publishing a partial response.
+- [x] Pass all nine worker checks and the existing 44-step native Prism/VST/audio journey after rebuilding with fatal compiler warnings.
+- [ ] Add application-owned session lifetimes, per-request watchdogs and explicit shutdown in the desktop host, then connect continuous graph/device processing.
+
+Evidence is retained under `target/pr-validation/vst-session-*`. The interactive protocol is verified on macOS; Windows/Linux execution, continuous device output, full CI and the duplication gate remain unfinished.

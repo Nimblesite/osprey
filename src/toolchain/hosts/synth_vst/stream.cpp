@@ -127,13 +127,14 @@ bool Plugin::stream(std::istream& input, std::ostream& output, uint64_t frameLim
     written(output, channels(data.numOutputs, data.outputs));
     written(output, component->getBusCount(kEvent, kInput) ? 1 : 0);
     output.flush();
+    const auto firstFrame = context.projectTimeSamples;
     while (input.peek() != std::char_traits<char>::eof()) {
         uint32_t frames = 0;
         error = "Invalid or truncated stream frame count";
         if (!word(input, frames) || frames == 0 || frames > uint32_t(blockSize) ||
             context.projectTimeSamples > std::numeric_limits<int64>::max() - frames) return false;
         error = "Text stream exceeds its bounded frame budget";
-        if (frameLimit && uint64_t(context.projectTimeSamples) + frames > frameLimit) return false;
+        if (frameLimit && uint64_t(context.projectTimeSamples - firstFrame) + frames > frameLimit) return false;
         if (!processBlock(input, output, *this, frames)) return false;
         context.projectTimeSamples += frames;
     }

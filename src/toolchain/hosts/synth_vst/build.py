@@ -7,6 +7,7 @@ import struct
 import math
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 SDK = ROOT / "target/vst3sdk"
@@ -74,6 +75,28 @@ def decoded_audio(output):
     return blocks
 
 
+def session_audio(bundle, identifier, packets):
+    """Each response must arrive before stdin closes; one plug-in owns every transaction."""
+    with subprocess.Popen([str(BUILD / "osprey-vst-worker"), "stream-session", str(bundle), identifier],
+                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as child, ThreadPoolExecutor(max_workers=1) as reader:
+        try:
+            blocks = []
+            for payload in packets:
+                child.stdin.write(payload.hex().encode() + b"\n")
+                child.stdin.flush()
+                response = reader.submit(child.stdout.readline, 4 * 1024 * 1024 + 1).result(timeout=5)
+                assert response.endswith(b"\n") and len(response) <= 4 * 1024 * 1024, "Incomplete or excessive session response"
+                blocks.extend(decoded_audio(bytes.fromhex(response.decode())))
+            child.stdin.close()
+            assert child.wait(timeout=5) == 0, child.stderr.read().decode(errors="replace")
+            return blocks
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=5)
+
+
+
 def stream_tests():
     effect = BUILD / "VST3/Release/adelay.vst3"
     instrument = BUILD / "VST3/Release/mda-vst3.vst3"
@@ -92,6 +115,7 @@ def stream_tests():
     assert list(audio[1]) == [0.5, -0.25] + [0.0] * 254
     text_audio = streamed(effect, delay_id, packet(256, samples, parameters=[(100, 0, 0.0)]) + packet(128, [0.0] * 256), mode="stream-text")
     assert text_audio == audio
+    assert session_audio(effect, delay_id, [packet(256, samples, parameters=[(100, 0, 0.0)]), packet(128, [0.0] * 256)]) == audio
     dense_parameters = [(100, 0, 0.0)] * 1024
     assert len(streamed(effect, delay_id, packet(256, [0.0] * 512, parameters=dense_parameters))) == 1
     streamed(effect, delay_id, packet(256, [0.0] * 512, parameters=dense_parameters + [(100, 0, 0.0)]), False)
@@ -105,6 +129,14 @@ def stream_tests():
     assert not any(voice[0][:34]) and max(map(abs, voice[-1])) == 0
     held = streamed(instrument, synth_id, packet(256, events=[note], parameters=[(18, 0, 0.0)]) + packet(256) * 121)
     assert max(map(abs, held[-1])) > 0.001
+    transactions = [packet(256, events=[note], parameters=[(18, 0, 0.0)])] + [packet(256)] * 20 + [packet(256, events=[release])] + [packet(256)] * 140
+    continued = session_audio(instrument, synth_id, transactions)
+    assert continued == streamed(instrument, synth_id, b"".join(transactions))
+    for invalid in (b"\n", b"0\n", b"GG\n", packet(256).hex().encode(), b"00" * (1024 * 1024 + 1) + b"\n"):
+        result = subprocess.run([str(BUILD / "osprey-vst-worker"), "stream-session", str(instrument), synth_id],
+                                input=invalid, capture_output=True, timeout=15)
+        assert result.returncode != 0 and b"vst.failure" in result.stderr and not result.stdout
+    assert max(map(abs, continued[10])) > 0.001 and max(map(abs, continued[-1])) == 0
     chord = [(1, 0, 48 + i % 24, 0, i, 0.5) for i in range(128)]
     assert len(streamed(instrument, synth_id, packet(256, events=chord))) == 1
     for invalid in (packet(0), packet(257), b"short", packet(256, events=[(1, 256, 60, 0, 42, .8)]),
