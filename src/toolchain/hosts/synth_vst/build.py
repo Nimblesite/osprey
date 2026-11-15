@@ -3,6 +3,8 @@
 import argparse
 import pathlib
 import subprocess
+import struct
+import math
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 SDK = ROOT / "target/vst3sdk"
@@ -34,10 +36,72 @@ def sdk():
         "base", "cmake", "pluginterfaces", "public.sdk")
 
 
+def packet(frames, inputs=(), events=(), parameters=()):
+    return (struct.pack("<III", frames, len(events), len(parameters)) +
+            b"".join(struct.pack("<IIIIIf", *event) for event in events) +
+            b"".join(struct.pack("<IId", *parameter) for parameter in parameters) +
+            struct.pack(f"<{len(inputs)}f", *inputs))
+
+
+def streamed(bundle, identifier, payload, valid=True):
+    result = subprocess.run([str(BUILD / "osprey-vst-worker"), "stream", str(bundle), identifier],
+                            input=payload, capture_output=True, timeout=15)
+    if not valid:
+        assert result.returncode != 0 and b"vst.failure" in result.stderr, result
+        return []
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    magic, inputs, outputs, notes = struct.unpack_from("<4sIII", result.stdout)
+    assert magic == b"OSV1" and outputs == 2 and inputs <= 2 and notes <= 1
+    position, blocks = 16, []
+    while position < len(result.stdout):
+        frames, latency = struct.unpack_from("<II", result.stdout, position)
+        assert 0 < frames <= 256 and latency < 480000
+        position += 8
+        values = struct.unpack_from(f"<{frames * outputs}f", result.stdout, position)
+        assert all(math.isfinite(value) and abs(value) <= 1000000 for value in values)
+        blocks.append(values)
+        position += frames * outputs * 4
+    assert position == len(result.stdout)
+    return blocks
+
+
+def stream_tests():
+    effect = BUILD / "VST3/Release/adelay.vst3"
+    instrument = BUILD / "VST3/Release/mda-vst3.vst3"
+    delay_id, synth_id = "0CDBB66985D548A9BFD8371909D24BB3", "5653544D44416A6D6461206A78313000"
+    # ADelay documents a one-sample minimum; impulses cross the block boundary.
+    samples = [0.25, -0.125] + [0.0] * 508 + [0.5, -0.25]
+    audio = streamed(effect, delay_id, packet(256, samples, parameters=[(100, 0, 0.0)]) + packet(128, [0.0] * 256))
+    assert len(audio) == 2 and list(audio[0]) == [0.0, 0.0] + samples[:-2]
+    assert list(audio[1]) == [0.5, -0.25] + [0.0] * 254
+    # One instance retains the held note through many blocks, then receives its note-off.
+    note = (1, 17, 60, 0, 42, 0.8)
+    release = (2, 0, 60, 0, 42, 0.0)
+    payload = packet(256, events=[note], parameters=[(18, 0, 0.0)]) + packet(256) * 20 + packet(256, events=[release]) + packet(256) * 100
+    voice = streamed(instrument, synth_id, payload)
+    assert len(voice) == 122 and max(map(abs, voice[10])) > 0.001
+    assert not any(voice[0][:34]) and max(map(abs, voice[-1])) == 0
+    held = streamed(instrument, synth_id, packet(256, events=[note], parameters=[(18, 0, 0.0)]) + packet(256) * 121)
+    assert max(map(abs, held[-1])) > 0.001
+    chord = [(1, 0, 48 + i % 24, 0, i, 0.5) for i in range(128)]
+    assert len(streamed(instrument, synth_id, packet(256, events=chord))) == 1
+    for invalid in (packet(0), packet(257), b"short", packet(256, events=[(1, 256, 60, 0, 42, .8)]),
+                    packet(256, events=[(1, 0, 128, 0, 42, .8)]), packet(256, parameters=[(0, 0, float("nan"))]),
+                    packet(256, events=chord + [note]), packet(256, events=[note, (2, 0, 60, 0, 42, 0.0)]),
+                    packet(256, parameters=[(18, 20, .5), (18, 0, .5)]), packet(256, parameters=[(999999, 0, .5)])):
+        streamed(instrument, synth_id, invalid, False)
+    streamed(effect, delay_id, packet(256, [float("nan")] + [0.0] * 511), False)
+    print("Persistent VST audio, note lifecycle, automation and malformed-frame journeys passed")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--test", action="store_true")
+    parser.add_argument("--stream-test", action="store_true")
     args = parser.parse_args()
+    if args.stream_test:
+        stream_tests()
+        return
     sdk()
     run("cmake", "-S", str(pathlib.Path(__file__).parent), "-B", str(BUILD),
         f"-DVST3_SDK={SDK}", "-DCMAKE_BUILD_TYPE=Release")

@@ -1,0 +1,26 @@
+namespace synth
+
+// Generated from typeDiagram [CONV-OSPREY].
+type HostNote =
+    kind : int
+    offset : int
+    pitch : int
+    channel : int
+    identity : int
+    velocity : float
+
+type HostParameter =
+    identity : int
+    offset : int
+    value : float
+
+type HostBlock =
+    frames : int
+    notes : List<HostNote>
+    parameters : List<HostParameter>
+    samples : List<float>
+
+type HostLayout =
+    inputs : int
+    outputs : int
+    acceptsNotes : bool

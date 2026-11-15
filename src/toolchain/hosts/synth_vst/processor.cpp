@@ -1,53 +1,7 @@
-// [SYNTH-HOST-VST] Bounded offline lifecycle probe used before integrating worker streaming.
-#include "public.sdk/source/vst/hosting/module.h"
-#include "public.sdk/source/vst/hosting/plugprovider.h"
-#include "public.sdk/source/vst/hosting/hostclasses.h"
-#include "public.sdk/source/vst/hosting/processdata.h"
-#include "public.sdk/source/vst/hosting/eventlist.h"
-#include "pluginterfaces/vst/ivstaudioprocessor.h"
-#include "pluginterfaces/vst/ivstprocesscontext.h"
-#include "public.sdk/source/vst/hosting/parameterchanges.h"
-#include "public.sdk/source/common/memorystream.h"
-#include <cstring>
-#include <algorithm>
-#include <cmath>
-#include <iostream>
+// [SYNTH-HOST-VST] Shared plug-in lifecycle for probes and persistent worker processing.
+#include "processor.h"
 
-int failed(const std::string& message);
-
-using namespace Steinberg;
-using namespace Steinberg::Vst;
-namespace {
-constexpr int32 blockSize = 256;
-constexpr double sampleRate = 48000;
-
-class Plugin {
-public:
-    VST3::Hosting::Module::Ptr module;
-    IPtr<HostApplication> host = owned(new HostApplication);
-    IPtr<PlugProvider> provider;
-    IPtr<IComponent> component;
-    IPtr<IAudioProcessor> processor;
-    HostProcessData data;
-    ProcessContext context{};
-    EventList events{16};
-    EventList outputEvents{128};
-    bool active = false;
-    bool processing = false;
-    std::string error;
-    ~Plugin() {
-        if (processing) processor->setProcessing(false);
-        if (active) component->setActive(false);
-        PluginContextFactory::instance().setPluginContext(nullptr);
-    }
-    bool open(const std::string& path, const std::string& identifier);
-    bool setup();
-    bool activate(MediaType media, BusDirection direction);
-    bool run(double& peak);
-    bool stateRoundTrip();
-    bool synchronizeController();
-};
-
+namespace osprey::vst {
 bool Plugin::open(const std::string& path, const std::string& identifier) {
     module = VST3::Hosting::Module::create(path, error);
     if (!module) return false;
@@ -234,7 +188,7 @@ bool Plugin::run(double& peak) {
 }
 
 int probe(const std::string& path, const std::string& identifier) {
-    Plugin plugin;
+    osprey::vst::Plugin plugin;
     if (!plugin.open(path, identifier)) return failed(plugin.error);
     double peak = 0;
     if (!plugin.run(peak)) return failed("Plug-in processing failed");
@@ -244,9 +198,15 @@ int probe(const std::string& path, const std::string& identifier) {
 }
 
 int verifyState(const std::string& path, const std::string& identifier) {
-    Plugin plugin;
+    osprey::vst::Plugin plugin;
     if (!plugin.open(path, identifier)) return failed(plugin.error);
     if (!plugin.stateRoundTrip()) return failed(plugin.error);
     std::cout << "{\"event\":\"vst.state-restored\",\"automationOffset\":17}\n";
     return 0;
+}
+
+int streamPlugin(const std::string& path, const std::string& identifier) {
+    osprey::vst::Plugin plugin;
+    if (!plugin.open(path, identifier)) return failed(plugin.error);
+    return plugin.stream() ? 0 : failed(plugin.error);
 }

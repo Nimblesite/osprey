@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 
+int streamPlugin(const std::string& path, const std::string& identifier);
 int probe(const std::string& path, const std::string& identifier);
 int verifyState(const std::string& path, const std::string& identifier);
 
@@ -46,10 +47,11 @@ int scan(const std::string& path) {
 
 int main(int argc, char** argv) {
     try {
+        if (argc == 4 && std::string(argv[1]) == "stream") return streamPlugin(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "verify-state") return verifyState(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "probe") return probe(argv[2], argv[3]);
         if (argc == 3 && std::string(argv[1]) == "scan") return scan(argv[2]);
-        return failed("Usage: osprey-vst-worker scan <plugin.vst3>");
+        return failed("Usage: osprey-vst-worker scan <plugin.vst3> | probe|verify-state|stream <plugin.vst3> <class-id>");
     } catch (const std::exception& error) {
         return failed(error.what());
     } catch (...) {
