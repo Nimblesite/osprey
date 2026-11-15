@@ -271,3 +271,12 @@ _gpui-apps:
 # real C boundary; the probe's has no script and taps its Add button. [GPUI-HOST-VERIFICATION]
 _gpui-smoke: _gpui-apps
 	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/synth src/osprey/examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --smoke || exit 1; done
+
+## _synth_vst_build: Build Prism's isolated VST3 worker from the pinned official SDK.
+.PHONY: _synth_vst_build _synth_vst_test
+_synth_vst_build:
+	python3 src/toolchain/hosts/synth_vst/build.py
+
+## _synth_vst_test: Scan and process real SDK instruments/effects without a window or audio device.
+_synth_vst_test:
+	python3 src/toolchain/hosts/synth_vst/build.py --test

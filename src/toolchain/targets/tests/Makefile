@@ -107,4 +107,8 @@ workbench: build
 workbench-proof-assets:
 	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets
 	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets --check
+## synth-vst: Verify isolated VST3 scanning and real instrument/effect processing headlessly.
+.PHONY: synth-vst
+synth-vst: _synth_vst_test
+
 endif

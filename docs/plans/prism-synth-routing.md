@@ -36,3 +36,14 @@ Graph-edit verification: the added fourteenth synth journey passes under GC and 
 - [ ] Add pointer-based canvas cable editing and movable node positions, with screenshot and windowed verification.
 
 The current component picker offers the six already rendered reference processors. MIDI generators, modulation processors and VST nodes remain pending and are not advertised as working. The generated editor is tested as an application program but the existing launch entry still opens the original Prism surface until playback integration is ready. The VST compatibility source is the [official SDK](https://github.com/steinbergmedia/vst3sdk), including its hosting samples; the selected revision and actual loaded-binary evidence must be recorded before declaring hosting complete.
+
+## VST worker progress [PRISM-ROUTING-VST-WORKER]
+
+- [x] Pin and build the official SDK and a separate native scanning/processing worker without installing user plug-ins.
+- [x] Scan real ADelay and mda modules by stable VST3 class IDs.
+- [x] Initialize, activate and process a real effect and instrument, including note-on/off delivery, finite-output checks, teardown and unload; six bounded worker tests pass on macOS arm64.
+- [ ] Add parameter automation, controller/component state round trips and restart notifications.
+- [ ] Add bounded streaming transport and connect external processor instances to synth graph ports and parameter Signals.
+- [ ] Drive VST discovery/creation and actual playback from Prism's component menu.
+
+`make -C src/toolchain/targets/tests synth-vst` is the repeatable entry point. The ADelay probe measured peak 0.25 from an input impulse; mda JX10 measured peak 0.652497 from MIDI note events. These checks prove real loaded-binary audio processing, not live UI routing, arbitrary plug-in compatibility, process sandboxing or note-release correctness. The seven Prism journeys also pass under ARC. No default-app switch or full CI push has occurred yet.
