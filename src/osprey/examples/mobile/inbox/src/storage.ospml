@@ -1,0 +1,71 @@
+// Implements [MOBILE-HOST-SERVICES]: Osprey supplies SQL and bound parameters.
+namespace mobile
+
+import bank::Json
+import mobile::Model
+import mobile::Github
+import mobile::Annotations
+
+type CacheResult =
+    model : InboxModel
+    valid : bool
+    error : string
+
+type SqlRequest =
+    id : string
+    statement : string
+    params : string
+
+type HttpRequest =
+    id : string
+    url : string
+
+module Storage
+    export effect Requests
+        sql : SqlRequest => string
+        http : HttpRequest => string
+
+    sqlCommand request = Json::arr (Json::obj (
+        Json::strField "kind" "sql" + "," + Json::strField "id" request.id + "," +
+        Json::strField "sql" request.statement + "," + Json::rawField "params" request.params))
+
+    httpCommand request = Json::arr (Json::obj (
+        Json::strField "kind" "http" + "," + Json::strField "id" request.id + "," +
+        Json::strField "url" request.url))
+
+    // The native host executes these commands after the Osprey call returns.
+    export commands work =
+        native = handler Requests
+            sql request => sqlCommand request
+            http request => httpCommand request
+        native work
+
+    export schema () = SqlRequest(id = "schema", statement = "CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)", params = "[]")
+
+    export load () = SqlRequest(id = "load", statement = "SELECT value FROM app_state WHERE key = ?", params = Json::arr (Json::quote "inbox"))
+
+    export save model = SqlRequest(id = model.write, statement = "INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)", params = Json::arr (Json::quote "inbox" + "," + Json::quote (Model::snapshot model)))
+
+    export fetch model = HttpRequest(id = model.pending, url = Github::url model.repo)
+
+    validItem doc index =
+        prefix = "[${index}]"
+        id = Json::scalar doc (prefix + ".id")
+        number = parseInt (Json::scalar doc (prefix + ".number")) ?: 0
+        title = Json::scalar doc (prefix + ".title")
+        author = Json::scalar doc (prefix + ".author")
+        comments = parseInt (Json::scalar doc (prefix + ".comments")) ?: ((0 - 1) )
+        (parseInt id ?: 0) > 0 && number > 0 && length title > 0 && length author > 0 && comments >= 0
+
+    validItems doc index count = Json::everyRow index count (\at => validItem doc at)
+
+    validArray source = Json::validArray source 100 validItems
+
+    export restore model snapshot =
+        repo = Json::getOr snapshot "repo" ""
+        items = Json::getOr snapshot "items" "INVALID"
+        version = Json::getOr snapshot "version" ""
+        annotations = Json::getOr snapshot "annotations" "[]"
+        match version == "1" && Github::validRepository repo && validArray items && Annotations::valid annotations
+            false => CacheResult(model = model, valid = false, error = "The SQLite cache is invalid or uses an unsupported version. Refresh to replace it.")
+            true => CacheResult(model = Model::set (Model::set (Model::set (Model::set model "repo" repo) "items" items) "saved" (Json::getOr snapshot "saved" "|")) "annotations" annotations, valid = true, error = "")

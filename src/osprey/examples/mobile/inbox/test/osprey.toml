@@ -1,7 +1,7 @@
 [project]
-name = "inbox-tests"
-source_roots = [".", "../src", "../../../../packages/native/src", "../../../../packages/graphics/src", "../../../../packages/json/src"]
-default_namespace = "inbox"
+name = "osprey-inbox-tests"
+source_roots = ["../src", "../../../projects/modules/src/domain/json.ospml", "."]
+default_namespace = "inboxtests"
 entry = "main.ospml"
 
 [modules]

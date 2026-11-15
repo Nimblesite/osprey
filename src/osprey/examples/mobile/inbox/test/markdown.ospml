@@ -1,72 +1,36 @@
-// The Markdown boundary: a GitHub description becomes typed blocks and spans, and those become
-// phrase rows the hosts draw as one paragraph. This file sits in the application's namespace so
-// the suite can take the blocks apart as directly as the view does.
-namespace inbox
+namespace inboxtests
 
-import ui::Lists
-import ui::Views
-import inbox::Markdown
-import inbox::View
-import inbox::Support
+import bank::Json
+import mobile::App
+import mobile::Markdown
+import mobile::View
+import mobile::Ui
+import inboxtests::Support
+import inboxtests::TriageSupport
 
 module MarkdownSupport
-    export blocks source = Markdown::render source
-
-    // One block's shape as a word a case can read.
-    export shape block = match block
-        Passage spans => "passage:${toString (length spans)}"
-        Heading major spans => match major
-            true => "heading"
-            false => "subheading"
-        CodeBlock code => "code"
-        Quotation spans => "quote"
-        Divider => "rule"
-        Bullet mark spans => "item:${mark}"
-
-    export blockAt source index = match listGet (blocks source) index
-        Error _missing => "MISSING"
-        Success block => shape block
-
-    export spanAt source index = match listGet (Markdown::spans source) index
-        Error _missing => "MISSING"
-        Success span => "${span.spanKind}:${span.spanText}"
-
-    // One store's first issue body, as a case reads it.
-    export firstBody store = match listGet store.issues 0
-        Error _missing => "MISSING"
-        Success issue => issue.issueBody
+    export nodes source = Json::arr (Markdown::render source)
+    export at source path = Support::projected (nodes source) path
+    export spanAt source path = Support::projected (Json::arr (Markdown::spans source)) path
 
 markdownBlocksCase () =
     source = "# Crash on launch\n\nThe app **crashes** when `main.osp` is empty.\nSecond line.\n\n### Steps\n1. Open app\n2. Reproduce\n- [x] macOS\n- [ ] iOS\n* bullet\n\n> quoted advice\n\n---\n```\nlet x = 1\n\nprint(x)\n```\ntrailing"
-    Support::each [Support::it "a heading is a heading block" "heading" (MarkdownSupport::blockAt source 0), Support::it "a paragraph folds its line breaks" "passage:9" (MarkdownSupport::blockAt source 1), Support::it "a deeper heading is a subheading" "subheading" (MarkdownSupport::blockAt source 2), Support::it "an ordered item keeps its number" "item:1." (MarkdownSupport::blockAt source 3), Support::it "a done task" "item:☑" (MarkdownSupport::blockAt source 5), Support::it "an open task" "item:☐" (MarkdownSupport::blockAt source 6), Support::it "a plain bullet" "item:•" (MarkdownSupport::blockAt source 7), Support::it "a quote block" "quote" (MarkdownSupport::blockAt source 8), Support::it "a horizontal rule" "rule" (MarkdownSupport::blockAt source 9), Support::it "fenced code keeps blank lines" "code" (MarkdownSupport::blockAt source 10), Support::it "text after the fence" "passage:1" (MarkdownSupport::blockAt source 11), Support::it "nothing after the last block" "MISSING" (MarkdownSupport::blockAt source 12)]
+    Support::each [Support::it "heading is rich" "rich" (MarkdownSupport::at source "[0].kind"), Support::it "level one heading style" "heading" (MarkdownSupport::at source "[0].style"), Support::it "heading text" "Crash on launch" (MarkdownSupport::at source "[0].spans[0].text"), Support::it "paragraph keeps line break" " is empty.\nSecond line." (MarkdownSupport::at source "[1].spans[4].text"), Support::it "bold span" "bold" (MarkdownSupport::at source "[1].spans[1].style"), Support::it "code span" "main.osp" (MarkdownSupport::at source "[1].spans[3].text"), Support::it "deeper heading" "subheading" (MarkdownSupport::at source "[2].style"), Support::it "ordered item keeps its number" "1." (MarkdownSupport::at source "[3].children[0].text"), Support::it "ordered item body" "Open app" (MarkdownSupport::at source "[3].children[1].spans[0].text"), Support::it "done task" "☑" (MarkdownSupport::at source "[5].children[0].text"), Support::it "open task" "☐" (MarkdownSupport::at source "[6].children[0].text"), Support::it "bullet item" "•" (MarkdownSupport::at source "[7].children[0].text"), Support::it "quote block" "quote" (MarkdownSupport::at source "[8].style"), Support::it "quote text" "quoted advice" (MarkdownSupport::at source "[8].children[0].spans[0].text"), Support::it "horizontal rule" "divider" (MarkdownSupport::at source "[9].kind"), Support::it "fenced code keeps blank lines" "let x = 1\n\nprint(x)" (MarkdownSupport::at source "[10].text"), Support::it "code style" "code" (MarkdownSupport::at source "[10].style"), Support::it "text after the fence" "trailing" (MarkdownSupport::at source "[11].spans[0].text"), Support::it "nothing after the last block" "MISSING" (MarkdownSupport::at source "[12].kind")]
 
 markdownInlineCase () =
-    Support::each [Support::it "an https link keeps its url" "link:docs" (MarkdownSupport::spanAt "see [docs](https://github.com/x) now" 1), Support::it "text after a link" "plain: now" (MarkdownSupport::spanAt "see [docs](https://github.com/x) now" 2), Support::it "a plain http link is literal" "plain:[" (MarkdownSupport::spanAt "[x](http://evil)" 0), Support::it "unterminated bold stays literal" "plain:**" (MarkdownSupport::spanAt "a **b" 1), Support::it "unterminated code stays literal" "plain:`" (MarkdownSupport::spanAt "tick ` mark" 1), Support::it "italic" "italic:em" (MarkdownSupport::spanAt "an *em* word" 1), Support::it "empty emphasis is literal" "plain:**" (MarkdownSupport::spanAt "****" 0), Support::it "quotes and unicode survive" "plain:say \"hi\" 🦉" (MarkdownSupport::spanAt "say \"hi\" 🦉" 0), Support::it "underscores are text" "plain:snake_case_name" (MarkdownSupport::spanAt "snake_case_name" 0), Support::it "word boundary underscore emphasis" "italic:No Description" (MarkdownSupport::spanAt "_No Description_" 0), Support::it "underscore emphasis before punctuation" "italic:this" (MarkdownSupport::spanAt "see _this_." 1), Support::it "intraword underscore after emphasis stays literal" "plain: my_var" (MarkdownSupport::spanAt "_x_ my_var" 1)]
+    Support::each [Support::it "https link keeps its url" "https://github.com/x" (MarkdownSupport::spanAt "see [docs](https://github.com/x) now" "[1].url"), Support::it "link style" "link" (MarkdownSupport::spanAt "see [docs](https://github.com/x) now" "[1].style"), Support::it "text after a link" " now" (MarkdownSupport::spanAt "see [docs](https://github.com/x) now" "[2].text"), Support::it "plain http link is literal" "[" (MarkdownSupport::spanAt "[x](http://evil)" "[0].text"), Support::it "unterminated bold stays literal" "**" (MarkdownSupport::spanAt "a **b" "[1].text"), Support::it "unterminated code stays literal" "`" (MarkdownSupport::spanAt "tick ` mark" "[1].text"), Support::it "italic" "italic" (MarkdownSupport::spanAt "an *em* word" "[1].style"), Support::it "empty emphasis is literal" "**" (MarkdownSupport::spanAt "****" "[0].text"), Support::it "quotes and unicode survive escaping" "say \"hi\" 🦉" (MarkdownSupport::spanAt "say \"hi\" 🦉" "[0].text"), Support::it "underscores are text" "snake_case_name" (MarkdownSupport::spanAt "snake_case_name" "[0].text"), Support::it "word boundary underscore emphasis" "italic" (MarkdownSupport::spanAt "_No Description_" "[0].style"), Support::it "word boundary underscore text" "No Description" (MarkdownSupport::spanAt "_No Description_" "[0].text"), Support::it "underscore emphasis before punctuation" "italic" (MarkdownSupport::spanAt "see _this_." "[1].style"), Support::it "underscore closing inside a word stays literal" "_" (MarkdownSupport::spanAt "_a_b" "[0].text"), Support::it "intraword underscore after emphasis stays literal" " my_var" (MarkdownSupport::spanAt "_x_ my_var" "[1].text")]
 
 markdownEdgeCase () =
-    check "empty body renders nothing" 0 (length (Markdown::render ""))
-    check "whitespace body renders nothing" 0 (length (Markdown::render " \n\n  "))
-    Support::each [Support::it "a hashtag is a paragraph" "passage:1" (MarkdownSupport::blockAt "#tag" 0), Support::it "an unclosed fence still renders as code" "code" (MarkdownSupport::blockAt "```\nlost" 0), Support::it "seven hashes are text" "passage:1" (MarkdownSupport::blockAt "####### deep" 0), Support::it "a rule needs three marks" "passage:1" (MarkdownSupport::blockAt "--" 0), Support::it "an indented bullet" "item:•" (MarkdownSupport::blockAt "   - nested" 0)]
-
-// The store with one issue whose description is `body`, opened.
-openedWithBody body =
-    asking = Support::fetchAsked ()
-    page = "[{\"id\":101,\"number\":42,\"title\":\"Investigate\",\"user\":{\"login\":\"alice\"},\"comments\":0,\"body\":${body},\"labels\":[]}]"
-    here = Support::holding (Support::fresh (), "inbox-http", page)
-    loaded = Support::settled (here, asking.stepStore, asking.stepStore.fetchTicket, true, Support::receipt 200)
-    Support::updated (loaded.stepStore, OpenIssue(openedId = 101), "")
-
-rows store = (Views::drawn (View::screen store)).walkRows
-
-shows store words = Lists::any (rows store, \seat => seat.placedWords == words)
+    check "empty body renders nothing" "" (Markdown::render "")
+    check "whitespace body renders nothing" "" (Markdown::render " \n\n  ")
+    Support::each [Support::it "hashtag is a paragraph" "rich" (MarkdownSupport::at "#tag" "[0].kind"), Support::it "hashtag style" "body" (MarkdownSupport::at "#tag" "[0].style"), Support::it "unclosed fence still renders as code" "code" (MarkdownSupport::at "```\nlost" "[0].style"), Support::it "unclosed fence content" "lost" (MarkdownSupport::at "```\nlost" "[0].text"), Support::it "seven hashes are text" "body" (MarkdownSupport::at "####### deep" "[0].style"), Support::it "rule needs three marks" "--" (MarkdownSupport::at "--" "[0].spans[0].text"), Support::it "indented bullet" "•" (MarkdownSupport::at "   - nested" "[0].children[0].text")]
 
 markdownDetailCase () =
-    selected = openedWithBody "\"**Steps**\\n- open\\n- crash\""
-    raw = MarkdownSupport::firstBody selected
-    Support::each [Support::it "the view keeps the raw markdown" "**Steps**\n- open\n- crash" raw, Support::it "the description renders phrase runs" "true" (toString (Lists::any (rows selected, \seat => seat.placedKind == Views::phrase))), Support::it "a bold run draws at weight 700" "true" (toString (Lists::any (rows selected, \seat => seat.placedKind == Views::phrase && seat.placedWords == "Steps" && seat.placedLook.heft == 700))), Support::it "a bullet draws its mark" "true" (toString (shows selected "•"))]
-
-
-
-placeholderCase () =
-    bare = openedWithBody "null"
-    Support::each [Support::it "no description keeps the placeholder" "true" (toString (shows bare "The author has not added a description."))]
+    waiting = Support::awaiting ()
+    body = "[{\"id\":101,\"number\":42,\"title\":\"Investigate\",\"user\":{\"login\":\"alice\"},\"comments\":0,\"body\":\"**Steps**\\n- open\\n- crash\",\"labels\":[]}]"
+    loaded = App::dispatch waiting.model (Support::http waiting.model.pending 200 body "")
+    selected = App::dispatch loaded.model (TriageSupport::edit "open" "101" "")
+    view = View::render selected.model
+    ui = Ui::render view
+    check "view keeps the raw markdown" "**Steps**\n- open\n- crash" (Support::projected view "detail.body")
+    Support::each [Support::it "detail screen renders rich nodes" "true" (toString (contains ui "\"kind\":\"rich\"")), Support::it "detail screen renders the bold step" "true" (toString (contains ui "\"text\":\"Steps\",\"style\":\"bold\"")), Support::it "detail screen renders bullets" "true" (toString (contains ui "\"text\":\"•\"")), Support::it "no description keeps the placeholder" "true" (toString (contains (Ui::render (View::render (App::dispatch (Support::loaded ()).model (TriageSupport::edit "open" "101" "")).model)) "The author has not added a description."))]

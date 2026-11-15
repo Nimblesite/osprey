@@ -1,90 +1,74 @@
-// Implements [MOBILE-REACTIVE-UI] and plan 0037 section 9: GitHub's public issues feed is JSON
-// only at this edge — `decode` turns one bounded response body into typed issues (pull requests
-// excluded), and nothing downstream parses a document again.
-namespace inbox
+namespace mobile
 
-import ui::Doc
-import inbox::Text
-
-(** One open issue, everything the inbox shows of it. *)
-type Issue =
-    issueId : int
-    issueNumber : int
-    issueTitle : string
-    issueAuthor : string
-    issueComments : int
-    issueBody : string
-    issueLabels : string
-
-(** What one GitHub entry reads as: an issue, a pull request, or an entry the contract rejects. *)
-type Entry =
-    IsIssue
-        entryIssue : Issue
-    IsPull
-    IsBroken
+import bank::Json
+import mobile::Text
 
 module Github
     allowed code = (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code == 45 || code == 46 || code == 95
 
-    componentFrom : string -> int -> bool
     componentFrom source index = match index >= byteLength source
         true => true
         false => allowed (byteAt source index ?: 0) && componentFrom source (satAdd index 1)
 
     component source = length source > 0 && length source <= 100 && source != "." && source != ".." && componentFrom source 0
 
-    (** `owner/repository` and nothing else: no traversal, no query, no spaces. *)
     export validRepository source = match indexOf source "/"
-        Error _why => false
-        Success slash => component (take source slash) && component (drop source (satAdd slash 1))
+        Error why => false
+        Success slash => component (take source slash) && component (drop source ((satAdd slash 1) ))
 
     export url repo = "https://api.github.com/repos/${repo}/issues?state=open&per_page=30"
 
-    // A `null` body reads as no body; anything else is GitHub's own text.
-    body doc = match Doc::kind (Doc::field (doc, "body"))
-        "null" => ""
-        _other => Doc::string (Doc::field (doc, "body"))
+    positive doc path = (parseInt (Json::scalar doc path) ?: 0) > 0
 
-    labelsFrom : List<Json> -> int -> int -> string
-    labelsFrom doc index count = match index >= count || index >= 10
+    issueValid doc prefix = positive doc (prefix + ".id") && positive doc (prefix + ".number") && length (Json::scalar doc (prefix + ".title")) > 0 && length (Json::scalar doc (prefix + ".user.login")) > 0 && (parseInt (Json::scalar doc (prefix + ".comments")) ?: ((0 - 1) )) >= 0
+
+    optional doc path = match Json::scalar doc path
+        "null" => ""
+        value => value
+
+    labels : int -> string -> int -> int -> string
+    labels doc prefix index count = match index >= count || index >= 10
         true => ""
         false =>
-            name = Doc::string (listGetDoc doc index)
-            rest = labelsFrom doc (satAdd index 1) count
+            name = Json::scalar doc "${prefix}.labels[${index}].name"
+            rest = labels doc prefix ((satAdd index 1) ) count
             match length rest > 0
                 true => name + " · " + rest
                 false => name
 
-    // One label entry, or the null value when the index is past the list.
-    listGetDoc : List<Json> -> int -> Json
-    listGetDoc doc index = match listGet doc index
-        Error _missing => JsonNull
-        Success entry => entry
+    issue doc prefix = Json::obj (Json::members [Json::strField "id" (Json::scalar doc (prefix + ".id")), Json::numField "number" (parseInt (Json::scalar doc (prefix + ".number")) ?: 0), Json::strField "title" (Json::scalar doc (prefix + ".title")), Json::strField "author" (Json::scalar doc (prefix + ".user.login")), Json::numField "comments" (parseInt (Json::scalar doc (prefix + ".comments")) ?: 0), Json::strField "body" (Text::prefix (optional doc (prefix + ".body")) 2000), Json::strField "labels" (labels doc prefix 0 (jsonLength doc (prefix + ".labels")))])
 
-    labels doc = labelsFrom (Doc::fieldItems (doc, "labels")) 0 (length (Doc::fieldItems (doc, "labels")))
-
-    (** One entry as the inbox reads it: an issue, a pull request, or a rejected entry. *)
-    read doc = match Doc::kind (Doc::field (doc, "pull_request")) == "null"
-        false => IsPull
-        true => match Doc::number (doc, "id") > 0 && Doc::number (doc, "number") > 0 && length (Doc::text (doc, "title")) > 0 && length (Doc::text (doc, "user.login")) > 0 && Doc::number (doc, "comments") >= 0
-            false => IsBroken
-            true => IsIssue(entryIssue = Issue(issueId = Doc::number (doc, "id"), issueNumber = Doc::number (doc, "number"), issueTitle = Doc::text (doc, "title"), issueAuthor = Doc::text (doc, "user.login"), issueComments = Doc::number (doc, "comments"), issueBody = Text::prefix (body doc) 2000, issueLabels = labels doc))
-
-    collect : List<Json> -> int -> int -> List<Issue> -> Result<List<Issue>, string>
+    collect : int -> int -> int -> string -> Result<string, string>
     collect doc index count output = match index >= count
-        true => Success(value = output)
+        true => Success(value = Json::arr output)
         false =>
-            next = satAdd index 1
-            match read (listGetDoc doc index)
-                IsPull => collect doc next count output
-                IsIssue held => collect doc next count (listAppend output held)
-                IsBroken => Error(message = "GitHub returned an issue missing a valid id, number, title, author, or comment count.")
+            prefix = "[${index}]"
+            next = (satAdd index 1)
+            match jsonLength doc (prefix + ".pull_request") >= 0
+                true => collect doc next count output
+                false => match issueValid doc prefix
+                    true => collect doc next count (Json::append output (issue doc prefix))
+                    false => Error(message = "GitHub returned an issue missing a valid id, number, title, author, or comment count.")
 
-    (** One bounded page of open issues, or why it cannot become the inbox. *)
-    export decode source = match jsonDecode source
-        Error why => Error(message = "GitHub returned invalid JSON: ${why}")
-        Success doc =>
-            entries = Doc::items doc
-            match length entries <= 100
-                false => Error(message = "GitHub returned more than 100 entries; this inbox accepts one bounded page.")
-                true => collect entries 0 (length entries) []
+    parseDocument doc = match jsonLength doc "" <= 100
+        true => collect doc 0 (jsonLength doc "") ""
+        false => Error(message = "GitHub returned more than 100 entries; this inbox accepts one bounded page.")
+
+    export parse source = match startsWith (trimStart source) "["
+        false => Error(message = "GitHub returned an unexpected document; an issue array was required.")
+        true => match jsonParse source
+            Error why => Error(message = "GitHub returned invalid JSON: ${why}")
+            Success doc =>
+                result = parseDocument doc
+                freed = jsonFree doc ?: 0
+                result
+
+    export responseError event =
+        status = Json::getOr event "status" "0"
+        transport = Json::getOr event "error" ""
+        detail = Json::getOr (Json::getOr event "body" "{}") "message" ""
+        match length transport > 0
+            true => "Network request failed: ${transport}"
+            false => match length detail > 0
+                true => "GitHub HTTP ${status}: ${detail}"
+                false => "GitHub returned HTTP ${status}. Refresh to try again."
