@@ -40,13 +40,15 @@ typedef struct HttpResponse {
 typedef HttpResponse *(*HttpRequestHandler)(char *method, char *path,
                                             char *headers, char *body);
 
+struct HttpPool;
+
 // HTTP Server structure
 typedef struct {
   int64_t id;
   int port;
   char *address;
   int socket_fd;
-  int active_client_fd;
+  struct HttpPool *pool; // [HTTP-SERVER-CONNECTIONS] the poller's workers, under mutex
   bool is_listening;
   bool loop_scheduled;
   bool thread_known;

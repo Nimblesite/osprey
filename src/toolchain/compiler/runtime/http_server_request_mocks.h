@@ -11,8 +11,6 @@
 #include <assert.h>
 #include <stdarg.h>
 
-static int mock_accept(int socket_fd, struct sockaddr *address,
-                       socklen_t *address_length);
 static ssize_t mock_recv(int socket_fd, void *buffer, size_t length, int flags);
 static ssize_t mock_send(int socket_fd, const void *data, size_t length,
                          int flags);
@@ -27,7 +25,6 @@ static int mock_fprintf(FILE *stream, const char *format, ...);
 static void mock_free(void *pointer);
 static uint64_t mock_monotonic_ms(void);
 
-#define accept mock_accept
 #ifdef close
 #undef close
 #endif
@@ -43,6 +40,19 @@ static uint64_t mock_monotonic_ms(void);
 #include "http_server_request.c"
 #include "http_server_response.c"
 #include "http_server_runtime.c"
+
+// The pool drives real sockets and fibers; this unit drives one connection
+// directly through http_serve_connection, so the pool is a stub here.
+void http_pool_run(HttpServer *pooled) { (void)pooled; }
+bool http_pool_owns_thread(HttpServer *pooled) {
+  (void)pooled;
+  return false;
+}
+void http_pool_shutdown_clients(HttpServer *pooled) { (void)pooled; }
+size_t http_pool_serving(HttpServer *pooled) {
+  (void)pooled;
+  return 0;
+}
 #undef HTTP_MONOTONIC_MS
 #undef accept
 #undef close
@@ -97,13 +107,6 @@ int64_t fiber_await(int64_t fiber_id) {
   return 0;
 }
 
-static int mock_accept(int socket_fd, struct sockaddr *address,
-                       socklen_t *address_length) {
-  (void)address;
-  (void)address_length;
-  assert(socket_fd == 7);
-  return 42;
-}
 
 static ssize_t mock_recv(int socket_fd, void *buffer, size_t length,
                          int flags) {
@@ -273,7 +276,6 @@ static void reset_server_fixture(char *address) {
   server.address = address;
   server.id = 1;
   server.socket_fd = -1;
-  server.active_client_fd = -1;
   servers[1] = &server;
 }
 

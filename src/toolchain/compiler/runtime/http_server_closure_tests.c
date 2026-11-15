@@ -3,6 +3,7 @@
 // through http_listen_closure, and a stop from another thread while a client is
 // still connected [HTTP-SERVER].
 #include "http_runtime_tests.h"
+#include "http_server_pool.h"
 #include "http_shared.h"
 
 #include <assert.h>
@@ -159,14 +160,10 @@ void test_closure_listen_rejections(void) {
   assert(http_stop_server(server_id) == 0);
 }
 
-// Reads the live server's claimed-client slot under its own mutex, the way the
-// runtime publishes it; the field is the one a stop from another thread tears
-// down [HTTP-SERVER].
+// Whether a worker is serving a connection: the one a stop from another
+// thread tears down [HTTP-SERVER-CONNECTIONS].
 static bool client_claimed(HttpServer *server) {
-  pthread_mutex_lock(&server->mutex);
-  bool claimed = server->active_client_fd >= 0;
-  pthread_mutex_unlock(&server->mutex);
-  return claimed;
+  return http_pool_serving(server) > 0;
 }
 
 // Waits until the listener has accepted and claimed the paused client, which

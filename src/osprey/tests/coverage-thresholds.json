@@ -309,6 +309,10 @@
       "media_render_runtime": {
         "threshold": 95,
         "language": "c"
+      },
+      "http_server_pool": {
+        "threshold": 90,
+        "language": "c"
       }
     },
     "editor": {

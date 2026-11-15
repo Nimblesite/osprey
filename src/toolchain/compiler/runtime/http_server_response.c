@@ -64,14 +64,20 @@ static const char *status_reason(int64_t status) {
   return "Error";
 }
 
+// The Connection header Node.js sends for each outcome [HTTP-SERVER-CONNECTIONS].
+static const char *connection_header(bool keep_alive) {
+  return keep_alive ? "Connection: keep-alive\r\nKeep-Alive: timeout=5\r\n"
+                    : "Connection: close\r\n";
+}
+
 bool http_send_response(int client_fd, int64_t status, const char *headers,
-                        const char *body, size_t body_bytes) {
+                        const char *body, size_t body_bytes, bool keep_alive) {
   char wire_headers[MAX_HTTP_BUFFER];
   int header_bytes =
       snprintf(wire_headers, sizeof(wire_headers),
-               "HTTP/1.1 %" PRId64 " %s\r\n%sContent-Length: "
-               "%zu\r\nConnection: close\r\n\r\n",
-               status, status_reason(status), headers, body_bytes);
+               "HTTP/1.1 %" PRId64 " %s\r\n%sContent-Length: %zu\r\n%s\r\n",
+               status, status_reason(status), headers, body_bytes,
+               connection_header(keep_alive));
   if (header_bytes < 0 || (size_t)header_bytes >= sizeof(wire_headers)) {
     return false;
   }

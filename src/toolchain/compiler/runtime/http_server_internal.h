@@ -43,6 +43,7 @@ typedef struct {
   size_t received_bytes;
   size_t header_bytes;
   size_t expected_body_bytes;
+  bool keep_alive; // the connection serves another request after this one
 } HttpRequestBuffer;
 
 bool http_socket_interrupted(void);
@@ -53,7 +54,7 @@ void sanitize_log_token(const char *input, char *output, size_t capacity);
 int http_send_all(int socket_fd, const char *data, size_t length);
 bool http_configure_client_socket(int socket_fd);
 bool http_send_response(int client_fd, int64_t status, const char *headers,
-                        const char *body, size_t body_bytes);
+                        const char *body, size_t body_bytes, bool keep_alive);
 void http_log_exchange(const HttpRequestBuffer *request,
                        RequestReadStatus read_status, int64_t status,
                        size_t response_bytes, bool sent);
