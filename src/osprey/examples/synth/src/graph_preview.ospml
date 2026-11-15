@@ -6,25 +6,15 @@ import ui::Requests
 
 (** Execute actual routed VST audio through bounded worker stdin/stdout requests. *)
 module GraphPreview
-    frames = 12288
+    frames = 256
 
-    problem (editor, why) = Runtime::step (editor(renderTicket = "", renderPending = [], message = "Graph playback failed: ${why}"))
-
-    header (key, value) = ui::Header(headerName = key, headerValue = value)
-
-    request (editor, n, pending, binding, hex) =
-        ticket = "prism-audio:${editor.renderSerial}:${n.identity}"
-        input = "${ticket}:input"
-        arguments = [header ("executable", editor.workerPath), header ("argv", "stream-text"), header ("argv", binding.pluginModule), header ("argv", binding.pluginClass), header ("stdinSlice", input)]
-        capability = ui::HostCall(hostNamespace = "process", hostOperation = "input", hostArguments = arguments, hostTimeout = 10000, hostLimit = 4194304, hostSlice = ticket)
-        next = editor(renderTicket = ticket, renderPending = [pending], message = "Rendering ${binding.pluginName}. The audition uses the patch as it was when started.")
-        ui::Step(stepStore = next, requests = [Requests::ask (ticket, capability)], writes = [Requests::write (input, hex)])
+    problem (editor, why) = GraphWorkers::release (Runtime::step (editor(message = "Graph playback failed: ${why}")))
 
     encoded (editor, n, block, pending, binding) = match ClipInputs::layout n
         Error why => problem (editor, why)
         Success layout => match HostPackets::clip (layout, block)
             Error why => problem (editor, why)
-            Success hex => request (editor, n, pending, binding, hex)
+            Success hex => GraphWorkers::request (editor, pending, binding, hex)
 
     waiting (editor, block, pending) = match Graphs::node (pending.pendingGraph, pending.pendingNode)
         Invalid _ => problem (editor, "The scheduled VST node is absent.")
@@ -36,18 +26,22 @@ module GraphPreview
                 _ => problem (editor, "Only VST nodes may request the native worker.")
             _ => problem (editor, "The VST node has no unique module binding.")
 
-    finished (editor, graph, clips) = match filterList (graph.nodes, \n => n.processor == Sink)
+    finished (editor, graph, held, clips) = match filterList (graph.nodes, \n => n.processor == Sink)
         [sink] => match ClipInputs::completed (clips, sink.identity)
             Error why => problem (editor, why)
-            Success clip => match WaveFiles::interleaved (48000, clip.clipChannels, clip.clipSamples)
-                Error why => problem (editor, why)
-                Success hex => Preview::playWave (editor(renderTicket = "", renderPending = []), hex)
+            Success clip =>
+                next = editor(renderChunks = listAppend editor.renderChunks clip.clipSamples)
+                match held.graphPosition < 12288
+                    true => advance (next, graph, GraphClips::next (graph, held, frames))
+                    false => match WaveFiles::interleaved (48000, clip.clipChannels, foldList (next.renderChunks, [], \(all, chunk) => listConcat all chunk))
+                        Error why => problem (next, why)
+                        Success hex => GraphWorkers::release (Preview::playWave (next, hex))
         _ => problem (editor, "The graph needs exactly one audio output.")
 
     advance (editor, graph, outcome) = match outcome
         Error why => problem (editor, why)
         Success action => match action
-            BlockReady _ clips => finished (editor, graph, clips)
+            BlockReady held clips => finished (editor, graph, held, clips)
             BlockWaiting block pending => waiting (editor, block, pending)
 
     requiresHost n = match n.processor
@@ -67,7 +61,7 @@ module GraphPreview
                 true => Preview::play (editor, platform)
                 false => match editor.renderSerial == 9223372036854775807
                     true => problem (editor, "No more render identities are available.")
-                    false => advance (editor(renderBindings = editor.pluginBindings, renderPending = [], renderSerial = satAdd editor.renderSerial 1), editor.graph, GraphClips::start (editor.graph, frames))
+                    false => advance (editor(renderBindings = editor.pluginBindings, renderPending = [], renderSessions = [], renderChunks = [], renderSerial = satAdd editor.renderSerial 1), editor.graph, GraphClips::start (editor.graph, frames))
 
     decoded (editor, pending, n, layout, text) = match HostResponses::clip (text, layout, pending.pendingFrames)
         Error why => problem (editor, why)
@@ -87,9 +81,25 @@ module GraphPreview
         [pending] => receivedPending (editor, pending, text)
         _ => problem (editor, "The worker reply has no unique pending graph request.")
 
-    (** A stale or duplicate completion never advances the current graph. *)
-    export completed (editor, ticket, outcome) = match ticket == editor.renderTicket && ticket != ""
-        false => Runtime::step editor
-        true => match ProcessResults::checked outcome
+    opened (editor, outcome) = match outcome
+        Error why => problem (editor, why)
+        Success text => match GraphWorkers::opened (editor, text)
             Error why => problem (editor, why)
-            Success _ => received (editor, perform ui::Slices.fetch ticket)
+            Success next => match GraphWorkers::sendOpened next
+                Error why => problem (next, why)
+                Success step => step
+
+    closing (editor, outcome) = match ProcessResults::checked outcome
+        Error why => Runtime::step (editor(message = "${editor.message} Worker cleanup failed: ${why}"))
+        Success _ => Runtime::step editor
+
+    (** A stale or duplicate completion never advances the current graph. *)
+    export completed (editor, ticket, outcome) = match startsWith ticket "prism-audio:close:"
+        true => closing (editor, outcome)
+        false => match ticket == editor.renderTicket && ticket != ""
+            false => Runtime::step editor
+            true => match ProcessResults::checked outcome
+                Error why => problem (editor, why)
+                Success _ => match editor.renderOpening
+                    true => opened (editor, outcome)
+                    false => received (editor, perform ui::Slices.fetch ticket)

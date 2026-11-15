@@ -11,6 +11,10 @@ type PluginBinding =
     pluginClass : string
     pluginName : string
 
+type RenderSession =
+    sessionNode : int
+    sessionKey : string
+
 type NodePosition =
     layoutNode : int
     layoutX : float
@@ -40,6 +44,10 @@ type Editor G P =
     renderBindings : List<PluginBinding>
     renderSerial : int
     renderTicket : string
+    renderSessions : List<RenderSession>
+    renderOpening : bool
+    renderInput : string
+    renderChunks : List<List<float>>
 
 type EditorAction =
     Add

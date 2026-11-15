@@ -151,16 +151,39 @@ def stream_tests():
 def recording_worker(destination):
     """Capture the actual worker boundary for independent PCM and MIDI assertions."""
     script = destination / "record-worker.py"
-    source = """import json, pathlib, subprocess, sys
+    source = """import json, os, pathlib, subprocess, sys, threading, time
 root = pathlib.Path(__file__).parent
-payload = sys.stdin.buffer.read() if sys.argv[1] == 'stream-text' else None
-result = subprocess.run([WORKER, *sys.argv[1:]], input=payload, capture_output=True, timeout=15)
-if payload is not None:
-    path = root / ('audio-%03d.json' % len(list(root.glob('audio-*.json'))))
-    path.write_text(json.dumps({'arguments':sys.argv[1:], 'input':payload.decode(), 'output':result.stdout.decode(), 'status':result.returncode}))
-sys.stdout.buffer.write(result.stdout)
-sys.stderr.buffer.write(result.stderr)
-sys.exit(result.returncode)
+if sys.argv[1] == 'stream-session':
+    child = subprocess.Popen([WORKER, *sys.argv[1:]], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    def diagnostics():
+        for line in child.stderr:
+            sys.stderr.buffer.write(line)
+            sys.stderr.buffer.flush()
+    threading.Thread(target=diagnostics, daemon=True).start()
+    try:
+        for index, payload in enumerate(sys.stdin.buffer):
+            child.stdin.write(payload)
+            child.stdin.flush()
+            output = child.stdout.readline(4194306)
+            if not output.endswith(b'\\n'):
+                raise RuntimeError('Worker ended before a bounded response')
+            record = {'arguments':sys.argv[1:], 'input':payload.decode().strip(),
+                      'output':output.decode().strip(), 'status':0, 'session':os.getpid(), 'order':time.monotonic_ns()}
+            (root / ('audio-%s-%05d.json' % (os.getpid(), index))).write_text(json.dumps(record))
+            sys.stdout.buffer.write(output)
+            sys.stdout.buffer.flush()
+    finally:
+        child.stdin.close()
+        try:
+            child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait()
+else:
+    result = subprocess.run([WORKER, *sys.argv[1:]], capture_output=True, timeout=15)
+    sys.stdout.buffer.write(result.stdout)
+    sys.stderr.buffer.write(result.stderr)
+    sys.exit(result.returncode)
 """
     script.write_text(f"#!{sys.executable}\nWORKER = {str(BUILD / 'osprey-vst-worker')!r}\n" + source)
     script.chmod(0o755)
@@ -209,8 +232,16 @@ def stationary_control(record, identity):
 
 
 def check_prism_audio(destination):
-    records = [json.loads(path.read_text()) for path in sorted(destination.glob("audio-*.json"))]
-    assert len(records) == 3 and all(record["status"] == 0 for record in records), records
+    transactions = sorted((json.loads(path.read_text()) for path in destination.glob("audio-*.json")), key=lambda r: r["order"])
+    sessions = {}
+    for record in transactions:
+        sessions.setdefault(record["session"], []).append(record)
+    assert len(sessions) == 3 and all(len(blocks) == 48 for blocks in sessions.values()), "Expected three retained workers, each processing 48 blocks"
+    records = []
+    for blocks in sessions.values():
+        assert all(block["status"] == 0 and block["arguments"] == blocks[0]["arguments"] for block in blocks)
+        records.append({**blocks[0], "input": "".join(block["input"] for block in blocks),
+                        "output": blocks[0]["output"][:32] + "".join(block["output"][32:] for block in blocks)})
     samples = [[sample for block in decoded_audio(bytes.fromhex(record["output"])) for sample in block]
                for record in records]
     events, parameters = recorded_events(records[0])

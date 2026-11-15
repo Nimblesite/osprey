@@ -192,3 +192,14 @@ Evidence is retained under `target/pr-validation/vst-session-*`. The interactive
 - [ ] Adopt these sessions in Prism's audio execution and feed the continuous device queue.
 
 The 101 desktop host tests pass and strict Clippy passes. These are real process-lifecycle tests; the existing VST session suite independently proves retained DSP. They do not yet prove Prism owns a persistent VST instance or continuous device playback. Normal shutdown clears retained children; process isolation is not a sandbox and does not claim ownership of arbitrary plug-in descendants.
+
+
+### Prism retained graph execution [PRISM-ROUTING-SESSIONS]
+
+- [x] Replace one-shot worker invocation with typed application-owned session handles and 256-frame graph blocks.
+- [x] Preserve independent built-in channel states, absolute MIDI/modulation timing, frozen graph bindings and one live VST instance per node for the complete audition.
+- [x] Close retained sessions on completion/failure and keep cleanup errors visible without hiding the original failure.
+- [x] Run the 44-step native headless journey against real instrument/effect binaries: three distinct worker sessions each process 48 requests, with exact chained PCM and modulation checks.
+- [ ] Feed the retained graph into a continuous audio device queue with live graph/parameter changes.
+
+The loaded application journey now exercises 96 effect exchanges through host completions, rejects stale replies, preserves the frozen graph after a node is deleted, and checks ownership release. All twelve journeys pass under ARC. Native evidence is under `target/pr-validation/prism-session-*`; each transaction is retained in the native journey's recording directory. This verifies actual Prism-to-worker session integration, but the device still plays a bounded rendered WAV through `afplay`.
