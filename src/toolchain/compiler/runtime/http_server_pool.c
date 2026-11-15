@@ -96,10 +96,15 @@ static bool open_wake_pair(int pair[2]) {
                bind(listener, (struct sockaddr *)&address, sizeof(address)) == 0 &&
                listen(listener, 1) == 0 &&
                getsockname(listener, (struct sockaddr *)&address, &length) == 0;
-  pair[1] = ready ? socket(AF_INET, SOCK_STREAM, 0) : -1;
+  // Plain assignments: on Windows these return an unsigned SOCKET.
+  if (ready) {
+    pair[1] = socket(AF_INET, SOCK_STREAM, 0);
+  }
   ready = pair[1] >= 0 &&
           connect(pair[1], (struct sockaddr *)&address, sizeof(address)) == 0;
-  pair[0] = ready ? accept(listener, NULL, NULL) : -1;
+  if (ready) {
+    pair[0] = accept(listener, NULL, NULL);
+  }
   if (listener >= 0) {
     close(listener);
   }
