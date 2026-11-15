@@ -115,9 +115,13 @@ fn a_project_whose_mathematics_is_lean_builds_and_runs() {
         );
     }
     let stored = scratch.0.join(".osprey/math/src/Kernels.lean.ospml");
+    let text = std::fs::read_to_string(&stored).ok();
+    assert_eq!(text.as_deref(), Some(GENERATED));
+    let formatted = osprey(&["fmt", "--check", &stored.to_string_lossy()]);
     assert_eq!(
-        std::fs::read_to_string(stored).ok().as_deref(),
-        Some(GENERATED)
+        formatted.0,
+        Some(0),
+        "a generated module is already formatted: {formatted:?}"
     );
 
     let _ = scratch.write(

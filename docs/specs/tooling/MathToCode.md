@@ -102,6 +102,7 @@ One math source generates one ML-flavor module.
 - Documentation is the Lean docstring; a public definition without one is documented by its name and source file.
 - The bytes are a function of the source text and file name alone. Generation reads no clock, locale, environment or other file.
 - Every definition of the source appears in source order, or nothing is generated.
+- The module is already in the formatter's form: `osprey fmt --check` accepts it unchanged.
 
 ### Untracked by default [MATH-CODE-UNTRACKED]
 
