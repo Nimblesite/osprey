@@ -6,3 +6,6 @@ type HostLayout { inputChannels: Int outputChannels: Int acceptsNotes: Bool }
 type HostControl { identity: Int name: String initial: Float automatable: Bool }
 type HostDescriptor { identifier: String name: String inputChannels: Int outputChannels: Int notes: Bool controls: List<HostControl> }
 type HostRendered { renderChannels: Int renderFrames: Int renderLatency: Int renderSamples: List<Float> }
+type NodeClip { clipNode: Int clipChannels: Int clipSamples: List<Float> clipNotes: List<HostNote> }
+union ClipAction { ClipReady { clips: List<NodeClip> } ClipWaiting { node: Int request: HostBlock clips: List<NodeClip> } }
+type ClipKernel<K> { heldKernel: K kernelSamples: List<Float> }

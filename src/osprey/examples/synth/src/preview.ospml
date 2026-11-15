@@ -22,12 +22,15 @@ module Preview
     // File::Temp creates the file exclusively and removes it after playback, including failures.
     script = "use File::Temp qw(tempfile); die 'invalid PCM hex' unless $ARGV[0] =~ /\\A[0-9A-F]+\\z/ && length($ARGV[0]) % 2 == 0; my ($f,$path)=tempfile('osprey-prism-XXXXXX',TMPDIR=>1,UNLINK=>1); binmode $f; print {$f} pack('H*',$ARGV[0]) or die 'PCM write failed'; close $f or die 'PCM close failed'; system('/usr/bin/afplay',$path)==0 or die 'Audio playback failed'; print qq({\"event\":\"audio.preview\",\"frames\":12288}\\n);"
 
+    (** Play checked PCM from either the built-in or hosted graph renderer. *)
+    export playWave (editor, hex) = Runtime::asking (editor(message = "Playing the current patch."), [Requests::ask ("prism-preview", ui::Run(executable = "/usr/bin/perl", arguments = ["-e", script, hex], timeout = 10000, outputLimit = 4096, plist = false, runSlice = "prism-preview"))])
+
     (** Device work stays in a host request; graph construction and PCM stay in Osprey. *)
     export play (editor, platform) = match platform == "macos"
         false => Runtime::step (editor(message = "This preview device adapter currently requires macOS."))
         true => match wave editor.graph
             Error why => Runtime::step (editor(message = why))
-            Success hex => Runtime::asking (editor(message = "Playing the current patch."), [Requests::ask ("prism-preview", ui::Run(executable = "/usr/bin/perl", arguments = ["-e", script, hex], timeout = 10000, outputLimit = 4096, plist = false, runSlice = "prism-preview"))])
+            Success hex => playWave (editor, hex)
 
     (** Host failures remain visible instead of silently leaving the app in a playing state. *)
     export completed (editor, ticket, outcome) = match ticket == "prism-preview"

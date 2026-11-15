@@ -1,0 +1,61 @@
+// [SYNTH-HOST-GRAPH] Multichannel offline execution reuses the reference DSP kernels.
+namespace synth
+
+(** Run a built-in component against previously completed graph inputs. *)
+module ClipKernels
+    source (clips, index, channel, outcome, cable) = match outcome
+        Error why => Error(message = why)
+        Success values => match ClipInputs::completed (clips, cable.source)
+            Error why => Error(message = why)
+            Success clip => match listGet clip.clipSamples (satAdd (satMul index clip.clipChannels) channel)
+                Error why => Error(message = why)
+                Success sample => Success(value = listAppend values (NodeSample(identity = cable.source, value = sample)))
+
+    delay (plan, n, frame) = match n.processor
+        Delay _ => Renderer::writeDelay (plan, frame, n.identity, 0)
+        _ => Success(value = frame)
+
+    retained (n, frame, samples) = match RenderInputs::held (frame, n.identity)
+        Error why => Error(message = why)
+        Success held => match RenderInputs::sample (frame, n.identity)
+            Error why => Error(message = why)
+            Success sample => Success(value = ClipKernel(heldKernel = held, kernelSamples = listPrepend samples sample))
+
+    rendered (plan, snapshot, n, held, values) =
+        frame = SampleFrame(states = [held.heldKernel], values = values)
+        match RenderKernels::step (plan, 48000.0, snapshot, frame, n.identity)
+            Error why => Error(message = why)
+            Success next => match delay (plan, n, next)
+                Error why => Error(message = why)
+                Success finished => retained (n, finished, held.kernelSamples)
+
+    sample (plan, snapshot, clips, n, channel, outcome, index) = match outcome
+        Error why => Error(message = why)
+        Success held => match foldList (filterList (plan.graph.cables, \c => c.destination == n.identity), Success(value = []), \(values, cable) => source (clips, index, channel, values, cable))
+            Error why => Error(message = why)
+            Success values => rendered (plan, snapshot, n, held, values)
+
+    channel (plan, snapshot, clips, n, frames, outcome, channel) = match outcome
+        Error why => Error(message = why)
+        Success buffers =>
+            initial = ClipKernel(heldKernel = RenderInputs::initialState n, kernelSamples = [])
+            match foldList (toList (range (0, frames)), Success(value = initial), \(held, index) => sample (plan, snapshot, clips, n, channel, held, index))
+                Error why => Error(message = why)
+                Success result => Success(value = listAppend buffers (listReverse result.kernelSamples))
+
+    interleave (buffers, channels, outcome, index) = match outcome
+        Error why => Error(message = why)
+        Success samples => match listGet buffers (index % channels)
+            Error why => Error(message = why)
+            Success channel => match listGet channel (intDiv index channels)
+                Error why => Error(message = why)
+                Success sample => Success(value = listPrepend samples sample)
+
+    (** Independent per-channel state preserves oscillator, filter and delay behavior. *)
+    export render (plan, clips, n, frames, channels) = match channels >= 1 && channels <= 64 && frames > 0 && satMul frames channels <= 65536
+        false => Error(message = "The graph clip exceeds its channel or frame capacity.")
+        true => match foldList (toList (range (0, channels)), Success(value = []), \(outcome, index) => channel (plan, Parameters::initial plan.graph, clips, n, frames, outcome, index))
+            Error why => Error(message = why)
+            Success buffers => match foldList (toList (range (0, satMul frames channels)), Success(value = []), \(outcome, index) => interleave (buffers, channels, outcome, index))
+                Error why => Error(message = why)
+                Success reversed => Success(value = listReverse reversed)

@@ -1,0 +1,70 @@
+// [SYNTH-HOST-GRAPH] Reject unsupported buses before allocating or running any kernel.
+namespace synth
+
+(** Layout and resource limits for the offline multichannel graph executor. *)
+module ClipLayouts
+    audio ports = length (filterList (ports, \p => p.rate == Audio && p.unit == Amplitude)) == length ports
+
+    notes ports = length (filterList (ports, \p => p.rate == Events && p.unit == Notes && p.channels == 1)) == length ports
+
+    uniform (n, inputs, outputs) = match listGet (listConcat n.inputs n.outputs) 0
+        Error _ => false
+        Success first => length n.inputs == inputs && length n.outputs == outputs && audio (listConcat n.inputs n.outputs) && length (filterList (listConcat n.inputs n.outputs, \p => p.channels == first.channels)) == inputs + outputs
+
+    stereo n = match n.inputs
+        [input] => match n.outputs
+            [output] => input.channels == 1 && output.channels == 2 && audio [input, output]
+            _ => false
+        _ => false
+
+    external n = match ClipInputs::layout n
+        Error _ => false
+        Success layout =>
+            audioCount = length (filterList (n.inputs, \p => p.rate == Audio && p.unit == Amplitude))
+            noteCount = length (filterList (n.inputs, \p => p.rate == Events && p.unit == Notes && p.channels == 1))
+            audioFirst = match n.inputs
+                [] => true
+                [first, ..._rest] => audioCount == 0 || first.rate == Audio
+            audioCount <= 1 && noteCount <= 1 && audioCount + noteCount == length n.inputs && length n.outputs == 1 && audio n.outputs && layout.outputChannels >= 1 && audioFirst
+
+    (** Processor layouts are exact: no ignored extra ports or implicit channel conversion. *)
+    export supported n = match n.processor
+        MidiNotes => length n.inputs == 0 && length n.outputs == 1 && notes n.outputs
+        Stereo => stereo n
+        Oscillator => uniform (n, 0, 1)
+        Sink => uniform (n, 1, 0)
+        Mixer => uniform (n, 2, 1)
+        External _ => external n
+        _ => uniform (n, 1, 1)
+
+    (** Sinks retain their input channel count in the completed output clip. *)
+    export channels n = match n.processor
+        MidiNotes => Success(value = 0)
+        Sink => match listGet n.inputs 0
+            Error why => Error(message = why)
+            Success port => Success(value = port.channels)
+        _ => match listGet n.outputs 0
+            Error why => Error(message = why)
+            Success port => Success(value = port.channels)
+
+    delay n = match n.processor
+        Delay count => match channels n
+            Error _ => 1920001
+            Success width => satMul count width
+        _ => 0
+
+    (** Bound all per-channel delay state before any buffer is allocated. *)
+    export bounded (graph, frames) = frames > 0 && frames <= 32768 && foldList (graph.nodes, 0, \(total, n) => satAdd total (delay n)) <= 1920000 && length (filterList (graph.nodes, \n => supported n)) == length graph.nodes
+
+    noteClip (n, frames, clip) = match n.processor
+        MidiNotes => match MidiClips::window (n, 0, frames)
+            Error _ => false
+            Success notes => structuralEquals (notes, clip.clipNotes)
+        _ => length clip.clipNotes == 0
+
+    (** Revalidate public cached buffers before allowing them to feed another node. *)
+    export validClip (graph, frames, clip) = match Graphs::node (graph, clip.clipNode)
+        Invalid _ => false
+        Valid n => match channels n
+            Error _ => false
+            Success count => clip.clipChannels == count && length clip.clipSamples == satMul frames count && length clip.clipSamples <= 65536 && length (filterList (clip.clipSamples, \sample => sample == sample && abs sample <= 1000000.0)) == length clip.clipSamples && noteClip (n, frames, clip)

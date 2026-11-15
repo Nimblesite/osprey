@@ -14,7 +14,7 @@ extern native_slice (key : string) -> string
 
 (** Hands the next surface to the cell below. *)
 effect Keep
-    keep : ui::Surface<synth::Editor<synth::Graph>, synth::EditorAction> => Unit
+    keep : ui::Surface<synth::Editor<synth::Graph, synth::NodeClip>, synth::EditorAction> => Unit
 
 mut held = Surfaces::idle (synth::EditorState::initial ())
 

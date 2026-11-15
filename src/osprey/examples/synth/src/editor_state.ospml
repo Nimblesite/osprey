@@ -4,7 +4,7 @@ namespace synth
 (** Draft graph editing shared by native controls and canvas interactions. *)
 module EditorState
     (** A fresh patch; identities are monotonic and never reused after deletion. *)
-    export initial () = Editor(graph = Graphs::empty, selected = -1, nextIdentity = 0, source = -1, outlet = 0, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", pluginPath = "", catalog = [], pluginBindings = [], pluginSerial = 0, pluginTicket = "", pluginClassId = "")
+    export initial () = Editor(graph = Graphs::empty, selected = -1, nextIdentity = 0, source = -1, outlet = 0, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", pluginPath = "", catalog = [], pluginBindings = [], pluginSerial = 0, pluginTicket = "", pluginClassId = "", renderGraph = Graphs::empty, renderClips = [], renderBindings = [], renderSerial = 0, renderTicket = "", renderNode = -1)
 
     (** Available component factories expose their real audio or event ports. *)
     export kinds = ["sine", "filter", "gain", "mixer", "delay", "output", "midi-note", "stereo", "stereo-output"]

@@ -105,6 +105,8 @@ editorUiJourney () =
     expect (length removed.drivenSurface.surfaceSession.sessionStore.graph.cables, 0)
     expect (uitest::Views::letters (removed.drivenSeen, "Gain 1"), false)
 
+zeroStereoResponse () = "4F535631020000000200000000000000" + join (mapList (toList (range (0, 48)), \_ => "0001000000000000" + join (mapList (toList (range (0, 512)), \_ => "00000000")) "")) ""
+
 descriptorFixture = "{\"id\":\"0CDBB66985D548A9BFD8371909D24BB3\",\"name\":\"ADelay\",\"inputs\":2,\"outputs\":2,\"notes\":false,\"parameters\":[{\"id\":100,\"name\":\"Delay\",\"initial\":1.0,\"automatable\":true}]}"
 
 // [PRISM-ROUTING-VST] Discovery and creation travel through host requests, receipts and slices.
@@ -114,6 +116,8 @@ pluginUiJourney () =
             "prism-vst:scan:2" => "{\"event\":\"vst.class\",\"id\":\"0CDBB66985D548A9BFD8371909D24BB3\",\"name\":\"ADelay\",\"categories\":\"Fx|Delay\"}\n"
             "prism-vst:describe:3" => descriptorFixture
             "prism-vst:describe:4" => descriptorFixture
+            "prism-audio:1:0" => zeroStereoResponse ()
+            "prism-audio:1:1" => zeroStereoResponse ()
             _ => "malformed metadata"
     idle = Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ())
     opened = Drive::launched (idle, "macos", ["--empty", "--vst-worker", "/worker/osprey-vst-worker"])
@@ -147,6 +151,41 @@ pluginUiJourney () =
     expect (length twice.drivenSurface.surfaceSession.sessionStore.pluginBindings, 2)
     connected = Drive::press (Drive::press (twice, "Source 0: audio"), "Connect 1: audio")
     expect (length connected.drivenSurface.surfaceSession.sessionStore.graph.cables, 1)
+    oscillator = Drive::choose (connected, "Add component", "sine")
+    stereo = Drive::choose (oscillator, "Add component", "stereo")
+    sink = Drive::choose (stereo, "Add component", "stereo-output")
+    widened = Drive::press (Drive::press (sink, "Source 2: audio"), "Connect 3: audio")
+    fed = Drive::press (Drive::press (widened, "Source 3: audio"), "Connect 0: audio")
+    finished = Drive::press (Drive::press (fed, "Source 1: audio"), "Connect 4: audio")
+    audition = Drive::press (finished, "Audition patch")
+    expect (length audition.drivenSurface.surfaceAsked, 1)
+    match listGet audition.drivenSurface.surfaceAsked 0
+        Error _ => expect (false, true)
+        Success request => match request.capability
+            ui::HostCall host operation arguments timeout limit slice =>
+                expect (host, "process")
+                expect (operation, "input")
+                expect (timeout, 10000)
+                expect (limit, 4194304)
+                expect (startsWith slice "prism-audio:", true)
+                expect (length arguments > 3, true)
+            _ => expect (false, true)
+    busy = Drive::press (audition, "Audition patch")
+    expect (length busy.drivenSurface.surfaceAsked, 0)
+    changed = Drive::press (Drive::press (audition, "Select 1"), "Remove selected")
+    expect (length changed.drivenSurface.surfaceSession.sessionStore.pluginBindings, 1)
+    nextEffect = Drive::completed (changed, "prism-audio:1:0", true, "{\"status\":0,\"stderr\":\"\"}")
+    expect (nextEffect.drivenSurface.surfaceSession.sessionStore.renderNode, 1)
+    expect (length nextEffect.drivenSurface.surfaceAsked, 1)
+    staleAudio = Drive::completed (nextEffect, "prism-audio:1:0", true, "{\"status\":0,\"stderr\":\"\"}")
+    expect (staleAudio.drivenSurface.surfaceSession.sessionStore.renderTicket, "prism-audio:1:1")
+    played = Drive::completed (nextEffect, "prism-audio:1:1", true, "{\"status\":0,\"stderr\":\"\"}")
+    expect (Drive::shows (played, "Playing the current patch."), true)
+    expect (length played.drivenSurface.surfaceAsked, 1)
+    expect (played.drivenSurface.surfaceSession.sessionStore.renderTicket, "")
+    crashed = Drive::completed (audition, "prism-audio:1:0", true, "{\"status\":1,\"stderr\":\"plug-in failed\"}")
+    expect (Drive::shows (crashed, "Graph playback failed: plug-in failed"), true)
+    expect (length crashed.drivenSurface.surfaceSession.sessionStore.renderClips, 0)
     thirdLoading = Drive::choose (twice, "Add VST3", "0CDBB66985D548A9BFD8371909D24BB3")
     malformed = Drive::completed (thirdLoading, "prism-vst:describe:5", true, "{\"status\":0,\"stderr\":\"\"}")
     expect (structuralEquals (malformed.drivenSurface.surfaceSession.sessionStore.graph, twice.drivenSurface.surfaceSession.sessionStore.graph), true)
@@ -240,5 +279,39 @@ midiTimingJourney () =
             Error _ => expect (true, true)
             Success _ => expect (false, true))
     match synth::MidiClips::window (source, 65535, 2)
+        Error _ => expect (true, true)
+        Success _ => expect (false, true)
+
+// [SYNTH-HOST-GRAPH] Built-in kernels agree exactly across graph execution strategies.
+graphClipJourney () =
+    graph = (synth::EditorState::preset ()).graph
+    match synth::Graphs::prepare graph
+        synth::Invalid _ => expect (false, true)
+        synth::Valid plan => match synth::Renderer::start graph
+            Error _ => expect (false, true)
+            Success held => match synth::Renderer::block (plan, 48000.0, synth::Parameters::initial graph, held, 257)
+                Error _ => expect (false, true)
+                Success reference => match synth::GraphClips::advance (graph, [], 257)
+                    Error _ => expect (false, true)
+                    Success action => match action
+                        synth::ClipWaiting _ _ _ => expect (false, true)
+                        synth::ClipReady clips => match synth::ClipInputs::completed (clips, 3)
+                            Error _ => expect (false, true)
+                            Success output =>
+                                expect (structuralEquals (output.clipSamples, reference.samples), true)
+                                expect (output.clipChannels, 1)
+                                expect (length output.clipSamples, 257)
+                                malformed = output(clipSamples = [0.0])
+                                match synth::GraphClips::advance (graph, [malformed], 257)
+                                    Error _ => expect (true, true)
+                                    Success _ => expect (false, true)
+                                match synth::GraphClips::advance (graph, [output, output], 257)
+                                    Error _ => expect (true, true)
+                                    Success _ => expect (false, true)
+    forEachList ([0, -1, 32769], \frames =>
+        match synth::GraphClips::advance (graph, [], frames)
+            Error _ => expect (true, true)
+            Success _ => expect (false, true))
+    match synth::GraphClips::advance (graph(cables = []), [], 257)
         Error _ => expect (true, true)
         Success _ => expect (false, true)

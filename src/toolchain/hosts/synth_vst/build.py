@@ -6,6 +6,7 @@ import subprocess
 import struct
 import math
 import json
+import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 SDK = ROOT / "target/vst3sdk"
@@ -54,6 +55,10 @@ def streamed(bundle, identifier, payload, valid=True, mode="stream"):
         return []
     assert result.returncode == 0, result.stderr.decode(errors="replace")
     output = bytes.fromhex(result.stdout.decode()) if mode == "stream-text" else result.stdout
+    return decoded_audio(output)
+
+
+def decoded_audio(output):
     magic, inputs, outputs, notes = struct.unpack_from("<4sIII", output)
     assert magic == b"OSV1" and outputs == 2 and inputs <= 2 and notes <= 1
     position, blocks = 16, []
@@ -111,6 +116,58 @@ def stream_tests():
     print("Persistent VST audio, note lifecycle, automation and malformed-frame journeys passed")
 
 
+def recording_worker(destination):
+    """Capture the actual worker boundary for independent PCM and MIDI assertions."""
+    script = destination / "record-worker.py"
+    source = """import json, pathlib, subprocess, sys
+root = pathlib.Path(__file__).parent
+payload = sys.stdin.buffer.read() if sys.argv[1] == 'stream-text' else None
+result = subprocess.run([WORKER, *sys.argv[1:]], input=payload, capture_output=True, timeout=15)
+if payload is not None:
+    path = root / ('audio-%03d.json' % len(list(root.glob('audio-*.json'))))
+    path.write_text(json.dumps({'arguments':sys.argv[1:], 'input':payload.decode(), 'output':result.stdout.decode(), 'status':result.returncode}))
+sys.stdout.buffer.write(result.stdout)
+sys.stderr.buffer.write(result.stderr)
+sys.exit(result.returncode)
+"""
+    script.write_text(f"#!{sys.executable}\nWORKER = {str(BUILD / 'osprey-vst-worker')!r}\n" + source)
+    script.chmod(0o755)
+    for old in destination.glob("audio-*.json"):
+        old.unlink()
+    return script
+
+
+def recorded_notes(record):
+    payload = bytes.fromhex(record["input"])
+    position, first, notes = 0, 0, []
+    while position < len(payload):
+        frames, note_count, parameter_count = struct.unpack_from("<III", payload, position)
+        position += 12
+        for _ in range(note_count):
+            kind, offset, pitch, channel, identity, velocity = struct.unpack_from("<IIIIIf", payload, position)
+            notes.append((kind, first + offset, pitch, channel, identity, velocity))
+            position += 24
+        position += parameter_count * 16
+        first += frames
+    assert position == len(payload) and first == 12288
+    return notes
+
+
+def check_prism_audio(destination):
+    records = [json.loads(path.read_text()) for path in sorted(destination.glob("audio-*.json"))]
+    assert len(records) == 3 and all(record["status"] == 0 for record in records), records
+    samples = [[sample for block in decoded_audio(bytes.fromhex(record["output"])) for sample in block]
+               for record in records]
+    events = recorded_notes(records[0])
+    assert [(kind, offset, pitch, channel, identity) for kind, offset, pitch, channel, identity, _ in events] == [(1, 0, 60, 0, 3), (2, 6000, 60, 0, 3)]
+    assert abs(events[0][5] - 0.8) < 1e-6 and events[1][5] == 0.0
+    assert all(len(audio) == 12288 * 2 for audio in samples)
+    assert max(abs(value) for value in samples[0]) > 0.01, "The real VST instrument is silent"
+    assert samples[1] == [0.0, 0.0] + samples[0][:-2], "First effect did not receive instrument PCM"
+    assert samples[2] == [0.0, 0.0] + samples[1][:-2], "Second effect did not receive first effect PCM"
+    print("Prism MIDI -> real JX10 -> ADelay -> ADelay -> stereo playback: exact PCM chain verified")
+
+
 def prism_test(host, headless):
     destination = ROOT / "target/pr-validation/prism-vst-ui"
     destination.mkdir(parents=True, exist_ok=True)
@@ -121,13 +178,26 @@ def prism_test(host, headless):
              {"type": ["Add VST3", class_id]}, {"wait": "ADelay 1"}, {"invoke": "Source 0: audio"},
              {"invoke": "Connect 1: audio"}, {"wait": "Patch updated."}, {"shot": "vst-routed"},
              {"invoke": "Remove selected"}, {"gone": "ADelay 1"}, {"wait": "ADelay 0"}, {"shot": "vst-removed"}]
+    audition = [{"type": ["0: Delay", "0"]}, {"type": ["1: Delay", "0"]},
+                {"type": ["VST3 bundle", str(BUILD / "VST3/Release/mda-vst3.vst3")]},
+                {"invoke": "Scan VST3"}, {"wait": "Choose a VST3 instrument or effect to add."},
+                {"type": ["Add VST3", "5653544D44416A6D6461206A78313000"]}, {"wait": "mda JX10 2"},
+                {"type": ["Add component", "midi-note"]}, {"type": ["Add component", "stereo-output"]},
+                {"invoke": "Source 3: notes"}, {"invoke": "Connect 2: MIDI"},
+                {"invoke": "Source 2: audio"}, {"invoke": "Connect 0: audio"},
+                {"invoke": "Source 1: audio"}, {"invoke": "Connect 4: audio"},
+                {"invoke": "Audition patch"}, {"wait": "Preview finished."}, {"shot": "vst-audition"},
+                {"invoke": "Select 1"}]
+    steps[13:13] = audition
+    worker = recording_worker(destination)
     script = destination / "journey.json"
     script.write_text(json.dumps({"steps": steps}))
     arguments = [str(host), "--self-test", str(script), str(destination), "--live-processes",
-                 "--empty", "--vst-worker", str(BUILD / "osprey-vst-worker")]
+                 "--empty", "--vst-worker", str(worker)]
     if headless:
         arguments.append("--headless")
     run(*arguments, timeout=180)
+    check_prism_audio(destination)
 
 
 def main():

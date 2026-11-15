@@ -1,0 +1,89 @@
+// [PRISM-ROUTING-VST] Frozen graph clips cross the native boundary only at external nodes.
+namespace synth
+
+import ui::Runtime
+import ui::Requests
+
+(** Execute actual routed VST audio through bounded worker stdin/stdout requests. *)
+module GraphPreview
+    frames = 12288
+
+    problem (editor, why) = Runtime::step (editor(renderTicket = "", renderClips = [], message = "Graph playback failed: ${why}"))
+
+    header (key, value) = ui::Header(headerName = key, headerValue = value)
+
+    request (editor, n, clips, binding, hex) =
+        ticket = "prism-audio:${editor.renderSerial}:${n.identity}"
+        input = "${ticket}:input"
+        arguments = [header ("executable", editor.workerPath), header ("argv", "stream-text"), header ("argv", binding.pluginModule), header ("argv", binding.pluginClass), header ("stdinSlice", input)]
+        capability = ui::HostCall(hostNamespace = "process", hostOperation = "input", hostArguments = arguments, hostTimeout = 10000, hostLimit = 4194304, hostSlice = ticket)
+        next = editor(renderTicket = ticket, renderNode = n.identity, renderClips = clips, message = "Rendering ${binding.pluginName}. The audition uses the patch as it was when started.")
+        ui::Step(stepStore = next, requests = [Requests::ask (ticket, capability)], writes = [Requests::write (input, hex)])
+
+    encoded (editor, n, block, clips, binding) = match ClipInputs::layout n
+        Error why => problem (editor, why)
+        Success layout => match HostPackets::clip (layout, block)
+            Error why => problem (editor, why)
+            Success hex => request (editor, n, clips, binding, hex)
+
+    waiting (editor, identity, block, clips) = match Graphs::node (editor.renderGraph, identity)
+        Invalid _ => problem (editor, "The scheduled VST node is absent.")
+        Valid n => match filterList (editor.renderBindings, \binding => binding.pluginNode == identity)
+            [binding] => match n.processor
+                External identifier => match identifier == binding.pluginClass && editor.workerPath != ""
+                    true => encoded (editor, n, block, clips, binding)
+                    false => problem (editor, "The VST binding differs from the graph node.")
+                _ => problem (editor, "Only VST nodes may request the native worker.")
+            _ => problem (editor, "The VST node has no unique module binding.")
+
+    finished (editor, clips) = match filterList (editor.renderGraph.nodes, \n => n.processor == Sink)
+        [sink] => match ClipInputs::completed (clips, sink.identity)
+            Error why => problem (editor, why)
+            Success clip => match WaveFiles::interleaved (48000, clip.clipChannels, clip.clipSamples)
+                Error why => problem (editor, why)
+                Success hex => Preview::playWave (editor(renderTicket = "", renderClips = []), hex)
+        _ => problem (editor, "The graph needs exactly one audio output.")
+
+    advance editor = match GraphClips::advance (editor.renderGraph, editor.renderClips, frames)
+        Error why => problem (editor, why)
+        Success action => match action
+            ClipReady clips => finished (editor, clips)
+            ClipWaiting identity block clips => waiting (editor, identity, block, clips)
+
+    requiresHost n = match n.processor
+        External _ => true
+        MidiNotes => true
+        Stereo => true
+        _ => length (filterList (listConcat n.inputs n.outputs, \p => p.channels != 1)) > 0
+
+    (** Edits remain possible during rendering, but cannot mutate the captured graph or bindings. *)
+    export play (editor, platform) = match platform == "macos"
+        false => Runtime::step (editor(message = "This preview device adapter currently requires macOS."))
+        true => match editor.renderTicket != ""
+            true => Runtime::step (editor(message = "The current graph audition is still rendering."))
+            false => match length (filterList (editor.graph.nodes, requiresHost)) == 0
+                true => Preview::play (editor, platform)
+                false => match editor.renderSerial == 9223372036854775807
+                    true => problem (editor, "No more render identities are available.")
+                    false => advance (editor(renderGraph = editor.graph, renderBindings = editor.pluginBindings, renderClips = [], renderSerial = satAdd editor.renderSerial 1))
+
+    decoded (editor, n, layout, text) = match HostResponses::clip (text, layout, frames)
+        Error why => problem (editor, why)
+        Success rendered => match rendered.renderLatency == 0
+            false => problem (editor, "This clip renderer cannot yet compensate plug-in latency.")
+            true =>
+                clip = NodeClip(clipNode = n.identity, clipChannels = rendered.renderChannels, clipSamples = rendered.renderSamples, clipNotes = [])
+                advance (editor(renderClips = listAppend editor.renderClips clip, renderTicket = ""))
+
+    received (editor, text) = match Graphs::node (editor.renderGraph, editor.renderNode)
+        Invalid _ => problem (editor, "The completed VST node is absent.")
+        Valid n => match ClipInputs::layout n
+            Error why => problem (editor, why)
+            Success layout => decoded (editor, n, layout, text)
+
+    (** A stale or duplicate completion never advances the current graph. *)
+    export completed (editor, ticket, outcome) = match ticket == editor.renderTicket && ticket != ""
+        false => Runtime::step editor
+        true => match ProcessResults::checked outcome
+            Error why => problem (editor, why)
+            Success _ => received (editor, perform ui::Slices.fetch ticket)

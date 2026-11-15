@@ -44,3 +44,21 @@ type HostRendered =
     renderFrames : int
     renderLatency : int
     renderSamples : List<float>
+
+type NodeClip =
+    clipNode : int
+    clipChannels : int
+    clipSamples : List<float>
+    clipNotes : List<HostNote>
+
+type ClipAction =
+    ClipReady
+        clips : List<NodeClip>
+    ClipWaiting
+        node : int
+        request : HostBlock
+        clips : List<NodeClip>
+
+type ClipKernel K =
+    heldKernel : K
+    kernelSamples : List<float>

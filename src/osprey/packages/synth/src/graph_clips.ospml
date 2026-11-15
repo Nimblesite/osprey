@@ -1,0 +1,60 @@
+// [SYNTH-HOST-GRAPH] Pure graph scheduling pauses only at an actual external processor.
+namespace synth
+
+(** Bounded acyclic clip rendering; the caller supplies each external node's checked response. *)
+module GraphClips
+    acyclic n = match n.processor
+        Delay _ => n(processor = Amplifier)
+        _ => n
+
+    ready (graph, n) = length (filterList (graph.cables, \c => c.destination == n.identity)) == length n.inputs
+
+    converted (graph, clips, n) = match ClipInputs::routed (graph, clips, n.identity, 0)
+        Error why => Error(message = why)
+        Success clip => match clip.clipChannels == 1
+            false => Error(message = "Mono-to-stereo requires one audio channel.")
+            true => Success(value = foldList (clip.clipSamples, [], \(samples, value) => listConcat samples [value, value]))
+
+    audio (plan, clips, n, frames, channels) = match n.processor
+        Stereo => converted (plan.graph, clips, n)
+        Sink => match ClipInputs::routed (plan.graph, clips, n.identity, 0)
+            Error why => Error(message = why)
+            Success clip => Success(value = clip.clipSamples)
+        _ => ClipKernels::render (plan, clips, n, frames, channels)
+
+    built (plan, clips, n, frames) = match n.processor
+        MidiNotes => match MidiClips::window (n, 0, frames)
+            Error why => Error(message = why)
+            Success notes => Success(value = NodeClip(clipNode = n.identity, clipChannels = 0, clipSamples = [], clipNotes = notes))
+        _ => match ClipLayouts::channels n
+            Error why => Error(message = why)
+            Success count => match audio (plan, clips, n, frames, count)
+                Error why => Error(message = why)
+                Success samples => Success(value = NodeClip(clipNode = n.identity, clipChannels = count, clipSamples = samples, clipNotes = []))
+
+    node (plan, clips, frames, n, remaining) = match n.processor
+        External _ => match ClipInputs::request (plan.graph, clips, n, frames)
+            Error why => Error(message = why)
+            Success request => Success(value = ClipWaiting(node = n.identity, request = request, clips = clips))
+        _ => match built (plan, clips, n, frames)
+            Error why => Error(message = why)
+            Success clip => scheduled (plan, listAppend clips clip, frames, remaining)
+
+    scheduled (plan, clips, frames, identities) = match identities
+        [] => Success(value = ClipReady(clips = clips))
+        [identity, ...remaining] => match length (filterList (clips, \clip => clip.clipNode == identity)) == 1
+            true => scheduled (plan, clips, frames, remaining)
+            false => match RenderInputs::component (plan, identity)
+                Error why => Error(message = why)
+                Success n => node (plan, clips, frames, n, remaining)
+
+    prepared (graph, clips, frames) = match Graphs::prepare graph
+        Invalid _ => Error(message = "The graph has invalid nodes or routes.")
+        Valid _ => match Graphs::prepare (graph(nodes = mapList (graph.nodes, acyclic)))
+            Invalid _ => Error(message = "Offline VST audition requires an acyclic graph.")
+            Valid plan => scheduled (plan(graph = graph), clips, frames, plan.order)
+
+    (** Resume a frozen graph after a worker reply; cycles require the separate streaming engine. *)
+    export advance (graph, clips, frames) = match ClipLayouts::bounded (graph, frames) && length (filterList (graph.nodes, \n => n.processor == Sink)) == 1 && length (filterList (graph.nodes, \n => ready (graph, n))) == length graph.nodes && length (filterList (clips, \clip => ClipLayouts::validClip (graph, frames, clip) && length (filterList (clips, \other => other.clipNode == clip.clipNode)) == 1)) == length clips
+        false => Error(message = "The clip needs one output, connected inputs and valid bounded source buffers.")
+        true => prepared (graph, clips, frames)

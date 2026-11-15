@@ -1,0 +1,55 @@
+// [SYNTH-HOST-GRAPH] Checked clip routing shares graph identities and port contracts.
+namespace synth
+
+(** Resolve rendered audio and event inputs without implicit conversions. *)
+module ClipInputs
+    (** Find exactly one completed source, never substitute silence for a missing cable. *)
+    export completed (clips, identity) = match filterList (clips, \clip => clip.clipNode == identity)
+        [clip] => Success(value = clip)
+        _ => Error(message = "A graph source has not rendered exactly once.")
+
+    (** Resolve the cable feeding one declared inlet. *)
+    export routed (graph, clips, identity, inlet) = match filterList (graph.cables, \c => c.destination == identity && c.inlet == inlet)
+        [cable] => completed (clips, cable.source)
+        _ => Error(message = "Every graph input needs exactly one connected source.")
+
+    channels ports = match ports
+        [] => Success(value = 0)
+        [port] => Success(value = port.channels)
+        _ => Error(message = "The VST host supports one audio bus per direction.")
+
+    (** The worker must confirm these exact audio and MIDI bus counts. *)
+    export layout n = match channels (filterList (n.inputs, \p => p.rate == Audio && p.unit == Amplitude))
+        Error why => Error(message = why)
+        Success inputs => match channels (filterList (n.outputs, \p => p.rate == Audio && p.unit == Amplitude))
+            Error why => Error(message = why)
+            Success outputs => Success(value = HostLayout(inputChannels = inputs, outputChannels = outputs, acceptsNotes = length (filterList (n.inputs, \p => p.rate == Events && p.unit == Notes)) == 1))
+
+    audioInput (graph, clips, n) = match length (filterList (n.inputs, \p => p.rate == Audio)) == 0
+        true => Success(value = [])
+        false => match routed (graph, clips, n.identity, 0)
+            Error why => Error(message = why)
+            Success clip => Success(value = clip.clipSamples)
+
+    noteInput (graph, clips, n) = match length (filterList (n.inputs, \p => p.rate == Events)) == 0
+        true => Success(value = [])
+        false => match routed (graph, clips, n.identity, satSub (length n.inputs) 1)
+            Error why => Error(message = why)
+            Success clip => Success(value = clip.clipNotes)
+
+    parameter (outcome, p) = match outcome
+        Error why => Error(message = why)
+        Success values => match startsWith p.key "vst:"
+            false => Error(message = "A VST parameter has no native identity.")
+            true => match parseInt (drop p.key 4)
+                Error why => Error(message = why)
+                Success identity => Success(value = listAppend values (HostParameter(identity = identity, offset = 0, value = p.initial)))
+
+    (** Assemble audio, events and current normalized controls into one bounded worker request. *)
+    export request (graph, clips, n, frames) = match audioInput (graph, clips, n)
+        Error why => Error(message = why)
+        Success samples => match noteInput (graph, clips, n)
+            Error why => Error(message = why)
+            Success notes => match foldList (filterList (n.parameters, \p => p.automatable), Success(value = []), parameter)
+                Error why => Error(message = why)
+                Success parameters => Success(value = HostBlock(frames = frames, notes = notes, parameters = parameters, samples = samples))

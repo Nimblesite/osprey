@@ -78,6 +78,15 @@ The UI-free package now owns checked worker packet encoding/decoding and interle
 
 - [x] Add a native-menu MIDI note generator with pitch, velocity and exact gate-frame parameters, explicit mono-to-stereo conversion, and a stereo output.
 - [x] Verify note-on/off ownership at frame 256, whole-clip versus partitioned events, invalid fractional pitch/gate rejection, and incompatible MIDI/audio routing through the UI.
-- [ ] Connect these sources to the graph audio execution path and verify an audible VST instrument/effect chain.
+- [x] Connect these sources to the graph audio execution path and verify an audible VST instrument/effect chain.
 
 The expanded app suite passes eleven journeys; the synth package passes seventeen under ARC. The MIDI source emits deterministic sample-positioned events, but the existing mono audition adapter does not yet execute these new node types.
+
+### Hosted graph playback [PRISM-ROUTING-AUDIO-HOSTED]
+
+- [x] Execute MIDI → real mda JX10 → real ADelay → real ADelay → stereo playback through native UI controls and bounded workers.
+- [x] Compare captured effect PCM exactly against its upstream buffer with the SDK delay's documented one-sample minimum; confirm note-on at frame zero and note-off at frame 6000.
+- [x] Share built-in kernels with the mono reference renderer and verify exact PCM equality, malformed-cache rejection, frozen graph/binding ownership and stale completion handling.
+- [ ] Implement continuous device rendering, persistent hosted instances, live modulation, graph persistence and latency compensation.
+
+The native headless journey now runs 36 steps with real processes and playback. The host-free app suite has twelve loaded journeys. The graph clip renderer is deliberately bounded and offline; feedback stays in the reference renderer, and nonzero plug-in latency is reported explicitly. Windowed screenshot evidence and full CI remain outstanding.

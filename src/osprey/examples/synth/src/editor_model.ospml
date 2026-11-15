@@ -11,7 +11,7 @@ type PluginBinding =
     pluginClass : string
     pluginName : string
 
-type Editor G =
+type Editor G C =
     graph : G
     selected : int
     nextIdentity : int
@@ -26,6 +26,12 @@ type Editor G =
     pluginSerial : int
     pluginTicket : string
     pluginClassId : string
+    renderGraph : G
+    renderClips : List<C>
+    renderBindings : List<PluginBinding>
+    renderSerial : int
+    renderTicket : string
+    renderNode : int
 
 type EditorAction =
     Add
