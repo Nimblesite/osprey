@@ -441,11 +441,6 @@ jobs:
         run: chmod +x target/release/osprey
       - name: Package coverage collection
         run: make _test_packages
-      # [MATH-CODE] A package's Lean sources compile to untracked modules under
-      # .osprey/math; the gate reads their text, so they travel with the reports.
-      - name: Keep the generated math modules with the reports
-        if: always()
-        run: find src/osprey -path '*/.osprey/math' -type d -prune -print | tar -cf target/coverage/packages/math-modules.tar -T -
       - name: Upload package coverage
         if: always()
         uses: actions/upload-artifact@v7
@@ -1438,9 +1433,7 @@ jobs:
 
       - name: Package thresholds
         if: ${{ !cancelled() }}
-        run: |
-          tar -xf target/coverage/packages/math-modules.tar
-          make _coverage_check_packages
+        run: make _coverage_check_packages
 
       - name: C runtime thresholds
         if: ${{ !cancelled() }}

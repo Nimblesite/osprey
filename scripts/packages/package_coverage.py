@@ -26,6 +26,7 @@ from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from package_coverage_entry import collect_entry, receipt_paths
+import package_math_modules
 from package_process import interrupts, run as run_bounded
 from package_coverage_evidence import (
     evidence_path, evidence_problems, golden_problems,
@@ -486,7 +487,11 @@ def main(argv: list[str] | None = None) -> int:
     projects = selected_projects(configured, args.package, args.project)
     if projects is None:
         return fail(unknown_selection(args))
+    if not args.collect:
+        package_math_modules.restore(root, reports)
     results = evaluate(root, reports, compiler, configured, projects, args.collect, args.memory)
+    if args.collect:
+        package_math_modules.keep(root, reports)
     for result in results:
         print_result(result)
     return finish(results, reports, "collect" if args.collect else "check", thresholds_path,
