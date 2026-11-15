@@ -5,7 +5,8 @@ Each tracked osprey.toml is a project, lowered to LLVM IR as a consumer and the
 editor see it ([PACKAGE-WORKSPACE]); its --source-graph names its member files.
 Every other tracked .osp, .ospml or Python-flavour .py file is a program lowered
 on its own, and so is a TypeScript-flavour .ts file: any .ts under src/osprey/
-([REPO-ROOT-LAYOUT]) or a marked one elsewhere. Files under a project that fails are covered by its FAIL line.
+([REPO-ROOT-LAYOUT]) or a marked one elsewhere. A .d.ts declaration file is never
+a program: it serves only the optional tsc lint ([FLAVOR-TS-SELECT]). Files under a project that fails are covered by its FAIL line.
 Left out, each checked elsewhere: failscompilation/ (must be rejected: the
 book's .expectederror goldens and osprey-cli's examples_compile), and the
 registry data (sample-registry/, e2e/consumer/, fixtures/manifests/), which
@@ -184,6 +185,8 @@ def is_program(path):
         return False
     elif endsWith(path, ".py"):
         return foldList(lines(text(path)), Header(open=True, found=False), scan).found
+    elif endsWith(path, ".d.ts"):
+        return False
     elif endsWith(path, ".ts"):
         return startsWith(path, "src/osprey/") or foldList(lines(text(path)), Header(open=True, found=False), scan).found
     else:

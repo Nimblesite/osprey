@@ -55,7 +55,9 @@ function noted(req: Request, res: Response, text) {
   return res.status(201).json(noteJson({ id: satAdd(listLength(notes), 1), text: value } satisfies Note));
 }
 
-function taskOf(req, res) {
+// `req` is annotated for the project's source graph, which cannot yet
+// resolve a method call on an inferred request (#406).
+function taskOf(req: Request, res) {
   const id = unwrapOr(mapGet(req.params, "id"), "");
   const agent = unwrapOr(req.get("X-Agent"), "");
   return res.json(JsonObject([JsonMember("id", JsonString(id)), JsonMember("agent", JsonString(agent === "" ? "unknown" : agent))]));

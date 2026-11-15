@@ -29,6 +29,7 @@ const cases = [
   ['Python-flavor package regression', ['src/osprey/packages/faiss/tests/main.py'], true, false, false, true],
   ['TypeScript-flavor package and corpus twin', ['src/osprey/packages/express/src/express.ts', 'src/osprey/tests/flavors/smoke/smoke.test.ts'], true, false, false, true],
   ['TypeScript tooling is not an Osprey program', ['src/toolchain/vscode-extension/client/src/extension.ts'], true, false, false, false],
+  ['a package declaration file is not an Osprey program', ['src/osprey/packages/express/types/express.d.ts'], true, false, false, false],
   ['a TypeScript benchmark case is a Node.js program', ['src/toolchain/benchmarks/cases/fib/fib.ts'], false, false, true, false],
   ['symbolic execution app and engine gates', ['scripts/hunt/src/sweep.ospml', 'src/toolchain/crates/osprey-cli/tests/hunt_engine.rs'], true, false, false, true],
   ['GPU regression in both flavors', ['src/osprey/tests/core/gpu/scalar_contracts.test.osp', 'src/osprey/tests/core/gpu/scalar_contracts.test.ospml'], true, false, false, true],
