@@ -130,7 +130,7 @@ impl Lowerer<'_> {
         Ok(Expr::List(elements, Some(self.at(array.span))))
     }
 
-    fn arrow(&mut self, arrow: &ArrowFunctionExpression<'_>) -> Result<Expr> {
+    pub(super) fn arrow(&mut self, arrow: &ArrowFunctionExpression<'_>) -> Result<Expr> {
         if arrow.r#async {
             return self.unsupported(arrow.span, "`async` function; use fibers");
         }

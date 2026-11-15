@@ -47,7 +47,11 @@ struct Scope {
     constants: BTreeSet<String>,
     /// Locals a nested function reads, which a later update would not reach.
     captured: BTreeSet<String>,
+    /// Locals a handler arm writes: handler-owned state, so Osprey `mut`.
+    mutated: BTreeSet<String>,
     function: bool,
+    /// A handler arm's function scope, whose assignments may write state.
+    arm: bool,
     tail: bool,
     /// The parameter this function updates in place and therefore returns.
     updated: Option<String>,
@@ -139,6 +143,51 @@ impl<'s> Lowerer<'s> {
         let result = action(self);
         let _ = self.scopes.pop();
         result
+    }
+
+    /// A handler arm's function scope. [EFFECTS-HANDLER-STATE]
+    pub(super) fn arm_scoped<T>(
+        &mut self,
+        action: impl FnOnce(&mut Self) -> Result<T>,
+    ) -> Result<T> {
+        let mut scope = Scope::new(true, true);
+        scope.arm = true;
+        self.scopes.push(scope);
+        let result = action(self);
+        let _ = self.scopes.pop();
+        result
+    }
+
+    /// Whether the innermost function is a handler arm.
+    pub(super) fn in_arm(&self) -> bool {
+        self.scopes
+            .iter()
+            .rev()
+            .find(|scope| scope.function)
+            .is_some_and(|scope| scope.arm)
+    }
+
+    /// Record that a handler arm writes `name`, which therefore becomes
+    /// handler state; false when no enclosing scope binds it.
+    pub(super) fn write_state(&mut self, name: &str) -> bool {
+        let Some(scope) = self
+            .scopes
+            .iter_mut()
+            .rev()
+            .find(|scope| scope.names.contains(name))
+        else {
+            return false;
+        };
+        let _ = scope.mutated.insert(name.to_owned());
+        let _ = scope.captured.insert(name.to_owned());
+        true
+    }
+
+    /// The names a handler arm writes among the innermost scope's bindings.
+    pub(super) fn take_mutated(&mut self) -> BTreeSet<String> {
+        self.scopes
+            .last_mut()
+            .map_or_else(BTreeSet::new, |scope| std::mem::take(&mut scope.mutated))
     }
 
     pub(super) fn bind(&mut self, name: &str) {
@@ -281,7 +330,9 @@ impl Scope {
             names: BTreeSet::new(),
             constants: BTreeSet::new(),
             captured: BTreeSet::new(),
+            mutated: BTreeSet::new(),
             function,
+            arm: false,
             tail,
             updated: None,
             returns: None,

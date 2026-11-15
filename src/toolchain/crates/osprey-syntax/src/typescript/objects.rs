@@ -74,7 +74,7 @@ impl Lowerer<'_> {
         }
     }
 
-    fn property_name(&self, property: &ObjectProperty<'_>) -> Result<String> {
+    pub(super) fn property_name(&self, property: &ObjectProperty<'_>) -> Result<String> {
         if property.method || property.computed || property.kind != PropertyKind::Init {
             return self.unsupported(property.span, "method, accessor or computed property");
         }
@@ -91,6 +91,9 @@ impl Lowerer<'_> {
     /// A call the ambient library defines syntactically, or `None` for an
     /// ordinary call.
     pub(super) fn intrinsic(&mut self, call: &CallExpression<'_>) -> Result<Option<Expr>> {
+        if let Some(effect) = self.effect_intrinsic(call)? {
+            return Ok(Some(effect));
+        }
         match &call.callee {
             Expression::Identifier(callee) if !self.bound_in_function(callee.name.as_str()) => {
                 let field = RESULT_CONSTRUCTORS

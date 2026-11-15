@@ -8,11 +8,14 @@ use oxc_span::SourceType;
 
 mod context;
 mod documents;
+mod effects;
 mod expressions;
+mod handlers;
 mod modules;
 mod objects;
 mod statements;
 mod types;
+mod updates;
 
 use context::Lowerer;
 

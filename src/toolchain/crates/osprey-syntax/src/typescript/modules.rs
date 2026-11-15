@@ -1,7 +1,7 @@
 //! ES module syntax over Osprey namespaces, modules and the program entry.
 //! Implements [FLAVOR-TS-INTEROP], [FLAVOR-TS-ENTRY], [FLAVOR-TS-SELECT].
 use super::context::{Lowerer, Result};
-use super::statements::receiver_roots;
+use super::updates::receiver_roots;
 use crate::file_header::{identifier, Directives};
 use osprey_ast::{
     ImportDecl, ImportMember, ImportSelection, ImportTarget, NamespaceName, Program, Stmt,

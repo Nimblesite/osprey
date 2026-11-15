@@ -97,7 +97,7 @@ impl Lowerer<'_> {
         )
     }
 
-    fn type_name(&self, name: &TSTypeName<'_>) -> Result<String> {
+    pub(super) fn type_name(&self, name: &TSTypeName<'_>) -> Result<String> {
         match name {
             TSTypeName::IdentifierReference(identifier) => Ok(identifier.name.as_str().to_owned()),
             TSTypeName::QualifiedName(qualified) => Ok(format!(
@@ -139,7 +139,7 @@ impl Lowerer<'_> {
     }
 
     /// Split `Requires<T, [Log, Arith]>` into `T` and its effect row.
-    fn requires<'b, 'a>(
+    pub(super) fn requires<'b, 'a>(
         &self,
         result: &'b TSType<'a>,
     ) -> Result<(&'b TSType<'a>, Option<Vec<EffectRef>>)> {
@@ -216,8 +216,8 @@ impl Lowerer<'_> {
 
     /// `interface Point { readonly x: number }` is a closed record.
     pub(super) fn interface(&mut self, node: &TSInterfaceDeclaration<'_>) -> Result<Stmt> {
-        if let Some(heritage) = node.extends.first() {
-            return self.unsupported(heritage.span, "interface `extends`");
+        if let Some(stage) = self.effect_stage(node)? {
+            return self.effect(node, stage);
         }
         let name = node.id.name.as_str();
         let variant = TypeVariant {
