@@ -32,6 +32,7 @@ the same call semantics and ABI; no backend branch inspects the source flavor.
 | Default | braces | `f(x: a, y: b)` | flat multi-parameter | `.osp` |
 | ML | offside layout | `f a b` | curried | `.ospml` |
 | Python | indentation | `f(a, b)` | flat multi-parameter | `.py` with `# osprey: flavor=python` |
+| TypeScript | braces | `f(a, b)` | flat multi-parameter | `.ts`, listed in `[project].typescript_sources` ([spec 0054](0054-TypeScriptFlavorSyntax.md)) |
 
 Default remains the default API and source flavor. One file uses one flavor;
 a project may mix flavors.
@@ -59,7 +60,7 @@ pub fn parse_program_with_flavor(source: &str, flavor: Flavor) -> Parsed;
 ```
 
 `parse_program` selects Default. `parse_program_with_flavor` dispatches to
-`default::parse`, `ml::parse_ml` or `python::parse`.
+`default::parse`, `ml::parse_ml`, `python::parse` or `typescript::parse`.
 
 The physical split is:
 
@@ -70,6 +71,7 @@ src/toolchain/crates/osprey-syntax/src/
   default/     tree-sitter parsing and lowering
   ml/          layout lexing, parsing, CST, and lowering
   src/toolchain/python/      tree-sitter-python CST validation and lowering
+  typescript/  oxc_parser syntax tree validation and lowering
 ```
 
 Each flavor supplies its own interpolation fragment parser to the shared text
@@ -80,11 +82,11 @@ helpers.
 `[FLAVOR-SELECT]` `osprey_syntax::resolve_flavor(flag, path, source)` applies
 this precedence:
 
-1. an explicit resolver override (`--flavor default|ml|python` for single-file CLI
+1. an explicit resolver override (`--flavor default|ml|python|typescript` for single-file CLI
    use, or `[project].flavor` while loading a project);
-2. a leading `// osprey: flavor=default|ml` or `# osprey: flavor=python`
-   marker, preceded only by comments and blank lines;
-3. `.osp`, `.ospml` or `.py` extension;
+2. a leading `// osprey: flavor=default|ml|typescript` or
+   `# osprey: flavor=python` marker, preceded only by comments and blank lines;
+3. `.osp`, `.ospml`, `.py` or `.ts` extension (never `.d.ts`);
 4. Default.
 
 Without an explicit flag, a marker that disagrees with the extension is an
