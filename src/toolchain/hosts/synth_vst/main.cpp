@@ -46,6 +46,10 @@ int scan(const std::string& path) {
 }
 
 int main(int argc, char** argv) {
+    // Transactions flush explicitly. A tied stdin would flush stdout for every
+    // hex character, putting thousands of unnecessary locks on each audio block.
+    std::ios::sync_with_stdio(false);
+    std::cin.tie(nullptr);
     try {
         if (argc == 2 && std::string(argv[1]) == "audio-device") return audioDevice();
         if (argc == 4 && std::string(argv[1]) == "stream-text") return streamText(argv[2], argv[3], false);

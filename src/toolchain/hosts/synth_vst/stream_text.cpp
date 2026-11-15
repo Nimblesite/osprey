@@ -6,7 +6,13 @@
 namespace {
 void encoded(const std::string& bytes) {
     constexpr char digits[] = "0123456789ABCDEF";
-    for (unsigned char byte : bytes) std::cout << digits[byte >> 4] << digits[byte & 15];
+    std::string hex(bytes.size() * 2, '0');
+    for (size_t index = 0; index < bytes.size(); ++index) {
+        const auto byte = static_cast<unsigned char>(bytes[index]);
+        hex[index * 2] = digits[byte >> 4];
+        hex[index * 2 + 1] = digits[byte & 15];
+    }
+    std::cout.write(hex.data(), static_cast<std::streamsize>(hex.size()));
 }
 
 bool transaction(osprey::vst::Plugin& plugin, const std::string& bytes) {

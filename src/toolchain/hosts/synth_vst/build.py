@@ -7,6 +7,8 @@ import struct
 import math
 import json
 import sys
+import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
@@ -153,7 +155,7 @@ def recording_worker(destination):
     script = destination / "record-worker.py"
     source = """import json, os, pathlib, subprocess, sys, threading, time
 root = pathlib.Path(__file__).parent
-if sys.argv[1] == 'stream-session':
+if sys.argv[1] in ('stream-session', 'audio-device'):
     child = subprocess.Popen([WORKER, *sys.argv[1:]], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     def diagnostics():
         for line in child.stderr:
@@ -168,8 +170,9 @@ if sys.argv[1] == 'stream-session':
             if not output.endswith(b'\\n'):
                 raise RuntimeError('Worker ended before a bounded response')
             record = {'arguments':sys.argv[1:], 'input':payload.decode().strip(),
-                      'output':output.decode().strip(), 'status':0, 'session':os.getpid(), 'order':time.monotonic_ns()}
-            (root / ('audio-%s-%05d.json' % (os.getpid(), index))).write_text(json.dumps(record))
+                      'output':output.decode().strip(), 'status':0, 'session':os.getpid(), 'worker':child.pid, 'order':time.monotonic_ns()}
+            prefix = 'audio' if sys.argv[1] == 'stream-session' else 'device'
+            (root / ('%s-%s-%05d.json' % (prefix, os.getpid(), index))).write_text(json.dumps(record))
             sys.stdout.buffer.write(output)
             sys.stdout.buffer.flush()
     finally:
@@ -187,8 +190,9 @@ else:
 """
     script.write_text(f"#!{sys.executable}\nWORKER = {str(BUILD / 'osprey-vst-worker')!r}\n" + source)
     script.chmod(0o755)
-    for old in destination.glob("audio-*.json"):
-        old.unlink()
+    for pattern in ["audio-*.json", "device-*.json"]:
+        for old in destination.glob(pattern):
+            old.unlink()
     return script
 
 
@@ -258,6 +262,12 @@ def check_prism_audio(destination):
     assert max(abs(actual - fixed) for actual, fixed in zip(samples[0], baseline, strict=True)) > 0.001, "VST modulation did not change the rendered audio"
     assert samples[1] == [0.0, 0.0] + samples[0][:-2], "First effect did not receive instrument PCM"
     assert samples[2] == [0.0, 0.0] + samples[1][:-2], "Second effect did not receive first effect PCM"
+    device = sorted((json.loads(path.read_text()) for path in destination.glob("device-*.json")), key=lambda r: r["order"])
+    assert len(device) == 7 and len({r["session"] for r in device}) == 1, "One retained device must receive six blocks and a drain"
+    receipts = [json.loads(r["output"]) for r in device]
+    assert [r["acceptedFrames"] for r in receipts] == [2048, 4096, 6144, 8192, 10240, 12288, 12288]
+    assert receipts[-1]["returnedFrames"] == 12288 and receipts[-1]["queuedFrames"] == 0 and not receipts[-1]["running"]
+    assert all(r["emptyCallbacks"] == 0 for r in receipts), "The device queue starved during the real graph journey"
     print("Prism MIDI -> real JX10 -> ADelay -> ADelay -> LFO-controlled stereo gain: exact VST PCM chain verified")
 
 
@@ -293,9 +303,43 @@ def prism_test(host, headless):
     arguments = [str(host), "--self-test", str(script), str(destination), "--live-processes",
                  "--empty", "--vst-worker", str(worker)]
     if headless:
-        arguments.append("--headless")
+        arguments.extend(["--headless", "--defer-processes"])
     run(*arguments, timeout=180)
     check_prism_audio(destination)
+    live = destination / "live"
+    live.mkdir(exist_ok=True)
+    live_worker = recording_worker(live)
+    live_steps = steps[:steps.index({"invoke": "Audition patch"})] + [
+        {"invoke": "Play patch"}, {"wait": "Playing the started patch. Stop and play again to apply edits."}, {"frames": "480"},
+        {"invoke": "Stop playback"}, {"wait": "Playback stopped."}, {"frames": "8"}, {"shot": "live-stopped"}]
+    script = live / "journey.json"
+    script.write_text(json.dumps({"steps": live_steps}))
+    arguments[arguments.index("--self-test") + 1:arguments.index("--self-test") + 3] = [str(script), str(live)]
+    arguments[arguments.index("--vst-worker") + 1] = str(live_worker)
+    run(*arguments, timeout=180)
+    check_prism_live(live)
+
+
+def check_prism_live(destination):
+    records = [json.loads(path.read_text()) for path in destination.glob("*-*.json") if path.name.startswith(("audio-", "device-"))]
+    devices = sorted((r for r in records if r["arguments"] == ["audio-device"]), key=lambda r: r["order"])
+    receipts = [json.loads(r["output"]) for r in devices]
+    assert len({r["session"] for r in records}) == 4, "Live playback must retain three VSTs and one device"
+    assert receipts and receipts[-1]["acceptedFrames"] >= 48000, "Live playback stopped at the audition boundary"
+    assert all(r["running"] for r in receipts[1:]), "The device stopped before the Stop action"
+    assert all(r["emptyCallbacks"] == 0 for r in receipts), "Live graph production starved the device queue"
+    identities = {r[key] for r in records for key in ["session", "worker"]}
+    deadline = time.monotonic() + 3
+    while identities and time.monotonic() < deadline:
+        for identity in list(identities):
+            try:
+                os.kill(identity, 0)
+            except ProcessLookupError:
+                identities.remove(identity)
+        if identities:
+            time.sleep(.02)
+    assert not identities, f"Stop or host shutdown left owned workers alive: {identities}"
+    print(f"Prism sustained {receipts[-1]['acceptedFrames']} frames through real VSTs/device, then stopped all owned workers")
 
 
 def device_tests():

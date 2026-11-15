@@ -1,3 +1,12 @@
+// [SYNTH-PCM-FLOAT] Independent character search checks every ASCII decoder boundary.
+hexDigitCase code =
+    character = fromCodePoint code ?: "invalid"
+    match indexOf "0123456789ABCDEF" character
+        Error _ => renderRefused (synth::PcmWords::read32 ("0${character}000000", 0))
+        Success digit => match synth::PcmWords::read32 ("0${character}000000", 0)
+            Error _ => expect (false, true)
+            Success word => expect (word, digit)
+
 arithmetic work =
     handle Arith
         overflow _ _ _ wrapped =>
@@ -465,6 +474,7 @@ test ("float PCM export retains sample precision and rejects invalid rates and s
         Error _ => expect (false, true)
         Success value => expect (value, -0.5)
     renderRefused (synth::PcmWords::sample ("0000807F", 0))
+    forEachList (toList (range (1, 128)), hexDigitCase)
     renderRefused (synth::PcmWords::read32 ("0000000Z", 0))
     renderRefused (synth::PcmWords::read32 ("0000", 0))
     renderRefused (synth::WaveFiles::interleaved (48000, 2, [0.0]))

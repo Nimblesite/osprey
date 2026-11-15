@@ -147,8 +147,6 @@ editorUiJourney () =
     expect (length removed.drivenSurface.surfaceSession.sessionStore.graph.cables, 0)
     expect (uitest::Views::letters (removed.drivenSeen, "Gain 1"), false)
 
-zeroStereoResponse () = "4F535631020000000200000000000000" + join (mapList (toList (range (0, 8)), \_ => "0001000000000000" + join (mapList (toList (range (0, 512)), \_ => "00000000")) "")) ""
-
 descriptorFixture = "{\"id\":\"0CDBB66985D548A9BFD8371909D24BB3\",\"name\":\"ADelay\",\"inputs\":2,\"outputs\":2,\"notes\":false,\"parameters\":[{\"id\":100,\"name\":\"Delay\",\"initial\":1.0,\"automatable\":true}]}"
 
 // [PRISM-ROUTING-VST] Discovery and creation travel through host requests, receipts and slices.
@@ -158,7 +156,7 @@ pluginUiJourney () =
             "prism-vst:scan:2" => "{\"event\":\"vst.class\",\"id\":\"0CDBB66985D548A9BFD8371909D24BB3\",\"name\":\"ADelay\",\"categories\":\"Fx|Delay\"}\n"
             "prism-vst:describe:3" => descriptorFixture
             "prism-vst:describe:4" => descriptorFixture
-            _ => match startsWith key "prism-audio:"
+            _ => match startsWith key "prism-worker:"
                 true => zeroStereoResponse ()
                 false => "malformed metadata"
     idle = Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ())
@@ -260,16 +258,30 @@ pluginUiJourney () =
     expect (staleAudio.drivenSurface.surfaceSession.sessionStore.renderTicket, "prism-audio:1:1:open")
     openedSecond = Drive::completed (nextEffect, "prism-audio:1:1:open", true, "{\"status\":0,\"session\":\"effect-one\"}")
     firstPair = Drive::completed (openedSecond, "prism-audio:1:1:0:block", true, "{\"status\":0,\"stderr\":\"\"}")
-    expect (firstPair.drivenSurface.surfaceSession.sessionStore.renderTicket, "prism-audio:1:0:2048:block")
-    played = foldList (toList (range (0, 10)), firstPair, \(previous, _) =>
-        held = previous.drivenSurface.surfaceSession.sessionStore
-        expect (length held.renderSessions, 2)
-        expect (held.renderOpening, false)
-        Drive::completed (previous, held.renderTicket, true, "{\"status\":0,\"stderr\":\"\"}"))
-    expect (Drive::shows (played, "Playing the current patch."), true)
+    expect (firstPair.drivenSurface.surfaceSession.sessionStore.renderTicket, "prism-audio:device:1:open")
+    deviceOpened = audioDone firstPair
+    expect (length deviceOpened.drivenSurface.surfaceSession.sessionStore.renderSessions, 3)
+    deviceCounterJourney deviceOpened.drivenSurface.surfaceSession.sessionStore
+    secondPair = audioDone deviceOpened
+    expect (secondPair.drivenSurface.surfaceSession.sessionStore.renderTicket, "prism-audio:1:0:2048:block")
+    played = foldList (toList (range (0, 30)), secondPair, \(previous, _) =>
+        match previous.drivenSurface.surfaceSession.sessionStore.renderTicket == ""
+            true => previous
+            false => audioDone previous)
+    expect (Drive::shows (played, "Preview finished."), true)
     expect (length played.drivenSurface.surfaceAsked, 3)
     expect (length played.drivenSurface.surfaceSession.sessionStore.renderSessions, 0)
     expect (played.drivenSurface.surfaceSession.sessionStore.renderTicket, "")
+    forEachList ([firstPair, deviceOpened, secondPair], \running =>
+        stopped = audioDone (Drive::press (running(drivenProgram = synth::EditorApp::program ()), "Stop playback"))
+        expect (Drive::shows (stopped, "Playback stopped."), true)
+        expect (length stopped.drivenSurface.surfaceSession.sessionStore.renderSessions, 0)
+        expect (stopped.drivenSurface.surfaceSession.sessionStore.renderTicket, ""))
+    live = Drive::press (finished, "Play patch")
+    continuing = foldList (toList (range (0, 40)), live, \(previous, _) => audioDone previous)
+    expect (continuing.drivenSurface.surfaceSession.sessionStore.renderContinuous, true)
+    expect (continuing.drivenSurface.surfaceSession.sessionStore.renderTicket != "", true)
+    expect (Drive::shows (audioDone (Drive::press (continuing(drivenProgram = synth::EditorApp::program ()), "Stop playback")), "Playback stopped."), true)
     crashed = Drive::completed (audition, "prism-audio:1:0:open", true, "{\"status\":1,\"stderr\":\"plug-in failed\"}")
     expect (Drive::shows (crashed, "Graph playback failed: plug-in failed"), true)
     expect (length crashed.drivenSurface.surfaceSession.sessionStore.renderPending, 0)

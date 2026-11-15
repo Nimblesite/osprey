@@ -3,7 +3,24 @@ namespace synth
 
 (** Exact PCM bit encoding and checked decoding, independent of devices and UI. *)
 module PcmWords
-    digit value = substring "0123456789ABCDEF" value (satAdd value 1) ?: "0"
+    // Masking fixes the domain to sixteen cases; each digit is a static literal.
+    digit value = match bitAnd value 15
+        0 => "0"
+        1 => "1"
+        2 => "2"
+        3 => "3"
+        4 => "4"
+        5 => "5"
+        6 => "6"
+        7 => "7"
+        8 => "8"
+        9 => "9"
+        10 => "A"
+        11 => "B"
+        12 => "C"
+        13 => "D"
+        14 => "E"
+        _ => "F"
 
     (** Low eight bits as hexadecimal. *)
     export byte value = "${digit (bitAnd (shiftRight value 4) 15)}${digit (bitAnd value 15)}"
@@ -22,9 +39,15 @@ module PcmWords
         bits = floatBits value
         "${le32 bits}${le32 (shiftRight bits 32)}"
 
-    nibble (text, at) = match substring text at (satAdd at 1)
+    // Read the ASCII byte directly: decoding audio must not allocate eight tiny
+    // strings and perform eight substring searches for every float32 sample.
+    nibble (text, at) = match byteAt text at
         Error why => Error(message = why)
-        Success character => indexOf "0123456789ABCDEF" character
+        Success character => match character >= 48 && character <= 57
+            true => Success(value = satSub character 48)
+            false => match character >= 65 && character <= 70
+                true => Success(value = satSub character 55)
+                false => Error(message = "Invalid uppercase PCM hexadecimal digit.")
 
     readByte (text, at) = match nibble (text, at)
         Error why => Error(message = why)

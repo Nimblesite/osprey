@@ -117,7 +117,7 @@ All twelve app journeys pass under ARC, including frozen graph ownership, stale 
 - [x] Expand the existing package suite to 22 loaded journeys, covering stereo kernel chains, MIDI window boundaries, hosted modulation, native packet round trips, malformed buffers and invalid public graph records.
 - [x] Run coverage independently under GC and ARC: both report 848/913 own source lines (92.9%), exceeding the unchanged 92.2% package gate.
 - [x] Check formatting and compile the expanded suite with warnings treated as errors.
-- [ ] Resolve the expanded single test file's 761-line size while retaining its assertions and useful comments; this conflicts with the instruction to expand existing test files rather than create new ones.
+- [ ] Resolve the expanded single test file's 771-line size while retaining its assertions and useful comments; this conflicts with the instruction to expand existing test files rather than create new ones.
 - [ ] Finish repository-wide CI preparation; package coverage alone does not establish readiness to push.
 
 Evidence is retained under `target/pr-validation/synth-coverage` and `target/pr-validation/synth-coverage-arc`. The app still provides bounded offline auditions; continuous audio and persistent hosted instances remain unfinished.
@@ -217,3 +217,17 @@ Session-boundary hardening: a new real-process regression first failed because a
 Measured native-session spans for the same 256 ms instrument/effect audition were approximately 518 ms at 256-frame graph transfers, 331 ms at 1024 and 274 ms at 2048, including worker startup. The selected producer transfer is 2048 frames; the VST protocol still processes sub-blocks of at most 256 frames with unchanged exact PCM and MIDI/automation offsets. These single-run measurements justify reducing transport overhead; they do not establish reliable realtime deadlines.
 
 The device callback only publishes returned buffers and counters; decoding, allocation, waiting and logging stay on the producer thread. Four preallocated buffers bound queued memory, two transfers prefill before start, and a drain acknowledges all returned frames before cleanup. `emptyCallbacks` counts queue-empty callback observations, not a measured speaker underrun. Device support is macOS-only; other platforms return an explicit unsupported-adapter failure.
+
+
+### Verified continuous native playback [PRISM-ROUTING-CONTINUOUS]
+
+- [x] Add Play/Stop, typed pending device state, checked queue acknowledgments and reusable bounded audio slices.
+- [x] Preserve real VST and built-in DSP instances across the audition boundary; drain auditions and dispose handles on Stop/failure/shutdown, including late open completions.
+- [x] Extend the headless driver with bounded deferred completion batches so continuous work cannot prevent the Stop event.
+- [x] Keep the sustained queue-starvation test red until production throughput improves: disable per-character stdout flushing and replace per-digit PCM string allocation/search with direct ASCII decoding and static encoding literals.
+- [x] Pass real native 44-step audition and 43-step sustained journeys: 985088 frames, zero empty-queue callbacks, exact VST-chain PCM/MIDI/modulation, and no owned worker left alive after Stop.
+- [ ] Apply graph/parameter edits transactionally during playback; the current UI explicitly states that edits apply after restarting.
+- [ ] Verify the windowed journey; the Mac was rechecked and remains locked.
+- [ ] Complete root CI and resolve the root duplication gate before a coordinated push.
+
+The twelve loaded application journeys retain their assertions and add device receipt corruption, live continuation and stop-during-open/block cases. Their test helpers reconstruct the concrete UI program to preserve the compiler's callable-effect provenance, rather than weakening its checks. The package's 22 journeys add all ASCII decoder boundary cases. Native evidence is in `target/pr-validation/prism-device-*`; the original starvation failure remains in `prism-device-live-starvation-red.log`. Full readiness is not claimed: only macOS device output is implemented, live edits require restart, and low-latency scheduling/zero-allocation production remain unfinished.

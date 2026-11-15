@@ -19,6 +19,8 @@ module EditorApp
     tapped (context, editor, action) = match action
         ScanVst => Plugins::scan editor
         Audition => GraphPreview::play (editor, context.platform)
+        PlayGraph => GraphPreview::live (editor, context.platform)
+        StopGraph => GraphPreview::stop editor
         _ => Runtime::step (EditorState::tapped (editor, action))
 
     typed (editor, action, value) = match action

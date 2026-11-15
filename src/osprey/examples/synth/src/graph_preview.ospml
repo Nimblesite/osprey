@@ -29,13 +29,9 @@ module GraphPreview
     finished (editor, graph, held, clips) = match filterList (graph.nodes, \n => n.processor == Sink)
         [sink] => match ClipInputs::completed (clips, sink.identity)
             Error why => problem (editor, why)
-            Success clip =>
-                next = editor(renderChunks = listAppend editor.renderChunks clip.clipSamples)
-                match held.graphPosition < 12288
-                    true => advance (next, graph, GraphClips::next (graph, held, frames))
-                    false => match WaveFiles::interleaved (48000, clip.clipChannels, foldList (next.renderChunks, [], \(all, chunk) => listConcat all chunk))
-                        Error why => problem (next, why)
-                        Success hex => GraphWorkers::release (Preview::playWave (next, hex))
+            Success clip => match GraphDevice::request (editor, graph, held, clip)
+                Error why => problem (editor, why)
+                Success step => step
         _ => problem (editor, "The graph needs exactly one audio output.")
 
     advance (editor, graph, outcome) = match outcome
@@ -53,15 +49,34 @@ module GraphPreview
         _ => length (filterList (listConcat n.inputs n.outputs, \p => p.channels != 1)) > 0
 
     (** Edits remain possible during rendering, but cannot mutate the captured graph or bindings. *)
-    export play (editor, platform) = match platform == "macos"
+    begin (editor, platform, continuous) = match platform == "macos"
         false => Runtime::step (editor(message = "This preview device adapter currently requires macOS."))
         true => match editor.renderTicket != ""
             true => Runtime::step (editor(message = "The current graph audition is still rendering."))
-            false => match length (filterList (editor.graph.nodes, requiresHost)) == 0
+            false => match continuous == false && editor.workerPath == "" && length (filterList (editor.graph.nodes, requiresHost)) == 0
                 true => Preview::play (editor, platform)
                 false => match editor.renderSerial == 9223372036854775807
                     true => problem (editor, "No more render identities are available.")
-                    false => advance (editor(renderBindings = editor.pluginBindings, renderPending = [], renderSessions = [], renderChunks = [], renderSerial = satAdd editor.renderSerial 1), editor.graph, GraphClips::start (editor.graph, frames))
+                    false => advance (editor(renderBindings = editor.pluginBindings, renderPending = [], renderSessions = [], renderDevicePending = [], renderDeviceKey = "", renderContinuous = continuous, renderStopping = false, renderSerial = satAdd editor.renderSerial 1), editor.graph, GraphClips::start (editor.graph, frames))
+
+    (** Render a bounded audition through the same graph/device path as live playback. *)
+    export play (editor, platform) = begin (editor, platform, false)
+
+    (** Keep producing blocks until Stop; the running graph is captured at launch. *)
+    export live (editor, platform) = match editor.workerPath == ""
+        true => problem (editor, "Launch Prism with its packaged audio worker to play continuously.")
+        false => begin (editor, platform, true)
+
+    (** An in-flight request must complete before its newly opened handle can be released. *)
+    export stop editor = match editor.renderTicket == ""
+        true => GraphWorkers::release (Runtime::step (editor(message = "Playback stopped.")))
+        false => Runtime::step (editor(renderStopping = true, message = "Stopping playback."))
+
+    stopOrContinue step =
+        editor = step.stepStore
+        match editor.renderStopping
+            true => GraphWorkers::release (Runtime::step (editor(message = "Playback stopped.")))
+            false => step
 
     decoded (editor, pending, n, layout, text) = match HostResponses::clip (text, layout, pending.pendingFrames)
         Error why => problem (editor, why)
@@ -89,6 +104,26 @@ module GraphPreview
                 Error why => problem (next, why)
                 Success step => step
 
+    deviceAdvanced editor = match editor.renderDevicePending
+        [pending] => match editor.renderInput == "!drain"
+            true => GraphWorkers::release (Runtime::step (editor(message = "Preview finished.")))
+            false => match editor.renderContinuous == false && pending.deviceState.graphPosition >= 12288
+                true => GraphDevice::drain (editor, pending.deviceState.graphPosition)
+                false => advance (editor(renderDevicePending = [], message = "Playing the started patch. Stop and play again to apply edits."), pending.deviceGraph, GraphClips::next (pending.deviceGraph, pending.deviceState, frames))
+        _ => problem (editor, "The device reply has no unique pending graph block.")
+
+    deviceCompleted (editor, outcome) = match editor.renderDeviceKey == ""
+        true => match outcome
+            Error why => problem (editor, why)
+            Success text => match GraphDevice::opened (editor, text)
+                Error why => problem (editor, why)
+                Success step => stopOrContinue step
+        false => match editor.renderStopping
+            true => stopOrContinue (Runtime::step editor)
+            false => match GraphDevice::checked (editor, perform ui::Slices.fetch (GraphWorkers::output -1))
+                Error why => problem (editor, why)
+                Success _ => deviceAdvanced editor
+
     closing (editor, outcome) = match ProcessResults::checked outcome
         Error why => Runtime::step (editor(message = "${editor.message} Worker cleanup failed: ${why}"))
         Success _ => Runtime::step editor
@@ -100,6 +135,12 @@ module GraphPreview
             false => Runtime::step editor
             true => match ProcessResults::checked outcome
                 Error why => problem (editor, why)
-                Success _ => match editor.renderOpening
-                    true => opened (editor, outcome)
-                    false => received (editor, perform ui::Slices.fetch ticket)
+                Success _ => match startsWith ticket "prism-audio:device:"
+                    true => deviceCompleted (editor, outcome)
+                    false => match editor.renderOpening
+                        true => stopOrContinue (opened (editor, outcome))
+                        false => match editor.renderStopping
+                            true => stopOrContinue (Runtime::step editor)
+                            false => match editor.renderPending
+                                [pending] => received (editor, perform ui::Slices.fetch (GraphWorkers::output pending.pendingNode))
+                                _ => problem (editor, "The worker reply has no unique pending graph request.")

@@ -287,6 +287,12 @@ fn open(bench: Option<clock::Bench>) {
     application.on_open_urls(|urls| opened().extend(urls));
     application.run(move |cx| {
         gpui_kit::init(cx);
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        cx.on_app_quit(|_| {
+            drop(crate::adapters::Cleanup);
+            async {}
+        })
+        .detach();
         gpui_kit::open_window(options(), cx, move |window, cx| {
             Theme::sync_system_appearance(Some(window), cx);
             cx.new(|cx| new_view(bench, window, cx))

@@ -7,7 +7,7 @@ import ui::Scenes
 
 (** The modular patch's component menu, canvas, ports and parameter inspector. *)
 module EditorView
-    editorSlice () = perform Signal<Editor<Graph, GraphPending<Graph, KernelState>>>.read ()
+    editorSlice () = perform Signal<Editor<Graph, GraphPending<Graph, KernelState>, GraphState<KernelState>>>.read ()
 
     processorTitle processor = match processor
         Lfo => "LFO"
@@ -122,13 +122,13 @@ module EditorView
 
     root () =
         editor = editorSlice ()
-        Ui::column [Ui::row [Ui::styled ("PRISM", ui::Title, ui::Accent), menu (), Ui::button ("Audition patch", "", Audition), Ui::button ("Remove selected", "", Remove)], plugins editor, Ui::caption editor.message, canvas editor, Ui::column (mapList (editor.graph.nodes, \n => component (editor, n)))]
+        Ui::column [Ui::row [Ui::styled ("PRISM", ui::Title, ui::Accent), menu (), Ui::button ("Audition patch", "", Audition), Ui::button ("Play patch", "", PlayGraph), Ui::button ("Stop playback", "", StopGraph), Ui::button ("Remove selected", "", Remove)], plugins editor, Ui::caption editor.message, canvas editor, Ui::column (mapList (editor.graph.nodes, \n => component (editor, n)))]
 
     stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =
-        handle static Signal<Editor<Graph, GraphPending<Graph, KernelState>>>
+        handle static Signal<Editor<Graph, GraphPending<Graph, KernelState>, GraphState<KernelState>>>
             read => editor
         changed = signalChanges before editor stamp (signalDependencies editorSlice)
         [Keyed::region (frames, "root", changed, root)]

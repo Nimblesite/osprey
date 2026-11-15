@@ -105,3 +105,12 @@ The clip renderer samples connected control streams on a 128-frame automation gr
 - [ ] Add VST3 hosting after the component/graph boundary is verified.
 
 Test complete instrument journeys with many notes, automation events and routing changes. Use isolated numerical tests where mathematical or real-time isolation is necessary. Compare against independent analytical or high-precision references; record seeds, sample rates, block partitions and tolerances. Keep exact PCM goldens only where cross-target numerical behaviour is defined, and retain listening artefacts under `target/` for review. Screenshot tests belong to consuming applications, not this UI-free library.
+
+
+### Reference continuous device execution [SYNTH-DEVICE-QUEUE]
+
+The macOS Prism host now owns one bounded audio-device session alongside its VST sessions. Completed graph blocks are encoded outside the callback and enqueued as canonical 48 kHz mono/stereo float32 WAV transfers. Four preallocated AudioQueue buffers bound device memory; the callback only returns buffer ownership and updates lock-free counters. Input must contain 1–8192 frames with finite samples within -1..1. Invalid layouts, lengths, amplitudes, queue timeouts and mismatched acknowledgments are explicit failures.
+
+Prism transfers 2048 graph frames at a time, while VST processing packets remain at most 256 frames. A typed pending device record retains the exact graph, sample clock and component states until the device acknowledges the transfer. Audio slices are reused across blocks. Audition drains every accepted frame; continuous Play schedules further blocks until Stop. Stop during opening first adopts the returned handle and then releases it, preventing a late-open resource leak. Host shutdown also releases owned sessions.
+
+The reference producer allocates and runs outside the device callback. It is not an allocation-free low-latency renderer. A native loaded-binary journey streamed 985088 frames through JX10, two ADelay instances, LFO modulation and the real device with zero queue-empty observations, then verified worker disposal. Queue-empty callback counters are diagnostics, not acoustic measurements. Graph edits are currently captured on restart; transactional live replacement, host latency compensation and non-macOS device implementations remain outstanding.

@@ -84,3 +84,64 @@ wavCase () =
     expect (startsWith clip "52494646352B000057415645666D7420", true)
     expect (contains clip "112B0000112B0000", true)
     expect (take (drop clip 72) 16, "64617461112B0000")
+
+zeroStereoResponse () = "4F535631020000000200000000000000" + join (mapList (toList (range (0, 8)), \_ => "0001000000000000" + join (mapList (toList (range (0, 512)), \_ => "00000000")) "")) ""
+
+// [SYNTH-DEVICE-QUEUE] The application harness supplies typed counter receipts;
+// the native worker journey separately consumes real AudioQueue buffers.
+// Reconstruct the concrete program so the compiler can prove callable effect provenance.
+deviceDone given =
+    driven = uitest::Driven(drivenSurface = given.drivenSurface, drivenProgram = synth::EditorApp::program (), drivenSeen = given.drivenSeen, drivenNow = given.drivenNow)
+    held = driven.drivenSurface.surfaceSession.sessionStore
+    match held.renderDevicePending
+        [pending] =>
+            draining = held.renderInput == "!drain"
+            running = match draining
+                true => "false"
+                false => "true"
+            handle ui::Slices
+                fetch _ => "{\"status\":0,\"acceptedFrames\":${pending.deviceState.graphPosition},\"returnedFrames\":${pending.deviceState.graphPosition},\"queuedFrames\":0,\"channels\":${pending.deviceChannels},\"emptyCallbacks\":0,\"running\":${running}}"
+            uitest::Drive::completed (driven, held.renderTicket, true, "{\"status\":0,\"stderr\":\"\"}")
+        _ =>
+            expect (false, true)
+            driven
+
+audioDone given =
+    driven = uitest::Driven(drivenSurface = given.drivenSurface, drivenProgram = synth::EditorApp::program (), drivenSeen = given.drivenSeen, drivenNow = given.drivenNow)
+    held = driven.drivenSurface.surfaceSession.sessionStore
+    match startsWith held.renderTicket "prism-audio:device:"
+        true => match held.renderDeviceKey == ""
+            true => uitest::Drive::completed (driven, held.renderTicket, true, "{\"status\":0,\"session\":\"device\"}")
+            false => deviceDone driven
+        false => match held.renderOpening
+            true => uitest::Drive::completed (driven, held.renderTicket, true, "{\"status\":0,\"session\":\"${held.renderTicket}\"}")
+            false =>
+                handle ui::Slices
+                    fetch _ => zeroStereoResponse ()
+                uitest::Drive::completed (driven, held.renderTicket, true, "{\"status\":0,\"stderr\":\"\"}")
+
+// [SYNTH-DEVICE-QUEUE] Reject inconsistent device receipts without advancing graph state.
+deviceCounterJourney editor =
+    valid = "{\"status\":0,\"acceptedFrames\":2048,\"returnedFrames\":0,\"queuedFrames\":2048,\"channels\":2,\"emptyCallbacks\":0,\"running\":false}"
+    match synth::GraphDevice::checked (editor, valid)
+        Success receipt => expect (receipt.acceptedFrames, 2048)
+        Error _ => expect (false, true)
+    forEachList (["{}", "invalid", replace valid "\"status\":0" "\"status\":1" ?: "invalid", replace valid "\"acceptedFrames\":2048" "\"acceptedFrames\":2049" ?: "invalid", replace valid "\"returnedFrames\":0" "\"returnedFrames\":-1" ?: "invalid", replace valid "\"queuedFrames\":2048" "\"queuedFrames\":0" ?: "invalid", replace valid "\"channels\":2" "\"channels\":1" ?: "invalid", replace valid "\"emptyCallbacks\":0" "\"emptyCallbacks\":-1" ?: "invalid", replace valid "false" "\"false\"" ?: "invalid"], \text =>
+        match synth::GraphDevice::checked (editor, text)
+            Success _ => expect (false, true)
+            Error _ => expect (true, true))
+    forEachList ([[], listConcat editor.renderDevicePending editor.renderDevicePending], \pending =>
+        match synth::GraphDevice::checked (editor(renderDevicePending = pending), valid)
+            Success _ => expect (false, true)
+            Error _ => expect (true, true))
+    match synth::GraphDevice::checked (editor(renderInput = "!drain"), valid)
+        Success _ => expect (false, true)
+        Error _ => expect (true, true)
+    lost = synth::GraphPreview::completed (editor, editor.renderTicket, Error(message = "output disconnected"))
+    expect (contains lost.stepStore.message "output disconnected", true)
+    expect (length lost.stepStore.renderSessions, 0)
+    expect (length lost.requests, 3)
+    expect (length lost.writes, 6)
+    cleanup = synth::GraphPreview::completed (lost.stepStore, "prism-audio:close:1:-1", Error(message = "already closed"))
+    expect (contains cleanup.stepStore.message "output disconnected", true)
+    expect (contains cleanup.stepStore.message "already closed", true)

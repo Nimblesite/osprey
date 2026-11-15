@@ -15,12 +15,25 @@ type RenderSession =
     sessionNode : int
     sessionKey : string
 
+type DevicePending G S =
+    deviceGraph : G
+    deviceState : S
+    deviceChannels : int
+
+type DeviceReceipt =
+    acceptedFrames : int
+    returnedFrames : int
+    queuedFrames : int
+    deviceChannels : int
+    emptyCallbacks : int
+    deviceRunning : bool
+
 type NodePosition =
     layoutNode : int
     layoutX : float
     layoutY : float
 
-type Editor G P =
+type Editor G P S =
     graph : G
     positions : List<NodePosition>
     dragging : int
@@ -47,7 +60,10 @@ type Editor G P =
     renderSessions : List<RenderSession>
     renderOpening : bool
     renderInput : string
-    renderChunks : List<List<float>>
+    renderDevicePending : List<DevicePending<G, S>>
+    renderDeviceKey : string
+    renderContinuous : bool
+    renderStopping : bool
 
 type EditorAction =
     Add
@@ -71,6 +87,8 @@ type EditorAction =
         identity : int
         key : string
     Audition
+    PlayGraph
+    StopGraph
     Surface
     PluginPath
     ScanVst
