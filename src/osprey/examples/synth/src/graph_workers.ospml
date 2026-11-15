@@ -17,7 +17,7 @@ module GraphWorkers
         editor = step.stepStore
         closes = mapList (editor.renderSessions, \held => call ("prism-audio:close:${editor.renderSerial}:${held.sessionNode}", "session-close", [header ("session", held.sessionKey)], "prism-cleanup"))
         clears = foldList (editor.renderSessions, [], \(writes, held) => listConcat writes [Requests::write ("prism-worker:${held.sessionNode}:input", ""), Requests::write (output held.sessionNode, "")])
-        step(stepStore = editor(renderTicket = "", renderPending = [], renderSessions = [], renderOpening = false, renderInput = "", renderDevicePending = [], renderDeviceKey = "", renderContinuous = false, renderStopping = false), requests = listConcat step.requests closes, writes = listConcat step.writes clears)
+        step(stepStore = editor(renderTicket = "", renderPending = [], renderSessions = [], renderOpening = false, renderInput = "", renderDevicePending = [], renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = false, renderStopping = false), requests = listConcat step.requests closes, writes = listConcat step.writes clears)
 
     (** Reuse a node's slice across blocks, keeping host-held audio memory bounded. *)
     export output identity = "prism-worker:${identity}:output"

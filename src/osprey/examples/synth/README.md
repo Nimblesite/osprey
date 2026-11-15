@@ -14,6 +14,7 @@ make -C src/toolchain/targets/macos synth
 
 The current running graph is frozen at start: stop and play again to apply editor changes. The producer allocates outside the audio callback and transfers 2048-frame blocks; this is not a low-latency, allocation-free synthesis engine. The native journey verifies over twenty seconds of actual graph/device processing without an empty-queue callback, then verifies that Stop leaves no owned workers alive. This is measured fixture evidence, not a guarantee for arbitrary third-party plug-ins or workloads. Windows and other device adapters, graph persistence and latency compensation remain pending. Without the packaged worker, a mono audition can still use the existing temporary-WAV `afplay` adapter; continuous playback reports that the worker is required.
 
+If the device queue runs empty, Prism retains a visible warning with the observed count. The backend emits structured `audio.queue_empty` diagnostics from the producer thread; the callback never logs. A warning is not an acoustic measurement, and reducing patch workload may help.
 
 ## Test
 
@@ -30,3 +31,5 @@ The VST target builds a separate worker against a pinned official SDK, scans act
 VST3 bundles can now be scanned from the native **VST3 bundle** field. **Add VST3** lists the actual classes; choosing one loads its checked stereo/MIDI ports and normalized controls into an independent graph node. The worker is packaged beside Prism. Scan failures remain visible, and stale responses cannot add nodes to a newer module selection. External-node audio is not yet connected to the preview engine.
 
 `make -C src/toolchain/targets/macos/tests synth-vst-headless` drives the native application against real SDK plug-ins and real bounded worker processes. `synth-vst` runs the same journey in a window. The headless records are accessibility trees; the windowed run records screenshots. These commands do not substitute a fake successful scan or descriptor.
+
+Latest verification (2026-11-16): the final sustained native reruns failed the unchanged zero-empty-queue assertion, including a rerun without concurrent test compilation. Earlier successful 985088-frame evidence is not reproducible reliability. Exact finite VST-chain PCM still passes. Continuous playback is experimental pending producer-throughput work; do not treat this branch as release-ready.

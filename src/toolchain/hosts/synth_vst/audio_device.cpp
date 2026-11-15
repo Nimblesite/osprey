@@ -60,6 +60,7 @@ class Device {
     std::atomic<uint64_t> returned{0}, accepted{0}, emptyCallbacks{0};
     std::atomic<bool> draining{false};
     uint32_t channels = 0;
+    uint64_t reportedEmpty = 0;
     bool running = false, finished = false;
     std::string error;
 
@@ -152,12 +153,18 @@ public:
         return true;
     }
 
-    void receipt() const {
+    void receipt() {
+        const auto empty = emptyCallbacks.load(std::memory_order_acquire);
+        if (empty > reportedEmpty) {
+            std::cerr << "{\"event\":\"audio.queue_empty\",\"count\":" << empty
+                      << ",\"acceptedFrames\":" << accepted.load() << "}\n";
+            reportedEmpty = empty;
+        }
         const auto done = returned.load(std::memory_order_acquire);
         const auto sent = accepted.load(std::memory_order_acquire);
         std::cout << "{\"status\":0,\"acceptedFrames\":" << sent << ",\"returnedFrames\":" << done
                   << ",\"queuedFrames\":" << sent - done << ",\"channels\":" << channels
-                  << ",\"emptyCallbacks\":" << emptyCallbacks.load() << ",\"running\":" << (running ? "true" : "false") << "}\n" << std::flush;
+                  << ",\"emptyCallbacks\":" << empty << ",\"running\":" << (running ? "true" : "false") << "}\n" << std::flush;
     }
 };
 #endif

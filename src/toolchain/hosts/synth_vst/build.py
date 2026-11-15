@@ -358,14 +358,20 @@ def device_tests():
                 receipt = json.loads(reader.submit(child.stdout.readline, 4096).result(timeout=5))
                 assert receipt["status"] == 0 and receipt["acceptedFrames"] == (index + 1) * 2048, receipt
                 assert receipt["queuedFrames"] <= 6144 and receipt["channels"] == 2, receipt
+            time.sleep(.25)
+            child.stdin.write(wave(256).hex().encode() + b"\n")
+            child.stdin.flush()
+            receipt = json.loads(reader.submit(child.stdout.readline, 4096).result(timeout=5))
+            assert receipt["emptyCallbacks"] > 0 and receipt["acceptedFrames"] == 6400, receipt
             child.stdin.write(b"!drain\n")
             child.stdin.flush()
             receipt = json.loads(reader.submit(child.stdout.readline, 4096).result(timeout=5))
-            assert receipt["returnedFrames"] == 6144 and receipt["queuedFrames"] == 0, receipt
+            assert receipt["returnedFrames"] == 6400 and receipt["queuedFrames"] == 0, receipt
             assert receipt["running"] is False, receipt
         finally:
             child.kill()
             child.wait(timeout=5)
+        assert b"audio.queue_empty" in child.stderr.read(), "Queue starvation needs a structured backend diagnostic"
     for payload in [b"short", wave(1, sample=float("nan")), wave(1, sample=float("inf")),
                     wave(1, sample=1.01), wave(0), wave(8193), wave(1, 3), wave(1) + b"trailing"]:
         result = subprocess.run([str(BUILD / "osprey-vst-worker"), "audio-device"],

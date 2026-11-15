@@ -45,7 +45,7 @@ module GraphDevice
         false => Error(message = "The device returned incomplete queue counters.")
         true => Success(value = DeviceReceipt(acceptedFrames = Doc::number (doc, "acceptedFrames"), returnedFrames = Doc::number (doc, "returnedFrames"), queuedFrames = Doc::number (doc, "queuedFrames"), deviceChannels = Doc::number (doc, "channels"), emptyCallbacks = Doc::number (doc, "emptyCallbacks"), deviceRunning = Doc::flag (doc, "running")))
 
-    valid (receipt, pending, draining) = receipt.acceptedFrames == pending.deviceState.graphPosition && receipt.deviceChannels == pending.deviceChannels && receipt.returnedFrames >= 0 && receipt.returnedFrames <= receipt.acceptedFrames && receipt.queuedFrames == satSub receipt.acceptedFrames receipt.returnedFrames && receipt.queuedFrames <= 32768 && receipt.emptyCallbacks >= 0 && (draining == false || (receipt.deviceRunning == false && receipt.queuedFrames == 0))
+    valid (receipt, pending, draining, previous) = receipt.acceptedFrames == pending.deviceState.graphPosition && receipt.deviceChannels == pending.deviceChannels && receipt.returnedFrames >= 0 && receipt.returnedFrames <= receipt.acceptedFrames && receipt.queuedFrames == satSub receipt.acceptedFrames receipt.returnedFrames && receipt.queuedFrames <= 32768 && receipt.emptyCallbacks >= previous && (draining == false || (receipt.deviceRunning == false && receipt.queuedFrames == 0))
 
     (** Queue acknowledgments must match the exact submitted graph clock and layout. *)
     received (editor, text) = match editor.renderDevicePending
@@ -53,7 +53,7 @@ module GraphDevice
             Error why => Error(message = why)
             Success doc => match decoded doc
                 Error why => Error(message = why)
-                Success receipt => match valid (receipt, pending, editor.renderInput == "!drain")
+                Success receipt => match valid (receipt, pending, editor.renderInput == "!drain", editor.renderEmptyCallbacks)
                     false => Error(message = "The device counters differ from the submitted graph block.")
                     true => Success(value = receipt)
         _ => Error(message = "The device reply has no unique pending graph block.")

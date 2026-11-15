@@ -62,6 +62,7 @@ type Editor G P S =
     renderInput : string
     renderDevicePending : List<DevicePending<G, S>>
     renderDeviceKey : string
+    renderEmptyCallbacks : int
     renderContinuous : bool
     renderStopping : bool
 

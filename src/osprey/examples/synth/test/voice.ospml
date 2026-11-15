@@ -122,6 +122,7 @@ audioDone given =
 
 // [SYNTH-DEVICE-QUEUE] Reject inconsistent device receipts without advancing graph state.
 deviceCounterJourney editor =
+    deviceWarningJourney editor
     valid = "{\"status\":0,\"acceptedFrames\":2048,\"returnedFrames\":0,\"queuedFrames\":2048,\"channels\":2,\"emptyCallbacks\":0,\"running\":false}"
     match synth::GraphDevice::checked (editor, valid)
         Success receipt => expect (receipt.acceptedFrames, 2048)
@@ -145,3 +146,15 @@ deviceCounterJourney editor =
     cleanup = synth::GraphPreview::completed (lost.stepStore, "prism-audio:close:1:-1", Error(message = "already closed"))
     expect (contains cleanup.stepStore.message "output disconnected", true)
     expect (contains cleanup.stepStore.message "already closed", true)
+
+// [SYNTH-DEVICE-QUEUE] Queue starvation must be visible at the controller boundary.
+deviceWarningJourney editor =
+    handle ui::Slices
+        fetch _ => "{\"status\":0,\"acceptedFrames\":2048,\"returnedFrames\":2048,\"queuedFrames\":0,\"channels\":2,\"emptyCallbacks\":1,\"running\":true}"
+    warned = synth::GraphPreview::completed (editor, editor.renderTicket, Success(value = "{\"status\":0,\"stderr\":\"\"}"))
+    expect (contains warned.stepStore.message "Audio queue ran empty", true)
+    expect (warned.stepStore.renderEmptyCallbacks, 1)
+    stale = "{\"status\":0,\"acceptedFrames\":2048,\"returnedFrames\":2048,\"queuedFrames\":0,\"channels\":2,\"emptyCallbacks\":0,\"running\":true}"
+    match synth::GraphDevice::checked (editor(renderEmptyCallbacks = 1), stale)
+        Success _ => expect (false, true)
+        Error _ => expect (true, true)
