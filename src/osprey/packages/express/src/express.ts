@@ -154,7 +154,7 @@ function released(server, message) {
 }
 
 /** The runtime's response record; a failure inside the port is a 500, never a crash. */
-function wire(outcome) {
+function wire(outcome: Result<Response, string>) {
   switch (outcome.kind) {
     case "success":
       return native(outcome.value);
@@ -231,7 +231,7 @@ function bound(patterns, parts) {
   const extra = listLength(parts) === satAdd(listLength(patterns), 1);
   return listLength(patterns) === listLength(parts) || (extra && lastIsEmpty(parts))
     ? bindFrom(patterns, parts, 0, new Map<string, string>())
-    : Success({ kind: "unbound" });
+    : Success({ kind: "unbound" } satisfies Match);
 }
 
 function lastIsEmpty(parts) {
@@ -246,7 +246,7 @@ function lastIsEmpty(parts) {
 
 function bindFrom(patterns, parts, index, params) {
   if (index === listLength(patterns)) {
-    return Success({ kind: "bound", params: params });
+    return Success({ kind: "bound", params: params } satisfies Match);
   }
   return andThen(listGet(patterns, index), (pattern) =>
     andThen(listGet(parts, index), (part) => bindSegment(patterns, parts, index, params, pattern, part)),
@@ -257,12 +257,12 @@ function bindFrom(patterns, parts, index, params) {
 function bindSegment(patterns, parts, index, params, pattern, part) {
   if (startsWith(pattern, ":")) {
     return part === ""
-      ? Success({ kind: "unbound" })
+      ? Success({ kind: "unbound" } satisfies Match)
       : bindFrom(patterns, parts, satAdd(index, 1), mapSet(params, drop(pattern, 1), part));
   }
   return toLowerCase(pattern) === toLowerCase(part)
     ? bindFrom(patterns, parts, satAdd(index, 1), params)
-    : Success({ kind: "unbound" });
+    : Success({ kind: "unbound" } satisfies Match);
 }
 
 /** Express's final handler: `Cannot METHOD /path`, with its security headers. */

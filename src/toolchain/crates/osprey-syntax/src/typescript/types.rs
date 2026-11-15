@@ -46,7 +46,9 @@ impl Lowerer<'_> {
             TSType::TSStringKeyword(_) => TypeExpr::named("string"),
             TSType::TSBooleanKeyword(_) => TypeExpr::named("bool"),
             TSType::TSVoidKeyword(_) => TypeExpr::named("Unit"),
-            TSType::TSUnknownKeyword(_) => TypeExpr::named("any"),
+            // Both spell Osprey `any`, which keeps its own rule: a value is
+            // matched to a concrete type before it is used ([FLAVOR-TS-TYPES]).
+            TSType::TSAnyKeyword(_) | TSType::TSUnknownKeyword(_) => TypeExpr::named("any"),
             TSType::TSArrayType(array) => list_of(self.type_expr(&array.element_type)?),
             TSType::TSParenthesizedType(inner) => self.type_expr(&inner.type_annotation)?,
             TSType::TSTypeOperatorType(operator)
@@ -68,7 +70,6 @@ impl Lowerer<'_> {
 
     fn rejected_type<T>(&self, ty: &TSType<'_>) -> Result<T> {
         let construct = match ty {
-            TSType::TSAnyKeyword(_) => "`any`",
             TSType::TSNullKeyword(_) => "`null`",
             TSType::TSUndefinedKeyword(_) => "`undefined`",
             TSType::TSUnionType(_) => "union type outside a `kind`-discriminated declaration",

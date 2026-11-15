@@ -139,7 +139,7 @@ fn typescript_functions_bindings_and_types_equal_default_ast() {
         ),
         (
             "type Label = string\ntype Lookup = Map<string, int>\nfn keep(value: any) -> any = value\n",
-            "type Label = string;\ntype Lookup = Map<string, int>;\nfunction keep(value: unknown): unknown {\n  return value;\n}\n",
+            "type Label = string;\ntype Lookup = Map<string, int>;\nfunction keep(value: unknown): any {\n  return value;\n}\n",
         ),
     ] {
         equal(default, source);
@@ -283,7 +283,6 @@ fn typescript_rejects_unsupported_semantics_at_original_positions() {
         ("const a = { ...b(), x: 1 };\n", "spread must come first", 1, 15),
         ("const a = { get x() { return 1; } } satisfies P;\n", "method, accessor", 1, 12),
         ("const a = 9223372036854775808;\n", "signed 64-bit range", 1, 10),
-        ("function f(x: any) {}\n", "`any`", 1, 14),
         ("function f(x: A | B) {}\n", "union type outside", 1, 14),
         ("function f(x: A & B) {}\n", "intersection type", 1, 14),
         ("function f(x: { a: int }) {}\n", "anonymous object type", 1, 14),

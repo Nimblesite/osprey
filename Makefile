@@ -81,6 +81,13 @@ test: build _build_c_runtime_tests
 ## job cannot block a merge.
 lint: _deslop _lint
 
+## typescript-lint: OPTIONAL. Check that every TypeScript-flavor source is
+##   also valid TypeScript under the pinned tsc (scripts/typescript). The
+##   compiler never needs it. Expected: "N TypeScript-flavor sources linted by
+##   tsc Version 7.0.2, 0 failed".
+typescript-lint: build
+	cd scripts/typescript && npm ci --no-audit --no-fund && node lint.mjs
+
 ## fmt: Format all code in-place. Pass CHECK=1 for read-only check (CI use).
 fmt: $(EXT_NODE_DEPS)
 	@echo "==> Formatting$(if $(CHECK), (check mode),)..."

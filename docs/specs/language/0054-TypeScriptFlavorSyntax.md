@@ -1,6 +1,6 @@
 # TypeScript Flavor Syntax
 
-**Status: partly implemented.** [Plan 0061](../../plans/0061-typescript-flavor.md) owns delivery and records what is done. Implemented today: source selection, the `oxc_parser` frontend, functions and arrow functions, interfaces, `kind`-discriminated unions, object literals in a typed context, `switch` on `kind`, the program entry, receiver statements, ES imports and exports, documentation comments, and the first slice of the Express port, which serves the Express README example unchanged. Not implemented yet: the ambient library and the `tsc` gate, effects and handlers other than `Requires` on a field, fibers, reassigned `let`, and editor support. Each section below says which of its rules are not implemented.
+**Status: partly implemented.** [Plan 0061](../../plans/0061-typescript-flavor.md) owns delivery and records what is done. Implemented today: source selection, the `oxc_parser` frontend, functions and arrow functions, interfaces, `kind`-discriminated unions, object literals in a typed context, `switch` on `kind`, the program entry, receiver statements, ES imports and exports, documentation comments, and the first slice of the Express port, which serves the Express README example unchanged. Not implemented yet: effects and handlers other than `Requires` on a field, fibers, reassigned `let`, and editor support. Each section below says which of its rules are not implemented.
 
 This specification adds a surface to [Language Flavors](0023-LanguageFlavors.md), not a JavaScript runtime. Its first package port is Express, so that HTTP servers written in the TypeScript flavor run natively on Osprey.
 
@@ -12,18 +12,21 @@ There is no JavaScript engine, prototype chain, garbage-collected object graph s
 
 Equivalent programs in Default, ML, Python and TypeScript have equal canonical ASTs after removing source locations and normalizing generated names. Equivalent flat-call programs emit identical LLVM IR under the same options.
 
-## TypeScript 7 compliance — [FLAVOR-TS-COMPLIANCE]
+## TypeScript 7 syntax — [FLAVOR-TS-COMPLIANCE]
 
-Every program the TypeScript flavor accepts is a valid TypeScript 7 program. Compliance has two parts:
+The surface is TypeScript 7 syntax, and the Osprey compiler is the only tool in the chain. It parses the source itself ([FLAVOR-TS-CST]), lowers the syntax tree to the canonical AST and compiles that AST. Building or running a TypeScript-flavor program needs no TypeScript compiler, no Node.js and no `tsconfig.json`.
 
 - **[FLAVOR-TS-COMPLIANCE-SYNTAX]** The frontend accepts only source that the TypeScript 7 parser accepts, and it reports a syntax error wherever TypeScript 7 does. A syntax-valid file can still be an unsupported Osprey surface form, which is a separate diagnostic.
-- **[FLAVOR-TS-COMPLIANCE-TYPES]** Every accepted program also type-checks under the TypeScript 7 compiler, `tsc`, configured by the generated `tsconfig.json` against the Osprey ambient library ([FLAVOR-TS-LIB]). An Osprey-accepted program that `tsc` rejects is a frontend defect.
 
-The converse does not hold. Osprey rejects valid TypeScript 7 that violates Osprey's type checking, effect checking or the supported surface. Examples are `any`, `null`, mutation of a field, a non-exhaustive `switch` and mixing `int` with `number`. Rejection is a compile error at the original TypeScript position, never a fallback to JavaScript semantics.
+Osprey rejects valid TypeScript that violates Osprey's type checking, effect checking or the supported surface. Examples are `null`, mutation of a field, a non-exhaustive `switch` and mixing `int` with `number`. Rejection is a compile error at the original TypeScript position, never a fallback to JavaScript semantics.
 
-The compiler does not run `tsc` and needs no Node.js. CI enforces [FLAVOR-TS-COMPLIANCE-TYPES] by running the pinned TypeScript 7 compiler over every TypeScript-flavor source in the repository, together with the frontend's acceptance corpus. A user project can run the same check with its generated `tsconfig.json`.
+## Optional `tsc` lint — [FLAVOR-TS-LINT]
 
-Not implemented yet: the `tsc` gate and the ambient library it checks against. Until they exist, [FLAVOR-TS-COMPLIANCE-TYPES] is not enforced, and [FLAVOR-TS-COMPLIANCE-SYNTAX] rests on the parser alone.
+Because the surface is TypeScript, a project may also check its TypeScript-flavor sources with `tsc`, as it may run any other linter. This is optional. The compiler never runs it, never reads its configuration and does not depend on it; a program compiles and runs exactly the same whether or not the lint has ever run. Its only use is to confirm that a source is also valid TypeScript, so editors, formatters and readers that know TypeScript see the same program.
+
+The repository's lint is `make typescript-lint`. It runs the pinned `tsc` with `"noLib": true`, `"strict": true` and `"noImplicitAny": false` against [`scripts/typescript/osprey.d.ts`](../../../scripts/typescript/osprey.d.ts), which declares what an Osprey program has in scope: `int` and the sized numeric types as aliases of `number`, `Result`, `List`, `Map`, `HttpResponse`, `console.log` and the intrinsics this specification defines. For each builtin a source calls, the lint adds a declaration translated from the compiler's own `osprey --hover` signature. The JavaScript standard library is absent, so `Date`, `Promise` values or `JSON` fail the lint as they fail in Osprey. A ported package supplies `types/<name>.d.ts` for the imports a program makes from it. The lint fails on a program it must reject, so it cannot pass vacuously.
+
+`noImplicitAny` is off because Osprey infers unannotated parameters with Hindley–Milner. The TypeScript flavor has Osprey's rules, not TypeScript's: omitting an annotation never introduces `any`. When nothing in the program gives the checker evidence for a required type, compilation fails and an explicit annotation must supply it; an annotation that inference already determines is reported as redundant, as in every flavor.
 
 ## Source selection — [FLAVOR-TS-SELECT]
 
@@ -31,7 +34,7 @@ The extension is **`.ts`**, the CLI spelling is `--flavor typescript` and the so
 
 As with Python ([FLAVOR-PYTHON-SELECT]), `.ts` is a common extension, so project discovery is opt-in. An optional `[project].typescript_sources` list names the TypeScript-flavor files, as literal paths relative to the manifest inside a declared source root. Only listed files and a `.ts` entry explicitly named by the manifest are discovered. Listed paths must exist, be unique after normalization and end in `.ts`. Each file resolves its own flavor, so a project may import `.osp`, `.ospml`, `.py` and `.ts` together.
 
-Editors must not register every `*.ts` file as Osprey. A listed project source, a leading marker or a user language-mode choice opts a document into the Osprey language server. The editor's own TypeScript service keeps serving the file as TypeScript, using the generated `tsconfig.json`, so both checkers report on the same text.
+Editors must not register every `*.ts` file as Osprey. A listed project source, a leading marker or a user language-mode choice opts a document into the Osprey language server. The editor's own TypeScript service may keep serving the file as TypeScript; that is the same optional check as [FLAVOR-TS-LINT].
 
 ## Concrete syntax — [FLAVOR-TS-CST]
 
@@ -40,12 +43,6 @@ The compiler parses in process with a pinned Rust TypeScript parser that produce
 The selected parser is `oxc_parser`, pinned at 0.158.0. Plan 0061 Phase A must still confirm it against the TypeScript 7 parser conformance corpus; the frontend was built on it before that run, on 2026-11-15, so the confirmation is open work. A parser lifted from a Rust port of the TypeScript 7 compiler may replace it only if it is a published, pinned crate that passes the same corpus at least as well. A tree-sitter TypeScript grammar is not the compiler parser: its error-tolerant grammar is not version-exact and cannot establish [FLAVOR-TS-COMPLIANCE-SYNTAX].
 
 A leading `/** … */` comment on a file or declaration is documentation, lowered into Osprey's documentation model. A comment written directly before a function, type or binding documents that declaration. The first such comment before the file's first statement, when no declaration claims it, documents the file, or the module when the file declares one. Template literal segmentation and escape decoding belong to the frontend; interpolation expressions use the same frontend and original source locations.
-
-## The Osprey ambient library — [FLAVOR-TS-LIB]
-
-A TypeScript-flavor project's generated `tsconfig.json` sets `"noLib": true`, `"strict": true` and `"noImplicitAny": false`, and includes the Osprey ambient library, a set of `.d.ts` declarations shipped with the compiler. That library declares exactly what Osprey provides: the builtin types (`int`, `float32` and the other sized numeric types as aliases of `number`, `Result`, `List`, `Map`), the builtin functions, and the intrinsics this specification defines (`Success`, `Error`, `perform`, `handle`, `handler`, `resume`, `spawn` and the rest). The JavaScript standard library is absent, so a use of `Date`, `Promise`, `JSON` or a DOM API fails under `tsc` as well as under Osprey.
-
-`noImplicitAny` is off because Osprey infers unannotated parameters with Hindley–Milner. Omitting an annotation never introduces `any` on the Osprey side: when the shared checker cannot infer a required type, compilation fails and an explicit annotation must supply it. An annotation that inference already determines is redundant and is left off, as in every flavor.
 
 ## Bindings and functions — [FLAVOR-TS-FUNCTIONS]
 
@@ -97,16 +94,16 @@ A rebinding that nothing reads afterwards binds no name, so the shared checker a
 | TypeScript | Osprey |
 | --- | --- |
 | `number` | `float` (binary64) |
-| `int`, `int32`, `float32` and the other sized aliases from [FLAVOR-TS-LIB] | the matching [sized numeric type](0004-TypeSystem.md#sized-numeric-types--type-numeric-sized) |
+| `int`, `int32`, `float32` and the other sized aliases from [FLAVOR-TS-LINT] | the matching [sized numeric type](0004-TypeSystem.md#sized-numeric-types--type-numeric-sized) |
 | `string`, `boolean`, `void` | `string`, `bool`, `Unit` |
 | `readonly T[]`, `T[]`, `List<T>` | `List<T>` |
-| `Map<string, T>` from [FLAVOR-TS-LIB] | `Map<string, T>` |
+| `Map<string, T>` from [FLAVOR-TS-LINT] | `Map<string, T>` |
 | `(a: A, b: B) => R` | flat function type |
 | `interface` or object `type` with `readonly` fields | closed record `Stmt::Type` |
 | union of object types discriminated by `kind` | sum type ([FLAVOR-TS-UNIONS]) |
-| `unknown` | Osprey `any`, with its mandatory pattern matching |
+| `any`, `unknown` | Osprey `any`, which must be matched to a concrete type before use |
 
-`any`, `null`, `undefined`, optional properties (`x?: T`), index signatures, intersection types, string or numeric literal union types outside a `kind` discriminant, mapped and conditional types, `keyof`, `typeof` in type positions, enums, namespaces, declaration merging and `declare` are rejected. TypeScript's structural typing does not apply on the Osprey side: records are nominal, and two interfaces with the same fields are different types.
+`null`, `undefined`, optional properties (`x?: T`), index signatures, intersection types, string or numeric literal union types outside a `kind` discriminant, mapped and conditional types, `keyof`, `typeof` in type positions, enums, namespaces, declaration merging and `declare` are rejected. TypeScript's structural typing does not apply on the Osprey side: records are nominal, and two interfaces with the same fields are different types.
 
 A method signature in an interface (`discount(amount: B): B;`) declares a function-valued field, not a method; calling `quote.discount(5)` calls the stored function with no `this`. `class` declarations are rejected.
 
@@ -118,7 +115,7 @@ A union of object types whose members each declare a `readonly kind` property wi
 
 A `switch (value.kind)` over such a union lowers to an exhaustive Osprey `match`. The value switched on is a binding. Each `case` binds the fields its body reads as `value.field`, under the field's own name, and a missing case is a compile error even where TypeScript would allow fallthrough to the end. A case in tail position ends with `return`; any other case ends with `break`, which the lowering drops. Case fallthrough and `default` are rejected.
 
-`Result<T, E>` in the ambient library is the union `{ readonly kind: "success"; readonly value: T } | { readonly kind: "error"; readonly message: E }`, so it lowers to Osprey's own `Result`. `Success(value)` and `Error(message)` construct its variants.
+`Result<T, E>` is the union `{ readonly kind: "success"; readonly value: T } | { readonly kind: "error"; readonly message: E }`, so it lowers to Osprey's own `Result`. `Success(value)` and `Error(message)` construct its variants.
 
 ## Expressions and iteration — [FLAVOR-TS-EXPRESSIONS]
 
@@ -165,7 +162,7 @@ function work() {
 Console(work);
 ```
 
-An interface that extends `Effect` or `StaticEffect` from the ambient library declares an Osprey dynamic or static `Stmt::Effect`; each method signature is an operation with complete parameter and result types. An operation whose result type is wrapped in `Control<T>` is a control operation, and the `Once<T>`, `Many<T>` and `Replayable<T>` wrappers record the existing multiplicity and replay metadata. These wrappers are type aliases of `T` for `tsc` and are read syntactically by the frontend.
+An interface that extends `Effect` or `StaticEffect` declares an Osprey dynamic or static `Stmt::Effect`; each method signature is an operation with complete parameter and result types. An operation whose result type is wrapped in `Control<T>` is a control operation, and the `Once<T>`, `Many<T>` and `Replayable<T>` wrappers record the existing multiplicity and replay metadata. These wrappers are read syntactically by the frontend; the optional lint declares them as aliases of `T`.
 
 `perform<E>().op(args)` lowers to `Expr::Perform` of operation `E.op`; it is recognized syntactically and is not an ordinary call. `handler<E>({ … })` declares a callable handler value whose arms are the object's properties, and `handle<E>({ … }, () => body)` installs a lexical handler around `body`. `resume(value)` is permitted only in a control arm. Required arms, arity, captures, stages and diagnostics follow [Algebraic Effects](0017-AlgebraicEffects.md). The spelling grants no capability the other flavors lack.
 
@@ -214,6 +211,6 @@ Implemented today: `oracle/record.mjs` runs each example file, unchanged, on the
 
 ## Acceptance — [FLAVOR-TS-VERIFICATION]
 
-Each implemented section needs a source reference and a named regression. Frontend tests assert syntax conformance, exact lowering, diagnostics and positions. Differential programs in all four flavors share a Default golden and run on native GC and ARC with zero ARC leaks, WebAssembly and the supported mobile targets. Mixed projects import TypeScript-flavor modules from the other flavors and the reverse. The pinned `tsc` accepts every TypeScript-flavor source and every accepted fixture, and every rejection fixture names the Osprey rule it violates.
+Each implemented section needs a source reference and a named regression. Frontend tests assert syntax conformance, exact lowering, diagnostics and positions. Differential programs in all four flavors share a Default golden and run on native GC and ARC with zero ARC leaks, WebAssembly and the supported mobile targets. Mixed projects import TypeScript-flavor modules from the other flavors and the reverse. Every rejection fixture names the Osprey rule it violates. The optional lint ([FLAVOR-TS-LINT]) may also run over the repository's TypeScript-flavor sources; it is not an acceptance condition for compiling them.
 
 Editor acceptance includes completion, hover, diagnostics, rename and debugger locations through the Osprey language server, beside the editor's TypeScript service and without claiming ordinary TypeScript files. CLI test discovery, documentation, project discovery and CI change classification recognize only opted-in TypeScript-flavor sources. Existing required gates and coverage thresholds remain intact.

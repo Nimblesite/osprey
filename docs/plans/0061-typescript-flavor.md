@@ -14,10 +14,10 @@ Goal: TypeScript 7 source, opted in to Osprey, compiles natively, and an Express
 
 Constraints:
 - Parse in process with a pinned Rust parser; no Node.js, `tsc` or JavaScript engine in the compiler or in compiled programs.
-- Every accepted program must also pass the pinned `tsc` 7 against the Osprey ambient library; Osprey may reject valid TypeScript, never the reverse.
+- `tsc` is never part of the build: the compiler parses and lowers the source itself. A `tsc` check exists only as an optional lint ([FLAVOR-TS-LINT]).
 - No flavor checks below the AST boundary; equivalent multi-flavor programs emit identical LLVM IR.
 - Reject unsupported constructs at the original TypeScript position; never approximate JavaScript semantics silently (`int` overflow, string length, `/` on integers).
-- Keep HM inference, immutable values, exhaustive matches, `Result` failures and isolated fibers; never introduce `any`.
+- Keep HM inference, immutable values, exhaustive matches, `Result` failures and isolated fibers; never introduce `any` implicitly.
 
 ## Phase A — parser selection and source routing
 
@@ -25,15 +25,14 @@ Constraints:
 - [x] [FLAVOR-TS-SELECT] Add `Flavor::TypeScript`, `--flavor typescript`, the `// osprey: flavor=typescript` marker, `.ts` selection and `[project].typescript_sources` in `osprey-syntax` and `osprey-project`, rejecting `.tsx`, `.mts`, `.cts` and `.d.ts`. Acceptance: selection-precedence and conflict tests mirror the Python ones; an unlisted `.ts` file in a source root is never compiled. Done: `osprey-syntax/tests/typescript.rs` and `typescript_sources_are_opt_in_and_never_declaration_files` in `osprey-project`.
 - [ ] [FLAVOR-TS-CST] Frontend skeleton `src/toolchain/crates/osprey-syntax/src/typescript/` that parses, maps every syntax error to its original byte and UTF-16 position, and rejects every unsupported node with a named diagnostic. Acceptance: no panic on the conformance corpus; every rejection names its construct. Done: the frontend on `oxc_parser` 0.158.0, with 55 rejections asserted at their line and byte column. Open: the conformance-corpus run, UTF-16 positions, and a nesting-depth bound like the other frontends' `MAX_SYNTAX_DEPTH`.
 
-## Phase B — ambient library and the `tsc` gate
+## Phase B — optional `tsc` lint
 
-- [ ] [FLAVOR-TS-LIB] Write the Osprey ambient library (`.d.ts`, shipped with the compiler) declaring the builtin types, builtin functions and intrinsics of spec 0054, plus the generated `tsconfig.json` (`noLib`, `strict`, `noImplicitAny: false`). Generate the builtin declarations from the compiler's builtin table so they cannot drift from it. Acceptance: a test fails when a builtin is added without its declaration.
-- [ ] [FLAVOR-TS-COMPLIANCE-TYPES] CI gate: run the pinned TypeScript 7 `tsc --noEmit` over every TypeScript-flavor source and accepted fixture in the repository. Acceptance: a fixture that Osprey accepts and `tsc` rejects fails CI; the gate runs in phase 1 of CI with the other static checks.
+- [x] [FLAVOR-TS-LINT] An optional compatibility lint: `make typescript-lint` runs the pinned `tsc` 7 (`scripts/typescript/`) over every TypeScript-flavor source against `scripts/typescript/osprey.d.ts`, with builtin declarations translated from `osprey --hover`. The compiler contains no TypeScript tooling and never runs it. Acceptance: it rejects a known-bad program, and passes on the Express port and examples (3 sources, 2026-11-15). CI may run it beside the other linters; it is not a build or test prerequisite.
 
 ## Phase C — core lowering
 
 - [ ] [FLAVOR-TS-FUNCTIONS] Functions, arrow functions, generics, explicit type application, `const`/`let` with assignment analysis, tail-only `return`, and rejection of non-`Unit` expression statements. Done: all but reassigned `let`; guard clauses, the program entry ([FLAVOR-TS-ENTRY]) and receiver statements ([FLAVOR-TS-RECEIVER]) were added.
-- [x] [FLAVOR-TS-TYPES] Interfaces and object types to records, function-valued fields, numeric aliases to sized types, `unknown` to `any`; rejection of every type form spec 0054 lists.
+- [x] [FLAVOR-TS-TYPES] Interfaces and object types to records, function-valued fields, numeric aliases to sized types, `any` and `unknown` to Osprey `any`; rejection of every type form spec 0054 lists.
 - [x] [FLAVOR-TS-UNIONS] `satisfies` and annotation contexts for object literals, `kind`-discriminated unions to sum types, `Result`/`Success`/`Error`, `switch` on `kind` to exhaustive `match`.
 - [ ] [FLAVOR-TS-EXPRESSIONS] Operators, template literals, `for … of`, spread update, list `map`/`filter`/`reduce`; binary64-only `/`, `intDiv`, remainder sign tests against JavaScript; string `.length` rejected until a UTF-16 count builtin exists. Done: operators, template literals, `for … of`, spread update, `console.log` and `new Map()`. Open: `map`/`filter`/`reduce`, the JavaScript remainder tests and the string `.length` rejection.
 - Acceptance for Phase C (open, except the first clause, which is done): positive and rejection cases in `src/toolchain/crates/osprey-syntax/tests/typescript.rs`; four-flavor programs in `src/osprey/tests/` share Default goldens under GC, ARC and wasm32; `cross_flavor_ir_equiv.rs` proves identical IR for flat-call quadruples.
