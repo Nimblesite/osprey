@@ -28,12 +28,16 @@ function manifests(dir) {
 }
 
 /** A project's own listed sources; a package's sources are linted with that package. */
-function ownSources(manifest) {
+/** Every TypeScript-flavor source `manifest` lists, as written there. */
+function listedSources(manifest) {
   const listed = /^typescript_sources = \[(.*)\]$/m.exec(readFileSync(manifest, "utf8"))?.[1] ?? "";
-  return [...listed.matchAll(/"([^"]+)"/g)]
-    .map((match) => match[1])
-    .filter((source) => !source.startsWith(".."))
-    .map((source) => path.join(path.dirname(manifest), source));
+  return [...listed.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+}
+
+const resolved = (manifest, sources) => sources.map((source) => path.join(path.dirname(manifest), source));
+
+function ownSources(manifest) {
+  return resolved(manifest, listedSources(manifest).filter((source) => !source.startsWith("..")));
 }
 
 // ---- Builtin declarations from `osprey --hover` ----------------------------
@@ -179,7 +183,8 @@ for (const manifest of manifests(path.join(root, "src"))) {
   const where = path.relative(root, path.dirname(manifest));
   const name = where.replaceAll(path.sep, "__");
   const lib = path.join(out, `${name}.d.ts`);
-  writeFileSync(lib, `${core}${builtinDeclarations(files, core)}\n`);
+  // A listed source outside the project is checked through its import, so its builtins are declared too.
+  writeFileSync(lib, `${core}${builtinDeclarations(resolved(manifest, listedSources(manifest)), core)}\n`);
   const result = lint(name, lib, files);
   checked += files.length;
   if (result.status === 0) {

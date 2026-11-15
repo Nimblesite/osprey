@@ -91,6 +91,25 @@ interface HttpResponse {
   readonly partialBody: string;
 }
 
+/** A JSON value: Osprey's built-in `Json` union, built with the constructors below. */
+interface Json {
+  readonly __osprey: "Json";
+}
+/** One named member of a JSON object. */
+interface JsonMember {
+  readonly __osprey: "JsonMember";
+}
+declare const JsonNull: Json;
+declare function JsonBool(value: boolean): Json;
+declare function JsonInt(value: int): Json;
+declare function JsonFloat(value: number): Json;
+declare function JsonString(value: string): Json;
+declare function JsonArray(items: List<Json>): Json;
+declare function JsonObject(members: List<JsonMember>): Json;
+declare function JsonMember(name: string, value: Json): JsonMember;
+/** `value` as compact JSON text. */
+declare function jsonEncode(value: Json): Result<string>;
+
 /** `console.log(value)` prints one value and a newline. */
 declare const console: { log(value: unknown): void };
 

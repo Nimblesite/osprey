@@ -1,7 +1,7 @@
 [project]
 name = "express"
 source_roots = ["src"]
-typescript_sources = ["src/express.ts"]
+typescript_sources = ["src/encode.ts", "src/query.ts", "src/express.ts"]
 default_namespace = "express"
 
 [package]

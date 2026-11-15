@@ -1,7 +1,9 @@
 ok 1 - Express routes example over real loopback HTTP
+ok 2 - Express web-service example over real loopback HTTP
+ok 3 - Express error handlers and query strings
 Error: listen on port 70000 failed: Error
-ok 2 - Express listen on a port that cannot be bound
+ok 4 - Express listen on a port that cannot be bound
 Error: listen on port 18941 failed: Error
-ok 3 - Express listen on a port another listener holds
-1..3
-# tests=3 passed=3 failed=0 skipped=0
+ok 5 - Express listen on a port another listener holds
+1..5
+# tests=5 passed=5 failed=0 skipped=0

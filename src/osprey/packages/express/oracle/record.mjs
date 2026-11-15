@@ -5,11 +5,11 @@
 // [TS-PORT-EXPRESS-ORACLE]
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { exchange, listening } from "./exchange.mjs";
+import { entry, exchange, listening } from "./exchange.mjs";
 
 const require = createRequire(import.meta.url);
 const express = require("express/package.json").version;
@@ -21,12 +21,7 @@ async function record(example, requests) {
   const run = path.join(here, ".run");
   await rm(run, { recursive: true, force: true });
   await mkdir(run);
-  // Node resolves `express` from the file's own directory, so the example's
-  // files are copied byte for byte beside this oracle's node_modules.
-  for (const file of await readdir(path.join(root, "examples", example))) {
-    if (file.endsWith(".ts")) await copyFile(path.join(root, "examples", example, file), path.join(run, file));
-  }
-  const server = spawn(process.execPath, ["index.ts"], { cwd: run, stdio: "ignore" });
+  const server = spawn(process.execPath, [await entry(example, run)], { cwd: run, stdio: "ignore" });
   try {
     await listening(PORT);
     const replies = [];

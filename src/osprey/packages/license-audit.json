@@ -46,9 +46,13 @@
           "git_blob_sha1": "aa927e44e31d486f807634887662efa39256bf84",
           "applies_to": [
             "src/express.ts",
-            "examples/hello-world/index.ts"
+            "src/encode.ts",
+            "src/query.ts",
+            "examples/hello-world/index.ts",
+            "examples/web-service/service.ts",
+            "oracle/upstream/web-service/index.js"
           ],
-          "basis": "The whole package is a port of Express, so its notice is retained even though the aim is not to copy JavaScript code verbatim; the hello-world example is the Express README example, reproduced unchanged.",
+          "basis": "The whole package is a port of Express, so its notice is retained even though the aim is not to copy JavaScript code verbatim; the hello-world example is the Express README example and oracle/upstream/web-service/index.js is Express's own web-service example, both reproduced unchanged, and examples/web-service/service.ts is a port of the latter.",
           "notice_attribution": [
             "TJ Holowaychuk",
             "Roman Shtylman",

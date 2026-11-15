@@ -1,7 +1,7 @@
 [project]
 name = "express-routes"
 source_roots = [".", "../../src"]
-typescript_sources = ["../../src/express.ts", "tasks.ts", "index.ts"]
+typescript_sources = ["../../src/encode.ts", "../../src/query.ts", "../../src/express.ts", "tasks.ts", "index.ts"]
 default_namespace = "routing"
 entry = "index.ts"
 

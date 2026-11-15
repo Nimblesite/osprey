@@ -8,13 +8,13 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { listening } from "./exchange.mjs";
+import { entry, listening } from "./exchange.mjs";
 
 const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -47,6 +47,15 @@ const WORKLOADS = {
     ["DELETE", "/tasks/current"],
     ["GET", "/tasks"],
   ],
+  "web-service": [
+    ["GET", "/api/users?api-key=foo"],
+    ["GET", "/api/repos?api-key=bar"],
+    ["GET", "/api/user/tobi/repos?api-key=foo"],
+    ["GET", "/api/user/nobody/repos?api-key=foo"],
+    ["GET", "/api/users"],
+    ["GET", "/api/users?api-key=nope"],
+    ["GET", "/other"],
+  ],
 };
 
 /** Each workload request with the reply Express recorded for it. */
@@ -68,15 +77,13 @@ async function native(example, memory) {
   return { name: `osprey-${memory}`, command: binary, args: [], cwd: out, hash: await sha256(binary) };
 }
 
-/** Node.js runs the example's own files beside the pinned Express, as record.mjs does. */
+/** Node.js runs the example beside the pinned Express, as record.mjs does. */
 async function node(example) {
   const run = path.join(here, ".bench");
   await rm(run, { recursive: true, force: true });
   await mkdir(run);
-  for (const file of await readdir(path.join(pkg, "examples", example))) {
-    if (file.endsWith(".ts")) await copyFile(path.join(pkg, "examples", example, file), path.join(run, file));
-  }
-  return { name: "node-express", command: process.execPath, args: ["index.ts"], cwd: run, hash: await sha256(path.join(run, "index.ts")) };
+  const file = await entry(example, run);
+  return { name: "node-express", command: process.execPath, args: [file], cwd: run, hash: await sha256(path.join(run, file)) };
 }
 
 /** One request on a fresh connection; resolves with its latency in microseconds once the reply checks. */

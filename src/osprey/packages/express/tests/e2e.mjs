@@ -37,6 +37,7 @@ function build(example, memory) {
 /** The compared reply, with each documented divergence asserted, not skipped. */
 function compare(label, want, got) {
   assert.equal(got.status, want.status, `${label}: status`);
+  assert.equal(got.reason, want.reason, `${label}: reason phrase`);
   assert.equal(got.body, want.body, `${label}: body`);
   for (const name of COMPARED_HEADERS) {
     assert.equal(got.headers[name], want.headers[name], `${label}: ${name}`);

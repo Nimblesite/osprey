@@ -133,6 +133,104 @@
         "method": "GET",
         "path": "/50%25off"
       }
+    ],
+    "web-service": [
+      {
+        "method": "GET",
+        "path": "/api/users?api-key=foo"
+      },
+      {
+        "method": "GET",
+        "path": "/api/repos?api-key=bar"
+      },
+      {
+        "method": "GET",
+        "path": "/api/users/?api-key=baz"
+      },
+      {
+        "method": "GET",
+        "path": "/api/user/tobi/repos?api-key=foo"
+      },
+      {
+        "method": "GET",
+        "path": "/api/user/loki/repos?api-key=foo"
+      },
+      {
+        "method": "GET",
+        "path": "/api/user/jane/repos/?api-key=baz"
+      },
+      {
+        "method": "GET",
+        "path": "/api/user/nobody/repos?api-key=foo"
+      },
+      {
+        "method": "GET",
+        "path": "/api/users"
+      },
+      {
+        "method": "GET",
+        "path": "/api/users?api-key="
+      },
+      {
+        "method": "GET",
+        "path": "/api/users?api-key"
+      },
+      {
+        "method": "GET",
+        "path": "/api/users?api-key=nope"
+      },
+      {
+        "method": "GET",
+        "path": "/api/users?other=foo"
+      },
+      {
+        "method": "GET",
+        "path": "/api/users?x=1&api-key=b%61r&y=2"
+      },
+      {
+        "method": "GET",
+        "path": "/api/users?api-key=fo+o"
+      },
+      {
+        "method": "GET",
+        "path": "/API/Users?api-key=foo"
+      },
+      {
+        "method": "GET",
+        "path": "/api?api-key=foo"
+      },
+      {
+        "method": "GET",
+        "path": "/api/missing?api-key=foo"
+      },
+      {
+        "method": "GET",
+        "path": "/api/missing"
+      },
+      {
+        "method": "GET",
+        "path": "/"
+      },
+      {
+        "method": "GET",
+        "path": "/other"
+      },
+      {
+        "method": "GET",
+        "path": "/apix/users?api-key=foo"
+      },
+      {
+        "method": "POST",
+        "path": "/api/users?api-key=foo"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/user/tobi/repos?api-key=foo"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/users"
+      }
     ]
   }
 }

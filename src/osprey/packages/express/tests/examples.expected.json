@@ -17,6 +17,7 @@
         },
         "reply": {
           "status": 200,
+          "reason": "OK",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "11",
@@ -33,6 +34,7 @@
         },
         "reply": {
           "status": 200,
+          "reason": "OK",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "11",
@@ -49,6 +51,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "146",
@@ -67,6 +70,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "146",
@@ -85,6 +89,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "172",
@@ -103,6 +108,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "156",
@@ -121,6 +127,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "140",
@@ -139,6 +146,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "139",
@@ -157,6 +165,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "142",
@@ -175,6 +184,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "141",
@@ -195,6 +205,7 @@
         },
         "reply": {
           "status": 200,
+          "reason": "OK",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "36",
@@ -211,6 +222,7 @@
         },
         "reply": {
           "status": 200,
+          "reason": "OK",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "2",
@@ -227,6 +239,7 @@
         },
         "reply": {
           "status": 200,
+          "reason": "OK",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "2",
@@ -243,6 +256,7 @@
         },
         "reply": {
           "status": 201,
+          "reason": "Created",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "12",
@@ -259,6 +273,7 @@
         },
         "reply": {
           "status": 201,
+          "reason": "Created",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "12",
@@ -275,6 +290,7 @@
         },
         "reply": {
           "status": 200,
+          "reason": "OK",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "13",
@@ -291,6 +307,7 @@
         },
         "reply": {
           "status": 410,
+          "reason": "Gone",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "12",
@@ -307,6 +324,7 @@
         },
         "reply": {
           "status": 410,
+          "reason": "Gone",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "12",
@@ -323,6 +341,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "144",
@@ -341,6 +360,7 @@
         },
         "reply": {
           "status": 200,
+          "reason": "OK",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "10",
@@ -357,6 +377,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "144",
@@ -375,6 +396,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "154",
@@ -393,6 +415,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "153",
@@ -411,6 +434,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "140",
@@ -429,6 +453,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "158",
@@ -447,6 +472,7 @@
         },
         "reply": {
           "status": 200,
+          "reason": "OK",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "36",
@@ -463,6 +489,7 @@
         },
         "reply": {
           "status": 200,
+          "reason": "OK",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "10",
@@ -479,6 +506,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "145",
@@ -497,6 +525,7 @@
         },
         "reply": {
           "status": 200,
+          "reason": "OK",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "10",
@@ -513,6 +542,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "152",
@@ -531,6 +561,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "147",
@@ -549,6 +580,7 @@
         },
         "reply": {
           "status": 404,
+          "reason": "Not Found",
           "headers": {
             "content-type": "text/html; charset=utf-8",
             "content-length": "147",
@@ -558,6 +590,416 @@
           },
           "etag": false,
           "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /50%25off</pre>\n</body>\n</html>\n"
+        }
+      }
+    ],
+    "web-service": [
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?api-key=foo"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "49",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"tobi\"},{\"name\":\"loki\"},{\"name\":\"jane\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/repos?api-key=bar"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "193",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"express\",\"url\":\"https://github.com/expressjs/express\"},{\"name\":\"stylus\",\"url\":\"https://github.com/learnboost/stylus\"},{\"name\":\"cluster\",\"url\":\"https://github.com/learnboost/cluster\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users/?api-key=baz"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "49",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"tobi\"},{\"name\":\"loki\"},{\"name\":\"jane\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/user/tobi/repos?api-key=foo"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "128",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"express\",\"url\":\"https://github.com/expressjs/express\"},{\"name\":\"stylus\",\"url\":\"https://github.com/learnboost/stylus\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/user/loki/repos?api-key=foo"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "64",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"stylus\",\"url\":\"https://github.com/learnboost/stylus\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/user/jane/repos/?api-key=baz"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "66",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"cluster\",\"url\":\"https://github.com/learnboost/cluster\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/user/nobody/repos?api-key=foo"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"api key required\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?api-key="
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"api key required\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?api-key"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"api key required\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?api-key=nope"
+        },
+        "reply": {
+          "status": 401,
+          "reason": "Unauthorized",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "27",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"invalid api key\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?other=foo"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"api key required\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?x=1&api-key=b%61r&y=2"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "49",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"tobi\"},{\"name\":\"loki\"},{\"name\":\"jane\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?api-key=fo+o"
+        },
+        "reply": {
+          "status": 401,
+          "reason": "Unauthorized",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "27",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"invalid api key\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/API/Users?api-key=foo"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "49",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"tobi\"},{\"name\":\"loki\"},{\"name\":\"jane\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api?api-key=foo"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/missing?api-key=foo"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/missing"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"api key required\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/other"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/apix/users?api-key=foo"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/api/users?api-key=foo"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/api/user/tobi/repos?api-key=foo"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "PUT",
+          "path": "/api/users"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"api key required\"}"
         }
       }
     ]
