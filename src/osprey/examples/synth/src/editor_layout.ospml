@@ -1,0 +1,28 @@
+// [PRISM-ROUTING-LAYOUT] Layout belongs to the UI; moving a card never edits the audio graph.
+namespace synth
+
+(** Stable component positions and pointer capture for the modular canvas. *)
+module EditorLayout
+    (** Deleted neighbours do not change the default position of surviving identities. *)
+    export position (editor, identity) = listGet (filterList (editor.positions, \p => p.layoutNode == identity)) 0 ?: NodePosition(layoutNode = identity, layoutX = CanvasGeometry::gridX (toFloat (identity % 4)), layoutY = CanvasGeometry::gridY (toFloat (intDiv identity 4)))
+
+    (** Keep the initial pointer offset so clicking away from the centre does not snap the card. *)
+    export begin (editor, identity, px, py) =
+        at = position (editor, identity)
+        editor(selected = identity, dragging = identity, grabX = CanvasGeometry::offset (px, at.layoutX), grabY = CanvasGeometry::offset (py, at.layoutY))
+
+    moved (editor, px, py) =
+        at = NodePosition(layoutNode = editor.dragging, layoutX = CanvasGeometry::dragX (px, editor.grabX), layoutY = CanvasGeometry::dragY (py, editor.grabY))
+        previous = position (editor, editor.dragging)
+        match at.layoutX == previous.layoutX && at.layoutY == previous.layoutY
+            true => editor
+            false => editor(positions = listAppend (filterList (editor.positions, \p => p.layoutNode != editor.dragging)) at, layoutRevision = satAdd editor.layoutRevision 1)
+
+    (** Ignore nonfinite coordinates and release capture even when a release position is invalid. *)
+    export drag (editor, px, py, down) =
+        next = match CanvasGeometry::valid (px, py)
+            true => moved (editor, px, py)
+            false => editor
+        match down
+            true => next
+            false => next(dragging = -1)

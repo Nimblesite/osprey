@@ -206,7 +206,7 @@ def prism_test(host, headless):
              {"invoke": "Scan VST3"}, {"wait": "Choose a VST3 instrument or effect to add."},
              {"type": ["Add VST3", class_id]}, {"wait": "ADelay 0"}, {"type": ["0: Delay", "0.5"]},
              {"type": ["Add VST3", class_id]}, {"wait": "ADelay 1"}, {"invoke": "Source 0: audio"},
-             {"invoke": "Connect 1: audio"}, {"wait": "Patch updated."}, {"shot": "vst-routed"},
+             {"invoke": "Connect 1: audio"}, {"wait": "Patch updated."}, {"drag": ["Canvas ADelay 0", "20", "130"]}, {"shot": "vst-routed"},
              {"invoke": "Remove selected"}, {"gone": "ADelay 1"}, {"wait": "ADelay 0"}, {"shot": "vst-removed"}]
     audition = [{"type": ["0: Delay", "0"]}, {"type": ["1: Delay", "0"]},
                 {"type": ["VST3 bundle", str(BUILD / "VST3/Release/mda-vst3.vst3")]},
@@ -222,7 +222,8 @@ def prism_test(host, headless):
                 {"invoke": "Source 6: audio"}, {"invoke": "Connect 4: audio"},
                 {"invoke": "Audition patch"}, {"wait": "Preview finished."}, {"shot": "vst-audition"},
                 {"invoke": "Select 1"}]
-    steps[13:13] = audition
+    before_remove = steps.index({"invoke": "Remove selected"})
+    steps[before_remove:before_remove] = audition
     worker = recording_worker(destination)
     script = destination / "journey.json"
     script.write_text(json.dumps({"steps": steps}))

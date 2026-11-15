@@ -4,7 +4,7 @@ namespace synth
 (** Draft graph editing shared by native controls and canvas interactions. *)
 module EditorState
     (** A fresh patch; identities are monotonic and never reused after deletion. *)
-    export initial () = Editor(graph = Graphs::empty, selected = -1, nextIdentity = 0, source = -1, outlet = 0, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", pluginPath = "", catalog = [], pluginBindings = [], pluginSerial = 0, pluginTicket = "", pluginClassId = "", renderGraph = Graphs::empty, renderClips = [], renderBindings = [], renderSerial = 0, renderTicket = "", renderNode = -1)
+    export initial () = Editor(graph = Graphs::empty, positions = [], dragging = -1, grabX = 0.0, grabY = 0.0, layoutRevision = 0, selected = -1, nextIdentity = 0, source = -1, outlet = 0, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", pluginPath = "", catalog = [], pluginBindings = [], pluginSerial = 0, pluginTicket = "", pluginClassId = "", renderGraph = Graphs::empty, renderClips = [], renderBindings = [], renderSerial = 0, renderTicket = "", renderNode = -1)
 
     (** Available component factories expose their real audio or event ports. *)
     export kinds = ["sine", "filter", "gain", "mixer", "delay", "output", "midi-note", "stereo", "stereo-output", "lfo", "modulated-gain"]
@@ -76,7 +76,7 @@ module EditorState
         Invalid fault => editor(message = faultText fault)
         Valid graph =>
             next = published (editor, Valid(value = graph))
-            next(selected = -1, source = -1, pluginBindings = filterList (editor.pluginBindings, \binding => binding.pluginNode != editor.selected), message = "Component and its cables removed.")
+            next(selected = -1, source = -1, dragging = -1, positions = filterList (editor.positions, \p => p.layoutNode != editor.selected), pluginBindings = filterList (editor.pluginBindings, \binding => binding.pluginNode != editor.selected), message = "Component and its cables removed.")
 
     (** One native or canvas action produces one immutable editor snapshot. *)
     export tapped (editor, action) = match action

@@ -56,11 +56,9 @@ module EditorView
 
     component (editor, n) = Ui::section (componentName (editor, n), "", listConcat [Ui::button ("Select ${n.identity}", "", Select(identity = n.identity))] (listConcat (ports n) (mapList (n.parameters, \p => parameter (n, p)))))
 
-    indexOf (graph, identity) = ui::Lists::position (graph.nodes, \n => n.identity == identity)
+    x index = index.layoutX
 
-    x index = 100.0 + toFloat (index % 4) * 210.0
-
-    y index = 65.0 + toFloat (intDiv index 4) * 130.0
+    y index = index.layoutY
 
     portX (index, output) = match output
         true => x index + 85.0
@@ -81,7 +79,7 @@ module EditorView
     portAccess (n, index, ports, output) = mapList (indices ports, \port => accessible ("Canvas ${portLabel output} ${n.identity}:${port}", portX (index, output) - 10.0, portY (index, port) - 10.0, 20.0, 20.0, false))
 
     nodeAccess (editor, n) =
-        index = indexOf (editor.graph, n.identity)
+        index = EditorLayout::position (editor, n.identity)
         listConcat [accessible ("Canvas ${componentName (editor, n)}", x index - 70.0, y index - 35.0, 140.0, 70.0, editor.selected == n.identity)] (listConcat (portAccess (n, index, n.inputs, false)) (portAccess (n, index, n.outputs, true)))
 
     inside (px, py, cx, cy, halfWidth, halfHeight) = px >= cx - halfWidth && px <= cx + halfWidth && py >= cy - halfHeight && py <= cy + halfHeight
@@ -89,42 +87,44 @@ module EditorView
     hitPort (index, ports, output, px, py) = listGet (filterList (indices ports, \port => inside (px, py, portX (index, output), portY (index, port), 10.0, 10.0))) 0
 
     hitNode (editor, n, px, py) =
-        index = indexOf (editor.graph, n.identity)
+        index = EditorLayout::position (editor, n.identity)
         match hitPort (index, n.outputs, true, px, py)
             Success port => EditorState::tapped (editor, Source(identity = n.identity, outlet = port))
             Error _ => match hitPort (index, n.inputs, false, px, py)
                 Success port => EditorState::tapped (editor, Connect(identity = n.identity, inlet = port))
                 Error _ => match inside (px, py, x index, y index, 70.0, 35.0)
-                    true => EditorState::tapped (editor, Select(identity = n.identity))
+                    true => EditorLayout::begin (editor, n.identity, px, py)
                     false => editor
 
     (** Canvas ports use the same checked commands as native controls. *)
-    export pointed (editor, px, py, down) = match down
-        false => editor
-        true => foldList (editor.graph.nodes, editor, \(current, n) => hitNode (current, n, px, py))
+    export pointed (editor, px, py, down) = match editor.dragging >= 0
+        true => EditorLayout::drag (editor, px, py, down)
+        false => match down
+            false => editor
+            true => foldList (editor.graph.nodes, editor, \(current, n) => hitNode (current, n, px, py))
 
     shape (editor, n) =
-        index = indexOf (editor.graph, n.identity)
+        index = EditorLayout::position (editor, n.identity)
         fill = match editor.selected == n.identity
             true => Scenes::rgb (88, 59, 164)
             false => Scenes::rgb (40, 34, 66)
         listConcat (listConcat (portShapes (index, n.inputs, false)) (portShapes (index, n.outputs, true))) [Scenes::rect (x index, y index, 170.0, 80.0, 0.0, fill, 1), Scenes::glyphs (componentName (editor, n), x index - 68.0, y index - 8.0, 14.0, Scenes::rgb (242, 237, 255), 2)]
 
-    wire (graph, cable) =
-        source = indexOf (graph, cable.source)
-        destination = indexOf (graph, cable.destination)
+    wire (editor, cable) =
+        source = EditorLayout::position (editor, cable.source)
+        destination = EditorLayout::position (editor, cable.destination)
         Scenes::strip ([portX (source, true), portY (source, cable.outlet), portX (destination, false), portY (destination, cable.inlet)], Scenes::rgb (79, 218, 211), 2.0, 0)
 
     canvas editor =
         nodes = foldList (editor.graph.nodes, [], \(all, n) => listConcat all (shape (editor, n)))
-        scene = Ui::zoomed (0.0, 850.0, 600.0, [], listConcat (mapList (editor.graph.cables, \c => wire (editor.graph, c))) nodes, Surface)
+        scene = Ui::zoomed (0.0, 850.0, 600.0, [], listConcat (mapList (editor.graph.cables, \c => wire (editor, c))) nodes, Surface)
         Ui::described (scene, foldList (editor.graph.nodes, [], \(all, n) => listConcat all (nodeAccess (editor, n))))
 
     root () =
         editor = editorSlice ()
         Ui::column [Ui::row [Ui::styled ("PRISM", ui::Title, ui::Accent), menu (), Ui::button ("Audition patch", "", Audition), Ui::button ("Remove selected", "", Remove)], plugins editor, Ui::caption editor.message, canvas editor, Ui::column (mapList (editor.graph.nodes, \n => component (editor, n)))]
 
-    stamp editor = JsonString "${editor.revision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}"
+    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =

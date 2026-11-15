@@ -11,8 +11,18 @@ type PluginBinding =
     pluginClass : string
     pluginName : string
 
+type NodePosition =
+    layoutNode : int
+    layoutX : float
+    layoutY : float
+
 type Editor G C =
     graph : G
+    positions : List<NodePosition>
+    dragging : int
+    grabX : float
+    grabY : float
+    layoutRevision : int
     selected : int
     nextIdentity : int
     source : int

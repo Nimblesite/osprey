@@ -125,3 +125,15 @@ Evidence is retained under `target/pr-validation/synth-coverage` and `target/pr-
 Repository-wide duplication check: Deslop 0.41.0 exits 3 at 21,235 duplicated lines out of 523,113 (reported 4.1%), above the unchanged 4.0% gate. The report is `target/deslop-report.txt`. Shared rejection assertions now replace three copied configuration-check implementations; all 22 package journeys still pass under ARC, and formatting passes. This small reduction does not establish that the repository gate passes; another complete scan is required after the remaining duplication is addressed.
 
 The full CI, Windows, GPUI, WinUI, release, release-scope and Dependabot workflow definitions have been inspected. Release publishing and staging-branch mutations are outside this branch's validation task. Required PR checks include compiler/runtime builds, static checks, source coverage, browser acceptance, native hosts and mobile/platform suites; `make ci` has not passed. Windows-native execution cannot be proved on this macOS host, and the locked desktop still prevents window screenshots.
+
+
+### Canvas layout [PRISM-ROUTING-LAYOUT]
+
+- [x] Reproduce missing drag behavior and deletion-induced position shifts through the existing loaded UI journey.
+- [x] Store typed per-node positions separately from the audio graph, preserving grab offsets and moving cards, cables and accessible port bounds together.
+- [x] Keep layout-only edits out of the audio revision; clamp dragged cards and port targets to the canvas, reject nonfinite coordinates and release pointer capture.
+- [x] Verify all twelve app journeys under GC and ARC, and the rebuilt native host's 44-step real VST/audio journey including a card drag.
+- [x] Author placement mathematics in Lean and compare 544 values against generated Osprey under both memory backends.
+- [ ] Verify actual window screenshots; the previously confirmed locked desktop still leaves this unproved.
+
+The UI model is generated from `editor.td`; the synth library remains UI-free. Evidence is in `target/pr-validation/prism-drag-*`. Continuous device rendering, persistent hosted instances, saved patches, full CI and the repository duplication gate remain unfinished.
