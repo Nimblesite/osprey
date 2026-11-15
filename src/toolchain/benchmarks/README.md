@@ -1,7 +1,7 @@
 # Osprey benchmarks
 
 A cross-language performance harness that measures where Osprey sits relative to
-**Rust, C, C#, Dart, Codon, OCaml, and Haskell** on classic compute benchmarks — both **elapsed time**
+**Rust, C, C#, Dart, TypeScript, Codon, OCaml, and Haskell** on classic compute benchmarks — both **elapsed time**
 and **peak memory**.
 
 Every benchmark uses the same workload and expected result across languages. Programs are compiled, checked for correct output, then timed; collection implementations and iteration mechanisms differ. **All source is in this
@@ -9,12 +9,12 @@ folder** under `cases/<name>/` so you can read and compare every line:
 
 ```
 src/toolchain/benchmarks/cases/<name>/
-  <name>.osp   <name>.rs   <name>.c   <name>.codon   <name>.ml   <name>.hs   expected.txt   bench.json
+  <name>.osp   <name>.rs   <name>.c   <name>.ts   <name>.codon   <name>.ml   <name>.hs   expected.txt   bench.json
   osprey.toml          # only Osprey cases that share the module below
 ```
 
 The list and text cases share one seed reader and hash per language in
-`shared/`: Rust `include!`s `seed.rs`, Dart imports `seed.dart`, `run.sh`
+`shared/`: Rust `include!`s `seed.rs`, Dart imports `seed.dart`, TypeScript imports `seed.ts`, `run.sh`
 compiles `Seed.cs` beside each C# case, and Osprey imports the module in
 `shared/bench.osp`. Each case still builds as one compiler invocation, and the
 timed loops stay in the case files.
@@ -43,11 +43,13 @@ BENCH_LANGS=codon zsh src/toolchain/benchmarks/run.sh  # only the named columns;
 
 `make -C src/toolchain/benchmarks bench-osprey` is the fast loop for a compiler or runtime change: it
 compiles and times only `osprey-arc`, `osprey-gc` and `osprey-wasm`,
-never Rust/C/C#/Dart/Codon/OCaml/Haskell. It stages into a temp directory and merges
+never Rust/C/C#/Dart/TypeScript/Codon/OCaml/Haskell. It stages into a temp directory and merges
 only the `(case, language)` cells it actually measured, so every other
 language's tracked record survives byte-for-byte — and if any case fails to
 build, mismatches its oracle or fails timing, nothing is published at all. It needs one prior
 `make -C src/toolchain/benchmarks bench` for the baseline. Every run, including a full `make -C src/toolchain/benchmarks bench`, stages and merges this way. Missing toolchains, skipped cases and unavailable measurements preserve the last recorded values. Replacements require complete, finite timing measurements; published files are replaced atomically.
+
+The **`TypeScript (Node.js)`** column runs each `<name>.ts` with `node`, which strips the types and runs the file. There is no ahead-of-time build, so its time includes Node's start-up and JIT warm-up, about 40 ms on the recorded machine, and its memory is the whole Node.js process. Where a value can pass 2^53 the TypeScript case uses `bigint`; everywhere else it uses `number`. `BENCH_LANGS=typescript zsh src/toolchain/benchmarks/run.sh` re-times this column alone.
 
 All WebAssembly columns run under Wasmtime with an explicit 4 MiB call-stack budget (`-W max-wasm-stack=4194304`). The `ackermann` workload exhausts Wasmtime's default budget; with the shared budget it prints the required `8189`. This changes host capacity, not the workload or correctness oracle.
 

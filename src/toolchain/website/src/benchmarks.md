@@ -2,7 +2,7 @@
 layout: page.njk
 wide: true
 title: Benchmarks
-description: Elapsed time and peak memory for Osprey, Rust, C, C#, Dart, Codon, OCaml and Haskell on 24 small compute programs, with the machine and toolchain behind every figure.
+description: Elapsed time and peak memory for Osprey, Rust, C, C#, Dart, TypeScript on Node.js, Codon, OCaml and Haskell on 24 small compute programs, with the machine and toolchain behind every figure.
 date: "git Last Modified"
 tags: ["benchmarks", "performance"]
 author: "Christian Findlay"
@@ -16,7 +16,7 @@ Elapsed time and peak resident memory for 24 small programs, each written with t
 | Peak memory | Highest resident set size over three runs. `—` means not measured: a WebAssembly run's RSS is the Wasmtime host's. |
 | ★ and bold | ★ marks the lowest time in a row when it is an Osprey column; bold marks the lowest otherwise. |
 
-Figures come from the runs listed in the last table, on different dates and machines.
+Figures come from the runs listed in the last table, on different dates and machines. The TypeScript column runs each program with Node.js, so its time includes Node's start-up and its memory is the whole Node.js process. For an HTTP comparison with Node.js, see [Express on Osprey](/docs/typescript/flavor/).
 
 {% include "benchmarks-tables.html" %}
 

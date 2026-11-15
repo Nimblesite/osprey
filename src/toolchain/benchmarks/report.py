@@ -29,11 +29,12 @@ from typing import Callable, Optional
 from merge_results import TIMING, atomic_write, valid_timing
 
 ORDER: list[str] = ["osprey-arc", "osprey-gc", "rust", "rust-checked", "c", "csharp",
-                    "dart", "codon", "ocaml", "haskell", "osprey-wasm", "rust-wasm", "c-wasm"]
+                    "dart", "typescript", "codon", "ocaml", "haskell", "osprey-wasm", "rust-wasm", "c-wasm"]
 LABEL: dict[str, str] = {"osprey-arc": "Osprey (ARC)",
                          "osprey-gc": "Osprey (GC)",
                          "rust": "Rust", "rust-checked": "Rust (checked)", "c": "C",
-                         "csharp": "C# (AOT)", "dart": "Dart (AOT)", "codon": "Codon",
+                         "csharp": "C# (AOT)", "dart": "Dart (AOT)", "typescript": "TypeScript (Node.js)",
+                         "codon": "Codon",
                          "ocaml": "OCaml", "haskell": "Haskell",
                          "osprey-wasm": "Osprey (wasm)", "rust-wasm": "Rust (wasm)",
                          "c-wasm": "C (wasm)"}
@@ -318,6 +319,7 @@ TOOL_COMMANDS: dict[str, list[tuple[str, list[str]]]] = {
     "c": [("C compiler", ["cc", "--version"])],
     "csharp": [(".NET", ["dotnet", "--version"])],
     "dart": [("Dart", ["dart", "--version"])],
+    "typescript": [("Node.js", ["node", "--version"])],
     "codon": [("Codon", ["codon", "--version"])],
     "ocaml": [("OCaml", ["ocamlopt", "-version"])],
     "haskell": [("GHC", ["ghc", "--numeric-version"])],
