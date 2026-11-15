@@ -10,6 +10,7 @@ set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "" FORCE)
 set(SMTG_CREATE_PLUGIN_LINK OFF CACHE BOOL "" FORCE)
 add_subdirectory("${VST3_SDK}" sdk EXCLUDE_FROM_ALL)
 add_executable(osprey-vst-worker main.cpp processor.cpp
+    "${VST3_SDK}/public.sdk/source/common/memorystream.cpp"
     "${VST3_SDK}/public.sdk/source/vst/hosting/plugprovider.cpp")
 target_compile_features(osprey-vst-worker PRIVATE cxx_std_20)
 # Keep our warnings fatal while treating unmodified upstream headers as external.
@@ -45,3 +46,6 @@ add_test(NAME process_instrument COMMAND osprey-vst-worker probe "${mda_bundle}"
 set_tests_properties(process_effect process_instrument PROPERTIES TIMEOUT 20)
 add_test(NAME rejects_missing_class COMMAND osprey-vst-worker probe "${mda_bundle}" 00000000000000000000000000000000)
 set_tests_properties(rejects_missing_class PROPERTIES WILL_FAIL TRUE TIMEOUT 10)
+add_test(NAME state_automation_effect COMMAND osprey-vst-worker verify-state "${delay_bundle}" 0CDBB66985D548A9BFD8371909D24BB3)
+add_test(NAME state_automation_instrument COMMAND osprey-vst-worker verify-state "${mda_bundle}" 5653544D44416A6D6461206A78313000)
+set_tests_properties(state_automation_effect state_automation_instrument PROPERTIES TIMEOUT 20)

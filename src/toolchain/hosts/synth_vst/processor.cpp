@@ -6,6 +6,9 @@
 #include "public.sdk/source/vst/hosting/eventlist.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
+#include "public.sdk/source/vst/hosting/parameterchanges.h"
+#include "public.sdk/source/common/memorystream.h"
+#include <cstring>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -26,6 +29,7 @@ public:
     IPtr<IComponent> component;
     IPtr<IAudioProcessor> processor;
     HostProcessData data;
+    ProcessContext context{};
     EventList events{16};
     EventList outputEvents{128};
     bool active = false;
@@ -40,6 +44,8 @@ public:
     bool setup();
     bool activate(MediaType media, BusDirection direction);
     bool run(double& peak);
+    bool stateRoundTrip();
+    bool synchronizeController();
 };
 
 bool Plugin::open(const std::string& path, const std::string& identifier) {
@@ -54,7 +60,7 @@ bool Plugin::open(const std::string& path, const std::string& identifier) {
         component = provider->getComponentPtr();
         processor = FUnknownPtr<IAudioProcessor>(component);
         if (!component || !processor) { error = "No audio processor interface"; return false; }
-        return setup();
+        return synchronizeController() && setup();
     }
     error = "Requested class ID not found";
     return false;
@@ -85,6 +91,8 @@ bool Plugin::setup() {
     active = true;
     if (processor->setProcessing(true) != kResultOk) return false;
     processing = true;
+    context.sampleRate = sampleRate;
+    data.processContext = &context;
     data.processMode = kOffline;
     data.numSamples = blockSize;
     data.inputEvents = &events;
@@ -130,10 +138,88 @@ bool measured(const HostProcessData& data, double& peak) {
     return true;
 }
 
+bool saved(IComponent& component, MemoryStream& stream) {
+    return component.getState(&stream) == kResultOk && stream.getSize() > 0 &&
+           stream.getSize() <= 16 * 1024 * 1024;
+}
+
+// A separate edit controller must receive the processor's initial state before any UI read.
+bool Plugin::synchronizeController() {
+    const auto controller = provider->getControllerPtr();
+    if (!controller) return true;
+    MemoryStream stream;
+    error = "Initial processor/controller state synchronization failed";
+    return saved(*component, stream) &&
+           stream.seek(0, IBStream::kIBSeekSet, nullptr) == kResultOk &&
+           controller->setComponentState(&stream) == kResultOk;
+}
+
+bool sameState(const MemoryStream& first, const MemoryStream& second) {
+    return first.getSize() == second.getSize() &&
+           std::memcmp(first.getData(), second.getData(), static_cast<size_t>(first.getSize())) == 0;
+}
+
+bool automatable(IEditController& controller, ParameterInfo& info) {
+    const auto count = controller.getParameterCount();
+    if (count < 0 || count > 65536) return false;
+    for (int32 index = 0; index < count; ++index) {
+        if (controller.getParameterInfo(index, info) != kResultOk) return false;
+        if ((info.flags & ParameterInfo::kCanAutomate) && !(info.flags & ParameterInfo::kIsReadOnly))
+            return true;
+    }
+    return false;
+}
+
+bool automated(Plugin& plugin, ParamID identifier, ParamValue value) {
+    ParameterChanges changes{1};
+    int32 index = 0;
+    auto* queue = changes.addParameterData(identifier, index);
+    if (!queue || queue->addPoint(17, value, index) != kResultOk) return false;
+    clearAudio(plugin.data, false);
+    plugin.data.inputParameterChanges = &changes;
+    const auto result = plugin.processor->process(plugin.data);
+    plugin.data.inputParameterChanges = nullptr;
+    return result == kResultOk;
+}
+
+bool flushState(Plugin& plugin) {
+    plugin.events.clear();
+    plugin.data.numSamples = 0;
+    const auto result = plugin.processor->process(plugin.data);
+    plugin.data.numSamples = blockSize;
+    return result == kResultOk;
+}
+
+bool restore(Plugin& plugin, IEditController& controller, MemoryStream& stream) {
+    if (stream.seek(0, IBStream::kIBSeekSet, nullptr) != kResultOk) return false;
+    if (plugin.component->setState(&stream) != kResultOk) return false;
+    if (stream.seek(0, IBStream::kIBSeekSet, nullptr) != kResultOk) return false;
+    return controller.setComponentState(&stream) == kResultOk && flushState(plugin);
+}
+
+bool Plugin::stateRoundTrip() {
+    const auto controller = provider->getControllerPtr();
+    ParameterInfo parameter{};
+    MemoryStream original, changed, restored;
+    error = "No usable controller, automatable parameter or component state";
+    if (!controller || !automatable(*controller, parameter) || !saved(*component, original)) return false;
+    const auto initial = controller->getParamNormalized(parameter.id);
+    const auto edited = initial < 0.5 ? 0.75 : 0.25;
+    error = "Controller rejected the parameter value";
+    if (controller->setParamNormalized(parameter.id, edited) != kResultOk) return false;
+    error = "Processor rejected automation or state capture";
+    if (!automated(*this, parameter.id, edited) || !saved(*component, changed)) return false;
+    error = "Processor state did not change after automation";
+    if (sameState(original, changed)) return false;
+    error = "Processor or controller state restoration failed";
+    if (!restore(*this, *controller, original)) return false;
+    error = "Restored processor state differs from saved state";
+    if (!saved(*component, restored) || !sameState(original, restored)) return false;
+    error = "Restored controller value differs from initial value: " + std::to_string(initial) + " vs " + std::to_string(controller->getParamNormalized(parameter.id));
+    return std::abs(controller->getParamNormalized(parameter.id) - initial) < 0.000001;
+}
+
 bool Plugin::run(double& peak) {
-    ProcessContext context{};
-    context.sampleRate = sampleRate;
-    data.processContext = &context;
     const bool acceptsNotes = component->getBusCount(kEvent, kInput) > 0;
     for (int32 block = 0; block < 200; ++block) {
         events.clear();
@@ -155,4 +241,12 @@ int probe(const std::string& path, const std::string& identifier) {
     std::cout << "{\"event\":\"vst.probe\",\"frames\":51200,\"peak\":" << peak
               << ",\"latency\":" << plugin.processor->getLatencySamples() << "}\n";
     return peak > 0.000001 ? 0 : failed("The lifecycle probe produced no measurable audio.");
+}
+
+int verifyState(const std::string& path, const std::string& identifier) {
+    Plugin plugin;
+    if (!plugin.open(path, identifier)) return failed(plugin.error);
+    if (!plugin.stateRoundTrip()) return failed(plugin.error);
+    std::cout << "{\"event\":\"vst.state-restored\",\"automationOffset\":17}\n";
+    return 0;
 }
