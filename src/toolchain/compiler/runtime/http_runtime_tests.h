@@ -134,6 +134,7 @@ void test_server_keeps_alive_as_node_does(void);
 void test_server_ends_half_closed_and_pipelined_connections(void);
 void test_server_stop_ends_idle_connections(void);
 void test_server_serves_concurrent_keep_alive_clients(void);
+void test_server_names_statuses_as_node_does(void);
 void test_server_handle_exhaustion(void);
 
 #endif // HTTP_RUNTIME_TESTS_H

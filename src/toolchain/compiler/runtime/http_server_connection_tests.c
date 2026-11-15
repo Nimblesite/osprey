@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -196,6 +197,60 @@ void test_server_stop_ends_idle_connections(void) {
   assert(http_stop_server(server) == 0);
   assert(closed_by_server(fd) && now_ms() - started < PROMPT_MS);
   close(fd);
+}
+
+static _Thread_local HttpResponse t_status_reply;
+
+// Answers `/<status>` with that status and no body.
+static HttpResponse *status_handler(char *method, char *path, char *headers, char *body) {
+  (void)method, (void)headers, (void)body;
+  t_status_reply = g_reply;
+  t_status_reply.status = strtol(path + 1, NULL, 10);
+  t_status_reply.partialBody = (char *)(uintptr_t) "";
+  return &t_status_reply;
+}
+
+// The reason phrase of every status Node.js names, as Node.js spells it: a
+// reply's first line is part of what a client and a byte-for-byte comparison see.
+void test_server_names_statuses_as_node_does(void) {
+  static const struct {
+    int status;
+    const char *line;
+  } named[] = {
+      {200, "HTTP/1.1 200 OK\r\n"},
+      {201, "HTTP/1.1 201 Created\r\n"},
+      {202, "HTTP/1.1 202 Accepted\r\n"},
+      {204, "HTTP/1.1 204 No Content\r\n"},
+      {301, "HTTP/1.1 301 Moved Permanently\r\n"},
+      {302, "HTTP/1.1 302 Found\r\n"},
+      {304, "HTTP/1.1 304 Not Modified\r\n"},
+      {400, "HTTP/1.1 400 Bad Request\r\n"},
+      {401, "HTTP/1.1 401 Unauthorized\r\n"},
+      {403, "HTTP/1.1 403 Forbidden\r\n"},
+      {404, "HTTP/1.1 404 Not Found\r\n"},
+      {409, "HTTP/1.1 409 Conflict\r\n"},
+      {410, "HTTP/1.1 410 Gone\r\n"},
+      {415, "HTTP/1.1 415 Unsupported Media Type\r\n"},
+      {429, "HTTP/1.1 429 Too Many Requests\r\n"},
+      {500, "HTTP/1.1 500 Internal Server Error\r\n"},
+      {501, "HTTP/1.1 501 Not Implemented\r\n"},
+      {502, "HTTP/1.1 502 Bad Gateway\r\n"},
+      {503, "HTTP/1.1 503 Service Unavailable\r\n"},
+      {504, "HTTP/1.1 504 Gateway Timeout\r\n"},
+  };
+  int64_t server = http_create_server(CONNECTION_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
+  assert(server > 0 && http_listen(server, status_handler) == 0);
+  int fd = open_client();
+  for (size_t each = 0; each < sizeof(named) / sizeof(named[0]); each++) {
+    char request[64];
+    char reply[1024];
+    (void)snprintf(request, sizeof(request), "GET /%d HTTP/1.1\r\nHost: x\r\n\r\n", named[each].status);
+    send_text(fd, request);
+    read_reply(fd, reply, sizeof(reply));
+    assert(strstr(reply, named[each].line) == reply && "the status line must carry Node's reason phrase");
+  }
+  close(fd);
+  assert(http_stop_server(server) == 0);
 }
 
 static void *keep_alive_client(void *unused) {
