@@ -63,18 +63,21 @@ The Express replies are recorded in [`tests/examples.expected.json`](tests/examp
 
 `make -C src/osprey/packages express-bench` serves each example from Osprey and from Express 5 on Node.js, and sends both the same requests over loopback: 16 in flight, a new connection for each request, 10,000 timed requests after 1,000 warm-up requests, five trials with the servers taking turns. Every timed reply is checked for its status, body and content type.
 
-One run on an Apple M4 Max (14 cores, macOS, Node.js 24.19.0) on 15 November 2026, the run the [TypeScript flavor film](https://www.ospreylang.dev/docs/typescript/flavor/) shows. Each figure is the median of five trials.
+One run on an Apple M4 Max (14 cores, macOS 26.7, Node.js 24.19.0) on 16 November 2026, with nothing else heavy running. Each figure is the median of five trials. The [TypeScript flavor film](https://www.ospreylang.dev/docs/typescript/flavor/) shows an earlier run, from before Osprey's HTTP handlers ran one at a time.
 
 | Example | Server | Requests/s | Median latency µs | p95 latency µs | Peak memory MiB |
 | --- | --- | ---: | ---: | ---: | ---: |
-| hello-world | Osprey, GC | 19,450 | 651 | 815 | 96 |
-| hello-world | Osprey, ARC | 23,746 | 595 | 699 | 3 |
-| hello-world | Node.js Express | 25,498 | 574 | 740 | 150 |
-| routes | Osprey, GC | 20,622 | 640 | 789 | 100 |
-| routes | Osprey, ARC | 25,605 | 593 | 685 | 3 |
-| routes | Node.js Express | 25,184 | 577 | 720 | 151 |
+| hello-world | Osprey, GC | 19,888 | 657 | 788 | 103 |
+| hello-world | Osprey, ARC | 24,260 | 615 | 719 | 3 |
+| hello-world | Node.js Express | 25,736 | 583 | 697 | 145 |
+| routes | Osprey, GC | 19,609 | 652 | 810 | 108 |
+| routes | Osprey, ARC | 24,264 | 611 | 675 | 3 |
+| routes | Node.js Express | 25,485 | 574 | 707 | 146 |
+| web-service | Osprey, GC | 15,066 | 836 | 1,126 | 214 |
+| web-service | Osprey, ARC | 24,680 | 600 | 672 | 3 |
+| web-service | Node.js Express | 25,263 | 584 | 730 | 126 |
 
-Under ARC the port's throughput is close to Express: 7 percent lower on one example and 2 percent higher on the other in this run, and 5 to 8 percent higher on both in an earlier run. Neither is clearly faster. The ARC build uses about a fiftieth of the memory. Under GC the port answers 18 to 24 percent fewer requests per second than Express. Osprey handlers do not yet run in parallel across cores ([#397](https://github.com/Nimblesite/osprey/issues/397)).
+Under ARC the port answers 2 to 6 percent fewer requests per second than Express, and its 95th-percentile latency is lower on two of the three examples. The ARC build uses about a fortieth of the memory. Under GC the port answers 23 percent fewer requests per second on the two small examples and 40 percent fewer on web-service, which allocates a JSON reply for every request. Osprey runs one handler at a time, so its handlers do not yet use more than one core ([#397](https://github.com/Nimblesite/osprey/issues/397)).
 
 ## How Express code maps to Osprey
 
