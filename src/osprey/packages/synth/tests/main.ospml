@@ -110,21 +110,15 @@ oscCase (rate, frequency, waveform) =
                 value = (Oscillators::next (accepted, synth::OscillatorState(phase = toFloat i / 128.0))).sample
                 expect (value >= -1.01 && value <= 1.01, true))
 
-invalidOscillator config = match Oscillators::configure config
-    Error _ => expect (true, true)
-    Success _ => expect (false, true)
+invalidOscillator config = renderRefused (Oscillators::configure config)
 
 validEnvelope config = match Envelopes::configure config
     Success _ => expect (true, true)
     Error _ => expect (false, true)
 
-invalidEnvelope config = match Envelopes::configure config
-    Error _ => expect (true, true)
-    Success _ => expect (false, true)
+invalidEnvelope config = renderRefused (Envelopes::configure config)
 
-invalidFilter config = match Filters::configure config
-    Error _ => expect (true, true)
-    Success _ => expect (false, true)
+invalidFilter config = renderRefused (Filters::configure config)
 
 oscFrequencies rate = forEachList ([0.0, 55.0, 440.0, 7000.0], \frequency => forEachList ([synth::Sine, synth::Saw, synth::Pulse, synth::Triangle], \wave => oscCase (rate, frequency, wave)))
 

@@ -117,7 +117,11 @@ All twelve app journeys pass under ARC, including frozen graph ownership, stale 
 - [x] Expand the existing package suite to 22 loaded journeys, covering stereo kernel chains, MIDI window boundaries, hosted modulation, native packet round trips, malformed buffers and invalid public graph records.
 - [x] Run coverage independently under GC and ARC: both report 848/913 own source lines (92.9%), exceeding the unchanged 92.2% package gate.
 - [x] Check formatting and compile the expanded suite with warnings treated as errors.
-- [ ] Resolve the expanded single test file's 661-line size while retaining its assertions and useful comments; this conflicts with the instruction to expand existing test files rather than create new ones.
+- [ ] Resolve the expanded single test file's 655-line size while retaining its assertions and useful comments; this conflicts with the instruction to expand existing test files rather than create new ones.
 - [ ] Finish repository-wide CI preparation; package coverage alone does not establish readiness to push.
 
 Evidence is retained under `target/pr-validation/synth-coverage` and `target/pr-validation/synth-coverage-arc`. The app still provides bounded offline auditions; continuous audio and persistent hosted instances remain unfinished.
+
+Repository-wide duplication check: Deslop 0.41.0 exits 3 at 21,235 duplicated lines out of 523,113 (reported 4.1%), above the unchanged 4.0% gate. The report is `target/deslop-report.txt`. Shared rejection assertions now replace three copied configuration-check implementations; all 22 package journeys still pass under ARC, and formatting passes. This small reduction does not establish that the repository gate passes; another complete scan is required after the remaining duplication is addressed.
+
+The full CI, Windows, GPUI, WinUI, release, release-scope and Dependabot workflow definitions have been inspected. Release publishing and staging-branch mutations are outside this branch's validation task. Required PR checks include compiler/runtime builds, static checks, source coverage, browser acceptance, native hosts and mobile/platform suites; `make ci` has not passed. Windows-native execution cannot be proved on this macOS host, and the locked desktop still prevents window screenshots.
