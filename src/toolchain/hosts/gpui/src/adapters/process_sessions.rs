@@ -65,19 +65,18 @@ fn exchange(ask: &Ask) -> Result<String, String> {
         .cloned()
         .ok_or("Unknown process session")?;
     let mut session = held.try_lock().map_err(|_| "Process session is busy")?;
-    match session.exchange(&input, timeout, limit) {
-        Ok(reply) => {
-            ffi::put_slice(&output, &reply)?;
-            Ok(json!({"status": 0, "stderr": session.diagnostics()}).to_string())
-        }
-        Err(error) => {
-            sessions()
-                .lock()
-                .map_err(|_| "Session registry unavailable")?
-                .remove(&key);
-            Err(error)
-        }
+    let result = session.exchange(&input, timeout, limit).and_then(|reply| {
+        ffi::put_slice(&output, &reply)?;
+        Ok(json!({"status": 0, "stderr": session.diagnostics()}).to_string())
+    });
+    if result.is_err() {
+        session.stop();
+        sessions()
+            .lock()
+            .map_err(|_| "Session registry unavailable")?
+            .remove(&key);
     }
+    result
 }
 
 fn close(ask: &Ask) -> Result<String, String> {

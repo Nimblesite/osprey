@@ -131,6 +131,28 @@ mod tests {
             &["session", key, "stdinSlice", "session-public-input"]
         ))
         .is_err());
+        let nul = answer(&call(
+            "session-open",
+            &[
+                "executable",
+                "/bin/sh",
+                "argv",
+                "-c",
+                "argv",
+                "read line; printf '\\000\\n'; exec sleep 2",
+            ],
+        ))?;
+        let nul: serde_json::Value = serde_json::from_str(&nul).map_err(|e| e.to_string())?;
+        let key = nul["session"].as_str().ok_or("No NUL worker handle")?;
+        assert!(answer(&call(
+            "session-exchange",
+            &["session", key, "stdinSlice", "session-public-input"]
+        ))
+        .is_err());
+        assert!(
+            answer(&call("session-close", &["session", key])).is_err(),
+            "A reply that cannot cross the native text boundary must release its worker"
+        );
         let cleanup = super::super::Cleanup;
         for _ in 0..16 {
             assert!(answer(&call("session-open", &["executable", "/bin/cat"])).is_ok());
