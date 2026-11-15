@@ -1,0 +1,5 @@
+namespace shop
+(** Rounding to a step. *)
+module Rounding
+    (** `value` rounded down to a multiple of `step`. *)
+    export nearest (step, value) = satSub (value, value % step)

@@ -363,6 +363,91 @@ fn mixed_flavor_project_graphs_emit_identical_ir() -> Result<(), String> {
     Ok(())
 }
 
+/// The two-file graph every flavor can spell, as Default, ML and TypeScript.
+const SPELLED_GRAPH: [(&str, [(&str, Flavor); 3]); 2] = [
+    (
+        "main",
+        [
+            (
+                "namespace app;\nimport app::Policy::{credit, Fee}\nfn main() = {\n    handle Arith { overflow op lhs rhs wrapped => wrapped }\n    handle Fee { value => 2 }\n    print(credit(40))\n}\n",
+                Flavor::Default,
+            ),
+            (
+                "namespace app\nimport app::Policy\n    credit\n    Fee\nmain () =\n    handle Arith\n        overflow op lhs rhs wrapped => wrapped\n    handle Fee\n        value => 2\n    print (credit 40)\n",
+                Flavor::Ml,
+            ),
+            (
+                "// osprey: namespace=app\nimport { credit, Fee } from \"./policy\";\nfunction main() {\n  return handle<Arith>({ overflow: (op, lhs, rhs, wrapped) => wrapped }, () =>\n    handle<Fee>({ value: () => 2 }, () => print(credit(40))),\n  );\n}\n",
+                Flavor::TypeScript,
+            ),
+        ],
+    ),
+    (
+        "policy",
+        [
+            (
+                "namespace app;\nmodule Policy {\n    export effect Fee { value: fn() -> int }\n    export fn credit(value) = value + perform Fee.value()\n}\n",
+                Flavor::Default,
+            ),
+            (
+                "namespace app\nmodule Policy\n    export effect Fee\n        value : Unit => int\n    export credit value = value + perform Fee.value ()\n",
+                Flavor::Ml,
+            ),
+            (
+                "// osprey: namespace=app\n// osprey: module=Policy\nexport interface Fee extends Effect {\n  value(): int;\n}\nexport function credit(value) {\n  return value + perform<Fee>().value();\n}\n",
+                Flavor::TypeScript,
+            ),
+        ],
+    ),
+];
+
+/// The IR of the graph with file `i` in the flavor at index `choice[i]`.
+fn spelled_graph_ir(choice: [usize; 2]) -> Result<String, String> {
+    let sources = SPELLED_GRAPH
+        .iter()
+        .zip(choice)
+        .map(|((stem, spellings), index)| {
+            let (source, flavor) = spellings[index];
+            let extension = match flavor {
+                Flavor::Ml => "ospml",
+                Flavor::TypeScript => "ts",
+                _ => "osp",
+            };
+            parsed_source(source, flavor, &format!("{stem}.{extension}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut config = osprey_project::ProjectConfig::for_root(Path::new("app"));
+    config.entry = Some(PathBuf::from(&sources[0].path));
+    let project = osprey_project::assemble(&config, &sources)
+        .map_err(|errors| format!("graph {choice:?}: {errors:?}"))?;
+    let errors = osprey_types::check_program(&project.program);
+    if !errors.is_empty() {
+        return Err(format!("graph {choice:?}: {errors:?}"));
+    }
+    compile_program(project.backend_program())
+        .map_err(|error| format!("graph {choice:?}: {error:?}"))
+}
+
+/// [FLAVOR-TS-INTEROP] [FLAVOR-IR-EQUIV] An effect declared in one module,
+/// performed by an exported function and handled by the importing entry emits
+/// identical IR under all nine Default/ML/TypeScript assignments to the graph.
+#[test]
+fn typescript_joins_the_mixed_flavor_project_graph() -> Result<(), String> {
+    let expected = spelled_graph_ir([0, 0])?;
+    for main in 0..3 {
+        for policy in 0..3 {
+            let actual = spelled_graph_ir([main, policy])?;
+            assert_eq!(
+                expected,
+                actual,
+                "main flavor {main}, policy flavor {policy}: {}",
+                first_diff(&expected, &actual)
+            );
+        }
+    }
+    Ok(())
+}
+
 /// [MODULES-ABI] Debugger names are source identities; linkage stays encoded.
 #[test]
 fn module_debug_frames_keep_source_names_in_both_flavors() -> Result<(), String> {

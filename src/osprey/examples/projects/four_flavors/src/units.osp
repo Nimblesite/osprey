@@ -1,0 +1,6 @@
+namespace shop;
+/// Money conversions.
+module Units {
+    /// `dollars` in cents.
+    export fn cents(dollars) = satMul(dollars, 100)
+}

@@ -362,3 +362,22 @@ fn answers_project_layouts_are_path_spelling_independent() {
 
 #[path = "cases/project_diagnostics.rs"]
 mod project_diagnostics;
+
+/// [FLAVOR-TS-INTEROP]: a TypeScript-flavor module imports Default, ML and
+/// Python-flavor modules of its namespace, and the project prints the same
+/// line under both memory backends.
+#[test]
+fn a_project_imports_between_all_four_flavors() {
+    let project = repo_root().join("src/osprey/examples/projects/four_flavors");
+    let expected =
+        std::fs::read_to_string(project.join("expectedoutput")).expect("expected output");
+    for memory in ["--memory=gc", "--memory=arc"] {
+        let output = checked(run(&[
+            arg(&project),
+            "--run".into(),
+            memory.into(),
+            "--quiet".into(),
+        ]));
+        assert_eq!(output.stdout, expected, "{memory}: {}", output.stderr);
+    }
+}
