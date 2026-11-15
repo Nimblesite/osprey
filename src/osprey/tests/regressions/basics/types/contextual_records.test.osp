@@ -3,7 +3,10 @@
 // parameter, a declared record field and a list of records. Each value below
 // is laid out as its declared record, so field access, equality and the
 // record's own functions see a `Point`, never an anonymous shape.
+
+/// A point in the plane.
 type Point = { x: int, y: int }
+/// A labelled line between two points, whose ends are records built from literals.
 type Segment = { from: Point, to: Point, label: string }
 
 fn sum(p: Point) = satAdd(p.x, p.y)
