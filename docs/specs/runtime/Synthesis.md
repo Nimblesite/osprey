@@ -42,9 +42,9 @@ Oscillator quality is evaluated under pitch changes, pulse-width modulation, pha
 
 Research candidates include bandlimited/corrected oscillators, wavetable/additive/spectral synthesis, physical/modal models, granular engines, expressive phase shaping and differentiable/learned controls. Adoption requires the [research experiments](../../research/synthesis/README.md#research-to-delivery-experiments-synth-research-experiments), not a novelty claim. Training and expensive patch inference remain outside the required audio callback.
 
-## Future VST3 hosting [SYNTH-HOST-VST]
+## VST3 hosting [SYNTH-HOST-VST]
 
-VST3 **hosting** is an early extension, explicitly deferred from the initial library work. The purpose is to load existing VST3 instruments/effects into a synthesis graph. Producing Osprey VST3 plug-ins is a separate capability and is not substituted for hosting.
+VST3 **hosting** is now an active requirement of the [Prism expansion](../../plans/prism-synth-routing.md), not yet implemented. The purpose is to load existing VST3 instruments/effects into a synthesis graph. Producing Osprey VST3 plug-ins is a separate capability and is not substituted for hosting.
 
 An external node declares audio buses, event buses, parameter identifiers, sample-accurate automation support, latency, tail length and saved state. Host adapters map these to the same graph ports and parameter Signals as built-in components. Plug-in metadata/parameter IDs remain stable across graph saves; missing binaries or changed layouts produce visible errors rather than loading a different plug-in silently.
 

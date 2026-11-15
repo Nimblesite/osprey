@@ -11,5 +11,6 @@ ok 10 - a routed oscillator and gain render exact continuous PCM across unequal 
 ok 11 - mixing, filtering and explicit two-sample feedback execute the compiled graph
 ok 12 - sample-accurate automation applies before its frame, preserves ordering and rejects stale or out-of-block events
 ok 13 - performance timbres and metallic warp stay bounded across rates and control extremes
-1..13
-# tests=13 passed=13 failed=0 skipped=0
+ok 14 - edit routes and remove connected components without corrupting the previous playable graph
+1..14
+# tests=14 passed=14 failed=0 skipped=0
