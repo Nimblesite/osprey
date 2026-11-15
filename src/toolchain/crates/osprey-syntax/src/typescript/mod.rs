@@ -10,6 +10,7 @@ mod context;
 mod documents;
 mod effects;
 mod expressions;
+mod fibers;
 mod handlers;
 mod modules;
 mod objects;

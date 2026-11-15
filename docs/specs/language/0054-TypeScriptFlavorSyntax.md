@@ -131,6 +131,7 @@ A `switch (value.kind)` over such a union lowers to an exhaustive Osprey `match`
 | `xs.length` | `listLength`, the number of elements of a list |
 | `console.log(value)` | `print(value)`; exactly one argument |
 | `new Map<string, T>()` | the empty map literal |
+| `unwrapOr(result, fallback)` | Default `result ?: fallback`; the fallback is evaluated only for an error |
 | `for (const x of iterator) { … }` | `forEach(iterator, callback)` |
 | `{ ...record, field: value }` | immutable `Expr::Update` |
 | `xs.map(f)`, `xs.filter(p)`, `xs.reduce(f, init)` | `mapList`, `filterList` and `foldList(xs, init, f)`; each returns a list or the folded value, as a JavaScript array method does |
@@ -162,13 +163,15 @@ function work() {
 Console(work);
 ```
 
-An interface that extends `Effect` or `StaticEffect` declares an Osprey dynamic or static `Stmt::Effect`; each method signature is an operation with complete parameter and result types. An operation whose result type is wrapped in `Control<T>` is a control operation, and the `Once<T>`, `Many<T>` and `Replayable<T>` wrappers record the existing multiplicity and replay metadata. These wrappers are read syntactically by the frontend; the optional lint declares them as aliases of `T`.
+An interface that extends `Effect` or `StaticEffect`, and nothing else, declares an Osprey dynamic or static `Stmt::Effect`; each method signature is an operation with complete parameter and result types, and any other member is rejected. An operation whose result type is wrapped in `Control<T>` is a control operation. `Abort<T>`, `Once<T>` and `Many<T>` are control operations with that multiplicity, and `Replayable<T>` marks a replayable operation; wrappers nest, as in `Replayable<Many<int>>`, and a repeated wrapper is rejected. These wrappers are read syntactically by the frontend; the optional lint declares them as aliases of `T`.
 
-`perform<E>().op(args)` lowers to `Expr::Perform` of operation `E.op`; it is recognized syntactically and is not an ordinary call. `handler<E>({ … })` declares a callable handler value whose arms are the object's properties, and `handle<E>({ … }, () => body)` installs a lexical handler around `body`. `resume(value)` is permitted only in a control arm. Required arms, arity, captures, stages and diagnostics follow [Algebraic Effects](0017-AlgebraicEffects.md). The spelling grants no capability the other flavors lack.
+`perform<E>().op(args)` lowers to `Expr::Perform` of operation `E.op`; it is recognized syntactically and is not an ordinary call, and a `perform<E>()` that is not called as an operation is rejected. `handler<E>({ … })` declares a callable handler value whose arms are the object's properties, and `handle<E>({ … }, () => body)` installs a lexical handler around `body`; `staticHandler<E>` and `handleStatic<E>` select the static stage. An arm is an arrow function whose parameters take their types from the operation, so an annotated arm parameter is rejected. The property `return: (x) => …` is the return clause and `finally: () => …` the finalizer. The body of `handle` is lowered in the enclosing function, so its bindings are that function's. `resume(value)` is permitted only in a control arm. Each name is an intrinsic only when no local shadows it.
+
+A handler arm that assigns a `let` of an enclosing function writes handler-owned state ([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md)): that `let` becomes an Osprey `mut` binding and the assignment a state write, so the code after the `handle` reads the value the arms left. Assigning the variable outside an arm after an arm captured it is rejected, as for any captured variable ([FLAVOR-TS-FUNCTIONS]). Required arms, arity, captures, stages and diagnostics follow [Algebraic Effects](0017-AlgebraicEffects.md). The spelling grants no capability the other flavors lack.
 
 A closed effect annotation is the return-type wrapper `Requires<T, [Log, Arith]>`; inference remains the default.
 
-Implemented today: `Requires` on a function-typed field or a method signature of an interface, which closes that field's effect row ([EFFECTS-FIELD-ROWS](0017-AlgebraicEffects.md)), so `send(body: string): Requires<Response, []>` declares a field whose stored function performs nothing. Not implemented yet: effect declarations, `perform`, `handler`, `handle`, `resume`, the `Control` wrappers and `Requires` on a function's own return type.
+`Requires` on a function-typed field or a method signature of an interface closes that field's effect row ([EFFECTS-FIELD-ROWS](0017-AlgebraicEffects.md)), so `send(body: string): Requires<Response, []>` declares a field whose stored function performs nothing. On a function declaration's return type it closes the function's row, as `fn work() -> int ![Log]` does. Every form in this section equals its Default AST, and the TypeScript twins in `src/osprey/tests/flavors/` share the Default goldens. Not implemented yet: `Requires` on an arrow function, `mask` and `instance`.
 
 ## Modules and concurrency — [FLAVOR-TS-INTEROP]
 
@@ -185,7 +188,7 @@ An import source names a module by convention, because the frontend reads one fi
 
 Side-effect imports, `import *`, a default import of a project file, dynamic `import()`, `require`, `export default` and re-exports are rejected.
 
-`spawn(work)`, `awaitFiber(fiber)`, `yieldFiber()`, `send(…)` and `recv(…)` lower to the existing fiber expressions with their existing isolation and target restrictions. They are not promises. A program's entry is Osprey's `main` selection, which top-level statements supply ([FLAVOR-TS-ENTRY]). Not implemented yet: the fiber lowerings.
+`spawn(work)`, `awaitFiber(fiber)`, `yieldFiber()`, `yieldFiber(value)`, `send(channel, value)` and `recv(channel)` lower to the existing fiber expressions with their existing isolation and target restrictions. They are not promises. `spawn(() => work(x))` spawns `work(x)`, and `spawn(work)` spawns `work()`; any other argument is rejected. A local of the same name is an ordinary value, which Default, where these are keywords, cannot express. A program's entry is Osprey's `main` selection, which top-level statements supply ([FLAVOR-TS-ENTRY]).
 
 ## First port: Express — [TS-PORT-EXPRESS]
 

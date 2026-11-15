@@ -72,6 +72,26 @@ fn typescript_handler_arms_write_enclosing_state() {
     );
 }
 
+/// Fibers are the existing fiber expressions, not promises, and `unwrapOr`
+/// is the Default `?:`.
+#[test]
+fn typescript_fibers_and_unwrap_or_equal_default_ast() {
+    same(
+        "fn go(ch) = {\n    let f = spawn crunch(1)\n    let g = spawn work()\n    let a = await(f)\n    let y = yield\n    let z = yield 3\n    let v = recv(ch)\n    let s = send(ch, 2)\n    let n = parseInt(\"4\") ?: 0\n    a\n}\n",
+        "function go(ch) {\n  const f = spawn(() => crunch(1));\n  const g = spawn(work);\n  const a = awaitFiber(f);\n  const y = yieldFiber();\n  const z = yieldFiber(3);\n  const v = recv(ch);\n  const s = send(ch, 2);\n  const n = unwrapOr(parseInt(\"4\"), 0);\n  return a;\n}\n",
+    );
+    // A local of the same name is an ordinary value. Default cannot say
+    // this: there `spawn` and `recv` are keywords.
+    let local = parse_program_with_flavor(
+        "function local(spawn, recv) {\n  return spawn(recv(1));\n}\n",
+        Flavor::TypeScript,
+    );
+    assert!(local.errors.is_empty(), "{:?}", local.errors);
+    let rendered = format!("{:?}", local.program);
+    assert!(rendered.contains("Identifier(\"spawn\")"), "{rendered}");
+    assert!(!rendered.contains("Spawn("), "{rendered}");
+}
+
 #[test]
 fn typescript_effects_reject_malformed_forms_at_their_positions() {
     for (source, needle, line, column) in [
@@ -134,6 +154,24 @@ fn typescript_effects_reject_malformed_forms_at_their_positions() {
             "after a function captured",
             3,
             0,
+        ),
+        (
+            "const f = spawn(1, 2);\n",
+            "`spawn(work)` takes one function",
+            1,
+            10,
+        ),
+        (
+            "const f = spawn((x) => x);\n",
+            "`spawn(work)` takes one function",
+            1,
+            10,
+        ),
+        (
+            "const v = unwrapOr(r);\n",
+            "`unwrapOr(result, fallback)`",
+            1,
+            10,
         ),
     ] {
         rejected_at(source, needle, line, column);

@@ -94,6 +94,9 @@ impl Lowerer<'_> {
         if let Some(effect) = self.effect_intrinsic(call)? {
             return Ok(Some(effect));
         }
+        if let Some(fiber) = self.fiber_intrinsic(call)? {
+            return Ok(Some(fiber));
+        }
         match &call.callee {
             Expression::Identifier(callee) if !self.bound_in_function(callee.name.as_str()) => {
                 let field = RESULT_CONSTRUCTORS
