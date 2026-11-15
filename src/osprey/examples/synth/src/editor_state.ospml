@@ -6,8 +6,8 @@ module EditorState
     (** A fresh patch; identities are monotonic and never reused after deletion. *)
     export initial () = Editor(graph = Graphs::empty, selected = -1, nextIdentity = 0, source = -1, outlet = 0, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", pluginPath = "", catalog = [], pluginBindings = [], pluginSerial = 0, pluginTicket = "", pluginClassId = "")
 
-    (** Available processors have real reference renderers, not placeholder nodes. *)
-    export kinds = ["sine", "filter", "gain", "mixer", "delay", "output"]
+    (** Available component factories expose their real audio or event ports. *)
+    export kinds = ["sine", "filter", "gain", "mixer", "delay", "output", "midi-note", "stereo", "stereo-output"]
 
     (** Human-readable names for the available component factories. *)
     export title kind = match kind
@@ -16,6 +16,9 @@ module EditorState
         "gain" => "Gain"
         "mixer" => "Mixer"
         "delay" => "Delay"
+        "midi-note" => "MIDI note generator"
+        "stereo" => "Mono to stereo"
+        "stereo-output" => "Stereo output"
         "output" => "Audio output"
         _ => "Unknown component"
 
@@ -25,6 +28,9 @@ module EditorState
         "gain" => Valid(value = Components::gain (identity, 0.25))
         "mixer" => Valid(value = Components::mixer identity)
         "delay" => Valid(value = Components::delay (identity, 2400))
+        "midi-note" => Valid(value = Components::midiNote (identity, 60.0, 0.8, 6000.0))
+        "stereo" => Valid(value = Components::stereo identity)
+        "stereo-output" => Valid(value = Components::stereoOutput identity)
         "output" => Valid(value = Components::output identity)
         _ => Invalid(fault = InvalidNode)
 

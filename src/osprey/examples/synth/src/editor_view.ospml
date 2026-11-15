@@ -10,6 +10,8 @@ module EditorView
     editorSlice () = perform Signal<Editor<Graph>>.read ()
 
     processorTitle processor = match processor
+        MidiNotes => "MIDI notes"
+        Stereo => "Mono to stereo"
         Oscillator => "Oscillator"
         Filter => "Filter"
         Amplifier => "Gain"

@@ -30,6 +30,8 @@ type Parameter =
     automatable : bool
 
 type Processor =
+    MidiNotes
+    Stereo
     Oscillator
     Filter
     Amplifier

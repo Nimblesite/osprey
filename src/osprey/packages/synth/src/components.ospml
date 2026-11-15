@@ -1,7 +1,7 @@
 // [SYNTH-GRAPH] UI-free factories: their descriptors can drive a UI but contain no widgets.
 namespace synth
 
-(** Composable mono reference components with named parameters and typed ports. *)
+(** Composable reference components with named parameters and typed ports. *)
 module Components
     port name = Port(name = name, rate = Audio, channels = 1, unit = Amplitude)
 
@@ -26,6 +26,15 @@ module Components
 
     (** Explicit sample delay; feedback scheduling reads it before writing the next sample. *)
     export delay (identity, count) = node (identity, Delay(samples = count), [port "audio"], [port "audio"], [])
+
+    (** A note-on/off generator; gate length is an exact sample count at the render rate. *)
+    export midiNote (identity, pitch, velocity, gateFrames) = node (identity, MidiNotes, [], [Port(name = "notes", rate = Events, channels = 1, unit = Notes)], [parameter ("pitch", "Pitch", Notes, 0.0, 127.0, pitch), parameter ("velocity", "Velocity", Normalised, 0.0, 1.0, velocity), parameter ("gateFrames", "Gate (frames)", Ratio, 1.0, 65535.0, gateFrames)])
+
+    (** Explicit mono-to-stereo duplication; routing never changes channel counts implicitly. *)
+    export stereo identity = node (identity, Stereo, [port "audio"], [Port(name = "audio", rate = Audio, channels = 2, unit = Amplitude)], [])
+
+    (** A stereo graph output for native instruments and effects. *)
+    export stereoOutput identity = node (identity, Sink, [Port(name = "audio", rate = Audio, channels = 2, unit = Amplitude)], [], [])
 
     (** One typed connection; graph validation checks both endpoints. *)
     export route (source, outlet, destination, inlet) = Cable(source = source, outlet = outlet, destination = destination, inlet = inlet)

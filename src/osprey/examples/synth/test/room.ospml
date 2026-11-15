@@ -193,3 +193,52 @@ hostWireJourney () =
         Success hex =>
             expect (contains hex "0300020080BB000000DC050008002000", true)
             expect (contains hex "6661637404000000020000006461746110000000", true)
+
+// [PRISM-ROUTING-MIDI] MIDI sources and stereo sinks are genuine menu-created graph components.
+midiMenuJourney () =
+    idle = Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ())
+    opened = Drive::launched (idle, "macos", ["--empty"])
+    notes = Drive::choose (opened, "Add component", "midi-note")
+    expect (length notes.drivenSurface.surfaceSession.sessionStore.graph.nodes, 1)
+    expect (Drive::shows (notes, "0: Pitch"), true)
+    expect (Drive::shows (notes, "0: Velocity"), true)
+    expect (Drive::shows (notes, "Source 0: notes"), true)
+    output = Drive::choose (notes, "Add component", "stereo-output")
+    expect (length output.drivenSurface.surfaceSession.sessionStore.graph.nodes, 2)
+    incompatible = Drive::press (Drive::press (output, "Source 0: notes"), "Connect 1: audio")
+    expect (length incompatible.drivenSurface.surfaceSession.sessionStore.graph.cables, 0)
+    expect (contains incompatible.drivenSurface.surfaceSession.sessionStore.message "different rates", true)
+    tuned = Drive::choose (output, "0: Pitch", "72")
+    invalid = Drive::choose (tuned, "0: Velocity", "1.1")
+    expect (structuralEquals (invalid.drivenSurface.surfaceSession.sessionStore.graph, tuned.drivenSurface.surfaceSession.sessionStore.graph), true)
+
+// [SYNTH-HOST-MIDI] Independent event expectations exercise exact block-boundary ownership.
+midiTimingJourney () =
+    source = synth::Components::midiNote (7, 60.0, 0.75, 256.0)
+    on = synth::HostNote(kind = 1, offset = 0, pitch = 60, channel = 0, identity = 7, velocity = 0.75)
+    off = on(kind = 2, velocity = 0.0)
+    match synth::MidiClips::window (source, 0, 256)
+        Error _ => expect (false, true)
+        Success notes => expect (structuralEquals (notes, [on]), true)
+    match synth::MidiClips::window (source, 256, 256)
+        Error _ => expect (false, true)
+        Success notes => expect (structuralEquals (notes, [off]), true)
+    match synth::MidiClips::window (source, 0, 512)
+        Error _ => expect (false, true)
+        Success notes =>
+            expect (structuralEquals (notes, [on, off(offset = 256)]), true)
+            layout = synth::HostLayout(inputChannels = 0, outputChannels = 2, acceptsNotes = true)
+            block = synth::HostBlock(frames = 512, notes = notes, parameters = [], samples = [])
+            match synth::HostPackets::clip (layout, block)
+                Error _ => expect (false, true)
+                Success bytes => expect (length bytes > 100, true)
+    match synth::MidiClips::window (source, 512, 256)
+        Error _ => expect (false, true)
+        Success notes => expect (length notes, 0)
+    forEachList ([synth::Components::midiNote (7, 60.5, 0.75, 256.0), synth::Components::midiNote (7, 60.0, 1.01, 256.0), synth::Components::midiNote (7, 60.0, 0.75, 256.5), synth::Components::sine (7, 440.0)], \bad =>
+        match synth::MidiClips::window (bad, 0, 512)
+            Error _ => expect (true, true)
+            Success _ => expect (false, true))
+    match synth::MidiClips::window (source, 65535, 2)
+        Error _ => expect (true, true)
+        Success _ => expect (false, true)
