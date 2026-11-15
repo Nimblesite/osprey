@@ -29,7 +29,8 @@ module PcmWords
     export le16 value = "${byte (bitAnd value 255)}${byte (bitAnd (shiftRight value 8) 255)}"
 
     (** Low thirty-two bits, little-endian. *)
-    export le32 value = "${le16 (bitAnd value 65535)}${le16 (bitAnd (shiftRight value 16) 65535)}"
+    // Encode a whole word in one allocation; nested byte/halfword strings amplify audio traffic.
+    export le32 value = "${digit (shiftRight value 4)}${digit value}${digit (shiftRight value 12)}${digit (shiftRight value 8)}${digit (shiftRight value 20)}${digit (shiftRight value 16)}${digit (shiftRight value 28)}${digit (shiftRight value 24)}"
 
     (** IEEE float32 bits, rounded once from the package's float samples. *)
     export float32 value = le32 (toInt (float32Bits (toFloat32 value)))

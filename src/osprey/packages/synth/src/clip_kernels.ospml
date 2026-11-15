@@ -31,9 +31,9 @@ module ClipKernels
                 Error why => Error(message = why)
                 Success finished => retained (n, finished, held.kernelSamples)
 
-    sample (plan, snapshot, clips, n, channel, outcome, index) = match outcome
+    sample (plan, snapshot, clips, cables, n, channel, outcome, index) = match outcome
         Error why => Error(message = why)
-        Success held => match foldList (filterList (plan.graph.cables, \c => c.destination == n.identity), Success(value = []), \(values, cable) => source (plan, clips, index, channel, values, cable))
+        Success held => match foldList (cables, Success(value = []), \(values, cable) => source (plan, clips, index, channel, values, cable))
             Error why => Error(message = why)
             Success values => rendered (plan, snapshot, n, held, values)
 
@@ -43,7 +43,9 @@ module ClipKernels
             Error why => Error(message = why)
             Success saved =>
                 initial = ClipKernel(heldKernel = saved, kernelSamples = [])
-                match foldList (toList (range (0, frames)), Success(value = initial), \(held, index) => sample (plan, snapshot, clips, n, channel, held, index))
+                // [SYNTH-HOST-GRAPH] The frozen block has one cable set per channel, not per sample.
+                cables = filterList (plan.graph.cables, \c => c.destination == n.identity)
+                match foldList (toList (range (0, frames)), Success(value = initial), \(held, index) => sample (plan, snapshot, clips, cables, n, channel, held, index))
                     Error why => Error(message = why)
                     Success result => Success(value = listAppend buffers (result(kernelSamples = listReverse result.kernelSamples)))
 

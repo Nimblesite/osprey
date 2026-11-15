@@ -9,7 +9,7 @@ Work is isolated on `codex/prism-synth-routing`, based on `math-to-code` at `e3e
 - [x] Create and attach the requested worktree without moving unrelated Inbox edits.
 - [x] Establish the synth package baseline: thirteen existing loaded journeys pass.
 - [x] Implement transactional graph editing, cable removal, component removal and checked reconnection; rejected edits preserve the previous playable graph.
-- [ ] Expand typed component descriptors and rendering for MIDI generators, modulators and effects; declare new models in typeDiagram and derive their representations.
+- [x] Expand typed component descriptors and rendering for MIDI generators, modulators and effects; declare new models in typeDiagram and derive their representations.
 - [ ] Replace Prism's fixed patch mapping with the synth graph, with a component menu, selectable nodes, compatible cable endpoints and parameter inspection.
 - [ ] Publish applied graph/parameter revisions and component activity through Signals without a UI dependency in the package.
 - [ ] Implement actual VST3 discovery, out-of-process scanning, activation, processing, MIDI/automation, state save/restore and disposal as an external graph node.
@@ -46,7 +46,7 @@ The current component picker offers the six already rendered reference processor
 - [x] Initialize, activate and process a real effect and instrument, including note-on/off delivery, finite-output checks, teardown and unload; six bounded worker tests pass on macOS arm64.
 - [ ] Add parameter automation, controller/component state round trips and restart notifications.
 - [ ] Add bounded streaming transport and connect external processor instances to synth graph ports and parameter Signals.
-- [ ] Drive VST discovery/creation and actual playback from Prism's component menu.
+- [x] Drive VST discovery/creation and actual playback from Prism's component menu.
 
 `make -C src/toolchain/targets/tests synth-vst` is the repeatable entry point. The ADelay probe measured peak 0.25 from an input impulse; mda JX10 measured peak 0.652497 from MIDI note events. These checks prove real loaded-binary audio processing, not live UI routing, arbitrary plug-in compatibility, process sandboxing or note-release correctness. The seven Prism journeys also pass under ARC. The default-app switch is complete; no full CI push has occurred yet.
 
@@ -98,7 +98,7 @@ The native headless journey now runs 36 steps with real processes and playback. 
 - [x] Verify exact stereo PCM for constant control, changing PCM for moving control, missing-input rejection and invalid-control rejection.
 - [x] Extend the real native VST journey to 42 steps including an LFO-controlled stereo gain before playback; retain exact upstream VST PCM checks.
 - [x] Route normalized modulators into automatable hosted parameters.
-- [ ] Implement continuous rendering.
+- [x] Implement continuous rendering; sustained reliability remains subject to the later diagnostics checks.
 
 The twelve loaded app journeys pass under ARC, the seventeen package journeys pass under GC, and strict source checking passes. The current Mac remains locked, preventing windowed screenshot verification; headless native tests execute real workers and audio playback.
 
@@ -243,3 +243,13 @@ The twelve loaded application journeys retain their assertions and add device re
 - [ ] Verify windowed tests after the Mac is unlocked; currently unavailable.
 
 Evidence: `target/pr-validation/prism-diagnostics-*` retains the final failing native logs and device receipt sequences; `device-diagnostics-ctest.log` records worker checks. The package previously passed all 22 journeys in GC/ARC and coverage 919/993 (92.5%, gate 92.2%); GPUI passed 102 tests and strict clippy. No push or PR was made because full CI is not green.
+
+### Producer profile and bounded optimization [PRISM-ROUTING-THROUGHPUT]
+
+- [x] Capture a three-second native producer sample in `target/pr-validation/prism-producer-sample.txt`; ARC allocation/reference management and nested string formatting are prominent costs.
+- [x] Hoist frozen cable filtering from the per-sample loop to once per channel/block. Encode a complete PCM word without intermediate byte/halfword strings.
+- [x] Preserve exact audio/byte assertions: all 22 package journeys pass in ARC and the GC coverage run passes at 920/994 lines (92.6%, unchanged gate 92.2%). Rebuild the macOS app bundle.
+- [x] Repeat real native validation: both optimizations produce individual successful 985088-frame runs, but the final repeat still records 43 empty callbacks (first at accepted frame 876544); zero-starvation remains an unresolved gate. Exact finite PCM passes and all owned workers are gone.
+- [x] Retain failures rather than weakening assertions; final evidence is `prism-word-native*.log` and `prism-word-repeat-receipts.json`.
+
+This is a committed development checkpoint, not release readiness. Final work remains: sustained producer scheduling/throughput, transactional live edits, state persistence/latency compensation, other platform device adapters, windowed verification and the root CI duplication gate.
