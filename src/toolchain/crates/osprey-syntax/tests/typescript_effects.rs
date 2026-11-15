@@ -177,3 +177,53 @@ fn typescript_effects_reject_malformed_forms_at_their_positions() {
         rejected_at(source, needle, line, column);
     }
 }
+
+/// [FAILURE-EXPLICIT]: nesting past the shared syntax limit is a diagnostic,
+/// as in every other flavor, never a stack overflow in the parser, the
+/// lowerer or the phases after it.
+#[test]
+fn typescript_nesting_past_the_limit_is_a_diagnostic() {
+    let deep = |open: &str, middle: &str, close: &str, depth: usize| {
+        format!(
+            "const x = {}{middle}{};\n",
+            open.repeat(depth),
+            close.repeat(depth)
+        )
+    };
+    let chain = format!("const x = 1{};\n", " + 1".repeat(5000));
+    for source in [
+        deep("[", "1", "]", 600),
+        deep("(", "1", ")", 100_000),
+        deep("{ a: ", "1", " }", 600),
+        deep("f(", "1", ")", 600),
+        deep("!", "true", "", 100_000),
+        deep("-", "1", "", 100_000),
+        deep("`${", "1", "}`", 600),
+        deep("(() => ", "1", ")", 600),
+        deep("c ? 1 : ", "2", "", 100_000),
+        chain,
+    ] {
+        let parsed = parse_program_with_flavor(&source, Flavor::TypeScript);
+        assert!(
+            parsed
+                .errors
+                .iter()
+                .any(|error| error.message.contains("syntax nesting limit exceeded")),
+            "{}…: {:?}",
+            &source[..40.min(source.len())],
+            parsed.errors.first()
+        );
+    }
+    // Ordinary nesting stays well inside the limit.
+    let shallow = parse_program_with_flavor(&deep("[", "1", "]", 100), Flavor::TypeScript);
+    assert!(shallow.errors.is_empty(), "{:?}", shallow.errors);
+}
+
+/// Columns are byte offsets, as in every flavor; the language server turns
+/// them into UTF-16 code units at its edge ([LSP-ENCODING]).
+#[test]
+fn typescript_columns_are_byte_offsets_after_non_ascii_text() {
+    rejected_at("const s = \"héllo\"; var y = 2;\n", "`var`", 1, 20);
+    // The emoji is four bytes and two UTF-16 code units.
+    rejected_at("const s = \"😀\"; var y = 2;\n", "`var`", 1, 18);
+}
