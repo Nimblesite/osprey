@@ -231,6 +231,175 @@
         "method": "PUT",
         "path": "/api/users"
       }
+    ],
+    "json-api": [
+      {
+        "method": "GET",
+        "path": "/notes"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"text\":\"call mum\"}"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"text\":\"call mum\",\"extra\":[1,2,{\"x\":null}]}"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "  {\"text\": \"spaced\"}  "
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"text\":\"\"}"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"text\":5}"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"note\":\"wrong field\"}"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "[1,2]"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"text\":"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "not json"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "5"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "null"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": "{\"text\":\"typed\"}"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "text/plain"
+        },
+        "body": "{\"text\":\"plain\"}"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "body": "{\"text\":\"none\"}"
+      },
+      {
+        "method": "POST",
+        "path": "/notes",
+        "headers": {
+          "Content-Type": "application/octet-stream"
+        },
+        "body": "\u0000\u0001binary"
+      },
+      {
+        "method": "GET",
+        "path": "/tasks"
+      },
+      {
+        "method": "GET",
+        "path": "/tasks/"
+      },
+      {
+        "method": "GET",
+        "path": "/tasks/7"
+      },
+      {
+        "method": "GET",
+        "path": "/tasks/7",
+        "headers": {
+          "X-Agent": "curl/8"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/tasks/7",
+        "headers": {
+          "x-agent": "lower case"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/TASKS/9/"
+      },
+      {
+        "method": "GET",
+        "path": "/tasks/7/extra"
+      },
+      {
+        "method": "POST",
+        "path": "/tasks"
+      },
+      {
+        "method": "DELETE",
+        "path": "/notes"
+      },
+      {
+        "method": "GET",
+        "path": "/missing"
+      }
     ]
   }
 }

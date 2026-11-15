@@ -4,11 +4,13 @@
  * The Express package suite: the routes and web-service examples served
  * natively over real loopback HTTP, each reply checked against what Express
  * 5.3.0 sent for the same request in `examples.expected.json`, then the error
- * handler chain and query strings. [TS-PORT-EXPRESS-ORACLE]
+ * handler chain, query strings, JSON bodies, a mounted router and request
+ * headers. [TS-PORT-EXPRESS-ORACLE]
  */
 import express, { close, type HttpError, type Request, type Response, type Server } from "express";
 import { tasks } from "../examples/routes/tasks.ts";
 import { service } from "../examples/web-service/service.ts";
+import { api } from "../examples/json-api/api.ts";
 
 /** The GC and ARC runs of this suite may overlap, so each takes the first free port. */
 const PORTS = [18921, 18923, 18925, 18927, 18929];
@@ -117,7 +119,13 @@ function served(which, index) {
 
 /** Each application listens where it is built, so its handlers stay statically known. */
 function listening(which, port) {
-  return which === "routes" ? tasks().listen(port, () => {}) : which === "web-service" ? service().listen(port, () => {}) : faulty().listen(port, () => {});
+  return which === "routes"
+    ? tasks().listen(port, () => {})
+    : which === "web-service"
+      ? service().listen(port, () => {})
+      : which === "json-api"
+        ? api().listen(port, () => {})
+        : faulty().listen(port, () => {});
 }
 
 function checked(outcome, status, body) {
@@ -299,9 +307,31 @@ function everyRoute(client) {
   return unrouted(client);
 }
 
+/** JSON bodies, a router mounted on `/tasks`, and a header read with `req.get`. */
+function bodies(client) {
+  const json = "Content-Type: application/json\r\n";
+  const invalid = "{\"error\":\"text must be a non-empty string\"}";
+  const malformed = "{\"error\":\"malformed JSON\"}";
+  typed(httpGetResponse(client, "/notes", ""), 200, "[{\"id\":1,\"text\":\"buy milk\"}]", JSON_TYPE);
+  typed(httpPostResponse(client, "/notes", "{\"text\":\"call mum\"}", json), 201, "{\"id\":2,\"text\":\"call mum\"}", JSON_TYPE);
+  typed(httpPostResponse(client, "/notes", " [1] ", json), 422, invalid, JSON_TYPE);
+  typed(httpPostResponse(client, "/notes", "{\"text\":3}", "Content-Type: Application/JSON; charset=utf-8\r\n"), 422, invalid, JSON_TYPE);
+  typed(httpPostResponse(client, "/notes", "{\"text\":\"x\"}", "Content-Type: application/vnd.api+json\r\n"), 201, "{\"id\":2,\"text\":\"x\"}", JSON_TYPE);
+  typed(httpPostResponse(client, "/notes", "{\"text\":", json), 400, malformed, JSON_TYPE);
+  typed(httpPostResponse(client, "/notes", "true", json), 400, malformed, JSON_TYPE);
+  typed(httpPostResponse(client, "/notes", "{\"text\":\"plain\"}", "Content-Type: text/plain\r\n"), 422, invalid, JSON_TYPE);
+  typed(httpPostResponse(client, "/notes", "{\"text\":\"none\"}", ""), 422, invalid, JSON_TYPE);
+  typed(httpGetResponse(client, "/tasks", ""), 200, "{\"tasks\":[\"write\",\"test\"]}", JSON_TYPE);
+  typed(httpGetResponse(client, "/Tasks/", ""), 200, "{\"tasks\":[\"write\",\"test\"]}", JSON_TYPE);
+  typed(httpGetResponse(client, "/tasks/7", "X-Agent: osprey\r\n"), 200, "{\"id\":\"7\",\"agent\":\"osprey\"}", JSON_TYPE);
+  typed(httpGetResponse(client, "/tasks/7", "x-AGENT:   spaced  \r\n"), 200, "{\"id\":\"7\",\"agent\":\"spaced\"}", JSON_TYPE);
+  typed(httpGetResponse(client, "/tasks/8", "X-Other: 1\r\n"), 200, "{\"id\":\"8\",\"agent\":\"unknown\"}", JSON_TYPE);
+  return typed(httpGetResponse(client, "/tasks/7/extra", ""), 404, "{\"error\":\"not found\"}", JSON_TYPE);
+}
+
 /** The requests of the application named `which`. */
 function exercise(which, client) {
-  return which === "routes" ? everyRoute(client) : which === "web-service" ? keyed(client) : faults(client);
+  return which === "routes" ? everyRoute(client) : which === "web-service" ? keyed(client) : which === "json-api" ? bodies(client) : faults(client);
 }
 
 function exercised(listener, which) {
@@ -331,5 +361,6 @@ function lifecycle(opened, which) {
 test("Express routes example over real loopback HTTP", () => lifecycle(served("routes", 0), "routes"));
 test("Express web-service example over real loopback HTTP", () => lifecycle(served("web-service", 0), "web-service"));
 test("Express error handlers and query strings", () => lifecycle(served("faults", 0), "faults"));
+test("Express JSON bodies, a mounted router and request headers", () => lifecycle(served("json-api", 0), "json-api"));
 test("Express listen on a port that cannot be bound", () => refusedOn(INVALID_PORT));
 test("Express listen on a port another listener holds", occupied);

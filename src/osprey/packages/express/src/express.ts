@@ -7,6 +7,7 @@
  */
 
 import { encodeUrl, escapeHtml } from "./encode.ts";
+import { headerOf } from "./headers.ts";
 import { queryOf } from "./query.ts";
 
 /** What a handler passes to `req.fail`, and what an error handler receives. */
@@ -24,6 +25,8 @@ export interface Request {
   readonly query: Map<string, string>;
   readonly headers: string;
   readonly body: string;
+  /** `req.get(name)` is the value of the request header `name`, matched without regard to case. */
+  get(name: string): Requires<Result<string, Error>, []>;
   /** A handler returns `req.next()` to pass the request to the next matching handler. */
   next(): Requires<Response, []>;
   /** A handler returns `req.fail(error)` to pass `error` to the error handlers, as `next(error)` does in Express. */
@@ -113,6 +116,27 @@ export { remove as delete };
  */
 export function use(app: Application, path: string, handler: (req: Request, res: Response) => Response): Application {
   return { ...app, routes: withRoute(app.routes, "", path === "/" ? "" : path, true, handler) };
+}
+
+/** `express.Router()` creates a router: an application of routes to mount on a path. */
+export function Router(): Application {
+  return express();
+}
+
+/**
+ * `app.mount(path, router)` adds the router's routes and error handlers under
+ * `path`, which Express spells `app.use(path, router)`.
+ */
+export function mount(app: Application, path: string, router: Application): Application {
+  return {
+    routes: listConcat(app.routes, mapList(router.routes, (route) => ({ ...route, path: mounted(path, route.path) }))),
+    errors: listConcat(app.errors, router.errors),
+  };
+}
+
+/** A route path under a mount point: the router's root is the mount point itself. */
+function mounted(prefix, path) {
+  return path === "" || path === "/" ? prefix : `${prefix}${path}`;
 }
 
 /** `app.onError(handler)` adds an error handler: Express's four-parameter middleware. */
@@ -247,6 +271,7 @@ function dispatch(app, method, url, headers, body) {
     query: queryOf(url),
     headers: headers,
     body: body,
+    get: (name) => headerOf(headers, name),
     next: () => passed,
     fail: (error) => signalled({ kind: "raised", error: error } satisfies Signal, 200, "", "", ""),
   };
@@ -379,4 +404,50 @@ function notFound(method, path) {
 
 function finalPage(message) {
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>Error</title>\n</head>\n<body>\n<pre>${message}</pre>\n</body>\n</html>\n`;
+}
+
+/*
+ * JSON request bodies, decoded as `express.json()` decodes them: only a JSON
+ * content type is read, and the document must be an object or an array.
+ * [TS-PORT-EXPRESS-HANDLERS]
+ */
+
+
+/**
+ * `jsonBody(req)` is the request's JSON document: `JsonNull` when the request
+ * is not JSON, as Express leaves `req.body` unset, and the error `malformed
+ * JSON` when it is JSON but not an object or an array, for which Express's
+ * parser answers 400.
+ */
+export function jsonBody(req: Request) {
+  return isJson(headerOf(req.headers, "Content-Type")) ? decoded(trim(req.body)) : Success(JsonNull);
+}
+
+function isJson(type) {
+  switch (type.kind) {
+    case "success": {
+      const media = toLowerCase(type.value);
+      return startsWith(media, "application/json") || contains(media, "+json");
+    }
+    case "error":
+      return false;
+  }
+}
+
+function decoded(text) {
+  const first = take(text, 1);
+  return first === "{" || first === "[" ? parsed(jsonDecode(text)) : malformed();
+}
+
+function parsed(document) {
+  switch (document.kind) {
+    case "success":
+      return Success(document.value);
+    case "error":
+      return malformed();
+  }
+}
+
+function malformed() {
+  return Error("malformed JSON");
 }

@@ -1,7 +1,7 @@
 [project]
 name = "express-hello-world"
 source_roots = [".", "../../src"]
-typescript_sources = ["../../src/encode.ts", "../../src/query.ts", "../../src/express.ts", "index.ts"]
+typescript_sources = ["../../src/encode.ts", "../../src/headers.ts", "../../src/query.ts", "../../src/express.ts", "index.ts"]
 default_namespace = "hello"
 entry = "index.ts"
 

@@ -18,6 +18,8 @@ export interface Request {
   readonly query: Map<string, string>;
   readonly headers: string;
   readonly body: string;
+  /** `req.get(name)` is the value of the request header `name`, matched without regard to case. */
+  get(name: string): Result<string>;
   /** A handler returns `req.next()` to pass the request to the next matching handler. */
   next(): Response;
   /** A handler returns `req.fail(error)` to pass `error` to the error handlers, as `next(error)` does in Express. */
@@ -55,11 +57,20 @@ export interface Application {
   delete(path: string, handler: Handler): Application;
   use(path: string, handler: Handler): Application;
   onError(handler: ErrorHandler): Application;
+  /** `app.mount(path, router)`: Express spells it `app.use(path, router)`. */
+  mount(path: string, router: Application): Application;
   listen(port: int, callback: () => void): Server;
 }
 
-/** `express()` creates an application with no routes. */
-export default function express(): Application;
+/** `express()` creates an application with no routes; `express.Router()` creates a router to mount. */
+declare function express(): Application;
+declare namespace express {
+  function Router(): Application;
+}
+export default express;
+
+/** `jsonBody(req)`: the request's JSON document, `JsonNull` when it is not JSON, or `malformed JSON`. */
+export function jsonBody(req: Request): Result<Json>;
 
 /** `close(server)` stops a listening server; a `failed` one answers why it never listened. */
 export function close(server: Server): Result<int>;

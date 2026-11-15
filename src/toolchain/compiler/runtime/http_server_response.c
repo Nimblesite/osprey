@@ -13,8 +13,8 @@ typedef struct {
   char client_id[HTTP_CLIENT_REQUEST_ID_BYTES];
 } RequestLogLabels;
 
-// The statuses Node.js names, spelled as Node.js spells them, except 413 and
-// 422, which keep their RFC 9110 names.
+// The statuses Node.js names, spelled as Node.js spells them, so a reply's
+// status line is the one a Node.js server sends. [HTTP-SERVER]
 static const StatusReason status_reasons[] = {
     {200, "OK"},
     {201, "Created"},
@@ -38,9 +38,9 @@ static const StatusReason status_reasons[] = {
     {410, "Gone"},
     {411, "Length Required"},
     {412, "Precondition Failed"},
-    {413, "Content Too Large"},
+    {413, "Payload Too Large"},
     {415, "Unsupported Media Type"},
-    {422, "Unprocessable Content"},
+    {422, "Unprocessable Entity"},
     {429, "Too Many Requests"},
     {500, "Internal Server Error"},
     {501, "Not Implemented"},

@@ -57,7 +57,8 @@ function typeOf(text, generics) {
   }
   const open = source.indexOf("<");
   const head = open < 0 ? source : source.slice(0, open);
-  if (/^t\d+$/.test(head)) {
+  // An inferred variable (`t0`) or a builtin's own parameter (`T`, `V`).
+  if (/^t\d+$/.test(head) || /^[A-Z]$/.test(head)) {
     generics.add(head.toUpperCase());
     return head.toUpperCase();
   }
@@ -111,7 +112,10 @@ function declaration(name) {
       return `a${index}: ${typeOf(param.slice(colon + 1), generics)}`;
     });
   const result = typeOf(signature.slice(arrow + 5), generics);
-  const list = generics.size === 0 ? "" : `<${[...generics].sort().join(", ")}>`;
+  // A parameter Osprey infers is `any` to `tsc` (`noImplicitAny` is off), and
+  // inference from `any` finds no candidate; the default keeps it `any`
+  // rather than `unknown`.
+  const list = generics.size === 0 ? "" : `<${[...generics].sort().map((name) => `${name} = any`).join(", ")}>`;
   return `declare function ${name}${list}(${params.join(", ")}): ${result};`;
 }
 
@@ -130,6 +134,23 @@ function builtinDeclarations(files, core) {
 }
 
 // ---- The check ------------------------------------------------------------
+
+/**
+ * `result` without the "cannot find module" errors for relative imports of a
+ * Default, ML or Python-flavor module of the same project: `tsc` cannot read
+ * those files, and the import is still checked by the Osprey compiler.
+ */
+function withoutOtherFlavors(result, manifest) {
+  const directory = path.dirname(manifest);
+  const other = (from, specifier) =>
+    [".osp", ".ospml", ".py"].some((extension) => existsSync(path.resolve(directory, path.dirname(from), `${specifier}${extension}`)));
+  const lines = result.stdout.split("\n").filter((line) => {
+    const match = /^(.+?)\(\d+,\d+\): error TS2307: Cannot find module '(\.{1,2}\/[^']+)'/.exec(line);
+    return !(match && other(path.relative(directory, path.resolve(match[1])), match[2]));
+  });
+  const failed = lines.some((line) => / error TS\d+:/.test(line));
+  return { ...result, stdout: lines.join("\n"), status: failed ? 1 : 0 };
+}
 
 /** The declaration `tsc` reads for each ported package a program may import. */
 function packageDeclarations() {
@@ -185,7 +206,7 @@ for (const manifest of manifests(path.join(root, "src"))) {
   const lib = path.join(out, `${name}.d.ts`);
   // A listed source outside the project is checked through its import, so its builtins are declared too.
   writeFileSync(lib, `${core}${builtinDeclarations(resolved(manifest, listedSources(manifest)), core)}\n`);
-  const result = lint(name, lib, files);
+  const result = withoutOtherFlavors(lint(name, lib, files), manifest);
   checked += files.length;
   if (result.status === 0) {
     console.log(`ok ${where}`);

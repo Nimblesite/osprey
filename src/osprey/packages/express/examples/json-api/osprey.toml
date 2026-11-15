@@ -1,0 +1,9 @@
+[project]
+name = "express-json-api"
+source_roots = [".", "../../src"]
+typescript_sources = ["../../src/encode.ts", "../../src/headers.ts", "../../src/query.ts", "../../src/express.ts", "api.ts", "index.ts"]
+default_namespace = "routing"
+entry = "index.ts"
+
+[modules]
+allow_wildcard_imports = true

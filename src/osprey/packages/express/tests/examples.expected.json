@@ -1002,6 +1002,513 @@
           "body": "{\"error\":\"api key required\"}"
         }
       }
+    ],
+    "json-api": [
+      {
+        "request": {
+          "method": "GET",
+          "path": "/notes"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"id\":1,\"text\":\"buy milk\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"text\":\"call mum\"}"
+        },
+        "reply": {
+          "status": 201,
+          "reason": "Created",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":2,\"text\":\"call mum\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"text\":\"call mum\",\"extra\":[1,2,{\"x\":null}]}"
+        },
+        "reply": {
+          "status": 201,
+          "reason": "Created",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":2,\"text\":\"call mum\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "  {\"text\": \"spaced\"}  "
+        },
+        "reply": {
+          "status": 201,
+          "reason": "Created",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "24",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":2,\"text\":\"spaced\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"text\":\"\"}"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"text\":5}"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"note\":\"wrong field\"}"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "[1,2]"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"text\":"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"malformed JSON\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "not json"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"malformed JSON\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "5"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"malformed JSON\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "null"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"malformed JSON\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json; charset=utf-8"
+          },
+          "body": "{\"text\":\"typed\"}"
+        },
+        "reply": {
+          "status": 201,
+          "reason": "Created",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "23",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":2,\"text\":\"typed\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "text/plain"
+          },
+          "body": "{\"text\":\"plain\"}"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "body": "{\"text\":\"none\"}"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/octet-stream"
+          },
+          "body": "\u0000\u0001binary"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"tasks\":[\"write\",\"test\"]}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"tasks\":[\"write\",\"test\"]}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/7"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":\"7\",\"agent\":\"unknown\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/7",
+          "headers": {
+            "X-Agent": "curl/8"
+          }
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "27",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":\"7\",\"agent\":\"curl/8\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/7",
+          "headers": {
+            "x-agent": "lower case"
+          }
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "31",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":\"7\",\"agent\":\"lower case\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/TASKS/9/"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":\"9\",\"agent\":\"unknown\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/7/extra"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "21",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"not found\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/tasks"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "21",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"not found\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/notes"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "21",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"not found\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/missing"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "21",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"not found\"}"
+        }
+      }
     ]
   }
 }

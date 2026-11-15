@@ -6,6 +6,8 @@ This package is a port of [Express](https://github.com/expressjs/express), pinne
 
 `oracle/upstream/web-service/index.js` is `examples/web-service/index.js` from Express 5.3.0, reproduced byte for byte under that same notice. It is the reference the port's `examples/web-service` is compared with, and `examples/web-service/service.ts` is a port of it that keeps its comments.
 
+`oracle/upstream/json-api/index.js` is an original reference application written for this port, not taken from Express; it is covered by this package's own license.
+
 `src/query.ts` follows the documented behaviour of `querystring.parse` in [Node.js](https://github.com/nodejs/node), which is MIT licensed, Copyright Node.js contributors. No Node.js source is copied.
 
 The Osprey implementation is licensed under MIT, copyright NIMBLESITE PTY LTD, Australia; see [LICENSE](LICENSE). This does not replace or claim ownership of Express's rights.

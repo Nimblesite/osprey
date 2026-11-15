@@ -109,6 +109,20 @@ declare function JsonObject(members: List<JsonMember>): Json;
 declare function JsonMember(name: string, value: Json): JsonMember;
 /** `value` as compact JSON text. */
 declare function jsonEncode(value: Json): Result<string>;
+/** `text` as a JSON document. */
+declare function jsonDecode(text: string): Result<Json>;
+/** The member `key` of an object. */
+declare function jsonField(doc: Json, key: string): Result<Json>;
+/** The element at `index` of an array. */
+declare function jsonIndex(doc: Json, index: int): Result<Json>;
+/** A string value's text. */
+declare function jsonText(doc: Json): Result<string>;
+/** An integer value. */
+declare function jsonInt(doc: Json): Result<int>;
+/** A float value. */
+declare function jsonFloat(doc: Json): Result<number>;
+/** A boolean value. */
+declare function jsonBool(doc: Json): Result<boolean>;
 
 /** `console.log(value)` prints one value and a newline. */
 declare const console: { log(value: unknown): void };
@@ -117,6 +131,46 @@ declare const console: { log(value: unknown): void };
 
 /** Continue with `next` on success; pass an error through unchanged. */
 declare function andThen<T, R>(result: Result<T>, next: (value: T) => R): R | { readonly kind: "error"; readonly message: string };
+
+/** Default `result ?: fallback`: the fallback is evaluated only for an error. */
+declare function unwrapOr<T = any>(result: Result<T>, fallback: T): T;
+
+// ---- Effects and fibers [FLAVOR-TS-EFFECTS] [FLAVOR-TS-INTEROP] -------------
+
+/** An interface that extends `Effect` declares a dynamic Osprey effect. */
+interface Effect {}
+/** An interface that extends `StaticEffect` declares a static Osprey effect. */
+interface StaticEffect {}
+/** Operation result wrappers: the frontend reads the mode and multiplicity. */
+type Control<T> = T;
+type Abort<T> = T;
+type Once<T> = T;
+type Many<T> = T;
+type Replayable<T> = T;
+/** `perform<E>().op(args)` requests operation `op` of effect `E`. */
+declare function perform<E>(): E;
+/** The arms of a handler for `E`: one function per operation, and the clauses. */
+type Arms<E> = { [K in keyof E]?: (...args: any[]) => unknown } & { return?: (value: any) => unknown; finally?: () => void };
+/** A callable handler: it runs `work` with `E` handled. */
+declare function handler<E>(arms: Arms<E>): <T>(work: () => T) => T;
+declare function staticHandler<E>(arms: Arms<E>): <T>(work: () => T) => T;
+/** `handle<E>(arms, () => body)` runs `body` with `E` handled. */
+declare function handle<E, T = any>(arms: Arms<E>, body: () => T): T;
+declare function handleStatic<E, T = any>(arms: Arms<E>, body: () => T): T;
+/** Resume the performer of a control operation with `value`. */
+declare function resume(value?: unknown): any;
+/** The integer and float arithmetic policy every program has. */
+interface Arith extends Effect {
+  overflow(op: string, lhs: int, rhs: int, wrapped: int): int;
+  divideByZero(op: string, lhs: number): number;
+  remainderByZero(lhs: int): int;
+}
+/** Fibers are Osprey fibers, not promises. */
+declare function spawn<T>(work: () => T): Fiber<T>;
+declare function awaitFiber<T>(fiber: Fiber<T>): T;
+declare function yieldFiber(value?: unknown): void;
+declare function send<T>(channel: Channel<T>, value: T): Result<int>;
+declare function recv<T>(channel: Channel<T>): Result<T>;
 
 // ---- Opaque builtin types ------------------------------------------------
 

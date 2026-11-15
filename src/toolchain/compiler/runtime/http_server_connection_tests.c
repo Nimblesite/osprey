@@ -230,6 +230,8 @@ void test_server_names_statuses_as_node_does(void) {
       {404, "HTTP/1.1 404 Not Found\r\n"},
       {409, "HTTP/1.1 409 Conflict\r\n"},
       {410, "HTTP/1.1 410 Gone\r\n"},
+      {413, "HTTP/1.1 413 Payload Too Large\r\n"},
+      {422, "HTTP/1.1 422 Unprocessable Entity\r\n"},
       {415, "HTTP/1.1 415 Unsupported Media Type\r\n"},
       {429, "HTTP/1.1 429 Too Many Requests\r\n"},
       {500, "HTTP/1.1 500 Internal Server Error\r\n"},

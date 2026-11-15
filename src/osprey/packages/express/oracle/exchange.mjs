@@ -19,7 +19,7 @@ export const COMPARED_HEADERS = [
 /** Send `request` to 127.0.0.1:`port`; resolve with status, compared headers and body. */
 export function exchange(port, request) {
   return new Promise((resolve, reject) => {
-    const options = { host: "127.0.0.1", port, method: request.method, path: request.path, agent: false };
+    const options = { host: "127.0.0.1", port, method: request.method, path: request.path, headers: request.headers ?? {}, agent: false };
     const sent = http.request(options, (reply) => {
       const chunks = [];
       reply.on("data", (chunk) => chunks.push(chunk));
@@ -73,8 +73,10 @@ export async function entry(example, run) {
     return "index.ts";
   }
   const source = await readFile(original, "utf8");
+  // An example from Express's repository requires the repository root; an
+  // original reference requires the package itself.
   const pinned = source.replace("require('../../')", "require('express')");
-  if (pinned === source) throw new Error(`${original} does not require the repository root`);
+  if (!pinned.includes("require('express')")) throw new Error(`${original} requires neither express nor the repository root`);
   await writeFile(path.join(run, "upstream.cjs"), pinned);
   return "upstream.cjs";
 }

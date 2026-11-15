@@ -1,7 +1,7 @@
 [project]
 name = "express-tests"
-source_roots = [".", "../src", "../examples/routes", "../examples/web-service"]
-typescript_sources = ["../src/encode.ts", "../src/query.ts", "../src/express.ts", "../examples/routes/tasks.ts", "../examples/web-service/service.ts", "main.ts"]
+source_roots = [".", "../src", "../examples/routes", "../examples/web-service", "../examples/json-api"]
+typescript_sources = ["../src/encode.ts", "../src/headers.ts", "../src/query.ts", "../src/express.ts", "../examples/routes/tasks.ts", "../examples/web-service/service.ts", "../examples/json-api/api.ts", "main.ts"]
 default_namespace = "routing"
 entry = "main.ts"
 
