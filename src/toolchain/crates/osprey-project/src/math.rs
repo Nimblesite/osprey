@@ -62,9 +62,7 @@ fn store(generated: &Path, text: &str) -> std::io::Result<()> {
     if std::fs::read_to_string(generated).is_ok_and(|stored| stored == text) {
         return Ok(());
     }
-    if let Some(directory) = generated.parent() {
-        std::fs::create_dir_all(directory)?;
-    }
+    generated.parent().map_or(Ok(()), std::fs::create_dir_all)?;
     let ignore = generated
         .ancestors()
         .find(|directory| directory.ends_with(GENERATED))
