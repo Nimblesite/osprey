@@ -71,6 +71,8 @@ fn log_panics() {
 /// The desktop entry: the windowless smoke run, the scripted self-test, or the
 /// GPUI window ([GPUI-HOST-SEAM]).
 pub fn run() -> i32 {
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    let _sessions = adapters::Cleanup;
     log_panics();
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--smoke") {

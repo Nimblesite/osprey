@@ -252,7 +252,7 @@ fn absorb(
 }
 
 /// Kills and reaps a child after a deadline or output-limit failure.
-fn stop(child: &mut Child) {
+pub(super) fn stop(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
 }
@@ -419,6 +419,45 @@ mod tests {
             number: 0,
         });
         assert!(answer(&request).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    /// [SYNTH-HOST-STREAM-SESSION] Real pipes retain state, bound stalls, and reap children.
+    fn persistent_sessions_exchange_and_fail_closed() -> Result<(), String> {
+        use super::super::process_session::Session;
+        let mut session = Session::open("/bin/cat", &[])?;
+        let pid = session.id();
+        for input in ["first".to_owned(), "x".repeat(700_000), "third".to_owned()] {
+            assert_eq!(session.exchange(&input, 2_000, 1_000_000)?, input);
+            assert_eq!(session.id(), pid);
+        }
+        assert!(session.exchange("two\nlines", 100, 100).is_err());
+        assert_eq!(session.exchange("still alive", 1_000, 100)?, "still alive");
+        assert!(session.exchange("too large", 1_000, 3).is_err());
+        assert!(session.exchange("dead", 100, 100).is_err());
+        let mut stalled = Session::open("/bin/sleep", &["2".to_owned()])?;
+        let started = std::time::Instant::now();
+        assert!(stalled.exchange(&"x".repeat(100_000), 20, 100).is_err());
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+        assert!(stalled.exited()?);
+        let mut closed = Session::open(
+            "/bin/sh",
+            &["-c".to_owned(), "exec 1>&- 2>&-; exec sleep 2".to_owned()],
+        )?;
+        assert!(closed.exchange("hello", 100, 100).is_err());
+        assert!(closed.exited()?);
+        let mut noisy = Session::open(
+            "/bin/sh",
+            &[
+                "-c".to_owned(),
+                "while :; do printf diagnostic >&2; done".to_owned(),
+            ],
+        )?;
+        assert!(noisy.exchange("hello", 1_000, 100).is_err());
+        assert!(noisy.exited()?);
+        assert!(Session::open("cat", &[]).is_err());
+        Ok(())
     }
 
     const STDERR_TEST_SIZE: usize = 65_537;
