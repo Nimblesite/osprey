@@ -1,0 +1,27 @@
+// [SYNTH-HOST-DESCRIPTOR] UI-free external components retain the worker's actual port types.
+namespace synth
+
+(** Turn validated worker metadata into ordinary independently routable graph nodes. *)
+module Hosted
+    audio channels = Port(name = "audio", rate = Audio, channels = channels, unit = Amplitude)
+
+    parameter control = Parameter(key = "vst:${control.identity}", label = control.name, unit = Normalised, minimum = 0.0, maximum = 1.0, initial = control.initial, automatable = control.automatable)
+
+    inputs descriptor =
+        audioPorts = match descriptor.inputs == 0
+            true => []
+            false => [audio descriptor.inputs]
+        match descriptor.notes
+            false => audioPorts
+            true => listAppend audioPorts (Port(name = "MIDI", rate = Events, channels = 1, unit = Notes))
+
+    checked n = match Graphs::add (Graphs::empty, n)
+        Invalid fault => Invalid(fault = fault)
+        Valid _ => Valid(value = n)
+
+    (** Reject malformed metadata before publishing any ports or parameters to clients. *)
+    export component (identity, descriptor) = match descriptor.inputs >= 0 && descriptor.inputs <= 64 && descriptor.outputs >= 1 && descriptor.outputs <= 64 && descriptor.identifier != "" && length descriptor.controls <= 1024
+        false => Invalid(fault = InvalidNode)
+        true => match length (filterList (descriptor.controls, \c => c.identity < 0 || c.identity > 4294967295 || c.name == "")) > 0
+            true => Invalid(fault = InvalidParameter)
+            false => checked (Node(identity = identity, processor = External(identifier = descriptor.identifier), inputs = inputs descriptor, outputs = [audio descriptor.outputs], parameters = mapList (descriptor.controls, parameter)))

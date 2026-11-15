@@ -14,6 +14,7 @@
 #include <cmath>
 #include <iostream>
 
+std::string quoted(const std::string& value);
 int failed(const std::string& message);
 
 using namespace Steinberg;

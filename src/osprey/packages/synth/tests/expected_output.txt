@@ -14,5 +14,6 @@ ok 13 - performance timbres and metallic warp stay bounded across rates and cont
 ok 14 - edit routes and remove connected components without corrupting the previous playable graph
 ok 15 - replace a playing graph without resetting phase, lose deleted state and refuse incomplete audio routes
 ok 16 - float PCM export retains sample precision and rejects invalid rates and samples
-1..16
-# tests=16 passed=16 failed=0 skipped=0
+ok 17 - external descriptors preserve channel types, MIDI ports and independent parameter identities
+1..17
+# tests=17 passed=17 failed=0 skipped=0

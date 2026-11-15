@@ -5,6 +5,7 @@ import pathlib
 import subprocess
 import struct
 import math
+import json
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 SDK = ROOT / "target/vst3sdk"
@@ -69,6 +70,13 @@ def stream_tests():
     effect = BUILD / "VST3/Release/adelay.vst3"
     instrument = BUILD / "VST3/Release/mda-vst3.vst3"
     delay_id, synth_id = "0CDBB66985D548A9BFD8371909D24BB3", "5653544D44416A6D6461206A78313000"
+    inspected = subprocess.run([str(BUILD / "osprey-vst-worker"), "describe", str(effect), delay_id],
+                               capture_output=True, text=True, timeout=15, check=True)
+    descriptor = json.loads(inspected.stdout)
+    assert descriptor["id"] == delay_id and descriptor["inputs"] == 2 and descriptor["outputs"] == 2
+    assert descriptor["notes"] is False and descriptor["name"] == "ADelay"
+    delay = next(p for p in descriptor["parameters"] if p["id"] == 100)
+    assert delay["name"] == "Delay" and delay["initial"] == 1.0 and delay["automatable"] is True
     # ADelay documents a one-sample minimum; impulses cross the block boundary.
     samples = [0.25, -0.125] + [0.0] * 508 + [0.5, -0.25]
     audio = streamed(effect, delay_id, packet(256, samples, parameters=[(100, 0, 0.0)]) + packet(128, [0.0] * 256))

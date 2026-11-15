@@ -24,3 +24,17 @@ type HostLayout =
     inputs : int
     outputs : int
     acceptsNotes : bool
+
+type HostControl =
+    identity : int
+    name : string
+    initial : float
+    automatable : bool
+
+type HostDescriptor =
+    identifier : string
+    name : string
+    inputs : int
+    outputs : int
+    notes : bool
+    controls : List<HostControl>
