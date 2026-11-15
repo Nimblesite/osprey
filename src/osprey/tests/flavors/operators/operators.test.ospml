@@ -25,7 +25,12 @@ arithmeticOperatorsCase () =
         (20 - 6 - 2 ) == 12,
         (20 - (6 - 2) ) == 16,
         (7 + 9 * 0 ) == 7,
-        (0 - 5 * 2 ) == ((0 - 10) )
+        (0 - 5 * 2 ) == ((0 - 10) ),
+        // A remainder takes the dividend's sign, as JavaScript's `%` does.
+        (0 - 7) % 3 == 0 - 1,
+        7 % (0 - 3) == 1,
+        (0 - 7) % (0 - 3) == 0 - 1,
+        0 % 5 == 0
     ]
 
 (** Verify logical operators, comparisons, and composition. *)
