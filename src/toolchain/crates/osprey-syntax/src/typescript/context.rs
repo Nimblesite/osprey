@@ -26,9 +26,9 @@ pub(super) struct Lowerer<'s> {
     line_starts: Vec<usize>,
     scopes: Vec<Scope>,
     pub(super) errors: Vec<SyntaxError>,
-    /// Import-bound module aliases, each with the entry function a call of
-    /// the alias itself names (a package default import).
-    pub(super) modules: BTreeMap<String, Option<String>>,
+    /// Package default imports: the local alias and the entry function a
+    /// call of the alias names.
+    pub(super) packages: BTreeMap<String, String>,
     pub(super) exports: BTreeSet<String>,
     /// This file's namespace directive, which a relative import resolves in.
     pub(super) namespace: Option<String>,
@@ -72,7 +72,7 @@ impl<'s> Lowerer<'s> {
             line_starts,
             scopes: vec![Scope::new(true, false)],
             errors: Vec::new(),
-            modules: BTreeMap::new(),
+            packages: BTreeMap::new(),
             exports: BTreeSet::new(),
             namespace: None,
             narrowed: Vec::new(),

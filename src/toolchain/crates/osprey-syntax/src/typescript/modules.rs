@@ -163,7 +163,7 @@ impl Lowerer<'_> {
         let source = self.string(&import.source)?;
         let (target, package) = self.import_target(&source, import.source.span)?;
         let mut members = Vec::new();
-        let mut imports = Vec::new();
+        let mut methods = false;
         for specifier in specifiers {
             match specifier {
                 ImportDeclarationSpecifier::ImportSpecifier(named) => {
@@ -174,39 +174,27 @@ impl Lowerer<'_> {
                         return self.unsupported(default.span, "default import of a project file");
                     };
                     let alias = default.local.name.as_str().to_owned();
-                    let _ = self.modules.insert(alias.clone(), Some(package.clone()));
-                    imports.push(self.import_decl(
-                        &target,
-                        Some(alias),
-                        ImportSelection::Whole,
-                        import.span,
-                    ));
+                    let _ = self.packages.insert(alias, package.clone());
+                    methods = true;
                 }
                 ImportDeclarationSpecifier::ImportNamespaceSpecifier(all) => {
                     return self.unsupported(all.span, "`import *`");
                 }
             }
         }
-        if !members.is_empty() {
-            let selection = ImportSelection::Members(members);
-            imports.push(self.import_decl(&target, None, selection, import.span));
-        }
-        Ok(imports)
-    }
-
-    fn import_decl(
-        &self,
-        target: &ImportTarget,
-        alias: Option<String>,
-        selection: ImportSelection,
-        span: Span,
-    ) -> Stmt {
-        Stmt::Import(ImportDecl {
-            target: target.clone(),
-            alias,
+        // A default import brings the package's functions into scope: they
+        // are the methods of its values, and that covers any named import.
+        let selection = if methods {
+            ImportSelection::Wildcard
+        } else {
+            ImportSelection::Members(members)
+        };
+        Ok(vec![Stmt::Import(ImportDecl {
+            target,
+            alias: None,
             selection,
-            position: Some(self.at(span)),
-        })
+            position: Some(self.at(import.span)),
+        })])
     }
 
     fn import_member(&self, imported: &ModuleExportName<'_>, local: &str) -> Result<ImportMember> {

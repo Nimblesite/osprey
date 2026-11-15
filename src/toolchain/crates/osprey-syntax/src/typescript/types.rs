@@ -1,13 +1,19 @@
 //! TypeScript annotations and declarations as canonical Osprey types.
 //! Implements [FLAVOR-TS-TYPES], [FLAVOR-TS-UNIONS].
 use super::context::{Expected, Lowerer, Result};
-use osprey_ast::{Stmt, TypeExpr, TypeField, TypeParam, TypeVariant, Variance};
+use osprey_ast::{EffectRef, Stmt, TypeExpr, TypeField, TypeParam, TypeVariant, Variance};
 use oxc_ast::ast::{
-    FormalParameters, PropertyKey, TSInterfaceDeclaration, TSLiteral, TSSignature, TSType,
+    FormalParameters, PropertyKey, TSFunctionType, TSInterfaceDeclaration, TSLiteral, TSSignature, TSType,
     TSTypeAliasDeclaration, TSTypeAnnotation, TSTypeName, TSTypeOperatorOperator,
     TSTypeParameterDeclaration, TSTypeParameterInstantiation,
 };
 use oxc_span::{GetSpan, Span};
+
+/// A function type with the closed effect row its result states, if any.
+type Signature = (TypeExpr, Option<Vec<EffectRef>>);
+
+/// The return-type wrapper that closes an effect row. [FLAVOR-TS-EFFECTS]
+const REQUIRES: &str = "Requires";
 
 /// The discriminant property of a TypeScript-flavor union. [FLAVOR-TS-UNIONS]
 pub(super) const KIND: &str = "kind";
@@ -53,11 +59,7 @@ impl Lowerer<'_> {
                 named.generic_params = self.type_arguments(reference.type_arguments.as_deref())?;
                 named
             }
-            TSType::TSFunctionType(function) => self.function_type(
-                &function.params,
-                function.return_type.type_annotation.span(),
-                Some(&function.return_type),
-            )?,
+            TSType::TSFunctionType(function) => self.function_field(function)?.0,
             other => return self.rejected_type(other),
         };
         lowered.position = Some(self.at(ty.span()));
@@ -106,12 +108,19 @@ impl Lowerer<'_> {
         }
     }
 
-    fn function_type(
+    fn function_field(&self, function: &TSFunctionType<'_>) -> Result<Signature> {
+        let result = Some(&function.return_type.type_annotation);
+        self.signature(&function.params, function.span, result)
+    }
+
+    /// A function type and, when its result is `Requires<T, […]>`, the closed
+    /// effect row that wrapper states. Implements [FLAVOR-TS-EFFECTS].
+    fn signature(
         &self,
         parameters: &FormalParameters<'_>,
         span: Span,
-        result: Option<&TSTypeAnnotation<'_>>,
-    ) -> Result<TypeExpr> {
+        result: Option<&TSType<'_>>,
+    ) -> Result<Signature> {
         let mut ty = TypeExpr::named("fn");
         ty.is_function = true;
         ty.parameter_types = parameters
@@ -122,11 +131,44 @@ impl Lowerer<'_> {
                     .ok_or_else(|| self.error(parameter.span, "a signature parameter needs a type"))
             })
             .collect::<Result<_>>()?;
-        let result = self
-            .annotation(result)?
-            .ok_or_else(|| self.error(span, "a signature needs a result type"))?;
-        ty.return_type = Some(Box::new(result));
-        Ok(ty)
+        let result = result.ok_or_else(|| self.error(span, "a signature needs a result type"))?;
+        let (result, effects) = self.requires(result)?;
+        ty.return_type = Some(Box::new(self.type_expr(result)?));
+        Ok((ty, effects))
+    }
+
+    /// Split `Requires<T, [Log, Arith]>` into `T` and its effect row.
+    fn requires<'b, 'a>(
+        &self,
+        result: &'b TSType<'a>,
+    ) -> Result<(&'b TSType<'a>, Option<Vec<EffectRef>>)> {
+        let TSType::TSTypeReference(reference) = result else {
+            return Ok((result, None));
+        };
+        let arguments = reference.type_arguments.as_deref().map(|list| list.params.as_slice());
+        match (self.type_name(&reference.type_name)?.as_str(), arguments) {
+            (REQUIRES, Some([value, TSType::TSTupleType(row)])) => {
+                let effects = row
+                    .element_types
+                    .iter()
+                    .map(|effect| self.effect_ref(effect.span()))
+                    .collect();
+                Ok((value, Some(effects)))
+            }
+            (REQUIRES, _) => Err(self.error(
+                reference.span,
+                "`Requires` takes a result type and a tuple of effects: `Requires<T, [Log]>`",
+            )),
+            _ => Ok((result, None)),
+        }
+    }
+
+    fn effect_ref(&self, span: Span) -> EffectRef {
+        EffectRef {
+            name: self.text(span).to_owned(),
+            type_args: Vec::new(),
+            position: Some(self.at(span)),
+        }
     }
 
     /// The record an annotation names, for an object literal bound under it.
@@ -264,22 +306,27 @@ impl Lowerer<'_> {
     }
 
     fn field(&self, signature: &TSSignature<'_>) -> Result<TypeField> {
-        let (name, ty) = match signature {
+        let (name, (ty, effects)) = match signature {
             TSSignature::TSPropertySignature(property) => {
                 if property.optional || property.computed {
                     return self.unsupported(property.span, "optional or computed property");
                 }
-                let ty = self
-                    .annotation(property.type_annotation.as_deref())?
+                let annotation = property
+                    .type_annotation
+                    .as_deref()
                     .ok_or_else(|| self.error(property.span, "a field needs a type"))?;
+                let ty = match &annotation.type_annotation {
+                    TSType::TSFunctionType(function) => self.function_field(function)?,
+                    other => (self.type_expr(other)?, None),
+                };
                 (self.key(&property.key)?, ty)
             }
             TSSignature::TSMethodSignature(method) => {
                 if method.optional || method.computed || method.type_parameters.is_some() {
                     return self.unsupported(method.span, "optional, computed or generic method");
                 }
-                let ty =
-                    self.function_type(&method.params, method.span, method.return_type.as_deref())?;
+                let result = method.return_type.as_deref().map(|ty| &ty.type_annotation);
+                let ty = self.signature(&method.params, method.span, result)?;
                 (self.key(&method.key)?, ty)
             }
             other => return self.unsupported(other.span(), "index, call or construct signature"),
@@ -288,7 +335,7 @@ impl Lowerer<'_> {
             name,
             ty: crate::desugar::field_type(&ty),
             constraint: None,
-            effects: None,
+            effects,
         })
     }
 

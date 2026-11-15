@@ -4,7 +4,7 @@ use super::context::{apply, Expected, Lowerer, Result};
 use super::types::{variant_name, KIND};
 use osprey_ast::{Expr, FieldAssignment};
 use oxc_ast::ast::{
-    CallExpression, Expression, ObjectExpression, ObjectProperty, ObjectPropertyKind, PropertyKind,
+    CallExpression, Expression, NewExpression, ObjectExpression, ObjectProperty, ObjectPropertyKind, PropertyKind,
 };
 use oxc_span::GetSpan;
 
@@ -109,6 +109,18 @@ impl Lowerer<'_> {
                 _ => Ok(None),
             },
             _ => Ok(None),
+        }
+    }
+
+    /// `new Map<string, T>()` is the empty map literal. [FLAVOR-TS-LIB]
+    pub(super) fn new_expression(&self, node: &NewExpression<'_>) -> Result<Expr> {
+        match &node.callee {
+            Expression::Identifier(callee)
+                if callee.name.as_str() == "Map" && node.arguments.is_empty() =>
+            {
+                Ok(Expr::Map(Vec::new()))
+            }
+            _ => self.unsupported(node.span, "`new`; only `new Map()` constructs a value"),
         }
     }
 

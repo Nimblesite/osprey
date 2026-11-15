@@ -2,7 +2,7 @@
 //! Implements [FLAVOR-TS-EXPRESSIONS], [FLAVOR-TS-FUNCTIONS].
 use super::context::{apply, Expected, Lowerer, Result};
 use super::statements::Body;
-use osprey_ast::{Expr, InterpolatedPart, Parameter, SymbolPath};
+use osprey_ast::{Expr, InterpolatedPart, Parameter};
 use oxc_ast::ast::{
     Argument, ArrayExpression, ArrowFunctionBody, ArrowFunctionExpression, BinaryExpression,
     CallExpression, Expression, FormalParameters, IdentifierReference, LogicalExpression,
@@ -54,6 +54,7 @@ impl Lowerer<'_> {
                 target: Box::new(self.expr(&member.object)?),
                 index: Box::new(self.expr(&member.expression)?),
             }),
+            Expression::NewExpression(node) => self.new_expression(node),
             Expression::BinaryExpression(binary) => self.binary(binary),
             Expression::LogicalExpression(logical) => self.logical(logical),
             Expression::UnaryExpression(unary) => self.unary(unary),
@@ -220,9 +221,8 @@ impl Lowerer<'_> {
     /// A called name: a package default import names its entry function.
     fn callee(&mut self, callee: &Expression<'_>) -> Result<Expr> {
         if let Expression::Identifier(identifier) = callee {
-            let name = identifier.name.as_str();
-            if let Some(Some(entry)) = self.module(name) {
-                return Ok(Expr::Path(SymbolPath::new([name, entry.as_str()])));
+            if let Some(entry) = self.package(identifier.name.as_str()) {
+                return Ok(Expr::Identifier(entry.to_owned()));
             }
         }
         self.expr(callee)
@@ -256,11 +256,12 @@ impl Lowerer<'_> {
         if let Some(binder) = self.narrowed_field(&member.object, field) {
             return Ok(Expr::Identifier(binder));
         }
-        Ok(match self.module_or_value(&member.object)? {
-            Expr::Path(mut path) => {
-                path.segments.push(field.to_owned());
-                Expr::Path(path)
+        if let Expression::Identifier(object) = &member.object {
+            if self.package(object.name.as_str()).is_some() {
+                return Ok(Expr::Identifier(field.to_owned()));
             }
+        }
+        Ok(match self.expr(&member.object)? {
             target if field == "length" => apply("length", vec![target]),
             target => Expr::FieldAccess {
                 target: Box::new(target),
@@ -269,21 +270,14 @@ impl Lowerer<'_> {
         })
     }
 
-    /// An import-bound module alias is a path head; anything else is a value.
-    fn module_or_value(&mut self, object: &Expression<'_>) -> Result<Expr> {
-        if let Expression::Identifier(identifier) = object {
-            let name = identifier.name.as_str();
-            if self.module(name).is_some() {
-                return Ok(Expr::Path(SymbolPath::single(name)));
-            }
-        }
-        self.expr(object)
-    }
-
-    fn module(&self, name: &str) -> Option<&Option<String>> {
-        self.modules
+    /// The entry function of the package `name` is the default import of,
+    /// unless a local shadows the import. `express.Router` is the package's
+    /// own `Router`, in scope through the same import.
+    fn package(&self, name: &str) -> Option<&str> {
+        self.packages
             .get(name)
-            .filter(|_| !self.bound_in_function(name) || self.file_scope())
+            .filter(|_| !self.bound_in_function(name))
+            .map(String::as_str)
     }
 
     fn narrowed_field(&mut self, object: &Expression<'_>, field: &str) -> Option<String> {
@@ -384,7 +378,6 @@ fn rejected(node: &Expression<'_>) -> &'static str {
     match node {
         Expression::NullLiteral(_) => "`null`",
         Expression::AwaitExpression(_) => "`await`; use fibers",
-        Expression::NewExpression(_) => "`new`",
         Expression::ThisExpression(_) => "`this`",
         Expression::AssignmentExpression(_) => "assignment expression",
         Expression::UpdateExpression(_) => "`++`/`--`",

@@ -1,0 +1,9 @@
+[project]
+name = "express-hello-world"
+source_roots = [".", "../../src"]
+typescript_sources = ["../../src/express.ts", "index.ts"]
+default_namespace = "hello"
+entry = "index.ts"
+
+[modules]
+allow_wildcard_imports = true
