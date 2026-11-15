@@ -2,22 +2,17 @@
 # Adapted Cephes/xsf numerical code; Osprey changes and required terms: ../NOTICE.md.
 # osprey: namespace=scipy
 # osprey: module=Logistic
-"""scipy.special's logistic functions, the xsf log_exp.h formulas.
+"""scipy.special's logit and log_expit, the xsf log_exp.h formulas.
 
-expit is 1/(1+exp(-x)); logit uses the two-sided log1p form near 0.5 for
-accuracy; log_expit is x - log1p(exp(x)) below zero and -log1p(exp(-x)) above.
-Poles and edges reproduce scipy: logit(1)=inf, logit outside (0,1) is NaN,
-expit(+-inf) is 1 and 0. Values match scipy to ~1e-16 relative. Implements
-[PORT-TEST-ORACLE].
+logit uses the two-sided log1p form near 0.5 for accuracy; log_expit is
+x - log1p(exp(x)) below zero and -log1p(exp(-x)) above. Poles and edges
+reproduce scipy: logit(1)=inf, logit outside (0,1) is NaN. expit itself is
+mathematics and lives in Sigmoid.lean. Values match scipy to ~1e-16 relative.
+Implements [PORT-TEST-ORACLE].
 """
 from scipy.Support import pos_inf, neg_inf, exp_s, log_s, log1p
 
-__all__ = ["expit", "logit", "log_expit"]
-
-
-def expit(x: float) -> float:
-    """scipy.special.expit(x): the logistic sigmoid 1/(1+exp(-x))."""
-    return 1.0 / (1.0 + exp_s(0.0 - x))
+__all__ = ["logit", "log_expit"]
 
 
 def logit(x: float) -> float:

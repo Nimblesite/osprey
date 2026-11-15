@@ -35,6 +35,8 @@ Hand-written mathematics moves to `.lean`; the package's recorded outputs stay b
 
 - [x] `@osprey/synth`: `src/Waves.lean` holds the oscillator shapes (`wrap`, `blep`, `blamp`, `sine`, `saw`, `pulse`, `triangle`) and the performance timbres (`harmonic`, `glass`, `bass`, `hollow`, `modulated`, `ring`); recorded output byte-identical.
 - [x] `@osprey/micrograd`: `src/Libm.lean` holds `exp_of` and `tanh_of`; recorded output byte-identical.
+- [x] `@osprey/math`, the standard library of well-known formulas, is Lean only: `Real` (`pi`, `sinh`, `cosh`, `tanh`, `arsinh`, `logb`, `sigmoid`, `negMulLog`, `binEntropy`, `gaussianPDFReal`), `Quadratic` (`discrim`, `rootAdd`, `rootSub`) and `AffineMap` (`lineMap`). Each restates a named Mathlib declaration at the pinned commit over `Float` and quotes its source line; `open Float (exp log sqrt)` keeps the text Mathlib's.
+- [x] `@osprey/scipy`: `src/Sigmoid.lean` holds `expit`; recorded output byte-identical.
 - [ ] Next candidates, each when its fragment exists: the `@osprey/synth` filter coefficients and envelopes (records), `@osprey/torch` learning-rate schedules (integers, folds), `@osprey/scipy` logistic and Box-Cox (calls into hand-written series).
 
 ## Phase 5 — Lean acceptance and the oracle [MATH-CODE-ORACLE]
@@ -53,7 +55,7 @@ Each is a specification change first: meaning table, refusals, oracle.
 - [ ] `structure` values against typeDiagram-declared records.
 - [ ] `match`, structural recursion and `where`.
 - [ ] Imports between math sources.
-- [ ] Definitions over Mathlib's `ℝ` under a declared binary64 approximation profile.
+- [ ] Definitions over Mathlib's `ℝ` under a declared binary64 approximation profile, so `@osprey/math` reads Mathlib's own text: `ℝ`, `x⁻¹`, `√x`, `π` and Greek names.
 
 ## Phase 7 — workbench [MATH-CODE-WORKBENCH]
 

@@ -53,6 +53,12 @@ const PACKAGES = {
     authors: "the Pallets team and the Jinja contributors",
     relationship: "port",
   },
+  math: {
+    project: "Mathlib",
+    authors:
+      "Zhouhang Zhou, Bolton Bailey, James Arthur, Rémy Degenne, Adomas Baliuka, Gaëtan Serré, Chris Hughes, Joseph Myers and the Mathlib contributors",
+    relationship: "port",
+  },
   micrograd: {
     project: "micrograd",
     authors: "Andrej Karpathy",

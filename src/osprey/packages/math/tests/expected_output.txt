@@ -1,0 +1,9 @@
+ok 1 - hyperbolic functions are Mathlib's formulas, agree with the C library and keep cosh_sq
+ok 2 - logarithms to a base invert powers of that base
+ok 3 - the sigmoid is one half at zero, saturates, and its two tails sum to one
+ok 4 - entropy is zero for a certain outcome and largest for a fair coin
+ok 5 - the normal density peaks at its mean, is symmetric and scales with its variance
+ok 6 - the quadratic formula finds both roots, one double root, and no real root
+ok 7 - a line map starts at its first point, ends at its second and is linear between
+1..7
+# tests=7 passed=7 failed=0 skipped=0

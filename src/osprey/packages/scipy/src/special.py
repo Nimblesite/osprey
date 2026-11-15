@@ -3,11 +3,11 @@
 # osprey: module=Special
 """scipy.special's scalar functions under one module.
 
-The algorithms live in Gamma, Zeta, Beta, Combinatorics, Logistic, Information
-and Boxcox. This facade exports their original callable values, preserving
+The algorithms live in Gamma, Zeta, Beta, Combinatorics, Logistic, Sigmoid,
+Information and Boxcox. This facade exports their original callable values, preserving
 signatures and call-time effects. Implements [PORT-TEST-ORACLE], [MODULES-INIT].
 """
-from scipy import Boxcox, Beta, Combinatorics, Gamma, Information, Logistic, Zeta
+from scipy import Boxcox, Beta, Combinatorics, Gamma, Information, Logistic, Sigmoid, Zeta
 
 __all__ = ["gamma", "gammaln", "loggamma", "digamma", "polygamma", "rgamma",
            "psi", "zeta", "zeta_q", "zetac", "beta", "betaln", "lbeta",
@@ -38,7 +38,7 @@ perm = Combinatorics.perm; """scipy.special.perm(N, k, exact=False)."""
 perm_exact = Combinatorics.perm_exact; """scipy.special.perm(N, k, exact=True) as a 64-bit int."""
 binom = Combinatorics.binom; """scipy.special.binom(n, k)."""
 poch = Combinatorics.poch; """scipy.special.poch(a, m)."""
-expit = Logistic.expit; """scipy.special.expit(x)."""
+expit = Sigmoid.expit; """scipy.special.expit(x)."""
 logit = Logistic.logit; """scipy.special.logit(x)."""
 log_expit = Logistic.log_expit; """scipy.special.log_expit(x)."""
 xlogy = Information.xlogy; """scipy.special.xlogy(x, y)."""

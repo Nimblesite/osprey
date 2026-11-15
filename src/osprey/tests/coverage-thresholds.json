@@ -414,6 +414,10 @@
         "language": "osprey",
         "threshold": 92.3
       },
+      "math": {
+        "language": "osprey",
+        "threshold": 100.0
+      },
       "json": {
         "language": "osprey",
         "threshold": 100.0

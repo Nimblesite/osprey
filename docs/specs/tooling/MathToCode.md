@@ -139,6 +139,10 @@ Lean acceptance runs where the pinned Lean is installed (`make -C src/osprey/exa
 - `osprey math <file.lean>` prints the generated module, or the refusals with exit code 1. It writes nothing.
 - Checking, building, running or testing a project generates its math sources first.
 
+## Standard library [MATH-CODE-LIBRARY]
+
+`@osprey/math` is Osprey's standard library of well-known formulas, and it holds no Osprey code: every function is a Lean definition. Where Mathlib defines or states the formula, the definition is Mathlib's formula at the pinned commit (`1ccd71f89cbbd82ae7d097723ce1722ca7b01c33`), the docstring names the Mathlib declaration and quotes its source, and the package carries Mathlib's Apache-2.0 licence and the authors' notices. The definitions are over `Float`, so three Mathlib notations that core Lean does not define for `Float` are respelled: `x⁻¹` as `1 / x`, `√x` as `sqrt x` and `π` as `pi`. A function added to the library follows the same rule: find the Mathlib declaration first, and restate it.
+
 ## Workbench [MATH-CODE-WORKBENCH]
 
 The Proof Workbench's "mathematics in, Osprey out" activity ([spec 0051](../applications/0051-ProofWorkbench.md)) edits a `.lean` document and displays what the toolchain generated from it. The application holds no reader, generator or second format. It shows four statuses, each from its own evidence and none implying another: `Generated` (this revision generated), `Typechecked` (the compiler accepted those exact bytes), `Tested` (recorded points agree) and `EquivalenceProved` (a kernel-checked certificate; unavailable, and shown as unavailable). An edit clears every status before a new one is granted.

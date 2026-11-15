@@ -174,6 +174,40 @@
       "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
       "source_notices": {}
     },
+    "math": {
+      "license": "MIT AND Apache-2.0",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [
+        {
+          "component": "mathlib4",
+          "repository": "https://github.com/leanprover-community/mathlib4",
+          "reference": "1ccd71f89cbbd82ae7d097723ce1722ca7b01c33",
+          "file": "LICENSES/mathlib4-Apache-2.0.txt",
+          "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+          "source": "https://github.com/leanprover-community/mathlib4/blob/1ccd71f89cbbd82ae7d097723ce1722ca7b01c33/LICENSE",
+          "git_blob_sha1": "8dada3edaf50dbc082c9a125058f25def75e625a",
+          "applies_to": [
+            "src/Real.lean",
+            "src/Quadratic.lean",
+            "src/AffineMap.lean"
+          ],
+          "basis": "Each definition restates the formula of a named Mathlib declaration over Float and quotes that declaration's source line",
+          "notice_attribution": [
+            "Copyright (c) 2019 Zhouhang Zhou",
+            "Copyright (c) 2022 Bolton Bailey",
+            "Copyright (c) 2020 James Arthur",
+            "Copyright (c) 2023 R\u00e9my Degenne",
+            "Copyright (c) 2023 Adomas Baliuka",
+            "Copyright (c) 2025 Ga\u00ebtan Serr\u00e9",
+            "Copyright (c) 2018 Chris Hughes",
+            "Copyright (c) 2020 Joseph Myers"
+          ]
+        }
+      ],
+      "references": [],
+      "review": "Lean sources restate Mathlib definitions over Float with each source line quoted; Apache-2.0 text retained for those three files. Tests and documentation are original.",
+      "source_notices": {}
+    },
     "micrograd": {
       "license": "MIT",
       "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
