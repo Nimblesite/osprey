@@ -16,7 +16,11 @@ module EditorApp
 
     typed (editor, action, value) = Runtime::step (EditorState::typed (editor, action, value))
 
-    update (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => Preview::completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(_, _) => Runtime::step editor)
+    controlled (editor, action, input) = match action
+        Surface => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => Runtime::step (EditorView::pointed (editor, x, y, down)), \(_, _) => Runtime::step editor)
+        _ => Runtime::step editor
+
+    update (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => Preview::completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(action, input) => controlled (editor, action, input))
 
     (** Native controls and the canvas observe the same typed graph and applied edit revision. *)
     export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => EditorView::theme ())

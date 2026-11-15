@@ -40,23 +40,65 @@ module EditorView
 
     x index = 100.0 + toFloat (index % 4) * 210.0
 
-    y index = 65.0 + toFloat (index / 4) * 130.0
+    y index = 65.0 + toFloat (intDiv index 4) * 130.0
+
+    portX (index, output) = match output
+        true => x index + 85.0
+        false => x index - 85.0
+
+    portY (index, port) = y index + toFloat port * 20.0
+
+    indices ports = toList (range (0, length ports))
+
+    portShapes (index, ports, output) = mapList (indices ports, \port => Scenes::disc (portX (index, output), portY (index, port), 7.0, Scenes::rgb (79, 218, 211), 3))
+
+    accessible (label, left, top, width, height, selected) = ui::Accessible(accessRole = ui::Pressable, accessLabel = label, accessLeft = left, accessTop = top, accessWidth = width, accessHeight = height, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessMovable = false, accessSelected = selected)
+
+    portLabel output = match output
+        true => "output"
+        false => "input"
+
+    portAccess (n, index, ports, output) = mapList (indices ports, \port => accessible ("Canvas ${portLabel output} ${n.identity}:${port}", portX (index, output) - 10.0, portY (index, port) - 10.0, 20.0, 20.0, false))
+
+    nodeAccess (editor, n) =
+        index = indexOf (editor.graph, n.identity)
+        listConcat [accessible ("Canvas ${componentName n}", x index - 70.0, y index - 35.0, 140.0, 70.0, editor.selected == n.identity)] (listConcat (portAccess (n, index, n.inputs, false)) (portAccess (n, index, n.outputs, true)))
+
+    inside (px, py, cx, cy, halfWidth, halfHeight) = px >= cx - halfWidth && px <= cx + halfWidth && py >= cy - halfHeight && py <= cy + halfHeight
+
+    hitPort (index, ports, output, px, py) = listGet (filterList (indices ports, \port => inside (px, py, portX (index, output), portY (index, port), 10.0, 10.0))) 0
+
+    hitNode (editor, n, px, py) =
+        index = indexOf (editor.graph, n.identity)
+        match hitPort (index, n.outputs, true, px, py)
+            Success port => EditorState::tapped (editor, Source(identity = n.identity, outlet = port))
+            Error _ => match hitPort (index, n.inputs, false, px, py)
+                Success port => EditorState::tapped (editor, Connect(identity = n.identity, inlet = port))
+                Error _ => match inside (px, py, x index, y index, 70.0, 35.0)
+                    true => EditorState::tapped (editor, Select(identity = n.identity))
+                    false => editor
+
+    (** Canvas ports use the same checked commands as native controls. *)
+    export pointed (editor, px, py, down) = match down
+        false => editor
+        true => foldList (editor.graph.nodes, editor, \(current, n) => hitNode (current, n, px, py))
 
     shape (editor, n) =
         index = indexOf (editor.graph, n.identity)
         fill = match editor.selected == n.identity
             true => Scenes::rgb (88, 59, 164)
             false => Scenes::rgb (40, 34, 66)
-        [Scenes::rect (x index, y index, 170.0, 80.0, 12.0, fill, 1), Scenes::glyphs (componentName n, x index - 68.0, y index - 8.0, 14.0, Scenes::rgb (242, 237, 255), 2)]
+        listConcat (listConcat (portShapes (index, n.inputs, false)) (portShapes (index, n.outputs, true))) [Scenes::rect (x index, y index, 170.0, 80.0, 12.0, fill, 1), Scenes::glyphs (componentName n, x index - 68.0, y index - 8.0, 14.0, Scenes::rgb (242, 237, 255), 2)]
 
     wire (graph, cable) =
         source = indexOf (graph, cable.source)
         destination = indexOf (graph, cable.destination)
-        Scenes::strip ([x source + 85.0, y source, x destination - 85.0, y destination], Scenes::rgb (79, 218, 211), 2.0, 0)
+        Scenes::strip ([portX (source, true), portY (source, cable.outlet), portX (destination, false), portY (destination, cable.inlet)], Scenes::rgb (79, 218, 211), 2.0, 0)
 
     canvas editor =
         nodes = foldList (editor.graph.nodes, [], \(all, n) => listConcat all (shape (editor, n)))
-        Ui::zoomed (0.0, 850.0, 600.0, [], listConcat (mapList (editor.graph.cables, \c => wire (editor.graph, c))) nodes, Surface)
+        scene = Ui::zoomed (0.0, 850.0, 600.0, [], listConcat (mapList (editor.graph.cables, \c => wire (editor.graph, c))) nodes, Surface)
+        Ui::described (scene, foldList (editor.graph.nodes, [], \(all, n) => listConcat all (nodeAccess (editor, n))))
 
     root () =
         editor = editorSlice ()
