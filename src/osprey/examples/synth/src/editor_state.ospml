@@ -9,6 +9,7 @@ module EditorState
     (** Available processors have real reference renderers, not placeholder nodes. *)
     export kinds = ["sine", "filter", "gain", "mixer", "delay", "output"]
 
+    (** Human-readable names for the available component factories. *)
     export title kind = match kind
         "sine" => "Sine oscillator"
         "filter" => "Low-pass filter"
@@ -100,3 +101,6 @@ module EditorState
             Error _ => editor(message = "Enter a finite number for this parameter.")
             Success value => checkedValue (editor, identity, key, value)
         _ => editor
+
+    (** A playable starting patch; the menu can add more independent instances. *)
+    export preset () = foldList ([Add(kind = "sine"), Add(kind = "filter"), Add(kind = "gain"), Add(kind = "output"), Source(identity = 0, outlet = 0), Connect(identity = 1, inlet = 0), Source(identity = 1, outlet = 0), Connect(identity = 2, inlet = 0), Source(identity = 2, outlet = 0), Connect(identity = 3, inlet = 0)], initial (), tapped)

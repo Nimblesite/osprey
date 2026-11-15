@@ -44,7 +44,7 @@ roomyKeys () =
 // [PRISM-ROUTING-EDITOR] The same real host event path used by the modular surface.
 editorUiJourney () =
     idle = Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ())
-    opened = Drive::launched (idle, "macos", [])
+    opened = Drive::launched (idle, "macos", ["--empty"])
     expect (Drive::shows (opened, "Add component"), true)
     source = Drive::choose (opened, "Add component", "sine")
     gain = Drive::choose (source, "Add component", "gain")
@@ -54,6 +54,20 @@ editorUiJourney () =
     wired = Drive::press (Drive::press (output, "Source 0: audio"), "Connect 1: audio")
     second = Drive::press (Drive::press (wired, "Source 1: audio"), "Connect 2: audio")
     expect (length second.drivenSurface.surfaceSession.sessionStore.graph.cables, 2)
+    heard = Drive::press (second, "Audition patch")
+    expect (length heard.drivenSurface.surfaceAsked, 1)
+    match listGet heard.drivenSurface.surfaceAsked 0
+        Error _ => expect (false, true)
+        Success request => match request.capability
+            ui::Run executable arguments _ _ _ _ =>
+                expect (executable, "/usr/bin/perl")
+                expect (startsWith (listGet arguments 2 ?: "") "52494646", true)
+                expect (contains (listGet arguments 2 ?: "") "0300010080BB0000", true)
+            _ => expect (false, true)
+    failed = Drive::ran (heard, "prism-preview", 1, "device disconnected")
+    expect (Drive::shows (failed, "Playback failed: device disconnected"), true)
+    unrelated = Drive::ran (failed, "another-job", 0, "")
+    expect (unrelated.drivenSurface.surfaceSession.sessionStore.message, failed.drivenSurface.surfaceSession.sessionStore.message)
     tuned = Drive::choose (second, "0: Frequency", "880")
     match synth::Graphs::node (tuned.drivenSurface.surfaceSession.sessionStore.graph, 0)
         synth::Invalid _ => expect (false, true)

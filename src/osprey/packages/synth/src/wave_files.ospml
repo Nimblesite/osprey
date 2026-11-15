@@ -11,7 +11,7 @@ module WaveFiles
 
     le32 value = "${le16 (bitAnd value 65535)}${le16 (bitAnd (shiftRight value 16) 65535)}"
 
-    // The old reference preview shares byte/header primitives with float output.
+    (** The 8-bit reference preview shares byte/header primitives with float output. *)
     export mono8 (rate, values) = "52494646${le32 (satAdd (length values) 36)}57415645666D7420${le32 16}${le16 1}${le16 1}${le32 rate}${le32 rate}${le16 1}${le16 8}64617461${le32 (length values)}${join (mapList (values, byte)) ""}"
 
     finite value = value == value && abs value <= 1000000.0

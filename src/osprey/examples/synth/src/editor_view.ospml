@@ -60,7 +60,7 @@ module EditorView
 
     root () =
         editor = editorSlice ()
-        Ui::column [Ui::row [Ui::styled ("PRISM", ui::Title, ui::Accent), menu (), Ui::button ("Remove selected", "", Remove)], Ui::caption editor.message, canvas editor, Ui::column (mapList (editor.graph.nodes, component))]
+        Ui::column [Ui::row [Ui::styled ("PRISM", ui::Title, ui::Accent), menu (), Ui::button ("Audition patch", "", Audition), Ui::button ("Remove selected", "", Remove)], Ui::caption editor.message, canvas editor, Ui::column (mapList (editor.graph.nodes, component))]
 
     stamp editor = JsonString "${editor.revision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.message}"
 
@@ -70,3 +70,8 @@ module EditorView
             read => editor
         changed = signalChanges before editor stamp (signalDependencies editorSlice)
         [Keyed::region (frames, "root", changed, root)]
+
+    token (name, light, dark) = ui::Token(tokenName = name, tokenLight = light, tokenDark = dark)
+
+    (** Prism's theme is independent of a fixed machine document. *)
+    export theme () = ui::Theme(tokens = [token ("accent", "#6944BA", "#BA9EFF"), token ("caution", "#986400", "#FFCD75"), token ("good", "#14776F", "#4FDAD3"), token ("danger", "#BE294B", "#FF7892"), token ("background", "#F4EFFB", "#100D21"), token ("text", "#201630", "#F2EDFF")], spacing = [4, 8, 12, 20, 28, 36], feedback = 120, settle = 220)

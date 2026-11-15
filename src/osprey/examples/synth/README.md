@@ -1,29 +1,24 @@
-# Prism synth
+# Prism synth [PRISM-ROUTING-EDITOR]
 
-A sample application on [@osprey/signal-flow](../../packages/signal_flow/README.md): the signal-flow editor in its Prism skin with a keyboard deck, wired to a real voice ([UI-MACHINE-FLOW-SYNTH](../../../../docs/specs/platforms/UiMachines.md)). The graph's five nodes are the synth:
+Prism is the modular instrument editor for `@osprey/synth`. Its native component picker, port controls and parameter fields share a typed graph with the canvas. Start with an oscillator, filter, gain and output; add more components, choose an output port, connect it to an input and audition the resulting patch. Invalid connections leave the previous graph unchanged, and deleting a component removes its cables.
 
-| Node | What it does to the sound |
-| --- | --- |
-| Oscillator | A sine, triangle, saw or square at the struck key's pitch; bypassed, the synth is silent |
-| LFO | Sweeps the filter's cutoff up to two octaves each way, twice a second; Depth sets how far |
-| Filter | A two-pole low-pass whose Cutoff slider sweeps 20 Hz to 20 kHz; bypassed, the tone passes untouched |
-| Master | The output; bypassed, the synth is silent |
-| Scope | Display only |
-
-Click a key on the keyboard under the graph to play: it renders one second of the patch at that key's pitch in Osprey, as an 8-bit WAV ([src/synth.ospml](src/synth.ospml)), and asks the host to play it through the `run` capability (`perl` writes the clip, then `afplay` plays it). The controls shape the sound and never play it. [src/studio.ospml](src/studio.ospml) is the whole application: the editor's own callbacks, plus the keyboard and the voice.
+The current menu offers sine oscillators, low-pass filters, gains, mixers, explicit delays and outputs. The graph library validates port rates, units, channel counts and feedback cycles. Parameter edits are checked against each component's descriptor. This remains work in progress: draggable canvas routing, MIDI generators, modulators and plug-in nodes are being integrated.
 
 ## Run
 
 ```sh
-make -C src/toolchain/targets/macos synth             # or: bash src/osprey/examples/synth/run.sh
+make -C src/toolchain/targets/macos synth
 ```
+
+**Audition patch** renders 256 ms of the actual connected mono graph in Osprey at 48 kHz and exports IEEE float32 WAV audio. The macOS host plays it through `afplay`; an exclusively created temporary file is removed after playback. This bounded offline preview is not yet the continuous audio engine, and preview device adapters for Windows and other platforms remain pending. Incomplete audio routes and host playback failures are shown explicitly.
 
 ## Test
 
 ```sh
-./target/release/osprey test src/osprey/examples/synth/test
+make -C src/toolchain/targets/tests synth
+make -C src/toolchain/targets/tests synth-vst
 ```
 
-Resizing the window never resizes a control: the inspector stays at the right edge, the keyboard at the bottom, and the graph between them gains grid.
+The application tests exercise both the existing fixed-patch interaction coverage and the new modular surface through real host events. The modular journey creates independent components, wires a chain, renders a playback request, changes parameters, rejects invalid input and removes a connected node. The synth package separately checks graph replacement, DSP state continuity, sample output and float32 RIFF bytes.
 
-The tests check the voice sample by sample: peaks for each patch and the WAV header. Then they drive the Prism canvas by accessible label and check that every key asks the host to play exactly the clip its patch renders at its pitch, that every control asks for nothing, and that a larger window moves the keyboard and inspector to its edges with their keys still playing.
+The VST target builds a separate worker against a pinned official SDK, scans actual ADelay and mda binaries, processes audio/MIDI and checks automation/state restoration. That worker is not yet connected to Prism's component menu or its graph audio transport. See the [delivery checklist](../../../../docs/plans/prism-synth-routing.md) and [worker scope](../../../toolchain/hosts/synth_vst/README.md) for verified capabilities and remaining work.

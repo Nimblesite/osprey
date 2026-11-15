@@ -6,13 +6,17 @@ import ui::Messages
 
 (** The modular graph editor's host-independent application boundary. *)
 module EditorApp
-    initial _ = Runtime::step (EditorState::initial ())
+    initial context = match length (filterList (context.arguments, \arg => arg == "--empty")) > 0
+        true => Runtime::step (EditorState::initial ())
+        false => Runtime::step (EditorState::preset ())
 
-    tapped (editor, action) = Runtime::step (EditorState::tapped (editor, action))
+    tapped (context, editor, action) = match action
+        Audition => Preview::play (editor, context.platform)
+        _ => Runtime::step (EditorState::tapped (editor, action))
 
     typed (editor, action, value) = Runtime::step (EditorState::typed (editor, action, value))
 
-    update (_, editor, message) = Messages::route (message, \action => tapped (editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(_, _) => Runtime::step editor)
+    update (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => Preview::completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(_, _) => Runtime::step editor)
 
     (** Native controls and the canvas observe the same typed graph and applied edit revision. *)
-    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => signalflow::App::theme "prism")
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => EditorView::theme ())

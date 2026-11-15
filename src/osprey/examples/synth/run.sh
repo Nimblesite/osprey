@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the Prism synth into the GPUI host, bundles it as "Prism Synth.app" with the Prism logo as
-# its Dock icon, and opens it: the signal-flow editor's Prism skin over a keyboard that plays it, fitted to the window.
+# its Dock icon, and opens the modular graph editor and float32 audio preview.
 #   run.sh            build, bundle and open
 #   run.sh --bundle   build and bundle only; prints the bundle's path
 #   run.sh --smoke    replay smoke.jsonl through the host without a window
@@ -8,6 +8,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
 machine="$repo/src/osprey/packages/signal_flow/signal_flow.machine.json"
+export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-"$repo/target/gpui"}
 if [ "${1:-}" = --smoke ]; then
     OSPREY_GPUI_APP="$here" exec "$repo/src/toolchain/hosts/gpui/run.sh" --smoke --machine "$machine"
 fi
