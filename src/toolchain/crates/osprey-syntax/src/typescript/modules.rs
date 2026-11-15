@@ -23,6 +23,7 @@ fn module_name(stem: &str) -> String {
 impl Lowerer<'_> {
     pub(super) fn program(&mut self, program: &oxc_ast::ast::Program<'_>) -> Program {
         let header = self.header(program);
+        self.collect_docs(&program.comments);
         let mut updated = Vec::new();
         receiver_roots(&program.body, &mut updated);
         let mut file = Vec::new();
@@ -30,7 +31,10 @@ impl Lowerer<'_> {
         for statement in &program.body {
             let started = !entry.is_empty();
             match self.top_level(statement, started, &updated) {
-                Ok(Some(mut declarations)) => file.append(&mut declarations),
+                Ok(Some(mut declarations)) => {
+                    self.document(&mut declarations, statement.span().start);
+                    file.append(&mut declarations);
+                }
                 Ok(None) => entry.push(statement),
                 Err(error) => self.errors.push(error),
             }
@@ -42,11 +46,15 @@ impl Lowerer<'_> {
             }
         }
         self.rename_exports(&mut file);
+        let first = program.body.first().map_or(u32::MAX, |first| first.span().start);
+        let doc = self.file_doc(first);
+        let in_module = header.module.is_some();
         let exports = std::mem::take(&mut self.exports);
-        let file = header.module_contribution(file, |name| exports.contains(name), None);
+        let inner = doc.clone().filter(|_| in_module);
+        let file = header.module_contribution(file, |name| exports.contains(name), inner);
         Program {
             statements: header.namespace_contribution(file),
-            doc: None,
+            doc: doc.filter(|_| !in_module),
         }
     }
 

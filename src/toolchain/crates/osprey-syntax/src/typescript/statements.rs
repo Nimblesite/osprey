@@ -59,6 +59,27 @@ pub(super) fn receiver_roots<'b>(statements: &'b [Statement<'_>], roots: &mut Ve
     }
 }
 
+/// A receiver statement's rebinding that nothing reads afterwards is a
+/// discard: `app.listen(port);` as a last statement binds no name.
+fn discard_unread(statements: &mut [Stmt], value: Option<&Expr>, rebound: &[usize]) {
+    for &index in rebound.iter().rev() {
+        let (head, rest) = statements.split_at_mut(index.saturating_add(1).min(statements.len()));
+        let Some(Stmt::Let { name, .. }) = head.last_mut() else {
+            continue;
+        };
+        let rest = Expr::Block {
+            statements: rest.to_vec(),
+            value: value.cloned().map(Box::new),
+            position: None,
+        };
+        let mut read = std::collections::BTreeSet::new();
+        osprey_ast::freevars::free_idents(&rest, &mut read);
+        if !read.contains(name.as_str()) {
+            "_".clone_into(name);
+        }
+    }
+}
+
 fn ends_in_return(statement: &Statement<'_>) -> bool {
     match statement {
         Statement::ReturnStatement(_) => true,
@@ -165,18 +186,29 @@ impl Lowerer<'_> {
     pub(super) fn block(&mut self, statements: &[&Statement<'_>], span: Span) -> Result<Expr> {
         let tail = self.in_tail();
         let mut lowered = Vec::new();
+        let mut rebound = Vec::new();
         for (index, statement) in statements.iter().enumerate() {
             let rest = statements.get(index + 1..).unwrap_or_default();
             if let Some(value) = self.tail_value(statement, rest, tail)? {
-                return Ok(self.finish(lowered, Some(value), statement.span()));
+                return Ok(self.finish(lowered, Some(value), statement.span(), &rebound));
+            }
+            if statement_root(statement).is_some() {
+                rebound.push(lowered.len());
             }
             lowered.extend(self.statement(statement)?);
         }
         let value = self.implicit_result(tail);
-        Ok(self.finish(lowered, value, span))
+        Ok(self.finish(lowered, value, span, &rebound))
     }
 
-    fn finish(&self, statements: Vec<Stmt>, value: Option<Expr>, span: Span) -> Expr {
+    fn finish(
+        &self,
+        mut statements: Vec<Stmt>,
+        value: Option<Expr>,
+        span: Span,
+        rebound: &[usize],
+    ) -> Expr {
+        discard_unread(&mut statements, value.as_ref(), rebound);
         let position = Some(self.at(span));
         let value = value.map(|value| Box::new(crate::desugar::positioned(value, position)));
         crate::desugar::block(statements, value, position)

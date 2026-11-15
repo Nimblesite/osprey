@@ -35,6 +35,7 @@ pub(super) struct Lowerer<'s> {
     /// This file's namespace directive, which a relative import resolves in.
     pub(super) namespace: Option<String>,
     pub(super) narrowed: Vec<Narrowing>,
+    pub(super) docs: Vec<super::documents::DocBlock>,
 }
 
 struct Scope {
@@ -79,6 +80,7 @@ impl<'s> Lowerer<'s> {
             renamed: Vec::new(),
             namespace: None,
             narrowed: Vec::new(),
+            docs: Vec::new(),
         }
     }
 

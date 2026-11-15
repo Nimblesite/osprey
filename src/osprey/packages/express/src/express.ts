@@ -38,6 +38,9 @@ export interface Application {
   readonly routes: Route[];
 }
 
+/** What `app.listen` returns: a listener and its handle, or why it could not start. */
+export type Server = { readonly kind: "listening"; readonly handle: int } | { readonly kind: "failed"; readonly message: string };
+
 /** Whether a route pattern matched a path, and the captures if it did. */
 type Match = { readonly kind: "bound"; readonly params: Map<string, string> } | { readonly kind: "unbound" };
 
@@ -93,40 +96,60 @@ function reply(statusCode, body, contentType, headers) {
 }
 
 /**
- * `app.listen(port, callback)` starts the native listener, runs `callback`,
- * and returns the server handle, or the error that stopped it from listening.
- * [TS-PORT-EXPRESS-SERVE]
+ * `app.listen(port, callback)` starts the native listener and runs `callback`.
+ * A listener that cannot start is reported on the console, as Node.js reports
+ * the unhandled error, and returned as `failed`. [TS-PORT-EXPRESS-SERVE]
  */
-export function listen(app: Application, port: int, callback: () => void): Result<int, string> {
-  const created = httpCreateServer(port, "127.0.0.1");
-  switch (created.kind) {
-    case "success":
-      return listening(created.value, app.routes, callback);
-    case "error":
-      return Error(created.message);
+export function listen(app: Application, port: int, callback: () => void): Server {
+  const started = start(app.routes, port);
+  switch (started.kind) {
+    case "success": {
+      callback();
+      return { kind: "listening", handle: started.value };
+    }
+    case "error": {
+      console.log(`Error: listen on port ${port} failed: ${started.message}`);
+      return { kind: "failed", message: started.message };
+    }
   }
 }
 
-function listening(server, routes, callback) {
-  const started = httpListen(server, (method, url, headers, body) => wire(dispatch(routes, method, url, headers, body)));
-  switch (started.kind) {
-    case "success":
-      return held(server, callback);
-    case "error":
-      return Error(started.message);
+/** `server.close()` stops the listener, which lets the process exit. */
+export function close(server: Server) {
+  switch (server.kind) {
+    case "listening":
+      return httpStopServer(server.handle);
+    case "failed":
+      return Error(server.message);
   }
+}
+
+function start(routes, port) {
+  return andThen(httpCreateServer(port, "127.0.0.1"), (server) => serving(server, routes));
 }
 
 /** As in Node.js, an open server keeps the process alive after the entry returns. */
-function held(server, callback) {
-  const kept = httpKeepAlive(server);
-  switch (kept.kind) {
-    case "success": {
-      callback();
+function serving(server, routes) {
+  const listening = andThen(
+    httpListen(server, (method, url, headers, body) => wire(dispatch(routes, method, url, headers, body))),
+    (_listening) => httpKeepAlive(server),
+  );
+  switch (listening.kind) {
+    case "success":
       return Success(server);
-    }
     case "error":
-      return Error(kept.message);
+      return released(server, listening.message);
+  }
+}
+
+/** A server that never listened is released; both failures are kept. */
+function released(server, message) {
+  const stopped = httpStopServer(server);
+  switch (stopped.kind) {
+    case "success":
+      return Error(message);
+    case "error":
+      return Error(`${message}; releasing the server failed: ${stopped.message}`);
   }
 }
 

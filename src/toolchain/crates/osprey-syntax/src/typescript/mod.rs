@@ -7,6 +7,7 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 
 mod context;
+mod documents;
 mod expressions;
 mod modules;
 mod objects;
