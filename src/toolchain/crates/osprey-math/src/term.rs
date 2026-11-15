@@ -10,9 +10,10 @@ use crate::refusal::{Code, Refusal};
 
 type Typed<T> = Result<(T, Ty), Refusal>;
 
-/// Lean's binary operators: the fragment's operator, how tightly it binds and
-/// the least binding its right operand may have. Lean declares `||` and `&&`
-/// left-associative, `∨`, `∧` and `^` right-associative, comparisons neither.
+/// Lean's binary operators, as `Init/Notation.lean` declares them: the
+/// fragment's operator, how tightly it binds and the least binding its right
+/// operand may have. `||` and `&&` are left-associative, `∨`, `∧` and `^`
+/// right-associative, and comparisons neither.
 const INFIX: &[(&str, Infix, u8, u8)] = &[
     ("||", Infix::Op(Op::Or), 30, 31),
     ("∨", Infix::Op(Op::Or), 30, 30),
@@ -31,8 +32,13 @@ const INFIX: &[(&str, Infix, u8, u8)] = &[
     ("-", Infix::Op(Op::Sub), 65, 66),
     ("*", Infix::Op(Op::Mul), 70, 71),
     ("/", Infix::Op(Op::Div), 70, 71),
-    ("^", Infix::Pow, 75, 75),
+    ("^", Infix::Pow, 80, 80),
 ];
+
+/// The binding of Lean's prefix `-`, and of the operand it reads.
+const NEGATION: u8 = 75;
+/// The binding a comparison's operands need: comparisons are `infix:50`.
+const COMPARED: u8 = 51;
 
 #[derive(Clone, Copy)]
 enum Infix {
@@ -176,9 +182,15 @@ impl Reader<'_> {
     /// A value built from operators, by Lean's precedence: `floor` is the
     /// least binding an operator may have to continue this term.
     pub(crate) fn expr(&mut self, floor: u8) -> Typed<Expr> {
-        let mut left = self.prefix()?;
+        let mut left = self.prefix(floor)?;
+        let mut compared = false;
         while let Some((infix, next)) = self.infix(floor) {
             let place = self.place();
+            if compared && next == COMPARED {
+                let fix = "Lean's comparisons do not chain; parenthesise one of them";
+                return self.refuse(Code::UnexpectedToken, fix);
+            }
+            compared = next == COMPARED;
             self.at += 1;
             let right = self.expr(next)?;
             if matches!(infix, Infix::Pow) {
@@ -203,11 +215,16 @@ impl Reader<'_> {
             .map(|(_, infix, _, next)| (*infix, *next))
     }
 
-    /// Lean reads the operand of `-` at 75 and of `!` and `¬` at 40.
-    fn prefix(&mut self) -> Typed<Expr> {
+    /// Lean reads the operand of `-` at 75 and of `!` and `¬` at 40. A `-`
+    /// term binds at 75 itself, so it cannot be the bare operand of `^`.
+    fn prefix(&mut self, floor: u8) -> Typed<Expr> {
         let place = self.place();
+        if self.sym("-") && floor > NEGATION {
+            let fix = "Lean does not read a leading `-` as the operand of `^`; parenthesise it";
+            return self.refuse(Code::UnexpectedToken, fix);
+        }
         if self.eat("-") {
-            let (term, ty) = self.expr(75)?;
+            let (term, ty) = self.expr(NEGATION)?;
             require(place, ty, Ty::Float, "the operand of `-`")?;
             return Ok((negated(term), Ty::Float));
         }
