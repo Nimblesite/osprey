@@ -12,6 +12,12 @@ tree-sitter = { workspace = true }
 tree-sitter-osprey = { workspace = true }
 # Matches the ABI of the workspace's tree-sitter 0.27 runtime.
 tree-sitter-python = "=0.25.0"
+# The pinned TypeScript parser of the TypeScript flavor ([FLAVOR-TS-CST]).
+oxc_allocator = "=0.158.0"
+oxc_ast = "=0.158.0"
+oxc_parser = "=0.158.0"
+oxc_span = "=0.158.0"
+oxc_syntax = "=0.158.0"
 
 [lints]
 workspace = true

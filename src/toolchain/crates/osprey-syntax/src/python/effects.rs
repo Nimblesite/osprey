@@ -1,7 +1,6 @@
 //! Class-shaped capabilities and handlers use the canonical effects core.
 //! Implements [FLAVOR-PYTHON-EFFECT], [FLAVOR-PYTHON-HANDLER].
 use super::context::{children, position, Lowerer, Result};
-use super::declarations::render;
 use osprey_ast::{
     EffectOperation, EffectRef, Expr, HandlerArm, Multiplicity, OperationMode, Stage, Stmt,
 };
@@ -62,10 +61,13 @@ impl Lowerer<'_> {
         let result = self.type_expr(Self::field(node, "return_type")?)?;
         let arguments = params
             .iter()
-            .map(|p| render(&p.ty))
+            .map(|p| crate::desugar::field_type(&p.ty))
             .collect::<Vec<_>>()
             .join(", ");
-        Ok(format!("({arguments}) -> {}", render(&result)))
+        Ok(format!(
+            "({arguments}) -> {}",
+            crate::desugar::field_type(&result)
+        ))
     }
 
     fn operation_markers<'t>(&self, node: Node<'t>) -> Result<(Node<'t>, Markers)> {

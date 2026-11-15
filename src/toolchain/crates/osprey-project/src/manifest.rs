@@ -18,6 +18,9 @@ pub struct ProjectConfig {
     pub source_roots: Vec<PathBuf>,
     /// Literal Python-flavor files selected without sweeping up Python tools.
     pub python_sources: Vec<PathBuf>,
+    /// Literal TypeScript-flavor files selected without claiming a project's
+    /// other TypeScript. Implements [FLAVOR-TS-SELECT].
+    pub typescript_sources: Vec<PathBuf>,
     /// Optional default namespace for files without an explicit declaration.
     pub default_namespace: Option<String>,
     /// Optional entry source, relative to the manifest directory.
@@ -94,6 +97,7 @@ impl ProjectConfig {
             name,
             source_roots: vec![PathBuf::from(source)],
             python_sources: Vec::new(),
+            typescript_sources: Vec::new(),
             entry: None,
             flavor: None,
             allow_wildcard_imports: false,
@@ -163,6 +167,9 @@ fn apply_key(
         }),
         ("project", "python_sources") => codec::parse_list(value).map(|paths| {
             config.python_sources = paths.into_iter().map(PathBuf::from).collect();
+        }),
+        ("project", "typescript_sources") => codec::parse_list(value).map(|paths| {
+            config.typescript_sources = paths.into_iter().map(PathBuf::from).collect();
         }),
         ("project", "default_namespace") => {
             codec::parse_string(value).map(|v| config.default_namespace = Some(v))

@@ -35,6 +35,7 @@ mod binding_ranges;
 mod default;
 mod desugar;
 mod docparse;
+mod file_header;
 mod fragment_ranges;
 mod kernel;
 mod ml;
@@ -43,6 +44,7 @@ mod python;
 mod strings;
 #[cfg(test)]
 mod test_support;
+mod typescript;
 
 pub use annotation_edits::{annotation_edits, AnnotationEdit, AnnotationTarget, SourceEdit};
 pub use binding_ranges::{binding_ranges, binding_scope, BindingKind, BindingRange};
@@ -112,6 +114,9 @@ pub enum Flavor {
     /// Python concrete syntax with the same Osprey types, effects and runtime.
     /// Implements [FLAVOR-PYTHON-BOUNDARY].
     Python,
+    /// TypeScript 7 concrete syntax with the same Osprey types, effects and
+    /// runtime, and no JavaScript engine. Implements [FLAVOR-TS-BOUNDARY].
+    TypeScript,
 }
 
 impl std::fmt::Display for Flavor {
@@ -122,6 +127,7 @@ impl std::fmt::Display for Flavor {
             Flavor::Default => "default",
             Flavor::Ml => "ml",
             Flavor::Python => "python",
+            Flavor::TypeScript => "typescript",
         })
     }
 }
@@ -129,15 +135,16 @@ impl std::fmt::Display for Flavor {
 impl std::str::FromStr for Flavor {
     type Err = String;
 
-    /// Parse a flavor name (`default` | `ml` | `python`). Unknown names are an error so a
+    /// Parse a flavor name (`default` | `ml` | `python` | `typescript`). Unknown names are an error so a
     /// typo fails loudly instead of silently selecting the Default frontend.
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "default" => Ok(Flavor::Default),
             "ml" => Ok(Flavor::Ml),
             "python" => Ok(Flavor::Python),
+            "typescript" => Ok(Flavor::TypeScript),
             other => Err(format!(
-                "unknown flavor '{other}' (available: default, ml, python)"
+                "unknown flavor '{other}' (available: default, ml, python, typescript)"
             )),
         }
     }
@@ -175,6 +182,7 @@ pub fn parse_program_with_flavor(source: &str, flavor: Flavor) -> Parsed {
         Flavor::Default => default::parse(source),
         Flavor::Ml => ml::parse_ml(source),
         Flavor::Python => python::parse(source),
+        Flavor::TypeScript => typescript::parse(source),
     }
 }
 
@@ -214,6 +222,7 @@ pub(crate) fn flavor_from_extension(path: &str) -> Option<Flavor> {
         Some("ospml") => Some(Flavor::Ml),
         Some("osp") => Some(Flavor::Default),
         Some("py") => Some(Flavor::Python),
+        Some("ts") if !path.ends_with(".d.ts") => Some(Flavor::TypeScript),
         _ => None,
     }
 }

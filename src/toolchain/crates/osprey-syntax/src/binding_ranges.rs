@@ -39,6 +39,7 @@ pub fn binding_scope(source: &str, flavor: Flavor, binding: &BindingRange) -> Ra
     }
     let tree = match flavor {
         Flavor::Python => crate::parse_python_tree(source).ok(),
+        Flavor::TypeScript => None,
         _ => crate::parse_tree(source),
     };
     tree.and_then(|tree| tree_binding_scope(tree.root_node(), binding))
@@ -81,6 +82,8 @@ pub fn binding_ranges(source: &str, flavor: Flavor) -> Vec<BindingRange> {
         Flavor::Default => crate::default::binding_ranges(source),
         Flavor::Ml => crate::ml::binding_ranges(source),
         Flavor::Python => crate::python::binding_ranges(source),
+        // Editor binding ranges for TypeScript are plan 0061 phase E.
+        Flavor::TypeScript => Vec::new(),
     };
     ranges.extend(crate::fragment_ranges::collect(
         source,

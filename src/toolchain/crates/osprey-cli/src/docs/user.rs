@@ -197,14 +197,7 @@ fn source_cli(path: &str, flavor: Option<Flavor>) -> io::Result<crate::Cli> {
     let mut args = vec![path.into()];
     if let Some(flavor) = flavor {
         args.push("--flavor".into());
-        args.push(
-            match flavor {
-                Flavor::Default => "default",
-                Flavor::Ml => "ml",
-                Flavor::Python => "python",
-            }
-            .into(),
-        );
+        args.push(flavor.to_string());
     }
     crate::parse_args(&args).map_err(invalid)
 }

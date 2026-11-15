@@ -6,7 +6,7 @@
 //! Stating the shape once here is what makes that true by construction rather
 //! than by review.
 
-use osprey_ast::{Expr, MatchArm, Pattern, Stmt};
+use osprey_ast::{Expr, MatchArm, Pattern, Stmt, TypeExpr};
 
 /// The built-in `Result` constructors. Their payload binds by ROLE — `value`
 /// carries the success payload, `message` the error text — rather than by
@@ -119,4 +119,24 @@ pub(crate) fn positioned(value: Expr, position: Option<osprey_ast::Position>) ->
         value: Some(Box::new(value)),
         position,
     }
+}
+
+/// A record field's type in the canonical spelling [`osprey_ast::TypeField`]
+/// stores, shared by every frontend that lowers typed annotations.
+pub(crate) fn field_type(ty: &TypeExpr) -> String {
+    if ty.is_function {
+        let result = ty
+            .return_type
+            .as_deref()
+            .map_or_else(|| "Unit".into(), field_type);
+        return format!(
+            "({}) -> {result}",
+            ty.parameter_types
+                .iter()
+                .map(field_type)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    osprey_ast::effect_name::instantiated(&ty.name, &ty.generic_params)
 }

@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 /// The manifest naming a package's source roots.
 const MANIFEST: &str = "osprey.toml";
 /// The extensions the compiler reads out of a source root.
-const SOURCES: [&str; 3] = ["osp", "ospml", "py"];
+const SOURCES: [&str; 4] = ["osp", "ospml", "py", "ts"];
 
 /// A digest over every file the checker build reads, each as its
 /// package-relative path, its length and its bytes. A checker is either one

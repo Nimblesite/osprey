@@ -98,7 +98,7 @@ fn fragment_coordinates_follow_raw_escapes_and_each_flavors_column_unit() {
         assert_eq!(range.and_then(|range| raw.get(range)), Some("beta"));
         let before = raw.split("beta").next().unwrap_or_default();
         let width = match flavor {
-            Flavor::Default | Flavor::Python => before.len(),
+            Flavor::Default | Flavor::Python | Flavor::TypeScript => before.len(),
             Flavor::Ml => before.chars().count(),
         };
         assert_eq!(

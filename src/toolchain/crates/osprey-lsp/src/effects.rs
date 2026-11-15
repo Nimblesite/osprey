@@ -227,7 +227,9 @@ fn encoded_column(
 fn byte_column(text: &str, column: u32, flavor: Flavor) -> Option<usize> {
     let column = usize::try_from(column).ok()?;
     match flavor {
-        Flavor::Default | Flavor::Python => text.is_char_boundary(column).then_some(column),
+        Flavor::Default | Flavor::Python | Flavor::TypeScript => {
+            text.is_char_boundary(column).then_some(column)
+        }
         Flavor::Ml => text
             .char_indices()
             .map(|(offset, _)| offset)

@@ -103,6 +103,7 @@ type Combinator = (
 
 fn kernel_call(row: &Combinator, flavor: Flavor) -> &'static str {
     match flavor {
+        Flavor::TypeScript => crate::testutil::no_typescript_fixture(),
         Flavor::Default => row.1,
         Flavor::Ml => row.2,
         Flavor::Python => row.3,
@@ -139,6 +140,7 @@ fn transitive_kernel(flavor: Flavor, combinator: &Combinator, dynamic: bool) -> 
         indent,
     );
     match flavor {
+        Flavor::TypeScript => crate::testutil::no_typescript_fixture(),
         Flavor::Default => {
             format!("effect Log {{ write: fn(string) -> Unit }}\nfn third(x) = {body}\nfn second(x) = third(x)\nfn first(x) = second(x)\nfn main() = {{\n handle Log {{ write m => print(m) }}\n {chain}\n perform Log.write(\"host\")\n}}")
         }
@@ -151,6 +153,7 @@ fn transitive_kernel(flavor: Flavor, combinator: &Combinator, dynamic: bool) -> 
 
 fn kernel_leaf(flavor: Flavor, dynamic: bool) -> &'static str {
     match (flavor, dynamic) {
+        (Flavor::TypeScript, _) => crate::testutil::no_typescript_fixture(),
         (Flavor::Default | Flavor::Ml, false) => "x",
         (Flavor::Python, false) => "return x",
         (Flavor::Default, true) => "{ perform Log.write(\"saw\")\n x }",
@@ -215,6 +218,7 @@ fn unknown_callback_program(flavor: Flavor, combinator: &Combinator) -> String {
         4,
     );
     match flavor {
+        Flavor::TypeScript => crate::testutil::no_typescript_fixture(),
         Flavor::Default => format!("fn run(f) = {{\n{chain}}}\n"),
         Flavor::Ml => format!("run f =\n{chain}"),
         Flavor::Python => format!("def run(f):\n{chain}    return 0\n"),
@@ -286,6 +290,7 @@ fn scalar_builtin_kernels_cannot_invent_an_arithmetic_policy() {
 fn scalar_kernel_program(flavor: Flavor, sources: &[&str], call: &str) -> String {
     let chain = sources_chain(flavor, sources, call, unit_tail(flavor), 4);
     match flavor {
+        Flavor::TypeScript => crate::testutil::no_typescript_fixture(),
         Flavor::Default => format!("fn main() = {{\n{chain}}}\n"),
         Flavor::Ml => format!("main () =\n{chain}"),
         Flavor::Python => format!("def main():\n{chain}"),
@@ -315,6 +320,7 @@ fn every_gpu_combinator_propagates_arithmetic_and_outer_recovery_requirements() 
 
 fn arithmetic_program(flavor: Flavor, combinator: &Combinator, recovery: &str) -> String {
     let handler = match (flavor, recovery.is_empty()) {
+        (Flavor::TypeScript, _) => crate::testutil::no_typescript_fixture(),
         (_, true) => String::new(),
         (Flavor::Default, false) => {
             format!("handle Arith {{ overflow _ _ _ wrapped => {recovery} }}\n")
@@ -337,6 +343,7 @@ fn arithmetic_program(flavor: Flavor, combinator: &Combinator, recovery: &str) -
         indent,
     );
     match flavor {
+        Flavor::TypeScript => crate::testutil::no_typescript_fixture(),
         Flavor::Default => format!("fn main() = {{ {handler}\n{chain}}}\n"),
         Flavor::Ml => format!("main () =\n{handler}{chain}"),
         Flavor::Python if recovery.is_empty() => format!("def main():\n{chain}"),
@@ -383,6 +390,7 @@ const ARITHMETIC_KERNELS: [Combinator; 5] = [
 /// in a Unit statement instead of a fabricated value.
 fn unit_tail(flavor: Flavor) -> &'static str {
     match flavor {
+        Flavor::TypeScript => crate::testutil::no_typescript_fixture(),
         Flavor::Default | Flavor::Python => "print(0)",
         Flavor::Ml => "print 0",
     }
@@ -417,6 +425,7 @@ fn gpu_chain<Name: AsRef<str>, Step: AsRef<str>>(
     indent: usize,
 ) -> String {
     match flavor {
+        Flavor::TypeScript => crate::testutil::no_typescript_fixture(),
         Flavor::Default => default_chain(steps, tail),
         Flavor::Ml => ml_chain(steps, tail, indent),
         Flavor::Python => python_chain(steps, tail, indent),

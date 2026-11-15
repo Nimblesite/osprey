@@ -96,6 +96,7 @@ fn float_helpers_reject_non_numeric_arguments_before_codegen() {
 
 fn numeric_helper_source(flavor: Flavor, body: &str, value: &str) -> String {
     match flavor {
+        Flavor::TypeScript => crate::testutil::no_typescript_fixture(),
         Flavor::Default => format!("fn scale(x) = {body}\nlet result = scale({value})\n"),
         Flavor::Ml => format!("scale x = {body}\nresult = scale ({value})\n"),
         Flavor::Python => {

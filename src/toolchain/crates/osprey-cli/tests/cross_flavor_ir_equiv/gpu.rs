@@ -220,7 +220,9 @@ fn kernel_debug_ir(
     let wrapped = match flavor {
         Flavor::Default => format!("fn main() = {{\n{setup}{body}\n}}"),
         Flavor::Ml => format!("main () =\n{}", indent(&format!("{setup}{body}"), 4)),
-        Flavor::Python => return Err("GPU debug fixture requires Default or ML".to_owned()),
+        Flavor::Python | Flavor::TypeScript => {
+            return Err("GPU debug fixture requires Default or ML".to_owned())
+        }
     };
     lambda_debug_ir(&wrapped, flavor)
 }
@@ -245,7 +247,7 @@ fn with_uploads(source: &str, flavor: Flavor, inputs: &[(&str, &str)]) -> String
                 "match toGpu [{values}]\n    Success {name} =>\n{}\n    Error message => Error(message = message)",
                 indent(&body, 8)
             ),
-            Flavor::Python => body,
+            Flavor::Python | Flavor::TypeScript => body,
         }
     })
 }
@@ -336,7 +338,7 @@ fn buffer_ir(default: &str, ml: &str, inputs: &[(&str, &str)]) -> Result<Vec<Str
             let source = match flavor {
                 Flavor::Default => format!("fn main() = {{\n{body}\n}}"),
                 Flavor::Ml => format!("main () =\n{}", indent(&body, 4)),
-                Flavor::Python => {
+                Flavor::Python | Flavor::TypeScript => {
                     return Err("GPU buffer fixture requires Default or ML".to_owned())
                 }
             };
