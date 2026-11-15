@@ -70,6 +70,12 @@ Prism snapshots the graph and plug-in bindings when an audition begins. Editing 
 
 A MIDI note component exposes whole-number pitch, normalized velocity and an exact gate length in frames. `MidiClips.window` assigns note-on and note-off to half-open sample windows, preserving ownership at block boundaries. Fractional pitches/gates, invalid velocities and out-of-range windows return errors. Event outputs connect only to compatible event inputs; audio outputs remain separate. Sequencing, polyphonic generators and continuous live note control remain delivery work.
 
+## Routed modulation [SYNTH-GRAPH-MODULATION]
+
+A normalized sine LFO is a separate control-rate component with its own phase and frequency. A controlled-gain node takes distinct audio and normalized-control inputs; one control sample broadcasts across all audio channels while audio cables retain their declared width. The transfer functions are authored in `Waves.lean`, and the renderer shares oscillator state handling with audio oscillators. Missing controls and values outside zero through one are explicit errors. Native menu actions and canvas cable actions use the same rate/unit/channel validation.
+
+The current graph clip path renders modulation at sample resolution. This establishes LFO-driven stereo amplitude modulation; routing arbitrary modulators into hosted parameter automation and continuous device processing remain separate delivery work.
+
 ## Verification and delivery [SYNTH-VERIFY]
 
 - [x] Extract reusable synthesis from Prism without introducing a UI dependency into the package.

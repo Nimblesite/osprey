@@ -49,6 +49,11 @@ editorUiJourney () =
     source = Drive::choose (opened, "Add component", "sine")
     gain = Drive::choose (source, "Add component", "gain")
     output = Drive::choose (gain, "Add component", "output")
+    drawn = ui::Surfaces::seen (output.drivenSurface, output.drivenProgram)
+    forEachList (drawn.walkSketches, \sketch => forEachList (sketch.sketchedAs.sketchShapes, \shape =>
+        match shape
+            ui::Rect _ _ _ _ angle _ _ => expect (angle, 0.0)
+            _ => expect (true, true)))
     expect (Drive::shows (output, "Source 0: audio"), true)
     expect (Drive::letters (output, "Oscillator 0"), true)
     expect (uitest::Semantics::offered (output.drivenSeen.renderedAccess, "Canvas input 1:0"), true)
@@ -247,6 +252,14 @@ midiMenuJourney () =
     incompatible = Drive::press (Drive::press (output, "Source 0: notes"), "Connect 1: audio")
     expect (length incompatible.drivenSurface.surfaceSession.sessionStore.graph.cables, 0)
     expect (contains incompatible.drivenSurface.surfaceSession.sessionStore.message "different rates", true)
+    lfo = Drive::choose (output, "Add component", "lfo")
+    gain = Drive::choose (lfo, "Add component", "modulated-gain")
+    expect (length gain.drivenSurface.surfaceSession.sessionStore.graph.nodes, 4)
+    expect (Drive::shows (gain, "2: Frequency"), true)
+    modulated = Drive::press (Drive::press (gain, "Source 2: control"), "Connect 3: control")
+    expect (length modulated.drivenSurface.surfaceSession.sessionStore.graph.cables, 1)
+    refused = Drive::press (Drive::press (modulated, "Source 2: control"), "Connect 1: audio")
+    expect (length refused.drivenSurface.surfaceSession.sessionStore.graph.cables, 1)
     tuned = Drive::choose (output, "0: Pitch", "72")
     invalid = Drive::choose (tuned, "0: Velocity", "1.1")
     expect (structuralEquals (invalid.drivenSurface.surfaceSession.sessionStore.graph, tuned.drivenSurface.surfaceSession.sessionStore.graph), true)
@@ -284,6 +297,7 @@ midiTimingJourney () =
 
 // [SYNTH-HOST-GRAPH] Built-in kernels agree exactly across graph execution strategies.
 graphClipJourney () =
+    modulationJourney ()
     graph = (synth::EditorState::preset ()).graph
     match synth::Graphs::prepare graph
         synth::Invalid _ => expect (false, true)
@@ -313,5 +327,44 @@ graphClipJourney () =
             Error _ => expect (true, true)
             Success _ => expect (false, true))
     match synth::GraphClips::advance (graph(cables = []), [], 257)
+        Error _ => expect (true, true)
+        Success _ => expect (false, true)
+
+modulationPatch () =
+    commands = [synth::Add(kind = "sine"), synth::Add(kind = "stereo"), synth::Add(kind = "lfo"), synth::Add(kind = "modulated-gain"), synth::Add(kind = "stereo-output"), synth::Source(identity = 0, outlet = 0), synth::Connect(identity = 1, inlet = 0), synth::Source(identity = 1, outlet = 0), synth::Connect(identity = 3, inlet = 0), synth::Source(identity = 2, outlet = 0), synth::Connect(identity = 3, inlet = 1), synth::Source(identity = 3, outlet = 0), synth::Connect(identity = 4, inlet = 0)]
+    editor = foldList (commands, synth::EditorState::initial (), synth::EditorState::tapped)
+    tuned = synth::EditorState::typed (editor, synth::EditParameter(identity = 0, key = "frequency"), "12000")
+    synth::EditorState::typed (tuned, synth::EditParameter(identity = 2, key = "frequency"), "0")
+
+clipOutput graph = match synth::GraphClips::advance (graph, [], 8)
+    Error why => Error(message = why)
+    Success action => match action
+        synth::ClipWaiting _ _ _ => Error(message = "Unexpected external processor")
+        synth::ClipReady clips => synth::ClipInputs::completed (clips, 4)
+
+// [SYNTH-GRAPH-MODULATION] One control stream broadcasts across both stereo channels.
+modulationJourney () =
+    editor = modulationPatch ()
+    expect (length editor.graph.cables, 4)
+    match clipOutput editor.graph
+        Error _ => expect (false, true)
+        Success output =>
+            expect (output.clipChannels, 2)
+            expected = [0.0, 0.0, 0.25, 0.25, 0.0, 0.0, -0.25, -0.25, 0.0, 0.0, 0.25, 0.25, 0.0, 0.0, -0.25, -0.25]
+            expect (length output.clipSamples, length expected)
+            forEachList (toList (range (0, length expected)), \index =>
+                match listGet output.clipSamples index
+                    Error _ => expect (false, true)
+                    Success value => near (value, listGet expected index ?: 99.0))
+            moving = synth::EditorState::typed (editor, synth::EditParameter(identity = 2, key = "frequency"), "20")
+            match clipOutput moving.graph
+                Error _ => expect (false, true)
+                Success modulated => expect (structuralEquals (modulated.clipSamples, output.clipSamples), false)
+    invalid = synth::NodeClip(clipNode = 2, clipChannels = 1, clipSamples = mapList (toList (range (0, 8)), \_ => -0.1), clipNotes = [])
+    match synth::GraphClips::advance (editor.graph, [invalid], 8)
+        Error _ => expect (true, true)
+        Success _ => expect (false, true)
+    missing = synth::EditorState::tapped (editor, synth::Disconnect(identity = 3, inlet = 1))
+    match clipOutput missing.graph
         Error _ => expect (true, true)
         Success _ => expect (false, true)

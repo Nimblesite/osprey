@@ -51,6 +51,8 @@ module GraphPreview
             ClipWaiting identity block clips => waiting (editor, identity, block, clips)
 
     requiresHost n = match n.processor
+        Lfo => true
+        ModulatedGain => true
         External _ => true
         MidiNotes => true
         Stereo => true

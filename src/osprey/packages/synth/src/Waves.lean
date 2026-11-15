@@ -71,4 +71,10 @@ fundamental. -/
 def ring (dry phase warp : Float) : Float :=
   dry * (1 - warp + warp * sine (phase * 7))
 
+/-- A bipolar oscillator becomes a normalized control signal. -/
+def unipolar (sample : Float) : Float := (sample + 1) / 2
+
+/-- A normalized modulation input scales an explicit linear gain. -/
+def controlledGain (sample level control : Float) : Float := sample * level * control
+
 end synth.Waves

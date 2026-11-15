@@ -5,13 +5,13 @@ import synth::RenderInputs
 
 (** Component dispatch shared by offline graph execution. *)
 module RenderKernels
-    sine (rate, snapshot, frame, held) = match RenderInputs::parameter (snapshot, held.identity, "frequency")
+    sine (rate, snapshot, frame, held, shape) = match RenderInputs::parameter (snapshot, held.identity, "frequency")
         Error why => Error(message = why)
         Success frequency => match Oscillators::configure (OscillatorConfig(sampleRate = rate, frequency = frequency, pulseWidth = 0.5, waveform = Sine))
             Error why => Error(message = why)
             Success config =>
                 sample = Oscillators::next (config, OscillatorState(phase = held.phase))
-                Success(value = RenderInputs::emitted (frame, held(phase = sample.next.phase), sample.sample))
+                Success(value = RenderInputs::emitted (frame, held(phase = sample.next.phase), shape sample.sample))
 
     filtered (frame, held, config, input) = match Filters::configure config
         Error why => Error(message = why)
@@ -36,7 +36,18 @@ module RenderKernels
         Error why => Error(message = why)
         Success second => Success(value = RenderInputs::emitted (frame, held, first + second))
 
+    controlled (plan, snapshot, frame, held, input) = match RenderInputs::input (plan, frame, held.identity, 1)
+        Error why => Error(message = why)
+        Success control => match control >= 0.0 && control <= 1.0
+            false => Error(message = "Gain modulation must stay between zero and one.")
+            true => match RenderInputs::parameter (snapshot, held.identity, "gain")
+                Error why => Error(message = why)
+                Success level => match level >= 0.0 && level <= 8.0
+                    false => Error(message = "Invalid gain.")
+                    true => Success(value = RenderInputs::emitted (frame, held, Waves::controlledGain (input, level, control)))
+
     processor (plan, rate, snapshot, frame, held, n, input) = match n.processor
+        ModulatedGain => controlled (plan, snapshot, frame, held, input)
         Filter => lowpass (rate, snapshot, frame, held, input)
         Amplifier => gain (snapshot, frame, held, input)
         Mixer => mixer (plan, frame, held, input)
@@ -44,7 +55,8 @@ module RenderKernels
         _ => Error(message = "Unsupported processor in the reference audio renderer.")
 
     selected (plan, rate, snapshot, frame, held, n) = match n.processor
-        Oscillator => sine (rate, snapshot, frame, held)
+        Oscillator => sine (rate, snapshot, frame, held, \value => value)
+        Lfo => sine (rate, snapshot, frame, held, Waves::unipolar)
         Delay _ => match listGet held.delay 0
             Error why => Error(message = why)
             Success previous => Success(value = RenderInputs::emitted (frame, held, previous))

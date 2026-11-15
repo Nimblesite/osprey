@@ -13,6 +13,15 @@ module ClipInputs
         [cable] => completed (clips, cable.source)
         _ => Error(message = "Every graph input needs exactly one connected source.")
 
+    (** Control signals broadcast across audio channels without changing audio cable widths. *)
+    export sourceChannel (graph, cable, channel) = match Graphs::node (graph, cable.source)
+        Invalid _ => Error(message = "The routed source is missing.")
+        Valid n => match listGet n.outputs cable.outlet
+            Error why => Error(message = why)
+            Success port => match (port.rate == Control)
+                true => Success(value = 0)
+                false => Success(value = channel)
+
     channels ports = match ports
         [] => Success(value = 0)
         [port] => Success(value = port.channels)

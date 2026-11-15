@@ -30,6 +30,8 @@ type Parameter =
     automatable : bool
 
 type Processor =
+    Lfo
+    ModulatedGain
     MidiNotes
     Stereo
     Oscillator
@@ -108,4 +110,3 @@ type ParameterChange =
     value : float
     revision : int
     samplePosition : int
-

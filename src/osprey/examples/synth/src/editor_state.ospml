@@ -7,10 +7,12 @@ module EditorState
     export initial () = Editor(graph = Graphs::empty, selected = -1, nextIdentity = 0, source = -1, outlet = 0, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", pluginPath = "", catalog = [], pluginBindings = [], pluginSerial = 0, pluginTicket = "", pluginClassId = "", renderGraph = Graphs::empty, renderClips = [], renderBindings = [], renderSerial = 0, renderTicket = "", renderNode = -1)
 
     (** Available component factories expose their real audio or event ports. *)
-    export kinds = ["sine", "filter", "gain", "mixer", "delay", "output", "midi-note", "stereo", "stereo-output"]
+    export kinds = ["sine", "filter", "gain", "mixer", "delay", "output", "midi-note", "stereo", "stereo-output", "lfo", "modulated-gain"]
 
     (** Human-readable names for the available component factories. *)
     export title kind = match kind
+        "lfo" => "LFO modulator"
+        "modulated-gain" => "Modulated stereo gain"
         "sine" => "Sine oscillator"
         "filter" => "Low-pass filter"
         "gain" => "Gain"
@@ -23,6 +25,8 @@ module EditorState
         _ => "Unknown component"
 
     factory (kind, identity) = match kind
+        "lfo" => Valid(value = Components::lfo (identity, 2.0))
+        "modulated-gain" => Valid(value = Components::modulatedGain (identity, 2, 0.5))
         "sine" => Valid(value = Components::sine (identity, 440.0))
         "filter" => Valid(value = Components::lowpass (identity, 4000.0, 0.707))
         "gain" => Valid(value = Components::gain (identity, 0.25))

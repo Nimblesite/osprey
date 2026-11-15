@@ -27,8 +27,22 @@ module ClipLayouts
                 [first, ..._rest] => audioCount == 0 || first.rate == Audio
             audioCount <= 1 && noteCount <= 1 && audioCount + noteCount == length n.inputs && length n.outputs == 1 && audio n.outputs && layout.outputChannels >= 1 && audioFirst
 
+    control port = port.rate == Control && port.unit == Normalised && port.channels == 1
+
+    modulated n = match n.inputs
+        [input, modulation] => match n.outputs
+            [output] => audio [input, output] && input.channels == output.channels && control modulation
+            _ => false
+        _ => false
+
+    lfo n = match n.outputs
+        [output] => length n.inputs == 0 && control output
+        _ => false
+
     (** Processor layouts are exact: no ignored extra ports or implicit channel conversion. *)
     export supported n = match n.processor
+        Lfo => lfo n
+        ModulatedGain => modulated n
         MidiNotes => length n.inputs == 0 && length n.outputs == 1 && notes n.outputs
         Stereo => stereo n
         Oscillator => uniform (n, 0, 1)

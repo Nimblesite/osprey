@@ -90,3 +90,15 @@ The expanded app suite passes eleven journeys; the synth package passes seventee
 - [ ] Implement continuous device rendering, persistent hosted instances, live modulation, graph persistence and latency compensation.
 
 The native headless journey now runs 36 steps with real processes and playback. The host-free app suite has twelve loaded journeys. The graph clip renderer is deliberately bounded and offline; feedback stays in the reference renderer, and nonzero plug-in latency is reported explicitly. Windowed screenshot evidence and full CI remain outstanding.
+
+### Routed LFO modulation [PRISM-ROUTING-MODULATION]
+
+- [x] Add an independent normalized sine LFO and stereo controlled-gain component to the native menu and canvas graph.
+- [x] Share oscillator kernels, author transfer formulas in Lean, and broadcast control samples without implicitly changing audio channel widths.
+- [x] Verify exact stereo PCM for constant control, changing PCM for moving control, missing-input rejection and invalid-control rejection.
+- [x] Extend the real native VST journey to 42 steps including an LFO-controlled stereo gain before playback; retain exact upstream VST PCM checks.
+- [ ] Route modulators into arbitrary hosted parameter automation and implement continuous rendering.
+
+The twelve loaded app journeys pass under ARC, the seventeen package journeys pass under GC, and strict source checking passes. The current Mac remains locked, preventing windowed screenshot verification; headless native tests execute real workers and audio playback.
+
+The windowed attempt exposed an incorrect rectangle rotation of 12 radians, caused by using the angle argument as a corner radius. A failing scene-shape assertion reproduced it; node cards now use zero rotation, and the full twelve-journey suite plus the rebuilt 42-step headless native journey pass. The windowed retry is tracked separately from this source fix.

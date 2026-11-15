@@ -3,13 +3,15 @@ namespace synth
 
 (** Run a built-in component against previously completed graph inputs. *)
 module ClipKernels
-    source (clips, index, channel, outcome, cable) = match outcome
+    source (plan, clips, index, channel, outcome, cable) = match outcome
         Error why => Error(message = why)
         Success values => match ClipInputs::completed (clips, cable.source)
             Error why => Error(message = why)
-            Success clip => match listGet clip.clipSamples (satAdd (satMul index clip.clipChannels) channel)
+            Success clip => match ClipInputs::sourceChannel (plan.graph, cable, channel)
                 Error why => Error(message = why)
-                Success sample => Success(value = listAppend values (NodeSample(identity = cable.source, value = sample)))
+                Success selected => match listGet clip.clipSamples (satAdd (satMul index clip.clipChannels) selected)
+                    Error why => Error(message = why)
+                    Success sample => Success(value = listAppend values (NodeSample(identity = cable.source, value = sample)))
 
     delay (plan, n, frame) = match n.processor
         Delay _ => Renderer::writeDelay (plan, frame, n.identity, 0)
@@ -31,7 +33,7 @@ module ClipKernels
 
     sample (plan, snapshot, clips, n, channel, outcome, index) = match outcome
         Error why => Error(message = why)
-        Success held => match foldList (filterList (plan.graph.cables, \c => c.destination == n.identity), Success(value = []), \(values, cable) => source (clips, index, channel, values, cable))
+        Success held => match foldList (filterList (plan.graph.cables, \c => c.destination == n.identity), Success(value = []), \(values, cable) => source (plan, clips, index, channel, values, cable))
             Error why => Error(message = why)
             Success values => rendered (plan, snapshot, n, held, values)
 

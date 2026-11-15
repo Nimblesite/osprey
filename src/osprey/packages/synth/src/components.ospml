@@ -36,5 +36,15 @@ module Components
     (** A stereo graph output for native instruments and effects. *)
     export stereoOutput identity = node (identity, Sink, [Port(name = "audio", rate = Audio, channels = 2, unit = Amplitude)], [], [])
 
+    control () = Port(name = "control", rate = Control, channels = 1, unit = Normalised)
+
+    (** A normalized sine LFO, routed independently of any audio source. *)
+    export lfo (identity, frequency) = node (identity, Lfo, [], [control ()], [parameter ("frequency", "Frequency", Hertz, 0.0, 20.0, frequency)])
+
+    (** One control signal applies equally to every audio channel. *)
+    export modulatedGain (identity, channels, level) =
+        audio = Port(name = "audio", rate = Audio, channels = channels, unit = Amplitude)
+        node (identity, ModulatedGain, [audio, control ()], [audio], [parameter ("gain", "Gain", Amplitude, 0.0, 8.0, level)])
+
     (** One typed connection; graph validation checks both endpoints. *)
     export route (source, outlet, destination, inlet) = Cable(source = source, outlet = outlet, destination = destination, inlet = inlet)

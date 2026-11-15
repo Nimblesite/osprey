@@ -10,6 +10,8 @@ module EditorView
     editorSlice () = perform Signal<Editor<Graph, NodeClip>>.read ()
 
     processorTitle processor = match processor
+        Lfo => "LFO"
+        ModulatedGain => "Modulated gain"
         MidiNotes => "MIDI notes"
         Stereo => "Mono to stereo"
         Oscillator => "Oscillator"
@@ -94,7 +96,7 @@ module EditorView
         fill = match editor.selected == n.identity
             true => Scenes::rgb (88, 59, 164)
             false => Scenes::rgb (40, 34, 66)
-        listConcat (listConcat (portShapes (index, n.inputs, false)) (portShapes (index, n.outputs, true))) [Scenes::rect (x index, y index, 170.0, 80.0, 12.0, fill, 1), Scenes::glyphs (componentName (editor, n), x index - 68.0, y index - 8.0, 14.0, Scenes::rgb (242, 237, 255), 2)]
+        listConcat (listConcat (portShapes (index, n.inputs, false)) (portShapes (index, n.outputs, true))) [Scenes::rect (x index, y index, 170.0, 80.0, 0.0, fill, 1), Scenes::glyphs (componentName (editor, n), x index - 68.0, y index - 8.0, 14.0, Scenes::rgb (242, 237, 255), 2)]
 
     wire (graph, cable) =
         source = indexOf (graph, cable.source)

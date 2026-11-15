@@ -165,11 +165,11 @@ def check_prism_audio(destination):
     assert max(abs(value) for value in samples[0]) > 0.01, "The real VST instrument is silent"
     assert samples[1] == [0.0, 0.0] + samples[0][:-2], "First effect did not receive instrument PCM"
     assert samples[2] == [0.0, 0.0] + samples[1][:-2], "Second effect did not receive first effect PCM"
-    print("Prism MIDI -> real JX10 -> ADelay -> ADelay -> stereo playback: exact PCM chain verified")
+    print("Prism MIDI -> real JX10 -> ADelay -> ADelay -> LFO-controlled stereo gain: exact VST PCM chain verified")
 
 
 def prism_test(host, headless):
-    destination = ROOT / "target/pr-validation/prism-vst-ui"
+    destination = ROOT / "target/pr-validation" / ("prism-vst-ui-headless" if headless else "prism-vst-ui-windowed")
     destination.mkdir(parents=True, exist_ok=True)
     class_id = "0CDBB66985D548A9BFD8371909D24BB3"
     steps = [{"wait": "Scan VST3"}, {"type": ["VST3 bundle", str(BUILD / "VST3/Release/adelay.vst3")]},
@@ -185,7 +185,10 @@ def prism_test(host, headless):
                 {"type": ["Add component", "midi-note"]}, {"type": ["Add component", "stereo-output"]},
                 {"invoke": "Source 3: notes"}, {"invoke": "Connect 2: MIDI"},
                 {"invoke": "Source 2: audio"}, {"invoke": "Connect 0: audio"},
-                {"invoke": "Source 1: audio"}, {"invoke": "Connect 4: audio"},
+                {"type": ["Add component", "lfo"]}, {"type": ["Add component", "modulated-gain"]},
+                {"invoke": "Source 1: audio"}, {"invoke": "Connect 6: audio"},
+                {"invoke": "Source 5: control"}, {"invoke": "Connect 6: control"},
+                {"invoke": "Source 6: audio"}, {"invoke": "Connect 4: audio"},
                 {"invoke": "Audition patch"}, {"wait": "Preview finished."}, {"shot": "vst-audition"},
                 {"invoke": "Select 1"}]
     steps[13:13] = audition
