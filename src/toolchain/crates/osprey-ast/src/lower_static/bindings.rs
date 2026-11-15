@@ -29,15 +29,15 @@ pub(super) fn collect(
                 Stmt::Function {
                     name,
                     parameters,
-                    body: body @ Expr::Handler { stage, .. },
+                    body,
                     ..
-                } if stage.is_compile_time() => {
+                } if static_region(body).is_some() => {
                     let _ = self.0.insert(
                         name.clone(),
                         Expr::Lambda {
                             parameters: parameters.clone(),
                             return_type: None,
-                            body: Box::new(body.clone()),
+                            body: Box::new(unanchored(body).clone()),
                             position: None,
                         },
                     );
@@ -75,11 +75,28 @@ pub(super) fn installer<'a>(
     else {
         return None;
     };
-    matches!(body.as_ref(), Expr::Handler { stage, .. } if stage.is_compile_time()).then_some((
-        aliases,
-        parameters,
-        body.as_ref(),
-    ))
+    static_region(body).map(|region| (aliases, parameters.as_slice(), region))
+}
+
+/// `expression` without the blocks that only anchor it to a source position:
+/// a block with no statements adds no work, so a function body written as
+/// `{ return handle… }` is the same region as one written as the handler
+/// itself, in any flavor.
+fn unanchored(expression: &Expr) -> &Expr {
+    match expression {
+        Expr::Block {
+            statements,
+            value: Some(value),
+            ..
+        } if statements.is_empty() => unanchored(value),
+        other => other,
+    }
+}
+
+/// The compile-time handler `body` is, seen through anchoring blocks.
+fn static_region(body: &Expr) -> Option<&Expr> {
+    let region = unanchored(body);
+    matches!(region, Expr::Handler { stage, .. } if stage.is_compile_time()).then_some(region)
 }
 
 impl Lowering {
