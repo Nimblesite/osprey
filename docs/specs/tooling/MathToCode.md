@@ -61,7 +61,7 @@ A command of the fragment is recognised by its word. Any other command, and anyt
 | a parameter, a `let` name, a definition of the same file | definitions are read in order; a use before its definition is refused |
 | `f a b` | arguments on the head's line |
 | `-a`, `a + b`, `a - b`, `a * b`, `a / b`, `a ^ b` | Lean's precedence and associativity |
-| `a < b`, `a ≤ b`, `a > b`, `a ≥ b`, `a == b`, `a != b` (`<=`, `>=`, `≠`) | over `Float`; `==` and `!=` also over `Bool` |
+| `a < b`, `a ≤ b`, `a > b`, `a ≥ b`, `a == b`, `a != b` (`<=`, `>=`) | over `Float`; `==` and `!=` also over `Bool`, and `≠` over `Bool` only, because Lean cannot decide `=` or `≠` between `Float` values |
 | `a && b`, <code>a &#124;&#124; b</code>, `!a`, `a ∧ b`, `a ∨ b`, `¬a` | over `Bool` |
 | `if c then a else b` | as a definition body, a branch, a `let` value or a `let` body |
 | `let x := a` then a line break or `;` then `b` | as a definition body, a branch or a `let` body |

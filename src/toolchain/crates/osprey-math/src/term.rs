@@ -40,7 +40,7 @@ const INFIX: &[(&str, Infix, u8, u8)] = &[
     ("≥", Infix::Op(Op::Ge), 50, 51),
     ("==", Infix::Op(Op::Eq), 50, 51),
     ("!=", Infix::Op(Op::Ne), 50, 51),
-    ("≠", Infix::Op(Op::Ne), 50, 51),
+    ("≠", Infix::Unequal, 50, 51),
     ("+", Infix::Op(Op::Add), 65, 66),
     ("-", Infix::Op(Op::Sub), 65, 66),
     ("*", Infix::Op(Op::Mul), 70, 71),
@@ -52,6 +52,8 @@ const INFIX: &[(&str, Infix, u8, u8)] = &[
 enum Infix {
     Op(Op),
     Pow,
+    /// `≠` states a proposition, which Lean decides for `Bool` and not for `Float`.
+    Unequal,
 }
 
 /// What to write where a term should stand and none does.
@@ -439,10 +441,18 @@ fn combine(
     right: (Expr, Ty),
 ) -> Typed<Expr> {
     let ((left, left_ty), (right, right_ty)) = (left, right);
-    let Infix::Op(op) = infix else {
-        require(place, left_ty, Ty::Float, "the base of `^`")?;
-        require(place, right_ty, Ty::Float, "the exponent of `^`")?;
-        return Ok((Expr::Call("pow".to_owned(), vec![left, right]), Ty::Float));
+    let op = match infix {
+        Infix::Op(op) => op,
+        Infix::Unequal if left_ty == Ty::Bool => Op::Ne,
+        Infix::Unequal => {
+            let fix = "Lean cannot decide `≠` between `Float` values; compare them with `!=`";
+            return Err(Refusal::at(Code::UnsupportedTerm, place, fix));
+        }
+        Infix::Pow => {
+            require(place, left_ty, Ty::Float, "the base of `^`")?;
+            require(place, right_ty, Ty::Float, "the exponent of `^`")?;
+            return Ok((Expr::Call("pow".to_owned(), vec![left, right]), Ty::Float));
+        }
     };
     let (operand, result) = match op {
         Op::Or | Op::And => (Ty::Bool, Ty::Bool),

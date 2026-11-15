@@ -89,6 +89,8 @@ fn terms_outside_the_fragment_are_refused_where_they_stand() {
         "1:29 UnsupportedTerm | def f (x : Float) : Float := match x with | _ => 1\n",
         "1:17 UnsupportedTerm | def f : Float := by exact 1\n",
         "1:30 UnsupportedTerm | def f (x : Float) : Bool := x = 1\n",
+        "1:30 UnsupportedTerm | def f (x : Float) : Bool := x ≠ 1\n",
+        "1:41 TypeMismatch | def f (x : Float) (b : Bool) : Bool := b ≠ x\n",
         "1:32 UnsupportedTerm | def f (x : Float) : Float := (x : Float)\n",
         "1:26 UnsupportedTerm | def f : Float := let y := let z := 1; z; y\n",
         "1:32 NestedConditional | def f (b : Bool) : Float := 1 + if b then 1 else 2\n",
