@@ -41,18 +41,7 @@ static uint64_t mock_monotonic_ms(void);
 #include "http_server_response.c"
 #include "http_server_runtime.c"
 
-// The pool drives real sockets and fibers; this unit drives one connection
-// directly through http_serve_connection, so the pool is a stub here.
-void http_pool_run(HttpServer *pooled) { (void)pooled; }
-bool http_pool_owns_thread(HttpServer *pooled) {
-  (void)pooled;
-  return false;
-}
-void http_pool_shutdown_clients(HttpServer *pooled) { (void)pooled; }
-size_t http_pool_serving(HttpServer *pooled) {
-  (void)pooled;
-  return 0;
-}
+#include "http_server_pool_stub.h"
 #undef HTTP_MONOTONIC_MS
 #undef accept
 #undef close
