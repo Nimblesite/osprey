@@ -6,6 +6,9 @@ arithmetic work =
         divideByZero _ _ =>
             expect ("division by zero", "valid arithmetic")
             0.0
+        remainderByZero _ =>
+            expect ("remainder by zero", "valid arithmetic")
+            0
     work ()
 
 import synth::Graphs
@@ -454,6 +457,15 @@ test ("float PCM export retains sample precision and rejects invalid rates and s
             expect (startsWith hex "524946464200000057415645666D7420120000000300010080BB000000EE02000400200000006661637404000000040000006461746110000000", true)
             expect (endsWith hex "000000000000803E000000BF0000803F", true)
             expect (length hex, 148)
+    expect (synth::PcmWords::float32 (-0.5), "000000BF")
+    expect (synth::PcmWords::float64 0.5, "000000000000E03F")
+    match synth::PcmWords::sample ("000000BF", 0)
+        Error _ => expect (false, true)
+        Success value => expect (value, -0.5)
+    renderRefused (synth::PcmWords::sample ("0000807F", 0))
+    renderRefused (synth::PcmWords::read32 ("0000000Z", 0))
+    renderRefused (synth::PcmWords::read32 ("0000", 0))
+    renderRefused (synth::WaveFiles::interleaved (48000, 2, [0.0]))
     renderRefused (synth::WaveFiles::monoFloat (0, [0.0]))
     renderRefused (synth::WaveFiles::monoFloat (48000, [floatFromBits 9218868437227405312]))
     renderRefused (synth::WaveFiles::monoFloat (48000, [floatFromBits 9221120237041090560]))))

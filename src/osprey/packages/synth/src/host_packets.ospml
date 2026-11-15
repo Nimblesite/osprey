@@ -1,0 +1,62 @@
+// [SYNTH-HOST-STREAM] Pure checked requests for the native worker's shared binary/text protocol.
+namespace synth
+
+import synth::PcmWords
+
+(** Encode bounded interleaved PCM, MIDI and normalized automation without a UI dependency. *)
+module HostPackets
+    finite value = value == value && abs value <= 1000000.0
+
+    validNote (frames, n) = (n.kind == 1 || n.kind == 2) && n.offset >= 0 && n.offset < frames && n.pitch >= 0 && n.pitch <= 127 && n.channel >= 0 && n.channel <= 15 && n.identity >= 0 && n.identity <= 2147483647 && n.velocity >= 0.0 && n.velocity <= 1.0
+
+    validParameter (frames, p) = p.identity >= 0 && p.identity <= 4294967295 && p.offset >= 0 && p.offset < frames && p.value >= 0.0 && p.value <= 1.0
+
+    ordered (events, previous) = match events
+        [] => true
+        [event, ...tail] => event.offset >= previous && ordered (tail, event.offset)
+
+    valid (channels, block) = channels >= 0 && channels <= 64 && block.frames > 0 && length block.samples == satMul channels block.frames && length (filterList (block.samples, finite)) == length block.samples && length block.notes <= 128 && length block.parameters <= 1024 && length (filterList (block.notes, \n => validNote (block.frames, n))) == length block.notes && length (filterList (block.parameters, \p => validParameter (block.frames, p))) == length block.parameters
+
+    note n = "${PcmWords::le32 n.kind}${PcmWords::le32 n.offset}${PcmWords::le32 n.pitch}${PcmWords::le32 n.channel}${PcmWords::le32 n.identity}${PcmWords::float32 n.velocity}"
+
+    parameter p = "${PcmWords::le32 p.identity}${PcmWords::le32 p.offset}${PcmWords::float64 p.value}"
+
+    (** One packet follows the worker's exact little-endian wire layout. *)
+    export packet (channels, block) = match block.frames <= 256 && valid (channels, block) && ordered (block.notes, 0) && ordered (block.parameters, 0)
+        false => Error(message = "Invalid VST audio, event or parameter packet.")
+        true => Success(value = "${PcmWords::le32 block.frames}${PcmWords::le32 (length block.notes)}${PcmWords::le32 (length block.parameters)}${join (mapList (block.notes, note)) ""}${join (mapList (block.parameters, parameter)) ""}${join (mapList (block.samples, PcmWords::float32)) ""}")
+
+    collectSample (samples, outcome, index) = match outcome
+        Error why => Error(message = why)
+        Success values => match listGet samples index
+            Error why => Error(message = why)
+            Success value => Success(value = listAppend values value)
+
+    (** Checked interleaved sample slice used by the graph and packet encoders. *)
+    export slice (samples, first, count) = match first >= 0 && count >= 0 && first <= satSub (length samples) count
+        false => Error(message = "Audio slice is outside its buffer.")
+        true => foldList (toList (range (first, satAdd first count)), Success(value = []), \(outcome, index) => collectSample (samples, outcome, index))
+
+    chunk (channels, block, first) =
+        count = match satSub block.frames first < 256
+            true => satSub block.frames first
+            false => 256
+        match slice (block.samples, satMul first channels, satMul count channels)
+            Error why => Error(message = why)
+            Success samples =>
+                notes = mapList (filterList (block.notes, \n => n.offset >= first && n.offset < satAdd first count), \n => n(offset = satSub n.offset first))
+                parameters = mapList (filterList (block.parameters, \p => p.offset >= first && p.offset < satAdd first count), \p => p(offset = satSub p.offset first))
+                packet (channels, HostBlock(frames = count, notes = notes, parameters = parameters, samples = samples))
+
+    next (channels, block, outcome, index) = match outcome
+        Error why => Error(message = why)
+        Success chunks => match chunk (channels, block, satMul index 256)
+            Error why => Error(message = why)
+            Success text => Success(value = listAppend chunks text)
+
+    (** A bounded clip becomes consecutive blocks while keeping event offsets sample-accurate. *)
+    export clip (layout, block) = match valid (layout.inputChannels, block) && ordered (block.notes, 0) && ordered (block.parameters, 0) && layout.outputChannels >= 1 && layout.outputChannels <= 64 && satMul block.frames layout.outputChannels <= 65536 && (layout.acceptsNotes || length block.notes == 0)
+        false => Error(message = "The VST clip exceeds its layout or capacity.")
+        true => match foldList (toList (range (0, intDiv (satAdd block.frames 255) 256)), Success(value = []), \(outcome, index) => next (layout.inputChannels, block, outcome, index))
+            Error why => Error(message = why)
+            Success chunks => Success(value = join chunks "")

@@ -87,6 +87,9 @@ def stream_tests():
     assert list(audio[1]) == [0.5, -0.25] + [0.0] * 254
     text_audio = streamed(effect, delay_id, packet(256, samples, parameters=[(100, 0, 0.0)]) + packet(128, [0.0] * 256), mode="stream-text")
     assert text_audio == audio
+    dense_parameters = [(100, 0, 0.0)] * 1024
+    assert len(streamed(effect, delay_id, packet(256, [0.0] * 512, parameters=dense_parameters))) == 1
+    streamed(effect, delay_id, packet(256, [0.0] * 512, parameters=dense_parameters + [(100, 0, 0.0)]), False)
     streamed(instrument, synth_id, packet(256) * 129, False, "stream-text")
     # One instance retains the held note through many blocks, then receives its note-off.
     note = (1, 17, 60, 0, 42, 0.8)

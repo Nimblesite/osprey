@@ -73,7 +73,7 @@ bool parameter(std::istream& input, Plugin& plugin, ParameterChanges& changes, u
 
 bool readBlock(std::istream& input, Plugin& plugin, uint32_t frames, ParameterChanges& changes) {
     uint32_t notes = 0, parameters = 0;
-    if (!word(input, notes) || !word(input, parameters) || notes > 128 || parameters > 128) return false;
+    if (!word(input, notes) || !word(input, parameters) || notes > 128 || parameters > 1024) return false;
     if (notes && plugin.component->getBusCount(kEvent, kInput) == 0) return false;
     plugin.events.clear();
     plugin.outputEvents.clear();
@@ -93,7 +93,7 @@ uint32_t channels(int32 count, AudioBusBuffers* buses) {
 }
 
 bool processBlock(std::istream& input, std::ostream& output, Plugin& plugin, uint32_t frames) {
-    ParameterChanges changes{128};
+    ParameterChanges changes{1024};
     plugin.error = "Malformed, unsupported or truncated stream block";
     if (!readBlock(input, plugin, frames, changes)) return false;
     plugin.data.numSamples = static_cast<int32>(frames);

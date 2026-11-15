@@ -1,0 +1,56 @@
+// [SYNTH-PCM-FLOAT] Shared little-endian words for files and worker packets.
+namespace synth
+
+(** Exact PCM bit encoding and checked decoding, independent of devices and UI. *)
+module PcmWords
+    digit value = substring "0123456789ABCDEF" value (satAdd value 1) ?: "0"
+
+    (** Low eight bits as hexadecimal. *)
+    export byte value = "${digit (bitAnd (shiftRight value 4) 15)}${digit (bitAnd value 15)}"
+
+    (** Low sixteen bits, little-endian. *)
+    export le16 value = "${byte (bitAnd value 255)}${byte (bitAnd (shiftRight value 8) 255)}"
+
+    (** Low thirty-two bits, little-endian. *)
+    export le32 value = "${le16 (bitAnd value 65535)}${le16 (bitAnd (shiftRight value 16) 65535)}"
+
+    (** IEEE float32 bits, rounded once from the package's float samples. *)
+    export float32 value = le32 (toInt (float32Bits (toFloat32 value)))
+
+    (** IEEE float64 bits for normalized parameter values. *)
+    export float64 value =
+        bits = floatBits value
+        "${le32 bits}${le32 (shiftRight bits 32)}"
+
+    nibble (text, at) = match substring text at (satAdd at 1)
+        Error why => Error(message = why)
+        Success character => indexOf "0123456789ABCDEF" character
+
+    readByte (text, at) = match nibble (text, at)
+        Error why => Error(message = why)
+        Success high => match nibble (text, satAdd at 1)
+            Error why => Error(message = why)
+            Success low => Success(value = bitOr (shiftLeft high 4) low)
+
+    readPart (text, at, outcome, index) = match outcome
+        Error why => Error(message = why)
+        Success bits => match readByte (text, satAdd at (satMul index 2))
+            Error why => Error(message = why)
+            Success part => Success(value = bitOr bits (shiftLeft part (satMul index 8)))
+
+    (** Decode one complete uppercase hexadecimal word without accepting truncated bytes. *)
+    export read32 (text, at) = match at >= 0 && at <= satSub (length text) 8
+        false => Error(message = "Truncated PCM word.")
+        true => foldList ([0, 1, 2, 3], Success(value = 0), \(outcome, index) => readPart (text, at, outcome, index))
+
+    (** Decode one finite, bounded sample from its exact IEEE float32 bits. *)
+    export sample (text, at) = match read32 (text, at)
+        Error why => Error(message = why)
+        Success bits =>
+            signed = match bits >= 2147483648
+                true => satSub bits 4294967296
+                false => bits
+            value = toFloat (float32FromBits (toInt32 signed))
+            match value == value && abs value <= 1000000.0
+                false => Error(message = "The worker returned non-finite or excessive audio.")
+                true => Success(value = value)

@@ -3,25 +3,20 @@ namespace synth
 
 (** RIFF/WAVE encoding for reference previews and high-resolution rendered audio. *)
 module WaveFiles
-    digit value = substring "0123456789ABCDEF" value (satAdd value 1) ?: "0"
-
-    byte value = "${digit (bitAnd (shiftRight value 4) 15)}${digit (bitAnd value 15)}"
-
-    le16 value = "${byte (bitAnd value 255)}${byte (bitAnd (shiftRight value 8) 255)}"
-
-    le32 value = "${le16 (bitAnd value 65535)}${le16 (bitAnd (shiftRight value 16) 65535)}"
-
     (** The 8-bit reference preview shares byte/header primitives with float output. *)
-    export mono8 (rate, values) = "52494646${le32 (satAdd (length values) 36)}57415645666D7420${le32 16}${le16 1}${le16 1}${le32 rate}${le32 rate}${le16 1}${le16 8}64617461${le32 (length values)}${join (mapList (values, byte)) ""}"
+    export mono8 (rate, values) = "52494646${PcmWords::le32 (satAdd (length values) 36)}57415645666D7420${PcmWords::le32 16}${PcmWords::le16 1}${PcmWords::le16 1}${PcmWords::le32 rate}${PcmWords::le32 rate}${PcmWords::le16 1}${PcmWords::le16 8}64617461${PcmWords::le32 (length values)}${join (mapList (values, PcmWords::byte)) ""}"
 
     finite value = value == value && abs value <= 1000000.0
 
-    floatWord value = le32 (toInt (float32Bits (toFloat32 value)))
-
     // IEEE float WAVEFORMATEX includes cbSize=0 and a fact chunk with sample count.
-    floatHeader (rate, count) = "52494646${le32 (satAdd 50 (satMul count 4))}57415645666D7420${le32 18}${le16 3}${le16 1}${le32 rate}${le32 (satMul rate 4)}${le16 4}${le16 32}${le16 0}66616374${le32 4}${le32 count}64617461${le32 (satMul count 4)}"
+    floatHeader (rate, channels, count) = "52494646${PcmWords::le32 (satAdd 50 (satMul count 4))}57415645666D7420${PcmWords::le32 18}${PcmWords::le16 3}${PcmWords::le16 channels}${PcmWords::le32 rate}${PcmWords::le32 (satMul (satMul rate channels) 4)}${PcmWords::le16 (satMul channels 4)}${PcmWords::le16 32}${PcmWords::le16 0}66616374${PcmWords::le32 4}${PcmWords::le32 (intDiv count channels)}64617461${PcmWords::le32 (satMul count 4)}"
 
-    (** Mono IEEE float32 WAV in hex. Reject invalid samples rather than emitting corrupt audio. *)
-    export monoFloat (rate, samples) = match rate >= 8000 && rate <= 384000 && length samples <= 1920000 && length (filterList (samples, finite)) == length samples
-        false => Error(message = "Invalid WAV rate, sample count or non-finite/excessive sample.")
-        true => Success(value = "${floatHeader (rate, length samples)}${join (mapList (samples, floatWord)) ""}")
+    (** Interleaved IEEE float32 WAV; channel alignment and all sample values are checked. *)
+    export interleaved (rate, channels, samples) = match rate >= 8000 && rate <= 384000 && channels >= 1 && channels <= 64 && length samples <= 1920000
+        false => Error(message = "Invalid WAV rate, channel count or sample count.")
+        true => match satMul (intDiv (length samples) channels) channels == length samples && length (filterList (samples, finite)) == length samples
+            false => Error(message = "Invalid WAV channel alignment or non-finite/excessive sample.")
+            true => Success(value = "${floatHeader (rate, channels, length samples)}${join (mapList (samples, PcmWords::float32)) ""}")
+
+    (** Mono IEEE float32 WAV in hex, using the same interleaved encoder. *)
+    export monoFloat (rate, samples) = interleaved (rate, 1, samples)

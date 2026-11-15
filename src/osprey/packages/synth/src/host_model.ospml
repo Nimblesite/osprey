@@ -38,3 +38,9 @@ type HostDescriptor =
     outputChannels : int
     notes : bool
     controls : List<HostControl>
+
+type HostRendered =
+    renderChannels : int
+    renderFrames : int
+    renderLatency : int
+    renderSamples : List<float>

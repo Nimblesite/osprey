@@ -161,3 +161,35 @@ pluginUiJourney () =
     removed = Drive::press (added, "Remove selected")
     expect (length removed.drivenSurface.surfaceSession.sessionStore.graph.nodes, 0)
     expect (length removed.drivenSurface.surfaceSession.sessionStore.pluginBindings, 0)
+
+// [SYNTH-HOST-STREAM] Independent wire bytes, channel layouts and malformed worker replies.
+hostWireJourney () =
+    layout = synth::HostLayout(inputChannels = 1, outputChannels = 1, acceptsNotes = false)
+    block = synth::HostBlock(frames = 2, notes = [], parameters = [], samples = [0.25, -0.5])
+    match synth::HostPackets::clip (layout, block)
+        Error _ => expect (false, true)
+        Success hex => expect (hex, "0200000000000000000000000000803E000000BF")
+    response = "4F53563101000000010000000000000002000000000000000000803E000000BF"
+    match synth::HostResponses::clip (response, layout, 2)
+        Error _ => expect (false, true)
+        Success rendered =>
+            expect (rendered.renderFrames, 2)
+            expect (rendered.renderChannels, 1)
+            expect (structuralEquals (rendered.renderSamples, [0.25, -0.5]), true)
+    forEachList ([response + "00", take response 62, ""], \text =>
+        match synth::HostResponses::clip (text, layout, 2)
+            Success _ => expect (false, true)
+            Error _ => expect (true, true))
+    forEachList ([block(frames = 0), block(samples = [0.25]), block(parameters = [synth::HostParameter(identity = 100, offset = 2, value = 0.5)])], \bad =>
+        match synth::HostPackets::packet (1, bad)
+            Success _ => expect (false, true)
+            Error _ => expect (true, true))
+    note = synth::HostNote(kind = 1, offset = 300, pitch = 60, channel = 0, identity = 42, velocity = 0.5)
+    match synth::HostPackets::clip (layout(inputChannels = 0, outputChannels = 2, acceptsNotes = true), block(frames = 512, notes = [note], samples = []))
+        Error _ => expect (false, true)
+        Success hex => expect (hex, "000100000000000000000000000100000100000000000000010000002C0000003C000000000000002A0000000000003F")
+    match synth::WaveFiles::interleaved (48000, 2, [0.25, -0.5, 0.0, 1.0])
+        Error _ => expect (false, true)
+        Success hex =>
+            expect (contains hex "0300020080BB000000DC050008002000", true)
+            expect (contains hex "6661637404000000020000006461746110000000", true)

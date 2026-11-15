@@ -486,3 +486,5 @@ test ("the modular editor adds, connects and removes independent synth component
 test ("native component menus and cable controls edit the same graph drawn on the canvas", \() => Runtime::guarded (\() => hosted editorUiJourney))
 
 test ("VST discovery creates typed independent plug-in nodes through native controls", \() => Runtime::guarded (\() => ui::Views::quiet pluginUiJourney))
+
+test ("VST audio packets preserve float samples, stereo frames and exact MIDI offsets", \() => Runtime::guarded hostWireJourney)
