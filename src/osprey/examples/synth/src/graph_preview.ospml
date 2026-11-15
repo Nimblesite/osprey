@@ -6,7 +6,7 @@ import ui::Requests
 
 (** Execute actual routed VST audio through bounded worker stdin/stdout requests. *)
 module GraphPreview
-    frames = 256
+    frames = 2048
 
     problem (editor, why) = GraphWorkers::release (Runtime::step (editor(message = "Graph playback failed: ${why}")))
 

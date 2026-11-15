@@ -30,3 +30,10 @@ The stream journey uses actual ADelay and mda JX10 binaries: exact delayed PCM c
 `stream-session` keeps the same plug-in alive across newline-delimited hexadecimal transactions. Each transaction has the same input and output limits as `stream-text`, and each complete response is one hexadecimal line flushed before the next request is read. Limits apply per transaction; the plug-in sample clock and DSP state continue across transactions. EOF between lines closes cleanly; empty, odd-length, malformed, oversized or unterminated lines fail explicitly without a response for that transaction. A caller must impose a deadline for every response and close or terminate the worker when finished.
 
 The session test reads each reply before closing stdin, checks exact ADelay state across transactions, and compares 162 JX10 transactions against one persistent binary stream, including held notes and release to silence. The cumulative sample count exceeds the whole-clip limit while every transaction remains bounded. This proves worker continuity, not persistent Prism ownership or realtime device scheduling.
+
+
+### Device queue [SYNTH-DEVICE-QUEUE]
+
+On macOS, `osprey-vst-worker audio-device` accepts newline-framed hex blocks containing the synth package's canonical mono/stereo 48 kHz IEEE float32 WAV. Blocks contain 1–8192 frames and samples within -1..1. It preallocates four AudioQueue buffers, prefills two, and acknowledges each accepted block with bounded queue counters. `!drain` waits for every queued frame to be returned by the device before acknowledging; closing/killing the session cancels ownership. JSON diagnostics report device start, drain and failures. Other platforms explicitly report the adapter as unavailable.
+
+`python3 src/toolchain/hosts/synth_vst/build.py --device-test` verifies real queue operation, drain and malformed PCM rejection; it is included in the macOS worker CTest suite. A returned buffer proves device-queue consumption, not an independent acoustic recording. This adapter is not yet the application playback loop.

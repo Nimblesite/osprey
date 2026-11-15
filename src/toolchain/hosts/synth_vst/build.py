@@ -236,7 +236,7 @@ def check_prism_audio(destination):
     sessions = {}
     for record in transactions:
         sessions.setdefault(record["session"], []).append(record)
-    assert len(sessions) == 3 and all(len(blocks) == 48 for blocks in sessions.values()), "Expected three retained workers, each processing 48 blocks"
+    assert len(sessions) == 3 and all(len(blocks) == 6 for blocks in sessions.values()), "Expected three retained workers, each processing six graph blocks"
     records = []
     for blocks in sessions.values():
         assert all(block["status"] == 0 and block["arguments"] == blocks[0]["arguments"] for block in blocks)
@@ -298,13 +298,49 @@ def prism_test(host, headless):
     check_prism_audio(destination)
 
 
+def device_tests():
+    """Exercise the actual output queue and reject malformed PCM before enqueueing."""
+    def wave(frames, channels=2, sample=0.01):
+        audio = struct.pack(f"<{frames * channels}f", *([sample] * frames * channels))
+        return (b"RIFF" + struct.pack("<I", 50 + len(audio)) + b"WAVEfmt " +
+                struct.pack("<IHHIIHHH", 18, 3, channels, 48000, 48000 * channels * 4, channels * 4, 32, 0) +
+                b"fact" + struct.pack("<II", 4, frames) + b"data" + struct.pack("<I", len(audio)) + audio)
+    with subprocess.Popen([str(BUILD / "osprey-vst-worker"), "audio-device"], stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE) as child, ThreadPoolExecutor(max_workers=1) as reader:
+        try:
+            for index, payload in enumerate([wave(2048), wave(2048), wave(2048)]):
+                child.stdin.write(payload.hex().encode() + b"\n")
+                child.stdin.flush()
+                receipt = json.loads(reader.submit(child.stdout.readline, 4096).result(timeout=5))
+                assert receipt["status"] == 0 and receipt["acceptedFrames"] == (index + 1) * 2048, receipt
+                assert receipt["queuedFrames"] <= 6144 and receipt["channels"] == 2, receipt
+            child.stdin.write(b"!drain\n")
+            child.stdin.flush()
+            receipt = json.loads(reader.submit(child.stdout.readline, 4096).result(timeout=5))
+            assert receipt["returnedFrames"] == 6144 and receipt["queuedFrames"] == 0, receipt
+            assert receipt["running"] is False, receipt
+        finally:
+            child.kill()
+            child.wait(timeout=5)
+    for payload in [b"short", wave(1, sample=float("nan")), wave(1, sample=float("inf")),
+                    wave(1, sample=1.01), wave(0), wave(8193), wave(1, 3), wave(1) + b"trailing"]:
+        result = subprocess.run([str(BUILD / "osprey-vst-worker"), "audio-device"],
+                                input=payload.hex().encode() + b"\n", capture_output=True, timeout=5)
+        assert result.returncode != 0 and b"audio.failure" in result.stderr and not result.stdout, result
+    print("Actual audio queue: ordered buffers, drain, diagnostics and malformed PCM rejection passed")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--device-test", action="store_true")
     parser.add_argument("--test", action="store_true")
     parser.add_argument("--stream-test", action="store_true")
     parser.add_argument("--prism-test", type=pathlib.Path)
     parser.add_argument("--headless", action="store_true")
     args = parser.parse_args()
+    if args.device_test:
+        device_tests()
+        return
     if args.prism_test:
         prism_test(args.prism_test, args.headless)
         return

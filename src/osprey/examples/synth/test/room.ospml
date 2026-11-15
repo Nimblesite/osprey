@@ -147,7 +147,7 @@ editorUiJourney () =
     expect (length removed.drivenSurface.surfaceSession.sessionStore.graph.cables, 0)
     expect (uitest::Views::letters (removed.drivenSeen, "Gain 1"), false)
 
-zeroStereoResponse () = "4F535631020000000200000000000000" + join (mapList (toList (range (0, 1)), \_ => "0001000000000000" + join (mapList (toList (range (0, 512)), \_ => "00000000")) "")) ""
+zeroStereoResponse () = "4F535631020000000200000000000000" + join (mapList (toList (range (0, 8)), \_ => "0001000000000000" + join (mapList (toList (range (0, 512)), \_ => "00000000")) "")) ""
 
 descriptorFixture = "{\"id\":\"0CDBB66985D548A9BFD8371909D24BB3\",\"name\":\"ADelay\",\"inputs\":2,\"outputs\":2,\"notes\":false,\"parameters\":[{\"id\":100,\"name\":\"Delay\",\"initial\":1.0,\"automatable\":true}]}"
 
@@ -260,8 +260,8 @@ pluginUiJourney () =
     expect (staleAudio.drivenSurface.surfaceSession.sessionStore.renderTicket, "prism-audio:1:1:open")
     openedSecond = Drive::completed (nextEffect, "prism-audio:1:1:open", true, "{\"status\":0,\"session\":\"effect-one\"}")
     firstPair = Drive::completed (openedSecond, "prism-audio:1:1:0:block", true, "{\"status\":0,\"stderr\":\"\"}")
-    expect (firstPair.drivenSurface.surfaceSession.sessionStore.renderTicket, "prism-audio:1:0:256:block")
-    played = foldList (toList (range (0, 94)), firstPair, \(previous, _) =>
+    expect (firstPair.drivenSurface.surfaceSession.sessionStore.renderTicket, "prism-audio:1:0:2048:block")
+    played = foldList (toList (range (0, 10)), firstPair, \(previous, _) =>
         held = previous.drivenSurface.surfaceSession.sessionStore
         expect (length held.renderSessions, 2)
         expect (held.renderOpening, false)

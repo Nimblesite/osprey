@@ -9,7 +9,7 @@ endif()
 set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "" FORCE)
 set(SMTG_CREATE_PLUGIN_LINK OFF CACHE BOOL "" FORCE)
 add_subdirectory("${VST3_SDK}" sdk EXCLUDE_FROM_ALL)
-add_executable(osprey-vst-worker main.cpp processor.cpp stream.cpp descriptor.cpp stream_text.cpp
+add_executable(osprey-vst-worker main.cpp processor.cpp stream.cpp descriptor.cpp stream_text.cpp audio_device.cpp
     "${VST3_SDK}/public.sdk/source/common/memorystream.cpp"
     "${VST3_SDK}/public.sdk/source/vst/hosting/plugprovider.cpp")
 target_compile_features(osprey-vst-worker PRIVATE cxx_std_20)
@@ -19,7 +19,7 @@ target_link_libraries(osprey-vst-worker PRIVATE sdk_hosting)
 if(APPLE)
     target_sources(osprey-vst-worker PRIVATE "${VST3_SDK}/public.sdk/source/vst/hosting/module_mac.mm")
     set_source_files_properties("${VST3_SDK}/public.sdk/source/vst/hosting/module_mac.mm" PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-    target_link_libraries(osprey-vst-worker PRIVATE "-framework CoreFoundation" "-framework Foundation")
+    target_link_libraries(osprey-vst-worker PRIVATE "-framework CoreFoundation" "-framework Foundation" "-framework AudioToolbox")
 elseif(WIN32)
     target_sources(osprey-vst-worker PRIVATE "${VST3_SDK}/public.sdk/source/vst/hosting/module_win32.cpp")
 else()
@@ -53,3 +53,8 @@ set_tests_properties(state_automation_effect state_automation_instrument PROPERT
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME stream_journeys COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/build.py" --stream-test)
 set_tests_properties(stream_journeys PROPERTIES TIMEOUT 60)
+
+if(APPLE)
+    add_test(NAME audio_device_journeys COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/build.py" --device-test)
+    set_tests_properties(audio_device_journeys PROPERTIES TIMEOUT 20)
+endif()

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 
+int audioDevice();
 int streamText(const std::string& path, const std::string& identifier, bool session);
 int describePlugin(const std::string& path, const std::string& identifier);
 int streamPlugin(const std::string& path, const std::string& identifier);
@@ -46,6 +47,7 @@ int scan(const std::string& path) {
 
 int main(int argc, char** argv) {
     try {
+        if (argc == 2 && std::string(argv[1]) == "audio-device") return audioDevice();
         if (argc == 4 && std::string(argv[1]) == "stream-text") return streamText(argv[2], argv[3], false);
         if (argc == 4 && std::string(argv[1]) == "stream-session") return streamText(argv[2], argv[3], true);
         if (argc == 4 && std::string(argv[1]) == "describe") return describePlugin(argv[2], argv[3]);
@@ -53,7 +55,7 @@ int main(int argc, char** argv) {
         if (argc == 4 && std::string(argv[1]) == "verify-state") return verifyState(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "probe") return probe(argv[2], argv[3]);
         if (argc == 3 && std::string(argv[1]) == "scan") return scan(argv[2]);
-        return failed("Usage: osprey-vst-worker scan <plugin.vst3> | describe|probe|verify-state|stream|stream-text|stream-session <plugin.vst3> <class-id>");
+        return failed("Usage: osprey-vst-worker audio-device | scan <plugin.vst3> | describe|probe|verify-state|stream|stream-text|stream-session <plugin.vst3> <class-id>");
     } catch (const std::exception& error) {
         return failed(error.what());
     } catch (...) {

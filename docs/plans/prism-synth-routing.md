@@ -205,3 +205,15 @@ The 101 desktop host tests pass and strict Clippy passes. These are real process
 The loaded application journey now exercises 96 effect exchanges through host completions, rejects stale replies, preserves the frozen graph after a node is deleted, and checks ownership release. All twelve journeys pass under ARC. Native evidence is under `target/pr-validation/prism-session-*`; each transaction is retained in the native journey's recording directory. This verifies actual Prism-to-worker session integration, but the device still plays a bounded rendered WAV through `afplay`.
 
 Session-boundary hardening: a new real-process regression first failed because a NUL-containing reply left its worker registered after native slice publication failed. All transaction failures now stop and remove the worker, including publication failures. All 101 host tests and strict Clippy pass; the bounded pi audit timed out without findings or changes.
+
+
+### Bounded device queue [SYNTH-DEVICE-QUEUE]
+
+- [x] Add a macOS AudioQueue worker with four preallocated buffers, atomic callback ownership, bounded producer waits and explicit drain.
+- [x] Validate canonical 48 kHz mono/stereo float32 WAV blocks, exact lengths, finite samples and output amplitudes within -1..1 before enqueueing.
+- [x] Exercise the actual device with ordered buffers and drain; reject malformed, over-capacity, nonfinite, excessive-amplitude and unsupported-layout packets.
+- [ ] Connect Prism to the queue and verify continuous rendering, stop ownership and live edits.
+
+Measured native-session spans for the same 256 ms instrument/effect audition were approximately 518 ms at 256-frame graph transfers, 331 ms at 1024 and 274 ms at 2048, including worker startup. The selected producer transfer is 2048 frames; the VST protocol still processes sub-blocks of at most 256 frames with unchanged exact PCM and MIDI/automation offsets. These single-run measurements justify reducing transport overhead; they do not establish reliable realtime deadlines.
+
+The device callback only publishes returned buffers and counters; decoding, allocation, waiting and logging stay on the producer thread. Four preallocated buffers bound queued memory, two transfers prefill before start, and a drain acknowledges all returned frames before cleanup. `emptyCallbacks` counts queue-empty callback observations, not a measured speaker underrun. Device support is macOS-only; other platforms return an explicit unsupported-adapter failure.
