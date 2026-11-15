@@ -57,4 +57,4 @@ Constraints:
 ## Phase G — later
 
 - [ ] [FLAVOR-TS-UNIONS] Flavor-neutral contextual record typing in the shared checker, so an object literal needs no `satisfies` where the expected type is known; it must also have a Default spelling and must not branch on flavor.
-- [ ] [TS-PORT-EXPRESS] Throughput and latency measurement against Node.js Express with matched requests, recorded hardware and repeated trials, as the FastAPI benchmark does. No performance claim before it.
+- [x] [TS-PORT-EXPRESS-BENCH] Throughput and latency measurement against Node.js Express with matched requests, recorded hardware and repeated trials, as the FastAPI benchmark does. Done: `make -C src/osprey/packages express-bench`; the table is in the package README. ARC answers 5 to 8 percent more requests per second than Express in about a fiftieth of the memory; GC answers 8 to 15 percent fewer. Parallel handlers wait on [#397](https://github.com/Nimblesite/osprey/issues/397).

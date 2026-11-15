@@ -77,6 +77,13 @@ fastapi-e2e:
 express-e2e:
 	cd $(ROOT) && node src/osprey/packages/express/tests/e2e.mjs
 
+## express-bench: Serve the Express examples from Osprey (GC and ARC) and from
+## real Express on Node.js, time the same requests against each over loopback,
+## and print a table. Results: target/express/benchmark/results.json.
+.PHONY: express-bench
+express-bench:
+	cd $(ROOT) && node src/osprey/packages/express/oracle/bench.mjs
+
 ## express-oracle: Re-record tests/examples.expected.json from the pinned real
 ##                 Express on Node.js (development only; CI compares with the
 ##                 committed recording).

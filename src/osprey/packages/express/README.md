@@ -40,6 +40,23 @@ The process keeps serving until it is stopped, as the same file does under Node.
 
 The Express replies are recorded in [`tests/examples.expected.json`](tests/examples.expected.json) by `make -C src/osprey/packages express-oracle`, which runs the same example files on the pinned Express. The recording is never edited by hand, and CI compares against it without installing Express.
 
+## Measured against real Express [TS-PORT-EXPRESS-BENCH]
+
+`make -C src/osprey/packages express-bench` serves each example from Osprey and from Express 5 on Node.js, and sends both the same requests over loopback: 16 in flight, a fresh connection per request, 10,000 timed requests after 1,000 warm-up requests, five trials with the servers taken in rotation. Every timed reply is checked for its status, body and content type.
+
+Apple M4 Max, 14 cores, macOS, Node.js 24.19.0, 15 November 2026, medians of five trials:
+
+| Example | Server | Requests/s | Median latency µs | p95 latency µs | Peak memory MiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| hello-world | Osprey, GC | 17,628 | 704 | 1,025 | 97 |
+| hello-world | Osprey, ARC | 21,920 | 679 | 862 | 3 |
+| hello-world | Node.js Express | 20,854 | 684 | 940 | 157 |
+| routes | Osprey, GC | 18,913 | 691 | 1,003 | 100 |
+| routes | Osprey, ARC | 22,241 | 668 | 851 | 3 |
+| routes | Node.js Express | 20,665 | 668 | 879 | 153 |
+
+Under ARC the port answers 5 to 8 percent more requests per second than Express and uses about a fiftieth of the memory. Under GC it answers 8 to 15 percent fewer. Osprey handlers do not yet run in parallel across cores ([#397](https://github.com/Nimblesite/osprey/issues/397)).
+
 ## How Express code maps to Osprey
 
 Osprey values are immutable, and Express code updates `app` and `res` in place. The TypeScript flavor bridges the two in the frontend ([FLAVOR-TS-RECEIVER](../../../../docs/specs/language/0054-TypeScriptFlavorSyntax.md)):
