@@ -1,0 +1,9 @@
+[project]
+name = "express-tests"
+source_roots = [".", "../src", "../examples/routes"]
+typescript_sources = ["../src/express.ts", "../examples/routes/tasks.ts", "main.ts"]
+default_namespace = "routing"
+entry = "main.ts"
+
+[modules]
+allow_wildcard_imports = true

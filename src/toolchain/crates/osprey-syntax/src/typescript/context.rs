@@ -18,7 +18,10 @@ pub(super) struct Expected {
 /// reads the field the case's pattern binds. Implements [FLAVOR-TS-UNIONS].
 pub(super) struct Narrowing {
     pub(super) subject: String,
-    pub(super) fields: Vec<String>,
+    /// The case's source text, which a field's binder must not capture.
+    pub(super) span: Span,
+    /// Each field read, and the name the pattern binds it to.
+    pub(super) fields: Vec<(String, String)>,
 }
 
 pub(super) struct Lowerer<'s> {
@@ -217,6 +220,24 @@ impl<'s> Lowerer<'s> {
         scope.returns.clone()
     }
 
+    /// The name a case binds `subject.field` to: the field's own name, unless
+    /// the case also reads a binding of that name, which the pattern would
+    /// then shadow; a fresh name that occurs nowhere in the file otherwise.
+    pub(super) fn field_binder(&self, subject: &str, field: &str, case: Span) -> String {
+        if !reads_word(self.text(case), field) {
+            return field.to_owned();
+        }
+        let mut chars = field.chars();
+        let capitalised: String = chars.next().map_or_else(String::new, |first| {
+            first.to_uppercase().chain(chars).collect()
+        });
+        let mut fresh = format!("{subject}{capitalised}");
+        while self.source.contains(fresh.as_str()) {
+            fresh.push('_');
+        }
+        fresh
+    }
+
     pub(super) fn let_statement(
         &self,
         name: &str,
@@ -246,4 +267,16 @@ impl Scope {
             returns: None,
         }
     }
+}
+
+/// Whether `text` has `word` as an identifier that is not a member name.
+fn reads_word(text: &str, word: &str) -> bool {
+    let identifier = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
+    text.match_indices(word).any(|(at, _)| {
+        let before = text.get(..at).and_then(|head| head.chars().next_back());
+        let after = text
+            .get(at + word.len()..)
+            .and_then(|tail| tail.chars().next());
+        !before.is_some_and(|c| identifier(c) || c == '.') && !after.is_some_and(identifier)
+    })
 }

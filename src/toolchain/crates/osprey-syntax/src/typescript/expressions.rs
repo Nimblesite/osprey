@@ -284,15 +284,20 @@ impl Lowerer<'_> {
         let Expression::Identifier(identifier) = object else {
             return None;
         };
-        let narrowing = self
+        let at = self
             .narrowed
-            .iter_mut()
-            .rev()
-            .find(|narrowing| narrowing.subject == identifier.name.as_str())?;
-        if !narrowing.fields.iter().any(|known| known == field) {
-            narrowing.fields.push(field.to_owned());
+            .iter()
+            .rposition(|narrowing| narrowing.subject == identifier.name.as_str())?;
+        let narrowing = self.narrowed.get(at)?;
+        if let Some((_, binder)) = narrowing.fields.iter().find(|(known, _)| known == field) {
+            return Some(binder.clone());
         }
-        Some(field.to_owned())
+        let binder = self.field_binder(&narrowing.subject, field, narrowing.span);
+        self.narrowed
+            .get_mut(at)?
+            .fields
+            .push((field.to_owned(), binder.clone()));
+        Some(binder)
     }
 
     fn binary(&mut self, binary: &BinaryExpression<'_>) -> Result<Expr> {

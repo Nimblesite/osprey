@@ -19,6 +19,8 @@ export function tasks() {
     res.send("Task created");
   });
 
+  app.get("/tasks/:id", (req, res) => res.send("Task found"));
+
   return app
     .put("/tasks/current", (req, res) => res.send("Task replaced"))
     .delete("/tasks/current", (req, res) => res.status(410).send("Task removed"));

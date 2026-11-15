@@ -203,6 +203,43 @@ fn typescript_records_unions_and_switches_equal_default_ast() {
     }
 }
 
+/// A narrowed field never captures a same-named parameter, local or function:
+/// the case binds the field under a fresh name. [FLAVOR-TS-UNIONS]
+#[test]
+fn typescript_narrowed_fields_never_capture_a_same_named_binding() {
+    equal(
+        "fn total(value, parsed) = match parsed { Success(parsedValue) => value + parsedValue\n Error => value }\n",
+        "function total(value, parsed) {\n  switch (parsed.kind) {\n    case \"success\":\n      return value + parsed.value;\n    case \"error\":\n      return value;\n  }\n}\n",
+    );
+    let shapes = "type Shape = { readonly kind: \"square\"; readonly side: int } | { readonly kind: \"circle\"; readonly r: int };\n";
+    for (source, binders) in [
+        (
+            "function grow(shape, side) {\n  switch (shape.kind) {\n    case \"square\":\n      return side + shape.side;\n    case \"circle\":\n      return shape.r;\n  }\n}\n",
+            ["shapeSide", "r"],
+        ),
+        (
+            "function grow(shape) {\n  switch (shape.kind) {\n    case \"square\": {\n      const side = 2;\n      return side * shape.side;\n    }\n    case \"circle\":\n      return r(shape.r);\n  }\n}\n",
+            ["shapeSide", "shapeR"],
+        ),
+        (
+            "function grow(shape, side, shapeSide) {\n  switch (shape.kind) {\n    case \"square\":\n      return side + shapeSide + shape.side;\n    case \"circle\":\n      return shape.r;\n  }\n}\n",
+            ["shapeSide_", "r"],
+        ),
+    ] {
+        let parsed = parse(&format!("{shapes}{source}"));
+        assert!(parsed.errors.is_empty(), "{source}\n{:?}", parsed.errors);
+        let lowered = format!("{:?}", parsed.program);
+        let [side, r] = binders;
+        for expected in [
+            if side == "side" { String::new() } else { format!("fields: [\"side\"], sub_patterns: [Binding(\"{side}\")]") },
+            if r == "r" { "fields: [\"r\"], sub_patterns: []".to_owned() } else { format!("fields: [\"r\"], sub_patterns: [Binding(\"{r}\")]") },
+            format!("Identifier(\"{side}\")"),
+        ] {
+            assert!(lowered.contains(&expected), "{source}\nmissing {expected}\n{lowered}");
+        }
+    }
+}
+
 #[test]
 fn typescript_modules_imports_and_docs_equal_default_ast() {
     for (default, source) in [

@@ -340,16 +340,14 @@
           "path": "/tasks/current"
         },
         "reply": {
-          "status": 404,
+          "status": 200,
           "headers": {
             "content-type": "text/html; charset=utf-8",
-            "content-length": "152",
-            "x-powered-by": "Express",
-            "content-security-policy": "default-src 'none'",
-            "x-content-type-options": "nosniff"
+            "content-length": "10",
+            "x-powered-by": "Express"
           },
-          "etag": false,
-          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /tasks/current</pre>\n</body>\n</html>\n"
+          "etag": true,
+          "body": "Task found"
         }
       },
       {
@@ -456,6 +454,110 @@
           },
           "etag": true,
           "body": "Osprey serves these routes natively."
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/7"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "10",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Task found"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "145",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /tasks/</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/TASKS/7/"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "10",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Task found"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/7/extra"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "152",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /tasks/7/extra</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/%41%zz"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "147",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /%41%25zz</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/50%25off"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "147",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /50%25off</pre>\n</body>\n</html>\n"
         }
       }
     ]

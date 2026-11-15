@@ -437,6 +437,10 @@
       "synth": {
         "language": "osprey",
         "threshold": 92.2
+      },
+      "express": {
+        "threshold": 96.0,
+        "language": "osprey"
       }
     },
     "apps": {

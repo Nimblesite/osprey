@@ -108,6 +108,30 @@
       {
         "method": "GET",
         "path": "//"
+      },
+      {
+        "method": "GET",
+        "path": "/tasks/7"
+      },
+      {
+        "method": "GET",
+        "path": "/tasks/"
+      },
+      {
+        "method": "GET",
+        "path": "/TASKS/7/"
+      },
+      {
+        "method": "GET",
+        "path": "/tasks/7/extra"
+      },
+      {
+        "method": "GET",
+        "path": "/%41%zz"
+      },
+      {
+        "method": "GET",
+        "path": "/50%25off"
       }
     ]
   }

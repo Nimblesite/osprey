@@ -14,6 +14,9 @@ from package_coverage_projects import PACKAGES_DIR, gate_entries, report_name
 GENERATED_DIRS = frozenset({"target", "__pycache__", "node_modules"})
 COMMENT_OR_STRING = re.compile(r'''"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|//[^\n]*|/\*|\(\*''')
 MATCH_ARM = re.compile(r"^\s+(?![/#])(?:[^=\\:\n]+|[A-Z]\w*\s*\([^\\\n]*\))\s*=>")
+# A TypeScript-flavor arm is a `case "kind":` of a `switch (value.kind)`; its
+# `=>` lines are arrow functions. [FLAVOR-TS-UNIONS]
+TYPESCRIPT_ARM = re.compile(r'^\s+case\s+"')
 
 
 def unique_object(pairs):
@@ -59,8 +62,9 @@ def definition_problems(path, hits):
 def match_arm_problems(path, hits):
     # Cross-check ordinary arm entries independently of compiler-emitted rows.
     # Bindings, type arrows and lambdas are not match arm declarations.
+    arm = TYPESCRIPT_ARM if path.suffix == ".ts" else MATCH_ARM
     lines = {index for index, line in enumerate(without_comments(path.read_text()).splitlines(), 1)
-             if MATCH_ARM.match(line)}
+             if arm.match(line)}
     return [f"missing match arm counter: {path.name}:{line}"
             for line in sorted(lines - set(hits))]
 

@@ -454,6 +454,7 @@ impl Lowerer<'_> {
         let statements = self.case_statements(case, tail)?;
         self.narrowed.push(Narrowing {
             subject: subject.to_owned(),
+            span: case.span,
             fields: Vec::new(),
         });
         let body = self.scoped(false, tail, |lowerer| lowerer.block(&statements, case.span));
@@ -492,14 +493,28 @@ impl Lowerer<'_> {
 
 /// A case's pattern binds the fields its body reads; one that reads none is
 /// the bare constructor name, as the Default flavor spells it.
-fn variant_pattern(name: String, fields: Vec<String>) -> Pattern {
+/// A case's pattern: each field read binds under its binder, by name, or by
+/// role for `Success`/`Error`, as Default's `Success(found)` does.
+fn variant_pattern(name: String, fields: Vec<(String, String)>) -> Pattern {
     if fields.is_empty() {
         return Pattern::Binding(name);
+    }
+    let renamed = fields.iter().any(|(field, binder)| field != binder);
+    let (fields, binders): (Vec<_>, Vec<_>) = fields.into_iter().unzip();
+    if !renamed {
+        return Pattern::Constructor {
+            name,
+            fields,
+            sub_patterns: Vec::new(),
+        };
+    }
+    if crate::desugar::is_result_ctor(&name) {
+        return crate::desugar::ctor_pattern(name, binders);
     }
     Pattern::Constructor {
         name,
         fields,
-        sub_patterns: Vec::new(),
+        sub_patterns: binders.into_iter().map(Pattern::Binding).collect(),
     }
 }
 

@@ -17,11 +17,12 @@ APPS_DIR = "src/osprey"
 MIN_THRESHOLD = 90
 PROJECT_KEYS = {PACKAGES_DIR: "packages", APPS_DIR: "apps"}
 GATED_KINDS = tuple(PROJECT_KEYS)
-SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml", ".lean"})
+SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml", ".lean", ".ts"})
 MATH_STORE = (".osprey", "math")
 """Where a project keeps the modules generated from its `.lean` math sources [MATH-CODE-UNTRACKED]."""
 MATH_DEF_RE = re.compile(r"^\s*(?:private\s+)?def\s", re.M)
 DEFAULT_DEF_RE = re.compile(r"(?m)^[ \t]*(?:export[ \t]+)?fn[ \t]+\w+")
+TYPESCRIPT_DEF_RE = re.compile(r"(?m)^[ \t]*(?:export[ \t]+)?function[ \t]+\w+")
 ML_DEF_RE = re.compile(
     r"(?m)^[ \t]*(?:export[ \t]+)?(?P<name>[A-Za-z][\w']*)"
     r"(?:[ \t]*<[^>\n]*>)?[ \t]*(?:\([^)\n]*\))?"
@@ -131,6 +132,8 @@ def has_definitions(path: Path) -> bool:
         return any(match.group("name") not in ML_KEYWORDS for match in ML_DEF_RE.finditer(text))
     if path.suffix == ".osp":
         return DEFAULT_DEF_RE.search(text) is not None
+    if path.suffix == ".ts":
+        return not path.name.endswith(".d.ts") and TYPESCRIPT_DEF_RE.search(text) is not None
     return path.suffix == ".lean" and MATH_DEF_RE.search(text) is not None
 
 

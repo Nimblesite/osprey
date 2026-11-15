@@ -196,7 +196,7 @@ function attempt(candidate, routes, index, base, parts) {
   if (candidate.method !== base.method) {
     return route(routes, satAdd(index, 1), base, parts);
   }
-  return andThen(bind(candidate.path, parts), (matched) => served(matched, candidate, routes, index, base, parts));
+  return andThen(bind(candidate.path, parts, endsWith(base.path, "/")), (matched) => served(matched, candidate, routes, index, base, parts));
 }
 
 function served(matched, candidate, routes, index, base, parts) {
@@ -219,29 +219,19 @@ function pathOf(url) {
 }
 
 /** Match a route pattern against a split path, capturing each `:name` segment. */
-function bind(pattern, parts) {
-  return andThen(split(pattern, "/"), (patterns) => bound(patterns, parts));
+function bind(pattern, parts, slashed) {
+  return andThen(split(pattern, "/"), (patterns) => bound(patterns, parts, slashed));
 }
 
 /**
  * Express routes are not strict: one trailing slash on the request path is
  * ignored, so `/user/` reaches the route `/user`.
  */
-function bound(patterns, parts) {
+function bound(patterns, parts, slashed) {
   const extra = listLength(parts) === satAdd(listLength(patterns), 1);
-  return listLength(patterns) === listLength(parts) || (extra && lastIsEmpty(parts))
+  return listLength(patterns) === listLength(parts) || (extra && slashed)
     ? bindFrom(patterns, parts, 0, new Map<string, string>())
     : Success({ kind: "unbound" } satisfies Match);
-}
-
-function lastIsEmpty(parts) {
-  const last = listGet(parts, satSub(listLength(parts), 1));
-  switch (last.kind) {
-    case "success":
-      return last.value === "";
-    case "error":
-      return false;
-  }
 }
 
 function bindFrom(patterns, parts, index, params) {

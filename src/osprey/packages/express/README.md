@@ -84,5 +84,6 @@ Not ported yet: `req.params` and `req.query` access from handlers, `req.get`, `r
 ## Development
 
 - `make -C src/osprey/packages express-e2e`: the end-to-end comparison above. Logs are in `target/express/`.
+- `target/debug/osprey src/osprey/packages/express/tests --run`: the package suite, a TypeScript-flavor program that serves the routes example over loopback and checks every reply against the Express recording. The package matrix runs it under GC and ARC.
 - `make -C src/osprey/packages express-oracle`: re-record the Express replies. It needs Node.js and installs the pinned Express into `oracle/node_modules`.
 - The port's source is [`src/express.ts`](src/express.ts), one TypeScript-flavor module, `express::Express`.

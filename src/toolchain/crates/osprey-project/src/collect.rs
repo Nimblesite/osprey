@@ -316,10 +316,19 @@ impl Collector<'_> {
                 inner_doc: docs.inner,
                 position,
             });
+        // An exported union exports its constructors, unless it is opaque.
         let explicit_exports = body
             .iter()
             .filter(|item| item.visibility == Visibility::Exported)
-            .filter_map(|item| primary_name(&item.declaration))
+            .flat_map(|item| {
+                let variants = match item.declaration.as_ref() {
+                    Stmt::Type { variants, .. } if !item.opaque => variants.as_slice(),
+                    _ => &[],
+                };
+                primary_name(&item.declaration)
+                    .into_iter()
+                    .chain(variants.iter().map(|variant| variant.name.clone()))
+            })
             .collect::<BTreeSet<_>>();
         let mut state_cells = BTreeSet::new();
         let mut effects = BTreeSet::new();

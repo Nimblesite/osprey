@@ -43,3 +43,6 @@ export interface Application {
 
 /** `express()` creates an application with no routes. */
 export default function express(): Application;
+
+/** `close(server)` stops a listening server; a `failed` one answers why it never listened. */
+export function close(server: Server): Result<int>;
