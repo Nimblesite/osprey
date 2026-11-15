@@ -184,7 +184,7 @@ impl Lowerer<'_> {
         let ty = self.type_expr(Self::field(assignment, "type")?)?;
         Ok(TypeField {
             name: self.text(name).into(),
-            ty: render(&ty),
+            ty: crate::desugar::field_type(&ty),
             constraint: None,
             effects: None,
         })
@@ -246,22 +246,4 @@ impl Lowerer<'_> {
             })
             .collect()
     }
-}
-
-pub(super) fn render(ty: &TypeExpr) -> String {
-    if ty.is_function {
-        let result = ty
-            .return_type
-            .as_deref()
-            .map_or_else(|| "Unit".into(), render);
-        return format!(
-            "({}) -> {result}",
-            ty.parameter_types
-                .iter()
-                .map(render)
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-    }
-    osprey_ast::effect_name::instantiated(&ty.name, &ty.generic_params)
 }

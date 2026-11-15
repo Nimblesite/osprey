@@ -1,0 +1,8 @@
+[project]
+name = "math-package-tests"
+source_roots = [".", "../src"]
+default_namespace = "math_tests"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

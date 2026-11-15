@@ -487,5 +487,28 @@
       "WebSocket"
     ],
     "durationSeconds": 74.766667
+  },
+  "express-typescript": {
+    "name": "Express on Osprey: the TypeScript flavor, measured against Node.js",
+    "description": "A seven-minute tutorial. The Express port's comparison bench runs live and serves three example applications from Osprey, compiled with reference counting and with a garbage collector, and from real Express on Node.js. Then the Express README example is served natively and requested with curl, the port's own code is read, Express's own web-service example runs as ported, and one edit changes the reply.",
+    "kind": "tutorial",
+    "content": "/assets/videos/osprey-express-typescript.mp4",
+    "poster": "/assets/videos/osprey-express-typescript-poster.jpg",
+    "posterAlt": "Title card with the Osprey bird and the words Express, measured, and Osprey TypeScript flavor against Node.js",
+    "captions": "/assets/videos/osprey-express-typescript.en.vtt",
+    "chapters": "/assets/videos/osprey-express-typescript.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-11-15T19:04:00+11:00",
+    "tags": [
+      "Osprey",
+      "TypeScript flavor",
+      "TypeScript",
+      "Express",
+      "Node.js",
+      "HTTP",
+      "benchmark"
+    ],
+    "durationSeconds": 427.418
   }
 }

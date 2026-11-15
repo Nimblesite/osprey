@@ -1,0 +1,11 @@
+[project]
+name = "express"
+source_roots = ["src"]
+typescript_sources = ["src/encode.ts", "src/headers.ts", "src/query.ts", "src/express.ts"]
+default_namespace = "express"
+
+[package]
+name = "@osprey/express"
+license = "MIT"
+summary = "Express behavior port in TypeScript flavor Osprey"
+keywords = ["api", "express", "http", "typescript-flavor"]

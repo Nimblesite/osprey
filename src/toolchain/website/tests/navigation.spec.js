@@ -2,7 +2,7 @@
 // page's own headings, independent desktop scrolling and the mobile menu.
 const { test, expect } = require("@playwright/test");
 
-const DOC_SECTIONS = ["Start here", "Python", "Tutorials", "Proofs", "Build applications", "Packages", "Language", "Reference"];
+const DOC_SECTIONS = ["Start here", "Python", "TypeScript", "Tutorials", "Proofs", "Build applications", "Packages", "Language", "Reference"];
 
 test.describe("documentation sub-page navigation", () => {
   test("groups subpages and identifies the current desktop page", async ({ page }) => {

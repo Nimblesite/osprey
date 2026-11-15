@@ -127,6 +127,14 @@ void test_closure_listen_rejections(void);
 void test_stop_server_with_client_connected(void);
 void test_listener_spawn_failure_is_reported(void);
 void test_client_gone_follows_the_served_client(void);
+void test_keep_alive_waits_for_its_listeners(void);
+// [HTTP-SERVER-CONNECTIONS] http_server_connection_tests.c
+void test_server_serves_a_client_while_another_is_silent(void);
+void test_server_keeps_alive_as_node_does(void);
+void test_server_ends_half_closed_and_pipelined_connections(void);
+void test_server_stop_ends_idle_connections(void);
+void test_server_serves_concurrent_keep_alive_clients(void);
+void test_server_names_statuses_as_node_does(void);
 void test_server_handle_exhaustion(void);
 
 #endif // HTTP_RUNTIME_TESTS_H

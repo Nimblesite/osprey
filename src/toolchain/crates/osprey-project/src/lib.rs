@@ -20,6 +20,7 @@ mod field_resolve;
 mod imports;
 mod manifest;
 mod manifest_codec;
+mod math;
 mod model;
 mod name_resolve;
 mod opaque;
@@ -358,7 +359,8 @@ fn parse_source(
     parse_text(path, source, configured)
 }
 
-/// Parse disk or unsaved text using the project's flavor configuration.
+/// Parse disk or unsaved text using the project's flavor configuration. A
+/// `.lean` math source yields the module generated from it ([MATH-CODE-SOURCES]).
 ///
 /// # Errors
 /// Returns flavor-selection and syntax errors with physical source locations.
@@ -367,6 +369,9 @@ pub fn parse_text(
     source: String,
     configured: Option<Flavor>,
 ) -> Result<SourceFile, Vec<ProjectError>> {
+    if math::is_math(&path) {
+        return math::parse(&path, &source);
+    }
     let label = path.to_string_lossy();
     let flavor = osprey_syntax::resolve_flavor(configured, &label, &source).map_err(|message| {
         vec![ProjectError {

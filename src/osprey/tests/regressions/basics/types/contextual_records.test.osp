@@ -1,0 +1,36 @@
+// [TYPE-RECORD-CONTEXT] An object literal takes the record type its context
+// declares: an annotated binding, a declared return type, an annotated
+// parameter, a declared record field and a list of records. Each value below
+// is laid out as its declared record, so field access, equality and the
+// record's own functions see a `Point`, never an anonymous shape.
+
+/// A point in the plane.
+type Point = { x: int, y: int }
+/// A labelled line between two points, whose ends are records built from literals.
+type Segment = { from: Point, to: Point, label: string }
+
+fn sum(p: Point) = satAdd(p.x, p.y)
+fn origin() -> Point = { x: 0, y: 0 }
+fn longest(points: List<Point>) = foldList(points, 0, fn(best, p) => match sum(p) > best {
+    true => sum(p)
+    false => best
+})
+
+fn contextualCase() = {
+    let annotated: Point = { x: 1, y: 2 }
+    let segment = Segment { from: { x: 3, y: 4 }, to: origin(), label: "diagonal" }
+    let many: List<Point> = [{ x: 5, y: 6 }, { y: 9, x: 7 }]
+    checkAll("object literals take their declared record type", [
+        sum(annotated) == 3,
+        sum({ x: 10, y: 20 }) == 30,
+        sum(origin()) == 0,
+        sum(segment.from) == 7,
+        sum(segment.to) == 0,
+        segment.label == "diagonal",
+        longest(many) == 16,
+        structuralEquals(annotated, Point { x: 1, y: 2 }),
+        "${annotated.x},${annotated.y}" == "1,2"
+    ])
+}
+
+test("object literals take the record type their context declares", exactly(contextualCase))

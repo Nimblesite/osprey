@@ -1,0 +1,88 @@
+import math::Real
+import math::Quadratic
+import math::AffineMap
+
+close (got, want) = abs (got - want) <= 0.000000000001 * (1.0 + abs want)
+
+near (got, want) = expect (close (got, want), true)
+
+all (values, holds) = foldList (values, true, \(sofar, x) => sofar && holds x)
+
+points = [-3.5, -1.0, -0.25, 0.0, 0.5, 1.0, 2.0, 6.0]
+
+probabilities = [0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99]
+
+test ("hyperbolic functions are Mathlib's formulas, agree with the C library and keep cosh_sq", \() =>
+    near (Real::sinh 1.0, 1.1752011936438014)
+    near (Real::cosh 1.0, 1.5430806348152437)
+    near (Real::tanh 1.0, 0.7615941559557649)
+    near (Real::arsinh 1.0, 0.881373587019543)
+    expect (Real::sinh 0.0, 0.0)
+    expect (Real::cosh 0.0, 1.0)
+    expect (Real::tanh 0.0, 0.0)
+    expect (Real::arsinh 0.0, 0.0)
+    expect (all (points, \x => close (Real::sinh x, sinh x)), true)
+    expect (all (points, \x => close (Real::cosh x, cosh x)), true)
+    expect (all (points, \x => close (Real::tanh x, tanh x)), true)
+    expect (all (points, \x => close (Real::arsinh x, asinh x)), true)
+    expect (all (points, \x => close (Real::arsinh (Real::sinh x), x)), true)
+    expect (all (points, \x => close (pow (Real::cosh x, 2.0), pow (Real::sinh x, 2.0) + 1.0)), true)
+    expect (all (points, \x => close (Real::sinh (-1.0 * x), -1.0 * Real::sinh x)), true))
+
+test ("logarithms to a base invert powers of that base", \() =>
+    near (Real::logb (2.0, 8.0), 3.0)
+    near (Real::logb (10.0, 1000.0), 3.0)
+    near (Real::logb (2.0, 0.5), -1.0)
+    expect (Real::logb (7.0, 1.0), 0.0)
+    expect (all ([2.0, 3.0, 10.0, 0.5], \b => close (Real::logb (b, b), 1.0)), true)
+    expect (all (points, \k => close (Real::logb (3.0, pow (3.0, k)), k)), true))
+
+test ("the sigmoid is one half at zero, saturates, and its two tails sum to one", \() =>
+    expect (Real::sigmoid 0.0, 0.5)
+    near (Real::sigmoid 2.0, 0.8807970779778823)
+    expect (Real::sigmoid 800.0, 1.0)
+    expect (Real::sigmoid (-800.0), 0.0)
+    expect (all (points, \x => close (Real::sigmoid x + Real::sigmoid (-1.0 * x), 1.0)), true)
+    expect (all (points, \x => Real::sigmoid x > 0.0 && Real::sigmoid x < 1.0), true))
+
+test ("entropy is zero for a certain outcome and largest for a fair coin", \() =>
+    expect (Real::negMulLog 1.0 == 0.0, true)
+    near (Real::negMulLog 0.5, 0.34657359027997264)
+    near (Real::binEntropy 0.5, 0.6931471805599453)
+    near (Real::binEntropy 0.25, 0.5623351446188083)
+    expect (all (probabilities, \p => close (Real::binEntropy p, Real::binEntropy (1.0 - p))), true)
+    expect (all (probabilities, \p => close (Real::binEntropy p, Real::negMulLog p + Real::negMulLog (1.0 - p))), true)
+    expect (all (probabilities, \p => Real::binEntropy p <= Real::binEntropy 0.5), true))
+
+test ("the normal density peaks at its mean, is symmetric and scales with its variance", \() =>
+    expect (Real::pi, 3.141592653589793)
+    near (Real::gaussianPDFReal (0.0, 1.0, 0.0), 0.3989422804014327)
+    near (Real::gaussianPDFReal (1.0, 4.0, 3.0), 0.12098536225957168)
+    expect (all (points, \x => close (Real::gaussianPDFReal (0.5, 2.0, 0.5 + x), Real::gaussianPDFReal (0.5, 2.0, 0.5 - x))), true)
+    expect (all (points, \x => Real::gaussianPDFReal (0.5, 2.0, x) <= Real::gaussianPDFReal (0.5, 2.0, 0.5)), true)
+    expect (all ([0.25, 1.0, 4.0, 9.0], \v => close (Real::gaussianPDFReal (0.0, v, 0.0) * sqrt v, 0.3989422804014327)), true))
+
+test ("the quadratic formula finds both roots, one double root, and no real root", \() =>
+    expect (Quadratic::discrim (1.0, -3.0, 2.0), 1.0)
+    expect (Quadratic::rootAdd (1.0, -3.0, 2.0), 2.0)
+    expect (Quadratic::rootSub (1.0, -3.0, 2.0), 1.0)
+    expect (Quadratic::discrim (1.0, 2.0, 1.0), 0.0)
+    expect (Quadratic::rootAdd (1.0, 2.0, 1.0), -1.0)
+    expect (Quadratic::rootSub (1.0, 2.0, 1.0), -1.0)
+    expect (Quadratic::discrim (2.0, 0.0, -8.0), 64.0)
+    expect (Quadratic::rootAdd (2.0, 0.0, -8.0), 2.0)
+    expect (Quadratic::rootSub (2.0, 0.0, -8.0), -2.0)
+    expect (Quadratic::discrim (1.0, 0.0, 1.0), -4.0)
+    expect (Quadratic::rootAdd (1.0, 0.0, 1.0) != Quadratic::rootAdd (1.0, 0.0, 1.0), true)
+    expect (Quadratic::rootSub (1.0, 0.0, 1.0) != Quadratic::rootSub (1.0, 0.0, 1.0), true)
+    expect (all (points, \r => close (Quadratic::rootAdd (1.0, -1.0 * (r + 7.0), 7.0 * r), 7.0)), true)
+    expect (all (points, \r => close (Quadratic::rootSub (1.0, -1.0 * (r + 7.0), 7.0 * r), r)), true))
+
+test ("a line map starts at its first point, ends at its second and is linear between", \() =>
+    expect (AffineMap::lineMap (2.0, 10.0, 0.0), 2.0)
+    expect (AffineMap::lineMap (2.0, 10.0, 1.0), 10.0)
+    expect (AffineMap::lineMap (2.0, 10.0, 0.25), 4.0)
+    expect (AffineMap::lineMap (10.0, 2.0, 0.5), 6.0)
+    expect (AffineMap::lineMap (2.0, 10.0, 2.0), 18.0)
+    expect (all (points, \c => close (AffineMap::lineMap (-4.0, 4.0, c), 8.0 * c - 4.0)), true)
+    expect (all (points, \a => AffineMap::lineMap (a, a, 0.3) == a), true))

@@ -2,10 +2,9 @@
 //! Implements [FLAVOR-PYTHON-INTEROP], [FLAVOR-PYTHON-SELECT].
 use super::context::{children, position, Lowerer, Result};
 use osprey_ast::{
-    stmt_meta, DocScope, Expr, ImportDecl, ImportMember, ImportSelection, ImportTarget, ModuleItem,
-    ModuleKind, NamespaceName, Position, Program, Stmt, SymbolPath, Visibility,
+    stmt_meta, DocScope, Expr, ImportDecl, ImportMember, ImportSelection, ImportTarget,
+    NamespaceName, Program, Stmt, SymbolPath,
 };
-use std::collections::BTreeMap;
 use tree_sitter::Node;
 
 impl Lowerer<'_> {
@@ -32,24 +31,10 @@ impl Lowerer<'_> {
         doc: Option<osprey_ast::DocComment>,
     ) -> Result<Vec<Stmt>> {
         self.check_export_context(header)?;
-        let Some((path, position)) = &header.module else {
-            return Ok(statements);
-        };
-        let (imports, declarations): (Vec<_>, Vec<_>) = statements
-            .into_iter()
-            .partition(|statement| matches!(statement, Stmt::Import(_)));
-        let body = self.module_items(declarations)?;
-        let mut result = imports;
-        result.push(module_statement(path, *position, body, doc));
-        Ok(result)
-    }
-
-    fn module_items(&self, statements: Vec<Stmt>) -> Result<Vec<ModuleItem>> {
-        self.check_export_names(&statements)?;
-        Ok(statements
-            .into_iter()
-            .map(|statement| self.module_item(statement))
-            .collect())
+        if header.module.is_some() {
+            self.check_export_names(&statements)?;
+        }
+        Ok(header.module_contribution(statements, |name| self.exports.contains_key(name), doc))
     }
 
     fn check_export_context(&self, header: &Header) -> Result<()> {
@@ -78,20 +63,6 @@ impl Lowerer<'_> {
             }
         }
         Ok(())
-    }
-
-    fn module_item(&self, statement: Stmt) -> ModuleItem {
-        ModuleItem {
-            visibility: if stmt_meta::declaration_name(&statement)
-                .is_some_and(|name| self.exports.contains_key(name))
-            {
-                Visibility::Exported
-            } else {
-                Visibility::Private
-            },
-            opaque: false,
-            declaration: Box::new(statement),
-        }
     }
 
     /// Record `name` as exported at `at`, refusing a second declaration.
@@ -214,44 +185,25 @@ impl Lowerer<'_> {
     }
 }
 
-fn identifier(text: &str) -> bool {
-    text.chars()
-        .next()
-        .is_some_and(|ch| ch.is_alphabetic() || ch == '_')
-        && text.chars().all(|ch| ch.is_alphanumeric() || ch == '_')
-}
+use crate::file_header::identifier;
 
-#[derive(Default)]
-struct Header {
-    namespace: Option<(String, Position)>,
-    module: Option<(String, Position)>,
-    seen: BTreeMap<String, Position>,
+/// The file's directives, read from its leading `# osprey:` comments.
+struct Header(crate::file_header::Directives);
+
+impl std::ops::Deref for Header {
+    type Target = crate::file_header::Directives;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl Header {
-    fn namespace_contribution(&self, statements: Vec<Stmt>) -> Vec<Stmt> {
-        match &self.namespace {
-            Some((name, position)) => vec![Stmt::Namespace {
-                name: NamespaceName::Identifier(name.clone()),
-                body: statements,
-                file_scoped: true,
-                doc: None,
-                inner_doc: None,
-                position: Some(*position),
-            }],
-            None => statements,
-        }
-    }
     fn read(lowerer: &Lowerer<'_>, node: Node<'_>) -> Result<Self> {
         let first_code = children(node).first().map_or(usize::MAX, Node::start_byte);
-        let mut header = Self::default();
+        let mut header = Self(crate::file_header::Directives::default());
         header.comments(lowerer, node, first_code)?;
-        if header.module.is_some() && header.namespace.is_none() {
-            return Err(Lowerer::error(
-                node,
-                "a module directive requires a namespace directive",
-            ));
-        }
+        header.check(position(node))?;
         Ok(header)
     }
 
@@ -265,7 +217,7 @@ impl Header {
                         "Osprey directives must precede source declarations",
                     ));
                 }
-                self.directive(node, directive.trim())?;
+                self.0.directive(directive.trim(), position(node))?;
             }
         }
         let mut cursor = node.walk();
@@ -273,58 +225,5 @@ impl Header {
             self.comments(lowerer, child, first_code)?;
         }
         Ok(())
-    }
-
-    fn directive(&mut self, node: Node<'_>, directive: &str) -> Result<()> {
-        let Some((key, value)) = directive.split_once('=') else {
-            return Err(Lowerer::error(node, "expected `osprey: key=value`"));
-        };
-        let (key, value) = (key.trim(), value.trim());
-        if self.seen.insert(key.into(), position(node)).is_some() {
-            return Err(Lowerer::error(node, format!("duplicate {key} directive")));
-        }
-        self.apply_directive(node, key, value)
-    }
-
-    fn apply_directive(&mut self, node: Node<'_>, key: &str, value: &str) -> Result<()> {
-        if key == "flavor" {
-            return flavor_directive(node, value);
-        }
-        let slot = match key {
-            "namespace" if identifier(value) => &mut self.namespace,
-            "module" if value.split('.').all(identifier) => &mut self.module,
-            _ => {
-                return Err(Lowerer::error(
-                    node,
-                    "unknown or malformed Osprey directive",
-                ))
-            }
-        };
-        *slot = Some((value.into(), position(node)));
-        Ok(())
-    }
-}
-
-fn flavor_directive(node: Node<'_>, value: &str) -> Result<()> {
-    value
-        .parse::<crate::Flavor>()
-        .map(|_| ())
-        .map_err(|message| Lowerer::error(node, message))
-}
-
-fn module_statement(
-    path: &str,
-    position: Position,
-    body: Vec<ModuleItem>,
-    inner_doc: Option<osprey_ast::DocComment>,
-) -> Stmt {
-    Stmt::Module {
-        path: SymbolPath::new(path.split('.')),
-        kind: ModuleKind::Plain,
-        signature: None,
-        body,
-        doc: None,
-        inner_doc,
-        position: Some(position),
     }
 }

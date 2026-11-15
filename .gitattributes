@@ -7,6 +7,9 @@
 *.webm filter=lfs diff=lfs merge=lfs -text
 *.m4v filter=lfs diff=lfs merge=lfs -text
 *.jpg filter=lfs diff=lfs merge=lfs -text
+# Math sources and the goldens generated from them compare byte for byte on every host [MATH-CODE-EMIT].
+*.lean text eol=lf
+src/toolchain/crates/osprey-math/tests/fixtures/*.ospml text eol=lf
 # Proof certificates are hashed as bytes; checkout must preserve their pins.
 *.ndjson -text
 # Byte-pinned upstream license text retains its original line endings.

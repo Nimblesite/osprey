@@ -170,7 +170,9 @@ A payload-free variant used as a pattern (`Dry => "dry"`) is the constructor wha
 
 Namespace declarations are visible across their namespace graph. Module items
 are private by default. An unascribed module uses `export`; an ascribed module's
-signature is its public surface.
+signature is its public surface. An exported union exports its variant constructors with it,
+so a module that imports the union's module members can construct and match
+those variants by their bare names; an opaque union keeps them private.
 
 An import of a private member or traversal through a private nested module is an
 error. A signature's `let` entry names an immutable value; an ascribed state

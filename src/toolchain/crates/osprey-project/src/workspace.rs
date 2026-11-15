@@ -24,6 +24,11 @@ pub(crate) fn adopt(root: &Path, config: &mut ProjectConfig) {
         let prefix = Path::new("..").join(directory);
         extend(&mut config.source_roots, &prefix, &sibling.source_roots);
         extend(&mut config.python_sources, &prefix, &sibling.python_sources);
+        extend(
+            &mut config.typescript_sources,
+            &prefix,
+            &sibling.typescript_sources,
+        );
         pending.extend(sibling.dependencies);
     }
 }

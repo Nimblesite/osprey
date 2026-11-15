@@ -1,0 +1,109 @@
+// Assertion-driven replacement for the former arithmetic and boolean goldens.
+// Each case keeps the complete legacy output line, checks every value embedded
+// in it, and then extends the behavioral boundary.
+// The TypeScript twin of operators.test.osp, sharing its golden. [FLAVOR-TS-EXPRESSIONS]
+
+/** This case documents precedence, grouping, and the four migrated expressions. */
+function arithmeticOperatorsCase() {
+  const a = 2 + 3 * 4;
+  const b = (2 + 3) * 4;
+  const c = 20 - 6 * 2;
+  const d = 2 * 3 + 4 * 5;
+
+  // Preserve the complete arithmetic output line as one exact value.
+  checkAll("arithmetic legacy rendered lines", [
+    `a=${a} b=${b} c=${c} d=${d}` === "a=14 b=20 c=8 d=26",
+  ]);
+  // Check every number that was embedded in the old output line separately.
+  checkAll("arithmetic legacy constituent values", [
+    a === 14,
+    b === 20,
+    c === 8,
+    d === 26,
+  ]);
+  // Extend coverage across associativity, grouping, zero, and negative results.
+  return checkAll("arithmetic precedence edge cases", [
+    20 - 6 - 2 === 12,
+    20 - (6 - 2) === 16,
+    7 + 9 * 0 === 7,
+    0 - 5 * 2 === 0 - 10,
+    // A remainder takes the dividend's sign, as JavaScript's `%` does.
+    (0 - 7) % 3 === 0 - 1,
+    7 % (0 - 3) === 1,
+    (0 - 7) % (0 - 3) === 0 - 1,
+    0 % 5 === 0,
+  ]);
+}
+
+/** This case documents literals, logical operators, comparisons, and composition. */
+function booleanOperatorsCase() {
+  const t = true;
+  const f = false;
+
+  // Preserve the complete boolean output line with its original formatting.
+  checkAll("boolean legacy rendered lines", [
+    `and=${t && f} or=${t || f} not=${!t} lt=${3 < 5} ge=${5 >= 5} eq=${4 === 4} chain=${(3 < 5) && !(2 > 9)}` ===
+      "and=false or=true not=false lt=true ge=true eq=true chain=true",
+  ]);
+  // Check all seven boolean results that the golden line previously combined.
+  checkAll("boolean legacy constituent values", [
+    (t && f) === false,
+    (t || f) === true,
+    !t === false,
+    (3 < 5) === true,
+    (5 >= 5) === true,
+    (4 === 4) === true,
+    ((3 < 5) && !(2 > 9)) === true,
+  ]);
+  // Exercise complementary truth values and a composed true expression.
+  return checkAll("boolean composition edge cases", [
+    !f === true,
+    (5 < 3) === false,
+    (4 === 5) === false,
+    (t && !f) === true,
+  ]);
+}
+
+// Register the arithmetic documentation scenario.
+// exactTests' list of { name, work } records has no TypeScript spelling here;
+// each record is spelled as the test(name, exactly(work)) call that exactTests
+// itself lowers to, so the output is identical.
+
+test("operator precedence retains every arithmetic golden", exactly(arithmeticOperatorsCase));
+// Register the boolean documentation scenario.
+test("boolean composition retains every logical golden", exactly(booleanOperatorsCase));
+
+/** [FLOAT-OPERANDS] One constrained helper accepts int and float callers. */
+function numericScale(x) {
+  return x * 1.5;
+}
+/** Division accepts either numeric type independently in each operand. */
+function numericQuotient(left, right) {
+  return left / right;
+}
+/** Passes a numeric helper through a higher-order argument. */
+function runNumeric(f, x) {
+  return f(x);
+}
+/** Pins numeric obligations at calls, aliases and higher-order slots. */
+function numericPolymorphismCase() {
+  return handle<Arith>({ divideByZero: (op, lhs) => {
+    checkAll("division recovery payload", [op === "/", lhs === 4.0]);
+    return -1.0;
+  } }, () => {
+    const alias = numericScale;
+    return checkAll("numeric helper polymorphism", [
+      numericScale(2) === 3.0,
+      numericScale(2.5) === 3.75,
+      alias(4) === 6.0,
+      alias(4.5) === 6.75,
+      runNumeric(numericScale, 5) === 7.5,
+      runNumeric(numericScale, 5.5) === 8.25,
+      numericQuotient(3, 1.5) === 2.0,
+      numericQuotient(2.5, 2) === 1.25,
+      (4.0 / 2.0) * 1.5 === 3.0,
+      (4.0 / 0.0) * 1.5 === -1.5,
+    ]);
+  });
+}
+test("numeric constraints retain mixed arithmetic and policy substitution", exactly(numericPolymorphismCase));

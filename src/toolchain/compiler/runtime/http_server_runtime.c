@@ -1,4 +1,5 @@
-#include "http_server_internal.h"
+#include "http_server_pool.h"
+#include "memory_parked_wait.h"
 #include "memory_hooks.h"
 #include "string_runtime.h"
 
@@ -14,15 +15,6 @@ typedef HttpResponse *(*ClosureHandler)(void *, char *, char *, char *, char *);
 
 static const char *simple_response_body = "Hello, World!";
 
-#ifdef _WIN32
-#define HTTP_SHUTDOWN_BOTH SD_BOTH
-#else
-#define HTTP_SHUTDOWN_BOTH SHUT_RDWR
-#endif
-
-#define HTTP_ACCEPT_POLL_MS 100U
-
-typedef enum { LISTENER_IDLE, LISTENER_READY, LISTENER_FAILED } ListenerStatus;
 
 static void label_partial_request(HttpRequestBuffer *request) {
   if (request->data && request->received_bytes > 0) {
@@ -43,7 +35,8 @@ static void reject_request(int client_fd, HttpRequestBuffer *request,
   int64_t status = http_rejection_status(read_status);
   size_t bytes = strlen(body);
   bool sent = http_send_response(client_fd, status,
-                                 "Content-Type: application/json\r\n", body, bytes);
+                                 "Content-Type: application/json\r\n", body,
+                                 bytes, false);
   http_log_exchange(request, read_status, status, bytes, sent);
 }
 
@@ -61,7 +54,7 @@ static struct HttpResponse *call_handler(HttpServer *server,
                          : NULL;
 }
 
-static void serve_request(int client_fd, HttpServer *server,
+static bool serve_request(int client_fd, HttpServer *server,
                           HttpRequestBuffer *request) {
   // The borrowed body normally already has a terminator at its exact length.
   // Own an explicit byte span when a C terminator would hide part of it.
@@ -71,13 +64,15 @@ static void serve_request(int client_fd, HttpServer *server,
     managed_body = osp_string_dup_internal(request->body, request_bytes);
     if (!managed_body) {
       reject_request(client_fd, request, REQUEST_READ_FAILED);
-      return;
+      return false;
     }
     request->body = managed_body;
   }
+  http_pool_enter_handler(server);
   http_serving_client(client_fd);
   struct HttpResponse *response = call_handler(server, request);
   http_serving_client(-1);
+  http_pool_leave_handler(server);
   bool has_response = response && response->partialBody;
   int64_t status = has_response ? response->status : 200;
   const char *headers = response && response->headers
@@ -86,7 +81,8 @@ static void serve_request(int client_fd, HttpServer *server,
   const char *body =
       has_response ? response->partialBody : simple_response_body;
   size_t bytes = (size_t)osp_strlen(body);
-  bool sent = http_send_response(client_fd, status, headers, body, bytes);
+  bool sent = http_send_response(client_fd, status, headers, body, bytes,
+                                 request->keep_alive);
   http_log_exchange(request, REQUEST_COMPLETE, status, bytes, sent);
   /* The Osprey handler transferred +1 on its HttpResponse across the C
    * callback boundary; the response (and the header/body strings its layout
@@ -94,49 +90,45 @@ static void serve_request(int client_fd, HttpServer *server,
    * [GC-ARC-PERCEUS]. No-op off ARC. */
   osp_release(response);
   osp_release(managed_body);
+  return sent && request->keep_alive;
 }
 
-static void process_client(int client_fd, HttpServer *server) {
+// A worker waiting for request bytes cannot touch the heap, so it parks and
+// never holds up a collection [MEM-GC-SAFEPOINT].
+static RequestReadStatus read_parked(int client_fd, HttpRequestBuffer *request) {
+  jmp_buf registers;
+  OSP_SPILL_REGISTERS(registers);
+  osp_mem_baton_park(&registers);
+  RequestReadStatus status = read_http_request(client_fd, request);
+  osp_mem_baton_unpark();
+  return status;
+}
+
+bool http_serve_connection(HttpServer *server, int client_fd) {
   HttpRequestBuffer request;
-  RequestReadStatus status = read_http_request(client_fd, &request);
+  RequestReadStatus status = read_parked(client_fd, &request);
+  bool keep = false;
   if (status == REQUEST_COMPLETE) {
-    serve_request(client_fd, server, &request);
+    keep = serve_request(client_fd, server, &request);
   } else {
     reject_request(client_fd, &request, status);
   }
   free(request.data);
+  return keep;
 }
 
-static bool server_is_listening(HttpServer *server) {
+bool http_server_is_listening(HttpServer *server) {
   pthread_mutex_lock(&server->mutex);
   bool listening = server->is_listening;
   pthread_mutex_unlock(&server->mutex);
   return listening;
 }
 
-static int server_socket(HttpServer *server) {
+int http_server_socket(HttpServer *server) {
   pthread_mutex_lock(&server->mutex);
   int socket_fd = server->socket_fd;
   pthread_mutex_unlock(&server->mutex);
   return socket_fd;
-}
-
-static bool claim_client(HttpServer *server, int client_fd) {
-  pthread_mutex_lock(&server->mutex);
-  bool claimed = server->is_listening;
-  if (claimed) {
-    server->active_client_fd = client_fd;
-  }
-  pthread_mutex_unlock(&server->mutex);
-  return claimed;
-}
-
-static void release_client(HttpServer *server, int client_fd) {
-  pthread_mutex_lock(&server->mutex);
-  if (server->active_client_fd == client_fd) {
-    server->active_client_fd = -1;
-  }
-  pthread_mutex_unlock(&server->mutex);
 }
 
 static void destroy_server(HttpServer *server) {
@@ -168,85 +160,16 @@ static void record_server_thread(HttpServer *server) {
   pthread_mutex_unlock(&server->mutex);
 }
 
-static void handle_accepted_client(HttpServer *server, int client_fd) {
-  if (!http_configure_client_socket(client_fd)) {
-    close(client_fd);
-    return;
-  }
-  if (claim_client(server, client_fd)) {
-    process_client(client_fd, server);
-    release_client(server, client_fd);
-  }
-  close(client_fd);
-}
-
-static bool valid_listener_socket(int socket_fd) {
-#ifdef _WIN32
-  return socket_fd >= 0;
-#else
-  return socket_fd >= 0 && socket_fd < FD_SETSIZE;
-#endif
-}
-
-static int select_listener(int socket_fd, fd_set *read_set,
-                           struct timeval *timeout) {
-#ifdef _WIN32
-  (void)socket_fd;
-  return select(0, read_set, NULL, NULL, timeout);
-#else
-  return select(socket_fd + 1, read_set, NULL, NULL, timeout);
-#endif
-}
-
-static ListenerStatus listener_status(HttpServer *server) {
-  int socket_fd = server_socket(server);
-  if (!valid_listener_socket(socket_fd)) {
-    return LISTENER_FAILED;
-  }
-  fd_set read_set;
-  FD_ZERO(&read_set);
-  FD_SET(socket_fd, &read_set);
-  struct timeval timeout = {0, HTTP_ACCEPT_POLL_MS * 1000U};
-  int ready = select_listener(socket_fd, &read_set, &timeout);
-  if (ready > 0) {
-    return LISTENER_READY;
-  }
-  return ready == 0 || http_socket_interrupted() ? LISTENER_IDLE
-                                                 : LISTENER_FAILED;
-}
-
-static bool accept_ready_client(HttpServer *server) {
-  struct sockaddr_in address;
-  socklen_t length = sizeof(address);
-  int client_fd =
-      accept(server_socket(server), (struct sockaddr *)&address, &length);
-  if (client_fd >= 0) {
-    handle_accepted_client(server, client_fd);
-    return true;
-  }
-  return http_socket_interrupted() || !server_is_listening(server);
-}
-
 static int64_t server_loop_fiber(void *environment) {
   HttpServer *server = environment;
   record_server_thread(server);
-  while (server_is_listening(server)) {
-    ListenerStatus status = listener_status(server);
-    if (status == LISTENER_FAILED ||
-        (status == LISTENER_READY && !accept_ready_client(server))) {
-      break;
-    }
-  }
+  http_pool_run(server);
   finish_server_loop(server);
   return 0;
 }
 
-static bool valid_server_id(int64_t server_id) {
-  return server_id > 0 && server_id < MAX_SERVERS;
-}
-
 static HttpServer *unregister_server(int64_t server_id) {
-  if (!valid_server_id(server_id)) {
+  if (!http_valid_server_id(server_id)) {
     return NULL;
   }
   pthread_mutex_lock(&runtime_mutex);
@@ -270,7 +193,6 @@ static HttpServer *allocate_server(int64_t id, int port, const char *address) {
   server->id = id;
   server->port = port;
   server->socket_fd = -1;
-  server->active_client_fd = -1;
   server->server_fiber_id = -1;
   return server;
 }
@@ -280,7 +202,7 @@ int64_t http_create_server(int64_t port, char *address) {
     return !address ? -2 : -1;
   }
   int64_t id = get_next_id();
-  if (!valid_server_id(id)) {
+  if (!http_valid_server_id(id)) {
     return -3;
   }
   HttpServer *server = allocate_server(id, (int)port, address);
@@ -394,7 +316,7 @@ static int listen_registered_server(HttpServer *server,
 }
 
 int64_t http_listen(int64_t server_id, HttpRequestHandler handler) {
-  if (!valid_server_id(server_id)) {
+  if (!http_valid_server_id(server_id)) {
     return -1;
   }
   pthread_mutex_lock(&runtime_mutex);
@@ -418,7 +340,7 @@ static int listen_with_closure(HttpServer *server, void *closure) {
 // Closure-aware bridge for Osprey function values. Raw C callbacks keep the
 // existing bridge, including their compile-time specialised ABI.
 int64_t http_listen_closure(int64_t server_id, void *closure) {
-  if (!valid_server_id(server_id) || !closure) return -1;
+  if (!http_valid_server_id(server_id) || !closure) return -1;
   pthread_mutex_lock(&runtime_mutex);
   HttpServer *server = servers[server_id];
   if (!server || !server_can_listen(server)) {
@@ -431,23 +353,20 @@ int64_t http_listen_closure(int64_t server_id, void *closure) {
 }
 
 static bool stop_is_from_server(HttpServer *server) {
-  return server->thread_known &&
-         pthread_equal(server->server_thread, pthread_self()) != 0;
+  return (server->thread_known &&
+          pthread_equal(server->server_thread, pthread_self()) != 0) ||
+         http_pool_owns_thread(server);
 }
 
-// Shutting down the listener wakes the accept loop. The active client socket
-// is torn down only when the stop comes from ANOTHER thread: a stop issued by
-// the handler itself is still holding that socket open to write its own
-// response, and tearing it down there discards the reply the caller is
-// waiting for. The loop exits after the exchange completes either way
-// [HTTP-SERVER].
-static void shutdown_server_sockets(HttpServer *server, bool self_stop) {
+// Shutting down the listener wakes the poller. Every connection a worker is
+// serving is torn down too, except the stopping handler's own: it is still
+// holding that socket open to write its own response, and tearing it down
+// there discards the reply the caller is waiting for [HTTP-SERVER].
+static void shutdown_server_sockets(HttpServer *server) {
   if (server->socket_fd >= 0) {
     (void)shutdown(server->socket_fd, HTTP_SHUTDOWN_BOTH);
   }
-  if (!self_stop && server->active_client_fd >= 0) {
-    (void)shutdown(server->active_client_fd, HTTP_SHUTDOWN_BOTH);
-  }
+  http_pool_shutdown_clients(server);
 }
 
 static void close_server_listener(HttpServer *server) {
@@ -466,7 +385,7 @@ static int64_t request_server_stop(HttpServer *server, bool *self_stop) {
   *self_stop = stop_is_from_server(server);
   server->destroy_on_exit = *self_stop;
   int64_t fiber_id = server->server_fiber_id;
-  shutdown_server_sockets(server, *self_stop);
+  shutdown_server_sockets(server);
   pthread_mutex_unlock(&server->mutex);
   return fiber_id;
 }
@@ -474,7 +393,7 @@ static int64_t request_server_stop(HttpServer *server, bool *self_stop) {
 int64_t http_stop_server(int64_t server_id) {
   HttpServer *server = unregister_server(server_id);
   if (!server) {
-    return valid_server_id(server_id) ? 0 : -1;
+    return http_valid_server_id(server_id) ? 0 : -1;
   }
   bool self_stop = false;
   int64_t fiber_id = request_server_stop(server, &self_stop);

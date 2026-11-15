@@ -68,6 +68,15 @@
       ]
     },
     {
+      "title": "TypeScript",
+      "items": [
+        {
+          "text": "TypeScript flavor",
+          "url": "/docs/typescript/flavor/"
+        }
+      ]
+    },
+    {
       "title": "Tutorials",
       "items": [
         {

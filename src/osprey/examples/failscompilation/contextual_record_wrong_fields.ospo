@@ -1,0 +1,10 @@
+// [TYPE-RECORD-CONTEXT] A literal takes its declared record type only when its
+// fields are exactly the record's. A missing or extra field leaves it
+// anonymous, so the checker reports the mismatch instead of building a
+// record with a field the type does not have, or without one it needs.
+type Point = { x: int, y: int }
+fn sum(p: Point) = satAdd(p.x, p.y)
+
+let missing: Point = { x: 1 }
+let extra: Point = { x: 1, y: 2, z: 3 }
+print(sum({ x: 1, y: 2, label: "no" }))

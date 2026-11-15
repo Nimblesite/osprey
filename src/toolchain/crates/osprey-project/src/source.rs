@@ -3,13 +3,13 @@
 use crate::{ProjectConfig, ProjectError};
 use std::path::{Path, PathBuf};
 
-/// Discover Osprey sources and explicitly selected Python-flavor files.
+/// Discover Osprey sources and explicitly selected Python- and TypeScript-flavor files.
 pub(crate) fn discover(root: &Path, config: &ProjectConfig) -> Result<Vec<PathBuf>, ProjectError> {
     let mut paths = Vec::new();
     for source_root in &config.source_roots {
         DISCOVERY.visit(&root.join(source_root), &mut paths, &ProjectError::io)?;
     }
-    paths.extend(python_sources(root, config)?);
+    paths.extend(opt_in_sources(root, config)?);
     validate_flavor(config, &paths)?;
     paths.sort();
     paths.dedup();
@@ -59,15 +59,18 @@ const DISCOVERY: Rules<'_> = Rules {
     skip: &hidden,
 };
 
+/// An Osprey source, or a `.lean` math source ([MATH-CODE-SOURCES]).
 fn is_source(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension == "osp" || extension == "ospml")
+    crate::math::is_math(path)
+        || path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension == "osp" || extension == "ospml")
 }
 
 pub(crate) fn contains(root: &Path, config: &ProjectConfig, path: &Path) -> bool {
     let path = normalize(path);
-    (is_source(&path) || python_selected(root, config, &path)) && inside_roots(root, config, &path)
+    (is_source(&path) || opt_in_selected(root, config, &path)) && inside_roots(root, config, &path)
 }
 
 fn inside_roots(root: &Path, config: &ProjectConfig, path: &Path) -> bool {
@@ -82,90 +85,135 @@ fn inside_roots(root: &Path, config: &ProjectConfig, path: &Path) -> bool {
     })
 }
 
-fn python_selected(root: &Path, config: &ProjectConfig, path: &Path) -> bool {
-    is_python(path)
-        && config
-            .python_sources
-            .iter()
-            .chain(config.entry.iter().filter(|entry| is_python(entry)))
-            .any(|selected| normalize(&root.join(selected)) == path)
+/// A flavor whose extension is too common to sweep up: only the files a
+/// manifest lists are its sources. Implements [FLAVOR-PYTHON-SELECT],
+/// [FLAVOR-TS-SELECT].
+struct OptIn {
+    label: &'static str,
+    extension: &'static str,
+    flavor: osprey_syntax::Flavor,
+    listed: fn(&ProjectConfig) -> &[PathBuf],
+}
+
+const OPT_IN: [OptIn; 2] = [
+    OptIn {
+        label: "Python",
+        extension: "py",
+        flavor: osprey_syntax::Flavor::Python,
+        listed: |config| &config.python_sources,
+    },
+    OptIn {
+        label: "TypeScript",
+        extension: "ts",
+        flavor: osprey_syntax::Flavor::TypeScript,
+        listed: |config| &config.typescript_sources,
+    },
+];
+
+fn opt_in_selected(root: &Path, config: &ProjectConfig, path: &Path) -> bool {
+    OPT_IN.iter().any(|flavor| {
+        flavor.is(path)
+            && flavor
+                .selections(config)
+                .any(|selected| normalize(&root.join(selected)) == path)
+    })
 }
 
 fn validate_flavor(config: &ProjectConfig, paths: &[PathBuf]) -> Result<(), ProjectError> {
-    if config.flavor == Some(osprey_syntax::Flavor::Python) {
+    for flavor in OPT_IN
+        .iter()
+        .filter(|flavor| config.flavor == Some(flavor.flavor))
+    {
         if let Some(path) = paths.iter().find(|path| is_source(path)) {
             return Err(selection_error(
                 path,
-                "Python project flavor conflicts with mixed-flavor source; select flavors per file",
+                &format!(
+                    "{} project flavor conflicts with mixed-flavor source; select flavors per file",
+                    flavor.label
+                ),
             ));
         }
     }
     Ok(())
 }
 
-fn is_python(path: &Path) -> bool {
-    path.extension().is_some_and(|extension| extension == "py")
-}
-
-fn python_sources(root: &Path, config: &ProjectConfig) -> Result<Vec<PathBuf>, ProjectError> {
+fn opt_in_sources(root: &Path, config: &ProjectConfig) -> Result<Vec<PathBuf>, ProjectError> {
     let mut paths = std::collections::BTreeSet::new();
-    for source in &config.python_sources {
-        let path = validate_python(root, config, source)?;
-        if !paths.insert(path.clone()) {
-            return Err(selection_error(&path, "duplicate Python source"));
+    for flavor in &OPT_IN {
+        for source in (flavor.listed)(config) {
+            let path = flavor.validate(root, config, source)?;
+            if !paths.insert(path.clone()) {
+                let message = format!("duplicate {} source", flavor.label);
+                return Err(selection_error(&path, &message));
+            }
         }
-    }
-    if let Some(entry) = config.entry.as_deref().filter(|path| is_python(path)) {
-        let _ = paths.insert(validate_python(root, config, entry)?);
+        if let Some(entry) = config.entry.as_deref().filter(|path| flavor.is(path)) {
+            let _ = paths.insert(flavor.validate(root, config, entry)?);
+        }
     }
     Ok(paths.into_iter().collect())
 }
 
-fn validate_python(
-    root: &Path,
-    config: &ProjectConfig,
-    source: &Path,
-) -> Result<PathBuf, ProjectError> {
-    let path = selected_python_path(root, config, source)?;
-    let canonical = path
-        .canonicalize()
-        .map_err(|error| ProjectError::io(&path, &error))?;
-    if !path.is_file() || !canonical_in_roots(root, config, &canonical) {
-        return Err(selection_error(
-            &path,
-            "Python source resolves outside its source root or is not a file",
-        ));
+impl OptIn {
+    /// Whether `path` has this flavor's extension; a `.d.ts` declaration file
+    /// is never a source.
+    fn is(&self, path: &Path) -> bool {
+        path.extension()
+            .is_some_and(|extension| extension == self.extension)
+            && !path.to_string_lossy().ends_with(".d.ts")
     }
-    Ok(canonical)
-}
 
-fn selected_python_path(
-    root: &Path,
-    config: &ProjectConfig,
-    source: &Path,
-) -> Result<PathBuf, ProjectError> {
-    let path = normalize(&root.join(source));
-    if source.is_absolute() || !is_python(&path) || !inside_roots(root, config, &path) {
-        return Err(selection_error(
-            &path,
-            "Python source must be a manifest-relative .py file inside a declared source root",
-        ));
+    /// The manifest's listed files plus an entry of this flavor.
+    fn selections<'a>(&'a self, config: &'a ProjectConfig) -> impl Iterator<Item = &'a Path> {
+        (self.listed)(config)
+            .iter()
+            .map(PathBuf::as_path)
+            .chain(config.entry.as_deref().filter(|entry| self.is(entry)))
     }
-    selected_flavor(config, &path)?;
-    Ok(path)
-}
 
-fn selected_flavor(config: &ProjectConfig, path: &Path) -> Result<(), ProjectError> {
-    if config
-        .flavor
-        .is_some_and(|flavor| flavor != osprey_syntax::Flavor::Python)
-    {
-        return Err(selection_error(
-            path,
-            "project flavor conflicts with selected Python source",
-        ));
+    fn validate(
+        &self,
+        root: &Path,
+        config: &ProjectConfig,
+        source: &Path,
+    ) -> Result<PathBuf, ProjectError> {
+        let path = self.selected_path(root, config, source)?;
+        let canonical = path
+            .canonicalize()
+            .map_err(|error| ProjectError::io(&path, &error))?;
+        if !path.is_file() || !canonical_in_roots(root, config, &canonical) {
+            let message = format!(
+                "{} source resolves outside its source root or is not a file",
+                self.label
+            );
+            return Err(selection_error(&path, &message));
+        }
+        Ok(canonical)
     }
-    Ok(())
+
+    fn selected_path(
+        &self,
+        root: &Path,
+        config: &ProjectConfig,
+        source: &Path,
+    ) -> Result<PathBuf, ProjectError> {
+        let path = normalize(&root.join(source));
+        if source.is_absolute() || !self.is(&path) || !inside_roots(root, config, &path) {
+            let message = format!(
+                "{} source must be a manifest-relative .{} file inside a declared source root",
+                self.label, self.extension
+            );
+            return Err(selection_error(&path, &message));
+        }
+        if config.flavor.is_some_and(|flavor| flavor != self.flavor) {
+            let message = format!(
+                "project flavor conflicts with selected {} source",
+                self.label
+            );
+            return Err(selection_error(&path, &message));
+        }
+        Ok(path)
+    }
 }
 
 fn canonical_in_roots(root: &Path, config: &ProjectConfig, path: &Path) -> bool {
@@ -346,6 +394,86 @@ mod tests {
         let mut config = ProjectConfig::for_root(&root);
         config.python_sources = vec![root.join("src/model.py")];
         assert!(discover(&root, &config).is_err());
+        std::fs::remove_dir_all(root)
+    }
+
+    /// [FLAVOR-TS-SELECT]: `.ts` is a common extension, so only listed files
+    /// and an explicit `.ts` entry are sources; a declaration file never is.
+    #[test]
+    fn typescript_sources_are_opt_in_and_never_declaration_files() -> std::io::Result<()> {
+        let root = std::env::temp_dir().join(format!("osprey_ts_sources_{}", std::process::id()));
+        std::fs::create_dir_all(root.join("src"))?;
+        for path in [
+            "src/main.ts",
+            "src/routes.ts",
+            "src/webpack.config.ts",
+            "src/lib.d.ts",
+            "src/model.py",
+            "src/normal.osp",
+            "outside.ts",
+        ] {
+            std::fs::write(root.join(path), "deliberately invalid source")?;
+        }
+        let mut config = ProjectConfig::for_root(&root);
+        config.typescript_sources = vec!["src/routes.ts".into()];
+        config.python_sources = vec!["src/model.py".into()];
+        config.entry = Some("src/main.ts".into());
+        let found = discover(&root, &config).map(|paths| {
+            let mut names: Vec<_> = paths
+                .iter()
+                .filter_map(|path| path.file_name()?.to_str().map(str::to_owned))
+                .collect();
+            names.sort();
+            names
+        });
+        assert_eq!(
+            found.ok(),
+            Some(vec![
+                "main.ts".to_owned(),
+                "model.py".to_owned(),
+                "normal.osp".to_owned(),
+                "routes.ts".to_owned()
+            ])
+        );
+        for (relative, selected) in [
+            ("src/routes.ts", true),
+            ("src/main.ts", true),
+            ("src/webpack.config.ts", false),
+            ("src/lib.d.ts", false),
+            ("src/../routes.ts", false),
+        ] {
+            let path = root.join(relative);
+            assert_eq!(config.contains_source(&root, &path), selected, "{relative}");
+        }
+        for rejected in [
+            vec!["src/missing.ts"],
+            vec!["src/lib.d.ts"],
+            vec!["src/normal.osp"],
+            vec!["outside.ts"],
+            vec!["src/routes.ts", "src/./routes.ts"],
+        ] {
+            config.typescript_sources = rejected.into_iter().map(PathBuf::from).collect();
+            let listed = &config.typescript_sources;
+            assert!(discover(&root, &config).is_err(), "accepted {listed:?}");
+        }
+        config.typescript_sources = vec!["src/routes.ts".into()];
+        config.flavor = Some(osprey_syntax::Flavor::Python);
+        assert!(
+            discover(&root, &config).is_err(),
+            "a Python override would parse .ts as Python"
+        );
+        config.flavor = Some(osprey_syntax::Flavor::TypeScript);
+        assert!(
+            discover(&root, &config).is_err(),
+            "a TypeScript override would parse .osp as TypeScript"
+        );
+        let manifest =
+            "[project]\nsource_roots = [\"src\"]\ntypescript_sources = [\"src/routes.ts\"]\n";
+        let parsed = ProjectConfig::parse(manifest, &root.join("osprey.toml"));
+        assert_eq!(
+            parsed.ok().map(|config| config.typescript_sources),
+            Some(vec![PathBuf::from("src/routes.ts")])
+        );
         std::fs::remove_dir_all(root)
     }
 

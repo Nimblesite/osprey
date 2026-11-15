@@ -17,11 +17,13 @@
       "Task(*)",
       "mcp__ide__getDiagnostics(*)",
       "mcp__ide__executeCode(*)"
-    ]
+    ],
+    "defaultMode": "bypassPermissions"
   },
   "env": {
     "CLAUDE_CODE_ENABLE_TELEMETRY": "1"
   },
   "remoteControlAtStartup": true,
-  "autoMemoryEnabled": false
+  "autoMemoryEnabled": false,
+  "skipDangerousModePermissionPrompt": true
 }

@@ -114,13 +114,13 @@ pub(crate) fn warnings(
 fn namespace_folders<'a>(
     config: &ProjectConfig,
     contributions: &'a [Contribution],
-    sources: &'a [SourceMetadata],
-) -> BTreeMap<&'a str, BTreeSet<&'a std::path::Path>> {
-    let mut folders: BTreeMap<&str, BTreeSet<&std::path::Path>> = BTreeMap::new();
+    sources: &[SourceMetadata],
+) -> BTreeMap<&'a str, BTreeSet<std::path::PathBuf>> {
+    let mut folders: BTreeMap<&str, BTreeSet<std::path::PathBuf>> = BTreeMap::new();
     for contribution in contributions {
         if let Some(parent) = sources
             .get(contribution.source)
-            .and_then(|source| source.path.parent())
+            .and_then(|source| crate::math::folder(&source.path))
             // Another package's folders are its own layout, not this project's drift.
             .filter(|parent| crate::source::within(&config.directory, parent))
         {

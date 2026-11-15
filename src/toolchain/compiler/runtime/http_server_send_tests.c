@@ -98,6 +98,7 @@ static int mock_close(int socket_fd) {
 #include "http_server_request.c"
 #include "http_server_response.c"
 #include "http_server_runtime.c"
+#include "http_server_pool_stub.h"
 #undef bind
 #undef close
 #undef listen

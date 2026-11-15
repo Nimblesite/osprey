@@ -13,15 +13,40 @@ typedef struct {
   char client_id[HTTP_CLIENT_REQUEST_ID_BYTES];
 } RequestLogLabels;
 
+// The statuses Node.js names, spelled as Node.js spells them, so a reply's
+// status line is the one a Node.js server sends. [HTTP-SERVER]
 static const StatusReason status_reasons[] = {
     {200, "OK"},
     {201, "Created"},
+    {202, "Accepted"},
+    {204, "No Content"},
+    {206, "Partial Content"},
+    {301, "Moved Permanently"},
+    {302, "Found"},
+    {303, "See Other"},
+    {304, "Not Modified"},
+    {307, "Temporary Redirect"},
+    {308, "Permanent Redirect"},
     {400, "Bad Request"},
+    {401, "Unauthorized"},
+    {403, "Forbidden"},
     {404, "Not Found"},
     {405, "Method Not Allowed"},
+    {406, "Not Acceptable"},
     {408, "Request Timeout"},
-    {413, "Content Too Large"},
-    {422, "Unprocessable Content"},
+    {409, "Conflict"},
+    {410, "Gone"},
+    {411, "Length Required"},
+    {412, "Precondition Failed"},
+    {413, "Payload Too Large"},
+    {415, "Unsupported Media Type"},
+    {422, "Unprocessable Entity"},
+    {429, "Too Many Requests"},
+    {500, "Internal Server Error"},
+    {501, "Not Implemented"},
+    {502, "Bad Gateway"},
+    {503, "Service Unavailable"},
+    {504, "Gateway Timeout"},
 };
 
 static const char *const read_status_names[] = {
@@ -64,14 +89,20 @@ static const char *status_reason(int64_t status) {
   return "Error";
 }
 
+// The Connection header Node.js sends for each outcome [HTTP-SERVER-CONNECTIONS].
+static const char *connection_header(bool keep_alive) {
+  return keep_alive ? "Connection: keep-alive\r\nKeep-Alive: timeout=5\r\n"
+                    : "Connection: close\r\n";
+}
+
 bool http_send_response(int client_fd, int64_t status, const char *headers,
-                        const char *body, size_t body_bytes) {
+                        const char *body, size_t body_bytes, bool keep_alive) {
   char wire_headers[MAX_HTTP_BUFFER];
   int header_bytes =
       snprintf(wire_headers, sizeof(wire_headers),
-               "HTTP/1.1 %" PRId64 " %s\r\n%sContent-Length: "
-               "%zu\r\nConnection: close\r\n\r\n",
-               status, status_reason(status), headers, body_bytes);
+               "HTTP/1.1 %" PRId64 " %s\r\n%sContent-Length: %zu\r\n%s\r\n",
+               status, status_reason(status), headers, body_bytes,
+               connection_header(keep_alive));
   if (header_bytes < 0 || (size_t)header_bytes >= sizeof(wire_headers)) {
     return false;
   }

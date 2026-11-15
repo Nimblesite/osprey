@@ -32,6 +32,38 @@
       "review": "Original Osprey port: path handling and directory walking over the listDir runtime builtin; no third-party implementation or data.",
       "source_notices": {}
     },
+    "express": {
+      "license": "MIT",
+      "original_license_sha256": "cdef72f4754d26816cfed73630bd41820966f89ba64659310e2218eb78a8a08c",
+      "upstreams": [
+        {
+          "component": "express",
+          "repository": "https://github.com/expressjs/express",
+          "reference": "5.3.0",
+          "file": "LICENSES/Express-MIT.txt",
+          "sha256": "95a5762890e5c1c9808921cef095661fc482c5e1f0bba31446ac85595df6237c",
+          "source": "https://github.com/expressjs/express/blob/v5.3.0/LICENSE",
+          "git_blob_sha1": "aa927e44e31d486f807634887662efa39256bf84",
+          "applies_to": [
+            "src/express.ts",
+            "src/encode.ts",
+            "src/query.ts",
+            "examples/hello-world/index.ts",
+            "examples/web-service/service.ts",
+            "oracle/upstream/web-service/index.js"
+          ],
+          "basis": "The whole package is a port of Express, so its notice is retained even though the aim is not to copy JavaScript code verbatim; the hello-world example is the Express README example and oracle/upstream/web-service/index.js is Express's own web-service example, both reproduced unchanged, and examples/web-service/service.ts is a port of the latter.",
+          "notice_attribution": [
+            "TJ Holowaychuk",
+            "Roman Shtylman",
+            "Douglas Christopher Wilson"
+          ]
+        }
+      ],
+      "references": [],
+      "review": "Express MIT notice retained. The development oracle runs the separately installed pinned upstream distribution.",
+      "source_notices": {}
+    },
     "faiss": {
       "license": "MIT",
       "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
@@ -172,6 +204,40 @@
         }
       ],
       "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "math": {
+      "license": "MIT AND Apache-2.0",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [
+        {
+          "component": "mathlib4",
+          "repository": "https://github.com/leanprover-community/mathlib4",
+          "reference": "1ccd71f89cbbd82ae7d097723ce1722ca7b01c33",
+          "file": "LICENSES/mathlib4-Apache-2.0.txt",
+          "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+          "source": "https://github.com/leanprover-community/mathlib4/blob/1ccd71f89cbbd82ae7d097723ce1722ca7b01c33/LICENSE",
+          "git_blob_sha1": "8dada3edaf50dbc082c9a125058f25def75e625a",
+          "applies_to": [
+            "src/Real.lean",
+            "src/Quadratic.lean",
+            "src/AffineMap.lean"
+          ],
+          "basis": "Each definition restates the formula of a named Mathlib declaration over Float and quotes that declaration's source line",
+          "notice_attribution": [
+            "Copyright (c) 2019 Zhouhang Zhou",
+            "Copyright (c) 2022 Bolton Bailey",
+            "Copyright (c) 2020 James Arthur",
+            "Copyright (c) 2023 R\u00e9my Degenne",
+            "Copyright (c) 2023 Adomas Baliuka",
+            "Copyright (c) 2025 Ga\u00ebtan Serr\u00e9",
+            "Copyright (c) 2018 Chris Hughes",
+            "Copyright (c) 2020 Joseph Myers"
+          ]
+        }
+      ],
+      "references": [],
+      "review": "Lean sources restate Mathlib definitions over Float with each source line quoted; Apache-2.0 text retained for those three files. Tests and documentation are original.",
       "source_notices": {}
     },
     "micrograd": {

@@ -17,7 +17,7 @@
 .prose-wide-layout .prose > :not(.comparison-table) { max-width: var(--content-width); margin-inline: auto; }
 @media (min-width: 1200px) {
   .prose-wide-layout .comparison-table table { display: table; font-size: clamp(0.8rem, 0.8vw, 0.95rem); }
-  .prose-wide-layout .comparison-table :is(th, td) { padding-inline: clamp(0.35rem, 0.8vw, 1rem); }
+  .prose-wide-layout .comparison-table :is(th, td) { padding-inline: clamp(0.35rem, 0.6vw, 1rem); }
 }
 
 .toc-list { list-style: none; margin: 0 0 var(--space-2); padding: 0 0 0 var(--space-3); }

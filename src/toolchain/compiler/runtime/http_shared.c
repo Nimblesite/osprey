@@ -42,6 +42,52 @@ int64_t get_next_id(void) {
   return id;
 }
 
+// [HTTP-SERVER-KEEPALIVE] How often the exit wait looks at the listeners.
+#define KEEP_ALIVE_POLL_US 20000
+
+// Whether a server that holds the process open is still listening.
+static bool keep_alive_pending(void) {
+  bool pending = false;
+  pthread_mutex_lock(&runtime_mutex);
+  for (int64_t id = 1; id < MAX_SERVERS && !pending; id++) {
+    HttpServer *server = servers[id];
+    if (server) {
+      pthread_mutex_lock(&server->mutex);
+      pending = server->keeps_process_alive && server->is_listening;
+      pthread_mutex_unlock(&server->mutex);
+    }
+  }
+  pthread_mutex_unlock(&runtime_mutex);
+  return pending;
+}
+
+// Runs at exit: returns once no holding server is left listening.
+void http_await_servers(void) {
+  while (keep_alive_pending()) {
+    usleep(KEEP_ALIVE_POLL_US);
+  }
+}
+
+// Marks `server_id` as holding the process open after the program's entry
+// returns, as a Node.js process outlives its top-level code while a server is
+// open. Stopping the server releases the hold. -1 for an unknown server.
+int64_t http_keep_alive(int64_t server_id) {
+  static bool armed = false;
+  if (!http_valid_server_id(server_id)) {
+    return -1;
+  }
+  pthread_mutex_lock(&runtime_mutex);
+  HttpServer *server = servers[server_id];
+  if (server) {
+    pthread_mutex_lock(&server->mutex);
+    server->keeps_process_alive = true;
+    pthread_mutex_unlock(&server->mutex);
+    armed = armed || atexit(http_await_servers) == 0;
+  }
+  pthread_mutex_unlock(&runtime_mutex);
+  return server && armed ? 0 : -1;
+}
+
 // HTTP method to string conversion
 const char *http_method_to_string(HttpMethod method) {
   switch (method) {

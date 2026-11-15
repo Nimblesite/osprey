@@ -40,17 +40,20 @@ typedef struct HttpResponse {
 typedef HttpResponse *(*HttpRequestHandler)(char *method, char *path,
                                             char *headers, char *body);
 
+struct HttpPool;
+
 // HTTP Server structure
 typedef struct {
   int64_t id;
   int port;
   char *address;
   int socket_fd;
-  int active_client_fd;
+  struct HttpPool *pool; // [HTTP-SERVER-CONNECTIONS] the poller's workers, under mutex
   bool is_listening;
   bool loop_scheduled;
   bool thread_known;
   bool destroy_on_exit;
+  bool keeps_process_alive; // [HTTP-SERVER-KEEPALIVE]
   int64_t server_fiber_id;
   pthread_t server_thread;
   pthread_mutex_t mutex;
@@ -108,6 +111,16 @@ int parse_url(const char *url, char **host, int *port, char **path);
 char *base64_encode(const unsigned char *data, size_t input_length);
 char *generate_websocket_key(void);
 int64_t get_next_id(void);
+
+// A handle an HTTP server could be registered under.
+static inline bool http_valid_server_id(int64_t server_id) {
+  return server_id > 0 && server_id < MAX_SERVERS;
+}
+
+// [HTTP-SERVER-KEEPALIVE] `http_keep_alive` makes a server hold the process
+// open; `http_await_servers` is the wait that hold runs at exit.
+int64_t http_keep_alive(int64_t server_id);
+void http_await_servers(void);
 
 // RFC 6455 frames, websocket_frames.c [BUILTIN-WEBSOCKET-FRAMING].
 enum {

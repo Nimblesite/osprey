@@ -1,0 +1,9 @@
+{
+  "name": "osprey-typescript-flavor-check",
+  "private": true,
+  "type": "module",
+  "description": "Optional lint: the pinned tsc confirms TypeScript-flavor sources are also valid TypeScript. The Osprey compiler does not use it. [FLAVOR-TS-LINT]",
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}

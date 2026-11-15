@@ -5,14 +5,15 @@ use osprey_syntax::Flavor;
 
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
---symbols | --signature | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--no-warnings | --warnings-as-errors] [--debug] [--profile] [--flavor default|ml|python] \
+--symbols | --signature | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--no-warnings | --warnings-as-errors] [--debug] [--profile] [--flavor default|ml|python|typescript] \
 [--memory=gc|arc|none] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [--entry-only] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
        osprey build [project] [--quiet] [--no-warnings | --warnings-as-errors] [--debug] [--memory=gc|arc|none] \
 [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
 [--coverage-json <path>] [--memory=gc|arc|none]\n\
-       osprey fmt [--check | --stdout] [--flavor default|ml|python] <path...>\n\
+       osprey fmt [--check | --stdout] [--flavor default|ml|python|typescript] <path...>\n\
+       osprey math <file.lean>\n\
        osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] [--input-bytes <n>] [--out <dir>] [--json] [--no-replay] [--quiet]\n\
        osprey --hover <name>\n\
        osprey --docs [<file-or-project> | --source <file-or-project>] --docs-dir <dir> \
@@ -230,7 +231,7 @@ fn parse_value_option(
         "--flavor" => {
             cli.flavor = Some(parse_flavor(required_value(
                 rest,
-                "--flavor requires a value (default|ml|python)",
+                "--flavor requires a value (default|ml|python|typescript)",
             )?)?);
         }
         flag if flag.starts_with("--") => return parse_named_value(cli, flag, memory_given),

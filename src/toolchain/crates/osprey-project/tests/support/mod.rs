@@ -17,6 +17,7 @@ pub(crate) fn config(entry: &str) -> ProjectConfig {
         name: "app".to_string(),
         source_roots: vec![PathBuf::from("src")],
         python_sources: Vec::new(),
+        typescript_sources: Vec::new(),
         default_namespace: Some("app".to_string()),
         entry: Some(PathBuf::from(entry)),
         flavor: None,
@@ -34,6 +35,7 @@ pub(crate) fn main_name(flavor: Flavor) -> &'static str {
         Flavor::Ml => "main.ospml",
         Flavor::Default => "main.osp",
         Flavor::Python => "main.py",
+        Flavor::TypeScript => "main.ts",
     }
 }
 

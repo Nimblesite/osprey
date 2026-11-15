@@ -2,6 +2,10 @@
 
 All package infrastructure and libraries live here. [manager/](manager/README.md) contains the package client, registry server, resolver and their tests. The sibling library directories use the same manifests, publishing, installation and coverage rules across Default, ML and Python flavor. Porting a Python project's API does not create a separate kind of package.
 
+## Mathematics is written in Lean
+
+A package's mathematics is a `.lean` file in its `src/`, never hand-written Osprey: [math](math/README.md) is the standard library of well-known formulas, each the one Mathlib states; [synth/src/Waves.lean](synth/src/Waves.lean) and [micrograd/src/Libm.lean](micrograd/src/Libm.lean) hold those packages' mathematics. The toolchain generates the Osprey module on every build into the package's `.osprey/math/`, which is not tracked, and the coverage gate counts that module as the package's own code. `osprey math <file.lean>` prints what a source generates. Contract and the Lean fragment that is read today: [Math to code](../../../docs/specs/tooling/MathToCode.md).
+
 ## Licensing and provenance audit
 
 Reviewed on 25 October 2026. Each package carries the normal MIT grant from **NIMBLESITE PTY LTD, Australia**. The packages reimplement selected APIs and behavior in Osprey; they do not bundle, link or redistribute the corresponding Python packages. An API reference, oracle output or the word “port” does not by itself import an upstream license.
@@ -15,6 +19,7 @@ Each package's `NOTICE.md` acknowledges the original repositories and comparison
 | [faiss](faiss/NOTICE.md) | Meta/Facebook, Faiss 1.15.1 | None identified; MIT Osprey implementation |
 | [flash_attn](flash_attn/NOTICE.md) | Dao-AILab FlashAttention conventions | None identified; MIT Osprey implementation |
 | [jinja2](jinja2/NOTICE.md) | Pallets Jinja 3.1.6 | None identified; MIT Osprey implementation |
+| [math](math/NOTICE.md) | Mathlib definitions at commit `1ccd71f8`, restated over `Float` | The restated definitions in `src/*.lean`, each quoting its Mathlib source line, under Apache-2.0 |
 | [micrograd](micrograd/NOTICE.md) | Andrej Karpathy, micrograd 0.1.0 and nn-zero-to-hero | None identified; MIT Osprey implementation |
 | [native](native/NOTICE.md) | Original Osprey framework | MIT |
 | [synth](synth/NOTICE.md) | Original Osprey synthesis library extracted from Prism | MIT |

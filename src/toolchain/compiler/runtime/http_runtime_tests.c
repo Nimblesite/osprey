@@ -362,6 +362,13 @@ void run_all_http_tests(void) {
   test_server_self_stop_from_handler();
   test_server_handle_bounds();
   test_client_gone_follows_the_served_client();
+  test_keep_alive_waits_for_its_listeners();
+  test_server_serves_a_client_while_another_is_silent();
+  test_server_keeps_alive_as_node_does();
+  test_server_ends_half_closed_and_pipelined_connections();
+  test_server_stop_ends_idle_connections();
+  test_server_serves_concurrent_keep_alive_clients();
+  test_server_names_statuses_as_node_does();
   test_live_loopback_exchange();    // full end-to-end request path
   test_post_response_loopback();    // POST body retained behind a handle
   test_client_tls_peer_verification(); // untrusted/wrong-host certs rejected

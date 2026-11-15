@@ -1,0 +1,7 @@
+[project]
+name = "four-flavors"
+source_roots = ["src"]
+typescript_sources = ["src/main.ts", "src/pricing.ts"]
+python_sources = ["src/tax.py"]
+default_namespace = "shop"
+entry = "src/main.ts"

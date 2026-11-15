@@ -743,6 +743,11 @@ jobs:
       - name: OpenAI proof corpus trust ledger regressions
         run: python3 scripts/proof/test-proof-openai.py
 
+      # [MATH-CODE-ORACLE] The mathematics the packages are generated from is real
+      # Lean, and Lean computes the same bits as the generated Osprey modules.
+      - name: Math sources agree with Lean
+        run: python3 scripts/math/math-oracle.py --compiler target/release/osprey
+
       # One bounded Make graph builds fresh checkers once for both complete
       # corpora and Unicode. The speed gate runs after all checks finish.
       - name: Proof scheduling regressions

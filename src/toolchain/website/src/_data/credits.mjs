@@ -28,6 +28,11 @@ const PACKAGES = {
     authors: "Alex Rogozhnikov and the einops contributors",
     relationship: "port",
   },
+  express: {
+    project: "Express",
+    authors: "TJ Holowaychuk, Roman Shtylman, Douglas Christopher Wilson and the Express contributors",
+    relationship: "port",
+  },
   faiss: {
     project: "Faiss",
     authors: "Meta Platforms, Inc. and the Faiss contributors",
@@ -51,6 +56,12 @@ const PACKAGES = {
   jinja2: {
     project: "Jinja",
     authors: "the Pallets team and the Jinja contributors",
+    relationship: "port",
+  },
+  math: {
+    project: "Mathlib",
+    authors:
+      "Zhouhang Zhou, Bolton Bailey, James Arthur, Rémy Degenne, Adomas Baliuka, Gaëtan Serré, Chris Hughes, Joseph Myers and the Mathlib contributors",
     relationship: "port",
   },
   micrograd: {

@@ -48,6 +48,10 @@
         "threshold": 95,
         "language": "rust"
       },
+      "osprey-math": {
+        "threshold": 99,
+        "language": "rust"
+      },
       "osprey-lsp": {
         "threshold": 98,
         "language": "rust"
@@ -305,6 +309,10 @@
       "media_render_runtime": {
         "threshold": 95,
         "language": "c"
+      },
+      "http_server_pool": {
+        "threshold": 91,
+        "language": "c"
       }
     },
     "editor": {
@@ -410,6 +418,10 @@
         "language": "osprey",
         "threshold": 92.3
       },
+      "math": {
+        "language": "osprey",
+        "threshold": 100.0
+      },
       "json": {
         "language": "osprey",
         "threshold": 100.0
@@ -429,6 +441,10 @@
       "synth": {
         "language": "osprey",
         "threshold": 92.2
+      },
+      "express": {
+        "threshold": 96.0,
+        "language": "osprey"
       }
     },
     "apps": {

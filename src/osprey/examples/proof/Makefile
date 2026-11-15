@@ -8,7 +8,16 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: proof
+.PHONY: proof math
+
+## math: Math to code against Lean (spec MATH-CODE, needs Lean 4.25.0). Every tracked
+##       math source is accepted by the pinned Lean, and Lean computes the same bits
+##       as the Osprey module generated from it, under GC and ARC. Expect one
+##       `PASS control` row, one `PASS <source>` row per math source with its value
+##       count, then `math oracle: <n> sources`.
+math: build
+	python3 scripts/math/math-oracle.py --compiler $(BIN)
+
 
 ## proof: Proof CI locally (plan 0041). Fresh Lean exports must be byte-identical
 ##        (Lean 4.25.0); recorder (18) and corpus/staging (41) regressions pass;

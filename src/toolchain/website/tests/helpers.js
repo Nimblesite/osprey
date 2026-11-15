@@ -30,6 +30,7 @@ const PAGES = [
   { name: "docs-python-flavor", path: "/docs/python/flavor/", kind: "prose" },
   { name: "docs-python-flavor-for-ai", path: "/docs/python/for-ai/", kind: "prose" },
   { name: "docs-python-interop", path: "/docs/python/interop/", kind: "prose" },
+  { name: "docs-typescript-flavor", path: "/docs/typescript/flavor/", kind: "prose" },
   { name: "docs-my-first-app", path: "/docs/my-first-app/", kind: "prose" },
   { name: "docs-mobile-apps", path: "/docs/mobile-apps/", kind: "prose" },
   { name: "docs-web-apps", path: "/docs/web-apps/", kind: "prose" },

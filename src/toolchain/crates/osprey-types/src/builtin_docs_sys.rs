@@ -190,6 +190,12 @@ pub(crate) static HTTP: &[BuiltinDoc] = &[
         [],
         http_example!("toString(httpClientGone())"),
     ),
+    builtin_doc!(
+        "httpKeepAlive",
+        "Makes the server hold the process open after the program's entry returns, until the server stops; answers 0, or an Error for an unknown server.",
+        ["serverID" => "Server identifier from httpCreateServer"],
+        "fn held(server) = {\n    let kept = httpKeepAlive(server) ?: -1\n    let stopped = httpStopServer(server) ?: -1\n    \"kept=${kept}; server stop=${stopped}\"\n}\nprint(match httpCreateServer(18896, \"127.0.0.1\") {\n    Success { value } => held(value)\n    Error { message } => \"server error: ${message}\"\n})",
+    ),
 ];
 
 /// `json` built-in documentation. Prose only — types come from the

@@ -41,6 +41,8 @@ fn http_server(e: &mut TypeEnv) {
         res(i()),
     );
     mono(e, "httpStopServer", vec![i()], res(i()));
+    // [HTTP-SERVER-KEEPALIVE] The process outlives its entry while this listens.
+    mono(e, "httpKeepAlive", vec![i()], res(i()));
     // [HTTP-SERVER-CLIENT-GONE] A long handler asks whether anyone still waits.
     mono(e, "httpClientGone", vec![], i());
 }

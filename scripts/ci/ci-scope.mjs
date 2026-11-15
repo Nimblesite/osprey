@@ -6,7 +6,10 @@ const compilerRoots = /^(src\/toolchain\/crates|src\/toolchain\/compiler|src\/to
 const content = (path) => /^(src\/toolchain\/website|docs\/book|src\/toolchain\/benchmarks)\//.test(path)
   || (path.endsWith('.md') && !compilerRoots.test(path))
 const embeddedGrammar = 'src/toolchain/website/src/js/osprey-grammar.mjs'
+// Under src/osprey/ a .ts file is TypeScript-flavor Osprey ([REPO-ROOT-LAYOUT]);
+// elsewhere it is the toolchain's own TypeScript or a Node.js benchmark.
 const program = (path) => /\.(osp|ospml|ospo|py)$/.test(path) || path.split('/').pop() === 'osprey.toml'
+  || (path.startsWith('src/osprey/') && path.endsWith('.ts') && !path.endsWith('.d.ts'))
 
 export const classify = (files) => {
   if (!Array.isArray(files) || files.some((path) => typeof path !== 'string' || !path)) {

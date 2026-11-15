@@ -20,9 +20,13 @@ import {
   TransportKind,
 } from "vscode-languageclient/node";
 import { registerDebugLaunch } from "./debug-launch";
+import { claimedSources, flavorSelectors } from "./flavor-documents";
 import { registerOspreyDebugPanel } from "./debug-panel";
 import { registerProfilerCommands } from "./profiler/profile-run";
-import { registerProfiler, type OspreyProfiler } from "./profiler/profiler-host";
+import {
+  registerProfiler,
+  type OspreyProfiler,
+} from "./profiler/profiler-host";
 import { registerTestDocsCommand } from "./test-docs-panel";
 import { registerOspreyTestExplorer } from "./test-explorer";
 import { registerTestDebugProfile } from "./test-debug";
@@ -108,10 +112,16 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
   // The package manager asks to start the bundled local registry when the
   // configured loopback registry does not answer ([PACKAGE-LOCAL-REGISTRY]).
   const localRegistry = registerLocalRegistry(context);
-  registerPackageWorkspace(context, (folder) => localRegistry.ensureRunning(folder));
+  registerPackageWorkspace(context, (folder) =>
+    localRegistry.ensureRunning(folder),
+  );
   registerWorkbench(context);
   registerPackageCommands(context);
-  registerModuleExplorer(context, () => resolveServerCommand(context), defaultFrontend(context.extensionPath));
+  registerModuleExplorer(
+    context,
+    () => resolveServerCommand(context),
+    defaultFrontend(context.extensionPath),
+  );
   registerWarningFixes(context, (params) =>
     client.sendRequest(CodeActionRequest.type, params),
   );
@@ -201,6 +211,13 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
       { scheme: "untitled", language: "osprey" },
       { scheme: "file", language: "osprey-ml" },
       { scheme: "untitled", language: "osprey-ml" },
+      // TypeScript- and Python-flavor files a project opts in, by exact path;
+      // the editor's own services keep serving them. [FLAVOR-TS-VERIFICATION]
+      ...flavorSelectors(
+        claimedSources(
+          (workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath),
+        ),
+      ),
     ],
     synchronize: {
       configurationSection: "osprey",
@@ -208,6 +225,7 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
         workspace.createFileSystemWatcher("**/*.osp{,ml}"),
         workspace.createFileSystemWatcher("**/osprey.toml"),
         workspace.createFileSystemWatcher("**/*.py"),
+        workspace.createFileSystemWatcher("**/*.ts"),
       ],
     },
     outputChannelName: "Osprey Language Server",

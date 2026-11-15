@@ -137,10 +137,11 @@ run_worker() {
 # Golden precedence for a program at $1, echoing the chosen path (empty if none):
 #   1. <file>.expectedoutput                     — per-file golden
 #   2. <file>.expectedoutput.<uname>             — OS-specific output
-#   3. <stem>.test.osp.expectedoutput            — ML twin shares the Default golden
+#   3. <stem>.test.osp.expectedoutput            — an ML or TypeScript twin shares the Default golden
 #   4. <stem>.test.osp.expectedoutput.<uname>    — ...and its OS-specific form
-# Rules 3 and 4 are what make a Default/ML pair share ONE file: both flavors are
-# required to run byte-identically, so one golden proves it ([FLAVOR-IR-EQUIV]).
+# Rules 3 and 4 are what make Default, ML and TypeScript twins share ONE file:
+# every flavor is required to run byte-identically, so one golden proves it
+# ([FLAVOR-IR-EQUIV], [FLAVOR-TS-VERIFICATION]).
 golden_for() {
   local file=$1 stem=${1%.*} os
   os=$(uname -s)
@@ -244,7 +245,7 @@ trap 'cleanup_results; exit 130' INT TERM
 
 while IFS= read -r -d $'\0' f; do
   FILES+=("$f")
-done < <(find "$TESTDIR" \( -name '*.test.osp' -o -name '*.test.ospml' \) -print0 | LC_ALL=C sort -z)
+done < <(find "$TESTDIR" \( -name '*.test.osp' -o -name '*.test.ospml' -o -name '*.test.ts' \) -print0 | LC_ALL=C sort -z)
 
 # Programs that contend for an OS resource are run one at a time. Two kinds do:
 #

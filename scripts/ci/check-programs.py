@@ -4,7 +4,9 @@
 Each tracked osprey.toml is a project, lowered to LLVM IR as a consumer and the
 editor see it ([PACKAGE-WORKSPACE]); its --source-graph names its member files.
 Every other tracked .osp, .ospml or Python-flavour .py file is a program lowered
-on its own. Files under a project that fails are covered by its FAIL line.
+on its own, and so is a TypeScript-flavour .ts file: any .ts under src/osprey/
+([REPO-ROOT-LAYOUT]) or a marked one elsewhere. A .d.ts declaration file is never
+a program: it serves only the optional tsc lint ([FLAVOR-TS-SELECT]). Files under a project that fails are covered by its FAIL line.
 Left out, each checked elsewhere: failscompilation/ (must be rejected: the
 book's .expectederror goldens and osprey-cli's examples_compile), and the
 registry data (sample-registry/, e2e/consumer/, fixtures/manifests/), which
@@ -183,6 +185,10 @@ def is_program(path):
         return False
     elif endsWith(path, ".py"):
         return foldList(lines(text(path)), Header(open=True, found=False), scan).found
+    elif endsWith(path, ".d.ts"):
+        return False
+    elif endsWith(path, ".ts"):
+        return startsWith(path, "src/osprey/") or foldList(lines(text(path)), Header(open=True, found=False), scan).found
     else:
         return True
 
@@ -198,7 +204,7 @@ def report(jobs, codes):
 
 
 def main_report():
-    setup = run(f"mkdir -p {WORK} && rm -f {WORK}/* && git ls-files '*/osprey.toml' > {WORK}/manifests.txt && git ls-files '*.osp' '*.ospml' '*.py' > {WORK}/sources.txt && pwd > {WORK}/root.txt")
+    setup = run(f"mkdir -p {WORK} && rm -f {WORK}/* && git ls-files '*/osprey.toml' > {WORK}/manifests.txt && git ls-files '*.osp' '*.ospml' '*.py' '*.ts' > {WORK}/sources.txt && pwd > {WORK}/root.txt")
     return check_all() if setup == 0 else f"setup failed with exit {setup}, 1 failed"
 
 

@@ -53,6 +53,8 @@ pub fn format_source(src: &str, flavor: Flavor) -> Result<String, Vec<String>> {
         Flavor::Default => brace::format(&source),
         Flavor::Ml => layout::format(&source),
         Flavor::Python => python::format(&source),
+        // The file's own TypeScript formatter owns its layout; plan 0061 phase E.
+        Flavor::TypeScript => source.clone(),
     };
     accept(&parsed.program, candidate, flavor)
 }

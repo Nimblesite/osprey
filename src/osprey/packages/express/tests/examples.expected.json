@@ -1,0 +1,1514 @@
+{
+  "spec": "[TS-PORT-EXPRESS-ORACLE]",
+  "description": "Replies of the pinned real Express to tests/corpus.json. Written by oracle/record.mjs; never edited by hand.",
+  "express": "5.3.0",
+  "node": "v24.19.0",
+  "unchanged": {
+    "example": "hello-world",
+    "from": "express@5.3.0 Readme.md",
+    "sha256": "bd0adeddbe442bbe1ecef9d265c0fbca5a1f1b4911e67a7b493ebf338fddd314"
+  },
+  "examples": {
+    "hello-world": [
+      {
+        "request": {
+          "method": "GET",
+          "path": "/"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "11",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Hello World"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/?name=osprey&name=express&empty="
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "11",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Hello World"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/missing"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "146",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /missing</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/missing?query=kept-out-of-the-page"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "146",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /missing</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/<script>alert(1)</script>"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "172",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /%3Cscript%3Ealert(1)%3C/script%3E</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/a&b\"c'd"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "156",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /a&amp;b%22c&#39;d</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "140",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot POST /</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "PUT",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "139",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot PUT /</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "142",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot DELETE /</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "PATCH",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "141",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot PATCH /</pre>\n</body>\n</html>\n"
+        }
+      }
+    ],
+    "routes": [
+      {
+        "request": {
+          "method": "GET",
+          "path": "/"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "36",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Osprey serves these routes natively."
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/health"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "2",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "ok"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/HEALTH/"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "2",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "ok"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/tasks"
+        },
+        "reply": {
+          "status": 201,
+          "reason": "Created",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "12",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Task created"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/tasks/"
+        },
+        "reply": {
+          "status": 201,
+          "reason": "Created",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "12",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Task created"
+        }
+      },
+      {
+        "request": {
+          "method": "PUT",
+          "path": "/tasks/current"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "13",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Task replaced"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/tasks/current"
+        },
+        "reply": {
+          "status": 410,
+          "reason": "Gone",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "12",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Task removed"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/tasks/current?force=true"
+        },
+        "reply": {
+          "status": 410,
+          "reason": "Gone",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "12",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Task removed"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "144",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /tasks</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/current"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "10",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Task found"
+        }
+      },
+      {
+        "request": {
+          "method": "PUT",
+          "path": "/tasks"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "144",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot PUT /tasks</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "PATCH",
+          "path": "/tasks/current"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "154",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot PATCH /tasks/current</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/tasks/other"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "153",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot DELETE /tasks/other</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "140",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot POST /</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/current/extra"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "158",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /tasks/current/extra</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "//"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "36",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Osprey serves these routes natively."
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/7"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "10",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Task found"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "145",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /tasks/</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/TASKS/7/"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "10",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Task found"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/7/extra"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "152",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /tasks/7/extra</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/%41%zz"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "147",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /%41%25zz</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/50%25off"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "147",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /50%25off</pre>\n</body>\n</html>\n"
+        }
+      }
+    ],
+    "web-service": [
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?api-key=foo"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "49",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"tobi\"},{\"name\":\"loki\"},{\"name\":\"jane\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/repos?api-key=bar"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "193",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"express\",\"url\":\"https://github.com/expressjs/express\"},{\"name\":\"stylus\",\"url\":\"https://github.com/learnboost/stylus\"},{\"name\":\"cluster\",\"url\":\"https://github.com/learnboost/cluster\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users/?api-key=baz"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "49",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"tobi\"},{\"name\":\"loki\"},{\"name\":\"jane\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/user/tobi/repos?api-key=foo"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "128",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"express\",\"url\":\"https://github.com/expressjs/express\"},{\"name\":\"stylus\",\"url\":\"https://github.com/learnboost/stylus\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/user/loki/repos?api-key=foo"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "64",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"stylus\",\"url\":\"https://github.com/learnboost/stylus\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/user/jane/repos/?api-key=baz"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "66",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"cluster\",\"url\":\"https://github.com/learnboost/cluster\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/user/nobody/repos?api-key=foo"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"api key required\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?api-key="
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"api key required\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?api-key"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"api key required\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?api-key=nope"
+        },
+        "reply": {
+          "status": 401,
+          "reason": "Unauthorized",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "27",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"invalid api key\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?other=foo"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"api key required\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?x=1&api-key=b%61r&y=2"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "49",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"tobi\"},{\"name\":\"loki\"},{\"name\":\"jane\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/users?api-key=fo+o"
+        },
+        "reply": {
+          "status": 401,
+          "reason": "Unauthorized",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "27",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"invalid api key\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/API/Users?api-key=foo"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "49",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"name\":\"tobi\"},{\"name\":\"loki\"},{\"name\":\"jane\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api?api-key=foo"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/missing?api-key=foo"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/missing"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"api key required\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/other"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/apix/users?api-key=foo"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/api/users?api-key=foo"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/api/user/tobi/repos?api-key=foo"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "34",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"Sorry, can't find that\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "PUT",
+          "path": "/api/users"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"api key required\"}"
+        }
+      }
+    ],
+    "json-api": [
+      {
+        "request": {
+          "method": "GET",
+          "path": "/notes"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "[{\"id\":1,\"text\":\"buy milk\"}]"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"text\":\"call mum\"}"
+        },
+        "reply": {
+          "status": 201,
+          "reason": "Created",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":2,\"text\":\"call mum\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"text\":\"call mum\",\"extra\":[1,2,{\"x\":null}]}"
+        },
+        "reply": {
+          "status": 201,
+          "reason": "Created",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":2,\"text\":\"call mum\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "  {\"text\": \"spaced\"}  "
+        },
+        "reply": {
+          "status": 201,
+          "reason": "Created",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "24",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":2,\"text\":\"spaced\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"text\":\"\"}"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"text\":5}"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"note\":\"wrong field\"}"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "[1,2]"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"text\":"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"malformed JSON\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "not json"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"malformed JSON\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "5"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"malformed JSON\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "null"
+        },
+        "reply": {
+          "status": 400,
+          "reason": "Bad Request",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"malformed JSON\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/json; charset=utf-8"
+          },
+          "body": "{\"text\":\"typed\"}"
+        },
+        "reply": {
+          "status": 201,
+          "reason": "Created",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "23",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":2,\"text\":\"typed\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "text/plain"
+          },
+          "body": "{\"text\":\"plain\"}"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "body": "{\"text\":\"none\"}"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/notes",
+          "headers": {
+            "Content-Type": "application/octet-stream"
+          },
+          "body": "\u0000\u0001binary"
+        },
+        "reply": {
+          "status": 422,
+          "reason": "Unprocessable Entity",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "43",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"text must be a non-empty string\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"tasks\":[\"write\",\"test\"]}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"tasks\":[\"write\",\"test\"]}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/7"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":\"7\",\"agent\":\"unknown\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/7",
+          "headers": {
+            "X-Agent": "curl/8"
+          }
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "27",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":\"7\",\"agent\":\"curl/8\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/7",
+          "headers": {
+            "x-agent": "lower case"
+          }
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "31",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":\"7\",\"agent\":\"lower case\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/TASKS/9/"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "OK",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "28",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"id\":\"9\",\"agent\":\"unknown\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/tasks/7/extra"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "21",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"not found\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/tasks"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "21",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"not found\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/notes"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "21",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"not found\"}"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/missing"
+        },
+        "reply": {
+          "status": 404,
+          "reason": "Not Found",
+          "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "21",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "{\"error\":\"not found\"}"
+        }
+      }
+    ]
+  }
+}

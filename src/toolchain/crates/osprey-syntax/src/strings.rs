@@ -13,6 +13,7 @@ pub(crate) const fn fragment_binding(flavor: Flavor) -> &'static str {
     match flavor {
         Flavor::Default => "let __frag__ = ",
         Flavor::Ml | Flavor::Python => "__frag__ = ",
+        Flavor::TypeScript => "const __frag__ = ",
     }
 }
 
@@ -68,7 +69,9 @@ fn line_start(text: &str, line: usize) -> Option<usize> {
 
 fn column_byte(text: &str, column: usize, flavor: Flavor) -> Option<usize> {
     match flavor {
-        Flavor::Default | Flavor::Python => text.is_char_boundary(column).then_some(column),
+        Flavor::Default | Flavor::Python | Flavor::TypeScript => {
+            text.is_char_boundary(column).then_some(column)
+        }
         Flavor::Ml => text
             .char_indices()
             .map(|(offset, _)| offset)
@@ -81,7 +84,7 @@ fn advance_position(base: Position, text: &str, flavor: Flavor) -> Position {
     let lines = text.bytes().filter(|byte| *byte == b'\n').count();
     let tail = text.rsplit('\n').next().unwrap_or_default();
     let width = match flavor {
-        Flavor::Default | Flavor::Python => tail.len(),
+        Flavor::Default | Flavor::Python | Flavor::TypeScript => tail.len(),
         Flavor::Ml => tail.chars().count(),
     };
     Position {

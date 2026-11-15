@@ -282,7 +282,7 @@ function runOspreyCompiler(args, code = '', flavor = 'default') {
         const tempBaseDir = '/tmp/osprey-temp'
         const tempRequestDir = path.join(tempBaseDir, requestId)
         // Implements [FLAVOR-SELECT]: use the requested syntax frontend.
-        const extensions = { ml: 'ospml', ospml: 'ospml', python: 'py', py: 'py' }
+        const extensions = { ml: 'ospml', ospml: 'ospml', python: 'py', py: 'py', typescript: 'ts', ts: 'ts' }
         const extension = extensions[flavor] || 'osp'
         const tempFile = path.join(tempRequestDir, `main.${extension}`)
 

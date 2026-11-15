@@ -26,6 +26,7 @@ from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from package_coverage_entry import collect_entry, receipt_paths
+import package_math_modules
 from package_process import interrupts, run as run_bounded
 from package_coverage_evidence import (
     evidence_path, evidence_problems, golden_problems,
@@ -33,7 +34,7 @@ from package_coverage_evidence import (
 )
 from package_coverage_projects import (
     GATED_KINDS, MIN_THRESHOLD, PACKAGES_DIR, PROJECT_KEYS, gate_entries, kind_map_problems, kind_noun, project_dirs,
-    minimum, project_label, unfinished_problem, report_name, required_source_files, own_source_relative,
+    minimum, project_label, unfinished_problem, report_name, required_source_files, own_source_file, own_source_relative,
 )
 
 EXIT_OK = 0
@@ -153,7 +154,7 @@ def validated_hits(lines: dict, line_count: int, key: str) -> tuple[dict, list[s
 
 
 def validate_own_file(root: Path, kind: str, name: str, key: str, rel: tuple[str, ...], body: object) -> tuple[dict | None, list[str]]:
-    local = root / kind / name / "src" / Path(*rel)
+    local = own_source_file(root, kind, name, rel)
     if not local.is_file():
         return None, [f"missing executable source file: {key}"]
     lines = body.get("lines") if isinstance(body, dict) else None
@@ -486,7 +487,11 @@ def main(argv: list[str] | None = None) -> int:
     projects = selected_projects(configured, args.package, args.project)
     if projects is None:
         return fail(unknown_selection(args))
+    if not args.collect:
+        package_math_modules.restore(root, reports)
     results = evaluate(root, reports, compiler, configured, projects, args.collect, args.memory)
+    if args.collect:
+        package_math_modules.keep(root, reports)
     for result in results:
         print_result(result)
     return finish(results, reports, "collect" if args.collect else "check", thresholds_path,

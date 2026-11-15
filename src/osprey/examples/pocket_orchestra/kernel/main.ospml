@@ -2,7 +2,7 @@
 namespace orchestra
 
 import orchestra::Sessions
-import synth::Oscillators
+import synth::Waves
 import synth::Performance
 
 effect Keep
@@ -21,7 +21,7 @@ accepted result = match result
         0
     Rejected _ => 1
 
-sine (phase : float) = Oscillators::sine phase
+sine phase = Waves::sine phase
 
 admit peer = hosted (\() => accepted (Sessions::join (live, peer)))
 
@@ -61,7 +61,7 @@ settings (peer, sequence, instrument, tone, echo, reverb, warp) = hosted (\() =>
         Rejected _ => 1
         Accepted selected => accepted (Sessions::configure (live, peer, sequence, selected, Sound(tone = tone, echo = echo, reverb = reverb, warp = warp))))
 
-wave (instrument, phase, step, tone : float, warp : float) = Performance::wave (instrument, phase, step, tone, warp)
+wave (instrument, phase, step, tone, warp) = Performance::wave (instrument, phase, step, tone, warp)
 
 // The small example uses a pentatonic ribbon. Musical mapping stays in Osprey.
 scaleStep degree = match degree < 1.0

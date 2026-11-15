@@ -1,0 +1,112 @@
+WEBVTT
+
+00:00.500 --> 00:14.198
+This is Express, the web framework from Node.js, running on Osprey with no Node.js at all. We'll start with the measurement: the same Express application, served by Osprey and by real Express, under the same load.
+
+00:14.948 --> 00:31.159
+This is the comparison bench from the Express package. It takes three example applications and serves each one three ways: compiled by Osprey with the garbage collector, compiled by Osprey with reference counting, and run by real Express on Node.js.
+
+00:31.359 --> 00:46.868
+Each server gets the same requests over loopback, sixteen in flight at once: a thousand to warm up, then ten thousand that are timed. That is repeated for five trials, and the servers take turns, so a busy moment on the machine hits each of them alike.
+
+00:47.068 --> 00:52.770
+Every timed reply is checked against what Express answered, so a fast wrong answer does not count.
+
+00:52.970 --> 01:13.039
+And here is the table. Read the reference counting rows against the Node rows. Requests per second are within three percent of each other on every example, and neither side leads on all three. The last column is peak memory: three megabytes for Osprey with reference counting, and between a hundred and thirty and a hundred and fifty for Node.
+
+01:13.239 --> 01:28.113
+The garbage collected build is the slowest of the three, and on the web service example it uses the most memory. So this is not a claim that Osprey beats Express on speed. It is one machine, three small examples, and the numbers as they came out.
+
+02:14.815 --> 02:20.917
+Here's what is being measured. The first example is the application from the Express README, unchanged.
+
+02:21.117 --> 02:24.250
+Osprey compiles it ahead of time to a native binary.
+
+02:24.450 --> 02:28.614
+There is no Node.js in that binary, and no JavaScript engine.
+
+02:28.814 --> 02:33.155
+And every reply is compared with what real Express sends for the same file.
+
+02:33.905 --> 02:37.812
+This is the file. It imports express and creates an application.
+
+02:38.012 --> 02:43.025
+It registers one route. A GET request for the root path is answered with Hello World.
+
+02:43.225 --> 02:47.648
+Then it listens on port three thousand, and logs a line once the server is up.
+
+02:47.848 --> 03:03.215
+Now run it with Osprey. The compiler reads the TypeScript, checks the types, and warns that the request parameter is never used. Then it builds a native program and starts it. The line from the callback prints, and the process stays up, as it would under Node.
+
+03:13.205 --> 03:23.651
+In the second terminal, request the root path. The reply carries the status, the X-Powered-By header, the content type Express chooses for a string, and the body: Hello World.
+
+03:23.851 --> 03:39.805
+Now ask for a path that no route matches. Express has a final handler for that, and the port has it too. The server's log on the left records a four oh four, and the reply carries the security headers and the same small page, which says it cannot GET that path.
+
+03:51.405 --> 04:01.093
+How does the port work? It is written in the same TypeScript flavor. Calling express returns an application, which is a list of routes and a list of error handlers.
+
+04:01.293 --> 04:08.548
+Get takes the application, a path and a handler, and returns a new application with one more route. Nothing is mutated.
+
+04:08.748 --> 04:12.920
+With route appends a record of the method, the path and the handler to the list.
+
+04:13.670 --> 04:22.368
+The response is a record too. It holds the status, the body, the content type and the headers, and a signal that tells the dispatcher what to do with it.
+
+04:22.568 --> 04:33.155
+Status, set, send and json each return a new response with one thing changed. That is how a handler written as statements, or as a chain, builds the same reply.
+
+04:33.905 --> 04:37.856
+Listen starts the native HTTP listener with the application.
+
+04:38.056 --> 04:41.898
+If it started, the callback runs and the caller gets a listening server.
+
+04:42.098 --> 04:51.881
+If the port could not be bound, that is a value as well: the error is printed and returned. Osprey has no exceptions, so the failure cannot be skipped by accident.
+
+04:52.631 --> 05:08.923
+The third example is Express's own web service example, ported. This middleware is mounted on slash A P I. It reads the A P I key from the query string. With no key, it fails the request with a four hundred, and an error handler turns that into JSON.
+
+05:09.123 --> 05:16.294
+Run it, and ask for the users with a valid key. The middleware passes the request on, and the route answers with JSON.
+
+05:16.494 --> 05:29.129
+Ask again without a key. The reply is four hundred, Bad Request, with the error as JSON. In the tests, every one of these replies is compared with the original example running on real Express.
+
+05:51.831 --> 05:58.929
+Back to the bench for a moment, because the numbers only mean something with the method. Sixteen requests are in flight at a time.
+
+05:59.129 --> 06:02.628
+A thousand warm up each server, and ten thousand are timed.
+
+06:02.828 --> 06:09.202
+And each server runs five trials. The bench is one file in the package, so you can run it on your own machine.
+
+06:09.952 --> 06:15.687
+Now change it. In the README example, select the word World, and type Osprey. Save the file.
+
+06:15.887 --> 06:23.823
+Run it again. Osprey compiles the edited file and serves it. Request the root path, and the reply is the new text: Hello Osprey.
+
+06:38.919 --> 06:43.310
+Some limits. The port is in progress, and this film shows only what exists.
+
+06:43.510 --> 06:46.891
+There is no Router yet, and no JSON request bodies.
+
+06:47.091 --> 06:52.310
+Handlers do not yet run in parallel across cores, which is the next thing to fix for throughput.
+
+06:52.510 --> 06:56.266
+And under the garbage collector, the port is slower than Express today.
+
+06:57.016 --> 07:05.259
+To try it, serve the README example, request it with curl, and run the comparison bench yourself. The port's source is one file. Read it.

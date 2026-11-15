@@ -1,0 +1,13 @@
+[project]
+name = "math"
+source_roots = ["src"]
+default_namespace = "math"
+
+[package]
+name = "@osprey/math"
+license = "MIT AND Apache-2.0"
+summary = "Well-known formulas as functions, written in Lean after Mathlib's own definitions"
+keywords = ["formulas", "lean", "mathematics", "mathlib"]
+
+[modules]
+allow_wildcard_imports = false

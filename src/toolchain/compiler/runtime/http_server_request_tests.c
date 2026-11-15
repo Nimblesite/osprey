@@ -33,10 +33,11 @@ static void test_split_body_reaches_handler(void) {
   reset_receive(chunks, sizeof(chunks) / sizeof(chunks[0]));
   memset(captured_body, 0, sizeof(captured_body));
   reset_server_fixture(NULL);
-  server.socket_fd = 7;
   server.is_listening = true;
   server.handler = capture_handler;
-  assert(server_loop_fiber(&server) == 0);
+  // HTTP/1.1 with no Connection header: the connection is kept for the next
+  // request once the reply is sent [HTTP-SERVER-CONNECTIONS].
+  assert(http_serve_connection(&server, 42));
   assert(strcmp(captured_body, body) == 0);
   assert(receive_index == 2);
   pthread_mutex_destroy(&server.mutex);
@@ -297,6 +298,28 @@ static void test_header_values_tolerate_surrounding_space(void) {
   free(request.data);
 }
 
+// [HTTP-SERVER-CONNECTIONS] The verdict on the connection after this request:
+// HTTP/1.1 keeps it unless a `Connection` token says close, HTTP/1.0 closes it
+// unless one says keep-alive, and bytes sent past the request always close it.
+static void assert_keeps(const char *text, bool keeps) {
+  HttpRequestBuffer request = read_one(text, REQUEST_COMPLETE, text);
+  assert(request.keep_alive == keeps);
+  free(request.data);
+}
+
+static void test_connection_header_decides_keep_alive(void) {
+  assert_keeps("GET / HTTP/1.1\r\nHost: x\r\n\r\n", true);
+  assert_keeps("GET / HTTP/1.1\r\nConnection: close\r\n\r\n", false);
+  assert_keeps("GET / HTTP/1.1\r\nconnection:  Keep-Alive , CLOSE\r\n\r\n", false);
+  assert_keeps("GET / HTTP/1.1\r\nConnection: upgrade, closed\r\n\r\n", true);
+  assert_keeps("GET / HTTP/1.0\r\n\r\n", false);
+  assert_keeps("GET / HTTP/1.0\r\nConnection: x, keep-alive\r\n\r\n", true);
+  assert_keeps("GET / HTTP/1.0\r\nConnection: keep-alive, close\r\n\r\n", false);
+  assert_keeps("GET /a HTTP/1.1\r\n\r\nGET /b HTTP/1.1\r\n\r\n", false);
+  assert_keeps("POST / HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}", true);
+  assert_keeps("POST / HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}G", false);
+}
+
 // A client request id longer than the field is TRUNCATED, never written past
 // the end of it. The truncation is the interesting half: the field is a fixed
 // array inside the request buffer, and a memcpy sized by the header would
@@ -435,6 +458,7 @@ static void run_hardening_tests(void) {
   test_log_token_sanitizing_covers_its_boundaries();
   test_malformed_header_names_are_rejected();
   test_header_values_tolerate_surrounding_space();
+  test_connection_header_decides_keep_alive();
   test_over_long_client_request_id_is_truncated();
   test_oversized_headers_and_body_are_rejected();
   test_unreadable_descriptor_and_timeout_are_distinguished();

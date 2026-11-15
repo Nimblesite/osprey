@@ -10,6 +10,8 @@ typedef struct {
   size_t content_length;
   bool content_length_found;
   bool transfer_encoding_found;
+  bool connection_close;
+  bool connection_keep_alive;
 } FramingHeaders;
 
 static pthread_mutex_t request_sequence_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -127,6 +129,22 @@ static void record_client_request_id(const char *value, const char *end,
                      sizeof(request->client_request_id));
 }
 
+// The `close` and `keep-alive` tokens of a Connection header, in any case and
+// among any others [HTTP-SERVER-CONNECTIONS].
+static void record_connection(const char *value, const char *end,
+                              FramingHeaders *framing) {
+  while (value < end) {
+    const char *comma = memchr(value, ',', (size_t)(end - value));
+    const char *stop = comma ? comma : end;
+    const char *start = skip_optional_space(value, stop);
+    size_t length = (size_t)(trim_optional_space(start, stop) - start);
+    framing->connection_close |= header_name_is(start, length, "close");
+    framing->connection_keep_alive |=
+        header_name_is(start, length, "keep-alive");
+    value = comma ? comma + 1 : end;
+  }
+}
+
 static RequestReadStatus
 inspect_header_value(const char *line, const char *colon, const char *line_end,
                      HttpRequestBuffer *request, FramingHeaders *framing) {
@@ -135,6 +153,8 @@ inspect_header_value(const char *line, const char *colon, const char *line_end,
     framing->transfer_encoding_found = true;
   } else if (header_name_is(line, name_length, "Content-Length")) {
     return record_content_length(colon + 1, line_end, framing);
+  } else if (header_name_is(line, name_length, "Connection")) {
+    record_connection(colon + 1, line_end, framing);
   } else if (header_name_is(line, name_length, "X-Osprey-Request-Id")) {
     record_client_request_id(colon + 1, line_end, request);
   }
@@ -189,6 +209,15 @@ static RequestReadStatus parse_headers(HttpRequestBuffer *request) {
     return status;
   }
   request->expected_body_bytes = framing.content_length;
+  // As Node.js does: HTTP/1.1 keeps the connection unless the client says
+  // close; HTTP/1.0 closes unless it says keep-alive [HTTP-SERVER-CONNECTIONS].
+  static const char http11[] = " HTTP/1.1";
+  size_t version_bytes = sizeof(http11) - 1U;
+  bool is_http11 =
+      (size_t)(request_line_end - request->data) >= version_bytes &&
+      memcmp(request_line_end - version_bytes, http11, version_bytes) == 0;
+  request->keep_alive =
+      !framing.connection_close && (is_http11 || framing.connection_keep_alive);
   return framing.transfer_encoding_found ? REQUEST_UNSUPPORTED_FRAMING
                                          : REQUEST_COMPLETE;
 }
@@ -311,6 +340,11 @@ static RequestReadStatus finish_request(HttpRequestBuffer *request,
     return REQUEST_MALFORMED;
   }
   char *headers_end = request->data + request->header_bytes - 4U;
+  // Bytes past this request are a pipelined next one, which is not served:
+  // the reply then closes the connection, and the client sends it again.
+  if (request->received_bytes > target_bytes) {
+    request->keep_alive = false;
+  }
   request->data[target_bytes] = '\0';
   *headers_end = '\0';
   request->headers = line_end + 2 < headers_end ? line_end + 2 : headers_end;

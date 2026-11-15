@@ -19,6 +19,7 @@
 // ---------------------------------------------------------------------------
 
 #define SERVER_TEST_PORT 18089
+#define KEEP_ALIVE_TEST_PORT 18094
 
 static int64_t g_self_stop_server = -1;
 
@@ -384,4 +385,33 @@ void test_client_gone_follows_the_served_client(void) {
   assert(setrlimit(RLIMIT_NOFILE, &saved) == 0);
 #endif
   assert(close(pair[0]) == 0);
+}
+
+static HttpResponse *keep_alive_handler(char *method, char *path, char *headers,
+                                        char *body) {
+  (void)method, (void)path, (void)headers, (void)body;
+  return NULL;
+}
+
+static void *stop_after_a_moment(void *server) {
+  usleep(60000);
+  assert(http_stop_server((int64_t)(intptr_t)server) == 0);
+  return NULL;
+}
+
+// [HTTP-SERVER-KEEPALIVE] Only a server that asked to hold the process open
+// does, and exactly until it stops listening.
+void test_keep_alive_waits_for_its_listeners(void) {
+  assert(http_keep_alive(0) == -1 && http_keep_alive(MAX_SERVERS) == -1);
+  assert(http_keep_alive(MAX_SERVERS - 1) == -1 && "no server has that handle");
+  int64_t quiet = http_create_server(KEEP_ALIVE_TEST_PORT, "127.0.0.1");
+  assert(quiet > 0 && http_listen(quiet, keep_alive_handler) == 0);
+  http_await_servers(); // a listener that never asked holds nothing open
+  assert(http_keep_alive(quiet) == 0 && http_keep_alive(quiet) == 0);
+  pthread_t stopper;
+  void *handle = (void *)(intptr_t)quiet;
+  assert(pthread_create(&stopper, NULL, stop_after_a_moment, handle) == 0);
+  http_await_servers(); // returns only because the stopper stopped it
+  assert(pthread_join(stopper, NULL) == 0);
+  assert(http_keep_alive(quiet) == -1 && "a stopped server holds nothing");
 }

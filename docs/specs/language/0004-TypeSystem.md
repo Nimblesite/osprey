@@ -581,6 +581,24 @@ empty map, not the empty record.
 
 ML writes the same nonempty anonymous row with `=` separators: `origin = { x = 0, y = 0 }`. Nested fields and captures retain the actual record layout through projection; an unnamed inferred row must not erase the concrete layout identity needed for a later field access. Both-flavor `record_update_basic` assertions pin this behavior.
 
+### Contextual record literals — [TYPE-RECORD-CONTEXT]
+
+An anonymous record literal takes the declared record type of the context it is written in, in every flavor:
+
+```osprey
+type Point = { x: int, y: int }
+fn sum(p: Point) = p.x + p.y
+fn origin() -> Point = { x: 0, y: 0 }
+
+let annotated: Point = { x: 1, y: 2 }
+let total = sum({ x: 10, y: 20 })
+let many: List<Point> = [{ x: 5, y: 6 }, { y: 9, x: 7 }]
+```
+
+The contexts are declared types, never inferred ones: an annotated binding, a function's declared return type (through blocks and match arms in tail position), a declared parameter of the function a call names, a declared field of a record being constructed, and the elements of a list whose element type is a record. In each, a literal whose fields are exactly the record's is rewritten into that record's constructor before checking and code generation, so both see the record's declared layout and field order. A literal with a missing or extra field stays anonymous and the checker reports the mismatch (`src/osprey/examples/failscompilation/contextual_record_wrong_fields.ospo`). A name shared by two functions is not read as a call context. Regression: `src/osprey/tests/regressions/basics/types/contextual_records.test.osp` and its TypeScript twin.
+
+Not implemented yet: an anonymous record bound with no declared type, such as `origin` above, is rejected where a `Point` is expected, although [TYPE-RECORD-ANON] promises it is accepted.
+
 ### Result fields — [TYPE-RECORD-RESULT]
 
 A record or union payload field of type `Result<T, E>` stores the complete `Success` or `Error` value. Named, anonymous and generic records obey the same rule. Construction and immutable updates may promote a bare `T` to `Success(T)`; they MUST preserve an existing failure and its message. A field read, constructor or structural pattern, function argument, closure capture, shared cell or permitted conversion to `any` ([TYPE-ANY](#the-any-type--type-any)) MUST retain the concrete success payload type and the discriminant. Updating another field preserves the stored Result and the source record.

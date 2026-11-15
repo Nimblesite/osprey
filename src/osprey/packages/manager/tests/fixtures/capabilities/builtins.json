@@ -13,6 +13,7 @@
     {"builtin": "httpCloseClient", "capability": "io/network"},
     {"builtin": "httpDelete", "capability": "io/network"},
     {"builtin": "httpGet", "capability": "io/network"},
+    {"builtin": "httpKeepAlive", "capability": "io/network"},
     {"builtin": "httpListen", "capability": "io/network"},
     {"builtin": "httpPost", "capability": "io/network"},
     {"builtin": "httpPostResponse", "capability": "io/network"},

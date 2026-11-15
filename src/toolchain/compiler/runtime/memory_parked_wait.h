@@ -17,7 +17,7 @@
 #endif
 
 // pthread_cond_wait, or pthread_cond_timedwait when `deadline` is set.
-static int osp_parked_wait(pthread_cond_t *cond, pthread_mutex_t *lock, const struct timespec *deadline) {
+static inline int osp_parked_wait(pthread_cond_t *cond, pthread_mutex_t *lock, const struct timespec *deadline) {
   jmp_buf registers;
   OSP_SPILL_REGISTERS(registers);
   osp_mem_baton_park(&registers);

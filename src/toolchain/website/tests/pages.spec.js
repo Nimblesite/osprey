@@ -191,7 +191,7 @@ for (const width of [1280, 1440, 1920]) {
     await expect(cpu.locator("td.col-osprey").first()).toHaveAttribute("title", /mean .*median .*standard deviation .*measured \d{4}-\d{2}-\d{2}/);
     const runs = tables.nth(3);
     await expect(runs.locator("thead")).toContainText("Toolchains");
-    await expect(runs.locator("tbody tr")).toHaveCount(5);
+    await expect(runs.locator("tbody tr")).toHaveCount(6);
     await expect(runs).toContainText("Apple M4 Max");
     const overflow = await tables.evaluateAll((elements) => elements.map((element) => Math.max(0, element.scrollWidth - element.clientWidth)));
     expect(overflow, "every benchmark column must fit without horizontal scrolling").toEqual([0, 0, 0, 0]);

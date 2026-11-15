@@ -19,7 +19,7 @@ pub(crate) fn discover(path: &Path) -> Vec<PathBuf> {
 
 pub(crate) fn is_test_file(path: &Path) -> bool {
     matches_file_name(path, |name| {
-        name.ends_with(".test.osp") || name.ends_with(".test.ospml")
+        name.ends_with(".test.osp") || name.ends_with(".test.ospml") || name.ends_with(".test.ts")
     })
 }
 
@@ -63,12 +63,16 @@ mod tests {
 
     #[test]
     fn test_paths_are_classified() {
-        // [TESTING-FILE-CONVENTION] both flavor suffixes are exact.
+        // [TESTING-FILE-CONVENTION] every flavor suffix is exact; a `.test.ts`
+        // file is a TypeScript-flavor suite ([FLAVOR-TS-VERIFICATION]).
         let file_rule: fn(&Path) -> bool = is_test_file;
         let skip_rule: fn(&Path) -> bool = skipped_dir_entry;
         let cases = [
             (file_rule, "money.test.osp", true),
             (file_rule, "json.test.ospml", true),
+            (file_rule, "api.test.ts", true),
+            (file_rule, "api.ts", false),
+            (file_rule, "api.spec.ts", false),
             (file_rule, "money.osp", false),
             (file_rule, "notes.txt", false),
             (skip_rule, "proj/.git", true),
