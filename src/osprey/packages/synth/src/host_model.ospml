@@ -21,8 +21,8 @@ type HostBlock =
     samples : List<float>
 
 type HostLayout =
-    inputs : int
-    outputs : int
+    inputChannels : int
+    outputChannels : int
     acceptsNotes : bool
 
 type HostControl =
@@ -34,7 +34,7 @@ type HostControl =
 type HostDescriptor =
     identifier : string
     name : string
-    inputs : int
-    outputs : int
+    inputChannels : int
+    outputChannels : int
     notes : bool
     controls : List<HostControl>

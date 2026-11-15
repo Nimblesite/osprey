@@ -8,9 +8,9 @@ module Hosted
     parameter control = Parameter(key = "vst:${control.identity}", label = control.name, unit = Normalised, minimum = 0.0, maximum = 1.0, initial = control.initial, automatable = control.automatable)
 
     inputs descriptor =
-        audioPorts = match descriptor.inputs == 0
+        audioPorts = match descriptor.inputChannels == 0
             true => []
-            false => [audio descriptor.inputs]
+            false => [audio descriptor.inputChannels]
         match descriptor.notes
             false => audioPorts
             true => listAppend audioPorts (Port(name = "MIDI", rate = Events, channels = 1, unit = Notes))
@@ -20,8 +20,8 @@ module Hosted
         Valid _ => Valid(value = n)
 
     (** Reject malformed metadata before publishing any ports or parameters to clients. *)
-    export component (identity, descriptor) = match descriptor.inputs >= 0 && descriptor.inputs <= 64 && descriptor.outputs >= 1 && descriptor.outputs <= 64 && descriptor.identifier != "" && length descriptor.controls <= 1024
+    export component (identity, descriptor) = match descriptor.inputChannels >= 0 && descriptor.inputChannels <= 64 && descriptor.outputChannels >= 1 && descriptor.outputChannels <= 64 && descriptor.identifier != "" && length descriptor.controls <= 1024
         false => Invalid(fault = InvalidNode)
         true => match length (filterList (descriptor.controls, \c => c.identity < 0 || c.identity > 4294967295 || c.name == "")) > 0
             true => Invalid(fault = InvalidParameter)
-            false => checked (Node(identity = identity, processor = External(identifier = descriptor.identifier), inputs = inputs descriptor, outputs = [audio descriptor.outputs], parameters = mapList (descriptor.controls, parameter)))
+            false => checked (Node(identity = identity, processor = External(identifier = descriptor.identifier), inputs = inputs descriptor, outputs = [audio descriptor.outputChannels], parameters = mapList (descriptor.controls, parameter)))

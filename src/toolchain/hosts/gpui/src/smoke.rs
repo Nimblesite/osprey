@@ -319,7 +319,8 @@ fn answer_one(shown: &mut Shown, now: i64, ask: &Ask) -> Result<(), String> {
 /// Builds the generic smoke answer for one supported capability.
 fn completion(ask: &Ask) -> Result<Touch, String> {
     let outcome = match ask.kind() {
-        "animate" | "store-write" | "run" => Ok(String::new()),
+        "animate" | "store-write" => Ok(String::new()),
+        "run" => Ok(r#"{"status":0,"stderr":""}"#.to_owned()),
         "store-read" => Err(store::missing_read(ask)?),
         kind => {
             return Err(format!(

@@ -32,6 +32,6 @@ module Preview
     (** Host failures remain visible instead of silently leaving the app in a playing state. *)
     export completed (editor, ticket, outcome) = match ticket == "prism-preview"
         false => Runtime::step editor
-        true => match outcome
+        true => match ProcessResults::checked outcome
             Error why => Runtime::step (editor(message = "Playback failed: ${why}"))
             Success _ => Runtime::step (editor(message = "Preview finished."))

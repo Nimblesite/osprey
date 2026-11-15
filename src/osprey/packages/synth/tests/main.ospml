@@ -467,7 +467,7 @@ hostNode outcome = match outcome
 // [SYNTH-HOST-DESCRIPTOR] Real worker layouts become checked graph ports and normalized controls.
 test ("external descriptors preserve channel types, MIDI ports and independent parameter identities", \() => arithmetic (\() =>
     control = synth::HostControl(identity = 100, name = "Delay", initial = 1.0, automatable = true)
-    descriptor = synth::HostDescriptor(identifier = "0CDBB66985D548A9BFD8371909D24BB3", name = "ADelay", inputs = 2, outputs = 2, notes = false, controls = [control])
+    descriptor = synth::HostDescriptor(identifier = "0CDBB66985D548A9BFD8371909D24BB3", name = "ADelay", inputChannels = 2, outputChannels = 2, notes = false, controls = [control])
     first = hostNode (synth::Hosted::component (10, descriptor))
     second = hostNode (synth::Hosted::component (11, descriptor))
     expect (length first.inputs, 1)
@@ -477,11 +477,11 @@ test ("external descriptors preserve channel types, MIDI ports and independent p
     linked = accepted (Graphs::rewire (graph, synth::Components::route (10, 0, 11, 0)))
     expect (length linked.cables, 1)
     expect (length (synth::Parameters::initial linked).parameters, 2)
-    instrument = hostNode (synth::Hosted::component (12, descriptor(inputs = 0, notes = true)))
+    instrument = hostNode (synth::Hosted::component (12, descriptor(inputChannels = 0, notes = true)))
     expect (length instrument.inputs, 1)
     expect ((listGet instrument.inputs 0 ?: synth::Port(name = "missing", rate = synth::Audio, channels = 0, unit = synth::Amplitude)).rate == synth::Events, true)
-    refused (synth::Hosted::component (13, descriptor(outputs = 0)), synth::InvalidNode)
-    refused (synth::Hosted::component (13, descriptor(inputs = 65)), synth::InvalidNode)
+    refused (synth::Hosted::component (13, descriptor(outputChannels = 0)), synth::InvalidNode)
+    refused (synth::Hosted::component (13, descriptor(inputChannels = 65)), synth::InvalidNode)
     refused (synth::Hosted::component (13, descriptor(controls = [control, control])), synth::DuplicateParameter)
     refused (synth::Hosted::component (13, descriptor(controls = [control(initial = floatFromBits 9221120237041090560)])), synth::InvalidParameter)
     refused (synth::Hosted::component (13, descriptor(identifier = "")), synth::InvalidNode)))
