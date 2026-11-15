@@ -69,17 +69,5 @@ module Voice
     (** The largest distance of any sample from silence. *)
     export peak values = foldList (values, 0, \(most, v) => choose (abs (v - 128) > most, abs (v - 128), most))
 
-    digit d = substring "0123456789ABCDEF" d (satAdd d 1) ?: "0"
-
-    byte b = "${digit (bitAnd (shiftRight b 4) 15)}${digit (bitAnd b 15)}"
-
-    le16 n = "${byte (bitAnd n 255)}${byte (bitAnd (shiftRight n 8) 255)}"
-
-    le32 n = "${le16 (bitAnd n 65535)}${le16 (bitAnd (shiftRight n 16) 65535)}"
-
-    // "RIFF", "WAVE", "fmt ", "data" in ASCII hex.
-    header count = "52494646${le32 (satAdd count 36)}57415645666D7420${le32 16}${le16 1}${le16 1}${le32 rate}${le32 rate}${le16 1}${le16 8}64617461${le32 count}"
-
     (** The samples as a mono 8-bit PCM WAV file, in hex. *)
-    export wav values = "${header (length values)}${join (mapList (values, byte)) ""}"
-
+    export wav values = WaveFiles::mono8 (rate, values)

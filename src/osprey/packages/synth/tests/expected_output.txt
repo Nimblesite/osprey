@@ -13,5 +13,6 @@ ok 12 - sample-accurate automation applies before its frame, preserves ordering 
 ok 13 - performance timbres and metallic warp stay bounded across rates and control extremes
 ok 14 - edit routes and remove connected components without corrupting the previous playable graph
 ok 15 - replace a playing graph without resetting phase, lose deleted state and refuse incomplete audio routes
-1..15
-# tests=15 passed=15 failed=0 skipped=0
+ok 16 - float PCM export retains sample precision and rejects invalid rates and samples
+1..16
+# tests=16 passed=16 failed=0 skipped=0

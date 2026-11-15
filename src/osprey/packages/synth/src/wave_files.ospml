@@ -1,0 +1,27 @@
+// [SYNTH-PCM-FLOAT] Pure file encoding, independent of devices, UI and operating systems.
+namespace synth
+
+(** RIFF/WAVE encoding for reference previews and high-resolution rendered audio. *)
+module WaveFiles
+    digit value = substring "0123456789ABCDEF" value (satAdd value 1) ?: "0"
+
+    byte value = "${digit (bitAnd (shiftRight value 4) 15)}${digit (bitAnd value 15)}"
+
+    le16 value = "${byte (bitAnd value 255)}${byte (bitAnd (shiftRight value 8) 255)}"
+
+    le32 value = "${le16 (bitAnd value 65535)}${le16 (bitAnd (shiftRight value 16) 65535)}"
+
+    // The old reference preview shares byte/header primitives with float output.
+    export mono8 (rate, values) = "52494646${le32 (satAdd (length values) 36)}57415645666D7420${le32 16}${le16 1}${le16 1}${le32 rate}${le32 rate}${le16 1}${le16 8}64617461${le32 (length values)}${join (mapList (values, byte)) ""}"
+
+    finite value = value == value && abs value <= 1000000.0
+
+    floatWord value = le32 (toInt (float32Bits (toFloat32 value)))
+
+    // IEEE float WAVEFORMATEX includes cbSize=0 and a fact chunk with sample count.
+    floatHeader (rate, count) = "52494646${le32 (satAdd 50 (satMul count 4))}57415645666D7420${le32 18}${le16 3}${le16 1}${le32 rate}${le32 (satMul rate 4)}${le16 4}${le16 32}${le16 0}66616374${le32 4}${le32 count}64617461${le32 (satMul count 4)}"
+
+    (** Mono IEEE float32 WAV in hex. Reject invalid samples rather than emitting corrupt audio. *)
+    export monoFloat (rate, samples) = match rate >= 8000 && rate <= 384000 && length samples <= 1920000 && length (filterList (samples, finite)) == length samples
+        false => Error(message = "Invalid WAV rate, sample count or non-finite/excessive sample.")
+        true => Success(value = "${floatHeader (rate, length samples)}${join (mapList (samples, floatWord)) ""}")

@@ -445,3 +445,15 @@ test ("replace a playing graph without resetting phase, lose deleted state and r
             expect (length next.observation.parameters, 1)
     renderRefused (Repatch::apply (original, bypassed, now(revision = 9223372036854775807), first))
     renderRefused (Repatch::apply (original, bypassed, now, first(states = [])))))
+
+// [SYNTH-PCM-FLOAT] Independent IEEE754 words and RIFF sizes, not an encoder-derived oracle.
+test ("float PCM export retains sample precision and rejects invalid rates and samples", \() => arithmetic (\() =>
+    match synth::WaveFiles::monoFloat (48000, [0.0, 0.25, -0.5, 1.0])
+        Error _ => expect (false, true)
+        Success hex =>
+            expect (startsWith hex "524946464200000057415645666D7420120000000300010080BB000000EE02000400200000006661637404000000040000006461746110000000", true)
+            expect (endsWith hex "000000000000803E000000BF0000803F", true)
+            expect (length hex, 148)
+    renderRefused (synth::WaveFiles::monoFloat (0, [0.0]))
+    renderRefused (synth::WaveFiles::monoFloat (48000, [floatFromBits 9218868437227405312]))
+    renderRefused (synth::WaveFiles::monoFloat (48000, [floatFromBits 9221120237041090560]))))
