@@ -1,0 +1,32 @@
+{
+  "spec": "[TS-PORT-EXPRESS-ORACLE]",
+  "description": "The requests sent to each example, on real Express when recording and on the Osprey port when testing.",
+  "examples": {
+    "hello-world": [
+      { "method": "GET", "path": "/" },
+      { "method": "GET", "path": "/?name=osprey&name=express&empty=" },
+      { "method": "GET", "path": "/missing" },
+      { "method": "GET", "path": "/missing?query=kept-out-of-the-page" },
+      { "method": "GET", "path": "/<script>alert(1)</script>" },
+      { "method": "GET", "path": "/a&b\"c'd" },
+      { "method": "POST", "path": "/" },
+      { "method": "PUT", "path": "/" },
+      { "method": "DELETE", "path": "/" },
+      { "method": "PATCH", "path": "/" }
+    ],
+    "basic-routing": [
+      { "method": "GET", "path": "/" },
+      { "method": "POST", "path": "/" },
+      { "method": "PUT", "path": "/user" },
+      { "method": "DELETE", "path": "/user" },
+      { "method": "GET", "path": "/user" },
+      { "method": "POST", "path": "/user" },
+      { "method": "PUT", "path": "/" },
+      { "method": "DELETE", "path": "/" },
+      { "method": "PUT", "path": "/user/" },
+      { "method": "PUT", "path": "/USER" },
+      { "method": "DELETE", "path": "/user?confirm=yes" },
+      { "method": "PATCH", "path": "/user" }
+    ]
+  }
+}

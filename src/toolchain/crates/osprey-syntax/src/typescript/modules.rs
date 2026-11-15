@@ -41,11 +41,43 @@ impl Lowerer<'_> {
                 Err(error) => self.errors.push(error),
             }
         }
+        self.rename_exports(&mut file);
         let exports = std::mem::take(&mut self.exports);
         let file = header.module_contribution(file, |name| exports.contains(name), None);
         Program {
             statements: header.namespace_contribution(file),
             doc: None,
+        }
+    }
+
+    /// `export { remove as delete };` publishes a function under a name its
+    /// own declaration cannot spell, such as a reserved word a method may have.
+    fn rename_exports(&mut self, file: &mut [Stmt]) {
+        for (local, exported, span) in std::mem::take(&mut self.renamed) {
+            let function = file.iter_mut().find_map(|statement| match statement {
+                Stmt::Function { name, .. } if *name == local => Some(name),
+                _ => None,
+            });
+            match function {
+                Some(name) => {
+                    name.clone_from(&exported);
+                    let _ = self.exports.insert(exported);
+                }
+                None => self.errors.push(self.error(
+                    span,
+                    format!("export `{local}` is not a function declared in this file"),
+                )),
+            }
+        }
+    }
+
+    fn export_name(&self, name: &ModuleExportName<'_>) -> Result<String> {
+        match name {
+            ModuleExportName::IdentifierName(name) => Ok(name.name.as_str().to_owned()),
+            ModuleExportName::IdentifierReference(name) => Ok(name.name.as_str().to_owned()),
+            ModuleExportName::StringLiteral(text) => {
+                self.unsupported(text.span, "string-named import or export")
+            }
         }
     }
 
@@ -97,13 +129,20 @@ impl Lowerer<'_> {
             {
                 self.variables(declaration)?
             }
+            Statement::ExportNamedDeclaration(list) => {
+                for specifier in &list.specifiers {
+                    let local = self.export_name(&specifier.local)?;
+                    let exported = self.export_name(&specifier.exported)?;
+                    self.renamed.push((local, exported, specifier.span));
+                }
+                Vec::new()
+            }
             Statement::ExportDefaultDeclaration(_)
             | Statement::ExportAllDeclaration(_)
-            | Statement::ExportNamedDeclaration(_)
             | Statement::ExportFromDeclaration(_) => {
                 return self.unsupported(
                     statement.span(),
-                    "`export default`, export list or re-export; write `export` on the declaration",
+                    "`export default` or re-export; write `export` on the declaration",
                 );
             }
             _ => return Ok(None),
@@ -198,13 +237,10 @@ impl Lowerer<'_> {
     }
 
     fn import_member(&self, imported: &ModuleExportName<'_>, local: &str) -> Result<ImportMember> {
-        let ModuleExportName::IdentifierName(name) = imported else {
-            return self.unsupported(imported.span(), "string-named import");
-        };
-        let name = name.name.as_str();
+        let name = self.export_name(imported)?;
         Ok(ImportMember {
-            name: name.to_owned(),
             alias: (name != local).then(|| local.to_owned()),
+            name,
         })
     }
 

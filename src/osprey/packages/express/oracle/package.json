@@ -1,0 +1,9 @@
+{
+  "name": "osprey-express-oracle",
+  "private": true,
+  "type": "module",
+  "description": "Runs the pinned real Express so the Osprey port is compared with it. [TS-PORT-EXPRESS-ORACLE]",
+  "dependencies": {
+    "express": "5.3.0"
+  }
+}

@@ -1,0 +1,390 @@
+{
+  "spec": "[TS-PORT-EXPRESS-ORACLE]",
+  "description": "Replies of the pinned real Express to tests/corpus.json. Written by oracle/record.mjs; never edited by hand.",
+  "express": "5.3.0",
+  "node": "v24.19.0",
+  "examples": {
+    "hello-world": [
+      {
+        "request": {
+          "method": "GET",
+          "path": "/"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "12",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Hello World!"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/?name=osprey&name=express&empty="
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "12",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Hello World!"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/missing"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "146",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /missing</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/missing?query=kept-out-of-the-page"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "146",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /missing</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/<script>alert(1)</script>"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "172",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /%3Cscript%3Ealert(1)%3C/script%3E</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/a&b\"c'd"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "156",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /a&amp;b%22c&#39;d</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "140",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot POST /</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "PUT",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "139",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot PUT /</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "142",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot DELETE /</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "PATCH",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "141",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot PATCH /</pre>\n</body>\n</html>\n"
+        }
+      }
+    ],
+    "basic-routing": [
+      {
+        "request": {
+          "method": "GET",
+          "path": "/"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "12",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Hello World!"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "18",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Got a POST request"
+        }
+      },
+      {
+        "request": {
+          "method": "PUT",
+          "path": "/user"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Got a PUT request at /user"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/user"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "29",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Got a DELETE request at /user"
+        }
+      },
+      {
+        "request": {
+          "method": "GET",
+          "path": "/user"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "143",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /user</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "POST",
+          "path": "/user"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "144",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot POST /user</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "PUT",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "139",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot PUT /</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "142",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot DELETE /</pre>\n</body>\n</html>\n"
+        }
+      },
+      {
+        "request": {
+          "method": "PUT",
+          "path": "/user/"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Got a PUT request at /user"
+        }
+      },
+      {
+        "request": {
+          "method": "PUT",
+          "path": "/USER"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "26",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Got a PUT request at /user"
+        }
+      },
+      {
+        "request": {
+          "method": "DELETE",
+          "path": "/user?confirm=yes"
+        },
+        "reply": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "29",
+            "x-powered-by": "Express"
+          },
+          "etag": true,
+          "body": "Got a DELETE request at /user"
+        }
+      },
+      {
+        "request": {
+          "method": "PATCH",
+          "path": "/user"
+        },
+        "reply": {
+          "status": 404,
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "145",
+            "x-powered-by": "Express",
+            "content-security-policy": "default-src 'none'",
+            "x-content-type-options": "nosniff"
+          },
+          "etag": false,
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot PATCH /user</pre>\n</body>\n</html>\n"
+        }
+      }
+    ]
+  }
+}

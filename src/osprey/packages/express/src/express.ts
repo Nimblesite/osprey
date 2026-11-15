@@ -1,7 +1,12 @@
 // osprey: namespace=express
 // osprey: module=Express
 
-/** An incoming request: the matched route's captures plus the raw wire strings. */
+/**
+ * Express for Osprey: the ported surface of Express 5, served by the native
+ * HTTP listener with no Node.js. [TS-PORT-EXPRESS]
+ */
+
+/** An incoming request: the matched route's captures and the raw wire strings. */
 export interface Request {
   readonly method: string;
   readonly url: string;
@@ -28,12 +33,21 @@ interface Route {
   readonly handler: (req: Request, res: Response) => Response;
 }
 
-/** An application: an ordered route table; each registration returns the extended application. */
+/** An application: an ordered route table. Each registration returns the extended application. */
 export interface Application {
   readonly routes: Route[];
 }
 
+/** Whether a route pattern matched a path, and the captures if it did. */
+type Match = { readonly kind: "bound"; readonly params: Map<string, string> } | { readonly kind: "unbound" };
+
 const HTML = "text/html; charset=utf-8";
+const HEX = "0123456789ABCDEF";
+/** The printable ASCII characters from `!` (33) to `~` (126), by code. */
+const PRINTABLE = "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+const FIRST_PRINTABLE = 33;
+/** The headers Express's final handler adds to the page it writes. */
+const FINAL_HEADERS = "Content-Security-Policy: default-src 'none'\r\nX-Content-Type-Options: nosniff\r\n";
 
 /** `express()` creates an application with no routes. [TS-PORT-EXPRESS-SURFACE] */
 export function express(): Application {
@@ -55,11 +69,18 @@ export function put(app: Application, path: string, handler: (req: Request, res:
   return { routes: withRoute(app.routes, "PUT", path, handler) };
 }
 
-function withRoute(routes: Route[], method: string, path: string, handler: (req: Request, res: Response) => Response): Route[] {
+/** `app.delete(path, handler)` routes DELETE requests for `path`. */
+function remove(app: Application, path: string, handler: (req: Request, res: Response) => Response): Application {
+  return { routes: withRoute(app.routes, "DELETE", path, handler) };
+}
+
+export { remove as delete };
+
+function withRoute(routes, method, path, handler) {
   return listConcat(routes, [{ method: method, path: path, handler: handler } satisfies Route]);
 }
 
-function reply(statusCode: int, body: string, contentType: string, headers: string): Response {
+function reply(statusCode, body, contentType, headers) {
   return {
     statusCode: statusCode,
     body: body,
@@ -68,10 +89,14 @@ function reply(statusCode: int, body: string, contentType: string, headers: stri
     status: (code) => reply(code, body, contentType, headers),
     set: (name, value) => reply(statusCode, body, contentType, `${headers}${name}: ${value}\r\n`),
     send: (text) => reply(statusCode, text, contentType === "" ? HTML : contentType, headers),
-  };
+  } satisfies Response;
 }
 
-/** `app.listen(port, callback)` starts the native listener. [TS-PORT-EXPRESS-SERVE] */
+/**
+ * `app.listen(port, callback)` starts the native listener, runs `callback`,
+ * and returns the server handle, or the error that stopped it from listening.
+ * [TS-PORT-EXPRESS-SERVE]
+ */
 export function listen(app: Application, port: int, callback: () => void): Result<int, string> {
   const created = httpCreateServer(port, "127.0.0.1");
   switch (created.kind) {
@@ -82,7 +107,7 @@ export function listen(app: Application, port: int, callback: () => void): Resul
   }
 }
 
-function listening(server: int, routes: Route[], callback: () => void): Result<int, string> {
+function listening(server, routes, callback) {
   const started = httpListen(server, (method, url, headers, body) => wire(dispatch(routes, method, url, headers, body)));
   switch (started.kind) {
     case "success":
@@ -93,7 +118,7 @@ function listening(server: int, routes: Route[], callback: () => void): Result<i
 }
 
 /** As in Node.js, an open server keeps the process alive after the entry returns. */
-function held(server: int, callback: () => void): Result<int, string> {
+function held(server, callback) {
   const kept = httpKeepAlive(server);
   switch (kept.kind) {
     case "success": {
@@ -105,7 +130,17 @@ function held(server: int, callback: () => void): Result<int, string> {
   }
 }
 
-function wire(res: Response): HttpResponse {
+/** The runtime's response record; a failure inside the port is a 500, never a crash. */
+function wire(outcome) {
+  switch (outcome.kind) {
+    case "success":
+      return native(outcome.value);
+    case "error":
+      return native(reply(500, finalPage("Internal Server Error"), HTML, FINAL_HEADERS));
+  }
+}
+
+function native(res) {
   const contentType = res.contentType === "" ? "" : `Content-Type: ${res.contentType}\r\n`;
   return {
     status: res.statusCode,
@@ -114,39 +149,43 @@ function wire(res: Response): HttpResponse {
     streamFd: -1,
     isComplete: true,
     partialBody: res.body,
-  };
+  } satisfies HttpResponse;
 }
 
-function dispatch(routes: Route[], method: string, url: string, headers: string, body: string): Response {
+function dispatch(routes, method, url, headers, body) {
   const path = pathOf(url);
   const base: Request = { method: method, url: url, path: path, params: new Map<string, string>(), headers: headers, body: body };
-  return route(routes, 0, base);
+  return andThen(split(path, "/"), (parts) => route(routes, 0, base, parts));
 }
 
-function route(routes: Route[], index: int, base: Request): Response {
+/** The first route, in registration order, whose method and pattern match. */
+function route(routes, index, base, parts) {
   const candidate = listGet(routes, index);
   switch (candidate.kind) {
     case "success":
-      return attempt(candidate.value, routes, index, base);
+      return attempt(candidate.value, routes, index, base, parts);
     case "error":
       return notFound(base.method, base.path);
   }
 }
 
-function attempt(candidate: Route, routes: Route[], index: int, base: Request): Response {
+function attempt(candidate, routes, index, base, parts) {
   if (candidate.method !== base.method) {
-    return route(routes, satAdd(index, 1), base);
+    return route(routes, satAdd(index, 1), base, parts);
   }
-  const bound = bind(candidate.path, base.path);
-  switch (bound.kind) {
-    case "success":
-      return candidate.handler({ ...base, params: bound.value }, reply(200, "", "", ""));
-    case "error":
-      return route(routes, satAdd(index, 1), base);
+  return andThen(bind(candidate.path, parts), (matched) => served(matched, candidate, routes, index, base, parts));
+}
+
+function served(matched, candidate, routes, index, base, parts) {
+  switch (matched.kind) {
+    case "bound":
+      return Success(candidate.handler({ ...base, params: matched.params }, reply(200, "", "", "")));
+    case "unbound":
+      return route(routes, satAdd(index, 1), base, parts);
   }
 }
 
-function pathOf(url: string): string {
+function pathOf(url) {
   const mark = indexOf(url, "?");
   switch (mark.kind) {
     case "success":
@@ -156,64 +195,119 @@ function pathOf(url: string): string {
   }
 }
 
-function segments(path: string): string[] {
-  const parts = split(path, "/");
-  switch (parts.kind) {
-    case "success":
-      return parts.value;
-    case "error":
-      return [];
-  }
+/** Match a route pattern against a split path, capturing each `:name` segment. */
+function bind(pattern, parts) {
+  return andThen(split(pattern, "/"), (patterns) => bound(patterns, parts));
 }
 
-function at(parts: string[], index: int): string {
-  const part = listGet(parts, index);
-  switch (part.kind) {
-    case "success":
-      return part.value;
-    case "error":
-      return "";
-  }
-}
-
-/** Match a route pattern, capturing each `:name` segment. */
-function bind(pattern: string, path: string): Result<Map<string, string>, string> {
-  const patterns = segments(pattern);
-  const parts = segments(path);
-  return listLength(patterns) === listLength(parts)
+/**
+ * Express routes are not strict: one trailing slash on the request path is
+ * ignored, so `/user/` reaches the route `/user`.
+ */
+function bound(patterns, parts) {
+  const extra = listLength(parts) === satAdd(listLength(patterns), 1);
+  return listLength(patterns) === listLength(parts) || (extra && lastIsEmpty(parts))
     ? bindFrom(patterns, parts, 0, new Map<string, string>())
-    : Error("segment count");
+    : Success({ kind: "unbound" });
 }
 
-function bindFrom(patterns: string[], parts: string[], index: int, params: Map<string, string>): Result<Map<string, string>, string> {
-  if (index === listLength(patterns)) {
-    return Success(params);
-  }
-  const pattern = at(patterns, index);
-  const part = at(parts, index);
-  if (startsWith(pattern, ":")) {
-    return part === "" ? Error("empty capture") : bindFrom(patterns, parts, satAdd(index, 1), mapSet(params, drop(pattern, 1), part));
-  }
-  return pattern === part ? bindFrom(patterns, parts, satAdd(index, 1), params) : Error("literal segment");
-}
-
-function swap(text: string, from: string, to: string): string {
-  const swapped = replace(text, from, to);
-  switch (swapped.kind) {
+function lastIsEmpty(parts) {
+  const last = listGet(parts, satSub(listLength(parts), 1));
+  switch (last.kind) {
     case "success":
-      return swapped.value;
+      return last.value === "";
     case "error":
-      return "";
+      return false;
   }
 }
 
-/** The five replacements of `escape-html`, which Express applies to every reflected path. */
-function escapeHtml(text: string): string {
-  return swap(swap(swap(swap(swap(text, "&", "&amp;"), "<", "&lt;"), ">", "&gt;"), "\"", "&quot;"), "'", "&#39;");
+function bindFrom(patterns, parts, index, params) {
+  if (index === listLength(patterns)) {
+    return Success({ kind: "bound", params: params });
+  }
+  return andThen(listGet(patterns, index), (pattern) =>
+    andThen(listGet(parts, index), (part) => bindSegment(patterns, parts, index, params, pattern, part)),
+  );
+}
+
+/** A `:name` segment captures as written; a literal one matches without regard to case. */
+function bindSegment(patterns, parts, index, params, pattern, part) {
+  if (startsWith(pattern, ":")) {
+    return part === ""
+      ? Success({ kind: "unbound" })
+      : bindFrom(patterns, parts, satAdd(index, 1), mapSet(params, drop(pattern, 1), part));
+  }
+  return toLowerCase(pattern) === toLowerCase(part)
+    ? bindFrom(patterns, parts, satAdd(index, 1), params)
+    : Success({ kind: "unbound" });
 }
 
 /** Express's final handler: `Cannot METHOD /path`, with its security headers. */
-function notFound(method: string, path: string): Response {
-  const page = `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot ${method} ${escapeHtml(path)}</pre>\n</body>\n</html>\n`;
-  return reply(404, page, HTML, "Content-Security-Policy: default-src 'none'\r\nX-Content-Type-Options: nosniff\r\n");
+function notFound(method, path) {
+  return andThen(escapeHtml(encodeUrl(path)), (shown) =>
+    Success(reply(404, finalPage(`Cannot ${method} ${shown}`), HTML, FINAL_HEADERS)),
+  );
+}
+
+function finalPage(message) {
+  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>Error</title>\n</head>\n<body>\n<pre>${message}</pre>\n</body>\n</html>\n`;
+}
+
+/** The five replacements of `escape-html`, applied to every reflected path. */
+function escapeHtml(text) {
+  return andThen(replace(text, "&", "&amp;"), (amp) =>
+    andThen(replace(amp, "<", "&lt;"), (lt) =>
+      andThen(replace(lt, ">", "&gt;"), (gt) =>
+        andThen(replace(gt, "\"", "&quot;"), (quot) => replace(quot, "'", "&#39;")),
+      ),
+    ),
+  );
+}
+
+/** `encodeurl`: percent-encode every byte a URL cannot carry as written. */
+function encodeUrl(text) {
+  return encodeFrom(text, 0, "");
+}
+
+function encodeFrom(text, index, encoded) {
+  const byte = byteOr(text, index);
+  if (byte < 0) {
+    return encoded;
+  }
+  return encodeFrom(text, satAdd(index, 1), `${encoded}${encodedByte(text, index, byte)}`);
+}
+
+/** The byte at `index`, or -1 past the end of `text`. */
+function byteOr(text, index) {
+  const byte = byteAt(text, index);
+  switch (byte.kind) {
+    case "success":
+      return byte.value;
+    case "error":
+      return -1;
+  }
+}
+
+function encodedByte(text, index, byte) {
+  if (byte === 37) {
+    return isHex(byteOr(text, satAdd(index, 1))) && isHex(byteOr(text, satAdd(index, 2))) ? "%" : "%25";
+  }
+  return urlSafe(byte) ? take(drop(PRINTABLE, satSub(byte, FIRST_PRINTABLE)), 1) : percent(byte);
+}
+
+/** Whether `encodeurl` leaves this byte as written. */
+function urlSafe(byte) {
+  return byte === 33 || (byte >= 35 && byte <= 59) || byte === 61 || (byte >= 63 && byte <= 95) || (byte >= 97 && byte <= 122) || byte === 124 || byte === 126;
+}
+
+function isHex(byte) {
+  return (byte >= 48 && byte <= 57) || (byte >= 65 && byte <= 70) || (byte >= 97 && byte <= 102);
+}
+
+function percent(byte) {
+  return `%${hexDigit(shiftRight(byte, 4))}${hexDigit(bitAnd(byte, 15))}`;
+}
+
+function hexDigit(value) {
+  return take(drop(HEX, value), 1);
 }

@@ -30,6 +30,8 @@ pub(super) struct Lowerer<'s> {
     /// call of the alias names.
     pub(super) packages: BTreeMap<String, String>,
     pub(super) exports: BTreeSet<String>,
+    /// `export { local as exported }` pairs, applied once the file is lowered.
+    pub(super) renamed: Vec<(String, String, Span)>,
     /// This file's namespace directive, which a relative import resolves in.
     pub(super) namespace: Option<String>,
     pub(super) narrowed: Vec<Narrowing>,
@@ -74,6 +76,7 @@ impl<'s> Lowerer<'s> {
             errors: Vec::new(),
             packages: BTreeMap::new(),
             exports: BTreeSet::new(),
+            renamed: Vec::new(),
             namespace: None,
             narrowed: Vec::new(),
         }

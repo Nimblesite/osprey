@@ -69,6 +69,21 @@ package-coverage-record:
 fastapi-e2e:
 	cd $(ROOT) && python3 src/osprey/packages/fastapi/tests/e2e.cpython
 
+## express-e2e: Compile the Express examples under GC and ARC, serve them
+##              natively and compare every reply over real HTTP with what the
+##              pinned real Express replied to the same files. Expected result:
+##              "44 replies matched, 0 failed".
+.PHONY: express-e2e
+express-e2e:
+	cd $(ROOT) && node src/osprey/packages/express/tests/e2e.mjs
+
+## express-oracle: Re-record tests/examples.expected.json from the pinned real
+##                 Express on Node.js (development only; CI compares with the
+##                 committed recording).
+.PHONY: express-oracle
+express-oracle:
+	cd $(ROOT)/src/osprey/packages/express/oracle && npm ci --no-audit --no-fund && node record.mjs
+
 .PHONY: registry-test registry-serve registry-serve-sample registry-blockers
 
 ## registry-test: Run the Osprey package-system suites.
