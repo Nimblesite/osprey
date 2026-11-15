@@ -25,3 +25,14 @@ A graph-edit test must add multiple instances, wire chains and fan-out, reject i
 Hosting means loading an existing VST3 binary, not producing a plug-in or rendering a placeholder oscillator. Plug-in discovery and loading never run on the audio callback. Scan failures, unsupported buses and absent binaries remain visible typed errors. Third-party native code is untrusted: process isolation and bounded protocol validation are part of the host design, and arbitrary plug-in safety is not implied by Osprey's guarantees.
 
 Graph-edit verification: the added fourteenth synth journey passes under GC and ARC, including rejected edits, exact route removal, connected-node deletion and PCM comparison showing that bypassing a quarter-gain stage produces four times its output. This proves the pure editing API, not live audio-thread graph replacement or UI integration.
+
+## Integration progress [PRISM-ROUTING-INTEGRATION]
+
+- [x] Reference graph replacement preserves compatible DSP state, parameters and sample position while advancing the applied revision; fifteen synth journeys pass on GC and ARC.
+- [x] Declare editor state and actions in `editor.td` and generate the Osprey model with the upstream converter.
+- [x] Build a native component picker, per-port cable controls and parameter fields alongside a canvas drawn from the same graph Signal.
+- [x] Drive the editor through real host events: create oscillator/gain/output nodes, connect their ports, change frequency, reject invalid text and remove a connected component. All seven Prism journeys pass on GC, including the five existing playback/skin journeys.
+- [ ] Make the modular surface Prism's default, integrate actual graph playback and replace the fixed patch path only after its musical interactions have migrated.
+- [ ] Add pointer-based canvas cable editing and movable node positions, with screenshot and windowed verification.
+
+The current component picker offers the six already rendered reference processors. MIDI generators, modulation processors and VST nodes remain pending and are not advertised as working. The generated editor is tested as an application program but the existing launch entry still opens the original Prism surface until playback integration is ready. The VST compatibility source is the [official SDK](https://github.com/steinbergmedia/vst3sdk), including its hosting samples; the selected revision and actual loaded-binary evidence must be recorded before declaring hosting complete.

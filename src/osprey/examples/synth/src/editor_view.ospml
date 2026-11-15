@@ -1,0 +1,72 @@
+// [PRISM-ROUTING-EDITOR] Native controls and the canvas share the same typed graph snapshot.
+namespace synth
+
+import ui::Ui
+import ui::Keyed
+import ui::Scenes
+
+(** The modular patch's component menu, canvas, ports and parameter inspector. *)
+module EditorView
+    editorSlice () = perform Signal<Editor<Graph>>.read ()
+
+    processorTitle processor = match processor
+        Oscillator => "Oscillator"
+        Filter => "Filter"
+        Amplifier => "Gain"
+        Mixer => "Mixer"
+        Sink => "Output"
+        Delay _ => "Delay"
+        External identifier => identifier
+
+    componentName n = "${processorTitle n.processor} ${n.identity}"
+
+    menu () = Ui::picker ("Add component", mapList (EditorState::kinds, \kind => Ui::choice (kind, EditorState::title kind)), "", Add(kind = ""))
+
+    sourcePort (n, index) = match listGet n.outputs index
+        Error _ => Ui::caption "Output port unavailable"
+        Success port => Ui::button ("Source ${n.identity}: ${port.name}", "", Source(identity = n.identity, outlet = index))
+
+    inputPort (n, index) = match listGet n.inputs index
+        Error _ => Ui::caption "Input port unavailable"
+        Success port => Ui::row [Ui::button ("Connect ${n.identity}: ${port.name}", "", Connect(identity = n.identity, inlet = index)), Ui::button ("Disconnect ${n.identity}: ${port.name}", "", Disconnect(identity = n.identity, inlet = index))]
+
+    parameter (n, p) = Ui::field ("${n.identity}: ${p.label}", "${p.initial}", "${p.minimum} to ${p.maximum}", EditParameter(identity = n.identity, key = p.key))
+
+    ports n = listConcat (mapList (toList (range (0, length n.outputs)), \index => sourcePort (n, index))) (mapList (toList (range (0, length n.inputs)), \index => inputPort (n, index)))
+
+    component n = Ui::section (componentName n, "", listConcat [Ui::button ("Select ${n.identity}", "", Select(identity = n.identity))] (listConcat (ports n) (mapList (n.parameters, \p => parameter (n, p)))))
+
+    indexOf (graph, identity) = ui::Lists::position (graph.nodes, \n => n.identity == identity)
+
+    x index = 100.0 + toFloat (index % 4) * 210.0
+
+    y index = 65.0 + toFloat (index / 4) * 130.0
+
+    shape (editor, n) =
+        index = indexOf (editor.graph, n.identity)
+        fill = match editor.selected == n.identity
+            true => Scenes::rgb (88, 59, 164)
+            false => Scenes::rgb (40, 34, 66)
+        [Scenes::rect (x index, y index, 170.0, 80.0, 12.0, fill, 1), Scenes::glyphs (componentName n, x index - 68.0, y index - 8.0, 14.0, Scenes::rgb (242, 237, 255), 2)]
+
+    wire (graph, cable) =
+        source = indexOf (graph, cable.source)
+        destination = indexOf (graph, cable.destination)
+        Scenes::strip ([x source + 85.0, y source, x destination - 85.0, y destination], Scenes::rgb (79, 218, 211), 2.0, 0)
+
+    canvas editor =
+        nodes = foldList (editor.graph.nodes, [], \(all, n) => listConcat all (shape (editor, n)))
+        Ui::zoomed (0.0, 850.0, 600.0, [], listConcat (mapList (editor.graph.cables, \c => wire (editor.graph, c))) nodes, Surface)
+
+    root () =
+        editor = editorSlice ()
+        Ui::column [Ui::row [Ui::styled ("PRISM", ui::Title, ui::Accent), menu (), Ui::button ("Remove selected", "", Remove)], Ui::caption editor.message, canvas editor, Ui::column (mapList (editor.graph.nodes, component))]
+
+    stamp editor = JsonString "${editor.revision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.message}"
+
+    (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
+    export regions (before, editor, frames, _) =
+        handle static Signal<Editor<Graph>>
+            read => editor
+        changed = signalChanges before editor stamp (signalDependencies editorSlice)
+        [Keyed::region (frames, "root", changed, root)]

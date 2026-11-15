@@ -462,3 +462,25 @@ test ("menus, skin changes, node selections, node and slider drags stay quiet; a
 
 test ("a larger window drops the keyboard and moves the inspector at their size, and the keys still play", \() => bench (\() =>
     roomyKeys ()))
+
+// [PRISM-ROUTING-EDITOR] The editor's actual actions create independent routable instances.
+test ("the modular editor adds, connects and removes independent synth components", \() => Runtime::guarded (\() =>
+    first = synth::EditorState::initial ()
+    source = synth::EditorState::tapped (first, synth::Add(kind = "sine"))
+    gain = synth::EditorState::tapped (source, synth::Add(kind = "gain"))
+    output = synth::EditorState::tapped (gain, synth::Add(kind = "output"))
+    expect (length output.graph.nodes, 3)
+    armed = synth::EditorState::tapped (output, synth::Source(identity = 0, outlet = 0))
+    routed = synth::EditorState::tapped (armed, synth::Connect(identity = 1, inlet = 0))
+    expect (length routed.graph.cables, 1)
+    second = synth::EditorState::tapped (synth::EditorState::tapped (routed, synth::Source(identity = 1, outlet = 0)), synth::Connect(identity = 2, inlet = 0))
+    expect (length second.graph.cables, 2)
+    refused = synth::EditorState::tapped (second, synth::Connect(identity = 1, inlet = 0))
+    expect (structuralEquals (refused.graph, second.graph), true)
+    expect (refused.message != "", true)
+    removed = synth::EditorState::tapped (synth::EditorState::tapped (second, synth::Select(identity = 1)), synth::Remove)
+    expect (length removed.graph.nodes, 2)
+    expect (length removed.graph.cables, 0)
+    expect (removed.nextIdentity, 3)))
+
+test ("native component menus and cable controls edit the same graph drawn on the canvas", \() => Runtime::guarded (\() => hosted editorUiJourney))

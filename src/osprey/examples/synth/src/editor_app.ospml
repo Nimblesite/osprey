@@ -1,0 +1,18 @@
+// [PRISM-ROUTING-EDITOR] Every host sends the same typed actions to the modular editor.
+namespace synth
+
+import ui::Runtime
+import ui::Messages
+
+(** The modular graph editor's host-independent application boundary. *)
+module EditorApp
+    initial _ = Runtime::step (EditorState::initial ())
+
+    tapped (editor, action) = Runtime::step (EditorState::tapped (editor, action))
+
+    typed (editor, action, value) = Runtime::step (EditorState::typed (editor, action, value))
+
+    update (_, editor, message) = Messages::route (message, \action => tapped (editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(_, _) => Runtime::step editor)
+
+    (** Native controls and the canvas observe the same typed graph and applied edit revision. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => signalflow::App::theme "prism")

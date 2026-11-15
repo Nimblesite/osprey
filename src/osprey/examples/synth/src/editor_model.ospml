@@ -1,0 +1,33 @@
+namespace synth
+
+// Generated from typeDiagram [CONV-OSPREY].
+type Editor G =
+    graph : G
+    selected : int
+    nextIdentity : int
+    source : int
+    outlet : int
+    revision : int
+    message : string
+
+type EditorAction =
+    Add
+        kind : string
+    Select
+        identity : int
+    Source
+        identity : int
+        outlet : int
+    Connect
+        identity : int
+        inlet : int
+    Disconnect
+        identity : int
+        inlet : int
+    Remove
+    EditParameter
+        identity : int
+        key : string
+    Audition
+    Surface
+

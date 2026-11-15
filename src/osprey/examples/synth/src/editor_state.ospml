@@ -1,0 +1,102 @@
+// [PRISM-ROUTING-EDITOR] Pure editor commands; the synth library owns every routing rule.
+namespace synth
+
+(** Draft graph editing shared by native controls and canvas interactions. *)
+module EditorState
+    (** A fresh patch; identities are monotonic and never reused after deletion. *)
+    export initial () = Editor(graph = Graphs::empty, selected = -1, nextIdentity = 0, source = -1, outlet = 0, revision = 0, message = "Add an instrument and an output to begin.")
+
+    (** Available processors have real reference renderers, not placeholder nodes. *)
+    export kinds = ["sine", "filter", "gain", "mixer", "delay", "output"]
+
+    export title kind = match kind
+        "sine" => "Sine oscillator"
+        "filter" => "Low-pass filter"
+        "gain" => "Gain"
+        "mixer" => "Mixer"
+        "delay" => "Delay"
+        "output" => "Audio output"
+        _ => "Unknown component"
+
+    factory (kind, identity) = match kind
+        "sine" => Valid(value = Components::sine (identity, 440.0))
+        "filter" => Valid(value = Components::lowpass (identity, 4000.0, 0.707))
+        "gain" => Valid(value = Components::gain (identity, 0.25))
+        "mixer" => Valid(value = Components::mixer identity)
+        "delay" => Valid(value = Components::delay (identity, 2400))
+        "output" => Valid(value = Components::output identity)
+        _ => Invalid(fault = InvalidNode)
+
+    faultText fault = match fault
+        Cycle => "That route forms a loop without a delay. The previous patch is unchanged."
+        IncompatiblePorts => "These ports have different rates, units or channels."
+        MissingNode => "That component no longer exists."
+        InvalidPort => "That port or cable no longer exists."
+        Capacity => "The patch has reached its component or cable capacity."
+        _ => "The edit was rejected; the previous patch is unchanged."
+
+    published (editor, outcome) = match outcome
+        Invalid fault => editor(message = faultText fault)
+        Valid graph => editor(graph = graph, revision = satAdd editor.revision 1, message = "Patch updated.")
+
+    added (editor, kind) = match editor.nextIdentity == 9223372036854775807
+        true => editor(message = "No more component identities are available.")
+        false => match factory (kind, editor.nextIdentity)
+            Invalid fault => editor(message = faultText fault)
+            Valid n => match Graphs::add (editor.graph, n)
+                Invalid fault => editor(message = faultText fault)
+                Valid graph => editor(graph = graph, selected = n.identity, nextIdentity = satAdd n.identity 1, revision = satAdd editor.revision 1, message = "Added ${title kind}.")
+
+    selected (editor, identity) = match Graphs::node (editor.graph, identity)
+        Invalid fault => editor(message = faultText fault)
+        Valid _ => editor(selected = identity)
+
+    armed (editor, identity, outlet) = match Graphs::node (editor.graph, identity)
+        Invalid fault => editor(message = faultText fault)
+        Valid n => match listGet n.outputs outlet
+            Error _ => editor(message = "That output port does not exist.")
+            Success p => editor(source = identity, outlet = outlet, message = "Choose an input for ${identity}: ${p.name}.")
+
+    disconnected (editor, identity, inlet) = match listGet (filterList (editor.graph.cables, \c => c.destination == identity && c.inlet == inlet)) 0
+        Error _ => editor(message = "That input has no cable.")
+        Success cable => published (editor, Graphs::disconnect (editor.graph, cable))
+
+    removed editor = match Graphs::remove (editor.graph, editor.selected)
+        Invalid fault => editor(message = faultText fault)
+        Valid graph =>
+            next = published (editor, Valid(value = graph))
+            next(selected = -1, source = -1, message = "Component and its cables removed.")
+
+    (** One native or canvas action produces one immutable editor snapshot. *)
+    export tapped (editor, action) = match action
+        Add kind => added (editor, kind)
+        Select identity => selected (editor, identity)
+        Source identity outlet => armed (editor, identity, outlet)
+        Connect identity inlet => published (editor, Graphs::rewire (editor.graph, Components::route (editor.source, editor.outlet, identity, inlet)))
+        Disconnect identity inlet => disconnected (editor, identity, inlet)
+        Remove => removed editor
+        _ => editor
+
+    parameterValue (key, value, descriptor : Parameter) = match descriptor.key == key
+        true => descriptor(initial = value)
+        false => descriptor
+
+    nodeValue (identity, key, value, n) = match n.identity == identity
+        true => n(parameters = mapList (n.parameters, \p => parameterValue (key, value, p)))
+        false => n
+
+    checkedValue (editor, identity, key, value) =
+        graph = editor.graph
+        snapshot = Parameters::initial graph
+        edit = ParameterChange(node = identity, key = key, value = value, revision = snapshot.revision, samplePosition = snapshot.samplePosition)
+        match Parameters::apply (editor.graph, snapshot, edit)
+            Invalid _ => editor(message = "That parameter value is outside its allowed range.")
+            Valid _ => published (editor, Valid(value = graph(nodes = mapList (editor.graph.nodes, \n => nodeValue (identity, key, value, n)))))
+
+    (** Parse text once at the UI edge and validate against the component's descriptor. *)
+    export typed (editor, action, text) = match action
+        Add _ => tapped (editor, Add(kind = text))
+        EditParameter identity key => match parseFloat text
+            Error _ => editor(message = "Enter a finite number for this parameter.")
+            Success value => checkedValue (editor, identity, key, value)
+        _ => editor
