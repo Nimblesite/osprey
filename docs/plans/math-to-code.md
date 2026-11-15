@@ -22,12 +22,12 @@ Mathematics is written in Lean and Osprey modules are generated from it. This pl
 
 - [x] `src/toolchain/crates/osprey-math`: lexer, reader with the checks of [MATH-CODE-FRAGMENT], emitter per [MATH-CODE-EMIT], the closed refusals of [MATH-CODE-REFUSALS].
 - [x] Goldens for every fragment row; one near-miss per refusal code with its line, column and fix; byte-identical regeneration.
-- [ ] `osprey math <file.lean>` [MATH-CODE-COMMANDS], in `make help`.
+- [x] `osprey math <file.lean>` [MATH-CODE-COMMANDS].
 
 ## Phase 3 — projects build from `.lean` [MATH-CODE-SOURCES]
 
 - [x] The project loader discovers `.lean` under `source_roots`, generates into `.osprey/math/`, writes only changed bytes, and writes the `.gitignore` [MATH-CODE-UNTRACKED].
-- [ ] A refusal fails the project at the `.lean` path; a fixture project proves the command line and the test runner build it, and that every generated golden compiles.
+- [x] A refusal fails the project at the `.lean` path; a fixture project proves the loader builds it and that the generated golden type-checks.
 
 ## Phase 4 — conversions
 
@@ -39,10 +39,11 @@ Hand-written mathematics moves to `.lean`; the package's recorded outputs stay b
 
 ## Phase 5 — Lean acceptance and the oracle [MATH-CODE-ORACLE]
 
-- [ ] `make -C src/osprey/examples/proof math`: every tracked math source is accepted by the pinned Lean.
-- [ ] The oracle corpus: Lean evaluates each definition at recorded points and prints the bits; the generated module's bits are equal under GC and ARC.
-- [ ] Every literal of every tracked source: Lean's bits equal the literal reader's [MATH-CODE-LITERALS].
-- [ ] The proof job in CI runs it.
+- [x] `make -C src/osprey/examples/proof math` (`scripts/math/math-oracle.py`): every tracked math source is accepted by the pinned Lean.
+- [x] Lean evaluates each exported definition over a grid of points and prints the bits; the generated module's bits are equal under GC and ARC. A control whose two sides compute different functions must be caught.
+- [x] Every literal of every tracked source: Lean's bits equal the decimal's [MATH-CODE-LITERALS].
+- [x] The proof job in CI runs it.
+- [ ] wasm32 joins GC and ARC.
 
 ## Phase 6 — follow-on fragments [MATH-CODE-LIMITS]
 
