@@ -174,6 +174,13 @@ fn typescript_expressions_equal_default_ast() {
             "fn read(text) = { let parsed = parseInt(text)\n match parsed { Success { value } => value\n Error { message } => length(message) } }\nlet good = Success { value: 1 }\nlet bad = Error { message: \"no\" }\n",
             "function read(text) {\n  const parsed = parseInt(text);\n  switch (parsed.kind) {\n    case \"success\":\n      return parsed.value;\n    case \"error\":\n      return length(parsed.message);\n  }\n}\nconst good = Success(1);\nconst bad = Error(\"no\");\n",
         ),
+        // [TYPE-RECORD-CONTEXT]: with no type in sight the literal is the
+        // anonymous record Default writes; the shared checker gives it the
+        // record type of the declared context it flows into.
+        (
+            "let a = { x: 1, y: \"two\" }\n",
+            "const a = { x: 1, y: \"two\" };\n",
+        ),
         // A reassigned `let` or parameter is a rebinding, as a receiver
         // statement is; a compound assignment reads the old value.
         (
@@ -339,7 +346,6 @@ fn typescript_rejects_unsupported_semantics_at_original_positions() {
         ("const a = (...b) => b;\n", "rest parameter", 1, 11),
         ("const a = [...b];\n", "spread or hole", 1, 11),
         ("const a = f(...b);\n", "spread argument", 1, 12),
-        ("const a = { x: 1 };\n", "needs its record type", 1, 10),
         ("const a = { ...b(), x: 1 };\n", "spread must come first", 1, 15),
         ("const a = { get x() { return 1; } } satisfies P;\n", "method, accessor", 1, 12),
         ("const a = 9223372036854775808;\n", "signed 64-bit range", 1, 10),

@@ -27,6 +27,10 @@ pub fn lower_static_checked(program: &Program) -> Result<Program, Vec<TypeError>
 pub(crate) fn lower_proved(
     program: &Program,
 ) -> Result<(Program, Option<LibraryExports>), Vec<TypeError>> {
+    // An object literal takes the record type its context declares before
+    // anything is checked or lowered, so both see one constructor and the
+    // record's declared layout. [TYPE-RECORD-CONTEXT]
+    let program = &osprey_ast::contextual_records::elaborate(program);
     // The backend lowers what this returns, so the prelude a program uses is
     // attached here, once, ahead of every later phase ([BUILTIN-JSON-TYPED]).
     let attached = crate::prelude::with_prelude(program);

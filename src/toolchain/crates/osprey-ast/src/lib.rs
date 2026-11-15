@@ -6,6 +6,7 @@
 //! free: adding a variant breaks every consumer until it handles the new form.
 
 pub mod canonical;
+pub mod contextual_records;
 mod doc;
 mod documented;
 pub mod effect_name;

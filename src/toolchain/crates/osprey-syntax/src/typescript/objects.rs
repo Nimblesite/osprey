@@ -47,13 +47,10 @@ impl Lowerer<'_> {
             (Some(variant), _) if fields.is_empty() => return Ok(Expr::Identifier(variant)),
             (Some(variant), _) => (variant, Vec::new()),
             (None, Some(expected)) => (expected.name.clone(), expected.type_args.clone()),
-            (None, None) => {
-                return Err(self.error(
-                    object.span,
-                    "an object literal needs its record type: annotate the binding or the \
-                     function's return type, or write `{ … } satisfies Type`",
-                ));
-            }
+            // Without a context here the literal is an anonymous record, which
+            // the shared checker types from the declared context it flows into.
+            // [TYPE-RECORD-CONTEXT]
+            (None, None) => return Ok(Expr::Object(fields)),
         };
         Ok(Expr::TypeConstructor {
             name,

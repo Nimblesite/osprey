@@ -82,7 +82,7 @@ Keep-Alive: timeout=5
 Hello World
 ```
 
-The process keeps serving until you stop it, as the same file does under Node.js. A path with no route gets Express's own 404 page and security headers. The package's end-to-end test compares 64 replies with what Express 5.3.0 sent for the same files: status, body and the headers Express sets. `ETag` and `Date` are not sent yet ([issue 398](https://github.com/Nimblesite/osprey/issues/398)), so the replies are not byte-identical to Express.
+The process keeps serving until you stop it, as the same file does under Node.js. A path with no route gets Express's own 404 page and security headers. The package's end-to-end test compares 164 replies from four example applications with what Express 5.3.0 sent: status line, body and the headers Express sets. `ETag` and `Date` are not sent yet ([issue 398](https://github.com/Nimblesite/osprey/issues/398)), so the replies are not byte-identical to Express.
 
 ## How the TypeScript flavor differs from TypeScript
 
@@ -118,25 +118,26 @@ Because the syntax is TypeScript, you can also run `tsc` over the same files, as
 
 ## What works today
 
-Built and tested:
+Built and tested, with TypeScript twins of the corpus programs sharing the Default goldens:
 
-- Functions and arrow functions, with inferred parameter and return types.
-- Interfaces as records, and unions discriminated by a `kind` field.
-- `switch` on `kind`, checked for missing cases, with each case's fields in scope.
-- Object literals where the expected type is known, and object spread.
-- Template literals, `const` bindings, ES `import` and `export`, and documentation comments.
-- Statements such as `app.get(...)` and `res.send(...)` that rebind the value they are called on.
-- In `@osprey/express`: `express()`, `get`, `post`, `put`, `delete`, `:name` path segments, `res.status`, `res.set`, `res.send`, `app.listen`, `server.close` and Express's final 404 handler.
+- Functions and arrow functions, with inferred parameter and return types; `let` and parameters that are reassigned.
+- Interfaces as records, and unions discriminated by a `kind` field, with `switch` on `kind` checked for missing cases.
+- Object literals, which take the record type a declared context gives them, and object spread.
+- `xs.map`, `xs.filter` and `xs.reduce` on lists, template literals, `for … of`, ES `import` and `export`, and documentation comments.
+- Effects: `interface Log extends Effect`, `perform<Log>().write(…)`, `handler<Log>({ … })`, `handle<Log>({ … }, () => …)`, `resume`, handler state, static handlers and `Requires<T, [Log]>`.
+- Fibers: `spawn`, `awaitFiber`, `send` and `recv`.
+- Imports between all four syntax flavors in one project.
+- Editor support: the Osprey extension checks each `.ts` file a project lists, beside VS Code's own TypeScript checks, and `osprey test` finds `.test.ts` suites.
+- In `@osprey/express`: routing and `:name` parameters, `req.params`, `req.query`, `req.get`, JSON request bodies through `jsonBody(req)`, middleware with `app.use` and `req.next()`, error handlers, `express.Router()` mounted with `app.mount`, `res.status`, `res.set`, `res.send`, `res.json`, `app.listen` and Express's 404 page.
 
 Not built yet:
 
-- Effects and handlers, apart from `Requires` on a field.
-- Fibers, reassigned `let`, `map`, `filter` and `reduce` on arrays.
-- Editor support for `.ts` files in the Osprey extension.
-- In `@osprey/express`: middleware and `next()`, `express.Router()`, `res.json`, JSON bodies, error middleware, and reading `req.params` and `req.query`.
+- `null`, `undefined`, classes, exceptions, `async` and `await`; failure is a `Result`, and concurrency is fibers.
+- An object literal with no declared type that is used later as a record ([issue 405](https://github.com/Nimblesite/osprey/issues/405)).
+- In `@osprey/express`: HEAD and OPTIONS handling, redirects, static files, `ETag` and `Date` headers, and Express's overloads by parameter count, such as `app.use(handler)` without a path.
 
 Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.
 
 ## Next step
 
-Read [`src/express.ts`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/express/src/express.ts). It is the whole port in one file, written in the flavor it serves.
+Read [`src/express.ts`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/express/src/express.ts), the port's main module, written in the flavor it serves, then the ported [`web-service`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/express/examples/web-service/service.ts) example.
