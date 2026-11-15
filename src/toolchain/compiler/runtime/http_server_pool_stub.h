@@ -14,5 +14,7 @@ size_t http_pool_serving(HttpServer *pooled) {
   (void)pooled;
   return 0;
 }
+void http_pool_enter_handler(HttpServer *pooled) { (void)pooled; }
+void http_pool_leave_handler(HttpServer *pooled) { (void)pooled; }
 
 #endif

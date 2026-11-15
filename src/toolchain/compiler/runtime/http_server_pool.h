@@ -34,6 +34,13 @@ bool http_pool_owns_thread(HttpServer *server);
 // holds server->mutex.
 void http_pool_shutdown_clients(HttpServer *server);
 
+// Workers read requests and send replies concurrently, but one handler runs
+// at a time: what a handler's externs share (a SQLite handle, a C library's
+// globals) is not known to be thread-safe. A waiting worker is parked, so the
+// collector never waits on it.
+void http_pool_enter_handler(HttpServer *server);
+void http_pool_leave_handler(HttpServer *server);
+
 // How many connections workers are serving right now.
 size_t http_pool_serving(HttpServer *server);
 

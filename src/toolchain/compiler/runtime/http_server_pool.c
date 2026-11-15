@@ -41,6 +41,9 @@ struct HttpPool {
   HttpServer *server;
   pthread_mutex_t mutex;
   pthread_cond_t work;
+  // One handler runs at a time; the others wait, parked, for it to finish.
+  pthread_cond_t handler_free;
+  bool handling;
   bool stopping;
   // Connections with a request waiting, oldest first; workers take them.
   int queue[POOL_QUEUE];
@@ -185,7 +188,10 @@ static bool init_locks(HttpPool *pool) {
     return false;
   }
   if (pthread_cond_init(&pool->work, NULL) == 0) {
-    return true;
+    if (pthread_cond_init(&pool->handler_free, NULL) == 0) {
+      return true;
+    }
+    pthread_cond_destroy(&pool->work);
   }
   pthread_mutex_destroy(&pool->mutex);
   return false;
@@ -236,6 +242,7 @@ static void destroy_pool(HttpPool *pool) {
   }
   close_all(pool->returned, pool->returned_count);
   close_wake_pair(pool->wake);
+  pthread_cond_destroy(&pool->handler_free);
   pthread_cond_destroy(&pool->work);
   pthread_mutex_destroy(&pool->mutex);
   free(pool);
@@ -404,4 +411,28 @@ size_t http_pool_serving(HttpServer *server) {
   }
   pthread_mutex_unlock(&server->mutex);
   return serving;
+}
+
+void http_pool_enter_handler(HttpServer *server) {
+  HttpPool *pool = server->pool;
+  if (!pool) {
+    return;
+  }
+  pthread_mutex_lock(&pool->mutex);
+  while (pool->handling) {
+    (void)osp_parked_wait(&pool->handler_free, &pool->mutex, NULL);
+  }
+  pool->handling = true;
+  pthread_mutex_unlock(&pool->mutex);
+}
+
+void http_pool_leave_handler(HttpServer *server) {
+  HttpPool *pool = server->pool;
+  if (!pool) {
+    return;
+  }
+  pthread_mutex_lock(&pool->mutex);
+  pool->handling = false;
+  pthread_cond_signal(&pool->handler_free);
+  pthread_mutex_unlock(&pool->mutex);
 }
