@@ -33,7 +33,7 @@ from package_coverage_evidence import (
 )
 from package_coverage_projects import (
     GATED_KINDS, MIN_THRESHOLD, PACKAGES_DIR, PROJECT_KEYS, gate_entries, kind_map_problems, kind_noun, project_dirs,
-    minimum, project_label, unfinished_problem, report_name, required_source_files, own_source_relative,
+    minimum, project_label, unfinished_problem, report_name, required_source_files, own_source_file, own_source_relative,
 )
 
 EXIT_OK = 0
@@ -153,7 +153,7 @@ def validated_hits(lines: dict, line_count: int, key: str) -> tuple[dict, list[s
 
 
 def validate_own_file(root: Path, kind: str, name: str, key: str, rel: tuple[str, ...], body: object) -> tuple[dict | None, list[str]]:
-    local = root / kind / name / "src" / Path(*rel)
+    local = own_source_file(root, kind, name, rel)
     if not local.is_file():
         return None, [f"missing executable source file: {key}"]
     lines = body.get("lines") if isinstance(body, dict) else None

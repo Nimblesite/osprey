@@ -2,7 +2,7 @@
 namespace orchestra
 
 import orchestra::Sessions
-import synth::Oscillators
+import synth::Waves
 import synth::Performance
 
 effect Keep
@@ -21,7 +21,7 @@ accepted result = match result
         0
     Rejected _ => 1
 
-sine (phase : float) = Oscillators::sine phase
+sine (phase : float) = Waves::sine phase
 
 admit peer = hosted (\() => accepted (Sessions::join (live, peer)))
 

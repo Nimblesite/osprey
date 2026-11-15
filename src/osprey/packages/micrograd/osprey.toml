@@ -1,7 +1,7 @@
 [project]
 name = "micrograd"
 source_roots = ["src"]
-python_sources = ["src/libm.py", "src/engine.py", "src/nn.py"]
+python_sources = ["src/engine.py", "src/nn.py"]
 default_namespace = "micrograd"
 
 [package]

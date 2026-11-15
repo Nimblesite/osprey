@@ -17,7 +17,10 @@ APPS_DIR = "src/osprey"
 MIN_THRESHOLD = 90
 PROJECT_KEYS = {PACKAGES_DIR: "packages", APPS_DIR: "apps"}
 GATED_KINDS = tuple(PROJECT_KEYS)
-SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
+SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml", ".lean"})
+MATH_STORE = (".osprey", "math")
+"""Where a project keeps the modules generated from its `.lean` math sources [MATH-CODE-UNTRACKED]."""
+MATH_DEF_RE = re.compile(r"^\s*(?:private\s+)?def\s", re.M)
 DEFAULT_DEF_RE = re.compile(r"(?m)^[ \t]*(?:export[ \t]+)?fn[ \t]+\w+")
 ML_DEF_RE = re.compile(
     r"(?m)^[ \t]*(?:export[ \t]+)?(?P<name>[A-Za-z][\w']*)"
@@ -99,14 +102,22 @@ def normalize_components(raw: object) -> list[str] | None:
 
 
 def own_source_relative(raw: object, kind: str, name: str) -> tuple[str, ...] | None:
+    """A report path as the project's own source: under `src/`, or generated from a math source there."""
     parts = normalize_components(raw)
     if parts is None:
         return None
-    marker = kind.split("/") + [name, "src"]
-    for start in range(len(parts) - len(marker), -1, -1):
-        if parts[start : start + len(marker)] == marker:
-            return tuple(parts[start + len(marker) :])
+    project = kind.split("/") + [name]
+    for marker in (project + ["src"], project + [*MATH_STORE, "src"]):
+        for start in range(len(parts) - len(marker), -1, -1):
+            if parts[start : start + len(marker)] == marker:
+                return tuple(parts[start + len(marker) :])
     return None
+
+
+def own_source_file(root: Path, kind: str, name: str, rel: tuple[str, ...]) -> Path:
+    """The text of an own source: the file under `src/`, else the module generated from the math source there."""
+    written = root / kind / name / "src" / Path(*rel)
+    return written if written.is_file() else root / kind / name / Path(*MATH_STORE) / "src" / Path(*rel)
 
 
 def has_definitions(path: Path) -> bool:
@@ -120,7 +131,7 @@ def has_definitions(path: Path) -> bool:
         return any(match.group("name") not in ML_KEYWORDS for match in ML_DEF_RE.finditer(text))
     if path.suffix == ".osp":
         return DEFAULT_DEF_RE.search(text) is not None
-    return False
+    return path.suffix == ".lean" and MATH_DEF_RE.search(text) is not None
 
 
 def required_source_files(root: Path, kind: str, name: str) -> set[str]:
@@ -133,7 +144,7 @@ def required_source_files(root: Path, kind: str, name: str) -> set[str]:
         if any(part.startswith(".") for part in relative.parts):
             continue
         if path.is_file() and path.suffix in SOURCE_SUFFIXES and has_definitions(path):
-            files.append(relative.as_posix())
+            files.append(relative.as_posix() + (".ospml" if path.suffix == ".lean" else ""))
     return set(files)
 
 

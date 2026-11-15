@@ -20,21 +20,21 @@ Mathematics is written in Lean and Osprey modules are generated from it. This pl
 
 ## Phase 2 — fragment 1: `Float` and `Bool` definitions [MATH-CODE-FRAGMENT]
 
-- [ ] `src/toolchain/crates/osprey-math`: lexer, reader with the checks of [MATH-CODE-FRAGMENT], emitter per [MATH-CODE-EMIT], the closed refusals of [MATH-CODE-REFUSALS].
-- [ ] Goldens for every fragment row; one near-miss per refusal code with its line, column and fix; byte-identical regeneration.
+- [x] `src/toolchain/crates/osprey-math`: lexer, reader with the checks of [MATH-CODE-FRAGMENT], emitter per [MATH-CODE-EMIT], the closed refusals of [MATH-CODE-REFUSALS].
+- [x] Goldens for every fragment row; one near-miss per refusal code with its line, column and fix; byte-identical regeneration.
 - [ ] `osprey math <file.lean>` [MATH-CODE-COMMANDS], in `make help`.
 
 ## Phase 3 — projects build from `.lean` [MATH-CODE-SOURCES]
 
-- [ ] The project loader discovers `.lean` under `source_roots`, generates into `.osprey/math/`, writes only changed bytes, and writes the `.gitignore` [MATH-CODE-UNTRACKED].
+- [x] The project loader discovers `.lean` under `source_roots`, generates into `.osprey/math/`, writes only changed bytes, and writes the `.gitignore` [MATH-CODE-UNTRACKED].
 - [ ] A refusal fails the project at the `.lean` path; a fixture project proves the command line and the test runner build it, and that every generated golden compiles.
 
 ## Phase 4 — conversions
 
 Hand-written mathematics moves to `.lean`; the package's recorded outputs stay byte-identical.
 
-- [ ] `@osprey/synth`: the oscillator kernels (`wrap`, `blep`, `blamp`, `sine`, the pulse and triangle shapes).
-- [ ] `@osprey/micrograd`: `tanh_of`.
+- [x] `@osprey/synth`: `src/Waves.lean` holds the oscillator shapes (`wrap`, `blep`, `blamp`, `sine`, `saw`, `pulse`, `triangle`) and the performance timbres (`harmonic`, `glass`, `bass`, `hollow`, `modulated`, `ring`); recorded output byte-identical.
+- [x] `@osprey/micrograd`: `src/Libm.lean` holds `exp_of` and `tanh_of`; recorded output byte-identical.
 - [ ] Next candidates, each when its fragment exists: the `@osprey/synth` filter coefficients and envelopes (records), `@osprey/torch` learning-rate schedules (integers, folds), `@osprey/scipy` logistic and Box-Cox (calls into hand-written series).
 
 ## Phase 5 — Lean acceptance and the oracle [MATH-CODE-ORACLE]

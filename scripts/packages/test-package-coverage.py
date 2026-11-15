@@ -292,6 +292,32 @@ class CheckerTests(CoverageTestCase):
         self.assert_exit(result, 1)
         self.assertIn("missing source evidence: src/only.py", result.stdout)
 
+    def test_modules_generated_from_math_sources_are_own_source(self):
+        """[MATH-CODE-UNTRACKED]: a package's mathematics is `src/*.lean`, and the module generated
+        from it into `.osprey/math/` is that package's own code: required, counted and gated."""
+        generated = ".osprey/math/src/Waves.lean.ospml"
+        key = f"src/osprey/packages/waves/{generated}"
+        fixture = self.fixture({"waves": {"sources": {
+            "src/lib.py": py_source(4),
+            "src/Waves.lean": "namespace Waves\n/-- Twice. -/\ndef twice (x : Float) : Float := 2 * x\nend Waves\n",
+            "src/Notes.lean": "-- a definition is planned here\n#eval 1\n",
+            generated: "(** Waves. *)\nmodule Waves\n    export twice : float -> float\n    twice x = 2.0 * x\n",
+        }}})
+        own = own_report("waves", 4, 4)["files"]
+        fixture.write_report("waves", {"files": own})
+        result = fixture.check()
+        self.assert_exit(result, 1)
+        self.assertIn("missing source evidence: src/Waves.lean.ospml", result.stdout)
+        self.assertNotIn("Notes.lean", result.stdout)
+        for hits, covered, status in ((0, 4, 1), (3, 5, 0)):
+            fixture.write_report("waves", {"files": {**own, key: {"lines": {"4": hits}}}})
+            result = fixture.check()
+            self.assert_exit(result, status)
+            waves = fixture.result("waves")
+            self.assertEqual((waves["covered"], waves["total"]), (covered, 5), result.stdout)
+        fixture.write_report("waves", {"files": {**own, key: {"lines": {"9": 1}}}})
+        self.assert_exit(fixture.check(), 1)
+
     def test_data_only_tables_are_not_required_but_real_source_is(self):
         fixture = self.fixture({"tabled": {"sources": {
             "src/lib.py": py_source(4),
