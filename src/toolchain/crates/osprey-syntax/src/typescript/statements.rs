@@ -1,12 +1,13 @@
 //! TypeScript statements lower to Osprey blocks and flat functions.
 //! Implements [FLAVOR-TS-FUNCTIONS], [FLAVOR-TS-RECEIVER], [FLAVOR-TS-UNIONS].
 use super::context::{apply, unit, Expected, Lowerer, Narrowing, Result};
+use super::expressions::binary_spelling;
 use super::types::{variant_name, KIND};
 use osprey_ast::{Expr, MatchArm, Parameter, Pattern, Stmt};
 use oxc_ast::ast::{
-    BindingPattern, Expression, ExpressionStatement, ForOfStatement, ForStatementLeft,
-    FormalParameters, Function, IfStatement, Statement, SwitchCase, SwitchStatement,
-    VariableDeclaration, VariableDeclarationKind,
+    AssignmentExpression, AssignmentTarget, BindingPattern, Expression, ExpressionStatement,
+    ForOfStatement, ForStatementLeft, FormalParameters, Function, IfStatement, Statement,
+    SwitchCase, SwitchStatement, VariableDeclaration, VariableDeclarationKind,
 };
 use oxc_span::{GetSpan, Span};
 
@@ -33,6 +34,20 @@ pub(super) fn receiver_root<'b>(expression: &'b Expression<'_>) -> Option<&'b st
 fn statement_root<'b>(statement: &'b Statement<'_>) -> Option<&'b str> {
     match statement {
         Statement::ExpressionStatement(expression) => receiver_root(&expression.expression),
+        _ => None,
+    }
+}
+
+/// The local a statement `x = …;` or `x += …;` reassigns.
+fn assigned_root<'b>(statement: &'b Statement<'_>) -> Option<&'b str> {
+    let Statement::ExpressionStatement(expression) = statement else {
+        return None;
+    };
+    let Expression::AssignmentExpression(assignment) = &expression.expression else {
+        return None;
+    };
+    match &assignment.left {
+        AssignmentTarget::AssignmentTargetIdentifier(target) => Some(target.name.as_str()),
         _ => None,
     }
 }
@@ -192,7 +207,10 @@ impl Lowerer<'_> {
             if let Some(value) = self.tail_value(statement, rest, tail)? {
                 return Ok(self.finish(lowered, Some(value), statement.span(), &rebound));
             }
-            if statement_root(statement).is_some() {
+            if statement_root(statement)
+                .or_else(|| assigned_root(statement))
+                .is_some()
+            {
                 rebound.push(lowered.len());
             }
             lowered.extend(self.statement(statement)?);
@@ -341,13 +359,20 @@ impl Lowerer<'_> {
                 let expected = self.expected(declarator.type_annotation.as_deref());
                 let value = self.expr_as(init, expected.as_ref())?;
                 let ty = self.annotation(declarator.type_annotation.as_deref())?;
-                self.bind(&name);
+                if declaration.kind == VariableDeclarationKind::Const {
+                    self.bind_constant(&name);
+                } else {
+                    self.bind(&name);
+                }
                 Ok(self.let_statement(&name, value, ty, declarator.span))
             })
             .collect()
     }
 
     fn expression_statement(&mut self, statement: &ExpressionStatement<'_>) -> Result<Stmt> {
+        if let Expression::AssignmentExpression(assignment) = &statement.expression {
+            return self.assignment(assignment, statement.span);
+        }
         if let Some(root) = receiver_root(&statement.expression) {
             if self.updates(root, statement.span)? {
                 let value = self.expr(&statement.expression)?;
@@ -360,6 +385,51 @@ impl Lowerer<'_> {
             doc: None,
             position: Some(self.at(statement.span)),
         })
+    }
+
+    /// `x = value;` rebinds the local `x`, and `x += value;` rebinds it to
+    /// `x + value`. A `const`, a field, an element and a captured variable are
+    /// not reassignable. Implements [FLAVOR-TS-FUNCTIONS].
+    fn assignment(&mut self, assignment: &AssignmentExpression<'_>, span: Span) -> Result<Stmt> {
+        let AssignmentTarget::AssignmentTargetIdentifier(target) = &assignment.left else {
+            return self.unsupported(
+                assignment.left.span(),
+                "assignment to a field or element; build a new value with spread",
+            );
+        };
+        let name = target.name.as_str();
+        if !self.bound_in_function(name) {
+            return Err(self.error(
+                span,
+                format!("`{name}` is not a local of this function; a function cannot reassign a variable it captured"),
+            ));
+        }
+        if self.constant(name) {
+            return Err(self.error(
+                span,
+                format!("`{name}` is a `const`; declare it with `let` to reassign it"),
+            ));
+        }
+        let _ = self.updates(name, span)?;
+        let value = match assignment.operator.to_binary_operator() {
+            None => self.expr(&assignment.right)?,
+            Some(operator) => {
+                let op = binary_spelling(operator).ok_or_else(|| {
+                    self.error(
+                        span,
+                        "TypeScript compound assignment operator has no Osprey lowering",
+                    )
+                })?;
+                Expr::Binary {
+                    left: Box::new(Expr::Identifier(name.to_owned())),
+                    op: op.to_owned(),
+                    right: Box::new(self.expr(&assignment.right)?),
+                    position: Some(self.at(span)),
+                }
+            }
+        };
+        self.bind(name);
+        Ok(self.let_statement(name, value, None, span))
     }
 
     /// Whether `root.m(…);` rebinds the local `root` to the call's value, so

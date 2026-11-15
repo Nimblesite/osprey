@@ -130,7 +130,7 @@ fn typescript_functions_bindings_and_types_equal_default_ast() {
             "function checked<T>(work) {\n  return work();\n}\nconst picked = first<int>(xs);\n",
         ),
         (
-            "fn apply(f: fn(int) -> int, value: int) -> int = f(value)\nfn size(xs: List<int>, ys: List<string>, zs: List<bool>) -> int = length(xs)\n",
+            "fn apply(f: fn(int) -> int, value: int) -> int = f(value)\nfn size(xs: List<int>, ys: List<string>, zs: List<bool>) -> int = listLength(xs)\n",
             "function apply(f: (value: int) => int, value: int): int {\n  return f(value);\n}\nfunction size(xs: int[], ys: readonly string[], zs: List<boolean>): int {\n  return xs.length;\n}\n",
         ),
         (
@@ -173,6 +173,22 @@ fn typescript_expressions_equal_default_ast() {
         (
             "fn read(text) = { let parsed = parseInt(text)\n match parsed { Success { value } => value\n Error { message } => length(message) } }\nlet good = Success { value: 1 }\nlet bad = Error { message: \"no\" }\n",
             "function read(text) {\n  const parsed = parseInt(text);\n  switch (parsed.kind) {\n    case \"success\":\n      return parsed.value;\n    case \"error\":\n      return length(parsed.message);\n  }\n}\nconst good = Success(1);\nconst bad = Error(\"no\");\n",
+        ),
+        // A reassigned `let` or parameter is a rebinding, as a receiver
+        // statement is; a compound assignment reads the old value.
+        (
+            "fn count(n) = { let total = 0\n let total = total + n\n let total = total * 2\n let n = n - 1\n total + n }\n",
+            "function count(n) {\n  let total = 0;\n  total = total + n;\n  total *= 2;\n  n -= 1;\n  return total + n;\n}\n",
+        ),
+        (
+            "fn reset(x) = { let x = 1\n x }\n",
+            "function reset(x) {\n  x = 1;\n  return x;\n}\n",
+        ),
+        // Array methods are the list operations; `reduce` takes its initial
+        // value last, as JavaScript does, and `.length` counts list elements.
+        (
+            "let doubled = mapList(xs, fn(x) => x * 2)\nlet evens = filterList(xs, fn(x) => x % 2 == 0)\nlet total = foldList(xs, 0, fn(sum, x) => sum + x)\nlet size = listLength(xs)\nlet chained = foldList(filterList(mapList(xs, fn(x) => x + 1), fn(x) => x > 2), 0, fn(a, b) => a + b)\nlet nested = listLength(listGet(rows, 0))\n",
+            "const doubled = xs.map((x) => x * 2);\nconst evens = xs.filter((x) => x % 2 === 0);\nconst total = xs.reduce((sum, x) => sum + x, 0);\nconst size = xs.length;\nconst chained = xs.map((x) => x + 1).filter((x) => x > 2).reduce((a, b) => a + b, 0);\nconst nested = listGet(rows, 0).length;\n",
         ),
     ] {
         equal(default, source);
@@ -303,6 +319,13 @@ fn typescript_rejects_unsupported_semantics_at_original_positions() {
         ("const { a } = point;\n", "destructuring", 1, 6),
         ("const a = b == c;\n", "`==`/`!=`", 1, 10),
         ("const a = b ?? c;\n", "`??`", 1, 10),
+        ("const total = xs.reduce((a, b) => a + b);\n", "`reduce` without an initial value", 1, 14),
+        ("const a = 1;\na = 2;\n", "`a` is a `const`", 2, 0),
+        ("function f(c) {\n  let a = 1;\n  if (c) {\n    a = 2;\n  }\n  return a;\n}\n", "inside a branch", 4, 4),
+        ("let a = 1;\nconst read = () => a;\na = 2;\n", "after a function captured", 3, 0),
+        ("function f(p) {\n  p.x = 1;\n  return p;\n}\n", "assignment to a field or element", 2, 2),
+        ("let a = 1;\nconst f = () => {\n  a = 2;\n};\n", "`a` is not a local of this function", 3, 2),
+        ("let a = 1;\nconst b = (a = 2);\n", "assignment expression", 2, 11),
         ("const a = b?.c;\n", "`?.`", 1, 10),
         ("const a = null;\n", "`null`", 1, 10),
         ("const a = undefined;\n", "`undefined`", 1, 10),
@@ -333,7 +356,6 @@ fn typescript_rejects_unsupported_semantics_at_original_positions() {
         ("function f() {\n  function g() {}\n}\n", "nested `function`", 2, 2),
         ("function f(x) {\n  while (x) {}\n}\n", "`while` loop", 2, 2),
         ("function f(x) {\n  throw x;\n}\n", "`throw`/`try`", 2, 2),
-        ("function f(x) {\n  x = 1;\n}\n", "assignment expression", 2, 2),
         ("function f(x) {\n  switch (x) {\n    case 1:\n      return 1;\n  }\n}\n", "must test `value.kind`", 2, 10),
         ("function f(x) {\n  switch (x.kind) {\n    default:\n      return 1;\n  }\n}\n", "`default` is rejected", 3, 4),
         ("function f(x) {\n  switch (x.kind) {\n    case \"a\":\n      g();\n    case \"b\":\n      return 1;\n  }\n}\n", "fallthrough is rejected", 3, 4),
@@ -361,12 +383,15 @@ fn typescript_rejects_unsupported_semantics_at_original_positions() {
 #[test]
 fn typescript_intrinsics_lower_to_the_documented_nodes() {
     let parsed =
-        parse("const lookup = new Map<string, int>();\nconsole.log(`size ${lookup.length}`);\n");
+        parse("const lookup = new Map<string, int>();\nconsole.log(`size ${[1, 2].length}`);\n");
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
     let rendered = format!("{:?}", parsed.program);
     assert!(rendered.contains("value: Map([])"), "{rendered}");
     assert!(rendered.contains("Identifier(\"print\")"), "{rendered}");
-    assert!(rendered.contains("Identifier(\"length\")"), "{rendered}");
+    assert!(
+        rendered.contains("Identifier(\"listLength\")"),
+        "{rendered}"
+    );
     assert!(!rendered.contains("console"), "{rendered}");
     // A local named like an intrinsic is an ordinary value.
     let shadowed = parse("function f(console, Success) {\n  const logged = console.log(1);\n  return Success(2);\n}\n");

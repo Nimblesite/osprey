@@ -207,6 +207,9 @@ impl Lowerer<'_> {
         let type_args = self.type_arguments(call.type_arguments.as_deref())?;
         if let Expression::StaticMemberExpression(member) = &call.callee {
             if type_args.is_empty() {
+                if let Some(list) = self.array_method(member, call.span, &arguments)? {
+                    return Ok(list);
+                }
                 return self.method(member, arguments);
             }
         }
@@ -216,6 +219,36 @@ impl Lowerer<'_> {
             arguments,
             named_arguments: Vec::new(),
         })
+    }
+
+    /// `xs.map(f)`, `xs.filter(p)` and `xs.reduce(f, initial)` are the list
+    /// operations. JavaScript takes `reduce`'s initial value last; Osprey's
+    /// `foldList` takes it before the function. A `reduce` with no initial
+    /// value has no Osprey meaning for an empty list, so it is rejected.
+    fn array_method(
+        &mut self,
+        member: &StaticMemberExpression<'_>,
+        span: Span,
+        arguments: &[Expr],
+    ) -> Result<Option<Expr>> {
+        let name = member.property.name.as_str();
+        let operation = match (name, arguments) {
+            ("map", [_]) => "mapList",
+            ("filter", [_]) => "filterList",
+            ("reduce", [_, _]) => "foldList",
+            ("reduce", [_]) => {
+                return self.unsupported(span, "`reduce` without an initial value");
+            }
+            _ => return Ok(None),
+        };
+        let target = self.expr(&member.object)?;
+        let ordered = match arguments {
+            [function, initial] => vec![target, initial.clone(), function.clone()],
+            _ => std::iter::once(target)
+                .chain(arguments.iter().cloned())
+                .collect(),
+        };
+        Ok(Some(apply(operation, ordered)))
     }
 
     /// A called name: a package default import names its entry function.
@@ -262,7 +295,10 @@ impl Lowerer<'_> {
             }
         }
         Ok(match self.expr(&member.object)? {
-            target if field == "length" => apply("length", vec![target]),
+            // TypeScript counts a string's UTF-16 code units, and Osprey has no
+            // such count yet, so `.length` is a list's element count and a
+            // string's `.length` fails to type-check. [FLAVOR-TS-EXPRESSIONS]
+            target if field == "length" => apply("listLength", vec![target]),
             target => Expr::FieldAccess {
                 target: Box::new(target),
                 field: field.to_owned(),
@@ -302,21 +338,13 @@ impl Lowerer<'_> {
 
     fn binary(&mut self, binary: &BinaryExpression<'_>) -> Result<Expr> {
         let op = match binary.operator {
-            BinaryOperator::StrictEquality => "==",
-            BinaryOperator::StrictInequality => "!=",
-            BinaryOperator::LessThan => "<",
-            BinaryOperator::LessEqualThan => "<=",
-            BinaryOperator::GreaterThan => ">",
-            BinaryOperator::GreaterEqualThan => ">=",
-            BinaryOperator::Addition => "+",
-            BinaryOperator::Subtraction => "-",
-            BinaryOperator::Multiplication => "*",
-            BinaryOperator::Division => "/",
-            BinaryOperator::Remainder => "%",
             BinaryOperator::Equality | BinaryOperator::Inequality => {
                 return self.unsupported(binary.span, "`==`/`!=`; write `===`/`!==`");
             }
-            _ => return self.unsupported(binary.span, "operator"),
+            operator => match binary_spelling(operator) {
+                Some(op) => op,
+                None => return self.unsupported(binary.span, "operator"),
+            },
         };
         self.operation(op, &binary.left, &binary.right, binary.span)
     }
@@ -356,6 +384,24 @@ impl Lowerer<'_> {
             _ => self.unsupported(unary.span, "unary operator"),
         }
     }
+}
+
+/// The Osprey spelling of a TypeScript binary operator Osprey has.
+pub(super) fn binary_spelling(operator: BinaryOperator) -> Option<&'static str> {
+    Some(match operator {
+        BinaryOperator::StrictEquality => "==",
+        BinaryOperator::StrictInequality => "!=",
+        BinaryOperator::LessThan => "<",
+        BinaryOperator::LessEqualThan => "<=",
+        BinaryOperator::GreaterThan => ">",
+        BinaryOperator::GreaterEqualThan => ">=",
+        BinaryOperator::Addition => "+",
+        BinaryOperator::Subtraction => "-",
+        BinaryOperator::Multiplication => "*",
+        BinaryOperator::Division => "/",
+        BinaryOperator::Remainder => "%",
+        _ => return None,
+    })
 }
 
 fn applied(

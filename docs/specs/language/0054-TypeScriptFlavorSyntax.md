@@ -57,7 +57,7 @@ const twice = (value) => scale(value, 2.0);
 
 A `function` declaration becomes a flat `Stmt::Function`; an arrow function becomes `Expr::Lambda`. A nested `function` declaration is rejected; bind an arrow function instead. Generic parameters `<T>` lower to type parameters, and an explicit type argument `f<int>(x)` lowers to the existing type-application node. Default parameters, optional parameters, rest parameters, overloads, `this`, getters, setters and `arguments` are rejected.
 
-`const` declares an immutable binding. `let` declares a binding; the frontend finds later assignments in the same lexical scope, so a reassigned `let` becomes `Stmt::Let { mutable: true }` and each write becomes `Stmt::Assignment`. A `let` that is never reassigned is immutable. `var`, destructuring assignment, compound assignment (`+=`), increment and decrement, and assignment to a field or index are rejected. Not implemented yet: reassignment. Every assignment expression is rejected today, so a `let` is always immutable.
+`const` declares an immutable binding, and assigning to it is rejected. `let` declares a binding that an assignment statement may rebind, and so may a parameter. The statement `x = value;` lowers to a new binding of `x`, exactly as a receiver statement does ([FLAVOR-TS-RECEIVER]), and a compound assignment `x += value;` lowers to a new binding of `x + value`; `-=`, `*=`, `/=` and `%=` follow the same rule. Later statements read the new value. Rebinding equals in-place update only while the variable has one name, so the frontend rejects, at the statement: an assignment inside a branch whose result the following code would not see; an assignment after a nested function has read the variable; and an assignment to a variable of an enclosing function. An assignment used as an expression, `var`, destructuring assignment, increment and decrement, the logical and bitwise compound operators, and assignment to a field or index are rejected; build a new value with spread instead.
 
 `return` is allowed only in tail position: at the end of a function body or at the end of every branch of a tail `if` or `switch`. A guard clause is in tail position: an `if` with no `else` whose block ends in `return` takes the statements after it as its `else`, so `if (bad) { return a; } return b;` is one conditional. Any other early return is rejected. A function that ends without returning a value, or that returns `void`, produces Osprey `Unit`. An expression statement whose value is not `Unit` is rejected by the shared checker: values are immutable, so a discarded result is a lost update. A receiver statement ([FLAVOR-TS-RECEIVER]) is the one statement whose value is kept.
 
@@ -128,20 +128,20 @@ A `switch (value.kind)` over such a union lowers to an exhaustive Osprey `match`
 | `/` | binary64 division; both operands must be `number` |
 | `intDiv(a, b)` | integer division |
 | `%` | Osprey remainder; the result's sign follows the dividend, as in JavaScript |
-| `xs.length` | the existing `length` builtin |
+| `xs.length` | `listLength`, the number of elements of a list |
 | `console.log(value)` | `print(value)`; exactly one argument |
 | `new Map<string, T>()` | the empty map literal |
 | `for (const x of iterator) { … }` | `forEach(iterator, callback)` |
 | `{ ...record, field: value }` | immutable `Expr::Update` |
-| `xs.map(f)`, `xs.filter(p)`, `xs.reduce(f, init)` | the existing iterator map, filter and fold |
+| `xs.map(f)`, `xs.filter(p)`, `xs.reduce(f, init)` | `mapList`, `filterList` and `foldList(xs, init, f)`; each returns a list or the folded value, as a JavaScript array method does |
 
 `==`, `!=`, truthiness (a non-boolean operand of `&&`, `||`, `!` or a condition), `??`, `?.`, `typeof`, `instanceof`, `in`, `delete`, `void`, the comma operator, every other `new`, tagged templates, regular-expression literals, `while`, `do`, `for (;;)`, `for … in`, `break`, `continue`, labels, `throw`, `try`, `async`, `await`, generators and `yield` are rejected. Expected failure is a `Result`, matched exhaustively.
 
 Integers do not follow JavaScript `number` semantics. An `int` is a 64-bit integer whose overflow goes through the `Arith` policy, not a binary64 value that loses precision above 2^53. A program that mixes `int` and `number` without an explicit conversion is rejected by Osprey even though `tsc` accepts it. `number` arithmetic is IEEE binary64, as in JavaScript.
 
-A string's `.length` in TypeScript counts UTF-16 code units, and Osprey strings are UTF-8. `.length` on a string lowers to a UTF-16 code-unit count; until the runtime provides one, it is rejected. It never silently returns a byte count. Not implemented yet: the frontend lowers before type inference and cannot tell a string from a list, so today `.length` on a string reaches the `length` builtin unrejected. The rejection needs the shared checker and is open work.
+A string's `.length` in TypeScript counts UTF-16 code units, and Osprey strings are UTF-8. `.length` lowers to `listLength`, so on a string it is a type error at the original position, never a silent byte count. `length(text)` is Osprey's byte count, spelled as the builtin it is. A `reduce` with no initial value is rejected: it has no result for an empty list. Because these method names lower before type inference, `map`, `filter` and `reduce` called as methods are always the list operations, and a record's own function field with one of those names must be called as `(record.map)(x)`.
 
-Not implemented yet: the `xs.map`, `xs.filter` and `xs.reduce` lowerings. A method call lowers to the shared method-call node, which resolves a record's function-valued field first and a free function of that name otherwise.
+Any other method call lowers to the shared method-call node, which resolves a record's function-valued field first and a free function of that name otherwise.
 
 ## Effects and handlers — [FLAVOR-TS-EFFECTS]
 

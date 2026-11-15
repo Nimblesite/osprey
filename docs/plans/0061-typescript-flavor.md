@@ -31,10 +31,10 @@ Constraints:
 
 ## Phase C — core lowering
 
-- [ ] [FLAVOR-TS-FUNCTIONS] Functions, arrow functions, generics, explicit type application, `const`/`let` with assignment analysis, tail-only `return`, and rejection of non-`Unit` expression statements. Done: all but reassigned `let`; guard clauses, the program entry ([FLAVOR-TS-ENTRY]) and receiver statements ([FLAVOR-TS-RECEIVER]) were added.
+- [x] [FLAVOR-TS-FUNCTIONS] Functions, arrow functions, generics, explicit type application, `const`/`let` with assignment analysis, tail-only `return`, and rejection of non-`Unit` expression statements. Done: reassigned `let` and parameters rebind as receiver statements do, with compound assignment; guard clauses, the program entry ([FLAVOR-TS-ENTRY]) and receiver statements ([FLAVOR-TS-RECEIVER]) were added.
 - [x] [FLAVOR-TS-TYPES] Interfaces and object types to records, function-valued fields, numeric aliases to sized types, `any` and `unknown` to Osprey `any`; rejection of every type form spec 0054 lists.
 - [x] [FLAVOR-TS-UNIONS] `satisfies` and annotation contexts for object literals, `kind`-discriminated unions to sum types, `Result`/`Success`/`Error`, `switch` on `kind` to exhaustive `match`.
-- [ ] [FLAVOR-TS-EXPRESSIONS] Operators, template literals, `for … of`, spread update, list `map`/`filter`/`reduce`; binary64-only `/`, `intDiv`, remainder sign tests against JavaScript; string `.length` rejected until a UTF-16 count builtin exists. Done: operators, template literals, `for … of`, spread update, `console.log` and `new Map()`. Open: `map`/`filter`/`reduce`, the JavaScript remainder tests and the string `.length` rejection.
+- [ ] [FLAVOR-TS-EXPRESSIONS] Operators, template literals, `for … of`, spread update, list `map`/`filter`/`reduce`; binary64-only `/`, `intDiv`, remainder sign tests against JavaScript; string `.length` rejected until a UTF-16 count builtin exists. Done: operators, template literals, `for … of`, spread update, `console.log`, `new Map()`, `map`/`filter`/`reduce` as the list operations, and `.length` as `listLength`, so a string's `.length` fails to type-check. Open: the JavaScript remainder tests, which the TypeScript corpus twins carry.
 - Acceptance for Phase C (open, except the first clause, which is done): positive and rejection cases in `src/toolchain/crates/osprey-syntax/tests/typescript.rs`; four-flavor programs in `src/osprey/tests/` share Default goldens under GC, ARC and wasm32; `cross_flavor_ir_equiv.rs` proves identical IR for flat-call quadruples.
 
 ## Phase D — effects, handlers, modules and fibers

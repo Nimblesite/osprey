@@ -43,6 +43,8 @@ pub(super) struct Lowerer<'s> {
 
 struct Scope {
     names: BTreeSet<String>,
+    /// The `const` bindings among `names`, which no assignment may rebind.
+    constants: BTreeSet<String>,
     /// Locals a nested function reads, which a later update would not reach.
     captured: BTreeSet<String>,
     function: bool,
@@ -143,6 +145,23 @@ impl<'s> Lowerer<'s> {
         if let Some(scope) = self.scopes.last_mut() {
             let _ = scope.names.insert(name.to_owned());
         }
+    }
+
+    /// Bind `name` as a `const`, which an assignment may not rebind.
+    pub(super) fn bind_constant(&mut self, name: &str) {
+        self.bind(name);
+        if let Some(scope) = self.scopes.last_mut() {
+            let _ = scope.constants.insert(name.to_owned());
+        }
+    }
+
+    /// Whether the innermost binding of `name` is a `const`.
+    pub(super) fn constant(&self, name: &str) -> bool {
+        self.scopes
+            .iter()
+            .rev()
+            .find(|scope| scope.names.contains(name))
+            .is_some_and(|scope| scope.constants.contains(name))
     }
 
     pub(super) fn file_scope(&self) -> bool {
@@ -260,6 +279,7 @@ impl Scope {
     fn new(function: bool, tail: bool) -> Self {
         Self {
             names: BTreeSet::new(),
+            constants: BTreeSet::new(),
             captured: BTreeSet::new(),
             function,
             tail,
