@@ -85,12 +85,23 @@ export function listen(app: Application, port: int, callback: () => void): Resul
 function listening(server: int, routes: Route[], callback: () => void): Result<int, string> {
   const started = httpListen(server, (method, url, headers, body) => wire(dispatch(routes, method, url, headers, body)));
   switch (started.kind) {
+    case "success":
+      return held(server, callback);
+    case "error":
+      return Error(started.message);
+  }
+}
+
+/** As in Node.js, an open server keeps the process alive after the entry returns. */
+function held(server: int, callback: () => void): Result<int, string> {
+  const kept = httpKeepAlive(server);
+  switch (kept.kind) {
     case "success": {
       callback();
       return Success(server);
     }
     case "error":
-      return Error(started.message);
+      return Error(kept.message);
   }
 }
 

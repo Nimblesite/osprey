@@ -241,12 +241,8 @@ static int64_t server_loop_fiber(void *environment) {
   return 0;
 }
 
-static bool valid_server_id(int64_t server_id) {
-  return server_id > 0 && server_id < MAX_SERVERS;
-}
-
 static HttpServer *unregister_server(int64_t server_id) {
-  if (!valid_server_id(server_id)) {
+  if (!http_valid_server_id(server_id)) {
     return NULL;
   }
   pthread_mutex_lock(&runtime_mutex);
@@ -280,7 +276,7 @@ int64_t http_create_server(int64_t port, char *address) {
     return !address ? -2 : -1;
   }
   int64_t id = get_next_id();
-  if (!valid_server_id(id)) {
+  if (!http_valid_server_id(id)) {
     return -3;
   }
   HttpServer *server = allocate_server(id, (int)port, address);
@@ -394,7 +390,7 @@ static int listen_registered_server(HttpServer *server,
 }
 
 int64_t http_listen(int64_t server_id, HttpRequestHandler handler) {
-  if (!valid_server_id(server_id)) {
+  if (!http_valid_server_id(server_id)) {
     return -1;
   }
   pthread_mutex_lock(&runtime_mutex);
@@ -418,7 +414,7 @@ static int listen_with_closure(HttpServer *server, void *closure) {
 // Closure-aware bridge for Osprey function values. Raw C callbacks keep the
 // existing bridge, including their compile-time specialised ABI.
 int64_t http_listen_closure(int64_t server_id, void *closure) {
-  if (!valid_server_id(server_id) || !closure) return -1;
+  if (!http_valid_server_id(server_id) || !closure) return -1;
   pthread_mutex_lock(&runtime_mutex);
   HttpServer *server = servers[server_id];
   if (!server || !server_can_listen(server)) {
@@ -474,7 +470,7 @@ static int64_t request_server_stop(HttpServer *server, bool *self_stop) {
 int64_t http_stop_server(int64_t server_id) {
   HttpServer *server = unregister_server(server_id);
   if (!server) {
-    return valid_server_id(server_id) ? 0 : -1;
+    return http_valid_server_id(server_id) ? 0 : -1;
   }
   bool self_stop = false;
   int64_t fiber_id = request_server_stop(server, &self_stop);

@@ -50,6 +50,7 @@ pub(crate) const HTTP_FNS: &[&str] = &[
     "httpListen",
     "httpStopServer",
     "httpClientGone",
+    "httpKeepAlive",
     "httpCreateClient",
     "httpGet",
     "httpPost",
