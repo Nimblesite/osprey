@@ -226,6 +226,25 @@ fn diagnostic_columns_are_remeasured_in_the_selected_encoding() {
     assert!(u8.iter().all(|d| d.range.0 == 0));
 }
 
+#[test]
+fn a_typescript_flavor_document_gets_osprey_diagnostics_in_utf16() {
+    // [FLAVOR-TS-VERIFICATION], [LSP-ENCODING]: a `.ts` document the editor
+    // opted in is parsed by the TypeScript-flavor frontend. Its byte column is
+    // re-measured in UTF-16: the emoji before `var` is four bytes and two code
+    // units, so `var` is at UTF-16 column 16, not byte column 18.
+    let source = "const s = \"😀\"; var y = 2;\n";
+    let diagnostics = compute(source, "file:///api.ts", U16);
+    let found = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("`var`"))
+        .unwrap_or_else(|| panic!("{diagnostics:?}"));
+    assert_eq!(found.code.as_deref(), Some("syntax-error"));
+    assert_eq!((found.range.0, found.range.1), (0, 16), "{found:?}");
+    // A clean TypeScript-flavor program has no findings.
+    let clean = compute("function main() {\n  console.log(\"hi\");\n}\n", "file:///api.ts", U16);
+    assert!(clean.is_empty(), "{clean:?}");
+}
+
 #[cfg(unix)]
 #[path = "project_tests.rs"]
 mod project_tests;

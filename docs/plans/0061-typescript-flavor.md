@@ -44,7 +44,7 @@ Constraints:
 
 ## Phase E — tooling
 
-- [ ] [FLAVOR-TS-VERIFICATION] LSP opt-in for TypeScript-flavor documents beside the editor's TypeScript service (VS Code language configuration in `src/toolchain/vscode-extension/`), test discovery, docs examples, corpus backends, web compiler selection, CI and release change classification. Acceptance: an ordinary `.ts` file in the workspace is never claimed; an opted-in file gets Osprey diagnostics and `tsc` diagnostics together; `make ci` passes.
+- [x] [FLAVOR-TS-VERIFICATION] LSP opt-in for TypeScript-flavor documents beside the editor's TypeScript service (VS Code language configuration in `src/toolchain/vscode-extension/`), test discovery, docs examples, corpus backends, web compiler selection, CI and release change classification. Acceptance: an ordinary `.ts` file in the workspace is never claimed; an opted-in file gets Osprey diagnostics and `tsc` diagnostics together; `make ci` passes. Done: the extension claims each `.ts` (and `.py`) file a manifest lists or a first-line marker opts in, by exact path, beside the editor's own TypeScript service (`client/src/flavor-documents.ts`); the server parses it with the TypeScript frontend and reports in UTF-16; `osprey test` and the corpus discover `.test.ts`; the web compiler takes `flavor: "typescript"`; CI scope and the every-program check treat a `.ts` under `src/osprey/` as Osprey and other `.ts` as tooling. The opt-in is read when the extension starts; a newly listed file is claimed after a window reload.
 
 ## Phase F — Express port
 

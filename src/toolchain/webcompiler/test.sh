@@ -109,3 +109,13 @@ def main():
     fi
 done
 echo 'PASS: Python requests compile and run through the Python frontend'
+for endpoint in compile run; do
+    response=$(curl -sS -X POST "http://localhost:3001/api/$endpoint" \
+        -H 'Content-Type: application/json' \
+        -d '{"code":"function main() {\n  console.log(\"TypeScript flavor works\");\n}\n","flavor":"typescript"}')
+    jq -e '.success == true' <<< "$response" >/dev/null || { echo "FAIL: TypeScript $endpoint: $response"; exit 1; }
+    if [ "$endpoint" = run ]; then
+        jq -e '.programOutput == "TypeScript flavor works\n"' <<< "$response" >/dev/null || exit 1
+    fi
+done
+echo 'PASS: TypeScript requests compile and run through the TypeScript frontend'
