@@ -241,7 +241,11 @@ fn a_typescript_flavor_document_gets_osprey_diagnostics_in_utf16() {
     assert_eq!(found.code.as_deref(), Some("syntax-error"));
     assert_eq!((found.range.0, found.range.1), (0, 16), "{found:?}");
     // A clean TypeScript-flavor program has no findings.
-    let clean = compute("function main() {\n  console.log(\"hi\");\n}\n", "file:///api.ts", U16);
+    let clean = compute(
+        "function main() {\n  console.log(\"hi\");\n}\n",
+        "file:///api.ts",
+        U16,
+    );
     assert!(clean.is_empty(), "{clean:?}");
 }
 
