@@ -64,6 +64,12 @@ impl Lowerer<'_> {
 
     fn number(&self, literal: &NumericLiteral<'_>) -> Result<Expr> {
         let raw = self.text(literal.span).replace('_', "");
+        if raw.starts_with('0') && raw.as_bytes().get(1).is_some_and(u8::is_ascii_digit) {
+            return Err(self.error(
+                literal.span,
+                "legacy octal or leading-zero number: TypeScript 7 rejects it; write `0o17` or `17`",
+            ));
+        }
         if raw.contains(['.', 'e', 'E']) && !raw.starts_with("0x") && !raw.starts_with("0X") {
             return Ok(Expr::Float(literal.value));
         }

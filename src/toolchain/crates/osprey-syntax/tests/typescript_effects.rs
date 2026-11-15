@@ -173,6 +173,27 @@ fn typescript_effects_reject_malformed_forms_at_their_positions() {
             1,
             10,
         ),
+        // TypeScript 7 rejects legacy octal and leading-zero decimals in every
+        // file; `oxc_parser` accepts them outside strict mode, and `0123` would
+        // otherwise read as 123 where JavaScript reads 83.
+        (
+            "const n = 0123;\n",
+            "legacy octal or leading-zero number",
+            1,
+            10,
+        ),
+        (
+            "const n = 089;\n",
+            "legacy octal or leading-zero number",
+            1,
+            10,
+        ),
+        (
+            "const n = -0777;\n",
+            "legacy octal or leading-zero number",
+            1,
+            11,
+        ),
     ] {
         rejected_at(source, needle, line, column);
     }

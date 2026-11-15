@@ -40,7 +40,20 @@ Editors must not register every `*.ts` file as Osprey. A listed project source, 
 
 The compiler parses in process with a pinned Rust TypeScript parser that produces a TypeScript 7 syntax tree with comments and exact source ranges. No external process, no textual translation into another flavor and no execution of source is permitted.
 
-The selected parser is `oxc_parser`, pinned at 0.158.0. Plan 0061 Phase A must still confirm it against the TypeScript 7 parser conformance corpus; the frontend was built on it before that run, on 2026-11-15, so the confirmation is open work. A parser lifted from a Rust port of the TypeScript 7 compiler may replace it only if it is a published, pinned crate that passes the same corpus at least as well. A tree-sitter TypeScript grammar is not the compiler parser: its error-tolerant grammar is not version-exact and cannot establish [FLAVOR-TS-COMPLIANCE-SYNTAX].
+The selected parser is `oxc_parser`, pinned at 0.158.0. `make typescript-conformance` checks it against TypeScript's own parser and compiler conformance corpus, at the commit `tsc` 7.0.2 pins (`4d4f005c`), beside `tsrs_parser` 7.1.0-beta.tsrs1, the published Rust port of the TypeScript 7 parser. A file counts as rejected by `tsc` when it reports a TS1xxx syntax or grammar error. Run on 2026-11-15:
+
+| Suite | Files | `oxc_parser` agrees with `tsc` | `tsrs_parser` agrees with `tsc` | `oxc` accepts, `tsc` rejects | `oxc` rejects, `tsc` accepts | Frontend panics |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| parser | 788 | 80.6% | 99.9% | 1 | 152 | 0 |
+| compiler | 6,408 | 96.8% | 99.9% | 5 | 197 | 0 |
+
+Seven compiler cases are UTF-16 or Latin-1, not UTF-8, and are not compared; Osprey sources are UTF-8. The plan's rule was to adopt `oxc_parser` unless a published port parser agreed strictly more often, and `tsrs_parser` does. The decision on 2026-11-15 is to keep `oxc_parser`, for three reasons:
+
+- **Its extra rejections are TypeScript 7 errors too.** They are ECMAScript early errors, such as `await` used as an identifier in an async generator or a misplaced numeric separator, which `tsc` reports from its checker under each case's own options rather than from its parser.
+- **The direction that matters is nearly closed.** `oxc_parser` accepts only six files that `tsc` rejects. The frontend rejects the four legacy octal and leading-zero numbers among them itself; a `0123` would otherwise have read as 123 where JavaScript reads 83. The other two are a malformed `/// <reference>` comment and a JSDoc-only type argument.
+- **`tsrs_parser` is a beta with a Go-shaped API** whose parsed source text is leaked and never freed, which a long-running language server cannot accept.
+
+The decision is open to review and is revisited when `tsrs_parser` publishes a stable release. A tree-sitter TypeScript grammar is not the compiler parser: its error-tolerant grammar is not version-exact and cannot establish [FLAVOR-TS-COMPLIANCE-SYNTAX].
 
 Before the parser runs, a lexical scan bounds the source's nesting at the shared `MAX_SYNTAX_DEPTH` (512): each open bracket or template hole is a level, and so is each operator or prefix keyword since the last `,` or `;` inside it, because the parser descends once for each. A deeper source is rejected with `syntax nesting limit exceeded` at the offending byte, as every other flavor rejects it, and the parser, the lowerer and the phases after them never recurse past the limit. Positions are 1-based lines and 0-based byte columns, as in every flavor; the language server converts a column to the client's encoding, UTF-16 by default, at its edge ([LSP-ENCODING](../tooling/0020-LanguageServerAndEditors.md)).
 
