@@ -364,6 +364,7 @@
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  padding-inline: var(--space-3);
 }
 .comparison-table thead th.col-osprey { background: var(--primary-container); color: var(--on-primary); }
 .comparison-table tbody td.col-osprey { background: rgba(119, 215, 244, 0.08); }
