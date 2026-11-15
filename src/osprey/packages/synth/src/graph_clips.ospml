@@ -7,7 +7,15 @@ module GraphClips
         Delay _ => n(processor = Amplifier)
         _ => n
 
-    ready (graph, n) = length (filterList (graph.cables, \c => c.destination == n.identity)) == length n.inputs
+    optional (n, port) = match n.processor
+        External _ => port.rate == Control
+        _ => false
+
+    connected (graph, n, inlet) = match listGet n.inputs inlet
+        Error _ => false
+        Success port => optional (n, port) || length (filterList (graph.cables, \c => c.destination == n.identity && c.inlet == inlet)) == 1
+
+    ready (graph, n) = length (filterList (toList (range (0, length n.inputs)), \inlet => connected (graph, n, inlet))) == length n.inputs
 
     converted (graph, clips, n) = match ClipInputs::routed (graph, clips, n.identity, 0)
         Error why => Error(message = why)

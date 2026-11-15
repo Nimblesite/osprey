@@ -34,31 +34,31 @@ module ClipInputs
             Error why => Error(message = why)
             Success outputs => Success(value = HostLayout(inputChannels = inputs, outputChannels = outputs, acceptsNotes = length (filterList (n.inputs, \p => p.rate == Events && p.unit == Notes)) == 1))
 
+    matchingRate (n, rate, index) = match listGet n.inputs index
+        Error _ => false
+        Success port => port.rate == rate
+
+    source (graph, clips, n, rate) = match listGet (filterList (toList (range (0, length n.inputs)), \index => matchingRate (n, rate, index))) 0
+        Error why => Error(message = why)
+        Success inlet => routed (graph, clips, n.identity, inlet)
+
     audioInput (graph, clips, n) = match length (filterList (n.inputs, \p => p.rate == Audio)) == 0
         true => Success(value = [])
-        false => match routed (graph, clips, n.identity, 0)
+        false => match source (graph, clips, n, Audio)
             Error why => Error(message = why)
             Success clip => Success(value = clip.clipSamples)
 
     noteInput (graph, clips, n) = match length (filterList (n.inputs, \p => p.rate == Events)) == 0
         true => Success(value = [])
-        false => match routed (graph, clips, n.identity, satSub (length n.inputs) 1)
+        false => match source (graph, clips, n, Events)
             Error why => Error(message = why)
             Success clip => Success(value = clip.clipNotes)
-
-    parameter (outcome, p) = match outcome
-        Error why => Error(message = why)
-        Success values => match startsWith p.key "vst:"
-            false => Error(message = "A VST parameter has no native identity.")
-            true => match parseInt (drop p.key 4)
-                Error why => Error(message = why)
-                Success identity => Success(value = listAppend values (HostParameter(identity = identity, offset = 0, value = p.initial)))
 
     (** Assemble audio, events and current normalized controls into one bounded worker request. *)
     export request (graph, clips, n, frames) = match audioInput (graph, clips, n)
         Error why => Error(message = why)
         Success samples => match noteInput (graph, clips, n)
             Error why => Error(message = why)
-            Success notes => match foldList (filterList (n.parameters, \p => p.automatable), Success(value = []), parameter)
+            Success notes => match HostModulation::points (graph, clips, n, frames)
                 Error why => Error(message = why)
                 Success parameters => Success(value = HostBlock(frames = frames, notes = notes, parameters = parameters, samples = samples))

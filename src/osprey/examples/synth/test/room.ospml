@@ -146,6 +146,13 @@ pluginUiJourney () =
     expect (length added.drivenSurface.surfaceSession.sessionStore.graph.nodes, 1)
     expect (Drive::shows (added, "0: Delay"), true)
     expect (Drive::letters (added, "ADelay 0"), true)
+    current = added.drivenSurface.surfaceSession.sessionStore
+    original = current.graph
+    frozen = original(nodes = mapList (original.nodes, nonAutomatable))
+    disabled = current(graph = frozen)
+    refusedControl = synth::EditorState::typed (disabled, synth::EditParameter(identity = 0, key = "vst:100"), "0.25")
+    expect (structuralEquals (refusedControl.graph, frozen), true)
+
     invalid = Drive::choose (added, "0: Delay", "1.5")
     expect (structuralEquals (invalid.drivenSurface.surfaceSession.sessionStore.graph, added.drivenSurface.surfaceSession.sessionStore.graph), true)
     stale = Drive::completed (added, "prism-vst:describe:3", true, "{\"status\":0,\"stderr\":\"\"}")
@@ -162,6 +169,24 @@ pluginUiJourney () =
     widened = Drive::press (Drive::press (sink, "Source 2: audio"), "Connect 3: audio")
     fed = Drive::press (Drive::press (widened, "Source 3: audio"), "Connect 0: audio")
     finished = Drive::press (Drive::press (fed, "Source 1: audio"), "Connect 4: audio")
+    lfoPatch = Drive::choose (finished, "Add component", "lfo")
+    armedModulator = Drive::press (lfoPatch, "Source 5: control")
+    expect (Drive::shows (armedModulator, "Modulate 0: Delay"), true)
+    controlled = Drive::press (armedModulator, "Modulate 0: Delay")
+    expect (length controlled.drivenSurface.surfaceSession.sessionStore.graph.cables, 5)
+    hostedModulationJourney controlled.drivenSurface.surfaceSession.sessionStore.graph
+    unbound = Drive::press (controlled, "Disconnect 0: Modulation: Delay")
+    expect (length unbound.drivenSurface.surfaceSession.sessionStore.graph.cables, 4)
+    match synth::GraphClips::advance (unbound.drivenSurface.surfaceSession.sessionStore.graph, [], 256)
+        Error _ => expect (false, true)
+        Success action => match action
+            synth::ClipReady _ => expect (false, true)
+            synth::ClipWaiting _ block _ => match listGet block.parameters 0
+                Error _ => expect (false, true)
+                Success restored => expect (restored.value, 1.0)
+    wrongSource = Drive::press (controlled, "Source 2: audio")
+    refusedModulation = Drive::press (wrongSource, "Modulate 0: Delay")
+    expect (structuralEquals (refusedModulation.drivenSurface.surfaceSession.sessionStore.graph, controlled.drivenSurface.surfaceSession.sessionStore.graph), true)
     audition = Drive::press (finished, "Audition patch")
     expect (length audition.drivenSurface.surfaceAsked, 1)
     match listGet audition.drivenSurface.surfaceAsked 0
@@ -368,3 +393,37 @@ modulationJourney () =
     match clipOutput missing.graph
         Error _ => expect (true, true)
         Success _ => expect (false, true)
+
+// [SYNTH-HOST-MODULATION] Graph cables become exact normalized native automation points.
+hostedModulationJourney graph =
+    match synth::GraphClips::advance (graph, [], 256)
+        Error _ => expect (false, true)
+        Success action => match action
+            synth::ClipReady _ => expect (false, true)
+            synth::ClipWaiting identity block _ =>
+                expect (identity, 0)
+                expect (length block.parameters, 2)
+                expect (length block.samples, 512)
+                match listGet block.parameters 0
+                    Error _ => expect (false, true)
+                    Success first =>
+                        expect (first.identity, 100)
+                        expect (first.offset, 0)
+                        expect (first.value, 0.5)
+                match listGet block.parameters 1
+                    Error _ => expect (false, true)
+                    Success second =>
+                        expect (second.offset, 128)
+                        expect (second.value > 0.5 && second.value < 1.0, true)
+    match synth::HostModulation::connect (graph, 5, 0, 0, "vst:100")
+        synth::Invalid _ => expect (false, true)
+        synth::Valid same => expect (structuralEquals (same, graph), true)
+    match synth::HostModulation::connect (graph, 5, 0, 0, "vst:unknown")
+        synth::Invalid _ => expect (true, true)
+        synth::Valid _ => expect (false, true)
+    invalid = synth::NodeClip(clipNode = 5, clipChannels = 1, clipSamples = mapList (toList (range (0, 256)), \_ => 1.1), clipNotes = [])
+    match synth::GraphClips::advance (graph, [invalid], 256)
+        Error _ => expect (true, true)
+        Success _ => expect (false, true)
+
+nonAutomatable n = n(parameters = mapList (n.parameters, \p => p(automatable = false)))

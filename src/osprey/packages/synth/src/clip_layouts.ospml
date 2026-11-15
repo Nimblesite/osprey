@@ -17,15 +17,18 @@ module ClipLayouts
             _ => false
         _ => false
 
+    modulation (n, port) = port.rate == Control && port.unit == Normalised && port.channels == 1 && length (filterList (n.parameters, \p => p.key == port.name && p.automatable && p.unit == Normalised && p.minimum == 0.0 && p.maximum == 1.0)) == 1 && length (filterList (n.inputs, \other => other.name == port.name)) == 1
+
     external n = match ClipInputs::layout n
         Error _ => false
         Success layout =>
             audioCount = length (filterList (n.inputs, \p => p.rate == Audio && p.unit == Amplitude))
             noteCount = length (filterList (n.inputs, \p => p.rate == Events && p.unit == Notes && p.channels == 1))
+            controlCount = length (filterList (n.inputs, \port => modulation (n, port)))
             audioFirst = match n.inputs
                 [] => true
                 [first, ..._rest] => audioCount == 0 || first.rate == Audio
-            audioCount <= 1 && noteCount <= 1 && audioCount + noteCount == length n.inputs && length n.outputs == 1 && audio n.outputs && layout.outputChannels >= 1 && audioFirst
+            audioCount <= 1 && noteCount <= 1 && audioCount + noteCount + controlCount == length n.inputs && length n.outputs == 1 && audio n.outputs && layout.outputChannels >= 1 && audioFirst
 
     control port = port.rate == Control && port.unit == Normalised && port.channels == 1
 

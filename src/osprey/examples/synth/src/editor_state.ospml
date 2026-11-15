@@ -85,6 +85,7 @@ module EditorState
         Source identity outlet => armed (editor, identity, outlet)
         Connect identity inlet => published (editor, Graphs::rewire (editor.graph, Components::route (editor.source, editor.outlet, identity, inlet)))
         Disconnect identity inlet => disconnected (editor, identity, inlet)
+        Modulate identity key => published (editor, HostModulation::connect (editor.graph, editor.source, editor.outlet, identity, key))
         Remove => removed editor
         _ => editor
 
@@ -96,13 +97,19 @@ module EditorState
         true => n(parameters = mapList (n.parameters, \p => parameterValue (key, value, p)))
         false => n
 
-    checkedValue (editor, identity, key, value) =
+    appliedValue (editor, identity, key, value) =
         graph = editor.graph
         snapshot = Parameters::initial graph
         edit = ParameterChange(node = identity, key = key, value = value, revision = snapshot.revision, samplePosition = snapshot.samplePosition)
         match Parameters::apply (editor.graph, snapshot, edit)
             Invalid _ => editor(message = "That parameter value is outside its allowed range.")
             Valid _ => published (editor, Valid(value = graph(nodes = mapList (editor.graph.nodes, \n => nodeValue (identity, key, value, n)))))
+
+    checkedValue (editor, identity, key, value) = match Graphs::node (editor.graph, identity)
+        Invalid _ => editor(message = "That component no longer exists.")
+        Valid n => match length (filterList (n.parameters, \p => p.key == key && p.automatable)) == 1
+            false => editor(message = "This host cannot edit non-automatable parameters.")
+            true => appliedValue (editor, identity, key, value)
 
     (** Parse text once at the UI edge and validate against the component's descriptor. *)
     export typed (editor, action, text) = match action

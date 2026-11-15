@@ -137,20 +137,43 @@ sys.exit(result.returncode)
     return script
 
 
-def recorded_notes(record):
+def input_blocks(record):
     payload = bytes.fromhex(record["input"])
-    position, first, notes = 0, 0, []
+    inputs = struct.unpack_from("<I", bytes.fromhex(record["output"]), 4)[0]
+    position, first = 0, 0
     while position < len(payload):
         frames, note_count, parameter_count = struct.unpack_from("<III", payload, position)
         position += 12
-        for _ in range(note_count):
-            kind, offset, pitch, channel, identity, velocity = struct.unpack_from("<IIIIIf", payload, position)
-            notes.append((kind, first + offset, pitch, channel, identity, velocity))
-            position += 24
+        notes = payload[position:position + note_count * 24]
+        position += note_count * 24
+        parameters = payload[position:position + parameter_count * 16]
         position += parameter_count * 16
+        audio = payload[position:position + frames * inputs * 4]
+        position += frames * inputs * 4
+        yield first, frames, notes, parameters, audio
         first += frames
     assert position == len(payload) and first == 12288
-    return notes
+
+
+def recorded_events(record):
+    notes, parameters = [], []
+    for first, _, note_bytes, parameter_bytes, _ in input_blocks(record):
+        for kind, offset, pitch, channel, identity, velocity in struct.iter_unpack("<IIIIIf", note_bytes):
+            notes.append((kind, first + offset, pitch, channel, identity, velocity))
+        for identity, offset, value in struct.iter_unpack("<IId", parameter_bytes):
+            parameters.append((identity, first + offset, value))
+    return notes, parameters
+
+
+def stationary_control(record, identity):
+    """Keep the same initial setting while removing only subsequent modulation points."""
+    blocks = []
+    for first, frames, notes, parameter_bytes, audio in input_blocks(record):
+        parameters = [struct.pack("<IId", parameter, offset, value)
+                      for parameter, offset, value in struct.iter_unpack("<IId", parameter_bytes)
+                      if parameter != identity or first + offset == 0]
+        blocks.append(struct.pack("<III", frames, len(notes) // 24, len(parameters)) + notes + b"".join(parameters) + audio)
+    return b"".join(blocks)
 
 
 def check_prism_audio(destination):
@@ -158,11 +181,18 @@ def check_prism_audio(destination):
     assert len(records) == 3 and all(record["status"] == 0 for record in records), records
     samples = [[sample for block in decoded_audio(bytes.fromhex(record["output"])) for sample in block]
                for record in records]
-    events = recorded_notes(records[0])
+    events, parameters = recorded_events(records[0])
+    modulation = [(offset, value) for identity, offset, value in parameters if identity == 6]
+    assert [offset for offset, _ in modulation] == list(range(0, 12288, 128))
+    assert modulation[0][1] == 0.5 and max(value for _, value in modulation) > 0.95
+    assert min(value for _, value in modulation) < 0.5
     assert [(kind, offset, pitch, channel, identity) for kind, offset, pitch, channel, identity, _ in events] == [(1, 0, 60, 0, 3), (2, 6000, 60, 0, 3)]
     assert abs(events[0][5] - 0.8) < 1e-6 and events[1][5] == 0.0
     assert all(len(audio) == 12288 * 2 for audio in samples)
     assert max(abs(value) for value in samples[0]) > 0.01, "The real VST instrument is silent"
+    instrument = records[0]["arguments"]
+    baseline = [sample for block in streamed(instrument[1], instrument[2], stationary_control(records[0], 6)) for sample in block]
+    assert max(abs(actual - fixed) for actual, fixed in zip(samples[0], baseline, strict=True)) > 0.001, "VST modulation did not change the rendered audio"
     assert samples[1] == [0.0, 0.0] + samples[0][:-2], "First effect did not receive instrument PCM"
     assert samples[2] == [0.0, 0.0] + samples[1][:-2], "Second effect did not receive first effect PCM"
     print("Prism MIDI -> real JX10 -> ADelay -> ADelay -> LFO-controlled stereo gain: exact VST PCM chain verified")
@@ -188,6 +218,7 @@ def prism_test(host, headless):
                 {"type": ["Add component", "lfo"]}, {"type": ["Add component", "modulated-gain"]},
                 {"invoke": "Source 1: audio"}, {"invoke": "Connect 6: audio"},
                 {"invoke": "Source 5: control"}, {"invoke": "Connect 6: control"},
+                {"invoke": "Modulate 2: VCF Freq"},
                 {"invoke": "Source 6: audio"}, {"invoke": "Connect 4: audio"},
                 {"invoke": "Audition patch"}, {"wait": "Preview finished."}, {"shot": "vst-audition"},
                 {"invoke": "Select 1"}]

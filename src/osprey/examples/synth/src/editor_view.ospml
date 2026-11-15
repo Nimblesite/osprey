@@ -34,11 +34,23 @@ module EditorView
         Error _ => Ui::caption "Output port unavailable"
         Success port => Ui::button ("Source ${n.identity}: ${port.name}", "", Source(identity = n.identity, outlet = index))
 
+    inputName (n, port) = match (port.rate == Control)
+        false => port.name
+        true => match listGet (filterList (n.parameters, \p => p.key == port.name)) 0
+            Error _ => port.name
+            Success p => "Modulation: ${p.label}"
+
     inputPort (n, index) = match listGet n.inputs index
         Error _ => Ui::caption "Input port unavailable"
-        Success port => Ui::row [Ui::button ("Connect ${n.identity}: ${port.name}", "", Connect(identity = n.identity, inlet = index)), Ui::button ("Disconnect ${n.identity}: ${port.name}", "", Disconnect(identity = n.identity, inlet = index))]
+        Success port => Ui::row [Ui::button ("Connect ${n.identity}: ${inputName (n, port)}", "", Connect(identity = n.identity, inlet = index)), Ui::button ("Disconnect ${n.identity}: ${inputName (n, port)}", "", Disconnect(identity = n.identity, inlet = index))]
 
-    parameter (n, p) = Ui::field ("${n.identity}: ${p.label}", "${p.initial}", "${p.minimum} to ${p.maximum}", EditParameter(identity = n.identity, key = p.key))
+    parameter (n, p) =
+        field = Ui::field ("${n.identity}: ${p.label}", "${p.initial}", "${p.minimum} to ${p.maximum}", EditParameter(identity = n.identity, key = p.key))
+        match n.processor
+            External _ => match p.automatable
+                true => Ui::row [field, Ui::button ("Modulate ${n.identity}: ${p.label}", "", Modulate(identity = n.identity, key = p.key))]
+                false => Ui::caption "${n.identity}: ${p.label}: ${p.initial} (not editable)"
+            _ => field
 
     ports n = listConcat (mapList (toList (range (0, length n.outputs)), \index => sourcePort (n, index))) (mapList (toList (range (0, length n.inputs)), \index => inputPort (n, index)))
 

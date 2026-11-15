@@ -51,6 +51,9 @@ type EditorAction =
     EditParameter
         identity : int
         key : string
+    Modulate
+        identity : int
+        key : string
     Audition
     Surface
     PluginPath
