@@ -12,5 +12,6 @@ ok 11 - mixing, filtering and explicit two-sample feedback execute the compiled 
 ok 12 - sample-accurate automation applies before its frame, preserves ordering and rejects stale or out-of-block events
 ok 13 - performance timbres and metallic warp stay bounded across rates and control extremes
 ok 14 - edit routes and remove connected components without corrupting the previous playable graph
-1..14
-# tests=14 passed=14 failed=0 skipped=0
+ok 15 - replace a playing graph without resetting phase, lose deleted state and refuse incomplete audio routes
+1..15
+# tests=15 passed=15 failed=0 skipped=0
