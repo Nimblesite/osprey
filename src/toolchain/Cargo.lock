@@ -689,9 +689,9 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "lsp-profiler"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "289d9340d36286d75186cb7151451dd07554af2fb4c90039b998284927e9c92e"
+checksum = "c994bb6d8f1b9871c1e47288ad986c5c4bf1b14a6e04c45776d26595501f4ba0"
 dependencies = [
  "async-trait",
  "humantime",
@@ -736,9 +736,9 @@ dependencies = [
 
 [[package]]
 name = "lspkit"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87e6c367eaa2cffef5d2536abff8c014749e00d9d6fdab130b869c84f1a3acd7"
+checksum = "fca7d7fad6b009b01fef2706904f1960dd5b8e6fc74cc8210558fcde40cf5ce7"
 dependencies = [
  "async-trait",
  "dashmap",
@@ -755,9 +755,9 @@ dependencies = [
 
 [[package]]
 name = "lspkit-server"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f49dfaef39b1ae30773aa83b665fb97f531d3b844c6feb589fe0eb163762c3f7"
+checksum = "1472ab3543a14ddb6a5f932f325bda13be4597c87641909117080993242231f2"
 dependencies = [
  "async-trait",
  "futures-util",

@@ -295,3 +295,75 @@ async fn apply_changes_rejects_a_stale_incremental_edit() {
     apply_changes(&vfs, &doc, &empty);
     assert_eq!(vfs.text(&doc).as_deref(), Some("abc\n"));
 }
+
+/// LSP `ServerCancelled`: the server declined the request; the client retries.
+const SERVER_CANCELLED: i32 = -32802;
+
+/// Hovers past the queue (256) and past what the reply pipe holds while the
+/// client is still busy sending. A full queue used to end the session
+/// ("analysis backlog limit reached"); VS Code then restarted the server,
+/// and gave up after repeated failures. Every request must get exactly one
+/// answer, a hover or `ServerCancelled`, and the session must stay up.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_request_flood_is_answered_and_never_ends_the_session() {
+    const FLOOD: i64 = 2000;
+    let mut h = Harness::start();
+    let _diags = h.open(SRC).await;
+    let ids = 100..100 + FLOOD;
+    let to_server = &mut h.to_server;
+    let from_server = &mut h.from_server;
+    let writes = async {
+        use tokio::io::AsyncWriteExt as _;
+        for id in ids.clone() {
+            let hover = Message::request(
+                RequestId::Number(id),
+                "textDocument/hover",
+                position_params(URI, 0, 3),
+            );
+            let body = serde_json::to_vec(&hover).expect("serialize");
+            let header = format!("Content-Length: {}\r\n\r\n", body.len());
+            to_server
+                .write_all(header.as_bytes())
+                .await
+                .expect("header");
+            to_server.write_all(&body).await.expect("body");
+        }
+        to_server.flush().await.expect("flush");
+    };
+    let reads = async {
+        // The client reads nothing until the server has had time to back up.
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let mut answered = std::collections::BTreeMap::new();
+        while answered.len() < ids.clone().count() {
+            let message = read_message(&mut *from_server)
+                .await
+                .expect("the session ended under load");
+            if let Some(RequestId::Number(id)) = message.id {
+                let previous = answered.insert(id, message);
+                assert!(previous.is_none(), "request {id} answered twice");
+            }
+        }
+        answered
+    };
+    let ((), answered) = tokio::join!(writes, reads);
+    let mut hovers = 0;
+    for (id, reply) in &answered {
+        assert!(ids.contains(id), "reply for unknown request {id}");
+        match (&reply.result, &reply.error) {
+            (Some(result), None) => {
+                hovers += 1;
+                assert!(result.get("contents").is_some(), "{id}: {result}");
+            }
+            (None, Some(error)) => assert_eq!(error.code, SERVER_CANCELLED, "{id}: {error:?}"),
+            other => panic!("request {id} got neither a hover nor a refusal: {other:?}"),
+        }
+    }
+    assert!(hovers > 0, "every hover was refused");
+    h.assert_still_serving(9000, "the flood ended the session")
+        .await;
+    let hover = h
+        .request(9001, "textDocument/hover", position_params(URI, 0, 3))
+        .await;
+    assert!(hover.result.is_some(), "hover after the flood: {hover:?}");
+    h.shutdown_and_exit().await;
+}

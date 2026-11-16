@@ -52,9 +52,6 @@ pub enum ServerError {
     /// The ordered analysis worker stopped before accepting a message.
     #[error("language server analysis worker stopped: {0}")]
     AnalysisStopped(String),
-    /// Closing the session preserves edits rather than silently dropping work.
-    #[error("language server analysis backlog limit reached; restart the session")]
-    AnalysisBacklog,
 }
 
 /// Run the language server over stdin/stdout until the client disconnects or

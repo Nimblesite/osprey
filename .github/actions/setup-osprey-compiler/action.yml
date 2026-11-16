@@ -1,10 +1,6 @@
 name: "Setup Osprey Compiler"
 description: "Installs the Rust toolchain + clang/LLVM, builds the C runtime archives and the osprey binary"
 inputs:
-  rust-toolchain:
-    description: "Rust toolchain to use"
-    required: false
-    default: "stable"
   version:
     description: "Version to stamp into the binary (OSPREY_VERSION); empty keeps the 0.0.0-dev placeholder"
     required: false
@@ -29,9 +25,8 @@ runs:
   steps:
     - name: Set up Rust
       id: rust
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@1.100.0
       with:
-        toolchain: ${{ inputs.rust-toolchain }}
         components: rustfmt, clippy
 
     - name: Cache cargo registry + target

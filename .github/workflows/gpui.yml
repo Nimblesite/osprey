@@ -192,8 +192,8 @@ jobs:
             mingw-w64-ucrt-x86_64-rust
 
       # The CLI builds with rustup's stable MSVC toolchain, as in ci-windows.yml.
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Build C runtime archives (MinGW)
         shell: msys2 {0}
