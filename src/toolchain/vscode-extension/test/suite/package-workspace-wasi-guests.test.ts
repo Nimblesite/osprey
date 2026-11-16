@@ -9,7 +9,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import threads = require("node:worker_threads");
 import * as sinon from "sinon";
-import { compileWasi } from "../../client/src/osprey-ui/wasi";
+import { compileWasi, createWasi, wasiImports } from "../../client/src/osprey-ui/wasi";
 import { startNativeRuntime, type NativeRuntime } from "../../client/src/osprey-ui/wasi-runner";
 import { readFrame } from "../../client/src/osprey-ui/webview/rows";
 import { frame } from "./native-rows-kit";
@@ -374,7 +374,14 @@ suite("package workspace in-memory WASI", () => {
     const poll = (errno: number) => [...store32(16, integer(5)), ...expect(wasi("poll_oneoff", integer(1024), integer(2048), integer(1), integer(16)), errno)];
     const refused = [0, 1, 2].flatMap((fd) => [1, 2].flatMap((tag) => [...subscribe(tag, fd), ...poll(ERRNO.badf), ...expect(load32(16), 5)]));
     const clock = [...subscribe(0, 1), ...poll(ERRNO.success), ...expect(load32(16), 1)];
-    assert.strictEqual(await runProbe(probe([...refused, ...clock])), 0);
+    // A range past the end of the guest's 2 pages is not the guard's to read: the host refuses it.
+    const outside = [...store32(16, integer(5)), ...expect(wasi("poll_oneoff", integer(2 * 65536 - 16), integer(2048), integer(1), integer(16)), ERRNO.overflow), ...expect(load32(16), 5)];
+    assert.strictEqual(await runProbe(probe([...refused, ...clock, ...outside])), 0);
+    // Before the instance's memory exists, or with arguments it cannot read, nothing is polled.
+    const early = wasiImports(createWasi(), () => undefined).wasi_snapshot_preview1 as Record<string, (...args: unknown[]) => unknown>;
+    for (const args of [[1024, 2048, 1, 16], ["1024", 2048, 1, 16], [1024, 2048, undefined, 16]]) {
+      assert.strictEqual(early.poll_oneoff(...args), ERRNO.badf, `poll_oneoff(${String(args)})`);
+    }
   });
 
   test("no standard stream has descriptor metadata, flags or a renumbering", async () => {

@@ -8,7 +8,7 @@ export const I32 = 0x7f;
 export const I64 = 0x7e;
 export const F64 = 0x7c;
 /** WASI errno values ([wasi_snapshot_preview1]). */
-export const ERRNO = { success: 0, badf: 8, inval: 28 } as const;
+export const ERRNO = { success: 0, badf: 8, inval: 28, overflow: 61 } as const;
 
 export function uleb(value: number): number[] {
   const out: number[] = [];
