@@ -58,7 +58,7 @@ kept next = perform Bench.drive next
 
 ranNow () = Ran(ranDriven = driven)
 
-storeOf ran = ran.ranDriven.drivenSurface.surfaceSession.sessionStore
+storeOf ran = Drive::holding ran.ranDriven
 worldOf ran = (storeOf ran).world
 birdsOf ran = (worldOf ran).birds
 hawksOf ran = (worldOf ran).hawks

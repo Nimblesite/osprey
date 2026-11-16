@@ -39,6 +39,8 @@ type Editor G P S M =
     assetFolder : string
     paletteShown : bool
     detailsShown : bool
+    keyboardShown : bool
+    keyboardWidth : float
     paletteDrag : string
     note : int
     armedNote : int
@@ -102,9 +104,11 @@ type EditorAction =
     Keyboard
     ShowModules
     ShowDetails
+    ShowKeyboard
     Strike
         note : int
     PluginPath
     ScanVst
     CreateVst
         identifier : string
+

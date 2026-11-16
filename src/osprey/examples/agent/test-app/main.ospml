@@ -1240,9 +1240,9 @@ testing ("the boundary opens the window, draws the regions a host reads and deli
     drivenShows (opened, "Model")
     // A press draws the next frame: the settings pane replaces the conversation column.
     onSettings = pressedFrame (opened, "Settings")
-    expect (onSettings.drivenSurface.surfaceSession.sessionStore.settings.settingsOpen, true)
+    expect ((uitest::Drive::holding onSettings).settings.settingsOpen, true)
     drivenShows (onSettings, "Providers")
     // An event naming no control the application issued is refused, and the store is untouched.
     refused = pressedFrame (onSettings, "No such control")
     expectFalse (refused.drivenSurface.surfaceProblem == "")
-    expect (refused.drivenSurface.surfaceSession.sessionStore.settings.settingsOpen, true))
+    expect ((uitest::Drive::holding refused).settings.settingsOpen, true))

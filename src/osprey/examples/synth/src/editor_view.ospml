@@ -265,9 +265,9 @@ module EditorView
 
     paletteAccess () = mapList (toList (range (0, length EditorState::kinds)), \i => accessible ("Drag ${EditorState::title (listGet EditorState::kinds i ?: "")}", 12.0, CanvasGeometry::paletteY (toFloat i) - 17.0, 172.0, 35.0, false))
 
-    toolbar () = [text ("Modules", 380.0, 25.0, 16.0, 236, 12), text ("Patch controls", 500.0, 25.0, 16.0, 236, 12), text ("Audition", 680.0, 25.0, 16.0, 236, 12), text ("Play", 800.0, 25.0, 16.0, 236, 12), text ("Stop", 880.0, 25.0, 16.0, 236, 12)]
+    toolbar () = [text ("Modules", 380.0, 25.0, 16.0, 236, 12), text ("Patch controls", 500.0, 25.0, 16.0, 236, 12), text ("Audition", 680.0, 25.0, 16.0, 236, 12), text ("Play", 800.0, 25.0, 16.0, 236, 12), text ("Stop", 880.0, 25.0, 16.0, 236, 12), text ("Keyboard", 950.0, 25.0, 16.0, 236, 12)]
 
-    toolbarAccess () = [accessible ("Modules", 370.0, 10.0, 110.0, 45.0, false), accessible ("Patch controls", 490.0, 10.0, 170.0, 45.0, false), accessible ("Audition patch", 670.0, 10.0, 110.0, 45.0, false), accessible ("Play patch", 790.0, 10.0, 70.0, 45.0, false), accessible ("Stop playback", 870.0, 10.0, 70.0, 45.0, false)]
+    toolbarAccess () = [accessible ("Modules", 370.0, 10.0, 110.0, 45.0, false), accessible ("Patch controls", 490.0, 10.0, 170.0, 45.0, false), accessible ("Audition patch", 670.0, 10.0, 110.0, 45.0, false), accessible ("Play patch", 790.0, 10.0, 70.0, 45.0, false), accessible ("Stop playback", 870.0, 10.0, 70.0, 45.0, false), accessible ("Keyboard", 940.0, 10.0, 120.0, 45.0, false)]
 
     (** Header commands retain the same action path as native controls. *)
     export toolbarAction index = match index
@@ -275,10 +275,11 @@ module EditorView
         1 => ShowDetails
         2 => Audition
         3 => PlayGraph
-        _ => StopGraph
+        4 => StopGraph
+        _ => ShowKeyboard
 
     (** Match the compact command hit boxes in the original header. *)
-    export toolbarAt (x, y) = listGet (filterList (toList (range (0, 5)), \i =>
+    export toolbarAt (x, y) = listGet (filterList (toList (range (0, 6)), \i =>
         match listGet (toolbarAccess ()) i
             Error _ => false
             Success a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0
@@ -298,12 +299,12 @@ module EditorView
             true => mapList (palette (), \primitive => raised (primitive, 100))
             false => []
         shapes = listConcat (listConcat (listConcat (PrismArt::background editor) (customInspector editor)) (connectionRows editor)) (listConcat (mapList (editor.graph.cables, \c => wire (editor, c))) (listConcat nodes (listConcat (listAppend (toolbar ()) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))) library)))
-        scene = Ui::zoomed (0.75, 1536.0, 1008.0, PrismArt::atlas editor.skin, shapes, Surface)
+        scene = Ui::zoomed (0.75, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
         access = listConcat (toolbarAccess ()) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) (PrismArt::sliders (editor, n)))))
         extra = match editor.paletteShown
             true => paletteAccess ()
             false => []
-        Ui::described (scene, listConcat (listConcat access (PrismArt::keyboardAccess editor)) extra)
+        Ui::described (scene, listConcat access extra)
 
     inspector editor =
         style = ui::Frames::inset (20, 16, 20, 16)
@@ -311,13 +312,27 @@ module EditorView
         others = filterList (editor.graph.nodes, \n => n.identity != editor.selected)
         Ui::framed (style(frameTextSize = 13, frameControlHeight = 30), Ui::column (listConcat [Ui::styled ("PATCH CONTROLS", ui::Caption, ui::Secondary), Ui::button ("Close patch controls", "", ShowDetails), Ui::button ("Audition patch", "", Audition), Ui::button ("Play patch", "", PlayGraph), Ui::button ("Stop playback", "", StopGraph), Ui::button ("Remove selected", "", Remove), Ui::caption editor.message] (listConcat (mapList (listConcat first others, \n => component (editor, n))) [plugins editor, menu ()])))
 
+    keyboardDock editor =
+        dock = PrismArt::keyboardEditor editor
+        closeX = editor.keyboardWidth - 156.0
+        marks = listAppend (PrismArt::deck dock) (text ("Close keyboard ×", closeX + 8.0, 8.0, 14.0, 190, 12))
+        keys = mapList (PrismArt::keyboardAccess dock, \key => key(accessTop = key.accessTop - 828.0))
+        access = listAppend keys (accessible ("Close keyboard", closeX, 0.0, 150.0, 32.0, false))
+        style = ui::Frames::plain
+        Ui::framed (style(frameHeight = 135), Ui::described (Ui::zoomed (0.75, 1536.0, 180.0, PrismArt::atlas editor.skin, marks, Keyboard), access))
+
     root () =
         editor = editorSlice ()
-        match editor.detailsShown
+        pane = match editor.detailsShown
             false => canvas editor
             true => Ui::aside (canvas editor, ui::Trailing, inspector editor, 280, Surface)
+        grow = ui::Frames::plain
+        workspace = Ui::framed (grow(frameGrow = true), pane)
+        match editor.keyboardShown
+            false => workspace
+            true => Ui::column [workspace, keyboardDock editor]
 
-    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${length editor.scopeSamples}"
+    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =
@@ -329,4 +344,4 @@ module EditorView
     token (name, light, dark) = ui::Token(tokenName = name, tokenLight = light, tokenDark = dark)
 
     (** Prism's theme is independent of a fixed machine document. *)
-    export theme () = ui::Theme(tokens = [token ("accent", "#6944BA", "#BA9EFF"), token ("caution", "#986400", "#FFCD75"), token ("good", "#14776F", "#4FDAD3"), token ("danger", "#BE294B", "#FF7892"), token ("background", "#F4EFFB", "#100D21"), token ("text", "#201630", "#F2EDFF")], spacing = [4, 8, 12, 20, 28, 36], feedback = 120, settle = 220)
+    export theme () = ui::Theme(tokens = [token ("button", "#E6DFF5", "#29213F"), token ("buttonText", "#201630", "#F2EDFF"), token ("accent", "#6944BA", "#BA9EFF"), token ("caution", "#986400", "#FFCD75"), token ("good", "#14776F", "#4FDAD3"), token ("danger", "#BE294B", "#FF7892"), token ("background", "#F4EFFB", "#100D21"), token ("text", "#201630", "#F2EDFF")], spacing = [4, 0, 12, 20, 28, 36], feedback = 120, settle = 220)

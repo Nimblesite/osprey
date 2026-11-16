@@ -496,3 +496,4 @@ test ("MIDI note-on and note-off ownership survives exact block partitions", \()
 test ("hosted graph execution shares exact builtin PCM and rejects malformed cached buffers", \() => Runtime::guarded graphClipJourney)
 
 test ("original Prism sliders and module palette operate the editable graph", \() => Runtime::guarded (\() => hosted prismIntegratedJourney))
+test ("patch inspector shows only the selected module and preserves routing", \() => Runtime::guarded (\() => hosted inspectorJourney))

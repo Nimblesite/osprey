@@ -124,13 +124,13 @@ module Drive
     step (before, gesture) =
         prior = bench before
         next = heldIn (before.caseHeld, \() => gesture before.caseDriven)
-        store = next.drivenSurface.surfaceSession.sessionStore
+        store = Drive::holding next
         after = merged (before.caseHeld, next.drivenSurface.surfaceWritten)
         regions = heldIn (after, \() => next.drivenProgram.programRender (prior, store, before.caseFrames, next.drivenSurface.surfaceWritten))
         before(caseDriven = next, caseHeld = after, caseFrames = mapList (regions, signalFrame), caseDrawn = mapList (filterList (regions, \region => redrew region.snapshotValue), \region => region.snapshotKey))
 
     // The store the session carries ([WORKBENCH-STORE]), typed.
-    export bench case = case.caseDriven.drivenSurface.surfaceSession.sessionStore
+    export bench case = Drive::holding case.caseDriven
 
     // Every region the app draws for the current store, lowered nowhere: the semantic tree a host lays out.
     regions case = heldIn (case.caseHeld, \() => case.caseDriven.drivenProgram.programRender (bench case, bench case, [], []))

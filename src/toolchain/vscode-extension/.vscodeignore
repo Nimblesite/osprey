@@ -10,6 +10,7 @@ tsconfig.json
 .vscode-test.js
 **/.deslop/**
 **/.too_many_cooks/**
+**/.osprey/**
 .DS_Store
 .c8rc.json
 coverage/**

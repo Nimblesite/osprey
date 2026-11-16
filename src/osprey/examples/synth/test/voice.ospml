@@ -7,6 +7,28 @@ import ui::Lists
 import synth::Synth
 import synth::Voice
 
+// [PRISM-ROUTING-EDITOR] One selected module, compact controls, unchanged graph actions.
+inspectorJourney () =
+    launched = Drive::launched (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "macos", ["--empty"])
+    opened = Drive::pointer (Drive::pointer (launched, 550.0, 32.0, true), 550.0, 32.0, false)
+    oscillator = Drive::choose (opened, "Add component", "sine")
+    filter = Drive::choose (oscillator, "Add component", "filter")
+    expect (uitest::Views::shows (filter.drivenSeen, "Module"), true)
+    expect (uitest::Views::shows (filter.drivenSeen, "Cutoff"), true)
+    expect (uitest::Views::shows (filter.drivenSeen, "Frequency"), false)
+    expect (uitest::Views::shows (filter.drivenSeen, "Select 1"), false)
+    selected = Drive::choose (filter, "Module", "0")
+    expect ((Drive::holding selected).selected, 0)
+    expect (uitest::Views::shows (selected.drivenSeen, "Frequency"), true)
+    expect (uitest::Views::shows (selected.drivenSeen, "Cutoff"), false)
+    sourced = Drive::press (selected, "Use audio output")
+    connected = Drive::press (Drive::choose (sourced, "Module", "1"), "Connect audio")
+    expect (length (Drive::holding connected).graph.cables, 1)
+    disconnected = Drive::press (connected, "Disconnect audio")
+    expect (length (Drive::holding disconnected).graph.cables, 0)
+    expect (uitest::Views::shows (disconnected.drivenSeen, "Remove module"), true)
+    expect (length (Drive::holding disconnected).graph.nodes, 2)
+
 patch (wave, process, depth, lfo, volume) = synth::Patch(pitch = 220.0, sounding = true, filtered = true, wave = wave, cutoff = 20.0 * pow (1000.0, process), depth = depth, lfo = lfo, audible = true, volume = volume)
 
 defaultPatch () = patch ("Sine", 0.7, 0.7, 2.0, 0.75)

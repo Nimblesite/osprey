@@ -1,46 +1,29 @@
-// Implements [MOBILE-MARKDOWN]: a GitHub issue body becomes typed blocks and spans — headings,
-// paragraphs, lists, quotes, code, rules, inline emphasis and HTTPS links — which the view turns
-// into rows. Osprey decides the structure; the hosts only draw the runs.
-namespace inbox
+// Implements [MOBILE-MARKDOWN]: a GitHub issue body becomes generic UI nodes.
+// Osprey decides the structure (headings, paragraphs, lists, quotes, code,
+// rules, inline emphasis and links); the native hosts only draw the nodes.
+namespace mobile
 
-(** One styled run of a paragraph: `plain`, `bold`, `italic`, `code` or `link`. *)
-type Span =
-    spanText : string
-    spanKind : string
-    spanUrl : string
-
-(** One block of an issue's description. *)
-type Block =
-    Passage
-        spans : List<Span>
-    Heading
-        major : bool
-        spans : List<Span>
-    CodeBlock
-        code : string
-    Quotation
-        spans : List<Span>
-    Divider
-    Bullet
-        mark : string
-        spans : List<Span>
+import bank::Json
 
 type Cut =
     head : string
     tail : string
 
-type Scan =
-    blocks : List<Block>
-    paragraph : List<Span>
+type Doc =
+    nodes : string
+    paragraph : string
     code : string
     mode : string
 
 module Markdown
-    span text kind url = Span(spanText = text, spanKind = kind, spanUrl = url)
-
-    plain content = match length content == 0
-        true => []
-        false => [span content "plain" ""]
+    field key content = Json::strField key content
+    node kind style extra = Json::obj (field "kind" kind + "," + field "style" style + extra)
+    children nodes = "," + Json::rawField "children" (Json::arr nodes)
+    textNode style content = node "text" style ("," + field "text" content)
+    richNode style content = node "rich" style ("," + Json::rawField "spans" (Json::arr (spans content)))
+    itemNode bullet content = node "row" "item" (children (textNode "bullet" bullet + "," + richNode "body" content))
+    quoteNode content = node "column" "quote" (children (richNode "body" content))
+    rule () = node "divider" "rule" ""
 
     smaller : int -> int -> int
     smaller a b = match a <= b
@@ -50,16 +33,22 @@ module Markdown
     // The byte index of `needle`, or the end of `s` when it is absent.
     position s needle = indexOf s needle ?: length s
 
+    span style content url = Json::obj (field "text" content + "," + field "style" style + "," + field "url" url)
+
+    plain content = match length content == 0
+        true => ""
+        false => span "plain" content ""
+
     // Inline spans: `**bold**`, `*italic*`, `_italic_`, `` `code` `` and
     // `[text](https://…)`. An unmatched marker stays literal text, so the
     // parser is total.
     export spans text = match length text == 0
-        true => []
+        true => ""
         false =>
             first = smaller (smaller (position text "**") (position text "*")) (smaller (smaller (position text "`") (position text "[")) (underscore text 0))
             match first >= length text
                 true => plain text
-                false => listConcat (plain (take text first)) (marker (drop text first))
+                false => Json::append (plain (take text first)) (marker (drop text first))
 
     marker rest = match startsWith rest "**"
         true => wrapped rest "**" "bold" false
@@ -76,25 +65,23 @@ module Markdown
 
     // The first `_` that opens a word, or the end: GitHub's `_No Description_`
     // placeholder is emphasis, while `snake_case` identifiers stay literal.
-    underscore : string -> int -> int
     underscore text offset =
         found = satAdd offset (position (drop text offset) "_")
         match found >= length text
             true => length text
-            false => match found == 0 || isBreak (byteAt text (satSub found 1) ?: 0)
+            false => match found == 0 || isBreak (byteAt text ((satSub found 1) ) ?: 0)
                 true => found
                 false => underscore text (satAdd found 1)
 
     // `rest` begins with `mark`; a later closing mark yields one styled span.
     // A word-boundary mark must also close at a word boundary.
-    wrapped : string -> string -> string -> bool -> List<Span>
-    wrapped rest mark kind wordBoundary =
+    wrapped rest mark style wordBoundary =
         inner = drop rest (length mark)
         close = position inner mark
-        after = byteAt inner (satAdd close 1) ?: 32
+        after = byteAt inner ((satAdd close 1) ) ?: 32
         match close >= length inner || close == 0 || (wordBoundary && isWordByte after)
-            true => listConcat (plain mark) (spans inner)
-            false => listConcat [span (take inner close) kind ""] (spans (drop inner (satAdd close (length mark))))
+            true => Json::append (plain mark) (spans inner)
+            false => Json::append (span style (take inner close) "") (spans (drop inner (satAdd close (length mark))))
 
     // `rest` begins with `[`; only `[text](https://…)` becomes a link.
     linked rest =
@@ -104,52 +91,51 @@ module Markdown
         end = position after ")"
         url = take after end
         match close >= length inner || end >= length after || close == 0
-            true => listConcat (plain "[") (spans inner)
+            true => Json::append (plain "[") (spans inner)
             false => match startsWith url "https://"
-                true => listConcat [span (take inner close) "link" url] (spans (drop after (satAdd end 1)))
-                false => listConcat (plain "[") (spans inner)
+                true => Json::append (span "link" (take inner close) url) (spans (drop after (satAdd end 1)))
+                false => Json::append (plain "[") (spans inner)
 
     line s = match indexOf s "\n"
         Success i => Cut(head = take s i, tail = drop s (satAdd i 1))
-        Error _why => Cut(head = s, tail = "")
+        Error message => Cut(head = s, tail = "")
 
     flushParagraph doc = match length doc.paragraph == 0
         true => doc
-        false => Scan(blocks = listAppend doc.blocks (Passage(spans = doc.paragraph)), paragraph = [], code = doc.code, mode = doc.mode)
+        false => Doc(nodes = Json::append doc.nodes (richNode "body" doc.paragraph), paragraph = "", code = doc.code, mode = doc.mode)
 
     // Code lines are kept with their newline so a blank first line survives.
     flushCode doc =
-        content = take doc.code (satSub (length doc.code) 1)
-        blocks = match length doc.code == 0
-            true => doc.blocks
-            false => listAppend doc.blocks (CodeBlock(code = content))
-        Scan(blocks = blocks, paragraph = doc.paragraph, code = "", mode = "text")
+        content = take doc.code ((satSub (length doc.code) 1) )
+        nodes = match length doc.code == 0
+            true => doc.nodes
+            false => Json::append doc.nodes (textNode "code" content)
+        Doc(nodes = nodes, paragraph = doc.paragraph, code = "", mode = "text")
 
-    withBlock doc block =
+    withNode doc content =
         flushed = flushParagraph doc
-        Scan(blocks = listAppend flushed.blocks block, paragraph = [], code = flushed.code, mode = flushed.mode)
+        Doc(nodes = Json::append flushed.nodes content, paragraph = "", code = flushed.code, mode = flushed.mode)
 
     // GitHub renders a single newline inside an issue paragraph as a line break.
     withParagraph doc text =
-        joined = match doc.paragraph
-            [] => [span text "plain" ""]
-            held => listConcat held [span "\n" "plain" "", span text "plain" ""]
-        Scan(blocks = doc.blocks, paragraph = joined, code = doc.code, mode = doc.mode)
+        joined = match length doc.paragraph == 0
+            true => text
+            false => doc.paragraph + "\n" + text
+        Doc(nodes = doc.nodes, paragraph = joined, code = doc.code, mode = doc.mode)
 
     codeMode doc text = match startsWith (trimStart text) "```"
         true => flushCode doc
-        false => Scan(blocks = doc.blocks, paragraph = doc.paragraph, code = doc.code + text + "\n", mode = "code")
+        false => Doc(nodes = doc.nodes, paragraph = doc.paragraph, code = doc.code + text + "\n", mode = "code")
 
     openFence doc =
         flushed = flushParagraph doc
-        Scan(blocks = flushed.blocks, paragraph = [], code = "", mode = "code")
+        Doc(nodes = flushed.nodes, paragraph = "", code = "", mode = "code")
 
     onlyOf text symbol = length text >= 3 && length (replace text symbol "" ?: text) == 0
     isRule text = onlyOf text "-" || onlyOf text "*" || onlyOf text "_"
 
-    hashes : string -> int -> int
     hashes text count = match startsWith (drop text count) "#"
-        true => hashes text (satAdd count 1)
+        true => hashes text ((satAdd count 1) )
         false => count
 
     // `#`…`######` followed by a space (or nothing) is a heading; `#tag` is text.
@@ -160,10 +146,13 @@ module Markdown
             true => level
             false => 0
 
+    headingNode body level = match level <= 2
+        true => richNode "heading" (trim (drop body level))
+        false => richNode "subheading" (trim (drop body level))
+
     isDigit code = code >= 48 && code <= 57
-    digits : string -> int -> int
     digits text count = match isDigit (byteAt text count ?: 0)
-        true => digits text (satAdd count 1)
+        true => digits text ((satAdd count 1) )
         false => count
 
     // `1. item` keeps its own number; `- item`, `* item`, `+ item` get a bullet.
@@ -178,12 +167,12 @@ module Markdown
     listItem doc body =
         width = orderedWidth body
         match startsWith body "- [ ] "
-            true => withBlock doc (Bullet(mark = "☐", spans = spans (drop body 6)))
+            true => withNode doc (itemNode "☐" (drop body 6))
             false => match startsWith body "- [x] " || startsWith body "- [X] "
-                true => withBlock doc (Bullet(mark = "☑", spans = spans (drop body 6)))
+                true => withNode doc (itemNode "☑" (drop body 6))
                 false => match width > 0
-                    true => withBlock doc (Bullet(mark = take body width + ".", spans = spans (drop body (satAdd width 2))))
-                    false => withBlock doc (Bullet(mark = "•", spans = spans (drop body 2)))
+                    true => withNode doc (itemNode (take body width + ".") (drop body (satAdd width 2)))
+                    false => withNode doc (itemNode "•" (drop body 2))
 
     isItem body = isBullet body || orderedWidth body > 0
 
@@ -195,11 +184,11 @@ module Markdown
             false => match length (trim body) == 0
                 true => flushParagraph doc
                 false => match isRule (trim body)
-                    true => withBlock doc Divider
+                    true => withNode doc (rule ())
                     false => match level > 0
-                        true => withBlock doc (Heading(major = level <= 2, spans = spans (trim (drop body level))))
+                        true => withNode doc (headingNode body level)
                         false => match startsWith body "> " || body == ">"
-                            true => withBlock doc (Quotation(spans = spans (drop body 2)))
+                            true => withNode doc (quoteNode (drop body 2))
                             false => match isItem body
                                 true => listItem doc body
                                 false => withParagraph doc (trim body)
@@ -208,7 +197,6 @@ module Markdown
         true => codeMode doc text
         false => textMode doc text
 
-    walk : Scan -> string -> Scan
     walk doc source = match length source == 0
         true => doc
         false =>
@@ -220,7 +208,7 @@ module Markdown
         true => flushCode doc
         false => flushParagraph doc
 
-    (** `source` as blocks; none when nothing renders. *)
+    // Comma-joined UI nodes for `source`; empty when nothing renders.
     export render source =
-        finished = finish (walk (Scan(blocks = [], paragraph = [], code = "", mode = "text")) source)
-        finished.blocks
+        finished = finish (walk (Doc(nodes = "", paragraph = "", code = "", mode = "text")) source)
+        finished.nodes

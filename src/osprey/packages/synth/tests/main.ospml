@@ -88,9 +88,7 @@ observed snapshot =
         Success component => expect (component.activeVoices, 3)
         Error _ => expect (false, true)
     renderRefused (Observations::component 99)
-    match Observations::parameter (30, "cutoff")
-        Success _ => expect (false, true)
-        Error _ => expect (true, true)
+    renderRefused (Observations::parameter (30, "cutoff"))
 
 test ("Signals expose separate same-kind component instances without a UI framework", \() => arithmetic (\() =>
     snapshot = synth::Observation(revision = 4, samplePosition = 1024, parameters = [synth::ParameterValue(node = 10, key = "cutoff", value = 440.0), synth::ParameterValue(node = 20, key = "cutoff", value = 880.0)], components = [synth::ComponentState(node = 10, activeVoices = 3, peak = 0.8, rms = 0.2)])

@@ -1,22 +1,8 @@
-// The suite's fixtures and the boundary helpers it drives the application through, exactly as a
-// host would: an open, capability completions and the slices they read. The three-issue fixture
-// is the same body both phones' baseline pictures were taken from. The host is a plain record a
-// case threads through its steps, so every case stays pure.
-namespace inbox
+namespace inboxtests
 
-import ui::Lists
-import ui::Requests
-import inbox::Inbox
-import inbox::Snapshot
-
-(** One slice the host holds for the application to fetch. *)
-type Held =
-    heldKey : string
-    heldText : string
-
-(** The host's slice table between completions. *)
-type Host =
-    hostSlices : List<Held>
+import bank::Json
+import mobile::App
+import mobile::Model
 
 module Support
     (** One assertion's label, expected and actual value, checked in a case list. *)
@@ -31,55 +17,28 @@ module Support
     (** Checks every case in `cases`, each with its own label. *)
     export each cases = forEachList cases (\entry => check entry.label entry.expected entry.actual)
 
-    export fixture () = "[{\"id\":101,\"number\":42,\"title\":\"First issue 🦅\",\"body\":\"Steps to **reproduce** 🦉\",\"labels\":[{\"name\":\"bug\"}],\"user\":{\"login\":\"alice\"},\"comments\":3},{\"id\":102,\"number\":43,\"title\":\"Second issue\",\"user\":{\"login\":\"bob\"},\"comments\":0},{\"id\":103,\"number\":44,\"title\":\"A pull request\",\"user\":{\"login\":\"carol\"},\"comments\":0,\"pull_request\":{}}]"
+    export event kind = Json::obj (Json::strField "type" kind)
+    export value kind content = Json::obj (Json::strField "type" kind + "," + Json::strField "value" content)
+    export bookmark id = Json::obj (Json::strField "type" "bookmark" + "," + Json::strField "id" id)
 
-    (** An HTTP receipt as the host's adapter completes it. *)
-    export receipt status = "{\"status\":${toString status},\"headers\":[]}"
+    export sql id ok rows error = Json::obj (Json::strField "type" "sql" + "," + Json::strField "id" id + "," + Json::rawField "ok" (toString ok) + "," + Json::rawField "rows" rows + "," + Json::strField "error" error)
 
-    (** A store-read that found no document, as a first launch always answers. *)
-    export absent () = "{\"found\":false}"
+    export http id status body error = Json::obj (Json::strField "type" "http" + "," + Json::strField "id" id + "," + Json::numField "status" status + "," + Json::strField "body" body + "," + Json::strField "error" error)
 
-    export fresh () = Host(hostSlices = [])
+    export fixture () = "[{\"id\":101,\"number\":42,\"title\":\"Fix parser\",\"user\":{\"login\":\"alice\"},\"comments\":3},{\"id\":102,\"number\":43,\"title\":\"Windows paths \\\"C:\\\\tmp\\\"\",\"user\":{\"login\":\"bob\"},\"comments\":0},{\"id\":103,\"number\":44,\"pull_request\":{\"url\":\"ignored\"}}]"
 
-    (** The host with one more slice held under `key`. *)
-    export holding (host, key, text) = Host(hostSlices = listAppend host.hostSlices (Held(heldKey = key, heldText = text)))
-
-    heldText host key = match Lists::find (host.hostSlices, \one => one.heldKey == key)
-        Error _missing => ""
-        Success one => one.heldText
-
-    (** One capability completion, answered against the slices the host holds. *)
-    export settled (host, store, ticket, ok, text) =
-        handle ui::Slices
-            fetch key => heldText host key
-        Inbox::completed (store, ticket, ok, text)
-
-    export asked step index = match listGet step.requests index
-        Error _missing => "MISSING"
-        Success request => Requests::kind request.capability
-
-    export ticketOf step index = match listGet step.requests index
-        Error _missing => "MISSING"
-        Success request => request.ticket
-
-    export written step index = match listGet step.writes index
-        Error _missing => "MISSING"
-        Success write => write.sliceText
-
-    (** The launch every case starts from: a first open on the iOS platform. *)
-    export opened () = Inbox::opened (Inbox::blank (), 0, 0, "ios", "", false)
-
-    export fetchAsked () =
-        begun = opened ()
-        empty = fresh ()
-        settled (empty, begun.stepStore, "load:1", true, absent ())
+    export awaiting () = loadOf (schemaOf (App::initial ()))
 
     export loaded () =
-        asking = fetchAsked ()
-        filled = holding (fresh (), "inbox-http", fixture ())
-        settled (filled, asking.stepStore, asking.stepStore.fetchTicket, true, receipt 200)
+        loading = awaiting ()
+        App::dispatch loading.model (http loading.model.pending 200 (fixture ()) "")
 
-    (** The store after `update` takes `action` with `words`. *)
-    export updated (store, action, words) =
-        step = Inbox::update (store, action, words)
-        step.stepStore
+    export projected source path = Json::getOr source path "MISSING"
+
+    export refresh envelope = App::dispatch envelope.model (event "refresh")
+
+    export schemaOf envelope = App::dispatch envelope.model (sql "schema" true "[]" "")
+
+    export loadOf envelope = App::dispatch envelope.model (sql "load" true "[]" "")
+
+    export bookmarked id = App::dispatch (loaded ()).model (bookmark id)

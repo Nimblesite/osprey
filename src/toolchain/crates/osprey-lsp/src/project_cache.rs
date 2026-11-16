@@ -377,6 +377,37 @@ mod tests {
         Ok(())
     }
 
+    /// A file of a shared project (`testing/src`, a workspace package) that
+    /// many projects list as a source: an open tab of it must not pin every
+    /// project that includes it, only its own project and the recent ones.
+    #[test]
+    fn an_open_shared_file_does_not_pin_its_dependents() -> Result<(), Box<dyn std::error::Error>> {
+        let shared = crate::test_support::ProjectFixture::new("osp")?;
+        let _main = shared.write("main", "fn main() = print(twice(1))\n")?;
+        let lib = shared.write("lib", "fn twice(x) = x * 2\n")?;
+        let name = shared
+            .root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or("name")?;
+        let dependents = (0..12)
+            .map(|_| crate::test_support::ProjectFixture::new("osp"))
+            .collect::<Result<Vec<_>, _>>()?;
+        let cache = ProjectCache::default();
+        cache.opened(&lib, true);
+        for (n, dependent) in dependents.iter().enumerate() {
+            std::fs::write(dependent.root.join("osprey.toml"), format!("[project]\nsource_roots = [\"src\", \"../{name}/src/lib.osp\"]\ndefault_namespace = \"live\"\nentry = \"src/main.osp\"\n"))?;
+            let uri = dependent.write("main", &format!("fn main() = print(twice({n}))\n"))?;
+            checked_in_turn(&cache, &[&uri, &lib])?;
+            let (analyses, parsed) = cache.retained();
+            assert!(
+                analyses <= 5 && parsed <= 6,
+                "after {n}: {analyses} analyses, {parsed} files pinned"
+            );
+        }
+        Ok(())
+    }
+
     #[test]
     fn nested_projects_do_not_share_the_first_sources_cache_slot(
     ) -> Result<(), Box<dyn std::error::Error>> {

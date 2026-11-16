@@ -91,9 +91,11 @@ module PrismArt
         ui::Machines::feed (base, [ui::Machines::fact ("${name}On", ui::Values::flag (parameter (n, "enabled", 1.0) == 1.0)), fact ("${name}X", at.layoutX - centreX name), fact ("${name}Y", at.layoutY - centreY name), fact ("process", CanvasGeometry::cutoffPosition (parameter (n, "cutoff", 2500.0))), fact ("volume", parameter (n, "gain", 0.5)), ui::Machines::fact ("selected", ui::Values::text selected), ui::Machines::fact ("wave", ui::Values::text (waveName (parameter (n, "waveform", 0.0)))), ui::Machines::fact ("rate", ui::Values::text (rateName (parameter (n, "frequency", 2.0))))])
 
     (** Expand only the requested original skin marks. *)
-    export shapes (machine, accept) = match (ui::Templates::skin machine).skinBoard
+    export shapes (machine, accept) = movedShapes (machine, accept, 0.0)
+
+    movedShapes (machine, accept, dy) = match (ui::Templates::skin machine).skinBoard
         ui::Unboarded => []
-        ui::Boarded w h zoom atlas marks _ => match ui::Canvases::artboard (machine, zoom, w, h, atlas, filterList (marks, accept))
+        ui::Boarded w h zoom atlas marks _ => match ui::Canvases::artboard (machine, zoom, w, h, atlas, mapList (filterList (marks, accept), \mark => mark(markY = ui::Fixed(fixedAt = ui::Templates::measure (machine, mark.markY) + dy))))
             ui::Scene _ _ _ _ primitives _ _ => primitives
             _ => []
 
@@ -106,12 +108,17 @@ module PrismArt
     export card (editor, n) = shapes (prepared (editor, n), \mark => owns (mark, role n.processor) && !(n.processor == Sink && mark.markFigure == ui::PolylineFigure))
 
     (** Original header, inspector, legend and keyboard, driven by the current selection. *)
-    export background editor =
+    export background editor = backgroundPart (editor, false)
+
+    (** Keyboard artwork in local dock coordinates. *)
+    export deck editor = backgroundPart (editor, true)
+
+    backgroundPart (editor, keyboard) =
         selected = match Graphs::node (editor.graph, editor.selected)
             Invalid _ => editor.skin
             Valid n => prepared (editor, n)
         machine = ui::Machines::feed (selected, [fact ("keys", 1.0), fact ("hertz", CanvasGeometry::frequency (toFloat editor.note)), ui::Machines::fact ("note", ui::Values::text (noteName editor.note))])
-        shapes (machine, \mark => !connectionMark (machine, mark) && length (filterList (["source", "process", "control", "output", "monitor"], \name => belongs (mark, name))) == 0)
+        movedShapes (machine, \mark => (ui::Templates::measure (machine, mark.markY) >= 828.0 + ui::Machines::number (machine, "spareHeight")) == keyboard && !(editor.detailsShown && !keyboard && ui::Templates::measure (machine, mark.markX) >= 1210.0) && !connectionMark (machine, mark) && length (filterList (["source", "process", "control", "output", "monitor"], \name => belongs (mark, name))) == 0, ui::Pick::either (keyboard, -828.0, 0.0))
 
     connectionMark (machine, mark) =
         y = ui::Templates::measure (machine, mark.markY)
@@ -202,3 +209,12 @@ module PrismArt
         false => match listGet (filterList (editor.graph.nodes, \n => sliderAt (editor, n, px, py))) 0
             Error why => Error(message = why)
             Success n => Success(value = slide (editor, n, prepared (editor, n), px, py, down))
+
+    (** A workspace and its dock use independent viewports, retaining the original artwork. *)
+    export sized (machine, width, height) = machine(machineSkins = mapList (machine.machineSkins, \skin =>
+        match skin.skinBoard
+            ui::Unboarded => skin
+            ui::Boarded _ _ zoom atlas marks areas => skin(skinBoard = ui::Boarded(boardWidth = ui::Fixed(fixedAt = width), boardHeight = ui::Fixed(fixedAt = height), boardZoom = zoom, boardAtlas = atlas, boardMarks = marks, boardAreas = areas))))
+
+    (** Reset the keyboard viewport independently of the resizable patch workspace. *)
+    export keyboardEditor editor = editor(skin = ui::Canvases::viewed (sized (editor.skin, 1536.0, 1008.0), 1536.0, 1008.0))

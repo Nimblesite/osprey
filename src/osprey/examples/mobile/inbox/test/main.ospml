@@ -1,150 +1,139 @@
-// The Issue Inbox's suite, on the same boundary a host drives ([NATIVE-SHM-BOUNDARY]): typed
-// launch, open, control events and capability completions, with the view read back as the rows
-// the shared frame carries. The old JSON envelope is gone; every fact below is checked against
-// typed state or drawn rows.
-namespace inbox
+namespace inboxtests
 
-import ui::Lists
-import ui::Views
-import inbox::Github
-import inbox::Inbox
-import inbox::Snapshot
-import inbox::View
-import inbox::Support
+import bank::Json
+import mobile::Model
+import mobile::Github
+import mobile::Storage
+import mobile::Update
+import mobile::View
+import mobile::App
+import inboxtests::Support
 
-// The blank issue a read past the list answers with.
-noIssue = Issue(issueId = 0, issueNumber = 0, issueTitle = "", issueAuthor = "", issueComments = 0, issueBody = "", issueLabels = "")
+jsonControlCase () =
+    source = "line one\nline two\t\r" + (fromCodePoint 1 ?: "")
+    encoded = Json::obj (Json::strField "value" source)
+    check "control characters round trip through valid JSON" source (Json::getOr encoded "value" "INVALID JSON")
 
-// The issue `index` of a list, or the blank one past its end.
-issueAt issues index = match listGet issues index
-    Error _missing => noIssue
-    Success issue => issue
-
-githubUrl store index =
-    held = issueAt store.issues index
-    "https://github.com/${store.repo}/issues/${toString held.issueNumber}"
-
-// The rows the screen draws, as the shared frame carries them.
-seats store = (Views::drawn (View::screen store)).walkRows
-
-seatAt store index = match listGet (seats store) index
-    Error _missing => Views::blank
-    Success seat => seat
-
-bindings store = (Views::drawn (View::screen store)).walkBound
-
-kindAt store index =
-    seat = seatAt store index
-    seat.placedKind
-
-// The first row whose words hold `part`.
-firstWords store part = Lists::find (seats store, \seat => contains seat.placedWords part)
-
-headingWords store = match firstWords store "Issue Inbox"
-    Error _missing => "MISSING"
-    Success seat => seat.placedWords
+test "shared JSON encoder escapes control characters" jsonControlCase
 
 repositoryCase () =
     Support::each [Support::it "valid path" "true" (toString (Github::validRepository "rust-lang/rust")), Support::it "no traversal" "false" (toString (Github::validRepository "../rust")), Support::it "no query injection" "false" (toString (Github::validRepository "owner/repo?token=bad")), Support::it "exactly two components" "false" (toString (Github::validRepository "owner/repo/issues")), Support::it "no empty owner" "false" (toString (Github::validRepository "/repo")), Support::it "no spaces" "false" (toString (Github::validRepository "own er/repo"))]
 
 startupCase () =
-    opened = Support::opened ()
-    asking = Support::fetchAsked ()
-    Support::each [Support::it "the launch reads the store document" "store-read" (Support::asked opened 0), Support::it "the opening read carries its ticket" "load:1" (Support::ticketOf opened 0), Support::it "a missing document fetches GitHub" "http" (Support::asked asking 0), Support::it "the fetch correlates its ticket" asking.stepStore.fetchTicket (Support::ticketOf asking 0), Support::it "bounded public API URL" "https://api.github.com/repos/swiftlang/swift/issues?state=open&per_page=30" (Github::url "swiftlang/swift")]
+    initial = App::initial ()
+    schema = Support::schemaOf initial
+    fetching = Support::loadOf schema
+    Support::each [Support::it "schema first" "schema" (Support::projected initial.commands "[0].id"), Support::it "prepared cache read" "inbox" (Support::projected schema.commands "[0].params[0]"), Support::it "fetch after empty cache" "http" (Support::projected fetching.commands "[0].kind"), Support::it "bounded public API URL" (Github::url "swiftlang/swift") (Support::projected fetching.commands "[0].url")]
 
-purityCase () =
-    first = Support::opened ()
-    second = Support::opened ()
-    Support::each [Support::it "the same launch asks the same read" (Support::asked first 0) (Support::asked second 0), Support::it "the same launch opens the same store" first.stepStore.repo second.stepStore.repo, Support::it "the store the read leaves is opening, not ready" "opening" first.stepStore.stage]
+requestHandlerCase () =
+    recording = handler Storage::Requests
+        sql request =>
+            Support::each [Support::it "schema request id" "schema" request.id, Support::it "schema has no bound values" "[]" request.params]
+            check "schema remains application SQL" true (startsWith request.statement "CREATE TABLE IF NOT EXISTS app_state")
+            "recorded SQL"
+    initial = recording Update::initial
+    repeated = recording Update::initial
+    Support::each [Support::it "handler supplies command representation" "recorded SQL" initial.commands, Support::it "same handler can run again" initial.commands repeated.commands, Support::it "state transition survives substitution" "schema" initial.model.stage]
+
+scopedRequestsCase () =
+    loaded = Support::loaded ()
+    handle Storage::Requests
+        http request => "${request.id}|${request.url}"
+        sql request => "unexpected SQL"
+    refreshed = Update::dispatch loaded.model (Support::event "refresh")
+    Support::each [Support::it "scoped handler sees correlated request and URL" (refreshed.model.pending + "|" + Github::url loaded.model.repo) refreshed.commands, Support::it "refresh still enters loading state" "true" refreshed.model.loading]
+    searched = Update::dispatch loaded.model (Support::value "search" "parser")
+    check "local events require no host operation" "[]" searched.commands
 
 loadedCase () =
-    loaded = Support::loaded ()
-    first = issueAt loaded.stepStore.issues 0
-    Support::each [Support::it "pull request excluded" "2" (toString (length loaded.stepStore.issues)), Support::it "scalar id" "101" (toString first.issueId), Support::it "safe URL constructed in Osprey" "https://github.com/swiftlang/swift/issues/42" (githubUrl loaded.stepStore 0), Support::it "loading finished" "false" (toString loaded.stepStore.loading), Support::it "cache written" "store-write" (Support::asked loaded 0), Support::it "document holds the issues" "true" (toString (contains (Support::written loaded 0) "First issue"))]
-
-scopedCase () =
-    loaded = Support::loaded ()
-    refreshed = Inbox::update (loaded.stepStore, Refresh, "")
-    searched = Inbox::update (loaded.stepStore, Searching, "parser")
-    Support::each [Support::it "refresh correlates a new fetch" "fetch:4" refreshed.stepStore.fetchTicket, Support::it "refresh enters loading state" "true" (toString refreshed.stepStore.loading), Support::it "local events require no host operation" "0" (toString (length searched.requests)), Support::it "refresh asks only for the page" "1" (toString (length refreshed.requests))]
+    updated = Support::loaded ()
+    view = View::render updated.model
+    Support::each [Support::it "pull request excluded" "2" (Support::projected view "total"), Support::it "scalar id" "101" (Support::projected view "items[0].id"), Support::it "safe URL constructed in Osprey" "https://github.com/swiftlang/swift/issues/42" (Support::projected view "items[0].url"), Support::it "loading finished" "false" (Support::projected view "loading"), Support::it "cache emitted" "sql" (Support::projected updated.commands "[0].kind")]
 
 searchCase () =
     loaded = Support::loaded ()
-    searched = Support::updated (loaded.stepStore, Searching, "ALICE")
-    found = View::found searched
-    alice = issueAt found 0
-    Support::each [Support::it "case insensitive author match" "101" (toString alice.issueId), Support::it "search keeps every issue in the inbox" "2" (toString (length searched.issues)), Support::it "the search leaves one issue showing" "1" (toString (length found))]
+    searched = App::dispatch loaded.model (Support::value "search" "ALICE")
+    view = View::render searched.model
+    Support::each [Support::it "case insensitive author match" "101" (Support::projected view "items[0].id"), Support::it "second item filtered" "MISSING" (Support::projected view "items[1].id"), Support::it "total remains full inbox" "2" (Support::projected view "total"), Support::it "search is pure" "[]" searched.commands]
 
 bookmarkCase () =
-    loaded = Support::loaded ()
-    saved = Inbox::update (loaded.stepStore, KeepIssue(keptId = 102), "")
-    filtered = Support::updated (saved.stepStore, ShowSaved, "")
-    shown = issueAt (View::found filtered) 0
-    Support::each [Support::it "saved count changes immediately" "1" (toString (View::markedCount saved.stepStore)), Support::it "saved filter shows the saved issue" "102" (toString shown.issueId), Support::it "bookmark persists a document write" "store-write" (Support::asked saved 0), Support::it "the written document holds the bookmark" "true" (toString (contains (Support::written saved 0) "[102]"))]
+    saved = Support::bookmarked "102"
+    filtered = App::dispatch saved.model (Support::value "filter" "saved")
+    view = View::render filtered.model
+    Support::each [Support::it "saved count changes immediately" "1" (Support::projected view "bookmarked"), Support::it "saved filter" "102" (Support::projected view "items[0].id"), Support::it "bookmark boolean" "true" (Support::projected view "items[0].bookmarked"), Support::it "prepared write" "INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)" (Support::projected saved.commands "[0].sql")]
+
+cacheCase () =
+    saved = Support::bookmarked "101"
+    snapshot = Model::snapshot saved.model
+    schema = Support::schemaOf (App::initial ())
+    restored = App::dispatch schema.model (Support::sql "load" true (Json::arr (Json::obj (Json::strField "value" snapshot))) "")
+    Support::each [Support::it "reopen restores issues" (toString saved.model.items) (toString restored.model.items), Support::it "reopen restores bookmarks" (toString saved.model.saved) (toString restored.model.saved), Support::it "cached launch stays offline" "[]" restored.commands, Support::it "transient filter resets" "all" restored.model.filter]
 
 staleCase () =
-    asking = Support::fetchAsked ()
-    second = Inbox::update (asking.stepStore, Repository, "rust-lang/rust")
-    here = Support::holding (Support::fresh (), "inbox-http", Support::fixture ())
-    stale = Support::settled (here, second.stepStore, asking.stepStore.fetchTicket, true, Support::receipt 200)
-    Support::each [Support::it "an old page cannot replace a new repository" second.stepStore.repo stale.stepStore.repo, Support::it "an old page cannot persist" "0" (toString (length stale.requests))]
+    first = Support::awaiting ()
+    second = App::dispatch first.model (Support::value "repository" "rust-lang/rust")
+    stale = App::dispatch second.model (Support::http first.model.pending 200 (Support::fixture ()) "")
+    Support::each [Support::it "old response ignored" (Model::encode second.model) (Model::encode stale.model), Support::it "old response cannot persist" "[]" stale.commands]
 
 offlineCase () =
     loaded = Support::loaded ()
-    refreshed = Inbox::update (loaded.stepStore, Refresh, "")
-    empty = Support::fresh ()
-    failed = Support::settled (empty, refreshed.stepStore, refreshed.stepStore.fetchTicket, false, "The internet connection is offline.")
-    Support::each [Support::it "offline retains issues" (toString (length loaded.stepStore.issues)) (toString (length failed.stepStore.issues)), Support::it "error is visible" "true" (toString (contains failed.stepStore.problem "offline")), Support::it "loading stops on failure" "false" (toString failed.stepStore.loading), Support::it "a failed page never overwrites the cache" "0" (toString (length failed.requests))]
+    refresh = Support::refresh loaded
+    failed = App::dispatch refresh.model (Support::http refresh.model.pending 0 "" "The internet connection is offline.")
+    Support::each [Support::it "offline retains issues" (toString loaded.model.items) (toString failed.model.items), Support::it "error is visible" "true" (toString (contains failed.model.error "offline")), Support::it "loading stops on failure" "false" failed.model.loading, Support::it "failed response never overwrites SQLite" "[]" failed.commands]
 
 malformedCase () =
     loaded = Support::loaded ()
-    refreshed = Inbox::update (loaded.stepStore, Refresh, "")
-    here = Support::holding (Support::fresh (), "inbox-http", "[{\"id\":7}]")
-    failed = Support::settled (here, refreshed.stepStore, refreshed.stepStore.fetchTicket, true, Support::receipt 200)
-    Support::each [Support::it "invalid issue rejected" "true" (toString (contains failed.stepStore.problem "missing a valid")), Support::it "an invalid page cannot replace the cache" (toString (length loaded.stepStore.issues)) (toString (length failed.stepStore.issues)), Support::it "an invalid page cannot persist" "0" (toString (length failed.requests))]
+    refresh = Support::refresh loaded
+    failed = App::dispatch refresh.model (Support::http refresh.model.pending 200 "[{\"id\":7}]" "")
+    Support::each [Support::it "invalid issue rejected" "true" (toString (contains failed.model.error "missing a valid")), Support::it "invalid API cannot replace cache" (toString loaded.model.items) (toString failed.model.items), Support::it "invalid API cannot persist" "[]" failed.commands]
+
+sqliteFailureCase () =
+    loaded = Support::loaded ()
+    failed = App::dispatch loaded.model (Support::sql loaded.model.write false "[]" "disk full")
+    Support::each [Support::it "save error visible" "true" (toString (contains (View::render failed.model) "disk full")), Support::it "save error retains data" (toString loaded.model.items) (toString failed.model.items), Support::it "failed save not retried silently" "[]" failed.commands]
 
 injectionCase () =
     loaded = Support::loaded ()
-    document = Support::written loaded 0
-    Support::each [Support::it "quotes survive the document" "true" (toString (contains document "\\\"")), Support::it "the document is data the store owns" "true" (toString (startsWith document "{")), Support::it "the write names the document, never the issues" "inbox.json" Snapshot::fileName]
+    snapshot = Support::projected loaded.commands "[0].params[1]"
+    Support::each [Support::it "snapshot stays bound data" (Model::snapshot loaded.model) snapshot, Support::it "quotes preserved" "true" (toString (contains snapshot "Windows paths")), Support::it "SQL contains no issue title" "false" (toString (contains (Support::projected loaded.commands "[0].sql") "Windows"))]
 
-boundaryCase () =
+envelopeCase () =
     loaded = Support::loaded ()
-    Support::each [Support::it "the screen is one scrolling page" (toString Views::scroll) (toString (kindAt loaded.stepStore 0)), Support::it "the heading shows the workspace" "Issue Inbox" (headingWords loaded.stepStore), Support::it "the repository field carries the repository" "true" (toString (Lists::any (seats loaded.stepStore, \seat => seat.placedWords == "swiftlang/swift"))), Support::it "the controls deliver typed actions in drawing order" "12" (toString (length (bindings loaded.stepStore)))]
+    envelope = App::envelope loaded
+    Support::each [Support::it "opaque model round trip" (Model::encode loaded.model) (Support::projected envelope "model"), Support::it "native neutral UI" "scroll" (Support::projected envelope "ui.kind"), Support::it "view included" "2" (Support::projected envelope "view.total")]
 
-test ("repository validation prevents path and query injection", repositoryCase)
-test ("startup sequences the store read and the GitHub fetch", startupCase)
-test ("the same launch always opens the same way", purityCase)
-test ("GitHub data normalized and pull requests excluded", loadedCase)
-test ("a refresh correlates a bounded page while local events stay local", scopedCase)
-test ("search reacts locally without network or storage", searchCase)
-test ("bookmarks derive views and prepared document writes", bookmarkCase)
-test ("an out of order page cannot replace a new repository", staleCase)
-test ("a network failure retains cached issues and reports cause", offlineCase)
-test ("a malformed successful page is rejected", malformedCase)
-test ("the stored document keeps user data as bound data", injectionCase)
-test ("the boundary is shared-frame rows, not an envelope", boundaryCase)
-test ("issue details and navigation are Osprey transitions", detailCase)
-test ("local notes persist safely with quotes, newlines and SQL text", noteCase)
-test ("local priority changes reactively and rejects invalid values", priorityCase)
-test ("GitHub descriptions and labels normalize for details", bodyCase)
-test ("the stored document restores offline across app starts", cacheCase)
-test ("a refused store read is visible and keeps the network usable", storeFailureCase)
-test ("a stale save cannot overwrite the latest write", staleSaveCase)
-test ("a failed save cannot stop an independent fetch", saveDuringRefreshCase)
-test ("a failed save stays visible without losing in-memory data", saveFailureCase)
-test ("an invalid or newer stored document cannot become app state", invalidCacheCase)
-test ("GitHub rate limit status and cause reach the user", rateLimitCase)
-test ("clearing notes and priority releases annotation capacity", clearAnnotationCase)
-test ("two hundred notes fill the local triage bound", capacityCase)
-test ("a refresh that removes the selected issue returns to the inbox", removedSelectionCase)
-test ("control characters survive the boundary", controlCharacterCase)
-test ("issue body blocks become headings, lists, quotes, rules and code", markdownBlocksCase)
-test ("inline emphasis, code and https links are spans; unmatched markers are literal", markdownInlineCase)
-test ("degenerate Markdown never breaks rendering", markdownEdgeCase)
-test ("the detail screen renders Markdown while the view keeps the raw body", markdownDetailCase)
-test ("a missing description keeps its placeholder", placeholderCase)
-test ("Unicode limits preserve complete GitHub descriptions", unicodeBodyCase)
-test ("Unicode limits preserve complete searches", unicodeSearchCase)
-test ("Unicode limits accept and restore bounded notes", unicodeNoteCase)
-test ("Unicode and control characters survive the stored document", unicodeCacheCase)
+testCases [
+    { name = "repository validation prevents path and query injection", work = repositoryCase },
+    { name = "startup sequences SQLite schema load and HTTP", work = startupCase },
+    { name = "callable request handler substitutes native SQL commands", work = requestHandlerCase },
+    { name = "scoped request handler changes transport without changing transitions", work = scopedRequestsCase },
+    { name = "GitHub data normalized and pull requests excluded", work = loadedCase },
+    { name = "search reacts locally without network or SQL", work = searchCase },
+    { name = "bookmarks derive views and prepared SQLite writes", work = bookmarkCase },
+    { name = "SQLite snapshot restores offline across app starts", work = cacheCase },
+    { name = "out of order HTTP response cannot replace a new repository", work = staleCase },
+    { name = "network failure retains cached issues and reports cause", work = offlineCase },
+    { name = "malformed successful API response is rejected", work = malformedCase },
+    { name = "SQLite errors remain visible without losing in memory data", work = sqliteFailureCase },
+    { name = "SQL parameter binding preserves escaped user data", work = injectionCase },
+    { name = "one boundary returns model view commands and Osprey UI", work = envelopeCase },
+    { name = "issue details and navigation are Osprey transitions", work = detailCase },
+    { name = "local notes persist safely with quotes newlines and SQL text", work = noteCase },
+    { name = "local priority changes reactively and rejects invalid values", work = priorityCase },
+    { name = "GitHub descriptions and labels normalize for details", work = bodyCase },
+    { name = "all control characters and Unicode survive shared JSON encoding", work = allControlCase },
+    { name = "SQLite schema failure is visible and supports memory only operation", work = schemaFailureCase },
+    { name = "stale SQLite completion cannot overwrite current save status", work = staleSaveCase },
+    { name = "invalid or newer SQLite cache cannot become app state", work = invalidCacheCase },
+    { name = "GitHub rate limit status and cause reach the user", work = rateLimitCase },
+    { name = "clearing notes and priority releases annotation capacity", work = clearAnnotationCase },
+    { name = "SQLite save failure cannot stop an independent HTTP loading state", work = saveDuringRefreshCase },
+    { name = "refresh removing selected issue returns to the inbox", work = removedSelectionCase },
+    { name = "issue body blocks become headings, lists, quotes, rules and code", work = markdownBlocksCase },
+    { name = "inline emphasis, code and https links are spans; unmatched markers are literal", work = markdownInlineCase },
+    { name = "degenerate Markdown never breaks rendering", work = markdownEdgeCase },
+    { name = "the detail screen renders Markdown while the view keeps the raw body", work = markdownDetailCase },
+    { name = "Unicode limits preserve complete GitHub description characters", work = unicodeBodyCase },
+    { name = "Unicode limits preserve complete search characters", work = unicodeSearchCase },
+    { name = "Unicode limits accept and restore bounded notes", work = unicodeNoteCase }
+]
