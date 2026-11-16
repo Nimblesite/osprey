@@ -11,6 +11,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 mod budget;
+mod pending;
 mod sweep;
 
 const MAX_QUEUED_MESSAGES: usize = 256;
@@ -23,6 +24,8 @@ fn stopped() -> ServerError {
 
 struct Work {
     id: Option<RequestId>,
+    /// Cancelled by `$/cancelRequest` while the request waits in the queue.
+    cancelled: CancellationToken,
     method: String,
     params: Value,
     _reservation: budget::Reservation,
@@ -38,6 +41,8 @@ struct Context {
     /// Wakes the repository sweep after a message may have queued files.
     wake: Arc<Notify>,
     sweep: Arc<tokio::sync::Mutex<sweep::Sweep>>,
+    /// Requests in the queue, so a cancellation reaches them before they run.
+    pending: pending::Pending,
 }
 
 pub(super) struct Queue {
@@ -84,6 +89,7 @@ impl Queue {
             return self.refuse(id).await;
         };
         let work = Work {
+            cancelled: self.context.pending.insert(&id),
             id: Some(id.clone()),
             method,
             params,
@@ -91,7 +97,10 @@ impl Queue {
         };
         match self.sender.try_send(work) {
             Ok(()) => Ok(()),
-            Err(TrySendError::Full(_work)) => self.refuse(id).await,
+            Err(TrySendError::Full(_work)) => {
+                self.context.pending.remove(&id);
+                self.refuse(id).await
+            }
             Err(TrySendError::Closed(_work)) => Err(stopped()),
         }
     }
@@ -110,6 +119,7 @@ impl Queue {
     async fn submit_notification(&self, method: String, params: Value) -> Result<(), ServerError> {
         let reservation = self.budget.reserve(&method, &params).await;
         let work = Work {
+            cancelled: CancellationToken::new(),
             id: None,
             method,
             params,
@@ -162,6 +172,7 @@ impl Queue {
         if method == "$/cancelRequest" {
             if let Some(id) = cancel_id(&params) {
                 host.cancel(&id);
+                self.context.pending.cancel(&id);
                 self.context.dispatcher.cancel(&id);
             }
         } else {
@@ -196,6 +207,7 @@ impl Context {
             stopped: CancellationToken::new(),
             wake: Arc::default(),
             sweep: Arc::default(),
+            pending: pending::Pending::default(),
         }
     }
 
@@ -238,10 +250,15 @@ impl Context {
 
     async fn handle(&self, work: Work) {
         if let Some(id) = work.id {
+            self.pending.remove(&id);
             if work.method == "initialize" {
                 super::scope::lock(&self.engine).initialize(&work.params);
             }
-            let reply = request(&self.dispatcher, &id, &work.method, work.params).await;
+            let reply = if work.cancelled.is_cancelled() {
+                pending::cancelled(id)
+            } else {
+                request(&self.dispatcher, &id, &work.method, work.params).await
+            };
             if !self.stopped.is_cancelled() {
                 let _ = self.writer.write_message(&reply).await;
             }
