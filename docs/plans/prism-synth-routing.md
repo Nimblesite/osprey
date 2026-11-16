@@ -263,5 +263,7 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Re-run the twenty-two synth package journeys under GC: all pass.
 - [x] Correct contradictory README statements about VST preview integration and sustained-playback reliability.
 - [x] Compile the current Prism source with warnings treated as errors.
-- [ ] Complete fresh GC application checks and native headless and windowed VST/audio journeys.
+- [x] Re-run all twelve application journeys under GC: all pass.
+- [x] Rebuild the pinned VST SDK worker and pass all ten CTest checks, including real instrument/effect streams and audio-device diagnostics.
+- [ ] Complete native headless and windowed VST/audio journeys against the rebuilt app.
 - [ ] Resolve any reproduced playback failures before claiming smooth sustained playback.
