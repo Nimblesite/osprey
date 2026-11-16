@@ -295,15 +295,31 @@ impl SourceCache {
         self.live.retain(keep);
     }
 
-    /// The project roots whose memory stays: every project of an open
-    /// document, and the most recently loaded closed ones.
+    /// The project roots whose memory stays: each open document's own
+    /// project, and the most recently loaded ones. A shared file many
+    /// projects list pins only its own, never every dependent.
     pub(crate) fn kept(&self) -> BTreeSet<PathBuf> {
-        self.projects
+        self.opened
             .iter()
-            .filter(|(_, members)| members.paths.iter().any(|path| self.opened.contains(path)))
-            .map(|(root, _)| root.clone())
+            .filter_map(|path| self.owner(path))
             .chain(self.recent.iter().cloned())
             .collect()
+    }
+
+    /// The enclosing manifest's project when it lists `path`, else the first
+    /// loaded project that does.
+    fn owner(&self, path: &Path) -> Option<PathBuf> {
+        let lists = |root: &PathBuf| {
+            self.projects
+                .get(root)
+                .is_some_and(|members| members.paths.contains(path))
+        };
+        project_root(path).filter(lists).or_else(|| {
+            self.projects
+                .iter()
+                .find(|(_, members)| members.paths.contains(path))
+                .map(|(root, _)| root.clone())
+        })
     }
 }
 
