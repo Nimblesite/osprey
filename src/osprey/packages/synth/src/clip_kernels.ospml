@@ -59,11 +59,15 @@ module ClipKernels
 
     capacity (frames, channels) = channels >= 1 && channels <= 64 && frames > 0 && satMul frames channels <= 65536
 
-    continued (plan, clips, n, frames, states) = match foldList (toList (range (0, length states)), Success(value = []), \(outcome, index) => channel (plan, Parameters::initial plan.graph, clips, n, frames, states, outcome, index))
-        Error why => Error(message = why)
-        Success buffers => match foldList (toList (range (0, satMul frames (length states))), Success(value = []), \(outcome, index) => interleave (buffers, length states, outcome, index))
+    continued (plan, clips, n, frames, states) =
+        graph = plan.graph
+        // A kernel reads only its own parameters, not every hosted plug-in control per sample.
+        snapshot = Parameters::initial (graph(nodes = [n]))
+        match foldList (toList (range (0, length states)), Success(value = []), \(outcome, index) => channel (plan, snapshot, clips, n, frames, states, outcome, index))
             Error why => Error(message = why)
-            Success reversed => Success(value = ClipKernel(heldKernel = mapList (buffers, \buffer => buffer.heldKernel), kernelSamples = listReverse reversed))
+            Success buffers => match foldList (toList (range (0, satMul frames (length states))), Success(value = []), \(outcome, index) => interleave (buffers, length states, outcome, index))
+                Error why => Error(message = why)
+                Success reversed => Success(value = ClipKernel(heldKernel = mapList (buffers, \buffer => buffer.heldKernel), kernelSamples = listReverse reversed))
 
     (** Continue each channel's DSP state across blocks. Allocation remains outside a device callback. *)
     export block (plan, clips, n, frames, states) = match capacity (frames, length states) && length (filterList (plan.graph.nodes, \component => structuralEquals (component, n))) == 1 && length (filterList (states, \held => held.identity == n.identity)) == length states
