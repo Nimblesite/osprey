@@ -1,0 +1,18 @@
+{
+  "steps": [
+    { "wait": "Oscillator" },
+    { "wait": "Play C4" },
+    { "shot": "1-keyboard" },
+    { "invoke": "Play C4" },
+    { "wait": "261.6 Hz" },
+    { "shot": "2-c4-struck" },
+    { "invoke": "Bypass Filter" },
+    { "invoke": "Play A4" },
+    { "wait": "440.0 Hz" },
+    { "shot": "3-a4-unfiltered" },
+    { "invoke": "Undo" },
+    { "invoke": "Play C3" },
+    { "wait": "130.8 Hz" },
+    { "shot": "4-c3-filtered" }
+  ]
+}

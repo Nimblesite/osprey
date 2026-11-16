@@ -50,13 +50,14 @@ sealed partial class Renderer
         }
     }
 
-    /// <summary>Takes the spacing scale from the told theme.</summary>
+    /// <summary>Takes the spacing scale and the palette frames and runs resolve from the told theme.</summary>
     public void Themed(Theme? theme)
     {
         if (theme is not null)
         {
             spacing = theme.Spacing;
         }
+        palette = theme;
     }
 
     /// <summary>

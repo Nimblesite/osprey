@@ -12,12 +12,9 @@ import ui::Templates
 import ui::Keyed
 import casting::Link
 module App
-    after (arguments, flag, otherwise) =
-        at = ui::Lists::position (arguments, \a => a == flag)
-        ui::Pick::either (at >= 0, listGet arguments (satAdd at 1) ?: otherwise, otherwise)
     specified arguments = ui::Lists::position (arguments, \a => a == "--skin") >= 0
-    export documentPath arguments = after (arguments, "--machine", "src/osprey/examples/casting/player.machine.json")
-    opened arguments = after (arguments, "--open", (listGet (filterList (arguments, \a => endsWith (toLowerCase a) ".mp3")) 0) ?: "")
+    export documentPath arguments = ui::Lists::after (arguments, "--machine", "src/osprey/examples/casting/player.machine.json")
+    opened arguments = ui::Lists::after (arguments, "--open", (listGet (filterList (arguments, \a => endsWith (toLowerCase a) ".mp3")) 0) ?: "")
     export loaded source = match MachineDocs::load source
         Success machine => Link::store machine
         Error problem => Link::store (MachineDocs::faulty problem)
@@ -38,15 +35,15 @@ module App
         true => next
         false => next(writes = listAppend next.writes (Requests::write ("casting.selected-skin", selected next.stepStore)), requests = listAppend next.requests (Requests::ask ("appearance:write", ui::StoreWrite(writeName = "casting-appearance.txt", writeSlice = "casting.selected-skin"))))
     restored (arguments, next) =
-        wanted = after (arguments, "--skin", "")
+        wanted = ui::Lists::after (arguments, "--skin", "")
         match specified arguments && wanted != selected next.stepStore
             true => warn (next, "The selected appearance is unavailable. The default appearance has been restored.")
             false => next
     // Never write the fallback over a preference that has not been read yet.
     export initial context =
         path = documentPath context.arguments
-        launched = Link::launched (fromPath path, MachineDocs::folder path, after (context.arguments, "--skin", ""), opened context.arguments)
-        first = Link::settled (launched(finder = Link::browse (after (context.arguments, "--browse", ""))))
+        launched = Link::launched (fromPath path, MachineDocs::folder path, ui::Lists::after (context.arguments, "--skin", ""), opened context.arguments)
+        first = Link::settled (launched(finder = Link::browse (ui::Lists::after (context.arguments, "--browse", ""))))
         clocked = first(requests = listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true))))
         match specified context.arguments
             true => restored (context.arguments, remember (clocked(stepStore = returned clocked.stepStore)))

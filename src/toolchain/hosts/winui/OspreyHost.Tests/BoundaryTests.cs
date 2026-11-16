@@ -149,6 +149,14 @@ public sealed class BoundaryTests
     // An event that names no drawn control changes nothing, and the bridge keeps every byte it held.
     static void Refused(Shown shown, Library library)
     {
+        // The window's own events are taken and change nothing: a refusal would be shown as a problem.
+        foreach (var touch in new[] { Touch.Phase("active"), Touch.Viewed(0, 640, 480), Touch.Appearance(true), Touch.Frame(1.0 / 60), Touch.Phase("inactive") })
+        {
+            using var call = library.Event(Now(), touch);
+            Assert.Equal(0, call.Status);
+            var same = FrameReader.Read(call.Frame);
+            Assert.Equal(("0", "Use day colours", 10), (Words(same, 2), Words(same, 9), same.Controls.Count));
+        }
         var before = library.Bridge.Usage();
         using (var call = library.Event(Now(), Touch.Control(99, "")))
         {

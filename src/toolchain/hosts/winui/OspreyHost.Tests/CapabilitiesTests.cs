@@ -185,4 +185,295 @@ public sealed class CapabilitiesTests
             folder.Delete(recursive: true);
         }
     }
+
+    // ---- http [UI-EFFECTS] against a real server on this machine ----
+
+    static Ask Http(string ticket, string method, string url, string body = "", long limit = 65_536, long deadline = 10_000, params (string Name, string Value)[] headers)
+    {
+        var fields = new List<AskField> { Text(1, method), Text(2, url) };
+        foreach (var (name, value) in headers)
+        {
+            fields.Add(Text(3, name));
+            fields.Add(Text(3, value));
+        }
+        fields.AddRange([Text(4, body), Number(5, limit), Number(6, deadline), Text(7, "reply")]);
+        return Asked(10, ticket, [.. fields]);
+    }
+
+    static System.Text.Json.JsonElement Receipt(Completion done) => System.Text.Json.JsonDocument.Parse(done.Result).RootElement;
+
+    [Fact]
+    public async Task AnHttpRequestCarriesItsMethodHeadersAndBodyAndItsReplyLandsInTheSlice()
+    {
+        await using var server = new Loopback(_ => Task.FromResult(Loopback.Reply("200 OK", "{\"choices\":[]}", ("X-Zeta", "z"), ("X-Alpha", "a"))));
+        var done = await Host().Answer(Http("chat", "POST", server.Url("/v1/chat"), "{\"model\":\"m\"}", headers: [("Authorization", "Bearer sk-test"), ("Content-Type", "application/json")]));
+        Assert.True(done.Ok, done.Error);
+        Assert.Equal(200, Docs.Number(Receipt(done), "status"));
+        var names = Docs.Items(Receipt(done), "headers", header => Docs.Text(header, "name")).ToList();
+        Assert.True(names.IndexOf("X-Alpha") >= 0 && names.IndexOf("X-Alpha") < names.IndexOf("X-Zeta"), string.Join(",", names));
+        Assert.Equal(("reply", "{\"choices\":[]}"), (done.Writes[0].Key, done.Writes[0].Text));
+        var heard = Assert.Single(server.Heard);
+        Assert.StartsWith("POST /v1/chat HTTP/1.1", heard, StringComparison.Ordinal);
+        Assert.Contains("Authorization: Bearer sk-test", heard, StringComparison.Ordinal);
+        Assert.Contains("Content-Type: application/json", heard, StringComparison.Ordinal);
+        Assert.EndsWith("{\"model\":\"m\"}", heard, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnHttpReplyPastItsLimitOrDeadlineFailsAndARedirectIsReportedNotFollowed()
+    {
+        await using var server = new Loopback(async request =>
+        {
+            if (request.Contains("/slow", StringComparison.Ordinal))
+            {
+                await Task.Delay(3000);
+            }
+            return request.Contains("/moved", StringComparison.Ordinal)
+                ? Loopback.Reply("302 Found", "", ("Location", "https://example.test/elsewhere"))
+                : Loopback.Reply("200 OK", "twenty bytes of body");
+        });
+        var loud = await Host().Answer(Http("a", "GET", server.Url("/big"), limit: 4));
+        Assert.False(loud.Ok);
+        Assert.Contains("passed its limit of 4 bytes", loud.Error, StringComparison.Ordinal);
+        var late = await Host().Answer(Http("b", "GET", server.Url("/slow"), deadline: 200));
+        Assert.Contains("deadline of 200 ms", late.Error, StringComparison.Ordinal);
+        var moved = await Host().Answer(Http("c", "GET", server.Url("/moved")));
+        Assert.Equal((true, 302L), (moved.Ok, Docs.Number(Receipt(moved), "status")));
+        Assert.Equal(3, server.Heard.Count);
+        foreach (var refused in new[] { "http://example.test/v1", "ftp://127.0.0.1/x", "not a url", "https:///nohost" })
+        {
+            var done = await Host().Answer(Http("r", "GET", refused));
+            Assert.Equal((false, "Only https URLs, or http on this machine, are allowed"), (done.Ok, done.Error));
+        }
+    }
+
+    [Fact]
+    public async Task ACancelStopsAnHttpRequestInFlight()
+    {
+        await using var server = new Loopback(async _ =>
+        {
+            await Task.Delay(5000);
+            return Loopback.Reply("200 OK", "late");
+        });
+        var host = Host();
+        var waiting = host.Answer(Http("slow:1", "GET", server.Url("/slow")));
+        await Task.Delay(300, TestContext.Current.CancellationToken);
+        var cancelled = await host.Answer(Asked(19, "cancel:2", Text(1, "slow:1")));
+        Assert.True(cancelled.Ok);
+        var done = await waiting;
+        Assert.Equal((false, "cancelled"), (done.Ok, done.Error));
+    }
+
+    // ---- long-lived processes [UI-EFFECTS-PROCESS] ----
+
+    static Ask Process(long code, string ticket, params AskField[] fields) => Asked(code, ticket, fields);
+
+    // Reads the child named `name` until `done` holds for all its output so far and whether it has exited.
+    static async Task<(string Output, bool Exited, long Status)> ReadUntil(Capabilities host, string name, Func<string, bool, bool> done)
+    {
+        var output = "";
+        for (var tries = 0; tries < 100; tries++)
+        {
+            var read = await host.Answer(Process(24, "read", Text(1, name), Number(2, 4096), Number(3, 200)));
+            Assert.True(read.Ok, read.Error);
+            var result = Receipt(read);
+            output += Docs.Text(result, "output");
+            if (done(output, Docs.Flag(result, "exited")))
+            {
+                return (output, Docs.Flag(result, "exited"), Docs.Number(result, "status"));
+            }
+        }
+        throw new Xunit.Sdk.XunitException($"{name} never answered; it wrote {output}");
+    }
+
+    [Fact]
+    public async Task AChildTakesInputWritesOutputSeesItsEnvironmentAndReportsItsExit()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the child is cmd.exe");
+        var host = Host();
+        var started = await host.Answer(Process(22, "start", Text(1, "cmd"), Text(2, "/d"), Text(2, "/q"), Text(3, "OSPREY_PROBE"), Text(3, "probe-42"), Text(4, "shell")));
+        Assert.True(started.Ok, started.Error);
+        Assert.True(Docs.Number(Receipt(started), "pid") > 0);
+        var written = await host.Answer(Process(23, "write", Text(1, "shell"), Text(2, "echo heard-%OSPREY_PROBE%\r\n")));
+        Assert.Equal(("echo heard-%OSPREY_PROBE%\r\n".Length, true), (Docs.Number(Receipt(written), "written"), written.Ok));
+        var heard = await ReadUntil(host, "shell", (output, _) => output.Contains("heard-probe-42", StringComparison.Ordinal));
+        Assert.False(heard.Exited);
+        await host.Answer(Process(23, "write", Text(1, "shell"), Text(2, "exit 7\r\n")));
+        var ended = await ReadUntil(host, "shell", (_, exited) => exited);
+        Assert.Equal((true, 7L), (ended.Exited, ended.Status));
+        var late = await host.Answer(Process(23, "write", Text(1, "shell"), Text(2, "echo too late\r\n")));
+        Assert.False(late.Ok);
+        Assert.Contains("has exited", late.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AStoppedChildEndsAndUnknownOrMissingNamesFailByName()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the child is cmd.exe");
+        var host = Host();
+        Assert.True((await host.Answer(Process(22, "start", Text(1, Path.Combine(Environment.SystemDirectory, "cmd.exe")), Text(2, "/d"), Text(2, "/q"), Text(4, "server")))).Ok);
+        var stopped = await host.Answer(Process(25, "stop", Text(1, "server")));
+        Assert.True(Docs.Flag(Receipt(stopped), "stopped"));
+        var again = await host.Answer(Process(25, "stop", Text(1, "server")));
+        Assert.False(Docs.Flag(Receipt(again), "stopped"));
+        var unknown = await host.Answer(Process(24, "read", Text(1, "never"), Number(2, 10), Number(3, 0)));
+        Assert.Equal((false, "No process named never"), (unknown.Ok, unknown.Error));
+        var missing = await host.Answer(Process(22, "start", Text(1, "osprey-no-such-command"), Text(4, "x")));
+        Assert.Equal((false, "Command not found: osprey-no-such-command"), (missing.Ok, missing.Error));
+        var absent = await host.Answer(Process(22, "start", Text(1, @"C:\no\such\tool.exe"), Text(4, "y")));
+        Assert.Equal((false, @"Command not found: C:\no\such\tool.exe"), (absent.Ok, absent.Error));
+    }
+
+    [Fact]
+    public void AReadNeverCutsACharacterUnlessTheChildHasEnded()
+    {
+        byte[] accented = [0x61, 0xC3, 0xA9], smile = [0xF0, 0x9F, 0x98, 0x80];
+        Assert.Equal((1, 3, 1), (Child.Whole(accented, 2, false), Child.Whole(accented, 3, false), Child.Whole(accented, 2, true)));
+        Assert.Equal((0, 4, 3), (Child.Whole(smile, 3, false), Child.Whole(smile, 9, false), Child.Whole(smile[..3], 3, true)));
+        Assert.Equal(0, Child.Whole([], 8, false));
+        Assert.EndsWith("cmd.exe", Child.Resolve("cmd", Environment.SystemDirectory), StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ---- the model double a self-test answers http with [WINUI-HOST-SELF-TEST] ----
+
+    [Fact]
+    public async Task TheDoubleAnswersInOrderRecordsWithoutTheKeyAndLeavesThisMachineReal()
+    {
+        var folder = Directory.CreateTempSubdirectory("osprey-double-");
+        try
+        {
+            var file = Path.Combine(folder.FullName, "doubles.json");
+            File.WriteAllText(file, """{"models": {"data": [{"id": "deepseek-chat"}]}, "replies": [{"status": 200, "body": "first"}, {"status": 200, "body": "second", "requireUrl": "https://api.example.test/v1/chat"}]}""");
+            var requests = Path.Combine(folder.FullName, "requests.jsonl");
+            var host = new Capabilities(new Pickers(() => Task.FromResult<string?>(null), _ => Task.FromResult<string?>(null), _ => Task.FromResult<string?>(null)), new Store(folder.FullName))
+            {
+                Http = new HttpDouble(file, requests).Answer,
+            };
+            (string, string) bearer = ("Authorization", "Bearer sk-secret");
+            var first = await host.Answer(Http("1", "POST", "https://api.example.test/v1/chat", "{\"n\":1}", headers: bearer));
+            Assert.Equal((true, 200L, "first"), (first.Ok, Docs.Number(Receipt(first), "status"), first.Writes[0].Text));
+            var listed = await host.Answer(Http("m", "GET", "https://api.example.test/v1/models", headers: bearer));
+            Assert.Contains("deepseek-chat", listed.Writes[0].Text, StringComparison.Ordinal);
+            var elsewhere = await host.Answer(Http("2", "POST", "https://other.example.test/v1/chat", headers: bearer));
+            Assert.Equal((true, 404L), (elsewhere.Ok, Docs.Number(Receipt(elsewhere), "status")));
+            var spent = await host.Answer(Http("3", "POST", "https://api.example.test/v1/chat", headers: bearer));
+            Assert.Equal((false, "The double has no reply for request 3"), (spent.Ok, spent.Error));
+            var record = Assert.Single(File.ReadAllLines(requests));
+            Assert.Equal("{\"body\":\"{\\\"n\\\":1}\",\"url\":\"https://api.example.test/v1/chat\"}", record);
+            Assert.DoesNotContain("sk-secret", File.ReadAllText(requests), StringComparison.Ordinal);
+            await using var local = new Loopback(_ => Task.FromResult(Loopback.Reply("200 OK", "real")));
+            var real = await host.Answer(Http("local", "GET", local.Url("/v1/models")));
+            Assert.Equal((true, "real"), (real.Ok, real.Writes[0].Text));
+            var unauthorized = new HttpDouble(file, requests);
+            var refused = await unauthorized.Answer("u", Http("u", "POST", "https://api.example.test/v1/chat"), CancellationToken.None);
+            Assert.Equal((false, "The double takes only an authorized POST"), (refused.Ok, refused.Error));
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
 }
+
+/// <summary>An HTTP/1.1 server on this machine answering one request per connection, keeping each request it was sent.</summary>
+sealed class Loopback : IAsyncDisposable
+{
+    readonly System.Net.Sockets.TcpListener listener = new(System.Net.IPAddress.Loopback, 0);
+    readonly Func<string, Task<string>> reply;
+    readonly CancellationTokenSource stop = new();
+    readonly Task serving;
+    readonly List<string> heard = [];
+
+    public Loopback(Func<string, Task<string>> reply)
+    {
+        this.reply = reply;
+        listener.Start();
+        serving = Task.Run(Serve);
+    }
+
+    /// <summary>Every request received, whole, in order.</summary>
+    public IReadOnlyList<string> Heard
+    {
+        get
+        {
+            lock (heard)
+            {
+                return [.. heard];
+            }
+        }
+    }
+
+    public string Url(string path) => $"http://127.0.0.1:{((System.Net.IPEndPoint)listener.LocalEndpoint).Port}{path}";
+
+    /// <summary>A whole response with <paramref name="status"/>, <paramref name="headers"/> and <paramref name="body"/>.</summary>
+    public static string Reply(string status, string body, params (string Name, string Value)[] headers) =>
+        $"HTTP/1.1 {status}\r\n{string.Concat(headers.Select(header => $"{header.Name}: {header.Value}\r\n"))}Content-Length: {System.Text.Encoding.UTF8.GetByteCount(body)}\r\nConnection: close\r\n\r\n{body}";
+
+    async Task Serve()
+    {
+        while (!stop.IsCancellationRequested)
+        {
+            System.Net.Sockets.TcpClient client;
+            try
+            {
+                client = await listener.AcceptTcpClientAsync(stop.Token);
+            }
+            catch (Exception ended) when (ended is OperationCanceledException or System.Net.Sockets.SocketException or ObjectDisposedException)
+            {
+                return;
+            }
+            _ = Task.Run(() => Answered(client));
+        }
+    }
+
+    async Task Answered(System.Net.Sockets.TcpClient client)
+    {
+        using (client)
+        {
+            var stream = client.GetStream();
+            var request = await Request(stream);
+            lock (heard)
+            {
+                heard.Add(request);
+            }
+            try
+            {
+                await stream.WriteAsync(System.Text.Encoding.UTF8.GetBytes(await reply(request)));
+            }
+            catch (IOException)
+            {
+                // The client gave up first, as a cancelled or late request does.
+            }
+        }
+    }
+
+    static async Task<string> Request(System.Net.Sockets.NetworkStream stream)
+    {
+        var bytes = new List<byte>();
+        var block = new byte[4096];
+        while (true)
+        {
+            var read = await stream.ReadAsync(block);
+            bytes.AddRange(block.AsSpan(0, read));
+            var text = System.Text.Encoding.UTF8.GetString([.. bytes]);
+            var end = text.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+            if (read == 0 || end >= 0 && bytes.Count >= end + 4 + Length(text[..end]))
+            {
+                return text;
+            }
+        }
+    }
+
+    static int Length(string head) =>
+        head.Split("\r\n").Select(line => line.Split(':', 2)).Where(parts => parts.Length == 2 && parts[0].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
+            .Select(parts => int.Parse(parts[1].Trim(), System.Globalization.CultureInfo.InvariantCulture)).FirstOrDefault();
+
+    public async ValueTask DisposeAsync()
+    {
+        await stop.CancelAsync();
+        listener.Stop();
+        await serving;
+        stop.Dispose();
+    }
+}
+

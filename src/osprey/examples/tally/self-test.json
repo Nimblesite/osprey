@@ -1,0 +1,24 @@
+{
+  "steps": [
+    { "wait": "Tally" },
+    { "wait": "Add one" },
+    { "shot": "1-ready" },
+    { "invoke": "Add one" },
+    { "invoke": "Add one" },
+    { "invoke": "Add one" },
+    { "wait": "3" },
+    { "invoke": "Take one" },
+    { "wait": "2" },
+    { "shot": "2-counted" },
+    { "invoke": "Use night colours" },
+    { "wait": "Use day colours" },
+    { "gone": "Use night colours" },
+    { "shot": "3-night" },
+    { "invoke": "Clear" },
+    { "invoke": "Take one" },
+    { "wait": "0" },
+    { "invoke": "Use day colours" },
+    { "wait": "Use night colours" },
+    { "shot": "4-cleared-day" }
+  ]
+}

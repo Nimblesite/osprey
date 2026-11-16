@@ -10,12 +10,14 @@ A sample application on [@osprey/signal-flow](../../packages/signal_flow/README.
 | Master | The output; bypassed, the synth is silent |
 | Scope | Display only |
 
-Click a key on the keyboard under the graph to play: it renders one second of the patch at that key's pitch in Osprey, as an 8-bit WAV ([src/synth.ospml](src/synth.ospml)), and asks the host to play it through the `run` capability (`perl` writes the clip, then `afplay` plays it). The controls shape the sound and never play it. [src/studio.ospml](src/studio.ospml) is the whole application: the editor's own callbacks, plus the keyboard and the voice.
+Click a key on the keyboard under the graph to play: it renders one second of the patch at that key's pitch in Osprey, as an 8-bit WAV ([src/synth.ospml](src/synth.ospml)), and asks the host to play it through the `run` capability: on the Mac `perl` writes the clip and `afplay` plays it; on Windows the package's [`play-wav.exe`](windows/play-wav.c), which the launch names with `--play`, checks the clip is a whole WAV and plays it from memory, since the sandbox has nowhere `afplay`'s caller could write it. The controls shape the sound and never play it. [src/studio.ospml](src/studio.ospml) is the whole application: the editor's own callbacks, plus the keyboard and the voice.
 
 ## Run
 
 ```sh
 make -C src/toolchain/targets/macos synth             # or: bash src/osprey/examples/synth/run.sh
+make -C src/toolchain/targets/windows synth           # in its sandbox on Windows
+make -C src/toolchain/targets/windows/tests synth     # its Windows self-test against goldens/windows
 ```
 
 ## Test

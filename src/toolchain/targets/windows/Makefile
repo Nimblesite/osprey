@@ -5,13 +5,19 @@
 ROOT ?= ../../../..
 APP_PS1 ?= pwsh -NoProfile -File $(ROOT)/src/toolchain/hosts/winui/app.ps1
 
-.PHONY: storage flock graphics painting signal-flow probe casting tally
+.PHONY: agent storage flock graphics painting signal-flow synth probe casting tally
 
 ## graphics: Build the Direct3D 12 graphics host and run the animated GPU demo from the MSYS2 UCRT64
 ##           shell. The Osprey sources are the same files macOS draws through Metal; SCENE=kali|opal|character
 ##           picks the scene. See src/osprey/examples/graphics/README.md.
 graphics:
 	$(MAKE) -C $(ROOT) _graphics
+
+## agent: Open Osprey Agent, the coding agent on @osprey/native, working in PROJECT (default: here).
+##        It runs unsandboxed, as it runs commands in that folder; its README says why. Add a key in Settings.
+PROJECT ?= $(CURDIR)
+agent:
+	$(APP_PS1) -App agent -Arguments "$(PROJECT)"
 
 ## storage: Open Osprey Storage, where your disk space goes folder by folder, in its sandbox.
 ##          It reads the whole drive once Settings > Privacy & security > File system allows it.
@@ -29,6 +35,11 @@ painting:
 ## signal-flow: Open the signal-flow editor, a UI machine with four canvas skins, in its sandbox.
 signal-flow:
 	$(APP_PS1) -App signal-flow
+
+## synth: Open the Prism synth, the signal-flow editor's Prism skin over a keyboard, in its sandbox:
+##        a struck key plays its clip through play-wav.exe beside the app. [UI-MACHINE-FLOW-SYNTH]
+synth:
+	$(APP_PS1) -App synth
 
 ## probe: Open the hosts' probe application (counter, note, load) in its sandbox.
 probe:

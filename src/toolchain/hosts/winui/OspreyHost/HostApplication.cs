@@ -20,7 +20,7 @@ sealed partial class HostApplication(Launch launch) : Application, IXamlMetadata
         Progress.Note("launched");
         Resources.MergedDictionaries.Add(new XamlControlsResources());
         Progress.Note("control styles loaded");
-        window = new HostWindow(launch.Library, launch.Arguments, steady: launch.Script is not null);
+        window = new HostWindow(launch);
         if (launch.Headless)
         {
             window.ShowOffScreen();
@@ -33,7 +33,7 @@ sealed partial class HostApplication(Launch launch) : Application, IXamlMetadata
         }
         if (launch is { Script: { } script, Shots: { } shots })
         {
-            _ = Tested(new SelfTest(window, script, shots, onScreen: !launch.Headless));
+            _ = Tested(new SelfTest(window, script, shots, onScreen: !launch.Headless, TimeSpan.FromSeconds(launch.Doubles.Patience)));
         }
     }
 

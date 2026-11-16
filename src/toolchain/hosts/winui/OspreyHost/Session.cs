@@ -44,7 +44,7 @@ sealed class Session
     /// <summary>The frames granted and not yet sent.</summary>
     public long Owed => owed;
 
-    public Session(Library library, string store, Border root, DispatcherQueue queue, Action<IReadOnlyList<string>> report, Pickers pick)
+    public Session(Library library, Border root, DispatcherQueue queue, Action<IReadOnlyList<string>> report, Capabilities capabilities)
     {
         this.library = library;
         this.queue = queue;
@@ -56,7 +56,7 @@ sealed class Session
         stage.Children.Add(rows.Element);
         root.Child = stage;
         renderer = new Renderer(told, Control, Send, report);
-        capabilities = new Capabilities(pick, new Store(store));
+        this.capabilities = capabilities;
     }
 
     /// <summary>Hands the application its launch arguments in order, then draws the first frame and tells it the window is active.</summary>

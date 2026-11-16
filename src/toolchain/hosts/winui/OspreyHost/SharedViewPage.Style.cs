@@ -34,7 +34,7 @@ sealed partial class SharedViewPage
         if (row.Look.Size > 0) control.FontSize = row.Look.Size;
         control.FontWeight = Heft(row.Look.Weight);
         control.FontStyle = row.Fit.Slanted ? Windows.UI.Text.FontStyle.Italic : Windows.UI.Text.FontStyle.Normal;
-        control.FontFamily = row.Fit.Monospaced ? FixedWidth : null;
+        Typeface(control, row.Fit.Monospaced, XamlControl.FontFamilyProperty, () => control.FontFamily = FixedWidth);
     }
 
     static void Lettered(TextBlock block, Control row)
@@ -43,7 +43,20 @@ sealed partial class SharedViewPage
         if (row.Look.Size > 0) block.FontSize = row.Look.Size;
         block.FontWeight = Heft(row.Look.Weight);
         block.FontStyle = row.Fit.Slanted ? Windows.UI.Text.FontStyle.Italic : Windows.UI.Text.FontStyle.Normal;
-        block.FontFamily = row.Fit.Monospaced ? FixedWidth : null;
+        Typeface(block, row.Fit.Monospaced, TextBlock.FontFamilyProperty, () => block.FontFamily = FixedWidth);
+    }
+
+    // The fixed-width face, or the control's own: WinUI refuses a null family, so the local value is cleared instead.
+    static void Typeface(DependencyObject element, bool monospaced, DependencyProperty family, Action fixedWidth)
+    {
+        if (monospaced)
+        {
+            fixedWidth();
+        }
+        else
+        {
+            element.ClearValue(family);
+        }
     }
 
     // The face of a control or of the card wrapping one: fill, corner, inset and its 1pt edge.

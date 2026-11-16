@@ -23,6 +23,7 @@ sealed partial class Renderer
         ["screen"] = Screen, ["split"] = Split, ["layer"] = Layer, ["context-menu"] = ContextMenu, ["aside"] = Aside,
         ["tabs"] = Tabs, ["rows"] = Rows, ["button"] = Button, ["field"] = Field, ["toggle"] = Toggle,
         ["picker"] = Picker, ["disclosure"] = Disclosure, ["alert"] = Alert, ["scene"] = Scene, ["themed"] = Themed,
+        ["framed"] = Framed, ["rich-text"] = (_, node) => Rich(node),
     };
 
     // Theme resources are cast through WinRT's own query rather than a CLR cast: under Native AOT a

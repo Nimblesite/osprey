@@ -428,9 +428,23 @@ def posix(script, values):
     return Command(executable="/bin/sh", arguments=listConcat(["-c", script], values))
 
 
+def coded(text, mark, code):
+    """`text` with each `mark` written as its character code between single-quoted pieces."""
+    return join(unwrap_or(split(text, mark), [text]), "' + [char]0x" + code + " + '")
+
+
+def ps_quoted(value):
+    """`value` as one PowerShell expression of single-quoted pieces, so nothing in it is code: each ASCII quote is
+    doubled, and each typographic quote, which Windows PowerShell also ends a string at, is written as its code."""
+    doubled = join(unwrap_or(split(value, "'"), [value]), "''")
+    return "('" + coded(coded(coded(coded(doubled, "‘", "2018"), "’", "2019"), "‚", "201A"), "‛", "201B") + "')"
+
+
 def windows(script, values):
-    """PowerShell running `script` with `values` as `$args`: arguments, never spliced into the script."""
-    return Command(executable="C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", arguments=listConcat(["-NoProfile", "-NonInteractive", "-Command", script], values))
+    """PowerShell running `script` with `values` as `$values`, each a quoted literal, never code. PowerShell's -Command
+    joins any argument after the script into its text, so the script binds its values itself; output is UTF-8."""
+    bound = "$values = @(" + join(mapList(values, ps_quoted), ", ") + "); [Console]::OutputEncoding = [Text.Encoding]::UTF8; " + script
+    return Command(executable="C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", arguments=["-NoProfile", "-NonInteractive", "-Command", bound])
 
 
 def posix_tool(workspace, name, args_text):
@@ -448,15 +462,17 @@ def posix_tool(workspace, name, args_text):
 
 def windows_tool(workspace, name, args_text):
     if name == "list_files":
-        return windows("Set-Location -LiteralPath $args[0]; Get-ChildItem -Recurse -File -Force | Where-Object { $_.FullName -notmatch '\\\\(\\.git|node_modules|__pycache__)\\\\' } | Select-Object -First 500 | ForEach-Object { Resolve-Path -Relative $_.FullName }", [workspace])
+        return windows("Set-Location -LiteralPath $values[0]; Get-ChildItem -Recurse -File -Force | Where-Object { $_.FullName -notmatch '\\\\(\\.git|node_modules|__pycache__)\\\\' } | Select-Object -First 500 | ForEach-Object { Resolve-Path -Relative $_.FullName }", [workspace])
     elif name == "read_file":
-        return windows("Set-Location -LiteralPath $args[0]; Get-Content -LiteralPath $args[1] -Raw -ErrorAction Stop", [workspace, arg(args_text, "path")])
+        return windows("Set-Location -LiteralPath $values[0]; Get-Content -LiteralPath $values[1] -Raw -ErrorAction Stop", [workspace, arg(args_text, "path")])
     elif name == "write_file":
-        return windows("Set-Location -LiteralPath $args[0]; $folder = Split-Path -Parent $args[1]; if ($folder) { New-Item -ItemType Directory -Force -Path $folder | Out-Null }; [IO.File]::WriteAllText((Join-Path (Get-Location) $args[1]), $args[2]); \"wrote $($args[1])\"", [workspace, arg(args_text, "path"), arg(args_text, "content")])
+        return windows("Set-Location -LiteralPath $values[0]; $folder = Split-Path -Parent $values[1]; if ($folder) { New-Item -ItemType Directory -Force -Path $folder | Out-Null }; [IO.File]::WriteAllText((Join-Path (Get-Location) $values[1]), $values[2]); \"wrote $($values[1])\"", [workspace, arg(args_text, "path"), arg(args_text, "content")])
     elif name == "run_command":
-        return windows("Set-Location -LiteralPath $args[0]; & cmd.exe /d /c $args[1] 2>&1; exit $LASTEXITCODE", [workspace, arg(args_text, "command")])
+        # cmd reads the command exactly as written: PowerShell would rewrite a native argument's quotes, so the
+        # command reaches cmd through a variable on a line PowerShell passes on verbatim (--%).
+        return windows("Set-Location -LiteralPath $values[0]; $env:OSPREY_COMMAND = $values[1]\n& cmd.exe --% /d /s /c \"%OSPREY_COMMAND% 2>&1\"\nexit $LASTEXITCODE", [workspace, arg(args_text, "command")])
     else:
-        return windows("\"Unknown tool: $($args[0])\"; exit 127", [name])
+        return windows("\"Unknown tool: $($values[0])\"; exit 127", [name])
 
 
 def tool_command(platform, workspace, name, args_text):

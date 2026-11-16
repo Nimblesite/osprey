@@ -35,6 +35,13 @@ module Lists
     export position<T> : (List<T>, (T) -> bool) -> int
     position (items, matches) = range (0, length items) |> fold (0 - 1) (\(found, index) => locate (found, items, matches, index))
 
+    (** The launch argument after `flag`, or `otherwise` when `flag` is absent or last. *)
+    export after (arguments, flag, otherwise) =
+        at = position (arguments, \a => a == flag)
+        match at >= 0
+            true => listGet arguments (satAdd at 1) ?: otherwise
+            false => otherwise
+
     (** True when at least one item matches. *)
     export any<T> : (List<T>, (T) -> bool) -> bool
     any (items, matches) = length (filterList (items, matches)) > 0

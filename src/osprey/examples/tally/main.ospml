@@ -34,10 +34,11 @@ delivered (held, ordinal, words) = match listGet held.bound ordinal
 
 refused held = satAdd (shown held.store) 1
 
-// Tally draws only controls, so only a control's value reaches it.
+// Only a control's value changes Tally; the window's own events, such as becoming active or being
+// resized, are taken and leave the same store drawn.
 touched (held, kind, ordinal, words) = match kind == Hosting::control
     true => delivered (held, ordinal, words)
-    false => refused held
+    false => shown held.store
 
 hosted work =
     handle Keep
@@ -50,5 +51,5 @@ argument (_ : string) = 0
 (** Draws the first view; zero when it was written. *)
 open (_ : int, _ : int, _ : string, _ : string, _ : bool) = hosted (\() => shown Screen::first)
 
-(** Delivers the control numbered `ordinal` with its edited `words` and draws the next view; nonzero for an event Tally does not take or a control it did not draw, which changes nothing. *)
+(** Delivers the control numbered `ordinal` with its edited `words` and draws the next view; nonzero for a control it did not draw, which changes nothing. *)
 event (_ : int, kind, ordinal, words, _ : string, _ : float, _ : float, _ : bool, _ : bool) = hosted (\() => touched (live, kind, ordinal, words))

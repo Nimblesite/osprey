@@ -23,6 +23,11 @@ def at(items, i, fallback):
     return unwrap_or(listGet(items, i), fallback)
 
 
+def before(text, marker):
+    """`text` up to the first `marker`, or all of it."""
+    return at(unwrap_or(split(text, marker), [text]), 0, text)
+
+
 def repeat_text(text, count):
     """`text` `count` times, by doubling, so the depth stays small."""
     if count <= 0:
@@ -254,15 +259,22 @@ def command_cases():
     run = Engine.tool_command("macos", FOLDER, "run_command", args)
     win = Engine.tool_command("windows", FOLDER, "write_file", args)
     win_run = Engine.tool_command("windows", FOLDER, "run_command", args)
+    quoted = "{\"path\":\"it's\",\"content\":\"a‘b’c‚d‛\"}"
     return [
         Check.equal("command.posix_shell", write.executable, "/bin/sh"),
         Check.equal("command.values_are_arguments", join(mapList(toList(map(range(3), lambda i: i + 2)), lambda i: at(write.arguments, i, "")), "|"), "/work/project|src/a b.py|it's $HOME"),
         Check.truth("command.script_has_no_values", not contains(at(write.arguments, 1, ""), "HOME"), at(write.arguments, 1, "")),
         Check.equal("command.run_value", at(run.arguments, 3, ""), "echo hi"),
         Check.truth("command.windows_powershell", endsWith(win.executable, "powershell.exe"), win.executable),
-        Check.equal("command.windows_values", at(win.arguments, 5, ""), "src/a b.py"),
+        # PowerShell's -Command joins any further arguments into its text, so the script is the last one and binds its values itself.
+        Check.equal("command.windows_one_script", len(win.arguments), 4),
+        Check.equal("command.windows_values_bound", before(at(win.arguments, 3, ""), "; [Console]"), "$values = @(('/work/project'), ('src/a b.py'), ('it''s $HOME'))"),
+        Check.truth("command.windows_values_never_code", not contains(at(win.arguments, 3, ""), "$values[2]); \"wrote it"), at(win.arguments, 3, "")),
+        Check.equal("command.windows_every_single_quote_escaped", before(at(Engine.tool_command("windows", FOLDER, "write_file", quoted).arguments, 3, ""), "; [Console]"), "$values = @(('/work/project'), ('it''s'), ('a' + [char]0x2018 + 'b' + [char]0x2019 + 'c' + [char]0x201A + 'd' + [char]0x201B + ''))"),
+        Check.truth("command.windows_utf8_output", contains(at(win.arguments, 3, ""), "[Console]::OutputEncoding = [Text.Encoding]::UTF8"), at(win.arguments, 3, "")),
         Check.truth("command.windows_read_reports_errors", contains(at(Engine.tool_command("windows", FOLDER, "read_file", args).arguments, 3, ""), "-ErrorAction Stop"), "read_file must fail on a missing file"),
-        Check.truth("command.windows_run", contains(at(win_run.arguments, 3, ""), "cmd.exe"), at(win_run.arguments, 3, "")),
+        Check.truth("command.windows_run_by_cmd_verbatim", contains(at(win_run.arguments, 3, ""), "$env:OSPREY_COMMAND = $values[1]\n& cmd.exe --% /d /s /c \"%OSPREY_COMMAND% 2>&1\""), at(win_run.arguments, 3, "")),
+        Check.truth("command.windows_run_status", endsWith(at(win_run.arguments, 3, ""), "\nexit $LASTEXITCODE"), at(win_run.arguments, 3, "")),
         Check.equal("command.unknown_tool", at(Engine.tool_command("linux", FOLDER, "nope", "{}").arguments, 2, ""), "nope"),
         Check.equal("summary.list", Engine.tool_summary("list_files", "{}"), "project files"),
         Check.equal("summary.path", Engine.tool_summary("read_file", args), "src/a b.py"),
