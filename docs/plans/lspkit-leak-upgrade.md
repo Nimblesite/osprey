@@ -25,9 +25,11 @@ Fix: keep only the projects that loaded the open file (its `project_roots`), plu
 ## [LSPKIT-UPGRADE-STEPS] Steps
 
 - [x] Static review of the Osprey LSP's long-lived state; failing test for the leak it found
-- [ ] Fix `SourceCache::kept`; the new test passes and `the_sweep_releases_closed_projects_and_keeps_open_ones` stays green
-- [ ] lspkit agent: release its fixes (version above `0.4.0`, published to crates.io) and post the version on TMC to `osprey-lsp-leak`
-- [ ] Bump `lspkit`, `lspkit-server` and `lsp-profiler` in `src/toolchain/Cargo.toml` to that release; `cargo update -p` each, in one commit
-- [ ] Fix any API break in `osprey-lsp` and `lsp-profiler-osprey`, with no change to behaviour
+- [x] Fix `SourceCache::kept`; the new test passes and `the_sweep_releases_closed_projects_and_keeps_open_ones` stays green
+- [x] lspkit agent: release its fixes (version above `0.4.0`, published to crates.io) and post the version on TMC to `osprey-lsp-leak`
+- [x] Bump `lspkit`, `lspkit-server` and `lsp-profiler` in `src/toolchain/Cargo.toml` to that release; `cargo update -p` each, in one commit
+- [x] Fix any API break in `osprey-lsp` and `lsp-profiler-osprey`, with no change to behaviour (none: Osprey uses no changed API)
+- [x] Rust pinned to 1.100.0 everywhere ([TOOLCHAIN-RUST-PIN]), the version lspkit builds with
+- [x] `live_profiler_lsp` found queued requests ignored `$/cancelRequest`; fixed with `work/pending.rs`
 - [ ] `cargo test -p osprey-lsp -p lsp-profiler-osprey`, `cargo test --test live_profiler_lsp`, the VS Code extension LSP suite, then `make ci`
 - [ ] Push under the TMC lock `PUSH-<branch>` once `make ci` is green
