@@ -43,9 +43,8 @@ roomyKeys () =
 
 // [PRISM-ROUTING-EDITOR] The same real host event path used by the modular surface.
 editorUiJourney () =
-    idle = Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ())
-    launched = Drive::launched (idle, "macos", ["--empty"])
-    opened = Drive::pointer (Drive::pointer (launched, 550.0, 32.0, true), 550.0, 32.0, false)
+    launched = editorLaunched ["--empty"]
+    opened = clickAt (launched, 550.0, 32.0)
     expect (Drive::shows (opened, "Add component"), true)
     source = Drive::choose (opened, "Add component", "sine")
     gain = Drive::choose (source, "Add component", "gain")
@@ -84,7 +83,9 @@ editorUiJourney () =
     expect (length cables, 1)
     forEachList (cables, \shape =>
         match shape
-            ui::Path steps _ _ _ _ _ _ => expect (structuralEquals (steps, [ui::MoveTo(toX = 488.5, toY = 169.5), ui::CubicTo(toX = 579.0, toY = 301.5, ctrlAX = 558.5, ctrlAY = 169.5, ctrlBX = 509.0, ctrlBY = 301.5)]), true)
+            ui::Path steps _ paint _ _ _ _ =>
+                expect (structuralEquals (paint, ui::Solid(tint = ui::Scenes::hex (16745538, 1.0))), true)
+                expect (structuralEquals (steps, [ui::MoveTo(toX = 488.5, toY = 169.5), ui::CubicTo(toX = 579.0, toY = 301.5, ctrlAX = 558.5, ctrlAY = 169.5, ctrlBX = 509.0, ctrlBY = 301.5)]), true)
             _ => expect (false, true))
     expect ((Drive::holding dragged).revision, (Drive::holding canvasSelected).revision)
     released = Drive::pointer (dragged, 720.0, 300.0, false)
@@ -116,7 +117,9 @@ editorUiJourney () =
     second = inspectorAction (inspectorAction (wired, 1, "Use audio output"), 2, "Connect audio")
     expect (length (Drive::holding second).graph.cables, 2)
     feedbackSource = Drive::pointer (second, 801.0, 171.5, true)
-    feedback = Drive::pointer (feedbackSource, 519.0, 171.5, true)
+    feedbackMoved = Drive::pointer (feedbackSource, 519.0, 171.5, true)
+    expect ((Drive::holding feedbackMoved).wireDragging, true)
+    feedback = Drive::pointer (feedbackMoved, 519.0, 171.5, false)
     expect (structuralEquals ((Drive::holding feedback).graph, (Drive::holding second).graph), true)
     expect (contains (Drive::holding feedback).message "loop", true)
     heard = Drive::press (second, "Audition")
@@ -165,9 +168,8 @@ pluginUiJourney () =
             _ => match startsWith key "prism-worker:"
                 true => zeroStereoResponse ()
                 false => "malformed metadata"
-    idle = Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ())
-    launched = Drive::launched (idle, "macos", ["--empty", "--vst-worker", "/worker/osprey-vst-worker"])
-    opened = Drive::pointer (Drive::pointer (launched, 550.0, 32.0, true), 550.0, 32.0, false)
+    launched = editorLaunched ["--empty", "--vst-worker", "/worker/osprey-vst-worker"]
+    opened = clickAt (launched, 550.0, 32.0)
     expect (Drive::shows (opened, "Scan VST3"), true)
     path = Drive::choose (opened, "VST3 bundle", "/plugins/adelay.vst3")
     scanning = Drive::press (path, "Scan VST3")
@@ -337,9 +339,8 @@ hostWireJourney () =
 
 // [PRISM-ROUTING-MIDI] MIDI sources and stereo sinks are genuine menu-created graph components.
 midiMenuJourney () =
-    idle = Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ())
-    launched = Drive::launched (idle, "macos", ["--empty"])
-    opened = Drive::pointer (Drive::pointer (launched, 550.0, 32.0, true), 550.0, 32.0, false)
+    launched = editorLaunched ["--empty"]
+    opened = clickAt (launched, 550.0, 32.0)
     notes = Drive::choose (opened, "Add component", "midi-note")
     expect (length (Drive::holding notes).graph.nodes, 1)
     expect (Drive::shows (inspectorSelected (notes, 0), "Pitch"), true)
@@ -480,6 +481,12 @@ hostedModulationJourney graph =
     errs (synth::GraphClips::advance (graph, [invalid], 256))
 
 // Fails the test unless `result` is an error.
+// One press and release at the same canvas point.
+clickAt (driven, x, y) = Drive::pointer (Drive::pointer (driven, x, y, true), x, y, false)
+
+// The Prism editor, freshly launched on macOS with these arguments.
+editorLaunched args = Drive::launched (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "macos", args)
+
 errs result = match result
     Error _ => expect (true, true)
     Success _ => expect (false, true)

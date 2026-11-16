@@ -7,16 +7,6 @@ module GraphClips
         Delay _ => n(processor = Amplifier)
         _ => n
 
-    optional (n, port) = match n.processor
-        External _ => port.rate == Control
-        _ => false
-
-    connected (graph, n, inlet) = match listGet n.inputs inlet
-        Error _ => false
-        Success port => optional (n, port) || length (filterList (graph.cables, \c => c.destination == n.identity && c.inlet == inlet)) == 1
-
-    ready (graph, n) = length (filterList (toList (range (0, length n.inputs)), \inlet => connected (graph, n, inlet))) == length n.inputs
-
     stateful n = match n.processor
         Stereo => false
         Sink => false
@@ -92,7 +82,7 @@ module GraphClips
             Invalid _ => Error(message = "Hosted graph rendering requires an acyclic graph.")
             Valid plan => scheduled (plan(graph = graph), clips, held, frames, plan.order)
 
-    checked (graph, clips, held, frames) = match ClipLayouts::bounded (graph, frames) && validState (graph, held, frames) && length (filterList (graph.nodes, \n => n.processor == Sink)) == 1 && length (filterList (graph.nodes, \n => ready (graph, n))) == length graph.nodes && length (filterList (clips, \clip => ClipLayouts::validClipAt (graph, held.graphPosition, frames, clip) && length (filterList (clips, \other => other.clipNode == clip.clipNode)) == 1)) == length clips
+    checked (graph, clips, held, frames) = match ClipLayouts::bounded (graph, frames) && validState (graph, held, frames) && length (filterList (graph.nodes, \n => n.processor == Sink)) == 1 && length (filterList (graph.nodes, \n => ClipLayouts::connected (graph, n))) == length graph.nodes && length (filterList (clips, \clip => ClipLayouts::validClipAt (graph, held.graphPosition, frames, clip) && length (filterList (clips, \other => other.clipNode == clip.clipNode)) == 1)) == length clips
         false => Error(message = "The block needs one output, connected inputs and valid bounded buffers and state.")
         true => prepared (graph, clips, held, frames)
 

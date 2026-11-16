@@ -278,10 +278,10 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 
 ## Restore the Prism presentation [PRISM-ROUTING-PRESENTATION]
 
-- [x] Replace the inspector's repeated module forms with a Module picker, selected parameters/connections, compact transport and destructive removal. The new inspector regression failed before implementation and passes unchanged; all fourteen synth journeys pass after explicit-selection adaptation (2026-11-16). The final scoped-spacing adjustment still requires native visual acceptance.
+- [x] Replace the inspector's repeated module forms with a Module picker, selected parameters/connections, compact transport and destructive removal. The new inspector regression failed before implementation and passes unchanged; all fourteen synth journeys pass after explicit-selection adaptation (2026-11-16). The final scoped spacing and routing layout were verified in the rebuilt native window.
 - [x] Replace GPUI picker chips with a labelled dropdown and preserve selected-key dispatch; use real themed buttons so focus, accessibility and icons survive styling. The host release check passes; empty menus are disabled and empty Parameters sections omitted.
 - [x] Exercise the packaged inspector through native input: Module dropdown changes LFO to Filter parameters; Modules adds Mixer; keyboard closes and reopens; direct pointer clicks on Oscillator output and Mixer input create a visible cable, and Disconnect first removes it (2026-11-16).
-- [ ] Accept the final stacked routing actions and omitted empty section footers visually. The preceding native review caught clipped side-by-side Disconnect buttons; that build is not the final layout acceptance.
+- [x] Accept the final stacked routing actions and omitted empty section footers visually: rebuilt and relaunched Prism on 2026-11-16, opened Filter inspector, and verified both complete routing labels fit inside the panel with section spacing and no unknown-symbol diagnostic. Decorative canvas ports and further cable gestures remain a separate active canvas task.
 
 
 - [x] Restore the original signal-flow studio as the normal app launch, including node cards, inspector and keyboard.
@@ -294,3 +294,13 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Preserve the exact main-branch Prism artwork and logo; inspect `design/prism-audio-modulation.png` and captures of the packaged app, including newly added module cards.
 - [ ] Restore graph undo/redo and adaptive canvas resizing in the unified editor; the retained fixed-studio tests alone do not validate these in the graph editor.
 - [ ] Complete sustained audio and full repository CI gates above; these visual/interaction checks do not establish realtime playback reliability.
+
+## Direct cable editing [PRISM-ROUTING-CABLES]
+
+- [x] Add output-to-input pointer capture, preview, typed validation and release-to-connect while retaining click-to-connect.
+- [x] Share cable geometry between painting, selection hit testing and accessible actions; expose a contextual Delete cable control and Backspace/Delete/Escape handling.
+- [x] Back the original Filter cutoff socket with an optional normalized input and its monitor socket with the actual audio output, preserving the original artwork.
+- [x] Pass strict application static analysis and the 55-step compiled native headless journey, including module insertion, routing, cable deletion and keyboard docking.
+- [x] Pass the expanded application/audio regressions: synth package 22/22 and app 15/15 (2026-11-16). GPUI host clippy still runs only in CI.
+- [x] Measure the audio the app actually writes to the device: a `Speaker` effect captures every float32 WAV block from Audition, then the test checks the header, pitch from zero crossings (110 Hz–7 kHz within 0.05 Hz), RMS, peak, block-boundary continuity, 0.5 gain and low-pass attenuation (4 kHz through a 400 Hz cutoff vs. 19 kHz). A 1% pitch error fails it.
+- [ ] Verify actual mouse dragging and cable deletion in the rebuilt window, and capture the windowed regression journey.

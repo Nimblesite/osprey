@@ -42,10 +42,15 @@ module ClipLayouts
         [output] => length n.inputs == 0 && control output
         _ => false
 
+    cutoffPort n = match listGet n.inputs 1
+        Error _ => false
+        Success port => port.name == "cutoff"
+
     (** Processor layouts are exact: no ignored extra ports or implicit channel conversion. *)
     export supported n = match n.processor
         Lfo => lfo n
         ModulatedGain => modulated n
+        Filter => uniform (n, 1, 1) || (modulated n && cutoffPort n)
         MidiNotes => length n.inputs == 0 && length n.outputs == 1 && notes n.outputs
         Stereo => stereo n
         Oscillator => uniform (n, 0, 1)
@@ -53,6 +58,19 @@ module ClipLayouts
         Mixer => uniform (n, 2, 1)
         External _ => external n
         _ => uniform (n, 1, 1)
+
+    optional (n, port) = match n.processor
+        External _ => port.rate == Control
+        Filter => port.rate == Control && port.name == "cutoff"
+        _ => false
+
+    (** Required inputs must be wired; unplugged optional controls retain their parameter. *)
+    export connected (graph, n) = all (toList (range (0, length n.inputs)), \index =>
+        match listGet n.inputs index
+            Error _ => false
+            Success port => optional (n, port) || length (filterList (graph.cables, \c => c.destination == n.identity && c.inlet == index)) == 1)
+
+    all (items, predicate) = foldList (items, true, \(ok, item) => ok && predicate item)
 
     (** Sinks retain their input channel count in the completed output clip. *)
     export channels n = match n.processor

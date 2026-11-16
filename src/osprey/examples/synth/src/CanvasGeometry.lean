@@ -26,4 +26,18 @@ def sinePoint (index : Float) : Float := Float.sin (index * 0.3)
 def cutoffPosition (hz : Float) : Float := Float.log (hz / 20) / Float.log 1000
 /-- Inverse of the original logarithmic cutoff slider. -/
 def cutoffFrequency (position : Float) : Float := bounded (20 * Float.pow 1000 (bounded position 0 1)) 20 19000
+/-- The cable painter and hit testing share the same cubic curve. -/
+private def cubic (a b c d t : Float) : Float :=
+  (1-t)*(1-t)*(1-t)*a + 3*(1-t)*(1-t)*t*b + 3*(1-t)*t*t*c + t*t*t*d
+def cableX (source target index : Float) : Float := cubic source (source+70) (target-70) target (index/48)
+def cableY (source target index : Float) : Float := cubic source source target target (index/48)
+/-- A bounded point-to-segment test avoids gaps between sampled cable points. -/
+def nearSegment (px py ax ay endX endY : Float) : Bool :=
+  let dx := endX-ax
+  let dy := endY-ay
+  let length := dx*dx+dy*dy
+  let t := if length == 0 then 0 else bounded (((px-ax)*dx+(py-ay)*dy)/length) 0 1
+  let ex := px-(ax+t*dx)
+  let ey := py-(ay+t*dy)
+  ex*ex+ey*ey <= 100
 end synth.CanvasGeometry

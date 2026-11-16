@@ -103,7 +103,16 @@ fn send_key(
 fn key_name(key: &str) -> Option<&str> {
     let named = matches!(
         key,
-        "left" | "right" | "up" | "down" | "space" | "enter" | "escape" | "tab" | "backspace"
+        "left"
+            | "right"
+            | "up"
+            | "down"
+            | "space"
+            | "enter"
+            | "escape"
+            | "tab"
+            | "backspace"
+            | "delete"
     );
     let character = key.len() == 1
         && key

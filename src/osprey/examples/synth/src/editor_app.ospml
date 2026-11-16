@@ -48,9 +48,11 @@ module EditorApp
                     false => Runtime::step (editor(armedNote = -1))
                 Error _ => Runtime::step (editor(armedNote = -1))
 
-    surfacePointer (context, editor, x, y, down) = match editor.dragging >= 0 || editor.paletteDrag != ""
+    surfacePointer (context, editor, x, y, down) = match editor.dragging >= 0 || editor.paletteDrag != "" || editor.wireDragging
         true => Runtime::step (EditorView::pointed (editor, x, y, down))
-        false => uncapturedPointer (context, editor, x, y, down)
+        false => match CableCanvas::deleteAt (editor, x, y)
+            true => Runtime::step (ui::Pick::either (down, EditorState::tapped (editor, RemoveCable), editor))
+            false => uncapturedPointer (context, editor, x, y, down)
 
     uncapturedPointer (context, editor, x, y, down) = match EditorView::toolbarAt (x, y)
         Error _ => match EditorView::paletteAt (editor, x, y)
@@ -85,7 +87,7 @@ module EditorApp
 
     controlled (context, editor, action, input) = match action
         Keyboard => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => dockPointer (context, editor, x, y, down), \(w, _) => Runtime::step (editor(keyboardWidth = w)))
-        Surface => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => surfacePointer (context, editor, x, y, down), \(w, h) => viewed (editor, w, h))
+        Surface => ui::Inputs::route (input, \(key, down) => Runtime::step (CableCanvas::keyed (editor, key, down)), \(x, y, down, _) => surfacePointer (context, editor, x, y, down), \(w, h) => viewed (editor, w, h))
         _ => Runtime::step editor
 
     update (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(action, input) => controlled (context, editor, action, input))

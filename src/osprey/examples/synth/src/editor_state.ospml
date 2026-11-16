@@ -4,7 +4,7 @@ namespace synth
 (** Draft graph editing shared by native controls and canvas interactions. *)
 module EditorState
     (** A fresh patch; identities are monotonic and never reused after deletion. *)
-    export initial () = Editor(skin = ui::MachineDocs::faulty "", graph = Graphs::empty, assetFolder = "src/osprey/packages/signal_flow/skins/prism", paletteShown = false, detailsShown = false, keyboardShown = true, keyboardWidth = 1536.0, paletteDrag = "", note = 57, armedNote = -1, scopeSamples = [], positions = [], dragging = -1, grabX = 0.0, grabY = 0.0, layoutRevision = 0, selected = -1, nextIdentity = 0, source = -1, outlet = 0, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", pluginPath = "", catalog = [], pluginBindings = [], pluginSerial = 0, pluginTicket = "", pluginClassId = "", renderPending = [], renderBindings = [], renderSerial = 0, renderTicket = "", renderSessions = [], renderOpening = false, renderInput = "", renderDevicePending = [], renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = false, renderStopping = false)
+    export initial () = Editor(skin = ui::MachineDocs::faulty "", graph = Graphs::empty, assetFolder = "src/osprey/packages/signal_flow/skins/prism", paletteShown = false, detailsShown = false, keyboardShown = true, keyboardWidth = 1536.0, paletteDrag = "", note = 57, armedNote = -1, scopeSamples = [], positions = [], dragging = -1, grabX = 0.0, grabY = 0.0, layoutRevision = 0, selected = -1, nextIdentity = 0, source = -1, outlet = 0, wireDragging = false, wireMonitor = false, wireX = 0.0, wireY = 0.0, selectedCable = -1, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", pluginPath = "", catalog = [], pluginBindings = [], pluginSerial = 0, pluginTicket = "", pluginClassId = "", renderPending = [], renderBindings = [], renderSerial = 0, renderTicket = "", renderSessions = [], renderOpening = false, renderInput = "", renderDevicePending = [], renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = false, renderStopping = false)
 
     (** Available component factories expose their real audio or event ports. *)
     export kinds = ["sine", "filter", "gain", "mixer", "delay", "output", "midi-note", "stereo", "stereo-output", "lfo", "modulated-gain"]
@@ -28,7 +28,7 @@ module EditorState
         "lfo" => Valid(value = Components::lfo (identity, 2.0))
         "modulated-gain" => Valid(value = Components::modulatedGain (identity, 2, 0.5))
         "sine" => Valid(value = Components::sine (identity, 440.0))
-        "filter" => Valid(value = Components::lowpass (identity, 4000.0, 0.707))
+        "filter" => Valid(value = Components::modulatedLowpass (identity, 4000.0, 0.707))
         "gain" => Valid(value = Components::gain (identity, 0.25))
         "mixer" => Valid(value = Components::mixer identity)
         "delay" => Valid(value = Components::delay (identity, 2400))
@@ -48,7 +48,7 @@ module EditorState
 
     published (editor, outcome) = match outcome
         Invalid fault => editor(message = faultText fault)
-        Valid graph => editor(graph = graph, revision = satAdd editor.revision 1, message = "Patch updated.")
+        Valid graph => editor(graph = graph, selectedCable = -1, revision = satAdd editor.revision 1, message = "Patch updated.")
 
     added (editor, kind) = match editor.nextIdentity == 9223372036854775807
         true => editor(message = "No more component identities are available.")
@@ -89,6 +89,9 @@ module EditorState
         Connect identity inlet => published (editor, Graphs::rewire (editor.graph, Components::route (editor.source, editor.outlet, identity, inlet)))
         Disconnect identity inlet => disconnected (editor, identity, inlet)
         Modulate identity key => published (editor, HostModulation::connect (editor.graph, editor.source, editor.outlet, identity, key))
+        RemoveCable => match listGet editor.graph.cables editor.selectedCable
+            Error _ => editor(message = "Select a cable to remove.")
+            Success cable => published (editor, Graphs::disconnect (editor.graph, cable))
         Remove => removed editor
         _ => editor
 

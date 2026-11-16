@@ -8,12 +8,13 @@ import synth::RenderKernels
 module Renderer
     mono port = port.rate == Audio && port.channels == 1 && port.unit == Amplitude
 
-    validPorts n = length (filterList (listConcat n.inputs n.outputs, mono)) == length n.inputs + length n.outputs
+    validPorts n = length (filterList (listConcat n.inputs n.outputs, \port => mono port || (n.processor == Filter && port.rate == Control && port.unit == Normalised && port.channels == 1 && port.name == "cutoff"))) == length n.inputs + length n.outputs
 
     layout n = match n.processor
         Oscillator => length n.inputs == 0 && length n.outputs == 1
         Sink => length n.inputs == 1 && length n.outputs == 0
         Mixer => length n.inputs == 2 && length n.outputs == 1
+        Filter => ClipLayouts::supported n
         External _ => false
         _ => length n.inputs == 1 && length n.outputs == 1
 
@@ -25,9 +26,7 @@ module Renderer
         Delay count => count
         _ => 0
 
-    connected (graph, n) = length (filterList (graph.cables, \c => c.destination == n.identity)) == length n.inputs
-
-    supported plan = length (filterList (plan.graph.nodes, validNode)) == length plan.graph.nodes && length (outputs plan.graph) == 1 && length (filterList (plan.graph.nodes, \n => connected (plan.graph, n))) == length plan.graph.nodes && foldList (plan.graph.nodes, 0, \(total, n) => satAdd total (delaySize n)) <= 1920000
+    supported plan = length (filterList (plan.graph.nodes, validNode)) == length plan.graph.nodes && length (outputs plan.graph) == 1 && length (filterList (plan.graph.nodes, \n => ClipLayouts::connected (plan.graph, n))) == length plan.graph.nodes && foldList (plan.graph.nodes, 0, \(total, n) => satAdd total (delaySize n)) <= 1920000
 
     (** Prepare and allocate reference state. Unknown layouts and external plug-ins are explicit errors. *)
     export start graph = match Graphs::prepare graph

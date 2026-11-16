@@ -77,4 +77,7 @@ def unipolar (sample : Float) : Float := (sample + 1) / 2
 /-- A normalized modulation input scales an explicit linear gain. -/
 def controlledGain (sample level control : Float) : Float := sample * level * control
 
+/-- A normalized cutoff signal sweeps from 1 Hz to the configured cutoff. -/
+def controlledCutoff (cutoff control : Float) : Float := 1 + (cutoff - 1) * control
+
 end synth.Waves

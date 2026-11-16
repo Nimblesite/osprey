@@ -28,6 +28,16 @@ type DeviceReceipt =
     emptyCallbacks : int
     deviceRunning : bool
 
+type CablePoint =
+    x : float
+    y : float
+
+type CableCurve =
+    sx : float
+    sy : float
+    dx : float
+    dy : float
+
 type NodePosition =
     layoutNode : int
     layoutX : float
@@ -54,6 +64,11 @@ type Editor G P S M =
     nextIdentity : int
     source : int
     outlet : int
+    wireDragging : bool
+    wireMonitor : bool
+    wireX : float
+    wireY : float
+    selectedCable : int
     revision : int
     message : string
     workerPath : string
@@ -90,6 +105,7 @@ type EditorAction =
     Disconnect
         identity : int
         inlet : int
+    RemoveCable
     Remove
     EditParameter
         identity : int
@@ -111,4 +127,3 @@ type EditorAction =
     ScanVst
     CreateVst
         identifier : string
-

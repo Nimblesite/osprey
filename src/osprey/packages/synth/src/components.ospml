@@ -15,6 +15,11 @@ module Components
     (** Stateful low-pass with cutoff in Hz and resonance expressed as Q. *)
     export lowpass (identity, cutoff, resonance) = node (identity, Filter, [port "audio"], [port "audio"], [parameter ("cutoff", "Cutoff", Hertz, 1.0, 19000.0, cutoff), parameter ("resonance", "Resonance (Q)", Ratio, 0.1, 20.0, resonance)])
 
+    (** The optional normalized cutoff inlet scales the cutoff parameter; unplugged retains it. *)
+    export modulatedLowpass (identity, cutoff, resonance) =
+        base = lowpass (identity, cutoff, resonance)
+        base(inputs = listAppend base.inputs (Port(name = "cutoff", rate = Control, channels = 1, unit = Normalised)))
+
     (** Linear gain; values above unity are explicit and may exceed output headroom. *)
     export gain (identity, level) = node (identity, Amplifier, [port "audio"], [port "audio"], [parameter ("gain", "Gain", Amplitude, 0.0, 8.0, level)])
 

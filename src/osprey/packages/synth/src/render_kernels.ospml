@@ -20,11 +20,21 @@ module RenderKernels
             next = held(integratorOne = sample.next.integratorOne, integratorTwo = sample.next.integratorTwo)
             Success(value = RenderInputs::emitted (frame, next, sample.low))
 
-    lowpass (rate, snapshot, frame, held, input) = match RenderInputs::parameter (snapshot, held.identity, "cutoff")
+    lowpass (plan, rate, snapshot, frame, held, input) = match cutoff (plan, snapshot, frame, held.identity)
         Error why => Error(message = why)
         Success cutoff => match RenderInputs::parameter (snapshot, held.identity, "resonance")
             Error why => Error(message = why)
             Success resonance => filtered (frame, held, FilterConfig(sampleRate = rate, cutoff = cutoff, resonance = resonance), input)
+
+    cutoff (plan, snapshot, frame, identity) = match RenderInputs::parameter (snapshot, identity, "cutoff")
+        Error why => Error(message = why)
+        Success base => match length (filterList (plan.graph.cables, \c => c.destination == identity && c.inlet == 1)) == 0
+            true => Success(value = base)
+            false => match RenderInputs::input (plan, frame, identity, 1)
+                Error why => Error(message = why)
+                Success control => match control >= 0.0 && control <= 1.0
+                    false => Error(message = "Cutoff modulation must stay between zero and one.")
+                    true => Success(value = Waves::controlledCutoff (base, control))
 
     gain (snapshot, frame, held, input) = match RenderInputs::parameter (snapshot, held.identity, "gain")
         Error why => Error(message = why)
@@ -48,7 +58,7 @@ module RenderKernels
 
     processor (plan, rate, snapshot, frame, held, n, input) = match n.processor
         ModulatedGain => controlled (plan, snapshot, frame, held, input)
-        Filter => lowpass (rate, snapshot, frame, held, input)
+        Filter => lowpass (plan, rate, snapshot, frame, held, input)
         Amplifier => gain (snapshot, frame, held, input)
         Mixer => mixer (plan, frame, held, input)
         Sink => Success(value = RenderInputs::emitted (frame, held, input))

@@ -494,6 +494,6 @@ test ("MIDI generators and stereo outputs are available through native graph con
 test ("MIDI note-on and note-off ownership survives exact block partitions", \() => Runtime::guarded midiTimingJourney)
 
 test ("hosted graph execution shares exact builtin PCM and rejects malformed cached buffers", \() => Runtime::guarded graphClipJourney)
-
 test ("original Prism sliders and module palette operate the editable graph", \() => Runtime::guarded (\() => hosted prismIntegratedJourney))
 test ("patch inspector shows only the selected module and preserves routing", \() => Runtime::guarded (\() => hosted inspectorJourney))
+test ("the device hears each tone's exact pitch and level, gain and low-pass attenuation", \() => Runtime::guarded (\() => hosted deviceAudioJourney))

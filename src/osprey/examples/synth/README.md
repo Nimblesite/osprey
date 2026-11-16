@@ -12,7 +12,11 @@ The menu offers sine oscillators, low-pass filters, gains, mixers, delays, MIDI 
 make -C src/toolchain/targets/macos synth
 ```
 
-Open **Modules** to drag a component into the canvas. **Patch controls** opens the selected-module inspector: choose a **Module**, edit its **Parameters**, then use **Connections** to select an output and connect or disconnect an input. Only the chosen module's controls are shown; **Remove module** removes that module and its cables. Compact **Audition**, **Play** and **Stop** controls remain together above the inspector; **Add to patch** holds component and VST creation. The inspector journey exercises selection and routing through these visible controls [PRISM-ROUTING-EDITOR].
+Open **Modules** and click a component to add it, or drag it onto the canvas. **Patch controls** opens the selected-module inspector: choose a **Module**, edit its **Parameters**, then use **Connections** to select an output and connect or disconnect an input. Only the chosen module's controls are shown; **Remove module** removes that module and its cables. Compact **Audition**, **Play** and **Stop** controls remain together above the inspector; **Add to patch** holds component and VST creation. The inspector journey exercises selection and routing through these visible controls [PRISM-ROUTING-EDITOR].
+
+Drag from an output socket to a compatible input socket to draw a cable; clicking the output and then the input also works. Click an exposed cable to highlight it, then click **Delete cable ×** or press **Backspace/Delete**. **Escape** cancels a pending connection. A rejected connection preserves the existing cables. The Filter's purple **CUTOFF** input accepts normalized modulation (unplugged uses the Cutoff value); its cyan monitor socket routes the same audio output to the Scope. These interactions are covered by [PRISM-ROUTING-CABLES].
+
+The keyboard stays docked to the bottom of the window. **Close keyboard ×** hides it; **Keyboard** in the header restores it.
 
 **Play patch** continuously produces the captured graph until **Stop playback**. **Audition patch** uses the same device path for a 256 ms preview. On macOS the packaged worker sends checked mono/stereo 48 kHz float32 PCM into a bounded AudioQueue; each VST instance survives successive graph blocks. Built-in DSP state and sample-positioned MIDI/modulation also continue between blocks. Stop, failure and ordinary application shutdown release the workers.
 
@@ -25,9 +29,11 @@ If the device queue runs empty, Prism retains a visible warning with the observe
 ```sh
 make -C src/toolchain/targets/tests synth
 make -C src/toolchain/targets/tests synth-vst
+make -C src/toolchain/targets/macos/tests synth-headless
+make -C src/toolchain/targets/macos/tests synth
 ```
 
-The application tests exercise both the existing fixed-patch interaction coverage and the new modular surface through real host events. The modular journey creates independent components, wires a chain, renders a playback request, changes parameters, rejects invalid input and removes a connected node. The synth package separately checks graph replacement, DSP state continuity, sample output and float32 RIFF bytes.
+The application tests exercise both the existing fixed-patch interaction coverage and the new modular surface through real host events. The modular journey creates independent components, wires a chain, renders a playback request, changes parameters, rejects invalid input and removes a connected node. A device journey captures every float32 block Audition writes to the audio device through an effect and measures it: pitch from zero crossings, RMS, peak, click-free block joins, gain and low-pass attenuation. The synth package separately checks graph replacement, DSP state continuity, sample output and float32 RIFF bytes.
 
 The VST target builds a separate worker against a pinned official SDK, scans actual ADelay and mda binaries, processes audio/MIDI and checks automation/state restoration. The native headless journey drives the menu and canvas through a real MIDI instrument, two real effects and LFO-controlled gain; it verifies 18 graph transactions across three retained workers, exact effect-chain PCM and sample-positioned MIDI/automation. Windowed screenshots, live graph replacement, graph persistence and plug-in latency compensation remain unfinished. See the [delivery checklist](../../../../docs/plans/prism-synth-routing.md) and [worker scope](../../../toolchain/hosts/synth_vst/README.md) for verified capabilities and remaining work.
 

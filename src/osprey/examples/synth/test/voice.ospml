@@ -17,8 +17,8 @@ inspectorAction (session, identity, label) = Drive::press (inspectorSelected (se
 
 // [PRISM-ROUTING-EDITOR] One selected module, compact controls, unchanged graph actions.
 inspectorJourney () =
-    launched = Drive::launched (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "macos", ["--empty"])
-    opened = Drive::pointer (Drive::pointer (launched, 550.0, 32.0, true), 550.0, 32.0, false)
+    launched = editorLaunched ["--empty"]
+    opened = clickAt (launched, 550.0, 32.0)
     oscillator = Drive::choose (opened, "Add component", "sine")
     filter = Drive::choose (oscillator, "Add component", "filter")
     expect (uitest::Views::shows (filter.drivenSeen, "Module"), true)
@@ -36,6 +36,7 @@ inspectorJourney () =
     expect (length (Drive::holding disconnected).graph.cables, 0)
     expect (uitest::Views::shows (disconnected.drivenSeen, "Remove module"), true)
     expect (length (Drive::holding disconnected).graph.nodes, 2)
+    cableGestureJourney ()
 
 patch (wave, process, depth, lfo, volume) = synth::Patch(pitch = 220.0, sounding = true, filtered = true, wave = wave, cutoff = 20.0 * pow (1000.0, process), depth = depth, lfo = lfo, audible = true, volume = volume)
 
@@ -193,13 +194,12 @@ deviceWarningJourney editor =
 
 // [PRISM-ROUTING-PRESENTATION] Main's artwork controls edit the same live patch.
 prismIntegratedJourney () =
-    idle = Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ())
-    opened = Drive::launched (idle, "macos", [])
+    opened = editorLaunched []
     expect (length (Drive::holding opened).graph.nodes, 5)
     expect (length (Drive::holding opened).graph.cables, 4)
     forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Patch controls"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), true))
     cutoff = Semantics::point (Semantics::element (opened.drivenSeen.renderedAccess, "Filter Cutoff"), 0.5)
-    changed = Drive::pointer (Drive::pointer (opened, cutoff.pointX, cutoff.pointY, true), cutoff.pointX, cutoff.pointY, false)
+    changed = clickAt (opened, cutoff.pointX, cutoff.pointY)
     match synth::Graphs::node ((Drive::holding changed).graph, 1)
         synth::Invalid _ => expect (false, true)
         synth::Valid n => match listGet n.parameters 0
@@ -207,13 +207,13 @@ prismIntegratedJourney () =
             Success p => near (p.initial, synth::CanvasGeometry::cutoffFrequency 0.5)
     expect (length (Drive::holding changed).graph.cables, 4)
     level = Semantics::point (Semantics::element (changed.drivenSeen.renderedAccess, "Master Level"), 0.25)
-    quieter = Drive::pointer (Drive::pointer (changed, level.pointX, level.pointY, true), level.pointX, level.pointY, false)
+    quieter = clickAt (changed, level.pointX, level.pointY)
     match synth::Graphs::node ((Drive::holding quieter).graph, 2)
         synth::Invalid _ => expect (false, true)
         synth::Valid n => match listGet n.parameters 0
             Error _ => expect (false, true)
             Success p => near (p.initial, 0.25)
-    library = Drive::pointer (Drive::pointer (quieter, 420.0, 32.0, true), 420.0, 32.0, false)
+    library = clickAt (quieter, 420.0, 32.0)
     expect ((Drive::holding library).paletteShown, true)
     added = Drive::pointer (Drive::pointer (library, 80.0, 130.0, true), 350.0, 230.0, false)
     expect (length (Drive::holding added).graph.nodes, 6)
@@ -223,6 +223,8 @@ prismIntegratedJourney () =
     prismControlJourney quieter
     keyboardDockJourney quieter
     paletteClickJourney quieter
+    filterSocketJourney ()
+    cutoffAudioJourney ()
 
 // Every visible module row supports one click as well as drag, without editing covered controls.
 paletteClickJourney opened = forEachList (synth::EditorState::kinds, \kind =>
@@ -250,7 +252,7 @@ overlappingModuleJourney added =
 
 prismTap (driven, label) =
     point = Semantics::point (Semantics::element (driven.drivenSeen.renderedAccess, label), 0.5)
-    Drive::pointer (Drive::pointer (driven, point.pointX, point.pointY, true), point.pointX, point.pointY, false)
+    clickAt (driven, point.pointX, point.pointY)
 
 prismControlJourney opened =
     menu = prismTap (opened, "Oscillator Wave: Sine")
@@ -319,3 +321,170 @@ dockTap (driven, label) =
             pressed = ui::Touch(touchNow = driven.drivenNow, touchKind = ui::Hosting::pointer, touchOrdinal = scene.controlOrdinal, touchWords = "", touchDetail = "", touchX = point.pointX, touchY = point.pointY, touchDown = true, touchShift = false)
             down = Drive::sent (driven, pressed)
             Drive::sent (down, pressed(touchNow = down.drivenNow, touchDown = false))
+
+// [PRISM-ROUTING-CABLES] Physical press/move/release, cancellation and direct removal.
+cableGestureJourney () =
+    launched = editorLaunched ["--empty"]
+    opened = prismTap (launched, "Patch controls")
+    disconnected = Drive::choose (Drive::choose (opened, "Add component", "sine"), "Add component", "filter")
+    armed = Drive::pointer (disconnected, 488.5, 169.5, true)
+    expect ((Drive::holding armed).wireDragging, true)
+    preview = Drive::pointer (armed, 450.0, 300.0, true)
+    expect (length (Drive::holding preview).graph.cables, 0)
+    expect ((Drive::holding preview).wireX, 450.0)
+    cancelled = Drive::pointer (preview, 450.0, 300.0, false)
+    expect ((Drive::holding cancelled).wireDragging, false)
+    expect (length (Drive::holding cancelled).graph.cables, 0)
+    source = Drive::pointer (cancelled, 488.5, 169.5, true)
+    connected = clickAt (source, 514.0, 176.0)
+    expect (length (Drive::holding connected).graph.cables, 1)
+    expect ((Drive::holding connected).wireDragging, false)
+    selected = clickAt (connected, 501.25, 172.75)
+    expect ((Drive::holding selected).selectedCable, 0)
+    expect (Semantics::offered (selected.drivenSeen.renderedAccess, "Delete selected cable"), true)
+    removed = prismTap (selected, "Delete selected cable")
+    expect (length (Drive::holding removed).graph.cables, 0)
+    expect (length (Drive::holding removed).graph.nodes, 2)
+    clicked = prismTap (prismTap (removed, "Canvas output 0:0"), "Canvas input 1:0")
+    expect (length (Drive::holding clicked).graph.cables, 1)
+    chosen = prismTap (clicked, "Cable 0:0 to 1:0")
+    deleted = Drive::key (chosen, "backspace", true)
+    expect (length (Drive::holding deleted).graph.cables, 0)
+    expect ((Drive::holding deleted).selectedCable, -1)
+    expect (structuralEquals ((Drive::holding deleted).graph.nodes, (Drive::holding disconnected).graph.nodes), true)
+
+// The original Filter's purple/cyan sockets are backed by real graph routes and audio.
+filterSocketJourney () =
+    opened = editorLaunched []
+    before = (Drive::holding opened).graph
+    controlled = prismTap (prismTap (opened, "Canvas output 4:0"), "Canvas input 1:1")
+    expect (length (Drive::holding controlled).graph.cables, 5)
+    match prismAudio before
+        Error _ => expect (false, true)
+        Success original => match prismAudio (Drive::holding controlled).graph
+            Error _ => expect (false, true)
+            Success modulated => expect (structuralEquals (original.clipSamples, modulated.clipSamples), false)
+    monitored = prismTap (prismTap (controlled, "Monitor output 1"), "Canvas input 3:0")
+    expect (length (filterList ((Drive::holding monitored).graph.cables, \c => c.source == 1 && c.destination == 3)), 1)
+    expect (length (Drive::holding monitored).graph.cables, 5)
+    invalid = prismTap (prismTap (monitored, "Canvas output 4:0"), "Canvas input 1:0")
+    expect (structuralEquals ((Drive::holding invalid).graph, (Drive::holding monitored).graph), true)
+
+// [PRISM-ROUTING-CABLES] Normalized cutoff endpoints and invalid samples exercise real DSP.
+cutoffOutput (graph, value) =
+    control = synth::NodeClip(clipNode = 4, clipChannels = 1, clipSamples = mapList (toList (range (0, 128)), \_ => value), clipNotes = [])
+    match synth::GraphClips::advance (graph, [control], 128)
+        Error why => Error(message = why)
+        Success action => match action
+            synth::ClipWaiting _ _ _ => Error(message = "A built-in filter requested a plug-in.")
+            synth::ClipReady clips => synth::ClipInputs::completed (clips, 3)
+
+cutoffAudioJourney () =
+    base = synth::EditorState::preset ()
+    lfo = synth::EditorState::tapped (base, synth::Add(kind = "lfo"))
+    connected = synth::EditorState::tapped (synth::EditorState::tapped (lfo, synth::Source(identity = 4, outlet = 0)), synth::Connect(identity = 1, inlet = 1))
+    match prismAudio base.graph
+        Error _ => expect (false, true)
+        Success original => forEachList ([0.0, 0.25, 0.5, 1.0], \value =>
+            match cutoffOutput (connected.graph, value)
+                Error _ => expect (false, true)
+                Success rendered =>
+                    expect (length rendered.clipSamples, 128)
+                    expect (structuralEquals (rendered.clipSamples, original.clipSamples), value == 1.0))
+    forEachList ([-0.1, 1.1, floatFromBits 9221120237041090560], \value => errs (cutoffOutput (connected.graph, value)))
+
+// [SYNTH-DEVICE-QUEUE] The audio device is an effect: every float32 WAV block the app writes to it is heard here.
+effect Speaker
+    heard : string => Unit
+
+type Heard =
+    blocks : List<string>
+
+spoken given =
+    held = Drive::holding given
+    perform Speaker.heard (ui::Pick::either (startsWith held.renderTicket "prism-audio:device:" && contains held.renderTicket ":block", held.renderInput, ""))
+    audioDone given
+
+// Audition through the real worker/device path; returns the decoded samples the device received.
+auditioned driven =
+    mut speaker = Heard(blocks = [])
+    handle Speaker
+        heard hex => speaker := speaker(blocks = listConcat speaker.blocks (filterList ([hex], \h => h != "")))
+    finished = foldList (toList (range (0, 40)), Drive::press (driven, "Audition"), \(previous, _) =>
+        match (Drive::holding previous).renderTicket == ""
+            true => previous
+            false => spoken previous)
+    expect (Drive::shows (finished, "Preview finished."), true)
+    expect (length speaker.blocks, 6)
+    foldList (speaker.blocks, [], \(all, hex) => listConcat all (pcm hex))
+
+// The exact mono 48 kHz IEEE float32 WAV GraphDevice writes, header field by field.
+pcm hex =
+    count = intDiv (satSub (length hex) 116) 8
+    expect (take hex 8, "52494646")
+    expect (take (drop hex 40) 32, "0300010080BB000000EE020004002000")
+    expect (take (drop hex 100) 16, "6461746100200000")
+    expect (count, 2048)
+    mapList (toList (range (0, count)), \i => synth::PcmWords::sample (hex, satAdd 116 (satMul i 8)) ?: 99.0)
+
+// Running measurements of the heard signal: crossings, energy, peak and steepest step.
+type Meter =
+    previous : float
+    index : int
+    first : float
+    last : float
+    rising : int
+    energy : float
+    peak : float
+    steepest : float
+
+metered (m, sample) =
+    at = toFloat (m.index - 1) + m.previous / (m.previous - sample)
+    crossed = m.index > 0 && m.previous < 0.0 && sample >= 0.0
+    step = abs (sample - m.previous)
+    next = m(previous = sample, index = satAdd m.index 1, energy = m.energy + sample * sample, peak = ui::Pick::either (abs sample > m.peak, abs sample, m.peak), steepest = ui::Pick::either (m.index > 0 && step > m.steepest, step, m.steepest))
+    match crossed
+        false => next
+        true => next(first = ui::Pick::either (m.rising == 0, at, m.first), last = at, rising = satAdd m.rising 1)
+
+meter samples = foldList (samples, Meter(previous = 0.0, index = 0, first = 0.0, last = 0.0, rising = 0, energy = 0.0, peak = 0.0, steepest = 0.0), metered)
+
+// Fundamental from interpolated rising zero crossings.
+hertz m = ui::Pick::either (m.rising < 2, 0.0, toFloat (m.rising - 1) * 48000.0 / (m.last - m.first))
+
+rms m = sqrt (m.energy / toFloat (ui::Pick::either (m.index == 0, 1, m.index)))
+
+within (actual, expected, tolerance) = expect (abs (actual - expected) <= tolerance, true)
+
+patched kinds =
+    opened = prismTap (editorLaunched ["--empty", "--vst-worker", "/worker/osprey-vst-worker"], "Patch controls")
+    added = foldList (kinds, opened, \(d, kind) => Drive::choose (d, "Add component", kind))
+    wired = foldList (toList (range (1, length kinds)), added, \(d, i) => prismTap (prismTap (d, "Canvas output ${i - 1}:0"), "Canvas input ${i}:0"))
+    expect (length (Drive::holding wired).graph.cables, length kinds - 1)
+    wired
+
+tuned (driven, node, label, words) = Drive::choose (inspectorSelected (driven, node), label, words)
+
+// A pure tone reaches the device at its exact pitch and level with no click at any block boundary.
+toneJourney hz =
+    m = meter (auditioned (tuned (patched ["sine", "output"], 0, "Frequency", "${hz}")))
+    expect (m.index, 12288)
+    within (hertz m, hz, 0.05)
+    within (rms m, 0.70711, 0.002)
+    within (m.peak, 1.0, 0.01)
+    expect (m.steepest <= 6.2832 * hz / 48000.0 + 0.000001, true)
+
+// [PRISM-ROUTING-CABLES] Gain scales, and the low-pass attenuates by cutoff, on the heard output.
+deviceAudioJourney () =
+    forEachList ([110.0, 440.0, 1000.0, 2500.0, 7000.0], toneJourney)
+    halved = meter (auditioned (tuned (tuned (patched ["sine", "gain", "output"], 0, "Frequency", "440"), 1, "Gain", "0.5")))
+    within (hertz halved, 440.0, 0.05)
+    within (rms halved, 0.35355, 0.002)
+    filtered = tuned (patched ["sine", "filter", "output"], 0, "Frequency", "4000")
+    cutoffHeard (filtered, "400", 0.0, 0.02)
+    cutoffHeard (filtered, "19000", 0.70711, 0.03)
+
+cutoffHeard (filtered, cutoff, level, tolerance) =
+    m = meter (auditioned (tuned (filtered, 1, "Cutoff", cutoff)))
+    within (hertz m, 4000.0, 1.0)
+    within (rms m, level, tolerance)
