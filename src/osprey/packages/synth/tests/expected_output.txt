@@ -7,18 +7,19 @@ ok 6 - state-variable filter preserves blocks, passes DC, rejects DC high-pass a
 ok 7 - parameter edits publish applied Signals, reject stale revisions, and preserve independent values
 ok 8 - graph validation covers corrupt persisted metadata, missing endpoints, fan-out and explicit channel adapters
 ok 9 - extracted Prism synthesis has no UI dependency and retains pitch, wave, silence and WAV behaviour
-ok 10 - a routed oscillator and gain render exact continuous PCM across unequal blocks
-ok 11 - mixing, filtering and explicit two-sample feedback execute the compiled graph
-ok 12 - sample-accurate automation applies before its frame, preserves ordering and rejects stale or out-of-block events
-ok 13 - performance timbres and metallic warp stay bounded across rates and control extremes
-ok 14 - edit routes and remove connected components without corrupting the previous playable graph
-ok 15 - replace a playing graph without resetting phase, lose deleted state and refuse incomplete audio routes
-ok 16 - float PCM export retains sample precision and rejects invalid rates and samples
-ok 17 - external descriptors preserve channel types, MIDI ports and independent parameter identities
-ok 18 - offline clips render filters, delays, mixing, stereo conversion and independent control signals
-ok 19 - MIDI and modulation become checked native packets, then real-shaped stereo responses resume the graph
-ok 20 - MIDI windows preserve note ownership and reject malformed control values
-ok 21 - worker transport rejects malformed headers, nonfinite PCM, bad events and excessive automation
-ok 22 - corrupt graph layouts, buffers and kernel states return explicit failures
-1..22
-# tests=22 passed=22 failed=0 skipped=0
+ok 10 - module switches pick the waveform, bypass a module and modulate the filter cutoff
+ok 11 - a routed oscillator and gain render exact continuous PCM across unequal blocks
+ok 12 - mixing, filtering and explicit two-sample feedback execute the compiled graph
+ok 13 - sample-accurate automation applies before its frame, preserves ordering and rejects stale or out-of-block events
+ok 14 - performance timbres and metallic warp stay bounded across rates and control extremes
+ok 15 - edit routes and remove connected components without corrupting the previous playable graph
+ok 16 - replace a playing graph without resetting phase, lose deleted state and refuse incomplete audio routes
+ok 17 - float PCM export retains sample precision and rejects invalid rates and samples
+ok 18 - external descriptors preserve channel types, MIDI ports and independent parameter identities
+ok 19 - offline clips render filters, delays, mixing, stereo conversion and independent control signals
+ok 20 - MIDI and modulation become checked native packets, then real-shaped stereo responses resume the graph
+ok 21 - MIDI windows preserve note ownership and reject malformed control values
+ok 22 - worker transport rejects malformed headers, nonfinite PCM, bad events and excessive automation
+ok 23 - corrupt graph layouts, buffers and kernel states return explicit failures
+1..23
+# tests=23 passed=23 failed=0 skipped=0

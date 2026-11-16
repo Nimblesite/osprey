@@ -279,6 +279,45 @@ renderRefused result = match result
     Error _ => expect (true, true)
     Success _ => expect (false, true)
 
+// [SYNTH-RENDER-BLOCKS] The switches the editor stores on a module, as one more parameter.
+switched (n, key, high, value) = n(parameters = listAppend n.parameters (synth::Parameter(key = key, label = key, unit = synth::Ratio, minimum = 0.0, maximum = high, initial = value, automatable = true)))
+
+// One 64-frame offline clip of `graph`'s output node 3.
+clipOf graph = match synth::GraphClips::advance (graph, [], 64)
+    Error why => Error(message = why)
+    Success action => match action
+        synth::ClipWaiting _ _ _ => Error(message = "A built-in graph asked for a plug-in.")
+        synth::ClipReady clips => synth::ClipInputs::completed (clips, 3)
+
+// A sine through a low-pass whose cutoff inlet an LFO drives.
+switchedRender (oscillator, filter, lfo) = clipOf (built ([oscillator, filter, lfo, Components::output 3], [cable (1, 2), Components::route (4, 0, 2, 1), cable (2, 3)]))
+
+clipSamples outcome = match outcome
+    Success clip => clip.clipSamples
+    Error why =>
+        expect (why, "a rendered clip")
+        []
+
+switchedSamples (oscillator, filter, lfo) = clipSamples (switchedRender (oscillator, filter, lfo))
+
+plainLowpass () = clipSamples (clipOf (built ([Components::sine (1, 440.0), Components::lowpass (2, 1000.0, 0.7), Components::output 3], [cable (1, 2), cable (2, 3)])))
+
+test ("module switches pick the waveform, bypass a module and modulate the filter cutoff", \() => arithmetic (\() =>
+    sine = Components::sine (1, 440.0)
+    filter = Components::modulatedLowpass (2, 1000.0, 0.7)
+    lfo = Components::lfo (4, 2.0)
+    shapes = mapList ([0.0, 1.0, 2.0, 3.0], \wave => switchedSamples (switched (sine, "waveform", 4.0, wave), filter, lfo))
+    forEachList (shapes, \samples => expect (length samples, 64))
+    expect (length (filterList (toList (range (1, 4)), \i => structuralEquals (listGet shapes i ?: [], listGet shapes 0 ?: []))), 0)
+    renderRefused (switchedRender (switched (sine, "waveform", 4.0, 4.0), filter, lfo))
+    modulated = switchedSamples (sine, filter, lfo)
+    expect (structuralEquals (modulated, plainLowpass ()), false)
+    expect (structuralEquals (switchedSamples (sine, filter, switched (lfo, "enabled", 1.0, 0.0)), plainLowpass ()), true)
+    forEachList (toList (range (0, 64)), \i => near (listGet (switchedSamples (sine, switched (filter, "enabled", 1.0, 0.0), lfo)) i ?: 9.0, sin (6.283185307179586 * 440.0 * toFloat i / 48000.0), 0.00000000001))
+    expect (structuralEquals (switchedSamples (sine, switched (filter, "enabled", 1.0, 1.0), lfo), modulated), true)
+    expect (structuralEquals (switchedSamples (switched (sine, "enabled", 1.0, 0.0), filter, lfo), mapList (modulated, \_ => 0.0)), true)
+    renderRefused (switchedRender (sine, switched (filter, "enabled", 2.0, 2.0), lfo))))
+
 built (nodes, cables) =
     graph = foldList (nodes, Graphs::empty, \(g, n) => accepted (Graphs::add (g, n)))
     foldList (cables, graph, \(g, c) => accepted (Graphs::connect (g, c)))
