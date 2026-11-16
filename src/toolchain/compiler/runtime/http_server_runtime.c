@@ -68,9 +68,11 @@ static bool serve_request(int client_fd, HttpServer *server,
     }
     request->body = managed_body;
   }
+  http_pool_enter_handler(server);
   http_serving_client(client_fd);
   struct HttpResponse *response = call_handler(server, request);
   http_serving_client(-1);
+  http_pool_leave_handler(server);
   bool has_response = response && response->partialBody;
   int64_t status = has_response ? response->status : 200;
   const char *headers = response && response->headers

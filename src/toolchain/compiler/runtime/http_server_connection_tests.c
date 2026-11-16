@@ -14,15 +14,20 @@
 // request as Node.js keeps it, and every way a connection ends is answered with
 // the `Connection` header Node.js sends for it.
 
-#define CONNECTION_TEST_PORT 18095
+#define CONNECTION_TEST_PORT 18096
 #define LOAD_CLIENTS 16
 #define LOAD_REQUESTS 50
 #define PROMPT_MS 1000
+#define HANDLER_WORK_US 100
 
 static const char KEPT[] = "\r\nConnection: keep-alive\r\nKeep-Alive: timeout=5\r\n\r\n";
 static const char CLOSED[] = "\r\nConnection: close\r\n\r\n";
 
 static atomic_int g_served;
+// Handlers inside at once, and whether two ever were: a handler's externs (a
+// shared SQLite handle, a C library's globals) are not known to be thread-safe.
+static atomic_int g_inside;
+static atomic_bool g_overlapped;
 
 // Read-only after start: every worker may return it at once.
 static HttpResponse g_reply = {.status = 200,
@@ -34,12 +39,18 @@ static HttpResponse g_reply = {.status = 200,
 
 static HttpResponse *counting_handler(char *method, char *path, char *headers, char *body) {
   (void)method, (void)path, (void)headers, (void)body;
+  if (atomic_fetch_add(&g_inside, 1) > 0) {
+    atomic_store(&g_overlapped, true);
+  }
+  usleep(HANDLER_WORK_US);
   atomic_fetch_add(&g_served, 1);
+  atomic_fetch_sub(&g_inside, 1);
   return &g_reply;
 }
 
 static int64_t start_connection_server(void) {
   atomic_store(&g_served, 0);
+  atomic_store(&g_overlapped, false);
   int64_t server = http_create_server(CONNECTION_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
   assert(server > 0 && http_listen(server, counting_handler) == 0);
   return server;
@@ -269,7 +280,7 @@ static void *keep_alive_client(void *unused) {
 }
 
 // Many clients at once, each reusing its connection: every request is served
-// exactly once.
+// exactly once, and one handler runs at a time.
 void test_server_serves_concurrent_keep_alive_clients(void) {
   int64_t server = start_connection_server();
   pthread_t loaders[LOAD_CLIENTS];
@@ -281,4 +292,5 @@ void test_server_serves_concurrent_keep_alive_clients(void) {
   }
   assert(http_stop_server(server) == 0);
   assert(atomic_load(&g_served) == LOAD_CLIENTS * LOAD_REQUESTS);
+  assert(!atomic_load(&g_overlapped) && "handlers must never run at once");
 }

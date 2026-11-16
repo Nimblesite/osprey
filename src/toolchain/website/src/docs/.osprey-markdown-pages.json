@@ -101,6 +101,7 @@
   "functions/httpdelete.md",
   "functions/httpget.md",
   "functions/httpgetresponse.md",
+  "functions/httpkeepalive.md",
   "functions/httplisten.md",
   "functions/httppost.md",
   "functions/httppostresponse.md",

@@ -209,8 +209,11 @@ jobs:
           echo "OSPREY_CC=$(cygpath -m /ucrt64/bin/clang.exe)" >> "$GITHUB_ENV"
           echo "OSPREY_AR=$(cygpath -m /ucrt64/bin/llvm-ar.exe)" >> "$GITHUB_ENV"
 
-      - name: Cache GPUI host
-        uses: actions/cache@v6
+      # Restore and save are separate so the host build is cached as soon as it
+      # exists: a run that ends later, red or cancelled, still leaves it for the next.
+      - name: Restore GPUI host
+        id: gpui-host
+        uses: actions/cache/restore@v6
         with:
           path: src/toolchain/hosts/gpui/target
           key: ${{ runner.os }}-gpui-host-${{ hashFiles('src/toolchain/hosts/gpui/Cargo.lock', 'src/toolchain/hosts/gpui/rust-toolchain*') }}
@@ -224,6 +227,13 @@ jobs:
           cargo --version
           export OSPREY_BIN="$PWD/target/release/osprey.exe"
           bash src/toolchain/hosts/gpui/run.sh --smoke
+
+      - name: Save GPUI host
+        if: ${{ !cancelled() && steps.gpui-host.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: src/toolchain/hosts/gpui/target
+          key: ${{ steps.gpui-host.outputs.cache-primary-key }}
 
       # Flock and Painting in real windows on the runner's desktop: each is linked into the host and
       # pictured after it has drawn for a while. PowerShell starts the host from MSYS2's environment,

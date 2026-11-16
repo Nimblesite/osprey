@@ -138,9 +138,18 @@ fn failures(suite: &Path, memory: &str, cache: &Path) -> Vec<String> {
     problems
 }
 
+/// The managed backends every suite runs under.
+const BACKENDS: [&str; 2] = ["gc", "arc"];
+
+/// Suites run in parallel; one suite's backends run one after the other, so a
+/// suite that binds loopback ports never races its own other run for them.
 fn matrix_problems(suites: &[PathBuf], cache: &Path) -> Vec<String> {
-    schedule(&matrix_jobs(suites), MATRIX_WORKERS, |(suite, memory)| {
-        failures(suite, memory, cache)
+    let suites: Vec<&Path> = suites.iter().map(PathBuf::as_path).collect();
+    schedule(&suites, MATRIX_WORKERS, |suite| {
+        BACKENDS
+            .iter()
+            .flat_map(|memory| failures(suite, memory, cache))
+            .collect()
     })
 }
 
@@ -148,7 +157,7 @@ fn matrix_jobs(suites: &[PathBuf]) -> Vec<(&Path, &str)> {
     suites
         .iter()
         .map(PathBuf::as_path)
-        .flat_map(|suite| ["gc", "arc"].map(|memory| (suite, memory)))
+        .flat_map(|suite| BACKENDS.map(|memory| (suite, memory)))
         .collect()
 }
 
@@ -164,7 +173,7 @@ fn the_package_matrix_runs_all_62_suite_backend_pairs_once() {
     assert_eq!(jobs.len(), 62, "all 31 packages need both managed backends");
     assert_eq!(unique.len(), jobs.len(), "duplicate job");
     for suite in &suites {
-        for memory in ["gc", "arc"] {
+        for memory in BACKENDS {
             assert!(unique.contains(&(suite.as_path(), memory)));
         }
     }

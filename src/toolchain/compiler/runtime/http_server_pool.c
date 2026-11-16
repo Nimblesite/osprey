@@ -40,7 +40,11 @@ typedef struct {
 struct HttpPool {
   HttpServer *server;
   pthread_mutex_t mutex;
+  // Signals both a queued connection and a finished handler; each waiter
+  // rechecks its own condition, so every wake is a broadcast.
   pthread_cond_t work;
+  // One handler runs at a time; the others wait, parked, for it to finish.
+  bool handling;
   bool stopping;
   // Connections with a request waiting, oldest first; workers take them.
   int queue[POOL_QUEUE];
@@ -92,10 +96,15 @@ static bool open_wake_pair(int pair[2]) {
                bind(listener, (struct sockaddr *)&address, sizeof(address)) == 0 &&
                listen(listener, 1) == 0 &&
                getsockname(listener, (struct sockaddr *)&address, &length) == 0;
-  pair[1] = ready ? socket(AF_INET, SOCK_STREAM, 0) : -1;
+  // Plain assignments: on Windows these return an unsigned SOCKET.
+  if (ready) {
+    pair[1] = socket(AF_INET, SOCK_STREAM, 0);
+  }
   ready = pair[1] >= 0 &&
           connect(pair[1], (struct sockaddr *)&address, sizeof(address)) == 0;
-  pair[0] = ready ? accept(listener, NULL, NULL) : -1;
+  if (ready) {
+    pair[0] = accept(listener, NULL, NULL);
+  }
   if (listener >= 0) {
     close(listener);
   }
@@ -118,7 +127,7 @@ static void enqueue(HttpPool *pool, int fd) {
   if (queued) {
     pool->queue[(pool->queue_head + pool->queue_count) % POOL_QUEUE] = fd;
     pool->queue_count++;
-    pthread_cond_signal(&pool->work);
+    pthread_cond_broadcast(&pool->work);
   }
   pthread_mutex_unlock(&pool->mutex);
   if (!queued) {
@@ -404,4 +413,22 @@ size_t http_pool_serving(HttpServer *server) {
   }
   pthread_mutex_unlock(&server->mutex);
   return serving;
+}
+
+void http_pool_enter_handler(HttpServer *server) {
+  HttpPool *pool = server->pool;
+  pthread_mutex_lock(&pool->mutex);
+  while (pool->handling) {
+    (void)osp_parked_wait(&pool->work, &pool->mutex, NULL);
+  }
+  pool->handling = true;
+  pthread_mutex_unlock(&pool->mutex);
+}
+
+void http_pool_leave_handler(HttpServer *server) {
+  HttpPool *pool = server->pool;
+  pthread_mutex_lock(&pool->mutex);
+  pool->handling = false;
+  pthread_cond_broadcast(&pool->work);
+  pthread_mutex_unlock(&pool->mutex);
 }
