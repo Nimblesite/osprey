@@ -54,8 +54,30 @@ void test_http_create_client(void) {
   printf("✅ http_create_client tests passed!\n\n");
 }
 
+// Allocation rejection must precede handle exhaustion, and runs before any
+// server thread exists: the injector's live count is process-wide, so a
+// connection thread a stopped server is still unwinding would skew it. The
+// later live loopback exchange proves both services recover after rejection.
+static void check_http_creation_allocation_failures(void) {
+  long live = osp_alloc_live();
+  osp_alloc_fail_next();
+  assert(http_create_client("http://127.0.0.1:1", 1) == -3);
+  assert(osp_alloc_live() == live);
+  osp_alloc_fail_next(); // the server record itself
+  assert(http_create_server(SERVER_TEST_PORT,
+                            (char *)(uintptr_t) "127.0.0.1") == -3);
+  assert(osp_alloc_live() == live);
+  osp_alloc_fail_after(1); // the record succeeds; its address copy does not
+  assert(http_create_server(SERVER_TEST_PORT,
+                            (char *)(uintptr_t) "127.0.0.1") == -3);
+  assert(osp_alloc_live() == live &&
+         "the half-built record must be released, not abandoned");
+  osp_alloc_fail_off();
+}
+
 void test_http_create_server(void) {
   printf("Testing http_create_server...\n");
+  check_http_creation_allocation_failures();
 
   // Test valid server creation
   int64_t server_id = create_test_server(8080);
@@ -208,27 +230,7 @@ void test_alloc_fail_off(void) { osp_alloc_fail_off(); }
 void test_alloc_fail_size(size_t bytes) { osp_alloc_fail_size(bytes); }
 long test_alloc_live(void) { return osp_alloc_live(); }
 
-// Allocation rejection must precede handle exhaustion; the following live
-// loopback exchange also proves both services recover after rejection.
-static void check_http_creation_allocation_failures(void) {
-  long live = osp_alloc_live();
-  osp_alloc_fail_next();
-  assert(http_create_client("http://127.0.0.1:1", 1) == -3);
-  assert(osp_alloc_live() == live);
-  osp_alloc_fail_next(); // the server record itself
-  assert(http_create_server(SERVER_TEST_PORT,
-                            (char *)(uintptr_t) "127.0.0.1") == -3);
-  assert(osp_alloc_live() == live);
-  osp_alloc_fail_after(1); // the record succeeds; its address copy does not
-  assert(http_create_server(SERVER_TEST_PORT,
-                            (char *)(uintptr_t) "127.0.0.1") == -3);
-  assert(osp_alloc_live() == live &&
-         "the half-built record must be released, not abandoned");
-  osp_alloc_fail_off();
-}
-
 void test_live_loopback_exchange(void) {
-  check_http_creation_allocation_failures();
   printf("Testing live loopback HTTP exchange...\n");
   int64_t server_id = 0, client_id = 0;
   start_loopback(LIVE_PORT, live_handler, &server_id, &client_id);
