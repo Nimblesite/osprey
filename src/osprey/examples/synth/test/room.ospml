@@ -301,23 +301,19 @@ hostWireJourney () =
     block = synth::HostBlock(frames = 2, notes = [], parameters = [], samples = [0.25, -0.5])
     succeeds (synth::HostPackets::clip (layout, block), \hex => expect (hex, "0200000000000000000000000000803E000000BF"))
     response = "4F53563101000000010000000000000002000000000000000000803E000000BF"
-    match synth::HostResponses::clip (response, layout, 2)
-        Error _ => expect (false, true)
-        Success rendered =>
-            expect (rendered.renderFrames, 2)
-            expect (rendered.renderChannels, 1)
-            expect (structuralEquals (rendered.renderSamples, [0.25, -0.5]), true)
+    succeeds (synth::HostResponses::clip (response, layout, 2), \rendered =>
+        expect (rendered.renderFrames, 2)
+        expect (rendered.renderChannels, 1)
+        expect (structuralEquals (rendered.renderSamples, [0.25, -0.5]), true))
     forEachList ([response + "00", take response 62, ""], \text =>
         errs (synth::HostResponses::clip (text, layout, 2)))
     forEachList ([block(frames = 0), block(samples = [0.25]), block(parameters = [synth::HostParameter(identity = 100, offset = 2, value = 0.5)])], \bad =>
         errs (synth::HostPackets::packet (1, bad)))
     note = synth::HostNote(kind = 1, offset = 300, pitch = 60, channel = 0, identity = 42, velocity = 0.5)
     succeeds (synth::HostPackets::clip (layout(inputChannels = 0, outputChannels = 2, acceptsNotes = true), block(frames = 512, notes = [note], samples = [])), \hex => expect (hex, "000100000000000000000000000100000100000000000000010000002C0000003C000000000000002A0000000000003F"))
-    match synth::WaveFiles::interleaved (48000, 2, [0.25, -0.5, 0.0, 1.0])
-        Error _ => expect (false, true)
-        Success hex =>
-            expect (contains hex "0300020080BB000000DC050008002000", true)
-            expect (contains hex "6661637404000000020000006461746110000000", true)
+    succeeds (synth::WaveFiles::interleaved (48000, 2, [0.25, -0.5, 0.0, 1.0]), \hex =>
+        expect (contains hex "0300020080BB000000DC050008002000", true)
+        expect (contains hex "6661637404000000020000006461746110000000", true))
 
 // [PRISM-ROUTING-MIDI] MIDI sources and stereo sinks are genuine menu-created graph components.
 midiMenuJourney () =
@@ -352,13 +348,11 @@ midiTimingJourney () =
     off = on(kind = 2, velocity = 0.0)
     succeeds (synth::MidiClips::window (source, 0, 256), \notes => expect (structuralEquals (notes, [on]), true))
     succeeds (synth::MidiClips::window (source, 256, 256), \notes => expect (structuralEquals (notes, [off]), true))
-    match synth::MidiClips::window (source, 0, 512)
-        Error _ => expect (false, true)
-        Success notes =>
-            expect (structuralEquals (notes, [on, off(offset = 256)]), true)
-            layout = synth::HostLayout(inputChannels = 0, outputChannels = 2, acceptsNotes = true)
-            block = synth::HostBlock(frames = 512, notes = notes, parameters = [], samples = [])
-            succeeds (synth::HostPackets::clip (layout, block), \bytes => expect (length bytes > 100, true))
+    succeeds (synth::MidiClips::window (source, 0, 512), \notes =>
+        expect (structuralEquals (notes, [on, off(offset = 256)]), true)
+        layout = synth::HostLayout(inputChannels = 0, outputChannels = 2, acceptsNotes = true)
+        block = synth::HostBlock(frames = 512, notes = notes, parameters = [], samples = [])
+        succeeds (synth::HostPackets::clip (layout, block), \bytes => expect (length bytes > 100, true)))
     succeeds (synth::MidiClips::window (source, 512, 256), \notes => expect (length notes, 0))
     forEachList ([synth::Components::midiNote (7, 60.5, 0.75, 256.0), synth::Components::midiNote (7, 60.0, 1.01, 256.0), synth::Components::midiNote (7, 60.0, 0.75, 256.5), synth::Components::sine (7, 440.0)], \bad =>
         errs (synth::MidiClips::window (bad, 0, 512)))
@@ -378,15 +372,13 @@ graphClipJourney () =
                     Error _ => expect (false, true)
                     Success action => match action
                         synth::ClipWaiting _ _ _ => expect (false, true)
-                        synth::ClipReady clips => match synth::ClipInputs::completed (clips, 3)
-                            Error _ => expect (false, true)
-                            Success output =>
-                                expect (structuralEquals (output.clipSamples, reference.samples), true)
-                                expect (output.clipChannels, 1)
-                                expect (length output.clipSamples, 257)
-                                malformed = output(clipSamples = [0.0])
-                                errs (synth::GraphClips::advance (graph, [malformed], 257))
-                                errs (synth::GraphClips::advance (graph, [output, output], 257))
+                        synth::ClipReady clips => succeeds (synth::ClipInputs::completed (clips, 3), \output =>
+                            expect (structuralEquals (output.clipSamples, reference.samples), true)
+                            expect (output.clipChannels, 1)
+                            expect (length output.clipSamples, 257)
+                            malformed = output(clipSamples = [0.0])
+                            errs (synth::GraphClips::advance (graph, [malformed], 257))
+                            errs (synth::GraphClips::advance (graph, [output, output], 257)))
     forEachList ([0, -1, 32769], \frames =>
         errs (synth::GraphClips::advance (graph, [], frames)))
     errs (synth::GraphClips::advance (graph(cables = []), [], 257))
@@ -407,16 +399,14 @@ clipOutput graph = match synth::GraphClips::advance (graph, [], 8)
 modulationJourney () =
     editor = modulationPatch ()
     expect (length editor.graph.cables, 4)
-    match clipOutput editor.graph
-        Error _ => expect (false, true)
-        Success output =>
-            expect (output.clipChannels, 2)
-            expected = [0.0, 0.0, 0.25, 0.25, 0.0, 0.0, -0.25, -0.25, 0.0, 0.0, 0.25, 0.25, 0.0, 0.0, -0.25, -0.25]
-            expect (length output.clipSamples, length expected)
-            forEachList (toList (range (0, length expected)), \index =>
-                succeeds (listGet output.clipSamples index, \value => near (value, listGet expected index ?: 99.0)))
-            moving = synth::EditorState::typed (editor, synth::EditParameter(identity = 2, key = "frequency"), "20")
-            succeeds (clipOutput moving.graph, \modulated => expect (structuralEquals (modulated.clipSamples, output.clipSamples), false))
+    succeeds (clipOutput editor.graph, \output =>
+        expect (output.clipChannels, 2)
+        expected = [0.0, 0.0, 0.25, 0.25, 0.0, 0.0, -0.25, -0.25, 0.0, 0.0, 0.25, 0.25, 0.0, 0.0, -0.25, -0.25]
+        expect (length output.clipSamples, length expected)
+        forEachList (toList (range (0, length expected)), \index =>
+            succeeds (listGet output.clipSamples index, \value => near (value, listGet expected index ?: 99.0)))
+        moving = synth::EditorState::typed (editor, synth::EditParameter(identity = 2, key = "frequency"), "20")
+        succeeds (clipOutput moving.graph, \modulated => expect (structuralEquals (modulated.clipSamples, output.clipSamples), false)))
     invalid = synth::NodeClip(clipNode = 2, clipChannels = 1, clipSamples = mapList (toList (range (0, 8)), \_ => -0.1), clipNotes = [])
     errs (synth::GraphClips::advance (editor.graph, [invalid], 8))
     missing = synth::EditorState::tapped (editor, synth::Disconnect(identity = 3, inlet = 1))
@@ -432,17 +422,13 @@ hostedModulationJourney graph =
                 expect (identity, 0)
                 expect (length block.parameters, 2)
                 expect (length block.samples, 512)
-                match listGet block.parameters 0
-                    Error _ => expect (false, true)
-                    Success first =>
-                        expect (first.identity, 100)
-                        expect (first.offset, 0)
-                        expect (first.value, 0.5)
-                match listGet block.parameters 1
-                    Error _ => expect (false, true)
-                    Success second =>
-                        expect (second.offset, 128)
-                        expect (second.value > 0.5 && second.value < 1.0, true)
+                succeeds (listGet block.parameters 0, \first =>
+                    expect (first.identity, 100)
+                    expect (first.offset, 0)
+                    expect (first.value, 0.5))
+                succeeds (listGet block.parameters 1, \second =>
+                    expect (second.offset, 128)
+                    expect (second.value > 0.5 && second.value < 1.0, true))
     valid (synth::HostModulation::connect (graph, 5, 0, 0, "vst:100"), \same => expect (structuralEquals (same, graph), true))
     refusesGraph (synth::HostModulation::connect (graph, 5, 0, 0, "vst:unknown"))
     invalid = synth::NodeClip(clipNode = 5, clipChannels = 1, clipSamples = mapList (toList (range (0, 256)), \_ => 1.1), clipNotes = [])

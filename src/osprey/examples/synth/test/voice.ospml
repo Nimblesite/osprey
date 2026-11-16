@@ -242,11 +242,9 @@ prismControlJourney opened =
     offeredIn (triangle, "Oscillator Wave: Triangle", true)
     bypassed = prismTap (triangle, "Bypass Oscillator")
     offeredIn (bypassed, "Enable Oscillator", true)
-    match synth::Graphs::node ((Drive::holding bypassed).graph, 0)
-        synth::Invalid _ => expect (false, true)
-        synth::Valid n =>
-            expect (length (filterList (n.parameters, \p => p.key == "waveform" && p.initial == 1.0)), 1)
-            expect (length (filterList (n.parameters, \p => p.key == "enabled" && p.initial == 0.0)), 1)
+    valid (synth::Graphs::node ((Drive::holding bypassed).graph, 0), \n =>
+        expect (length (filterList (n.parameters, \p => p.key == "waveform" && p.initial == 1.0)), 1)
+        expect (length (filterList (n.parameters, \p => p.key == "enabled" && p.initial == 0.0)), 1))
     prismAudioJourney ((Drive::holding opened).graph, (Drive::holding triangle).graph, (Drive::holding bypassed).graph)
     enabled = prismTap (bypassed, "Enable Oscillator")
     rates = prismTap (enabled, "LFO Rate: 1/4")
@@ -264,13 +262,11 @@ prismAudioJourney (sine, triangle, muted) = match prismAudio sine
     Error _ => expect (false, true)
     Success first => match prismAudio triangle
         Error _ => expect (false, true)
-        Success second => match prismAudio muted
-            Error _ => expect (false, true)
-            Success silent =>
-                expect (length first.clipSamples, 128)
-                expect (length second.clipSamples, 128)
-                expect (structuralEquals (first.clipSamples, second.clipSamples), false)
-                expect (length (filterList (silent.clipSamples, \value => value != 0.0)), 0)
+        Success second => succeeds (prismAudio muted, \silent =>
+            expect (length first.clipSamples, 128)
+            expect (length second.clipSamples, 128)
+            expect (structuralEquals (first.clipSamples, second.clipSamples), false)
+            expect (length (filterList (silent.clipSamples, \value => value != 0.0)), 0))
 
 // [PRISM-ROUTING-PRESENTATION] The dock owns a separate native scene and can be closed/reopened.
 keyboardDockJourney opened =
@@ -364,11 +360,9 @@ cutoffAudioJourney () =
     match prismAudio base.graph
         Error _ => expect (false, true)
         Success original => forEachList ([0.0, 0.25, 0.5, 1.0], \value =>
-            match cutoffOutput (connected.graph, value)
-                Error _ => expect (false, true)
-                Success rendered =>
-                    expect (length rendered.clipSamples, 128)
-                    expect (structuralEquals (rendered.clipSamples, original.clipSamples), value == 1.0))
+            succeeds (cutoffOutput (connected.graph, value), \rendered =>
+                expect (length rendered.clipSamples, 128)
+                expect (structuralEquals (rendered.clipSamples, original.clipSamples), value == 1.0)))
     forEachList ([-0.1, 1.1, floatFromBits 9221120237041090560], \value => errs (cutoffOutput (connected.graph, value)))
 
 // [SYNTH-DEVICE-QUEUE] The audio device is an effect: every float32 WAV block the app writes to it is heard here.
