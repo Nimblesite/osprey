@@ -168,17 +168,23 @@ fn timely_shutdown(server: Server, id: i64) -> Result<Value, std::sync::mpsc::Re
     })
 }
 
-fn busy_document_source() -> String {
-    (0..1500).fold(String::new(), |mut text, i| {
+fn busy_document_source(functions: usize) -> String {
+    (0..functions).fold(String::new(), |mut text, i| {
         writeln!(text, "fn identity{i}(x: int) -> int = x").expect("write source");
         text
     })
 }
 
+/// Enough declarations that analysis is slower than reading the flood.
+const FLOODED_FUNCTIONS: usize = 150;
+
+/// Request ids of the flood: more than the analysis queue holds.
+const FLOOD: std::ops::Range<i64> = 1000..1400;
+
 /// More analysis requests than the queue holds, written at once. Edits no
 /// longer wait behind analysis, so only requests can outrun it.
 fn request_flood() -> String {
-    (1000..1400).fold(String::new(), |mut frames, id| {
+    FLOOD.fold(String::new(), |mut frames, id| {
         let body = json!({ "jsonrpc": "2.0", "id": id, "method": "textDocument/documentSymbol",
             "params": { "textDocument": { "uri": "file:///tmp/osprey-overload.osp" } } })
         .to_string();
@@ -187,47 +193,81 @@ fn request_flood() -> String {
     })
 }
 
+/// Floods requests at a busy server, then cancels them as an editor does when
+/// the user moves on. Every request gets one reply: a result, the `-32800`
+/// cancellation, or the `-32802` refusal a client retries.
 fn flooded_session(server: &mut Server) -> Value {
-    let source = format!("{}\n//{}\n", busy_document_source(), "x".repeat(512 * 1024));
+    let source = format!(
+        "{}\n//{}\n",
+        busy_document_source(FLOODED_FUNCTIONS),
+        "x".repeat(512 * 1024)
+    );
     server.send(&json!({ "jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {
         "textDocument": { "uri": "file:///tmp/osprey-overload.osp", "languageId": "osprey", "version": 1, "text": source }
     }}));
-    if let Err(error) = server.stdin.write_all(request_flood().as_bytes()) {
-        assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
+    server
+        .stdin
+        .write_all(request_flood().as_bytes())
+        .expect("the server keeps reading");
+    server.stdin.flush().expect("flush the flood");
+    for id in FLOOD {
+        server.send(
+            &json!({ "jsonrpc": "2.0", "method": "$/cancelRequest", "params": { "id": id } }),
+        );
     }
-    let status = server.child.wait().expect("overloaded server exits");
-    let mut stderr = String::new();
-    let _ = server
-        .child
-        .stderr
-        .as_mut()
-        .expect("server stderr")
-        .read_to_string(&mut stderr)
-        .expect("read failure");
-    json!({ "code": status.code(), "stderr": stderr })
+    let mut replies = std::collections::BTreeMap::new();
+    while replies.len() < FLOOD.count() {
+        let message = server.read();
+        if let Some(id) = message.get("id").and_then(Value::as_i64) {
+            let code = message.pointer("/error/code");
+            let refused = code == Some(&json!(-32802));
+            let answered = message.get("result").is_some() || code == Some(&json!(-32800));
+            assert!(refused || answered, "{message}");
+            assert!(replies.insert(id, refused).is_none(), "{id} answered twice");
+        }
+    }
+    let shutdown = server.request(1, "shutdown", &Value::Null);
+    server.send(&json!({ "jsonrpc": "2.0", "method": "exit" }));
+    let status = server.child.wait().expect("server exits");
+    json!({ "ids": replies.keys().collect::<Vec<_>>(), "refused": replies.values().filter(|r| **r).count(),
+        "shutdown": shutdown, "clean": status.success() })
 }
 
+/// A full analysis queue refuses what does not fit with `ServerCancelled`, so
+/// the editor retries; cancelled queued requests stop costing analysis; and the
+/// session never ends (VS Code gives up on a
+/// server that keeps restarting).
 #[test]
-fn analysis_backlog_overload_is_explicit_and_bounded() {
+fn analysis_backlog_overload_refuses_requests_and_keeps_the_session() {
     let mut server = Server::start_in(&std::env::temp_dir());
     let _ = server.request(1, "initialize", &json!({ "capabilities": {} }));
     let result = with_server_deadline(server, Duration::from_secs(10), flooded_session)
-        .expect("the overload limit ends the session promptly");
-    assert_eq!(result.get("code"), Some(&json!(1)), "{result}");
-    assert!(
-        result
-            .get("stderr")
-            .and_then(Value::as_str)
-            .is_some_and(|text| text.contains("analysis backlog limit")),
+        .expect("a flooded server answers every request promptly");
+    assert_eq!(
+        result.get("ids"),
+        Some(&json!(FLOOD.collect::<Vec<_>>())),
         "{result}"
     );
+    assert!(
+        result
+            .get("refused")
+            .and_then(Value::as_u64)
+            .is_some_and(|n| n > 0),
+        "{result}"
+    );
+    assert_eq!(
+        result.pointer("/shutdown/result"),
+        Some(&Value::Null),
+        "{result}"
+    );
+    assert_eq!(result.get("clean"), Some(&json!(true)), "{result}");
 }
 
 #[test]
 fn shutdown_remains_responsive_while_an_open_document_is_analyzed() {
     let mut server = Server::start_in(&std::env::temp_dir());
     let _ = server.request(1, "initialize", &json!({ "capabilities": {} }));
-    let source = busy_document_source();
+    let source = busy_document_source(1500);
     server.send(
         &json!({ "jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {
             "textDocument": { "uri": "file:///tmp/osprey-busy-shutdown.osp", "languageId": "osprey",
