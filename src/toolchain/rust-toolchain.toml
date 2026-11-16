@@ -1,0 +1,5 @@
+# [TOOLCHAIN-RUST-PIN] One Rust for every machine and CI job; CI pins the same
+# version through dtolnay/rust-toolchain@1.100.0.
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
