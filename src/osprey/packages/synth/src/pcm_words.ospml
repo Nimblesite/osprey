@@ -65,7 +65,8 @@ module PcmWords
     (** Decode one complete uppercase hexadecimal word without accepting truncated bytes. *)
     export read32 (text, at) = match at >= 0 && at <= satSub (length text) 8
         false => Error(message = "Truncated PCM word.")
-        true => foldList ([0, 1, 2, 3], Success(value = 0), \(outcome, index) => readPart (text, at, outcome, index))
+        // Four fixed bytes need no per-sample index list or capturing fold closure.
+        true => readPart (text, at, readPart (text, at, readPart (text, at, readPart (text, at, Success(value = 0), 0), 1), 2), 3)
 
     (** Decode one finite, bounded sample from its exact IEEE float32 bits. *)
     export sample (text, at) = match read32 (text, at)

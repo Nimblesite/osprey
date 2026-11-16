@@ -267,3 +267,11 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Rebuild the pinned VST SDK worker and pass all ten CTest checks, including real instrument/effect streams and audio-device diagnostics.
 - [ ] Complete native headless and windowed VST/audio journeys against the rebuilt app.
 - [ ] Resolve any reproduced playback failures before claiming smooth sustained playback.
+
+### PCM decoding wrap-up [PRISM-ROUTING-PCM-ALLOCATION]
+
+- [x] Reproduce queue starvation in the rebuilt native audition and repeat it without a concurrent app build; preserve the first recording under `target/pr-validation/wrap-up/headless-first-red`.
+- [x] Compare the real worker directly with the recording wrapper: the direct finite audition passes, but an additional healthy-status assertion before Stop exposes starvation during sustained playback too (`direct-live-confirm.log`). The wrapper is not the sole cause.
+- [x] Remove the four-element index list and capturing fold closure allocated for each decoded PCM word; preserve byte order, bounds checks and malformed-input errors.
+- [x] Pass all twenty-two synth journeys under both GC and ARC after that change (`pcm-fixed-gc.log`, `pcm-fixed-arc.log`).
+- [ ] Verify sustained native playback with the changed decoder; package correctness does not prove realtime throughput.
