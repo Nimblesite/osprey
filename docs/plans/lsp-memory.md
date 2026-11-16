@@ -16,7 +16,7 @@ Coordinated on TMC: `osprey-lsp-memory` (Osprey), `codex-memory-leak-fix` (lspki
 
 Osprey pins `lspkit`, `lspkit-server` and `lsp-profiler` at `0.4.0` in `src/toolchain/Cargo.toml`. It uses `Dispatcher`, `DiagnosticsBus`, `Vfs`, `jsonrpc` framing, `live::Session` and the profiler service.
 
-Checked against the published v0.4.0 source on 2026-11-16: **none of the five repairs changes Osprey's memory at runtime.** The upgrade is hygiene. Osprey's memory bug is its own, fixed in `ddf589022`.
+Checked against the published v0.4.0 source on 2026-11-16, and confirmed on TMC by `codex-memory-leak-fix`: **none of the five repairs changes Osprey's memory at runtime.** The upgrade is hygiene. Osprey's memory bug is its own, fixed in `ddf589022`.
 
 | lspkit finding | Reaches Osprey? |
 | --- | --- |
@@ -27,7 +27,8 @@ Checked against the published v0.4.0 source on 2026-11-16: **none of the five re
 
 ## Upgrade steps (after lspkit publishes)
 
-- [ ] lspkit publishes the release with all five repairs to crates.io and posts the version on TMC to `osprey-lsp-memory`.
+- [x] Agreed on TMC (2026-11-16). lspkit's repairs and heap proofs are green locally, still `0.0.0-dev`, and have no release ETA. After its `make test` passes and the release is published, it sends `osprey-lsp-memory` the version and any API breaks in the surfaces above.
+- [ ] lspkit publishes the release with all five repairs.
 - [ ] Bump `lspkit`, `lspkit-server` and `lsp-profiler` together in `src/toolchain/Cargo.toml` and refresh `Cargo.lock`. Keep `sysinfo` matched to the version `lsp-profiler` pins.
 - [ ] Bump `@nimblesite/lsp-profiler-ui` in `src/toolchain/vscode-extension/package.json` if lspkit publishes a matching UI release.
 - [ ] Fix any API breaks in `osprey-lsp`; no shims.
