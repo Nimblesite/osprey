@@ -29,24 +29,21 @@ fn fixture(name: &str) -> std::io::Result<PathBuf> {
 }
 
 // Each discovered source as its folder and file name, in discovery order.
-fn listed(root: &Path) -> Vec<String> {
-    let (_, paths) = discover(root).unwrap_or_else(|errors| panic!("discovery failed: {errors:?}"));
-    paths
-        .iter()
-        .map(|path| {
-            let folder = path
-                .parent()
-                .and_then(Path::file_name)
-                .map(|name| name.to_string_lossy().into_owned());
-            format!(
-                "{}/{}",
-                folder.unwrap_or_default(),
-                path.file_name()
-                    .map(|name| name.to_string_lossy())
-                    .unwrap_or_default()
-            )
-        })
-        .collect()
+fn listed(root: &Path) -> std::io::Result<Vec<String>> {
+    let (_, paths) = discover(root)
+        .map_err(|errors| std::io::Error::other(format!("discovery failed: {errors:?}")))?;
+    Ok(paths.iter().map(|path| named(path)).collect())
+}
+
+fn named(path: &Path) -> String {
+    let text = |name: Option<&std::ffi::OsStr>| {
+        name.map_or_default(|name| name.to_string_lossy().into_owned())
+    };
+    format!(
+        "{}/{}",
+        text(path.parent().and_then(Path::file_name)),
+        text(path.file_name())
+    )
 }
 
 #[test]
@@ -62,14 +59,14 @@ fn a_canonical_root_lists_its_sources_in_the_order_a_written_root_does() -> std:
         "app/b.osp",
         "app/main.osp",
     ];
-    assert_eq!(listed(&written), expected, "written root");
+    assert_eq!(listed(&written)?, expected, "written root");
     assert_eq!(
-        listed(&canonical),
+        listed(&canonical)?,
         expected,
         "canonical root {}",
         canonical.display()
     );
-    let again = listed(&canonical);
+    let again = listed(&canonical)?;
     assert_eq!(again, expected, "a second discovery is the same");
     std::fs::remove_dir_all(&root)
 }
