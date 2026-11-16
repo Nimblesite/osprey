@@ -10,7 +10,9 @@ Coordinated on TMC: `osprey-lsp-memory` (Osprey), `codex-memory-leak-fix` (lspki
 - [x] Root cause. The repository diagnostics sweep checks every project, and `ProjectCache.latest` and `SourceCache.disk` pinned every project's analysis and parsed files forever.
 - [x] Failing test: `project_cache::tests::the_sweep_releases_closed_projects_and_keeps_open_ones`.
 - [x] Fix in `ddf589022`. Keep the projects of open documents plus the 4 most recently loaded, and evict the rest. After the same run, live heap is 128 MB in 317k allocations.
-- [ ] Push with the next coordinated `PUSH-<branch>` batch after `make ci`.
+- [x] Pushed to `codex/prism-synth-routing`. Also in PR #411 to main: `fix/lsp-sweep-memory`, with fmt, clippy and the 257 LSP tests passing on its exact tree.
+- [x] An open shared file pinned every project that lists it. Fixed by pinning only its own project (`an_open_shared_file_does_not_pin_its_dependents`).
+- [ ] PR #411 CI green, merge, release, then verify the released extension binary's live heap.
 
 ## lspkit repairs that reach Osprey
 
@@ -39,4 +41,4 @@ Checked against the published v0.4.0 source on 2026-11-16, and confirmed on TMC 
 
 ## Open, not yet fixed
 
-- [ ] The server quits with `analysis backlog limit reached` when 256 messages are queued (`server/work.rs`). VS Code then restarts it, and stops after repeated failures. Reproduced by opening and hovering 85 files quickly. Needs a failing test, and a fix that sheds or coalesces stale work instead of exiting.
+- [x] The server quit with `analysis backlog limit reached` when 256 messages were queued, and VS Code restarted it until it gave up. Now requests that don't fit get `ServerCancelled` (-32802) so the client retries, notifications wait for room, and the session never ends. Test: `a_request_flood_is_answered_and_never_ends_the_session`. In PR #411.
