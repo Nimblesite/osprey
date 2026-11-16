@@ -1,6 +1,8 @@
 // The Prism synth's voice checked directly, without an editor ([UI-MACHINE-FLOW-SYNTH]): each wave's
 // shape, each patch's clip and peak, descriptions that tell patches apart and the WAV header.
 
+import uitest::Drive
+import uitest::Semantics
 import ui::Lists
 import synth::Synth
 import synth::Voice
@@ -92,7 +94,7 @@ zeroStereoResponse () = "4F535631020000000200000000000000" + join (mapList (toLi
 // Reconstruct the concrete program so the compiler can prove callable effect provenance.
 deviceDone given =
     driven = uitest::Driven(drivenSurface = given.drivenSurface, drivenProgram = synth::EditorApp::program (), drivenSeen = given.drivenSeen, drivenNow = given.drivenNow)
-    held = driven.drivenSurface.surfaceSession.sessionStore
+    held = uitest::Drive::holding driven
     match held.renderDevicePending
         [pending] =>
             draining = held.renderInput == "!drain"
@@ -108,7 +110,7 @@ deviceDone given =
 
 audioDone given =
     driven = uitest::Driven(drivenSurface = given.drivenSurface, drivenProgram = synth::EditorApp::program (), drivenSeen = given.drivenSeen, drivenNow = given.drivenNow)
-    held = driven.drivenSurface.surfaceSession.sessionStore
+    held = uitest::Drive::holding driven
     match startsWith held.renderTicket "prism-audio:device:"
         true => match held.renderDeviceKey == ""
             true => uitest::Drive::completed (driven, held.renderTicket, true, "{\"status\":0,\"session\":\"device\"}")
@@ -158,3 +160,74 @@ deviceWarningJourney editor =
     match synth::GraphDevice::checked (editor(renderEmptyCallbacks = 1), stale)
         Success _ => expect (false, true)
         Error _ => expect (true, true)
+
+// [PRISM-ROUTING-PRESENTATION] Main's artwork controls edit the same live patch.
+prismIntegratedJourney () =
+    idle = Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ())
+    opened = Drive::launched (idle, "macos", [])
+    expect (length (Drive::holding opened).graph.nodes, 5)
+    expect (length (Drive::holding opened).graph.cables, 4)
+    forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Patch controls"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), true))
+    cutoff = Semantics::point (Semantics::element (opened.drivenSeen.renderedAccess, "Filter Cutoff"), 0.5)
+    changed = Drive::pointer (Drive::pointer (opened, cutoff.pointX, cutoff.pointY, true), cutoff.pointX, cutoff.pointY, false)
+    match synth::Graphs::node ((Drive::holding changed).graph, 1)
+        synth::Invalid _ => expect (false, true)
+        synth::Valid n => match listGet n.parameters 0
+            Error _ => expect (false, true)
+            Success p => near (p.initial, synth::CanvasGeometry::cutoffFrequency 0.5)
+    expect (length (Drive::holding changed).graph.cables, 4)
+    level = Semantics::point (Semantics::element (changed.drivenSeen.renderedAccess, "Master Level"), 0.25)
+    quieter = Drive::pointer (Drive::pointer (changed, level.pointX, level.pointY, true), level.pointX, level.pointY, false)
+    match synth::Graphs::node ((Drive::holding quieter).graph, 2)
+        synth::Invalid _ => expect (false, true)
+        synth::Valid n => match listGet n.parameters 0
+            Error _ => expect (false, true)
+            Success p => near (p.initial, 0.25)
+    library = Drive::pointer (Drive::pointer (quieter, 420.0, 32.0, true), 420.0, 32.0, false)
+    expect ((Drive::holding library).paletteShown, true)
+    added = Drive::pointer (Drive::pointer (library, 80.0, 130.0, true), 350.0, 230.0, false)
+    expect (length (Drive::holding added).graph.nodes, 6)
+    expect (length (Drive::holding added).graph.cables, 4)
+    expect ((Drive::holding added).selected, 5)
+    expect ((Drive::holding added).paletteDrag, "")
+    prismControlJourney quieter
+
+prismTap (driven, label) =
+    point = Semantics::point (Semantics::element (driven.drivenSeen.renderedAccess, label), 0.5)
+    Drive::pointer (Drive::pointer (driven, point.pointX, point.pointY, true), point.pointX, point.pointY, false)
+
+prismControlJourney opened =
+    menu = prismTap (opened, "Oscillator Wave: Sine")
+    triangle = prismTap (menu, "Triangle")
+    expect (Semantics::offered (triangle.drivenSeen.renderedAccess, "Oscillator Wave: Triangle"), true)
+    bypassed = prismTap (triangle, "Bypass Oscillator")
+    expect (Semantics::offered (bypassed.drivenSeen.renderedAccess, "Enable Oscillator"), true)
+    match synth::Graphs::node ((Drive::holding bypassed).graph, 0)
+        synth::Invalid _ => expect (false, true)
+        synth::Valid n =>
+            expect (length (filterList (n.parameters, \p => p.key == "waveform" && p.initial == 1.0)), 1)
+            expect (length (filterList (n.parameters, \p => p.key == "enabled" && p.initial == 0.0)), 1)
+    prismAudioJourney ((Drive::holding opened).graph, (Drive::holding triangle).graph, (Drive::holding bypassed).graph)
+    enabled = prismTap (bypassed, "Enable Oscillator")
+    rates = prismTap (enabled, "LFO Rate: 1/4")
+    faster = prismTap (rates, "1/8")
+    expect (Semantics::offered (faster.drivenSeen.renderedAccess, "LFO Rate: 1/8"), true)
+    expect (length (Drive::holding faster).graph.cables, 4)
+
+prismAudio graph = match synth::GraphClips::advance (graph, [], 128)
+    Error why => Error(message = why)
+    Success action => match action
+        synth::ClipWaiting _ _ _ => Error(message = "Built-in graph unexpectedly requested a plug-in.")
+        synth::ClipReady clips => synth::ClipInputs::completed (clips, 3)
+
+prismAudioJourney (sine, triangle, muted) = match prismAudio sine
+    Error _ => expect (false, true)
+    Success first => match prismAudio triangle
+        Error _ => expect (false, true)
+        Success second => match prismAudio muted
+            Error _ => expect (false, true)
+            Success silent =>
+                expect (length first.clipSamples, 128)
+                expect (length second.clipSamples, 128)
+                expect (structuralEquals (first.clipSamples, second.clipSamples), false)
+                expect (length (filterList (silent.clipSamples, \value => value != 0.0)), 0)

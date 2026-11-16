@@ -21,10 +21,16 @@ module GraphDevice
                 arguments = [GraphWorkers::header ("executable", next.workerPath), GraphWorkers::header ("argv", "audio-device")]
                 ui::Runtime::asking (next(renderTicket = ticket), [GraphWorkers::call (ticket, "session-open", arguments, ticket)])
 
+    // A bounded visual snapshot of real output; no device callback reads UI state.
+    monitored clip = foldList (toList (range (0, 64)), [], \(samples, index) =>
+        match listGet clip.clipSamples (satMul (satMul index 16) clip.clipChannels)
+            Error _ => samples
+            Success value => listAppend samples value)
+
     (** Decode/encode PCM outside the device callback, then hold the exact next graph state. *)
     export request (editor, graph, held, clip) = match WaveFiles::interleaved (48000, clip.clipChannels, clip.clipSamples)
         Error why => Error(message = why)
-        Success hex => Success(value = prepared (editor, DevicePending(deviceGraph = graph, deviceState = held, deviceChannels = clip.clipChannels), hex))
+        Success hex => Success(value = prepared (editor(scopeSamples = monitored clip), DevicePending(deviceGraph = graph, deviceState = held, deviceChannels = clip.clipChannels), hex))
 
     (** Adopt the device handle before sending data, so any later failure can release it. *)
     export opened (editor, text) = match GraphWorkers::opened (editor, text)

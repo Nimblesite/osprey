@@ -4,7 +4,7 @@ namespace synth
 (** Stable component positions and pointer capture for the modular canvas. *)
 module EditorLayout
     (** Deleted neighbours do not change the default position of surviving identities. *)
-    export position (editor, identity) = listGet (filterList (editor.positions, \p => p.layoutNode == identity)) 0 ?: NodePosition(layoutNode = identity, layoutX = CanvasGeometry::gridX (toFloat (identity % 4)), layoutY = CanvasGeometry::gridY (toFloat (intDiv identity 4)))
+    export position (editor, identity) = listGet (filterList (editor.positions, \p => p.layoutNode == identity)) 0 ?: NodePosition(layoutNode = identity, layoutX = CanvasGeometry::gridX (toFloat (identity % 3)), layoutY = CanvasGeometry::gridY (toFloat (intDiv identity 3)))
 
     (** Keep the initial pointer offset so clicking away from the centre does not snap the card. *)
     export begin (editor, identity, px, py) =
@@ -26,3 +26,179 @@ module EditorLayout
         match down
             true => next
             false => next(dragging = -1)
+
+(** Draw the actual Prism skin from main; graph nodes supply its live inputs and positions. *)
+module PrismArt
+    (** The original skin role used by each processor. *)
+    export role processor = match processor
+        Oscillator => "source"
+        Lfo => "control"
+        Filter => "process"
+        Amplifier => "output"
+        ModulatedGain => "output"
+        Sink => "monitor"
+        _ => "custom"
+
+    centreX name = match name
+        "source" => 175.5
+        "control" => 605.0
+        "process" => 607.0
+        "monitor" => 609.0
+        _ => 1035.0
+
+    centreY name = match name
+        "source" => 438.5
+        "control" => 161.0
+        "process" => 432.0
+        "monitor" => 695.0
+        _ => 436.5
+
+    refers (measure, name) = match measure
+        ui::Templated value => contains value "{{${name}"
+        _ => false
+
+    belongs (mark, name) = refers (mark.markX, name) || refers (mark.markY, name) || length (filterList (mark.markPoints, \point => refers (point, name))) > 0
+
+    owns (mark, name) = belongs (mark, name) && length (filterList (["source", "process", "control", "output", "monitor"], \other => other != name && belongs (mark, other))) == 0
+
+    parameter (n, key, otherwise) = match listGet (filterList (n.parameters, \p => p.key == key)) 0
+        Error _ => otherwise
+        Success p => p.initial
+
+    rateName hz = match hz
+        0.5 => "1/1"
+        1.0 => "1/2"
+        4.0 => "1/8"
+        8.0 => "1/16"
+        _ => "1/4"
+
+    fact (name, value) = ui::Machines::fact (name, ui::Values::number value)
+
+    (** Fill the original skin from one real graph node. *)
+    export prepared (editor, n) =
+        name = role n.processor
+        at = EditorLayout::position (editor, n.identity)
+        selected = match editor.selected == n.identity
+            true => name
+            false => ""
+        skin = editor.skin
+        base = match editor.selected == n.identity
+            true => editor.skin
+            false => skin(currents = mapList (editor.skin.currents, \current =>
+                match current.currentLayer == "menu"
+                    true => current(currentState = "closed")
+                    false => current))
+        ui::Machines::feed (base, [ui::Machines::fact ("${name}On", ui::Values::flag (parameter (n, "enabled", 1.0) == 1.0)), fact ("${name}X", at.layoutX - centreX name), fact ("${name}Y", at.layoutY - centreY name), fact ("process", CanvasGeometry::cutoffPosition (parameter (n, "cutoff", 2500.0))), fact ("volume", parameter (n, "gain", 0.5)), ui::Machines::fact ("selected", ui::Values::text selected), ui::Machines::fact ("wave", ui::Values::text (waveName (parameter (n, "waveform", 0.0)))), ui::Machines::fact ("rate", ui::Values::text (rateName (parameter (n, "frequency", 2.0))))])
+
+    (** Expand only the requested original skin marks. *)
+    export shapes (machine, accept) = match (ui::Templates::skin machine).skinBoard
+        ui::Unboarded => []
+        ui::Boarded w h zoom atlas marks _ => match ui::Canvases::artboard (machine, zoom, w, h, atlas, filterList (marks, accept))
+            ui::Scene _ _ _ _ primitives _ _ => primitives
+            _ => []
+
+    (** Resolve the original atlas against the packaged asset folder. *)
+    export atlas machine = match (ui::Templates::skin machine).skinBoard
+        ui::Unboarded => []
+        ui::Boarded _ _ _ paths _ _ => mapList (paths, \path => ui::Templates::fill (machine, path))
+
+    (** Only the chosen node's original artwork; cross-node wires come from the real graph. *)
+    export card (editor, n) = shapes (prepared (editor, n), \mark => owns (mark, role n.processor) && !(n.processor == Sink && mark.markFigure == ui::PolylineFigure))
+
+    (** Original header, inspector, legend and keyboard, driven by the current selection. *)
+    export background editor =
+        selected = match Graphs::node (editor.graph, editor.selected)
+            Invalid _ => editor.skin
+            Valid n => prepared (editor, n)
+        machine = ui::Machines::feed (selected, [fact ("keys", 1.0), fact ("hertz", CanvasGeometry::frequency (toFloat editor.note)), ui::Machines::fact ("note", ui::Values::text (noteName editor.note))])
+        shapes (machine, \mark => !connectionMark (machine, mark) && length (filterList (["source", "process", "control", "output", "monitor"], \name => belongs (mark, name))) == 0)
+
+    connectionMark (machine, mark) =
+        y = ui::Templates::measure (machine, mark.markY)
+        refers (mark.markX, "spareWidth") && y >= 475.0 && y < 785.0 && mark.markFigure != ui::SpriteFigure
+
+    noteNames = ["C3", "C#3", "D3", "D#3", "E3", "F3", "F#3", "G3", "G#3", "A3", "A#3", "B3", "C4", "C#4", "D4", "D#4", "E4", "F4", "F#4", "G4", "G#4", "A4", "A#4", "B4"]
+
+    (** Musical names match the original key labels, including accidentals. *)
+    export noteName note = listGet noteNames (satSub note 48) ?: "—"
+
+    (** Original keyboard hit boxes, rather than approximated white and black key geometry. *)
+    export keyboardAccess editor = filterList (ui::Canvases::semantics (ui::Machines::feed (editor.skin, [fact ("keys", 1.0)])), \area => startsWith area.accessLabel "Play ")
+
+    (** Decode only a key the original keyboard actually exposes. *)
+    export keyAt (editor, x, y) = match listGet (filterList (keyboardAccess editor, \a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0
+        Error why => Error(message = why)
+        Success area =>
+            index = ui::Lists::position (noteNames, \name => "Play ${name}" == area.accessLabel)
+            match index >= 0
+                true => Success(value = satAdd index 48)
+                false => Error(message = "Unknown keyboard note.")
+
+
+    waveName value = match value
+        1.0 => "Triangle"
+        2.0 => "Saw"
+        3.0 => "Square"
+        _ => "Sine"
+
+    controlName processor = match processor
+        Oscillator => "Oscillator"
+        Lfo => "LFO"
+        Filter => "Filter"
+        Sink => "Scope"
+        Amplifier => "Master"
+        ModulatedGain => "Master"
+        _ => "!unsupported"
+
+    supports (n, area) =
+        label = area.accessLabel
+        toggle = contains label (controlName n.processor) && (contains label "Bypass" || contains label "Enable")
+        slider = area.accessRole == ui::Slidable && ((n.processor == Filter && contains label "Cutoff") || ((n.processor == Amplifier || n.processor == ModulatedGain) && contains label "Level"))
+        menu = (n.processor == Oscillator && (startsWith label "Oscillator Wave" || length (filterList (["Sine", "Triangle", "Saw", "Square"], \wave => wave == label)) > 0)) || (n.processor == Lfo && (startsWith label "LFO Rate" || startsWith label "1/"))
+        toggle || slider || menu
+
+    (** Original controls are scoped to an independently positioned graph node. *)
+    export sliders (editor, n) = filterList (ui::Canvases::semantics (prepared (editor, n)), \a => (a.accessLeft < 1200.0 || editor.selected == n.identity) && supports (n, a))
+
+    sliderAt (editor, n, px, py) = length (filterList (sliders (editor, n), \a => px >= a.accessLeft && px <= a.accessLeft + a.accessWidth && py >= a.accessTop && py <= a.accessTop + a.accessHeight)) > 0
+
+    numberChange (editor, n, before, after, input, key, convert) = match ui::Machines::number (before, input) == ui::Machines::number (after, input)
+        true => editor
+        false => EditorState::typed (editor, EditParameter(identity = n.identity, key = key), "${convert (ui::Machines::number (after, input))}")
+
+    enabledChange (editor, n, before, after) =
+        input = "${role n.processor}On"
+        match ui::Machines::flag (before, input) == ui::Machines::flag (after, input)
+            true => editor
+            false => EditorState::configured (editor, n.identity, "enabled", "Enabled", 1.0, ui::Pick::either (ui::Machines::flag (after, input), 1.0, 0.0))
+
+    waveChange (editor, n, before, after) = match ui::Machines::text (before, "wave") == ui::Machines::text (after, "wave")
+        true => editor
+        false => EditorState::configured (editor, n.identity, "waveform", "Waveform", 3.0, toFloat (ui::Lists::position (["Sine", "Triangle", "Saw", "Square"], \wave => wave == ui::Machines::text (after, "wave"))))
+
+    rateValue name = match name
+        "1/1" => 0.5
+        "1/2" => 1.0
+        "1/8" => 4.0
+        "1/16" => 8.0
+        _ => 2.0
+
+    rateChange (editor, n, before, after) = match ui::Machines::text (before, "rate") == ui::Machines::text (after, "rate")
+        true => editor
+        false => EditorState::typed (editor, EditParameter(identity = n.identity, key = "frequency"), "${rateValue (ui::Machines::text (after, "rate"))}")
+
+    slide (editor, n, machine, px, py, down) =
+        moved = ui::Canvases::pointer (machine, px, py, down)
+        next = editor(skin = moved, selected = n.identity, layoutRevision = satAdd editor.layoutRevision 1)
+        cutoff = numberChange (next, n, machine, moved, "process", "cutoff", CanvasGeometry::cutoffFrequency)
+        level = numberChange (cutoff, n, machine, moved, "volume", "gain", \value => value)
+        rateChange (waveChange (enabledChange (level, n, machine, moved), n, machine, moved), n, machine, moved)
+
+    (** Original capture updates the same validated graph as the native inspector. *)
+    export pointed (editor, px, py, down) = match ui::Canvases::holding editor.skin
+        true => match Graphs::node (editor.graph, editor.selected)
+            Invalid _ => Error(message = "The selected component was removed.")
+            Valid n => Success(value = slide (editor, n, editor.skin, px, py, down))
+        false => match listGet (filterList (editor.graph.nodes, \n => sliderAt (editor, n, px, py))) 0
+            Error why => Error(message = why)
+            Success n => Success(value = slide (editor, n, prepared (editor, n), px, py, down))

@@ -281,4 +281,10 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Restore the original signal-flow studio as the normal app launch, including node cards, inspector and keyboard.
 - [x] Preserve the modular editor and VST implementation behind an explicit routing launch; do not discard that work.
 - [x] Verify the normal launch through the compiled boundary and capture the restored window: the four-step launch regression and the fourteen-step headless/windowed interaction journey pass; captures are under `target/pr-validation/wrap-up/restored-window/`. The explicit routing launch also passes 41 real-worker scan, parameter, cable, drag and removal steps (audio timing excluded from this UI check).
-- [ ] Integrate modular routing into the original studio presentation; the two current workspaces have independent patches.
+- [x] Replace the temporary two-workspace launch with one editable graph rendered using the original Prism atlas and machine layout; remove the separate routing target.
+- [x] Preserve module insertion by palette drag, independent node movement, typed cable editing, VST discovery/instances and native parameter controls.
+- [x] Bind original cutoff/master sliders, oscillator waveform, enable switches, LFO rate and keyboard to the graph. The loaded regression compares actual PCM for waveform changes and bypass silence.
+- [x] Pass 13 application journeys, the 19-step original-controls/module-drag journey in headless and windowed modes, and the 42-step real VST editing journey in both modes. Evidence: `target/pr-validation/wrap-up/main-art-tests.log`, `integrated-controls-*`, `integrated-routing-*`.
+- [x] Preserve the exact main-branch Prism artwork and logo; inspect `design/prism-audio-modulation.png` and captures of the packaged app, including newly added module cards.
+- [ ] Restore graph undo/redo and adaptive canvas resizing in the unified editor; the retained fixed-studio tests alone do not validate these in the graph editor.
+- [ ] Complete sustained audio and full repository CI gates above; these visual/interaction checks do not establish realtime playback reliability.

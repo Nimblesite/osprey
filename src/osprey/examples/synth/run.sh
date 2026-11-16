@@ -3,7 +3,6 @@
 # its Dock icon, and opens the Prism signal-flow studio.
 #   run.sh            build, bundle and open
 #   run.sh --bundle   build and bundle only; prints the bundle's path
-#   run.sh --routing  open the separate modular routing workspace
 #   run.sh --smoke    replay smoke.jsonl through the host without a window
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -31,8 +30,4 @@ if [ "${1:-}" = --bundle ]; then
     echo "$app"
     exit 0
 fi
-if [ "${1:-}" = --routing ]; then
-    open "$app" --args --routing
-else
-    open "$app"
-fi
+open "$app"

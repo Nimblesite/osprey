@@ -4,7 +4,7 @@ namespace synth
 (** Draft graph editing shared by native controls and canvas interactions. *)
 module EditorState
     (** A fresh patch; identities are monotonic and never reused after deletion. *)
-    export initial () = Editor(graph = Graphs::empty, positions = [], dragging = -1, grabX = 0.0, grabY = 0.0, layoutRevision = 0, selected = -1, nextIdentity = 0, source = -1, outlet = 0, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", pluginPath = "", catalog = [], pluginBindings = [], pluginSerial = 0, pluginTicket = "", pluginClassId = "", renderPending = [], renderBindings = [], renderSerial = 0, renderTicket = "", renderSessions = [], renderOpening = false, renderInput = "", renderDevicePending = [], renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = false, renderStopping = false)
+    export initial () = Editor(skin = ui::MachineDocs::faulty "", graph = Graphs::empty, assetFolder = "src/osprey/packages/signal_flow/skins/prism", paletteShown = false, detailsShown = false, paletteDrag = "", note = 57, armedNote = -1, scopeSamples = [], positions = [], dragging = -1, grabX = 0.0, grabY = 0.0, layoutRevision = 0, selected = -1, nextIdentity = 0, source = -1, outlet = 0, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", pluginPath = "", catalog = [], pluginBindings = [], pluginSerial = 0, pluginTicket = "", pluginClassId = "", renderPending = [], renderBindings = [], renderSerial = 0, renderTicket = "", renderSessions = [], renderOpening = false, renderInput = "", renderDevicePending = [], renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = false, renderStopping = false)
 
     (** Available component factories expose their real audio or event ports. *)
     export kinds = ["sine", "filter", "gain", "mixer", "delay", "output", "midi-note", "stereo", "stereo-output", "lfo", "modulated-gain"]
@@ -80,6 +80,8 @@ module EditorState
 
     (** One native or canvas action produces one immutable editor snapshot. *)
     export tapped (editor, action) = match action
+        ShowModules => editor(paletteShown = !editor.paletteShown)
+        ShowDetails => editor(detailsShown = !editor.detailsShown)
         Add kind => added (editor, kind)
         Select identity => selected (editor, identity)
         Source identity outlet => armed (editor, identity, outlet)
@@ -119,5 +121,37 @@ module EditorState
             Success value => checkedValue (editor, identity, key, value)
         _ => editor
 
+    pitched (note, n) = match n.processor
+        Oscillator => n(parameters = mapList (n.parameters, \p => parameterValue ("frequency", CanvasGeometry::frequency (toFloat note), p)))
+        MidiNotes => n(parameters = mapList (n.parameters, \p => parameterValue ("pitch", toFloat note, p)))
+        _ => n
+
+    (** A key changes the oscillators and MIDI generators in the actual editable patch. *)
+    export keyed (editor, note) =
+        graph = editor.graph
+        editor(graph = graph(nodes = mapList (graph.nodes, \n => pitched (note, n))), note = note, armedNote = -1, revision = satAdd editor.revision 1)
+
     (** A playable starting patch; the menu can add more independent instances. *)
-    export preset () = foldList ([Add(kind = "sine"), Add(kind = "filter"), Add(kind = "gain"), Add(kind = "output"), Source(identity = 0, outlet = 0), Connect(identity = 1, inlet = 0), Source(identity = 1, outlet = 0), Connect(identity = 2, inlet = 0), Source(identity = 2, outlet = 0), Connect(identity = 3, inlet = 0)], initial (), tapped)
+    export preset () =
+        base = foldList ([Add(kind = "sine"), Add(kind = "filter"), Add(kind = "gain"), Add(kind = "output"), Source(identity = 0, outlet = 0), Connect(identity = 1, inlet = 0), Source(identity = 1, outlet = 0), Connect(identity = 2, inlet = 0), Source(identity = 2, outlet = 0), Connect(identity = 3, inlet = 0)], initial (), tapped)
+        base
+
+    (** The opening performance patch adds a real LFO-to-gain modulation route. *)
+    export studioPreset () =
+        withLfo = tapped (preset (), Add(kind = "lfo"))
+        graph = withLfo.graph
+        modulated = withLfo(graph = graph(nodes = mapList (graph.nodes, \n =>
+            match n.identity == 2
+                true => Components::modulatedGain (2, 1, 0.25)
+                false => n)))
+        routed = tapped (tapped (modulated, Source(identity = 4, outlet = 0)), Connect(identity = 2, inlet = 1))
+        keyed (routed(selected = 1, positions = [NodePosition(layoutNode = 0, layoutX = 175.5, layoutY = 438.5), NodePosition(layoutNode = 1, layoutX = 607.0, layoutY = 432.0), NodePosition(layoutNode = 2, layoutX = 1035.0, layoutY = 436.5), NodePosition(layoutNode = 3, layoutX = 609.0, layoutY = 695.0), NodePosition(layoutNode = 4, layoutX = 605.0, layoutY = 161.0)]), 57)
+
+    (** Optional processor controls are explicit graph parameters, never UI-only flags. *)
+    export configured (editor, identity, key, label, maximum, value) = match Graphs::node (editor.graph, identity)
+        Invalid _ => editor(message = "That component no longer exists.")
+        Valid n =>
+            descriptor = Parameter(key = key, label = label, unit = Ratio, minimum = 0.0, maximum = maximum, initial = value, automatable = true)
+            updated = n(parameters = listAppend (filterList (n.parameters, \p => p.key != key)) descriptor)
+            graph = editor.graph
+            published (editor, Graphs::add (graph(nodes = filterList (graph.nodes, \p => p.identity != identity)), updated))

@@ -94,13 +94,9 @@ signal-flow: _runtime_macos
 
 ## synth: Open Prism's signal-flow studio, inspector and playable keyboard.
 ##        [PRISM-ROUTING-EDITOR] [PRISM-ROUTING-AUDIO]
-synth synth-routing: _runtime_macos
+synth: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh $(PRISM_ARGS)
-
-## synth-routing: Open the separate modular routing and VST workspace.
-.PHONY: synth-routing
-synth-routing: PRISM_ARGS=--routing
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh
 
 ## storage: Rebuild the compiler, the Mac runtime and the Osprey Storage app,
 ##          then open it: where your disk space goes, folder by folder.

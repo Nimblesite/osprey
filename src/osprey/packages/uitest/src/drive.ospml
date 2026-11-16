@@ -21,6 +21,9 @@ type Driven S A =
 module Drive
     looked (d, held) = d(drivenSurface = held, drivenSeen = Read::seen (Surfaces::seen (held, d.drivenProgram), held.surfaceAsked), drivenNow = satAdd d.drivenNow 1)
 
+    (** What `d`'s surface holds now. *)
+    export holding d = d.drivenSurface.surfaceSession.sessionStore
+
     (** A surface holding `store` before its host opens it, the clock at 1. *)
     export idle (program, store) = Driven(drivenSurface = Surfaces::idle store, drivenProgram = program, drivenSeen = Read::blank (), drivenNow = 1)
 

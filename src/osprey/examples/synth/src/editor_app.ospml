@@ -9,14 +9,18 @@ module EditorApp
     initial context =
         editor = match length (filterList (context.arguments, \arg => arg == "--empty")) > 0
             true => EditorState::initial ()
-            false => EditorState::preset ()
+            false => EditorState::studioPreset ()
         at = ui::Lists::position (context.arguments, \arg => arg == "--vst-worker")
         worker = match at >= 0
             true => listGet context.arguments (satAdd at 1) ?: ""
             false => ""
-        Runtime::step (editor(workerPath = worker))
+        art = (signalflow::App::opened (context, "prism")).stepStore.screen.screenMachine
+        Runtime::step (editor(skin = art, workerPath = worker, assetFolder = "${ui::MachineDocs::folder (signalflow::App::documentPath context.arguments)}/skins/prism"))
 
     tapped (context, editor, action) = match action
+        Strike note => match editor.renderContinuous || editor.renderTicket != ""
+            true => Runtime::step (editor(armedNote = -1, message = "Stop playback before playing a new note."))
+            false => GraphPreview::play (EditorState::keyed (editor, note), context.platform)
         ScanVst => Plugins::scan editor
         Audition => GraphPreview::play (editor, context.platform)
         PlayGraph => GraphPreview::live (editor, context.platform)
@@ -34,11 +38,38 @@ module EditorApp
             true => GraphPreview::completed (editor, ticket, outcome)
             false => Preview::completed (editor, ticket, outcome)
 
-    controlled (editor, action, input) = match action
-        Surface => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => Runtime::step (EditorView::pointed (editor, x, y, down)), \(_, _) => Runtime::step editor)
+    keyPointer (context, editor, x, y, down) =
+        note = PrismArt::keyAt (editor, x, y)
+        match down
+            true => Runtime::step (editor(armedNote = note ?: -1))
+            false => match note
+                Success value => match editor.armedNote == value
+                    true => tapped (context, editor, Strike(note = value))
+                    false => Runtime::step (editor(armedNote = -1))
+                Error _ => Runtime::step (editor(armedNote = -1))
+
+    surfacePointer (context, editor, x, y, down) = match editor.dragging >= 0 || editor.paletteDrag != ""
+        true => Runtime::step (EditorView::pointed (editor, x, y, down))
+        false => uncapturedPointer (context, editor, x, y, down)
+
+    uncapturedPointer (context, editor, x, y, down) = match y >= 828.0
+        true => keyPointer (context, editor, x, y, down)
+        false => match EditorView::toolbarAt (x, y)
+            Error _ => match PrismArt::pointed (editor, x, y, down)
+                Success next => Runtime::step next
+                Error _ => Runtime::step (EditorView::pointed (editor, x, y, down))
+            Success index => match down
+                true => Runtime::step (editor(armedNote = satSub -10 index))
+                false => match editor.armedNote == satSub -10 index
+                    true => tapped (context, editor(armedNote = -1), EditorView::toolbarAction index)
+                    false => Runtime::step editor
+
+    controlled (context, editor, action, input) = match action
+        Keyboard => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => keyPointer (context, editor, x, y, down), \(_, _) => Runtime::step editor)
+        Surface => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => surfacePointer (context, editor, x, y, down), \(_, _) => Runtime::step editor)
         _ => Runtime::step editor
 
-    update (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(action, input) => controlled (editor, action, input))
+    update (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(action, input) => controlled (context, editor, action, input))
 
     (** Native controls and the canvas observe the same typed graph and applied edit revision. *)
     export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => EditorView::theme ())

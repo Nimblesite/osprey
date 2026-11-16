@@ -295,13 +295,14 @@ def prism_test(host, headless):
                 {"invoke": "Source 6: audio"}, {"invoke": "Connect 4: audio"},
                 {"invoke": "Audition patch"}, {"wait": "Preview finished."}, {"shot": "vst-audition"},
                 {"invoke": "Select 1"}]
+    steps.insert(0, {"invoke": "Patch controls"})
     before_remove = steps.index({"invoke": "Remove selected"})
     steps[before_remove:before_remove] = audition
     worker = recording_worker(destination)
     script = destination / "journey.json"
     script.write_text(json.dumps({"steps": steps}))
     arguments = [str(host), "--self-test", str(script), str(destination), "--live-processes",
-                 "--routing", "--empty", "--vst-worker", str(worker)]
+                 "--empty", "--vst-worker", str(worker)]
     if headless:
         arguments.extend(["--headless", "--defer-processes"])
     run(*arguments, timeout=180)
