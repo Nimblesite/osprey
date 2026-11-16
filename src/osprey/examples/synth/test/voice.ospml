@@ -213,6 +213,7 @@ prismIntegratedJourney () =
     expect ((Drive::holding added).selected, 5)
     expect ((Drive::holding added).paletteDrag, "")
     prismControlJourney quieter
+    keyboardDockJourney quieter
 
 prismTap (driven, label) =
     point = Semantics::point (Semantics::element (driven.drivenSeen.renderedAccess, label), 0.5)
@@ -253,3 +254,35 @@ prismAudioJourney (sine, triangle, muted) = match prismAudio sine
                 expect (length second.clipSamples, 128)
                 expect (structuralEquals (first.clipSamples, second.clipSamples), false)
                 expect (length (filterList (silent.clipSamples, \value => value != 0.0)), 0)
+
+// [PRISM-ROUTING-PRESENTATION] The dock owns a separate native scene and can be closed/reopened.
+keyboardDockJourney opened =
+    scenes = filterList (opened.drivenSeen.renderedControls, \control => control.controlKind == "scene")
+    expect (length scenes, 2)
+    near ((Semantics::element (opened.drivenSeen.renderedAccess, "Play C4")).accessTop, 38.0)
+    taller = Drive::viewed (opened, 1836.0, 1258.0)
+    near (ui::Machines::number ((Drive::holding taller).skin, "spareHeight"), 430.0)
+    near ((Semantics::element (taller.drivenSeen.renderedAccess, "Play C4")).accessTop, 38.0)
+    before = (Drive::holding taller).graph
+    closed = dockTap (taller, "Close keyboard")
+    expect ((Drive::holding closed).keyboardShown, false)
+    expect (Semantics::offered (closed.drivenSeen.renderedAccess, "Play C4"), false)
+    expect (length (filterList (closed.drivenSeen.renderedControls, \control => control.controlKind == "scene")), 1)
+    expect (structuralEquals ((Drive::holding closed).graph, before), true)
+    reopened = prismTap (closed, "Keyboard")
+    expect ((Drive::holding reopened).keyboardShown, true)
+    expect (Semantics::offered (reopened.drivenSeen.renderedAccess, "Play C4"), true)
+    expect (structuralEquals ((Drive::holding reopened).graph, before), true)
+    expect ((Drive::holding reopened).armedNote, -1)
+
+dockTap (driven, label) =
+    point = Semantics::point (Semantics::element (driven.drivenSeen.renderedAccess, label), 0.5)
+    scenes = filterList (driven.drivenSeen.renderedControls, \control => control.controlKind == "scene")
+    match listGet scenes 1
+        Error _ =>
+            expect (false, true)
+            driven
+        Success scene =>
+            pressed = ui::Touch(touchNow = driven.drivenNow, touchKind = ui::Hosting::pointer, touchOrdinal = scene.controlOrdinal, touchWords = "", touchDetail = "", touchX = point.pointX, touchY = point.pointY, touchDown = true, touchShift = false)
+            down = Drive::sent (driven, pressed)
+            Drive::sent (down, pressed(touchNow = down.drivenNow, touchDown = false))
