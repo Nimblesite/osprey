@@ -159,6 +159,7 @@ _test_bench_tools:
 
 ## _gpui-self-test: Every desktop app's self-test.json, the script the WinUI host runs in a real
 ##                  window, on the GPUI host. Without a window by default; GPUI_WINDOW= opens one.
+##                  Prism's design journey runs on macOS only: it drives the bundled Prism Synth.app.
 ##                  [UI-MACHINE-SELF-TEST]
 .PHONY: _gpui-self-test
 GPUI_WINDOW ?= --headless
@@ -168,7 +169,7 @@ _gpui-self-test: _gpui-apps
 		app=$${pair%%:*}; script=$${pair##*:}; \
 		OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --self-test "$(CURDIR)/$$script/self-test.json" "$(CURDIR)/target/gpui-self-test/$$(basename $$script)" $(GPUI_WINDOW) || exit 1; \
 	done
-	$(MAKE) _prism_ui_test OSPREY_GPUI_PREBUILT=1
+	$(if $(filter Darwin,$(UNAME_S)),$(MAKE) _prism_ui_test OSPREY_GPUI_PREBUILT=1)
 
 ## _gpui-app-self-test: One app's self-test.json on the GPUI host. [UI-MACHINE-SELF-TEST]
 .PHONY: _gpui-app-self-test
