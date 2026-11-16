@@ -32,6 +32,7 @@ struct Launched {
     stderr: Vec<u8>,
 }
 
+#[derive(Default)]
 struct Collected {
     bytes: Vec<u8>,
     size: u64,
@@ -147,22 +148,11 @@ fn collect(
 ) -> Result<Launched, String> {
     let started = Instant::now();
     let duration = Duration::from_millis(timeout.max(1));
-    let mut stdout = Collected {
-        bytes: Vec::new(),
-        size: 0,
-    };
-    let mut stderr = Collected {
-        bytes: Vec::new(),
-        size: 0,
-    };
+    let (mut stdout, mut stderr) = (Collected::default(), Collected::default());
     let mut open = streams;
     let mut failure = None;
     while open > 0 {
-        let Some(remaining) = duration.checked_sub(started.elapsed()) else {
-            stop(child);
-            return Err(format!("Timed out after {timeout} ms"));
-        };
-        match receiver.recv_timeout(remaining) {
+        match receiver.recv_timeout(remaining(child, started, duration, timeout)?) {
             Ok(Event::Bytes(stream, bytes)) => absorb(
                 child,
                 stream,
@@ -179,10 +169,7 @@ fn collect(
                     return Err(problem);
                 }
             }
-            Err(RecvTimeoutError::Timeout) => {
-                stop(child);
-                return Err(format!("Timed out after {timeout} ms"));
-            }
+            Err(RecvTimeoutError::Timeout) => return Err(timed_out(child, timeout)),
             Err(RecvTimeoutError::Disconnected) => {
                 stop(child);
                 return Err("run output channel closed".to_owned());
@@ -211,12 +198,26 @@ fn wait_before_deadline(
         if let Some(status) = child.try_wait().map_err(|problem| problem.to_string())? {
             return Ok(status);
         }
-        let Some(remaining) = duration.checked_sub(started.elapsed()) else {
-            stop(child);
-            return Err(format!("Timed out after {timeout} ms"));
-        };
-        std::thread::sleep(remaining.min(Duration::from_millis(2)));
+        let left = remaining(child, started, duration, timeout)?;
+        std::thread::sleep(left.min(Duration::from_millis(2)));
     }
+}
+
+/// The time left before the deadline, or the stopped child's timeout error.
+fn remaining(
+    child: &mut Child,
+    started: Instant,
+    duration: Duration,
+    timeout: u64,
+) -> Result<Duration, String> {
+    duration
+        .checked_sub(started.elapsed())
+        .ok_or_else(|| timed_out(child, timeout))
+}
+
+fn timed_out(child: &mut Child, timeout: u64) -> String {
+    stop(child);
+    format!("Timed out after {timeout} ms")
 }
 
 /// Adds one block to the selected bounded stream and stops an overflowing child.
@@ -441,21 +442,15 @@ mod tests {
         assert!(stalled.exchange(&"x".repeat(100_000), 20, 100).is_err());
         assert!(started.elapsed() < std::time::Duration::from_secs(1));
         assert!(stalled.exited()?);
-        let mut closed = Session::open(
-            "/bin/sh",
-            &["-c".to_owned(), "exec 1>&- 2>&-; exec sleep 2".to_owned()],
-        )?;
-        assert!(closed.exchange("hello", 100, 100).is_err());
-        assert!(closed.exited()?);
-        let mut noisy = Session::open(
-            "/bin/sh",
-            &[
-                "-c".to_owned(),
-                "while :; do printf diagnostic >&2; done".to_owned(),
-            ],
-        )?;
-        assert!(noisy.exchange("hello", 1_000, 100).is_err());
-        assert!(noisy.exited()?);
+        // A worker that closes its output, then one that floods stderr: each fails and is reaped.
+        for (script, timeout) in [
+            ("exec 1>&- 2>&-; exec sleep 2", 100),
+            ("while :; do printf diagnostic >&2; done", 1_000),
+        ] {
+            let mut session = Session::open("/bin/sh", &["-c".to_owned(), script.to_owned()])?;
+            assert!(session.exchange("hello", timeout, 100).is_err());
+            assert!(session.exited()?);
+        }
         assert!(Session::open("cat", &[]).is_err());
         Ok(())
     }
