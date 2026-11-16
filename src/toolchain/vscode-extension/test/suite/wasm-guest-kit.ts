@@ -8,7 +8,7 @@ export const I32 = 0x7f;
 export const I64 = 0x7e;
 export const F64 = 0x7c;
 /** WASI errno values ([wasi_snapshot_preview1]). */
-export const ERRNO = { success: 0, badf: 8, inval: 28, spipe: 70 } as const;
+export const ERRNO = { success: 0, badf: 8, inval: 28 } as const;
 
 export function uleb(value: number): number[] {
   const out: number[] = [];
@@ -73,8 +73,8 @@ export function guestModule(imports: readonly Import[], exports: readonly Export
 /** The preview1 calls the probes use, in import order. */
 export const WASI_CALLS: readonly Import[] = [
   ...["args_sizes_get", "args_get", "environ_sizes_get", "environ_get", "random_get", "fd_fdstat_get",
-    "fd_fdstat_set_flags", "clock_res_get", "fd_prestat_get"].map((call) => ({ name: call, params: [I32, I32], result: I32 })),
-  ...["fd_read", "fd_write"].map((call) => ({ name: call, params: [I32, I32, I32, I32], result: I32 })),
+    "fd_fdstat_set_flags", "clock_res_get", "fd_prestat_get", "fd_renumber"].map((call) => ({ name: call, params: [I32, I32], result: I32 })),
+  ...["fd_read", "fd_write", "poll_oneoff"].map((call) => ({ name: call, params: [I32, I32, I32, I32], result: I32 })),
   { name: "clock_time_get", params: [I32, I64, I32], result: I32 },
   { name: "fd_close", params: [I32], result: I32 },
   { name: "fd_seek", params: [I32, I64, I32, I32], result: I32 },
@@ -104,7 +104,9 @@ export const probe = (checks: number[]): Uint8Array => guestModule(WASI_CALLS, [
 /** Runs a command under the host's own WASI configuration and returns its exit code. */
 export async function runProbe(bytes: Uint8Array, options: WasiOptions = {}): Promise<number> {
   const host = createWasi(options);
-  const instance = await WebAssembly.instantiate(await compileWasi(bytes), wasiImports(host));
+  let memory: WebAssembly.Memory | undefined;
+  const instance = await WebAssembly.instantiate(await compileWasi(bytes), wasiImports(host, () => memory?.buffer));
+  memory = instance.exports.memory as WebAssembly.Memory;
   return host.start(instance);
 }
 

@@ -336,26 +336,57 @@ suite("package workspace in-memory WASI", () => {
     for (let run = 0; run < 3; run += 1) assert.strictEqual(await runProbe(bytes), 0, `run ${run}`);
   });
 
-  test("seeking a stream returns ESPIPE and leaves the result pointer unchanged", async () => {
-    const checks = [3, 255].flatMap((fd) => [...store32(64, integer(123)), ...expect(descriptorCall("fd_seek", fd), ERRNO.badf), ...expect(load32(64), 123)]);
+  test("seeking a standard stream is refused and leaves the result pointer unchanged", async () => {
+    for (const fd of [0, 1, 2, 3, 255]) {
+      const checks = [...store32(64, integer(123)), ...expect(descriptorCall("fd_seek", fd), ERRNO.badf), ...expect(load32(64), 123)];
+      assert.strictEqual(await runProbe(probe(checks)), 0, `fd ${fd}`);
+    }
+  });
+
+  test("seeking a standard stream is refused and leaves the result pointer unchanged (extra: every whence is refused alike)", async () => {
+    for (const fd of [0, 1, 2, 3]) {
+      const checks = [0, 1, 2].flatMap((whence) => [...store32(64, integer(7)),
+        ...expect(wasi("fd_seek", integer(fd), wide(5), integer(whence), integer(64)), ERRNO.badf), ...expect(load32(64), 7)]);
+      assert.strictEqual(await runProbe(probe(checks)), 0, `fd ${fd}`);
+    }
+  });
+
+  // [NATIVE-SHM-WASM] no standard input or output is granted: a guest's streams are not the
+  // extension host's, so it can neither print into the host's output nor read the host's input.
+  test("a guest never reaches the extension host's own standard streams", () => {
+    const marker = [..."GUEST-WROTE-A-HOST-STREAM"].map((letter) => letter.charCodeAt(0));
+    const write = (fd: number) => [...wasi("fd_write", integer(fd), integer(0), integer(1), integer(16)), 0x1a];
+    const checks = [...marker.flatMap((byte, index) => store8(256 + index, byte)), ...iovec(0, 256, marker.length), ...write(1), ...write(2),
+      ...iovec(0, 512, 64), ...store32(16, integer(0)), ...wasi("fd_read", integer(0), integer(0), integer(1), integer(16)), 0x1a, ...expect(load32(16), 0)];
+    const script = `require(${JSON.stringify(require.resolve("./wasm-guest-kit"))}).runProbe(Uint8Array.from(${JSON.stringify([...probe(checks)])}))`
+      + ".then((code) => { process.exitCode = code; }, (error) => { console.error(String(error)); process.exitCode = 9; })";
+    for (const input of ["HOST-SECRET-INPUT\n", ""]) {
+      const result = spawnSync(process.execPath, ["-e", script], { input, encoding: "utf8", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+      assert.strictEqual(result.status, 0, `the guest read none of the host's input: ${result.stderr}`);
+      assert.ok(!result.stdout.includes("GUEST-WROTE"), `host stdout carries guest bytes: ${result.stdout}`);
+      assert.ok(!result.stderr.includes("GUEST-WROTE"), `host stderr carries guest bytes: ${result.stderr}`);
+    }
+  });
+
+  test("a guest never reaches the extension host's own standard streams (extra: polling one is refused, a clock wait still runs)", async () => {
+    // One preview1 subscription at 1024: tag 1 or 2 waits on the descriptor at +16; tag 0 is a clock.
+    const subscribe = (tag: number, fd: number) => [...store8(1024 + 8, tag), ...store32(1024 + 16, integer(fd)), ...store32(1024 + 24, integer(0))];
+    const poll = (errno: number) => [...store32(16, integer(5)), ...expect(wasi("poll_oneoff", integer(1024), integer(2048), integer(1), integer(16)), errno)];
+    const refused = [0, 1, 2].flatMap((fd) => [1, 2].flatMap((tag) => [...subscribe(tag, fd), ...poll(ERRNO.badf), ...expect(load32(16), 5)]));
+    const clock = [...subscribe(0, 1), ...poll(ERRNO.success), ...expect(load32(16), 1)];
+    assert.strictEqual(await runProbe(probe([...refused, ...clock])), 0);
+  });
+
+  test("no standard stream has descriptor metadata, flags or a renumbering", async () => {
+    const checks = [0, 1, 2].flatMap((fd) => [...store32(64, integer(77)), ...expect(descriptorCall("fd_fdstat_get", fd), ERRNO.badf), ...expect(load32(64), 77),
+      ...expect(wasi("fd_fdstat_set_flags", integer(fd), integer(0)), ERRNO.badf), ...expect(wasi("fd_renumber", integer(fd), integer(3)), ERRNO.badf),
+      ...expect(wasi("fd_renumber", integer(3), integer(fd)), ERRNO.badf), ...expect(descriptorCall("fd_close", fd), ERRNO.badf)]);
     assert.strictEqual(await runProbe(probe(checks)), 0);
   });
 
-  test("seeking a stream returns ESPIPE and leaves the result pointer unchanged (extra: every whence is refused alike)", async () => {
-    const checks = [0, 1, 2].flatMap((whence) => [...store32(64, integer(7)),
-      ...expect(wasi("fd_seek", integer(3), wide(5), integer(whence), integer(64)), ERRNO.badf), ...expect(load32(64), 7)]);
-    assert.strictEqual(await runProbe(probe(checks)), 0);
-  });
-
-  test("descriptor metadata reports actual stream rights and preserves only valid flags", async () => {
-    const rights = (bit: number) => expect([...integer(64 + 8), 0x29, 3, 0, ...wide(bit), 0x83, ...wide(0), 0x52], 1);
-    const checks = [...ok("fd_fdstat_get", integer(0), integer(64)), ...rights(2), ...ok("fd_fdstat_get", integer(1), integer(64)), ...rights(64)];
-    assert.strictEqual(await runProbe(probe(checks)), 0, "standard input may be read and standard output written");
-  });
-
-  test("descriptor metadata reports actual stream rights and preserves only valid flags (extra: standard error is writable)", async () => {
-    const checks = [...ok("fd_fdstat_get", integer(2), integer(64)), ...expect([...integer(72), 0x29, 3, 0, ...wide(64), 0x83, ...wide(0), 0x52], 1)];
-    assert.strictEqual(await runProbe(probe(checks)), 0);
+  test("no standard stream has descriptor metadata, flags or a renumbering (extra: a closed attempt leaves every stream still refused)", async () => {
+    const twice = [0, 1, 2].flatMap((fd) => [...expect(descriptorCall("fd_close", fd), ERRNO.badf), ...expect(descriptorCall("fd_fdstat_get", fd), ERRNO.badf)]);
+    assert.strictEqual(await runProbe(probe([...twice, ...twice])), 0);
   });
 });
 
