@@ -106,7 +106,12 @@ impl ProjectCache {
         sources: &[SourceFile],
     ) -> Arc<Checked> {
         let inputs = Inputs::of(config, sources);
-        let slot = Arc::clone(lock(&self.latest).entry(root.to_path_buf()).or_default());
+        let kept = lock(&self.sources).kept();
+        let slot = {
+            let mut slots = lock(&self.latest);
+            slots.retain(|known, _| known == root || kept.contains(known));
+            Arc::clone(slots.entry(root.to_path_buf()).or_default())
+        };
         // The entry is replaced whole, so a poisoned mutex cannot expose a
         // partially written analysis. One lock per project, held through the
         // computation: siblings asking together share one analysis, while a
@@ -167,6 +172,12 @@ impl ProjectCache {
     #[cfg(test)]
     pub(crate) fn parses(&self) -> usize {
         lock(&self.sources).parses
+    }
+
+    /// How many project analyses and parsed files the cache holds.
+    #[cfg(test)]
+    pub(crate) fn retained(&self) -> (usize, usize) {
+        (lock(&self.latest).len(), lock(&self.sources).retained())
     }
 
     #[cfg(test)]
@@ -311,6 +322,58 @@ mod tests {
         let cache = ProjectCache::default();
         checked_in_turn(&cache, &[&a, &b, &a, &b])?;
         assert_eq!((cache.parses(), cache.analyses()), (2, 2));
+        Ok(())
+    }
+
+    /// The diagnostics sweep checks every closed file of the repository, one
+    /// project after another. Pinning each project's analysis and syntax made
+    /// an idle server on this repository grow past 5 GB. A closed project's
+    /// memory is released once the sweep moves on, while the project of an open
+    /// document stays answered from its one analysis.
+    #[test]
+    fn the_sweep_releases_closed_projects_and_keeps_open_ones(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let open = crate::test_support::ProjectFixture::new("osp")?;
+        let edited = open.write("main", "fn main() = print(\"open\")\n")?;
+        let edited = edited.as_str();
+        let closed = (0..12)
+            .map(|_| crate::test_support::ProjectFixture::new("osp"))
+            .collect::<Result<Vec<_>, _>>()?;
+        let swept = closed
+            .iter()
+            .enumerate()
+            .map(|(n, fixture)| fixture.write("main", &format!("fn main() = print(\"{n}\")\n")))
+            .collect::<Result<Vec<_>, _>>()?;
+        let cache = ProjectCache::default();
+        cache.opened(edited, true);
+        checked_in_turn(&cache, &[edited])?;
+        assert_eq!(cache.retained(), (1, 1), "the open project alone");
+        for (n, uri) in swept.iter().enumerate() {
+            checked_in_turn(&cache, &[uri, edited])?;
+            let (analyses, parsed) = cache.retained();
+            assert!(analyses <= 5, "after {n}: {analyses} analyses pinned");
+            assert!(parsed <= 5, "after {n}: {parsed} parsed files pinned");
+        }
+        assert_eq!(cache.analyses(), 13, "the open project was re-analysed");
+        let first = swept.first().ok_or("no swept project")?;
+        checked_in_turn(&cache, &[first, edited])?;
+        assert_eq!(cache.analyses(), 14, "an evicted project is analysed again");
+        cache.opened(edited, false);
+        checked_in_turn(
+            &cache,
+            swept
+                .get(1..6)
+                .ok_or("too few swept projects")?
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )?;
+        let (analyses, parsed) = cache.retained();
+        assert!(
+            analyses <= 4 && parsed <= 4,
+            "a closed tab stays pinned: {analyses}/{parsed}"
+        );
         Ok(())
     }
 

@@ -7,7 +7,7 @@ use crate::workspace::{
 use lspkit::vfs::{DocumentUri, Vfs};
 use osprey_project::{ProjectConfig, ProjectError, SourceFile};
 use osprey_syntax::Flavor;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -85,11 +85,20 @@ impl Sources {
     }
 }
 
+/// Closed projects whose syntax and analysis outlive the next project loaded.
+/// The diagnostics sweep visits every project of the repository in turn, so
+/// keeping them all pinned an idle server's memory to the repository's size.
+const RECENT_PROJECTS: usize = 4;
+
 #[derive(Debug, Default)]
 pub(crate) struct SourceCache {
     disk: BTreeMap<PathBuf, Parsed>,
     live: BTreeMap<PathBuf, Parsed>,
+    /// Every loaded project's membership: cheap, and what sibling detection
+    /// answers from ([`Self::affected`]).
     projects: BTreeMap<PathBuf, Membership>,
+    /// The latest loaded project roots, newest first.
+    recent: VecDeque<PathBuf>,
     opened: BTreeSet<PathBuf>,
     #[cfg(test)]
     pub(crate) parses: usize,
@@ -111,6 +120,11 @@ impl SourceCache {
                 let _ = self.live.remove(&path);
             }
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn retained(&self) -> usize {
+        self.disk.len() + self.live.len()
     }
 
     pub(crate) fn documents(&self) -> Vec<DocumentUri> {
@@ -268,13 +282,28 @@ impl SourceCache {
             paths: paths.iter().cloned().collect(),
         };
         let _ = self.projects.insert(root.to_path_buf(), members);
+        self.recent.retain(|recent| recent != root);
+        self.recent.push_front(root.to_path_buf());
+        self.recent.truncate(RECENT_PROJECTS);
+        let kept = self.kept();
         let keep = |path: &PathBuf, _: &mut Parsed| {
-            self.projects
-                .values()
+            kept.iter()
+                .filter_map(|root| self.projects.get(root))
                 .any(|members| members.paths.contains(path))
         };
         self.disk.retain(keep);
         self.live.retain(keep);
+    }
+
+    /// The project roots whose memory stays: every project of an open
+    /// document, and the most recently loaded closed ones.
+    pub(crate) fn kept(&self) -> BTreeSet<PathBuf> {
+        self.projects
+            .iter()
+            .filter(|(_, members)| members.paths.iter().any(|path| self.opened.contains(path)))
+            .map(|(root, _)| root.clone())
+            .chain(self.recent.iter().cloned())
+            .collect()
     }
 }
 
