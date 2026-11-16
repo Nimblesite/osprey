@@ -41,9 +41,11 @@ node (identity, processor, inputs, outputs) = synth::Node(identity = identity, p
 
 cable (source, destination) = synth::Cable(source = source, outlet = 0, destination = destination, inlet = 0)
 
-prepared (graph, count) = match Graphs::prepare graph
+valid (outcome, check) = match outcome
     synth::Invalid _ => expect (false, true)
-    synth::Valid plan => expect (length plan.order, count)
+    synth::Valid value => check value
+
+prepared (graph, count) = valid (Graphs::prepare graph, \plan => expect (length plan.order, count))
 
 test ("route oscillator through gain to output, reject bad wiring and preserve the original patch", \() => arithmetic (\() =>
     source = node (1, synth::Oscillator, [control], [audio])
@@ -84,9 +86,7 @@ observed snapshot =
         read => snapshot
     expect (Observations::parameter (10, "cutoff") ?: -1.0, 440.0)
     expect (Observations::parameter (20, "cutoff") ?: -1.0, 880.0)
-    match Observations::component 10
-        Success component => expect (component.activeVoices, 3)
-        Error _ => expect (false, true)
+    succeeds (Observations::component 10, \component => expect (component.activeVoices, 3))
     renderRefused (Observations::component 99)
     renderRefused (Observations::parameter (30, "cutoff"))
 
@@ -119,9 +119,7 @@ oscCase (rate, frequency, waveform) =
 
 invalidOscillator config = renderRefused (Oscillators::configure config)
 
-validEnvelope config = match Envelopes::configure config
-    Success _ => expect (true, true)
-    Error _ => expect (false, true)
+validEnvelope config = succeeds (Envelopes::configure config, \_ => expect (true, true))
 
 invalidEnvelope config = renderRefused (Envelopes::configure config)
 
@@ -445,9 +443,7 @@ test ("replace a playing graph without resetting phase, lose deleted state and r
     match Repatch::apply (original, changed, now, first)
         Error _ => expect (false, true)
         Success next =>
-            match listGet next.audio.states 1
-                Error _ => expect (false, true)
-                Success held => expect (length held.delay, 2)
+            succeeds (listGet next.audio.states 1, \held => expect (length held.delay, 2))
             expect (length next.observation.parameters, 1)
     expanded = accepted (Graphs::add (original, Components::sine (4, 880.0)))
     succeeds (Repatch::apply (original, expanded, now, first), \next => expect (length next.audio.states, 4))
@@ -468,9 +464,7 @@ test ("float PCM export retains sample precision and rejects invalid rates and s
             expect (length hex, 148)
     expect (synth::PcmWords::float32 (-0.5), "000000BF")
     expect (synth::PcmWords::float64 0.5, "000000000000E03F")
-    match synth::PcmWords::sample ("000000BF", 0)
-        Error _ => expect (false, true)
-        Success value => expect (value, -0.5)
+    succeeds (synth::PcmWords::sample ("000000BF", 0), \value => expect (value, -0.5))
     renderRefused (synth::PcmWords::sample ("0000807F", 0))
     forEachList (toList (range (1, 128)), hexDigitCase)
     renderRefused (synth::PcmWords::read32 ("0000000Z", 0))
