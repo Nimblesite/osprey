@@ -22,24 +22,24 @@ The flavor is in progress. What works today is listed [below](#what-works-today)
 
 Each server gets the same requests over loopback: 16 in flight, a new connection for each request, 1,000 warm-up requests and then 10,000 timed ones. That runs for five trials, with the servers taking turns. Every timed reply is checked against the reply Express recorded for the same file, so a wrong answer does not count.
 
-The run the film shows, on an Apple M4 Max with Node.js 24.19.0 on 15 November 2026. Each figure is the median of five trials: requests per second, then peak memory.
+A run on an Apple M4 Max with Node.js 24.19.0 on 16 November 2026, with nothing else heavy running. Each figure is the median of five trials: requests per second, then peak memory. The film shows an earlier run, from before Osprey's HTTP handlers ran one at a time.
 
 | Example | Osprey, ARC | Osprey, GC | Express on Node.js |
 | --- | ---: | ---: | ---: |
-| hello-world | 22,691/s · 3 MiB | 17,669/s · 103 MiB | 22,432/s · 144 MiB |
-| routes | 22,545/s · 3 MiB | 17,928/s · 107 MiB | 21,942/s · 152 MiB |
-| web-service | 20,957/s · 3 MiB | 12,845/s · 214 MiB | 21,058/s · 130 MiB |
+| hello-world | 24,260/s · 3 MiB | 19,888/s · 103 MiB | 25,736/s · 145 MiB |
+| routes | 24,264/s · 3 MiB | 19,609/s · 108 MiB | 25,485/s · 146 MiB |
+| web-service | 24,680/s · 3 MiB | 15,066/s · 214 MiB | 25,263/s · 126 MiB |
 
 {{ capture("/assets/images/guides/typescript-express-bench.png", "The editor shows the Express README example in index.ts. Below it, the terminal prints the bench table: hello-world, routes and web-service, each served by osprey-gc, osprey-arc and node-express, with requests per second, median and 95th-percentile latency in microseconds, and peak RSS in MiB.", "The bench as the film runs it: the same three applications served by Osprey (GC and ARC) and by Express on Node.js.", 1600, 900) }}
 
-Median latency was between 650 and 700 µs for every server except the GC build of web-service, at 1,065 µs. The [package README](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/express#measured-against-real-express-ts-port-express-bench) has the full table with 95th-percentile latency.
+Median latency was between 574 and 657 µs for every server except the GC build of web-service, at 836 µs. The [package README](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/express#measured-against-real-express-ts-port-express-bench) has the full table with 95th-percentile latency.
 
 How to read it:
 
-- **Throughput is close.** Under ARC, Osprey and Express are within 3 percent of each other on every example, and neither leads on all three. Across other runs on the same machine the gap moves by a few percent either way. Neither is clearly faster.
-- **Memory is not close.** The ARC build peaked at 3 MiB. Node.js peaked at 130 to 152 MiB.
-- **GC is the slowest.** The GC build answered 18 to 21 percent fewer requests per second than Express on the two small examples and 39 percent fewer on web-service, which allocates a JSON reply for every request.
-- **The examples are small.** web-service is Express's own example, with middleware, JSON replies and an error handler, but three small applications say nothing about a large service. Osprey handlers do not yet run in parallel across cores ([issue 397](https://github.com/Nimblesite/osprey/issues/397)).
+- **Express is slightly faster.** Under ARC, Osprey answered 2 to 6 percent fewer requests per second than Express on every example. Its 95th-percentile latency was lower on two of the three.
+- **Memory is not close.** The ARC build peaked at 3 MiB. Node.js peaked at 126 to 146 MiB.
+- **GC is the slowest.** The GC build answered 23 percent fewer requests per second than Express on the two small examples and 40 percent fewer on web-service, which allocates a JSON reply for every request.
+- **The examples are small.** web-service is Express's own example, with middleware, JSON replies and an error handler, but three small applications say nothing about a large service. Osprey runs one handler at a time, so its handlers do not yet use more than one core ([issue 397](https://github.com/Nimblesite/osprey/issues/397)).
 
 Run it on your own machine from a checkout. It needs Node.js for the Express side:
 
