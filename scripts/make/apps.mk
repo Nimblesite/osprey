@@ -168,6 +168,7 @@ _gpui-self-test: _gpui-apps
 		app=$${pair%%:*}; script=$${pair##*:}; \
 		OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --self-test "$(CURDIR)/$$script/self-test.json" "$(CURDIR)/target/gpui-self-test/$$(basename $$script)" $(GPUI_WINDOW) || exit 1; \
 	done
+	$(MAKE) _prism_ui_test OSPREY_GPUI_PREBUILT=1
 
 ## _gpui-app-self-test: One app's self-test.json on the GPUI host. [UI-MACHINE-SELF-TEST]
 .PHONY: _gpui-app-self-test
@@ -280,6 +281,12 @@ _synth_vst_build:
 ## _synth_vst_test: Scan and process real SDK instruments/effects without a window or audio device.
 _synth_vst_test:
 	python3 src/toolchain/hosts/synth_vst/build.py --test
+
+# Prism's editable graph, module insertion and bottom dock in the real native host.
+.PHONY: _prism_ui_test
+_prism_ui_test: _runtime_macos_arc
+	OSPREY_BIN="$(CURDIR)/$(BIN)" CARGO_TARGET_DIR="$(CURDIR)/target/gpui" bash src/osprey/examples/synth/run.sh --bundle
+	OSPREY_GPUI_APP_NAME=synth OSPREY_GPUI_TITLE="Prism Synth" OSPREY_GPUI_WINDOW=1152x756 OSPREY_GPUI_CHROME=bare python3 src/toolchain/hosts/synth_vst/build.py --design-test "$(CURDIR)/target/gpui/release/osprey-gpui" $(GPUI_WINDOW)
 
 ## _prism_vst_ui_test: Drive Prism's native VST menu against real SDK modules and worker processes.
 .PHONY: _prism_vst_ui_test

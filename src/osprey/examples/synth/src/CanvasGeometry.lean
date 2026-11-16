@@ -9,7 +9,7 @@ private def bounded (value low high : Float) : Float :=
   if value < low then low else if value > high then high else value
 /-- Node hit areas remain entirely in the graph, outside the palette. -/
 def dragX (pointer grab : Float) : Float := bounded (pointer - grab) 155 1065
-def dragY (pointer grab : Float) : Float := bounded (pointer - grab) 100 700
+def dragY (pointer grab : Float) : Float := bounded (pointer - grab) 155 700
 def valid (px py : Float) : Bool :=
   px == px && py == py && Float.abs px <= 1000000 && Float.abs py <= 1000000
 /-- Equal temperament, A4 = 440 Hz. -/

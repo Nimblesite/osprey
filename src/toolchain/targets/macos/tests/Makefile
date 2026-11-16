@@ -82,11 +82,14 @@ qwen-headless: _runtime
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(MAKE) -C $(ROOT) _qwen-suite MEMORY=arc QWEN_GPU=metal
 
-## synth-headless: The synth's recorded events through the GPUI host's C boundary, with no window.
-# The synth's recorded events through the GPUI host, with no window.
-synth-headless: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh --smoke
+## synth: Add, drag and connect module nodes, then close/reopen the keyboard in a native window.
+.PHONY: synth
+synth:
+	$(MAKE) -C $(ROOT) _prism_ui_test GPUI_WINDOW=
+
+## synth-headless: The same module and dock journey through the native host without a window.
+synth-headless:
+	$(MAKE) -C $(ROOT) _prism_ui_test GPUI_WINDOW=--headless
 
 ## storage-headless: The Mac storage app's smoke test through its Swift host.
 # The Mac storage app through its Swift host.

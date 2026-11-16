@@ -95,9 +95,14 @@ module PrismArt
 
     movedShapes (machine, accept, dy) = match (ui::Templates::skin machine).skinBoard
         ui::Unboarded => []
-        ui::Boarded w h zoom atlas marks _ => match ui::Canvases::artboard (machine, zoom, w, h, atlas, mapList (filterList (marks, accept), \mark => mark(markY = ui::Fixed(fixedAt = ui::Templates::measure (machine, mark.markY) + dy))))
+        ui::Boarded w h zoom atlas marks _ => match ui::Canvases::artboard (machine, zoom, w, h, atlas, mapList (filterList (marks, accept), \mark => shiftedMark (machine, mark, dy)))
             ui::Scene _ _ _ _ primitives _ _ => primitives
             _ => []
+
+    // Preserve repeat expressions until the canvas expands them (especially the grid).
+    shiftedMark (machine, mark, dy) = match dy == 0.0
+        true => mark
+        false => mark(markY = ui::Fixed(fixedAt = ui::Templates::measure (machine, mark.markY) + dy))
 
     (** Resolve the original atlas against the packaged asset folder. *)
     export atlas machine = match (ui::Templates::skin machine).skinBoard
@@ -118,7 +123,13 @@ module PrismArt
             Invalid _ => editor.skin
             Valid n => prepared (editor, n)
         machine = ui::Machines::feed (selected, [fact ("keys", 1.0), fact ("hertz", CanvasGeometry::frequency (toFloat editor.note)), ui::Machines::fact ("note", ui::Values::text (noteName editor.note))])
-        movedShapes (machine, \mark => (ui::Templates::measure (machine, mark.markY) >= 828.0 + ui::Machines::number (machine, "spareHeight")) == keyboard && !(editor.detailsShown && !keyboard && ui::Templates::measure (machine, mark.markX) >= 1210.0) && !connectionMark (machine, mark) && length (filterList (["source", "process", "control", "output", "monitor"], \name => belongs (mark, name))) == 0, ui::Pick::either (keyboard, -828.0, 0.0))
+        movedShapes (machine, \mark => backgroundMark (editor, machine, mark, keyboard), ui::Pick::either (keyboard, -828.0, 0.0))
+
+    backgroundMark (editor, machine, mark, keyboard) =
+        grid = mark.markFigure == ui::SpriteFigure && ui::Templates::measure (machine, mark.markIndex) == 0.0
+        match grid
+            true => !keyboard
+            false => (ui::Templates::measure (machine, mark.markY) >= 828.0 + ui::Machines::number (machine, "spareHeight")) == keyboard && !(editor.detailsShown && !keyboard && ui::Templates::measure (machine, mark.markX) >= 1210.0) && !connectionMark (machine, mark) && length (filterList (["source", "process", "control", "output", "monitor"], \name => belongs (mark, name))) == 0
 
     connectionMark (machine, mark) =
         y = ui::Templates::measure (machine, mark.markY)
@@ -165,7 +176,7 @@ module PrismArt
         toggle || slider || menu
 
     (** Original controls are scoped to an independently positioned graph node. *)
-    export sliders (editor, n) = filterList (ui::Canvases::semantics (prepared (editor, n)), \a => (a.accessLeft < 1200.0 || editor.selected == n.identity) && supports (n, a))
+    export sliders (editor, n) = filterList (ui::Canvases::semantics (prepared (editor, n)), \a => (a.accessLeft < 1200.0 || (!editor.detailsShown && editor.selected == n.identity)) && supports (n, a))
 
     sliderAt (editor, n, px, py) = length (filterList (sliders (editor, n), \a => px >= a.accessLeft && px <= a.accessLeft + a.accessWidth && py >= a.accessTop && py <= a.accessTop + a.accessHeight)) > 0
 
@@ -206,9 +217,14 @@ module PrismArt
         true => match Graphs::node (editor.graph, editor.selected)
             Invalid _ => Error(message = "The selected component was removed.")
             Valid n => Success(value = slide (editor, n, editor.skin, px, py, down))
-        false => match listGet (filterList (editor.graph.nodes, \n => sliderAt (editor, n, px, py))) 0
+        false => match listGet (filterList (editor.graph.nodes, \n => frontmost (editor, n, px, py) && sliderAt (editor, n, px, py))) 0
             Error why => Error(message = why)
             Success n => Success(value = slide (editor, n, prepared (editor, n), px, py, down))
+
+    frontmost (editor, n, px, py) =
+        top = EditorView::nodeAt (editor, px, py)
+        menu = length (filterList (editor.skin.currents, \current => current.currentLayer == "menu" && current.currentState != "closed")) > 0
+        top < 0 || top == n.identity || (menu && editor.selected == n.identity)
 
     (** A workspace and its dock use independent viewports, retaining the original artwork. *)
     export sized (machine, width, height) = machine(machineSkins = mapList (machine.machineSkins, \skin =>

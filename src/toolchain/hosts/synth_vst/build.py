@@ -277,26 +277,26 @@ def prism_test(host, headless):
     class_id = "0CDBB66985D548A9BFD8371909D24BB3"
     steps = [{"wait": "Scan VST3"}, {"type": ["VST3 bundle", str(BUILD / "VST3/Release/adelay.vst3")]},
              {"invoke": "Scan VST3"}, {"wait": "Choose a VST3 instrument or effect to add."},
-             {"type": ["Add VST3", class_id]}, {"wait": "ADelay 0"}, {"type": ["0: Delay", "0.5"]},
-             {"type": ["Add VST3", class_id]}, {"wait": "ADelay 1"}, {"invoke": "Source 0: audio"},
-             {"invoke": "Connect 1: audio"}, {"wait": "Patch updated."}, {"drag": ["Canvas ADelay 0", "20", "130"]}, {"shot": "vst-routed"},
-             {"invoke": "Remove selected"}, {"gone": "ADelay 1"}, {"wait": "ADelay 0"}, {"shot": "vst-removed"}]
-    audition = [{"type": ["0: Delay", "0"]}, {"type": ["1: Delay", "0"]},
+             {"type": ["Add VST3", class_id]}, {"wait": "ADelay 0"}, {"type": ["Module", "0"]}, {"type": ["Delay", "0.5"]},
+             {"type": ["Add VST3", class_id]}, {"wait": "ADelay 1"}, {"type": ["Module", "0"]}, {"invoke": "Use audio output"},
+             {"type": ["Module", "1"]}, {"invoke": "Connect audio"}, {"wait": "Patch updated."}, {"drag": ["Canvas ADelay 0", "20", "130"]}, {"shot": "vst-routed"},
+             {"invoke": "Remove module"}, {"gone": "ADelay 1"}, {"wait": "ADelay 0"}, {"shot": "vst-removed"}]
+    audition = [{"type": ["Module", "0"]}, {"type": ["Delay", "0"]}, {"type": ["Module", "1"]}, {"type": ["Delay", "0"]},
                 {"type": ["VST3 bundle", str(BUILD / "VST3/Release/mda-vst3.vst3")]},
                 {"invoke": "Scan VST3"}, {"wait": "Choose a VST3 instrument or effect to add."},
                 {"type": ["Add VST3", "5653544D44416A6D6461206A78313000"]}, {"wait": "mda JX10 2"},
                 {"type": ["Add component", "midi-note"]}, {"type": ["Add component", "stereo-output"]},
-                {"invoke": "Source 3: notes"}, {"invoke": "Connect 2: MIDI"},
-                {"invoke": "Source 2: audio"}, {"invoke": "Connect 0: audio"},
+                {"type": ["Module", "3"]}, {"invoke": "Use notes output"}, {"type": ["Module", "2"]}, {"invoke": "Connect MIDI"},
+                {"type": ["Module", "2"]}, {"invoke": "Use audio output"}, {"type": ["Module", "0"]}, {"invoke": "Connect audio"},
                 {"type": ["Add component", "lfo"]}, {"type": ["Add component", "modulated-gain"]},
-                {"invoke": "Source 1: audio"}, {"invoke": "Connect 6: audio"},
-                {"invoke": "Source 5: control"}, {"invoke": "Connect 6: control"},
-                {"invoke": "Modulate 2: VCF Freq"},
-                {"invoke": "Source 6: audio"}, {"invoke": "Connect 4: audio"},
-                {"invoke": "Audition patch"}, {"wait": "Preview finished."}, {"shot": "vst-audition"},
-                {"invoke": "Select 1"}]
+                {"type": ["Module", "1"]}, {"invoke": "Use audio output"}, {"type": ["Module", "6"]}, {"invoke": "Connect audio"},
+                {"type": ["Module", "5"]}, {"invoke": "Use control output"}, {"type": ["Module", "6"]}, {"invoke": "Connect control"},
+                {"type": ["Module", "2"]}, {"invoke": "Modulate VCF Freq"},
+                {"type": ["Module", "6"]}, {"invoke": "Use audio output"}, {"type": ["Module", "4"]}, {"invoke": "Connect audio"},
+                {"invoke": "Audition"}, {"wait": "Preview finished."}, {"shot": "vst-audition"},
+                {"type": ["Module", "1"]}]
     steps.insert(0, {"invoke": "Patch controls"})
-    before_remove = steps.index({"invoke": "Remove selected"})
+    before_remove = steps.index({"invoke": "Remove module"})
     steps[before_remove:before_remove] = audition
     worker = recording_worker(destination)
     script = destination / "journey.json"
@@ -310,9 +310,9 @@ def prism_test(host, headless):
     live = destination / "live"
     live.mkdir(exist_ok=True)
     live_worker = recording_worker(live)
-    live_steps = steps[:steps.index({"invoke": "Audition patch"})] + [
-        {"invoke": "Play patch"}, {"wait": "Playing the started patch. Stop and play again to apply edits."}, {"frames": "480"},
-        {"invoke": "Stop playback"}, {"wait": "Playback stopped."}, {"frames": "8"}, {"shot": "live-stopped"}]
+    live_steps = steps[:steps.index({"invoke": "Audition"})] + [
+        {"invoke": "Play"}, {"wait": "Playing the started patch. Stop and play again to apply edits."}, {"frames": "480"},
+        {"invoke": "Stop"}, {"wait": "Playback stopped."}, {"frames": "8"}, {"shot": "live-stopped"}]
     script = live / "journey.json"
     script.write_text(json.dumps({"steps": live_steps}))
     arguments[arguments.index("--self-test") + 1:arguments.index("--self-test") + 3] = [str(script), str(live)]
@@ -381,14 +381,41 @@ def device_tests():
     print("Actual audio queue: ordered buffers, drain, diagnostics and malformed PCM rejection passed")
 
 
+def prism_design(host, headless):
+    """[PRISM-ROUTING-PRESENTATION] Real module insertion, cables and independently docked keys."""
+    folder = ROOT / "target/pr-validation" / ("prism-design-headless" if headless else "prism-design-window")
+    folder.mkdir(parents=True, exist_ok=True)
+    steps = [{"wait": "Modules"}, {"shot": "studio"}, {"invoke": "Modules"},
+             {"shot": "module-library"}, {"invoke": "Add Delay"}, {"wait": "Canvas Delay 5"},
+             {"gone": "Add Delay"}, {"shot": "clicked-delay"},
+             {"invoke": "Canvas output 0:0"}, {"invoke": "Canvas input 5:0"},
+             {"invoke": "Canvas output 5:0"}, {"invoke": "Canvas input 1:0"},
+             {"drag": ["Canvas Delay 5", "0", "50"]}, {"shot": "routed-delay"},
+             {"invoke": "Modules"}, {"drag": ["Add Mixer", "390", "160"]},
+             {"wait": "Canvas Mixer 6"}, {"gone": "Add Mixer"}, {"shot": "dragged-mixer"},
+             {"invoke": "Patch controls"}, {"wait": "Module"}, {"type": ["Module", "5"]},
+             {"wait": "Use audio output"}, {"shot": "module-inspector"},
+             {"invoke": "Close keyboard"}, {"gone": "Play C4"}, {"shot": "keyboard-closed"},
+             {"invoke": "Keyboard"}, {"wait": "Play C4"}, {"shot": "keyboard-reopened"},
+             {"invoke": "Close"}, {"shot": "final-studio"}]
+    script = folder / "journey.json"
+    script.write_text(json.dumps({"steps": steps}))
+    run(str(host), "--machine", str(ROOT / "src/osprey/packages/signal_flow/signal_flow.machine.json"),
+        "--self-test", str(script), str(folder), *(["--headless"] if headless else []))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device-test", action="store_true")
     parser.add_argument("--test", action="store_true")
     parser.add_argument("--stream-test", action="store_true")
     parser.add_argument("--prism-test", type=pathlib.Path)
+    parser.add_argument("--design-test", type=pathlib.Path)
     parser.add_argument("--headless", action="store_true")
     args = parser.parse_args()
+    if args.design_test:
+        prism_design(args.design_test, args.headless)
+        return
     if args.device_test:
         device_tests()
         return

@@ -23,7 +23,9 @@ pub(super) fn section(ctx: &mut Ctx, node: &Tree) -> AnyElement {
                 .child(string(node, "title").to_owned()),
         )
         .children(many(ctx, node, "children"))
-        .child(caption(ctx, string(node, "footer")))
+        .when(!string(node, "footer").is_empty(), |this| {
+            this.child(caption(ctx, string(node, "footer")))
+        })
         .into_any_element()
 }
 

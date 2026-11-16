@@ -116,6 +116,9 @@ module EditorState
 
     (** Parse text once at the UI edge and validate against the component's descriptor. *)
     export typed (editor, action, text) = match action
+        Select _ => match parseInt text
+            Error _ => editor(message = "Choose a module from the list.")
+            Success identity => selected (editor, identity)
         Add _ => tapped (editor, Add(kind = text))
         EditParameter identity key => match parseFloat text
             Error _ => editor(message = "Enter a finite number for this parameter.")

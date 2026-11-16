@@ -3,9 +3,11 @@
 use super::*;
 use crate::events::Touch;
 use gpui_kit::component::{
+    button::ButtonCustomVariant,
     input::{Input, InputEvent, InputState},
+    menu::{DropdownMenu, PopupMenu, PopupMenuItem},
     switch::Switch,
-    Disableable as _, Selectable as _,
+    Disableable as _,
 };
 
 /// Defines a control entry point that validates its framework ordinal first.
@@ -25,13 +27,8 @@ renderer!(button, bound_button);
 fn bound_button(ctx: &mut Ctx, node: &Tree, ordinal: i64) -> AnyElement {
     let handle = ctx.cx.entity();
     let binding = binding(ordinal);
-    if let Some(flat) = flat_button(ctx, node, ordinal) {
-        let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
-            send(&handle, &binding, Tree::Null, window, cx)
-        };
-        return flat.on_click(on_click).into_any_element();
-    }
-    let styled = button_style(ctx, node, ordinal);
+    let styled =
+        flat_button(ctx, node, ordinal).unwrap_or_else(|| button_style(ctx, node, ordinal));
     let button = decorate(
         ctx,
         styled.label(string(node, "label")),
@@ -43,32 +40,23 @@ fn bound_button(ctx: &mut Ctx, node: &Tree, ordinal: i64) -> AnyElement {
         .into_any_element()
 }
 
-/// A plain button drawn as a flat GPUI div when the application's theme names `button` and
-/// `buttonText` colours, padded by its third and first spacing steps; otherwise the kit's button.
-fn flat_button(ctx: &Ctx, node: &Tree, ordinal: i64) -> Option<Stateful<Div>> {
-    let theme = ctx.theme();
-    let background = colour(theme, "button", ctx.dark)?;
-    let text = colour(theme, "buttonText", ctx.dark)?;
-    let enabled = flag(node, "enabled");
-    let plain = !matches!(string(node, "role"), "prominent" | "destructive");
-    let step = |index: usize| {
-        px(theme
-            .and_then(|theme| theme.spacing.get(index))
-            .copied()
-            .unwrap_or(0)
-            .max(0) as f32)
-    };
-    (plain && enabled).then(|| {
-        div()
-            .id(control_id(ctx, ordinal))
-            .child(string(node, "label").to_owned())
-            .bg(background)
-            .text_color(text)
-            .active(|this| this.opacity(0.8))
-            .flex()
-            .px(step(2))
-            .py(step(0))
-    })
+/// Preserves native button accessibility, focus and icons while applying the app's colours.
+fn flat_button(ctx: &Ctx, node: &Tree, ordinal: i64) -> Option<Button> {
+    if matches!(string(node, "role"), "prominent" | "destructive") {
+        return None;
+    }
+    let background = colour(ctx.theme(), "button", ctx.dark)?;
+    let text = colour(ctx.theme(), "buttonText", ctx.dark)?;
+    let style = ButtonCustomVariant::new(ctx.cx)
+        .color(background.into())
+        .foreground(text.into())
+        .hover(background.into())
+        .active(background.into());
+    Some(
+        Button::new(control_id(ctx, ordinal))
+            .custom(style)
+            .rounded(px(6.)),
+    )
 }
 
 /// Resolves the button's presentation role without changing its binding.
@@ -211,49 +199,49 @@ fn row(ctx: &mut Ctx, row: &Tree, selected: &str, ordinal: i64, index: usize) ->
 
 renderer!(picker, bound_picker);
 
-/// Uses simple choice buttons rather than introducing another stateful adapter.
+/// Presents a single native menu trigger; choices consume space only while the menu is open.
 fn bound_picker(ctx: &mut Ctx, node: &Tree, ordinal: i64) -> AnyElement {
-    let choices = items(ctx, node, "choices", ordinal, choice);
-    picker_row(ctx, node, ordinal, choices)
-}
-
-/// Draws the picker label and its validated choices, wrapping them in a narrow container.
-fn picker_row(ctx: &Ctx, node: &Tree, ordinal: i64, choices: Vec<AnyElement>) -> AnyElement {
-    div()
-        .flex()
-        .flex_wrap()
-        .min_w_0()
-        .items_center()
-        .gap(gap(ctx))
-        .child(picker_label(ctx, ordinal, string(node, "label")))
-        .children(choices)
-        .into_any_element()
-}
-
-/// Exposes the picker's real visible label to native accessibility clients ([UI-MACHINE-A11Y]).
-fn picker_label(ctx: &Ctx, ordinal: i64, label: &str) -> AnyElement {
-    div()
-        .id(SharedString::from(control_id(ctx, ordinal) + ":label"))
-        .role(Role::Label)
-        .aria_label(label.to_owned())
-        .child(Label::new(label))
-        .into_any_element()
-}
-
-/// Draws one picker choice, announcing its selection and returning its framework key when clicked.
-fn choice(ctx: &mut Ctx, choice: &Tree, selected: &str, ordinal: i64, index: usize) -> AnyElement {
+    let choices = list(node, "choices").to_vec();
+    let selected = string(node, "selected").to_owned();
+    let label = picker_value(&choices, &selected);
     let handle = ctx.cx.entity();
-    let binding = binding(ordinal);
-    let key = string(choice, "key").to_owned();
-    Button::new(format!("{}:{index}", control_id(ctx, ordinal)))
-        .compact()
-        .selected(key == selected)
-        .aria_selected(key == selected)
-        .min_w_0()
-        .max_w_full()
-        .label(string(choice, "label"))
-        .on_click(choose(handle, binding, key))
-        .into_any_element()
+    let trigger = Button::new(control_id(ctx, ordinal))
+        .label(label.clone())
+        .aria_label(format!("{}: {label}", string(node, "label")))
+        .w_full()
+        .dropdown_caret(true)
+        .disabled(choices.is_empty())
+        .dropdown_menu(move |menu, _, _| picker_menu(menu, &choices, &selected, &handle, ordinal));
+    labelled_column(node).child(trigger).into_any_element()
+}
+
+/// Uses the selected choice's human label rather than exposing its machine key.
+fn picker_value(choices: &[Tree], selected: &str) -> String {
+    choices
+        .iter()
+        .find(|item| string(item, "key") == selected)
+        .map(|item| string(item, "label"))
+        .unwrap_or("Choose…")
+        .to_owned()
+}
+
+/// Keeps menu dispatch on the same framework binding as the closed picker.
+fn picker_menu(
+    mut menu: PopupMenu,
+    choices: &[Tree],
+    selected: &str,
+    handle: &Entity<HostView>,
+    ordinal: i64,
+) -> PopupMenu {
+    for item in choices {
+        let key = string(item, "key");
+        menu = menu.item(
+            PopupMenuItem::new(string(item, "label").to_owned())
+                .checked(key == selected)
+                .on_click(choose(handle.clone(), binding(ordinal), key.to_owned())),
+        );
+    }
+    menu
 }
 
 /// Applies one validated ordinal to a control renderer or rejects the node.

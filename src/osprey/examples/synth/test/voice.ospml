@@ -7,6 +7,14 @@ import ui::Lists
 import synth::Synth
 import synth::Voice
 
+// Select through the visible inspector before exercising a module-specific action.
+inspectorSelected (session, identity) =
+    next = Drive::choose (session, "Module", "${identity}")
+    expect ((Drive::holding next).selected, identity)
+    next
+
+inspectorAction (session, identity, label) = Drive::press (inspectorSelected (session, identity), label)
+
 // [PRISM-ROUTING-EDITOR] One selected module, compact controls, unchanged graph actions.
 inspectorJourney () =
     launched = Drive::launched (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "macos", ["--empty"])
@@ -214,6 +222,31 @@ prismIntegratedJourney () =
     expect ((Drive::holding added).paletteDrag, "")
     prismControlJourney quieter
     keyboardDockJourney quieter
+    paletteClickJourney quieter
+
+// Every visible module row supports one click as well as drag, without editing covered controls.
+paletteClickJourney opened = forEachList (synth::EditorState::kinds, \kind =>
+    library = prismTap (opened, "Modules")
+    added = prismTap (library, "Add ${synth::EditorState::title kind}")
+    addedEditor = Drive::holding added
+    expect (length addedEditor.graph.nodes, 6)
+    expect (addedEditor.selected, 5)
+    expect (addedEditor.paletteShown, false)
+    expect (addedEditor.paletteDrag, "")
+    expect (structuralEquals (addedEditor.graph.cables, (Drive::holding opened).graph.cables), true)
+    expect (structuralEquals (filterList (addedEditor.graph.nodes, \n => n.identity < 5), (Drive::holding opened).graph.nodes), true)
+    expect (Semantics::offered (added.drivenSeen.renderedAccess, "Canvas input 5:0") || Semantics::offered (added.drivenSeen.renderedAccess, "Canvas output 5:0"), true)
+    match kind == "mixer"
+        true => overlappingModuleJourney added
+        false => expect (true, true))
+
+overlappingModuleJourney added =
+    at = Semantics::point (Semantics::element (added.drivenSeen.renderedAccess, "Canvas Mixer 5"), 0.5)
+    moved = Drive::pointer (Drive::pointer (added, at.pointX, at.pointY, true), 607.0, 432.0, false)
+    before = (Drive::holding moved).graph
+    covered = prismTap (moved, "Bypass Filter")
+    expect ((Drive::holding covered).selected, 5)
+    expect (structuralEquals ((Drive::holding covered).graph, before), true)
 
 prismTap (driven, label) =
     point = Semantics::point (Semantics::element (driven.drivenSeen.renderedAccess, label), 0.5)

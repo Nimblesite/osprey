@@ -53,9 +53,11 @@ module EditorApp
         false => uncapturedPointer (context, editor, x, y, down)
 
     uncapturedPointer (context, editor, x, y, down) = match EditorView::toolbarAt (x, y)
-        Error _ => match PrismArt::pointed (editor, x, y, down)
-            Success next => Runtime::step next
-            Error _ => Runtime::step (EditorView::pointed (editor, x, y, down))
+        Error _ => match EditorView::paletteAt (editor, x, y)
+            true => Runtime::step (EditorView::pointed (editor, x, y, down))
+            false => match PrismArt::pointed (editor, x, y, down)
+                Success next => Runtime::step next
+                Error _ => Runtime::step (EditorView::pointed (editor, x, y, down))
         Success index => match down
             true => Runtime::step (editor(armedNote = satSub -10 index))
             false => match editor.armedNote == satSub -10 index
