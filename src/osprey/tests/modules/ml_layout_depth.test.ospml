@@ -75,11 +75,31 @@ deepEffectCase () = checkAll ("an effect four segments deep still propagates", [
     tapping (2, \() => Bud::drink (Twig::value ())) == 14
 ])
 
+(** Hands `x` to `f`, so a lambda argument may carry a block body. *)
+applied (x, f) = f x
+
+(** A block body written under a lambda nested in another lambda's bracketed
+    argument closes at its own bracket, not at the enclosing block's dedent. *)
+nestedBodyCase () = applied (2, \outer =>
+    inner = applied (outer, \x =>
+        doubled = x * 2
+        doubled + 1)
+    deeper = applied (inner, \y =>
+        applied (y, \z =>
+            z * 10))
+    checkAll ("nested block bodies close at their brackets", [
+        inner == 5,
+        deeper == 50,
+        applied (1, \w =>
+            w + 1) == 2
+    ]))
+
 exactArithmetic (\() =>
     print "${Twig::scaled 3} ${boost 2} ${tapping (2, \() => Bud::drink 5)} ${depth::Trunk::Branch::pick ()}")
 
 exactTests [
     { name = "layout nesting keeps every level addressable", work = nestingDepthCase },
     { name = "an indented import selection binds every member", work = layoutImportCase },
-    { name = "an effect declared four segments deep propagates", work = deepEffectCase }
+    { name = "an effect declared four segments deep propagates", work = deepEffectCase },
+    { name = "a nested block body closes at its bracket", work = nestedBodyCase }
 ]
