@@ -2,7 +2,7 @@
 
 The synth package remains UI-free. Prism becomes an editable instrument graph: add oscillators, effects, MIDI generators, modulators and VST3 host nodes from a menu, connect compatible ports, adjust parameters and hear the resulting graph. Existing audio and control work must remain usable while a replacement graph is validated. See [SYNTH-GRAPH], [SYNTH-SIGNALS], [SYNTH-RENDER] and [SYNTH-HOST-VST] in the [synthesis specification](../specs/runtime/Synthesis.md).
 
-Work is isolated on `codex/prism-synth-routing`, based on `math-to-code` at `e3ebc1399`. The requested stopping time is 03:00 Australia/Melbourne on 16 November 2026; stop with an accurate handoff even if verification remains incomplete.
+Work is on `codex/prism-synth-routing`, originally based on `math-to-code` at `e3ebc1399`. The original 03:00 Australia/Melbourne checkpoint on 16 November 2026 was retained below; the user subsequently resumed work and requested wrap-up in the primary checkout. Historical measurements describe their recorded checkpoint, not current release readiness.
 
 ## Delivery checklist [PRISM-ROUTING-DELIVERY]
 
@@ -10,7 +10,7 @@ Work is isolated on `codex/prism-synth-routing`, based on `math-to-code` at `e3e
 - [x] Establish the synth package baseline: thirteen existing loaded journeys pass.
 - [x] Implement transactional graph editing, cable removal, component removal and checked reconnection; rejected edits preserve the previous playable graph.
 - [x] Expand typed component descriptors and rendering for MIDI generators, modulators and effects; declare new models in typeDiagram and derive their representations.
-- [ ] Replace Prism's fixed patch mapping with the synth graph, with a component menu, selectable nodes, compatible cable endpoints and parameter inspection.
+- [x] Replace Prism's fixed patch mapping with the synth graph, with a component menu, selectable nodes, compatible cable endpoints and parameter inspection.
 - [ ] Publish applied graph/parameter revisions and component activity through Signals without a UI dependency in the package.
 - [ ] Implement actual VST3 discovery, out-of-process scanning, activation, processing, MIDI/automation, state save/restore and disposal as an external graph node.
 - [ ] Verify an SDK instrument and effect with real audio, MIDI, parameter and state round trips; surface unavailable or failed plug-ins explicitly.
@@ -145,7 +145,7 @@ The UI model is generated from `editor.td`; the synth library remains UI-free. E
 - [x] Compare 256-frame execution against 31 + 225 frames for oscillators, LFOs, filters, delays and gain, including a stereo filter with different channel inputs.
 - [x] Reject wrong state identities, missing/excess channels, invalid capacities and components that differ from their prepared graph entry; the last case was reproduced as a failing regression before its fix.
 - [x] Retain the rebuilt native host's 44-step actual VST/audio journey and strict source checks.
-- [ ] Connect retained built-in states and persistent VST workers to graph-wide streaming and the device queue.
+- [x] Connect retained built-in states and persistent VST workers to graph-wide streaming and the device queue.
 
 The 22 package journeys pass under ARC. Coverage of the production change passes independently under GC and ARC at 859/926 own-source lines (92.8%, unchanged 92.2% gate); the subsequent stereo test expansion also passes under ARC. Evidence is retained under `target/pr-validation/synth-blocks-*` and `prism-blocks-*`. This is a necessary streaming foundation, not a claim that continuous playback is complete.
 
@@ -158,7 +158,7 @@ The 22 package journeys pass under ARC. Coverage of the production change passes
 - [x] Verify hosted 64 + 192-frame blocks, note-off at local offset 64, automation at the absolute 128-frame boundary, malformed replies and lost/duplicate state rejection.
 - [x] Keep the original clip-window bound while allowing timeline events beyond frame 65,536 with explicit integer-overflow checks.
 - [x] Pass all 22 package journeys under ARC and collect GC source coverage: 899/973 lines (92.4%, unchanged 92.2% gate); formatting and strict app source checks pass.
-- [ ] Adopt the pending-request state directly in Prism and connect a persistent worker/device transport; current auditions remain bounded.
+- [x] Adopt the pending-request state directly in Prism and connect a persistent worker/device transport; Play continues beyond the bounded audition.
 
 Evidence is retained under `target/pr-validation/synth-stream-*`. Full CI, the repository duplication gate, windowed verification and continuous device playback remain unfinished.
 
@@ -169,7 +169,7 @@ Evidence is retained under `target/pr-validation/synth-stream-*`. Full CI, the r
 - [x] Retain deletion-during-audition and stale-reply assertions, and reject missing/duplicate pending requests explicitly while clearing the render ticket.
 - [x] Pass all twelve app journeys under ARC, then the expanded suite under GC; strict checks and formatting pass.
 - [x] Rebuild the native host and pass its 44-step real VST/audio journey with exact effect PCM checks.
-- [ ] Retain workers across blocks and feed a continuous audio device queue; this change still uses bounded auditions.
+- [x] Retain workers across blocks and feed a continuous audio device queue; repeated-run queue reliability remains tracked below.
 
 Evidence is retained under `target/pr-validation/prism-pending-*`. This removes duplicated controller bookkeeping; it does not establish continuous playback or windowed screenshot verification.
 
@@ -189,7 +189,7 @@ Evidence is retained under `target/pr-validation/vst-session-*`. The interactive
 
 - [x] Add bounded desktop session open/exchange/close capabilities with sixteen owned slots, serial transactions, concurrent pipe draining, deadlines and direct-child cleanup.
 - [x] Test real repeated 700 kB transfers, unchanged process identity, input rejection, output overflow, blocked stdin, closed pipes, noisy stderr, public handles, capacity exhaustion and released slots.
-- [ ] Adopt these sessions in Prism's audio execution and feed the continuous device queue.
+- [x] Adopt these sessions in Prism's audio execution and feed the continuous device queue.
 
 The 101 desktop host tests pass and strict Clippy passes. These are real process-lifecycle tests; the existing VST session suite independently proves retained DSP. They do not yet prove Prism owns a persistent VST instance or continuous device playback. Normal shutdown clears retained children; process isolation is not a sandbox and does not claim ownership of arbitrary plug-in descendants.
 
