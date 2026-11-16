@@ -77,6 +77,9 @@ UNAME_M        ?= $(shell uname -m)
 EXT_OS         ?= $(if $(filter Darwin,$(UNAME_S)),darwin,$(if $(filter Linux,$(UNAME_S)),linux,win32))
 EXT_ARCH       ?= $(if $(filter arm64 aarch64,$(UNAME_M)),arm64,x64)
 EXT_PLATFORM   ?= $(EXT_OS)-$(EXT_ARCH)
+# The extension spawns bin/win32-x64/osprey.exe on Windows (client-config.ts),
+# so the bundled executables carry the suffix there and nowhere else.
+EXE            ?= $(if $(filter win32,$(EXT_OS)),.exe,)
 
 # ---------------------------------------------------------------------------
 # Node dependency guard

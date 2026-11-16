@@ -7,6 +7,7 @@ import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
 import * as vscode from "vscode";
+import { uriPath } from "./osprey-test-env";
 import { activateWithServer, waitFor } from "./profiler-kit";
 import { DiagnosticSeverity } from "vscode";
 import {
@@ -26,7 +27,7 @@ function huntOutput(root: string, source: string): string {
   return fs.readdirSync(root, { recursive: true })
     .filter((name) => String(name).endsWith("Osprey Hunt.log"))
     .map((name) => fs.readFileSync(path.join(root, String(name)), "utf8"))
-    .find((text) => text.includes(source)) ?? "";
+    .find((text) => text.includes(uriPath(source))) ?? "";
 }
 
 async function runBrokenHunt(root: string, source: string): Promise<string> {

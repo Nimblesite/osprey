@@ -318,8 +318,9 @@ async function locationsAt(
         "targetUri" in item
           ? [item.targetUri, item.targetSelectionRange ?? item.targetRange]
           : [item.uri, item.range];
+      // Cases name files with `/`, as the repository does on every platform.
       return describe(
-        path.relative(workspace, fs.realpathSync(uri.fsPath)),
+        path.relative(workspace, fs.realpathSync(uri.fsPath)).split(path.sep).join("/"),
         range,
       );
     })

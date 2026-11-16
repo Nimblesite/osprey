@@ -22,7 +22,16 @@ export function createWasi(options: WasiOptions = {}): WASI {
   return new WASI({ version: "preview1", args: [...(options.args ?? [])], env: { ...(options.env ?? {}) }, returnOnExit: true });
 }
 
-/** The single import object an Osprey workspace module may receive. */
+const EBADF = 8;
+
+/**
+ * The single import object an Osprey workspace module may receive. Only standard input, output
+ * and error are granted. Node's Windows WASI answers fd_fdstat_set_flags with ENOSYS before it
+ * reads the descriptor, so any other descriptor is refused here with EBADF, as on every host.
+ */
 export function wasiImports(wasi: WASI): WebAssembly.Imports {
-  return { wasi_snapshot_preview1: wasi.wasiImport };
+  const host = wasi.wasiImport as Record<string, (...args: number[]) => number>;
+  const setFlags = host.fd_fdstat_set_flags!;
+  const granted = (fd: number): boolean => fd >>> 0 <= 2;
+  return { wasi_snapshot_preview1: { ...host, fd_fdstat_set_flags: (fd: number, flags: number) => granted(fd) ? setFlags(fd, flags) : EBADF } };
 }

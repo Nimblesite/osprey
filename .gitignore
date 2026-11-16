@@ -47,7 +47,14 @@ node_modules/
 dist/
 out/
 .build/
-src/osprey/examples/wasm/build/
+src/osprey/examples/*/build/
+# Build output the pre-src/ layout left at the root of existing checkouts:
+# the nested ignore files that covered it moved into src/ with the sources.
+/compiler/
+/examples/
+/hosts/
+/packages/
+/vscode-extension/
 *.wasm
 *.exe
 *.dll

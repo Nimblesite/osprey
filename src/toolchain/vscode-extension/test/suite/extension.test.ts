@@ -102,7 +102,8 @@ async function makeActive(document: vscode.TextDocument): Promise<boolean> {
 /** Remove `dir`, a temp directory a suite created, when it exists. */
 function removeDir(dir: string | undefined): void {
   if (dir && fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
+    // Windows holds a just-closed editor's or debuggee's files for a moment.
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 

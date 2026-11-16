@@ -101,7 +101,7 @@ suite("heat-decorations pure helpers", () => {
     };
     assert.strictEqual(
       canonicalHeatPath("/gone/x.osp", throwing, "darwin"),
-      "/gone/x.osp",
+      path.normalize("/gone/x.osp"),
     );
   });
 
@@ -109,11 +109,11 @@ suite("heat-decorations pure helpers", () => {
     const identity = (p: string): string => p;
     assert.strictEqual(
       canonicalHeatPath("/W/Fib.OSP", identity, "win32"),
-      "/w/fib.osp",
+      path.normalize("/w/fib.osp"),
     );
     assert.strictEqual(
       canonicalHeatPath("/W/Fib.OSP", identity, "linux"),
-      "/W/Fib.OSP",
+      path.normalize("/W/Fib.OSP"),
     );
   });
 
@@ -131,7 +131,10 @@ suite("heat-decorations pure helpers", () => {
       canonicalHeatPath(linkedFile),
       canonicalHeatPath(realFile),
     );
-    assert.strictEqual(canonicalHeatPath(linkedFile), realFile);
+    assert.strictEqual(
+      canonicalHeatPath(linkedFile),
+      process.platform === "win32" ? realFile.toLowerCase() : realFile,
+    );
     // fileHeat matches heat reported against one spelling to the other.
     const lines = [hotLine(linkedFile, 3, 25, 250)];
     assert.deepStrictEqual(

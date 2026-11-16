@@ -29,6 +29,7 @@ import {
   oneSkipWarning,
   resolveBuiltOsprey,
   skipWarningsOf,
+  uriPath,
 } from "./osprey-test-env";
 import {
   AMBIGUOUS_NAME_FIXTURE,
@@ -323,9 +324,9 @@ suite("Osprey Test Explorer", () => {
       const suiteItem = (): vscode.TestItem | undefined =>
         controller.items.get(fileTestId(suiteUri.toString()));
 
-      assert.strictEqual(projectRootOf(moduleUri), projectDir);
-      assert.strictEqual(projectRootOf(suiteUri), projectDir);
-      assert.strictEqual(projectRootOf(outsideUri), fixtures.path);
+      assert.strictEqual(projectRootOf(moduleUri), uriPath(projectDir));
+      assert.strictEqual(projectRootOf(suiteUri), uriPath(projectDir));
+      assert.strictEqual(projectRootOf(outsideUri), uriPath(fixtures.path));
       assertClassified(isTestFile, [suiteUri, mlUri], [moduleUri]);
 
       await discovery.changed(suiteUri);

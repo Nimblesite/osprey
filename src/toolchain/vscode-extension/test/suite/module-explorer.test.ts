@@ -8,7 +8,7 @@ import {
   parseSourceGraph, projectChildren, type ModuleExplorerDeps, type ModuleNode, type PackageGraph,
 } from "../../client/src/module-explorer";
 import { runFrontendCommand } from "../../client/src/package-frontend";
-import { extensionRoot, resolveBuiltOsprey } from "./osprey-test-env";
+import { extensionRoot, resolveBuiltOsprey, uriPath, writeStubExecutable } from "./osprey-test-env";
 
 const labels = (nodes: readonly ModuleNode[]) => nodes.map((node) => node.label);
 
@@ -80,7 +80,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.strictEqual(command?.command, "osprey.modules.open");
     await openSource(command.arguments?.[0], [root]);
     const editor = vscode.window.activeTextEditor;
-    assert.strictEqual(editor?.document.uri.fsPath, path.join(root, "src", "more.osp"));
+    assert.strictEqual(editor?.document.uri.fsPath, uriPath(path.join(root, "src", "more.osp")));
     assert.strictEqual(editor?.selection.active.line, 3);
 
     // A refresh after an edit answers the new membership, and the ids stay put.
@@ -90,7 +90,8 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.strictEqual(again[0].id, modules.id);
     assert.ok(labels(await tree.getChildren(again[0])).includes("app::Renamed"));
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
-    fs.rmSync(root, { recursive: true, force: true });
+    // Windows holds the just-closed editor's file for a moment.
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   test("failures show as failures, never as an empty project", async () => {
@@ -106,8 +107,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
 
     const missing = await compilerSourceGraph(() => path.join(broken, "no-such-compiler"))(broken);
     assert.ok("error" in missing && missing.error.includes("ENOENT"), "a missing compiler is named by its spawn error");
-    const silent = path.join(broken, "silent-compiler");
-    fs.writeFileSync(silent, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const silent = writeStubExecutable(path.join(broken, "silent-compiler"), "");
     assert.deepStrictEqual(await compilerSourceGraph(() => silent)(broken), { error: "The compiler answered no source graph." },
       "a compiler that succeeds without a graph is a failure, not an empty project");
     fs.rmSync(broken, { recursive: true, force: true });
@@ -154,10 +154,10 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     await openSource({ file: path.join(outside, "secret.osp"), line: 1, column: 0 }, [inside]);
     assert.deepStrictEqual(fileEditors(), [], "an escape opens nothing");
     await openSource({ file: path.join(inside, "a.osp"), line: 1, column: 0 }, [inside]);
-    assert.deepStrictEqual(fileEditors(), [path.join(inside, "a.osp")]);
+    assert.deepStrictEqual(fileEditors(), [uriPath(path.join(inside, "a.osp"))]);
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-    fs.rmSync(inside, { recursive: true, force: true });
-    fs.rmSync(outside, { recursive: true, force: true });
+    fs.rmSync(inside, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(outside, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   test("the real package client answers per project, and a manifest change shows after a refresh", async () => {

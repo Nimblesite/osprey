@@ -29,6 +29,7 @@ for (const name of ["package-workspace", "workbench"]) {
 const assets = path.join(path.dirname(client), "workbench");
 const lessons = path.join(assets, "lessons");
 function bundledFile(source) {
+  if (!fs.existsSync(path.join(assets, source))) throw new Error(`Missing workbench asset: ${source}`);
   const content = fs.readFileSync(path.join(assets, source));
   if (content.length === 0 || content.subarray(0, 48).toString().startsWith("version https://git-lfs.github.com/spec/v1")) {
     throw new Error(`Missing binary content for workbench asset: ${source}`);
