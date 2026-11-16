@@ -139,10 +139,10 @@ jobs:
           key: ${{ runner.os }}-gpui-host-${{ hashFiles('src/toolchain/hosts/gpui/Cargo.lock', 'src/toolchain/hosts/gpui/rust-toolchain*') }}
           restore-keys: ${{ runner.os }}-gpui-host-
 
-      - name: Every desktop app's headless smoke and self-test
-        run: make _gpui-smoke _gpui-self-test
+      - name: Every desktop app's headless smoke
+        run: make _gpui-smoke
 
-      # Saved as soon as the host is built, not in a post step: a cold build that uses the job's budget
+      # Saved as soon as the smoke has built the host, not in a post step: a cold build that uses the job's budget
       # lost its post-step save to the timeout (PR #376), so every rerun started cold again.
       - name: Save GPUI host
         if: steps.gpui-cache.outputs.cache-hit != 'true'
@@ -150,6 +150,9 @@ jobs:
         with:
           path: src/toolchain/hosts/gpui/target
           key: ${{ steps.gpui-cache.outputs.cache-primary-key }}
+
+      - name: Every desktop app's headless self-test
+        run: make _gpui-self-test
 
       - name: Host tests and clippy
         working-directory: src/toolchain/hosts/gpui

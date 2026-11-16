@@ -282,16 +282,19 @@ _synth_vst_build:
 _synth_vst_test:
 	python3 src/toolchain/hosts/synth_vst/build.py --test
 
+# The host every app links into, built in the host's own target directory, which CI caches.
+GPUI_HOST_BIN := src/toolchain/hosts/gpui/target/release/osprey-gpui
+
 # Prism's editable graph, module insertion and bottom dock in the real native host.
 .PHONY: _prism_ui_test
 _prism_ui_test: _runtime_macos_arc
-	OSPREY_BIN="$(CURDIR)/$(BIN)" CARGO_TARGET_DIR="$(CURDIR)/target/gpui" bash src/osprey/examples/synth/run.sh --bundle
-	OSPREY_GPUI_APP_NAME=synth OSPREY_GPUI_TITLE="Prism Synth" OSPREY_GPUI_WINDOW=1152x756 OSPREY_GPUI_CHROME=bare python3 src/toolchain/hosts/synth_vst/build.py --design-test "$(CURDIR)/target/gpui/release/osprey-gpui" $(GPUI_WINDOW)
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh --bundle
+	OSPREY_GPUI_APP_NAME=synth OSPREY_GPUI_TITLE="Prism Synth" OSPREY_GPUI_WINDOW=1152x756 OSPREY_GPUI_CHROME=bare python3 src/toolchain/hosts/synth_vst/build.py --design-test "$(CURDIR)/$(GPUI_HOST_BIN)" $(GPUI_WINDOW)
 
 ## _prism_vst_ui_test: Drive Prism's native VST menu against real SDK modules and worker processes.
 .PHONY: _prism_vst_ui_test
 _prism_vst_ui_test: _runtime_macos_arc
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	python3 src/toolchain/hosts/synth_vst/build.py --test
-	OSPREY_BIN="$(CURDIR)/$(BIN)" CARGO_TARGET_DIR="$(CURDIR)/target/gpui" bash src/osprey/examples/synth/run.sh --bundle
-	python3 src/toolchain/hosts/synth_vst/build.py --prism-test "$(CURDIR)/target/gpui/release/osprey-gpui" $(PRISM_TEST_MODE)
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh --bundle
+	python3 src/toolchain/hosts/synth_vst/build.py --prism-test "$(CURDIR)/$(GPUI_HOST_BIN)" $(PRISM_TEST_MODE)

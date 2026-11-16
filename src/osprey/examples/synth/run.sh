@@ -8,7 +8,6 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
 machine="$repo/src/osprey/packages/signal_flow/signal_flow.machine.json"
-export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-"$repo/target/gpui"}
 if [ "${1:-}" = --smoke ]; then
     OSPREY_GPUI_APP="$here" exec "$repo/src/toolchain/hosts/gpui/run.sh" --smoke --machine "$machine"
 fi
