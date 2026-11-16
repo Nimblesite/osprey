@@ -212,7 +212,8 @@ Session-boundary hardening: a new real-process regression first failed because a
 - [x] Add a macOS AudioQueue worker with four preallocated buffers, atomic callback ownership, bounded producer waits and explicit drain.
 - [x] Validate canonical 48 kHz mono/stereo float32 WAV blocks, exact lengths, finite samples and output amplitudes within -1..1 before enqueueing.
 - [x] Exercise the actual device with ordered buffers and drain; reject malformed, over-capacity, nonfinite, excessive-amplitude and unsupported-layout packets.
-- [ ] Connect Prism to the queue and verify continuous rendering, stop ownership and live edits.
+- [x] Connect Prism to the queue and verify continuous rendering and Stop ownership in the native journey; repeated-run starvation remains tracked below.
+- [ ] Apply live graph edits to the running queue without restarting playback.
 
 Measured native-session spans for the same 256 ms instrument/effect audition were approximately 518 ms at 256-frame graph transfers, 331 ms at 1024 and 274 ms at 2048, including worker startup. The selected producer transfer is 2048 frames; the VST protocol still processes sub-blocks of at most 256 frames with unchanged exact PCM and MIDI/automation offsets. These single-run measurements justify reducing transport overhead; they do not establish reliable realtime deadlines.
 
@@ -253,3 +254,14 @@ Evidence: `target/pr-validation/prism-diagnostics-*` retains the final failing n
 - [x] Retain failures rather than weakening assertions; final evidence is `prism-word-native*.log` and `prism-word-repeat-receipts.json`.
 
 This is a committed development checkpoint, not release readiness. Final work remains: sustained producer scheduling/throughput, transactional live edits, state persistence/latency compensation, other platform device adapters, windowed verification and the root CI duplication gate.
+
+### Wrap-up validation [PRISM-ROUTING-WRAP-UP]
+
+The active branch is now `codex/prism-synth-routing` in the primary checkout; the former linked worktree no longer exists. Validation below is against commit `0d0f28b3c`, not the older worktree binaries. Logs are in `target/pr-validation/wrap-up/`.
+
+- [x] Re-run the twelve application journeys under ARC: all pass.
+- [x] Re-run the twenty-two synth package journeys under GC: all pass.
+- [x] Correct contradictory README statements about VST preview integration and sustained-playback reliability.
+- [x] Compile the current Prism source with warnings treated as errors.
+- [ ] Complete fresh GC application checks and native headless and windowed VST/audio journeys.
+- [ ] Resolve any reproduced playback failures before claiming smooth sustained playback.
