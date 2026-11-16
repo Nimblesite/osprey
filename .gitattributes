@@ -13,7 +13,8 @@ src/toolchain/crates/osprey-math/tests/fixtures/*.ospml text eol=lf
 # Proof certificates are hashed as bytes; checkout must preserve their pins.
 *.ndjson -text
 # Byte-pinned upstream license text retains its original line endings.
-src/osprey/packages/*/LICENSES/Qwen3.8-27B-Apache-2.0.txt -text
+src/osprey/packages/*/LICENSE -text
+src/osprey/packages/*/LICENSES/* -text
 src/osprey/examples/llms/*/model/LICENSES/Qwen3.8-27B-Apache-2.0.txt -text
 # Each .claude/skills/<name> is a link to .agents/skills/<name>, a directory;
 # Git for Windows makes it a directory link. A clone made without symlink support has text files there:

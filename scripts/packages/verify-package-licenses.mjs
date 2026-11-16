@@ -25,7 +25,8 @@ requireThat(AUDIT.copyright_holder === HOLDER, 'Unexpected Osprey copyright hold
 const verifySource = (dir, manifest, entry) => {
   const sources = manifest.match(/^python_sources = \[(.*)\]$/m)?.[1] ?? ''
   for (const path of [...sources.matchAll(/"([^"]+)"/g)].map((match) => match[1])) {
-    const source = read(join(dir, path))
+    // Source checks read lines, so a Windows checkout's CRLF must not hide a marker.
+    const source = read(join(dir, path)).replaceAll('\r\n', '\n')
     requireThat(source.startsWith(`${MARKER}\n`), `${dir}/${path}: missing Osprey marker`)
     const requiredNotice = entry.source_notices[path]
     requireThat(!requiredNotice || source.startsWith(`${MARKER}\n${requiredNotice}\n`), `${dir}/${path}: missing material notice`)

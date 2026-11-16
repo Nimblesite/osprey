@@ -48,6 +48,7 @@ test "greets" (\() => expect (Words::greet "ann", "hi ann"))
 "#;
 
 /// A changed compiler or manifest must rebuild every cached stage.
+#[cfg(unix)]
 const REBUILD_ALL: &str = "changed compiler must invalidate every stage";
 
 /// GC and ARC share codegen but link and execute separately.

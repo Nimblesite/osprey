@@ -1,8 +1,11 @@
 //! End-to-end tests of `osprey hunt` against a stand-in `klee` executable [SYMEX-CLI] [SYMEX-FINDINGS] [SYMEX-REPLAY]. The stand-in copies a prepared KLEE output directory into `--output-dir`, so the whole pipeline (compile, link, run, scan, replay, report, exit code) runs without the engine, and the real engine is covered by `src/osprey/tests/hunt/` under `make`.
 
-#![expect(
-    clippy::indexing_slicing,
-    reason = "test assertions: a missing JSON key is a test failure, not a production panic"
+#![cfg_attr(
+    unix,
+    expect(
+        clippy::indexing_slicing,
+        reason = "test assertions: a missing JSON key is a test failure, not a production panic"
+    )
 )]
 
 use super::spec_findings_tests::Dir;

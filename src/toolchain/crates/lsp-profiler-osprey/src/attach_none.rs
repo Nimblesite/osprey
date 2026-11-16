@@ -14,6 +14,10 @@ impl LiveAttach {
         Self
     }
 
+    #[expect(
+        clippy::unused_self,
+        reason = "one signature with attach.rs, whose backend reads its state"
+    )]
     pub(crate) fn classify(
         &self,
         _candidates: &[ProcessCandidate],
@@ -21,6 +25,10 @@ impl LiveAttach {
         Vec::new()
     }
 
+    #[expect(
+        clippy::unused_self,
+        reason = "one signature with attach.rs, whose backend reads its state"
+    )]
     pub(crate) fn cpu(&self) -> Option<&dyn CpuBackend> {
         None
     }

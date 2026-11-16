@@ -50,21 +50,22 @@ pub(super) fn cacheable_test_source(source: &str) -> bool {
 }
 
 pub(super) fn directory_is_safe(path: &Path) -> bool {
-    let Ok(metadata) = std::fs::symlink_metadata(path) else {
-        return false;
-    };
-    if !metadata.file_type().is_dir() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = metadata.permissions();
-        permissions.set_mode(0o700);
-        if std::fs::set_permissions(path, permissions).is_err() {
-            return false;
-        }
-    }
+    std::fs::symlink_metadata(path)
+        .is_ok_and(|metadata| metadata.file_type().is_dir() && owner_only(path, &metadata))
+}
+
+/// Restrict a cache directory to its owner.
+#[cfg(unix)]
+fn owner_only(path: &Path, metadata: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let mut permissions = metadata.permissions();
+    permissions.set_mode(0o700);
+    std::fs::set_permissions(path, permissions).is_ok()
+}
+
+/// Windows has no mode bits: the directory keeps the profile's owner-only ACL.
+#[cfg(not(unix))]
+const fn owner_only(_path: &Path, _metadata: &std::fs::Metadata) -> bool {
     true
 }
 
