@@ -1,6 +1,8 @@
 # Prism synth [PRISM-ROUTING-EDITOR]
 
-Prism is the modular instrument editor for `@osprey/synth`. Its native component picker, port controls and parameter fields share a typed graph with the canvas. Start with an oscillator, filter, gain and output; add more components, choose an output port, connect it to an input and audition the resulting patch. Invalid connections leave the previous graph unchanged, and deleting a component removes its cables.
+Prism opens its signal-flow studio with the original node cards, cables, inspector, meters and playable keyboard. The modular routing workspace is retained separately while its presentation is integrated into the studio.
+
+The routing workspace is the modular instrument editor for `@osprey/synth`. Its native component picker, port controls and parameter fields share a typed graph with the canvas. Start with an oscillator, filter, gain and output; add more components, choose an output port, connect it to an input and audition the resulting patch. Invalid connections leave the previous graph unchanged, and deleting a component removes its cables.
 
 The menu offers sine oscillators, low-pass filters, gains, mixers, delays, MIDI note generators, normalized LFOs, stereo conversion, modulated stereo gain and mono/stereo outputs. Scan a VST3 bundle to add independent instrument or effect instances. Drag nodes, connect canvas ports or native port controls, and route LFOs to compatible effect parameters. The graph library validates port rates, units, channel counts and feedback cycles; parameter edits are checked against each component's descriptor.
 
@@ -10,7 +12,15 @@ The menu offers sine oscillators, low-pass filters, gains, mixers, delays, MIDI 
 make -C src/toolchain/targets/macos synth
 ```
 
-**Play patch** continuously produces the captured graph until **Stop playback**. **Audition patch** uses the same device path for a 256 ms preview. On macOS the packaged worker sends checked mono/stereo 48 kHz float32 PCM into a bounded AudioQueue; each VST instance survives successive graph blocks. Built-in DSP state and sample-positioned MIDI/modulation also continue between blocks. Stop, failure and ordinary application shutdown release the workers.
+The original studio is the default. To work on the separate modular graph and VST controls:
+
+```sh
+make -C src/toolchain/targets/macos synth-routing
+```
+
+These workspaces currently keep independent patches; routing changes do not change the studio's fixed patch.
+
+In the routing workspace, **Play patch** continuously produces the captured graph until **Stop playback**. **Audition patch** uses the same device path for a 256 ms preview. On macOS the packaged worker sends checked mono/stereo 48 kHz float32 PCM into a bounded AudioQueue; each VST instance survives successive graph blocks. Built-in DSP state and sample-positioned MIDI/modulation also continue between blocks. Stop, failure and ordinary application shutdown release the workers.
 
 The current running graph is frozen at start: stop and play again to apply editor changes. The producer allocates outside the audio callback and transfers 2048-frame blocks; this is not a low-latency, allocation-free synthesis engine. The native journey checks sustained graph/device processing and that Stop leaves no owned workers alive. Individual runs have passed over twenty seconds without an empty-queue callback, but repeated runs have exposed queue starvation; reliable continuous playback remains unfinished. Windows and other device adapters, graph persistence and latency compensation remain pending. Without the packaged worker, a mono audition can still use the existing temporary-WAV `afplay` adapter; continuous playback reports that the worker is required.
 

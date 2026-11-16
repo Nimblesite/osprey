@@ -301,7 +301,7 @@ def prism_test(host, headless):
     script = destination / "journey.json"
     script.write_text(json.dumps({"steps": steps}))
     arguments = [str(host), "--self-test", str(script), str(destination), "--live-processes",
-                 "--empty", "--vst-worker", str(worker)]
+                 "--routing", "--empty", "--vst-worker", str(worker)]
     if headless:
         arguments.extend(["--headless", "--defer-processes"])
     run(*arguments, timeout=180)

@@ -275,3 +275,10 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Remove the four-element index list and capturing fold closure allocated for each decoded PCM word; preserve byte order, bounds checks and malformed-input errors.
 - [x] Pass all twenty-two synth journeys under both GC and ARC after that change (`pcm-fixed-gc.log`, `pcm-fixed-arc.log`).
 - [ ] Verify sustained native playback with the changed decoder; package correctness does not prove realtime throughput.
+
+## Restore the Prism presentation [PRISM-ROUTING-PRESENTATION]
+
+- [x] Restore the original signal-flow studio as the normal app launch, including node cards, inspector and keyboard.
+- [x] Preserve the modular editor and VST implementation behind an explicit routing launch; do not discard that work.
+- [x] Verify the normal launch through the compiled boundary and capture the restored window: the four-step launch regression and the fourteen-step headless/windowed interaction journey pass; captures are under `target/pr-validation/wrap-up/restored-window/`. The explicit routing launch also passes 41 real-worker scan, parameter, cable, drag and removal steps (audio timing excluded from this UI check).
+- [ ] Integrate modular routing into the original studio presentation; the two current workspaces have independent patches.
