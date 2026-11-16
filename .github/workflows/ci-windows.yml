@@ -52,9 +52,9 @@ jobs:
       # platform-independent, so running it on a second OS would only duplicate
       # ci.yml's required `ci` job. The gate lives there.
 
-      - name: Install Rust (stable)
+      - name: Install Rust
         id: rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Cache cargo registry + target
         uses: actions/cache@v6

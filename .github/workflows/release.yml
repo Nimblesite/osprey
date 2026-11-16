@@ -134,7 +134,7 @@ jobs:
       # ---- Windows: MSYS2 (MinGW C runtime) + cargo -------------------------
       - name: Install Rust (Windows)
         if: runner.os == 'Windows'
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.100.0
       - name: Setup MSYS2 (Windows)
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2

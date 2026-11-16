@@ -64,9 +64,9 @@ jobs:
             mingw-w64-ucrt-x86_64-openssl
             mingw-w64-ucrt-x86_64-sqlite3
 
-      - name: Install Rust (stable)
+      - name: Install Rust
         id: rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Build C runtime archives (MinGW)
         shell: msys2 {0}

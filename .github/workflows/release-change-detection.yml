@@ -124,10 +124,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "No previous tag — full release." >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # 1.100.0
         if: steps.prev.outputs.previous_tag != ''
         with:
-          toolchain: stable
+          toolchain: 1.100.0
 
       - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
         if: steps.prev.outputs.previous_tag != ''
