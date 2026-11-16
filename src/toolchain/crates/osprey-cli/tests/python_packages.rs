@@ -141,14 +141,15 @@ fn failures(suite: &Path, memory: &str, cache: &Path) -> Vec<String> {
 /// The managed backends every suite runs under.
 const BACKENDS: [&str; 2] = ["gc", "arc"];
 
-/// Suites run in parallel; one suite's backends run one after the other, so a
-/// suite that binds loopback ports never races its own other run for them.
+/// Runs exactly `matrix_jobs`: suites in parallel, one suite's backends one
+/// after the other, so a suite that binds loopback ports never races its own
+/// other run for them.
 fn matrix_problems(suites: &[PathBuf], cache: &Path) -> Vec<String> {
-    let suites: Vec<&Path> = suites.iter().map(PathBuf::as_path).collect();
-    schedule(&suites, MATRIX_WORKERS, |suite| {
-        BACKENDS
-            .iter()
-            .flat_map(|memory| failures(suite, memory, cache))
+    let jobs = matrix_jobs(suites);
+    let lanes: Vec<&[(&Path, &str)]> = jobs.chunk_by(|a, b| a.0 == b.0).collect();
+    schedule(&lanes, MATRIX_WORKERS, |lane| {
+        lane.iter()
+            .flat_map(|(suite, memory)| failures(suite, memory, cache))
             .collect()
     })
 }
