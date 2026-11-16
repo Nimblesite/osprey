@@ -16,11 +16,14 @@ Coordinated on TMC: `osprey-lsp-memory` (Osprey), `codex-memory-leak-fix` (lspki
 
 Osprey pins `lspkit`, `lspkit-server` and `lsp-profiler` at `0.4.0` in `src/toolchain/Cargo.toml`. It uses `Dispatcher`, `DiagnosticsBus`, `Vfs`, `jsonrpc` framing, `live::Session` and the profiler service.
 
+Checked against the published v0.4.0 source on 2026-11-16: **none of the five repairs changes Osprey's memory at runtime.** The upgrade is hygiene. Osprey's memory bug is its own, fixed in `ddf589022`.
+
 | lspkit finding | Reaches Osprey? |
 | --- | --- |
-| `[MEM-AUDIT-DISPATCH]` terminal preparation errors keep ingress registrations | Possibly. Every unknown method goes through `Dispatcher::dispatch` (`server.rs` `request`). Osprey never pre-registers through `CancellationHandle::register`. lspkit to confirm whether plain `dispatch` leaks. |
-| `[MEM-AUDIT-CORRELATOR]`, `[MEM-AUDIT-INBOUND]` (sidecar) | Only if `lsp-profiler`'s live session or attach uses the sidecar. lspkit to confirm. |
-| `[MEM-AUDIT-CLOSED-DOCUMENTS]`, `[MEM-AUDIT-HANDLER-CYCLE]` | No. Reference server only. Osprey closes documents in the `Vfs` and its handlers capture the engine, not the dispatcher. |
+| `[MEM-AUDIT-DISPATCH]` | No. The leak needs pre-registration through `CancellationHandle::register`, which Osprey never calls. `Dispatcher::prepare` returns `UnknownMethod` before it registers anything, and `cancel` never inserts. |
+| `[MEM-AUDIT-CORRELATOR]`, `[MEM-AUDIT-INBOUND]` | No. Osprey and `lsp-profiler` never use `lspkit::sidecar`. |
+| `[MEM-AUDIT-CLOSED-DOCUMENTS]`, `[MEM-AUDIT-HANDLER-CYCLE]` | No. Reference server only. Osprey closes documents in the `Vfs`, and its handlers capture the engine, not the dispatcher. |
+| `PullStore` retention (unproven candidate) | No. Osprey does not use `PullStore`. |
 
 ## Upgrade steps (after lspkit publishes)
 
@@ -28,7 +31,7 @@ Osprey pins `lspkit`, `lspkit-server` and `lsp-profiler` at `0.4.0` in `src/tool
 - [ ] Bump `lspkit`, `lspkit-server` and `lsp-profiler` together in `src/toolchain/Cargo.toml` and refresh `Cargo.lock`. Keep `sysinfo` matched to the version `lsp-profiler` pins.
 - [ ] Bump `@nimblesite/lsp-profiler-ui` in `src/toolchain/vscode-extension/package.json` if lspkit publishes a matching UI release.
 - [ ] Fix any API breaks in `osprey-lsp`; no shims.
-- [ ] Add an Osprey regression for each finding that reaches Osprey. Example: 32 unknown-method requests through the real server leave no dispatcher registrations.
+- [ ] Keep Osprey's own guard: 32 unknown-method requests through the real server leave `in_flight: 0` (`Dispatcher` `Debug`).
 - [ ] `cargo test -p osprey-lsp`, then `make ci`, then one coordinated push.
 - [ ] Re-measure with `heap -s` after the idle sweep: live heap at or below 128 MB.
 - [ ] Release Osprey, then verify the released extension binary's live heap before closing anything.
