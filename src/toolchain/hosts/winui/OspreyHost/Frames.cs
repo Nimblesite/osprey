@@ -49,7 +49,9 @@ sealed partial class Renderer
         var style = node.Member("style");
         var content = node.Member("body");
         var body = (FrameworkElement)Draw(scope, content);
-        Placed(body, style, (style.Flag("grow") || style.Number("height") > 0) && Fills(content));
+        var scene = content.Text("kind") == "scene" ||
+            content.Text("kind") == "aside" && content.Member("pane").Text("kind") == "scene";
+        Placed(body, style, scene && (style.Flag("grow") || style.Number("height") > 0));
         var inked = Inked(body, style);
         var card = new Border
         {
