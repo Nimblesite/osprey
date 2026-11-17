@@ -65,8 +65,11 @@ sealed class SceneView
         holder.KeyDown += (_, args) => Keyed(args, down: true);
         holder.KeyUp += (_, args) => Keyed(args, down: false);
         holder.SizeChanged += (_, _) => { if (shown is { } scene) { Fitted(scene); } };
-        CompositionTarget.Rendering += (_, _) => hovered = false;
+        holder.Loaded += (_, _) => CompositionTarget.Rendering += Refreshed;
+        holder.Unloaded += (_, _) => CompositionTarget.Rendering -= Refreshed;
     }
+
+    void Refreshed(object? sender, object args) => hovered = false;
 
     Scene? shown;
 
@@ -99,6 +102,7 @@ sealed class SceneView
     public void Clear()
     {
         shown = null;
+        ordinal = -1;
         viewed = default;
         sources = [];
         foreach (var pool in new IPool[] { rects, discs, strips, glyphs, paths })

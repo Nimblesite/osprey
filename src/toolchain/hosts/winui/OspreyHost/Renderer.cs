@@ -18,9 +18,9 @@ sealed partial class Renderer
     readonly Dictionary<string, Border> holders = [];
     readonly Dictionary<string, UIElement> drawn = [];
     readonly Dictionary<string, Action<object>> clicks = [];
-    readonly Dictionary<string, SceneView> scenes = [];
-    readonly Dictionary<string, Node> sceneNodes = [];
-    readonly HashSet<string> shownScenes = [];
+    readonly Dictionary<(string Region, long Action), SceneView> scenes = [];
+    readonly Dictionary<(string Region, long Action), Node> sceneNodes = [];
+    readonly HashSet<(string Region, long Action)> shownScenes = [];
     readonly Dictionary<string, RowDefinition> rooms = [];
     readonly Action<long, object?> control;
     readonly Action<Touch> send;
@@ -93,7 +93,7 @@ sealed partial class Renderer
         {
             return Refused("A scene the frame gave no scene rows");
         }
-        var key = $"{scope.Region}#{node.Number("event")}";
+        var key = (scope.Region, node.Number("event"));
         if (!scenes.TryGetValue(key, out var view))
         {
             view = new SceneView(problem => report([problem]));
@@ -117,10 +117,18 @@ sealed partial class Renderer
         {
             drawn.Remove(key);
             Hold(key, null);
-            return;
         }
-        drawn[key] = Draw(new Scope(key), region.Node);
-        Hold(key, drawn[key]);
+        else
+        {
+            drawn[key] = Draw(new Scope(key), region.Node);
+            Hold(key, drawn[key]);
+        }
+        foreach (var removed in scenes.Keys.Where(scene => scene.Region == key && !shownScenes.Contains(scene)).ToArray())
+        {
+            scenes[removed].Clear();
+            scenes.Remove(removed);
+            sceneNodes.Remove(removed);
+        }
     }
 
     void Hold(string key, UIElement? element)

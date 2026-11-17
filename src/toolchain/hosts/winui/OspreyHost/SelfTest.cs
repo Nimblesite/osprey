@@ -166,6 +166,7 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
     FrameworkElement? Invocable(string words)
     {
         if (window.Content is not { } root) return null;
+        if (Find(words) is { } named && Up<ButtonBase>(named) is { IsEnabled: true } exact) return exact;
         var buttons = Tree(root).OfType<ButtonBase>().Where(button => Shown(button) && button.IsEnabled).ToArray();
         return buttons.FirstOrDefault(button => Says(button, words) || Named(button) == words)
             ?? buttons.FirstOrDefault(button => Named(button).Contains(words, StringComparison.Ordinal));
