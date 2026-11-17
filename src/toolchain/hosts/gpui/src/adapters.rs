@@ -14,6 +14,14 @@ mod platform;
 // iOS launches no processes: its `run` capability is OS discovery across the bridge.
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 mod process;
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+mod process_input;
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+mod process_session;
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+mod process_sessions;
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+pub(crate) use process_sessions::Cleanup;
 
 use crate::events::Touch;
 use crate::rows::Ask;
@@ -30,6 +38,8 @@ pub fn answer(ask: &Ask) -> Result<String, String> {
         "run" | "choose-file" | "host-call" => mobile::answer(ask),
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         "run" => process::run(ask),
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        "host-call" => process_input::answer(ask),
         "list-directories" => files::list_directories(ask),
         "read-texts" => files::read_texts(ask),
         // Cancel arrives only after synchronous adapters already completed, so

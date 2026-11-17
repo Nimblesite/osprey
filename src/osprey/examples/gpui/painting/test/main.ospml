@@ -35,7 +35,7 @@ shapes () = Lists::flatten (mapList ((walked ()).walkSketches, \scene => scene.s
 // The canvas scene's whole drawing: the fixed primitives plus one path per freehand line.
 shapeCount () = length (shapes ())
 
-sketch () = driven.drivenSurface.surfaceSession.sessionStore.sketch
+sketch () = (Drive::holding driven).sketch
 
 lines () = (sketch ()).lines
 

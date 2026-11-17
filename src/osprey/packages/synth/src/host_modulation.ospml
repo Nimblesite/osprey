@@ -1,0 +1,80 @@
+// [SYNTH-HOST-MODULATION] Parameter routes remain ordinary typed graph cables.
+namespace synth
+
+(** Attach normalized control streams and produce bounded native automation points. *)
+module HostModulation
+    parameter (n, key) = match filterList (n.parameters, \p => p.key == key && p.automatable && p.unit == Normalised && p.minimum == 0.0 && p.maximum == 1.0)
+        [p] => Valid(value = p)
+        _ => Invalid(fault = InvalidParameter)
+
+    named (n, key, at) = match listGet n.inputs at
+        Error _ => false
+        Success port => port.name == key
+
+    index (n, key) = listGet (filterList (toList (range (0, length n.inputs)), \at => named (n, key, at))) 0
+
+    replaced (next, old) = match old.identity == next.identity
+        true => next
+        false => old
+
+    wired (graph, source, outlet, n, key) = match index (n, key)
+        Success inlet => Graphs::rewire (graph, Components::route (source, outlet, n.identity, inlet))
+        Error _ =>
+            port = Port(name = key, rate = Control, channels = 1, unit = Normalised)
+            next = n(inputs = listAppend n.inputs port)
+            expanded = graph(nodes = mapList (graph.nodes, \old => replaced (next, old)))
+            Graphs::rewire (expanded, Components::route (source, outlet, n.identity, length n.inputs))
+
+    (** Add or replace a control cable transactionally; a rejected source leaves the graph unchanged. *)
+    export connect (graph, source, outlet, destination, key) = match Graphs::node (graph, destination)
+        Invalid fault => Invalid(fault = fault)
+        Valid n => match n.processor
+            External _ => match parameter (n, key)
+                Invalid fault => Invalid(fault = fault)
+                Valid _ => wired (graph, source, outlet, n, key)
+            _ => Invalid(fault = InvalidNode)
+
+    binding (graph, n, key) = match index (n, key)
+        Error _ => []
+        Success inlet => filterList (graph.cables, \c => c.destination == n.identity && c.inlet == inlet)
+
+    value (clips, cable, offset) = match ClipInputs::completed (clips, cable.source)
+        Error why => Error(message = why)
+        Success clip => match clip.clipChannels == 1
+            false => Error(message = "A parameter modulator must have one control channel.")
+            true => listGet clip.clipSamples offset
+
+    point (values, p, offset, number) = match startsWith p.key "vst:" && number >= 0.0 && number <= 1.0 && length values < 1024
+        false => Error(message = "Invalid or excessive VST parameter automation.")
+        true => match parseInt (drop p.key 4)
+            Error why => Error(message = why)
+            Success identity => match identity >= 0 && identity <= 4294967295
+                false => Error(message = "VST parameter identity is outside its native range.")
+                true => Success(value = listAppend values (HostParameter(identity = identity, offset = offset, value = number)))
+
+    sampled (graph, clips, n, first, offset, outcome, p) = match outcome
+        Error why => Error(message = why)
+        Success values => match binding (graph, n, p.key)
+            [] => match first == 0 && offset == 0
+                true => point (values, p, offset, p.initial)
+                false => Success(value = values)
+            [cable] => match value (clips, cable, offset)
+                Error why => Error(message = why)
+                Success number => point (values, p, offset, number)
+            _ => Error(message = "A parameter has more than one modulation source.")
+
+    frame (graph, clips, n, first, outcome, offset) = foldList (filterList (n.parameters, \p => p.automatable), outcome, \(values, p) => sampled (graph, clips, n, first, offset, values, p))
+
+    aligned first = match first % 128 == 0
+        true => 0
+        false => satSub 128 (first % 128)
+
+    (** Anchor automation to the graph clock, even across unequal block partitions. *)
+    export window (graph, clips, n, first, frames) = match first >= 0 && frames > 0 && frames <= 32768 && first <= satSub 9223372036854775807 frames
+        false => Error(message = "Invalid automation clip length or timeline.")
+        true =>
+            offsets = mapList (toList (range (0, intDiv (satAdd frames 127) 128)), \index => satAdd (aligned first) (satMul index 128))
+            foldList (filterList (offsets, \offset => offset < frames), Success(value = []), \(outcome, offset) => frame (graph, clips, n, first, outcome, offset))
+
+    (** Emit a stable 128-frame automation grid, with defaults once and exact event offsets. *)
+    export points (graph, clips, n, frames) = window (graph, clips, n, 0, frames)

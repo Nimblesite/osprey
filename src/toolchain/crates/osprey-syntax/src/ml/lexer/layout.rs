@@ -20,7 +20,7 @@ pub(super) fn insert_layout(content: Vec<Token>) -> (Vec<Token>, Vec<SyntaxError
     let mut started = false;
     for tok in content {
         let fresh_line = tok.pos.line != prev_line;
-        if fresh_line && (depth == 0 || layout.inside_region()) {
+        if fresh_line && layout.laid_out(depth) {
             emit_layout(&mut out, &mut layout.stack, &mut errors, tok.pos, started);
         } else if fresh_line && after_arrow && tok.pos.column > layout.top() {
             layout.open_region(depth, tok.pos, &mut out);
@@ -67,8 +67,14 @@ struct Layout {
 }
 
 impl Layout {
-    fn inside_region(&self) -> bool {
-        !self.regions.is_empty()
+    /// Whether lines at bracket `depth` take layout: at the top level, or
+    /// directly inside the innermost lambda body. A bracket opened within that
+    /// body suppresses layout again, so a lambda nested in it opens its own
+    /// region and closes at its own bracket.
+    fn laid_out(&self, depth: i32) -> bool {
+        self.regions
+            .last()
+            .map_or(depth == 0, |(region, _)| *region == depth)
     }
 
     fn top(&self) -> u32 {

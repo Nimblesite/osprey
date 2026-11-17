@@ -58,7 +58,7 @@ tapAt (label, fraction) =
 
 tap label = tapAt (label, 0.5)
 
-machine () = driven.drivenSurface.surfaceSession.sessionStore.screen.screenMachine
+machine () = (Drive::holding driven).screen.screenMachine
 
 elements () = Canvases::semantics (machine ())
 

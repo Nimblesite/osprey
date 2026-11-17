@@ -2,6 +2,8 @@
 //! application's recorded typed steps, or start the probe and tap its Add button by the words it
 //! shows, without a window.
 
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -19,6 +21,9 @@ use checks::{check_asks, check_frame};
 
 /// The appearance every recorded run opens in, so a machine's own setting cannot change the frame.
 const LIGHT: bool = false;
+thread_local! {
+    static DEFERRED: RefCell<VecDeque<Ask>> = const { RefCell::new(VecDeque::new()) };
+}
 /// The display frame interval the smoke run builds a frame event with, in seconds.
 const FRAME_SECONDS: f64 = 1. / 60.;
 
@@ -301,8 +306,40 @@ fn adopt(shown: &mut Shown, next: Shown) -> Result<(), String> {
 
 /// Answers capability requests in protocol order, including follow-up requests.
 fn answer_all(shown: &mut Shown, now: i64, requests: &[Ask]) -> Result<(), String> {
+    if std::env::args().any(|argument| argument == "--defer-processes") {
+        return answer_deferred(shown, now, requests);
+    }
     for ask in requests {
         answer_one(shown, now, ask)?;
+    }
+    Ok(())
+}
+
+/// Retain follow-up work so a continuous producer cannot starve scripted input events.
+fn queued(requests: &[Ask], take: bool) -> Result<Option<Ask>, String> {
+    DEFERRED.with(|queue| {
+        let mut queue = queue
+            .try_borrow_mut()
+            .map_err(|_| "Reentrant deferred completion")?;
+        if queue.len().saturating_add(requests.len()) > 1024 {
+            return Err("Deferred completion queue exceeds 1024 requests".to_owned());
+        }
+        queue.extend(requests.iter().cloned());
+        Ok(if take { queue.pop_front() } else { None })
+    })
+}
+
+fn answer_deferred(shown: &mut Shown, now: i64, requests: &[Ask]) -> Result<(), String> {
+    queued(requests, false)?;
+    // A bounded batch models background completions without injecting an extra
+    // application display event for every individual I/O operation.
+    for _ in 0..4 {
+        let Some(ask) = queued(&[], true)? else {
+            break;
+        };
+        let next = Library::event(now, &completion(&ask)?)?;
+        adopt(shown, next)?;
+        queued(&shown.requests().cloned().collect::<Vec<_>>(), false)?;
     }
     Ok(())
 }
@@ -318,8 +355,14 @@ fn answer_one(shown: &mut Shown, now: i64, ask: &Ask) -> Result<(), String> {
 
 /// Builds the generic smoke answer for one supported capability.
 fn completion(ask: &Ask) -> Result<Touch, String> {
+    if matches!(ask.kind(), "run" | "host-call")
+        && std::env::args().any(|argument| argument == "--live-processes")
+    {
+        return Ok(crate::adapters::completion(ask));
+    }
     let outcome = match ask.kind() {
-        "animate" | "store-write" | "run" => Ok(String::new()),
+        "animate" | "store-write" => Ok(String::new()),
+        "run" => Ok(r#"{"status":0,"stderr":""}"#.to_owned()),
         "store-read" => Err(store::missing_read(ask)?),
         kind => {
             return Err(format!(

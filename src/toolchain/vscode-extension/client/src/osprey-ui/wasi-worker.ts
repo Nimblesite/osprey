@@ -85,7 +85,7 @@ function start(module: WebAssembly.Module, port: MessagePort): void {
     new Uint8Array(live.memory.buffer, answered, bytes.length).set(bytes);
     return answered;
   };
-  const instance = new WebAssembly.Instance(module, { ...wasiImports(wasi), env: { native_slice: nativeSlice } });
+  const instance = new WebAssembly.Instance(module, { ...wasiImports(wasi, () => live?.memory.buffer), env: { native_slice: nativeSlice } });
   const api = boundary(instance);
   live = api;
   const started = wasi.start(instance);

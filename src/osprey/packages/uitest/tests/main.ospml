@@ -370,7 +370,7 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
     post (\d => Drive::key (d, "space", true))
     expect (driven.drivenSurface.surfaceProblem, "")
     expect (levelOf (elements ()), 0.75)
-    expect (driven.drivenSurface.surfaceSession.sessionStore.machineFault, "")
+    expect ((Drive::holding driven).machineFault, "")
     completed "/music/a \"b\".mp3"
     choiceShown ()
     completed "/music/second.mp3"

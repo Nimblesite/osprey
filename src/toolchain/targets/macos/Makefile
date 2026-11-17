@@ -92,8 +92,8 @@ signal-flow: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/packages/signal_flow/app/run.sh
 
-## synth: Open the Prism synth: the signal-flow editor's Prism skin with a
-##        keyboard that plays the patch through the speakers. [UI-MACHINE-FLOW-SYNTH]
+## synth: Open Prism's signal-flow studio, inspector and playable keyboard.
+##        [PRISM-ROUTING-EDITOR] [PRISM-ROUTING-AUDIO]
 synth: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh

@@ -38,3 +38,39 @@ fn typed_steps_name_what_they_send() {
     assert!(matches!(&steps[3].send, Some(Send::Frame(_))));
     assert!(matches!(&steps[4].send, Some(Send::Completed(_))));
 }
+
+/// [SYNTH-DEVICE-QUEUE] Deferred completions preserve FIFO order and enforce bounded work.
+#[test]
+fn deferred_completion_queue_retains_order_and_rejects_overflow() -> Result<(), String> {
+    use crate::rows::Ask;
+    let ask = |ticket: &str| Ask {
+        code: 1,
+        ticket: ticket.to_owned(),
+        fields: Vec::new(),
+    };
+    assert!(super::queued(&[ask("first"), ask("second")], false)?.is_none());
+    assert_eq!(
+        super::queued(&[], true)?.map(|a| a.ticket).as_deref(),
+        Some("first")
+    );
+    assert_eq!(
+        super::queued(&[ask("third")], true)?
+            .map(|a| a.ticket)
+            .as_deref(),
+        Some("second")
+    );
+    assert_eq!(
+        super::queued(&[], true)?.map(|a| a.ticket).as_deref(),
+        Some("third")
+    );
+    assert!(super::queued(&vec![ask("held"); 1024], false)?.is_none());
+    assert!(super::queued(&[ask("overflow")], true).is_err());
+    for _ in 0..1024 {
+        assert_eq!(
+            super::queued(&[], true)?.map(|a| a.ticket).as_deref(),
+            Some("held")
+        );
+    }
+    assert!(super::queued(&[], true)?.is_none());
+    Ok(())
+}

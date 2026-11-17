@@ -109,6 +109,10 @@ golden() {
 view_check() {
     local log="$build/view-check.log" launched seconds=0 written
     xcrun simctl terminate "$device" "$identifier" 2>/dev/null || true
+    # The app also writes its verdict to a file: simctl's console capture sometimes drops the app's
+    # output, so either source counts. A verdict left by an earlier run never does.
+    written=$(xcrun simctl get_app_container "$device" "$identifier" data 2>/dev/null)/Documents/view-check.txt
+    rm -f "$written"
     xcrun simctl launch --console "$device" "$identifier" --resources "$app" --view-check >"$log" 2>&1 &
     launched=$!
     while kill -0 "$launched" 2>/dev/null && (( seconds < 180 )); do
@@ -123,9 +127,8 @@ view_check() {
     fi
     wait "$launched" || true
     cat "$log"
-    grep -q OSPREY_IOS_VIEW_OK "$log" || return 1
-    written=$(xcrun simctl get_app_container "$device" "$identifier" data 2>/dev/null)/Documents/view-check.txt
     [[ ! -f "$written" ]] || echo "verdict file: $(cat "$written")"
+    grep -qs OSPREY_IOS_VIEW_OK "$log" "$written" || return 1
 }
 
 (( ${#actions[@]} )) || { echo "$bundle"; exit 0; }

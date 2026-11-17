@@ -2,5 +2,6 @@
 ok 1 - layout nesting keeps every level addressable
 ok 2 - an indented import selection binds every member
 ok 3 - an effect declared four segments deep propagates
-1..3
-# tests=3 passed=3 failed=0 skipped=0
+ok 4 - a nested block body closes at its bracket
+1..4
+# tests=4 passed=4 failed=0 skipped=0

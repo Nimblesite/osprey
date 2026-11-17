@@ -119,7 +119,7 @@ midnightSkin = ["--skin", "midnight"]
 started () = began midnightSkin
 // The canvas session: the Sherbet artboard, driven only by pointer events ([UI-MACHINE-CANVAS]).
 drawn () = began ["--skin", "sherbet"]
-machineNow () = driven.drivenSurface.surfaceSession.sessionStore.screen.screenMachine
+machineNow () = (Drive::holding driven).screen.screenMachine
 token name = match Themes::named (Templates::theme (machineNow ()), name)
     Success found => found.tokenLight
     Error _ => "missing"
@@ -164,7 +164,7 @@ control label = Views::control (seen (), label)
 enabledOf label = (control label).controlEnabled
 selected label = (control label).controlSelected
 requested kind = Views::requested (seen (), kind)
-browser () = match driven.drivenSurface.surfaceSession.sessionStore.finder
+browser () = match (Drive::holding driven).finder
     ui::Run executable arguments _ _ _ _ => join (listConcat [executable] arguments) " "
     _ => ""
 // ---- the canvas's accessibility tree [UI-MACHINE-A11Y] ----

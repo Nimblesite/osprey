@@ -35,7 +35,9 @@ pub(super) fn interactive<'b>(
         .relative()
         .w_full()
         .flex_grow(1.)
-        .min_h(px(320.))
+        .min_h_0()
+        .min_w_0()
+        .overflow_hidden()
         .track_focus(&focus)
         .on_key_down(key_down(handle.clone(), binding))
         .on_key_up(key_up(handle.clone(), binding))
@@ -101,7 +103,16 @@ fn send_key(
 fn key_name(key: &str) -> Option<&str> {
     let named = matches!(
         key,
-        "left" | "right" | "up" | "down" | "space" | "enter" | "escape" | "tab" | "backspace"
+        "left"
+            | "right"
+            | "up"
+            | "down"
+            | "space"
+            | "enter"
+            | "escape"
+            | "tab"
+            | "backspace"
+            | "delete"
     );
     let character = key.len() == 1
         && key

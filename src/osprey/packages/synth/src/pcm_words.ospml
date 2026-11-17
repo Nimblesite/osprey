@@ -1,0 +1,81 @@
+// [SYNTH-PCM-FLOAT] Shared little-endian words for files and worker packets.
+namespace synth
+
+(** Exact PCM bit encoding and checked decoding, independent of devices and UI. *)
+module PcmWords
+    // Masking fixes the domain to sixteen cases; each digit is a static literal.
+    digit value = match bitAnd value 15
+        0 => "0"
+        1 => "1"
+        2 => "2"
+        3 => "3"
+        4 => "4"
+        5 => "5"
+        6 => "6"
+        7 => "7"
+        8 => "8"
+        9 => "9"
+        10 => "A"
+        11 => "B"
+        12 => "C"
+        13 => "D"
+        14 => "E"
+        _ => "F"
+
+    (** Low eight bits as hexadecimal. *)
+    export byte value = "${digit (bitAnd (shiftRight value 4) 15)}${digit (bitAnd value 15)}"
+
+    (** Low sixteen bits, little-endian. *)
+    export le16 value = "${byte (bitAnd value 255)}${byte (bitAnd (shiftRight value 8) 255)}"
+
+    (** Low thirty-two bits, little-endian. *)
+    // Encode a whole word in one allocation; nested byte/halfword strings amplify audio traffic.
+    export le32 value = "${digit (shiftRight value 4)}${digit value}${digit (shiftRight value 12)}${digit (shiftRight value 8)}${digit (shiftRight value 20)}${digit (shiftRight value 16)}${digit (shiftRight value 28)}${digit (shiftRight value 24)}"
+
+    (** IEEE float32 bits, rounded once from the package's float samples. *)
+    export float32 value = le32 (toInt (float32Bits (toFloat32 value)))
+
+    (** IEEE float64 bits for normalized parameter values. *)
+    export float64 value =
+        bits = floatBits value
+        "${le32 bits}${le32 (shiftRight bits 32)}"
+
+    // Read the ASCII byte directly: decoding audio must not allocate eight tiny
+    // strings and perform eight substring searches for every float32 sample.
+    nibble (text, at) = match byteAt text at
+        Error why => Error(message = why)
+        Success character => match character >= 48 && character <= 57
+            true => Success(value = satSub character 48)
+            false => match character >= 65 && character <= 70
+                true => Success(value = satSub character 55)
+                false => Error(message = "Invalid uppercase PCM hexadecimal digit.")
+
+    readByte (text, at) = match nibble (text, at)
+        Error why => Error(message = why)
+        Success high => match nibble (text, satAdd at 1)
+            Error why => Error(message = why)
+            Success low => Success(value = bitOr (shiftLeft high 4) low)
+
+    readPart (text, at, outcome, index) = match outcome
+        Error why => Error(message = why)
+        Success bits => match readByte (text, satAdd at (satMul index 2))
+            Error why => Error(message = why)
+            Success part => Success(value = bitOr bits (shiftLeft part (satMul index 8)))
+
+    (** Decode one complete uppercase hexadecimal word without accepting truncated bytes. *)
+    export read32 (text, at) = match at >= 0 && at <= satSub (length text) 8
+        false => Error(message = "Truncated PCM word.")
+        // Four fixed bytes need no per-sample index list or capturing fold closure.
+        true => readPart (text, at, readPart (text, at, readPart (text, at, readPart (text, at, Success(value = 0), 0), 1), 2), 3)
+
+    (** Decode one finite, bounded sample from its exact IEEE float32 bits. *)
+    export sample (text, at) = match read32 (text, at)
+        Error why => Error(message = why)
+        Success bits =>
+            signed = match bits >= 2147483648
+                true => satSub bits 4294967296
+                false => bits
+            value = toFloat (float32FromBits (toInt32 signed))
+            match value == value && abs value <= 1000000.0
+                false => Error(message = "The worker returned non-finite or excessive audio.")
+                true => Success(value = value)

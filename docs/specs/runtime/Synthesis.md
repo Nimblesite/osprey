@@ -14,6 +14,10 @@ Graph preparation validates missing/duplicate identities, endpoint existence, po
 
 All canonical public data models are declared in typeDiagram and generated into Osprey/host representations. Stored patches include schema and component versions; unsupported versions return an explicit error. No silently substituted component or zero-valued parameter hides a failed load.
 
+### Reference graph replacement [SYNTH-GRAPH-REPLACE]
+
+`Repatch::apply` validates and prepares a complete replacement outside the callback and returns its audio state and applied observation together. Its caller publishes that result at a block boundary. Compatible surviving identities retain oscillator phase, filter integrators, delay memory and valid parameter values; changed processor kinds or port layouts start with fresh state. Removed nodes lose their state and parameters. The sample position is preserved and the observation revision advances, invalidating stale UI commands. Missing surviving DSP state, incomplete audio routes, invalid retained values and stale snapshot positions are explicit errors; the caller retains its previous graph on rejection. This scalar reference path allocates during preparation and is not a real-time callback implementation. Topology edits may change output amplitude abruptly; a crossfade policy remains required before claiming click-free live editing.
+
 ## Signals and external interfaces [SYNTH-SIGNALS]
 
 Every component exposes typed Signals for its parameters and observable state, using Osprey's `Signal<T>` mechanism without depending on `@osprey/native`. A consumer can observe one component, selected parameter fields, voice activity, envelope position, meters, transport and diagnostics. Instance identity distinguishes two components of the same type. Parameter descriptors provide names, units, ranges, default values, scaling and automation eligibility, allowing an application to build controls without the synth library drawing them.
@@ -42,13 +46,49 @@ Oscillator quality is evaluated under pitch changes, pulse-width modulation, pha
 
 Research candidates include bandlimited/corrected oscillators, wavetable/additive/spectral synthesis, physical/modal models, granular engines, expressive phase shaping and differentiable/learned controls. Adoption requires the [research experiments](../../research/synthesis/README.md#research-to-delivery-experiments-synth-research-experiments), not a novelty claim. Training and expensive patch inference remain outside the required audio callback.
 
-## Future VST3 hosting [SYNTH-HOST-VST]
+## VST3 hosting [SYNTH-HOST-VST]
 
-VST3 **hosting** is an early extension, explicitly deferred from the initial library work. The purpose is to load existing VST3 instruments/effects into a synthesis graph. Producing Osprey VST3 plug-ins is a separate capability and is not substituted for hosting.
+VST3 **hosting** is an active requirement of the [Prism expansion](../../plans/prism-synth-routing.md). The isolated worker now scans, describes and processes real plug-ins, and Prism can create and route their typed graph nodes, then audition a real instrument/effect chain as stereo PCM. Continuous device rendering remains in progress. The purpose is to load existing VST3 instruments/effects into a synthesis graph. Producing Osprey VST3 plug-ins is a separate capability and is not substituted for hosting.
 
 An external node declares audio buses, event buses, parameter identifiers, sample-accurate automation support, latency, tail length and saved state. Host adapters map these to the same graph ports and parameter Signals as built-in components. Plug-in metadata/parameter IDs remain stable across graph saves; missing binaries or changed layouts produce visible errors rather than loading a different plug-in silently.
 
 Scanning, loading, activation and state restoration run outside the callback. The design must account for unsupported layouts, dynamic latency, bypass, crash/hang handling and untrusted plug-in code. Scan out of process; evaluate process isolation for playback with explicit latency/cost measurements. No claim that an arbitrary third-party plug-in respects Osprey's memory-safety or callback contract. Host integration includes actual DAW-style lifecycle and state/automation tests. Use the [official SDK](https://github.com/steinbergmedia/vst3sdk) as the compatibility source.
+
+## Worker audio transport [SYNTH-HOST-STREAM]
+
+`HostPackets` encodes checked interleaved float32 audio, MIDI and float64 normalized automation into the worker's little-endian protocol. Clips are split into at most 256-frame blocks; event offsets remain sample-accurate. The transport bounds channels, frame counts, notes and parameters before encoding. `HostResponses` checks the exact expected channel layout and frame count, finite samples, stable bounded latency and the absence of trailing data before exposing audio to the graph. Files and packets share `PcmWords`, and `WaveFiles.interleaved` records channel-aligned IEEE float32 PCM with a frame-count fact chunk.
+
+The native worker accepts binary persistent streams or bounded hexadecimal clips over stdin/stdout. The text path has exact-PCM parity with binary processing. It is suitable for reference previews; it is not a realtime device callback implementation. The GPUI process-input adapter bounds transport memory and child lifetime independently of output EOF.
+
+## Hosted graph clips [SYNTH-HOST-GRAPH]
+
+`GraphClips` evaluates a frozen acyclic graph in dependency order, sharing the reference oscillator, filter, gain, mixer and delay kernels through `ClipKernels`. A hosted node suspends pure execution with its checked audio, MIDI and parameter request; the consuming application supplies a validated worker response before scheduling downstream nodes. Extra ports, missing cables, malformed cached buffers and excessive resources are errors. Explicit mono-to-stereo conversion is a component; a cable never changes channel count. This bounded offline path rejects feedback and nonzero plug-in latency rather than claiming realtime feedback or latency compensation.
+
+Prism snapshots the graph and plug-in bindings when an audition begins. Editing or deleting a live node cannot change the running snapshot; stale/duplicate process completions cannot advance it. The native journey drives a real mda JX10 through two real ADelay instances and stereo playback, independently checking every effect's PCM against the preceding output. This proves hosted graph playback, not continuous device callbacks or persistence across auditions.
+
+## Stateful multichannel blocks [SYNTH-RENDER-BLOCKS]
+
+`ClipKernels.block` accepts and returns independent per-channel kernel state alongside interleaved samples at the hosted path's 48 kHz rate. Unequal block partitions retain oscillator/LFO phase, filter integrators and delay history. The component must exactly match its prepared graph entry, and state identities, channel counts and block capacities are checked before processing. The existing whole-clip entry point initializes state and delegates to this same implementation.
+
+`GraphClips.start`, `next` and `replied` schedule those states across complete acyclic graph blocks. A typed pending request owns the frozen graph, current block buffers and kernel states; only its named external node can supply the checked response. The graph clock advances once the entire block completes. MIDI note ownership and the 128-frame automation grid use that absolute clock, including unequal block sizes and positions beyond the bounded whole-clip window. A continuing graph that loses or duplicates required kernel state is rejected.
+
+This is producer-side, allocating reference execution. It does not establish allocation-free device callbacks, persistent VST sessions in Prism, graph-wide streaming scheduling or uninterrupted device playback; those integration steps remain required.
+
+## MIDI generators [SYNTH-HOST-MIDI]
+
+A MIDI note component exposes whole-number pitch, normalized velocity and an exact gate length in frames. `MidiClips.window` assigns note-on and note-off to half-open sample windows, preserving ownership at block boundaries. Fractional pitches/gates, invalid velocities and out-of-range windows return errors. Event outputs connect only to compatible event inputs; audio outputs remain separate. Sequencing, polyphonic generators and continuous live note control remain delivery work.
+
+## Routed modulation [SYNTH-GRAPH-MODULATION]
+
+A normalized sine LFO is a separate control-rate component with its own phase and frequency. A controlled-gain node takes distinct audio and normalized-control inputs; one control sample broadcasts across all audio channels while audio cables retain their declared width. The transfer functions are authored in `Waves.lean`, and the renderer shares oscillator state handling with audio oscillators. Missing controls and values outside zero through one are explicit errors. Native menu actions and canvas cable actions use the same rate/unit/channel validation.
+
+The current graph clip path renders modulation at sample resolution. This establishes LFO-driven stereo amplitude modulation. Hosted parameter routes are described below; continuous device processing remains delivery work.
+
+## Hosted parameter modulation [SYNTH-HOST-MODULATION]
+
+`HostModulation.connect` attaches an explicitly normalized control input to an automatable VST parameter and connects it transactionally. Parameters use stable native IDs, and incompatible sources are rejected without changing the previous graph. Disconnecting the cable retains the port for later routing and restores the configured parameter value. Non-automatable controls are displayed as unavailable for editing in this host; editing them is an explicit error rather than a silent no-op.
+
+The clip renderer samples connected control streams on a 128-frame automation grid. Default values are sent once at frame zero; connected parameters receive exact offsets and normalized values at subsequent grid points. A clip has a bounded total of 1024 points, and excess automation returns an error. This is a declared control update interval, not a promise that every plug-in interpolates identically. The native JX10 journey captures the exact filter-frequency points and compares the resulting audio against a replay with only the initial control setting retained.
 
 ## Verification and delivery [SYNTH-VERIFY]
 
@@ -65,3 +105,16 @@ Scanning, loading, activation and state restoration run outside the callback. Th
 - [ ] Add VST3 hosting after the component/graph boundary is verified.
 
 Test complete instrument journeys with many notes, automation events and routing changes. Use isolated numerical tests where mathematical or real-time isolation is necessary. Compare against independent analytical or high-precision references; record seeds, sample rates, block partitions and tolerances. Keep exact PCM goldens only where cross-target numerical behaviour is defined, and retain listening artefacts under `target/` for review. Screenshot tests belong to consuming applications, not this UI-free library.
+
+
+### Reference continuous device execution [SYNTH-DEVICE-QUEUE]
+
+The macOS Prism host now owns one bounded audio-device session alongside its VST sessions. Completed graph blocks are encoded outside the callback and enqueued as canonical 48 kHz mono/stereo float32 WAV transfers. Four preallocated AudioQueue buffers bound device memory; the callback only returns buffer ownership and updates lock-free counters. Input must contain 1–8192 frames with finite samples within -1..1. Invalid layouts, lengths, amplitudes, queue timeouts and mismatched acknowledgments are explicit failures.
+
+Prism transfers 2048 graph frames at a time, while VST processing packets remain at most 256 frames. A typed pending device record retains the exact graph, sample clock and component states until the device acknowledges the transfer. Audio slices are reused across blocks. Audition drains every accepted frame; continuous Play schedules further blocks until Stop. Stop during opening first adopts the returned handle and then releases it, preventing a late-open resource leak. Host shutdown also releases owned sessions.
+
+The reference producer allocates and runs outside the device callback. It is not an allocation-free low-latency renderer. A native loaded-binary journey streamed 985088 frames through JX10, two ADelay instances, LFO modulation and the real device with zero queue-empty observations, then verified worker disposal. Queue-empty callback counters are diagnostics, not acoustic measurements. Graph edits are currently captured on restart; transactional live replacement, host latency compensation and non-macOS device implementations remain outstanding.
+
+Queue-empty observations must be monotonic within a device session. The controller rejects decreasing counters and retains a visible warning for a nonzero count through the audition completion. The backend emits a structured `audio.queue_empty` diagnostic when that count increases, outside the audio callback. A deliberate producer pause exercises this path on the real device.
+
+Latest verification (2026-11-16): the final sustained native reruns failed the unchanged zero-empty-queue assertion, including a rerun without concurrent test compilation. Earlier successful 985088-frame evidence is not reproducible reliability. Exact finite VST-chain PCM still passes. Continuous playback is experimental pending producer-throughput work; do not treat this branch as release-ready.

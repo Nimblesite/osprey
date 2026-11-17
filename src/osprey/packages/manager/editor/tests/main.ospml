@@ -138,7 +138,7 @@ pick (d, key) = deliver (d, chooserOf (frameTrees (walkOf d), "rows", \told => e
 
 // ---- reading the last step ----
 
-storeOf d = d.drivenSurface.surfaceSession.sessionStore
+storeOf d = Drive::holding d
 
 ticketsOf d = d.drivenSurface.surfaceAsked
 

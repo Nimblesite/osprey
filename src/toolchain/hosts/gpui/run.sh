@@ -30,6 +30,6 @@ fi
 export OSPREY_GPUI_APP_DIR="$app/build"
 cd "$here"
 if [ "${1:-}" = --build ]; then
-    exec cargo build --release --quiet
+    exec cargo build --release
 fi
-exec cargo run --release --quiet -- "$@"
+exec cargo run --release -- "$@"

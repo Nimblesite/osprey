@@ -92,7 +92,7 @@ controls () = driven.drivenSeen.renderedControls
 
 control label = Views::control (seen (), label)
 
-storeNow () = driven.drivenSurface.surfaceSession.sessionStore
+storeNow () = Drive::holding driven
 
 stageOf store = store.walk.walkStage
 
