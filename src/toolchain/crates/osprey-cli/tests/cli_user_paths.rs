@@ -356,8 +356,7 @@ fn hunt_answers_before_it_looks_for_its_engine() {
 }
 
 // `--run` needs a WASI host: Node's, the one the wasm corpus runs under, is on
-// every CI runner, wasmtime is not [WASM-TARGET]. The host is a POSIX shell script.
-#[cfg(unix)]
+// every CI runner, wasmtime is not [WASM-TARGET].
 fn node_wasi_host(scratch: &Scratch) -> PathBuf {
     let smoke =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../scripts/wasm/wasm-smoke.mjs");
@@ -374,7 +373,6 @@ fn node_wasi_host(scratch: &Scratch) -> PathBuf {
 // Every wasm32 build lowers through a scratch `.wasm.ll` and `.wasm.o`, and
 // `--run` through a scratch `.wasm`: none of them may outlive the command, or
 // each corpus run leaves thousands of files in the temp directory.
-#[cfg(unix)]
 #[test]
 fn wasm32_builds_leave_no_scratch_files_behind() {
     let scratch = Scratch::new("wasm_scratch");
