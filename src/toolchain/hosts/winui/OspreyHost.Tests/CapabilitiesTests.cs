@@ -503,4 +503,3 @@ sealed class Loopback : IAsyncDisposable
         stop.Dispose();
     }
 }
-
