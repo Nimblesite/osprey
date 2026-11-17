@@ -86,6 +86,16 @@ impl<'a> Screen<'a> {
         self.matching_scene(&|_| true)
     }
 
+    /// The event binding of the current scene at a frame row.
+    pub(crate) fn scene_binding(&self, row: usize) -> Option<i64> {
+        self.shown.scenes.get(&row)?;
+        self.regions()
+            .into_iter()
+            .find_map(|node| find(node, &|node| scene_row(node) == Some(row)))
+            .and_then(tree::ordinal)
+            .or_else(|| self.shown.controls.get(row)?.action)
+    }
+
     /// Find the scene owning an element, preserving that scene's event binding.
     fn matching_scene(&self, accepts: &dyn Fn(&Scene) -> bool) -> Option<(i64, &Scene)> {
         if let Some((row, number)) = self.scene_record(accepts) {

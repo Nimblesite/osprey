@@ -1,5 +1,4 @@
-#[cfg(unix)]
-mod unix {
+mod on_disk {
     use super::super::*;
 
     /// Sites are located by their source text rather than by line number: they
@@ -29,7 +28,8 @@ mod unix {
             .join(relative);
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("read {relative}: {error}"));
-        (source, format!("file://{}", path.display()))
+        let uri = crate::test_support::repo_uri(&format!("../../../osprey/examples/{relative}"));
+        (source, uri)
     }
 
     /// Zero-based line and column of `needle`'s first occurrence.
@@ -140,6 +140,52 @@ mod unix {
         let (line, column) = locate(&ledger, CREDIT_PERFORM);
         let end = column.saturating_add(width(CREDIT_OPERATION));
         assert_eq!(handler.span, (line, column, line, end));
+    }
+
+    /// `uri` as VS Code sends it: on Windows the drive letter is lower case and
+    /// its colon percent-encoded (`file:///c%3A/...`).
+    fn editor_spelling(uri: &str) -> String {
+        match uri.strip_prefix("file:///").map(str::as_bytes) {
+            Some([drive, b':', ..]) => format!(
+                "file:///{}%3A{}",
+                char::from(drive.to_ascii_lowercase()),
+                &uri["file:///C:".len()..]
+            ),
+            _ => uri.to_owned(),
+        }
+    }
+
+    // The editor's own spelling of the file it asks about still finds the
+    // handler arm in that same file ([LSP-IMPLEMENTATIONS-EFFECT-HANDLERS]).
+    #[test]
+    fn implementations_at_a_declaration_answer_in_the_editors_uri_spelling() {
+        let relative = "projects/modules/src/store/ledger.ospml";
+        let (source, uri) = example_source(relative);
+        let (line, column, ..) = span_in(&source, "debit : (int, int, string)", "debit");
+        let found: Vec<(String, Span)> = crate::test_support::implementations(
+            &source,
+            &editor_spelling(&uri),
+            line,
+            column,
+            PositionEncoding::Utf16,
+        )
+        .into_iter()
+        .map(|location| {
+            (
+                location
+                    .uri
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned(),
+                location.span,
+            )
+        })
+        .collect();
+        assert_eq!(
+            found,
+            spans_in(relative, &["debit id cents note =>"], "debit")
+        );
     }
 
     // An operation answers with its arms from the declaration and from a

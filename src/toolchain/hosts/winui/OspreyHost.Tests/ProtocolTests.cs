@@ -207,6 +207,18 @@ public sealed class ProtocolTests
         var self = Launch.Parse(["--self-test", "script.json", "shots", "flock.dll", "--elevated"]);
         Assert.Equal(("flock.dll", "script.json", "shots", false), (self!.Library, self.Script, self.Shots, self.Headless));
         Assert.Equal(["--elevated"], self.Arguments);
+        Assert.Equal(Doubles.None, self.Doubles);
+        var doubled = Launch.Parse(["--headless", "--self-test", "coding.json", "shots", "--store", @"C:\work\store", "--http-double", "doubles.json", "--folder-double", @"C:\other", "--patience", "400", "agent.dll", @"C:\work\calc-project", "--store"]);
+        Assert.Equal(("agent.dll", "coding.json", "shots", true), (doubled!.Library, doubled.Script, doubled.Shots, doubled.Headless));
+        Assert.Equal(new Doubles(@"C:\work\store", "doubles.json", @"C:\other", 400), doubled.Doubles);
+        // Flags after the DLL belong to the application, a stand-in's own value included.
+        Assert.Equal([@"C:\work\calc-project", "--store"], doubled.Arguments);
+        var first = Launch.Parse(["--store", "s", "--self-test", "x.json", "out", "app.dll"]);
+        Assert.Equal(("s", "x.json"), (first!.Doubles.Store, first.Script));
+        foreach (var refused in new[] { new[] { "--patience", "0", "app.dll" }, ["--patience", "soon", "app.dll"], ["--store"], ["--http-double", "d.json"], ["--self-test", "a.json", "out", "--self-test", "b.json", "out2", "app.dll"] })
+        {
+            Assert.Null(Launch.Parse(refused));
+        }
     }
 
     [Fact]

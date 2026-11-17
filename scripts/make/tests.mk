@@ -390,7 +390,7 @@ _test_profiler:
 _test_vscode_extension: _vsix_verify $(EXT_NODE_DEPS)
 	@echo "==> [vscode-extension] staging osprey as 'osprey' for LSP integration..."
 	$(MKDIR) target/path-bin
-	cp $(BIN) target/path-bin/osprey
+	cp $(BIN) target/path-bin/osprey$(EXE)
 	@echo "==> [vscode-extension] running tests with V8 coverage..."
 	$(RM) $(EXT_DIR)/coverage
 	cd $(EXT_DIR) && set -o pipefail && \

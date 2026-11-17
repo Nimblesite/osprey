@@ -98,7 +98,9 @@ public sealed class CoverageTests
         Assert.Contains("measure-folders", Framework.CapabilityKinds);
         Assert.Contains("save-file", Coverage.Answered);
         Assert.Contains("animate", Coverage.Answered);
-        Assert.Contains("process-stop", Coverage.Unanswered);
+        Assert.Contains("process-stop", Coverage.Answered);
+        Assert.Contains("http", Coverage.Answered);
+        Assert.Contains("recognise", Coverage.Unanswered);
         Assert.Contains("chevron", Framework.Symbols);
         Assert.DoesNotContain("nosymbol", Framework.Symbols);
     }

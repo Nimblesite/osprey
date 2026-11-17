@@ -16,6 +16,7 @@ import {
 } from "../../client/src/profiler/flame-model";
 import { flamePanel, showFlamePanel } from "../../client/src/profiler/profiler-panel";
 import type { ProfileSummary } from "../../client/src/profiler/summary";
+import { uriPath } from "./osprey-test-env";
 import { COMMAND_MS, waitFor } from "./profiler-kit";
 
 const DOC: SpeedscopeFile = {
@@ -106,7 +107,7 @@ suite("profiler-panel revealSource", () => {
 
   test("the router ignores junk, survives unopenable files, and opens a selected line", async () => {
     const activeLine = (): number | undefined =>
-      vscode.window.activeTextEditor?.document.uri.fsPath === filePath
+      vscode.window.activeTextEditor?.document.uri.fsPath === uriPath(filePath)
         ? vscode.window.activeTextEditor.selection.active.line : undefined;
     handleFlamegraphMessage({ type: "noise" });
     handleFlamegraphMessage({ type: "select", file: "/definitely/not/here.osp", line: 1 });

@@ -451,6 +451,14 @@ test ("undo and redo at the edges of their history, a refused document shown in 
     // Nothing recorded yet: undo and redo restore nothing, and the lever's own change is the first snapshot.
     expect (length fresh.past, 0)
     forEachList (["undo", "redo"], \lever => expect (histories (fresh, lever), "1/0"))
+    emptyUndo = ui::Ask(askName = "flow.undo", askInputs = [])
+    machine = fresh.screen.screenMachine
+    pending = machine(asks = [emptyUndo])
+    screen = fresh.screen
+    after = (signalflow::Flow::settled (fresh(screen = screen(screenMachine = pending)))).stepStore
+    expect (length after.past, 0)
+    expect (length after.future, 0)
+    expect (length (Machines::requests after.screen.screenMachine), 0)
     settled = (signalflow::Flow::settled fresh).stepStore
     forEachList (["undo", "redo"], \lever => expect (histories (settled, lever), "${length settled.past}/0"))
     refused = App::loaded "not json"

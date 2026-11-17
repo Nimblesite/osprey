@@ -49,11 +49,11 @@ module GraphPreview
         _ => length (filterList (listConcat n.inputs n.outputs, \p => p.channels != 1)) > 0
 
     (** Edits remain possible during rendering, but cannot mutate the captured graph or bindings. *)
-    begin (editor, platform, continuous) = match platform == "macos"
-        false => Runtime::step (editor(message = "This preview device adapter currently requires macOS."))
+    begin (editor, platform, continuous) = match platform == "macos" || (platform == "windows" && editor.audioPath != "")
+        false => Runtime::step (editor(message = "Launch Prism with a supported audio device adapter."))
         true => match editor.renderTicket != ""
             true => Runtime::step (editor(message = "The current graph audition is still rendering."))
-            false => match continuous == false && editor.workerPath == "" && length (filterList (editor.graph.nodes, requiresHost)) == 0
+            false => match platform == "macos" && continuous == false && editor.workerPath == "" && editor.audioPath == "" && length (filterList (editor.graph.nodes, requiresHost)) == 0
                 true => Preview::play (editor, platform)
                 false => match editor.renderSerial == 9223372036854775807
                     true => problem (editor, "No more render identities are available.")
@@ -63,7 +63,7 @@ module GraphPreview
     export play (editor, platform) = begin (editor, platform, false)
 
     (** Keep producing blocks until Stop; the running graph is captured at launch. *)
-    export live (editor, platform) = match editor.workerPath == ""
+    export live (editor, platform) = match editor.workerPath == "" && editor.audioPath == ""
         true => problem (editor, "Launch Prism with its packaged audio worker to play continuously.")
         false => begin (editor, platform, true)
 
@@ -124,9 +124,14 @@ module GraphPreview
                 Success step => stopOrContinue step
         false => match editor.renderStopping
             true => stopOrContinue (Runtime::step editor)
-            false => match GraphDevice::checked (editor, perform ui::Slices.fetch (GraphWorkers::output -1))
+            false => match GraphDevice::checked (editor, deviceReply (editor, outcome))
                 Error why => problem (editor, why)
                 Success receipt => deviceAdvanced (editor(renderEmptyCallbacks = receipt.emptyCallbacks))
+
+    // WinUI returns the line inline so its C ABI slice storage need not retain a new audio block every frame.
+    deviceReply (editor, outcome) = match editor.audioPath != ""
+        true => ui::Doc::text (ui::Doc::parse (outcome ?: ""), "output")
+        false => perform ui::Slices.fetch (GraphWorkers::output -1)
 
     closing (editor, outcome) = match ProcessResults::checked outcome
         Error why => Runtime::step (editor(message = "${editor.message} Worker cleanup failed: ${why}"))

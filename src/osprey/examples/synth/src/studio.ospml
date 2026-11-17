@@ -20,14 +20,14 @@ module Studio
 
     struck machine = ui::Lists::any (Machines::requests machine, \ask => ask.askName == "synth.strike")
 
-    // The struck key's request taken, its pitch shown, and the patch played at it.
-    sounded step =
+    // The struck key's request taken, its pitch shown, and the patch played at it through the launch's player.
+    sounded (arguments, step) =
         patch = Synth::patch (machineOf step.stepStore)
         heard = remade (step, Machines::feed (Machines::taken (machineOf step.stepStore), [Machines::fact ("hertz", Values::number patch.pitch)]))
-        Runtime::asking (heard.stepStore, listConcat heard.requests (Synth::played patch))
+        Runtime::asking (heard.stepStore, listConcat heard.requests (Synth::played (arguments, patch)))
 
-    voiced step = match struck (machineOf step.stepStore)
-        true => sounded step
+    voiced (arguments, step) = match struck (machineOf step.stepStore)
+        true => sounded (arguments, step)
         false => step
 
     (** Opens the editor in the Prism skin, unless `--skin` names another, with the keyboard deck shown and nothing played. *)
@@ -36,7 +36,7 @@ module Studio
         remade (step, Machines::feed (machineOf step.stepStore, [Machines::fact ("keys", Values::number 1.0)]))
 
     (** The editor's update; a struck key plays the patch at its pitch. *)
-    export update (context, store, message) = voiced (signalflow::App::update (context, store, message))
+    export update (context, store, message) = voiced (context.arguments, signalflow::App::update (context, store, message))
 
     (** The synth as its boundary runs it: the store drawn with its machine's live skin's theme. *)
     export program () = ui::Program(programInit = initial, programUpdate = update, programRender = signalflow::App::regions, programTheme = \store => Templates::theme (machineOf store))

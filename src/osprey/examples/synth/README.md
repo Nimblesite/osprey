@@ -9,7 +9,9 @@ The menu offers sine oscillators, low-pass filters, gains, mixers, delays, MIDI 
 ## Run
 
 ```sh
-make -C src/toolchain/targets/macos synth
+make -C src/toolchain/targets/macos synth             # or: bash src/osprey/examples/synth/run.sh
+make -C src/toolchain/targets/windows synth           # in its sandbox on Windows
+make -C src/toolchain/targets/windows/tests synth     # its Windows self-test against goldens/windows
 ```
 
 Open **Modules** and click a component to add it, or drag it onto the canvas. **Patch controls** opens the selected-module inspector: choose a **Module**, edit its **Parameters**, then use **Connections** to select an output and connect or disconnect an input. Only the chosen module's controls are shown; **Remove module** removes that module and its cables. Compact **Audition**, **Play** and **Stop** controls remain together above the inspector; **Add to patch** holds component and VST creation. The inspector journey exercises selection and routing through these visible controls [PRISM-ROUTING-EDITOR].
@@ -20,7 +22,7 @@ The keyboard stays docked to the bottom of the window. **Close keyboard ×** hid
 
 **Play patch** continuously produces the captured graph until **Stop playback**. **Audition patch** uses the same device path for a 256 ms preview. On macOS the packaged worker sends checked mono/stereo 48 kHz float32 PCM into a bounded AudioQueue; each VST instance survives successive graph blocks. Built-in DSP state and sample-positioned MIDI/modulation also continue between blocks. Stop, failure and ordinary application shutdown release the workers.
 
-The current running graph is frozen at start: stop and play again to apply editor changes. The producer allocates outside the audio callback and transfers 2048-frame blocks; this is not a low-latency, allocation-free synthesis engine. The native journey checks sustained graph/device processing and that Stop leaves no owned workers alive. Individual runs have passed over twenty seconds without an empty-queue callback, but repeated runs have exposed queue starvation; reliable continuous playback remains unfinished. Windows and other device adapters, graph persistence and latency compensation remain pending. Without the packaged worker, a mono audition can still use the existing temporary-WAV `afplay` adapter; continuous playback reports that the worker is required.
+The running graph is frozen at start. Stop and play again to apply editor changes. The producer allocates outside the audio callback and transfers 2048-frame blocks. The native journey checks sustained graph audio and that Stop leaves no owned workers alive. Repeated runs have exposed queue starvation, which Prism reports in the editor. Windows uses WinMM for audition and playback of built-in patches. VST3 hosting currently uses the macOS worker. Graph persistence and latency compensation remain pending. On macOS a mono audition without the packaged worker can use `afplay`. Continuous playback requires the packaged worker.
 
 If the device queue runs empty, Prism retains a visible warning with the observed count. The backend emits structured `audio.queue_empty` diagnostics from the producer thread; the callback never logs. A warning is not an acoustic measurement, and reducing patch workload may help.
 

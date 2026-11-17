@@ -23,11 +23,15 @@ sealed partial class Renderer
         foreach (var child in node.Items("children"))
         {
             var element = Draw(scope, child);
-            var room = child.Text("kind") == "spacer" ? Rest : across ? GridLength.Auto : Room(child);
+            var room = child.Text("kind") == "spacer" || across && Grows(child) ? Rest : across ? GridLength.Auto : Room(child);
             Remember(child, Place(grid, element, across, room));
             if (across)
             {
                 ((FrameworkElement)element).VerticalAlignment = VerticalAlignment.Center;
+                if (child.Text("kind") == "framed" && child.Member("style").Number("width") > 0)
+                {
+                    ((FrameworkElement)element).Width = child.Member("style").Number("width");
+                }
             }
         }
         return grid;
@@ -42,6 +46,7 @@ sealed partial class Renderer
         "slot" => regions.Find(node.Text("key")) is { } region && Fills(region.Node, depth + 1),
         "stack" => node.Text("axis") != "horizontal" && node.Items("children").Any(child => Fills(child, depth + 1)),
         "themed" => node.Has("body") && Fills(node.Member("body"), depth + 1),
+        "framed" => Grows(node),
         var kind => Fillers.Contains(kind),
     };
 
@@ -64,7 +69,7 @@ sealed partial class Renderer
         var fill = Token(theme, "background", dark);
         var inner = new ContentControl
         {
-            Content = Draw(scope, body),
+            Content = Under(theme, () => Draw(scope, body)),
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             VerticalContentAlignment = VerticalAlignment.Stretch,
             RequestedTheme = fill is { } colour && Luminance(colour) < 0.5 ? ElementTheme.Dark : ElementTheme.Light,

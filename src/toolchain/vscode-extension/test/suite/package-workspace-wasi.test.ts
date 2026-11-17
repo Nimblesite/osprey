@@ -67,9 +67,14 @@ suite("native live instance", () => {
       assert.ok(next.revision > first.revision, "each call seals a new revision");
       assert.ok(words(next).includes("1"), words(next));
 
-      const refused = await runtime.event({ kind: 2, ordinal: 0, words: "", detail: "", x: 0, y: 0, down: false, shift: false });
+      const windowEvent = await runtime.event({ kind: 2, ordinal: 0, words: "", detail: "", x: 0, y: 0, down: false, shift: false });
+      assert.strictEqual(windowEvent.status, 0, "window events leave Tally drawn");
+      assert.strictEqual(words(windowEvent), words(next));
+
+      const refused = await runtime.event({ kind: 0, ordinal: shown.controls.length, words: "", detail: "", x: 0, y: 0, down: false, shift: false });
       assert.strictEqual(refused.status, 1, "a refused event still draws a whole frame");
       assert.strictEqual(refused.runs.views.byteLength / VIEW_ROW_BYTES, 10);
+      assert.strictEqual(words(refused), words(next));
     } finally {
       runtime.dispose();
     }

@@ -687,7 +687,7 @@ suite("Osprey test documentation and profiling", () => {
       ]);
       const narration = output.join("");
       assert.ok(narration.includes("ok 1 - x"), narration);
-      assert.ok(narration.includes("# profiling /w/s.test.osp"), narration);
+      assert.ok(narration.includes(`# profiling ${vscode.Uri.file("/w/s.test.osp").fsPath}`), narration);
       assert.ok(narration.includes("# profile artifacts: /tmp/p/s"), narration);
       assert.ok(narration.includes("12 samples over 0.4s"), narration);
       assert.ok(

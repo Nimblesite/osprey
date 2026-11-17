@@ -23,9 +23,8 @@ namespace Osprey.Host.WinUI;
 /// accessibility tree an agent reads [UI-MACHINE-SELF-TEST]. A failure writes that tree to the log.
 /// Any diagnostic the window shows fails the test.
 /// </summary>
-sealed class SelfTest(HostWindow window, string script, string shots, bool onScreen)
+sealed class SelfTest(HostWindow window, string script, string shots, bool onScreen, TimeSpan patience)
 {
-    static readonly TimeSpan Patience = TimeSpan.FromSeconds(90);
     static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(100);
     static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(400);
 
@@ -68,7 +67,7 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         for (var index = 0; index < steps.Count; index++)
         {
             var (verb, words) = steps[index];
-            var named = $"{index + 1:00} {verb} {string.Join(" = ", words)}";
+            var named = $"{index + 1:00} {verb} {Logged(verb, words)}";
             log.AppendLine(named);
             Progress.Note(named);
             if (await Do(verb, words) is { } failure)
@@ -80,11 +79,16 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         return null;
     }
 
+    // A step as the trail records it: what a `type` step enters may be a key, so only its length is kept.
+    static string Logged(string verb, string[] words) => verb == "type" && words.Length > 1
+        ? $"{words[0]} = ({words[1].Length} characters)"
+        : string.Join(" = ", words);
+
     Task<string?> Do(string verb, string[] words) => verb switch
     {
-        "wait" => Until(() => Find(words[0]) is not null, $"nothing shows \"{words[0]}\""),
-        "gone" => Until(() => Find(words[0]) is null, $"\"{words[0]}\" still shows"),
-        "invoke" => Act(words[0], Invoke),
+        "wait" => Until(() => Mentions(words[0]), $"nothing shows \"{words[0]}\""),
+        "gone" => Until(() => !Mentions(words[0]), $"\"{words[0]}\" still shows"),
+        "invoke" => Act(words[0], Invoke, Invocable, "no enabled control is named"),
         "toggle" => Act(words[0], Toggle),
         "choose" => Chosen(words[0]),
         "type" => Act(words[0], element => Type(element, words[1])),
@@ -109,11 +113,20 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         return null;
     }
 
+    // A list remade by a redraw makes its rows a layout pass later, so a picture waits until every shown
+    // list has drawn its first row, or the same step would picture an empty list on one run in some.
     async Task<string?> Shot(string name)
     {
+        if (await Until(RowsDrawn, "a list never drew its rows") is { } late)
+        {
+            return late;
+        }
         await Shoot(name);
         return null;
     }
+
+    bool RowsDrawn() => window.Content is not { } root || Tree(root).OfType<ListView>().Where(Shown).All(list =>
+        list.Items.Count == 0 || list.Items[0] is FrameworkElement { ActualHeight: > 0 } first && VisualTreeHelper.GetParent(first) is not null);
 
     async Task Shoot(string name)
     {
@@ -130,15 +143,16 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         }
     }
 
-    async Task<string?> Act(string words, Func<FrameworkElement, string?> act)
+    async Task<string?> Act(string words, Func<FrameworkElement, string?> act, Func<string, FrameworkElement?>? finder = null, string absent = "nothing shows")
     {
-        if (await Until(() => Find(words) is not null, $"nothing shows \"{words}\"") is { } missing)
+        var find = finder ?? Find;
+        if (await Until(() => find(words) is not null, $"{absent} \"{words}\"") is { } missing)
         {
             return missing;
         }
         try
         {
-            return act(Find(words)!);
+            return act(find(words)!);
         }
         catch (Exception problem) when (problem is ElementNotEnabledException or InvalidOperationException)
         {
@@ -146,13 +160,41 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         }
     }
 
+    // A button named in full, or else the first whose name holds the words, as the SwiftUI host reads an
+    // `invoke`: a disclosure's title counts what it did ("Ran 1 command, Read 1 file").
+    // Only an enabled one counts, as on the SwiftUI host: a step waits for the button to become usable.
+    FrameworkElement? Invocable(string words)
+    {
+        if (window.Content is not { } root) return null;
+        if (Find(words) is { } named && Up<ButtonBase>(named) is { IsEnabled: true } exact) return exact;
+        var buttons = Tree(root).OfType<ButtonBase>().Where(button => Shown(button) && button.IsEnabled).ToArray();
+        return buttons.FirstOrDefault(button => Says(button, words) || Named(button) == words)
+            ?? buttons.FirstOrDefault(button => Named(button).Contains(words, StringComparison.Ordinal));
+    }
+
+    static string Named(ButtonBase button) => AutomationProperties.GetName(button) is { Length: > 0 } name ? name : button.Content as string ?? "";
+
     static string? Invoke(FrameworkElement element) => Up<ButtonBase>(element) switch
     {
+        ToggleButton header when Up<Expander>(header) is { } disclosure => Invoked(() => Flipped(new ExpanderAutomationPeer(disclosure))),
         AppBarButton bar => Invoked(() => new AppBarButtonAutomationPeer(bar).Invoke()),
         HyperlinkButton link => Invoked(() => new HyperlinkButtonAutomationPeer(link).Invoke()),
         Button button => Invoked(() => new ButtonAutomationPeer(button).Invoke()),
         _ => "it is not a button",
     };
+
+    // A disclosure opens when shut and shuts when open, as a click on its header does.
+    static void Flipped(ExpanderAutomationPeer peer)
+    {
+        if (peer.ExpandCollapseState == Microsoft.UI.Xaml.Automation.ExpandCollapseState.Expanded)
+        {
+            peer.Collapse();
+        }
+        else
+        {
+            peer.Expand();
+        }
+    }
 
     static string? Set(FrameworkElement element, double value) => Up<Slider>(element) is { } slider
         ? Invoked(() => new SliderAutomationPeer(slider).SetValue(value))
@@ -191,12 +233,17 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
 
     static string? Type(FrameworkElement element, string text)
     {
-        if (Up<TextBox>(element) is not { } box)
+        if (Up<TextBox>(element) is { } box)
         {
-            return "it is not a text field";
+            box.Text = text;
+            return null;
         }
-        box.Text = text;
-        return null;
+        if (Up<PasswordBox>(element) is { } secret)
+        {
+            secret.Password = text;
+            return null;
+        }
+        return "it is not a text field";
     }
 
     // A row a person would scroll to: when nothing on screen shows `words`, the list holding such a
@@ -224,21 +271,34 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
     }
 
     // A picker whose item shows `words`, whether or not its flyout has made the item yet.
+    // As the SwiftUI host reads a `choose`, an exact choice wins over one that only holds the words: its
+    // label, a label ending " · <words>" or its key, so `GLM-5.3` picks `GLM · GLM-5.3` before `GLM-5.3 Highspeed`.
     (ComboBox Menu, int Index)? Picked(string words)
     {
-        var menus = window.Content is { } root ? Tree(root).OfType<ComboBox>() : Enumerable.Empty<ComboBox>();
-        foreach (var menu in menus)
+        var menus = window.Content is { } root ? Tree(root).OfType<ComboBox>().ToList() : [];
+        foreach (var exact in new[] { true, false })
         {
-            var items = menu.Items.OfType<ComboBoxItem>().ToList();
-            for (var index = 0; index < items.Count; index++)
+            foreach (var menu in menus)
             {
-                if (Holds(items[index].Content, words))
+                var items = menu.Items.OfType<ComboBoxItem>().ToList();
+                for (var index = 0; index < items.Count; index++)
                 {
-                    return (menu, index);
+                    if (Offers(items[index], words, exact))
+                    {
+                        return (menu, index);
+                    }
                 }
             }
         }
         return null;
+    }
+
+    static bool Offers(ComboBoxItem item, string words, bool exact)
+    {
+        var label = item.Content as string ?? "";
+        return exact
+            ? Holds(item.Content, words) || label.EndsWith(" · " + words, StringComparison.Ordinal) || item.Tag as string == words
+            : label.Contains(words, StringComparison.Ordinal);
     }
 
     // The list and row whose content shows `words`, whether or not the list has made the row yet.
@@ -287,14 +347,21 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         return null;
     }
 
-    static async Task<string?> Until(Func<bool> holds, string failure)
+    bool Laid(Func<bool> holds)
+    {
+        window.Content?.UpdateLayout();
+        return holds();
+    }
+
+    async Task<string?> Until(Func<bool> holds, string failure)
     {
         var clock = Stopwatch.StartNew();
-        while (!holds())
+        // A control a redraw just made has no size until layout runs, and would read as not shown.
+        while (!Laid(holds))
         {
-            if (clock.Elapsed > Patience)
+            if (clock.Elapsed > patience)
             {
-                return $"{failure} after {Patience.TotalSeconds:0} s";
+                return $"{failure} after {patience.TotalSeconds:0} s";
             }
             await Task.Delay(Poll);
         }
@@ -304,6 +371,19 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
     // The first element on screen that shows `words`: a text, a command's label, or an automation name.
     FrameworkElement? Find(string words) =>
         window.Content is { } root ? Tree(root).OfType<FrameworkElement>().FirstOrDefault(element => Shown(element) && Says(element, words)) : null;
+
+    // Whether any shown text or name holds `words`, as the SwiftUI host reads a `wait`; an action still needs its exact name.
+    bool Mentions(string words) =>
+        window.Content is { } root && Tree(root).OfType<FrameworkElement>().Any(element => Shown(element) && (Spoken(element, words) || Offered(element, words)));
+
+    // A shown picker offers its choices even while it is shut, as the told tree the SwiftUI host reads holds them.
+    static bool Offered(FrameworkElement element, string words) =>
+        element is ComboBox menu && menu.Items.OfType<ComboBoxItem>().Any(item => (item.Content as string ?? "").Contains(words, StringComparison.Ordinal));
+
+    static bool Spoken(FrameworkElement element, string words) =>
+        (element is TextBlock text && text.Text.Contains(words, StringComparison.Ordinal))
+        || AutomationProperties.GetName(element).Contains(words, StringComparison.Ordinal)
+        || Says(element, words);
 
     static bool Says(FrameworkElement element, string words) => element switch
     {

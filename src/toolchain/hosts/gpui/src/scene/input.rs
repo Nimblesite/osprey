@@ -51,12 +51,7 @@ pub(super) fn interactive<'b>(
         )
         .on_mouse_move(mouse_move(handle.clone(), binding, key.clone()));
     surface
-        .child(paint::canvas(
-            key.clone(),
-            handle,
-            binding_for_paint,
-            decoded,
-        ))
+        .child(paint::canvas(row, handle, binding_for_paint, decoded))
         .children(access)
         .into_any_element()
 }
@@ -226,6 +221,7 @@ fn reset_hover(key: &str, window: &mut Window, cx: &mut Context<HostView>) {
 /// Tells the application its scene's region is now `width` by `height` scene units, on the next
 /// frame rather than from inside a paint.
 pub(super) fn viewed(
+    row: usize,
     binding: &Binding,
     (width, height): (f32, f32),
     window: &mut Window,
@@ -233,6 +229,12 @@ pub(super) fn viewed(
 ) {
     let binding = *binding;
     cx.on_next_frame(window, move |view, window, cx| {
+        if crate::screen::Screen::new(view.shown.as_ref()).scene_binding(row)
+            != Some(binding.ordinal)
+        {
+            view.scene_transforms.remove(&format!("canvas:{row}"));
+            return;
+        }
         let touch = Touch::viewed(binding.ordinal, f64::from(width), f64::from(height));
         view.send(touch, window, cx);
     });

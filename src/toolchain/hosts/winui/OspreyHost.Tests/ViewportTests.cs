@@ -1,9 +1,9 @@
 namespace Osprey.Host.Tests;
 
 /// <summary>
-/// [UI-PROTOCOL] The frame viewport fields: this host draws neither a frame sized to the window nor
-/// a scrolling frame, so a told frame that asks for one is refused whole, wherever it nests, and
-/// the content-sized defaults are kept.
+/// [UI-PROTOCOL] The frame viewport fields: this host draws a scrolling frame but not a frame sized
+/// to the window, so a told frame that asks for that is refused whole, wherever it nests, and the
+/// content-sized default is kept.
 /// </summary>
 public sealed class ViewportTests
 {
@@ -40,11 +40,11 @@ public sealed class ViewportTests
     }
 
     [Fact]
-    public void AScrollingFrameIsRefused()
+    public void AScrollingFrameIsDrawnWhereverItNests()
     {
-        var problem = ViewportRefusal(Framed(Style("scrollY", Node.Of(true))));
-        Assert.Contains("scrollY", problem);
-        Assert.Contains("region root", problem);
+        Assert.Equal("accepted a frame this host cannot draw", ViewportRefusal(Framed(Style("scrollY", Node.Of(true)))));
+        var nested = Framed(Node.Of(new Dictionary<string, Node>()), Framed(Style("scrollY", Node.Of(true))));
+        Assert.Equal("accepted a frame this host cannot draw", ViewportRefusal(nested));
     }
 
     [Fact]
@@ -52,8 +52,8 @@ public sealed class ViewportTests
     {
         var stack = Node.Of(new Dictionary<string, Node> { ["kind"] = Node.Of("stack"), ["children"] = Node.Of(new List<Node> { Framed(Style("viewportHeightInset", Node.Of(12L))) }) });
         Assert.Contains("viewportHeightInset", ViewportRefusal(stack));
-        var body = Framed(Style("scrollY", Node.Of(true)));
-        Assert.Contains("scrollY", ViewportRefusal(Framed(Node.Of(new Dictionary<string, Node>()), body)));
+        var body = Framed(Style("viewportHeightInset", Node.Of(0L)));
+        Assert.Contains("viewportHeightInset", ViewportRefusal(Framed(Style("scrollY", Node.Of(true)), body)));
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public sealed class ViewportTests
     [Fact]
     public void OnlyAbsentOrTheContentSizedDefaultIsAccepted()
     {
-        Assert.Equal([], new[] { Framed(default), Framed(Style("viewportHeightInset", Node.Of(-1L))), Framed(Style("scrollY", Node.Of(false))), Framed(Node.Of(new Dictionary<string, Node>())) }
+        Assert.Equal([], new[] { Framed(default), Framed(Style("viewportHeightInset", Node.Of(-1L))), Framed(Style("scrollY", Node.Of(false))), Framed(Style("scrollY", Node.Of(true))), Framed(Node.Of(new Dictionary<string, Node>())) }
             .Select(problem => ViewportRefusal(problem)).Where(problem => problem != "accepted a frame this host cannot draw"));
         foreach (var inset in new[] { -2L, long.MinValue })
         {

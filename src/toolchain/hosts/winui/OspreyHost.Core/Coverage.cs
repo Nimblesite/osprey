@@ -22,7 +22,7 @@ public static class Coverage
         "text", "stack", "section", "screen", "split", "layer", "context-menu", "aside", "tabs", "slot",
         "pair", "badge", "label", "icon", "link", "spacer", "divider", "segments", "empty", "progress",
         "meter", "swatch", "rows", "button", "field", "toggle", "picker", "disclosure", "alert", "scene",
-        "themed",
+        "themed", "framed", "rich-text",
     ];
 
     /// <summary>
@@ -31,7 +31,7 @@ public static class Coverage
     /// </summary>
     public static IReadOnlyList<string> Refused { get; } =
     [
-        "rich-text", "framed", "dialog", "math", "image", "video", "editor", "board",
+        "dialog", "math", "image", "video", "editor", "board",
     ];
 
     /// <summary>Capability kinds this host answers: the adapters', and the frame clock, which the session keeps.</summary>
@@ -40,9 +40,8 @@ public static class Coverage
     /// <summary>Capability kinds this host refuses with an error completion, not yet answered (plan 0037).</summary>
     public static IReadOnlyList<string> Unanswered { get; } =
     [
-        "list-directories", "read-plists", "read-texts", "fingerprint", "http", "host-call",
+        "list-directories", "read-plists", "read-texts", "fingerprint",
         "running-applications", "open-settings", "recognise",
-        "process-start", "process-write", "process-read", "process-stop",
     ];
 
     /// <summary>The visible diagnostic shown in place of a node kind this host does not draw.</summary>

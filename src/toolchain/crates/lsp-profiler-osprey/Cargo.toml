@@ -8,7 +8,6 @@ repository.workspace = true
 
 [dependencies]
 lsp-profiler = { workspace = true }
-osprey-profiler = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -16,6 +15,11 @@ sysinfo = { workspace = true }
 thiserror = "2"
 tokio = { workspace = true, features = ["net", "time", "rt"] }
 tracing = { workspace = true }
+
+# Only the unix live-attach modules (attach, cpu, protocol, session) read the
+# profiler's image and live-frame types; Windows builds the attach_none stub.
+[target.'cfg(unix)'.dependencies]
+osprey-profiler = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "time", "test-util"] }

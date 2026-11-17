@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Windows.System;
 
@@ -30,13 +31,17 @@ sealed partial class Renderer
     UIElement Field(Scope scope, Node node)
     {
         var emit = Emit(node);
+        // A screen reader names a field by its label, or by its prompt when it has none.
+        var name = node.Text("label") is { Length: > 0 } label ? label : node.Text("prompt");
         if (node.Flag("secure"))
         {
             var secret = new PasswordBox { Header = node.Text("label"), PlaceholderText = node.Text("prompt"), Password = node.Text("value") };
+            AutomationProperties.SetName(secret, name);
             secret.PasswordChanged += (_, _) => emit(secret.Password);
             return secret;
         }
         var box = new TextBox { Header = node.Text("label"), PlaceholderText = node.Text("prompt"), Text = node.Text("value"), AcceptsReturn = node.Flag("multiline") };
+        AutomationProperties.SetName(box, name);
         if (node.Text("commit") == "submit")
         {
             box.KeyDown += (_, args) => { if (args.Key == VirtualKey.Enter) { emit(box.Text); } };
@@ -99,7 +104,8 @@ sealed partial class Renderer
     /// <summary>Selectable rows under their group headings; clicking one sends its key, and the chosen row shows selected.</summary>
     UIElement Rows(Scope scope, Node node)
     {
-        var list = new ListView { SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = true };
+        // A redraw makes the list anew, so its rows must not play their entrance each time: they would slide and fade in on every change.
+        var list = new ListView { SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = true, ItemContainerTransitions = [] };
         var group = "";
         foreach (var row in node.Items("rows"))
         {

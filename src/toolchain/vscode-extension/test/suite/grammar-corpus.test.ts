@@ -110,7 +110,9 @@ function violation(token: Token): string | undefined {
 }
 
 suite("TextMate grammar corpus", () => {
-  test("no Osprey file in the repository tokenizes with a broken or uncoloured token", async () => {
+  test("no Osprey file in the repository tokenizes with a broken or uncoloured token", async function () {
+    // The whole corpus, read and tokenized: well past mocha's 10 s default on a Windows disk.
+    this.timeout(60_000);
     const files = corpusFiles();
     assert.ok(files.length > 100, `corpus is present (${files.length} files)`);
     const problems: string[] = [];

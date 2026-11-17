@@ -361,7 +361,6 @@ fn signature_help_opens_on_the_callee_and_unwinds_closed_inner_calls() {
     assert!(signature_help(trigger, "file:///a.osp", 1, 5, U16).is_none());
 }
 
-#[cfg(unix)]
 #[test]
 fn a_symbol_declared_in_a_sibling_file_resolves_across_the_project() {
     // Single-file analysis made every imported symbol invisible: hovering
@@ -372,7 +371,8 @@ fn a_symbol_declared_in_a_sibling_file_resolves_across_the_project() {
         .join("../../../osprey/examples/projects/modules");
     let entry = root.join("src/main.ospml");
     let text = std::fs::read_to_string(&entry).expect("read the composition root");
-    let uri = format!("file://{}", entry.display());
+    let uri =
+        crate::test_support::repo_uri("../../../osprey/examples/projects/modules/src/main.ospml");
     let (line, column) = position_of(&text, "Ledger::sqlite");
 
     let hovered = hover(&text, &uri, line, column, U16).expect("cross-file hover");

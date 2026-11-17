@@ -21,8 +21,9 @@ sealed partial class HostWindow : Window
     readonly List<string> reported = [];
     readonly Session? session;
 
-    public HostWindow(string library, string[] arguments, bool steady)
+    public HostWindow(Launch launch)
     {
+        var (library, steady) = (launch.Library, launch.Script is not null);
         Progress.Note("window created");
         Title = Sandbox.Name(library);
         SystemBackdrop = new MicaBackdrop();
@@ -34,7 +35,7 @@ sealed partial class HostWindow : Window
         var root = new Border { IsHitTestVisible = !steady };
         Content = Layout(root);
         Progress.Note("content set");
-        session = Started(library, arguments, root, steady);
+        session = Started(launch, root, steady);
         if (session?.CanvasSize() is { } canvas)
         {
             Fit(canvas.Width, canvas.Height);
@@ -107,20 +108,33 @@ sealed partial class HostWindow : Window
         return grid;
     }
 
-    Session? Started(string library, string[] arguments, Border root, bool steady)
+    Session? Started(Launch launch, Border root, bool steady)
     {
         try
         {
-            var opened = new Session(Library.Open(library), Store.RootFor(library), root, DispatcherQueue, Report, new Pickers(Pick, PickFile, Save)) { Steady = steady };
+            var opened = new Session(Library.Open(launch.Library), root, DispatcherQueue, Report, Answering(launch)) { Steady = steady };
             root.ActualThemeChanged += (_, _) => opened.Appear(Dark(root));
-            opened.Begin(arguments, Dark(root));
+            opened.Begin(launch.Arguments, Dark(root));
             return opened;
         }
-        catch (Exception problem) when (problem is HostException or DllNotFoundException or BadImageFormatException)
+        catch (Exception problem) when (problem is HostException or DllNotFoundException or BadImageFormatException or IOException or System.Text.Json.JsonException)
         {
             Report([problem.Message]);
             return null;
         }
+    }
+
+    // The capability adapters, with any stand-in a self-test named in place of the store, the network or the folder picker.
+    Capabilities Answering(Launch launch)
+    {
+        var doubles = launch.Doubles;
+        Func<Task<string?>> folder = doubles.Folder is { } chosen ? () => Task.FromResult<string?>(chosen) : Pick;
+        var store = new Store(doubles.Store ?? Store.RootFor(launch.Library));
+        var requests = Path.Combine(launch.Shots ?? Path.GetTempPath(), "requests.jsonl");
+        return new Capabilities(new Pickers(folder, PickFile, Save), store)
+        {
+            Http = doubles.Http is { } replies ? new HttpDouble(replies, requests).Answer : Network.Fetch,
+        };
     }
 
     static bool Dark(FrameworkElement element) =>

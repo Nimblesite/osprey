@@ -3,7 +3,8 @@
 // Makefile and the scripts/make fragments it includes.
 import { readFileSync, readdirSync } from 'node:fs'
 
-export const workflowJobs = (file) => readFileSync(file, 'utf8').split(/(?=^  [\w-]+:\s*$)/m)
+export const workflowText = (file) => readFileSync(file, 'utf8').replaceAll('\r\n', '\n')
+export const workflowJobs = (file) => workflowText(file).split(/(?=^  [\w-]+:\s*$)/m)
 export const job = (name, file = '.github/workflows/release.yml') => workflowJobs(file).find((block) => block.startsWith(`  ${name}:`)) ?? ''
 
 // The root Makefile and the fragments it includes, where private steps live.

@@ -53,9 +53,13 @@ async function resolveLaunch(
   }
 }
 
+// Windows paths ignore case: a launch config's `C:\a.osp` is the open `c:\a.osp`.
+const pathKey = (file: string): string =>
+  process.platform === "win32" ? path.resolve(file).toLowerCase() : path.resolve(file);
+
 async function saveSource(program: string): Promise<void> {
   const document = workspace.textDocuments.find(
-    (item) => item.fileName === program,
+    (item) => pathKey(item.fileName) === pathKey(program),
   );
   if (document?.isDirty && !(await document.save())) {
     throw new Error("Save the Osprey file before debugging.");

@@ -77,12 +77,18 @@ suite("workbench bundle completeness", () => {
     fs.writeFileSync(path.join(bundle, process.platform === "win32" ? "osprey-registry.exe" : "osprey-registry"), "fixture");
     for (const name of ["workbench", "package-workspace"]) fs.copyFileSync(path.join(extension, "bin", `${process.platform}-${process.arch}`, `${name}.wasm`), path.join(bundle, `${name}.wasm`));
   });
-  teardown(() => fs.rmSync(root, { recursive: true, force: true }));
+  const linked = ["client", "test", "node_modules"];
+  // Unlink the junctions first: VS Code's Node (24.x) recursive rm on Windows
+  // descends through a junction and deleted the extension's own sources.
+  teardown(() => {
+    for (const name of linked) if (fs.lstatSync(path.join(root, name), { throwIfNoEntry: false })?.isSymbolicLink()) fs.unlinkSync(path.join(root, name));
+    fs.rmSync(root, { recursive: true, force: true });
+  });
 
   test("prepublish compiles WASI modules before verifying a clean output directory", function () {
     this.timeout(60_000);
     const { scripts } = JSON.parse(fs.readFileSync(path.join(extension, "package.json"), "utf8"));
-    for (const name of ["client", "test", "node_modules"]) fs.symlinkSync(path.join(extension, name), path.join(root, name), "junction");
+    for (const name of linked) fs.symlinkSync(path.join(extension, name), path.join(root, name), "junction");
     fs.copyFileSync(path.join(extension, "tsconfig.json"), path.join(root, "tsconfig.json"));
     fs.copyFileSync(path.join(extension, "tsconfig.webview.json"), path.join(root, "tsconfig.webview.json"));
     fs.copyFileSync(path.join(extension, "scripts/verify-package-workspace.mjs"), path.join(root, "scripts/verify-package-workspace.mjs"));

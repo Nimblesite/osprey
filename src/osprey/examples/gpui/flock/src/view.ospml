@@ -59,7 +59,7 @@ module View
         false => "Pause"
 
     pauseItem paused = match paused
-        true => [Ui::styled ("Paused", ui::Title, ui::Caution)]
+        true => [Ui::styled ("Flight paused", ui::Title, ui::Caution)]
         false => []
 
     // Pause is visible in the HUD as well as stopping the simulation clock.

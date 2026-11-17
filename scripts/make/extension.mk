@@ -71,9 +71,9 @@ target/local-registry.stamp: target/osprey-pkg scripts/packages/stage-local-regi
 
 _vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/osprey-registry target/workbench.wasm
 	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
-	cp $(BIN) "$$DEST/osprey"; \
-	cp target/osprey-pkg "$$DEST/osprey-pkg"; \
-	cp target/osprey-registry "$$DEST/osprey-registry"; \
+	cp $(BIN) "$$DEST/osprey$(EXE)"; \
+	cp target/osprey-pkg "$$DEST/osprey-pkg$(EXE)"; \
+	cp target/osprey-registry "$$DEST/osprey-registry$(EXE)"; \
 	rm -rf "$$DEST/registry"; \
 	cp target/package-workspace.wasm "$$DEST/package-workspace.wasm"; \
 	cp target/workbench.wasm "$$DEST/workbench.wasm"; \
@@ -93,7 +93,7 @@ _vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/osprey-regi
 .PHONY: _vsix_verify
 _vsix_verify:
 	@test -n "$(filter $(RTB)/%,$(NATIVE_RUNTIME_ARCHIVES))"
-	@set -e; for INPUT in "$(BIN):osprey" "target/osprey-pkg:osprey-pkg" "target/osprey-registry:osprey-registry" "target/package-workspace.wasm:package-workspace.wasm" "target/workbench.wasm:workbench.wasm" \
+	@set -e; for INPUT in "$(BIN):osprey$(EXE)" "target/osprey-pkg:osprey-pkg$(EXE)" "target/osprey-registry:osprey-registry$(EXE)" "target/package-workspace.wasm:package-workspace.wasm" "target/workbench.wasm:workbench.wasm" \
 	    $(foreach ARCHIVE,$(filter $(RTB)/%,$(NATIVE_RUNTIME_ARCHIVES)),"$(ARCHIVE):$(notdir $(ARCHIVE))"); do \
 	  cmp -s "$${INPUT%:*}" "$(EXT_DIR)/bin/$(EXT_PLATFORM)/$${INPUT#*:}" || \
 	    { echo "FAIL: missing or stale bundled $${INPUT#*:}; run make _vsix_bundle"; exit 1; }; \

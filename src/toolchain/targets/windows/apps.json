@@ -38,6 +38,31 @@
         "{app}\\signal_flow.machine.json"
       ]
     },
+    "synth": {
+      "source": "src/osprey/examples/synth",
+      "name": "Prism Synth",
+      "description": "Play a patch from the keyboard under the signal-flow editor.",
+      "capabilities": [],
+      "files": [
+        "self-test.json",
+        "../../packages/signal_flow/signal_flow.machine.json",
+        "../../packages/signal_flow/skins"
+      ],
+      "helpers": [
+        {
+          "source": "windows/play-wav.c",
+          "libraries": [
+            "winmm"
+          ]
+        }
+      ],
+      "arguments": [
+        "--machine",
+        "{app}\\signal_flow.machine.json",
+        "--audio-worker",
+        "{app}\\play-wav.exe"
+      ]
+    },
     "storage": {
       "source": "src/osprey/examples/storage",
       "name": "Storage",
@@ -56,7 +81,9 @@
       "name": "Tally",
       "description": "Count things, name your tally and switch its colours.",
       "capabilities": [],
-      "files": [],
+      "files": [
+        "self-test.json"
+      ],
       "arguments": []
     },
     "probe": {
@@ -96,6 +123,16 @@
         "--browse",
         "{app}\\cast-browse.exe"
       ]
+    },
+    "agent": {
+      "source": "src/osprey/examples/agent",
+      "name": "Osprey Agent",
+      "description": "A coding agent that reads, edits and runs commands in the folder you give it.",
+      "sandboxed": false,
+      "selfTest": "self-test.ps1",
+      "capabilities": [],
+      "files": [],
+      "arguments": []
     }
   }
 }

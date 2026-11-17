@@ -42,6 +42,14 @@ begun () =
     perform Bench.drive (blank ())
     hosted (\() => kept (Drive::launched (driven, "macos", [])))
 
+// Where the Windows package keeps the player it launches the synth with.
+player = "C:\\Program Files\\WindowsApps\\Osprey.synth\\app\\play-wav.exe"
+
+// Launched as the Windows package launches it: each struck key hands its clip to `--play`'s player.
+begunWithPlayer () =
+    perform Bench.drive (blank ())
+    hosted (\() => kept (Drive::launched (driven, "windows", ["--play", player])))
+
 // One typed host event, sent the way a host sends it.
 post step = hosted (\() => kept (step driven))
 
@@ -115,6 +123,11 @@ runExecutable () = match (request ()).capability
     _ => ""
 
 argument index = listGet (runArguments ()) index ?: ""
+
+// The clip a play request carries: perl's third argument on the Mac, a player's only one otherwise.
+clip () = match runExecutable () == "/usr/bin/perl"
+    true => argument 2
+    false => argument 0
 
 // The clip the last key played, which must differ from `previous`; `label` is picked next.
 apartThen (label, previous) =
@@ -204,7 +217,7 @@ struck (name, hertz) =
     knobNumber ("hertz", (currentPatch ()).pitch)
     expect (letters name, true)
     expect (runCount (), 1)
-    expect (argument 2, currentWav ())
+    expect (clip (), currentWav ())
 
 sounds (name, expectedPeak) =
     struck (name, Voice::frequency name)
@@ -463,6 +476,25 @@ test ("menus, skin changes, node selections, node and slider drags stay quiet; a
 test ("a larger window drops the keyboard and moves the inspector at their size, and the keys still play", \() => bench (\() =>
     roomyKeys ()))
 
+test ("launched with a player, every key hands its own clip to that player alone and the controls stay silent", \() => bench (\() =>
+    begunWithPlayer ()
+    silent ()
+    struck ("C4", 261.6256)
+    expect ((request ()).ticket, "play")
+    expect (runExecutable (), player)
+    expect (length (runArguments ()), 1)
+    c4 = clip ()
+    tap "Bypass Filter"
+    silent ()
+    struck ("C4", 261.6256)
+    apart (clip (), c4)
+    expect (runExecutable (), player)
+    struck ("A#4", 466.1638)
+    expect (runExecutable (), player)
+    tap "Bypass Oscillator"
+    tap "Play C4"
+    silent ()))
+
 // [PRISM-ROUTING-EDITOR] The editor's actual actions create independent routable instances.
 test ("the modular editor adds, connects and removes independent synth components", \() => Runtime::guarded (\() =>
     first = synth::EditorState::initial ()
@@ -496,7 +528,9 @@ test ("MIDI note-on and note-off ownership survives exact block partitions", \()
 test ("hosted graph execution shares exact builtin PCM and rejects malformed cached buffers", \() => Runtime::guarded graphClipJourney)
 test ("original Prism sliders and module palette operate the editable graph", \() => Runtime::guarded (\() => hosted prismIntegratedJourney))
 test ("patch inspector shows only the selected module and preserves routing", \() => Runtime::guarded (\() => hosted inspectorJourney))
-test ("the device hears each tone's exact pitch and level, gain and low-pass attenuation", \() => Runtime::guarded (\() => hosted deviceAudioJourney))
+test ("the device hears each tone's exact pitch and level, gain and low-pass attenuation", \() => Runtime::guarded (\() => hosted (\() =>
+    deviceAudioJourney ()
+    windowsAudioJourney ())))
 
 // Shared assertions on a driven synth: each names the one field it checks.
 cablesOf (d, count) = expect (length (Drive::holding d).graph.cables, count)

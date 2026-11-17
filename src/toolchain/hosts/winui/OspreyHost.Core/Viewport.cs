@@ -1,16 +1,17 @@
 namespace Osprey.Host;
 
 /// <summary>
-/// The frame viewport fields [UI-PROTOCOL]: this host draws neither a frame sized to the window nor
-/// a scrolling frame, so it refuses a told frame that asks for one instead of drawing it as if the
-/// field were unset. The check is main's, over told nodes rather than decoded JSON.
+/// The frame viewport fields [UI-PROTOCOL]: this host draws a scrolling frame but not a frame sized
+/// to the window, so it refuses a told frame that asks for one instead of drawing it as if the field
+/// were unset, and a scrollY that is not a flag. The check is main's, over told nodes rather than
+/// decoded JSON.
 /// </summary>
 public static class Viewports
 {
     /// <summary>The only inset this host draws: a frame sized to its content.</summary>
     public const long ContentSized = -1;
 
-    /// <summary>Refuses a region whose frames size themselves to the window or scroll, wherever they nest.</summary>
+    /// <summary>Refuses a region whose frames size themselves to the window, wherever they nest.</summary>
     public static void Refuse(string key, Node node)
     {
         var pending = new Stack<Node>();
@@ -72,15 +73,10 @@ public static class Viewports
 
     static void Scrolled(string key, Node scroll)
     {
-        if (scroll.Kind == NodeKind.Nothing || (scroll.Kind == NodeKind.Flag && !scroll.On))
+        if (scroll.Kind is not (NodeKind.Nothing or NodeKind.Flag))
         {
-            return;
+            throw Needs(key, "a boolean scrollY", scroll);
         }
-        if (scroll.Kind == NodeKind.Flag)
-        {
-            throw new HostException($"Frame scrollY in region {key} asks the frame to scroll, which this host does not draw; the default is false");
-        }
-        throw Needs(key, "a boolean scrollY", scroll);
     }
 
     static HostException Needs(string key, string wanted, Node found) =>

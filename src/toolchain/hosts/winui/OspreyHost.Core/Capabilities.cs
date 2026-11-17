@@ -33,9 +33,13 @@ public sealed class Capabilities(Pickers pickers, Store store)
     public const long MaxDeadline = 10 * 60 * 1000;
 
     /// <summary>Every capability kind this host answers, for its coverage declaration [NATIVE-HOSTS-COVERAGE].</summary>
-    public static IReadOnlyList<string> Answered { get; } = ["measure-folders", "reveal", "choose-folder", "choose-file", "save-file", "run", "cancel", "store-read", "store-write", "store-list", "store-delete"];
+    public static IReadOnlyList<string> Answered { get; } = ["measure-folders", "reveal", "choose-folder", "choose-file", "save-file", "run", "cancel", "store-read", "store-write", "store-list", "store-delete", "http", "host-call", .. ChildPool.Kinds];
 
     readonly ConcurrentDictionary<string, CancellationTokenSource> running = new();
+    readonly ChildPool children = new();
+
+    /// <summary>The <c>http</c> answer; a self-test puts its double here [WINUI-HOST-SELF-TEST].</summary>
+    public Func<string, Ask, CancellationToken, Task<Completion>> Http { get; init; } = Network.Fetch;
 
     /// <summary>Starts one request; the task completes off the UI thread.</summary>
     public Task<Completion> Answer(Ask ask)
@@ -51,6 +55,9 @@ public sealed class Capabilities(Pickers pickers, Store store)
             "run" => Processes.Run(ticket, ask),
             "cancel" => Task.FromResult(Cancel(ticket, ask)),
             "store-read" or "store-write" or "store-list" or "store-delete" => Task.FromResult(store.Answer(ask)),
+            "http" => Tracked(ticket, token => Http(ticket, ask, token)),
+            "host-call" when ask.Text(1) == "process" => children.Session(ask),
+            "process-start" or "process-write" or "process-read" or "process-stop" => children.Answer(ask),
             var kind => Task.FromResult(Completion.Failed(ticket, $"The Windows host does not answer {kind} requests")),
         };
     }
@@ -61,10 +68,17 @@ public sealed class Capabilities(Pickers pickers, Store store)
         var limit = (int)Math.Clamp(ask.Number(2), 0, MaxEntries);
         var deadline = TimeSpan.FromMilliseconds(Math.Clamp(ask.Number(3), 0, MaxDeadline));
         var slice = ask.Text(4);
+        return Tracked(ticket, token => Task.Run(() => Walked(ticket, slice, () => FolderWalk.Measure(folders, limit, deadline, token))));
+    }
+
+    // A request a `cancel` naming its ticket can stop while it runs.
+    Task<Completion> Tracked(string ticket, Func<CancellationToken, Task<Completion>> work)
+    {
         var source = new CancellationTokenSource();
         running[ticket] = source;
-        return Task.Run(() => Walked(ticket, slice, () => FolderWalk.Measure(folders, limit, deadline, source.Token)))
-            .ContinueWith(done => Finished(ticket, done.Result), TaskScheduler.Default);
+        return work(source.Token).ContinueWith(done => Finished(ticket, done.IsCompletedSuccessfully
+            ? done.Result
+            : Completion.Failed(ticket, done.Exception?.GetBaseException().Message ?? "cancelled")), TaskScheduler.Default);
     }
 
     static Completion Walked(string ticket, string slice, Func<string> walk)

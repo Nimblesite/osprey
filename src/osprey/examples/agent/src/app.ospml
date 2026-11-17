@@ -322,8 +322,11 @@ module Answers
             false => Runtime::step store
             true => of (perform ui::Slices.fetch slice)
 
-    // Whether a store read's receipt says the file was there.
-    found result = Doc::flag (Doc::parse result, "found")
+    // Whether a read store entry was there: the SwiftUI host's receipt says so with `found`; the GPUI and
+    // WinUI hosts answer a missing entry with an error, so any other answer is a found one.
+    found result =
+        receipt = Doc::parse result
+        Doc::flag (receipt, "found") || Doc::has (receipt, "found") == false
 
     // `store` with the providers file's settings, and every chat given the saved defaults.
     withProviders (store, doc) =

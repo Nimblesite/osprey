@@ -11,6 +11,16 @@ public sealed class TouchTests
     }
 
     [Fact]
+    public void AFieldsLinesEndInNewlinesAsOnEveryHost()
+    {
+        // WinUI's text box writes a line break as \r; the application reads Return as a trailing \n everywhere.
+        foreach (var (typed, delivered) in new[] { ("Fix it\r", "Fix it\n"), ("one\r\ntwo\r", "one\ntwo\n"), ("a\rb\nc", "a\nb\nc"), ("\r\r", "\n\n"), ("plain", "plain"), ("", "") })
+        {
+            Assert.Equal(delivered, Touch.Control(1, typed).Words);
+        }
+    }
+
+    [Fact]
     public void AKeyCarriesItsOrdinalNameAndDirection()
     {
         Assert.Equal((TouchKind.Key, 3L, "left", true), (Touch.Key(3, "left", true).Kind, Touch.Key(3, "left", true).Ordinal, Touch.Key(3, "left", true).Words, Touch.Key(3, "left", true).Down));

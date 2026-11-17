@@ -6,12 +6,15 @@
 #   app.ps1 -App flock                               open Flock
 #   app.ps1 -App flock -Test [-Headless] [-Update]   self-test, off screen with -Headless; -Update rewrites the goldens
 #   app.ps1 -App flock -Dll <flock.dll>              package a DLL already built instead of building one
+# An app apps.json marks `"sandboxed": false` (its README says why) is built the same way but runs from
+# its layout, unpackaged, with -Arguments; its -Test is the self-test script its entry names.
 param(
     [Parameter(Mandatory)] [string] $App,
     [switch] $Test,
     [switch] $Headless,
     [switch] $Update,
     [string] $Dll = '',
+    [string[]] $Arguments = @(),
     [string] $Msys = $(if ($env:MSYS2_ROOT) { $env:MSYS2_ROOT } else { 'C:\msys64' })
 )
 $ErrorActionPreference = 'Stop'
@@ -135,6 +138,12 @@ if ($Dll) {
     Build-Application
 }
 Publish-Host
+$library = Join-Path $layout 'app\app.dll'
+if ($entry.sandboxed -eq $false) {
+    if ($Test) { & (Join-Path $source $entry.selfTest) -Dll $library -Headless:$Headless -Update:$Update -Msys $Msys }
+    else { Start-Process (Join-Path $layout 'OspreyHost.exe') -ArgumentList (@($library) + $Arguments | ForEach-Object { "`"$_`"" }) }
+    return
+}
 Write-Package
 $family = Register-Package
 if ($Test) { Test-Package $family } else { Start-Process "shell:AppsFolder\$family!App" }

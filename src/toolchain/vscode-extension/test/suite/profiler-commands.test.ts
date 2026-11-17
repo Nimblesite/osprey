@@ -6,6 +6,7 @@
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import * as vscode from "vscode";
 import { PROFILER_SETTING_KEYS } from "@nimblesite/lsp-profiler-ui";
 import { extensionRoot } from "./osprey-test-env";
@@ -152,7 +153,7 @@ suite("Profiler — Manifest", () => {
 
   test("package.json is exactly the generator's output: the sync script would change nothing", async () => {
     const script = path.join(extensionRoot, "scripts", "sync-profiler-contributions.mjs");
-    const sync = (await import(script)) as { withProfilerContributions(contributes: unknown): unknown };
+    const sync = (await import(pathToFileURL(script).href)) as { withProfilerContributions(contributes: unknown): unknown };
     const manifest = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8")) as { contributes: unknown };
     assert.deepEqual(sync.withProfilerContributions(manifest.contributes), manifest.contributes);
   });
@@ -161,10 +162,10 @@ suite("Profiler — Manifest", () => {
   // byte comparison failed v0.22.0's Windows VSIX on an up-to-date manifest.
   test("the sync check reads line endings as formatting, never as missing contributions", async () => {
     const script = path.join(extensionRoot, "scripts", "sync-profiler-contributions.mjs");
-    const sync = (await import(script)) as { needsSync(text: string): boolean };
+    const sync = (await import(pathToFileURL(script).href)) as { needsSync(text: string): boolean };
     const text = fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8");
     assert.equal(sync.needsSync(text), false, "the committed manifest is in sync");
-    assert.equal(sync.needsSync(text.replace(/\n/g, "\r\n")), false, "a CRLF checkout of it is in sync too");
+    assert.equal(sync.needsSync(text.replace(/\r?\n/g, "\r\n")), false, "a CRLF checkout of it is in sync too");
     const manifest = JSON.parse(text) as { contributes: { commands: unknown[] } };
     const stale = { ...manifest, contributes: { ...manifest.contributes, commands: [] } };
     assert.equal(sync.needsSync(`${JSON.stringify(stale, null, 2)}\r\n`), true, "a manifest missing the commands is out of sync");

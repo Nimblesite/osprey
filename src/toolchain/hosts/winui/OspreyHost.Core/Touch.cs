@@ -6,7 +6,9 @@ public sealed record Touch(long Kind, long Ordinal, string Words, string Detail,
     static Touch Of(long kind) => new(kind, 0, "", "", 0, 0, false, false);
 
     /// <summary>The control numbered <paramref name="ordinal"/> delivering <paramref name="words"/>: empty for a tap, <c>true</c>/<c>false</c> for a switch, a key for a picker, text for a field, a whole number for a splitter or caret.</summary>
-    public static Touch Control(long ordinal, string words) => Of(TouchKind.Control) with { Ordinal = ordinal, Words = words };
+    /// A field's line breaks arrive as <c>\n</c>, as on every host: WinUI's text box writes them as <c>\r</c>.
+    public static Touch Control(long ordinal, string words) =>
+        Of(TouchKind.Control) with { Ordinal = ordinal, Words = words.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n') };
 
     /// <summary>
     /// The words a control's value carries [UI-EVENTS]: nothing for a tap, the text for a field,

@@ -10,7 +10,7 @@ import { HeatDecorationManager } from "../../client/src/profiler/heat-decoration
 import { OSPREY_PALETTE } from "../../client/src/profiler/palette";
 import { flamePanel } from "../../client/src/profiler/profiler-panel";
 import { profileActiveFile, PROFILER_COMMANDS, type ProfileArtifacts, type ProgressRunner } from "../../client/src/profiler/profile-run";
-import { resolveBuiltOsprey } from "./osprey-test-env";
+import { resolveBuiltOsprey, writeStubExecutable } from "./osprey-test-env";
 import { BUILD_MS, EXTENSION_ID, connectEditorBrowser, editorWebviewFrame, waitFor } from "./profiler-kit";
 
 // The same workload scripts/tests/test_profiler.sh profiles: a spawned worker fiber
@@ -161,8 +161,7 @@ suite("Profile Current File — real compiler, Osprey UI", function () {
   });
 
   test("a run that writes no profile reports why, even with a silent stderr and a ragged stdout", async () => {
-    const stub = path.join(dir, "osprey-silent.sh");
-    await fs.promises.writeFile(stub, "#!/bin/sh\nprintf 'half a line'\nexit 1\n", { mode: 0o755 });
+    const stub = writeStubExecutable(path.join(dir, "osprey-silent"), "process.stdout.write('half a line', () => process.exit(1));\n");
     await openEditor(source);
     const recorded = recordingOutput();
     const heat = new HeatDecorationManager();

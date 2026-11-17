@@ -20,16 +20,17 @@ import {
   onCpuPct,
   parseSummary,
 } from "../../client/src/profiler/summary";
+import { uriPath, writeStubExecutable } from "./osprey-test-env";
 
 suite("profile-run pure helpers", () => {
   test("artifactPaths derives every export from the source stem", () => {
     const paths = artifactPaths("/tmp/run", "/w/fib.osp");
     assert.deepStrictEqual(paths, {
       stem: "fib",
-      profileJson: "/tmp/run/fib.profile.json",
-      speedscope: "/tmp/run/fib.speedscope.json",
-      cpuprofile: "/tmp/run/fib.cpuprofile",
-      folded: "/tmp/run/fib.folded",
+      profileJson: path.join("/tmp/run", "fib.profile.json"),
+      speedscope: path.join("/tmp/run", "fib.speedscope.json"),
+      cpuprofile: path.join("/tmp/run", "fib.cpuprofile"),
+      folded: path.join("/tmp/run", "fib.folded"),
     });
     assert.strictEqual(artifactPaths("/t", "/w/app.ospml").stem, "app");
   });
@@ -175,27 +176,21 @@ suite("profile-run loadArtifacts", () => {
 
 // A stub `osprey` CLI: writes both artifacts into its cwd (the per-run temp
 // dir) exactly as `--run --profile` does, interpolating the source path.
-const OK_STUB = `#!/bin/sh
-src="$1"
-base=$(basename "$src")
-stem="\${base%.*}"
-cat > "$stem.profile.json" <<EOF
-{"version":1,"program":"$src","wallSeconds":1.2,"cpuSeconds":0.9,"sampleCount":1234,"rateHz":997,"droppedSamples":0,"fibers":[{"id":0,"label":"main","samples":100,"oncpuSamples":90}],"hotFunctions":[{"name":"fib","file":"$src","line":1,"selfPct":42.0,"totalPct":61.0,"selfSamples":420,"totalSamples":610,"kind":"user"}],"hotLines":[{"file":"$src","line":1,"pct":12.0,"samples":120},{"file":"$src","line":99,"pct":6.0,"samples":60}]}
-EOF
-cat > "$stem.speedscope.json" <<EOF
-${OK_SPEEDSCOPE.split("SRC").join("$src")}
-EOF
-echo "profiled $src"
+const OK_STUB = `const fs = require("fs"), path = require("path");
+const src = process.argv[2];
+const stem = path.basename(src, path.extname(src));
+const file = JSON.stringify(src);
+fs.writeFileSync(stem + ".profile.json", '{"version":1,"program":' + file + ',"wallSeconds":1.2,"cpuSeconds":0.9,"sampleCount":1234,"rateHz":997,"droppedSamples":0,"fibers":[{"id":0,"label":"main","samples":100,"oncpuSamples":90}],"hotFunctions":[{"name":"fib","file":' + file + ',"line":1,"selfPct":42.0,"totalPct":61.0,"selfSamples":420,"totalSamples":610,"kind":"user"}],"hotLines":[{"file":' + file + ',"line":1,"pct":12.0,"samples":120},{"file":' + file + ',"line":99,"pct":6.0,"samples":60}]}');
+fs.writeFileSync(stem + ".speedscope.json", ${JSON.stringify(OK_SPEEDSCOPE)}.split('"SRC"').join(file));
+console.log("profiled " + src);
 `;
 
-const FAIL_STUB = `#!/bin/sh
-echo "sampler exploded" >&2
-exit 3
+const FAIL_STUB = `console.error("sampler exploded");
+process.exit(3);
 `;
 
 // A profiled program that hangs: only cancellation can end this run.
-const HANG_STUB = `#!/bin/sh
-sleep 30
+const HANG_STUB = `setTimeout(() => {}, 30000);
 `;
 
 suite("profile-run command flow", function () {
@@ -211,12 +206,9 @@ suite("profile-run command flow", function () {
     );
     sourcePath = path.join(dir, "fib.osp");
     await fs.promises.writeFile(sourcePath, "fn fib(n) = n\nprint(fib(30))\n");
-    const okScript = path.join(dir, "osprey-ok.sh");
-    const failScript = path.join(dir, "osprey-fail.sh");
-    hangScript = path.join(dir, "osprey-hang.sh");
-    await fs.promises.writeFile(okScript, OK_STUB, { mode: 0o755 });
-    await fs.promises.writeFile(failScript, FAIL_STUB, { mode: 0o755 });
-    await fs.promises.writeFile(hangScript, HANG_STUB, { mode: 0o755 });
+    const okScript = writeStubExecutable(path.join(dir, "osprey-ok"), OK_STUB);
+    const failScript = writeStubExecutable(path.join(dir, "osprey-fail"), FAIL_STUB);
+    hangScript = writeStubExecutable(path.join(dir, "osprey-hang"), HANG_STUB);
     okHeat = registerProfilerCommands(
       context as unknown as vscode.ExtensionContext,
       () => okScript,
@@ -262,7 +254,7 @@ suite("profile-run command flow", function () {
     );
     assert.strictEqual(opened, true);
     assert.strictEqual(okHeat.current()?.sampleCount, 1234);
-    assert.strictEqual(okHeat.current()?.hotLines[0].file, sourcePath);
+    assert.strictEqual(okHeat.current()?.hotLines[0].file, uriPath(sourcePath));
     assert.strictEqual(
       await vscode.commands.executeCommand("ospreyProfilerTest.openLast"),
       true,

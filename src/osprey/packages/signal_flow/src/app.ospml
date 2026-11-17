@@ -12,13 +12,9 @@ import signalflow::Flow
 
 (** The application exported through the two-function C boundary. *)
 module App
-    // The launch argument after `flag`, or `otherwise`.
-    after (arguments, flag, otherwise) =
-        at = ui::Lists::position (arguments, \a => a == flag)
-        ui::Pick::either (at >= 0, listGet arguments (satAdd at 1) ?: otherwise, otherwise)
 
     (** The document the interface is read from: `--machine <path>` among the launch arguments, else the repository copy. *)
-    export documentPath arguments = after (arguments, "--machine", "src/osprey/packages/signal_flow/signal_flow.machine.json")
+    export documentPath arguments = ui::Lists::after (arguments, "--machine", "src/osprey/packages/signal_flow/signal_flow.machine.json")
 
     (** The store from a machine document's text: a refused document shows its problems in place of the editor. *)
     export loaded source = match MachineDocs::load source
@@ -28,7 +24,7 @@ module App
     (** Loads the document in `skin` unless `--skin` names another, and answers the initial states' requests; an application built on the editor picks its own skin. *)
     export opened (context, skin) =
         path = documentPath context.arguments
-        Flow::settled (Flow::launched (loaded (readFile path ?: ""), MachineDocs::folder path, after (context.arguments, "--skin", skin)))
+        Flow::settled (Flow::launched (loaded (readFile path ?: ""), MachineDocs::folder path, ui::Lists::after (context.arguments, "--skin", skin)))
 
     (** Loads the document, applies `--skin` and answers the initial states' requests. *)
     export initial context = opened (context, "")

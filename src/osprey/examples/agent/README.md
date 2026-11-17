@@ -71,11 +71,20 @@ A model request is an `Http` capability and a tool is a `Run` capability, so the
 
 ## Running on another host
 
-Every pixel is a framework node, a frame and a theme token, so the application contains no host code. Only `Engine.tool_command` names a platform, to pick the shell, and it has POSIX and PowerShell forms. The [SwiftUI host](../../../toolchain/hosts/swift/README.md) draws it today. Its README lists what the WinUI host needs to draw the same app on Windows.
+Every pixel is a framework node, a frame and a theme token, so the application contains no host code. Only `Engine.tool_command` names a platform, to pick the shell, and it has POSIX and PowerShell forms. The [SwiftUI host](../../../toolchain/hosts/swift/README.md) draws it on macOS and the [WinUI host](../../../toolchain/hosts/winui/README.md) on Windows:
+
+```powershell
+make -C src/toolchain/targets/windows agent PROJECT=C:/work/project   # open it; add a key in Settings
+make -C src/toolchain/targets/windows/tests agent-headless                 # the Windows self-test, off screen
+```
+
+On Windows a tool is one PowerShell process whose values are bound as quoted literals inside its script, never passed as arguments PowerShell would read as code, and `run_command` hands its command to `cmd.exe` exactly as the model wrote it.
+
+**Why the Windows app is not sandboxed.** Every other Windows app runs in its own AppContainer. The agent cannot: its whole job is to read, write and run anything in the folder you give it, with the tools on your `PATH` (Python, compilers, git), and an AppContainer can reach neither that folder nor those tools. So `src/toolchain/targets/windows/apps.json` marks it `"sandboxed": false` and it runs unpackaged with your account's rights, exactly as on macOS, and the window says so under the composer.
 
 ## Testing it
 
-`make -C src/toolchain/targets/tests agent` runs the host-free suites on any platform. `make -C src/toolchain/targets/macos/tests agent-headless` and `agent-live` run the two modes below.
+`make -C src/toolchain/targets/tests agent` runs the host-free suites on any platform. `make -C src/toolchain/targets/macos/tests agent-headless` and `agent-live` run the two modes below. On Windows, `make -C src/toolchain/targets/windows/tests agent-headless` (or `agent` on screen, `agent-update` to rewrite the goldens) runs [`self-test.ps1`](self-test.ps1): `coding`, `code-blocks`, `settings` and `settings-restart` on the WinUI host with the model doubled and the tools real, the calc project's tests and the provider requests checked afterwards, and each picture against `goldens/windows/<script>/<scale>`.
 
 `make -C src/toolchain/targets/macos/tests agent-qwen` is the explicit local-only full E2E: it builds and starts the real Osprey server with the pinned GGUF, drives the actual Agent window to fix and extend a project, runs independent acceptance tests, compares initial UI screenshots with committed Qwen goldens, then compares the saved conversation after restarting the window. It never uses an HTTP double or cloud key and is not registered in CI. Install `pydantic-ai-slim[openai]` in the Qwen harness environment first.
 

@@ -10,7 +10,7 @@ import * as Runner from "../../client/src/osprey-ui/wasi-runner";
 import { registerPackageWorkspace } from "../../client/src/package-workspace";
 import { registerWorkbench } from "../../client/src/workbench";
 import { shipwrightPlatform } from "../../client/src/client-config";
-import { extensionRoot } from "./osprey-test-env";
+import { extensionRoot, uriPath } from "./osprey-test-env";
 
 const context = (): ExtensionContext => ({ extensionPath: extensionRoot, extensionUri: Uri.file(extensionRoot), subscriptions: [] } as unknown as ExtensionContext);
 const openContext = host.nativeContext([]);
@@ -223,7 +223,7 @@ suite("workbench document host wiring", () => {
     const open = sinon.stub(window, "showOpenDialog").onFirstCall().resolves([Uri.file(file)]).onSecondCall().resolves(undefined);
     const app = await preparedWorkbench(root);
     const request = ask(13, "open", [[1, 0, "ospml"], [2, 7, ""], [3, 0, "document"]]);
-    assert.deepStrictEqual(await app.execute(request, new Map()), { detail: file });
+    assert.deepStrictEqual(await app.execute(request, new Map()), { detail: uriPath(file) });
     assert.deepStrictEqual(open.firstCall.args[0], { canSelectFiles: true, canSelectFolders: false, canSelectMany: false, filters: { Documents: ["ospml"] } });
     assert.deepStrictEqual(await app.execute(request, new Map()), { detail: "" });
   });
@@ -242,9 +242,9 @@ suite("workbench document host wiring", () => {
     const save = sinon.stub(window, "showSaveDialog").resolves(Uri.file(file));
     const app = await preparedWorkbench(root);
     const result = await app.execute(ask(15, "save", [[1, 0, "proof.html"], [2, 0, "export"]]), new Map([["export", "<math>∧</math>"]]));
-    assert.deepStrictEqual(result, { detail: file });
+    assert.deepStrictEqual(result, { detail: uriPath(file) });
     assert.strictEqual(fs.readFileSync(file, "utf8"), "<math>∧</math>");
-    assert.strictEqual(save.firstCall.args[0]?.defaultUri?.fsPath, path.join(os.homedir(), "proof.html"));
+    assert.strictEqual(save.firstCall.args[0]?.defaultUri?.fsPath, uriPath(path.join(os.homedir(), "proof.html")));
   });
 
   test("non-file selections fail explicitly before accessing a remote provider", async () => {

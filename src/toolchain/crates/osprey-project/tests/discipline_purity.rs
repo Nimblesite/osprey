@@ -61,9 +61,13 @@ fn discipline_name(manifest: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+// By component, so a Windows path's separators count as a Unix path's do.
 fn is_test_file(path: &Path) -> bool {
-    let text = path.to_string_lossy();
-    text.contains("/tests/") || text.ends_with("tests.rs") || text.contains("_tests/")
+    let folders = path.parent().into_iter().flat_map(Path::components);
+    path.to_string_lossy().ends_with("tests.rs")
+        || folders
+            .filter_map(|part| part.as_os_str().to_str())
+            .any(|name| name == "tests" || name.ends_with("_tests"))
 }
 
 fn is_rust(path: &Path) -> bool {

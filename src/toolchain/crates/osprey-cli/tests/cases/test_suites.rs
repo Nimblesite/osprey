@@ -2,12 +2,15 @@
 
 use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
+use super::read_text;
+#[cfg(unix)]
 use super::test_runner::{
     assert_parallel_default_has_serial_escape, executable_script, parallel_probe_fixture,
-    run_cache_probe, run_concurrency_probe, run_conformance_probe, write_in, FAILING_TESTS,
-    PASSING_TESTS,
+    run_cache_probe, run_concurrency_probe, run_conformance_probe,
 };
-use super::{finish, osprey, read_text, run_args, run_file, run_source, temp_dir, temp_osp, HELLO};
+use super::test_runner::{write_in, FAILING_TESTS, PASSING_TESTS};
+use super::{finish, osprey, run_args, run_file, run_source, temp_dir, temp_osp, HELLO};
 
 #[test]
 fn test_subcommand_runs_directories_and_files() {

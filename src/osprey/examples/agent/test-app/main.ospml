@@ -593,6 +593,16 @@ testing ("launch asks for the conversations, providers and the key file, and sta
     expect (Drive::keyOf (first.stepStore, "deepseek"), "")
     expect (Drive::keyOf (Drive::started (), "deepseek"), "sk-test"))
 
+testing ("a Windows launch names its folder by the folder's own name, as the Mac does", \() =>
+    store = (App::initial (ui::Context(now = 100, offset = 0, platform = "windows", home = "C:\\Users\\ada", arguments = ["C:\\work\\calc-project"], hostDark = false))).stepStore
+    expect ((Model::active store).chatFolder, "C:\\work\\calc-project")
+    composerShows (store, "calc-project")
+    expectFalse (mentions (composerWalk store, "C:\\work"))
+    expectFalse (mentions (Drive::walked (store, View::sidebar), "C:\\work"))
+    macStore = launchedStore ()
+    composerShows (macStore, "project")
+    expectFalse (mentions (composerWalk macStore, "/work")))
+
 testing ("typing keeps the draft and sends nothing", \() =>
     step = typingAtLaunch "half a thou"
     expect (step.stepStore.draft.draftText, "half a thou")
@@ -857,7 +867,15 @@ testing ("the conversation a launch opens takes the saved default model, and a c
     busy = goTurn ()
     keptModel = (Model::active busy).chatModel
     after = readBack (busy, "providers", saved)
-    expect ((Model::active after).chatModel, keptModel))
+    expect ((Model::active after).chatModel, keptModel)
+    // The GPUI and WinUI hosts answer a read entry with nothing and a missing one with an error.
+    bare = (settledWith (launched, "providers", okDone "null", saved)).stepStore
+    expectChosen (bare, "zai/glm-5.3", "high")
+    expect (Drive::keyOf (bare, "zai"), "sk-glm")
+    absent = (settledWith (launched, "providers", okDone (Doc::write (JsonObject [Doc::bit ("found", false)])), saved)).stepStore
+    expect (Drive::keyOf (absent, "zai"), "")
+    refused = (settledWith (launched, "providers", readOutcome false, saved)).stepStore
+    expect (Drive::keyOf (refused, "zai"), ""))
 
 testing ("the composer lists keyed providers' models and an Add an API key button with none", \() =>
     noKey = composerOf (launchedStore ())

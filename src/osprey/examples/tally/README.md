@@ -27,6 +27,6 @@ The reference host ends with `[ok] tally reference host: 13 views read in place 
 | --- | --- | --- |
 | Reference (C) | [`host/reference.c`](host/reference.c) | Runs end to end on macOS. |
 | SwiftUI | [`hosts/swift/Sources/OspreyShared`](../../../toolchain/hosts/swift/Sources/OspreyShared) | The macOS check reads every frame and then taps the real view in a hidden window: after three taps it must match a window opened at three. |
-| WinUI | [`hosts/winui/OspreyHost/SharedViewPage.cs`](../../../toolchain/hosts/winui/OspreyHost/SharedViewPage.cs) | Opens on Windows (`make -C src/toolchain/targets/windows tally`); the host's row-reader tests also run on macOS. |
+| WinUI | [`hosts/winui/OspreyHost/SharedViewPage.cs`](../../../toolchain/hosts/winui/OspreyHost/SharedViewPage.cs) | Opens on Windows in its sandbox (`make -C src/toolchain/targets/windows tally`); `make -C src/toolchain/targets/windows/tests tally` counts, restyles and clears it against `goldens/windows`. The host's row-reader tests also run on macOS. |
 
 No host holds any style, so Tally is restyled by editing `src/app.ospml` alone.

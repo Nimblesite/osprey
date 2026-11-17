@@ -45,17 +45,45 @@ defaultPatch () = patch ("Sine", 0.7, 0.7, 2.0, 0.75)
 // One second of `p` per case: every voice case renders the whole second.
 sized p = expect (length (Voice::samples p), Voice::rate)
 
+// Where a Windows package keeps the player it launches the synth with.
+helper = "C:\\Program Files\\WindowsApps\\Osprey.synth\\app\\play-wav.exe"
+
+windowsLaunch = ["--machine", "C:\\app\\signal_flow.machine.json", "--play", helper]
+
+// `--play` hands `p`'s whole clip to its helper as the one argument, in place of perl and afplay.
+playedBy p = match listGet (Synth::played (windowsLaunch, p)) 0
+    Success ask => match ask.capability
+        ui::Run executable arguments timeout _ _ slice =>
+            expect (ask.ticket, "play")
+            expect (executable, helper)
+            expect (length arguments, 1)
+            expect (listGet arguments 0 ?: "", Voice::wav (Voice::samples p))
+            expect (timeout, 5000)
+            expect (slice, "synth-play")
+        _ => expect ("not a run", "run")
+    Error _ => expect ("nothing played", "played")
+
+// A `--play` with no path after it is no player: the Mac's perl plays the clip.
+macPlayer p = match listGet (Synth::played (["--play"], p)) 0
+    Success ask => match ask.capability
+        ui::Run executable _ _ _ _ _ => expect (executable, "/usr/bin/perl")
+        _ => expect ("not a run", "run")
+    Error _ => expect ("nothing played", "played")
+
 voiceCase (p, expectedPeak) =
     sized p
     nearPeak (p, expectedPeak)
-    expect (length (Synth::played p), 1)
+    expect (length (Synth::played ([], p)), 1)
+    playedBy p
+    macPlayer p
 
 silentCase p =
     sized p
     samples = Voice::samples p
     expect (Voice::peak samples, 0)
     expect (ui::Lists::all (samples, \sample => sample == 128), true)
-    expect (length (Synth::played p), 0)
+    expect (length (Synth::played ([], p)), 0)
+    expect (length (Synth::played (windowsLaunch, p)), 0)
 
 near (actual, expected) = expect (actual - expected < 0.0001 && expected - actual < 0.0001, true)
 
@@ -181,6 +209,29 @@ deviceWarningJourney editor =
     expect (warned.stepStore.renderEmptyCallbacks, 1)
     stale = "{\"status\":0,\"acceptedFrames\":2048,\"returnedFrames\":2048,\"queuedFrames\":0,\"channels\":2,\"emptyCallbacks\":0,\"running\":true}"
     errs (synth::GraphDevice::checked (editor(renderEmptyCallbacks = 1), stale))
+
+// [SYNTH-DEVICE-QUEUE] Windows hands the edited graph's audio to its packaged worker.
+windowsAudioJourney () =
+    worker = "C:\\Prism\\play-wav.exe"
+    opened = Drive::launched (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "windows", ["--audio-worker", worker])
+    playing = synth::GraphPreview::play (Drive::holding opened, "windows")
+    succeeds (listGet playing.requests 0, \request =>
+        match request.capability
+            ui::HostCall space operation args _ _ _ =>
+                expect (space, "process")
+                expect (operation, "session-open")
+                expect (structuralEquals (mapList (args, \arg => arg.headerValue), [worker, "audio-device"]), true)
+            _ => expect (false, true))
+    exchanged = synth::GraphPreview::completed (playing.stepStore, playing.stepStore.renderTicket, Success(value = "{\"status\":0,\"session\":\"windows-device\"}"))
+    succeeds (listGet exchanged.requests 0, \request =>
+        match request.capability
+            ui::HostCall _ operation args _ _ slice =>
+                expect (operation, "session-exchange")
+                expect (slice, "")
+                expect (structuralEquals (mapList (args, \arg => arg.headerName), ["session", "stdinText"]), true)
+                expect (startsWith exchanged.stepStore.renderInput "52494646", true)
+            _ => expect (false, true))
+    expect (length exchanged.writes, 0)
 
 // [PRISM-ROUTING-PRESENTATION] Main's artwork controls edit the same live patch.
 prismIntegratedJourney () =

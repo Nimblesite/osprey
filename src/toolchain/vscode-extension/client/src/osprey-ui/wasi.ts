@@ -46,6 +46,8 @@ function pollsStandard(memory: ArrayBuffer | undefined, subscriptions: unknown, 
 
 /** Whether `name` called with `args` names a standard stream. */
 function refused(name: string, args: unknown[], memory: () => ArrayBuffer | undefined): boolean {
+  // Windows uvwasi returns ENOSYS before checking the descriptor. Workspace guests have no descriptors.
+  if (name === "fd_fdstat_set_flags") return true;
   if (name === "poll_oneoff") return pollsStandard(memory(), args[0], args[2]);
   if (name === "fd_renumber") return standard(args[0]) || standard(args[1]);
   return /^(fd|path|sock)_/.test(name) && standard(args[0]);

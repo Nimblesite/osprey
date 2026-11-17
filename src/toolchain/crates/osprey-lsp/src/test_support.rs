@@ -90,6 +90,25 @@ impl Drop for ProjectFixture {
     }
 }
 
+/// The `file://` URI of a repository file `relative` to this crate, with `..`
+/// folded away, spelled as the platform's editor would send it.
+pub(crate) fn repo_uri(relative: &str) -> String {
+    let mut path = std::path::PathBuf::new();
+    for part in std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(relative)
+        .components()
+    {
+        match part {
+            std::path::Component::ParentDir => {
+                let _parent = path.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => path.push(other),
+        }
+    }
+    lspkit_server::uri::path_to_uri(&path).expect("a repository path is absolute")
+}
+
 pub(crate) fn view(uri: &str) -> crate::workspace::View {
     let vfs = lspkit::vfs::Vfs::new(lspkit::vfs::PositionEncoding::Utf16);
     crate::project_cache::ProjectCache::default().typed_view(uri, &vfs)
