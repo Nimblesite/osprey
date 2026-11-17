@@ -42,3 +42,4 @@ Checked against the published v0.4.0 source on 2026-11-16, and confirmed on TMC 
 ## Open, not yet fixed
 
 - [x] The server quit with `analysis backlog limit reached` when 256 messages were queued, and VS Code restarted it until it gave up. Now requests that don't fit get `ServerCancelled` (-32802) so the client retries, notifications wait for room, and the session never ends. Test: `a_request_flood_is_answered_and_never_ends_the_session`. In PR #411.
+- [x] Idle CPU at 100% (#384). Every watched save and every tab close re-queued the whole repository sweep, and the cache keeps only 4 closed projects, so each save re-checked all 191 projects. A watched change or a close now re-checks only the projects it affects, plus newly discovered files, and an in-progress sweep is kept, not restarted. Test: `watched_changes_recheck_only_the_projects_they_affect` (8 projects; one save went from 8 analyses to 1).
