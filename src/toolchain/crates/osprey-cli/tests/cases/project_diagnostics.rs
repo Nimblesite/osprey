@@ -4,9 +4,10 @@
 use std::path::PathBuf;
 
 use super::{
-    arg, checked, copy_fixture, finish, osprey, rewritten_fixture, run, run_under_each_backend,
-    temp_project, TestResult,
+    arg, copy_fixture, rewritten_fixture, run, run_under_each_backend, temp_project, TestResult,
 };
+#[cfg(unix)]
+use super::{checked, finish, osprey};
 
 /// A namespaced declaration reaches the type checker under its flat linkage
 /// name, so a diagnostic about it must be translated back before a human sees

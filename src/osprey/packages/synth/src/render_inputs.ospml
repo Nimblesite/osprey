@@ -23,6 +23,13 @@ module RenderInputs
             Error _ => Error(message = "An input was read before its source was rendered.")
             Success value => Success(value = value.value)
 
+    (** Read one produced sample and reject invalid numeric output before publication. *)
+    export sample (frame, identity) = match listGet (filterList (frame.values, \v => v.identity == identity)) 0
+        Error why => Error(message = why)
+        Success output => match output.value == output.value && abs output.value <= 1000000.0
+            false => Error(message = "Non-finite or excessive graph output.")
+            true => Success(value = output.value)
+
     replaced (next, held) = match held.identity == next.identity
         true => next
         false => held
@@ -32,7 +39,8 @@ module RenderInputs
 
     emptyState identity = KernelState(identity = identity, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [])
 
-    initialState n = match n.processor
+    (** Allocate one kernel, also used by multichannel clip execution. *)
+    export initialState n = match n.processor
         Delay count =>
             empty = emptyState n.identity
             empty(delay = mapList (toList (range (0, count)), \_ => 0.0))

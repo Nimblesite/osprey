@@ -28,6 +28,7 @@ const ANSWERED: &[&str] = &[
     "choose-folder",
     "save-file",
     "reveal",
+    "host-call", // Desktop process.input; mobile OS namespaces remain platform-specific.
 ];
 
 /// Capability kinds completed with an "unsupported capability" error until this host answers them.
@@ -46,7 +47,7 @@ const UNANSWERED: &[&str] = &[
 ];
 
 /// Capability kinds answered only through the mobile OS bridge.
-const MOBILE_ONLY: &[&str] = &["host-call"];
+const MOBILE_ONLY: &[&str] = &[];
 
 const NODES: &str = include_str!("../../../../osprey/packages/native/src/node.ospml");
 const CAPABILITIES: &str = include_str!("../../../../osprey/packages/native/src/capability.ospml");
@@ -212,6 +213,11 @@ fn the_declaration_matches_what_the_host_dispatches() {
             "host.rs answers {kind}: move it to ANSWERED"
         );
     }
+    assert_eq!(
+        HOST.matches("\"host-call\"").count(),
+        1,
+        "host-call dispatch must remain singular"
+    );
     assert_mobile_dispatch();
 }
 

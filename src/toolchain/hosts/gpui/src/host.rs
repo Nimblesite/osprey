@@ -133,7 +133,7 @@ impl HostView {
                     let completion = clock::answer(self, &ask);
                     self.send(completion, window, cx);
                 }
-                "run" | "list-directories" | "read-texts" => {
+                "run" | "list-directories" | "read-texts" | "host-call" => {
                     self.answer_in_background(ask, window, cx);
                 }
                 "cancel" => self.send(adapters::completion(&ask), window, cx),
@@ -142,9 +142,7 @@ impl HostView {
                 }
                 // [CAST-MOBILE-DELIVERY] iOS has no GPUI path prompt: its document
                 // picker is answered across the OS bridge like any blocking adapter.
-                "choose-file" | "host-call"
-                    if cfg!(any(target_os = "ios", target_os = "android")) =>
-                {
+                "choose-file" if cfg!(any(target_os = "ios", target_os = "android")) => {
                     self.answer_in_background(ask, window, cx);
                 }
                 "choose-file" | "choose-folder" | "save-file" | "reveal" => {
@@ -289,6 +287,12 @@ fn open(bench: Option<clock::Bench>) {
     application.on_open_urls(|urls| opened().extend(urls));
     application.run(move |cx| {
         gpui_kit::init(cx);
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        cx.on_app_quit(|_| {
+            drop(crate::adapters::Cleanup);
+            async {}
+        })
+        .detach();
         gpui_kit::open_window(options(), cx, move |window, cx| {
             Theme::sync_system_appearance(Some(window), cx);
             cx.new(|cx| new_view(bench, window, cx))

@@ -270,6 +270,33 @@ fn invoke_presses_scene_elements_and_controls_by_label() {
     pointer_lands_where_a_hand_would(&shown());
     verbs_reach_ordinary_controls(&shown());
     assert!(matches!(step("invoke", &["Nope"]), Ok(Attempt::Waiting(_))));
+    for (mut frame, told) in [(shown(), false), (told(), true)] {
+        let row = frame.controls.len();
+        if told {
+            frame.controls[4].children.push(row);
+            frame.controls.extend([
+                told_row(Kind::Record, "", (0., "", 0), vec![row + 1, row + 2]),
+                told_row(Kind::Field, "kind", (0., "scene", 0), vec![]),
+                told_row(Kind::Field, "event", (1., "", 17), vec![]),
+            ]);
+        } else {
+            frame.controls[0].children.push(row);
+            frame
+                .controls
+                .push(named(Kind::Canvas, Some(17), "", "", 0, vec![]));
+        }
+        let mut dock = scene();
+        dock.access = vec![button("Close keyboard", [200., 0., 100., 32.])];
+        frame.scenes.insert(row, dock);
+        pointer_lands_where_a_hand_would(&frame);
+        assert_eq!(
+            values(attempt_on(&frame, "invoke", &["Close keyboard"])),
+            vec![
+                Touch::pointer(17, 250., 16., true, false),
+                Touch::pointer(17, 250., 16., false, false),
+            ]
+        );
+    }
 }
 
 /// A slider lands at its value, clamped to its range; what has no range refuses it.

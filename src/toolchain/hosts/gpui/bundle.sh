@@ -11,7 +11,7 @@ out=$1 name=$2 id=$3 icon=$4 machine=$5 extra=${6:-}
 app="$out/$name.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-cp "$here/target/release/osprey-gpui" "$app/Contents/MacOS/osprey-gpui"
+cp "${CARGO_TARGET_DIR:-$here/target}/release/osprey-gpui" "$app/Contents/MacOS/osprey-gpui"
 
 {
     echo '#!/usr/bin/env bash'

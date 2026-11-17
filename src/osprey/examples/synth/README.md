@@ -1,16 +1,10 @@
-# Prism synth
+# Prism synth [PRISM-ROUTING-EDITOR]
 
-A sample application on [@osprey/signal-flow](../../packages/signal_flow/README.md): the signal-flow editor in its Prism skin with a keyboard deck, wired to a real voice ([UI-MACHINE-FLOW-SYNTH](../../../../docs/specs/platforms/UiMachines.md)). The graph's five nodes are the synth:
+Prism opens its signal-flow studio with the original node cards, cables, inspector, meters and playable keyboard. The module palette, editable routing and VST controls use that same studio and patch.
 
-| Node | What it does to the sound |
-| --- | --- |
-| Oscillator | A sine, triangle, saw or square at the struck key's pitch; bypassed, the synth is silent |
-| LFO | Sweeps the filter's cutoff up to two octaves each way, twice a second; Depth sets how far |
-| Filter | A two-pole low-pass whose Cutoff slider sweeps 20 Hz to 20 kHz; bypassed, the tone passes untouched |
-| Master | The output; bypassed, the synth is silent |
-| Scope | Display only |
+Prism is the modular instrument editor for `@osprey/synth`. Its native component picker, port controls and parameter fields share a typed graph with the canvas. Start with an oscillator, filter, gain and output; add more components, choose an output port, connect it to an input and audition the resulting patch. Invalid connections leave the previous graph unchanged, and deleting a component removes its cables.
 
-Click a key on the keyboard under the graph to play: it renders one second of the patch at that key's pitch in Osprey, as an 8-bit WAV ([src/synth.ospml](src/synth.ospml)), and asks the host to play it through the `run` capability: on the Mac `perl` writes the clip and `afplay` plays it; on Windows the package's [`play-wav.exe`](windows/play-wav.c), which the launch names with `--play`, checks the clip is a whole WAV and plays it from memory, since the sandbox has nowhere `afplay`'s caller could write it. The controls shape the sound and never play it. [src/studio.ospml](src/studio.ospml) is the whole application: the editor's own callbacks, plus the keyboard and the voice.
+The menu offers sine oscillators, low-pass filters, gains, mixers, delays, MIDI note generators, normalized LFOs, stereo conversion, modulated stereo gain and mono/stereo outputs. Scan a VST3 bundle to add independent instrument or effect instances. Drag nodes, connect canvas ports or native port controls, and route LFOs to compatible effect parameters. The graph library validates port rates, units, channel counts and feedback cycles; parameter edits are checked against each component's descriptor.
 
 ## Run
 
@@ -20,12 +14,34 @@ make -C src/toolchain/targets/windows synth           # in its sandbox on Window
 make -C src/toolchain/targets/windows/tests synth     # its Windows self-test against goldens/windows
 ```
 
+Open **Modules** and click a component to add it, or drag it onto the canvas. **Patch controls** opens the selected-module inspector: choose a **Module**, edit its **Parameters**, then use **Connections** to select an output and connect or disconnect an input. Only the chosen module's controls are shown; **Remove module** removes that module and its cables. Compact **Audition**, **Play** and **Stop** controls remain together above the inspector; **Add to patch** holds component and VST creation. The inspector journey exercises selection and routing through these visible controls [PRISM-ROUTING-EDITOR].
+
+Drag from an output socket to a compatible input socket to draw a cable; clicking the output and then the input also works. Click an exposed cable to highlight it, then click **Delete cable ×** or press **Backspace/Delete**. **Escape** cancels a pending connection. A rejected connection preserves the existing cables. The Filter's purple **CUTOFF** input accepts normalized modulation (unplugged uses the Cutoff value); its cyan monitor socket routes the same audio output to the Scope. These interactions are covered by [PRISM-ROUTING-CABLES].
+
+The keyboard stays docked to the bottom of the window. **Close keyboard ×** hides it; **Keyboard** in the header restores it.
+
+**Play patch** continuously produces the captured graph until **Stop playback**. **Audition patch** uses the same device path for a 256 ms preview. On macOS the packaged worker sends checked mono/stereo 48 kHz float32 PCM into a bounded AudioQueue; each VST instance survives successive graph blocks. Built-in DSP state and sample-positioned MIDI/modulation also continue between blocks. Stop, failure and ordinary application shutdown release the workers.
+
+The current running graph is frozen at start: stop and play again to apply editor changes. The producer allocates outside the audio callback and transfers 2048-frame blocks; this is not a low-latency, allocation-free synthesis engine. The native journey checks sustained graph/device processing and that Stop leaves no owned workers alive. Individual runs have passed over twenty seconds without an empty-queue callback, but repeated runs have exposed queue starvation; reliable continuous playback remains unfinished. Windows and other device adapters, graph persistence and latency compensation remain pending. Without the packaged worker, a mono audition can still use the existing temporary-WAV `afplay` adapter; continuous playback reports that the worker is required.
+
+If the device queue runs empty, Prism retains a visible warning with the observed count. The backend emits structured `audio.queue_empty` diagnostics from the producer thread; the callback never logs. A warning is not an acoustic measurement, and reducing patch workload may help.
+
 ## Test
 
 ```sh
-./target/release/osprey test src/osprey/examples/synth/test
+make -C src/toolchain/targets/tests synth
+make -C src/toolchain/targets/tests synth-vst
+make -C src/toolchain/targets/macos/tests synth-headless
+make -C src/toolchain/targets/macos/tests synth
 ```
 
-Resizing the window never resizes a control: the inspector stays at the right edge, the keyboard at the bottom, and the graph between them gains grid.
+The application tests exercise both the existing fixed-patch interaction coverage and the new modular surface through real host events. The modular journey creates independent components, wires a chain, renders a playback request, changes parameters, rejects invalid input and removes a connected node. A device journey captures every float32 block Audition writes to the audio device through an effect and measures it: pitch from zero crossings, RMS, peak, click-free block joins, gain and low-pass attenuation. The synth package separately checks graph replacement, DSP state continuity, sample output and float32 RIFF bytes.
 
-The tests check the voice sample by sample: peaks for each patch and the WAV header. Then they drive the Prism canvas by accessible label and check that every key asks the host to play exactly the clip its patch renders at its pitch, that every control asks for nothing, and that a larger window moves the keyboard and inspector to its edges with their keys still playing.
+The VST target builds a separate worker against a pinned official SDK, scans actual ADelay and mda binaries, processes audio/MIDI and checks automation/state restoration. The native headless journey drives the menu and canvas through a real MIDI instrument, two real effects and LFO-controlled gain; it verifies 18 graph transactions across three retained workers, exact effect-chain PCM and sample-positioned MIDI/automation. Windowed screenshots, live graph replacement, graph persistence and plug-in latency compensation remain unfinished. See the [delivery checklist](../../../../docs/plans/prism-synth-routing.md) and [worker scope](../../../toolchain/hosts/synth_vst/README.md) for verified capabilities and remaining work.
+
+
+VST3 bundles can now be scanned from the native **VST3 bundle** field. **Add VST3** lists the actual classes; choosing one loads its checked stereo/MIDI ports and normalized controls into an independent graph node. The worker is packaged beside Prism. Scan failures remain visible, and stale responses cannot add nodes to a newer module selection. External-node audio runs through the preview engine using persistent worker instances.
+
+`make -C src/toolchain/targets/macos/tests synth-vst-headless` drives the native application against real SDK plug-ins and real bounded worker processes. `synth-vst` runs the same journey in a window. The headless records are accessibility trees; the windowed run records screenshots. These commands do not substitute a fake successful scan or descriptor.
+
+Latest verification (2026-11-16): the final sustained native reruns failed the unchanged zero-empty-queue assertion, including a rerun without concurrent test compilation. Earlier successful 985088-frame evidence is not reproducible reliability. Exact finite VST-chain PCM still passes. Continuous playback still needs producer-throughput work; do not treat this branch as release-ready.

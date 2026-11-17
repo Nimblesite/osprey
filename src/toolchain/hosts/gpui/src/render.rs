@@ -110,6 +110,9 @@ fn node(ctx: &mut Ctx, node: &Tree) -> AnyElement {
 fn container(ctx: &mut Ctx, kind: &str, node: &Tree) -> AnyElement {
     match kind {
         "section" => screens::section(ctx, node),
+        "framed" => screens::framed(ctx, node),
+        "aside" => screens::aside(ctx, node),
+        "image" => screens::image(node),
         "screen" => screens::screen(ctx, node),
         "divider" => Separator::horizontal().into_any_element(),
         "spacer" => div().flex_grow(1.).into_any_element(),
@@ -198,8 +201,8 @@ fn holds_scene(ctx: &Ctx, node: &Tree, depth: usize) -> bool {
             .regions
             .get(string(node, "key"))
             .is_some_and(|region| holds_scene(ctx, &region.node, depth + 1)),
-        _ => list(node, "children")
-            .iter()
+        _ => crate::tree::inside(node)
+            .into_iter()
             .any(|child| holds_scene(ctx, child, depth + 1)),
     }
 }

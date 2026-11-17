@@ -62,7 +62,7 @@ tapAt (label, fraction) =
 
 tap label = tapAt (label, 0.5)
 
-machine () = driven.drivenSurface.surfaceSession.sessionStore.screen.screenMachine
+machine () = (Drive::holding driven).screen.screenMachine
 
 currentPatch () = Synth::patch (machine ())
 
@@ -494,3 +494,71 @@ test ("launched with a player, every key hands its own clip to that player alone
     tap "Bypass Oscillator"
     tap "Play C4"
     silent ()))
+
+// [PRISM-ROUTING-EDITOR] The editor's actual actions create independent routable instances.
+test ("the modular editor adds, connects and removes independent synth components", \() => Runtime::guarded (\() =>
+    first = synth::EditorState::initial ()
+    source = synth::EditorState::tapped (first, synth::Add(kind = "sine"))
+    gain = synth::EditorState::tapped (source, synth::Add(kind = "gain"))
+    output = synth::EditorState::tapped (gain, synth::Add(kind = "output"))
+    expect (length output.graph.nodes, 3)
+    armed = synth::EditorState::tapped (output, synth::Source(identity = 0, outlet = 0))
+    routed = synth::EditorState::tapped (armed, synth::Connect(identity = 1, inlet = 0))
+    expect (length routed.graph.cables, 1)
+    second = synth::EditorState::tapped (synth::EditorState::tapped (routed, synth::Source(identity = 1, outlet = 0)), synth::Connect(identity = 2, inlet = 0))
+    expect (length second.graph.cables, 2)
+    refused = synth::EditorState::tapped (second, synth::Connect(identity = 1, inlet = 0))
+    expect (structuralEquals (refused.graph, second.graph), true)
+    expect (refused.message != "", true)
+    removed = synth::EditorState::tapped (synth::EditorState::tapped (second, synth::Select(identity = 1)), synth::Remove)
+    expect (length removed.graph.nodes, 2)
+    expect (length removed.graph.cables, 0)
+    expect (removed.nextIdentity, 3)))
+
+test ("native component menus and cable controls edit the same graph drawn on the canvas", \() => Runtime::guarded (\() => hosted editorUiJourney))
+
+test ("VST discovery creates typed independent plug-in nodes through native controls", \() => Runtime::guarded (\() => ui::Views::quiet pluginUiJourney))
+
+test ("VST audio packets preserve float samples, stereo frames and exact MIDI offsets", \() => Runtime::guarded hostWireJourney)
+
+test ("MIDI generators and stereo outputs are available through native graph controls", \() => Runtime::guarded (\() => hosted midiMenuJourney))
+
+test ("MIDI note-on and note-off ownership survives exact block partitions", \() => Runtime::guarded midiTimingJourney)
+
+test ("hosted graph execution shares exact builtin PCM and rejects malformed cached buffers", \() => Runtime::guarded graphClipJourney)
+test ("original Prism sliders and module palette operate the editable graph", \() => Runtime::guarded (\() => hosted prismIntegratedJourney))
+test ("patch inspector shows only the selected module and preserves routing", \() => Runtime::guarded (\() => hosted inspectorJourney))
+test ("the device hears each tone's exact pitch and level, gain and low-pass attenuation", \() => Runtime::guarded (\() => hosted deviceAudioJourney))
+
+// Shared assertions on a driven synth: each names the one field it checks.
+cablesOf (d, count) = expect (length (Drive::holding d).graph.cables, count)
+
+sameGraph (one, other) = expect (structuralEquals ((Drive::holding one).graph, (Drive::holding other).graph), true)
+
+selectedIs (d, identity) = expect ((Drive::holding d).selected, identity)
+
+showsIn (d, text, shown) = expect (Drive::shows (d, text), shown)
+
+offeredIn (d, label, shown) = expect (Semantics::offered (d.drivenSeen.renderedAccess, label), shown)
+
+viewShows (d, text, shown) = expect (Views::shows (d.drivenSeen, text), shown)
+
+previewed (d, receipt) = Drive::completed (d, "prism-preview", true, receipt)
+
+askedOf (d, count) = expect (length d.drivenSurface.surfaceAsked, count)
+
+portAt (d, label, left, top) =
+    port = Semantics::element (d.drivenSeen.renderedAccess, label)
+    expect (port.accessLeft, left)
+    expect (port.accessTop, top)
+
+succeeds (outcome, check) = match outcome
+    Error why => expect (why, "success")
+    Success value => check value
+
+valid (outcome, check) = match outcome
+    synth::Invalid _ => expect (false, true)
+    synth::Valid value => check value
+
+// The `index`th parameter of graph node `identity`, which must exist.
+parameterAt (graph, identity, index, check) = valid (synth::Graphs::node (graph, identity), \n => succeeds (listGet n.parameters index, check))

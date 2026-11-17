@@ -5,13 +5,13 @@ import synth::RenderInputs
 
 (** Component dispatch shared by offline graph execution. *)
 module RenderKernels
-    sine (rate, snapshot, frame, held) = match RenderInputs::parameter (snapshot, held.identity, "frequency")
+    sine (rate, snapshot, frame, held, waveform, shape) = match RenderInputs::parameter (snapshot, held.identity, "frequency")
         Error why => Error(message = why)
-        Success frequency => match Oscillators::configure (OscillatorConfig(sampleRate = rate, frequency = frequency, pulseWidth = 0.5, waveform = Sine))
+        Success frequency => match Oscillators::configure (OscillatorConfig(sampleRate = rate, frequency = frequency, pulseWidth = 0.5, waveform = waveform))
             Error why => Error(message = why)
             Success config =>
                 sample = Oscillators::next (config, OscillatorState(phase = held.phase))
-                Success(value = RenderInputs::emitted (frame, held(phase = sample.next.phase), sample.sample))
+                Success(value = RenderInputs::emitted (frame, held(phase = sample.next.phase), shape sample.sample))
 
     filtered (frame, held, config, input) = match Filters::configure config
         Error why => Error(message = why)
@@ -20,11 +20,21 @@ module RenderKernels
             next = held(integratorOne = sample.next.integratorOne, integratorTwo = sample.next.integratorTwo)
             Success(value = RenderInputs::emitted (frame, next, sample.low))
 
-    lowpass (rate, snapshot, frame, held, input) = match RenderInputs::parameter (snapshot, held.identity, "cutoff")
+    lowpass (plan, rate, snapshot, frame, held, input) = match cutoff (plan, snapshot, frame, held.identity)
         Error why => Error(message = why)
         Success cutoff => match RenderInputs::parameter (snapshot, held.identity, "resonance")
             Error why => Error(message = why)
             Success resonance => filtered (frame, held, FilterConfig(sampleRate = rate, cutoff = cutoff, resonance = resonance), input)
+
+    cutoff (plan, snapshot, frame, identity) = match RenderInputs::parameter (snapshot, identity, "cutoff")
+        Error why => Error(message = why)
+        Success base => match length (filterList (plan.graph.cables, \c => c.destination == identity && c.inlet == 1)) == 0
+            true => Success(value = base)
+            false => match RenderInputs::input (plan, frame, identity, 1)
+                Error why => Error(message = why)
+                Success control => match control >= 0.0 && control <= 1.0
+                    false => Error(message = "Cutoff modulation must stay between zero and one.")
+                    true => Success(value = Waves::controlledCutoff (base, control))
 
     gain (snapshot, frame, held, input) = match RenderInputs::parameter (snapshot, held.identity, "gain")
         Error why => Error(message = why)
@@ -36,15 +46,29 @@ module RenderKernels
         Error why => Error(message = why)
         Success second => Success(value = RenderInputs::emitted (frame, held, first + second))
 
+    controlled (plan, snapshot, frame, held, input) = match RenderInputs::input (plan, frame, held.identity, 1)
+        Error why => Error(message = why)
+        Success control => match control >= 0.0 && control <= 1.0
+            false => Error(message = "Gain modulation must stay between zero and one.")
+            true => match RenderInputs::parameter (snapshot, held.identity, "gain")
+                Error why => Error(message = why)
+                Success level => match level >= 0.0 && level <= 8.0
+                    false => Error(message = "Invalid gain.")
+                    true => Success(value = RenderInputs::emitted (frame, held, Waves::controlledGain (input, level, control)))
+
     processor (plan, rate, snapshot, frame, held, n, input) = match n.processor
-        Filter => lowpass (rate, snapshot, frame, held, input)
+        ModulatedGain => controlled (plan, snapshot, frame, held, input)
+        Filter => lowpass (plan, rate, snapshot, frame, held, input)
         Amplifier => gain (snapshot, frame, held, input)
         Mixer => mixer (plan, frame, held, input)
         Sink => Success(value = RenderInputs::emitted (frame, held, input))
         _ => Error(message = "Unsupported processor in the reference audio renderer.")
 
     selected (plan, rate, snapshot, frame, held, n) = match n.processor
-        Oscillator => sine (rate, snapshot, frame, held)
+        Oscillator => match waveform (snapshot, n)
+            Error why => Error(message = why)
+            Success wave => sine (rate, snapshot, frame, held, wave, \value => value)
+        Lfo => sine (rate, snapshot, frame, held, Sine, Waves::unipolar)
         Delay _ => match listGet held.delay 0
             Error why => Error(message = why)
             Success previous => Success(value = RenderInputs::emitted (frame, held, previous))
@@ -57,4 +81,29 @@ module RenderKernels
         Error why => Error(message = why)
         Success n => match RenderInputs::held (frame, identity)
             Error why => Error(message = why)
-            Success held => selected (plan, rate, snapshot, frame, held, n)
+            Success held => match listGet (filterList (n.parameters, \p => p.key == "enabled")) 0
+                Error _ => selected (plan, rate, snapshot, frame, held, n)
+                Success _ => match RenderInputs::parameter (snapshot, identity, "enabled")
+                    Error why => Error(message = why)
+                    Success enabled => match enabled
+                        1.0 => selected (plan, rate, snapshot, frame, held, n)
+                        0.0 => bypassed (plan, frame, held, n)
+                        _ => Error(message = "Enabled must be zero or one.")
+
+    waveform (snapshot, n) = match listGet (filterList (n.parameters, \p => p.key == "waveform")) 0
+        Error _ => Success(value = Sine)
+        Success _ => match RenderInputs::parameter (snapshot, n.identity, "waveform")
+            Error why => Error(message = why)
+            Success value => match value
+                0.0 => Success(value = Sine)
+                1.0 => Success(value = Triangle)
+                2.0 => Success(value = Saw)
+                3.0 => Success(value = Pulse)
+                _ => Error(message = "Unknown oscillator waveform.")
+
+    bypassed (plan, frame, held, n) = match n.processor
+        Filter => match RenderInputs::input (plan, frame, held.identity, 0)
+            Error why => Error(message = why)
+            Success value => Success(value = RenderInputs::emitted (frame, held, value))
+        Lfo => Success(value = RenderInputs::emitted (frame, held, 1.0))
+        _ => Success(value = RenderInputs::emitted (frame, held, 0.0))

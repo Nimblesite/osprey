@@ -1,11 +1,11 @@
 //! The `test` subcommand ([TESTING-FRAMEWORK]): TAP output, filters, listing, verdicts and skips.
 
-use super::{
-    finish, osprey, repo_root, run_args, run_file, run_source, set_mode, temp_dir, temp_osp, Out,
-    HELLO,
-};
+use super::{finish, osprey, run_args, run_file, run_source, temp_dir, temp_osp, Out, HELLO};
+#[cfg(unix)]
+use super::{repo_root, set_mode};
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::Command;
 
 // --- testing framework (docs/specs/language/0027-TestingFramework.md) ---------------

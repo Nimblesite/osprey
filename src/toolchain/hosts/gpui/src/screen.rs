@@ -59,7 +59,10 @@ impl<'a> Screen<'a> {
                 .any(|control| matches(&control.words) || matches(&control.hint))
         };
         let shown = match &self.told {
-            Some(_) => self.regions().into_iter().any(|node| words_in(node, &matches)),
+            Some(_) => self
+                .regions()
+                .into_iter()
+                .any(|node| words_in(node, &matches)),
             None => rows(),
         };
         shown
@@ -80,27 +83,42 @@ impl<'a> Screen<'a> {
 
     /// The first scene A step can send to, and the control number its canvas issues.
     pub(crate) fn scene(&self) -> Option<(i64, &Scene)> {
-        if let Some((row, number)) = self.scene_record() {
+        self.matching_scene(&|_| true)
+    }
+
+    /// Find the scene owning an element, preserving that scene's event binding.
+    fn matching_scene(&self, accepts: &dyn Fn(&Scene) -> bool) -> Option<(i64, &Scene)> {
+        if let Some((row, number)) = self.scene_record(accepts) {
             return Some((number, self.shown.scenes.get(&row)?));
         }
-        let row = *self.shown.scenes.keys().min()?;
+        let row = *self
+            .shown
+            .scenes
+            .iter()
+            .filter(|(_, scene)| accepts(scene))
+            .map(|(row, _)| row)
+            .min()?;
         let number = self.shown.controls.get(row)?.action?;
         Some((number, self.shown.scenes.get(&row)?))
     }
 
     /// The scene component's row and control number.
-    fn scene_record(&self) -> Option<(usize, i64)> {
-        let found = self
-            .regions()
-            .into_iter()
-            .find_map(|node| find(node, &|node| tree::string(node, "kind") == "scene"))?;
-        let row = usize::try_from(found.get("sceneRow").and_then(Tree::as_u64)?).ok()?;
+    fn scene_record(&self, accepts: &dyn Fn(&Scene) -> bool) -> Option<(usize, i64)> {
+        let found = self.regions().into_iter().find_map(|node| {
+            find(node, &|node| {
+                scene_row(node)
+                    .and_then(|row| self.shown.scenes.get(&row))
+                    .is_some_and(accepts)
+            })
+        })?;
+        let row = scene_row(found)?;
         Some((row, tree::ordinal(found)?))
     }
 
     /// The scene element a screen reader announces as `label`, reached over its canvas's number.
     pub(crate) fn element(&self, label: &str) -> Option<(i64, &Access)> {
-        let (number, scene) = self.scene()?;
+        let (number, scene) =
+            self.matching_scene(&|scene| scene.access.iter().any(|item| item.label == label))?;
         Some((
             number,
             scene.access.iter().find(|item| item.label == label)?,
@@ -220,6 +238,11 @@ impl<'a> Screen<'a> {
             ));
         }
     }
+}
+
+/// The checked row carrying a told canvas's geometry and accessibility elements.
+fn scene_row(node: &Tree) -> Option<usize> {
+    usize::try_from(node.get("sceneRow").and_then(Tree::as_u64)?).ok()
 }
 
 /// Whether any string inside a told value satisfies `matches`.

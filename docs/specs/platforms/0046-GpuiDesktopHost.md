@@ -80,7 +80,7 @@ Visible glyph and lettering runs containing words or numbers contribute passive 
 
 ## Capabilities [GPUI-HOST-CAPABILITIES]
 
-The host answers `Run`, `ListDirectories`, `ReadTexts`, `StoreRead`, `StoreWrite`, `StoreList`, `StoreDelete`, `ChooseFile`, `ChooseFolder`, `SaveFile`, `Reveal`, `Cancel` and `Animate` with Rust adapters. Each request arrives as an ask row ([NATIVE-SHM-ASK]) and each completion is one `completed` event. A capability the host does not answer is completed with an error naming it. Platform-only work is reached through `HostCall`, answered only through the mobile OS bridge on iOS and Android, or completed with an error.
+The host answers `Run`, `ListDirectories`, `ReadTexts`, `StoreRead`, `StoreWrite`, `StoreList`, `StoreDelete`, `ChooseFile`, `ChooseFolder`, `SaveFile`, `Reveal`, `Cancel` and `Animate` with Rust adapters. Each request arrives as an ask row ([NATIVE-SHM-ASK]) and each completion is one `completed` event. A capability the host does not answer is completed with an error naming it. Platform-only work is reached through `HostCall`: the mobile OS bridge answers it on iOS and Android; desktop also answers the bounded process capabilities below. Unsupported operations complete with an explicit error.
 
 ## Library targets [GPUI-HOST-TARGETS]
 
@@ -97,3 +97,10 @@ A Linux or Windows slice is built on its own system, because it bundles that sys
 ## Verification [GPUI-HOST-VERIFICATION]
 
 Acceptance requires: the Osprey application's own test suite passing against fixture messages; the host rendering the `src/osprey/packages/native/tests` probe application; a deterministic smoke run (`run.sh --smoke`) that starts the probe, taps Add and asserts "Count 1" through the real boundary, with no window; and a measured frame-rate run of the example application at the gated entity count on an Apple silicon Mac. Linux and Windows acceptance requires the same smoke run on those platforms in CI. Every app's `self-test.json` also runs on this host without a window on Mac and Linux, and in the real window on the Mac runner ([UI-MACHINE-SELF-TEST]).
+
+
+### Retained process sessions [SYNTH-HOST-STREAM-SESSION]
+
+Desktop `HostCall` namespace `process` supports `input` for a disposable process and `session-open`, `session-exchange`, and `session-close` for retained line-framed workers. Open accepts one absolute `executable` and repeated `argv` pairs and returns `{status: 0, session: handle}`. At most sixteen sessions belong to one application. Exchange accepts one `session` and one `stdinSlice`, appends a newline to the slice, and stores the single response line without its delimiter in `hostSlice`. Its receipt contains `status` and collected `stderr`. Close accepts one `session`, kills and reaps the child, and invalidates the handle. Invalid, duplicate, unknown and unpaired argument keys are errors.
+
+Transactions are serialized per session and reject concurrent calls as busy. Input is at most 2 MiB without embedded newlines; output is at most 4 MiB, diagnostics 64 KiB, and the requested deadline is 1–60,000 milliseconds. Separate bounded readers and a writer prevent large requests from deadlocking on pipe capacity. Timeout, malformed output, pipe failure and excess output close the session; the public registry releases its slot. Entry-point cleanup reaps retained children for ordinary smoke, headless and windowed exits. The process boundary is not an operating-system sandbox, and cleanup owns the direct child rather than arbitrary descendants spawned by a third-party plug-in.

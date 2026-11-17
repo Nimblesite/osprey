@@ -1,4 +1,6 @@
-use super::{read_text, run_args, run_args_with_stdin, set_mode, temp_dir, temp_osp};
+#[cfg(unix)]
+use super::set_mode;
+use super::{read_text, run_args, run_args_with_stdin, temp_dir, temp_osp};
 
 #[test]
 fn fmt_stdout_check_and_rewrite_modes() {

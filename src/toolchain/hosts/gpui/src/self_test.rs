@@ -41,7 +41,7 @@ pub enum Attempt {
     Recording(String),
 }
 
-/// A run's script and where its records go, from `--self-test <script> <shots> [--headless]`.
+/// A run's script and where its records go, from `--self-test <script> <shots> [--headless] [--live-processes]`.
 pub struct Run {
     steps: Vec<(String, Vec<String>)>,
     shots: PathBuf,
@@ -63,7 +63,7 @@ pub fn app_arguments() -> Vec<String> {
     while let Some(argument) = given.next() {
         match argument.as_str() {
             "--self-test" => drop((given.next(), given.next())),
-            "--headless" => {}
+            "--headless" | "--live-processes" | "--defer-processes" => {}
             _ => kept.push(argument),
         }
     }
@@ -307,6 +307,8 @@ pub fn in_window(run: Run, window: &mut Window, cx: &mut Context<HostView>) {
         if verdict.is_ok() {
             println!("self-test ok ({} steps, in a window)", run.steps.len());
         }
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        drop(crate::adapters::Cleanup);
         std::process::exit(i32::from(verdict.is_err()));
     })
     .detach();

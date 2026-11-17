@@ -113,3 +113,25 @@ module Graphs
         Valid nodes => match foldList (graph.cables, Valid(value = nodes), connectChecked)
             Invalid fault => Invalid(fault = fault)
             Valid checked => schedule (checked, checked.nodes, [])
+
+    // [PRISM-ROUTING-DELIVERY] Publish only a completely validated replacement.
+    edited graph = match prepare graph
+        Invalid fault => Invalid(fault = fault)
+        Valid prepared => Valid(value = prepared.graph)
+
+    (** Remove a component and all incident routes; unknown identities are errors. *)
+    export remove (graph, identity) = match node (graph, identity)
+        Invalid fault => Invalid(fault = fault)
+        Valid _ => edited (graph(nodes = filterList (graph.nodes, \n => n.identity != identity), cables = filterList (graph.cables, \c => c.source != identity && c.destination != identity)))
+
+    (** Remove an exact route, refusing stale cable selections. *)
+    export disconnect (graph, cable) = match length (filterList (graph.cables, \c => structuralEquals (c, cable))) == 0
+        true => Invalid(fault = InvalidPort)
+        false => edited (graph(cables = filterList (graph.cables, \c => structuralEquals (c, cable) == false)))
+
+    (** Replace an inlet's route atomically, validating ports and cycles before publication. *)
+    export rewire (graph, cable) =
+        detached = graph(cables = filterList (graph.cables, \c => c.destination != cable.destination || c.inlet != cable.inlet))
+        match connect (detached, cable)
+            Invalid fault => Invalid(fault = fault)
+            Valid connected => edited connected
