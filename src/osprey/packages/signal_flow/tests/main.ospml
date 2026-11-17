@@ -458,7 +458,7 @@ test ("undo and redo at the edges of their history, a refused document shown in 
     after = (signalflow::Flow::settled (fresh(screen = screen(screenMachine = pending)))).stepStore
     expect (length after.past, 0)
     expect (length after.future, 0)
-    expect (Machines::requests after.screen.screenMachine, [])
+    expect (length (Machines::requests after.screen.screenMachine), 0)
     settled = (signalflow::Flow::settled fresh).stepStore
     forEachList (["undo", "redo"], \lever => expect (histories (settled, lever), "${length settled.past}/0"))
     refused = App::loaded "not json"
