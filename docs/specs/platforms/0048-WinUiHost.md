@@ -81,11 +81,12 @@ Adapters run off the UI thread and complete on it. They do what Osprey asked wit
 | `choose-file`, `choose-folder` | The Windows App SDK pickers |
 | `save-file` | The save picker with the suggested name |
 | `run` | One bounded, cancellable executable run ([`Processes.cs`](../../../src/toolchain/hosts/winui/OspreyHost.Core/Processes.cs)) |
+| `host-call` in the `process` namespace | Bounded line-framed child sessions for the Windows audio device |
 | `cancel` | Cancels the walk running under the target ticket; that walk completes with the error `cancelled` |
 | `store-read`, `store-write`, `store-list`, `store-delete` | Files under `%APPDATA%\Osprey\<app>`, as the GPUI host keeps them: names relative to that folder, reads bounded and UTF-8, writes atomic |
 | `animate` | The frame clock ([WINUI-HOST-FRAME]); completes at once |
 
-Every other kind completes with the error "The Windows host does not answer *kind* requests".
+An unanswered capability or namespace completes with an error. Windows process sessions use the `session-open`, `session-exchange` and `session-close` operations from [SYNTH-HOST-STREAM-SESSION-DESKTOP]. Exchange carries its line in `stdinText` and returns the response in the receipt's `output` field so audio blocks stay out of the host's retained slice storage.
 
 **The Windows folder walk** ([UI-EFFECTS-MEASURE](../../../src/osprey/packages/native/README.md)) opens each folder once with `FILE_FLAG_BACKUP_SEMANTICS` and reads its children in 64 KiB batches of `FileIdExtdDirectoryInfo`, or `FileIdBothDirectoryInfo` on file systems without 128-bit ids, such as FAT. No child is opened to learn its size, attributes, reparse tag or id. It keeps an explicit stack, so no tree is deep enough to exhaust the thread's stack, and opens paths in their `\\?\` form, so a path past 260 characters is still read. The rules:
 

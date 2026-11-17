@@ -268,6 +268,33 @@ public sealed class CapabilitiesTests
 
     static Ask Process(long code, string ticket, params AskField[] fields) => Asked(code, ticket, fields);
 
+    [Fact]
+    public async Task AProcessSessionExchangesBoundedLinesAndClosesItsWorker()
+    {
+        var host = Host();
+        var shell = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
+        const string echo = "while ($null -ne ($line = [Console]::ReadLine())) { [Console]::WriteLine($line) }";
+        var opened = await host.Answer(Process(11, "open", Text(1, "process"), Text(2, "session-open"),
+            Text(3, "executable"), Text(3, shell), Text(3, "argv"), Text(3, "-NoProfile"),
+            Text(3, "argv"), Text(3, "-NonInteractive"), Text(3, "argv"), Text(3, "-Command"), Text(3, "argv"), Text(3, echo)));
+        Assert.True(opened.Ok, opened.Error);
+        var key = Docs.Text(Receipt(opened), "session");
+        Assert.NotEmpty(key);
+        Ask Exchange(string input, long limit = 100) => Process(11, "exchange", Text(1, "process"), Text(2, "session-exchange"),
+            Text(3, "session"), Text(3, key), Text(3, "stdinText"), Text(3, input), Number(4, 5_000), Number(5, limit));
+        foreach (var line in new[] { "first", "second" })
+        {
+            var reply = await host.Answer(Exchange(line));
+            Assert.True(reply.Ok, reply.Error);
+            Assert.Equal(line, Docs.Text(Receipt(reply), "output"));
+        }
+        Assert.False((await host.Answer(Exchange("echo ignored\necho extra"))).Ok);
+        Assert.False((await host.Answer(Exchange("echo too long", 2))).Ok);
+        Assert.False((await host.Answer(Exchange("echo closed"))).Ok);
+        var closed = await host.Answer(Process(11, "close", Text(1, "process"), Text(2, "session-close"), Text(3, "session"), Text(3, key)));
+        Assert.True(closed.Ok, closed.Error);
+    }
+
     // Reads the child named `name` until `done` holds for all its output so far and whether it has exited.
     static async Task<(string Output, bool Exited, long Status)> ReadUntil(Capabilities host, string name, Func<string, bool, bool> done)
     {

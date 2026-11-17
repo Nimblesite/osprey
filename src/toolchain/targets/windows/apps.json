@@ -59,7 +59,7 @@
       "arguments": [
         "--machine",
         "{app}\\signal_flow.machine.json",
-        "--play",
+        "--audio-worker",
         "{app}\\play-wav.exe"
       ]
     },

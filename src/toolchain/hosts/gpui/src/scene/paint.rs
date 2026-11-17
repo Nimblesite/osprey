@@ -11,7 +11,7 @@ use crate::render::Binding;
 
 /// Builds the one-shot prepaint/paint pair with decoded data moved, not reparsed.
 pub(super) fn canvas(
-    key: String,
+    row: usize,
     handle: Entity<HostView>,
     binding: Binding,
     decoded: Decoded,
@@ -21,9 +21,11 @@ pub(super) fn canvas(
         move |bounds, window, cx| {
             let transform = Transform::new(bounds, &decoded);
             let images = prepaint_handle.update(cx, |view, cx| {
-                let before = view.scene_transforms.insert(key, transform);
+                let before = view
+                    .scene_transforms
+                    .insert(format!("canvas:{row}"), transform);
                 if decoded.width > 0. && before.map(|t| t.viewed) != Some(transform.viewed) {
-                    super::input::viewed(&binding, transform.viewed, window, cx);
+                    super::input::viewed(row, &binding, transform.viewed, window, cx);
                 }
                 let images = sprites(view, &decoded);
                 for old in view.sprites.released() {

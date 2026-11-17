@@ -113,15 +113,14 @@ static void check_journey(View *view) {
   assert(reads(view, 2, "0"));
 }
 
-// An event that names no drawn control, or a kind Tally does not take, changes
-// nothing: the call answers 1 and draws the same view again.
+// An unknown control is refused. A window event is accepted without changing the view.
 static void check_refusal(View *view) {
-  const int64_t refused[][2] = {{0, 99}, {0, -1}, {2, 0}, {10, 0}};
+  const int64_t events[][3] = {{0, 99, 1}, {0, -1, 1}, {2, 0, 0}, {10, 0, 0}};
   for (int i = 0; i < 4; i++) {
     release_view(view);
-    *view = sealed(osprey_app_event(1, refused[i][0], refused[i][1], "x", "",
+    *view = sealed(osprey_app_event(1, events[i][0], events[i][1], "x", "",
                                     0, 0, false, false),
-                   1);
+                   events[i][2]);
     check_first_counts(view);
     assert(reads(view, 2, "0") && reads(view, 9, "Use day colours"));
   }

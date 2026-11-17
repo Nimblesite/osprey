@@ -1,83 +1,189 @@
-// The Prism synth's player on Windows [UI-MACHINE-FLOW-SYNTH]. Windows has no afplay, and the
-// sandbox may not write a clip anywhere afplay's caller would, so this program takes the whole WAV
-// as one hex argument, checks it is a RIFF WAVE whose sizes agree, and plays it from memory with
-// PlaySound, returning when the clip ends. The synth names it with `--play` and the host runs it.
-// Exit status: 0 played, 1 the argument is not a clip, 2 Windows would not play it.
-// Build: gcc -O2 play-wav.c -o play-wav.exe -lwinmm
+// [SYNTH-DEVICE-QUEUE] Feed the modular Prism graph's bounded WAV blocks to WinMM.
 #include <windows.h>
 #include <mmsystem.h>
+#include <math.h>
+#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-// A second of 8-bit mono at 11025 Hz is 11069 bytes; this bounds the clip far above that.
-#define MAX_CLIP_BYTES (1024 * 1024)
-#define WAV_HEADER_BYTES 44
-#define RIFF_PREAMBLE_BYTES 8
+enum { Rate = 48000, MaxFrames = 8192, Channels = 2, Slots = 4, Header = 58,
+       MaxBytes = Header + MaxFrames * Channels * 4, WaitMs = 5000 };
 
-// The value of one hex digit, or -1 when `c` is not one.
-static int nibble(char c) {
+typedef struct {
+  WAVEHDR header;
+  int16_t samples[MaxFrames * Channels];
+  uint32_t frames;
+} Slot;
+
+typedef struct {
+  HWAVEOUT output;
+  HANDLE changed;
+  Slot slots[Slots];
+  uint32_t channels, queued, empty;
+  uint64_t accepted, returned;
+  int running;
+} Device;
+
+static int fail(const char *message) {
+  fprintf(stderr, "Prism audio: %s\n", message);
+  return 0;
+}
+
+static int nibble(unsigned char c) {
   if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
   if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
   return -1;
 }
 
-// The little-endian 32-bit value at `at`; the caller has checked four bytes are there.
-static unsigned long le32(const unsigned char *at) {
-  return (unsigned long)at[0] | ((unsigned long)at[1] << 8) | ((unsigned long)at[2] << 16) | ((unsigned long)at[3] << 24);
+static size_t decode(const char *line, uint8_t *bytes) {
+  size_t digits = strcspn(line, "\r\n");
+  if (digits % 2 || digits > MaxBytes * 2 || strcmp(line + digits, "\n")) return 0;
+  for (size_t i = 0; i < digits / 2; ++i) {
+    int high = nibble((unsigned char)line[i * 2]);
+    int low = nibble((unsigned char)line[i * 2 + 1]);
+    if (high < 0 || low < 0) return 0;
+    bytes[i] = (uint8_t)(high * 16 + low);
+  }
+  return digits / 2;
 }
 
-// `hex` decoded into a new buffer of `*size` bytes, or NULL with the reason on stderr.
-static unsigned char *decoded(const char *hex, size_t *size) {
-  size_t digits = strlen(hex);
-  if (digits == 0 || digits % 2 != 0 || digits / 2 > MAX_CLIP_BYTES) {
-    fprintf(stderr, "play-wav: the clip must be an even number of hex digits, at most %d bytes\n", MAX_CLIP_BYTES);
-    return NULL;
-  }
-  *size = digits / 2;
-  unsigned char *bytes = malloc(*size);
-  if (!bytes) {
-    fprintf(stderr, "play-wav: no memory for the clip\n");
-    return NULL;
-  }
-  for (size_t i = 0; i < *size; i++) {
-    int high = nibble(hex[2 * i]);
-    int low = nibble(hex[2 * i + 1]);
-    if (high < 0 || low < 0) {
-      fprintf(stderr, "play-wav: the clip is not hex at digit %zu\n", 2 * i);
-      free(bytes);
-      return NULL;
-    }
-    bytes[i] = (unsigned char)(high << 4 | low);
-  }
-  return bytes;
+static uint32_t word(const uint8_t *bytes, size_t offset, size_t width) {
+  uint32_t value = 0;
+  for (size_t i = 0; i < width; ++i) value |= (uint32_t)bytes[offset + i] << (i * 8);
+  return value;
 }
 
-// True when `bytes` is a whole RIFF WAVE: its tags in place and its RIFF size the bytes that follow.
-static int is_wave(const unsigned char *bytes, size_t size) {
-  return size >= WAV_HEADER_BYTES && memcmp(bytes, "RIFF", 4) == 0 && memcmp(bytes + 8, "WAVE", 4) == 0 &&
-         le32(bytes + 4) == size - RIFF_PREAMBLE_BYTES;
+static int header_ok(const uint8_t *data, size_t size) {
+  return size >= Header && !memcmp(data, "RIFF", 4) && word(data, 4, 4) == size - 8 &&
+         !memcmp(data + 8, "WAVEfmt ", 8) && word(data, 16, 4) == 18 &&
+         word(data, 20, 2) == 3 && word(data, 24, 4) == Rate && word(data, 34, 2) == 32 &&
+         word(data, 36, 2) == 0 && !memcmp(data + 38, "fact", 4) &&
+         word(data, 42, 4) == 4 && !memcmp(data + 50, "data", 4);
+}
+
+static int layout_ok(const uint8_t *data, size_t size, uint32_t channels, uint32_t frames) {
+  return channels >= 1 && channels <= Channels && frames >= 1 && frames <= MaxFrames &&
+         word(data, 28, 4) == Rate * channels * 4 && word(data, 32, 2) == channels * 4 &&
+         word(data, 54, 4) == frames * channels * 4 && size == Header + frames * channels * 4;
+}
+
+static int samples(Slot *slot, const uint8_t *data, uint32_t count) {
+  for (uint32_t i = 0; i < count; ++i) {
+    uint32_t bits = word(data, Header + i * 4, 4);
+    float value;
+    memcpy(&value, &bits, sizeof(value));
+    if (!isfinite(value) || value < -1.0f || value > 1.0f) return fail("Invalid PCM sample");
+    slot->samples[i] = (int16_t)(value * 32767.0f);
+  }
+  return 1;
+}
+
+static int open_output(Device *device, uint32_t channels) {
+  device->changed = CreateEventW(NULL, FALSE, FALSE, NULL);
+  if (!device->changed) return fail("Cannot create device notification");
+  WAVEFORMATEX format = {WAVE_FORMAT_PCM, (WORD)channels, Rate, Rate * channels * 2,
+                         (WORD)(channels * 2), 16, 0};
+  if (waveOutOpen(&device->output, WAVE_MAPPER, &format, (DWORD_PTR)device->changed, 0,
+                  CALLBACK_EVENT) != MMSYSERR_NOERROR) return fail("Cannot open the Windows audio output");
+  device->channels = channels;
+  return waveOutPause(device->output) == MMSYSERR_NOERROR || fail("Cannot prime Windows audio");
+}
+
+static int reap(Device *device) {
+  for (size_t i = 0; i < Slots; ++i) {
+    Slot *slot = &device->slots[i];
+    if (!slot->frames || !(slot->header.dwFlags & WHDR_DONE)) continue;
+    if (waveOutUnprepareHeader(device->output, &slot->header, sizeof(slot->header)) != MMSYSERR_NOERROR)
+      return fail("Cannot reclaim a Windows audio buffer");
+    device->returned += slot->frames;
+    device->queued--;
+    slot->frames = 0;
+  }
+  return 1;
+}
+
+static int wait_available(Device *device, uint32_t below) {
+  ULONGLONG deadline = GetTickCount64() + WaitMs;
+  while (1) {
+    if (!reap(device)) return 0;
+    if (device->queued < below) return 1;
+    ULONGLONG now = GetTickCount64();
+    if (now >= deadline || WaitForSingleObject(device->changed, (DWORD)(deadline - now)) != WAIT_OBJECT_0)
+      return fail("Windows audio did not return its buffers");
+  }
+}
+
+static int start_output(Device *device) {
+  if (device->running || !device->queued) return 1;
+  if (waveOutRestart(device->output) != MMSYSERR_NOERROR) return fail("Cannot start Windows audio");
+  device->running = 1;
+  return 1;
+}
+
+static int enqueue(Device *device, Slot *slot, uint32_t channels, uint32_t frames) {
+  slot->header = (WAVEHDR){.lpData = (LPSTR)slot->samples, .dwBufferLength = frames * channels * 2};
+  if (waveOutPrepareHeader(device->output, &slot->header, sizeof(slot->header)) != MMSYSERR_NOERROR)
+    return fail("Cannot prepare a Windows audio buffer");
+  if (waveOutWrite(device->output, &slot->header, sizeof(slot->header)) != MMSYSERR_NOERROR) {
+    waveOutUnprepareHeader(device->output, &slot->header, sizeof(slot->header));
+    return fail("Cannot queue a Windows audio buffer");
+  }
+  slot->frames = frames;
+  device->queued++;
+  device->accepted += frames;
+  return device->queued < 2 || start_output(device);
+}
+
+static int push(Device *device, const uint8_t *data, size_t size) {
+  if (!header_ok(data, size)) return fail("Invalid float32 WAV header");
+  uint32_t channels = word(data, 22, 2), frames = word(data, 46, 4);
+  if (!layout_ok(data, size, channels, frames)) return fail("Invalid float32 WAV layout");
+  if (!device->output && !open_output(device, channels)) return 0;
+  if (channels != device->channels) return fail("The graph's audio channel count changed");
+  if (!wait_available(device, Slots)) return 0;
+  if (device->running && !device->queued) device->empty++;
+  for (size_t i = 0; i < Slots; ++i) {
+    Slot *slot = &device->slots[i];
+    if (!slot->frames) return samples(slot, data, frames * channels) && enqueue(device, slot, channels, frames);
+  }
+  return fail("No Windows audio buffer is available");
+}
+
+static int drain(Device *device) {
+  if (!start_output(device) || !wait_available(device, 1)) return 0;
+  device->running = 0;
+  return 1;
+}
+
+static void close_output(Device *device) {
+  if (device->output) {
+    waveOutReset(device->output);
+    reap(device);
+    waveOutClose(device->output);
+  }
+  if (device->changed) CloseHandle(device->changed);
+}
+
+static void receipt(const Device *device) {
+  printf("{\"status\":0,\"acceptedFrames\":%llu,\"returnedFrames\":%llu,"
+         "\"queuedFrames\":%llu,\"channels\":%lu,\"emptyCallbacks\":%lu,\"running\":%s}\n",
+         (unsigned long long)device->accepted, (unsigned long long)device->returned,
+         (unsigned long long)(device->accepted - device->returned), (unsigned long)device->channels,
+         (unsigned long)device->empty, device->running ? "true" : "false");
+  fflush(stdout);
 }
 
 int main(int argc, char **argv) {
-  if (argc != 2) {
-    fprintf(stderr, "usage: play-wav <clip as hex>\n");
-    return 1;
+  static Device device;
+  static char line[MaxBytes * 2 + 3];
+  static uint8_t bytes[MaxBytes];
+  if (argc != 2 || strcmp(argv[1], "audio-device")) return !fail("Expected audio-device");
+  while (fgets(line, sizeof(line), stdin)) {
+    int ok = !strcmp(line, "!drain\n") ? drain(&device) : push(&device, bytes, decode(line, bytes));
+    if (!ok) { close_output(&device); return 1; }
+    receipt(&device);
   }
-  size_t size = 0;
-  unsigned char *clip = decoded(argv[1], &size);
-  if (!clip) return 1;
-  if (!is_wave(clip, size)) {
-    fprintf(stderr, "play-wav: the clip is not a RIFF WAVE whose size matches its %zu bytes\n", size);
-    free(clip);
-    return 1;
-  }
-  BOOL played = PlaySoundA((LPCSTR)clip, NULL, SND_MEMORY | SND_SYNC | SND_NODEFAULT);
-  free(clip);
-  if (!played) {
-    fprintf(stderr, "play-wav: Windows would not play the clip\n");
-    return 2;
-  }
-  return 0;
+  close_output(&device);
+  return ferror(stdin) || ferror(stdout);
 }

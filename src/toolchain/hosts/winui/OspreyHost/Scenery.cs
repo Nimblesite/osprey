@@ -179,9 +179,11 @@ sealed class SceneView
         }
         var whole = Math.Min(holder.ActualWidth / scene.Width, holder.ActualHeight / scene.Height);
         var scale = scene.Zoom > 0 ? Math.Min(scene.Zoom, whole) : whole;
-        canvas.Clip = new RectangleGeometry { Rect = new Rect(0, 0, scene.Width, scene.Height) };
+        if (scale <= 0) return;
+        var viewport = (Width: holder.ActualWidth / scale, Height: holder.ActualHeight / scale);
+        canvas.Clip = new RectangleGeometry { Rect = new Rect(0, 0, viewport.Width, viewport.Height) };
         canvas.RenderTransform = new ScaleTransform { ScaleX = scale, ScaleY = scale };
-        Viewed((holder.ActualWidth / scale, holder.ActualHeight / scale));
+        Viewed(viewport);
     }
 
     // Tells the application its region's size in scene units when it changes, after this frame's drawing.
@@ -192,7 +194,12 @@ sealed class SceneView
             return;
         }
         viewed = size;
-        holder.DispatcherQueue.TryEnqueue(() => emit(Touch.Viewed(ordinal, size.Width, size.Height)));
+        var binding = ordinal;
+        holder.DispatcherQueue.TryEnqueue(() =>
+        {
+            if (holder.IsLoaded && binding == ordinal && size == viewed)
+                emit(Touch.Viewed(binding, size.Width, size.Height));
+        });
     }
 
     UIElement Draw(SceneShape shape) => shape switch

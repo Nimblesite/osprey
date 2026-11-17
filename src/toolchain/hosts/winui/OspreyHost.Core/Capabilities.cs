@@ -33,7 +33,7 @@ public sealed class Capabilities(Pickers pickers, Store store)
     public const long MaxDeadline = 10 * 60 * 1000;
 
     /// <summary>Every capability kind this host answers, for its coverage declaration [NATIVE-HOSTS-COVERAGE].</summary>
-    public static IReadOnlyList<string> Answered { get; } = ["measure-folders", "reveal", "choose-folder", "choose-file", "save-file", "run", "cancel", "store-read", "store-write", "store-list", "store-delete", "http", .. ChildPool.Kinds];
+    public static IReadOnlyList<string> Answered { get; } = ["measure-folders", "reveal", "choose-folder", "choose-file", "save-file", "run", "cancel", "store-read", "store-write", "store-list", "store-delete", "http", "host-call", .. ChildPool.Kinds];
 
     readonly ConcurrentDictionary<string, CancellationTokenSource> running = new();
     readonly ChildPool children = new();
@@ -56,6 +56,7 @@ public sealed class Capabilities(Pickers pickers, Store store)
             "cancel" => Task.FromResult(Cancel(ticket, ask)),
             "store-read" or "store-write" or "store-list" or "store-delete" => Task.FromResult(store.Answer(ask)),
             "http" => Tracked(ticket, token => Http(ticket, ask, token)),
+            "host-call" when ask.Text(1) == "process" => children.Session(ask),
             "process-start" or "process-write" or "process-read" or "process-stop" => children.Answer(ask),
             var kind => Task.FromResult(Completion.Failed(ticket, $"The Windows host does not answer {kind} requests")),
         };

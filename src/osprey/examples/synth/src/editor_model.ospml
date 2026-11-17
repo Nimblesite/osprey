@@ -72,6 +72,7 @@ type Editor G P S M =
     revision : int
     message : string
     workerPath : string
+    audioPath : string
     pluginPath : string
     catalog : List<PluginClass>
     pluginBindings : List<PluginBinding>

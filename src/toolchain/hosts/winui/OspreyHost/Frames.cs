@@ -47,8 +47,9 @@ sealed partial class Renderer
     UIElement Framed(Scope scope, Node node)
     {
         var style = node.Member("style");
-        var body = (FrameworkElement)Draw(scope, node.Member("body"));
-        Placed(body, style);
+        var content = node.Member("body");
+        var body = (FrameworkElement)Draw(scope, content);
+        Placed(body, style, (style.Flag("grow") || style.Number("height") > 0) && Fills(content));
         var inked = Inked(body, style);
         var card = new Border
         {
@@ -69,13 +70,13 @@ sealed partial class Renderer
     static Border Padded(UIElement content, Node style) => new() { Child = content, Padding = Insets(style) };
 
     // The body's place in the frame: `align` on the vertical axis, `cross` across it.
-    static void Placed(FrameworkElement body, Node style)
+    static void Placed(FrameworkElement body, Node style, bool fills)
     {
         body.VerticalAlignment = style.Text("align") switch
         {
             "center" => VerticalAlignment.Center,
             "end" => VerticalAlignment.Bottom,
-            _ => VerticalAlignment.Top,
+            _ => fills ? VerticalAlignment.Stretch : VerticalAlignment.Top,
         };
         body.HorizontalAlignment = style.Text("cross") switch
         {

@@ -23,7 +23,7 @@ $goldens = Join-Path $here 'goldens\windows'
 
 function Fail([string] $Why) { throw "FAILED: $Why" }
 
-# One script in the real window with the model doubled; its pictures are checked against the goldens.
+# Run one script in the real window with the model doubled.
 function Drive([string] $Name, [string] $Store, [string] $Double, [string[]] $Arguments) {
     $shots = Join-Path $records $Name
     $launch = @('--self-test', (Join-Path $here "self-test\$Name.json"), $shots, '--store', (Join-Path $work $Store))
@@ -31,7 +31,6 @@ function Drive([string] $Name, [string] $Store, [string] $Double, [string[]] $Ar
     if ($Double) { $launch += @('--http-double', (Join-Path $here "self-test\$Double")) }
     $run = Start-Process $exe -ArgumentList (@($launch + $Dll + $Arguments) | ForEach-Object { "`"$_`"" }) -PassThru -Wait -NoNewWindow
     if ($run.ExitCode -ne 0) { Get-Content (Join-Path $shots 'self-test.txt') -ErrorAction SilentlyContinue | Select-Object -Last 20; Fail "$Name exited with $($run.ExitCode)" }
-    & (Join-Path $winui 'goldens.ps1') -Shots $shots -Goldens (Join-Path $goldens $Name) -Update:$Update
 }
 
 Remove-Item $work, $records -Recurse -Force -ErrorAction SilentlyContinue
@@ -71,6 +70,9 @@ try {
     $leaks = Get-ChildItem $records, (Join-Path $work 'store-settings\chats.json'), (Join-Path $work 'store-coding\chats.json') -Recurse -File -Exclude 'progress.txt', 'self-test.txt' |
         Select-String -SimpleMatch 'sk-glm-test', 'sk-kimi-test', 'sk-double'
     if ($leaks) { Fail "a key reached a saved conversation or the records: $($leaks[0].Path)" }
+    foreach ($name in @('coding', 'code-blocks', 'settings', 'settings-restart')) {
+        & (Join-Path $winui 'goldens.ps1') -Shots (Join-Path $records $name) -Goldens (Join-Path $goldens $name) -Update:$Update
+    }
     'agent self-test passed; pictures are in ' + $records
 }
 finally {

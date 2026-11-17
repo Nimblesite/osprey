@@ -210,6 +210,29 @@ deviceWarningJourney editor =
     stale = "{\"status\":0,\"acceptedFrames\":2048,\"returnedFrames\":2048,\"queuedFrames\":0,\"channels\":2,\"emptyCallbacks\":0,\"running\":true}"
     errs (synth::GraphDevice::checked (editor(renderEmptyCallbacks = 1), stale))
 
+// [SYNTH-DEVICE-QUEUE] Windows hands the edited graph's audio to its packaged worker.
+windowsAudioJourney () =
+    worker = "C:\\Prism\\play-wav.exe"
+    opened = Drive::launched (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "windows", ["--audio-worker", worker])
+    playing = synth::GraphPreview::play (Drive::holding opened, "windows")
+    succeeds (listGet playing.requests 0, \request =>
+        match request.capability
+            ui::HostCall space operation args _ _ _ =>
+                expect (space, "process")
+                expect (operation, "session-open")
+                expect (structuralEquals (mapList (args, \arg => arg.headerValue), [worker, "audio-device"]), true)
+            _ => expect (false, true))
+    exchanged = synth::GraphPreview::completed (playing.stepStore, playing.stepStore.renderTicket, Success(value = "{\"status\":0,\"session\":\"windows-device\"}"))
+    succeeds (listGet exchanged.requests 0, \request =>
+        match request.capability
+            ui::HostCall _ operation args _ _ slice =>
+                expect (operation, "session-exchange")
+                expect (slice, "")
+                expect (structuralEquals (mapList (args, \arg => arg.headerName), ["session", "stdinText"]), true)
+                expect (startsWith exchanged.stepStore.renderInput "52494646", true)
+            _ => expect (false, true))
+    expect (length exchanged.writes, 0)
+
 // [PRISM-ROUTING-PRESENTATION] Main's artwork controls edit the same live patch.
 prismIntegratedJourney () =
     opened = editorLaunched []

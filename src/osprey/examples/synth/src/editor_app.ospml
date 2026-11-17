@@ -15,7 +15,10 @@ module EditorApp
             true => listGet context.arguments (satAdd at 1) ?: ""
             false => ""
         art = (signalflow::App::opened (context, "prism")).stepStore.screen.screenMachine
-        Runtime::step (editor(skin = PrismArt::sized (art, 1536.0, 828.0), workerPath = worker, assetFolder = "${ui::MachineDocs::folder (signalflow::App::documentPath context.arguments)}/skins/prism"))
+        audio = match context.platform == "windows"
+            true => ui::Lists::after (context.arguments, "--audio-worker", "")
+            false => ""
+        Runtime::step (editor(skin = PrismArt::sized (art, 1536.0, 828.0), workerPath = worker, audioPath = audio, assetFolder = "${ui::MachineDocs::folder (signalflow::App::documentPath context.arguments)}/skins/prism"))
 
     tapped (context, editor, action) = match action
         Strike note => match editor.renderContinuous || editor.renderTicket != ""

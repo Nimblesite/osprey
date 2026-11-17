@@ -163,13 +163,13 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
     // A button named in full, or else the first whose name holds the words, as the SwiftUI host reads an
     // `invoke`: a disclosure's title counts what it did ("Ran 1 command, Read 1 file").
     // Only an enabled one counts, as on the SwiftUI host: a step waits for the button to become usable.
-    FrameworkElement? Invocable(string words) =>
-        (Find(words) is { } named && Enabled(named) ? named : null)
-        ?? (window.Content is { } root
-            ? Tree(root).OfType<ButtonBase>().FirstOrDefault(button => Shown(button) && button.IsEnabled && Named(button).Contains(words, StringComparison.Ordinal))
-            : null);
-
-    static bool Enabled(FrameworkElement element) => Up<Microsoft.UI.Xaml.Controls.Control>(element)?.IsEnabled ?? true;
+    FrameworkElement? Invocable(string words)
+    {
+        if (window.Content is not { } root) return null;
+        var buttons = Tree(root).OfType<ButtonBase>().Where(button => Shown(button) && button.IsEnabled).ToArray();
+        return buttons.FirstOrDefault(button => Says(button, words) || Named(button) == words)
+            ?? buttons.FirstOrDefault(button => Named(button).Contains(words, StringComparison.Ordinal));
+    }
 
     static string Named(ButtonBase button) => AutomationProperties.GetName(button) is { Length: > 0 } name ? name : button.Content as string ?? "";
 

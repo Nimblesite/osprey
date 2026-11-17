@@ -40,7 +40,7 @@ public static class Coverage
     /// <summary>Capability kinds this host refuses with an error completion, not yet answered (plan 0037).</summary>
     public static IReadOnlyList<string> Unanswered { get; } =
     [
-        "list-directories", "read-plists", "read-texts", "fingerprint", "host-call",
+        "list-directories", "read-plists", "read-texts", "fingerprint",
         "running-applications", "open-settings", "recognise",
     ];
 
