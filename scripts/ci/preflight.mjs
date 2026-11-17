@@ -4,8 +4,8 @@
 // `script:`) is one check, run whole with its working directory and environment. Every check runs
 // even after one fails, so one red can never hide the next, and the coverage gates run last.
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { workflowJobs } from './ci-workflow-text.mjs'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { workflowJobs, workflowText } from './ci-workflow-text.mjs'
 
 const CI = '.github/workflows/ci.yml'
 const OUT = 'target/preflight'
@@ -23,7 +23,7 @@ const SETUP_STEP = /^(Restore|Unpack|Install|Set ?up) /i
 const LINUX_ONLY = /benchmarks\/instruction_gate\.py/
 
 /** The workflows ci.yml calls, beside ci.yml itself. */
-export const workflowFiles = (text = readFileSync(CI, 'utf8')) =>
+export const workflowFiles = (text = workflowText(CI)) =>
   [CI, ...[...text.matchAll(/uses: (\.\/\.github\/workflows\/[\w.-]+\.ya?ml)/g)].map((match) => match[1].slice(2))]
 
 /** The lines nested under the line at `start`, without their common indent. */
@@ -144,7 +144,7 @@ export function plan(files = workflowFiles()) {
   const seen = new Set()
   const key = (step) => `${step.directory}\n${step.command}`
   const checks = files.flatMap((file) => {
-    const workflowEnv = envOf(readFileSync(file, 'utf8').split('\n'), 0)
+    const workflowEnv = envOf(workflowText(file).split('\n'), 0)
     return workflowJobs(file).slice(1).flatMap((block) => jobChecks(file, block, workflowEnv))
   }).filter((step) => !seen.has(key(step)) && seen.add(key(step)))
   const gate = (step) => /_coverage_check/.test(step.command)
