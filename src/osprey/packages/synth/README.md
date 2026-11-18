@@ -21,3 +21,25 @@ Run `make -C src/osprey/packages synth` for the independent package journeys and
 **The waveforms are mathematics, written in Lean.** [src/Waves.lean](src/Waves.lean) defines the oscillator shapes (`wrap`, `blep`, `blamp`, `sine`, `saw`, `pulse`, `triangle`) and the performance timbres (`harmonic`, `glass`, `bass`, `hollow`, `modulated`, `ring`). The `synth::Waves` module is generated from it on every build into `.osprey/math/`, which is not tracked; `Oscillators` and `Performance` keep state, validation and dispatch only. `osprey math src/osprey/packages/synth/src/Waves.lean` prints the generated module, and `make -C src/osprey/examples/proof math` checks that Lean computes the same bits ([Math to code](../../../../docs/specs/tooling/MathToCode.md)).
 
 `Performance.wave` provides UI-free scalar Glass, Bass, additive Pulse and FM Orbit timbres, with harmonic tone and metallic ring-modulation controls. Light Orchestra calls it from its producer thread and keeps delay storage and audio devices in its host. Echo and Schroeder-style reverb currently belong to that host adapter. They are pending extraction into reusable graph processors. Oversampling and measured alias rejection remain outstanding.
+
+## Granular reference engine [SYNTH-ADVANCED-GRAINS-PLAYBACK]
+
+`Grains.prepare(source, capacity)` accepts 2–1,048,576 finite mono samples in [-1, 1] and a pool capacity of 1–256. `Grains.trigger(pool, controls)` starts a grain at the current sample position and returns a new pool; callers must retain the returned state. A full pool returns an error without changing existing grains. Active identities are monotonic, unique and never reused within a pool.
+
+`GrainControls` is generated from [grains.td](grains.td):
+
+| Control | Unit and accepted range | Behaviour |
+| --- | --- | --- |
+| `start` | Source samples, 0 inclusive to source length exclusive | Fractional initial source position |
+| `rate` | Source samples per output sample, -16 to 16 | Negative reverses; zero holds a position |
+| `duration` | Output samples, 3–65,536 | Lifetime is independent of rate |
+| `amplitude` | Linear gain, 0–1 | Multiplies the grain window |
+| `pan` | -1 to 1 | Equal-power placement from left to right |
+
+`Grains.next(pool)` returns a stereo sample and next state. `Grains.block(pool, frames)` returns 1–2,048 stereo frames and next state; cursors and lifetimes carry across calls. The source wraps periodically, including interpolation from its last sample to its first. The symmetric Hann window has explicit zero endpoints. Linear interpolation is **not bandlimited**; pitch changes can alias. The caller supplies rate conversion when source and output sample rates differ. Stereo source playback, one-shot boundaries and configurable windows remain planned.
+
+Overlapping grains sum without clipping or automatic loudness compensation. Up to `capacity` unity-gain grains can sum constructively; reserve output headroom or use a downstream gain/limiter. The pool rejects new grains on exhaustion rather than stealing an audible grain. Invalid controls, malformed active voices and exhausted counters return errors. Preparation validates the complete source; playback checks samples as they are read.
+
+`Grains.observation(pool)` exposes applied trigger revision, rendered sample position, active count and capacity. A host publishes this snapshot through its handler for `Signal<GrainObservation>`; `Grains.observe()` reads that effect without importing UI code. Revision advances on successful triggers, while sample position advances on rendering. Publication and subscriber scheduling belong outside the audio callback.
+
+This is an allocating list/record reference engine, with strict static checking only so far. It is not a verified realtime callback implementation and is not yet available as a Prism node. Automated verification is paused at the user's request; the [advanced plan](../../../../docs/plans/advanced-synthesis.md) tracks scheduler, resource ownership, graph/UI integration and deferred audio/performance evidence.

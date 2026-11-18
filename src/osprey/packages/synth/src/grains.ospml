@@ -1,0 +1,99 @@
+// [SYNTH-ADVANCED-GRAINS-PLAYBACK] Allocating reference kernel; no callback-safety claim.
+namespace synth
+
+(** Bounded sampled grains with explicit state, stereo placement and independent lifetime/pitch. *)
+module Grains
+    sourceSample value = value >= -1.0 && value <= 1.0
+
+    layout pool = length pool.source >= 2 && length pool.source <= 1048576 && pool.capacity >= 1 && pool.capacity <= 256 && length pool.voices <= pool.capacity && pool.revision >= 0 && pool.position >= 0 && pool.nextIdentity >= 0 && ordered pool >= -1
+
+    controls (size, c) = c.start >= 0.0 && c.start < toFloat size && c.rate >= -16.0 && c.rate <= 16.0 && c.duration >= 3 && c.duration <= 65536 && c.amplitude >= 0.0 && c.amplitude <= 1.0 && c.pan >= -1.0 && c.pan <= 1.0
+
+    voiceValid (size, voice) = controls (size, voice.controls) && voice.cursor >= 0.0 && voice.cursor < toFloat size && voice.identity >= 0 && voice.age >= 0 && voice.age < voice.controls.duration
+
+    // Pool order is preserved by rendering; strict monotonic IDs reject forged or duplicate voices.
+    ordered pool = foldList (pool.voices, -1, \(previous, voice) =>
+        match previous >= -1 && voice.identity > previous && voice.identity < pool.nextIdentity && voiceValid (length pool.source, voice)
+            true => voice.identity
+            false => -2)
+
+    (** Prepare a normalised mono source and a pool of 1–256 grains outside the audio callback. *)
+    export prepare (source, capacity) =
+        pool = GrainPool(source = source, capacity = capacity, voices = [], revision = 0, position = 0, nextIdentity = 0)
+        match layout pool && length (filterList (source, sourceSample)) == length source
+            true => Success(value = pool)
+            false => Error(message = "Grains require 2–1048576 finite normalised mono samples and capacity 1–256.")
+
+    (** Start one grain at the current sample position; zero rate holds a source position. Full pools reject the request. *)
+    export trigger (pool, settings) = match layout pool && controls (length pool.source, settings) && pool.revision < 9223372036854775807 && pool.nextIdentity < 9223372036854775807
+        false => Error(message = "Invalid grain source, controls or revision.")
+        true => match length pool.voices < pool.capacity
+            false => Error(message = "The grain pool is full; the existing voices are unchanged.")
+            true => Success(value = pool(voices = listAppend pool.voices (GrainVoice(identity = pool.nextIdentity, controls = settings, cursor = settings.start, age = 0)), revision = satAdd pool.revision 1, nextIdentity = satAdd pool.nextIdentity 1))
+
+    interpolated (source, cursor) = match floatToInt (floor cursor)
+        Error why => Error(message = why)
+        Success index => match listGet source index
+            Error why => Error(message = why)
+            Success a =>
+                following = match index == satSub (length source) 1
+                    true => 0
+                    false => satAdd index 1
+                match listGet source following
+                    Error why => Error(message = why)
+                    Success b => match sourceSample a && sourceSample b
+                        false => Error(message = "A grain read a nonfinite or unnormalised source sample.")
+                        true => Success(value = GrainMath::interpolated (a, b, GrainMath::fraction cursor))
+
+    contribution (source, voice) = match voiceValid (length source, voice)
+        false => Error(message = "Invalid grain cursor, age or controls.")
+        true => match interpolated (source, voice.cursor)
+            Error why => Error(message = why)
+            Success sample =>
+                c = voice.controls
+                shaped = GrainMath::weighted (sample, c.amplitude, toFloat voice.age, toFloat c.duration)
+                next = voice(cursor = GrainMath::cursor (voice.cursor, c.rate, toFloat (length source)), age = satAdd voice.age 1)
+                Success(value = GrainContribution(left = GrainMath::placed (shaped, GrainMath::leftGain c.pan), right = GrainMath::placed (shaped, GrainMath::rightGain c.pan), next = next))
+
+    mixed (outcome, voice) = match outcome
+        Error why => Error(message = why)
+        Success mix => match contribution (mix.next.source, voice)
+            Error why => Error(message = why)
+            Success part =>
+                held = mix.next
+                voices = match part.next.age < part.next.controls.duration
+                    true => listPrepend held.voices part.next
+                    false => held.voices
+                Success(value = GrainSample(left = GrainMath::summed (mix.left, part.left), right = GrainMath::summed (mix.right, part.right), next = held(voices = voices)))
+
+    (** Render one sample with a periodic source and a Hann window. Summed peaks can exceed unity; gain staging belongs to the caller. *)
+    export next pool = match layout pool && pool.position < 9223372036854775807
+        false => Error(message = "Invalid grain pool or exhausted sample clock.")
+        true =>
+            initial = GrainSample(left = 0.0, right = 0.0, next = pool(voices = [], position = satAdd pool.position 1))
+            match foldList (pool.voices, Success(value = initial), mixed)
+                Error why => Error(message = why)
+                Success rendered =>
+                    held = rendered.next
+                    Success(value = rendered(next = held(voices = listReverse held.voices)))
+
+    appended outcome = match outcome
+        Error why => Error(message = why)
+        Success block => match next block.next
+            Error why => Error(message = why)
+            Success sample => Success(value = GrainBlock(left = listPrepend block.left sample.left, right = listPrepend block.right sample.right, next = sample.next))
+
+    (** Render 1–2048 frames without changing grain scheduling at the block boundary. *)
+    export block (pool, frames) = match frames >= 1 && frames <= 2048 && pool.position <= satSub 9223372036854775807 frames
+        false => Error(message = "Invalid grain block size or exhausted sample clock.")
+        true =>
+            initial = GrainBlock(left = [], right = [], next = pool)
+            match foldList (toList (range (0, frames)), Success(value = initial), \(held, _) => appended held)
+                Error why => Error(message = why)
+                Success rendered => Success(value = rendered(left = listReverse rendered.left, right = listReverse rendered.right))
+
+    (** Coherent observer data from a completed render state; consumers publish it off the audio thread. *)
+    export observation pool = GrainObservation(revision = pool.revision, samplePosition = pool.position, activeGrains = length pool.voices, capacity = pool.capacity)
+
+    (** Reactive observation has no dependency on a UI framework. *)
+    export observe () = perform Signal<GrainObservation>.read ()

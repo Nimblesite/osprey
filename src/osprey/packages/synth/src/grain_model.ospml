@@ -1,0 +1,44 @@
+namespace synth
+
+// Generated from typeDiagram [CONV-OSPREY].
+type GrainControls =
+    start : float
+    rate : float
+    duration : int
+    amplitude : float
+    pan : float
+
+type GrainVoice =
+    identity : int
+    controls : GrainControls
+    cursor : float
+    age : int
+
+type GrainPool =
+    source : List<float>
+    capacity : int
+    voices : List<GrainVoice>
+    revision : int
+    position : int
+    nextIdentity : int
+
+type GrainObservation =
+    revision : int
+    samplePosition : int
+    activeGrains : int
+    capacity : int
+
+type GrainSample =
+    left : float
+    right : float
+    next : GrainPool
+
+type GrainContribution =
+    left : float
+    right : float
+    next : GrainVoice
+
+type GrainBlock =
+    left : List<float>
+    right : List<float>
+    next : GrainPool

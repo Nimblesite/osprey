@@ -8,7 +8,7 @@ The authoritative contracts are [Synthesis.md](../specs/runtime/Synthesis.md), e
 
 ## Current state and delivery order [SYNTH-ADVANCED-ORDER]
 
-Existing code provides oscillator/envelope/filter primitives, typed graphs, parameter descriptors, Signals, reference block processing, VST transport and Prism's modular editor. Advanced synthesis is not already implemented by those foundations. Draft grain models and Lean formulas are scaffolding, not a completed granular instrument.
+Existing code provides oscillator/envelope/filter primitives, typed graphs, parameter descriptors, Signals, reference block processing, VST transport and Prism's modular editor. Advanced synthesis is not already implemented by those foundations. The granular reference kernel now has generated models, Lean formulas, checked pool state, stereo rendering and Signal observation. It has passed strict static checking only; scheduling, graph integration, Prism controls and audio verification remain outstanding.
 
 Deliver in this order, finishing a playable vertical slice before beginning the next large family:
 
@@ -81,16 +81,18 @@ Reference: [Truax's granular synthesis overview](https://www.sfu.ca/~truax/gran.
 
 ### Playback kernel and pool [SYNTH-ADVANCED-GRAINS-PLAYBACK]
 
-- [ ] Implement fractional source addressing with an explicitly documented interpolation mode and quality limitation.
-- [ ] Support forward, reverse and near-zero playback rates with defined zero-rate behaviour.
+Checked items here record reference implementation, reviewed in `src/osprey/packages/synth/src/grains.ospml` and `GrainMath.lean`; they do not satisfy the deferred verification gates. Static check: `osprey src/osprey/packages/synth --check --warnings-as-errors`.
+
+- [x] Implement fractional source addressing with an explicitly documented interpolation mode and quality limitation.
+- [x] Support forward, reverse and near-zero playback rates with defined zero-rate behaviour.
 - [ ] Implement Hann and configurable attack/sustain/release grain windows; guarantee declared endpoint behaviour.
-- [ ] Keep grain duration independent from playback rate and source-position scanning.
+- [x] Keep grain duration independent from playback rate and source-position scanning.
 - [ ] Add per-grain amplitude and equal-power stereo placement; define mono and stereo-source policies explicitly.
-- [ ] Retain cursor, lifetime and window phase across arbitrary block boundaries.
-- [ ] Implement a bounded voice pool with stable identities and an explicit full-pool response.
+- [x] Retain cursor, lifetime and window phase across arbitrary block boundaries.
+- [x] Implement a bounded voice pool with stable identities and an explicit full-pool response.
 - [ ] Define release/steal behaviour so overload does not abruptly discard a nonzero grain without the chosen policy.
 - [ ] Expose active-grain count, requested/applied density, rejected/stolen grains and pool capacity through Signals.
-- [ ] Document summing/headroom policy, distinguishing peak control from density-dependent loudness compensation.
+- [x] Document summing/headroom policy, distinguishing peak control from density-dependent loudness compensation.
 
 ### Schedulers and sample resources [SYNTH-ADVANCED-GRAINS-SCHEDULING]
 
