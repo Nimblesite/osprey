@@ -15,20 +15,24 @@ module GrainGraph
             Error why => Error(message = why)
             Success p => Success(value = listAppend values p.initial)
 
-    timed (playback, period, jitter) = match integer period
+    timed (playback, period, jitter, mode, maximum) = match integer period
         Error why => Error(message = why)
         Success interval => match integer jitter
             Error why => Error(message = why)
-            Success spread => Success(value = GrainNodeControls(playback = playback, period = interval, jitter = spread))
+            Success spread => match integer maximum
+                Error why => Error(message = why)
+                Success limit => match GrainTimings::decode (mode, interval, spread, limit)
+                    Error why => Error(message = why)
+                    Success timing => Success(value = GrainNodeControls(playback = playback, timing = timing))
 
-    configuration n = match foldList (["start", "rate", "duration", "gain", "pan", "period", "jitter", "window", "attack", "release"], Success(value = []), \(outcome, key) => parameter (n, outcome, key))
+    configuration n = match foldList (["start", "rate", "duration", "gain", "pan", "period", "jitter", "window", "attack", "release", "timing", "maximumGap"], Success(value = []), \(outcome, key) => parameter (n, outcome, key))
         Error why => Error(message = why)
         Success values => match values
-            [start, rate, duration, gain, pan, period, jitter, mode, attack, release] => match integer duration
+            [start, rate, duration, gain, pan, period, jitter, mode, attack, release, timing, maximum] => match integer duration
                 Error why => Error(message = why)
                 Success lifetime => match GrainWindows::decode (mode, attack, release)
                     Error why => Error(message = why)
-                    Success shape => timed (GrainControls(window = shape, start = start, rate = rate, duration = lifetime, amplitude = gain, pan = pan), period, jitter)
+                    Success shape => timed (GrainControls(window = shape, start = start, rate = rate, duration = lifetime, amplitude = gain, pan = pan), period, jitter, timing, maximum)
             _ => Error(message = "Incomplete grain module controls.")
 
     (** Prepare an instance only at the graph origin; later blocks must supply its retained memory. *)
@@ -37,7 +41,7 @@ module GrainGraph
             Error why => Error(message = why)
             Success controls => match SampleResources::metadata resource
                 false => Error(message = "Invalid grain sample metadata.")
-                true => GrainClouds::prepare (resource.samples, capacity, controls.period, controls.jitter, seed)
+                true => GrainClouds::prepare (resource.samples, capacity, controls.timing, seed)
         _ => Error(message = "The component is not a grain cloud.")
 
     (** Reject memory from a different resource, pool capacity or graph sample position. *)
@@ -52,7 +56,7 @@ module GrainGraph
             false => Error(message = "The grain module has invalid source position or playback controls.")
             true =>
                 clock = cloud.clock
-                GrainClouds::block (cloud(clock = clock(period = controls.period, jitter = controls.jitter)), controls.playback, frames)
+                GrainClouds::block (cloud(clock = clock(timing = controls.timing)), controls.playback, frames)
 
     interleave (block, outcome, index) = match outcome
         Error why => Error(message = why)

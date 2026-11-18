@@ -137,7 +137,8 @@ Implementation: `grain_scheduler.ospml`, `grains.ospml` and the `GrainClouds` co
 
 - [x] Implement explicit sample-position grain events, independent of host block size.
 - [x] Add periodic/quasi-synchronous scheduling with seeded bounded inter-onset jitter.
-- [ ] Add additional asynchronous timing distributions, including an explicitly bounded Poisson/exponential mode.
+- [x] Add bounded exponential asynchronous timing, explicitly rounded/censored rather than claiming an exact Poisson process.
+- [ ] Verify timing gap bounds, seeded replay, block partition invariance and observed distribution statistics.
 - [ ] Add independently controlled distributions for onset, duration, source position, pitch and pan.
 - [x] Specify seed persistence, reset and reseed semantics; identical state and events must reproduce the same schedule.
 - [ ] Support overlapping grains across loop boundaries without reading outside prepared resources.
@@ -361,3 +362,5 @@ Reference: Smith's waveguide material and Bilbao's numerical synthesis reference
 The native audition exposed queue-starvation observations. `Grains.scheduled` now owns both event application and block rendering so its private sample loop can rely on one entry validation of pool/voice/clock invariants. Single-sample `next` and external `trigger` calls still validate independently, every source tap still checks its actual sample, and failed events preserve the caller's immutable state. The redundant separate `GrainTimeline` module was removed. Strict app checking and native archive/host builds passed; a bounded static invariant review found no concrete defect. No timing improvement or zero-starvation claim is made. The revised executable is installed for the next launch; the open user-edited patch was preserved without restarting it.
 
 Implementation checkpoint [SYNTH-ADVANCED-GRAINS-WINDOWS]: generated `GrainWindow` values select Hann or linear ASR. ASR fractions must be positive and sum to at most one; endpoint guards return zero. Grain Cloud exposes shape, attack and release descriptors, decoded without rounding; active grains retain their immutable window. Strict compilation passed; numerical/audio verification remains outstanding under the current testing pause.
+
+Implementation checkpoint [SYNTH-ADVANCED-GRAINS-TIMING]: generated `GrainTiming` selects periodic jitter or exponential gaps rounded up and capped to 1–1048576 samples. The existing Park–Miller stream advances once per onset for both modes; changing the policy preserves the already scheduled onset. Graph descriptors expose timing selection, underlying mean and maximum gap, and cloud Signals report the applied policy. Package and application strict compilation passed; distribution/audio execution is still unverified.

@@ -58,11 +58,18 @@ type GrainTimelineState =
     audio : GrainBlock
     events : List<GrainEvent>
 
+type GrainTiming =
+    PeriodicTiming
+        period : int
+        jitter : int
+    ExponentialTiming
+        mean : float
+        maximum : int
+
 type GrainClock =
     position : int
     nextOnset : int
-    period : int
-    jitter : int
+    timing : GrainTiming
     seed : int
 
 type GrainOnsets =
@@ -80,14 +87,12 @@ type GrainCloudBlock =
 
 type GrainCloudObservation =
     playback : GrainObservation
-    period : int
-    jitter : int
+    timing : GrainTiming
     nextOnset : int
 
 type GrainNodeControls =
     playback : GrainControls
-    period : int
-    jitter : int
+    timing : GrainTiming
 
 type MidiVoice K =
     kernel : K

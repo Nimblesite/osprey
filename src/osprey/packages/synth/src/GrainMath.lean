@@ -31,4 +31,8 @@ def nextSeed (seed : Float) : Float :=
 /-- Inclusive integer inter-onset jitter; zero jitter is strictly periodic. -/
 def interval (period jitter seed : Float) : Float :=
   period + Float.floor ((seed - 1) / 2147483646 * (2 * jitter + 1)) - jitter
+/-- Discrete censored exponential gap: inverse CDF, rounded up, then capped. Never a zero gap. -/
+def exponentialInterval (mean maximum seed : Float) : Float :=
+  let gap := Float.ceil (-mean * Float.log (1 - seed / 2147483647))
+  if gap < 1 then 1 else if gap > maximum then maximum else gap
 end synth.GrainMath

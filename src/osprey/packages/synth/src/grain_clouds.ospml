@@ -4,9 +4,9 @@ namespace synth
 (** A bounded grain cloud composed from the independent player and onset scheduler. *)
 module GrainClouds
     (** Prepare a checked source pool and independently seeded onset clock at sample zero. *)
-    export prepare (source, capacity, period, jitter, seed) = match Grains::prepare (source, capacity)
+    export prepare (source, capacity, timing, seed) = match Grains::prepare (source, capacity)
         Error why => Error(message = why)
-        Success pool => match GrainScheduler::prepare (pool.position, period, jitter, seed)
+        Success pool => match GrainScheduler::prepare (pool.position, timing, seed)
             Error why => Error(message = why)
             Success clock => Success(value = GrainCloudState(pool = pool, clock = clock))
 
@@ -20,7 +20,7 @@ module GrainClouds
                 Success audio => Success(value = GrainCloudBlock(left = audio.left, right = audio.right, next = GrainCloudState(pool = audio.next, clock = scheduled.next)))
 
     (** Read this snapshot after a successful block and publish it outside the audio callback. *)
-    export observation held = GrainCloudObservation(playback = Grains::observation held.pool, period = held.clock.period, jitter = held.clock.jitter, nextOnset = held.clock.nextOnset)
+    export observation held = GrainCloudObservation(playback = Grains::observation held.pool, timing = held.clock.timing, nextOnset = held.clock.nextOnset)
 
     (** Read the combined scheduling/activity snapshot through a UI-independent effect. *)
     export observe () = perform Signal<GrainCloudObservation>.read ()
