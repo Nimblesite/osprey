@@ -1,0 +1,41 @@
+// [SYNTH-ADVANCED-GRAINS-SCHEDULING] Events apply before the sample at their absolute position.
+namespace synth
+
+(** Sample-position grain events, independent of render block partitions. *)
+module GrainTimeline
+    ordered (first, end, previous, event) = match previous >= 0 && event.position >= previous && event.position >= first && event.position < end
+        true => event.position
+        false => -1
+
+    triggered pending = match pending.events
+        [] => Success(value = pending)
+        [event, ...remaining] => match event.position == pending.audio.next.position
+            false => Success(value = pending)
+            true => match Grains::trigger (pending.audio.next, event.controls)
+                Error why => Error(message = why)
+                Success pool =>
+                    audio = pending.audio
+                    triggered (pending(audio = audio(next = pool), events = remaining))
+
+    sample outcome = match outcome
+        Error why => Error(message = why)
+        Success pending => match triggered pending
+            Error why => Error(message = why)
+            Success ready => match Grains::next ready.audio.next
+                Error why => Error(message = why)
+                Success rendered =>
+                    audio = ready.audio
+                    Success(value = ready(audio = audio(left = listPrepend audio.left rendered.left, right = listPrepend audio.right rendered.right, next = rendered.next)))
+
+    (** Events must be sorted, within [pool.position, pool.position + frames), and at most 2048. Equal positions preserve caller order. *)
+    export render (pool, frames, events) = match frames >= 1 && frames <= 2048 && pool.position >= 0 && pool.position <= satSub 9223372036854775807 frames && length events <= 2048
+        false => Error(message = "Invalid grain block size, clock or event capacity.")
+        true => match foldList (events, pool.position, \(previous, event) => ordered (pool.position, satAdd pool.position frames, previous, event)) >= 0
+            false => Error(message = "Grain events must be ordered and belong to this block's half-open sample interval.")
+            true =>
+                initial = GrainTimelineState(audio = GrainBlock(left = [], right = [], next = pool), events = events)
+                match foldList (toList (range (0, frames)), Success(value = initial), \(held, _) => sample held)
+                    Error why => Error(message = why)
+                    Success rendered =>
+                        audio = rendered.audio
+                        Success(value = audio(left = listReverse audio.left, right = listReverse audio.right))

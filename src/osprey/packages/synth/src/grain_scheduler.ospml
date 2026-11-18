@@ -1,0 +1,35 @@
+// [SYNTH-ADVANCED-GRAINS-SCHEDULING] Scheduling is independent of source playback and UI.
+namespace synth
+
+(** Deterministic periodic or bounded jittered inter-onset scheduling. *)
+module GrainScheduler
+    valid clock = clock.position >= 0 && clock.nextOnset >= clock.position && clock.period >= 1 && clock.period <= 1048576 && clock.jitter >= 0 && clock.jitter < clock.period && clock.seed >= 1 && clock.seed <= 2147483646
+
+    (** Starts with an onset at position. Recreating the clock with the same seed resets the sequence. *)
+    export prepare (position, period, jitter, seed) =
+        clock = GrainClock(position = position, nextOnset = position, period = period, jitter = jitter, seed = seed)
+        match valid clock
+            true => Success(value = clock)
+            false => Error(message = "Invalid grain clock, interval, jitter or seed.")
+
+    continued (held, end) = match held.next.nextOnset >= end
+        true =>
+            clock = held.next
+            Success(value = held(positions = listReverse held.positions, next = clock(position = end)))
+        false => match floatToInt (GrainMath::nextSeed (toFloat held.next.seed))
+            Error why => Error(message = why)
+            Success seed => match floatToInt (GrainMath::interval (toFloat held.next.period, toFloat held.next.jitter, toFloat seed))
+                Error why => Error(message = why)
+                Success interval => match interval >= 1 && held.next.nextOnset <= satSub 9223372036854775807 interval
+                    false => Error(message = "The grain scheduler exhausted its onset clock.")
+                    true =>
+                        clock = held.next
+                        continued (held(positions = listPrepend held.positions clock.nextOnset, next = clock(nextOnset = satAdd clock.nextOnset interval, seed = seed)), end)
+
+    (** Returns absolute onsets in [position, position + frames); at most one onset per sample. Retain the returned clock. *)
+    export block (clock, frames) = match valid clock && frames >= 1 && frames <= 2048 && clock.position <= satSub 9223372036854775807 frames
+        false => Error(message = "Invalid grain scheduler state or block size.")
+        true => continued (GrainOnsets(positions = [], next = clock), satAdd clock.position frames)
+
+    (** Map onsets to playback controls, or construct GrainEvents individually for independent distributions. *)
+    export events (positions, controls) = mapList (positions, \position => GrainEvent(position = position, controls = controls))

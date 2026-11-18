@@ -42,3 +42,37 @@ type GrainBlock =
     left : List<float>
     right : List<float>
     next : GrainPool
+
+type GrainEvent =
+    position : int
+    controls : GrainControls
+
+type GrainTimelineState =
+    audio : GrainBlock
+    events : List<GrainEvent>
+
+type GrainClock =
+    position : int
+    nextOnset : int
+    period : int
+    jitter : int
+    seed : int
+
+type GrainOnsets =
+    positions : List<int>
+    next : GrainClock
+
+type GrainCloudState =
+    pool : GrainPool
+    clock : GrainClock
+
+type GrainCloudBlock =
+    left : List<float>
+    right : List<float>
+    next : GrainCloudState
+
+type GrainCloudObservation =
+    playback : GrainObservation
+    period : int
+    jitter : int
+    nextOnset : int

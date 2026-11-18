@@ -18,4 +18,11 @@ def weighted (sample amplitude age duration : Float) : Float := sample * amplitu
 def placed (sample gain : Float) : Float := sample * gain
 def fraction (position : Float) : Float := position - Float.floor position
 def summed (a b : Float) : Float := a + b
+/-- Park–Miller state update with multiplier 48271; all integer products fit binary64 exactly. -/
+def nextSeed (seed : Float) : Float :=
+  let product := seed * 48271
+  product - Float.floor (product / 2147483647) * 2147483647
+/-- Inclusive integer inter-onset jitter; zero jitter is strictly periodic. -/
+def interval (period jitter seed : Float) : Float :=
+  period + Float.floor ((seed - 1) / 2147483646 * (2 * jitter + 1)) - jitter
 end synth.GrainMath

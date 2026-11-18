@@ -8,7 +8,7 @@ The authoritative contracts are [Synthesis.md](../specs/runtime/Synthesis.md), e
 
 ## Current state and delivery order [SYNTH-ADVANCED-ORDER]
 
-Existing code provides oscillator/envelope/filter primitives, typed graphs, parameter descriptors, Signals, reference block processing, VST transport and Prism's modular editor. Advanced synthesis is not already implemented by those foundations. The granular reference kernel now has generated models, Lean formulas, checked pool state, stereo rendering and Signal observation. It has passed strict static checking only; scheduling, graph integration, Prism controls and audio verification remain outstanding.
+Existing code provides oscillator/envelope/filter primitives, typed graphs, parameter descriptors, Signals, reference block processing, VST transport and Prism's modular editor. Advanced synthesis is not already implemented by those foundations. The granular reference kernel now has generated models, Lean formulas, checked pool state, stereo rendering and Signal observation. It has passed strict static checking only; sample-timed events and a seeded periodic/jittered scheduler are implemented. Independent parameter distributions, graph integration, Prism controls and audio verification remain outstanding.
 
 Deliver in this order, finishing a playable vertical slice before beginning the next large family:
 
@@ -96,10 +96,13 @@ Checked items here record reference implementation, reviewed in `src/osprey/pack
 
 ### Schedulers and sample resources [SYNTH-ADVANCED-GRAINS-SCHEDULING]
 
-- [ ] Implement explicit sample-position grain events, independent of host block size.
-- [ ] Add periodic/quasi-synchronous scheduling and seeded asynchronous scheduling.
+Implementation: `grain_scheduler.ospml` and `grain_timeline.ospml`; strict static checking only while automated verification is paused. Scheduler and playback clocks are retained independently, and a caller commits both only after successful rendering.
+
+- [x] Implement explicit sample-position grain events, independent of host block size.
+- [x] Add periodic/quasi-synchronous scheduling with seeded bounded inter-onset jitter.
+- [ ] Add additional asynchronous timing distributions, including an explicitly bounded Poisson/exponential mode.
 - [ ] Add independently controlled distributions for onset, duration, source position, pitch and pan.
-- [ ] Specify seed persistence, reset and reseed semantics; identical state and events must reproduce the same schedule.
+- [x] Specify seed persistence, reset and reseed semantics; identical state and events must reproduce the same schedule.
 - [ ] Support overlapping grains across loop boundaries without reading outside prepared resources.
 - [ ] Add immutable resource replacement: existing grains finish against their owned resource while new grains adopt the new one.
 - [ ] Add bounded live capture/freeze with an explicit read/write ownership strategy.

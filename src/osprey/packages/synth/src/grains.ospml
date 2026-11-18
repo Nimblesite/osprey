@@ -77,20 +77,8 @@ module Grains
                     held = rendered.next
                     Success(value = rendered(next = held(voices = listReverse held.voices)))
 
-    appended outcome = match outcome
-        Error why => Error(message = why)
-        Success block => match next block.next
-            Error why => Error(message = why)
-            Success sample => Success(value = GrainBlock(left = listPrepend block.left sample.left, right = listPrepend block.right sample.right, next = sample.next))
-
     (** Render 1–2048 frames without changing grain scheduling at the block boundary. *)
-    export block (pool, frames) = match frames >= 1 && frames <= 2048 && pool.position <= satSub 9223372036854775807 frames
-        false => Error(message = "Invalid grain block size or exhausted sample clock.")
-        true =>
-            initial = GrainBlock(left = [], right = [], next = pool)
-            match foldList (toList (range (0, frames)), Success(value = initial), \(held, _) => appended held)
-                Error why => Error(message = why)
-                Success rendered => Success(value = rendered(left = listReverse rendered.left, right = listReverse rendered.right))
+    export block (pool, frames) = GrainTimeline::render (pool, frames, [])
 
     (** Coherent observer data from a completed render state; consumers publish it off the audio thread. *)
     export observation pool = GrainObservation(revision = pool.revision, samplePosition = pool.position, activeGrains = length pool.voices, capacity = pool.capacity)

@@ -6,3 +6,10 @@ type GrainObservation { revision: Int samplePosition: Int activeGrains: Int capa
 type GrainSample { left: Float right: Float next: GrainPool }
 type GrainContribution { left: Float right: Float next: GrainVoice }
 type GrainBlock { left: List<Float> right: List<Float> next: GrainPool }
+type GrainEvent { position: Int controls: GrainControls }
+type GrainTimelineState { audio: GrainBlock events: List<GrainEvent> }
+type GrainClock { position: Int nextOnset: Int period: Int jitter: Int seed: Int }
+type GrainOnsets { positions: List<Int> next: GrainClock }
+type GrainCloudState { pool: GrainPool clock: GrainClock }
+type GrainCloudBlock { left: List<Float> right: List<Float> next: GrainCloudState }
+type GrainCloudObservation { playback: GrainObservation period: Int jitter: Int nextOnset: Int }
