@@ -149,8 +149,8 @@ Implementation: `grain_scheduler.ospml`, `grains.ospml` and the `GrainClouds` co
 The first import path is bounded local WAV loading, not a general codec framework. File selection and reading belong to the application; decoding and sample validation are pure library operations. No file access, decoding or allocation may be moved into the audio callback. Initial supported encodings and limits must be visible in the application and package documentation.
 
 - [ ] Declare generated models for decoded sample metadata, prepared sample identity, channel policy and typed import errors.
-- [ ] Define the first supported WAV encodings, channel counts, sample rates, file-byte and decoded-frame limits before implementing the decoder.
-- [ ] Implement bounded RIFF/WAVE chunk parsing with checked lengths, odd-byte padding, unknown-chunk handling and explicit duplicate/truncated-chunk rejection.
+- [x] Define the first supported WAV encodings, channel counts, sample rates, file-byte and decoded-frame limits before implementing the decoder.
+- [x] Implement bounded RIFF/WAVE chunk parsing with checked lengths, odd-byte padding, unknown-chunk handling and explicit duplicate/truncated-chunk rejection.
 - [ ] Validate encoding, frame alignment, byte rate, sample count and finite sample values; reject unsupported formats rather than guessing.
 - [ ] Define stereo handling explicitly: preserve channels where supported or perform a documented downmix; do not silently discard a channel.
 - [ ] Add native file selection for the selected Grain Cloud; cancellation leaves the patch unchanged.
@@ -164,6 +164,8 @@ The first import path is bounded local WAV loading, not a general codec framewor
 - [ ] Define an initial import-during-playback policy and show it clearly; do not block rendering while preparing a replacement.
 - [ ] Persist resource identity/content hash and a portable resolution strategy; missing or changed files require an explicit recoverable result.
 - [ ] Document import limits, interpolation quality, root-note assumptions and any downmix policy alongside the Grain Cloud example.
+
+Implementation checkpoint: `WaveImport.decode` now prepares bounded PCM 8/16/24/32 or float32 WAV resources (mono/stereo, 8–192 kHz, at most 8 MiB and 1048576 frames), with explicit stereo downmix and generated metadata. Strict package checking passed; numerical/parser execution and application file selection remain outstanding. Format references: [Microsoft WAVEFORMATEX](https://learn.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-waveformatex) and the [RIFF specification](https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/Docs/riffmci.pdf).
 
 Deferred verification: after the pause, cover supported encodings, empty/truncated/oversized files, malformed chunk arithmetic, cancellation, stale completions, node removal, repeated replacement, Undo/Redo, missing resources and pitch consistency across source/output sample rates through loaded application/library journeys.
 
