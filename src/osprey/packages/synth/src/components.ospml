@@ -10,7 +10,7 @@ module Components
     node (identity, processor, inputs, outputs, parameters) = Node(identity = identity, processor = processor, inputs = inputs, outputs = outputs, parameters = parameters)
 
     (** Sine oscillator. Its frequency is a parameter, separate from its phase state. *)
-    export sine (identity, frequency) = node (identity, Oscillator, [], [port "audio"], [parameter ("frequency", "Frequency", Hertz, 0.0, 19000.0, frequency)])
+    export sine (identity, frequency) = node (identity, Oscillator, [Port(name = "midi", rate = Events, channels = 1, unit = Notes)], [port "audio"], [parameter ("frequency", "Frequency", Hertz, 0.0, 19000.0, frequency)])
 
     (** Stateful low-pass with cutoff in Hz and resonance expressed as Q. *)
     export lowpass (identity, cutoff, resonance) = node (identity, Filter, [port "audio"], [port "audio"], [parameter ("cutoff", "Cutoff", Hertz, 1.0, 19000.0, cutoff), parameter ("resonance", "Resonance (Q)", Ratio, 0.1, 20.0, resonance)])

@@ -18,8 +18,10 @@ module GraphClips
         Invalid _ => false
         Valid n => match bank.kernelMemory
             GrainMemory cloud => GrainGraph::compatible (n, cloud, position)
+            MidiMemory voice => MidiOscillators::connected (graph, n) && MidiOscillators::valid (n, voice)
             ChannelMemory states => match n.processor
                 Granular _ _ _ => false
+                Oscillator => !MidiOscillators::connected (graph, n) && length states == 1 && length (filterList (states, \saved => saved.identity == n.identity)) == 1
                 _ => match ClipLayouts::channels n
                     Error _ => false
                     Success count => stateful n && length states == count && length (filterList (states, \saved => saved.identity == n.identity)) == count
@@ -79,6 +81,23 @@ module GraphClips
                     nextHeld = stored (held, n, GrainMemory(cloud = rendered.next))
                     emitted (plan, clips, nextHeld, frames, n, 2, samples, [], remaining)
 
+    midiState (held, n) = match filterList (held.graphKernels, \bank => bank.kernelNode == n.identity)
+        [bank] => match bank.kernelMemory
+            MidiMemory voice => Success(value = voice)
+            _ => Error(message = "The MIDI oscillator has incompatible DSP memory.")
+        [] => match held.graphPosition == 0
+            true => Success(value = MidiOscillators::initial n)
+            false => Error(message = "A continuing MIDI oscillator lost its voice state.")
+        _ => Error(message = "A MIDI oscillator has duplicate DSP memory.")
+
+    midi (plan, clips, held, frames, n, remaining) = match midiState (held, n)
+        Error why => Error(message = why)
+        Success voice => match MidiOscillators::block (plan, clips, n, voice, frames)
+            Error why => Error(message = why)
+            Success rendered =>
+                next = stored (held, n, MidiMemory(voice = rendered.heldKernel))
+                emitted (plan, clips, next, frames, n, 1, rendered.kernelSamples, [], remaining)
+
     routed (plan, clips, held, frames, n, channels, remaining) = match n.processor
         Stereo => match converted (plan.graph, clips, n)
             Error why => Error(message = why)
@@ -89,6 +108,9 @@ module GraphClips
         _ => processed (plan, clips, held, frames, n, channels, remaining)
 
     node (plan, clips, held, frames, n, remaining) = match n.processor
+        Oscillator => match MidiOscillators::connected (plan.graph, n)
+            true => midi (plan, clips, held, frames, n, remaining)
+            false => processed (plan, clips, held, frames, n, 1, remaining)
         Granular _ _ _ => granular (plan, clips, held, frames, n, remaining)
         External _ => match ClipInputs::requestAt (plan.graph, clips, n, held.graphPosition, frames)
             Error why => Error(message = why)

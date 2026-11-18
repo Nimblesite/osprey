@@ -82,8 +82,18 @@ type GrainNodeControls =
     period : int
     jitter : int
 
+type MidiVoice K =
+    kernel : K
+    pitch : int
+    channel : int
+    noteIdentity : int
+    velocity : float
+    active : bool
+
 type ProcessorMemory K =
     ChannelMemory
         channels : List<K>
+    MidiMemory
+        voice : MidiVoice<K>
     GrainMemory
         cloud : GrainCloudState

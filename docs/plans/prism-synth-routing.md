@@ -312,3 +312,13 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 The [advanced synthesis plan](advanced-synthesis.md) tracks the new granular implementation separately from these remaining host/release requirements. Native manual interaction added Grain Cloud, replaced the mono output with stereo output, created the actual cable and completed a device audition on 19 November 2026; its receipt reported three empty-queue callbacks. This does not satisfy the sustained zero-starvation requirement or prove speaker output quality. Redundant per-sample grain validation was subsequently moved to checked block boundaries; compilation/static review passed, with comparative runtime evidence still pending. Automated tests remain paused at the user's request.
 
 The previously prepared native Undo/Redo journey edits are preserved in version control without execution: nine added steps cover undoing/reapplying added Delay and Mixer nodes, including an undo screenshot request. JSON syntax is valid; native execution and new screenshot evidence remain outstanding during the testing pause.
+
+### Oscillator MIDI input [PRISM-ROUTING-MIDI-OSCILLATOR]
+
+- [x] Declare a typed optional MIDI event input on the built-in oscillator.
+- [x] Apply sample-offset note-on/off, pitch and velocity in the shared renderer with retained monophonic note ownership.
+- [x] Expose and manually connect the input in the original Prism card design; compile the native application and complete a device audition.
+- [ ] Verify numerical pitch/velocity, note ownership, exact block-boundary gating and long playback when synthesis verification resumes.
+- [ ] Add release shaping and live topology state migration before claiming click-free realtime MIDI instruments.
+
+See [SYNTH-HOST-MIDI-OSCILLATOR]. Manual audition on 19 November 2026 reported four empty-queue callbacks. No Prism automated tests were run, and they are excluded from current work by the user's latest instruction.

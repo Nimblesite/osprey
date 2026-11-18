@@ -54,13 +54,16 @@ module ClipLayouts
         Filter => uniform (n, 1, 1) || (modulated n && cutoffPort n)
         MidiNotes => length n.inputs == 0 && length n.outputs == 1 && notes n.outputs
         Stereo => stereo n
-        Oscillator => uniform (n, 0, 1)
+        Oscillator => oscillator n
         Sink => uniform (n, 1, 0)
         Mixer => uniform (n, 2, 1)
         External _ => external n
         _ => uniform (n, 1, 1)
 
+    oscillator n = length n.inputs == 1 && notes n.inputs && length n.outputs == 1 && audio n.outputs && length (filterList (n.outputs, \p => p.channels == 1)) == 1
+
     optional (n, port) = match n.processor
+        Oscillator => port.rate == Events
         External _ => port.rate == Control
         Filter => port.rate == Control && port.name == "cutoff"
         _ => false

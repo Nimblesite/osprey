@@ -275,7 +275,11 @@ module EditorView
                 Error _ => points
                 Success value => listConcat points [CanvasGeometry::grainX (x at, toFloat index), CanvasGeometry::waveY (y at + 5.0, value)]), Scenes::rgb (80, 229, 216), 2.0, 6), text ("Built-in harmonic sample", x at - 120.0, y at - 34.0, 11.0, 190, 7)]
 
-    cardTitle (editor, n, at) = [text (componentName (editor, n), x at - 120.0, y at - 104.0, 11.0, 160, 8)]
+    midiLabel (editor, n, at) = match n.processor
+        Oscillator => [text ("MIDI", portX (editor, at, false, 0) + 12.0, portY (editor, at, false, 0) - 17.0, 11.0, 210, 8)]
+        _ => []
+
+    cardTitle (editor, n, at) = listConcat [text (componentName (editor, n), x at - 120.0, y at - 104.0, 11.0, 160, 8)] (midiLabel (editor, n, at))
 
     monitorTrace (editor, n, at) = match n.processor == Sink && length editor.scopeSamples > 1
         false => []
