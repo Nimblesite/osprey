@@ -683,9 +683,9 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "lsp-profiler"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6cd35d265e1ed15dd5b07675e0253108b6d9409ec4856d9e830d79b618e4b51"
+checksum = "2ed08a15f032ac1f5fa1c3da91fea5edc47aee952d4c24f5c4caf6907cacd514"
 dependencies = [
  "async-trait",
  "inferno",
@@ -729,9 +729,9 @@ dependencies = [
 
 [[package]]
 name = "lspkit"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbb367f58b41ac9b7748c6632008805f0b9f8e37dcacb8b4147b2a216e9d7755"
+checksum = "5784a8d329e17985a9224c83ffbbf095158d87ddb605955ba685cc093b6608bc"
 dependencies = [
  "async-trait",
  "dashmap",
@@ -742,13 +742,14 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml",
+ "tracing",
 ]
 
 [[package]]
 name = "lspkit-server"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb5b4a8e624514d4adcd4d013dd21f867b7cdf9a5eed99b9b327537d432c4fe8"
+checksum = "2c64b5bd1c1d691ae642ca872623c81c67e70d12f31dd569f920acd7c06d76f4"
 dependencies = [
  "async-trait",
  "lsp-types",
