@@ -310,3 +310,5 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 ### Advanced granular playback checkpoint [PRISM-ROUTING-GRAINS]
 
 The [advanced synthesis plan](advanced-synthesis.md) tracks the new granular implementation separately from these remaining host/release requirements. Native manual interaction added Grain Cloud, replaced the mono output with stereo output, created the actual cable and completed a device audition on 19 November 2026; its receipt reported three empty-queue callbacks. This does not satisfy the sustained zero-starvation requirement or prove speaker output quality. Redundant per-sample grain validation was subsequently moved to checked block boundaries; compilation/static review passed, with comparative runtime evidence still pending. Automated tests remain paused at the user's request.
+
+The previously prepared native Undo/Redo journey edits are preserved in version control without execution: nine added steps cover undoing/reapplying added Delay and Mixer nodes, including an undo screenshot request. JSON syntax is valid; native execution and new screenshot evidence remain outstanding during the testing pause.
