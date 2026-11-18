@@ -73,9 +73,9 @@ module WaveImport
         width = shiftRight bits 3
         match supported && (channels == 1 || channels == 2) && rate >= 8000 && rate <= 192000 && align == satMul width channels && byteRate == satMul rate align
             false => Error(message = "WAV requires PCM 8/16/24/32 or float32, mono/stereo, 8–192 kHz and consistent frame/byte rates.")
-            true => match intDiv held.dataBytes align
-                Error why => Error(message = why)
-                Success frames => match frames >= 2 && frames <= 1048576 && satMul frames align == held.dataBytes
+            true =>
+                frames = intDiv held.dataBytes align
+                match frames >= 2 && frames <= 1048576 && satMul frames align == held.dataBytes
                     false => Error(message = "WAV requires 2–1048576 complete sample frames.")
                     true => Success(value = WaveFormat(encoding = encoding, channels = channels, sampleRate = rate, sampleBytes = width, blockAlign = align, dataStart = held.dataStart, frames = frames))
 
