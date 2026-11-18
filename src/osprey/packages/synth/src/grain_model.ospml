@@ -134,6 +134,8 @@ type MidiVoice K =
     noteIdentity : int
     velocity : float
     active : bool
+    releaseRemaining : int
+    releaseLength : int
 
 type ProcessorMemory K =
     ChannelMemory

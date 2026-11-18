@@ -319,6 +319,9 @@ The previously prepared native Undo/Redo journey edits are preserved in version 
 - [x] Apply sample-offset note-on/off, pitch and velocity in the shared renderer with retained monophonic note ownership.
 - [x] Expose and manually connect the input in the original Prism card design; compile the native application and complete a device audition.
 - [ ] Verify numerical pitch/velocity, note ownership, exact block-boundary gating and long playback when synthesis verification resumes.
-- [ ] Add release shaping and live topology state migration before claiming click-free realtime MIDI instruments.
+- [x] Add configurable MIDI note-off release shaping with retained phase, exact endpoints and note ownership across blocks.
+- [ ] Verify rendered release endpoints, duration, repeated note-offs and retrigger behaviour; add attack/crossfades and live topology state migration before claiming click-free realtime MIDI instruments.
 
 See [SYNTH-HOST-MIDI-OSCILLATOR]. Manual audition on 19 November 2026 reported four empty-queue callbacks. No Prism automated tests were run, and they are excluded from current work by the user's latest instruction.
+
+Implementation checkpoint [SYNTH-HOST-MIDI-OSCILLATOR-RELEASE]: generated voice state retains release length/remaining frames. `Components.sine` exposes `releaseFrames`, defaulting to 240 frames at 48 kHz; matching note-off latches it, repeated/unrelated note-offs leave the tail intact, and note-on cancels it without resetting oscillator phase. Package strict compilation passed; rendered/audio evidence is still pending under the current testing pause.

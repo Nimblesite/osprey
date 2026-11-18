@@ -21,5 +21,5 @@ type GrainCloudState { pool: GrainPool clock: GrainClock seeds: GrainSeeds }
 type GrainCloudBlock { left: List<Float> right: List<Float> next: GrainCloudState }
 type GrainCloudObservation { playback: GrainObservation timing: GrainTiming nextOnset: Int }
 type GrainNodeControls { playback: GrainControls timing: GrainTiming }
-type MidiVoice<K> { kernel: K pitch: Int channel: Int noteIdentity: Int velocity: Float active: Bool }
+type MidiVoice<K> { kernel: K pitch: Int channel: Int noteIdentity: Int velocity: Float active: Bool releaseRemaining: Int releaseLength: Int }
 union ProcessorMemory<K> { ChannelMemory { channels: List<K> } MidiMemory { voice: MidiVoice<K> } GrainMemory { cloud: GrainCloudState } }

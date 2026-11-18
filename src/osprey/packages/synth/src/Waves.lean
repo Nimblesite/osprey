@@ -85,4 +85,7 @@ def controlledGain (sample level control : Float) : Float := sample * level * co
 /-- A normalized cutoff signal sweeps from 1 Hz to the configured cutoff. -/
 def controlledCutoff (cutoff control : Float) : Float := 1 + (cutoff - 1) * control
 
+/-- Linear note-off envelope includes a full first sample and an exact zero final sample. -/
+def releaseGain (remaining duration : Float) : Float :=
+  if remaining <= 1 then 0 else (remaining - 1) / (duration - 1)
 end synth.Waves

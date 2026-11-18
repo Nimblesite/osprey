@@ -7,16 +7,38 @@ module MidiOscillators
     export connected (graph, n) = n.processor == Oscillator && length (filterList (graph.cables, \c => c.destination == n.identity && c.inlet == 0)) == 1
 
     (** A fresh connected instrument is silent until its first note-on. *)
-    export initial n = MidiVoice(kernel = RenderInputs::initialState n, pitch = 0, channel = 0, noteIdentity = 0, velocity = 0.0, active = false)
+    export initial n = MidiVoice(kernel = RenderInputs::initialState n, pitch = 0, channel = 0, noteIdentity = 0, velocity = 0.0, active = false, releaseRemaining = 0, releaseLength = 0)
 
     (** Validate public retained voice state before consuming another block. *)
-    export valid (n, voice) = n.processor == Oscillator && voice.kernel.identity == n.identity && voice.kernel.phase >= 0.0 && voice.kernel.phase < 1.0 && voice.pitch >= 0 && voice.pitch <= 127 && voice.channel >= 0 && voice.channel <= 15 && voice.noteIdentity >= 0 && voice.noteIdentity <= 2147483647 && voice.velocity >= 0.0 && voice.velocity <= 1.0
+    export valid (n, voice) = n.processor == Oscillator && voice.kernel.identity == n.identity && voice.kernel.phase >= 0.0 && voice.kernel.phase < 1.0 && voice.pitch >= 0 && voice.pitch <= 127 && voice.channel >= 0 && voice.channel <= 15 && voice.noteIdentity >= 0 && voice.noteIdentity <= 2147483647 && voice.velocity >= 0.0 && voice.velocity <= 1.0 && releaseValid voice
 
-    event (voice, note) = match note.kind == 1 && note.velocity > 0.0
-        true => voice(pitch = note.pitch, channel = note.channel, noteIdentity = note.identity, velocity = note.velocity, active = true)
-        false => match note.pitch == voice.pitch && note.channel == voice.channel && note.identity == voice.noteIdentity
-            true => voice(active = false, velocity = 0.0)
+    releaseValid voice = voice.releaseRemaining >= 0 && voice.releaseRemaining <= voice.releaseLength && voice.releaseLength <= 480000 && (voice.releaseLength == 0 || voice.releaseLength >= 2) && match voice.active
+        true => voice.releaseRemaining == 0 && voice.releaseLength == 0
+        false => (voice.releaseRemaining > 0 && voice.releaseLength >= 2) || (voice.releaseRemaining == 0 && voice.releaseLength == 0 && voice.velocity == 0.0)
+
+    releaseFrames n = match listGet (filterList (n.parameters, \p => p.key == "releaseFrames")) 0
+        Error why => Error(message = why)
+        Success p => match floatToInt p.initial
+            Error why => Error(message = why)
+            Success frames => match frames >= 2 && frames <= 480000 && toFloat frames == p.initial
+                true => Success(value = frames)
+                false => Error(message = "MIDI release requires 2–480000 whole output frames.")
+
+    event (release, voice, note) = match note.kind == 1 && note.velocity > 0.0
+        true => voice(pitch = note.pitch, channel = note.channel, noteIdentity = note.identity, velocity = note.velocity, active = true, releaseRemaining = 0, releaseLength = 0)
+        false => match voice.active && note.pitch == voice.pitch && note.channel == voice.channel && note.identity == voice.noteIdentity
+            true => voice(active = false, releaseRemaining = release, releaseLength = release)
             false => voice
+
+    gain voice = match voice.active
+        true => voice.velocity
+        false => Waves::velocitySample (voice.velocity, Waves::releaseGain (toFloat voice.releaseRemaining, toFloat voice.releaseLength))
+
+    advanced voice = match voice.active
+        true => voice
+        false => match voice.releaseRemaining <= 1
+            true => voice(velocity = 0.0, releaseRemaining = 0, releaseLength = 0)
+            false => voice(releaseRemaining = satSub voice.releaseRemaining 1)
 
     parameter (voice, p) = match p.key == "frequency"
         true => p(initial = Waves::midiFrequency (toFloat voice.pitch))
@@ -31,13 +53,13 @@ module MidiOscillators
                 Error why => Error(message = why)
                 Success kernel => match RenderInputs::sample (next, n.identity)
                     Error why => Error(message = why)
-                    Success value => Success(value = ClipKernel(heldKernel = voice(kernel = kernel), kernelSamples = listPrepend samples (Waves::velocitySample (value, voice.velocity))))
+                    Success value => Success(value = ClipKernel(heldKernel = advanced (voice(kernel = kernel)), kernelSamples = listPrepend samples (Waves::velocitySample (value, gain voice))))
 
-    sample (plan, n, notes, outcome, index) = match outcome
+    sample (plan, n, notes, release, outcome, index) = match outcome
         Error why => Error(message = why)
         Success held =>
-            voice = foldList (filterList (notes, \note => note.offset == index), held.heldKernel, event)
-            match voice.active
+            voice = foldList (filterList (notes, \note => note.offset == index), held.heldKernel, \(v, note) => event (release, v, note))
+            match voice.active || voice.releaseRemaining > 0
                 false => Success(value = held(heldKernel = voice, kernelSamples = listPrepend held.kernelSamples 0.0))
                 true => rendered (plan, n, voice, held.kernelSamples)
 
@@ -52,6 +74,8 @@ module MidiOscillators
             Error why => Error(message = why)
             Success clip => match length clip.clipNotes <= 1024 && ordered (clip.clipNotes, 0) && length (filterList (clip.clipNotes, \note => HostPackets::validNote (frames, note))) == length clip.clipNotes
                 false => Error(message = "Invalid or unordered MIDI oscillator events.")
-                true => match foldList (toList (range (0, frames)), Success(value = ClipKernel(heldKernel = voice, kernelSamples = [])), \(held, index) => sample (plan, n, clip.clipNotes, held, index))
+                true => match releaseFrames n
                     Error why => Error(message = why)
-                    Success rendered => Success(value = rendered(kernelSamples = listReverse rendered.kernelSamples))
+                    Success release => match foldList (toList (range (0, frames)), Success(value = ClipKernel(heldKernel = voice, kernelSamples = [])), \(held, index) => sample (plan, n, clip.clipNotes, release, held, index))
+                        Error why => Error(message = why)
+                        Success rendered => Success(value = rendered(kernelSamples = listReverse rendered.kernelSamples))
