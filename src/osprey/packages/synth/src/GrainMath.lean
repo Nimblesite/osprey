@@ -14,7 +14,13 @@ def interpolated (a b fraction : Float) : Float := a + (b - a) * fraction
 def leftGain (pan : Float) : Float := Float.cos ((pan + 1) * 0.7853981633974483)
 def rightGain (pan : Float) : Float := Float.sin ((pan + 1) * 0.7853981633974483)
 def cursor (position rate size : Float) : Float := wrapped (position + rate) size
-def weighted (sample amplitude age duration : Float) : Float := sample * amplitude * window age duration
+/-- Linear ASR window. Positive fractions partition the lifetime; both endpoints are exactly zero. -/
+def asr (age duration attack release : Float) : Float :=
+  if age <= 0 || age >= duration - 1 then 0
+  else if age < attack * (duration - 1) then age / (attack * (duration - 1))
+  else if age > (1 - release) * (duration - 1) then (duration - 1 - age) / (release * (duration - 1))
+  else 1
+def weighted (sample amplitude envelope : Float) : Float := sample * amplitude * envelope
 def placed (sample gain : Float) : Float := sample * gain
 def fraction (position : Float) : Float := position - Float.floor position
 def summed (a b : Float) : Float := a + b

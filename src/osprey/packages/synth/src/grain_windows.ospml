@@ -1,0 +1,24 @@
+// [SYNTH-ADVANCED-GRAINS-WINDOWS] Windows are latched in each grain, independent of subsequent control changes.
+namespace synth
+
+(** Bounded envelope shapes shared by direct grain playback and graph components. *)
+module GrainWindows
+    (** Positive attack/release fractions leave the remaining lifetime for sustain. *)
+    export valid shape = match shape
+        HannWindow => true
+        AsrWindow attack release => attack > 0.0 && attack <= 1.0 && release > 0.0 && release <= 1.0 && GrainMath::summed (attack, release) <= 1.0
+
+    (** Evaluate only after controls validation; endpoint guards avoid division at the boundaries. *)
+    export value (shape, age, duration) = match shape
+        HannWindow => GrainMath::window (toFloat age, toFloat duration)
+        AsrWindow attack release => GrainMath::asr (toFloat age, toFloat duration, attack, release)
+
+    (** Decode the graph's discrete shape selector without rounding unsupported values. *)
+    export decode (mode, attack, release) = match mode
+        0.0 => Success(value = HannWindow)
+        1.0 =>
+            shape = AsrWindow(attack = attack, release = release)
+            match valid shape
+                true => Success(value = shape)
+                false => Error(message = "Grain attack and release must be positive fractions whose sum is at most one.")
+        _ => Error(message = "Grain window must be 0 (Hann) or 1 (ASR).")

@@ -21,12 +21,14 @@ module GrainGraph
             Error why => Error(message = why)
             Success spread => Success(value = GrainNodeControls(playback = playback, period = interval, jitter = spread))
 
-    configuration n = match foldList (["start", "rate", "duration", "gain", "pan", "period", "jitter"], Success(value = []), \(outcome, key) => parameter (n, outcome, key))
+    configuration n = match foldList (["start", "rate", "duration", "gain", "pan", "period", "jitter", "window", "attack", "release"], Success(value = []), \(outcome, key) => parameter (n, outcome, key))
         Error why => Error(message = why)
         Success values => match values
-            [start, rate, duration, gain, pan, period, jitter] => match integer duration
+            [start, rate, duration, gain, pan, period, jitter, mode, attack, release] => match integer duration
                 Error why => Error(message = why)
-                Success lifetime => timed (GrainControls(start = start, rate = rate, duration = lifetime, amplitude = gain, pan = pan), period, jitter)
+                Success lifetime => match GrainWindows::decode (mode, attack, release)
+                    Error why => Error(message = why)
+                    Success shape => timed (GrainControls(window = shape, start = start, rate = rate, duration = lifetime, amplitude = gain, pan = pan), period, jitter)
             _ => Error(message = "Incomplete grain module controls.")
 
     (** Prepare an instance only at the graph origin; later blocks must supply its retained memory. *)

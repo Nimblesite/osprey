@@ -1,7 +1,14 @@
 namespace synth
 
 // Generated from typeDiagram [CONV-OSPREY].
+type GrainWindow =
+    HannWindow
+    AsrWindow
+        attack : float
+        release : float
+
 type GrainControls =
+    window : GrainWindow
     start : float
     rate : float
     duration : int

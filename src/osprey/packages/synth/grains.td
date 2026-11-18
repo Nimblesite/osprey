@@ -1,5 +1,6 @@
 typeDiagram
-type GrainControls { start: Float rate: Float duration: Int amplitude: Float pan: Float }
+union GrainWindow { HannWindow AsrWindow { attack: Float release: Float } }
+type GrainControls { window: GrainWindow start: Float rate: Float duration: Int amplitude: Float pan: Float }
 type GrainVoice { identity: Int controls: GrainControls cursor: Float age: Int }
 type GrainPool { source: List<Float> capacity: Int voices: List<GrainVoice> revision: Int position: Int nextIdentity: Int }
 type GrainObservation { revision: Int samplePosition: Int activeGrains: Int capacity: Int }

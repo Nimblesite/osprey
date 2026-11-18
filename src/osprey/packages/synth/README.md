@@ -30,13 +30,14 @@ Run `make -C src/osprey/packages synth` for the independent package journeys and
 
 | Control | Unit and accepted range | Behaviour |
 | --- | --- | --- |
+| `window` | `HannWindow` or `AsrWindow(attack, release)` | Shape is retained for the grain lifetime |
 | `start` | Source samples, 0 inclusive to source length exclusive | Fractional initial source position |
 | `rate` | Source samples per output sample, -16 to 16 | Negative reverses; zero holds a position |
 | `duration` | Output samples, 3–65,536 | Lifetime is independent of rate |
 | `amplitude` | Linear gain, 0–1 | Multiplies the grain window |
 | `pan` | -1 to 1 | Equal-power placement from left to right |
 
-`Grains.next(pool)` returns a stereo sample and next state. `Grains.block(pool, frames)` returns 1–2,048 stereo frames and next state; cursors and lifetimes carry across calls. The source wraps periodically, including interpolation from its last sample to its first. The symmetric Hann window has explicit zero endpoints. Linear interpolation is **not bandlimited**; pitch changes can alias. The caller supplies rate conversion when source and output sample rates differ. Stereo source playback, one-shot boundaries and configurable windows remain planned.
+`Grains.next(pool)` returns a stereo sample and next state. `Grains.block(pool, frames)` returns 1–2,048 stereo frames and next state; cursors and lifetimes carry across calls. The source wraps periodically, including interpolation from its last sample to its first. Both Hann and linear ASR windows have explicit zero endpoints. ASR attack and release are positive fractions of `duration - 1` whose sum cannot exceed one; the remainder is sustain. With very short grains, discrete sampling may miss a narrow peak. Graph parameters `window` (0 Hann, 1 ASR), `attack` and `release` affect newly triggered grains only; unsupported selectors and invalid ASR fractions return errors. Linear interpolation is **not bandlimited**; pitch changes can alias. The caller supplies rate conversion when source and output sample rates differ. Stereo source playback and one-shot boundaries remain planned.
 
 Overlapping grains sum without clipping or automatic loudness compensation. Up to `capacity` unity-gain grains can sum constructively; reserve output headroom or use a downstream gain/limiter. The pool rejects new grains on exhaustion rather than stealing an audible grain. Invalid controls, malformed active voices and exhausted counters return errors. Preparation validates the complete source; playback checks samples as they are read.
 

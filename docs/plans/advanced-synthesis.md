@@ -121,7 +121,8 @@ Checked items here record reference implementation, reviewed in `src/osprey/pack
 
 - [x] Implement fractional source addressing with an explicitly documented interpolation mode and quality limitation.
 - [x] Support forward, reverse and near-zero playback rates with defined zero-rate behaviour.
-- [ ] Implement Hann and configurable attack/sustain/release grain windows; guarantee declared endpoint behaviour.
+- [x] Implement Hann and configurable attack/sustain/release grain windows with explicit zero-endpoint branches and per-grain retained settings.
+- [ ] Verify window endpoints, peak/sustain behaviour, short durations and block/control-change invariance through rendered audio evidence.
 - [x] Keep grain duration independent from playback rate and source-position scanning.
 - [ ] Add per-grain amplitude and equal-power stereo placement; define mono and stereo-source policies explicitly.
 - [x] Retain cursor, lifetime and window phase across arbitrary block boundaries.
@@ -358,3 +359,5 @@ Reference: Smith's waveguide material and Bilbao's numerical synthesis reference
 ### Granular producer checkpoint [SYNTH-ADVANCED-GRAINS-PRODUCER]
 
 The native audition exposed queue-starvation observations. `Grains.scheduled` now owns both event application and block rendering so its private sample loop can rely on one entry validation of pool/voice/clock invariants. Single-sample `next` and external `trigger` calls still validate independently, every source tap still checks its actual sample, and failed events preserve the caller's immutable state. The redundant separate `GrainTimeline` module was removed. Strict app checking and native archive/host builds passed; a bounded static invariant review found no concrete defect. No timing improvement or zero-starvation claim is made. The revised executable is installed for the next launch; the open user-edited patch was preserved without restarting it.
+
+Implementation checkpoint [SYNTH-ADVANCED-GRAINS-WINDOWS]: generated `GrainWindow` values select Hann or linear ASR. ASR fractions must be positive and sum to at most one; endpoint guards return zero. Grain Cloud exposes shape, attack and release descriptors, decoded without rounding; active grains retain their immutable window. Strict compilation passed; numerical/audio verification remains outstanding under the current testing pause.
