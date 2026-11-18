@@ -127,8 +127,9 @@ Checked items here record reference implementation, reviewed in `src/osprey/pack
 - [ ] Add per-grain amplitude and equal-power stereo placement; define mono and stereo-source policies explicitly.
 - [x] Retain cursor, lifetime and window phase across arbitrary block boundaries.
 - [x] Implement a bounded voice pool with stable identities and an explicit full-pool response.
-- [ ] Define release/steal behaviour so overload does not abruptly discard a nonzero grain without the chosen policy.
-- [ ] Expose active-grain count, requested/applied density, rejected/stolen grains and pool capacity through Signals.
+- [x] Define reject-new overload behaviour: retain all active envelopes, count rejected onsets, and continue rendering without stealing voices.
+- [x] Expose active count, lifetime requested/applied density, rejected/stolen counts and capacity through the existing grain observation Signals.
+- [ ] Verify saturation recovery, simultaneous onsets, counter accuracy and absence of overload-induced truncation in rendered audio.
 - [x] Document summing/headroom policy, distinguishing peak control from density-dependent loudness compensation.
 
 ### Schedulers and sample resources [SYNTH-ADVANCED-GRAINS-SCHEDULING]
@@ -364,3 +365,5 @@ The native audition exposed queue-starvation observations. `Grains.scheduled` no
 Implementation checkpoint [SYNTH-ADVANCED-GRAINS-WINDOWS]: generated `GrainWindow` values select Hann or linear ASR. ASR fractions must be positive and sum to at most one; endpoint guards return zero. Grain Cloud exposes shape, attack and release descriptors, decoded without rounding; active grains retain their immutable window. Strict compilation passed; numerical/audio verification remains outstanding under the current testing pause.
 
 Implementation checkpoint [SYNTH-ADVANCED-GRAINS-TIMING]: generated `GrainTiming` selects periodic jitter or exponential gaps rounded up and capped to 1–1048576 samples. The existing Park–Miller stream advances once per onset for both modes; changing the policy preserves the already scheduled onset. Graph descriptors expose timing selection, underlying mean and maximum gap, and cloud Signals report the applied policy. Package and application strict compilation passed; distribution/audio execution is still unverified.
+
+Implementation checkpoint [SYNTH-ADVANCED-GRAINS-OVERLOAD]: `Grains.trigger` returns a generated `GrainAdmission` receipt. Full pools reject only the new request and retain existing voices; timeline rendering consumes the event and continues. Request revision counts valid requests, accepted identity counts started grains, and their difference counts rejection. Observations report counts and lifetime-average events per output frame (zero before any frame has elapsed); hosts convert to events/second using their sample rate. The policy never steals. Strict library/application compilation passed; rendered overload verification remains pending.

@@ -29,11 +29,21 @@ type GrainPool =
     position : int
     nextIdentity : int
 
+type GrainAdmission =
+    pool : GrainPool
+    accepted : bool
+
 type GrainObservation =
     revision : int
     samplePosition : int
     activeGrains : int
     capacity : int
+    requestedGrains : int
+    acceptedGrains : int
+    rejectedGrains : int
+    stolenGrains : int
+    requestedPerFrame : float
+    acceptedPerFrame : float
 
 type GrainSample =
     left : float

@@ -5,7 +5,7 @@ namespace synth
 module Grains
     sourceSample value = value >= -1.0 && value <= 1.0
 
-    layout pool = length pool.source >= 2 && length pool.source <= 1048576 && pool.capacity >= 1 && pool.capacity <= 256 && length pool.voices <= pool.capacity && pool.revision >= 0 && pool.position >= 0 && pool.nextIdentity >= 0 && ordered pool >= -1
+    layout pool = length pool.source >= 2 && length pool.source <= 1048576 && pool.capacity >= 1 && pool.capacity <= 256 && length pool.voices <= pool.capacity && pool.revision >= pool.nextIdentity && pool.position >= 0 && pool.nextIdentity >= 0 && ordered pool >= -1
 
     (** Validate playback controls against the actual source length, including finite bounds. *)
     export controls (size, c) = GrainWindows::valid c.window && c.start >= 0.0 && c.start < toFloat size && c.rate >= -16.0 && c.rate <= 16.0 && c.duration >= 3 && c.duration <= 65536 && c.amplitude >= 0.0 && c.amplitude <= 1.0 && c.pan >= -1.0 && c.pan <= 1.0
@@ -25,12 +25,13 @@ module Grains
             true => Success(value = pool)
             false => Error(message = "Grains require 2–1048576 finite normalised mono samples and capacity 1–256.")
 
-    (** Start one grain at the current sample position; zero rate holds a source position. Full pools reject the request. *)
+    (** Start at the current sample position; zero rate holds the source position.
+        [SYNTH-ADVANCED-GRAINS-OVERLOAD] Reject-new policy: a full pool returns accepted=false and counted state, preserving every active grain. *)
     export trigger (pool, settings) = match layout pool && controls (length pool.source, settings) && pool.revision < 9223372036854775807 && pool.nextIdentity < 9223372036854775807
         false => Error(message = "Invalid grain source, controls or revision.")
         true => match length pool.voices < pool.capacity
-            false => Error(message = "The grain pool is full; the existing voices are unchanged.")
-            true => Success(value = pool(voices = listAppend pool.voices (GrainVoice(identity = pool.nextIdentity, controls = settings, cursor = settings.start, age = 0)), revision = satAdd pool.revision 1, nextIdentity = satAdd pool.nextIdentity 1))
+            false => Success(value = GrainAdmission(pool = pool(revision = satAdd pool.revision 1), accepted = false))
+            true => Success(value = GrainAdmission(pool = pool(voices = listAppend pool.voices (GrainVoice(identity = pool.nextIdentity, controls = settings, cursor = settings.start, age = 0)), revision = satAdd pool.revision 1, nextIdentity = satAdd pool.nextIdentity 1), accepted = true))
 
     interpolated (source, cursor) = match floatToInt (floor cursor)
         Error why => Error(message = why)
@@ -84,7 +85,7 @@ module Grains
     export block (pool, frames) = scheduled (pool, frames, [])
 
     (** Coherent observer data from a completed render state; consumers publish it off the audio thread. *)
-    export observation pool = GrainObservation(revision = pool.revision, samplePosition = pool.position, activeGrains = length pool.voices, capacity = pool.capacity)
+    export observation pool = GrainObservation(revision = pool.revision, samplePosition = pool.position, activeGrains = length pool.voices, capacity = pool.capacity, requestedGrains = pool.revision, acceptedGrains = pool.nextIdentity, rejectedGrains = satSub pool.revision pool.nextIdentity, stolenGrains = 0, requestedPerFrame = GrainMath::density (toFloat pool.revision, toFloat pool.position), acceptedPerFrame = GrainMath::density (toFloat pool.nextIdentity, toFloat pool.position))
 
     (** Reactive observation has no dependency on a UI framework. *)
     export observe () = perform Signal<GrainObservation>.read ()
@@ -99,9 +100,9 @@ module Grains
             false => Success(value = pending)
             true => match trigger (pending.audio.next, event.controls)
                 Error why => Error(message = why)
-                Success pool =>
+                Success admission =>
                     audio = pending.audio
-                    triggered (pending(audio = audio(next = pool), events = remaining))
+                    triggered (pending(audio = audio(next = admission.pool), events = remaining))
 
     sample outcome = match outcome
         Error why => Error(message = why)

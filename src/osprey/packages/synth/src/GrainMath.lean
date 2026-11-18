@@ -35,4 +35,6 @@ def interval (period jitter seed : Float) : Float :=
 def exponentialInterval (mean maximum seed : Float) : Float :=
   let gap := Float.ceil (-mean * Float.log (1 - seed / 2147483647))
   if gap < 1 then 1 else if gap > maximum then maximum else gap
+/-- Lifetime-average events per rendered frame; no elapsed frames means no measured density yet. -/
+def density (events frames : Float) : Float := if frames <= 0 then 0 else events / frames
 end synth.GrainMath

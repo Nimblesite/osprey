@@ -3,7 +3,8 @@ union GrainWindow { HannWindow AsrWindow { attack: Float release: Float } }
 type GrainControls { window: GrainWindow start: Float rate: Float duration: Int amplitude: Float pan: Float }
 type GrainVoice { identity: Int controls: GrainControls cursor: Float age: Int }
 type GrainPool { source: List<Float> capacity: Int voices: List<GrainVoice> revision: Int position: Int nextIdentity: Int }
-type GrainObservation { revision: Int samplePosition: Int activeGrains: Int capacity: Int }
+type GrainAdmission { pool: GrainPool accepted: Bool }
+type GrainObservation { revision: Int samplePosition: Int activeGrains: Int capacity: Int requestedGrains: Int acceptedGrains: Int rejectedGrains: Int stolenGrains: Int requestedPerFrame: Float acceptedPerFrame: Float }
 type GrainSample { left: Float right: Float next: GrainPool }
 type GrainContribution { left: Float right: Float next: GrainVoice }
 type GrainBlock { left: List<Float> right: List<Float> next: GrainPool }
