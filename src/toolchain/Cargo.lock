@@ -419,12 +419,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
-name = "humantime"
-version = "2.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15cdd26707701c53297e2fa6afb323d55fbc1d0810c3aec078ae3ef0424c3c15"
-
-[[package]]
 name = "icu_collections"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -689,12 +683,11 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "lsp-profiler"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c994bb6d8f1b9871c1e47288ad986c5c4bf1b14a6e04c45776d26595501f4ba0"
+checksum = "cb298f202dd03c38469fa71a50e8332853570610ffcb200a72f0117d7b2bbd40"
 dependencies = [
  "async-trait",
- "humantime",
  "inferno",
  "num-traits",
  "serde",
@@ -736,31 +729,28 @@ dependencies = [
 
 [[package]]
 name = "lspkit"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fca7d7fad6b009b01fef2706904f1960dd5b8e6fc74cc8210558fcde40cf5ce7"
+checksum = "bb9daedaef6866d13f20ace87f4f815974b171c6b9aefb78dff86d5d76f9bb45"
 dependencies = [
  "async-trait",
  "dashmap",
  "futures-core",
- "rmp-serde",
  "ropey",
  "serde",
  "thiserror",
  "tokio",
  "tokio-util",
  "toml",
- "tracing",
 ]
 
 [[package]]
 name = "lspkit-server"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1472ab3543a14ddb6a5f932f325bda13be4597c87641909117080993242231f2"
+checksum = "f6d9f1e816e41bfc5b171b5f01f929467c88cbac2555c34df6010383e3608cd2"
 dependencies = [
  "async-trait",
- "futures-util",
  "lsp-types",
  "lspkit",
  "notify",
@@ -1470,25 +1460,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b34b781b31e5d73e9fbc8689c70551fd1ade9a19e3e28cfec8580a79290cc4"
 dependencies = [
  "bytemuck",
-]
-
-[[package]]
-name = "rmp"
-version = "0.8.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ba8be72d372b2c9b35542551678538b562e7cf86c3315773cae48dfbfe7790c"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
-name = "rmp-serde"
-version = "1.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72f81bee8c8ef9b577d1681a70ebbc962c232461e397b22c208c43c04b67a155"
-dependencies = [
- "rmp",
- "serde",
 ]
 
 [[package]]

@@ -30,10 +30,10 @@ Checked against the published v0.4.0 source on 2026-11-16, and confirmed on TMC 
 ## Upgrade steps (after lspkit publishes)
 
 - [x] Agreed on TMC (2026-11-16). lspkit's repairs and heap proofs are green locally, still `0.0.0-dev`, and have no release ETA. After its `make test` passes and the release is published, it sends `osprey-lsp-memory` the version and any API breaks in the surfaces above.
-- [ ] lspkit publishes the release with all five repairs.
-- [ ] Bump `lspkit`, `lspkit-server` and `lsp-profiler` together in `src/toolchain/Cargo.toml` and refresh `Cargo.lock`. Keep `sysinfo` matched to the version `lsp-profiler` pins.
-- [ ] Bump `@nimblesite/lsp-profiler-ui` in `src/toolchain/vscode-extension/package.json` if lspkit publishes a matching UI release.
-- [ ] Fix any API breaks in `osprey-lsp`; no shims.
+- [x] lspkit publishes the release with all five repairs (v0.6.0, 2026-11-18; it also drops humantime and chrono).
+- [x] Bump `lspkit`, `lspkit-server` and `lsp-profiler` to 0.6.0 together in `src/toolchain/Cargo.toml` and refresh `Cargo.lock`. Keep `sysinfo` matched to the version `lsp-profiler` pins.
+- [x] Bump `@nimblesite/lsp-profiler-ui` (to 0.6.0) in `src/toolchain/vscode-extension/package.json` if lspkit publishes a matching UI release.
+- [x] Fix any API breaks in `osprey-lsp`; no shims. None: it builds unchanged and the 259 LSP and 21 profiler tests pass.
 - [ ] Keep Osprey's own guard: 32 unknown-method requests through the real server leave `in_flight: 0` (`Dispatcher` `Debug`).
 - [ ] `cargo test -p osprey-lsp`, then `make ci`, then one coordinated push.
 - [ ] Re-measure with `heap -s` after the idle sweep: live heap at or below 128 MB.
