@@ -3,7 +3,7 @@ union Rate { Audio {} Control {} Events {} }
 union Unit { Amplitude {} Hertz {} Seconds {} Normalised {} Ratio {} Notes {} }
 type Port { name: String rate: Rate channels: Int unit: Unit }
 type Parameter { key: String label: String unit: Unit minimum: Float maximum: Float initial: Float automatable: Bool }
-union Processor { Lfo {} ModulatedGain {} MidiNotes {} Stereo {} Oscillator {} Filter {} Amplifier {} Mixer {} Sink {} Delay { samples: Int } External { identifier: String } }
+union Processor { Granular { samples: List<Float> capacity: Int seed: Int } Lfo {} ModulatedGain {} MidiNotes {} Stereo {} Oscillator {} Filter {} Amplifier {} Mixer {} Sink {} Delay { samples: Int } External { identifier: String } }
 type Node { identity: Int processor: Processor inputs: List<Port> outputs: List<Port> parameters: List<Parameter> }
 type Cable { source: Int outlet: Int destination: Int inlet: Int }
 type Graph { nodes: List<Node> cables: List<Cable> }

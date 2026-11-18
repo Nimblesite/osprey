@@ -1,0 +1,66 @@
+// [SYNTH-ADVANCED-GRAINS-INTEGRATION] The shared graph scheduler invokes the same grain-cloud engine.
+namespace synth
+
+(** Parameter decoding and persistent stereo graph execution for sampled grain clouds. *)
+module GrainGraph
+    integer value = match floatToInt value
+        Error why => Error(message = why)
+        Success count => match toFloat count == value
+            true => Success(value = count)
+            false => Error(message = "Grain timing requires whole output-sample counts.")
+
+    parameter (n, outcome, key) = match outcome
+        Error why => Error(message = why)
+        Success values => match listGet (filterList (n.parameters, \p => p.key == key)) 0
+            Error why => Error(message = why)
+            Success p => Success(value = listAppend values p.initial)
+
+    timed (playback, period, jitter) = match integer period
+        Error why => Error(message = why)
+        Success interval => match integer jitter
+            Error why => Error(message = why)
+            Success spread => Success(value = GrainNodeControls(playback = playback, period = interval, jitter = spread))
+
+    configuration n = match foldList (["start", "rate", "duration", "gain", "pan", "period", "jitter"], Success(value = []), \(outcome, key) => parameter (n, outcome, key))
+        Error why => Error(message = why)
+        Success values => match values
+            [start, rate, duration, gain, pan, period, jitter] => match integer duration
+                Error why => Error(message = why)
+                Success lifetime => timed (GrainControls(start = start, rate = rate, duration = lifetime, amplitude = gain, pan = pan), period, jitter)
+            _ => Error(message = "Incomplete grain module controls.")
+
+    (** Prepare an instance only at the graph origin; later blocks must supply its retained memory. *)
+    export prepare n = match n.processor
+        Granular samples capacity seed => match configuration n
+            Error why => Error(message = why)
+            Success controls => GrainClouds::prepare (samples, capacity, controls.period, controls.jitter, seed)
+        _ => Error(message = "The component is not a grain cloud.")
+
+    (** Reject memory from a different resource, pool capacity or graph sample position. *)
+    export compatible (n, cloud, position) = match n.processor
+        Granular samples capacity _ => structuralEquals (samples, cloud.pool.source) && capacity == cloud.pool.capacity && cloud.pool.position == position && cloud.clock.position == position
+        _ => false
+
+    (** Apply graph controls to newly emitted grains; surviving grains retain their own envelopes and cursors. *)
+    export block (n, cloud, frames) = match configuration n
+        Error why => Error(message = why)
+        Success controls => match Grains::controls (length cloud.pool.source, controls.playback)
+            false => Error(message = "The grain module has invalid source position or playback controls.")
+            true =>
+                clock = cloud.clock
+                GrainClouds::block (cloud(clock = clock(period = controls.period, jitter = controls.jitter)), controls.playback, frames)
+
+    interleave (block, outcome, index) = match outcome
+        Error why => Error(message = why)
+        Success samples => match listGet block.left index
+            Error why => Error(message = why)
+            Success left => match listGet block.right index
+                Error why => Error(message = why)
+                Success right => Success(value = listPrepend (listPrepend samples left) right)
+
+    (** Interleave actual left/right output for the common graph/device transport. *)
+    export interleaved block = match length block.left == length block.right && length block.left >= 1 && length block.left <= 2048
+        false => Error(message = "Grain output channels have invalid lengths.")
+        true => match foldList (toList (range (0, length block.left)), Success(value = []), \(outcome, index) => interleave (block, outcome, index))
+            Error why => Error(message = why)
+            Success samples => Success(value = listReverse samples)

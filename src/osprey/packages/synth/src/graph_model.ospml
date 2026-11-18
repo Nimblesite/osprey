@@ -30,6 +30,10 @@ type Parameter =
     automatable : bool
 
 type Processor =
+    Granular
+        samples : List<float>
+        capacity : int
+        seed : int
     Lfo
     ModulatedGain
     MidiNotes

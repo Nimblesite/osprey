@@ -7,10 +7,11 @@ module EditorState
     export initial () = Editor(skin = ui::MachineDocs::faulty "", graph = Graphs::empty, past = [], future = [], gesture = [], assetFolder = "src/osprey/packages/signal_flow/skins/prism", paletteShown = false, detailsShown = false, keyboardShown = true, keyboardWidth = 1536.0, paletteDrag = "", note = 57, armedNote = -1, scopeSamples = [], positions = [], dragging = -1, grabX = 0.0, grabY = 0.0, layoutRevision = 0, selected = -1, nextIdentity = 0, source = -1, outlet = 0, wireDragging = false, wireMonitor = false, wireX = 0.0, wireY = 0.0, selectedCable = -1, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", audioPath = "", pluginPath = "", catalog = [], pluginBindings = [], pluginSerial = 0, pluginTicket = "", pluginClassId = "", renderPending = [], renderBindings = [], renderSerial = 0, renderTicket = "", renderSessions = [], renderOpening = false, renderInput = "", renderDevicePending = [], renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = false, renderStopping = false)
 
     (** Available component factories expose their real audio or event ports. *)
-    export kinds = ["sine", "filter", "gain", "mixer", "delay", "output", "midi-note", "stereo", "stereo-output", "lfo", "modulated-gain"]
+    export kinds = ["grain-cloud", "sine", "filter", "gain", "mixer", "delay", "output", "midi-note", "stereo", "stereo-output", "lfo", "modulated-gain"]
 
     (** Human-readable names for the available component factories. *)
     export title kind = match kind
+        "grain-cloud" => "Grain cloud"
         "lfo" => "LFO modulator"
         "modulated-gain" => "Modulated stereo gain"
         "sine" => "Sine oscillator"
@@ -24,7 +25,13 @@ module EditorState
         "output" => "Audio output"
         _ => "Unknown component"
 
+    grainCloud identity =
+        samples = mapList (toList (range (0, 1024)), \index => CanvasGeometry::grainSample (toFloat index))
+        cloud = Components::granular (identity, samples, 16, 1)
+        cloud(parameters = mapList (cloud.parameters, \p => parameterValue ("rate", CanvasGeometry::grainRate (220.0, toFloat (length samples)), p)))
+
     factory (kind, identity) = match kind
+        "grain-cloud" => Valid(value = grainCloud identity)
         "lfo" => Valid(value = Components::lfo (identity, 2.0))
         "modulated-gain" => Valid(value = Components::modulatedGain (identity, 2, 0.5))
         "sine" => Valid(value = Components::sine (identity, 440.0))
@@ -131,6 +138,7 @@ module EditorState
         _ => editor
 
     pitched (note, n) = match n.processor
+        Granular samples _ _ => n(parameters = mapList (n.parameters, \p => parameterValue ("rate", CanvasGeometry::grainRate (CanvasGeometry::frequency (toFloat note), toFloat (length samples)), p)))
         Oscillator => n(parameters = mapList (n.parameters, \p => parameterValue ("frequency", CanvasGeometry::frequency (toFloat note), p)))
         MidiNotes => n(parameters = mapList (n.parameters, \p => parameterValue ("pitch", toFloat note, p)))
         _ => n

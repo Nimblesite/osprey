@@ -76,3 +76,14 @@ type GrainCloudObservation =
     period : int
     jitter : int
     nextOnset : int
+
+type GrainNodeControls =
+    playback : GrainControls
+    period : int
+    jitter : int
+
+type ProcessorMemory K =
+    ChannelMemory
+        channels : List<K>
+    GrainMemory
+        cloud : GrainCloudState

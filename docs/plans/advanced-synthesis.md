@@ -8,7 +8,7 @@ The authoritative contracts are [Synthesis.md](../specs/runtime/Synthesis.md), e
 
 ## Current state and delivery order [SYNTH-ADVANCED-ORDER]
 
-Existing code provides oscillator/envelope/filter primitives, typed graphs, parameter descriptors, Signals, reference block processing, VST transport and Prism's modular editor. Advanced synthesis is not already implemented by those foundations. The granular reference kernel now has generated models, Lean formulas, checked pool state, stereo rendering and Signal observation. It has passed strict static checking only; sample-timed events and a seeded periodic/jittered scheduler are implemented. Independent parameter distributions, graph integration, Prism controls and audio verification remain outstanding.
+Existing code provides oscillator/envelope/filter primitives, typed graphs, parameter descriptors, Signals, reference block processing, VST transport and Prism's modular editor. Advanced synthesis is not already implemented by those foundations. The granular reference kernel now has generated models, Lean formulas, checked pool state, stereo rendering and Signal observation. It has passed strict static checking only; sample-timed events and a seeded periodic/jittered scheduler are implemented. A stereo Grain Cloud graph factory, retained memory and Prism palette/parameter/keyboard integration are implemented. Independent distributions, sample-file loading, dedicated source/scheduler graph nodes, modulation adapters and audio/UI verification remain outstanding.
 
 Deliver in this order, finishing a playable vertical slice before beginning the next large family:
 
@@ -96,7 +96,7 @@ Checked items here record reference implementation, reviewed in `src/osprey/pack
 
 ### Schedulers and sample resources [SYNTH-ADVANCED-GRAINS-SCHEDULING]
 
-Implementation: `grain_scheduler.ospml` and `grain_timeline.ospml`; strict static checking only while automated verification is paused. Scheduler and playback clocks are retained independently, and a caller commits both only after successful rendering.
+Implementation: `grain_scheduler.ospml`, `grain_timeline.ospml` and the `GrainClouds` composition; strict static checking only while automated verification is paused. Scheduler and playback clocks are retained independently, and a caller commits both only after successful rendering.
 
 - [x] Implement explicit sample-position grain events, independent of host block size.
 - [x] Add periodic/quasi-synchronous scheduling with seeded bounded inter-onset jitter.
@@ -110,8 +110,12 @@ Implementation: `grain_scheduler.ospml` and `grain_timeline.ospml`; strict stati
 
 ### Graph and Prism integration [SYNTH-ADVANCED-GRAINS-INTEGRATION]
 
-- [ ] Add granular factories and event/control ports to the shared scheduler; do not make a Prism-only synthesis path.
-- [ ] Add Grain Cloud, Grain Scheduler and Sample Source entries to the module browser.
+Evidence on 19 November 2026: strict package/app checks and compilation checks of their existing test sources passed; no tests were executed. Native archive and host builds passed (cached host rebuild: 16 seconds). Manual native UI inspection confirmed **Add Grain cloud**, creation of **Grain cloud 5**, its built-in source waveform and seven editable inspector fields, with the Prism logo, original nodes and docked keyboard retained. Granular audio, routing and runtime-error journeys remain unverified.
+
+- [x] Add a stereo Grain Cloud factory and retained per-node memory to the shared graph scheduler, including external-worker suspension/resume.
+- [ ] Add independent sample-source/scheduler graph factories and event/control modulation ports; do not make a Prism-only synthesis path.
+- [x] Add the Grain Cloud entry to the module browser using the existing Prism node/inspector styling.
+- [ ] Add Grain Scheduler and Sample Source entries to the module browser.
 - [ ] Provide source selection, waveform/position display, density, duration, pitch, spread, seed and freeze controls in the existing inspector design.
 - [ ] Map keyboard/phone expression to declared parameters rather than hard-coded instrument-specific commands.
 - [ ] Ship playable cloud, rhythmic-grain and frozen-texture patches, each with useful initial levels and visible modulation routes.

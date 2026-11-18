@@ -7,7 +7,8 @@ module Grains
 
     layout pool = length pool.source >= 2 && length pool.source <= 1048576 && pool.capacity >= 1 && pool.capacity <= 256 && length pool.voices <= pool.capacity && pool.revision >= 0 && pool.position >= 0 && pool.nextIdentity >= 0 && ordered pool >= -1
 
-    controls (size, c) = c.start >= 0.0 && c.start < toFloat size && c.rate >= -16.0 && c.rate <= 16.0 && c.duration >= 3 && c.duration <= 65536 && c.amplitude >= 0.0 && c.amplitude <= 1.0 && c.pan >= -1.0 && c.pan <= 1.0
+    (** Validate playback controls against the actual source length, including finite bounds. *)
+    export controls (size, c) = c.start >= 0.0 && c.start < toFloat size && c.rate >= -16.0 && c.rate <= 16.0 && c.duration >= 3 && c.duration <= 65536 && c.amplitude >= 0.0 && c.amplitude <= 1.0 && c.pan >= -1.0 && c.pan <= 1.0
 
     voiceValid (size, voice) = controls (size, voice.controls) && voice.cursor >= 0.0 && voice.cursor < toFloat size && voice.identity >= 0 && voice.age >= 0 && voice.age < voice.controls.duration
 

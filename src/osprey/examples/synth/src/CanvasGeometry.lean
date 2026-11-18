@@ -42,4 +42,12 @@ def nearSegment (px py ax ay endX endY : Float) : Bool :=
   let ex := px-(ax+t*dx)
   let ey := py-(ay+t*dy)
   ex*ex+ey*ey <= 100
+/-- A deterministic, normalised single-cycle harmonic sample for the initial grain-cloud patch. -/
+def grainSample (index : Float) : Float :=
+  0.5 * Float.sin (6.283185307179586 * index / 1024) + 0.25 * Float.sin (18.84955592153876 * index / 1024) + 0.125 * Float.sin (43.982297150257104 * index / 1024)
+/-- Source samples per output sample at the current 48 kHz graph/device rate. -/
+def grainRate (pitchHz sourceLength : Float) : Float := pitchHz * sourceLength / 48000
+/-- Static source display decimation, independent of live audio activity. -/
+def grainIndex (index count : Float) : Float := Float.floor (index * (count - 1) / 47)
+def grainX (centre index : Float) : Float := centre - 116 + index * 232 / 47
 end synth.CanvasGeometry

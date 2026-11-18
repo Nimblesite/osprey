@@ -7,9 +7,10 @@ import ui::Scenes
 
 (** The modular patch's component menu, canvas, ports and parameter inspector. *)
 module EditorView
-    editorSlice () = perform Signal<Editor<Graph, GraphPending<Graph, KernelState>, GraphState<KernelState>, ui::Machine>>.read ()
+    editorSlice () = perform Signal<Editor<Graph, GraphPending<Graph, ProcessorMemory<KernelState>>, GraphState<ProcessorMemory<KernelState>>, ui::Machine>>.read ()
 
     processorTitle processor = match processor
+        Granular _ _ _ => "Grain cloud"
         Lfo => "LFO"
         ModulatedGain => "Modulated gain"
         MidiNotes => "MIDI notes"
@@ -247,6 +248,7 @@ module EditorView
         listConcat (listConcat (listConcat (nodeArtwork (editor, n, at)) (cardTitle (editor, n, at))) (monitorTrace (editor, n, at))) (listConcat (portShapes (editor, at, n.inputs, false)) (portShapes (editor, at, n.outputs, true)))
 
     nodeArtwork (editor, n, at) = match n.processor
+        Granular samples _ _ => listConcat (moduleCard (editor, n, at)) (grainTrace (samples, at))
         Oscillator => PrismArt::card (editor, n)
         Lfo => PrismArt::card (editor, n)
         Filter => PrismArt::card (editor, n)
@@ -258,11 +260,20 @@ module EditorView
     moduleCard (editor, n, at) =
         border = ui::Pick::either (editor.selected == n.identity, 16745538, 6246296)
         paint = ui::Linear(angle = 90.0, from = Scenes::hex (2364225, 1.0), fromAt = 0.0, to = Scenes::hex (1117472, 1.0), toAt = 1.0, oklab = false)
-        caption = match listGet n.parameters 0
-            Error _ => "${length n.inputs} inputs · ${length n.outputs} outputs"
-            Success p => "${p.label}: ${p.initial}"
+        caption = match n.processor
+            Granular _ _ _ => ""
+            _ => match listGet n.parameters 0
+                Error _ => "${length n.inputs} inputs · ${length n.outputs} outputs"
+                Success p => "${p.label}: ${p.initial}"
         returnShapes = [panel (x at - 146.0, y at - 87.0, 292.0, 174.0, border, 2), paintedPanel (x at - 144.0, y at - 85.0, 288.0, 170.0, paint, 3), text (componentName (editor, n), x at - 124.0, y at - 67.0, 18.0, 238, 5), panel (x at - 124.0, y at - 27.0, 248.0, 64.0, 986652, 4), text (caption, x at - 108.0, y at - 3.0, 14.0, 190, 5), text ("Edit in Patch controls", x at - 124.0, y at + 58.0, 12.0, 155, 5)]
         returnShapes
+
+    grainTrace (samples, at) = [Scenes::strip (foldList (toList (range (0, 48)), [], \(points, index) =>
+        match floatToInt (CanvasGeometry::grainIndex (toFloat index, toFloat (length samples)))
+            Error _ => points
+            Success source => match listGet samples source
+                Error _ => points
+                Success value => listConcat points [CanvasGeometry::grainX (x at, toFloat index), CanvasGeometry::waveY (y at + 5.0, value)]), Scenes::rgb (80, 229, 216), 2.0, 6), text ("Built-in harmonic sample", x at - 120.0, y at - 34.0, 11.0, 190, 7)]
 
     cardTitle (editor, n, at) = [text (componentName (editor, n), x at - 120.0, y at - 104.0, 11.0, 160, 8)]
 
@@ -392,7 +403,7 @@ module EditorView
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =
-        handle static Signal<Editor<Graph, GraphPending<Graph, KernelState>, GraphState<KernelState>, ui::Machine>>
+        handle static Signal<Editor<Graph, GraphPending<Graph, ProcessorMemory<KernelState>>, GraphState<ProcessorMemory<KernelState>>, ui::Machine>>
             read => editor
         changed = signalChanges before editor stamp (signalDependencies editorSlice)
         [Keyed::region (frames, "root", changed, root)]

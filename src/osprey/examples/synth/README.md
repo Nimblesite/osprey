@@ -4,7 +4,15 @@ Prism opens its signal-flow studio with the original node cards, cables, inspect
 
 Prism is the modular instrument editor for `@osprey/synth`. Its native component picker, port controls and parameter fields share a typed graph with the canvas. Start with an oscillator, filter, gain and output; add more components, choose an output port, connect it to an input and audition the resulting patch. Invalid connections leave the previous graph unchanged, and deleting a component removes its cables.
 
-The menu offers sine oscillators, low-pass filters, gains, mixers, delays, MIDI note generators, normalized LFOs, stereo conversion, modulated stereo gain and mono/stereo outputs. Scan a VST3 bundle to add independent instrument or effect instances. Drag nodes, connect canvas ports or native port controls, and route LFOs to compatible effect parameters. The graph library validates port rates, units, channel counts and feedback cycles; parameter edits are checked against each component's descriptor.
+The menu offers grain clouds, sine oscillators, low-pass filters, gains, mixers, delays, MIDI note generators, normalized LFOs, stereo conversion, modulated stereo gain and mono/stereo outputs. Scan a VST3 bundle to add independent instrument or effect instances. Drag nodes, connect canvas ports or native port controls, and route LFOs to compatible effect parameters. The graph library validates port rates, units, channel counts and feedback cycles; parameter edits are checked against each component's descriptor.
+
+## Grain cloud [SYNTH-ADVANCED-GRAINS-INTEGRATION]
+
+Open **Modules → Grain cloud** to add an independent granular instrument. Its card displays the actual source waveform using Prism's existing card styling. The initial source is a built-in 1,024-frame harmonic sample; importing your own sample file is not implemented yet. The library factory accepts other checked mono sample buffers.
+
+Connect its orange stereo output to **Stereo output**, or through **Modulated stereo gain** and compatible stereo effects. Remove the old mono output when replacing the initial patch: playback requires exactly one output. Select the cloud and open **Patch controls** to edit source position, playback rate, grain duration, per-grain gain, pan, onset interval and timing jitter. Timing fields require whole 48 kHz output-frame counts; jitter must be less than the onset interval. Zero rate holds a source position and negative rate reverses it. The default pool allows 16 overlapping grains and reports exhaustion explicitly.
+
+The keyboard changes the source playback rate for the selected musical pitch, alongside the existing oscillators and MIDI generators. **Audition** and **Play** use the shared stereo graph/device path; each cloud retains its grain cursors, envelopes and seeded scheduling clock across blocks, including a pause for a downstream VST response. Graph edits still require stopping/restarting the captured playback graph. Strict static checks and the native build pass; manual UI inspection confirmed palette insertion, the source waveform and seven inspector controls. Audio verification and automated UI journeys remain outstanding, and sustained playback reliability remains unfinished as described below.
 
 ## Run
 

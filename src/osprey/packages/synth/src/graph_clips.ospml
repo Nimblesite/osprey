@@ -14,13 +14,24 @@ module GraphClips
         External _ => false
         _ => true
 
-    validBank (graph, bank) = match Graphs::node (graph, bank.kernelNode)
+    validBank (graph, bank, position) = match Graphs::node (graph, bank.kernelNode)
         Invalid _ => false
-        Valid n => match ClipLayouts::channels n
-            Error _ => false
-            Success count => stateful n && length bank.kernelStates == count && length (filterList (bank.kernelStates, \saved => saved.identity == n.identity)) == count
+        Valid n => match bank.kernelMemory
+            GrainMemory cloud => GrainGraph::compatible (n, cloud, position)
+            ChannelMemory states => match n.processor
+                Granular _ _ _ => false
+                _ => match ClipLayouts::channels n
+                    Error _ => false
+                    Success count => stateful n && length states == count && length (filterList (states, \saved => saved.identity == n.identity)) == count
 
-    validState (graph, held, frames) = held.graphPosition >= 0 && held.graphPosition <= satSub 9223372036854775807 frames && length (filterList (held.graphKernels, \bank => validBank (graph, bank) && length (filterList (held.graphKernels, \other => other.kernelNode == bank.kernelNode)) == 1)) == length held.graphKernels && (held.graphPosition == 0 || length held.graphKernels == length (filterList (graph.nodes, stateful)))
+    // Suspended graphs retain already-rendered grain memory at the end of this block.
+    bankPosition (held, frames, clips, identity) = match length (filterList (clips, \clip => clip.clipNode == identity)) == 1
+        true => satAdd held.graphPosition frames
+        false => held.graphPosition
+
+    stored (held, n, memory) = held(graphKernels = listAppend (filterList (held.graphKernels, \old => old.kernelNode != n.identity)) (NodeKernels(kernelNode = n.identity, kernelMemory = memory)))
+
+    validState (graph, held, frames, clips) = held.graphPosition >= 0 && held.graphPosition <= satSub 9223372036854775807 frames && length (filterList (held.graphKernels, \bank => validBank (graph, bank, bankPosition (held, frames, clips, bank.kernelNode)) && length (filterList (held.graphKernels, \other => other.kernelNode == bank.kernelNode)) == 1)) == length held.graphKernels && (held.graphPosition == 0 || length held.graphKernels == length (filterList (graph.nodes, stateful)))
 
     converted (graph, clips, n) = match ClipInputs::routed (graph, clips, n.identity, 0)
         Error why => Error(message = why)
@@ -33,7 +44,9 @@ module GraphClips
         scheduled (plan, listAppend clips clip, held, frames, remaining)
 
     kernels (held, n, channels) = match filterList (held.graphKernels, \bank => bank.kernelNode == n.identity)
-        [bank] => Success(value = bank.kernelStates)
+        [bank] => match bank.kernelMemory
+            ChannelMemory states => Success(value = states)
+            _ => Error(message = "The component has incompatible DSP memory.")
         [] => match held.graphPosition == 0
             true => Success(value = mapList (toList (range (0, channels)), \_ => RenderInputs::initialState n))
             false => Error(message = "A continuing graph lost its component state.")
@@ -44,9 +57,27 @@ module GraphClips
         Success saved => match ClipKernels::block (plan, clips, n, frames, saved)
             Error why => Error(message = why)
             Success rendered =>
-                bank = NodeKernels(kernelNode = n.identity, kernelStates = rendered.heldKernel)
-                nextHeld = held(graphKernels = listAppend (filterList (held.graphKernels, \old => old.kernelNode != n.identity)) bank)
+                nextHeld = stored (held, n, ChannelMemory(channels = rendered.heldKernel))
                 emitted (plan, clips, nextHeld, frames, n, channels, rendered.kernelSamples, [], remaining)
+
+    grainState (held, n) = match filterList (held.graphKernels, \bank => bank.kernelNode == n.identity)
+        [bank] => match bank.kernelMemory
+            GrainMemory cloud => Success(value = cloud)
+            _ => Error(message = "The grain cloud has incompatible DSP memory.")
+        [] => match held.graphPosition == 0
+            true => GrainGraph::prepare n
+            false => Error(message = "A continuing graph lost its grain-cloud state.")
+        _ => Error(message = "A grain cloud has duplicate DSP memory.")
+
+    granular (plan, clips, held, frames, n, remaining) = match grainState (held, n)
+        Error why => Error(message = why)
+        Success cloud => match GrainGraph::block (n, cloud, frames)
+            Error why => Error(message = why)
+            Success rendered => match GrainGraph::interleaved rendered
+                Error why => Error(message = why)
+                Success samples =>
+                    nextHeld = stored (held, n, GrainMemory(cloud = rendered.next))
+                    emitted (plan, clips, nextHeld, frames, n, 2, samples, [], remaining)
 
     routed (plan, clips, held, frames, n, channels, remaining) = match n.processor
         Stereo => match converted (plan.graph, clips, n)
@@ -58,6 +89,7 @@ module GraphClips
         _ => processed (plan, clips, held, frames, n, channels, remaining)
 
     node (plan, clips, held, frames, n, remaining) = match n.processor
+        Granular _ _ _ => granular (plan, clips, held, frames, n, remaining)
         External _ => match ClipInputs::requestAt (plan.graph, clips, n, held.graphPosition, frames)
             Error why => Error(message = why)
             Success request => Success(value = BlockWaiting(request = request, pending = GraphPending(pendingGraph = plan.graph, pendingState = held, pendingClips = clips, pendingFrames = frames, pendingNode = n.identity)))
@@ -82,7 +114,7 @@ module GraphClips
             Invalid _ => Error(message = "Hosted graph rendering requires an acyclic graph.")
             Valid plan => scheduled (plan(graph = graph), clips, held, frames, plan.order)
 
-    checked (graph, clips, held, frames) = match ClipLayouts::bounded (graph, frames) && validState (graph, held, frames) && length (filterList (graph.nodes, \n => n.processor == Sink)) == 1 && length (filterList (graph.nodes, \n => ClipLayouts::connected (graph, n))) == length graph.nodes && length (filterList (clips, \clip => ClipLayouts::validClipAt (graph, held.graphPosition, frames, clip) && length (filterList (clips, \other => other.clipNode == clip.clipNode)) == 1)) == length clips
+    checked (graph, clips, held, frames) = match ClipLayouts::bounded (graph, frames) && validState (graph, held, frames, clips) && length (filterList (graph.nodes, \n => n.processor == Sink)) == 1 && length (filterList (graph.nodes, \n => ClipLayouts::connected (graph, n))) == length graph.nodes && length (filterList (clips, \clip => ClipLayouts::validClipAt (graph, held.graphPosition, frames, clip) && length (filterList (clips, \other => other.clipNode == clip.clipNode)) == 1)) == length clips
         false => Error(message = "The block needs one output, connected inputs and valid bounded buffers and state.")
         true => prepared (graph, clips, held, frames)
 

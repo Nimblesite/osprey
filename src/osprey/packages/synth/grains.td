@@ -13,3 +13,5 @@ type GrainOnsets { positions: List<Int> next: GrainClock }
 type GrainCloudState { pool: GrainPool clock: GrainClock }
 type GrainCloudBlock { left: List<Float> right: List<Float> next: GrainCloudState }
 type GrainCloudObservation { playback: GrainObservation period: Int jitter: Int nextOnset: Int }
+type GrainNodeControls { playback: GrainControls period: Int jitter: Int }
+union ProcessorMemory<K> { ChannelMemory { channels: List<K> } GrainMemory { cloud: GrainCloudState } }
