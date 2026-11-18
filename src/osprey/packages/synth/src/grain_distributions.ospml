@@ -1,0 +1,51 @@
+// [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Independent parameter streams compose with any onset scheduler.
+namespace synth
+
+(** Bounded uniform grain variations with separately retained random streams per parameter. *)
+module GrainDistributions
+    seedValues seeds = [seeds.position, seeds.rate, seeds.duration, seeds.amplitude, seeds.pan]
+
+    seedsValid seeds = length (filterList (seedValues seeds, \s => s >= 1 && s <= 2147483646)) == 5
+
+    rangesValid (size, ranges) =
+        a = ranges.minimum
+        b = ranges.maximum
+        Grains::controls (size, a) && Grains::controls (size, b) && structuralEquals (a.window, b.window) && a.start <= b.start && a.rate <= b.rate && a.duration <= b.duration && a.amplitude <= b.amplitude && a.pan <= b.pan
+
+    advanceOne (outcome, seed) = match outcome
+        Error why => Error(message = why)
+        Success values => match floatToInt (GrainMath::nextSeed (toFloat seed))
+            Error why => Error(message = why)
+            Success value => Success(value = listAppend values value)
+
+    advanced seeds = match foldList (seedValues seeds, Success(value = []), advanceOne)
+        Error why => Error(message = why)
+        Success values => match values
+            [position, rate, duration, amplitude, pan] => Success(value = GrainSeeds(position = position, rate = rate, duration = duration, amplitude = amplitude, pan = pan))
+            _ => Error(message = "Incomplete grain random state.")
+
+    sampled (ranges, seeds) =
+        a = ranges.minimum
+        b = ranges.maximum
+        match floatToInt (GrainMath::discrete (toFloat a.duration, toFloat b.duration, toFloat seeds.duration))
+            Error why => Error(message = why)
+            Success duration => Success(value = a(start = GrainMath::uniform (a.start, b.start, toFloat seeds.position), rate = GrainMath::uniform (a.rate, b.rate, toFloat seeds.rate), duration = duration, amplitude = GrainMath::uniform (a.amplitude, b.amplitude, toFloat seeds.amplitude), pan = GrainMath::uniform (a.pan, b.pan, toFloat seeds.pan)))
+
+    event (ranges, outcome, position) = match outcome
+        Error why => Error(message = why)
+        Success held => match advanced held.next
+            Error why => Error(message = why)
+            Success seeds => match sampled (ranges, seeds)
+                Error why => Error(message = why)
+                Success controls => Success(value = GrainDistributedEvents(events = listPrepend held.events (GrainEvent(position = position, controls = controls)), next = seeds))
+
+    ordered (previous, position) = match previous >= 0 && position >= previous
+        true => position
+        false => -1
+
+    (** Produce at most 2048 ordered events; retain seeds only when the subsequent render also succeeds. Empty batches consume no randomness. *)
+    export events (positions, ranges, size, seeds) = match size >= 2 && size <= 1048576 && rangesValid (size, ranges) && seedsValid seeds && length positions <= 2048 && foldList (positions, 0, ordered) >= 0
+        false => Error(message = "Invalid grain distribution bounds, sample positions or random seeds.")
+        true => match foldList (positions, Success(value = GrainDistributedEvents(events = [], next = seeds)), \(held, position) => event (ranges, held, position))
+            Error why => Error(message = why)
+            Success held => Success(value = held(events = listReverse held.events))

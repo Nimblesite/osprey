@@ -37,4 +37,8 @@ def exponentialInterval (mean maximum seed : Float) : Float :=
   if gap < 1 then 1 else if gap > maximum then maximum else gap
 /-- Lifetime-average events per rendered frame; no elapsed frames means no measured density yet. -/
 def density (events frames : Float) : Float := if frames <= 0 then 0 else events / frames
+/-- Uniform bounded values; equal endpoints hold a parameter while its stream still advances. -/
+def uniform (low high seed : Float) : Float := low + (high - low) * ((seed - 1) / 2147483646)
+/-- Inclusive discrete uniform range, with finite generator quantisation bias. -/
+def discrete (low high seed : Float) : Float := low + Float.floor ((high - low + 1) * ((seed - 1) / 2147483646))
 end synth.GrainMath

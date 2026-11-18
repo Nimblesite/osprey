@@ -8,7 +8,7 @@ The authoritative contracts are [Synthesis.md](../specs/runtime/Synthesis.md), e
 
 ## Current state and delivery order [SYNTH-ADVANCED-ORDER]
 
-Existing code provides oscillator/envelope/filter primitives, typed graphs, parameter descriptors, Signals, reference block processing, VST transport and Prism's modular editor. Advanced synthesis is not already implemented by those foundations. The granular reference kernel now has generated models, Lean formulas, checked pool state, stereo rendering and Signal observation. It has passed strict static checking only; sample-timed events and a seeded periodic/jittered scheduler are implemented. A stereo Grain Cloud graph factory, retained memory and Prism palette/parameter/keyboard integration are implemented. Independent distributions, sample-file loading, dedicated source/scheduler graph nodes, modulation adapters and audio/UI verification remain outstanding.
+Existing code provides oscillator/envelope/filter primitives, typed graphs, parameter descriptors, Signals, reference block processing, VST transport and Prism's modular editor. Advanced synthesis is not already implemented by those foundations. The granular reference kernel now has generated models, Lean formulas, checked pool state, stereo rendering and Signal observation. It has passed strict static checking only; sample-timed events and a seeded periodic/jittered scheduler are implemented. A stereo Grain Cloud graph factory, retained memory and Prism palette/parameter/keyboard integration are implemented. Independent uniform parameter distributions now compose with the onset scheduler in the library; Prism distribution controls, application sample-file loading, dedicated source/scheduler graph nodes, modulation adapters and audio/UI verification remain outstanding.
 
 Deliver in this order, finishing a playable vertical slice before beginning the next large family:
 
@@ -140,7 +140,8 @@ Implementation: `grain_scheduler.ospml`, `grains.ospml` and the `GrainClouds` co
 - [x] Add periodic/quasi-synchronous scheduling with seeded bounded inter-onset jitter.
 - [x] Add bounded exponential asynchronous timing, explicitly rounded/censored rather than claiming an exact Poisson process.
 - [ ] Verify timing gap bounds, seeded replay, block partition invariance and observed distribution statistics.
-- [ ] Add independently controlled distributions for onset, duration, source position, pitch and pan.
+- [x] Add independent onset timing and bounded uniform duration, source-position, playback-rate, gain and pan distributions with separately retained parameter seeds.
+- [ ] Expose distribution ranges/seeds through graph descriptors and Prism controls; verify replay, partition invariance and observed statistics.
 - [x] Specify seed persistence, reset and reseed semantics; identical state and events must reproduce the same schedule.
 - [ ] Support overlapping grains across loop boundaries without reading outside prepared resources.
 - [ ] Add immutable resource replacement: existing grains finish against their owned resource while new grains adopt the new one.
@@ -367,3 +368,5 @@ Implementation checkpoint [SYNTH-ADVANCED-GRAINS-WINDOWS]: generated `GrainWindo
 Implementation checkpoint [SYNTH-ADVANCED-GRAINS-TIMING]: generated `GrainTiming` selects periodic jitter or exponential gaps rounded up and capped to 1–1048576 samples. The existing Park–Miller stream advances once per onset for both modes; changing the policy preserves the already scheduled onset. Graph descriptors expose timing selection, underlying mean and maximum gap, and cloud Signals report the applied policy. Package and application strict compilation passed; distribution/audio execution is still unverified.
 
 Implementation checkpoint [SYNTH-ADVANCED-GRAINS-OVERLOAD]: `Grains.trigger` returns a generated `GrainAdmission` receipt. Full pools reject only the new request and retain existing voices; timeline rendering consumes the event and continues. Request revision counts valid requests, accepted identity counts started grains, and their difference counts rejection. Observations report counts and lifetime-average events per output frame (zero before any frame has elapsed); hosts convert to events/second using their sample rate. The policy never steals. Strict library/application compilation passed; rendered overload verification remains pending.
+
+Implementation checkpoint [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS]: generated bounds/seeds/event models and `GrainDistributions.events` produce checked uniform parameter variations. `GrainClouds.variedBlock` commits the existing scheduler, renderer and all variation streams together; rejected onsets consume draws while invalid operations return no partial state. Static compilation passed; graph/UI exposure and numerical/audio evidence remain pending.

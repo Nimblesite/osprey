@@ -60,6 +60,21 @@ type GrainBlock =
     right : List<float>
     next : GrainPool
 
+type GrainSeeds =
+    position : int
+    rate : int
+    duration : int
+    amplitude : int
+    pan : int
+
+type GrainDistribution =
+    minimum : GrainControls
+    maximum : GrainControls
+
+type GrainDistributedEvents =
+    events : List<GrainEvent>
+    next : GrainSeeds
+
 type GrainEvent =
     position : int
     controls : GrainControls
@@ -94,6 +109,10 @@ type GrainCloudBlock =
     left : List<float>
     right : List<float>
     next : GrainCloudState
+
+type GrainVariedBlock =
+    audio : GrainCloudBlock
+    nextSeeds : GrainSeeds
 
 type GrainCloudObservation =
     playback : GrainObservation
