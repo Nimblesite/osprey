@@ -277,10 +277,10 @@ module EditorView
         Invalid _ => []
         Valid n => match PrismArt::role n.processor == "custom"
             false => []
-            true => listConcat [Scenes::rect (1374.0, 266.0, 304.0, 330.0, 0.0, Scenes::rgb (19, 17, 35), 7), text (componentName (editor, n), 1234.0, 128.0, 24.0, 240, 8), text ("Parameters", 1234.0, 290.0, 16.0, 210, 8), text ("Edit in Patch controls", 1234.0, 250.0, 13.0, 170, 8)] (foldList (toList (range (0, ui::Pick::either (length n.parameters < 4, length n.parameters, 4))), [], \(all, i) =>
+            true => listConcat [Scenes::rect (rightX (editor, 1374.0), 266.0, 304.0, 330.0, 0.0, Scenes::rgb (19, 17, 35), 7), text (componentName (editor, n), rightX (editor, 1234.0), 128.0, 24.0, 240, 8), text ("Parameters", rightX (editor, 1234.0), 290.0, 16.0, 210, 8), text ("Edit in Patch controls", rightX (editor, 1234.0), 250.0, 13.0, 170, 8)] (foldList (toList (range (0, ui::Pick::either (length n.parameters < 4, length n.parameters, 4))), [], \(all, i) =>
                 match listGet n.parameters i
                     Error _ => all
-                    Success p => listAppend all (text ("${p.label}: ${p.initial}", 1234.0, 325.0 + toFloat i * 32.0, 14.0, 210, 8))))
+                    Success p => listAppend all (text ("${p.label}: ${p.initial}", rightX (editor, 1234.0), 325.0 + toFloat i * 32.0, 14.0, 210, 8))))
 
     connectionRows editor = foldList (toList (range (0, length (filterList (editor.graph.cables, \c => c.source == editor.selected || c.destination == editor.selected)))), [], \(all, i) =>
         match listGet (filterList (editor.graph.cables, \c => c.source == editor.selected || c.destination == editor.selected)) i
@@ -296,7 +296,7 @@ module EditorView
                 direction = match incoming
                     true => "In   ←"
                     false => "Out  →"
-                listConcat all [Scenes::disc (1243.0, 497.0 + toFloat i * 36.0, 8.0, Scenes::rgb (255, 132, 66), 6), text ("${direction}  ${label}", 1264.0, 488.6 + toFloat i * 36.0, 14.0, 230, 6)])
+                listConcat all [Scenes::disc (rightX (editor, 1243.0), 497.0 + toFloat i * 36.0, 8.0, Scenes::rgb (255, 132, 66), 6), text ("${direction}  ${label}", rightX (editor, 1264.0), 488.6 + toFloat i * 36.0, 14.0, 230, 6)])
 
     palette () = listConcat [Scenes::rect (98.0, 420.0, 196.0, 708.0, 0.0, Scenes::rgb (19, 16, 36), 20), text ("MODULES", 18.0, 82.0, 15.0, 166, 22), text ("Click or drag to add", 18.0, 104.0, 12.0, 135, 22)] (foldList (toList (range (0, length EditorState::kinds)), [], \(all, i) => listConcat all [panel (12.0, CanvasGeometry::paletteY (toFloat i) - 17.0, 172.0, 35.0, 2563389, 21), text (EditorState::title (listGet EditorState::kinds i ?: ""), 22.0, CanvasGeometry::paletteY (toFloat i) - 8.0, 12.0, 224, 22)]))
 
@@ -304,7 +304,14 @@ module EditorView
 
     toolbar () = [text ("Modules", 380.0, 25.0, 16.0, 236, 12), text ("Patch controls", 500.0, 25.0, 16.0, 236, 12), text ("Audition", 680.0, 25.0, 16.0, 236, 12), text ("Play", 800.0, 25.0, 16.0, 236, 12), text ("Stop", 880.0, 25.0, 16.0, 236, 12), text ("Keyboard", 950.0, 25.0, 16.0, 236, 12)]
 
-    toolbarAccess () = [accessible ("Modules", 370.0, 10.0, 110.0, 45.0, false), accessible ("Patch controls", 490.0, 10.0, 170.0, 45.0, false), accessible ("Audition patch", 670.0, 10.0, 110.0, 45.0, false), accessible ("Play patch", 790.0, 10.0, 70.0, 45.0, false), accessible ("Stop playback", 870.0, 10.0, 70.0, 45.0, false), accessible ("Keyboard", 940.0, 10.0, 120.0, 45.0, false), accessible ("Undo", 1108.0, 15.0, 40.0, 37.0, false), accessible ("Redo", 1160.0, 15.0, 40.0, 37.0, false)]
+    toolbarItems () = [accessible ("Modules", 370.0, 10.0, 110.0, 45.0, false), accessible ("Patch controls", 490.0, 10.0, 170.0, 45.0, false), accessible ("Audition patch", 670.0, 10.0, 110.0, 45.0, false), accessible ("Play patch", 790.0, 10.0, 70.0, 45.0, false), accessible ("Stop playback", 870.0, 10.0, 70.0, 45.0, false), accessible ("Keyboard", 940.0, 10.0, 120.0, 45.0, false), accessible ("Undo", 1108.0, 15.0, 40.0, 37.0, false), accessible ("Redo", 1160.0, 15.0, 40.0, 37.0, false)]
+
+    rightX (editor, base) = CanvasGeometry::shifted (base, ui::Machines::number (editor.skin, "spareWidth"))
+
+    toolbarAccess editor = mapList (toolbarItems (), \area =>
+        match area.accessLabel == "Undo" || area.accessLabel == "Redo"
+            true => area(accessLeft = rightX (editor, area.accessLeft))
+            false => area)
 
     (** Header commands retain the same action path as native controls. *)
     export toolbarAction index = match index
@@ -318,8 +325,8 @@ module EditorView
         _ => ShowKeyboard
 
     (** Match the compact command hit boxes in the original header. *)
-    export toolbarAt (x, y) = listGet (filterList (toList (range (0, 8)), \i =>
-        match listGet (toolbarAccess ()) i
+    export toolbarAt (editor, x, y) = listGet (filterList (toList (range (0, 8)), \i =>
+        match listGet (toolbarAccess editor) i
             Error _ => false
             Success a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0
 
@@ -346,7 +353,7 @@ module EditorView
             false => listConcat (customInspector editor) (connectionRows editor)
         shapes = listConcat (listConcat (PrismArt::background editor) details) (listConcat (CableCanvas::shapes editor) (listConcat nodes (listConcat (listAppend (toolbar ()) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))) library)))
         scene = Ui::zoomed (0.75, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
-        access = listConcat (toolbarAccess ()) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) (PrismArt::sliders (editor, n)))))
+        access = listConcat (toolbarAccess editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) (PrismArt::sliders (editor, n)))))
         extra = match editor.paletteShown
             true => paletteAccess ()
             false => []

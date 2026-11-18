@@ -45,3 +45,34 @@ historyDragJourney () =
     expect (structuralEquals ((Drive::holding undone).positions, before.positions), true)
     redone = prismTap (undone, "Redo")
     expect (structuralEquals ((Drive::holding redone).positions, after.positions), true)
+
+// [PRISM-ROUTING-LAYOUT] Original header artwork and its live hit targets move together.
+graphResizeJourney () =
+    opened = editorLaunched []
+    baseUndo = portIn (opened, "Undo")
+    baseRows = connectionLefts opened
+    expect ("connection rows: ${length baseRows}", "connection rows: 1")
+    wider = Drive::viewed (opened, 1836.0, 1078.0)
+    wideUndo = portIn (wider, "Undo")
+    expect (wideUndo.accessLeft, baseUndo.accessLeft + 300.0)
+    expect (wideUndo.accessTop, baseUndo.accessTop)
+    expect (listGet (connectionLefts wider) 0 ?: -1.0, (listGet baseRows 0 ?: -1.0) + 300.0)
+    added = prismTap (prismTap (wider, "Modules"), "Add Sine oscillator")
+    expect (length (Drive::holding added).graph.nodes, 6)
+    undone = prismTap (added, "Undo")
+    expect (length (Drive::holding undone).graph.nodes, 5)
+    smaller = Drive::viewed (undone, 1536.0, 828.0)
+    expect ((portIn (smaller, "Undo")).accessLeft, baseUndo.accessLeft)
+    redone = prismTap (smaller, "Redo")
+    expect (length (Drive::holding redone).graph.nodes, 6)
+
+// Inspect the rendered connection lettering, not a parallel layout calculation.
+connectionLefts driven =
+    drawn = ui::Surfaces::seen (driven.drivenSurface, driven.drivenProgram)
+    foldList (drawn.walkSketches, [], \(all, sketch) =>
+        foldList (sketch.sketchedAs.sketchShapes, all, \(found, shape) =>
+            match shape
+                ui::Lettering words left _ _ _ _ _ _ => match startsWith words "Out  →"
+                    true => listAppend found left
+                    false => found
+                _ => found))

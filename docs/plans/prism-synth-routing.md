@@ -2,7 +2,7 @@
 
 The synth package remains UI-free. Prism becomes an editable instrument graph: add oscillators, effects, MIDI generators, modulators and VST3 host nodes from a menu, connect compatible ports, adjust parameters and hear the resulting graph. Existing audio and control work must remain usable while a replacement graph is validated. See [SYNTH-GRAPH], [SYNTH-SIGNALS], [SYNTH-RENDER] and [SYNTH-HOST-VST] in the [synthesis specification](../specs/runtime/Synthesis.md).
 
-Work is on `codex/prism-synth-routing`, originally based on `math-to-code` at `e3ebc1399`. The original 03:00 Australia/Melbourne checkpoint on 16 November 2026 was retained below; the user subsequently resumed work and requested wrap-up in the primary checkout. Historical measurements describe their recorded checkpoint, not current release readiness.
+The original `codex/prism-synth-routing` work merged as PR #412. Completion continues on `codex/prism-plan-completion` in the dedicated `~/.codex/worktrees/prism-synth-routing/osprey` worktree, created from the latest local code after fetching `origin/main` on 19 November 2026. The original branch was based on `math-to-code` at `e3ebc1399`; its 03:00 Australia/Melbourne checkpoint on 16 November remains below. Historical measurements describe their recorded checkpoint, not current release readiness.
 
 ## Delivery checklist [PRISM-ROUTING-DELIVERY]
 
@@ -293,6 +293,7 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Pass 13 application journeys, the 19-step original-controls/module-drag journey in headless and windowed modes, and the 42-step real VST editing journey in both modes. Evidence: `target/pr-validation/wrap-up/main-art-tests.log`, `integrated-controls-*`, `integrated-routing-*`.
 - [x] Preserve the exact main-branch Prism artwork and logo; inspect `design/prism-audio-modulation.png` and captures of the packaged app, including newly added module cards.
 - [x] Restore graph undo/redo in the unified editor using the original Prism header controls. Typed snapshots retain graph, positions, selection, note and plug-in bindings; node identities remain monotonic, new edits discard redo, and one drag is one edit. The new loaded graph-history journey failed before the fix and passes under ARC and GC; all 17 app journeys and strict static analysis pass (2026-11-19). Evidence: `target/pr-validation/plan-completion/history-{red,gc,final-suite,final-check}.log`.
+- [x] Align original Undo/Redo hit areas and custom inspector content with the expanding canvas. The graph resize journey first reproduced x=1108 instead of 1408 for Undo and x=1264 instead of 1564 for rendered connection text, then passed; all 18 app journeys and strict static analysis pass (2026-11-19). Evidence: `target/pr-validation/plan-completion/resize-{red,inspector-red-detail,suite,final-check}.log`.
 - [ ] Restore adaptive canvas resizing in the unified editor and verify the updated native window against the original Prism design; fixed-studio tests do not validate the graph editor.
 - [ ] Complete sustained audio and full repository CI gates above; these visual/interaction checks do not establish realtime playback reliability.
 

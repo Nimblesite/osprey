@@ -566,3 +566,5 @@ valid (outcome, check) = match outcome
 parameterAt (graph, identity, index, check) = valid (synth::Graphs::node (graph, identity), \n => succeeds (listGet n.parameters index, check))
 
 test ("graph history undoes module insertion, redoes it and branches without reusing identities", \() => Runtime::guarded (\() => hosted graphHistoryJourney))
+
+test ("resizing the graph keeps original header controls aligned and usable", \() => Runtime::guarded (\() => hosted graphResizeJourney))

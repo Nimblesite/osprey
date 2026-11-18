@@ -5,6 +5,8 @@ namespace synth.CanvasGeometry
 def gridX (column : Float) : Float := 350 + column * 310
 def gridY (row : Float) : Float := 170 + row * 235
 def offset (pointer centre : Float) : Float := pointer - centre
+/-- Right-anchored artwork and its hit areas share the viewport expansion. -/
+def shifted (base extra : Float) : Float := base + extra
 private def bounded (value low high : Float) : Float :=
   if value < low then low else if value > high then high else value
 /-- Node hit areas remain entirely in the graph, outside the palette. -/
