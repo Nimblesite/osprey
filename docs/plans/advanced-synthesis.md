@@ -23,6 +23,42 @@ Deliver in this order, finishing a playable vertical slice before beginning the 
 
 A vertical slice includes the DSP module, its graph factory, live parameter mapping, Signal observation, a Prism module card/inspector and a playable patch. Verification remains outstanding while the testing pause is in force, even if the implementation can be auditioned manually.
 
+## Execution milestones and completion rules [SYNTH-ADVANCED-MILESTONES]
+
+This is the implementation backlog, not a claim that the ecosystem is complete. Retain the existing checked reference-kernel work below; an implementation checkbox does not establish audio quality, realtime suitability or platform support. Mark acceptance items complete only with recorded evidence. Automated verification remains paused; do not start suites as a side effect of completing this plan.
+
+| Milestone | Dependencies | Concrete deliverable | Completion evidence |
+| --- | --- | --- | --- |
+| Sample-backed Grain Cloud | Existing grain kernel and Prism graph | Import a WAV, add the node, cable it to stereo output and play it from the docked keyboard | Source metadata, working controls, audible output and recoverable import failures |
+| Composable granular instrument | Sample-backed Grain Cloud; event/control ports | Separate source, scheduler and player; route modulation; replace a sample without invalidating active grains | Editable cloud, rhythmic and frozen-texture patches |
+| Physical instrument | Prepared resources; fractional delay; excitation; voice lifecycle | Plucked string and struck modal body assembled from reusable nodes | Tuning/decay evidence and playable patches with visible routing |
+| Wavetable and additive instruments | Resource preparation; voice lifecycle; modulation | Morphing tables and independently controlled partials | Pitch-range/aliasing evidence and saved example patches |
+| Spectral instrument | Prepared transforms; spectral ports; latency accounting | Shared analysis feeding freeze/morph/resynthesis | Reconstruction and latency evidence plus an editable freeze patch |
+| Experimental effects and phase instruments | Causal feedback; oversampling; latency accounting | Reverb, diffusion, nonlinear effects and phase networks | Stability/quality evidence and combined-family patches |
+| Offline discovery | Stable operators, parameter contracts and patch persistence | Fit parameters, preview a result, explicitly apply or reject it | Reproducible fitting job and unchanged original patch on failure/cancel |
+| Production/platform readiness | Delivered modules and resumed verification | Documented capability matrix, bounded rendering and complete host journeys | Deferred acceptance gates below, including actual device audio |
+
+Deliver the first milestone before expanding to another synthesis family. Shared contracts should be extracted as the first real consumers need them; do not postpone audible progress behind an unused general framework. Preserve the separate scheduler/player design even when Grain Cloud offers a convenient composite node.
+
+### Next implementation sequence [SYNTH-ADVANCED-MILESTONES-NEXT]
+
+- [ ] Finish the sample-import checklist [SYNTH-ADVANCED-GRAINS-IMPORT] and retain the built-in source as an explicit selectable resource.
+- [ ] Correct keyboard pitch mapping for sample-rate metadata and root note; keep source scanning independent from pitch.
+- [ ] Make the selected Grain Cloud inspector expose meaningful units and bounded controls; retain Prism's original artwork and layout.
+- [ ] Complete the manual journey: add Grain Cloud, load a sample, add/connect stereo output, play several notes, edit controls, stop and remove the cable/node.
+- [ ] Trace the observed audio-queue starvation through producer, transport and device receipts; record workload and timings before selecting a fix.
+- [ ] Remove the measured producer bottleneck without weakening validation or masking sustained throughput failure with a larger queue.
+- [ ] Demonstrate sustained playback and stop/restart manually; keep automated correctness/performance acceptance unchecked during the pause.
+- [ ] Add scheduler/source nodes and typed modulation adapters, then finish granular presets before beginning physical models.
+
+### Evidence and change discipline [SYNTH-ADVANCED-MILESTONES-EVIDENCE]
+
+- [ ] For each delivered slice, record the commit, relevant specification IDs, module paths and exact limitations beside its checklist section.
+- [ ] Record compilation/static-analysis results separately from manual interaction, captured audio and automated-test results.
+- [ ] Record reference/offline versus realtime capability per module; never infer realtime readiness from native compilation alone.
+- [ ] Keep failures, partial work and deferred verification unchecked; split a mixed item when only one part is complete.
+- [ ] Commit each coherent implementation step, preserve unrelated work and avoid a push that implicitly claims deferred CI has passed.
+
 ## Shared component foundation [SYNTH-ADVANCED-CORE]
 
 ### Canonical models and module boundaries [SYNTH-ADVANCED-CORE-MODELS]
@@ -107,6 +143,29 @@ Implementation: `grain_scheduler.ospml`, `grains.ospml` and the `GrainClouds` co
 - [ ] Add immutable resource replacement: existing grains finish against their owned resource while new grains adopt the new one.
 - [ ] Add bounded live capture/freeze with an explicit read/write ownership strategy.
 - [ ] Add optional pitch-synchronous scheduling as a separate mode with its own analysis/latency contract.
+
+### Real sample loading and ownership [SYNTH-ADVANCED-GRAINS-IMPORT]
+
+The first import path is bounded local WAV loading, not a general codec framework. File selection and reading belong to the application; decoding and sample validation are pure library operations. No file access, decoding or allocation may be moved into the audio callback. Initial supported encodings and limits must be visible in the application and package documentation.
+
+- [ ] Declare generated models for decoded sample metadata, prepared sample identity, channel policy and typed import errors.
+- [ ] Define the first supported WAV encodings, channel counts, sample rates, file-byte and decoded-frame limits before implementing the decoder.
+- [ ] Implement bounded RIFF/WAVE chunk parsing with checked lengths, odd-byte padding, unknown-chunk handling and explicit duplicate/truncated-chunk rejection.
+- [ ] Validate encoding, frame alignment, byte rate, sample count and finite sample values; reject unsupported formats rather than guessing.
+- [ ] Define stereo handling explicitly: preserve channels where supported or perform a documented downmix; do not silently discard a channel.
+- [ ] Add native file selection for the selected Grain Cloud; cancellation leaves the patch unchanged.
+- [ ] Read a bounded amount of data outside rendering and reject oversized resources before unbounded allocation or decoding.
+- [ ] Guard asynchronous import completion with request identity and node identity/revision so an old result cannot overwrite a newer choice or resurrect a removed node.
+- [ ] Keep the last valid sample and graph on decode, preparation or activation failure; surface a useful node-specific error.
+- [ ] Carry source sample rate and root note into playback-rate calculation; a unity-rate sample must not be pitched according to its buffer length.
+- [ ] Define loop range, one-shot/reverse/end behaviour and source-position units; make the inspector match the actual supported behaviour.
+- [ ] Show the loaded resource name, duration/rate/channel metadata, waveform and current source position using bounded observations.
+- [ ] Include sample replacement in Undo/Redo without invalidating resources still owned by playing grains or history snapshots.
+- [ ] Define an initial import-during-playback policy and show it clearly; do not block rendering while preparing a replacement.
+- [ ] Persist resource identity/content hash and a portable resolution strategy; missing or changed files require an explicit recoverable result.
+- [ ] Document import limits, interpolation quality, root-note assumptions and any downmix policy alongside the Grain Cloud example.
+
+Deferred verification: after the pause, cover supported encodings, empty/truncated/oversized files, malformed chunk arithmetic, cancellation, stale completions, node removal, repeated replacement, Undo/Redo, missing resources and pitch consistency across source/output sample rates through loaded application/library journeys.
 
 ### Graph and Prism integration [SYNTH-ADVANCED-GRAINS-INTEGRATION]
 
