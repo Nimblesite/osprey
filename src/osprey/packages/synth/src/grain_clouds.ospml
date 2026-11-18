@@ -4,11 +4,13 @@ namespace synth
 (** A bounded grain cloud composed from the independent player and onset scheduler. *)
 module GrainClouds
     (** Prepare a checked source pool and independently seeded onset clock at sample zero. *)
-    export prepare (source, capacity, timing, seed) = match Grains::prepare (source, capacity)
+    export prepare (source, capacity, timing, seed, variationSeed) = match Grains::prepare (source, capacity)
         Error why => Error(message = why)
         Success pool => match GrainScheduler::prepare (pool.position, timing, seed)
             Error why => Error(message = why)
-            Success clock => Success(value = GrainCloudState(pool = pool, clock = clock))
+            Success clock => match GrainDistributions::seeded variationSeed
+                Error why => Error(message = why)
+                Success seeds => Success(value = GrainCloudState(pool = pool, clock = clock, seeds = seeds))
 
     schedule (held, frames) = match held.pool.position == held.clock.position
         false => Error(message = "The grain player and scheduler clocks have diverged.")
@@ -16,7 +18,7 @@ module GrainClouds
 
     rendered (held, clock, events, frames) = match Grains::scheduled (held.pool, frames, events)
         Error why => Error(message = why)
-        Success audio => Success(value = GrainCloudBlock(left = audio.left, right = audio.right, next = GrainCloudState(pool = audio.next, clock = clock)))
+        Success audio => Success(value = GrainCloudBlock(left = audio.left, right = audio.right, next = held(pool = audio.next, clock = clock)))
 
     (** Controls apply to new grains only. Both clocks advance together, or neither returned state is published. *)
     export block (held, controls, frames) = match schedule (held, frames)
@@ -24,13 +26,15 @@ module GrainClouds
         Success scheduled => rendered (held, scheduled.next, GrainScheduler::events (scheduled.positions, controls), frames)
 
     (** [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Commit the audio state and all parameter seeds together after success. *)
-    export variedBlock (held, ranges, seeds, frames) = match schedule (held, frames)
+    export variedBlock (held, ranges, frames) = match schedule (held, frames)
         Error why => Error(message = why)
-        Success scheduled => match GrainDistributions::events (scheduled.positions, ranges, length held.pool.source, seeds)
+        Success scheduled => match GrainDistributions::events (scheduled.positions, ranges, length held.pool.source, held.seeds)
             Error why => Error(message = why)
             Success varied => match rendered (held, scheduled.next, varied.events, frames)
                 Error why => Error(message = why)
-                Success audio => Success(value = GrainVariedBlock(audio = audio, nextSeeds = varied.next))
+                Success audio =>
+                    next = audio.next
+                    Success(value = audio(next = next(seeds = varied.next)))
 
     (** Read this snapshot after a successful block and publish it outside the audio callback. *)
     export observation held = GrainCloudObservation(playback = Grains::observation held.pool, timing = held.clock.timing, nextOnset = held.clock.nextOnset)

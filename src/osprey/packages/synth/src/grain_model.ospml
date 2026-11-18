@@ -67,6 +67,13 @@ type GrainSeeds =
     amplitude : int
     pan : int
 
+type GrainSpread =
+    position : float
+    rate : float
+    duration : int
+    amplitude : float
+    pan : float
+
 type GrainDistribution =
     minimum : GrainControls
     maximum : GrainControls
@@ -104,15 +111,12 @@ type GrainOnsets =
 type GrainCloudState =
     pool : GrainPool
     clock : GrainClock
+    seeds : GrainSeeds
 
 type GrainCloudBlock =
     left : List<float>
     right : List<float>
     next : GrainCloudState
-
-type GrainVariedBlock =
-    audio : GrainCloudBlock
-    nextSeeds : GrainSeeds
 
 type GrainCloudObservation =
     playback : GrainObservation

@@ -41,4 +41,11 @@ def density (events frames : Float) : Float := if frames <= 0 then 0 else events
 def uniform (low high seed : Float) : Float := low + (high - low) * ((seed - 1) / 2147483646)
 /-- Inclusive discrete uniform range, with finite generator quantisation bias. -/
 def discrete (low high seed : Float) : Float := low + Float.floor ((high - low + 1) * ((seed - 1) / 2147483646))
+/-- Offset stream initialization stays in the nonzero Park–Miller state domain. -/
+def streamSeed (seed offset : Float) : Float :=
+  let value := seed - 1 + offset
+  1 + value - Float.floor (value / 2147483646) * 2147483646
+/-- Clip symmetric parameter spreads to the declared valid control domain. -/
+def spreadLow (center spread low : Float) : Float := if center - spread < low then low else center - spread
+def spreadHigh (center spread high : Float) : Float := if center + spread > high then high else center + spread
 end synth.GrainMath
