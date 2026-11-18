@@ -683,9 +683,9 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "lsp-profiler"
-version = "0.6.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb298f202dd03c38469fa71a50e8332853570610ffcb200a72f0117d7b2bbd40"
+checksum = "c6cd35d265e1ed15dd5b07675e0253108b6d9409ec4856d9e830d79b618e4b51"
 dependencies = [
  "async-trait",
  "inferno",
@@ -729,9 +729,9 @@ dependencies = [
 
 [[package]]
 name = "lspkit"
-version = "0.6.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb9daedaef6866d13f20ace87f4f815974b171c6b9aefb78dff86d5d76f9bb45"
+checksum = "cbb367f58b41ac9b7748c6632008805f0b9f8e37dcacb8b4147b2a216e9d7755"
 dependencies = [
  "async-trait",
  "dashmap",
@@ -746,9 +746,9 @@ dependencies = [
 
 [[package]]
 name = "lspkit-server"
-version = "0.6.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6d9f1e816e41bfc5b171b5f01f929467c88cbac2555c34df6010383e3608cd2"
+checksum = "fb5b4a8e624514d4adcd4d013dd21f867b7cdf9a5eed99b9b327537d432c4fe8"
 dependencies = [
  "async-trait",
  "lsp-types",
