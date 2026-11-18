@@ -4,7 +4,7 @@ Bring lspkit's memory-leak fixes into the Osprey language server once lspkit rel
 
 ## [LSPKIT-UPGRADE-SOURCE] What lspkit is fixing
 
-The lspkit agent on TMC (`codex-memory-leak-fix`) is fixing the five leaks in lspkit's `docs/plans/memory-leak-audit.md`. Osprey pins `lspkit`, `lspkit-server` and `lsp-profiler` at `0.4.0` in `src/toolchain/Cargo.toml`.
+The lspkit agent on TMC (`codex-memory-leak-fix`) is fixing the five leaks in lspkit's `docs/plans/memory-leak-audit.md`. Osprey pins `lspkit`, `lspkit-server` and `lsp-profiler` at `0.10.0` in `src/toolchain/Cargo.toml`; 0.7.0–0.10.0 add more leak and lifecycle fixes (sampler stop on an abandoned attach, owned forwarder tasks, disposed decoration types).
 
 | lspkit leak | Osprey exposure |
 | --- | --- |
