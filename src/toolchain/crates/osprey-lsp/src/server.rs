@@ -152,12 +152,12 @@ async fn notify(
                 scope::lock(engine).opened(doc.as_str(), false);
                 engine.project_cache.opened(doc.as_str(), false);
                 scope::publish_siblings(engine, bus, &doc).await;
-                scope::refresh(engine, bus).await;
+                scope::rescope(engine, bus, &[doc]).await;
             }
         }
         "workspace/didChangeWatchedFiles" => {
             forget_deleted(engine, &params);
-            scope::refresh(engine, bus).await;
+            scope::rescope(engine, bus, &watched(&params)).await;
         }
         "$/cancelRequest" => {
             if let Some(id) = cancel_id(&params) {
@@ -174,6 +174,17 @@ const DELETED: u64 = 3;
 /// A file deleted on disk leaves the project even while its tab stays open, so
 /// the refresh clears its diagnostics; an edit to that buffer reopens it.
 /// Implements [LSP-DIAGNOSTICS-SCOPE].
+/// The documents a `didChangeWatchedFiles` notification names.
+fn watched(params: &Value) -> Vec<DocumentUri> {
+    let changes = params.get("changes").and_then(Value::as_array);
+    changes
+        .into_iter()
+        .flatten()
+        .filter_map(|change| change.get("uri").and_then(Value::as_str))
+        .map(DocumentUri::new)
+        .collect()
+}
+
 fn forget_deleted(engine: &OspreyEngine, params: &Value) {
     let changes = params.get("changes").and_then(Value::as_array);
     let deleted = changes.into_iter().flatten().filter_map(|change| {

@@ -54,12 +54,27 @@ jobs:
       - name: Mac app-library runtime
         run: make _runtime_macos
 
-      - name: Cache GPUI host
-        uses: actions/cache@v6
+      - name: Restore GPUI host
+        id: gpui-cache
+        uses: actions/cache/restore@v6
         with:
           path: src/toolchain/hosts/gpui/target
           key: ${{ runner.os }}-gpui-host-${{ hashFiles('src/toolchain/hosts/gpui/Cargo.lock', 'src/toolchain/hosts/gpui/rust-toolchain*') }}
           restore-keys: ${{ runner.os }}-gpui-host-
+
+      - name: Build the host and every app archive
+        run: |
+          make _gpui-apps
+          OSPREY_GPUI_PREBUILT=1 bash src/toolchain/hosts/gpui/run.sh --build
+
+      # Saved once the host is built, not in a post step, as on Linux: PR #413's cold build used the
+      # job's budget and its post-step save was lost to the timeout, so every rerun started cold again.
+      - name: Save GPUI host
+        if: steps.gpui-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: src/toolchain/hosts/gpui/target
+          key: ${{ steps.gpui-cache.outputs.cache-primary-key }}
 
       - name: Every desktop app's self-test in a real window
         run: make _gpui-self-test GPUI_WINDOW=

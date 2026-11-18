@@ -243,3 +243,134 @@ async fn symbols_completion_and_signature_help() {
     assert!(mid_labels.contains(&"perimeter"), "{mid_labels:?}");
     h.shutdown_and_exit().await;
 }
+
+/// A watched save, a tab close, a new file and an unrelated file each re-check
+/// only the projects they can affect, never the whole repository again: an
+/// agent saving files kept an idle server at 100% CPU (#384).
+/// Implements [LSP-DIAGNOSTICS-SCOPE].
+#[tokio::test]
+async fn watched_changes_recheck_only_the_projects_they_affect(
+) -> Result<(), Box<dyn std::error::Error>> {
+    const PROJECTS: usize = 8;
+    const WARNED: &str = "double : int -> int\ndouble x = x * 2\n";
+    let root = std::env::temp_dir().join(format!("osprey sweep cpu {}", std::process::id()));
+    let mut mains = Vec::new();
+    for index in 0..PROJECTS {
+        let project = root.join(format!("p{index}"));
+        std::fs::create_dir_all(project.join("src"))?;
+        std::fs::write(project.join("osprey.toml"), "[project]\nsource_roots = [\"src\"]\ndefault_namespace = \"p\"\nentry = \"src/main.ospml\"\n")?;
+        let main = project.join("src/main.ospml");
+        std::fs::write(&main, WARNED)?;
+        mains.push((main.clone(), sweep_uri(&main)?));
+    }
+    let mut h = Harness::start();
+    let folder = sweep_uri(&root)?;
+    let _ = h
+        .request(600, "initialize", with_progress(json!({"rootUri": folder})))
+        .await;
+    h.notify("initialized", json!({})).await;
+    let reports = settled(&mut h, 601).await;
+    for (_, main) in &mains {
+        assert!(
+            reports.iter().any(|p| p["uri"] == *main),
+            "first sweep checks {main}: {reports:?}"
+        );
+    }
+    let mut analyses = h.engine.project_cache.analyses();
+    assert!(
+        analyses >= PROJECTS,
+        "every project analysed once: {analyses}"
+    );
+
+    let [(saved_path, saved_uri), (_, closed_uri), (_, grown_uri), ..] = mains.as_slice() else {
+        return Err("eight projects".into());
+    };
+    std::fs::write(saved_path, "double x = x * 2\n")?;
+    let saved = json!({"changes":[{"uri":saved_uri,"type":2}]});
+    let reports = rechecked(&mut h, 602, saved, &mut analyses, 1, "a save").await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == *saved_uri && p["diagnostics"] == json!([])),
+        "the save clears its warning: {reports:?}"
+    );
+    only_published(&reports, &[saved_uri], "a save");
+
+    let _ = h.open_at(closed_uri, WARNED).await;
+    analyses = h.engine.project_cache.analyses();
+    h.notify("textDocument/didClose", text_doc(closed_uri))
+        .await;
+    let reports = settled(&mut h, 603).await;
+    let closed = h.engine.project_cache.analyses() - analyses;
+    assert!(closed <= 1, "a tab close re-checked {closed} projects");
+    analyses += closed;
+    only_published(&reports, &[closed_uri], "a tab close");
+
+    let extra = root.join("p2/src/extra.ospml");
+    std::fs::write(&extra, "triple : int -> int\ntriple x = x * 3\n")?;
+    let extra_uri = sweep_uri(&extra)?;
+    let created = json!({"changes":[{"uri":extra_uri,"type":1}]});
+    let reports = rechecked(&mut h, 604, created, &mut analyses, 1, "a new file").await;
+    assert!(
+        reports.iter().any(|p| p["uri"] == extra_uri
+            && p.pointer("/diagnostics/0/code") == Some(&json!("redundant-annotation"))),
+        "the new file is checked: {reports:?}"
+    );
+    only_published(&reports, &[&extra_uri, grown_uri], "a new file");
+
+    let tool = root.join("tool.ts");
+    std::fs::write(&tool, "export const x = 1;\n")?;
+    let unrelated = json!({"changes":[{"uri":sweep_uri(&tool)?,"type":2}]});
+    let reports = rechecked(
+        &mut h,
+        605,
+        unrelated,
+        &mut analyses,
+        0,
+        "an unrelated file",
+    )
+    .await;
+    only_published(&reports, &[], "an unrelated file");
+    h.shutdown_and_exit().await;
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+fn sweep_uri(path: &std::path::Path) -> Result<String, Box<dyn std::error::Error>> {
+    Ok(crate::workspace::uri_of(path).ok_or("a file URI")?)
+}
+
+/// Send a watched-files `change` and settle, asserting it analysed exactly
+/// `expected` projects; `analyses` advances to the new total.
+async fn rechecked(
+    h: &mut Harness,
+    id: i64,
+    change: Value,
+    analyses: &mut usize,
+    expected: usize,
+    what: &str,
+) -> Vec<Value> {
+    h.notify("workspace/didChangeWatchedFiles", change).await;
+    let reports = settled(h, id).await;
+    let now = h.engine.project_cache.analyses();
+    assert_eq!(
+        now - *analyses,
+        expected,
+        "{what} re-checked {} projects",
+        now - *analyses
+    );
+    *analyses = now;
+    reports
+}
+
+/// No document outside `expected` was republished.
+fn only_published(reports: &[Value], expected: &[&String], what: &str) {
+    let stray = reports
+        .iter()
+        .filter(|p| !expected.iter().any(|uri| p["uri"] == **uri))
+        .collect::<Vec<_>>();
+    assert!(
+        stray.is_empty(),
+        "{what} republished other documents: {stray:?}"
+    );
+}

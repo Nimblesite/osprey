@@ -2,15 +2,18 @@
 //! less the files `osprey.diagnostics.exclude` names [LSP-DIAGNOSTICS-EXCLUDE].
 
 use super::{publish, OspreyEngine};
-use crate::workspace::{file_path, uri_of};
+use crate::workspace::file_path;
+use files::{discover, repository, resolve_root, unignored};
 use lspkit::vfs::DocumentUri;
 use lspkit::EngineApi;
 use lspkit_server::diagnostics::DiagnosticsBatch;
 use lspkit_server::DiagnosticsBus;
 use serde_json::Value;
-use std::collections::{BTreeSet, HashSet, VecDeque};
+use std::collections::{BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{MutexGuard, PoisonError};
+
+mod files;
 
 #[derive(Debug, Default)]
 pub(crate) struct Scope {
@@ -245,127 +248,28 @@ fn wildcard(pattern: &[u8], name: &[u8]) -> bool {
     }
 }
 
-fn repository(folder: &Path) -> PathBuf {
-    folder
-        .ancestors()
-        .find(|path| path.join(".git").exists())
-        .unwrap_or(folder)
-        .to_path_buf()
-}
-
-fn resolve_root(root: &str, folders: &[PathBuf]) -> Vec<PathBuf> {
-    if let Some(path) = file_path(root) {
-        return vec![path];
-    }
-    let path = Path::new(root);
-    if path.is_absolute() {
-        return vec![path.to_path_buf()];
-    }
-    folders.iter().map(|folder| folder.join(path)).collect()
-}
-
-/// The files `git` lists under `root`: tracked ones plus untracked files no
-/// ignore rule matches — the same set the CLI's program gate reads with
-/// `git ls-files` ([CI-PROGRAMS-COMPILE]). `None` when `root` is outside any
-/// git work tree or git cannot answer, so a plain folder keeps every file.
-fn unignored(root: &Path) -> Option<HashSet<PathBuf>> {
-    let listed = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args([
-            "ls-files",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "-z",
-        ])
-        .output()
-        .ok()?;
-    listed.status.success().then(|| {
-        listed
-            .stdout
-            .split(|&byte| byte == 0)
-            .filter(|path| !path.is_empty())
-            .map(|path| root.join(String::from_utf8_lossy(path).into_owned()))
-            .collect()
-    })
-}
-
-fn discover(root: &Path, unignored: Option<&HashSet<PathBuf>>, documents: &mut BTreeSet<String>) {
-    let entries = match std::fs::read_dir(root) {
-        Ok(entries) => entries,
-        Err(error) => {
-            eprintln!("osprey lsp: cannot scan {}: {error}", root.display());
-            return;
-        }
-    };
-    for entry in entries {
-        match entry {
-            Ok(entry) => visit(&entry, unignored, documents),
-            Err(error) => eprintln!("osprey lsp: cannot read {}: {error}", root.display()),
-        }
-    }
-}
-
-fn visit(
-    entry: &std::fs::DirEntry,
-    unignored: Option<&HashSet<PathBuf>>,
-    documents: &mut BTreeSet<String>,
-) {
-    let path = entry.path();
-    let kind = match entry.file_type() {
-        Ok(kind) => kind,
-        Err(error) => {
-            eprintln!("osprey lsp: cannot inspect {}: {error}", path.display());
-            return;
-        }
-    };
-    if kind.is_dir() && !excluded(&path) {
-        discover(&path, unignored, documents);
-    }
-    if kind.is_file() && source_file(&path) && unignored.is_none_or(|files| files.contains(&path)) {
-        if let Some(uri) = uri_of(&path) {
-            let _ = documents.insert(uri);
-        }
-    }
-}
-
-fn excluded(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| {
-            name.starts_with('.')
-                || matches!(
-                    name,
-                    "target" | "node_modules" | "build" | "dist" | "__pycache__"
-                )
-        })
-}
-
-fn source_file(path: &Path) -> bool {
-    match path.extension().and_then(|extension| extension.to_str()) {
-        Some("osp" | "ospml") => true,
-        Some("py") => python_file(path),
-        _ => false,
-    }
-}
-
-fn python_file(path: &Path) -> bool {
-    // CPython tools are not Osprey. A marker or manifest must opt in.
-    if std::fs::read_to_string(path)
-        .is_ok_and(|text| osprey_syntax::flavor_marker(&text) == Some("python"))
-    {
-        return true;
-    }
-    crate::workspace::project_root(path).is_some_and(|root| {
-        osprey_project::discover(&root)
-            .is_ok_and(|(_, files)| files.iter().any(|file| file == path))
-    })
-}
-
 /// Clear documents that left the scope, re-check the open ones now, and queue
 /// every closed one for the sweep the work queue runs between requests.
 pub(super) async fn refresh(engine: &OspreyEngine, bus: &DiagnosticsBus) {
+    rescan(engine, bus, None).await;
+}
+
+/// After a watched change or a tab close, re-check only new documents and those
+/// `changed` can affect: restarting the whole sweep on every save kept an idle
+/// server at 100% CPU (#384).
+pub(super) async fn rescope(engine: &OspreyEngine, bus: &DiagnosticsBus, changed: &[DocumentUri]) {
+    let affected = changed
+        .iter()
+        .flat_map(|doc| siblings(engine, doc).into_iter().chain([doc.clone()]))
+        .map(|doc| doc.as_str().to_string())
+        .collect();
+    rescan(engine, bus, Some(affected)).await;
+}
+
+/// Clear what left the scope, publish the open documents to re-check now, and
+/// queue the closed ones: every document, or with `affected` only those and
+/// the newly discovered, keeping the sweep already queued.
+async fn rescan(engine: &OspreyEngine, bus: &DiagnosticsBus, affected: Option<BTreeSet<String>>) {
     let (open, removed) = {
         let mut scope = lock(engine);
         let documents = scope.documents();
@@ -374,11 +278,25 @@ pub(super) async fn refresh(engine: &OspreyEngine, bus: &DiagnosticsBus) {
             .difference(&documents)
             .cloned()
             .collect::<Vec<_>>();
+        let recheck = |uri: &&String| {
+            affected
+                .as_ref()
+                .is_none_or(|set| set.contains(*uri) || !scope.published.contains(*uri))
+        };
         let (open, closed) = documents
             .iter()
+            .filter(recheck)
             .cloned()
             .partition::<Vec<_>, _>(|uri| scope.open.contains(uri));
-        scope.pending = closed.into();
+        if affected.is_none() {
+            scope.pending.clear();
+        }
+        scope.pending.retain(|uri| documents.contains(uri));
+        for uri in closed {
+            if !scope.pending.contains(&uri) {
+                scope.pending.push_back(uri);
+            }
+        }
         scope.published = documents;
         (open, removed)
     };
