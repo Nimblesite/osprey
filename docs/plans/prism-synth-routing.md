@@ -292,7 +292,8 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Bind original cutoff/master sliders, oscillator waveform, enable switches, LFO rate and keyboard to the graph. The loaded regression compares actual PCM for waveform changes and bypass silence.
 - [x] Pass 13 application journeys, the 19-step original-controls/module-drag journey in headless and windowed modes, and the 42-step real VST editing journey in both modes. Evidence: `target/pr-validation/wrap-up/main-art-tests.log`, `integrated-controls-*`, `integrated-routing-*`.
 - [x] Preserve the exact main-branch Prism artwork and logo; inspect `design/prism-audio-modulation.png` and captures of the packaged app, including newly added module cards.
-- [ ] Restore graph undo/redo and adaptive canvas resizing in the unified editor; the retained fixed-studio tests alone do not validate these in the graph editor.
+- [x] Restore graph undo/redo in the unified editor using the original Prism header controls. Typed snapshots retain graph, positions, selection, note and plug-in bindings; node identities remain monotonic, new edits discard redo, and one drag is one edit. The new loaded graph-history journey failed before the fix and passes under ARC and GC; all 17 app journeys and strict static analysis pass (2026-11-19). Evidence: `target/pr-validation/plan-completion/history-{red,gc,final-suite,final-check}.log`.
+- [ ] Restore adaptive canvas resizing in the unified editor and verify the updated native window against the original Prism design; fixed-studio tests do not validate the graph editor.
 - [ ] Complete sustained audio and full repository CI gates above; these visual/interaction checks do not establish realtime playback reliability.
 
 ## Direct cable editing [PRISM-ROUTING-CABLES]

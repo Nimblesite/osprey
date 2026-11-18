@@ -93,7 +93,11 @@ module EditorApp
         Surface => ui::Inputs::route (input, \(key, down) => Runtime::step (CableCanvas::keyed (editor, key, down)), \(x, y, down, _) => surfacePointer (context, editor, x, y, down), \(w, h) => viewed (editor, w, h))
         _ => Runtime::step editor
 
-    update (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(action, input) => controlled (context, editor, action, input))
+    routed (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(action, input) => controlled (context, editor, action, input))
+
+    update (context, editor, message) =
+        step = routed (context, editor, message)
+        step(stepStore = EditorHistory::record (editor, step.stepStore))
 
     (** Native controls and the canvas observe the same typed graph and applied edit revision. *)
     export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => EditorView::theme ())

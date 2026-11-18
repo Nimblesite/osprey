@@ -564,3 +564,5 @@ valid (outcome, check) = match outcome
 
 // The `index`th parameter of graph node `identity`, which must exist.
 parameterAt (graph, identity, index, check) = valid (synth::Graphs::node (graph, identity), \n => succeeds (listGet n.parameters index, check))
+
+test ("graph history undoes module insertion, redoes it and branches without reusing identities", \() => Runtime::guarded (\() => hosted graphHistoryJourney))

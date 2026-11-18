@@ -304,7 +304,7 @@ module EditorView
 
     toolbar () = [text ("Modules", 380.0, 25.0, 16.0, 236, 12), text ("Patch controls", 500.0, 25.0, 16.0, 236, 12), text ("Audition", 680.0, 25.0, 16.0, 236, 12), text ("Play", 800.0, 25.0, 16.0, 236, 12), text ("Stop", 880.0, 25.0, 16.0, 236, 12), text ("Keyboard", 950.0, 25.0, 16.0, 236, 12)]
 
-    toolbarAccess () = [accessible ("Modules", 370.0, 10.0, 110.0, 45.0, false), accessible ("Patch controls", 490.0, 10.0, 170.0, 45.0, false), accessible ("Audition patch", 670.0, 10.0, 110.0, 45.0, false), accessible ("Play patch", 790.0, 10.0, 70.0, 45.0, false), accessible ("Stop playback", 870.0, 10.0, 70.0, 45.0, false), accessible ("Keyboard", 940.0, 10.0, 120.0, 45.0, false)]
+    toolbarAccess () = [accessible ("Modules", 370.0, 10.0, 110.0, 45.0, false), accessible ("Patch controls", 490.0, 10.0, 170.0, 45.0, false), accessible ("Audition patch", 670.0, 10.0, 110.0, 45.0, false), accessible ("Play patch", 790.0, 10.0, 70.0, 45.0, false), accessible ("Stop playback", 870.0, 10.0, 70.0, 45.0, false), accessible ("Keyboard", 940.0, 10.0, 120.0, 45.0, false), accessible ("Undo", 1108.0, 15.0, 40.0, 37.0, false), accessible ("Redo", 1160.0, 15.0, 40.0, 37.0, false)]
 
     (** Header commands retain the same action path as native controls. *)
     export toolbarAction index = match index
@@ -313,10 +313,12 @@ module EditorView
         2 => Audition
         3 => PlayGraph
         4 => StopGraph
+        6 => Undo
+        7 => Redo
         _ => ShowKeyboard
 
     (** Match the compact command hit boxes in the original header. *)
-    export toolbarAt (x, y) = listGet (filterList (toList (range (0, 6)), \i =>
+    export toolbarAt (x, y) = listGet (filterList (toList (range (0, 8)), \i =>
         match listGet (toolbarAccess ()) i
             Error _ => false
             Success a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0
