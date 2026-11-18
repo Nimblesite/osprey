@@ -152,12 +152,12 @@ The first import path is bounded local WAV loading, not a general codec framewor
 - [x] Define the first supported WAV encodings, channel counts, sample rates, file-byte and decoded-frame limits before implementing the decoder.
 - [x] Implement bounded RIFF/WAVE chunk parsing with checked lengths, odd-byte padding, unknown-chunk handling and explicit duplicate/truncated-chunk rejection.
 - [ ] Validate encoding, frame alignment, byte rate, sample count and finite sample values; reject unsupported formats rather than guessing.
-- [ ] Define stereo handling explicitly: preserve channels where supported or perform a documented downmix; do not silently discard a channel.
+- [x] Define stereo handling explicitly: preserve channels where supported or perform a documented downmix; do not silently discard a channel.
 - [ ] Add native file selection for the selected Grain Cloud; cancellation leaves the patch unchanged.
 - [ ] Read a bounded amount of data outside rendering and reject oversized resources before unbounded allocation or decoding.
 - [ ] Guard asynchronous import completion with request identity and node identity/revision so an old result cannot overwrite a newer choice or resurrect a removed node.
 - [ ] Keep the last valid sample and graph on decode, preparation or activation failure; surface a useful node-specific error.
-- [ ] Carry source sample rate and root note into playback-rate calculation; a unity-rate sample must not be pitched according to its buffer length.
+- [x] Carry source sample rate and root note into playback-rate calculation; a unity-rate sample must not be pitched according to its buffer length.
 - [ ] Define loop range, one-shot/reverse/end behaviour and source-position units; make the inspector match the actual supported behaviour.
 - [ ] Show the loaded resource name, duration/rate/channel metadata, waveform and current source position using bounded observations.
 - [ ] Include sample replacement in Undo/Redo without invalidating resources still owned by playing grains or history snapshots.
@@ -165,7 +165,7 @@ The first import path is bounded local WAV loading, not a general codec framewor
 - [ ] Persist resource identity/content hash and a portable resolution strategy; missing or changed files require an explicit recoverable result.
 - [ ] Document import limits, interpolation quality, root-note assumptions and any downmix policy alongside the Grain Cloud example.
 
-Implementation checkpoint: `WaveImport.decode` now prepares bounded PCM 8/16/24/32 or float32 WAV resources (mono/stereo, 8–192 kHz, at most 8 MiB and 1048576 frames), with explicit stereo downmix and generated metadata. Strict package checking passed; numerical/parser execution and application file selection remain outstanding. Format references: [Microsoft WAVEFORMATEX](https://learn.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-waveformatex) and the [RIFF specification](https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/Docs/riffmci.pdf).
+Implementation checkpoint: `WaveImport.decode` now prepares bounded PCM 8/16/24/32 or float32 WAV resources (mono/stereo, 8–192 kHz, at most 8 MiB and 1048576 frames), with explicit stereo downmix and generated metadata. Strict package checking passed; numerical/parser execution and application file selection remain outstanding. `SampleResources.decodeWave` now returns a checked immutable `SampleResource` for `Components.granular`, carrying original rate/channel count and explicit root tuning; stereo uses `(left + right) / 2`. Graphs retain that resource, and keyboard transposition uses its rate and root frequency instead of its buffer length. Content hashes, portable persistence and live resource replacement remain unfinished. Format references: [Microsoft WAVEFORMATEX](https://learn.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-waveformatex) and the [RIFF specification](https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/Docs/riffmci.pdf).
 
 Deferred verification: after the pause, cover supported encodings, empty/truncated/oversized files, malformed chunk arithmetic, cancellation, stale completions, node removal, repeated replacement, Undo/Redo, missing resources and pitch consistency across source/output sample rates through loaded application/library journeys.
 

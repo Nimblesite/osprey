@@ -22,9 +22,9 @@ module Graphs
     all (items, predicate) = foldList (items, true, \(ok, item) => ok && predicate item)
 
     processorValid processor = match processor
-        Granular samples capacity seed => match Grains::prepare (samples, capacity)
+        Granular resource capacity seed => match Grains::prepare (resource.samples, capacity)
             Error _ => false
-            Success _ => seed >= 1 && seed <= 2147483646
+            Success _ => SampleResources::metadata resource && seed >= 1 && seed <= 2147483646
         Delay count => count >= 1 && count <= 1920000
         External identity => identity != ""
         _ => true

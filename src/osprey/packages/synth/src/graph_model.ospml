@@ -29,9 +29,16 @@ type Parameter =
     initial : float
     automatable : bool
 
+type SampleResource =
+    name : string
+    sampleRate : int
+    sourceChannels : int
+    rootFrequency : float
+    samples : List<float>
+
 type Processor =
     Granular
-        samples : List<float>
+        resource : SampleResource
         capacity : int
         seed : int
     Lfo

@@ -87,7 +87,7 @@ module ClipLayouts
             Success port => Success(value = port.channels)
 
     delay n = match n.processor
-        Granular samples _ _ => length samples
+        Granular resource _ _ => length resource.samples
         Delay count => match channels n
             Error _ => 1920001
             Success width => satMul count width

@@ -9,4 +9,7 @@ def pcm (word bits : Float) : Float :=
     signed / half
 /-- Explicit stereo-to-mono downmix, preserving bounded input headroom. -/
 def mono (left right : Float) : Float := (left + right) * 0.5
+/-- Source-sample advance per output sample, independent of recording duration. -/
+def playbackRate (sourceRate outputRate targetFrequency rootFrequency : Float) : Float :=
+  (sourceRate / outputRate) * (targetFrequency / rootFrequency)
 end synth.WaveMath

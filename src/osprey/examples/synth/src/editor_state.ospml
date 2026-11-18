@@ -27,8 +27,9 @@ module EditorState
 
     grainCloud identity =
         samples = mapList (toList (range (0, 1024)), \index => CanvasGeometry::grainSample (toFloat index))
-        cloud = Components::granular (identity, samples, 16, 1)
-        cloud(parameters = mapList (cloud.parameters, \p => parameterValue ("rate", CanvasGeometry::grainRate (220.0, toFloat (length samples)), p)))
+        resource = SampleResource(name = "Built-in harmonic sample", sampleRate = 48000, sourceChannels = 1, rootFrequency = 46.875, samples = samples)
+        cloud = Components::granular (identity, resource, 16, 1)
+        cloud(parameters = mapList (cloud.parameters, \p => parameterValue ("rate", WaveMath::playbackRate (48000.0, 48000.0, 220.0, resource.rootFrequency), p)))
 
     factory (kind, identity) = match kind
         "grain-cloud" => Valid(value = grainCloud identity)
@@ -138,7 +139,7 @@ module EditorState
         _ => editor
 
     pitched (note, n) = match n.processor
-        Granular samples _ _ => n(parameters = mapList (n.parameters, \p => parameterValue ("rate", CanvasGeometry::grainRate (CanvasGeometry::frequency (toFloat note), toFloat (length samples)), p)))
+        Granular resource _ _ => n(parameters = mapList (n.parameters, \p => parameterValue ("rate", WaveMath::playbackRate (toFloat resource.sampleRate, 48000.0, CanvasGeometry::frequency (toFloat note), resource.rootFrequency), p)))
         Oscillator => n(parameters = mapList (n.parameters, \p => parameterValue ("frequency", CanvasGeometry::frequency (toFloat note), p)))
         MidiNotes => n(parameters = mapList (n.parameters, \p => parameterValue ("pitch", toFloat note, p)))
         _ => n

@@ -248,7 +248,7 @@ module EditorView
         listConcat (listConcat (listConcat (nodeArtwork (editor, n, at)) (cardTitle (editor, n, at))) (monitorTrace (editor, n, at))) (listConcat (portShapes (editor, at, n.inputs, false)) (portShapes (editor, at, n.outputs, true)))
 
     nodeArtwork (editor, n, at) = match n.processor
-        Granular samples _ _ => listConcat (moduleCard (editor, n, at)) (grainTrace (samples, at))
+        Granular resource _ _ => listConcat (moduleCard (editor, n, at)) (grainTrace (resource, at))
         Oscillator => PrismArt::card (editor, n)
         Lfo => PrismArt::card (editor, n)
         Filter => PrismArt::card (editor, n)
@@ -268,12 +268,12 @@ module EditorView
         returnShapes = [panel (x at - 146.0, y at - 87.0, 292.0, 174.0, border, 2), paintedPanel (x at - 144.0, y at - 85.0, 288.0, 170.0, paint, 3), text (componentName (editor, n), x at - 124.0, y at - 67.0, 18.0, 238, 5), panel (x at - 124.0, y at - 27.0, 248.0, 64.0, 986652, 4), text (caption, x at - 108.0, y at - 3.0, 14.0, 190, 5), text ("Edit in Patch controls", x at - 124.0, y at + 58.0, 12.0, 155, 5)]
         returnShapes
 
-    grainTrace (samples, at) = [Scenes::strip (foldList (toList (range (0, 48)), [], \(points, index) =>
-        match floatToInt (CanvasGeometry::grainIndex (toFloat index, toFloat (length samples)))
+    grainTrace (resource, at) = [Scenes::strip (foldList (toList (range (0, 48)), [], \(points, index) =>
+        match floatToInt (CanvasGeometry::grainIndex (toFloat index, toFloat (length resource.samples)))
             Error _ => points
-            Success source => match listGet samples source
+            Success source => match listGet resource.samples source
                 Error _ => points
-                Success value => listConcat points [CanvasGeometry::grainX (x at, toFloat index), CanvasGeometry::waveY (y at + 5.0, value)]), Scenes::rgb (80, 229, 216), 2.0, 6), text ("Built-in harmonic sample", x at - 120.0, y at - 34.0, 11.0, 190, 7)]
+                Success value => listConcat points [CanvasGeometry::grainX (x at, toFloat index), CanvasGeometry::waveY (y at + 5.0, value)]), Scenes::rgb (80, 229, 216), 2.0, 6), text (resource.name, x at - 120.0, y at - 34.0, 11.0, 190, 7)]
 
     midiLabel (editor, n, at) = match n.processor
         Oscillator => [text ("MIDI", portX (editor, at, false, 0) + 12.0, portY (editor, at, false, 0) - 17.0, 11.0, 210, 8)]
