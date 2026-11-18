@@ -117,7 +117,7 @@ All twelve app journeys pass under ARC, including frozen graph ownership, stale 
 - [x] Expand the existing package suite to 22 loaded journeys, covering stereo kernel chains, MIDI window boundaries, hosted modulation, native packet round trips, malformed buffers and invalid public graph records.
 - [x] Run coverage independently under GC and ARC: both report 848/913 own source lines (92.9%), exceeding the unchanged 92.2% package gate.
 - [x] Check formatting and compile the expanded suite with warnings treated as errors.
-- [ ] Resolve the expanded single test file's 771-line size while retaining its assertions and useful comments; this conflicts with the instruction to expand existing test files rather than create new ones.
+- [x] Split the expanded synth test entry into `main.ospml` and `hosted.ospml`, each below 500 lines, retaining every original assertion and useful comment. All 23 journeys pass under ARC and GC (2026-11-19); a line-multiset check confirms no original nonblank source line was lost. Evidence: `target/pr-validation/plan-completion/split-tests.log` and `split-tests-gc.log`.
 - [ ] Finish repository-wide CI preparation; package coverage alone does not establish readiness to push.
 
 Evidence is retained under `target/pr-validation/synth-coverage` and `target/pr-validation/synth-coverage-arc`. The app still provides bounded offline auditions; continuous audio and persistent hosted instances remain unfinished.
