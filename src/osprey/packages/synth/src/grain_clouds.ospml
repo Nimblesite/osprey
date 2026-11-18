@@ -15,7 +15,7 @@ module GrainClouds
         false => Error(message = "The grain player and scheduler clocks have diverged.")
         true => match GrainScheduler::block (held.clock, frames)
             Error why => Error(message = why)
-            Success scheduled => match GrainTimeline::render (held.pool, frames, GrainScheduler::events (scheduled.positions, controls))
+            Success scheduled => match Grains::scheduled (held.pool, frames, GrainScheduler::events (scheduled.positions, controls))
                 Error why => Error(message = why)
                 Success audio => Success(value = GrainCloudBlock(left = audio.left, right = audio.right, next = GrainCloudState(pool = audio.next, clock = scheduled.next)))
 

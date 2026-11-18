@@ -96,7 +96,7 @@ Checked items here record reference implementation, reviewed in `src/osprey/pack
 
 ### Schedulers and sample resources [SYNTH-ADVANCED-GRAINS-SCHEDULING]
 
-Implementation: `grain_scheduler.ospml`, `grain_timeline.ospml` and the `GrainClouds` composition; strict static checking only while automated verification is paused. Scheduler and playback clocks are retained independently, and a caller commits both only after successful rendering.
+Implementation: `grain_scheduler.ospml`, `grains.ospml` and the `GrainClouds` composition; strict static checking only while automated verification is paused. Scheduler and playback clocks are retained independently, and a caller commits both only after successful rendering.
 
 - [x] Implement explicit sample-position grain events, independent of host block size.
 - [x] Add periodic/quasi-synchronous scheduling with seeded bounded inter-onset jitter.
@@ -110,7 +110,7 @@ Implementation: `grain_scheduler.ospml`, `grain_timeline.ospml` and the `GrainCl
 
 ### Graph and Prism integration [SYNTH-ADVANCED-GRAINS-INTEGRATION]
 
-Evidence on 19 November 2026: strict package/app checks and compilation checks of their existing test sources passed; no tests were executed. Native archive and host builds passed (cached host rebuild: 16 seconds). Manual native UI inspection confirmed **Add Grain cloud**, creation of **Grain cloud 5**, its built-in source waveform and seven editable inspector fields, with the Prism logo, original nodes and docked keyboard retained. Granular audio, routing and runtime-error journeys remain unverified.
+Evidence on 19 November 2026: strict package/app checks and compilation checks of their existing test sources passed; no tests were executed. Native archive and host builds passed (cached host rebuild: 16 seconds). Manual native UI inspection confirmed **Add Grain cloud**, creation of **Grain cloud 5**, its built-in source waveform and seven editable inspector fields, with the Prism logo, original nodes and docked keyboard retained. Manual native routing subsequently created cable `5:0 → 6:0` from Grain Cloud to a new stereo output, and the audition completed. Its receipt reported three empty-queue callbacks; this is not direct speaker-underrun measurement and does not establish reliable audio. Granular PCM correctness, error journeys and sustained playback remain unverified.
 
 - [x] Add a stereo Grain Cloud factory and retained per-node memory to the shared graph scheduler, including external-worker suspension/resume.
 - [ ] Add independent sample-source/scheduler graph factories and event/control modulation ports; do not make a Prism-only synthesis path.
@@ -293,3 +293,7 @@ Reference: Smith's waveguide material and Bilbao's numerical synthesis reference
 - [ ] Mark experimental/production status from measured evidence; record remaining limitations without weakening the contracts.
 - [ ] Reconcile this checklist with [Synthesis.md](../specs/runtime/Synthesis.md) and the [Prism routing plan](prism-synth-routing.md), preserving their unfinished requirements.
 - [ ] Commit work in reviewable module-sized steps, preserve unrelated unfinished work and remove only task-owned temporary processes/artifacts.
+
+### Granular producer checkpoint [SYNTH-ADVANCED-GRAINS-PRODUCER]
+
+The native audition exposed queue-starvation observations. `Grains.scheduled` now owns both event application and block rendering so its private sample loop can rely on one entry validation of pool/voice/clock invariants. Single-sample `next` and external `trigger` calls still validate independently, every source tap still checks its actual sample, and failed events preserve the caller's immutable state. The redundant separate `GrainTimeline` module was removed. Strict app checking and native archive/host builds passed; a bounded static invariant review found no concrete defect. No timing improvement or zero-starvation claim is made. The revised executable is installed for the next launch; the open user-edited patch was preserved without restarting it.
