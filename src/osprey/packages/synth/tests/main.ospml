@@ -417,3 +417,5 @@ test ("performance timbres and metallic warp stay bounded across rates and contr
     near (Performance::wave (0, 0.25, 0.01, 0.0, 1.0), -1.0, 0.000000001)))
 
 registerHostedJourneys ()
+registerWaveJourneys ()
+registerClipJourneys ()

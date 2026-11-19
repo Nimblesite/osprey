@@ -21,5 +21,15 @@ ok 20 - MIDI and modulation become checked native packets, then real-shaped ster
 ok 21 - MIDI windows preserve note ownership and reject malformed control values
 ok 22 - worker transport rejects malformed headers, nonfinite PCM, bad events and excessive automation
 ok 23 - corrupt graph layouts, buffers and kernel states return explicit failures
-1..23
-# tests=23 passed=23 failed=0 skipped=0
+ok 24 - decoded WAV keeps every PCM width, channel layout and stereo downmix exact
+ok 25 - WAV import refuses corrupt sizes, headers, chunks, formats and out-of-range samples
+ok 26 - sample resources validate metadata, prepare grains and transpose by root pitch
+ok 27 - generated wave math: PCM words, downmix, tuning and polyBLEP shapes hit exact IEEE754 values
+ok 28 - MIDI oscillator state validation rejects forged voices, capacity and malformed events
+ok 29 - connected MIDI oscillators track pitch, velocity and the exact 240-frame release tail
+ok 30 - last-note priority ignores foreign note-offs, zero-velocity note-ons and re-attacks mid-release
+ok 31 - granular clouds retain deterministic stereo state across partitions and refuse forged memory
+ok 32 - graph layouts and cached clips revalidate channel contracts at every edge
+ok 33 - kernel and renderer faults stay explicit for bad modulation, ordering, snapshots and memory
+1..33
+# tests=33 passed=33 failed=0 skipped=0
