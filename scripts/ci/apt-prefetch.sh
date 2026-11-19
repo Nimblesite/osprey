@@ -12,12 +12,26 @@ staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT
 
 # --print-uris lists each needed archive as: 'URI' file size hash; curl reads them as a config.
+# Hosted runners name their mirror through a mirror list (mirror+file:/etc/apt/apt-mirrors.txt/pool/...),
+# which curl cannot fetch; such a URI is rewritten onto the list's first mirror.
 apt-get --print-uris -qq install -y "$@" \
-  | awk -F"'" -v dir="$staging" '/^\x27/ { split($3, rest, " "); printf "url = \"%s\"\noutput = \"%s/%s\"\n", $2, dir, rest[1] }' \
+  | awk -F"'" -v dir="$staging" '
+      /^\x27/ {
+        uri = $2
+        if (match(uri, /^mirror\+file:[^ ]*\.txt\//)) {
+          list = substr(uri, 13, RLENGTH - 13)
+          if (!(list in mirror)) { getline line < list; split(line, field, /[ \t]/); mirror[list] = field[1]; sub(/\/$/, "", mirror[list]) }
+          uri = mirror[list] substr(uri, RLENGTH)
+        }
+        split($3, rest, " ")
+        printf "url = \"%s\"\noutput = \"%s/%s\"\n", uri, dir, rest[1]
+      }' \
   > "$staging/curl.conf"
 count=$(grep -c '^url' "$staging/curl.conf" || [ $? -eq 1 ])
 echo "apt-prefetch: $count archives"
 [ "$count" -gt 0 ] || exit 0
 
 curl --parallel --parallel-max 16 -fsSL --retry 5 --retry-all-errors --config "$staging/curl.conf"
+fetched=$(find "$staging" -name '*.deb' | wc -l)
+[ "$fetched" -eq "$count" ] || { echo "apt-prefetch: fetched $fetched of $count archives" >&2; exit 1; }
 find "$staging" -name '*.deb' -exec sudo mv -t "$archives" {} +
