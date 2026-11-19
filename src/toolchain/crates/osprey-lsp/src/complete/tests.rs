@@ -122,7 +122,11 @@ fn a_member_access_reads_the_receivers_annotation_or_its_inferred_type_name() {
         "let xs = [1, 2]\nprint(xs.",
         "fn twice(n) = wrapMul(n, 2)\nlet g = twice\nprint(g.",
     ] {
-        assert_eq!(at_end(src, "file:///a.osp"), Vec::<CompletionItem>::new(), "{src}");
+        assert_eq!(
+            at_end(src, "file:///a.osp"),
+            Vec::<CompletionItem>::new(),
+            "{src}"
+        );
     }
 }
 
