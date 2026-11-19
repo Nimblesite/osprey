@@ -368,3 +368,32 @@ fn python_libraries_refuse_reserved_bridge_names_and_foreign_extensions() {
         wrong.display()
     );
 }
+
+/// `--signature` reads one source file: a project directory, an unreadable path and a file that
+/// does not parse are each refused with their own message.
+#[test]
+fn signature_refuses_projects_unreadable_files_and_parse_errors() {
+    let project = super::temp_dir("signature_project");
+    std::fs::write(
+        project.join("osprey.toml"),
+        "[project]\nname = \"p\"\nsource_roots = [\"src\"]\n",
+    )
+    .expect("manifest");
+    run_args(&[&project.to_string_lossy(), "--signature"]).expect_stderr(
+        1,
+        &["--signature applies to a single source file"],
+        &[],
+    );
+    run_args(&["/no/such/osprey_signature_missing.osp", "--signature"]).expect_stderr(
+        1,
+        &["cannot read /no/such/osprey_signature_missing.osp"],
+        &[],
+    );
+    let broken = temp_osp("signature_parse", "fn = = =\n");
+    let name = broken.to_string_lossy().into_owned();
+    run_file(&broken, &["--signature"]).expect_stderr(
+        1,
+        &[&format!("{name}:1:0: syntax error near `fn = = =`")],
+        &[],
+    );
+}
