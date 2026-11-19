@@ -7,7 +7,8 @@ import synth::PcmWords
 module HostPackets
     finite value = value == value && abs value <= 1000000.0
 
-    validNote (frames, n) = (n.kind == 1 || n.kind == 2) && n.offset >= 0 && n.offset < frames && n.pitch >= 0 && n.pitch <= 127 && n.channel >= 0 && n.channel <= 15 && n.identity >= 0 && n.identity <= 2147483647 && n.velocity >= 0.0 && n.velocity <= 1.0
+    (** Shared event-domain check for hosted and built-in MIDI instruments. *)
+    export validNote (frames, n) = (n.kind == 1 || n.kind == 2) && n.offset >= 0 && n.offset < frames && n.pitch >= 0 && n.pitch <= 127 && n.channel >= 0 && n.channel <= 15 && n.identity >= 0 && n.identity <= 2147483647 && n.velocity >= 0.0 && n.velocity <= 1.0
 
     validParameter (frames, p) = p.identity >= 0 && p.identity <= 4294967295 && p.offset >= 0 && p.offset < frames && p.value >= 0.0 && p.value <= 1.0
 

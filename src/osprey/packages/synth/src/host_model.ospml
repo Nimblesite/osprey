@@ -65,7 +65,7 @@ type ClipKernel K =
 
 type NodeKernels K =
     kernelNode : int
-    kernelStates : List<K>
+    kernelMemory : K
 
 type GraphState K =
     graphPosition : int

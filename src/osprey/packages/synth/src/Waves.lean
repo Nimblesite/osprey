@@ -9,6 +9,11 @@ The polynomial corrections reduce aliasing at each discontinuity; they do not el
 -/
 namespace synth.Waves
 
+/-- MIDI equal-tempered pitch with A4 = 440 Hz [SYNTH-HOST-MIDI-OSCILLATOR]. -/
+def midiFrequency (pitch : Float) : Float := 440 * Float.pow 2 ((pitch - 69) / 12)
+/-- Note velocity scales oscillator amplitude, independent of waveform selection. -/
+def velocitySample (sample velocity : Float) : Float := sample * velocity
+
 /-- The fractional part of a phase: a phase wrapped into `[0, 1)`. -/
 def wrap (phase : Float) : Float := phase - Float.floor phase
 
@@ -80,4 +85,7 @@ def controlledGain (sample level control : Float) : Float := sample * level * co
 /-- A normalized cutoff signal sweeps from 1 Hz to the configured cutoff. -/
 def controlledCutoff (cutoff control : Float) : Float := 1 + (cutoff - 1) * control
 
+/-- Linear note-off envelope includes a full first sample and an exact zero final sample. -/
+def releaseGain (remaining duration : Float) : Float :=
+  if remaining <= 1 then 0 else (remaining - 1) / (duration - 1)
 end synth.Waves

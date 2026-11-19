@@ -48,18 +48,22 @@ module ClipLayouts
 
     (** Processor layouts are exact: no ignored extra ports or implicit channel conversion. *)
     export supported n = match n.processor
+        Granular _ _ _ => uniform (n, 0, 1) && length (filterList (n.outputs, \port => port.channels == 2)) == 1
         Lfo => lfo n
         ModulatedGain => modulated n
         Filter => uniform (n, 1, 1) || (modulated n && cutoffPort n)
         MidiNotes => length n.inputs == 0 && length n.outputs == 1 && notes n.outputs
         Stereo => stereo n
-        Oscillator => uniform (n, 0, 1)
+        Oscillator => oscillator n
         Sink => uniform (n, 1, 0)
         Mixer => uniform (n, 2, 1)
         External _ => external n
         _ => uniform (n, 1, 1)
 
+    oscillator n = length n.inputs == 1 && notes n.inputs && length n.outputs == 1 && audio n.outputs && length (filterList (n.outputs, \p => p.channels == 1)) == 1
+
     optional (n, port) = match n.processor
+        Oscillator => port.rate == Events
         External _ => port.rate == Control
         Filter => port.rate == Control && port.name == "cutoff"
         _ => false
@@ -83,6 +87,7 @@ module ClipLayouts
             Success port => Success(value = port.channels)
 
     delay n = match n.processor
+        Granular resource _ _ => length resource.samples
         Delay count => match channels n
             Error _ => 1920001
             Success width => satMul count width
