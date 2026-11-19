@@ -26,7 +26,7 @@ sealed partial class Renderer
     readonly Action<Touch> send;
     readonly Action<IReadOnlyList<string>> report;
     readonly IReadOnlyDictionary<string, Func<Scope, Node, UIElement>> kinds;
-    IReadOnlyList<double> spacing = [4, 8, 12, 20, 28, 36];
+    IReadOnlyList<double> spacing = new double[] { 4, 8, 12, 20, 28, 36 };
     RegionStore regions = new();
     Shown? shown;
 
@@ -96,7 +96,7 @@ sealed partial class Renderer
         var key = (scope.Region, node.Number("event"));
         if (!scenes.TryGetValue(key, out var view))
         {
-            view = new SceneView(problem => report([problem]));
+            view = new SceneView(problem => report(new[] { problem }));
             scenes[key] = view;
         }
         sceneNodes[key] = node;
@@ -217,7 +217,7 @@ sealed partial class Renderer
     /// <summary>A visible diagnostic in place of what could not be drawn, also reported to the info bar.</summary>
     UIElement Refused(string problem)
     {
-        report([problem]);
+        report(new[] { problem });
         return new TextBlock { Text = problem, Foreground = Brush("SystemFillColorCriticalBrush"), TextWrapping = TextWrapping.Wrap };
     }
 

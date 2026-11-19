@@ -165,8 +165,8 @@ sealed partial class Renderer
     UIElement Heading(Scope scope, Node node)
     {
         // The title above its commands, as a Windows 11 page lays them out, so neither crowds the other out.
-        var titles = Column([OneLine(Words(node.Text("title"), "title")), OneLine(Words(node.Text("subtitle"), "body", "secondary"))], 0);
-        return Column([titles, Toolbar(scope, node)], 1);
+        var titles = Column(new UIElement[] { OneLine(Words(node.Text("title"), "title")), OneLine(Words(node.Text("subtitle"), "body", "secondary")) }, 0);
+        return Column(new UIElement[] { titles, Toolbar(scope, node) }, 1);
     }
 
     // A heading keeps to one line, as File Explorer's does, trimmed with an ellipsis when the window
