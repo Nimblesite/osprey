@@ -76,10 +76,8 @@ A build solves its whole-program effect proofs once. The gate and codegen read t
 
 ### Reporting a Partly Inferred Type — [TYPE-RENDER-HOLES]
 
-Inference does not always reach a single ground type, and what a tool reports
-in that case is part of the language's contract. A slot the checker proved
-nothing about is written `_`, the type-level hole. Every slot it did prove is
-written normally, so a partial answer still carries its proven part.
+A tool reports every part of a type the checker proved, and writes `_` for a
+part it proved nothing about.
 
 ```osprey
 fn bothArms(f) = if f { Success { value: 1 } } else { Error { message: "e" } }
@@ -92,12 +90,9 @@ fn onlySuccess() = Success { value: 1 }
 Reporting is a property of the canonical AST, so both surfaces report the same
 signature for the same program ([FLAVOR-IR-EQUIV]).
 
-`bothArms` is fully proved: the payload is `int`, and `Error { message: "e" }`
-carries a `string`, so the error type is `string`
-([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)).
-`onlySuccess` never builds an `Error`, so nothing decides its error type and
-the slot stays open until a caller supplies one. A hole is the only honest
-spelling for that slot.
+`bothArms` builds a `Success` of an `int` and an `Error` of a `string`, so both
+type arguments are proved ([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)).
+`onlySuccess` builds no `Error`, so its `E` is undecided and is reported as `_`.
 
 A declared record is reported by its **name and its row** together:
 
@@ -118,14 +113,14 @@ Two spellings are forbidden. A tool must not print the checker's internal
 variable name — `t5` is private, its number is an artefact of one inference run
 and it moves when an unrelated line is edited. A tool must not substitute
 `Unit`, which is a positive claim the checker itself refutes: annotating
-`bothArms` with `-> Unit` fails to unify. Where a type is nothing but a hole
+`onlySuccess` with `-> Unit` fails to unify. Where a type is nothing but a hole
 there is nothing to report, and the slot is left as the author wrote it —
 bare — rather than decorated with `_`.
 
 A hole is a reporting spelling, not syntax. The annotation grammar has no
 wildcard, so `_` written in a type position is read as an ordinary nominal name
 like any other capitalized-or-not identifier, and it unifies only where the slot
-was already free. `-> Result<int, _>` therefore happens to check on `bothArms`,
+was already free. `-> Result<int, _>` therefore happens to check on `onlySuccess`,
 while `fn f(x: int) -> _ = x` is rejected — `cannot unify _ with int` — exactly
 as a misspelled type name would be. A reported signature containing a hole is
 not guaranteed to be a valid annotation, and reporting one is not a suggestion
@@ -453,7 +448,7 @@ follow the [LLVM conversion contract](https://llvm.org/docs/LangRef.html#llvm-fp
 
 ## Result Preservation
 
-A fallible expression has type `Result<T, E>`, and the compiler never implicitly erases that wrapper ([FAILURE-EXPLICIT](0001-Introduction.md#failure-safety--failure-explicit)). Every consuming position — arguments, bindings, plain-`T` returns, comparisons, function-value calls — preserves the `Result` or is rejected; interpolation displays the complete `Success` or `Error` value. Callers obtain the payload only through an exhaustive `match` or an explicit `?:` fallback. This rule has no exceptions. Arithmetic is not one: it carries no `Result` wrapper at all, and its faults are discharged by an `Arith` handler rather than by erasing a wrapper ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
+A `Result<T, E>` is never turned into a `T` implicitly ([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result), [FAILURE-EXPLICIT](0001-Introduction.md#failure-safety--failure-explicit)). An argument, binding, plain-`T` return, comparison or function-value call either keeps the whole `Result` or is rejected; interpolation shows the whole `Success` or `Error`. The payload is reached only by an exhaustive `match` or a `?:` fallback. There are no exceptions. Arithmetic has no `Result` to erase: its faults go to an `Arith` handler ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 ## Function Types
 
@@ -496,7 +491,7 @@ A lambda (`fn(...) => expr` or `|x| => expr`) captures every free identifier fro
 
 The same holds for a lambda whose type is still generic. It has no single closure value and is specialised at each call site, but it reads the bindings it captured where it was written, whether it is called there, from a nested lambda, from a handler arm or from a fiber, and it keeps them alive for as long as it can be called.
 
-A `Result<T, E>` carries its error payload at type `E` ([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)). A closure whose only open variable is the error type of a `Result` it never builds an `Error` for still has a concrete ABI — every `Result` is one block shape whatever `T` and `E` are — and materializes like any concrete closure, so a generic `with`-suite handler value needs no `Result` annotation to compile.
+Every `Result` has one block shape whatever its `T` and `E` ([TYPE-RECORD-RESULT](#result-fields--type-record-result)). A closure whose only undecided type is the `E` of a `Result` it builds no `Error` for is therefore concrete, and a generic `with`-suite handler value needs no `Result` annotation to compile.
 
 ```osprey
 fn makeAdder(n: int) -> (int) -> int = fn(x: int) => x + n
@@ -604,9 +599,9 @@ Not implemented yet: an anonymous record bound with no declared type, such as `o
 
 ### Result fields — [TYPE-RECORD-RESULT]
 
-A record or union payload field of type `Result<T, E>` stores the complete `Success` or `Error` value. Named, anonymous and generic records obey the same rule. Construction and immutable updates may promote a bare `T` to `Success(T)`; they MUST preserve an existing failure and its message. A field read, constructor or structural pattern, function argument, closure capture, shared cell or permitted conversion to `any` ([TYPE-ANY](#the-any-type--type-any)) MUST retain the concrete success payload type and the discriminant. Updating another field preserves the stored Result and the source record.
+A field of type `Result<T, E>`, in any record or union, stores the whole `Success` or `Error`. Construction and update may promote a bare `T` to `Success(T)`. Every way of moving the value — a field read, a pattern, an argument, a closure capture, a shared cell, a permitted conversion to `any` ([TYPE-ANY](#the-any-type--type-any)), an update of another field — MUST keep which case it is and its payload at its own type, `T` or `E`.
 
-The native and wasm32 backends use one Result block shape for every `T` and `E`: a 64-bit success payload word, a byte discriminant and an error payload slot, with target-specific alignment. The error payload keeps its type `E` exactly as the success payload keeps `T`. Float payloads preserve their IEEE bits, booleans preserve their truth value, and pointer payloads retain their ownership and concrete type. An aggregate field holds a pointer to the whole block. Neither static payload type changes the discriminant or slot offsets.
+The native and wasm32 backends use one Result block for every `T` and `E`: a 64-bit success payload word, a byte discriminant and an error payload slot. Each payload keeps its exact value: floats their IEEE bits, booleans their truth value, pointers their ownership and concrete type. An aggregate field holds a pointer to the block.
 
 The `resultRecordCase`, `genericResultRecordCase`, `anonymousResultRecordCase`, `resultTransportCase` and `genericUnionResultCase` assertions in both `record_update_basic` twins pin failure preservation, promotion, nested payloads, erasure, pattern binding and live captures. The cross-flavor IR test pins the common block and bit-preserving float/boolean conversions.
 
@@ -967,9 +962,9 @@ let values     = mapValues(ages)
 | ----------- | ------- |
 | `Error`     | Fallible builtins, including parsing, `checkedAdd`/`checkedSub`/`checkedMul`, collection lookup, files, and processes |
 
-`Error` is a type of its own, not `string`: it is the `E` in the `Result<T, Error>` a fallible builtin returns. A value of it prints and interpolates as its message, and `toString` gives that message as a `string`. It is one error type among any number; a program's own functions use whatever `E` they need ([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)).
+`Error` is the `E` of the `Result<T, Error>` a fallible builtin returns. It is a type of its own, not `string`: it prints and interpolates as its message, and `toString` turns it into that `string`. It has no special standing in `Result`; a program's functions use whatever `E` they build ([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)).
 
-`Success` and `Error` are also the names of the constructors of `Result<T, E>` (see [Error Handling](0013-ErrorHandling.md)).
+`Success` and `Error` are also the names of `Result`'s two constructors.
 
 ## The `any` Type — [TYPE-ANY]
 
