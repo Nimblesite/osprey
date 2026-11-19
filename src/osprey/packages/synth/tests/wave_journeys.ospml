@@ -102,16 +102,9 @@ registerWaveJourneys () =
             { bad = wavFile (3, 1, 48000, 32, [0, 0, 128, 63, 0, 0, 192, 127]), why = "WAV samples must be finite and within [-1, 1]." },
             { bad = wavFile (3, 2, 48000, 32, [0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 128, 63, 0, 0, 0, 64]), why = "WAV samples must be finite and within [-1, 1]." }],
             \held => wavRefusal (WaveImport::decode held.bad, held.why))
-        forEachList ([
-            { bad = wavChunk ("fmt ", wavFormatBody (1, 1, 48000, 1, 48000, 12)), why = "encoding and bits" },
-            { bad = wavChunk ("fmt ", wavFormatBody (2, 1, 48000, 2, 96000, 16)), why = "unknown encoding" },
-            { bad = wavChunk ("fmt ", wavFormatBody (3, 1, 48000, 2, 96000, 16)), why = "float16" },
-            { bad = wavChunk ("fmt ", wavFormatBody (1, 3, 48000, 6, 288000, 16)), why = "three channels" },
-            { bad = wavChunk ("fmt ", wavFormatBody (1, 1, 7999, 2, 15998, 16)), why = "low rate" },
-            { bad = wavChunk ("fmt ", wavFormatBody (1, 1, 192001, 2, 384002, 16)), why = "high rate" },
-            { bad = wavChunk ("fmt ", wavFormatBody (1, 1, 48000, 3, 96000, 16)), why = "frame alignment" },
-            { bad = wavChunk ("fmt ", wavFormatBody (1, 1, 48000, 2, 48000, 16)), why = "byte rate" }],
-            \held => wavRefusal (WaveImport::decode (wavPack [held.bad, wavMonoData ()]), "WAV requires PCM 8/16/24/32 or float32, mono/stereo, 8–192 kHz and consistent frame/byte rates."))))
+        // Unsupported encodings and widths, three channels, rates outside 8–192 kHz, misaligned frames, wrong byte rate.
+        forEachList ([wavFormatBody (1, 1, 48000, 1, 48000, 12), wavFormatBody (2, 1, 48000, 2, 96000, 16), wavFormatBody (3, 1, 48000, 2, 96000, 16), wavFormatBody (1, 3, 48000, 6, 288000, 16), wavFormatBody (1, 1, 7999, 2, 15998, 16), wavFormatBody (1, 1, 192001, 2, 384002, 16), wavFormatBody (1, 1, 48000, 3, 96000, 16), wavFormatBody (1, 1, 48000, 2, 48000, 16)],
+            \body => wavRefusal (WaveImport::decode (wavPack [wavChunk ("fmt ", body), wavMonoData ()]), "WAV requires PCM 8/16/24/32 or float32, mono/stereo, 8–192 kHz and consistent frame/byte rates."))))
     test ("sample resources validate metadata, prepare grains and transpose by root pitch", \() => arithmetic (\() =>
         kit = synth::SampleResource(name = "loop", sampleRate = 48000, sourceChannels = 2, rootFrequency = 261.6255653005986, samples = [0.5, -0.5])
         longName = join (mapList (toList (range (0, 256)), \_ => "x")) ""
