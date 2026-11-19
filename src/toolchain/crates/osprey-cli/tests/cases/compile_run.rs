@@ -307,3 +307,64 @@ fn a_native_boundary_package_builds_one_wasm_module_exporting_the_boundary() {
         );
     }
 }
+
+/// A Python library may not export a name the bridge itself defines, and must be written with
+/// the host's shared-library extension. [PYTHON-HOST-ABI]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn python_libraries_refuse_reserved_bridge_names_and_foreign_extensions() {
+    let extension = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    let foreign = if cfg!(target_os = "macos") {
+        "so"
+    } else {
+        "dylib"
+    };
+    for reserved in [
+        "osprey_python_call",
+        "osprey_python_object",
+        "osprey_python_install",
+        "osprey_python_abi",
+    ] {
+        let out = std::env::temp_dir().join(format!("osprey_e2e_{reserved}.{extension}"));
+        let result = run_source(
+            &format!("python_{reserved}"),
+            &format!("fn {reserved}(n) = wrapAdd(n, 1)\n"),
+            &["--compile", "--target=python", "-o", &out.to_string_lossy()],
+        );
+        result.expect_stderr(
+            1,
+            &[&format!("Python bridge symbol `{reserved}` is reserved")],
+            &[],
+        );
+        assert!(
+            !out.exists(),
+            "a refused library was written: {}",
+            out.display()
+        );
+    }
+    let wrong = std::env::temp_dir().join(format!("osprey_e2e_python_wrong.{foreign}"));
+    let result = run_source(
+        "python_wrong_extension",
+        "fn twice(n) = wrapMul(n, 2)\n",
+        &[
+            "--compile",
+            "--target=python",
+            "-o",
+            &wrong.to_string_lossy(),
+        ],
+    );
+    result.expect_stderr(
+        1,
+        &[&format!("Python output must end in .{extension}")],
+        &[],
+    );
+    assert!(
+        !wrong.exists(),
+        "a refused library was written: {}",
+        wrong.display()
+    );
+}

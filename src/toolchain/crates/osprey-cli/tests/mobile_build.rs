@@ -303,3 +303,24 @@ fn mobile_sdk_errors_are_actionable_and_ndk_overrides_win() -> std::io::Result<(
     );
     Ok(())
 }
+
+/// An Android slice with no NDK anywhere it looks (no NDK or SDK variable and no SDK under the
+/// home directory) names the missing NDK and publishes nothing.
+#[test]
+fn android_builds_name_a_missing_ndk() -> std::io::Result<()> {
+    let fixture = Fixture::new("android-missing")?;
+    let mut nowhere = fixture.command("android-arm64", "output/app.a");
+    let _ = nowhere
+        .env_remove("ANDROID_HOME")
+        .env_remove("ANDROID_SDK_ROOT")
+        .env("HOME", fixture.0.join("empty-home"));
+    fails(
+        &nowhere.output()?,
+        "Android NDK not found; install it with Android Studio and set ANDROID_NDK_HOME",
+    );
+    assert!(
+        !fixture.0.join("output/app.a").exists(),
+        "a failed slice was published"
+    );
+    Ok(())
+}
