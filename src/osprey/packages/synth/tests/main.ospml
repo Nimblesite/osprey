@@ -419,3 +419,4 @@ test ("performance timbres and metallic warp stay bounded across rates and contr
 registerHostedJourneys ()
 registerWaveJourneys ()
 registerClipJourneys ()
+registerGrainJourneys ()

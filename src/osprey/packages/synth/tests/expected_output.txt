@@ -31,5 +31,11 @@ ok 30 - last-note priority ignores foreign note-offs, zero-velocity note-ons and
 ok 31 - granular clouds retain deterministic stereo state across partitions and refuse forged memory
 ok 32 - graph layouts and cached clips revalidate channel contracts at every edge
 ok 33 - kernel and renderer faults stay explicit for bad modulation, ordering, snapshots and memory
-1..33
-# tests=33 passed=33 failed=0 skipped=0
+ok 34 - grain windows and timing selectors decode exactly and refuse unsupported modes
+ok 35 - generated grain math clips, caps and wraps at every boundary
+ok 36 - onset clocks follow the seeded exponential stream and refuse exhausted or invalid clocks
+ok 37 - variation streams, spreads and clouds refuse forged seeds, bounds and diverged clocks
+ok 38 - the grain graph module decodes whole controls and refuses fractional, unknown or foreign settings
+ok 39 - direct grain pools reject bad triggers, count a full pool and render ordered single-frame blocks
+1..39
+# tests=39 passed=39 failed=0 skipped=0
