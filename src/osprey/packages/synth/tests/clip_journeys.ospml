@@ -19,19 +19,23 @@ eventClip notes = synth::NodeClip(clipNode = 1, clipChannels = 0, clipSamples = 
 
 missingClip () = synth::NodeClip(clipNode = -1, clipChannels = 0, clipSamples = [], clipNotes = [])
 
-outputClip (output, action) = match action
+// The success value of a render step, or `fallback` after a failed expectation.
+renderedOr (outcome, fallback, use) = match outcome
     Error why =>
-        expect (why, "a rendered clip")
+        expect (why, "a rendered block")
+        fallback
+    Success value => use value
+
+// The output node's clip among completed clips, or `fallback` after a failed expectation.
+completedOr (clips, output, fallback, use) = renderedOr (synth::ClipInputs::completed (clips, output), fallback, use)
+
+readyClip (output, ready) = match ready
+    synth::ClipWaiting _ _ _ =>
+        unexpected ()
         missingClip ()
-    Success ready => match ready
-        synth::ClipWaiting _ _ _ =>
-            unexpected ()
-            missingClip ()
-        synth::ClipReady clips => match synth::ClipInputs::completed (clips, output)
-            Error why =>
-                expect (why, "an output clip")
-                missingClip ()
-            Success clip => clip
+    synth::ClipReady clips => completedOr (clips, output, missingClip (), \clip => clip)
+
+outputClip (output, action) = renderedOr (action, missingClip (), \ready => readyClip (output, ready))
 
 heldVoice (held, node, check) = match filterList (held.graphKernels, \bank => bank.kernelNode == node)
     [bank] => match bank.kernelMemory
@@ -53,22 +57,19 @@ through n = serial ([Components::sine (1, 440.0), n, Components::output 3])
 // A plan whose schedule skips one node.
 without (plan, identity) = plan(order = filterList (plan.order, \scheduled => scheduled != identity))
 
+// The MIDI oscillator's block for these notes from a fresh voice, handed to check.
+played (plan, fresh, notes, frames, check) = succeeds (synth::MidiOscillators::block (plan, [eventClip notes], midiOscillator (), fresh, frames), check)
+
 // [SYNTH-RENDER-BLOCKS] Drive one graph through arbitrary block partitions, collecting the output clip.
 failedJourney () = { runHeld = synth::GraphState(graphPosition = 0, graphKernels = []), runAudio = [] }
 
-continuedJourney (graph, output, journey, size) = match synth::GraphClips::next (graph, journey.runHeld, size)
-    Error why =>
-        expect (why, "a continued block")
+continuedBlock (output, journey, action) = match action
+    synth::BlockWaiting _ _ =>
+        unexpected ()
         failedJourney ()
-    Success action => match action
-        synth::BlockWaiting _ _ =>
-            unexpected ()
-            failedJourney ()
-        synth::BlockReady held clips => match synth::ClipInputs::completed (clips, output)
-            Error why =>
-                expect (why, "a partitioned output clip")
-                failedJourney ()
-            Success clip => { runHeld = held, runAudio = listConcat journey.runAudio clip.clipSamples }
+    synth::BlockReady held clips => completedOr (clips, output, failedJourney (), \clip => { runHeld = held, runAudio = listConcat journey.runAudio clip.clipSamples })
+
+continuedJourney (graph, output, journey, size) = renderedOr (synth::GraphClips::next (graph, journey.runHeld, size), failedJourney (), \action => continuedBlock (output, journey, action))
 
 graphRun (graph, output, sizes, check) =
     journey = foldList (sizes, failedJourney (), \(prior, span) => continuedJourney (graph, output, prior, span))
@@ -104,14 +105,11 @@ registerClipJourneys () =
             { voice = fresh(kernel = recast(identity = 99)), admitted = false }, { voice = fresh(kernel = recast(phase = -0.1)), admitted = false }, { voice = fresh(kernel = recast(phase = 1.0)), admitted = false }], \r => expect (synth::MidiOscillators::valid (midiOscillator (), r.voice), r.admitted))
         expect (synth::MidiOscillators::valid (Components::gain (2, 1.0), fresh), false)
         plan = planFor graph
-        renderRefused (synth::MidiOscillators::block (plan, [eventClip []], midiOscillator (), fresh, 0))
-        renderRefused (synth::MidiOscillators::block (plan, [eventClip []], midiOscillator (), fresh, 32769))
-        renderRefused (synth::MidiOscillators::block (plan, [eventClip []], midiOscillator (), fresh(pitch = -1), 4))
-        renderRefused (synth::MidiOscillators::block (plan, [], midiOscillator (), fresh, 4))
-        renderRefused (synth::MidiOscillators::block (plan, [eventClip [keyed (1, 2, 69, 1, 0.5), keyed (1, 1, 69, 1, 0.5)]], midiOscillator (), fresh, 4))
-        renderRefused (synth::MidiOscillators::block (plan, [eventClip [keyed (1, 4, 69, 1, 0.5)]], midiOscillator (), fresh, 4))
-        renderRefused (synth::MidiOscillators::block (plan, [eventClip [keyed (1, 0, 128, 1, 0.5)]], midiOscillator (), fresh, 4))
-        renderRefused (synth::MidiOscillators::block (plan, [eventClip (mapList (toList (range (0, 1025)), \offset => keyed (1, offset, 69, 1, 0.5)))], midiOscillator (), fresh, 1025))))
+        forEachList ([
+            { clips = [eventClip []], voice = fresh, frames = 0 }, { clips = [eventClip []], voice = fresh, frames = 32769 }, { clips = [eventClip []], voice = fresh(pitch = -1), frames = 4 }, { clips = [], voice = fresh, frames = 4 },
+            { clips = [eventClip [keyed (1, 2, 69, 1, 0.5), keyed (1, 1, 69, 1, 0.5)]], voice = fresh, frames = 4 }, { clips = [eventClip [keyed (1, 4, 69, 1, 0.5)]], voice = fresh, frames = 4 },
+            { clips = [eventClip [keyed (1, 0, 128, 1, 0.5)]], voice = fresh, frames = 4 }, { clips = [eventClip (mapList (toList (range (0, 1025)), \offset => keyed (1, offset, 69, 1, 0.5)))], voice = fresh, frames = 1025 }],
+            \fault => renderRefused (synth::MidiOscillators::block (plan, fault.clips, midiOscillator (), fault.voice, fault.frames)))))
     test ("connected MIDI oscillators track pitch, velocity and the exact 240-frame release tail", \() => arithmetic (\() =>
         graph = midiInstrument (69.0, 0.5, 8.0)
         whole = outputClip (3, synth::GraphClips::advance (graph, [], 256))
@@ -130,17 +128,17 @@ registerClipJourneys () =
     test ("last-note priority ignores foreign note-offs, zero-velocity note-ons and re-attacks mid-release", \() => arithmetic (\() =>
         plan = planFor (midiInstrument (69.0, 0.5, 8.0))
         fresh = synth::MidiOscillators::initial (midiOscillator ())
-        succeeds (synth::MidiOscillators::block (plan, [eventClip [keyed (1, 0, 69, 1, 0.5), keyed (2, 4, 69, 1, 0.0), keyed (1, 8, 81, 9, 0.9)]], midiOscillator (), fresh, 16), \rendered =>
+        played (plan, fresh, [keyed (1, 0, 69, 1, 0.5), keyed (2, 4, 69, 1, 0.0), keyed (1, 8, 81, 9, 0.9)], 16, \rendered =>
             traced (rendered.kernelSamples, 0, 4, \i => tone (0.5, 440.0, i))
             traced (rendered.kernelSamples, 4, 8, \i => tail (243.0, i) * tone (0.5, 440.0, i))
             traced (rendered.kernelSamples, 8, 16, \i => 0.9 * sin (6.283185307179586 * (3520.0 + 880.0 * (toFloat i - 8.0)) / 48000.0))
             expect (rendered.heldKernel.active == true && rendered.heldKernel.pitch == 81 && rendered.heldKernel.noteIdentity == 9 && rendered.heldKernel.velocity == 0.9, true)
             expect (rendered.heldKernel.releaseRemaining == 0 && rendered.heldKernel.releaseLength == 0, true)
             near (rendered.heldKernel.kernel.phase, 0.22, 0.000000001))
-        succeeds (synth::MidiOscillators::block (plan, [eventClip [keyed (1, 0, 69, 1, 0.5), keyed (2, 3, 60, 2, 0.0), keyed (2, 5, 69, 3, 0.0)]], midiOscillator (), fresh, 8), \held =>
+        played (plan, fresh, [keyed (1, 0, 69, 1, 0.5), keyed (2, 3, 60, 2, 0.0), keyed (2, 5, 69, 3, 0.0)], 8, \held =>
             traced (held.kernelSamples, 0, 8, \i => tone (0.5, 440.0, i))
             expect (held.heldKernel.active == true && held.heldKernel.pitch == 69 && held.heldKernel.noteIdentity == 1 && held.heldKernel.velocity == 0.5, true))
-        succeeds (synth::MidiOscillators::block (plan, [eventClip [keyed (1, 0, 69, 1, 0.5), keyed (1, 2, 69, 1, 0.0)]], midiOscillator (), fresh, 6), \released =>
+        played (plan, fresh, [keyed (1, 0, 69, 1, 0.5), keyed (1, 2, 69, 1, 0.0)], 6, \released =>
             traced (released.kernelSamples, 0, 2, \i => tone (0.5, 440.0, i))
             traced (released.kernelSamples, 2, 6, \i => tail (241.0, i) * tone (0.5, 440.0, i))
             expect (released.heldKernel.active == false && released.heldKernel.releaseRemaining == 236 && released.heldKernel.releaseLength == 240, true))))

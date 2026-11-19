@@ -238,18 +238,22 @@ static void tls_expect_served(EVP_PKEY *ca_key, X509 *ca, const char *cn,
   http_close_client(client_id);
 }
 
+// GET /x through client_id from the started origin, then stop both; returns the handle.
+static int64_t tls_fetch(TlsOrigin *origin, int64_t client_id) {
+  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/x",
+                                     (char *)(uintptr_t) "");
+  tls_origin_stop(origin);
+  http_close_client(client_id);
+  return handle;
+}
+
 // One exact reply over a trusted TLS connection, returning what the client made of
 // it. The caller frees any handle.
 static int64_t tls_exchange(EVP_PKEY *key, X509 *leaf, const char *reply, bool abrupt) {
   TlsOrigin origin;
   tls_origin_start(&origin, leaf, key, reply);
   origin.abrupt = abrupt; // read only once the request below has arrived
-  int64_t client_id = tls_client("127.0.0.1");
-  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/x",
-                                     (char *)(uintptr_t) "");
-  tls_origin_stop(&origin);
-  http_close_client(client_id);
-  return handle;
+  return tls_fetch(&origin, tls_client("127.0.0.1"));
 }
 
 static void tls_expect_body(EVP_PKEY *key, X509 *leaf, const char *reply, bool abrupt,
@@ -288,11 +292,7 @@ static int64_t tls_bounded_exchange(EVP_PKEY *key, X509 *leaf, const char *reply
   origin.drip_us = drip_us;
   int64_t client_id = http_create_client((char *)(uintptr_t) "https://127.0.0.1:18090", timeout_ms);
   assert(client_id > 0);
-  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/x",
-                                     (char *)(uintptr_t) "");
-  tls_origin_stop(&origin);
-  http_close_client(client_id);
-  return handle;
+  return tls_fetch(&origin, client_id);
 }
 
 // TLS reads to the same bounds. A record dripped a byte at a time never returns from
