@@ -3,7 +3,7 @@
 //! Assertion equality is canonical-string equality; a successful Result uses
 //! its payload string while an Error stays visible as `Error(<message>)`
 //! [TESTING-EQUALITY]. Implements [TESTING-CODEGEN], [TESTING-BUILTIN-TEST],
-//! [TESTING-BUILTIN-EXPECT], [TESTING-BUILTIN-CHECK]
+//! [TESTING-BUILTIN-EXPECT], [TESTING-BUILTIN-EXPECT-ERROR], [TESTING-BUILTIN-CHECK]
 //! (docs/specs/language/0027-TestingFramework.md).
 
 use crate::builder::Codegen;
@@ -34,6 +34,7 @@ pub(crate) fn gen(
         "expectAll" => gen_all(cg, &args, false).map(Some),
         "expectTrue" => gen_bool_expect(cg, &args, true, None).map(Some),
         "expectFalse" => gen_bool_expect(cg, &args, false, None).map(Some),
+        "expectError" => gen_expect_error(cg, &args).map(Some),
         "check" => gen_check(cg, &args).map(Some),
         "checkAll" => gen_all(cg, &args, true).map(Some),
         "checkTrue" => gen_bool_expect(cg, &args, true, Some("checkTrue")).map(Some),
@@ -202,6 +203,27 @@ fn gen_expect(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
     let a = eval_to_string(cg, actual)?;
     let e = eval_to_string(cg, expected)?;
     Ok(emit_assert(cg, "null", &e, &a))
+}
+
+/// `expectError(result, message)` — passes when `result` is an `Error` with that
+/// message; the Success payload is never rendered, so any `T` is allowed
+/// [TESTING-BUILTIN-EXPECT-ERROR].
+fn gen_expect_error(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
+    let [result, message] = args else {
+        return Err(CodegenError::invalid(
+            "expectError needs (result, message) arguments",
+        ));
+    };
+    let r = gen_expr(cg, result)?;
+    if r.result_inner.is_none() {
+        return Err(CodegenError::invalid(
+            "expectError needs a Result as its first argument",
+        ));
+    }
+    let a = crate::runtime::result_error_string(cg, &r)?;
+    let e = eval_to_string(cg, message)?;
+    let wrapped = crate::runtime::format_sized(cg, "Error(%s)", &[format!("i8* {}", e.operand)]);
+    Ok(emit_assert(cg, "null", &wrapped, &a))
 }
 
 /// `check(label, expected, actual)` — expected value before computed value.

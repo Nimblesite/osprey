@@ -59,6 +59,12 @@ pub(crate) static TESTING: &[BuiltinDoc] = &[
         "test(\"non-empty list\", fn() => expectFalse(isEmpty([1])))",
     ),
     builtin_doc!(
+        "expectError",
+        "Asserts that a Result is an Error with the given message. The Success payload is never rendered, so any Result is accepted.",
+        ["result" => "The Result expected to have failed", "message" => "The Error message it must carry"],
+        "test(\"overflow\", fn() => expectError(checkedMul(4294967296, 4294967296), \"integer overflow\"))",
+    ),
+    builtin_doc!(
         "check",
         "Asserts expected equals actual and includes label in a mismatch diagnostic. Execution continues after a mismatch.",
         ["label" => "A short description of what is being checked", "expected" => "The value the actual must equal", "actual" => "The computed value"],

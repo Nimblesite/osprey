@@ -5,3 +5,5 @@
 let x: Int = 42
 let y: String = x  // Type mismatch: cannot assign Int to String
 print(y)
+// expectError takes a string message, never any. [TESTING-BUILTIN-EXPECT-ERROR]
+expectError(checkedAdd(1, 2), 42)

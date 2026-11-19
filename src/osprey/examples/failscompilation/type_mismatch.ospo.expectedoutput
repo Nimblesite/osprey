@@ -1,1 +1,2 @@
 6:0: let `y`: type mismatch: cannot unify string with int
+9:0: type mismatch: cannot unify string with int

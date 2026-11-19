@@ -70,6 +70,7 @@ pub(crate) const SHADOWABLE_BUILTINS: &[&str] = &[
     "expectAll",
     "expectTrue",
     "expectFalse",
+    "expectError",
     "check",
     "checkAll",
     "checkTrue",
@@ -150,6 +151,14 @@ fn testing(e: &mut TypeEnv) {
     mono(e, "expectAll", vec![Type::list(b())], u());
     mono(e, "expectTrue", vec![b()], u());
     mono(e, "expectFalse", vec![b()], u());
+    // expectError(result, message): generic Result, string message. [TESTING-BUILTIN-EXPECT-ERROR]
+    poly(
+        e,
+        "expectError",
+        vec![0, 1],
+        vec![Type::result(Type::Var(0), Type::Var(1)), s()],
+        u(),
+    );
     // check(label, expected, actual). [TESTING-BUILTIN-CHECK]
     mono(e, "check", vec![s(), any(), any()], u());
     mono(e, "checkAll", vec![s(), Type::list(b())], u());

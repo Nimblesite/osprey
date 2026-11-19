@@ -85,9 +85,30 @@ fn equalityCase() = {
     expectAll([listLength([1, 2]) == 2, isEmpty(""), !isEmpty("a")])
 }
 
+/// A parse result whose Success payload is a record, which has no canonical rendering.
+type Parsed = { project: string, region: string }
+
+/// Parses a tiny command line: nothing is a usage error, one word a project.
+fn parsed(argv) = match argv {
+    [] => Error { message: "usage" }
+    [project] => Success { value: Parsed { project: project, region: "all" } }
+    _ => Error { message: "too many: ${listLength(argv)}" }
+}
+
+/// One line asserts a failed Result whatever its Success holds. [TESTING-BUILTIN-EXPECT-ERROR]
+fn expectErrorCase() = {
+    expectError(parsed([]), "usage")
+    expectError(parsed(["a", "b"]), "too many: 2")
+    expectError(parsed(["a", "b", "c"]), "too many: ${1 + 2}")
+    expectError(checkedMul(4294967296, 4294967296), "integer overflow")
+    expectError(checkedSub(-9223372036854775808, 1), "integer overflow")
+    forEachList([["a", "b"], ["c", "d"]], |argv| => expectError(parsed(argv), "too many: 2"))
+}
+
 /// A test call runs wherever it is evaluated, so a helper may declare cases.
 fn declareFrom(label) = test("${label} case declared from a helper", fn() => checkAll("${label} helper case", [label != "", length(label) > 0]))
 
 test("assertions compare canonical renderings", equalityCase)
+test("expectError asserts a failed Result in one line", expectErrorCase)
 declareFrom("first")
 declareFrom("second")

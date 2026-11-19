@@ -51,11 +51,19 @@ when used outside `test`) and prints a `#` diagnostic line.
 Takes a short label, then **expected before actual**. Its behavior otherwise
 matches `expect`.
 
+### `expectError(result: Result<T, E>, message: string) -> Unit` — `[TESTING-BUILTIN-EXPECT-ERROR]`
+
+Passes when `result` is an `Error` whose message equals `message` (see
+[Equality semantics](#equality-semantics)). The `Success` payload is never
+rendered or loaded, so `T` may be a record, list or map. A mismatch prints
+`# expect failed: expected Error(<message>), got Success` or
+`got Error(<other message>)`, and the case fails like `expect`.
+
 Both assertions are valid anywhere an expression is — inside `test` bodies,
 in helper functions called from tests, or at the top level of a script.
 
 **`[TESTING-SHADOWING]`** Unlike other runtime built-ins, the testing names
-(`test`, `expect`, `expectAll`, `expectTrue`, `expectFalse`, `check`, `checkAll`,
+(`test`, `expect`, `expectAll`, `expectTrue`, `expectFalse`, `expectError`, `check`, `checkAll`,
 `checkTrue`, and `checkFalse`) are not reserved: a user-defined function or `extern`
 declaration with the same name shadows the built-in in both the type
 environment and codegen dispatch.

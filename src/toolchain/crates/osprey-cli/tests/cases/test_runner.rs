@@ -14,7 +14,9 @@ pub(super) const PASSING_TESTS: &str = "test(\"adds\", fn() => expect(1 + 1, 2))
 test(\"labeled\", fn() => check(\"sum\", 4, 2 + 2))\n";
 
 pub(super) const FAILING_TESTS: &str = "test(\"bad math\", fn() => expect(1 + 1, 3))\n\
-test(\"good math\", fn() => expect(2 + 2, 4))\n";
+test(\"good math\", fn() => expect(2 + 2, 4))\n\
+test(\"wrong error\", fn() => expectError(checkedMul(4294967296, 4294967296), \"nope\"))\n\
+test(\"not an error\", fn() => expectError(checkedAdd(1, 2), \"overflow\"))\n";
 
 /// Write `body` to `<dir>/<name>` and return the path.
 pub(super) fn write_in(dir: &Path, name: &str, body: &str) -> PathBuf {
@@ -132,7 +134,12 @@ fn test_builtins_emit_tap_and_exit_status() {
             "# expect failed: expected 3, got 2",
             "not ok 1 - bad math",
             "ok 2 - good math",
-            "# tests=2 passed=1 failed=1",
+            // [TESTING-BUILTIN-EXPECT-ERROR] a different message and a Success both fail.
+            "# expect failed: expected Error(nope), got Error(integer overflow)",
+            "not ok 3 - wrong error",
+            "# expect failed: expected Error(overflow), got Success",
+            "not ok 4 - not an error",
+            "# tests=4 passed=1 failed=3",
         ],
         &[],
     );

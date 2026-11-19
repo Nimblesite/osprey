@@ -41,7 +41,7 @@ pub(crate) fn to_string_value(cg: &mut Codegen, v: Value) -> Result<Value> {
 /// payload comes from the errmsg slot (slot 2), which `load_errmsg` already
 /// falls back to the bare `"Error"` constant when unset. Implements [ERR-PAYLOAD].
 fn result_to_string(cg: &mut Codegen, v: &Value) -> Result<Value> {
-    result_string(cg, v, true)
+    result_string(cg, v, SuccessText::Wrapped)
 }
 
 /// [`result_to_string`] minus the `Success(…)` wrapping: a Success renders as
@@ -49,17 +49,35 @@ fn result_to_string(cg: &mut Codegen, v: &Value) -> Result<Value> {
 /// rendering — a Success compares as its payload, an Error is a visible
 /// mismatch, never a blind payload load. [TESTING-EQUALITY]
 pub(crate) fn result_payload_or_error_string(cg: &mut Codegen, v: &Value) -> Result<Value> {
-    result_string(cg, v, false)
+    result_string(cg, v, SuccessText::Payload)
 }
 
-fn result_string(cg: &mut Codegen, v: &Value, wrap_success: bool) -> Result<Value> {
+/// A Result as bare `Success` (payload never loaded, so any `T`) or
+/// `Error(<message>)` [TESTING-BUILTIN-EXPECT-ERROR].
+pub(crate) fn result_error_string(cg: &mut Codegen, v: &Value) -> Result<Value> {
+    result_string(cg, v, SuccessText::Bare)
+}
+
+/// How the Success side of a Result renders.
+#[derive(Clone, Copy)]
+enum SuccessText {
+    Payload,
+    Wrapped,
+    Bare,
+}
+
+fn result_string(cg: &mut Codegen, v: &Value, success: SuccessText) -> Result<Value> {
     let (_sl, el, end) = crate::result::open_result_branch(cg, v);
-    let val = crate::result::load_value(cg, v);
-    let vs = to_string_value(cg, val)?;
-    let succ = if wrap_success {
-        sprintf_wrap(cg, "Success(%s)", &vs.operand)
-    } else {
-        vs.operand
+    let succ = match success {
+        SuccessText::Bare => cg.string_constant("Success").operand,
+        SuccessText::Payload | SuccessText::Wrapped => {
+            let val = crate::result::load_value(cg, v);
+            let vs = to_string_value(cg, val)?;
+            match success {
+                SuccessText::Wrapped => sprintf_wrap(cg, "Success(%s)", &vs.operand),
+                _ => vs.operand,
+            }
+        }
     };
     let sb = cg.snapshot_to(&end);
 
