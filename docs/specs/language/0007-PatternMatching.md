@@ -25,7 +25,7 @@ This applies equally to literal catch-all bindings, Result and union payloads, l
 
 ### Result binder roles — [PATTERN-RESULT-BINDERS]
 
-A Result binder's spelling never changes the constructor's payload role. A `Success` binder named `message` retains the successful value's type, including records and callable values; an `Error` binder named `value` retains the error message. Python keyword labels select payload slots and create only their written binders, so `Success(value=message)` never creates a hidden `value` binding.
+A Result binder's spelling never changes the constructor's payload role. A `Success` binder named `message` retains the successful value's type, including records and callable values; an `Error` binder named `value` retains the error payload at the Result's error type `E`. Python keyword labels select payload slots and create only their written binders, so `Success(value=message)` never creates a hidden `value` binding.
 
 ## Union patterns
 
@@ -67,7 +67,7 @@ one form, and that form is the positional one — ML `Some value` is the same
 constructor pattern as Default `Some(value)`, so an ML binder always takes its
 column and may be renamed freely. `Success`/`Error` are the single exception:
 each has one payload that binds by ROLE, not by spelling — ML `Success section`
-and `Error reason` bind the success value and the error message under the
+and `Error reason` bind the success value and the error payload under the
 chosen names, exactly as Default's `Success { value }` and `Error { message }`
 (or the positional `Success(section)` and `Error(reason)`) do — so the binder's type is the payload's type wherever it is used, including
 as the argument of a generic call.

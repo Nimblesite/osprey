@@ -39,25 +39,30 @@ running does not run its body — it prints a
 `# nested test '<name>' skipped …` diagnostic and fails the enclosing case,
 without advancing nested-case counters.
 
-### `expect(actual: any, expected: any) -> Unit` — `[TESTING-BUILTIN-EXPECT]`
+### `expect<T>(actual: T, expected: T) -> Unit` — `[TESTING-BUILTIN-EXPECT]`
 
-Compares the values with actual first (see
+`T` is inferred from the operands, which must agree: `expect(5, "5")` is a
+type error. Compares the values with actual first (see
 [Equality semantics](#equality-semantics)); on
 mismatch, records a failure against the enclosing test case (or the whole run
 when used outside `test`) and prints a `#` diagnostic line.
 
-### `check(label: string, expected: any, actual: any) -> Unit` — `[TESTING-BUILTIN-CHECK]`
+### `check<T>(label: string, expected: T, actual: T) -> Unit` — `[TESTING-BUILTIN-CHECK]`
 
-Takes a short label, then **expected before actual**. Its behavior otherwise
-matches `expect`.
+Takes a short label, then **expected before actual**, both at one inferred
+`T`. Its behavior otherwise matches `expect`.
 
-### `expectError(result: Result<T, E>, message: string) -> Unit` — `[TESTING-BUILTIN-EXPECT-ERROR]`
+### `expectError<T, E>(result: Result<T, E>, payload: E) -> Unit` — `[TESTING-BUILTIN-EXPECT-ERROR]`
 
-Passes when `result` is an `Error` whose message equals `message` (see
-[Equality semantics](#equality-semantics)). The `Success` payload is never
-rendered or loaded, so `T` may be a record, list or map. A mismatch prints
-`# expect failed: expected Error(<message>), got Success` or
-`got Error(<other message>)`, and the case fails like `expect`.
+Passes when `result` is an `Error` whose payload equals `payload` (see
+[Equality semantics](#equality-semantics)). `T` and `E` are inferred from
+`result`, and `payload` must have that same `E`
+([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)):
+a `Result<int, ParseError>` is checked against a `ParseError`, a
+`Result<int, int>` against an `int`; any other type is a compile error. The
+`Success` payload is never rendered or loaded, so `T` may be a record, list or
+map. A mismatch prints `# expect failed: expected Error(<payload>), got Success`
+or `got Error(<other payload>)`, and the case fails like `expect`.
 
 Both assertions are valid anywhere an expression is — inside `test` bodies,
 in helper functions called from tests, or at the top level of a script.
@@ -99,15 +104,17 @@ state that a rendered transcript holds every part, or none, in one assertion.
 
 ## Equality semantics
 
-**`[TESTING-EQUALITY]`** Assertion equality is canonical-string equality
-over values with a canonical string rendering: ints, bools, floats, strings,
-and `Result`s of those. Both sides render with the same `toString` lowering
-used by string interpolation and compare with `strcmp`; the diagnostic shows
-exactly the two rendered strings that were compared. A `Result` operand
-renders a `Success` as its bare payload and an `Error` as `Error(<message>)`.
-Lists, maps, and records are rejected as assertion operands at code generation.
-Values of different types that render identically, such as `5` and `"5"`,
-compare equal.
+**`[TESTING-EQUALITY]`** The two operands of an assertion have one type, which
+the checker infers; operands of different types are rejected at compile time.
+A plain `T` is accepted beside a `Result<T, E>`, as the `Success` it would be.
+Equality is then canonical-string equality over values with a canonical string
+rendering: ints, bools, floats, strings, and `Result`s of those. Both sides
+render with the same `toString` lowering used by string interpolation and
+compare with `strcmp`; the diagnostic shows exactly the two rendered strings
+that were compared. A `Result` operand renders a `Success` as its bare payload
+and an `Error` as `Error(<payload>)`, the payload at its own type `E`. Lists
+and maps are rejected as assertion operands at code generation, and so are
+records outside the payload of `expectError`.
 
 ### Boolean assertion shortcuts
 

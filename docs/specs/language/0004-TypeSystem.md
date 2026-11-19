@@ -83,17 +83,20 @@ written normally, so a partial answer still carries its proven part.
 
 ```osprey
 fn bothArms(f) = if f { Success { value: 1 } } else { Error { message: "e" } }
-// reported: fn bothArms(f: bool) -> Result<int, _>
+// reported: fn bothArms(f: bool) -> Result<int, string>
+
+fn onlySuccess() = Success { value: 1 }
+// reported: fn onlySuccess() -> Result<int, _>
 ```
 
 Reporting is a property of the canonical AST, so both surfaces report the same
 signature for the same program ([FLAVOR-IR-EQUIV]).
 
-The payload is `int` in both arms, so it is reported. The error side is open:
-`Error { message }` fixes only the message, leaving `E` free to unify with
-whichever error type a call site supplies, so `-> Result<int, string>`,
-`-> Result<int, Error>` and `-> int` all check
-([Result Preservation](#result-preservation)). A hole is the only honest
+`bothArms` is fully proved: the payload is `int`, and `Error { message: "e" }`
+carries a `string`, so the error type is `string`
+([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)).
+`onlySuccess` never builds an `Error`, so nothing decides its error type and
+the slot stays open until a caller supplies one. A hole is the only honest
 spelling for that slot.
 
 A declared record is reported by its **name and its row** together:
@@ -326,7 +329,7 @@ operation results outputs ([Algebraic Effects](0017-AlgebraicEffects.md#generic-
 
 `[TYPE-VARIANCE-COERCION]` **Implicit `Success` promotion applies at direct value sites, never inside a constructor argument.** A bare `T` satisfies a `Result<T, E>` slot; the inverse never holds. `Feed<int>` therefore does not satisfy `Feed<Result<int, string>>`, regardless of its variance marker. A `Feed<(int) -> Result<int, string>>` cannot satisfy `Feed<(int) -> int>` either. Direct function assignments still compare parameters contravariantly and returns covariantly, with direct-site promotion where allowed: `(Result<int, string>) -> bool` satisfies an `(int) -> bool` slot.
 
-Erasure to `any` is a separate conversion. Supported list, Result and nominal record/union adapters rebuild the affected representation recursively rather than reinterpreting its pointer. For example, `List<List<int>>` can satisfy `List<List<any>>` by boxing the inner elements; `Result<List<int>, string>` can satisfy `Result<List<any>, string>` by adapting a success payload while preserving an error and its message. Neither conversion inserts nested `Success` wrappers.
+Erasure to `any` is a separate conversion. Supported list, Result and nominal record/union adapters rebuild the affected representation recursively rather than reinterpreting its pointer. For example, `List<List<int>>` can satisfy `List<List<any>>` by boxing the inner elements; `Result<List<int>, string>` can satisfy `Result<List<any>, string>` by adapting a success payload while preserving an error and its payload. Neither conversion inserts nested `Success` wrappers.
 
 For `Feed<out T>` with a field containing `T`, `Feed<int>` can satisfy `Feed<any>`. For `Gate<in T>` with an `(T) -> bool` field, `Gate<any>` can satisfy `Gate<int>`: its callable adapter boxes the supplied integer for the original consumer. This does not recover an arbitrary `any` as an integer. Function-valued payloads require the corresponding callable adapters. Rebuilding a record or union preserves its constructor tag, fields and original immutable value, including nullary variants; recursive nominal conversions reuse a memoized converter.
 
@@ -493,7 +496,7 @@ A lambda (`fn(...) => expr` or `|x| => expr`) captures every free identifier fro
 
 The same holds for a lambda whose type is still generic. It has no single closure value and is specialised at each call site, but it reads the bindings it captured where it was written, whether it is called there, from a nested lambda, from a handler arm or from a fiber, and it keeps them alive for as long as it can be called.
 
-A `Result<T, E>`'s error channel is phantom: the `Error` variant stores a string message, so `E` never shapes the value representation. A closure whose only open variable is a `Result` error channel therefore has a concrete ABI — the success channel `T` decides it — and materializes like any concrete closure, so a generic `with`-suite handler value needs no `Result` annotation to compile.
+A `Result<T, E>` carries its error payload at type `E` ([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)). A closure whose only open variable is the error type of a `Result` it never builds an `Error` for still has a concrete ABI — every `Result` is one block shape whatever `T` and `E` are — and materializes like any concrete closure, so a generic `with`-suite handler value needs no `Result` annotation to compile.
 
 ```osprey
 fn makeAdder(n: int) -> (int) -> int = fn(x: int) => x + n
@@ -603,7 +606,7 @@ Not implemented yet: an anonymous record bound with no declared type, such as `o
 
 A record or union payload field of type `Result<T, E>` stores the complete `Success` or `Error` value. Named, anonymous and generic records obey the same rule. Construction and immutable updates may promote a bare `T` to `Success(T)`; they MUST preserve an existing failure and its message. A field read, constructor or structural pattern, function argument, closure capture, shared cell or permitted conversion to `any` ([TYPE-ANY](#the-any-type--type-any)) MUST retain the concrete success payload type and the discriminant. Updating another field preserves the stored Result and the source record.
 
-The native and wasm32 backends use one Result block shape: a 64-bit payload word, a byte discriminant and a message pointer, with target-specific alignment. Float payloads preserve their IEEE bits, booleans preserve their truth value, and pointer payloads retain their ownership and concrete type. An aggregate field holds a pointer to the whole block. Its static payload type cannot change the discriminant or message offsets.
+The native and wasm32 backends use one Result block shape for every `T` and `E`: a 64-bit success payload word, a byte discriminant and an error payload slot, with target-specific alignment. The error payload keeps its type `E` exactly as the success payload keeps `T`. Float payloads preserve their IEEE bits, booleans preserve their truth value, and pointer payloads retain their ownership and concrete type. An aggregate field holds a pointer to the whole block. Neither static payload type changes the discriminant or slot offsets.
 
 The `resultRecordCase`, `genericResultRecordCase`, `anonymousResultRecordCase`, `resultTransportCase` and `genericUnionResultCase` assertions in both `record_update_basic` twins pin failure preservation, promotion, nested payloads, erasure, pattern binding and live captures. The cross-flavor IR test pins the common block and bit-preserving float/boolean conversions.
 
@@ -964,7 +967,9 @@ let values     = mapValues(ages)
 | ----------- | ------- |
 | `Error`     | Fallible builtins, including parsing, `checkedAdd`/`checkedSub`/`checkedMul`, collection lookup, files, and processes |
 
-`Success` and `Error` are the constructors of `Result<T, E>` (see [Error Handling](0013-ErrorHandling.md)).
+`Error` is a type of its own, not `string`: it is the `E` in the `Result<T, Error>` a fallible builtin returns. A value of it prints and interpolates as its message, and `toString` gives that message as a `string`. It is one error type among any number; a program's own functions use whatever `E` they need ([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)).
+
+`Success` and `Error` are also the names of the constructors of `Result<T, E>` (see [Error Handling](0013-ErrorHandling.md)).
 
 ## The `any` Type — [TYPE-ANY]
 
