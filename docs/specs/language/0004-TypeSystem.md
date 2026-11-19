@@ -90,9 +90,8 @@ fn onlySuccess() = Success { value: 1 }
 Reporting is a property of the canonical AST, so both surfaces report the same
 signature for the same program ([FLAVOR-IR-EQUIV]).
 
-`bothArms` builds a `Success` of an `int` and an `Error` of a `string`, so both
-type arguments are proved ([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)).
-`onlySuccess` builds no `Error`, so its `E` is undecided and is reported as `_`.
+`onlySuccess` builds no `Error`, so its `E` is undecided
+([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)) and is reported as `_`.
 
 A declared record is reported by its **name and its row** together:
 
@@ -448,7 +447,7 @@ follow the [LLVM conversion contract](https://llvm.org/docs/LangRef.html#llvm-fp
 
 ## Result Preservation
 
-A `Result<T, E>` is never turned into a `T` implicitly ([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result), [FAILURE-EXPLICIT](0001-Introduction.md#failure-safety--failure-explicit)). An argument, binding, plain-`T` return, comparison or function-value call either keeps the whole `Result` or is rejected; interpolation shows the whole `Success` or `Error`. The payload is reached only by an exhaustive `match` or a `?:` fallback. There are no exceptions. Arithmetic has no `Result` to erase: its faults go to an `Arith` handler ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
+Rule 5 of [ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result) holds at every position that consumes a value, with no exceptions: an argument, binding, plain-`T` return, comparison or function-value call either keeps the whole `Result` or is rejected, and interpolation shows the whole `Success` or `Error`. The one implicit step runs the other way, a bare `T` promoted to `Success` ([TYPE-VARIANCE-COERCION](#generics-and-variance)). Arithmetic has no `Result` to erase: its faults go to an `Arith` handler ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 ## Function Types
 
@@ -599,7 +598,7 @@ Not implemented yet: an anonymous record bound with no declared type, such as `o
 
 ### Result fields — [TYPE-RECORD-RESULT]
 
-A field of type `Result<T, E>`, in any record or union, stores the whole `Success` or `Error`. Construction and update may promote a bare `T` to `Success(T)`. Every way of moving the value — a field read, a pattern, an argument, a closure capture, a shared cell, a permitted conversion to `any` ([TYPE-ANY](#the-any-type--type-any)), an update of another field — MUST keep which case it is and its payload at its own type, `T` or `E`.
+A field of type `Result<T, E>`, in any record or union, stores the whole `Success` or `Error`. Every way of moving the value — a field read, a pattern, an argument, a closure capture, a shared cell, a permitted conversion to `any` ([TYPE-ANY](#the-any-type--type-any)), an update of another field — MUST keep which case it is and its payload.
 
 The native and wasm32 backends use one Result block for every `T` and `E`: a 64-bit success payload word, a byte discriminant and an error payload slot. Each payload keeps its exact value: floats their IEEE bits, booleans their truth value, pointers their ownership and concrete type. An aggregate field holds a pointer to the block.
 
@@ -962,9 +961,7 @@ let values     = mapValues(ages)
 | ----------- | ------- |
 | `Error`     | Fallible builtins, including parsing, `checkedAdd`/`checkedSub`/`checkedMul`, collection lookup, files, and processes |
 
-`Error` is the `E` of the `Result<T, Error>` a fallible builtin returns. It is a type of its own, not `string`: it prints and interpolates as its message, and `toString` turns it into that `string`. It has no special standing in `Result`; a program's functions use whatever `E` they build ([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)).
-
-`Success` and `Error` are also the names of `Result`'s two constructors.
+`Error` is a type of its own, not `string`: it prints and interpolates as its message, and `toString` turns it into that `string`. It has no special standing in [`Result<T, E>`](0013-ErrorHandling.md#resultt-e--err-result), whose two constructors are also named `Success` and `Error`.
 
 ## The `any` Type — [TYPE-ANY]
 

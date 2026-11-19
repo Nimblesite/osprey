@@ -14,12 +14,12 @@ type Result<T, E> = Success { value: T } | Error { message: E }
 
 1. **Both are generic.** `T` and `E` may each be any type: a record, a union, a number, a `bool`, a `string`, a list, another `Result`. `Result` builds in no error type.
 2. **Both are inferred.** `Success { value: v }` fixes `T` to the type of `v`; `Error { message: e }` fixes `E` to the type of `e`. No annotation is needed. A side the program never builds stays open until a caller decides it.
-3. **Both are exact.** Matching `Success { value }` binds `value : T`, and matching `Error { message }` binds `message : E` — the very value the producer wrote, never a rendering, placeholder or default ([ERR-PAYLOAD](#error-payload-propagation--err-payload)).
+3. **Both are exact — [ERR-PAYLOAD].** Matching `Success { value }` binds `value : T`, and matching `Error { message }` binds `message : E`: the very value the producer wrote, never a rendering, placeholder or default, for every operator, builtin and user function on every backend and memory mode.
 4. **Both must agree.** Two `Result`s are the same type only when their `T`s agree and their `E`s agree. A `Result<int, ParseError>` is not a `Result<int, MathError>`.
-5. **Neither is unwrapped implicitly.** A `Result<T, E>` never becomes a `T`. Callers `match` it ([Pattern Matching](0007-PatternMatching.md)) or supply a fallback with `?:` ([Result Default](0007-PatternMatching.md#result-default---pattern-result-default)). The one implicit step is the other way: a plain `T` is accepted where a `Result<T, E>` is expected, as `Success` ([Result Preservation](0004-TypeSystem.md#result-preservation)).
-6. **Neither is dropped.** A `Result` left unused is rejected ([ERROR-RESULT-DISCARD](#discarding-a-result--error-result-discard)), and a record or union field of `Result` type keeps the whole value ([TYPE-RECORD-RESULT](0004-TypeSystem.md#result-fields--type-record-result)).
+5. **Neither is unwrapped implicitly.** A `Result<T, E>` never becomes a `T`; callers `match` it or supply a fallback with `?:`. [Result Preservation](0004-TypeSystem.md#result-preservation) lists where this applies, and [Result Default](0007-PatternMatching.md#result-default---pattern-result-default) defines `?:`.
+6. **Neither is dropped.** See [ERROR-RESULT-DISCARD](#discarding-a-result--error-result-discard) for statements and [TYPE-RECORD-RESULT](0004-TypeSystem.md#result-fields--type-record-result) for fields.
 
-Fallible builtins return `Result<T, Error>`. [`Error`](0004-TypeSystem.md#built-in-error-types) there is an ordinary type filling the `E` slot — the error type the builtins chose — and has no special standing in `Result`.
+Fallible builtins return `Result<T, Error>`; [`Error`](0004-TypeSystem.md#built-in-error-types) is their `E`.
 
 ```osprey
 type ParseError = { code: int, why: string }
@@ -118,26 +118,6 @@ An unhandled arithmetic operation is a compile error naming the effect and opera
 unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
 ```
 
-
-## Error Payload Propagation — [ERR-PAYLOAD]
-
-When a function produces `Error { message: e }` with `e : E`, the value bound to `message` in the caller's `match` arm MUST be that exact value at type `E`, not a placeholder, a rendering of it, a static string, or a default. This holds for every `E` and on every backend and memory mode.
-
-```osprey
-match split("abc", "") {
-    Success { value }   => forEachList(value, print)
-    Error   { message } => print(message)   // "split: separator must not be empty"
-}
-```
-
-```osprey-ml
-match split ("abc", "")
-    Success value   => forEachList value print
-    Error   message => print message   // "split: separator must not be empty"
-```
-
-This requirement applies to every `Result`-returning operator, builtin, and
-user function, including failure-preserving arithmetic chains.
 
 ## Discarding a Result — [ERROR-RESULT-DISCARD]
 
