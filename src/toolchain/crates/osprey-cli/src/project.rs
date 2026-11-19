@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 mod coverage;
 mod dependencies;
+mod owned_suite;
 
 /// A parsed script or an assembled multi-file project ready for dispatch.
 #[derive(Debug)]

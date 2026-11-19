@@ -232,6 +232,67 @@ fn list_tests_carries_case_documentation() {
     );
 }
 
+const OWNED_NAMES: &str = "namespace observe;\n\nmodule Names {\n    /// A service id as a heading.\n    export fn title(name) = \"Svc ${name}\"\n}\n";
+
+const OWNED_SUITE: &str = "namespace observe;\n\nimport observe::Names::{title}\n\n\
+test(\"titles prefix the id\", fn() => expect(title(\"api\"), \"Svc api\"))\n\
+test(\"titles keep the id\", fn() => expect(title(\"db\"), \"Svc db\"))\n";
+
+/// A nested test project reaching its code through `../src`, as an app's
+/// `tests/osprey.toml` does; `other.test.osp` fails, so a file run that swept
+/// it up would go red.
+fn owned_suite_project() -> (PathBuf, PathBuf) {
+    let root = temp_dir("owned_suite");
+    for dir in ["src", "tests"] {
+        let _ = std::fs::create_dir_all(root.join(dir));
+    }
+    let _ = write_in(&root, "osprey.toml", "[project]\nname = \"app\"\nsource_roots = [\"src\"]\ndefault_namespace = \"observe\"\n");
+    let _ = write_in(&root.join("src"), "names.osp", OWNED_NAMES);
+    let tests = root.join("tests");
+    let _ = write_in(&tests, "osprey.toml", "[project]\nname = \"app-tests\"\nsource_roots = [\"../src\", \".\"]\ndefault_namespace = \"observe\"\n");
+    let _ = write_in(&tests, "other.test.osp", "namespace observe;\n\ntest(\"other file case\", fn() => expect(1, 2))\n");
+    let suite = write_in(&tests, "domain.test.osp", OWNED_SUITE);
+    (root, suite)
+}
+
+// [TESTING-LIST][TESTING-FILE-PROJECT] a test file one of its enclosing
+// manifest's source roots lists is listed, run, filtered and tested against
+// that project's code, at its own lines, without its sibling suites.
+#[test]
+fn a_test_file_in_a_project_lists_and_runs_against_the_project() {
+    let (root, suite) = owned_suite_project();
+    let listed = run_file(&suite, &["--list-tests"]);
+    assert_eq!(listed.code, Some(0), "{}", listed.stderr);
+    assert_eq!(
+        listed.stdout.trim(),
+        "[{\"name\":\"titles prefix the id\",\"line\":5,\"column\":1},\
+         {\"name\":\"titles keep the id\",\"line\":6,\"column\":1}]"
+    );
+    run_file(&suite, &["--run"]).expect_stdout(
+        0,
+        &["ok 1 - titles prefix the id", "ok 2 - titles keep the id", "1..2"],
+        &["other file case", "not ok"],
+    );
+    let mut filtered = osprey();
+    let _ = filtered
+        .arg(&suite)
+        .arg("--run")
+        .env("OSPREY_TEST_FILTER", "titles keep the id");
+    finish(&mut filtered).expect_stdout(
+        0,
+        &["ok 1 - titles keep the id", "1..1"],
+        &["prefix", "other file case"],
+    );
+    let file_suite = run_args(&["test", suite.to_string_lossy().as_ref()]);
+    file_suite.expect_stdout(0, &["# tests=2 passed=2 failed=0"], &["other file case"]);
+    // The directory stays one project suite of every test source, whose two
+    // top-level files leave its entry ambiguous ([TESTING-PROJECT-SUITE]).
+    let whole = run_args(&["test", root.join("tests").to_string_lossy().as_ref()]);
+    assert_eq!(whole.code, Some(1), "{}", whole.stdout);
+    assert!(whole.stderr.contains("is ambiguous"), "{}", whole.stderr);
+    let _ = std::fs::remove_dir_all(root);
+}
+
 // [TESTING-CLI-RUN][TESTING-FILE-CONVENTION] the runner discovers
 // *.test.osp{,ml} under a directory, streams TAP under headers, and aggregates
 // the exit status.

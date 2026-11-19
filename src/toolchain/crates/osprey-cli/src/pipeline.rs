@@ -45,7 +45,31 @@ pub(crate) fn load_input(cli: &Cli) -> Result<CompilationInput, ExitCode> {
     })?;
     let flavor = osprey_syntax::resolve_flavor(cli.flavor, &cli.path, &source)
         .map_err(|error| crate::usage_error(&error))?;
+    if cli.mode == "--list-tests" {
+        return parse_alone(&cli.path, &source, flavor)
+            .map(|program| CompilationInput::script(&cli.path, source, program));
+    }
+    if let Some(suite) = CompilationInput::owned_test_suite(&cli.path) {
+        return suite.map_err(|errors| {
+            print_project_errors(&errors, &cli.path);
+            ExitCode::FAILURE
+        });
+    }
     load_script(&cli.path, source, flavor)
+}
+
+/// Discovery reads the file alone, so it lists at the file's own lines even
+/// while its imports do not resolve ([TESTING-LIST]).
+fn parse_alone(
+    path: &str,
+    source: &str,
+    flavor: osprey_syntax::Flavor,
+) -> Result<osprey_ast::Program, ExitCode> {
+    let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
+    if report_syntax_errors(path, &parsed.errors) {
+        return Err(ExitCode::FAILURE);
+    }
+    Ok(parsed.program)
 }
 
 fn load_project(cli: &Cli) -> Result<CompilationInput, ExitCode> {
@@ -64,20 +88,15 @@ fn load_script(
     source: String,
     flavor: osprey_syntax::Flavor,
 ) -> Result<CompilationInput, ExitCode> {
-    let parsed = osprey_syntax::parse_program_with_flavor(&source, flavor);
-    if report_syntax_errors(path, &parsed.errors) {
-        return Err(ExitCode::FAILURE);
-    }
+    let program = parse_alone(path, &source, flavor)?;
     // Preserve contracts before static discharge [STAGE-LOWER-ORDER-PHASE].
-    if project::needs_assembly(&parsed.program) {
-        return CompilationInput::one_source(path, flavor, source, parsed.program).map_err(
-            |errors| {
-                print_project_errors(&errors, path);
-                ExitCode::FAILURE
-            },
-        );
+    if project::needs_assembly(&program) {
+        return CompilationInput::one_source(path, flavor, source, program).map_err(|errors| {
+            print_project_errors(&errors, path);
+            ExitCode::FAILURE
+        });
     }
-    Ok(CompilationInput::script(path, source, parsed.program))
+    Ok(CompilationInput::script(path, source, program))
 }
 
 pub(super) fn print_project_errors(errors: &[osprey_project::ProjectError], fallback: &str) {

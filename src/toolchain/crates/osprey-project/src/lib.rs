@@ -229,7 +229,21 @@ impl AssembledProject {
 ///
 /// Returns discovery, I/O, flavor-selection, and syntax diagnostics.
 pub fn load(root: &Path) -> Result<(ProjectConfig, Vec<SourceFile>), Vec<ProjectError>> {
-    let (config, paths) = discover(root)?;
+    load_selected(root, |_| true)
+}
+
+/// [`load`] restricted to the discovered sources `keep` accepts, so a caller
+/// can assemble part of a project without parsing the rest.
+///
+/// # Errors
+///
+/// Returns discovery, I/O, flavor-selection, and syntax diagnostics.
+pub fn load_selected(
+    root: &Path,
+    keep: impl Fn(&Path) -> bool,
+) -> Result<(ProjectConfig, Vec<SourceFile>), Vec<ProjectError>> {
+    let (config, mut paths) = discover(root)?;
+    paths.retain(|path| keep(path));
     let sources = parse_sources(paths, config.flavor)?;
     let runner = discipline::ProcessRunner::new(
         compiler_binary(),

@@ -36,6 +36,13 @@ of that suite, not suites of their own. Only the `path` given is checked; a
 project directory found while walking another directory is walked like any
 other.
 
+**`[TESTING-FILE-PROJECT]`** A `*.test.*` file that its nearest enclosing
+`osprey.toml` lists as a source (`source_roots = ["../src", "."]` in an app's
+`tests/osprey.toml`) runs against that project: `osprey <file> --run` and
+`osprey test <file>` assemble the project's non-test sources with the file as
+the entry, so its imports resolve while sibling test files stay out of the run.
+`--list-tests` still reads the file alone (`[TESTING-LIST]`).
+
 One invocation runs every discovered suite under exactly one memory backend.
 `--memory=gc` selects tracing garbage collection, `--memory=arc` selects
 Perceus reference counting, and `--memory=none` explicitly selects the
