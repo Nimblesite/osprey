@@ -58,8 +58,9 @@ n =
 Returns the program's command-line arguments in order, without the program
 name. A program started with no arguments gets `[]`. A compiled binary reads
 its own argv: `_NSGetArgv` on Apple platforms, the `.init_array` arguments on
-Linux and Android, `__argv` on Windows, and WASI `args_get` on wasm32. Hosted
-library targets (iOS, Android, Python) answer `[]`.
+Linux and Android, `__argv` on Windows, and WASI `args_get` on wasm32. A library
+target loaded into a host process (iOS, Android, Python) reads that process's
+argv and environment.
 
 **[CLI-RUN-ARGS]** `osprey <file> --run [flags] -- <args...>` passes everything
 after `--` to the program unchanged, including words that look like flags; under

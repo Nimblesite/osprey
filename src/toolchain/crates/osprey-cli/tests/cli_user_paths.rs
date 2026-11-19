@@ -362,7 +362,11 @@ fn node_wasi_host(scratch: &Scratch) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../scripts/wasm/wasm-smoke.mjs");
     let host = scratch.write(
         "wasi-host",
-        &format!("#!/bin/sh\nexec node '{}' \"$@\"\n", smoke.display()),
+        // Arguments after the module are the program's own, behind `--` [BUILTIN-PROCESS-ARGS].
+        &format!(
+            "#!/bin/sh\nwasm=$1\nshift\nexec node '{}' \"$wasm\" -- \"$@\"\n",
+            smoke.display()
+        ),
     );
     let executable = std::os::unix::fs::PermissionsExt::from_mode(0o755);
     let made = std::fs::set_permissions(&host, executable);
@@ -417,7 +421,9 @@ fn wasm32_builds_leave_no_scratch_files_behind() {
 
 const ARGS_DEFAULT: &str = "fn shown(name) = match env(name) {\n    Success { value } => value\n    Error { message } => message\n}\n\nfn main() = print(\"${length(args())}:[${join(args(), \"|\")}] ${shown(\"OSP_ARGS_PROBE\")}\")\n";
 const ARGS_ML: &str = "main () = print (join (args ()) \"|\")\n";
-const ARGS_PYTHON: &str = "# osprey: flavor=python\n\ndef main():\n    print(join(args(), \"|\"))\n";
+const ARGS_PYTHON: &str =
+    "# osprey: flavor=python\n\ndef main():\n    print(join(args(), \"|\"))\n";
+const ARGS_TYPESCRIPT: &str = "print(join(args(), \"|\"));\n";
 
 fn run_with(file: &Path, extra: &[&str], probe: Option<&str>) -> (Option<i32>, String, String) {
     let mut command = osprey();
@@ -441,9 +447,21 @@ fn programs_read_their_arguments_and_environment() {
         (&[], None, unset),
         (&["--"], Some("hi"), "0:[] hi\n"),
         (&["--", "acme-dev"], Some(""), "1:[acme-dev] \n"),
-        (&["--", "two words", "--list", "-h"], None, "3:[two words|--list|-h] env: variable is not set\n"),
-        (&["--memory=arc", "--", "", "x"], Some("a=b c"), "2:[|x] a=b c\n"),
-        (&["--", "--run", "--", "ünï"], None, "3:[--run|--|ünï] env: variable is not set\n"),
+        (
+            &["--", "two words", "--list", "-h"],
+            None,
+            "3:[two words|--list|-h] env: variable is not set\n",
+        ),
+        (
+            &["--memory=arc", "--", "", "x"],
+            Some("a=b c"),
+            "2:[|x] a=b c\n",
+        ),
+        (
+            &["--", "--run", "--", "ünï"],
+            None,
+            "3:[--run|--|ünï] env: variable is not set\n",
+        ),
     ];
     for (extra, probe, want) in cases {
         let (code, out, err) = run_with(&default, extra, probe);
@@ -451,15 +469,63 @@ fn programs_read_their_arguments_and_environment() {
     }
     let ml = scratch.write("args.ospml", ARGS_ML);
     let python = scratch.write("args.py", ARGS_PYTHON);
-    for file in [&ml, &python] {
-        assert_eq!(run_with(file, &["--", "check", "v1.2.3"], None).1, "check|v1.2.3\n");
+    let typescript = scratch.write("args.ts", ARGS_TYPESCRIPT);
+    for file in [&ml, &python, &typescript] {
+        assert_eq!(
+            run_with(file, &["--", "check", "v1.2.3"], None).1,
+            "check|v1.2.3\n"
+        );
         assert_eq!(run_with(file, &[], None).1, "\n");
     }
     let exe = scratch.0.join("args-bin");
-    let (code, _, err) = finished(osprey().arg(&default).args(["--compile", "--quiet", "-o"]).arg(&exe));
+    let (code, _, err) = finished(
+        osprey()
+            .arg(&default)
+            .args(["--compile", "--quiet", "-o"])
+            .arg(&exe),
+    );
     assert_eq!(code, Some(0), "{err}");
-    let (code, out, _) = finished(Command::new(&exe).args(["p", "q r"]).env("OSP_ARGS_PROBE", "bin"));
+    let (code, out, _) = finished(
+        Command::new(&exe)
+            .args(["p", "q r"])
+            .env("OSP_ARGS_PROBE", "bin"),
+    );
     assert_eq!((code, out.as_str()), (Some(0), "2:[p|q r] bin\n"));
-    assert_refused(osprey().arg(&default).args(["--check", "--", "x"]), 2, "arguments after -- need --run");
-    assert_refused(osprey().arg(&default).args(["--compile", "--", "x"]), 2, "arguments after -- need --run");
+    // wasm32: `--run` hands the arguments to the WASI host, which grants no environment.
+    let host = node_wasi_host(&scratch);
+    let wasm = |extra: &[&str]| {
+        finished(
+            osprey()
+                .arg(&default)
+                .args(["--target=wasm32", "--run", "--quiet"])
+                .args(extra)
+                .env("OSPREY_WASM_RUN", &host)
+                .env("OSP_ARGS_PROBE", "hidden"),
+        )
+    };
+    let (code, out, err) = wasm(&["--", "w1", "two words", "--flag"]);
+    assert_eq!(
+        (code, out.as_str()),
+        (
+            Some(0),
+            "3:[w1|two words|--flag] env: variable is not set\n"
+        ),
+        "{err}"
+    );
+    let (code, out, err) = wasm(&[]);
+    assert_eq!(
+        (code, out.as_str()),
+        (Some(0), "0:[] env: variable is not set\n"),
+        "{err}"
+    );
+    assert_refused(
+        osprey().arg(&default).args(["--check", "--", "x"]),
+        2,
+        "arguments after -- need --run",
+    );
+    assert_refused(
+        osprey().arg(&default).args(["--compile", "--", "x"]),
+        2,
+        "arguments after -- need --run",
+    );
 }
