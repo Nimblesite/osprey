@@ -246,11 +246,19 @@ fn owned_suite_project() -> (PathBuf, PathBuf) {
     for dir in ["src", "tests"] {
         let _ = std::fs::create_dir_all(root.join(dir));
     }
-    let _ = write_in(&root, "osprey.toml", "[project]\nname = \"app\"\nsource_roots = [\"src\"]\ndefault_namespace = \"observe\"\n");
+    let _ = write_in(
+        &root,
+        "osprey.toml",
+        "[project]\nname = \"app\"\nsource_roots = [\"src\"]\ndefault_namespace = \"observe\"\n",
+    );
     let _ = write_in(&root.join("src"), "names.osp", OWNED_NAMES);
     let tests = root.join("tests");
     let _ = write_in(&tests, "osprey.toml", "[project]\nname = \"app-tests\"\nsource_roots = [\"../src\", \".\"]\ndefault_namespace = \"observe\"\n");
-    let _ = write_in(&tests, "other.test.osp", "namespace observe;\n\ntest(\"other file case\", fn() => expect(1, 2))\n");
+    let _ = write_in(
+        &tests,
+        "other.test.osp",
+        "namespace observe;\n\ntest(\"other file case\", fn() => expect(1, 2))\n",
+    );
     let suite = write_in(&tests, "domain.test.osp", OWNED_SUITE);
     (root, suite)
 }
@@ -270,7 +278,11 @@ fn a_test_file_in_a_project_lists_and_runs_against_the_project() {
     );
     run_file(&suite, &["--run"]).expect_stdout(
         0,
-        &["ok 1 - titles prefix the id", "ok 2 - titles keep the id", "1..2"],
+        &[
+            "ok 1 - titles prefix the id",
+            "ok 2 - titles keep the id",
+            "1..2",
+        ],
         &["other file case", "not ok"],
     );
     let mut filtered = osprey();

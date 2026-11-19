@@ -499,7 +499,12 @@ fn run_native(cli: &Cli, input: &CompilationInput) -> ExitCode {
     } else {
         let output = (cli.debug && (cli.output.is_some() || cli.debug_options.keeps_artifacts()))
             .then(|| input.output_path(cli.output.as_deref(), "native"));
-        execute_native(input, NativeOptions::from_cli(cli), output.as_deref(), &cli.program_args)
+        execute_native(
+            input,
+            NativeOptions::from_cli(cli),
+            output.as_deref(),
+            &cli.program_args,
+        )
     };
     match result {
         Ok(code) => ExitCode::from(code),
