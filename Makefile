@@ -131,6 +131,12 @@ ci: lint test build
 	$(MAKE) -C src/toolchain/website docs-html-test
 	$(MAKE) -C src/toolchain/targets/tests inbox
 	$(MAKE) -C src/toolchain/targets/tests bank-mobile
+	mkdir -p target && git rev-parse HEAD > target/ci-green
+
+## push: The only way to push ([CI-PUSH-GREEN], docs/plans/coordinated-push.md). Hold the TMC lock PUSH-<branch> first. Refuses unless make ci passed on this exact HEAD and no CI run on the branch is queued or running; then pushes.
+.PHONY: push
+push:
+	scripts/ci/push.sh
 
 _runtime_wasm _test_wasm_goldens: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 

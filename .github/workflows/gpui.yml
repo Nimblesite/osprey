@@ -19,7 +19,7 @@ on:
 concurrency:
   # Not github.workflow: a called workflow takes its caller's name, and sharing its group cancels it.
   group: gpui-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   changes:
