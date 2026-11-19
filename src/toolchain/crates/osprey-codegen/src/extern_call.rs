@@ -75,7 +75,11 @@ fn lookup(name: &str) -> Option<Sig> {
         "input" => sig("osp_input", &[], Ret::Str),
         // [BUILTIN-PROCESS-ARGS] [BUILTIN-PROCESS-ENV] (string_runtime_list.c)
         "args" => sig("osp_process_args", &[], Ret::Strs),
-        "env" => sig("osp_process_env", &[Str], Ret::ResultStr(Some("env: variable is not set"))),
+        "env" => sig(
+            "osp_process_env",
+            &[Str],
+            Ret::ResultStr(Some("env: variable is not set")),
+        ),
         // --- file I/O [BUILTIN-FILE] (system_runtime.c) ---
         "readFile" => sig("read_file", &[Str], Ret::ResultStr(Some("File read error"))),
         "writeFile" => sig("write_file", &[Str, Str], Ret::ResultInt),
