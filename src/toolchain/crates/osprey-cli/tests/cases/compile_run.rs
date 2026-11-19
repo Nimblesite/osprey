@@ -274,3 +274,36 @@ fn run_reports_an_uninvokable_c_compiler() {
     let o = run_file_cc(&prog, "--run", "osprey_no_such_cc_zzz");
     o.expect_rejected(&[]);
 }
+
+/// A package whose entry defines `argument`, `open` and `event` builds for wasm32 as the shared
+/// native boundary: one module exporting the three C entry points plus a WASI entry that runs the
+/// top level once. [NATIVE-SHM-WASM]
+#[test]
+fn a_native_boundary_package_builds_one_wasm_module_exporting_the_boundary() {
+    let out = std::env::temp_dir().join(format!("osprey_e2e_boundary_{}.wasm", std::process::id()));
+    let editor = repo_root().join("src/osprey/packages/manager/editor");
+    let mut command = super::osprey();
+    let _ = command
+        .arg("build")
+        .arg(&editor)
+        .args(["--target=wasm32", "--quiet", "--no-warnings", "-o"])
+        .arg(&out);
+    let built = super::finish(&mut command);
+    assert_eq!(built.code, Some(0), "stderr={}", built.stderr);
+    let module = std::fs::read(&out).unwrap_or_default();
+    let _ = std::fs::remove_file(&out);
+    assert_eq!(module.get(..4), Some(&b"\0asm"[..]), "not a wasm module");
+    for export in [
+        "osprey_app_argument",
+        "osprey_app_open",
+        "osprey_app_event",
+        "__main_void",
+    ] {
+        assert!(
+            module
+                .windows(export.len())
+                .any(|bytes| bytes == export.as_bytes()),
+            "the module does not name {export}"
+        );
+    }
+}

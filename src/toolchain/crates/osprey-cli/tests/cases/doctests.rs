@@ -342,3 +342,39 @@ fn doctests_reject_an_output_fence_with_no_example_before_it() {
     let result = doc_tests("documentation_orphan_output", source);
     assert_doc_tests_rejected(&result, &["add", "`output` fence"], "0 passed, 1 failed");
 }
+
+/// Runnable examples execute under a WASI host on wasm32 and are refused, each with
+/// the target named, where nothing can execute them. [DOC-DOCTEST-HARNESS]
+#[cfg(unix)]
+#[test]
+fn doctests_run_on_wasm32_and_refuse_targets_that_cannot_execute() {
+    let dir = temp_dir("documentation_wasm_host");
+    let smoke = super::repo_root().join("scripts/wasm/wasm-smoke.mjs");
+    let host = dir.join("wasi-host");
+    std::fs::write(
+        &host,
+        format!("#!/bin/sh\nexec node '{}' \"$@\"\n", smoke.display()),
+    )
+    .expect("write WASI host");
+    super::set_mode(&host, 0o755);
+    let mut command = super::osprey();
+    let _ = command
+        .arg(temp_osp("documentation_wasm", DOCUMENTED))
+        .args(["--doctests", "--target=wasm32"])
+        .env("OSPREY_WASM_RUN", &host);
+    assert_doc_tests(&super::finish(&mut command), "2 passed, 0 failed");
+    for target in ["ios", "python"] {
+        let result = doc_tests_on(target);
+        let refusal = format!("runnable doctests require native or wasm32, found {target}");
+        assert_doc_tests_rejected(&result, &[&refusal, "echo example 1"], "1 passed, 1 failed");
+    }
+}
+
+/// The `--doctests` run of `DOCUMENTED` built for `target`.
+fn doc_tests_on(target: &str) -> super::Out {
+    run_source(
+        &format!("documentation_{target}"),
+        DOCUMENTED,
+        &["--doctests", &format!("--target={target}")],
+    )
+}
