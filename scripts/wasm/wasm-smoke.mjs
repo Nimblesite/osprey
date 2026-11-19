@@ -1,6 +1,6 @@
 // Smoke test for an Osprey-compiled WebAssembly module. [WASM-TARGET]
 //
-// Usage: node scripts/wasm/wasm-smoke.mjs <module.wasm> [expected-stdout-file]
+// Usage: node scripts/wasm/wasm-smoke.mjs <module.wasm> [expected-stdout-file] [-- <program args>]
 //
 // Validates the module is well-formed (`WebAssembly.validate`), runs it as a
 // WASI command under Node's built-in `node:wasi` (no external runtime needed —
@@ -21,8 +21,8 @@ import {
 // check. [WASM-TARGET]
 ensureWasiCapableNode(import.meta.url);
 
-const { wasmPath, expectedPath, bytes } = await loadModuleFromArgv(
-  "usage: node wasm-smoke.mjs <module.wasm> [expected-stdout-file]",
+const { wasmPath, expectedPath, programArgs, bytes } = await loadModuleFromArgv(
+  "usage: node wasm-smoke.mjs <module.wasm> [expected-stdout-file] [-- <program args>]",
 );
 
 // Node's WASI writes to the real stdout fd, so capture it by pointing the
@@ -44,7 +44,7 @@ mkdirSync(sandbox, { recursive: true });
 
 const wasi = new WASI({
   version: "preview1",
-  args: [wasmPath],
+  args: [wasmPath, ...programArgs],
   env: process.env.OSPREY_ARC_DEBUG
     ? { OSPREY_ARC_DEBUG: process.env.OSPREY_ARC_DEBUG }
     : {},

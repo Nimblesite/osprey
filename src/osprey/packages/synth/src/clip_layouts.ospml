@@ -60,7 +60,7 @@ module ClipLayouts
         External _ => external n
         _ => uniform (n, 1, 1)
 
-    oscillator n = length n.inputs == 1 && notes n.inputs && length n.outputs == 1 && audio n.outputs && length (filterList (n.outputs, \p => p.channels == 1)) == 1
+    oscillator n = length n.inputs <= 1 && notes n.inputs && length n.outputs == 1 && audio n.outputs && length (filterList (n.outputs, \p => p.channels == 1)) == 1
 
     optional (n, port) = match n.processor
         Oscillator => port.rate == Events
