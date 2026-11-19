@@ -1044,7 +1044,11 @@ jobs:
       - name: Install Playwright browsers
         run: |
           set -euo pipefail
-          mapfile -t missing < <({ npx playwright install-deps --dry-run chromium webkit || true; } | sed -n 's/^  \([^ ]*\)$/\1/p')
+          # The dry run exits 1 when it lists missing packages; any other failure stops the step.
+          status=0
+          npx playwright install-deps --dry-run chromium webkit > "$RUNNER_TEMP/deps.txt" || status=$?
+          [ "$status" -eq 0 ] || grep -q '^Missing system dependencies' "$RUNNER_TEMP/deps.txt"
+          mapfile -t missing < <(sed -n 's/^  \([^ ]*\)$/\1/p' "$RUNNER_TEMP/deps.txt")
           [ "${#missing[@]}" -eq 0 ] || bash ../../../scripts/ci/apt-prefetch.sh "${missing[@]}"
           npx playwright install --with-deps chromium webkit
         working-directory: ./src/toolchain/website
