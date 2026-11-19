@@ -7,7 +7,7 @@ pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
 --symbols | --signature | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--no-warnings | --warnings-as-errors] [--debug] [--profile] [--flavor default|ml|python|typescript] \
 [--memory=gc|arc|none] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [--entry-only] [-o <out>] \
-[--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
+[--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi] [-- <program args>]\n\
        osprey build [project] [--quiet] [--no-warnings | --warnings-as-errors] [--debug] [--memory=gc|arc|none] \
 [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
@@ -81,6 +81,9 @@ pub(crate) struct Cli {
     /// resolution falls through to the marker/extension precedence
     /// ([FLAVOR-SELECT], docs/specs/language/0023-LanguageFlavors.md).
     pub(super) flavor: Option<Flavor>,
+    /// Everything after `--`, forwarded to the program by `--run`
+    /// [CLI-RUN-ARGS].
+    pub(crate) program_args: Vec<String>,
 }
 
 /// Parse the argument list: the first non-flag is the source path; mode flags
@@ -97,6 +100,9 @@ pub(super) fn parse_args(args: &[String]) -> Result<Cli, String> {
     apply_default_memory(&mut cli, memory_given);
     apply_profile_rules(&mut cli, mode_chosen)?;
     crate::debug_options::validate(&cli)?;
+    if !cli.program_args.is_empty() && cli.mode != "--run" {
+        return Err(format!("arguments after -- need --run\n{USAGE}"));
+    }
     Ok(cli)
 }
 
@@ -119,6 +125,10 @@ fn parse_options(
     let mut memory_given = false;
     let mut arguments = args.iter();
     while let Some(argument) = arguments.next() {
+        if argument == "--" {
+            cli.program_args = arguments.cloned().collect();
+            break;
+        }
         if is_mode(argument) {
             select_mode(cli, argument, project_build)?;
             mode_chosen = true;
@@ -149,6 +159,7 @@ fn default_invocation(project_build: bool) -> Cli {
         debug_options: crate::debug_options::DebugOptions::default(),
         profile: false,
         flavor: None,
+        program_args: Vec::new(),
     }
 }
 

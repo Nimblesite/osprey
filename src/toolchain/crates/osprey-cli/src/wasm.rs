@@ -195,7 +195,12 @@ pub(crate) fn program_ir(program: &osprey_ast::Program) -> osprey_codegen::Resul
 }
 
 /// `--run` for wasm: build to a temp `.wasm`, then execute it under a WASI host.
-pub(crate) fn run(path: &str, program: &osprey_ast::Program, memory: &str) -> ExitCode {
+pub(crate) fn run(
+    path: &str,
+    program: &osprey_ast::Program,
+    memory: &str,
+    args: &[String],
+) -> ExitCode {
     let wasm = std::env::temp_dir().join(format!("{}.wasm", scratch_stem(path)));
     if let Err(code) = build_with_memory(
         path,
@@ -206,7 +211,7 @@ pub(crate) fn run(path: &str, program: &osprey_ast::Program, memory: &str) -> Ex
     ) {
         return code;
     }
-    let code = run_host(&wasm);
+    let code = run_host(&wasm, args);
     let _ = std::fs::remove_file(&wasm);
     code
 }
@@ -400,9 +405,9 @@ fn lib_dir(sysroot: &Path) -> Result<PathBuf, String> {
 /// Run a compiled `.wasm` under the first available WASI host (`wasmtime`, or
 /// `OSPREY_WASM_RUN`), propagating its exit code. Without one, point the user at
 /// a runtime or the browser loader.
-fn run_host(wasm: &Path) -> ExitCode {
+fn run_host(wasm: &Path, args: &[String]) -> ExitCode {
     let runner = tool("OSPREY_WASM_RUN", "wasmtime");
-    match Command::new(&runner).arg(wasm).status() {
+    match Command::new(&runner).arg(wasm).args(args).status() {
         Ok(s) => ExitCode::from(crate::child_exit_code(s)),
         Err(e) => {
             eprintln!("error: could not run {} with {runner}: {e}", wasm.display());

@@ -414,3 +414,52 @@ fn wasm32_builds_leave_no_scratch_files_behind() {
         temp.display()
     );
 }
+
+const ARGS_DEFAULT: &str = "fn shown(name) = match env(name) {\n    Success { value } => value\n    Error { message } => message\n}\n\nfn main() = print(\"${length(args())}:[${join(args(), \"|\")}] ${shown(\"OSP_ARGS_PROBE\")}\")\n";
+const ARGS_ML: &str = "main () = print (join (args ()) \"|\")\n";
+const ARGS_PYTHON: &str = "# osprey: flavor=python\n\ndef main():\n    print(join(args(), \"|\"))\n";
+
+fn run_with(file: &Path, extra: &[&str], probe: Option<&str>) -> (Option<i32>, String, String) {
+    let mut command = osprey();
+    let _ = command.arg(file).args(["--run", "--quiet"]).args(extra);
+    let _ = match probe {
+        Some(value) => command.env("OSP_ARGS_PROBE", value),
+        None => command.env_remove("OSP_ARGS_PROBE"),
+    };
+    finished(&mut command)
+}
+
+/// Every flavor reads argv and the environment; `--run` forwards what follows
+/// `--`, a compiled binary its own argv. Implements [BUILTIN-PROCESS-ARGS],
+/// [BUILTIN-PROCESS-ENV] and [CLI-RUN-ARGS].
+#[test]
+fn programs_read_their_arguments_and_environment() {
+    let scratch = Scratch::new("args");
+    let default = scratch.write("args.osp", ARGS_DEFAULT);
+    let unset = "0:[] env: variable is not set\n";
+    let cases: [(&[&str], Option<&str>, &str); 6] = [
+        (&[], None, unset),
+        (&["--"], Some("hi"), "0:[] hi\n"),
+        (&["--", "acme-dev"], Some(""), "1:[acme-dev] \n"),
+        (&["--", "two words", "--list", "-h"], None, "3:[two words|--list|-h] env: variable is not set\n"),
+        (&["--memory=arc", "--", "", "x"], Some("a=b c"), "2:[|x] a=b c\n"),
+        (&["--", "--run", "--", "ünï"], None, "3:[--run|--|ünï] env: variable is not set\n"),
+    ];
+    for (extra, probe, want) in cases {
+        let (code, out, err) = run_with(&default, extra, probe);
+        assert_eq!((code, out.as_str()), (Some(0), want), "{extra:?} {err}");
+    }
+    let ml = scratch.write("args.ospml", ARGS_ML);
+    let python = scratch.write("args.py", ARGS_PYTHON);
+    for file in [&ml, &python] {
+        assert_eq!(run_with(file, &["--", "check", "v1.2.3"], None).1, "check|v1.2.3\n");
+        assert_eq!(run_with(file, &[], None).1, "\n");
+    }
+    let exe = scratch.0.join("args-bin");
+    let (code, _, err) = finished(osprey().arg(&default).args(["--compile", "--quiet", "-o"]).arg(&exe));
+    assert_eq!(code, Some(0), "{err}");
+    let (code, out, _) = finished(Command::new(&exe).args(["p", "q r"]).env("OSP_ARGS_PROBE", "bin"));
+    assert_eq!((code, out.as_str()), (Some(0), "2:[p|q r] bin\n"));
+    assert_refused(osprey().arg(&default).args(["--check", "--", "x"]), 2, "arguments after -- need --run");
+    assert_refused(osprey().arg(&default).args(["--compile", "--", "x"]), 2, "arguments after -- need --run");
+}

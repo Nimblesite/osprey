@@ -475,7 +475,7 @@ pub(super) fn run_program(cli: &Cli, input: &CompilationInput) -> ExitCode {
         }
         "wasm32" => match reject_wasm_options(cli) {
             Some(code) => code,
-            None => wasm::run(input.debug_path(), input.backend_program(), &cli.memory),
+            None => wasm::run(input.debug_path(), input.backend_program(), &cli.memory, &cli.program_args),
         },
         "android-arm64" | "android-x64" => {
             toolchain::fail("Android libraries must run inside a host app; use --compile")
@@ -499,7 +499,7 @@ fn run_native(cli: &Cli, input: &CompilationInput) -> ExitCode {
     } else {
         let output = (cli.debug && (cli.output.is_some() || cli.debug_options.keeps_artifacts()))
             .then(|| input.output_path(cli.output.as_deref(), "native"));
-        execute_native(input, NativeOptions::from_cli(cli), output.as_deref())
+        execute_native(input, NativeOptions::from_cli(cli), output.as_deref(), &cli.program_args)
     };
     match result {
         Ok(code) => ExitCode::from(code),

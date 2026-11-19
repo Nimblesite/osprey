@@ -54,6 +54,38 @@ n =
         Error _       => 0
 ```
 
+### `args() -> List<string>` — [BUILTIN-PROCESS-ARGS]
+Returns the program's command-line arguments in order, without the program
+name. A program started with no arguments gets `[]`. A compiled binary reads
+its own argv: `_NSGetArgv` on Apple platforms, the `.init_array` arguments on
+Linux and Android, `__argv` on Windows, and WASI `args_get` on wasm32. Hosted
+library targets (iOS, Android, Python) answer `[]`.
+
+**[CLI-RUN-ARGS]** `osprey <file> --run [flags] -- <args...>` passes everything
+after `--` to the program unchanged, including words that look like flags; under
+`--target=wasm32` they go to the WASI host. Arguments after `--` without
+`--run` are a usage error (exit 2).
+
+```osprey
+match listGet(args(), 0) {
+    Success { value } => print("first: ${value}")
+    Error _ => print("usage: tool <name>")
+}
+```
+
+```osprey-ml
+main () = print (join (args ()) ",")
+```
+
+### `env(name: string) -> Result<string, Error>` — [BUILTIN-PROCESS-ENV]
+Reads one environment variable. A set variable, even an empty one, is
+`Success`; an unset one is `Error("env: variable is not set")`. A WASI host
+exposes only the variables it was told to pass through.
+
+```osprey
+let token = env("API_TOKEN") ?: ""
+```
+
 ### `toString(value: printable) -> string` — [BUILTIN-TOSTRING]
 Uses the same accepted types and formatting as `print`, without writing output.
 

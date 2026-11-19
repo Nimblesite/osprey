@@ -12,6 +12,9 @@ fn conversion_name(target: Numeric) -> String {
 pub(super) fn declare(e: &mut TypeEnv) {
     runtime_mono(e, "print", vec![any()], u());
     runtime_mono(e, "input", vec![], s());
+    // [BUILTIN-PROCESS-ARGS] [BUILTIN-PROCESS-ENV]
+    runtime_mono(e, "args", vec![], Type::list(s()));
+    runtime_mono(e, "env", vec![s()], res(s()));
     mono(e, "toString", vec![any()], s());
     mono(e, "length", vec![any()], i());
     // [CONCURRENCY-SLEEP] The native status is not part of the Unit surface.

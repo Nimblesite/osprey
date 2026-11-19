@@ -31,6 +31,7 @@ fn cli(path: impl Into<String>, mode: &str, policy: Policy) -> Cli {
         debug_options: debug_options::DebugOptions::default(),
         profile: false,
         flavor: None,
+        program_args: Vec::new(),
     }
 }
 

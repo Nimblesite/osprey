@@ -3,6 +3,11 @@
  * [BUILTIN-STRING-LINES], [BUILTIN-STRING-WORDS], and [BUILTIN-STRING-JOIN].
  * List-returning string helpers (split, lines, words, join).
  * Scalars live in string_runtime.c.
+ *
+ * Also implements [BUILTIN-PROCESS-ARGS] and [BUILTIN-PROCESS-ENV]: the
+ * process's command-line arguments as a List<string> and one environment
+ * variable as a nullable string. Neither changes `main`'s signature; each
+ * platform's own argv source is read instead.
  */
 
 #include <stdint.h>
@@ -12,6 +17,12 @@
 #include "collection_runtime.h"
 #include "memory_hooks.h"
 #include "string_runtime.h"
+
+#if defined(__APPLE__)
+#include <crt_externs.h>
+#elif defined(__wasm__)
+#include <wasi/api.h>
+#endif
 
 static osp_string_list *osp_list_new(int64_t capacity) {
     if (capacity < 0 || (uint64_t)capacity > UINT32_MAX / sizeof(char *)) return NULL;
@@ -137,3 +148,63 @@ char *osp_string_join_list(OspreyList *list, const char *sep) {
 }
 
 void osp_string_list_free(osp_string_list *list) { osp_release(list); }
+
+#if defined(__linux__) || defined(__ANDROID__)
+// glibc and bionic call .init_array entries with (argc, argv, envp); keep them.
+static int osp_saved_argc;
+static char **osp_saved_argv;
+__attribute__((constructor)) static void osp_save_argv(int argc, char **argv, char **envp) {
+    (void)envp;
+    osp_saved_argc = argc;
+    osp_saved_argv = argv;
+}
+#endif
+
+// Every argument after the program name, as a fresh owned list.
+static osp_string_list *osp_args_from(int argc, char *const *argv) {
+    int64_t count = argc > 1 && argv ? (int64_t)argc - 1 : 0;
+    osp_string_list *list = osp_list_new(count);
+    for (int64_t i = 0; list && i < count; i++) {
+        const char *arg = argv[i + 1] ? argv[i + 1] : "";
+        if (!osp_list_piece(list, arg, strlen(arg))) return NULL;
+    }
+    return list;
+}
+
+#if defined(__wasm__)
+// WASI hands argv over through args_sizes_get/args_get, not a global.
+static osp_string_list *osp_args_wasi(void) {
+    __wasi_size_t argc = 0;
+    __wasi_size_t bytes = 0;
+    if (__wasi_args_sizes_get(&argc, &bytes) != 0 || argc == 0) return osp_list_new(0);
+    char **argv = malloc((size_t)argc * sizeof(char *));
+    char *buf = malloc((size_t)bytes);
+    osp_string_list *list = NULL;
+    if (argv && buf && __wasi_args_get((uint8_t **)argv, (uint8_t *)buf) == 0) {
+        list = osp_args_from((int)argc, argv);
+    }
+    free(argv);
+    free(buf);
+    return list;
+}
+#endif
+
+// [BUILTIN-PROCESS-ARGS] NULL only when allocation fails.
+osp_string_list *osp_process_args(void) {
+#if defined(__APPLE__)
+    return osp_args_from(*_NSGetArgc(), *_NSGetArgv());
+#elif defined(__linux__) || defined(__ANDROID__)
+    return osp_args_from(osp_saved_argc, osp_saved_argv);
+#elif defined(_WIN32)
+    return osp_args_from(__argc, __argv);
+#elif defined(__wasm__)
+    return osp_args_wasi();
+#else
+    return osp_list_new(0);
+#endif
+}
+
+// [BUILTIN-PROCESS-ENV] A fresh copy of the variable, or NULL when it is unset.
+char *osp_process_env(const char *name) {
+    return name ? osp_host_string_copy(getenv(name)) : NULL;
+}

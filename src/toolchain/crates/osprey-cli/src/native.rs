@@ -19,9 +19,11 @@ pub(crate) fn execute_native(
     input: &CompilationInput,
     options: NativeOptions<'_>,
     output: Option<&Path>,
+    args: &[String],
 ) -> Result<u8, ExitCode> {
     let (exe, temporary) = selected_executable(input, options, output)?;
     let mut command = Command::new(&exe);
+    let _ = command.args(args);
     let scratch = crate::test_discovery::is_test_file(Path::new(input.display_path()))
         .then(|| crate::toolchain::Scratch::new(input.display_path(), "run"))
         .transpose()?;

@@ -18,6 +18,18 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
         "let userInput = input()\nprint(userInput)",
     ),
     builtin_doc!(
+        "args",
+        "Returns the program's command-line arguments, without the program name.",
+        [],
+        "print(join(args(), \" \"))",
+    ),
+    builtin_doc!(
+        "env",
+        "Reads one environment variable; an Error when it is not set.",
+        ["name" => "The variable's name"],
+        "match env(\"HOME\") {\n    Success { value } => print(value)\n    Error { message } => print(message)\n}",
+    ),
+    builtin_doc!(
         "toString",
         "Formats the same scalar and Result values accepted by print without writing output. Unit renders as 0.",
         ["value" => "The value to convert to string"],

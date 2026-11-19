@@ -262,10 +262,10 @@ fn run_host_uses_the_configured_runner_and_handles_a_missing_one() {
     let _ = std::fs::write(&wasm, b"\0asm");
     // A present runner that ignores args and exits 0 → success-code path.
     let _env = EnvVar::set("OSPREY_WASM_RUN", "true");
-    let _ok = run_host(&wasm);
+    let _ok = run_host(&wasm, &[]);
     // A missing runner → the spawn-error hint path.
     std::env::set_var("OSPREY_WASM_RUN", "/no/such/runner/osprey_xyz");
-    let _err = run_host(&wasm);
+    let _err = run_host(&wasm, &[]);
 }
 
 #[test]
@@ -320,7 +320,7 @@ fn build_and_run_drive_the_full_driver_with_stub_tools() {
     let program = osprey_syntax::parse_program("let n = 1\nprint(\"${n}\")\n").program;
     let out = std::env::temp_dir().join("osprey_full_driver_unit.wasm");
     let built = build("unit.osp", &program, &out);
-    let _ran = run("unit.osp", &program, DEFAULT_MEMORY);
+    let _ran = run("unit.osp", &program, DEFAULT_MEMORY, &[]);
 
     if let Some(a) = &archive {
         let _ = std::fs::remove_file(a);
