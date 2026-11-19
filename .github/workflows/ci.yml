@@ -1021,10 +1021,24 @@ jobs:
           key: ${{ runner.os }}-cargo-website-wasm-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-website-wasm-
 
+      # Ubuntu 26 runners ship none of Playwright's Chromium and WebKit libraries, and the Azure
+      # mirror serves them slowly enough to spend this job's whole timeout. Every apt install here
+      # (playwright install-deps included) keeps its packages in a cache restored before and saved
+      # right after the installs, so a later test failure still saves them.
+      - name: Restore apt packages
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/osprey-apt
+          key: ${{ runner.os }}-${{ runner.arch }}-apt-website-${{ hashFiles('src/toolchain/website/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-apt-website-
+
       # Website tests execute native documentation examples as well as WASM.
       - name: Install native and wasm toolchains
         run: |
           set -euo pipefail
+          mkdir -p "$HOME/.cache/osprey-apt/partial"
+          printf 'Dir::Cache::Archives "%s";\nAPT::Keep-Downloaded-Packages "true";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' "$HOME/.cache/osprey-apt" \
+            | sudo tee /etc/apt/apt.conf.d/99osprey-cache >/dev/null
           sudo apt-get update
           sudo apt-get install -y clang llvm lld wabt zsh libssl-dev pkg-config pandoc jq
           curl -fsSL --retry 3 --retry-max-time 60 -o /tmp/wasi-sysroot.tar.gz \
@@ -1038,9 +1052,18 @@ jobs:
         run: npm ci
         working-directory: ./src/toolchain/website
 
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+      # WebKit too: tests/install-webkit.cjs then finds it installed.
+      - name: Install Playwright browsers
+        run: |
+          npx playwright install --with-deps chromium webkit
+          sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/osprey-apt"
         working-directory: ./src/toolchain/website
+
+      - name: Save apt packages
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/osprey-apt
+          key: ${{ runner.os }}-${{ runner.arch }}-apt-website-${{ hashFiles('src/toolchain/website/package-lock.json') }}
 
       - name: Run end-to-end tests
         run: npm test
