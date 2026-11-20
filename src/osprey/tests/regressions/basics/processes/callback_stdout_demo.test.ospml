@@ -72,21 +72,19 @@ processEventHandler (99, 1, "ne 2\nLine 3\n")
 processEventHandler (99, 2, "ing\n")
 processEventHandler (99, 3, "0")
 
+(** Whether [probe] spawns, is awaited and cleaned up, exiting with [expected]. *)
+exitedCleanly (probe, expected) = match probe
+    Success value =>
+        exitCode = awaitProcess value
+        cleanupProcess value
+        exitCode == expected
+    Error _message => false
+
 (** Drive stdout, exit callbacks, waits, and cleanup from inside the test body. *)
 callbackLifecycleCase () =
     outputProbe = spawnProcess "echo asserted callback output" processEventHandler
-    outputCompleted = match outputProbe
-        Success value =>
-            exitCode = awaitProcess value
-            cleanupProcess value
-            exitCode == 0
-        Error _message => false
+    outputCompleted = exitedCleanly (outputProbe, 0)
     errorProbe = spawnProcess "echo asserted callback error 1>&2 && exit 1" processEventHandler
-    errorCompleted = match errorProbe
-        Success value =>
-            exitCode = awaitProcess value
-            cleanupProcess value
-            exitCode == 1
-        Error _message => false
+    errorCompleted = exitedCleanly (errorProbe, 1)
     checkAll "callback process lifecycle state" [outputCompleted, errorCompleted]
 test "callbacks accompany successful and failing process exits" callbackLifecycleCase

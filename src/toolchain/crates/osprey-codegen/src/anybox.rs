@@ -223,6 +223,18 @@ fn ensure_to_string(cg: &mut Codegen) {
     }
     cg.anys.to_string_emitted = true;
     let saved = cg.enter_nested_fn();
+    let (desc, payload, dt) = guard_box(cg);
+    let raw = crate::aggregate::load_field(cg, DESC_TY, &dt, 1, LType::Str);
+    let f = cg.emit_reg(format!("bitcast i8* {raw} to {RENDER_SIG}*"));
+    let s = cg.emit_reg(format!("call i8* {f}(i8* {desc}, i64 {payload})"));
+    cg.emit(format!("ret i8* {s}"));
+    cg.exit_nested_fn(saved, "i8*", TO_STRING_FN, &[(LType::Ptr, "box".into())]);
+}
+
+/// Open the `%box` parameter of a nested function: a null box (a zeroed slot
+/// that never held a value) returns `null`; otherwise load its descriptor,
+/// payload and the descriptor cast to `DESC_TY*`.
+fn guard_box(cg: &mut Codegen) -> (String, String, String) {
     let null_lbl = cg.fresh_label();
     let body_lbl = cg.fresh_label();
     let isnull = cg.emit_reg("icmp eq i8* %box, null");
@@ -235,11 +247,7 @@ fn ensure_to_string(cg: &mut Codegen) {
     cg.start_block(&body_lbl);
     let (desc, payload) = load_box(cg, "%box");
     let dt = cg.emit_reg(format!("bitcast i8* {desc} to {DESC_TY}*"));
-    let raw = crate::aggregate::load_field(cg, DESC_TY, &dt, 1, LType::Str);
-    let f = cg.emit_reg(format!("bitcast i8* {raw} to {RENDER_SIG}*"));
-    let s = cg.emit_reg(format!("call i8* {f}(i8* {desc}, i64 {payload})"));
-    cg.emit(format!("ret i8* {s}"));
-    cg.exit_nested_fn(saved, "i8*", TO_STRING_FN, &[(LType::Ptr, "box".into())]);
+    (desc, payload, dt)
 }
 
 /// Load a box's `(desc, payload)` pair from its `i8*` operand.

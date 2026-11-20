@@ -101,18 +101,7 @@ fn ensure_show(cg: &mut Codegen) {
     }
     cg.anys.show_emitted = true;
     let saved = cg.enter_nested_fn();
-    let null_lbl = cg.fresh_label();
-    let body_lbl = cg.fresh_label();
-    let isnull = cg.emit_reg("icmp eq i8* %box, null");
-    cg.emit(format!(
-        "br i1 {isnull}, label %{null_lbl}, label %{body_lbl}"
-    ));
-    cg.start_block(&null_lbl);
-    let none = cg.string_constant("null");
-    cg.emit(format!("ret i8* {}", none.operand));
-    cg.start_block(&body_lbl);
-    let (desc, _) = super::load_box(cg, "%box");
-    let dt = cg.emit_reg(format!("bitcast i8* {desc} to {}*", super::DESC_TY));
+    let (_, _, dt) = super::guard_box(cg);
     let kind = crate::aggregate::load_field(cg, super::DESC_TY, &dt, 0, LType::I64);
     let is_text = cg.emit_reg(format!("icmp eq i64 {kind}, {}", super::KIND_STRING));
     let quoted = cg.string_constant(crate::show::QUOTED);

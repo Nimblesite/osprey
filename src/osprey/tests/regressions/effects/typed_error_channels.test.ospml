@@ -72,17 +72,22 @@ combined =
         total)
 print "final combined result = ${toString combined}"
 
-(** Apply the strict inner Range policy in isolation. *)
-strictRangeForTest () =
+(** The ordinary clamping policy: pin `value` to `limit` when it exceeds it. *)
+clampPolicy (value, limit) = match value > limit
+    true => limit
+    false => value
+
+(** Answers one Range.clamp with [policy], then runs `loadRetries raw high` under it. *)
+rangeUnder (policy, raw, high) =
     handle Range
-        clamp _v _hi => 1
-    loadRetries 500 10
+        clamp value limit => policy (value, limit)
+    loadRetries raw high
+
+(** Apply the strict inner Range policy in isolation. *)
+strictRangeForTest () = rangeUnder (\(_v, _hi) => 1, 500, 10)
 
 (** Apply the ordinary clamping Range policy in isolation. *)
-relaxedRangeForTest () =
-    handle Range
-        clamp _v hi => hi
-    loadRetries 500 10
+relaxedRangeForTest () = rangeUnder (\(_v, hi) => hi, 500, 10)
 
 parseUnder (raw, replacement) =
     handle Parse
@@ -96,17 +101,9 @@ missingUnder key =
             _ => 1
     perform Missing.fill key
 
-clampUnder (raw, high) =
-    handle Range
-        clamp value limit => match value > limit
-            true => limit
-            false => value
-    loadRetries raw high
+clampUnder (raw, high) = rangeUnder (clampPolicy, raw, high)
 
-forceUnder (raw, high, replacement) =
-    handle Range
-        clamp _value _limit => replacement
-    loadRetries raw high
+forceUnder (raw, high, replacement) = rangeUnder (\(_value, _limit) => replacement, raw, high)
 
 rangePolicyTrace (raw, high) =
     handle Range
