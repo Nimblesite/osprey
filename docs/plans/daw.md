@@ -135,6 +135,12 @@ The three-band split is a start, not the EQ. Target: a parametric EQ as good as 
 - [x] Keep the native menu bar alive when Mix adds the Routing menu. The macOS journey drives 23 interactions, then records rendered bars in a stereo video. Choosing Master and pads through Accessibility restores every value in the decoded project.
 - [x] Cache the miniature pitch traces when the project opens. The native test taps every arrangement page and ruler, moves every gain fader, and rereads the project after switching the dry route from pads to Master and back.
 
+- [x] `ui::Lists::flatten` joined groups one by one, copying the list so far each time, and every frame's paths and scene rows went through it. It joins by halves now: a Timeline tap fell from 10 ms to 1.3 ms (45e335118).
+- [x] The song strip shows the song overview: one column per bar, as tall as the bar is busy, with the piano roll's two bars framed; cached when the song opens.
+- [ ] The application menu's first item still reads "About FerroUI".
+- [ ] The Patch page's subtitle is baked into the skin's header art ("Signal flow"); the design shows the open page there.
+- [ ] Separate windows for Timeline, Patch and Mix (user: "shoot towards multi window"); the host mounts one window today.
+
 ### Strip the UI [DAW-PAGES-STRIP]
 
 From the committed screens: cut everything that repeats or says nothing (ferroui-prism-lead owns the views).
