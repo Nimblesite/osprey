@@ -2,6 +2,9 @@ import synth::WaveImport
 import synth::SampleResources
 import synth::WaveMath
 import synth::Waves
+import synth::SpectralStreams
+import synth::SpectralMath
+import synth::Components
 
 // [SYNTH-ADVANCED-GRAINS-IMPORT] Decoding and downmixing real WAV bytes into grain resources.
 // [SYNTH-ADVANCED-GRAINS-IMPORT] Every refusal carries its own message; nothing fails silently.
@@ -48,6 +51,39 @@ refusedWith (outcome, why) = match outcome
 wavMonoFmt () = wavChunk ("fmt ", wavFormatBody (1, 1, 48000, 2, 96000, 16))
 
 wavMonoData () = wavChunk ("data", [0, 64, 0, 128])
+
+// [SYNTH-ADVANCED-SPECTRAL-FORMANT] A vowel-like voice: harmonics of 156.25 Hz under one resonance at 1 kHz.
+formantRate = 16000.0
+
+formantVoice n = foldList (toList (range (1, 40)), 0.0, \(sum, k) => sum + sin (6.283185307179586 * 156.25 * toFloat k * toFloat n / formantRate) / (1.0 + pow ((156.25 * toFloat k - 1000.0) / 120.0, 2.0)))
+
+formantConfig (ratio, formant) = synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = synth::SpectralPitch(ratio = ratio, formant = formant), mix = 1.0)
+
+formantStep (config, carry, n) = match carry
+    Error why => Error(message = why)
+    Success run => match SpectralStreams::next (config, run.held, formantVoice n, 0.0)
+        Error why => Error(message = why)
+        Success step => Success(value = { held = step.next, samples = listAppend run.samples step.sample })
+
+// 4,096 samples; the last 1,024 lie past the transform's 1,023-sample latency.
+formantRendered config = foldList (toList (range (0, 4096)), Success(value = { held = SpectralStreams::initial config, samples = [] }), \(carry, n) => formantStep (config, carry, n))
+
+formantWindowed (samples, n) = (listGet samples n ?: 0.0) * (0.5 - 0.5 * cos (6.283185307179586 * toFloat (n - 3072) / 1024.0))
+
+// Hann-windowed DFT magnitude of the final 1,024 samples at one frequency.
+formantLevel (samples, frequency) =
+    tail = toList (range (3072, 4096))
+    re = foldList (tail, 0.0, \(sum, n) => sum + formantWindowed (samples, n) * cos (6.283185307179586 * frequency * toFloat n / formantRate))
+    im = foldList (tail, 0.0, \(sum, n) => sum + formantWindowed (samples, n) * sin (6.283185307179586 * frequency * toFloat n / formantRate))
+    sqrt (re * re + im * im)
+
+formantLevels config = match formantRendered config
+    Error why => { fault = why, kept = 0.0, raised = 0.0, between = 0.0, old = 0.0, root = 0.0 }
+    Success run => { fault = "", kept = formantLevel (run.samples, 937.5), raised = formantLevel (run.samples, 1406.25), between = formantLevel (run.samples, 1093.75), old = formantLevel (run.samples, 156.25), root = formantLevel (run.samples, 234.375) }
+
+configured config = match SpectralStreams::configure config
+    Error _ => false
+    Success _ => true
 
 registerWaveJourneys () =
     test ("decoded WAV keeps every PCM width, channel layout and stereo downmix exact", \() => arithmetic (\() =>
@@ -190,3 +226,22 @@ registerWaveJourneys () =
             \held => expect (Waves::controlledCutoff (held.c, held.m), held.want))
         forEachList ([{ r = 1.0, d = 4.0, want = 0.0 }, { r = 0.5, d = 2.0, want = 0.0 }, { r = 4.0, d = 4.0, want = 1.0 }, { r = 5.0, d = 3.0, want = 2.0 }, { r = 9.0, d = 5.0, want = 2.0 }],
             \held => expect (Waves::releaseGain (held.r, held.d), held.want))))
+    test ("formant pitch shifting moves pitch and formants independently and refuses out-of-range ratios", \() => arithmetic (\() =>
+        kept = formantLevels (formantConfig (1.5, 1.0))
+        moved = formantLevels (formantConfig (1.5, 1.5))
+        forEachList ([kept, moved], \levels => expect (levels.fault, ""))
+        // Both land on the new pitch: 234.375 Hz harmonics sound, the old 156.25 Hz series and off-harmonics are gone.
+        forEachList ([kept, moved], \levels => expect (levels.root > 1.0 && levels.kept > 10.0 && levels.raised > 10.0, true))
+        forEachList ([kept, moved], \levels => expect (levels.old < 0.000001 && levels.between < 0.000001, true))
+        // formant = 1 keeps the resonance at 1 kHz; formant = ratio carries it up to 1.5 kHz with the pitch.
+        expect (kept.kept > kept.raised * 1.5, true)
+        expect (moved.raised > moved.kept * 6.0, true)
+        expect (kept.kept > moved.kept * 3.0 && moved.raised > kept.raised * 3.0, true)
+        // Equal envelopes give a gain of exactly 1; silence is never amplified; gains stop at +24 dB.
+        forEachList ([{ w = 0.3, c = 0.3, want = 1.0 }, { w = 5.0, c = 0.0, want = 1.0 }, { w = 100.0, c = 1.0, want = 16.0 }, { w = 1.0, c = 4.0, want = 0.25 }, { w = 2.0, c = 0.5, want = 4.0 }],
+            \g => expect (SpectralMath::formantGain (g.w, g.c), g.want))
+        expect (SpectralMath::envelopeRadius (1024.0, 16000.0), 10.0)
+        forEachList ([{ r = 1.5, f = 0.25, ok = true }, { r = 1.5, f = 4.0, ok = true }, { r = 0.5, f = 2.0, ok = true }, { r = 1.5, f = 0.2, ok = false }, { r = 1.5, f = 4.5, ok = false }, { r = 0.2, f = 1.0, ok = false }, { r = 1.0, f = 0.0, ok = false }],
+            \c => expect (configured (formantConfig (c.r, c.f)), c.ok))
+        spectral = Components::spectral (7, 1024, 256, 6.0)
+        expect (length (filterList (spectral.parameters, \p => p.key == "formant" && p.initial == 1.0 && p.minimum == 0.25 && p.maximum == 4.0)), 1)))

@@ -74,4 +74,11 @@ def nearest (value : Float) : Float := Float.floor (value + 0.5)
 def sourceLow (target ratio : Float) : Float := Float.floor ((target - 0.5) / ratio) - 1
 def sourceHigh (target ratio : Float) : Float := Float.ceil ((target + 0.5) / ratio) + 1
 
+/-- Spectral-envelope radius in bins: about 150 Hz. -/
+def envelopeRadius (size sampleRate : Float) : Float := Float.ceil (150 * size / sampleRate)
+
+/-- Formant gain: wanted over current envelope, 1 where the envelope is silent, at most 16 (+24 dB). -/
+def formantGain (wanted current : Float) : Float :=
+  if current <= 0.000000001 then 1 else if wanted / current > 16 then 16 else wanted / current
+
 end synth.SpectralMath

@@ -68,6 +68,18 @@ module Components
     (** Explicit stereo-to-mono downmix, (left + right) / 2; routing never changes channel counts implicitly. *)
     export downmix identity = node (identity, Downmix, [audioPort ("audio", 2)], [port "audio"], [])
 
+    outlet name = audioPort (name, 1)
+
+    (** [SYNTH-GRAPH-CHANNELS] One N-channel input becomes N one-channel outlets, in layout order. *)
+    export split (identity, channels) = node (identity, Split, [audioPort ("audio", channels)], mapList (toList (range (0, channels)), \index => outlet "channel ${index}"), [])
+
+    (** [SYNTH-GRAPH-CHANNELS] N one-channel inlets become one N-channel output, in inlet order. *)
+    export join (identity, channels) = node (identity, Join, mapList (toList (range (0, channels)), \index => outlet "channel ${index}"), [audioPort ("audio", channels)], [])
+
+    (** [SYNTH-GRAPH-CHANNELS] One `inputs`-channel input is remapped: output channel i takes input channel
+        channelMap[i], or silence when the entry is -1. Graph validation rejects any other entry. *)
+    export routeChannels (identity, inputs, channelMap) = node (identity, Route(channelMap = channelMap), [audioPort ("audio", inputs)], [audioPort ("audio", length channelMap)], [])
+
     (** A stereo graph output for native instruments and effects. *)
     export stereoOutput identity = node (identity, Sink, [audioPort ("audio", 2)], [], [])
 
@@ -119,7 +131,7 @@ module Components
     (** [SYNTH-ADVANCED-SPECTRAL] STFT processor (latency size - 1); the side input feeds morphing only.
         Transform 0 pass, 1 freeze (hold), 2 band (low/high Hz), 3 shift (bins), 4 smear, 5 morph (amount),
         6 phase-vocoder pitch shift (ratio 0.25–4, no transient handling). *)
-    export spectral (identity, size, hop, transform) = node (identity, Spectral(size = size, hop = hop), [port "audio", port "side"], [port "audio"], [parameter ("transform", "Transform (0 pass, 1 freeze, 2 band, 3 shift, 4 smear, 5 morph, 6 pitch)", Ratio, 0.0, 6.0, transform), ratio ("hold", "Freeze hold", 1.0), parameter ("low", "Band low", Hertz, 0.0, 24000.0, 200.0), parameter ("high", "Band high", Hertz, 0.0, 24000.0, 4000.0), parameter ("shift", "Shift (bins)", Ratio, -2047.0, 2047.0, 0.0), parameter ("amount", "Smear / morph amount", Normalised, 0.0, 0.999, 0.5), normalised ("mix", "Dry/processed mix", 1.0), parameter ("ratio", "Pitch ratio", Ratio, 0.25, 4.0, 1.0)])
+    export spectral (identity, size, hop, transform) = node (identity, Spectral(size = size, hop = hop), [port "audio", port "side"], [port "audio"], [parameter ("transform", "Transform (0 pass, 1 freeze, 2 band, 3 shift, 4 smear, 5 morph, 6 pitch)", Ratio, 0.0, 6.0, transform), ratio ("hold", "Freeze hold", 1.0), parameter ("low", "Band low", Hertz, 0.0, 24000.0, 200.0), parameter ("high", "Band high", Hertz, 0.0, 24000.0, 4000.0), parameter ("shift", "Shift (bins)", Ratio, -2047.0, 2047.0, 0.0), parameter ("amount", "Smear / morph amount", Normalised, 0.0, 0.999, 0.5), normalised ("mix", "Dry/processed mix", 1.0), parameter ("ratio", "Pitch ratio", Ratio, 0.25, 4.0, 1.0), parameter ("formant", "Formant ratio (1 keeps formants)", Ratio, 0.25, 4.0, 1.0)])
 
     (** [SYNTH-ADVANCED-NONLINEAR] Waveshaper: curve 0 tanh, 1 hard, 2 cubic, 3 fold; ADAA and 2× oversampling switches. *)
     export shaper (identity, curve, drive) = processing (identity, Shaper, [parameter ("curve", "Curve (0 tanh, 1 hard, 2 cubic, 3 fold)", Ratio, 0.0, 3.0, curve), parameter ("drive", "Drive", Ratio, 0.1, 50.0, drive), parameter ("bias", "Bias (asymmetry)", Ratio, -1.0, 1.0, 0.0), amplitude ("level", "Output level", 0.5), ratio ("antialias", "Antiderivative antialiasing", 1.0), ratio ("oversample", "2x oversampling (+15 samples latency)", 0.0)])

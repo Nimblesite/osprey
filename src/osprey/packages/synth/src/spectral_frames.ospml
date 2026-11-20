@@ -132,20 +132,42 @@ module SpectralFrames
         true => limit
         false => value
 
-    synthesised (config, sources, ratio, motion, j, built: SpectralFrame) = match motion
+    // The spectral envelope [SYNTH-ADVANCED-SPECTRAL-FORMANT]: the loudest magnitude within about 150 Hz,
+    // which runs through a harmonic sound's partial peaks rather than the gaps between them.
+    envelope (config, sources) =
+        radius = floatToInt (SpectralMath::envelopeRadius (toFloat config.size, config.sampleRate)) ?: 1
+        Sequences::mapIndexed (sources, \(index, _) => foldList (toList (range (atLeastZero (satSub index radius), atMost (satAdd index (satAdd radius 1), length sources))), 0.0, \(most, k) => TableMath::larger (most, strength (sources, k))))
+
+    // A pitch source keeps its magnitude in the real part.
+    strength (sources, k) = match listGet sources k
+        Error _ => 0.0
+        Success source => source.re
+
+    // The envelope at a fractional bin; outside the spectrum it is silent.
+    shaped (levels, bin) = match floatToInt (SpectralMath::nearest bin)
+        Error _ => 0.0
+        Success index => listGet levels index ?: 0.0
+
+    // Pitch moves by `ratio`, the envelope by `formant`: a bin's source sat under envelope(j / ratio) and
+    // should sit under envelope(j / formant). Equal ratios give a gain of exactly 1, the plain shift.
+    reshaped (shape, j, level) = level * SpectralMath::formantGain (shaped (shape.levels, toFloat j / shape.formant), shaped (shape.levels, toFloat j / shape.ratio))
+
+    synthesised (config, sources, shape, motion, j, built: SpectralFrame) = match motion
         [] => Success(value = built)
-        [held, ...rest] => match sourced (sources, ratio, j)
+        [held, ...rest] => match sourced (sources, shape.ratio, j)
             Error why => Error(message = why)
             Success source =>
-                phase = SpectralMath::principal (held.re + SpectralMath::binAdvance (source.im * ratio, toFloat config.hop, toFloat config.size))
-                bin = Complex(re = SpectralMath::polarRe (source.re, phase), im = SpectralMath::polarIm (source.re, phase))
-                synthesised (config, sources, ratio, rest, satAdd j 1, built(bins = listAppend built.bins bin, motion = listAppend built.motion (Complex(re = phase, im = 0.0))))
+                phase = SpectralMath::principal (held.re + SpectralMath::binAdvance (source.im * shape.ratio, toFloat config.hop, toFloat config.size))
+                level = reshaped (shape, j, source.re)
+                bin = Complex(re = SpectralMath::polarRe (level, phase), im = SpectralMath::polarIm (level, phase))
+                synthesised (config, sources, shape, rest, satAdd j 1, built(bins = listAppend built.bins bin, motion = listAppend built.motion (Complex(re = phase, im = 0.0))))
 
     // Phase-vocoder pitch shift: memory holds analysis phases, motion the synthesis phases (in real parts).
-    pitch (config, bins, held, ratio) =
+    pitch (config, bins, held, ratio, formant) =
         phases = analysed (config, bins, held.memory, 0, [])
         sources = Sequences::combined (bins, phases, \(value, pair) => Complex(re = magnitude value, im = pair.im))
-        synthesised (config, sources, ratio, held.motion, 0, SpectralFrame(bins = [], memory = mapList (phases, \pair => Complex(re = pair.re, im = 0.0)), motion = [], captured = false))
+        shape = { levels = envelope (config, sources), ratio = ratio, formant = formant }
+        synthesised (config, sources, shape, held.motion, 0, SpectralFrame(bins = [], memory = mapList (phases, \pair => Complex(re = pair.re, im = 0.0)), motion = [], captured = false))
 
     // Shared analysis: stateless steps (band, shift, morph) run in order on one analysed frame.
     stateless step = match step
@@ -175,5 +197,5 @@ module SpectralFrames
         SpectralShift offset => Success(value = unchanged (shift (config, bins, offset, held.frames), held.memory, held.motion, false))
         SpectralSmear amount => Success(value = smear (bins, held.memory, held.motion, amount))
         SpectralMorph amount => Success(value = unchanged (morph (bins, sides, amount), held.memory, held.motion, false))
-        SpectralPitch ratio => pitch (config, bins, held, ratio)
+        SpectralPitch ratio formant => pitch (config, bins, held, ratio, formant)
         SpectralSeries steps => series (config, bins, sides, held, steps)

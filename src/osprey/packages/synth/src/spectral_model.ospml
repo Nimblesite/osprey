@@ -28,6 +28,7 @@ type SpectralTransform =
         amount : float
     SpectralPitch
         ratio : float
+        formant : float
     SpectralSeries
         steps : List<SpectralTransform>
 
@@ -74,3 +75,4 @@ type SpectralView =
 type PeakScan =
     latest : int
     owners : List<int>
+

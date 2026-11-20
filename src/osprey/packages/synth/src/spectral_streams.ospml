@@ -10,7 +10,7 @@ module SpectralStreams
         SpectralShift bins => bins > satSub 0 (intDiv config.size 2) && bins < intDiv config.size 2
         SpectralSmear amount => amount >= 0.0 && amount <= 0.999
         SpectralMorph amount => amount >= 0.0 && amount <= 1.0
-        SpectralPitch ratio => ratio >= 0.25 && ratio <= 4.0
+        SpectralPitch ratio formant => ratio >= 0.25 && ratio <= 4.0 && formant >= 0.25 && formant <= 4.0
         SpectralSeries steps => SpectralFrames::compatible steps && length (filterList (steps, \step => transformValid (config(transform = step)))) == length steps
 
     (** Size 64–4,096 (power of two), hop size/4 or size/8, mix 0 (dry) to 1 (processed). *)
