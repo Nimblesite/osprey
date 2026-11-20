@@ -26,19 +26,7 @@ type Arrangement { title: String tempo: Float sampleRate: Int drive: Float space
 type NoteRun<S> { held: S samples: List<Float> fault: String }
 type NoteSpan { gate: Float total: Int }
 type VoicePair<A, B> { one: A other: B }
-# [DAW-RENDER-PLAY] Playback state: cued notes, sounding notes, per-bus processor state and the Space rooms.
-type Cue { at: Int note: Note }
-type Sounding { at: Int lanes: List<List<Float>> }
-type TrackPlay { pending: List<Cue> sounding: List<Sounding> sends: List<AudioSend> }
-type Advanced { play: TrackPlay buses: Buses }
-type Heard { plays: List<TrackPlay> buses: Buses }
-type Pad { glow: Afterglow sound: Sounding }
-type BusState { name: String left: BandState right: BandState level: Float }
-type Mastering { buses: Buses states: List<BusState> }
-type Room<C, H> { config: C held: H }
-type Playing<C, H> { cursor: Int tracks: List<TrackPlay> pads: List<Pad> states: List<BusState> near: Room<C, H> far: Room<C, H> }
-type Played<C, H> { playing: Playing<C, H> left: List<Float> right: List<Float> }
-type Take<C, H> { playing: Playing<C, H> lefts: List<List<Float>> rights: List<List<Float>> }
+type TrackMix { cursor: Int carry: List<Float> samples: List<Float> fault: String }
 type Stereo { name: String left: List<Float> right: List<Float> }
 type Keyed { name: String samples: List<Float> }
 type Buses { left: List<Float> right: List<Float> wet: List<Float> groups: List<Stereo> keys: List<Keyed> }
