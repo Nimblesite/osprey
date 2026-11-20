@@ -77,6 +77,8 @@ type SendDraft =
     options : List<SendPort>
 
 type OutputEdit =
+    BrowsingSends
+        offset : int
     EditingBus
         busName : string
     EditingSend
@@ -242,6 +244,8 @@ type EditorAction =
     FlipSend
     CommitSend
     DeleteSend
+    BrowseSends
+        offset : int
     GroupName
     CommitGroup
     CloseOutput

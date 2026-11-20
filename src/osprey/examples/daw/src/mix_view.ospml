@@ -53,9 +53,9 @@ module MixView
 
     sendAt (voice, x, y) = match EditorView::areaAt (sendAreas voice, x, y) >= 0
         false => Error(message = "No bus here.")
-        true => match listGet voice.sends 0
-            Success tap => Success(value = BeginSend(identity = tap.sendId))
-            Error _ => Error(message = "The track has no sends.")
+        true => match voice.sends
+            [tap] => Success(value = BeginSend(identity = tap.sendId))
+            _ => Success(value = BrowseSends(offset = 0))
 
     graphAt (editor, x, y) = match listGet editor.song.tracks editor.track
         Error _ => Error(message = "Select a track first.")
@@ -80,9 +80,9 @@ module MixView
         [first, ...more] =>
             active = length (filterList (voice.sends, \tap => tap.enabled && tap.level > 0.0))
             title = ui::Pick::either (length more == 0, first.bus, "Patch sends")
-            detail = ui::Pick::either (length more == 0, "Node ${first.source} · ${TimelineView::percent first.level}", "${active} active · ${length voice.sends} routes")
+            detail = ui::Pick::either (length more == 0, "Pre-fader · ${TimelineView::percent first.level}", "${active} / ${length voice.sends} active · Pre-fader")
             colour = ui::Pick::either (active > 0, TimelineView::accent (), TimelineView::dim ())
-            ui::Lists::flatten [card (726.0, 208.0, title, detail, edge), [Scenes::strip ([963.0, 245.0, 948.0, 245.0], colour, 1.8, 4), Scenes::strip ([758.0, 282.0, 758.0, master + 37.0, 963.0, master + 37.0], colour, 1.8, 4)], port (948.0, 245.0), port (758.0, 282.0)]
+            ui::Lists::flatten [card (726.0, 208.0, title, detail, edge), [Scenes::strip ([758.0, 282.0, 758.0, master + 37.0, 963.0, master + 37.0], colour, 1.8, 4)], port (758.0, 282.0)]
 
     flow (editor, voice) =
         grouped = voice.bus != ""
@@ -133,7 +133,7 @@ module MixView
         shown = ui::Pick::either (name == current, "✓  ${title}", title)
         ui::Ui::action (shown, "", ui::Plain, name != current, AssignBus(index = index, bus = name))
 
-    sendCommands voice = listPrepend (mapList (voice.sends, \s => ui::Ui::button ("Edit send ${s.sendId} · ${s.bus}…", "", BeginSend(identity = s.sendId)))) (ui::Ui::button ("Add send…", "", BeginSend(identity = -1)))
+    sendCommands voice = [ui::Ui::button ("Add send…", "", BeginSend(identity = -1)), ui::Ui::action ("Patch sends…", "", ui::Plain, length voice.sends > 0, BrowseSends(offset = 0))]
 
     (** Native destinations follow the open project and its selected track. *)
     export menus editor = match editor.page == MixPage || RoutingPicker::choosing editor

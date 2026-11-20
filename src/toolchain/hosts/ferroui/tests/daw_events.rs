@@ -201,7 +201,8 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
         let root = regions.get("root").expect("Mix workspace");
         let menus = window_menus(&root.node);
         let routing = menus.iter().find(|menu| menu.title == "Routing").expect("Mix has a Routing menu");
-        assert_eq!(routing.commands.len(), 6, "all track destinations, group creation, sends and bus outputs");
+        assert_eq!(routing.commands.len(), 7, "all track destinations, group creation, send list and bus outputs");
+        assert!(routing.commands.iter().any(|item| item.label == "Patch sends…" && !item.enabled), "an empty track has no sends to inspect");
         assert_eq!(routing.commands.iter().filter(|command| command.enabled).count(), 5);
         let destination = routing.commands.iter().find(|item| item.enabled && item.label == label).expect("available destination");
         let changed = Library::event(0, &Touch::control(destination.event, "")).expect("choose the output");
@@ -268,10 +269,39 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     expected["buses"][1]["output"] = "pads".into();
     assert_eq!(read(), expected, "the group inspector edits the same route as the menu");
     choose_control(regions, "button", "Close", "");
+    for id in [3, 4] {
+        choose_control(regions, "button", "Add send…", "");
+        choose_control(regions, "picker", "Source outlet", "3/0");
+        choose_control(regions, "picker", "Destination bus", "pads");
+        choose_control(regions, "field", "Send level (%)", "40");
+        choose_control(regions, "button", "Connect send", "");
+        let tap = serde_json::json!({"sendId":id,"source":3,"outlet":0,"bus":"pads","level":0.4,"enabled":true});
+        expected["tracks"][5]["sends"].as_array_mut().expect("keysL sends").push(tap);
+    }
+    point(canvas, (836.0, 244.0), true);
+    regions.adopt(&point(canvas, (836.0, 244.0), false).0).expect("inspect every tap from the graph");
+    choose_control(regions, "button", "Next", "");
+    choose_control(regions, "button", "Previous", "");
+    choose_control(regions, "button", "Edit send 2 · Keys bus…", "");
+    choose_control(regions, "button", "Enable send", "");
+    choose_control(regions, "button", "Cancel", "");
+    assert_eq!(read(), expected, "browsing and cancelling preserves all four independent sends");
+    for id in [4, 3] {
+        choose_control(regions, "button", "Patch sends…", "");
+        if id == 4 {
+            choose_control(regions, "button", "Next", "");
+        }
+        choose_control(regions, "button", &format!("Edit send {id} · pads…"), "");
+        choose_control(regions, "button", "Remove send", "");
+        expected["tracks"][5]["sends"].as_array_mut().expect("keysL sends").pop();
+        assert_eq!(read(), expected, "removing a tap on either page preserves all siblings");
+    }
+    choose_control(regions, "button", "Patch sends…", "");
 }
 
 /// [DAW-PIANO-DRAG] Drag the stem and note on the canvas, preserving the rest of the project.
 fn drag_piano_note(canvas: i64, song: &std::path::Path) {
+    choose_control(regions, "button", "Patch sends…", "");
     let read = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(song).expect("read project")).expect("project JSON");
     let mut expected = read();
     let index = expected["tracks"][5]["notes"].as_array().expect("keysL notes").iter()
@@ -279,6 +309,7 @@ fn drag_piano_note(canvas: i64, song: &std::path::Path) {
     point(canvas, (380.0, 391.0), true);
     point(canvas, (380.0, 391.0), false);
     point(canvas, (206.0, 862.0), true);
+    choose_control(regions, "button", "Patch sends…", "");
     point(canvas, (242.0, 870.0), true);
     let (stem, _) = point(canvas, (255.0, 883.25), true);
     assert!(shows_label(&stem, "25%"), "the inspector previews the stem during the drag");

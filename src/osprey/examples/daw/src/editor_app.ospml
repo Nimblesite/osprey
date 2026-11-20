@@ -44,6 +44,7 @@ module EditorApp
         InspectBus space => Runtime::step (editor(inspectSpace = space))
         CloseOutput => Runtime::step (editor(outputEdit = OutputClosed))
         BrowseBuses => BusOutputs::open editor
+        BrowseSends offset => DawSession::saving (editor, \ready => Runtime::step (ready(outputEdit = BrowsingSends(offset = offset), message = "")))
         BeginSend identity => DawSession::saving (editor, \ready => SendEditor::open (ready, identity))
         CommitSend => SendEditor::commit editor
         DeleteSend => SendEditor::remove editor
@@ -122,6 +123,7 @@ module EditorApp
 
     workspacePointer (context, editor, x, y, down) = match editor.page
         PatchPage => patchPointer (context, editor, x, y, down)
+        BrowsingSends _ => Runtime::step editor
         TimelinePage => match editor.rollDrag
             RollHeld motion => RollEdits::pointer (editor, motion, x - Header::shift editor, y, down)
             RollIdle => songPointer (context, editor, x, y, down)

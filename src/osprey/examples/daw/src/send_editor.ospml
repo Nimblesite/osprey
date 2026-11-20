@@ -95,6 +95,12 @@ module SendEditor
             Success track => DawSession::savedTrack (editor, editor.track, daw::Projects::replaced (editor.song, editor.track, track(sends = filterList (track.sends, \s => s.sendId != draft.editingId))))
         _ => Runtime::step editor
 
+    siblings (editor, draft, port) = match listGet editor.song.tracks editor.track
+        Error _ => []
+        Success track =>
+            taps = filterList (track.sends, \tap => tap.sendId != draft.editingId && tap.source == port.portNode && tap.outlet == port.portOutlet)
+            listConcat port.connections (mapList (taps, \tap => "${tap.bus} · ${SendList::level tap}"))
+
     (** The composer mirrors the route inspector in the approved Add send design. *)
     export form (editor, draft) =
         style = ui::Frames::inset (4, 8, 4, 8)
@@ -102,7 +108,7 @@ module SendEditor
         port = selectedPort draft
         routes = match port
             Error _ => []
-            Success selected => mapList (selected.connections, Ui::text)
+            Success selected => mapList (siblings (editor, draft, selected), Ui::text)
         selectedTrack = match track
             Success voice => voice.name
             Error _ => ""
@@ -119,3 +125,50 @@ module SendEditor
         bottom = ui::Lists::flatten [ui::Pick::either (help == "", [], [Ui::text help]), [Ui::row actions], ui::Pick::either (draft.editingId < 0, [], [Ui::button ("Remove send", "", DeleteSend)])]
         local = EditorView::theme ()
         Ui::themed (local(spacing = [4, 6, 12, 20, 28, 36]), Ui::framed (style(frameTextSize = 13, frameControlHeight = 30), Ui::column (ui::Lists::flatten [controls, siblings, bottom])))
+
+(** [DAW-MIX-BUS-TAP] Inspect parallel sends from the selected track's internal outlets. *)
+module SendList
+    pageSize = 3
+
+    source (editor, graph, tap) = match Graphs::node (graph, tap.source)
+        Invalid _ => "Missing source node ${tap.source}"
+        Valid node => match listGet node.outputs tap.outlet
+            Error _ => "Missing outlet ${tap.outlet} on node ${tap.source}"
+            Success pin => "${EditorView::componentName (editor, node)} · ${pin.name}"
+
+    (** Saved send gain and bypass state as shown in the inspector. *)
+    export level tap =
+        amount = TimelineView::percent tap.level
+        ui::Pick::either (tap.enabled, amount, "${amount} · Muted")
+
+    route (editor, graph, tap) =
+        path = match daw::BusPaths::path (editor.song.buses, tap.bus)
+            Success names => join names " → "
+            Error why => why
+        edit = Ui::button ("Edit send ${tap.sendId} · ${tap.bus}…", "", BeginSend(identity = tap.sendId))
+        Ui::section (source (editor, graph, tap), "", [Ui::text path, Ui::caption (level tap), edit])
+
+    paging (offset, endAt, count) = match count > pageSize
+        false => []
+        true => [Ui::row [Ui::action ("Previous", "", ui::Plain, offset > 0, BrowseSends(offset = satSub offset pageSize)), Ui::caption ("${satAdd offset 1}–${endAt} of ${count}"), Ui::action ("Next", "", ui::Plain, endAt < count, BrowseSends(offset = endAt))]]
+
+    entry (editor, graph, sends, index) = match listGet sends index
+        Success tap => [route (editor, graph, tap)]
+        Error _ => []
+
+    sendRows (editor, track, offset) = match daw::TrackPatches::patch track
+        Error why => [Ui::text why]
+        Success graph =>
+            count = length track.sends
+            endAt = ui::Pick::either (satAdd offset pageSize < count, satAdd offset pageSize, count)
+            entries = ui::Lists::flatten (mapList (toList (range (offset, endAt)), \i => entry (editor, graph, track.sends, i)))
+            listConcat entries (paging (offset, endAt, count))
+
+    (** Show each tap's origin, level, mute state and group chain alongside the canvas. *)
+    export form (editor, offset) = match listGet editor.song.tracks editor.track
+        Error _ => Ui::text "Select a track first."
+        Success voice =>
+            title = [Ui::styled ("PATCH SENDS", ui::Eyebrow, ui::Secondary), Ui::styled (voice.name, ui::Heading, ui::Primary)]
+            actions = Ui::row [Ui::button ("Add send…", "", BeginSend(identity = -1)), Ui::button ("Close", "", CloseOutput)]
+            local = EditorView::theme ()
+            Ui::themed (local(spacing = [4, 6, 12, 20, 28, 36]), Ui::column (listConcat title (listAppend (sendRows (editor, voice, offset)) actions)))

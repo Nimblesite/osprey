@@ -140,6 +140,8 @@ A track’s `sends` list connects its patch outlets to named stereo groups. Each
 
 The engine takes all enabled taps from the same note evaluation as the main output, before the track gain and pan. Stereo outlets preserve their channels. Mono outlets feed the center of the stereo bus at equal power. Split exposes each individual channel of a wider outlet. The note’s attack and release apply to the tapped audio. Multiple sends may share an outlet or feed the same bus. Invalid endpoints, non-audio ports, absent buses, duplicate send identities and levels outside the range fail validation.
 
+**Routing → Patch sends…** opens the selected track’s sends beside its patch or mix graph. Each entry identifies the module and outlet, the level and mute state, and the group path to Master. A multi-send graph card opens the same inspector. Paging exposes every send and selecting one edits its stable track-local identity.
+
 ## Spectral analysis and mix advice [DAW-ANALYSIS]
 
 The daw analyses each track, bus and Master and says whether the sound sits where its instrument should.

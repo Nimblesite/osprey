@@ -21,6 +21,7 @@ module RoutingPicker
 
     (** The picker state that requires its region to redraw. *)
     export stamp editor = match editor.outputEdit
+        BrowsingSends offset => "sends ${offset}"
         EditingBus name => "bus ${name}"
         EditingSend draft => "send ${draft.editingId} ${draft.sourceKey} ${draft.targetBus} ${draft.levelText} ${draft.sendActive}"
         OutputClosed => "closed"

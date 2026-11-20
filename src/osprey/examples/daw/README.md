@@ -72,7 +72,7 @@ The available graph components include `exciter`, `sine`, `wavetable`, `additive
 
 ### Send a patch outlet to a bus
 
-On Track patch or Bus routing, choose **Routing → Add send…**. Select a source outlet and destination bus, enter a percentage, and choose **Connect send**. The inspector lists the other patch connections from that outlet. Reopen the send from Routing to change its level, mute it or remove it. Create a destination with **New stereo bus…** in Bus routing.
+On Track patch or Bus routing, choose **Routing → Add send…**. Select a source outlet and destination bus, enter a percentage, and choose **Connect send**. The inspector lists the other cables and sends leaving that outlet. Choose **Routing → Patch sends…** to see each tap’s source, level, mute state and path to Master. Click **Edit send** to change a tap or remove it. Create a destination with **New stereo bus…** in Bus routing.
 
 For example, `{"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabled":true}` sends a quarter of node 3’s first audio outlet to pads. The existing dry cable and Space send keep playing. The project file holds the whole edit.
 
