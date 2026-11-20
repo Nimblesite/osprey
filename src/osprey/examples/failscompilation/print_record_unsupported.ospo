@@ -1,10 +1,28 @@
 // A function has no rendering, so a record holding one is not printable, nor
 // is a union with a variant holding one, even a value of another variant
 // [BUILTIN-PRINT] [BUILTIN-TOSTRING]; neither is an assertion operand
-// [TESTING-EQUALITY].
+// [TESTING-EQUALITY]. A built-in's constraint travels through every generic
+// function to the call that decides the type, and is reported there, naming
+// the function and the constraint [TYPE-CONSTRAINTS].
 
 type Pt = { x: int, grow: fn(int) -> int }
 type Holder = Empty | Has { step: fn(int) -> int }
+
+fn show1(x) = toString(x)
+fn show2(x) = show1(x)
+fn show3(x) = show2(x)
+fn size1(x) = length(x)
+fn size2(x) = size1(x)
+fn size3(x) = size2(x)
+fn sort1(xs) = listSort(xs)
+fn sort2(xs) = sort1(xs)
+fn sort3(xs) = sort2(xs)
+fn less1(a, b) = a < b
+fn less2(a, b) = less1(a, b)
+fn less3(a, b) = less2(a, b)
+fn same1(a, b) = expect(a, b)
+fn same2(a, b) = same1(a, b)
+fn same3(a, b) = same2(a, b)
 
 fn main() -> int {
     let p = Pt { x: 5, grow: |n| => n + 1 }
@@ -12,5 +30,14 @@ fn main() -> int {
     print(Empty)
     expect(p, p)
     check("maps", { "k": 1 }, { "k": 1 })
+    let shown = [show1(p.grow), show2(Empty), show3({ "k": 1 })]
+    let sizes = [size1(5), size2(true), size3(p.grow)]
+    let bools = sort1([true])
+    let floats = sort2([1.5])
+    let holders = sort3([Empty])
+    let orders = [less1(p.grow, p.grow), less2(Empty, Empty), less3(p, p)]
+    same1(p.grow, p.grow)
+    same2(Empty, Empty)
+    same3({ "k": 1 }, { "k": 1 })
     0
 }

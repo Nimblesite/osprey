@@ -76,7 +76,8 @@ impl Checker {
             params,
             bindings,
         } = applied;
-        let obligations = self.located_obligations(obligations, position.or(self.expr_position));
+        let obligations =
+            self.located_obligations(obligations, position.or(self.expr_position), &name);
         self.builtin_uses.extend(obligations);
         if let Some(position) = position {
             self.application_tys.push((position, bindings.clone()));

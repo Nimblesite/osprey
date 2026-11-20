@@ -282,25 +282,34 @@ impl Checker {
         located
     }
 
-    /// A scheme's built-in obligations restated for the use reading them now:
-    /// a key that already carries a location keeps it (it was located where
-    /// the use was written, inside the wrapper's body), and a structural key
-    /// — a field or method relation, which encodes its own site — keeps its
-    /// spelling. A bare one — `abs`'s scheme obligations, a constrained
-    /// built-in — is located at this use, so its diagnostics name the
-    /// expression that triggered them.
+    /// A scheme's built-in obligations restated for the use reading them now.
+    /// A bare key — `abs`'s scheme obligations, a constrained built-in — is
+    /// located at this use. A representation constraint (printable, sized,
+    /// asserted) already located inside the callee's body MOVES to this use and
+    /// names `callee`, so its error is reported at the call that decides the
+    /// type ([TYPE-CONSTRAINTS]). Any other key keeps the site it encodes.
     pub(super) fn located_obligations(
         &mut self,
         obligations: Vec<(String, Type)>,
         position: Option<osprey_ast::Position>,
+        callee: &str,
     ) -> Vec<(String, Type)> {
         obligations
             .into_iter()
             .map(|(name, ty)| {
                 if locatable_obligation(&name) {
-                    (self.located_use(&name, position), ty)
-                } else {
-                    (name, ty)
+                    let key = crate::builtin_constraints::carried_by(&name, callee).unwrap_or(name);
+                    return (self.located_use(&key, position), ty);
+                }
+                match (
+                    position,
+                    crate::builtin_constraints::carried_constraint(&name),
+                ) {
+                    (Some(_), Some(operation)) => {
+                        let via = crate::builtin_constraints::via(&operation, callee);
+                        (self.located_use(&via, position), ty)
+                    }
+                    _ => (name, ty),
                 }
             })
             .collect()
@@ -310,6 +319,16 @@ impl Checker {
     /// Inside a module that owns an opaque alias the key names the function, so
     /// the late validation reads the operand as that function may
     /// ([MODULES-OPAQUE-TYPES]).
+    /// The key of a use written in the expression being checked: at its
+    /// position when it has one, so the diagnostic names the line; else at
+    /// its site ([`Self::sited_use`]).
+    pub(crate) fn here_use(&mut self, name: &str) -> String {
+        match self.expr_position {
+            Some(position) => self.located_use(name, Some(position)),
+            None => self.sited_use(name),
+        }
+    }
+
     pub(crate) fn sited_use(&mut self, name: &str) -> String {
         if !self.ctx.sees_through_aliases() {
             return name.to_owned();

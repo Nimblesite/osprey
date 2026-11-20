@@ -23,28 +23,38 @@ fn checks_arithmetic_and_let() {
 
 #[test]
 fn interpolation_rejects_unprintable_aggregates() {
-    for (flavor, source) in [
+    let direct = "cannot convert value for interpolation: List<(int) -> int>";
+    let carried = format!("{direct}; `render` needs a printable argument");
+    for (flavor, source, message) in [
         (
             Flavor::Default,
             "let xs = [fn(n) => n + 1]\nprint(\"[${xs}]\")\n",
+            direct.to_owned(),
         ),
-        (Flavor::Ml, "xs = [\\n => n + 1]\nprint \"[${xs}]\"\n"),
+        (
+            Flavor::Ml,
+            "xs = [\\n => n + 1]\nprint \"[${xs}]\"\n",
+            direct.to_owned(),
+        ),
         (
             Flavor::Default,
             "fn render(x) = \"[${x}]\"\nprint(render([fn(n) => n + 1]))\n",
+            carried.clone(),
         ),
         (
             Flavor::Ml,
             "render x = \"[${x}]\"\nprint (render [\\n => n + 1])\n",
+            carried.clone(),
         ),
     ] {
         let parsed = parse_program_with_flavor(source, flavor);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
         let errors = check_program(&parsed.program);
+        // [TYPE-CONSTRAINTS]: reported on line 2, where the value is decided.
         assert!(
             errors
                 .iter()
-                .any(|e| e.message == "cannot convert value for interpolation: List<(int) -> int>"),
+                .any(|e| e.message == message && e.position.is_some_and(|p| p.line == 2)),
             "{flavor}: {errors:?}"
         );
     }

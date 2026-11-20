@@ -90,6 +90,15 @@ impl Inferred {
         self.types.param_types(self.key(function))
     }
 
+    /// Each constrained variable of `function`'s signature and its built-in
+    /// constraint [TYPE-CONSTRAINTS].
+    pub(crate) fn constraints(
+        &self,
+        function: &SymbolInfo,
+    ) -> std::collections::HashMap<osprey_types::VarId, &'static str> {
+        self.types.constraints(self.key(function))
+    }
+
     pub(crate) fn return_type(&self, function: &SymbolInfo) -> Option<&Type> {
         self.types.return_type(self.key(function))
     }

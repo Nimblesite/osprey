@@ -42,7 +42,7 @@ impl Checker {
     /// its final type. Implements [BUILTIN-STRUCTURAL-EQUALS].
     pub(crate) fn constrain_structural_equals(&mut self, name: Option<&str>, args: &[Type]) {
         if let (Some(STRUCTURAL_EQUALS), Some(operand)) = (name, args.first()) {
-            let key = self.sited_use(KEY);
+            let key = self.here_use(KEY);
             self.builtin_uses.push((key, operand.clone()));
         }
     }
@@ -54,7 +54,7 @@ impl Checker {
             .and_then(crate::builtin_constraints::asserted_operand)
             .and_then(|index| args.get(index));
         if let Some(operand) = operand {
-            let key = self.sited_use(crate::builtin_constraints::ASSERTION);
+            let key = self.here_use(crate::builtin_constraints::ASSERTION);
             self.builtin_uses.push((key, operand.clone()));
         }
     }

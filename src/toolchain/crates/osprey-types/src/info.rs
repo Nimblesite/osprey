@@ -7,6 +7,8 @@ use crate::ty::{names, Type, VarId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+mod constraints;
+
 /// Closed-program requirements on full application, separate from written row bounds.
 /// Unknown callback effects are never represented as an empty proven row.
 /// Implements [LSP-EFFECT-REQUIREMENTS].

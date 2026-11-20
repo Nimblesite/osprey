@@ -138,7 +138,7 @@ pub use redundant::{
     TypeWarning, REDUNDANT_ANNOTATION,
 };
 pub use staging::{lower_static_checked, signal_dependencies};
-pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};
+pub use ty::{has_type_var, names, render_with_holes, with_constraints, Scheme, Type, VarId, HOLE};
 pub use undocumented::{undocumented_exports, UNDOCUMENTED_EXPORT};
 pub use unused::{checked_method_reads, unused_symbols, UnusedKind, UnusedSymbol};
 #[cfg(test)]
