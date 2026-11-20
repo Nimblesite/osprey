@@ -5,6 +5,19 @@ namespace synth
     share DSP state. A version increases whenever a kind's rendered output for the same parameters changes,
     so stored patches can detect and reject (or migrate) an incompatible module. *)
 module Kinds
+    (** Whether the module's frequency control tunes a pitched voice from the keyboard. *)
+    export keyFrequency processor = match processor
+        Oscillator => true
+        TableOscillator _ => true
+        Additive => true
+        PhaseOperator => true
+        Waveguide _ => true
+        Bowed _ => true
+        StrikeComb _ => true
+        Resonator => true
+        Modal => true
+        _ => false
+
     (** The stable kind identifier of a processor. *)
     export kind processor = match processor
         Granular _ _ _ => "synth.grain-cloud"

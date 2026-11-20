@@ -243,12 +243,11 @@ module EditorState
         Granular resource _ _ => match SampleResources::playbackRate (resource, toFloat note, 48000.0)
             Error why => relayed "Grain cloud ${n.identity}: ${why}"
             Success rate => Success(value = withParameter (n, "rate", rate))
-        Oscillator => keyFollow (n, note)
         MidiNotes => Success(value = withParameter (n, "pitch", toFloat note))
         _ => keyedFrequency (note, n)
 
     // Advanced modules with a pitch-like `frequency` parameter follow the keyboard; effects keep theirs.
-    keyedFrequency (note, n) = match ui::Lists::any (["synth.waveguide", "synth.bowed-string", "synth.strike-comb", "synth.resonator", "synth.modal-bank", "synth.wavetable", "synth.additive", "synth.phase-operator"], \kind => kind == Kinds::kind n.processor)
+    keyedFrequency (note, n) = match Kinds::keyFrequency n.processor
         true => keyFollow (n, note)
         false => Success(value = n)
 

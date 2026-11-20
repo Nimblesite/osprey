@@ -56,19 +56,27 @@ module PatchRecords
     // A setting the routing had keeps its follow; its value comes back from the graph.
     kept (setting, value) = match setting.follow
         Constant => setting(value = value)
-        Pitched => match setting.value * middle () == value
+        Pitched => match ArrangeMath::scaled (setting.value, middle ()) == value
             true => setting
             false => setting(value = synth::FitMath::normalised (value, 0.0, middle ()))
         Struck => setting(value = value)
 
-    // `key` and `initial` name fields of several records, so the parameter's type is stated.
-    setting (before, p: synth::Parameter) = match listGet (filterList (before, \s => s.key == p.key)) 0
-        Success had => kept (had, p.initial)
-        Error _ => Setting(key = p.key, value = p.initial, follow = Constant)
+    follows (n, key) = match n.processor
+        synth::Granular _ _ _ => key == "rate"
+        _ => key == "frequency" && synth::Kinds::keyFrequency n.processor
+
+    // Preserve explicit authored bindings. A voice added from the library transposes with the timeline.
+    setting (prior, n, p: synth::Parameter) = match listGet prior 0
+        Success before => match listGet (filterList (before.settings, \s => s.key == p.key)) 0
+            Success had => kept (had, p.initial)
+            Error _ => Setting(key = p.key, value = p.initial, follow = Constant)
+        Error _ => match follows (n, p.key)
+            true => Setting(key = p.key, value = synth::FitMath::normalised (p.initial, 0.0, middle ()), follow = Pitched)
+            false => Setting(key = p.key, value = p.initial, follow = Constant)
 
     record (routing, n) =
-        before = foldList (filterList (routing.nodes, \item => item.identity == n.identity), [], \(_, item) => item.settings)
-        synth::Outcomes::carried (named n, \item => Success(value = item(identity = n.identity, settings = listConcat item.settings (mapList (n.parameters, \p => setting (before, p))))))
+        prior = filterList (routing.nodes, \item => item.identity == n.identity)
+        synth::Outcomes::carried (named n, \item => Success(value = item(identity = n.identity, settings = listConcat item.settings (mapList (n.parameters, \p => setting (prior, n, p))))))
 
     appended (carry, n, routing) = match carry
         Error why => Error(message = why)
