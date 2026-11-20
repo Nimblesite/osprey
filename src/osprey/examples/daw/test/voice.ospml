@@ -239,7 +239,7 @@ prismIntegratedJourney () =
     opened = editorLaunched []
     expect (length (Drive::holding opened).graph.nodes, 5)
     cablesOf (opened, 4)
-    forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Play patch", "Stop playback", "Undo", "Redo", "Timeline", "Patch", "Mix"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), true))
+    forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Play patch", "Stop playback", "Undo", "Redo", "Timeline", "Track patch", "Bus routing"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), true))
     forEachList (["Patch controls", "Audition patch", "Keyboard", "Save project"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), false))
     cutoff = Semantics::point (Semantics::element (opened.drivenSeen.renderedAccess, "Filter Cutoff"), 0.5)
     changed = clickAt (opened, cutoff.pointX, cutoff.pointY)
@@ -345,14 +345,14 @@ keyboardDockJourney opened =
 // [DAW-MENU] The window's menu bar names every command once, each with its shortcut, and a menu command runs
 // the same action as the header's.
 menuJourney driven =
-    forEachList (["Open Song…", "Save", "Render Song", "Undo", "Redo", "Timeline", "Mix", "Modules", "Patch Controls", "Keyboard", "Play Song", "Stop Song", "Play Patch", "Audition Patch", "Stop Patch"], \label => expect (length (Views::labelled (driven.drivenSeen, label)), 1))
+    forEachList (["Open Song…", "Save", "Render Song", "Undo", "Redo", "Timeline", "Track Patch", "Bus Routing", "Modules", "Patch Controls", "Keyboard", "Play Song", "Stop Song", "Play Patch", "Audition Patch", "Stop Patch"], \label => expect (length (Views::labelled (driven.drivenSeen, label)), 1))
     expect ((Views::control (driven.drivenSeen, "Save")).controlKind, "button")
     timeline = Drive::press (driven, "Timeline")
     expect (synth::TimelineView::pageIndex (Drive::holding timeline).page, 1)
     expect (Views::shows (timeline.drivenSeen, "Save"), true)
-    mix = Drive::press (timeline, "Mix")
+    mix = Drive::press (timeline, "Bus Routing")
     expect (synth::TimelineView::pageIndex (Drive::holding mix).page, 2)
-    patch = Drive::press (mix, "Patch")
+    patch = Drive::press (mix, "Track Patch")
     expect (synth::TimelineView::pageIndex (Drive::holding patch).page, 0)
     hidden = Drive::press (patch, "Keyboard")
     expect ((Drive::holding hidden).keyboardShown, false)

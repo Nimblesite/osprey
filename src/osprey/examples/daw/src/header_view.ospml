@@ -19,7 +19,7 @@ module Header
     (** A rounded plate with a one-unit border: the design's button and field. *)
     export plaque (left, top, width, height, fill, depth) = [EditorView::rounded (left, top, width, height, 7.0, ui::Fill, paint fill, depth), EditorView::rounded (left, top, width, height, 7.0, ui::Line(width = 1.0, dashes = [], bevel = false), paint (edge ()), satAdd depth 1)]
 
-    pages = ["Timeline", "Patch", "Mix"]
+    pages = ["Timeline", "Track patch", "Bus routing"]
 
     (** The page behind tab `index`, in the header's order. *)
     export tabPage index = match index
@@ -82,11 +82,21 @@ module Header
 
     readout (name, value, left) = [caps (name, left, 77.0), TimelineView::label (value, left, 101.0, 19.0, TimelineView::ink (), 0, 3)]
 
+    // A tempo as the design writes it: one decimal unless it needs two.
+    tempo value =
+        whole = floatToInt (TimelineGeometry::percent value) ?: 0
+        ui::Pick::either (whole % 10 == 0, "${intDiv whole 100}.${intDiv (whole % 100) 10}", TimelineView::hundredths value)
+
+    // The selected track and where its sound goes.
+    route editor = match listGet editor.song.tracks editor.track
+        Error _ => ""
+        Success voice => "${voice.name}  /  ${TimelineView::destination voice}${ui::Pick::either (voice.reverb > 0.0, " + Space", "")}"
+
     threeDigits bar = "${ui::Pick::either (bar < 100, "0", "")}${ui::Pick::either (bar < 10, "0", "")}${bar}"
 
     (** The Patch page's name over the subtitle baked into the Prism skin's header art, in that page's units. *)
     export patchSubtitle editor = match length (PrismArt::atlas editor.skin) > 15
-        true => [TimelineView::box (180.0, 40.0, 100.0, 21.0, Scenes::rgb (17, 16, 33), 11), TimelineView::label ("Patch", 184.0, 41.0, 13.0, TimelineView::dim (), 0, 12)]
+        true => [TimelineView::box (180.0, 40.0, 100.0, 21.0, Scenes::rgb (17, 16, 33), 11), TimelineView::label ("Track patch", 184.0, 41.0, 13.0, TimelineView::dim (), 0, 12)]
         false => []
 
     barOf (note: daw::Note) = floatToInt (TimelineGeometry::bar note.start) ?: 0
@@ -115,13 +125,13 @@ module Header
     brand editor = listConcat (ui::Pick::either (length (PrismArt::atlas editor.skin) > 15, [Scenes::sprite (15, 123.0, 29.5, 46.0, 46.0, 0.0, Scenes::rgb (255, 255, 255), 2)], [])) [TimelineView::label ("Prism", 151.0, 11.0, 20.0, TimelineView::ink (), 0, 3), TimelineView::label (listGet pages (slot editor.page) ?: "", 151.0, 36.0, 11.0, TimelineView::dim (), 0, 3)]
 
     // The song strip: title, tempo, meter, the playhead's bar and the transport.
-    strip editor = listConcat (listConcat [caps ("ARRANGEMENT", 24.0, 77.0), TimelineView::label (editor.song.title, 24.0, 99.0, 24.0, TimelineView::ink (), 0, 3)] (listConcat (overviewShapes editor) (listConcat (readout ("BPM", TimelineView::hundredths editor.song.tempo, 877.0)) (readout ("METER", "4/4", 967.0))))) (listConcat (listConcat (plaque (1051.0, 76.0, 210.0, 51.0, Scenes::rgb (20, 17, 38), 2)) [caps ("POSITION", 1065.0, 84.0), TimelineView::label ("${threeDigits (satAdd editor.rollBar 1)}.01.01", 1065.0, 101.0, 19.0, TimelineView::ink (), 0, 4)]) (songTransport editor))
+    strip editor = listConcat (listConcat [caps ("ARRANGEMENT", 24.0, 77.0), TimelineView::label (editor.song.title, 24.0, 99.0, 24.0, TimelineView::ink (), 0, 3)] (listConcat (overviewShapes editor) (listConcat (readout ("BPM", tempo editor.song.tempo, 877.0)) (readout ("METER", "4/4", 967.0))))) (listConcat (listConcat (plaque (1051.0, 76.0, 210.0, 51.0, Scenes::rgb (20, 17, 38), 2)) [caps ("POSITION", 1065.0, 84.0), TimelineView::label ("${threeDigits (satAdd editor.rollBar 1)}.01.01", 1065.0, 101.0, 19.0, TimelineView::ink (), 0, 4)]) (songTransport editor))
 
-    // The status footer: what is sounding, the song's rate, and the last thing the app said.
+    // The status footer: what is sounding, the song's rate, the last thing the app said and the selected track's route.
     footer editor =
         phase = DawSession::phase editor
         live = phase != "Stopped"
-        [TimelineView::box (0.0, 909.0, 1440.0, 1.0, rule (), 3), TimelineView::box (22.0, 921.0, 8.0, 8.0, ui::Pick::either (live, sounding (), TimelineView::dim ()), 3), TimelineView::label (phase, 37.0, 918.0, 11.0, ui::Pick::either (live, sounding (), quiet ()), 0, 3), TimelineView::label ("${intDiv editor.song.sampleRate 1000} kHz", 119.0, 918.0, 11.0, quiet (), 0, 3), TimelineView::label ("Stereo", 184.0, 918.0, 11.0, quiet (), 0, 3), TimelineView::label (editor.message, 1416.0, 918.0, 11.0, TimelineView::accent (), 2, 3)]
+        [TimelineView::box (0.0, 909.0, 1440.0, 1.0, rule (), 3), TimelineView::box (22.0, 921.0, 8.0, 8.0, ui::Pick::either (live, sounding (), TimelineView::dim ()), 3), TimelineView::label (phase, 37.0, 918.0, 11.0, ui::Pick::either (live, sounding (), quiet ()), 0, 3), TimelineView::label ("${intDiv editor.song.sampleRate 1000} kHz", 119.0, 918.0, 11.0, quiet (), 0, 3), TimelineView::label ("Stereo", 184.0, 918.0, 11.0, quiet (), 0, 3), TimelineView::label (editor.message, 260.0, 918.0, 11.0, TimelineView::accent (), 0, 3), TimelineView::label (route editor, 1416.0, 918.0, 11.0, quiet (), 2, 3)]
 
     (** The hit areas of the Timeline and Mix header: the page tabs, then Return to start, Play and Stop. *)
     export songAreas editor = listConcat (listAppend (tabAreas (editor, 1.0)) (TimelineView::area ("Return to start", 1277.0, 80.0, 46.5, 43.0, false))) (transportAreas (1323.5, 80.0, 46.5, 43.0, "Play", "Stop"))

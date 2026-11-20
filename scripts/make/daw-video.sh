@@ -56,11 +56,11 @@ for voice in "3 patch-graph" "1 fm-operator" "11 modal-bell" "12 bowed-string" "
     set -- $voice
     "$out/clicks" "$pid" "897,$((184 + 58 * (($1 - 1) / 7))),0.25"
     step_after "track-$2" 1.5 "185,$(row "$1"),0"
-    step_after "patch-$2" 3 View Patch
+    step_after "patch-$2" 3 View "Track Patch"
     step_after "audition-$2" 1 Transport "Audition Patch"
     step_after "timeline-after-$2" 2 View Timeline
 done
-step_after mix 3 View Mix
+step_after mix 3 View "Bus Routing"
 step_after timeline 2 View Timeline
 started=$(date +%s)
 step_after play-bars 2 Transport "Play Song"

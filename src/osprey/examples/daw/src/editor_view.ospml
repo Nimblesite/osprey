@@ -431,7 +431,7 @@ module EditorView
     menus () = [
         Ui::section ("File", "", [Ui::button ("Open Song…", "Cmd+O", OpenTrack(index = -2)), Ui::button ("Save", "Cmd+S", SaveProject), Ui::button ("Render Song", "Cmd+R", RenderSong)]),
         Ui::section ("Edit", "", [Ui::button ("Undo", "Cmd+Z", Undo), Ui::button ("Redo", "Cmd+Shift+Z", Redo)]),
-        Ui::section ("View", "", [Ui::button ("Patch", "Cmd+D1", ShowPage(page = PatchPage)), Ui::button ("Timeline", "Cmd+D2", ShowPage(page = TimelinePage)), Ui::button ("Mix", "Cmd+D3", ShowPage(page = MixPage)), Ui::button ("Modules", "Cmd+L", ShowModules), Ui::button ("Patch Controls", "Cmd+I", ShowDetails), Ui::button ("Keyboard", "Cmd+K", ShowKeyboard)]),
+        Ui::section ("View", "", [Ui::button ("Timeline", "Cmd+D1", ShowPage(page = TimelinePage)), Ui::button ("Track Patch", "Cmd+D2", ShowPage(page = PatchPage)), Ui::button ("Bus Routing", "Cmd+D3", ShowPage(page = MixPage)), Ui::button ("Modules", "Cmd+L", ShowModules), Ui::button ("Patch Controls", "Cmd+I", ShowDetails), Ui::button ("Keyboard", "Cmd+K", ShowKeyboard)]),
         Ui::section ("Transport", "", [Ui::button ("Play Song", "Cmd+Enter", PlaySong), Ui::button ("Stop Song", "Cmd+OemPeriod", StopSong), Ui::button ("Play Patch", "Cmd+P", PlayGraph), Ui::button ("Audition Patch", "Cmd+Shift+P", Audition), Ui::button ("Stop Patch", "Cmd+Shift+OemPeriod", StopGraph)])]
 
     root () =

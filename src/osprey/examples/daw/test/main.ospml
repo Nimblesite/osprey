@@ -899,7 +899,7 @@ barLineJourney ready =
     succeeds (synth::TimelineView::laneAt (lined, 868.5, 200.0), \action => playheadSet (lined, action, 3))
     succeeds (synth::TimelineView::laneAt (lined, 1092.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 3)))
     // [DAW-HEADER] The header holds the page tabs and the transport; every other command is in the menu bar.
-    forEachList (["Timeline", "Patch", "Mix", "Return to start", "Play", "Stop"], \label => expect (length (labelled (ready, label)), 1))
+    forEachList (["Timeline", "Track patch", "Bus routing", "Return to start", "Play", "Stop"], \label => expect (length (labelled (ready, label)), 1))
     forEachList (["Render song", "Open song", "Save project", "Keyboard", "Play bars"], \label => expect (length (labelled (ready, label)), 0))
     expect (length (synth::TimelineView::headerAreas ready), 6)
     // The song overview has one column per bar of the song.
