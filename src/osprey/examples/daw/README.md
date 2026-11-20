@@ -41,9 +41,11 @@ The app and renderer use one JSON project. The field readers and writer are gene
 | `space` | The shared reverb: `size` 0.25–2, `decay` in seconds, `damping` 0–0.95 |
 | `intro` | Optional. The recording the piece continues: `recording` (a path, `~/` for your home folder), `tail` seconds the engine holds (0.5–10), `crossfade` seconds into the piece (at most the tail) |
 | `sustains` | Appearances of the held tail of the intro: `start` beat, pitch `ratio`, `rise`, `hold` and `fade` in seconds, `gain`, `reverb` send |
+| `buses` | Named stereo groups with gain, three-band EQ and a compressor |
 | `tracks` | The tracks, below |
 
 A track has a `name`, an `instrument`, `gain` (0–4), `pan` (−1 left to 1 right), a `reverb` send (0–1),
+`bus` (the dry destination), a list of internal outlet `sends`,
 `positions` (where its patch's modules sit in Prism) and `notes`. A note is
 `{"pitch", "start", "length", "velocity"}`: pitch is a MIDI note number, start and length are in beats,
 velocity is 0–1. An instrument's `kind` names its type in daw.td:
@@ -65,6 +67,12 @@ The available graph components include `exciter`, `sine`, `wavetable`, `additive
 `bowed`, `lfo`, `resonator`, `modal`, `waveguide`, `strikeComb`, `fractionalDelay`, `lossFilter`,
 `allpass`, `lowpass`, `shaper`, `shifter`, `spectral`, `reverb`, `smoother`, `gain`, `modulatedGain`,
 `mixer`, `delay`, `output`, `modulatedLowpass`, `grainCloud`, `midiNote`, `midiOscillator`, `stereo`, `downmix`, `split`, `join`, `route`, `stereoModulatedGain` and `stereoOutput`. Each `channelN` setting on a `route` selects one input for output N. An unknown component or setting is an error.
+
+### Send a patch outlet to a bus
+
+On Track patch or Bus routing, choose **Routing → Add send…**. Select a source outlet and destination bus, enter a percentage, and choose **Connect send**. The inspector lists the other patch connections from that outlet. Reopen the send from Routing to change its level, mute it or remove it. Create a destination with **New stereo bus…** in Bus routing.
+
+For example, `{"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabled":true}` sends a quarter of node 3’s first audio outlet to pads. The existing dry cable and Space send keep playing. The project file holds the whole edit.
 
 ## How it renders [SYNTH-ARRANGEMENT]
 

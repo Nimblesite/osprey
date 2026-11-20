@@ -60,7 +60,25 @@ type Page =
     TimelinePage
     MixPage
 
+type SendPort =
+    portKey : string
+    portCaption : string
+    portNode : int
+    portOutlet : int
+    portChannels : int
+    connections : List<string>
+
+type SendDraft =
+    editingId : int
+    sourceKey : string
+    targetBus : string
+    levelText : string
+    sendActive : bool
+    options : List<SendPort>
+
 type OutputEdit =
+    EditingSend
+        draft : SendDraft
     OutputClosed
     ChoosingOutput
         focus : int
@@ -197,6 +215,14 @@ type EditorAction =
         index : int
         offset : int
     NewGroup
+    BeginSend
+        identity : int
+    SendSource
+    SendDestination
+    SendLevel
+    FlipSend
+    CommitSend
+    DeleteSend
     GroupName
     CommitGroup
     CloseOutput

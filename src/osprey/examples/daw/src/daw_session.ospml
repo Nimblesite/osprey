@@ -204,7 +204,8 @@ module DawSession
         NamingGroup proposed => savedTrack (editor, editor.track, daw::Projects::grouped (editor.song, editor.track, proposed))
         _ => Runtime::step editor
 
-    savedTrack (editor, index, result) = match result
+    (** Publish a validated routing edit to the open project. *)
+    export savedTrack (editor, index, result) = match result
         Error why => ui::Runtime::step (editor(message = why))
         Success song => match written (editor, song)
             Success next => ui::Runtime::step (next(track = index, outputEdit = OutputClosed, revision = satAdd next.revision 1))
@@ -252,6 +253,7 @@ module DawSession
     (** What a tap on the Timeline or Mix page does, if anything. *)
     export tappedAt (editor, x, y) = match editor.outputEdit
         ChoosingOutput offset => RoutingPicker::at (editor, offset, x, y)
+        EditingSend _ => Error(message = "Finish editing the send first.")
         NamingGroup _ => Error(message = "Finish naming the group first.")
         OutputClosed => workspaceAt (editor, x, y)
 

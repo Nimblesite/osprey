@@ -43,6 +43,10 @@ module EditorApp
         ChooseOutput index offset => RoutingPicker::open (editor, index, offset)
         InspectBus space => Runtime::step (editor(inspectSpace = space))
         CloseOutput => Runtime::step (editor(outputEdit = OutputClosed))
+        BeginSend identity => DawSession::saving (editor, \ready => SendEditor::open (ready, identity))
+        CommitSend => SendEditor::commit editor
+        DeleteSend => SendEditor::remove editor
+        FlipSend => SendEditor::typed (editor, action, "")
         NewGroup => Runtime::step (editor(outputEdit = NamingGroup(proposed = ""), message = ""))
         CommitGroup => DawSession::group editor
         AssignBus index bus => DawSession::routed (editor, index, bus)
@@ -76,6 +80,9 @@ module EditorApp
                 sounded(stepStore = played(graph = editor.graph))
 
     typed (editor, action, value) = match action
+        SendSource => SendEditor::typed (editor, action, value)
+        SendDestination => SendEditor::typed (editor, action, value)
+        SendLevel => SendEditor::typed (editor, action, value)
         GroupName => Runtime::step (editor(outputEdit = NamingGroup(proposed = value), message = ""))
         PluginPath => Runtime::step (Plugins::path (editor, value))
         CreateVst _ => Plugins::create (editor, value)
@@ -105,7 +112,11 @@ module EditorApp
                     false => Runtime::step (editor(armedNote = -1))
                 Error _ => Runtime::step (editor(armedNote = -1))
 
-    surfacePointer (context, editor, x, y, down) = match editor.page
+    surfacePointer (context, editor, x, y, down) = match editor.outputEdit
+        EditingSend _ => Runtime::step editor
+        _ => workspacePointer (context, editor, x, y, down)
+
+    workspacePointer (context, editor, x, y, down) = match editor.page
         PatchPage => patchPointer (context, editor, x, y, down)
         _ => match DawSession::tappedAt (editor, x, y)
             Success action => pagePointer (context, editor, action, down)
@@ -165,8 +176,8 @@ module EditorApp
 
     surfaceKey (editor, key, down) = match editor.outputEdit
         ChoosingOutput focus => RoutingPicker::key (editor, focus, key, down)
-        NamingGroup _ => Runtime::step (ui::Pick::either (down && key == "escape", editor(outputEdit = OutputClosed), editor))
         OutputClosed => Runtime::step (CableCanvas::keyed (editor, key, down))
+        _ => Runtime::step (ui::Pick::either (down && key == "escape", editor(outputEdit = OutputClosed), editor))
 
     controlled (context, editor, action, input) = match action
         Keyboard => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => dockPointer (context, editor, x, y, down), \(w, _) => Runtime::step (editor(keyboardWidth = w)))

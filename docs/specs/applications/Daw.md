@@ -66,6 +66,12 @@ A project declares buses next to its tracks ([daw.td](../../../src/osprey/exampl
 - Order: tracks → bus EQ → bus compressor → bus gain → Master. A track's Space send goes to the shared reverb before the bus.
 - The codex project routes `glow` and `tablepad` to a `pads` bus keyed by `kick`.
 
+### Internal outlet sends [DAW-MIX-BUS-TAP]
+
+A track’s `sends` list connects its patch outlets to named stereo groups. Each send has a track-local `sendId`, a source node identity, a zero-based outlet, a bus name, an independent linear level from 0 to 1 and an enabled flag. Projects without this list open with an empty list.
+
+The engine takes all enabled taps from the same note evaluation as the main output, before the track gain and pan. Stereo outlets preserve their channels. Mono outlets feed the center of the stereo bus at equal power. Split exposes each individual channel of a wider outlet. The note’s attack and release apply to the tapped audio. Multiple sends may share an outlet or feed the same bus. Invalid endpoints, non-audio ports, absent buses, duplicate send identities and levels outside the range fail validation.
+
 ## Spectral analysis and mix advice [DAW-ANALYSIS]
 
 The daw analyses each track, bus and Master and says whether the sound sits where its instrument should.
@@ -126,6 +132,6 @@ Every formula is written in Lean and its Osprey code is generated ([MATH-CODE](.
 The [Timeline designs](../../designs/prism-timeline/README.md) propose more than this application ships. Only the parts with a clear use are in scope:
 
 - The current app includes the timeline and piano roll, one patch per track, main outputs, stereo groups, group sidechains and the independent Space send. Transport and project commands are available from the menu bar.
-- The routing design also specifies nested racks, sends from internal ports and routing one bus into another. These still require renderer and editor support. A detached Timeline requires a second FerroUI window sharing the project session.
+- Nested racks and routing one bus into another still require renderer and editor support. A detached Timeline requires a second FerroUI window sharing the project session.
 - **Channels ([SYNTH-GRAPH-CHANNELS]):** stereo by default with unlimited channels; each track and Master declare their layout in the project file, in the proposed model. Split, Join and Route already carry multichannel audio inside saved patches. At the track boundary, the offline renderer folds a stereo sink to mono before panning.
 - **Renderer limits:** the renderer is mono per track before panning and allows at most 64 tracks. Its limits are documented in the [daw README](../../../src/osprey/examples/daw/README.md).

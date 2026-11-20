@@ -47,16 +47,35 @@ module MixView
             true => [space]
             false => [space, TimelineView::area ("Inspect ${voice.bus} group", 789.0, 430.0, 222.0, 74.0, !editor.inspectSpace)]
 
+    sendAreas voice = match voice.sends
+        [] => []
+        _ => [TimelineView::area ("Inspect patch sends", 726.0, 208.0, 222.0, 74.0, false)]
+
+    sendAt (voice, x, y) = match EditorView::areaAt (sendAreas voice, x, y) >= 0
+        false => Error(message = "No bus here.")
+        true => match listGet voice.sends 0
+            Success tap => Success(value = BeginSend(identity = tap.sendId))
+            Error _ => Error(message = "The track has no sends.")
+
     graphAt (editor, x, y) = match listGet editor.song.tracks editor.track
         Error _ => Error(message = "Select a track first.")
         Success voice => match EditorView::areaAt (busAreas (editor, voice), x, y)
             0 => Success(value = InspectBus(space = true))
             1 => Success(value = InspectBus(space = false))
-            _ => Error(message = "No bus here.")
+            _ => sendAt (voice, x, y)
 
     group (editor, voice) = match daw::BusMix::named (editor.song, voice.bus)
         Error _ => []
         Success bus => listConcat (card (789.0, 430.0, bus.name, "EQ · compressor · ${TimelineView::hundredths bus.gain}×", border (!editor.inspectSpace))) (listConcat (port (900.0, 430.0)) (port (900.0, 504.0)))
+
+    sendPath (voice, master) = match voice.sends
+        [] => []
+        [first, ...more] =>
+            active = length (filterList (voice.sends, \tap => tap.enabled && tap.level > 0.0))
+            title = ui::Pick::either (length more == 0, first.bus, "Patch sends")
+            detail = ui::Pick::either (length more == 0, "Node ${first.source} · ${TimelineView::percent first.level}", "${active} active · ${length voice.sends} routes")
+            colour = ui::Pick::either (active > 0, TimelineView::accent (), TimelineView::dim ())
+            ui::Lists::flatten [card (726.0, 208.0, title, detail, edge), [Scenes::strip ([963.0, 245.0, 948.0, 245.0], colour, 1.8, 4), Scenes::strip ([758.0, 282.0, 758.0, master + 37.0, 963.0, master + 37.0], colour, 1.8, 4)], port (948.0, 245.0), port (758.0, 282.0)]
 
     flow (editor, voice) =
         grouped = voice.bus != ""
@@ -64,7 +83,7 @@ module MixView
         master = ui::Pick::either (grouped, 542.0, 490.0)
         base = ui::Pick::either (grouped, 504.0, fork + 74.0)
         joinY = master - 31.0
-        ui::Lists::flatten [card (963.0, 208.0, voice.name, "Patch output · ${TimelineView::hundredths voice.gain}× gain", edge),
+        ui::Lists::flatten [sendPath (voice, master), card (963.0, 208.0, voice.name, "Patch output · ${TimelineView::hundredths voice.gain}× gain", edge),
             card (789.0, fork, "Stereo pan", "${TimelineView::pan voice.pan} · Left / Right", edge), card (1127.0, fork, "Space", "Reverb · ${TimelineView::hundredths editor.song.space.decay} s decay", border (spaceSelected (editor, voice))),
             group (editor, voice), card (963.0, master, "Master", "Sum L/R · soft limiter", edge),
             [wire [1074.0, 282.0, 1074.0, fork - 25.0, 900.0, fork - 25.0, 900.0, fork], wire [1074.0, fork - 25.0, 1238.0, fork - 25.0, 1238.0, fork], label ("Dry output", 795.0, fork - 32.0, 11.0, TimelineView::dim (), 0), label ("Send · ${TimelineView::percent voice.reverb}", 1250.0, fork - 32.0, 11.0, TimelineView::dim (), 0)],
@@ -103,14 +122,20 @@ module MixView
         shown = ui::Pick::either (name == current, "✓  ${title}", title)
         ui::Ui::action (shown, "", ui::Plain, name != current, AssignBus(index = index, bus = name))
 
+    sendCommands voice = listPrepend (mapList (voice.sends, \s => ui::Ui::button ("Edit send ${s.sendId} · ${s.bus}…", "", BeginSend(identity = s.sendId)))) (ui::Ui::button ("Add send…", "", BeginSend(identity = -1)))
+
     (** Native destinations follow the open project and its selected track. *)
     export menus editor = match editor.page == MixPage || RoutingPicker::choosing editor
-        false => []
+        false => match editor.page == PatchPage && editor.songPath != ""
+            false => []
+            true => match listGet editor.song.tracks editor.track
+                Error _ => []
+                Success voice => [ui::Ui::section ("Routing", "", sendCommands voice)]
         true => match listGet editor.song.tracks editor.track
             Error _ => []
             Success voice =>
                 entries = mapList (RoutingPicker::names editor, \name => destination (editor.track, voice.bus, name))
-                [ui::Ui::section ("Routing", "", listAppend entries (ui::Ui::button ("New stereo bus…", "", NewGroup)))]
+                [ui::Ui::section ("Routing", "", listConcat (listAppend entries (ui::Ui::button ("New stereo bus…", "", NewGroup))) (sendCommands voice))]
 
     (** The whole Mix page. *)
     export shapes editor = listConcat (listConcat (Header::frame editor) (table editor)) (listConcat (side editor) (RoutingPicker::shapes editor))
@@ -138,7 +163,7 @@ module MixView
 
     (** Accessible row bounds for the mixer. *)
     export access editor = match listGet editor.song.tracks editor.track
-        Success voice => listConcat (rows editor) (busAreas (editor, voice))
+        Success voice => ui::Lists::flatten [rows editor, busAreas (editor, voice), sendAreas voice]
         Error _ => rows editor
 
     rows editor = mapList (toList (range (0, length editor.song.tracks)), \index => TimelineView::area ("Mix track ${satAdd index 1}", 0.0, TimelineGeometry::mixY (toFloat index, height editor), 710.0, height editor, index == editor.track))

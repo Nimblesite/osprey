@@ -257,7 +257,7 @@ module TimelineView
             notes = shown (editor, voice)
             high = pitchTop notes
             rows = pitchRows (notes, high)
-            heading = [box (0.0, 437.0, 1132.0, 18.0, panelInk (), 3), box (537.0, 446.0, 52.0, 3.0, dim (), 4), box (0.0, 511.0, 1132.0, 30.0, panelInk (), 3), label ("Grid   1/16", 1010.0, 481.0, 13.0, dim (), 2, 5), label ("Fit pitches", 1108.0, 481.0, 13.0, dim (), 2, 5), label ("PITCH", 16.0, 520.0, 10.0, dim (), 0, 5), label ("VELOCITY", 8.0, 815.0, 10.0, dim (), 0, 5), label ("0–1", 28.0, 870.0, 10.0, dim (), 0, 5), box (0.0, 803.0, 1132.0, 1.0, Scenes::rgb (50, 42, 70), 4), box (76.0, 894.0, 1034.0, 1.0, dim (), 4), label ("Piano roll", 24.0, 477.0, 18.0, ink (), 0, 3), label ("${voice.name}    ${length voice.notes} notes", 130.0, 481.0, 14.0, accent (), 0, 3)]
+            heading = [box (0.0, 437.0, 1132.0, 18.0, panelInk (), 3), box (0.0, 511.0, 1132.0, 30.0, panelInk (), 3), label ("PITCH", 16.0, 520.0, 10.0, dim (), 0, 5), label ("VELOCITY", 8.0, 815.0, 10.0, dim (), 0, 5), label ("0–1", 28.0, 870.0, 10.0, dim (), 0, 5), box (0.0, 803.0, 1132.0, 1.0, Scenes::rgb (50, 42, 70), 4), box (76.0, 894.0, 1034.0, 1.0, dim (), 4), label ("Piano roll", 24.0, 477.0, 18.0, ink (), 0, 3), label ("${voice.name}    ${length notes} of ${length voice.notes} notes", 130.0, 481.0, 14.0, accent (), 0, 3)]
             listConcat (ui::Lists::flatten [heading, pianoKeys (high, rows), beatLines editor, bars editor, selectedCursor (editor, voice), velocityGrid editor]) (foldList (notes, [], \(all, note) => listConcat all (rollNote (rollStart editor, high, rows, selected (editor, voice, note), note))))
 
     (** The empty dry destination in a project is the direct Master input. *)

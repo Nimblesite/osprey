@@ -191,18 +191,37 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
         point(canvas, point_at, false);
         assert_eq!(read(), expected, "inspecting the parallel path preserves every project field");
     }
+    choose_control(regions, "button", "Add send…", "");
+    choose_control(regions, "button", "Cancel", "");
+    assert_eq!(read(), expected, "cancelling a send keeps the project intact");
     for (label, bus) in [("Master", ""), ("pads", "pads")] {
         let root = regions.get("root").expect("Mix workspace");
         let menus = window_menus(&root.node);
         let routing = menus.iter().find(|menu| menu.title == "Routing").expect("Mix has a Routing menu");
-        assert_eq!(routing.commands.len(), 4, "Master, two project buses and new group creation");
-        assert_eq!(routing.commands.iter().filter(|command| command.enabled).count(), 3);
+        assert_eq!(routing.commands.len(), 5, "Master, two project buses, new group and add send");
+        assert_eq!(routing.commands.iter().filter(|command| command.enabled).count(), 4);
         let destination = routing.commands.iter().find(|item| item.enabled && item.label == label).expect("available destination");
         let changed = Library::event(0, &Touch::control(destination.event, "")).expect("choose the output");
         regions.adopt(&changed).expect("redraw the routing diagram and menu");
         expected["tracks"][0]["bus"] = serde_json::Value::String(bus.to_owned());
         assert_eq!(read(), expected, "only glow's dry output changes");
     }
+    point(canvas, (665.0, 437.0), true);
+    regions.adopt(&point(canvas, (665.0, 437.0), false).0).expect("select keysL");
+    choose_control(regions, "button", "Add send…", "");
+    choose_control(regions, "picker", "Source outlet", "3/0");
+    choose_control(regions, "picker", "Destination bus", "pads");
+    choose_control(regions, "field", "Send level (%)", "25");
+    choose_control(regions, "button", "Connect send", "");
+    expected["tracks"][5]["sends"] = serde_json::json!([
+        {"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabled":true}
+    ]);
+    assert_eq!(read(), expected, "keysL keeps its dry group, Space send, notes and patch cables");
+    choose_control(regions, "button", "Edit send 1 · pads…", "");
+    choose_control(regions, "button", "Remove send", "");
+    expected["tracks"][5]["sends"] = serde_json::json!([]);
+    assert_eq!(read(), expected, "removing one send restores the complete project");
+
 }
 
 #[test]
