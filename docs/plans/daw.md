@@ -54,6 +54,28 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [ ] Master ends in the compressor and limiter, replacing the `ArrangeMath` limiter; settings in daw.td.
 - [ ] Gain reduction and true-peak meters on the Mix page.
 
+## Buses and sidechain [DAW-MIX-BUS]
+
+- [x] daw.td `Bus` (EQ, compressor, sidechain) and `Track.bus`; codec generated; both projects migrated.
+- [x] The renderer sums routed tracks into their bus, then EQ, compressor (keyed by the sidechain track) and gain into Master.
+- [x] Bus journey test: 0 dB EQ passes the input, the sidechain ducks by exactly −15 dB (20 dB over, ratio 4), self-keyed and boosted buses, every refusal, codex round trip.
+- [x] Codex: `glow` and `tablepad` on a `pads` bus ducked by `kick`.
+- [ ] Bus strips on the Mix page: EQ and compressor controls, gain reduction meter.
+- [ ] Natively heard on the full codex render.
+
+## Spectral analysis and mix advice [DAW-ANALYSIS]
+
+- [ ] Band spectrum per track, bus and Master from the STFT, with peak and RMS, on the Mix page.
+- [ ] Pitch fit: measured fundamental and partials against the played notes, detuning in cents.
+- [ ] Per-instrument expected ranges in daw.td; energy outside them reported.
+- [ ] EQ advice (band, dB, reason: masking, resonance, mud, harshness, low end), applied as a checked project edit.
+- [ ] Masking report between tracks in the same band.
+- [ ] Lean formulas and tests on synthetic signals with known spectra.
+- [ ] Mix checks per example project, run by `make` and red on failure: tonal balance against the genre curve, LUFS and true peak, clipping, masking, mono low end, pitch fit ([DAW-ANALYSIS-GATE]).
+- [ ] Every project in `tracks/` passes its mix checks; fix the mixes that fail.
+- [ ] `genre` in daw.td; genre target curves, loudness and dynamic range as versioned data ([DAW-ANALYSIS-GENRE]).
+- [ ] AI review behind an effect: measured spectrum, loudness and masking plus genre in, typed findings out, advisory only, pinned model, timeout ([DAW-ANALYSIS-AI]).
+
 ## MIDI keyboard [DAW-MIDI]
 
 - [ ] Realtime audio path: the renderer meets [DAW-PERF], then a callback backend plays one track's patch live.
