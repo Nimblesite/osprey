@@ -48,6 +48,11 @@ refusedWith (outcome, why) = match outcome
     Error actual => expect (actual, why)
     Success _ => unexpected ()
 
+// One shared runner per assertion shape: rows carry the inputs and the expected value.
+exactRows rows = forEachList (rows, \c => expect (c.got, c.want))
+
+nearRows rows = forEachList (rows, \c => near (c.got, c.want, c.within))
+
 wavMonoFmt () = wavChunk ("fmt ", wavFormatBody (1, 1, 48000, 2, 96000, 16))
 
 wavMonoData () = wavChunk ("data", [0, 64, 0, 128])
@@ -217,58 +222,32 @@ registerWaveJourneys () =
         refusedWith (SampleResources::playbackRate (kit(sampleRate = 192001), 60.0, 48000.0), "Invalid sample pitch or output rate.")
         succeeds (SampleResources::fromWave ("sub", 0.0, wave), \low => refusedWith (SampleResources::playbackRate (low, 127.0, 48000.0), "The requested sample transposition exceeds the grain rate limit."))))
     test ("generated wave math: PCM words, downmix, tuning and polyBLEP shapes hit exact IEEE754 values", \() => arithmetic (\() =>
-        forEachList ([
-            { w = 0.0, b = 8.0, want = -1.0 },
-            { w = 128.0, b = 8.0, want = 0.0 },
-            { w = 255.0, b = 8.0, want = 0.9921875 },
-            { w = 0.0, b = 16.0, want = 0.0 },
-            { w = 16384.0, b = 16.0, want = 0.5 },
-            { w = 32767.0, b = 16.0, want = 0.999969482421875 },
-            { w = 32768.0, b = 16.0, want = -1.0 },
-            { w = 65535.0, b = 16.0, want = -0.000030517578125 },
-            { w = 4194304.0, b = 24.0, want = 0.5 },
-            { w = 8388608.0, b = 24.0, want = -1.0 },
-            { w = 16777215.0, b = 24.0, want = -0.00000011920928955078125 },
-            { w = 0.0, b = 32.0, want = 0.0 },
-            { w = 2147483648.0, b = 32.0, want = -1.0 },
-            { w = 4294967295.0, b = 32.0, want = -0.00000000046566128730773926 }],
-            \held => expect (WaveMath::pcm (held.w, held.b), held.want))
-        forEachList ([{ l = 0.25, r = -0.5, want = -0.125 }, { l = -1.0, r = 1.0, want = 0.0 }, { l = 0.5, r = 0.5, want = 0.5 }, { l = 0.75, r = 0.25, want = 0.5 }],
-            \held => expect (WaveMath::mono (held.l, held.r), held.want))
-        forEachList ([
-            { s = 48000.0, o = 48000.0, t = 440.0, r = 220.0, want = 2.0 },
-            { s = 48000.0, o = 96000.0, t = 880.0, r = 880.0, want = 0.5 },
-            { s = 44100.0, o = 48000.0, t = 440.0, r = 440.0, want = 0.91875 },
-            { s = 24000.0, o = 48000.0, t = 440.0, r = 220.0, want = 1.0 }],
-            \held => near (WaveMath::playbackRate (held.s, held.o, held.t, held.r), held.want, 0.000000001))
-        forEachList ([{ got = Waves::midiFrequency 69.0, want = 440.0, within = 0.0 }, { got = Waves::midiFrequency 81.0, want = 880.0, within = 0.0 }, { got = Waves::midiFrequency 57.0, want = 220.0, within = 0.0 }, { got = Waves::midiFrequency 60.0, want = 261.6255653005986, within = 0.000000001 }, { got = Waves::midiFrequency 0.0, want = 8.175798915643707, within = 0.000000001 }], \c => near (c.got, c.want, c.within))
-        forEachList ([{ s = 0.5, v = 0.8, want = 0.4 }, { s = -1.0, v = 0.25, want = -0.25 }, { s = 0.25, v = 0.0, want = 0.0 }],
-            \held => expect (Waves::velocitySample (held.s, held.v), held.want))
-        forEachList ([{ p = 0.25, want = 0.25 }, { p = 1.25, want = 0.25 }, { p = -0.25, want = 0.75 }, { p = 3.0, want = 0.0 }],
-            \held => expect (Waves::wrap held.p, held.want))
-        forEachList ([{ p = 0.25, s = 0.5, want = -0.25 }, { p = 0.75, s = 0.5, want = 0.25 }, { p = 0.5, s = 0.5, want = 0.0 }, { p = 0.3, s = 0.0, want = 0.0 }, { p = 0.3, s = -0.5, want = 0.0 }, { p = 0.999, s = 0.01, want = 0.81 }],
-            \held => near (Waves::blep (held.p, held.s), held.want, 0.000000001))
-        forEachList ([{ p = 0.25, s = 0.5, want = 0.0416666666666667 }, { p = 0.75, s = 0.5, want = 0.0416666666666667 }, { p = 0.1, s = 0.2, want = 0.0416666666666667 }, { p = 0.5, s = 0.5, want = 0.0 }, { p = 0.9, s = 0.0, want = 0.0 }],
-            \held => near (Waves::blamp (held.p, held.s), held.want, 0.000000001))
-        forEachList ([{ got = Waves::sine 0.25, want = 1.0, within = 0.000000000001 }, { got = Waves::sine 0.0, want = 0.0, within = 0.0 }, { got = Waves::sine 0.5, want = 0.0, within = 0.000000000001 }, { got = Waves::sine 0.75, want = -1.0, within = 0.000000000001 }, { got = Waves::sine 0.125, want = sin (6.283185307179586 * 0.125), within = 0.0 }], \c => near (c.got, c.want, c.within))
-        forEachList ([{ p = 0.0, s = 0.01, want = 0.0 }, { p = 0.25, s = 0.01, want = -0.5 }, { p = 0.5, s = 0.01, want = 0.0 }, { p = 0.75, s = 0.01, want = 0.5 }],
-            \held => expect (Waves::saw (held.p, held.s), held.want))
-        forEachList ([{ p = 0.25, w = 0.5, want = 1.0 }, { p = 0.75, w = 0.5, want = -1.0 }, { p = 0.0, w = 0.5, want = 0.0 }, { p = 0.5, w = 0.5, want = 0.0 }],
-            \held => expect (Waves::pulse (held.p, 0.01, held.w), held.want))
-        forEachList ([{ got = Waves::triangle (0.5, 0.0), want = 1.0, within = 0.0 }, { got = Waves::triangle (0.25, 0.0), want = 0.0, within = 0.0 }, { got = Waves::triangle (0.0, 0.0), want = -1.0, within = 0.0 }, { got = Waves::triangle (0.75, 0.01), want = 0.0, within = 0.000000000001 }, { got = Waves::triangle (0.5, 0.01), want = 0.9866666666666667, within = 0.000000001 }, { got = Waves::harmonic (0.25, 0.01, 3.0), want = -1.0, within = 0.000000000001 }, { got = Waves::harmonic (0.125, 0.01, 2.0), want = 1.0, within = 0.000000000001 }], \c => near (c.got, c.want, c.within))
-        forEachList ([{ got = Waves::harmonic (0.25, 0.2, 3.0), want = 0.0 }, { got = Waves::harmonic (0.25, 0.25, 2.0), want = 0.0 }], \c => expect (c.got, c.want))
-        forEachList ([{ got = Waves::glass (0.25, 0.01, 0.0), want = 1.0, within = 0.000000000001 }, { got = Waves::glass (0.25, 0.01, 1.0), want = sin (6.283185307179586 * 0.25) * 0.7 + sin (6.283185307179586 * 0.75) * 0.3, within = 0.000000000001 }, { got = Waves::bass (0.25, 0.2, 1.0), want = sin (6.283185307179586 * 0.25) * 0.65, within = 0.000000000001 }, { got = Waves::bass (0.125, 0.01, 0.0), want = sin (6.283185307179586 * 0.125) * 0.65 + sin (6.283185307179586 * 0.25) * 0.1, within = 0.000000000001 }, { got = Waves::hollow (0.25, 0.2, 1.0), want = sin (6.283185307179586 * 0.25) * 0.6, within = 0.000000000001 }, { got = Waves::hollow (0.25, 0.01, 1.0), want = sin (6.283185307179586 * 0.25) * 0.6 + sin (6.283185307179586 * 0.75) * 0.25 + sin (6.283185307179586 * 1.25) * 0.15, within = 0.000000000001 }], \c => near (c.got, c.want, c.within))
+        exactRows ([{ got = WaveMath::pcm (0.0, 8.0), want = -1.0 }, { got = WaveMath::pcm (128.0, 8.0), want = 0.0 }, { got = WaveMath::pcm (255.0, 8.0), want = 0.9921875 }, { got = WaveMath::pcm (0.0, 16.0), want = 0.0 }, { got = WaveMath::pcm (16384.0, 16.0), want = 0.5 }, { got = WaveMath::pcm (32767.0, 16.0), want = 0.999969482421875 }, { got = WaveMath::pcm (32768.0, 16.0), want = -1.0 }, { got = WaveMath::pcm (65535.0, 16.0), want = -0.000030517578125 }, { got = WaveMath::pcm (4194304.0, 24.0), want = 0.5 }, { got = WaveMath::pcm (8388608.0, 24.0), want = -1.0 }, { got = WaveMath::pcm (16777215.0, 24.0), want = -0.00000011920928955078125 }, { got = WaveMath::pcm (0.0, 32.0), want = 0.0 }, { got = WaveMath::pcm (2147483648.0, 32.0), want = -1.0 }, { got = WaveMath::pcm (4294967295.0, 32.0), want = -0.00000000046566128730773926 }])
+        exactRows ([{ got = WaveMath::mono (0.25, -0.5), want = -0.125 }, { got = WaveMath::mono (-1.0, 1.0), want = 0.0 }, { got = WaveMath::mono (0.5, 0.5), want = 0.5 }, { got = WaveMath::mono (0.75, 0.25), want = 0.5 }])
+        nearRows ([
+            { got = WaveMath::playbackRate (48000.0, 48000.0, 440.0, 220.0), want = 2.0, within = 0.000000001 },
+            { got = WaveMath::playbackRate (48000.0, 96000.0, 880.0, 880.0), want = 0.5, within = 0.000000001 },
+            { got = WaveMath::playbackRate (44100.0, 48000.0, 440.0, 440.0), want = 0.91875, within = 0.000000001 },
+            { got = WaveMath::playbackRate (24000.0, 48000.0, 440.0, 220.0), want = 1.0, within = 0.000000001 }])
+        nearRows ([{ got = Waves::midiFrequency 69.0, want = 440.0, within = 0.0 }, { got = Waves::midiFrequency 81.0, want = 880.0, within = 0.0 }, { got = Waves::midiFrequency 57.0, want = 220.0, within = 0.0 }, { got = Waves::midiFrequency 60.0, want = 261.6255653005986, within = 0.000000001 }, { got = Waves::midiFrequency 0.0, want = 8.175798915643707, within = 0.000000001 }])
+        exactRows ([{ got = Waves::velocitySample (0.5, 0.8), want = 0.4 }, { got = Waves::velocitySample (-1.0, 0.25), want = -0.25 }, { got = Waves::velocitySample (0.25, 0.0), want = 0.0 }])
+        exactRows ([{ got = Waves::wrap 0.25, want = 0.25 }, { got = Waves::wrap 1.25, want = 0.25 }, { got = Waves::wrap (-0.25), want = 0.75 }, { got = Waves::wrap 3.0, want = 0.0 }])
+        nearRows ([{ got = Waves::blep (0.25, 0.5), want = -0.25, within = 0.000000001 }, { got = Waves::blep (0.75, 0.5), want = 0.25, within = 0.000000001 }, { got = Waves::blep (0.5, 0.5), want = 0.0, within = 0.000000001 }, { got = Waves::blep (0.3, 0.0), want = 0.0, within = 0.000000001 }, { got = Waves::blep (0.3, -0.5), want = 0.0, within = 0.000000001 }, { got = Waves::blep (0.999, 0.01), want = 0.81, within = 0.000000001 }])
+        nearRows ([{ got = Waves::blamp (0.25, 0.5), want = 0.0416666666666667, within = 0.000000001 }, { got = Waves::blamp (0.75, 0.5), want = 0.0416666666666667, within = 0.000000001 }, { got = Waves::blamp (0.1, 0.2), want = 0.0416666666666667, within = 0.000000001 }, { got = Waves::blamp (0.5, 0.5), want = 0.0, within = 0.000000001 }, { got = Waves::blamp (0.9, 0.0), want = 0.0, within = 0.000000001 }])
+        nearRows ([{ got = Waves::sine 0.25, want = 1.0, within = 0.000000000001 }, { got = Waves::sine 0.0, want = 0.0, within = 0.0 }, { got = Waves::sine 0.5, want = 0.0, within = 0.000000000001 }, { got = Waves::sine 0.75, want = -1.0, within = 0.000000000001 }, { got = Waves::sine 0.125, want = sin (6.283185307179586 * 0.125), within = 0.0 }])
+        exactRows ([{ got = Waves::saw (0.0, 0.01), want = 0.0 }, { got = Waves::saw (0.25, 0.01), want = -0.5 }, { got = Waves::saw (0.5, 0.01), want = 0.0 }, { got = Waves::saw (0.75, 0.01), want = 0.5 }])
+        exactRows ([{ got = Waves::pulse (0.25, 0.01, 0.5), want = 1.0 }, { got = Waves::pulse (0.75, 0.01, 0.5), want = -1.0 }, { got = Waves::pulse (0.0, 0.01, 0.5), want = 0.0 }, { got = Waves::pulse (0.5, 0.01, 0.5), want = 0.0 }])
+        nearRows ([{ got = Waves::triangle (0.5, 0.0), want = 1.0, within = 0.0 }, { got = Waves::triangle (0.25, 0.0), want = 0.0, within = 0.0 }, { got = Waves::triangle (0.0, 0.0), want = -1.0, within = 0.0 }, { got = Waves::triangle (0.75, 0.01), want = 0.0, within = 0.000000000001 }, { got = Waves::triangle (0.5, 0.01), want = 0.9866666666666667, within = 0.000000001 }, { got = Waves::harmonic (0.25, 0.01, 3.0), want = -1.0, within = 0.000000000001 }, { got = Waves::harmonic (0.125, 0.01, 2.0), want = 1.0, within = 0.000000000001 }])
+        exactRows ([{ got = Waves::harmonic (0.25, 0.2, 3.0), want = 0.0 }, { got = Waves::harmonic (0.25, 0.25, 2.0), want = 0.0 }])
+        nearRows ([{ got = Waves::glass (0.25, 0.01, 0.0), want = 1.0, within = 0.000000000001 }, { got = Waves::glass (0.25, 0.01, 1.0), want = sin (6.283185307179586 * 0.25) * 0.7 + sin (6.283185307179586 * 0.75) * 0.3, within = 0.000000000001 }, { got = Waves::bass (0.25, 0.2, 1.0), want = sin (6.283185307179586 * 0.25) * 0.65, within = 0.000000000001 }, { got = Waves::bass (0.125, 0.01, 0.0), want = sin (6.283185307179586 * 0.125) * 0.65 + sin (6.283185307179586 * 0.25) * 0.1, within = 0.000000000001 }, { got = Waves::hollow (0.25, 0.2, 1.0), want = sin (6.283185307179586 * 0.25) * 0.6, within = 0.000000000001 }, { got = Waves::hollow (0.25, 0.01, 1.0), want = sin (6.283185307179586 * 0.25) * 0.6 + sin (6.283185307179586 * 0.75) * 0.25 + sin (6.283185307179586 * 1.25) * 0.15, within = 0.000000000001 }])
         expect (Waves::modulated (0.0, 0.0), 0.0)
         near (Waves::modulated (0.25, 1.0), sin (6.283185307179586 * (0.25 + 0.35 * sin (6.283185307179586 * 0.5))), 0.000000000001)
-        forEachList ([{ got = Waves::ring (0.5, 0.0, 0.0), want = 0.5 }, { got = Waves::ring (0.5, 0.0, 1.0), want = 0.0 }], \c => expect (c.got, c.want))
+        exactRows ([{ got = Waves::ring (0.5, 0.0, 0.0), want = 0.5 }, { got = Waves::ring (0.5, 0.0, 1.0), want = 0.0 }])
         near (Waves::ring (0.5, 0.25, 1.0), sin (6.283185307179586 * 1.75) * 0.5, 0.000000000001)
-        forEachList ([{ s = -1.0, want = 0.0 }, { s = 0.0, want = 0.5 }, { s = 0.25, want = 0.625 }, { s = 1.0, want = 1.0 }],
-            \held => expect (Waves::unipolar held.s, held.want))
-        forEachList ([{ got = Waves::controlledGain (0.5, 2.0, 0.25), want = 0.25 }, { got = Waves::controlledGain (-0.5, 0.5, 1.0), want = -0.25 }], \c => expect (c.got, c.want))
-        forEachList ([{ c = 1000.0, m = 0.0, want = 1.0 }, { c = 1000.0, m = 0.5, want = 500.5 }, { c = 1000.0, m = 1.0, want = 1000.0 }, { c = 20000.0, m = 0.25, want = 5000.75 }],
-            \held => expect (Waves::controlledCutoff (held.c, held.m), held.want))
-        forEachList ([{ r = 1.0, d = 4.0, want = 0.0 }, { r = 0.5, d = 2.0, want = 0.0 }, { r = 4.0, d = 4.0, want = 1.0 }, { r = 5.0, d = 3.0, want = 2.0 }, { r = 9.0, d = 5.0, want = 2.0 }],
-            \held => expect (Waves::releaseGain (held.r, held.d), held.want))))
+        exactRows ([{ got = Waves::unipolar (-1.0), want = 0.0 }, { got = Waves::unipolar 0.0, want = 0.5 }, { got = Waves::unipolar 0.25, want = 0.625 }, { got = Waves::unipolar 1.0, want = 1.0 }])
+        exactRows ([{ got = Waves::controlledGain (0.5, 2.0, 0.25), want = 0.25 }, { got = Waves::controlledGain (-0.5, 0.5, 1.0), want = -0.25 }])
+        exactRows ([{ got = Waves::controlledCutoff (1000.0, 0.0), want = 1.0 }, { got = Waves::controlledCutoff (1000.0, 0.5), want = 500.5 }, { got = Waves::controlledCutoff (1000.0, 1.0), want = 1000.0 }, { got = Waves::controlledCutoff (20000.0, 0.25), want = 5000.75 }])
+        exactRows ([{ got = Waves::releaseGain (1.0, 4.0), want = 0.0 }, { got = Waves::releaseGain (0.5, 2.0), want = 0.0 }, { got = Waves::releaseGain (4.0, 4.0), want = 1.0 }, { got = Waves::releaseGain (5.0, 3.0), want = 2.0 }, { got = Waves::releaseGain (9.0, 5.0), want = 2.0 }])))
     test ("formant pitch shifting moves pitch and formants independently and refuses out-of-range ratios", \() => arithmetic (\() =>
         kept = formantLevels (formantConfig (1.5, 1.0))
         moved = formantLevels (formantConfig (1.5, 1.5))

@@ -26,15 +26,6 @@ grainShaped (window, start, rate, duration, amplitude, pan) = synth::GrainContro
 // The symmetric half/half ASR used by the exact-value journeys below.
 grainAsr (start, rate, duration, amplitude, pan) = grainShaped (synth::AsrWindow(attack = 0.5, release = 0.5), start, rate, duration, amplitude, pan)
 
-retunedParameter (key, value, p) = match p.key == key
-    true => p(initial = value)
-    false => p
-
-// The granular node with one parameter's initial value replaced.
-retuned (key, value) =
-    n = granularNode ()
-    n(parameters = mapList (n.parameters, \p => retunedParameter (key, value, p)))
-
 // The same replacement on any granular node, so journeys can prepare their own capacity and source.
 grainParameterOr (key, value, p) = match p.key == key
     true => p(initial = value)
@@ -42,9 +33,10 @@ grainParameterOr (key, value, p) = match p.key == key
 
 grainSet (n, key, value) = n(parameters = mapList (n.parameters, \p => grainParameterOr (key, value, p)))
 
-grainApplied (n, change) = grainSet (n, change.key, change.value)
+// The default granular node with one parameter's initial value replaced.
+retuned (key, value) = grainSet (granularNode (), key, value)
 
-grainTuned (n, changes) = foldList (changes, n, grainApplied)
+grainTuned (n, changes) = foldList (changes, n, \(held, change) => grainSet (held, change.key, change.value))
 
 // A descriptor lookup that fails visibly instead of silently matching nothing.
 grainParameterOf (n, key) = match listGet (filterList (n.parameters, \p => p.key == key)) 0
@@ -56,6 +48,9 @@ grainResource (rate, root, samples) = synth::SampleResource(name = "grain source
 grainFlatSource () = grainResource (48000, 440.0, [1.0, 1.0, 1.0, 1.0])
 
 grainTestNode (resource, capacity, seed) = Components::granular (1, resource, capacity, seed)
+
+// Descriptor rows: one field of one parameter's descriptor checked against its expected value.
+grainDescriptorWants (node, pick, rows) = forEachList (rows, \row => expect (pick (grainParameterOf (node, row.key)), row.want))
 
 // The "rate" descriptor initial for a source at the given rate, i.e. the default read increment.
 grainRateDefault rate =
@@ -107,6 +102,16 @@ grainCloudAudio (cloud, ranges, sizes) = foldList (sizes, { cloud = cloud, range
 wholeCounts () = "Grain timing requires whole output-sample counts."
 
 timingModes () = "Grain timing must be 0 (periodic jitter) or 1 (bounded exponential)."
+
+// A clock prepared at sample zero and run for one block, in a single step.
+schedulerRan (timing, seed, size) = match GrainScheduler::prepare (0, timing, seed)
+    Error why => Error(message = why)
+    Success clock => GrainScheduler::block (clock, size)
+
+// ASR window values and rendered samples checked row by row at the tolerances used below.
+windowRows (window, duration, tolerance, rows) = forEachList (rows, \c => near (GrainWindows::value (window, c.age, duration), c.want, tolerance))
+
+sampleRows (samples, rows) = forEachList (rows, \c => near (listGet samples c.at ?: 9.0, c.want, 0.000000000000001))
 
 diverges outcome = refusedWith (outcome, "The grain player and scheduler clocks have diverged.")
 
@@ -342,9 +347,8 @@ grainEventOrderJourney () =
             expect ((grainVoiceAt (watched.voices, 1)).identity, 1)
             expect ((grainVoiceAt (watched.voices, 1)).cursor, 3.0))
         // The half-open block window: events before the block or at its end belong elsewhere.
-        refusedWith (Grains::scheduled (pool, 4, [synth::GrainEvent(position = -1, controls = controls)]), "Grain events must be ordered and belong to this block's half-open sample interval.")
-        refusedWith (Grains::scheduled (pool, 4, [synth::GrainEvent(position = 4, controls = controls)]), "Grain events must be ordered and belong to this block's half-open sample interval.")
-        refusedWith (Grains::scheduled (pool, 4, [synth::GrainEvent(position = 2, controls = controls), synth::GrainEvent(position = 1, controls = controls)]), "Grain events must be ordered and belong to this block's half-open sample interval.")
+        forEachList ([[synth::GrainEvent(position = -1, controls = controls)], [synth::GrainEvent(position = 4, controls = controls)], [synth::GrainEvent(position = 2, controls = controls), synth::GrainEvent(position = 1, controls = controls)]],
+            \events => refusedWith (Grains::scheduled (pool, 4, events), "Grain events must be ordered and belong to this block's half-open sample interval."))
         refusedWith (Grains::scheduled (pool, 4, mapList (grainQuiet 2049, \sample => synth::GrainEvent(position = 0, controls = controls))), "Invalid grain block size, clock or event capacity.")
         succeeds (Grains::scheduled (pool, 4, mapList (grainQuiet 2048, \sample => synth::GrainEvent(position = 0, controls = controls))), \many =>
             expect (length many.left, 4)))
@@ -482,15 +486,13 @@ grainWindowLatchingJourney () =
     succeeds (GrainGraph::prepare node, \cloud =>
         succeeds (GrainGraph::block (node, cloud, 6), \first =>
             // The first grain uses attack/release 0.5 over 12 interior frames: ages 1..5 ramp 1/6..5/6.
-            forEachList ([{ at = 0, want = 0.0 }, { at = 1, want = 0.16666666666666666 }, { at = 2, want = 0.3333333333333333 }, { at = 3, want = 0.5 }, { at = 4, want = 0.6666666666666666 }, { at = 5, want = 0.8333333333333334 }], \c =>
-                near (listGet first.left c.at ?: 9.0, c.want, 0.000000000000001))
+            sampleRows (first.left, [{ at = 0, want = 0.0 }, { at = 1, want = 0.16666666666666666 }, { at = 2, want = 0.3333333333333333 }, { at = 3, want = 0.5 }, { at = 4, want = 0.6666666666666666 }, { at = 5, want = 0.8333333333333334 }])
             sameSamples (first.right, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
             born = Grains::observation first.next.pool
             expect ((grainVoiceAt (born.voices, 0)).duration, 13)
             // The surviving grain keeps its latched fractions while the grain born at 6 uses the new ones.
             succeeds (GrainGraph::block (switched, first.next, 6), \second =>
-                forEachList ([{ at = 0, want = 1.0 }, { at = 1, want = 1.1666666666666667 }, { at = 2, want = 1.3333333333333333 }, { at = 3, want = 1.5 }, { at = 4, want = 1.3333333333333333 }, { at = 5, want = 1.1666666666666667 }], \c =>
-                    near (listGet second.left c.at ?: 9.0, c.want, 0.000000000000001))
+                sampleRows (second.left, [{ at = 0, want = 1.0 }, { at = 1, want = 1.1666666666666667 }, { at = 2, want = 1.3333333333333333 }, { at = 3, want = 1.5 }, { at = 4, want = 1.3333333333333333 }, { at = 5, want = 1.1666666666666667 }])
                 watched = Grains::observation second.next.pool
                 expect (watched.activeGrains, 2)
                 expect (watched.acceptedGrains, 2))))
@@ -498,14 +500,9 @@ grainWindowLatchingJourney () =
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS-GRAPH] Widths default to zero, never reseed and never touch active grains.
 grainGraphVariationJourney () =
     node = granularNode ()
-    forEachList (["positionSpread", "rateSpread", "durationSpread", "gainSpread", "panSpread"], \key => expect ((grainParameterOf (node, key)).initial, 0.0))
+    grainDescriptorWants (node, \p => p.initial, [{ key = "positionSpread", want = 0.0 }, { key = "rateSpread", want = 0.0 }, { key = "durationSpread", want = 0.0 }, { key = "gainSpread", want = 0.0 }, { key = "panSpread", want = 0.0 }])
     // Source-position spread is limited to [0, sourceSize - 1], matching the graph center control.
-    expect ((grainParameterOf (node, "positionSpread")).maximum, 3.0)
-    expect ((grainParameterOf (node, "start")).maximum, 3.0)
-    expect ((grainParameterOf (node, "rateSpread")).maximum, 32.0)
-    expect ((grainParameterOf (node, "durationSpread")).maximum, 65533.0)
-    expect ((grainParameterOf (node, "gainSpread")).maximum, 1.0)
-    expect ((grainParameterOf (node, "panSpread")).maximum, 2.0)
+    grainDescriptorWants (node, \p => p.maximum, [{ key = "positionSpread", want = 3.0 }, { key = "start", want = 3.0 }, { key = "rateSpread", want = 32.0 }, { key = "durationSpread", want = 65533.0 }, { key = "gainSpread", want = 1.0 }, { key = "panSpread", want = 2.0 }])
     succeeds (GrainDistributions::seeded 7, \base =>
         succeeds (GrainGraph::prepare node, \cloud =>
             // variationSeed initialises the five offset seed states exactly once, when preparing a new cloud.
@@ -539,55 +536,29 @@ grainGraphVariationRefusalJourney () =
     succeeds (GrainGraph::prepare (grainSet (regionNode, "start", 1.0)), \cloud =>
         refusedWith (GrainGraph::block (regionNode, cloud, 8), "Grain start positions and spread must stay inside the selected region."))
 
-// [SYNTH-SAMPLES-IMPORT] Little-endian RIFF bytes assembled by hand, independent of any encoder.
-grainWavJoin parts = foldList (parts, [], \(joined, part) => listConcat joined part)
-
-grainWavCharacter (text, at) = match byteAt text at
-    Error _ => 0
-    Success byte => byte
-
-grainWavText text = mapList (toList (range (0, length text)), \at => grainWavCharacter (text, at))
-
-grainWavWord16 value = [bitAnd value 255, bitAnd (shiftRight value 8) 255]
-
-grainWavWord32 value = [bitAnd value 255, bitAnd (shiftRight value 8) 255, bitAnd (shiftRight value 16) 255, bitAnd (shiftRight value 24) 255]
-
-grainWavPadded body = match bitAnd (length body) 1
-    1 => listAppend body 0
-    _ => body
-
-grainWavChunk (tag, body) = listConcat (grainWavJoin [grainWavText tag, grainWavWord32 (length body)]) (grainWavPadded body)
-
-grainWavFormat (encoding, channels, rate, align, byteRate, bits) = grainWavJoin [grainWavWord16 encoding, grainWavWord16 channels, grainWavWord32 rate, grainWavWord32 byteRate, grainWavWord16 align, grainWavWord16 bits]
-
-grainWavPack chunks =
-    body = grainWavJoin chunks
-    listConcat (grainWavJoin [grainWavText "RIFF", grainWavWord32 (satAdd (length body) 4), grainWavText "WAVE"]) body
-
-grainWavFile (encoding, channels, rate, bits, data) = grainWavPack [grainWavChunk ("fmt ", grainWavFormat (encoding, channels, rate, satMul (shiftRight bits 3) channels, satMul rate (satMul (shiftRight bits 3) channels), bits)), grainWavChunk ("data", data)]
-
 // [SYNTH-SAMPLES-IMPORT] The pure preparation API preserves rate/channels, downmixes stereo and tunes by root.
+// The little-endian RIFF bytes come from the shared builders in wave_journeys.
 grainImportJourney () =
     // Stereo float32 with equal half weights: (1.0 + -1.0)/2 = 0 and (0.5 + 0.25)/2 = 0.375.
-    stereo = grainWavFile (3, 2, 44100, 32, grainWavJoin [grainWavWord32 1065353216, grainWavWord32 3212836864, grainWavWord32 1056964608, grainWavWord32 1048576000])
+    stereo = wavFile (3, 2, 44100, 32, wavJoin [wavWord32 1065353216, wavWord32 3212836864, wavWord32 1056964608, wavWord32 1048576000])
     succeeds (SampleResources::decodeWave ("stereo", 69.0, stereo), \resource =>
         expect (resource.sampleRate, 44100)
         expect (resource.sourceChannels, 2)
         expect (resource.rootFrequency, 440.0)
         sameSamples (resource.samples, [0.0, 0.375]))
     // 24-bit PCM at its original rate, still mono, tuned from MIDI 60.
-    succeeds (SampleResources::decodeWave ("mono24", 60.0, grainWavFile (1, 1, 96000, 24, [0, 0, 64, 0, 0, 192])), \resource =>
+    succeeds (SampleResources::decodeWave ("mono24", 60.0, wavFile (1, 1, 96000, 24, [0, 0, 64, 0, 0, 192])), \resource =>
         expect (resource.sampleRate, 96000)
         expect (resource.sourceChannels, 1)
         sameSamples (resource.samples, [0.5, -0.5])
         near (resource.rootFrequency, 261.6255653005986, 0.000000001))
     // Unknown chunks are skipped within checked lengths and padding.
-    skipped = grainWavPack [grainWavChunk ("fmt ", grainWavFormat (1, 1, 48000, 2, 96000, 16)), grainWavChunk ("LIST", [7, 8, 9]), grainWavChunk ("data", [0, 64, 0, 128])]
+    skipped = wavPack [wavMonoFmt (), wavChunk ("LIST", [7, 8, 9]), wavChunk ("data", [0, 64, 0, 128])]
     succeeds (SampleResources::decodeWave ("skipped", 69.0, skipped), \resource => sameSamples (resource.samples, [0.5, -1.0]))
     // Duplicate data chunks, truncated bodies and single-frame files are explicit errors.
-    refusedWith (SampleResources::decodeWave ("dupe", 69.0, grainWavPack [grainWavChunk ("fmt ", grainWavFormat (1, 1, 48000, 2, 96000, 16)), grainWavChunk ("data", [0, 64, 0, 128]), grainWavChunk ("data", [0, 64])]), "Duplicate WAV data chunk.")
-    refusedWith (SampleResources::decodeWave ("cut", 69.0, grainWavPack [grainWavChunk ("fmt ", grainWavFormat (1, 1, 48000, 2, 96000, 16)), grainWavJoin [grainWavText "data", grainWavWord32 100]]), "Truncated WAV chunk body or padding.")
-    refusedWith (SampleResources::decodeWave ("one", 69.0, grainWavFile (1, 1, 48000, 16, [0, 64])), "WAV requires 2–1048576 complete sample frames.")
+    refusedWith (SampleResources::decodeWave ("dupe", 69.0, wavPack [wavMonoFmt (), wavChunk ("data", [0, 64, 0, 128]), wavChunk ("data", [0, 64])]), "Duplicate WAV data chunk.")
+    refusedWith (SampleResources::decodeWave ("cut", 69.0, wavPack [wavMonoFmt (), wavJoin [wavText "data", wavWord32 100]]), "Truncated WAV chunk body or padding.")
+    refusedWith (SampleResources::decodeWave ("one", 69.0, wavFile (1, 1, 48000, 16, [0, 64])), "WAV requires 2–1048576 complete sample frames.")
     // Transposition uses the rate ratio times the pitch ratio, never the file length.
     shortWave = synth::WaveSamples(sampleRate = 48000, channels = 1, frames = 4, samples = [0.5, -0.5, 0.25, -0.25])
     longWave = synth::WaveSamples(sampleRate = 48000, channels = 1, frames = 64, samples = grainQuiet 64)
@@ -613,27 +584,12 @@ grainDescriptorJourney () =
     expect ((grainParameterOf (node, "period")).initial, 2400.0)
     near (48000.0 / (grainParameterOf (node, "period")).initial, 20.0, 0.0)
     // [SYNTH-ADVANCED-GRANULAR] Window defaults to Hann and the wrap boundary policy is the default.
-    expect ((grainParameterOf (node, "window")).initial, 0.0)
-    expect ((grainParameterOf (node, "boundary")).initial, 0.0)
-    expect ((grainParameterOf (node, "attack")).initial, 0.25)
-    expect ((grainParameterOf (node, "release")).initial, 0.25)
+    grainDescriptorWants (node, \p => p.initial, [{ key = "window", want = 0.0 }, { key = "boundary", want = 0.0 }, { key = "attack", want = 0.25 }, { key = "release", want = 0.25 }, { key = "variationSeed", want = 7.0 }, { key = "regionStart", want = 0.0 }, { key = "regionEnd", want = 4.0 }])
     // [SYNTH-ADVANCED-GRANULAR] Size keeps at least two output frames; output gain and pan keep their declared domains.
     expect ((grainParameterOf (node, "duration")).minimum, 3.0)
     expect ((grainParameterOf (node, "duration")).minimum >= 2.0, true)
-    expect ((grainParameterOf (node, "gain")).minimum, 0.0)
-    expect ((grainParameterOf (node, "gain")).maximum, 1.0)
-    expect ((grainParameterOf (node, "pan")).minimum, -1.0)
-    expect ((grainParameterOf (node, "pan")).maximum, 1.0)
-    expect ((grainParameterOf (node, "rate")).minimum, -16.0)
-    expect ((grainParameterOf (node, "rate")).maximum, 16.0)
-    expect ((grainParameterOf (node, "jitter")).maximum, 1048575.0)
-    expect ((grainParameterOf (node, "maximumGap")).minimum, 1.0)
-    expect ((grainParameterOf (node, "variationSeed")).minimum, 1.0)
-    expect ((grainParameterOf (node, "variationSeed")).maximum, 2147483646.0)
-    expect ((grainParameterOf (node, "variationSeed")).initial, 7.0)
-    expect ((grainParameterOf (node, "regionStart")).initial, 0.0)
-    expect ((grainParameterOf (node, "regionEnd")).initial, 4.0)
-    expect ((grainParameterOf (node, "start")).minimum, 0.0)
+    grainDescriptorWants (node, \p => p.minimum, [{ key = "gain", want = 0.0 }, { key = "pan", want = -1.0 }, { key = "rate", want = -16.0 }, { key = "maximumGap", want = 1.0 }, { key = "variationSeed", want = 1.0 }, { key = "start", want = 0.0 }])
+    grainDescriptorWants (node, \p => p.maximum, [{ key = "gain", want = 1.0 }, { key = "pan", want = 1.0 }, { key = "rate", want = 16.0 }, { key = "jitter", want = 1048575.0 }, { key = "variationSeed", want = 2147483646.0 }])
     // [SYNTH-ADVANCED-GRANULAR] Capacity is prepared explicitly and reported by the pool, never silently substituted.
     succeeds (Grains::prepare ([0.5, -0.5], 128), \pooled =>
         observed = Grains::observation pooled
@@ -670,7 +626,7 @@ registerGrainJourneys () =
     test ("grain windows and timing selectors decode exactly and refuse unsupported modes", \() => arithmetic (\() =>
         pitchMarkJourney ()
         // ASR over 11 frames: a 2-frame attack ramp, a held sustain, then a 3-frame release.
-        forEachList ([{ age = 0, want = 0.0 }, { age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 5, want = 1.0 }, { age = 8, want = 2.0 / 3.0 }, { age = 10, want = 0.0 }], \c => near (GrainWindows::value (synth::AsrWindow(attack = 0.2, release = 0.3), c.age, 11), c.want, 0.000000000001))
+        windowRows (synth::AsrWindow(attack = 0.2, release = 0.3), 11, 0.000000000001, [{ age = 0, want = 0.0 }, { age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 5, want = 1.0 }, { age = 8, want = 2.0 / 3.0 }, { age = 10, want = 0.0 }])
         // [SYNTH-ADVANCED-GRAINS-WINDOWS] [SYNTH-ADVANCED-GRANULAR] Both shapes return exactly zero at the first and last sample:
         // grain envelopes reach zero at both endpoints.
         forEachList ([3, 4, 5, 9, 11, 4800], \duration =>
@@ -686,15 +642,14 @@ registerGrainJourneys () =
         expect (GrainWindows::value (synth::HannWindow, 1, 4) < 1.0, true)
         near (GrainWindows::value (synth::HannWindow, 1, 3), 1.0, 0.000000000000001)
         // Attack/release fractions partition duration - 1 into linear ramps and an exact unity sustain.
-        forEachList ([{ age = 1, want = 0.2 }, { age = 2, want = 0.4 }, { age = 3, want = 0.6 }, { age = 4, want = 0.8 }, { age = 5, want = 1.0 }, { age = 6, want = 0.8 }, { age = 9, want = 0.2 }], \c => near (GrainWindows::value (synth::AsrWindow(attack = 0.5, release = 0.5), c.age, 11), c.want, 0.000000000000001))
-        forEachList ([{ age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 6, want = 1.0 }, { age = 7, want = 0.5 }], \c => near (GrainWindows::value (synth::AsrWindow(attack = 0.25, release = 0.25), c.age, 9), c.want, 0.000000000000001))
-        forEachList ([{ age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 3, want = 0.5 }], \c => near (GrainWindows::value (synth::AsrWindow(attack = 0.5, release = 0.5), c.age, 5), c.want, 0.000000000000001))
+        windowRows (synth::AsrWindow(attack = 0.5, release = 0.5), 11, 0.000000000000001, [{ age = 1, want = 0.2 }, { age = 2, want = 0.4 }, { age = 3, want = 0.6 }, { age = 4, want = 0.8 }, { age = 5, want = 1.0 }, { age = 6, want = 0.8 }, { age = 9, want = 0.2 }])
+        windowRows (synth::AsrWindow(attack = 0.25, release = 0.25), 9, 0.000000000000001, [{ age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 6, want = 1.0 }, { age = 7, want = 0.5 }])
+        windowRows (synth::AsrWindow(attack = 0.5, release = 0.5), 5, 0.000000000000001, [{ age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 3, want = 0.5 }])
         forEachList ([{ shape = synth::AsrWindow(attack = 0.5, release = 0.5), ok = true }, { shape = synth::AsrWindow(attack = 0.25, release = 0.75), ok = true }, { shape = synth::AsrWindow(attack = 0.6, release = 0.5), ok = false }, { shape = synth::AsrWindow(attack = 0.0, release = 0.5), ok = false }, { shape = synth::AsrWindow(attack = 1.0, release = 0.0), ok = false }, { shape = synth::AsrWindow(attack = 0.5, release = 0.5000001), ok = false }, { shape = synth::AsrWindow(attack = 1.000001, release = 0.000001), ok = false }, { shape = synth::AsrWindow(attack = floatFromBits 9218868437227405312, release = 0.5), ok = false }, { shape = synth::HannWindow, ok = true }], \c => expect (GrainWindows::valid c.shape, c.ok))
         succeeds (GrainWindows::decode (1.0, 0.25, 0.25), \shape => expect (structuralEquals (shape, synth::AsrWindow(attack = 0.25, release = 0.25)), true))
         succeeds (GrainWindows::decode (0.0, 0.9, 0.9), \shape => expect (structuralEquals (shape, synth::HannWindow), true))
-        refusedWith (GrainWindows::decode (1.0, 0.75, 0.5), "Grain attack and release must be positive fractions whose sum is at most one.")
-        refusedWith (GrainWindows::decode (1.0, 0.0, 0.25), "Grain attack and release must be positive fractions whose sum is at most one.")
-        refusedWith (GrainWindows::decode (1.0, 0.25, floatFromBits 9218868437227405312), "Grain attack and release must be positive fractions whose sum is at most one.")
+        forEachList ([{ attack = 0.75, release = 0.5 }, { attack = 0.0, release = 0.25 }, { attack = 0.25, release = floatFromBits 9218868437227405312 }],
+            \c => refusedWith (GrainWindows::decode (1.0, c.attack, c.release), "Grain attack and release must be positive fractions whose sum is at most one."))
         forEachList ([2.0, 0.5, -1.0], \mode => refusedWith (GrainWindows::decode (mode, 0.25, 0.25), "Grain window must be 0 (Hann) or 1 (ASR)."))
         // [SYNTH-ADVANCED-GRAINS-TIMING] Exponential mean in [1, 1048576] and integer maximum in [1, 1048576].
         forEachList ([{ timing = synth::ExponentialTiming(mean = 1.0, maximum = 1), ok = true }, { timing = synth::ExponentialTiming(mean = 0.5, maximum = 1), ok = false }, { timing = synth::ExponentialTiming(mean = 0.999, maximum = 9), ok = false }, { timing = synth::ExponentialTiming(mean = 1048576.0, maximum = 1048576), ok = true }, { timing = synth::ExponentialTiming(mean = 1048577.0, maximum = 9), ok = false }, { timing = synth::ExponentialTiming(mean = 1.0, maximum = 0), ok = false }, { timing = synth::ExponentialTiming(mean = 1.0, maximum = 1048577), ok = false }, { timing = synth::PeriodicTiming(period = 1, jitter = 0), ok = true }, { timing = synth::PeriodicTiming(period = 0, jitter = 0), ok = false }, { timing = synth::PeriodicTiming(period = 1048577, jitter = 0), ok = false }, { timing = synth::PeriodicTiming(period = 1048576, jitter = 1048575), ok = true }, { timing = synth::PeriodicTiming(period = 4, jitter = 4), ok = false }], \c => expect (GrainTimings::valid c.timing, c.ok))
@@ -703,13 +658,12 @@ registerGrainJourneys () =
         succeeds (GrainTimings::decode (0.0, 4, 1, 0), \timing => expect (structuralEquals (timing, synth::PeriodicTiming(period = 4, jitter = 1)), true))
         // Inactive settings do not alter the selected distribution: exponential mode ignores the jitter field.
         succeeds (GrainTimings::decode (1.0, 10, 600, 9600), \timing => expect (structuralEquals (timing, synth::ExponentialTiming(mean = 10.0, maximum = 9600)), true))
-        refusedWith (GrainTimings::decode (1.0, 0, 0, 100), "Invalid grain timing distribution or bounds.")
-        refusedWith (GrainTimings::decode (0.0, 1048577, 0, 1), "Invalid grain timing distribution or bounds.")
-        refusedWith (GrainTimings::decode (1.0, 1048577, 0, 100), "Invalid grain timing distribution or bounds.")
+        forEachList ([{ mode = 1.0, mean = 0, jitter = 0, maximum = 100 }, { mode = 0.0, mean = 1048577, jitter = 0, maximum = 1 }, { mode = 1.0, mean = 1048577, jitter = 0, maximum = 100 }],
+            \c => refusedWith (GrainTimings::decode (c.mode, c.mean, c.jitter, c.maximum), "Invalid grain timing distribution or bounds."))
         forEachList ([2.0, 0.25], \mode => refusedWith (GrainTimings::decode (mode, 4, 1, 9), timingModes ()))))
     test ("generated grain math clips, caps and wraps at every boundary", \() => arithmetic (\() =>
-        forEachList ([{ got = GrainMath::exponentialInterval (10.0, 100.0, 1073741824.0), want = 7.0 }, { got = GrainMath::exponentialInterval (1000.0, 5.0, 1000000000.0), want = 5.0 }, { got = GrainMath::exponentialInterval (1.0, 10.0, 0.0), want = 1.0 }, { got = GrainMath::exponentialInterval (2.5, 50.0, 1.0), want = 1.0 }, { got = GrainMath::exponentialInterval (2.5, 50.0, 2147483646.0), want = 50.0 }, { got = GrainMath::exponentialInterval (10.0, 5.0, 2147483646.0), want = 5.0 }, { got = GrainMath::density (3.0, 0.0), want = 0.0 }, { got = GrainMath::density (3.0, 4.0), want = 0.75 }, { got = GrainMath::density (8.0, 8.0), want = 1.0 }], \c => expect (c.got, c.want))
-        forEachList ([{ got = GrainMath::spreadLow (0.5, 1.0, 0.0), want = 0.0 }, { got = GrainMath::spreadLow (5.0, 1.0, 0.0), want = 4.0 }, { got = GrainMath::spreadHigh (5.0, 1.0, 5.5), want = 5.5 }, { got = GrainMath::spreadHigh (5.0, 1.0, 10.0), want = 6.0 }, { got = GrainMath::wrapped (-0.0000000000000001, 4.0), want = 0.0 }, { got = GrainMath::wrapped (-1.0, 4.0), want = 3.0 }, { got = GrainMath::wrapped (4.0, 4.0), want = 0.0 }, { got = GrainMath::wrapped (-1.0, 3.0), want = 2.0 }], \c => expect (c.got, c.want))
+        exactRows ([{ got = GrainMath::exponentialInterval (10.0, 100.0, 1073741824.0), want = 7.0 }, { got = GrainMath::exponentialInterval (1000.0, 5.0, 1000000000.0), want = 5.0 }, { got = GrainMath::exponentialInterval (1.0, 10.0, 0.0), want = 1.0 }, { got = GrainMath::exponentialInterval (2.5, 50.0, 1.0), want = 1.0 }, { got = GrainMath::exponentialInterval (2.5, 50.0, 2147483646.0), want = 50.0 }, { got = GrainMath::exponentialInterval (10.0, 5.0, 2147483646.0), want = 5.0 }, { got = GrainMath::density (3.0, 0.0), want = 0.0 }, { got = GrainMath::density (3.0, 4.0), want = 0.75 }, { got = GrainMath::density (8.0, 8.0), want = 1.0 }])
+        exactRows ([{ got = GrainMath::spreadLow (0.5, 1.0, 0.0), want = 0.0 }, { got = GrainMath::spreadLow (5.0, 1.0, 0.0), want = 4.0 }, { got = GrainMath::spreadHigh (5.0, 1.0, 5.5), want = 5.5 }, { got = GrainMath::spreadHigh (5.0, 1.0, 10.0), want = 6.0 }, { got = GrainMath::wrapped (-0.0000000000000001, 4.0), want = 0.0 }, { got = GrainMath::wrapped (-1.0, 4.0), want = 3.0 }, { got = GrainMath::wrapped (4.0, 4.0), want = 0.0 }, { got = GrainMath::wrapped (-1.0, 3.0), want = 2.0 }])
         near (GrainMath::asr (8.0, 11.0, 0.2, 0.3), 2.0 / 3.0, 0.000000000001)
         // [SYNTH-ADVANCED-GRAINS-PLAYBACK] Equal-power placement: the squared gains sum to one.
         forEachList ([-1.0, -0.5, 0.0, 0.5, 1.0], \pan => near (GrainMath::leftGain pan * GrainMath::leftGain pan + GrainMath::rightGain pan * GrainMath::rightGain pan, 1.0, 0.000000000000001))
@@ -748,57 +702,51 @@ registerGrainJourneys () =
         near (GrainMath::density (1.0, 8.0), 0.125, 0.0)))
     test ("onset clocks follow the seeded exponential stream and refuse exhausted or invalid clocks", \() => arithmetic (\() =>
         forEachList ([{ at = -1, seed = 1 }, { at = 0, seed = 0 }], \c => refusedWith (GrainScheduler::prepare (c.at, synth::PeriodicTiming(period = 4, jitter = 0), c.seed), "Invalid grain clock, interval, jitter or seed."))
-        succeeds (GrainScheduler::prepare (0, synth::ExponentialTiming(mean = 10.0, maximum = 100), 1), \clock => succeeds (GrainScheduler::block (clock, 64), \onsets =>
+        succeeds (schedulerRan (synth::ExponentialTiming(mean = 10.0, maximum = 100), 1, 64), \onsets =>
             expect (structuralEquals (onsets.positions, [0, 1, 2, 12, 35]), true)
-            expect (onsets.next.position == 64 && onsets.next.nextOnset == 70 && onsets.next.seed == 2078669041, true)))
+            expect (onsets.next.position == 64 && onsets.next.nextOnset == 70 && onsets.next.seed == 2078669041, true))
         // The first onset is immediate, gaps never repeat a sample and the stream survives partitions.
-        succeeds (GrainScheduler::prepare (0, synth::ExponentialTiming(mean = 7.5, maximum = 40), 99), \clock =>
-            succeeds (GrainScheduler::block (clock, 200), \whole =>
-                expect (structuralEquals (whole.positions, [0, 1, 6, 12, 15, 29, 41, 72, 76, 77, 85, 101, 106, 114, 116, 123, 132, 144, 150, 167, 176, 180, 182, 183, 191, 194, 196, 199]), true)
-                expect (whole.next.position == 200 && whole.next.nextOnset == 221 && whole.next.seed == 2020237872, true)
-                expect (length whole.positions, 28)
-                expect (grainStrictlyRising whole.positions, true)
-                succeeds (GrainScheduler::block (clock, 64), \a =>
-                    succeeds (GrainScheduler::block (a.next, 31), \b =>
-                        succeeds (GrainScheduler::block (b.next, 105), \c =>
-                            expect (structuralEquals (listConcat (listConcat a.positions b.positions) c.positions, whole.positions), true)
-                            expect (structuralEquals (c.next, whole.next), true))))))
+        succeeds (schedulerRan (synth::ExponentialTiming(mean = 7.5, maximum = 40), 99, 200), \whole =>
+            expect (structuralEquals (whole.positions, [0, 1, 6, 12, 15, 29, 41, 72, 76, 77, 85, 101, 106, 114, 116, 123, 132, 144, 150, 167, 176, 180, 182, 183, 191, 194, 196, 199]), true)
+            expect (whole.next.position == 200 && whole.next.nextOnset == 221 && whole.next.seed == 2020237872, true)
+            expect (length whole.positions, 28)
+            expect (grainStrictlyRising whole.positions, true)
+            succeeds (schedulerRan (synth::ExponentialTiming(mean = 7.5, maximum = 40), 99, 64), \a =>
+                succeeds (GrainScheduler::block (a.next, 31), \b =>
+                    succeeds (GrainScheduler::block (b.next, 105), \c =>
+                        expect (structuralEquals (listConcat (listConcat a.positions b.positions) c.positions, whole.positions), true)
+                        expect (structuralEquals (c.next, whole.next), true)))))
         // Periodic jitter uses the same seed stream: [period - jitter, period + jitter] gaps.
-        succeeds (GrainScheduler::prepare (0, synth::PeriodicTiming(period = 5, jitter = 3), 11), \clock =>
-            succeeds (GrainScheduler::block (clock, 60), \jittered =>
-                expect (structuralEquals (jittered.positions, [0, 2, 10, 16, 23, 29, 31, 37, 41, 49, 52]), true)
-                expect (jittered.next.nextOnset == 60 && jittered.next.seed == 2115326081, true)
-                expect (grainStrictlyRising jittered.positions, true)))
+        succeeds (schedulerRan (synth::PeriodicTiming(period = 5, jitter = 3), 11, 60), \jittered =>
+            expect (structuralEquals (jittered.positions, [0, 2, 10, 16, 23, 29, 31, 37, 41, 49, 52]), true)
+            expect (jittered.next.nextOnset == 60 && jittered.next.seed == 2115326081, true)
+            expect (grainStrictlyRising jittered.positions, true))
         // Zero jitter is strictly periodic for every seed.
         forEachList ([1, 12345, 2147483646], \seed =>
-            succeeds (GrainScheduler::prepare (0, synth::PeriodicTiming(period = 5, jitter = 0), seed), \steady =>
-                succeeds (GrainScheduler::block (steady, 60), \fixed =>
-                    expect (length fixed.positions, 12)
-                    forEachList (toList (range (0, 12)), \i => expect (listGet fixed.positions i ?: -1, i * 5)))))
+            succeeds (schedulerRan (synth::PeriodicTiming(period = 5, jitter = 0), seed, 60), \fixed =>
+                expect (length fixed.positions, 12)
+                forEachList (toList (range (0, 12)), \i => expect (listGet fixed.positions i ?: -1, i * 5))))
         // Maximum one: one onset per sample, at most 2048 per block.
-        succeeds (GrainScheduler::prepare (0, synth::ExponentialTiming(mean = 1.0, maximum = 1), 5), \dense =>
-            succeeds (GrainScheduler::block (dense, 2048), \every =>
-                expect (length every.positions, 2048)
-                expect (grainStrictlyRising every.positions, true)
-                expect (listGet every.positions 2047 ?: -1, 2047)))
+        succeeds (schedulerRan (synth::ExponentialTiming(mean = 1.0, maximum = 1), 5, 2048), \every =>
+            expect (length every.positions, 2048)
+            expect (grainStrictlyRising every.positions, true)
+            expect (listGet every.positions 2047 ?: -1, 2047))
         // Switching policy preserves the pending onset and seed; only later gaps use the new policy.
-        succeeds (GrainScheduler::prepare (0, synth::PeriodicTiming(period = 5, jitter = 3), 11), \clock =>
-            succeeds (GrainScheduler::block (clock, 20), \first =>
+        succeeds (schedulerRan (synth::PeriodicTiming(period = 5, jitter = 3), 11, 20), \first =>
                 expect (structuralEquals (first.positions, [0, 2, 10, 16]), true)
                 expect (first.next.nextOnset == 23 && first.next.seed == 1734574184, true)
                 resumed = synth::GrainClock(position = first.next.position, nextOnset = first.next.nextOnset, timing = synth::ExponentialTiming(mean = 2.0, maximum = 6), seed = first.next.seed)
                 succeeds (GrainScheduler::block (resumed, 20), \switched =>
                     expect (structuralEquals (switched.positions, [23, 26, 27, 30, 31, 36, 37]), true)
-                    expect (switched.next.nextOnset == 43 && switched.next.seed == 2115326081, true))))
+                    expect (switched.next.nextOnset == 43 && switched.next.seed == 2115326081, true)))
         succeeds (GrainScheduler::prepare (9223372036854775743, synth::PeriodicTiming(period = 1048576, jitter = 0), 1), \late => refusedWith (GrainScheduler::block (late, 64), "The grain scheduler exhausted its onset clock."))
         refusedWith (GrainScheduler::block (synth::GrainClock(position = 0, nextOnset = 0, timing = synth::PeriodicTiming(period = 4, jitter = 0), seed = 1), 2049), "Invalid grain scheduler state or block size.")
         // Forged clocks, invalid policies and zero-length blocks are refused without partial state.
         forEachList ([synth::GrainClock(position = 4, nextOnset = 3, timing = synth::PeriodicTiming(period = 4, jitter = 0), seed = 1), synth::GrainClock(position = 0, nextOnset = 0, timing = synth::ExponentialTiming(mean = 0.5, maximum = 9), seed = 1), synth::GrainClock(position = 0, nextOnset = 0, timing = synth::PeriodicTiming(period = 4, jitter = 4), seed = 1)], \bad =>
             refusedWith (GrainScheduler::block (bad, 8), "Invalid grain scheduler state or block size."))
-        succeeds (GrainScheduler::prepare (0, synth::PeriodicTiming(period = 4, jitter = 0), 1), \good =>
-            refusedWith (GrainScheduler::block (good, 0), "Invalid grain scheduler state or block size.")
-            // The refused block left the clock untouched.
-            succeeds (GrainScheduler::block (good, 8), \after => expect (structuralEquals (after.positions, [0, 4]), true)))
+        // The refused zero-length block left the fresh clock untouched.
+        refusedWith (schedulerRan (synth::PeriodicTiming(period = 4, jitter = 0), 1, 0), "Invalid grain scheduler state or block size.")
+        succeeds (schedulerRan (synth::PeriodicTiming(period = 4, jitter = 0), 1, 8), \after => expect (structuralEquals (after.positions, [0, 4]), true))
         controls = grainControls synth::HannWindow
         forEachList (GrainScheduler::events ([3, 9], controls), \event => expect (structuralEquals (event.controls, controls) && (event.position == 3 || event.position == 9), true))
         expect (length (GrainScheduler::events ([3, 9], controls)), 2)))
@@ -883,10 +831,9 @@ registerGrainJourneys () =
                     succeeds (Grains::next full.pool, \one => expect (one.left == 0.0 && one.right == 0.0 && one.next.position == 1 && length one.next.voices == 1, true))
                     succeeds (Grains::block (full.pool, 3), \three => expect (length three.left == 3 && three.next.position == 3, true))))
             refusedWith (Grains::next (pool(position = 9223372036854775807)), "Invalid grain pool or exhausted sample clock.")
-            refusedWith (Grains::block (pool, 0), "Invalid grain block size, clock or event capacity.")
-            refusedWith (Grains::block (pool, 2049), "Invalid grain block size, clock or event capacity.")
-            refusedWith (Grains::scheduled (pool, 4, [synth::GrainEvent(position = 2, controls = controls), synth::GrainEvent(position = 1, controls = controls)]), "Grain events must be ordered and belong to this block's half-open sample interval.")
-            refusedWith (Grains::scheduled (pool, 4, [synth::GrainEvent(position = 4, controls = controls)]), "Grain events must be ordered and belong to this block's half-open sample interval."))))
+            forEachList ([0, 2049], \size => refusedWith (Grains::block (pool, size), "Invalid grain block size, clock or event capacity."))
+            forEachList ([[synth::GrainEvent(position = 2, controls = controls), synth::GrainEvent(position = 1, controls = controls)], [synth::GrainEvent(position = 4, controls = controls)]],
+                \events => refusedWith (Grains::scheduled (pool, 4, events), "Grain events must be ordered and belong to this block's half-open sample interval.")))))
     test ("prepared grain samples keep their rate, channels and tuning through import and graph descriptors", \() => arithmetic (\() =>
         grainImportJourney ()
         grainDescriptorJourney ()
