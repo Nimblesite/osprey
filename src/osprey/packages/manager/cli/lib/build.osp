@@ -16,12 +16,12 @@ import registry::Names
 /// run the offline verify first (its failure is the build's failure), then
 /// compile through the existing compiler with a derived project whose source
 /// roots are the root's own roots plus every locked package's own
-/// `source_roots`, in lock order, and whose `python_sources` are the root's
-/// plus every package's. A bare `build` selects the development lock while the
+/// `source_roots`, in lock order, and whose `python_sources` and
+/// `typescript_sources` are the root's plus every package's. A bare `build` selects the development lock while the
 /// overlay is active and compiles overridden keys from their local checkouts;
 /// `build --release` refuses any override and selects `osprey.lock`
-/// ([PACKAGE-LOCAL-OVERRIDE]). Only a dependency's `source_roots` and
-/// `python_sources` enter the derived project; its `entry`, `[modules]` and
+/// ([PACKAGE-LOCAL-OVERRIDE]). Only a dependency's `source_roots`,
+/// `python_sources` and `typescript_sources` enter the derived project; its `entry`, `[modules]` and
 /// `[system]` never do ([PACKAGE-HARDENING] C6). Implements the build half of
 /// [PACKAGE-FOLDER-REGISTRY].
 module Build {
@@ -92,13 +92,17 @@ module Build {
 
     fn derivedRoots(manifest, pms) = listConcat(mapList(manifest.sourceRoots, rootPath), packageRoots(pms))
 
-    fn packagePythonSources(pms) = foldList(pms, [], fn(acc, pm) => listConcat(acc, mapList(manifestOf(pm).pythonSources, fn(p) => rootPath("${dirOf(pm)}/${p}"))))
+    // A flavor's sources: the root's own, then each package's, rebased like the roots.
+    fn packageSources(pms, listed) = foldList(pms, [], fn(acc, pm) => listConcat(acc, mapList(listed(manifestOf(pm)), fn(p) => rootPath("${dirOf(pm)}/${p}"))))
 
-    fn pythonSources(manifest, pms) = listConcat(mapList(manifest.pythonSources, rootPath), packagePythonSources(pms))
+    fn flavorSources(manifest, pms, listed) = listConcat(mapList(listed(manifest), rootPath), packageSources(pms, listed))
+
+    fn pythonOf(m: ManifestModel::Manifest) = m.pythonSources
+    fn typescriptOf(m: ManifestModel::Manifest) = m.typescriptSources
 
     fn rootsLine(roots) = "source_roots = [${join(mapList(roots, quote), ", ")}]"
 
-    fn pythonLine(sources) = "python_sources = [${join(mapList(sources, quote), ", ")}]"
+    fn sourcesLine(key, sources) = "${key} = [${join(mapList(sources, quote), ", ")}]"
 
     fn namespaceLine(manifest) = Maybe::fold(manifest.defaultNamespace, [], fn(ns) => ["default_namespace = ${quote(ns)}"])
 
@@ -111,7 +115,7 @@ module Build {
     fn boolText(flag) = if flag { "true" } else { "false" }
 
     fn projectLines(manifest, pms) = {
-        let header = ["[project]", "name = ${quote(manifest.projectName)}", rootsLine(derivedRoots(manifest, pms)), pythonLine(pythonSources(manifest, pms))]
+        let header = ["[project]", "name = ${quote(manifest.projectName)}", rootsLine(derivedRoots(manifest, pms)), sourcesLine("python_sources", flavorSources(manifest, pms, pythonOf)), sourcesLine("typescript_sources", flavorSources(manifest, pms, typescriptOf))]
         let options = listConcat(namespaceLine(manifest), listConcat(entryLine(manifest), flavorLine(manifest)))
         let modules = ["[modules]", "allow_wildcard_imports = ${boolText(manifest.allowWildcardImports)}"]
         listConcat(listConcat(header, options), modules)

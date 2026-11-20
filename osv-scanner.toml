@@ -1,0 +1,7 @@
+# Dependency audit exceptions ([CI-AUDIT], `make audit`). Each entry is an
+# advisory with no code vulnerability to patch, accepted by the maintainer,
+# with the reason it cannot be resolved here. Review every entry each release.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0543"
+reason = "chrono is unmaintained (an informational notice; no vulnerable code path and no fixed version). It reaches us only through the vendored third-party GPUI 0.8.1 stack (gpui-base, gpui-component, gpui-pre, notify-rust); drop this entry when that stack moves to jiff or time."

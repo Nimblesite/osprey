@@ -118,6 +118,33 @@ module SurfaceTests {
         }
     ])
 
+    fn ts(text) = [file("src/a.ts", text)]
+
+    /// TypeScript-flavor sources are scanned with TypeScript's own lexing:
+    /// apostrophe, quote and backtick strings, `${}` only inside backticks,
+    /// `/* */` comments, and an escaped identifier is unclassifiable.
+    fn typescriptSources() = checkAll("TypeScript-flavor files are scanned as TypeScript", [
+        surfaceOfFiles(ts("export function load(p: string): string { return readFile(p) }"), ["io/files"]),
+        surfaceOfFiles(ts("const a = '\"'; input(); const b = '\"'"), ["io/terminal"]),
+        surfaceOfFiles(ts("const a = '$" + "{'; input(); const b = '}'"), ["io/terminal"]),
+        surfaceOfFiles(ts("const a = \"$" + "{\"; input(); const b = \"}\""), ["io/terminal"]),
+        surfaceOfFiles(ts("const a = `$" + "{readFile(p)}`"), ["io/files"]),
+        surfaceOfFiles(ts("const a = `readFile $" + "{1} input`"), []),
+        surfaceOfFiles(ts("const a = 'readFile'; const b = \"input\""), []),
+        surfaceOfFiles(ts("/* readFile */ const a = 1"), []),
+        surfaceOfFiles(ts("/* \" */ input() /* \" */"), ["io/terminal"]),
+        surfaceOfFiles(ts("// readFile\nconst a = 1"), []),
+        surfaceOfFiles(ts("const a = read\\u0046ile(p)"), ["io/unknown"]),
+        surfaceOfFiles([file("types/a.d.ts", "declare function readFile(p: string): string")], []),
+        declaresShadow(ts("function readFile(p: string): string { return p }")),
+        declaresShadow(ts("const input = 1")),
+        declaresNoShadow(ts("const text = input()")),
+        match ReleaseFiles::assemble("@a/b/1.1", [file("osprey.toml", "[project]\nname = \"b\"\n"), file("src/a.ts", "const a = read\\u0046ile(p)")]) {
+            Error { message } => message == "source.unclassified-builtin"
+            Success => false
+        }
+    ])
+
     fn sampleFile(release, path) = file(path, readFile("src/osprey/packages/manager/sample-registry/${release}/${path}") ?: "<missing>")
 
     fn unknownBuiltin() = checkAll("unclassified terminal operations block publication", [
@@ -189,6 +216,7 @@ module SurfaceTests {
         test("surface: contextual native identifiers", nativeNames)
         test("surface: native declaration boundaries", nativeBoundaries)
         test("surface: native declaration whitespace", nativeWhitespace)
+        test("surface: TypeScript-flavor sources", typescriptSources)
         test("surface: sample-registry goldens", sampleSurfaces)
     }
 }

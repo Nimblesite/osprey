@@ -15,9 +15,9 @@ import registry::Bytes
 /// failure is a stable reason code at the offending pair's span, encoded as
 /// `code at line:column` inside `Error` until `Manifest` decodes it.
 module ManifestSections {
-    export type Project = { name: string, sourceRoots: List<string>, defaultNamespace: Maybe::Maybe<string>, entry: Maybe::Maybe<string>, flavor: Maybe::Maybe<ManifestModel::Flavor>, testRoots: List<string>, pythonSources: List<string> }
+    export type Project = { name: string, sourceRoots: List<string>, defaultNamespace: Maybe::Maybe<string>, entry: Maybe::Maybe<string>, flavor: Maybe::Maybe<ManifestModel::Flavor>, testRoots: List<string>, pythonSources: List<string>, typescriptSources: List<string> }
 
-    let projectKeys = ["name", "source_roots", "default_namespace", "entry", "flavor", "test_roots", "python_sources"]
+    let projectKeys = ["name", "source_roots", "default_namespace", "entry", "flavor", "test_roots", "python_sources", "typescript_sources"]
     let modulesKeys = ["allow_wildcard_imports", "published_library"]
     let packageKeys = ["name", "license", "summary", "keywords"]
     let defaultRoots = ["src"]
@@ -124,8 +124,8 @@ module ManifestSections {
         Error => fail("manifest.project.entry", span)
     }
 
-    fn assembleProject(name, sourceRoots, ns, entry, flavor, testRoots, pythonSources) = Project {
-        name: name, sourceRoots: sourceRoots, defaultNamespace: ns, entry: entry, flavor: flavor, testRoots: testRoots, pythonSources: pythonSources
+    fn assembleProject(name, sourceRoots, ns, entry, flavor, testRoots, sources: FlavorSources) = Project {
+        name: name, sourceRoots: sourceRoots, defaultNamespace: ns, entry: entry, flavor: flavor, testRoots: testRoots, pythonSources: sources.python, typescriptSources: sources.typescript
     }
 
     fn projectBody(pairs, span) = Checked::andThen(requiredString(pairs, "name", "manifest.project.name", span), fn(value) => if value == "" { fail("manifest.project.name", spanOf(pairs, "name", span)) } else { projectRoots(pairs, span, value) })
@@ -138,13 +138,20 @@ module ManifestSections {
 
     fn projectFlavor(pairs, span, name, sourceRoots, ns, entry) = Checked::andThen(flavorOf(pairs), fn(value) => projectEnd(pairs, span, name, sourceRoots, ns, entry, value))
 
-    // Python-flavor sources are root-confined relative paths ending in `.py`
-    // ([PACKAGE-MANIFEST]); the `.py` rule shares the roots failure's code and span.
-    fn allEndInPy(paths) = foldList(paths, true, fn(ok, path) => ok && endsWith(path, ".py"))
+    type FlavorSources = { python: List<string>, typescript: List<string> }
 
-    fn pythonSourcesOf(pairs, span, name, sourceRoots, ns, entry, flavor, testRoots) = Checked::andThen(roots(pairs, "python_sources", [], "manifest.project.python-sources", span), fn(value) => if allEndInPy(value) { Success { value: assembleProject(name, sourceRoots, ns, entry, flavor, testRoots, value) } } else { fail("manifest.project.python-sources", spanOf(pairs, "python_sources", span)) })
+    // Flavor sources are root-confined relative paths with the flavor's
+    // extension ([PACKAGE-MANIFEST], spec 0054); the extension
+    // rule shares the roots failure's code and span. `.d.ts` declares types only.
+    fn flavorPath(path, suffix) = endsWith(path, suffix) && !endsWith(path, ".d.ts")
 
-    fn projectEnd(pairs, span, name, sourceRoots, ns, entry, flavor) = Checked::andThen(roots(pairs, "test_roots", [], "manifest.project.test-roots", span), fn(value) => pythonSourcesOf(pairs, span, name, sourceRoots, ns, entry, flavor, value))
+    fn flavorSources(pairs, span, key, suffix, code) = Checked::andThen(roots(pairs, key, [], code, span), fn(value) => if foldList(value, true, fn(ok, path) => ok && flavorPath(path, suffix)) { Success { value: value } } else { fail(code, spanOf(pairs, key, span)) })
+
+    fn sourcesOf(pairs, span) = Checked::andThen(flavorSources(pairs, span, "python_sources", ".py", "manifest.project.python-sources"), fn(python) => Checked::andThen(flavorSources(pairs, span, "typescript_sources", ".ts", "manifest.project.typescript-sources"), fn(typescript) => Success { value: FlavorSources { python: python, typescript: typescript } }))
+
+    fn flavorSourcesOf(pairs, span, name, sourceRoots, ns, entry, flavor, testRoots) = Checked::andThen(sourcesOf(pairs, span), fn(value) => Success { value: assembleProject(name, sourceRoots, ns, entry, flavor, testRoots, value) })
+
+    fn projectEnd(pairs, span, name, sourceRoots, ns, entry, flavor) = Checked::andThen(roots(pairs, "test_roots", [], "manifest.project.test-roots", span), fn(value) => flavorSourcesOf(pairs, span, name, sourceRoots, ns, entry, flavor, value))
 
     /// A section's body once the table holds exactly `allowed` keys; `body`
     /// gets the pairs and the section's span.

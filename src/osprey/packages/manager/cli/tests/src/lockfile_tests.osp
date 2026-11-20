@@ -67,6 +67,7 @@ module LockfileTests {
         publication: Maybe::none(),
         testRoots: [],
         pythonSources: [],
+        typescriptSources: [],
         dependencies: edges,
         grants: [],
         systemRequirements: [],
