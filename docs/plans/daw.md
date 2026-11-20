@@ -138,8 +138,8 @@ The three-band split is a start, not the EQ. Target: a parametric EQ as good as 
 
 - [x] `ui::Lists::flatten` joined groups one by one, copying the list so far each time, and every frame's paths and scene rows went through it. It joins by halves now: a Timeline tap fell from 10 ms to 1.3 ms (45e335118).
 - [x] The song strip shows the song overview: one column per bar, as tall as the bar is busy, with the piano roll's two bars framed; cached when the song opens.
-- [ ] The application menu's first item still reads "About FerroUI".
-- [ ] The Patch page's subtitle is baked into the skin's header art ("Signal flow"); the design shows the open page there.
+- [x] The application menu is Services, Hide Prism, Hide Others, Show All and Quit: the toolkit's "About FerroUI" is dropped (read back from the running app).
+- [x] The Patch page's header reads "Prism / Patch": the open page is lettered over the subtitle baked into the skin's art.
 - [ ] Separate windows for Timeline, Patch and Mix (user: "shoot towards multi window"); the host mounts one window today.
 
 ### Strip the UI [DAW-PAGES-STRIP]
