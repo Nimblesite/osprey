@@ -36,6 +36,17 @@ pub(super) fn write_in(dir: &Path, name: &str, body: &str) -> PathBuf {
     path
 }
 
+/// Run the `test` subcommand over `dir`.
+fn test_dir(dir: &Path) -> Out {
+    run_args(&["test", dir.to_string_lossy().as_ref()])
+}
+
+/// A suite run's exit `status` and the stderr line it must carry.
+fn assert_status_stderr(out: &Out, status: i32, needle: &str) {
+    assert_eq!(out.code, Some(status), "{}\n{}", out.stdout, out.stderr);
+    assert!(out.stderr.contains(needle), "{}", out.stderr);
+}
+
 #[cfg(unix)]
 pub(super) fn executable_script(dir: &Path, name: &str, body: &str) -> PathBuf {
     let script = write_in(dir, name, body);
@@ -75,13 +86,22 @@ fn apply_jobs(cmd: &mut Command, jobs: Option<&str>) {
     }
 }
 
+/// `osprey test <dir> --quiet` with the probe `driver` as the C compiler: the
+/// shared base of the concurrency and cache probes, which differ only in the
+/// env each pins beside it.
 #[cfg(unix)]
-pub(super) fn run_concurrency_probe(dir: &Path, driver: &Path, jobs: Option<&str>) -> Out {
+fn probe_cmd(dir: &Path, driver: &Path) -> Command {
     let mut cmd = osprey();
     let _ = cmd
         .args(["test", dir.to_string_lossy().as_ref(), "--quiet"])
-        .env("OSPREY_CC", driver)
-        .env("OSPREY_PARALLEL_PROBE", dir.join("probe"));
+        .env("OSPREY_CC", driver);
+    cmd
+}
+
+#[cfg(unix)]
+pub(super) fn run_concurrency_probe(dir: &Path, driver: &Path, jobs: Option<&str>) -> Out {
+    let mut cmd = probe_cmd(dir, driver);
+    let _ = cmd.env("OSPREY_PARALLEL_PROBE", dir.join("probe"));
     apply_jobs(&mut cmd, jobs);
     finish(&mut cmd)
 }
@@ -117,10 +137,8 @@ pub(super) fn assert_parallel_default_has_serial_escape(
 
 #[cfg(unix)]
 pub(super) fn run_cache_probe(dir: &Path, driver: &Path) -> Out {
-    let mut cmd = osprey();
+    let mut cmd = probe_cmd(dir, driver);
     let _ = cmd
-        .args(["test", dir.to_string_lossy().as_ref(), "--quiet"])
-        .env("OSPREY_CC", driver)
         .env("OSPREY_CC_COUNT", dir.join("cc-count"))
         .env("OSPREY_TEST_CACHE_DIR", dir.join("cache"));
     finish(&mut cmd)
@@ -322,11 +340,11 @@ fn a_test_file_in_a_project_lists_and_runs_against_the_project() {
         &["ok 1 - titles keep the id", "1..1"],
         &["prefix", "other file case"],
     );
-    let file_suite = run_args(&["test", suite.to_string_lossy().as_ref()]);
+    let file_suite = test_dir(&suite);
     file_suite.expect_stdout(0, &["# tests=2 passed=2 failed=0"], &["other file case"]);
     // The directory stays one project suite of every test source, whose two
     // top-level files leave its entry ambiguous ([TESTING-PROJECT-SUITE]).
-    let whole = run_args(&["test", root.join("tests").to_string_lossy().as_ref()]);
+    let whole = test_dir(&root.join("tests"));
     assert_eq!(whole.code, Some(1), "{}", whole.stdout);
     assert!(whole.stderr.contains("is ambiguous"), "{}", whole.stderr);
     let _ = std::fs::remove_dir_all(root);
@@ -347,7 +365,7 @@ fn test_subcommand_warns_on_every_skipped_case() {
          test(\"parked case\", fn() => Skip(\"blocked on #123\"))\n\
          test(\"live case\", fn() => expect(1, 1))\n",
     );
-    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    let o = test_dir(&dir);
     o.expect_stdout(0, &["# SKIP blocked on #123"], &[]);
     assert!(
         o.stderr
@@ -377,7 +395,7 @@ fn a_verdict_declaring_payload_free_states_reports_each_of_them() {
          test(\"parked\", fn() => Skip)\n\
          test(\"green\", fn() => Pass)\n",
     );
-    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    let o = test_dir(&dir);
     o.expect_stdout(
         1,
         &[
@@ -415,31 +433,18 @@ fn run_skip_case(tag: &str, file: &str, reason: &str) -> Out {
              test(\"parked\", fn() => Skip(\"{reason}\"))\n"
         ),
     );
-    run_args(&["test", dir.to_string_lossy().as_ref()])
+    test_dir(&dir)
 }
 
 #[test]
 fn a_reasoned_skip_warns_while_an_unexplained_one_fails_the_suite() {
     let green = run_skip_case("skip-reasoned", "ok.test.osp", "blocked on #123");
-    assert_eq!(green.code, Some(0), "{}\n{}", green.stdout, green.stderr);
-    assert!(
-        green
-            .stderr
-            .contains("warning: test 'parked' skipped: blocked on #123"),
-        "{}",
-        green.stderr
-    );
+    assert_status_stderr(&green, 0, "warning: test 'parked' skipped: blocked on #123");
 
     // The SAME declaration with an empty reason is the error case: the author
     // had somewhere to write the cause and left it blank.
     let red = run_skip_case("skip-blank", "blank.test.osp", "");
-    assert_eq!(red.code, Some(1), "{}\n{}", red.stdout, red.stderr);
-    assert!(
-        red.stderr
-            .contains("error: test 'parked' skipped with no reason"),
-        "{}",
-        red.stderr
-    );
+    assert_status_stderr(&red, 1, "error: test 'parked' skipped with no reason");
     assert!(
         red.stdout.contains("# suites: 0 passed, 1 failed"),
         "{}",
@@ -459,7 +464,7 @@ fn a_verdict_may_give_one_state_a_reason_and_another_none() {
          test(\"parked\", fn() => Skip)\n\
          test(\"broken\", fn() => Fail(\"expected 3\"))\n",
     );
-    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    let o = test_dir(&dir);
     o.expect_stdout(
         1,
         &[

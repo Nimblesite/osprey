@@ -2,43 +2,43 @@
 
 use crate::testutil::{bad_with, check, ok};
 
+/// The destructure fixture's shared head: a one-field record constructor.
+const WRAP_HEAD: &str = "type Wrap = Wrap { value: int }\n";
+
 #[test]
 fn positional_constructor_destructures_fields() {
-    ok("type Wrap = Wrap { value: int }\n\
-        fn unwrap(w: Wrap) -> int = match w {\n\
-          Wrap(v) => v\n\
-        }\n");
     // A slot holds a pattern typed at the slot's type, nested to any depth
     // ([PATTERN-NESTED]).
-    ok("type Wrap = Wrap { value: int }\n\
-        type Box = Box { item: Wrap }\n\
-        fn deep(b: Box) -> int = match b {\n\
-          Box(Wrap(v)) => v\n\
-        }\n");
+    ok(&format!(
+        "{WRAP_HEAD}fn unwrap(w: Wrap) -> int = match w {{\n\
+          Wrap(v) => v\n\
+        }}\n"
+    ));
+    ok(&format!(
+        "{WRAP_HEAD}type Box = Box {{ item: Wrap }}\n\
+          fn deep(b: Box) -> int = match b {{\n\
+            Box(Wrap(v)) => v\n\
+          }}\n"
+    ));
     let tree = "type Tree = Leaf | Node(Tree, Tree)\nfn f(t) = match t {\n";
-    // A value no arm reaches is shown as a pattern.
-    let errs = check(&format!(
-        "{tree}  Node(Leaf, _) => 1\n  Node(Node(_, _), Leaf) => 2\n  Leaf => 0\n}}\n"
-    ));
-    assert!(
-        errs.iter()
-            .any(|e| e.message
-                == "non-exhaustive match: no arm matches `Node(Node(_, _), Node(_, _))`"),
-        "{errs:?}"
-    );
-    // An arm the earlier arms already cover is unreachable.
-    let errs = check(&format!(
-        "{tree}  Node(_, _) => 1\n  Node(Leaf, Leaf) => 2\n  Leaf => 0\n}}\n"
-    ));
-    assert!(
-        errs.iter().any(|e| e.message
-            == "unreachable match arm: earlier arms cover every value `Node(Leaf, Leaf)` matches"),
-        "{errs:?}"
-    );
+    for (arms, expected) in [
+        // A value no arm reaches is shown as a pattern.
+        (
+            "  Node(Leaf, _) => 1\n  Node(Node(_, _), Leaf) => 2\n  Leaf => 0\n",
+            "non-exhaustive match: no arm matches `Node(Node(_, _), Node(_, _))`",
+        ),
+        // An arm the earlier arms already cover is unreachable.
+        (
+            "  Node(_, _) => 1\n  Node(Leaf, Leaf) => 2\n  Leaf => 0\n",
+            "unreachable match arm: earlier arms cover every value `Node(Leaf, Leaf)` matches",
+        ),
+    ] {
+        let errs = check(&format!("{tree}{arms}}}\n"));
+        assert!(errs.iter().any(|e| e.message == expected), "{errs:?}");
+    }
     // A nested slot is typed at its own type.
-    let errs = check(&format!("{tree}  Node(1, _) => 1\n  _ => 0\n}}\n"));
     assert!(
-        !errs.is_empty(),
+        !check(&format!("{tree}  Node(1, _) => 1\n  _ => 0\n}}\n")).is_empty(),
         "an int pattern in a Tree slot must be rejected"
     );
 }
