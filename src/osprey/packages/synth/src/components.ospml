@@ -11,6 +11,11 @@ module Components
 
     parameter (key, label, unit, low, high, value) = Parameter(key = key, label = label, unit = unit, minimum = low, maximum = high, initial = value, automatable = true)
 
+    (** Attach an optional Prism control; the project reader uses the same descriptor when reopening a patch. *)
+    export withOption (n, key, label, maximum, value) =
+        descriptor = parameter (key, label, Ratio, 0.0, maximum, value)
+        n(parameters = listAppend (filterList (n.parameters, \p => p.key != key)) descriptor)
+
     ratio (key, label, value) = parameter (key, label, Ratio, 0.0, 1.0, value)
 
     normalised (key, label, value) = parameter (key, label, Normalised, 0.0, 1.0, value)
