@@ -82,6 +82,18 @@ qwen-headless: _runtime
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(MAKE) -C $(ROOT) _qwen-suite MEMORY=arc QWEN_GPU=metal
 
+## daw-events-headless: The daw's event budget on the FerroUI host, with no window: dragging a Prism module
+##                      and tapping Timeline lanes each answer within one 60 Hz display frame.
+.PHONY: daw-events-headless
+daw-events-headless: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	mkdir -p target/prism-app
+	nice -n 10 $(BIN) src/osprey/examples/daw --compile --target=macos -o target/prism-app/libOspreyApp.a
+	OSPREY_NATIVE_APP_DIR="$(CURDIR)/target/prism-app" OSPREY_RUNTIME_DIR="$(CURDIR)/src/toolchain/compiler/lib" \
+	OSPREY_NATIVE_ABI="$(CURDIR)/src/toolchain/compiler/runtime/native_abi.h" \
+	nice -n 10 cargo test --manifest-path src/toolchain/hosts/ferroui/Cargo.toml --release --features desktop \
+	    --test prism_events --test daw_events -- --nocapture
+
 ## synth: Add, drag and connect module nodes, then close/reopen the keyboard in a native window.
 .PHONY: synth
 synth:
