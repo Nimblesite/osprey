@@ -1115,8 +1115,21 @@ list, or map behavior for both common functions.
 [`toList`](../language/0010-LoopConstructsAndFunctionalIterators.md#tolistiterator-iteratort---listt--builtin-iter-tolist)
 collects an iterator pipeline into one ([BUILTIN-ITER-TOLIST]).
 
-#### `listGet(list: List<T>, index: int) -> Result<T, string>` — [BUILTIN-LIST-GET]
-Equivalent to `list[index]`. An out-of-range index returns `Error`. A string list bound to a name — the result of `lines`, `words` or `split` — is settled into the runtime representation once, at the binding, so every `listGet` on the bound name is a constant-time read and never a copy of the list.
+#### `listGet(list: List<T>, index: int) -> Result<T, IndexOutOfBounds>` — [BUILTIN-LIST-GET]
+Equivalent to `list[index]`. An index outside `0 <= index < length` returns `Error` holding the built-in record `IndexOutOfBounds`: the index asked for and the list's length.
+
+```osprey
+type IndexOutOfBounds = { index: int, length: int }
+
+match listGet([10, 20, 30], 7) {
+    Success { value }   => print("${value}")
+    Error   { message } => print("no element ${message.index} in a list of ${message.length}")
+}
+```
+
+A program that declares its own `IndexOutOfBounds` keeps its own; list reads then have no error type it can name.
+
+A string list bound to a name — the result of `lines`, `words` or `split` — is settled into the runtime representation once, at the binding, so every `listGet` on the bound name is a constant-time read and never a copy of the list.
 
 #### `listPrepend(list: List<T>, value: T) -> List<T>` — [BUILTIN-LIST-PREPEND]
 Returns a list with `value` at the front. The result shares the original list's storage and the cost is amortised constant, so building a list by repeated prepends, or rebuilding one element by element through `[head, ...tail]`, takes time linear in its length.

@@ -861,7 +861,7 @@ signatures are listed in [Built-in Functions](../runtime/0012-Built-InFunctions.
 ### `List<T>` — [TYPE-LIST]
 
 `List<T>` is a homogeneous indexed sequence. Index access is bounds-checked
-and returns `Result<T, string>`.
+and returns `Result<T, IndexOutOfBounds>` ([BUILTIN-LIST-GET](../runtime/0012-Built-InFunctions.md#listgetlist-listt-index-int---resultt-indexoutofbounds--builtin-list-get)).
 
 ```osprey
 let numbers = [1, 2, 3, 4, 5]            // List<int>
@@ -873,7 +873,7 @@ let total = sumOfInts([])                // ok if sumOfInts: (List<int>) -> int
 
 match numbers[0] {
     Success { value }   => print(value)
-    Error   { message } => print(message)
+    Error   { message } => print("no element ${message.index} in ${message.length}")
 }
 ```
 

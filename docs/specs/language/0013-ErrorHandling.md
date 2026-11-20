@@ -19,7 +19,7 @@ type Result<T, E> = Success { value: T } | Error { message: E }
 5. **Neither is unwrapped implicitly.** A `Result<T, E>` never becomes a `T`; callers `match` it or supply a fallback with `?:`. [Result Preservation](0004-TypeSystem.md#result-preservation) lists where this applies, and [Result Default](0007-PatternMatching.md#result-default---pattern-result-default) defines `?:`.
 6. **Neither is dropped.** See [ERROR-RESULT-DISCARD](#discarding-a-result--error-result-discard) for statements and [TYPE-RECORD-RESULT](0004-TypeSystem.md#result-fields--type-record-result) for fields.
 
-There is no built-in error type. A fallible function, built-in or user-written, states the `E` its failure needs: `string` when the failure is only a message, a record such as `IndexOutOfBounds { index: int, length: int }` when it carries several values, a union when it has several cases. Every fallible built-in's `E` is `string`.
+There is no built-in error type. A fallible function, built-in or user-written, states the `E` its failure needs: `string` when the failure is only a message, a record such as `IndexOutOfBounds { index: int, length: int }` when it carries several values, a union when it has several cases. Built-ins follow it: a list read fails with [`IndexOutOfBounds`](../runtime/0012-Built-InFunctions.md#listgetlist-listt-index-int---resultt-indexoutofbounds--builtin-list-get), every other fallible built-in with a `string`.
 
 ```osprey
 type ParseError = { code: int, why: string }

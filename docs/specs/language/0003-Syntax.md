@@ -263,14 +263,15 @@ is [FLAVOR-ML-GENERICS](0024-MLFlavorSyntax.md#generics-flavor-ml-generics).
 
 ## Indexing
 
-Postfix indexing is available on lists, maps, and strings. It returns
-`Result<T, string>` (or `Result<string, string>` for a string), so callers can
-handle an invalid index or absent key.
+Postfix indexing is available on lists, maps, and strings. It returns a
+`Result`, so callers handle an invalid index or absent key: `Result<T,
+IndexOutOfBounds>` for a list ([BUILTIN-LIST-GET](../runtime/0012-Built-InFunctions.md#listgetlist-listt-index-int---resultt-indexoutofbounds--builtin-list-get)),
+`Result<V, string>` for a map and `Result<string, string>` for a string.
 
 ```osprey
 match values[0] {
     Success { value }   => print(value)
-    Error { message }   => print(message)
+    Error { message }   => print("no element ${message.index} in ${message.length}")
 }
 ```
 

@@ -8,7 +8,7 @@ Make `Result<T, E>` hold its error at type `E`, end to end, as [ERR-RESULT](../s
 - [ERR-PAYLOAD]: `Error { message }` binds the producer's value at type `E` on GC, ARC and wasm32.
 - [ERR-RESULT-FORMAT]: `Error(<payload>)` renders the payload at its own type.
 - [TESTING-BUILTIN-EXPECT], [TESTING-BUILTIN-CHECK], [TESTING-BUILTIN-EXPECT-ERROR], [TESTING-EQUALITY]: assertion operands share one inferred type; `expectError` takes the Result's own `E`.
-- There is no built-in `Error` type; `Error` is only the `Result` constructor. Each fallible built-in states its own `E`, which is `string` for all of them today.
+- There is no built-in `Error` type; `Error` is only the `Result` constructor. Each fallible built-in states its own `E`: `IndexOutOfBounds { index, length }` for a list read ([BUILTIN-LIST-GET]), `string` for the rest.
 
 ## Specs
 
@@ -25,6 +25,13 @@ Make `Result<T, E>` hold its error at type `E`, end to end, as [ERR-RESULT](../s
 - [x] A `Result` is printable when both sides are
 - [x] `Error` is not a type: built-ins return `Result<T, string>`; `Error` in a type position is rejected
 - [x] Rejections in `src/osprey/examples/failscompilation/`: wrong `E` returned, wrong `expectError` payload type, `expect(5, "5")`
+
+## Specific error types
+
+- [ ] [BUILTIN-LIST-GET] spec: `listGet` and `list[i]` fail with `IndexOutOfBounds { index, length }`
+- [ ] Prelude declares `IndexOutOfBounds`; checker types list reads with it
+- [ ] Backend builds the record at the bounds check on GC, ARC and wasm32
+- [ ] Corpus and rejection programs cover it
 
 ## Backend (`osprey-codegen`)
 
