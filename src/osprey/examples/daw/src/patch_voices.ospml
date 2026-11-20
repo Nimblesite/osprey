@@ -87,13 +87,18 @@ module PatchVoices
 
     played (graph, plan, noteSpan, routing, rate) = chained (synth::Renderer::start graph, \initial => chained (finished (foldList (counts noteSpan.total, NoteRun(held = initial, samples = [], fault = ""), \(run, count) => block (plan, graph, rate, run, count))), \samples => ok (shaped (samples, noteSpan, routing, rate))))
 
-    routed (nodes, noteSpan, routing, rate) = match synth::Patches::built (nodes, cabled routing)
+    built (nodes, routing) = match synth::Patches::built (nodes, cabled routing)
         synth::Invalid fault => Error(message = "The routing is not a valid graph: ${fault}.")
-        synth::Valid graph => match synth::Graphs::prepare graph
-            synth::Invalid fault => Error(message = "The routing cannot be scheduled: ${fault}.")
-            synth::Valid plan => played (graph, plan, noteSpan, routing, rate)
+        synth::Valid graph => ok graph
+
+    (** The routing as one graph, its settings resolved for `note`: what a note plays and Prism edits. *)
+    export patched (note, routing) = chained (synth::Wavetables::classic (1024, 128), \table => chained (foldList (routing.nodes, ok [], \(outcome, item) => nodeAdded (note, table, outcome, item)), \nodes => built (nodes, routing)))
+
+    routed (graph, noteSpan, routing, rate) = match synth::Graphs::prepare graph
+        synth::Invalid fault => Error(message = "The routing cannot be scheduled: ${fault}.")
+        synth::Valid plan => played (graph, plan, noteSpan, routing, rate)
 
     (** Render one note through the routing: attack and release are 0.001–10 s. *)
     export render (note, noteSpan, rate, routing) = match routing.attack >= 0.001 && routing.attack <= 10.0 && routing.release >= 0.001 && routing.release <= 10.0
         false => Error(message = "A routing's attack and release must be 0.001 to 10 s.")
-        true => chained (synth::Wavetables::classic (1024, 128), \table => chained (foldList (routing.nodes, ok [], \(outcome, item) => nodeAdded (note, table, outcome, item)), \nodes => routed (nodes, noteSpan, routing, rate)))
+        true => chained (patched (note, routing), \graph => routed (graph, noteSpan, routing, rate))

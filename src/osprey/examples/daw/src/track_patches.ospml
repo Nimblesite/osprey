@@ -1,0 +1,17 @@
+// [DAW-TRACK-PATCH] A patch track is what Prism edits: tapping a track on the timeline opens its patch.
+namespace daw
+
+(** The bridge between the timeline and Prism. A track that plays a routed patch opens as that patch's graph,
+    its settings resolved at middle C and full velocity; a track on a built-in instrument has no patch to open. *)
+module TrackPatches
+    reference = Note(pitch = 60, start = 0.0, length = 1.0, velocity = 1.0)
+
+    (** The graph Prism shows for `track`, or why it has none. *)
+    export patch track = match track.instrument
+        PatchInstrument routing => PatchVoices::patched (reference, routing)
+        _ => Error(message = "Track \"${track.name}\" plays a built-in instrument, so it has no patch to open.")
+
+    (** The patch of the track at `index`: the one a tap on that timeline row opens. *)
+    export picked (arrangement, index) = match listGet arrangement.tracks index
+        Error _ => Error(message = "The arrangement has no track ${toString index}.")
+        Success track => patch track

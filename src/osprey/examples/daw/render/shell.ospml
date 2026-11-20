@@ -1,7 +1,7 @@
 // [SYNTH-ARRANGEMENT-PLAYER] Host tools the player runs: every command is bounded by `timeout`.
 namespace daw
 
-(** Runs one host command to completion. Paths are single-quoted; callers refuse a path that is not `safe`. *)
+(** Runs one host command to completion. Paths are single-quoted; callers refuse a path `SongFiles::safe` rejects. *)
 module Shell
     reported (_process, kind, text) = match kind == 2 && text != ""
         true => print text
@@ -18,13 +18,10 @@ module Shell
         Error _ => Error(message = "Could not start: ${command}")
         Success process => ended (command, process, awaitProcess process)
 
-    (** Whether `path` can be single-quoted on a command line. *)
-    export safe path = contains path "'" == false
-
-    (** A `safe` path in single quotes. *)
+    (** A safe path in single quotes. *)
     export quoted path = "'${path}'"
 
-    (** A `safe` path as one shell word, with a leading `~/` standing for the home folder. *)
+    (** A safe path as one shell word, with a leading `~/` standing for the home folder. *)
     export located path = match startsWith path "~/"
         true => "\"$HOME\"/${quoted (drop path 2)}"
         false => quoted path

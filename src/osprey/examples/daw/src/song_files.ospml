@@ -65,8 +65,11 @@ module SongFiles
 
     intro doc = Intro(recording = ui::Doc::text (doc, "recording"), tail = ui::Doc::decimal (doc, "tail"), crossfade = ui::Doc::decimal (doc, "crossfade"))
 
+    (** Whether `path` can be single-quoted on a command line. *)
+    export safe path = contains path "'" == false
+
     // The recording must be a quotable path; the held tail lasts 0.5–10 s and the crossfade fits inside it.
-    checked recording = match recording.recording != "" && Shell::safe recording.recording && recording.tail >= 0.5 && recording.tail <= 10.0 && recording.crossfade > 0.0 && recording.crossfade <= recording.tail
+    checked recording = match recording.recording != "" && safe recording.recording && recording.tail >= 0.5 && recording.tail <= 10.0 && recording.crossfade > 0.0 && recording.crossfade <= recording.tail
         true => Success(value = recording)
         false => Error(message = "The intro needs a recording path without quotes, a tail of 0.5–10 seconds and a crossfade no longer than the tail.")
 
