@@ -202,6 +202,31 @@ impl Checker {
             .find_map(|ty| self.undecided_part(ty, parts, visited))
     }
 
+    /// What a type name is where a built-in uses it: a sealed alias, a
+    /// declared union or record with its field types, or neither.
+    pub(crate) fn named_at_use(
+        &self,
+        name: &str,
+        args: &[Type],
+    ) -> crate::builtin_constraints::Named {
+        use crate::builtin_constraints::Named;
+        if self.ctx.is_alias(name) {
+            return Named::Sealed;
+        }
+        let variants = match self.union_variants.get(name) {
+            Some(variants) => variants.clone(),
+            None if self.ctors.contains_key(name) => vec![name.to_owned()],
+            None => return Named::Plain,
+        };
+        Named::Fields(
+            variants
+                .iter()
+                .flat_map(|ctor| self.ctor_fields(ctor, args))
+                .map(|(_, ty)| ty)
+                .collect(),
+        )
+    }
+
     /// A constructor's fields instantiated against the owner's type arguments.
     fn ctor_fields(&self, ctor: &str, args: &[Type]) -> Vec<Field> {
         let Some(info) = self.ctors.get(ctor) else {

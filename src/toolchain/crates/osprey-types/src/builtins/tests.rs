@@ -315,3 +315,28 @@ fn foreign_callable_bindings_do_not_inherit_builtin_argument_constraints() {
         }
     }
 }
+
+/// Built-in constraints judge every shape a call can hand them: a record, a
+/// list, a function inside a union, an open variable, a non-buffer
+/// [BUILTIN-LIST-SORT] [GPU-MATMUL] [GPU-BUFFER-ELEM] [BUILTIN-TOSTRING].
+#[test]
+fn builtin_constraints_judge_every_argument_shape() {
+    let decls = "type P = { x: int }\ntype Holder = Empty | Has { f: fn(int) -> int }\ntype Shape = Dot | Circle { r: int }\n";
+    let cases = [
+        ("let s = listSort([P { x: 1 }])", false),
+        ("let s = listSort([[1]])", false),
+        ("let s = listSort([\"b\", \"a\"])", true),
+        ("fn product(a, b) = gpuMatMul(a, b, 1, 1, 1)", true),
+        ("let m = gpuMatMul(1, 2, 1, 1, 1)", false),
+        ("fn size(b: GpuBuffer<P>) = gpuLength(b)", false),
+        ("fn size(b: GpuBuffer<bool>) = gpuLength(b)", true),
+        ("let shown = print(Empty)", false),
+        ("let shown = print(Circle { r: 2 })", true),
+        ("let shown = toString(Has { f: fn(n) => n })", false),
+    ];
+    for (body, accepted) in cases {
+        let source = format!("{decls}{body}\n");
+        let errors = crate::testutil::check(&source);
+        assert_eq!(errors.is_empty(), accepted, "{source}: {errors:?}");
+    }
+}

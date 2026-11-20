@@ -114,7 +114,7 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<String> {
 }
 
 /// Validate the receiver/value of a representation-sensitive built-in.
-pub(crate) fn invalid_use(name: &str, ty: &Type, sealed: Sealed<'_>) -> Option<String> {
+pub(crate) fn invalid_use(name: &str, ty: &Type, named: Lookup<'_>) -> Option<String> {
     // [FLOAT-OPERANDS] Schemes carry this obligation into each instantiation,
     // preserving numeric polymorphism while refusing concrete nonnumeric uses.
     if let Some(op) = name.strip_prefix(NUMERIC_OPERAND_PREFIX) {
@@ -142,7 +142,7 @@ pub(crate) fn invalid_use(name: &str, ty: &Type, sealed: Sealed<'_>) -> Option<S
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
             "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()
         ),
-        "interpolation" if !is_interpolatable(ty, sealed) => {
+        "interpolation" if !is_interpolatable(ty, named) => {
             Some(format!("cannot convert value for interpolation: {ty}"))
         }
         "length" | "isEmpty" if !is_sized(ty) => Some(format!(
@@ -151,8 +151,8 @@ pub(crate) fn invalid_use(name: &str, ty: &Type, sealed: Sealed<'_>) -> Option<S
         "listSort" if !is_sortable_list(ty) => Some(format!(
             "`listSort` supports only List<int> or List<string>; got {ty}"
         )),
-        "print" if !is_printable(ty, sealed) => Some(format!("cannot convert value for printing: {ty}")),
-        "toString" if !is_printable(ty, sealed) => Some(format!("cannot convert value to string: {ty}")),
+        "print" if !is_printable(ty, named, &mut Vec::new()) => Some(format!("cannot convert value for printing: {ty}")),
+        "toString" if !is_printable(ty, named, &mut Vec::new()) => Some(format!("cannot convert value to string: {ty}")),
         // GPU buffer elements are scalars [GPU-BUFFER-ELEM]
         // (docs/specs/runtime/0034-GPUComputation.md).
         "toGpu" if !is_gpu_source(ty) => Some(format!(
@@ -279,22 +279,54 @@ fn is_sortable_elem(ty: &Type) -> bool {
 /// [BUILTIN-TOSTRING]: every value has a rendering except a function and the
 /// runtime handles in [`UNPRINTABLE`], alone or inside a record, union, list
 /// or Result.
-fn is_printable(ty: &Type, sealed: Sealed<'_>) -> bool {
-    let ok = |t: &Type| is_printable(t, sealed);
+fn is_printable(ty: &Type, named: Lookup<'_>, seen: &mut Vec<String>) -> bool {
     match ty {
         Type::Var(_) => true,
         Type::Fun { .. } => false,
-        Type::Record { fields, .. } => fields.values().all(ok),
-        Type::Union { variants, .. } => variants.iter().all(ok),
+        Type::Record { fields, .. } => fields.values().all(|t| is_printable(t, named, seen)),
+        Type::Union { variants, .. } => variants.iter().all(|t| is_printable(t, named, seen)),
         Type::Con { name, args } => {
-            !UNPRINTABLE.contains(&name.as_str()) && !sealed(name) && args.iter().all(ok)
+            !UNPRINTABLE.contains(&name.as_str())
+                && args.iter().all(|t| is_printable(t, named, seen))
+                && is_printable_named(name, args, named, seen)
         }
     }
 }
 
-/// Whether a type name is an alias sealed at the use site: a name with no
-/// structure there, so nothing can render it [MODULES-OPAQUE-TYPES].
-pub(crate) type Sealed<'a> = &'a dyn Fn(&str) -> bool;
+/// A declared type is printable when every field of every variant is; a
+/// type met again inside itself adds nothing new [BUILTIN-TOSTRING].
+fn is_printable_named(
+    name: &str,
+    args: &[Type],
+    named: Lookup<'_>,
+    seen: &mut Vec<String>,
+) -> bool {
+    if seen.iter().any(|s| s == name) {
+        return true;
+    }
+    match named(name, args) {
+        Named::Sealed => false,
+        Named::Plain => true,
+        Named::Fields(fields) => {
+            seen.push(name.to_owned());
+            fields.iter().all(|t| is_printable(t, named, seen))
+        }
+    }
+}
+
+/// What a type name is at the use site.
+pub(crate) enum Named {
+    /// An alias sealed there: no structure, so nothing can render it
+    /// [MODULES-OPAQUE-TYPES].
+    Sealed,
+    /// A declared record or union: the field types of every variant.
+    Fields(Vec<Type>),
+    /// A built-in or otherwise structureless name.
+    Plain,
+}
+
+/// Resolve a type name, with its arguments, at the use site.
+pub(crate) type Lookup<'a> = &'a dyn Fn(&str, &[Type]) -> Named;
 
 const UNPRINTABLE: [&str; 7] = [
     names::MAP,
@@ -310,8 +342,8 @@ const UNPRINTABLE: [&str; 7] = [
 /// fiber handle, which interpolates as its id — `src/osprey/tests/regressions/fiber`
 /// prints `ids 1 2 3 4` from four of them. `print` has never taken a fiber on
 /// its own and still does not.
-fn is_interpolatable(ty: &Type, sealed: Sealed<'_>) -> bool {
-    is_printable(ty, sealed) || ty.is_named(names::FIBER)
+fn is_interpolatable(ty: &Type, named: Lookup<'_>) -> bool {
+    is_printable(ty, named, &mut Vec::new()) || ty.is_named(names::FIBER)
 }
 
 #[cfg(test)]
@@ -320,11 +352,11 @@ mod tests {
     use std::collections::BTreeMap;
 
     fn invalid_use(name: &str, ty: &Type) -> Option<String> {
-        super::invalid_use(name, ty, &|_| false)
+        super::invalid_use(name, ty, &|_, _| Named::Plain)
     }
 
     fn is_printable(ty: &Type) -> bool {
-        super::is_printable(ty, &|_| false)
+        super::is_printable(ty, &|_, _| Named::Plain, &mut Vec::new())
     }
 
     #[test]
@@ -442,6 +474,13 @@ mod tests {
         assert!(!is_printable(&Type::fun(vec![Type::int()], Type::int())));
         let sealed = Type::list(Type::con("M::Token", vec![]));
         assert!(is_printable(&sealed));
-        assert!(!super::is_printable(&sealed, &|name| name == "M::Token"));
+        let token = |name: &str, _: &[Type]| {
+            if name == "M::Token" {
+                Named::Sealed
+            } else {
+                Named::Plain
+            }
+        };
+        assert!(!super::is_printable(&sealed, &token, &mut Vec::new()));
     }
 }

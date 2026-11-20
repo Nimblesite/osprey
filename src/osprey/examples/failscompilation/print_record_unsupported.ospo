@@ -1,9 +1,13 @@
-// A function has no rendering, so a record holding one is not printable [BUILTIN-PRINT].
+// A function has no rendering, so a record holding one is not printable, nor
+// is a union with a variant holding one, even a value of another variant
+// [BUILTIN-PRINT] [BUILTIN-TOSTRING].
 
 type Pt = { x: int, grow: fn(int) -> int }
+type Holder = Empty | Has { step: fn(int) -> int }
 
 fn main() -> int {
     let p = Pt { x: 5, grow: |n| => n + 1 }
     print(p)
+    print(Empty)
     0
 }

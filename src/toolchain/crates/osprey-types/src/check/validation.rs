@@ -19,8 +19,8 @@ impl Checker {
                 .undecided_comparison(operation, &resolved)
                 .or_else(|| self.undecided_structural_equals(operation, &resolved))
                 .or_else(|| {
-                    let sealed = |alias: &str| self.ctx.is_alias(alias);
-                    crate::builtin_constraints::invalid_use(operation, &resolved, &sealed)
+                    let named = |name: &str, args: &[Type]| self.named_at_use(name, args);
+                    crate::builtin_constraints::invalid_use(operation, &resolved, &named)
                 });
             if let Some(message) = message {
                 self.errors.push(
