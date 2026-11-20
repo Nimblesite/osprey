@@ -139,6 +139,10 @@ Normative constraints for the [canonical domain model](0031-PackageDomainModel.m
   (`source.python-flavor-header`): published packages contain Osprey source
   only, and a Python-flavor file is Osprey source that the Osprey compiler
   reads, never a CPython module ([PACKAGE-PUBLISH]).
+  `[project].typescript_sources` lists TypeScript-flavor files ending in `.ts`
+  (never `.d.ts`) under the same rooting rule
+  (`manifest.typescript-source-unrooted`); the canonical manifest carries
+  `typescriptSources` only when the list is non-empty.
 - `RelativePath` is root-confined, normalized, and rejects absolute paths,
   traversal and symlinks. `LocalPath` is development-only: `use` resolves it
   once against the selected workspace root to a canonical physical path,

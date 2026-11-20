@@ -50,6 +50,8 @@ module Surface {
     // while an interpolation (and any nested braces or strings) is scanned.
     let quote = 34
     let apostrophe = 39
+    let backtick = 96
+    let star = 42
     let backslash = 92
     let slash = 47
     let newline = 10
@@ -61,23 +63,25 @@ module Surface {
     let codeMode = 0
     let commentMode = 1
     let blockCommentMode = 2
+    let flatCommentMode = 3
     let tripleOffset = 100
     let formattedOffset = 200
     let declarers = ["fn", "let", "mut", "def"]
+    let typescriptDeclarers = ["function", "const", "var"]
 
     // Default syntax also permits identifiers named extern; classify declarations, not references.
     let nativeDeclaration = "<extern>"
     let continuation = "<expression>"
     let expressionDelimiters = [61, 62, 60, 43, 45, 42, 47, 37, 38, 124, 94, 33, 63, 40, 91, 44, 58]
-    type Scan = { mode: int, start: int, previous: string, found: List<string>, declared: List<string>, frames: List<int>, skip: int, python: bool, ml: bool, boundary: bool }
+    type Scan = { mode: int, start: int, previous: string, found: List<string>, declared: List<string>, frames: List<int>, skip: int, python: bool, ml: bool, typescript: bool, boundary: bool }
 
-    fn begin(text) = Scan { mode: codeMode, start: -1, previous: "", found: [], declared: [], frames: [], skip: if startsWith(text, bom) { byteLength(bom) } else { 0 }, python: startsWith(text, pythonMarker) || startsWith(text, bom + pythonMarker), ml: false, boundary: true }
+    fn begin(text) = Scan { mode: codeMode, start: -1, previous: "", found: [], declared: [], frames: [], skip: if startsWith(text, bom) { byteLength(bom) } else { 0 }, python: startsWith(text, pythonMarker) || startsWith(text, bom + pythonMarker), ml: false, typescript: false, boundary: true }
 
     fn identByte(s, b) = Bytes::isAlnum(b) || b == 95 || ((s.ml || s.python) && b >= 128)
 
     fn lineBreak(b) = b == newline || b == carriageReturn
 
-    fn declares(s: Scan, capability) = capability != "" && listContains(declarers, s.previous)
+    fn declares(s: Scan, capability) = capability != "" && (listContains(declarers, s.previous) || (s.typescript && listContains(typescriptDeclarers, s.previous)))
 
     fn closedWord(s, word) = {
         // Implements [PACKAGE-CAPABILITY-CONFINEMENT]: native calls have no classified grant.
@@ -138,21 +142,31 @@ module Surface {
         else if identByte(s, b) { moved(s, codeMode, if s.start < 0 { i } else { s.start }, s.frames, 0) }
         else if s.python && b == 64 { closedWord(closed(text, s, i), "@") }
         else if s.ml && b == 40 && byte(text, i + 1) == 42 { pushed(closed(text, s, i), blockCommentMode, 1) }
-        else if b == quote || (s.python && b == apostrophe) { stringStart(text, s, i, b) }
+        else if s.typescript && b == backslash { unclassified(closed(text, s, i)) }
+        else if s.typescript && b == slash && byte(text, i + 1) == star { pushed(closed(text, s, i), flatCommentMode, 1) }
+        else if b == quote || ((s.python || s.typescript) && b == apostrophe) || (s.typescript && b == backtick) { stringStart(text, s, i, b) }
         else if (b == slash && byte(text, i + 1) == slash) || (s.python && b == 35) { pushed(closed(text, s, i), commentMode, 0) }
         else if b == 123 { pushed(separated(text, s, i, b), codeMode, 0) }
         else if b == 125 { popped(separated(text, s, i, b), 0) }
         else { separated(text, s, i, b) }
+
+    // Default strings interpolate `${}`; TypeScript only in backticks; Python
+    // through its own formatted prefixes.
+    fn interpolates(s: Scan, delimiter) = if s.typescript { delimiter == backtick } else { !s.python }
+
+    // A TypeScript identifier may spell its letters as `\u` escapes, which the
+    // whole-word match cannot read, so any code backslash is unclassifiable.
+    fn unclassified(s: Scan) = s { found: listAppend(s.found, "io/unknown") }
 
     fn inString(text, s, i, b) = {
         let delimiter = s.mode % tripleOffset
         let wide = s.mode % formattedOffset >= tripleOffset
         let formatted = s.mode >= formattedOffset
         if b == delimiter && (!wide || triple(text, i, delimiter)) { popped(s, if wide { 2 } else { 0 }) }
-        else if b == backslash && !(formatted && byte(text, i + 1) == 123) && !(!s.python && byte(text, i + 1) == 36) { moved(s, s.mode, -1, s.frames, 1) }
+        else if b == backslash && !(formatted && byte(text, i + 1) == 123) && !(interpolates(s, delimiter) && byte(text, i + 1) == 36) { moved(s, s.mode, -1, s.frames, 1) }
         else if formatted && b == 123 && byte(text, i + 1) == 123 { moved(s, s.mode, -1, s.frames, 1) }
         else if formatted && b == 123 { pushed(s, codeMode, 0) }
-        else if !s.python && b == 36 && byte(text, i + 1) == 123 { pushed(s, codeMode, 1) }
+        else if interpolates(s, delimiter) && b == 36 && byte(text, i + 1) == 123 { pushed(s, codeMode, 1) }
         else { s }
     }
 
@@ -165,6 +179,7 @@ module Surface {
         if s.skip > 0 { moved(s, s.mode, s.start, s.frames, s.skip - 1) }
         else if s.mode == commentMode { if lineBreak(b) { atBoundary(popped(s, 0)) } else { s } }
         else if s.mode == blockCommentMode { inBlockComment(text, s, i, b) }
+        else if s.mode == flatCommentMode { if b == star && byte(text, i + 1) == slash { popped(s, 1) } else if lineBreak(b) { atBoundary(s) } else { s } }
         else if s.mode == codeMode { inCode(text, s, i, b) }
         else { inString(text, s, i, b) }
     }
@@ -187,7 +202,7 @@ module Surface {
     // Implements [FLAVOR-SELECT]: valid file markers agree with the extension.
     fn fileStart(f) = {
         let first = begin(contentOf(f))
-        first { python: endsWith(pathOf(f), ".py"), ml: endsWith(pathOf(f), ".ospml") }
+        first { python: endsWith(pathOf(f), ".py"), ml: endsWith(pathOf(f), ".ospml"), typescript: typescriptSource(pathOf(f)) }
     }
 
     fn scannedFile(f) = scanFrom(contentOf(f), fileStart(f))
@@ -204,7 +219,10 @@ module Surface {
 
     fn shadowsFile(f) = isSource(pathOf(f)) && !isEmpty(declaredIn(scannedFile(f)))
 
-    fn isSource(path) = endsWith(path, ".osp") || endsWith(path, ".ospml") || endsWith(path, ".py")
+    // A `.d.ts` file declares types only and is never compiled (spec 0054).
+    fn typescriptSource(path) = endsWith(path, ".ts") && !endsWith(path, ".d.ts")
+
+    fn isSource(path) = endsWith(path, ".osp") || endsWith(path, ".ospml") || endsWith(path, ".py") || typescriptSource(path)
 
     // `Release::File` shares no field name, but the receiver is typed like the
     // other readers (issue #273).

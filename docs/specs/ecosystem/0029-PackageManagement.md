@@ -255,7 +255,7 @@ publish worms).
 - C6. Installing executes nothing: no hook, script, generator or import-time
   step exists in the format, and install copies verified text files. `build`
   compiles each installed tree through its own `source_roots` and
-  `python_sources`, both resolved inside that verified tree, and copies
+  `python_sources` and `typescript_sources`, all resolved inside that verified tree, and copies
   nothing else from a dependency's manifest: its `entry`, `[modules]` and
   `[system]` tables never enter the derived project. What a dependency can
   reach at run time is bounded by `[PACKAGE-CAPABILITY-CONFINEMENT]`.
@@ -444,7 +444,7 @@ At startup the server walks the root, validates each release, and computes its
 keyed by digest. A restart rebuilds it; there is no other state. The client's
 `publish --folder <registry-root> [--breaking]` places a project as the next
 release of that folder: the release tree is the manifest, every file under its
-`source_roots`, its `python_sources`, its declared assets and its legal documents, checked and
+`source_roots`, its `python_sources` and `typescript_sources`, its declared assets and its legal documents, checked and
 digested exactly as the server will before a byte is written, at the next
 ordinal of the newest epoch, at the next epoch with `--breaking`, or at `1.1`
 for a new package. The authenticated `publish` of spec 0030 replaces this once
@@ -535,7 +535,7 @@ canonical JSON:
   `verify --offline` reports `verify.no-lock` (no decodable lock),
   `verify.manifest-digest`, `verify.dependencies`, `verify.missing` and
   `verify.digest`; `build` runs that check first and then compiles the root
-  with every installed tree's own `source_roots` and `python_sources` as
+  with every installed tree's own `source_roots`, `python_sources` and `typescript_sources` as
   extra inputs. A target-less `fetch` without a lock is `install.no-lock`.
 - Format `0` locks are integrity-only. A client that has the trust plane
   rejects them for `build --release`; Milestone B replaces them with the
@@ -676,6 +676,14 @@ release tree carries the marker line or the release is refused
 (`source.python-flavor-header`, `[PACKAGE-SOURCE-CANONICAL]`). A Python-flavor
 file is Osprey source the Osprey compiler reads; nothing in a release is ever
 run by CPython.
+
+`[project].typescript_sources` names the project's TypeScript-flavor files
+(spec 0054: extension `.ts`, never `.d.ts`) the same way. The canonical
+manifest carries them as `typescriptSources` only when the list is non-empty,
+so a manifest without them keeps its digest. A published manifest keeps every
+listed path inside one of its `source_roots`
+(`manifest.typescript-source-unrooted`), and the capability scan reads every
+`.ts` file in a release tree as Osprey source.
 
 A system capability name is one or more segments of `[a-z0-9][a-z0-9.-]{0,63}`
 joined by single `/` characters, at most 128 bytes in all, such as

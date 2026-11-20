@@ -33,7 +33,7 @@ build: _runtime _runtime_klee $(EXT_NODE_DEPS)
 audit:
 	python3 src/toolchain/hosts/gpui/dependencies.py
 	python3 src/toolchain/hosts/gpui/dependencies_test.py
-	osv-scanner scan source --recursive --all-vulns .
+	osv-scanner scan source --recursive --all-vulns --config=src/toolchain/osv-scanner.toml .
 
 ## test: Fail-fast tests + coverage + per-project threshold enforcement.
 ##       Projects listed in coverage-thresholds.json are each tested + checked.
