@@ -15,7 +15,52 @@ The daw is designed from the work of the person using it: writing a part, hearin
 - **Targets fit a hand.** A socket, a fader or a key is large enough to hit without aiming, and a control under the pointer wins over artwork that overlaps it.
 - **The app says what it is doing.** The footer names what is sounding and the last thing that happened. A failure says what failed in the user's terms and leaves the work as it was.
 - **Nothing is lost by exploring.** Edits undo in one step each, a page with nothing to show says so and offers the way forward, and leaving a page saves what was changed or keeps it open with the reason.
-- **One look.** Every control is drawn in the Prism skin on a dark canvas, whatever the system's appearance. A control that looks like it came from another app is a defect.
+- **One look, one set of controls.** Every control is drawn in the Prism skin on a dark canvas, whatever the system's appearance, and every panel uses the controls of [DAW-CONTROLS]. A control that looks like it came from another app is a defect.
+- **Everything undoes.** Undo and Redo are standard editor commands and reach every edit on every page: notes, mix, routing, patch modules, cables and parameters. One user action is one undo step.
+
+## Infinitely modular [DAW-MODULAR]
+
+Modularity is the principle the daw is built on. Nothing has a fixed number of slots: a patch holds any number of modules and cables, a track any patch, a project any number of tracks, buses, sends and channels, and a bus can feed another bus. A feature is added as a module, a command or a store that plugs into what exists, never as a special case in one screen.
+
+- **A patch has an Output, not a master.** A patch ends in an **Output** module. There is no "Master" module inside a patch. A track's Output is routed to the project's main channel (Master) by default, and the user can route it to any bus instead ([DAW-MIX-BUS]).
+- **A patch has inputs.** A patch can declare audio inputs and MIDI inputs as modules of its own. What arrives on them (the track's notes, another track's audio, a sidechain, a live instrument) is whatever is routed to them, and the patch decides what to do with it by its cables. A patch that ignores an input simply leaves it unwired.
+- **Routing is cables.** Inside a patch and between tracks and buses, sound and control go where a cable or a route sends them and nowhere else. Nothing is connected implicitly except a track's Output to Master.
+
+## Controls [DAW-CONTROLS]
+
+Every panel uses the same small set of controls, drawn as the design draws them: the toggle, the dial, the slider, the menu and the button. A parameter looks and behaves the same in a module's card, in the inspector and in the Patch Controls panel.
+
+- **Dial ([DAW-CONTROLS-DIAL]).** A number is a round dial with its value beside it. Press on the dial or the number, hold, and move the pointer up to raise the value or down to lower it. The pointer's sideways movement does nothing, so the hand can drift. Holding Shift moves in fine steps. Double-press returns the default. The number can be typed. The arrow keys step it when the dial has focus. The dial shows its value as an arc from the minimum, and its unit beside the number.
+- **Slider.** A number can instead be a horizontal or vertical slider where a length reads better than an angle: a fader in the mixer, a send level, a position in time. It is set by a press or a drag along its length and has the same fine step, default, typing and arrow keys as the dial.
+- **Toggle, menu, button.** An on/off value is a toggle. One choice from a few names is a menu showing the current name. An action is a button named for what it does.
+
+A text box that reformats while the user types, a control that only points at another panel, and a platform-styled widget in place of one of these are defects.
+
+## Accessibility [DAW-ACCESS]
+
+Accessibility is taken as far as it goes, not to a minimum. Every command and every control can be used without a pointer, without sight and without sound.
+
+- **Keyboard.** Every control takes focus, shows that it has it, and is operated by the keyboard. Tab order follows reading order. Every command has a shortcut and is in the command palette ([DAW-COMMANDS]).
+- **Assistive technology.** Every control reports its role, its name, its value with its unit, and its state to the platform's accessibility interface, and every change is announced. A control drawn on the canvas reports the same as a platform control would.
+- **Seeing.** Text and controls keep a contrast of at least 4.5 to 1. Nothing is told by colour alone: a cable's kind, a selected track and a playing transport each also have a shape, a label or a position. The app follows the system's larger-text and reduced-motion settings.
+- **Hearing.** What is sounding is always shown as well as heard: the transport state, the position and the meters.
+- **Targets.** A target is at least 24 points across.
+
+## Commands [DAW-COMMANDS]
+
+Everything the daw can do is a **command**: a stable name, a title, its arguments and whether it can run now. One list of commands feeds the menus, the shortcuts ([DAW-KEYS]), the command palette and automation, so a command added once appears in all four.
+
+- **Command palette.** A shortcut opens a box in the middle of the window, as in VS Code. Typing filters the commands by any part of their title, Return runs the highlighted one, and Escape closes it. Each row shows the command's shortcut. A command that needs an argument asks for it in the same box (a track, a bus, a number).
+- **For an AI agent.** The same commands run from outside the window: by name with their arguments, one line in and one line out saying what happened or why it was refused. The list of commands with their arguments and current availability can be read the same way, so an agent can discover what it may do. A command run this way goes through the same checks and the same undo history as one run by hand.
+
+## Storage [DAW-STORE]
+
+Where a project is kept is a pluggable layer behind one interface: open, save, list and history. The project model does not know which store is in use.
+
+- **JSON file.** One project file on disk ([DAW-PROJECT]). This is what ships today.
+- **Database.** The project as rows, for large projects and shared libraries.
+- **Git.** Every save is a commit, so the project has versions, a history to browse and a way back to any of them.
+
 
 ## Keyboard [DAW-KEYS]
 
@@ -57,7 +102,7 @@ Rendering is offline and slower than realtime. With the renderer built under ARC
 
 Outside the app, `make -C src/toolchain/targets/macos daw-render SONG=<project.json>` renders the same file to `target/daw/<project>/song.wav`.
 
-**Only the Master channel by default ([DAW-RENDER-MASTER]).** A render, whether Play, Render song or `daw-render`, writes exactly one audio result: the stereo Master mix. Every track and bus is synthesised only to be summed into Master. It is never written out as its own stem. The renderer's progress lines ("rendering glass (40 notes)") report that summing, not separate files. The `part-N.wav`, `piece.wav` and `tail.wav` files beside `song.wav` are pieces of the same Master, joined into it. Per-track or per-bus stems would be an explicit opt-in, and none exists today.
+**Only the Master channel by default ([DAW-RENDER-MASTER]).** A render, whether Play, Render song or `daw-render`, writes exactly one audio result: the stereo Master mix. Every track and bus is synthesised only to be summed into Master. It is never written out as its own stem. The renderer's progress lines ("rendering glass (40 notes)") report that summing, not separate files. The `part-N.wav`, `piece.wav` and `tail.wav` files beside `song.wav` are pieces of the same Master, joined into it. The result is a single mastered track. Stems are a separate, explicit render: the user asks for them by name, and each requested track or bus is then written as its own file beside the Master. That render does not exist yet.
 
 ## Timeline transport [DAW-TRANSPORT-TIMELINE]
 

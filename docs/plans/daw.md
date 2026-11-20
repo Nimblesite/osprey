@@ -143,6 +143,28 @@ The three-band split is a start, not the EQ. Target: a parametric EQ as good as 
 - [x] The Patch page's header reads "Prism / Patch": the open page is lettered over the subtitle baked into the skin's art.
 - [ ] Separate windows for Timeline, Patch and Mix (user: "shoot towards multi window"); the host mounts one window today.
 
+### Human-centred UI, user orders of 21 Nov [DAW-HUMAN]
+
+Spec: [Daw.md](../specs/applications/Daw.md) sections [DAW-HUMAN], [DAW-MODULAR], [DAW-CONTROLS], [DAW-ACCESS], [DAW-COMMANDS], [DAW-KEYS], [DAW-STORE], [DAW-INSPECTOR].
+
+- [x] Spec states the human-centred basis (ISO 9241-210) as checkable rules.
+- [x] Canvas inspector for modules without skin art: a slider per parameter, set in place, one undo step (26a2241f6).
+- [x] Sockets are 28-unit targets that win over overlapping cards; a wire drag is tested the way a hand drags (3996374e3).
+- [x] Song pages centre in a wide window, show "No song open" with Open Song, and the patch keyboard docks under Track patch only (a9cfc0a76).
+- [x] Patch Controls panel is dark in the Prism palette, without a second transport row (3cd896ee6).
+- [ ] **Dials ([DAW-CONTROLS-DIAL]).** Every numeric field is a round dial with its number: press, hold, move up or down; Shift for fine steps; double-press for the default; typing and arrow keys. Slider (horizontal or vertical) where a length reads better. Design worked out with prism-routing-design. Owner: ferroui-prism-lead.
+- [ ] **Patch Controls uses the design's controls.** The text boxes, "Connect/Disconnect" buttons and platform-styled menu in that panel are replaced by the toggle, dial, slider, menu and button of [DAW-CONTROLS]; the number box that reformats while typing (392 became 923.0) goes with them.
+- [ ] **Keymaps ([DAW-KEYS]).** Prism, Ableton style and Logic style from a Shortcuts menu, a custom keymap file, the choice kept between launches, and a shortcut on every command. In progress: model, presets, file checks and menus are written and not yet committed.
+- [ ] **Command palette ([DAW-COMMANDS]).** One command list feeding menus, shortcuts and a VS Code style palette.
+- [ ] **Commands for an AI agent ([DAW-COMMANDS]).** Run a command by name with arguments from outside the window, one line in and one line out; list the commands and what can run now.
+- [ ] **Undo and Redo everywhere ([DAW-HUMAN]).** Today they cover the patch graph; notes, mix and routing edits save straight to the project and do not undo.
+- [ ] **Accessibility ([DAW-ACCESS]).** Focus and keyboard operation for every canvas control, role/name/value/state reported for each, contrast and colour-independence checked, reduced motion and larger text followed.
+- [ ] **Pluggable storage ([DAW-STORE]).** One store interface with JSON (today), database and git (a commit per save, history, restore) behind it.
+- [ ] **Master-only render ([DAW-RENDER-MASTER]).** Default render is the single mastered track (done); stems as a separate, explicit render (not built).
+- [ ] **Patch Output and inputs ([DAW-MODULAR]).** A patch ends in an Output routed to Master by default; the skin's "Master" card is renamed and no module is called master. Patches declare audio and MIDI inputs as modules and route them with cables.
+- [ ] Windows goldens under `examples/daw/goldens/windows` predate the new header and inspector and must be rewritten on Windows (`make -C src/toolchain/targets/windows/tests synth-update`); `routed-delay.png` is the one reported.
+- [ ] Real mouse drag on sockets and the menu bar need rechecking in the live app once the desktop is unlocked (the screen was locked during this work).
+
 ### Strip the UI [DAW-PAGES-STRIP]
 
 From the committed screens: cut everything that repeats or says nothing (ferroui-prism-lead owns the views).
