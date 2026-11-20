@@ -572,3 +572,47 @@ parameterAt (graph, identity, index, check) = valid (synth::Graphs::node (graph,
 test ("graph history undoes module insertion, redoes it and branches without reusing identities", \() => Runtime::guarded (\() => hosted graphHistoryJourney))
 
 test ("resizing the graph keeps original header controls aligned and usable", \() => Runtime::guarded (\() => hosted graphResizeJourney))
+
+// [DAW-TRACK-PATCH] The timeline's tracks against Prism: a patch track opens as its graph, a built-in one as a
+// single voice node wired to the output, and a missing row says why nothing opens.
+keysTrack () = daw::Track(name = "keys", instrument = daw::PatchInstrument(routing = daw::Routing(nodes = [daw::PatchNode(identity = 1, component = "sine", size = 0, seed = 0, settings = [daw::Setting(key = "frequency", value = 2.0, follow = daw::Pitched)]), daw::PatchNode(identity = 2, component = "gain", size = 0, seed = 0, settings = [daw::Setting(key = "gain", value = 0.5, follow = daw::Struck)]), daw::PatchNode(identity = 3, component = "output", size = 0, seed = 0, settings = [])], cables = [daw::PatchCable(source = 1, outlet = 0, destination = 2, inlet = 0), daw::PatchCable(source = 2, outlet = 0, destination = 3, inlet = 0)], attack = 0.01, release = 0.1)), gain = 1.0, pan = 0.0, reverb = 0.0, notes = [])
+
+bellTrack () = daw::Track(name = "bell", instrument = daw::BellInstrument(decay = 2.0, brightness = 0.5), gain = 1.0, pan = 0.0, reverb = 0.0, notes = [])
+
+timeline tracks = daw::Arrangement(title = "Bridge", tempo = 120.0, sampleRate = 48000, drive = 1.0, space = daw::Space(size = 1.0, decay = 2.0, damping = 0.5), intro = daw::Intro(recording = "intro.wav", tail = 1.0, crossfade = 0.5), sustains = [], tracks = tracks)
+
+pluckTrack () = daw::Track(name = "pluck", instrument = daw::PluckInstrument(brightness = 0.7, decay = 0.9), gain = 1.0, pan = 0.0, reverb = 0.0, notes = [])
+
+settled (graph, identity, key, value) = valid (synth::Graphs::node (graph, identity), \n => reads (listGet (filterList (n.parameters, \p => p.key == key)) 0, \p => expect (toString p.initial, toString value)))
+
+// A built-in voice: one node feeding the output through one cable.
+voiced graph =
+    expect (length graph.nodes, 2)
+    expect (length graph.cables, 1)
+    settled (graph, 1, "frequency", synth::Waves::midiFrequency 60.0)
+
+failsWith (outcome, message) = match outcome
+    Error why => expect (why, message)
+    Success _ => expect ("a patch", message)
+
+trackPatchJourney () =
+    song = timeline [bellTrack (), keysTrack (), pluckTrack ()]
+    succeeds (daw::TrackPatches::picked (song, 1), \graph =>
+        expect (length graph.nodes, 3)
+        expect (length graph.cables, 2)
+        settled (graph, 1, "frequency", synth::Waves::midiFrequency 60.0 * 2.0)
+        settled (graph, 2, "gain", 0.5))
+    succeeds (daw::TrackPatches::picked (song, 0), \graph =>
+        voiced graph
+        settled (graph, 1, "body", 3.0)
+        settled (graph, 1, "decay", 2.0)
+        settled (graph, 1, "brightness", 0.5))
+    succeeds (daw::TrackPatches::picked (song, 2), \graph =>
+        voiced graph
+        settled (graph, 1, "decay", 0.9)
+        settled (graph, 1, "brightness", 0.7))
+    failsWith (daw::TrackPatches::picked (song, 3), "The arrangement has no track 3.")
+    failsWith (daw::TrackPatches::picked (timeline [], 0), "The arrangement has no track 0.")
+    succeeds (daw::TrackPatches::patch (keysTrack ()), \graph => expect (length graph.nodes, 3))
+
+test ("tapping a timeline track opens its own patch in Prism; built-in tracks open as one voice, missing ones say why not", \() => Runtime::guarded trackPatchJourney)
