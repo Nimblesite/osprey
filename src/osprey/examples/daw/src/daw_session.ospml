@@ -19,7 +19,7 @@ module DawSession
     (** Select a track and show the two bars where it first plays. *)
     export picked (editor, index) = match listGet editor.song.tracks index
         Error _ => editor
-        Success track => editor(track = index, lanePage = intDiv index 7, selectedNote = -1, rollBar = firstBar track, message = "${track.name}: ${length track.notes} notes.")
+        Success track => editor(track = index, outputEdit = OutputClosed, lanePage = intDiv index 7, selectedNote = -1, rollBar = firstBar track, message = "${track.name}: ${length track.notes} notes.")
 
     (** Select a track and keep the piano roll on `at`. *)
     export pickedAt (editor, index, at) =
@@ -199,10 +199,15 @@ module DawSession
     (** Write the new dry destination into the selected track in this same project. *)
     export routed (editor, index, bus) = savedTrack (editor, index, daw::Projects::routed (editor.song, index, bus))
 
+    (** Create and route to a named group as one checked project write. *)
+    export group editor = match editor.outputEdit
+        NamingGroup proposed => savedTrack (editor, editor.track, daw::Projects::grouped (editor.song, editor.track, proposed))
+        _ => Runtime::step editor
+
     savedTrack (editor, index, result) = match result
         Error why => ui::Runtime::step (editor(message = why))
         Success song => match written (editor, song)
-            Success next => ui::Runtime::step (next(track = index, revision = satAdd next.revision 1))
+            Success next => ui::Runtime::step (next(track = index, outputEdit = OutputClosed, revision = satAdd next.revision 1))
             Error why => ui::Runtime::step (editor(message = why))
 
     (** Write the selected note's new velocity into its track in the same song file. *)
@@ -245,7 +250,12 @@ module DawSession
             _ => ui::Runtime::step (ready(page = page))
 
     (** What a tap on the Timeline or Mix page does, if anything. *)
-    export tappedAt (editor, x, y) =
+    export tappedAt (editor, x, y) = match editor.outputEdit
+        ChoosingOutput offset => RoutingPicker::at (editor, offset, x, y)
+        NamingGroup _ => Error(message = "Finish naming the group first.")
+        OutputClosed => workspaceAt (editor, x, y)
+
+    workspaceAt (editor, x, y) =
         index = ui::Lists::position (TimelineView::headerAreas editor, \a => EditorView::inside (x, y, a.accessLeft + a.accessWidth / 2.0, a.accessTop + a.accessHeight / 2.0, a.accessWidth / 2.0, a.accessHeight / 2.0))
         match index < 0
             true => pageAt (editor, x, y)

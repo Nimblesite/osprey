@@ -27,6 +27,16 @@ module Projects
             true => replaced (song, index, track(bus = ""))
             false => synth::Outcomes::carried (BusMix::named (song, bus), \found => replaced (song, index, track(bus = found.name)))
 
+    (** A new stereo group starts at unity gain with a flat EQ and a unity-ratio compressor. *)
+    export grouped (song, index, proposed) =
+        name = trim proposed
+        exists = ui::Lists::any (song.buses, \bus => toLowerCase bus.name == toLowerCase name)
+        match name == "" || toLowerCase name == "master" || exists
+            true => Error(message = "Choose a unique bus name other than Master.")
+            false =>
+                bus = Bus(name = name, gain = 1.0, equaliser = Equaliser(low = 0.0, mid = 0.0, high = 0.0), compressor = Compressor(threshold = 0.0, ratio = 1.0, knee = 0.0, attack = 0.01, release = 0.1, sidechain = ""))
+                routed (song(buses = listAppend song.buses bus), index, name)
+
     (** Change exactly one piano-roll note in its track, retaining timing, pitch and note order. *)
     export velocity (song, track, index, value) = match ArrangeMath::audible value
         false => Error(message = "Velocity must be between 0 and 1.")

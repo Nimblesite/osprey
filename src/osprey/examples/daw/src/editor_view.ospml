@@ -436,7 +436,9 @@ module EditorView
 
     root () =
         editor = editorSlice ()
-        Ui::contextMenu (workspace editor, listConcat (menus ()) (MixView::menus editor))
+        match editor.outputEdit
+            NamingGroup proposed => Ui::layer [workspace editor, RoutingPicker::form (editor, proposed)]
+            _ => Ui::contextMenu (workspace editor, listConcat (menus ()) (MixView::menus editor))
 
     workspace editor =
         pane = match editor.detailsShown && TimelineView::pageIndex editor.page == 0
@@ -448,7 +450,7 @@ module EditorView
             false => page
             true => Ui::column [page, keyboardDock editor]
 
-    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${editor.rollBar}:${editor.lanePage}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.songPath}:${length editor.song.tracks}"
+    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${editor.rollBar}:${editor.lanePage}:${RoutingPicker::stamp editor}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.songPath}:${length editor.song.tracks}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =

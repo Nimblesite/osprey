@@ -34,12 +34,16 @@ module EditorApp
         Audition => GraphPreview::play (editor, context.platform)
         PlayGraph => GraphPreview::live (editor, context.platform)
         StopGraph => GraphPreview::stop editor
-        ShowPage page => DawSession::shown (editor, page)
+        ShowPage page => DawSession::shown (editor(outputEdit = OutputClosed), page)
         PickTrack index bar => Runtime::step (DawSession::pickedAt (editor, index, bar))
         SelectNote index => Runtime::step (editor(selectedNote = index))
         SetVelocity value => DawSession::velocity (editor, value)
         AdjustMix index gain pan reverb => DawSession::adjusted (editor, index, gain, pan, reverb)
         ScrollLanes page => Runtime::step (editor(lanePage = page))
+        ChooseOutput index offset => RoutingPicker::open (editor, index, offset)
+        CloseOutput => Runtime::step (editor(outputEdit = OutputClosed))
+        NewGroup => Runtime::step (editor(outputEdit = NamingGroup(proposed = ""), message = ""))
+        CommitGroup => DawSession::group editor
         AssignBus index bus => DawSession::routed (editor, index, bus)
         OpenTrack index => match index == -2
             true => DawSession::saving (editor, DawSession::choose)
@@ -71,6 +75,7 @@ module EditorApp
                 sounded(stepStore = played(graph = editor.graph))
 
     typed (editor, action, value) = match action
+        GroupName => Runtime::step (editor(outputEdit = NamingGroup(proposed = value), message = ""))
         PluginPath => Runtime::step (Plugins::path (editor, value))
         CreateVst _ => Plugins::create (editor, value)
         _ => Runtime::step (EditorState::typed (editor, action, value))
@@ -157,9 +162,14 @@ module EditorApp
             next = step.stepStore
             step(stepStore = next(skin = editor.skin))
 
+    surfaceKey (editor, key, down) = match editor.outputEdit
+        ChoosingOutput focus => RoutingPicker::key (editor, focus, key, down)
+        NamingGroup _ => Runtime::step (ui::Pick::either (down && key == "escape", editor(outputEdit = OutputClosed), editor))
+        OutputClosed => Runtime::step (CableCanvas::keyed (editor, key, down))
+
     controlled (context, editor, action, input) = match action
         Keyboard => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => dockPointer (context, editor, x, y, down), \(w, _) => Runtime::step (editor(keyboardWidth = w)))
-        Surface => ui::Inputs::route (input, \(key, down) => Runtime::step (CableCanvas::keyed (editor, key, down)), \(x, y, down, _) => surfacePointer (context, editor, x, y, down), \(w, h) => viewed (editor, w, h))
+        Surface => ui::Inputs::route (input, \(key, down) => surfaceKey (editor, key, down), \(x, y, down, _) => surfacePointer (context, editor, x, y, down), \(w, h) => viewed (editor, w, h))
         _ => Runtime::step editor
 
     routed (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(action, input) => controlled (context, editor, action, input))

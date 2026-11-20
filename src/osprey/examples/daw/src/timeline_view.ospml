@@ -290,7 +290,7 @@ module TimelineView
                     false => match y >= 595.0 && y <= 615.0
                         true => Success(value = AdjustMix(index = editor.track, gain = voice.gain, pan = voice.pan, reverb = TimelineGeometry::fader (x, 1154.0, 262.0, 0.0, 1.0)))
                         false => match y >= 518.0 && y <= 554.0
-                            true => Success(value = ShowPage(page = MixPage))
+                            true => Success(value = ChooseOutput(index = editor.track, offset = -1))
                             false => Error(message = "No control here.")
 
     noteDetails (editor, voice) = match listGet voice.notes editor.selectedNote
@@ -327,4 +327,4 @@ module TimelineView
     export inspectorAreas () = [area ("Track gain", 1154.0, 338.0, 262.0, 20.0, false), area ("Track pan", 1154.0, 397.0, 262.0, 20.0, false), area ("Show output routing", 1154.0, 518.0, 262.0, 36.0, false), area ("Track Space send", 1154.0, 595.0, 262.0, 20.0, false)]
 
     (** The whole Timeline page. *)
-    export shapes editor = listConcat (listConcat (Header::frame editor) (arrangement (editor, beats editor))) (listConcat (roll editor) (inspector editor))
+    export shapes editor = listConcat (listConcat (Header::frame editor) (arrangement (editor, beats editor))) (ui::Lists::flatten [roll editor, inspector editor, RoutingPicker::shapes editor])

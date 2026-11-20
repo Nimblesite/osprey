@@ -76,16 +76,16 @@ module MixView
         ui::Ui::action (shown, "", ui::Plain, name != current, AssignBus(index = index, bus = name))
 
     (** Native destinations follow the open project and its selected track. *)
-    export menus editor = match editor.page
-        MixPage => match listGet editor.song.tracks editor.track
+    export menus editor = match editor.page == MixPage || RoutingPicker::choosing editor
+        false => []
+        true => match listGet editor.song.tracks editor.track
             Error _ => []
             Success voice =>
-                names = listConcat [""] (mapList (editor.song.buses, \bus => bus.name))
-                [ui::Ui::section ("Routing", "", mapList (names, \name => destination (editor.track, voice.bus, name)))]
-        _ => []
+                entries = mapList (RoutingPicker::names editor, \name => destination (editor.track, voice.bus, name))
+                [ui::Ui::section ("Routing", "", listAppend entries (ui::Ui::button ("New stereo bus…", "", NewGroup)))]
 
     (** The whole Mix page. *)
-    export shapes editor = listConcat (listConcat (Header::frame editor) (table editor)) (side editor)
+    export shapes editor = listConcat (listConcat (Header::frame editor) (table editor)) (listConcat (side editor) (RoutingPicker::shapes editor))
 
     controlAt (voice, index, x) = match x >= 215.0 && x <= 270.0
         true => AdjustMix(index = index, gain = TimelineGeometry::fader (x, 215.0, 55.0, 0.0, 4.0), pan = voice.pan, reverb = voice.reverb)
@@ -93,7 +93,9 @@ module MixView
             true => AdjustMix(index = index, gain = voice.gain, pan = TimelineGeometry::fader (x, 294.0, 56.0, -1.0, 1.0), reverb = voice.reverb)
             false => match x >= 516.0 && x <= 604.0
                 true => AdjustMix(index = index, gain = voice.gain, pan = voice.pan, reverb = TimelineGeometry::fader (x, 516.0, 88.0, 0.0, 1.0))
-                false => PickTrack(index = index, bar = -1)
+                false => match x >= 370.0 && x <= 490.0
+                    true => ChooseOutput(index = index, offset = -1)
+                    false => PickTrack(index = index, bar = -1)
 
     (** A tap on a row picks its track; on its name, opens its patch. *)
     export rowAt (editor, x, y) =

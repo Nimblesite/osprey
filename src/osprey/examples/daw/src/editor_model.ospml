@@ -60,6 +60,13 @@ type Page =
     TimelinePage
     MixPage
 
+type OutputEdit =
+    OutputClosed
+    ChoosingOutput
+        focus : int
+    NamingGroup
+        proposed : string
+
 type Editor G P S M =
     skin : M
     graph : G
@@ -116,6 +123,7 @@ type Editor G P S M =
     cards : List<CardMarks>
     art : List<CardArt>
     page : Page
+    outputEdit : OutputEdit
     lanePage : int
     laneTraces : List<List<ui::PathStep>>
     overview : List<ui::PathStep>
@@ -184,6 +192,13 @@ type EditorAction =
         reverb : float
     ScrollLanes
         page : int
+    ChooseOutput
+        index : int
+        offset : int
+    NewGroup
+    GroupName
+    CommitGroup
+    CloseOutput
     AssignBus
         index : int
         bus : string

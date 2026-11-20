@@ -89,6 +89,85 @@ fn menu_bar(regions: &Regions) {
     }
 }
 
+fn named_control(node: &Tree, kind: &str, label: &str) -> Option<i64> {
+    match node {
+        Tree::Record(fields) => {
+            if matches!(fields.get("kind"), Some(Tree::Text(value)) if value == kind)
+                && matches!(fields.get("label"), Some(Tree::Text(value)) if value == label)
+            {
+                if let Some(Tree::Whole(event)) = fields.get("event") { return Some(*event); }
+            }
+            fields.values().find_map(|child| named_control(child, kind, label))
+        }
+        Tree::Items(items) => items.iter().find_map(|child| named_control(child, kind, label)),
+        _ => None,
+    }
+}
+
+fn choose_control(regions: &mut Regions, kind: &str, label: &str, text: &str) {
+    let root = &regions.get("root").expect("workspace").node;
+    let event = named_control(root, kind, label).unwrap_or_else(|| panic!("missing {kind} {label}"));
+    let changed = Library::event(0, &Touch::control(event, text)).expect("dispatch routing control");
+    regions.adopt(&changed).expect("updated workspace");
+}
+
+/// [PRISM-TIMELINE-GRAPH] Create a named group from the piano roll and share it with the adjacent track.
+fn create_group(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
+    let read = || -> serde_json::Value {
+        serde_json::from_slice(&std::fs::read(song).expect("read the song")).expect("decode saved project")
+    };
+    let original = read();
+    let open = |regions: &mut Regions, row: usize| {
+        point(canvas, lane(row, 0.2), true);
+        point(canvas, lane(row, 0.2), false);
+        point(canvas, (1200.0, 535.0), true);
+        regions.adopt(&point(canvas, (1200.0, 535.0), false).0).expect("open the inline chooser");
+    };
+    open(regions, 5);
+    let pick = |regions: &mut Regions, y: f64| {
+        point(canvas, (1190.0, y), true);
+        regions.adopt(&point(canvas, (1190.0, y), false).0).expect("choose from the inspector");
+    };
+    pick(regions, 709.0);
+    choose_control(regions, "field", "Bus name", "Keys bus");
+    assert_eq!(read(), original, "typing does not change the project");
+    choose_control(regions, "button", "Cancel", "");
+    assert_eq!(read(), original, "cancel leaves the project intact");
+    open(regions, 5);
+    choose_control(regions, "button", "New stereo bus…", "");
+    for invalid in ["pads", " master "] {
+        choose_control(regions, "field", "Bus name", invalid);
+        choose_control(regions, "button", "Create and assign", "");
+        assert_eq!(read(), original, "a refused name leaves the file intact");
+    }
+    choose_control(regions, "field", "Bus name", " Keys bus ");
+    choose_control(regions, "button", "Create and assign", "");
+    let mut expected = original.clone();
+    let saved = read();
+    let group = saved["buses"].as_array().expect("buses").last().expect("new group");
+    assert_eq!(group["name"], "Keys bus");
+    assert_eq!(group["gain"], 1.0);
+    assert_eq!(group["compressor"]["ratio"], 1.0);
+    expected["buses"].as_array_mut().expect("buses").push(group.clone());
+    expected["tracks"][5]["bus"] = "Keys bus".into();
+    assert_eq!(saved, expected, "only the new group and the chosen dry output changed");
+    open(regions, 6);
+    pick(regions, 705.0);
+    expected["tracks"][6]["bus"] = "Keys bus".into();
+    assert_eq!(read(), expected, "both keys tracks share the group and retain their individual sends");
+    open(regions, 6);
+    for key in ["up", "escape"] {
+        Library::event(0, &Touch::key(canvas, key, true)).expect("navigate the open chooser");
+    }
+    assert_eq!(read(), expected, "Escape discards the focused route");
+    open(regions, 6);
+    for key in ["up", "enter"] {
+        Library::event(0, &Touch::key(canvas, key, true)).expect("commit the keyboard selection");
+    }
+    expected["tracks"][6]["bus"] = "pads".into();
+    assert_eq!(read(), expected, "Enter commits the adjacent destination");
+}
+
 /// [DAW-MIX-BUS] Choose both destinations from the selected track's native menu.
 fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     let read = || -> serde_json::Value {
@@ -102,8 +181,8 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
         let root = regions.get("root").expect("Mix workspace");
         let menus = window_menus(&root.node);
         let routing = menus.iter().find(|menu| menu.title == "Routing").expect("Mix has a Routing menu");
-        assert_eq!(routing.commands.len(), 2, "Master and the project's pads bus");
-        assert_eq!(routing.commands.iter().filter(|command| command.enabled).count(), 1);
+        assert_eq!(routing.commands.len(), 4, "Master, two project buses and new group creation");
+        assert_eq!(routing.commands.iter().filter(|command| command.enabled).count(), 3);
         let destination = routing.commands.iter().find(|item| item.enabled && item.label == label).expect("available destination");
         let changed = Library::event(0, &Touch::control(destination.event, "")).expect("choose the output");
         regions.adopt(&changed).expect("redraw the routing diagram and menu");
@@ -140,6 +219,7 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     };
 
     menu_bar(&regions);
+    create_group(&mut regions, canvas, &song);
 
     let mut costs = Vec::new();
     let mut drawn = std::collections::BTreeSet::new();
