@@ -4,3 +4,5 @@
 // debug_interpolation.ospo.
 xs = [mapSet (Map ()) "k" 1]
 listLine = "[${xs}]"
+expect xs xs
+expectError (Error(message = \n => n + 1)) (\n => n + 1)

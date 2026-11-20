@@ -27,9 +27,9 @@ These come before every other open item in `docs/plans/`. Each is a defect again
 
 ### Error system
 
-- [ ] `expectError` on an inline `if` needs an annotation: `expectError(if c { Error { message: DivZero } } else { Success { value: 1 } }, DivZero)` fails with "expectError on a Result whose error type is not decided here; annotate it". The checker knows `E`; the backend must take it from the checked type instead of the operand's syntax.
-- [ ] Vague assertion messages: a failed `expectError` on a record or union payload prints "expected Error(<the given MathError>), got a Success or an Error holding another MathError". Records and unions now render ([BUILTIN-PRINT-FORM]), so it must print both values: `expected Error(DivZero), got Error(Overflow { by: 3 })`. Same for `expect` and `check`.
-- [ ] A union variant holding an unprintable value is accepted by `print`: `print(Held { m: someMap })` compiles and shows `Held { m: <map> }`, while the same value in a record field is rejected. User types reach the constraint as a name, so the check must read the declaration and reject it at compile time.
+- [x] `expectError` on an inline `if` needs an annotation: `expectError(if c { Error { message: DivZero } } else { Success { value: 1 } }, DivZero)` fails with "expectError on a Result whose error type is not decided here; annotate it". The checker knows `E`; the backend must take it from the checked type instead of the operand's syntax.
+- [x] Vague assertion messages: a failed `expectError` on a record or union payload prints "expected Error(<the given MathError>), got a Success or an Error holding another MathError". Records and unions now render ([BUILTIN-PRINT-FORM]), so it must print both values: `expected Error(DivZero), got Error(Overflow { by: 3 })`. Same for `expect` and `check`. Done: assertions compare renderings of any printable operand ([TESTING-EQUALITY]); an operand with no rendering is a compile error.
+- [x] A union variant holding an unprintable value is accepted by `print`: `print(Held { m: someMap })` compiles and shows `Held { m: <map> }`, while the same value in a record field is rejected. User types reach the constraint as a name, so the check must read the declaration and reject it at compile time.
 - [ ] A quoted string inside a record, variant or list is not escaped: `{ why: "a"b" }` is ambiguous. Escape `"`, `\` and control characters as the string literal syntax does.
 - [ ] `Map` has no rendering. Decide and specify one (`{ "k": 1 }`, key order defined) or keep the rejection and say why in [BUILTIN-PRINT].
 

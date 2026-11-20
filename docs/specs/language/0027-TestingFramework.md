@@ -58,8 +58,9 @@ Passes when `result` is an `Error` whose payload equals `payload` (see
 [Equality semantics](#equality-semantics)). `payload` has the `E` of `result`
 ([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)); any other type is
 a compile error. The
-`Success` payload is never rendered or loaded, so `T` may be a record, list or
-map. A mismatch prints `# expect failed: expected Error(<payload>), got Success`
+`Success` payload is never rendered or loaded, so `T` may be any type, a `Map`
+included. `E` is taken from the checked type of `result`, so any expression
+is accepted: a call, a name, an inline `if` or a `match`. A mismatch prints `# expect failed: expected Error(<payload>), got Success`
 or `got Error(<other payload>)`, and the case fails like `expect`.
 
 Both assertions are valid anywhere an expression is — inside `test` bodies,
@@ -103,14 +104,20 @@ state that a rendered transcript holds every part, or none, in one assertion.
 ## Equality semantics
 
 **`[TESTING-EQUALITY]`** The two operands of an assertion have one inferred
-type. Equality is canonical-string equality over values with a canonical string
-rendering: ints, bools, floats, strings, and `Result`s of those. Both sides
-render with the same `toString` lowering used by string interpolation and
-compare with `strcmp`; the diagnostic shows exactly the two rendered strings
-that were compared. A `Result` operand renders a `Success` as its bare payload
-and an `Error` as `Error(<payload>)`, the payload at its own type `E`. Lists
-and maps are rejected as assertion operands at code generation, and so are
-records outside the payload of `expectError`.
+type. Equality is equality of renderings: both sides render as `toString`
+renders them ([BUILTIN-PRINT-FORM](../runtime/0012-Built-InFunctions.md#printvalue-printable---unit--builtin-print))
+and compare byte for byte, so records, unions, lists and `Result`s compare
+whole, at any depth. The diagnostic shows exactly the two rendered values:
+`# expect failed: expected Error(DivZero), got Error(Overflow { by: 3 })`. A
+`Result` operand renders a `Success` as its bare payload and an `Error` as
+`Error(<payload>)`, the payload at its own type `E`.
+
+A compared operand must be printable
+([TYPE-CONSTRAINTS](0004-TypeSystem.md#built-in-constraints--type-constraints)).
+A function, `Map`, iterator or runtime handle has no rendering, so asserting
+on one is a compile error: `cannot assert on a value with no rendering:
+Map<string, int>`. The obligation travels through generic helpers like any
+other constraint.
 
 ### Boolean assertion shortcuts
 

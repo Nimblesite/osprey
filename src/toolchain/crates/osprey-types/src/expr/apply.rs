@@ -98,6 +98,7 @@ impl Checker {
         }
         self.constrain_named_comparison(name, &args);
         self.constrain_structural_equals(name, &args);
+        self.constrain_assertion(name, &args);
         let fused = self.fuse_gpu_source(name, ft, &args);
         // Preserve unresolved argument variables until the surrounding expression
         // can refine them; the recorded constraint validates the final type.

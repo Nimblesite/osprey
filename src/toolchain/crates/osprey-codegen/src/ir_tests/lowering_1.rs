@@ -185,7 +185,7 @@ fn extern_callbacks_and_iterators_keep_their_declared_identity() {
 }
 
 #[test]
-fn error_results_render_visibly_and_handles_are_rejected() {
+fn error_results_render_visibly_and_lists_compare_by_rendering() {
     // [TESTING-EQUALITY] a Result operand branches on its discriminant:
     // Success renders bare, Error renders as Error(<message>). Overflow
     // reaches a value only through `checkedAdd` ([ARITH-EFFECT]).
@@ -194,10 +194,13 @@ fn error_results_render_visibly_and_handles_are_rejected() {
         &ir,
         &["call void @osp_test_assert(i8* null, i32", "Error(%s)"],
     );
-    // A list/map/record operand has no canonical rendering — loud error.
-    assert!(compile_err("expect([1, 2], [1, 3])\n")
-        .to_string()
-        .contains("list, map, or record"));
+    // A list or record operand compares by its rendering [BUILTIN-PRINT-FORM];
+    // the checker rejects an operand with none (`print_record_unsupported.ospo`).
+    let ir = module("expect([1, 2], [1, 3])\n");
+    shows(
+        &ir,
+        &["@osp_string_join_list", "call void @osp_test_assert(i8* null, i32"],
+    );
 }
 
 #[test]

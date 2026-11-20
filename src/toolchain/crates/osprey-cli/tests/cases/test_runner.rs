@@ -16,7 +16,18 @@ test(\"labeled\", fn() => check(\"sum\", 4, 2 + 2))\n";
 pub(super) const FAILING_TESTS: &str = "test(\"bad math\", fn() => expect(1 + 1, 3))\n\
 test(\"good math\", fn() => expect(2 + 2, 4))\n\
 test(\"wrong error\", fn() => expectError(checkedMul(4294967296, 4294967296), \"nope\"))\n\
-test(\"not an error\", fn() => expectError(checkedAdd(1, 2), \"overflow\"))\n";
+test(\"not an error\", fn() => expectError(checkedAdd(1, 2), \"overflow\"))\n\
+type MathError = DivZero | Overflow { by: int }\n\
+type Point = { x: int, tag: string }\n\
+fn ratio(n) = if n > 9 { Error { message: Overflow { by: n } } } else { Success { value: n } }\n\
+test(\"typed payloads\", fn() => {\n\
+    expectError(ratio(12), DivZero)\n\
+    expectError(ratio(1), DivZero)\n\
+    expectError(if 1 > 0 { Error { message: Overflow { by: 3 } } } else { Success { value: 1 } }, Overflow { by: 4 })\n\
+    expect(Point { x: 1, tag: \"a\" }, Point { x: 2, tag: \"a\" })\n\
+    expect([DivZero, Overflow { by: 1 }], [DivZero])\n\
+    check(\"nested\", [ratio(12)], [ratio(3)])\n\
+})\n";
 
 /// Write `body` to `<dir>/<name>` and return the path.
 pub(super) fn write_in(dir: &Path, name: &str, body: &str) -> PathBuf {
@@ -139,7 +150,16 @@ fn test_builtins_emit_tap_and_exit_status() {
             "not ok 3 - wrong error",
             "# expect failed: expected Error(overflow), got Success",
             "not ok 4 - not an error",
-            "# tests=4 passed=1 failed=3",
+            // [TESTING-EQUALITY] records, unions, lists and typed payloads
+            // show both rendered values.
+            "# expect failed: expected Error(DivZero), got Error(Overflow { by: 12 })",
+            "# expect failed: expected Error(DivZero), got Success",
+            "# expect failed: expected Error(Overflow { by: 4 }), got Error(Overflow { by: 3 })",
+            "# expect failed: expected { x: 2, tag: \"a\" }, got { x: 1, tag: \"a\" }",
+            "# expect failed: expected [DivZero], got [DivZero, Overflow { by: 1 }]",
+            "nested' failed: expected [Error(Overflow { by: 12 })], got [Success(3)]",
+            "not ok 5 - typed payloads",
+            "# tests=5 passed=1 failed=4",
         ],
         &[],
     );

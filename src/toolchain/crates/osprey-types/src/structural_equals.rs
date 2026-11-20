@@ -47,6 +47,18 @@ impl Checker {
         }
     }
 
+    /// Record the compared operand of an assertion as an obligation to have a
+    /// rendering. Implements [TESTING-EQUALITY].
+    pub(crate) fn constrain_assertion(&mut self, name: Option<&str>, args: &[Type]) {
+        let operand = name
+            .and_then(crate::builtin_constraints::asserted_operand)
+            .and_then(|index| args.get(index));
+        if let Some(operand) = operand {
+            let key = self.sited_use(crate::builtin_constraints::ASSERTION);
+            self.builtin_uses.push((key, operand.clone()));
+        }
+    }
+
     /// The diagnostic for a `structuralEquals` operand holding a part whose
     /// equality is not decided; `None` for any other obligation, or a decided
     /// one. An unresolved variable is left alone: nothing says what it is.

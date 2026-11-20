@@ -207,8 +207,7 @@ fn gen_expect(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
 
 /// `expectError(result, payload)` — passes when `result` is an `Error` holding
 /// that payload; the Success payload is never rendered, so any `T` is allowed.
-/// A payload with a canonical rendering compares by it; a record or union
-/// payload compares by content [TESTING-BUILTIN-EXPECT-ERROR].
+/// The payload compares by its rendering [TESTING-BUILTIN-EXPECT-ERROR].
 fn gen_expect_error(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
     let [result, payload] = args else {
         return Err(CodegenError::invalid(
@@ -222,9 +221,6 @@ fn gen_expect_error(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
         ));
     }
     let e = gen_expr(cg, payload)?;
-    if reject_opaque_handle(&e).is_err() {
-        return payload::expect_error_content(cg, &r, e);
-    }
     let a = crate::runtime::result_error_string(cg, &r)?;
     let e = canonical_string(cg, e)?;
     let wrapped = crate::runtime::format_sized(cg, "Error(%s)", &[format!("i8* {}", e.operand)]);
@@ -353,7 +349,6 @@ fn gen_reason_report(cg: &mut Codegen, runtime_fn: &str, reason: Option<&Expr>) 
 /// lowering [TESTING-EQUALITY].
 fn eval_to_string(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
     let v = gen_expr(cg, expr)?;
-    reject_opaque_handle(&v)?;
     canonical_string(cg, v)
 }
 
@@ -362,20 +357,6 @@ fn canonical_string(cg: &mut Codegen, v: Value) -> Result<Value> {
         return crate::runtime::result_payload_or_error_string(cg, &v);
     }
     to_string_value(cg, v)
-}
-
-/// Lists, maps, records, and other runtime handles have no canonical string
-/// rendering yet, so an assertion on one would compare raw pointers — reject
-/// loudly instead [TESTING-EQUALITY].
-fn reject_opaque_handle(v: &Value) -> Result<()> {
-    let opaque = (v.result_inner.is_none() && v.ty == crate::llty::LType::Ptr)
-        || v.result_inner == Some(crate::llty::LType::Ptr);
-    if opaque {
-        return Err(CodegenError::unsupported(
-            "expect/check on a list, map, or record value; compare scalar fields or elements",
-        ));
-    }
-    Ok(())
 }
 
 /// Compare two canonical strings and record the verdict with the runtime.
@@ -409,8 +390,6 @@ fn record_verdict(
     );
     Value::unit()
 }
-
-mod payload;
 
 #[cfg(test)]
 mod tests {

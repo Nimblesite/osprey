@@ -191,6 +191,10 @@ fn typedErrorCase() = {
     expectError(listAppend([10, 20, 30], 40)[-2], IndexOutOfBounds { index: -2, length: 4 })
     expect("${parseLen("")} ${ratio(500)} ${ratio(0)} ${toString(ParseError { code: 2, why: "odd" })}", "Error({ code: 1, why: \"empty\" }) Error(Overflow { by: 500 }) Error(DivZero) { code: 2, why: \"odd\" }")
     expect("${[Overflow { by: 1 }, DivZero]} ${[["a"], []]} ${[parseLen(""), parseLen("ab")]}", "[Overflow { by: 1 }, DivZero] [[\"a\"], []] [Error({ code: 1, why: \"empty\" }), Success(2)]")
+    expectError(if listLength([1]) > 0 { Error { message: DivZero } } else { Success { value: 1 } }, DivZero)
+    expect(ParseError { code: 1, why: "x" }, ParseError { code: 1, why: "x" })
+    check("lists and unions compare by rendering", [Overflow { by: 2 }, DivZero], [Overflow { by: 2 }, DivZero])
+    check("a record payload compares whole", parseLen(""), parseLen(""))
     expect("${readAt([10, 20, 30], 1)} ${readAt([10, 20, 30], 3)} ${readAt(listAppend(List(), 5), 9)} ${[1, 2][4] ?: -1}", "got 20 3 of 3 9 of 1 -1")
 }
 
