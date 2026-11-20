@@ -92,6 +92,7 @@ fn launch(name: String, view: impl FnOnce() -> Element + 'static, started: impl 
         .use_platform_detect()
         .start(
             move |application, _| {
+                own_application_menu(application);
                 application.styles().add(FluentTheme::new().as_style());
                 let window = ferroui_view::mount_window(view);
                 started(&window);
@@ -99,6 +100,23 @@ fn launch(name: String, view: impl FnOnce() -> Element + 'static, started: impl 
             },
             &arguments,
         );
+}
+
+/// Drops the toolkit's "About FerroUI" and the rule under it from the application menu: its panel
+/// names the toolkit and the toolkit's version, not the application.
+fn own_application_menu(application: &Application) {
+    let Some(menu) = NativeMenu::get_menu(application) else {
+        return;
+    };
+    let items = menu.items();
+    let about = (items.count() > 1)
+        .then(|| items.get(0).cast::<NativeMenuItem>())
+        .flatten()
+        .is_some_and(|item| item.header().as_deref() == Some("About FerroUI"));
+    if about {
+        items.remove_at(0);
+        items.remove_at(0);
+    }
 }
 
 fn is_dark(window: &Ref<Window>) -> bool {

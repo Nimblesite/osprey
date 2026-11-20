@@ -348,7 +348,7 @@ module EditorView
 
     // [DAW-HEADER] The Patch page's header: the shared tabs, the transport and Add module. Every other command
     // is in the window's menu bar ([DAW-MENU]).
-    toolbar editor = listConcat (listConcat (Header::tabs (editor, Header::patchScale ())) (Header::transport (826.0, 14.0, 50.0, 38.0, editor.renderDeviceKey != ""))) (listAppend (Header::plaque (943.0, 14.0, 134.0, 38.0, Scenes::rgb (52, 41, 110), 11)) (Scenes::lettering ("+  Add module", 1010.0, 25.0, 14.0, Scenes::rgb (240, 236, 255), 1, 500.0, 13)))
+    toolbar editor = listConcat (listConcat (listConcat (Header::patchSubtitle editor) (Header::tabs (editor, Header::patchScale ()))) (Header::transport (826.0, 14.0, 50.0, 38.0, editor.renderDeviceKey != ""))) (listAppend (Header::plaque (943.0, 14.0, 134.0, 38.0, Scenes::rgb (52, 41, 110), 11)) (Scenes::lettering ("+  Add module", 1010.0, 25.0, 14.0, Scenes::rgb (240, 236, 255), 1, 500.0, 13)))
 
     toolbarItems editor = listConcat (listConcat [accessible ("Modules", 943.0, 14.0, 134.0, 38.0, editor.paletteShown)] (Header::transportAreas (826.0, 14.0, 50.0, 38.0, "Play patch", "Stop playback"))) (listConcat [accessible ("Undo", rightX (editor, 1108.0), 15.0, 40.0, 37.0, false), accessible ("Redo", rightX (editor, 1160.0), 15.0, 40.0, 37.0, false)] (Header::tabAreas (editor, Header::patchScale ())))
 

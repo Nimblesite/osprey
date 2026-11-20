@@ -84,6 +84,11 @@ module Header
 
     threeDigits bar = "${ui::Pick::either (bar < 100, "0", "")}${ui::Pick::either (bar < 10, "0", "")}${bar}"
 
+    (** The Patch page's name over the subtitle baked into the Prism skin's header art, in that page's units. *)
+    export patchSubtitle editor = match length (PrismArt::atlas editor.skin) > 15
+        true => [TimelineView::box (180.0, 40.0, 100.0, 21.0, Scenes::rgb (17, 16, 33), 11), TimelineView::label ("Patch", 184.0, 41.0, 13.0, TimelineView::dim (), 0, 12)]
+        false => []
+
     barOf (note: daw::Note) = floatToInt (TimelineGeometry::bar note.start) ?: 0
 
     column (index, bars, count, most) =
