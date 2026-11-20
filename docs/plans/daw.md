@@ -114,8 +114,8 @@ Also tried and rejected: narrowing the snapshot to one component's parameters be
 | `PrismArt::backgroundPart` re-emits the scenery | 13% | Keep the built scenery in the editor | ferroui-prism-lead |
 
 - [x] Keyboard dock cached.
-- [ ] Dragged card moved, not redrawn.
-- [x] Scenery kept. With the dock: 5.1 ms mean, 9.0 ms worst (was 10.6 and 18.2); 22/22 journeys pass.
+- [ ] Dragged card moved, not redrawn (the largest part of what remains; not needed for the target).
+- [x] Scenery kept. With the dock: 4.8 ms mean, 5.1 ms worst (was 10.6 and 18.2); 22/22 journeys pass. The interface target is met.
 - [x] `prism_events` holds a drag move to one 120 Hz frame on average (8.3 ms), two at worst.
 
 ## Verification
