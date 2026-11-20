@@ -10,6 +10,8 @@ Entries link to primary papers, author publications, institutional records or of
 
 Start with Puckette for signals and synthesis, Chowning for modulation, Välimäki/Pekonen/Nam for oscillator aliasing, and Zavalishin for stateful filters. Then study waveshaping antialiasing, spectral and physical models. Read DDSP alongside its review and newer parameter-discovery work to distinguish useful learnable controls from expensive waveform generation. Keep real-time callback constraints beside every algorithm.
 
+For morphing between two analysed sounds, the [spectral morphing note](spectral-morphing.md) compares the literature's methods and justifies the Blend, Envelope and Partial modes [SYNTH-SPECTRAL-MORPH].
+
 The architectural opportunity is a common graph and parameter language that supports hand-designed, physically modelled and learned instruments, with interchangeable offline/reference and real-time renderers. This is a design hypothesis to test, not an established research breakthrough.
 
 ## Signals, spectra and foundational synthesis [SYNTH-RESEARCH-FOUNDATIONS]
