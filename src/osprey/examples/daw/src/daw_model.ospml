@@ -93,6 +93,7 @@ type Track =
     gain : float
     pan : float
     reverb : float
+    bus : string
     positions : List<NodePosition>
     notes : List<Note>
 
@@ -100,6 +101,25 @@ type Space =
     size : float
     decay : float
     damping : float
+
+type Equaliser =
+    low : float
+    mid : float
+    high : float
+
+type Compressor =
+    threshold : float
+    ratio : float
+    knee : float
+    attack : float
+    release : float
+    sidechain : string
+
+type Bus =
+    name : string
+    gain : float
+    equaliser : Equaliser
+    compressor : Compressor
 
 type Afterglow =
     start : float
@@ -123,6 +143,7 @@ type Arrangement =
     space : Space
     intro : Intro
     sustains : List<Afterglow>
+    buses : List<Bus>
     tracks : List<Track>
 
 type NoteRun S =
@@ -144,10 +165,26 @@ type TrackMix =
     samples : List<float>
     fault : string
 
+type Stereo =
+    name : string
+    left : List<float>
+    right : List<float>
+
+type Keyed =
+    name : string
+    samples : List<float>
+
 type Buses =
     left : List<float>
     right : List<float>
     wet : List<float>
+    groups : List<Stereo>
+    keys : List<Keyed>
+
+type BandState =
+    low : float
+    band : float
+    level : float
 
 type Mixdown =
     left : List<float>

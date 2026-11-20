@@ -17,6 +17,21 @@ module ProjectCodec
     (** Read the fields of Afterglow after its nested values are decoded. *)
     export readAfterglow doc = Afterglow(start = ui::Doc::decimal (doc, "start"), ratio = ui::Doc::decimal (doc, "ratio"), rise = ui::Doc::decimal (doc, "rise"), hold = ui::Doc::decimal (doc, "hold"), fade = ui::Doc::decimal (doc, "fade"), gain = ui::Doc::decimal (doc, "gain"), reverb = ui::Doc::decimal (doc, "reverb"))
 
+    writeEqualiser item = JsonObject [JsonMember "low" (JsonFloat item.low), JsonMember "mid" (JsonFloat item.mid), JsonMember "high" (JsonFloat item.high)]
+
+    (** Read the fields of Equaliser after its nested values are decoded. *)
+    export readEqualiser doc = Equaliser(low = ui::Doc::decimal (doc, "low"), mid = ui::Doc::decimal (doc, "mid"), high = ui::Doc::decimal (doc, "high"))
+
+    writeCompressor item = JsonObject [JsonMember "threshold" (JsonFloat item.threshold), JsonMember "ratio" (JsonFloat item.ratio), JsonMember "knee" (JsonFloat item.knee), JsonMember "attack" (JsonFloat item.attack), JsonMember "release" (JsonFloat item.release), JsonMember "sidechain" (JsonString item.sidechain)]
+
+    (** Read the fields of Compressor after its nested values are decoded. *)
+    export readCompressor doc = Compressor(threshold = ui::Doc::decimal (doc, "threshold"), ratio = ui::Doc::decimal (doc, "ratio"), knee = ui::Doc::decimal (doc, "knee"), attack = ui::Doc::decimal (doc, "attack"), release = ui::Doc::decimal (doc, "release"), sidechain = ui::Doc::text (doc, "sidechain"))
+
+    writeBus item = JsonObject [JsonMember "name" (JsonString item.name), JsonMember "gain" (JsonFloat item.gain), JsonMember "equaliser" (writeEqualiser item.equaliser), JsonMember "compressor" (writeCompressor item.compressor)]
+
+    (** Read the fields of Bus after its nested values are decoded. *)
+    export readBus (doc, equaliser, compressor) = Bus(name = ui::Doc::text (doc, "name"), gain = ui::Doc::decimal (doc, "gain"), equaliser = equaliser, compressor = compressor)
+
     writeFollow item = match item
         Constant => JsonString "Constant"
         Pitched => JsonString "Pitched"
@@ -92,13 +107,13 @@ module ProjectCodec
     (** Read the fields of Note after its nested values are decoded. *)
     export readNote doc = Note(pitch = ui::Doc::number (doc, "pitch"), start = ui::Doc::decimal (doc, "start"), length = ui::Doc::decimal (doc, "length"), velocity = ui::Doc::decimal (doc, "velocity"))
 
-    writeTrack item = JsonObject [JsonMember "name" (JsonString item.name), JsonMember "instrument" (writeInstrument item.instrument), JsonMember "gain" (JsonFloat item.gain), JsonMember "pan" (JsonFloat item.pan), JsonMember "reverb" (JsonFloat item.reverb), JsonMember "positions" (JsonArray (mapList (item.positions, writeNodePosition))), JsonMember "notes" (JsonArray (mapList (item.notes, writeNote)))]
+    writeTrack item = JsonObject [JsonMember "name" (JsonString item.name), JsonMember "instrument" (writeInstrument item.instrument), JsonMember "gain" (JsonFloat item.gain), JsonMember "pan" (JsonFloat item.pan), JsonMember "reverb" (JsonFloat item.reverb), JsonMember "bus" (JsonString item.bus), JsonMember "positions" (JsonArray (mapList (item.positions, writeNodePosition))), JsonMember "notes" (JsonArray (mapList (item.notes, writeNote)))]
 
     (** Read the fields of Track after its nested values are decoded. *)
-    export readTrack (doc, instrument, positions, notes) = Track(name = ui::Doc::text (doc, "name"), instrument = instrument, gain = ui::Doc::decimal (doc, "gain"), pan = ui::Doc::decimal (doc, "pan"), reverb = ui::Doc::decimal (doc, "reverb"), positions = positions, notes = notes)
+    export readTrack (doc, instrument, positions, notes) = Track(name = ui::Doc::text (doc, "name"), instrument = instrument, gain = ui::Doc::decimal (doc, "gain"), pan = ui::Doc::decimal (doc, "pan"), reverb = ui::Doc::decimal (doc, "reverb"), bus = ui::Doc::text (doc, "bus"), positions = positions, notes = notes)
 
     (** Encode the complete project document. *)
-    export writeArrangement item = JsonObject [JsonMember "title" (JsonString item.title), JsonMember "tempo" (JsonFloat item.tempo), JsonMember "sampleRate" (JsonInt item.sampleRate), JsonMember "drive" (JsonFloat item.drive), JsonMember "space" (writeSpace item.space), JsonMember "intro" (writeIntro item.intro), JsonMember "sustains" (JsonArray (mapList (item.sustains, writeAfterglow))), JsonMember "tracks" (JsonArray (mapList (item.tracks, writeTrack)))]
+    export writeArrangement item = JsonObject [JsonMember "title" (JsonString item.title), JsonMember "tempo" (JsonFloat item.tempo), JsonMember "sampleRate" (JsonInt item.sampleRate), JsonMember "drive" (JsonFloat item.drive), JsonMember "space" (writeSpace item.space), JsonMember "intro" (writeIntro item.intro), JsonMember "sustains" (JsonArray (mapList (item.sustains, writeAfterglow))), JsonMember "buses" (JsonArray (mapList (item.buses, writeBus))), JsonMember "tracks" (JsonArray (mapList (item.tracks, writeTrack)))]
 
     (** Read the fields of Arrangement after its nested values are decoded. *)
-    export readArrangement (doc, space, intro, sustains, tracks) = Arrangement(title = ui::Doc::text (doc, "title"), tempo = ui::Doc::decimal (doc, "tempo"), sampleRate = ui::Doc::number (doc, "sampleRate"), drive = ui::Doc::decimal (doc, "drive"), space = space, intro = intro, sustains = sustains, tracks = tracks)
+    export readArrangement (doc, space, intro, sustains, buses, tracks) = Arrangement(title = ui::Doc::text (doc, "title"), tempo = ui::Doc::decimal (doc, "tempo"), sampleRate = ui::Doc::number (doc, "sampleRate"), drive = ui::Doc::decimal (doc, "drive"), space = space, intro = intro, sustains = sustains, buses = buses, tracks = tracks)

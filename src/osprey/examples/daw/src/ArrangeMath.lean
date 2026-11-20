@@ -108,4 +108,21 @@ def drumBody (velocity noise frame decay sampleRate : Float) : Float :=
 /-- The piece's frames: the last note end plus the reverb decay and two seconds. -/
 def pieceFrames (beats tempo sampleRate decay : Float) : Float := beatFrames beats tempo sampleRate + secondFrames (decay + 2) sampleRate
 
+/-- One step of a one-pole low-pass toward `input`; `coefficient` comes from `poleCoefficient`. -/
+def onePole (previous input coefficient : Float) : Float := input + coefficient * (previous - input)
+
+/-- One-pole coefficient for a corner at `frequency` Hz. -/
+def poleCoefficient (frequency sampleRate : Float) : Float := Float.exp (-6.283185307179586 * frequency / sampleRate)
+
+/-- Three-band EQ from two low-pass splits: `low` below the low corner, `band - low` between the corners and
+`input - band` above, each at its gain in dB. At 0 dB the three bands add back up to the input. -/
+def banded (input low band lowGain midGain highGain : Float) : Float :=
+  Float.exp (lowGain * 0.1151292546497023) * low + Float.exp (midGain * 0.1151292546497023) * (band - low)
+    + Float.exp (highGain * 0.1151292546497023) * (input - band)
+
+/-- A bus is playable: gain 0–4, EQ gains −24 to 24 dB, ratio 1–20, knee 0–24 dB, attack and release 0–2 s. -/
+def busValid (gain low mid high ratio knee attack release : Float) : Bool :=
+  gain >= 0 && gain <= 4 && low >= -24 && low <= 24 && mid >= -24 && mid <= 24 && high >= -24 && high <= 24
+    && ratio >= 1 && ratio <= 20 && knee >= 0 && knee <= 24 && attack >= 0 && attack <= 2 && release >= 0 && release <= 2
+
 end daw.ArrangeMath

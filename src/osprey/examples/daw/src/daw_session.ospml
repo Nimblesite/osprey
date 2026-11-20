@@ -7,7 +7,7 @@ import ui::Requests
 (** Loading a song, picking a track, opening its patch in Prism and playing the whole song. *)
 module DawSession
     (** No song loaded: the timeline asks for one. *)
-    export blank () = daw::Arrangement(title = "", tempo = 120.0, sampleRate = 48000, drive = 1.0, space = daw::Space(size = 1.0, decay = 1.0, damping = 0.5), intro = daw::Intro(recording = "", tail = 0.0, crossfade = 0.0), sustains = [], tracks = [])
+    export blank () = daw::Arrangement(title = "", tempo = 120.0, sampleRate = 48000, drive = 1.0, space = daw::Space(size = 1.0, decay = 1.0, damping = 0.5), intro = daw::Intro(recording = "", tail = 0.0, crossfade = 0.0), sustains = [], buses = [], tracks = [])
 
     (** The bar (from 0, four beats each) a beat falls in. *)
     export bar beat = floatToInt (TimelineGeometry::bar beat) ?: 0

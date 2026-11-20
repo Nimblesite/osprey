@@ -12,16 +12,22 @@ type Routing { nodes: List<PatchNode> cables: List<PatchCable> attack: Float rel
 union Instrument { PatchInstrument { routing: Routing } PluckInstrument { brightness: Float decay: Float } BowInstrument { pressure: Float brightness: Float vibrato: Float } BellInstrument { decay: Float brightness: Float } MalletInstrument { decay: Float brightness: Float } OperatorInstrument { tone: Tone } DrumInstrument { hit: Hit } }
 type Note { pitch: Int start: Float length: Float velocity: Float }
 type NodePosition { layoutNode: Int layoutX: Float layoutY: Float }
-type Track { name: String instrument: Instrument gain: Float pan: Float reverb: Float positions: List<NodePosition> notes: List<Note> }
+type Track { name: String instrument: Instrument gain: Float pan: Float reverb: Float bus: String positions: List<NodePosition> notes: List<Note> }
 type Space { size: Float decay: Float damping: Float }
+type Equaliser { low: Float mid: Float high: Float }
+type Compressor { threshold: Float ratio: Float knee: Float attack: Float release: Float sidechain: String }
+type Bus { name: String gain: Float equaliser: Equaliser compressor: Compressor }
 type Afterglow { start: Float ratio: Float rise: Float hold: Float fade: Float gain: Float reverb: Float }
 type Intro { recording: String tail: Float crossfade: Float }
-type Arrangement { title: String tempo: Float sampleRate: Int drive: Float space: Space intro: Intro sustains: List<Afterglow> tracks: List<Track> }
+type Arrangement { title: String tempo: Float sampleRate: Int drive: Float space: Space intro: Intro sustains: List<Afterglow> buses: List<Bus> tracks: List<Track> }
 type NoteRun<S> { held: S samples: List<Float> fault: String }
 type NoteSpan { gate: Float total: Int }
 type VoicePair<A, B> { one: A other: B }
 type TrackMix { cursor: Int carry: List<Float> samples: List<Float> fault: String }
-type Buses { left: List<Float> right: List<Float> wet: List<Float> }
+type Stereo { name: String left: List<Float> right: List<Float> }
+type Keyed { name: String samples: List<Float> }
+type Buses { left: List<Float> right: List<Float> wet: List<Float> groups: List<Stereo> keys: List<Keyed> }
+type BandState { low: Float band: Float level: Float }
 type Mixdown { left: List<Float> right: List<Float> peak: Float }
 
 # osprey namespace synth

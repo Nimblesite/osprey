@@ -59,30 +59,51 @@ module Arrangements
                 false => Error(message = "An arrangement must last 1 to 28800000 frames.")
                 true => Success(value = count)
 
-    // `samples` enter `offset` frames into the bus; the bus grows to hold them.
-    bused (existing, samples, offset, gain) = foldList (toList (range (0, longer (length existing, satAdd offset (length samples)))), [], \(done, index) => listAppend done (ArrangeMath::bused (listGet existing index ?: 0.0, gain, listGet samples (satSub index offset) ?: 0.0)))
+    (** `samples` enter `offset` frames into the bus, scaled by `gain`; the bus grows to hold them. *)
+    export bused (existing, samples, offset, gain) = foldList (toList (range (0, longer (length existing, satAdd offset (length samples)))), [], \(done, index) => listAppend done (ArrangeMath::bused (listGet existing index ?: 0.0, gain, listGet samples (satSub index offset) ?: 0.0)))
 
     // One bus takes the mono buffer from frame `offset`, scaled by `gain * shade`.
     sent (bus, samples, offset, gain, shade) = bused (bus, samples, offset, ArrangeMath::scaled (gain, shade))
 
     (** Silent buses. *)
-    export empty = Buses(left = [], right = [], wet = [])
+    export empty = Buses(left = [], right = [], wet = [], groups = [], keys = [])
 
     (** Add a mono buffer to the buses from frame `offset` (0 or later): gain 0–4, pan −1 (left) to 1
         (right), reverb send 0–1. *)
     export layered (buses, samples, offset, gain, pan, reverb) = match offset >= 0 && ArrangeMath::mixable (gain, pan, reverb)
         false => Error(message = "Gain must be 0 to 4, pan -1 to 1, reverb 0 to 1 and the offset not negative.")
-        true => Success(value = Buses(left = sent (buses.left, samples, offset, gain, ArrangeMath::panLeft pan), right = sent (buses.right, samples, offset, gain, ArrangeMath::panRight pan), wet = sent (buses.wet, samples, offset, gain, reverb)))
+        true => Success(value = buses(left = sent (buses.left, samples, offset, gain, ArrangeMath::panLeft pan), right = sent (buses.right, samples, offset, gain, ArrangeMath::panRight pan), wet = sent (buses.wet, samples, offset, gain, reverb)))
 
     (** The frame at which `beat` starts. *)
     export frame (arrangement, beat) = match floatToInt (ArrangeMath::beatFrames (beat, arrangement.tempo, toFloat arrangement.sampleRate))
         Error _ => Error(message = "A start beat is not finite.")
         Success start => Success(value = start)
 
-    (** Render one track and add it to the buses. *)
+    // A track that keys a bus compressor is kept, at its gain, for the bus stage ([DAW-MIX-BUS]).
+    kept (arrangement, buses, voice, samples) = match BusMix::keys (arrangement, voice.name)
+        true => buses(keys = listAppend buses.keys (Keyed(name = voice.name, samples = mapList (samples, \s => ArrangeMath::scaled (s, voice.gain)))))
+        false => buses
+
+    group (buses, name) = listGet (filterList (buses.groups, \g => g.name == name)) 0 ?: Stereo(name = name, left = [], right = [])
+
+    others (buses, name) = filterList (buses.groups, \g => g.name != name)
+
+    joined (buses, name, fed) = Buses(left = buses.left, right = buses.right, wet = fed.wet, groups = listAppend (others (buses, name)) (Stereo(name = name, left = fed.left, right = fed.right)), keys = buses.keys)
+
+    // The track's dry sides sum into its bus; its Space send still goes straight to the shared reverb.
+    grouped (buses, voice, samples) =
+        inner = group (buses, voice.bus)
+        sides = Buses(left = inner.left, right = inner.right, wet = buses.wet, groups = [], keys = [])
+        synth::Outcomes::carried (layered (sides, samples, 0, voice.gain, voice.pan, voice.reverb), \fed => Success(value = joined (buses, voice.bus, fed)))
+
+    routed (arrangement, buses, voice, samples) = match voice.bus == ""
+        true => layered (buses, samples, 0, voice.gain, voice.pan, voice.reverb)
+        false => synth::Outcomes::carried (BusMix::named (arrangement, voice.bus), \_ => grouped (buses, voice, samples))
+
+    (** Render one track and add it to Master, or to its bus when it names one. *)
     export added (arrangement, buses, voice, count) = match part (arrangement, voice, count)
         Error why => Error(message = why)
-        Success samples => match layered (buses, samples, 0, voice.gain, voice.pan, voice.reverb)
+        Success samples => match routed (arrangement, kept (arrangement, buses, voice, samples), voice, samples)
             Error why => Error(message = "${voice.name}: ${why}")
             Success next => Success(value = next)
 

@@ -54,6 +54,9 @@ module SongFiles
         true => Success(value = positions)
         false => Error(message = "A patch node has two layout positions.")
 
+    // [DAW-MIX-BUS] A bus with its EQ and compressor.
+    bus doc = ProjectCodec::readBus (doc, ProjectCodec::readEqualiser (ui::Doc::field (doc, "equaliser")), ProjectCodec::readCompressor (ui::Doc::field (doc, "compressor")))
+
     track doc = match instrument (ui::Doc::field (doc, "instrument"))
         Error why => failed (doc, why)
         Success sound => match folded (doc, "notes", note)
@@ -70,7 +73,7 @@ module SongFiles
         false => Error(message = "The intro needs a recording path without quotes, a tail of 0.5–10 seconds and a crossfade no longer than the tail.")
 
     arranged (doc, tracks) =
-        ProjectCodec::readArrangement (doc, ProjectCodec::readSpace (ui::Doc::field (doc, "space")), ProjectCodec::readIntro (ui::Doc::field (doc, "intro")), each (doc, "sustains", ProjectCodec::readAfterglow), tracks)
+        ProjectCodec::readArrangement (doc, ProjectCodec::readSpace (ui::Doc::field (doc, "space")), ProjectCodec::readIntro (ui::Doc::field (doc, "intro")), each (doc, "sustains", ProjectCodec::readAfterglow), each (doc, "buses", bus), tracks)
 
     (** Decode a song project; malformed JSON, an unknown instrument or a malformed note is an error. *)
     export decode source = match jsonDecode source
