@@ -373,3 +373,59 @@ arrangementsJourney () =
     expect (daw::Arrangements::interleaved (stereo, 2, 2), [])
     expect (daw::Arrangements::interleaved (stereo, 0, 4), [1.0, 3.0, 2.0, 4.0, 0.0, 0.0, 0.0, 0.0])
 // Registered through the journey chain above (historyDragJourney), this file's path in from main.ospml's tests.
+
+// [SYNTH-ADVANCED-ORDER] Every family plays a real note through the song renderer: a chain of nodes, each cabled
+// to the next and the last to the output, at middle C for a quarter of a second.
+chainNode (index, part) = daw::PatchNode(identity = index, component = part.component, size = part.size, seed = 1, asset = "", settings = part.settings)
+
+chainCable index = daw::PatchCable(source = index, outlet = 0, destination = satAdd index 1, inlet = 0)
+
+chainOf parts =
+    nodes = mapList (toList (range (0, length parts)), \index => chainNode (index, listGet parts index ?: daw::PatchNode(identity = 0, component = "output", size = 0, seed = 0, asset = "", settings = [])))
+    daw::PatchInstrument(routing = daw::Routing(nodes = listAppend nodes (daw::PatchNode(identity = length parts, component = "output", size = 0, seed = 0, asset = "", settings = [])), cables = mapList (toList (range (0, length parts)), chainCable), attack = 0.005, release = 0.05))
+
+part (component, size, settings) = daw::PatchNode(identity = 0, component = component, size = size, seed = 1, asset = "", settings = settings)
+
+pitched key = daw::Setting(key = key, value = 1.0, follow = daw::Pitched)
+
+fixed (key, value) = daw::Setting(key = key, value = value, follow = daw::Constant)
+
+middleC () = daw::Note(pitch = 60, start = 0.0, length = 0.5, velocity = 0.8)
+
+peakOf samples = foldList (samples, 0.0, \(high, value) => synth::TableMath::larger (high, synth::TableMath::magnitude value))
+
+finite samples = length (filterList (samples, \value => value == value && synth::TableMath::magnitude value < 1000.0)) == length samples
+
+// Middle C repeats every 183.5 frames at 48 kHz: in the held middle of the note a pitched voice correlates with
+// itself one period later far more than half a period later (which an octave error would favour).
+lagged (samples, lag) = foldList (toList (range (2400, 12000)), 0.0, \(sum, index) => sum + (listGet samples index ?: 0.0) * (listGet samples (satAdd index lag) ?: 0.0))
+
+inTune samples =
+    energy = lagged (samples, 0)
+    expect (energy > 0.0, true)
+    expect (lagged (samples, 183) > 0.6 * energy, true)
+    expect (lagged (samples, 183) > lagged (samples, 92), true)
+    expect (lagged (samples, 183) > lagged (samples, 160), true)
+
+heardFamily (name, instrument, pitch) = succeeds (daw::NoteRenders::render (middleC (), 120.0, 48000.0, instrument), \samples => familyHeard (name, instrument, pitch, samples))
+
+familyHeard (name, instrument, pitch, samples) =
+    // A quarter-second note plus its 50 ms release.
+    expect (length samples, 14400)
+    expect (finite samples, true)
+    expect (peakOf samples > 0.01, true)
+    expect (peakOf samples <= 4.0, true)
+    succeeds (daw::NoteRenders::render (middleC (), 120.0, 48000.0, instrument), \again => expect (structuralEquals (again, samples), true))
+    match pitch
+        true => inTune samples
+        false => expect (name != "", true)
+
+familiesJourney () =
+    heardFamily ("granular", chainOf [part ("grainCloud", 16, []), part ("downmix", 0, [])], false)
+    heardFamily ("physical", chainOf [part ("exciter", 0, []), part ("waveguide", 2400, [pitched "frequency"])], true)
+    heardFamily ("wavetable", chainOf [part ("wavetable", 0, [pitched "frequency", fixed ("position", 0.5)])], true)
+    heardFamily ("additive", chainOf [part ("additive", 0, [pitched "frequency"])], true)
+    heardFamily ("spectral", chainOf [part ("sine", 0, [pitched "frequency"]), part ("spectral", 1024, [])], true)
+    heardFamily ("nonlinear", chainOf [part ("sine", 0, [pitched "frequency"]), part ("shaper", 0, [fixed ("drive", 3.0)])], true)
+    heardFamily ("phase", chainOf [part ("operator", 0, [pitched "frequency"])], true)
+    failsWith (daw::NoteRenders::render (middleC (), 120.0, 48000.0, chainOf [part ("noSuchModule", 0, [])]), "Unknown module \"noSuchModule\".")

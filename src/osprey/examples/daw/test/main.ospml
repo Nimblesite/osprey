@@ -1057,3 +1057,5 @@ showcaseProject project =
     forEachList (project.tracks, showcaseVoice)
 
 test ("Silt Relay opens its wired synth families and sounds its granular and MIDI channel paths", \() => ui::Runtime::guarded (\() => succeeds (readFile "src/osprey/examples/daw/tracks/silt-relay.json", \source => succeeds (daw::SongFiles::decode source, showcaseProject))))
+
+test ("every synthesis family plays a real, finite, repeatable note through the song renderer, pitched ones in tune", \() => Runtime::guarded familiesJourney)
