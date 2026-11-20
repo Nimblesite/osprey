@@ -118,9 +118,12 @@ fn value_of_word(cg: &mut Codegen, word: &str, ty: &osprey_types::Type) -> Value
 /// at its own type. `named` substitutes `"Error"` for a missing message;
 /// otherwise a missing message stays `null` for the caller to tell apart.
 pub(crate) fn load_error_text(cg: &mut Codegen, v: &Value, named: bool) -> Value {
-    let plain_text = |cg: &mut Codegen| match named {
-        true => load_errmsg_str(cg, v),
-        false => load_errmsg(cg, v),
+    let plain_text = |cg: &mut Codegen| {
+        if named {
+            load_errmsg_str(cg, v)
+        } else {
+            load_errmsg(cg, v)
+        }
     };
     if error_type(v).is_some_and(|ty| is_string_error(&ty)) || v.result_inner.is_none() {
         return plain_text(cg);
