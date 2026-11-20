@@ -1,5 +1,7 @@
 # Prism modular synthesis and VST hosting [PRISM-ROUTING]
 
+The [advanced synthesis plan](#advanced-synthesis-delivery-plan-prism-advanced-plan) adds proposed neural, granular, physical and combined-method work with Prism UI requirements.
+
 The synth package remains UI-free. Prism becomes an editable instrument graph: add oscillators, effects, MIDI generators, modulators and VST3 host nodes from a menu, connect compatible ports, adjust parameters and hear the resulting graph. Existing audio and control work must remain usable while a replacement graph is validated. See [SYNTH-GRAPH], [SYNTH-SIGNALS], [SYNTH-RENDER] and [SYNTH-HOST-VST] in the [synthesis specification](../specs/runtime/Synthesis.md).
 
 Work is on `codex/prism-synth-routing`, originally based on `math-to-code` at `e3ebc1399`. The original 03:00 Australia/Melbourne checkpoint on 16 November 2026 was retained below; the user subsequently resumed work and requested wrap-up in the primary checkout. Historical measurements describe their recorded checkpoint, not current release readiness.
@@ -304,3 +306,95 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Pass the expanded application/audio regressions: synth package 22/22 and app 15/15 (2026-11-16). GPUI host clippy still runs only in CI.
 - [x] Measure the audio the app actually writes to the device: a `Speaker` effect captures every float32 WAV block from Audition, then the test checks the header, pitch from zero crossings (110 Hz–7 kHz within 0.05 Hz), RMS, peak, block-boundary continuity, 0.5 gain and low-pass attenuation (4 kHz through a 400 Hz cutoff vs. 19 kHz). A 1% pitch error fails it.
 - [ ] Verify actual mouse dragging and cable deletion in the rebuilt window, and capture the windowed regression journey.
+
+## Advanced synthesis delivery plan [PRISM-ADVANCED-PLAN]
+
+Status — design only, 2026-11-17. The current deliverable is researched specifications and plans. All implementation milestones below remain unchecked. The [research guide](../research/synthesis/README.md#neural-granular-and-physical-synthesis-synth-research-focused) compares papers and named instruments. The [package and UI specification](../specs/runtime/Synthesis.md#advanced-synthesis-proposal-synth-advanced) is the normative contract for this plan.
+
+### Repository baseline and dependencies [PRISM-ADVANCED-BASELINE]
+
+Inspected `graph.td`, `render.td`, `src/clip_kernels.ospml` and the package README under `src/osprey/packages/synth/`, plus Prism's `editor.td`. Existing graph identities, typed cables, parameter revisions and retained block processing provide the integration points. `Processor` currently enumerates the existing basic and external nodes. `KernelState` contains oscillator/filter/delay fields. `ClipKernels.rendered` supplies a fixed 48000 sample rate. Each needs an explicit extension for the new contracts.
+
+The existing synthesis specification records a failed sustained playback check on 2026-11-16. Its continuous-device path and host support require fresh verification before any advanced module is advertised for live performance. Package correctness, UI screenshots and device reliability have distinct evidence. This proposal adds requirements without changing historical verification claims.
+
+| Layer | Planned changes | Reuse and verification |
+| --- | --- | --- |
+| Package schemas | Versioned processors, typed state, asset/model metadata, typed faults and observations in the existing typeDiagram sources | Regenerate using the existing emitter. Round-trip old graphs and validate missing/unknown fields. |
+| DSP mathematics | Grain windows/interpolation, modal transitions, waveguide tuning, energy accounting and controller parameter mappings in Lean | Reuse `Waves.lean` conventions and the math-to-code toolchain. Check generated/reference parity. |
+| Package processing | Grain scheduler, body state and neural request descriptors through existing preparation/block paths | Reuse parameter validation, graph routing, retained state and observations. Extend the public entry points. |
+| Host adapters | Bounded asset decoding, model execution and generated-asset jobs | Reuse existing worker ownership/cancellation where applicable. Add a model-specific typed protocol instead of encoding inference as VST messages. |
+| Prism | Palette, cards, inspector, keyboard gestures and typed job states in `editor.td` and existing editor modules | Preserve single-workspace routing and accessible native controls. |
+| Evidence | Existing package/app tests and platform journeys | Expand loaded tests and committed screenshots. Keep artifacts below `target/`. |
+
+### Shared foundation [PRISM-ADVANCED-FOUNDATION]
+
+- [ ] Extend existing tests with invalid processor states, sample-rate changes, asset generations, block partitions, missing model capabilities, cancellation and old graph migration. Confirm failures through normal package/application entry points before implementing behavior.
+- [ ] Declare typed assets, model manifests, lifecycle states and errors. Validate decoded dimensions, arithmetic products, resource limits, finite values and model operators before preparation.
+- [ ] Thread prepared sample rate and block format through scalar and graph execution. Add processor-specific retained state and lifetime-safe asset references.
+- [ ] Establish bounded producer queues, explicit fault observations, latency reporting and cancellation ownership. Measure the existing device starvation defect independently.
+- [ ] Define patch migrations and asset/model relinking. Preserve seeds, applied parameter semantics and model hashes through save/reload.
+
+Exit evidence must include unchanged old-processor results, invalid-state rejection, irregular-block parity and transactional replacement under GC and ARC on supported hosts. Test wasm32 package paths and explicit unavailable-backend behavior where native inference is absent. Windows native validation uses its supported memory backend.
+
+### Granular package and interface [PRISM-ADVANCED-GRANULAR]
+
+- [ ] Add seeded grain-event traces and window/resampling oracles to the existing synth suite. Cover reverse and single-frame sources, asset replacement, ring wrap, zero/max density and pool exhaustion.
+- [ ] Implement one kernel shared by sample and live modes, with independent pitch/scan, explicit region boundaries, grain retention and visible overload accounting.
+- [ ] Add the Granular palette entry and card, waveform/region inspector, Size/Density/Pitch/Scan controls, Freeze and Capture actions, plus numeric alternatives to gestures.
+- [ ] Drive a loaded Prism journey that imports a sample, plays notes, changes pitch while holding scan fixed, freezes, replaces the asset while tails continue, exceeds capacity, undoes edits and saves/reloads the patch.
+- [ ] Verify audio, applied state and screenshots together. Compare pitch and alias measurements against the selected reference resampler.
+
+Exit demonstration is a reproducible frozen pad and a time-stretched transient sample, with the same seed replaying identical event traces. GR-1/Morphagene inform source navigation, Quanta/Pigments inform sample voices and Portal informs live capture. These are documented interaction references, with exact product emulation outside the acceptance claim.
+
+### Physical package and interface [PRISM-ADVANCED-PHYSICAL]
+
+- [ ] Specify and pin each bar, plate, membrane, string and tube model's equations, boundary conditions, modal weights and valid ranges. Establish impulse, tuning, decay and energy oracles first.
+- [ ] Implement modal bodies and strike/pluck exciters, then fractional-delay strings and tubes. Add bow/blow feedback with a bounded solver and explicit convergence failure.
+- [ ] Implement coupled bodies through a joint physical state and validated energy transfer. Test automation and material morphing before enabling those controls during playback.
+- [ ] Add Exciter, Modal Body, String and Tube palette entries. Build conditional excitation controls, body/material inspector, pickup/contact gestures and mode/energy observations.
+- [ ] Extend the Prism journey with struck metal, damped membrane, plucked and bowed string, and blown tube patches. Vary velocity, pickup position, material and coupling, then reload each patch and verify the corresponding audio/state change.
+
+Exit evidence includes isolated-mode tuning and T60 measurements, decay/energy bounds, solver exhaustion handling and windowed/headless screenshots on supported hosts. Rings/Elements guide body/exciter controls, Chromaphone guides energy coupling, and Collision/Tension guide playable gesture workflows.
+
+### Neural package and interface [PRISM-ADVANCED-NEURAL]
+
+- [ ] Select redistributable model fixtures and record exact hashes, runtime/operator compatibility, licenses and available training-data information. Evaluate RAVE, DDSP, a neural codec and a text-to-audio model independently.
+- [ ] Benchmark loading, warm-up, execution distribution, memory, hop/lookahead latency and cancellation on Windows and other target hosts. Choose a backend from measured support. ONNX export, TorchScript or any other format remains a candidate until the selected models execute correctly with bounded operator support.
+- [ ] Add model-manifest, worker-loss, late-response, shape-error and codebook-bound tests before wiring real inference through typed host effects. Preserve histories across irregular graph blocks.
+- [ ] Implement RAVE audio transfer and DDSP Audio/MIDI modes with latency-compensated mixing and visible pitch confidence. Add neural codec encode/decode jobs with real reconstruction fixtures.
+- [ ] Implement cancellable text generation to validated assets. Preserve prompt, duration, seed and model revision. Preview and Insert sample are explicit user actions.
+- [ ] Build model selection, capability/error displays, latent or harmonic/noise controls, codec inspector and generation panel. Exercise model replacement, missing assets, cancellation, stale results and save/reload through Prism.
+
+Exit evidence includes genuine audio from each model family, held-out quality measurements and complete lifecycle journeys. Backend-specific nondeterminism is measured and disclosed in replay metadata. Offline text generation can ship as its own capability while live timbre transfer remains subject to measured deadline acceptance. Every requested capability retains its own outstanding checklist item until delivered.
+
+### Combined synthesis experiments [PRISM-ADVANCED-HYBRID]
+
+The main candidate uses a learned controller to assign grains as contacts on a shared physical body. The body's modal energy changes future contact timing, location and texture. It joins grain generation, physical state and learned control through one state transition. Its algorithm, energy budget and controls are specified in [SYNTH-ADVANCED-HYBRID](../specs/runtime/Synthesis.md#combined-grain-and-body-method-synth-advanced-hybrid).
+
+| Experiment | Deliverable | Decision evidence |
+| --- | --- | --- |
+| Body-dependent grain contacts | Analytic controller, then learned scheduler/texture decoder with energy-constrained forces | Initial-body-state intervention changes future contact traces only when Interaction is enabled. |
+| Joint sound analysis | Offline estimation of grain dictionary, contact envelope and physical material parameters from reference audio | Held-out reconstruction, editable material/texture behavior and comparison with independent parameter fitting. |
+| Text-directed interactions | A generated contact/material trajectory rendered through the same body engine | Prompt relevance, trajectory validity, predictable manual edits and comparison with generated-audio resampling. |
+
+- [ ] Review the cited neural-granular, haptic modal/granular and differentiable-modal papers in full before claiming an original algorithm. Extend the prior-art search around contact-state feedback and energy-constrained learned control.
+- [ ] Author the bounded contact/body transition and energy inequality in Lean. Define state units, force projection, material-change work and exact failure behavior.
+- [ ] Establish the analytic controller and all ablation fixtures before training. Use disjoint source-recording/body splits, fixed seeds and matched resource budgets.
+- [ ] Train and evaluate the controller offline, then run the validated model through the neural lifecycle contract. Record event traces, constrained updates, energy, latency and audio.
+- [ ] Add a Combined module with Texture, Material, Body memory, Interaction and Energy controls, plus contact map, grain timeline and mode-energy inspector. Add numeric/keyboard equivalents and mode selection.
+- [ ] Compare against audio-routed grains/resonator, open-loop contacts, analytic feedback and learned control without body-energy features. Test controllability and listening quality under matched loudness and latency.
+
+Proceed to a production implementation only if the shared-state method shows repeatable musical value and satisfies its energy/resource constraints. A negative result closes that experiment with retained measurements. It cannot support a claim that the proposed synthesis method works or is novel. The joint-analysis and text-trajectory experiments remain separate research milestones and require their own evidence.
+
+### Verification and delivery sequence [PRISM-ADVANCED-DELIVERY]
+
+Implement shared preparation/assets/state first. Granular and physical processing follow with their own UIs and journeys. Neural work depends on model/backend selection and worker lifetime handling. The combined renderer depends on all three foundations, its Lean energy model and the analytic baseline. Its learned controller follows the baseline measurements. Complete the UI in each stage so actual editing, rendering and failure behavior are exercised together.
+
+For future implementation, use the existing `make -C src/osprey/packages synth` package entry point and `make -C src/toolchain/targets/tests synth` host-free Prism entry point. Platform launch/windowed/headless targets must be inspected and added or completed in the appropriate `src/toolchain/targets/<platform>/` folders. The inspected Windows Makefiles expose no synth-named target, so Windows delivery requires those entries and WinUI integration evidence. Keep each target scoped to Prism. This documentation task runs no CI preparation workflow.
+
+- [ ] Complete the full [SYNTH-ADVANCED-VERIFY](../specs/runtime/Synthesis.md#acceptance-contract-synth-advanced-verify) matrix with real assets/models and all public entry points.
+- [ ] Verify Windows sandbox capabilities, keyboard accessibility, resize behavior and screenshots, alongside every other advertised host.
+- [ ] Meet the 10-minute maximum-workload device run, zero-starvation requirement and callback allocation/lock checks before claiming continuous advanced playback.
+- [ ] Record each delivered capability and its remaining constraints in the package README and Prism documentation. Keep unverified milestones unchecked.
+
+Open engineering decisions are the resampling algorithm/quality threshold, exact membrane and tube reference models, inference runtime and redistributable model set, platform memory/performance envelopes and hybrid training dataset. Resolve each with its named experiment before implementing the dependent optimized path. The numerical defaults in the specification are proposed testable starting points.

@@ -1,5 +1,7 @@
 # Osprey synthesis toolkit [SYNTH]
 
+The [advanced synthesis proposal](#advanced-synthesis-proposal-synth-advanced) specifies neural, granular, physical and combined methods with their Prism interfaces. Its requirements are planned work.
+
 Status — implementation in progress. The initial package extracts Prism's pure pitch, waveform, modulation, sample and WAV functions. Typed graph validation/scheduling, reactive parameter snapshots and stateful scalar reference oscillators, ADSR and filters now have passing package journeys. The real-time renderer and advanced algorithms remain requirements, not completed features. Research sources and candidate experiments are in [the research guide](../../research/synthesis/README.md).
 
 `@osprey/synth` is an independent synthesis library for instruments, effects, offline rendering and future plug-in hosting. It contains no UI, native widgets, canvas rendering, networking, session management or operating-system audio-device code. Prism and Light Orchestra are examples using the library. The orchestra's number of phones and instruments must not constrain library design.
@@ -118,3 +120,129 @@ The reference producer allocates and runs outside the device callback. It is not
 Queue-empty observations must be monotonic within a device session. The controller rejects decreasing counters and retains a visible warning for a nonzero count through the audition completion. The backend emits a structured `audio.queue_empty` diagnostic when that count increases, outside the audio callback. A deliberate producer pause exercises this path on the real device.
 
 Latest verification (2026-11-16): the final sustained native reruns failed the unchanged zero-empty-queue assertion, including a rerun without concurrent test compilation. Earlier successful 985088-frame evidence is not reproducible reliability. Exact finite VST-chain PCM still passes. Continuous playback is experimental pending producer-throughput work; do not treat this branch as release-ready.
+
+## Advanced synthesis proposal [SYNTH-ADVANCED]
+
+Status — proposed, 2026-11-17. This section defines future package behavior and Prism UI requirements. The [research collection](../../research/synthesis/README.md#neural-granular-and-physical-synthesis-synth-research-focused) supplies sources and product comparisons. The [delivery plan](../../plans/prism-synth-routing.md#advanced-synthesis-delivery-plan-prism-advanced-plan) identifies dependencies, experiments and acceptance evidence. Numerical defaults below are initial engineering choices to validate. Algorithm and UI implementation remain pending.
+
+### Shared package contract [SYNTH-ADVANCED-CONTRACT]
+
+Extend the existing typeDiagram graph, render and host schemas with versioned processor variants, processor-specific state, assets and faults. Reuse `Graphs`, `Parameters`, `Observations`, `Repatch`, `Renderer` and `GraphClips`. The current `KernelState` fields cannot represent grain pools, modal banks or neural histories faithfully. Introduce explicit state variants and reject a state whose processor kind, instance, asset generation or prepared format differs. Preserve older processor tags, parameter meanings and patch behavior during schema migration.
+
+Preparation accepts sample rate, maximum block size, channel layout, voice/event limits and memory budget. It validates assets and allocates all required storage. Initial validation covers 44.1, 48 and 96 kHz and blocks from 1 to 2048 frames. Model-specific constraints may narrow that set and must be visible. Replace the fixed 48000 rate in `ClipKernels.rendered` with prepared format information when implementing these processors. Rate changes require a new preparation transaction. Existing playback continues until the replacement is accepted at a documented boundary.
+
+Processing receives absolute sample position, an ordered event window, immutable parameter revisions and retained state. Events at the end of a block belong to the next half-open window. Same-frame order uses a stable sequence number. Zero-length blocks are rejected explicitly. Splitting a render into irregular blocks must preserve its event schedule and seeded random sequence. Processor observations include applied revision, audio position, resource use, latency, underruns and a typed lifecycle state.
+
+The package owns DSP state and typed asset/model descriptions. Host effects own file selection, decoding, model execution, job scheduling, persistence and devices. Decode JSON into typed data at those boundaries. Canonical formulas, windows, resamplers, damping, mode evolution, force projection and neural output parameterization are Lean definitions under the package source root, with generated Osprey modules in `.osprey/math/`. Pin source equations and Mathlib statements where applicable. Extend the Lean reader for supported constructs required by these definitions.
+
+All byte/frame/channel products use checked arithmetic before allocation or indexing. Validate finite parameters, decoded samples and model outputs. Assets have stable content hashes, frame count, sample rate, channel layout, license/provenance and generation. Readers retain an asset generation through their last use. Model loading accepts a validated tensor/operator format with bounded dimensions and operator allowlists. Executable deserialization and arbitrary model-side imports are rejected. Faults identify the node and operation, including invalid asset, incompatible model, capacity, deadline, nonfinite state and unavailable backend.
+
+No device callback performs model loading, inference scheduling, allocation, disk access or blocking synchronization. Producer execution and callback execution have separate measured budgets. A failed producer returns a typed fault and publishes a diagnostic. The device adapter applies an explicitly reported fade/mute policy for missing audio and counts lost frames. The error remains visible through Stop and can be cleared after acknowledgement. Cancellation releases workers and assets exactly once, and stale replies cannot revive removed nodes.
+
+### Granular processor [SYNTH-ADVANCED-GRANULAR]
+
+Provide a sample instrument and a live-input processor sharing one grain kernel. The instrument takes timestamped notes and an immutable asset. The live processor takes audio into a bounded capture ring. Both output stereo audio with explicit mono conversion when needed. A grain retains asset generation, start frame, fractional read position, read increment, age, duration, envelope, pan and amplitude. Grain decisions use a per-node seed and absolute spawn index.
+
+| Parameter | Initial contract |
+| --- | --- |
+| Position and region | Position 0–1 within a nonempty validated region, default 0.5. Display corresponding sample time. |
+| Size | 2–500 ms, default 50 ms, at least two output frames after conversion. |
+| Density | 0–200 grains/second, default 20. Zero stops births while active grains finish. |
+| Pitch | −24 to +24 semitones, default 0, with sample-rate conversion included in the read increment. |
+| Scan | −4 to +4 region lengths/second, default 0. Scan changes future birth positions independently of grain pitch. |
+| Scatter | Position spread 0–1, pitch spread 0–12 semitones, defaults 0. Each draw is bounded and seeded. |
+| Direction and window | Forward, reverse or seeded mixture. Hann is the default window. Other windows require their own level and boundary tests. |
+| Pan and level | Spread 0–1, default 0.5, output gain 0–1, default 0.25. Stereo balance preserves source channels. |
+| Capacity | Default 128 active grains per instance across at most 16 note voices. Prepared limits are displayed. |
+
+Apply birth parameters when each grain starts. Gain and mix use sample-rate smoothing. Density changes preserve fractional scheduler phase. Tempo sync stores a rational musical duration and uses the transport tempo to schedule future births. Tempo changes retain active grains. Explicit manual grain events use the same capacity accounting as scheduled births.
+
+Wrap, reflect and stop are explicit sample-boundary policies, with wrap the initial default. Every interpolation tap obeys the selected policy, including reverse traversal and one-frame assets. A bandlimited resampling path must be selected and measured before claiming production pitch shifting. Grain envelopes reach zero at their endpoints. Window-overlap normalization uses a bounded denominator and maximum gain, with that mathematical rule included in the Lean oracle.
+
+Capacity exhaustion drops new births in deterministic order, increments a visible dropped-grain counter and returns a capacity observation. It preserves active tails. Note-off stops that voice's births and releases its existing grains. Voice stealing releases the oldest voice through a fixed 5 ms ramp. Maximum capacity is immutable during processing and changes only through preparation.
+
+Freeze in live mode pins a bounded snapshot of the selected capture region. In sample mode it holds the scan position. Both continue grain evolution. Live grains retain their source data until completion through bounded retention storage prepared in advance. If storage cannot retain a new grain's source, reject that birth visibly. Capture boundaries and minimum read lag prevent reading uninitialized or overwritten data. Loading a replacement sample preserves old grain references until their tails end. Invalid loads retain the last accepted asset.
+
+### Physical processors [SYNTH-ADVANCED-PHYSICAL]
+
+Provide Exciter, Modal Body, String and Tube processor kinds. The first release of Modal Body includes bar, plate and membrane models with explicit boundary conditions, mode ratios and mode shapes. Each model records its source equations and assumptions. A user-defined modal table supplies finite frequency, decay and input/output weights. Unsupported geometry or excitation combinations return a preparation error.
+
+Exciters support strike, pluck, bow and blow gestures with note velocity, pressure, contact position and external excitation audio. Strike/pluck pulses use bounded duration and energy. Bow friction and reed/airflow excitation require feedback with their physical body, implemented inside a bounded processor with explicit state. The combined processor owns any solver and its maximum iterations. Solver exhaustion is a typed failure. A generic graph cycle remains subject to the existing delay rule.
+
+Modal Body retains displacement and velocity for each mode. Frequency and damping determine stable damped evolution, with input and pickup weights derived from contact and observation positions. Include a normalized energy representation and an exact damped-transition reference for each fixed parameter interval. Modes approaching Nyquist fade out using a documented transition band, initially 0.45–0.49 times sample rate. Static pole stability alone does not establish stability during time-varying parameter changes. Energy changes caused by material morphs are measured and constrained explicitly.
+
+String uses a fractional-delay waveguide with loss, dispersion, excitation and pickup position. Tube uses an explicitly open/open or open/closed waveguide and declares its termination and radiation models. Pitch calibration includes filter and fractional-delay phase delay. Membrane/plate mode sets use documented physical boundary conditions. All models expose frequency and decay controls, with a capability descriptor constraining their valid ranges.
+
+| Control | Initial contract |
+| --- | --- |
+| Pitch | MIDI note input or 20–4000 Hz numeric input, default 220 Hz, intersected with each model's prepared range. |
+| Decay | T60 of 0.02–30 seconds, default 2 seconds, with frequency-dependent damping exposed separately. |
+| Brightness/material | Normalized 0–1 macros, default 0.5, with the underlying physical mapping documented per model. |
+| Contact/pickup | 0–1, defaults 0.25 and 0.5. Nodal positions may legitimately cancel particular modes. |
+| Modes/voices | Initial maximum 64 modes per voice and 16 voices. Resource changes require preparation. |
+| Coupling | 0–1 macro, default 0, mapped to a validated passive connection between bodies. |
+
+Coupled bodies exchange energy through a defined bidirectional physical connection with a common clock and joint state. Show the coupling topology and stability limits in the descriptor. Prove or numerically bound the discrete energy balance under the supported parameter range, including damping, excitation and automation. An output limiter supplies a final output safeguard, while stability acceptance examines the internal state before limiting.
+
+### Neural processors and generated assets [SYNTH-ADVANCED-NEURAL]
+
+Expose four capabilities with separate lifecycle contracts. A RAVE-style timbre-transfer node maps audio through a model-specific latent representation. A DDSP voice maps analyzed pitch/loudness or MIDI controls to harmonic and noise synthesis. A neural codec encoder/decoder transforms audio and a typed encoded asset. A text-to-sound job produces an immutable sample asset for audition and insertion. Completion requires a real supported model path for each capability.
+
+A model manifest includes content hash, format/runtime versions, model family, input/output channels, sample rate, input normalization, supported frame/hop sizes, lookahead, receptive history, latent/codebook dimensions, parameter names/ranges, state-reset behavior, maximum output frames, memory budget, license and training-data provenance where available. Missing provenance is shown explicitly. Reject incompatible model/codec pairs. Codebook indices and latent tensors are distinct typed values, and interpolation is allowed only where the model defines it.
+
+Preparation loads and warms the model, validates outputs, measures target-device execution and establishes declared latency. Chunk adapters retain context and overlap state across graph blocks. Wet/dry mixing delays the dry path by the declared algorithmic latency. Model switches prepare independently and commit at a block boundary using a bounded crossfade. Unavailable runtimes and unsupported models retain an actionable fault and disable Play for that node.
+
+DDSP Audio mode exposes pitch confidence and voiced/unvoiced status. Low confidence uses a documented voiced-gain release while retaining the model's noise path. MIDI mode bypasses pitch analysis and uses note expression. Pitch shift, harmonic/noise balance and input gain have model-declared ranges. RAVE latent axes use manifest labels or numbered dimensions. Their names must not imply a verified physical meaning without evidence. Preserving pitch during arbitrary RAVE transformations is an evaluation target.
+
+Codec import/export records codebook version, quantizer count, sample rate, frame length and channel layout. Discrete tokens receive bounds checks before lookup. Changing bandwidth selects a supported configuration and triggers preparation. Decoding failures preserve the previous accepted asset and report the failed job. Playback uses the same validated sample asset lifecycle as recorded and generated audio.
+
+Text generation accepts prompt, seed, duration, model revision and model-specific guidance parameters. Initial duration is 1–30 seconds, default 5, capped by backend capability. States are Idle, Queued, Running, Cancelling, Ready and Failed with stable job identity. Cancellation and timeouts make late results ineligible for publication. Ready enables Preview and Insert sample as separate actions. Save exact rendered audio and generation metadata, since seeds can reproduce differently across backends. External services, if supported later, require an explicit configured backend and visible upload scope.
+
+### Combined grain and body method [SYNTH-ADVANCED-HYBRID]
+
+Working description — learned grain contacts on a resonant body. This is a proposed synthesis experiment. Existing neural granular synthesis, differentiable modal synthesis, integrated granular/modal haptics and neural event-driven instruments constrain claims of originality. The specific hypothesis is that body-state-dependent grain contacts provide useful control over attack texture and resonant memory within one evolving instrument. [Prior-art comparison](../../research/synthesis/README.md#combining-the-methods-and-assessing-originality-synth-research-hybrid)
+
+Represent each grain as a finite contact gesture with time, duration, location, latent descriptor, force envelope and energy allowance. A grain can select a recorded microtexture or decode a learned microtexture into prepared bounded storage. Its contact location projects force into the body's spatial modes. All active grains act on the same displacement/velocity state, and the pickup reads that state. The controller receives the previous control tick's modal energy summaries and contact history, so ringing changes subsequent grain selection and timing.
+
+The candidate renderer uses this explicit sequence. At a fixed 128-frame control tick, summarize the body state and evaluate a bounded controller using those summaries, the player's gesture, a material descriptor and the seeded event index. Validate its proposed event times, contact positions, durations and energy allocations. At each sample, accumulate active contact forces through modal input weights, advance the damped body state and read the pickup. Retain the absolute control clock across arbitrary block splits. A one-tick feedback delay resolves the controller dependency.
+
+Use nonnegative normalized allocation weights for a finite per-tick excitation energy allowance. A proposed force's discrete work includes its interaction with current velocity. Select its amplitude through a bounded calculation that satisfies the allowed energy increment, and debit that increment from the remaining budget. Positive energy introduced by changing modal frequency, mass or basis is debited too. If no valid update fits the budget, retain the previous body parameters and report a constrained update. Source PCM amplitude alone is insufficient to establish a physical work bound. The exact update and energy inequality must be authored and checked in Lean before implementing the optimized renderer.
+
+Training occurs offline using licensed contact recordings and synthetic bodies. Learn grain-selection/latent trajectories and contact parameters through the differentiable reference renderer. Keep train/validation/test splits disjoint by both source recording and body geometry. Losses cover multiresolution spectra, onset timing, decay envelopes, pitch and physical constraint violations. A fixed analytic controller remains an explicit selectable mode for comparisons. Runtime failure of a learned controller is reported and stops its event production.
+
+Three integration experiments share this representation. First, learned contact scheduling uses body energy to choose how and where the next grain excites it. Second, an offline inverse model maps a reference sound to both a grain dictionary and physical material parameters that remain editable. Third, a text-conditioned generator proposes a bounded contact/material trajectory, rendered and inspected as an asset before performance. These experiments share state or parameter inference. Each has its own model manifest, latency contract and failure state.
+
+Initial hybrid limits are 64 active contacts, 64 modes and one body voice, with stereo pickups. Controls are Texture, Contact rate, Contact size, Material, Body memory, Interaction, Energy and Seed. Interaction continuously scales the body-state features supplied to the controller. Zero supplies the defined open-loop baseline. Body memory maps to T60, and Energy maps to the per-tick work budget. Every macro exposes its actual units or underlying mapping in the inspector.
+
+Required comparisons include ordinary grain output through a resonator, open-loop grain contacts, analytic state-dependent contacts, learned contacts without energy features and the full proposed method. Match source assets, seeds, modal count, excitation budget, latency and output loudness. Change only the initial body state and show a resulting change in subsequent event/contact traces with Interaction enabled. At Interaction zero, those event traces must remain identical. This demonstrates the intended state coupling independently of a subjective sound claim.
+
+### Prism module interfaces [PRISM-ADVANCED-UI]
+
+Extend the current single graph studio, palette, selected-module inspector, keyboard and transport. Package descriptors provide parameter units, limits and availability. Prism's `editor.td` owns selection, job identity and view state, while typed Signals supply applied DSP observations. Stable node IDs distinguish duplicate modules. Native accessible controls and keyboard routing actions accompany canvas interactions. UI refresh reads bounded snapshots at a maximum of 30 Hz and never schedules synthesis from an animation frame.
+
+| Module | Node card | Selected inspector and interaction |
+| --- | --- | --- |
+| Granular | Source name, active/capacity count, Size, Density, Freeze, typed input/output ports | Waveform with region handles, scan cursor and bounded grain markers. Controls expose pitch, scan, direction, spread, seed and boundary mode. Load sample, Capture, Freeze and Clear capture have distinct effects. Keyboard adjusts region endpoints numerically. |
+| Physical | Model, pitch, decay, excitation mode and energy meter | Exciter and Body sections, contact/pickup positions and mode spectrum. Strike button and keyboard send timestamped gestures. Material morph displays the applied constrained value. Coupling editor selects bodies and shows the physical connection. |
+| Neural transfer/DDSP | Model identity, status, input mode, wet mix and measured latency | Model picker shows channels, rate, license, provenance and availability. Latent controls or harmonic/noise controls follow capabilities. Confidence, input/output meters and deadline errors remain visible. Model loading supports cancellation. |
+| Neural codec | Codec identity, bandwidth and asset status | Encode/Decode controls, validated metadata, progress, Cancel and Preview. Token edits use bounded typed operations supplied by that codec. |
+| Text-to-sound | Job status and resulting asset name | Prompt, duration, seed, model, Generate, Cancel, Preview and Insert sample. Regeneration keeps the previous accepted result available. Late/cancelled outputs cannot insert themselves. |
+| Combined method | Texture, Material, Interaction and body energy | Contact map, grain timeline and mode-energy view share the same selected body. Display energy allowance, constrained updates, controller mode and exact seed. Offer the analytic and learned modes with declared capability. |
+
+Each module has Empty, Preparing, Ready, Running and Failed presentations where applicable. Model/sample errors show the cause and a relevant retry or replacement action. The palette can describe unavailable capabilities, but an unavailable processor cannot start playback. Persist versioned parameters, model/asset hashes, seed and intended controller mode. Loading missing resources produces an unresolved node that can be relinked. Undo/redo affects accepted edits and asset bindings, with pending job replies invalidated by revision changes.
+
+Controls show configured and applied values when they differ. Every graphic has an accessible label and a numeric/text alternative, including contact location and modal energy. Focus order proceeds from source/model selection through parameters, routing and actions. Dragging, resizing, zooming and keyboard navigation must preserve usable routing ports and unclipped controls. Windows uses the existing WinUI host and per-app sandbox contract. Required file/model capabilities are documented for each supported host.
+
+### Acceptance contract [SYNTH-ADVANCED-VERIFY]
+
+Extend existing package and Prism journeys before implementation. Record fixtures, model hashes, toolchain versions, tolerances and hardware with every result. Run DSP checks at the declared sample rates using blocks of 1, 17, 64, 127, 128, 257 and 2048 frames, plus irregular partitions. Compare final states as well as PCM. Fixed-backend deterministic paths require identical event traces and relative/absolute PCM tolerance of 1e-6 against their reference. Neural cross-backend tolerances must be measured and recorded per model before acceptance.
+
+Granular acceptance covers empty/truncated assets, overflow dimensions, nonfinite samples, one-frame sources, reverse boundaries, freeze/replace during tails, 0/max density, seeded replay, live-ring wrap, overload counters and cancellation. Measure pitch error below 2 cents on calibrated sinusoidal fixtures and alias energy at the specified transposition extremes against a high-quality resampling reference. Establish the quality threshold from that comparison before promoting a resampler.
+
+Physical acceptance covers impulse spectra, nodal cancellations, pitch/decay sweeps, bowed/blown solver limits, rates, extreme geometry and automation. For isolated linear modes, target frequency error below 2 cents and fitted T60 error below 5 percent. Verify the declared energy inequality over unforced decays and coupled-body transitions, including hidden internal state. Use physical and numerical reference cases with known assumptions.
+
+Neural acceptance uses genuine licensed model fixtures for all four capabilities, covering channel/hop adaptation, pitch-confidence failure, manifest and tensor corruption, invalid codebook indices, resampling, model replacement, deadlines, worker loss, cancellation and stale results. Include held-out monophonic, polyphonic, transient and noise inputs. Report reconstruction/spectral metrics and level-matched listening results by class. Behavioral mocks establish lifecycle tests only. Model availability and real inference evidence remain separate acceptance requirements.
+
+Hybrid acceptance records contact traces, controller inputs, energy debits and mode trajectories for every ablation in [SYNTH-ADVANCED-HYBRID]. Compare held-out bodies and textures with both objective onset/decay metrics and randomized, loudness-matched listening. Preserve negative results. Adopt the method only if it adds repeatable controllability or perceptual value within its declared resource budget. Any claim of research novelty requires a broader prior-art review.
+
+Prism acceptance drives insertion, two same-kind instances, input selection, editing, modulation, keyboard playing, drag/keyboard routing, freeze, model switch, cancellation, undo/redo, save/reload and missing-resource recovery through normal entry points. Headless and windowed journeys compare committed screenshot goldens, assert accessible names/focus order, and verify actual rendered audio or asset changes. Continuous playback requires a 10-minute target-device run with zero queue starvation at the declared maximum workload, measured latency and callback allocation/lock instrumentation. Run on Windows and every other advertised host. Existing queue-starvation failures remain an explicit dependency.
