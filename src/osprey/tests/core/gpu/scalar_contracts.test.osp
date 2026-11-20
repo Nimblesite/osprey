@@ -65,6 +65,8 @@ fn gpuIeeeNaN(infinityBuffer, infinity, nanBuffer) = {
                         infinity > 10000000000000000.0, nan != nan, gpuSatisfies(gpuFold(infinityBuffer, 0.0, addF), fn(uploaded8) => (uploaded8) == infinity), (gpuGet(roundTrip, 2) ?: 0.0) == infinity, (gpuGet(roundTrip, 1) ?: 0.0) != (gpuGet(roundTrip, 1) ?: 0.0), toString(gpuGet(roundTrip, 0) ?: 1.0) == "-0.0"
                 ]))))
 }
+/// gpuOpError turns a refused GPU operation into the failed check that names it.
+fn gpuOpError(message) = check("GPU operation", "success", toString(message))
 /// [GPU-DEVICE-FAULT] A selected device reports its fault without invoking host recovery.
 fn deviceFault(result, reason) = match result {
     Success _ => false
@@ -87,7 +89,7 @@ fn gpuFloatZeroCase() = {
                         deviceFault(quotients, "division by zero"), deviceFault(remainders, "remainder by zero"), faults == ""
                 ])
             }
-        } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => gpuOpError(message) }
 }
 testCases([
     { name: "host GPU arithmetic preserves IEEE non-finite values", work: gpuIeeeCase },
@@ -113,9 +115,9 @@ fn gpuAbsoluteCase() = {
                                         gpuDevice() != "host", contains(message, "integer overflow"), faults == "",
                                         gpuSatisfies(toGpu([-3, 4]), fn(safe) => gpuSatisfies(gpuMap(safe, abs), fn(integers) => (gpuGet(integers, 0) ?: 0) == 3 && (gpuGet(integers, 1) ?: 0) == 4))
                                 ]) }
-                        } Error { message } => check("GPU operation", "success", toString(message)) }
-                } Error { message } => check("GPU operation", "success", toString(message)) }
-        } Error { message } => check("GPU operation", "success", toString(message)) }
+                        } Error { message } => gpuOpError(message) }
+                } Error { message } => gpuOpError(message) }
+        } Error { message } => gpuOpError(message) }
 }
 test("host GPU abs callbacks retain numeric types and recovery", gpuAbsoluteCase)
 /// [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 64.
