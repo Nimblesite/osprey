@@ -1,5 +1,5 @@
 // Clicks a running window like a user would, for the daw video [DAW-VIDEO].
-// usage: swift daw-clicks.swift <pid> "<x>,<y>,<seconds after>;..."   (points relative to the window's top-left)
+// usage: swift daw-clicks.swift <pid> "<x>,<y>[,<toX>,<toY>],<seconds after>;..."   (points relative to the window's top-left)
 import AppKit
 import ApplicationServices
 import Foundation
@@ -43,14 +43,23 @@ guard let window = windows.first(where: { ($0[kCGWindowOwnerPID as String] as? I
 func post(_ type: CGEventType, _ at: CGPoint) {
     CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: at, mouseButton: .left)?.post(tap: .cghidEventTap)
 }
+// "x,y,wait" clicks; "x,y,toX,toY,wait" drags in 30 visible moves, like a hand on a knob or fader.
+func drag(_ from: CGPoint, _ to: CGPoint) {
+    for i in 1...30 {
+        let t = CGFloat(i) / 30
+        post(.leftMouseDragged, CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t))
+        usleep(25_000)
+    }
+}
 for step in args[2].split(separator: ";") {
     let parts = step.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
-    guard parts.count == 3 else { fail("invalid pointer step: \(step)") }
+    guard parts.count == 3 || parts.count == 5 else { fail("invalid pointer step: \(step)") }
     let at = CGPoint(x: left + parts[0], y: top + parts[1])
     post(.mouseMoved, at)
     usleep(250_000)
     post(.leftMouseDown, at)
     usleep(60_000)
-    post(.leftMouseUp, at)
-    usleep(useconds_t(parts[2] * 1_000_000))
+    if parts.count == 5 { drag(at, CGPoint(x: left + parts[2], y: top + parts[3])) }
+    post(.leftMouseUp, parts.count == 5 ? CGPoint(x: left + parts[2], y: top + parts[3]) : at)
+    usleep(useconds_t(parts[parts.count - 1] * 1_000_000))
 }

@@ -37,6 +37,7 @@ Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for comp
 
 ## Build applications
 
+- **[Audio synthesis](/docs/audio-synthesis/)** — Prism, a DAW written in Osprey: modular and physical-model voices, buses with side-chain compression, and offline renders to WAV.
 - **[Osprey Native](/docs/osprey-native/)** — the application framework: one store, signals, typed screens and capabilities; SwiftUI, VS Code and GPU hosts draw them.
 - **[Build a Mac and iPhone app](/docs/mac-and-iphone-apps/)** — build Storage and connect its logic to SwiftUI and platform services.
 - **[Build an iOS and Android app](/docs/mobile-apps/)** — handle application requests as native commands for SQLite, GitHub and reactive controls.

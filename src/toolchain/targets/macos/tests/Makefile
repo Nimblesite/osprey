@@ -94,9 +94,9 @@ daw-events-headless: _runtime_macos
 	nice -n 10 cargo test --manifest-path src/toolchain/hosts/ferroui/Cargo.toml --release --features desktop \
 	    --test prism_events --test daw_events -- --nocapture
 
-## daw-video: The daw in a real window, clicked like a user: every voice type's patch (FM operator, patch graph,
-##            modal bell, bowed string, drum) opened and auditioned, Mix, then Play bars. Each click must change
-##            the screen and Play must render audio. Writes target/daw-video/prism-journey.mp4 (with the bars as
+## daw-video: The daw in a real window, clicked and dragged like a user: a note's velocity and a Space send on the
+##            Timeline, a Delay added and wired into a patch and auditioned, a send, bus and reverb on Mix, then
+##            Play renders the edited bars. Each step must change the screen and Play must render audio. Writes target/daw-video/prism-journey.mp4 (with the bars as
 ##            its soundtrack) and the step screenshots. Needs screen recording and accessibility access. [DAW-VIDEO]
 .PHONY: daw-video
 daw-video: _runtime_macos

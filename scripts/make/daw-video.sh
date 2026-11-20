@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Records the daw showcase video and checks it as a native journey [DAW-VIDEO]: opens the codex project in the
-# FerroUI host, clicks through the Timeline, opens the patch of every voice type (FM operator, patch graph, modal
-# bell, bowed string, drum), auditions it, visits Mix and plays bars 1-2. After every click a window screenshot must
+# FerroUI host, edits a note's velocity and a Space send on the Timeline, adds and wires a Delay into a patch,
+# inspects and auditions it, rides a send on Mix, inspects the side-chained bus and the reverb, then plays the
+# edited bars. PRISM_BINARY pins the host so a concurrent rebuild cannot move the controls mid-take. After every click a window screenshot must
 # differ from the one before (the click changed the screen), or the journey fails. Writes OUT/prism-journey.mp4 with
 # the rendered bars as its soundtrack, plus the step screenshots. Needs screen recording and accessibility access.
 # usage: daw-video.sh <out-dir>   (PRISM_PREBUILT=1 reuses the built host)
@@ -50,20 +51,26 @@ step_after() {
     previous=$sum
     echo "step $step $name ok"
 }
-# At 1152×752 each 1440×940 scene unit occupies 0.8 window points.
-row() { echo $((189 + 248 * (($1 - 1) % 7) / 10)); }
-for voice in "3 patch-graph" "1 fm-operator" "11 modal-bell" "12 bowed-string" "14 drum"; do
-    set -- $voice
-    "$out/clicks" "$pid" "897,$((184 + 58 * (($1 - 1) / 7))),0.25"
-    step_after "track-$2" 1.5 "185,$(row "$1"),0"
-    step_after "patch-$2" 3 View "Track Patch"
-    step_after "audition-$2" 1 Transport "Audition Patch"
-    step_after "timeline-after-$2" 2 View Timeline
-done
-step_after mix 3 View "Bus Routing"
-step_after timeline 2 View Timeline
+# Points in the 1152×752 window. Timeline: glass at bar 19, its C7, the velocity and Space send faders.
+step_after glass-bar-19 2 "484,236,0"
+step_after note-c7 1.5 "346,448,0"
+step_after note-velocity 1.5 "1015,697,1106,697,0"
+step_after space-send 1.5 "1071,483,991,483,0"
+# Patch: add a Delay, wire Smoother -> Delay -> Output beside the dry path, inspect the partials, audition.
+step_after patch 3 "357,21,0"
+step_after modules 1.5 "757,23,0"
+step_after add-delay 2 "74,275,420,330,0"
+step_after wire-delay-in 1.5 "604,128,0.6;310,331,0"
+step_after wire-delay-out 1.5 "529,331,0.6;726,66,0"
+step_after inspect-partials 2 "215,175,0"
+step_after audition 3 "637,23,0"
+# Mix: glow's Space send (its side-chained group bus opens in the inspector), then the shared reverb.
+step_after mix 3 "441,21,0"
+step_after glow-send 1.5 "461,200,430,200,0"
+step_after space-reverb 1.5 "988,276,0"
+step_after timeline 2 "263,21,0"
 started=$(date +%s)
-step_after play-bars 2 Transport "Play Song"
+step_after play-bars 2 "1076,81,0"
 wait "$recorder" || true
 # The soundtrack is the bars Play rendered during this run: a WAV newer than the click that ffprobe can read.
 bars=

@@ -1,0 +1,13 @@
+WEBVTT
+
+00:00.000 --> 00:12.000
+Timeline: a note's velocity and a reverb send
+
+00:12.000 --> 00:33.000
+Patch: add a Delay, wire it in, audition
+
+00:33.000 --> 00:43.000
+Mix: a send, the side-chained bus, the reverb
+
+00:43.000 --> 00:59.000
+Play: the edited bars render and play

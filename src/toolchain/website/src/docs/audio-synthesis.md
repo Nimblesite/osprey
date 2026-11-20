@@ -1,0 +1,47 @@
+---
+layout: page
+title: Audio synthesis with Osprey
+description: Prism is a DAW written in Osprey. Patch modular voices, edit notes, mix through buses with side-chain compression, and render the song to WAV.
+permalink: /docs/audio-synthesis/
+---
+
+Prism is a DAW written entirely in Osprey, on the [`@osprey/synth`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/synth) library. In the film below, a 17-track song is edited by clicking through the real app: a note's velocity, a reverb send, a Delay patched into a voice, and a bus send. Then the edited bars play.
+
+{% videoPlayer "prism-daw-editing", true %}
+
+The clicks are recorded by `make -C src/toolchain/targets/macos/tests daw-video`, which fails if any click leaves the screen unchanged. The soundtrack is the audio Osprey rendered for those two bars.
+
+## What you can patch
+
+- **Synthesis types:** additive partials, FM phase operators, modal resonator banks, physical models (an exciter striking a comb filter, a waveguide string, a loss filter), and granular clouds.
+- **Modules:** sine oscillator, low-pass filter, delay, gain, mixer, LFO, MIDI note generator, mono-to-stereo and stereo output. Drag one in, then click an output socket and an input socket to wire them.
+- **Typed graph:** every port has a declared rate and channel count. A feedback loop is rejected unless it goes through an explicit delay, so a patch can't make an unintended cycle.
+
+## Mixing and effects
+
+- Each track has gain, pan, an output bus and a send to Space, the shared reverb (size, decay, damping).
+- Group buses carry an EQ and a compressor whose detector can be keyed from any track. In the song, the kick ducks the pads.
+- Master sums the buses through a soft limiter.
+
+## Why write it in Osprey
+
+- **No collector pauses.** Prism and its renderer build with `--memory=arc`, which uses reference counting, so memory is freed at known points rather than by a garbage collector that stops the program.
+- **Failures are values.** A malformed patch, an out-of-range parameter or an unreadable sample returns a typed error. Osprey code never panics or aborts.
+- **The DSP maths is in Lean.** Oscillator shapes, including the polyBLEP and polyBLAMP band-limiting corrections, are Lean definitions. The Osprey code is generated from them, and a check confirms that Lean computes the same bits.
+- **One project file.** Notes, patches, routing and mix live in one JSON file, defined by a typed model (`daw.td`). Every edit in the film was saved to it, so a song diffs and versions in git like code.
+
+## Run it
+
+```sh
+make -C src/toolchain/targets/macos daw            # open Prism on a song
+make -C src/toolchain/targets/macos daw-render SONG=src/osprey/examples/daw/tracks/phosphor-drift.json
+make -C src/toolchain/targets/macos daw-play SONG=src/osprey/examples/daw/tracks/phosphor-drift.json
+```
+
+`daw-render` bounces a song to `target/daw/<song>/song.wav` with no window, so a mixdown can run from a script.
+
+## Current limits
+
+- **Offline rendering:** Play renders the selected bars offline and then plays the file; there is no real-time audio callback yet. A patch edit made while a patch is playing is heard after you stop and play again.
+- **Platforms:** the full DAW runs on macOS. On Windows, only the Prism patch editor runs today.
+- **Plugins:** VST3 hosting is incomplete, and a patch that holds a VST3 node can't be saved yet. CLAP and MPE input are not supported.
