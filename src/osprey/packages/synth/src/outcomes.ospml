@@ -1,0 +1,9 @@
+namespace synth
+
+(** The one Result chain the synth modules share: errors pass through unchanged. *)
+module Outcomes
+    (** An Error passes through; a Success payload continues into `step`. *)
+    export carried (outcome, step) = match outcome
+        Error why => Error(message = why)
+        Success value => step value
+

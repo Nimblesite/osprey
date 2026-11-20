@@ -49,9 +49,7 @@ module SongFiles
 
     appended (carry, decoded) = match carry
         Error why => Error(message = why)
-        Success kept => match decoded
-            Error why => Error(message = why)
-            Success next => Success(value = listAppend kept next)
+        Success kept => synth::Outcomes::carried (decoded, \next => Success(value = listAppend kept next))
 
     folded (doc, key, read) = foldList (ui::Doc::fieldItems (doc, key), Success(value = []), \(carry, item) => appended (carry, read item))
 
@@ -81,6 +79,4 @@ module SongFiles
         Error _ => Error(message = "The song project is not valid JSON.")
         Success doc => match checked (intro (ui::Doc::field (doc, "intro")))
             Error why => Error(message = why)
-            Success _ => match folded (doc, "tracks", track)
-                Error why => Error(message = why)
-                Success tracks => Success(value = arranged (doc, tracks))
+            Success _ => synth::Outcomes::carried (folded (doc, "tracks", track), \tracks => Success(value = arranged (doc, tracks)))

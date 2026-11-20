@@ -15,9 +15,7 @@ module Fitting
 
     starting (graph, outcome, parameter) = match outcome
         Error why => Error(message = why)
-        Success values => match descriptor (graph, parameter)
-            Error why => Error(message = why)
-            Success initial => Success(value = listAppend values (FitMath::normalised (FitMath::clip (initial, parameter.minimum, parameter.maximum), parameter.minimum, parameter.maximum)))
+        Success values => Outcomes::carried (descriptor (graph, parameter), \initial => Success(value = listAppend values (FitMath::normalised (FitMath::clip (initial, parameter.minimum, parameter.maximum), parameter.minimum, parameter.maximum))))
 
     // Replace one node parameter's initial value; renders read initial values as their snapshot.
     tuned (n, parameter, value) = match n.identity == parameter.node
@@ -50,9 +48,7 @@ module Fitting
         Invalid _ => Error(message = "A candidate graph is invalid.")
         Valid plan => match Renderer::start graph
             Error why => Error(message = why)
-            Success initial => match Renderer::block (plan, 48000.0, Parameters::initial graph, initial, frames)
-                Error why => Error(message = why)
-                Success block => spectrum block.samples
+            Success initial => Outcomes::carried (Renderer::block (plan, 48000.0, Parameters::initial graph, initial, frames), \block => spectrum block.samples)
 
     loss (candidate, target) = foldList (Sequences::combined (candidate, target, \(c, t) => FitMath::binLoss (c, t)), 0.0, \(sum, value) => sum + value) / toFloat (length target)
 
@@ -74,9 +70,7 @@ module Fitting
             Error why => Error(message = why)
             Success powers => match foldList (config.parameters, Success(value = []), \(outcome, parameter) => starting (graph, outcome, parameter))
                 Error why => Error(message = why)
-                Success values => match evaluate (graph, config, powers, values)
-                    Error why => Error(message = why)
-                    Success first => Success(value = FitSearch(best = first, step = 0.25, seed = toFloat config.seed, evaluations = 1, history = [first.loss]))
+                Success values => Outcomes::carried (evaluate (graph, config, powers, values), \first => Success(value = FitSearch(best = first, step = 0.25, seed = toFloat config.seed, evaluations = 1, history = [first.loss])))
 
     // The draw carries proposed values in `best.values` and the advancing seed; its loss is not yet known.
     drawn (values, seed) = FitSearch(best = FitCandidate(values = values, loss = 0.0), step = 0.0, seed = seed, evaluations = 0, history = [])
@@ -112,9 +106,7 @@ module Fitting
         Error why => Error(message = why)
         Success powers =>
             draw = proposed (config, search)
-            match evaluate (graph, config, powers, draw.best.values)
-                Error why => Error(message = why)
-                Success candidate => Success(value = chosen (config, search, draw, candidate))
+            Outcomes::carried (evaluate (graph, config, powers, draw.best.values), \candidate => Success(value = chosen (config, search, draw, candidate)))
 
     running (graph, config, target, outcome) = match outcome
         Error why => Error(message = why)

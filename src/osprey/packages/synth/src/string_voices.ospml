@@ -14,9 +14,7 @@ module StringVoices
             Error why => Error(message = why)
             Success accepted => match Exciters::configure excitation
                 Error why => Error(message = why)
-                Success burst => match Waveguides::initial accepted
-                    Error why => Error(message = why)
-                    Success line => Success(value = StringPool(voices = mapList (toList (range (0, count)), \_ => silent (accepted, line)), excitation = burst, release = release, stolen = 0))
+                Success burst => Outcomes::carried (Waveguides::initial accepted, \line => Success(value = StringPool(voices = mapList (toList (range (0, count)), \_ => silent (accepted, line)), excitation = burst, release = release, stolen = 0)))
 
     // Victim order: an inactive voice, else the voice released longest ago, else the oldest held voice.
     rank voice = match voice.active
@@ -40,9 +38,7 @@ module StringVoices
             false => voice
         restarted(note = note, velocity = velocity, config = tuned (voice.config, frequency), exciter = Exciters::initial seed, active = true, releasing = false, age = 0, released = 0)
 
-    replace (pool, index, voice, note, velocity, frequency, seed) = match Waveguides::configure (tuned (voice.config, frequency))
-        Error why => Error(message = why)
-        Success _ => Success(value = pool(voices = Sequences::mapIndexed (pool.voices, \(slot, held) => replacedAt (slot, index, held, note, velocity, frequency, seed)), stolen = stolenCount (pool, index)))
+    replace (pool, index, voice, note, velocity, frequency, seed) = Outcomes::carried (Waveguides::configure (tuned (voice.config, frequency)), \_ => Success(value = pool(voices = Sequences::mapIndexed (pool.voices, \(slot, held) => replacedAt (slot, index, held, note, velocity, frequency, seed)), stolen = stolenCount (pool, index))))
 
     (** Start `note` (MIDI pitch) at `frequency` Hz; the noise seed makes each pluck reproducible. *)
     export noteOn (pool, note, velocity, frequency, seed) = match velocity >= 0.0 && velocity <= 1.0 && seed >= 1 && seed <= 2147483646 && note >= 0 && note <= 127

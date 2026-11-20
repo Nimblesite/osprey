@@ -34,9 +34,7 @@ module GraphDevice
             Success value => listAppend samples value)
 
     (** Decode/encode PCM outside the device callback, then hold the exact next graph state. *)
-    export request (editor, graph, held, clip) = match WaveFiles::interleaved (48000, clip.clipChannels, clip.clipSamples)
-        Error why => Error(message = why)
-        Success hex => Success(value = prepared (editor(scopeSamples = monitored clip), DevicePending(deviceGraph = graph, deviceState = held, deviceChannels = clip.clipChannels), hex))
+    export request (editor, graph, held, clip) = synth::Outcomes::carried (WaveFiles::interleaved (48000, clip.clipChannels, clip.clipSamples), \hex => Success(value = prepared (editor(scopeSamples = monitored clip), DevicePending(deviceGraph = graph, deviceState = held, deviceChannels = clip.clipChannels), hex)))
 
     (** Adopt the device handle before sending data, so any later failure can release it. *)
     export opened (editor, text) = match GraphWorkers::opened (editor, text)
@@ -71,9 +69,7 @@ module GraphDevice
         _ => Error(message = "The device reply has no unique pending graph block.")
 
     (** Both the worker status and the counters must acknowledge the submitted block. *)
-    export checked (editor, text) = match ProcessResults::checked (Success(value = text))
-        Error why => Error(message = why)
-        Success _ => received (editor, text)
+    export checked (editor, text) = synth::Outcomes::carried (ProcessResults::checked (Success(value = text)), \_ => received (editor, text))
 
     (** Wait for device consumption before releasing an audition's worker. *)
     export drain (editor, position) = submit (editor, "drain", position, "!drain")

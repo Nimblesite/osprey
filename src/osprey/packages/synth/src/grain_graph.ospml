@@ -21,18 +21,14 @@ module GrainGraph
             Error why => Error(message = why)
             Success spread => match integer maximum
                 Error why => Error(message = why)
-                Success limit => match GrainTimings::decode (mode, interval, spread, limit)
-                    Error why => Error(message = why)
-                    Success timing => Success(value = GrainNodeControls(playback = playback, timing = timing))
+                Success limit => Outcomes::carried (GrainTimings::decode (mode, interval, spread, limit), \timing => Success(value = GrainNodeControls(playback = playback, timing = timing)))
 
     configuration n = match foldList (["start", "rate", "duration", "gain", "pan", "period", "jitter", "window", "attack", "release", "timing", "maximumGap"], Success(value = []), \(outcome, key) => parameter (n, outcome, key))
         Error why => Error(message = why)
         Success values => match values
             [start, rate, duration, gain, pan, period, jitter, mode, attack, release, timing, maximum] => match integer duration
                 Error why => Error(message = why)
-                Success lifetime => match GrainWindows::decode (mode, attack, release)
-                    Error why => Error(message = why)
-                    Success shape => timed (GrainControls(window = shape, start = start, rate = rate, duration = lifetime, amplitude = gain, pan = pan), period, jitter, timing, maximum)
+                Success lifetime => Outcomes::carried (GrainWindows::decode (mode, attack, release), \shape => timed (GrainControls(window = shape, start = start, rate = rate, duration = lifetime, amplitude = gain, pan = pan), period, jitter, timing, maximum))
             _ => Error(message = "Incomplete grain module controls.")
 
     variationSeed n = match parameter (n, Success(value = []), "variationSeed")
@@ -44,9 +40,7 @@ module GrainGraph
     distribution (n, controls, size) = match foldList (["positionSpread", "rateSpread", "durationSpread", "gainSpread", "panSpread"], Success(value = []), \(held, key) => parameter (n, held, key))
         Error why => Error(message = why)
         Success values => match values
-            [position, rate, duration, amplitude, pan] => match integer duration
-                Error why => Error(message = why)
-                Success frames => GrainSpreads::around (controls, size, GrainSpread(position = position, rate = rate, duration = frames, amplitude = amplitude, pan = pan))
+            [position, rate, duration, amplitude, pan] => Outcomes::carried (integer duration, \frames => GrainSpreads::around (controls, size, GrainSpread(position = position, rate = rate, duration = frames, amplitude = amplitude, pan = pan)))
             _ => Error(message = "Incomplete grain spread controls.")
 
     bounds (first, limit, boundary) = match integer first
@@ -71,9 +65,7 @@ module GrainGraph
         Error why => Error(message = why)
         Success selected => match structuralEquals (selected, cloud.pool.region)
             true => Success(value = cloud)
-            false => match Grains::withRegion (cloud.pool, selected)
-                Error why => Error(message = why)
-                Success pool => Success(value = cloud(pool = pool))
+            false => Outcomes::carried (Grains::withRegion (cloud.pool, selected), \pool => Success(value = cloud(pool = pool)))
 
     (** Prepare an instance only at the graph origin; later blocks must supply its retained memory. *)
     export prepare n = match n.processor
@@ -83,9 +75,7 @@ module GrainGraph
                 false => Error(message = "Invalid grain sample metadata.")
                 true => match variationSeed n
                     Error why => Error(message = why)
-                    Success randomSeed => match GrainClouds::prepare (resource.samples, capacity, controls.timing, seed, randomSeed)
-                        Error why => Error(message = why)
-                        Success cloud => withRegion (n, cloud)
+                    Success randomSeed => Outcomes::carried (GrainClouds::prepare (resource.samples, capacity, controls.timing, seed, randomSeed), \cloud => withRegion (n, cloud))
         _ => Error(message = "The component is not a grain cloud.")
 
     (** Reject memory from a different resource, pool capacity or graph sample position. *)
@@ -94,9 +84,7 @@ module GrainGraph
         _ => false
 
     (** Apply graph controls to newly emitted grains; surviving grains retain their own envelopes and cursors. *)
-    export block (n, cloud, frames) = match withRegion (n, cloud)
-        Error why => Error(message = why)
-        Success selected => audio (n, selected, frames)
+    export block (n, cloud, frames) = Outcomes::carried (withRegion (n, cloud), \selected => audio (n, selected, frames))
 
     audio (n, cloud, frames) = match configuration n
         Error why => Error(message = why)
@@ -119,6 +107,4 @@ module GrainGraph
     (** Interleave actual left/right output for the common graph/device transport. *)
     export interleaved block = match length block.left == length block.right && length block.left >= 1 && length block.left <= 2048
         false => Error(message = "Grain output channels have invalid lengths.")
-        true => match foldList (toList (range (0, length block.left)), Success(value = []), \(outcome, index) => interleave (block, outcome, index))
-            Error why => Error(message = why)
-            Success samples => Success(value = listReverse samples)
+        true => Outcomes::carried (foldList (toList (range (0, length block.left)), Success(value = []), \(outcome, index) => interleave (block, outcome, index)), \samples => Success(value = listReverse samples))

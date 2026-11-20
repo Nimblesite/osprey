@@ -95,9 +95,7 @@ module Arrangements
 
     echoed (config, wet) = match Reverbs::configure config
         Error why => Error(message = why)
-        Success accepted => match Reverbs::initial accepted
-            Error why => Error(message = why)
-            Success held => NoteRenders::finished (foldList (wet, NoteRun(held = held, samples = [], fault = ""), \(run, input) => echoStep (accepted, run, input)))
+        Success accepted => Outcomes::carried (Reverbs::initial accepted, \held => NoteRenders::finished (foldList (wet, NoteRun(held = held, samples = [], fault = ""), \(run, input) => echoStep (accepted, run, input))))
 
     peak (high, value) = TableMath::larger (high, TableMath::magnitude value)
 

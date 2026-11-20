@@ -17,9 +17,7 @@ module BowedStrings
         false => Error(message = "Invalid bowed-string controls, or the tuned segments do not fit their capacity.")
 
     (** Allocate both segments outside rendering. *)
-    export initial config = match DelayLines::prepare config.capacity
-        Error why => Error(message = why)
-        Success line => Success(value = BowState(neck = line, bridge = line, loss = LossFilters::initial))
+    export initial config = Outcomes::carried (DelayLines::prepare config.capacity, \line => Success(value = BowState(neck = line, bridge = line, loss = LossFilters::initial)))
 
     loss config = LossConfig(gain = PhysicalMath::decayGain (config.decay, config.sampleRate / config.frequency, config.sampleRate), brightness = config.brightness)
 
@@ -34,6 +32,4 @@ module BowedStrings
     (** One sample; the output is the wave arriving at the bridge. *)
     export next (config, held) = match DelayLines::tap (held.neck, neckDelay config)
         Error why => Error(message = why)
-        Success neckEnd => match DelayLines::tap (held.bridge, bridgeDelay config)
-            Error why => Error(message = why)
-            Success bridgeEnd => Success(value = bowed (config, held, neckEnd, bridgeEnd))
+        Success neckEnd => Outcomes::carried (DelayLines::tap (held.bridge, bridgeDelay config), \bridgeEnd => Success(value = bowed (config, held, neckEnd, bridgeEnd)))

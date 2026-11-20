@@ -60,9 +60,7 @@ module HostModulation
             [] => match first == 0 && offset == 0
                 true => point (values, p, offset, p.initial)
                 false => Success(value = values)
-            [cable] => match value (clips, cable, offset)
-                Error why => Error(message = why)
-                Success number => point (values, p, offset, number)
+            [cable] => Outcomes::carried (value (clips, cable, offset), \number => point (values, p, offset, number))
             _ => Error(message = "A parameter has more than one modulation source.")
 
     frame (graph, clips, n, first, outcome, offset) = foldList (filterList (n.parameters, \p => p.automatable), outcome, \(values, p) => sampled (graph, clips, n, first, offset, values, p))

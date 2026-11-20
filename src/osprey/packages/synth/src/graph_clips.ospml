@@ -115,15 +115,9 @@ module GraphClips
             [right, ...more] => listPrepend (pairs more) (WaveMath::mono (left, right))
 
     routed (plan, clips, held, frames, n, channels, remaining) = match n.processor
-        Stereo => match converted (plan.graph, clips, n)
-            Error why => Error(message = why)
-            Success samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining)
-        Downmix => match downmixed (plan.graph, clips, n)
-            Error why => Error(message = why)
-            Success samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining)
-        Sink => match ClipInputs::routed (plan.graph, clips, n.identity, 0)
-            Error why => Error(message = why)
-            Success clip => emitted (plan, clips, held, frames, n, channels, clip.clipSamples, [], remaining)
+        Stereo => Outcomes::carried (converted (plan.graph, clips, n), \samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining))
+        Downmix => Outcomes::carried (downmixed (plan.graph, clips, n), \samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining))
+        Sink => Outcomes::carried (ClipInputs::routed (plan.graph, clips, n.identity, 0), \clip => emitted (plan, clips, held, frames, n, channels, clip.clipSamples, [], remaining))
         _ => processed (plan, clips, held, frames, n, channels, remaining)
 
     node (plan, clips, held, frames, n, remaining) = match n.processor
@@ -131,23 +125,15 @@ module GraphClips
             true => midi (plan, clips, held, frames, n, remaining)
             false => processed (plan, clips, held, frames, n, 1, remaining)
         Granular _ _ _ => granular (plan, clips, held, frames, n, remaining)
-        External _ => match ClipInputs::requestAt (plan.graph, clips, n, held.graphPosition, frames)
-            Error why => Error(message = why)
-            Success request => Success(value = BlockWaiting(request = request, pending = GraphPending(pendingGraph = plan.graph, pendingState = held, pendingClips = clips, pendingFrames = frames, pendingNode = n.identity)))
-        MidiNotes => match MidiClips::timeline (n, held.graphPosition, frames)
-            Error why => Error(message = why)
-            Success notes => emitted (plan, clips, held, frames, n, 0, [], notes, remaining)
-        _ => match ClipLayouts::channels n
-            Error why => Error(message = why)
-            Success count => routed (plan, clips, held, frames, n, count, remaining)
+        External _ => Outcomes::carried (ClipInputs::requestAt (plan.graph, clips, n, held.graphPosition, frames), \request => Success(value = BlockWaiting(request = request, pending = GraphPending(pendingGraph = plan.graph, pendingState = held, pendingClips = clips, pendingFrames = frames, pendingNode = n.identity))))
+        MidiNotes => Outcomes::carried (MidiClips::timeline (n, held.graphPosition, frames), \notes => emitted (plan, clips, held, frames, n, 0, [], notes, remaining))
+        _ => Outcomes::carried (ClipLayouts::channels n, \count => routed (plan, clips, held, frames, n, count, remaining))
 
     scheduled (plan, clips, held, frames, identities) = match identities
         [] => Success(value = BlockReady(held = held(graphPosition = satAdd held.graphPosition frames), clips = clips))
         [identity, ...remaining] => match length (filterList (clips, \clip => clip.clipNode == identity)) == 1
             true => scheduled (plan, clips, held, frames, remaining)
-            false => match RenderInputs::component (plan, identity)
-                Error why => Error(message = why)
-                Success n => node (plan, clips, held, frames, n, remaining)
+            false => Outcomes::carried (RenderInputs::component (plan, identity), \n => node (plan, clips, held, frames, n, remaining))
 
     prepared (graph, clips, held, frames) = match Graphs::prepare graph
         Invalid _ => Error(message = "The graph has invalid nodes or routes.")

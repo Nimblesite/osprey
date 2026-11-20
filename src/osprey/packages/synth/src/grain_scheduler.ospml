@@ -55,6 +55,4 @@ module PitchMarks
     (** Return absolute offsets for GrainScheduler.events. The first nonnegative sample owns a crossing, without lookahead. *)
     export block (clock, samples) = match length samples >= 1 && length samples <= 2048 && clock.position >= 0 && clock.position <= satSub 9223372036854775807 (length samples)
         false => Error(message = "Invalid pitch reference block or exhausted sample clock.")
-        true => match foldList (samples, Success(value = PitchMarkBlock(positions = [], next = clock)), collect)
-            Error why => Error(message = why)
-            Success held => Success(value = held(positions = listReverse held.positions))
+        true => Outcomes::carried (foldList (samples, Success(value = PitchMarkBlock(positions = [], next = clock)), collect), \held => Success(value = held(positions = listReverse held.positions)))

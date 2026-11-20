@@ -41,9 +41,7 @@ module PhysicalKernels
         1.0 => Success(value = ImpulseScale)
         _ => Error(message = "Response must be 0 (peak, band-pass) or 1 (impulse, struck).")
 
-    responded (rate, frame, held, input, frequency, decay, gain, selector) = match scaled selector
-        Error why => Error(message = why)
-        Success scale => resonated (frame, held, input, Resonators::configure (ResonatorConfig(sampleRate = rate, frequency = frequency, decay = decay, gain = gain, scale = scale)))
+    responded (rate, frame, held, input, frequency, decay, gain, selector) = Outcomes::carried (scaled selector, \scale => resonated (frame, held, input, Resonators::configure (ResonatorConfig(sampleRate = rate, frequency = frequency, decay = decay, gain = gain, scale = scale))))
 
     resonator (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "gain", \gain => RenderInputs::bound (snapshot, held, "response", \selector => responded (rate, frame, held, input, frequency, decay, gain, selector)))))
 
@@ -66,9 +64,7 @@ module PhysicalKernels
 
     modal (frame, held, input, config) = match ModalBanks::configure config
         Error why => Error(message = why)
-        Success bank => match ModalBanks::next (bank, ModalState(modes = pairs held.delay), input)
-            Error why => Error(message = why)
-            Success step => published (frame, held(delay = flattened step.next), step.sample)
+        Success bank => Outcomes::carried (ModalBanks::next (bank, ModalState(modes = pairs held.delay), input), \step => published (frame, held(delay = flattened step.next), step.sample))
 
     bodied (frame, held, input, selector, count, shape) = match body selector
         Error why => Error(message = why)
@@ -80,15 +76,11 @@ module PhysicalKernels
 
     guided (frame, held, input, config) = match Waveguides::configure config
         Error why => Error(message = why)
-        Success accepted => match Waveguides::next (accepted, WaveguideState(line = DelayLine(samples = held.delay), loss = LossState(previous = held.integratorOne), dispersion = AllpassState(input = held.integratorTwo, output = held.phase)), input)
-            Error why => Error(message = why)
-            Success step => published (frame, held(delay = step.next.line.samples, integratorOne = step.next.loss.previous, integratorTwo = step.next.dispersion.input, phase = step.next.dispersion.output), step.sample)
+        Success accepted => Outcomes::carried (Waveguides::next (accepted, WaveguideState(line = DelayLine(samples = held.delay), loss = LossState(previous = held.integratorOne), dispersion = AllpassState(input = held.integratorTwo, output = held.phase)), input), \step => published (frame, held(delay = step.next.line.samples, integratorOne = step.next.loss.previous, integratorTwo = step.next.dispersion.input, phase = step.next.dispersion.output), step.sample))
 
     waveguide (rate, snapshot, frame, held, input, capacity) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "brightness", \brightness => RenderInputs::bound (snapshot, held, "dispersion", \dispersion => RenderInputs::bound (snapshot, held, "pickup", \pickup => guided (frame, held, input, WaveguideConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, dispersion = dispersion, pickup = pickup, capacity = capacity)))))))
 
-    delayed (frame, held, input, delay) = match DelayLines::tap (DelayLine(samples = held.delay), delay)
-        Error why => Error(message = why)
-        Success read => published (frame, held(delay = (DelayLines::push (DelayLine(samples = held.delay), input)).samples), read)
+    delayed (frame, held, input, delay) = Outcomes::carried (DelayLines::tap (DelayLine(samples = held.delay), delay), \read => published (frame, held(delay = (DelayLines::push (DelayLine(samples = held.delay), input)).samples), read))
 
     fractional (snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "delay", \delay => delayed (frame, held, input, delay))
 
@@ -132,17 +124,13 @@ module PhysicalKernels
 
     bowedStep (frame, held, capacity, configured) = match configured
         Error why => Error(message = why)
-        Success config => match BowedStrings::next (config, bowSegments (held, capacity))
-            Error why => Error(message = why)
-            Success step => published (frame, held(delay = listConcat step.next.neck.samples step.next.bridge.samples, integratorOne = step.next.loss.previous), step.sample)
+        Success config => Outcomes::carried (BowedStrings::next (config, bowSegments (held, capacity)), \step => published (frame, held(delay = listConcat step.next.neck.samples step.next.bridge.samples, integratorOne = step.next.loss.previous), step.sample))
 
     (** Bowed-string source: storage holds the neck then bridge segments; integratorOne the loss filter. *)
     export bowed (rate, snapshot, frame, held, capacity) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "brightness", \brightness => RenderInputs::bound (snapshot, held, "position", \position => RenderInputs::bound (snapshot, held, "pressure", \pressure => RenderInputs::bound (snapshot, held, "velocity", \velocity => bowedStep (frame, held, capacity, BowedStrings::configure (BowConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, position = position, pressure = pressure, velocity = velocity, capacity = capacity)))))))))
 
     struck (frame, held, input, configured) = match configured
         Error why => Error(message = why)
-        Success config => match StrikeCombs::next (config, DelayLine(samples = held.delay), input)
-            Error why => Error(message = why)
-            Success step => published (frame, held(delay = step.next.samples), step.sample)
+        Success config => Outcomes::carried (StrikeCombs::next (config, DelayLine(samples = held.delay), input), \step => published (frame, held(delay = step.next.samples), step.sample))
 
     strike (rate, snapshot, frame, held, input, capacity) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "position", \position => struck (frame, held, input, StrikeCombs::configure (StrikeConfig(sampleRate = rate, frequency = frequency, position = position, capacity = capacity)))))

@@ -15,9 +15,7 @@ module WaveImport
 
     field (bytes, start, outcome, pair) = match outcome
         Error why => Error(message = why)
-        Success values => match word (bytes, satAdd start pair.offset, pair.width)
-            Error why => Error(message = why)
-            Success value => Success(value = listAppend values value)
+        Success values => Outcomes::carried (word (bytes, satAdd start pair.offset, pair.width), \value => Success(value = listAppend values value))
 
     fields (bytes, start, layout) = foldList (layout, Success(value = []), \(outcome, pair) => field (bytes, start, outcome, pair))
 
@@ -44,9 +42,7 @@ module WaveImport
         end = satAdd start (satAdd size (bitAnd size 1))
         match end <= length bytes
             false => Error(message = "Truncated WAV chunk body or padding.")
-            true => match chunk (held, tag, start, size)
-                Error why => Error(message = why)
-                Success next => chunks (bytes, end, next, satSub remaining 1)
+            true => Outcomes::carried (chunk (held, tag, start, size), \next => chunks (bytes, end, next, satSub remaining 1))
 
     extension (bytes, held) = match held.formatBytes == 16
         true => Success(value = true)
@@ -96,25 +92,17 @@ module WaveImport
         Error why => Error(message = why)
         Success left => match fmt.channels == 1
             true => Success(value = left)
-            false => match sample (bytes, fmt, satAdd at fmt.sampleBytes)
-                Error why => Error(message = why)
-                Success right => Success(value = WaveMath::mono (left, right))
+            false => Outcomes::carried (sample (bytes, fmt, satAdd at fmt.sampleBytes), \right => Success(value = WaveMath::mono (left, right)))
 
     append (bytes, fmt, outcome, index) = match outcome
         Error why => Error(message = why)
-        Success samples => match frame (bytes, fmt, satAdd fmt.dataStart (satMul index fmt.blockAlign))
-            Error why => Error(message = why)
-            Success value => Success(value = listPrepend samples value)
+        Success samples => Outcomes::carried (frame (bytes, fmt, satAdd fmt.dataStart (satMul index fmt.blockAlign)), \value => Success(value = listPrepend samples value))
 
-    decoded (bytes, fmt) = match foldList (toList (range (0, fmt.frames)), Success(value = []), \(outcome, index) => append (bytes, fmt, outcome, index))
-        Error why => Error(message = why)
-        Success samples => Success(value = WaveSamples(sampleRate = fmt.sampleRate, channels = fmt.channels, frames = fmt.frames, samples = listReverse samples))
+    decoded (bytes, fmt) = Outcomes::carried (foldList (toList (range (0, fmt.frames)), Success(value = []), \(outcome, index) => append (bytes, fmt, outcome, index)), \samples => Success(value = WaveSamples(sampleRate = fmt.sampleRate, channels = fmt.channels, frames = fmt.frames, samples = listReverse samples)))
 
     body bytes = match chunks (bytes, 12, WaveChunks(formatStart = -1, formatBytes = 0, dataStart = -1, dataBytes = 0), 1024)
         Error why => Error(message = why)
-        Success held => match format (bytes, held)
-            Error why => Error(message = why)
-            Success fmt => decoded (bytes, fmt)
+        Success held => Outcomes::carried (format (bytes, held), \fmt => decoded (bytes, fmt))
 
     (** Decode at most 8 MiB; metadata preserves the original channel count while samples are mono. No resampling. *)
     export decode bytes = match length bytes >= 12 && length bytes <= 8388608

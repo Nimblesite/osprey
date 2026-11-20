@@ -10,9 +10,7 @@ module PatchVoices
 
     ok value = Success(value = value)
 
-    chained (outcome, step) = match outcome
-        Error why => Error(message = why)
-        Success value => step value
+    chained (outcome, step) = Outcomes::carried (outcome, \value => step value)
 
     counted (items, keep) = length (filterList (items, keep))
 

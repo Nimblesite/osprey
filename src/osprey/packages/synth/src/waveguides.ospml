@@ -16,9 +16,7 @@ module Waveguides
         false => Error(message = "Invalid waveguide controls, or the tuned loop does not fit its capacity.")
 
     (** Allocate the loop outside rendering. *)
-    export initial config = match DelayLines::prepare config.capacity
-        Error why => Error(message = why)
-        Success line => Success(value = WaveguideState(line = line, loss = LossFilters::initial, dispersion = Allpasses::initial))
+    export initial config = Outcomes::carried (DelayLines::prepare config.capacity, \line => Success(value = WaveguideState(line = line, loss = LossFilters::initial, dispersion = Allpasses::initial)))
 
     // A pickup at fraction p of the string is the comb `y[n] - y[n - pD]` (zero disables it).
     picked (config, line, read) = match config.pickup == 0.0
@@ -35,15 +33,11 @@ module Waveguides
     (** One sample: excitation enters the loop; frequency edits keep the stored line (energy is re-tuned). *)
     export next (config, held, input) = match DelayLines::tap (held.line, delay config)
         Error why => Error(message = why)
-        Success read => match picked (config, held.line, read)
-            Error why => Error(message = why)
-            Success output => Success(value = looped (config, held, input, read, output))
+        Success read => Outcomes::carried (picked (config, held.line, read), \output => Success(value = looped (config, held, input, read, output)))
 
     (** Sample-rate change: tuning and T60 are recomputed from the new configuration, and the stored loop
         is resampled (linear) into the new capacity, so a sounding string keeps its pitch and decay. *)
     export transferred (from, held, to) = match configure to
         Error why => Error(message = why)
-        Success accepted => match DelayLines::resampled (held.line, from.sampleRate, accepted.sampleRate, accepted.capacity)
-            Error why => Error(message = why)
-            Success line => Success(value = held(line = line))
+        Success accepted => Outcomes::carried (DelayLines::resampled (held.line, from.sampleRate, accepted.sampleRate, accepted.capacity), \line => Success(value = held(line = line)))
 

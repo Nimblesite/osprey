@@ -82,9 +82,7 @@ module NoteRenders
         Error why => Error(message = why)
         Success config => match Waveguides::initial config
             Error why => Error(message = why)
-            Success guide => match Exciters::configure (pick (note, capacity))
-                Error why => Error(message = why)
-                Success _ => folded (noteSpan, VoicePair(one = guide, other = Exciters::initial (satAdd note.pitch 1)), \(run, frame) => pluckStep (note, noteSpan, rate, capacity, brightness, decay, run, frame))
+            Success guide => Outcomes::carried (Exciters::configure (pick (note, capacity)), \_ => folded (noteSpan, VoicePair(one = guide, other = Exciters::initial (satAdd note.pitch 1)), \(run, frame) => pluckStep (note, noteSpan, rate, capacity, brightness, decay, run, frame)))
 
     bow (note, noteSpan, rate, capacity, pressure, brightness, depth, age) = BowConfig(sampleRate = rate, frequency = ArrangeMath::vibrato (hertz note, age, depth, rate), decay = 0.6, brightness = brightness, position = 0.12, pressure = pressure, velocity = 0.3 * note.velocity * ArrangeMath::gated (age, noteSpan.gate, 0.08 * rate, 0.1 * rate), capacity = capacity)
 
@@ -92,17 +90,13 @@ module NoteRenders
         Error why => Error(message = why)
         Success config => match depth >= 0.0 && depth <= 0.02
             false => Error(message = "Bow vibrato depth must be 0 to 0.02.")
-            true => match BowedStrings::initial config
-                Error why => Error(message = why)
-                Success string => folded (noteSpan, string, \(run, frame) => stepped (run, BowedStrings::next (bow (note, noteSpan, rate, capacity, pressure, brightness, depth, toFloat frame), run.held)))
+            true => Outcomes::carried (BowedStrings::initial config, \string => folded (noteSpan, string, \(run, frame) => stepped (run, BowedStrings::next (bow (note, noteSpan, rate, capacity, pressure, brightness, depth, toFloat frame), run.held))))
 
     impulse (strength, frame) = match frame == 0
         true => strength
         false => 0.0
 
-    modal (note, noteSpan, rate, decay, brightness, modes) = match ModalBanks::configure (ModalConfig(sampleRate = rate, frequency = hertz note, decay = decay, brightness = brightness, strike = 0.37, count = 8, modes = modes))
-        Error why => Error(message = why)
-        Success bank => folded (noteSpan, ModalBanks::initial bank, \(run, frame) => stepped (run, ModalBanks::next (bank, run.held, impulse (note.velocity, frame))))
+    modal (note, noteSpan, rate, decay, brightness, modes) = Outcomes::carried (ModalBanks::configure (ModalConfig(sampleRate = rate, frequency = hertz note, decay = decay, brightness = brightness, strike = 0.37, count = 8, modes = modes)), \bank => folded (noteSpan, ModalBanks::initial bank, \(run, frame) => stepped (run, ModalBanks::next (bank, run.held, impulse (note.velocity, frame)))))
 
     voice (note, noteSpan, rate, tone, cents, age) = OperatorConfig(sampleRate = rate, frequency = ArrangeMath::detuned (hertz note, cents), shape = DistortedPhase(breakpoint = ArrangeMath::bloomed (tone.breakpoint, age, tone.bloom, rate)), depth = 0.0, spread = 0.0, feedback = tone.feedback, amplitude = 0.5 * note.velocity * ArrangeMath::gated (age, noteSpan.gate, tone.attack * rate, tone.release * rate))
 
@@ -115,9 +109,7 @@ module NoteRenders
 
     operated (note, noteSpan, rate, tone) = match toneValid tone
         false => Error(message = "Operator attack, release and bloom must be 0.001 to 10 s and detune within 100 cents.")
-        true => match PhaseOperators::configure (voice (note, noteSpan, rate, tone, abs tone.detune, 0.0))
-            Error why => Error(message = why)
-            Success _ => folded (noteSpan, VoicePair(one = PhaseOperators::initial, other = PhaseOperators::initial), \(run, frame) => operatorStep (note, noteSpan, rate, tone, run, frame))
+        true => Outcomes::carried (PhaseOperators::configure (voice (note, noteSpan, rate, tone, abs tone.detune, 0.0)), \_ => folded (noteSpan, VoicePair(one = PhaseOperators::initial, other = PhaseOperators::initial), \(run, frame) => operatorStep (note, noteSpan, rate, tone, run, frame)))
 
     body (note, rate, hit, age) = OperatorConfig(sampleRate = rate, frequency = ArrangeMath::swept (hertz note, hit.sweep, age, rate), shape = PlainPhase, depth = 0.0, spread = 0.0, feedback = 0.0, amplitude = note.velocity * (1.0 - hit.noise) * ArrangeMath::ringing (age, hit.decay, rate))
 
@@ -132,9 +124,7 @@ module NoteRenders
         false => Error(message = "Drum noise must be 0 to 1, sweep 0 to 8 and decay 0.01 to 1 s.")
         true => match PhaseOperators::configure (body (note, rate, hit, 0.0))
             Error why => Error(message = why)
-            Success _ => match Exciters::configure (rattle (note, noteSpan, hit))
-                Error why => Error(message = why)
-                Success _ => folded (noteSpan, VoicePair(one = PhaseOperators::initial, other = Exciters::initial (satAdd note.pitch 1)), \(run, frame) => drumStep (note, noteSpan, rate, hit, run, frame))
+            Success _ => Outcomes::carried (Exciters::configure (rattle (note, noteSpan, hit)), \_ => folded (noteSpan, VoicePair(one = PhaseOperators::initial, other = Exciters::initial (satAdd note.pitch 1)), \(run, frame) => drumStep (note, noteSpan, rate, hit, run, frame)))
 
     stringed (note, noteSpan, rate, instrument) = match loop (rate, note)
         Error why => Error(message = why)
@@ -154,6 +144,4 @@ module NoteRenders
     (** Render one note: pitch 0–127 (MIDI), velocity 0–1, positive length in beats. *)
     export render (note, tempo, rate, instrument) = match note.pitch >= 0 && note.pitch <= 127 && note.velocity >= 0.0 && note.velocity <= 1.0 && note.length > 0.0 && tempo >= 20.0 && tempo <= 400.0
         false => Error(message = "A note needs pitch 0 to 127, velocity 0 to 1, a positive length and a tempo of 20 to 400.")
-        true => match span (note, tempo, rate, instrument)
-            Error why => Error(message = why)
-            Success noteSpan => voiced (note, noteSpan, rate, instrument)
+        true => Outcomes::carried (span (note, tempo, rate, instrument), \noteSpan => voiced (note, noteSpan, rate, instrument))

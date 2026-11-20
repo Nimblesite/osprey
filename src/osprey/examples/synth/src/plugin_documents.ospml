@@ -42,17 +42,11 @@ module PluginDocuments
 
     readControl (outcome, doc) = match outcome
         Error why => Error(message = why)
-        Success controls => match control doc
-            Error why => Error(message = why)
-            Success entry => Success(value = listAppend controls entry)
+        Success controls => synth::Outcomes::carried (control doc, \entry => Success(value = listAppend controls entry))
 
     metadata doc = match isText (doc, "id") && isText (doc, "name") && isInt (doc, "inputs") && isInt (doc, "outputs") && isBool (doc, "notes") && Doc::kind (Doc::field (doc, "parameters")) == "list" && length (Doc::fieldItems (doc, "parameters")) <= 1024
         false => Error(message = "The worker returned an incomplete VST descriptor.")
-        true => match foldList (Doc::fieldItems (doc, "parameters"), Success(value = []), readControl)
-            Error why => Error(message = why)
-            Success controls => Success(value = HostDescriptor(identifier = Doc::text (doc, "id"), name = Doc::text (doc, "name"), inputChannels = Doc::number (doc, "inputs"), outputChannels = Doc::number (doc, "outputs"), notes = Doc::flag (doc, "notes"), controls = controls))
+        true => synth::Outcomes::carried (foldList (Doc::fieldItems (doc, "parameters"), Success(value = []), readControl), \controls => Success(value = HostDescriptor(identifier = Doc::text (doc, "id"), name = Doc::text (doc, "name"), inputChannels = Doc::number (doc, "inputs"), outputChannels = Doc::number (doc, "outputs"), notes = Doc::flag (doc, "notes"), controls = controls)))
 
     (** Decode required fields; graph validation then checks ranges and unique IDs. *)
-    export describe text = match jsonDecode text
-        Error why => Error(message = why)
-        Success doc => metadata doc
+    export describe text = synth::Outcomes::carried (jsonDecode text, \doc => metadata doc)

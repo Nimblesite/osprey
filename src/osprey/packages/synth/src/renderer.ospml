@@ -43,9 +43,7 @@ module Renderer
             false => Error(message = "Reference rendering requires mono audio, one output and supported bounded processors.")
             true => Success(value = RenderInputs::initial plan)
 
-    nextNode (plan, rate, snapshot, outcome, identity) = match outcome
-        Error why => Error(message = why)
-        Success frame => RenderKernels::step (plan, rate, snapshot, frame, identity)
+    nextNode (plan, rate, snapshot, outcome, identity) = Outcomes::carried (outcome, \frame => RenderKernels::step (plan, rate, snapshot, frame, identity))
 
     (** Write a delay after its output has been read for the current sample. *)
     delayed (frame, held, input) = match held.delay
@@ -61,13 +59,9 @@ module Renderer
     (** Commit one routed delay input after the corresponding output sample. *)
     export writeDelay (plan, frame, identity, inlet) = match RenderInputs::input (plan, frame, identity, inlet)
         Error why => Error(message = why)
-        Success input => match RenderInputs::held (frame, identity)
-            Error why => Error(message = why)
-            Success held => delayed (frame, held, input)
+        Success input => Outcomes::carried (RenderInputs::held (frame, identity), \held => delayed (frame, held, input))
 
-    nextDelay (plan, outcome, cable) = match outcome
-        Error why => Error(message = why)
-        Success frame => writeDelay (plan, frame, cable.destination, cable.inlet)
+    nextDelay (plan, outcome, cable) = Outcomes::carried (outcome, \frame => writeDelay (plan, frame, cable.destination, cable.inlet))
 
     higher (one, other) = match one > other
         true => one
@@ -90,20 +84,14 @@ module Renderer
 
     finished (plan, rendered, frame) = match listGet (outputs plan.graph) 0
         Error _ => Error(message = "index out of bounds")
-        Success sink => match RenderInputs::sample (frame, sink.identity)
-            Error why => Error(message = why)
-            Success output => Success(value = Rendered(states = frame.states, samples = listAppend rendered.samples output, position = satAdd rendered.position 1, meters = metered (rendered.meters, frame.values)))
+        Success sink => Outcomes::carried (RenderInputs::sample (frame, sink.identity), \output => Success(value = Rendered(states = frame.states, samples = listAppend rendered.samples output, position = satAdd rendered.position 1, meters = metered (rendered.meters, frame.values))))
 
     sample (plan, rate, snapshot, rendered) =
         initial = SampleFrame(states = rendered.states, values = [])
         scheduled = foldList (plan.order, Success(value = initial), \(outcome, identity) => nextNode (plan, rate, snapshot, outcome, identity))
-        match foldList (plan.feedback, scheduled, \(outcome, cable) => nextDelay (plan, outcome, cable))
-            Error why => Error(message = why)
-            Success frame => finished (plan, rendered, frame)
+        Outcomes::carried (foldList (plan.feedback, scheduled, \(outcome, cable) => nextDelay (plan, outcome, cable)), \frame => finished (plan, rendered, frame))
 
-    nextSample (plan, rate, snapshot, outcome) = match outcome
-        Error why => Error(message = why)
-        Success rendered => sample (plan, rate, snapshot, rendered)
+    nextSample (plan, rate, snapshot, outcome) = Outcomes::carried (outcome, \rendered => sample (plan, rate, snapshot, rendered))
 
     validBlock (rate, rendered, count) = rate >= 8000.0 && rate <= 384000.0 && count >= 0 && count <= 8192 && rendered.position >= 0 && rendered.position <= satSub 9223372036854775807 count
 
@@ -128,17 +116,11 @@ module Renderer
         due = filterList (events, \event => event.samplePosition == timeline.audio.position)
         match foldList (due, Success(value = now), \(outcome, command) => edit (plan.graph, outcome, command))
             Error why => Error(message = why)
-            Success snapshot => match sample (plan, rate, snapshot, timeline.audio)
-                Error why => Error(message = why)
-                Success audio => Success(value = Timeline(audio = audio, observation = snapshot))
+            Success snapshot => Outcomes::carried (sample (plan, rate, snapshot, timeline.audio), \audio => Success(value = Timeline(audio = audio, observation = snapshot)))
 
-    nextAutomated (plan, rate, events, outcome) = match outcome
-        Error why => Error(message = why)
-        Success timeline => automatedSample (plan, rate, events, timeline)
+    nextAutomated (plan, rate, events, outcome) = Outcomes::carried (outcome, \timeline => automatedSample (plan, rate, events, timeline))
 
-    publish outcome = match outcome
-        Error why => Error(message = why)
-        Success timeline => Success(value = timeline(observation = observed (timeline.observation, timeline.audio)))
+    publish outcome = Outcomes::carried (outcome, \timeline => Success(value = timeline(observation = observed (timeline.observation, timeline.audio))))
 
     (** Apply ordered absolute-frame parameter events before their exact sample, preserving same-frame order. *)
     export automated (plan, rate, snapshot, rendered, count, events) = match validBlock (rate, rendered, count) && supported plan && length events <= 1024 && ordered (events, rendered.position, satAdd rendered.position count)

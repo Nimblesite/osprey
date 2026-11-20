@@ -22,9 +22,7 @@ module RenderKernels
 
     lowpass (plan, rate, snapshot, frame, held, input) = match cutoff (plan, snapshot, frame, held.identity)
         Error why => Error(message = why)
-        Success cutoff => match RenderInputs::parameter (snapshot, held.identity, "resonance")
-            Error why => Error(message = why)
-            Success resonance => filtered (frame, held, FilterConfig(sampleRate = rate, cutoff = cutoff, resonance = resonance), input)
+        Success cutoff => Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "resonance"), \resonance => filtered (frame, held, FilterConfig(sampleRate = rate, cutoff = cutoff, resonance = resonance), input))
 
     cutoff (plan, snapshot, frame, identity) = match RenderInputs::parameter (snapshot, identity, "cutoff")
         Error why => Error(message = why)
@@ -69,9 +67,7 @@ module RenderKernels
         _ => PhysicalKernels::process (rate, snapshot, frame, held, n, input)
 
     selected (plan, rate, snapshot, frame, held, n) = match n.processor
-        Oscillator => match waveform (snapshot, n)
-            Error why => Error(message = why)
-            Success wave => sine (rate, snapshot, frame, held, wave, \value => value)
+        Oscillator => Outcomes::carried (waveform (snapshot, n), \wave => sine (rate, snapshot, frame, held, wave, \value => value))
         Lfo => sine (rate, snapshot, frame, held, Sine, Waves::unipolar)
         Exciter _ => PhysicalKernels::excite (snapshot, frame, held)
         TableOscillator table => TableKernels::wavetable (rate, plan, snapshot, frame, held, table)
@@ -81,9 +77,7 @@ module RenderKernels
         Delay _ => match listGet held.delay 0
             Error _ => Error(message = "index out of bounds")
             Success previous => Success(value = RenderInputs::emitted (frame, held, previous))
-        _ => match RenderInputs::input (plan, frame, held.identity, 0)
-            Error why => Error(message = why)
-            Success input => processor (plan, rate, snapshot, frame, held, n, input)
+        _ => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \input => processor (plan, rate, snapshot, frame, held, n, input))
 
     (** Render one scheduled component or return its explicit fault. *)
     export step (plan, rate, snapshot, frame, identity) = match RenderInputs::component (plan, identity)
@@ -111,8 +105,6 @@ module RenderKernels
                 _ => Error(message = "Unknown oscillator waveform.")
 
     bypassed (plan, frame, held, n) = match n.processor
-        Filter => match RenderInputs::input (plan, frame, held.identity, 0)
-            Error why => Error(message = why)
-            Success value => Success(value = RenderInputs::emitted (frame, held, value))
+        Filter => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \value => Success(value = RenderInputs::emitted (frame, held, value)))
         Lfo => Success(value = RenderInputs::emitted (frame, held, 1.0))
         _ => Success(value = RenderInputs::emitted (frame, held, 0.0))

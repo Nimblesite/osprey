@@ -9,9 +9,7 @@ module SampleResources
     (** Validate a finite normalised mono resource before sharing it with grain instances. *)
     export prepare resource = match metadata resource
         false => Error(message = "Invalid sample resource name, sample rate, source channels or root frequency.")
-        true => match Grains::prepare (resource.samples, 1)
-            Error why => Error(message = why)
-            Success _ => Success(value = resource)
+        true => Outcomes::carried (Grains::prepare (resource.samples, 1), \_ => Success(value = resource))
 
     (** Tag decoded/downmixed WAV samples with the original channel count and an explicit MIDI root pitch. *)
     export fromWave (name, rootNote, wave) = match rootNote >= 0.0 && rootNote <= 127.0 && wave.frames == length wave.samples
@@ -19,9 +17,7 @@ module SampleResources
         true => prepare (SampleResource(name = name, sampleRate = wave.sampleRate, sourceChannels = wave.channels, rootFrequency = Waves::midiFrequency rootNote, samples = wave.samples))
 
     (** File bytes become a prepared sample resource; callers own file selection, reading and cancellation. *)
-    export decodeWave (name, rootNote, bytes) = match WaveImport::decode bytes
-        Error why => Error(message = why)
-        Success wave => fromWave (name, rootNote, wave)
+    export decodeWave (name, rootNote, bytes) = Outcomes::carried (WaveImport::decode bytes, \wave => fromWave (name, rootNote, wave))
 
     (** Calculate grain playback rate from root tuning and source/output rates, never buffer duration. *)
     export playbackRate (resource, note, outputRate) = match metadata resource && note >= 0.0 && note <= 127.0 && outputRate >= 8000.0 && outputRate <= 384000.0

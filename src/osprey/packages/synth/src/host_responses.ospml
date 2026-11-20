@@ -7,9 +7,7 @@ import synth::PcmWords
 module HostResponses
     sample (text, first, outcome, index) = match outcome
         Error why => Error(message = why)
-        Success samples => match PcmWords::sample (text, satAdd first (satMul index 8))
-            Error why => Error(message = why)
-            Success value => Success(value = listAppend samples value)
+        Success samples => Outcomes::carried (PcmWords::sample (text, satAdd first (satMul index 8)), \value => Success(value = listAppend samples value))
 
     samples (text, first, count) = match first >= 0 && count >= 0 && satMul count 8 <= satSub (length text) first
         false => Error(message = "Truncated worker audio buffer.")
@@ -19,9 +17,7 @@ module HostResponses
         Error why => Error(message = why)
         Success delay => match (latency == -1 || latency == delay) && delay <= 1920000
             false => Error(message = "The worker changed latency or reported excessive latency.")
-            true => match samples (text, satAdd at 16, satMul frames channels)
-                Error why => Error(message = why)
-                Success values => blocks (text, channels, satSub remaining frames, satAdd (satAdd at 16) (satMul (satMul frames channels) 8), listAppend chunks values, delay)
+            true => Outcomes::carried (samples (text, satAdd at 16, satMul frames channels), \values => blocks (text, channels, satSub remaining frames, satAdd (satAdd at 16) (satMul (satMul frames channels) 8), listAppend chunks values, delay))
 
     count remaining = match remaining < 256
         true => remaining

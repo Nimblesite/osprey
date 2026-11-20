@@ -31,14 +31,10 @@ module DelayLines
             position = toFloat age * ratio
             match position > toFloat (length line.samples)
                 true => copied (line, ratio, satAdd age 1, satSub remaining 1, listPrepend done 0.0)
-                false => match tap (line, TableMath::larger (1.0, position))
-                    Error why => Error(message = why)
-                    Success value => copied (line, ratio, satAdd age 1, satSub remaining 1, listPrepend done value)
+                false => Outcomes::carried (tap (line, TableMath::larger (1.0, position)), \value => copied (line, ratio, satAdd age 1, satSub remaining 1, listPrepend done value))
 
     (** Transfer stored audio to a new rate and capacity: each new slot holds the old line read at the same
         time ago (linear interpolation); history older than the old line is silence, by definition. *)
     export resampled (line, oldRate, newRate, capacity) = match oldRate > 0.0 && newRate > 0.0 && capacity >= 2 && capacity <= 1920000
         false => Error(message = "Resampling needs positive rates and a capacity of 2 to 1920000.")
-        true => match copied (line, oldRate / newRate, 1, capacity, [])
-            Error why => Error(message = why)
-            Success samples => Success(value = DelayLine(samples = samples))
+        true => Outcomes::carried (copied (line, oldRate / newRate, 1, capacity, []), \samples => Success(value = DelayLine(samples = samples)))

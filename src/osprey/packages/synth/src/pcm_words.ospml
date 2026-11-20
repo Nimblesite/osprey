@@ -52,15 +52,11 @@ module PcmWords
 
     readByte (text, at) = match nibble (text, at)
         Error why => Error(message = why)
-        Success high => match nibble (text, satAdd at 1)
-            Error why => Error(message = why)
-            Success low => Success(value = bitOr (shiftLeft high 4) low)
+        Success high => Outcomes::carried (nibble (text, satAdd at 1), \low => Success(value = bitOr (shiftLeft high 4) low))
 
     readPart (text, at, outcome, index) = match outcome
         Error why => Error(message = why)
-        Success bits => match readByte (text, satAdd at (satMul index 2))
-            Error why => Error(message = why)
-            Success part => Success(value = bitOr bits (shiftLeft part (satMul index 8)))
+        Success bits => Outcomes::carried (readByte (text, satAdd at (satMul index 2)), \part => Success(value = bitOr bits (shiftLeft part (satMul index 8))))
 
     (** Decode one complete uppercase hexadecimal word without accepting truncated bytes. *)
     export read32 (text, at) = match at >= 0 && at <= satSub (length text) 8

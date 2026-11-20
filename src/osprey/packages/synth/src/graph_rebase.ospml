@@ -23,23 +23,17 @@ module GraphRebase
         Oscillator => match MidiOscillators::connected (graph, n)
             true => Success(value = NodeKernels(kernelNode = n.identity, kernelMemory = MidiMemory(voice = MidiOscillators::initial n)))
             false => Success(value = NodeKernels(kernelNode = n.identity, kernelMemory = ChannelMemory(channels = [RenderInputs::initialState n])))
-        _ => match ClipLayouts::channels n
-            Error why => Error(message = why)
-            Success count => Success(value = NodeKernels(kernelNode = n.identity, kernelMemory = ChannelMemory(channels = mapList (toList (range (0, count)), \_ => RenderInputs::initialState n))))
+        _ => Outcomes::carried (ClipLayouts::channels n, \count => Success(value = NodeKernels(kernelNode = n.identity, kernelMemory = ChannelMemory(channels = mapList (toList (range (0, count)), \_ => RenderInputs::initialState n)))))
 
     added (graph, kept, outcome, n) = match outcome
         Error why => Error(message = why)
         Success banks => match GraphClips::stateful n && length (filterList (kept, \bank => bank.kernelNode == n.identity)) == 0
             false => Success(value = banks)
-            true => match fresh (graph, n)
-                Error why => Error(message = why)
-                Success bank => Success(value = listAppend banks bank)
+            true => Outcomes::carried (fresh (graph, n), \bank => Success(value = listAppend banks bank))
 
     (** The running state carried into an edited graph; the graph must already pass `Graphs.prepare`. *)
     export rebased (graph, held) = match Graphs::prepare graph
         Invalid _ => Error(message = "The edited graph is invalid; keep the previous graph and state.")
         Valid _ =>
             kept = filterList (held.graphKernels, \bank => surviving (graph, held, bank))
-            match foldList (graph.nodes, Success(value = kept), \(outcome, n) => added (graph, kept, outcome, n))
-                Error why => Error(message = why)
-                Success banks => Success(value = held(graphKernels = banks))
+            Outcomes::carried (foldList (graph.nodes, Success(value = kept), \(outcome, n) => added (graph, kept, outcome, n)), \banks => Success(value = held(graphKernels = banks)))

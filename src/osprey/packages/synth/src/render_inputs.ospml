@@ -19,9 +19,7 @@ module RenderInputs
         Error _ => Error(message = "Required render parameter is missing.")
 
     (** Read one declared parameter, then continue; a missing parameter stops with its error. *)
-    export bound (snapshot, held, key, continue) = match parameter (snapshot, held.identity, key)
-        Error why => Error(message = why)
-        Success value => continue value
+    export bound (snapshot, held, key, continue) = Outcomes::carried (parameter (snapshot, held.identity, key), \value => continue value)
 
     (** An optional normalised control inlet: unplugged keeps `base`; plugged values must lie in [0, 1] and are
         combined with `base` by the caller's declared rule (replacement, multiplication, ...). *)

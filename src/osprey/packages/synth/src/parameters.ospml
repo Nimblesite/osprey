@@ -50,12 +50,8 @@ module FitReports
         false => Error(message = "Fit references need labelled, licensed, finite mono clips at 48 kHz and a supported FFT length.")
         true => match distinct (training, evaluation)
             false => Error(message = "Training and evaluation need distinct source identities and sample data.")
-            true => match Fitting::fit (graph, config, training.samples)
-                Error why => Error(message = why)
-                Success result => report (graph, config, training.source, evaluation, result)
+            true => Outcomes::carried (Fitting::fit (graph, config, training.samples), \result => report (graph, config, training.source, evaluation, result))
 
     report (graph, config, training, evaluation, result) = match Fitting::spectrum evaluation.samples
         Error why => Error(message = why)
-        Success powers => match Fitting::evaluate (graph, config, powers, result.best.values)
-            Error why => Error(message = why)
-            Success heldOut => Success(value = FitReport(algorithm = "osprey-synth/log-spectrum-es-v1", algorithmLicence = "MIT", training = training, evaluation = evaluation.source, config = config, result = result, evaluationLoss = heldOut.loss))
+        Success powers => Outcomes::carried (Fitting::evaluate (graph, config, powers, result.best.values), \heldOut => Success(value = FitReport(algorithm = "osprey-synth/log-spectrum-es-v1", algorithmLicence = "MIT", training = training, evaluation = evaluation.source, config = config, result = result, evaluationLoss = heldOut.loss)))

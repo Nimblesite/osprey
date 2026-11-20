@@ -25,15 +25,11 @@ module MidiClips
             false => Error(message = "MIDI velocity must be between zero and one.")
             true => Success(value = events (n.identity, pitch, strength, gate))
 
-    whole (n, key, low, high) = match value (n, key)
-        Error why => Error(message = why)
-        Success number => integer (number, low, high)
+    whole (n, key, low, high) = Outcomes::carried (value (n, key), \number => integer (number, low, high))
 
     configured n = match whole (n, "pitch", 0.0, 127.0)
         Error why => Error(message = why)
-        Success pitch => match whole (n, "gateFrames", 1.0, 65535.0)
-            Error why => Error(message = why)
-            Success gate => velocity (n, pitch, gate)
+        Success pitch => Outcomes::carried (whole (n, "gateFrames", 1.0, 65535.0), \gate => velocity (n, pitch, gate))
 
     (** Render a half-open sample window; partitioning cannot duplicate or drop a note-off. *)
     export timeline (n, first, count) = match n.processor == MidiNotes && n.identity >= 0 && n.identity <= 2147483647 && first >= 0 && count > 0 && count <= 65536 && first <= satSub 9223372036854775807 count

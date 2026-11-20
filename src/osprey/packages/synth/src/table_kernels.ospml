@@ -7,9 +7,7 @@ import synth::RenderInputs
 module TableKernels
     tabled (table, frame, held, configured) = match configured
         Error why => Error(message = why)
-        Success config => match Wavetables::next (table, config, WavetableState(phase = held.phase))
-            Error why => Error(message = why)
-            Success step => Success(value = RenderInputs::emitted (frame, held(phase = step.next.phase), step.sample))
+        Success config => Outcomes::carried (Wavetables::next (table, config, WavetableState(phase = held.phase)), \step => Success(value = RenderInputs::emitted (frame, held(phase = step.next.phase), step.sample)))
 
     replaced (_base, control) = control
 
@@ -23,9 +21,7 @@ module TableKernels
             Error why => Error(message = why)
             Success level => match RenderInputs::controlled (plan, frame, held.identity, 2, frequency, \(base, control) => pitched (base, control))
                 Error why => Error(message = why)
-                Success pitch => match RenderInputs::controlled (plan, frame, held.identity, 3, 0.0, \(base, control) => replaced (base, control))
-                    Error why => Error(message = why)
-                    Success offset => tabled (table, frame, held, Wavetables::configure (WavetableConfig(sampleRate = rate, frequency = pitch, position = place, amplitude = level, phase = offset)))
+                Success pitch => Outcomes::carried (RenderInputs::controlled (plan, frame, held.identity, 3, 0.0, \(base, control) => replaced (base, control)), \offset => tabled (table, frame, held, Wavetables::configure (WavetableConfig(sampleRate = rate, frequency = pitch, position = place, amplitude = level, phase = offset))))
 
     (** A wavetable source: phase is the cycle position. Optional inlets: `position` replaces the position,
         `amplitude` multiplies the level, `pitch` scales frequency by ±2 octaves (0.5 unchanged) and

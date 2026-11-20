@@ -8,22 +8,16 @@ module GrainClouds
         Error why => Error(message = why)
         Success pool => match GrainScheduler::prepare (pool.position, timing, seed)
             Error why => Error(message = why)
-            Success clock => match GrainDistributions::seeded variationSeed
-                Error why => Error(message = why)
-                Success seeds => Success(value = GrainCloudState(pool = pool, clock = clock, seeds = seeds))
+            Success clock => Outcomes::carried (GrainDistributions::seeded variationSeed, \seeds => Success(value = GrainCloudState(pool = pool, clock = clock, seeds = seeds)))
 
     schedule (held, frames) = match held.pool.position == held.clock.position
         false => Error(message = "The grain player and scheduler clocks have diverged.")
         true => GrainScheduler::block (held.clock, frames)
 
-    rendered (held, clock, events, frames) = match Grains::scheduled (held.pool, frames, events)
-        Error why => Error(message = why)
-        Success audio => Success(value = GrainCloudBlock(left = audio.left, right = audio.right, next = held(pool = audio.next, clock = clock)))
+    rendered (held, clock, events, frames) = Outcomes::carried (Grains::scheduled (held.pool, frames, events), \audio => Success(value = GrainCloudBlock(left = audio.left, right = audio.right, next = held(pool = audio.next, clock = clock))))
 
     (** Controls apply to new grains only. Both clocks advance together, or neither returned state is published. *)
-    export block (held, controls, frames) = match schedule (held, frames)
-        Error why => Error(message = why)
-        Success scheduled => rendered (held, scheduled.next, GrainScheduler::events (scheduled.positions, controls), frames)
+    export block (held, controls, frames) = Outcomes::carried (schedule (held, frames), \scheduled => rendered (held, scheduled.next, GrainScheduler::events (scheduled.positions, controls), frames))
 
     (** [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Commit the audio state and all parameter seeds together after success. *)
     export variedBlock (held, ranges, frames) = match schedule (held, frames)
