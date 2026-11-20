@@ -7,6 +7,8 @@
 
 use std::cell::{Cell, Ref, RefCell};
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use ferroui_base::layout::{HorizontalAlignment, VerticalAlignment};
@@ -48,6 +50,7 @@ pub struct Host {
     messages: RefCell<Vec<String>>,
     rendered: RefCell<Vec<String>>,
     pending: RefCell<Vec<Ask>>,
+    runs: RefCell<Vec<RunJob>>,
     /// Milliseconds the last call into the application took, and the last tree build.
     pub dispatch_ms: Cell<f64>,
     pub build_ms: Cell<f64>,
@@ -72,6 +75,7 @@ impl Host {
             messages: RefCell::new(Vec::new()),
             rendered: RefCell::new(Vec::new()),
             pending: RefCell::new(Vec::new()),
+            runs: RefCell::new(Vec::new()),
             dispatch_ms: Cell::new(0.),
             build_ms: Cell::new(0.),
             send_ms: Cell::new(0.),
@@ -108,8 +112,7 @@ impl Host {
         trace(&touch, self.dispatch_ms.get());
         self.calling.set(false);
         self.settle(next);
-        self.send_ms
-            .set(started.elapsed().as_secs_f64() * 1000.);
+        self.send_ms.set(started.elapsed().as_secs_f64() * 1000.);
     }
 
     /// A control delivering `words` under the number the framework issued; a change the host
@@ -220,8 +223,9 @@ impl Host {
             match ask.kind() {
                 "animate" => self.animate(&ask),
                 "choose-file" => self.choose_file(ask),
-                "run" | "list-directories" | "read-texts" | "host-call" => background(ask),
-                "cancel" => self.send(adapters::completion(&ask)),
+                "run" => self.run(ask),
+                "list-directories" | "read-texts" | "host-call" => background(ask),
+                "cancel" => self.cancel(&ask),
                 "store-read" | "store-write" | "store-list" | "store-delete" => {
                     self.send(store::completion(&ask));
                 }
@@ -232,6 +236,51 @@ impl Host {
                 }
             }
         }
+    }
+
+    fn run(self: &Rc<Self>, ask: Ask) {
+        let mut runs = self.runs.borrow_mut();
+        let ticket = ask.ticket.clone();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let stop = cancelled.clone();
+        let dispatcher = Dispatcher::ui_thread();
+        let worker = std::thread::spawn(move || {
+            let answer = adapters::process::cancellable(&ask, &stop);
+            dispatcher.post(
+                move || {
+                    if let Some(host) = CURRENT.with(|current| current.borrow().upgrade()) {
+                        let mut jobs = host.runs.borrow_mut();
+                        let Some(index) = jobs
+                            .iter()
+                            .position(|job| Arc::ptr_eq(&job.cancelled, &stop))
+                        else {
+                            return;
+                        };
+                        jobs.swap_remove(index);
+                        drop(jobs);
+                        if !stop.load(Ordering::Acquire) {
+                            host.send(Touch::completed(&ask.ticket, answer));
+                        }
+                    }
+                },
+                DispatcherPriority::LOADED,
+            );
+        });
+        runs.push(RunJob {
+            ticket,
+            cancelled,
+            worker,
+        });
+    }
+
+    fn cancel(self: &Rc<Self>, ask: &Ask) {
+        let result = adapters::text(ask, 1, "cancelled").map(|ticket| {
+            for run in self.runs.borrow().iter().filter(|run| run.ticket == ticket) {
+                run.cancelled.store(true, Ordering::Release);
+            }
+            String::new()
+        });
+        self.send(Touch::completed(&ask.ticket, result));
     }
 
     /// Binds native pickers to the window hosting the Osprey surface.
@@ -290,8 +339,7 @@ impl Host {
                 if let Some(background) = background {
                     frame = frame.background(background);
                 }
-                host.build_ms
-                    .set(started.elapsed().as_secs_f64() * 1000.);
+                host.build_ms.set(started.elapsed().as_secs_f64() * 1000.);
                 frame.child(grid)
             }))
             .into()
@@ -308,7 +356,33 @@ fn trace(touch: &Touch, took: f64) {
         let at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |since| since.as_millis());
-        eprintln!("trace {at} kind={} down={} ms={took:.1}", touch.kind, touch.down);
+        eprintln!(
+            "trace {at} kind={} down={} ms={took:.1}",
+            touch.kind, touch.down
+        );
+    }
+}
+
+struct RunJob {
+    ticket: String,
+    cancelled: Arc<AtomicBool>,
+    worker: std::thread::JoinHandle<()>,
+}
+
+impl Drop for Host {
+    fn drop(&mut self) {
+        for job in self.runs.get_mut().iter() {
+            job.cancelled.store(true, Ordering::Release);
+        }
+        for job in self.runs.get_mut().drain(..) {
+            let _ = job.worker.join();
+        }
+    }
+}
+
+fn deliver(completion: Touch) {
+    if let Some(host) = CURRENT.with(|current| current.borrow().upgrade()) {
+        host.send(completion);
     }
 }
 
@@ -319,11 +393,7 @@ fn background(ask: Ask) {
     std::thread::spawn(move || {
         let completion = adapters::completion(&ask);
         dispatcher.post(
-            move || {
-                if let Some(host) = CURRENT.with(|current| current.borrow().upgrade()) {
-                    host.send(completion);
-                }
-            },
+            move || deliver(completion),
             // Above input: an audio worker's exchange must not queue behind pointer moves.
             DispatcherPriority::LOADED,
         );
