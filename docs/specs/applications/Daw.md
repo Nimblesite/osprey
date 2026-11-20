@@ -35,7 +35,7 @@ One window shows three views of one session. **Timeline** shows the tracks, the 
 | --- | --- | --- |
 | Tracks, song overview, piano roll and track inspector | The selected track's patch in Prism | Gain, pan and Space send per track, saved on release |
 
-The window's play button currently reads "Play song", but it plays two bars. Rendering the whole song in the app would take about 85 minutes under ARC, so a whole song is rendered with `make -C src/toolchain/targets/macos daw-render` instead.
+**Play bars** plays the two bars shown in the piano roll. **Save project** writes the current track patch and its layout alongside the timeline and mix without changing the view. Render a full song with `make -C src/toolchain/targets/macos daw-render`.
 
 ## Math [DAW-MATH]
 

@@ -27,7 +27,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] Tickets are bound to the launched folder, so moving the piano roll during a render cannot play the wrong bars.
 - [x] The transport journey test (`the transport renders two bars …`) passes. The daw suite passes 22/22 under ARC.
 - [x] Natively verified: Play → renderer → afplay → finished, on the codex project (17.7 s stereo, peak −1.0 dB).
-- [ ] Rename the "Play song" button to "Play bars", since it plays two bars.
+- [x] **Play bars** names the two-bar transport. **Save project** writes the current patch without leaving its page.
 - [ ] Host cancellation stops the renderer and `afplay` processes (FerroUI).
 - [ ] The renderer is fast enough to play from the playhead without waiting (per-note patch voices dominate).
 

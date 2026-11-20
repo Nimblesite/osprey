@@ -341,9 +341,9 @@ module EditorView
 
     paletteAccess () = mapList (toList (range (0, length EditorState::kinds)), \i => accessible ("Add ${EditorState::title (listGet EditorState::kinds i ?: "")}", 12.0, CanvasGeometry::paletteY (toFloat i) - 17.0, 172.0, 35.0, false))
 
-    toolbar () = [text ("Modules", 380.0, 25.0, 16.0, 236, 12), text ("Patch controls", 500.0, 25.0, 16.0, 236, 12), text ("Audition", 680.0, 25.0, 16.0, 236, 12), text ("Play", 800.0, 25.0, 16.0, 236, 12), text ("Stop", 880.0, 25.0, 16.0, 236, 12), text ("Keyboard", 950.0, 25.0, 16.0, 236, 12), text ("Timeline", 1250.0, 25.0, 16.0, 236, 12), text ("Mix", 1390.0, 25.0, 16.0, 236, 12)]
+    toolbar () = [text ("Save", 298.0, 25.0, 16.0, 236, 12), text ("Modules", 380.0, 25.0, 16.0, 236, 12), text ("Patch controls", 500.0, 25.0, 16.0, 236, 12), text ("Audition", 680.0, 25.0, 16.0, 236, 12), text ("Play", 800.0, 25.0, 16.0, 236, 12), text ("Stop", 880.0, 25.0, 16.0, 236, 12), text ("Keyboard", 950.0, 25.0, 16.0, 236, 12), text ("Timeline", 1250.0, 25.0, 16.0, 236, 12), text ("Mix", 1390.0, 25.0, 16.0, 236, 12)]
 
-    toolbarItems () = [accessible ("Modules", 370.0, 10.0, 110.0, 45.0, false), accessible ("Patch controls", 490.0, 10.0, 170.0, 45.0, false), accessible ("Audition patch", 670.0, 10.0, 110.0, 45.0, false), accessible ("Play patch", 790.0, 10.0, 70.0, 45.0, false), accessible ("Stop playback", 870.0, 10.0, 70.0, 45.0, false), accessible ("Keyboard", 940.0, 10.0, 120.0, 45.0, false), accessible ("Undo", 1108.0, 15.0, 40.0, 37.0, false), accessible ("Redo", 1160.0, 15.0, 40.0, 37.0, false), accessible ("Timeline", 1240.0, 10.0, 120.0, 45.0, false), accessible ("Mix", 1380.0, 10.0, 90.0, 45.0, false)]
+    toolbarItems () = [accessible ("Modules", 370.0, 10.0, 110.0, 45.0, false), accessible ("Patch controls", 490.0, 10.0, 170.0, 45.0, false), accessible ("Audition patch", 670.0, 10.0, 110.0, 45.0, false), accessible ("Play patch", 790.0, 10.0, 70.0, 45.0, false), accessible ("Stop playback", 870.0, 10.0, 70.0, 45.0, false), accessible ("Keyboard", 940.0, 10.0, 120.0, 45.0, false), accessible ("Undo", 1108.0, 15.0, 40.0, 37.0, false), accessible ("Redo", 1160.0, 15.0, 40.0, 37.0, false), accessible ("Timeline", 1240.0, 10.0, 120.0, 45.0, false), accessible ("Mix", 1380.0, 10.0, 90.0, 45.0, false), accessible ("Save project", 270.0, 10.0, 85.0, 45.0, false)]
 
     rightX (editor, base) = CanvasGeometry::shifted (base, ui::Machines::number (editor.skin, "spareWidth"))
 
@@ -363,10 +363,11 @@ module EditorView
         7 => Redo
         8 => ShowPage(page = TimelinePage)
         9 => ShowPage(page = MixPage)
+        10 => SaveProject
         _ => ShowKeyboard
 
     (** Match the compact command hit boxes in the original header. *)
-    export toolbarAt (editor, x, y) = listGet (filterList (toList (range (0, 10)), \i =>
+    export toolbarAt (editor, x, y) = listGet (filterList (toList (range (0, length (toolbarItems ()))), \i =>
         match listGet (toolbarAccess editor) i
             Error _ => false
             Success a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0

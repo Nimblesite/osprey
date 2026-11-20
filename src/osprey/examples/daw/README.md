@@ -6,7 +6,7 @@ is saved in the one project file. [Specification](../../../../docs/specs/applica
 [Designs](../../../../docs/designs/prism-timeline/README.md) · [Patch editor guide](PRISM.md)
 
 ```sh
-make -C src/toolchain/targets/macos daw            # opens tracks/codex-version.json; SONG=<project.json> picks another
+make -C src/toolchain/targets/macos daw            # opens SONG (default tracks/phosphor-drift.json)
 make -C src/toolchain/targets/macos daw-render     # renders the whole SONG to target/daw/<project>/song.wav
 make -C src/toolchain/targets/macos daw-play       # plays that WAV; never renders
 make -C src/toolchain/targets/tests synth          # the app's tests, with no host
@@ -18,7 +18,7 @@ make -C src/toolchain/targets/tests synth          # the app's tests, with no ho
 | ![A track's patch](screens/track-patch.png) | **Patch.** The selected track's patch in Prism: modules, cables and the keyboard. Leaving the page saves the patch into the project file. A built-in instrument opens as one voice module. |
 | ![Mix](screens/mix.png) | **Mix.** Every track's gain, pan and Space send into Master, and the selected track's path to the stereo out. |
 
-**Play song** renders two bars from the piano roll's position with the song renderer and plays them;
+**Save project** writes the open song, including its patch and layout. **Play bars** renders two bars from the piano roll's position with the song renderer and plays them;
 **Stop** cancels it. **Open song** chooses another project file. The Timeline and the patch are pages of
 one window: the FerroUI host opens a single window, so a separate Timeline window is not built.
 

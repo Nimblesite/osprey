@@ -172,15 +172,23 @@ module DawSession
             Error why => ui::Runtime::step (editor(message = why))
             Success next => ui::Runtime::step (next(message = "Saved note velocity ${TimelineView::percent value}."))
 
-    (** Prism's patch goes back into its track and the project file is written; unchanged, nothing is written.
-        A patch the project cannot hold is an error, and the caller stays on the patch. *)
-    export synced editor = match editor.patchTrack >= 0 && editor.songPath != ""
-        false => Success(value = editor)
-        true => match daw::PatchRecords::savedAt (editor.song, editor.patchTrack, editor.graph, editor.positions)
-            Error why => Error(message = why)
-            Success song => match structuralEquals (song, editor.song)
-                true => Success(value = editor)
-                false => written (editor, song)
+    draft editor = match editor.patchTrack >= 0 && editor.songPath != ""
+        true => daw::PatchRecords::savedAt (editor.song, editor.patchTrack, editor.graph, editor.positions)
+        false => Success(value = editor.song)
+
+    (** Save the current patch, timeline and mixer to the open project without switching views. *)
+    export save editor = match editor.songPath == ""
+        true => ui::Runtime::step (editor(message = "Open a song project to save it."))
+        false => match synth::Outcomes::carried (draft editor, \song => written (editor, song))
+            Error why => ui::Runtime::step (editor(message = why))
+            Success saved => ui::Runtime::step saved
+
+    (** Write a changed patch before switching away or starting transport. *)
+    export synced editor = match draft editor
+        Error why => Error(message = why)
+        Success song => match structuralEquals (song, editor.song)
+            true => Success(value = editor)
+            false => written (editor, song)
 
     (** Run `next` on the editor with its patch saved, or stay put and say why it could not be saved. *)
     export saving (editor, next) = match synced editor
