@@ -65,7 +65,7 @@ grainParkMiller seed =
     product - floor (product / 2147483647.0) * 2147483647.0
 
 grainNextSeed seed = match floatToInt (grainParkMiller (toFloat seed))
-    Error why => 0
+    Error _ => 0
     Success value => value
 
 grainAdvancedOnce seeds = synth::GrainSeeds(position = grainNextSeed seeds.position, rate = grainNextSeed seeds.rate, duration = grainNextSeed seeds.duration, amplitude = grainNextSeed seeds.amplitude, pan = grainNextSeed seeds.pan)
@@ -349,8 +349,8 @@ grainEventOrderJourney () =
         // The half-open block window: events before the block or at its end belong elsewhere.
         forEachList ([[synth::GrainEvent(position = -1, controls = controls)], [synth::GrainEvent(position = 4, controls = controls)], [synth::GrainEvent(position = 2, controls = controls), synth::GrainEvent(position = 1, controls = controls)]],
             \events => refusedWith (Grains::scheduled (pool, 4, events), "Grain events must be ordered and belong to this block's half-open sample interval."))
-        refusedWith (Grains::scheduled (pool, 4, mapList (grainQuiet 2049, \sample => synth::GrainEvent(position = 0, controls = controls))), "Invalid grain block size, clock or event capacity.")
-        succeeds (Grains::scheduled (pool, 4, mapList (grainQuiet 2048, \sample => synth::GrainEvent(position = 0, controls = controls))), \many =>
+        refusedWith (Grains::scheduled (pool, 4, mapList (grainQuiet 2049, \_ => synth::GrainEvent(position = 0, controls = controls))), "Invalid grain block size, clock or event capacity.")
+        succeeds (Grains::scheduled (pool, 4, mapList (grainQuiet 2048, \_ => synth::GrainEvent(position = 0, controls = controls))), \many =>
             expect (length many.left, 4)))
 
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Five separately seeded streams, inclusive uniform durations.

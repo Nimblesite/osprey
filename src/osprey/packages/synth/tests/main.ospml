@@ -532,6 +532,8 @@ test ("channel maps out of range and mismatched channel cables are refused with 
     refused (Graphs::connect (added ([Components::routeChannels (1, 8, [7, 6, 5, 4, 3, 2, 1, 0]), Components::gain (2, 1.0)], Graphs::empty), cable (1, 2)), synth::IncompatiblePorts)
     refused (Graphs::connect (added ([Components::stereo 1, Components::join (2, 2)], Graphs::empty), cable (1, 2)), synth::IncompatiblePorts)
     refused (Graphs::connect (added ([Components::join (1, 4), Components::output 2], Graphs::empty), cable (1, 2)), synth::IncompatiblePorts)
+    // Stereo never widens to 5.1 implicitly: without a Route node the cable is refused.
+    refused (Graphs::connect (added ([Components::stereo 1, sinkOf (2, 6)], Graphs::empty), cable (1, 2)), synth::IncompatiblePorts)
     expect (Kinds::kind synth::Split, "synth.split")
     expect (Kinds::kind synth::Join, "synth.join")
     expect (Kinds::kind (synth::Route(channelMap = [0, -1])), "synth.route")
