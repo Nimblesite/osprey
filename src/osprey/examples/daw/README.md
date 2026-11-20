@@ -14,13 +14,19 @@ make -C src/toolchain/targets/tests synth          # the app's tests, with no ho
 
 | Page | What it does |
 | --- | --- |
-| ![Timeline](screens/timeline.png) | **Timeline.** One lane per track across the song, and a two-bar piano roll of the selected track. Tap a lane to select the track at that bar. Tap its name, or **Open patch**, to edit its sound. **Keyboard** opens the optional playable keys. |
+| ![Timeline](screens/timeline.png) | **Timeline.** One lane per track across the song, and a two-bar piano roll of the selected track. Tap a lane to select the track at that bar. Tap its name or the Patch tab to edit its sound. View → Keyboard opens the playable keys. |
 | ![A track's patch](screens/track-patch.png) | **Patch.** The selected track's patch in Prism: modules, cables and the selected module’s connections. Leaving the page saves the patch into the project file. A built-in instrument opens as one voice module. |
-| ![Mix](screens/mix.png) | **Mix.** Every track's gain, pan and Space send into Master, and the selected track's path to the stereo out. |
+| ![Mix](screens/mix.png) | **Mix.** The selected track’s dry path passes through its assigned bus or goes directly to Master. Its Space send returns to Master independently. |
 
-**Save project** writes the open song, including its patch and layout. **Play bars** renders two bars from the piano roll's position with the song renderer and plays them;
-**Stop** cancels it. **Open song** chooses another project file. The Timeline and the patch are pages of
-one window: the FerroUI host opens a single window, so a separate Timeline window is not built.
+File → Save writes the open song, its patches and their layouts. Play renders two bars from the playhead. Stop cancels playback. File → Open Song opens another project in the same window.
+
+## Silt Relay
+
+[Silt Relay](tracks/silt-relay.json) is an original 18-bar arrangement at 138 BPM. The pressure kick ducks the sub. Struck wire answers the bass on the offbeats, and the bowed breakdown gives way to a five-hit hi-hat roll. Open **Throat / metal** for a two-source spectral morph, **Spore wheel** for a seeded granular patch, or **Rivet pulse** to follow a MIDI note through the split, delay, join and channel swap.
+
+```sh
+make -C src/toolchain/targets/macos daw SONG=src/osprey/examples/daw/tracks/silt-relay.json
+```
 
 ## The project file
 

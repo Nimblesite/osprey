@@ -39,6 +39,7 @@ module EditorApp
         SelectNote index => Runtime::step (editor(selectedNote = index))
         SetVelocity value => DawSession::velocity (editor, value)
         AdjustMix index gain pan reverb => DawSession::adjusted (editor, index, gain, pan, reverb)
+        AssignBus index bus => DawSession::routed (editor, index, bus)
         OpenTrack index => match index == -2
             true => DawSession::saving (editor, DawSession::choose)
             false => DawSession::saving (editor, \saved => Runtime::step (DawSession::opened (saved, index)))

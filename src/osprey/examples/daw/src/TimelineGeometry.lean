@@ -23,6 +23,10 @@ def rowHeight (count : Float) : Float := if count <= 15 then 22 else 330 / count
 def rowY (index height : Float) : Float := 146 + index * height
 def rowAt (y height : Float) : Float := Float.floor ((y - 146) / height)
 
+/-- The pitch silhouette of a track fits between the two inset edges of its lane. -/
+def lanePitch (top height pitch low high : Float) : Float :=
+  if high <= low then top + height / 2 else top + 2 + (high - pitch) / (high - low) * (height - 4)
+
 /-- The piano roll shows two bars (eight beats) from x 70 to 1200. -/
 def rollX (beat first : Float) : Float := 70 + bounded (beat - first) 0 8 * 141.25
 def rollWidth (beat length first : Float) : Float :=

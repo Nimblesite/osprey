@@ -383,7 +383,7 @@ module EditorView
     // The Timeline and Mix pages draw the song instead of the patch, on the same surface.
     songPage editor = match editor.page
         MixPage => Ui::described (Ui::zoomed (pageZoom editor, 1536.0, 828.0, PrismArt::atlas editor.skin, MixView::shapes editor, Surface), listConcat (TimelineView::headerAreas editor) (MixView::access editor))
-        _ => Ui::described (Ui::zoomed (pageZoom editor, 1536.0, 828.0, PrismArt::atlas editor.skin, TimelineView::shapes editor, Surface), listConcat (listConcat (TimelineView::headerAreas editor) (TimelineView::laneAccess editor)) [TimelineView::openArea ()])
+        _ => Ui::described (Ui::zoomed (pageZoom editor, 1536.0, 828.0, PrismArt::atlas editor.skin, TimelineView::shapes editor, Surface), listConcat (listConcat (TimelineView::headerAreas editor) (TimelineView::laneAccess editor)) (TimelineView::inspectorAreas ()))
 
     canvas editor = match editor.page
         PatchPage => patchCanvas editor
@@ -434,10 +434,11 @@ module EditorView
         Ui::section ("View", "", [Ui::button ("Patch", "Cmd+D1", ShowPage(page = PatchPage)), Ui::button ("Timeline", "Cmd+D2", ShowPage(page = TimelinePage)), Ui::button ("Mix", "Cmd+D3", ShowPage(page = MixPage)), Ui::button ("Modules", "Cmd+L", ShowModules), Ui::button ("Patch Controls", "Cmd+I", ShowDetails), Ui::button ("Keyboard", "Cmd+K", ShowKeyboard)]),
         Ui::section ("Transport", "", [Ui::button ("Play Song", "Cmd+Enter", PlaySong), Ui::button ("Stop Song", "Cmd+OemPeriod", StopSong), Ui::button ("Play Patch", "Cmd+P", PlayGraph), Ui::button ("Audition Patch", "Cmd+Shift+P", Audition), Ui::button ("Stop Patch", "Cmd+Shift+OemPeriod", StopGraph)])]
 
-    root () = Ui::contextMenu (workspace (), menus ())
-
-    workspace () =
+    root () =
         editor = editorSlice ()
+        Ui::contextMenu (workspace editor, listConcat (menus ()) (MixView::menus editor))
+
+    workspace editor =
         pane = match editor.detailsShown && TimelineView::pageIndex editor.page == 0
             false => canvas editor
             true => Ui::aside (canvas editor, ui::Trailing, inspector editor, 280, Surface)

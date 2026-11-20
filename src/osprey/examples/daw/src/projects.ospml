@@ -20,6 +20,13 @@ module Projects
             Error _ => Error(message = "There is no track ${satAdd index 1}.")
             Success voice => replaced (arrangement, index, voice(gain = gain, pan = pan, reverb = reverb))
 
+    (** Assign the dry output to Master (empty name) or one of the open project's buses. *)
+    export routed (song, index, bus) = match listGet song.tracks index
+        Error _ => Error(message = "There is no track ${satAdd index 1}.")
+        Success track => match bus == ""
+            true => replaced (song, index, track(bus = ""))
+            false => synth::Outcomes::carried (BusMix::named (song, bus), \found => replaced (song, index, track(bus = found.name)))
+
     (** Change exactly one piano-roll note in its track, retaining timing, pitch and note order. *)
     export velocity (song, track, index, value) = match ArrangeMath::audible value
         false => Error(message = "Velocity must be between 0 and 1.")

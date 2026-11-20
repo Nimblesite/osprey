@@ -15,7 +15,7 @@ module MixView
         top = TimelineGeometry::mixY (toFloat index, height editor)
         chosen = index == editor.track
         middle = top + height editor / 2.0
-        listConcat (listConcat [TimelineView::box (0.0, top, 1010.0, height editor - 1.0, ui::Pick::either (chosen, Scenes::rgb (58, 34, 46), ui::Pick::either (index % 2 == 0, Scenes::rgb (20, 17, 38), Scenes::rgb (17, 14, 34))), 2), label ("${satAdd index 1}", 24.0, middle - 8.0, 13.0, TimelineView::dim (), 0), label (voice.name, 64.0, middle - 9.0, 16.0, ui::Pick::either (chosen, TimelineView::ink (), TimelineView::lavender ()), 0), label (TimelineView::instrumentName voice.instrument, 200.0, middle - 8.0, 13.0, TimelineView::dim (), 0), label ("${TimelineView::hundredths voice.gain}×", 470.0, middle - 8.0, 13.0, TimelineView::ink (), 2), label (TimelineView::pan voice.pan, 520.0, middle - 13.0, 13.0, TimelineView::ink (), 0), TimelineView::box (520.0, middle + 5.0, 84.0, 3.0, Scenes::rgb (52, 46, 84), 3), Scenes::disc (520.0 + TimelineGeometry::meter (voice.pan + 1.0, 2.0, 84.0), middle + 6.0, 3.0, TimelineView::accent (), 4), Scenes::disc (624.0, middle, 5.0, TimelineView::accent (), 4), label ("Master", 640.0, middle - 8.0, 13.0, TimelineView::ink (), 0), label (TimelineView::percent voice.reverb, 990.0, middle - 8.0, 13.0, TimelineView::ink (), 2)] (meter (310.0, middle + 5.0, voice.gain, 4.0))) (meter (780.0, middle + 5.0, voice.reverb, 1.0))
+        listConcat (listConcat [TimelineView::box (0.0, top, 1010.0, height editor - 1.0, ui::Pick::either (chosen, Scenes::rgb (58, 34, 46), ui::Pick::either (index % 2 == 0, Scenes::rgb (20, 17, 38), Scenes::rgb (17, 14, 34))), 2), label ("${satAdd index 1}", 24.0, middle - 8.0, 13.0, TimelineView::dim (), 0), label (voice.name, 64.0, middle - 9.0, 16.0, ui::Pick::either (chosen, TimelineView::ink (), TimelineView::lavender ()), 0), label (TimelineView::instrumentName voice.instrument, 200.0, middle - 8.0, 13.0, TimelineView::dim (), 0), label ("${TimelineView::hundredths voice.gain}×", 470.0, middle - 8.0, 13.0, TimelineView::ink (), 2), label (TimelineView::pan voice.pan, 520.0, middle - 13.0, 13.0, TimelineView::ink (), 0), TimelineView::box (520.0, middle + 5.0, 84.0, 3.0, Scenes::rgb (52, 46, 84), 3), Scenes::disc (520.0 + TimelineGeometry::meter (voice.pan + 1.0, 2.0, 84.0), middle + 6.0, 3.0, TimelineView::accent (), 4), Scenes::disc (624.0, middle, 5.0, TimelineView::accent (), 4), label (TimelineView::destination voice, 640.0, middle - 8.0, 13.0, TimelineView::ink (), 0), label (TimelineView::percent voice.reverb, 990.0, middle - 8.0, 13.0, TimelineView::ink (), 2)] (meter (310.0, middle + 5.0, voice.gain, 4.0))) (meter (780.0, middle + 5.0, voice.reverb, 1.0))
 
     table editor = listConcat [label ("TRACK", 24.0, 124.0, 12.0, TimelineView::dim (), 0), label ("VOICE", 200.0, 124.0, 12.0, TimelineView::dim (), 0), label ("GAIN", 310.0, 124.0, 12.0, TimelineView::dim (), 0), label ("PAN", 520.0, 124.0, 12.0, TimelineView::dim (), 0), label ("OUTPUT", 624.0, 124.0, 12.0, TimelineView::dim (), 0), label ("SPACE SEND", 780.0, 124.0, 12.0, TimelineView::dim (), 0)] (foldList (toList (range (0, length editor.song.tracks)), [], \(all, index) =>
         match listGet editor.song.tracks index
@@ -26,15 +26,50 @@ module MixView
 
     wire (points) = Scenes::strip (points, TimelineView::accent (), 2.0, 4)
 
-    flow (editor, voice) = listConcat (listConcat (listConcat (card (1160.0, 150.0, voice.name, "${TimelineView::instrumentName voice.instrument} · ${TimelineView::hundredths voice.gain}× gain", 6246296)) (card (1040.0, 290.0, "Stereo pan", TimelineView::pan voice.pan, 6246296))) (listConcat (card (1290.0, 290.0, "Space", "Send ${TimelineView::percent voice.reverb} · ${TimelineView::hundredths editor.song.space.decay} s decay", 16745538)) (card (1160.0, 430.0, "Master", "Sum L/R · drive ${TimelineView::hundredths editor.song.drive}", 6246296)))) [wire [1275.0, 224.0, 1275.0, 256.0, 1155.0, 256.0, 1155.0, 290.0], wire [1275.0, 256.0, 1405.0, 256.0, 1405.0, 290.0], wire [1155.0, 364.0, 1155.0, 396.0, 1240.0, 396.0, 1240.0, 430.0], wire [1405.0, 364.0, 1405.0, 396.0, 1320.0, 396.0, 1320.0, 430.0], wire [1275.0, 504.0, 1275.0, 540.0], label ("Stereo out", 1275.0, 548.0, 15.0, TimelineView::ink (), 1)]
+    group (editor, voice) = match daw::BusMix::named (editor.song, voice.bus)
+        Error _ => []
+        Success bus => card (1040.0, 387.0, bus.name, "EQ · compressor · ${TimelineView::hundredths bus.gain}×", 6246296)
 
-    space editor = [label ("SPACE (SHARED REVERB)", 1040.0, 610.0, 12.0, TimelineView::dim (), 0), label ("Size ${TimelineView::hundredths editor.song.space.size}", 1040.0, 640.0, 16.0, TimelineView::ink (), 0), label ("Decay ${TimelineView::hundredths editor.song.space.decay} s", 1200.0, 640.0, 16.0, TimelineView::ink (), 0), label ("Damping ${TimelineView::hundredths editor.song.space.damping}", 1370.0, 640.0, 16.0, TimelineView::ink (), 0), label ("Space receives the post-gain, pre-pan send. Its return feeds Master.", 1040.0, 690.0, 12.0, TimelineView::dim (), 0)]
+    flow (editor, voice) =
+        grouped = voice.bus != ""
+        master = ui::Pick::either (grouped, 490.0, 400.0)
+        bottom = ui::Pick::either (grouped, 461.0, 354.0)
+        ui::Lists::flatten [card (1160.0, 150.0, voice.name, "${TimelineView::instrumentName voice.instrument} · ${TimelineView::hundredths voice.gain}× gain", 6246296),
+            card (1040.0, 280.0, "Stereo pan", TimelineView::pan voice.pan, 6246296), card (1290.0, 280.0, "Space", "Send ${TimelineView::percent voice.reverb} · ${TimelineView::hundredths editor.song.space.decay} s decay", 16745538),
+            group (editor, voice), card (1160.0, master, "Master", "L/R sum · drive ${TimelineView::hundredths editor.song.drive}", 6246296),
+            [wire [1275.0, 224.0, 1275.0, 252.0, 1155.0, 252.0, 1155.0, 280.0], wire [1275.0, 252.0, 1405.0, 252.0, 1405.0, 280.0]],
+            ui::Pick::either (grouped, [wire [1155.0, 354.0, 1155.0, 387.0]], []),
+            [wire [1155.0, bottom, 1155.0, master - 15.0, 1240.0, master - 15.0, 1240.0, master], wire [1405.0, 354.0, 1405.0, master - 15.0, 1320.0, master - 15.0, 1320.0, master],
+            wire [1275.0, master + 74.0, 1275.0, master + 93.0], label ("Stereo out", 1275.0, master + 98.0, 14.0, TimelineView::ink (), 1)]]
+
+    space editor = [label ("SPACE RETURN", 1040.0, 678.0, 12.0, TimelineView::dim (), 0), label ("Size ${TimelineView::hundredths editor.song.space.size}", 1040.0, 708.0, 15.0, TimelineView::ink (), 0), label ("Decay ${TimelineView::hundredths editor.song.space.decay} s", 1200.0, 708.0, 15.0, TimelineView::ink (), 0), label ("Damping ${TimelineView::hundredths editor.song.space.damping}", 1370.0, 708.0, 15.0, TimelineView::ink (), 0)]
+
+    routing (editor, voice) = match daw::BusMix::named (editor.song, voice.bus)
+        Error _ => []
+        Success bus =>
+            inputs = mapList (filterList (editor.song.tracks, \t => t.bus == bus.name), \t => t.name)
+            detector = ui::Pick::either (bus.compressor.sidechain == "", "Self", bus.compressor.sidechain)
+            [label ("Inputs   ${join inputs ", "}", 1040.0, 624.0, 14.0, TimelineView::ink (), 0), label ("Detector   ${detector}     ·     ${TimelineView::hundredths bus.compressor.ratio}× compression", 1040.0, 648.0, 13.0, TimelineView::dim (), 0)]
 
     side editor = listConcat [TimelineView::box (1020.0, 113.0, 516.0, 715.0, TimelineView::panelInk (), 3), label ("Signal flow", 1040.0, 122.0, 18.0, TimelineView::ink (), 0)] (listConcat (space editor) (picked editor))
 
     picked editor = match listGet editor.song.tracks editor.track
         Error _ => []
-        Success voice => flow (editor, voice)
+        Success voice => listConcat (flow (editor, voice)) (routing (editor, voice))
+
+    destination (index, current, name) =
+        title = ui::Pick::either (name == "", "Master", name)
+        shown = ui::Pick::either (name == current, "✓  ${title}", title)
+        ui::Ui::action (shown, "", ui::Plain, name != current, AssignBus(index = index, bus = name))
+
+    (** Native destinations follow the open project and its selected track. *)
+    export menus editor = match editor.page
+        MixPage => match listGet editor.song.tracks editor.track
+            Error _ => []
+            Success voice =>
+                names = listConcat [""] (mapList (editor.song.buses, \bus => bus.name))
+                [ui::Ui::section ("Routing", "", mapList (names, \name => destination (editor.track, voice.bus, name)))]
+        _ => []
 
     (** The whole Mix page. *)
     export shapes editor = listConcat (listConcat (TimelineView::frame editor) (table editor)) (side editor)

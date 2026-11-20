@@ -91,6 +91,29 @@ fn menu_bar(regions: &Regions) {
     }
 }
 
+/// [DAW-MIX-BUS] Choose both destinations from the selected track's native menu.
+fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
+    let read = || -> serde_json::Value {
+        serde_json::from_slice(&std::fs::read(song).expect("read the saved project")).expect("decode the project")
+    };
+    point(canvas, (210.0, 168.0), true);
+    regions.adopt(&point(canvas, (210.0, 168.0), false).0).expect("select glow");
+    let mut expected = read();
+    assert_eq!(expected["tracks"][0]["bus"], "pads");
+    for (label, bus) in [("Master", ""), ("pads", "pads")] {
+        let root = regions.get("root").expect("Mix workspace");
+        let menus = window_menus(&root.node);
+        let routing = menus.iter().find(|menu| menu.title == "Routing").expect("Mix has a Routing menu");
+        assert_eq!(routing.commands.len(), 2, "Master and the project's pads bus");
+        assert_eq!(routing.commands.iter().filter(|command| command.enabled).count(), 1);
+        let destination = routing.commands.iter().find(|item| item.enabled && item.label == label).expect("available destination");
+        let changed = Library::event(0, &Touch::control(destination.event, "")).expect("choose the output");
+        regions.adopt(&changed).expect("redraw the routing diagram and menu");
+        expected["tracks"][0]["bus"] = serde_json::Value::String(bus.to_owned());
+        assert_eq!(read(), expected, "only glow's dry output changes");
+    }
+}
+
 #[test]
 fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     assert_eq!(Library::init(), Ok(()), "the daw's top level must run");
@@ -152,6 +175,7 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     point(canvas, MIX_TAB, true);
     let (mix, _) = point(canvas, MIX_TAB, false);
     assert!(shapes(&mix) >= MIX_SHAPES, "the Mix page draws {} shapes", shapes(&mix));
+    output_routing(&mut regions, canvas, &song);
     let mut drags = Vec::new();
     for track in 0..TRACKS {
         let y = 150.0 + (track as f64 + 0.5) * 36.0;

@@ -42,7 +42,7 @@ module DawSession
         Error why => editor(message = "Could not read ${path}: ${why}")
         Success source => match daw::SongFiles::decode source
             Error why => editor(message = "${path}: ${why}")
-            Success song => picked (editor(song = song, songPath = path, keyboardShown = false, track = 0, patchTrack = -1, rollBar = 0, page = TimelinePage), 0)
+            Success song => picked (editor(song = song, laneTraces = TimelineView::traces song, songPath = path, keyboardShown = false, track = 0, patchTrack = -1, rollBar = 0, page = TimelinePage), 0)
 
     stem path =
         parts = split (replace path "\\" "/" ?: path) "/" ?: [path]
@@ -194,10 +194,15 @@ module DawSession
         Success _ => Success(value = editor(song = song, message = "Saved ${stem editor.songPath}.json."))
 
     (** Commit a mixer adjustment to the project after the fader is released. *)
-    export adjusted (editor, index, gain, pan, reverb) = match daw::Projects::mixed (editor.song, index, gain, pan, reverb)
+    export adjusted (editor, index, gain, pan, reverb) = savedTrack (editor, index, daw::Projects::mixed (editor.song, index, gain, pan, reverb))
+
+    (** Write the new dry destination into the selected track in this same project. *)
+    export routed (editor, index, bus) = savedTrack (editor, index, daw::Projects::routed (editor.song, index, bus))
+
+    savedTrack (editor, index, result) = match result
         Error why => ui::Runtime::step (editor(message = why))
         Success song => match written (editor, song)
-            Success next => ui::Runtime::step (next(track = index))
+            Success next => ui::Runtime::step (next(track = index, revision = satAdd next.revision 1))
             Error why => ui::Runtime::step (editor(message = why))
 
     (** Write the selected note's new velocity into its track in the same song file. *)
@@ -248,10 +253,8 @@ module DawSession
 
     pageAt (editor, x, y) = match editor.page
         MixPage => MixView::rowAt (editor, x, y)
-        _ =>
-            open = TimelineView::openArea ()
-            match EditorView::inside (x, y, open.accessLeft + open.accessWidth / 2.0, open.accessTop + open.accessHeight / 2.0, open.accessWidth / 2.0, open.accessHeight / 2.0)
-                true => Success(value = OpenTrack(index = editor.track))
-                false => match y >= 520.0
-                    true => TimelineView::rollAt (editor, x, y)
-                    false => TimelineView::laneAt (editor, x, y)
+        _ => match x >= 1220.0 && y < 520.0
+            true => TimelineView::inspectorAt (editor, x, y)
+            false => match y >= 520.0
+                true => TimelineView::rollAt (editor, x, y)
+                false => TimelineView::laneAt (editor, x, y)
