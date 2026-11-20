@@ -456,7 +456,7 @@ auditioned driven =
     mut speaker = Heard(blocks = [])
     handle Speaker
         heard hex => speaker := speaker(blocks = listConcat speaker.blocks (filterList ([hex], \h => h != "")))
-    finished = foldList (toList (range (0, 40)), Drive::press (driven, "Audition"), \(previous, _) =>
+    finished = foldList (toList (range (0, 40)), Drive::press (driven, "Audition Patch"), \(previous, _) =>
         match (Drive::holding previous).renderTicket == ""
             true => previous
             false => spoken previous)

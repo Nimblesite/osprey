@@ -404,9 +404,8 @@ module EditorView
         selected = filterList (editor.graph.nodes, \n => n.identity == editor.selected)
         chooser = Ui::picker ("Module", mapList (editor.graph.nodes, \n => Ui::choice ("${n.identity}", componentName (editor, n))), "${editor.selected}", Select(identity = -1))
         heading = Ui::row [Ui::styled ("Patch", ui::Heading, ui::Primary), ui::Spacer, Ui::button ("Close", "dismiss", ShowDetails)]
-        transport = Ui::row [Ui::button ("Audition", "", Audition), Ui::action ("Play", "", ui::Prominent, true, PlayGraph), Ui::button ("Stop", "", StopGraph)]
         local = theme ()
-        Ui::themed (local(spacing = [4, 8, 8, 16, 24, 32]), Ui::framed (style(frameTextSize = 12, frameControlHeight = 28), Ui::column (listConcat [heading, transport, Ui::caption editor.message, chooser] (listConcat (mapList (selected, component)) [Ui::section ("Add to patch", "", [menu (), plugins editor])]))))
+        Ui::themed (local(spacing = [4, 8, 8, 16, 24, 32]), Ui::framed (style(frameTextSize = 12, frameControlHeight = 28), Ui::column (listConcat [heading, chooser] (listConcat (mapList (selected, component)) [Ui::section ("Add to patch", "", [menu (), plugins editor])]))))
 
     keyboardDock editor =
         dock = CardArts::dock editor
@@ -454,4 +453,4 @@ module EditorView
     token (name, light, dark) = ui::Token(tokenName = name, tokenLight = light, tokenDark = dark)
 
     (** Prism's theme is independent of a fixed machine document. *)
-    export theme () = ui::Theme(tokens = [token ("button", "#E6DFF5", "#29213F"), token ("buttonText", "#201630", "#F2EDFF"), token ("accent", "#6944BA", "#BA9EFF"), token ("caution", "#986400", "#FFCD75"), token ("good", "#14776F", "#4FDAD3"), token ("danger", "#BE294B", "#FF7892"), token ("background", "#F4EFFB", "#100D21"), token ("text", "#201630", "#F2EDFF")], spacing = [4, 0, 12, 20, 28, 36], feedback = 120, settle = 220)
+    export theme () = ui::Theme(tokens = [token ("button", "#E6DFF5", "#29213F"), token ("buttonText", "#201630", "#F2EDFF"), token ("accent", "#C2551C", "#FF8442"), token ("caution", "#986400", "#FFCD75"), token ("good", "#14776F", "#4FDAD3"), token ("danger", "#BE294B", "#FF7892"), token ("background", "#F4EFFB", "#100D21"), token ("text", "#201630", "#F2EDFF")], spacing = [4, 0, 12, 20, 28, 36], feedback = 120, settle = 220)

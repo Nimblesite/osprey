@@ -111,7 +111,7 @@ editorUiJourney () =
     feedback = Drive::pointer (feedbackMoved, 519.0, 171.5, false)
     sameGraph (feedback, second)
     mentions (feedback, "loop")
-    heard = pressedFor (second, "Audition", 1)
+    heard = pressedFor (second, "Audition Patch", 1)
     firstAsk (heard, \request =>
         match request.capability
             ui::Run executable arguments _ _ _ _ =>
@@ -195,7 +195,7 @@ pluginUiJourney () =
     wrongSource = inspectorAction (controlled, 2, "Use audio output")
     refusedModulation = inspectorAction (wrongSource, 0, "Modulate Delay")
     sameGraph (refusedModulation, controlled)
-    audition = pressedFor (finished, "Audition", 1)
+    audition = pressedFor (finished, "Audition Patch", 1)
     firstAsk (audition, \request =>
         match request.capability
             ui::HostCall host operation arguments timeout limit slice =>
@@ -206,7 +206,7 @@ pluginUiJourney () =
                 expect (startsWith slice "prism-audio:", true)
                 expect (length arguments > 3, true)
             _ => expect (false, true))
-    _ = pressedFor (audition, "Audition", 0)
+    _ = pressedFor (audition, "Audition Patch", 0)
     heldAudition = Drive::holding audition
     forEachList ([[], listConcat heldAudition.renderPending heldAudition.renderPending], \pending =>
         lost = synth::GraphPreview::completed (heldAudition(renderPending = pending), heldAudition.renderTicket, Success(value = "{\"status\":0,\"session\":\"orphan\"}"))
@@ -244,7 +244,7 @@ pluginUiJourney () =
         stopped = stoppedFrom running
         showsIn (stopped, "Playback stopped.", true)
         drainedOf stopped)
-    live = Drive::press (finished, "Play")
+    live = Drive::press (finished, "Play Patch")
     continuing = foldList (toList (range (0, 40)), live, \(previous, _) => audioDone previous)
     expect ((Drive::holding continuing).renderContinuous, true)
     expect ((Drive::holding continuing).renderTicket != "", true)
@@ -490,7 +490,7 @@ drainedOf driven =
     countOf ((Drive::holding driven).renderSessions, 0)
 
 // Playback stopped from `driven`.
-stoppedFrom driven = audioDone (Drive::press (driven(drivenProgram = synth::EditorApp::program ()), "Stop"))
+stoppedFrom driven = audioDone (Drive::press (driven(drivenProgram = synth::EditorApp::program ()), "Stop Patch"))
 
 // A note-on at `offset` for this `identity`.
 noteOn (identity, offset, velocity) = synth::HostNote(kind = 1, offset = offset, pitch = 60, channel = 0, identity = identity, velocity = velocity)

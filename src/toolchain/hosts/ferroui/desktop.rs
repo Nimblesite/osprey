@@ -1,7 +1,8 @@
 //! The window of the host (feature `desktop`): the application's regions as the window's content,
 //! the frame clock on FerroUI's animation frames, and the window's appearance choosing the
 //! theme's colours. `OSPREY_NATIVE_TITLE` and `OSPREY_NATIVE_WINDOW` (`WIDTHxHEIGHT`) set the title
-//! and content size, `OSPREY_NATIVE_CHROME=bare` runs the content under the title bar; `OSPREY_NATIVE_BENCH=<seconds>` prints frame timings and closes the process.
+//! and content size, `OSPREY_NATIVE_CHROME=bare` runs the content under the title bar, `OSPREY_NATIVE_APPEARANCE=dark`
+//! keeps the controls dark whatever the system's appearance (an application that draws a dark canvas); `OSPREY_NATIVE_BENCH=<seconds>` prints frame timings and closes the process.
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -93,6 +94,9 @@ fn launch(name: String, view: impl FnOnce() -> Element + 'static, started: impl 
         .start(
             move |application, _| {
                 own_application_menu(application);
+                if std::env::var("OSPREY_NATIVE_APPEARANCE").is_ok_and(|look| look == "dark") {
+                    application.set_requested_theme_variant(Some(ThemeVariant::dark()));
+                }
                 application.styles().add(FluentTheme::new().as_style());
                 let window = ferroui_view::mount_window(view);
                 started(&window);

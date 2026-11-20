@@ -21,7 +21,7 @@ export OSPREY_NATIVE_APP_DIR="$app" OSPREY_RUNTIME_DIR="$repo/src/toolchain/comp
 window_size=1152x756
 [[ -z "${PRISM_PROJECT:-}" ]] || window_size=1152x752
 export OSPREY_NATIVE_TITLE="Prism" OSPREY_NATIVE_WINDOW="$window_size" OSPREY_NATIVE_CHROME=bare \
-    OSPREY_NATIVE_TITLE_BAR=50
+    OSPREY_NATIVE_TITLE_BAR=50 OSPREY_NATIVE_APPEARANCE=dark
 machine="$repo/src/osprey/packages/signal_flow/signal_flow.machine.json"
 binary="${PRISM_BINARY:-$repo/target/release/ferroui-osprey-native}"
 worker="$repo/target/vst-worker/osprey-vst-worker"
