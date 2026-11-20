@@ -5,18 +5,12 @@ continue a recording you already have: the engine holds the recording's last mom
 music grows out of it, and the same held sound can return later at other pitches.
 
 ```sh
-make -C src/toolchain/targets/macos songs INTRO="/path/to/Broken Circuitry.wav"
+make -C src/toolchain/targets/macos songs-render   # phosphor-drift.json -> target/songs/phosphor-drift/song.wav
+make -C src/toolchain/targets/macos songs-play     # plays that WAV; never renders
 ```
 
-That builds the player, renders `broken-circuitry.json`, writes `target/songs/out/song.wav` and plays it.
-`SONG=` picks another project, and leaving `INTRO` out renders the piece on its own. The player itself is
-
-```sh
-songs <project.json> <output-folder> [intro-recording] [--silent]
-```
-
-`--silent` writes the file without playing it. Rendering is offline and slow: the included song takes
-several minutes.
+`SONG=` picks another project for either target. The player itself is `songs <project.json> <output-folder>`.
+Rendering is offline and slow: the included song takes about 90 minutes at 48 kHz.
 
 ## The project file
 
@@ -30,7 +24,8 @@ One JSON object, decoded in [song_files.ospml](src/song_files.ospml) into the ty
 | `sampleRate` | Frames per second, 8,000–192,000 |
 | `drive` | Master soft limiter, 0.1 (nearly linear) to 4 |
 | `space` | The shared reverb: `size` 0.25–2, `decay` in seconds, `damping` 0–0.95 |
-| `sustains` | Appearances of the held end of the intro: `start` beat, pitch `ratio` (1 as recorded, 1.3333 a fourth up), `rise`, `hold` and `fade` in seconds, `gain`, `reverb` send |
+| `intro` | The recording the piece continues: `recording` (a path, `~/` for your home folder, otherwise relative to the folder you run from), `tail` seconds the engine holds (0.5–10), `crossfade` seconds into the piece (at most the tail) |
+| `sustains` | Appearances of the held tail of the intro: `start` beat, pitch `ratio` (1 as recorded, 1.3333 a fourth up), `rise`, `hold` and `fade` in seconds, `gain`, `reverb` send |
 | `tracks` | The piano roll, below |
 
 A track has a `name`, an `instrument`, `gain` (0–4), `pan` (−1 left to 1 right), a `reverb` send (0–1)
@@ -57,8 +52,8 @@ times `x`) or `{"velocity": x}`. The modules are `exciter`, `sine`, `wavetable`,
 ## What the host tools do
 
 Osprey writes text files, so each rendered part is written as hexadecimal and `xxd` turns it into a WAV.
-`ffmpeg` cuts the last 1.5 seconds of the intro for the engine to analyse, joins the parts, and crossfades
-the piece in over the intro's final 0.35 seconds. `afplay` plays the result. Every command runs under
+`ffmpeg` cuts the intro's last `tail` seconds for the engine to analyse, joins the parts, and crossfades
+the piece in over the intro's final `crossfade` seconds. `songs-play` plays the result with `afplay`. Every command runs under
 `timeout`. Nothing else touches the audio: every note, the mix, the reverb, the limiter and the held intro
 pad come from the engine.
 
@@ -68,7 +63,7 @@ pad come from the engine.
 - There are no automated tests for the player or the arrangement modules yet.
 - The limiter is a plain tanh curve without oversampling, and the piece is rendered in mono per track
   before panning, so detuned operators do not spread across the stereo field.
-- The intro's tempo and key are not detected. `broken-circuitry.json` was written for that recording by
+- The intro's tempo and key are not detected. `phosphor-drift.json` was written for the Broken Circuitry recording by
   measuring it first: a pulse of about 97.5 beats per minute and an ending on a C drone in the D♭ major
   scale. The piece is in F Phrygian, so the drone is its dominant, and the held drone returns a fourth up
   and a fifth down (both F) in the breakdown and the ending.
@@ -76,7 +71,8 @@ pad come from the engine.
   for a simple patch. It rejects `lfo` and `modulatedGain` routing and stereo modules (granular); a
   `bowed` node costs about 20 seconds per second, and `spectral` and `reverb` nodes are too slow to use
   per note. The whole song took about 90 minutes to render at 48 kHz.
-- The recording itself is not in the repository; without `INTRO` the sustains are skipped.
+- The recording itself is not in the repository; `phosphor-drift.json` expects it at
+  `~/Documents/Audio/Broken Circuitry.wav`.
 - The two sides use reverbs of different size, so a steady low tone sent to the reverb adds in phase on
   one side and out of phase on the other. At a send of 0.3 the held drone measured 0.47 RMS on the right
   against 0.29 on the left; the song keeps its sustains dry for that reason.

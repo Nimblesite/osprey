@@ -1,8 +1,8 @@
-// [SYNTH-ARRANGEMENT-PLAYER] Render a song project, join it to its intro recording and play it.
+// [SYNTH-ARRANGEMENT-PLAYER] Render a song project to one WAV, after the recording it continues.
 namespace songs
 
 (** The engine renders every track and the held end of the intro; `ffmpeg` only cuts the intro's last
-    seconds, joins the rendered parts and crossfades them after the intro, and `afplay` plays the result. *)
+    seconds, joins the rendered parts and crossfades them after the intro. *)
 module Player
     // Frames per WAV part: 960,000 interleaved samples, half the encoder's limit.
     chunk = 480000
@@ -11,8 +11,7 @@ module Player
 
     piecePath request = "${request.folder}/piece.wav"
 
-    (** The finished recording: the intro (when given) crossfaded into the rendered piece. *)
-    export songPath request = "${request.folder}/song.wav"
+    songPath request = "${request.folder}/song.wav"
 
     decoded (request, size) = match readFileBytes (tailPath request) 0 size
         Error why => Error(message = why)
@@ -20,8 +19,8 @@ module Player
             Error why => Error(message = why)
             Success wave => Success(value = wave.samples)
 
-    // The intro's last 1.5 s as mono at the song's rate.
-    tail (request, arrangement) = match Shell::ran (120, "ffmpeg -v error -y -sseof -1.5 -i ${Shell::quoted request.intro} -ac 1 -ar ${arrangement.sampleRate} -c:a pcm_s16le ${Shell::quoted (tailPath request)}")
+    // The intro's last `tail` seconds as mono at the song's rate.
+    tail (request, arrangement) = match Shell::ran (120, "ffmpeg -v error -y -sseof -${arrangement.intro.tail} -i ${Shell::located arrangement.intro.recording} -ac 1 -ar ${arrangement.sampleRate} -c:a pcm_s16le ${Shell::quoted (tailPath request)}")
         Error why => Error(message = why)
         Success _ => match fileSize (tailPath request)
             Error why => Error(message = why)
@@ -39,7 +38,7 @@ module Player
         Error why => Error(message = why)
         Success raw => foldList (arrangement.sustains, Success(value = buses), \(outcome, glow) => glowed (arrangement, raw, outcome, glow))
 
-    bridged (request, arrangement, buses) = match request.intro == "" || length arrangement.sustains == 0
+    bridged (request, arrangement, buses) = match length arrangement.sustains == 0
         true => Success(value = buses)
         false => match tail (request, arrangement)
             Error why => Error(message = why)
@@ -75,12 +74,12 @@ module Player
             true => Success(value = held.parts)
             false => Error(message = held.fault)
 
-    // The intro at the piece's rate, then a 0.35 s equal-gain crossfade into the piece.
-    crossfade arrangement = "[0:a]aresample=${arrangement.sampleRate},aformat=sample_fmts=flt:channel_layouts=stereo[intro];[intro][1:a]acrossfade=d=0.35:c1=tri:c2=tri"
+    // The intro at the piece's rate, then an equal-gain crossfade of `crossfade` seconds into the piece.
+    crossfade arrangement = "[0:a]aresample=${arrangement.sampleRate},aformat=sample_fmts=flt:channel_layouts=stereo[intro];[intro][1:a]acrossfade=d=${arrangement.intro.crossfade}:c1=tri:c2=tri"
 
-    joined (request, arrangement) = match request.intro == ""
-        true => Shell::ran (120, "cp ${Shell::quoted (piecePath request)} ${Shell::quoted (songPath request)}")
-        false => Shell::ran (300, "ffmpeg -v error -y -i ${Shell::quoted request.intro} -i ${Shell::quoted (piecePath request)} -filter_complex \"${crossfade arrangement}\" -c:a pcm_s24le ${Shell::quoted (songPath request)}")
+    joined (request, arrangement) = match Shell::ran (300, "ffmpeg -v error -y -i ${Shell::located arrangement.intro.recording} -i ${Shell::quoted (piecePath request)} -filter_complex \"${crossfade arrangement}\" -c:a pcm_s24le ${Shell::quoted (songPath request)}")
+        Error why => Error(message = why)
+        Success _ => Success(value = songPath request)
 
     // The concat list names parts relative to itself.
     assembled (request, arrangement, files) = match writeFile "${request.folder}/parts.txt" (join (mapList (files, \path => "file ${Shell::quoted path}")) "\n")
@@ -97,7 +96,7 @@ module Player
                 Error why => Error(message = why)
                 Success files => assembled (request, arrangement, files)
 
-    (** Render the song into the request's folder; the result is `songPath request`. *)
+    (** Render the song into the request's folder; the result is the finished WAV's path. *)
     export rendered (request, arrangement) = match synth::Arrangements::frames arrangement
         Error why => Error(message = why)
         // The held intro comes first, so a bad sustain fails before the long track renders.
@@ -107,5 +106,3 @@ module Player
                 Error why => Error(message = why)
                 Success all => mixed (request, arrangement, all)
 
-    (** Play the finished recording through the default output; bounded at one hour. *)
-    export played request = Shell::ran (3600, "afplay ${Shell::quoted (songPath request)}")

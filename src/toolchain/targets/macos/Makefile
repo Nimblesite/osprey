@@ -9,7 +9,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow songs synth storage tally probe
+.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow songs-render songs-play synth storage tally probe
 
 .PHONY: pocket-orchestra _pocket-orchestra-models
 ## pocket-orchestra: Open Light Orchestra: this Mac plays audio, phones join by QR and WebSocket.
@@ -104,16 +104,22 @@ storage: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh
 
-## songs: Render a song project (a JSON piano roll) with @osprey/synth and play it. SONG picks the
-##        project; INTRO is an optional recording the piece continues. Needs ffmpeg and xxd; writes
-##        target/songs/out/song.wav. [SYNTH-ARRANGEMENT-PLAYER]
-SONG ?= src/osprey/examples/songs/broken-circuitry.json
-INTRO ?=
-songs:
+## songs-render: Render a song project (a JSON piano roll, its intro recording named inside) with
+##               @osprey/synth to target/songs/<project>/song.wav. SONG picks the project. Needs ffmpeg
+##               and xxd; rendering is offline and slow. [SYNTH-ARRANGEMENT-PLAYER]
+SONG ?= src/osprey/examples/songs/phosphor-drift.json
+SONG_DIR = target/songs/$(basename $(notdir $(SONG)))
+SONG_WAV = $(SONG_DIR)/song.wav
+songs-render:
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	mkdir -p target/songs
 	$(BIN) build src/osprey/examples/songs -o target/songs/songs
-	target/songs/songs "$(SONG)" target/songs/out "$(INTRO)"
+	target/songs/songs "$(SONG)" "$(SONG_DIR)"
+
+## songs-play: Play SONG's rendered WAV with afplay; it never renders (run songs-render first).
+songs-play:
+	@test -f "$(SONG_WAV)" || { echo "songs-play: $(SONG_WAV) is missing; run make -C src/toolchain/targets/macos songs-render"; exit 1; }
+	timeout 3600 afplay "$(SONG_WAV)"
 
 ## probe: Open the GPUI host's probe application (counter, note, load).
 probe: _runtime_macos

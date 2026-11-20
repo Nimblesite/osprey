@@ -1,4 +1,5 @@
-{"title": "Broken Circuitry: Reassembly", "tempo": 97.5, "sampleRate": 48000, "drive": 2.0,
+{"title": "Phosphor Drift", "tempo": 97.5, "sampleRate": 48000, "drive": 2.0,
+ "intro": {"recording": "~/Documents/Audio/Broken Circuitry.wav", "tail": 1.5, "crossfade": 0.35},
  "space": {"size": 1.9, "decay": 6.5, "damping": 0.4},
  "sustains": [
   {"start": 0, "ratio": 1, "rise": 0.3, "hold": 8, "fade": 12, "gain": 1.0, "reverb": 0},

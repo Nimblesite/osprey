@@ -1,18 +1,12 @@
-// [SYNTH-ARRANGEMENT-PLAYER] songs <project.json> <output-folder> [intro-recording] [--silent]
+// [SYNTH-ARRANGEMENT-PLAYER] songs <project.json> <output-folder>
 
-usage = "usage: songs <project.json> <output-folder> [intro-recording] [--silent]"
+usage = "usage: songs <project.json> <output-folder>"
 
-request items =
-    paths = filterList (items, \item => item != "--silent")
-    songs::Request(project = listGet paths 0 ?: "", folder = listGet paths 1 ?: "", intro = listGet paths 2 ?: "", play = length paths == length items)
+request items = songs::Request(project = listGet items 0 ?: "", folder = listGet items 1 ?: "")
 
-finished (request, outcome) = match outcome
+finished outcome = match outcome
     Error why => print "songs: ${why}"
-    Success _ => match request.play
-        false => print "songs: wrote ${songs::Player::songPath request}"
-        true => match songs::Player::played request
-            Error why => print "songs: ${why}"
-            Success _ => print "songs: played ${songs::Player::songPath request}"
+    Success path => print "songs: wrote ${path}"
 
 performed (request, source) = match songs::SongFiles::decode source
     Error why => print "songs: ${why}"
@@ -20,9 +14,9 @@ performed (request, source) = match songs::SongFiles::decode source
         Error why => print "songs: ${why}"
         Success _ =>
             print "songs: ${arrangement.title}, ${arrangement.tempo} bpm, ${length arrangement.tracks} tracks"
-            finished (request, songs::Player::rendered (request, arrangement))
+            finished (songs::Player::rendered (request, arrangement))
 
-started request = match request.project != "" && request.folder != "" && songs::Shell::safe request.project && songs::Shell::safe request.folder && songs::Shell::safe request.intro
+started request = match request.project != "" && request.folder != "" && songs::Shell::safe request.project && songs::Shell::safe request.folder
     false => print usage
     true => match readFile request.project
         Error why => print "songs: ${why}"

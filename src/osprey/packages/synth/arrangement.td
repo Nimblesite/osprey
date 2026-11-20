@@ -11,7 +11,8 @@ type Note { pitch: Int start: Float length: Float velocity: Float }
 type Track { name: String instrument: Instrument gain: Float pan: Float reverb: Float notes: List<Note> }
 type Space { size: Float decay: Float damping: Float }
 type Afterglow { start: Float ratio: Float rise: Float hold: Float fade: Float gain: Float reverb: Float }
-type Arrangement { title: String tempo: Float sampleRate: Int drive: Float space: Space sustains: List<Afterglow> tracks: List<Track> }
+type Intro { recording: String tail: Float crossfade: Float }
+type Arrangement { title: String tempo: Float sampleRate: Int drive: Float space: Space intro: Intro sustains: List<Afterglow> tracks: List<Track> }
 type NoteRun<S> { held: S samples: List<Float> fault: String }
 type NoteSpan { gate: Float total: Int }
 type VoicePair<A, B> { one: A other: B }

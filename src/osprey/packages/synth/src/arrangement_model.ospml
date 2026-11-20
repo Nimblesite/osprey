@@ -93,12 +93,18 @@ type Afterglow =
     gain : float
     reverb : float
 
+type Intro =
+    recording : string
+    tail : float
+    crossfade : float
+
 type Arrangement =
     title : string
     tempo : float
     sampleRate : int
     drive : float
     space : Space
+    intro : Intro
     sustains : List<Afterglow>
     tracks : List<Track>
 
