@@ -313,7 +313,7 @@ sealed partial class SharedViewPage
     // A canvas draws its scene: the checked rows that name this canvas row as their marker.
     Seat Sketched(Shown shown, int index)
     {
-        var scene = new SceneView(problem => report([problem]));
+        var scene = new SceneView(problem => report(new[] { problem }));
         var seat = new Seat(scene.Element, RowKind.Canvas) { Scene = scene };
         seat.Restyle = (next, at) => Scene(scene, next, at);
         seat.Restyle(shown, index);
@@ -406,7 +406,7 @@ sealed partial class SharedViewPage
         if (!seenIcons.Contains(name))
         {
             seenIcons.Add(name);
-            report([$"No icon for symbol {name}"]);
+            report(new[] { $"No icon for symbol {name}" });
         }
         return new Border { Width = 16, Height = 16, BorderThickness = new Thickness(1), BorderBrush = Paint(0x888888FF) };
     }

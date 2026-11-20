@@ -14,8 +14,8 @@ export const ALLOWED_TRACKED = new Set([
   'LICENSE', 'Makefile', 'README.md', 'SECURITY.md', 'docs', 'scripts', 'src',
   ])
 
-/** Local, ignored files that tools keep in the root by design. */
-export const ALLOWED_LOCAL_FILES = new Set(['.DS_Store', '.env', '.mcp.json'])
+/** Local, ignored files that tools keep in the root by design (`.git` is a file in a linked worktree). */
+export const ALLOWED_LOCAL_FILES = new Set(['.DS_Store', '.env', '.git', '.mcp.json'])
 
 export function rootViolations({ tracked, files }) {
   const known = new Set(tracked)
