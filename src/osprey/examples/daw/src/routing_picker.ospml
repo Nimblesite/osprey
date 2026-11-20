@@ -23,7 +23,7 @@ module RoutingPicker
     export stamp editor = match editor.outputEdit
         BrowsingSends offset => "sends ${offset}"
         EditingBus name => "bus ${name}"
-        EditingSend draft => "send ${draft.editingId} ${draft.sourceKey} ${draft.targetBus} ${draft.levelText} ${draft.sendActive}"
+        EditingSend draft => "send ${draft.editingId} ${draft.routeOffset} ${draft.sourceKey} ${draft.targetBus} ${draft.levelText} ${draft.sendActive}"
         OutputClosed => "closed"
         ChoosingOutput focus => "choose ${focus}"
         NamingGroup proposed => "name ${proposed}"

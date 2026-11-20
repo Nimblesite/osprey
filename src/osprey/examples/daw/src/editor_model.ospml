@@ -69,6 +69,7 @@ type SendPort =
     connections : List<string>
 
 type SendDraft =
+    routeOffset : int
     editingId : int
     sourceKey : string
     targetBus : string
@@ -250,6 +251,8 @@ type EditorAction =
     RouteBus
     BeginSend
         identity : int
+    PagePortRoutes
+        offset : int
     SendSource
     SendDestination
     SendLevel

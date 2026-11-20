@@ -26,7 +26,19 @@ type Arrangement { title: String tempo: Float sampleRate: Int drive: Float space
 type NoteRun<S> { held: S samples: List<Float> fault: String }
 type NoteSpan { gate: Float total: Int }
 type VoicePair<A, B> { one: A other: B }
-type TrackMix { cursor: Int carry: List<Float> samples: List<Float> fault: String }
+# [DAW-RENDER-PLAY] Playback state: cued notes, sounding notes, per-bus processor state and the Space rooms.
+type Cue { at: Int note: Note }
+type Sounding { at: Int lanes: List<List<Float>> }
+type TrackPlay { pending: List<Cue> sounding: List<Sounding> sends: List<AudioSend> }
+type Advanced { play: TrackPlay buses: Buses }
+type Heard { plays: List<TrackPlay> buses: Buses }
+type Pad { glow: Afterglow sound: Sounding }
+type BusState { name: String left: BandState right: BandState level: Float }
+type Mastering { buses: Buses states: List<BusState> }
+type Room<C, H> { config: C held: H }
+type Playing<C, H> { cursor: Int tracks: List<TrackPlay> pads: List<Pad> states: List<BusState> near: Room<C, H> far: Room<C, H> }
+type Played<C, H> { playing: Playing<C, H> left: List<Float> right: List<Float> }
+type Take<C, H> { playing: Playing<C, H> lefts: List<List<Float>> rights: List<List<Float>> }
 type Stereo { name: String left: List<Float> right: List<Float> }
 type Keyed { name: String samples: List<Float> }
 type Buses { left: List<Float> right: List<Float> wet: List<Float> groups: List<Stereo> keys: List<Keyed> }
@@ -50,11 +62,11 @@ type CardMarks { cardRole: String cardMarks: List<Stamp> }
 type CardArt { artNode: Int artKey: String artShapes: List<Primitive> artControls: List<Accessible> }
 union Page { PatchPage {} TimelinePage {} MixPage {} }
 type SendPort { portKey: String portCaption: String portNode: Int portOutlet: Int portChannels: Int connections: List<String> }
-type SendDraft { editingId: Int sourceKey: String targetBus: String levelText: String sendActive: Bool options: List<SendPort> }
+type SendDraft { routeOffset: Int editingId: Int sourceKey: String targetBus: String levelText: String sendActive: Bool options: List<SendPort> }
 union OutputEdit { BrowsingSends { offset: Int } EditingBus { busName: String } EditingSend { draft: SendDraft } OutputClosed {} ChoosingOutput { focus: Int } NamingGroup { proposed: String } }
 type RollMotion { anchorX: Float anchorY: Float rowSize: Float stem: Bool original: Note preview: Note }
 union RollDrag { RollIdle {} RollHeld { motion: RollMotion } }
 type Shortcut { command: String keys: String }
 type Keymap { name: String shortcuts: List<Shortcut> }
 type Editor<G,P,S,M> { skin: M graph: G past: List<GraphSnapshot<G>> future: List<GraphSnapshot<G>> gesture: List<GraphSnapshot<G>> assetFolder: String paletteShown: Bool detailsShown: Bool keyboardShown: Bool keyboardWidth: Float paletteDrag: String note: Int armedNote: Int scopeSamples: List<Float> positions: List<NodePosition> dragging: Int grabX: Float grabY: Float layoutRevision: Int selected: Int nextIdentity: Int source: Int outlet: Int wireDragging: Bool wireMonitor: Bool wireX: Float wireY: Float selectedCable: Int revision: Int message: String workerPath: String audioPath: String pluginPath: String catalog: List<PluginClass> pluginBindings: List<PluginBinding> sampleSerial: Int sampleTicket: String pluginSerial: Int pluginTicket: String pluginClassId: String renderPending: List<P> renderBindings: List<PluginBinding> renderSerial: Int renderTicket: String renderSessions: List<RenderSession> renderOpening: Bool renderInput: String renderDevicePending: List<DevicePending<G,S>> renderDeviceKey: String renderEmptyCallbacks: Int renderContinuous: Bool renderStopping: Bool cards: List<CardMarks> art: List<CardArt> page: Page outputEdit: OutputEdit inspectSpace: Bool lanePage: Int laneTraces: List<List<PathStep>> overview: List<PathStep> song: Arrangement songPath: String renderer: String track: Int patchTrack: Int selectedNote: Int rollDrag: RollDrag rollBar: Int songTicket: String keymap: Keymap keysPath: String }
-union EditorAction { Undo {} Redo {} Add { kind: String } Select { identity: Int } Source { identity: Int outlet: Int } Connect { identity: Int inlet: Int } Disconnect { identity: Int inlet: Int } RemoveCable {} Remove {} EditParameter { identity: Int key: String } Modulate { identity: Int key: String } Audition {} PlayGraph {} StopGraph {} Surface {} Keyboard {} ShowModules {} ShowDetails {} ShowKeyboard {} Strike { note: Int } PluginPath {} LoadSample {} BuiltinSample {} ScanVst {} CreateVst { identifier: String } ShowPage { page: Page } PickTrack { index: Int bar: Int } SelectNote { index: Int } SetVelocity { value: Float } AdjustMix { index: Int gain: Float pan: Float reverb: Float } ScrollLanes { page: Int } ChooseOutput { index: Int offset: Int } NewGroup {} BrowseBuses {} BrowseSends { offset: Int } PickBus {} RouteBus {} BeginSend { identity: Int } SendSource {} SendDestination {} SendLevel {} FlipSend {} CommitSend {} DeleteSend {} GroupName {} CommitGroup {} CloseOutput {} InspectBus { space: Bool } AssignBus { index: Int bus: String } OpenTrack { index: Int } PlaySong {} RenderSong {} StopSong {} SaveProject {} UseKeymap { name: String } LoadKeymap {} }
+union EditorAction { Undo {} Redo {} Add { kind: String } Select { identity: Int } Source { identity: Int outlet: Int } Connect { identity: Int inlet: Int } Disconnect { identity: Int inlet: Int } RemoveCable {} Remove {} EditParameter { identity: Int key: String } Modulate { identity: Int key: String } Audition {} PlayGraph {} StopGraph {} Surface {} Keyboard {} ShowModules {} ShowDetails {} ShowKeyboard {} Strike { note: Int } PluginPath {} LoadSample {} BuiltinSample {} ScanVst {} CreateVst { identifier: String } ShowPage { page: Page } PickTrack { index: Int bar: Int } SelectNote { index: Int } SetVelocity { value: Float } AdjustMix { index: Int gain: Float pan: Float reverb: Float } ScrollLanes { page: Int } ChooseOutput { index: Int offset: Int } NewGroup {} BrowseBuses {} BrowseSends { offset: Int } PickBus {} RouteBus {} BeginSend { identity: Int } PagePortRoutes { offset: Int } SendSource {} SendDestination {} SendLevel {} FlipSend {} CommitSend {} DeleteSend {} GroupName {} CommitGroup {} CloseOutput {} InspectBus { space: Bool } AssignBus { index: Int bus: String } OpenTrack { index: Int } PlaySong {} RenderSong {} StopSong {} SaveProject {} UseKeymap { name: String } LoadKeymap {} }
