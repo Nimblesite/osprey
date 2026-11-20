@@ -105,4 +105,7 @@ def operatorLevel (velocity frame gate attack release sampleRate : Float) : Floa
 def drumBody (velocity noise frame decay sampleRate : Float) : Float :=
   velocity * (1 - noise) * ringing frame decay sampleRate
 
+/-- The piece's frames: the last note end plus the reverb decay and two seconds. -/
+def pieceFrames (beats tempo sampleRate decay : Float) : Float := beatFrames beats tempo sampleRate + secondFrames (decay + 2) sampleRate
+
 end daw.ArrangeMath

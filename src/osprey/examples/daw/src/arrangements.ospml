@@ -53,7 +53,7 @@ module Arrangements
     (** Frames in the piece: its last note end plus the reverb decay and two seconds; at most 28,800,000. *)
     export frames arrangement = match valid arrangement
         false => Error(message = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000, a drive of 0.1 to 4 and 1 to 64 tracks.")
-        true => match floatToInt (ArrangeMath::beatFrames (beats arrangement, arrangement.tempo, toFloat arrangement.sampleRate) + ArrangeMath::secondFrames (arrangement.space.decay + 2.0, toFloat arrangement.sampleRate))
+        true => match floatToInt (ArrangeMath::pieceFrames (beats arrangement, arrangement.tempo, toFloat arrangement.sampleRate, arrangement.space.decay))
             Error _ => Error(message = "The arrangement length is not finite.")
             Success count => match count >= 1 && count <= 28800000
                 false => Error(message = "An arrangement must last 1 to 28800000 frames.")

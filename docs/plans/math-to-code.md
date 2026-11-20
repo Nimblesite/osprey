@@ -37,7 +37,10 @@ Hand-written mathematics moves to `.lean`; the package's recorded outputs stay b
 - [x] `@osprey/micrograd`: `src/Libm.lean` holds `exp_of` and `tanh_of`; recorded output byte-identical.
 - [x] `@osprey/math`, the standard library of well-known formulas, is Lean only: `Real` (`pi`, `sinh`, `cosh`, `tanh`, `arsinh`, `logb`, `sigmoid`, `negMulLog`, `binEntropy`, `gaussianPDFReal`), `Quadratic` (`discrim`, `rootAdd`, `rootSub`) and `AffineMap` (`lineMap`). Each restates a named Mathlib declaration at the pinned commit over `Float` and quotes its source line; `open Float (exp log sqrt)` keeps the text Mathlib's.
 - [x] `@osprey/scipy`: `src/Sigmoid.lean` holds `expit`; recorded output byte-identical.
-- [ ] Next candidates, each when its fragment exists: the `@osprey/synth` filter coefficients and envelopes (records), `@osprey/torch` learning-rate schedules (integers, folds), `@osprey/scipy` logistic and Box-Cox (calls into hand-written series).
+- [x] `@osprey/synth`: `src/VoiceMath.lean` holds the state-variable filter (`warped`, `damping`, the three gains, `filterable`, the band, low and high outputs, `integrated`) and the reference voice (`midiKey`, `swept`, `butterworth`, `turns`, `triangle`, `saw`, `voiced`, `knobCutoff`), reusing `Waves` for `wrap`, `sine` and `midiFrequency`. Package tests 39/39 under GC and ARC.
+- [x] The daw: `ArrangeMath.lean` holds the note and piece frame counts, note ends, sustain glow length and limits, and two-signal mixing.
+- [ ] Every remaining Float formula in `@osprey/synth/src/*.ospml` moves into its domain's `*Math.lean` (physical, spectral, tables, nonlinear, phase, grains, fitting, control).
+- [ ] Next candidates, each when its fragment exists: `@osprey/torch` learning-rate schedules (integers, folds), `@osprey/scipy` logistic and Box-Cox (calls into hand-written series).
 
 ## Phase 5 — Lean acceptance and the oracle [MATH-CODE-ORACLE]
 

@@ -12,7 +12,7 @@ module Synth
     export clipPath = "/tmp/osprey-synth.wav"
 
     (** The patch the machine's inputs describe: the Prism skin's Filter cutoff sweeps 20 Hz to 20 kHz, as its `expo:1:0.02:20` readout shows. *)
-    export patch machine = Patch(pitch = Voice::frequency (Machines::text (machine, "note")), sounding = Machines::flag (machine, "sourceOn"), filtered = Machines::flag (machine, "processOn"), wave = Machines::text (machine, "wave"), cutoff = 20.0 * pow (1000.0, Machines::number (machine, "process")), depth = ui::Pick::either (Machines::flag (machine, "controlOn"), Machines::number (machine, "control"), 0.0), lfo = Voice::hertz (Machines::text (machine, "rate")), audible = Machines::flag (machine, "outputOn"), volume = Machines::number (machine, "volume"))
+    export patch machine = Patch(pitch = Voice::frequency (Machines::text (machine, "note")), sounding = Machines::flag (machine, "sourceOn"), filtered = Machines::flag (machine, "processOn"), wave = Machines::text (machine, "wave"), cutoff = synth::VoiceMath::knobCutoff (Machines::number (machine, "process")), depth = ui::Pick::either (Machines::flag (machine, "controlOn"), Machines::number (machine, "control"), 0.0), lfo = Voice::hertz (Machines::text (machine, "rate")), audible = Machines::flag (machine, "outputOn"), volume = Machines::number (machine, "volume"))
 
     // Writes the clip from hex and replaces itself with afplay, so the host owns one process per clip.
     script = "open my $f, '>', $ARGV[1] or exit 1; binmode $f; print $f pack('H*', $ARGV[0]); close $f; exec '/usr/bin/afplay', $ARGV[1]"
