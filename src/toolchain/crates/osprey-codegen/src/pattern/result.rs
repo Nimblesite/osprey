@@ -183,7 +183,7 @@ fn fused_list_get(cg: &mut Codegen, arguments: &[Expr], arms: &[MatchArm]) -> Re
     let error = result_arm(arms, "Error");
     // The record is built only for an arm that reads it: a miss in a scan is
     // otherwise as free as a hit [BUILTIN-LIST-GET].
-    let reason = if error.and_then(payload_binder).is_some() {
+    let reason = if error.is_some_and(reads_payload) {
         let length = crate::collections::list_length(cg, &list);
         crate::aggregate::index_out_of_bounds(cg, &index.operand, &length)?
     } else {
@@ -230,6 +230,16 @@ fn emit_result_body(
         } else if let (false, Some(disc)) = (is_result_arm(&arm.pattern), disc) {
             bind_catch_all(cg, &arm.pattern, disc);
         }
+    })
+}
+
+/// Whether the arm's body reads the payload it binds. `Error _message` binds a
+/// name the body never uses, exactly like `Error`.
+fn reads_payload(arm: &MatchArm) -> bool {
+    payload_binder(arm).is_some_and(|name| {
+        let mut free = std::collections::BTreeSet::new();
+        osprey_ast::freevars::free_idents(&arm.body, &mut free);
+        free.contains(name)
     })
 }
 
