@@ -165,20 +165,32 @@ module Arrangements
 
     peak (high, value) = synth::TableMath::larger (high, synth::TableMath::magnitude value)
 
-    // One side through the shared soft limiter, which puts its peak at 0.89.
-    limited (values, top, drive) = mapList (values, \value => ArrangeMath::pressed (value, top, drive, 0.89))
+    // Master's ceiling, about −1 dBTP, and its limiter's lookahead and release.
+    ceiling = 0.89
 
-    levelled (left, right, drive) =
+    lookahead = 1.5
+
+    release = 0.08
+
+    lift (side, gain) = mapList (side, \value => ArrangeMath::scaled (value, gain))
+
+    limited (left, right, top, gains) = Mixdown(left = synth::Limiters::applied (left, gains, ceiling), right = synth::Limiters::applied (right, gains, ceiling), peak = top)
+
+    levelled (rate, left, right, drive) =
         top = foldList (right, foldList (left, 0.0, peak), peak)
-        Mixdown(left = limited (left, top, drive), right = limited (right, top, drive), peak = top)
+        gain = ArrangeMath::lifted (top, drive, ceiling)
+        near = lift (left, gain)
+        far = lift (right, gain)
+        synth::Outcomes::carried (synth::Limiters::gains (near, far, rate, ceiling, lookahead, release), \gains => Success(value = limited (near, far, top, gains)))
 
-    (** Stereo mixdown: each side is its dry bus plus its own reverb of the shared send, then both sides pass
-        the same tanh soft limiter (`drive` 0.1–4), which puts the peak at 0.89 (about −1 dBFS). The limiter
-        is not oversampled, so a high drive adds audible harmonics; `peak` is the level before it. *)
+    (** Stereo mixdown [DAW-DYNAMICS-LIMITER]: each side is its dry bus plus its own reverb of the shared send. The
+        mix is scaled so its peak meets the ceiling (0.89, about −1 dBTP), `drive` (0.1–4) times louder, then both
+        sides pass the linked true-peak brick-wall limiter, so a drive above 1 is louder without clipping;
+        `peak` is the level before it. *)
     export mixed (arrangement, buses) = match [echoed (room (arrangement, 1.0), buses.wet), echoed (room (arrangement, 0.91), buses.wet)]
         [Error why, _] => Error(message = why)
         [Success _, Error why] => Error(message = why)
-        [Success near, Success far] => Success(value = levelled (bused (buses.left, near, 0, 1.0), bused (buses.right, far, 0, 1.0), arrangement.drive))
+        [Success near, Success far] => levelled (toFloat arrangement.sampleRate, bused (buses.left, near, 0, 1.0), bused (buses.right, far, 0, 1.0), arrangement.drive)
 
     interleave (mix, done, index) = listAppend (listAppend done (listGet mix.left index ?: 0.0)) (listGet mix.right index ?: 0.0)
 

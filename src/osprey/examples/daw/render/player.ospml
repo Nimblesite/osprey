@@ -86,10 +86,25 @@ module Player
         true => Success(value = piecePath request)
         false => joined (request, arrangement)
 
+    // [DAW-ANALYSIS-SPECTRUM] Master's octave bands in whole dB, where a full-scale sine reads 0.
+    decibel level = toString (floatToInt (synth::SpectralMath::nearest level) ?: -120)
+
+    hertz centre = match centre < 1000.0
+        true => "${toString (floatToInt (synth::SpectralMath::nearest centre) ?: 0)} Hz"
+        false => "${toString (floatToInt (synth::SpectralMath::nearest (centre / 1000.0)) ?: 0)} kHz"
+
+    // The mid channel: the average of both sides.
+    middle mix = mapList (toList (range (0, length mix.left)), \index => ArrangeMath::bused (ArrangeMath::scaled (listGet mix.left index ?: 0.0, 0.5), 0.5, listGet mix.right index ?: 0.0))
+
+    analysed (arrangement, mix) = match synth::Spectra::bands (middle mix, toFloat arrangement.sampleRate, 4096, 4096)
+        Error why => print "  Master spectrum: ${why}"
+        Success bands => print "  Master spectrum (mean / loudest dB): ${join (mapList (bands, \band => "${hertz band.centre} ${decibel band.level}/${decibel band.peak}")) " · "}"
+
     mixed (request, arrangement, buses) = match synth::Outcomes::carried (BusMix::mastered (arrangement, buses), \master => Arrangements::mixed (arrangement, master))
         Error why => Error(message = why)
         Success mix =>
-            print "  mixed ${length mix.left} frames, peak ${mix.peak}"
+            print "  mixed ${length mix.left} frames, peak ${mix.peak} before the true-peak limiter at -1 dBTP"
+            analysed (arrangement, mix)
             synth::Outcomes::carried (parts (request, arrangement, mix), \files => assembled (request, arrangement, files))
 
     (** Render the song into the request's folder; the result is the finished WAV's path. *)

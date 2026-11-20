@@ -33,10 +33,11 @@ module SpectralPeaks
         highs = foldList (listReverse indices, [], \(found, k) => swept (sources, found, k))
         mapList (indices, \k => nearer (k, listGet lows k ?: -1, listGet highs k ?: -1))
 
-    // Output bin for bin `k` of the region around peak `p`: the peak's shifted bin plus the bin's offset.
-    target (sources, ratio, p, k) = match floatToInt (SpectralMath::nearest ((part (sources, p)).im * ratio))
+    // Output bin for bin `k` of the region around peak `p`: the whole region moves by the same bins, so the
+    // lobe's centre lands nearest the peak's true frequency times the ratio.
+    target (sources, ratio, p, k) = match floatToInt (SpectralMath::peakShift ((part (sources, p)).im, ratio))
         Error _ => -1
-        Success landed => satAdd landed (satSub k p)
+        Success moved => satAdd k moved
 
     // One sortable key per contribution: output bin first, then the source bin.
     keyed (sources, ratio, owner, k) = match owner < 0

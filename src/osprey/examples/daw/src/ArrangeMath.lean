@@ -39,15 +39,10 @@ def detuned (frequency cents : Float) : Float := frequency * Float.pow 2 (cents 
 def panLeft (pan : Float) : Float := Float.cos (0.7853981633974483 * (pan + 1))
 def panRight (pan : Float) : Float := Float.sin (0.7853981633974483 * (pan + 1))
 
-/-- Hyperbolic tangent. -/
-def squashed (x : Float) : Float :=
-  let doubled := Float.exp (2 * x)
-  (doubled - 1) / (doubled + 1)
-
-/-- Master soft limiter: the mix is scaled so its peak is 1, driven into a tanh curve and rescaled so the
-peak lands on `ceiling`. A small drive is nearly linear; a larger one raises the average level. -/
-def pressed (sample peak drive ceiling : Float) : Float :=
-  if peak <= 0 then 0 else ceiling * squashed (drive * sample / peak) / squashed drive
+/-- Master lift: the gain that puts the mix's peak on `ceiling`, times `drive`, so a drive above 1 pushes the
+mix into the brick-wall limiter. A silent mix stays silent. -/
+def lifted (peak drive ceiling : Float) : Float :=
+  if peak <= 0 then 0 else drive * ceiling / peak
 
 /-- Read position in a held recording played `ratio` times faster, after `skip` frames. -/
 def readAt (frame ratio skip : Float) : Float := skip + frame * ratio

@@ -97,6 +97,9 @@ def peakOffset (a b c : Float) : Float := if a - 2 * b + c == 0 then 0 else 0.5 
 /-- A Hann lobe bin's phase: the centre's phase plus π per bin of offset. -/
 def lobePhase (centre offset : Float) : Float := principal (centre + 3.141592653589793 * offset)
 
+/-- Whole bins a peak region moves so its lobe lands nearest the peak's true `frequency` (in bins) times `ratio`. -/
+def peakShift (frequency ratio : Float) : Float := nearest (frequency * ratio - frequency)
+
 /-- Identity phase locking: a bin near a moved peak keeps its analysed phase offset from that peak. -/
 def lockedPhase (peakPhase phase peakAnalysis : Float) : Float := principal (peakPhase + phase - peakAnalysis)
 
