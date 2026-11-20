@@ -73,6 +73,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [ ] Lean formulas and tests on synthetic signals with known spectra.
 - [ ] Mix checks per example project, run by `make` and red on failure: tonal balance against the genre curve, LUFS and true peak, clipping, masking, mono low end, pitch fit ([DAW-ANALYSIS-GATE]).
 - [ ] Every project in `tracks/` passes its mix checks; fix the mixes that fail.
+- [ ] Checks per window along the song; a failure alerts at once and marks the bars on the Timeline with track, check, value and limit; tapping it seeks there ([DAW-ANALYSIS-TIMELINE]).
 - [ ] `genre` in daw.td; genre target curves, loudness and dynamic range as versioned data ([DAW-ANALYSIS-GENRE]).
 - [ ] AI review behind an effect: measured spectrum, loudness and masking plus genre in, typed findings out, advisory only, pinned model, timeout ([DAW-ANALYSIS-AI]).
 
