@@ -124,6 +124,7 @@ type Editor G P S M =
     art : List<CardArt>
     page : Page
     outputEdit : OutputEdit
+    inspectSpace : bool
     lanePage : int
     laneTraces : List<List<ui::PathStep>>
     overview : List<ui::PathStep>
@@ -199,6 +200,8 @@ type EditorAction =
     GroupName
     CommitGroup
     CloseOutput
+    InspectBus
+        space : bool
     AssignBus
         index : int
         bus : string

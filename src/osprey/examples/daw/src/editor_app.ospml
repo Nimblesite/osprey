@@ -41,6 +41,7 @@ module EditorApp
         AdjustMix index gain pan reverb => DawSession::adjusted (editor, index, gain, pan, reverb)
         ScrollLanes page => Runtime::step (editor(lanePage = page))
         ChooseOutput index offset => RoutingPicker::open (editor, index, offset)
+        InspectBus space => Runtime::step (editor(inspectSpace = space))
         CloseOutput => Runtime::step (editor(outputEdit = OutputClosed))
         NewGroup => Runtime::step (editor(outputEdit = NamingGroup(proposed = ""), message = ""))
         CommitGroup => DawSession::group editor

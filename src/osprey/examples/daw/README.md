@@ -16,7 +16,7 @@ make -C src/toolchain/targets/tests synth          # the app's tests, with no ho
 | --- | --- |
 | ![Timeline](screens/timeline.png) | **Timeline.** One lane per track across the song, and a two-bar piano roll of the selected track. Tap a lane to select the track at that bar. Use the rail at the right of the lanes to reach the next seven tracks. Tap a track name or the Patch tab to edit its sound. View → Keyboard opens the playable keys. |
 | ![A track's patch](screens/track-patch.png) | **Patch.** The selected track's patch in Prism: modules, cables and the selected module’s connections. Leaving the page saves the patch into the project file. A built-in instrument opens as one voice module. |
-| ![Mix](screens/mix.png) | **Mix.** The selected track’s dry path passes through its assigned bus or goes directly to Master. Its Space send returns to Master independently. Click its output or use the **Routing** menu to choose Master, assign a project bus or create a named stereo group. |
+| ![Mix](screens/mix.png) | **Mix.** The selected track’s dry path passes through its assigned bus or goes directly to Master. Its Space send returns to Master independently. Click the Space card for reverb size, decay and damping, or the group card for its inputs and compressor detector. Click its output or use the **Routing** menu to choose Master, assign a project bus or create a named stereo group. |
 
 File → Save writes the open song, its patches and their layouts. Play renders two bars from the playhead. Stop cancels playback. File → Open Song opens another project in the same window.
 

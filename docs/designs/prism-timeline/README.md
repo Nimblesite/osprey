@@ -6,7 +6,7 @@ The Timeline is a second window of the combined Prism DAW. Select a track to ins
 
 The native Timeline shows keysL in bars 9–10 of *Broken Circuitry: Reassembly*, with G♯5 selected at beat 33 and velocity 75%. The Mix capture follows glow’s dry path through the pads bus, keyed by kick, and its separate 60% Space send. The patch capture shows a saved Delay 6 between the waveshaper and Output 5 in a previously edited copy of the same song. [Piano roll](../../../src/osprey/examples/daw/screens/timeline.png) · [Bus routing](../../../src/osprey/examples/daw/screens/mix.png) · [Reopened track patch](../../../src/osprey/examples/daw/screens/track-patch.png)
 
-In the running Timeline, the destination chooser shows Master checked and Keys bus focused while G♯5 stays selected. After routing keysL and keysR to the new group, the Mix inspector lists both tracks as inputs. Each retains its 35% Space send. [Output chooser](../../../src/osprey/examples/daw/screens/assign-output.png) · [Keys bus inputs and signal flow](../../../src/osprey/examples/daw/screens/group-routing.png)
+In the running Timeline, the destination chooser shows Master checked and Keys bus focused while G♯5 stays selected. After routing keysL and keysR to the new group, the Mix inspector lists both tracks as inputs. Each retains its 35% Space send. Selecting the Space card reveals the shared reverb’s 6.50-second decay. [Output chooser](../../../src/osprey/examples/daw/screens/assign-output.png) · [Keys bus inputs and signal flow](../../../src/osprey/examples/daw/screens/group-routing.png) · [Space return](../../../src/osprey/examples/daw/screens/space-return.png)
 
 ## Window commands [PRISM-TIMELINE-MENU]
 

@@ -177,6 +177,20 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     regions.adopt(&point(canvas, (665.0, 251.0), false).0).expect("select glow");
     let mut expected = read();
     assert_eq!(expected["tracks"][0]["bus"], "pads");
+    for (point_at, title, field) in [
+        ((1238.0, 356.0), "Shared reverb", "DECAY"),
+        ((900.0, 466.0), "Group bus", "Detector   kick     ·     4.00× compression"),
+    ] {
+        let (shown, _) = point(canvas, point_at, true);
+        let labels: Vec<_> = shown.scenes.values().flat_map(|scene| &scene.shapes)
+            .filter_map(|shape| match shape {
+                ferroui_osprey_native::scene::Shape::Lettering { text, .. } => Some(text.as_str()),
+                _ => None,
+            }).collect();
+        assert!(labels.contains(&title) && labels.contains(&field), "select {title} reveals {field}");
+        point(canvas, point_at, false);
+        assert_eq!(read(), expected, "inspecting the parallel path preserves every project field");
+    }
     for (label, bus) in [("Master", ""), ("pads", "pads")] {
         let root = regions.get("root").expect("Mix workspace");
         let menus = window_menus(&root.node);

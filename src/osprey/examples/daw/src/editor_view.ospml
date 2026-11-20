@@ -161,6 +161,9 @@ module EditorView
     (** A named canvas hit area shared with native accessibility. *)
     export accessible (label, left, top, width, height, selected) = ui::Accessible(accessRole = ui::Pressable, accessLabel = label, accessLeft = left, accessTop = top, accessWidth = width, accessHeight = height, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessMovable = false, accessSelected = selected)
 
+    (** Locate the accessible control at a point in scene coordinates. *)
+    export areaAt (areas, x, y) = ui::Lists::position (areas, \a => inside (x, y, a.accessLeft + a.accessWidth / 2.0, a.accessTop + a.accessHeight / 2.0, a.accessWidth / 2.0, a.accessHeight / 2.0))
+
     portLabel output = match output
         true => "output"
         false => "input"
@@ -450,7 +453,7 @@ module EditorView
             false => page
             true => Ui::column [page, keyboardDock editor]
 
-    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${editor.rollBar}:${editor.lanePage}:${RoutingPicker::stamp editor}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.songPath}:${length editor.song.tracks}"
+    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${editor.rollBar}:${editor.lanePage}:${RoutingPicker::stamp editor}:${editor.inspectSpace}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.songPath}:${length editor.song.tracks}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =
