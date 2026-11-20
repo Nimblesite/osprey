@@ -905,6 +905,8 @@ barLineJourney ready =
     // The song overview has one column per bar of the song.
     expect (length (synth::Header::overview lined.song), 4)
     expect (length (synth::Header::overview (timeline [])), 1)
+    expect (synth::TimelineGeometry::playableBar (-1.0, 16.0), 0.0)
+    expect (synth::TimelineGeometry::playableBar (8.0, 0.0), 0.0)
     expect (synth::Header::songAction (ready(track = 0), 3), synth::PickTrack(index = 0, bar = 0))
     expect (synth::Header::songAction (ready, 4), synth::PlaySong)
     expect (synth::Header::songAction (ready, 5), synth::StopSong)

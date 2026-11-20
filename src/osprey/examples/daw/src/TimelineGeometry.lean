@@ -9,8 +9,8 @@ def bar (beat : Float) : Float := Float.floor (beat / 4)
 /-- The bar a beat falls in, but never past the bar holding the song's last sound: a song `beats` long that ends
 on a bar line has no bar after it to play [DAW-TRANSPORT-PLAYHEAD]. -/
 def playableBar (beat beats : Float) : Float :=
-  let last := Float.ceil (beats / 4) - 1
-  if Float.floor (beat / 4) > last then last else Float.floor (beat / 4)
+  let last := if beats <= 0 then 0 else Float.ceil (beats / 4) - 1
+  bounded (bar beat) 0 last
 /-- The beat a bar (from 0) starts on. -/
 def barStart (index : Float) : Float := index * 4
 
