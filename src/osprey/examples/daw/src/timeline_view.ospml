@@ -235,6 +235,15 @@ module TimelineView
             span = satAdd (satSub high (lowest notes)) 2
             ui::Pick::either (span < 13, 13, span)
 
+    captured (editor, voice) = match editor.rollDrag
+        RollIdle => voice
+        RollHeld motion => daw::Projects::withNote (voice, editor.selectedNote, motion.preview)
+
+    (** Freeze row spacing from the unedited track for the duration of a drag. *)
+    export rowSize (editor, voice) =
+        notes = shown (editor, voice)
+        TimelineGeometry::pitchHeight (toFloat (pitchRows (notes, pitchTop notes)))
+
     selected (editor, voice, note) = match listGet voice.notes editor.selectedNote
         Error _ => false
         Success picked => structuralEquals (note, picked)
@@ -253,10 +262,14 @@ module TimelineView
 
     roll editor = match track editor
         Error _ => [label ("Open a song to see its tracks.", 24.0, 500.0, 18.0, dim (), 0, 3)]
-        Success voice =>
-            notes = shown (editor, voice)
-            high = pitchTop notes
-            rows = pitchRows (notes, high)
+        Success original =>
+            bounds = shown (editor, original)
+            high = pitchTop bounds
+            rows = pitchRows (bounds, high)
+            voice = captured (editor, original)
+            notes = match editor.rollDrag
+                RollIdle => bounds
+                RollHeld _ => shown (editor, voice)
             heading = [box (0.0, 437.0, 1132.0, 18.0, panelInk (), 3), box (0.0, 511.0, 1132.0, 30.0, panelInk (), 3), label ("PITCH", 16.0, 520.0, 10.0, dim (), 0, 5), label ("VELOCITY", 8.0, 815.0, 10.0, dim (), 0, 5), label ("0–1", 28.0, 870.0, 10.0, dim (), 0, 5), box (0.0, 803.0, 1132.0, 1.0, Scenes::rgb (50, 42, 70), 4), box (76.0, 894.0, 1034.0, 1.0, dim (), 4), label ("Piano roll", 24.0, 477.0, 18.0, ink (), 0, 3), label ("${voice.name}    ${length notes} of ${length voice.notes} notes", 130.0, 481.0, 14.0, accent (), 0, 3)]
             listConcat (ui::Lists::flatten [heading, pianoKeys (high, rows), beatLines editor, bars editor, selectedCursor (editor, voice), velocityGrid editor]) (foldList (notes, [], \(all, note) => listConcat all (rollNote (rollStart editor, high, rows, selected (editor, voice, note), note))))
 
@@ -318,7 +331,7 @@ module TimelineView
 
     chosen editor = match track editor
         Error _ => []
-        Success voice => listConcat (details (editor, voice)) (noteDetails (editor, voice))
+        Success voice => listConcat (details (editor, voice)) (noteDetails (editor, captured (editor, voice)))
 
     (** The selected track and its current routing and note. *)
     export inspector editor = listConcat [box (1132.0, 142.0, 308.0, 767.0, panelInk (), 8), label ("TRACK INSPECTOR", 1154.0, 164.0, 12.0, dim (), 0, 9)] (chosen editor)
@@ -328,3 +341,36 @@ module TimelineView
 
     (** The whole Timeline page. *)
     export shapes editor = listConcat (arrangement (editor, beats editor)) (ui::Lists::flatten [roll editor, inspector editor, RoutingPicker::shapes editor])
+
+(** [DAW-PIANO-DRAG] The pressed note owns the pointer until release, even across neighbouring stems. *)
+module RollEdits
+    (** Invalidate the scene when a captured note preview changes. *)
+    export stamp drag = match drag
+        RollIdle => ""
+        RollHeld motion => "${motion.preview.pitch} ${motion.preview.start} ${motion.preview.velocity}"
+
+    (** Capture the selected note and the scale under the press. *)
+    export start (editor, index, x, y) = match listGet editor.song.tracks editor.track
+        Error _ => ui::Runtime::step editor
+        Success track => match listGet track.notes index
+            Error _ => ui::Runtime::step (editor(selectedNote = -1, rollDrag = RollIdle))
+            Success original =>
+                motion = RollMotion(anchorX = x, anchorY = y, rowSize = TimelineView::rowSize (editor, track), stem = y >= 815.0, original = original, preview = original)
+                ui::Runtime::step (editor(selectedNote = index, rollDrag = RollHeld(motion = motion)))
+
+    shifted (motion: RollMotion, x, y) =
+        note = motion.original
+        match abs (x - motion.anchorX) < 2.0 && abs (y - motion.anchorY) < 2.0
+            true => note
+            false => match motion.stem
+                true => note(velocity = TimelineGeometry::stemVelocity y)
+                false => note(start = TimelineGeometry::draggedStart (note.start, x - motion.anchorX), pitch = floatToInt (TimelineGeometry::draggedPitch (toFloat note.pitch, motion.anchorY - y, motion.rowSize)) ?: note.pitch)
+
+    (** Preview pointer movement and publish one project edit on release. *)
+    export pointer (editor, motion: RollMotion, x, y, down) =
+        note = shifted (motion, x, y)
+        match down
+            true => ui::Runtime::step (editor(rollDrag = RollHeld(motion = motion(preview = note))))
+            false => match structuralEquals (motion.original, note)
+                true => ui::Runtime::step (editor(rollDrag = RollIdle))
+                false => DawSession::dragged (editor(rollDrag = RollIdle), motion, note)

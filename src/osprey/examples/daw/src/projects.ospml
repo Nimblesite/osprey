@@ -37,14 +37,20 @@ module Projects
                 bus = Bus(name = name, gain = 1.0, equaliser = Equaliser(low = 0.0, mid = 0.0, high = 0.0), compressor = Compressor(threshold = 0.0, ratio = 1.0, knee = 0.0, attack = 0.01, release = 0.1, sidechain = ""))
                 routed (song(buses = listAppend song.buses bus), index, name)
 
-    (** Change exactly one piano-roll note in its track, retaining timing, pitch and note order. *)
+    (** Replace one note by its index, preserving its siblings and the project instrument. *)
+    export withNote (voice, index, edited: Note) = voice(notes = mapList (toList (range (0, length voice.notes)), \at => swapped (voice.notes, index, edited, at)))
+
+    (** Apply an edit to exactly one piano-roll note. *)
+    export editedNote (song, track, index, change) = match listGet song.tracks track
+        Error _ => Error(message = "Select a track first.")
+        Success voice => match listGet voice.notes index
+            Error _ => Error(message = "Select a note first.")
+            Success original => replaced (song, track, withNote (voice, index, change original))
+
+    (** Change velocity without altering the note's pitch, timing or duration. *)
     export velocity (song, track, index, value) = match ArrangeMath::audible value
         false => Error(message = "Velocity must be between 0 and 1.")
-        true => match listGet song.tracks track
-            Error _ => Error(message = "Select a track first.")
-            Success voice => match listGet voice.notes index
-                Error _ => Error(message = "Select a note first.")
-                Success old => replaced (song, track, voice(notes = mapList (toList (range (0, length voice.notes)), \at => swapped (voice.notes, index, old(velocity = value), at))))
+        true => editedNote (song, track, index, \note => note(velocity = value))
 
     // The text is read back before it replaces the file, so a project that would not reopen is never written.
     checked text = synth::Outcomes::carried (SongFiles::decode text, \_ => Success(value = text))

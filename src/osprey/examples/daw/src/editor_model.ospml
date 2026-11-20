@@ -85,6 +85,19 @@ type OutputEdit =
     NamingGroup
         proposed : string
 
+type RollMotion =
+    anchorX : float
+    anchorY : float
+    rowSize : float
+    stem : bool
+    original : daw::Note
+    preview : daw::Note
+
+type RollDrag =
+    RollIdle
+    RollHeld
+        motion : RollMotion
+
 type Editor G P S M =
     skin : M
     graph : G
@@ -152,6 +165,7 @@ type Editor G P S M =
     track : int
     patchTrack : int
     selectedNote : int
+    rollDrag : RollDrag
     rollBar : int
     songTicket : string
 

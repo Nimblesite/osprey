@@ -19,7 +19,7 @@ module DawSession
     (** Select a track and show the two bars where it first plays. *)
     export picked (editor, index) = match listGet editor.song.tracks index
         Error _ => editor
-        Success track => editor(track = index, outputEdit = OutputClosed, inspectSpace = false, lanePage = intDiv index 7, selectedNote = -1, rollBar = firstBar track, message = "${track.name}: ${length track.notes} notes.")
+        Success track => editor(track = index, rollDrag = RollIdle, outputEdit = OutputClosed, inspectSpace = false, lanePage = intDiv index 7, selectedNote = -1, rollBar = firstBar track, message = "${track.name}: ${length track.notes} notes.")
 
     (** Select a track and keep the piano roll on `at`. *)
     export pickedAt (editor, index, at) =
@@ -218,6 +218,15 @@ module DawSession
             Error why => ui::Runtime::step (editor(message = why))
             Success next => ui::Runtime::step (next(message = "Saved note velocity ${TimelineView::percent value}."))
 
+    (** Commit a released note drag. The arrangement trace and overview follow pitch and time edits. *)
+    export dragged (editor, motion: RollMotion, note: daw::Note) = match motion.stem
+        true => velocity (editor, note.velocity)
+        false => match daw::Projects::editedNote (editor.song, editor.track, editor.selectedNote, \_ => note)
+            Error why => ui::Runtime::step (editor(message = why))
+            Success song => match written (editor, song)
+                Error why => ui::Runtime::step (editor(message = why))
+                Success next => ui::Runtime::step (next(laneTraces = TimelineView::traces song, overview = Header::overview song, revision = satAdd next.revision 1))
+
     draft editor = match editor.patchTrack >= 0 && editor.songPath != ""
         true => daw::PatchRecords::savedAt (editor.song, editor.patchTrack, editor.graph, editor.positions)
         false => Success(value = editor.song)
@@ -242,7 +251,7 @@ module DawSession
         Error why => ui::Runtime::step (editor(page = PatchPage, message = "${why} The patch stays open."))
 
     (** Show another page, the patch saved into the project first. *)
-    export shown (editor, page) = match synced editor
+    export shown (editor, page) = match synced (editor(rollDrag = RollIdle))
         Error why => ui::Runtime::step (editor(page = PatchPage, message = "${why} The patch stays open."))
         Success ready => match page
             PatchPage => match ready.songPath == "" || ready.track == ready.patchTrack

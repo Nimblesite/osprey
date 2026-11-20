@@ -48,6 +48,15 @@ def pitchY (pitch high rows : Float) : Float := 542 + (high - pitch) * (260 / ro
 
 /-- Velocity stems share the same note start coordinate as the piano roll. -/
 def velocityHeight (value : Float) : Float := bounded value 0 1 * 43
+/-- Dragging preserves the note's original timing offset and moves by sixteenths (one quarter beat). -/
+def draggedStart (start offset : Float) : Float :=
+  let beat := start + Float.floor (offset / 129.25 * 4 + 0.5) / 4
+  if beat < 0 then 0 else beat
+/-- One vertical pitch row is one semitone. -/
+def draggedPitch (pitch offset height : Float) : Float :=
+  bounded (pitch + Float.floor (offset / height + 0.5)) 0 127
+/-- The stem baseline is y 894 and its 43-unit range is the full velocity. -/
+def stemVelocity (y : Float) : Float := bounded ((894 - y) / 43) 0 1
 /-- Mix table rows start at y 235 and share 629 units, at most 37 each. -/
 def mixHeight (count : Float) : Float := if count <= 17 then 37 else 629 / count
 def mixY (index height : Float) : Float := 235 + index * height

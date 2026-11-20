@@ -248,6 +248,38 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     assert_eq!(read(), expected, "removing both sends restores the complete project");
 }
 
+/// [DAW-PIANO-DRAG] Drag the stem and note on the canvas, preserving the rest of the project.
+fn drag_piano_note(canvas: i64, song: &std::path::Path) {
+    let read = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(song).expect("read project")).expect("project JSON");
+    let mut expected = read();
+    let index = expected["tracks"][5]["notes"].as_array().expect("keysL notes").iter()
+        .position(|n| n["start"] == 33.0 && n["pitch"] == 80).expect("G-sharp at beat 33");
+    point(canvas, (380.0, 391.0), true);
+    point(canvas, (380.0, 391.0), false);
+    point(canvas, (206.0, 862.0), true);
+    point(canvas, (242.0, 870.0), true);
+    let (stem, _) = point(canvas, (255.0, 883.25), true);
+    assert!(shows_label(&stem, "25%"), "the inspector previews the stem during the drag");
+    assert!(read() == expected, "drag previews never save the project mid-gesture");
+    point(canvas, (255.0, 883.25), false);
+    expected["tracks"][5]["notes"][index]["velocity"] = 0.25.into();
+    assert!(read() == expected, "releasing the stem changes only the grabbed G-sharp to 25%");
+    point(canvas, (218.0, 606.0), true);
+    point(canvas, (247.0, 597.0), true);
+    let (moved, _) = point(canvas, (282.625, 582.363636), true);
+    assert!(shows_label(&moved, "MIDI 82") && shows_label(&moved, "33.50"), "the roll previews pitch and time before saving");
+    assert!(read() == expected, "the note move is committed only on release");
+    point(canvas, (282.625, 582.363636), false);
+    expected["tracks"][5]["notes"][index]["start"] = 33.5.into();
+    expected["tracks"][5]["notes"][index]["pitch"] = 82.into();
+    assert!(read() == expected, "the same note moves half a beat and two semitones, retaining duration and velocity");
+    point(canvas, (282.625, 582.363636), true);
+    point(canvas, (346.0, 570.0), true);
+    Library::event(0, &Touch::key(canvas, "escape", true)).expect("cancel drag");
+    point(canvas, (346.0, 570.0), false);
+    assert!(read() == expected, "Escape releases the captured note and discards the draft");
+}
+
 #[test]
 fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     assert_eq!(Library::init(), Ok(()), "the daw's top level must run");
@@ -277,6 +309,7 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
 
     menu_bar(&regions);
     create_group(&mut regions, canvas, &song);
+    drag_piano_note(canvas, &song);
 
     let mut costs = Vec::new();
     let mut drawn = std::collections::BTreeSet::new();

@@ -10,6 +10,8 @@ In the running Timeline, the destination chooser shows Master checked and Keys b
 
 The native send inspector opens over the canvas at its current zoom. On keysL, the loss filter still feeds the waveshaper while its audio outlet also sends 25% to pads. The inspector shows both destinations. [Add a send in Track patch](../../../src/osprey/examples/daw/screens/add-send.png) · [Edit the parallel send in Bus routing](../../../src/osprey/examples/daw/screens/edit-send.png)
 
+Dragging the keysL velocity stem down changed G♯5 to 25%. Moving the note half a beat right and two semitones up kept its 0.30-beat length. The reopened project shows A♯5 at beat 33.50. [Edited piano roll in the native window](../../../src/osprey/examples/daw/screens/dragged-note.png)
+
 ## Window commands [PRISM-TIMELINE-MENU]
 
 The agreed menu layout applies to Patch, Timeline and Mix. File holds Open Song, Save and Render Song. Edit holds Undo and Redo. View switches pages and toggles Modules, Patch Controls and Keyboard. Transport holds song playback and patch audition. The three page tabs and Play and Stop stay within reach on the canvas. The current page, project title and playback state remain visible when the menus close.
