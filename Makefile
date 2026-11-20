@@ -124,7 +124,7 @@ clean:
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
 # The commit make ci started on: a commit landing mid-run is not stamped as tested.
-CI_HEAD := $(shell git rev-parse HEAD)
+override CI_HEAD := $(shell git rev-parse HEAD)
 
 ## ci: lint + test + build + hawk + the bank, docs and inbox suites (full CI simulation)
 ci: lint test build
