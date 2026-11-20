@@ -333,6 +333,35 @@ Built-in constructors' declared variance: `Result<out T, out E>`,
 and `Ptr` are invariant. Function types are structurally contravariant in
 parameters and covariant in returns.
 
+### Built-in constraints — [TYPE-CONSTRAINTS]
+
+**Implementation status:** not implemented. Today each obligation below is checked only where a concrete type reaches the built-in, so `fn show(x) = toString(x)` is accepted with no obligation on `x`, and a call that passes a function is rejected at the built-in's use inside `show`, not at the call. Plan: [generic error payloads, top priority](../../plans/generic-error-payload.md#-top-priority-gaps-that-block-top-tier).
+
+A type variable may carry a built-in constraint. The constraint is part of the function's type scheme: generalization keeps it, instantiation copies it to the fresh variable, and it is discharged where a concrete type is supplied. So an obligation a built-in places on its argument travels through every generic function to the call that decides the type, and the error is reported there.
+
+| Constraint | Types that satisfy it | Placed by |
+| --- | --- | --- |
+| `printable` | every type made of data ([BUILTIN-PRINT](../runtime/0012-Built-InFunctions.md#printvalue-printable---unit--builtin-print)) | `print`, `toString`, interpolation |
+| `comparable` | numbers, `string`, `bool`, and lists, records and unions of comparable parts | `==`, `!=`, `<`, `>`, `<=`, `>=`, `listSort`, assertion operands |
+| `number` | every numeric type ([TYPE-NUMERIC-SIZED](#sized-numeric-types--type-numeric-sized)) | arithmetic operators and numeric built-ins |
+| `sized` | `string`, `List<T>`, `Map<string, V>` | `length`, `isEmpty` |
+
+```osprey
+fn show(x) = "<${toString(x)}>"     // show : (printable a) -> string
+print(show(Overflow { by: 3 }))     // <Overflow { by: 3 }>
+print(show(|n| => n + 1))           // rejected here: a function is not printable
+```
+
+```osprey-ml
+show x = "<${toString x}>"          // show : printable a -> string
+print (show (Overflow(by = 3)))     // <Overflow { by: 3 }>
+print (show (\n => n + 1))          // rejected here: a function is not printable
+```
+
+The set of constraints is closed and each is derived structurally by the compiler: a program cannot declare a constraint or an instance, and no value's meaning depends on which instance is in scope. Osprey has no type classes. Behaviour a program chooses is not a constraint: it is an effect whose handler supplies it ([Algebraic Effects](0017-AlgebraicEffects.md)), a module signature ([Modules and Namespaces](0025-ModulesAndNamespaces.md)), or a record of functions passed as a value. An effect selects an implementation by where the code runs; a constraint selects one by the type of the value, which a handler cannot do.
+
+A constraint is inferred and never written in an annotation. Inferred signatures, hover and error messages show it before the variable it constrains.
+
 ## Built-in Types
 
 Primitive spellings are case-sensitive.

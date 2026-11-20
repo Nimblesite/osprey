@@ -2,6 +2,30 @@
 
 Make `Result<T, E>` hold its error at type `E`, end to end, as [ERR-RESULT](../specs/language/0013-ErrorHandling.md#resultt-e--err-result) states. Before this work the checker pinned `Error { message }` to `string` and left `E` unconstrained, and the backend stored only a C string in the error slot (a number payload was silently dropped).
 
+## 🚨 Top priority: gaps that block top tier
+
+These come before every other open item in `docs/plans/`. Each is a defect against a top-tier language, seen with a concrete program on this branch. None may be dropped or deferred behind new features; tick only with a corpus regression under GC, ARC and wasm32. Work them in this order: language first, since built-in constraints remove the ad hoc checks the error-system items patch around.
+
+### Language
+
+- [ ] **Built-in constraints carried in the type scheme ([TYPE-CONSTRAINTS](../specs/language/0004-TypeSystem.md#built-in-constraints--type-constraints)).** A generic function like `fn show(x) = toString(x)` loses the "x must be printable" obligation, so it is only checked where a concrete type happens to reach it. The fix is Elm-style built-in constraints carried in the function's type (`printable`, `comparable`, `number`, `sized`), with effects, module signatures and records of functions covering everything user-extensible. No type classes: effects pick an implementation by where the code runs, constraints by the type of the value, and Osprey derives the latter structurally.
+  - [x] Spec: [TYPE-CONSTRAINTS] written, marked not implemented
+  - [ ] Spec: remove the "not implemented" status when the rest lands
+  - [ ] Checker: a constrained type variable in `Type::Var`'s scheme; generalization keeps it, instantiation copies it, unification with a concrete type discharges it
+  - [ ] Move `is_printable`, `is_sortable_list`, `is_sized` and the numeric operand checks in `builtin_constraints.rs` onto it; delete the post-hoc `validate_builtin_uses` pass for them
+  - [ ] Error at the call that decides the type, naming the constraint: "`show` needs a printable argument; a function is not printable"
+  - [ ] Hover, inferred signatures and `--docs` show the constraint
+  - [ ] Corpus regression (both flavors) and `failscompilation/` rejections for each constraint through one, two and three levels of generic call
+- [ ] No nested constructor patterns ([TYPE-UNION-POSITIONAL]): `Node(Node(l, _), r)` and `Success { value: Some { v } }` are rejected; each slot is a binding or `_`, forcing nested `match`. Implement nested patterns with exhaustiveness checking across the nesting.
+
+### Error system
+
+- [ ] `expectError` on an inline `if` needs an annotation: `expectError(if c { Error { message: DivZero } } else { Success { value: 1 } }, DivZero)` fails with "expectError on a Result whose error type is not decided here; annotate it". The checker knows `E`; the backend must take it from the checked type instead of the operand's syntax.
+- [ ] Vague assertion messages: a failed `expectError` on a record or union payload prints "expected Error(<the given MathError>), got a Success or an Error holding another MathError". Records and unions now render ([BUILTIN-PRINT-FORM]), so it must print both values: `expected Error(DivZero), got Error(Overflow { by: 3 })`. Same for `expect` and `check`.
+- [ ] A union variant holding an unprintable value is accepted by `print`: `print(Held { m: someMap })` compiles and shows `Held { m: <map> }`, while the same value in a record field is rejected. User types reach the constraint as a name, so the check must read the declaration and reject it at compile time.
+- [ ] A quoted string inside a record, variant or list is not escaped: `{ why: "a"b" }` is ambiguous. Escape `"`, `\` and control characters as the string literal syntax does.
+- [ ] `Map` has no rendering. Decide and specify one (`{ "k": 1 }`, key order defined) or keep the rejection and say why in [BUILTIN-PRINT].
+
 ## Rules being implemented
 
 - [ERR-RESULT]: `T` and `E` are both generic, inferred, exact and must agree.
@@ -49,20 +73,3 @@ Make `Result<T, E>` hold its error at type `E`, end to end, as [ERR-RESULT](../s
 - [x] Corpus programs that annotated `Result<_, string>` over a `string` payload state their real `E`
 - [x] Corpus assertions that compared values of different types compare one type
 - [ ] `make ci` green
-
-## Gaps found while testing
-
-Each is a defect against a top-tier language, seen with a concrete program on this branch. None may be dropped; tick only with a corpus regression under GC, ARC and wasm32.
-
-### Error system
-
-- [ ] `expectError` on an inline `if` needs an annotation: `expectError(if c { Error { message: DivZero } } else { Success { value: 1 } }, DivZero)` fails with "expectError on a Result whose error type is not decided here; annotate it". The checker knows `E`; the backend must take it from the checked type instead of the operand's syntax.
-- [ ] Vague assertion messages: a failed `expectError` on a record or union payload prints "expected Error(<the given MathError>), got a Success or an Error holding another MathError". Records and unions now render ([BUILTIN-PRINT-FORM]), so it must print both values: `expected Error(DivZero), got Error(Overflow { by: 3 })`. Same for `expect` and `check`.
-- [ ] A union variant holding an unprintable value is accepted by `print`: `print(Held { m: someMap })` compiles and shows `Held { m: <map> }`, while the same value in a record field is rejected. User types reach the constraint as a name, so the check must read the declaration and reject it at compile time.
-- [ ] A quoted string inside a record, variant or list is not escaped: `{ why: "a"b" }` is ambiguous. Escape `"`, `\` and control characters as the string literal syntax does.
-- [ ] `Map` has no rendering. Decide and specify one (`{ "k": 1 }`, key order defined) or keep the rejection and say why in [BUILTIN-PRINT].
-
-### Language
-
-- [ ] No type classes (constrained polymorphism). "Printable", "comparable", "numeric" and "sized" are ad hoc checks on resolved types in `builtin_constraints.rs`; a generic function loses the obligation, so `fn show(x) = toString(x)` is checked only where a concrete type reaches it, and a user cannot state or extend a constraint. Design constraint-carrying type schemes ([TYPE-GENERICS]) so the obligation travels with the function's type, and move the built-in constraints onto them.
-- [ ] No nested constructor patterns ([TYPE-UNION-POSITIONAL]): `Node(Node(l, _), r)` and `Success { value: Some { v } }` are rejected; each slot is a binding or `_`, forcing nested `match`. Implement nested patterns with exhaustiveness checking across the nesting.
