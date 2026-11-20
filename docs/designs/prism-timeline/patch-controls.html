@@ -19,8 +19,8 @@ aside{border-left:1px solid var(--line);padding:25px 23px;background:var(--panel
 <div class="strip"><div class="arr"><div class="over">Arrangement</div><h1>Broken Circuitry: Reassembly</h1></div><canvas class="bars" width="420" height="64" aria-label="Song overview"></canvas><div class="meters"><div class="stat"><span class="over">BPM</span><span>97.5</span></div><div class="stat"><span class="over">Meter</span><span>4/4</span></div><div class="stat"><span class="over">Position</span><span>009.02.01</span></div></div></div>
 <main><div class="work"><div class="crumb">Tracks <span>›</span> 06 keysL <span>›</span> <strong>Track patch</strong></div><div class="graph"><canvas id="cables" aria-hidden="true"></canvas><div class="legend"><b></b>Audio / Signal</div></div></div>
 <aside><div class="over">Patch controls</div><h2>Waveshaper 4</h2><div class="sub">keysL / Track patch</div>
-<section class="block"><div class="over">Parameters</div><label class="row">Curve<select id="curve"><option>Tanh</option><option>Hard clip</option><option>Cubic</option><option>Fold</option></select></label><div id="knobs"></div>
-<label class="switch">Antialiasing<input type="checkbox" checked><i class="pill"></i></label><label class="switch">2× oversampling<input type="checkbox"><i class="pill"></i></label></section>
+<section class="block"><div class="over">Parameters</div><label class="row">Curve<select id="curve" data-setting="curve"><option>Tanh</option><option>Hard clip</option><option>Cubic</option><option>Fold</option></select></label><div id="knobs"></div>
+<label class="switch">Antialiasing<input type="checkbox" data-setting="antialias" checked><i class="pill"></i></label><label class="switch">2× oversampling<input type="checkbox" data-setting="oversample"><i class="pill"></i></label></section>
 <section class="block"><div class="over">Connections</div><div class="socket"><i></i><small>In</small> Loss filter 3 · audio</div><div class="socket"><i></i><small>Out</small> Output 5 · audio</div></section>
 <p class="guide" id="guidance">Drag vertically to adjust. Hold <kbd>Shift</kbd> for fine control.<br>Double-click to reset. Select a value to type.</p></aside></main>
 <footer><span>▪ &nbsp; Stopped</span><span>48 kHz</span><span>Stereo</span><span>keysL / Waveshaper 4</span></footer>
@@ -78,12 +78,28 @@ for(const key of ["drive","bias","level"]) {
   document.querySelector("#knobs").append(row);
 }
 const history=[], redo=[];
+const controls = Object.fromEntries(Array.from(document.querySelectorAll("[data-setting]"),control=>[control.dataset.setting,control]));
+const choiceValues = {curve:"Tanh", antialias:true, oversample:false};
+function valueOf(key) {return parameters[key]?.value ?? choiceValues[key];}
+function restore(key,value) {
+  if(parameters[key]) {display(key,value);return;}
+  choiceValues[key]=value;
+  if(controls[key].type==="checkbox") controls[key].checked=value;
+  else controls[key].value=value;
+}
 function storeEdit(key,previous) {
-  if (parameters[key].value!==previous) {history.push([key,previous]);redo.length=0;}
+  if (valueOf(key)!==previous) {history.push([key,previous]);redo.length=0;}
+}
+for(const [key,control] of Object.entries(controls)){
+  control.addEventListener("change",()=>{
+    const before=valueOf(key);
+    restore(key,control.type==="checkbox"?control.checked:control.value);
+    storeEdit(key,before);
+  });
 }
 function undo(from,to) {
   const edit=from.pop();if (!edit) return;
-  const [key,previous]=edit;to.push([key,parameters[key].value]);display(key,previous);
+  const [key,previous]=edit;to.push([key,valueOf(key)]);restore(key,previous);
 }
 function norm(p,v) {return p.log?Math.log(v/p.low)/Math.log(p.high/p.low):(v-p.low)/(p.high-p.low);}
 function fromNorm(p,t) {return p.log?p.low*Math.pow(p.high/p.low,t):p.low+t*(p.high-p.low);}
@@ -99,6 +115,12 @@ function display(key,number) {
     field.value=text;
   }
 }
+const guide=document.querySelector("#guidance"), help=guide.innerHTML;
+function guideDrag(key,fine) {
+  guide.textContent=(fine?"Fine adjustment":"Adjusting")+" · "+parameters[key].label+" · Esc to cancel";
+  guide.style.color="var(--orange)";
+}
+function guideIdle() {guide.innerHTML=help;guide.style.color="";}
 let gesture;
 function attach(group) {
   const key=group.dataset.key,p=parameters[key];
@@ -115,7 +137,7 @@ function attach(group) {
     control.addEventListener("pointermove",e=>{
       if(gesture?.control!==control) return;
       if(!gesture.moved && Math.abs(e.clientY-gesture.startY)<3) return;
-      gesture.moved=true;knob.classList.add("grab");field.readOnly=true;
+      gesture.moved=true;guideDrag(key,e.shiftKey);knob.classList.add("grab");field.readOnly=true;
       const t=norm(p,p.value)+(gesture.y-e.clientY)/(e.shiftKey?1800:180);
       display(key,fromNorm(p,Math.max(0,Math.min(1,t))));gesture.y=e.clientY;
     });
@@ -123,15 +145,14 @@ function attach(group) {
       if(gesture?.control!==control)return;
       if(gesture.moved)storeEdit(key,gesture.previous);
       else if(control===field){field.focus();field.select();}
-      gesture=undefined;knob.classList.remove("grab");field.readOnly=false;
+      gesture=undefined;guideIdle();knob.classList.remove("grab");field.readOnly=false;
     });
-    control.addEventListener("pointercancel",()=>{if(gesture?.control===control){display(key,gesture.previous);gesture=undefined;knob.classList.remove("grab");field.readOnly=false;}});
+    control.addEventListener("pointercancel",()=>{if(gesture?.control===control){display(key,gesture.previous);gesture=undefined;guideIdle();knob.classList.remove("grab");field.readOnly=false;}});
     control.addEventListener("dblclick",e=>{e.preventDefault();const before=p.value;display(key,p.initial);storeEdit(key,before);knob.focus();});
   }
   knob.addEventListener("keydown",e=>{
     const sign={ArrowUp:1,ArrowRight:1,ArrowDown:-1,ArrowLeft:-1}[e.key];
     if(e.key==="Enter"){field.focus();field.select();return;}
-    if(e.key==="Escape" && gesture){display(key,gesture.previous);gesture=undefined;knob.classList.remove("grab");field.readOnly=false;return;}
     if(!sign)return;e.preventDefault();const before=p.value;display(key,p.value+sign*p.step*(e.shiftKey?0.1:1));storeEdit(key,before);
   });
   function commitValue(){if(field.value===knob.getAttribute("aria-valuetext"))return;const value=field.value.replace(p.unit,"").trim(), number=Number(value), before=p.value;
@@ -143,11 +164,11 @@ function attach(group) {
 document.querySelectorAll(".pair").forEach(attach);
 document.addEventListener("keydown",e=>{
   if(e.key!=="Escape"||!gesture)return;
-  const {control,key,previous}=gesture;gesture=undefined;
+  const {control,key,previous}=gesture;gesture=undefined;guideIdle();
   display(key,previous);control.closest(".pair").querySelector(".dial").classList.remove("grab");
   control.closest(".pair").querySelector(".value").readOnly=false;e.preventDefault();e.stopImmediatePropagation();
 },true);
-document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="z"&&e.target.tagName!=="INPUT"){
+document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="z"&&!(e.target.tagName==="INPUT"&&e.target.type==="text")){
   e.preventDefault();e.shiftKey?undo(redo,history):undo(history,redo);
 }});
 const bars=[8, 23, 15, 9, 27, 27, 15, 67, 82, 79, 79, 64, 86, 72, 79, 77, 124, 97, 91, 136, 106, 78, 104, 107, 91, 94, 92, 111, 93, 111, 92, 89, 113, 111, 124, 81, 24, 23, 6, 6];
