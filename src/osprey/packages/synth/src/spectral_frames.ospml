@@ -78,14 +78,26 @@ module SpectralFrames
         levels = Sequences::combined (bins, memory, \(value, held) => SpectralMath::blend (magnitude value, held.re, amount))
         SpectralFrame(bins = Sequences::combined (bins, levels, \(value, level) => withMagnitude (value, level)), memory = mapList (levels, \level => Complex(re = level, im = 0.0)), motion = motion, captured = false)
 
-    // Magnitudes interpolate linearly; phase comes from the dominant input (below 0.5 the main input).
+    // [SYNTH-SPECTRAL-MORPH] Blend interpolates log magnitudes; phase comes from the dominant input
+    // (below 0.5 the main input).
     morphBin (main, side, amount) =
-        level = SpectralMath::blend (magnitude main, magnitude side, amount)
+        level = SpectralMath::logBlend (magnitude main, magnitude side, amount)
         match amount < 0.5
             true => withMagnitude (main, level)
             false => withMagnitude (side, level)
 
-    morph (bins, sides, amount) = Sequences::combined (bins, sides, \(main, side) => morphBin (main, side, amount))
+    levels bins = mapList (bins, \value => Complex(re = magnitude value, im = 0.0))
+
+    // Envelope (cross-synthesis): the main input's fine structure and phase under the side input's
+    // spectral envelope, by `amount`.
+    enveloped (config, bins, sides, amount) =
+        own = envelope (config, levels bins)
+        wanted = envelope (config, levels sides)
+        Sequences::mapIndexed (bins, \(index, value) => scaled (value, SpectralMath::envelopeMorph (listGet wanted index ?: 0.0, listGet own index ?: 0.0, amount)))
+
+    morph (config, bins, sides, amount, mode) = match mode
+        Blend => Sequences::combined (bins, sides, \(main, side) => morphBin (main, side, amount))
+        Envelope => enveloped (config, bins, sides, amount)
 
     // Analysis: (magnitude, instantaneous frequency in bins) per bin, plus each bin's phase for the next frame.
     analysed (config, bins, memory, index, done) = match bins
@@ -173,13 +185,13 @@ module SpectralFrames
     stateless step = match step
         SpectralBand _ _ => true
         SpectralShift _ => true
-        SpectralMorph _ => true
+        SpectralMorph _ _ => true
         _ => false
 
     seriesStep (config, sides, held, bins, step) = match step
         SpectralBand low high => band (config, bins, low, high)
         SpectralShift offset => shift (config, bins, offset, held.frames)
-        SpectralMorph amount => morph (bins, sides, amount)
+        SpectralMorph amount mode => morph (config, bins, sides, amount, mode)
         _ => bins
 
     (** Whether a series shares one analysis compatibly: 1–8 stateless steps (band, shift, morph). *)
@@ -196,6 +208,6 @@ module SpectralFrames
         SpectralBand low high => Success(value = unchanged (band (config, bins, low, high), held.memory, held.motion, false))
         SpectralShift offset => Success(value = unchanged (shift (config, bins, offset, held.frames), held.memory, held.motion, false))
         SpectralSmear amount => Success(value = smear (bins, held.memory, held.motion, amount))
-        SpectralMorph amount => Success(value = unchanged (morph (bins, sides, amount), held.memory, held.motion, false))
+        SpectralMorph amount mode => Success(value = unchanged (morph (config, bins, sides, amount, mode), held.memory, held.motion, false))
         SpectralPitch ratio formant => pitch (config, bins, held, ratio, formant)
         SpectralSeries steps => series (config, bins, sides, held, steps)

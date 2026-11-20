@@ -13,6 +13,10 @@ type ComplexHalves =
     lower : List<Complex>
     upper : List<Complex>
 
+type MorphMode =
+    Blend
+    Envelope
+
 type SpectralTransform =
     SpectralPass
     SpectralFreeze
@@ -26,6 +30,7 @@ type SpectralTransform =
         amount : float
     SpectralMorph
         amount : float
+        mode : MorphMode
     SpectralPitch
         ratio : float
         formant : float

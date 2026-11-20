@@ -81,4 +81,11 @@ def envelopeRadius (size sampleRate : Float) : Float := Float.ceil (150 * size /
 def formantGain (wanted current : Float) : Float :=
   if current <= 0.000000001 then 1 else if wanted / current > 16 then 16 else wanted / current
 
+/-- Log-magnitude interpolation: the geometric path between two levels, so halfway sounds halfway. -/
+def logBlend (a b amount : Float) : Float :=
+  Float.exp ((1 - amount) * Float.log (a + 0.000000001) + amount * Float.log (b + 0.000000001)) - 0.000000001
+
+/-- Cross-synthesis gain `(wanted / own) ^ amount`, 1 where the own envelope is silent, at most 16. -/
+def envelopeMorph (wanted own amount : Float) : Float := Float.pow (formantGain wanted own) amount
+
 end synth.SpectralMath
