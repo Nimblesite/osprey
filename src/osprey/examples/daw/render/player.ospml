@@ -30,7 +30,8 @@ module Player
 
     held (arrangement, buses, source) = synth::Outcomes::carried (Sustains::frozen (toFloat arrangement.sampleRate, source, Sustains::needed (toFloat arrangement.sampleRate, arrangement.sustains)), \raw => foldList (arrangement.sustains, Success(value = buses), \(outcome, glow) => glowed (arrangement, raw, outcome, glow)))
 
-    bridged (request, arrangement, buses) = match length arrangement.sustains == 0
+    // Without an intro recording there is no held end to sustain.
+    bridged (request, arrangement, buses) = match length arrangement.sustains == 0 || arrangement.intro.recording == ""
         true => Success(value = buses)
         false => match tail (request, arrangement)
             Error why => Error(message = why)
@@ -69,12 +70,21 @@ module Player
     // The intro at the piece's rate, then an equal-gain crossfade of `crossfade` seconds into the piece.
     crossfade arrangement = "[0:a]aresample=${arrangement.sampleRate},aformat=sample_fmts=flt:channel_layouts=stereo[intro];[intro][1:a]acrossfade=d=${arrangement.intro.crossfade}:c1=tri:c2=tri"
 
-    joined (request, arrangement) = synth::Outcomes::carried (Shell::ran (300, "ffmpeg -v error -y -i ${Shell::located arrangement.intro.recording} -i ${Shell::quoted (piecePath request)} -filter_complex \"${crossfade arrangement}\" -c:a pcm_s24le ${Shell::quoted (songPath request)}"), \_ => Success(value = songPath request))
+    joined (request, arrangement) = match arrangement.intro.recording == ""
+        true => synth::Outcomes::carried (Shell::ran (60, "mv ${Shell::quoted (piecePath request)} ${Shell::quoted (songPath request)}"), \_ => Success(value = songPath request))
+        false => introduced (request, arrangement)
+
+    introduced (request, arrangement) = synth::Outcomes::carried (Shell::ran (300, "ffmpeg -v error -y -i ${Shell::located arrangement.intro.recording} -i ${Shell::quoted (piecePath request)} -filter_complex \"${crossfade arrangement}\" -c:a pcm_s24le ${Shell::quoted (songPath request)}"), \_ => Success(value = songPath request))
 
     // The concat list names parts relative to itself.
     assembled (request, arrangement, files) = match writeFile "${request.folder}/parts.txt" (join (mapList (files, \path => "file ${Shell::quoted path}")) "\n")
         Error why => Error(message = why)
-        Success _ => synth::Outcomes::carried (Shell::ran (300, "ffmpeg -v error -y -f concat -safe 0 -i ${Shell::quoted "${request.folder}/parts.txt"} -c copy ${Shell::quoted (piecePath request)}"), \_ => joined (request, arrangement))
+        Success _ => synth::Outcomes::carried (Shell::ran (300, "ffmpeg -v error -y -f concat -safe 0 -i ${Shell::quoted "${request.folder}/parts.txt"} -c copy ${Shell::quoted (piecePath request)}"), \_ => delivered (request, arrangement))
+
+    // An excerpt is the piece alone; the whole song follows its intro.
+    delivered (request, arrangement) = match request.beats > 0.0
+        true => Success(value = piecePath request)
+        false => joined (request, arrangement)
 
     mixed (request, arrangement, buses) = match Arrangements::mixed (arrangement, buses)
         Error why => Error(message = why)

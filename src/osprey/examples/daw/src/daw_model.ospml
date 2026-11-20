@@ -4,6 +4,8 @@ namespace daw
 type Request =
     project : string
     folder : string
+    from : float
+    beats : float
 
 type Written =
     parts : List<string>

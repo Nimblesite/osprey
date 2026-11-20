@@ -2,7 +2,7 @@
 namespace daw
 
 (** A song project is one JSON object: `title`, `tempo` (beats per minute), `sampleRate`, `drive` (master soft limiter, 0.1–4), `space`
-    (reverb `size`, `decay`, `damping`), `intro` (the `recording` the piece continues, `~/` for the home folder or
+    (reverb `size`, `decay`, `damping`), `intro` (optional: the `recording` the piece continues, `~/` for the home folder or
     relative to the working folder, `tail` seconds the engine holds, `crossfade` seconds), `sustains` (appearances of that held end:
     `start` beat, pitch `ratio`, `rise`, `hold` and `fade` seconds, `gain`, `reverb`) and `tracks`. A track has `name`, `instrument` (an object whose `kind` is `pluck`,
     `bow`, `bell`, `mallet`, `operator`, `drum` or `patch`: a routed graph of `nodes` and `cables`), `gain`, `pan`, `reverb` and `notes`; a note is the array
@@ -68,8 +68,9 @@ module SongFiles
     (** Whether `path` can be single-quoted on a command line. *)
     export safe path = contains path "'" == false
 
-    // The recording must be a quotable path; the held tail lasts 0.5–10 s and the crossfade fits inside it.
-    checked recording = match recording.recording != "" && safe recording.recording && recording.tail >= 0.5 && recording.tail <= 10.0 && recording.crossfade > 0.0 && recording.crossfade <= recording.tail
+    // No recording means the piece stands alone; a recording must be a quotable path, its held tail lasts
+    // 0.5–10 s and the crossfade fits inside it.
+    checked recording = match recording.recording == "" || safe recording.recording && recording.tail >= 0.5 && recording.tail <= 10.0 && recording.crossfade > 0.0 && recording.crossfade <= recording.tail
         true => Success(value = recording)
         false => Error(message = "The intro needs a recording path without quotes, a tail of 0.5–10 seconds and a crossfade no longer than the tail.")
 
@@ -83,3 +84,39 @@ module SongFiles
         Success doc => match checked (intro (ui::Doc::field (doc, "intro")))
             Error why => Error(message = why)
             Success _ => synth::Outcomes::carried (folded (doc, "tracks", track), \tracks => Success(value = arranged (doc, tracks)))
+
+    // The same document written back: every key `decode` reads, so a decoded project re-encodes losslessly.
+    nest (key, value) = JsonMember key value
+
+    kinded (kind, members) = JsonObject (listConcat [ui::Doc::str ("kind", kind)] members)
+
+    followedDoc setting = match setting.follow
+        Constant => JsonFloat setting.value
+        Pitched => JsonObject [ui::Doc::dec ("pitch", setting.value)]
+        Struck => JsonObject [ui::Doc::dec ("velocity", setting.value)]
+
+    nodeDoc node = JsonObject [ui::Doc::num ("id", node.identity), ui::Doc::str ("module", node.component), ui::Doc::num ("size", node.size), ui::Doc::num ("seed", node.seed), nest ("set", JsonObject (mapList (node.settings, \setting => nest (setting.key, followedDoc setting))))]
+
+    cableDoc cable = JsonObject [ui::Doc::num ("from", cable.source), ui::Doc::num ("outlet", cable.outlet), ui::Doc::num ("to", cable.destination), ui::Doc::num ("inlet", cable.inlet)]
+
+    instrumentDoc instrument = match instrument
+        PatchInstrument routing => kinded ("patch", [nest ("nodes", JsonArray (mapList (routing.nodes, nodeDoc))), nest ("cables", JsonArray (mapList (routing.cables, cableDoc))), ui::Doc::dec ("attack", routing.attack), ui::Doc::dec ("release", routing.release)])
+        PluckInstrument brightness decay => kinded ("pluck", [ui::Doc::dec ("brightness", brightness), ui::Doc::dec ("decay", decay)])
+        BowInstrument pressure brightness vibrato => kinded ("bow", [ui::Doc::dec ("pressure", pressure), ui::Doc::dec ("brightness", brightness), ui::Doc::dec ("vibrato", vibrato)])
+        BellInstrument decay brightness => kinded ("bell", [ui::Doc::dec ("decay", decay), ui::Doc::dec ("brightness", brightness)])
+        MalletInstrument decay brightness => kinded ("mallet", [ui::Doc::dec ("decay", decay), ui::Doc::dec ("brightness", brightness)])
+        OperatorInstrument tone => kinded ("operator", [ui::Doc::dec ("breakpoint", tone.breakpoint), ui::Doc::dec ("feedback", tone.feedback), ui::Doc::dec ("attack", tone.attack), ui::Doc::dec ("release", tone.release), ui::Doc::dec ("bloom", tone.bloom), ui::Doc::dec ("detune", tone.detune)])
+        DrumInstrument hit => kinded ("drum", [ui::Doc::dec ("sweep", hit.sweep), ui::Doc::dec ("noise", hit.noise), ui::Doc::dec ("colour", hit.colour), ui::Doc::dec ("decay", hit.decay)])
+
+    noteDoc note = JsonArray [JsonInt note.pitch, JsonFloat note.start, JsonFloat note.length, JsonFloat note.velocity]
+
+    trackDoc track = JsonObject [ui::Doc::str ("name", track.name), nest ("instrument", instrumentDoc track.instrument), ui::Doc::dec ("gain", track.gain), ui::Doc::dec ("pan", track.pan), ui::Doc::dec ("reverb", track.reverb), nest ("notes", JsonArray (mapList (track.notes, noteDoc)))]
+
+    sustainDoc glow = JsonObject [ui::Doc::dec ("start", glow.start), ui::Doc::dec ("ratio", glow.ratio), ui::Doc::dec ("rise", glow.rise), ui::Doc::dec ("hold", glow.hold), ui::Doc::dec ("fade", glow.fade), ui::Doc::dec ("gain", glow.gain), ui::Doc::dec ("reverb", glow.reverb)]
+
+    spaceDoc room = JsonObject [ui::Doc::dec ("size", room.size), ui::Doc::dec ("decay", room.decay), ui::Doc::dec ("damping", room.damping)]
+
+    introDoc recording = JsonObject [ui::Doc::str ("recording", recording.recording), ui::Doc::dec ("tail", recording.tail), ui::Doc::dec ("crossfade", recording.crossfade)]
+
+    (** The song project as JSON text that `decode` reads back to the same arrangement. *)
+    export encode arrangement = ui::Doc::write (JsonObject [ui::Doc::str ("title", arrangement.title), ui::Doc::dec ("tempo", arrangement.tempo), ui::Doc::num ("sampleRate", arrangement.sampleRate), ui::Doc::dec ("drive", arrangement.drive), nest ("space", spaceDoc arrangement.space), nest ("intro", introDoc arrangement.intro), nest ("sustains", JsonArray (mapList (arrangement.sustains, sustainDoc))), nest ("tracks", JsonArray (mapList (arrangement.tracks, trackDoc)))])

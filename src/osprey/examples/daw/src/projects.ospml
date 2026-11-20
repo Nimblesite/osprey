@@ -1,0 +1,35 @@
+// [DAW-PROJECT] The one song project file: timeline notes, each track's routing (gain, pan, Space send)
+// and each track's patch all live in it. These are the checked edits the daw makes to it.
+namespace daw
+
+(** Pure edits to a song project, and the excerpt the transport plays. A refused edit changes nothing. *)
+module Projects
+    swapped (tracks, index, next, at) = match at == index
+        true => next
+        false => listGet tracks at ?: next
+
+    (** The project with the track at `index` replaced by `next`. *)
+    export replaced (arrangement, index, next) = match listGet arrangement.tracks index
+        Error _ => Error(message = "There is no track ${satAdd index 1}.")
+        Success _ => Success(value = arrangement(tracks = mapList (toList (range (0, length arrangement.tracks)), \at => swapped (arrangement.tracks, index, next, at))))
+
+    (** Set track `index`'s gain (0–4), pan (−1 left to 1 right) and Space send (0–1). *)
+    export mixed (arrangement, index, gain, pan, reverb) = match gain >= 0.0 && gain <= 4.0 && pan >= -1.0 && pan <= 1.0 && reverb >= 0.0 && reverb <= 1.0
+        false => Error(message = "Gain must be 0 to 4, pan -1 to 1 and the Space send 0 to 1.")
+        true => match listGet arrangement.tracks index
+            Error _ => Error(message = "There is no track ${satAdd index 1}.")
+            Success voice => replaced (arrangement, index, voice(gain = gain, pan = pan, reverb = reverb))
+
+    (** Write the project to `path` as the same JSON `SongFiles::decode` reads. *)
+    export saved (arrangement, path) = match SongFiles::safe path
+        false => Error(message = "A project path cannot contain a quote.")
+        true => synth::Outcomes::carried (writeFile path (SongFiles::encode arrangement), \_ => Success(value = path))
+
+    // `start` names a field of two records, so the note's type is stated.
+    within (from, beats, note: Note) = note.start >= from && note.start - from < beats
+
+    cut (from, beats, voice) = voice(notes = mapList (filterList (voice.notes, \note => within (from, beats, note)), \note => note(start = note.start - from)))
+
+    (** The `beats` from `from` as a piece of its own: notes starting inside the window, moved to its start,
+        with no held intro. Notes keep their full length, so a release rings past the window. *)
+    export excerpt (arrangement, from, beats) = arrangement(sustains = [], tracks = mapList (arrangement.tracks, \voice => cut (from, beats, voice)))
