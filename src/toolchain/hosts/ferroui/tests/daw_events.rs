@@ -1,7 +1,7 @@
 //! The daw's Timeline tap budget, end to end through the real shared-memory boundary
 //! ([NATIVE-SHM-EVENT], [DAW-PAGES]): the linked daw opens a real song project on its Timeline, lanes
-//! are tapped across every track, and each tap must leave the application's `event` export within
-//! one 60 Hz display frame. A separate file from `prism_events.rs` because the linked application
+//! are tapped across every track, the ruler is tapped, every Mix gain fader is dragged, and each event
+//! must leave the application's `event` export within one 60 Hz display frame. A separate file from `prism_events.rs` because the linked application
 //! holds one session per process and this one opens with a song.
 //!
 //! Needs the daw linked: `scripts/prism.sh` builds `target/prism-app/libOspreyApp.a`, and the test
@@ -22,6 +22,9 @@ const TRACKS: usize = 17;
 const WARM_UP: usize = 3;
 /// The shapes the Timeline draws for the song, at least.
 const TIMELINE_SHAPES: usize = 300;
+/// The shapes the Mix page draws for the song, at least, and the middle of its header tab.
+const MIX_SHAPES: usize = 200;
+const MIX_TAB: (f64, f64) = (680.0, 32.0);
 
 fn repo(path: &str) -> String {
     format!("{}/../../../{path}", env!("CARGO_MANIFEST_DIR"))
@@ -64,11 +67,17 @@ fn lane(track: usize, along: f64) -> (f64, f64) {
 #[test]
 fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     assert_eq!(Library::init(), Ok(()), "the daw's top level must run");
+    // A copy: a Mix edit saves into the project it opened, and the tracked song must stay as it is.
+    let folder = std::env::temp_dir().join("osprey-daw-events");
+    let song = folder.join("song.json");
+    assert!(std::fs::create_dir_all(&folder).is_ok(), "the test keeps its song in {}", folder.display());
+    let copied = std::fs::copy(repo("osprey/examples/daw/tracks/codex-version.json"), &song);
+    assert!(copied.is_ok(), "the song is copied: {copied:?}");
     let arguments = vec![
         "--machine".to_owned(),
         repo("osprey/packages/signal_flow/signal_flow.machine.json"),
         "--song".to_owned(),
-        repo("osprey/examples/daw/tracks/codex-version.json"),
+        song.display().to_string(),
     ];
     assert_eq!(Library::arguments(&arguments), Ok(()), "the daw takes its machine and song");
     let opened = Library::open(0, 0, "macos", "/tmp", true);
@@ -97,6 +106,41 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
             costs.push(up);
         }
     }
+
+    // [DAW-TRANSPORT-PLAYHEAD] Ruler taps move the playhead; the lanes stay drawn.
+    for bar in 0..10 {
+        let at = (230.0 + f64::from(bar) * 97.0, 130.0);
+        let (pressed, down) = point(canvas, at, true);
+        assert!(pressed.diagnostics().next().is_none(), "the ruler tap at bar step {bar} is not refused");
+        let (released, up) = point(canvas, at, false);
+        assert!(shapes(&released) >= TIMELINE_SHAPES, "moving the playhead keeps the Timeline drawn");
+        costs.push(down);
+        costs.push(up);
+    }
+
+    // The Mix tab, then every track's gain fader pressed, dragged and released (rows start at y 150,
+    // 36 units each; the gain fader spans x 310 to 460).
+    point(canvas, MIX_TAB, true);
+    let (mix, _) = point(canvas, MIX_TAB, false);
+    assert!(shapes(&mix) >= MIX_SHAPES, "the Mix page draws {} shapes", shapes(&mix));
+    let mut drags = Vec::new();
+    for track in 0..TRACKS {
+        let y = 150.0 + (track as f64 + 0.5) * 36.0;
+        for step in 0..=6 {
+            let (moved, cost) = point(canvas, (320.0 + f64::from(step) * 20.0, y), true);
+            assert!(shapes(&moved) >= MIX_SHAPES, "dragging track {track}'s gain keeps the Mix drawn");
+            assert!(moved.diagnostics().next().is_none(), "the drag on track {track} is not refused");
+            drags.push(cost);
+        }
+        let (released, cost) = point(canvas, (440.0, y), false);
+        assert!(shapes(&released) >= MIX_SHAPES, "releasing track {track}'s gain keeps the Mix drawn");
+        drags.push(cost);
+    }
+    let mean = drags.iter().sum::<f64>() / drags.len() as f64;
+    let worst = drags.iter().copied().fold(0.0, f64::max);
+    println!("mix fader drags: mean {mean:.2} ms, worst {worst:.2} ms over {} events", drags.len());
+    assert!(mean < FRAME_MS, "a Mix fader event takes {mean:.2} ms on average; one frame is {FRAME_MS:.2} ms");
+    assert!(worst < 2.0 * FRAME_MS, "the slowest Mix fader event takes {worst:.2} ms; two frames are {:.2} ms", 2.0 * FRAME_MS);
 
     // Each track's piano roll draws its own notes, so taps that select tracks redraw different scenes.
     assert!(drawn.len() >= 8, "the taps selected tracks: {} distinct scenes", drawn.len());

@@ -116,6 +116,7 @@ Also tried and rejected: narrowing the snapshot to one component's parameters be
 - [x] Keyboard dock cached.
 - [ ] Dragged card moved, not redrawn (the largest part of what remains; not needed for the target).
 - [x] Scenery kept. With the dock: 4.8 ms mean, 5.1 ms worst (was 10.6 and 18.2); 22/22 journeys pass. The interface target is met.
+- [x] `daw_events` also taps the ruler and drags every Mix gain fader: 1.8 ms mean, 10.7 ms worst (the release saves the project).
 - [x] `prism_events` holds a drag move to one 120 Hz frame on average (8.3 ms), two at worst.
 
 ## Verification
