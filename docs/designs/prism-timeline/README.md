@@ -6,6 +6,14 @@ The Timeline is a second window of the combined Prism DAW. Select a track to ins
 
 The three native captures show one reopened copy of *Broken Circuitry: Reassembly*. On keysL, the inspector shows D♯4 at beat 88 with velocity 65%. The mixer shows gain 2.00×, centred pan and a 50% Space send. In the patch, the waveshaper feeds Delay 6 before Output 5. The same JSON file contains all three edits and the delay’s canvas position. [Piano roll](../../../src/osprey/examples/daw/screens/timeline.png) · [Mixer and routing](../../../src/osprey/examples/daw/screens/mix.png) · [Reopened track patch](../../../src/osprey/examples/daw/screens/track-patch.png)
 
+## Window commands under review [PRISM-TIMELINE-MENU]
+
+The proposed menu layout applies to Patch, Timeline and Mix. File holds Open Song, Save and Render Song. Edit holds Undo and Redo. View switches pages and toggles Modules, Patch Controls and Keyboard. Transport holds song playback and patch audition. Play and Stop stay within reach on the canvas. The current page, project title and playback state remain visible when the menus close.
+
+For routing, select a track in Mix and choose its output from the Routing menu. Show Master and every bus declared in the open project, with the current destination marked. The row and signal diagram should update together after a successful save. In the bundled project, both glow and tablepad feed pads, kick keys its compressor, and the tracks’ independent Space sends return directly to Master.
+
+Verify the change through the native menu and its keyboard shortcuts, including after opening another project. Run the video journey through the same menus, check that clicks on former toolbar positions have no effect, and capture the menu and the resulting Mix view. Placement is awaiting agreement from ferroui-prism-lead on TMC.
+
 ## Screens
 
 | Design screenshot | What to inspect |
