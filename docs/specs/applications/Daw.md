@@ -27,6 +27,17 @@ A song is one JSON file, and nothing about a song lives anywhere else. It contai
 
 Rendering is offline and slower than realtime. With the renderer built under ARC, four beats of the codex song take about 32 s. The per-note patch voices dominate that time.
 
+## Rendering the song [DAW-RENDER]
+
+**Render song** renders the whole project, as it currently stands, to `<song>/song/piece.wav` beside the renderer. It is the same renderer and the same rules as Play, without the window.
+
+1. The app encodes the current project to `<song>/song/project.json` and empties the old `piece.wav`, then runs `daw <project.json> <folder>` (no beats: the whole song, intro and sustains included) with a two-hour limit.
+2. Only a WAV longer than its header counts. A refusal shows the renderer's message: "Rendering failed: …". A finished render says "Rendered <path>." and plays nothing.
+3. An unchanged project keeps its audio and says it "is already this project" without rendering.
+4. Play and Render song share one transport: while either is in flight, both refuse with "The song is already playing; Stop first." Stop cancels either one.
+
+Outside the app, `make -C src/toolchain/targets/macos daw-render SONG=<project.json>` renders the same file to `target/daw/<project>/song.wav`.
+
 ## Timeline transport [DAW-TRANSPORT-TIMELINE]
 
 The Timeline carries the transport, and its state is in the project model ([daw.td](../../../src/osprey/examples/daw/daw.td)), not in the view.

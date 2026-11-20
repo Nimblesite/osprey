@@ -32,6 +32,11 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] Stop cancels the FerroUI transport process group. Native Play → Stop left no renderer and a zero-byte WAV. The host process tests also exercise descendant cancellation.
 - [ ] The renderer is fast enough to play from the playhead without waiting (per-note patch voices dominate).
 
+## Rendering the song [DAW-RENDER]
+
+- [x] **Render song** in the header bounces the whole project to `<song>/song/piece.wav`: refused while busy, only real audio counts, an unchanged project is kept, Stop cancels it. The transport journey test covers it; the daw suite passes 22/22.
+- [ ] Natively verified on the FerroUI host with the codex project.
+
 ## Timeline transport [DAW-TRANSPORT-TIMELINE]
 
 - [x] Play bars and Stop from the Timeline.
