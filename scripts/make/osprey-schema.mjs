@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const [generator, schema, destination, namespace] = process.argv.slice(2)
+const [generator, schema, destination, namespace, projectRoot] = process.argv.slice(2)
 if (!generator || !schema || !destination || !namespace) throw new Error('usage: osprey-schema.mjs <typediagram/dist> <schema.td> <output.ospml> <namespace>')
 const upstream = pathToFileURL(resolve(generator) + '/')
 const { parse } = await import(new URL('parser/index.js', upstream))
@@ -49,5 +49,10 @@ if (projected) {
     if (decl.kind === 'alias') qualify(decl.target)
   }
 }
-const generated = swift ? converter.generateSwiftModule(model) : converter.generateOspreyModule(model)
-await writeFile(destination, (swift ? '' : `namespace ${namespace}\n\n`) + (projected ? unwrap(generated).trimEnd() : unwrap(generated)) + '\n')
+if (projectRoot) {
+  const { projectCodec } = await import('./osprey-project-codec.mjs')
+  await writeFile(destination, `namespace ${namespace}\n\n` + projectCodec(model, projectRoot))
+} else {
+  const generated = swift ? converter.generateSwiftModule(model) : converter.generateOspreyModule(model)
+  await writeFile(destination, (swift ? '' : `namespace ${namespace}\n\n`) + (projected ? unwrap(generated).trimEnd() : unwrap(generated)) + '\n')
+}

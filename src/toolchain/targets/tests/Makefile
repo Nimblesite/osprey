@@ -107,11 +107,12 @@ workbench: build
 workbench-proof-assets:
 	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets
 	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets --check
-## daw-models: Generate the project and editor Osprey types from daw.td using TYPEDIAGRAM_DIST.
+## daw-models: Generate the project and editor types and project JSON field codec from daw.td using TYPEDIAGRAM_DIST.
 .PHONY: daw-models
 daw-models:
 	node scripts/make/osprey-schema.mjs "$(TYPEDIAGRAM_DIST)" src/osprey/examples/daw/daw.td src/osprey/examples/daw/src/daw_model.ospml daw
 	node scripts/make/osprey-schema.mjs "$(TYPEDIAGRAM_DIST)" src/osprey/examples/daw/daw.td src/osprey/examples/daw/src/editor_model.ospml synth
+	node scripts/make/osprey-schema.mjs "$(TYPEDIAGRAM_DIST)" src/osprey/examples/daw/daw.td src/osprey/examples/daw/src/project_codec.ospml daw Arrangement
 
 ## synth-vst: Verify isolated VST3 scanning and real instrument/effect processing headlessly.
 .PHONY: synth-vst

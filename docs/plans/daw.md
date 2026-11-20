@@ -17,7 +17,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] An encoding failure is an error result instead of a `"null"` file.
 - [x] A Prism patch edit is saved into its track and reopens as the same graph ([DAW-PROJECT-PATCH]).
 - [x] The project JSON keys are the `daw.td` field names, and `tracks/*.json` is migrated ([DAW-PROJECT-MODEL]).
-- [x] Generate the project and editor types from one `daw.td` with `make -C src/toolchain/targets/tests daw-models TYPEDIAGRAM_DIST=<dist>`.
+- [x] Generate the project and editor types and the project JSON field readers and writer from one `daw.td` with `make -C src/toolchain/targets/tests daw-models TYPEDIAGRAM_DIST=<dist>`.
 - [ ] Node positions, grain sample assets and VST bindings are stored in the project.
 - [ ] Track and Master channel layouts (stereo default, any count) are stored in the project; tracks render per channel ([SYNTH-GRAPH-CHANNELS]).
 
@@ -41,5 +41,5 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 
 ## Verification
 
-- [ ] The daw test suite passes under GC and ARC.
+- [x] The 22 DAW journeys passed under GC and ARC. The generated field codec also round-tripped the edited 17-track project with all 2,913 notes and every JSON value equal.
 - [ ] `make ci` passes; a coordinated push is made under the TMC lock.

@@ -24,8 +24,7 @@ one window: the FerroUI host opens a single window, so a separate Timeline windo
 
 ## The project file
 
-One JSON object whose keys are the field names of the types in [daw.td](daw.td), decoded and encoded
-in [song_files.ospml](src/song_files.ospml). The app and the renderer read the same file.
+The app and renderer use one JSON project. The field readers and writer are generated from [daw.td](daw.td). Project validation and error messages live in [song_files.ospml](src/song_files.ospml).
 
 | Key | Meaning |
 | --- | --- |

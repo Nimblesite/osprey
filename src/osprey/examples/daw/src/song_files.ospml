@@ -7,9 +7,6 @@ namespace daw
     beside it; a variant with no fields (a setting's `follow`) is just its name. The intro `recording` is `~/`
     for the home folder or relative to the working folder; "" means the piece stands alone. *)
 module SongFiles
-    tone doc = Tone(breakpoint = ui::Doc::decimal (doc, "breakpoint"), feedback = ui::Doc::decimal (doc, "feedback"), attack = ui::Doc::decimal (doc, "attack"), release = ui::Doc::decimal (doc, "release"), bloom = ui::Doc::decimal (doc, "bloom"), detune = ui::Doc::decimal (doc, "detune"))
-
-    hit doc = Hit(sweep = ui::Doc::decimal (doc, "sweep"), noise = ui::Doc::decimal (doc, "noise"), colour = ui::Doc::decimal (doc, "colour"), decay = ui::Doc::decimal (doc, "decay"))
 
     follow name = match name
         "Constant" => Success(value = Constant)
@@ -17,29 +14,27 @@ module SongFiles
         "Struck" => Success(value = Struck)
         other => Error(message = "A setting's follow must be Constant, Pitched or Struck, not \"${other}\".")
 
-    setting doc = synth::Outcomes::carried (follow (ui::Doc::text (doc, "follow")), \how => Success(value = Setting(key = ui::Doc::text (doc, "key"), value = ui::Doc::decimal (doc, "value"), follow = how)))
+    setting doc = synth::Outcomes::carried (follow (ui::Doc::text (doc, "follow")), \how => Success(value = ProjectCodec::readSetting (doc, how)))
 
-    node doc = synth::Outcomes::carried (folded (doc, "settings", setting), \settings => Success(value = PatchNode(identity = ui::Doc::number (doc, "identity"), component = ui::Doc::text (doc, "component"), size = ui::Doc::number (doc, "size"), seed = ui::Doc::number (doc, "seed"), asset = ui::Doc::text (doc, "asset"), settings = settings)))
+    node doc = synth::Outcomes::carried (folded (doc, "settings", setting), \settings => Success(value = ProjectCodec::readPatchNode (doc, settings)))
 
     each (doc, key, read) = mapList (ui::Doc::fieldItems (doc, key), read)
 
-    cable doc = PatchCable(source = ui::Doc::number (doc, "source"), outlet = ui::Doc::number (doc, "outlet"), destination = ui::Doc::number (doc, "destination"), inlet = ui::Doc::number (doc, "inlet"))
-
-    routing doc = synth::Outcomes::carried (folded (doc, "nodes", node), \nodes => Success(value = Routing(nodes = nodes, cables = each (doc, "cables", cable), attack = ui::Doc::decimal (doc, "attack"), release = ui::Doc::decimal (doc, "release"))))
+    routing doc = synth::Outcomes::carried (folded (doc, "nodes", node), \nodes => Success(value = ProjectCodec::readRouting (doc, nodes, each (doc, "cables", ProjectCodec::readPatchCable))))
 
     instrument doc = match ui::Doc::text (doc, "kind")
-        "PluckInstrument" => Success(value = PluckInstrument(brightness = ui::Doc::decimal (doc, "brightness"), decay = ui::Doc::decimal (doc, "decay")))
-        "BowInstrument" => Success(value = BowInstrument(pressure = ui::Doc::decimal (doc, "pressure"), brightness = ui::Doc::decimal (doc, "brightness"), vibrato = ui::Doc::decimal (doc, "vibrato")))
-        "BellInstrument" => Success(value = BellInstrument(decay = ui::Doc::decimal (doc, "decay"), brightness = ui::Doc::decimal (doc, "brightness")))
-        "MalletInstrument" => Success(value = MalletInstrument(decay = ui::Doc::decimal (doc, "decay"), brightness = ui::Doc::decimal (doc, "brightness")))
-        "OperatorInstrument" => Success(value = OperatorInstrument(tone = tone (ui::Doc::field (doc, "tone"))))
-        "DrumInstrument" => Success(value = DrumInstrument(hit = hit (ui::Doc::field (doc, "hit"))))
-        "PatchInstrument" => synth::Outcomes::carried (routing (ui::Doc::field (doc, "routing")), \routed => Success(value = PatchInstrument(routing = routed)))
+        "PluckInstrument" => Success(value = ProjectCodec::readPluckInstrument doc)
+        "BowInstrument" => Success(value = ProjectCodec::readBowInstrument doc)
+        "BellInstrument" => Success(value = ProjectCodec::readBellInstrument doc)
+        "MalletInstrument" => Success(value = ProjectCodec::readMalletInstrument doc)
+        "OperatorInstrument" => Success(value = ProjectCodec::readOperatorInstrument (ProjectCodec::readTone (ui::Doc::field (doc, "tone"))))
+        "DrumInstrument" => Success(value = ProjectCodec::readDrumInstrument (ProjectCodec::readHit (ui::Doc::field (doc, "hit"))))
+        "PatchInstrument" => synth::Outcomes::carried (routing (ui::Doc::field (doc, "routing")), \routed => Success(value = ProjectCodec::readPatchInstrument routed))
         other => Error(message = "Unknown instrument kind \"${other}\".")
 
     note doc = match jsonInt (ui::Doc::field (doc, "pitch"))
         Error _ => Error(message = "A note's pitch must be a whole MIDI number.")
-        Success pitch => Success(value = Note(pitch = pitch, start = ui::Doc::decimal (doc, "start"), length = ui::Doc::decimal (doc, "length"), velocity = ui::Doc::decimal (doc, "velocity")))
+        Success _ => Success(value = ProjectCodec::readNote doc)
 
     appended (carry, decoded) = match carry
         Error why => Error(message = why)
@@ -51,7 +46,7 @@ module SongFiles
 
     position doc = match jsonInt (ui::Doc::field (doc, "layoutNode"))
         Success id => match id >= 0 && ui::Doc::kind (ui::Doc::field (doc, "layoutX")) == "number" && ui::Doc::kind (ui::Doc::field (doc, "layoutY")) == "number"
-            true => Success(value = NodePosition(layoutNode = id, layoutX = ui::Doc::decimal (doc, "layoutX"), layoutY = ui::Doc::decimal (doc, "layoutY")))
+            true => Success(value = ProjectCodec::readNodePosition doc)
             false => Error(message = "A node position needs a node identity and numeric layoutX and layoutY.")
         Error _ => Error(message = "A node position needs a whole layoutNode identity.")
 
@@ -63,11 +58,7 @@ module SongFiles
         Error why => failed (doc, why)
         Success sound => match folded (doc, "notes", note)
             Error why => failed (doc, why)
-            Success notes => synth::Outcomes::carried (synth::Outcomes::carried (folded (doc, "positions", position), uniquePositions), \positions => Success(value = Track(name = ui::Doc::text (doc, "name"), instrument = sound, gain = ui::Doc::decimal (doc, "gain"), pan = ui::Doc::decimal (doc, "pan"), reverb = ui::Doc::decimal (doc, "reverb"), positions = positions, notes = notes)))
-
-    sustain doc = Afterglow(start = ui::Doc::decimal (doc, "start"), ratio = ui::Doc::decimal (doc, "ratio"), rise = ui::Doc::decimal (doc, "rise"), hold = ui::Doc::decimal (doc, "hold"), fade = ui::Doc::decimal (doc, "fade"), gain = ui::Doc::decimal (doc, "gain"), reverb = ui::Doc::decimal (doc, "reverb"))
-
-    intro doc = Intro(recording = ui::Doc::text (doc, "recording"), tail = ui::Doc::decimal (doc, "tail"), crossfade = ui::Doc::decimal (doc, "crossfade"))
+            Success notes => synth::Outcomes::carried (synth::Outcomes::carried (folded (doc, "positions", position), uniquePositions), \positions => Success(value = ProjectCodec::readTrack (doc, sound, positions, notes)))
 
     (** Whether `path` can be single-quoted on a command line. *)
     export safe path = contains path "'" == false
@@ -79,60 +70,16 @@ module SongFiles
         false => Error(message = "The intro needs a recording path without quotes, a tail of 0.5–10 seconds and a crossfade no longer than the tail.")
 
     arranged (doc, tracks) =
-        room = ui::Doc::field (doc, "space")
-        Arrangement(title = ui::Doc::text (doc, "title"), tempo = ui::Doc::decimal (doc, "tempo"), sampleRate = ui::Doc::number (doc, "sampleRate"), drive = ui::Doc::decimal (doc, "drive"), space = Space(size = ui::Doc::decimal (room, "size"), decay = ui::Doc::decimal (room, "decay"), damping = ui::Doc::decimal (room, "damping")), intro = intro (ui::Doc::field (doc, "intro")), sustains = each (doc, "sustains", sustain), tracks = tracks)
+        ProjectCodec::readArrangement (doc, ProjectCodec::readSpace (ui::Doc::field (doc, "space")), ProjectCodec::readIntro (ui::Doc::field (doc, "intro")), each (doc, "sustains", ProjectCodec::readAfterglow), tracks)
 
     (** Decode a song project; malformed JSON, an unknown instrument or a malformed note is an error. *)
     export decode source = match jsonDecode source
         Error _ => Error(message = "The song project is not valid JSON.")
-        Success doc => match checked (intro (ui::Doc::field (doc, "intro")))
+        Success doc => match checked (ProjectCodec::readIntro (ui::Doc::field (doc, "intro")))
             Error why => Error(message = why)
             Success _ => synth::Outcomes::carried (folded (doc, "tracks", track), \tracks => Success(value = arranged (doc, tracks)))
 
-    // The same document written back: every key `decode` reads, so a decoded project re-encodes losslessly.
-    nest (key, value) = JsonMember key value
-
-    kinded (kind, members) = JsonObject (listConcat [ui::Doc::str ("kind", kind)] members)
-
-    followName follow = match follow
-        Constant => "Constant"
-        Pitched => "Pitched"
-        Struck => "Struck"
-
-    settingDoc setting = JsonObject [ui::Doc::str ("key", setting.key), ui::Doc::dec ("value", setting.value), ui::Doc::str ("follow", followName setting.follow)]
-
-    nodeDoc node = JsonObject [ui::Doc::num ("identity", node.identity), ui::Doc::str ("component", node.component), ui::Doc::num ("size", node.size), ui::Doc::num ("seed", node.seed), ui::Doc::str ("asset", node.asset), nest ("settings", JsonArray (mapList (node.settings, settingDoc)))]
-
-    cableDoc cable = JsonObject [ui::Doc::num ("source", cable.source), ui::Doc::num ("outlet", cable.outlet), ui::Doc::num ("destination", cable.destination), ui::Doc::num ("inlet", cable.inlet)]
-
-    routingDoc routing = JsonObject [nest ("nodes", JsonArray (mapList (routing.nodes, nodeDoc))), nest ("cables", JsonArray (mapList (routing.cables, cableDoc))), ui::Doc::dec ("attack", routing.attack), ui::Doc::dec ("release", routing.release)]
-
-    toneDoc tone = JsonObject [ui::Doc::dec ("breakpoint", tone.breakpoint), ui::Doc::dec ("feedback", tone.feedback), ui::Doc::dec ("attack", tone.attack), ui::Doc::dec ("release", tone.release), ui::Doc::dec ("bloom", tone.bloom), ui::Doc::dec ("detune", tone.detune)]
-
-    hitDoc hit = JsonObject [ui::Doc::dec ("sweep", hit.sweep), ui::Doc::dec ("noise", hit.noise), ui::Doc::dec ("colour", hit.colour), ui::Doc::dec ("decay", hit.decay)]
-
-    instrumentDoc instrument = match instrument
-        PatchInstrument routing => kinded ("PatchInstrument", [nest ("routing", routingDoc routing)])
-        PluckInstrument brightness decay => kinded ("PluckInstrument", [ui::Doc::dec ("brightness", brightness), ui::Doc::dec ("decay", decay)])
-        BowInstrument pressure brightness vibrato => kinded ("BowInstrument", [ui::Doc::dec ("pressure", pressure), ui::Doc::dec ("brightness", brightness), ui::Doc::dec ("vibrato", vibrato)])
-        BellInstrument decay brightness => kinded ("BellInstrument", [ui::Doc::dec ("decay", decay), ui::Doc::dec ("brightness", brightness)])
-        MalletInstrument decay brightness => kinded ("MalletInstrument", [ui::Doc::dec ("decay", decay), ui::Doc::dec ("brightness", brightness)])
-        OperatorInstrument tone => kinded ("OperatorInstrument", [nest ("tone", toneDoc tone)])
-        DrumInstrument hit => kinded ("DrumInstrument", [nest ("hit", hitDoc hit)])
-
-    noteDoc note = JsonObject [ui::Doc::num ("pitch", note.pitch), ui::Doc::dec ("start", note.start), ui::Doc::dec ("length", note.length), ui::Doc::dec ("velocity", note.velocity)]
-
-    positionDoc p = JsonObject [ui::Doc::num ("layoutNode", p.layoutNode), ui::Doc::dec ("layoutX", p.layoutX), ui::Doc::dec ("layoutY", p.layoutY)]
-
-    trackDoc track = JsonObject [ui::Doc::str ("name", track.name), nest ("instrument", instrumentDoc track.instrument), ui::Doc::dec ("gain", track.gain), ui::Doc::dec ("pan", track.pan), ui::Doc::dec ("reverb", track.reverb), nest ("positions", JsonArray (mapList (track.positions, positionDoc))), nest ("notes", JsonArray (mapList (track.notes, noteDoc)))]
-
-    sustainDoc glow = JsonObject [ui::Doc::dec ("start", glow.start), ui::Doc::dec ("ratio", glow.ratio), ui::Doc::dec ("rise", glow.rise), ui::Doc::dec ("hold", glow.hold), ui::Doc::dec ("fade", glow.fade), ui::Doc::dec ("gain", glow.gain), ui::Doc::dec ("reverb", glow.reverb)]
-
-    spaceDoc room = JsonObject [ui::Doc::dec ("size", room.size), ui::Doc::dec ("decay", room.decay), ui::Doc::dec ("damping", room.damping)]
-
-    introDoc recording = JsonObject [ui::Doc::str ("recording", recording.recording), ui::Doc::dec ("tail", recording.tail), ui::Doc::dec ("crossfade", recording.crossfade)]
-
-    (** The song project as JSON text that `decode` reads back to the same arrangement. *)
-    export encode arrangement = match jsonEncode (JsonObject [ui::Doc::str ("title", arrangement.title), ui::Doc::dec ("tempo", arrangement.tempo), ui::Doc::num ("sampleRate", arrangement.sampleRate), ui::Doc::dec ("drive", arrangement.drive), nest ("space", spaceDoc arrangement.space), nest ("intro", introDoc arrangement.intro), nest ("sustains", JsonArray (mapList (arrangement.sustains, sustainDoc))), nest ("tracks", JsonArray (mapList (arrangement.tracks, trackDoc)))])
+    (** Write the complete project as JSON. *)
+    export encode arrangement = match jsonEncode (ProjectCodec::writeArrangement arrangement)
         Error why => Error(message = "The project could not be written as JSON: ${why}")
         Success text => Success(value = text)
