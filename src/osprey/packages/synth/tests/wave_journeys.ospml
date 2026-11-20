@@ -95,7 +95,25 @@ morphLevel (config, voices, frequency) = match spectralRendered (config, voices)
     Success run => formantLevel (run.samples, frequency) / 256.0
 
 // A harmonic tone: six partials falling as 1/k.
-harmonicTone (fundamental, n) = foldList (toList (range (1, 7)), 0.0, \(sum, k) => sum + sin (6.283185307179586 * fundamental * toFloat k * toFloat n / formantRate) / toFloat k)
+partialsTone (fundamental, count, n) = foldList (toList (range (1, satAdd count 1)), 0.0, \(sum, k) => sum + sin (6.283185307179586 * fundamental * toFloat k * toFloat n / formantRate) / toFloat k)
+
+harmonicTone (fundamental, n) = partialsTone (fundamental, 6, n)
+
+// Blend of two 500 Hz sines at levels m and s lands on the geometric path exp((1 - a) ln m + a ln s), within 5%.
+blendLanded (c) = near (morphLevel (morphConfig (c.a, synth::Blend), { main = \n => formantTone (c.m, n), side = \n => formantTone (c.s, n) }, 500.0) / exp ((1.0 - c.a) * ln c.m + c.a * ln c.s), 1.0, 0.05)
+
+// The 1.875 kHz : 937.5 Hz level ratio of the main vowel under the side vowel's envelope at amount a.
+envelopeTilt a = match spectralRendered (morphConfig (a, synth::Envelope), { main = formantVoice, side = \n => formantVoiceAt (1875.0, n) })
+    Error _ => -1.0
+    Success run => formantLevel (run.samples, 1875.0) / formantLevel (run.samples, 937.5)
+
+// Six main harmonics against three side harmonics: three pairs glide, the main's harmonics 4-6 fade by 1 - a where they stand.
+orphansLanded (c) = match spectralRendered (morphConfig (c.a, synth::Partial), { main = \n => partialsTone (220.0, 6, n), side = \n => partialsTone (330.0, 3, n) })
+    Error why => expect (why, "")
+    Success run =>
+        glide = exp ((1.0 - c.a) * ln 220.0 + c.a * ln 330.0)
+        forEachList ([1.0, 2.0, 3.0], \k => near (formantLevel (run.samples, glide * k) / 256.0 * k, 1.0, 0.2))
+        forEachList ([4.0, 5.0, 6.0], \k => near (formantLevel (run.samples, 220.0 * k) / 256.0 * k / (1.0 - c.a), 1.0, 0.2))
 
 // One rendered Partial morph from a harmonic tone at `low` to one at `high`: harmonic k must land at k x the
 // geometric glide with level 1/k (within 20%), and each source's own harmonics must sit 30 dB below it.
@@ -273,6 +291,11 @@ registerWaveJourneys () =
     test ("spectral morphing blends log magnitudes and cross-synthesises one sound's envelope onto another [SYNTH-SPECTRAL-MORPH]", \() => arithmetic (\() =>
         tones = { main = \n => formantTone (0.5, n), side = \n => formantTone (0.05, n) }
         // Blend walks the geometric path: 0.5 at 0, sqrt(0.5 x 0.05) = 0.158 halfway (a crossfade would give 0.275), 0.05 at 1.
+        forEachList ([{ m = 1.0, s = 0.01, a = 0.5 }, { m = 0.2, s = 0.8, a = 0.5 }, { m = 0.4, s = 0.4, a = 0.3 }, { m = 0.9, s = 0.1, a = 0.1 }, { m = 0.05, s = 0.6, a = 0.8 }, { m = 0.3, s = 0.03, a = 0.66 }], blendLanded)
+        // Envelope tilt rises monotonically with the amount, from the main vowel's own shape to the side's.
+        tilts = mapList ([0.0, 0.25, 0.5, 0.75, 1.0], envelopeTilt)
+        forEachList ([0, 1, 2, 3], \i => expect ((listGet tilts (satAdd i 1) ?: 0.0) > (listGet tilts i ?: 0.0) * 1.2, true))
+        expect ((listGet tilts 0 ?: 9.0) < 0.2 && (listGet tilts 4 ?: 0.0) > 5.0, true)
         forEachList ([{ a = 0.0, want = 0.5 }, { a = 0.25, want = 0.2812 }, { a = 0.5, want = 0.1581 }, { a = 0.75, want = 0.0889 }, { a = 1.0, want = 0.05 }],
             \c => near (morphLevel (morphConfig (c.a, synth::Blend), tones, 500.0) / c.want, 1.0, 0.05))
         // Envelope: the main voice's harmonics (resonance 1 kHz) take on the side voice's resonance at 1.875 kHz.
@@ -290,6 +313,8 @@ registerWaveJourneys () =
         // Rising and falling glides, fifths and an octave, at five amounts: 0 and 1 reproduce their source tone.
         forEachList ([{ low = 220.0, high = 330.0, a = 0.0 }, { low = 220.0, high = 330.0, a = 0.25 }, { low = 220.0, high = 330.0, a = 0.5 }, { low = 220.0, high = 330.0, a = 0.75 }, { low = 220.0, high = 330.0, a = 1.0 },
             { low = 330.0, high = 220.0, a = 0.5 }, { low = 330.0, high = 220.0, a = 0.25 }, { low = 200.0, high = 400.0, a = 0.5 }, { low = 250.0, high = 375.0, a = 0.6 }, { low = 300.0, high = 200.0, a = 0.9 }], partialLanded)
+        // Unequal partial counts: orphans fade by 1 - amount at their own pitch while the pairs glide.
+        forEachList ([{ a = 0.0 }, { a = 0.25 }, { a = 0.4 }, { a = 0.5 }], orphansLanded)
         // Partial morphing is stateful: it cannot share a series analysis.
         expect (configured (synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = synth::SpectralSeries(steps = [synth::SpectralMorph(amount = 0.5, mode = synth::Partial)]), mix = 1.0)), false)
         expect (configured (synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = synth::SpectralSeries(steps = [synth::SpectralMorph(amount = 0.5, mode = synth::Blend)]), mix = 1.0)), true)
