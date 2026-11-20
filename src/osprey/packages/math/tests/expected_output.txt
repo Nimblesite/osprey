@@ -5,5 +5,8 @@ ok 4 - entropy is zero for a certain outcome and largest for a fair coin
 ok 5 - the normal density peaks at its mean, is symmetric and scales with its variance
 ok 6 - the quadratic formula finds both roots, one double root, and no real root
 ok 7 - a line map starts at its first point, ends at its second and is linear between
-1..7
-# tests=7 passed=7 failed=0 skipped=0
+ok 8 - sinc is one at zero, zero at every multiple of pi, even, and sin x / x elsewhere
+ok 9 - real powers give equal-tempered pitch ratios and decibel gains, and agree with pow
+ok 10 - Chebyshev T turns a cosine into its harmonic and keeps the polynomials and their recurrence
+1..10
+# tests=10 passed=10 failed=0 skipped=0
