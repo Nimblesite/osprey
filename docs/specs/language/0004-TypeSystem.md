@@ -401,7 +401,7 @@ Ten numeric types share one description: a kind (signed, unsigned or binary floa
 | `float32` | binary | 32 | IEEE 754 binary32 | `float` | `float` |
 | `float` | binary | 64 | IEEE 754 binary64 | `double` | `double` |
 
-There is no `uint64`: it would need its own division and comparison rules against `int`. There is no `bfloat16` type: a `BF16` tensor widens exactly into `float32` ([GPU-BUFFER-TENSOR](../runtime/0034-GPUComputation.md#gpuloadtensorpath-string-name-string---resultgpubuffert-error--gpu-buffer-tensor)).
+There is no `uint64`: it would need its own division and comparison rules against `int`. There is no `bfloat16` type: a `BF16` tensor widens exactly into `float32` ([GPU-BUFFER-TENSOR](../runtime/0034-GPUComputation.md#gpuloadtensorpath-string-name-string---resultgpubuffert-string--gpu-buffer-tensor)).
 
 The sized types are ordinary primitives. They appear in records, unions, lists, maps, `Result` payloads, effect operations, closures, pattern literals, string interpolation and `extern` signatures ([FFI-NUMERIC-WIDTH](../compiler/0019-ForeignFunctionInterface.md#numeric-widths-ffi-numeric-width)). Inside `List`, `Map`, `Result`, an `any` box or a closure environment a sized value occupies the uniform 8-byte word — integers sign- or zero-extended by kind, floats as their bit pattern zero-extended — and reads back at its own type ([TYPE-NUMERIC-WORD]). A `GpuBuffer<T>` is the dense form: it stores each element at the table's width ([GPU-BUFFER-ELEM](../runtime/0034-GPUComputation.md#element-restriction--gpu-buffer-elem)).
 
