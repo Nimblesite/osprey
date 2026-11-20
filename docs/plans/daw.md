@@ -63,6 +63,28 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [ ] Bus strips on the Mix page: EQ and compressor controls, gain reduction meter.
 - [ ] Natively heard on the full codex render.
 
+## Best-of-breed EQ [DAW-MIX-BUS-EQ]
+
+The three-band split is a start, not the EQ. Target: a parametric EQ as good as the best commercial ones, on every track, bus and Master.
+
+- [ ] Up to 8 bands: bell, low and high shelf, notch, band-pass, tilt, and high- and low-pass at 6–48 dB/oct. Biquads from the RBJ cookbook, written in Lean; each band has frequency, gain and Q.
+- [ ] Analog-matched response near Nyquist (no cramping): oversampled or matched-z design. A linear-phase mode for mastering, with its latency reported.
+- [ ] Mid/side and left/right per band. Dynamic EQ: a band's gain follows a threshold and can be keyed by a sidechain.
+- [ ] Smooth parameter changes without zipper noise or filter blow-up under automation.
+- [ ] Spectrum overlay with the curve drawn on the Mix page, and a band dragged on the curve.
+- [ ] Tests with many input permutations: the magnitude and phase response measured on swept sines at many frequencies, gains and Qs, each within 0.01 dB of the analytic curve; flat at 0 dB within 1e-9; stable at the extremes; settings in daw.td round-trip through the project.
+
+## Songs that push the synthesis [SYNTH-SHOWCASE]
+
+- [ ] Original example songs in the spirit of Tipper, Amon Tobin and Mr. Bill (inspiration only; no copying of their tracks or sounds). Each pushes every technique as far as it goes: granular micro-edits and glitch, spectral freeze, morph and formant shifts, FM and phase-distortion basses, physical models, resampled foley, heavy sidechain and bus processing.
+- [ ] Each song passes the mix checks ([DAW-ANALYSIS-GATE]) for its genre.
+
+## Tests and tooling [DAW-TESTS]
+
+- [ ] Every journey gets more input permutations and more assertions per interaction, across the daw and @osprey/synth.
+- [ ] Scripts and tooling are written in Python-flavour Osprey, not Python. Tonight's one-off migrations were Python and are not committed.
+- [ ] Consolidate: one spec, one plan and one test home per feature; merge overlapping sections and duplicate helpers (the deslop gate must go green).
+
 ## Spectral analysis and mix advice [DAW-ANALYSIS]
 
 - [ ] Band spectrum per track, bus and Master from the STFT, with peak and RMS, on the Mix page.
