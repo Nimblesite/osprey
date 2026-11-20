@@ -17,7 +17,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] An encoding failure is an error result instead of a `"null"` file.
 - [x] A Prism patch edit is saved into its track and reopens as the same graph ([DAW-PROJECT-PATCH]).
 - [x] The project JSON keys are the `daw.td` field names, and `tracks/*.json` is migrated ([DAW-PROJECT-MODEL]).
-- [ ] Merge `editor.td` into `daw.td`, so the project and the editor share one model.
+- [x] Generate the project and editor types from one `daw.td` with `make -C src/toolchain/targets/tests daw-models TYPEDIAGRAM_DIST=<dist>`.
 - [ ] Node positions, grain sample assets and VST bindings are stored in the project.
 
 ## Transport [DAW-TRANSPORT]

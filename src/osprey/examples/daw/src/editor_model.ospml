@@ -45,12 +45,10 @@ type GraphSnapshot G =
     savedSelected : int
     savedNote : int
 
-(** One card role's skin marks, sorted out once when the skin loads rather than on every event. *)
 type CardMarks =
     cardRole : string
     cardMarks : List<ui::Stamp>
 
-(** One module's drawn card: its shapes and control hit areas, current while `artKey` is. *)
 type CardArt =
     artNode : int
     artKey : string
