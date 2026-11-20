@@ -12,7 +12,10 @@ type Routing { nodes: List<PatchNode> cables: List<PatchCable> attack: Float rel
 union Instrument { PatchInstrument { routing: Routing } PluckInstrument { brightness: Float decay: Float } BowInstrument { pressure: Float brightness: Float vibrato: Float } BellInstrument { decay: Float brightness: Float } MalletInstrument { decay: Float brightness: Float } OperatorInstrument { tone: Tone } DrumInstrument { hit: Hit } }
 type Note { pitch: Int start: Float length: Float velocity: Float }
 type NodePosition { layoutNode: Int layoutX: Float layoutY: Float }
-type Track { name: String instrument: Instrument gain: Float pan: Float reverb: Float bus: String positions: List<NodePosition> notes: List<Note> }
+type AudioSend { sendId: Int source: Int outlet: Int bus: String level: Float enabled: Bool }
+type TapLane { tapNode: Int tapOutlet: Int tapChannel: Int tapGain: Float }
+type Capture<K> { captureState: K captureLanes: List<List<Float>> }
+type Track { name: String instrument: Instrument gain: Float pan: Float reverb: Float bus: String sends: List<AudioSend> positions: List<NodePosition> notes: List<Note> }
 type Space { size: Float decay: Float damping: Float }
 type Equaliser { low: Float mid: Float high: Float }
 type Compressor { threshold: Float ratio: Float knee: Float attack: Float release: Float sidechain: String }

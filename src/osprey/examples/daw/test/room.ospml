@@ -569,3 +569,29 @@ nonAutomatable n = n(parameters = mapList (n.parameters, frozenParameter))
 
 // A parameter with its automation refused.
 frozenParameter p = p(automatable = false)
+
+// [DAW-MIX-BUS-TAP] A send leaves the existing patch cable in place, reads its outlet before
+// track gain and sums with other independently scaled taps into the same stereo bus.
+tapJourney () =
+    keys = keysTrack ()
+    voice = keys(gain = 0.0, notes = [daw::Note(pitch = 60, start = 0.0, length = 0.015, velocity = 1.0)])
+    song = routedTo (timeline [voice], [padsBus (1.0, "")])
+    encoded (song, \text =>
+        routes = "[{\"sendId\":1,\"source\":1,\"outlet\":0,\"bus\":\"pads\",\"level\":0.5,\"enabled\":true},{\"sendId\":2,\"source\":2,\"outlet\":0,\"bus\":\"pads\",\"level\":0.25,\"enabled\":true}]"
+        // Both the pre-sends project and a current project with no sends enter through the public JSON boundary.
+        bare = replace text "\"sends\":[]," "" ?: text
+        withSends = replace bare "\"positions\":" "\"sends\":${routes},\"positions\":" ?: bare
+        succeeds (daw::SongFiles::decode withSends, \opened => trackAt (opened, 0, \track =>
+            succeeds (daw::Arrangements::added (opened, daw::Arrangements::empty, track, 128), \mixed =>
+                expect (length mixed.groups, 1)
+                reads (listGet mixed.groups 0, \group =>
+                    expect (group.name, "pads")
+                    expect (length group.left, 128)
+                    succeeds (daw::Arrangements::part (song, voice, 128), \dry =>
+                        forEachList ([9, 31, 83, 120], \i =>
+                            reference = listGet dry i ?: 0.0
+                            expect (abs reference > 0.000001, true)
+                            sampleAt (group.left, i, reference * 1.25 * daw::ArrangeMath::panLeft 0.0)
+                            sampleAt (group.right, i, reference * 1.25 * daw::ArrangeMath::panRight 0.0)
+                            sampleAt (mixed.left, i, 0.0))))
+                encoded (opened, \saved => expect (contains saved "\"sendId\":2", true))))))

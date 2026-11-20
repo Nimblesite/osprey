@@ -1,6 +1,6 @@
 [project]
 name = "daw-render"
-source_roots = ["../../../packages/synth/src", "main.ospml", "shell.ospml", "player.ospml", "../src/arrangements.ospml", "../src/bus_mix.ospml", "../src/daw_model.ospml", "../src/note_renders.ospml", "../src/patch_voices.ospml", "../src/song_files.ospml", "../src/project_codec.ospml", "../src/sustains.ospml", "../src/projects.ospml", "../src/ArrangeMath.lean", "../../../packages/json/src"]
+source_roots = ["../../../packages/synth/src", "main.ospml", "shell.ospml", "player.ospml", "../src/arrangements.ospml", "../src/send_renders.ospml", "../src/bus_mix.ospml", "../src/daw_model.ospml", "../src/note_renders.ospml", "../src/patch_voices.ospml", "../src/song_files.ospml", "../src/project_codec.ospml", "../src/sustains.ospml", "../src/projects.ospml", "../src/ArrangeMath.lean", "../../../packages/json/src", "../../../packages/native/src/base.ospml"]
 default_namespace = "app"
 entry = "main.ospml"
 

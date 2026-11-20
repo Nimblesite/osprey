@@ -87,6 +87,24 @@ type NodePosition =
     layoutX : float
     layoutY : float
 
+type AudioSend =
+    sendId : int
+    source : int
+    outlet : int
+    bus : string
+    level : float
+    enabled : bool
+
+type TapLane =
+    tapNode : int
+    tapOutlet : int
+    tapChannel : int
+    tapGain : float
+
+type Capture K =
+    captureState : K
+    captureLanes : List<List<float>>
+
 type Track =
     name : string
     instrument : Instrument
@@ -94,6 +112,7 @@ type Track =
     pan : float
     reverb : float
     bus : string
+    sends : List<AudioSend>
     positions : List<NodePosition>
     notes : List<Note>
 

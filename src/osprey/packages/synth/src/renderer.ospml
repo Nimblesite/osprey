@@ -86,10 +86,21 @@ module Renderer
         Error _ => Error(message = "index out of bounds")
         Success sink => Outcomes::carried (RenderInputs::sample (frame, sink.identity), \output => Success(value = Rendered(states = frame.states, samples = listAppend rendered.samples output, position = satAdd rendered.position 1, meters = metered (rendered.meters, frame.values))))
 
-    sample (plan, rate, snapshot, rendered) =
+    evaluated (plan, rate, snapshot, rendered) =
         initial = SampleFrame(states = rendered.states, values = [])
         scheduled = foldList (plan.order, Success(value = initial), \(outcome, identity) => nextNode (plan, rate, snapshot, outcome, identity))
-        Outcomes::carried (foldList (plan.feedback, scheduled, \(outcome, cable) => nextDelay (plan, outcome, cable)), \frame => finished (plan, rendered, frame))
+        foldList (plan.feedback, scheduled, \(outcome, cable) => nextDelay (plan, outcome, cable))
+
+    sample (plan, rate, snapshot, rendered) = Outcomes::carried (evaluated (plan, rate, snapshot, rendered), \frame => finished (plan, rendered, frame))
+
+    captured (plan, rate, snapshot, progress, accept) = Outcomes::carried (evaluated (plan, rate, snapshot, progress.audio), \frame =>
+        audio = progress.audio
+        Outcomes::carried (accept (progress.observation, frame), \seen => Success(value = progress(audio = audio(states = frame.states, position = satAdd progress.audio.position 1), observation = seen))))
+
+    (** Fold selected node outputs from the same reference-rendered frames, including delayed feedback. *)
+    export capture (plan, rate, snapshot, progress, count, accept) = match validBlock (rate, progress.audio, count) && supported plan
+        false => Error(message = "Invalid render rate, block size, position or layout.")
+        true => foldList (toList (range (0, count)), Success(value = progress), \(outcome, _) => Outcomes::carried (outcome, \current => captured (plan, rate, snapshot, current, accept)))
 
     nextSample (plan, rate, snapshot, outcome) = Outcomes::carried (outcome, \rendered => sample (plan, rate, snapshot, rendered))
 

@@ -21,15 +21,38 @@ module ClipInputs
     filterIndexedChannel (clip, outlet) = foldList (toList (range (0, intDiv (length clip.clipSamples) clip.clipChannels)), Success(value = []), \(result, frame) =>
         Outcomes::carried (result, \samples => appended (samples, listGet clip.clipSamples (satAdd (satMul frame clip.clipChannels) outlet))))
 
-    fromOutlet (graph, cable, clip) = match Graphs::node (graph, cable.source)
+    fromOutlet (graph, source, outlet, clip) = match Graphs::node (graph, source)
         Invalid _ => Error(message = "The routed source is missing.")
         Valid n => match n.processor
-            Split => splitOutlet (clip, cable.outlet)
+            Split => splitOutlet (clip, outlet)
             _ => Success(value = clip)
+
+    audioOutlet port = port.rate == Audio && port.unit == Amplitude
+
+    (** Resolve an actual audio outlet by node identity and port index. *)
+    export audioPort (graph, identity, outlet) = match Graphs::node (graph, identity)
+        Invalid _ => Error(message = "The send source node is missing.")
+        Valid n => match listGet n.outputs outlet
+            Error _ => Error(message = "The send source outlet is missing.")
+            Success port => match audioOutlet port
+                true => Success(value = port)
+                false => Error(message = "A bus send needs an audio outlet.")
+
+    (** Read one channel of an internal audio outlet from a completed block, preserving its existing cables. *)
+    export tapped (graph, clips, source, outlet, channel) = Outcomes::carried (audioPort (graph, source, outlet), \declared =>
+        match channel >= 0 && channel < declared.channels
+            false => Error(message = "The channel is outside the selected outlet.")
+            true => tapChannel (graph, clips, source, outlet, channel))
+
+    tapChannel (graph, clips, source, outlet, channel) = Outcomes::carried (completed (clips, source), \clip =>
+        Outcomes::carried (fromOutlet (graph, source, outlet, clip), \port =>
+            match port.clipChannels == 1 && channel == 0
+                true => Success(value = port.clipSamples)
+                false => Outcomes::carried (splitOutlet (port, channel), \mono => Success(value = mono.clipSamples))))
 
     (** Resolve the cable feeding one declared inlet. *)
     export routed (graph, clips, identity, inlet) = match filterList (graph.cables, \c => c.destination == identity && c.inlet == inlet)
-        [cable] => Outcomes::carried (completed (clips, cable.source), \clip => fromOutlet (graph, cable, clip))
+        [cable] => Outcomes::carried (completed (clips, cable.source), \clip => fromOutlet (graph, cable.source, cable.outlet, clip))
         _ => Error(message = "Every graph input needs exactly one connected source.")
 
     (** Control signals broadcast across audio channels without changing audio cable widths; a split

@@ -143,10 +143,10 @@ arrangedNear (got, want) = expect (abs (got - want) <= 0.000000001, true)
 // A song from its tempo, rate, drive, room decay and tracks; the beat frame is 60/tempo*rate rounded.
 arrangedSong (tempo, rate, drive, decay, tracks) = daw::Arrangement(title = "Bridge", tempo = tempo, sampleRate = rate, drive = drive, space = daw::Space(size = 1.0, decay = decay, damping = 0.5), intro = daw::Intro(recording = "intro.wav", tail = 1.0, crossfade = 0.5), sustains = [], buses = [], tracks = tracks)
 
-arrangedBell (name, decay, notes) = daw::Track(name = name, instrument = daw::BellInstrument(decay = decay, brightness = 0.5), gain = 1.0, pan = 0.0, reverb = 0.0, bus = "", positions = [], notes = notes)
+arrangedBell (name, decay, notes) = daw::Track(name = name, instrument = daw::BellInstrument(decay = decay, brightness = 0.5), gain = 1.0, pan = 0.0, reverb = 0.0, bus = "", sends = [], positions = [], notes = notes)
 
 // A pure drum body: no noise, no sweep, so each sample is velocity * ringing * -cos of the phase.
-arrangedDrum (name, gain, decay, notes) = daw::Track(name = name, instrument = daw::DrumInstrument(hit = daw::Hit(sweep = 0.0, noise = 0.0, colour = 0.0, decay = decay)), gain = gain, pan = 0.0, reverb = 0.5, bus = "", positions = [], notes = notes)
+arrangedDrum (name, gain, decay, notes) = daw::Track(name = name, instrument = daw::DrumInstrument(hit = daw::Hit(sweep = 0.0, noise = 0.0, colour = 0.0, decay = decay)), gain = gain, pan = 0.0, reverb = 0.5, bus = "", sends = [], positions = [], notes = notes)
 
 // One bell note at beat 0 on an otherwise plain song.
 oneBell (tempo, rate, drive, decay) = arrangedSong (tempo, rate, drive, decay, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])

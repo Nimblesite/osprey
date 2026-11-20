@@ -100,8 +100,49 @@ module Arrangements
         true => layered (buses, samples, 0, voice.gain, voice.pan, voice.reverb)
         false => synth::Outcomes::carried (BusMix::named (arrangement, voice.bus), \_ => grouped (buses, voice, samples))
 
-    (** Render one track and add it to Master, or to its bus when it names one. *)
-    export added (arrangement, buses, voice, count) = match part (arrangement, voice, count)
+    tappedNote (song, voice, sends, buffers, note) = synth::Outcomes::carried (frame (song, note.start), \start =>
+        match start >= 0
+            false => Error(message = "A note starts before the piece.")
+            true => synth::Outcomes::carried (SendRenders::note (voice, sends, note, song.tempo, toFloat song.sampleRate), \lanes =>
+                SendRenders::collect (toList (range (0, length lanes)), \i =>
+                    match listGet buffers i
+                        Error _ => Error(message = "A routed track lane is missing.")
+                        Success mix => match listGet lanes i
+                            Error _ => Error(message = "A rendered send lane is missing.")
+                            Success lane => Success(value = placed (mix, start, lane)))))
+
+    // Overlay the send's two channels without panning the stereo signal a second time.
+    sentGroup (buses, routeSend, lanes, index) = match listGet lanes (satAdd 1 (satMul 2 index))
+        Error _ => Error(message = "The send has no left channel.")
+        Success left => match listGet lanes (satAdd 2 (satMul 2 index))
+            Error _ => Error(message = "The send has no right channel.")
+            Success right =>
+                previous = group (buses, routeSend.bus)
+                next = Stereo(name = routeSend.bus, left = bused (previous.left, left, 0, 1.0), right = bused (previous.right, right, 0, 1.0))
+                Success(value = buses(groups = listAppend (others (buses, routeSend.bus)) next))
+
+    finishedSends (song, buses, voice, sends, lanes) = match listGet lanes 0
+        Error _ => Error(message = "The track has no main output.")
+        Success dry => synth::Outcomes::carried (routed (song, kept (song, buses, voice, dry), voice, dry), \fed =>
+            foldList (toList (range (0, length sends)), Success(value = fed), \(held, i) => synth::Outcomes::carried (held, \prior =>
+                match listGet sends i
+                    Error _ => Error(message = "Missing track send.")
+                    Success routeSend => sentGroup (prior, routeSend, lanes, i))))
+
+    withSends (song, buses, voice, sends, count) =
+        initial = mapList (toList (range (0, satAdd 1 (satMul 2 (length sends)))), \_ => TrackMix(cursor = 0, carry = [], samples = [], fault = ""))
+        mix = foldList (listSortBy (voice.notes, ordered), Success(value = initial), \(held, note) => synth::Outcomes::carried (held, \buffers => tappedNote (song, voice, sends, buffers, note)))
+        synth::Outcomes::carried (mix, \buffers => finishedSends (song, buses, voice, sends, mapList (buffers, \lane => settled (lane, count))))
+
+    (** Render a track once and route its main output and independent internal audio sends. *)
+    export added (arrangement, buses, voice, count) = match voice.sends
+        [] => plainTrack (arrangement, buses, voice, count)
+        _ => synth::Outcomes::carried (SendRenders::checked (arrangement, voice), \_ =>
+            match filterList (voice.sends, \s => s.enabled && s.level > 0.0)
+                [] => plainTrack (arrangement, buses, voice, count)
+                sends => withSends (arrangement, buses, voice, sends, count))
+
+    plainTrack (arrangement, buses, voice, count) = match part (arrangement, voice, count)
         Error why => Error(message = why)
         Success samples => match routed (arrangement, kept (arrangement, buses, voice, samples), voice, samples)
             Error why => Error(message = "${voice.name}: ${why}")

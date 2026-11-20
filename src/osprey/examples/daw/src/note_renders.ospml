@@ -142,6 +142,9 @@ module NoteRenders
         _ => stringed (note, noteSpan, rate, instrument)
 
     (** Render one note: pitch 0–127 (MIDI), velocity 0–1, positive length in beats. *)
-    export render (note, tempo, rate, instrument) = match note.pitch >= 0 && note.pitch <= 127 && note.velocity >= 0.0 && note.velocity <= 1.0 && note.length > 0.0 && tempo >= 20.0 && tempo <= 400.0
+    export render (note, tempo, rate, instrument) = synth::Outcomes::carried (checkedSpan (note, tempo, rate, instrument), \noteSpan => voiced (note, noteSpan, rate, instrument))
+
+    (** Check pitch, velocity, timing and the bounded render length before scheduling the note. *)
+    export checkedSpan (note, tempo, rate, instrument) = match note.pitch >= 0 && note.pitch <= 127 && note.velocity >= 0.0 && note.velocity <= 1.0 && note.length > 0.0 && tempo >= 20.0 && tempo <= 400.0
         false => Error(message = "A note needs pitch 0 to 127, velocity 0 to 1, a positive length and a tempo of 20 to 400.")
-        true => synth::Outcomes::carried (span (note, tempo, rate, instrument), \noteSpan => voiced (note, noteSpan, rate, instrument))
+        true => span (note, tempo, rate, instrument)

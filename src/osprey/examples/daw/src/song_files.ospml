@@ -57,11 +57,25 @@ module SongFiles
     // [DAW-MIX-BUS] A bus with its EQ and compressor.
     bus doc = ProjectCodec::readBus (doc, ProjectCodec::readEqualiser (ui::Doc::field (doc, "equaliser")), ProjectCodec::readCompressor (ui::Doc::field (doc, "compressor")))
 
+    routeSend doc = match jsonInt (ui::Doc::field (doc, "sendId"))
+        Success identity => match jsonInt (ui::Doc::field (doc, "source"))
+            Success source => match jsonInt (ui::Doc::field (doc, "outlet"))
+                Success outlet => match identity >= 0 && source >= 0 && outlet >= 0 && ui::Doc::kind (ui::Doc::field (doc, "bus")) == "text" && ui::Doc::kind (ui::Doc::field (doc, "level")) == "number" && ui::Doc::kind (ui::Doc::field (doc, "enabled")) == "bool"
+                    true => Success(value = ProjectCodec::readAudioSend doc)
+                    false => Error(message = "A send needs a bus, level and enabled flag.")
+                Error _ => Error(message = "The send outlet must be a whole number.")
+            Error _ => Error(message = "The send needs a source node identity.")
+        Error _ => Error(message = "The send needs an identity.")
+
+    sends doc = match ui::Doc::has (doc, "sends") && ui::Doc::kind (ui::Doc::field (doc, "sends")) != "list"
+        true => Error(message = "A track’s sends must be a list.")
+        false => folded (doc, "sends", routeSend)
+
     track doc = match instrument (ui::Doc::field (doc, "instrument"))
         Error why => failed (doc, why)
         Success sound => match folded (doc, "notes", note)
             Error why => failed (doc, why)
-            Success notes => synth::Outcomes::carried (synth::Outcomes::carried (folded (doc, "positions", position), uniquePositions), \positions => Success(value = ProjectCodec::readTrack (doc, sound, positions, notes)))
+            Success notes => synth::Outcomes::carried (synth::Outcomes::carried (folded (doc, "positions", position), uniquePositions), \positions => synth::Outcomes::carried (sends doc, \sends => Success(value = ProjectCodec::readTrack (doc, sound, sends, positions, notes))))
 
     (** Whether `path` can be single-quoted on a command line. *)
     export safe path = contains path "'" == false
@@ -80,7 +94,7 @@ module SongFiles
         Error _ => Error(message = "The song project is not valid JSON.")
         Success doc => match checked (ProjectCodec::readIntro (ui::Doc::field (doc, "intro")))
             Error why => Error(message = why)
-            Success _ => synth::Outcomes::carried (folded (doc, "tracks", track), \tracks => Success(value = arranged (doc, tracks)))
+            Success _ => synth::Outcomes::carried (folded (doc, "tracks", track), \tracks => SendRenders::project (arranged (doc, tracks)))
 
     (** Write the complete project as JSON. *)
     export encode arrangement = match jsonEncode (ProjectCodec::writeArrangement arrangement)
