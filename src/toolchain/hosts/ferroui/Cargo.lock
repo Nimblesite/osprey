@@ -566,6 +566,8 @@ version = "0.5.1-preview.1"
 dependencies = [
  "ferroui-base",
  "ferroui-controls",
+ "ferroui-desktop",
+ "ferroui-themes-fluent",
  "ferroui-view",
  "libc",
  "serde_json",

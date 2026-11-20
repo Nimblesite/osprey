@@ -11,7 +11,9 @@ use ferroui_base::media::MediaContext;
 use ferroui_base::styling::ThemeVariant;
 use ferroui_base::Ref;
 use ferroui_base::input::KeyGesture;
-use ferroui_controls::{NativeMenu, NativeMenuItem, Window};
+use ferroui_controls::{AppBuilder, Application, NativeMenu, NativeMenuItem, Window};
+use ferroui_desktop::AppBuilderDesktopExtensions;
+use ferroui_themes_fluent::FluentTheme;
 use ferroui_view::prelude::*;
 
 use crate::bench::Bench;
@@ -42,7 +44,8 @@ pub fn run(arguments: &[String]) -> i32 {
     let title = std::env::var("OSPREY_NATIVE_TITLE").unwrap_or_else(|_| "Osprey".to_owned());
     let made: Rc<RefCell<Option<Rc<Host>>>> = Rc::new(RefCell::new(None));
     let kept = made.clone();
-    ferroui_view::launch_with(
+    launch(
+        title.clone(),
         move || {
             let host = Host::new();
             *kept.borrow_mut() = Some(host.clone());
@@ -73,6 +76,29 @@ pub fn run(arguments: &[String]) -> i32 {
     );
     drop(crate::adapters::Cleanup);
     0
+}
+
+/// Runs the application as `ferroui_view::launch_with` does (the operating system's platform, the
+/// Fluent theme, the main loop until the window closes), named `name` before the platform reads the
+/// name: the application menu is the application's, not the toolkit's.
+fn launch(name: String, view: impl FnOnce() -> Element + 'static, started: impl FnOnce(&Ref<Window>) + 'static) {
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    AppBuilder::configure::<Application>()
+        .after_setup(move |_| {
+            if let Some(application) = Application::current() {
+                application.set_name(Some(name.clone()));
+            }
+        })
+        .use_platform_detect()
+        .start(
+            move |application, _| {
+                application.styles().add(FluentTheme::new().as_style());
+                let window = ferroui_view::mount_window(view);
+                started(&window);
+                application.run_window(window);
+            },
+            &arguments,
+        );
 }
 
 fn is_dark(window: &Ref<Window>) -> bool {
