@@ -63,6 +63,18 @@ The `Grains` reference kernel [SYNTH-ADVANCED-GRAINS-PLAYBACK] implements immuta
 
 Research candidates include bandlimited/corrected oscillators, wavetable/additive/spectral synthesis, physical/modal models, granular engines, expressive phase shaping and differentiable/learned controls. The detailed implementation and acceptance checklist is the [advanced synthesis plan](../../plans/advanced-synthesis.md) [SYNTH-ADVANCED]. Adoption requires the [research experiments](../../research/synthesis/README.md#research-to-delivery-experiments-synth-research-experiments), not a novelty claim. Training and expensive patch inference remain outside the required audio callback.
 
+## Spectral processing [SYNTH-SPECTRAL]
+
+The spectral node analyses audio with a Hann-windowed STFT (size 64–4,096, hop size/4 or size/8), transforms each frame, and resynthesises by overlap-add. Its latency is size − 1 samples. A second, side input feeds the transforms that need two sounds. Every transform's formulas are in `SpectralMath.lean`.
+
+- **Morphing ([SYNTH-SPECTRAL-MORPH]).** Morph carries one sound into another by an amount from 0 (the main input) to 1 (the side input), and the amount can be automated. There are three modes, and the [spectral morphing research](../../research/synthesis/spectral-morphing.md) justifies them. *Blend* interpolates log magnitudes, so a morph midway sounds midway, not like a crossfade. *Envelope* is cross-synthesis: one sound's spectral envelope on the other's fine structure. *Partial* matches spectral peaks between the sounds and interpolates their frequencies and amplitudes, so a morph between two pitches passes through the pitches between them. Phase stays continuous (phase-locked to each peak) through every mode. Today only a linear magnitude blend exists, with phase taken from the dominant input.
+- **Pitch and formant ([SYNTH-ADVANCED-SPECTRAL-FORMANT]).** Pitch moves by a ratio from 0.25 to 4, and the spectral envelope moves by an independent formant ratio. Formant 1 keeps the formants in place.
+- **Freeze, band, shift and smear.** Freeze holds a frame and keeps rotating its phases. Band passes a frequency range, shift moves bins with hop-coherent phase, and smear smooths magnitudes over time. Stateless steps can share one analysis in a series of up to eight.
+
+## Showcase songs [SYNTH-SHOWCASE]
+
+The shipped daw songs together play every synthesis family the toolkit has, each on its own audible track: subtractive, FM/phase modulation, phase distortion, wavetable, additive, granular, spectral (morph, freeze and formant pitch), and physical (waveguide string, bowed string, modal bar and bell, mesh membrane, resonator), plus the sampled intro. A test opens each song and checks that every family is present, so a family cannot quietly drop out.
+
 ## VST3 hosting [SYNTH-HOST-VST]
 
 VST3 **hosting** is an active requirement of the [Prism expansion](../../plans/prism-synth-routing.md). The isolated worker now scans, describes and processes real plug-ins, and Prism can create and route their typed graph nodes, then audition a real instrument/effect chain as stereo PCM. Continuous device rendering remains in progress. The purpose is to load existing VST3 instruments/effects into a synthesis graph. Producing Osprey VST3 plug-ins is a separate capability and is not substituted for hosting.
