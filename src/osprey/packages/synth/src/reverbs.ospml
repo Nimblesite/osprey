@@ -20,11 +20,6 @@ module Reverbs
 
     stretched (config, length) = toFloat length * scale config
 
-    // An Error passes through; a Success payload continues into the step.
-    carried (outcome, step) = match outcome
-        Error why => Error(message = why)
-        Success value => step value
-
     // Folds items onto a growing Success list; an Error outcome is carried unchanged.
     collected (items, step) = foldList (items, Success(value = []), step)
 
@@ -33,18 +28,18 @@ module Reverbs
         Error _ => Error(message = "Reverb line length is not finite.")
         Success count => Success(value = listAppend built count)
 
-    sized (config, outcome, length) = carried (outcome, \built => capacity (config, built, length))
+    sized (config, outcome, length) = Outcomes::carried (outcome, \built => capacity (config, built, length))
 
     (** Line capacities in samples (four feedback lines, then two diffusers), fixed per sample rate. *)
     export capacities config = collected (listConcat lengths diffuserLengths, \(outcome, length) => sized (config, outcome, length))
 
-    prepared (outcome, count) = carried (outcome, \built => carried (DelayLines::prepare count, \line => Success(value = listAppend built line)))
+    prepared (outcome, count) = Outcomes::carried (outcome, \built => Outcomes::carried (DelayLines::prepare count, \line => Success(value = listAppend built line)))
 
     (** Kernel storage at the 48 kHz graph rate: every line plus four damping states. *)
     export graphStorage () = foldList (listConcat lengths diffuserLengths, 4, \(total, length) => satAdd total (satAdd (satMul length 2) 2))
 
     (** Allocate lines for the largest size at this rate, so size edits never reallocate. *)
-    export initial config = carried (capacities config, \sizes => carried (collected (sizes, prepared), \built => Success(value = ReverbState(lines = Sequences::take (built, 4), damped = [0.0, 0.0, 0.0, 0.0], diffusers = Sequences::drop (built, 4)))))
+    export initial config = Outcomes::carried (capacities config, \sizes => Outcomes::carried (collected (sizes, prepared), \built => Success(value = ReverbState(lines = Sequences::take (built, 4), damped = [0.0, 0.0, 0.0, 0.0], diffusers = Sequences::drop (built, 4)))))
 
     // Series Schroeder allpasses decorrelate the input before it enters the network.
     diffuse (config, held, input) = Diffusers::next (held.diffusers, mapList (diffuserLengths, \length => stretched (config, length)), config.diffusion, input)
@@ -53,7 +48,7 @@ module Reverbs
         [] => Success(value = done)
         [line, ...rest] => match sizes
             [] => Error(message = "Reverb line lengths do not match.")
-            [length, ...others] => carried (DelayLines::tap (line, stretched (config, length)), \value => tapped (config, rest, others, listAppend done value))
+            [length, ...others] => Outcomes::carried (DelayLines::tap (line, stretched (config, length)), \value => tapped (config, rest, others, listAppend done value))
 
     reads (config, held) = tapped (config, held.lines, lengths, [])
 
@@ -81,4 +76,4 @@ module Reverbs
     (** One sample with an accepted configuration and a state from `initial` at the same rate. *)
     export next (config, held, input) = match length held.lines == 4 && length held.damped == 4 && length held.diffusers == 2
         false => Error(message = "Reverb state does not have four lines and two diffusers.")
-        true => carried (diffuse (config, held, input), \diffused => carried (reads (config, held), \values => Success(value = networked (config, held, input, values, diffused))))
+        true => Outcomes::carried (diffuse (config, held, input), \diffused => Outcomes::carried (reads (config, held), \values => Success(value = networked (config, held, input, values, diffused))))
