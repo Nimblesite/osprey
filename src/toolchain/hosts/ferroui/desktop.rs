@@ -49,8 +49,8 @@ pub fn run(arguments: &[String]) -> i32 {
                 .title(title)
                 .width(width)
                 .height(height)
-                .extend_client_area_to_decorations_hint(bare())
-                .extend_client_area_title_bar_height_hint(title_bar())
+                .extend_client_area_to_decorations_hint(crate::surface::bare())
+                .extend_client_area_title_bar_height_hint(crate::surface::title_bar())
                 .child(host.element())
                 .into()
         },
@@ -71,22 +71,6 @@ pub fn run(arguments: &[String]) -> i32 {
     );
     drop(crate::adapters::Cleanup);
     0
-}
-
-/// Whether the application draws the whole window itself (`OSPREY_NATIVE_CHROME=bare`): its
-/// content runs under a transparent title bar, as the GPUI host's bare chrome does.
-fn bare() -> bool {
-    std::env::var("OSPREY_NATIVE_CHROME").is_ok_and(|chrome| chrome == "bare")
-}
-
-/// The height of a bare window's title bar, `OSPREY_NATIVE_TITLE_BAR` in points (default -1, the
-/// system's): the close, minimise and zoom buttons are centred in it, so a bar of 50 points puts
-/// their top 18 points down, where the GPUI host's `OSPREY_GPUI_LIGHTS=16,18` puts them.
-fn title_bar() -> f64 {
-    std::env::var("OSPREY_NATIVE_TITLE_BAR")
-        .ok()
-        .and_then(|height| height.parse().ok())
-        .unwrap_or(-1.0)
 }
 
 fn is_dark(window: &Ref<Window>) -> bool {

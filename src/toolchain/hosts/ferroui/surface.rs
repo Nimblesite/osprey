@@ -38,7 +38,7 @@ use ferroui_view::ViewClass;
 use crate::events::Touch;
 use crate::host::Host;
 use crate::rows::Scene;
-use crate::scene::{Outline, Paint, Shape, Step, Tint};
+use crate::scene::{Access, Outline, Paint, Role, Shape, Step, Tint};
 
 /// A scene ready to draw: its extent, zoom, atlas and shapes stably sorted back to front.
 #[derive(Default)]
@@ -48,6 +48,7 @@ pub struct Prepared {
     zoom: f64,
     atlas: Vec<String>,
     shapes: Vec<Shape>,
+    controls: Vec<Access>,
 }
 
 impl Prepared {
@@ -60,7 +61,20 @@ impl Prepared {
             zoom: f64::from(scene.zoom),
             atlas: scene.atlas.clone(),
             shapes,
+            controls: scene
+                .access
+                .iter()
+                .filter(|area| area.role != Role::Label)
+                .cloned()
+                .collect(),
         }
+    }
+
+    /// Whether a control the user can press covers `(x, y)`, in scene units.
+    fn control_at(&self, x: f64, y: f64) -> bool {
+        self.controls
+            .iter()
+            .any(|area| x >= area.x && x < area.x + area.w && y >= area.y && y < area.y + area.h)
     }
 
     fn in_window_pixels(&self) -> bool {
@@ -153,6 +167,32 @@ impl ViewClass for SceneSurface {
     }
 }
 
+/// Whether the application draws the whole window itself (`OSPREY_NATIVE_CHROME=bare`): its
+/// content runs under a transparent title bar, as the GPUI host's bare chrome does.
+pub(crate) fn bare() -> bool {
+    std::env::var("OSPREY_NATIVE_CHROME").is_ok_and(|chrome| chrome == "bare")
+}
+
+/// The height of a bare window's title bar, `OSPREY_NATIVE_TITLE_BAR` in points (default -1, the
+/// system's): the close, minimise and zoom buttons are centred in it, so a bar of 50 points puts
+/// their top 18 points down, where the GPUI host's `OSPREY_GPUI_LIGHTS=16,18` puts them.
+pub(crate) fn title_bar() -> f64 {
+    std::env::var("OSPREY_NATIVE_TITLE_BAR")
+        .ok()
+        .and_then(|height| height.parse().ok())
+        .unwrap_or(-1.0)
+}
+
+/// The system's title bar height in points, used when the application names none.
+const SYSTEM_TITLE_BAR: f64 = 28.0;
+
+/// The height of the strip a bare window is moved by, or `None` when the window keeps the
+/// system's title bar, which moves it already.
+fn caption() -> Option<f64> {
+    let height = title_bar();
+    bare().then_some(if height > 0.0 { height } else { SYSTEM_TITLE_BAR })
+}
+
 /// Window pixels per scene unit, and the region's extent in scene units.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Placement {
@@ -231,6 +271,25 @@ impl SceneSurface {
         });
     }
 
+    /// A bare window has no title bar of its own, so a press in the title strip that lands on no
+    /// control of the scene moves the window; the operating system owns the gesture from there.
+    fn moves_window(&self, e: &PointerPressedEventArgs) -> bool {
+        let Some(strip) = caption() else {
+            return false;
+        };
+        let scale = self.placement().scale;
+        let at = e.get_position(Some(self));
+        if e.get_position(None).y >= strip || self.scene().control_at(at.x / scale, at.y / scale) {
+            return false;
+        }
+        let window = ferroui_controls::TopLevel::get_top_level(Some(self))
+            .and_then(|top| top.cast::<ferroui_controls::Window>());
+        window.is_some_and(|window| {
+            window.begin_move_drag(e);
+            true
+        })
+    }
+
     fn touch(&self, position: Point, down: bool, modifiers: KeyModifiers) -> Touch {
         let scale = self.placement().scale;
         let shift = modifiers.contains(KeyModifiers::SHIFT);
@@ -282,6 +341,9 @@ impl LayoutableImpl for SceneSurface {
 impl InputElementImpl for SceneSurface {
     fn on_pointer_pressed(this: &Self, e: &PointerPressedEventArgs) {
         e.set_handled(true);
+        if this.moves_window(e) {
+            return;
+        }
         this.focus();
         let element: Ref<InputElement> = this.to_ref().upcast();
         e.pointer().capture(Some(&element));
