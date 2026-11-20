@@ -125,7 +125,17 @@ fn show_menus(host: &Rc<Host>, window: &Ref<Window>) {
         let Some(window) = weak.upgrade() else {
             return;
         };
-        let bar = NativeMenu::new();
+        // The platform exporter keeps this root's identity for the life of the window.
+        let bar = match NativeMenu::get_menu(&window) {
+            Some(bar) => bar,
+            None if menus.is_empty() => return,
+            None => {
+                let bar = NativeMenu::new();
+                NativeMenu::set_menu(&window, Some(bar.clone()));
+                bar
+            }
+        };
+        bar.items().clear();
         for menu in menus {
             let entry = NativeMenuItem::with_header(&menu.title);
             let list = NativeMenu::new();
@@ -135,7 +145,6 @@ fn show_menus(host: &Rc<Host>, window: &Ref<Window>) {
             entry.set_menu(Some(list));
             bar.add(entry);
         }
-        NativeMenu::set_menu(&window, (!menus.is_empty()).then_some(bar));
     }));
 }
 

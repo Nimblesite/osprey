@@ -116,7 +116,7 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
 fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     assert_eq!(Library::init(), Ok(()), "the daw's top level must run");
     // A copy: a Mix edit saves into the project it opened, and the tracked song must stay as it is.
-    let folder = std::env::temp_dir().join("osprey-daw-events");
+    let folder = std::env::temp_dir().join(format!("osprey-daw-events-{}", std::process::id()));
     let song = folder.join("song.json");
     assert!(std::fs::create_dir_all(&folder).is_ok(), "the test keeps its song in {}", folder.display());
     let copied = std::fs::copy(repo("osprey/examples/daw/tracks/codex-version.json"), &song);
@@ -212,4 +212,6 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     println!("timeline taps: mean {mean:.2} ms, worst {worst:.2} ms over {} events", measured.len());
     assert!(mean < FRAME_MS, "a Timeline tap takes {mean:.2} ms on average; one frame is {FRAME_MS:.2} ms");
     assert!(worst < 2.0 * FRAME_MS, "the slowest Timeline tap takes {worst:.2} ms; two frames are {:.2} ms", 2.0 * FRAME_MS);
+    std::fs::remove_file(&song).expect("remove this run's project");
+    std::fs::remove_dir(&folder).expect("remove this run's folder");
 }

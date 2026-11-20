@@ -130,9 +130,10 @@ The three-band split is a start, not the EQ. Target: a parametric EQ as good as 
 - [x] The macOS menu bar holds the commands: File (Open Song ⌘O, Save ⌘S, Render Song ⌘R), Edit (Undo, Redo), View (pages ⌘1–3, Modules, Patch Controls, Keyboard) and Transport. The FerroUI host builds it from `Ui::section`s among the root's context-menu actions; read back from the running app and driven with View → Timeline.
 - [x] One header on Patch, Timeline and Mix, drawn after [piano-roll.png](../designs/prism-timeline/piano-roll.png): bordered tabs with icons, song strip (BPM, meter, position, what is sounding), Play/Stop icon group. Save, Open, Render, Keyboard, Audition and Patch Controls are no longer canvas buttons.
 - [x] Pages fill the window (zoom 0) unless the keyboard is docked.
-- [ ] The application menu still reads "FerroUI Application": FerroUI names it before the host can; needs the host's own `AppBuilder` start.
-- [ ] Song strip is 46 units tall, the design's is about 74: needs the lanes moved down (prism-routing-design owns the lanes).
-- [ ] Uncommitted lane pitch traces cost 45 ms per Timeline tap (0.64 ms at HEAD); `daw_events` fails with them. Owner: prism-routing-design.
+- [x] The native application menu reads Prism. The FerroUI host sets the application name before the platform exports its menus.
+- [x] Match the reference’s 1440 × 940 canvas. The header ends at y=59, the song strip ends at y=142, seven full-height arrangement lanes sit above the piano roll, and the footer begins at y=909.
+- [x] Keep the native menu bar alive when Mix adds the Routing menu. The macOS journey drives 23 interactions, then records rendered bars in a stereo video. Choosing Master and pads through Accessibility restores every value in the decoded project.
+- [x] Cache the miniature pitch traces when the project opens. The native test taps every arrangement page and ruler, moves every gain fader, and rereads the project after switching the dry route from pads to Master and back.
 
 ### Strip the UI [DAW-PAGES-STRIP]
 
