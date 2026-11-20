@@ -54,22 +54,22 @@ exactTests [
 (** Assertions are valid outside any case; a passing one prints nothing. *)
 checkTrue "assertions run outside a test case" (startsWith "osprey" "osp")
 
-(** Assertion operands compare by canonical rendering: values of different
-    types that render alike are equal, a Success renders as its bare payload
-    and an Error as `Error(<message>)`. [TESTING-EQUALITY]
-    [TESTING-BUILTIN-EXPECT] [TESTING-BUILTIN-CHECK] *)
+(** The two operands of an assertion have one inferred type; a bare value
+    stands for the `Success` of a Result operand, and a failure is asserted at
+    its own `E` with `expectError`. [TESTING-EQUALITY]
+    [TESTING-BUILTIN-EXPECT] [TESTING-BUILTIN-CHECK] [TESTING-BUILTIN-EXPECT-ERROR] *)
 equalityCase () =
-    expect 5 "5"
-    expect "5" 5
-    expect true "true"
-    expect false "false"
-    expect 1.5 "1.5"
-    expect (satSub 0 7) "-7"
+    expect (toString 5) "5"
+    expect "5" (toString 5)
+    expect (toString true) "true"
+    expect (toString false) "false"
+    expect (toString 1.5) "1.5"
+    expect (satSub 0 7) (-7)
     expect (checkedAdd 2 3) 5
-    expect (checkedAdd 2 3) "5"
-    check "Success renders its bare payload" 42 (checkedMul 6 7)
-    check "Error renders its message" "Error(integer overflow)" (checkedMul 4294967296 4294967296)
-    check "subtraction overflow is an Error too" "Error(integer overflow)" (checkedSub (-9223372036854775808) 1)
+    expect (toString (checkedAdd 2 3)) "Success(5)"
+    check "a Success is decoded with ?:" 42 (checkedMul 6 7 ?: 0)
+    expectError (checkedMul 4294967296 4294967296) "integer overflow"
+    expectError (checkedSub (-9223372036854775808) 1) "integer overflow"
     check "an interpolated Success keeps its constructor" "Success(5)" "${checkedAdd 2 3}"
     check "strings compare by content" "osprey" (toLowerCase "OSPREY")
     check "a float renders like its literal" "0.25" (toString 0.25)
@@ -99,10 +99,83 @@ expectErrorCase () =
     expectError (checkedSub (-9223372036854775808) 1) "integer overflow"
     forEachList [["a", "b"], ["c", "d"]] (\argv => expectError (parsed argv) "too many: 2")
 
+(** A refusal that carries several values, so its `E` is a record. [ERR-RESULT] *)
+type ParseError =
+    code : int
+    why : string
+
+(** A failure with several cases, so its `E` is a union. *)
+type MathError = DivZero | Overflow(by : int)
+
+parseLen s = match s == ""
+    true => Error(message = ParseError(code = 1, why = "empty"))
+    false => Success(value = length s)
+
+code n = match n < 0
+    true => Error(message = n)
+    false => Success(value = n)
+
+ratio n = match n == 0
+    true => Error(message = DivZero)
+    false => match n > 99
+        true => Error(message = Overflow(by = n))
+        false => Success(value = n)
+
+flag n = match n > 9
+    true => Error(message = true)
+    false => Success(value = n)
+
+frac n = match n > 9
+    true => Error(message = 2.5)
+    false => Success(value = n)
+
+nested n = match n > 9
+    true => Error(message = code (-3))
+    false => Success(value = n)
+
+describe e = match e
+    DivZero => "div by zero"
+    Overflow by => "overflow by ${by}"
+
+rated n = match ratio n
+    Success value => "ok ${value}"
+    Error message => describe message
+
+parsedLen s = match parseLen s
+    Success value => "ok ${value}"
+    Error message => "parse ${message.code}: ${message.why}"
+
+(** `E` is inferred from the payload and is that exact value on the way out:
+    through match, `?:`, toString, interpolation and closures. [ERR-PAYLOAD]
+    [ERR-RESULT-FORMAT] [TESTING-BUILTIN-EXPECT-ERROR] *)
+typedErrorCase () =
+    expectError (code (-7)) (-7)
+    expectError (flag 10) true
+    expectError (frac 10) 2.5
+    expectError (nested 12) (code (-3))
+    expectError (parseLen "") (ParseError(code = 1, why = "empty"))
+    expectError (ratio 0) DivZero
+    expectError (ratio 500) (Overflow(by = 500))
+    expect (code 7) 7
+    expect (code (-1) ?: 44) 44
+    expect (parsedLen "") "parse 1: empty"
+    expect (parsedLen "abc") "ok 3"
+    expect (rated 0) "div by zero"
+    expect (rated 500) "overflow by 500"
+    expect (rated 5) "ok 5"
+    expect (toString (code (-7))) "Error(-7)"
+    expect (toString (flag 10)) "Error(true)"
+    expect (toString (frac 10)) "Error(2.5)"
+    expect (toString (nested 12)) "Error(Error(-3))"
+    expect "${code (-9)}" "Error(-9)"
+    forEachList [-1, -2, -3] (\n => expectError (code n) n)
+    expect (range (-2) 3 |> fold 0 (\(sum, n) => satAdd sum (code n ?: 100))) 203
+
 (** A test call runs wherever it is evaluated, so a helper may declare cases. *)
 declareFrom label = test "${label} case declared from a helper" (\() => checkAll "${label} helper case" [label != "", length label > 0])
 
 test "assertions compare canonical renderings" equalityCase
 test "expectError asserts a failed Result in one line" expectErrorCase
+test "an error payload keeps its type" typedErrorCase
 declareFrom "first"
 declareFrom "second"

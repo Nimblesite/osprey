@@ -41,11 +41,13 @@ pub(crate) fn make_error(cg: &mut Codegen, payload: Value) -> Result<Value> {
 }
 
 /// The error type the checker proved for a Result value, when it is closed.
-fn error_type(v: &Value) -> Option<osprey_types::Type> {
+pub(crate) fn error_type(v: &Value) -> Option<osprey_types::Type> {
     let osprey_types::Type::Con { name, args } = v.inferred_type.as_ref()? else {
         return None;
     };
-    let error = args.get(1).filter(|_| name == osprey_types::names::RESULT)?;
+    let error = args
+        .get(1)
+        .filter(|_| name == osprey_types::names::RESULT)?;
     (!osprey_types::has_type_var(error)).then(|| error.clone())
 }
 

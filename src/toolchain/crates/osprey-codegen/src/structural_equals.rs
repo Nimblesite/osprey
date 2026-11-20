@@ -34,13 +34,19 @@ pub(crate) fn structural_equals(cg: &mut Codegen, args: &[Expr]) -> Result<Value
     let a = operand(cg, args, 0)?;
     let b = operand(cg, args, 1)?;
     let ty = compared_type(cg, &a, &b)?;
-    let name = ensure_comparator(cg, &ty)?;
+    let r = values_equal(cg, &ty, a, b)?;
+    Ok(Value::new(r, LType::I1))
+}
+
+/// The `i1` operand deciding whether `a` and `b`, both of type `ty`, hold the
+/// same content.
+pub(crate) fn values_equal(cg: &mut Codegen, ty: &Type, a: Value, b: Value) -> Result<String> {
+    let name = ensure_comparator(cg, ty)?;
     let (wa, wb) = (
         crate::conv::box_to_i64(cg, a),
         crate::conv::box_to_i64(cg, b),
     );
-    let r = comparator_call(cg, &name, &wa.operand, &wb.operand);
-    Ok(Value::new(r, LType::I1))
+    Ok(comparator_call(cg, &name, &wa.operand, &wb.operand))
 }
 
 /// A call to an emitted comparator. Emitted directly, never through

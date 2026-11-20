@@ -131,23 +131,22 @@ fn outline(source: &str) -> String {
     osprey_lsp::symbols_json(&parsed.program)
 }
 
-/// `Error { message: "e" }` pins the MESSAGE to string and deliberately leaves
-/// the `Result`'s E side free ([`check.rs::register_result_ctors`]), so nothing
-/// in this program determines E. `-> Result<int, string>` is the only thing
-/// that could, which makes it load-bearing however concrete both arms look.
-const FREE_ERROR_SIDE: &str = r#"fn bothArms(f) = if f { Success { value: 1 } } else { Error { message: "e" } }
-print("${(bothArms(true)) ?: 0}")
+/// `onlySuccess` builds no `Error`, so nothing in this program determines E
+/// ([ERR-RESULT] rule 2). `-> Result<int, string>` is the only thing that
+/// could, which makes it load-bearing.
+const FREE_ERROR_SIDE: &str = r#"fn onlySuccess(n) = Success { value: length(n) }
+print("${(onlySuccess("a")) ?: 0}")
 "#;
 
 /// The same program with the free side written down — the annotation that
 /// [`FREE_ERROR_SIDE`] is missing, and the only thing that can supply it.
-const FREE_ERROR_SIDE_ANNOTATED: &str = r#"fn bothArms(f) -> Result<int, string> = if f { Success { value: 1 } } else { Error { message: "e" } }
-print("${(bothArms(true)) ?: 0}")
+const FREE_ERROR_SIDE_ANNOTATED: &str = r#"fn onlySuccess(n) -> Result<int, string> = Success { value: length(n) }
+print("${(onlySuccess("a")) ?: 0}")
 "#;
 
 /// The same shape with the error side pinned BY CONTEXT instead: `parseInt`
-/// returns `Result<int, string>`, so E unifies with the nominal `Error` and the
-/// checker proves the whole type on its own.
+/// returns `Result<int, string>` and the `Error` arm carries a `string`, so
+/// the checker proves the whole type on its own.
 const PINNED_ERROR_SIDE: &str = r#"fn fromBuiltin(f) = if f { parseInt("7") } else { Error { message: "e" } }
 print("${(fromBuiltin(true)) ?: 0}")
 "#;
@@ -166,11 +165,10 @@ fn a_return_type_is_reported_exactly_when_the_checker_proved_all_of_it() {
     // `osprey-lsp`'s own gate ([LSP-HOVER-INFERRED-SIGNATURE]); this one must
     // not pin whatever spelling it currently picks.
     //
-    // What IS this gate's business holds under either spelling: the constructors
-    // are registered with the E side FREE ON PURPOSE, so that an `Error { .. }`
-    // arm unifies with whatever error type its context declares rather than
-    // being pinned to `string`. An annotation supplying that side therefore
-    // carries information no body can, and erasing it must visibly change the
+    // What IS this gate's business holds under either spelling: a body that
+    // builds no `Error` leaves `E` undecided ([ERR-RESULT] rule 2). An
+    // annotation supplying that side therefore carries information the body
+    // does not, and erasing it must visibly change the
     // reported signature — which is what makes `redundant_in`'s "identical
     // reported signature" the right oracle rather than mere compilation.
     let probe = Path::new("error_side.osp");

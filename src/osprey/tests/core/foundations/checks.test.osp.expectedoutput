@@ -3,7 +3,8 @@ ok 2 - classification checks include computed inputs
 ok 3 - strings and lists mix with matching
 ok 4 - assertions compare canonical renderings
 ok 5 - expectError asserts a failed Result in one line
-ok 6 - first case declared from a helper
-ok 7 - second case declared from a helper
-1..7
-# tests=7 passed=7 failed=0 skipped=0
+ok 6 - an error payload keeps its type
+ok 7 - first case declared from a helper
+ok 8 - second case declared from a helper
+1..8
+# tests=8 passed=8 failed=0 skipped=0

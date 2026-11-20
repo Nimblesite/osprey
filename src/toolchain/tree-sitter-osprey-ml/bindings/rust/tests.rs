@@ -208,7 +208,7 @@ fn layout_types_and_effect_rows_retain_structural_nodes() {
 
 #[test]
 fn multiargument_type_application_stays_one_signature_statement() {
-    let source = "value : Result string Error\n";
+    let source = "value : Result string string\n";
     let tree = parse(source);
     counted(tree.root_node(), "statement", 1);
     counted(tree.root_node(), "type_identifier", 3);

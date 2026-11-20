@@ -205,13 +205,14 @@ fn gen_expect(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
     Ok(emit_assert(cg, "null", &e, &a))
 }
 
-/// `expectError(result, message)` — passes when `result` is an `Error` with that
-/// message; the Success payload is never rendered, so any `T` is allowed
-/// [TESTING-BUILTIN-EXPECT-ERROR].
+/// `expectError(result, payload)` — passes when `result` is an `Error` holding
+/// that payload; the Success payload is never rendered, so any `T` is allowed.
+/// A payload with a canonical rendering compares by it; a record or union
+/// payload compares by content [TESTING-BUILTIN-EXPECT-ERROR].
 fn gen_expect_error(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
-    let [result, message] = args else {
+    let [result, payload] = args else {
         return Err(CodegenError::invalid(
-            "expectError needs (result, message) arguments",
+            "expectError needs (result, payload) arguments",
         ));
     };
     let r = gen_expr(cg, result)?;
@@ -220,8 +221,12 @@ fn gen_expect_error(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
             "expectError needs a Result as its first argument",
         ));
     }
+    let e = gen_expr(cg, payload)?;
+    if reject_opaque_handle(&e).is_err() {
+        return payload::expect_error_content(cg, &r, e);
+    }
     let a = crate::runtime::result_error_string(cg, &r)?;
-    let e = eval_to_string(cg, message)?;
+    let e = canonical_string(cg, e)?;
     let wrapped = crate::runtime::format_sized(cg, "Error(%s)", &[format!("i8* {}", e.operand)]);
     Ok(emit_assert(cg, "null", &wrapped, &a))
 }
@@ -349,6 +354,10 @@ fn gen_reason_report(cg: &mut Codegen, runtime_fn: &str, reason: Option<&Expr>) 
 fn eval_to_string(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
     let v = gen_expr(cg, expr)?;
     reject_opaque_handle(&v)?;
+    canonical_string(cg, v)
+}
+
+fn canonical_string(cg: &mut Codegen, v: Value) -> Result<Value> {
     if v.result_inner.is_some() {
         return crate::runtime::result_payload_or_error_string(cg, &v);
     }
@@ -372,7 +381,6 @@ fn reject_opaque_handle(v: &Value) -> Result<()> {
 /// Compare two canonical strings and record the verdict with the runtime.
 /// `label_op` is the rendered label operand — `null` for `expect`.
 fn emit_assert(cg: &mut Codegen, label_op: &str, expected: &Value, actual: &Value) -> Value {
-    cg.lowered.testing = true;
     let c = cg.call(
         "i32",
         "osp_string_compare",
@@ -380,6 +388,19 @@ fn emit_assert(cg: &mut Codegen, label_op: &str, expected: &Value, actual: &Valu
         &[&actual.operand, &expected.operand],
     );
     let ok = cg.emit_reg(format!("icmp eq i32 {c}, 0"));
+    record_verdict(cg, label_op, &ok, expected, actual)
+}
+
+/// Record the `i1` verdict `ok` with the runtime, with the two renderings a
+/// failure reports.
+fn record_verdict(
+    cg: &mut Codegen,
+    label_op: &str,
+    ok: &str,
+    expected: &Value,
+    actual: &Value,
+) -> Value {
+    cg.lowered.testing = true;
     let ok32 = cg.emit_reg(format!("zext i1 {ok} to i32"));
     cg.call_void(
         "osp_test_assert",
@@ -388,6 +409,8 @@ fn emit_assert(cg: &mut Codegen, label_op: &str, expected: &Value, actual: &Valu
     );
     Value::unit()
 }
+
+mod payload;
 
 #[cfg(test)]
 mod tests {

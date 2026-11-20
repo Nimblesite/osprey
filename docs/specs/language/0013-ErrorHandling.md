@@ -46,7 +46,8 @@ type ParseError =
     code : int
     why : string
 
-parse s = if s == "" then Error(message = ParseError(code = 1, why = "empty")) else Success(value = length s)
+parse "" = Error(message = ParseError(code = 1, why = "empty"))
+parse s  = Success(value = length s)
 
 shown = match parse ""
     Success value   => "ok ${value}"

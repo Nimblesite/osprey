@@ -400,10 +400,7 @@ mod tests {
     #[test]
     fn printable_constraint_checks_result_payloads_recursively() {
         // [BUILTIN-PRINT] [BUILTIN-TOSTRING]
-        assert!(is_printable(&Type::result(
-            Type::int(),
-            Type::string(),
-        )));
+        assert!(is_printable(&Type::result(Type::int(), Type::string(),)));
         assert!(!is_printable(&Type::result(
             Type::list(Type::int()),
             Type::string(),

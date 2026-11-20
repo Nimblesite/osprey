@@ -4,7 +4,7 @@ effect IO
     (** Write `text` to the output the handler represents. *)
     write : string => Unit
     (** Read one line, reporting failure as a `Result` rather than trapping. *)
-    input : Unit => Result string Error
+    input : Unit => Result string string
 
 effect FileIO
     (** Write `contents` to `path`. *)

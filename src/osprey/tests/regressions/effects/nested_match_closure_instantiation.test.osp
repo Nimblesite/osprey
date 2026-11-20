@@ -21,7 +21,7 @@ fn find<T>(xs, p) -> Result<T, string> = match xs {
     }
 }
 
-fn detail() -> Result<Evidence, string> = {
+fn detail() = {
     let focus = perform Signal<Focus>.read()
     match perform Signal<Result<Section, string>>.read() {
         Error => Error { message: "no section" }

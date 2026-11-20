@@ -160,7 +160,13 @@ fn testing(e: &mut TypeEnv) {
         u(),
     );
     // check(label, expected, actual): both values one inferred type. [TESTING-BUILTIN-CHECK]
-    poly(e, "check", vec![0], vec![s(), Type::Var(0), Type::Var(0)], u());
+    poly(
+        e,
+        "check",
+        vec![0],
+        vec![s(), Type::Var(0), Type::Var(0)],
+        u(),
+    );
     mono(e, "checkAll", vec![s(), Type::list(b())], u());
     mono(e, "checkTrue", vec![s(), b()], u());
     mono(e, "checkFalse", vec![s(), b()], u());
