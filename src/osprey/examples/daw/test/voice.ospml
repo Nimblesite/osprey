@@ -18,7 +18,7 @@ inspectorAction (session, identity, label) = Drive::press (inspectorSelected (se
 // [PRISM-ROUTING-EDITOR] One selected module, compact controls, unchanged graph actions.
 inspectorJourney () =
     launched = editorLaunched ["--empty"]
-    opened = clickAt (launched, 550.0, 32.0)
+    opened = Drive::press (launched, "Patch Controls")
     oscillator = Drive::choose (opened, "Add component", "sine")
     filter = Drive::choose (oscillator, "Add component", "filter")
     viewShows (filter, "Module", true)
@@ -238,7 +238,8 @@ prismIntegratedJourney () =
     opened = editorLaunched []
     expect (length (Drive::holding opened).graph.nodes, 5)
     cablesOf (opened, 4)
-    forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Patch controls"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), true))
+    forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Play patch", "Stop playback", "Undo", "Redo", "Timeline", "Patch", "Mix"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), true))
+    forEachList (["Patch controls", "Audition patch", "Keyboard", "Save project"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), false))
     cutoff = Semantics::point (Semantics::element (opened.drivenSeen.renderedAccess, "Filter Cutoff"), 0.5)
     changed = clickAt (opened, cutoff.pointX, cutoff.pointY)
     parameterAt ((Drive::holding changed).graph, 1, 0, \p => near (p.initial, synth::CanvasGeometry::cutoffFrequency 0.5))
@@ -246,7 +247,7 @@ prismIntegratedJourney () =
     level = Semantics::point (Semantics::element (changed.drivenSeen.renderedAccess, "Master Level"), 0.25)
     quieter = clickAt (changed, level.pointX, level.pointY)
     parameterAt ((Drive::holding quieter).graph, 2, 0, \p => near (p.initial, 0.25))
-    library = clickAt (quieter, 420.0, 32.0)
+    library = prismTap (quieter, "Modules")
     expect ((Drive::holding library).paletteShown, true)
     added = Drive::pointer (Drive::pointer (library, 80.0, 130.0, true), 350.0, 230.0, false)
     expect (length (Drive::holding added).graph.nodes, 6)
@@ -333,7 +334,7 @@ keyboardDockJourney opened =
     offeredIn (closed, "Play C4", false)
     expect (length (filterList (closed.drivenSeen.renderedControls, \control => control.controlKind == "scene")), 1)
     expect (structuralEquals ((Drive::holding closed).graph, before), true)
-    reopened = prismTap (closed, "Keyboard")
+    reopened = Drive::press (closed, "Keyboard")
     expect ((Drive::holding reopened).keyboardShown, true)
     offeredIn (reopened, "Play C4", true)
     expect (structuralEquals ((Drive::holding reopened).graph, before), true)
@@ -375,7 +376,7 @@ dockTap (driven, label) =
 // [PRISM-ROUTING-CABLES] Physical press/move/release, cancellation and direct removal.
 cableGestureJourney () =
     launched = editorLaunched ["--empty"]
-    opened = prismTap (launched, "Patch controls")
+    opened = Drive::press (launched, "Patch Controls")
     disconnected = Drive::choose (Drive::choose (opened, "Add component", "sine"), "Add component", "filter")
     armed = Drive::pointer (disconnected, 488.5, 169.5, true)
     expect ((Drive::holding armed).wireDragging, true)
@@ -501,7 +502,7 @@ rms m = sqrt (m.energy / toFloat (ui::Pick::either (m.index == 0, 1, m.index)))
 within (actual, expected, tolerance) = expect (abs (actual - expected) <= tolerance, true)
 
 patched kinds =
-    opened = prismTap (editorLaunched ["--empty", "--vst-worker", "/worker/osprey-vst-worker"], "Patch controls")
+    opened = Drive::press (editorLaunched ["--empty", "--vst-worker", "/worker/osprey-vst-worker"], "Patch Controls")
     added = foldList (kinds, opened, \(d, kind) => Drive::choose (d, "Add component", kind))
     wired = foldList (toList (range (1, length kinds)), added, \(d, i) => prismTap (prismTap (d, "Canvas output ${i - 1}:0"), "Canvas input ${i}:0"))
     expect (length (Drive::holding wired).graph.cables, length kinds - 1)

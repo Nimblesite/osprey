@@ -37,7 +37,7 @@ module MixView
         Success voice => flow (editor, voice)
 
     (** The whole Mix page. *)
-    export shapes editor = listConcat (listConcat (TimelineView::frame (editor, "Mix")) (table editor)) (side editor)
+    export shapes editor = listConcat (listConcat (TimelineView::frame editor) (table editor)) (side editor)
 
     controlAt (voice, index, x) = match x >= 310.0 && x <= 460.0
         true => AdjustMix(index = index, gain = TimelineGeometry::fader (x, 310.0, 150.0, 0.0, 4.0), pan = voice.pan, reverb = voice.reverb)

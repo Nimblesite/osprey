@@ -258,13 +258,13 @@ module EditorView
 
     // Prism's rounded panel, shared by cards and palette rows.
     (** Prism's rounded panel shared with contextual cable controls. *)
-    export panel (left, top, width, height, colour, depth) = paintedPanel (left, top, width, height, ui::Solid(tint = Scenes::hex (colour, 1.0)), depth)
+    export panel (left, top, width, height, colour, depth) = rounded (left, top, width, height, 10.0, ui::Fill, ui::Solid(tint = Scenes::hex (colour, 1.0)), depth)
 
-    paintedPanel (left, top, width, height, paint, depth) =
+    (** A rectangle with corners of radius `r`, filled or stroked as `outline` says. *)
+    export rounded (left, top, width, height, r, outline, paint, depth) =
         right = left + width
         bottom = top + height
-        steps = [ui::MoveTo(toX = left + 10.0, toY = top), ui::LineTo(toX = right - 10.0, toY = top), ui::CurveTo(toX = right, toY = top + 10.0, ctrlX = right, ctrlY = top), ui::LineTo(toX = right, toY = bottom - 10.0), ui::CurveTo(toX = right - 10.0, toY = bottom, ctrlX = right, ctrlY = bottom), ui::LineTo(toX = left + 10.0, toY = bottom), ui::CurveTo(toX = left, toY = bottom - 10.0, ctrlX = left, ctrlY = bottom), ui::LineTo(toX = left, toY = top + 10.0), ui::CurveTo(toX = left + 10.0, toY = top, ctrlX = left, ctrlY = top), ui::Close]
-        Scenes::path (steps, ui::Fill, paint, depth)
+        Scenes::path ([ui::MoveTo(toX = left + r, toY = top), ui::LineTo(toX = right - r, toY = top), ui::CurveTo(toX = right, toY = top + r, ctrlX = right, ctrlY = top), ui::LineTo(toX = right, toY = bottom - r), ui::CurveTo(toX = right - r, toY = bottom, ctrlX = right, ctrlY = bottom), ui::LineTo(toX = left + r, toY = bottom), ui::CurveTo(toX = left, toY = bottom - r, ctrlX = left, ctrlY = bottom), ui::LineTo(toX = left, toY = top + r), ui::CurveTo(toX = left + r, toY = top, ctrlX = left, ctrlY = top), ui::Close], outline, paint, depth)
 
     (** Shared canvas text styling for nodes and cable actions. *)
     export text (words, left, top, size, colour, depth) = Scenes::lettering (words, left, top, size, Scenes::rgb (colour, colour, 255), 0, 500.0, depth)
@@ -292,7 +292,7 @@ module EditorView
             _ => match listGet n.parameters 0
                 Error _ => "${length n.inputs} inputs · ${length n.outputs} outputs"
                 Success p => "${p.label}: ${p.initial}"
-        returnShapes = [panel (x at - 146.0, y at - 87.0, 292.0, 174.0, border, 2), paintedPanel (x at - 144.0, y at - 85.0, 288.0, 170.0, paint, 3), text (componentName (editor, n), x at - 124.0, y at - 67.0, 18.0, 238, 5), panel (x at - 124.0, y at - 27.0, 248.0, 64.0, 986652, 4), text (caption, x at - 108.0, y at - 3.0, 14.0, 190, 5), text ("Edit in Patch controls", x at - 124.0, y at + 58.0, 12.0, 155, 5)]
+        returnShapes = [panel (x at - 146.0, y at - 87.0, 292.0, 174.0, border, 2), rounded (x at - 144.0, y at - 85.0, 288.0, 170.0, 10.0, ui::Fill, paint, 3), text (componentName (editor, n), x at - 124.0, y at - 67.0, 18.0, 238, 5), panel (x at - 124.0, y at - 27.0, 248.0, 64.0, 986652, 4), text (caption, x at - 108.0, y at - 3.0, 14.0, 190, 5), text ("Edit in Patch controls", x at - 124.0, y at + 58.0, 12.0, 155, 5)]
         returnShapes
 
     grainTrace (resource, at) = [Scenes::strip (foldList (toList (range (0, 48)), [], \(points, index) =>
@@ -344,34 +344,26 @@ module EditorView
 
     paletteAccess () = mapList (toList (range (0, length EditorState::kinds)), \i => accessible ("Add ${EditorState::title (listGet EditorState::kinds i ?: "")}", 12.0, CanvasGeometry::paletteY (toFloat i) - 17.0, 172.0, 35.0, false))
 
-    toolbar () = [text ("Save", 298.0, 25.0, 16.0, 236, 12), text ("Modules", 380.0, 25.0, 16.0, 236, 12), text ("Patch controls", 500.0, 25.0, 16.0, 236, 12), text ("Audition", 680.0, 25.0, 16.0, 236, 12), text ("Play", 800.0, 25.0, 16.0, 236, 12), text ("Stop", 880.0, 25.0, 16.0, 236, 12), text ("Keyboard", 950.0, 25.0, 16.0, 236, 12), text ("Timeline", 1250.0, 25.0, 16.0, 236, 12), text ("Mix", 1390.0, 25.0, 16.0, 236, 12)]
-
-    toolbarItems () = [accessible ("Modules", 370.0, 10.0, 110.0, 45.0, false), accessible ("Patch controls", 490.0, 10.0, 170.0, 45.0, false), accessible ("Audition patch", 670.0, 10.0, 110.0, 45.0, false), accessible ("Play patch", 790.0, 10.0, 70.0, 45.0, false), accessible ("Stop playback", 870.0, 10.0, 70.0, 45.0, false), accessible ("Keyboard", 940.0, 10.0, 120.0, 45.0, false), accessible ("Undo", 1108.0, 15.0, 40.0, 37.0, false), accessible ("Redo", 1160.0, 15.0, 40.0, 37.0, false), accessible ("Timeline", 1240.0, 10.0, 120.0, 45.0, false), accessible ("Mix", 1380.0, 10.0, 90.0, 45.0, false), accessible ("Save project", 270.0, 10.0, 85.0, 45.0, false)]
-
     rightX (editor, base) = CanvasGeometry::shifted (base, ui::Machines::number (editor.skin, "spareWidth"))
 
-    toolbarAccess editor = mapList (toolbarItems (), \area =>
-        match area.accessLabel == "Undo" || area.accessLabel == "Redo"
-            true => area(accessLeft = rightX (editor, area.accessLeft))
-            false => area)
+    // [DAW-HEADER] The Patch page's header: the shared tabs, the transport and Add module. Every other command
+    // is in the window's menu bar ([DAW-MENU]).
+    toolbar editor = listConcat (listConcat (Header::tabs editor) (Header::transport (826.0, 14.0, editor.renderDeviceKey != ""))) (listAppend (Header::plaque (943.0, 14.0, 134.0, 38.0, Scenes::rgb (52, 41, 110), 11)) (Scenes::lettering ("+  Add module", 1010.0, 25.0, 14.0, Scenes::rgb (240, 236, 255), 1, 500.0, 13)))
 
-    (** Header commands retain the same action path as native controls. *)
+    toolbarItems editor = listConcat (listConcat [accessible ("Modules", 943.0, 14.0, 134.0, 38.0, editor.paletteShown)] (Header::transportAreas (826.0, 14.0, "Play patch", "Stop playback"))) (listConcat [accessible ("Undo", rightX (editor, 1108.0), 15.0, 40.0, 37.0, false), accessible ("Redo", rightX (editor, 1160.0), 15.0, 40.0, 37.0, false)] (Header::tabAreas editor))
+
+    (** The command behind header area `index` of the Patch page. *)
     export toolbarAction index = match index
         0 => ShowModules
-        1 => ShowDetails
-        2 => Audition
-        3 => PlayGraph
-        4 => StopGraph
-        6 => Undo
-        7 => Redo
-        8 => ShowPage(page = TimelinePage)
-        9 => ShowPage(page = MixPage)
-        10 => SaveProject
-        _ => ShowKeyboard
+        1 => PlayGraph
+        2 => StopGraph
+        3 => Undo
+        4 => Redo
+        _ => ShowPage(page = Header::tabPage (satSub index 5))
 
-    (** Match the compact command hit boxes in the original header. *)
-    export toolbarAt (editor, x, y) = listGet (filterList (toList (range (0, length (toolbarItems ()))), \i =>
-        match listGet (toolbarAccess editor) i
+    (** The header area under a point of the Patch page, if any. *)
+    export toolbarAt (editor, x, y) = listGet (filterList (toList (range (0, length (toolbarItems editor))), \i =>
+        match listGet (toolbarItems editor) i
             Error _ => false
             Success a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0
 
@@ -409,9 +401,9 @@ module EditorView
         details = match editor.detailsShown
             true => []
             false => listConcat (customInspector editor) (connectionRows editor)
-        shapes = listConcat (listConcat ((CardArts::scenery editor).artShapes) details) (listConcat (CableCanvas::shapes editor) (listConcat nodes (listConcat (listAppend (toolbar ()) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))) library)))
+        shapes = listConcat (listConcat ((CardArts::scenery editor).artShapes) details) (listConcat (CableCanvas::shapes editor) (listConcat nodes (listConcat (listAppend (toolbar editor) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))) library)))
         scene = Ui::zoomed (pageZoom editor, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
-        access = listConcat (toolbarAccess editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) ((CardArts::card (editor, n)).artControls))))
+        access = listConcat (toolbarItems editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) ((CardArts::card (editor, n)).artControls))))
         extra = match editor.paletteShown
             true => paletteAccess ()
             false => []
@@ -455,7 +447,7 @@ module EditorView
             false => page
             true => Ui::column [page, keyboardDock editor]
 
-    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${editor.rollBar}:${editor.songTicket}:${editor.songPath}:${length editor.song.tracks}"
+    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${editor.rollBar}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.songPath}:${length editor.song.tracks}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =

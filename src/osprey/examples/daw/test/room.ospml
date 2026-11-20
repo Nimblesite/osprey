@@ -385,7 +385,7 @@ clickAt (driven, x, y) = Drive::pointer (Drive::pointer (driven, x, y, true), x,
 editorLaunched args = Drive::launched (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "macos", args)
 
 // The editor's canvas, opened by its menu button.
-openedEditor args = clickAt (editorLaunched args, 550.0, 32.0)
+openedEditor args = Drive::press (editorLaunched args, "Patch Controls")
 
 // One palette component of this `kind` added through the real menu.
 component (driven, kind) = Drive::choose (driven, "Add component", kind)

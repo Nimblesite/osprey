@@ -22,7 +22,7 @@ graphHistoryJourney () =
 // [SYNTH-ADVANCED-GRAINS-IMPORT] Only the latest request may change the selected grain source.
 sampleChoiceJourney () =
     added = prismTap (prismTap (editorLaunched ["--empty"], "Modules"), "Add Grain cloud")
-    opened = prismTap (added, "Patch controls")
+    opened = Drive::press (added, "Patch Controls")
     first = Drive::press (opened, "Load WAV sample")
     // A high note exceeds the built-in source's 16x rate and must preserve the editable graph.
     errs (synth::EditorState::tune (Drive::holding first, 100))
@@ -79,7 +79,7 @@ sampleFileJourney driven =
 
 // Deleting a routed module restores its parameters, position and cables as one operation.
 historyRemovalJourney () =
-    opened = prismTap (editorLaunched [], "Patch controls")
+    opened = Drive::press (editorLaunched [], "Patch Controls")
     changed = Drive::choose (opened, "Cutoff", "3200")
     removed = Drive::press (changed, "Remove module")
     expect (length (Drive::holding removed).graph.nodes, 4)

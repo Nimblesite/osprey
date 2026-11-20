@@ -863,9 +863,9 @@ bounceJourney ready =
     // A previous run's finished bounce would otherwise count as this project's audio.
     _made = makeDir songFolder
     _cleared = writeFile "${songFolder}/song.wav" ""
-    expect (synth::TimelineView::headerAction 5, synth::RenderSong)
-    expect (synth::TimelineView::headerAction 6, synth::StopSong)
-    expect (synth::TimelineView::headerAction 7, synth::SaveProject)
+    expect (synth::TimelineView::headerAction 0, synth::ShowPage(page = synth::TimelinePage))
+    expect (synth::TimelineView::headerAction 1, synth::ShowPage(page = synth::PatchPage))
+    expect (synth::TimelineView::headerAction 2, synth::ShowPage(page = synth::MixPage))
     said (synth::DawSession::bounce (ready(renderer = "")), "", "Open a song and launch with the daw renderer to play it.")
     first = synth::DawSession::bounce ready
     said (first, "daw-song:bounce:${songFolder}", "Rendering all of Bridge.")
@@ -898,10 +898,12 @@ barLineJourney ready =
     succeeds (synth::TimelineView::laneAt (lined, 472.5, 113.0), \action => playheadSet (lined, action, 1))
     succeeds (synth::TimelineView::laneAt (lined, 957.5, 113.0), \action => playheadSet (lined, action, 3))
     succeeds (synth::TimelineView::laneAt (lined, 1200.0, 150.0), \action => expect (action, synth::PickTrack(index = 0, bar = 3)))
-    forEachList (["Play", "Stop", "Render song", "Open song", "Save project", "Keyboard"], \label => expect (length (labelled (ready, label)), 1))
-    expect (length (labelled (ready, "Play bars")), 0)
-    expect (synth::TimelineView::headerAction 4, synth::PlaySong)
-    expect (synth::TimelineView::headerAction 6, synth::StopSong)
+    // [DAW-HEADER] The header holds the page tabs and the transport; every other command is in the menu bar.
+    forEachList (["Timeline", "Patch", "Mix", "Play", "Stop"], \label => expect (length (labelled (ready, label)), 1))
+    forEachList (["Render song", "Open song", "Save project", "Keyboard", "Play bars"], \label => expect (length (labelled (ready, label)), 0))
+    expect (length (synth::TimelineView::headerAreas ready), 5)
+    expect (synth::TimelineView::headerAction 3, synth::PlaySong)
+    expect (synth::TimelineView::headerAction 4, synth::StopSong)
 
 transportJourney () =
     succeeds (makeDir "target/daw-tests", \_ => expect (true, true))

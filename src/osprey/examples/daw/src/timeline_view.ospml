@@ -55,11 +55,8 @@ module TimelineView
         true => "C"
         false => "${ui::Pick::either (value < 0.0, "L", "R")} ${percent (ui::Pick::either (value < 0.0, 0.0 - value, value))}"
 
-    tabs = ["Patch", "Timeline", "Mix"]
-    buttons = ["Open song", "Play", "Render song", "Stop"]
-
-    (** The header's tabs and transport, left to right; their hit areas are `headerAreas`. *)
-    export headerAreas editor = listConcat (listConcat (mapList (toList (range (0, 3)), \i => area (listGet tabs i ?: "", 360.0 + toFloat i * 130.0, 10.0, 120.0, 45.0, i == pageIndex editor.page))) (mapList (toList (range (0, 4)), \i => area (listGet buttons i ?: "", 1025.0 + toFloat i * 122.0, 10.0, 115.0, 45.0, false)))) [area ("Save project", 895.0, 10.0, 120.0, 45.0, false), area ("Keyboard", 765.0, 10.0, 120.0, 45.0, editor.keyboardShown)]
+    (** The header's hit areas: the page tabs, then Play and Stop ([DAW-HEADER]). *)
+    export headerAreas editor = listConcat (Header::tabAreas editor) (Header::transportAreas (1412.0, 70.0, "Play", "Stop"))
 
     (** The page's place among the header tabs. *)
     export pageIndex page = match page
@@ -69,28 +66,19 @@ module TimelineView
 
     (** The command behind header area `index`. *)
     export headerAction index = match index
-        0 => ShowPage(page = PatchPage)
-        1 => ShowPage(page = TimelinePage)
-        2 => ShowPage(page = MixPage)
-        3 => OpenTrack(index = -2)
-        4 => PlaySong
-        5 => RenderSong
-        7 => SaveProject
-        8 => ShowKeyboard
-        _ => StopSong
-
-    // [DAW-TRANSPORT] Play and Stop are the transport, green and red, never mistaken for the page tabs.
-    fillOf a = match a.accessLabel
-        "Play" => 2067035
-        "Stop" => 11546684
-        _ => ui::Pick::either (a.accessSelected, 4004714, 2163246)
+        3 => PlaySong
+        4 => StopSong
+        _ => ShowPage(page = Header::tabPage index)
 
     tile (a, fill) = [EditorView::panel (a.accessLeft, a.accessTop, a.accessWidth, a.accessHeight, fill, 10), label (a.accessLabel, a.accessLeft + a.accessWidth / 2.0, a.accessTop + 12.0, 16.0, ink (), 1, 11)]
 
-    status editor = DawSession::phase editor
+    // The skin's header art (logo and name) when the skin has it; a skin without it letters the name.
+    brand editor = match length (PrismArt::atlas editor.skin) > 11
+        true => [Scenes::sprite (11, 540.0, 33.0, 1080.0, 66.0, 0.0, Scenes::rgb (255, 255, 255), 2)]
+        false => [label ("Prism", 184.0, 14.0, 24.0, ink (), 0, 3)]
 
-    (** The page background, header and song strip. *)
-    export frame (editor, subtitle) = listConcat [box (0.0, 0.0, 1536.0, 828.0, Scenes::rgb (16, 13, 33), 0), box (0.0, 0.0, 1536.0, 66.0, Scenes::rgb (21, 17, 40), 1), label ("Prism", 110.0, 10.0, 24.0, ink (), 0, 3), label (subtitle, 110.0, 40.0, 13.0, dim (), 0, 3), label (editor.song.title, 24.0, 76.0, 22.0, ink (), 0, 3), label ("${hundredths editor.song.tempo} BPM · 4/4 · ${length editor.song.tracks} tracks · ${status editor}", 1510.0, 72.0, 14.0, dim (), 2, 3), label (editor.message, 1510.0, 92.0, 13.0, accent (), 2, 3), box (0.0, 112.0, 1536.0, 1.0, Scenes::rgb (44, 38, 72), 1)] (foldList (headerAreas editor, [], \(all, a) => listConcat all (tile (a, fillOf a))))
+    (** The page background, the header and the song strip. *)
+    export frame editor = listConcat (listConcat [box (0.0, 0.0, 1536.0, 828.0, Scenes::rgb (16, 13, 33), 0), box (0.0, 0.0, 1536.0, 66.0, Scenes::rgb (17, 16, 33), 1), box (0.0, 66.0, 1536.0, 1.0, Scenes::rgb (44, 38, 72), 3), box (0.0, 112.0, 1536.0, 1.0, Scenes::rgb (44, 38, 72), 1)] (brand editor)) (listConcat (Header::tabs editor) (Header::strip editor))
 
     track editor = listGet editor.song.tracks editor.track
 
@@ -268,4 +256,4 @@ module TimelineView
     export openArea () = area ("Open patch", 1236.0, 400.0, 284.0, 48.0, false)
 
     (** The whole Timeline page. *)
-    export shapes editor = listConcat (listConcat (frame (editor, "Timeline")) (arrangement (editor, beats editor))) (listConcat (roll editor) (inspector editor))
+    export shapes editor = listConcat (listConcat (frame editor) (arrangement (editor, beats editor))) (listConcat (roll editor) (inspector editor))

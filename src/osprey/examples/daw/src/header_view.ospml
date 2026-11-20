@@ -1,0 +1,72 @@
+// [DAW-HEADER] One header on every page: the page tabs and an icon transport, drawn as the design draws them
+// (docs/designs/prism-timeline/piano-roll.png). Every other command lives in the window's menu bar ([DAW-MENU]).
+namespace synth
+
+import ui::Scenes
+
+(** The header every page shares: page tabs, the song strip and the transport group. *)
+module Header
+    edge () = Scenes::rgb (72, 64, 112)
+    plate () = Scenes::rgb (38, 33, 66)
+    quiet () = Scenes::rgb (200, 194, 228)
+    sounding () = Scenes::rgb (79, 218, 150)
+
+    // A scene colour as a path's solid paint.
+    paint colour = ui::Solid(tint = Scenes::hex (shiftRight colour 8, 1.0))
+
+    (** A rounded plate with a one-unit border: the design's button and field. *)
+    export plaque (left, top, width, height, fill, depth) = [EditorView::rounded (left, top, width, height, 7.0, ui::Fill, paint fill, depth), EditorView::rounded (left, top, width, height, 7.0, ui::Line(width = 1.0, dashes = [], bevel = false), paint (edge ()), satAdd depth 1)]
+
+    pages = ["Timeline", "Patch", "Mix"]
+
+    (** The page behind tab `index`, in the header's order. *)
+    export tabPage index = match index
+        0 => TimelinePage
+        1 => PatchPage
+        _ => MixPage
+
+    slot page = match page
+        TimelinePage => 0
+        PatchPage => 1
+        MixPage => 2
+
+    (** The three page tabs' hit areas, left to right; the open page's is selected. *)
+    export tabAreas editor = mapList (toList (range (0, 3)), \i => TimelineView::area (listGet pages i ?: "", 310.0 + toFloat i * 132.0, 15.0, 124.0, 36.0, i == slot editor.page))
+
+    line (points, tint) = Scenes::strip (points, tint, 1.8, 13)
+
+    // A tab's icon in a 16-unit box whose left edge is x and whose middle is y: lanes, a patch cable, faders.
+    icon (index, x, y, tint) = match index
+        0 => [line ([x, y - 5.0, x + 10.0, y - 5.0], tint), line ([x + 5.0, y, x + 16.0, y], tint), line ([x, y + 5.0, x + 8.0, y + 5.0], tint)]
+        1 => [Scenes::disc (x + 2.0, y - 4.0, 2.6, tint, 13), Scenes::disc (x + 14.0, y + 4.0, 2.6, tint, 13), line ([x + 2.0, y - 4.0, x + 8.0, y - 4.0, x + 8.0, y + 4.0, x + 14.0, y + 4.0], tint)]
+        _ => [line ([x + 2.0, y - 7.0, x + 2.0, y + 7.0], tint), line ([x + 8.0, y - 7.0, x + 8.0, y + 7.0], tint), line ([x + 14.0, y - 7.0, x + 14.0, y + 7.0], tint), Scenes::disc (x + 2.0, y + 2.0, 2.8, tint, 13), Scenes::disc (x + 8.0, y - 3.0, 2.8, tint, 13), Scenes::disc (x + 14.0, y + 3.0, 2.8, tint, 13)]
+
+    tab (a, index) =
+        words = TimelineView::label (a.accessLabel, a.accessLeft + 40.0, a.accessTop + 11.0, 14.0, ui::Pick::either (a.accessSelected, TimelineView::ink (), quiet ()), 0, 13)
+        marks = listConcat (icon (index, a.accessLeft + 14.0, a.accessTop + 18.0, ui::Pick::either (a.accessSelected, TimelineView::accent (), TimelineView::dim ()))) [words]
+        match a.accessSelected
+            true => listConcat (plaque (a.accessLeft, a.accessTop, a.accessWidth, a.accessHeight, plate (), 11)) marks
+            false => marks
+
+    (** The page tabs with the rule that parts them from the name. *)
+    export tabs editor = foldList (toList (range (0, 3)), [TimelineView::box (292.0, 19.0, 1.0, 28.0, edge (), 11)], \(all, i) =>
+        match listGet (tabAreas editor) i
+            Error _ => all
+            Success a => listConcat all (tab (a, i)))
+
+    (** Play and Stop as hit areas named `play` and `stop`, the group's corner at `left`, `top`. *)
+    export transportAreas (left, top, play, stop) = [TimelineView::area (play, left, top, 50.0, 38.0, false), TimelineView::area (stop, left + 50.0, top, 50.0, 38.0, false)]
+
+    (** The transport group: a play triangle, green while `playing`, and a stop square. *)
+    export transport (left, top, playing) = listConcat (plaque (left, top, 100.0, 38.0, Scenes::rgb (27, 23, 50), 11)) [TimelineView::box (left + 50.0, top + 6.0, 1.0, 26.0, edge (), 13), Scenes::path ([ui::Polygon(corners = [left + 19.0, top + 10.0, left + 34.0, top + 19.0, left + 19.0, top + 28.0], closed = true)], ui::Fill, paint (ui::Pick::either (playing, sounding (), TimelineView::ink ())), 13), TimelineView::box (left + 68.0, top + 12.0, 14.0, 14.0, TimelineView::ink (), 13)]
+
+    readout (name, value, left) = [TimelineView::label (name, left, 71.0, 9.0, TimelineView::dim (), 0, 3), TimelineView::label (value, left, 84.0, 18.0, TimelineView::ink (), 0, 3)]
+
+    threeDigits bar = "${ui::Pick::either (bar < 100, "0", "")}${ui::Pick::either (bar < 10, "0", "")}${bar}"
+
+    (** The song strip under the tabs: title, tempo, meter, the playhead's bar with what is sounding, and the transport. *)
+    export strip editor =
+        phase = DawSession::phase editor
+        live = phase != "Stopped"
+        position = listConcat (plaque (1196.0, 70.0, 200.0, 38.0, Scenes::rgb (20, 17, 38), 2)) [TimelineView::label ("POSITION", 1208.0, 73.0, 8.0, TimelineView::dim (), 0, 4), TimelineView::label ("${threeDigits (satAdd editor.rollBar 1)}.01.01", 1208.0, 86.0, 16.0, TimelineView::ink (), 0, 4), TimelineView::label (phase, 1386.0, 88.0, 11.0, ui::Pick::either (live, sounding (), TimelineView::dim ()), 2, 4)]
+        listConcat (listConcat [TimelineView::label (editor.song.title, 24.0, 76.0, 22.0, TimelineView::ink (), 0, 3), TimelineView::label (editor.message, 520.0, 85.0, 12.0, TimelineView::accent (), 0, 3)] (listConcat (readout ("BPM", TimelineView::hundredths editor.song.tempo, 1010.0)) (readout ("METER", "4/4", 1110.0)))) (listConcat position (transport (1412.0, 70.0, live)))
