@@ -6,7 +6,7 @@
 )]
 
 use crate::check_program;
-use crate::testutil::{accepts, bad, ok, rejects_with};
+use crate::testutil::{accepts, bad, bad_with, ok, rejects_with};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 
 #[test]
@@ -322,8 +322,7 @@ fn elvis_rejects_a_scrutinee_that_is_not_a_result() {
     // inherit the ORDINARY match auto-wrap rule — under which any value may
     // be matched as if wrapped in `Success` — and `5 ?: -1` type-checked and
     // printed `5`, with the fallback silently unreachable.
-    let errs = bad("let dead = 5 ?: -1\n");
-    assert!(errs.iter().any(|e| e.message.contains("`?:`")), "{errs:?}");
+    bad_with("let dead = 5 ?: -1\n", "`?:`");
 }
 
 #[test]

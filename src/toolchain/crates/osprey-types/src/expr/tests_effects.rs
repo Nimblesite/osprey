@@ -346,17 +346,16 @@ fn a_value_arm_may_not_resume() {
     // The declaration, not the body, owns the mode: an undecorated
     // operation has no continuation to give away, so `resume` in its arm is
     // a defect rather than a reclassification. [EFFECTS-HANDLER-ARMS]
-    let errs = bad("effect Mixed { b: fn() -> int }\n\
+    bad_with(
+        "effect Mixed { b: fn() -> int }\n\
          fn body() -> string !Mixed = \"v=${perform Mixed.b()}\"\n\
          let out = {\n\
              handle Mixed {\n\
                  b => resume(7)\n\
              }\n\
              body()\n\
-         }\n");
-    assert!(
-        errs.iter().any(|e| e.message.contains("cannot `resume`")),
-        "a value arm must not resume; got {errs:?}"
+         }\n",
+        "cannot `resume`",
     );
 }
 
