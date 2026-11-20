@@ -68,8 +68,8 @@ equalityCase () =
     expect (checkedAdd 2 3) 5
     expect (toString (checkedAdd 2 3)) "Success(5)"
     check "a Success is decoded with ?:" 42 (checkedMul 6 7 ?: 0)
-    expectError (checkedMul 4294967296 4294967296) "integer overflow"
-    expectError (checkedSub (-9223372036854775808) 1) "integer overflow"
+    check "an Error renders its payload" "Error(integer overflow)" (toString (checkedMul 4294967296 4294967296))
+    check "subtraction overflow is an Error too" "Error(integer overflow)" (toString (checkedSub (-9223372036854775808) 1))
     check "an interpolated Success keeps its constructor" "Success(5)" "${checkedAdd 2 3}"
     check "strings compare by content" "osprey" (toLowerCase "OSPREY")
     check "a float renders like its literal" "0.25" (toString 0.25)
@@ -163,11 +163,7 @@ typedErrorCase () =
     expect (rated 0) "div by zero"
     expect (rated 500) "overflow by 500"
     expect (rated 5) "ok 5"
-    expect (toString (code (-7))) "Error(-7)"
-    expect (toString (flag 10)) "Error(true)"
-    expect (toString (frac 10)) "Error(2.5)"
-    expect (toString (nested 12)) "Error(Error(-3))"
-    expect "${code (-9)}" "Error(-9)"
+    expect "${code (-7)} ${flag 10} ${frac 10} ${toString (nested 12)} ${code 3}" "Error(-7) Error(true) Error(2.5) Error(Error(-3)) Success(3)"
     forEachList [-1, -2, -3] (\n => expectError (code n) n)
     expect (range (-2) 3 |> fold 0 (\(sum, n) => satAdd sum (code n ?: 100))) 203
 
