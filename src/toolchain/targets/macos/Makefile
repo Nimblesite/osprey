@@ -119,12 +119,12 @@ SONG_WAV = $(SONG_DIR)/song.wav
 daw-render: _daw-renderer
 	target/daw/daw "$(SONG)" "$(SONG_DIR)"
 
-# Shared song renderer for the interactive DAW and the offline bounce.
+# Shared song renderer for the interactive DAW and the offline bounce; ARC, as GC scans of the held mix tripled render time.
 .PHONY: _daw-renderer
 _daw-renderer:
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	mkdir -p target/daw
-	$(BIN) build src/osprey/examples/daw/render -o target/daw/daw
+	$(BIN) build src/osprey/examples/daw/render --memory=arc -o target/daw/daw
 
 ## daw-play: Play SONG's rendered WAV with afplay; it never renders (run daw-render first).
 daw-play:
