@@ -58,4 +58,5 @@ module MixView
                     Success voice => Success(value = controlAt (voice, index, x))
                     Error _ => Error(message = "No track here.")
 
+    (** Accessible row bounds for the mixer. *)
     export access editor = mapList (toList (range (0, length editor.song.tracks)), \index => TimelineView::area ("Mix track ${satAdd index 1}", 0.0, TimelineGeometry::mixY (toFloat index, height editor), 1010.0, height editor, index == editor.track))

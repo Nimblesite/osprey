@@ -123,6 +123,7 @@ type Editor G P S M =
     renderer : string
     track : int
     patchTrack : int
+    selectedNote : int
     rollBar : int
     songTicket : string
 
@@ -171,6 +172,10 @@ type EditorAction =
     PickTrack
         index : int
         bar : int
+    SelectNote
+        index : int
+    SetVelocity
+        value : float
     AdjustMix
         index : int
         gain : float

@@ -6,6 +6,8 @@ private def bounded (value low high : Float) : Float :=
 
 /-- The bar (from 0, four beats each) a beat falls in. -/
 def bar (beat : Float) : Float := Float.floor (beat / 4)
+/-- The beat a bar (from 0) starts on. -/
+def barStart (index : Float) : Float := index * 4
 
 /-- Arrangement lanes span x 230 to 1200 across the whole song. -/
 def laneX (beat beats : Float) : Float := 230 + beat / beats * 970
@@ -20,10 +22,12 @@ def rowAt (y height : Float) : Float := Float.floor ((y - 146) / height)
 def rollX (beat first : Float) : Float := 70 + bounded (beat - first) 0 8 * 141.25
 def rollWidth (beat length first : Float) : Float :=
   rollX (beat + length) first - rollX beat first
-/-- Pitch rows fill y 520 to 810, the highest pitch at the top. -/
-def pitchHeight (rows : Float) : Float := 290 / rows
-def pitchY (pitch high rows : Float) : Float := 520 + (high - pitch) * (290 / rows)
+/-- Pitch rows fill y 520 to 750, the highest pitch at the top. -/
+def pitchHeight (rows : Float) : Float := 230 / rows
+def pitchY (pitch high rows : Float) : Float := 520 + (high - pitch) * (230 / rows)
 
+/-- Velocity stems share the same note start coordinate as the piano roll. -/
+def velocityHeight (value : Float) : Float := bounded value 0 1 * 43
 /-- Mix table rows start at y 150 and share 640 units, at most 36 each. -/
 def mixHeight (count : Float) : Float := if count <= 17 then 36 else 640 / count
 def mixY (index height : Float) : Float := 150 + index * height

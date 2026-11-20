@@ -36,6 +36,8 @@ module EditorApp
         StopGraph => GraphPreview::stop editor
         ShowPage page => DawSession::shown (editor, page)
         PickTrack index bar => Runtime::step (DawSession::pickedAt (editor, index, bar))
+        SelectNote index => Runtime::step (editor(selectedNote = index))
+        SetVelocity value => DawSession::velocity (editor, value)
         AdjustMix index gain pan reverb => DawSession::adjusted (editor, index, gain, pan, reverb)
         OpenTrack index => match index == -2
             true => DawSession::saving (editor, DawSession::choose)
@@ -103,6 +105,11 @@ module EditorApp
         AdjustMix index _ _ _ => match down
             true => Runtime::step (editor(armedNote = index))
             false => match editor.armedNote == index
+                true => tapped (context, editor(armedNote = -1), action)
+                false => Runtime::step editor
+        SetVelocity _ => match down
+            true => Runtime::step (editor(armedNote = editor.selectedNote))
+            false => match editor.selectedNote >= 0 && editor.armedNote == editor.selectedNote
                 true => tapped (context, editor(armedNote = -1), action)
                 false => Runtime::step editor
         _ => match down

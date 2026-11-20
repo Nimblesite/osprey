@@ -19,7 +19,7 @@ module DawSession
     (** Select a track and show the two bars where it first plays. *)
     export picked (editor, index) = match listGet editor.song.tracks index
         Error _ => editor
-        Success track => editor(track = index, rollBar = firstBar track, message = "${track.name}: ${length track.notes} notes.")
+        Success track => editor(track = index, selectedNote = -1, rollBar = firstBar track, message = "${track.name}: ${length track.notes} notes.")
 
     (** Select a track and keep the piano roll on `at`. *)
     export pickedAt (editor, index, at) =
@@ -111,7 +111,7 @@ module DawSession
 
     rendered editor =
         ticket = "${renderTicket}${excerpt editor}"
-        Runtime::asking (editor(songTicket = ticket, message = "Rendering ${window editor} of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = editor.renderer, arguments = [snapshot editor, excerpt editor, "${toFloat editor.rollBar * 4.0}", "${playedBeats}"], timeout = 900000, outputLimit = 65536, plist = false, runSlice = ""))])
+        Runtime::asking (editor(songTicket = ticket, message = "Rendering ${window editor} of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = editor.renderer, arguments = [snapshot editor, excerpt editor, "${TimelineGeometry::barStart (toFloat editor.rollBar)}", "${playedBeats}"], timeout = 900000, outputLimit = 65536, plist = false, runSlice = ""))])
 
     sounded (editor, bar) =
         ticket = "${playTicket}${bar}"
@@ -165,6 +165,13 @@ module DawSession
             Success next => ui::Runtime::step (next(track = index))
             Error why => ui::Runtime::step (editor(message = why))
 
+    (** Write the selected note's new velocity into its track in the same song file. *)
+    export velocity (editor, value) = match daw::Projects::velocity (editor.song, editor.track, editor.selectedNote, value)
+        Error why => ui::Runtime::step (editor(message = why))
+        Success song => match written (editor, song)
+            Error why => ui::Runtime::step (editor(message = why))
+            Success next => ui::Runtime::step (next(message = "Saved note velocity ${TimelineView::percent value}."))
+
     (** Prism's patch goes back into its track and the project file is written; unchanged, nothing is written.
         A patch the project cannot hold is an error, and the caller stays on the patch. *)
     export synced editor = match editor.patchTrack >= 0 && editor.songPath != ""
@@ -202,4 +209,6 @@ module DawSession
             open = TimelineView::openArea ()
             match EditorView::inside (x, y, open.accessLeft + open.accessWidth / 2.0, open.accessTop + open.accessHeight / 2.0, open.accessWidth / 2.0, open.accessHeight / 2.0)
                 true => Success(value = OpenTrack(index = editor.track))
-                false => TimelineView::laneAt (editor, x, y)
+                false => match y >= 520.0
+                    true => TimelineView::rollAt (editor, x, y)
+                    false => TimelineView::laneAt (editor, x, y)

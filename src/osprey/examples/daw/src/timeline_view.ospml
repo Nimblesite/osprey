@@ -14,10 +14,15 @@ module TimelineView
     (** A hit area by its top-left corner. *)
     export area (name, left, top, width, height, selected) = EditorView::accessible (name, left, top, width, height, selected)
 
+    (** The main text colour. *)
     export ink () = Scenes::rgb (240, 236, 255)
+    (** Secondary text and rule colour. *)
     export dim () = Scenes::rgb (150, 140, 190)
+    (** Orange used for selected tracks and signal flow. *)
     export accent () = Scenes::rgb (255, 132, 66)
+    (** Colour for inactive track data. *)
     export lavender () = Scenes::rgb (170, 158, 230)
+    (** The track inspector background. *)
     export panelInk () = Scenes::rgb (24, 20, 44)
 
     names = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"]
@@ -40,6 +45,7 @@ module TimelineView
         whole = floatToInt (TimelineGeometry::percent value) ?: 0
         "${intDiv whole 100}.${ui::Pick::either (whole % 100 < 10, "0", "")}${whole % 100}"
 
+    (** Format a normalized control value as a whole percent. *)
     export percent value =
         whole = floatToInt (TimelineGeometry::percent value) ?: 0
         "${whole}%"
@@ -97,18 +103,18 @@ module TimelineView
         top = TimelineGeometry::rowY (toFloat index, height)
         chosen = index == editor.track
         colour = ui::Pick::either (chosen, accent (), lavender ())
-        cells = mapList (played voice.notes, \at => box (TimelineGeometry::laneX (toFloat at * 4.0, duration) + 1.0, top + height * 0.3, TimelineGeometry::meter (4.0, duration, 970.0) - 2.0, height * 0.4, colour, 4))
+        cells = mapList (played voice.notes, \at => box (TimelineGeometry::laneX (TimelineGeometry::barStart (toFloat at), duration) + 1.0, top + height * 0.3, TimelineGeometry::meter (4.0, duration, 970.0) - 2.0, height * 0.4, colour, 4))
         size = ui::Pick::either (height < 18.0, height - 5.0, 13.0)
         listConcat [box (0.0, top, 1210.0, height - 1.0, ui::Pick::either (chosen, Scenes::rgb (58, 34, 46), ui::Pick::either (index % 2 == 0, Scenes::rgb (20, 17, 38), Scenes::rgb (17, 14, 34))), 2), label ("${satAdd index 1}", 24.0, top + 3.0, size, dim (), 0, 3), label (voice.name, 52.0, top + 3.0, size, ui::Pick::either (chosen, ink (), lavender ()), 0, 3), label (instrumentName voice.instrument, 150.0, top + 3.0, size, dim (), 0, 3)] cells
 
     ruler duration = foldList (toList (range (0, satAdd (DawSession::bar (duration)) 1)), [], \(all, at) =>
         match at % 4 == 0
             false => all
-            true => listConcat all [label ("${satAdd at 1}", TimelineGeometry::laneX (toFloat at * 4.0, duration), 124.0, 12.0, dim (), 0, 3), box (TimelineGeometry::laneX (toFloat at * 4.0, duration), 140.0, 1.0, 336.0, Scenes::rgb (40, 34, 66), 3)])
+            true => listConcat all [label ("${satAdd at 1}", TimelineGeometry::laneX (TimelineGeometry::barStart (toFloat at), duration), 124.0, 12.0, dim (), 0, 3), box (TimelineGeometry::laneX (TimelineGeometry::barStart (toFloat at), duration), 140.0, 1.0, 336.0, Scenes::rgb (40, 34, 66), 3)])
 
     viewport (editor, duration) =
-        left = TimelineGeometry::laneX (toFloat editor.rollBar * 4.0, duration)
-        right = TimelineGeometry::laneX (toFloat editor.rollBar * 4.0 + 8.0, duration)
+        left = TimelineGeometry::laneX (rollStart editor, duration)
+        right = TimelineGeometry::laneX (rollStart editor + 8.0, duration)
         [Scenes::strip ([left, 142.0, right, 142.0, right, 476.0, left, 476.0, left, 142.0], accent (), 2.0, 6)]
 
     arrangement (editor, duration) = listConcat (listConcat [label ("TRACKS", 24.0, 124.0, 12.0, dim (), 0, 3), label ("VOICE", 150.0, 124.0, 12.0, dim (), 0, 3)] (ruler duration)) (listConcat (foldList (toList (range (0, length editor.song.tracks)), [], \(all, index) =>
@@ -125,9 +131,10 @@ module TimelineView
                 true => Success(value = OpenTrack(index = row))
                 false => Success(value = PickTrack(index = row, bar = DawSession::bar (TimelineGeometry::laneBeat (x, beats editor))))
 
+    (** Accessibility regions for the arrangement track rows. *)
     export laneAccess editor = mapList (toList (range (0, length editor.song.tracks)), \index => area ("Track ${satAdd index 1}", 0.0, TimelineGeometry::rowY (toFloat index, rowHeight editor), 1210.0, rowHeight editor, index == editor.track))
 
-    rollStart editor = toFloat editor.rollBar * 4.0
+    rollStart editor = TimelineGeometry::barStart (toFloat editor.rollBar)
 
     playing (editor, note: daw::Note) = note.start + note.length > rollStart editor && note.start < rollStart editor + 8.0
 
@@ -138,18 +145,21 @@ module TimelineView
     highest notes = foldList (notes, 0, \(high, note: daw::Note) => ui::Pick::either (note.pitch > high, note.pitch, high))
 
     // `start` and `length` name fields of several records, so the note's type is stated.
-    rollNote (first, high, rows, note: daw::Note) =
+    rollNote (first, high, rows, chosen, note: daw::Note) =
         left = TimelineGeometry::rollX (note.start, first)
         width = TimelineGeometry::rollWidth (note.start, note.length, first)
         top = TimelineGeometry::pitchY (toFloat note.pitch, toFloat high, toFloat rows)
         height = TimelineGeometry::pitchHeight (toFloat rows)
-        colour = match note.velocity >= 0.7
-            true => 16745538
-            false => 13789239
+        colour = match chosen
+            true => 16767866
+            false => ui::Pick::either (note.velocity >= 0.7, 16745538, 13789239)
         shape = EditorView::panel (left, top + 1.0, width, height - 2.0, colour, 7)
+        stem = TimelineGeometry::velocityHeight note.velocity
+        stemColour = ui::Pick::either (chosen, Scenes::rgb (255, 219, 122), accent ())
+        markers = [shape, box (left, 810.0 - stem, 2.5, stem, stemColour, 7), Scenes::disc (left + 1.0, 810.0 - stem, 2.8, stemColour, 8)]
         match width > 36.0 && height > 11.0
-            true => [shape, label (noteName note.pitch, left + 4.0, top + 1.0, ui::Pick::either (height > 16.0, 12.0, height - 2.0), Scenes::rgb (40, 20, 10), 0, 8)]
-            false => [shape]
+            true => listAppend markers (label (noteName note.pitch, left + 4.0, top + 1.0, ui::Pick::either (height > 16.0, 12.0, height - 2.0), Scenes::rgb (40, 20, 10), 0, 8))
+            false => markers
 
     blackKey pitch = match pitch % 12
         1 => true
@@ -173,32 +183,66 @@ module TimelineView
 
     pianoKeys (high, rows) = foldList (toList (range (0, rows)), [], \(all, row) => listConcat all (keyRow (high, rows, row)))
 
-    beatLines editor = mapList (toList (range (0, 9)), \beat => box (TimelineGeometry::rollX (rollStart editor + toFloat beat, rollStart editor), 520.0, ui::Pick::either (beat % 4 == 0, 2.0, 1.0), 290.0, Scenes::rgb (48, 42, 80), 5))
+    beatLines editor = mapList (toList (range (0, 9)), \beat => box (TimelineGeometry::rollX (rollStart editor + toFloat beat, rollStart editor), 520.0, ui::Pick::either (beat % 4 == 0, 2.0, 1.0), 230.0, Scenes::rgb (48, 42, 80), 5))
 
-    bars editor = mapList (toList (range (0, 2)), \at => label ("Bar ${satAdd (satAdd editor.rollBar at) 1}", TimelineGeometry::rollX (rollStart editor + toFloat at * 4.0, rollStart editor) + 4.0, 500.0, 12.0, dim (), 0, 5))
+    bars editor = mapList (toList (range (0, 2)), \at => label ("Bar ${satAdd (satAdd editor.rollBar at) 1}", TimelineGeometry::rollX (rollStart editor + TimelineGeometry::barStart (toFloat at), rollStart editor) + 4.0, 500.0, 12.0, dim (), 0, 5))
+
+    pitchTop voice = match voice.notes
+        [] => 72
+        _ => satAdd (highest voice.notes) 1
+
+    pitchRows (voice, high) =
+        span = satAdd (satSub high (lowest voice.notes)) 2
+        ui::Pick::either (span < 13, 13, span)
+
+    selected (editor, voice, note) = match listGet voice.notes editor.selectedNote
+        Error _ => false
+        Success picked => structuralEquals (note, picked)
 
     roll editor = match track editor
         Error _ => [label ("Open a song to see its tracks.", 24.0, 500.0, 18.0, dim (), 0, 3)]
         Success voice =>
             notes = shown (editor, voice)
-            low = lowest voice.notes
-            high = satAdd (highest voice.notes) 1
-            rows = ui::Pick::either (satSub high low < 12, 13, satAdd (satSub high low) 2)
-            heading = [label ("Piano roll", 24.0, 484.0, 18.0, ink (), 0, 3), label ("${voice.name} · ${length notes} of ${length voice.notes} notes in bars ${satAdd editor.rollBar 1}–${satAdd editor.rollBar 2}", 160.0, 487.0, 14.0, accent (), 0, 3)]
-            listConcat (listConcat heading (listConcat (pianoKeys (high, rows)) (listConcat (beatLines editor) (bars editor)))) (foldList (notes, [], \(all, note) => listConcat all (rollNote (rollStart editor, high, rows, note))))
+            high = pitchTop voice
+            rows = pitchRows (voice, high)
+            heading = [label ("Velocity", 14.0, 769.0, 12.0, dim (), 0, 5), box (70.0, 810.0, 1130.0, 1.0, dim (), 4), label ("Piano roll", 24.0, 484.0, 18.0, ink (), 0, 3), label ("${voice.name} · ${length notes} of ${length voice.notes} notes in bars ${satAdd editor.rollBar 1}–${satAdd editor.rollBar 2}", 160.0, 487.0, 14.0, accent (), 0, 3)]
+            listConcat (listConcat heading (listConcat (pianoKeys (high, rows)) (listConcat (beatLines editor) (bars editor)))) (foldList (notes, [], \(all, note) => listConcat all (rollNote (rollStart editor, high, rows, selected (editor, voice, note), note))))
 
     fact (name, value, top) = [label (name, 1236.0, top, 14.0, dim (), 0, 9), label (value, 1514.0, top, 14.0, ink (), 2, 9)]
 
     (** The selected track's inspector; its Open patch button is `openArea`. *)
     details (editor, voice) = listConcat (listConcat [label (voice.name, 1236.0, 152.0, 28.0, ink (), 0, 9), label ("Track ${satAdd editor.track 1} · ${instrumentName voice.instrument} instrument", 1236.0, 192.0, 13.0, dim (), 0, 9)] (listConcat (listConcat (fact ("Gain", "${hundredths voice.gain}×", 236.0)) (fact ("Pan", pan voice.pan, 266.0))) (listConcat (listConcat (fact ("Space send", percent voice.reverb, 296.0)) (fact ("Output", "Master", 326.0))) (fact ("Notes", "${length voice.notes}", 356.0))))) (tile (openArea (), 4004714))
 
+    noteDetails (editor, voice) = match listGet voice.notes editor.selectedNote
+        Error _ => []
+        Success note => listConcat (listConcat (fact ("Note", noteName note.pitch, 522.0)) (fact ("Start (beats)", hundredths note.start, 555.0))) (listConcat (fact ("Length (beats)", hundredths note.length, 588.0)) (listConcat (fact ("Velocity", percent note.velocity, 631.0)) [box (1236.0, 665.0, 276.0, 5.0, dim (), 9), box (1236.0, 665.0, TimelineGeometry::meter (note.velocity, 1.0, 276.0), 5.0, accent (), 10)]))
+
+    hitNote (first, high, rows, x, y, note: daw::Note) =
+        left = TimelineGeometry::rollX (note.start, first)
+        right = TimelineGeometry::rollX (note.start + note.length, first)
+        top = TimelineGeometry::pitchY (toFloat note.pitch, toFloat high, toFloat rows)
+        inside = y >= top && y < top + TimelineGeometry::pitchHeight (toFloat rows) && x >= left && x <= right
+        right > left && (inside || y >= 758.0 && y <= 811.0 && x >= left - 3.0 && x <= left + 4.0)
+
+    (** Hit-test notes and velocity stems against the same clipped positions used to draw them. *)
+    export rollAt (editor, x, y) = match x >= 1236.0 && x <= 1512.0 && y >= 650.0 && y <= 687.0 && editor.selectedNote >= 0
+        true => Success(value = SetVelocity(value = TimelineGeometry::fader (x, 1236.0, 276.0, 0.0, 1.0)))
+        false => match track editor
+            Success voice =>
+                high = pitchTop voice
+                rows = pitchRows (voice, high)
+                index = ui::Lists::position (voice.notes, \note => hitNote (rollStart editor, high, rows, x, y, note))
+                Success(value = SelectNote(index = index))
+            Error _ => Error(message = "Select a track first.")
+
     chosen editor = match track editor
         Error _ => []
-        Success voice => details (editor, voice)
+        Success voice => listConcat (details (editor, voice)) (noteDetails (editor, voice))
 
     (** The selected track's inspector; its Open patch button is `openArea`. *)
     export inspector editor = listConcat [box (1220.0, 113.0, 316.0, 715.0, panelInk (), 8), label ("TRACK INSPECTOR", 1236.0, 128.0, 12.0, dim (), 0, 9)] (chosen editor)
 
+    (** The inspector button that opens the selected track in Prism. *)
     export openArea () = area ("Open patch", 1236.0, 400.0, 284.0, 48.0, false)
 
     (** The whole Timeline page. *)
