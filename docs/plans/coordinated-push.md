@@ -27,4 +27,14 @@ That commit was pushed without a local `make ci` pass on the commit itself.
 - [x] **`make push`:** refuses unless `make ci` left a stamp for `git rev-parse HEAD` and `gh run list --branch <b> --status in_progress` is empty. It runs `git push` only after both checks pass. AGENTS.md replaces raw `git push` with `make push`.
 - [x] **`ci.yml` concurrency:** `cancel-in-progress: false` in `ci.yml` and the workflows it calls (Windows, GPUI, WinUI). A new push then waits behind the running run instead of destroying it. GitHub keeps only the newest pending run, so this costs at most one queued run.
 - [x] **Synth tests 16 and 19:** fixed by `d591e96a5`. At HEAD they pass locally under GC and ARC (byte-exact golden, ARC leak-free).
-- [ ] **WinUI synth goldens:** `970615da3` added `undo-delay` and undo/redo steps but no goldens, and `d591e96a5` removes the oscillator's MIDI inlet, which changes every synth picture. Goldens can only be drawn on Windows, so take them from the `winui-self-test` artifact of the first run at HEAD, check each picture by eye and push them as that run's red fix.
+- [x] **WinUI synth goldens:** refreshed by `3d8588a23`. `970615da3` added `undo-delay` and undo/redo steps but no goldens, and `d591e96a5` removes the oscillator's MIDI inlet, which changes every synth picture. Goldens can only be drawn on Windows, so take them from the `winui-self-test` artifact of the first run at HEAD, check each picture by eye and push them as that run's red fix.
+
+## macOS screenshot goldens
+
+macOS and Windows cannot share goldens: the apps run on different native hosts (SwiftUI/AppKit and GPUI on Metal with CoreText; WinUI 3 on Direct3D with DirectWrite), so text pixels differ far beyond the comparers' tolerance (24 per channel in at most 0.5% of pixels on macOS, 0.2% on Windows). Even on macOS the hosted runner and a local Retina display need separate sets (`agent/goldens/macos-26-ci` and `macos-26`). Today only `agent` compares macOS pictures; every app has Windows goldens.
+
+- [ ] GPUI host compares against committed goldens (synth, casting, flock, painting, probe, signal-flow): a compare and an update mode in `src/toolchain/hosts/gpui/src/self_test.rs`, reusing the tolerance rule of the Swift host's `SelfTest.swift`. Its README states that PNG capture is not compared yet
+- [ ] `<app>`, `<app>-headless` and `<app>-update` targets in `src/toolchain/targets/macos/tests/Makefile`, writing `<app>/goldens/macos-26-ci/`
+- [ ] `tally` and `storage` take pictures on macOS (today a view check and a smoke run) and commit `goldens/macos-26-ci/`
+- [ ] `gpui.yml` runs the compare on `macos-latest` as part of the required `CI` check
+
