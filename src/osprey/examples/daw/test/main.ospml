@@ -617,51 +617,6 @@ trackPatchJourney () =
 
 test ("tapping a timeline track opens its own patch in Prism; built-in tracks open as one voice, missing ones say why not", \() => Runtime::guarded trackPatchJourney)
 
-// [DAW-PROJECT-PATCH] Save a changed graph on its track, then play the same note bindings from the reopened project.
-projectPatchJourney () =
-    note = daw::Note(pitch = 72, start = 32.0, length = 0.5, velocity = 0.25)
-    original = keysTrack ()
-    track = original(notes = [note], pan = -0.25, reverb = 0.4)
-    song = timeline [bellTrack (), track]
-    succeeds (daw::TrackPatches::patch track, \graph =>
-        tone = synth::Components::sine (1, synth::Waves::midiFrequency 60.0 * 3.0)
-        amp = synth::Components::gain (2, 0.75)
-        valid (synth::Patches::built ([tone, amp, synth::Components::delay (7, 128), synth::Components::output 3], [synth::Components::route (1, 0, 2, 0), synth::Components::route (2, 0, 7, 0), synth::Components::route (7, 0, 3, 0)]), \edit =>
-            succeeds (daw::PatchRecords::stored (track, edit), \next =>
-                succeeds (daw::Projects::replaced (song, 1, next), \changed =>
-                    succeeds (daw::SongFiles::decode (daw::SongFiles::encode changed), \opened =>
-                        expect (structuralEquals (opened, changed), true)
-                        reads (listGet opened.tracks 0, \other => expect (structuralEquals (other, bellTrack ()), true))
-                        reads (listGet opened.tracks 1, \voice =>
-                            expect (structuralEquals (voice.notes, [note]), true)
-                            expect (voice.pan, -0.25)
-                            expect (voice.reverb, 0.4)
-                            match voice.instrument
-                                daw::PatchInstrument route =>
-                                    expect (route.attack, 0.01)
-                                    expect (route.release, 0.1)
-                                    succeeds (daw::PatchVoices::patched (note, route), \heard =>
-                                        settled (heard, 1, "frequency", synth::Waves::midiFrequency 72.0 * 3.0)
-                                        settled (heard, 2, "gain", 0.1875)
-                                        expect (structuralEquals (heard.cables, edit.cables), true))
-                                _ => expect (false, true)))))))
-    succeeds (daw::TrackPatches::patch (bellTrack ()), \originalGraph =>
-        succeeds (daw::PatchRecords::stored (bellTrack (), originalGraph), \same => expect (structuralEquals (same, bellTrack ()), true)))
-
-projectPortsJourney () =
-    first = synth::Components::withOption (synth::Components::sine (11, 261.0), "waveform", "Waveform", 3.0, 2.0)
-    output = synth::Components::stereoOutput 16
-    nodes = [first, synth::Components::modulatedLowpass (12, 1800.0, 0.707), synth::Components::lfo (13, 1.7), synth::Components::stereo 14, synth::Components::modulatedGain (15, 2, 0.37), output, synth::Components::midiNote (17, 68.0, 0.6, 256.0), synth::Components::spectral (18, 128, 16, 2.0), synth::Components::downmix 19]
-    routes = [synth::Components::route (11, 0, 12, 0), synth::Components::route (13, 0, 12, 1), synth::Components::route (12, 0, 14, 0), synth::Components::route (14, 0, 15, 0), synth::Components::route (13, 0, 15, 1), synth::Components::route (15, 0, 16, 0)]
-    valid (synth::Patches::built (nodes, routes), \graph =>
-        succeeds (daw::PatchRecords::saved (timeline [keysTrack ()], 0, graph), \changed =>
-            succeeds (daw::SongFiles::decode (daw::SongFiles::encode changed), \opened =>
-                succeeds (daw::TrackPatches::picked (opened, 0), \again => expect (structuralEquals (again, graph), true)))))
-
-test ("the project JSON reopens the edited patch, its note bindings, track mix and timeline together", \() => Runtime::guarded (\() =>
-    projectPatchJourney ()
-    projectPortsJourney ()))
-
 // [DAW-PROJECT] One project file holds the timeline, each track's mix and each track's patch: a saved project
 // reads back to the same notes, routing and patch; mix edits are checked; the transport plays an excerpt.
 scored track = track(notes = [daw::Note(pitch = 60, start = 0.0, length = 1.0, velocity = 0.5), daw::Note(pitch = 64, start = 4.0, length = 2.5, velocity = 0.75), daw::Note(pitch = 67, start = 8.5, length = 0.25, velocity = 1.0), daw::Note(pitch = 72, start = 12.0, length = 1.0, velocity = 0.25)])
