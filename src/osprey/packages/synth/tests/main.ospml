@@ -629,3 +629,48 @@ test ("every component declares coherent port rates, channels, units and unique 
     expect (length (filterList (nodes, \n => length (filterList (n.outputs, \p => p.rate == synth::Events)) > 0)), 1)
     expect (length (filterList (nodes, \n => length (filterList (n.outputs, \p => p.rate == synth::Control)) > 0)), 1)
     expect (length (filterList (nodes, \n => length (filterList (n.outputs, \p => p.channels == 2)) > 0)) >= 2, true)))
+
+// [SYNTH-ADVANCED-CORE-SIGNALS] A controller write is Pending until resolved, then Applied with the new revision or
+// Rejected with its typed fault; only an applied write changes the audible snapshot.
+import synth::Commands
+
+appliedAt (receipt, revision) = match receipt.status
+    synth::Applied at => expect (at, revision)
+    _ => expect ("not applied", "applied")
+
+rejectedWith (receipt, fault) = match receipt.status
+    synth::Rejected why => expect (why, fault)
+    _ => expect ("not rejected", "rejected")
+
+stillPending (receipt, edit) = match receipt.status
+    synth::Pending waiting => expect (waiting, edit)
+    _ => expect ("not pending", "pending")
+
+test ("controller writes stay pending until resolved, then apply with a revision or reject with a typed fault", \() => arithmetic (\() =>
+    blank = node (1, synth::Filter, [audio], [audio])
+    graph = accepted (Graphs::add (Graphs::empty, blank(parameters = [parameter "cutoff"])))
+    initial = Parameters::initial graph
+    edit = synth::ParameterChange(node = 1, key = "cutoff", value = 880.0, revision = 0, samplePosition = 0)
+    waiting = Commands::pending (initial, edit)
+    stillPending (waiting, edit)
+    expect (readValue waiting.snapshot, 440.0)
+    done = Commands::resolve (graph, waiting)
+    appliedAt (done, 1)
+    expect (readValue done.snapshot, 880.0)
+    expect (done.snapshot.revision, 1)
+    // Resolving an applied receipt changes nothing.
+    again = Commands::resolve (graph, done)
+    appliedAt (again, 1)
+    expect (structuralEquals (again.snapshot, done.snapshot), true)
+    // The same edit against the new snapshot is stale; the snapshot keeps the applied value.
+    stale = Commands::resolve (graph, Commands::pending (done.snapshot, edit))
+    rejectedWith (stale, synth::StaleRevision)
+    expect (readValue stale.snapshot, 880.0)
+    forEachList ([{ change = edit(value = 0.0), fault = synth::InvalidParameter }, { change = edit(samplePosition = 1), fault = synth::InvalidFrame }, { change = edit(key = "missing"), fault = synth::MissingParameter }, { change = edit(node = 9), fault = synth::MissingNode }], \c => rejectedWith (Commands::resolve (graph, Commands::pending (initial, c.change)), c.fault))
+    expect (readValue (Commands::resolve (graph, Commands::pending (initial, edit(value = 0.0)))).snapshot, 440.0)
+    // A rejected receipt stays rejected.
+    rejectedWith (Commands::resolve (graph, stale), synth::StaleRevision)
+    // Successive writes advance the revision one at a time.
+    second = Commands::resolve (graph, Commands::pending (done.snapshot, edit(value = 1760.0, revision = 1)))
+    appliedAt (second, 2)
+    expect (readValue second.snapshot, 1760.0)))
