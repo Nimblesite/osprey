@@ -123,16 +123,26 @@ module TimelineView
     arrangement (editor, duration) = listConcat (listConcat [label ("TRACKS", 24.0, 124.0, 12.0, dim (), 0, 3), label ("VOICE", 150.0, 124.0, 12.0, dim (), 0, 3)] (ruler duration)) (listConcat (foldList (toList (range (0, length editor.song.tracks)), [], \(all, index) =>
         match listGet editor.song.tracks index
             Error _ => all
-            Success voice => listConcat all (lane (editor, index, voice, duration)))) (viewport (editor, duration)))
+            Success voice => listConcat all (lane (editor, index, voice, duration)))) (listConcat (viewport (editor, duration)) (playhead (editor, duration))))
+
+    // [DAW-TRANSPORT-PLAYHEAD] Where Start plays from: a line down the lanes, its handle on the ruler, and its position.
+    playhead (editor, duration) =
+        at = TimelineGeometry::laneX (rollStart editor, duration)
+        [box (at - 1.0, 120.0, 2.0, 356.0, ink (), 7), box (at - 5.0, 116.0, 10.0, 8.0, ink (), 7), label ("Playhead ${satAdd editor.rollBar 1}.1", 1200.0, 100.0, 13.0, ink (), 2, 3)]
 
     (** Every lane's hit area: a tap picks the track at that bar; its name opens the patch. *)
     export laneAt (editor, x, y) =
         row = floatToInt (TimelineGeometry::rowAt (y, rowHeight editor)) ?: -1
         match row >= 0 && row < length editor.song.tracks && y >= 146.0
-            false => Error(message = "No lane here.")
+            false => rulerAt (editor, x, y)
             true => match x < 230.0
                 true => Success(value = OpenTrack(index = row))
                 false => Success(value = PickTrack(index = row, bar = DawSession::bar (TimelineGeometry::laneBeat (x, beats editor))))
+
+    // [DAW-TRANSPORT-PLAYHEAD] A tap on the ruler moves the playhead to that bar and keeps the track.
+    rulerAt (editor, x, y) = match y >= 112.0 && y < 146.0 && x >= 230.0 && x <= 1200.0
+        true => Success(value = PickTrack(index = editor.track, bar = DawSession::bar (TimelineGeometry::laneBeat (x, beats editor))))
+        false => Error(message = "No lane here.")
 
     (** Accessibility regions for the arrangement track rows. *)
     export laneAccess editor = mapList (toList (range (0, length editor.song.tracks)), \index => area ("Track ${satAdd index 1}", 0.0, TimelineGeometry::rowY (toFloat index, rowHeight editor), 1210.0, rowHeight editor, index == editor.track))

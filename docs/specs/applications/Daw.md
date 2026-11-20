@@ -42,8 +42,8 @@ Outside the app, `make -C src/toolchain/targets/macos daw-render SONG=<project.j
 
 The Timeline carries the transport, and its state is in the project model ([daw.td](../../../src/osprey/examples/daw/daw.td)), not in the view.
 
-- **Playhead ([DAW-TRANSPORT-PLAYHEAD]).** A position in beats, shown as `bar.beat` and as a line across the lanes and the piano roll. Tapping the ruler sets it. It is saved with the project.
-- **Start and Stop ([DAW-TRANSPORT-START]).** Start plays from the playhead. Stop halts and leaves the playhead where playback began; a second Stop returns it to the start of the song.
+- **Playhead ([DAW-TRANSPORT-PLAYHEAD]).** A position in beats, shown as `bar.beat` and as a line across the lanes and the piano roll. Tapping the ruler sets it. It is saved with the project. Built so far: whole bars, a line down the lanes, and not yet saved.
+- **Start and Stop ([DAW-TRANSPORT-START]).** Start plays from the playhead. Stop halts and leaves the playhead where playback began; a second Stop returns it to the start of the song. Built: Play bars and Stop behave this way.
 - **Loop ([DAW-TRANSPORT-LOOP]).** A start and a length in beats on the ruler. With the loop on, Start plays that span and repeats it.
 - **Following ([DAW-TRANSPORT-FOLLOW]).** While audio plays, the line moves with it, from the time playback started and the tempo ([ArrangeMath.lean](../../../src/osprey/examples/daw/src/ArrangeMath.lean)).
 

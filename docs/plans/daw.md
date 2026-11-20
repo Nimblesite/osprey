@@ -40,8 +40,9 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 ## Timeline transport [DAW-TRANSPORT-TIMELINE]
 
 - [x] Play bars and Stop from the Timeline.
-- [ ] Playhead in daw.td, shown as `bar.beat`, set by tapping the ruler, saved (OspreyOpus1).
-- [ ] Start plays from the playhead; Stop, then return to start (OspreyOpus1).
+- [x] Playhead at bar resolution (`Editor.rollBar` in daw.td): a line down the lanes with its handle on the ruler and its position shown; tapping the ruler moves it and keeps the track. Tested in the transport journey.
+- [x] Play bars starts at the playhead. Stop halts; Stop again returns the playhead to bar 1.
+- [ ] Playhead in beats, saved in the project file.
 - [ ] Loop span on the ruler.
 - [ ] The line follows playback.
 
@@ -99,7 +100,7 @@ Also tried and rejected: narrowing the snapshot to one component's parameters be
 - [ ] Block kernels for oscillator, filter, gain, mixer and output, checked bit-identical against the reference (synth-advanced).
 - [ ] The remaining kernels, then the daw player renders through blocks (synth-advanced, OspreyOpus1).
 - [ ] States folded in schedule order; before and after times reported (synth-advanced).
-- [ ] Ring delay lines; before and after times reported (synth-advanced).
+- [ ] Ring delay lines. Blocked (synth-advanced, 21 Nov): an Osprey list has no in-place update, so a ring still copies; it needs a runtime primitive for a fixed float buffer, kept in C.
 - [ ] Parameters and inputs resolved once per block; before and after times reported (OspreyOpus1).
 - [ ] Bars 9 and 10 of the codex project render in under 14 s.
 
