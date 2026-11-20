@@ -204,7 +204,22 @@ fn record_slot_key(prog: &ProgramTypes, ty: &Type) -> String {
         }
         _ => None,
     };
-    crate::llty::record_slot_key(&value)
+    let held = match ty {
+        Type::Record { name, .. } | Type::Con { name, .. } => Some(name.as_str()),
+        _ => None,
+    };
+    crate::llty::record_slot_key(&value, record_owner(prog, held))
+}
+
+/// The declared record name `owner` belongs to, generic instantiation
+/// (`Four#…`) included; `None` for anything that is not a record. Only the
+/// declared name goes into a slot key, so a recursive record never recurses.
+pub(crate) fn record_owner<'o>(prog: &ProgramTypes, owner: Option<&'o str>) -> Option<&'o str> {
+    owner.and_then(|o| o.split('#').next()).filter(|name| {
+        prog.ctors
+            .get(*name)
+            .is_some_and(|layout| layout.owner_is_record)
+    })
 }
 
 /// Replace each erased type parameter with the type argument at its position
