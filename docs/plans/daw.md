@@ -99,6 +99,19 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] Piano-roll note selection and velocity edits are saved into the project.
 - [x] Native bar-9 journey on a copy of the codex project. Selected keysL, changed gain, pan and Space, inserted a delay, saved, reopened and played 13.75 seconds of stereo at 48 kHz.
 
+### Strip the UI [DAW-PAGES-STRIP]
+
+From the committed screens: cut everything that repeats or says nothing (ferroui-prism-lead owns the views).
+
+- [ ] Patch cards: drop the small name above each card (the title already says it) and "Edit in Patch controls" on every card and in the inspector; tapping the card is the edit.
+- [ ] Round values for display: "261.6255653005986" shows as "261.63 Hz" (C4). Units on every value.
+- [ ] Drop "1 inputs · 1 outputs" (the ports show it) and the bottom legend of cable kinds.
+- [ ] One play control: Audition and Play do the same job from the user's side; keep one.
+- [ ] Long enumerated labels ("Curve (0 tanh, 1 hard, 2 cubic, 3 fold)") become a named choice, not a number with a legend in the label.
+- [ ] Header subtitles ("Signal flow", "Timeline") repeat the selected tab; drop them.
+- [ ] Inspector shows the selected node's parameters, never an empty "Parameters" heading.
+- [ ] Timeline: the piano-roll "Bar 23" label must not collide with the "Piano roll" title.
+
 ## Performance [DAW-PERF]
 
 Profiled 21 Nov with `sample` at 1 ms. Each fix is owned, and is done only when its owner reports the same measurement again with the target met.
