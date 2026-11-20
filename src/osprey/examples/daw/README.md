@@ -6,7 +6,7 @@ is saved in the one project file. [Specification](../../../../docs/specs/applica
 [Designs](../../../../docs/designs/prism-timeline/README.md) · [Patch editor guide](PRISM.md)
 
 ```sh
-make -C src/toolchain/targets/macos daw            # opens SONG (default tracks/phosphor-drift.json)
+make -C src/toolchain/targets/macos daw            # opens tracks/codex-version.json; SONG=<project.json> picks another
 make -C src/toolchain/targets/macos daw-render     # renders the whole SONG to target/daw/<project>/song.wav
 make -C src/toolchain/targets/macos daw-play       # plays that WAV; never renders
 make -C src/toolchain/targets/tests synth          # the app's tests, with no host
