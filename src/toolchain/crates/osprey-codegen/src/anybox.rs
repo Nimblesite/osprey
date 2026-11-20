@@ -85,6 +85,9 @@ pub(crate) struct AnyState {
     union_types: HashMap<String, osprey_types::Type>,
     /// Typed-payload key → the operand-less value it restores to.
     typed: HashMap<String, Value>,
+    /// Types `show` is expanding inline right now; a type met again inside
+    /// itself renders through its one render function instead.
+    pub(crate) showing: Vec<String>,
     /// Whether `@osp.any.to_string` has been emitted.
     to_string_emitted: bool,
     /// Whether `@osp.any.show` has been emitted.

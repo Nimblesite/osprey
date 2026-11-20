@@ -250,6 +250,17 @@ fn genericUnionResultCase() = {
     parcelText(floating) == "Success(2.5)" && parcelText(boolean) == "Success(false)" && parcelText(failed) == "Error(parcel)" && parcelText(Absent) == "absent" && toString(erasedFloat) == "Packed { answer: Success(2.5) }" && toString(erasedBool) == "Packed { answer: Success(false) }"
 }
 
+/// [BUILTIN-PRINT-FORM] A recursive type renders at any depth: the compiler
+/// renders each type once and the nested value calls back into it.
+type Tree = { label: string, kids: List<Tree> }
+type Chain = End | Link { next: Chain, tag: int }
+fn recursiveShowCase() = {
+    let leaf = Tree { label: "a", kids: [] }
+    let tree = Tree { label: "root", kids: [leaf, Tree { label: "b", kids: [leaf] }] }
+    let chain = Link { next: Link { next: End, tag: 2 }, tag: 1 }
+    toString(tree) == "{ label: \"root\", kids: [{ label: \"a\", kids: [] }, { label: \"b\", kids: [{ label: \"a\", kids: [] }] }] }" && "${leaf}" == "{ label: \"a\", kids: [] }" && toString(chain) == "Link { next: Link { next: End, tag: 2 }, tag: 1 }" && toString([tree.kids, leaf.kids]) == "[[{ label: \"a\", kids: [] }, { label: \"b\", kids: [{ label: \"a\", kids: [] }] }], []]"
+}
+
 fn flowUpdateCase() = {
     let start = Point { x: 0, y: 0 }
     let stepped = match start.x {
@@ -266,7 +277,7 @@ fn flowUpdateCase() = {
         describe(start { y: 9, x: 8 }) == "8,9",
         structuralEquals([nestedAnonymousCapture(), httpRecordLayout(), resultRecordCase()], [true, true, true]),
         structuralEquals([genericResultRecordCase(), anonymousResultRecordCase()], [true, true]),
-        structuralEquals([resultTransportCase(), genericUnionResultCase()], [true, true])
+        structuralEquals([resultTransportCase(), genericUnionResultCase(), recursiveShowCase()], [true, true, true])
     ])
 }
 

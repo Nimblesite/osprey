@@ -11,15 +11,31 @@ pub(crate) const QUOTED: &str = "\"%s\"";
 
 /// A heap value as text: a list or a record field by field, anything else
 /// through its erased descriptor.
+/// A type met again inside its own expansion (`type Tree = { kids:
+/// List<Tree> }`) renders through its typed render function, which is
+/// registered before its body, so the expansion ends.
 pub(crate) fn handle(cg: &mut Codegen, v: Value) -> Result<Value> {
     let v = crate::listlit::escaping(cg, v);
     let owner = v.osp_ty.clone().unwrap_or_default();
-    if crate::collections::is_list_owner(&owner) {
+    if !owner.is_empty() && cg.anys.showing.contains(&owner) {
+        let boxed = crate::anybox::box_typed(cg, v)?;
+        return Ok(crate::anybox::any_to_string(cg, &boxed));
+    }
+    cg.anys.showing.push(owner.clone());
+    let shown = expand(cg, v, &owner);
+    let _ = cg.anys.showing.pop();
+    shown
+}
+
+/// A list or a record field by field, anything else through its erased
+/// descriptor.
+fn expand(cg: &mut Codegen, v: Value, owner: &str) -> Result<Value> {
+    if crate::collections::is_list_owner(owner) {
         return list(cg, &v);
     }
-    if cg.union_variants(&owner).is_none() {
-        if let Some((ty, fields)) = cg.record_layout(&owner) {
-            return record(cg, &v, &owner, &ty, &fields);
+    if cg.union_variants(owner).is_none() {
+        if let Some((ty, fields)) = cg.record_layout(owner) {
+            return record(cg, &v, owner, &ty, &fields);
         }
     }
     let boxed = crate::anybox::box_any(cg, v)?;

@@ -9,7 +9,12 @@ use osprey_types::numeric::Numeric;
 /// `define i8* @osp.any.str.<slug>(i8* %desc, i64 %payload)`.
 pub(super) fn emit_renderer(cg: &mut Codegen, key: &DescKey, name: &str) -> Result<()> {
     let saved = cg.enter_nested_fn();
-    let rendered = render_body(cg, key)?;
+    // The body expands its own type afresh; only a type met again inside
+    // that expansion calls back here.
+    let showing = std::mem::take(&mut cg.anys.showing);
+    let rendered = render_body(cg, key);
+    cg.anys.showing = showing;
+    let rendered = rendered?;
     crate::arc::epilogue(cg, Some(&rendered));
     cg.emit(format!("ret i8* {}", rendered.operand));
     cg.exit_nested_fn(
