@@ -45,7 +45,8 @@ module SpectralKernels
         5.0 => match morphMode
             0.0 => Success(value = SpectralMorph(amount = amount, mode = Blend))
             1.0 => Success(value = SpectralMorph(amount = amount, mode = Envelope))
-            _ => Error(message = "Morph mode must be 0 blend or 1 envelope.")
+            2.0 => Success(value = SpectralMorph(amount = amount, mode = Partial))
+            _ => Error(message = "Morph mode must be 0 blend, 1 envelope or 2 partial.")
         6.0 => Success(value = SpectralPitch(ratio = ratio, formant = formant))
         _ => Error(message = "Transform must be 0 pass, 1 freeze, 2 band, 3 shift, 4 smear, 5 morph or 6 pitch.")
 

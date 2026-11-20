@@ -16,6 +16,7 @@ type ComplexHalves =
 type MorphMode =
     Blend
     Envelope
+    Partial
 
 type SpectralTransform =
     SpectralPass

@@ -88,4 +88,13 @@ def logBlend (a b amount : Float) : Float :=
 /-- Cross-synthesis gain `(wanted / own) ^ amount`, 1 where the own envelope is silent, at most 16. -/
 def envelopeMorph (wanted own amount : Float) : Float := Float.pow (formantGain wanted own) amount
 
+/-- Natural-log level of a magnitude, floored at 1e-9. -/
+def logLevel (m : Float) : Float := Float.log (m + 0.000000001)
+
+/-- Parabolic peak offset in bins from three neighbouring log levels (Smith and Serra, 1987). -/
+def peakOffset (a b c : Float) : Float := if a - 2 * b + c == 0 then 0 else 0.5 * (a - c) / (a - 2 * b + c)
+
+/-- A Hann lobe bin's phase: the centre's phase plus π per bin of offset. -/
+def lobePhase (centre offset : Float) : Float := principal (centre + 3.141592653589793 * offset)
+
 end synth.SpectralMath

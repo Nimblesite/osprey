@@ -98,6 +98,17 @@ module SpectralFrames
     morph (config, bins, sides, amount, mode) = match mode
         Blend => Sequences::combined (bins, sides, \(main, side) => morphBin (main, side, amount))
         Envelope => enveloped (config, bins, sides, amount)
+        // Unreachable: `compatible` refuses stateful steps, so a series never holds a Partial morph.
+        Partial => bins
+
+    morphFrame (config, bins, sides, held, amount, mode) = match mode
+        Partial => SpectralPartials::morphed (config, bins, sides, held, amount)
+        _ => unchanged (morph (config, bins, sides, amount, mode), held.memory, held.motion, false)
+
+    // Blend and envelope morphs are stateless; a Partial morph carries synthesis phase.
+    blended mode = match mode
+        Partial => false
+        _ => true
 
     // Analysis: (magnitude, instantaneous frequency in bins) per bin, plus each bin's phase for the next frame.
     analysed (config, bins, memory, index, done) = match bins
@@ -185,7 +196,7 @@ module SpectralFrames
     stateless step = match step
         SpectralBand _ _ => true
         SpectralShift _ => true
-        SpectralMorph _ _ => true
+        SpectralMorph _ mode => blended mode
         _ => false
 
     seriesStep (config, sides, held, bins, step) = match step
@@ -208,6 +219,6 @@ module SpectralFrames
         SpectralBand low high => Success(value = unchanged (band (config, bins, low, high), held.memory, held.motion, false))
         SpectralShift offset => Success(value = unchanged (shift (config, bins, offset, held.frames), held.memory, held.motion, false))
         SpectralSmear amount => Success(value = smear (bins, held.memory, held.motion, amount))
-        SpectralMorph amount mode => Success(value = unchanged (morph (config, bins, sides, amount, mode), held.memory, held.motion, false))
+        SpectralMorph amount mode => Success(value = morphFrame (config, bins, sides, held, amount, mode))
         SpectralPitch ratio formant => pitch (config, bins, held, ratio, formant)
         SpectralSeries steps => series (config, bins, sides, held, steps)

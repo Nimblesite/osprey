@@ -94,6 +94,18 @@ morphLevel (config, voices, frequency) = match spectralRendered (config, voices)
     Error _ => -1.0
     Success run => formantLevel (run.samples, frequency) / 256.0
 
+// A harmonic tone: six partials falling as 1/k.
+harmonicTone (fundamental, n) = foldList (toList (range (1, 7)), 0.0, \(sum, k) => sum + sin (6.283185307179586 * fundamental * toFloat k * toFloat n / formantRate) / toFloat k)
+
+// One rendered Partial morph from a harmonic tone at `low` to one at `high`: harmonic k must land at k x the
+// geometric glide with level 1/k (within 20%), and each source's own harmonics must sit 30 dB below it.
+partialLanded (c) = match spectralRendered (morphConfig (c.a, synth::Partial), { main = \n => harmonicTone (c.low, n), side = \n => harmonicTone (c.high, n) })
+    Error why => expect (why, "")
+    Success run =>
+        glide = exp ((1.0 - c.a) * ln c.low + c.a * ln c.high)
+        forEachList ([1.0, 2.0, 3.0], \k => near (formantLevel (run.samples, glide * k) / 256.0 * k, 1.0, 0.2))
+        forEachList (filterList ([c.low, c.high], \f => abs (f - glide) > 25.0), \f => expect (formantLevel (run.samples, f) / 256.0 < 0.032, true))
+
 configured config = match SpectralStreams::configure config
     Error _ => false
     Success _ => true
@@ -274,3 +286,12 @@ registerWaveJourneys () =
         forEachList ([{ a = -0.1, ok = false }, { a = 1.1, ok = false }, { a = 0.0, ok = true }, { a = 1.0, ok = true }], \c => expect (configured (morphConfig (c.a, synth::Blend)), c.ok))
         forEachList ([{ a = 0.0, b = 0.0, t = 0.5, want = 0.0 }, { a = 0.5, b = 0.05, t = 0.0, want = 0.5 }, { a = 1.0, b = 4.0, t = 0.5, want = 2.0 }], \c => near (SpectralMath::logBlend (c.a, c.b, c.t), c.want, 0.0000001))
         forEachList ([{ w = 4.0, o = 1.0, t = 0.5, want = 2.0 }, { w = 4.0, o = 1.0, t = 0.0, want = 1.0 }, { w = 1.0, o = 0.0, t = 1.0, want = 1.0 }, { w = 1000.0, o = 1.0, t = 1.0, want = 16.0 }], \c => near (SpectralMath::envelopeMorph (c.w, c.o, c.t), c.want, 0.0000001))))
+    test ("partial morphing glides every matched harmonic to the geometric pitch between two tones [SYNTH-SPECTRAL-MORPH]", \() => arithmetic (\() =>
+        // Rising and falling glides, fifths and an octave, at five amounts: 0 and 1 reproduce their source tone.
+        forEachList ([{ low = 220.0, high = 330.0, a = 0.0 }, { low = 220.0, high = 330.0, a = 0.25 }, { low = 220.0, high = 330.0, a = 0.5 }, { low = 220.0, high = 330.0, a = 0.75 }, { low = 220.0, high = 330.0, a = 1.0 },
+            { low = 330.0, high = 220.0, a = 0.5 }, { low = 330.0, high = 220.0, a = 0.25 }, { low = 200.0, high = 400.0, a = 0.5 }, { low = 250.0, high = 375.0, a = 0.6 }, { low = 300.0, high = 200.0, a = 0.9 }], partialLanded)
+        // Partial morphing is stateful: it cannot share a series analysis.
+        expect (configured (synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = synth::SpectralSeries(steps = [synth::SpectralMorph(amount = 0.5, mode = synth::Partial)]), mix = 1.0)), false)
+        expect (configured (synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = synth::SpectralSeries(steps = [synth::SpectralMorph(amount = 0.5, mode = synth::Blend)]), mix = 1.0)), true)
+        forEachList ([{ a = 1.0, b = 2.0, c = 1.0, want = 0.0 }, { a = 0.0, b = 0.0, c = 0.0, want = 0.0 }, { a = 0.0, b = 1.0, c = 0.5, want = 0.1666666667 }, { a = 0.5, b = 1.0, c = 0.0, want = -0.1666666667 }, { a = 0.0, b = 1.0, c = 1.0, want = 0.5 }, { a = 1.0, b = 1.0, c = 0.0, want = -0.5 }, { a = -2.0, b = 0.0, c = -2.0, want = 0.0 }], \p => near (SpectralMath::peakOffset (p.a, p.b, p.c), p.want, 0.0000001))
+        near (SpectralMath::logLevel 1.0, 0.000000001, 0.0000000001)))
