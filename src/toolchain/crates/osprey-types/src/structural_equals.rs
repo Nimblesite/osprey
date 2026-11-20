@@ -261,7 +261,13 @@ fn describe(parts: &[Part]) -> String {
     if outer.is_empty() {
         return head;
     }
-    let path = outer.iter().map(hop).collect::<Vec<_>>().join(" inside ");
+    // Innermost first: each hop sits inside the one after it.
+    let path = outer
+        .iter()
+        .rev()
+        .map(hop)
+        .collect::<Vec<_>>()
+        .join(" inside ");
     format!("{head} inside {path}")
 }
 

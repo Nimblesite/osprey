@@ -76,6 +76,16 @@ fn a_partially_resolved_type_renders_its_proven_part_with_holes_for_the_rest() {
     // A fully resolved type is untouched — holes appear only where the
     // checker genuinely proved nothing.
     assert_eq!(render_with_holes(&Type::int()), "int");
+    // A union's unproven variants are holes too, its proven ones kept.
+    let union = Type::Union {
+        name: "Maybe".into(),
+        variants: vec![Type::Var(2), Type::int()],
+    };
+    let shown = Type::Union {
+        name: "Maybe".into(),
+        variants: vec![Type::prim(HOLE), Type::int()],
+    };
+    assert_eq!(render_with_holes(&union), shown.to_string());
     // Holes reach every nested position Display can walk.
     let nested = Type::Fun {
         params: vec![Type::Var(1)],

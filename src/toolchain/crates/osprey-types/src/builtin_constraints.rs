@@ -441,6 +441,17 @@ mod tests {
         // Still-unresolved receivers are deferred, exactly as `is_sized` defers.
         assert!(invalid_use("fromGpu", &Type::Var(9)).is_none());
         assert!(invalid_use("gpuFold", &Type::gpu_buffer(Type::Var(9))).is_none());
+        let row = Type::Record {
+            name: String::new(),
+            fields: BTreeMap::from([("x".to_owned(), Type::int())]),
+        };
+        assert!(invalid_use("gpuLength", &Type::gpu_buffer(row.clone())).is_some());
+        assert!(invalid_use("gpuLength", &Type::gpu_buffer(Type::list(Type::int()))).is_some());
+        let matmul = format!("{MATRIX_OPERAND_PREFIX}gpuMatMul");
+        assert!(invalid_use(&matmul, &Type::Var(3)).is_none());
+        assert!(invalid_use(&matmul, &row).is_some());
+        assert!(invalid_use(&matmul, &Type::gpu_buffer(Type::float())).is_none());
+        assert!(invalid_use(&matmul, &Type::gpu_buffer(Type::int())).is_some());
         assert_eq!(
             display_param_type("toGpu", 0),
             Some(container_display(&["List", "Iterator"]))

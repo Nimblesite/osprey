@@ -340,3 +340,41 @@ fn builtin_constraints_judge_every_argument_shape() {
         assert_eq!(errors.is_empty(), accepted, "{source}: {errors:?}");
     }
 }
+
+/// The diagnostic names the path from the offense out to the operand,
+/// innermost first, at any depth [BUILTIN-STRUCTURAL-EQUALS].
+#[test]
+fn structural_equals_names_the_path_to_an_undecided_part() {
+    let decls = "type Holder = Empty | Has { step: fn(int) -> int }\ntype Nest = Leaf | Node { inner: Holder }\ntype Bag = { items: List<Nest> }\n";
+    let cases = [
+        ("structuralEquals(Empty, Empty)", "`Holder` with `structuralEquals`: field `step` inside variant `Has` is"),
+        ("structuralEquals(Leaf, Leaf)", "`Nest` with `structuralEquals`: field `step` inside variant `Has` inside field `inner` inside variant `Node` is"),
+        ("structuralEquals(Bag { items: [] }, Bag { items: [Leaf] })", "field `step` inside variant `Has` inside field `inner` inside variant `Node` inside list element inside field `items` is"),
+    ];
+    for (call, needle) in cases {
+        let source = format!("{decls}let same = {call}\n");
+        let errors = crate::testutil::check(&source);
+        assert!(
+            errors.iter().any(|e| e.message.contains(needle)),
+            "{source}: {errors:?}"
+        );
+    }
+    let printable = format!("{decls}let shown = toString(Leaf)\n");
+    assert!(
+        !crate::testutil::check(&printable).is_empty(),
+        "{printable}"
+    );
+}
+
+/// Callback and signature lookups answer only for what a built-in declares.
+#[test]
+fn callback_and_signature_lookups_refuse_what_is_not_declared() {
+    assert_eq!(builtin_callback_type("httpListen", 0), None);
+    assert_eq!(builtin_callback_type("httpListen", 9), None);
+    assert_eq!(builtin_callback_type("notABuiltin", 0), None);
+    assert!(builtin_callback_type("mapList", 1).is_some());
+    let matmul = builtin_signature("gpuMatMul").unwrap_or_default();
+    assert!(matmul.starts_with("gpuMatMul : ("), "{matmul}");
+    assert!(builtin_signature("toString").is_some_and(|s| s.contains("printable")));
+    assert_eq!(builtin_signature("notABuiltin"), None);
+}
