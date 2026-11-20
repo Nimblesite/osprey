@@ -14,6 +14,19 @@ Ports distinguish audio, control and timestamped events. Audio ports declare cha
 
 Graph preparation validates missing/duplicate identities, endpoint existence, port direction, rate/channel compatibility, resource budgets and cycles. Feedback requires an explicit delay with a documented minimum; algebraic loops are rejected unless a dedicated bounded solver component owns them. Preparation determines scheduling, buffer reuse and latency compensation before rendering. Rejected edits preserve the running graph. Graph replacement occurs at a documented boundary with an explicit state-transfer/crossfade policy.
 
+### Channels [SYNTH-GRAPH-CHANNELS]
+
+The channel count is unlimited. A layout is an ordered list of named channels; stereo (left, right) is the default, and 5.1, 7.1, 7.1.4 and any wider layout are equally valid. Every instrument and processor renders whatever layout its output port is prepared with: oscillators, samplers, grains, physical models and effects are written per channel over the layout, never as fixed mono or stereo code paths. Mono is the one-channel layout, not a special case.
+
+Four graph components handle channels, and nothing else changes channel count:
+
+- **Split** turns one N-channel port into N one-channel outputs, in layout order.
+- **Join** turns N one-channel inputs into one N-channel port with a declared layout.
+- **Route** is a channel matrix: each output channel takes any input channel, or silence. It reorders, duplicates and drops channels explicitly.
+- **Mix** sums several ports of one layout into one, with per-input gain. A panner places a mono source across any layout with equal-power gains whose squares sum to 1.
+
+A cable connects ports of identical layout only. Converting stereo to 5.1, downmixing a WAV or upmixing a voice is a visible Route or Mix node in the graph, so no channel is silently dropped. A project track declares its output layout, and Master's layout is the project's. Current limits that this replaces are named where they occur: the daw renderer is mono per track before panning, sample import downmixes stereo and the device queue accepts only mono and stereo.
+
 All canonical public data models are declared in typeDiagram and generated into Osprey/host representations. Stored patches include schema and component versions; unsupported versions return an explicit error. No silently substituted component or zero-valued parameter hides a failed load.
 
 ### Reference graph replacement [SYNTH-GRAPH-REPLACE]

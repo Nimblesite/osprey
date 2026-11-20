@@ -47,4 +47,5 @@ The [Timeline designs](../../designs/prism-timeline/README.md) propose more than
 
 - **Included:** the timeline and piano roll; per-track gain, pan and Space send into Master; one patch per track; play, stop and save.
 - **Not built:** nested racks, groups, arbitrary-port sends, creating buses, and a detached second window. Each adds a routing model the renderer cannot play yet. FerroUI multiwindow is deferred.
+- **Channels ([SYNTH-GRAPH-CHANNELS]):** stereo by default with unlimited channels; each track and Master declare their layout in the project file, and Split, Join, Route and Mix patch nodes reshape them. This is not built yet; the renderer is mono per track before panning today.
 - **Renderer limits:** the renderer is mono per track before panning and allows at most 64 tracks. Its limits are documented in the [daw README](../../../src/osprey/examples/daw/README.md).

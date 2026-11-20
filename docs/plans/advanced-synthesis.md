@@ -75,7 +75,12 @@ Deliver the first milestone before expanding to another synthesis family. Shared
 ### Ports, parameters and automation [SYNTH-ADVANCED-CORE-PORTS]
 
 - [ ] Declare audio, control and timestamped-event ports, channel layouts and physical units for every new component.
-- [ ] Define explicit adapters for mono/stereo, hertz/normalised values, bipolar/unipolar signals and control/audio rates.
+- [ ] Unlimited channels [SYNTH-GRAPH-CHANNELS]: declare `ChannelLayout` (ordered named channels, stereo default, 5.1/7.1/7.1.4/any N) in `graph.td`; every port carries one.
+- [ ] Render every instrument and processor per channel over its prepared layout; delete the fixed mono/stereo code paths (`Grains` stereo summing, renderer mono tracks, `GraphClips` mono-to-stereo component).
+- [ ] Add Split, Join, Route (channel matrix) and Mix (per-input gain) graph components and Prism cards; an any-layout equal-power panner whose gain formula lives in Lean.
+- [ ] Track and Master output layouts in the project file (`daw.td`); sample import keeps every source channel; the macOS device queue plays any layout CoreAudio offers.
+- [ ] Loaded tests: a 7.1 patch split, routed, mixed and joined, checked sample-for-sample per channel; a stereo-to-5.1 cable without a Route node is refused.
+- [ ] Define explicit adapters for hertz/normalised values, bipolar/unipolar signals and control/audio rates.
 - [x] Declare names, units, defaults, minimum/maximum values, linear/logarithmic scaling, modulation semantics and automation eligibility for every parameter. Descriptors carry key, label, unit, default, bounds and `automatable`; `Descriptors.scale` declares logarithmic scaling for positive frequency/time ranges (probe: 220 Hz → control 0.3447 → 220 Hz), and `Descriptors.modulation` declares each parameter's inlet rule.
 - [x] Define modulation as explicit additive, multiplicative or replacement operations; reject ambiguous multiple writers unless a combiner is present. `ModulationRule` is `Unmodulated`, `Replacing`, `Multiplying` or `Exponential` per parameter; each inlet accepts exactly one cable (`OccupiedInput`), so multiple writers need an explicit mixer.
 - [x] Add reusable smoothing/slew components with declared response and state continuity; avoid hiding unrelated smoothing inside each module. `Smoothers` (one-pole: 0.632 after τ; linear: full scale in `time`, measured 0.5 at τ/2) and the `smoother` graph node.

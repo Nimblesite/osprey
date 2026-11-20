@@ -19,6 +19,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] The project JSON keys are the `daw.td` field names, and `tracks/*.json` is migrated ([DAW-PROJECT-MODEL]).
 - [x] Generate the project and editor types from one `daw.td` with `make -C src/toolchain/targets/tests daw-models TYPEDIAGRAM_DIST=<dist>`.
 - [ ] Node positions, grain sample assets and VST bindings are stored in the project.
+- [ ] Track and Master channel layouts (stereo default, any count) are stored in the project; tracks render per channel ([SYNTH-GRAPH-CHANNELS]).
 
 ## Transport [DAW-TRANSPORT]
 
