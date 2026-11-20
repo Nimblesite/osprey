@@ -535,6 +535,8 @@ jobs:
           dest="src/toolchain/vscode-extension/bin/${{ matrix.target }}"
           mkdir -p "$dest"
           cp -r "dist/osprey-${VERSION}-${{ matrix.target }}/." "$dest/"
+          # The VSIX bundles the registry server, never packages [PACKAGE-LOCAL-REGISTRY].
+          rm -rf "$dest/registry"
           cp dist/package-workspace/package-workspace.wasm "$dest/"
           cp dist/workbench/workbench.wasm "$dest/"
           mkdir -p "$dest/workbench"
@@ -578,7 +580,7 @@ jobs:
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/workbench/lessons/catalogue.json"
           if [ -z "$exe" ]; then
             unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey-registry"
-            unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/registry/@osprey/"
+            if unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/registry/"; then echo "::error::the VSIX bundles packages"; exit 1; fi
           fi
       # Packaging is per-platform (each VSIX bundles the matching native binary);
       # publishing is centralised in the publish-marketplace / publish-openvsx
