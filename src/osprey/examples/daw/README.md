@@ -22,7 +22,7 @@ File → Save writes the open song, its patches and their layouts. Play renders 
 
 ## Silt Relay
 
-[Silt Relay](tracks/silt-relay.json) is an original 18-bar arrangement at 138 BPM. The pressure kick ducks the sub. Struck wire answers the bass on the offbeats, and the bowed breakdown gives way to a five-hit hi-hat roll. Open **Throat / metal** for a two-source spectral morph, **Spore wheel** for a seeded granular patch, or **Rivet pulse** to follow a MIDI note through the split, delay, join and channel swap.
+[Silt Relay](tracks/silt-relay.json) is an original 18-bar arrangement at 138 BPM. The pressure kick ducks the sub. Struck wire answers the bass on the offbeats, and the bowed breakdown gives way to a five-hit hi-hat roll. Open **Throat / metal** for a two-source spectral morph, **Spore wheel** for a seeded granular patch, or **Rivet pulse** to follow a MIDI note through the split, delay, join and channel swap. [See the kick-keyed Undertow bus in Prism.](screens/silt-relay.png)
 
 ```sh
 make -C src/toolchain/targets/macos daw SONG=src/osprey/examples/daw/tracks/silt-relay.json
