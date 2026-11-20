@@ -69,7 +69,7 @@ target/local-registry.stamp: target/osprey-pkg scripts/packages/stage-local-regi
 	scripts/packages/stage-local-registry.sh target/osprey-pkg target/local-registry
 	@touch $@
 
-_vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/osprey-registry target/workbench.wasm
+_vsix_bundle: target/osprey-pkg target/local-registry.stamp target/package-workspace.wasm target/osprey-registry target/workbench.wasm
 	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey$(EXE)"; \
 	cp target/osprey-pkg "$$DEST/osprey-pkg$(EXE)"; \

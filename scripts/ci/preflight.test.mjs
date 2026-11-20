@@ -11,7 +11,8 @@ const find = (pattern) => checks.find((check) => pattern.test(check.command))
 
 test('the preflight reads ci.yml and every workflow it calls', () => {
   assert.deepEqual(workflowFiles(), ['.github/workflows/ci.yml', '.github/workflows/ci-windows.yml',
-    '.github/workflows/gpui.yml', '.github/workflows/winui.yml'])
+    '.github/workflows/gpui.yml', '.github/workflows/winui.yml', '.github/workflows/ci-audit.yml'])
+  assert.ok(commands.includes('make audit'), 'the PR preflight runs the release audit')
 })
 
 test('every make check in the PR workflows is planned, inside the step that runs it', () => {

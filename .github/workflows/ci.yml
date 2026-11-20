@@ -1577,6 +1577,11 @@ jobs:
     name: WinUI host
     uses: ./.github/workflows/winui.yml
 
+  # The release gate's own audit, so a PR cannot merge what `make audit` will refuse to release.
+  audit:
+    name: Dependency audit
+    uses: ./.github/workflows/ci-audit.yml
+
   # ═══ THE REQUIRED CHECK ═════════════════════════════════════════════════════
   # The only check the `main` ruleset requires: the root job every other job
   # sits under. `always()` makes it run when a job it needs fails, which would
@@ -1612,6 +1617,7 @@ jobs:
       - windows
       - gpui
       - winui
+      - audit
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
