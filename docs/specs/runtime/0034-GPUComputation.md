@@ -26,7 +26,7 @@ The restriction has one spelling in the compiler: inference enforces it at the c
 
 ## Buffer built-ins
 
-### `toGpu(source) -> Result<GpuBuffer<T>, Error>` — [GPU-BUFFER-FROM-LIST]
+### `toGpu(source) -> Result<GpuBuffer<T>, string>` — [GPU-BUFFER-FROM-LIST]
 
 Produces a dense buffer from a host `List<T>` — or, per [GPU-BUFFER-FUSE], from an `Iterator<T>`. `T` must satisfy [GPU-BUFFER-ELEM]. The element type comes from the source, whether that source is a literal, a list value returned by a function, or a list built at runtime — a float list copies in as a float buffer, never as raw words, and a `List<float32>`'s 8-byte words pack into a 4-byte-per-element buffer ([TYPE-NUMERIC-WORD](../language/0004-TypeSystem.md#container-words--type-numeric-word)).
 
@@ -58,7 +58,7 @@ A `filter` stage leaves the kept count unknown until the loop has run, so the bu
 
 This is fusion in the [Futhark](https://futhark-lang.org)/Accelerate sense, and the reason the surface needs no separate buffer builder: the iterator pipeline is one.
 
-### `fromGpu(buffer: GpuBuffer<T>) -> Result<List<T>, Error>` — [GPU-BUFFER-TO-LIST]
+### `fromGpu(buffer: GpuBuffer<T>) -> Result<List<T>, string>` — [GPU-BUFFER-TO-LIST]
 
 Materializes a buffer back into a host list in `Success`. A failed device download returns `Error` with the original runtime reason and leaves the resident buffer pending so a later read can retry. No scalar is read on that error path, and a valid empty buffer succeeds with an empty list ([FAILURE-EXPLICIT]). Match the result before consuming the list. The element type crosses with the values: a `GpuBuffer<float>` becomes a `List<float>` whose elements read back as floats, not as the machine words the list runtime stores them in, and a `GpuBuffer<uint8>` becomes a `List<uint8>` whose words are the zero-extended bytes. Round-tripping is therefore lossless in both directions for every scalar [GPU-BUFFER-ELEM] admits.
 
@@ -66,7 +66,7 @@ Materializes a buffer back into a host list in `Success`. A failed device downlo
 
 The element count. Constant time.
 
-### `gpuLoad(path: string, offset: int, count: int) -> Result<GpuBuffer<float32>, Error>` — [GPU-BUFFER-LOAD]
+### `gpuLoad(path: string, offset: int, count: int) -> Result<GpuBuffer<float32>, string>` — [GPU-BUFFER-LOAD]
 
 Reads `count` little-endian IEEE-754 binary32 values starting at byte `offset` of the file at `path` into a `GpuBuffer<float32>`, byte for byte with no widening — the layout of llm.c's checkpoints and of any raw dump of a float32 array. A program that wants binary64 arithmetic maps `toFloat` over the result and says so. A `count` of zero yields the empty buffer. The result is the whole buffer or an `Error`, never a partially filled buffer: a file holding fewer than `count` values from `offset` is `file ends before the tensor does`, so a truncated weight file never loads as a smaller model. An `Error` also leaves no buffer behind under any memory backend — the buffer allocated for the result is released before the reason is reported, which the ARC corpus lane's zero-leak sentinel and `memory_golden_tests.c` both count.
 
@@ -80,15 +80,15 @@ let wte = gpuLoad("gpt2_124M.bin", 1024, 50257 * 768) ?: toGpu([toFloat32(0.0)])
 wte = gpuLoad ("gpt2_124M.bin", 1024, 50257 * 768) ?: toGpu [toFloat32 0.0]
 ```
 
-### `gpuMapFile(path: string, offset: int, count: int) -> Result<GpuBuffer<T>, Error>` — [GPU-BUFFER-MAPPED]
+### `gpuMapFile(path: string, offset: int, count: int) -> Result<GpuBuffer<T>, string>` — [GPU-BUFFER-MAPPED]
 
 Maps `count` elements of the file at `path`, starting at byte `offset`, as an immutable buffer of the numeric type `T` the program's use pins. Nothing is read or copied up front: pages load when first touched, and on unified memory the GPU reads those same pages ([LLM-WEIGHTS-MAPPED](../applications/LocalCodingModel.md)). OpenCL devices upload from the mapping. A negative offset or count, an offset that isn't a multiple of the element width, a region past the end of the file, anything but a regular file and a failed map are each an `Error` naming the reason. WASM has no mapping, so it answers an `Error`. `--no-fs` refuses it. Shortening the file while it's mapped is outside this contract.
 
 ```osprey
-let weights: Result<GpuBuffer<float32>, Error> = gpuMapFile("weights.bin", 1024, 50257 * 768)
+let weights: Result<GpuBuffer<float32>, string> = gpuMapFile("weights.bin", 1024, 50257 * 768)
 ```
 
-### `gpuLoadTensor(path: string, name: string) -> Result<GpuBuffer<T>, Error>` — [GPU-BUFFER-TENSOR]
+### `gpuLoadTensor(path: string, name: string) -> Result<GpuBuffer<T>, string>` — [GPU-BUFFER-TENSOR]
 
 Reads one named tensor out of a [safetensors](https://github.com/huggingface/safetensors/blob/main/README.md) file — the Hugging Face interchange format: an 8-byte little-endian header length `N`, then `N` bytes of JSON mapping each tensor name to its `dtype`, `shape` and `data_offsets`, then the tensor bytes — into a buffer of the float type `T` the program's own use of the result pins (an annotation, a `gpuMatMul` operand, a kernel's element type); `T` is never inferred from the file. The entry is located by its quoted name followed by a colon, so `h.1.attn.weight` never matches inside `h.11.attn.weight`, and the header's entry order is irrelevant: `__metadata__` may come first or last. `data_offsets` are relative to the start of the data section, byte `8 + N`. Four storage types are admitted, each into exactly one element type: `F64` into `float`, `F32` into `float32`, `F16` (binary16, including subnormals, infinities and NaN) into `float16`, and `BF16` (the upper sixteen bits of a binary32) into `float32` by exact widening. A tensor whose `dtype` is not the one `T` admits is `tensor wte.weight is F16, the program asked for float32`, never a silent conversion. The byte span must be a whole number of elements.
 
@@ -161,11 +161,11 @@ let total = toGpu([1.5, 2.5]) |> gpuFold(0.0, fn(a, v) => a + v)
 total = toGpu [1.5, 2.5] |> gpuFold 0.0 (\(a, v) => a + v)
 ```
 
-### `gpuIota(n: int) -> Result<GpuBuffer<int>, Error>` — [GPU-IOTA]
+### `gpuIota(n: int) -> Result<GpuBuffer<int>, string>` — [GPU-IOTA]
 
 The index buffer `[0, n)`. Kernels see element values, not positions, so gather, stencil, and matrix addressing all start from `gpuIota`: map over the indices and read neighbours with `gpuGet`. Zero succeeds with an empty buffer. A negative count, an element count whose byte size overflows, or an allocation failure returns `Error` carrying the runtime reason; none becomes a successful empty buffer ([FAILURE-EXPLICIT]). Match the result before mapping or reading its buffer.
 
-### `gpuGet(buffer: GpuBuffer<T>, index: int) -> Result<T, Error>` — [GPU-GET]
+### `gpuGet(buffer: GpuBuffer<T>, index: int) -> Result<T, string>` — [GPU-GET]
 
 Bounds-checked read of one element at the buffer's element type. An out-of-bounds index returns `Error` rather than a sentinel value, so a wrong gather is a visible failure, not silent zeros. Usable inside a kernel — reading a buffer is pure — which is how a `gpuIota`-driven kernel expresses matrix rows and stencils.
 
@@ -189,7 +189,7 @@ Stream compaction: keeps the elements the pure predicate accepts, preserving sou
 
 ## Dense linear algebra
 
-### `gpuMatMul(left: GpuBuffer<F>, right: GpuBuffer<F>, rows: int, inner: int, cols: int) -> Result<GpuBuffer<F>, Error>`, where `F` is `float` or `float32` — [GPU-MATMUL]
+### `gpuMatMul(left: GpuBuffer<F>, right: GpuBuffer<F>, rows: int, inner: int, cols: int) -> Result<GpuBuffer<F>, string>`, where `F` is `float` or `float32` — [GPU-MATMUL]
 
 The dense product of a `rows × inner` matrix and an `inner × cols` matrix, both row-major in flat float buffers, as the row-major `rows × cols` buffer: `out[r * cols + c]` is the sum over `k` from `0` to `inner - 1` of `left[r * inner + k] * right[k * cols + c]`. The sum is accumulated **in `k` order starting from `0.0`, at `F`'s own width, with each product formed before it is added** — no fused multiply-add. That order is the contract, exactly as [GPU-FOLD]'s is: a device backend may reassociate or contract only where it produces the host's bytes. The host walks `r`, then `k`, then `c`, which writes each output row contiguously and still accumulates every element in `k` order; the test that pins the order sums `2^53 + 1 - 2^53` to `0.0` at `float`, and `2^24 + 1 - 2^24` at `float32`, where any other association gives `1.0`.
 
@@ -197,7 +197,7 @@ The element type is one float type for all three buffers, fixed by the signature
 
 A matrix is a flat buffer plus the shape the program states, because a buffer is rank-1; the multi-dimensional surface [plan 0023](../../plans/0023-gpu.md) owes is what removes the three shape arguments.
 
-### `gpuMatMulQuant(x: GpuBuffer<float32>, weights: GpuBuffer<uint8>, type: string, rows: int, inner: int, cols: int) -> Result<GpuBuffer<float32>, Error>` — [LLM-MATMUL-QUANT]
+### `gpuMatMulQuant(x: GpuBuffer<float32>, weights: GpuBuffer<uint8>, type: string, rows: int, inner: int, cols: int) -> Result<GpuBuffer<float32>, string>` — [LLM-MATMUL-QUANT]
 
 The product of a `rows × inner` `float32` matrix and `cols` rows of quantized weights, as the row-major `rows × cols` `float32` buffer: `out[r * cols + c]` is the sum over `k` of `x[r * inner + k] * w_c[k]`, where row `c` of the weights is `inner / <weights per block>` consecutive blocks in the GGUF block format `type` names, exactly as a GGUF stores a `[cols, inner]` tensor and as [`gpuMapFile`](#gpumapfilepath-string-offset-int-count-int---resultgpubuffert-error--gpu-buffer-mapped) presents it. The formats are `Q4_K`, `Q8_0`, `Q6_K`, `Q5_K`, `Q3_K`, `IQ4_NL`, `IQ4_XS` and `IQ3_S`, each decoded exactly as ggml's `dequantize_row_<type>` does; the weights start on a 4-byte boundary, which a GGUF's 32-byte tensor alignment gives, because the library kernels read whole words. The sum is accumulated **by 32 lanes per output, then a butterfly**: lane `l` of output `i` adds, from `0.0` and in block order, the products of its own weights of every block (each format fixes which weights a lane owns: `Q4_K` and `Q5_K` give lane `l` sub-block `l / 4`'s weights `(l % 4) * 8 .. + 8`, `Q8_0` gives it weights `l * 8 .. + 8`, and so on in `gpu_device_lib.metal`'s `<type>_lane` functions), each weight rounded as ggml decodes it (for `Q4_K`, `d * scale * q` minus `dmin * min`: two roundings), multiplied by `x`, then added, every step rounded at binary32 and nothing contracted; the 32 lane sums are then combined by exclusive-or butterfly, each lane adding its partner's sum at offsets 16, 8, 4, 2 and 1 in that order, and lane 0's total is the output. The order is a function of the format alone, so the host oracle (`src/toolchain/compiler/runtime/gpu_host.c`, which compiles the same lane functions as C and performs the same butterfly) and the library kernels `osprey_matmul_<type>` (`gpu_device_lib.metal`, one simdgroup of 32 threads per output, each thread reading whole words of its blocks, so a 27B model's weights stream at the device's memory bandwidth instead of one thread's) write the same words, which `gpu_device_tests.c` checks bit for bit. On the selected device the operands and result stay resident ([GPU-BUFFER-RESIDENT]), and consecutive products batch into one submission ([LLM-DISPATCH-BATCH]).
 
@@ -213,11 +213,11 @@ linear (x, w, tokens, inputs, outputs) = gpuMatMul (x, w, tokens, inputs, output
 logits = linear (hidden, wte, 64, 768, 50257) ?: toGpu [0.0]
 ```
 
-### `gpuSigmoid(x: GpuBuffer<float32>) -> Result<GpuBuffer<float32>, Error>` — [LLM-SIGMOID]
+### `gpuSigmoid(x: GpuBuffer<float32>) -> Result<GpuBuffer<float32>, string>` — [LLM-SIGMOID]
 
 `1 / (1 + exp(-x))` of every element, on the target's own binary32 `exp` and division (an activation runs thousands per token, too many for the shared wider `exp` the kernel math rounds from), so the host and a device agree within `exp`'s ulps, not bit for bit. An operand that does not hold `float32` is `gpuSigmoid: operand: x must hold float32`.
 
-### `gpuDeltaRule(state, queries, keys, values, beta, decay: GpuBuffer<float32>, heads: int, dim: int) -> Result<GpuBuffer<float32>, Error>` — [LLM-DELTA-RULE]
+### `gpuDeltaRule(state, queries, keys, values, beta, decay: GpuBuffer<float32>, heads: int, dim: int) -> Result<GpuBuffer<float32>, string>` — [LLM-DELTA-RULE]
 
 The recurrent gated delta rule of Qwen3.5's linear attention (`torch_recurrent_gated_delta_rule`) over one or more tokens, fused into one library kernel. `state` holds the `heads × dim × dim` cells of the state, as a previous result does (anything after the cells is ignored); `queries`, `keys` and `values` hold `dim` values per head per token, `beta` and `decay` one per head per token, and the token count `T` is how many times `heads × dim` divides `queries`. The result is the state after the last token, then the `T × heads × dim` outputs in token order. Thread `t` owns value element `t % dim` of head `t / dim`: for each token it decays its state column by that head's `decay`, recalls the column through the keys, adds `(value − recalled) × beta` times the keys to it, writes it and reads it out through the queries; every product is rounded before its add, in a fixed order, and the host oracle (`gpu_host.c`) runs the same chain, so every backend writes the same bytes. Errors: `gpuDeltaRule: shape: heads and dim must be positive and small enough for 32-bit indices`, `gpuDeltaRule: queries: must hold heads * dim values per token, for 32-bit indices' worth of tokens`, `gpuDeltaRule: state: must hold at least heads * dim * dim cells`, `gpuDeltaRule: <operand>: has N elements, the stated shape needs M`, `gpuDeltaRule: operands: every operand must hold float32`. [LLM-PREFILL] passes a prompt chunk's `T` tokens in one call.
 
@@ -331,7 +331,7 @@ A kernel function takes, in this order:
 
 There is **no environment pointer and no closure struct**. A capturing kernel compiles to a function whose captures are arguments, not to a heap cell with a hidden `env` parameter. The return is a scalar.
 
-A kernel that would return an unhandled `Result` is rejected before the program links, at one of two gates. `gpuFold`, `gpuScan` and `gpuFilter` have signatures that pin the kernel's result — the accumulator's own type, or `bool` — so inference rejects such a kernel at the call (`cannot unify int with Result<int, Error>`). `gpuMap` and `gpuZipWith` leave the result type `U` free, so the gate is codegen's scalar backstop on the stored element: `a gpuMap kernel result cannot be an unhandled Result; handle it inside the kernel`. Handle failure inside the kernel with `?:` or `match`.
+A kernel that would return an unhandled `Result` is rejected before the program links, at one of two gates. `gpuFold`, `gpuScan` and `gpuFilter` have signatures that pin the kernel's result — the accumulator's own type, or `bool` — so inference rejects such a kernel at the call (`cannot unify int with Result<int, string>`). `gpuMap` and `gpuZipWith` leave the result type `U` free, so the gate is codegen's scalar backstop on the stored element: `a gpuMap kernel result cannot be an unhandled Result; handle it inside the kernel`. Handle failure inside the kernel with `?:` or `match`.
 
 Arithmetic MUST preserve the region's policy at the kernel boundary ([ARITH-TOTAL](../language/0037-ArithmeticEffects.md#the-guarantee--arith-total)). Current selected-device fault recovery does not satisfy that requirement: a fault aborts instead of invoking the runtime policy. On the host backend a kernel's `Arith` operations are exempt from the stage-legality row ([STAGE-GPU-LEGAL](../language/0017-AlgebraicEffects.md#gpu-legality--stage-gpu-legal)) and dispatch to the enclosing policy exactly as any lambda's do, so a kernel with fallible arithmetic compiles only where a region installs a policy; with none, the program is rejected at its entry. A device fault records a fault word and aborts the launch ([GPU-DEVICE-FAULT]); callers needing recovery must select the host backend explicitly. `handle static Arith` is rejected.
 

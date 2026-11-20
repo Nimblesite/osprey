@@ -8,7 +8,6 @@
 - [Record Types](#record-types--type-record) — including [anonymous records](#anonymous-records--type-record-anon) and [tuples](#tuples--type-tuple)
 - [Union Types](#union-types)
 - [Collection Types](#collection-types)
-- [Built-in Error Types](#built-in-error-types)
 - [The `any` Type](#the-any-type--type-any)
 - [Type Annotations](#type-annotations--type-annotation-check)
 - [Redundant Annotations](#redundant-annotations--type-annotation-redundant)
@@ -862,7 +861,7 @@ signatures are listed in [Built-in Functions](../runtime/0012-Built-InFunctions.
 ### `List<T>` — [TYPE-LIST]
 
 `List<T>` is a homogeneous indexed sequence. Index access is bounds-checked
-and returns `Result<T, Error>`.
+and returns `Result<T, string>`.
 
 ```osprey
 let numbers = [1, 2, 3, 4, 5]            // List<int>
@@ -932,7 +931,7 @@ a key.
 
 #### Lookup — [TYPE-MAP-LOOKUP]
 
-Index lookup returns `Result<V, Error>`:
+Index lookup returns `Result<V, string>`:
 
 ```osprey
 match ages["Alice"] {
@@ -954,14 +953,6 @@ let values     = mapValues(ages)
 ```
 
 `mapMerge` and map `+` are right-biased: the right map wins on duplicate keys.
-
-## Built-in Error Types
-
-| Type        | Used by |
-| ----------- | ------- |
-| `Error`     | Fallible builtins, including parsing, `checkedAdd`/`checkedSub`/`checkedMul`, collection lookup, files, and processes |
-
-`Error` is a type of its own, not `string`: it prints and interpolates as its message, and `toString` turns it into that `string`. It has no special standing in [`Result<T, E>`](0013-ErrorHandling.md#resultt-e--err-result), whose two constructors are also named `Success` and `Error`.
 
 ## The `any` Type — [TYPE-ANY]
 
@@ -1025,7 +1016,7 @@ annotated `Int` is a type mismatch rather than a silent alias.
 
 ```osprey
 let xs: List<int> = []
-fn doubled(n) -> Result<int, Error> = checkedAdd(n, n)
+fn doubled(n) -> Result<int, string> = checkedAdd(n, n)
 ```
 
 Writing `-> int` for `doubled` would be a type error; a return annotation cannot

@@ -12,8 +12,8 @@ Here is the storage interface and the function that asks it to load a title. The
 
 ```osprey
 effect Store {
-    read: fn() -> Result<string, Error>
-    write: fn(string) -> Result<int, Error>
+    read: fn() -> Result<string, string>
+    write: fn(string) -> Result<int, string>
 }
 
 fn load() = match perform Store.read() {
@@ -157,7 +157,7 @@ The offline `examples/chapter-10/web-title.osp` declares the request the applica
 
 ```osprey
 effect Web {
-    title: fn() -> Result<string, Error>
+    title: fn() -> Result<string, string>
 }
 
 fn download() = match perform Web.title() {
@@ -215,7 +215,7 @@ fn heading(title) = "Flight Log: " + title
 fn main() = heading(readFile("flight-log.txt")) |> print
 ```
 
-From `docs/book`, check it with `../../target/release/osprey examples/chapter-10/failscompilation/undecoded-result.osp --check`. The diagnostic ends with the exact message ``type mismatch: cannot unify string with Result<string, Error>; decode the `Result` with `match` or `?:` before using it as `string` ``.
+From `docs/book`, check it with `../../target/release/osprey examples/chapter-10/failscompilation/undecoded-result.osp --check`. The diagnostic ends with the exact message ``type mismatch: cannot unify string with Result<string, string>; decode the `Result` with `match` or `?:` before using it as `string` ``.
 
 The requirement comes from string concatenation in `heading`. The supplied argument is a result containing either text or an error. Changing an annotation cannot make those possibilities disappear, and the compiler rejects this without reading the file.
 

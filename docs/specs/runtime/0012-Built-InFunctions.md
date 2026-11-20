@@ -78,7 +78,7 @@ match listGet(args(), 0) {
 main () = print (join (args ()) ",")
 ```
 
-### `env(name: string) -> Result<string, Error>` — [BUILTIN-PROCESS-ENV]
+### `env(name: string) -> Result<string, string>` — [BUILTIN-PROCESS-ENV]
 Reads one environment variable. A set variable, even an empty one, is
 `Success`; an unset one is `Error("env: variable is not set")`. A WASI host
 exposes only the variables it was told to pass through.
@@ -382,7 +382,7 @@ There is no rounding builtin: rounding to a narrower format is
 `toFloat32` or `toFloat16` ([BUILTIN-CONVERT-FLOAT](#float-conversions--builtin-convert-float)),
 and arithmetic at that format stays there ([TYPE-NUMERIC-ARITH-WIDTH](../language/0004-TypeSystem.md#arithmetic-at-width--type-numeric-arith-width)).
 
-### `floatToInt(x: F) -> Result<int, Error>`, where `F` is any float type — [BUILTIN-FLOATTOINT]
+### `floatToInt(x: F) -> Result<int, string>`, where `F` is any float type — [BUILTIN-FLOATTOINT]
 Checked truncation toward zero from `float`, `float32` or `float16`. `Success(n)` when `x` is finite and `n` fits
 in the `int` range (`-2^63 <= n < 2^63`); `Error` with a clear message when
 `x` is NaN, an infinity, or a finite value whose truncation falls outside the
@@ -418,7 +418,7 @@ shiftRightLogical(-16, 2)  // 4611686018427387900
 ```
 
 ### `checkedAdd` / `checkedSub` / `checkedMul` — [BUILTIN-CHECKED-ARITH]
-Each has signature `(a: int, b: int) -> Result<int, Error>`. Overflow-checked
+Each has signature `(a: int, b: int) -> Result<int, string>`. Overflow-checked
 integer addition, subtraction, and multiplication, lowering to
 `llvm.sadd.with.overflow`, `llvm.ssub.with.overflow`, and
 `llvm.smul.with.overflow` respectively. An overflowing operation returns
@@ -427,14 +427,14 @@ integer addition, subtraction, and multiplication, lowering to
 ```osprey
 checkedAdd(2, 3)                      // Success(5)
 checkedMul(4294967296, 4294967296)    // Error — "integer overflow"
-fn twice(n) -> Result<int, Error> = checkedMul(n, 2)
+fn twice(n) -> Result<int, string> = checkedMul(n, 2)
 ```
 
 ```osprey-ml
 checkedAdd (2, 3)                      // Success(5)
 checkedMul (4294967296, 4294967296)    // Error — "integer overflow"
 
-twice : int -> Result<int, Error>
+twice : int -> Result<int, string>
 twice n = checkedMul (n, 2)
 ```
 
@@ -446,7 +446,7 @@ drawn fresh from the operating system's CSPRNG (`arc4random_buf` on macOS/BSD,
 reproducible.
 
 A draw either carries OS entropy or the process stops. `random()` answers `int`,
-not `Result<int, Error>`, so a source that cannot supply the bytes has nowhere to
+not `Result<int, string>`, so a source that cannot supply the bytes has nowhere to
 report — and a predictable value returned from this call is undetectable by the
 caller and worst exactly where it matters, since the WebSocket handshake nonce
 draws from it too. When no source can fill the request the runtime prints
@@ -468,7 +468,7 @@ coinFlip () =
         Error _       => 0
 ```
 
-### `randomBelow(n: int) -> Result<int, Error>` — [BUILTIN-RANDOM-BELOW]
+### `randomBelow(n: int) -> Result<int, string>` — [BUILTIN-RANDOM-BELOW]
 A cryptographically-secure uniform random integer in the half-open range
 `[0, n)`. The result is **unbiased**: it is drawn by rejection sampling, so every
 value in the range is equally likely (a plain `random() % n` is not). A
@@ -637,7 +637,7 @@ contains ("hello", "")             // true
 "image.png"      |> endsWith ".png"     // true
 ```
 
-#### `indexOf(s: string, needle: string) -> Result<int, Error>` — [BUILTIN-STRING-INDEXOF]
+#### `indexOf(s: string, needle: string) -> Result<int, string>` — [BUILTIN-STRING-INDEXOF]
 Returns the byte index of the first occurrence of `needle`, or
 `Error` with `"indexOf: substring not found"` if absent. An empty `needle`
 returns `Success { value: 0 }`.
@@ -657,11 +657,11 @@ quadratic. Making these O(1) requires a length-carrying string ABI.
 #### `byteLength(s: string) -> int` — [BUILTIN-STRING-BYTELENGTH]
 Byte length of the underlying UTF-8 storage. Equivalent to `length(s)`.
 
-#### `byteAt(s: string, i: int) -> Result<int, Error>` — [BUILTIN-STRING-BYTEAT]
+#### `byteAt(s: string, i: int) -> Result<int, string>` — [BUILTIN-STRING-BYTEAT]
 Returns the UTF-8 byte at index `i` as an `int` in `[0, 255]`, or `Error` if
 `i < 0` or `i >= byteLength(s)`. Does **not** allocate.
 
-#### `codePointAt(s: string, byteIndex: int) -> Result<int, Error>` — [BUILTIN-STRING-CODEPOINTAT]
+#### `codePointAt(s: string, byteIndex: int) -> Result<int, string>` — [BUILTIN-STRING-CODEPOINTAT]
 Decodes the UTF-8 codepoint starting at `byteIndex` and returns it as an `int`.
 Returns `Error` if the index is out of range, does not land on a codepoint
 boundary, or begins a truncated, overlong, surrogate, out-of-range, or otherwise
@@ -694,18 +694,18 @@ nextChar (s, i) =
         Error message => Error(message = message)
 ```
 
-#### `codePointWidth(codepoint: int) -> Result<int, Error>` — [BUILTIN-STRING-CODEPOINTWIDTH]
+#### `codePointWidth(codepoint: int) -> Result<int, string>` — [BUILTIN-STRING-CODEPOINTWIDTH]
 Returns the number of UTF-8 bytes the codepoint encodes to (1–4), or `Error`
 if `codepoint` is not a valid Unicode scalar value.
 
-#### `fromCodePoint(codepoint: int) -> Result<string, Error>` — [BUILTIN-STRING-FROMCODEPOINT]
+#### `fromCodePoint(codepoint: int) -> Result<string, string>` — [BUILTIN-STRING-FROMCODEPOINT]
 Builds a single-codepoint `string`. Inverse of `codePointAt`. Returns `Error`
 for surrogates, values outside `0..0x10FFFF`, and U+0000, which the
 NUL-terminated string ABI cannot represent.
 
 ### Substrings — [BUILTIN-STRING-SUBSTRINGS]
 
-#### `substring(s: string, start: int, end: int) -> Result<string, Error>` — [BUILTIN-STRING-SUBSTRING]
+#### `substring(s: string, start: int, end: int) -> Result<string, string>` — [BUILTIN-STRING-SUBSTRING]
 Extracts bytes in `[start, end)`. Returns `Error` if
 `start < 0`, `end > length(s)`, or `start > end`. This is the byte-level
 operation a decoder walks with, so a bound inside a UTF-8 character yields part of
@@ -722,7 +722,7 @@ same character rule as `take`: `take(s, n) + drop(s, n)` is always `s`.
 
 ### Splitting and Joining — [BUILTIN-STRING-LIST]
 
-#### `split(s: string, separator: string) -> Result<List<string>, Error>` — [BUILTIN-STRING-SPLIT]
+#### `split(s: string, separator: string) -> Result<List<string>, string>` — [BUILTIN-STRING-SPLIT]
 Splits `s` on every occurrence of `separator`. Returns `Error` with
 `"split: separator must not be empty"` if `separator` is empty.
 
@@ -759,30 +759,30 @@ ASCII case conversion. Other bytes are copied unchanged.
 #### `trimEnd(s: string) -> string` — [BUILTIN-STRING-TRIMEND]
 Remove leading, trailing, or both runs of ASCII whitespace.
 
-#### `replace(s: string, needle: string, replacement: string) -> Result<string, Error>` — [BUILTIN-STRING-REPLACE]
+#### `replace(s: string, needle: string, replacement: string) -> Result<string, string>` — [BUILTIN-STRING-REPLACE]
 Replaces every occurrence of `needle` with `replacement`. Returns `Error` if
 `needle` is empty.
 
-#### `repeat(s: string, n: int) -> Result<string, Error>` — [BUILTIN-STRING-REPEAT]
+#### `repeat(s: string, n: int) -> Result<string, string>` — [BUILTIN-STRING-REPEAT]
 Concatenates `s` with itself `n` times. Returns `Error` if `n < 0`.
 `repeat(s, 0) == ""`.
 
 #### `reverse(s: string) -> string` — [BUILTIN-STRING-REVERSE]
 Reverses byte order.
 
-#### `padStart(s: string, targetLength: int, fill: string) -> Result<string, Error>` — [BUILTIN-STRING-PADSTART]
-#### `padEnd(s: string, targetLength: int, fill: string) -> Result<string, Error>` — [BUILTIN-STRING-PADEND]
+#### `padStart(s: string, targetLength: int, fill: string) -> Result<string, string>` — [BUILTIN-STRING-PADSTART]
+#### `padEnd(s: string, targetLength: int, fill: string) -> Result<string, string>` — [BUILTIN-STRING-PADEND]
 Pads `s` on the left or right with repeated bytes from `fill` until it reaches
 `targetLength` bytes. Returns `s` unchanged if already long enough and `Error`
 if `fill` is empty.
 
 ### Parsing — [BUILTIN-STRING-PARSING]
 
-#### `parseInt(s: string) -> Result<int, Error>` — [BUILTIN-STRING-PARSEINT]
+#### `parseInt(s: string) -> Result<int, string>` — [BUILTIN-STRING-PARSEINT]
 Parses a base-10 signed integer. Leading/trailing whitespace is rejected;
 callers must `trim` first. Returns `Error` on invalid or out-of-range input.
 
-#### `parseFloat(s: string) -> Result<float, Error>` — [BUILTIN-STRING-PARSEFLOAT]
+#### `parseFloat(s: string) -> Result<float, string>` — [BUILTIN-STRING-PARSEFLOAT]
 Parses a finite base-10 number with an optional sign, decimal point, and
 decimal exponent. At least one digit is required; surrounding whitespace,
 NaN, infinity, hexadecimal floats, malformed exponents, and non-finite results
@@ -802,20 +802,20 @@ greeting = "Hello, " + name + "!"
 
 ## File System Functions — [BUILTIN-FILE]
 
-### `writeFile(path: string, content: string) -> Result<int, Error>`
+### `writeFile(path: string, content: string) -> Result<int, string>`
 Writes or replaces a file and returns the number of bytes written. `Success`
 means every byte reached the file: a partial write and a failed flush are both
 `Error`. Buffering means the bytes leave for the file when it is closed, so a
 full disk or a hung-up pipe is discovered there rather than at the write, and
 either one is reported.
 
-### `readFile(path: string) -> Result<string, Error>`
+### `readFile(path: string) -> Result<string, string>`
 Reads a complete stream. The length is whatever the stream produced, not what
 seeking to the end claimed it would be — a FIFO, socket or character device
 cannot be seeked and reports its size as `-1`, so a seek-derived length reads
 those sources as empty and truncates or overruns their contents.
 
-### `readFileBytes(path: string, offset: int, count: int) -> Result<List<int>, Error>` — [BUILTIN-FILE-BYTES]
+### `readFileBytes(path: string, offset: int, count: int) -> Result<List<int>, string>` — [BUILTIN-FILE-BYTES]
 
 Reads at most `count` bytes of the file at `path`, starting at byte `offset`, as a list of integers from 0 to 255. It reads binary, so NUL is an ordinary byte; `readFile` returns text and a string ends at its first NUL. The list is shorter than `count` only because the file ended, and an `offset` at or past the end is an empty list. A negative `offset` or `count`, a file that can't be opened and a failed read are each an `Error` naming the reason; none of them yields a shorter list. `--no-fs` refuses it.
 
@@ -826,7 +826,7 @@ match readFileBytes("model.gguf", 0, 4) {
 }
 ```
 
-### `fileSize(path: string) -> Result<int, Error>` — [BUILTIN-FILE-SIZE]
+### `fileSize(path: string) -> Result<int, string>` — [BUILTIN-FILE-SIZE]
 
 The byte length of the regular file at `path`, as `stat` reports it, so a reader of a large binary file (a GGUF header, a tensor table) knows where the file ends before its first `readFileBytes`. A path that cannot be stated is an `Error` naming the system's reason; a path that is not a regular file (a directory, FIFO, socket or device, whose length `stat` cannot vouch for) is `fileSize: <path>: not a regular file`. It never returns a guessed or negative length. `--no-fs` refuses it.
 
@@ -837,7 +837,7 @@ match fileSize("model.gguf") {
 }
 ```
 
-### `listDir(path: string) -> Result<List<string>, Error>` — [BUILTIN-FILE-LISTDIR]
+### `listDir(path: string) -> Result<List<string>, string>` — [BUILTIN-FILE-LISTDIR]
 
 The entries of one directory, as full child paths built by the runtime's single path joiner (`osp_path_child`). Exactly one separator ever joins the parts, so `listDir("a/")` yields `a/x`, never `a//x`. A directory entry carries one trailing `/`, so a walker recurses without stating every entry. A symbolic link is never marked as a directory, so following the marks cannot loop. `.` and `..` never appear, and the order is the filesystem's: sort it when the order matters. Any failure (a missing path, a file, a read error mid-listing, a path too long) is an `Error` naming the reason. It is never a partial list. `--no-fs` refuses it, and wasm32 rejects it at compile time.
 
@@ -848,15 +848,15 @@ match listDir("src") {
 }
 ```
 
-### `kindOf(path: string) -> Result<string, Error>` — [BUILTIN-FILE-KIND]
+### `kindOf(path: string) -> Result<string, string>` — [BUILTIN-FILE-KIND]
 
 `"dir"`, `"file"` or `"other"` for one path, as `stat` reports it. A path that cannot be stated is an `Error` naming the reason, never a guessed kind. `--no-fs` refuses it, and wasm32 rejects it at compile time.
 
-### `makeDir(path: string) -> Result<int, Error>` — [BUILTIN-FILE-MAKEDIR]
+### `makeDir(path: string) -> Result<int, string>` — [BUILTIN-FILE-MAKEDIR]
 
 Creates one directory. It is idempotent: an existing directory is `Success 0`. A file in the way, a missing parent or a refused permission is an `Error` naming the reason. `--no-fs` refuses it, and wasm32 rejects it at compile time.
 
-### `loadTensor(path: string, name: string) -> Result<List<float>, Error>` — [BUILTIN-FILE-TENSOR]
+### `loadTensor(path: string, name: string) -> Result<List<float>, string>` — [BUILTIN-FILE-TENSOR]
 
 Reads the tensor `name` out of the safetensors file at `path` as a host list. Every `F64`, `F32`, `F16` or `BF16` element widens exactly to the `float` it holds, in file order. A missing name, an unsupported dtype, malformed `data_offsets`, and a file that ends before the tensor does are each an `Error` naming the reason; none of them yields a shorter list. The reader is the one `gpuLoadTensor` uses ([GPU-BUFFER-TENSOR](0034-GPUComputation.md)), so the two loaders accept and refuse the same files, but `loadTensor` builds no `GpuBuffer` and calls nothing on the GPU surface. A program that loads its weights this way and never names a GPU built-in links no GPU code. Like `gpuLoadTensor`, it may answer an operation of a static handler; `--no-fs` refuses it.
 
@@ -889,7 +889,7 @@ runtime operation that reports no reason falls back to a fixed description.
 
 ## Process Operations — [BUILTIN-PROCESS]
 
-### `spawnProcess(command: string, callback: fn(int, int, string) -> Unit) -> Result<int, Error>`
+### `spawnProcess(command: string, callback: fn(int, int, string) -> Unit) -> Result<int, string>`
 Starts a process and returns its handle. The callback receives the handle,
 event kind (`1` stdout, `2` stderr, `3` exit), and event text.
 
@@ -931,10 +931,10 @@ returns `-1`.
 ## JSON Document Functions — [BUILTIN-JSON]
 
 ```osprey
-jsonParse(text: string) -> Result<int, Error>
-jsonGet(document: int, path: string) -> Result<string, Error>
+jsonParse(text: string) -> Result<int, string>
+jsonGet(document: int, path: string) -> Result<string, string>
 jsonLength(document: int, path: string) -> int
-jsonFree(document: int) -> Result<int, Error>
+jsonFree(document: int) -> Result<int, string>
 ```
 
 `jsonParse` returns a positive opaque document handle. Paths use dotted object
@@ -1012,15 +1012,15 @@ type Json = JsonNull | JsonBool(bool) | JsonInt(int) | JsonFloat(float)
           | JsonString(string) | JsonArray(List<Json>) | JsonObject(List<JsonMember>)
 type JsonMember = JsonMember(string, Json)
 
-jsonEncode(json: Json) -> Result<string, Error>
-jsonDecode(text: string) -> Result<Json, Error>
-jsonQuote(text: string) -> Result<string, Error>
-jsonField(value: Json, name: string) -> Result<Json, Error>
-jsonIndex(value: Json, index: int) -> Result<Json, Error>
-jsonText(value: Json) -> Result<string, Error>
-jsonInt(value: Json) -> Result<int, Error>
-jsonFloat(value: Json) -> Result<float, Error>
-jsonBool(value: Json) -> Result<bool, Error>
+jsonEncode(json: Json) -> Result<string, string>
+jsonDecode(text: string) -> Result<Json, string>
+jsonQuote(text: string) -> Result<string, string>
+jsonField(value: Json, name: string) -> Result<Json, string>
+jsonIndex(value: Json, index: int) -> Result<Json, string>
+jsonText(value: Json) -> Result<string, string>
+jsonInt(value: Json) -> Result<int, string>
+jsonFloat(value: Json) -> Result<float, string>
+jsonBool(value: Json) -> Result<bool, string>
 ```
 
 `Json` is an ordinary union with positional payloads, so a program builds a
@@ -1074,7 +1074,7 @@ reported at its object's opening brace. A text that is absent entirely reports
 ## Terminal Functions — [BUILTIN-TERM]
 
 ```osprey
-termReadKey() -> Result<string, Error>
+termReadKey() -> Result<string, string>
 termRawMode(enabled: int) -> Unit
 termCols() -> int
 termRows() -> int
@@ -1115,7 +1115,7 @@ list, or map behavior for both common functions.
 [`toList`](../language/0010-LoopConstructsAndFunctionalIterators.md#tolistiterator-iteratort---listt--builtin-iter-tolist)
 collects an iterator pipeline into one ([BUILTIN-ITER-TOLIST]).
 
-#### `listGet(list: List<T>, index: int) -> Result<T, Error>` — [BUILTIN-LIST-GET]
+#### `listGet(list: List<T>, index: int) -> Result<T, string>` — [BUILTIN-LIST-GET]
 Equivalent to `list[index]`. An out-of-range index returns `Error`. A string list bound to a name — the result of `lines`, `words` or `split` — is settled into the runtime representation once, at the binding, so every `listGet` on the bound name is a constant-time read and never a copy of the list.
 
 #### `listPrepend(list: List<T>, value: T) -> List<T>` — [BUILTIN-LIST-PREPEND]
@@ -1169,7 +1169,7 @@ listSortBy(evidence, fn(x, y) => order(x.title, y.title))
 `Map()` and map literals create string-keyed maps. Map iteration order is
 unspecified.
 
-#### `mapGet(map: Map<string, V>, key: string) -> Result<V, Error>` — [BUILTIN-MAP-GET]
+#### `mapGet(map: Map<string, V>, key: string) -> Result<V, string>` — [BUILTIN-MAP-GET]
 Equivalent to `map[key]`. A missing key returns `Error`.
 
 #### `mapContains(map: Map<string, V>, key: string) -> bool` — [BUILTIN-MAP-CONTAINS]

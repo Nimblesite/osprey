@@ -5,7 +5,7 @@ title: "Process handle (int)"
 description: "An integer process ID returned by spawnProcess, used to wait for completion and release runtime resources."
 ---
 
-`spawnProcess` returns `Result<int, Error>`: the success value is the process ID used by `awaitProcess` and `cleanupProcess`. There is no separate built-in `ProcessHandle` type. The required callback receives `(processID, eventType, data)`; event types are stdout (1), stderr (2) and exit (3).
+`spawnProcess` returns `Result<int, string>`: the success value is the process ID used by `awaitProcess` and `cleanupProcess`. There is no separate built-in `ProcessHandle` type. The required callback receives `(processID, eventType, data)`; event types are stdout (1), stderr (2) and exit (3).
 
 ## Example
 

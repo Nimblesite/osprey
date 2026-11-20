@@ -40,7 +40,7 @@ The ML flavor spells the same program with layout and currying:
 ## A missing handler is a compile error
 
 ```osprey
-effect Drafts { save: fn(string, string) -> Result<int, Error> }
+effect Drafts { save: fn(string, string) -> Result<int, string> }
 fn saveDraft() = perform Drafts.save("draft.txt", "Ship it.")
 print(saveDraft())
 ```
@@ -126,7 +126,7 @@ Osprey used to infer the mode by searching an arm for `resume`, so a `resume` in
 ## `return` transforms the answer
 
 ```osprey
-effect Drafts { save: fn(string, string) -> Result<int, Error> }
+effect Drafts { save: fn(string, string) -> Result<int, string> }
 fn saveDraft() = match perform Drafts.save("draft.txt", "Ship it.") {
     Success _ => "Saved"
     Error { message } => "Retry: ${message}"

@@ -264,7 +264,7 @@ is [FLAVOR-ML-GENERICS](0024-MLFlavorSyntax.md#generics-flavor-ml-generics).
 ## Indexing
 
 Postfix indexing is available on lists, maps, and strings. It returns
-`Result<T, Error>` (or `Result<string, Error>` for a string), so callers can
+`Result<T, string>` (or `Result<string, string>` for a string), so callers can
 handle an invalid index or absent key.
 
 ```osprey

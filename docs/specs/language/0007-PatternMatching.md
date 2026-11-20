@@ -189,7 +189,7 @@ match calculation {
 }
 ```
 
-The error type of fallible built-ins is `Error`. Arithmetic operators produce no `Result` and are matched no differently from any other total expression ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
+Arithmetic operators produce no `Result` and are matched no differently from any other total expression ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 ### Non-Result Scrutinees Auto-Wrap — [PATTERN-RESULT-AUTOWRAP]
 

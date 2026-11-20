@@ -19,7 +19,7 @@ type Result<T, E> = Success { value: T } | Error { message: E }
 5. **Neither is unwrapped implicitly.** A `Result<T, E>` never becomes a `T`; callers `match` it or supply a fallback with `?:`. [Result Preservation](0004-TypeSystem.md#result-preservation) lists where this applies, and [Result Default](0007-PatternMatching.md#result-default---pattern-result-default) defines `?:`.
 6. **Neither is dropped.** See [ERROR-RESULT-DISCARD](#discarding-a-result--error-result-discard) for statements and [TYPE-RECORD-RESULT](0004-TypeSystem.md#result-fields--type-record-result) for fields.
 
-Fallible builtins return `Result<T, Error>`; [`Error`](0004-TypeSystem.md#built-in-error-types) is their `E`.
+There is no built-in error type. A fallible function, built-in or user-written, states the `E` its failure needs: `string` when the failure is only a message, a record such as `IndexOutOfBounds { index: int, length: int }` when it carries several values, a union when it has several cases. Every fallible built-in's `E` is `string`.
 
 ```osprey
 type ParseError = { code: int, why: string }
@@ -84,14 +84,14 @@ An operation whose mathematical result is unrepresentable — integer overflow, 
 | `/` | `float` | `float` | `float` |
 | `%` | `int` | `float` | `float` (int promoted) |
 
-`/` always yields `float`. Unary integer `-` has type `int -> int`; unary float `-` has type `float -> float`. Floating-point `+`, `-`, `*`, and unary `-` are plain IEEE-754 operations; infinity, NaN, signed zero and gradual underflow follow [FLOAT-IEEE-RESULTS](0037-ArithmeticEffects.md#floating-point-results--float-ieee-results). Float `/` and `%` request `Arith.divideByZero` for either signed zero divisor, even with a NaN numerator. Integer `-9223372036854775808 % -1` yields `0`; the representable remainder is produced without executing LLVM's faulting `srem` case. The builtins `checkedAdd`, `checkedSub`, and `checkedMul` return `Result<int, Error>` and are the explicit value-level spelling for code that wants overflow as data.
+`/` always yields `float`. Unary integer `-` has type `int -> int`; unary float `-` has type `float -> float`. Floating-point `+`, `-`, `*`, and unary `-` are plain IEEE-754 operations; infinity, NaN, signed zero and gradual underflow follow [FLOAT-IEEE-RESULTS](0037-ArithmeticEffects.md#floating-point-results--float-ieee-results). Float `/` and `%` request `Arith.divideByZero` for either signed zero divisor, even with a NaN numerator. Integer `-9223372036854775808 % -1` yields `0`; the representable remainder is produced without executing LLVM's faulting `srem` case. The builtins `checkedAdd`, `checkedSub`, and `checkedMul` return `Result<int, string>` and are the explicit value-level spelling for code that wants overflow as data.
 
 ```osprey
 let sum       = 1 + 3      // int
 let quotient  = 10 / 3     // float
 let remainder = 10 % 3     // int
 let mixed     = 10 + 5.5   // float
-let checked   = checkedAdd(a: 1, b: 3)   // Result<int, Error>
+let checked   = checkedAdd(a: 1, b: 3)   // Result<int, string>
 ```
 
 ```osprey-ml
@@ -99,7 +99,7 @@ sum       = 1 + 3      // int
 quotient  = 10 / 3     // float
 remainder = 10 % 3     // int
 mixed     = 10 + 5.5   // float
-checked   = checkedAdd (1, 3)   // Result<int, Error>
+checked   = checkedAdd (1, 3)   // Result<int, string>
 ```
 
 ### Negated Literals — [ARITH-NEG-LITERAL]

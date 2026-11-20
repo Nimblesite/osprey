@@ -8,12 +8,12 @@ Make `Result<T, E>` hold its error at type `E`, end to end, as [ERR-RESULT](../s
 - [ERR-PAYLOAD]: `Error { message }` binds the producer's value at type `E` on GC, ARC and wasm32.
 - [ERR-RESULT-FORMAT]: `Error(<payload>)` renders the payload at its own type.
 - [TESTING-BUILTIN-EXPECT], [TESTING-BUILTIN-CHECK], [TESTING-BUILTIN-EXPECT-ERROR], [TESTING-EQUALITY]: assertion operands share one inferred type; `expectError` takes the Result's own `E`.
-- The built-in `Error` is a type of its own filling the `E` slot of fallible builtins. It is never `string`.
+- There is no built-in `Error` type; `Error` is only the `Result` constructor. Each fallible built-in states its own `E`, which is `string` for all of them today.
 
 ## Specs
 
 - [x] 0013-ErrorHandling: `Result<T, E>` is the pillar; six rules; formatting
-- [x] 0004-TypeSystem: remove the "phantom error channel"; holes; `Error` type; block shape
+- [x] 0004-TypeSystem: remove the "phantom error channel"; holes; no `Error` type; block shape
 - [x] 0007-PatternMatching: `Error` binder is the payload at `E`
 - [x] 0027-TestingFramework: generic `expect`, `check`, `expectError`; one-type equality
 
@@ -22,7 +22,8 @@ Make `Result<T, E>` hold its error at type `E`, end to end, as [ERR-RESULT](../s
 - [x] `Error { message: E }` constructor field is `E`, not `string`
 - [x] `Error { message }` pattern binds `E`
 - [x] `expectError : Result<T, E>, E`; `expect : T, T`; `check : string, T, T`
-- [x] A `Result` is printable when both sides are; `Error` is printable
+- [x] A `Result` is printable when both sides are
+- [ ] `Error` is not a type: built-ins return `Result<T, string>`; `Error` in a type position is rejected
 - [ ] Rejections in `src/osprey/examples/failscompilation/`: wrong `E` returned, wrong `expectError` payload type, `expect(5, "5")`
 
 ## Backend (`osprey-codegen`)
@@ -36,6 +37,6 @@ Make `Result<T, E>` hold its error at type `E`, end to end, as [ERR-RESULT](../s
 ## Tests
 
 - [ ] Corpus regression mixing record, union, int, bool, float, string and nested-`Result` errors through `match`, `?:`, `toString`, records and closures, under GC, ARC and wasm32
-- [ ] Corpus programs that annotated `Result<_, Error>` over a `string` payload state their real `E`
+- [ ] Corpus programs that annotated `Result<_, string>` over a `string` payload state their real `E`
 - [ ] Corpus assertions that compared values of different types compare one type
 - [ ] `make ci` green
