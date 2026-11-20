@@ -92,6 +92,12 @@ Measured attribution (self plus runtime time, of 15,300 samples): `RenderInputs:
 
 Tried and rejected: replacing `listGet (filterList …) 0` with a `foldList` search doubled the time (42.3 s to 88.7 s, identical audio). A closure call per element costs more than the built-in filter, so the lookups must leave the sample loop, not be rewritten inside it.
 
+Also tried and rejected: narrowing the snapshot to one component's parameters before its lookups left the time unchanged (42.25 s). The lists are already short; the cost is the fixed price of each lookup, allocation and state copy, paid once per component per sample.
+
+**Decision: render in blocks ([SYNTH-RENDER-BLOCK]).** Each component renders a whole block (64 samples by default) from its input blocks in one call. Parameters, inputs and state are resolved once per block, and state is written back once per block, so the fixed price is divided by the block size and the arithmetic is what remains. A feedback cable delays by one block, or its cycle runs at a block of one sample when the patch asks for sample-exact feedback. Automation splits a block at its event. The audio of a patch without feedback must stay bit-identical to the reference renderer, which stays as the oracle in tests.
+
+- [ ] Block kernels for oscillator, filter, gain, mixer and output, checked bit-identical against the reference (synth-advanced).
+- [ ] The remaining kernels, then the daw player renders through blocks (synth-advanced, OspreyOpus1).
 - [ ] States folded in schedule order; before and after times reported (synth-advanced).
 - [ ] Ring delay lines; before and after times reported (synth-advanced).
 - [ ] Parameters and inputs resolved once per block; before and after times reported (OspreyOpus1).
