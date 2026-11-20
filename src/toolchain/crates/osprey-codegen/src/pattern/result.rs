@@ -1,5 +1,5 @@
 //! Result pattern lowering.
-use super::{bind_catch_all, bind_value, emit_arm, finish_phi, match_mark};
+use super::{bind_catch_all, bind_value, emit_arm, finish_phi, match_mark, nested};
 use crate::builder::Codegen;
 use crate::error::Result;
 use crate::llty::{LType, Value};
@@ -25,9 +25,6 @@ fn result_variant(pattern: &Pattern) -> Option<&str> {
 /// the loaded payload; a bare scalar discriminant falls back to `disc >= 0`
 /// (always Success), preserving the scalar's own type for the binding.
 pub(super) fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Value> {
-    let success = result_arm(arms, "Success");
-    let error = result_arm(arms, "Error");
-
     // (cond, success-binding, error-binding) by Result shape.
     let (cond, succ_val, err_val) = if disc.result_inner.is_some() {
         let d = crate::result::load_disc(cg, disc);
@@ -71,8 +68,18 @@ pub(super) fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]
     };
 
     let (sl, el, end, mark, mut phi_in) = split_state(cg, &cond);
-    emit_result_arm(cg, &sl, success, succ_val, disc, &mut phi_in)?;
-    emit_result_arm(cg, &el, error, err_val, disc, &mut phi_in)?;
+    let success = Side {
+        label: &sl,
+        variant: "Success",
+        bound: succ_val,
+    };
+    emit_result_side(cg, arms, success, disc, &mut phi_in)?;
+    let error = Side {
+        label: &el,
+        variant: "Error",
+        bound: err_val,
+    };
+    emit_result_side(cg, arms, error, disc, &mut phi_in)?;
 
     finish_phi(cg, &phi_in, &end, mark)
 }
@@ -98,10 +105,64 @@ fn split_state(
 }
 
 /// Select the first matching variant or catch-all, preserving source order.
-fn result_arm<'a>(arms: &'a [MatchArm], variant: &str) -> Option<&'a MatchArm> {
-    arms.iter().find(|arm| match result_variant(&arm.pattern) {
-        Some(name) => name == variant,
-        None => matches!(arm.pattern, Pattern::Wildcard | Pattern::Binding(_)),
+fn result_arm<'a>(arms: &'a [MatchArm], variant: &'a str) -> Option<&'a MatchArm> {
+    side_arms(arms, variant).next()
+}
+
+/// Every arm that may take one side of a Result, in source order.
+fn side_arms<'a>(arms: &'a [MatchArm], variant: &'a str) -> impl Iterator<Item = &'a MatchArm> {
+    arms.iter()
+        .filter(move |arm| match result_variant(&arm.pattern) {
+            Some(name) => name == variant,
+            None => matches!(arm.pattern, Pattern::Wildcard | Pattern::Binding(_)),
+        })
+}
+
+/// The payload pattern of a `Success`/`Error` arm that tests its payload
+/// ([PATTERN-NESTED]); `None` when the arm takes every payload.
+fn refutable_payload(arm: &MatchArm) -> Option<&Pattern> {
+    match &arm.pattern {
+        Pattern::Constructor { sub_patterns, .. } => {
+            sub_patterns.first().filter(|slot| !slot.is_irrefutable())
+        }
+        _ => None,
+    }
+}
+
+/// One side of a Result split: its block, variant and bound payload.
+struct Side<'a> {
+    label: &'a str,
+    variant: &'a str,
+    bound: Value,
+}
+
+/// The arms of one side, tried in order: an arm that tests its payload falls
+/// through to the next when the test fails; the first that takes every
+/// payload ends the chain ([PATTERN-NESTED]).
+fn emit_result_side(
+    cg: &mut Codegen,
+    arms: &[MatchArm],
+    side: Side<'_>,
+    disc: &Value,
+    phi_in: &mut Vec<(Value, String)>,
+) -> Result<()> {
+    cg.start_block(side.label);
+    for arm in side_arms(arms, side.variant) {
+        match refutable_payload(arm) {
+            Some(slot) => nested::refutable_slot(cg, arm, &side.bound, slot, phi_in)?,
+            None => return emit_result_body(cg, Some(arm), side.bound, Some(disc), phi_in),
+        }
+    }
+    cg.emit("unreachable");
+    Ok(())
+}
+
+/// Whether a Result match can fuse with its `listGet` scrutinee: every arm
+/// is a Result arm or `_`, and none tests its payload.
+fn fusible(arms: &[MatchArm]) -> bool {
+    arms.iter().all(|arm| {
+        (is_result_arm(&arm.pattern) || matches!(arm.pattern, Pattern::Wildcard))
+            && refutable_payload(arm).is_none()
     })
 }
 
@@ -141,10 +202,7 @@ pub(super) fn gen_list_get_match(
         && arguments.len() == 2
         && cg.lookup("listGet").is_none()
         && cg.lambda_def("listGet").is_none();
-    let fusible = arms
-        .iter()
-        .all(|arm| is_result_arm(&arm.pattern) || matches!(arm.pattern, Pattern::Wildcard));
-    if !builtin || !fusible {
+    if !builtin || !fusible(arms) {
         return Ok(None);
     }
     within(cg, callee, &applications, &mut |cg| {
@@ -191,21 +249,6 @@ fn fused_list_get(cg: &mut Codegen, arguments: &[Expr], arms: &[MatchArm]) -> Re
     };
     emit_result_body(cg, error, reason, None, &mut phi_in)?;
     finish_phi(cg, &phi_in, &end, mark)
-}
-
-/// Bind a variant's payload or a catch-all's complete discriminant and emit
-/// its value. A missing arm is unreachable for a checked exhaustive Result;
-/// it cannot contribute an empty predecessor to the result phi.
-fn emit_result_arm(
-    cg: &mut Codegen,
-    label: &str,
-    arm: Option<&MatchArm>,
-    bound: Value,
-    disc: &Value,
-    phi_in: &mut Vec<(Value, String)>,
-) -> Result<()> {
-    cg.start_block(label);
-    emit_result_body(cg, arm, bound, Some(disc), phi_in)
 }
 
 /// The arm's bindings and body in the current block. A catch-all binds the

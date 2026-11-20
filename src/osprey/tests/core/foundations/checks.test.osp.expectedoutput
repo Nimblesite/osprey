@@ -4,7 +4,8 @@ ok 3 - strings and lists mix with matching
 ok 4 - assertions compare canonical renderings
 ok 5 - expectError asserts a failed Result in one line
 ok 6 - an error payload keeps its type
-ok 7 - first case declared from a helper
-ok 8 - second case declared from a helper
-1..8
-# tests=8 passed=8 failed=0 skipped=0
+ok 7 - nested patterns match every slot at its own type
+ok 8 - first case declared from a helper
+ok 9 - second case declared from a helper
+1..9
+# tests=9 passed=9 failed=0 skipped=0

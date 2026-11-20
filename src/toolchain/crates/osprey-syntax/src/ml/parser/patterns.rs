@@ -59,7 +59,7 @@ impl Parser<'_> {
     /// `( p )` groups a single pattern and is erased at parse time
     /// ([FLAVOR-ML-PATTERN-GROUP]); it is what lets a clause head write
     /// `check (Node l r)`. A comma list `(a, b)` is a tuple pattern, each slot
-    /// a binder or `_` ([FLAVOR-ML-TUPLE], [PATTERN-TUPLE]).
+    /// a pattern ([FLAVOR-ML-TUPLE], [PATTERN-TUPLE], [PATTERN-NESTED]).
     pub(in crate::ml) fn group_pattern(&mut self) -> MlPattern {
         self.advance(); // `(`
         let mut elements = vec![self.pattern()];
@@ -73,11 +73,6 @@ impl Parser<'_> {
             Some(only) if elements.is_empty() => only,
             Some(last) => {
                 elements.push(last);
-                for slot in &elements {
-                    if !matches!(slot, MlPattern::Bind(_) | MlPattern::Wildcard) {
-                        self.error("a tuple pattern slot binds a name or `_`");
-                    }
-                }
                 MlPattern::Tuple(elements)
             }
             None => MlPattern::Wildcard,
@@ -101,10 +96,14 @@ impl Parser<'_> {
                 TokKind::Ident(name) => {
                     let pos = self.pos();
                     self.advance();
-                    fields.push(MlBinder {
-                        name,
-                        pos: Some(pos),
-                    });
+                    let pattern = self.eat(&TokKind::Eq).then(|| self.pattern());
+                    fields.push((
+                        MlBinder {
+                            name,
+                            pos: Some(pos),
+                        },
+                        pattern,
+                    ));
                 }
                 _ => break,
             }
@@ -251,18 +250,82 @@ impl Parser<'_> {
             return MlPattern::Wildcard;
         }
         if is_constructor(&name) {
-            let fields = self.binder_run();
-            if matches!(self.peek(), TokKind::LParen) {
-                self.error(
-                    "nested constructor patterns are not supported; \
-                     bind the payload and match it in a second expression",
-                );
+            if self.at_labelled_slots() {
+                return MlPattern::Labelled {
+                    name,
+                    slots: self.labelled_slots(),
+                };
             }
-            return MlPattern::Ctor { name, fields };
+            return MlPattern::Ctor {
+                name,
+                slots: self.slot_run(),
+            };
         }
         MlPattern::Bind(MlBinder {
             name,
             pos: Some(pos),
         })
+    }
+
+    /// Whether `( field =` opens a labelled constructor pattern.
+    fn at_labelled_slots(&self) -> bool {
+        matches!(self.peek(), TokKind::LParen)
+            && matches!(self.peek_at(1), TokKind::Ident(_))
+            && matches!(self.peek_at(2), TokKind::Eq)
+    }
+
+    /// `( field = p, … )` after a constructor ([PATTERN-NESTED]).
+    fn labelled_slots(&mut self) -> Vec<(String, MlPattern)> {
+        self.advance(); // `(`
+        let mut slots = Vec::new();
+        while let TokKind::Ident(field) = self.peek().clone() {
+            self.advance();
+            if !self.eat(&TokKind::Eq) {
+                self.error("a labelled constructor pattern writes `field = pattern`");
+            }
+            slots.push((field, self.pattern()));
+            if !self.eat(&TokKind::Comma) {
+                break;
+            }
+        }
+        if !self.eat(&TokKind::RParen) {
+            self.error("expected ')'");
+        }
+        slots
+    }
+
+    /// A constructor's positional slots: binders, `_`, payload-free variants,
+    /// literals, and parenthesised, list or row patterns ([PATTERN-NESTED]).
+    fn slot_run(&mut self) -> Vec<MlPattern> {
+        let mut slots = Vec::new();
+        loop {
+            let slot = match self.peek().clone() {
+                TokKind::Ident(name) => {
+                    let pos = self.pos();
+                    self.advance();
+                    match name.as_str() {
+                        "_" => MlPattern::Wildcard,
+                        _ if is_constructor(&name) => MlPattern::Ctor {
+                            name,
+                            slots: Vec::new(),
+                        },
+                        _ => MlPattern::Bind(MlBinder {
+                            name,
+                            pos: Some(pos),
+                        }),
+                    }
+                }
+                TokKind::Int(_)
+                | TokKind::Float(_)
+                | TokKind::Str(_)
+                | TokKind::KwTrue
+                | TokKind::KwFalse
+                | TokKind::LParen
+                | TokKind::LBracket
+                | TokKind::LBrace => self.pattern_atom(),
+                _ => return slots,
+            };
+            slots.push(slot);
+        }
     }
 }

@@ -42,9 +42,11 @@ impl Resolver<'_> {
                 self.rewrite_type(ty, context, locals);
                 let _ = locals.values.insert(name.clone());
             }
-            Pattern::Structural { fields, .. } => locals
-                .values
-                .extend(fields.iter().map(|(_, binder)| binder.clone())),
+            Pattern::Structural { fields, .. } => {
+                for (_, slot) in fields {
+                    self.rewrite_pattern(slot, context, locals);
+                }
+            }
             Pattern::List { elements, rest } => {
                 for nested in elements {
                     self.rewrite_pattern(nested, context, locals);

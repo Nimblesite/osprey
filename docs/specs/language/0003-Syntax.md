@@ -167,9 +167,9 @@ fn size(tree) = match tree {
 
 Positional constructors require every slot and do not partially apply. Their
 slots have no source field names, so named arguments and field access cannot
-target them. Nested constructor patterns are specified by
-[PATTERN-NESTED](0007-PatternMatching.md#nested-patterns--pattern-nested) and not implemented yet; today each
-positional pattern slot is a binding or `_`.
+target them. Each pattern slot is itself a pattern, nested to any depth
+([PATTERN-NESTED](0007-PatternMatching.md#nested-patterns--pattern-nested)):
+`Node(Node(left, _), Leaf)`.
 
 ## Records
 

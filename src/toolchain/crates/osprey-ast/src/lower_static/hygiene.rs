@@ -218,8 +218,8 @@ impl Resolver {
                 }
             }
             Pattern::Structural { fields, .. } => {
-                for (_, binder) in fields.iter_mut().filter(|(_, name)| !name.is_empty()) {
-                    self.bind(binder, scope);
+                for (_, slot) in fields.iter_mut() {
+                    self.pattern(slot, scope);
                 }
             }
             Pattern::List { elements, rest } => {

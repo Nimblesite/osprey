@@ -186,11 +186,58 @@ typedErrorCase () =
     expect "${readAt ([10, 20, 30], 1)} ${readAt ([10, 20, 30], 3)} ${readAt ((listAppend (List ()) 5), 9)} ${[1, 2][4] ?: -1}" "got 20 3 of 3 9 of 1 -1"
     expect "${["a\"b", "c\\d", "e\nf\tg"]} ${ParseError(code = 3, why = "say \"hi\"")} ${[["\\"]]} ${toString "a\"b"}" "[\"a\\\"b\", \"c\\\\d\", \"e\\nf\\tg\"] { code: 3, why: \"say \\\"hi\\\"\" } [[\"\\\\\"]] a\"b"
 
+(** A binary tree, taken apart several levels deep in one arm. [PATTERN-NESTED] *)
+type Tree = Leaf | Node Tree Tree
+
+leftDepth tree = match tree
+    Node (Node inner _) _ => satAdd 2 (leftDepth inner)
+    Node Leaf _ => 1
+    Leaf => 0
+
+(** A payload is matched where it sits: a literal, a variant, a binding. *)
+explain result = match result
+    Success(value = 0) => "zero"
+    Success value => "got ${value}"
+    Error(message = Overflow by) => "over by ${by}"
+    Error(message = DivZero) => "divided by zero"
+
+(** A Result inside a Result, three levels down, every arm a different test. *)
+layered r = match r
+    Error(message = Error(message = -3)) => "inner -3"
+    Error(message = Error message) => "inner ${message}"
+    Error(message = Success value) => "inner ok ${value}"
+    Success(value = 7) => "seven"
+    Success value => "plain ${value}"
+
+(** List elements, variants and Results nest into each other. *)
+firstTwo results = match results
+    [Error(message = DivZero), Error(message = Overflow by)] => "div then over ${by}"
+    [Success(value = 1), ...rest] => "one then ${listLength rest}"
+    [Success value, _] => "ok ${value} then any"
+    _ => "other"
+
+wrap n = match n > 0
+    true => Error(message = code (satSub n 10))
+    false => Success(value = n)
+
+(** Patterns nest to any depth: each slot is tested as its own match would
+    test it, and the arm is taken only when the whole pattern matches.
+    [PATTERN-NESTED] *)
+nestedPatternCase () =
+    tree = Node (Node (Node Leaf Leaf) Leaf) Leaf
+    expect "${leftDepth Leaf} ${leftDepth (Node Leaf Leaf)} ${leftDepth (Node (Node Leaf Leaf) Leaf)} ${leftDepth tree}" "0 1 2 3"
+    expect "${explain (ratio 5)} ${explain (Success(value = 0))} ${explain (ratio 500)} ${explain (ratio 0)}" "got 5 zero over by 500 divided by zero"
+    expect "${layered (nested 12)} ${layered (wrap 3)} ${layered (wrap 14)} ${layered (wrap (-1))} ${layered (Success(value = 7))}" "inner -3 inner -7 inner ok 4 plain -1 seven"
+    expect (firstTwo [ratio 0, ratio 700]) "div then over 700"
+    expect "${firstTwo [ratio 1, ratio 2, ratio 3]} ${firstTwo [ratio 5, ratio 0]} ${firstTwo [ratio 0]}" "one then 2 ok 5 then any other"
+    forEachList [1, 2, 9] (\n => expect (explain (ratio (satMul n 100))) "over by ${satMul n 100}")
+
 (** A test call runs wherever it is evaluated, so a helper may declare cases. *)
 declareFrom label = test "${label} case declared from a helper" (\() => checkAll "${label} helper case" [label != "", length label > 0])
 
 test "assertions compare canonical renderings" equalityCase
 test "expectError asserts a failed Result in one line" expectErrorCase
 test "an error payload keeps its type" typedErrorCase
+test "nested patterns match every slot at its own type" nestedPatternCase
 declareFrom "first"
 declareFrom "second"

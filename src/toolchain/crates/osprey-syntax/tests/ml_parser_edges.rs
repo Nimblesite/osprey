@@ -2,7 +2,7 @@
 //! declaration forms that carry their own delimiter diagnostics (`extern`,
 //! `effect`, signatures, effect rows), the literal/postfix expression forms,
 //! and every pattern spelling plus the two shapes the flavor deliberately
-//! refuses (nested constructor patterns, clause heads on a lambda).
+//! refuses (malformed labelled constructor patterns, clause heads on a lambda).
 //!
 //! Each malformed case asserts the *message*, not just that something failed,
 //! so a recovery path that silently swallows the token is still caught.
@@ -267,13 +267,26 @@ fn a_match_arm_needs_its_fat_arrow() {
     );
 }
 
-/// A payload is bound one level deep; nesting has no fall-through spelling, so
-/// it is refused with the workaround in the message.
+/// A slot holds a pattern, nested to any depth, positionally as ML builds
+/// the value, or by label as `Ctor(field = p)` ([PATTERN-NESTED]); a labelled
+/// list that drops a label is refused.
 #[test]
-fn nested_constructor_patterns_are_refused() {
-    let src = "type Tree = Leaf | Node Tree Tree\n\
-               depth t = match t\n    Node (Node l r) x => 1\n    _ => 0\n";
-    rejects(src, &["nested constructor patterns are not supported"]);
+fn nested_constructor_patterns_parse_in_every_slot() {
+    let _ = ml_ok(
+        "type Tree = Leaf | Node Tree Tree\n\
+         depth t = match t\n    Node (Node l Leaf) x => 1\n    Node Leaf (Node _ _) => 2\n    _ => 0\n",
+    );
+    let _ = ml_ok(
+        "type E = DivZero | Over(by : int)\n\
+         say r = match r\n    Error(message = Over by) => by\n    Error(message = DivZero) => 0\n    Success(value = 3) => 3\n    Success value => value\n",
+    );
+    let _ = ml_ok(
+        "pick p = match p\n    (0, [Success 1, _]) => 1\n    { x = 0, y } => y\n    _ => 2\n",
+    );
+    rejects(
+        "type E = Over(by : int, at : int)\nsay r = match r\n    Over(by = 1, at) => 1\n    _ => 0\n",
+        &["a labelled constructor pattern writes `field = pattern`"],
+    );
 }
 
 /// A lambda has nowhere to put the alternative arms, so a clause head on one is

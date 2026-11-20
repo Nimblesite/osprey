@@ -13,9 +13,9 @@ module.exports = {
       $.integer, $.float, $.string, $.interpolated_string, $.boolean, // 0, 1.5, "x", true
       prec.right(seq(field('operator', choice('-', '+')), choice($.integer, $.float))), // -1, +42
       $.list_pattern, // [], [x], [a, b], [head, ...tail]
-      seq(field('name', choice($.qualified_path, $.identifier)), '{', $.field_pattern, '}'), // Ok { value }
+      seq(field('name', choice($.qualified_path, $.identifier)), '{', $.slot_pattern, '}'), // Ok { value }
       seq(field('name', choice($.qualified_path, $.identifier)), '(', sep1(',', $.pattern), ')'), // Some(x)
-      seq(field('name', $.identifier), ':', '{', $.field_pattern, '}'), // p: { x, y }
+      seq(field('name', $.identifier), ':', '{', $.slot_pattern, '}'), // p: { x, y }
       seq(field('name', $.identifier), ':', field('type', $._type)), // value: Int
       seq(field('name', $.identifier), optional(field('binding', $.identifier))), // bare var / capture
       $.structural_pattern, // { name, age } / { name, .. }
@@ -26,17 +26,16 @@ module.exports = {
   // lives here, not in field_pattern, so the structural ternary and the
   // `Ctor { … }` forms — which share field_pattern — cannot spell an open
   // row [PATTERN-STRUCTURAL].
-  structural_pattern: ($) => seq('{', $.field_pattern, optional(seq(',', '..')), '}'),
+  structural_pattern: ($) => seq('{', $.slot_pattern, optional(seq(',', '..')), '}'),
   // Two or more comma-separated slots; `(x)` stays expression grouping and
   // never reaches pattern position, so a one-element tuple is unspellable.
-  // A slot is a binder or `_` — a nested pattern has no fall-through
-  // spelling, exactly as in positional constructor slots; the ML parser
-  // rejects the same shape ([FLAVOR-ML-PATTERN-GROUP], [PATTERN-TUPLE]).
+  // Each slot is a pattern, nested to any depth ([PATTERN-TUPLE],
+  // [PATTERN-NESTED]).
   tuple_pattern: ($) =>
     seq(
       '(',
-      field('element', choice($.identifier, '_')),
-      repeat1(seq(',', field('element', choice($.identifier, '_')))),
+      field('element', $.pattern),
+      repeat1(seq(',', field('element', $.pattern))),
       ')',
     ),
   // The rest binder `...id` is allowed only at the tail; a fixed-length form
@@ -53,7 +52,12 @@ module.exports = {
       ),
       ']',
     ),
+  // The structural ternary's field list: names only.
   field_pattern: ($) => sep1(',', $.identifier),
+  // A pattern's field list: `field` binds the field under its own name;
+  // `field: pattern` tests and binds it as `pattern` does ([PATTERN-NESTED]).
+  slot_pattern: ($) => sep1(',', $.field_slot),
+  field_slot: ($) => seq(field('field', $.identifier), optional(seq(':', field('pattern', $.pattern)))),
 
   // ---------- MODULES ----------
   module_declaration: ($) =>

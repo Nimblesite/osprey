@@ -23,6 +23,7 @@ mod structural;
 mod tests_constructors;
 #[cfg(test)]
 mod tests_structural;
+mod usefulness;
 
 fn is_result(t: &Type) -> bool {
     matches!(t, Type::Con { name, .. } if name == names::RESULT)
@@ -51,8 +52,12 @@ impl Checker {
             .map(|arm| self.infer_arm(arm, &disc, env))
             .collect::<Vec<_>>();
         let result = self.match_result(result, &bodies);
-        self.check_exhaustive(&disc, arms);
-        self.check_redundant_arms(arms, &disc);
+        if arms.iter().any(|arm| usefulness::nested(&arm.pattern)) {
+            self.check_nested_match(arms);
+        } else {
+            self.check_exhaustive(&disc, arms);
+            self.check_redundant_arms(arms, &disc);
+        }
         result
     }
 
@@ -60,9 +65,31 @@ impl Checker {
     /// discriminant type.
     pub(crate) fn infer_arm(&mut self, arm: &MatchArm, disc: &Type, env: &TypeEnv) -> Type {
         let mut local = env.child();
+        self.reject_rebound_names(&arm.pattern);
         self.bind_pattern(&arm.pattern, disc, &mut local);
         self.record_arm_binders(arm, &local);
         self.infer_expr(&arm.body, &local)
+    }
+
+    /// A name binds once per arm: `Node(x, x)` has no one value for `x`
+    /// ([PATTERN-NESTED]).
+    /// A row repeating a field has its own diagnostic ([TYPE-ROW]).
+    fn reject_rebound_names(&mut self, pattern: &Pattern) {
+        if let Pattern::Structural { fields, .. } = pattern {
+            let mut fields_seen = std::collections::BTreeSet::new();
+            if !fields.iter().all(|(field, _)| fields_seen.insert(field)) {
+                return;
+            }
+        }
+        let names = pattern_binders_where(pattern, &|name| name != "_" && !starts_uppercase(name));
+        let mut seen = std::collections::BTreeSet::new();
+        for name in names {
+            if !seen.insert(name.clone()) {
+                self.errors.push(TypeError::new(format!(
+                    "`{name}` is bound twice in one pattern; name each slot once"
+                )));
+            }
+        }
     }
 
     /// Publish each binder of a source arm under the arm's position, which its
@@ -201,8 +228,7 @@ pub(crate) fn pattern_binders_where(
             .collect(),
         Pattern::Structural { fields, .. } => fields
             .iter()
-            .filter(|(_, b)| !b.is_empty())
-            .map(|(_, b)| b.clone())
+            .flat_map(|(_, slot)| pattern_binders_where(slot, binding))
             .collect(),
         Pattern::Wildcard | Pattern::Literal(_) => Vec::new(),
     }

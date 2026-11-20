@@ -23,7 +23,9 @@ pub(crate) fn pattern_names(pattern: &Pattern, names: &mut BTreeSet<String>) {
             let _ = names.insert(name.clone());
         }
         Pattern::Structural { fields, .. } => {
-            names.extend(fields.iter().map(|(_, binder)| binder.clone()));
+            for (_, slot) in fields {
+                pattern_names(slot, names);
+            }
         }
         Pattern::List { elements, rest } => {
             for nested in elements {

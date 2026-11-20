@@ -3,7 +3,6 @@
 use super::ctor_owner_ty;
 use super::is_result;
 use super::is_result_variant;
-use super::pattern_binder_names;
 use super::starts_uppercase;
 use crate::check::Checker;
 use crate::env::TypeEnv;
@@ -43,6 +42,10 @@ impl Checker {
         disc: &Type,
         local: &mut TypeEnv,
     ) {
+        if !sub_patterns.is_empty() && self.is_result_pattern(name, disc) {
+            self.bind_result_slot(name, fields, sub_patterns, disc, local);
+            return;
+        }
         if !fields.is_empty() && !sub_patterns.is_empty() {
             self.bind_named_aliases(name, fields, sub_patterns, disc, local);
             return;
@@ -89,14 +92,56 @@ impl Checker {
         }
         // Positional destructure: `Ctor(p0, p1)`.
         for (i, sub) in sub_patterns.iter().enumerate() {
-            self.reject_nested_pattern(sub);
             let field_ty = declared.get(i).map(|(_, t)| t.clone());
             let target = field_ty.unwrap_or_else(|| self.ctx.fresh());
             self.bind_pattern(sub, &target, local);
         }
     }
 
-    /// Named field labels select payloads; only written binders enter scope.
+    /// Whether `name` is a `Success`/`Error` pattern over a `Result`.
+    fn is_result_pattern(&mut self, name: &str, disc: &Type) -> bool {
+        is_result_variant(name)
+            && (is_result(&self.ctx.expose(disc))
+                || self
+                    .ctors
+                    .get(name)
+                    .is_some_and(|ctor| ctor.owner == names::RESULT))
+    }
+
+    /// `Success(p)`, `Error { message: p }`: the one slot is matched at the
+    /// payload's own type, nested to any depth ([PATTERN-NESTED]).
+    fn bind_result_slot(
+        &mut self,
+        name: &str,
+        fields: &[String],
+        patterns: &[Pattern],
+        disc: &Type,
+        local: &mut TypeEnv,
+    ) {
+        let expected = if name == names::SUCCESS {
+            "value"
+        } else {
+            "message"
+        };
+        if !fields.is_empty() && fields != [expected] {
+            self.errors.push(TypeError::new(format!(
+                "expected pattern field `{expected}` on `{name}`"
+            )));
+        }
+        if patterns.len() > 1 {
+            self.errors.push(TypeError::new(format!(
+                "`{name}` carries one payload, found {} patterns",
+                patterns.len()
+            )));
+        }
+        let payload = self.result_payload(name, disc);
+        for pattern in patterns {
+            self.bind_pattern(pattern, &payload, local);
+        }
+    }
+
+    /// Named field labels select payloads; each slot is matched at its
+    /// field's type ([PATTERN-NESTED]).
     fn bind_named_aliases(
         &mut self,
         name: &str,
@@ -105,30 +150,6 @@ impl Checker {
         disc: &Type,
         local: &mut TypeEnv,
     ) {
-        if is_result_variant(name)
-            && (is_result(&self.ctx.expose(disc))
-                || self
-                    .ctors
-                    .get(name)
-                    .is_some_and(|ctor| ctor.owner == names::RESULT))
-        {
-            let expected = if name == names::SUCCESS {
-                "value"
-            } else {
-                "message"
-            };
-            if fields != [expected] {
-                self.errors.push(TypeError::new(format!(
-                    "expected pattern field `{expected}` on `{name}`"
-                )));
-            }
-            let binders = patterns
-                .iter()
-                .flat_map(pattern_binder_names)
-                .collect::<Vec<_>>();
-            self.bind_result_fields(name, &binders, disc, local);
-            return;
-        }
         let Some((args, declared, owner, record)) = self.ctor_instance(name) else {
             self.errors.push(TypeError::new(format!(
                 "unknown constructor `{name}` in match pattern"
@@ -145,23 +166,6 @@ impl Checker {
                 ))),
             }
         }
-    }
-
-    /// A positional slot destructures to a binder or `_` and nothing else.
-    /// Codegen binds a slot by index and has no register to match a deeper
-    /// pattern against, so an unsupported sub-pattern would be silently
-    /// discarded and the arm would behave as `Ctor(_, _)`. The ML flavor
-    /// rejects the same shape in its parser ([FLAVOR-ML-PATTERN-GROUP]); this
-    /// is the Default flavor's half of that rule.
-    fn reject_nested_pattern(&mut self, sub: &Pattern) {
-        if matches!(sub, Pattern::Binding(_) | Pattern::Wildcard) {
-            return;
-        }
-        self.errors.push(TypeError::new(
-            "nested constructor patterns are not supported; \
-             bind the payload and match it in a second expression"
-                .to_owned(),
-        ));
     }
 
     /// Bind the built-in `Result` pattern fields against `disc`: `value` is the
@@ -192,13 +196,19 @@ impl Checker {
         )));
     }
 
-    fn bind_result_fields(
-        &mut self,
-        variant: &str,
-        fields: &[String],
-        disc: &Type,
-        local: &mut TypeEnv,
-    ) {
+    /// The payload a `Success`/`Error` pattern matches: the success value or
+    /// the error at the Result's own `E`.
+    fn result_payload(&mut self, variant: &str, disc: &Type) -> Type {
+        let (ok, err) = self.result_sides(disc);
+        if variant == names::SUCCESS {
+            ok
+        } else {
+            err
+        }
+    }
+
+    /// The success and error payload types of a `Result` scrutinee.
+    fn result_sides(&mut self, disc: &Type) -> (Type, Type) {
         // An UNRESOLVED discriminant is not a candidate for the auto-wrap rule
         // below — auto-wrap answers "what does `Success { value }` mean over a
         // value that is known not to be a Result", and nothing is known here
@@ -226,6 +236,17 @@ impl Checker {
             }
             _ => Type::string(),
         };
+        (ok, err)
+    }
+
+    fn bind_result_fields(
+        &mut self,
+        variant: &str,
+        fields: &[String],
+        disc: &Type,
+        local: &mut TypeEnv,
+    ) {
+        let (ok, err) = self.result_sides(disc);
         for (index, fname) in fields.iter().enumerate() {
             // The desugarer's unspellable `?:` binder names the SAME success
             // payload `value` does. Leaving it to the fresh-variable fallback

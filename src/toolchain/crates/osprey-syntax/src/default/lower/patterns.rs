@@ -44,25 +44,18 @@ impl Lowerer<'_> {
             }
             "list_pattern" => self.lower_list_pattern(inner),
             "structural_pattern" => Pattern::Structural {
-                fields: self
-                    .first_child_of_kind(inner, "field_pattern")
-                    .map_or_default(|fp| self.field_pattern_names(fp))
-                    .into_iter()
-                    .map(|f| (f.clone(), f))
-                    .collect(),
+                fields: self.row_slots(inner),
                 open: Self::has_row_rest(inner),
             },
-            "tuple_pattern" => osprey_ast::tuple_pattern(self.tuple_binders(inner)),
+            "tuple_pattern" => {
+                osprey_ast::tuple_pattern(self.map_of_kind(inner, "pattern", Self::lower_pattern))
+            }
             "identifier" | "qualified_path" => {
                 // Could be: constructor `Ctor { fields }`, type-annotated, sub-patterns,
                 // or a bare binding. Inspect siblings of the name field.
                 let name = self.text(inner);
-                if let Some(fp) = self.first_child_of_kind(pat, "field_pattern") {
-                    return Pattern::Constructor {
-                        name,
-                        fields: self.field_pattern_names(fp),
-                        sub_patterns: vec![],
-                    };
+                if self.first_child_of_kind(pat, "slot_pattern").is_some() {
+                    return crate::desugar::labelled_ctor_pattern(name, self.row_slots(pat));
                 }
                 if let Some(ty) = pat.child_by_field_name("type") {
                     return Pattern::TypeAnnotated {
@@ -71,19 +64,8 @@ impl Lowerer<'_> {
                     };
                 }
                 let subs = self.map_of_kind(pat, "pattern", Self::lower_pattern);
-                // `Success(found)` binds the payload by ROLE, as ML's `Success found`
-                // does, so it shares ML's lowering ([PATTERN-RESULT-BINDERS]).
-                if let [Pattern::Binding(binder)] = subs.as_slice() {
-                    if crate::desugar::is_result_ctor(&name) {
-                        return crate::desugar::ctor_pattern(name, vec![binder.clone()]);
-                    }
-                }
                 if !subs.is_empty() {
-                    return Pattern::Constructor {
-                        name,
-                        fields: vec![],
-                        sub_patterns: subs,
-                    };
+                    return crate::desugar::positional_ctor_pattern(name, subs);
                 }
                 Pattern::Binding(name)
             }
@@ -91,8 +73,20 @@ impl Lowerer<'_> {
         }
     }
 
-    fn field_pattern_names(&self, fp: Node<'_>) -> Vec<String> {
-        self.texts_of_kind(fp, "identifier")
+    /// Each `field` / `field: pattern` slot of a brace pattern in written
+    /// order; a bare field binds under its own name ([PATTERN-NESTED]).
+    fn row_slots(&self, node: Node<'_>) -> Vec<(String, Pattern)> {
+        self.first_child_of_kind(node, "slot_pattern")
+            .map_or_default(|slots| self.map_of_kind(slots, "field_slot", Self::row_slot))
+    }
+
+    fn row_slot(&self, slot: Node<'_>) -> (String, Pattern) {
+        let field = self.field_text(slot, "field");
+        let pattern = slot.child_by_field_name("pattern").map_or_else(
+            || Pattern::Binding(field.clone()),
+            |p| self.lower_pattern(p),
+        );
+        (field, pattern)
     }
 
     /// Whether a structural pattern node carries the trailing `..` row-opener
@@ -100,19 +94,6 @@ impl Lowerer<'_> {
     /// named-children traversal the other helpers use.
     fn has_row_rest(pat: Node<'_>) -> bool {
         (0..pat.child_count()).any(|i| pat.child(i).is_some_and(|c| c.kind() == ".."))
-    }
-
-    /// Each tuple slot's binder in written order: an identifier's text, or the
-    /// empty binder for a `_` slot ([PATTERN-TUPLE]).
-    fn tuple_binders(&self, tp: Node<'_>) -> Vec<String> {
-        (0..tp.child_count())
-            .filter_map(|i| tp.child(i))
-            .filter_map(|c| match c.kind() {
-                "identifier" => Some(self.text(c)),
-                "_" => Some(String::new()),
-                _ => None,
-            })
-            .collect()
     }
 
     /// Build a [`Pattern::List`] from a `list_pattern` node: the `element` fields

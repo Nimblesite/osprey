@@ -394,8 +394,8 @@ fn a_newline_paren_opens_a_tuple_arm_not_a_call() {
                     assert_eq!(
                         fields,
                         &[
-                            (String::from("0"), String::from("n")),
-                            (String::from("1"), String::from("s")),
+                            (String::from("0"), Pattern::Binding(String::from("n"))),
+                            (String::from("1"), Pattern::Binding(String::from("s"))),
                         ]
                     );
                 }

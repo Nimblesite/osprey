@@ -87,6 +87,7 @@ module.exports = grammar({
     // [PATTERN-STRUCTURAL].
     [$.primary_expression, $.structural_pattern],
     [$.field_pattern],
+    [$.slot_pattern],
     [$.ternary_expression, $.match_arm],
     [$.expression_statement, $.ternary_expression],
     [$.let_declaration, $.ternary_expression],

@@ -83,18 +83,13 @@ pub(super) fn bind_pattern(
             }
         }
         Pattern::Structural { fields, .. } => {
-            for (field, binder) in fields {
-                let _ = env.shadowed.insert(binder.clone());
+            for (field, slot) in fields {
                 let projected = value.and_then(|value| project_field(value.clone(), field));
                 let projected = match owner {
                     FieldOwner::Named(name) => index.owned_field_value(name, field, projected),
                     FieldOwner::Anonymous | FieldOwner::Unknown => projected,
                 };
-                if let Some(projected) = projected {
-                    let _ = env.values.insert(binder.clone(), projected);
-                } else {
-                    let _ = env.values.remove(binder);
-                }
+                bind_pattern(slot, projected.as_ref(), &FieldOwner::Unknown, index, env);
             }
         }
         Pattern::List { elements, rest } => {

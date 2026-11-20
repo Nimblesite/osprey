@@ -303,25 +303,36 @@ pub(crate) enum MlPattern {
     Str(String),
     /// A boolean literal pattern.
     Bool(bool),
-    /// `Ctor field*` — a constructor binding zero or more payload fields.
+    /// `Ctor p*` — a constructor matching its payload slots in order; a slot
+    /// is a binder, `_`, a literal or a parenthesised pattern
+    /// ([PATTERN-NESTED]).
     Ctor {
         /// Constructor name.
         name: String,
-        /// Bound field names.
-        fields: Vec<MlBinder>,
+        /// The payload slot patterns.
+        slots: Vec<MlPattern>,
+    },
+    /// `Ctor(field = p, …)` — a constructor matching named fields, as its
+    /// construction names them ([PATTERN-NESTED]).
+    Labelled {
+        /// Constructor name.
+        name: String,
+        /// Each field and its pattern.
+        slots: Vec<(String, MlPattern)>,
     },
     /// A bare lowercase binding.
     Bind(MlBinder),
-    /// `{ a, b }` / `{ a, .. }` — a structural row pattern binding each named
-    /// field; `..` opens the row ([PATTERN-STRUCTURAL]).
+    /// `{ a, b = p }` / `{ a, .. }` — a structural row pattern: a bare field
+    /// binds under its own name, `field = p` tests it as `p`; `..` opens the
+    /// row ([PATTERN-STRUCTURAL], [PATTERN-NESTED]).
     Structural {
-        /// Bound field names in written order.
-        fields: Vec<MlBinder>,
+        /// Each field in written order, with its pattern when one is written.
+        fields: Vec<(MlBinder, Option<MlPattern>)>,
         /// Whether a trailing `..` opens the row.
         open: bool,
     },
     /// `(a, b)` — a tuple pattern: the positional spelling of a structural
-    /// row, one binder or `_` per decimal slot ([PATTERN-TUPLE]).
+    /// row, one pattern per decimal slot ([PATTERN-TUPLE]).
     Tuple(Vec<MlPattern>),
     /// `[ p, … ]` or `[ p, …, ...rest ]` — a list pattern with fixed-prefix
     /// element patterns and an optional trailing `...name` rest-binder

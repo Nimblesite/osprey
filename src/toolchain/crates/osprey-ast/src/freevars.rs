@@ -173,9 +173,10 @@ pub(crate) fn pattern_bindings(p: &Pattern) -> Vec<String> {
             names
         }
         Pattern::TypeAnnotated { name, .. } => vec![name.clone()],
-        Pattern::Structural { fields, .. } => {
-            fields.iter().map(|(_, binder)| binder.clone()).collect()
-        }
+        Pattern::Structural { fields, .. } => fields
+            .iter()
+            .flat_map(|(_, slot)| pattern_bindings(slot))
+            .collect(),
         Pattern::List { elements, rest } => {
             let mut names: Vec<String> = elements.iter().flat_map(pattern_bindings).collect();
             names.extend(rest.clone());

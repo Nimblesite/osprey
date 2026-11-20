@@ -56,13 +56,14 @@ fn structural_binder_names_skip_unbound_slots() {
     use osprey_ast::Pattern;
     let named = Pattern::Structural {
         fields: vec![
-            (String::from("x"), String::from("x")),
-            (String::from("y"), String::from("y")),
+            (String::from("x"), Pattern::Binding(String::from("x"))),
+            (String::from("y"), Pattern::Binding(String::from("y"))),
         ],
         open: false,
     };
     assert_eq!(super::pattern_binder_names(&named), vec!["x", "y"]);
-    let tuple = osprey_ast::tuple_pattern(vec![String::from("n"), String::new()]);
+    let tuple =
+        osprey_ast::tuple_pattern(vec![Pattern::Binding(String::from("n")), Pattern::Wildcard]);
     assert_eq!(super::pattern_binder_names(&tuple), vec!["n"]);
 }
 

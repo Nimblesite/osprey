@@ -142,8 +142,10 @@ fn pattern_ranges(
     out: &mut Vec<BindingRange>,
 ) {
     match node.kind() {
-        "field_pattern" | "tuple_pattern" => {
-            add_identifiers(node, source, owner, BindingKind::PatternBinding, out);
+        "field_slot" if node.child_by_field_name("pattern").is_none() => {
+            if let Some(field) = node.child_by_field_name("field") {
+                add(field, source, owner, BindingKind::PatternBinding, out);
+            }
         }
         "pattern" if bare_pattern(node) => {
             add_name(node, source, owner, BindingKind::PatternBinding, out);
@@ -154,7 +156,12 @@ fn pattern_ranges(
     for child in node.named_children(&mut cursor).filter(|child| {
         matches!(
             child.kind(),
-            "pattern" | "list_pattern" | "structural_pattern" | "field_pattern" | "tuple_pattern"
+            "pattern"
+                | "list_pattern"
+                | "structural_pattern"
+                | "slot_pattern"
+                | "field_slot"
+                | "tuple_pattern"
         )
     }) {
         pattern_ranges(child, source, owner, out);
@@ -170,7 +177,7 @@ fn bare_pattern(node: Node<'_>) -> bool {
     let mut cursor = node.walk();
     let has_children = node
         .named_children(&mut cursor)
-        .any(|child| matches!(child.kind(), "pattern" | "field_pattern"));
+        .any(|child| matches!(child.kind(), "pattern" | "slot_pattern"));
     !has_children
 }
 

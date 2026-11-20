@@ -413,9 +413,12 @@ label result =
         Error message => message
 ```
 
-Patterns include `_`, literals, bindings, constructor payload binders, and list
-patterns such as `[]`, `[one]`, and `[head, ...tail]`. Nested constructor
-patterns and or-patterns are rejected; bind the inner payload and match again.
+Patterns include `_`, literals, bindings, constructor patterns, rows, tuples and
+list patterns such as `[]`, `[one]`, and `[head, ...tail]`. A constructor's
+slots nest as its construction does: `Node (Node l _) Leaf` positionally, and
+`Error(message = Overflow by)` by field
+([PATTERN-NESTED](0007-PatternMatching.md#nested-patterns--pattern-nested)).
+Or-patterns are rejected; write one arm per alternative.
 
 A constructor payload binder takes its **column**, not the field that shares its
 spelling, so `Node l r` may rename freely against a named payload as well as a

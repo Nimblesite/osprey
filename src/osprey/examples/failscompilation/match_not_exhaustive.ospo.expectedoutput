@@ -1,1 +1,4 @@
 non-exhaustive match on `Color`: missing Blue
+non-exhaustive match: no arm matches `Node(Node(_, _), Node(_, _))`
+non-exhaustive match: no arm matches `Success { value: _ }`
+`x` is bound twice in one pattern; name each slot once
