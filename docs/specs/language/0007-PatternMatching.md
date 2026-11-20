@@ -159,6 +159,50 @@ length must match, and `..` does not apply.
 > a binder always takes its field's own name, and a tuple slot is a binder or
 > `_`.
 
+## Nested patterns — [PATTERN-NESTED]
+
+**Implementation status:** not implemented. Today each slot of a constructor, tuple or list pattern is a binding, `_` or (for a row) a field name, so matching two levels takes two `match` expressions. Plan: [generic error payloads, top priority](../../plans/generic-error-payload.md#-top-priority-gaps-that-block-top-tier).
+
+A pattern may appear wherever a pattern slot takes a binding: a positional or named constructor argument, a `Success`/`Error` payload, a tuple component, a list element and a structural row field. Patterns nest to any depth, and every form composes with every other: literal, binding, `_`, constructor, list, tuple and row.
+
+```osprey
+type Tree = Leaf | Node(Tree, Tree)
+type MathError = DivZero | Overflow { by: int }
+
+fn leftDepth(tree) = match tree {
+    Node(Node(inner, _), _) => 2 + leftDepth(inner)
+    Node(Leaf, _)           => 1
+    Leaf                    => 0
+}
+
+fn explain(result) = match result {
+    Success { value: 0 }               => "zero"
+    Success { value }                  => "got ${value}"
+    Error { message: Overflow { by } } => "over by ${by}"
+    Error { message: DivZero }         => "divided by zero"
+}
+```
+
+```osprey-ml
+type Tree = Leaf | Node(Tree, Tree)
+type MathError = DivZero | Overflow { by : int }
+
+leftDepth tree = match tree
+    Node(Node(inner, _), _) => 2 + leftDepth inner
+    Node(Leaf, _)           => 1
+    Leaf                    => 0
+
+explain result = match result
+    Success(value = 0)               => "zero"
+    Success(value)                   => "got ${value}"
+    Error(message = Overflow(by))    => "over by ${by}"
+    Error(message = DivZero)         => "divided by zero"
+```
+
+A nested pattern tests and binds exactly as it would as the pattern of its own `match` on that slot's value: the slot's static type is the nested scrutinee's type, a binding in it follows [PATTERN-BINDING-SCOPE](#binding-scope--pattern-binding-scope), and a name may be bound once per arm. Arms are tried in order; an arm is selected when its whole pattern matches, and no binding of a failed arm is visible.
+
+Exhaustiveness and reachability ([TYPE-MATCH-EXHAUSTIVE](#exhaustiveness-and-unreachable-arms-type-match-exhaustive)) are decided over the nested patterns as a whole. A `match` is rejected when some value reaches no arm, and the diagnostic shows one such value as a pattern, for example `Node(Leaf, Node(_, _))`. An arm that no value can reach because earlier arms cover it is rejected as unreachable.
+
 ## Exhaustiveness and unreachable arms [TYPE-MATCH-EXHAUSTIVE]
 
 A match over `bool`, `Result`, or a known union must cover every case, either

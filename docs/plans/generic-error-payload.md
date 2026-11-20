@@ -16,7 +16,14 @@ These come before every other open item in `docs/plans/`. Each is a defect again
   - [ ] Error at the call that decides the type, naming the constraint: "`show` needs a printable argument; a function is not printable"
   - [ ] Hover, inferred signatures and `--docs` show the constraint
   - [ ] Corpus regression (both flavors) and `failscompilation/` rejections for each constraint through one, two and three levels of generic call
-- [ ] No nested constructor patterns ([TYPE-UNION-POSITIONAL]): `Node(Node(l, _), r)` and `Success { value: Some { v } }` are rejected; each slot is a binding or `_`, forcing nested `match`. Implement nested patterns with exhaustiveness checking across the nesting.
+- [ ] **Nested patterns ([PATTERN-NESTED](../specs/language/0007-PatternMatching.md#nested-patterns--pattern-nested)).** `Node(Node(l, _), r)` and `Error { message: Overflow { by } }` are rejected today; each slot is a binding or `_`, forcing a `match` per level.
+  - [x] Spec: [PATTERN-NESTED] written, marked not implemented
+  - [ ] Grammar and both parsers accept a pattern in every slot (`tree-sitter-osprey`, Default and ML lowering to one AST)
+  - [ ] Checker: type each nested pattern at its slot's type; one binding per name per arm
+  - [ ] Exhaustiveness and reachability over the whole nested pattern, with a witness value in the diagnostic
+  - [ ] Backend: decision tree for nested tests on GC, ARC and wasm32; no binding leaks from a failed arm; ARC releases balanced
+  - [ ] Corpus regression (both flavors) mixing constructors, `Result`, tuples, lists and rows three levels deep; `failscompilation/` rejections for a non-exhaustive nest, an unreachable arm and a name bound twice
+  - [ ] Spec: remove the "not implemented" status and the note in [TYPE-UNION-POSITIONAL]
 
 ### Error system
 
