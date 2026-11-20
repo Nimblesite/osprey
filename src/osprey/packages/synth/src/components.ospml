@@ -133,6 +133,17 @@ module Components
         6 phase-vocoder pitch shift (ratio 0.25–4, no transient handling). *)
     export spectral (identity, size, hop, transform) = node (identity, Spectral(size = size, hop = hop), [port "audio", port "side"], [port "audio"], [parameter ("transform", "Transform (0 pass, 1 freeze, 2 band, 3 shift, 4 smear, 5 morph, 6 pitch)", Ratio, 0.0, 6.0, transform), ratio ("hold", "Freeze hold", 1.0), parameter ("low", "Band low", Hertz, 0.0, 24000.0, 200.0), parameter ("high", "Band high", Hertz, 0.0, 24000.0, 4000.0), parameter ("shift", "Shift (bins)", Ratio, -2047.0, 2047.0, 0.0), parameter ("amount", "Smear / morph amount", Normalised, 0.0, 0.999, 0.5), normalised ("mix", "Dry/processed mix", 1.0), parameter ("ratio", "Pitch ratio", Ratio, 0.25, 4.0, 1.0), parameter ("formant", "Formant ratio (1 keeps formants)", Ratio, 0.25, 4.0, 1.0), parameter ("morphMode", "Morph (0 blend, 1 envelope, 2 partial)", Ratio, 0.0, 2.0, 0.0)])
 
+    preset (key, value, p) = match p.key == key
+        true => p(initial = value)
+        false => p
+
+    (** [SYNTH-ADVANCED-SPECTRAL-PITCH] FFT pitch shifter: the peak-locked STFT phase vocoder (transform 6) at hop
+        size / 4, moving pitch by `ratio` (0.25–4). Its formant ratio starts equal, a plain shift; set it to 1 to
+        keep the formants where they were. Latency is size − 1. *)
+    export pitchShifter (identity, size, ratio) =
+        n = spectral (identity, size, intDiv size 4, 6.0)
+        n(parameters = mapList (mapList (n.parameters, \p => preset ("ratio", ratio, p)), \p => preset ("formant", ratio, p)))
+
     (** [SYNTH-ADVANCED-NONLINEAR] Waveshaper: curve 0 tanh, 1 hard, 2 cubic, 3 fold; ADAA and 2× oversampling switches. *)
     export shaper (identity, curve, drive) = processing (identity, Shaper, [parameter ("curve", "Curve (0 tanh, 1 hard, 2 cubic, 3 fold)", Ratio, 0.0, 3.0, curve), parameter ("drive", "Drive", Ratio, 0.1, 50.0, drive), parameter ("bias", "Bias (asymmetry)", Ratio, -1.0, 1.0, 0.0), amplitude ("level", "Output level", 0.5), ratio ("antialias", "Antiderivative antialiasing", 1.0), ratio ("oversample", "2x oversampling (+15 samples latency)", 0.0)])
 

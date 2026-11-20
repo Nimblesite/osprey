@@ -92,5 +92,10 @@ def released (previous target release : Float) : Float :=
 /-- The last guard: nothing leaves above the ceiling, whatever the arithmetic before it did. -/
 def ceilinged (sample ceiling : Float) : Float :=
   if sample > ceiling then ceiling else if sample < -ceiling then -ceiling else sample
+/-- Multiply-accumulate: one filter tap applied to one sample, added to the running sum. -/
+def accumulated (sum tap sample : Float) : Float := sum + tap * sample
+
+/-- One limited output sample: the input at its gain, clamped to the ceiling. -/
+def limitedSample (sample gain ceiling : Float) : Float := ceilinged (sample * gain) ceiling
 
 end synth.DynamicsMath

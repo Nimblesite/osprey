@@ -97,4 +97,20 @@ def peakOffset (a b c : Float) : Float := if a - 2 * b + c == 0 then 0 else 0.5 
 /-- A Hann lobe bin's phase: the centre's phase plus π per bin of offset. -/
 def lobePhase (centre offset : Float) : Float := principal (centre + 3.141592653589793 * offset)
 
+/-- Identity phase locking: a bin near a moved peak keeps its analysed phase offset from that peak. -/
+def lockedPhase (peakPhase phase peakAnalysis : Float) : Float := principal (peakPhase + phase - peakAnalysis)
+
+/-- One analysis sample: the input under a Hann window of `size`. -/
+def windowedSample (sample index size : Float) : Float := sample * hann index size
+
+/-- Whether `frequency` falls in the octave band around `centre`: from centre / √2 up to centre · √2. -/
+def inOctave (frequency centre : Float) : Bool :=
+  frequency >= centre * 0.7071067811865476 && frequency < centre * 1.4142135623730951
+
+/-- Band level in dB of one-sided Hann power `energy` summed over `frames` frames of `size` points, where a
+full-scale sine reads 0 dB (its one-sided power per frame is 3 · size² / 32); floored at −120 dB. -/
+def bandLevel (energy frames size : Float) : Float :=
+  let ratio := energy * 32 / (3 * size * size * frames)
+  if ratio < 0.000000000001 then -120 else 4.342944819032518 * Float.log ratio
+
 end synth.SpectralMath

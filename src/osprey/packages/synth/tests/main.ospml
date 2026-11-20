@@ -740,3 +740,26 @@ test ("a rendered grain shows its window: zero ends, Hann peak, ASR sustain, sho
     oneGrain (held (synth::HannWindow, 9, -1.0), 16, hardLeft)
     forEachList ([held (synth::HannWindow, 9, 0.0), held (synth::AsrWindow(attack = 0.25, release = 0.25), 9, 0.3), held (synth::HannWindow, 3, -0.5)], \c => oneGrain (c, 16, \whole => partitioned (c, whole)))
     oneGrain (held (synth::HannWindow, 9, 0.0), 16, retained)))
+
+// [SYNTH-ADVANCED-SPECTRAL-PITCH] The pitch shifter is the phase-vocoder spectral node, preset and bounded.
+shifterKeyed (found, p, key) = match p.key == key
+    true => p.initial
+    false => found
+
+shifterValue (n, key) = foldList (n.parameters, -1.0, \(found, p) => shifterKeyed (found, p, key))
+
+test ("the FFT pitch shifter is a preset phase-vocoder node with its ratio, formant and latency declared", \() => arithmetic (\() =>
+    forEachList ([{ size = 256, ratio = 0.25 }, { size = 1024, ratio = 1.5 }, { size = 4096, ratio = 4.0 }], \c =>
+        n = Components::pitchShifter (1, c.size, c.ratio)
+        expect (n.processor, synth::Spectral(size = c.size, hop = intDiv c.size 4))
+        expect (shifterValue (n, "transform"), 6.0)
+        expect (shifterValue (n, "ratio"), c.ratio)
+        expect (shifterValue (n, "formant"), c.ratio)
+        expect (shifterValue (n, "mix"), 1.0)
+        expect (Kinds::kind n.processor, "synth.spectral"))))
+
+import synth::Limiters
+
+test ("the true-peak brick-wall limiter holds every frame and inter-sample peak inside its ceiling by lookahead, passes quiet signals bit-exact and refuses bad settings", \() => arithmetic limitJourney)
+
+test ("the octave-band analyser reads sines of known level in their bands within 0.1 dB, silence at the floor, and refuses bad frames", \() => arithmetic spectrumJourney)

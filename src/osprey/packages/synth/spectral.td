@@ -11,3 +11,4 @@ type SpectralFrame { bins: List<Complex> memory: List<Complex> motion: List<Comp
 type SpectralBin { index: Int frequency: Float magnitude: Float re: Float im: Float }
 type SpectralView { channel: Int position: Int size: Int bins: List<SpectralBin> }
 type PeakScan { latest: Int owners: List<Int> }
+type SpectrumBand { centre: Float level: Float peak: Float }

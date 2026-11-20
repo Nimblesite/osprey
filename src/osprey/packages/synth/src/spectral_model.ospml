@@ -82,3 +82,8 @@ type PeakScan =
     latest : int
     owners : List<int>
 
+type SpectrumBand =
+    centre : float
+    level : float
+    peak : float
+
