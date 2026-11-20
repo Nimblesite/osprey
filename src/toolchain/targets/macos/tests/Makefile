@@ -94,6 +94,15 @@ daw-events-headless: _runtime_macos
 	nice -n 10 cargo test --manifest-path src/toolchain/hosts/ferroui/Cargo.toml --release --features desktop \
 	    --test prism_events --test daw_events -- --nocapture
 
+## daw-video: The daw in a real window, clicked like a user: every voice type's patch (FM operator, patch graph,
+##            modal bell, bowed string, drum) opened and auditioned, Mix, then Play bars. Each click must change
+##            the screen and Play must render audio. Writes target/daw-video/prism-journey.mp4 (with the bars as
+##            its soundtrack) and the step screenshots. Needs screen recording and accessibility access. [DAW-VIDEO]
+.PHONY: daw-video
+daw-video: _runtime_macos
+	$(MAKE) -C src/toolchain/targets/macos _daw-renderer
+	bash scripts/make/daw-video.sh target/daw-video
+
 ## synth: Add, drag and connect module nodes, then close/reopen the keyboard in a native window.
 .PHONY: synth
 synth:
