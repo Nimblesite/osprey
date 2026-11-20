@@ -179,12 +179,30 @@ module PatchVoices
 
     played (graph, plan, noteSpan, routing, rate) = chained (synth::Renderer::start graph, \initial => chained (finished (foldList (counts (noteSpan.total, 8192), NoteRun(held = initial, samples = [], fault = ""), \(run, count) => block (plan, graph, rate, run, count))), \samples => ok (shaped (samples, noteSpan, routing, rate))))
 
-    built (nodes, routing) = match synth::Patches::built (nodes, cabled routing)
+    graphed (nodes, cables) = match synth::Patches::built (nodes, cables)
         synth::Invalid fault => Error(message = "The routing is not a valid graph: ${fault}.")
         synth::Valid graph => ok graph
 
     (** The routing as one graph, its settings resolved for `note`: what a note plays and Prism edits. *)
-    export patched (note, routing) = chained (foldList (routing.nodes, ok [], \(outcome, item) => nodeAdded (note, outcome, item)), \nodes => built (nodes, routing))
+    export patched (note, routing) = chained (foldList (routing.nodes, ok [], \(outcome, item) => nodeAdded (note, outcome, item)), \nodes => graphed (nodes, cabled routing))
+
+    member (ids, identity) = length (filterList (ids, \known => known == identity)) > 0
+
+    // One pass adds every source cabled into a node already heard; as many passes as nodes reach them all.
+    reached (heard, c) = match member (heard, c.destination) && !member (heard, c.source)
+        true => listAppend heard c.source
+        false => heard
+
+    widened (graph : synth::Graph, ids) = foldList (graph.cables, ids, reached)
+
+    // [DAW-PATCH-HEARD] Only what reaches the output plays: a module left unwired in Prism stays in the
+    // patch, silent, instead of refusing every note.
+    audible graph =
+        ids = foldList (graph.nodes, mapList (filterList (graph.nodes, \n => n.processor == synth::Sink), \n => n.identity), \(heard, _) => widened (graph, heard))
+        cables = filterList (graph.cables, \c => member (ids, c.source) && member (ids, c.destination))
+        match length cables == 0
+            true => Error(message = "The routing has nothing wired to its output.")
+            false => graphed (filterList (graph.nodes, \n => member (ids, n.identity)), cables)
 
     clipBlock (graph, sink, run, count) = match run.fault == "" && count > 0
         false => run
@@ -214,4 +232,4 @@ module PatchVoices
     (** Render one note through the routing: attack and release are 0.001–10 s. *)
     export render (note, noteSpan, rate, routing) = match routing.attack >= 0.001 && routing.attack <= 10.0 && routing.release >= 0.001 && routing.release <= 10.0
         false => Error(message = "A routing's attack and release must be 0.001 to 10 s.")
-        true => chained (patched (note, routing), \graph => routed (graph, noteSpan, routing, rate))
+        true => chained (patched (note, routing), \graph => chained (audible graph, \heard => routed (heard, noteSpan, routing, rate)))
