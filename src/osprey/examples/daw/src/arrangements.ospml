@@ -70,7 +70,7 @@ module Arrangements
 
     (** Add a mono buffer to the buses from frame `offset` (0 or later): gain 0–4, pan −1 (left) to 1
         (right), reverb send 0–1. *)
-    export layered (buses, samples, offset, gain, pan, reverb) = match offset >= 0 && gain >= 0.0 && gain <= 4.0 && pan >= -1.0 && pan <= 1.0 && reverb >= 0.0 && reverb <= 1.0
+    export layered (buses, samples, offset, gain, pan, reverb) = match offset >= 0 && ArrangeMath::mixable (gain, pan, reverb)
         false => Error(message = "Gain must be 0 to 4, pan -1 to 1, reverb 0 to 1 and the offset not negative.")
         true => Success(value = Buses(left = sent (buses.left, samples, offset, gain, ArrangeMath::panLeft pan), right = sent (buses.right, samples, offset, gain, ArrangeMath::panRight pan), wet = sent (buses.wet, samples, offset, gain, reverb)))
 

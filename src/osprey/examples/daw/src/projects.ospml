@@ -14,11 +14,20 @@ module Projects
         Success _ => Success(value = arrangement(tracks = mapList (toList (range (0, length arrangement.tracks)), \at => swapped (arrangement.tracks, index, next, at))))
 
     (** Set track `index`'s gain (0–4), pan (−1 left to 1 right) and Space send (0–1). *)
-    export mixed (arrangement, index, gain, pan, reverb) = match gain >= 0.0 && gain <= 4.0 && pan >= -1.0 && pan <= 1.0 && reverb >= 0.0 && reverb <= 1.0
+    export mixed (arrangement, index, gain, pan, reverb) = match ArrangeMath::mixable (gain, pan, reverb)
         false => Error(message = "Gain must be 0 to 4, pan -1 to 1 and the Space send 0 to 1.")
         true => match listGet arrangement.tracks index
             Error _ => Error(message = "There is no track ${satAdd index 1}.")
             Success voice => replaced (arrangement, index, voice(gain = gain, pan = pan, reverb = reverb))
+
+    (** Change exactly one piano-roll note in its track, retaining timing, pitch and note order. *)
+    export velocity (song, track, index, value) = match ArrangeMath::audible value
+        false => Error(message = "Velocity must be between 0 and 1.")
+        true => match listGet song.tracks track
+            Error _ => Error(message = "Select a track first.")
+            Success voice => match listGet voice.notes index
+                Error _ => Error(message = "Select a note first.")
+                Success old => replaced (song, track, voice(notes = mapList (toList (range (0, length voice.notes)), \at => swapped (voice.notes, index, old(velocity = value), at))))
 
     // The text is read back before it replaces the file, so a project that would not reopen is never written.
     checked text = synth::Outcomes::carried (SongFiles::decode text, \_ => Success(value = text))
@@ -29,9 +38,9 @@ module Projects
         true => synth::Outcomes::carried (synth::Outcomes::carried (SongFiles::encode arrangement, checked), \text => synth::Outcomes::carried (writeFile path text, \_ => Success(value = path)))
 
     // `start` names a field of two records, so the note's type is stated.
-    within (from, beats, note: Note) = note.start >= from && note.start - from < beats
+    within (from, beats, note: Note) = ArrangeMath::inWindow (note.start, from, beats)
 
-    cut (from, beats, voice) = voice(notes = mapList (filterList (voice.notes, \note => within (from, beats, note)), \note => note(start = note.start - from)))
+    cut (from, beats, voice) = voice(notes = mapList (filterList (voice.notes, \note => within (from, beats, note)), \note => note(start = ArrangeMath::shifted (note.start, from))))
 
     (** The `beats` from `from` as a piece of its own: notes starting inside the window, moved to its start,
         with no held intro. Notes keep their full length, so a release rings past the window. *)

@@ -55,4 +55,16 @@ def readAt (frame ratio skip : Float) : Float := skip + frame * ratio
 /-- A deterministic, normalised single-cycle harmonic sample for the initial grain-cloud patch. -/
 def grainSample (index : Float) : Float :=
   0.5 * Float.sin (6.283185307179586 * index / 1024) + 0.25 * Float.sin (18.84955592153876 * index / 1024) + 0.125 * Float.sin (43.982297150257104 * index / 1024)
+/-- A track's mix is playable: gain 0–4, pan −1 (left) to 1 (right), Space send 0–1. -/
+def mixable (gain pan reverb : Float) : Bool :=
+  gain >= 0 && gain <= 4 && pan >= -1 && pan <= 1 && reverb >= 0 && reverb <= 1
+
+/-- A note velocity is 0 (silent) to 1 (full). -/
+def audible (velocity : Float) : Bool := velocity >= 0 && velocity <= 1
+
+/-- A note starting at `start` falls in the `beats` long window beginning at `first`. -/
+def inWindow (start first beats : Float) : Bool := start >= first && start - first < beats
+
+/-- A start beat moved so the window beginning at `first` starts at beat 0. -/
+def shifted (start first : Float) : Float := start - first
 end daw.ArrangeMath
