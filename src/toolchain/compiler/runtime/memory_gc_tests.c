@@ -190,6 +190,48 @@ static void t_immortal_pins_without_roots(void) {
   CHECK(osp_mem_string_length((char *)(refs.unpinned ^ HIDE_MASK)) == -1); // unpinned is reclaimed
 }
 
+// [GC-TRACE-LEAF] Two pinned blocks each hold a string's address. The pointer block keeps
+// its string alive; the one declared a scalar leaf (OSP_MEM_RAW, as a float list leaf is)
+// is never scanned, so a word that looks like an address does not retain anything.
+__attribute__((noinline)) static void make_leaf_pair(volatile HiddenRefs *out) {
+  char *traced = osp_alloc_tagged(7, OSP_MEM_STRING);
+  char *ignored = osp_alloc_tagged(8, OSP_MEM_STRING);
+  void **holder = osp_alloc(2 * sizeof(void *));
+  void **leaf = osp_alloc(2 * sizeof(void *));
+  CHECK(traced && ignored && holder && leaf);
+  memcpy(traced, "traced", 7);
+  memcpy(ignored, "ignored", 8);
+  holder[0] = traced;
+  holder[1] = NULL;
+  leaf[0] = ignored;
+  leaf[1] = NULL;
+  osp_mem_set_layout(leaf, OSP_MEM_RAW);
+  osp_mem_immortal(holder);
+  osp_mem_immortal(leaf);
+  out->pin = (uintptr_t)leaf ^ HIDE_MASK;
+  out->child = (uintptr_t)traced ^ HIDE_MASK;
+  out->unpinned = (uintptr_t)ignored ^ HIDE_MASK;
+}
+
+static void t_leaf_bodies_are_not_traced(void) {
+  volatile HiddenRefs refs;
+  make_leaf_pair(&refs);
+  scrub_stack();
+  (void)alloc_churn(100000, 48);
+  scrub_stack();
+  osp_collect();
+  osp_collect();
+  char *traced = (char *)(refs.child ^ HIDE_MASK);
+  CHECK(osp_mem_string_length(traced) == 6 && strcmp(traced, "traced") == 0);
+  CHECK(osp_mem_string_length((char *)(refs.unpinned ^ HIDE_MASK)) == -1); // only a leaf held it
+  CHECK(((void **)(refs.pin ^ HIDE_MASK))[1] == NULL); // the leaf itself survives, pinned
+  void **relaid = (void **)(refs.pin ^ HIDE_MASK);
+  osp_mem_set_layout(relaid, OSP_MEM_PTR_ARRAY); // a pointer layout clears the leaf flag
+  osp_mem_set_layout(relaid, OSP_MEM_RAW);
+  osp_collect();
+  CHECK(osp_mem_string_length(traced) == 6); // re-laying a leaf never touches its neighbours
+}
+
 // A stack-rooted block survives arbitrary collection pressure byte-for-byte.
 static void t_root_keeps_alive(void) {
   unsigned char *keep = osp_alloc(48);
@@ -366,6 +408,7 @@ int main(int argc, char **argv) {
   t_free_noop();
   t_reclaims_unrooted();
   t_immortal_pins_without_roots();
+  t_leaf_bodies_are_not_traced();
   t_root_keeps_alive();
   t_interior_pointer();
   t_sweep_reseats_survivors();
