@@ -384,6 +384,19 @@ static void test_process_args_and_env(int argc, char **argv) {
     assert(osp_process_env(NULL) == NULL);
 }
 
+/* [BUILTIN-PRINT-FORM] a nested string is quoted and escaped as its literal. */
+static void test_show(void) {
+    text_is(osp_string_show("plain", 0), "plain");
+    text_is(osp_string_show("a\"b", 0), "a\"b");
+    text_is(osp_string_show("", 1), "\"\"");
+    text_is(osp_string_show("osprey", 1), "\"osprey\"");
+    text_is(osp_string_show("a\"b", 1), "\"a\\\"b\"");
+    text_is(osp_string_show("back\\slash", 1), "\"back\\\\slash\"");
+    text_is(osp_string_show("l1\nl2\r\t\x1b", 1), "\"l1\\nl2\\r\\t\\e\"");
+    text_is(osp_string_show("\"\"", 1), "\"\\\"\\\"\"");
+    text_is(osp_string_show(NULL, 1), "\"\"");
+}
+
 /* ---------- entry point ---------- */
 
 int main(int argc, char **argv) {
@@ -416,6 +429,7 @@ int main(int argc, char **argv) {
     test_words();
     test_join();
     test_join_runtime_list();
+    test_show();
     /* adversarial coverage */
     test_long_strings();
     test_round_trips();

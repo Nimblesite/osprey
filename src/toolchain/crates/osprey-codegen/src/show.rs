@@ -1,13 +1,11 @@
 //! Render a record or a list at its static type, the way it is written:
 //! `{ code: 1, why: "empty" }`, `[1, 2]`. A string inside a value is quoted;
-//! a string on its own is its text. Implements [BUILTIN-TOSTRING].
+//! a string on its own is its text. Implements [BUILTIN-TOSTRING],
+//! [BUILTIN-PRINT-FORM].
 
 use crate::builder::Codegen;
 use crate::error::Result;
 use crate::llty::{LType, Value};
-
-/// The quoted spelling of a string nested in a value.
-pub(crate) const QUOTED: &str = "\"%s\"";
 
 /// A heap value as text: a list or a record field by field, anything else
 /// through its erased descriptor.
@@ -46,8 +44,7 @@ fn expand(cg: &mut Codegen, v: Value, owner: &str) -> Result<Value> {
 /// [`crate::runtime::to_string_value`] renders it.
 pub(crate) fn nested(cg: &mut Codegen, v: Value) -> Result<Value> {
     if v.ty == LType::Str && v.result_inner.is_none() {
-        let arg = format!("i8* {}", v.operand);
-        return Ok(crate::runtime::format_sized(cg, QUOTED, &[arg]));
+        return Ok(shown(cg, &v.operand, "1"));
     }
     crate::runtime::to_string_value(cg, v)
 }
@@ -104,4 +101,13 @@ fn list(cg: &mut Codegen, l: &Value) -> Result<Value> {
     crate::arc::own(cg, &joined);
     let arg = format!("i8* {}", joined.operand);
     Ok(crate::runtime::format_sized(cg, "[%s]", &[arg]))
+}
+
+/// `text` as it reads inside a value: quoted and escaped as its literal when
+/// `quoted` is `1`, else a copy. Both answers are owned strings.
+pub(crate) fn shown(cg: &mut Codegen, text: &str, quoted: &str) -> Value {
+    let raw = cg.call("i8*", "osp_string_show", "i8*, i64", &[text, quoted]);
+    let v = Value::new(raw, LType::Str);
+    crate::arc::own(cg, &v);
+    v
 }

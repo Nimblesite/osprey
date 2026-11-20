@@ -109,15 +109,9 @@ fn ensure_show(cg: &mut Codegen) {
     let (_, _, dt) = super::guard_box(cg);
     let kind = crate::aggregate::load_field(cg, super::DESC_TY, &dt, 0, LType::I64);
     let is_text = cg.emit_reg(format!("icmp eq i64 {kind}, {}", super::KIND_STRING));
-    let quoted = cg.string_constant(crate::show::QUOTED);
-    let plain = cg.string_constant("%s");
-    let fmt = cg.emit_reg(format!(
-        "select i1 {is_text}, i8* {}, i8* {}",
-        quoted.operand, plain.operand
-    ));
+    let quoted = cg.emit_reg(format!("zext i1 {is_text} to i64"));
     let text = owned_call(cg, LType::Str, TO_STRING_FN, "%box");
-    let arg = format!("i8* {}", text.operand);
-    let shown = crate::runtime::format_sized_by(cg, &fmt, &[arg]);
+    let shown = crate::show::shown(cg, &text.operand, &quoted);
     crate::arc::epilogue(cg, Some(&shown));
     cg.emit(format!("ret i8* {}", shown.operand));
     cg.exit_nested_fn(saved, "i8*", SHOW_FN, &[(LType::Ptr, "box".into())]);

@@ -199,7 +199,10 @@ fn error_results_render_visibly_and_lists_compare_by_rendering() {
     let ir = module("expect([1, 2], [1, 3])\n");
     shows(
         &ir,
-        &["@osp_string_join_list", "call void @osp_test_assert(i8* null, i32"],
+        &[
+            "@osp_string_join_list",
+            "call void @osp_test_assert(i8* null, i32",
+        ],
     );
 }
 

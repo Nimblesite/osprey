@@ -424,3 +424,38 @@ void osp_format_into(char *buf, int64_t cap, const char *fmt, ...) {
     (void)vsnprintf(buf, (size_t)cap, fmt, ap);
     va_end(ap);
 }
+
+// The escape a string literal spells for byte `c`, or NULL when `c` stands for
+// itself [LEX-STRING-LITERAL].
+static const char *osp_literal_escape(unsigned char c) {
+    switch (c) {
+    case '"': return "\\\"";
+    case '\\': return "\\\\";
+    case '\n': return "\\n";
+    case '\r': return "\\r";
+    case '\t': return "\\t";
+    case 0x1b: return "\\e";
+    case '\0': return "\\0";
+    default: return NULL;
+    }
+}
+
+// A string as it reads inside a record, variant or list: in quotes, escaped
+// as its literal is written, so `{ why: "a\"b" }` reads back unambiguously.
+// `quoted == 0` answers a fresh copy, so both shapes own a new string.
+// Implements [BUILTIN-PRINT-FORM].
+char *osp_string_show(const char *s, int64_t quoted) {
+    size_t n = s ? (size_t)osp_strlen(s) : 0;
+    if (!quoted) return osp_string_dup_internal(s, n);
+    size_t total = 2;
+    for (size_t i = 0; i < n; i++) total += osp_literal_escape((unsigned char)s[i]) ? 2 : 1;
+    char *out = osp_string_alloc_internal(total), *w = out;
+    if (!out) return NULL;
+    *w++ = '"';
+    for (size_t i = 0; i < n; i++) {
+        const char *e = osp_literal_escape((unsigned char)s[i]);
+        if (e) { *w++ = e[0]; *w++ = e[1]; } else *w++ = s[i];
+    }
+    *w = '"';
+    return out;
+}

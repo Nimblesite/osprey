@@ -12,7 +12,7 @@ surface unless an ML example clarifies different call syntax.
 
 ### `print(value: printable) -> Unit` — [BUILTIN-PRINT]
 
-`printable` is documentation shorthand, not a user-declared type. Every value made of data is printable: `int`, `float`, `bool`, `string`, `Unit`, a record, a union, a `List` of printable elements, a `Result<T, E>` whose two sides are printable, and an erased `any`. A function, `Map`, iterator, fiber, channel, pointer, GPU buffer or capability is rejected at compile time, alone or as a record field, list element or `Result` side. `print` appends a newline.
+`printable` is documentation shorthand, not a user-declared type. Every value made of data is printable: `int`, `float`, `bool`, `string`, `Unit`, a record, a union, a `List` of printable elements, a `Result<T, E>` whose two sides are printable, and an erased `any`. A function, `Map`, iterator, fiber, channel, pointer, GPU buffer or capability is rejected at compile time, alone or as a record field, union variant field, list element or `Result` side, through any number of generic calls. `print` appends a newline.
 
 A value renders the way its literal is written — [BUILTIN-PRINT-FORM]:
 
@@ -26,7 +26,9 @@ A value renders the way its literal is written — [BUILTIN-PRINT-FORM]:
 | `List` | `[1, 2, 3]`, `[]` when empty |
 | `Result` | `Success(value)` or `Error(payload)`, the payload as `toString` renders it ([ERR-RESULT-FORMAT](../language/0013-ErrorHandling.md#formatting--err-result-format)) |
 
-A record prints its fields and not its type name: records are structural, so two declarations with the same fields are the same shape and print alike. A quoted string is not escaped. Nesting composes: a record holding a list of unions prints each level by its own row. GC, ARC and wasm32 produce the same text. An erased `any` renders through its shape descriptor to the same text as the typed value; a `Map` or opaque runtime handle inside one shows a kind label such as `<map>`, never the pointer word. See [TYPE-ANY](../language/0004-TypeSystem.md#the-any-type--type-any).
+A record prints its fields and not its type name: records are structural, so two declarations with the same fields are the same shape and print alike. A quoted string is escaped exactly as its literal is written ([LEX-STRING-LITERAL](../language/0002-LexicalStructure.md#booleans-and-strings--lex-string-literal)): `\"`, `\\`, `\n`, `\r`, `\t`, `\e` and `\0`, so `{ why: "a\"b" }` reads back unambiguously. A string on its own prints as its bare text. Nesting composes: a record holding a list of unions prints each level by its own row. GC, ARC and wasm32 produce the same text. An erased `any` renders through its shape descriptor to the same text as the typed value; a `Map` or opaque runtime handle inside one shows a kind label such as `<map>`, never the pointer word.
+
+A `Map` has no rendering, by design. Its iteration order is unspecified ([BUILTIN-MAP](#mapstring-v--builtin-map)), so any text it printed would either vary with the hash layout, which breaks goldens and assertion equality, or hide a sort inside every `print`. A program states the order it wants: `mapKeys(m) |> listSort` and render each entry. See [TYPE-ANY](../language/0004-TypeSystem.md#the-any-type--type-any).
 
 ```osprey
 type MathError = DivZero | Overflow { by: int }

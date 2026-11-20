@@ -48,6 +48,7 @@ char *osp_string_trim_end(const char *s);
 char *osp_string_reverse(const char *s);
 char *osp_string_replace(const char *s, const char *needle, const char *replacement);
 char *osp_string_repeat(const char *s, int64_t n);
+char *osp_string_show(const char *s, int64_t quoted);
 char *osp_string_pad_start(const char *s, int64_t target_length, const char *fill);
 char *osp_string_pad_end(const char *s, int64_t target_length, const char *fill);
 int64_t osp_parse_int_strict(const char *s, int64_t *out);
