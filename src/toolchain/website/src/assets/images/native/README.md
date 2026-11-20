@@ -15,6 +15,7 @@
 | tally-macos-night.webp | The same window after Use night colours |
 | bridge-row.jpg | Frame at 48 s of osprey-native-bridge.mp4 (the bridge tutorial) |
 | bridge-change.jpg | Frame at 395 s of osprey-native-bridge.mp4 |
+| prism-mix-bus.webp | Step 13 of the daw video journey (target/daw-video/steps/13-glow-send.png), 21 November 2026; 1400 wide |
 | web-bank.png | Fresh Chromium capture, 1440 × 960, local Talon Bank, 3 November 2026; waits for data-osprey-ready=true |
 
 PNGs preserve their source captures. Windows images come from WinUI self-tests with fixture data. The page reuses mobile simulator/emulator captures documented in ../mobile/README.md, the macOS Casting tutorial capture and the VS Code package guide capture. Captions identify the actual platform; these images do not establish support for other applications or hosts.
