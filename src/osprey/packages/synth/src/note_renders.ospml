@@ -45,6 +45,17 @@ module NoteRenders
 
     frames noteSpan = toList (range (0, noteSpan.total))
 
+    // Run plumbing shared by every instrument: one appended sample, one faulted step, one folded note.
+    ran (run, held, sample) = NoteRun(held = held, samples = listAppend run.samples sample, fault = "")
+
+    stepped (run, next) = match run.fault == ""
+        false => run
+        true => match next
+            Error why => run(fault = why)
+            Success step => ran (run, step.next, step.sample)
+
+    folded (noteSpan, held, step) = finished (foldList (frames noteSpan, NoteRun(held = held, samples = [], fault = ""), step))
+
     // Loop storage sized to the note's own period.
     loop (rate, note) = match floatToInt (ceil (rate / hertz note) + 8.0)
         Error _ => Error(message = "A note has a non-finite pitch.")
@@ -65,7 +76,7 @@ module NoteRenders
             burst = Exciters::next (pick (note, capacity), run.held.other)
             match Waveguides::next (string (note, noteSpan, rate, capacity, brightness, decay, frame), run.held.one, burst.sample)
                 Error why => run(fault = why)
-                Success step => NoteRun(held = VoicePair(one = step.next, other = burst.next), samples = listAppend run.samples step.sample, fault = "")
+                Success step => ran (run, VoicePair(one = step.next, other = burst.next), step.sample)
 
     plucked (note, noteSpan, rate, capacity, brightness, decay) = match Waveguides::configure (string (note, noteSpan, rate, capacity, brightness, decay, 0))
         Error why => Error(message = why)
@@ -73,15 +84,9 @@ module NoteRenders
             Error why => Error(message = why)
             Success guide => match Exciters::configure (pick (note, capacity))
                 Error why => Error(message = why)
-                Success _ => finished (foldList (frames noteSpan, NoteRun(held = VoicePair(one = guide, other = Exciters::initial (satAdd note.pitch 1)), samples = [], fault = ""), \(run, frame) => pluckStep (note, noteSpan, rate, capacity, brightness, decay, run, frame)))
+                Success _ => folded (noteSpan, VoicePair(one = guide, other = Exciters::initial (satAdd note.pitch 1)), \(run, frame) => pluckStep (note, noteSpan, rate, capacity, brightness, decay, run, frame))
 
     bow (note, noteSpan, rate, capacity, pressure, brightness, depth, age) = BowConfig(sampleRate = rate, frequency = ArrangeMath::vibrato (hertz note, age, depth, rate), decay = 0.6, brightness = brightness, position = 0.12, pressure = pressure, velocity = 0.3 * note.velocity * ArrangeMath::gated (age, noteSpan.gate, 0.08 * rate, 0.1 * rate), capacity = capacity)
-
-    bowStep (note, noteSpan, rate, capacity, pressure, brightness, depth, run, frame) = match run.fault == ""
-        false => run
-        true => match BowedStrings::next (bow (note, noteSpan, rate, capacity, pressure, brightness, depth, toFloat frame), run.held)
-            Error why => run(fault = why)
-            Success step => NoteRun(held = step.next, samples = listAppend run.samples step.sample, fault = "")
 
     bowed (note, noteSpan, rate, capacity, pressure, brightness, depth) = match BowedStrings::configure (bow (note, noteSpan, rate, capacity, pressure, brightness, depth, 0.0))
         Error why => Error(message = why)
@@ -89,28 +94,22 @@ module NoteRenders
             false => Error(message = "Bow vibrato depth must be 0 to 0.02.")
             true => match BowedStrings::initial config
                 Error why => Error(message = why)
-                Success string => finished (foldList (frames noteSpan, NoteRun(held = string, samples = [], fault = ""), \(run, frame) => bowStep (note, noteSpan, rate, capacity, pressure, brightness, depth, run, frame)))
+                Success string => folded (noteSpan, string, \(run, frame) => stepped (run, BowedStrings::next (bow (note, noteSpan, rate, capacity, pressure, brightness, depth, toFloat frame), run.held)))
 
     impulse (strength, frame) = match frame == 0
         true => strength
         false => 0.0
 
-    modalStep (bank, strength, run, frame) = match run.fault == ""
-        false => run
-        true => match ModalBanks::next (bank, run.held, impulse (strength, frame))
-            Error why => run(fault = why)
-            Success step => NoteRun(held = step.next, samples = listAppend run.samples step.sample, fault = "")
-
     modal (note, noteSpan, rate, decay, brightness, modes) = match ModalBanks::configure (ModalConfig(sampleRate = rate, frequency = hertz note, decay = decay, brightness = brightness, strike = 0.37, count = 8, modes = modes))
         Error why => Error(message = why)
-        Success bank => finished (foldList (frames noteSpan, NoteRun(held = ModalBanks::initial bank, samples = [], fault = ""), \(run, frame) => modalStep (bank, note.velocity, run, frame)))
+        Success bank => folded (noteSpan, ModalBanks::initial bank, \(run, frame) => stepped (run, ModalBanks::next (bank, run.held, impulse (note.velocity, frame))))
 
     voice (note, noteSpan, rate, tone, cents, age) = OperatorConfig(sampleRate = rate, frequency = ArrangeMath::detuned (hertz note, cents), shape = DistortedPhase(breakpoint = ArrangeMath::bloomed (tone.breakpoint, age, tone.bloom, rate)), depth = 0.0, spread = 0.0, feedback = tone.feedback, amplitude = 0.5 * note.velocity * ArrangeMath::gated (age, noteSpan.gate, tone.attack * rate, tone.release * rate))
 
     operatorStep (note, noteSpan, rate, tone, run, frame) =
         one = PhaseOperators::next (voice (note, noteSpan, rate, tone, tone.detune, toFloat frame), run.held.one, 0.0, 0.0)
         other = PhaseOperators::next (voice (note, noteSpan, rate, tone, 0.0 - tone.detune, toFloat frame), run.held.other, 0.0, 0.0)
-        NoteRun(held = VoicePair(one = one.next, other = other.next), samples = listAppend run.samples (one.sample + other.sample), fault = "")
+        ran (run, VoicePair(one = one.next, other = other.next), one.sample + other.sample)
 
     toneValid tone = tone.attack >= 0.001 && tone.attack <= 10.0 && tone.release >= 0.001 && tone.release <= 10.0 && tone.bloom >= 0.001 && tone.bloom <= 10.0 && abs tone.detune <= 100.0
 
@@ -118,7 +117,7 @@ module NoteRenders
         false => Error(message = "Operator attack, release and bloom must be 0.001 to 10 s and detune within 100 cents.")
         true => match PhaseOperators::configure (voice (note, noteSpan, rate, tone, abs tone.detune, 0.0))
             Error why => Error(message = why)
-            Success _ => finished (foldList (frames noteSpan, NoteRun(held = VoicePair(one = PhaseOperators::initial, other = PhaseOperators::initial), samples = [], fault = ""), \(run, frame) => operatorStep (note, noteSpan, rate, tone, run, frame)))
+            Success _ => folded (noteSpan, VoicePair(one = PhaseOperators::initial, other = PhaseOperators::initial), \(run, frame) => operatorStep (note, noteSpan, rate, tone, run, frame))
 
     body (note, rate, hit, age) = OperatorConfig(sampleRate = rate, frequency = ArrangeMath::swept (hertz note, hit.sweep, age, rate), shape = PlainPhase, depth = 0.0, spread = 0.0, feedback = 0.0, amplitude = note.velocity * (1.0 - hit.noise) * ArrangeMath::ringing (age, hit.decay, rate))
 
@@ -127,7 +126,7 @@ module NoteRenders
     drumStep (note, noteSpan, rate, hit, run, frame) =
         tone = PhaseOperators::next (body (note, rate, hit, toFloat frame), run.held.one, 0.0, 0.0)
         burst = Exciters::next (rattle (note, noteSpan, hit), run.held.other)
-        NoteRun(held = VoicePair(one = tone.next, other = burst.next), samples = listAppend run.samples (tone.sample + burst.sample), fault = "")
+        ran (run, VoicePair(one = tone.next, other = burst.next), tone.sample + burst.sample)
 
     drummed (note, noteSpan, rate, hit) = match hit.noise >= 0.0 && hit.noise <= 1.0 && hit.sweep >= 0.0 && hit.sweep <= 8.0 && hit.decay >= 0.01 && hit.decay <= 1.0
         false => Error(message = "Drum noise must be 0 to 1, sweep 0 to 8 and decay 0.01 to 1 s.")
@@ -135,7 +134,7 @@ module NoteRenders
             Error why => Error(message = why)
             Success _ => match Exciters::configure (rattle (note, noteSpan, hit))
                 Error why => Error(message = why)
-                Success _ => finished (foldList (frames noteSpan, NoteRun(held = VoicePair(one = PhaseOperators::initial, other = Exciters::initial (satAdd note.pitch 1)), samples = [], fault = ""), \(run, frame) => drumStep (note, noteSpan, rate, hit, run, frame)))
+                Success _ => folded (noteSpan, VoicePair(one = PhaseOperators::initial, other = Exciters::initial (satAdd note.pitch 1)), \(run, frame) => drumStep (note, noteSpan, rate, hit, run, frame))
 
     stringed (note, noteSpan, rate, instrument) = match loop (rate, note)
         Error why => Error(message = why)

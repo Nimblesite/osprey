@@ -96,47 +96,50 @@ module EditorState
     grainCloud identity =
         resource = builtinSample ()
         cloud = Components::granular (identity, resource, 16, 1)
-        cloud(parameters = mapList (cloud.parameters, \p => parameterValue ("rate", WaveMath::playbackRate (48000.0, 48000.0, 220.0, resource.rootFrequency), p)))
+        withParameter (cloud, "rate", WaveMath::playbackRate (48000.0, 48000.0, 220.0, resource.rootFrequency))
+
+    // Factories wrap their built component in the shared `Valid` constructor.
+    made component = Valid(value = component)
 
     factory (kind, identity) = match kind
-        "grain-cloud" => Valid(value = grainCloud identity)
-        "lfo" => Valid(value = Components::lfo (identity, 2.0))
-        "modulated-gain" => Valid(value = Components::modulatedGain (identity, 2, 0.5))
-        "sine" => Valid(value = Components::sine (identity, 440.0))
-        "filter" => Valid(value = Components::modulatedLowpass (identity, 4000.0, 0.707))
-        "gain" => Valid(value = Components::gain (identity, 0.25))
-        "mixer" => Valid(value = Components::mixer identity)
-        "delay" => Valid(value = Components::delay (identity, 2400))
-        "midi-note" => Valid(value = Components::midiNote (identity, 60.0, 0.8, 6000.0))
-        "stereo" => Valid(value = Components::stereo identity)
-        "stereo-output" => Valid(value = Components::stereoOutput identity)
-        "output" => Valid(value = Components::output identity)
+        "grain-cloud" => made (grainCloud identity)
+        "lfo" => made (Components::lfo (identity, 2.0))
+        "modulated-gain" => made (Components::modulatedGain (identity, 2, 0.5))
+        "sine" => made (Components::sine (identity, 440.0))
+        "filter" => made (Components::modulatedLowpass (identity, 4000.0, 0.707))
+        "gain" => made (Components::gain (identity, 0.25))
+        "mixer" => made (Components::mixer identity)
+        "delay" => made (Components::delay (identity, 2400))
+        "midi-note" => made (Components::midiNote (identity, 60.0, 0.8, 6000.0))
+        "stereo" => made (Components::stereo identity)
+        "stereo-output" => made (Components::stereoOutput identity)
+        "output" => made (Components::output identity)
         _ => advanced (kind, identity)
 
     // Advanced modules start at musically useful, level-safe defaults (A3 pitch, struck responses).
     advanced (kind, identity) = match kind
-        "exciter" => Valid(value = Components::exciter (identity, 7))
-        "waveguide" => Valid(value = Components::waveguide (identity, 220.0, 2400))
-        "bowed-string" => Valid(value = Components::bowed (identity, 220.0, 2400))
-        "strike-comb" => Valid(value = Components::strikeComb (identity, 220.0, 2400))
-        "resonator" => Valid(value = Components::resonator (identity, 220.0))
-        "modal-bank" => Valid(value = Components::modalBank (identity, 220.0, 3.0))
-        "fractional-delay" => Valid(value = Components::fractionalDelay (identity, 240.5, 4800))
-        "loss-filter" => Valid(value = Components::lossFilter (identity, 0.9, 0.5))
-        "allpass" => Valid(value = Components::allpass (identity, 0.4))
+        "exciter" => made (Components::exciter (identity, 7))
+        "waveguide" => made (Components::waveguide (identity, 220.0, 2400))
+        "bowed-string" => made (Components::bowed (identity, 220.0, 2400))
+        "strike-comb" => made (Components::strikeComb (identity, 220.0, 2400))
+        "resonator" => made (Components::resonator (identity, 220.0))
+        "modal-bank" => made (Components::modalBank (identity, 220.0, 3.0))
+        "fractional-delay" => made (Components::fractionalDelay (identity, 240.5, 4800))
+        "loss-filter" => made (Components::lossFilter (identity, 0.9, 0.5))
+        "allpass" => made (Components::allpass (identity, 0.4))
         "wavetable" => wavetable identity
-        "additive" => Valid(value = Components::additive (identity, 220.0))
-        "spectral" => Valid(value = Components::spectral (identity, 1024, 256, 0.0))
-        "shaper" => Valid(value = Components::shaper (identity, 0.0, 2.0))
-        "reverb" => Valid(value = Components::reverb (identity, 2.5))
-        "shifter" => Valid(value = Components::shifter (identity, 5.0))
-        "phase-operator" => Valid(value = Components::phaseOperator (identity, 220.0, 3.0))
-        "smoother" => Valid(value = Components::smoother (identity, 0.01))
+        "additive" => made (Components::additive (identity, 220.0))
+        "spectral" => made (Components::spectral (identity, 1024, 256, 0.0))
+        "shaper" => made (Components::shaper (identity, 0.0, 2.0))
+        "reverb" => made (Components::reverb (identity, 2.5))
+        "shifter" => made (Components::shifter (identity, 5.0))
+        "phase-operator" => made (Components::phaseOperator (identity, 220.0, 3.0))
+        "smoother" => made (Components::smoother (identity, 0.01))
         _ => Invalid(fault = InvalidNode)
 
     wavetable identity = match Wavetables::classic (1024, 64)
         Error _ => Invalid(fault = InvalidNode)
-        Success table => Valid(value = Components::wavetable (identity, table, 220.0))
+        Success table => made (Components::wavetable (identity, table, 220.0))
 
     faultText fault = match fault
         Cycle => "That route forms a loop without a delay. The previous patch is unchanged."
@@ -146,20 +149,24 @@ module EditorState
         Capacity => "The patch has reached its component or cable capacity."
         _ => "The edit was rejected; the previous patch is unchanged."
 
+    rejected (editor, fault) = editor(message = faultText fault)
+
+    absent editor = editor(message = "That component no longer exists.")
+
     published (editor, outcome) = match outcome
-        Invalid fault => editor(message = faultText fault)
+        Invalid fault => rejected (editor, fault)
         Valid graph => editor(graph = graph, selectedCable = -1, revision = satAdd editor.revision 1, message = "Patch updated.")
 
     added (editor, kind) = match editor.nextIdentity == 9223372036854775807
         true => editor(message = "No more component identities are available.")
         false => match factory (kind, editor.nextIdentity)
-            Invalid fault => editor(message = faultText fault)
+            Invalid fault => rejected (editor, fault)
             Valid n => match Graphs::add (editor.graph, n)
-                Invalid fault => editor(message = faultText fault)
+                Invalid fault => rejected (editor, fault)
                 Valid graph => editor(graph = graph, selected = n.identity, nextIdentity = satAdd n.identity 1, revision = satAdd editor.revision 1, message = "Added ${title kind}.")
 
     selected (editor, identity) = match Graphs::node (editor.graph, identity)
-        Invalid fault => editor(message = faultText fault)
+        Invalid fault => rejected (editor, fault)
         Valid _ => editor(selected = identity)
 
     armed (editor, identity, outlet) = match Graphs::node (editor.graph, identity)
@@ -173,7 +180,7 @@ module EditorState
         Success cable => published (editor, Graphs::disconnect (editor.graph, cable))
 
     removed editor = match Graphs::remove (editor.graph, editor.selected)
-        Invalid fault => editor(message = faultText fault)
+        Invalid fault => rejected (editor, fault)
         Valid graph =>
             next = published (editor, Valid(value = graph))
             next(selected = -1, source = -1, dragging = -1, positions = filterList (editor.positions, \p => p.layoutNode != editor.selected), pluginBindings = filterList (editor.pluginBindings, \binding => binding.pluginNode != editor.selected), message = "Component and its cables removed.")
@@ -202,7 +209,7 @@ module EditorState
         false => descriptor
 
     nodeValue (identity, key, value, n) = match n.identity == identity
-        true => n(parameters = mapList (n.parameters, \p => parameterValue (key, value, p)))
+        true => withParameter (n, key, value)
         false => n
 
     appliedValue (editor, identity, key, value) =
@@ -214,7 +221,7 @@ module EditorState
             Valid _ => published (editor, Valid(value = graph(nodes = mapList (editor.graph.nodes, \n => nodeValue (identity, key, value, n)))))
 
     checkedValue (editor, identity, key, value) = match Graphs::node (editor.graph, identity)
-        Invalid _ => editor(message = "That component no longer exists.")
+        Invalid _ => absent editor
         Valid n => match length (filterList (n.parameters, \p => p.key == key && p.automatable)) == 1
             false => editor(message = "This host cannot edit non-automatable parameters.")
             true => appliedValue (editor, identity, key, value)
@@ -230,39 +237,37 @@ module EditorState
             Success value => checkedValue (editor, identity, key, value)
         _ => editor
 
-    pitchParameter (n, key, value) = n(parameters = mapList (n.parameters, \p => parameterValue (key, value, p)))
+    withParameter (n, key, value) = n(parameters = mapList (n.parameters, \p => parameterValue (key, value, p)))
+
+    // Re-raise a lower-level message unchanged.
+    relayed why = Error(message = why)
+
+    keyFollow (n, note) = Success(value = withParameter (n, "frequency", Waves::midiFrequency (toFloat note)))
 
     pitched (note, n) = match n.processor
         Granular resource _ _ => match SampleResources::playbackRate (resource, toFloat note, 48000.0)
-            Error why => Error(message = "Grain cloud ${n.identity}: ${why}")
-            Success rate => Success(value = pitchParameter (n, "rate", rate))
-        Oscillator => Success(value = pitchParameter (n, "frequency", Waves::midiFrequency (toFloat note)))
-        MidiNotes => Success(value = pitchParameter (n, "pitch", toFloat note))
+            Error why => relayed "Grain cloud ${n.identity}: ${why}"
+            Success rate => Success(value = withParameter (n, "rate", rate))
+        Oscillator => keyFollow (n, note)
+        MidiNotes => Success(value = withParameter (n, "pitch", toFloat note))
         _ => keyedFrequency (note, n)
 
     // Advanced modules with a pitch-like `frequency` parameter follow the keyboard; effects keep theirs.
-    keyedFrequency (note, n) = match Kinds::kind n.processor
-        "synth.waveguide" => Success(value = pitchParameter (n, "frequency", Waves::midiFrequency (toFloat note)))
-        "synth.bowed-string" => Success(value = pitchParameter (n, "frequency", Waves::midiFrequency (toFloat note)))
-        "synth.strike-comb" => Success(value = pitchParameter (n, "frequency", Waves::midiFrequency (toFloat note)))
-        "synth.resonator" => Success(value = pitchParameter (n, "frequency", Waves::midiFrequency (toFloat note)))
-        "synth.modal-bank" => Success(value = pitchParameter (n, "frequency", Waves::midiFrequency (toFloat note)))
-        "synth.wavetable" => Success(value = pitchParameter (n, "frequency", Waves::midiFrequency (toFloat note)))
-        "synth.additive" => Success(value = pitchParameter (n, "frequency", Waves::midiFrequency (toFloat note)))
-        "synth.phase-operator" => Success(value = pitchParameter (n, "frequency", Waves::midiFrequency (toFloat note)))
-        _ => Success(value = n)
+    keyedFrequency (note, n) = match ui::Lists::any (["synth.waveguide", "synth.bowed-string", "synth.strike-comb", "synth.resonator", "synth.modal-bank", "synth.wavetable", "synth.additive", "synth.phase-operator"], \kind => kind == Kinds::kind n.processor)
+        true => keyFollow (n, note)
+        false => Success(value = n)
 
     pitchNext (note, outcome, n) = match outcome
-        Error why => Error(message = why)
+        Error why => relayed why
         Success nodes => match pitched (note, n)
-            Error why => Error(message = why)
+            Error why => relayed why
             Success next => Success(value = listPrepend nodes next)
 
     (** Transpose the patch atomically. A grain outside its rate range rejects the whole key strike. *)
     export tune (editor, note) = match note >= 0 && note <= 127
         false => Error(message = "Choose a MIDI note from 0 to 127.")
         true => match foldList (editor.graph.nodes, Success(value = []), \(held, n) => pitchNext (note, held, n))
-            Error why => Error(message = why)
+            Error why => relayed why
             Success nodes =>
                 graph = editor.graph
                 Success(value = editor(graph = graph(nodes = listReverse nodes), note = note, armedNote = -1, revision = satAdd editor.revision 1))
@@ -287,7 +292,7 @@ module EditorState
 
     (** Optional processor controls are explicit graph parameters, never UI-only flags. *)
     export configured (editor, identity, key, label, maximum, value) = match Graphs::node (editor.graph, identity)
-        Invalid _ => editor(message = "That component no longer exists.")
+        Invalid _ => absent editor
         Valid n =>
             descriptor = Parameter(key = key, label = label, unit = Ratio, minimum = 0.0, maximum = maximum, initial = value, automatable = true)
             updated = n(parameters = listAppend (filterList (n.parameters, \p => p.key != key)) descriptor)

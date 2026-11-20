@@ -5,6 +5,9 @@ import synth::RenderInputs
 
 (** Each adapter reads its declared parameters, runs the standalone module and stores its state. *)
 module PhysicalKernels
+    // Publishes one produced sample with its updated kernel state.
+    published (frame, next, sample) = Success(value = RenderInputs::emitted (frame, next, sample))
+
     excitation (kind, colour) = match kind
         0.0 => Success(value = ImpulseExcitation)
         1.0 => Success(value = NoiseExcitation(colour = colour))
@@ -22,7 +25,7 @@ module PhysicalKernels
         Error why => Error(message = why)
         Success config =>
             step = Exciters::next (config, ExciterState(age = held.phase, seed = held.integratorOne, smoothed = held.integratorTwo))
-            Success(value = RenderInputs::emitted (frame, held(phase = step.next.age, integratorOne = step.next.seed, integratorTwo = step.next.smoothed), step.sample))
+            published (frame, held(phase = step.next.age, integratorOne = step.next.seed, integratorTwo = step.next.smoothed), step.sample)
 
     (** A source: phase holds the burst age, the integrators the noise seed and colour filter. *)
     export excite (snapshot, frame, held) = RenderInputs::bound (snapshot, held, "strength", \strength => RenderInputs::bound (snapshot, held, "duration", \duration => RenderInputs::bound (snapshot, held, "interval", \interval => RenderInputs::bound (snapshot, held, "excitation", \kind => RenderInputs::bound (snapshot, held, "colour", \colour => excited (frame, held, exciterConfig (strength, duration, interval, kind, colour)))))))
@@ -31,7 +34,7 @@ module PhysicalKernels
         Error why => Error(message = why)
         Success c =>
             step = Resonators::next (c, ResonatorState(real = held.integratorOne, imag = held.integratorTwo), input)
-            Success(value = RenderInputs::emitted (frame, held(integratorOne = step.next.real, integratorTwo = step.next.imag), step.sample))
+            published (frame, held(integratorOne = step.next.real, integratorTwo = step.next.imag), step.sample)
 
     scaled selector = match selector
         0.0 => Success(value = PeakScale)
@@ -65,7 +68,7 @@ module PhysicalKernels
         Error why => Error(message = why)
         Success bank => match ModalBanks::next (bank, ModalState(modes = pairs held.delay), input)
             Error why => Error(message = why)
-            Success step => Success(value = RenderInputs::emitted (frame, held(delay = flattened step.next), step.sample))
+            Success step => published (frame, held(delay = flattened step.next), step.sample)
 
     bodied (frame, held, input, selector, count, shape) = match body selector
         Error why => Error(message = why)
@@ -79,33 +82,31 @@ module PhysicalKernels
         Error why => Error(message = why)
         Success accepted => match Waveguides::next (accepted, WaveguideState(line = DelayLine(samples = held.delay), loss = LossState(previous = held.integratorOne), dispersion = AllpassState(input = held.integratorTwo, output = held.phase)), input)
             Error why => Error(message = why)
-            Success step => Success(value = RenderInputs::emitted (frame, held(delay = step.next.line.samples, integratorOne = step.next.loss.previous, integratorTwo = step.next.dispersion.input, phase = step.next.dispersion.output), step.sample))
+            Success step => published (frame, held(delay = step.next.line.samples, integratorOne = step.next.loss.previous, integratorTwo = step.next.dispersion.input, phase = step.next.dispersion.output), step.sample)
 
     waveguide (rate, snapshot, frame, held, input, capacity) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "brightness", \brightness => RenderInputs::bound (snapshot, held, "dispersion", \dispersion => RenderInputs::bound (snapshot, held, "pickup", \pickup => guided (frame, held, input, WaveguideConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, dispersion = dispersion, pickup = pickup, capacity = capacity)))))))
 
-    fractional (snapshot, frame, held, input) = match RenderInputs::parameter (snapshot, held.identity, "delay")
+    delayed (frame, held, input, delay) = match DelayLines::tap (DelayLine(samples = held.delay), delay)
         Error why => Error(message = why)
-        Success delay =>
-            line = DelayLine(samples = held.delay)
-            match DelayLines::tap (line, delay)
-                Error why => Error(message = why)
-                Success read => Success(value = RenderInputs::emitted (frame, held(delay = (DelayLines::push (line, input)).samples), read))
+        Success read => published (frame, held(delay = (DelayLines::push (DelayLine(samples = held.delay), input)).samples), read)
+
+    fractional (snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "delay", \delay => delayed (frame, held, input, delay))
 
     lost (frame, held, input, configured) = match configured
         Error why => Error(message = why)
         Success config =>
             step = LossFilters::next (config, LossState(previous = held.integratorOne), input)
-            Success(value = RenderInputs::emitted (frame, held(integratorOne = step.next.previous), step.sample))
+            published (frame, held(integratorOne = step.next.previous), step.sample)
 
     loss (snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "gain", \gain => RenderInputs::bound (snapshot, held, "brightness", \brightness => lost (frame, held, input, LossFilters::configure (LossConfig(gain = gain, brightness = brightness)))))
 
-    allpass (snapshot, frame, held, input) = match RenderInputs::parameter (snapshot, held.identity, "coefficient")
+    allpassed (frame, held, input, configured) = match configured
         Error why => Error(message = why)
-        Success value => match Allpasses::configure value
-            Error why => Error(message = why)
-            Success coefficient =>
-                step = Allpasses::next (coefficient, AllpassState(input = held.integratorOne, output = held.integratorTwo), input)
-                Success(value = RenderInputs::emitted (frame, held(integratorOne = step.next.input, integratorTwo = step.next.output), step.sample))
+        Success coefficient =>
+            step = Allpasses::next (coefficient, AllpassState(input = held.integratorOne, output = held.integratorTwo), input)
+            published (frame, held(integratorOne = step.next.input, integratorTwo = step.next.output), step.sample)
+
+    allpass (snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "coefficient", \value => allpassed (frame, held, input, Allpasses::configure value))
 
     (** Process one routed input sample; non-physical processors are an explicit error. *)
     export process (rate, snapshot, frame, held, n, input) = match n.processor
@@ -123,17 +124,17 @@ module PhysicalKernels
         Error why => Error(message = why)
         Success config =>
             step = Smoothers::next (config, SmootherState(value = held.integratorOne), input)
-            Success(value = RenderInputs::emitted (frame, held(integratorOne = step.next.value), step.sample))
+            published (frame, held(integratorOne = step.next.value), step.sample)
 
     smoother (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "time", \time => RenderInputs::bound (snapshot, held, "linear", \mode => smoothed (rate, frame, held, input, time, mode)))
 
-    bowSegments (held: KernelState, capacity) = BowState(neck = DelayLine(samples = Sequences::take (held.delay, capacity)), bridge = DelayLine(samples = Sequences::drop (held.delay, capacity)), loss = LossState(previous = held.integratorOne))
+    bowSegments (held, capacity) = BowState(neck = DelayLine(samples = Sequences::take (held.delay, capacity)), bridge = DelayLine(samples = Sequences::drop (held.delay, capacity)), loss = LossState(previous = held.integratorOne))
 
     bowedStep (frame, held, capacity, configured) = match configured
         Error why => Error(message = why)
         Success config => match BowedStrings::next (config, bowSegments (held, capacity))
             Error why => Error(message = why)
-            Success step => Success(value = RenderInputs::emitted (frame, held(delay = listConcat step.next.neck.samples step.next.bridge.samples, integratorOne = step.next.loss.previous), step.sample))
+            Success step => published (frame, held(delay = listConcat step.next.neck.samples step.next.bridge.samples, integratorOne = step.next.loss.previous), step.sample)
 
     (** Bowed-string source: storage holds the neck then bridge segments; integratorOne the loss filter. *)
     export bowed (rate, snapshot, frame, held, capacity) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "brightness", \brightness => RenderInputs::bound (snapshot, held, "position", \position => RenderInputs::bound (snapshot, held, "pressure", \pressure => RenderInputs::bound (snapshot, held, "velocity", \velocity => bowedStep (frame, held, capacity, BowedStrings::configure (BowConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, position = position, pressure = pressure, velocity = velocity, capacity = capacity)))))))))
@@ -142,7 +143,6 @@ module PhysicalKernels
         Error why => Error(message = why)
         Success config => match StrikeCombs::next (config, DelayLine(samples = held.delay), input)
             Error why => Error(message = why)
-            Success step => Success(value = RenderInputs::emitted (frame, held(delay = step.next.samples), step.sample))
+            Success step => published (frame, held(delay = step.next.samples), step.sample)
 
     strike (rate, snapshot, frame, held, input, capacity) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "position", \position => struck (frame, held, input, StrikeCombs::configure (StrikeConfig(sampleRate = rate, frequency = frequency, position = position, capacity = capacity)))))
-
