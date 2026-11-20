@@ -805,7 +805,7 @@ saveJourney arrangement =
     patch = (synth::DawSession::shown (selected, synth::PatchPage)).stepStore
     expect (patch.patchTrack, 1)
     succeeds (daw::TrackPatches::picked (arrangement, 1), \graph => expect (structuralEquals (patch.graph, graph), true))
-    succeeds (synth::MixView::rowAt (reopened, 855.0, 204.0), \action => mixFromRow (reopened, action, path))
+    succeeds (synth::MixView::rowAt (reopened, 560.0, 290.0), \action => mixFromRow (reopened, action, path))
 
 
 
@@ -863,9 +863,9 @@ bounceJourney ready =
     // A previous run's finished bounce would otherwise count as this project's audio.
     _made = makeDir songFolder
     _cleared = writeFile "${songFolder}/song.wav" ""
-    expect (synth::TimelineView::headerAction 0, synth::ShowPage(page = synth::TimelinePage))
-    expect (synth::TimelineView::headerAction 1, synth::ShowPage(page = synth::PatchPage))
-    expect (synth::TimelineView::headerAction 2, synth::ShowPage(page = synth::MixPage))
+    expect (synth::Header::songAction (ready, 0), synth::ShowPage(page = synth::TimelinePage))
+    expect (synth::Header::songAction (ready, 1), synth::ShowPage(page = synth::PatchPage))
+    expect (synth::Header::songAction (ready, 2), synth::ShowPage(page = synth::MixPage))
     said (synth::DawSession::bounce (ready(renderer = "")), "", "Open a song and launch with the daw renderer to play it.")
     first = synth::DawSession::bounce ready
     said (first, "daw-song:bounce:${songFolder}", "Rendering all of Bridge.")
@@ -892,18 +892,19 @@ labelled (editor, label) = filterList (synth::TimelineView::headerAreas editor, 
 barLineJourney ready =
     lined = ready(song = timeline [barLined (pluckTrack ())], track = 0)
     expect (daw::Arrangements::beats lined.song, 16.0)
-    succeeds (synth::TimelineView::laneAt (lined, 1200.0, 113.0), \action => playheadSet (lined, action, 3))
-    succeeds (synth::TimelineView::laneAt (lined, 1199.0, 113.0), \action => playheadSet (lined, action, 3))
-    succeeds (synth::TimelineView::laneAt (lined, 230.0, 113.0), \action => playheadSet (lined, action, 0))
-    succeeds (synth::TimelineView::laneAt (lined, 472.5, 113.0), \action => playheadSet (lined, action, 1))
-    succeeds (synth::TimelineView::laneAt (lined, 957.5, 113.0), \action => playheadSet (lined, action, 3))
-    succeeds (synth::TimelineView::laneAt (lined, 1200.0, 150.0), \action => expect (action, synth::PickTrack(index = 0, bar = 3)))
+    succeeds (synth::TimelineView::laneAt (lined, 1092.0, 200.0), \action => playheadSet (lined, action, 3))
+    succeeds (synth::TimelineView::laneAt (lined, 1091.0, 200.0), \action => playheadSet (lined, action, 3))
+    succeeds (synth::TimelineView::laneAt (lined, 198.0, 200.0), \action => playheadSet (lined, action, 0))
+    succeeds (synth::TimelineView::laneAt (lined, 421.5, 200.0), \action => playheadSet (lined, action, 1))
+    succeeds (synth::TimelineView::laneAt (lined, 868.5, 200.0), \action => playheadSet (lined, action, 3))
+    succeeds (synth::TimelineView::laneAt (lined, 1092.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 3)))
     // [DAW-HEADER] The header holds the page tabs and the transport; every other command is in the menu bar.
-    forEachList (["Timeline", "Patch", "Mix", "Play", "Stop"], \label => expect (length (labelled (ready, label)), 1))
+    forEachList (["Timeline", "Patch", "Mix", "Return to start", "Play", "Stop"], \label => expect (length (labelled (ready, label)), 1))
     forEachList (["Render song", "Open song", "Save project", "Keyboard", "Play bars"], \label => expect (length (labelled (ready, label)), 0))
-    expect (length (synth::TimelineView::headerAreas ready), 5)
-    expect (synth::TimelineView::headerAction 3, synth::PlaySong)
-    expect (synth::TimelineView::headerAction 4, synth::StopSong)
+    expect (length (synth::TimelineView::headerAreas ready), 6)
+    expect (synth::Header::songAction (ready(track = 0), 3), synth::PickTrack(index = 0, bar = 0))
+    expect (synth::Header::songAction (ready, 4), synth::PlaySong)
+    expect (synth::Header::songAction (ready, 5), synth::StopSong)
 
 transportJourney () =
     succeeds (makeDir "target/daw-tests", \_ => expect (true, true))
@@ -941,11 +942,11 @@ transportJourney () =
     said (home, "", "Nothing is playing; the playhead is back at bar 1.")
     expect (stopped.stepStore.rollBar, 5)
     expect (home.stepStore.rollBar, 0)
-    succeeds (synth::TimelineView::laneAt (ready, 230.0, 130.0), \action => playheadSet (ready, action, 0))
-    succeeds (synth::TimelineView::laneAt (ready, 1200.0, 113.0), \action => playheadSet (ready, action, synth::DawSession::bar (daw::Arrangements::beats ready.song)))
-    failsWith (synth::TimelineView::laneAt (ready, 229.0, 130.0), "No lane here.")
+    succeeds (synth::TimelineView::laneAt (ready, 198.0, 205.0), \action => playheadSet (ready, action, 0))
+    succeeds (synth::TimelineView::laneAt (ready, 1092.0, 200.0), \action => playheadSet (ready, action, synth::DawSession::bar (daw::Arrangements::beats ready.song)))
+    failsWith (synth::TimelineView::laneAt (ready, 197.0, 205.0), "No lane here.")
     barLineJourney ready
-    failsWith (synth::TimelineView::laneAt (ready, 700.0, 111.0), "No lane here.")
+    failsWith (synth::TimelineView::laneAt (ready, 700.0, 192.0), "No lane here.")
     succeeds (daw::Projects::mixed (ready.song, 1, 2.0, 0.5, 0.25), \louder => remixed (ready, louder))
     bounceJourney ready
 

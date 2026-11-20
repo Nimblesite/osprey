@@ -26,7 +26,7 @@ const WARM_UP: usize = 3;
 const TIMELINE_SHAPES: usize = 300;
 /// The shapes the Mix page draws for the song, at least, and the middle of its header tab.
 const MIX_SHAPES: usize = 200;
-const MIX_TAB: (f64, f64) = (680.0, 32.0);
+const MIX_TAB: (f64, f64) = (560.0, 29.0);
 
 fn repo(path: &str) -> String {
     format!("{}/../../../{path}", env!("CARGO_MANIFEST_DIR"))
@@ -59,11 +59,9 @@ fn point(canvas: i64, (x, y): (f64, f64), down: bool) -> (Shown, f64) {
     }
 }
 
-/// The scene point of lane `track` at fraction `along` of the song (lanes span x 230 to 1200 and
-/// share y 146 to 476).
+/// The scene point of lane `track` at fraction `along` of the song. Seven rows fit on each page of the arrangement.
 fn lane(track: usize, along: f64) -> (f64, f64) {
-    let height = 330.0 / TRACKS as f64;
-    (230.0 + along * 970.0, 146.0 + (track as f64 + 0.5) * height)
+    (198.0 + along * 894.0, 221.0 + ((track % 7) as f64 + 0.5) * 31.0)
 }
 
 /// [DAW-MENU] The daw's menu bar: File, Edit, View and Transport, every command enabled with a
@@ -96,8 +94,8 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     let read = || -> serde_json::Value {
         serde_json::from_slice(&std::fs::read(song).expect("read the saved project")).expect("decode the project")
     };
-    point(canvas, (210.0, 168.0), true);
-    regions.adopt(&point(canvas, (210.0, 168.0), false).0).expect("select glow");
+    point(canvas, (665.0, 251.0), true);
+    regions.adopt(&point(canvas, (665.0, 251.0), false).0).expect("select glow");
     let mut expected = read();
     assert_eq!(expected["tracks"][0]["bus"], "pads");
     for (label, bus) in [("Master", ""), ("pads", "pads")] {
@@ -147,6 +145,11 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     let mut drawn = std::collections::BTreeSet::new();
     for round in 0..3 {
         for track in 0..TRACKS {
+            if track % 7 == 0 {
+                let rail = (1121.0, 221.0 + (track / 7) as f64 * (217.0 / 3.0) + 10.0);
+                point(canvas, rail, true);
+                point(canvas, rail, false);
+            }
             let at = lane(track, (track * 5 + round * 13) as f64 % 40.0 / 40.0);
             let (pressed, down) = point(canvas, at, true);
             assert!(shapes(&pressed) >= TIMELINE_SHAPES, "track {track} keeps the Timeline drawn");
@@ -161,7 +164,7 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
 
     // [DAW-TRANSPORT-PLAYHEAD] Ruler taps move the playhead; the lanes stay drawn.
     for bar in 0..10 {
-        let at = (230.0 + f64::from(bar) * 97.0, 130.0);
+        let at = (198.0 + f64::from(bar) * 89.4, 207.0);
         let (pressed, down) = point(canvas, at, true);
         assert!(pressed.diagnostics().next().is_none(), "the ruler tap at bar step {bar} is not refused");
         let (released, up) = point(canvas, at, false);
@@ -170,24 +173,30 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
         costs.push(up);
     }
 
-    // The Mix tab, then every track's gain fader pressed, dragged and released (rows start at y 150,
-    // 36 units each; the gain fader spans x 310 to 460).
+    // The Mix tab, then every track's gain fader pressed, dragged and released (rows start at y 235,
+    // 37 units each).
     point(canvas, MIX_TAB, true);
     let (mix, _) = point(canvas, MIX_TAB, false);
     assert!(shapes(&mix) >= MIX_SHAPES, "the Mix page draws {} shapes", shapes(&mix));
     output_routing(&mut regions, canvas, &song);
     let mut drags = Vec::new();
     for track in 0..TRACKS {
-        let y = 150.0 + (track as f64 + 0.5) * 36.0;
+        let y = 235.0 + (track as f64 + 0.5) * 37.0;
         for step in 0..=6 {
-            let (moved, cost) = point(canvas, (320.0 + f64::from(step) * 20.0, y), true);
+            let (moved, cost) = point(canvas, (216.0 + f64::from(step) * 8.0, y), true);
             assert!(shapes(&moved) >= MIX_SHAPES, "dragging track {track}'s gain keeps the Mix drawn");
             assert!(moved.diagnostics().next().is_none(), "the drag on track {track} is not refused");
             drags.push(cost);
         }
-        let (released, cost) = point(canvas, (440.0, y), false);
+        let (released, cost) = point(canvas, (264.0, y), false);
         assert!(shapes(&released) >= MIX_SHAPES, "releasing track {track}'s gain keeps the Mix drawn");
         drags.push(cost);
+    }
+    let rendered: serde_json::Value = serde_json::from_slice(&std::fs::read(&song).expect("read the mixed project")).expect("valid JSON");
+    let tracks = rendered["tracks"].as_array().expect("project tracks");
+    assert_eq!(tracks.len(), TRACKS);
+    for track in tracks {
+        assert!(track["gain"].as_f64().expect("track gain") > 2.0, "the fader changes the gain of {}", track["name"]);
     }
     let mean = drags.iter().sum::<f64>() / drags.len() as f64;
     let worst = drags.iter().copied().fold(0.0, f64::max);

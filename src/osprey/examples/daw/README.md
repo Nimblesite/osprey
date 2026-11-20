@@ -14,9 +14,9 @@ make -C src/toolchain/targets/tests synth          # the app's tests, with no ho
 
 | Page | What it does |
 | --- | --- |
-| ![Timeline](screens/timeline.png) | **Timeline.** One lane per track across the song, and a two-bar piano roll of the selected track. Tap a lane to select the track at that bar. Tap its name or the Patch tab to edit its sound. View → Keyboard opens the playable keys. |
+| ![Timeline](screens/timeline.png) | **Timeline.** One lane per track across the song, and a two-bar piano roll of the selected track. Tap a lane to select the track at that bar. Use the rail at the right of the lanes to reach the next seven tracks. Tap a track name or the Patch tab to edit its sound. View → Keyboard opens the playable keys. |
 | ![A track's patch](screens/track-patch.png) | **Patch.** The selected track's patch in Prism: modules, cables and the selected module’s connections. Leaving the page saves the patch into the project file. A built-in instrument opens as one voice module. |
-| ![Mix](screens/mix.png) | **Mix.** The selected track’s dry path passes through its assigned bus or goes directly to Master. Its Space send returns to Master independently. |
+| ![Mix](screens/mix.png) | **Mix.** The selected track’s dry path passes through its assigned bus or goes directly to Master. Its Space send returns to Master independently. Choose **Routing** in the menu bar to send the selected track to Master or a project bus. |
 
 File → Save writes the open song, its patches and their layouts. Play renders two bars from the playhead. Stop cancels playback. File → Open Song opens another project in the same window.
 
@@ -61,10 +61,10 @@ velocity is 0–1. An instrument's `kind` names its type in daw.td:
 A routing's `nodes` are `{"identity", "component", "size", "seed", "asset", "settings"}` and its `cables` are
 `{"source", "outlet", "destination", "inlet"}`. A setting is `{"key", "value", "follow"}`: `follow` is
 `Constant`, `Pitched` (the note's frequency times `value`) or `Struck` (the note's velocity times `value`).
-The components are `exciter`, `sine`, `wavetable`, `additive`, `operator`,
+The available graph components include `exciter`, `sine`, `wavetable`, `additive`, `operator`,
 `bowed`, `lfo`, `resonator`, `modal`, `waveguide`, `strikeComb`, `fractionalDelay`, `lossFilter`,
 `allpass`, `lowpass`, `shaper`, `shifter`, `spectral`, `reverb`, `smoother`, `gain`, `modulatedGain`,
-`mixer`, `delay` and `output`. An unknown component or setting is an error.
+`mixer`, `delay`, `output`, `modulatedLowpass`, `grainCloud`, `midiNote`, `midiOscillator`, `stereo`, `downmix`, `split`, `join`, `route`, `stereoModulatedGain` and `stereoOutput`. Each `channelN` setting on a `route` selects one input for output N. An unknown component or setting is an error.
 
 ## How it renders [SYNTH-ARRANGEMENT]
 
@@ -77,7 +77,7 @@ A piano roll rendered offline, outside the graph: [daw.td](daw.td) declares the 
 | `BellInstrument`, `MalletInstrument` | `ModalBanks` with bell or bar ratios, one impulse | ring for `decay` whatever the note length |
 | `OperatorInstrument` | two `PhaseOperators` detuned up and down by `detune` cents | the phase-distortion breakpoint eases toward a sine over `bloom` |
 | `DrumInstrument` | sine `PhaseOperators` body with a pitch drop plus an `Exciters` noise burst | lasts `decay` (at most 1 s) whatever the note length |
-| `PatchInstrument` | `PatchVoices`: a `Graphs` graph built per note from `Routing` nodes and cables, rendered by `Renderer` in 8,192-frame blocks | settings follow the note's pitch or velocity; mono only, so no LFO routing or granular |
+| `PatchInstrument` | `PatchVoices` builds a graph per note. The mono scheduler uses 8,192-frame blocks. Graphs with MIDI, control signals or multichannel ports run through `GraphClips` in blocks of up to 1,024 frames at 48 kHz | settings can follow note pitch or velocity. A stereo sink is averaged before the track panner |
 
 Limits: rendering is not realtime and allocates per sample; a note lasts at most 960,000 frames and a piece 28,800,000; tracks are mono before panning; the limiter is not oversampled.
 
@@ -98,10 +98,7 @@ pad come from the engine.
   measuring it first: a pulse of about 97.5 beats per minute and an ending on a C drone in the D♭ major
   scale. The piece is in F Phrygian, so the drone is its dominant, and the held drone returns a fourth up
   and a fifth down (both F) in the breakdown and the ending.
-- Routed patches render through the mono reference renderer at about 1.3 seconds per second of sound
-  for a simple patch. It rejects `lfo` and `modulatedGain` routing and stereo modules (granular); a
-  `bowed` node costs about 20 seconds per second, and `spectral` and `reverb` nodes are too slow to use
-  per note. The whole song took about 90 minutes to render at 48 kHz.
+- Spectral processing and patch reverb can take minutes to render offline. *Silt Relay* combines them on **Throat / metal** and uses granular synthesis and MIDI routing on two other tracks. Its 34.49-second stereo render took about nine minutes on the development Mac.
 - The recording itself is not in the repository; `phosphor-drift.json` expects it at
   `~/Documents/Audio/Broken Circuitry.wav`.
 - The two sides use reverbs of different size, so a steady low tone sent to the reverb adds in phase on

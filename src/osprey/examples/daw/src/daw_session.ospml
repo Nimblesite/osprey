@@ -19,7 +19,7 @@ module DawSession
     (** Select a track and show the two bars where it first plays. *)
     export picked (editor, index) = match listGet editor.song.tracks index
         Error _ => editor
-        Success track => editor(track = index, selectedNote = -1, rollBar = firstBar track, message = "${track.name}: ${length track.notes} notes.")
+        Success track => editor(track = index, lanePage = intDiv index 7, selectedNote = -1, rollBar = firstBar track, message = "${track.name}: ${length track.notes} notes.")
 
     (** Select a track and keep the piano roll on `at`. *)
     export pickedAt (editor, index, at) =
@@ -249,12 +249,12 @@ module DawSession
         index = ui::Lists::position (TimelineView::headerAreas editor, \a => EditorView::inside (x, y, a.accessLeft + a.accessWidth / 2.0, a.accessTop + a.accessHeight / 2.0, a.accessWidth / 2.0, a.accessHeight / 2.0))
         match index < 0
             true => pageAt (editor, x, y)
-            false => Success(value = TimelineView::headerAction index)
+            false => Success(value = Header::songAction (editor, index))
 
     pageAt (editor, x, y) = match editor.page
         MixPage => MixView::rowAt (editor, x, y)
-        _ => match x >= 1220.0 && y < 520.0
+        _ => match x >= 1132.0 && y < 700.0
             true => TimelineView::inspectorAt (editor, x, y)
-            false => match y >= 520.0
+            false => match y >= 542.0
                 true => TimelineView::rollAt (editor, x, y)
                 false => TimelineView::laneAt (editor, x, y)

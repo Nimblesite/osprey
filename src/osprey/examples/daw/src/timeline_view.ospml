@@ -6,7 +6,7 @@ import ui::Scenes
 (** Scene shapes shared by the daw's pages, and the Timeline page itself. *)
 module TimelineView
     (** Text with its left (0), centre (1) or right (2) edge at x. *)
-    export label (words, x, y, size, colour, anchor, depth) = Scenes::lettering (words, x, y, size, colour, anchor, 500.0, depth)
+    export label (words, x, y, size, colour, anchor, depth) = Scenes::lettering (words, x, y, size, colour, anchor, ui::Pick::either (size >= 17.0, 550.0, 400.0), depth)
 
     (** A rectangle by its top-left corner. *)
     export box (left, top, width, height, colour, depth) = Scenes::rect (left + width / 2.0, top + height / 2.0, width, height, 0.0, colour, depth)
@@ -56,7 +56,7 @@ module TimelineView
         false => "${ui::Pick::either (value < 0.0, "L", "R")} ${percent (ui::Pick::either (value < 0.0, 0.0 - value, value))}"
 
     (** The header's hit areas: the page tabs, then Play and Stop ([DAW-HEADER]). *)
-    export headerAreas editor = listConcat (Header::tabAreas editor) (Header::transportAreas (1412.0, 70.0, "Play", "Stop"))
+    export headerAreas editor = Header::songAreas editor
 
     (** The page's place among the header tabs. *)
     export pageIndex page = match page
@@ -64,21 +64,7 @@ module TimelineView
         TimelinePage => 1
         MixPage => 2
 
-    (** The command behind header area `index`. *)
-    export headerAction index = match index
-        3 => PlaySong
-        4 => StopSong
-        _ => ShowPage(page = Header::tabPage index)
-
     tile (a, fill) = [EditorView::panel (a.accessLeft, a.accessTop, a.accessWidth, a.accessHeight, fill, 10), label (a.accessLabel, a.accessLeft + a.accessWidth / 2.0, a.accessTop + 12.0, 16.0, ink (), 1, 11)]
-
-    // The skin's header art (logo and name) when the skin has it; a skin without it letters the name.
-    brand editor = match length (PrismArt::atlas editor.skin) > 11
-        true => [Scenes::sprite (11, 540.0, 33.0, 1080.0, 66.0, 0.0, Scenes::rgb (255, 255, 255), 2)]
-        false => [label ("Prism", 184.0, 14.0, 24.0, ink (), 0, 3)]
-
-    (** The page background, the header and the song strip. *)
-    export frame editor = listConcat (listConcat [box (0.0, 0.0, 1536.0, 828.0, Scenes::rgb (16, 13, 33), 0), box (0.0, 0.0, 1536.0, 66.0, Scenes::rgb (17, 16, 33), 1), box (0.0, 66.0, 1536.0, 1.0, Scenes::rgb (44, 38, 72), 3), box (0.0, 112.0, 1536.0, 1.0, Scenes::rgb (44, 38, 72), 1)] (brand editor)) (listConcat (Header::tabs editor) (Header::strip editor))
 
     track editor = listGet editor.song.tracks editor.track
 
@@ -86,24 +72,20 @@ module TimelineView
         duration = daw::Arrangements::beats editor.song
         ui::Pick::either (duration < 4.0, 4.0, duration)
 
-    rowHeight editor = TimelineGeometry::rowHeight (toFloat (length editor.song.tracks))
+    pageSize = 7
+    rowHeight = 31.0
 
-    // Keep full timing on the editable roll. Sample across dense scores for the whole-song overview,
-    // rotating the offset so repeated patterns display their different pitches.
-    overview notes = match length notes <= 64
-        true => notes
-        false =>
-            stride = intDiv (satAdd (length notes) 63) 64
-            indices = filterList (toList (range (0, length notes)), \i => i == 0 || i == satSub (length notes) 1 || i % stride == (intDiv i stride) % stride)
-            foldList (indices, [], \(kept, i) =>
-                match listGet notes i
-                    Success note => listAppend kept note
-                    Error _ => kept)
+    visible editor =
+        first = satMul editor.lanePage pageSize
+        stop = satAdd first pageSize
+        toList (range (first, ui::Pick::either (stop < length editor.song.tracks, stop, length editor.song.tracks)))
+
+    pages editor = intDiv (satAdd (length editor.song.tracks) (satSub pageSize 1)) pageSize
 
     noteTrace (voice, top, height, duration) =
         low = toFloat (lowest voice.notes)
         high = toFloat (highest voice.notes)
-        ui::Lists::flatten (mapList (overview voice.notes, \note => segment (top, height, duration, low, high, note)))
+        ui::Lists::flatten (mapList (voice.notes, \note => segment (top, height, duration, low, high, note)))
 
     segment (top, height, duration, low, high, note: daw::Note) =
         left = TimelineGeometry::laneX (note.start, duration)
@@ -113,53 +95,64 @@ module TimelineView
 
     (** Cache song-wide pitch traces on open. Selecting a note or moving a fader only changes the overlay. *)
     export traces song =
-        height = TimelineGeometry::rowHeight (toFloat (length song.tracks))
+        height = rowHeight
         duration = daw::Arrangements::beats song
         mapList (toList (range (0, length song.tracks)), \i =>
             match listGet song.tracks i
                 Error _ => []
-                Success voice => noteTrace (voice, TimelineGeometry::rowY (toFloat i, height), height, ui::Pick::either (duration < 4.0, 4.0, duration)))
+                Success voice => noteTrace (voice, TimelineGeometry::rowY (toFloat (i % pageSize), height), height, ui::Pick::either (duration < 4.0, 4.0, duration)))
 
     traceShape (steps, colour) = Scenes::path (steps, ui::Line(width = 1.7, dashes = [], bevel = false), ui::Solid(tint = Scenes::hex (shiftRight colour 8, 1.0)), 4)
 
     lane (editor, index, voice) =
-        height = rowHeight editor
-        top = TimelineGeometry::rowY (toFloat index, height)
+        height = rowHeight
+        top = TimelineGeometry::rowY (toFloat (index % pageSize), height)
         chosen = index == editor.track
         colour = ui::Pick::either (chosen, accent (), lavender ())
-        size = ui::Pick::either (height < 18.0, height - 5.0, 13.0)
-        [box (0.0, top, 1210.0, height - 1.0, ui::Pick::either (chosen, Scenes::rgb (58, 34, 46), ui::Pick::either (index % 2 == 0, Scenes::rgb (20, 17, 38), Scenes::rgb (17, 14, 34))), 2), label ("${satAdd index 1}", 24.0, top + 3.0, size, dim (), 0, 3), label (voice.name, 52.0, top + 3.0, size, ui::Pick::either (chosen, ink (), lavender ()), 0, 3), label (instrumentName voice.instrument, 150.0, top + 3.0, size, dim (), 0, 3), traceShape (listGet editor.laneTraces index ?: [], colour)]
+        size = 13.0
+        [box (0.0, top, 1132.0, height, ui::Pick::either (chosen, Scenes::rgb (58, 34, 46), ui::Pick::either (index % 2 == 0, Scenes::rgb (20, 17, 38), Scenes::rgb (17, 14, 34))), 2), box (0.0, top, 3.0, height, ui::Pick::either (chosen, accent (), panelInk ()), 3), label ("${satAdd index 1}", 24.0, top + 8.0, size, dim (), 0, 3), label (voice.name, 46.0, top + 8.0, size, ui::Pick::either (chosen, ink (), lavender ()), 0, 3), label (instrumentName voice.instrument, 109.0, top + 8.0, size, dim (), 0, 3), traceShape (listGet editor.laneTraces index ?: [], colour)]
 
     ruler duration = ui::Lists::flatten (mapList (toList (range (0, satAdd (DawSession::bar duration) 1)), \at =>
         x = TimelineGeometry::laneX (TimelineGeometry::barStart (toFloat at), duration)
         major = at % 4 == 0
-        line = box (x, 140.0, 1.0, 336.0, ui::Pick::either (major, Scenes::rgb (54, 46, 73), Scenes::rgb (36, 30, 52)), 3)
-        tick = box (x, 136.0, 1.0, ui::Pick::either (major, 8.0, 4.0), dim (), 4)
+        line = box (x, 221.0, 1.0, 217.0, ui::Pick::either (major, Scenes::rgb (54, 46, 73), Scenes::rgb (36, 30, 52)), 3)
+        tick = box (x, 215.0, 1.0, ui::Pick::either (major, 8.0, 4.0), dim (), 4)
         match major
-            true => [line, tick, label ("${satAdd at 1}", x, 124.0, 11.0, dim (), 0, 4)]
+            true => [line, tick, label ("${satAdd at 1}", x, 200.0, 11.0, dim (), 0, 4)]
             false => [line, tick]))
 
     viewport (editor, duration) =
         left = TimelineGeometry::laneX (rollStart editor, duration)
         right = TimelineGeometry::laneX (rollStart editor + 8.0, duration)
-        [Scenes::strip ([left, 142.0, right, 142.0, right, 476.0, left, 476.0, left, 142.0], accent (), 2.0, 6)]
+        [Scenes::strip ([left, 221.0, right, 221.0, right, 438.0, left, 438.0, left, 221.0], dim (), 1.0, 6)]
 
-    arrangement (editor, duration) = listConcat (listConcat [label ("TRACKS", 24.0, 124.0, 12.0, dim (), 0, 3), label ("VOICE", 150.0, 124.0, 12.0, dim (), 0, 3)] (ruler duration)) (listConcat (foldList (toList (range (0, length editor.song.tracks)), [], \(all, index) =>
+    arrangement (editor, duration) = listConcat (listConcat [label ("Arrangement", 24.0, 160.0, 18.0, ink (), 0, 4), label ("${length editor.song.tracks} tracks", 154.0, 163.0, 13.0, dim (), 0, 4), label ("Bars 1–${satAdd (DawSession::bar duration) 1}", 1108.0, 163.0, 13.0, dim (), 2, 4), label ("TRACKS", 24.0, 200.0, 12.0, dim (), 0, 3), label ("VOICE", 109.0, 200.0, 12.0, dim (), 0, 3)] (ruler duration)) (listConcat (foldList (visible editor, [], \(all, index) =>
         match listGet editor.song.tracks index
             Error _ => all
-            Success voice => listConcat all (lane (editor, index, voice)))) (listConcat (viewport (editor, duration)) (playhead (editor, duration))))
+            Success voice => listConcat all (lane (editor, index, voice)))) (ui::Lists::flatten [viewport (editor, duration), playhead (editor, duration), scroll editor]))
+
+    scroll editor = match pages editor > 1
+        false => []
+        true =>
+            height = 217.0 / toFloat (pages editor)
+            [box (1119.0, 221.0, 5.0, 217.0, panelInk (), 6), box (1119.0, 221.0 + toFloat editor.lanePage * height, 5.0, height, dim (), 7)]
 
     // [DAW-TRANSPORT-PLAYHEAD] Where Start plays from: a line down the lanes with its handle on the ruler; the piano roll names the bars.
     playhead (editor, duration) =
         at = TimelineGeometry::laneX (rollStart editor, duration)
-        [box (at - 1.0, 120.0, 2.0, 356.0, ink (), 7), box (at - 5.0, 116.0, 10.0, 8.0, ink (), 7)]
+        [box (at, 211.0, 1.0, 227.0, accent (), 7), box (at - 3.0, 210.0, 7.0, 5.0, accent (), 7)]
 
     (** Every lane's hit area: a tap picks the track at that bar; its name opens the patch. *)
-    export laneAt (editor, x, y) =
-        row = floatToInt (TimelineGeometry::rowAt (y, rowHeight editor)) ?: -1
-        match row >= 0 && row < length editor.song.tracks && y >= 146.0
+    export laneAt (editor, x, y) = match x >= 1113.0 && x < 1132.0 && y >= 221.0 && y < 438.0 && pages editor > 1
+        true => Success(value = ScrollLanes(page = floatToInt (TimelineGeometry::scrollPage (y, toFloat (pages editor))) ?: 0))
+        false => lanePick (editor, x, y)
+
+    lanePick (editor, x, y) =
+        within = floatToInt (TimelineGeometry::rowAt (y, rowHeight)) ?: -1
+        row = satAdd (satMul editor.lanePage pageSize) within
+        match within >= 0 && within < pageSize && row < length editor.song.tracks && y >= 221.0 && x < 1113.0
             false => rulerAt (editor, x, y)
-            true => match x < 230.0
+            true => match x < 198.0
                 true => Success(value = OpenTrack(index = row))
                 false => Success(value = PickTrack(index = row, bar = barAt (editor, x)))
 
@@ -167,12 +160,12 @@ module TimelineView
     barAt (editor, x) = floatToInt (TimelineGeometry::playableBar (TimelineGeometry::laneBeat (x, beats editor), beats editor)) ?: 0
 
     // [DAW-TRANSPORT-PLAYHEAD] A tap on the ruler moves the playhead to that bar and keeps the track.
-    rulerAt (editor, x, y) = match y >= 112.0 && y < 146.0 && x >= 230.0 && x <= 1200.0
+    rulerAt (editor, x, y) = match y >= 193.0 && y < 221.0 && x >= 198.0 && x <= 1092.0
         true => Success(value = PickTrack(index = editor.track, bar = barAt (editor, x)))
         false => Error(message = "No lane here.")
 
     (** Accessibility regions for the arrangement track rows. *)
-    export laneAccess editor = mapList (toList (range (0, length editor.song.tracks)), \index => area ("Track ${satAdd index 1}", 0.0, TimelineGeometry::rowY (toFloat index, rowHeight editor), 1210.0, rowHeight editor, index == editor.track))
+    export laneAccess editor = mapList (visible editor, \index => area ("Track ${satAdd index 1}", 0.0, TimelineGeometry::rowY (toFloat (index % pageSize), rowHeight), 1132.0, rowHeight, index == editor.track))
 
     rollStart editor = TimelineGeometry::barStart (toFloat editor.rollBar)
 
@@ -196,7 +189,7 @@ module TimelineView
         shape = box (left, top + 1.0, width, ui::Pick::either (height > 3.0, height - 2.0, 1.0), colour, 7)
         stem = TimelineGeometry::velocityHeight note.velocity
         stemColour = ui::Pick::either (chosen, Scenes::rgb (255, 219, 122), accent ())
-        markers = [shape, box (left, 810.0 - stem, 2.5, stem, stemColour, 7), Scenes::disc (left + 1.0, 810.0 - stem, 2.8, stemColour, 8)]
+        markers = [shape, box (left, 894.0 - stem, 2.5, stem, stemColour, 7), Scenes::disc (left + 1.0, 894.0 - stem, 2.8, stemColour, 8)]
         match width >= 23.0 && height >= 8.0
             true => listAppend markers (label (noteName note.pitch, left + 4.0, top + 1.0, ui::Pick::either (height > 16.0, 12.0, height - 2.0), Scenes::rgb (40, 20, 10), 0, 8))
             false => markers
@@ -216,21 +209,21 @@ module TimelineView
         colour = match blackKey pitch
             true => Scenes::rgb (18, 15, 34)
             false => Scenes::rgb (25, 21, 45)
-        stripe = box (70.0, top, 1130.0, height, colour, 4)
-        ivory = box (0.0, top, 68.0, height, Scenes::rgb (227, 224, 244), 4)
+        stripe = box (76.0, top, 1034.0, height, colour, 4)
+        ivory = box (0.0, top, 74.0, height, Scenes::rgb (227, 224, 244), 4)
         match blackKey pitch
-            true => [stripe, ivory, box (0.0, top, 44.0, height, Scenes::rgb (40, 33, 61), 5)]
+            true => [stripe, ivory, box (0.0, top, 47.0, height, Scenes::rgb (40, 33, 61), 5)]
             false => match pitch % 12 == 0
-                true => [stripe, ivory, label (noteName pitch, 65.0, top, ui::Pick::either (height >= 13.0, 11.0, height), panelInk (), 2, 6)]
+                true => [stripe, ivory, label (noteName pitch, 69.0, top, ui::Pick::either (height >= 13.0, 11.0, height), panelInk (), 2, 6)]
                 false => [stripe, ivory]
 
     pianoKeys (high, rows) = foldList (toList (range (0, rows)), [], \(all, row) => listConcat all (keyRow (high, rows, row)))
 
     beatLines editor = mapList (toList (range (0, 33)), \step =>
         x = TimelineGeometry::rollX (rollStart editor + toFloat step / 4.0, rollStart editor)
-        box (x, 520.0, ui::Pick::either (step % 16 == 0, 2.0, 1.0), 230.0, ui::Pick::either (step % 4 == 0, Scenes::rgb (59, 50, 82), Scenes::rgb (34, 29, 52)), 5))
+        box (x, 542.0, ui::Pick::either (step % 16 == 0, 2.0, 1.0), 260.0, ui::Pick::either (step % 4 == 0, Scenes::rgb (59, 50, 82), Scenes::rgb (34, 29, 52)), 5))
 
-    bars editor = mapList (toList (range (0, 8)), \beat => label ("${satAdd (satAdd editor.rollBar (intDiv beat 4)) 1}.${satAdd (beat % 4) 1}", TimelineGeometry::rollX (rollStart editor + toFloat beat, rollStart editor) + 4.0, 502.0, 11.0, dim (), 0, 5))
+    bars editor = mapList (toList (range (0, 8)), \beat => label ("${satAdd (satAdd editor.rollBar (intDiv beat 4)) 1}.${satAdd (beat % 4) 1}", TimelineGeometry::rollX (rollStart editor + toFloat beat, rollStart editor) + 4.0, 520.0, 11.0, dim (), 0, 5))
 
     pitchTop notes = match notes
         [] => 72
@@ -246,60 +239,74 @@ module TimelineView
         Error _ => false
         Success picked => structuralEquals (note, picked)
 
+    selectedCursor (editor, voice) = match listGet voice.notes editor.selectedNote
+        Error _ => []
+        Success note => match playing (editor, note)
+            false => []
+            true =>
+                x = TimelineGeometry::rollX (note.start, rollStart editor)
+                [box (x, 538.0, 1.0, 357.0, accent (), 6), Scenes::path ([ui::Polygon(corners = [x - 4.0, 535.0, x + 4.0, 535.0, x, 542.0], closed = true)], ui::Fill, ui::Solid(tint = Scenes::hex (16745538, 1.0)), 7)]
+
+    velocityGrid editor = mapList (toList (range (0, 33)), \tick =>
+        x = TimelineGeometry::rollX (rollStart editor + toFloat tick / 4.0, rollStart editor)
+        box (x, 850.0, 1.0, 45.0, ui::Pick::either (tick % 4 == 0, Scenes::rgb (44, 38, 60), Scenes::rgb (29, 25, 43)), 4))
+
     roll editor = match track editor
         Error _ => [label ("Open a song to see its tracks.", 24.0, 500.0, 18.0, dim (), 0, 3)]
         Success voice =>
             notes = shown (editor, voice)
             high = pitchTop notes
             rows = pitchRows (notes, high)
-            heading = [label ("VELOCITY", 8.0, 758.0, 10.0, dim (), 0, 5), label ("0–1", 28.0, 789.0, 10.0, dim (), 0, 5), box (0.0, 751.0, 1210.0, 1.0, Scenes::rgb (50, 42, 70), 4), box (70.0, 810.0, 1130.0, 1.0, dim (), 4), label ("Piano roll", 24.0, 484.0, 18.0, ink (), 0, 3), label ("${voice.name} · ${length notes} of ${length voice.notes} notes in bars ${satAdd editor.rollBar 1}–${satAdd editor.rollBar 2}", 160.0, 487.0, 14.0, accent (), 0, 3)]
-            listConcat (listConcat heading (listConcat (pianoKeys (high, rows)) (listConcat (beatLines editor) (bars editor)))) (foldList (notes, [], \(all, note) => listConcat all (rollNote (rollStart editor, high, rows, selected (editor, voice, note), note))))
+            heading = [box (0.0, 437.0, 1132.0, 18.0, panelInk (), 3), box (537.0, 446.0, 52.0, 3.0, dim (), 4), box (0.0, 511.0, 1132.0, 30.0, panelInk (), 3), label ("Grid   1/16", 1010.0, 481.0, 13.0, dim (), 2, 5), label ("Fit pitches", 1108.0, 481.0, 13.0, dim (), 2, 5), label ("PITCH", 16.0, 520.0, 10.0, dim (), 0, 5), label ("VELOCITY", 8.0, 815.0, 10.0, dim (), 0, 5), label ("0–1", 28.0, 870.0, 10.0, dim (), 0, 5), box (0.0, 803.0, 1132.0, 1.0, Scenes::rgb (50, 42, 70), 4), box (76.0, 894.0, 1034.0, 1.0, dim (), 4), label ("Piano roll", 24.0, 477.0, 18.0, ink (), 0, 3), label ("${voice.name}    ${length voice.notes} notes", 130.0, 481.0, 14.0, accent (), 0, 3)]
+            listConcat (ui::Lists::flatten [heading, pianoKeys (high, rows), beatLines editor, bars editor, selectedCursor (editor, voice), velocityGrid editor]) (foldList (notes, [], \(all, note) => listConcat all (rollNote (rollStart editor, high, rows, selected (editor, voice, note), note))))
 
     (** The empty dry destination in a project is the direct Master input. *)
     export destination voice = ui::Pick::either (voice.bus == "", "Master", voice.bus)
 
-    fact (name, value, top) = [label (name, 1236.0, top, 14.0, dim (), 0, 9), label (value, 1514.0, top, 14.0, ink (), 2, 9)]
+    fact (name, value, top) = [label (name, 1154.0, top, 14.0, dim (), 0, 9), label (value, 1416.0, top, 14.0, ink (), 2, 9)]
 
-    section (name, top) = [box (1236.0, top, 276.0, 1.0, Scenes::rgb (53, 45, 72), 8), label (name, 1236.0, top + 12.0, 11.0, dim (), 0, 9)]
+    section (name, top) = [box (1154.0, top, 262.0, 1.0, Scenes::rgb (53, 45, 72), 8), label (name, 1154.0, top + 12.0, 11.0, dim (), 0, 9)]
 
     fader (name, value, unit, maximum, top) =
-        width = TimelineGeometry::meter (unit, maximum, 276.0)
-        listConcat (fact (name, value, top)) [box (1236.0, top + 24.0, 276.0, 3.0, Scenes::rgb (61, 52, 84), 9), box (1236.0, top + 24.0, width, 3.0, accent (), 10), Scenes::disc (1236.0 + width, top + 25.5, 4.0, accent (), 10)]
+        width = TimelineGeometry::meter (unit, maximum, 262.0)
+        listConcat (fact (name, value, top)) [box (1154.0, top + 24.0, 262.0, 3.0, Scenes::rgb (61, 52, 84), 9), box (1154.0, top + 24.0, width, 3.0, accent (), 10), Scenes::disc (1154.0 + width, top + 25.5, 4.0, accent (), 10)]
 
     details (editor, voice) = ui::Lists::flatten [
-        [label (voice.name, 1236.0, 150.0, 26.0, ink (), 0, 9), label ("Track ${satAdd editor.track 1}    ·    ${instrumentName voice.instrument} instrument", 1236.0, 185.0, 13.0, dim (), 0, 9)],
-        section ("MIX", 213.0), fader ("Gain", "${hundredths voice.gain}×", voice.gain, 4.0, 247.0),
-        fader ("Pan", pan voice.pan, voice.pan + 1.0, 2.0, 292.0), section ("BUS ROUTING", 343.0),
-        fact ("Output", destination voice, 377.0), fader ("Space send", percent voice.reverb, voice.reverb, 1.0, 423.0),
-        [label ("Post-gain · pre-pan", 1236.0, 458.0, 11.0, dim (), 0, 9)]]
+        [label (voice.name, 1154.0, 196.0, 26.0, ink (), 0, 9), label ("Track ${satAdd editor.track 1}    ·    ${instrumentName voice.instrument} instrument", 1154.0, 236.0, 13.0, dim (), 0, 9)],
+        section ("MIX", 270.0), fader ("Gain", "${hundredths voice.gain}×", voice.gain, 4.0, 322.0),
+        fader ("Pan", pan voice.pan, voice.pan + 1.0, 2.0, 381.0), section ("BUS ROUTING", 440.0),
+        [label ("Output", 1154.0, 491.0, 14.0, dim (), 0, 9), box (1154.0, 518.0, 262.0, 36.0, Scenes::rgb (46, 39, 66), 9), Scenes::disc (1173.0, 536.0, 4.0, accent (), 10), label (destination voice, 1188.0, 529.0, 14.0, ink (), 0, 10), label ("›", 1400.0, 526.0, 18.0, dim (), 2, 10)], fader ("Space send", percent voice.reverb, voice.reverb, 1.0, 579.0),
+        [label ("Post-gain · pre-pan", 1154.0, 630.0, 11.0, dim (), 0, 9)]]
 
     (** The track inspector writes its controls through the same checked mixer action as the routing table. *)
     export inspectorAt (editor, x, y) = match track editor
         Error _ => Error(message = "Select a track first.")
-        Success voice => match x >= 1236.0 && x <= 1512.0
+        Success voice => match x >= 1154.0 && x <= 1416.0
             false => Error(message = "No control here.")
-            true => match y >= 263.0 && y <= 283.0
-                true => Success(value = AdjustMix(index = editor.track, gain = TimelineGeometry::fader (x, 1236.0, 276.0, 0.0, 4.0), pan = voice.pan, reverb = voice.reverb))
-                false => match y >= 308.0 && y <= 328.0
-                    true => Success(value = AdjustMix(index = editor.track, gain = voice.gain, pan = TimelineGeometry::fader (x, 1236.0, 276.0, -1.0, 1.0), reverb = voice.reverb))
-                    false => match y >= 439.0 && y <= 459.0
-                        true => Success(value = AdjustMix(index = editor.track, gain = voice.gain, pan = voice.pan, reverb = TimelineGeometry::fader (x, 1236.0, 276.0, 0.0, 1.0)))
-                        false => Error(message = "No control here.")
+            true => match y >= 338.0 && y <= 358.0
+                true => Success(value = AdjustMix(index = editor.track, gain = TimelineGeometry::fader (x, 1154.0, 262.0, 0.0, 4.0), pan = voice.pan, reverb = voice.reverb))
+                false => match y >= 397.0 && y <= 417.0
+                    true => Success(value = AdjustMix(index = editor.track, gain = voice.gain, pan = TimelineGeometry::fader (x, 1154.0, 262.0, -1.0, 1.0), reverb = voice.reverb))
+                    false => match y >= 595.0 && y <= 615.0
+                        true => Success(value = AdjustMix(index = editor.track, gain = voice.gain, pan = voice.pan, reverb = TimelineGeometry::fader (x, 1154.0, 262.0, 0.0, 1.0)))
+                        false => match y >= 518.0 && y <= 554.0
+                            true => Success(value = ShowPage(page = MixPage))
+                            false => Error(message = "No control here.")
 
     noteDetails (editor, voice) = match listGet voice.notes editor.selectedNote
         Error _ => []
-        Success note => listConcat (listConcat (listConcat (section ("SELECTED NOTE", 479.0)) (fact ("Pitch", noteName note.pitch, 522.0))) (fact ("Start (beats)", hundredths note.start, 555.0))) (listConcat (fact ("Length (beats)", hundredths note.length, 588.0)) (listConcat (fact ("Velocity", percent note.velocity, 631.0)) [box (1236.0, 665.0, 276.0, 5.0, dim (), 9), box (1236.0, 665.0, TimelineGeometry::meter (note.velocity, 1.0, 276.0), 5.0, accent (), 10)]))
+        Success note => listConcat (listConcat (listConcat (section ("SELECTED NOTE", 665.0)) [label (noteName note.pitch, 1154.0, 717.0, 26.0, ink (), 0, 9), label ("MIDI ${note.pitch}", 1416.0, 727.0, 12.0, dim (), 2, 9)]) (fact ("Start (beats)", hundredths note.start, 770.0))) (listConcat (fact ("Length (beats)", hundredths note.length, 807.0)) (listConcat (fact ("Velocity", percent note.velocity, 844.0)) [box (1154.0, 872.0, 262.0, 5.0, dim (), 9), box (1154.0, 872.0, TimelineGeometry::meter (note.velocity, 1.0, 262.0), 5.0, accent (), 10)]))
 
     hitNote (first, high, rows, x, y, note: daw::Note) =
         left = TimelineGeometry::rollX (note.start, first)
         right = TimelineGeometry::rollX (note.start + note.length, first)
         top = TimelineGeometry::pitchY (toFloat note.pitch, toFloat high, toFloat rows)
         inside = y >= top && y < top + TimelineGeometry::pitchHeight (toFloat rows) && x >= left && x <= right
-        right > left && (inside || y >= 758.0 && y <= 811.0 && x >= left - 3.0 && x <= left + 4.0)
+        right > left && (inside || y >= 815.0 && y <= 900.0 && x >= left - 3.0 && x <= left + 4.0)
 
     (** Hit-test notes and velocity stems against the same clipped positions used to draw them. *)
-    export rollAt (editor, x, y) = match x >= 1236.0 && x <= 1512.0 && y >= 650.0 && y <= 687.0 && editor.selectedNote >= 0
-        true => Success(value = SetVelocity(value = TimelineGeometry::fader (x, 1236.0, 276.0, 0.0, 1.0)))
+    export rollAt (editor, x, y) = match x >= 1154.0 && x <= 1416.0 && y >= 856.0 && y <= 891.0 && editor.selectedNote >= 0
+        true => Success(value = SetVelocity(value = TimelineGeometry::fader (x, 1154.0, 262.0, 0.0, 1.0)))
         false => match track editor
             Success voice =>
                 notes = shown (editor, voice)
@@ -314,10 +321,10 @@ module TimelineView
         Success voice => listConcat (details (editor, voice)) (noteDetails (editor, voice))
 
     (** The selected track and its current routing and note. *)
-    export inspector editor = listConcat [box (1220.0, 113.0, 316.0, 715.0, panelInk (), 8), label ("TRACK INSPECTOR", 1236.0, 128.0, 12.0, dim (), 0, 9)] (chosen editor)
+    export inspector editor = listConcat [box (1132.0, 142.0, 308.0, 767.0, panelInk (), 8), label ("TRACK INSPECTOR", 1154.0, 164.0, 12.0, dim (), 0, 9)] (chosen editor)
 
     (** Focus and accessibility bounds for the inspector faders. *)
-    export inspectorAreas () = [area ("Track gain", 1236.0, 263.0, 276.0, 20.0, false), area ("Track pan", 1236.0, 308.0, 276.0, 20.0, false), area ("Track Space send", 1236.0, 439.0, 276.0, 20.0, false)]
+    export inspectorAreas () = [area ("Track gain", 1154.0, 338.0, 262.0, 20.0, false), area ("Track pan", 1154.0, 397.0, 262.0, 20.0, false), area ("Show output routing", 1154.0, 518.0, 262.0, 36.0, false), area ("Track Space send", 1154.0, 595.0, 262.0, 20.0, false)]
 
     (** The whole Timeline page. *)
-    export shapes editor = listConcat (listConcat (frame editor) (arrangement (editor, beats editor))) (listConcat (roll editor) (inspector editor))
+    export shapes editor = listConcat (listConcat (Header::frame editor) (arrangement (editor, beats editor))) (listConcat (roll editor) (inspector editor))

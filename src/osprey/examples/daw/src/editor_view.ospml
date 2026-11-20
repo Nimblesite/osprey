@@ -348,9 +348,9 @@ module EditorView
 
     // [DAW-HEADER] The Patch page's header: the shared tabs, the transport and Add module. Every other command
     // is in the window's menu bar ([DAW-MENU]).
-    toolbar editor = listConcat (listConcat (Header::tabs editor) (Header::transport (826.0, 14.0, editor.renderDeviceKey != ""))) (listAppend (Header::plaque (943.0, 14.0, 134.0, 38.0, Scenes::rgb (52, 41, 110), 11)) (Scenes::lettering ("+  Add module", 1010.0, 25.0, 14.0, Scenes::rgb (240, 236, 255), 1, 500.0, 13)))
+    toolbar editor = listConcat (listConcat (Header::tabs (editor, Header::patchScale ())) (Header::transport (826.0, 14.0, 50.0, 38.0, editor.renderDeviceKey != ""))) (listAppend (Header::plaque (943.0, 14.0, 134.0, 38.0, Scenes::rgb (52, 41, 110), 11)) (Scenes::lettering ("+  Add module", 1010.0, 25.0, 14.0, Scenes::rgb (240, 236, 255), 1, 500.0, 13)))
 
-    toolbarItems editor = listConcat (listConcat [accessible ("Modules", 943.0, 14.0, 134.0, 38.0, editor.paletteShown)] (Header::transportAreas (826.0, 14.0, "Play patch", "Stop playback"))) (listConcat [accessible ("Undo", rightX (editor, 1108.0), 15.0, 40.0, 37.0, false), accessible ("Redo", rightX (editor, 1160.0), 15.0, 40.0, 37.0, false)] (Header::tabAreas editor))
+    toolbarItems editor = listConcat (listConcat [accessible ("Modules", 943.0, 14.0, 134.0, 38.0, editor.paletteShown)] (Header::transportAreas (826.0, 14.0, 50.0, 38.0, "Play patch", "Stop playback"))) (listConcat [accessible ("Undo", rightX (editor, 1108.0), 15.0, 40.0, 37.0, false), accessible ("Redo", rightX (editor, 1160.0), 15.0, 40.0, 37.0, false)] (Header::tabAreas (editor, Header::patchScale ())))
 
     (** The command behind header area `index` of the Patch page. *)
     export toolbarAction index = match index
@@ -382,8 +382,8 @@ module EditorView
 
     // The Timeline and Mix pages draw the song instead of the patch, on the same surface.
     songPage editor = match editor.page
-        MixPage => Ui::described (Ui::zoomed (pageZoom editor, 1536.0, 828.0, PrismArt::atlas editor.skin, MixView::shapes editor, Surface), listConcat (TimelineView::headerAreas editor) (MixView::access editor))
-        _ => Ui::described (Ui::zoomed (pageZoom editor, 1536.0, 828.0, PrismArt::atlas editor.skin, TimelineView::shapes editor, Surface), listConcat (listConcat (TimelineView::headerAreas editor) (TimelineView::laneAccess editor)) (TimelineView::inspectorAreas ()))
+        MixPage => Ui::described (Ui::zoomed (pageZoom editor, 1440.0, 940.0, PrismArt::atlas editor.skin, MixView::shapes editor, Surface), listConcat (TimelineView::headerAreas editor) (MixView::access editor))
+        _ => Ui::described (Ui::zoomed (pageZoom editor, 1440.0, 940.0, PrismArt::atlas editor.skin, TimelineView::shapes editor, Surface), listConcat (listConcat (TimelineView::headerAreas editor) (TimelineView::laneAccess editor)) (TimelineView::inspectorAreas ()))
 
     canvas editor = match editor.page
         PatchPage => patchCanvas editor
@@ -448,7 +448,7 @@ module EditorView
             false => page
             true => Ui::column [page, keyboardDock editor]
 
-    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${editor.rollBar}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.songPath}:${length editor.song.tracks}"
+    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${editor.rollBar}:${editor.lanePage}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.songPath}:${length editor.song.tracks}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =

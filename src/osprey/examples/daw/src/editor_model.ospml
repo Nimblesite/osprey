@@ -116,6 +116,7 @@ type Editor G P S M =
     cards : List<CardMarks>
     art : List<CardArt>
     page : Page
+    lanePage : int
     laneTraces : List<List<ui::PathStep>>
     song : daw::Arrangement
     songPath : string
@@ -180,6 +181,8 @@ type EditorAction =
         gain : float
         pan : float
         reverb : float
+    ScrollLanes
+        page : int
     AssignBus
         index : int
         bus : string
