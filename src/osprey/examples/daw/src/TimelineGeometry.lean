@@ -14,6 +14,12 @@ def playableBar (beat beats : Float) : Float :=
 /-- The beat a bar (from 0) starts on. -/
 def barStart (index : Float) : Float := index * 4
 
+/-- The song overview in the strip spans x 468 to 792: one column per bar, two units apart, as tall as the bar is
+busy (2 to 25 units above y 122) [DAW-HEADER]. -/
+def overviewX (index bars : Float) : Float := 468 + index / bars * 324
+def overviewWidth (bars : Float) : Float := 324 / bars - 2
+def overviewTop (count most : Float) : Float := if most <= 0 then 120 else 120 - count / most * 23
+
 /-- Arrangement lanes span x 198 to 1092 across the whole song. -/
 def laneX (beat beats : Float) : Float := 198 + beat / beats * 894
 def laneBeat (x beats : Float) : Float := bounded ((x - 198) / 894 * beats) 0 beats

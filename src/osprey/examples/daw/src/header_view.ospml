@@ -84,11 +84,33 @@ module Header
 
     threeDigits bar = "${ui::Pick::either (bar < 100, "0", "")}${ui::Pick::either (bar < 10, "0", "")}${bar}"
 
+    barOf (note: daw::Note) = floatToInt (TimelineGeometry::bar note.start) ?: 0
+
+    column (index, bars, count, most) =
+        left = TimelineGeometry::overviewX (index, bars)
+        right = left + TimelineGeometry::overviewWidth bars
+        top = TimelineGeometry::overviewTop (count, most)
+        ui::Polygon(corners = [left, top, right, top, right, 122.0, left, 122.0], closed = true)
+
+    (** The song overview's columns, cached when a song opens: one per bar, as tall as the bar is busy. *)
+    export overview song =
+        beats = daw::Arrangements::beats song
+        bars = satAdd (floatToInt (TimelineGeometry::playableBar (beats, beats)) ?: 0) 1
+        starts = ui::Lists::flatten (mapList (song.tracks, \voice => mapList (voice.notes, barOf)))
+        counts = mapList (toList (range (0, bars)), \bar => length (filterList (starts, \at => at == bar)))
+        most = foldList (counts, 0, \(best, count) => ui::Pick::either (count > best, count, best))
+        mapList (toList (range (0, bars)), \bar => column (toFloat bar, toFloat bars, toFloat (listGet counts bar ?: 0), toFloat most))
+
+    // The overview with the piano roll's two bars framed; nothing until a song is open.
+    overviewShapes editor = match length editor.overview
+        0 => []
+        bars => [caps ("SONG OVERVIEW", 468.0, 77.0), Scenes::path (editor.overview, ui::Fill, paint (Scenes::rgb (96, 86, 150)), 3), EditorView::rounded (TimelineGeometry::overviewX (toFloat editor.rollBar, toFloat bars) - 2.0, 95.0, 2.0 * (TimelineGeometry::overviewWidth (toFloat bars) + 2.0) + 2.0, 30.0, 2.0, ui::Line(width = 1.2, dashes = [], bevel = false), paint (TimelineView::accent ()), 4)]
+
     // The skin's logo when its atlas carries one (entry 15), then the name and the open page.
     brand editor = listConcat (ui::Pick::either (length (PrismArt::atlas editor.skin) > 15, [Scenes::sprite (15, 123.0, 29.5, 46.0, 46.0, 0.0, Scenes::rgb (255, 255, 255), 2)], [])) [TimelineView::label ("Prism", 151.0, 11.0, 20.0, TimelineView::ink (), 0, 3), TimelineView::label (listGet pages (slot editor.page) ?: "", 151.0, 36.0, 11.0, TimelineView::dim (), 0, 3)]
 
     // The song strip: title, tempo, meter, the playhead's bar and the transport.
-    strip editor = listConcat (listConcat [caps ("ARRANGEMENT", 24.0, 77.0), TimelineView::label (editor.song.title, 24.0, 99.0, 24.0, TimelineView::ink (), 0, 3)] (listConcat (readout ("BPM", TimelineView::hundredths editor.song.tempo, 877.0)) (readout ("METER", "4/4", 967.0)))) (listConcat (listConcat (plaque (1051.0, 76.0, 210.0, 51.0, Scenes::rgb (20, 17, 38), 2)) [caps ("POSITION", 1065.0, 84.0), TimelineView::label ("${threeDigits (satAdd editor.rollBar 1)}.01.01", 1065.0, 101.0, 19.0, TimelineView::ink (), 0, 4)]) (songTransport editor))
+    strip editor = listConcat (listConcat [caps ("ARRANGEMENT", 24.0, 77.0), TimelineView::label (editor.song.title, 24.0, 99.0, 24.0, TimelineView::ink (), 0, 3)] (listConcat (overviewShapes editor) (listConcat (readout ("BPM", TimelineView::hundredths editor.song.tempo, 877.0)) (readout ("METER", "4/4", 967.0))))) (listConcat (listConcat (plaque (1051.0, 76.0, 210.0, 51.0, Scenes::rgb (20, 17, 38), 2)) [caps ("POSITION", 1065.0, 84.0), TimelineView::label ("${threeDigits (satAdd editor.rollBar 1)}.01.01", 1065.0, 101.0, 19.0, TimelineView::ink (), 0, 4)]) (songTransport editor))
 
     // The status footer: what is sounding, the song's rate, and the last thing the app said.
     footer editor =
