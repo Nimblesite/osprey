@@ -125,6 +125,15 @@ The three-band split is a start, not the EQ. Target: a parametric EQ as good as 
 - [x] Piano-roll note selection and velocity edits are saved into the project.
 - [x] Native bar-9 journey on a copy of the codex project. Selected keysL, changed gain, pan and Space, inserted a delay, saved, reopened and played 13.75 seconds of stereo at 48 kHz.
 
+### Menu bar and header [DAW-MENU] [DAW-HEADER]
+
+- [x] The macOS menu bar holds the commands: File (Open Song ⌘O, Save ⌘S, Render Song ⌘R), Edit (Undo, Redo), View (pages ⌘1–3, Modules, Patch Controls, Keyboard) and Transport. The FerroUI host builds it from `Ui::section`s among the root's context-menu actions; read back from the running app and driven with View → Timeline.
+- [x] One header on Patch, Timeline and Mix, drawn after [piano-roll.png](../designs/prism-timeline/piano-roll.png): bordered tabs with icons, song strip (BPM, meter, position, what is sounding), Play/Stop icon group. Save, Open, Render, Keyboard, Audition and Patch Controls are no longer canvas buttons.
+- [x] Pages fill the window (zoom 0) unless the keyboard is docked.
+- [ ] The application menu still reads "FerroUI Application": FerroUI names it before the host can; needs the host's own `AppBuilder` start.
+- [ ] Song strip is 46 units tall, the design's is about 74: needs the lanes moved down (prism-routing-design owns the lanes).
+- [ ] Uncommitted lane pitch traces cost 45 ms per Timeline tap (0.64 ms at HEAD); `daw_events` fails with them. Owner: prism-routing-design.
+
 ### Strip the UI [DAW-PAGES-STRIP]
 
 From the committed screens: cut everything that repeats or says nothing (ferroui-prism-lead owns the views).
@@ -132,7 +141,7 @@ From the committed screens: cut everything that repeats or says nothing (ferroui
 - [ ] Patch cards: drop the small name above each card (the title already says it) and "Edit in Patch controls" on every card and in the inspector; tapping the card is the edit.
 - [ ] Round values for display: "261.6255653005986" shows as "261.63 Hz" (C4). Units on every value.
 - [ ] Drop "1 inputs · 1 outputs" (the ports show it) and the bottom legend of cable kinds.
-- [ ] One play control: Audition and Play do the same job from the user's side; keep one.
+- [x] One play control: the header has one Play and one Stop (an icon group); Audition is a Transport menu command.
 - [ ] Long enumerated labels ("Curve (0 tanh, 1 hard, 2 cubic, 3 fold)") become a named choice, not a number with a legend in the label.
 - [ ] Header subtitles ("Signal flow", "Timeline") repeat the selected tab; drop them.
 - [ ] Inspector shows the selected node's parameters, never an empty "Parameters" heading.
