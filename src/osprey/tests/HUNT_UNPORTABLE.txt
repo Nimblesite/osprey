@@ -69,8 +69,6 @@ src/osprey/tests/regressions/basics/website/website_examples.test.osp fibers and
 src/osprey/tests/regressions/basics/website/website_examples.test.ospml fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
 src/osprey/tests/regressions/db/database_effect.test.osp `osprey_ffi_cell` is native code outside the module (not in the portable runtime)
 src/osprey/tests/regressions/db/database_effect.test.ospml `osprey_ffi_cell` is native code outside the module (not in the portable runtime)
-src/osprey/tests/regressions/db/sqlite_basics.test.osp `osprey_ffi_cell` is native code outside the module (not in the portable runtime)
-src/osprey/tests/regressions/db/sqlite_basics.test.ospml `osprey_ffi_cell` is native code outside the module (not in the portable runtime)
 src/osprey/tests/regressions/effects/abort_vs_resume.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
 src/osprey/tests/regressions/effects/abort_vs_resume.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
 src/osprey/tests/regressions/effects/algebraic_effects_comprehensive.test.osp fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
