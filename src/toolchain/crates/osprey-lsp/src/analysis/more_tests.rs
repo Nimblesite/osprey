@@ -120,7 +120,7 @@ fn hover_renders_builtin_signature_and_rejects_unknowns() {
     // internal `any` scheme used to implement receiver dispatch.
     // [#352] Literal signatures, never the renderer's own output, so a
     // regression in `render_signature` or `display_param_type` fails here.
-    const PRINTABLE: &str = "int8 | int16 | int32 | int | uint8 | uint16 | uint32 | float16 | float32 | float | bool | string | Unit | any | Result<printable, printable>";
+    const PRINTABLE: &str = "int8 | int16 | int32 | int | uint8 | uint16 | uint32 | float16 | float32 | float | bool | string | Unit | any | List<printable> | Result<printable, printable> | record | union";
     let cases = [
         (
             "print",
