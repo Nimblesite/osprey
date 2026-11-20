@@ -233,7 +233,7 @@ exactTests([
     { name: "map literals and receiver dispatch preserve lookup semantics", work: literalsAndDispatchCase }
 ])
 
-/// [BUILTIN-MAP-GET] declares `mapGet(map: Map<string, V>, key: string) -> Result<V, Error>`,
+/// [BUILTIN-MAP-GET] declares `mapGet(map: Map<string, V>, key: string) -> Result<V, string>`,
 /// equivalent to `map[key]`, with a missing key returning `Error`. `V` is the
 /// value type, so a string-valued map yields the string, a float-valued map the
 /// float, a bool-valued map the bool and a record-valued map the whole record.

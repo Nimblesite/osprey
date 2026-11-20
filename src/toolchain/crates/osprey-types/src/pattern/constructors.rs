@@ -166,7 +166,7 @@ impl Checker {
 
     /// Bind the built-in `Result` pattern fields against `disc`: `value` is the
     /// success payload (the discriminant itself when it is not a `Result` — the
-    /// match auto-wrap rule), `message` is the error string.
+    /// match auto-wrap rule), `message` is the error payload.
     /// `?:` is an explicit Result handling operation, so it does NOT get the
     /// ordinary `Success`-arm auto-wrap: [PATTERN-RESULT-DEFAULT] states that
     /// its scrutinee must be a `Result` and that it "never reinterprets a plain
@@ -205,7 +205,7 @@ impl Checker {
         // yet. A `Success`/`Error` pattern is itself the evidence, so pin the
         // scrutinee to a Result with an open payload. Binding the whole
         // variable as the payload instead detached the two: once the scrutinee
-        // later became `Result<int, Error>`, `value` was still the Result, and
+        // later became `Result<int, string>`, `value` was still the Result, and
         // `Success { value: value }` failed to unify it with `int`.
         if matches!(self.ctx.expose_settled(disc), Type::Var(_)) {
             let open = Type::result(self.ctx.fresh(), self.ctx.fresh());
@@ -218,6 +218,14 @@ impl Checker {
             }
             _ => dp.clone(),
         };
+        // The error payload has the scrutinee's own error type. Implements
+        // [ERR-PAYLOAD].
+        let err = match &dp {
+            Type::Con { name, args } if name == names::RESULT => {
+                args.get(1).cloned().unwrap_or_else(Type::string)
+            }
+            _ => Type::string(),
+        };
         for (index, fname) in fields.iter().enumerate() {
             // The desugarer's unspellable `?:` binder names the SAME success
             // payload `value` does. Leaving it to the fresh-variable fallback
@@ -229,16 +237,16 @@ impl Checker {
             // `Success`/`Error` bind by ROLE, not by spelling
             // ([FLAVOR-ML-MATCH], [PATTERN-RESULT-BINDERS]): `Success section` binds the success payload
             // under `section` exactly as `Success value` binds it under `value`,
-            // and `Error message` binds the error string. Binding a renamed
+            // and `Error message` binds the error payload. Binding a renamed
             // positional binder to a fresh variable detached it from the
             // payload, so a generic callee reached through it (`find` in a
             // nested match) kept an unconstrained element type and codegen
             // refused the closure as still generic.
             let ft = match fname.as_str() {
                 _ if index == 0 && variant == names::SUCCESS => ok.clone(),
-                _ if index == 0 => Type::string(),
+                _ if index == 0 => err.clone(),
                 "value" | osprey_ast::RESULT_DEFAULT_PAYLOAD => ok.clone(),
-                "message" => Type::string(),
+                "message" => err.clone(),
                 _ => self.ctx.fresh(),
             };
             local.insert(fname.clone(), Scheme::mono(ft));

@@ -91,10 +91,9 @@ impl Checker {
     /// Built-in `Result` constructors `Success { value: T }` / `Error { message: E }`.
     pub(super) fn register_result_ctors(&mut self) {
         self.insert_result_ctor(names::SUCCESS, ("value", "T"));
-        // `Error { message: <string> }` builds the E side of a `Result<T, E>`;
-        // the message is a concrete string, leaving E free to unify with the
-        // declared error type (e.g. the nominal `Error`), not pinned to string.
-        self.insert_result_ctor(names::ERROR, ("message", "string"));
+        // The payload IS the error type: `Error { message: e }` infers `E`
+        // from `e`, whatever its type. Implements [ERR-PAYLOAD].
+        self.insert_result_ctor(names::ERROR, ("message", "E"));
         let _ = self.union_variants.insert(
             names::RESULT.into(),
             vec![names::SUCCESS.into(), names::ERROR.into()],

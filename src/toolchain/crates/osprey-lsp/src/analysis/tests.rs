@@ -181,7 +181,7 @@ fn a_partially_resolved_return_type_reports_its_proven_part_never_unit() {
     // Both arms build a `Result`, so the checker proves the payload is
     // `int` — but the ERROR side stays free, because `Error { message }`
     // unifies with whichever error type a caller supplies. Annotating this
-    // body `-> Result<int, string>`, `-> Result<int, Error>` and
+    // body `-> Result<int, string>`, `-> Result<int, string>` and
     // `-> Result<int, string>` all check, which is what "free" means.
     //
     // [`fill_inferred`] refuses a type holding a variable — correctly, `t6`

@@ -19,7 +19,7 @@ module Sweep
     type Job =
         program : string
         position : int
-        spawned : Result<int, Error>
+        spawned : Result<int, string>
 
     (** Every program hunted, one Outcome each, in inventory order. *)
     export run (programs, unportable) = match prepare ()

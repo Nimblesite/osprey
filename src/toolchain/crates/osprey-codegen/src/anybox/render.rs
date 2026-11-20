@@ -69,6 +69,11 @@ fn render_body(cg: &mut Codegen, key: &DescKey) -> Result<Value> {
             crate::runtime::to_string_value(cg, Value::result(p, LType::Any))
         }
         DescKey::Opaque(label) => Ok(cg.string_constant(label)),
+        DescKey::Typed(key) => {
+            let proto = cg.anys.typed.get(key).cloned().unwrap_or_else(Value::unit);
+            let whole = super::typed::restore(cg, "%payload", &proto);
+            crate::runtime::to_string_value(cg, whole)
+        }
     }
 }
 

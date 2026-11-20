@@ -3,7 +3,7 @@
 
 effect ArithmeticFailure {
     /// Decide what a failed calculation yields, preserving the original `Error`.
-    decide: fn(string) -> Result<int, Error>
+    decide: fn(string) -> Result<int, string>
 }
 
 /// Convert a successful sum to text while preserving the exact error branch.
@@ -159,8 +159,8 @@ test("recovery arithmetic forwards to the outer policy", outerRecovery)
 
 /// #183: direct calls preserve whole Result blocks, including float payloads.
 effect ResultRelay {
-    integer: fn(Result<int, Error>) -> Result<int, Error>
-    fraction: fn(Result<float, Error>) -> Result<float, Error>
+    integer: fn(Result<int, string>) -> Result<int, string>
+    fraction: fn(Result<float, string>) -> Result<float, string>
 }
 
 /// Renders one relayed integer Result through the installed handler.

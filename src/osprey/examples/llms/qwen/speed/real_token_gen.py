@@ -14,8 +14,8 @@ PRODUCTS = {
 def lines(path, tokens, layers):
     reader = gguf.GGUFReader(path)
     yield f'let path = "{path}"'
-    yield "fn mapped(offset, bytes) -> Result<GpuBuffer<uint8>, Error> = gpuMapFile(path, offset, bytes)"
-    yield "fn ramp(n) -> Result<GpuBuffer<float32>, Error> = match gpuIota(n) {"
+    yield "fn mapped(offset, bytes) -> Result<GpuBuffer<uint8>, string> = gpuMapFile(path, offset, bytes)"
+    yield "fn ramp(n) -> Result<GpuBuffer<float32>, string> = match gpuIota(n) {"
     yield "    Success { value } => gpuMap(value, fn(i) => toFloat32(i % 7) * toFloat32(0.25) - toFloat32(0.75))"
     yield "    Error { message } => Error { message: message }"
     yield "}"

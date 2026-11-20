@@ -104,13 +104,13 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
         "gpuLoadTensor",
         "Reads one named tensor out of a safetensors file into the requested float buffer type: F64 requires float, F32 and BF16 require float32, and F16 requires float16. An unknown name, mismatched request, unsupported dtype or truncated file returns Error.",
         ["path" => "The safetensors file", "name" => "The tensor's name in the header"],
-        "let loaded: Result<GpuBuffer<float32>, Error> = gpuLoadTensor(\"model.safetensors\", \"wte.weight\")\nmatch loaded {\n    Success { value } => print(\"${gpuLength(value)} values\")\n    Error { message } => print(message)\n}",
+        "let loaded: Result<GpuBuffer<float32>, string> = gpuLoadTensor(\"model.safetensors\", \"wte.weight\")\nmatch loaded {\n    Success { value } => print(\"${gpuLength(value)} values\")\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "gpuMapFile",
         "Maps count elements of a file, starting at a byte offset, as a read-only `GpuBuffer` of the requested numeric type. Nothing is copied: on unified memory the GPU reads the file's own pages.",
         ["path" => "The file to map", "offset" => "The byte offset, a multiple of the element width", "count" => "How many elements to map"],
-        "let weights: Result<GpuBuffer<float32>, Error> = gpuMapFile(\"weights.bin\", 0, 1024)\nprint(\"mapped\")"
+        "let weights: Result<GpuBuffer<float32>, string> = gpuMapFile(\"weights.bin\", 0, 1024)\nprint(\"mapped\")"
     ),
     builtin_doc!(
         "gpuDevice",

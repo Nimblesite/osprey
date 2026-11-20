@@ -79,7 +79,7 @@ fn string_conversion_builtins_reject_runtime_handles() {
         "let s = print(spawn 1)\n",
         "let c = Channel(1)\nlet s = toString(c)\n",
         "extern fn raw() -> Ptr\nlet s = print(raw())\n",
-        "extern fn bad() -> Result<List<int>, Error>\nlet s = toString(bad())\n",
+        "extern fn bad() -> Result<List<int>, string>\nlet s = toString(bad())\n",
         "type R = { value: int }\nextern fn bad() -> Result<int, R>\nlet s = print(bad())\n",
     ] {
         bad_with(source, "cannot convert value");

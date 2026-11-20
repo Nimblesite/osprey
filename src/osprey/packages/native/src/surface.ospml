@@ -84,7 +84,7 @@ module Surfaces
     mismatch kind = Error(message = "A ${kind} control was sent a value of the wrong kind")
 
     (** The typed message `words` means to `binding`: a tap ignores them, a switch reads `true`, a splitter and a caret read a whole number. Strokes, lassos and scene input are refused here: they arrive through their own typed exports, never as text. *)
-    export told<A> : (Binding<A>, string) -> Result<Message<A>, Error>
+    export told<A> : (Binding<A>, string) -> Result<Message<A>, string>
     told (binding, words) = match binding
         Tap action => Success(value = Act(act = action))
         TextInput action => Success(value = Entered(entry = action, entered = words))
@@ -97,13 +97,13 @@ module Surfaces
         SceneInput _ => mismatch "scene"
 
     // The binding the control numbered `ordinal` delivers, or an error when the view drew no such control.
-    bound<S, A> : (Surface<S, A>, int) -> Result<Binding<A>, Error>
+    bound<S, A> : (Surface<S, A>, int) -> Result<Binding<A>, string>
     bound (held, ordinal) = match listGet held.surfaceBound ordinal
         Error _ => Error(message = "Unknown control ${ordinal}")
         Success binding => Success(value = binding)
 
     (** The message the control numbered `ordinal` delivers with `words`, or an error when the view drew no such control: a host can only name a binding the application issued. *)
-    export meant<S, A> : (Surface<S, A>, int, string) -> Result<Message<A>, Error>
+    export meant<S, A> : (Surface<S, A>, int, string) -> Result<Message<A>, string>
     meant (held, ordinal, words) = match bound (held, ordinal)
         Error problem => Error(message = problem)
         Success binding => told (binding, words)
@@ -113,13 +113,13 @@ module Surfaces
 
     usable values = Lists::any (values, \value => finite value == false) == false
 
-    sceneMessage<A> : (Binding<A>, Input) -> Result<Message<A>, Error>
+    sceneMessage<A> : (Binding<A>, Input) -> Result<Message<A>, string>
     sceneMessage (binding, input) = match binding
         SceneInput action => Success(value = Controlled(control = action, input = input))
         _ => mismatch "non-scene"
 
     (** The message the scene numbered `ordinal` delivers for `input`, its numbers in scene units; refused when that control is not a scene or a number is not finite. *)
-    export scene<S, A> : (Surface<S, A>, int, Input) -> Result<Message<A>, Error>
+    export scene<S, A> : (Surface<S, A>, int, Input) -> Result<Message<A>, string>
     scene (held, ordinal, input) = match usable (inputNumbers input)
         false => Error(message = "A scene was sent a number that is not finite")
         true => match bound (held, ordinal)
@@ -131,24 +131,24 @@ module Surfaces
         Pointer x y _ _ => [x, y]
         Viewed width height => [width, height]
 
-    strokeMessage<A> : (Binding<A>, List<Point>, int, int) -> Result<Message<A>, Error>
+    strokeMessage<A> : (Binding<A>, List<Point>, int, int) -> Result<Message<A>, string>
     strokeMessage (binding, points, width, at) = match binding
         StrokeInput action => Strokes::bind (action, points, width, at)
         _ => mismatch "non-board"
 
     (** The message the board numbered `ordinal` delivers for a finished stroke; refused when that control is not a board or the stroke is malformed. *)
-    export stroke<S, A> : (Surface<S, A>, int, List<Point>, int, int) -> Result<Message<A>, Error>
+    export stroke<S, A> : (Surface<S, A>, int, List<Point>, int, int) -> Result<Message<A>, string>
     stroke (held, ordinal, points, width, at) = match bound (held, ordinal)
         Error problem => Error(message = problem)
         Success binding => strokeMessage (binding, points, width, at)
 
-    lassoMessage<A> : (Binding<A>, List<int>) -> Result<Message<A>, Error>
+    lassoMessage<A> : (Binding<A>, List<int>) -> Result<Message<A>, string>
     lassoMessage (binding, indices) = match binding
         LassoInput action => Strokes::lasso (action, indices)
         _ => mismatch "non-lasso"
 
     (** The message the lasso numbered `ordinal` delivers for the strokes it enclosed; refused when that control is not a lasso or an index is negative. *)
-    export lasso<S, A> : (Surface<S, A>, int, List<int>) -> Result<Message<A>, Error>
+    export lasso<S, A> : (Surface<S, A>, int, List<int>) -> Result<Message<A>, string>
     lasso (held, ordinal, indices) = match bound (held, ordinal)
         Error problem => Error(message = problem)
         Success binding => lassoMessage (binding, indices)
@@ -164,7 +164,7 @@ module Surfaces
     phased phase = Phase(phase = phase)
 
     (** A display frame `elapsed` seconds after the last; refused when it is negative or not finite. *)
-    export framed<A> : float -> Result<Message<A>, Error>
+    export framed<A> : float -> Result<Message<A>, string>
     framed elapsed = match finite elapsed && elapsed >= 0.0
         true => Success(value = Frame(elapsed = elapsed))
         false => Error(message = "Invalid frame elapsed time")

@@ -173,8 +173,8 @@ fn nestedAnonymousCapture() = {
 }
 
 /// [TYPE-RECORD-UPDATE] Result fields retain their whole value across every record path.
-type Outcome = { answer: Result<int, Error>, note: string }
-type GenericOutcome<T> = { answer: Result<T, Error>, note: string }
+type Outcome = { answer: Result<int, string>, note: string }
+type GenericOutcome<T> = { answer: Result<T, string>, note: string }
 
 fn readOutcome(record) = record.answer
 fn matchOutcome(record) = match record {
@@ -213,7 +213,7 @@ fn anonymousResultRecordCase() = {
 }
 
 /// [TYPE-RECORD-RESULT] Constructors, generic slots and live cells preserve failures.
-type Delivery = Waiting | Delivered { answer: Result<float, Error> }
+type Delivery = Waiting | Delivered { answer: Result<float, string> }
 effect ReplaceOutcome { replace: fn(int) -> int }
 fn deliveryResult(delivery) = match delivery {
     Waiting => "waiting"
@@ -236,7 +236,7 @@ fn resultTransportCase() = {
 }
 
 /// [TYPE-RECORD-RESULT] Generic union slots preserve concrete Result payloads.
-type Parcel<T> = Absent | Packed { answer: Result<T, Error> }
+type Parcel<T> = Absent | Packed { answer: Result<T, string> }
 fn parcelText(parcel) = match parcel {
     Absent => "absent"
     Packed { answer } => toString(answer)

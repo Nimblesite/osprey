@@ -39,15 +39,15 @@ effect Console {
 }
 effect Terminal {
     /// Read one keypress, reporting failure as a `Result`.
-    readKey: fn() -> Result<string, Error>
+    readKey: fn() -> Result<string, string>
     /// Enter raw mode when `enable` is non-zero, cooked mode otherwise.
     raw: fn(int) -> Unit
 }
 effect Http {
     /// GET `url` as JSON, reporting transport failure as a `Result`.
-    fetch: fn(string) -> Result<string, Error>
+    fetch: fn(string) -> Result<string, string>
     /// GET `url` as raw bytes, reporting transport failure as a `Result`.
-    fetchRaw: fn(string) -> Result<string, Error>
+    fetchRaw: fn(string) -> Result<string, string>
 }
 
 // Which GitHub account's public repositories to browse.
@@ -405,7 +405,7 @@ fn finish(clientId: int, resp: int) = {
 
 /// Release the response handle, then hand back the body already read from it.
 /// The release is best-effort — a failed free must not mask the body's result.
-fn freeAfter(value: int, result: Result<string, Error>) = {
+fn freeAfter(value: int, result: Result<string, string>) = {
     let _ = httpResponseFree(value) ?: 0
     result
 }

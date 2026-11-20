@@ -272,8 +272,7 @@ fn is_sortable_elem(ty: &Type) -> bool {
 
 /// Values supported by `runtime::to_string_value`. `any` is retained as the
 /// explicit erased-compatibility escape hatch; concrete aggregate and runtime
-/// handles are rejected. Result errors use the runtime's stored string message,
-/// while the success payload is formatted recursively.
+/// handles are rejected. Both sides of a Result are formatted recursively.
 fn is_printable(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => true,
@@ -288,7 +287,7 @@ fn is_printable(ty: &Type) -> bool {
             true
         }
         Type::Con { name, args } if name == names::RESULT => {
-            matches!(args.as_slice(), [ok, err] if is_printable(ok) && is_printable_error(err))
+            matches!(args.as_slice(), [ok, err] if is_printable(ok) && is_printable(err))
         }
         _ => false,
     }
@@ -300,15 +299,6 @@ fn is_printable(ty: &Type) -> bool {
 /// its own and still does not.
 fn is_interpolatable(ty: &Type) -> bool {
     is_printable(ty) || ty.is_named(names::FIBER)
-}
-
-fn is_printable_error(ty: &Type) -> bool {
-    is_printable(ty)
-        || matches!(
-            ty,
-            Type::Con { name, args }
-                if args.is_empty() && name == names::ERROR
-        )
 }
 
 #[cfg(test)]
@@ -412,11 +402,16 @@ mod tests {
         // [BUILTIN-PRINT] [BUILTIN-TOSTRING]
         assert!(is_printable(&Type::result(
             Type::int(),
-            Type::prim(names::ERROR),
+            Type::string(),
         )));
         assert!(!is_printable(&Type::result(
             Type::list(Type::int()),
-            Type::prim(names::ERROR),
+            Type::string(),
+        )));
+        assert!(is_printable(&Type::result(Type::int(), Type::bool())));
+        assert!(!is_printable(&Type::result(
+            Type::int(),
+            Type::list(Type::int()),
         )));
         assert!(!is_printable(&Type::fun(vec![Type::int()], Type::int())));
     }

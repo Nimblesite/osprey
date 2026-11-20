@@ -1,8 +1,8 @@
 type Entry = { title: string }
 
 effect Store {
-    read: fn() -> Result<string, Error>
-    write: fn(string) -> Result<int, Error>
+    read: fn() -> Result<string, string>
+    write: fn(string) -> Result<int, string>
 }
 
 fn decodeTitle(raw) = {

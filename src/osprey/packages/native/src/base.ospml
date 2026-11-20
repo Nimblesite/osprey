@@ -19,7 +19,7 @@ module Lists
         Error _ => out
 
     (** The first item that `matches`, or an error when none does. *)
-    export find<T> : (List<T>, (T) -> bool) -> Result<T, Error>
+    export find<T> : (List<T>, (T) -> bool) -> Result<T, string>
     find (items, matches) = listGet (filterList (items, matches)) 0
 
     locate<T> : (int, List<T>, (T) -> bool, int) -> int

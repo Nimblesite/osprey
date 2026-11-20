@@ -26,7 +26,7 @@ export interface Request {
   readonly headers: string;
   readonly body: string;
   /** `req.get(name)` is the value of the request header `name`, matched without regard to case. */
-  get(name: string): Requires<Result<string, Error>, []>;
+  get(name: string): Requires<Result<string, string>, []>;
   /** A handler returns `req.next()` to pass the request to the next matching handler. */
   next(): Requires<Response, []>;
   /** A handler returns `req.fail(error)` to pass `error` to the error handlers, as `next(error)` does in Express. */

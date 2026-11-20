@@ -1,8 +1,8 @@
 // withBuffer, gpuSatisfies, withIndices, iotaError and exactArithmetic are the testing prelude's [TESTING-ARITH-POLICY] GPU helpers: naming one attaches the one shared copy, so this file declares none of its own.
 // GPU combinator algebra: how gpuMap, gpuFilter, gpuScan, gpuZipWith and gpuFold behave alone, at their degenerate edges, and composed into deep chains — the empty and one-element buffer, ragged truncation to the shorter operand, order-preserving compaction, the inclusive-prefix seed, the initial value a fold returns with nothing to reduce, and the left-to-right traversal the host backend documents ([GPU-MAP], [GPU-FOLD], [GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-SCAN], [GPU-FILTER], [GPU-BUFFER-FUSE], [GPU-CONVERT], [GPU-BACKEND-HOST], [GPU-DEVICE] — docs/specs/runtime/0034-GPUComputation.md).
 /// The zero-length buffers every combinator is pushed through; the annotation supplies the element type an empty literal cannot.
-fn emptyInts() -> Result<GpuBuffer<int>, Error> = toGpu([])
-fn emptyFloats() -> Result<GpuBuffer<float>, Error> = toGpu([])
+fn emptyInts() -> Result<GpuBuffer<int>, string> = toGpu([])
+fn emptyFloats() -> Result<GpuBuffer<float>, string> = toGpu([])
 /// sumI and mulI are the associative int combines fold and scan share.
 fn sumI(a, b) = (a + b)
 fn mulI(a, b) = (a * b)

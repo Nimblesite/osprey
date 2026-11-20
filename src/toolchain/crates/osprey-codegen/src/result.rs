@@ -1,7 +1,9 @@
 //! The `Result<T, E>` ABI: a heap block `{ i64 bits, i8 disc, i8* errmsg }`
 //! reached by pointer, `disc == 0` ⇒ Success. `value` (slot 0) carries the
-//! success payload bits; `errmsg` (slot 2) carries the Error-arm message as a
-//! null-terminated `i8*` (`null` when there is none). The builders here
+//! success payload bits; `errmsg` (slot 2) carries the Error payload `E`: a
+//! null-terminated `i8*` string under `disc == 1` (`null` when there is
+//! none), or a typed box ([`crate::anybox::box_typed`]) of any other `E`
+//! under `disc == 2` ([`TYPED_ERROR`]). The builders here
 //! construct that block; the readers branch on or load out of it. Runtime
 //! fallible builtins (list/map get, string ops) and user functions declared
 //! `-> Result<…>` both produce this shape, so match, `?:`, aggregate fields
@@ -15,6 +17,127 @@ use crate::llty::{LType, Value, RESULT_STRUCT};
 
 /// A literal `null` `i8*` — the errmsg slot of a Success (or message-less Error).
 pub(crate) const NO_MSG: &str = "null";
+
+/// The discriminant of an Error whose slot 2 is a typed payload box, not a
+/// string. Every reader of slot 2 tells the two apart by it, so a box is never
+/// read as a string nor a string as a box. Implements [ERR-PAYLOAD].
+pub(crate) const TYPED_ERROR: &str = "2";
+
+/// `Error { message: payload }`: the block, its discriminant chosen by what
+/// the payload is. A string is the message itself; an erased value is already
+/// its own box; anything else is boxed whole at its type.
+pub(crate) fn make_error(cg: &mut Codegen, payload: Value) -> Result<Value> {
+    if payload.ty == LType::Str && payload.result_inner.is_none() {
+        let message = payload.operand.clone();
+        let inner = payload.ty;
+        return make_result(cg, payload, inner, "1", &message);
+    }
+    let boxed = match payload.ty {
+        LType::Any => payload,
+        _ => crate::anybox::box_typed(cg, payload)?,
+    };
+    let zero = Value::new("0", LType::I64);
+    make_result(cg, zero, LType::I64, TYPED_ERROR, &boxed.operand)
+}
+
+/// The error type the checker proved for a Result value, when it is closed.
+fn error_type(v: &Value) -> Option<osprey_types::Type> {
+    let osprey_types::Type::Con { name, args } = v.inferred_type.as_ref()? else {
+        return None;
+    };
+    let error = args.get(1).filter(|_| name == osprey_types::names::RESULT)?;
+    (!osprey_types::has_type_var(error)).then(|| error.clone())
+}
+
+/// An error whose payload is its message text.
+fn is_string_error(ty: &osprey_types::Type) -> bool {
+    ty.is_named(osprey_types::names::STRING)
+}
+
+/// What an `Error { message }` arm binds: the payload at the Result's own
+/// error type. An error type the backend cannot see binds the payload's
+/// rendering, never a blind read. Implements [ERR-PAYLOAD].
+pub(crate) fn load_error_payload(cg: &mut Codegen, v: &Value) -> Value {
+    match error_type(v) {
+        Some(ty) if is_string_error(&ty) => load_errmsg_str(cg, v),
+        Some(ty) => typed_error_payload(cg, v, &ty),
+        None => load_error_text(cg, v, true),
+    }
+}
+
+/// The payload word of a typed Error read back as `ty`; zero on every other
+/// discriminant, whose slot holds no box.
+fn typed_error_payload(cg: &mut Codegen, v: &Value, ty: &osprey_types::Type) -> Value {
+    let slot = load_errmsg(cg, v);
+    if crate::types::ltype_of(ty) == LType::Any {
+        let mut erased = Value::new(slot.operand, LType::Any);
+        erased.inferred_type = Some(ty.clone());
+        return erased;
+    }
+    let (typed, plain, end) = typed_branch(cg, v);
+    cg.start_block(&typed);
+    let word = crate::anybox::typed_word(cg, &slot.operand);
+    let from_typed = cg.snapshot_to(&end);
+    cg.start_block(&plain);
+    let from_plain = cg.snapshot_to(&end);
+    cg.start_block(&end);
+    let word = cg.emit_reg(format!(
+        "phi i64 [ {word}, %{from_typed} ], [ 0, %{from_plain} ]"
+    ));
+    value_of_word(cg, &word, ty)
+}
+
+/// Branch on whether `v` is a typed Error: `(typed, plain, end)` labels.
+fn typed_branch(cg: &mut Codegen, v: &Value) -> (String, String, String) {
+    let disc = load_disc(cg, v);
+    let typed = cg.emit_reg(format!("icmp eq i8 {disc}, {TYPED_ERROR}"));
+    cg.diamond(&typed)
+}
+
+/// A machine word read as a value of the checked type `ty`.
+fn value_of_word(cg: &mut Codegen, word: &str, ty: &osprey_types::Type) -> Value {
+    let mut value = if ty.is_named(osprey_types::names::RESULT) {
+        let block = cg.emit_reg(format!(
+            "inttoptr i64 {word} to {}",
+            crate::llty::result_pointer()
+        ));
+        let mut nested = Value::result(block, crate::types::ltype_of(ty));
+        nested.payload_owner = crate::types::result_payload_owner(&cg.prog, ty);
+        nested
+    } else {
+        let owner = crate::types::owner_name(&cg.prog, ty);
+        crate::conv::unbox_from_i64(cg, word, crate::types::ltype_of(ty)).with_owner(owner)
+    };
+    value.inferred_type = Some(ty.clone());
+    value
+}
+
+/// The error payload as text: the stored string, or a typed payload rendered
+/// at its own type. `named` substitutes `"Error"` for a missing message;
+/// otherwise a missing message stays `null` for the caller to tell apart.
+pub(crate) fn load_error_text(cg: &mut Codegen, v: &Value, named: bool) -> Value {
+    let plain_text = |cg: &mut Codegen| match named {
+        true => load_errmsg_str(cg, v),
+        false => load_errmsg(cg, v),
+    };
+    if error_type(v).is_some_and(|ty| is_string_error(&ty)) || v.result_inner.is_none() {
+        return plain_text(cg);
+    }
+    let slot = load_errmsg(cg, v);
+    let (typed, plain, end) = typed_branch(cg, v);
+    cg.start_block(&typed);
+    let rendered = crate::anybox::any_to_string(cg, &Value::new(slot.operand, LType::Any));
+    let from_typed = cg.snapshot_to(&end);
+    cg.start_block(&plain);
+    let text = plain_text(cg);
+    let from_plain = cg.snapshot_to(&end);
+    cg.start_block(&end);
+    let joined = cg.emit_reg(format!(
+        "phi i8* [ {}, %{from_typed} ], [ {}, %{from_plain} ]",
+        rendered.operand, text.operand
+    ));
+    Value::new(joined, LType::Str)
+}
 
 /// Build a `Result` block with the given success `value`, an explicit `i8`
 /// discriminant operand (`"0"` Success, `"1"` Error, or an `i8` register from a
@@ -300,7 +423,8 @@ pub(crate) fn map_payload(
     if value.result_inner_is_placeholder {
         // Only Error constructors contribute this placeholder layout.
         let zero = Value::new(crate::llty::zero_literal(inner), inner);
-        return make_result(cg, zero, inner, "1", &errmsg.operand);
+        let disc = load_disc(cg, value);
+        return make_result(cg, zero, inner, &disc, &errmsg.operand);
     }
     let disc = load_disc(cg, value);
     let (_, error, end) = open_result_branch(cg, value);

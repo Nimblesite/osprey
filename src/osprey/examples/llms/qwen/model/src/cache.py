@@ -73,7 +73,7 @@ def fresh_slot(config, index, conv, state, none):
         return Delta(held=DeltaSlot(conv=conv, state=state))
 
 
-def slot_at(cache, index) -> Result[Slot, Error]:
+def slot_at(cache, index) -> Result[Slot, str]:
     """Layer `index`'s slot."""
     return listGet(cache.slots, index)
 

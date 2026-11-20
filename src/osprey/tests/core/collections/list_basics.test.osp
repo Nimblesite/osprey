@@ -341,7 +341,7 @@ exactTests([
     { name: "list indexing, patterns, recursion, and receiver dispatch compose", work: indexingPatternsAndDispatchCase }
 ])
 
-/// [BUILTIN-LIST-GET] declares `listGet(list: List<T>, index: int) -> Result<T, Error>`
+/// [BUILTIN-LIST-GET] declares `listGet(list: List<T>, index: int) -> Result<T, string>`
 /// and says it is "equivalent to `list[index]`", with an out-of-range index
 /// returning `Error`. `T` is the element type, so a string list yields the
 /// string, a float list the float, a bool list the bool and a record list the

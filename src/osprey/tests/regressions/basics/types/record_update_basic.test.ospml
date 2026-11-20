@@ -180,10 +180,10 @@ nestedAnonymousCapture () =
 
 (** [TYPE-RECORD-UPDATE] Result fields retain their whole value across every record path. *)
 type Outcome =
-    answer: Result<int, Error>
+    answer: Result<int, string>
     note: string
 type GenericOutcome T =
-    answer: Result<T, Error>
+    answer: Result<T, string>
     note: string
 
 readOutcome record = record.answer
@@ -221,7 +221,7 @@ anonymousResultRecordCase () =
     toString original.answer == "Success(false)" && toString failed.answer == "Error(bool error)" && toString (readOutcome copied) == "Error(bool error)" && toString success.answer == "Success(true)" && copied.note == "copy"
 
 (** [TYPE-RECORD-RESULT] Constructors, generic slots and live cells preserve failures. *)
-type Delivery = Waiting | Delivered(answer: Result<float, Error>)
+type Delivery = Waiting | Delivered(answer: Result<float, string>)
 effect ReplaceOutcome
     replace: int => int
 deliveryResult delivery = match delivery
@@ -241,7 +241,7 @@ resultTransportCase () =
     changed == 42 && toString before == "Error(initial)" && toString (read ()) == "Success(42)" && toString boxed.held == "Success(42)" && toString errorBox.held == "Error(generic error)" && deliveryResult (Delivered(answer = 2.5)) == "Success(2.5)" && deliveryResult (Delivered(answer = Error(message = "delivery"))) == "Error(delivery)" && deliveryResult Waiting == "waiting"
 
 (** [TYPE-RECORD-RESULT] Generic union slots preserve concrete Result payloads. *)
-type Parcel T = Absent | Packed(answer: Result<T, Error>)
+type Parcel T = Absent | Packed(answer: Result<T, string>)
 parcelText parcel = match parcel
     Absent => "absent"
     Packed answer => toString answer

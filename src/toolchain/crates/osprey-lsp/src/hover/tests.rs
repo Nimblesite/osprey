@@ -294,7 +294,7 @@ fn hover_on_a_doc_link_resolves_to_the_referenced_element() {
     // ([ARITH-CHECKED], [LSP-HOVER-INFERRED-SIGNATURE]).
     shows(
         &md,
-        &["fn helper(n: int) -> Result<int, Error>", "A helper."],
+        &["fn helper(n: int) -> Result<int, string>", "A helper."],
     );
 }
 

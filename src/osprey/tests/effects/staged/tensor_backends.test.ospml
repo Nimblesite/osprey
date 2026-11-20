@@ -21,13 +21,13 @@ module Backends
         an interpretation that runs them on a device has a failure channel, and the
         list interpretation answers `Success`. *)
     export static effect Tensor B
-        build : (int, (int) -> float) => Result<B, Error>
+        build : (int, (int) -> float) => Result<B, string>
         get : (B, int) => float
         length : B => int
-        zipWith : (B, B, (float, float) -> float) => Result<B, Error>
-        reduce : (B, float, (float, float) -> float) => Result<float, Error>
-        matMul : (B, B, int, int, int) => Result<B, Error>
-        fromList : List<float> => Result<B, Error>
+        zipWith : (B, B, (float, float) -> float) => Result<B, string>
+        reduce : (B, float, (float, float) -> float) => Result<float, string>
+        matMul : (B, B, int, int, int) => Result<B, string>
+        fromList : List<float> => Result<B, string>
         device : Unit => string
 
     (** Every operation as host list code; the product accumulates in k order from 0.0. *)

@@ -433,19 +433,19 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "checkedAdd",
-        "Named overflow-checked integer addition, returning Result<int, Error>.",
+        "Named overflow-checked integer addition, returning Result<int, string>.",
         ["a" => "The first addend", "b" => "The second addend"],
         "let t = checkedAdd(9223372036854775807, 1) ?: 0  // 0: overflow reported",
     ),
     builtin_doc!(
         "checkedSub",
-        "Named overflow-checked integer subtraction, returning Result<int, Error>.",
+        "Named overflow-checked integer subtraction, returning Result<int, string>.",
         ["a" => "The minuend", "b" => "The subtrahend"],
         "let d = checkedSub(10, 4) ?: 0  // 6",
     ),
     builtin_doc!(
         "checkedMul",
-        "Named overflow-checked integer multiplication, returning Result<int, Error>.",
+        "Named overflow-checked integer multiplication, returning Result<int, string>.",
         ["a" => "The first factor", "b" => "The second factor"],
         "let p = checkedMul(6, 7) ?: 0  // 42",
     ),
@@ -457,7 +457,7 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "randomBelow",
-        "A cryptographically-secure uniform random integer in [0, n), unbiased by rejection sampling. Returns Result<int, Error> when n is positive and Error otherwise.",
+        "A cryptographically-secure uniform random integer in [0, n), unbiased by rejection sampling. Returns Result<int, string> when n is positive and Error otherwise.",
         ["n" => "Exclusive upper bound; must be positive"],
         "let d = randomBelow(6) ?: 0  // a fair die face 0..5",
     ),

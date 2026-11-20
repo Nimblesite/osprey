@@ -1,8 +1,8 @@
 /// The package manager's file-system effect: one install, a real disk and
 /// three test doubles. The Playground opens on this program in every flavor.
 effect Files {
-    read: fn(string) -> Result<string, Error>
-    write: fn(string, string) -> Result<int, Error>
+    read: fn(string) -> Result<string, string>
+    write: fn(string, string) -> Result<int, string>
 }
 
 /// Write the lock file; if that fails, put the old manifest back.

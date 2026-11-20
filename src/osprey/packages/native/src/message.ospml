@@ -39,7 +39,7 @@ type Message A =
         lassoed : List<int>
     Completed
         ticket : string
-        outcome : Result<string, Error>
+        outcome : Result<string, string>
     Phase
         phase : string
     Frame
@@ -65,7 +65,7 @@ type Input =
 (** Takes a message apart for the application's `update`. Osprey cannot yet match a constructor declared in another namespace, so applications fold over messages here. *)
 module Messages
     (** Calls the handler for `message`: a tap, a text or choice value, a toggle, a splitter's width or a cursor's offset, a completion, a lifecycle phase, a board stroke or lasso, a display frame's elapsed seconds or a scene's key or pointer input. *)
-    export route<A, R> : (Message<A>, (A) -> R, (A, string) -> R, (A, bool) -> R, (A, int) -> R, (string, Result<string, Error>) -> R, (string) -> R, (A, Stroke) -> R, (A, List<int>) -> R, (float) -> R, (A, Input) -> R) -> R !e
+    export route<A, R> : (Message<A>, (A) -> R, (A, string) -> R, (A, bool) -> R, (A, int) -> R, (string, Result<string, string>) -> R, (string) -> R, (A, Stroke) -> R, (A, List<int>) -> R, (float) -> R, (A, Input) -> R) -> R !e
     route (message, tapped, typed, toggled, sized, completed, phased, stroked, lassoed, framed, controlled) = match message
         Act action => tapped action
         Entered action text => typed (action, text)

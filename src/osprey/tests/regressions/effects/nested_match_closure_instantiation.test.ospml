@@ -19,17 +19,17 @@ type Section =
 type Focus =
     picked : string
 
-find<T> : (List<T>, (T) -> bool) -> Result<T, Error>
+find<T> : (List<T>, (T) -> bool) -> Result<T, string>
 find (xs, p) = match xs
     [] => Error(message = "missing")
     [head, ...tail] => match p head
         true => Success(value = head)
         false => find (tail, p)
 
-detail : Unit -> Result<Evidence, Error>
+detail : Unit -> Result<Evidence, string>
 detail () =
     focus = perform Signal<Focus>.read ()
-    match perform Signal<Result<Section, Error>>.read ()
+    match perform Signal<Result<Section, string>>.read ()
         Error _ => Error(message = "no section")
         Success section => match find (section.records, \record => record.evidenceId == focus.picked)
             Success record => Success(value = record)
@@ -38,7 +38,7 @@ detail () =
 runCase () =
     handle static Signal<Focus>
         read => Focus(picked = "b")
-    handle static Signal<Result<Section, Error>>
+    handle static Signal<Result<Section, string>>
         read => Success(value = Section(records = [Evidence(evidenceId = "a"), Evidence(evidenceId = "b")]))
     match detail ()
         Success value => value.evidenceId

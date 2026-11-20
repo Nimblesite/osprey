@@ -72,7 +72,7 @@ fn registers_core_and_polymorphic_builtins() {
 fn process_builtins_match_the_result_returning_runtime() {
     assert_eq!(
         builtin_signature("spawnProcess").as_deref(),
-        Some("spawnProcess : (string, (int, int, string) -> Unit) -> Result<int, Error>")
+        Some("spawnProcess : (string, (int, int, string) -> Unit) -> Result<int, string>")
     );
     assert_eq!(
         builtin_signature("awaitProcess").as_deref(),
@@ -90,22 +90,22 @@ fn file_builtins_include_the_host_tensor_loader() {
     // never as a GpuBuffer, so a host interpretation needs no GPU surface.
     assert_eq!(
         builtin_signature("loadTensor").as_deref(),
-        Some("loadTensor : (string, string) -> Result<List<float>, Error>")
+        Some("loadTensor : (string, string) -> Result<List<float>, string>")
     );
     // [LLM-WEIGHTS-MAPPED] The program's use of the result picks the element.
     assert_eq!(
         builtin_signature("gpuMapFile").as_deref(),
-        Some("gpuMapFile : (string, int, int) -> Result<GpuBuffer<t0>, Error>")
+        Some("gpuMapFile : (string, int, int) -> Result<GpuBuffer<t0>, string>")
     );
     // [BUILTIN-FILE-BYTES] Binary stays bytes; a string would stop at a NUL.
     assert_eq!(
         builtin_signature("readFileBytes").as_deref(),
-        Some("readFileBytes : (string, int, int) -> Result<List<int>, Error>")
+        Some("readFileBytes : (string, int, int) -> Result<List<int>, string>")
     );
     // [BUILTIN-FILE-SIZE] A reader asks the length before the first read.
     assert_eq!(
         builtin_signature("fileSize").as_deref(),
-        Some("fileSize : (string) -> Result<int, Error>")
+        Some("fileSize : (string) -> Result<int, string>")
     );
 }
 
@@ -131,7 +131,7 @@ fn tensor_loader_result_obligations_survive_aliases_and_helpers() {
 
 fn assert_tensor_request(prefix: &str, callee: &str, name: &str) {
     let source = format!(
-        "{prefix}fn wanted() -> Result<GpuBuffer<{name}>, Error> = {callee}(\"x\", \"w\")\n"
+        "{prefix}fn wanted() -> Result<GpuBuffer<{name}>, string> = {callee}(\"x\", \"w\")\n"
     );
     let errors = crate::testutil::check(&source);
     if matches!(name, "float" | "float32" | "float16") {
@@ -192,51 +192,51 @@ fn network_builtins_match_the_runtime_status_abi() {
     let expected = [
         (
             "writeFile",
-            "writeFile : (string, string) -> Result<int, Error>",
+            "writeFile : (string, string) -> Result<int, string>",
         ),
         (
             "httpCloseClient",
-            "httpCloseClient : (int) -> Result<int, Error>",
+            "httpCloseClient : (int) -> Result<int, string>",
         ),
         (
             "httpGet",
-            "httpGet : (int, string, string) -> Result<int, Error>",
+            "httpGet : (int, string, string) -> Result<int, string>",
         ),
         (
             "httpResponseFree",
-            "httpResponseFree : (int) -> Result<int, Error>",
+            "httpResponseFree : (int) -> Result<int, string>",
         ),
         (
             "httpPost",
-            "httpPost : (int, string, string, string) -> Result<int, Error>",
+            "httpPost : (int, string, string, string) -> Result<int, string>",
         ),
         (
             "httpPostResponse",
-            "httpPostResponse : (int, string, string, string) -> Result<int, Error>",
+            "httpPostResponse : (int, string, string, string) -> Result<int, string>",
         ),
         (
             "httpPut",
-            "httpPut : (int, string, string, string) -> Result<int, Error>",
+            "httpPut : (int, string, string, string) -> Result<int, string>",
         ),
         (
             "httpDelete",
-            "httpDelete : (int, string, string) -> Result<int, Error>",
+            "httpDelete : (int, string, string) -> Result<int, string>",
         ),
         (
             "httpListen",
-            "httpListen : (int, (string, string, string, string) -> HttpResponse) -> Result<int, Error>",
+            "httpListen : (int, (string, string, string, string) -> HttpResponse) -> Result<int, string>",
         ),
         (
             "httpStopServer",
-            "httpStopServer : (int) -> Result<int, Error>",
+            "httpStopServer : (int) -> Result<int, string>",
         ),
         ("httpClientGone", "httpClientGone : () -> int"),
         (
             "httpKeepAlive",
-            "httpKeepAlive : (int) -> Result<int, Error>",
+            "httpKeepAlive : (int) -> Result<int, string>",
         ),
         ("websocketClose", "websocketClose : (int) -> int"),
-        ("jsonFree", "jsonFree : (int) -> Result<int, Error>"),
+        ("jsonFree", "jsonFree : (int) -> Result<int, string>"),
     ];
     assert_signatures(&expected);
 }
@@ -251,7 +251,7 @@ fn public_maps_use_the_runtime_string_key_abi() {
         ),
         (
             "mapGet",
-            "mapGet : (Map<string, t0>, string) -> Result<t0, Error>",
+            "mapGet : (Map<string, t0>, string) -> Result<t0, string>",
         ),
         ("mapKeys", "mapKeys : (Map<string, t0>) -> List<string>"),
     ];

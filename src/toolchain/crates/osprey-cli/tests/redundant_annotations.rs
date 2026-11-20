@@ -146,7 +146,7 @@ print("${(bothArms(true)) ?: 0}")
 "#;
 
 /// The same shape with the error side pinned BY CONTEXT instead: `parseInt`
-/// returns `Result<int, Error>`, so E unifies with the nominal `Error` and the
+/// returns `Result<int, string>`, so E unifies with the nominal `Error` and the
 /// checker proves the whole type on its own.
 const PINNED_ERROR_SIDE: &str = r#"fn fromBuiltin(f) = if f { parseInt("7") } else { Error { message: "e" } }
 print("${(fromBuiltin(true)) ?: 0}")
@@ -200,7 +200,7 @@ fn a_return_type_is_reported_exactly_when_the_checker_proved_all_of_it() {
     // E pinned by context: proved, so reported in full without any annotation.
     let pinned = outline(PINNED_ERROR_SIDE);
     assert!(
-        pinned.contains("fn fromBuiltin(f: bool) -> Result<int, Error>"),
+        pinned.contains("fn fromBuiltin(f: bool) -> Result<int, string>"),
         "a fully proved return type must be reported without an annotation; got {pinned}"
     );
     assert!(
@@ -212,7 +212,7 @@ fn a_return_type_is_reported_exactly_when_the_checker_proved_all_of_it() {
     // it redundant and the outline is byte-identical either way.
     let annotated = PINNED_ERROR_SIDE.replacen(
         "fn fromBuiltin(f) =",
-        "fn fromBuiltin(f) -> Result<int, Error> =",
+        "fn fromBuiltin(f) -> Result<int, string> =",
         1,
     );
     assert_eq!(
@@ -226,7 +226,7 @@ fn a_return_type_is_reported_exactly_when_the_checker_proved_all_of_it() {
             .into_iter()
             .map(|(_, spelling)| spelling)
             .collect::<Vec<_>>(),
-        vec!["Result<int, Error>".to_string()],
+        vec!["Result<int, string>".to_string()],
         "and the gate must report exactly that annotation as removable"
     );
 }

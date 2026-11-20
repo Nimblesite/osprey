@@ -41,7 +41,7 @@ effect Net {
 }
 effect Term {
     /// Read one keypress, reporting failure as a `Result`.
-    readKey: fn() -> Result<string, Error>
+    readKey: fn() -> Result<string, string>
     /// Enter raw mode when `enable` is non-zero, cooked mode otherwise.
     raw: fn(int) -> Unit
 }

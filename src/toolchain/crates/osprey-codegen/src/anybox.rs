@@ -13,7 +13,9 @@
 //! narrowing test a pointer comparison — no name lookup at run time.
 
 mod render;
+mod typed;
 use render::emit_renderer;
+pub(crate) use typed::{box_typed, typed_word};
 
 use crate::builder::Codegen;
 use crate::error::{CodegenError, Result};
@@ -67,6 +69,9 @@ pub(crate) enum DescKey {
     /// A shape rendering cannot see into: lists, maps, closures, foreign
     /// handles. `.0` is the placeholder it renders as.
     Opaque(&'static str),
+    /// A value kept whole at its static type — a typed `Error` payload
+    /// ([`typed`]). `.0` keys its prototype in [`AnyState::typed`].
+    Typed(String),
 }
 
 /// Per-module erasure state carried by [`Codegen`].
@@ -78,6 +83,8 @@ pub(crate) struct AnyState {
     boxers: HashMap<String, String>,
     /// Concrete union types retained across erasure for payload projection.
     union_types: HashMap<String, osprey_types::Type>,
+    /// Typed-payload key → the operand-less value it restores to.
+    typed: HashMap<String, Value>,
     /// Whether `@osp.any.to_string` has been emitted.
     to_string_emitted: bool,
     /// Every row shape a declared record can erase to, in declaration order —
@@ -158,7 +165,7 @@ fn key_kind(key: &DescKey) -> i64 {
         DescKey::Row(_) => ROW,
         DescKey::Union(..) => KIND_UNION,
         DescKey::Result => KIND_RESULT,
-        DescKey::Opaque(_) => KIND_OPAQUE,
+        DescKey::Opaque(_) | DescKey::Typed(_) => KIND_OPAQUE,
     }
 }
 
@@ -179,6 +186,7 @@ fn key_slug(key: &DescKey, serial: usize) -> String {
         DescKey::Union(owner, Some(_)) => format!("union.{owner}.{serial}"),
         DescKey::Result => "result".to_string(),
         DescKey::Opaque(label) => format!("opaque.{}", label.trim_matches(['<', '>'])),
+        DescKey::Typed(_) => format!("typed.{serial}"),
     }
 }
 
@@ -256,7 +264,7 @@ pub(crate) fn box_any(cg: &mut Codegen, v: Value) -> Result<Value> {
     let v = crate::listlit::escaping(cg, v);
     let (key, payload, managed) = classify(cg, v)?;
     let desc = descriptor(cg, &key)?;
-    Ok(build_box(cg, &desc, payload, managed))
+    Ok(build_box(cg, &desc_operand(&desc), payload, managed))
 }
 
 /// Allocate and fill one `{ desc, payload }` box; the payload word is masked
@@ -274,7 +282,7 @@ fn build_box(cg: &mut Codegen, desc: &str, payload: Value, managed: bool) -> Val
     let dp = cg.emit_reg(format!(
         "getelementptr {BOX_TY}, {BOX_TY}* {obj}, i32 0, i32 0"
     ));
-    cg.emit(format!("store i8* {}, i8** {dp}", desc_operand(desc)));
+    cg.emit(format!("store i8* {desc}, i8** {dp}"));
     if managed && !crate::arc::consume_into_store(cg, &payload.operand) {
         crate::arc::dup_store(cg, "i8*", &payload.operand);
     }

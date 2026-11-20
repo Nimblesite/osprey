@@ -101,7 +101,7 @@ fn both_flavors_read_the_safetensors_fixture_exactly() {
     }
 }
 const INDEX_FAILURE_SOURCE: &str = r#"
-fn describe(result: Result<GpuBuffer<int>, Error>) = match result {
+fn describe(result: Result<GpuBuffer<int>, string>) = match result {
     Success { value } => "length ${gpuLength(value)}"
     Error { message } => toString(message)
 }
@@ -109,7 +109,7 @@ fn copied(xs) = toGpu(xs)
 print("${describe(gpuIota(0))}\n${describe(gpuIota(3))}\n${describe(gpuIota(-1))}\n${describe(gpuIota(9223372036854775807))}\n${describe(gpuIota(1152921504606846975))}\n${describe(toGpu(range(0, 9223372036854775807)))}\n${describe(toGpu(range(-9223372036854775807, 9223372036854775807)))}\n${describe(toGpu(range(3, 0)))}\n${describe(toGpu(range(-2, 2)))}\n${describe(toGpu([7, 8]))}\n${describe(copied([4, 5, 6]))}\n${describe(toGpu([]))}\n${describe(copied([]))}\n${describe(toGpu(range(9223372036854775807, -9223372036854775807)))}")
 "#;
 const INDEX_FAILURE_ML: &str = r#"
-describe : Result<GpuBuffer<int>, Error> -> string
+describe : Result<GpuBuffer<int>, string> -> string
 describe result = match result
     Success value => "length ${gpuLength value}"
     Error message => toString message
@@ -180,7 +180,7 @@ fn readback_preserves_lists_and_refuses_a_missing_buffer() {
 fn tensor_loader_calls_in_one_record_keep_distinct_requested_element_types() {
     // [GPU-BUFFER-TENSOR] Both calls share the record's source position, not its type.
     let source = r#"
-type Loaded = { wide: Result<GpuBuffer<float32>, Error>, small: Result<GpuBuffer<float16>, Error> }
+type Loaded = { wide: Result<GpuBuffer<float32>, string>, small: Result<GpuBuffer<float16>, string> }
 fn loaded() = Loaded {
     wide: gpuLoadTensor("@FIXTURE@", "w"),
     small: gpuLoadTensor("@FIXTURE@", "h.1.b")

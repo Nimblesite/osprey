@@ -47,7 +47,7 @@ pub fn operation_covers(request: &str, answered: &str) -> bool {
 }
 
 /// How many arguments a mention instantiates its declaration at. Counted at
-/// bracket depth zero, so `Signal<Result<int, Error>>` is ONE argument rather
+/// bracket depth zero, so `Signal<Result<int, string>>` is ONE argument rather
 /// than two — a nested generic is not a second signal.
 #[must_use]
 pub fn arity(effect: &str) -> usize {
@@ -171,10 +171,10 @@ mod tests {
             "Pair<int, string>"
         );
         let mut nested = named("Result");
-        nested.generic_params = vec![named("int"), named("Error")];
+        nested.generic_params = vec![named("int"), named("string")];
         assert_eq!(
             instantiated("Signal", &[nested]),
-            "Signal<Result<int, Error>>"
+            "Signal<Result<int, string>>"
         );
     }
 
@@ -195,7 +195,7 @@ mod tests {
         assert_eq!(arity("Signal<Count>"), 1);
         assert_eq!(arity("Pair<int, string>"), 2);
         // A nested generic is one argument, not two.
-        assert_eq!(arity("Signal<Result<int, Error>>"), 1);
+        assert_eq!(arity("Signal<Result<int, string>>"), 1);
         assert_eq!(arity("Signal<fn(int, int) -> int>"), 1);
         assert_eq!(arity("Pair<fn(int) -> int, bool>"), 2);
         assert_eq!(arity("Signal<[int]>"), 1);
@@ -211,8 +211,8 @@ mod tests {
         assert_eq!(signature_parameters("fn() -> string"), Vec::<&str>::new());
         assert_eq!(signature_parameters("string"), Vec::<&str>::new());
         assert_eq!(
-            split_arguments("Result<int, Error>, [int]"),
-            vec!["Result<int, Error>", "[int]"]
+            split_arguments("Result<int, string>, [int]"),
+            vec!["Result<int, string>", "[int]"]
         );
     }
 

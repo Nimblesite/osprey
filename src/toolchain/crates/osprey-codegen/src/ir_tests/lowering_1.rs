@@ -202,7 +202,7 @@ fn error_results_render_visibly_and_handles_are_rejected() {
 
 #[test]
 fn assertion_operands_render_success_payloads_without_hiding_errors() {
-    // [TESTING-EQUALITY] checkedAdd returns Result<int, Error>; expect
+    // [TESTING-EQUALITY] checkedAdd returns Result<int, string>; expect
     // compares a Success payload canonically, while the sibling test proves
     // Error remains visible rather than being read as a fabricated payload.
     let ir = module("expect(checkedAdd(1, 1), 2)\n");

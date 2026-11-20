@@ -84,7 +84,7 @@ fn result_string(cg: &mut Codegen, v: &Value, success: SuccessText) -> Result<Va
     cg.start_block(&el);
     // A message-less Error (null errmsg slot) prints just `Error`; any real
     // reason prints `Error(<reason>)`.
-    let msg = crate::result::load_errmsg(cg, v);
+    let msg = crate::result::load_error_text(cg, v, false);
     let isnull = cg.emit_reg(format!("icmp eq i8* {}, null", msg.operand));
     let (nl, fl, jl) = cg.diamond(&isnull);
     cg.start_block(&fl);

@@ -32,13 +32,13 @@ pub(super) fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]
     let (cond, succ_val, err_val) = if disc.result_inner.is_some() {
         let d = crate::result::load_disc(cg, disc);
         let c = cg.emit_reg(format!("icmp eq i8 {d}, 0"));
-        // Success binds the value slot; Error binds the errmsg slot (the real
-        // reason), so `Error { message }` sees the message regardless of the
-        // success payload type. Implements [ERR-PAYLOAD].
+        // Success binds the value slot; Error binds the error payload at the
+        // Result's own error type, whatever the success payload type.
+        // Implements [ERR-PAYLOAD].
         let bound = (
             c,
             crate::result::load_value(cg, disc),
-            crate::result::load_errmsg_str(cg, disc),
+            crate::result::load_error_payload(cg, disc),
         );
         // Both slots are now in registers, so a freshly produced block is dead
         // here. Retiring it at the match — rather than letting the region-end

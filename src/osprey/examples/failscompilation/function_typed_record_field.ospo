@@ -1,6 +1,6 @@
 // Field-call syntax resolves `a.add(10)` to the record's callable field.
 // The initializer must still match that field's declared return type:
-// checked addition returns Result<int, Error>, not int.
+// checked addition returns Result<int, string>, not int.
 type Adder = {
     add: (int) -> int
 }

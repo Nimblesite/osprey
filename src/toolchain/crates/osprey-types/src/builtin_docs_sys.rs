@@ -43,13 +43,13 @@ macro_rules! http_response_example {
 pub(crate) static FILES: &[BuiltinDoc] = &[
     builtin_doc!(
         "readFile",
-        "Reads a text file into a `Result<string, Error>`. The NUL-terminated string ABI is not a binary-buffer interface.",
+        "Reads a text file into a `Result<string, string>`. The NUL-terminated string ABI is not a binary-buffer interface.",
         ["filename" => "Path to the file to read"],
         "match readFile(\"input.txt\") {\n    Success { value } => print(value)\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "writeFile",
-        "Writes text, creating the file if needed. Returns `Result<int, Error>` containing the number of bytes written.",
+        "Writes text, creating the file if needed. Returns `Result<int, string>` containing the number of bytes written.",
         ["filename" => "Path to the file to write", "content" => "Content to write to the file"],
         "match writeFile(\"output.txt\", \"Hello, World!\") {\n    Success { value } => print(\"${value} bytes written\")\n    Error { message } => print(message)\n}",
     ),
@@ -61,7 +61,7 @@ pub(crate) static FILES: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "listDir",
-        "Lists one directory's entries as full child paths; directories carry a trailing `/`, and `.` and `..` never appear. Returns `Result<List<string>, Error>`.",
+        "Lists one directory's entries as full child paths; directories carry a trailing `/`, and `.` and `..` never appear. Returns `Result<List<string>, string>`.",
         ["path" => "Path to the directory"],
         "match listDir(\"src\") {\n    Success { value } => forEachList(value, print)\n    Error { message } => print(message)\n}"
     ),
@@ -73,7 +73,7 @@ pub(crate) static FILES: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "makeDir",
-        "Creates one directory, idempotently: an existing directory is success. Returns `Result<int, Error>`.",
+        "Creates one directory, idempotently: an existing directory is success. Returns `Result<int, string>`.",
         ["path" => "Path of the directory to create"],
         "match makeDir(\"out/notes\") {\n    Success { value } => print(\"ready\")\n    Error { message } => print(message)\n}"
     ),
@@ -120,13 +120,13 @@ pub(crate) static HTTP: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "httpPostResponse",
-        "Sends an HTTP POST request and returns a response handle as Result<int, Error>; inspect and free it like a GET response.",
+        "Sends an HTTP POST request and returns a response handle as Result<int, string>; inspect and free it like a GET response.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path", "body" => "Request body", "headers" => "Additional request headers"],
         http_example!("match httpPostResponse(client, \"/\", \"hello\", \"Content-Type: text/plain\") {\n        Success { value } => {\n            let status = httpResponseStatus(value)\n            let released = httpResponseFree(value)\n            \"status=${status}; released=${released}\"\n        }\n        Error { message } => message\n    }"),
     ),
     builtin_doc!(
         "httpResponseBody",
-        "Returns a copy of the response body as `Result<string, Error>`. An invalid or released handle returns Error; the copied body survives httpResponseFree.",
+        "Returns a copy of the response body as `Result<string, string>`. An invalid or released handle returns Error; the copied body survives httpResponseFree.",
         ["responseID" => "Handle returned by httpGetResponse"],
         http_response_example!(),
     ),
@@ -144,7 +144,7 @@ pub(crate) static HTTP: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "httpResponseHeader",
-        "Returns the named header as `Result<string, Error>`, matching its name without case sensitivity. A missing header or invalid handle returns Error.",
+        "Returns the named header as `Result<string, string>`, matching its name without case sensitivity. A missing header or invalid handle returns Error.",
         ["responseID" => "Handle returned by httpGetResponse", "name" => "Header name, e.g. \"Content-Type\""],
         http_response_example!(),
     ),

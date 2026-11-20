@@ -114,7 +114,7 @@ fn inferred_effects_without_handlers_are_rejected_in_both_flavors() {
             "unhandled_inferred_effect.test.osp",
             r"
 effect ArithmeticFailure {
-    raise: fn(string) -> Result<int, Error>
+    raise: fn(string) -> Result<int, string>
 }
 
 fn addPreservingError(a, b) = match checkedAdd(a, b) {
@@ -129,7 +129,7 @@ print(toString(addPreservingError(9223372036854775807, 1)))
             "unhandled_inferred_effect.test.ospml",
             r"
 effect ArithmeticFailure
-    raise : string => Result<int, Error>
+    raise : string => Result<int, string>
 
 addPreservingError a b = match checkedAdd a b
     Success value => Success(value = value)

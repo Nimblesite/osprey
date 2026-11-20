@@ -178,9 +178,9 @@ fn a_mapped_file_region_reads_the_same_on_host_and_device() -> Result<(), Box<dy
         .to_string();
     let osp = "let nine: float32 = toFloat32(9.0)\nlet small: uint8 = 9\n\
 fn wide(b: GpuBuffer<float32>) = print(\"${gpuLength(b)} ${gpuGet(b, 0) ?: nine} ${gpuGet(b, 3) ?: nine}\")\n\
-fn region(offset: int, count: int) -> Result<GpuBuffer<float32>, Error> = gpuMapFile(\"@P@\", offset, count)\n\
-fn bytes() -> Result<GpuBuffer<uint8>, Error> = gpuMapFile(\"@P@\", 0, 8)\n\
-fn refused(read: Result<GpuBuffer<float32>, Error>) = match read {\n    Success { value } => wide(value)\n    Error { message } => print(message)\n}\n\
+fn region(offset: int, count: int) -> Result<GpuBuffer<float32>, string> = gpuMapFile(\"@P@\", offset, count)\n\
+fn bytes() -> Result<GpuBuffer<uint8>, string> = gpuMapFile(\"@P@\", 0, 8)\n\
+fn refused(read: Result<GpuBuffer<float32>, string>) = match read {\n    Success { value } => wide(value)\n    Error { message } => print(message)\n}\n\
 match region(124, 4) {\n    Success { value } => {\n        wide(value)\n        refused(gpuMatMul(value, value, 2, 2, 2))\n    }\n    Error { message } => print(message)\n}\n\
 match bytes() {\n    Success { value } => print(\"${gpuLength(value)} ${gpuGet(value, 0) ?: small} ${gpuGet(value, 1) ?: small}\")\n    Error { message } => print(message)\n}\n\
 refused(region(123, 1))\nrefused(region(124, 100000))\nrefused(region(-4, 1))\n"
@@ -246,11 +246,11 @@ fn both_flavors_read_binary_bytes_through_every_nul() -> Result<(), Box<dyn std:
     );
     let osp = format!(
         "fn render(value: List<int>, i: int) -> string = match i >= listLength(value) {{\n    true => \"\"\n    false => \" ${{listGet(value, i) ?: -1}}${{render(value, satAdd(i, 1))}}\"\n}}\n\
-         fn show(label: string, read: Result<List<int>, Error>) = match read {{\n    Success {{ value }} => print(\"${{label}} ${{listLength(value)}}:${{render(value, 0)}}\")\n    Error {{ message }} => print(\"${{label}} ${{message}}\")\n}}\n\
+         fn show(label: string, read: Result<List<int>, string>) = match read {{\n    Success {{ value }} => print(\"${{label}} ${{listLength(value)}}:${{render(value, 0)}}\")\n    Error {{ message }} => print(\"${{label}} ${{message}}\")\n}}\n\
          {calls}"
     );
     let python = format!(
-        "# osprey: flavor=python\n\n\ndef render(value: list[int], i: int) -> str:\n    if i >= listLength(value):\n        return \"\"\n    else:\n        return f\" {{unwrap_or(listGet(value, i), -1)}}{{render(value, satAdd(i, 1))}}\"\n\n\ndef show(label: str, read: Result[list[int], Error]):\n    match read:\n        case Success(value=value):\n            print(f\"{{label}} {{listLength(value)}}:{{render(value, 0)}}\")\n        case Error(message=message):\n            print(f\"{{label}} {{message}}\")\n\n\n\
+        "# osprey: flavor=python\n\n\ndef render(value: list[int], i: int) -> str:\n    if i >= listLength(value):\n        return \"\"\n    else:\n        return f\" {{unwrap_or(listGet(value, i), -1)}}{{render(value, satAdd(i, 1))}}\"\n\n\ndef show(label: str, read: Result[list[int], str]):\n    match read:\n        case Success(value=value):\n            print(f\"{{label}} {{listLength(value)}}:{{render(value, 0)}}\")\n        case Error(message=message):\n            print(f\"{{label}} {{message}}\")\n\n\n\
          {calls}"
     );
     let bytes = std::fs::read(&fixture)?;

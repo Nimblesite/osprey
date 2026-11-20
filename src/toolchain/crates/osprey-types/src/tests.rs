@@ -176,7 +176,7 @@ fn records_field_access_and_update() {
 
 #[test]
 fn result_pattern_binds_payload_type() {
-    ok("fn unwrap(r: Result<int, Error>) -> int = match r {\n\
+    ok("fn unwrap(r: Result<int, string>) -> int = match r {\n\
           Success { value } => value\n\
           Error { message } => 0\n\
         }\n");
@@ -193,7 +193,7 @@ fn user_variant_shadowing_success_still_matches_real_results() {
           1 => Warning\n\
           _ => Failed\n\
         }\n\
-        fn total(r: Result<int, Error>) -> int = match r {\n\
+        fn total(r: Result<int, string>) -> int = match r {\n\
           Success { value } => value\n\
           Error { message } => 0\n\
         }\n");

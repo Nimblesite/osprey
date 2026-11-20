@@ -177,11 +177,11 @@ fn own_struct_handle(
     v
 }
 
-/// Build a `Success`/`Error` value in the Result ABI: the single field becomes
-/// the block's success payload (slot 0), with disc `0` (Success) or `1`
-/// (Error). For `Error { message: m }` the (string) message is also written to
-/// the errmsg slot so the matching `Error { message }` arm and `toString` read
-/// the real reason — see [`crate::result`]. Implements [ERR-PAYLOAD].
+/// Build a `Success`/`Error` value in the Result ABI. `Success { value }`
+/// stores its field as the payload (slot 0, disc `0`); `Error { message }`
+/// stores its field — of any type — as the error payload
+/// ([`crate::result::make_error`]), so the matching arm and `toString` read
+/// exactly what was written. Implements [ERR-PAYLOAD].
 fn gen_result_ctor(cg: &mut Codegen, name: &str, fields: &[FieldAssignment]) -> Result<Value> {
     let fa = fields
         .first()
@@ -190,21 +190,11 @@ fn gen_result_ctor(cg: &mut Codegen, name: &str, fields: &[FieldAssignment]) -> 
     // field, so a list literal takes the runtime layout before it is stored.
     let v = gen_expr(cg, &fa.value)?;
     let v = crate::listlit::escaping(cg, v);
+    if name == "Error" {
+        return Ok(crate::result::make_error(cg, v)?.with_result_inner_placeholder());
+    }
     let inner = v.ty;
-    let is_error = name == "Error";
-    let disc = if is_error { "1" } else { "0" };
-    // The errmsg slot is `i8*`; only a string/handle message can travel there.
-    let errmsg = if is_error && matches!(v.ty, LType::Str | LType::Ptr) {
-        v.operand.clone()
-    } else {
-        crate::result::NO_MSG.to_string()
-    };
-    let result = crate::result::make_result(cg, v, inner, disc, &errmsg)?;
-    Ok(if is_error {
-        result.with_result_inner_placeholder()
-    } else {
-        result
-    })
+    crate::result::make_ok(cg, v, inner)
 }
 
 /// The heap block an update rebuilds: struct spelling, ordered slots, the

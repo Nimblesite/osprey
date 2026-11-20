@@ -1,5 +1,5 @@
 effect Web {
-    title: fn() -> Result<string, Error>
+    title: fn() -> Result<string, string>
 }
 
 fn responseBody(response) = {

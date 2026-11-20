@@ -59,7 +59,7 @@ int getentropy(void *, size_t);
 
 #ifndef OSP_HAVE_ARC4RANDOM
 // No entropy source could fill the request. There is nowhere to report it:
-// `random()` answers `int` in the language, not `Result<int, Error>`, and the
+// `random()` answers `int` in the language, not `Result<int, string>`, and the
 // WebSocket handshake nonce in http_shared.c draws from this same call.
 //
 // The two previous answers were both silently wrong. `getentropy` failing

@@ -1,1 +1,1 @@
-4:4: type mismatch: cannot unify bool with Result<int, Error>
+4:4: type mismatch: cannot unify bool with Result<int, string>

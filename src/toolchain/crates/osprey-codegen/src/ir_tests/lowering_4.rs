@@ -232,8 +232,8 @@ fn fiber_result_shape_survives_named_and_closure_function_boundaries() {
 
     // `checkedAdd` is the Result-producing arithmetic ([ARITH-EFFECT]).
     let named = module(
-        "fn start(n: int) -> Fiber<Result<int, Error>> = spawn(checkedAdd(n, 1))\n\
-             fn finish(f: Fiber<Result<int, Error>>) -> Result<int, Error> = await(f)\n\
+        "fn start(n: int) -> Fiber<Result<int, string>> = spawn(checkedAdd(n, 1))\n\
+             fn finish(f: Fiber<Result<int, string>>) -> Result<int, string> = await(f)\n\
              let through_return = await(start(9223372036854775807))\n\
              let through_parameter = finish(spawn(checkedAdd(9223372036854775807, 1)))\n",
     );
@@ -244,8 +244,8 @@ fn fiber_result_shape_survives_named_and_closure_function_boundaries() {
     );
 
     let closure = module(
-        "let start = fn(n: int) -> Fiber<Result<int, Error>> => spawn(checkedAdd(n, 1))\n\
-             let finish = fn(f: Fiber<Result<int, Error>>) -> Result<int, Error> => await(f)\n\
+        "let start = fn(n: int) -> Fiber<Result<int, string>> => spawn(checkedAdd(n, 1))\n\
+             let finish = fn(f: Fiber<Result<int, string>>) -> Result<int, string> => await(f)\n\
              let through_return = await(start(9223372036854775807))\n\
              let through_parameter = finish(spawn(checkedAdd(9223372036854775807, 1)))\n",
     );
