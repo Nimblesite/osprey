@@ -11,6 +11,7 @@ import * as path from "path";
 import { commands, ConfigurationTarget, extensions, workspace } from "vscode";
 import { shipwrightPlatform } from "../../client/src/client-config";
 import { fetchListingText } from "../../client/src/package-api";
+import { freePort } from "./real-registry-kit";
 import {
   failureOf,
   healthCheck,
@@ -314,15 +315,4 @@ suite("local package registry server", () => {
 async function assertStopped(origin: string): Promise<void> {
   for (let i = 0; i < 40 && await healthCheck(origin, 250); i++) await new Promise((resolve) => setTimeout(resolve, 50));
   assert.strictEqual(await healthCheck(origin, 250), false);
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = http.createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const port = (probe.address() as { port: number }).port;
-      probe.close(() => resolve(port));
-    });
-  });
 }
