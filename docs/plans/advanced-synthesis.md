@@ -163,10 +163,10 @@ The first import path is bounded local WAV loading, not a general codec framewor
 - [x] Implement bounded RIFF/WAVE chunk parsing with checked lengths, odd-byte padding, unknown-chunk handling and explicit duplicate/truncated-chunk rejection.
 - [ ] Validate encoding, frame alignment, byte rate, sample count and finite sample values; reject unsupported formats rather than guessing.
 - [x] Define stereo handling explicitly: preserve channels where supported or perform a documented downmix; do not silently discard a channel.
-- [ ] Add native file selection for the selected Grain Cloud; cancellation leaves the patch unchanged.
-- [ ] Read a bounded amount of data outside rendering and reject oversized resources before unbounded allocation or decoding.
-- [ ] Guard asynchronous import completion with request identity and node identity/revision so an old result cannot overwrite a newer choice or resurrect a removed node.
-- [ ] Keep the last valid sample and graph on decode, preparation or activation failure; surface a useful node-specific error.
+- [x] Add native file selection for the selected Grain Cloud; cancellation leaves the patch unchanged. Evidence: `sampleFileJourney` in [history.ospml](../../src/osprey/examples/daw/test/history.ospml), daw suite 24/24 on 21 Nov.
+- [x] Read a bounded amount of data outside rendering and reject oversized resources before unbounded allocation or decoding. Evidence: `sampleFileJourney` in [history.ospml](../../src/osprey/examples/daw/test/history.ospml), daw suite 24/24 on 21 Nov.
+- [x] Guard asynchronous import completion with request identity and node identity/revision so an old result cannot overwrite a newer choice or resurrect a removed node. Evidence: `sampleFileJourney` in [history.ospml](../../src/osprey/examples/daw/test/history.ospml), daw suite 24/24 on 21 Nov.
+- [x] Keep the last valid sample and graph on decode, preparation or activation failure; surface a useful node-specific error. Evidence: `sampleFileJourney` in [history.ospml](../../src/osprey/examples/daw/test/history.ospml), daw suite 24/24 on 21 Nov.
 - [x] Carry source sample rate and root note into playback-rate calculation; a unity-rate sample must not be pitched according to its buffer length.
 - [ ] Define loop range, one-shot/reverse/end behaviour and source-position units; make the inspector match the actual supported behaviour.
 - [ ] Show the loaded resource name, duration/rate/channel metadata, waveform and current source position using bounded observations.

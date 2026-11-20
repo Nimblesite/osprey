@@ -36,6 +36,46 @@ sampleChoiceJourney () =
     expect ((Drive::holding cancelled).sampleTicket, "")
     expect (structuralEquals ((Drive::holding opened).graph, (Drive::holding cancelled).graph), true)
     expect (length (Drive::holding opened).past, length (Drive::holding cancelled).past)
+    sampleFileJourney cancelled
+
+// One chosen file through the picker: the graph and history stay as they were and the node says why.
+refusedFile (driven, path, check) =
+    asked = Drive::press (driven, "Load WAV sample")
+    ticket = (Drive::holding asked).sampleTicket
+    expect (ticket != "", true)
+    done = Drive::completed (asked, ticket, true, path)
+    held = Drive::holding done
+    expect (held.sampleTicket, "")
+    expect (startsWith held.message "Grain cloud ${held.selected}: ", true)
+    check held.message
+    expect (structuralEquals (held.graph, (Drive::holding driven).graph), true)
+    expect (length held.past, length (Drive::holding driven).past)
+    done
+
+// [SYNTH-ADVANCED-GRAINS-IMPORT] A missing, tiny, oversized-by-name or non-WAV file never replaces the source;
+// the built-in sample is an explicit choice that does; a chooser failure is reported on the node.
+sampleFileJourney driven =
+    _folder = makeDir "target/daw-tests"
+    _tiny = writeFile "target/daw-tests/tiny.wav" "RIFF"
+    _text = writeFile "target/daw-tests/text.wav" (join (mapList (toList (range (0, 16)), \_ => "not a wave file ")) "")
+    missing = refusedFile (driven, "target/daw-tests/absent-sample.wav", \message => expect (message != "", true))
+    tiny = refusedFile (missing, "target/daw-tests/tiny.wav", \message => expect (endsWith message "Choose a WAV file between 12 bytes and 8 MiB.", true))
+    texted = refusedFile (tiny, "target/daw-tests/text.wav", \message => expect (contains message "WAV", true))
+    failed = Drive::completed (Drive::press (texted, "Load WAV sample"), (Drive::holding (Drive::press (texted, "Load WAV sample"))).sampleTicket, false, "chooser unavailable")
+    expect ((Drive::holding failed).message, "Grain cloud ${(Drive::holding failed).selected}: chooser unavailable")
+    expect (structuralEquals ((Drive::holding failed).graph, (Drive::holding driven).graph), true)
+    builtin = Drive::press (failed, "Use built-in harmonic sample")
+    expect ((Drive::holding builtin).message, "Loaded ${daw::PatchVoices::builtinName}.")
+    expect ((Drive::holding builtin).revision > (Drive::holding failed).revision, true)
+    expect (length (Drive::holding builtin).graph.nodes, length (Drive::holding driven).graph.nodes)
+    // A choice still open when its node is removed completes into nothing: the node is not resurrected.
+    asked = Drive::press (builtin, "Load WAV sample")
+    pending = (Drive::holding asked).sampleTicket
+    gone = Drive::press (asked, "Remove module")
+    expect (length (Drive::holding gone).graph.nodes, satSub (length (Drive::holding builtin).graph.nodes) 1)
+    late = Drive::completed (gone, pending, true, "target/daw-tests/text.wav")
+    expect (structuralEquals ((Drive::holding late).graph, (Drive::holding gone).graph), true)
+    expect ((Drive::holding late).sampleTicket, "")
 
 // Deleting a routed module restores its parameters, position and cables as one operation.
 historyRemovalJourney () =
