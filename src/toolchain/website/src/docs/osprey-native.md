@@ -58,6 +58,10 @@ Light Orchestra turns any phone on your network into an instrument for your Mac:
 
 {% videoPlayer "light-orchestra", true %}
 
+Prism is a daw built the same way: every voice in its songs is synthesised by `@osprey/synth`, and the page you see is Osprey drawing through the FerroUI host.
+
+{% videoPlayer "prism-daw", true %}
+
 {{ capture("/assets/images/blog/chromecast-from-mac-player.webp", "Casting player on macOS with receiver selection, transport and volume", "Casting · macOS GPUI · choose audio and a receiver, then press Play.", 868, 1114) }}
 
 {% videoPlayer "chromecast-from-mac", true %}

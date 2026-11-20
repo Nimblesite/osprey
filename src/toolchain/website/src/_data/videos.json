@@ -510,5 +510,27 @@
       "benchmark"
     ],
     "durationSeconds": 427.418
+  },
+  "prism-daw": {
+    "name": "Prism: a daw whose every voice is Osprey synthesis",
+    "description": "Prism opens a 17-track song on macOS. Each voice type's patch is opened and auditioned in turn: additive partials, an FM phase operator, a modal bank bell, a bowed string waveguide and a struck exciter drum. Then the Mix page, and Play bars renders two bars with @osprey/synth and plays them. Recorded by the daw's native video journey, which clicks like a user and fails if any click leaves the screen unchanged.",
+    "kind": "intro",
+    "content": "/assets/videos/osprey-prism-daw.mp4",
+    "poster": "/assets/videos/osprey-prism-daw-poster.jpg",
+    "posterAlt": "Prism's Timeline page with seventeen tracks of the Broken Circuitry project",
+    "captions": "/assets/videos/osprey-prism-daw.en.vtt",
+    "chapters": "/assets/videos/osprey-prism-daw.chapters.vtt",
+    "width": 1920,
+    "height": 1114,
+    "uploadDate": "2026-11-21T01:10:00+11:00",
+    "tags": [
+      "Osprey",
+      "Osprey Native",
+      "synthesis",
+      "audio",
+      "daw",
+      "FerroUI"
+    ],
+    "durationSeconds": 150.0
   }
 }
