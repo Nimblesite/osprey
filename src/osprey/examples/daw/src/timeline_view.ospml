@@ -56,10 +56,10 @@ module TimelineView
         false => "${ui::Pick::either (value < 0.0, "L", "R")} ${percent (ui::Pick::either (value < 0.0, 0.0 - value, value))}"
 
     tabs = ["Patch", "Timeline", "Mix"]
-    buttons = ["Open song", "Play bars", "Stop"]
+    buttons = ["Open song", "Play bars", "Render song", "Stop"]
 
     (** The header's tabs and transport, left to right; their hit areas are `headerAreas`. *)
-    export headerAreas editor = listConcat (listConcat (mapList (toList (range (0, 3)), \i => area (listGet tabs i ?: "", 360.0 + toFloat i * 130.0, 10.0, 120.0, 45.0, i == pageIndex editor.page))) (mapList (toList (range (0, 3)), \i => area (listGet buttons i ?: "", 1110.0 + toFloat i * 140.0, 10.0, 130.0, 45.0, false)))) [area ("Save project", 970.0, 10.0, 130.0, 45.0, false), area ("Keyboard", 820.0, 10.0, 125.0, 45.0, editor.keyboardShown)]
+    export headerAreas editor = listConcat (listConcat (mapList (toList (range (0, 3)), \i => area (listGet tabs i ?: "", 360.0 + toFloat i * 130.0, 10.0, 120.0, 45.0, i == pageIndex editor.page))) (mapList (toList (range (0, 4)), \i => area (listGet buttons i ?: "", 1025.0 + toFloat i * 122.0, 10.0, 115.0, 45.0, false)))) [area ("Save project", 895.0, 10.0, 120.0, 45.0, false), area ("Keyboard", 765.0, 10.0, 120.0, 45.0, editor.keyboardShown)]
 
     (** The page's place among the header tabs. *)
     export pageIndex page = match page
@@ -74,8 +74,9 @@ module TimelineView
         2 => ShowPage(page = MixPage)
         3 => OpenTrack(index = -2)
         4 => PlaySong
-        6 => SaveProject
-        7 => ShowKeyboard
+        5 => RenderSong
+        7 => SaveProject
+        8 => ShowKeyboard
         _ => StopSong
 
     tile (a, fill) = [EditorView::panel (a.accessLeft, a.accessTop, a.accessWidth, a.accessHeight, fill, 10), label (a.accessLabel, a.accessLeft + a.accessWidth / 2.0, a.accessTop + 12.0, 16.0, ink (), 1, 11)]

@@ -44,6 +44,7 @@ module EditorApp
             false => DawSession::saving (editor, \saved => Runtime::step (DawSession::opened (saved, index)))
         SaveProject => DawSession::save editor
         PlaySong => DawSession::saving (editor, DawSession::play)
+        RenderSong => DawSession::saving (editor, DawSession::bounce)
         StopSong => DawSession::stop editor
         _ => Runtime::step (EditorState::tapped (editor, action))
 

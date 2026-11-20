@@ -822,6 +822,30 @@ remixed (ready, louder) =
     rendersBars (synth::DawSession::play edited, "Rendering bars 2–3 of Bridge.")
     encoded (louder, \text => expect (readFile "${barFolder}/project.json" ?: "", text))
 
+songFolder = "${transportRoot}/bin/song/song"
+
+// [DAW-RENDER] The whole project renders to its own folder: refused while busy, only real audio counts, unchanged audio is kept.
+bounceJourney ready =
+    expect (synth::TimelineView::headerAction 5, synth::RenderSong)
+    expect (synth::TimelineView::headerAction 6, synth::StopSong)
+    expect (synth::TimelineView::headerAction 7, synth::SaveProject)
+    said (synth::DawSession::bounce (ready(renderer = "")), "", "Open a song and launch with the daw renderer to play it.")
+    first = synth::DawSession::bounce ready
+    said (first, "daw-song:bounce:${songFolder}", "Rendering all of Bridge.")
+    ranWith (first, "${transportRoot}/bin/daw", ["${songFolder}/project.json", songFolder])
+    expect (fileSize "${songFolder}/piece.wav" ?: -1, 0)
+    encoded (song (), \text => expect (readFile "${songFolder}/project.json" ?: "", text))
+    expect (synth::DawSession::phase first.stepStore, "Rendering…")
+    said (synth::DawSession::bounce first.stepStore, "daw-song:bounce:${songFolder}", "The song is already playing; Stop first.")
+    said (synth::DawSession::play first.stepStore, "daw-song:bounce:${songFolder}", "The song is already playing; Stop first.")
+    said (synth::DawSession::completed (first.stepStore, "daw-song:bounce:${songFolder}", rendererSaid "daw: refused"), "", "Rendering failed: daw: refused")
+    succeeds (writeFile "${songFolder}/piece.wav" (join (mapList (toList (range (0, 64)), \_ => "RIFF")) ""), \_ => expect (true, true))
+    done = synth::DawSession::completed (first.stepStore, "daw-song:bounce:${songFolder}", rendererSaid "daw: wrote it")
+    said (done, "", "Rendered ${songFolder}/piece.wav.")
+    expect (length done.requests, 0)
+    said (synth::DawSession::bounce ready, "", "${songFolder}/piece.wav is already this project.")
+    said (synth::DawSession::stop first.stepStore, "", "Stopped.")
+
 transportJourney () =
     succeeds (makeDir "target/daw-tests", \_ => expect (true, true))
     _made = makeDir transportRoot
@@ -853,5 +877,6 @@ transportJourney () =
     expect (synth::DawSession::phase stopped.stepStore, "Stopped")
     said (synth::DawSession::stop stopped.stepStore, "", "Nothing is playing.")
     succeeds (daw::Projects::mixed (ready.song, 1, 2.0, 0.5, 0.25), \louder => remixed (ready, louder))
+    bounceJourney ready
 
-test ("the transport renders two bars of the project as it stands, plays only real audio, replays unchanged bars and stops", \() => Runtime::guarded transportJourney)
+test ("the transport renders two bars of the project as it stands, plays only real audio, replays unchanged bars, stops and renders the whole song", \() => Runtime::guarded transportJourney)

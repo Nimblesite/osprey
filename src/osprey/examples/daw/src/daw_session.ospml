@@ -60,12 +60,15 @@ module DawSession
     // One folder per bar, holding the snapshot it was rendered from and the audio.
     excerpt editor = "${folder editor}/bar-${satAdd editor.rollBar 1}"
 
-    snapshot editor = "${excerpt editor}/project.json"
+    // Implements [DAW-RENDER]. The whole song renders into one folder beside the bar excerpts.
+    whole editor = "${folder editor}/song"
 
-    wave editor = "${excerpt editor}/piece.wav"
+    snapshot place = "${place}/project.json"
+
+    wave place = "${place}/piece.wav"
 
     // The cached audio is current when it was rendered from exactly this project text.
-    fresh (editor, text) = (readFile (snapshot editor) ?: "") == text && (fileSize (wave editor) ?: 0) > 44
+    fresh (place, text) = (readFile (snapshot place) ?: "") == text && (fileSize (wave place) ?: 0) > 44
 
     bars first = "bars ${first}–${satAdd first 1}"
 
@@ -81,23 +84,35 @@ module DawSession
     (** Play two bars from the piano roll's first bar, as the project stands now, edits included. They are rendered
         once per project state and bar; a failed render leaves no audio to replay. *)
     export play editor = match busy editor
-        true => Runtime::step (editor(message = ui::Pick::either (editor.songTicket != "", "The song is already playing; Stop first.", "Open a song and launch with the daw renderer to play it.")))
+        true => refused editor
         false => match daw::SongFiles::encode editor.song
             Error why => Runtime::step (editor(message = why))
-            Success text => match fresh (editor, text)
+            Success text => match fresh (excerpt editor, text)
                 true => sounded (editor, excerpt editor)
-                false => prepared (editor, text)
+                false => prepared (editor, text, excerpt editor, rendered)
+
+    refused editor = Runtime::step (editor(message = ui::Pick::either (editor.songTicket != "", "The song is already playing; Stop first.", "Open a song and launch with the daw renderer to play it.")))
+
+    (** Render the whole song, as the project stands now, to `<song>/song/piece.wav` beside the renderer; an
+        unchanged project keeps the audio it already rendered. *)
+    export bounce editor = match busy editor
+        true => refused editor
+        false => match daw::SongFiles::encode editor.song
+            Error why => Runtime::step (editor(message = why))
+            Success text => match fresh (whole editor, text)
+                true => Runtime::step (editor(message = "${wave (whole editor)} is already this project."))
+                false => prepared (editor, text, whole editor, bounced)
 
     // The old audio is emptied before the new snapshot is written, so it can never pass for this one.
-    prepared (editor, text) =
+    prepared (editor, text, place, launch) =
         // An existing folder is fine; a missing one fails the first write below.
         _made = makeDir (folder editor)
-        _bar = makeDir (excerpt editor)
-        match writeFile (wave editor) ""
-            Error why => Runtime::step (editor(message = "Could not prepare ${wave editor}: ${why}"))
-            Success _ => match writeFile (snapshot editor) text
-                Error why => Runtime::step (editor(message = "Could not write ${snapshot editor}: ${why}"))
-                Success _ => rendered editor
+        _place = makeDir place
+        match writeFile (wave place) ""
+            Error why => Runtime::step (editor(message = "Could not prepare ${wave place}: ${why}"))
+            Success _ => match writeFile (snapshot place) text
+                Error why => Runtime::step (editor(message = "Could not write ${snapshot place}: ${why}"))
+                Success _ => launch editor
 
     // Each ticket carries the bar folder it was launched for, so a completion acts on that bar's audio even when
     // the piano roll has moved or another song opened since.
@@ -105,27 +120,39 @@ module DawSession
 
     playTicket = "daw-song:play:"
 
+    bounceTicket = "daw-song:bounce:"
+
     launched (ticket, prefix) = match startsWith ticket prefix
         true => substring ticket (length prefix) (length ticket)
         false => Error(message = "not a ${prefix} ticket")
 
     rendered editor =
         ticket = "${renderTicket}${excerpt editor}"
-        Runtime::asking (editor(songTicket = ticket, message = "Rendering ${window editor} of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = editor.renderer, arguments = [snapshot editor, excerpt editor, "${TimelineGeometry::barStart (toFloat editor.rollBar)}", "${playedBeats}"], timeout = 900000, outputLimit = 65536, plist = false, runSlice = ""))])
+        Runtime::asking (editor(songTicket = ticket, message = "Rendering ${window editor} of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = editor.renderer, arguments = [snapshot (excerpt editor), excerpt editor, "${TimelineGeometry::barStart (toFloat editor.rollBar)}", "${playedBeats}"], timeout = 900000, outputLimit = 65536, plist = false, runSlice = ""))])
+
+    bounced editor =
+        ticket = "${bounceTicket}${whole editor}"
+        Runtime::asking (editor(songTicket = ticket, message = "Rendering all of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = editor.renderer, arguments = [snapshot (whole editor), whole editor], timeout = 7200000, outputLimit = 65536, plist = false, runSlice = ""))])
 
     sounded (editor, bar) =
         ticket = "${playTicket}${bar}"
         Runtime::asking (editor(songTicket = ticket, message = "Playing ${heldBars bar} of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = "/usr/bin/afplay", arguments = ["${bar}/piece.wav"], timeout = 3600000, outputLimit = 4096, plist = false, runSlice = ""))])
 
     (** What the transport is doing: "Rendering…", "Playing" or "Stopped". *)
-    export phase editor = match startsWith editor.songTicket renderTicket
+    export phase editor = match startsWith editor.songTicket renderTicket || startsWith editor.songTicket bounceTicket
         true => "Rendering…"
         false => ui::Pick::either (startsWith editor.songTicket playTicket, "Playing", "Stopped")
 
     // The renderer reports a refused project on its output and still exits cleanly, so only audio counts.
-    heard (editor, bar, outcome) = match (fileSize "${bar}/piece.wav" ?: 0) > 44
+    heard (editor, bar, outcome) = match (fileSize (wave bar) ?: 0) > 44
         true => sounded (editor, bar)
-        false => Runtime::step (editor(songTicket = "", message = "Rendering failed: ${reported outcome}"))
+        false => failed (editor, outcome)
+
+    exported (editor, place, outcome) = match (fileSize (wave place) ?: 0) > 44
+        true => Runtime::step (editor(songTicket = "", message = "Rendered ${wave place}."))
+        false => failed (editor, outcome)
+
+    failed (editor, outcome) = Runtime::step (editor(songTicket = "", message = "Rendering failed: ${reported outcome}"))
 
     reported outcome = match outcome
         Error why => why
@@ -152,7 +179,9 @@ module DawSession
             Error why => Runtime::step (editor(songTicket = "", message = "Song playback failed: ${why}"))
             Success _ => match launched (ticket, renderTicket)
                 Success bar => heard (editor, bar, outcome)
-                Error _ => Runtime::step (editor(songTicket = "", message = "${editor.song.title} finished."))
+                Error _ => match launched (ticket, bounceTicket)
+                    Success place => exported (editor, place, outcome)
+                    Error _ => Runtime::step (editor(songTicket = "", message = "${editor.song.title} finished."))
 
     written (editor, song) = match daw::Projects::saved (song, editor.songPath)
         Error why => Error(message = "Could not save ${editor.songPath}: ${why}")
