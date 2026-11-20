@@ -97,23 +97,14 @@ export function buildProgramNodes(snapshot: DebugSnapshot): DebugNode[] {
   const nodes: DebugNode[] = [
     infoNode("State", stateLabel[snapshot.state], "pulse"),
   ];
-  if (snapshot.program?.sourceProgram) {
-    nodes.push(
-      infoNode(
-        "Source",
-        pathBasename(snapshot.program.sourceProgram),
-        "file-code",
-      ),
-    );
-  }
-  if (snapshot.program?.debugBinary) {
-    nodes.push(
-      infoNode(
-        "Debug binary",
-        pathBasename(snapshot.program.debugBinary),
-        "file-binary",
-      ),
-    );
+  const files: readonly (readonly [string, string | undefined, string])[] = [
+    ["Source", snapshot.program?.sourceProgram, "file-code"],
+    ["Debug binary", snapshot.program?.debugBinary, "file-binary"],
+  ];
+  for (const [label, file, icon] of files) {
+    if (file) {
+      nodes.push(infoNode(label, pathBasename(file), icon));
+    }
   }
   return nodes;
 }

@@ -380,18 +380,8 @@ impl Collector<'_> {
             source,
             position,
         };
-        if self
-            .graph
-            .modules
-            .insert(module_key.clone(), info)
-            .is_some()
-        {
-            self.error(
-                source,
-                position,
-                format!("duplicate module `{}`", module_key.source_name()),
-            );
-        }
+        let replaced = self.graph.modules.insert(module_key.clone(), info);
+        self.unique(replaced.is_none(), "module", &module_key, source, position);
     }
 
     fn signature(
@@ -404,18 +394,17 @@ impl Collector<'_> {
         position: Option<Position>,
     ) {
         let signature = key(namespace, owner, name);
-        if self
+        let replaced = self
             .graph
             .signatures
-            .insert(signature.clone(), items.to_vec())
-            .is_some()
-        {
-            self.error(
-                source,
-                position,
-                format!("duplicate signature `{}`", signature.source_name()),
-            );
-        }
+            .insert(signature.clone(), items.to_vec());
+        self.unique(
+            replaced.is_none(),
+            "signature",
+            &signature,
+            source,
+            position,
+        );
     }
 
     #[expect(
@@ -442,11 +431,24 @@ impl Collector<'_> {
             state_owner,
             opaque,
         };
-        if self.graph.declarations.insert(key.clone(), info).is_some() {
+        let replaced = self.graph.declarations.insert(key.clone(), info);
+        self.unique(replaced.is_none(), "declaration", &key, source, position);
+    }
+
+    /// Reports a `what` registered twice under `key`; `fresh` when it was new.
+    fn unique(
+        &mut self,
+        fresh: bool,
+        what: &str,
+        key: &SymbolKey,
+        source: usize,
+        position: Option<Position>,
+    ) {
+        if !fresh {
             self.error(
                 source,
                 position,
-                format!("duplicate declaration `{}`", key.source_name()),
+                format!("duplicate {what} `{}`", key.source_name()),
             );
         }
     }
