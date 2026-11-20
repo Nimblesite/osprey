@@ -60,10 +60,10 @@ module Arrangements
                 true => Success(value = count)
 
     // `samples` enter `offset` frames into the bus; the bus grows to hold them.
-    bused (existing, samples, offset, gain) = foldList (toList (range (0, longer (length existing, satAdd offset (length samples)))), [], \(done, index) => listAppend done ((listGet existing index ?: 0.0) + gain * (listGet samples (satSub index offset) ?: 0.0)))
+    bused (existing, samples, offset, gain) = foldList (toList (range (0, longer (length existing, satAdd offset (length samples)))), [], \(done, index) => listAppend done (ArrangeMath::bused (listGet existing index ?: 0.0, gain, listGet samples (satSub index offset) ?: 0.0)))
 
     // One bus takes the mono buffer from frame `offset`, scaled by `gain * shade`.
-    sent (bus, samples, offset, gain, shade) = bused (bus, samples, offset, gain * shade)
+    sent (bus, samples, offset, gain, shade) = bused (bus, samples, offset, ArrangeMath::scaled (gain, shade))
 
     (** Silent buses. *)
     export empty = Buses(left = [], right = [], wet = [])
@@ -86,7 +86,7 @@ module Arrangements
             Error why => Error(message = "${voice.name}: ${why}")
             Success next => Success(value = next)
 
-    room (arrangement, scale) = synth::ReverbConfig(sampleRate = toFloat arrangement.sampleRate, size = arrangement.space.size * scale, decay = arrangement.space.decay, damping = arrangement.space.damping, diffusion = 0.7, mix = 1.0, freeze = false)
+    room (arrangement, scale) = synth::ReverbConfig(sampleRate = toFloat arrangement.sampleRate, size = ArrangeMath::scaled (arrangement.space.size, scale), decay = arrangement.space.decay, damping = arrangement.space.damping, diffusion = 0.7, mix = 1.0, freeze = false)
 
     echoStep (config, run, input) = match run.fault == ""
         false => run

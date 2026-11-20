@@ -41,11 +41,11 @@ module Sustains
     valid glow = glow.start >= 0.0 && glow.ratio >= 0.25 && glow.ratio <= 4.0 && glow.rise >= 0.01 && glow.rise <= 60.0 && glow.hold >= 0.0 && glow.hold <= 60.0 && glow.fade >= 0.01 && glow.fade <= 60.0
 
     (** Seconds of held sound that these appearances read, including the skipped start. *)
-    export needed (rate, glows) = foldList (glows, 0.0, longest) + (toFloat skipped + 2.0) / rate
+    export needed (rate, glows) = ArrangeMath::neededSeconds (foldList (glows, 0.0, longest), toFloat skipped, rate)
 
-    longest (most, glow) = synth::TableMath::larger (most, lasting glow * glow.ratio)
+    longest (most, glow) = synth::TableMath::larger (most, ArrangeMath::scaled (lasting glow, glow.ratio))
 
-    level (rate, glow, frame) = ArrangeMath::gated (toFloat frame, ArrangeMath::secondFrames (glow.rise + glow.hold, rate), glow.rise * rate, glow.fade * rate)
+    level (rate, glow, frame) = ArrangeMath::glowLevel (toFloat frame, glow.rise, glow.hold, glow.fade, rate)
 
     // Linear interpolation is not bandlimited: raising the pitch folds content above the new Nyquist.
     read (raw, glow, frame) =
@@ -54,11 +54,11 @@ module Sustains
             Error _ => 0.0
             Success lower => synth::GrainMath::interpolated (listGet raw lower ?: 0.0, listGet raw (satAdd lower 1) ?: 0.0, synth::GrainMath::fraction position)
 
-    sounded (rate, raw, glow, count) = mapList (toList (range (0, count)), \frame => read (raw, glow, frame) * level (rate, glow, frame))
+    sounded (rate, raw, glow, count) = mapList (toList (range (0, count)), \frame => ArrangeMath::scaled (read (raw, glow, frame), level (rate, glow, frame)))
 
     (** One appearance of the held sound: ratio 0.25–4, rise 0.01–60 s, hold 0–60 s, fade 0.01–60 s. The
         hold must be long enough (`needed`, within one frame of rounding), otherwise this is an error. *)
-    export voiced (rate, raw, glow) = match valid glow && toFloat (length raw) + 1.0 >= needed (rate, [glow]) * rate
+    export voiced (rate, raw, glow) = match valid glow && ArrangeMath::holds (toFloat (length raw), needed (rate, [glow]), rate)
         false => Error(message = "A sustain appearance has controls out of range or reads past the held sound.")
         true => match floatToInt (ArrangeMath::secondFrames (lasting glow, rate))
             Error _ => Error(message = "The sustain length is not finite.")

@@ -57,7 +57,7 @@ module NoteRenders
     folded (noteSpan, held, step) = finished (foldList (frames noteSpan, NoteRun(held = held, samples = [], fault = ""), step))
 
     // Loop storage sized to the note's own period.
-    loop (rate, note) = match floatToInt (ceil (rate / hertz note) + 8.0)
+    loop (rate, note) = match floatToInt (ArrangeMath::loopRoom (rate, hertz note))
         Error _ => Error(message = "A note has a non-finite pitch.")
         Success capacity => Success(value = capacity)
 
@@ -68,7 +68,7 @@ module NoteRenders
 
     string (note, noteSpan, rate, capacity, brightness, decay, frame) = synth::WaveguideConfig(sampleRate = rate, frequency = hertz note, decay = damped (frame, noteSpan.gate, decay), brightness = brightness, dispersion = 0.0, pickup = 0.13, capacity = capacity)
 
-    pick (note, capacity) = synth::ExciterConfig(strength = note.velocity, duration = capacity, interval = 0, excitation = synth::NoiseExcitation(colour = 0.7 * (1.0 - note.velocity)))
+    pick (note, capacity) = synth::ExciterConfig(strength = note.velocity, duration = capacity, interval = 0, excitation = synth::NoiseExcitation(colour = ArrangeMath::pickColour note.velocity))
 
     pluckStep (note, noteSpan, rate, capacity, brightness, decay, run, frame) = match run.fault == ""
         false => run
@@ -84,7 +84,7 @@ module NoteRenders
             Error why => Error(message = why)
             Success guide => synth::Outcomes::carried (synth::Exciters::configure (pick (note, capacity)), \_ => folded (noteSpan, VoicePair(one = guide, other = synth::Exciters::initial (satAdd note.pitch 1)), \(run, frame) => pluckStep (note, noteSpan, rate, capacity, brightness, decay, run, frame)))
 
-    bow (note, noteSpan, rate, capacity, pressure, brightness, depth, age) = synth::BowConfig(sampleRate = rate, frequency = ArrangeMath::vibrato (hertz note, age, depth, rate), decay = 0.6, brightness = brightness, position = 0.12, pressure = pressure, velocity = 0.3 * note.velocity * ArrangeMath::gated (age, noteSpan.gate, 0.08 * rate, 0.1 * rate), capacity = capacity)
+    bow (note, noteSpan, rate, capacity, pressure, brightness, depth, age) = synth::BowConfig(sampleRate = rate, frequency = ArrangeMath::vibrato (hertz note, age, depth, rate), decay = 0.6, brightness = brightness, position = 0.12, pressure = pressure, velocity = ArrangeMath::bowSpeed (note.velocity, age, noteSpan.gate, rate), capacity = capacity)
 
     bowed (note, noteSpan, rate, capacity, pressure, brightness, depth) = match synth::BowedStrings::configure (bow (note, noteSpan, rate, capacity, pressure, brightness, depth, 0.0))
         Error why => Error(message = why)
@@ -98,7 +98,7 @@ module NoteRenders
 
     modal (note, noteSpan, rate, decay, brightness, modes) = synth::Outcomes::carried (synth::ModalBanks::configure (synth::ModalConfig(sampleRate = rate, frequency = hertz note, decay = decay, brightness = brightness, strike = 0.37, count = 8, modes = modes)), \bank => folded (noteSpan, synth::ModalBanks::initial bank, \(run, frame) => stepped (run, synth::ModalBanks::next (bank, run.held, impulse (note.velocity, frame)))))
 
-    voice (note, noteSpan, rate, tone, cents, age) = synth::OperatorConfig(sampleRate = rate, frequency = ArrangeMath::detuned (hertz note, cents), shape = synth::DistortedPhase(breakpoint = ArrangeMath::bloomed (tone.breakpoint, age, tone.bloom, rate)), depth = 0.0, spread = 0.0, feedback = tone.feedback, amplitude = 0.5 * note.velocity * ArrangeMath::gated (age, noteSpan.gate, tone.attack * rate, tone.release * rate))
+    voice (note, noteSpan, rate, tone, cents, age) = synth::OperatorConfig(sampleRate = rate, frequency = ArrangeMath::detuned (hertz note, cents), shape = synth::DistortedPhase(breakpoint = ArrangeMath::bloomed (tone.breakpoint, age, tone.bloom, rate)), depth = 0.0, spread = 0.0, feedback = tone.feedback, amplitude = ArrangeMath::operatorLevel (note.velocity, age, noteSpan.gate, tone.attack, tone.release, rate))
 
     operatorStep (note, noteSpan, rate, tone, run, frame) =
         one = synth::PhaseOperators::next (voice (note, noteSpan, rate, tone, tone.detune, toFloat frame), run.held.one, 0.0, 0.0)
@@ -111,9 +111,9 @@ module NoteRenders
         false => Error(message = "Operator attack, release and bloom must be 0.001 to 10 s and detune within 100 cents.")
         true => synth::Outcomes::carried (synth::PhaseOperators::configure (voice (note, noteSpan, rate, tone, abs tone.detune, 0.0)), \_ => folded (noteSpan, VoicePair(one = synth::PhaseOperators::initial, other = synth::PhaseOperators::initial), \(run, frame) => operatorStep (note, noteSpan, rate, tone, run, frame)))
 
-    body (note, rate, hit, age) = synth::OperatorConfig(sampleRate = rate, frequency = ArrangeMath::swept (hertz note, hit.sweep, age, rate), shape = synth::PlainPhase, depth = 0.0, spread = 0.0, feedback = 0.0, amplitude = note.velocity * (1.0 - hit.noise) * ArrangeMath::ringing (age, hit.decay, rate))
+    body (note, rate, hit, age) = synth::OperatorConfig(sampleRate = rate, frequency = ArrangeMath::swept (hertz note, hit.sweep, age, rate), shape = synth::PlainPhase, depth = 0.0, spread = 0.0, feedback = 0.0, amplitude = ArrangeMath::drumBody (note.velocity, hit.noise, age, hit.decay, rate))
 
-    rattle (note, noteSpan, hit) = synth::ExciterConfig(strength = note.velocity * hit.noise, duration = noteSpan.total, interval = 0, excitation = synth::NoiseExcitation(colour = hit.colour))
+    rattle (note, noteSpan, hit) = synth::ExciterConfig(strength = ArrangeMath::scaled (note.velocity, hit.noise), duration = noteSpan.total, interval = 0, excitation = synth::NoiseExcitation(colour = hit.colour))
 
     drumStep (note, noteSpan, rate, hit, run, frame) =
         tone = synth::PhaseOperators::next (body (note, rate, hit, toFloat frame), run.held.one, 0.0, 0.0)

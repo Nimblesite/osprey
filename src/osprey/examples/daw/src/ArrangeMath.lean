@@ -67,4 +67,42 @@ def inWindow (start first beats : Float) : Bool := start >= first && start - fir
 
 /-- A start beat moved so the window beginning at `first` starts at beat 0. -/
 def shifted (start first : Float) : Float := start - first
+/-- `value` times `factor`: a gain applied, or a setting following the note's frequency or velocity. -/
+def scaled (value factor : Float) : Float := value * factor
+
+/-- A bus sample with `sample` mixed in at `gain`. -/
+def bused (existing gain sample : Float) : Float := existing + gain * sample
+
+/-- `sample` under a gate envelope whose attack and release are in seconds. -/
+def enveloped (sample frame gate attack release sampleRate : Float) : Float :=
+  sample * gated frame gate (attack * sampleRate) (release * sampleRate)
+
+/-- A held sound's level: rising over `rise` s, holding `hold` s, then fading over `fade` s. -/
+def glowLevel (frame rise hold fade sampleRate : Float) : Float :=
+  gated frame (secondFrames (rise + hold) sampleRate) (rise * sampleRate) (fade * sampleRate)
+
+/-- Seconds of held sound read: the longest appearance plus the skipped start and two frames of slack. -/
+def neededSeconds (longest skipped sampleRate : Float) : Float := longest + (skipped + 2) / sampleRate
+
+/-- Whether `frames` of held sound cover `needed` seconds, within one frame of rounding. -/
+def holds (frames needed sampleRate : Float) : Bool := frames + 1 >= needed * sampleRate
+
+/-- Loop storage for one period of `frequency`, with eight frames of headroom. -/
+def loopRoom (sampleRate frequency : Float) : Float := Float.ceil (sampleRate / frequency) + 8
+
+/-- A pluck's noise colour: softer notes are darker. -/
+def pickColour (velocity : Float) : Float := 0.7 * (1 - velocity)
+
+/-- Bow speed: 0.3 of the velocity, with an 80 ms attack and a 100 ms release. -/
+def bowSpeed (velocity frame gate sampleRate : Float) : Float :=
+  0.3 * velocity * gated frame gate (0.08 * sampleRate) (0.1 * sampleRate)
+
+/-- One of the operator pair's level: half the velocity under the tone's envelope. -/
+def operatorLevel (velocity frame gate attack release sampleRate : Float) : Float :=
+  0.5 * velocity * gated frame gate (attack * sampleRate) (release * sampleRate)
+
+/-- A drum body's level: the share of the hit that is not noise, ringing out over `decay` s. -/
+def drumBody (velocity noise frame decay sampleRate : Float) : Float :=
+  velocity * (1 - noise) * ringing frame decay sampleRate
+
 end daw.ArrangeMath
