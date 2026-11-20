@@ -42,7 +42,7 @@ module DawSession
         Error why => editor(message = "Could not read ${path}: ${why}")
         Success source => match daw::SongFiles::decode source
             Error why => editor(message = "${path}: ${why}")
-            Success song => picked (editor(song = song, songPath = path, track = 0, patchTrack = -1, rollBar = 0, page = TimelinePage), 0)
+            Success song => picked (editor(song = song, songPath = path, keyboardShown = false, track = 0, patchTrack = -1, rollBar = 0, page = TimelinePage), 0)
 
     stem path =
         parts = split (replace path "\\" "/" ?: path) "/" ?: [path]

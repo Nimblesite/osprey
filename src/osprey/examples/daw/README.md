@@ -14,8 +14,8 @@ make -C src/toolchain/targets/tests synth          # the app's tests, with no ho
 
 | Page | What it does |
 | --- | --- |
-| ![Timeline](screens/timeline.png) | **Timeline.** One lane per track across the song, and a two-bar piano roll of the selected track. Tap a lane to select the track at that bar. Tap its name, or **Open patch**, to edit its sound. |
-| ![A track's patch](screens/track-patch.png) | **Patch.** The selected track's patch in Prism: modules, cables and the keyboard. Leaving the page saves the patch into the project file. A built-in instrument opens as one voice module. |
+| ![Timeline](screens/timeline.png) | **Timeline.** One lane per track across the song, and a two-bar piano roll of the selected track. Tap a lane to select the track at that bar. Tap its name, or **Open patch**, to edit its sound. **Keyboard** opens the optional playable keys. |
+| ![A track's patch](screens/track-patch.png) | **Patch.** The selected track's patch in Prism: modules, cables and the selected module’s connections. Leaving the page saves the patch into the project file. A built-in instrument opens as one voice module. |
 | ![Mix](screens/mix.png) | **Mix.** Every track's gain, pan and Space send into Master, and the selected track's path to the stereo out. |
 
 **Save project** writes the open song, including its patch and layout. **Play bars** renders two bars from the piano roll's position with the song renderer and plays them;

@@ -18,7 +18,9 @@ mkdir -p "$app"
 export OSPREY_NATIVE_APP_DIR="$app" OSPREY_RUNTIME_DIR="$repo/src/toolchain/compiler/lib" \
     OSPREY_NATIVE_ABI="$repo/src/toolchain/compiler/runtime/native_abi.h"
 [ "${PRISM_PREBUILT:-}" = 1 ] || nice -n 10 gtimeout 2400 cargo build --manifest-path "$here/Cargo.toml" --release --features desktop -q
-export OSPREY_NATIVE_TITLE="Prism Synth" OSPREY_NATIVE_WINDOW=1152x756 OSPREY_NATIVE_CHROME=bare \
+window_size=1152x756
+[[ -z "${PRISM_PROJECT:-}" ]] || window_size=1152x621
+export OSPREY_NATIVE_TITLE="Prism" OSPREY_NATIVE_WINDOW="$window_size" OSPREY_NATIVE_CHROME=bare \
     OSPREY_NATIVE_TITLE_BAR=50
 machine="$repo/src/osprey/packages/signal_flow/signal_flow.machine.json"
 binary="${PRISM_BINARY:-$repo/target/release/ferroui-osprey-native}"
