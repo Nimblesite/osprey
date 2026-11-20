@@ -106,10 +106,11 @@ fn result_arm<'a>(arms: &'a [MatchArm], variant: &str) -> Option<&'a MatchArm> {
 }
 
 /// `match listGet(xs, i) { … }` without the Result: branch on the bounds check
-/// itself, read the element only on the Success path, and bind the constant
-/// reason on the Error one. The Result block the call would allocate exists
-/// only to be taken apart by these arms, so a lookup costs no allocation --
-/// and a scan over a list is a loop of lookups [BUILTIN-LIST-GET].
+/// itself, read the element only on the Success path, and build the
+/// `IndexOutOfBounds` record on the Error one only when that arm binds it. The
+/// Result block the call would allocate exists only to be taken apart by these
+/// arms, so a lookup costs no allocation -- and a scan over a list is a loop of
+/// lookups [BUILTIN-LIST-GET].
 ///
 /// `None` when the scrutinee is not a builtin `listGet` call, or when an arm
 /// binds the whole Result and so needs it to exist.
@@ -179,9 +180,16 @@ fn fused_list_get(cg: &mut Codegen, arguments: &[Expr], arms: &[MatchArm]) -> Re
     let element = crate::collections::elem_value(cg, &list, &raw);
     emit_result_body(cg, result_arm(arms, "Success"), element, None, &mut phi_in)?;
     cg.start_block(&el);
-    let length = crate::collections::list_length(cg, &list);
-    let reason = crate::aggregate::index_out_of_bounds(cg, &index.operand, &length)?;
-    emit_result_body(cg, result_arm(arms, "Error"), reason, None, &mut phi_in)?;
+    let error = result_arm(arms, "Error");
+    // The record is built only for an arm that reads it: a miss in a scan is
+    // otherwise as free as a hit [BUILTIN-LIST-GET].
+    let reason = if error.and_then(payload_binder).is_some() {
+        let length = crate::collections::list_length(cg, &list);
+        crate::aggregate::index_out_of_bounds(cg, &index.operand, &length)?
+    } else {
+        Value::new("null", LType::Ptr)
+    };
+    emit_result_body(cg, error, reason, None, &mut phi_in)?;
     finish_phi(cg, &phi_in, &end, mark)
 }
 
@@ -215,25 +223,32 @@ fn emit_result_body(
         return Ok(());
     };
     emit_arm(cg, arm, phi_in, |cg| {
-        if let Pattern::Constructor {
-            fields,
-            sub_patterns,
-            ..
-        } = &arm.pattern
-        {
-            let binder = if sub_patterns.is_empty() {
-                fields.first()
-            } else {
-                sub_patterns.first().and_then(|pattern| match pattern {
-                    Pattern::Binding(name) => Some(name),
-                    _ => None,
-                })
-            };
-            if let Some(f) = binder {
+        if matches!(arm.pattern, Pattern::Constructor { .. }) {
+            if let Some(f) = payload_binder(arm) {
                 bind_value(cg, f.clone(), bound);
             }
         } else if let (false, Some(disc)) = (is_result_arm(&arm.pattern), disc) {
             bind_catch_all(cg, &arm.pattern, disc);
         }
+    })
+}
+
+/// The name a variant arm binds its payload to: its first field, or its first
+/// sub-pattern when that is a plain binding.
+fn payload_binder(arm: &MatchArm) -> Option<&String> {
+    let Pattern::Constructor {
+        fields,
+        sub_patterns,
+        ..
+    } = &arm.pattern
+    else {
+        return None;
+    };
+    if sub_patterns.is_empty() {
+        return fields.first();
+    }
+    sub_patterns.first().and_then(|pattern| match pattern {
+        Pattern::Binding(name) => Some(name),
+        _ => None,
     })
 }
