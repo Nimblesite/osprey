@@ -215,9 +215,7 @@ sceneCaseLabelsIconsBadgesEmptyStatesButtonsTabs () =
     // The plain row carries no symbol or group; the led row's icon and group lead its cell.
     expect (spelled (childTold (toldOf held, 6)), "{kind=\"rows\",selected=\"plain\",rows=[{key=\"plain\",symbol=\"\",group=\"\",child={kind=\"text\",text=\"p\",role=\"body\",tone=\"primary\"}},{key=\"led\",symbol=\"person\",group=\"G\",child={kind=\"text\",text=\"q\",role=\"body\",tone=\"primary\"}}],event=#2}")
     expect (tabSymbol (ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load)), "clock")
-    expect (deliversBinding (held, 0, ui::Tap(action = Increment)), true)
-    expect (deliversBinding (held, 1, ui::ChoiceInput(action = Load)), true)
-    expect (deliversBinding (held, 2, ui::ChoiceInput(action = Load)), true)
+    delivers (held, [ui::Tap(action = Increment), ui::ChoiceInput(action = Load), ui::ChoiceInput(action = Load)])
 
 // [UI-COMPONENTS]: a pair sends its label and value and takes no ordinal.
 (** a pair sends its label and value without a binding. *)
@@ -226,7 +224,7 @@ sceneCaseAPairEncodesItsLabelAndValue () =
     binds (drawnOf held, 1)
     expect (spelled (childTold (toldOf held, 0)), "{kind=\"pair\",label=\"Digest\",value=\"sha256:ab\"}")
     expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0 - 1)
-    expect (deliversBinding (held, 0, ui::Tap(action = Increment)), true)
+    delivers (held, [ui::Tap(action = Increment)])
 
 isLinux platform = match platform
     ui::Linux => true
@@ -402,9 +400,7 @@ sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading () =
     expect (spelled (childTold (toldOf held, 3)), "{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"prominent\",enabled=?true,event=#1}")
     // A leading aside tells its side, its pane and its column, 300 points wide, with the splitter's binding after them.
     expect (spelled (childTold (toldOf held, 4)), "{kind=\"aside\",side=\"leading\",pane={kind=\"text\",text=\"p\",role=\"body\",tone=\"primary\"},aside={kind=\"text\",text=\"c\",role=\"body\",tone=\"primary\"},width=#300,least=#260,most=#640,keep=#340,event=#2}")
-    expect (deliversBinding (held, 0, ui::Tap(action = Load)), true)
-    expect (deliversBinding (held, 1, ui::Tap(action = Increment)), true)
-    expect (deliversBinding (held, 2, ui::SizeInput(action = Typed)), true)
+    delivers (held, [ui::Tap(action = Load), ui::Tap(action = Increment), ui::SizeInput(action = Typed)])
 
 // A drawn meter's clamped amount and total, checked against what its amount clamps to.
 meterTold probe =
