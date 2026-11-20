@@ -7,3 +7,14 @@ module Outcomes
         Error why => Error(message = why)
         Success value => step value
 
+    picked (options, index, message) = match listGet options index
+        Error _ => Error(message = message)
+        Success option => Success(value = option)
+
+    (** The option a whole-number `selector` names (0 is the first); anything else is `message`. *)
+    export chosen (selector, options, message) = match floatToInt selector
+        Error _ => Error(message = message)
+        Success index => match toFloat index == selector
+            false => Error(message = message)
+            true => picked (options, index, message)
+

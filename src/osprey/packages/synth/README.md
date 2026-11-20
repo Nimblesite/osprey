@@ -116,18 +116,3 @@ Every family below is a set of independent, UI-free modules: models are declared
 Sources: Smith, *Physical Audio Signal Processing* (waveguides, loss filters, pick-position combs, allpass dispersion); textbook modal ratios (approximations, not instrument measurements); Fletcher's stiff-string inharmonicity; Allen–Rabiner overlap-add with periodic Hann windows; Parker, Zavalishin and Le Bivic, DAFx 2016 (first-order ADAA); Niemitalo's polyphase Hilbert coefficients; and M. Smart, *Wave Pulse Phase Modulation*, DAFx25, equations (1) and (3)–(9), transcribed exactly in `PhaseMath.lean`.
 
 `Fitting` searches chosen automatable parameters offline: it renders candidates through the production `Graphs`/`Renderer` path, scores Hann-windowed log power spectra against a power-of-two target, explores uniformly for a quarter of the budget and then refines with a (1+1)-ES. It is deterministic for a seed, bounded to 16 parameters and 10,000 evaluations, and `start`/`advance` expose single evaluations for progress and cancellation. `apply` returns a separate revalidated graph; the original is never modified. `Patches` builds reproducible example graphs for every family, including one combining physical, spectral, nonlinear and LFO-modulated components (that one needs `GraphClips`, because the mono reference `Renderer` rejects control ports).
-
-## Arrangements [SYNTH-ARRANGEMENT]
-
-A piano roll rendered offline, outside the graph: `arrangement.td` declares the `Arrangement` (tempo, sample rate, master `drive`, reverb `Space`, the `Intro` recording it continues (path, held tail, crossfade), sustain appearances, tracks of `[pitch, start, length, velocity]` notes) and six instruments built from the modules above. `NoteRenders.render` turns one note into a mono buffer; `Arrangements` renders a track in start order with an overlap-add carry, adds tracks to left, right and reverb buses (`layered`, `added`), and `mixed` runs two feedback-delay reverbs of different size (one per side) and a tanh soft limiter that puts the peak at 0.89. `Sustains.frozen` analyses a recording to its end and holds its last spectrum with the phase-locked freeze; `Sustains.voiced` reads that hold at a speed ratio with its own rise, hold and fade, so written music can continue a recording and bring its last sound back at other pitches (linear interpolation, not bandlimited). Formulas are in `ArrangeMath.lean`.
-
-| Instrument | Built from | Notes |
-| --- | --- | --- |
-| `PluckInstrument` | `Exciters` noise burst of one period into `Waveguides` | released notes damp to a 0.12 s decay and ring 0.3 s past the gate |
-| `BowInstrument` | `BowedStrings`, bow velocity follows the gate (80 ms in, 100 ms out) | 5.4 Hz vibrato fades in; pitch must be below a quarter of the rate |
-| `BellInstrument`, `MalletInstrument` | `ModalBanks` with bell or bar ratios, one impulse | ring for `decay` whatever the note length |
-| `OperatorInstrument` | two `PhaseOperators` detuned up and down by `detune` cents | the phase-distortion breakpoint eases toward a sine over `bloom` |
-| `DrumInstrument` | sine `PhaseOperators` body with a pitch drop plus an `Exciters` noise burst | lasts `decay` (at most 1 s) whatever the note length |
-| `PatchInstrument` | `PatchVoices`: a `Graphs` graph built per note from `Routing` nodes and cables, rendered by `Renderer` in 8,192-frame blocks | settings follow the note's pitch or velocity; mono only, so no LFO routing or granular |
-
-Limits: rendering is not realtime and allocates per sample; a note lasts at most 960,000 frames and a piece 28,800,000; tracks are mono before panning; the limiter is not oversampled; there are no automated tests for these modules yet. `src/osprey/examples/songs` is the command-line player.

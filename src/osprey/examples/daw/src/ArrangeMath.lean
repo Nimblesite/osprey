@@ -1,5 +1,5 @@
 /-! Piano-roll timing, note envelopes and mix gains [SYNTH-ARRANGEMENT]. -/
-namespace synth.ArrangeMath
+namespace daw.ArrangeMath
 
 /-- Frames covered by `beats` at `tempo` beats per minute. -/
 def beatFrames (beats tempo sampleRate : Float) : Float := Float.floor (beats * 60 / tempo * sampleRate + 0.5)
@@ -52,4 +52,4 @@ def pressed (sample peak drive ceiling : Float) : Float :=
 /-- Read position in a held recording played `ratio` times faster, after `skip` frames. -/
 def readAt (frame ratio skip : Float) : Float := skip + frame * ratio
 
-end synth.ArrangeMath
+end daw.ArrangeMath

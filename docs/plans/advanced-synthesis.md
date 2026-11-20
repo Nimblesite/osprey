@@ -313,22 +313,23 @@ Reference: Smith's waveguide material and Bilbao's numerical synthesis reference
 - [ ] Provide macro controls that map to ordinary typed parameters with declared ranges and smoothing. Library part done: `Macros` validates and writes normalised amounts onto declared parameters through per-target ranges and curves; hosts smooth amounts with `Smoothers`. Prism controls remain open.
 - [ ] Expose the same control commands to Light Orchestra/phone adapters without adding networking or session state to the synth library.
 - [ ] Save complete patches, resources, seeds, module versions, automation and controller mappings; load incompatible/missing resources explicitly.
-- [x] Keep advanced modules available to headless/offline consumers without requiring Prism or the native UI package. Evidence: `src/osprey/examples/songs` builds from the synth and JSON source roots only and renders strings, modal banks, operators, the reverb and the spectral freeze from a command line.
+- [x] Keep advanced modules available to headless/offline consumers without requiring Prism or the native UI package. Evidence: `src/osprey/examples/daw` builds from the synth and JSON source roots only and renders strings, modal banks, operators, the reverb and the spectral freeze from a command line.
 
-## Arrangements and the songs player [SYNTH-ARRANGEMENT]
+## Arrangements and the daw [SYNTH-ARRANGEMENT]
 
 Added on request after the families: a piano-roll project file rendered offline by the advanced modules, and a command-line player that continues an existing recording. Nothing here is covered by an automated test yet; the evidence below is from rendering the included song.
 
-- [x] Declare the arrangement (tempo, rate, master drive, reverb space, sustain appearances, tracks, notes, six instruments) in `arrangement.td`; formulas in `ArrangeMath.lean`.
+- [x] Declare the arrangement (tempo, rate, master drive, reverb space, sustain appearances, tracks, notes, six instruments) in `src/osprey/examples/daw/daw.td`; formulas in its `ArrangeMath.lean`.
 - [x] Render one note per instrument from the existing modules (`NoteRenders`): plucked and bowed strings, bell and bar modal banks, a detuned phase-distortion operator pair and a drum; each module validates its own controls.
 - [x] Render tracks in start order with an overlap-add carry, mix to left, right and reverb buses, run one feedback-delay reverb per side and a tanh soft limiter (`Arrangements`).
 - [x] Hold the end of a recording with the spectral freeze and replay the hold at a pitch ratio with its own rise, hold and fade (`Sustains`) [SYNTH-ARRANGEMENT-SUSTAIN]. The freeze gained identity phase locking: every bin turns with its nearest magnitude peak.
 - [x] Decode the JSON project in one boundary module (`SongFiles`) into the typed arrangement [SYNTH-ARRANGEMENT-FILE]; malformed JSON, unknown instruments and malformed notes are errors.
-- [x] Command-line player `src/osprey/examples/songs` and `make -C src/toolchain/targets/macos songs-render` and `songs-play` [SYNTH-ARRANGEMENT-PLAYER]: renders, writes WAV parts through `xxd` and joins them after the intro with `ffmpeg`; `songs-play` plays with `afplay`; every host command runs under `timeout`.
+- [x] Command-line player `src/osprey/examples/daw` and `make -C src/toolchain/targets/macos daw-render` and `daw-play` [SYNTH-ARRANGEMENT-PLAYER]: renders, writes WAV parts through `xxd` and joins them after the intro with `ffmpeg`; `daw-play` plays with `afplay`; every host command runs under `timeout`.
 - [x] A song project written to continue the Broken Circuitry recording (first a melodic version: 44 bars, 14 tracks, 2,074 notes; now `phosphor-drift.json`, below, 2,904 notes).
 - [x] Routed instruments (`PatchVoices`) [SYNTH-ARRANGEMENT-PATCH]: a note builds a graph from named modules and cables, with settings that follow pitch or velocity, and renders through `Renderer`. The mono renderer rejects LFO routing and granular; `spectral` and `reverb` nodes are too slow per note.
 - [x] `phosphor-drift.json` ("Phosphor Drift", a new piece, not part of Broken Circuitry): 40 bars, 17 tracks (8 routed patches), 8 sustain appearances; rendered at 48 kHz after the recording, level across the join 0.18 → 0.13 RMS, sides within 0.2 dB.
-- [x] The project file names its own intro (`Intro`: recording, tail, crossfade) in `arrangement.td`; the player only renders, and `songs-render` / `songs-play` render and play [SYNTH-ARRANGEMENT-PLAYER].
+- [x] The project file names its own intro (`Intro`: recording, tail, crossfade) in `daw.td`; the player only renders, and `daw-render` / `daw-play` render and play [SYNTH-ARRANGEMENT-PLAYER].
+- [x] The daw (`src/osprey/examples/daw`, formerly `songs`) owns the project model, `daw.td`, and the arrangement modules; `@osprey/synth` keeps only the synthesis modules.
 - [ ] Automated tests for `NoteRenders`, `Arrangements`, `Sustains`, `SongFiles` and the player (paused with the other suites).
 - [ ] Bandlimited sustain transposition, an oversampled or look-ahead limiter and stereo instruments.
 - [ ] Playback on Windows and Linux; `afplay` is macOS only.

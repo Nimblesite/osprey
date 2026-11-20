@@ -47,10 +47,7 @@ module GrainGraph
         Error why => Error(message = why)
         Success lo => match integer limit
             Error why => Error(message = why)
-            Success hi => match boundary
-                0.0 => Success(value = GrainRegion(first = lo, limit = hi, boundary = LoopSource))
-                1.0 => Success(value = GrainRegion(first = lo, limit = hi, boundary = OneShotSource))
-                _ => Error(message = "Grain boundary must be 0 (loop) or 1 (one-shot).")
+            Success hi => Outcomes::chosen (boundary, [GrainRegion(first = lo, limit = hi, boundary = LoopSource), GrainRegion(first = lo, limit = hi, boundary = OneShotSource)], "Grain boundary must be 0 (loop) or 1 (one-shot).")
 
     region (n, size) = match length (filterList (n.parameters, \p => p.key == "regionStart" || p.key == "regionEnd" || p.key == "boundary"))
         0 => Success(value = GrainRegion(first = 0, limit = size, boundary = LoopSource))

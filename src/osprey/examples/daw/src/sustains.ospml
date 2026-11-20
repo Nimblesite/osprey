@@ -1,5 +1,5 @@
 // [SYNTH-ARRANGEMENT-SUSTAIN] A recording's final moment held by the phase-vocoder freeze and replayed at any pitch.
-namespace synth
+namespace daw
 
 (** The source is analysed to its end, its last spectrum is captured, and the held spectrum then plays
     with every bin advancing at its measured frequency. `voiced` reads that hold at a speed ratio, so the
@@ -8,29 +8,29 @@ namespace synth
 module Sustains
     skipped = 4096
 
-    stream (rate, held) = SpectralConfig(sampleRate = rate, size = 4096, hop = 1024, transform = SpectralFreeze(held = held), mix = 1.0)
+    stream (rate, held) = synth::SpectralConfig(sampleRate = rate, size = 4096, hop = 1024, transform = synth::SpectralFreeze(held = held), mix = 1.0)
 
     heard (rate, run, input) = match run.fault == ""
         false => run
-        true => match SpectralStreams::next (stream (rate, false), run.held, input, 0.0)
+        true => match synth::SpectralStreams::next (stream (rate, false), run.held, input, 0.0)
             Error why => run(fault = why)
             Success step => run(held = step.next)
 
     sung (rate, run) = match run.fault == ""
         false => run
-        true => match SpectralStreams::next (stream (rate, true), run.held, 0.0, 0.0)
+        true => match synth::SpectralStreams::next (stream (rate, true), run.held, 0.0, 0.0)
             Error why => run(fault = why)
             Success step => NoteRun(held = step.next, samples = listAppend run.samples step.sample, fault = "")
 
     held (rate, source, count) =
-        analysed = foldList (source, NoteRun(held = SpectralStreams::initial (stream (rate, false)), samples = [], fault = ""), \(run, input) => heard (rate, run, input))
+        analysed = foldList (source, NoteRun(held = synth::SpectralStreams::initial (stream (rate, false)), samples = [], fault = ""), \(run, input) => heard (rate, run, input))
         NoteRenders::finished (foldList (toList (range (0, count)), analysed, \(run, _frame) => sung (rate, run)))
 
     (** `source` is mono audio (at least 4,096 samples) ending at the moment to hold; the result is
         `seconds` (0.1–120) of the held sound at full level. *)
     export frozen (rate, source, seconds) = match length source >= 4096 && seconds >= 0.1 && seconds <= 120.0
         false => Error(message = "A sustain needs 4096 source samples and 0.1 to 120 seconds.")
-        true => match SpectralStreams::configure (stream (rate, true))
+        true => match synth::SpectralStreams::configure (stream (rate, true))
             Error why => Error(message = why)
             Success _ => match floatToInt (ArrangeMath::secondFrames (seconds, rate))
                 Error _ => Error(message = "The sustain length is not finite.")
@@ -43,7 +43,7 @@ module Sustains
     (** Seconds of held sound that these appearances read, including the skipped start. *)
     export needed (rate, glows) = foldList (glows, 0.0, longest) + (toFloat skipped + 2.0) / rate
 
-    longest (most, glow) = TableMath::larger (most, lasting glow * glow.ratio)
+    longest (most, glow) = synth::TableMath::larger (most, lasting glow * glow.ratio)
 
     level (rate, glow, frame) = ArrangeMath::gated (toFloat frame, ArrangeMath::secondFrames (glow.rise + glow.hold, rate), glow.rise * rate, glow.fade * rate)
 
@@ -52,7 +52,7 @@ module Sustains
         position = ArrangeMath::readAt (toFloat frame, glow.ratio, toFloat skipped)
         match floatToInt (floor position)
             Error _ => 0.0
-            Success lower => GrainMath::interpolated (listGet raw lower ?: 0.0, listGet raw (satAdd lower 1) ?: 0.0, GrainMath::fraction position)
+            Success lower => synth::GrainMath::interpolated (listGet raw lower ?: 0.0, listGet raw (satAdd lower 1) ?: 0.0, synth::GrainMath::fraction position)
 
     sounded (rate, raw, glow, count) = mapList (toList (range (0, count)), \frame => read (raw, glow, frame) * level (rate, glow, frame))
 

@@ -1,5 +1,5 @@
 // [SYNTH-ARRANGEMENT] Piano-roll tracks rendered, overlap-added and mixed to stereo, offline.
-namespace synth
+namespace daw
 
 (** A track is rendered note by note in start order: frames before the next note start are final and move
     to the output, later frames wait in an overlap carry. Tracks then add into left, right and reverb
@@ -43,7 +43,7 @@ module Arrangements
             false => Error(message = mix.fault)
             true => Success(value = settled (mix, frames))
 
-    close (latest, note) = TableMath::larger (latest, note.start + note.length)
+    close (latest, note) = synth::TableMath::larger (latest, note.start + note.length)
 
     beats arrangement = foldList (arrangement.tracks, 0.0, \(latest, voice) => foldList (voice.notes, latest, close))
 
@@ -85,19 +85,19 @@ module Arrangements
             Error why => Error(message = "${voice.name}: ${why}")
             Success next => Success(value = next)
 
-    room (arrangement, scale) = ReverbConfig(sampleRate = toFloat arrangement.sampleRate, size = arrangement.space.size * scale, decay = arrangement.space.decay, damping = arrangement.space.damping, diffusion = 0.7, mix = 1.0, freeze = false)
+    room (arrangement, scale) = synth::ReverbConfig(sampleRate = toFloat arrangement.sampleRate, size = arrangement.space.size * scale, decay = arrangement.space.decay, damping = arrangement.space.damping, diffusion = 0.7, mix = 1.0, freeze = false)
 
     echoStep (config, run, input) = match run.fault == ""
         false => run
-        true => match Reverbs::next (config, run.held, input)
+        true => match synth::Reverbs::next (config, run.held, input)
             Error why => run(fault = why)
             Success step => NoteRun(held = step.next, samples = listAppend run.samples step.sample, fault = "")
 
-    echoed (config, wet) = match Reverbs::configure config
+    echoed (config, wet) = match synth::Reverbs::configure config
         Error why => Error(message = why)
-        Success accepted => Outcomes::carried (Reverbs::initial accepted, \held => NoteRenders::finished (foldList (wet, NoteRun(held = held, samples = [], fault = ""), \(run, input) => echoStep (accepted, run, input))))
+        Success accepted => synth::Outcomes::carried (synth::Reverbs::initial accepted, \held => NoteRenders::finished (foldList (wet, NoteRun(held = held, samples = [], fault = ""), \(run, input) => echoStep (accepted, run, input))))
 
-    peak (high, value) = TableMath::larger (high, TableMath::magnitude value)
+    peak (high, value) = synth::TableMath::larger (high, synth::TableMath::magnitude value)
 
     // One side through the shared soft limiter, which puts its peak at 0.89.
     limited (values, top, drive) = mapList (values, \value => ArrangeMath::pressed (value, top, drive, 0.89))

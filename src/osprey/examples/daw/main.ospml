@@ -1,0 +1,30 @@
+// [SYNTH-ARRANGEMENT-PLAYER] daw <project.json> <output-folder>
+
+usage = "usage: daw <project.json> <output-folder>"
+
+request items = daw::Request(project = listGet items 0 ?: "", folder = listGet items 1 ?: "")
+
+finished outcome = match outcome
+    Error why => print "daw: ${why}"
+    Success path => print "daw: wrote ${path}"
+
+performed (request, source) = match daw::SongFiles::decode source
+    Error why => print "daw: ${why}"
+    Success arrangement => match makeDir request.folder
+        Error why => print "daw: ${why}"
+        Success _ =>
+            print "daw: ${arrangement.title}, ${arrangement.tempo} bpm, ${length arrangement.tracks} tracks"
+            finished (daw::Player::rendered (request, arrangement))
+
+started request = match request.project != "" && request.folder != "" && daw::Shell::safe request.project && daw::Shell::safe request.folder
+    false => print usage
+    true => match readFile request.project
+        Error why => print "daw: ${why}"
+        Success source => performed (request, source)
+
+main () =
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    started (request (args ()))

@@ -1,21 +1,21 @@
-# Songs
+# daw
 
-A command-line player for song projects: a JSON piano roll that `@osprey/synth` renders to audio. It can
+A command-line renderer and player for song projects: a JSON piano roll that `@osprey/synth` renders to audio. It can
 continue a recording you already have: the engine holds the recording's last moment as a pad, the written
 music grows out of it, and the same held sound can return later at other pitches.
 
 ```sh
-make -C src/toolchain/targets/macos songs-render   # phosphor-drift.json -> target/songs/phosphor-drift/song.wav
-make -C src/toolchain/targets/macos songs-play     # plays that WAV; never renders
+make -C src/toolchain/targets/macos daw-render   # phosphor-drift.json -> target/daw/phosphor-drift/song.wav
+make -C src/toolchain/targets/macos daw-play     # plays that WAV; never renders
 ```
 
-`SONG=` picks another project for either target. The player itself is `songs <project.json> <output-folder>`.
+`SONG=` picks another project for either target. The player itself is `daw <project.json> <output-folder>`.
 Rendering is offline and slow: the included song takes about 90 minutes at 48 kHz.
 
 ## The project file
 
 One JSON object, decoded in [song_files.ospml](src/song_files.ospml) into the typed arrangement in
-[arrangement.td](../../packages/synth/arrangement.td).
+[daw.td](daw.td).
 
 | Key | Meaning |
 | --- | --- |
@@ -49,11 +49,26 @@ times `x`) or `{"velocity": x}`. The modules are `exciter`, `sine`, `wavetable`,
 `allpass`, `lowpass`, `shaper`, `shifter`, `spectral`, `reverb`, `smoother`, `gain`, `modulatedGain`,
 `mixer`, `delay` and `output`. An unknown module or setting is an error.
 
+## How it renders [SYNTH-ARRANGEMENT]
+
+A piano roll rendered offline, outside the graph: [daw.td](daw.td) declares the `Arrangement` (tempo, sample rate, master `drive`, reverb `Space`, the `Intro` recording it continues (path, held tail, crossfade), sustain appearances, tracks of `[pitch, start, length, velocity]` notes) and six instruments built from `@osprey/synth` modules. `NoteRenders.render` turns one note into a mono buffer; `Arrangements` renders a track in start order with an overlap-add carry, adds tracks to left, right and reverb buses (`layered`, `added`), and `mixed` runs two feedback-delay reverbs of different size (one per side) and a tanh soft limiter that puts the peak at 0.89. `Sustains.frozen` analyses a recording to its end and holds its last spectrum with the phase-locked freeze; `Sustains.voiced` reads that hold at a speed ratio with its own rise, hold and fade, so written music can continue a recording and bring its last sound back at other pitches (linear interpolation, not bandlimited). Formulas are in [ArrangeMath.lean](src/ArrangeMath.lean).
+
+| Instrument | Built from | Notes |
+| --- | --- | --- |
+| `PluckInstrument` | `Exciters` noise burst of one period into `Waveguides` | released notes damp to a 0.12 s decay and ring 0.3 s past the gate |
+| `BowInstrument` | `BowedStrings`, bow velocity follows the gate (80 ms in, 100 ms out) | 5.4 Hz vibrato fades in; pitch must be below a quarter of the rate |
+| `BellInstrument`, `MalletInstrument` | `ModalBanks` with bell or bar ratios, one impulse | ring for `decay` whatever the note length |
+| `OperatorInstrument` | two `PhaseOperators` detuned up and down by `detune` cents | the phase-distortion breakpoint eases toward a sine over `bloom` |
+| `DrumInstrument` | sine `PhaseOperators` body with a pitch drop plus an `Exciters` noise burst | lasts `decay` (at most 1 s) whatever the note length |
+| `PatchInstrument` | `PatchVoices`: a `Graphs` graph built per note from `Routing` nodes and cables, rendered by `Renderer` in 8,192-frame blocks | settings follow the note's pitch or velocity; mono only, so no LFO routing or granular |
+
+Limits: rendering is not realtime and allocates per sample; a note lasts at most 960,000 frames and a piece 28,800,000; tracks are mono before panning; the limiter is not oversampled; there are no automated tests for these modules yet.
+
 ## What the host tools do
 
 Osprey writes text files, so each rendered part is written as hexadecimal and `xxd` turns it into a WAV.
 `ffmpeg` cuts the intro's last `tail` seconds for the engine to analyse, joins the parts, and crossfades
-the piece in over the intro's final `crossfade` seconds. `songs-play` plays the result with `afplay`. Every command runs under
+the piece in over the intro's final `crossfade` seconds. `daw-play` plays the result with `afplay`. Every command runs under
 `timeout`. Nothing else touches the audio: every note, the mix, the reverb, the limiter and the held intro
 pad come from the engine.
 

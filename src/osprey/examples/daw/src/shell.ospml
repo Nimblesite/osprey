@@ -1,5 +1,5 @@
 // [SYNTH-ARRANGEMENT-PLAYER] Host tools the player runs: every command is bounded by `timeout`.
-namespace songs
+namespace daw
 
 (** Runs one host command to completion. Paths are single-quoted; callers refuse a path that is not `safe`. *)
 module Shell

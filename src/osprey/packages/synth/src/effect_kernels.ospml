@@ -11,12 +11,7 @@ module EffectKernels
     (** Shifter storage: eight four-value Hilbert sections; integratorOne holds the delayed in-phase sample. *)
     export shifterStorage = 32
 
-    curve selector = match selector
-        0.0 => Success(value = TanhCurve)
-        1.0 => Success(value = HardCurve)
-        2.0 => Success(value = CubicCurve)
-        3.0 => Success(value = FoldCurve)
-        _ => Error(message = "Curve must be 0 tanh, 1 hard, 2 cubic or 3 fold.")
+    curve selector = Outcomes::chosen (selector, [TanhCurve, HardCurve, CubicCurve, FoldCurve], "Curve must be 0 tanh, 1 hard, 2 cubic or 3 fold.")
 
     shaperState held = ShaperState(previous = held.phase, blockerInput = held.integratorOne, blockerOutput = held.integratorTwo)
 

@@ -1,5 +1,5 @@
 // [SYNTH-ARRANGEMENT-PLAYER] Render a song project to one WAV, after the recording it continues.
-namespace songs
+namespace daw
 
 (** The engine renders every track and the held end of the intro; `ffmpeg` only cuts the intro's last
     seconds, joins the rendered parts and crossfades them after the intro. *)
@@ -24,11 +24,11 @@ module Player
 
     glowed (arrangement, raw, outcome, glow) = match outcome
         Error why => Error(message = why)
-        Success buses => match synth::Sustains::voiced (toFloat arrangement.sampleRate, raw, glow)
+        Success buses => match Sustains::voiced (toFloat arrangement.sampleRate, raw, glow)
             Error why => Error(message = why)
-            Success pad => synth::Outcomes::carried (synth::Arrangements::frame (arrangement, glow.start), \start => synth::Arrangements::layered (buses, pad, start, glow.gain, 0.0, glow.reverb))
+            Success pad => synth::Outcomes::carried (Arrangements::frame (arrangement, glow.start), \start => Arrangements::layered (buses, pad, start, glow.gain, 0.0, glow.reverb))
 
-    held (arrangement, buses, source) = synth::Outcomes::carried (synth::Sustains::frozen (toFloat arrangement.sampleRate, source, synth::Sustains::needed (toFloat arrangement.sampleRate, arrangement.sustains)), \raw => foldList (arrangement.sustains, Success(value = buses), \(outcome, glow) => glowed (arrangement, raw, outcome, glow)))
+    held (arrangement, buses, source) = synth::Outcomes::carried (Sustains::frozen (toFloat arrangement.sampleRate, source, Sustains::needed (toFloat arrangement.sampleRate, arrangement.sustains)), \raw => foldList (arrangement.sustains, Success(value = buses), \(outcome, glow) => glowed (arrangement, raw, outcome, glow)))
 
     bridged (request, arrangement, buses) = match length arrangement.sustains == 0
         true => Success(value = buses)
@@ -42,7 +42,7 @@ module Player
         Error why => Error(message = why)
         Success buses =>
             print "  rendering ${voice.name} (${length voice.notes} notes)"
-            synth::Arrangements::added (arrangement, buses, voice, count)
+            Arrangements::added (arrangement, buses, voice, count)
 
     least (one, other) = match one < other
         true => one
@@ -56,7 +56,7 @@ module Player
 
     written (request, arrangement, mix, held, index) = match held.fault == ""
         false => held
-        true => match synth::WaveFiles::interleaved (arrangement.sampleRate, 2, synth::Arrangements::interleaved (mix, satMul index chunk, least (satMul (satAdd index 1) chunk, length mix.left)))
+        true => match synth::WaveFiles::interleaved (arrangement.sampleRate, 2, Arrangements::interleaved (mix, satMul index chunk, least (satMul (satAdd index 1) chunk, length mix.left)))
             Error why => held(fault = why)
             Success hex => stored (held, "part-${index}", "${request.folder}/part-${index}", hex)
 
@@ -76,17 +76,17 @@ module Player
         Error why => Error(message = why)
         Success _ => synth::Outcomes::carried (Shell::ran (300, "ffmpeg -v error -y -f concat -safe 0 -i ${Shell::quoted "${request.folder}/parts.txt"} -c copy ${Shell::quoted (piecePath request)}"), \_ => joined (request, arrangement))
 
-    mixed (request, arrangement, buses) = match synth::Arrangements::mixed (arrangement, buses)
+    mixed (request, arrangement, buses) = match Arrangements::mixed (arrangement, buses)
         Error why => Error(message = why)
         Success mix =>
             print "  mixed ${length mix.left} frames, peak ${mix.peak}"
             synth::Outcomes::carried (parts (request, arrangement, mix), \files => assembled (request, arrangement, files))
 
     (** Render the song into the request's folder; the result is the finished WAV's path. *)
-    export rendered (request, arrangement) = match synth::Arrangements::frames arrangement
+    export rendered (request, arrangement) = match Arrangements::frames arrangement
         Error why => Error(message = why)
         // The held intro comes first, so a bad sustain fails before the long track renders.
-        Success count => match bridged (request, arrangement, synth::Arrangements::empty)
+        Success count => match bridged (request, arrangement, Arrangements::empty)
             Error why => Error(message = why)
             Success buses => synth::Outcomes::carried (foldList (arrangement.tracks, Success(value = buses), \(outcome, voice) => tracked (arrangement, count, outcome, voice)), \all => mixed (request, arrangement, all))
 

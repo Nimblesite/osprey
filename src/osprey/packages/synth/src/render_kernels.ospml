@@ -95,14 +95,7 @@ module RenderKernels
 
     waveform (snapshot, n) = match listGet (filterList (n.parameters, \p => p.key == "waveform")) 0
         Error _ => Success(value = Sine)
-        Success _ => match RenderInputs::parameter (snapshot, n.identity, "waveform")
-            Error why => Error(message = why)
-            Success value => match value
-                0.0 => Success(value = Sine)
-                1.0 => Success(value = Triangle)
-                2.0 => Success(value = Saw)
-                3.0 => Success(value = Pulse)
-                _ => Error(message = "Unknown oscillator waveform.")
+        Success _ => Outcomes::carried (RenderInputs::parameter (snapshot, n.identity, "waveform"), \value => Outcomes::chosen (value, [Sine, Triangle, Saw, Pulse], "Unknown oscillator waveform."))
 
     bypassed (plan, frame, held, n) = match n.processor
         Filter => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \value => Success(value = RenderInputs::emitted (frame, held, value)))

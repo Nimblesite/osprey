@@ -1,4 +1,6 @@
 typeDiagram
+type Request { project: String folder: String }
+type Written { parts: List<String> fault: String }
 type Tone { breakpoint: Float feedback: Float attack: Float release: Float bloom: Float detune: Float }
 type Hit { sweep: Float noise: Float colour: Float decay: Float }
 union Follow { Constant {} Pitched {} Struck {} }

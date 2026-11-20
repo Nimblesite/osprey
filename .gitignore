@@ -75,3 +75,5 @@ src/osprey/examples/llms/gpt2/weights/
 # Core dumps from a crashed C test binary (a container run leaves them here)
 /core
 /core.*
+
+/src/toolchain/hosts/ferroui/docs

@@ -8,10 +8,7 @@ module PhysicalKernels
     // Publishes one produced sample with its updated kernel state.
     published (frame, next, sample) = Success(value = RenderInputs::emitted (frame, next, sample))
 
-    excitation (kind, colour) = match kind
-        0.0 => Success(value = ImpulseExcitation)
-        1.0 => Success(value = NoiseExcitation(colour = colour))
-        _ => Error(message = "Excitation must be 0 (impulse) or 1 (noise).")
+    excitation (kind, colour) = Outcomes::chosen (kind, [ImpulseExcitation, NoiseExcitation(colour = colour)], "Excitation must be 0 (impulse) or 1 (noise).")
 
     exciterConfig (strength, duration, interval, kind, colour) = match excitation (kind, colour)
         Error why => Error(message = why)
@@ -36,21 +33,13 @@ module PhysicalKernels
             step = Resonators::next (c, ResonatorState(real = held.integratorOne, imag = held.integratorTwo), input)
             published (frame, held(integratorOne = step.next.real, integratorTwo = step.next.imag), step.sample)
 
-    scaled selector = match selector
-        0.0 => Success(value = PeakScale)
-        1.0 => Success(value = ImpulseScale)
-        _ => Error(message = "Response must be 0 (peak, band-pass) or 1 (impulse, struck).")
+    scaled selector = Outcomes::chosen (selector, [PeakScale, ImpulseScale], "Response must be 0 (peak, band-pass) or 1 (impulse, struck).")
 
     responded (rate, frame, held, input, frequency, decay, gain, selector) = Outcomes::carried (scaled selector, \scale => resonated (frame, held, input, Resonators::configure (ResonatorConfig(sampleRate = rate, frequency = frequency, decay = decay, gain = gain, scale = scale))))
 
     resonator (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "gain", \gain => RenderInputs::bound (snapshot, held, "response", \selector => responded (rate, frame, held, input, frequency, decay, gain, selector)))))
 
-    body selector = match selector
-        0.0 => Success(value = HarmonicModes)
-        1.0 => Success(value = BarModes)
-        2.0 => Success(value = MembraneModes)
-        3.0 => Success(value = BellModes)
-        _ => Error(message = "Body must be 0 string, 1 bar, 2 membrane or 3 bell.")
+    body selector = Outcomes::chosen (selector, [HarmonicModes, BarModes, MembraneModes, BellModes], "Body must be 0 string, 1 bar, 2 membrane or 3 bell.")
 
     // Kernel storage holds (real, imag) per mode, in mode order.
     // An odd tail yields no state, so the bank reports the mismatch.

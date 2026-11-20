@@ -1,6 +1,14 @@
-namespace synth
+namespace daw
 
 // Generated from typeDiagram [CONV-OSPREY].
+type Request =
+    project : string
+    folder : string
+
+type Written =
+    parts : List<string>
+    fault : string
+
 type Tone =
     breakpoint : float
     feedback : float

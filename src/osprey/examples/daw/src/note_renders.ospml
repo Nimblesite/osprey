@@ -1,12 +1,12 @@
 // [SYNTH-ARRANGEMENT] One piano-roll note rendered by one advanced instrument, offline.
-namespace synth
+namespace daw
 
 (** Each note renders into its own mono buffer. Plucked and bowed strings and operators sound for their gate
     plus a release; bells, mallets and drums are struck once and ring for their decay whatever the gate; a
     patch instrument plays the note through its own routed graph (`PatchVoices`).
     Every instrument's controls are checked by its own module, so a bad note is an explicit error. *)
 module NoteRenders
-    hertz note = Waves::midiFrequency (toFloat note.pitch)
+    hertz note = synth::Waves::midiFrequency (toFloat note.pitch)
 
     // Seconds of sound after the gate (sustained instruments) or in total (struck instruments).
     ring instrument = match instrument
@@ -66,65 +66,65 @@ module NoteRenders
         true => 0.12
         false => decay
 
-    string (note, noteSpan, rate, capacity, brightness, decay, frame) = WaveguideConfig(sampleRate = rate, frequency = hertz note, decay = damped (frame, noteSpan.gate, decay), brightness = brightness, dispersion = 0.0, pickup = 0.13, capacity = capacity)
+    string (note, noteSpan, rate, capacity, brightness, decay, frame) = synth::WaveguideConfig(sampleRate = rate, frequency = hertz note, decay = damped (frame, noteSpan.gate, decay), brightness = brightness, dispersion = 0.0, pickup = 0.13, capacity = capacity)
 
-    pick (note, capacity) = ExciterConfig(strength = note.velocity, duration = capacity, interval = 0, excitation = NoiseExcitation(colour = 0.7 * (1.0 - note.velocity)))
+    pick (note, capacity) = synth::ExciterConfig(strength = note.velocity, duration = capacity, interval = 0, excitation = synth::NoiseExcitation(colour = 0.7 * (1.0 - note.velocity)))
 
     pluckStep (note, noteSpan, rate, capacity, brightness, decay, run, frame) = match run.fault == ""
         false => run
         true =>
-            burst = Exciters::next (pick (note, capacity), run.held.other)
-            match Waveguides::next (string (note, noteSpan, rate, capacity, brightness, decay, frame), run.held.one, burst.sample)
+            burst = synth::Exciters::next (pick (note, capacity), run.held.other)
+            match synth::Waveguides::next (string (note, noteSpan, rate, capacity, brightness, decay, frame), run.held.one, burst.sample)
                 Error why => run(fault = why)
                 Success step => ran (run, VoicePair(one = step.next, other = burst.next), step.sample)
 
-    plucked (note, noteSpan, rate, capacity, brightness, decay) = match Waveguides::configure (string (note, noteSpan, rate, capacity, brightness, decay, 0))
+    plucked (note, noteSpan, rate, capacity, brightness, decay) = match synth::Waveguides::configure (string (note, noteSpan, rate, capacity, brightness, decay, 0))
         Error why => Error(message = why)
-        Success config => match Waveguides::initial config
+        Success config => match synth::Waveguides::initial config
             Error why => Error(message = why)
-            Success guide => Outcomes::carried (Exciters::configure (pick (note, capacity)), \_ => folded (noteSpan, VoicePair(one = guide, other = Exciters::initial (satAdd note.pitch 1)), \(run, frame) => pluckStep (note, noteSpan, rate, capacity, brightness, decay, run, frame)))
+            Success guide => synth::Outcomes::carried (synth::Exciters::configure (pick (note, capacity)), \_ => folded (noteSpan, VoicePair(one = guide, other = synth::Exciters::initial (satAdd note.pitch 1)), \(run, frame) => pluckStep (note, noteSpan, rate, capacity, brightness, decay, run, frame)))
 
-    bow (note, noteSpan, rate, capacity, pressure, brightness, depth, age) = BowConfig(sampleRate = rate, frequency = ArrangeMath::vibrato (hertz note, age, depth, rate), decay = 0.6, brightness = brightness, position = 0.12, pressure = pressure, velocity = 0.3 * note.velocity * ArrangeMath::gated (age, noteSpan.gate, 0.08 * rate, 0.1 * rate), capacity = capacity)
+    bow (note, noteSpan, rate, capacity, pressure, brightness, depth, age) = synth::BowConfig(sampleRate = rate, frequency = ArrangeMath::vibrato (hertz note, age, depth, rate), decay = 0.6, brightness = brightness, position = 0.12, pressure = pressure, velocity = 0.3 * note.velocity * ArrangeMath::gated (age, noteSpan.gate, 0.08 * rate, 0.1 * rate), capacity = capacity)
 
-    bowed (note, noteSpan, rate, capacity, pressure, brightness, depth) = match BowedStrings::configure (bow (note, noteSpan, rate, capacity, pressure, brightness, depth, 0.0))
+    bowed (note, noteSpan, rate, capacity, pressure, brightness, depth) = match synth::BowedStrings::configure (bow (note, noteSpan, rate, capacity, pressure, brightness, depth, 0.0))
         Error why => Error(message = why)
         Success config => match depth >= 0.0 && depth <= 0.02
             false => Error(message = "Bow vibrato depth must be 0 to 0.02.")
-            true => Outcomes::carried (BowedStrings::initial config, \string => folded (noteSpan, string, \(run, frame) => stepped (run, BowedStrings::next (bow (note, noteSpan, rate, capacity, pressure, brightness, depth, toFloat frame), run.held))))
+            true => synth::Outcomes::carried (synth::BowedStrings::initial config, \string => folded (noteSpan, string, \(run, frame) => stepped (run, synth::BowedStrings::next (bow (note, noteSpan, rate, capacity, pressure, brightness, depth, toFloat frame), run.held))))
 
     impulse (strength, frame) = match frame == 0
         true => strength
         false => 0.0
 
-    modal (note, noteSpan, rate, decay, brightness, modes) = Outcomes::carried (ModalBanks::configure (ModalConfig(sampleRate = rate, frequency = hertz note, decay = decay, brightness = brightness, strike = 0.37, count = 8, modes = modes)), \bank => folded (noteSpan, ModalBanks::initial bank, \(run, frame) => stepped (run, ModalBanks::next (bank, run.held, impulse (note.velocity, frame)))))
+    modal (note, noteSpan, rate, decay, brightness, modes) = synth::Outcomes::carried (synth::ModalBanks::configure (synth::ModalConfig(sampleRate = rate, frequency = hertz note, decay = decay, brightness = brightness, strike = 0.37, count = 8, modes = modes)), \bank => folded (noteSpan, synth::ModalBanks::initial bank, \(run, frame) => stepped (run, synth::ModalBanks::next (bank, run.held, impulse (note.velocity, frame)))))
 
-    voice (note, noteSpan, rate, tone, cents, age) = OperatorConfig(sampleRate = rate, frequency = ArrangeMath::detuned (hertz note, cents), shape = DistortedPhase(breakpoint = ArrangeMath::bloomed (tone.breakpoint, age, tone.bloom, rate)), depth = 0.0, spread = 0.0, feedback = tone.feedback, amplitude = 0.5 * note.velocity * ArrangeMath::gated (age, noteSpan.gate, tone.attack * rate, tone.release * rate))
+    voice (note, noteSpan, rate, tone, cents, age) = synth::OperatorConfig(sampleRate = rate, frequency = ArrangeMath::detuned (hertz note, cents), shape = synth::DistortedPhase(breakpoint = ArrangeMath::bloomed (tone.breakpoint, age, tone.bloom, rate)), depth = 0.0, spread = 0.0, feedback = tone.feedback, amplitude = 0.5 * note.velocity * ArrangeMath::gated (age, noteSpan.gate, tone.attack * rate, tone.release * rate))
 
     operatorStep (note, noteSpan, rate, tone, run, frame) =
-        one = PhaseOperators::next (voice (note, noteSpan, rate, tone, tone.detune, toFloat frame), run.held.one, 0.0, 0.0)
-        other = PhaseOperators::next (voice (note, noteSpan, rate, tone, 0.0 - tone.detune, toFloat frame), run.held.other, 0.0, 0.0)
+        one = synth::PhaseOperators::next (voice (note, noteSpan, rate, tone, tone.detune, toFloat frame), run.held.one, 0.0, 0.0)
+        other = synth::PhaseOperators::next (voice (note, noteSpan, rate, tone, 0.0 - tone.detune, toFloat frame), run.held.other, 0.0, 0.0)
         ran (run, VoicePair(one = one.next, other = other.next), one.sample + other.sample)
 
     toneValid tone = tone.attack >= 0.001 && tone.attack <= 10.0 && tone.release >= 0.001 && tone.release <= 10.0 && tone.bloom >= 0.001 && tone.bloom <= 10.0 && abs tone.detune <= 100.0
 
     operated (note, noteSpan, rate, tone) = match toneValid tone
         false => Error(message = "Operator attack, release and bloom must be 0.001 to 10 s and detune within 100 cents.")
-        true => Outcomes::carried (PhaseOperators::configure (voice (note, noteSpan, rate, tone, abs tone.detune, 0.0)), \_ => folded (noteSpan, VoicePair(one = PhaseOperators::initial, other = PhaseOperators::initial), \(run, frame) => operatorStep (note, noteSpan, rate, tone, run, frame)))
+        true => synth::Outcomes::carried (synth::PhaseOperators::configure (voice (note, noteSpan, rate, tone, abs tone.detune, 0.0)), \_ => folded (noteSpan, VoicePair(one = synth::PhaseOperators::initial, other = synth::PhaseOperators::initial), \(run, frame) => operatorStep (note, noteSpan, rate, tone, run, frame)))
 
-    body (note, rate, hit, age) = OperatorConfig(sampleRate = rate, frequency = ArrangeMath::swept (hertz note, hit.sweep, age, rate), shape = PlainPhase, depth = 0.0, spread = 0.0, feedback = 0.0, amplitude = note.velocity * (1.0 - hit.noise) * ArrangeMath::ringing (age, hit.decay, rate))
+    body (note, rate, hit, age) = synth::OperatorConfig(sampleRate = rate, frequency = ArrangeMath::swept (hertz note, hit.sweep, age, rate), shape = synth::PlainPhase, depth = 0.0, spread = 0.0, feedback = 0.0, amplitude = note.velocity * (1.0 - hit.noise) * ArrangeMath::ringing (age, hit.decay, rate))
 
-    rattle (note, noteSpan, hit) = ExciterConfig(strength = note.velocity * hit.noise, duration = noteSpan.total, interval = 0, excitation = NoiseExcitation(colour = hit.colour))
+    rattle (note, noteSpan, hit) = synth::ExciterConfig(strength = note.velocity * hit.noise, duration = noteSpan.total, interval = 0, excitation = synth::NoiseExcitation(colour = hit.colour))
 
     drumStep (note, noteSpan, rate, hit, run, frame) =
-        tone = PhaseOperators::next (body (note, rate, hit, toFloat frame), run.held.one, 0.0, 0.0)
-        burst = Exciters::next (rattle (note, noteSpan, hit), run.held.other)
+        tone = synth::PhaseOperators::next (body (note, rate, hit, toFloat frame), run.held.one, 0.0, 0.0)
+        burst = synth::Exciters::next (rattle (note, noteSpan, hit), run.held.other)
         ran (run, VoicePair(one = tone.next, other = burst.next), tone.sample + burst.sample)
 
     drummed (note, noteSpan, rate, hit) = match hit.noise >= 0.0 && hit.noise <= 1.0 && hit.sweep >= 0.0 && hit.sweep <= 8.0 && hit.decay >= 0.01 && hit.decay <= 1.0
         false => Error(message = "Drum noise must be 0 to 1, sweep 0 to 8 and decay 0.01 to 1 s.")
-        true => match PhaseOperators::configure (body (note, rate, hit, 0.0))
+        true => match synth::PhaseOperators::configure (body (note, rate, hit, 0.0))
             Error why => Error(message = why)
-            Success _ => Outcomes::carried (Exciters::configure (rattle (note, noteSpan, hit)), \_ => folded (noteSpan, VoicePair(one = PhaseOperators::initial, other = Exciters::initial (satAdd note.pitch 1)), \(run, frame) => drumStep (note, noteSpan, rate, hit, run, frame)))
+            Success _ => synth::Outcomes::carried (synth::Exciters::configure (rattle (note, noteSpan, hit)), \_ => folded (noteSpan, VoicePair(one = synth::PhaseOperators::initial, other = synth::Exciters::initial (satAdd note.pitch 1)), \(run, frame) => drumStep (note, noteSpan, rate, hit, run, frame)))
 
     stringed (note, noteSpan, rate, instrument) = match loop (rate, note)
         Error why => Error(message = why)
@@ -134,8 +134,8 @@ module NoteRenders
             _ => Error(message = "Not a string instrument.")
 
     voiced (note, noteSpan, rate, instrument) = match instrument
-        BellInstrument decay brightness => modal (note, noteSpan, rate, decay, brightness, BellModes)
-        MalletInstrument decay brightness => modal (note, noteSpan, rate, decay, brightness, BarModes)
+        BellInstrument decay brightness => modal (note, noteSpan, rate, decay, brightness, synth::BellModes)
+        MalletInstrument decay brightness => modal (note, noteSpan, rate, decay, brightness, synth::BarModes)
         OperatorInstrument tone => operated (note, noteSpan, rate, tone)
         DrumInstrument hit => drummed (note, noteSpan, rate, hit)
         PatchInstrument routing => PatchVoices::render (note, noteSpan, rate, routing)
@@ -144,4 +144,4 @@ module NoteRenders
     (** Render one note: pitch 0–127 (MIDI), velocity 0–1, positive length in beats. *)
     export render (note, tempo, rate, instrument) = match note.pitch >= 0 && note.pitch <= 127 && note.velocity >= 0.0 && note.velocity <= 1.0 && note.length > 0.0 && tempo >= 20.0 && tempo <= 400.0
         false => Error(message = "A note needs pitch 0 to 127, velocity 0 to 1, a positive length and a tempo of 20 to 400.")
-        true => Outcomes::carried (span (note, tempo, rate, instrument), \noteSpan => voiced (note, noteSpan, rate, instrument))
+        true => synth::Outcomes::carried (span (note, tempo, rate, instrument), \noteSpan => voiced (note, noteSpan, rate, instrument))
