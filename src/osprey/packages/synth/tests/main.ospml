@@ -674,3 +674,69 @@ test ("controller writes stay pending until resolved, then apply with a revision
     second = Commands::resolve (graph, Commands::pending (done.snapshot, edit(value = 1760.0, revision = 1)))
     appliedAt (second, 2)
     expect (readValue second.snapshot, 1760.0)))
+
+// [SYNTH-ADVANCED-GRAINS-PLAYBACK] One grain on a constant source shows its window: zero at both ends, the Hann peak
+// or ASR sustain in the middle, a three-frame grain, silence after the grain ends, and the same audio for any block split.
+import synth::Grains
+import synth::GrainMath
+import synth::GrainWindows
+
+flat () = mapList (toList (range (0, 64)), \_ => 1.0)
+
+held (window, duration, pan) = synth::GrainControls(window = window, start = 10.0, rate = 0.0, duration = duration, amplitude = 1.0, pan = pan)
+
+centre = 0.7071067811865476
+
+oneGrain (controls, frames, check) = succeeds (Grains::prepare (flat (), 4), \pool => succeeds (Grains::trigger (pool, controls), \admitted => succeeds (Grains::block (admitted.pool, frames), check)))
+
+frameAt (samples, index) = listGet samples index ?: -9.0
+
+hann9 block =
+    expect (length block.left, 16)
+    near (frameAt (block.left, 0), 0.0, 0.0)
+    near (frameAt (block.left, 8), 0.0, 0.0)
+    near (frameAt (block.left, 4), centre, 0.000000000001)
+    forEachList (toList (range (0, 9)), \k => near (frameAt (block.left, k), centre * GrainMath::window (toFloat k, 9.0), 0.000000000001))
+    // cos and sin of π/4 differ in the last bit, so the centred sides agree to 1e-15, not bit for bit.
+    forEachList (toList (range (0, 16)), \k => near (frameAt (block.left, k), frameAt (block.right, k), 0.000000000000001))
+    forEachList (toList (range (9, 16)), \k => near (frameAt (block.left, k), 0.0, 0.0))
+    expect (length block.next.voices, 0)
+
+asr9 block =
+    // 8 intervals: attack 2, sustain 4, release 2.
+    forEachList ([{ k = 0, v = 0.0 }, { k = 1, v = 0.5 }, { k = 2, v = 1.0 }, { k = 4, v = 1.0 }, { k = 6, v = 1.0 }, { k = 7, v = 0.5 }, { k = 8, v = 0.0 }], \p => near (frameAt (block.left, p.k), centre * p.v, 0.000000000001))
+
+short3 block =
+    near (frameAt (block.left, 0), 0.0, 0.0)
+    near (frameAt (block.left, 1), centre, 0.000000000001)
+    near (frameAt (block.left, 2), 0.0, 0.0)
+    expect (length block.next.voices, 0)
+
+hardLeft block =
+    near (frameAt (block.left, 4), 1.0, 0.000000000001)
+    near (frameAt (block.right, 4), 0.0, 0.000000000001)
+
+// Sixteen one-frame blocks render exactly the samples of one sixteen-frame block.
+stepped (outcome, _) = match outcome
+    Error why => Error(message = why)
+    Success run => match Grains::block (run.pool, 1)
+        Error why => Error(message = why)
+        Success b => Success(value = { pool = b.next, left = listConcat run.left b.left, right = listConcat run.right b.right })
+
+partitioned (controls, whole) = succeeds (Grains::prepare (flat (), 4), \pool => succeeds (Grains::trigger (pool, controls), \admitted =>
+    succeeds (foldList (toList (range (0, 16)), Success(value = { pool = admitted.pool, left = [], right = [] }), stepped), \run =>
+        expect (structuralEquals (run.left, whole.left), true)
+        expect (structuralEquals (run.right, whole.right), true))))
+
+// A later trigger with other controls (here silent, ASR, hard right) leaves a sounding grain's own settings alone.
+retained whole = succeeds (Grains::prepare (flat (), 4), \pool => succeeds (Grains::trigger (pool, held (synth::HannWindow, 9, 0.0)), \first =>
+    succeeds (Grains::block (first.pool, 4), \head => succeeds (Grains::trigger (head.next, synth::GrainControls(window = synth::AsrWindow(attack = 0.5, release = 0.5), start = 20.0, rate = 2.0, duration = 5, amplitude = 0.0, pan = 1.0)), \second =>
+        succeeds (Grains::block (second.pool, 12), \tail => expect (structuralEquals (listConcat head.left tail.left, whole.left), true))))))
+
+test ("a rendered grain shows its window: zero ends, Hann peak, ASR sustain, short grains and block-split and control-change invariance", \() => arithmetic (\() =>
+    oneGrain (held (synth::HannWindow, 9, 0.0), 16, hann9)
+    oneGrain (held (synth::AsrWindow(attack = 0.25, release = 0.25), 9, 0.0), 16, asr9)
+    oneGrain (held (synth::HannWindow, 3, 0.0), 4, short3)
+    oneGrain (held (synth::HannWindow, 9, -1.0), 16, hardLeft)
+    forEachList ([held (synth::HannWindow, 9, 0.0), held (synth::AsrWindow(attack = 0.25, release = 0.25), 9, 0.3), held (synth::HannWindow, 3, -0.5)], \c => oneGrain (c, 16, \whole => partitioned (c, whole)))
+    oneGrain (held (synth::HannWindow, 9, 0.0), 16, retained)))

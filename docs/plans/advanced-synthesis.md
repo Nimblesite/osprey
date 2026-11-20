@@ -127,7 +127,7 @@ Checked items here record reference implementation, reviewed in `src/osprey/pack
 - [x] Implement fractional source addressing with an explicitly documented interpolation mode and quality limitation.
 - [x] Support forward, reverse and near-zero playback rates with defined zero-rate behaviour.
 - [x] Implement Hann and configurable attack/sustain/release grain windows with explicit zero-endpoint branches and per-grain retained settings.
-- [ ] Verify window endpoints, peak/sustain behaviour, short durations and block/control-change invariance through rendered audio evidence.
+- [x] Verify window endpoints, peak/sustain behaviour, short durations and block/control-change invariance through rendered audio evidence. Synth test "a rendered grain shows its window…": Hann ends exactly 0 and peak at the centre, ASR 0/0.5/1/…/0.5/0, a three-frame grain, silence after the end, 16 one-frame blocks equal to one 16-frame block for three settings, and a later silent ASR trigger leaving the sounding grain unchanged (52/52 ARC).
 - [x] Keep grain duration independent from playback rate and source-position scanning.
 - [x] Add per-grain amplitude and equal-power stereo placement; define mono and stereo-source policies explicitly. Per-grain `amplitude` and `pan` with `GrainMath.leftGain`/`rightGain` (cos/sin of (pan+1)·π/4); sources are mono, and stereo WAVs are downmixed (L+R)/2 at import, documented in [SYNTH-ADVANCED-GRAINS-IMPORT]. `regionJourney` checks full-left placement at amplitude 1.
 - [x] Retain cursor, lifetime and window phase across arbitrary block boundaries.
