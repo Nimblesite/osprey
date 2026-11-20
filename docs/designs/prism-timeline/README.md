@@ -2,6 +2,10 @@
 
 The Timeline is a second window of the combined Prism DAW. Select a track to inspect its notes, open its patch, or trace it all the way to the speakers. The three views share the same track and playhead. The current FerroUI host can present the same workspace in its main window until it supports detaching it.
 
+## Running FerroUI window
+
+The three native captures show one reopened copy of *Broken Circuitry: Reassembly*. On keysL, the inspector shows D♯4 at beat 88 with velocity 65%. The mixer shows gain 2.00×, centred pan and a 50% Space send. In the patch, the waveshaper feeds Delay 6 before Output 5. The same JSON file contains all three edits and the delay’s canvas position. [Piano roll](../../../src/osprey/examples/daw/screens/timeline.png) · [Mixer and routing](../../../src/osprey/examples/daw/screens/mix.png) · [Reopened track patch](../../../src/osprey/examples/daw/screens/track-patch.png)
+
 ## Screens
 
 | Design screenshot | What to inspect |

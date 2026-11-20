@@ -36,8 +36,8 @@ case "${1:-}" in
         OSPREY_NATIVE_TAP="${PRISM_TAP:-}" "$binary" "${launch[@]}" &
         pid=$!
         trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
-        sleep "${PRISM_SETTLE:-6}"
         id=$(gtimeout 60 swift "$here/scripts/window-id.swift" "$pid")
+        sleep "${PRISM_SETTLE:-6}"
         screencapture -x -o -l "$id" "$2"
         echo "$2" ;;
     --repaint)
