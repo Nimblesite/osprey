@@ -13,3 +13,4 @@ Reactive mobile applications, the proof workbench and its lessons, the Osprey Ag
 - [Osprey Agent](OspreyAgent.md)
 - [Local coding model [LLM]](LocalCodingModel.md)
 - [Pocket Orchestra [ORCHESTRA]](PocketOrchestra.md)
+- [The daw [DAW]](Daw.md)
