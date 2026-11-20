@@ -18,12 +18,8 @@ module CardArts
 
     drawn (editor, n) = CardArt(artNode = n.identity, artKey = key (editor, n), artShapes = EditorView::nodeArtwork (editor, n, EditorLayout::position (editor, n.identity)), artControls = PrismArt::sliders (editor, n))
 
-    kept (editor, n) = listGet (filterList (editor.art, \art => art.artNode == n.identity && art.artKey == key (editor, n))) 0
-
     (** The card for `n`: the kept one when it is still current, else drawn now. *)
-    export card (editor, n) = match kept (editor, n)
-        Success art => art
-        Error _ => drawn (editor, n)
+    export card (editor, n) = fixed (editor, n.identity, key (editor, n), \() => drawn (editor, n))
 
     // The skin's live state: its inputs, its layers' states and what the pointer holds.
     same (one, other) = structuralEquals (one.knobs, other.knobs) && structuralEquals (one.currents, other.currents) && structuralEquals (one.machineGrip, other.machineGrip)
@@ -35,7 +31,8 @@ module CardArts
             false => after(art = [])
         base(art = listConcat [scenery base, dock base] (mapList (after.graph.nodes, \n => card (base, n))))
 
-    fixed (editor, slot, key, draw) = match listGet (filterList (editor.art, \art => art.artNode == slot && art.artKey == key)) 0
+    // The art kept in `slot` while its `wanted` key is current, else drawn now.
+    fixed (editor, slot, wanted, draw) = match listGet (filterList (editor.art, \art => art.artNode == slot && art.artKey == wanted)) 0
         Success art => art
         Error _ => draw ()
 
