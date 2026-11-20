@@ -42,7 +42,7 @@ module BusMix
         release = synth::DynamicsMath::coefficient (c.release, rate)
         (foldList (toList (range (0, count)), silent (), \(run, index) => reduced (c, attack, release, run, listGet key index ?: 0.0))).samples
 
-    louder (group, index) = synth::DynamicsMath::linked (abs (listGet group.left index ?: 0.0), abs (listGet group.right index ?: 0.0))
+    louder (group, index) = synth::DynamicsMath::truePeak (synth::DynamicsMath::truePeak (0.0, listGet group.left index ?: 0.0), listGet group.right index ?: 0.0)
 
     // The detector: the sidechain track's signal, or the bus itself, both sides linked.
     detector (buses, bus, group) = match bus.compressor.sidechain == ""
