@@ -42,7 +42,7 @@ module Fitting
     (** Hann-windowed power spectrum of a power-of-two block. *)
     export spectrum samples = match Ffts::forward (windowed samples)
         Error why => Error(message = why)
-        Success bins => Success(value = mapList (bins, \b => b.re * b.re + b.im * b.im))
+        Success bins => Success(value = mapList (bins, \b => SpectralMath::power (b.re, b.im)))
 
     rendered (graph, frames) = match Graphs::prepare graph
         Invalid _ => Error(message = "A candidate graph is invalid.")

@@ -19,8 +19,11 @@ def twiddle (sign index size : Float) : Float := sign * 6.283185307179586 * inde
 def productRe (ar ai br bi : Float) : Float := ar * br - ai * bi
 def productIm (ar ai br bi : Float) : Float := ar * bi + ai * br
 
+/-- Squared modulus of a complex value. -/
+def power (re im : Float) : Float := re * re + im * im
+
 /-- Magnitude of a complex value. -/
-def magnitude (re im : Float) : Float := Float.pow (re * re + im * im) 0.5
+def magnitude (re im : Float) : Float := Float.pow (power re im) 0.5
 
 /-- Unit-vector components; silence maps to phase zero. -/
 def unitRe (re im : Float) : Float :=
@@ -59,5 +62,16 @@ def trueBin (index phase previous hop size : Float) : Float :=
 
 /-- Synthesis phase advance for a component at `bin` (fractional) over one hop. -/
 def binAdvance (bin hop size : Float) : Float := 6.283185307179586 * bin * hop / size
+
+/-- Rectangular components of `level · e ^ (i·phase)`: resynthesis from magnitude and phase. -/
+def polarRe (level phase : Float) : Float := level * Float.cos phase
+def polarIm (level phase : Float) : Float := level * Float.sin phase
+
+/-- Nearest integer with ties rounded up: the output bin of the pitch map `round (k · ratio)`. -/
+def nearest (value : Float) : Float := Float.floor (value + 0.5)
+
+/-- Inclusive source-bin bounds that can land on output bin `target` under `ratio`. -/
+def sourceLow (target ratio : Float) : Float := Float.floor ((target - 0.5) / ratio) - 1
+def sourceHigh (target ratio : Float) : Float := Float.ceil ((target + 0.5) / ratio) + 1
 
 end synth.SpectralMath

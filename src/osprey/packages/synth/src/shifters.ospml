@@ -41,6 +41,6 @@ module Shifters
             second = run (held.second, secondCoefficients, input, [])
             quadrature = last (second, 0.0)
             wet = match config.ring
-                true => input * sin (6.283185307179586 * held.phase)
+                true => input * Waves::sine held.phase
                 false => NonlinearMath::shifted (held.delayed, quadrature, held.phase)
             Success(value = ShifterSample(sample = SpectralMath::blend (input, wet, config.mix), next = ShifterState(first = first, second = second, delayed = last (first, 0.0), phase = Waves::wrap (held.phase + config.shift / config.sampleRate))))
