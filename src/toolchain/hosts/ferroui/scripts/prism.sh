@@ -25,6 +25,12 @@ binary="$repo/target/release/ferroui-osprey-native"
 worker="$repo/target/vst-worker/osprey-vst-worker"
 launch=(--machine "$machine")
 [ -x "$worker" ] && launch+=(--vst-worker "$worker")
+if [ -n "${PRISM_PROJECT:-}" ]; then
+    project=$PRISM_PROJECT
+    [[ $project = /* ]] || project="$PWD/$project"
+    [[ -r $project ]] || { echo "Cannot open project: $project" >&2; exit 1; }
+    launch+=(--song "$project" --renderer "$repo/target/daw/daw")
+fi
 case "${1:-}" in
     --shot)
         OSPREY_NATIVE_TAP="${PRISM_TAP:-}" gtimeout 120 "$binary" "${launch[@]}" &

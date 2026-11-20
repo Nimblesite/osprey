@@ -98,11 +98,11 @@ daw-gpui: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/daw/run.sh
 
-## daw: Open the daw on the FerroUI host (src/toolchain/hosts/ferroui): its Prism patch studio,
-##      inspector and playable keyboard. [NATIVE-SHM-BOUNDARY] [PRISM-ROUTING-EDITOR]
-daw: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/ferroui/scripts/prism.sh
+## daw: Open SONG in the FerroUI timeline, mixer and Prism studio. Defaults to Broken Circuitry: Reassembly.
+##      [DAW-PROJECT] [PRISM-ROUTING-TIMELINE]
+daw: SONG = src/osprey/examples/daw/tracks/codex-version.json
+daw: _runtime_macos _daw-renderer
+	PRISM_PROJECT="$(SONG)" OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/ferroui/scripts/prism.sh
 
 ## storage: Rebuild the compiler, the Mac runtime and the Osprey Storage app,
 ##          then open it: where your disk space goes, folder by folder.
@@ -116,11 +116,15 @@ storage: _runtime_macos
 SONG ?= src/osprey/examples/daw/tracks/phosphor-drift.json
 SONG_DIR = target/daw/$(basename $(notdir $(SONG)))
 SONG_WAV = $(SONG_DIR)/song.wav
-daw-render:
+daw-render: _daw-renderer
+	target/daw/daw "$(SONG)" "$(SONG_DIR)"
+
+# Shared song renderer for the interactive DAW and the offline bounce.
+.PHONY: _daw-renderer
+_daw-renderer:
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	mkdir -p target/daw
 	$(BIN) build src/osprey/examples/daw/render -o target/daw/daw
-	target/daw/daw "$(SONG)" "$(SONG_DIR)"
 
 ## daw-play: Play SONG's rendered WAV with afplay; it never renders (run daw-render first).
 daw-play:
