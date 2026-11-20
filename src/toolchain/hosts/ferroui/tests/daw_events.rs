@@ -168,6 +168,11 @@ fn create_group(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     assert_eq!(read(), expected, "Enter commits the adjacent destination");
 }
 
+fn shows_label(shown: &Shown, label: &str) -> bool {
+    shown.scenes.values().flat_map(|scene| &scene.shapes).any(|shape|
+        matches!(shape, ferroui_osprey_native::scene::Shape::Lettering { text, .. } if text == label))
+}
+
 /// [DAW-MIX-BUS] Choose both destinations from the selected track's native menu.
 fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     let read = || -> serde_json::Value {
@@ -182,12 +187,7 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
         ((900.0, 466.0), "Group bus", "Detector   kick     ·     4.00× compression"),
     ] {
         let (shown, _) = point(canvas, point_at, true);
-        let labels: Vec<_> = shown.scenes.values().flat_map(|scene| &scene.shapes)
-            .filter_map(|shape| match shape {
-                ferroui_osprey_native::scene::Shape::Lettering { text, .. } => Some(text.as_str()),
-                _ => None,
-            }).collect();
-        assert!(labels.contains(&title) && labels.contains(&field), "select {title} reveals {field}");
+        assert!(shows_label(&shown, title) && shows_label(&shown, field), "select {title} reveals {field}");
         point(canvas, point_at, false);
         assert_eq!(read(), expected, "inspecting the parallel path preserves every project field");
     }
@@ -217,11 +217,35 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
         {"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabled":true}
     ]);
     assert_eq!(read(), expected, "keysL keeps its dry group, Space send, notes and patch cables");
+    let (pads, _) = point(canvas, (665.0, 251.0), true);
+    assert!(shows_label(&pads, "4 tracks"), "pads receives glow, tablepad, keysR and the new keysL outlet");
+    point(canvas, (665.0, 251.0), false);
+    point(canvas, (665.0, 437.0), true);
+    regions.adopt(&point(canvas, (665.0, 437.0), false).0).expect("return to keysL");
+    choose_control(regions, "button", "Add send…", "");
+    choose_control(regions, "picker", "Source outlet", "3/0");
+    choose_control(regions, "picker", "Destination bus", "Keys bus");
+    choose_control(regions, "field", "Send level (%)", "75");
+    choose_control(regions, "button", "Mute send", "");
+    choose_control(regions, "button", "Connect send", "");
+    let second = serde_json::json!({"sendId":2,"source":3,"outlet":0,"bus":"Keys bus","level":0.75,"enabled":false});
+    expected["tracks"][5]["sends"].as_array_mut().expect("keysL sends").push(second.clone());
+    assert_eq!(read(), expected, "the same outlet feeds two independent groups");
     choose_control(regions, "button", "Edit send 1 · pads…", "");
     choose_control(regions, "button", "Remove send", "");
+    expected["tracks"][5]["sends"] = serde_json::json!([second]);
+    assert_eq!(read(), expected, "removing the first send preserves the muted sibling and its identity");
+    choose_control(regions, "button", "Edit send 2 · Keys bus…", "");
+    choose_control(regions, "button", "Enable send", "");
+    choose_control(regions, "field", "Send level (%)", "50");
+    choose_control(regions, "button", "Save send", "");
+    expected["tracks"][5]["sends"][0]["enabled"] = serde_json::json!(true);
+    expected["tracks"][5]["sends"][0]["level"] = serde_json::json!(0.5);
+    assert_eq!(read(), expected, "the surviving send responds to its own level and mute control");
+    choose_control(regions, "button", "Edit send 2 · Keys bus…", "");
+    choose_control(regions, "button", "Remove send", "");
     expected["tracks"][5]["sends"] = serde_json::json!([]);
-    assert_eq!(read(), expected, "removing one send restores the complete project");
-
+    assert_eq!(read(), expected, "removing both sends restores the complete project");
 }
 
 #[test]

@@ -447,7 +447,7 @@ module EditorView
     root () =
         editor = editorSlice ()
         match editor.outputEdit
-            EditingSend draft => Ui::aside (workspace editor, ui::Trailing, SendEditor::form (editor, draft), 295, Surface)
+            EditingSend draft => Ui::layer [workspace editor, SendEditor::form (editor, draft)]
             NamingGroup proposed => Ui::layer [workspace editor, RoutingPicker::form (editor, proposed)]
             _ => Ui::contextMenu (workspace editor, listConcat (menus ()) (MixView::menus editor))
 

@@ -97,10 +97,13 @@ module MixView
         true => space editor
         false => groupInspector (editor, voice)
 
+    groupInput : (daw::Track, string) -> bool
+    groupInput (track, name) = track.bus == name || ui::Lists::any (track.sends, \tap => tap.bus == name)
+
     groupInspector (editor, voice) = match daw::BusMix::named (editor.song, voice.bus)
         Error _ => space editor
         Success bus =>
-            inputs = mapList (filterList (editor.song.tracks, \t => t.bus == bus.name), \t => t.name)
+            inputs = mapList (filterList (editor.song.tracks, \t => groupInput (t, bus.name)), \t => t.name)
             joined = join inputs ", "
             shown = ui::Pick::either (length joined > 24, "${length inputs} tracks", joined)
             detector = ui::Pick::either (bus.compressor.sidechain == "", "Self", bus.compressor.sidechain)

@@ -8,6 +8,8 @@ The native Timeline shows keysL in bars 9–10 of *Broken Circuitry: Reassembly*
 
 In the running Timeline, the destination chooser shows Master checked and Keys bus focused while G♯5 stays selected. After routing keysL and keysR to the new group, the Mix inspector lists both tracks as inputs. Each retains its 35% Space send. Selecting the Space card reveals the shared reverb’s 6.50-second decay. [Output chooser](../../../src/osprey/examples/daw/screens/assign-output.png) · [Keys bus inputs and signal flow](../../../src/osprey/examples/daw/screens/group-routing.png) · [Space return](../../../src/osprey/examples/daw/screens/space-return.png)
 
+The native send inspector opens over the canvas at its current zoom. On keysL, the loss filter still feeds the waveshaper while its audio outlet also sends 25% to pads. The inspector shows both destinations. [Add a send in Track patch](../../../src/osprey/examples/daw/screens/add-send.png) · [Edit the parallel send in Bus routing](../../../src/osprey/examples/daw/screens/edit-send.png)
+
 ## Window commands [PRISM-TIMELINE-MENU]
 
 The agreed menu layout applies to Patch, Timeline and Mix. File holds Open Song, Save and Render Song. Edit holds Undo and Redo. View switches pages and toggles Modules, Patch Controls and Keyboard. Transport holds song playback and patch audition. The three page tabs and Play and Stop stay within reach on the canvas. The current page, project title and playback state remain visible when the menus close.
