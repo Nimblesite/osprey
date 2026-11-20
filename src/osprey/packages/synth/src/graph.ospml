@@ -36,7 +36,14 @@ module Graphs
         External identity => identity != ""
         _ => true
 
-    validNode n = n.identity >= 0 && processorValid n.processor && all (n.inputs, validPort) && all (n.outputs, validPort)
+    validNode n = n.identity >= 0 && routed n && processorValid n.processor && all (n.inputs, validPort) && all (n.outputs, validPort)
+
+    // [SYNTH-GRAPH-CHANNELS] Every map entry names an input channel or silence; anything else is invalid.
+    routed n = match n.processor
+        Route entries => match listGet n.inputs 0
+            Error _ => false
+            Success input => length (filterList (entries, \entry => entry >= -1 && entry < input.channels)) == length entries
+        _ => true
 
     checkedNode n = match validNode n
         false => Invalid(fault = InvalidNode)

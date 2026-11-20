@@ -434,6 +434,109 @@ test ("performance timbres and metallic warp stay bounded across rates and contr
     near (Performance::wave (0, 0.25, 0.01, 0.0, 0.0), 1.0, 0.000000001)
     near (Performance::wave (0, 0.25, 0.01, 0.0, 1.0), -1.0, 0.000000001)))
 
+import synth::Kinds
+
+// [SYNTH-GRAPH-CHANNELS] Unlimited-channel journeys: split, join and route carry every channel exactly.
+portOf (name, channels) = synth::Port(name = name, rate = synth::Audio, channels = channels, unit = synth::Amplitude)
+
+channelSource (identity, channels) =
+    base = Components::additive (identity, 220.0)
+    base(outputs = [portOf ("audio", channels)])
+
+sinkOf (identity, channels) =
+    base = Components::output identity
+    base(inputs = [portOf ("audio", channels)])
+
+scaleOf index = (toFloat index + 1.0) * 0.05
+
+// A distinct-channel chain: `count`-channel source -> split -> one gain per channel -> join.
+channelChain (source, split, firstGain, join, count) =
+    gains = mapList (toList (range (0, count)), \index => Components::gain (satAdd firstGain index, scaleOf index))
+    listAppend (listConcat [channelSource (source, count), Components::split (split, count)] gains) (Components::join (join, count))
+
+channelCables (source, split, firstGain, join, count) =
+    fanOut = mapList (toList (range (0, count)), \index => Components::route (split, index, satAdd firstGain index, 0))
+    fanIn = mapList (toList (range (0, count)), \index => Components::route (satAdd firstGain index, 0, join, index))
+    listConcat (listConcat [cable (source, split)] fanOut) fanIn
+
+clipsOf (graph, frames) = match synth::GraphClips::advance (graph, [], frames)
+    Success action => match action
+        synth::ClipReady clips => Success(value = clips)
+        synth::ClipWaiting _ _ => Error(message = "A built-in graph asked for a plug-in.")
+    Error why => Error(message = why)
+
+clipFrom (clips, identity) = match synth::ClipInputs::completed (clips, identity)
+    Success clip => clip
+    Error why =>
+        expect (why, "a rendered node clip")
+        synth::NodeClip(clipNode = identity, clipChannels = 0, clipSamples = [], clipNotes = [])
+
+channelOf (clip, frame, channel) = listGet clip.clipSamples (satAdd (satMul frame clip.clipChannels) channel) ?: 999.0
+
+test ("an 8-channel graph splits, joins and route-reorders every 7.1 channel sample-for-sample", \() => arithmetic (\() =>
+    frames = toList (range (0, 64))
+    channels = toList (range (0, 8))
+    succeeds (clipsOf (built (listConcat (channelChain (1, 2, 3, 11, 8)) [Components::routeChannels (12, 8, [7, 6, 5, 4, 3, 2, 1, 0]), sinkOf (13, 8)], listConcat (channelCables (1, 2, 3, 11, 8)) [cable (11, 12), cable (12, 13)]), 64), \clips =>
+        source = clipFrom (clips, 1)
+        split = clipFrom (clips, 2)
+        join = clipFrom (clips, 11)
+        route = clipFrom (clips, 12)
+        gains = mapList (channels, \index => clipFrom (clips, satAdd 3 index))
+        expect (source.clipChannels == 8 && length source.clipSamples == 512, true)
+        expect (abs (channelOf (source, 5, 0)) > 0.000001, true)
+        expect (split.clipChannels == 8 && structuralEquals (split.clipSamples, source.clipSamples), true)
+        // Independent per-channel kernel state renders identical channels from identical parameters.
+        forEachList (toList (range (1, 8)), \c => forEachList (frames, \f => expect (channelOf (source, f, c) == channelOf (source, f, 0), true)))
+        forEachList (channels, \c =>
+            gain = listGet gains c ?: clipFrom (clips, 0)
+            expect (gain.clipChannels, 1)
+            forEachList (frames, \f => near (channelOf (gain, f, 0), channelOf (source, f, c) * scaleOf c, 0.0)))
+        expect (join.clipChannels == 8 && length join.clipSamples == 512, true)
+        forEachList (channels, \c => forEachList (frames, \f => near (channelOf (join, f, c), channelOf (listGet gains c ?: clipFrom (clips, 0), f, 0), 0.0)))
+        expect (route.clipChannels == 8 && length route.clipSamples == 512, true)
+        forEachList (channels, \c => forEachList (frames, \f => near (channelOf (route, f, c), channelOf (listGet gains (satSub 7 c) ?: clipFrom (clips, 0), f, 0), 0.0)))
+        sink = clipFrom (clips, 13)
+        expect (sink.clipChannels == 8 && structuralEquals (sink.clipSamples, route.clipSamples), true))))
+
+test ("a five-channel graph duplicates, silences and resizes channels through explicit route maps", \() => arithmetic (\() =>
+    frames = toList (range (0, 64))
+    nodes = listConcat (channelChain (1, 2, 3, 8, 5)) [Components::routeChannels (9, 5, [1, 1, -1, 4, 0, 0]), sinkOf (10, 6)]
+    cables = listConcat (channelCables (1, 2, 3, 8, 5)) [cable (8, 9), cable (9, 10)]
+    succeeds (clipsOf (built (nodes, cables), 64), \clips =>
+        join = clipFrom (clips, 8)
+        route = clipFrom (clips, 9)
+        expect (join.clipChannels == 5 && length join.clipSamples == 320, true)
+        expect (route.clipChannels == 6 && length route.clipSamples == 384, true)
+        forEachList (frames, \f =>
+            near (channelOf (route, f, 0), channelOf (join, f, 1), 0.0)
+            near (channelOf (route, f, 1), channelOf (join, f, 1), 0.0)
+            near (channelOf (route, f, 2), 0.0, 0.0)
+            near (channelOf (route, f, 3), channelOf (join, f, 4), 0.0)
+            near (channelOf (route, f, 4), channelOf (join, f, 0), 0.0)
+            near (channelOf (route, f, 5), channelOf (join, f, 0), 0.0))
+        forEachList (toList (range (0, 5)), \c => forEachList (frames, \f => near (channelOf (join, f, c), channelOf (clipFrom (clips, satAdd 3 c), f, 0), 0.0))))
+    // The same five-channel join shrinks to three: duplicated, duplicated, silenced.
+    succeeds (clipsOf (built (listConcat (channelChain (1, 2, 3, 8, 5)) [Components::routeChannels (9, 5, [4, 4, -1]), sinkOf (10, 3)], listConcat (channelCables (1, 2, 3, 8, 5)) [cable (8, 9), cable (9, 10)]), 64), \clips =>
+        join = clipFrom (clips, 8)
+        route = clipFrom (clips, 9)
+        expect (route.clipChannels == 3 && length route.clipSamples == 192, true)
+        forEachList (frames, \f =>
+            near (channelOf (route, f, 0), channelOf (join, f, 4), 0.0)
+            near (channelOf (route, f, 1), channelOf (join, f, 4), 0.0)
+            near (channelOf (route, f, 2), 0.0, 0.0)))))
+
+test ("channel maps out of range and mismatched channel cables are refused with typed faults", \() => arithmetic (\() =>
+    forEachList ([[0, -2], [0, 5], [0, 1, 9]], \entries => refused (Graphs::add (Graphs::empty, Components::routeChannels (1, 5, entries)), synth::InvalidNode))
+    refused (Graphs::add (Graphs::empty, Components::routeChannels (1, 4, [])), synth::InvalidNode)
+    prepared (added ([Components::routeChannels (1, 2, [0, 1, -1, 0])], Graphs::empty), 1)
+    refused (Graphs::connect (added ([Components::routeChannels (1, 8, [7, 6, 5, 4, 3, 2, 1, 0]), Components::gain (2, 1.0)], Graphs::empty), cable (1, 2)), synth::IncompatiblePorts)
+    refused (Graphs::connect (added ([Components::stereo 1, Components::join (2, 2)], Graphs::empty), cable (1, 2)), synth::IncompatiblePorts)
+    refused (Graphs::connect (added ([Components::join (1, 4), Components::output 2], Graphs::empty), cable (1, 2)), synth::IncompatiblePorts)
+    expect (Kinds::kind synth::Split, "synth.split")
+    expect (Kinds::kind synth::Join, "synth.join")
+    expect (Kinds::kind (synth::Route(channelMap = [0, -1])), "synth.route")
+    expect ((Kinds::version synth::Split) == 1 && (Kinds::keyFrequency (synth::Route(channelMap = [0]))) == false, true)))
+
 registerHostedJourneys ()
 registerWaveJourneys ()
 registerClipJourneys ()

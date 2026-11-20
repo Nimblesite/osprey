@@ -54,12 +54,25 @@ module RenderKernels
                     false => Error(message = "Invalid gain.")
                     true => Success(value = RenderInputs::emitted (frame, held, Waves::controlledGain (input, level, control)))
 
+    passthrough (frame, held, input) = Success(value = RenderInputs::emitted (frame, held, input))
+
+    // [SYNTH-GRAPH-CHANNELS] Mono split, join and route are identity (or mapped silence); wider layouts
+    // never reach this mono renderer because their ports fail its layout checks.
+    monoRouted (entries, frame, held, input) = match listGet entries 0
+        Error _ => Error(message = "A channel route needs at least one output channel.")
+        Success entry => match entry
+            -1 => Success(value = RenderInputs::emitted (frame, held, 0.0))
+            _ => passthrough (frame, held, input)
+
     processor (plan, rate, snapshot, frame, held, n, input) = match n.processor
         ModulatedGain => controlled (plan, snapshot, frame, held, input)
         Filter => lowpass (plan, rate, snapshot, frame, held, input)
         Amplifier => gain (snapshot, frame, held, input)
         Mixer => mixer (plan, frame, held, input)
-        Sink => Success(value = RenderInputs::emitted (frame, held, input))
+        Sink => passthrough (frame, held, input)
+        Split => passthrough (frame, held, input)
+        Join => passthrough (frame, held, input)
+        Route entries => monoRouted (entries, frame, held, input)
         Spectral size hop => SpectralKernels::process (plan, rate, snapshot, frame, held, size, hop, input)
         Shaper => EffectKernels::shaper (rate, snapshot, frame, held, input)
         Reverb => EffectKernels::reverb (rate, snapshot, frame, held, input)

@@ -7,7 +7,7 @@ type TableLevel { harmonics: Int samples: List<Float> }
 type TableFrame { levels: List<TableLevel> }
 type Wavetable { size: Int harmonics: Int frames: List<TableFrame> }
 type SampleResource { name: String sampleRate: Int sourceChannels: Int rootFrequency: Float samples: List<Float> }
-union Processor { Granular { resource: SampleResource capacity: Int seed: Int } Exciter { seed: Int } Resonator {} Modal {} Waveguide { capacity: Int } FractionalDelay { capacity: Int } LossFilter {} Allpass {} TableOscillator { table: Wavetable } Additive {} Spectral { size: Int hop: Int } Shaper {} Reverb {} Shifter {} PhaseOperator {} Bowed { capacity: Int } Smoother {} StrikeComb { capacity: Int } Downmix {} Lfo {} ModulatedGain {} MidiNotes {} Stereo {} Oscillator {} Filter {} Amplifier {} Mixer {} Sink {} Delay { samples: Int } External { identifier: String } }
+union Processor { Granular { resource: SampleResource capacity: Int seed: Int } Exciter { seed: Int } Resonator {} Modal {} Waveguide { capacity: Int } FractionalDelay { capacity: Int } LossFilter {} Allpass {} TableOscillator { table: Wavetable } Additive {} Spectral { size: Int hop: Int } Shaper {} Reverb {} Shifter {} PhaseOperator {} Bowed { capacity: Int } Smoother {} StrikeComb { capacity: Int } Downmix {} Lfo {} ModulatedGain {} MidiNotes {} Stereo {} Split {} Join {} Route { channelMap: List<Int> } Oscillator {} Filter {} Amplifier {} Mixer {} Sink {} Delay { samples: Int } External { identifier: String } }
 type Node { identity: Int processor: Processor inputs: List<Port> outputs: List<Port> parameters: List<Parameter> }
 type Cable { source: Int outlet: Int destination: Int inlet: Int }
 type Graph { nodes: List<Node> cables: List<Cable> }

@@ -68,6 +68,18 @@ module Components
     (** Explicit stereo-to-mono downmix, (left + right) / 2; routing never changes channel counts implicitly. *)
     export downmix identity = node (identity, Downmix, [audioPort ("audio", 2)], [port "audio"], [])
 
+    outlet name = audioPort (name, 1)
+
+    (** [SYNTH-GRAPH-CHANNELS] One N-channel input becomes N one-channel outlets, in layout order. *)
+    export split (identity, channels) = node (identity, Split, [audioPort ("audio", channels)], mapList (toList (range (0, channels)), \index => outlet "channel ${index}"), [])
+
+    (** [SYNTH-GRAPH-CHANNELS] N one-channel inlets become one N-channel output, in inlet order. *)
+    export join (identity, channels) = node (identity, Join, mapList (toList (range (0, channels)), \index => outlet "channel ${index}"), [audioPort ("audio", channels)], [])
+
+    (** [SYNTH-GRAPH-CHANNELS] One `inputs`-channel input is remapped: output channel i takes input channel
+        channelMap[i], or silence when the entry is -1. Graph validation rejects any other entry. *)
+    export routeChannels (identity, inputs, channelMap) = node (identity, Route(channelMap = channelMap), [audioPort ("audio", inputs)], [audioPort ("audio", length channelMap)], [])
+
     (** A stereo graph output for native instruments and effects. *)
     export stereoOutput identity = node (identity, Sink, [audioPort ("audio", 2)], [], [])
 

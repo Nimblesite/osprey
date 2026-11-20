@@ -13,14 +13,18 @@ module ClipInputs
         [cable] => completed (clips, cable.source)
         _ => Error(message = "Every graph input needs exactly one connected source.")
 
-    (** Control signals broadcast across audio channels without changing audio cable widths. *)
+    (** Control signals broadcast across audio channels without changing audio cable widths; a split
+        outlet carries exactly one channel of its interleaved clip, named by the outlet index. *)
     export sourceChannel (graph, cable, channel) = match Graphs::node (graph, cable.source)
         Invalid _ => Error(message = "The routed source is missing.")
         Valid n => match listGet n.outputs cable.outlet
             Error _ => Error(message = "index out of bounds")
-            Success port => match (port.rate == Control)
-                true => Success(value = 0)
-                false => Success(value = channel)
+            Success port => match port.rate
+                Control => Success(value = 0)
+                Audio => match n.processor
+                    Split => Success(value = cable.outlet)
+                    _ => Success(value = channel)
+                _ => Success(value = channel)
 
     channels ports = match ports
         [] => Success(value = 0)

@@ -10,6 +10,9 @@ module GraphClips
     (** Whether a component keeps DSP memory between blocks. *)
     export stateful n = match n.processor
         Stereo => false
+        Split => false
+        Join => false
+        Route _ => false
         Downmix => false
         Sink => false
         MidiNotes => false
@@ -37,12 +40,6 @@ module GraphClips
     stored (held, n, memory) = held(graphKernels = listAppend (filterList (held.graphKernels, \old => old.kernelNode != n.identity)) (NodeKernels(kernelNode = n.identity, kernelMemory = memory)))
 
     validState (graph, held, frames, clips) = held.graphPosition >= 0 && held.graphPosition <= satSub 9223372036854775807 frames && length (filterList (held.graphKernels, \bank => validBank (graph, bank, bankPosition (held, frames, clips, bank.kernelNode)) && length (filterList (held.graphKernels, \other => other.kernelNode == bank.kernelNode)) == 1)) == length held.graphKernels && (held.graphPosition == 0 || length held.graphKernels == length (filterList (graph.nodes, stateful)))
-
-    converted (graph, clips, n) = match ClipInputs::routed (graph, clips, n.identity, 0)
-        Error why => Error(message = why)
-        Success clip => match clip.clipChannels == 1
-            false => Error(message = "Mono-to-stereo requires one audio channel.")
-            true => Success(value = foldList (clip.clipSamples, [], \(samples, value) => listConcat samples [value, value]))
 
     emitted (plan, clips, held, frames, n, channels, samples, notes, remaining) =
         clip = NodeClip(clipNode = n.identity, clipChannels = channels, clipSamples = samples, clipNotes = notes)
@@ -114,8 +111,56 @@ module GraphClips
             [] => []
             [right, ...more] => listPrepend (pairs more) (WaveMath::mono (left, right))
 
+    // [SYNTH-GRAPH-CHANNELS] Split's one interleaved clip serves every outlet: an outlet indexes its channel.
+    splitClip (graph, clips, n) = match ClipInputs::routed (graph, clips, n.identity, 0)
+        Error why => Error(message = why)
+        Success clip => match clip.clipChannels == length n.outputs
+            false => Error(message = "Split outlets must match the input layout.")
+            true => Success(value = clip.clipSamples)
+
+    withInlet (graph, clips, n, outcome, index) = match outcome
+        Error why => Error(message = why)
+        Success found => Outcomes::carried (ClipInputs::routed (graph, clips, n.identity, index), \clip => Success(value = listAppend found clip))
+
+    joinedInlets (graph, clips, n) = foldList (toList (range (0, length n.inputs)), Success(value = []), \(outcome, index) => withInlet (graph, clips, n, outcome, index))
+
+    appended (values, outcome) = match outcome
+        Error _ => Error(message = "index out of bounds")
+        Success sample => Success(value = listAppend values sample)
+
+    woven (sources, outcome, frame) = match outcome
+        Error why => Error(message = why)
+        Success samples => foldList (sources, Success(value = samples), \(outcome, clip) => Outcomes::carried (outcome, \values => appended (values, listGet clip.clipSamples frame)))
+
+    (** Interleave N one-channel inputs into one N-channel clip, in inlet order. *)
+    joined (graph, clips, n) = match joinedInlets (graph, clips, n)
+        Error why => Error(message = why)
+        Success sources => match sources
+            [] => Error(message = "A join needs at least one input.")
+            [first, ..._] => match length (filterList (sources, \clip => clip.clipChannels == 1 && length clip.clipSamples == length first.clipSamples)) == length sources
+                false => Error(message = "Join inputs need one channel each and equal sample counts.")
+                true => foldList (toList (range (0, length first.clipSamples)), Success(value = []), \(outcome, frame) => woven (sources, outcome, frame))
+
+    entrySample (clip, frame, entry) = match (entry < 0)
+        true => Success(value = 0.0)
+        false => listGet clip.clipSamples (satAdd (satMul frame clip.clipChannels) entry)
+
+    remapped (clip, entries, outcome, frame) = match outcome
+        Error why => Error(message = why)
+        Success samples => foldList (entries, Success(value = samples), \(outcome, entry) => Outcomes::carried (outcome, \values => appended (values, entrySample (clip, frame, entry))))
+
+    (** Copy each mapped input channel (or silence) per frame; the map length fixes the output width. *)
+    routing (graph, clips, n, entries) = match ClipInputs::routed (graph, clips, n.identity, 0)
+        Error why => Error(message = why)
+        Success clip => foldList (toList (range (0, intDiv (length clip.clipSamples) clip.clipChannels)), Success(value = []), \(outcome, frame) => remapped (clip, entries, outcome, frame))
+
+    copied (plan, clips, held, frames, n, channels, remaining, outcome) = Outcomes::carried (outcome, \samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining))
+
     routed (plan, clips, held, frames, n, channels, remaining) = match n.processor
-        Stereo => Outcomes::carried (converted (plan.graph, clips, n), \samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining))
+        Stereo => copied (plan, clips, held, frames, n, channels, remaining, routing (plan.graph, clips, n, [0, 0]))
+        Split => copied (plan, clips, held, frames, n, channels, remaining, splitClip (plan.graph, clips, n))
+        Join => copied (plan, clips, held, frames, n, channels, remaining, joined (plan.graph, clips, n))
+        Route entries => copied (plan, clips, held, frames, n, channels, remaining, routing (plan.graph, clips, n, entries))
         Downmix => Outcomes::carried (downmixed (plan.graph, clips, n), \samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining))
         Sink => Outcomes::carried (ClipInputs::routed (plan.graph, clips, n.identity, 0), \clip => emitted (plan, clips, held, frames, n, channels, clip.clipSamples, [], remaining))
         _ => processed (plan, clips, held, frames, n, channels, remaining)

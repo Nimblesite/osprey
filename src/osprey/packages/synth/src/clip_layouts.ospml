@@ -23,6 +23,25 @@ module ClipLayouts
             _ => false
         _ => false
 
+    splitting n = match n.inputs
+        [input] => audio [input] && audio n.outputs && length n.outputs == input.channels && length (filterList (n.outputs, \port => port.channels == 1)) == length n.outputs
+        _ => false
+
+    joining n = match n.outputs
+        [output] => audio [output] && audio n.inputs && length n.inputs == output.channels && length (filterList (n.inputs, \port => port.channels == 1)) == length n.inputs
+        _ => false
+
+    mapped n = match n.processor
+        Route entries => entries
+        _ => []
+
+    (** [SYNTH-GRAPH-CHANNELS] Route's map length fixes the output width; graph validation ranged its entries. *)
+    routing n = match n.inputs
+        [input] => match n.outputs
+            [output] => audio [input, output] && length (mapped n) == output.channels && length (mapped n) >= 1
+            _ => false
+        _ => false
+
     modulation (n, port) = port.rate == Control && port.unit == Normalised && port.channels == 1 && length (filterList (n.parameters, \p => p.key == port.name && p.automatable && p.unit == Normalised && p.minimum == 0.0 && p.maximum == 1.0)) == 1 && length (filterList (n.inputs, \other => other.name == port.name)) == 1
 
     external n = match ClipInputs::layout n
@@ -67,6 +86,9 @@ module ClipLayouts
         Filter => uniform (n, 1, 1) || (modulated n && cutoffPort n)
         MidiNotes => length n.inputs == 0 && length n.outputs == 1 && notes n.outputs
         Stereo => stereo n
+        Split => splitting n
+        Join => joining n
+        Route _ => routing n
         Downmix => downmix n
         Oscillator => oscillator n
         Sink => uniform (n, 1, 0)
@@ -100,6 +122,7 @@ module ClipLayouts
         Sink => match listGet n.inputs 0
             Error _ => Error(message = "index out of bounds")
             Success port => Success(value = port.channels)
+        Split => Success(value = length n.outputs)
         _ => match listGet n.outputs 0
             Error _ => Error(message = "index out of bounds")
             Success port => Success(value = port.channels)
