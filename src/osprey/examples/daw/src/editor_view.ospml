@@ -303,7 +303,7 @@ module EditorView
                 Success value => listConcat points [CanvasGeometry::grainX (x at, toFloat index), CanvasGeometry::waveY (y at + 5.0, value)]), Scenes::rgb (80, 229, 216), 2.0, 6), text (resource.name, x at - 120.0, y at - 34.0, 11.0, 190, 7)]
 
     midiLabel (editor, n, at) = match n.processor
-        Oscillator => [text ("MIDI", portX (editor, at, false, 0) + 12.0, portY (editor, at, false, 0) - 17.0, 11.0, 210, 8)]
+        Oscillator => [Scenes::lettering ("MIDI", portX (editor, at, false, 0) - 12.0, portY (editor, at, false, 0) - 7.0, 11.0, Scenes::rgb (210, 210, 255), 2, 500.0, 8)]
         _ => []
 
     cardTitle (editor, n, at) = listConcat [text (componentName (editor, n), x at - 120.0, y at - 104.0, 11.0, 160, 8)] (midiLabel (editor, n, at))
