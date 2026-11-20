@@ -325,7 +325,9 @@ Added on request after the families: a piano-roll project file rendered offline 
 - [x] Hold the end of a recording with the spectral freeze and replay the hold at a pitch ratio with its own rise, hold and fade (`Sustains`) [SYNTH-ARRANGEMENT-SUSTAIN]. The freeze gained identity phase locking: every bin turns with its nearest magnitude peak.
 - [x] Decode the JSON project in one boundary module (`SongFiles`) into the typed arrangement [SYNTH-ARRANGEMENT-FILE]; malformed JSON, unknown instruments and malformed notes are errors.
 - [x] Command-line player `src/osprey/examples/songs` and `make -C src/toolchain/targets/macos songs` [SYNTH-ARRANGEMENT-PLAYER]: renders, writes WAV parts through `xxd`, joins them after the intro with `ffmpeg` and plays with `afplay`; every host command runs under `timeout`.
-- [x] Song project `broken-circuitry.json`: 44 bars, 14 tracks, 2,074 notes, written for the Broken Circuitry recording.
+- [x] Song project `broken-circuitry.json`, written for the Broken Circuitry recording (first a melodic version: 44 bars, 14 tracks, 2,074 notes; now the glitch version below, 2,904 notes).
+- [x] Routed instruments (`PatchVoices`) [SYNTH-ARRANGEMENT-PATCH]: a note builds a graph from named modules and cables, with settings that follow pitch or velocity, and renders through `Renderer`. The mono renderer rejects LFO routing and granular; `spectral` and `reverb` nodes are too slow per note.
+- [x] Glitch version of `broken-circuitry.json`: 40 bars, 17 tracks (8 routed patches), 8 sustain appearances; rendered at 48 kHz after the recording, level across the join 0.18 → 0.13 RMS, sides within 0.2 dB.
 - [ ] Automated tests for `NoteRenders`, `Arrangements`, `Sustains`, `SongFiles` and the player (paused with the other suites).
 - [ ] Bandlimited sustain transposition, an oversampled or look-ahead limiter and stereo instruments.
 - [ ] Playback on Windows and Linux; `afplay` is macOS only.

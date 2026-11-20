@@ -45,6 +45,14 @@ are in beats, velocity is 0–1.
 | `mallet` | Eight bar modes, struck once | `decay` seconds, `brightness` 0–1 |
 | `operator` | Two detuned phase-distortion operators | `breakpoint` 0.001–0.999 (0.5 is a sine), `feedback` 0–1, `attack`, `release`, `bloom` (seconds for the tone to mellow), `detune` cents |
 | `drum` | Sine body with a pitch drop plus a noise burst | `sweep` 0–8, `noise` 0–1, `colour` 0–1 (0 is white), `decay` up to 1 s |
+| `patch` | A routed graph built per note | `nodes`, `cables`, `attack`, `release` (below) |
+
+A `patch` instrument is routing: `nodes` are `{"id", "module", "size", "seed", "set"}` and `cables` are
+`{"from", "outlet", "to", "inlet"}`. A value in `set` is a number, `{"pitch": x}` (the note's frequency
+times `x`) or `{"velocity": x}`. The modules are `exciter`, `sine`, `wavetable`, `additive`, `operator`,
+`bowed`, `lfo`, `resonator`, `modal`, `waveguide`, `strikeComb`, `fractionalDelay`, `lossFilter`,
+`allpass`, `lowpass`, `shaper`, `shifter`, `spectral`, `reverb`, `smoother`, `gain`, `modulatedGain`,
+`mixer`, `delay` and `output`. An unknown module or setting is an error.
 
 ## What the host tools do
 
@@ -64,6 +72,10 @@ pad come from the engine.
   measuring it first: a pulse of about 97.5 beats per minute and an ending on a C drone in the D♭ major
   scale. The piece is in F Phrygian, so the drone is its dominant, and the held drone returns a fourth up
   and a fifth down (both F) in the breakdown and the ending.
+- Routed patches render through the mono reference renderer at about 1.3 seconds per second of sound
+  for a simple patch. It rejects `lfo` and `modulatedGain` routing and stereo modules (granular); a
+  `bowed` node costs about 20 seconds per second, and `spectral` and `reverb` nodes are too slow to use
+  per note. The whole song took about 90 minutes to render at 48 kHz.
 - The recording itself is not in the repository; without `INTRO` the sustains are skipped.
 - The two sides use reverbs of different size, so a steady low tone sent to the reverb adds in phase on
   one side and out of phase on the other. At a send of 0.3 the held drone measured 0.47 RMS on the right
