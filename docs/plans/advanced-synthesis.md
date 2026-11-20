@@ -129,7 +129,7 @@ Checked items here record reference implementation, reviewed in `src/osprey/pack
 - [x] Implement Hann and configurable attack/sustain/release grain windows with explicit zero-endpoint branches and per-grain retained settings.
 - [ ] Verify window endpoints, peak/sustain behaviour, short durations and block/control-change invariance through rendered audio evidence.
 - [x] Keep grain duration independent from playback rate and source-position scanning.
-- [ ] Add per-grain amplitude and equal-power stereo placement; define mono and stereo-source policies explicitly.
+- [x] Add per-grain amplitude and equal-power stereo placement; define mono and stereo-source policies explicitly. Per-grain `amplitude` and `pan` with `GrainMath.leftGain`/`rightGain` (cos/sin of (pan+1)·π/4); sources are mono, and stereo WAVs are downmixed (L+R)/2 at import, documented in [SYNTH-ADVANCED-GRAINS-IMPORT]. `regionJourney` checks full-left placement at amplitude 1.
 - [x] Retain cursor, lifetime and window phase across arbitrary block boundaries.
 - [x] Implement a bounded voice pool with stable identities and an explicit full-pool response.
 - [x] Define reject-new overload behaviour: retain all active envelopes, count rejected onsets, and continue rendering without stealing voices.
@@ -150,8 +150,8 @@ Implementation: `grain_scheduler.ospml`, `grains.ospml` and the `GrainClouds` co
 - [ ] Verify native distribution controls, replay, partition invariance and observed statistics.
 - [x] Specify seed persistence, reset and reseed semantics; identical state and events must reproduce the same schedule.
 - [ ] Support overlapping grains across loop boundaries without reading outside prepared resources.
-- [ ] Add immutable resource replacement: existing grains finish against their owned resource while new grains adopt the new one.
-- [ ] Add bounded live capture/freeze with an explicit read/write ownership strategy.
+- [x] Add immutable resource replacement: existing grains finish against their owned resource while new grains adopt the new one. `Grains.replaceSource` keeps the old source as `retiredSource` until its last grain ends and refuses a second swap meanwhile; `overlapSources` in grain_journeys.ospml checks frames, counts, the refusal and release (synth 51/51 ARC).
+- [x] Add bounded live capture/freeze with an explicit read/write ownership strategy. `GrainCapture` writes into a bounded buffer, `freeze` makes it read-only (writes refused until resume) and `resource` prepares an immutable `SampleResource` from it; `captureJourney` and `grainCaptureBoundsJourney` check bounds, non-finite input, freeze and the resource.
 - [ ] Add optional pitch-synchronous scheduling as a separate mode with its own analysis/latency contract.
 
 ### Real sample loading and ownership [SYNTH-ADVANCED-GRAINS-IMPORT]
@@ -168,7 +168,7 @@ The first import path is bounded local WAV loading, not a general codec framewor
 - [x] Guard asynchronous import completion with request identity and node identity/revision so an old result cannot overwrite a newer choice or resurrect a removed node. Evidence: `sampleFileJourney` in [history.ospml](../../src/osprey/examples/daw/test/history.ospml), daw suite 24/24 on 21 Nov.
 - [x] Keep the last valid sample and graph on decode, preparation or activation failure; surface a useful node-specific error. Evidence: `sampleFileJourney` in [history.ospml](../../src/osprey/examples/daw/test/history.ospml), daw suite 24/24 on 21 Nov.
 - [x] Carry source sample rate and root note into playback-rate calculation; a unity-rate sample must not be pitched according to its buffer length.
-- [ ] Define loop range, one-shot/reverse/end behaviour and source-position units; make the inspector match the actual supported behaviour.
+- [x] Define loop range, one-shot/reverse/end behaviour and source-position units; make the inspector match the actual supported behaviour. Region start/end (samples), boundary 0 loop/1 one-shot, signed rate for reverse; the inspector shows those descriptors with their units ("Source position (samples)", "Boundary (0 loop, 1 one-shot)"); see [SYNTH-ADVANCED-GRAINS-BOUNDARY].
 - [ ] Show the loaded resource name, duration/rate/channel metadata, waveform and current source position using bounded observations.
 - [ ] Include sample replacement in Undo/Redo without invalidating resources still owned by playing grains or history snapshots.
 - [ ] Define an initial import-during-playback policy and show it clearly; do not block rendering while preparing a replacement.
