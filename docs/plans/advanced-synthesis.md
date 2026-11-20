@@ -74,7 +74,7 @@ Deliver the first milestone before expanding to another synthesis family. Shared
 
 ### Ports, parameters and automation [SYNTH-ADVANCED-CORE-PORTS]
 
-- [ ] Declare audio, control and timestamped-event ports, channel layouts and physical units for every new component.
+- [x] Declare audio, control and timestamped-event ports, channel layouts and physical units for every new component. `Port` (graph.td) carries rate, channels and unit; the synth test "every component declares coherent port rates…" checks 32 components: audio is amplitude on 1+ channels, control is one normalised channel, events are one channel of notes, names unique per side (50/50 ARC).
 - [ ] Unlimited channels [SYNTH-GRAPH-CHANNELS]: declare `ChannelLayout` (ordered named channels, stereo default, 5.1/7.1/7.1.4/any N) in `graph.td`; every port carries one.
 - [ ] Render every instrument and processor per channel over its prepared layout; delete the fixed mono/stereo code paths (`Grains` stereo summing, renderer mono tracks, `GraphClips` mono-to-stereo component).
 - [ ] Add Split, Join, Route (channel matrix) and Mix (per-input gain) graph components and Prism cards; an any-layout equal-power panner whose gain formula lives in Lean.

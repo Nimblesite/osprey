@@ -603,3 +603,29 @@ test ("every component parameter maps a 0-1 control onto its range and back, log
     every = foldList (adapted (), [], \(all, n) => listConcat all n.parameters)
     expect (length (filterList (every, \p => Descriptors::scale p == synth::LogarithmicScale)) > 10, true)
     expect (length (filterList (every, \p => Descriptors::scale p == synth::LinearScale)) > 40, true)))
+
+// [SYNTH-ADVANCED-CORE-PORTS] Every component declares each port's rate, channel count and unit coherently: audio
+// carries amplitude on 1 or more channels, control inlets are one normalised channel, events are one channel of notes,
+// and names are unique on each side.
+coherent port = match port.rate
+    synth::Audio => port.unit == synth::Amplitude && port.channels >= 1
+    synth::Control => port.unit == synth::Normalised && port.channels == 1
+    synth::Events => port.unit == synth::Notes && port.channels == 1
+
+uniqueNames ports = length (filterList (ports, \p => length (filterList (ports, \q => q.name == p.name)) == 1)) == length ports
+
+declared n =
+    expect (length (filterList (listConcat n.inputs n.outputs, coherent)), length n.inputs + length n.outputs)
+    expect (uniqueNames n.inputs, true)
+    expect (uniqueNames n.outputs, true)
+    expect (length n.outputs >= 1 || n.processor == synth::Sink, true)
+    forEachList (listConcat n.inputs n.outputs, \p => expect (p.name != "", true))
+
+test ("every component declares coherent port rates, channels, units and unique names", \() => arithmetic (\() =>
+    nodes = listConcat (adapted ()) [Components::mixer 30, Components::output 31, Components::stereo 32, Components::downmix 33, Components::stereoOutput 34, Components::split (35, 6), Components::join (36, 4), Components::routeChannels (37, 2, [1, 0, -1])]
+    expect (length nodes, 32)
+    forEachList (nodes, declared)
+    expect (length (filterList (nodes, \n => length (filterList (n.inputs, \p => p.rate == synth::Control)) > 0)), 2)
+    expect (length (filterList (nodes, \n => length (filterList (n.outputs, \p => p.rate == synth::Events)) > 0)), 1)
+    expect (length (filterList (nodes, \n => length (filterList (n.outputs, \p => p.rate == synth::Control)) > 0)), 1)
+    expect (length (filterList (nodes, \n => length (filterList (n.outputs, \p => p.channels == 2)) > 0)) >= 2, true)))
