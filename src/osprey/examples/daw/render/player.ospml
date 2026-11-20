@@ -1,4 +1,4 @@
-// [SYNTH-ARRANGEMENT-PLAYER] Render a song project to one WAV, after the recording it continues.
+// [SYNTH-ARRANGEMENT-PLAYER] [DAW-RENDER-MASTER] Render a song project to one WAV, the Master mix (never per-track stems), after the recording it continues.
 namespace daw
 
 (** The engine renders every track and the held end of the intro; `ffmpeg` only cuts the intro's last

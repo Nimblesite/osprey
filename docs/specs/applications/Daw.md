@@ -38,6 +38,8 @@ Rendering is offline and slower than realtime. With the renderer built under ARC
 
 Outside the app, `make -C src/toolchain/targets/macos daw-render SONG=<project.json>` renders the same file to `target/daw/<project>/song.wav`.
 
+**Only the Master channel by default ([DAW-RENDER-MASTER]).** A render, whether Play, Render song or `daw-render`, writes exactly one audio result: the stereo Master mix. Every track and bus is synthesised only to be summed into Master. It is never written out as its own stem. The renderer's progress lines ("rendering glass (40 notes)") report that summing, not separate files. The `part-N.wav`, `piece.wav` and `tail.wav` files beside `song.wav` are pieces of the same Master, joined into it. Per-track or per-bus stems would be an explicit opt-in, and none exists today.
+
 ## Timeline transport [DAW-TRANSPORT-TIMELINE]
 
 The Timeline carries the transport, and its state is in the project model ([daw.td](../../../src/osprey/examples/daw/daw.td)), not in the view.
