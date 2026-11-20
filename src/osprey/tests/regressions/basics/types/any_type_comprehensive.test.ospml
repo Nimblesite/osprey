@@ -207,7 +207,9 @@ erasedInList () =
         _ => "miss"
 
 erasedInRuntimeList () =
-    "${listGet (listAppend (listAppend (List ()) (forward ("ap" + "pended"))) (forward 8)) 0}"
+    match listGet (listAppend (listAppend (List ()) (forward ("ap" + "pended"))) (forward 8)) 0
+        Success value => "Success(${value})"
+        Error _message => "miss"
 
 (** A fold's loop-carried accumulator crosses a representation boundary as a
     raw word, and its rebind carried its own hand-written "is this a string or

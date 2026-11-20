@@ -355,7 +355,7 @@ pub(crate) static LISTS: &[BuiltinDoc] = &[
         "listGet",
         "Returns the element at the given index, or an error if the index is out of range.",
         ["list" => "The list to read from", "index" => "Zero-based element index"],
-        "match listGet([10, 20], 0) {\n    Success { value } => print(value)\n    Error { message } => print(message)\n}",
+        "match listGet([10, 20], 0) {\n    Success { value } => print(value)\n    Error { message } => print(\"no element ${message.index} of ${message.length}\")\n}",
     ),
     builtin_doc!(
         "listContains",

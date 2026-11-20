@@ -179,8 +179,8 @@ fn fused_list_get(cg: &mut Codegen, arguments: &[Expr], arms: &[MatchArm]) -> Re
     let element = crate::collections::elem_value(cg, &list, &raw);
     emit_result_body(cg, result_arm(arms, "Success"), element, None, &mut phi_in)?;
     cg.start_block(&el);
-    let reason = cg.string_constant(crate::collections::INDEX_OOB).operand;
-    let reason = Value::new(reason, LType::Str);
+    let length = crate::collections::list_length(cg, &list);
+    let reason = crate::aggregate::index_out_of_bounds(cg, &index.operand, &length)?;
     emit_result_body(cg, result_arm(arms, "Error"), reason, None, &mut phi_in)?;
     finish_phi(cg, &phi_in, &end, mark)
 }

@@ -1127,7 +1127,7 @@ match listGet([10, 20, 30], 7) {
 }
 ```
 
-A program that declares its own `IndexOutOfBounds` keeps its own; list reads then have no error type it can name.
+The record is a prelude unit of its own, attached beside every list read. A program that declares a type or constructor named `IndexOutOfBounds` is rejected.
 
 A string list bound to a name — the result of `lines`, `words` or `split` — is settled into the runtime representation once, at the binding, so every `listGet` on the bound name is a constant-time read and never a copy of the list.
 

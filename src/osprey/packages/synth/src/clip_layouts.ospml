@@ -80,10 +80,10 @@ module ClipLayouts
     export channels n = match n.processor
         MidiNotes => Success(value = 0)
         Sink => match listGet n.inputs 0
-            Error why => Error(message = why)
+            Error _ => Error(message = "index out of bounds")
             Success port => Success(value = port.channels)
         _ => match listGet n.outputs 0
-            Error why => Error(message = why)
+            Error _ => Error(message = "index out of bounds")
             Success port => Success(value = port.channels)
 
     delay n = match n.processor

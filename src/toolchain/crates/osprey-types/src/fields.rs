@@ -15,6 +15,9 @@ const FIELD_OBLIGATION: &str = "$field:";
 /// same deferral as a read, resolved as an assignment INTO the field.
 const FIELD_WRITE: &str = "$write:";
 
+/// An index read whose target is not typed yet: `(target, index) -> result`.
+pub(crate) const INDEX_OBLIGATION: &str = "$index";
+
 #[cfg(test)]
 std::thread_local! {
     pub(crate) static FIELD_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -82,6 +85,7 @@ impl Checker {
             #[cfg(test)]
             FIELD_VISITS.with(|visits| visits.set(visits.get() + 1));
             let solved = self.resolve_method_use(&name, &ty)
+                || (name == INDEX_OBLIGATION && self.resolve_index_use(&ty))
                 || parse_obligation(&name).is_some_and(|(write, site, field)| {
                     self.resolve_field_use(write, site, field, &ty)
                 });
@@ -149,6 +153,21 @@ impl Checker {
             Ok(actual) if write => self.push_assign(&actual, ret),
             Ok(actual) => self.push_unify(ret, &actual),
             Err(error) => self.errors.push(error),
+        }
+        true
+    }
+
+    fn resolve_index_use(&mut self, relation: &Type) -> bool {
+        let Type::Fun { params, ret } = relation else {
+            return false;
+        };
+        let [target, index] = params.as_slice() else {
+            return false;
+        };
+        self.ctx.settle_head(target);
+        match self.index_result(target, index) {
+            Some(result) => self.push_unify(ret, &result),
+            None => return false,
         }
         true
     }

@@ -171,7 +171,7 @@ def alignment_of(fields):
     if len(declared) == 0:
         return Success(value=Constants.DEFAULT_ALIGNMENT)
     else:
-        return andThen(listGet(declared, 0), checked_alignment)
+        return andThen(Chain.first_or_error(declared, "index out of bounds"), checked_alignment)
 
 
 def names_alignment(field):

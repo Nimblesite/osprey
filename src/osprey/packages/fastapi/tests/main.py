@@ -398,9 +398,18 @@ def oracle_document(client, document, headers):
     match document:
         case JsonArray(cases):
             expect(len(headers), len(cases))
-            return forEach(range(len(cases)), lambda index: wire_record(client, listGet(cases, index), listGet(headers, index)))
+            return forEach(range(len(cases)), lambda index: wire_record(client, item_at(cases, index), item_at(headers, index)))
         case _:
             return check("oracle corpus", "JSON array", "other JSON value")
+
+
+def item_at(items, index):
+    """The item at `index`, or the list read's failure as a message."""
+    match listGet(items, index):
+        case Success(value=item):
+            return Success(value=item)
+        case Error():
+            return Error(message="index out of bounds")
 
 
 def wire_record(client, document, headers):

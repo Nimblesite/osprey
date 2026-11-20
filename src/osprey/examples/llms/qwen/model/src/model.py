@@ -176,8 +176,8 @@ def advance(model, cache, acc, index, rows):
             match listGet(model.layers, index):
                 case Success(value=layer):
                     return with_slot(model, walk, layer, cache, index, rows)
-                case Error(message=message):
-                    return Error(message=f"layer {index}: {toString(message)}")
+                case Error():
+                    return Error(message=f"layer {index}: index out of bounds")
 
 
 def forward(model, cache, x, count) -> Result[Walk, str]:
@@ -343,8 +343,8 @@ def embedded_row(model, tokens, index, acc):
             match listGet(tokens, index):
                 case Success(value=token):
                     return Success(value=listConcat(rows, [embed(model, token)]))
-                case Error(message=message):
-                    return Error(message=f"prefill: token {index}: {toString(message)}")
+                case Error():
+                    return Error(message=f"prefill: token {index}: index out of bounds")
 
 
 def passed(model, cache, tokens, first, chunk):

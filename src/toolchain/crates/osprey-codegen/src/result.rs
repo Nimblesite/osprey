@@ -239,19 +239,42 @@ pub(crate) fn make_result_if_err(
     make_result_if_err_because(cg, value, inner, is_err, msg, None)
 }
 
-/// A gathered element gated on a runtime in-bounds verdict (`i32`, zero means
-/// out of bounds): `Success(value)` at the value's own type, else `Error(msg)`.
-/// Every indexable runtime — lists and GPU buffers alike — lands here, so the
-/// two `Result` shapes cannot drift.
-pub(crate) fn make_result_unless_in_bounds(
+/// A list read's `Result`: `Success(value)` when `in_bounds` (an `i1`) holds,
+/// else `Error(IndexOutOfBounds { index, length })`, the record built on the
+/// failing path alone. Both list layouts land here. Implements
+/// [BUILTIN-LIST-GET].
+pub(crate) fn make_list_read(
     cg: &mut Codegen,
     in_bounds: &str,
     value: Value,
-    msg: &str,
+    index: &str,
+    length: impl FnOnce(&mut Codegen) -> String,
 ) -> Result<Value> {
     let inner = value.ty;
-    let is_err = cg.emit_reg(format!("icmp eq i32 {in_bounds}, 0"));
-    make_result_if_err(cg, value, inner, &is_err, Some(msg))
+    let mark = crate::arc::frame_mark(cg);
+    let (ok, oob, end) = cg.diamond(in_bounds);
+    cg.start_block(&oob);
+    crate::arc::open_conditional(cg, mark);
+    let length = length(cg);
+    let record = crate::aggregate::index_out_of_bounds(cg, index, &length)?;
+    let boxed = crate::anybox::box_typed(cg, record)?;
+    crate::arc::close_conditional(cg);
+    let from_oob = cg.snapshot_to(&end);
+    cg.start_block(&ok);
+    let from_ok = cg.snapshot_to(&end);
+    cg.start_block(&end);
+    let slot = cg.emit_reg(format!(
+        "phi i8* [ null, %{from_ok} ], [ {}, %{from_oob} ]",
+        boxed.operand
+    ));
+    let disc = cg.emit_reg(format!("select i1 {in_bounds}, i8 0, i8 {TYPED_ERROR}"));
+    // An element type the backend cannot see stays open; the error side is
+    // what every reader of the payload decides on.
+    let elem = value.inferred_type.clone();
+    let read = osprey_types::list_read(elem.unwrap_or(osprey_types::Type::Var(0)));
+    let mut out = make_result(cg, value, inner, &disc, &slot)?;
+    out.inferred_type = Some(read);
+    Ok(out)
 }
 
 /// [`make_result_if_err`] with a RUNTIME reason: `reason` is an `i8*` operand

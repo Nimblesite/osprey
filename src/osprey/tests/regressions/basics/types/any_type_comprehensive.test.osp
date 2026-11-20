@@ -183,7 +183,10 @@ fn erasedInList() = match [forward("bo" + "xed"), forward(7)] {
 }
 
 fn erasedInRuntimeList() =
-    "${listGet(listAppend(listAppend(List(), forward("ap" + "pended")), forward(8)), 0)}"
+    match listGet(listAppend(listAppend(List(), forward("ap" + "pended")), forward(8)), 0) {
+        Success { value } => "Success(${value})"
+        Error => "miss"
+    }
 
 /// A fold's loop-carried accumulator crosses a representation boundary as a
 /// raw word, and its rebind carried its own hand-written "is this a string or

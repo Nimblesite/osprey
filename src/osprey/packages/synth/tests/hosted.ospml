@@ -18,6 +18,10 @@ succeeds (outcome, check) = match outcome
     Success value => check value
     Error why => expect (why, "successful operation")
 
+reads (outcome, check) = match outcome
+    Success value => check value
+    Error why => expect ("no element ${why.index} of ${why.length}", "an element")
+
 // [SYNTH-RENDER-BLOCKS] Kernel state must survive unequal streaming block boundaries.
 partitionedKernel (component, channels) =
     routes = match length component.inputs > 0
@@ -80,7 +84,7 @@ nodeClipAt (identity, samples) = synth::NodeClip(clipNode = identity, clipChanne
 
 steady (count, level) = mapList (toList (range (0, count)), \_ => level)
 
-pointValue (request, want) = succeeds (listGet request.parameters 0, \point => expect (point.value, want))
+pointValue (request, want) = reads (listGet request.parameters 0, \point => expect (point.value, want))
 
 // A half-open MIDI window either owns its note or is rejected outright.
 timelineAt (note, start, span, admitted) = match admitted
@@ -89,9 +93,9 @@ timelineAt (note, start, span, admitted) = match admitted
 
 requested (request, kind, offset, value) =
     expect (length request.notes, 1)
-    succeeds (listGet request.notes 0, \note => expect (note.kind == kind && note.offset == offset, true))
+    reads (listGet request.notes 0, \note => expect (note.kind == kind && note.offset == offset, true))
     expect (length request.parameters, 1)
-    succeeds (listGet request.parameters 0, \point => expect (point.offset == offset && value point.value, true))
+    reads (listGet request.parameters 0, \point => expect (point.offset == offset && value point.value, true))
 
 hostGraph () = built ([Components::midiNote (1, 60.0, 0.8, 128.0), hostNode (synth::Hosted::component (2, hostDescriptor ())), Components::lfo (3, 2.0), Components::stereoOutput 4], [cable (1, 2), cable (2, 4)])
 
@@ -193,7 +197,7 @@ registerHostedJourneys () =
                 expect (next.observation.revision == 2 && structuralEquals (next.observation.parameters, tuned.parameters), true))
         changed = serial ([Components::sine (1, 440.0), Components::delay (2, 2), Components::output 3])
         succeeds (Repatch::apply (original, changed, now, first), \next =>
-            succeeds (listGet next.audio.states 1, \held => expect (length held.delay, 2))
+            reads (listGet next.audio.states 1, \held => expect (length held.delay, 2))
             expect (length next.observation.parameters, 1))
         expanded = accepted (Graphs::add (original, Components::sine (4, 880.0)))
         succeeds (Repatch::apply (original, expanded, now, first), \next => expect (length next.audio.states, 4))
@@ -268,7 +272,7 @@ registerHostedJourneys () =
                 synth::ClipWaiting identity request clips =>
                     expect (identity, 2)
                     expect (length request.notes == 2 && length request.parameters == 2, true)
-                    succeeds (listGet request.notes 1, \off => expect (off.offset, 128))
+                    reads (listGet request.notes 1, \off => expect (off.offset, 128))
                     pointValue (request, 0.5)
                     layout = synth::HostLayout(inputChannels = 0, outputChannels = 2, acceptsNotes = true)
                     succeeds (synth::HostPackets::clip (layout, request), \bytes => expect (startsWith bytes "000100000200000002000000", true))

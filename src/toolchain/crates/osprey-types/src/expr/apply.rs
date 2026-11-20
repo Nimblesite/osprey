@@ -174,31 +174,47 @@ impl Checker {
         }
     }
 
+    /// `target[index]`. A target no use has typed yet keeps the read as a
+    /// relation, so a parameter indexed in a generic helper takes its
+    /// container's own result at each call. Implements [BUILTIN-LIST-GET].
     pub(super) fn infer_index(&mut self, target: &Expr, index: &Expr, env: &TypeEnv) -> Type {
         let tt = self.infer_expr(target, env);
         let it = self.infer_expr(index, env);
         if self.reject_erased_operand("index", &tt) {
             return self.ctx.fresh();
         }
-        match self.ctx.expose(&tt) {
+        self.index_result(&tt, &it).unwrap_or_else(|| {
+            let result = self.ctx.fresh();
+            self.builtin_uses.push((
+                crate::fields::INDEX_OBLIGATION.to_owned(),
+                Type::fun(vec![tt, it], result.clone()),
+            ));
+            result
+        })
+    }
+
+    /// What indexing `target` by `index` returns; `None` while the target is
+    /// still unknown.
+    pub(crate) fn index_result(&mut self, target: &Type, index: &Type) -> Option<Type> {
+        match self.ctx.expose(target) {
+            Type::Var(_) => None,
             Type::Con { name, args } if name == names::LIST && !args.is_empty() => {
-                self.push_assign(&Type::int(), &it);
-                res_math_like(args.first().cloned().unwrap_or_else(|| self.ctx.fresh()))
+                self.push_assign(&Type::int(), index);
+                let elem = args.first().cloned().unwrap_or_else(|| self.ctx.fresh());
+                Some(crate::builtins::list_read(elem))
             }
             Type::Con { name, args } if name == names::MAP && args.len() == 2 => {
                 if let Some(key) = args.first() {
-                    self.push_assign(key, &it);
+                    self.push_assign(key, index);
                 }
-                res_math_like(args.get(1).cloned().unwrap_or_else(|| self.ctx.fresh()))
+                let value = args.get(1).cloned().unwrap_or_else(|| self.ctx.fresh());
+                Some(res_math_like(value))
             }
             t if t.is_named(names::STRING) => {
-                self.push_assign(&Type::int(), &it);
-                res_math_like(Type::string())
+                self.push_assign(&Type::int(), index);
+                Some(res_math_like(Type::string()))
             }
-            _ => {
-                let fresh = self.ctx.fresh();
-                res_math_like(fresh)
-            }
+            _ => Some(res_math_like(self.ctx.fresh())),
         }
     }
 }

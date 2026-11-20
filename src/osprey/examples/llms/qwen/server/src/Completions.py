@@ -184,8 +184,8 @@ def collected(calls, seen, at, kept_calls):
     match listGet(calls, satAdd(seen, at)):
         case Success(value=call):
             return collected(calls, seen, satAdd(at, 1), listAppend(kept_calls, call))
-        case Error(message=message):
-            return Success(value=kept_calls) if satAdd(seen, at) >= Lists.count(calls) else Error(message=message)
+        case Error():
+            return Success(value=kept_calls) if satAdd(seen, at) >= Lists.count(calls) else Error(message="index out of bounds")
 
 
 def finished_turn(draft):
@@ -218,8 +218,8 @@ def first_failed(calls):
     match listGet(filterList(calls, lambda call: call.error != ""), 0):
         case Success(value=call):
             return Success(value=call)
-        case Error(message=message):
-            return Error(message=message)
+        case Error():
+            return Error(message="index out of bounds")
 
 
 def tool_failure(call):

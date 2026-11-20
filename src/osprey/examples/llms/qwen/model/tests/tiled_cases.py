@@ -180,7 +180,7 @@ def negative_grid():
 
 def missing_values():
     with Qwen3_5Device.strictly:
-        return Success(value=Qwen3_5Device.must_values(listGet([[toFloat32(1.0)]], 4)))
+        return Success(value=Qwen3_5Device.must_values(Error(message="index out of bounds")))
 
 
 def explicit_device_fault():

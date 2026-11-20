@@ -356,7 +356,7 @@ modulationJourney () =
         expected = listConcat half half
         countOf (output.clipSamples, length expected)
         forEachList (toList (range (0, length expected)), \index =>
-            succeeds (listGet output.clipSamples index, \value => near (value, listGet expected index ?: 99.0)))
+            reads (listGet output.clipSamples index, \value => near (value, listGet expected index ?: 99.0)))
         moving = edited (editor, 2, "frequency", "20")
         succeeds (clipOutput moving.graph, \modulated => differs (modulated.clipSamples, output.clipSamples)))
     errs (clipOutput (synth::EditorState::tapped (editor, synth::Disconnect(identity = 3, inlet = 1))).graph)
@@ -367,10 +367,10 @@ hostedModulationJourney graph =
     waiting (graph, 256, \identity => \block =>
         expect (identity, 0)
         expect (structuralEquals ([length block.parameters, length block.samples], [2, 512]), true)
-        succeeds (listGet block.parameters 0, \first =>
+        reads (listGet block.parameters 0, \first =>
             expect (structuralEquals ([first.identity, first.offset], [100, 0]), true)
             expect (first.value, 0.5))
-        succeeds (listGet block.parameters 1, \second =>
+        reads (listGet block.parameters 1, \second =>
             expect (second.offset, 128)
             expect (second.value > 0.5 && second.value < 1.0, true)))
     valid (modulatedBy (graph, "vst:100"), \same => expect (structuralEquals (same, graph), true))
@@ -529,7 +529,7 @@ waiting (graph, frames, check) =
             synth::ClipReady _ => expect (false, true)
 
 // The unbound module's automation, restored to its initial value.
-restoresParameter graph = waiting (graph, 256, \_ => \block => succeeds (listGet block.parameters 0, \restored => expect (restored.value, 1.0)))
+restoresParameter graph = waiting (graph, 256, \_ => \block => reads (listGet block.parameters 0, \restored => expect (restored.value, 1.0)))
 
 // A graph advanced to ready clips, or why it cannot be.
 clipReady (graph, frames, channels) = unhosted (synth::GraphClips::advance (graph, [], frames), channels)

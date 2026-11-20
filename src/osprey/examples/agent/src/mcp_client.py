@@ -265,8 +265,11 @@ def form_server(name, kind, command, arguments, url, environment, headers):
         return Error(message=entry.problem)
     else:
         single = J.encode(J.obj([J.member("mcpServers", J.obj([J.member(trim(name), unwrap_or(J.decode(entry.text), JsonNull()))]))]))
-        servers = parse_config(single).servers
-        return Error(message="the form did not parse") if len(servers) == 0 else Success(value=servers[0])
+        match parse_config(single).servers[0]:
+            case Success(value=server):
+                return Success(value=server)
+            case Error():
+                return Error(message="the form did not parse")
 
 
 def start_brief(entry_json):

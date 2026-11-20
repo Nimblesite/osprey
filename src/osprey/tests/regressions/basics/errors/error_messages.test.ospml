@@ -9,6 +9,12 @@
 boom : Unit -> Result<int, string>
 boom () = Error(message = "user boom")
 
+(** A list read with its `IndexOutOfBounds` failure spelled as a message: the
+    index asked for and the length it met ([BUILTIN-LIST-GET]). *)
+readOrMessage read = match read
+    Success value => Success(value = value)
+    Error message => Error(message = "index ${message.index} of ${message.length}")
+
 (** A Result payload is a runtime value of ANY length, so `toString` must size
     its buffer from the string it is handed. The fixed 64-byte block it used to
     format into was a heap buffer overflow, not a size heuristic: rendering any
@@ -91,7 +97,7 @@ codePointA = fromCodePoint 65
 (** Collections reject a bad index and a missing key. *)
 xs = [1, 2, 3]
 prices = ["apple" => 2, "banana" => 3]
-listIndexErr = xs[9]
+listIndexErr = readOrMessage (xs[9])
 mapKeyErr = prices["mango"]
 
 // ---- numeric parsing ----

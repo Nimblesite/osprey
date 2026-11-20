@@ -30,7 +30,7 @@ module HostPackets
     collectSample (samples, outcome, index) = match outcome
         Error why => Error(message = why)
         Success values => match listGet samples index
-            Error why => Error(message = why)
+            Error _ => Error(message = "index out of bounds")
             Success value => Success(value = listAppend values value)
 
     (** Checked interleaved sample slice used by the graph and packet encoders. *)

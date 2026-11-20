@@ -22,7 +22,7 @@ use crate::llty::{LType, Value};
 use osprey_ast::{Expr, FieldAssignment};
 
 mod construct;
-pub(crate) use construct::gen_constructor;
+pub(crate) use construct::{gen_constructor, index_out_of_bounds};
 pub(crate) mod erasure;
 
 /// A field's value as a record stores it: a list literal takes the runtime

@@ -61,5 +61,5 @@ def newest_token(token):
     match token:
         case Success(value=value):
             return Success(value=value)
-        case Error(message=message):
-            return Error(message=f"generate produced no token: {message}")
+        case Error():
+            return Error(message="generate produced no token: index out of bounds")

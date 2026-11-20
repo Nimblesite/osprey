@@ -36,6 +36,9 @@ pub mod names {
     pub(crate) const SUCCESS: &str = "Success";
     /// `Result`'s error-variant constructor (`Error { message }`).
     pub const ERROR: &str = "Error";
+    /// The record a failed list read holds: `{ index, length }`
+    /// ([BUILTIN-LIST-GET]).
+    pub const INDEX_OUT_OF_BOUNDS: &str = "IndexOutOfBounds";
     /// The `List<elem>` collection type.
     pub const LIST: &str = "List";
     /// The `Map<key, value>` collection type.

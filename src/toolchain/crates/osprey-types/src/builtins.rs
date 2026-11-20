@@ -41,6 +41,12 @@ fn any() -> Type {
 fn res(ok: Type) -> Type {
     Type::result(ok, s())
 }
+/// What a list read returns, under either spelling: the element, or the
+/// `IndexOutOfBounds` record. Implements [BUILTIN-LIST-GET].
+#[must_use]
+pub fn list_read(elem: Type) -> Type {
+    Type::result(elem, Type::con(crate::names::INDEX_OUT_OF_BOUNDS, vec![]))
+}
 
 /// How many low variable ids the builtin schemes below use as hand-written
 /// quantified binders (`Var(0)`, `Var(1)`, `Var(2)`). The checker's fresh-variable
@@ -280,7 +286,7 @@ fn lists(e: &mut TypeEnv) {
         Type::list(t()),
     );
     poly(e, "listLength", vec![0], vec![Type::list(t())], i());
-    poly(e, "listGet", vec![0], vec![Type::list(t()), i()], res(t()));
+    poly(e, "listGet", vec![0], vec![Type::list(t()), i()], list_read(t()));
     poly(e, "listContains", vec![0], vec![Type::list(t()), t()], b());
     // Deep content comparison [BUILTIN-STRUCTURAL-EQUALS]: both operands are
     // the one type variable, and the operand type is validated as an

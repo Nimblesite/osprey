@@ -70,7 +70,7 @@ module RenderKernels
             Success wave => sine (rate, snapshot, frame, held, wave, \value => value)
         Lfo => sine (rate, snapshot, frame, held, Sine, Waves::unipolar)
         Delay _ => match listGet held.delay 0
-            Error why => Error(message = why)
+            Error _ => Error(message = "index out of bounds")
             Success previous => Success(value = RenderInputs::emitted (frame, held, previous))
         _ => match RenderInputs::input (plan, frame, held.identity, 0)
             Error why => Error(message = why)

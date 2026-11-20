@@ -42,7 +42,9 @@ module HostModulation
         Error why => Error(message = why)
         Success clip => match clip.clipChannels == 1
             false => Error(message = "A parameter modulator must have one control channel.")
-            true => listGet clip.clipSamples offset
+            true => match listGet clip.clipSamples offset
+                Error _ => Error(message = "index out of bounds")
+                Success sample => Success(value = sample)
 
     point (values, p, offset, number) = match startsWith p.key "vst:" && number >= 0.0 && number <= 1.0 && length values < 1024
         false => Error(message = "Invalid or excessive VST parameter automation.")

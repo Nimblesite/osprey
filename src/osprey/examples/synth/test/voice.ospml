@@ -215,7 +215,7 @@ windowsAudioJourney () =
     worker = "C:\\Prism\\play-wav.exe"
     opened = Drive::launched (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "windows", ["--audio-worker", worker])
     playing = synth::GraphPreview::play (Drive::holding opened, "windows")
-    succeeds (listGet playing.requests 0, \request =>
+    reads (listGet playing.requests 0, \request =>
         match request.capability
             ui::HostCall space operation args _ _ _ =>
                 expect (space, "process")
@@ -223,7 +223,7 @@ windowsAudioJourney () =
                 expect (structuralEquals (mapList (args, \arg => arg.headerValue), [worker, "audio-device"]), true)
             _ => expect (false, true))
     exchanged = synth::GraphPreview::completed (playing.stepStore, playing.stepStore.renderTicket, Success(value = "{\"status\":0,\"session\":\"windows-device\"}"))
-    succeeds (listGet exchanged.requests 0, \request =>
+    reads (listGet exchanged.requests 0, \request =>
         match request.capability
             ui::HostCall _ operation args _ _ slice =>
                 expect (operation, "session-exchange")

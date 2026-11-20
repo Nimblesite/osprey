@@ -36,13 +36,13 @@ module Grains
     interpolated (source, cursor) = match floatToInt (floor cursor)
         Error why => Error(message = why)
         Success index => match listGet source index
-            Error why => Error(message = why)
+            Error _ => Error(message = "index out of bounds")
             Success a =>
                 following = match index == satSub (length source) 1
                     true => 0
                     false => satAdd index 1
                 match listGet source following
-                    Error why => Error(message = why)
+                    Error _ => Error(message = "index out of bounds")
                     Success b => match sourceSample a && sourceSample b
                         false => Error(message = "A grain read a nonfinite or unnormalised source sample.")
                         true => Success(value = GrainMath::interpolated (a, b, GrainMath::fraction cursor))

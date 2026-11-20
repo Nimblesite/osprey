@@ -14,7 +14,6 @@ use crate::cast::coerce_to;
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
-use crate::result::make_result;
 use osprey_ast::Expr;
 use osprey_types::numeric::Numeric;
 
@@ -356,15 +355,19 @@ pub(crate) fn gen_index(cg: &mut Codegen, target: &Expr, index: &Expr) -> Result
         "phi {} [ {val}, %{load_bb} ], [ {zero}, %{oob_bb} ]",
         elem.as_str()
     ));
-    let disc = cg.emit_reg(format!("select i1 {ok}, i8 0, i8 1"));
-    // `ok` is the in-bounds flag, so the message is selected on the failing path.
-    let oob = cg.string_constant(crate::collections::INDEX_OOB);
-    let errmsg = cg.emit_reg(format!("select i1 {ok}, i8* null, i8* {}", oob.operand));
-    make_result(
-        cg,
-        Value::new(phi, elem).with_owner(elem_owner),
-        elem,
-        &disc,
-        &errmsg,
-    )
+    let value = typed_element(cg, &tv, Value::new(phi, elem).with_owner(elem_owner));
+    crate::result::make_list_read(cg, &ok, value, &idx.operand, |_| len)
+}
+
+/// A loaded element at the list's checked element type; a Result element is
+/// recovered whole, exactly as the runtime layout's read recovers it.
+fn typed_element(cg: &mut Codegen, list: &Value, mut value: Value) -> Value {
+    let inferred = list.element_type(osprey_types::names::LIST);
+    if inferred.as_ref().and_then(crate::types::result_inner).is_some() {
+        let word = crate::conv::box_to_i64(cg, value.clone());
+        return crate::cast::result_element_word(cg, &word.operand, inferred.as_ref())
+            .unwrap_or(value);
+    }
+    value.inferred_type = inferred;
+    value
 }

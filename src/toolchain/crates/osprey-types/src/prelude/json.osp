@@ -41,7 +41,10 @@ fn jsonField(value, name) = match value {
 
 /// The array element at an index.
 fn jsonIndex(value, index) = match value {
-    JsonArray(items) => __jsonElement(listGet(items, index), index)
+    JsonArray(items) => match listGet(items, index) {
+        Success { value } => Success { value: value }
+        Error => Error { message: "jsonIndex: no element ${index}" }
+    }
     _ => Error { message: "jsonIndex: not an array" }
 }
 
@@ -136,13 +139,6 @@ fn __jsonNode(document, slot) = match __jsonNodeKind(document, slot) {
 }
 
 fn __jsonChildren(document, slot) = range(__jsonNodeFirst(document, slot), __jsonNodeEnd(document, slot))
-
-// The element lookup's own result when it found one, so a hit allocates
-// nothing more.
-fn __jsonElement(found, index) = match found {
-    Error => Error { message: "jsonIndex: no element ${index}" }
-    _ => found
-}
 
 // The member named `name`, scanning in order. A fold over the positions does
 // no arithmetic of its own, so a lookup raises no Arith effect in the caller,

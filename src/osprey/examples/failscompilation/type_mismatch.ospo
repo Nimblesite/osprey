@@ -19,3 +19,10 @@ fn decode(r: Result<int, Refusal>) -> string = match r {
     Success { value } => toString(value)
     Error { message } => message
 }
+// A list read fails with the built-in `IndexOutOfBounds` record: it is not
+// a string, and a program cannot declare its own. [BUILTIN-LIST-GET]
+fn firstOr(xs: List<int>) -> string = match xs[0] {
+    Success { value } => toString(value)
+    Error { message } => message
+}
+type IndexOutOfBounds = { at: string }

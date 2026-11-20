@@ -159,6 +159,13 @@ fn parsedLen(s) = match parseLen(s) {
     Error { message } => "parse ${message.code}: ${message.why}"
 }
 
+/// A list read's value, or the index it asked for and the length it met.
+/// [BUILTIN-LIST-GET]
+fn readAt(xs, index) = match xs[index] {
+    Success { value } => "got ${value}"
+    Error { message } => "${message.index} of ${message.length}"
+}
+
 /// `E` is inferred from the payload and is that exact value on the way out:
 /// through match, `?:`, toString, interpolation and closures. [ERR-PAYLOAD]
 /// [ERR-RESULT-FORMAT] [TESTING-BUILTIN-EXPECT-ERROR]
@@ -180,6 +187,9 @@ fn typedErrorCase() = {
     expect("${code(-7)} ${flag(10)} ${frac(10)} ${toString(nested(12))} ${code(3)}", "Error(-7) Error(true) Error(2.5) Error(Error(-3)) Success(3)")
     forEachList([-1, -2, -3], |n| => expectError(code(n), n))
     expect(range(-2, 3) |> fold(0, |sum, n| => satAdd(sum, code(n) ?: 100)), 203)
+    expectError(listGet([10, 20, 30], 7), IndexOutOfBounds { index: 7, length: 3 })
+    expectError(listAppend([10, 20, 30], 40)[-2], IndexOutOfBounds { index: -2, length: 4 })
+    expect("${readAt([10, 20, 30], 1)} ${readAt([10, 20, 30], 3)} ${readAt(listAppend(List(), 5), 9)} ${[1, 2][4] ?: -1}", "got 20 3 of 3 9 of 1 -1")
 }
 
 /// A test call runs wherever it is evaluated, so a helper may declare cases.

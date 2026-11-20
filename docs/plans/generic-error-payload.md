@@ -28,10 +28,11 @@ Make `Result<T, E>` hold its error at type `E`, end to end, as [ERR-RESULT](../s
 
 ## Specific error types
 
-- [ ] [BUILTIN-LIST-GET] spec: `listGet` and `list[i]` fail with `IndexOutOfBounds { index, length }`
-- [ ] Prelude declares `IndexOutOfBounds`; checker types list reads with it
-- [ ] Backend builds the record at the bounds check on GC, ARC and wasm32
-- [ ] Corpus and rejection programs cover it
+- [x] [BUILTIN-LIST-GET] spec: `listGet` and `list[i]` fail with `IndexOutOfBounds { index, length }`
+- [x] Prelude declares `IndexOutOfBounds`; checker types list reads with it
+- [x] Backend builds the record at the bounds check on GC, ARC and wasm32
+- [x] Corpus and rejection programs cover it
+- [x] `xs[i]` on a parameter no use has typed yet is a deferred relation, resolved to its container's result at each call
 
 ## Backend (`osprey-codegen`)
 

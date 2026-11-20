@@ -20,7 +20,9 @@ module Lists
 
     (** The first item that `matches`, or an error when none does. *)
     export find<T> : (List<T>, (T) -> bool) -> Result<T, string>
-    find (items, matches) = listGet (filterList (items, matches)) 0
+    find (items, matches) = match listGet (filterList (items, matches)) 0
+        Error _ => Error(message = "index out of bounds")
+        Success item => Success(value = item)
 
     locate<T> : (int, List<T>, (T) -> bool, int) -> int
     locate (found, items, matches, index) = match found >= 0

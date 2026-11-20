@@ -12,7 +12,7 @@ module GrainGraph
     parameter (n, outcome, key) = match outcome
         Error why => Error(message = why)
         Success values => match listGet (filterList (n.parameters, \p => p.key == key)) 0
-            Error why => Error(message = why)
+            Error _ => Error(message = "index out of bounds")
             Success p => Success(value = listAppend values p.initial)
 
     timed (playback, period, jitter, mode, maximum) = match integer period
@@ -77,9 +77,9 @@ module GrainGraph
     interleave (block, outcome, index) = match outcome
         Error why => Error(message = why)
         Success samples => match listGet block.left index
-            Error why => Error(message = why)
+            Error _ => Error(message = "index out of bounds")
             Success left => match listGet block.right index
-                Error why => Error(message = why)
+                Error _ => Error(message = "index out of bounds")
                 Success right => Success(value = listPrepend (listPrepend samples left) right)
 
     (** Interleave actual left/right output for the common graph/device transport. *)

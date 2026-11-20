@@ -166,8 +166,8 @@ def identity_provider(path, request, children):
                     return authenticate(path, request, identity)
                 case _:
                     return refused(500, "Expected session dependency")
-        case Error(message=error):
-            return refused(500, error)
+        case Error():
+            return refused(500, "index out of bounds")
 
 def authenticate(path, request, identity):
     match P.header(request, "Authorization"):
@@ -192,8 +192,8 @@ def credit_provider(path, request, children):
             match listGet(children, 0):
                 case Success(value=person):
                     return authorize_credit(path, person, credit)
-                case Error(message=error):
-                    return refused(500, error)
+                case Error():
+                    return refused(500, "index out of bounds")
 
 def authorize_credit(path, person, credit):
     match person:
@@ -275,8 +275,8 @@ def passthrough(_request, children):
     match listGet(children, 0):
         case Success(value=child):
             return M.Provided(value=child)
-        case Error(message=error):
-            return refused(500, error)
+        case Error():
+            return refused(500, "index out of bounds")
 
 def credit_single_response(_request, values):
     match values:
