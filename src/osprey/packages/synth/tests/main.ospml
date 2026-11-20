@@ -578,3 +578,28 @@ test ("non-finite or runaway node output is refused, finite output up to the bou
     forEachList ([sqrt (-1.0), pow (10.0, 400.0), -1.0 * pow (10.0, 400.0), 1000000.5, -2000000.0], refusedOutput)
     forEachList ([0.0, -0.0, 0.5, -1.0, 1000000.0, -1000000.0, 0.000000000001], \value => succeeds (synth::RenderInputs::sample (framed value, 4), \got => expect (got == value, true)))
     renderRefused (synth::RenderInputs::sample (framed 0.5, 5))))
+
+import synth::Descriptors
+
+// [SYNTH-ADVANCED-CORE-PORTS] Every parameter of every component maps a 0–1 control onto its declared range and
+// back: 0 is the minimum, 1 the maximum, the round trip returns the control, and the mapping only rises.
+adapted () = [Components::sine (1, 440.0), Components::lowpass (2, 1000.0, 0.7), Components::modulatedLowpass (3, 1000.0, 0.7), Components::gain (4, 0.5), Components::delay (5, 480), Components::midiNote (6, 60.0, 0.8, 6000.0), Components::lfo (7, 2.0), Components::modulatedGain (8, 2, 0.5), Components::exciter (9, 1), Components::resonator (10, 440.0), Components::modalBank (11, 220.0, 1.0), Components::waveguide (12, 220.0, 2400), Components::fractionalDelay (13, 4.5, 64), Components::lossFilter (14, 0.99, 0.5), Components::allpass (15, 0.5), Components::additive (16, 220.0), Components::spectral (17, 1024, 256, 0.0), Components::shaper (18, 0.0, 2.0), Components::reverb (19, 2.0), Components::shifter (20, 100.0), Components::phaseOperator (21, 220.0, 0.0), Components::bowed (22, 220.0, 2400), Components::smoother (23, 0.01), Components::strikeComb (24, 220.0, 2400)]
+
+controls () = [0.0, 0.001, 0.1, 0.25, 0.5, 0.75, 0.9, 0.999, 1.0]
+
+closeEnough (got, want, scale) = expect (abs (got - want) <= 0.000000001 * (1.0 + abs scale), true)
+
+adapter p =
+    closeEnough (Descriptors::fromControl (p, 0.0), p.minimum, p.maximum)
+    closeEnough (Descriptors::fromControl (p, 1.0), p.maximum, p.maximum)
+    forEachList (controls (), \c => closeEnough (Descriptors::toControl (p, Descriptors::fromControl (p, c)), c, 1.0))
+    forEachList (controls (), \c => expect (Descriptors::fromControl (p, c) >= p.minimum - 0.000000001 * (1.0 + abs p.minimum) && Descriptors::fromControl (p, c) <= p.maximum + 0.000000001 * (1.0 + abs p.maximum), true))
+    forEachList (toList (range (1, length (controls ()))), \i => expect (Descriptors::fromControl (p, listGet (controls ()) i ?: 1.0) >= Descriptors::fromControl (p, listGet (controls ()) (satSub i 1) ?: 0.0), true))
+    closeEnough (Descriptors::toControl (p, p.initial), Descriptors::toControl (p, Descriptors::fromControl (p, Descriptors::toControl (p, p.initial))), 1.0)
+
+test ("every component parameter maps a 0-1 control onto its range and back, logarithmic for frequencies and times", \() => arithmetic (\() =>
+    expect (length (adapted ()), 24)
+    forEachList (adapted (), \n => forEachList (n.parameters, adapter))
+    every = foldList (adapted (), [], \(all, n) => listConcat all n.parameters)
+    expect (length (filterList (every, \p => Descriptors::scale p == synth::LogarithmicScale)) > 10, true)
+    expect (length (filterList (every, \p => Descriptors::scale p == synth::LinearScale)) > 40, true)))
