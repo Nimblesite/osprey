@@ -423,6 +423,29 @@ test ("sample-accurate automation applies before its frame, preserves ordering a
         forEachList ([{ frame = 16, scale = 1.0 }, { frame = 31, scale = 0.5 }], \r => near (listGet timeline.audio.samples r.frame ?: -1.0, r.scale * sin (6.283185307179586 * 440.0 * toFloat r.frame / 48000.0), 0.00000000001)))
     forEachList ([[restore, mute], [mute(samplePosition = 64)], [mute, restore(revision = 0)]], \events => renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, events)))))
 
+// [SYNTH-ADVANCED-CORE-PORTS] Same-frame events apply in their given order, and any block split gives the same audio.
+splitAt (plan, snapshot, first, events, cut) = match Renderer::automated (plan, 48000.0, snapshot, first, cut, filterList (events, \e => e.samplePosition < cut))
+    Error why => Error(message = why)
+    Success head => synth::Outcomes::carried (Renderer::automated (plan, 48000.0, head.observation, head.audio, satSub 64 cut, filterList (events, \e => e.samplePosition >= cut)), \tail => Success(value = listConcat head.audio.samples tail.audio.samples))
+
+test ("same-frame automation applies in order and every block split renders the same samples", \() => arithmetic (\() =>
+    graph = sineThrough (1.0)
+    plan = planFor graph
+    snapshot = Parameters::initial graph
+    first = rendered (Renderer::start graph)
+    mute = synth::ParameterChange(node = 2, key = "gain", value = 0.0, revision = 0, samplePosition = 20)
+    quiet = mute(value = 0.25, revision = 1)
+    full = mute(value = 1.0, revision = 2, samplePosition = 40)
+    events = [mute, quiet, full]
+    succeeds (Renderer::automated (plan, 48000.0, snapshot, first, 64, events), \whole =>
+        expect (length whole.audio.samples, 64)
+        expect (whole.observation.revision, 3)
+        // Both frame-20 edits land before frame 20; the later one (0.25) is what sounds.
+        forEachList ([20, 21, 30, 39], \i => near (listGet whole.audio.samples i ?: -1.0, 0.25 * sin (6.283185307179586 * 440.0 * toFloat i / 48000.0), 0.00000000001))
+        forEachList ([0, 19, 40, 63], \i => near (listGet whole.audio.samples i ?: -1.0, sin (6.283185307179586 * 440.0 * toFloat i / 48000.0), 0.00000000001))
+        forEachList ([1, 7, 19, 20, 21, 33, 40, 41, 63], \cut => succeeds (splitAt (plan, snapshot, first, events, cut), \pieces => expect (structuralEquals (pieces, whole.audio.samples), true))))
+    renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [quiet, mute]))))
+
 import synth::Performance
 
 performanceCase (rate, instrument, amount) = forEachList (toList (range (0, 128)), \frame =>
