@@ -58,6 +58,7 @@ pub fn run(arguments: &[String]) -> i32 {
             let Some(host) = made.borrow_mut().take() else {
                 return;
             };
+            host.set_storage(window.storage_provider());
             host.open(is_dark(window));
             follow_appearance(&host, window);
             let clock = Rc::new(FrameClock::new());

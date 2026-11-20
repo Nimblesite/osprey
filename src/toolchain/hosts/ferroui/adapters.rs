@@ -1,6 +1,7 @@
 //! Mechanical process, file and platform capabilities ([GPUI-HOST-CAPABILITIES]).
 
 mod files;
+pub(crate) mod picker;
 mod process;
 mod process_input;
 mod process_session;

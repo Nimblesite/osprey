@@ -11,6 +11,7 @@ use std::time::Instant;
 
 use ferroui_base::layout::{HorizontalAlignment, VerticalAlignment};
 use ferroui_base::media::Color;
+use ferroui_base::platform::storage::IStorageProvider;
 use ferroui_base::threading::{Dispatcher, DispatcherPriority};
 use ferroui_view::prelude::*;
 
@@ -43,6 +44,7 @@ pub struct Host {
     calling: Cell<bool>,
     animating: Cell<bool>,
     clock: RefCell<Option<ClockHandler>>,
+    storage: RefCell<Option<Rc<dyn IStorageProvider>>>,
     messages: RefCell<Vec<String>>,
     rendered: RefCell<Vec<String>>,
     pending: RefCell<Vec<Ask>>,
@@ -66,6 +68,7 @@ impl Host {
             calling: Cell::new(false),
             animating: Cell::new(false),
             clock: RefCell::new(None),
+            storage: RefCell::new(None),
             messages: RefCell::new(Vec::new()),
             rendered: RefCell::new(Vec::new()),
             pending: RefCell::new(Vec::new()),
@@ -216,6 +219,7 @@ impl Host {
         for ask in asks {
             match ask.kind() {
                 "animate" => self.animate(&ask),
+                "choose-file" => self.choose_file(ask),
                 "run" | "list-directories" | "read-texts" | "host-call" => background(ask),
                 "cancel" => self.send(adapters::completion(&ask)),
                 "store-read" | "store-write" | "store-list" | "store-delete" => {
@@ -228,6 +232,25 @@ impl Host {
                 }
             }
         }
+    }
+
+    /// Binds native pickers to the window hosting the Osprey surface.
+    pub fn set_storage(&self, provider: Rc<dyn IStorageProvider>) {
+        *self.storage.borrow_mut() = Some(provider);
+    }
+
+    fn choose_file(self: &Rc<Self>, ask: Ask) {
+        let provider = self.storage.borrow().clone();
+        let host = Rc::downgrade(self);
+        drop(Dispatcher::ui_thread().spawn_local(async move {
+            let result = match provider {
+                Some(provider) => adapters::picker::choose(provider, &ask).await,
+                None => Err("This surface has no window for a file picker.".into()),
+            };
+            if let Some(host) = host.upgrade() {
+                host.send(Touch::completed(&ask.ticket, result));
+            }
+        }));
     }
 
     /// Completes an animate request at once and arms or disarms the frame clock.
