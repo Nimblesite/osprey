@@ -141,10 +141,13 @@ module DawSession
         ticket = "${playTicket}${bar}"
         Runtime::asking (editor(songTicket = ticket, message = "Playing ${heldBars bar} of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = "/usr/bin/afplay", arguments = ["${bar}/piece.wav"], timeout = 3600000, outputLimit = 4096, plist = false, runSlice = ""))])
 
-    (** What the transport is doing: "Rendering…", "Playing" or "Stopped". *)
+    (** What is sounding: "Rendering…", "Playing" (the song), "Auditioning" (the patch on the audio device) or
+        "Stopped". The header never says Stopped while anything plays. *)
     export phase editor = match startsWith editor.songTicket renderTicket || startsWith editor.songTicket bounceTicket
         true => "Rendering…"
-        false => ui::Pick::either (startsWith editor.songTicket playTicket, "Playing", "Stopped")
+        false => match startsWith editor.songTicket playTicket
+            true => "Playing"
+            false => ui::Pick::either (editor.renderDeviceKey == "", "Stopped", "Auditioning")
 
     // The renderer reports a refused project on its output and still exits cleanly, so only audio counts.
     heard (editor, bar, outcome) = match (fileSize (wave bar) ?: 0) > 44

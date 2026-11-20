@@ -4,19 +4,20 @@
 //! and content size, `OSPREY_NATIVE_CHROME=bare` runs the content under the title bar; `OSPREY_NATIVE_BENCH=<seconds>` prints frame timings and closes the process.
 
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::time::Instant;
 
 use ferroui_base::media::MediaContext;
 use ferroui_base::styling::ThemeVariant;
 use ferroui_base::Ref;
-use ferroui_controls::Window;
+use ferroui_base::input::KeyGesture;
+use ferroui_controls::{NativeMenu, NativeMenuItem, Window};
 use ferroui_view::prelude::*;
 
 use crate::bench::Bench;
 use crate::events::Touch;
 use crate::ffi::Library;
-use crate::host::Host;
+use crate::host::{Command, Host};
 
 /// Default content size: the GPUI host's.
 const DEFAULT_SIZE: (f64, f64) = (1200.0, 800.0);
@@ -61,6 +62,7 @@ pub fn run(arguments: &[String]) -> i32 {
             host.set_storage(window.storage_provider());
             host.open(is_dark(window));
             follow_appearance(&host, window);
+            show_menus(&host, window);
             let clock = Rc::new(FrameClock::new());
             host.on_clock(Box::new(move |host| clock.clone().schedule(host.clone())));
             host.send(Touch::phase("active"));
@@ -87,6 +89,42 @@ fn follow_appearance(host: &Rc<Host>, window: &Ref<Window>) {
     });
     let subscription = Cell::new(Some(subscription));
     window.closed(move || drop(subscription.take())).detach();
+}
+
+/// Keeps the window's menu bar the menus the application names: each command sends its tap, and
+/// its shortcut is the key gesture its symbol spells (none when it spells no gesture).
+fn show_menus(host: &Rc<Host>, window: &Ref<Window>) {
+    let (weak, sender) = (window.downgrade(), Rc::downgrade(host));
+    host.on_menus(Box::new(move |menus| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let bar = NativeMenu::new();
+        for menu in menus {
+            let entry = NativeMenuItem::with_header(&menu.title);
+            let list = NativeMenu::new();
+            for command in &menu.commands {
+                list.add(menu_item(command, &sender));
+            }
+            entry.set_menu(Some(list));
+            bar.add(entry);
+        }
+        NativeMenu::set_menu(&window, (!menus.is_empty()).then_some(bar));
+    }));
+}
+
+fn menu_item(command: &Command, host: &Weak<Host>) -> Ref<NativeMenuItem> {
+    let item = NativeMenuItem::with_header(&command.label);
+    item.set_is_enabled(command.enabled);
+    item.set_gesture(KeyGesture::parse(&command.keys).ok());
+    let (host, event) = (host.clone(), command.event);
+    item.click(move |_| {
+        if let Some(host) = host.upgrade() {
+            host.control(event, "");
+        }
+    })
+    .detach();
+    item
 }
 
 /// The frame clock: while the application has it on, one `frame` event per animation frame, with

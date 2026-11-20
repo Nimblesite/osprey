@@ -18,7 +18,7 @@ use ferroui_controls::{Expander, TextBox};
 use ferroui_view::element::with_key;
 use ferroui_view::prelude::*;
 
-use crate::host::Host;
+use crate::host::{Command, Host, Menu};
 use crate::theme::{self, Look};
 use crate::tree::{self, Tree};
 
@@ -957,15 +957,52 @@ fn dialog(cx: &mut Cx, node: &Tree) -> Element {
         .into()
 }
 
+/// A section among a context menu's actions as one menu of the window's menu bar: its title,
+/// and its buttons as commands, each button's symbol naming its shortcut.
+fn window_menu(section: &Tree) -> Menu {
+    let commands = tree::list(section, "children")
+        .iter()
+        .filter(|item| tree::string(item, "kind") == "button")
+        .filter_map(|item| {
+            Some(Command {
+                label: tree::string(item, "label").to_owned(),
+                keys: tree::string(item, "symbol").to_owned(),
+                enabled: tree::flag(item, "enabled"),
+                event: tree::ordinal(item)?,
+            })
+        })
+        .collect();
+    Menu {
+        title: tree::string(section, "title").to_owned(),
+        commands,
+    }
+}
+
+/// The window menus a context menu node names: its sections, in order.
+pub fn window_menus(node: &Tree) -> Vec<Menu> {
+    tree::list(node, "items")
+        .iter()
+        .filter(|item| tree::string(item, "kind") == "section")
+        .map(window_menu)
+        .collect()
+}
+
 /// The body with a context menu of its actions: each button among them is a menu item that
-/// sends its tap; an action of another kind is refused.
+/// sends its tap, each section is a menu of the window's menu bar, and an action of another
+/// kind is refused.
 fn context_menu(cx: &mut Cx, node: &Tree) -> Element {
     let body = match node.get("body") {
         Some(body) => self::node(cx, body),
         None => Element::Empty,
     };
+    window_menus(node)
+        .into_iter()
+        .for_each(|menu| cx.host.gather(menu));
     let mut items: Vec<Element> = Vec::new();
     for item in tree::list(node, "items") {
+        if tree::string(item, "kind") == "section" {
+            continue;
+        }
         if tree::string(item, "kind") != "button" {
             refused(
                 cx,
@@ -987,6 +1024,9 @@ fn context_menu(cx: &mut Cx, node: &Tree) -> Element {
                 .on_click(move |_| host.control(event, ""))
                 .into(),
         );
+    }
+    if items.is_empty() {
+        return body;
     }
     border()
         .context_menu(ferroui_view::prelude::context_menu().children(items))

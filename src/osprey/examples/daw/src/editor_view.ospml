@@ -384,10 +384,14 @@ module EditorView
         ui::Lettering words x y size colour depth anchor weight => ui::Lettering(letters = words, x = x, y = y, size = size, color = colour, depth = satAdd depth offset, anchor = anchor, weight = weight)
         ui::Path steps outline paint x y scale depth => ui::Path(steps = steps, outline = outline, paint = paint, moveX = x, moveY = y, scale = scale, depth = satAdd depth offset)
 
+    // A page fills its region and grows with the window (zoom 0 fits it whole). With the keyboard docked under
+    // it the page keeps its scale and is cut off at the dock instead of shrinking.
+    pageZoom editor = ui::Pick::either (editor.keyboardShown, 0.75, 0.0)
+
     // The Timeline and Mix pages draw the song instead of the patch, on the same surface.
     songPage editor = match editor.page
-        MixPage => Ui::described (Ui::zoomed (0.75, 1536.0, 828.0, PrismArt::atlas editor.skin, MixView::shapes editor, Surface), listConcat (TimelineView::headerAreas editor) (MixView::access editor))
-        _ => Ui::described (Ui::zoomed (0.75, 1536.0, 828.0, PrismArt::atlas editor.skin, TimelineView::shapes editor, Surface), listConcat (listConcat (TimelineView::headerAreas editor) (TimelineView::laneAccess editor)) [TimelineView::openArea ()])
+        MixPage => Ui::described (Ui::zoomed (pageZoom editor, 1536.0, 828.0, PrismArt::atlas editor.skin, MixView::shapes editor, Surface), listConcat (TimelineView::headerAreas editor) (MixView::access editor))
+        _ => Ui::described (Ui::zoomed (pageZoom editor, 1536.0, 828.0, PrismArt::atlas editor.skin, TimelineView::shapes editor, Surface), listConcat (listConcat (TimelineView::headerAreas editor) (TimelineView::laneAccess editor)) [TimelineView::openArea ()])
 
     canvas editor = match editor.page
         PatchPage => patchCanvas editor
@@ -406,7 +410,7 @@ module EditorView
             true => []
             false => listConcat (customInspector editor) (connectionRows editor)
         shapes = listConcat (listConcat ((CardArts::scenery editor).artShapes) details) (listConcat (CableCanvas::shapes editor) (listConcat nodes (listConcat (listAppend (toolbar ()) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))) library)))
-        scene = Ui::zoomed (0.75, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
+        scene = Ui::zoomed (pageZoom editor, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
         access = listConcat (toolbarAccess editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) ((CardArts::card (editor, n)).artControls))))
         extra = match editor.paletteShown
             true => paletteAccess ()
@@ -431,16 +435,25 @@ module EditorView
         style = ui::Frames::plain
         Ui::framed (style(frameHeight = 135), Ui::described (Ui::zoomed (0.75, 1536.0, 180.0, PrismArt::atlas editor.skin, marks, Keyboard), access))
 
-    root () =
+    // [DAW-MENU] The window's menu bar holds every command that is not played live; a button's symbol is its shortcut.
+    menus () = [
+        Ui::section ("File", "", [Ui::button ("Open Song…", "Cmd+O", OpenTrack(index = -2)), Ui::button ("Save", "Cmd+S", SaveProject), Ui::button ("Render Song", "Cmd+R", RenderSong)]),
+        Ui::section ("Edit", "", [Ui::button ("Undo", "Cmd+Z", Undo), Ui::button ("Redo", "Cmd+Shift+Z", Redo)]),
+        Ui::section ("View", "", [Ui::button ("Patch", "Cmd+D1", ShowPage(page = PatchPage)), Ui::button ("Timeline", "Cmd+D2", ShowPage(page = TimelinePage)), Ui::button ("Mix", "Cmd+D3", ShowPage(page = MixPage)), Ui::button ("Modules", "Cmd+L", ShowModules), Ui::button ("Patch Controls", "Cmd+I", ShowDetails), Ui::button ("Keyboard", "Cmd+K", ShowKeyboard)]),
+        Ui::section ("Transport", "", [Ui::button ("Play Song", "Cmd+Enter", PlaySong), Ui::button ("Stop Song", "Cmd+OemPeriod", StopSong), Ui::button ("Play Patch", "Cmd+P", PlayGraph), Ui::button ("Audition Patch", "Cmd+Shift+P", Audition), Ui::button ("Stop Patch", "Cmd+Shift+OemPeriod", StopGraph)])]
+
+    root () = Ui::contextMenu (workspace (), menus ())
+
+    workspace () =
         editor = editorSlice ()
         pane = match editor.detailsShown && TimelineView::pageIndex editor.page == 0
             false => canvas editor
             true => Ui::aside (canvas editor, ui::Trailing, inspector editor, 280, Surface)
         grow = ui::Frames::plain
-        workspace = Ui::framed (grow(frameGrow = true), pane)
+        page = Ui::framed (grow(frameGrow = true), pane)
         match editor.keyboardShown
-            false => workspace
-            true => Ui::column [workspace, keyboardDock editor]
+            false => page
+            true => Ui::column [page, keyboardDock editor]
 
     stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${editor.rollBar}:${editor.songTicket}:${editor.songPath}:${length editor.song.tracks}"
 

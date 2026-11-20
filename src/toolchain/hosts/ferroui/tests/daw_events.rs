@@ -13,7 +13,9 @@ use ferroui_osprey_native::events::Touch;
 use ferroui_osprey_native::ffi::{self, Library};
 use ferroui_osprey_native::regions::Regions;
 use ferroui_osprey_native::rows::Shown;
+use ferroui_base::input::KeyGesture;
 use ferroui_osprey_native::tree::Tree;
+use ferroui_osprey_native::view::window_menus;
 
 /// One display frame at 60 Hz, in milliseconds.
 const FRAME_MS: f64 = 1000.0 / 60.0;
@@ -64,6 +66,31 @@ fn lane(track: usize, along: f64) -> (f64, f64) {
     (230.0 + along * 970.0, 146.0 + (track as f64 + 0.5) * height)
 }
 
+/// [DAW-MENU] The daw's menu bar: File, Edit, View and Transport, every command enabled with a
+/// shortcut FerroUI reads, Save on Cmd+S, and Save chosen from the menu is not refused.
+fn menu_bar(regions: &Regions) {
+    let menus = regions.get("root").map(|root| window_menus(&root.node)).unwrap_or_default();
+    let titles: Vec<&str> = menus.iter().map(|menu| menu.title.as_str()).collect();
+    assert_eq!(titles, ["File", "Edit", "View", "Transport"], "the window's menus");
+    let sizes: Vec<usize> = menus.iter().map(|menu| menu.commands.len()).collect();
+    assert_eq!(sizes, [3, 2, 6, 5], "the commands of each menu");
+    let mut keys = std::collections::BTreeSet::new();
+    for command in menus.iter().flat_map(|menu| &menu.commands) {
+        assert!(command.enabled, "{} can be chosen", command.label);
+        assert!(KeyGesture::parse(&command.keys).is_ok(), "{} has the shortcut {}", command.label, command.keys);
+        assert!(keys.insert(command.keys.clone()), "{} shares the shortcut {}", command.label, command.keys);
+    }
+    let save = menus[0].commands.iter().find(|command| command.label == "Save");
+    let Some(save) = save else {
+        panic!("File has Save: {:?}", menus[0]);
+    };
+    assert_eq!(save.keys, "Cmd+S", "Save's shortcut");
+    match Library::event(0, &Touch::control(save.event, "")) {
+        Ok(saved) => assert!(saved.diagnostics().next().is_none(), "Save from the menu is not refused"),
+        Err(problem) => panic!("the daw refused Save from the menu: {problem}"),
+    }
+}
+
 #[test]
 fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     assert_eq!(Library::init(), Ok(()), "the daw's top level must run");
@@ -90,6 +117,8 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     let Some(canvas) = regions.get("root").and_then(|root| scene(&root.node)) else {
         panic!("the Timeline must draw a canvas");
     };
+
+    menu_bar(&regions);
 
     let mut costs = Vec::new();
     let mut drawn = std::collections::BTreeSet::new();

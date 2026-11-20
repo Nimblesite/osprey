@@ -617,6 +617,32 @@ trackPatchJourney () =
 
 test ("tapping a timeline track opens its own patch in Prism; built-in tracks open as one voice, missing ones say why not", \() => Runtime::guarded trackPatchJourney)
 
+// [DAW-PATCH-HEARD] A module left unwired in Prism, or wired to nothing that reaches the output, stays in the
+// saved patch and in Prism but is silent: each note renders exactly as it does without it.
+strayed route = route(nodes = listConcat route.nodes [daw::PatchNode(identity = 9, component = "mixer", size = 0, seed = 0, asset = "", settings = []), daw::PatchNode(identity = 8, component = "gain", size = 0, seed = 0, asset = "", settings = [daw::Setting(key = "gain", value = 0.9, follow = daw::Constant)])], cables = listAppend route.cables (daw::PatchCable(source = 1, outlet = 0, destination = 8, inlet = 0)))
+
+heardAlike (note, plain, stray) = succeeds (daw::NoteRenders::render (note, 120.0, 48000.0, plain), \expected =>
+    succeeds (daw::NoteRenders::render (note, 120.0, 48000.0, stray), \heard =>
+        expect (length heard, length expected)
+        expect (length (filterList (heard, \sample => sample != 0.0)) > 0, true)
+        expect (structuralEquals (heard, expected), true)))
+
+strayJourney () =
+    keys = keysTrack ()
+    match keys.instrument
+        daw::PatchInstrument route =>
+            stray = strayed route
+            succeeds (daw::PatchVoices::patched (daw::Note(pitch = 60, start = 0.0, length = 1.0, velocity = 1.0), stray), \graph =>
+                expect (length graph.nodes, 5)
+                expect (length graph.cables, 3))
+            heardAlike (daw::Note(pitch = 69, start = 0.0, length = 0.25, velocity = 0.5), keys.instrument, daw::PatchInstrument(routing = stray))
+            heardAlike (daw::Note(pitch = 40, start = 3.0, length = 1.5, velocity = 1.0), keys.instrument, daw::PatchInstrument(routing = stray))
+            orphan = route(cables = [])
+            failsWith (daw::NoteRenders::render (daw::Note(pitch = 60, start = 0.0, length = 1.0, velocity = 1.0), 120.0, 48000.0, daw::PatchInstrument(routing = orphan)), "The routing has nothing wired to its output.")
+        _ => expect (false, true)
+
+test ("a module left unwired in the patch is silent and every note renders as without it", \() => Runtime::guarded strayJourney)
+
 // [DAW-PROJECT-PATCH] Save a changed graph on its track, then play the same note bindings from the reopened project.
 projectPatchJourney () =
     note = daw::Note(pitch = 72, start = 32.0, length = 0.5, velocity = 0.25)
@@ -906,6 +932,8 @@ transportJourney () =
     said (stopped, "", "Stopped.")
     expect (asked stopped, [ui::Cancel(cancelled = "daw-song:play:${barFolder}")])
     expect (synth::DawSession::phase stopped.stepStore, "Stopped")
+    held = stopped.stepStore
+    expect (synth::DawSession::phase held(renderDeviceKey = "device"), "Auditioning")
     home = synth::DawSession::stop stopped.stepStore
     said (home, "", "Nothing is playing; the playhead is back at bar 1.")
     expect (stopped.stepStore.rollBar, 5)
@@ -995,3 +1023,5 @@ busJourney () =
 test ("bus EQ passes at 0 dB, the sidechain ducks a bus by exactly its curve, routing and project buses are checked", \() => Runtime::guarded busJourney)
 
 test ("arrangements lay tracks on the buses with exact pan and send, place notes on beat frames and refuse bad songs", \() => Runtime::guarded arrangementsJourney)
+
+test ("every synthesis family plays a real, finite, repeatable note through the song renderer, pitched ones in tune", \() => Runtime::guarded familiesJourney)

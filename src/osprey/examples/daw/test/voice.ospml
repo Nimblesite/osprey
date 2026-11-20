@@ -338,6 +338,27 @@ keyboardDockJourney opened =
     offeredIn (reopened, "Play C4", true)
     expect (structuralEquals ((Drive::holding reopened).graph, before), true)
     expect ((Drive::holding reopened).armedNote, -1)
+    menuJourney reopened
+
+// [DAW-MENU] The window's menu bar names every command once, each with its shortcut, and a menu command runs
+// the same action as the header's.
+menuJourney driven =
+    forEachList (["Open Song…", "Save", "Render Song", "Undo", "Redo", "Timeline", "Mix", "Modules", "Patch Controls", "Keyboard", "Play Song", "Stop Song", "Play Patch", "Audition Patch", "Stop Patch"], \label => expect (length (Views::labelled (driven.drivenSeen, label)), 1))
+    expect ((Views::control (driven.drivenSeen, "Save")).controlKind, "button")
+    timeline = Drive::press (driven, "Timeline")
+    expect (synth::TimelineView::pageIndex (Drive::holding timeline).page, 1)
+    expect (Views::shows (timeline.drivenSeen, "Save"), true)
+    mix = Drive::press (timeline, "Mix")
+    expect (synth::TimelineView::pageIndex (Drive::holding mix).page, 2)
+    patch = Drive::press (mix, "Patch")
+    expect (synth::TimelineView::pageIndex (Drive::holding patch).page, 0)
+    hidden = Drive::press (patch, "Keyboard")
+    expect ((Drive::holding hidden).keyboardShown, false)
+    library = Drive::press (hidden, "Modules")
+    expect ((Drive::holding library).paletteShown, true)
+    details = Drive::press (library, "Patch Controls")
+    expect ((Drive::holding details).detailsShown, (Drive::holding library).detailsShown == false)
+    expect (structuralEquals ((Drive::holding details).graph, (Drive::holding driven).graph), true)
 
 dockTap (driven, label) =
     point = Semantics::point (Semantics::element (driven.drivenSeen.renderedAccess, label), 0.5)

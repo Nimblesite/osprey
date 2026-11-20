@@ -27,6 +27,26 @@ use crate::{adapters, store};
 /// What the window does when the application turns the frame clock on.
 pub type ClockHandler = Box<dyn Fn(&Rc<Host>)>;
 
+/// What the window does when the application's window menus change.
+pub type MenusHandler = Box<dyn Fn(&[Menu])>;
+
+/// One command of a window menu: its label, its shortcut (`Cmd+S`, empty for none), whether it
+/// can be chosen, and the number its tap is sent under.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Command {
+    pub label: String,
+    pub keys: String,
+    pub enabled: bool,
+    pub event: i64,
+}
+
+/// One menu of the window's menu bar ([UI-COMPONENTS-CONTEXT-MENU]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Menu {
+    pub title: String,
+    pub commands: Vec<Command>,
+}
+
 thread_local! {
     /// The host of this UI thread, so a capability answered on a worker thread finds it again.
     static CURRENT: RefCell<Weak<Host>> = RefCell::new(Weak::new());
@@ -51,6 +71,10 @@ pub struct Host {
     rendered: RefCell<Vec<String>>,
     pending: RefCell<Vec<Ask>>,
     runs: RefCell<Vec<RunJob>>,
+    /// The window menus the tree being built names, those of the last tree, and what shows them.
+    gathered: RefCell<Vec<Menu>>,
+    menus: RefCell<Vec<Menu>>,
+    menu_bar: RefCell<Option<MenusHandler>>,
     /// Milliseconds the last call into the application took, and the last tree build.
     pub dispatch_ms: Cell<f64>,
     pub build_ms: Cell<f64>,
@@ -76,6 +100,9 @@ impl Host {
             rendered: RefCell::new(Vec::new()),
             pending: RefCell::new(Vec::new()),
             runs: RefCell::new(Vec::new()),
+            gathered: RefCell::new(Vec::new()),
+            menus: RefCell::new(Vec::new()),
+            menu_bar: RefCell::new(None),
             dispatch_ms: Cell::new(0.),
             build_ms: Cell::new(0.),
             send_ms: Cell::new(0.),
@@ -174,6 +201,34 @@ impl Host {
         let mut messages = self.messages.borrow_mut();
         if !messages.contains(&message) {
             messages.push(message);
+        }
+    }
+
+    /// Sets what shows the window's menus, and shows the ones already known.
+    pub fn on_menus(&self, handler: MenusHandler) {
+        handler(&self.menus.borrow());
+        *self.menu_bar.borrow_mut() = Some(handler);
+    }
+
+    /// The window's menus as the last tree named them.
+    pub fn menus(&self) -> Vec<Menu> {
+        self.menus.borrow().clone()
+    }
+
+    /// Records one window menu of the tree being built.
+    pub(crate) fn gather(&self, menu: Menu) {
+        self.gathered.borrow_mut().push(menu);
+    }
+
+    /// Takes the built tree's menus as the window's; the menu bar is told only when they differ.
+    fn commit_menus(&self) {
+        let next = std::mem::take(&mut *self.gathered.borrow_mut());
+        if *self.menus.borrow() == next {
+            return;
+        }
+        *self.menus.borrow_mut() = next;
+        if let Some(handler) = self.menu_bar.borrow().as_ref() {
+            handler(&self.menus.borrow());
         }
     }
 
@@ -326,7 +381,9 @@ impl Host {
                 let theme = host.regions.borrow().theme().cloned().map(Rc::new);
                 let look = Look { theme, dark };
                 let background = look.colour("background");
+                host.gathered.borrow_mut().clear();
                 let root = crate::view::root(&host, look.clone());
+                host.commit_menus();
                 let mut messages = host.messages.borrow().clone();
                 messages.extend(host.rendered.borrow().iter().cloned());
                 let mut grid = grid()
