@@ -6,6 +6,11 @@ private def bounded (value low high : Float) : Float :=
 
 /-- The bar (from 0, four beats each) a beat falls in. -/
 def bar (beat : Float) : Float := Float.floor (beat / 4)
+/-- The bar a beat falls in, but never past the bar holding the song's last sound: a song `beats` long that ends
+on a bar line has no bar after it to play [DAW-TRANSPORT-PLAYHEAD]. -/
+def playableBar (beat beats : Float) : Float :=
+  let last := Float.ceil (beats / 4) - 1
+  if Float.floor (beat / 4) > last then last else Float.floor (beat / 4)
 /-- The beat a bar (from 0) starts on. -/
 def barStart (index : Float) : Float := index * 4
 

@@ -857,6 +857,26 @@ bounceJourney ready =
     said (synth::DawSession::bounce ready, "", "${songFolder}/song.wav is already this project.")
     said (synth::DawSession::stop first.stepStore, "", "Stopped.")
 
+// A song whose last note ends on a bar line: the end of the ruler is that last bar, never the empty one after it,
+// and Play and Stop are the transport, coloured apart from the page tabs.
+barLined track = track(notes = [daw::Note(pitch = 60, start = 0.0, length = 1.0, velocity = 0.5), daw::Note(pitch = 64, start = 12.0, length = 4.0, velocity = 0.5)])
+
+labelled (editor, label) = filterList (synth::TimelineView::headerAreas editor, \a => a.accessLabel == label)
+
+barLineJourney ready =
+    lined = ready(song = timeline [barLined (pluckTrack ())], track = 0)
+    expect (daw::Arrangements::beats lined.song, 16.0)
+    succeeds (synth::TimelineView::laneAt (lined, 1200.0, 113.0), \action => playheadSet (lined, action, 3))
+    succeeds (synth::TimelineView::laneAt (lined, 1199.0, 113.0), \action => playheadSet (lined, action, 3))
+    succeeds (synth::TimelineView::laneAt (lined, 230.0, 113.0), \action => playheadSet (lined, action, 0))
+    succeeds (synth::TimelineView::laneAt (lined, 472.5, 113.0), \action => playheadSet (lined, action, 1))
+    succeeds (synth::TimelineView::laneAt (lined, 957.5, 113.0), \action => playheadSet (lined, action, 3))
+    succeeds (synth::TimelineView::laneAt (lined, 1200.0, 150.0), \action => expect (action, synth::PickTrack(index = 0, bar = 3)))
+    forEachList (["Play", "Stop", "Render song", "Open song", "Save project", "Keyboard"], \label => expect (length (labelled (ready, label)), 1))
+    expect (length (labelled (ready, "Play bars")), 0)
+    expect (synth::TimelineView::headerAction 4, synth::PlaySong)
+    expect (synth::TimelineView::headerAction 6, synth::StopSong)
+
 transportJourney () =
     succeeds (makeDir "target/daw-tests", \_ => expect (true, true))
     _made = makeDir transportRoot
@@ -893,6 +913,7 @@ transportJourney () =
     succeeds (synth::TimelineView::laneAt (ready, 230.0, 130.0), \action => playheadSet (ready, action, 0))
     succeeds (synth::TimelineView::laneAt (ready, 1200.0, 113.0), \action => playheadSet (ready, action, synth::DawSession::bar (daw::Arrangements::beats ready.song)))
     failsWith (synth::TimelineView::laneAt (ready, 229.0, 130.0), "No lane here.")
+    barLineJourney ready
     failsWith (synth::TimelineView::laneAt (ready, 700.0, 111.0), "No lane here.")
     succeeds (daw::Projects::mixed (ready.song, 1, 2.0, 0.5, 0.25), \louder => remixed (ready, louder))
     bounceJourney ready
