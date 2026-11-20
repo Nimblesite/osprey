@@ -863,7 +863,7 @@
     ]
   },
   "dependencies": {
-    "@nimblesite/lsp-profiler-ui": "^0.10.0",
+    "@nimblesite/lsp-profiler-ui": "^0.10.1",
     "@nimblesite/shipwright-vscode": "^0.11.0",
     "@preact/signals-core": "^1.14.4",
     "@vscode/codicons": "^0.0.46-24",
