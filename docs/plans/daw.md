@@ -49,9 +49,9 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 ## Dynamics [DAW-DYNAMICS]
 
 - [x] Compressor and limiter formulas in [DynamicsMath.lean](../../src/osprey/packages/synth/src/DynamicsMath.lean); the Osprey module generates.
-- [ ] `Compressor` and `Limiter` components in `@osprey/synth`, any channel count, linked (synth-advanced).
+- [ ] `Compressor` and `Limiter` components in `@osprey/synth`, any channel count, linked (synth-advanced). Partial: `synth::Limiters` (4e212e09f) limits a linked stereo buffer: the lowest true-peak need (4× oversampled, ITU-R BS.1770-4) is held across the lookahead with a linear-time block minimum, released upward and averaged over the window, so no frame or inter-sample peak passes the ceiling before the final clamp; quiet signals pass bit-exact. The synth test covers 4 settings × 6 signals, impulses, a quarter-rate 45° sine (samples at 0.707, true peak 1) and 9 refusals. Not yet a graph node or any channel count; no compressor component.
 - [ ] Tests: sine against the curve within 0.01 dB; inter-sample peaks under the ceiling (synth-advanced).
-- [ ] Master ends in the compressor and limiter, replacing the `ArrangeMath` limiter; settings in daw.td.
+- [ ] Master ends in the compressor and limiter, replacing the `ArrangeMath` limiter; settings in daw.td. Partial: Master ends in the true-peak brick-wall limiter at −1 dBTP (1.5 ms lookahead, 80 ms release) and `drive` pushes the peak-normalised mix into it; the tanh limiter is deleted (1b45a3ba0). The compressor stage and limiter settings in daw.td remain.
 - [ ] Gain reduction and true-peak meters on the Mix page.
 
 ## Buses and sidechain [DAW-MIX-BUS]
@@ -87,7 +87,7 @@ The three-band split is a start, not the EQ. Target: a parametric EQ as good as 
 
 ## Spectral analysis and mix advice [DAW-ANALYSIS]
 
-- [ ] Band spectrum per track, bus and Master from the STFT, with peak and RMS, on the Mix page.
+- [ ] Band spectrum per track, bus and Master from the STFT, with peak and RMS, on the Mix page. Partial: `synth::Spectra` reads ten octave bands (31.25 Hz–16 kHz) from Hann-windowed FFT frames, mean and loudest level, where a full-scale sine reads 0 dB; tested within 0.1 dB on single and paired sines, silence at −120, a half-length tone 3 dB below its peak, 4 refusals (4e212e09f). Every render prints Master's bands (1b45a3ba0). Per track and bus, and the Mix page, remain.
 - [ ] Pitch fit: measured fundamental and partials against the played notes, detuning in cents.
 - [ ] Per-instrument expected ranges in daw.td; energy outside them reported.
 - [ ] EQ advice (band, dB, reason: masking, resonance, mud, harshness, low end), applied as a checked project edit.
