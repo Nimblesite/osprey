@@ -4,6 +4,25 @@ Status: in progress. The daw runs on the FerroUI host. It opens a project, shows
 
 The daw is the [Prism](../../../src/osprey/examples/daw/PRISM.md) patch studio with a song around it. A song project holds tracks of notes. Every track plays through a patch and feeds a stereo Master and a shared reverb, Space. The app opens a project, shows its tracks on a timeline and lets you edit a track's notes, mix and patch. It plays the song as it currently stands and saves everything back to the same file.
 
+## Built around the person using it [DAW-HUMAN]
+
+The daw is designed from the work of the person using it: writing a part, hearing it, mixing it and routing it. Each change to a screen starts from one of those tasks, is tried in the running app by someone doing that task, and is revised from what they found, the process ISO 9241-210 describes for human-centred design. The rules below are what that process has settled so far, and each one is checked in the app.
+
+- **A screen holds what its task needs.** Timeline is for notes, Bus routing for the mix and where sound goes, Track patch for the sound itself. An element stays only if it does something or tells the user something they act on. Captions that repeat a title, controls that do nothing yet and pointers to another panel are removed.
+- **A value is changed where it is shown.** A slider, a note or a cable is edited in place. No screen asks the user to go somewhere else to change what it displays ([DAW-INSPECTOR]).
+- **Every command is in the menu bar, with a shortcut** ([DAW-KEYS]). The canvas keeps only what is used all the time: the page tabs and the transport. Nothing can be done with the pointer only.
+- **The user's habits come first.** Shortcuts follow a keymap the user chooses or writes, so hands trained on another studio keep working ([DAW-KEYS]).
+- **Targets fit a hand.** A socket, a fader or a key is large enough to hit without aiming, and a control under the pointer wins over artwork that overlaps it.
+- **The app says what it is doing.** The footer names what is sounding and the last thing that happened. A failure says what failed in the user's terms and leaves the work as it was.
+- **Nothing is lost by exploring.** Edits undo in one step each, a page with nothing to show says so and offers the way forward, and leaving a page saves what was changed or keeps it open with the reason.
+- **One look.** Every control is drawn in the Prism skin on a dark canvas, whatever the system's appearance. A control that looks like it came from another app is a defect.
+
+## Keyboard [DAW-KEYS]
+
+Every command has a name, a place in the menu bar and a shortcut. The menus are File (open, save, render), Edit (undo, redo), View (the three pages, Modules, Patch Controls, Keyboard) and Transport (return to start, play and stop the song, play, audition and stop the patch). A menu shows each command's shortcut beside it, so the menu bar is also the list of shortcuts.
+
+A **keymap** assigns the shortcuts. The daw ships three: **Prism**, **Ableton style** and **Logic style**, the last two following those studios' habits where the daw has the same command (Space plays and stops, Tab or a single letter changes view). The user picks one from the menu, and the choice is kept for the next launch. A keymap is also a file the user can edit: a name and one line per command with its keys. Loading a file checks it first: an unknown command or two commands on one shortcut is refused with the reason, and the keymap in use stays. A command the file leaves out keeps its Prism shortcut, so no command is ever without one.
+
 ## One project file [DAW-PROJECT]
 
 A song is one JSON file, and nothing about a song lives anywhere else. It contains the tempo, sample rate, master drive, Space settings, an optional intro recording, sustains, and every track. Each track stores its notes, gain, pan, Space send and the complete patch it plays.
@@ -110,6 +129,10 @@ The daw answers Open Sound Control over UDP, so a control surface, a lighting de
 ## Performance [DAW-PERF]
 
 The engine must render faster than real time, and every pointer event must answer within one display frame. The [plan](../../plans/daw.md) holds the profile, the owners and the targets: two bars of the codex project in under 14 s, and a Prism drag move under 5 ms mean.
+
+## The inspector [DAW-INSPECTOR]
+
+Selecting a module shows it in the inspector on the canvas: its name, a slider for each parameter with its value and unit, and its connections. A press or a drag on a slider sets the parameter, as one undoable edit. This is the same for a module the skin draws and for one it does not.
 
 ## Pages [DAW-PAGES]
 
