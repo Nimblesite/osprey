@@ -144,15 +144,19 @@ module PrismArt
         selected = match Graphs::node (editor.graph, editor.selected)
             Invalid _ => editor.skin
             Valid n => prepared (editor, n)
+        bare = match Graphs::node (editor.graph, editor.selected)
+            Invalid _ => true
+            Valid _ => false
         machine = ui::Machines::feed (selected, [fact ("keys", 1.0), fact ("hertz", CanvasGeometry::frequency (toFloat editor.note)), ui::Machines::fact ("note", ui::Values::text (noteName editor.note))])
         dy = ui::Pick::either (keyboard, -828.0, 0.0)
-        drawn (machine, mapList (filterList (roleMarks (editor, "scenery"), \mark => backgroundMark (editor, machine, mark, keyboard)), \mark => shiftedMark (machine, mark, dy)))
+        drawn (machine, mapList (filterList (roleMarks (editor, "scenery"), \mark => backgroundMark (editor, machine, mark, keyboard, bare)), \mark => shiftedMark (machine, mark, dy)))
 
-    backgroundMark (editor, machine, mark, keyboard) =
+    // `bare`: no module is selected, so the skin's own inspector (its sample Filter) is left out.
+    backgroundMark (editor, machine, mark, keyboard, bare) =
         grid = mark.markFigure == ui::SpriteFigure && ui::Templates::measure (machine, mark.markIndex) == 0.0
         match grid
             true => !keyboard
-            false => (ui::Templates::measure (machine, mark.markY) >= 828.0 + ui::Machines::number (machine, "spareHeight")) == keyboard && !(editor.detailsShown && !keyboard && ui::Templates::measure (machine, mark.markX) >= 1210.0) && !connectionMark (machine, mark)
+            false => (ui::Templates::measure (machine, mark.markY) >= 828.0 + ui::Machines::number (machine, "spareHeight")) == keyboard && !(editor.detailsShown && !keyboard && ui::Templates::measure (machine, mark.markX) >= 1210.0) && !(bare && !keyboard && ui::Templates::measure (machine, mark.markX) >= 1210.0 && ui::Templates::measure (machine, mark.markY) >= 70.0) && !connectionMark (machine, mark)
 
     connectionMark (machine, mark) =
         y = ui::Templates::measure (machine, mark.markY)
