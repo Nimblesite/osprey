@@ -50,7 +50,8 @@ impl Bench {
         self.dispatch += host.dispatch_ms.get();
         self.build += host.build_ms.get();
         self.send += host.send_ms.get();
-        self.app += crate::ffi::APP_MICROS.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1000.;
+        self.app +=
+            crate::ffi::APP_MICROS.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1000.;
         self.paint += crate::surface::PAINT_MS.with(|total| total.replace(0.));
         if now.duration_since(self.started) < self.duration {
             return;
@@ -93,21 +94,41 @@ fn again(host: Rc<Host>, bench: Rc<RefCell<Bench>>) {
     });
 }
 
-/// Taps the first canvas once at the scene point `OSPREY_NATIVE_TAP=<x>,<y>`, if asked, as a click
-/// would: for captures of a state the application reaches by a click.
+/// Drives native click events on the current canvas at each scene point in `OSPREY_NATIVE_TAP`.
+/// Semicolon-separated points can change pages between clicks.
 pub fn tap(host: &Rc<Host>) {
-    let (Some((x, y)), Some(canvas)) = (point("OSPREY_NATIVE_TAP"), first_canvas(host)) else {
+    let Ok(sequence) = std::env::var("OSPREY_NATIVE_TAP") else {
         return;
     };
-    host.send(Touch::pointer(canvas, x, y, true, false));
-    host.send(Touch::pointer(canvas, x, y, false, false));
+    if sequence.is_empty() {
+        return;
+    }
+    let Some(points) = sequence
+        .split(';')
+        .map(coordinates)
+        .collect::<Option<Vec<_>>>()
+    else {
+        host.diagnose("Expected a tap sequence of x,y scene coordinates".to_owned());
+        return;
+    };
+    for (x, y) in points {
+        let Some(canvas) = first_canvas(host) else {
+            return;
+        };
+        host.send(Touch::pointer(canvas, x, y, true, false));
+        host.send(Touch::pointer(canvas, x, y, false, false));
+    }
+}
+
+fn coordinates(at: &str) -> Option<(f64, f64)> {
+    let (x, y) = at.split_once(',')?;
+    let point = (x.trim().parse::<f64>().ok()?, y.trim().parse::<f64>().ok()?);
+    (point.0.is_finite() && point.1.is_finite()).then_some(point)
 }
 
 /// A scene point `<x>,<y>` an environment variable names.
 fn point(name: &str) -> Option<(f64, f64)> {
-    let at = std::env::var(name).ok()?;
-    let (x, y) = at.split_once(',')?;
-    Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
+    coordinates(&std::env::var(name).ok()?)
 }
 
 /// Starts the drag `OSPREY_NATIVE_DRAG` asks for, if any, measured as `OSPREY_NATIVE_BENCH` says.
