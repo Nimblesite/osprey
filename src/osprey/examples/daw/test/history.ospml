@@ -19,9 +19,24 @@ graphHistoryJourney () =
     sampleChoiceJourney ()
     historyRemovalJourney ()
 
+// [DAW-INSPECTOR] A module without skin art is edited where it is shown: every parameter is a slider on the canvas,
+// a press sets it as one undoable edit, and no caption sends the user to another panel.
+inspectorJourney added =
+    expect (uitest::Views::letters (added.drivenSeen, "Edit in Patch controls"), false)
+    forEachList (["Grain cloud 0", "Parameters", "Connections", "Playback rate", "Grain gain", "Pan"], \text => lettersIn (added, text))
+    forEachList (["Playback rate", "Grain gain", "Pan"], \name => expect (uitest::Semantics::offered (added.drivenSeen.renderedAccess, "Grain cloud 0 ${name}"), true))
+    before = (Drive::holding added).graph
+    at = uitest::Semantics::point (portIn (added, "Grain cloud 0 Pan"), 0.75)
+    panned = Drive::pointer (added, at.pointX, at.pointY, true)
+    valid (synth::Graphs::node ((Drive::holding panned).graph, 0), \n => expect (length (filterList (n.parameters, \p => p.label == "Pan" && p.initial > 0.4 && p.initial < 0.6)), 1))
+    expect (structuralEquals ((Drive::holding panned).graph, before), false)
+    undone = prismTap (Drive::pointer (panned, at.pointX, at.pointY, false), "Undo")
+    expect (structuralEquals ((Drive::holding undone).graph, before), true)
+
 // [SYNTH-ADVANCED-GRAINS-IMPORT] Only the latest request may change the selected grain source.
 sampleChoiceJourney () =
     added = prismTap (prismTap (editorLaunched ["--empty"], "Modules"), "Add Grain cloud")
+    inspectorJourney added
     opened = Drive::press (added, "Patch Controls")
     first = Drive::press (opened, "Load WAV sample")
     // A high note exceeds the built-in source's 16x rate and must preserve the editable graph.

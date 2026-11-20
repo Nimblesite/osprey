@@ -243,7 +243,11 @@ module EditorView
         true => CableCanvas::drag (editor, px, py, down)
         false => ordinaryPointer (editor, px, py, down)
 
-    ordinaryPointer (editor, px, py, down) = match editor.paletteDrag != ""
+    ordinaryPointer (editor, px, py, down) = match ModuleInspector::pointed (editor, px, py, down)
+        Success next => next
+        Error _ => canvasPointer (editor, px, py, down)
+
+    canvasPointer (editor, px, py, down) = match editor.paletteDrag != ""
         true => match down
             true => editor
             false => dropModule (editor, px, py)
@@ -293,9 +297,9 @@ module EditorView
         caption = match n.processor
             Granular _ _ _ => ""
             _ => match listGet n.parameters 0
-                Error _ => "${length n.inputs} inputs · ${length n.outputs} outputs"
-                Success p => "${p.label}: ${p.initial}"
-        returnShapes = [panel (x at - 146.0, y at - 87.0, 292.0, 174.0, border, 2), rounded (x at - 144.0, y at - 85.0, 288.0, 170.0, 10.0, ui::Fill, paint, 3), text (componentName (editor, n), x at - 124.0, y at - 67.0, 18.0, 238, 5), panel (x at - 124.0, y at - 27.0, 248.0, 64.0, 986652, 4), text (caption, x at - 108.0, y at - 3.0, 14.0, 190, 5), text ("Edit in Patch controls", x at - 124.0, y at + 58.0, 12.0, 155, 5)]
+                Error _ => ""
+                Success p => "${p.label}  ${ModuleInspector::reading p}"
+        returnShapes = [panel (x at - 146.0, y at - 87.0, 292.0, 174.0, border, 2), rounded (x at - 144.0, y at - 85.0, 288.0, 170.0, 10.0, ui::Fill, paint, 3), text (componentName (editor, n), x at - 124.0, y at - 67.0, 18.0, 238, 5), panel (x at - 124.0, y at - 27.0, 248.0, 64.0, 986652, 4), text (caption, x at - 108.0, y at - 3.0, 14.0, 190, 5)]
         returnShapes
 
     grainTrace (resource, at) = [Scenes::strip (foldList (toList (range (0, 48)), [], \(points, index) =>
@@ -318,36 +322,12 @@ module EditorView
                 Error _ => points
                 Success value => listConcat points [CanvasGeometry::waveX (x at, toFloat i), CanvasGeometry::waveY (y at, value)]), Scenes::rgb (80, 229, 216), 2.5, 6)]
 
-    customInspector editor = match Graphs::node (editor.graph, editor.selected)
-        Invalid _ => []
-        Valid n => match PrismArt::role n.processor == "custom"
-            false => []
-            true => listConcat [Scenes::rect (rightX (editor, 1374.0), 266.0, 304.0, 330.0, 0.0, Scenes::rgb (19, 17, 35), 7), text (componentName (editor, n), rightX (editor, 1234.0), 128.0, 24.0, 240, 8), text ("Parameters", rightX (editor, 1234.0), 290.0, 16.0, 210, 8), text ("Edit in Patch controls", rightX (editor, 1234.0), 250.0, 13.0, 170, 8)] (foldList (toList (range (0, ui::Pick::either (length n.parameters < 4, length n.parameters, 4))), [], \(all, i) =>
-                match listGet n.parameters i
-                    Error _ => all
-                    Success p => listAppend all (text ("${p.label}: ${p.initial}", rightX (editor, 1234.0), 325.0 + toFloat i * 32.0, 14.0, 210, 8))))
-
-    connectionRows editor = foldList (toList (range (0, length (filterList (editor.graph.cables, \c => c.source == editor.selected || c.destination == editor.selected)))), [], \(all, i) =>
-        match listGet (filterList (editor.graph.cables, \c => c.source == editor.selected || c.destination == editor.selected)) i
-            Error _ => all
-            Success c =>
-                incoming = c.destination == editor.selected
-                other = match incoming
-                    true => c.source
-                    false => c.destination
-                label = match Graphs::node (editor.graph, other)
-                    Invalid _ => "Missing component"
-                    Valid n => componentName (editor, n)
-                direction = match incoming
-                    true => "In   ←"
-                    false => "Out  →"
-                listConcat all [Scenes::disc (rightX (editor, 1243.0), 497.0 + toFloat i * 36.0, 8.0, Scenes::rgb (255, 132, 66), 6), text ("${direction}  ${label}", rightX (editor, 1264.0), 488.6 + toFloat i * 36.0, 14.0, 230, 6)])
-
     palette () = listConcat [Scenes::rect (98.0, 420.0, 196.0, 708.0, 0.0, Scenes::rgb (19, 16, 36), 20), text ("MODULES", 18.0, 82.0, 15.0, 166, 22), text ("Click or drag to add", 18.0, 104.0, 12.0, 135, 22)] (foldList (toList (range (0, length EditorState::kinds)), [], \(all, i) => listConcat all [panel (12.0, CanvasGeometry::paletteY (toFloat i) - 17.0, 172.0, 35.0, 2563389, 21), text (EditorState::title (listGet EditorState::kinds i ?: ""), 22.0, CanvasGeometry::paletteY (toFloat i) - 8.0, 12.0, 224, 22)]))
 
     paletteAccess () = mapList (toList (range (0, length EditorState::kinds)), \i => accessible ("Add ${EditorState::title (listGet EditorState::kinds i ?: "")}", 12.0, CanvasGeometry::paletteY (toFloat i) - 17.0, 172.0, 35.0, false))
 
-    rightX (editor, base) = CanvasGeometry::shifted (base, ui::Machines::number (editor.skin, "spareWidth"))
+    (** Where artwork pinned to the right edge sits once the region is wider than the skin. *)
+    export rightX (editor, base) = CanvasGeometry::shifted (base, ui::Machines::number (editor.skin, "spareWidth"))
 
     // [DAW-HEADER] The Patch page's header: the shared tabs, the transport and Add module. Every other command
     // is in the window's menu bar ([DAW-MENU]).
@@ -410,14 +390,14 @@ module EditorView
             false => []
         details = match editor.detailsShown
             true => []
-            false => listConcat (customInspector editor) (connectionRows editor)
+            false => ModuleInspector::shapes editor
         shapes = listConcat (listConcat ((CardArts::scenery editor).artShapes) details) (listConcat (CableCanvas::shapes editor) (listConcat nodes (listConcat (listAppend (toolbar editor) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))) library)))
         scene = Ui::zoomed (pageZoom editor, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
         access = listConcat (toolbarItems editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) ((CardArts::card (editor, n)).artControls))))
         extra = match editor.paletteShown
             true => paletteAccess ()
             false => []
-        Ui::described (scene, listConcat (listConcat access (CableCanvas::access editor)) extra)
+        Ui::described (scene, listConcat (listConcat access (CableCanvas::access editor)) (listConcat extra (ModuleInspector::access editor)))
 
     inspector editor =
         style = ui::Frames::inset (16, 12, 16, 12)
