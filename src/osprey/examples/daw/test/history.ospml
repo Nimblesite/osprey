@@ -108,6 +108,13 @@ arrangedBell (name, decay, notes) = daw::Track(name = name, instrument = daw::Be
 // A pure drum body: no noise, no sweep, so each sample is velocity * ringing * -cos of the phase.
 arrangedDrum (name, gain, decay, notes) = daw::Track(name = name, instrument = daw::DrumInstrument(hit = daw::Hit(sweep = 0.0, noise = 0.0, colour = 0.0, decay = decay)), gain = gain, pan = 0.0, reverb = 0.5, bus = "", positions = [], notes = notes)
 
+// One bell note at beat 0 on an otherwise plain song.
+oneBell (tempo, rate, drive, decay) = arrangedSong (tempo, rate, drive, decay, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])
+
+lasts (tempo, rate, drive, decay, frames) = succeeds (daw::Arrangements::frames (oneBell (tempo, rate, drive, decay)), \total => expect (total, frames))
+
+refusedBell (tempo, rate, drive, decay) = failsWith (daw::Arrangements::frames (oneBell (tempo, rate, drive, decay)), "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000, a drive of 0.1 to 4 and 1 to 64 tracks.")
+
 arrangedNote (start, length) = daw::Note(pitch = 60, start = start, length = length, velocity = 0.5)
 
 arrangedPitched (pitch, start) = daw::Note(pitch = pitch, start = start, length = 0.5, velocity = 0.5)
@@ -244,23 +251,23 @@ arrangementsJourney () =
     failsWith (daw::Arrangements::frame (song120, pow (10.0, 400.0)), "A start beat is not finite.")
     // frames: the last end plus the room decay and two seconds, each guard at its boundary.
     succeeds (daw::Arrangements::frames song120, \total => expect (total, 216000))
-    succeeds (daw::Arrangements::frames (arrangedSong (120.0, 48000, 0.1, 2.0, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), \total => expect (total, 216000))
-    succeeds (daw::Arrangements::frames (arrangedSong (120.0, 48000, 4.0, 2.0, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), \total => expect (total, 216000))
+    lasts (120.0, 48000, 0.1, 2.0, 216000)
+    lasts (120.0, 48000, 4.0, 2.0, 216000)
     succeeds (daw::Arrangements::frames song20, \total => expect (total, 336000))
-    succeeds (daw::Arrangements::frames (arrangedSong (400.0, 48000, 1.0, 2.0, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), \total => expect (total, 199200))
-    succeeds (daw::Arrangements::frames (arrangedSong (120.0, 8000, 1.0, 2.0, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), \total => expect (total, 36000))
-    succeeds (daw::Arrangements::frames (arrangedSong (120.0, 192000, 1.0, 2.0, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), \total => expect (total, 864000))
-    succeeds (daw::Arrangements::frames (arrangedSong (120.0, 48000, 1.0, 1.99999, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), \total => expect (total, 216000))
-    succeeds (daw::Arrangements::frames (arrangedSong (120.0, 48000, 1.0, 1.99998, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), \total => expect (total, 215999))
+    lasts (400.0, 48000, 1.0, 2.0, 199200)
+    lasts (120.0, 8000, 1.0, 2.0, 36000)
+    lasts (120.0, 192000, 1.0, 2.0, 864000)
+    lasts (120.0, 48000, 1.0, 1.99999, 216000)
+    lasts (120.0, 48000, 1.0, 1.99998, 215999)
     succeeds (daw::Arrangements::frames (arrangedSong (120.0, 48000, 1.0, 2.0, mapList (toList (range (0, 64)), \_ => arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])))), \total => expect (total, 216000))
     succeeds (daw::Arrangements::frames (arrangedSong (20.0, 48000, 1.0, 2.0, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 198.5)])])), \total => expect (total, 28776000))
     refusesSong = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000, a drive of 0.1 to 4 and 1 to 64 tracks."
-    failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, 0.0999, 2.0, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), refusesSong)
-    failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, 4.0001, 2.0, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), refusesSong)
-    failsWith (daw::Arrangements::frames (arrangedSong (19.99, 48000, 1.0, 2.0, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), refusesSong)
-    failsWith (daw::Arrangements::frames (arrangedSong (400.01, 48000, 1.0, 2.0, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), refusesSong)
-    failsWith (daw::Arrangements::frames (arrangedSong (120.0, 7999, 1.0, 2.0, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), refusesSong)
-    failsWith (daw::Arrangements::frames (arrangedSong (120.0, 192001, 1.0, 2.0, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])), refusesSong)
+    refusedBell (120.0, 48000, 0.0999, 2.0)
+    refusedBell (120.0, 48000, 4.0001, 2.0)
+    refusedBell (19.99, 48000, 1.0, 2.0)
+    refusedBell (400.01, 48000, 1.0, 2.0)
+    refusedBell (120.0, 7999, 1.0, 2.0)
+    refusedBell (120.0, 192001, 1.0, 2.0)
     failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, 1.0, 2.0, [])), refusesSong)
     failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, 1.0, 2.0, mapList (toList (range (0, 65)), \_ => arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])))), refusesSong)
     failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, 1.0, -2.0, [arrangedBell ("bell", 1.0, [])])), "An arrangement must last 1 to 28800000 frames.")
