@@ -158,7 +158,7 @@ fn httpRecordLayout() = {
     let changed = response { status: 201, isComplete: false, partialBody: "updated" }
     let selected = match changed { { status, isComplete, .. } => status == 201 && !isComplete }
     let erased: any = response
-    let rendered = "{ status: 200, headers: X: yes, contentType: text/plain, streamFd: -1, isComplete: true, partialBody: hi }"
+    let rendered = "{ status: 200, headers: \"X: yes\", contentType: \"text/plain\", streamFd: -1, isComplete: true, partialBody: \"hi\" }"
     selected && response.status == 200 && response.headers == "X: yes" && response.contentType == "text/plain" && response.streamFd == -1 && response.isComplete && response.partialBody == "hi" && changed.partialBody == "updated" && changed.headers == "X: yes" && toString(erased) == rendered && httpRecordPattern(changed) && erasedRecordStatus(response) == "200" && erasedRecordStatus(changed) == "201"
 }
 
@@ -188,7 +188,7 @@ fn resultRecordCase() = {
     let success = failed { answer: 42 }
     let copied = success { note: "copy" }
     let erased: any = copied
-    toString(failed.answer) == "Error(kept)" && toString(success.answer) == "Success(42)" && success.note == "first" && toString(readOutcome(copied)) == "Success(42)" && matchOutcome(copied) && structuralOutcome(copied) && toString(erased) == "{ answer: Success(42), note: copy }"
+    toString(failed.answer) == "Error(kept)" && toString(success.answer) == "Success(42)" && success.note == "first" && toString(readOutcome(copied)) == "Success(42)" && matchOutcome(copied) && structuralOutcome(copied) && toString(erased) == "{ answer: Success(42), note: \"copy\" }"
 }
 fn genericResultRecordCase() = {
     let floating = GenericOutcome { answer: Success { value: 2.5 }, note: "float" }
@@ -202,7 +202,7 @@ fn genericResultRecordCase() = {
         Success { value } => value
         Error(_) => Point { x: 0, y: 0 }
     }
-    toString(floating.answer) == "Success(2.5)" && toString(failed.answer) == "Error(float error)" && toString(promoted.answer) == "Success(1.25)" && point.x == 4 && point.y == 5 && toString(erasedFloat) == "{ answer: Success(2.5), note: float }" && toString(erasedError) == "{ answer: Error(float error), note: float }" && toString(erasedNested) == "{ answer: Success({ x: 4, y: 5 }), note: nested }"
+    toString(floating.answer) == "Success(2.5)" && toString(failed.answer) == "Error(float error)" && toString(promoted.answer) == "Success(1.25)" && point.x == 4 && point.y == 5 && toString(erasedFloat) == "{ answer: Success(2.5), note: \"float\" }" && toString(erasedError) == "{ answer: Error(float error), note: \"float\" }" && toString(erasedNested) == "{ answer: Success({ x: 4, y: 5 }), note: \"nested\" }"
 }
 fn anonymousResultRecordCase() = {
     let original = { answer: Success { value: false }, note: "anonymous" }

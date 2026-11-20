@@ -98,7 +98,10 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<String> {
                     names::STRING,
                     names::UNIT,
                     names::ANY,
+                    "List<printable>",
                     "Result<printable, printable>",
+                    "record",
+                    "union",
                 ])
                 .collect::<Vec<_>>()
                 .join(" | "),
@@ -111,7 +114,7 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<String> {
 }
 
 /// Validate the receiver/value of a representation-sensitive built-in.
-pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
+pub(crate) fn invalid_use(name: &str, ty: &Type, sealed: Sealed<'_>) -> Option<String> {
     // [FLOAT-OPERANDS] Schemes carry this obligation into each instantiation,
     // preserving numeric polymorphism while refusing concrete nonnumeric uses.
     if let Some(op) = name.strip_prefix(NUMERIC_OPERAND_PREFIX) {
@@ -139,7 +142,7 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
             "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()
         ),
-        "interpolation" if !is_interpolatable(ty) => {
+        "interpolation" if !is_interpolatable(ty, sealed) => {
             Some(format!("cannot convert value for interpolation: {ty}"))
         }
         "length" | "isEmpty" if !is_sized(ty) => Some(format!(
@@ -148,8 +151,8 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         "listSort" if !is_sortable_list(ty) => Some(format!(
             "`listSort` supports only List<int> or List<string>; got {ty}"
         )),
-        "print" if !is_printable(ty) => Some(format!("cannot convert value for printing: {ty}")),
-        "toString" if !is_printable(ty) => Some(format!("cannot convert value to string: {ty}")),
+        "print" if !is_printable(ty, sealed) => Some(format!("cannot convert value for printing: {ty}")),
+        "toString" if !is_printable(ty, sealed) => Some(format!("cannot convert value to string: {ty}")),
         // GPU buffer elements are scalars [GPU-BUFFER-ELEM]
         // (docs/specs/runtime/0034-GPUComputation.md).
         "toGpu" if !is_gpu_source(ty) => Some(format!(
@@ -273,38 +276,56 @@ fn is_sortable_elem(ty: &Type) -> bool {
 /// Values supported by `runtime::to_string_value`. `any` is retained as the
 /// explicit erased-compatibility escape hatch; concrete aggregate and runtime
 /// handles are rejected. Both sides of a Result are formatted recursively.
-fn is_printable(ty: &Type) -> bool {
+/// [BUILTIN-TOSTRING]: every value has a rendering except a function and the
+/// runtime handles in [`UNPRINTABLE`], alone or inside a record, union, list
+/// or Result.
+fn is_printable(ty: &Type, sealed: Sealed<'_>) -> bool {
+    let ok = |t: &Type| is_printable(t, sealed);
     match ty {
         Type::Var(_) => true,
-        Type::Con { name, args }
-            if args.is_empty()
-                && (crate::numeric::Numeric::of_name(name).is_some()
-                    || matches!(
-                        name.as_str(),
-                        names::STRING | names::BOOL | names::UNIT | names::ANY
-                    )) =>
-        {
-            true
+        Type::Fun { .. } => false,
+        Type::Record { fields, .. } => fields.values().all(ok),
+        Type::Union { variants, .. } => variants.iter().all(ok),
+        Type::Con { name, args } => {
+            !UNPRINTABLE.contains(&name.as_str()) && !sealed(name) && args.iter().all(ok)
         }
-        Type::Con { name, args } if name == names::RESULT => {
-            matches!(args.as_slice(), [ok, err] if is_printable(ok) && is_printable(err))
-        }
-        _ => false,
     }
 }
+
+/// Whether a type name is an alias sealed at the use site: a name with no
+/// structure there, so nothing can render it [MODULES-OPAQUE-TYPES].
+pub(crate) type Sealed<'a> = &'a dyn Fn(&str) -> bool;
+
+const UNPRINTABLE: [&str; 7] = [
+    names::MAP,
+    names::ITERATOR,
+    names::FIBER,
+    names::CHANNEL,
+    names::PTR,
+    names::GPU_BUFFER,
+    names::CAPABILITY,
+];
 
 /// What interpolation can render. That is everything `print` renders, plus a
 /// fiber handle, which interpolates as its id — `src/osprey/tests/regressions/fiber`
 /// prints `ids 1 2 3 4` from four of them. `print` has never taken a fiber on
 /// its own and still does not.
-fn is_interpolatable(ty: &Type) -> bool {
-    is_printable(ty) || ty.is_named(names::FIBER)
+fn is_interpolatable(ty: &Type, sealed: Sealed<'_>) -> bool {
+    is_printable(ty, sealed) || ty.is_named(names::FIBER)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    fn invalid_use(name: &str, ty: &Type) -> Option<String> {
+        super::invalid_use(name, ty, &|_| false)
+    }
+
+    fn is_printable(ty: &Type) -> bool {
+        super::is_printable(ty, &|_| false)
+    }
 
     #[test]
     fn numeric_signatures_name_every_accepted_width() {
@@ -341,7 +362,9 @@ mod tests {
         let fiber = Type::con(names::FIBER, vec![Type::int()]);
         assert_eq!(invalid_use("interpolation", &fiber), None);
         assert!(invalid_use("print", &fiber).is_some());
-        assert!(invalid_use("interpolation", &Type::list(Type::int())).is_some());
+        let map = Type::con(names::MAP, vec![Type::string(), Type::int()]);
+        assert!(invalid_use("interpolation", &Type::list(map)).is_some());
+        assert!(invalid_use("interpolation", &Type::list(Type::int())).is_none());
         assert!(invalid_use("interpolation", &Type::string()).is_none());
     }
 
@@ -401,15 +424,24 @@ mod tests {
     fn printable_constraint_checks_result_payloads_recursively() {
         // [BUILTIN-PRINT] [BUILTIN-TOSTRING]
         assert!(is_printable(&Type::result(Type::int(), Type::string(),)));
-        assert!(!is_printable(&Type::result(
+        assert!(is_printable(&Type::result(
             Type::list(Type::int()),
             Type::string(),
         )));
         assert!(is_printable(&Type::result(Type::int(), Type::bool())));
-        assert!(!is_printable(&Type::result(
-            Type::int(),
-            Type::list(Type::int()),
+        assert!(is_printable(&Type::con("ParseError", vec![])));
+        assert!(is_printable(&Type::list(Type::con("MathError", vec![]))));
+        let callback = Type::fun(vec![Type::int()], Type::int());
+        assert!(!is_printable(&Type::result(Type::int(), callback.clone())));
+        assert!(!is_printable(&Type::list(callback)));
+        assert!(!is_printable(&Type::con(
+            names::MAP,
+            vec![Type::string(), Type::int()]
         )));
+        assert!(!is_printable(&Type::con(names::FIBER, vec![Type::int()])));
         assert!(!is_printable(&Type::fun(vec![Type::int()], Type::int())));
+        let sealed = Type::list(Type::con("M::Token", vec![]));
+        assert!(is_printable(&sealed));
+        assert!(!super::is_printable(&sealed, &|name| name == "M::Token"));
     }
 }

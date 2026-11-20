@@ -998,10 +998,11 @@ them.
 > DECLARED record rows by descriptor identity, so an erased record made by any
 > constructor with the same field names matches the same arm; a field bound
 > from a narrowing is itself `any` until matched further. `print`/`toString`
-> render through the descriptor: scalars and strings exactly, records as their
-> row (`{ x: 1, y: 2 }`), unions by variant, a `Result` as
-> `Success(…)`/`Error(…)`, and shapes rendering cannot see into — lists, maps,
-> closures, foreign handles — as a named placeholder such as `<list>`, never
+> render through the descriptor to the same text as the typed value
+> ([BUILTIN-PRINT-FORM](../runtime/0012-Built-InFunctions.md#printvalue-printable---unit--builtin-print)):
+> records as their row (`{ x: 1, y: "a" }`), unions by variant, lists by
+> element, a `Result` as `Success(…)`/`Error(…)`, and shapes that are not
+> data — maps, closures, foreign handles — as a kind label such as `<map>`, never
 > the raw word. Erasing an anonymous record is rejected
 > ([TYPE-RECORD-ANON](#anonymous-records--type-record-anon)); a structural arm
 > never selects an erased union, list or map — match the union before erasing

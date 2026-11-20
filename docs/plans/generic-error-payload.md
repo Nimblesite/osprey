@@ -40,11 +40,12 @@ Make `Result<T, E>` hold its error at type `E`, end to end, as [ERR-RESULT](../s
 - [x] `match` binds the payload at `E`; unknown `E` binds its rendering, never a blind read
 - [x] `toString`, `print`, interpolation render a typed payload
 - [x] `expectError` compares a record or union payload
-- [ ] Structural equality of two `Result`s compares typed payloads
+- [x] Two `Result`s compare through assertions, by their rendering; `==` on a `Result` is rejected ([ERR-RESULT] rule 5)
+- [x] Records, unions and lists print by their literal form ([BUILTIN-PRINT-FORM]), so a typed payload renders at any depth
 
 ## Tests
 
-- [ ] Corpus regression mixing record, union, int, bool, float, string and nested-`Result` errors through `match`, `?:`, `toString`, records and closures, under GC, ARC and wasm32
+- [x] Corpus regression mixing record, union, int, bool, float, string and nested-`Result` errors through `match`, `?:`, `toString`, records and closures, under GC, ARC and wasm32
 - [x] Corpus programs that annotated `Result<_, string>` over a `string` payload state their real `E`
 - [x] Corpus assertions that compared values of different types compare one type
 - [ ] `make ci` green

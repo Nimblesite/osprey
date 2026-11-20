@@ -57,7 +57,7 @@ size = parse "abc" ?: 0
 
 ### Formatting — [ERR-RESULT-FORMAT]
 
-A `Result` formats as `Success(<value>)` or `Error(<payload>)`, each side rendered at its own type. It is printable exactly when both `T` and `E` are.
+A `Result` formats as `Success(<value>)` or `Error(<payload>)`, each side rendered at its own type as `toString` renders it ([BUILTIN-PRINT-FORM](../runtime/0012-Built-InFunctions.md#printvalue-printable---unit--builtin-print)): a record payload as `Error({ code: 1, why: "empty" })`, a union payload as `Error(Overflow { by: 3 })`. It is printable exactly when both `T` and `E` are.
 
 ```osprey
 print(toString(checkedAdd(2, 3)))   // "Success(5)"

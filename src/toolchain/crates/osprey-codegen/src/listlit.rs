@@ -363,7 +363,11 @@ pub(crate) fn gen_index(cg: &mut Codegen, target: &Expr, index: &Expr) -> Result
 /// recovered whole, exactly as the runtime layout's read recovers it.
 fn typed_element(cg: &mut Codegen, list: &Value, mut value: Value) -> Value {
     let inferred = list.element_type(osprey_types::names::LIST);
-    if inferred.as_ref().and_then(crate::types::result_inner).is_some() {
+    if inferred
+        .as_ref()
+        .and_then(crate::types::result_inner)
+        .is_some()
+    {
         let word = crate::conv::box_to_i64(cg, value.clone());
         return crate::cast::result_element_word(cg, &word.operand, inferred.as_ref())
             .unwrap_or(value);

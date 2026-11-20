@@ -13,13 +13,8 @@ use crate::llty::{LType, Value};
 /// Box `v` whole at its static type.
 pub(crate) fn box_typed(cg: &mut Codegen, v: Value) -> Result<Value> {
     let v = crate::listlit::escaping(cg, v);
-    let proto = Value {
-        operand: String::new(),
-        ..v.clone()
-    };
-    let key = format!("{proto:?}");
-    let _ = cg.anys.typed.insert(key.clone(), proto);
-    let desc = descriptor(cg, &DescKey::Typed(key))?;
+    let key = key(cg, &v);
+    let desc = descriptor(cg, &key)?;
     let managed = v.result_inner.is_some() || v.ty.is_managed_ptr();
     let word = crate::conv::box_to_i64(cg, v);
     let payload = if managed {
@@ -28,6 +23,18 @@ pub(crate) fn box_typed(cg: &mut Codegen, v: Value) -> Result<Value> {
         word
     };
     Ok(build_box(cg, &desc_operand(&desc), payload, managed))
+}
+
+/// The descriptor key that renders `v` at its static type, recording the
+/// prototype it restores to.
+pub(super) fn key(cg: &mut Codegen, v: &Value) -> DescKey {
+    let proto = Value {
+        operand: String::new(),
+        ..v.clone()
+    };
+    let key = format!("{proto:?}");
+    let _ = cg.anys.typed.insert(key.clone(), proto);
+    DescKey::Typed(key)
 }
 
 /// The payload word of a typed box.

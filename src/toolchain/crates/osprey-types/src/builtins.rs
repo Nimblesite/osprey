@@ -286,7 +286,13 @@ fn lists(e: &mut TypeEnv) {
         Type::list(t()),
     );
     poly(e, "listLength", vec![0], vec![Type::list(t())], i());
-    poly(e, "listGet", vec![0], vec![Type::list(t()), i()], list_read(t()));
+    poly(
+        e,
+        "listGet",
+        vec![0],
+        vec![Type::list(t()), i()],
+        list_read(t()),
+    );
     poly(e, "listContains", vec![0], vec![Type::list(t()), t()], b());
     // Deep content comparison [BUILTIN-STRUCTURAL-EQUALS]: both operands are
     // the one type variable, and the operand type is validated as an

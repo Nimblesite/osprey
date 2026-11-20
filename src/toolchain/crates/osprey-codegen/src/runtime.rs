@@ -20,10 +20,7 @@ pub(crate) fn to_string_value(cg: &mut Codegen, v: Value) -> Result<Value> {
     }
     match v.ty {
         LType::Str => Ok(v),
-        LType::Ptr => {
-            let boxed = crate::anybox::box_any(cg, v)?;
-            Ok(crate::anybox::any_to_string(cg, &boxed))
-        }
+        LType::Ptr => crate::show::handle(cg, v),
         LType::I1 => Ok(bool_to_string(cg, &v)),
         // Every float width prints through the runtime function that finds the
         // shortest decimal reading back at THAT width [TYPE-NUMERIC-PRINT].
@@ -129,23 +126,26 @@ fn sprintf_wrap(cg: &mut Codegen, fmt: &str, arg: &str) -> String {
 /// wasm32 and 64-bit natively, so a literal size type here mismatches
 /// wasi-libc at wasm-ld time. See `string_runtime.h`. [STRING-INTERPOLATION]
 pub(crate) fn format_sized(cg: &mut Codegen, fmt: &str, args: &[String]) -> Value {
+    let fmt = cg.string_constant(fmt);
+    format_sized_by(cg, &fmt.operand, args)
+}
+
+/// [`format_sized`] with the format string chosen at run time.
+pub(crate) fn format_sized_by(cg: &mut Codegen, fmt: &str, args: &[String]) -> Value {
     cg.add_extern("declare i64 @osp_format_size(i8*, ...)");
     cg.add_extern("declare void @osp_format_into(i8*, i64, i8*, ...)");
-    let fmtv = cg.string_constant(fmt);
     let extra = args.iter().fold(String::new(), |mut acc, a| {
         acc.push_str(", ");
         acc.push_str(a);
         acc
     });
     let len = cg.emit_reg(format!(
-        "call i64 (i8*, ...) @osp_format_size(i8* {}{extra})",
-        fmtv.operand
+        "call i64 (i8*, ...) @osp_format_size(i8* {fmt}{extra})"
     ));
     let size = cg.emit_reg(format!("add i64 {len}, 1"));
     let buf = cg.heap_alloc(&size);
     cg.emit(format!(
-        "call void (i8*, i64, i8*, ...) @osp_format_into(i8* {buf}, i64 {size}, i8* {}{extra})",
-        fmtv.operand
+        "call void (i8*, i64, i8*, ...) @osp_format_into(i8* {buf}, i64 {size}, i8* {fmt}{extra})"
     ));
     let v = Value::new(buf, LType::Str);
     crate::arc::own(cg, &v);

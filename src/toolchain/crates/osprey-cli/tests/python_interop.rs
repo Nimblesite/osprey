@@ -190,7 +190,11 @@ def parse_pair(text, separator):
 def head_of(mapping, key):
     match mapGet(mapping, key):
         case Success(value=items):
-            return listGet(items, 0)
+            match listGet(items, 0):
+                case Success(value=first):
+                    return Success(value=first)
+                case Error(message=missed):
+                    return Error(message=f"no item {missed.index} of {missed.length}")
         case Error(message=message):
             return Error(message=message)
 

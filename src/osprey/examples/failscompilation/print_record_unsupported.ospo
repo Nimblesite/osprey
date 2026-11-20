@@ -1,9 +1,9 @@
-// Records have no string formatter and must be rejected before code generation.
+// A function has no rendering, so a record holding one is not printable [BUILTIN-PRINT].
 
-type Pt = { x: int, y: int }
+type Pt = { x: int, grow: fn(int) -> int }
 
 fn main() -> int {
-    let p = Pt { x: 5, y: 10 }
+    let p = Pt { x: 5, grow: |n| => n + 1 }
     print(p)
     0
 }

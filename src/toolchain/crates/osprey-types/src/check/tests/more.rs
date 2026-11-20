@@ -69,18 +69,23 @@ fn string_conversion_builtins_reject_runtime_handles() {
         let e = print(noop())\n\
         let f = toString(intDiv(4, 2))\n\
         extern fn textResult() -> Result<string, string>\n\
-        let g = print(textResult())\n");
+        let g = print(textResult())\n\
+        type R = { value: int }\n\
+        let h = toString(R { value: 1 })\n\
+        let i = print([1, 2])\n\
+        extern fn listed() -> Result<List<int>, R>\n\
+        let j = print(listed())\n");
     for source in [
-        "type R = { value: int }\nlet s = toString(R { value: 1 })\n",
-        "let s = print([1, 2])\n",
+        "type R = { run: fn(int) -> int }\nlet s = toString(R { run: fn(x) => x })\n",
+        "let s = print([fn(x) => x + 1])\n",
         "let m = { \"one\": 1 }\nlet s = toString(m)\n",
         "let s = print(fn(x) => x)\n",
         "let s = toString(range(0, 2))\n",
         "let s = print(spawn 1)\n",
         "let c = Channel(1)\nlet s = toString(c)\n",
         "extern fn raw() -> Ptr\nlet s = print(raw())\n",
-        "extern fn bad() -> Result<List<int>, string>\nlet s = toString(bad())\n",
-        "type R = { value: int }\nextern fn bad() -> Result<int, R>\nlet s = print(bad())\n",
+        "extern fn bad() -> Result<Map<string, int>, string>\nlet s = toString(bad())\n",
+        "extern fn bad() -> Result<int, List<Ptr>>\nlet s = print(bad())\n",
     ] {
         bad_with(source, "cannot convert value");
     }

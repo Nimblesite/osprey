@@ -12,12 +12,35 @@ surface unless an ML example clarifies different call syntax.
 
 ### `print(value: printable) -> Unit` — [BUILTIN-PRINT]
 
-`printable` is documentation shorthand, not a user-declared type. It includes
-`int`, `float`, `bool`, `string`, `Unit`, explicitly erased `any`, and
-`Result<T, E>` when both payloads are printable. Concrete records, collections, functions,
-iterators, fibers, channels, and pointers are rejected. Results render as
-`Success(value)` or `Error(message)`; `Unit` renders as `0`; `print` appends a
-newline. An explicitly erased `any` value renders through its shape descriptor: records show their named fields, unions their selected variant and Results their success/error case. Opaque runtime handles use kind labels; the underlying pointer word is never interpreted as a string or shown as the value. An explicit `any` local may retain a concrete backend representation until rendering, which must produce the same result as a boxed `any` parameter. See [TYPE-ANY](../language/0004-TypeSystem.md#the-any-type--type-any).
+`printable` is documentation shorthand, not a user-declared type. Every value made of data is printable: `int`, `float`, `bool`, `string`, `Unit`, a record, a union, a `List` of printable elements, a `Result<T, E>` whose two sides are printable, and an erased `any`. A function, `Map`, iterator, fiber, channel, pointer, GPU buffer or capability is rejected at compile time, alone or as a record field, list element or `Result` side. `print` appends a newline.
+
+A value renders the way its literal is written — [BUILTIN-PRINT-FORM]:
+
+| Value | Rendering |
+| --- | --- |
+| `int`, `float`, `bool` | the literal: `42`, `2.5`, `true` |
+| `string` | its text; in quotes when it is inside a record, variant or list |
+| `Unit` | `0` |
+| record | `{ code: 1, why: "empty" }`, fields in declaration order |
+| union variant | `DivZero`, `Overflow { by: 3 }`, `Node(Leaf, Leaf)` |
+| `List` | `[1, 2, 3]`, `[]` when empty |
+| `Result` | `Success(value)` or `Error(payload)`, the payload as `toString` renders it ([ERR-RESULT-FORMAT](../language/0013-ErrorHandling.md#formatting--err-result-format)) |
+
+A record prints its fields and not its type name: records are structural, so two declarations with the same fields are the same shape and print alike. A quoted string is not escaped. Nesting composes: a record holding a list of unions prints each level by its own row. GC, ARC and wasm32 produce the same text. An erased `any` renders through its shape descriptor to the same text as the typed value; a `Map` or opaque runtime handle inside one shows a kind label such as `<map>`, never the pointer word. See [TYPE-ANY](../language/0004-TypeSystem.md#the-any-type--type-any).
+
+```osprey
+type MathError = DivZero | Overflow { by: int }
+type Report = { code: int, why: string, tags: List<int>, cause: MathError }
+print(Report { code: 1, why: "empty", tags: [1, 2], cause: Overflow { by: 3 } })
+// { code: 1, why: "empty", tags: [1, 2], cause: Overflow { by: 3 } }
+```
+
+```osprey-ml
+type MathError = DivZero | Overflow { by : int }
+type Report = { code : int, why : string, tags : List<int>, cause : MathError }
+print (Report(code = 1, why = "empty", tags = [1, 2], cause = Overflow(by = 3)))
+// { code: 1, why: "empty", tags: [1, 2], cause: Overflow { by: 3 } }
+```
 
 ```osprey
 print("Hello World")

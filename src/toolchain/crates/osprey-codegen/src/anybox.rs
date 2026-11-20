@@ -87,6 +87,8 @@ pub(crate) struct AnyState {
     typed: HashMap<String, Value>,
     /// Whether `@osp.any.to_string` has been emitted.
     to_string_emitted: bool,
+    /// Whether `@osp.any.show` has been emitted.
+    show_emitted: bool,
     /// Every row shape a declared record can erase to, in declaration order —
     /// the complete candidate table structural arms select from. Seeded
     /// before emission ([`seed_rows`]); erasing an anonymous record is
@@ -322,6 +324,10 @@ fn classify(cg: &mut Codegen, v: Value) -> Result<(DescKey, Value, bool)> {
 /// renderer cannot truthfully walk becomes a named opaque.
 fn classify_handle(cg: &mut Codegen, v: Value) -> Result<(DescKey, Value, bool)> {
     let owner = v.osp_ty.clone().unwrap_or_default();
+    // A list keeps its element type, so it renders its elements.
+    if crate::collections::is_list_owner(&owner) {
+        return Ok((typed::key(cg, &v), v, true));
+    }
     if is_opaque_owner(&owner) {
         return Ok((DescKey::Opaque(opaque_label(&owner)), v, true));
     }
