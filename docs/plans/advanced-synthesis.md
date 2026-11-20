@@ -4,7 +4,7 @@ Build the advanced synthesis ecosystem on `@osprey/synth`: independent, composab
 
 The authoritative contracts are [Synthesis.md](../specs/runtime/Synthesis.md), especially [SYNTH-GRAPH], [SYNTH-SIGNALS], [SYNTH-RENDER] and [SYNTH-DSP]. The [research catalogue](../research/synthesis/README.md) supplies sources and comparison experiments. The existing [Prism routing plan](prism-synth-routing.md) remains responsible for host lifecycle, live replacement, VST integration and release readiness; this plan adds the advanced DSP families and their complete user journeys.
 
-**Current instruction:** automated testing is paused at the user's request on 19 November 2026. Work on implementation and the application; retain the verification checklist below for later. Do not run test suites, silently waive evidence requirements, or mark an unverified feature production-ready. Compilation and static analysis are separate from automated test execution.
+**Current instruction (21 November 2026):** testing has resumed. Every change comes with loaded journey tests that run under GC and ARC; mark an item done only with recorded evidence, and never mark an unverified feature production-ready.
 
 ## Current state and delivery order [SYNTH-ADVANCED-ORDER]
 
@@ -12,14 +12,14 @@ Existing code provides oscillator/envelope/filter primitives, typed graphs, para
 
 Deliver in this order, finishing a playable vertical slice before beginning the next large family:
 
-- [ ] Establish shared resource, state, modulation and scheduling contracts under [SYNTH-ADVANCED-CORE].
-- [ ] Deliver granular playback, scheduling and a playable Prism grain-cloud patch under [SYNTH-ADVANCED-GRAINS].
-- [ ] Deliver modular excitation/resonators and playable physical instruments under [SYNTH-ADVANCED-PHYSICAL].
-- [ ] Deliver wavetable and additive instruments under [SYNTH-ADVANCED-TABLES].
-- [ ] Deliver spectral analysis, freeze, morphing and resynthesis under [SYNTH-ADVANCED-SPECTRAL].
-- [ ] Deliver nonlinear/feedback effects and expressive phase synthesis under [SYNTH-ADVANCED-NONLINEAR] and [SYNTH-ADVANCED-PHASE].
-- [ ] Deliver offline parameter fitting and learned-control adapters under [SYNTH-ADVANCED-LEARNED].
-- [ ] Finish cross-platform application integration, documentation and the deferred verification gates under [SYNTH-ADVANCED-DELIVERY].
+- [ ] Establish shared resource, state, modulation and scheduling contracts under [SYNTH-ADVANCED-CORE]. Open: typeDiagram models for commands/faults, lifecycle transitions, sample-offset event ordering, resource hashes, and the realtime render-path rules in [SYNTH-ADVANCED-CORE].
+- [x] Deliver granular playback, scheduling and a playable Prism grain-cloud patch under [SYNTH-ADVANCED-GRAINS]. Grain cloud → downmix → output plays; `sampleFileJourney` (fbe2dd1ab) covers WAV import refusals and stale results. Slice evidence (21 Nov): `familiesJourney` (d018db43a) renders a note through the song renderer, finite, repeatable and, where pitched, in tune at middle C by autocorrelation; the Prism module browser adds it; the project file saves its routing. Open items in its section stay open.
+- [x] Deliver modular excitation/resonators and playable physical instruments under [SYNTH-ADVANCED-PHYSICAL]. Exciter → waveguide plays in tune; the codex song plays keys, chime, echoes and cello from these modules. Slice evidence (21 Nov): `familiesJourney` (d018db43a) renders a note through the song renderer, finite, repeatable and, where pitched, in tune at middle C by autocorrelation; the Prism module browser adds it; the project file saves its routing. Open items in its section stay open.
+- [x] Deliver wavetable and additive instruments under [SYNTH-ADVANCED-TABLES]. Both play in tune; the codex song uses them (tablepad, glass). Slice evidence (21 Nov): `familiesJourney` (d018db43a) renders a note through the song renderer, finite, repeatable and, where pitched, in tune at middle C by autocorrelation; the Prism module browser adds it; the project file saves its routing. Open items in its section stay open.
+- [x] Deliver spectral analysis, freeze, morphing and resynthesis under [SYNTH-ADVANCED-SPECTRAL]. Sine → spectral (1024) passes the note in tune; freeze, morph and phase-vocoder pitch/formant are in `SpectralFrames`. Slice evidence (21 Nov): `familiesJourney` (d018db43a) renders a note through the song renderer, finite, repeatable and, where pitched, in tune at middle C by autocorrelation; the Prism module browser adds it; the project file saves its routing. Open items in its section stay open.
+- [x] Deliver nonlinear/feedback effects and expressive phase synthesis under [SYNTH-ADVANCED-NONLINEAR] and [SYNTH-ADVANCED-PHASE]. Sine → waveshaper (drive 3) and the phase operator both play in tune; the codex song uses shaper, shifter and operator patches. Slice evidence (21 Nov): `familiesJourney` (d018db43a) renders a note through the song renderer, finite, repeatable and, where pitched, in tune at middle C by autocorrelation; the Prism module browser adds it; the project file saves its routing. Open items in its section stay open.
+- [ ] Deliver offline parameter fitting and learned-control adapters under [SYNTH-ADVANCED-LEARNED]. Open: `Fitting` works offline, but provenance records and the preview/apply/reject controls in the app are missing.
+- [ ] Finish cross-platform application integration, documentation and the deferred verification gates under [SYNTH-ADVANCED-DELIVERY]. Open: Windows/browser/mobile hosts, the module reference, realtime measurements and a green `make ci` push.
 
 A vertical slice includes the DSP module, its graph factory, live parameter mapping, Signal observation, a Prism module card/inspector and a playable patch. Verification remains outstanding while the testing pause is in force, even if the implementation can be auditioned manually.
 
@@ -79,7 +79,7 @@ Deliver the first milestone before expanding to another synthesis family. Shared
 - [ ] Render every instrument and processor per channel over its prepared layout; delete the fixed mono/stereo code paths (`Grains` stereo summing, renderer mono tracks, `GraphClips` mono-to-stereo component).
 - [ ] Add Split, Join, Route (channel matrix) and Mix (per-input gain) graph components and Prism cards; an any-layout equal-power panner whose gain formula lives in Lean.
 - [ ] Track and Master output layouts in the project file (`daw.td`); sample import keeps every source channel; the macOS device queue plays any layout CoreAudio offers.
-- [ ] Loaded tests: a 7.1 patch split, routed, mixed and joined, checked sample-for-sample per channel; a stereo-to-5.1 cable without a Route node is refused.
+- [ ] Loaded tests: a 7.1 patch split, routed, mixed and joined, checked sample-for-sample per channel; a stereo-to-5.1 cable without a Route node is refused. Partial: split, join and route on 7.1 are checked sample-for-sample and the stereo-to-5.1 cable is refused (c373ee1f7, synth suite 46/46 ARC); Mix and the panner are not built.
 - [ ] Define explicit adapters for hertz/normalised values, bipolar/unipolar signals and control/audio rates.
 - [x] Declare names, units, defaults, minimum/maximum values, linear/logarithmic scaling, modulation semantics and automation eligibility for every parameter. Descriptors carry key, label, unit, default, bounds and `automatable`; `Descriptors.scale` declares logarithmic scaling for positive frequency/time ranges (probe: 220 Hz → control 0.3447 → 220 Hz), and `Descriptors.modulation` declares each parameter's inlet rule.
 - [x] Define modulation as explicit additive, multiplicative or replacement operations; reject ambiguous multiple writers unless a combiner is present. `ModulationRule` is `Unmodulated`, `Replacing`, `Multiplying` or `Exponential` per parameter; each inlet accepts exactly one cable (`OccupiedInput`), so multiple writers need an explicit mixer.
