@@ -155,6 +155,8 @@ Also tried and rejected: narrowing the snapshot to one component's parameters be
 | Renderer | The fixed price per component per sample | Block rendering, below | synth-advanced, OspreyOpus1 |
 | daw mix | `BusMix` and `Arrangements::bused` build each side with `listAppend` and `listGet` per sample | Fold into a builder once per side; measured at HEAD with buses: 35.6 s, so no regression yet | synth-advanced |
 
+Tried and rejected in code generation: stopping `listGet (filterList …) 0` at its first match (the list then holds one element). 34.8 s against 35.0 s, identical audio, so it was backed out: the cost is building and dropping the one-element list, not the scan. The fix that pays is a search that returns the element with no list at all, which needs the fused `match listGet` path to own the element across the loop's region.
+
 The runtime fixes alone reach 0.79× real time. The 2× target needs the code generation rows and block rendering; no runtime change can remove allocations the generated code asks for.
 
 - [x] Member cache, non-member cache and tombstone-free deletion in the ARC registry (42.3 s to 35.0 s).
