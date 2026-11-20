@@ -252,7 +252,7 @@ module DawSession
 
     (** What a tap on the Timeline or Mix page does, if anything. *)
     export tappedAt (editor, x, y) = match editor.outputEdit
-        ChoosingOutput offset => RoutingPicker::at (editor, offset, x, y)
+        ChoosingOutput offset => RoutingPicker::at (editor, offset, x - Header::shift editor, y)
         EditingSend _ => Error(message = "Finish editing the send first.")
         NamingGroup _ => Error(message = "Finish naming the group first.")
         OutputClosed => workspaceAt (editor, x, y)
@@ -260,7 +260,7 @@ module DawSession
     workspaceAt (editor, x, y) =
         index = EditorView::areaAt (TimelineView::headerAreas editor, x, y)
         match index < 0
-            true => pageAt (editor, x, y)
+            true => pageAt (editor, x - Header::shift editor, y)
             false => Success(value = Header::songAction (editor, index))
 
     pageAt (editor, x, y) = match editor.page

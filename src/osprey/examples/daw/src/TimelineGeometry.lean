@@ -20,6 +20,11 @@ def overviewX (index bars : Float) : Float := 468 + index / bars * 324
 def overviewWidth (bars : Float) : Float := 324 / bars - 2
 def overviewTop (count most : Float) : Float := if most <= 0 then 120 else 120 - count / most * 23
 
+/-- A song page is 1440 by 940 units and fits its region whole. In a region wider than that shape the page keeps
+its height (the region is 940 units tall) and sits in the middle: this is how far right it starts. -/
+def centred (viewWidth viewHeight : Float) : Float :=
+  if viewHeight > 939 && viewHeight < 941 && viewWidth > 1440 then (viewWidth - 1440) / 2 else 0
+
 /-- Arrangement lanes span x 198 to 1092 across the whole song. -/
 def laneX (beat beats : Float) : Float := 198 + beat / beats * 894
 def laneBeat (x beats : Float) : Float := bounded ((x - 198) / 894 * beats) 0 beats

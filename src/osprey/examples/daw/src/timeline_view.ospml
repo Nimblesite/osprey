@@ -327,4 +327,4 @@ module TimelineView
     export inspectorAreas () = [area ("Track gain", 1154.0, 338.0, 262.0, 20.0, false), area ("Track pan", 1154.0, 397.0, 262.0, 20.0, false), area ("Show output routing", 1154.0, 518.0, 262.0, 36.0, false), area ("Track Space send", 1154.0, 595.0, 262.0, 20.0, false)]
 
     (** The whole Timeline page. *)
-    export shapes editor = listConcat (listConcat (Header::frame editor) (arrangement (editor, beats editor))) (ui::Lists::flatten [roll editor, inspector editor, RoutingPicker::shapes editor])
+    export shapes editor = listConcat (arrangement (editor, beats editor)) (ui::Lists::flatten [roll editor, inspector editor, RoutingPicker::shapes editor])

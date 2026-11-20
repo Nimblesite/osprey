@@ -384,9 +384,16 @@ module EditorView
     pageZoom editor = ui::Pick::either (editor.keyboardShown, 0.75, 0.0)
 
     // The Timeline and Mix pages draw the song instead of the patch, on the same surface.
-    songPage editor = match editor.page
-        MixPage => Ui::described (Ui::zoomed (pageZoom editor, 1440.0, 940.0, PrismArt::atlas editor.skin, MixView::shapes editor, Surface), listConcat (TimelineView::headerAreas editor) (MixView::access editor))
-        _ => Ui::described (Ui::zoomed (pageZoom editor, 1440.0, 940.0, PrismArt::atlas editor.skin, TimelineView::shapes editor, Surface), listConcat (listConcat (TimelineView::headerAreas editor) (TimelineView::laneAccess editor)) (TimelineView::inspectorAreas ()))
+    songPage editor =
+        open = length editor.song.tracks > 0
+        body = match editor.page
+            MixPage => MixView::shapes editor
+            _ => TimelineView::shapes editor
+        areas = match editor.page
+            MixPage => MixView::access editor
+            _ => listConcat (TimelineView::laneAccess editor) (TimelineView::inspectorAreas ())
+        shapes = listConcat (Header::bar editor) (Header::placed (editor, Header::page (editor, ui::Pick::either (open, body, []))))
+        Ui::described (Ui::zoomed (0.0, 1440.0, 940.0, PrismArt::atlas editor.skin, shapes, Surface), listConcat (Header::songAreas editor) (Header::placedAreas (editor, ui::Pick::either (open, areas, []))))
 
     canvas editor = match editor.page
         PatchPage => patchCanvas editor
@@ -450,7 +457,8 @@ module EditorView
             true => Ui::aside (canvas editor, ui::Trailing, inspector editor, 280, Surface)
         grow = ui::Frames::plain
         page = Ui::framed (grow(frameGrow = true), pane)
-        match editor.keyboardShown
+        // The keyboard plays the patch, so it docks under the Patch page only.
+        match editor.keyboardShown && TimelineView::pageIndex editor.page == 0
             false => page
             true => Ui::column [page, keyboardDock editor]
 

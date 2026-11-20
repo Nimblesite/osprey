@@ -138,7 +138,7 @@ module MixView
                 [ui::Ui::section ("Routing", "", listConcat (listAppend entries (ui::Ui::button ("New stereo bus…", "", NewGroup))) (sendCommands voice))]
 
     (** The whole Mix page. *)
-    export shapes editor = listConcat (listConcat (Header::frame editor) (table editor)) (listConcat (side editor) (RoutingPicker::shapes editor))
+    export shapes editor = listConcat (table editor) (listConcat (side editor) (RoutingPicker::shapes editor))
 
     controlAt (voice, index, x) = match x >= 215.0 && x <= 270.0
         true => AdjustMix(index = index, gain = TimelineGeometry::fader (x, 215.0, 55.0, 0.0, 4.0), pan = voice.pan, reverb = voice.reverb)

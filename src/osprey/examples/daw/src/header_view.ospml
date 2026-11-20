@@ -133,15 +133,53 @@ module Header
         live = phase != "Stopped"
         [TimelineView::box (0.0, 909.0, 1440.0, 1.0, rule (), 3), TimelineView::box (22.0, 921.0, 8.0, 8.0, ui::Pick::either (live, sounding (), TimelineView::dim ()), 3), TimelineView::label (phase, 37.0, 918.0, 11.0, ui::Pick::either (live, sounding (), quiet ()), 0, 3), TimelineView::label ("${intDiv editor.song.sampleRate 1000} kHz", 119.0, 918.0, 11.0, quiet (), 0, 3), TimelineView::label ("Stereo", 184.0, 918.0, 11.0, quiet (), 0, 3), TimelineView::label (editor.message, 260.0, 918.0, 11.0, TimelineView::accent (), 0, 3), TimelineView::label (route editor, 1416.0, 918.0, 11.0, quiet (), 2, 3)]
 
-    (** The hit areas of the Timeline and Mix header: the page tabs, then Return to start, Play and Stop. *)
-    export songAreas editor = listConcat (listAppend (tabAreas (editor, 1.0)) (TimelineView::area ("Return to start", 1277.0, 80.0, 46.5, 43.0, false))) (transportAreas (1323.5, 80.0, 46.5, 43.0, "Play", "Stop"))
+    (** How far right a song page starts in a region wider than the page ([DAW-HEADER]). *)
+    export shift editor = TimelineGeometry::centred (ui::Machines::number (editor.skin, "viewWidth"), ui::Machines::number (editor.skin, "viewHeight"))
 
-    (** The command behind header area `index` of the Timeline and Mix pages. *)
-    export songAction (editor, index) = match index
-        3 => PickTrack(index = editor.track, bar = 0)
-        4 => PlaySong
-        5 => StopSong
-        _ => ShowPage(page = tabPage index)
+    moved (primitive, dx) = match primitive
+        ui::Rect x y w h angle colour depth => ui::Rect(x = x + dx, y = y, w = w, h = h, angle = angle, color = colour, depth = depth)
+        ui::Disc x y radius colour depth => ui::Disc(x = x + dx, y = y, radius = radius, color = colour, depth = depth)
+        ui::Strip points colour stroke depth => ui::Strip(points = mapList (toList (range (0, length points)), \i => (listGet points i ?: 0.0) + ui::Pick::either (i % 2 == 0, dx, 0.0)), color = colour, stroke = stroke, depth = depth)
+        ui::Sprite sprite x y w h angle colour depth => ui::Sprite(sprite = sprite, x = x + dx, y = y, w = w, h = h, angle = angle, color = colour, depth = depth)
+        ui::Glyphs words x y size colour depth => ui::Glyphs(glyphs = words, x = x + dx, y = y, size = size, color = colour, depth = depth)
+        ui::Lettering words x y size colour depth anchor weight => ui::Lettering(letters = words, x = x + dx, y = y, size = size, color = colour, depth = depth, anchor = anchor, weight = weight)
+        ui::Path steps outline paint x y scale depth => ui::Path(steps = steps, outline = outline, paint = paint, moveX = x + dx, moveY = y, scale = scale, depth = depth)
 
-    (** The Timeline and Mix pages' background, header, song strip and footer, 1440 by 940 units. *)
-    export frame editor = listConcat (listConcat [TimelineView::box (0.0, 0.0, 1440.0, 940.0, Scenes::rgb (16, 13, 33), 0), TimelineView::box (0.0, 0.0, 1440.0, 59.0, Scenes::rgb (17, 16, 33), 1), TimelineView::box (0.0, 59.0, 1440.0, 1.0, rule (), 3), TimelineView::box (0.0, 142.0, 1440.0, 1.0, rule (), 1)] (listConcat (brand editor) (tabs (editor, 1.0)))) (listConcat (strip editor) (footer editor))
+    (** A song page's shapes where the page sits in its region. *)
+    export placed (editor, shapes) = mapList (shapes, \shape => moved (shape, shift editor))
+
+    (** A song page's hit areas where the page sits in its region. *)
+    export placedAreas (editor, areas) = mapList (areas, \a => a(accessLeft = a.accessLeft + shift editor))
+
+    // What a song page shows before a song is open: what is missing and the one way forward.
+    emptyArea () = TimelineView::area ("Open song", 640.0, 470.0, 160.0, 40.0, false)
+
+    empty () = listConcat [TimelineView::label ("No song open", 720.0, 380.0, 28.0, TimelineView::ink (), 1, 3), TimelineView::label ("Open a song to see its tracks, notes and routing.", 720.0, 426.0, 14.0, TimelineView::dim (), 1, 3), TimelineView::label ("Open Song…", 720.0, 482.0, 14.0, TimelineView::ink (), 1, 13)] (plaque (640.0, 470.0, 160.0, 40.0, Scenes::rgb (52, 41, 110), 11))
+
+    (** The hit areas of a song page's header: the page tabs, then Open song before a song is open, or Return
+        to start, Play and Stop once one is. *)
+    export songAreas editor = match length editor.song.tracks
+        0 => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, [emptyArea ()]))
+        _ => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, listConcat [TimelineView::area ("Return to start", 1277.0, 80.0, 46.5, 43.0, false)] (transportAreas (1323.5, 80.0, 46.5, 43.0, "Play", "Stop"))))
+
+    (** The command behind header area `index` of a song page. *)
+    export songAction (editor, index) = match index < 3
+        true => ShowPage(page = tabPage index)
+        false => match length editor.song.tracks
+            0 => OpenTrack(index = -2)
+            _ => match index
+                3 => PickTrack(index = editor.track, bar = 0)
+                4 => PlaySong
+                _ => StopSong
+
+    (** The part of a song page that stays at the window's edge: the background and the top bar with the name
+        and the tabs, as wide as the region. *)
+    export bar editor =
+        width = 1440.0 + 2.0 * shift editor
+        listConcat [TimelineView::box (0.0, 0.0, width, 940.0, Scenes::rgb (16, 13, 33), 0), TimelineView::box (0.0, 0.0, width, 59.0, Scenes::rgb (17, 16, 33), 1), TimelineView::box (0.0, 59.0, width, 1.0, rule (), 3)] (listConcat (brand editor) (tabs (editor, 1.0)))
+
+    (** The part of a song page that sits in the middle: the song strip and footer around the page's body, or
+        the invitation to open a song. *)
+    export page (editor, body) = match length editor.song.tracks
+        0 => empty ()
+        _ => listConcat (listConcat [TimelineView::box (0.0, 142.0, 1440.0, 1.0, rule (), 1)] (strip editor)) (listConcat (footer editor) body)
