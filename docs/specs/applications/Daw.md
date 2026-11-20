@@ -1,6 +1,6 @@
 # The daw [DAW]
 
-Status: in progress. The project file, its encoder and the transport are implemented and tested. The Timeline, Mix and patch pages are being built on the FerroUI host. The [delivery plan](../../plans/daw.md) records what is verified.
+Status: in progress. The daw runs on the FerroUI host. It opens a project, shows the Timeline, Mix and patch pages, saves edits into the project file, and plays bars through the renderer. The [delivery plan](../../plans/daw.md) records what is verified.
 
 The daw is the [Prism](../../../src/osprey/examples/daw/PRISM.md) patch studio with a song around it. A song project holds tracks of notes. Every track plays through a patch and feeds a stereo Master and a shared reverb, Space. The app opens a project, shows its tracks on a timeline and lets you edit a track's notes, mix and patch. It plays the song as it currently stands and saves everything back to the same file.
 
@@ -29,7 +29,13 @@ Rendering is offline and slower than realtime. With the renderer built under ARC
 
 ## Pages [DAW-PAGES]
 
-One window shows three views of one session. **Timeline** shows the tracks, the song overview and a two-bar piano roll for the selected track. **Mix** shows each track's gain, pan, Space send and its output, which is Master. **Patch** is Prism showing the selected track's patch. Tapping a track selects it. **Open patch** shows that track's patch. Leaving the patch page first saves the patch into the project; if the save fails, the patch stays open with the reason.
+One window shows three views of one session. **Timeline** shows the tracks, the song overview and a two-bar piano roll for the selected track. **Mix** shows each track's gain, pan, Space send and its output, which is Master. **Patch** is Prism showing the selected track's patch. Tapping a track selects it. **Open patch** shows that track's patch. Leaving the patch page first saves the patch into the project; if the save fails, the patch stays open with the reason. Selecting a note in the piano roll and changing its velocity changes only that note, and the project is saved.
+
+| [Timeline](../../../src/osprey/examples/daw/screens/timeline.png) | [Track patch](../../../src/osprey/examples/daw/screens/track-patch.png) | [Mix](../../../src/osprey/examples/daw/screens/mix.png) |
+| --- | --- | --- |
+| Tracks, song overview, piano roll and track inspector | The selected track's patch in Prism | Gain, pan and Space send per track, saved on release |
+
+The window's play button currently reads "Play song", but it plays two bars. Rendering the whole song in the app would take about 85 minutes under ARC, so a whole song is rendered with `make -C src/toolchain/targets/macos daw-render` instead.
 
 ## Math [DAW-MATH]
 
