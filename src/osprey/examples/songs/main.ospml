@@ -1,0 +1,36 @@
+// [SYNTH-ARRANGEMENT-PLAYER] songs <project.json> <output-folder> [intro-recording] [--silent]
+
+usage = "usage: songs <project.json> <output-folder> [intro-recording] [--silent]"
+
+request items =
+    paths = filterList (items, \item => item != "--silent")
+    songs::Request(project = listGet paths 0 ?: "", folder = listGet paths 1 ?: "", intro = listGet paths 2 ?: "", play = length paths == length items)
+
+finished (request, outcome) = match outcome
+    Error why => print "songs: ${why}"
+    Success _ => match request.play
+        false => print "songs: wrote ${songs::Player::songPath request}"
+        true => match songs::Player::played request
+            Error why => print "songs: ${why}"
+            Success _ => print "songs: played ${songs::Player::songPath request}"
+
+performed (request, source) = match songs::SongFiles::decode source
+    Error why => print "songs: ${why}"
+    Success arrangement => match makeDir request.folder
+        Error why => print "songs: ${why}"
+        Success _ =>
+            print "songs: ${arrangement.title}, ${arrangement.tempo} bpm, ${length arrangement.tracks} tracks"
+            finished (request, songs::Player::rendered (request, arrangement))
+
+started request = match request.project != "" && request.folder != "" && songs::Shell::safe request.project && songs::Shell::safe request.folder && songs::Shell::safe request.intro
+    false => print usage
+    true => match readFile request.project
+        Error why => print "songs: ${why}"
+        Success source => performed (request, source)
+
+main () =
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    started (request (args ()))

@@ -23,7 +23,11 @@ module EditorApp
     tapped (context, editor, action) = match action
         Strike note => match editor.renderContinuous || editor.renderTicket != ""
             true => Runtime::step (editor(armedNote = -1, message = "Stop playback before playing a new note."))
-            false => GraphPreview::play (EditorState::keyed (editor, note), context.platform)
+            false => match EditorState::tune (editor, note)
+                Error why => Runtime::step (editor(armedNote = -1, message = why))
+                Success tuned => GraphPreview::play (tuned, context.platform)
+        LoadSample => SamplePicker::choose editor
+        BuiltinSample => SamplePicker::builtin editor
         ScanVst => Plugins::scan editor
         Audition => GraphPreview::play (editor, context.platform)
         PlayGraph => GraphPreview::live (editor, context.platform)
@@ -35,7 +39,11 @@ module EditorApp
         CreateVst _ => Plugins::create (editor, value)
         _ => Runtime::step (EditorState::typed (editor, action, value))
 
-    completed (editor, ticket, outcome) = match startsWith ticket "prism-vst:"
+    completed (editor, ticket, outcome) = match startsWith ticket "prism-sample:"
+        true => SamplePicker::completed (editor, ticket, outcome)
+        false => otherCompletion (editor, ticket, outcome)
+
+    otherCompletion (editor, ticket, outcome) = match startsWith ticket "prism-vst:"
         true => Plugins::completed (editor, ticket, outcome)
         false => match startsWith ticket "prism-audio:"
             true => GraphPreview::completed (editor, ticket, outcome)
@@ -101,3 +109,81 @@ module EditorApp
 
     (** Native controls and the canvas observe the same typed graph and applied edit revision. *)
     export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => EditorView::theme ())
+
+(** [SYNTH-ADVANCED-GRAINS-IMPORT] Prepare a selected WAV outside rendering, with playback stopped. *)
+module SamplePicker
+    idle editor = editor.renderTicket == "" && editor.renderDeviceKey == "" && editor.renderContinuous == false && editor.renderStopping == false
+    ticket (editor, serial) = "prism-sample:${serial}:${editor.selected}:${editor.revision}:${editor.renderSerial}"
+    problem (editor, text) = Runtime::step (editor(sampleTicket = "", message = "Grain cloud ${editor.selected}: ${text}"))
+
+    (** Open the native WAV chooser for the selected grain cloud. *)
+    export choose editor = match idle editor && editor.sampleSerial < 9223372036854775807
+        false => problem (editor, "Sample selection is unavailable while playing or when request IDs run out.")
+        true => match Graphs::node (editor.graph, editor.selected)
+            Valid n => match n.processor
+                Granular _ _ _ =>
+                    serial = satAdd editor.sampleSerial 1
+                    key = ticket (editor, serial)
+                    Runtime::asking (editor(sampleSerial = serial, sampleTicket = key), [ui::Requests::ask (key, ui::ChooseFile(types = ["wav"], chosenLimit = 0, chosenSlice = ""))])
+                _ => problem (editor, "Select a Grain cloud to load a WAV sample.")
+            Invalid _ => problem (editor, "Select a Grain cloud to load a WAV sample.")
+
+    read path = match fileSize path
+        Error why => Error(message = why)
+        Success size => match size >= 12 && size <= 8388608
+            false => Error(message = "Choose a WAV file between 12 bytes and 8 MiB.")
+            true => match readFileBytes (path, 0, satAdd size 1)
+                Error why => Error(message = why)
+                Success bytes => match length bytes == size
+                    false => Error(message = "The file size changed during import.")
+                    true =>
+                        parts = split (replace path "\\" "/" ?: path) "/" ?: [path]
+                        name = foldList (parts, path, \(_, part) => part)
+                        SampleResources::decodeWave (name, 60.0, bytes)
+
+    retained (previous, rate, descriptor) = match descriptor.key == "rate"
+        true => descriptor(initial = rate)
+        false => match listGet (filterList (previous, \p => p.key == descriptor.key)) 0
+            Error _ => descriptor
+            Success p => descriptor(initial = ui::Pick::either (p.initial > descriptor.maximum, descriptor.maximum, p.initial))
+
+    replaceNode (editor, old, resource, capacity, seed, rate) =
+        fresh = Components::granular (old.identity, resource, capacity, seed)
+        next = fresh(parameters = mapList (fresh.parameters, \p => retained (old.parameters, rate, p)))
+        graph = editor.graph
+        draft = graph(nodes = mapList (graph.nodes, \n => ui::Pick::either (n.identity == old.identity, next, n)))
+        match GrainGraph::prepare next
+            Error why => problem (editor, why)
+            Success _ => publish (editor, draft, resource)
+
+    publish (editor, draft, resource) = match Graphs::prepare draft
+        Invalid _ => problem (editor, "The patch rejected this sample.")
+        Valid prepared => match ClipLayouts::bounded (prepared.graph, 1)
+            false => problem (editor, "The patch exceeds the renderer limits.")
+            true => Runtime::step (editor(graph = prepared.graph, revision = satAdd editor.revision 1, sampleTicket = "", message = "Loaded ${resource.name}."))
+
+    apply (editor, resource) = match Graphs::node (editor.graph, editor.selected)
+        Invalid _ => problem (editor, "Select a Grain cloud.")
+        Valid n => match n.processor
+            Granular _ capacity seed => match SampleResources::playbackRate (resource, toFloat editor.note, 48000.0)
+                Error why => problem (editor, why)
+                Success rate => replaceNode (editor, n, resource, capacity, seed, rate)
+            _ => problem (editor, "Select a Grain cloud.")
+
+    (** Restore the original harmonic resource through the same graph edit. *)
+    export builtin editor = match idle editor
+        false => problem (editor, "Stop playback before replacing the sample.")
+        true => apply (editor, EditorState::builtinSample ())
+
+    (** Handle only the current selection, patch revision and playback generation. *)
+    export completed (editor, key, outcome) = match key == editor.sampleTicket
+        false => Runtime::step editor
+        true => match key == ticket (editor, editor.sampleSerial) && idle editor
+            false => Runtime::step (editor(sampleTicket = ""))
+            true => match outcome
+                Error why => problem (editor, why)
+                Success path => match path == ""
+                    true => Runtime::step (editor(sampleTicket = ""))
+                    false => match read path
+                        Error why => problem (editor, why)
+                        Success resource => apply (editor, resource)

@@ -17,6 +17,12 @@ module ClipLayouts
             _ => false
         _ => false
 
+    downmix n = match n.inputs
+        [input] => match n.outputs
+            [output] => input.channels == 2 && output.channels == 1 && audio [input, output]
+            _ => false
+        _ => false
+
     modulation (n, port) = port.rate == Control && port.unit == Normalised && port.channels == 1 && length (filterList (n.parameters, \p => p.key == port.name && p.automatable && p.unit == Normalised && p.minimum == 0.0 && p.maximum == 1.0)) == 1 && length (filterList (n.inputs, \other => other.name == port.name)) == 1
 
     external n = match ClipInputs::layout n
@@ -30,7 +36,8 @@ module ClipLayouts
                 [first, ..._rest] => audioCount == 0 || first.rate == Audio
             audioCount <= 1 && noteCount <= 1 && audioCount + noteCount + controlCount == length n.inputs && length n.outputs == 1 && audio n.outputs && layout.outputChannels >= 1 && audioFirst
 
-    control port = port.rate == Control && port.unit == Normalised && port.channels == 1
+    (** A single-channel normalised control-rate port. *)
+    export control port = port.rate == Control && port.unit == Normalised && port.channels == 1
 
     modulated n = match n.inputs
         [input, modulation] => match n.outputs
@@ -50,10 +57,17 @@ module ClipLayouts
     export supported n = match n.processor
         Granular _ _ _ => uniform (n, 0, 1) && length (filterList (n.outputs, \port => port.channels == 2)) == 1
         Lfo => lfo n
+        Exciter _ => uniform (n, 0, 1)
+        TableOscillator _ => length n.inputs == 4 && length (filterList (n.inputs, control)) == 4 && length n.outputs == 1 && audio n.outputs
+        Additive => uniform (n, 0, 1)
+        Spectral _ _ => uniform (n, 2, 1)
+        PhaseOperator => uniform (n, 2, 1)
+        Bowed _ => uniform (n, 0, 1)
         ModulatedGain => modulated n
         Filter => uniform (n, 1, 1) || (modulated n && cutoffPort n)
         MidiNotes => length n.inputs == 0 && length n.outputs == 1 && notes n.outputs
         Stereo => stereo n
+        Downmix => downmix n
         Oscillator => oscillator n
         Sink => uniform (n, 1, 0)
         Mixer => uniform (n, 2, 1)
@@ -62,10 +76,14 @@ module ClipLayouts
 
     oscillator n = length n.inputs <= 1 && notes n.inputs && length n.outputs == 1 && audio n.outputs && length (filterList (n.outputs, \p => p.channels == 1)) == 1
 
-    optional (n, port) = match n.processor
+    (** Inputs that may stay unplugged: their parameters then apply unchanged. *)
+    export optional (n, port) = match n.processor
         Oscillator => port.rate == Events
         External _ => port.rate == Control
         Filter => port.rate == Control && port.name == "cutoff"
+        Spectral _ _ => port.name == "side"
+        TableOscillator _ => port.rate == Control
+        PhaseOperator => true
         _ => false
 
     (** Required inputs must be wired; unplugged optional controls retain their parameter. *)
@@ -88,13 +106,13 @@ module ClipLayouts
 
     delay n = match n.processor
         Granular resource _ _ => length resource.samples
-        Delay count => match channels n
+        TableOscillator table => foldList (table.frames, 0, \(total, frame) => foldList (frame.levels, total, \(sum, level) => satAdd sum (length level.samples)))
+        _ => match channels n
             Error _ => 1920001
-            Success width => satMul count width
-        _ => 0
+            Success width => satMul (RenderInputs::storage n.processor) width
 
     (** Bound all per-channel delay state before any buffer is allocated. *)
-    export bounded (graph, frames) = frames > 0 && frames <= 32768 && foldList (graph.nodes, 0, \(total, n) => satAdd total (delay n)) <= 1920000 && length (filterList (graph.nodes, \n => supported n)) == length graph.nodes
+    export bounded (graph, frames) = SpectralKernels::affordable graph && frames > 0 && frames <= 32768 && foldList (graph.nodes, 0, \(total, n) => satAdd total (delay n)) <= 1920000 && length (filterList (graph.nodes, \n => supported n)) == length graph.nodes
 
     noteClip (n, first, frames, clip) = match n.processor
         MidiNotes => match MidiClips::timeline (n, first, frames)

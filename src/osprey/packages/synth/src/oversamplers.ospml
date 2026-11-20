@@ -1,0 +1,35 @@
+// [SYNTH-ADVANCED-NONLINEAR] 2× oversampled waveshaping with prepared half-band filters.
+namespace synth
+
+(** 31-tap Blackman half-band filters up and down; latency is 15 base-rate samples plus the shaper's. *)
+module Oversamplers
+    (** Filter length; odd so the centre tap is exact. *)
+    export taps = 31
+
+    (** Base-rate latency of the resampling filters. *)
+    export latency = 15
+
+    coefficients () = mapList (toList (range (0, taps)), \index => NonlinearMath::halfband (toFloat index, toFloat taps))
+
+    zeros () = mapList (toList (range (0, taps)), \_ => 0.0)
+
+    (** Silent shaper and filter histories. *)
+    export initial () = OversampledState(shaper = Waveshapers::initial, up = zeros (), down = zeros ())
+
+    (** The half-band FIR over a history (newest last); the filter is symmetric, so tap order does not matter. *)
+    export filtered history = foldList (Sequences::combined (history, coefficients (), \(sample, tap) => sample * tap), 0.0, \(sum, value) => sum + value)
+
+    // Run the shaper at twice the rate (the shaper sees doubled time, so its DC blocker is twice as wide).
+    shapedPair (config, held, input) =
+        upFirst = Sequences::shifted (held.up, input)
+        upSecond = Sequences::shifted (upFirst, 0.0)
+        oversampled = config(sampleRate = config.sampleRate * 2.0)
+        first = Waveshapers::next (oversampled, held.shaper, 2.0 * filtered upFirst)
+        second = Waveshapers::next (oversampled, first.next, 2.0 * filtered upSecond)
+        downed = Sequences::shifted (Sequences::shifted (held.down, first.sample), second.sample)
+        OversampledSample(sample = filtered downed, next = OversampledState(shaper = second.next, up = upSecond, down = downed))
+
+    (** One base-rate sample; histories of the wrong length are an error rather than a guessed filter. *)
+    export next (config, held, input) = match length held.up == taps && length held.down == taps
+        false => Error(message = "Oversampler history does not match its filter.")
+        true => Success(value = shapedPair (config, held, input))

@@ -12,3 +12,20 @@ type Patch =
     audible : bool
     volume : float
 
+type FitSource =
+    identifier : string
+    licence : string
+    sampleRate : int
+
+type FitReference =
+    source : FitSource
+    samples : List<float>
+
+type FitReport C R =
+    algorithm : string
+    algorithmLicence : string
+    training : FitSource
+    evaluation : FitSource
+    config : C
+    result : R
+    evaluationLoss : float

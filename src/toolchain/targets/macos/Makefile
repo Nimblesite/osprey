@@ -9,7 +9,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow synth storage tally probe
+.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow songs synth storage tally probe
 
 .PHONY: pocket-orchestra _pocket-orchestra-models
 ## pocket-orchestra: Open Light Orchestra: this Mac plays audio, phones join by QR and WebSocket.
@@ -103,6 +103,17 @@ synth: _runtime_macos
 storage: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh
+
+## songs: Render a song project (a JSON piano roll) with @osprey/synth and play it. SONG picks the
+##        project; INTRO is an optional recording the piece continues. Needs ffmpeg and xxd; writes
+##        target/songs/out/song.wav. [SYNTH-ARRANGEMENT-PLAYER]
+SONG ?= src/osprey/examples/songs/broken-circuitry.json
+INTRO ?=
+songs:
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	mkdir -p target/songs
+	$(BIN) build src/osprey/examples/songs -o target/songs/songs
+	target/songs/songs "$(SONG)" target/songs/out "$(INTRO)"
 
 ## probe: Open the GPUI host's probe application (counter, note, load).
 probe: _runtime_macos

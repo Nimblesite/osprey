@@ -1,0 +1,16 @@
+// [SYNTH-ADVANCED-CORE-SIGNALS] Typed controller writes with visible pending, applied or rejected status.
+namespace synth
+
+(** A UI or controller submits a typed `ParameterChange`; until the renderer applies it the receipt is
+    `Pending`, then `Applied` with the new revision or `Rejected` with the typed graph fault (stale revision,
+    missing parameter, out-of-range value). The snapshot only changes when the edit is applied. *)
+module Commands
+    (** A submitted edit that the renderer has not yet reached. *)
+    export pending (snapshot, edit) = CommandReceipt(status = Pending(edit = edit), snapshot = snapshot)
+
+    (** Resolve a pending edit against the graph's descriptors and the current snapshot. *)
+    export resolve (graph, receipt) = match receipt.status
+        Pending edit => match Parameters::apply (graph, receipt.snapshot, edit)
+            Valid next => CommandReceipt(status = Applied(revision = next.revision), snapshot = next)
+            Invalid fault => CommandReceipt(status = Rejected(fault = fault), snapshot = receipt.snapshot)
+        _ => receipt

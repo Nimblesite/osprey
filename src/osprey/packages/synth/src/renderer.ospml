@@ -8,7 +8,7 @@ import synth::RenderKernels
 module Renderer
     mono port = port.rate == Audio && port.channels == 1 && port.unit == Amplitude
 
-    validPorts n = length (filterList (listConcat n.inputs n.outputs, \port => mono port || (n.processor == Oscillator && port.rate == Events && port.unit == Notes && port.channels == 1) || (n.processor == Filter && port.rate == Control && port.unit == Normalised && port.channels == 1 && port.name == "cutoff"))) == length n.inputs + length n.outputs
+    validPorts n = length (filterList (listConcat n.inputs n.outputs, \port => mono port || (n.processor == Oscillator && port.rate == Events && port.unit == Notes && port.channels == 1) || (ClipLayouts::control port && ClipLayouts::optional (n, port)))) == length n.inputs + length n.outputs
 
     layout n = match n.processor
         Oscillator => ClipLayouts::supported n
@@ -16,21 +16,25 @@ module Renderer
         Mixer => length n.inputs == 2 && length n.outputs == 1
         Filter => ClipLayouts::supported n
         External _ => false
+        Exciter _ => length n.inputs == 0 && length n.outputs == 1
+        TableOscillator _ => length n.inputs == 4 && length n.outputs == 1
+        Additive => length n.inputs == 0 && length n.outputs == 1
+        Spectral _ _ => length n.inputs == 2 && length n.outputs == 1
+        PhaseOperator => length n.inputs == 2 && length n.outputs == 1
+        Bowed _ => length n.inputs == 0 && length n.outputs == 1
         _ => length n.inputs == 1 && length n.outputs == 1
 
     validNode n = validPorts n && layout n
 
     outputs graph = filterList (graph.nodes, \n => n.processor == Sink)
 
-    delaySize n = match n.processor
-        Delay count => count
-        _ => 0
+    delaySize n = RenderInputs::storage n.processor
 
     midiCable (graph, c) = match Graphs::node (graph, c.destination)
         Valid n => n.processor == Oscillator
         Invalid _ => true
 
-    supported plan = length (filterList (plan.graph.cables, \c => midiCable (plan.graph, c))) == 0 && length (filterList (plan.graph.nodes, validNode)) == length plan.graph.nodes && length (outputs plan.graph) == 1 && length (filterList (plan.graph.nodes, \n => ClipLayouts::connected (plan.graph, n))) == length plan.graph.nodes && foldList (plan.graph.nodes, 0, \(total, n) => satAdd total (delaySize n)) <= 1920000
+    supported plan = SpectralKernels::affordable plan.graph && length (filterList (plan.graph.cables, \c => midiCable (plan.graph, c))) == 0 && length (filterList (plan.graph.nodes, validNode)) == length plan.graph.nodes && length (outputs plan.graph) == 1 && length (filterList (plan.graph.nodes, \n => ClipLayouts::connected (plan.graph, n))) == length plan.graph.nodes && foldList (plan.graph.nodes, 0, \(total, n) => satAdd total (delaySize n)) <= 1920000
 
     (** Prepare and allocate reference state. Unknown layouts and external plug-ins are explicit errors. *)
     export start graph = match Graphs::prepare graph

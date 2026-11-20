@@ -1,0 +1,179 @@
+// [SYNTH-ADVANCED-SPECTRAL-MODULES] Composable per-frame spectral transformations with declared phase policies.
+namespace synth
+
+(** Each transformation maps analysis bins (and its retained memory) to synthesis bins. *)
+module SpectralFrames
+    magnitude value = SpectralMath::magnitude (value.re, value.im)
+
+    // Keep a bin's phase, replace its magnitude.
+    withMagnitude (value, level) = Complex(re = level * SpectralMath::unitRe (value.re, value.im), im = level * SpectralMath::unitIm (value.re, value.im))
+
+    scaled (value, gain) = Complex(re = value.re * gain, im = value.im * gain)
+
+    silent count = mapList (toList (range (0, count)), \_ => Complex(re = 0.0, im = 0.0))
+
+    unchanged (bins, memory, motion, captured) = SpectralFrame(bins = bins, memory = memory, motion = motion, captured = captured)
+
+    // Measured per-hop rotation of each bin: the unit phasor of current × conjugate(previous).
+    rotation (current, previous) =
+        re = SpectralMath::productRe (current.re, current.im, previous.re, 0.0 - previous.im)
+        im = SpectralMath::productIm (current.re, current.im, previous.re, 0.0 - previous.im)
+        Complex(re = SpectralMath::unitRe (re, im), im = SpectralMath::unitIm (re, im))
+
+    turned (value, phasor) = Complex(re = SpectralMath::productRe (value.re, value.im, phasor.re, phasor.im), im = SpectralMath::productIm (value.re, value.im, phasor.re, phasor.im))
+
+    level (bins, index) = match listGet bins index
+        Error _ => 0.0
+        Success value => magnitude value
+
+    peak (bins, index) = level (bins, index) > level (bins, satSub index 1) && level (bins, index) >= level (bins, satAdd index 1)
+
+    latest (bins, scan, index) = match peak (bins, index)
+        true => index
+        false => scan.latest
+
+    before (bins, scan, index) = PeakScan(latest = latest (bins, scan, index), owners = listAppend scan.owners (latest (bins, scan, index)))
+
+    after (bins, scan, index) = PeakScan(latest = latest (bins, scan, index), owners = listPrepend scan.owners (latest (bins, scan, index)))
+
+    nearer (index, lower, upper) = match lower < 0
+        true => upper
+        false => match upper < 0 || satSub index lower <= satSub upper index
+            true => lower
+            false => upper
+
+    // Identity phase locking (Laroche & Dolson 1999): every bin turns with its nearest magnitude peak, so
+    // the bins of one partial stay in phase and a held sound does not beat against itself.
+    locked (bins, motion) =
+        indices = toList (range (0, length bins))
+        below = foldList (indices, PeakScan(latest = -1, owners = []), \(scan, index) => before (bins, scan, index))
+        above = foldList (listReverse indices, PeakScan(latest = -1, owners = []), \(scan, index) => after (bins, scan, index))
+        Sequences::mapIndexed (motion, \(index, phasor) => listGet motion (nearer (index, listGet below.owners index ?: -1, listGet above.owners index ?: -1)) ?: phasor)
+
+    // Phase-vocoder freeze: capture magnitudes and each bin's measured hop rotation, phase-locked to its
+    // peak, then keep rotating.
+    frozen (bins, memory, motion, captured) = match captured
+        false => SpectralFrame(bins = bins, memory = bins, motion = locked (bins, Sequences::combined (bins, memory, \(current, previous) => rotation (current, previous))), captured = true)
+        true =>
+            advanced = Sequences::combined (memory, motion, \(value, phasor) => turned (value, phasor))
+            SpectralFrame(bins = advanced, memory = advanced, motion = motion, captured = true)
+
+    // While released, memory tracks the previous analysis frame so a capture can measure motion.
+    freeze (bins, memory, motion, captured, held) = match held
+        true => frozen (bins, memory, motion, captured)
+        false => unchanged (bins, bins, motion, false)
+
+    band (config, bins, low, high) = Sequences::mapIndexed (bins, \(index, value) => scaled (value, SpectralMath::bandGain (SpectralMath::binFrequency (toFloat index, toFloat config.size, config.sampleRate), low, high, config.sampleRate / toFloat config.size)))
+
+    // Integer bin shift with the hop-coherent phase rotation that keeps shifted sinusoids continuous.
+    shift (config, bins, offset, frames) =
+        count = length bins
+        moved = match offset >= 0
+            true => listConcat (silent offset) (Sequences::take (bins, satSub count offset))
+            false => listConcat (Sequences::drop (bins, satSub 0 offset)) (silent (satSub 0 offset))
+        mapList (moved, \value => Ffts::rotated (value, SpectralMath::hopAdvance (toFloat offset, toFloat config.hop, toFloat config.size) * toFloat frames))
+
+    // Temporal magnitude smoothing; memory holds the smoothed magnitude in each real part.
+    smear (bins, memory, motion, amount) =
+        levels = Sequences::combined (bins, memory, \(value, held) => SpectralMath::blend (magnitude value, held.re, amount))
+        SpectralFrame(bins = Sequences::combined (bins, levels, \(value, level) => withMagnitude (value, level)), memory = mapList (levels, \level => Complex(re = level, im = 0.0)), motion = motion, captured = false)
+
+    // Magnitudes interpolate linearly; phase comes from the dominant input (below 0.5 the main input).
+    morphBin (main, side, amount) =
+        level = SpectralMath::blend (magnitude main, magnitude side, amount)
+        match amount < 0.5
+            true => withMagnitude (main, level)
+            false => withMagnitude (side, level)
+
+    morph (bins, sides, amount) = Sequences::combined (bins, sides, \(main, side) => morphBin (main, side, amount))
+
+    // Analysis: (magnitude, instantaneous frequency in bins) per bin, plus each bin's phase for the next frame.
+    analysed (config, bins, memory, index, done) = match bins
+        [] => done
+        [value, ...rest] => match memory
+            [] => done
+            [previous, ...older] =>
+                phase = SpectralMath::angle (value.re, value.im)
+                bin = Complex(re = magnitude value, im = SpectralMath::trueBin (toFloat index, phase, previous.re, toFloat config.hop, toFloat config.size))
+                analysed (config, rest, older, satAdd index 1, listAppend done (Complex(re = phase, im = bin.im)))
+
+    // Forward mapping: source bin k lands on output round(k · ratio). Several sources on one output sum
+    // their magnitudes and keep the strongest one's frequency; outputs with no source are silent.
+    landed (sources, ratio, j, outcome, k) = match outcome
+        Error why => Error(message = why)
+        Success best => match floatToInt (floor (toFloat k * ratio + 0.5))
+            Error _ => Error(message = "Pitch ratio produced a non-finite output bin.")
+            Success target => match target == j
+                false => Success(value = best)
+                true => match listGet sources k
+                    Error _ => Error(message = "Pitch source bin is missing.")
+                    Success found => Success(value = Complex(re = best.re + found.re, im = strongest (best, found)))
+
+    // im holds the winning frequency; the running magnitude sum cannot tell which source was strongest,
+    // so the first source to land wins ties and a later source wins only when it alone exceeds the sum so far.
+    strongest (best, found) = match found.re > best.re
+        true => found.im
+        false => best.im
+
+    sourced (sources, ratio, j) =
+        low = floor ((toFloat j - 0.5) / ratio) - 1.0
+        high = ceil ((toFloat j + 0.5) / ratio) + 1.0
+        match floatToInt low
+            Error _ => Error(message = "Pitch ratio produced a non-finite source range.")
+            Success first => match floatToInt high
+                Error _ => Error(message = "Pitch ratio produced a non-finite source range.")
+                Success last => foldList (toList (range (atLeastZero first, atMost (last, length sources))), Success(value = Complex(re = 0.0, im = 0.0)), \(outcome, k) => landed (sources, ratio, j, outcome, k))
+
+    atLeastZero value = match value < 0
+        true => 0
+        false => value
+
+    atMost (value, limit) = match value > limit
+        true => limit
+        false => value
+
+    synthesised (config, sources, ratio, motion, j, built: SpectralFrame) = match motion
+        [] => Success(value = built)
+        [held, ...rest] => match sourced (sources, ratio, j)
+            Error why => Error(message = why)
+            Success source =>
+                phase = SpectralMath::principal (held.re + SpectralMath::binAdvance (source.im * ratio, toFloat config.hop, toFloat config.size))
+                bin = Complex(re = source.re * cos phase, im = source.re * sin phase)
+                synthesised (config, sources, ratio, rest, satAdd j 1, built(bins = listAppend built.bins bin, motion = listAppend built.motion (Complex(re = phase, im = 0.0))))
+
+    // Phase-vocoder pitch shift: memory holds analysis phases, motion the synthesis phases (in real parts).
+    pitch (config, bins, held, ratio) =
+        phases = analysed (config, bins, held.memory, 0, [])
+        sources = Sequences::combined (bins, phases, \(value, pair) => Complex(re = magnitude value, im = pair.im))
+        synthesised (config, sources, ratio, held.motion, 0, SpectralFrame(bins = [], memory = mapList (phases, \pair => Complex(re = pair.re, im = 0.0)), motion = [], captured = false))
+
+    // Shared analysis: stateless steps (band, shift, morph) run in order on one analysed frame.
+    stateless step = match step
+        SpectralBand _ _ => true
+        SpectralShift _ => true
+        SpectralMorph _ => true
+        _ => false
+
+    seriesStep (config, sides, held, bins, step) = match step
+        SpectralBand low high => band (config, bins, low, high)
+        SpectralShift offset => shift (config, bins, offset, held.frames)
+        SpectralMorph amount => morph (bins, sides, amount)
+        _ => bins
+
+    (** Whether a series shares one analysis compatibly: 1–8 stateless steps (band, shift, morph). *)
+    export compatible steps = length steps >= 1 && length steps <= 8 && length (filterList (steps, stateless)) == length steps
+
+    series (config, bins, sides, held, steps) = match compatible steps
+        false => Error(message = "A spectral series accepts 1-8 band, shift or morph steps only.")
+        true => Success(value = unchanged (foldList (steps, bins, \(current, step) => seriesStep (config, sides, held, current, step)), held.memory, held.motion, false))
+
+    (** Apply the configured transformation to one analysed frame; pitch and series can fail. *)
+    export apply (config, bins, sides, held) = match config.transform
+        SpectralPass => Success(value = unchanged (bins, held.memory, held.motion, held.captured))
+        SpectralFreeze hold => Success(value = freeze (bins, held.memory, held.motion, held.captured, hold))
+        SpectralBand low high => Success(value = unchanged (band (config, bins, low, high), held.memory, held.motion, false))
+        SpectralShift offset => Success(value = unchanged (shift (config, bins, offset, held.frames), held.memory, held.motion, false))
+        SpectralSmear amount => Success(value = smear (bins, held.memory, held.motion, amount))
+        SpectralMorph amount => Success(value = unchanged (morph (bins, sides, amount), held.memory, held.motion, false))
+        SpectralPitch ratio => pitch (config, bins, held, ratio)
+        SpectralSeries steps => series (config, bins, sides, held, steps)

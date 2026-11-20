@@ -8,7 +8,9 @@ The menu offers grain clouds, sine oscillators, low-pass filters, gains, mixers,
 
 ## Grain cloud [SYNTH-ADVANCED-GRAINS-INTEGRATION]
 
-Open **Modules → Grain cloud** to add an independent granular instrument. Its card displays the actual source waveform using Prism's existing card styling. The initial source is a built-in 1,024-frame harmonic sample; importing your own sample file is not implemented yet. The library factory accepts other checked mono sample buffers.
+Open **Modules → Grain cloud** to add an independent granular instrument. Its card displays the actual source waveform using Prism's existing card styling. Prism starts with a 1,024-frame harmonic sample. Stop playback, select the Grain cloud, open **Patch controls**, and choose **Load WAV sample**. Use **Use built-in harmonic sample** to restore the original source. Undo and Redo retain the samples in patch history.
+
+Choose a little-endian RIFF/WAVE file up to 8 MiB containing 2–1,048,576 frames at 8–192 kHz. The importer accepts mono or stereo integer PCM (8, 16, 24 or 32 bits) and normalised float32. It averages the left and right channels before playback. Imported samples use middle C (MIDI 60) as their root. Source position counts mono frames. Linear interpolation wraps across the end in either direction and can alias at high pitches. A cancelled choice or import error keeps the current source.
 
 Connect its orange stereo output to **Stereo output**, or through **Modulated stereo gain** and compatible stereo effects. Remove the old mono output when replacing the initial patch: playback requires exactly one output. Select the cloud and open **Patch controls** to edit source position, playback rate, grain duration, per-grain gain, pan, onset interval and timing jitter. Timing fields require whole 48 kHz output-frame counts; jitter must be less than the onset interval. Zero rate holds a source position and negative rate reverses it. The default pool allows 16 overlapping grains and reports exhaustion explicitly.
 

@@ -1,0 +1,76 @@
+// [SYNTH-ARRANGEMENT-FILE] The JSON boundary: a song project decoded into the typed arrangement.
+namespace songs
+
+(** A song project is one JSON object: `title`, `tempo` (beats per minute), `sampleRate`, `drive` (master soft limiter, 0.1–4), `space`
+    (reverb `size`, `decay`, `damping`), `sustains` (appearances of the held end of the intro recording:
+    `start` beat, pitch `ratio`, `rise`, `hold` and `fade` seconds, `gain`, `reverb`) and `tracks`. A track has `name`, `instrument` (an object whose `kind` is `pluck`,
+    `bow`, `bell`, `mallet`, `operator`, `drum` or `patch`: a routed graph of `nodes` and `cables`), `gain`, `pan`, `reverb` and `notes`; a note is the array
+    `[pitch, start, length, velocity]` with pitch as a MIDI number and start and length in beats. *)
+module SongFiles
+    tone doc = synth::Tone(breakpoint = ui::Doc::decimal (doc, "breakpoint"), feedback = ui::Doc::decimal (doc, "feedback"), attack = ui::Doc::decimal (doc, "attack"), release = ui::Doc::decimal (doc, "release"), bloom = ui::Doc::decimal (doc, "bloom"), detune = ui::Doc::decimal (doc, "detune"))
+
+    hit doc = synth::Hit(sweep = ui::Doc::decimal (doc, "sweep"), noise = ui::Doc::decimal (doc, "noise"), colour = ui::Doc::decimal (doc, "colour"), decay = ui::Doc::decimal (doc, "decay"))
+
+    // A setting is a number, or `{"pitch": x}` (x times the note's frequency) or `{"velocity": x}`.
+    setting (doc, key) = match ui::Doc::has (ui::Doc::field (doc, key), "pitch")
+        true => synth::Setting(key = key, value = ui::Doc::decimal (ui::Doc::field (doc, key), "pitch"), follow = synth::Pitched)
+        false => match ui::Doc::has (ui::Doc::field (doc, key), "velocity")
+            true => synth::Setting(key = key, value = ui::Doc::decimal (ui::Doc::field (doc, key), "velocity"), follow = synth::Struck)
+            false => synth::Setting(key = key, value = ui::Doc::decimal (doc, key), follow = synth::Constant)
+
+    settings doc = mapList (ui::Doc::keys doc, \key => setting (doc, key))
+
+    component doc = synth::PatchNode(identity = ui::Doc::number (doc, "id"), component = ui::Doc::text (doc, "module"), size = ui::Doc::number (doc, "size"), seed = ui::Doc::number (doc, "seed"), settings = settings (ui::Doc::field (doc, "set")))
+
+    plug item = synth::PatchCable(source = ui::Doc::number (item, "from"), outlet = ui::Doc::number (item, "outlet"), destination = ui::Doc::number (item, "to"), inlet = ui::Doc::number (item, "inlet"))
+
+    routing doc = synth::Routing(nodes = mapList (ui::Doc::fieldItems (doc, "nodes"), component), cables = mapList (ui::Doc::fieldItems (doc, "cables"), plug), attack = ui::Doc::decimal (doc, "attack"), release = ui::Doc::decimal (doc, "release"))
+
+    instrument doc = match ui::Doc::text (doc, "kind")
+        "pluck" => Success(value = synth::PluckInstrument(brightness = ui::Doc::decimal (doc, "brightness"), decay = ui::Doc::decimal (doc, "decay")))
+        "bow" => Success(value = synth::BowInstrument(pressure = ui::Doc::decimal (doc, "pressure"), brightness = ui::Doc::decimal (doc, "brightness"), vibrato = ui::Doc::decimal (doc, "vibrato")))
+        "bell" => Success(value = synth::BellInstrument(decay = ui::Doc::decimal (doc, "decay"), brightness = ui::Doc::decimal (doc, "brightness")))
+        "mallet" => Success(value = synth::MalletInstrument(decay = ui::Doc::decimal (doc, "decay"), brightness = ui::Doc::decimal (doc, "brightness")))
+        "operator" => Success(value = synth::OperatorInstrument(tone = tone doc))
+        "drum" => Success(value = synth::DrumInstrument(hit = hit doc))
+        "patch" => Success(value = synth::PatchInstrument(routing = routing doc))
+        other => Error(message = "Unknown instrument kind \"${other}\".")
+
+    pitched (item, pitch) = synth::Note(pitch = pitch, start = ui::Doc::real (ui::Doc::at (item, 1)), length = ui::Doc::real (ui::Doc::at (item, 2)), velocity = ui::Doc::real (ui::Doc::at (item, 3)))
+
+    note item = match length (ui::Doc::items item) == 4
+        false => Error(message = "A note must be [pitch, start, length, velocity].")
+        true => match floatToInt (ui::Doc::real (ui::Doc::at (item, 0)))
+            Error _ => Error(message = "A note pitch is not a number.")
+            Success pitch => Success(value = pitched (item, pitch))
+
+    noteAdded (outcome, item) = match outcome
+        Error why => Error(message = why)
+        Success notes => match note item
+            Error why => Error(message = why)
+            Success next => Success(value = listAppend notes next)
+
+    track doc = match instrument (ui::Doc::field (doc, "instrument"))
+        Error why => Error(message = "${ui::Doc::text (doc, "name")}: ${why}")
+        Success sound => match foldList (ui::Doc::fieldItems (doc, "notes"), Success(value = []), noteAdded)
+            Error why => Error(message = "${ui::Doc::text (doc, "name")}: ${why}")
+            Success notes => Success(value = synth::Track(name = ui::Doc::text (doc, "name"), instrument = sound, gain = ui::Doc::decimal (doc, "gain"), pan = ui::Doc::decimal (doc, "pan"), reverb = ui::Doc::decimal (doc, "reverb"), notes = notes))
+
+    trackAdded (outcome, doc) = match outcome
+        Error why => Error(message = why)
+        Success tracks => match track doc
+            Error why => Error(message = why)
+            Success next => Success(value = listAppend tracks next)
+
+    space doc = synth::Space(size = ui::Doc::decimal (doc, "size"), decay = ui::Doc::decimal (doc, "decay"), damping = ui::Doc::decimal (doc, "damping"))
+
+    sustain doc = synth::Afterglow(start = ui::Doc::decimal (doc, "start"), ratio = ui::Doc::decimal (doc, "ratio"), rise = ui::Doc::decimal (doc, "rise"), hold = ui::Doc::decimal (doc, "hold"), fade = ui::Doc::decimal (doc, "fade"), gain = ui::Doc::decimal (doc, "gain"), reverb = ui::Doc::decimal (doc, "reverb"))
+
+    arranged (doc, tracks) = synth::Arrangement(title = ui::Doc::text (doc, "title"), tempo = ui::Doc::decimal (doc, "tempo"), sampleRate = ui::Doc::number (doc, "sampleRate"), drive = ui::Doc::decimal (doc, "drive"), space = space (ui::Doc::field (doc, "space")), sustains = mapList (ui::Doc::fieldItems (doc, "sustains"), sustain), tracks = tracks)
+
+    (** Decode a song project; malformed JSON, an unknown instrument or a malformed note is an error. *)
+    export decode source = match jsonDecode source
+        Error _ => Error(message = "The song project is not valid JSON.")
+        Success doc => match foldList (ui::Doc::fieldItems (doc, "tracks"), Success(value = []), trackAdded)
+            Error why => Error(message = why)
+            Success tracks => Success(value = arranged (doc, tracks))

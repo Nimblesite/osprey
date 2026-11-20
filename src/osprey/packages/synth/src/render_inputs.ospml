@@ -18,6 +18,21 @@ module RenderInputs
         Success p => Success(value = p.value)
         Error _ => Error(message = "Required render parameter is missing.")
 
+    (** Read one declared parameter, then continue; a missing parameter stops with its error. *)
+    export bound (snapshot, held, key, continue) = match parameter (snapshot, held.identity, key)
+        Error why => Error(message = why)
+        Success value => continue value
+
+    (** An optional normalised control inlet: unplugged keeps `base`; plugged values must lie in [0, 1] and are
+        combined with `base` by the caller's declared rule (replacement, multiplication, ...). *)
+    export controlled (plan, frame, identity, inlet, base, combine) = match length (filterList (plan.graph.cables, \c => c.destination == identity && c.inlet == inlet)) == 0
+        true => Success(value = base)
+        false => match input (plan, frame, identity, inlet)
+            Error why => Error(message = why)
+            Success control => match control >= 0.0 && control <= 1.0
+                false => Error(message = "Control inputs must stay between zero and one.")
+                true => Success(value = combine (base, control))
+
     (** Resolve a routed mono input from an already rendered source. *)
     export input (plan, frame, identity, inlet) = match listGet (filterList (plan.graph.cables, \c => c.destination == identity && c.inlet == inlet)) 0
         Error _ => Error(message = "An audio input is not connected.")
@@ -41,12 +56,30 @@ module RenderInputs
 
     emptyState identity = KernelState(identity = identity, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [])
 
+    (** Persistent per-channel sample storage, counted against the graph's bounded delay budget. *)
+    export storage processor = match processor
+        Delay count => count
+        Waveguide capacity => capacity
+        FractionalDelay capacity => capacity
+        Modal => 16
+        Additive => PartialBanks::capacity
+        Spectral size _ => SpectralKernels::storage size
+        Shaper => EffectKernels::shaperStorage
+        Reverb => Reverbs::graphStorage ()
+        Shifter => EffectKernels::shifterStorage
+        PhaseOperator => satAdd 1 Oversamplers::taps
+        Bowed capacity => satMul capacity 2
+        StrikeComb capacity => capacity
+        _ => 0
+
     (** Allocate one kernel, also used by multichannel clip execution. *)
-    export initialState n = match n.processor
-        Delay count =>
-            empty = emptyState n.identity
-            empty(delay = mapList (toList (range (0, count)), \_ => 0.0))
-        _ => emptyState n.identity
+    export initialState n =
+        empty = emptyState n.identity
+        allocated = empty(delay = mapList (toList (range (0, storage n.processor)), \_ => 0.0))
+        match n.processor
+            Exciter seed => allocated(integratorOne = toFloat seed)
+            Spectral _ hop => allocated(phase = toFloat hop)
+            _ => allocated
 
     (** Allocate initial reference state after graph validation. *)
     export initial plan = Rendered(states = mapList (plan.graph.nodes, initialState), samples = [], position = 0, meters = [])

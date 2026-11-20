@@ -1,0 +1,12 @@
+namespace songs
+
+// Generated from typeDiagram [CONV-OSPREY].
+type Request =
+    project : string
+    folder : string
+    intro : string
+    play : bool
+
+type Written =
+    parts : List<string>
+    fault : string

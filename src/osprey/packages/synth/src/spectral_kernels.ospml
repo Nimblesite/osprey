@@ -1,0 +1,90 @@
+// [SYNTH-ADVANCED-SPECTRAL-MODULES] Graph adapter: one spectral stream packed into the shared kernel state.
+namespace synth
+
+import synth::RenderInputs
+
+(** Storage holds input, side, output, memory and motion buffers; phase, integrators hold the clock and flags. *)
+module SpectralKernels
+    (** Kernel storage for a stream of `size`: three sample buffers and two complex bin buffers. *)
+    export storage size = satAdd (satMul size 5) 4
+
+    flattened values = foldList (values, [], \(all, value) => listConcat all [value.re, value.im])
+
+    complexes samples = match samples
+        [] => []
+        [re, ...rest] => match rest
+            [] => []
+            [im, ...others] => listPrepend (complexes others) (Complex(re = re, im = im))
+
+    stream (size, held: KernelState, countdown, frames) =
+        bins = satAdd (intDiv size 2) 1
+        after = Sequences::drop (held.delay, satMul size 3)
+        SpectralState(input = Sequences::take (held.delay, size), side = Sequences::take (Sequences::drop (held.delay, size), size), output = Sequences::take (Sequences::drop (held.delay, satMul size 2), size), memory = complexes (Sequences::take (after, satMul bins 2)), motion = complexes (Sequences::drop (after, satMul bins 2)), countdown = countdown, frames = frames, captured = held.integratorTwo == 1.0)
+
+    // Shapes are checked by SpectralStreams.next; only the integer clocks can fail here.
+    unpacked (size, held) = match floatToInt held.phase
+        Error _ => Error(message = "Spectral countdown is not a whole number.")
+        Success countdown => match floatToInt held.integratorOne
+            Error _ => Error(message = "Spectral frame count is not a whole number.")
+            Success frames => Success(value = stream (size, held, countdown, frames))
+
+    flag value = match value
+        true => 1.0
+        false => 0.0
+
+    packed (held, current) = held(delay = listConcat (listConcat (listConcat current.input current.side) current.output) (listConcat (flattened current.memory) (flattened current.motion)), phase = toFloat current.countdown, integratorOne = toFloat current.frames, integratorTwo = flag current.captured)
+
+    transform (selector, hold, low, high, shift, amount, ratio) = match selector
+        0.0 => Success(value = SpectralPass)
+        1.0 => Success(value = SpectralFreeze(held = hold >= 0.5))
+        2.0 => Success(value = SpectralBand(low = low, high = high))
+        3.0 => match floatToInt shift
+            Error _ => Error(message = "Spectral shift must be a whole number of bins.")
+            Success bins => Success(value = SpectralShift(bins = bins))
+        4.0 => Success(value = SpectralSmear(amount = amount))
+        5.0 => Success(value = SpectralMorph(amount = amount))
+        6.0 => Success(value = SpectralPitch(ratio = ratio))
+        _ => Error(message = "Transform must be 0 pass, 1 freeze, 2 band, 3 shift, 4 smear, 5 morph or 6 pitch.")
+
+    streamed (frame, held, input, side, configured, size) = match configured
+        Error why => Error(message = why)
+        Success config => match unpacked (size, held)
+            Error why => Error(message = why)
+            Success current => match SpectralStreams::next (config, current, input, side)
+                Error why => Error(message = why)
+                Success step => Success(value = RenderInputs::emitted (frame, packed (held, step.next), step.sample))
+
+    configured (rate, size, hop, chosen, mix) = match chosen
+        Error why => Error(message = why)
+        Success kind => SpectralStreams::configure (SpectralConfig(sampleRate = rate, size = size, hop = hop, transform = kind, mix = mix))
+
+    // An unplugged side input is silence, not an error: only morphing listens to it.
+    side (plan, frame, identity) = match length (filterList (plan.graph.cables, \c => c.destination == identity && c.inlet == 1)) == 0
+        true => Success(value = 0.0)
+        false => RenderInputs::input (plan, frame, identity, 1)
+
+    (** Process one main sample (and optional side sample) through the node's spectral stream. *)
+    export process (plan, rate, snapshot, frame, held, size, hop, input) = match side (plan, frame, held.identity)
+        Error why => Error(message = why)
+        Success other => RenderInputs::bound (snapshot, held, "transform", \selector => RenderInputs::bound (snapshot, held, "hold", \hold => RenderInputs::bound (snapshot, held, "low", \low => RenderInputs::bound (snapshot, held, "high", \high => RenderInputs::bound (snapshot, held, "shift", \shift => RenderInputs::bound (snapshot, held, "amount", \amount => RenderInputs::bound (snapshot, held, "mix", \mix => RenderInputs::bound (snapshot, held, "ratio", \ratio => streamed (frame, held, input, other, configured (rate, size, hop, transform (selector, hold, low, high, shift, amount, ratio), mix), size)))))))))
+
+    stages size = match size <= 1
+        true => 0
+        false => satAdd 1 (stages (intDiv size 2))
+
+    (** Butterfly operations per output sample for one node: three transforms (main, side, inverse) of
+        `size · log2 size` butterflies every `hop` samples. *)
+    export cost (size, hop) = match hop >= 1
+        true => intDiv (satMul 3 (satMul size (stages size))) hop
+        false => 2147483647
+
+    (** The whole graph's spectral budget: 1,024 butterflies per sample — e.g. seven 4,096/1,024 nodes
+        (144 each) or nine 512/128 nodes (108 each). *)
+    export budget = 1024
+
+    nodeCost n = match n.processor
+        Spectral size hop => cost (size, hop)
+        _ => 0
+
+    (** Whether a graph's spectral nodes fit the budget; checked before any buffer is allocated. *)
+    export affordable graph = foldList (graph.nodes, 0, \(total, n) => satAdd total (nodeCost n)) <= budget

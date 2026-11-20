@@ -26,6 +26,13 @@ module Graphs
             Error _ => false
             Success _ => SampleResources::metadata resource && seed >= 1 && seed <= 2147483646
         Delay count => count >= 1 && count <= 1920000
+        Exciter seed => seed >= 1 && seed <= 2147483646
+        Spectral size hop => Ffts::valid size && (hop == intDiv size 4 || hop == intDiv size 8)
+        TableOscillator table => length table.frames >= 1 && length table.frames <= 64 && length (filterList (table.frames, \frame => length frame.levels >= 1 && length (filterList (frame.levels, \level => length level.samples == table.size)) == length frame.levels)) == length table.frames
+        Waveguide capacity => capacity >= 4 && capacity <= 96000
+        Bowed capacity => capacity >= 4 && capacity <= 96000
+        StrikeComb capacity => capacity >= 2 && capacity <= 96000
+        FractionalDelay capacity => capacity >= 2 && capacity <= 1920000
         External identity => identity != ""
         _ => true
 

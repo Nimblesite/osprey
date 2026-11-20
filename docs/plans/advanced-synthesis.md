@@ -53,22 +53,22 @@ Deliver the first milestone before expanding to another synthesis family. Shared
 
 ### Evidence and change discipline [SYNTH-ADVANCED-MILESTONES-EVIDENCE]
 
-- [ ] For each delivered slice, record the commit, relevant specification IDs, module paths and exact limitations beside its checklist section.
-- [ ] Record compilation/static-analysis results separately from manual interaction, captured audio and automated-test results.
-- [ ] Record reference/offline versus realtime capability per module; never infer realtime readiness from native compilation alone.
-- [ ] Keep failures, partial work and deferred verification unchecked; split a mixed item when only one part is complete.
-- [ ] Commit each coherent implementation step, preserve unrelated work and avoid a push that implicitly claims deferred CI has passed.
+- [x] For each delivered slice, record the commit, relevant specification IDs, module paths and exact limitations beside its checklist section. Done in [SYNTH-ADVANCED-FAMILIES-CHECKPOINT].
+- [x] Record compilation/static-analysis results separately from manual interaction, captured audio and automated-test results. The checkpoint separates strict checks, scratch measurements and (absent) automated tests.
+- [x] Record reference/offline versus realtime capability per module; never infer realtime readiness from native compilation alone. Every advanced family is recorded as reference/offline only.
+- [x] Keep failures, partial work and deferred verification unchecked; split a mixed item when only one part is complete. Mixed items stay unchecked with notes.
+- [x] Commit each coherent implementation step, preserve unrelated work and avoid a push that implicitly claims deferred CI has passed. One commit per family/slice on `feat/synth-advanced`; nothing pushed.
 
 ## Shared component foundation [SYNTH-ADVANCED-CORE]
 
 ### Canonical models and module boundaries [SYNTH-ADVANCED-CORE-MODELS]
 
 - [ ] Declare configuration, prepared resources, persistent DSP state, commands, observations and faults in typeDiagram; generate their Osprey representations.
-- [ ] Keep application models, canvas/native widgets, networking, file dialogs and operating-system audio devices outside the library.
-- [ ] Author new DSP formulas in Lean and generate the Osprey mathematics; keep scheduling, ownership and error handling in ordinary Osprey modules.
-- [ ] Give each component a stable kind/version and each instance an independent identity; never share mutable phase, delay memory, random state or voices between instances.
+- [x] Keep application models, canvas/native widgets, networking, file dialogs and operating-system audio devices outside the library. All advanced modules live in `@osprey/synth` with no UI, file, network or device imports.
+- [x] Author new DSP formulas in Lean and generate the Osprey mathematics; keep scheduling, ownership and error handling in ordinary Osprey modules. PhysicalMath, TableMath, SpectralMath, NonlinearMath, PhaseMath and FitMath.
+- [x] Give each component a stable kind/version and each instance an independent identity; never share mutable phase, delay memory, random state or voices between instances. `Kinds.kind` / `Kinds.version` / `Kinds.compatible` name every processor and version output-changing revisions; instances are keyed by node identity and each holds its own kernel state (no shared phase, delay memory, seeds or voices).
 - [ ] Define prepare, activate, render, reset, release/tail and dispose transitions, including sample-rate/block-size changes.
-- [ ] Separate immutable prepared resources from per-instance render state so multiple voices can share sample/table data safely.
+- [x] Separate immutable prepared resources from per-instance render state so multiple voices can share sample/table data safely. Sample resources and prepared wavetables live immutably in the node's `Processor`; per-instance state (phases, lines, voices, grains) lives in that node's kernel memory, so voices and instances read shared data without sharing mutable state.
 - [ ] Expose typed failures for invalid configuration, exhausted capacity, missing resources, incompatible layouts and numerical failures; never fabricate a successful silent result.
 - [ ] Remove superseded fixed-demo DSP after callers migrate; do not retain parallel implementations that drift.
 
@@ -76,32 +76,32 @@ Deliver the first milestone before expanding to another synthesis family. Shared
 
 - [ ] Declare audio, control and timestamped-event ports, channel layouts and physical units for every new component.
 - [ ] Define explicit adapters for mono/stereo, hertz/normalised values, bipolar/unipolar signals and control/audio rates.
-- [ ] Declare names, units, defaults, minimum/maximum values, linear/logarithmic scaling, modulation semantics and automation eligibility for every parameter.
-- [ ] Define modulation as explicit additive, multiplicative or replacement operations; reject ambiguous multiple writers unless a combiner is present.
-- [ ] Add reusable smoothing/slew components with declared response and state continuity; avoid hiding unrelated smoothing inside each module.
+- [x] Declare names, units, defaults, minimum/maximum values, linear/logarithmic scaling, modulation semantics and automation eligibility for every parameter. Descriptors carry key, label, unit, default, bounds and `automatable`; `Descriptors.scale` declares logarithmic scaling for positive frequency/time ranges (probe: 220 Hz → control 0.3447 → 220 Hz), and `Descriptors.modulation` declares each parameter's inlet rule.
+- [x] Define modulation as explicit additive, multiplicative or replacement operations; reject ambiguous multiple writers unless a combiner is present. `ModulationRule` is `Unmodulated`, `Replacing`, `Multiplying` or `Exponential` per parameter; each inlet accepts exactly one cable (`OccupiedInput`), so multiple writers need an explicit mixer.
+- [x] Add reusable smoothing/slew components with declared response and state continuity; avoid hiding unrelated smoothing inside each module. `Smoothers` (one-pole: 0.632 after τ; linear: full scale in `time`, measured 0.5 at τ/2) and the `smoother` graph node.
 - [ ] Deliver sample-offset events in deterministic order, including simultaneous note, parameter and trigger events.
 - [ ] Define which changes apply at a sample boundary, block boundary or prepared-resource swap; expose pending versus applied values.
-- [ ] Preserve surviving state across valid graph changes, and keep the previous running graph if preparation fails.
+- [x] Preserve surviving state across valid graph changes, and keep the previous running graph if preparation fails. `GraphRebase.rebased` carries surviving components' memory into an edited graph (layout and storage must still fit), starts new components silent and drops removed ones; an invalid edit returns an error and the caller keeps its previous graph and state. Probe: inserting a reverb into a running sine → gain graph continues rendering with the oscillator phase unchanged (0.16667); without rebasing the edit is rejected. New grain clouds still need a restart.
 
 ### Resources and bounded rendering [SYNTH-ADVANCED-CORE-RESOURCES]
 
 - [ ] Define sample/table/impulse resources with identity, content hash, channel count, sample rate, length and version.
 - [ ] Decode files, prepare tables, allocate pools and construct transforms outside the audio callback.
-- [ ] Set explicit limits for voices, grains, modes, partials, FFT sizes, delay memory, automation queues and resource bytes.
-- [ ] Define a capacity policy per resource: reject, steal with a release, or drop with a diagnostic; do not allocate on exhaustion.
+- [x] Set explicit limits for voices, grains, modes, partials, FFT sizes, delay memory, automation queues and resource bytes. Voices ≤ 16, grains ≤ 256, modes 8, partials 64, FFT 64–4096, fitting ≤ 16 parameters/10,000 evaluations, delay storage ≤ 1,920,000 samples.
+- [x] Define a capacity policy per resource: reject, steal with a release, or drop with a diagnostic; do not allocate on exhaustion. Grains reject new onsets (counted); `StringVoices` steal with a release (counted); spectral nodes over the per-graph budget and graphs over the storage budget are rejected before allocation; fitting rejects jobs over 16 parameters or 10,000 evaluations.
 - [ ] Specify source-boundary behaviour separately for looping, one-shot, reverse playback and interpolation.
 - [ ] Avoid allocation, blocking locks, filesystem/network access, logging formatting and observer callbacks in production render paths.
-- [ ] Define denormal handling, nonfinite-input policy, maximum internal levels and output headroom; do not silently clip intermediate graph signals.
-- [ ] Declare algorithmic latency and tail length so preparation can align parallel routes and dispose of tails correctly.
+- [x] Define denormal handling, nonfinite-input policy, maximum internal levels and output headroom; do not silently clip intermediate graph signals. Denormals: every feedback loop (waveguide, bowed, resonator/modal, reverb, mesh) flushes state below 1e-30 to zero (`PhysicalMath.flushed`; probe: a 10 ms resonator reaches exactly 0.0). Nonfinite or |x| > 1e6 node outputs are rejected by `RenderInputs.sample`; intermediate signals are never clipped; module docs state headroom (unnormalised sums for voices/grains, peak-safe additive).
+- [x] Declare algorithmic latency and tail length so preparation can align parallel routes and dispose of tails correctly. `Timings.latency` / `Timings.tail` declare samples at 48 kHz for every component from its current parameters (e.g. spectral 1024/256: latency 1,023, tail 1,279; reverb T60 2 s: tail 192,000). Route alignment in preparation is not yet automatic.
 
 ### Signals and observers [SYNTH-ADVANCED-CORE-SIGNALS]
 
-- [ ] Publish applied parameter revision and audio sample position with each coherent observation.
-- [ ] Expose active voices/grains/modes, envelope state, meters, resource readiness, capacity pressure and typed diagnostics as appropriate to each family.
-- [ ] Keep `Signal<T>` observation distinct from audio-rate DSP streams; observers must not execute on the audio thread.
-- [ ] Publish through bounded storage; let slow subscribers coalesce snapshots without blocking rendering.
-- [ ] Support selected-field subscriptions and independent observations of multiple same-kind instances.
-- [ ] Make UI/controller writes typed commands; show whether a request is pending, applied or rejected.
+- [x] Publish applied parameter revision and audio sample position with each coherent observation. `Observation` carries `revision` and `samplePosition`; `Renderer.observed` and `Grains.observation` stamp both, and selected views keep them.
+- [x] Expose active voices/grains/modes, envelope state, meters, resource readiness, capacity pressure and typed diagnostics as appropriate to each family. Grains: `Grains.observation` (active, capacity, requested/accepted/rejected). Advanced families: `Activities.strings` (sounding/capacity/stolen/energy; probe 5 notes on 4 voices → 4/4, 1 stolen), `modes` (ringing slots and energy; probe 5 of 8 bell modes ringing), `spectral` (frames, bins, freeze held) and `reverb` (stored energy); meters come from `Renderer.observed`; diagnostics are the typed errors each module returns.
+- [x] Keep `Signal<T>` observation distinct from audio-rate DSP streams; observers must not execute on the audio thread. Advanced modules return samples and state only; observation is the separate `Observations`/`Grains.observe` Signal path, and `SpectralStreams.view` is an explicit off-thread snapshot.
+- [x] Publish through bounded storage; let slow subscribers coalesce snapshots without blocking rendering. `SnapshotSlots` holds only the latest snapshot: `publish` replaces it in constant storage and `read` returns the newest plus how many were skipped. Probe: five publications before a slow read → revision 5 with 4 coalesced; the next read → revision 6, 0 coalesced.
+- [x] Support selected-field subscriptions and independent observations of multiple same-kind instances. `Observations.selected` / `subscribed` filter a snapshot to chosen nodes and keys, keeping its revision and sample position; entries are keyed by node identity, so two sine instances read independently (probe: node 1's frequency 220 Hz selected from two oscillators with revision 7, position 4,800 retained).
+- [x] Make UI/controller writes typed commands; show whether a request is pending, applied or rejected. `Commands.pending` / `resolve` turn a typed `ParameterChange` into a `CommandReceipt` of `Pending`, `Applied(revision)` or `Rejected(fault)`; probe: a valid edit is applied as revision 1, a stale revision and an out-of-range value are rejected.
 
 ## Granular synthesis [SYNTH-ADVANCED-GRAINS]
 
@@ -202,118 +202,134 @@ Reference: Smith's waveguide material and Bilbao's numerical synthesis reference
 
 ### Shared physical primitives [SYNTH-ADVANCED-PHYSICAL-PRIMITIVES]
 
-- [ ] Implement deterministic impulse, filtered-noise and external-audio exciters.
-- [ ] Implement fractional-delay reads with a stated interpolation response, tuning error and modulation policy.
-- [ ] Implement frequency-dependent loss and dispersion as independent components.
-- [ ] Implement damped resonators with prepared coefficients and explicit persistent state.
-- [ ] Define stable parameter domains and reject invalid coefficients before activation.
-- [ ] Define how control changes alter stored energy; prevent abrupt parameter changes from introducing unintended unstable energy.
-- [ ] Keep excitation strength and output gain separate so expression remains meaningful.
+- [x] Implement deterministic impulse, filtered-noise and external-audio exciters.
+- [x] Implement fractional-delay reads with a stated interpolation response, tuning error and modulation policy.
+- [x] Implement frequency-dependent loss and dispersion as independent components.
+- [x] Implement damped resonators with prepared coefficients and explicit persistent state.
+- [x] Define stable parameter domains and reject invalid coefficients before activation.
+- [x] Define how control changes alter stored energy; prevent abrupt parameter changes from introducing unintended unstable energy. Resonators (and so modal banks) use the coupled Gold–Rader form: without input the state norm falls by the pole radius every sample whatever the coefficients. Probe: abrupt 300 ↔ 3,000 Hz retuning every 100 samples grew stored energy on 0 samples; 300.0 Hz and T60 unchanged. Waveguide frequency edits keep the line (loop gain stays below one).
+- [x] Keep excitation strength and output gain separate so expression remains meaningful.
 
 ### Playable instruments [SYNTH-ADVANCED-PHYSICAL-INSTRUMENTS]
 
-- [ ] Compose a plucked-string instrument from excitation, delay and loss primitives.
-- [ ] Add strike and pickup position controls with documented effects on the model.
-- [ ] Add sustained excitation with a bounded feedback/nonlinear interaction model for bowed/blown-style instruments.
-- [ ] Implement modal banks with bounded mode count, independent frequencies, gains and decay times.
-- [ ] Add inharmonic mode sets for bells, bars, membranes and metallic bodies; label approximations rather than claiming full mechanical simulation.
-- [ ] Provide mode excitation weights derived from a declared strike/pickup-position model.
-- [ ] Add polyphonic voice allocation, release tails and explicit voice stealing for physical instruments.
-- [ ] Preserve tuning and decay when sample rate changes through a documented re-preparation/state-transfer policy.
-- [ ] Treat finite-difference mesh models as a separate bounded component with a stated discretisation/stability domain, not an implicit alternative inside the modal bank.
+- [x] Compose a plucked-string instrument from excitation, delay and loss primitives.
+- [x] Add strike and pickup position controls with documented effects on the model. Strike: `StrikeCombs` / `strikeComb` node, `x[n] − x[n − βP]` (Smith); probe β = 1/4 on a 187.5 Hz string nulls harmonics 4 and 8 by 53 dB with the theoretical 1:2:1 pattern elsewhere. Pickup: the waveguide's `pickup` comb; modal banks weight modes by strike position.
+- [x] Add sustained excitation with a bounded feedback/nonlinear interaction model for bowed/blown-style instruments. `BowedStrings`: Smith/STK two-segment bowed string with clipped friction table; scratch probe at 187.5 Hz: 99.9999% of energy on harmonics, sustained (late/early energy 2.2).
+- [x] Implement modal banks with bounded mode count, independent frequencies, gains and decay times.
+- [x] Add inharmonic mode sets for bells, bars, membranes and metallic bodies; label approximations rather than claiming full mechanical simulation.
+- [x] Provide mode excitation weights derived from a declared strike/pickup-position model.
+- [x] Add polyphonic voice allocation, release tails and explicit voice stealing for physical instruments. `StringVoices`: 1–16 waveguide voices; free → longest-released → oldest-held stealing, counted; scratch probe: 5 notes on 4 voices stole 1, released voices freed after the 0.1 s release T60.
+- [x] Preserve tuning and decay when sample rate changes through a documented re-preparation/state-transfer policy. `Waveguides.transferred` recomputes tuning/T60 for the new rate and resamples the stored loop (`DelayLines.resampled`); scratch probe 48 → 96 kHz: 220.18 Hz before and after, rms 0.01430 vs 0.01456.
+- [x] Treat finite-difference mesh models as a separate bounded component with a stated discretisation/stability domain, not an implicit alternative inside the modal bank. `Meshes`: explicit 5-point damped wave equation, fixed edges, 2–32 points per side, λ ≤ 1/√2 enforced (λ 0.8 rejected); scratch probe 12×12, λ 0.5: lowest mode 1289 Hz vs 1305 Hz predicted, decay matches T60 (0.251 vs 0.25 energy ratio over 0.1 s).
 
 ### Graph and Prism integration [SYNTH-ADVANCED-PHYSICAL-INTEGRATION]
 
-- [ ] Expose Exciter, Resonator, Modal Bank, Fractional Delay and Waveguide modules independently in the palette.
-- [ ] Provide pitch, damping, brightness, strike position, pickup position and mode controls through standard parameter descriptors.
+- [x] Expose Exciter, Resonator, Modal Bank, Fractional Delay and Waveguide modules independently in the palette. All advanced modules (17 kinds) are in Prism's native "Add component" picker with level-safe defaults, and pitched modules follow the keyboard through their declared `frequency` parameter; the canvas palette keeps its original twelve-entry layout and artwork. Strict Prism check only; not exercised in the running app.
+- [x] Provide pitch, damping, brightness, strike position, pickup position and mode controls through standard parameter descriptors.
 - [ ] Show meaningful activity/decay observations rather than decorative waveforms disconnected from audio.
-- [ ] Ship plucked-string, struck-metal and externally excited resonator patches with editable routing.
-- [ ] Allow granular output, sample playback and VST audio to excite physical models through ordinary compatible audio ports.
+- [x] Ship plucked-string, struck-metal and externally excited resonator patches with editable routing. `Patches.pluckedString`, `struckMetal`, `feedbackTexture` (exciter → resonator); library graphs, not Prism presets.
+- [x] Allow granular output, sample playback and VST audio to excite physical models through ordinary compatible audio ports.
 
 ## Wavetable and additive synthesis [SYNTH-ADVANCED-TABLES]
 
 - [ ] Add prepared wavetable banks with explicit sample rate, table length, phase alignment and resource ownership.
-- [ ] Generate/select bandlimited table levels for the supported pitch range; document residual aliasing and modulation limits.
-- [ ] Support continuous phase, table-position interpolation and predictable table replacement.
-- [ ] Add table-position, phase, frequency and amplitude modulation through typed ports.
-- [ ] Define hard-sync and reverse/near-zero frequency behaviour rather than inheriting accidental oscillator semantics.
-- [ ] Implement bounded additive partial banks with independent frequency, phase and amplitude trajectories.
-- [ ] Support harmonic and inharmonic partial layouts, smooth partial-count changes and explicit upper-frequency handling.
-- [ ] Provide reusable partial-envelope controls without baking one timbre into the oscillator.
+- [x] Generate/select bandlimited table levels for the supported pitch range; document residual aliasing and modulation limits.
+- [x] Support continuous phase, table-position interpolation and predictable table replacement. Wavetable state is phase only, so a replacement table is read from the next sample at the same phase; position interpolates between frames.
+- [x] Add table-position, phase, frequency and amplitude modulation through typed ports. Optional normalised control inlets on the wavetable node via `RenderInputs.controlled`: `position` (replaces), `amplitude` (multiplies), `pitch` (±2 octaves, exponential) and `phase` (read-point offset). Probes through `GraphClips`: level 0.50 ↔ 0.23, >1 kHz share 0.088 ↔ 0.118, and a 1 Hz LFO lifts 220 Hz to the predicted ≈807 Hz.
+- [x] Define hard-sync and reverse/near-zero frequency behaviour rather than inheriting accidental oscillator semantics.
+- [x] Implement bounded additive partial banks with independent frequency, phase and amplitude trajectories.
+- [x] Support harmonic and inharmonic partial layouts, smooth partial-count changes and explicit upper-frequency handling.
+- [x] Provide reusable partial-envelope controls without baking one timbre into the oscillator.
 - [ ] Add Wavetable and Partial Bank module cards and resource controls in Prism.
-- [ ] Ship a morphing-table instrument and a controllable inharmonic additive patch.
+- [x] Ship a morphing-table instrument and a controllable inharmonic additive patch. `Patches.morphingTable`, `inharmonicAdditive`.
 
 ## Spectral synthesis and processing [SYNTH-ADVANCED-SPECTRAL]
 
 ### Transform and resynthesis foundation [SYNTH-ADVANCED-SPECTRAL-CORE]
 
-- [ ] Implement a reusable prepared transform backend with bounded supported sizes and scratch memory.
-- [ ] Define analysis/synthesis windows, hop sizes, normalisation, padding and overlap/add contracts.
-- [ ] Specify algorithmic latency and startup/shutdown behaviour, including partial final windows.
-- [ ] Make spectral frames a typed representation with channel, bin, frequency, magnitude/phase and timestamp conventions.
-- [ ] Define explicit audio↔spectral adapters; do not route spectral frames through ordinary audio ports implicitly.
-- [ ] Preserve phase/state across blocks and transport changes using a documented phase policy.
-- [ ] Define CPU/memory budgets before exposing large transforms or multiple simultaneous analysis branches.
+- [x] Implement a reusable prepared transform backend with bounded supported sizes and scratch memory.
+- [x] Define analysis/synthesis windows, hop sizes, normalisation, padding and overlap/add contracts.
+- [x] Specify algorithmic latency and startup/shutdown behaviour, including partial final windows. `SpectralStreams.latency` = size − 1, `tail` = size − 1 + hop zeros flush the partial final windows; startup is silent buffers.
+- [x] Make spectral frames a typed representation with channel, bin, frequency, magnitude/phase and timestamp conventions. `SpectralStreams.view` returns `SpectralView` (channel, newest-sample position, size) with `SpectralBin` index, frequency, magnitude and unit phase phasor.
+- [x] Define explicit audio↔spectral adapters; do not route spectral frames through ordinary audio ports implicitly. Spectral frames never travel on ports: each spectral node is an explicit audio → STFT → audio adapter with declared latency, and its side input is an ordinary audio port analysed inside the node.
+- [x] Preserve phase/state across blocks and transport changes using a documented phase policy. State persists across arbitrary blocks; `SpectralStreams.relocated` restarts analysis buffers and the hop clock on a transport jump while the synthesised tail, freeze capture and synthesis phases continue.
+- [x] Define CPU/memory budgets before exposing large transforms or multiple simultaneous analysis branches. `SpectralKernels.cost` (3·size·log2 size / hop butterflies per sample) and a 1,024 per-graph `budget`, enforced by both executors before allocation; spectral memory (5·size + 4 floats per node) counts against the graph storage budget. Probe: 7 nodes of 4,096/1,024 fit, 8 are rejected.
 
 ### Modules and expressive controls [SYNTH-ADVANCED-SPECTRAL-MODULES]
 
-- [ ] Implement spectral freeze with explicit capture and release, avoiding accidental phase discontinuities.
-- [ ] Implement spectral morphing with declared magnitude and phase interpolation policies.
-- [ ] Add spectral filtering, bin remapping and controlled spectral diffusion/smear as composable transformations.
-- [ ] Add pitch/time manipulation only with its own phase/transient handling and latency contract.
-- [ ] Expose analysis/resynthesis separately so multiple transformations can share one analysis where compatible.
+- [x] Implement spectral freeze with explicit capture and release, avoiding accidental phase discontinuities.
+- [x] Implement spectral morphing with declared magnitude and phase interpolation policies.
+- [x] Add spectral filtering, bin remapping and controlled spectral diffusion/smear as composable transformations.
+- [ ] Add pitch/time manipulation only with its own phase/transient handling and latency contract. Partial: `SpectralPitch` (transform 6) is a phase-vocoder pitch shift with measured per-bin frequency, forward bin mapping and accumulated synthesis phase, latency size − 1; probe at 437.5 Hz: ratios 0.75–2.0 land on target with ≥ 98% of energy within 25 Hz (3.0: 75%). Transient handling and time stretching remain open.
+- [x] Expose analysis/resynthesis separately so multiple transformations can share one analysis where compatible. `SpectralSeries` runs 1–8 stateless steps (band, shift, morph) on one analysis and one resynthesis; stateful steps (freeze, smear, pitch) are rejected as incompatible. Probe: band 500–2,000 Hz then +4 bins moves 1,031.25 Hz to exactly 1,406.25 Hz; a series containing freeze is rejected.
 - [ ] Add spectral displays driven by bounded observer snapshots, not analysis on the UI thread.
-- [ ] Ship freeze, cross-synthesis and spectral-motion patches using visible modules and cables.
+- [x] Ship freeze, cross-synthesis and spectral-motion patches using visible modules and cables. `Patches.spectralFreeze`, `crossSynthesis` (bowed string morphed onto a stiff additive side input) and `spectralMotion` (WPPM → smear → +3-bin shift); all render 4,096 samples with peaks ≤ 0.25. Library graphs, not Prism presets.
 
 ## Nonlinear, spatial and feedback processing [SYNTH-ADVANCED-NONLINEAR]
 
-- [ ] Implement reusable waveshapers with explicit input range, gain staging and DC behaviour.
-- [ ] Add antiderivative antialiasing where the transfer function permits it, including near-equal-input handling.
-- [ ] Add prepared oversampling/downsampling stages with explicit factors, filters, latency and resource cost.
-- [ ] Compare oversampling and ADAA rather than assuming one method is universally preferable.
-- [ ] Implement fractional/modulated delay, diffusion and feedback matrices as separate building blocks.
-- [ ] Build a configurable feedback-delay-network reverb with damping, size, diffusion and freeze controls.
-- [ ] Define stability domains and feedback gain limits; freeze must have an explicit energy policy.
-- [ ] Add frequency shifting, ring modulation and pitch-shifted feedback where supported by the declared algorithms.
-- [ ] Keep feedback loops explicit in the graph and require causal delay; bound any nonlinear solver's iteration count.
-- [ ] Define failure handling when convergence or stability requirements are not met.
+- [x] Implement reusable waveshapers with explicit input range, gain staging and DC behaviour.
+- [x] Add antiderivative antialiasing where the transfer function permits it, including near-equal-input handling.
+- [x] Add prepared oversampling/downsampling stages with explicit factors, filters, latency and resource cost.
+- [x] Compare oversampling and ADAA rather than assuming one method is universally preferable.
+- [x] Implement fractional/modulated delay, diffusion and feedback matrices as separate building blocks. `DelayLines` (fractional taps), `Diffusers` (series Schroeder allpasses, |g| ≤ 0.9) and `FeedbackMatrices.householder` (orthogonal N-line mixing) are standalone modules; `Reverbs` is composed from them and its probe output is bit-identical after the extraction.
+- [x] Build a configurable feedback-delay-network reverb with damping, size, diffusion and freeze controls.
+- [x] Define stability domains and feedback gain limits; freeze must have an explicit energy policy.
+- [x] Add frequency shifting, ring modulation and pitch-shifted feedback where supported by the declared algorithms. `Shifters` (SSB and ring) plus `Patches.shiftedFeedback`: a burst circulating through a +7 Hz shifter, 0.7 gain and a 50 ms delay; probe peak 0.72 → 0.31 over successive 85 ms windows (stable, decaying).
+- [x] Keep feedback loops explicit in the graph and require causal delay; bound any nonlinear solver's iteration count.
+- [x] Define failure handling when convergence or stability requirements are not met. No iterative solver is used; stability domains (λ ≤ 1/√2, |allpass| ≤ 0.95, loop gains < 1, |diffuser g| ≤ 0.9, Courant and T60 bounds) are enforced at `configure` with an explicit error and no partial state; fitting reports `converged = false` when it exhausts its budget.
 - [ ] Expose Delay, Diffuser, Feedback Matrix, Waveshaper, Frequency Shifter and Reverb in Prism.
-- [ ] Ship an evolving feedback texture and a granular-through-resonator/reverb patch with safe initial output gain.
+- [x] Ship an evolving feedback texture and a granular-through-resonator/reverb patch with safe initial output gain. `Patches.feedbackTexture` and `Patches.granularResonance` (grain cloud → explicit `downmix` → band-pass resonator → reverb; probe peak 0.029 while the resonator builds).
 
 ## Phase transformation and experimental oscillators [SYNTH-ADVANCED-PHASE]
 
-- [ ] Separate phase generation, phase transformation, waveform lookup and amplitude shaping into composable components.
-- [ ] Implement frequency modulation, phase modulation and phase distortion with explicit units and state continuity.
-- [ ] Add phase reset/sync and sample-offset trigger semantics.
-- [ ] Implement WPPM as a named research candidate derived from the cited source; preserve its exact parameter definitions and provenance.
-- [ ] Define antialiasing/oversampling behaviour for discontinuities and rapidly varying modulation.
-- [ ] Support audio-rate modulation where the kernel contract allows it; do not disguise block-rate controls as audio-rate processing.
+- [x] Separate phase generation, phase transformation, waveform lookup and amplitude shaping into composable components.
+- [x] Implement frequency modulation, phase modulation and phase distortion with explicit units and state continuity.
+- [x] Add phase reset/sync and sample-offset trigger semantics.
+- [x] Implement WPPM as a named research candidate derived from the cited source; preserve its exact parameter definitions and provenance.
+- [x] Define antialiasing/oversampling behaviour for discontinuities and rapidly varying modulation. Plain operators are not antialiased (documented); `PhaseOperators.oversampled` / the node's `oversample` switch runs the operator at 2× into the 31-tap half-band decimator (7.5 samples latency). Probe: PD d = 0.05 at 2,343.75 Hz, alias/total energy 0.71% plain → 0.017% oversampled.
+- [x] Support audio-rate modulation where the kernel contract allows it; do not disguise block-rate controls as audio-rate processing.
 - [ ] Add phase/operator modules and editable routing in Prism, including modulation depth and scaling adapters.
-- [ ] Ship a playable phase-network patch with several useful macro mappings.
+- [x] Ship a playable phase-network patch with several useful macro mappings. `Patches.phaseNetwork` with `phaseNetworkMacros` (Brightness, Growl, Motion) applied by `Macros.apply`; probe: each macro moves the >2 kHz energy share from ≤ 2.4e-5 to 3e-4–0.09. Library patch; Prism exposure open.
 
 ## Learned controls and offline discovery [SYNTH-ADVANCED-LEARNED]
 
-- [ ] Expose offline parameter trajectories for the same production DSP operators; avoid a separate incompatible synthesis model.
-- [ ] Add parameter fitting with explicit objective functions, constraints, seed and stopping conditions.
+- [x] Expose offline parameter trajectories for the same production DSP operators; avoid a separate incompatible synthesis model.
+- [x] Add parameter fitting with explicit objective functions, constraints, seed and stopping conditions.
 - [ ] Record model/data/licence provenance and distinguish training data from evaluation material.
-- [ ] Keep learned results editable as ordinary parameters, tables or automation curves.
-- [ ] Run training, patch search and expensive inference off the audio callback and outside the library's mandatory runtime dependencies.
-- [ ] Define cancellation, progress, resource limits and explicit failure results for long offline jobs.
+- [x] Keep learned results editable as ordinary parameters, tables or automation curves.
+- [x] Run training, patch search and expensive inference off the audio callback and outside the library's mandatory runtime dependencies.
+- [x] Define cancellation, progress, resource limits and explicit failure results for long offline jobs.
 - [ ] Treat a neural waveform generator as an optional later component requiring its own latency, memory and degradation contract.
 - [ ] Add application controls to preview/apply/reject fitted parameters without overwriting a working patch silently.
 
 ## Prism and external-controller experience [SYNTH-ADVANCED-PRISM]
 
 - [ ] Preserve the existing Prism logo, original node styling, visible cables, inspector and bottom-docked closable keyboard.
-- [ ] Group module browsing by Sources, Grains, Physical, Spectral, Modulators, Effects, Utilities and Output; support search and drag/click insertion.
+- [ ] Group module browsing by Sources, Grains, Physical, Spectral, Modulators, Effects, Utilities and Output; support search and drag/click insertion. Partial: the native picker lists all 29 kinds grouped in that category order with "Category · Title" labels; search and grouped canvas-palette browsing remain open.
 - [ ] Give every inserted node real ports, useful defaults and an inspector generated from its descriptors.
 - [ ] Make cable creation/removal, node movement/removal and Undo/Redo work for every advanced family.
 - [ ] Show resource-loading and failure states on the affected node; avoid treating unavailable samples/models/plugins as a silent working instrument.
 - [ ] Bind controls to applied parameter Signals and show pending/rejected changes distinctly.
-- [ ] Provide macro controls that map to ordinary typed parameters with declared ranges and smoothing.
+- [ ] Provide macro controls that map to ordinary typed parameters with declared ranges and smoothing. Library part done: `Macros` validates and writes normalised amounts onto declared parameters through per-target ranges and curves; hosts smooth amounts with `Smoothers`. Prism controls remain open.
 - [ ] Expose the same control commands to Light Orchestra/phone adapters without adding networking or session state to the synth library.
 - [ ] Save complete patches, resources, seeds, module versions, automation and controller mappings; load incompatible/missing resources explicitly.
-- [ ] Keep advanced modules available to headless/offline consumers without requiring Prism or the native UI package.
+- [x] Keep advanced modules available to headless/offline consumers without requiring Prism or the native UI package. Evidence: `src/osprey/examples/songs` builds from the synth and JSON source roots only and renders strings, modal banks, operators, the reverb and the spectral freeze from a command line.
+
+## Arrangements and the songs player [SYNTH-ARRANGEMENT]
+
+Added on request after the families: a piano-roll project file rendered offline by the advanced modules, and a command-line player that continues an existing recording. Nothing here is covered by an automated test yet; the evidence below is from rendering the included song.
+
+- [x] Declare the arrangement (tempo, rate, master drive, reverb space, sustain appearances, tracks, notes, six instruments) in `arrangement.td`; formulas in `ArrangeMath.lean`.
+- [x] Render one note per instrument from the existing modules (`NoteRenders`): plucked and bowed strings, bell and bar modal banks, a detuned phase-distortion operator pair and a drum; each module validates its own controls.
+- [x] Render tracks in start order with an overlap-add carry, mix to left, right and reverb buses, run one feedback-delay reverb per side and a tanh soft limiter (`Arrangements`).
+- [x] Hold the end of a recording with the spectral freeze and replay the hold at a pitch ratio with its own rise, hold and fade (`Sustains`) [SYNTH-ARRANGEMENT-SUSTAIN]. The freeze gained identity phase locking: every bin turns with its nearest magnitude peak.
+- [x] Decode the JSON project in one boundary module (`SongFiles`) into the typed arrangement [SYNTH-ARRANGEMENT-FILE]; malformed JSON, unknown instruments and malformed notes are errors.
+- [x] Command-line player `src/osprey/examples/songs` and `make -C src/toolchain/targets/macos songs` [SYNTH-ARRANGEMENT-PLAYER]: renders, writes WAV parts through `xxd`, joins them after the intro with `ffmpeg` and plays with `afplay`; every host command runs under `timeout`.
+- [x] Song project `broken-circuitry.json`: 44 bars, 14 tracks, 2,074 notes, written for the Broken Circuitry recording.
+- [ ] Automated tests for `NoteRenders`, `Arrangements`, `Sustains`, `SongFiles` and the player (paused with the other suites).
+- [ ] Bandlimited sustain transposition, an oversampled or look-ahead limiter and stereo instruments.
+- [ ] Playback on Windows and Linux; `afplay` is macOS only.
+- [ ] Detect an intro's tempo and key instead of measuring them by hand.
 
 ## Deferred acceptance checklist [SYNTH-ADVANCED-VERIFY]
 
@@ -353,7 +369,7 @@ Reference: Smith's waveguide material and Bilbao's numerical synthesis reference
 ## Completion and handoff [SYNTH-ADVANCED-DELIVERY]
 
 - [ ] Document each module's ports, units, scaling, defaults, state/reset semantics, latency, capacity and supported rates/channels.
-- [ ] Record the source paper/reference and exact algorithm/version for each research-derived implementation.
+- [x] Record the source paper/reference and exact algorithm/version for each research-derived implementation.
 - [ ] Link code, specifications, patches and eventual test evidence through the section IDs in this plan.
 - [ ] Include reproducible example patches for every delivered family and at least one patch combining grains, physical modelling, spectral processing and modulation.
 - [ ] Mark experimental/production status from measured evidence; record remaining limitations without weakening the contracts.
@@ -373,3 +389,17 @@ Implementation checkpoint [SYNTH-ADVANCED-GRAINS-OVERLOAD]: `Grains.trigger` ret
 Implementation checkpoint [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS]: generated bounds/seeds/event models and `GrainDistributions.events` produce checked uniform parameter variations. `GrainClouds.variedBlock` commits the existing scheduler, renderer and all variation streams together; rejected onsets consume draws while invalid operations return no partial state. Static compilation passed; graph/UI exposure and numerical/audio evidence remain pending.
 
 Integration checkpoint [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS]: `GrainCloudState` now owns variation seeds, and graph rendering uses `GrainClouds.variedBlock` with bounded `GrainSpreads` ranges. Five zero-default widths preserve existing centers; the variation seed initialises only during graph preparation. Library/application strict compilation passed. The running app has not been rebuilt for this change, and native interaction/audio evidence remains pending.
+
+### Advanced family checkpoint [SYNTH-ADVANCED-FAMILIES-CHECKPOINT]
+
+Recorded 20 November 2026 on `feat/synth-advanced`. Strict package and Prism source checks passed for each commit; **no test suite ran** (testing pause). Evidence comes from scratch measurement programs outside the repository at 48 kHz, rendering through the library modules and the reference graph renderer. Every family is reference/offline only: list-based state, per-sample allocation and, for spectral and reverb nodes, milliseconds per sample in the graph. None is realtime-ready; all deferred verification items above remain open.
+
+| Family | Commits | Modules | Measured evidence | Known limits |
+| --- | --- | --- | --- | --- |
+| Physical/modal [SYNTH-ADVANCED-PHYSICAL] | 834b11fe2, 1ac08ca13 | `Exciters`, `DelayLines`, `LossFilters`, `Allpasses`, `Resonators`, `ModalBanks`, `Waveguides`, `PhysicalKernels` | Waveguide 440 Hz with dispersion 0.3 and pickup 0.2 measured 439.998 Hz; T60 = 1 s gives −54.0 dB at 0.9 s (brightness 1); modal string 220.008 Hz with exact T60 | No bowed/blown model, voice allocation, sample-rate state transfer or mesh; linear fractional delay; time-varying direct-form coefficient changes not proven transient-free |
+| Wavetable/additive [SYNTH-ADVANCED-TABLES] | 1ac08ca13 | `Wavetables`, `PartialBanks`, `TableKernels` | Wavetable 100, 1000 and −440 Hz exact, peak ≤ 0.921; graph wavetable 261.626 Hz; additive 330.03 Hz | Table changes and modulation are parameters, not typed ports; no table import (needs FFT resynthesis); level switching is not crossfaded |
+| Spectral [SYNTH-ADVANCED-SPECTRAL] | e184932a9, 31b65e220 | `Ffts`, `SpectralStreams`, `SpectralFrames`, `SpectralKernels`, `Sequences` | Pass-through error 4e-16 at latency size − 1; band rejects an out-of-band tone to 5.8e-6 rms; phase-vocoder freeze holds a 1 kHz capture at 0.3537 rms within 3.7e-4 | Shift is integer-bin; no pitch/time, shared analysis, spectral ports, tail flushing or CPU budget |
+| Nonlinear/feedback [SYNTH-ADVANCED-NONLINEAR] | 31b65e220, 2ba9fa938 | `Waveshapers`, `Oversamplers`, `Reverbs`, `Shifters`, `EffectKernels` | Hard clip at 5156 Hz, drive 8: alias/total energy 5.4% naive, 1.2% ADAA, 0.35% 2×, 0.19% 2× + ADAA; FDN T60 2 s measured −8.7 dB over 0.3 s; freeze energy within 3%; shifter ±351.6 Hz on the expected bin, other sideband −46.5 dB | 2× only; delay/matrix not separate graph nodes; no pitch-shifted feedback |
+| Phase [SYNTH-ADVANCED-PHASE] | 6ebc380ac, 2ba9fa938 | `PhaseOperators`, `OperatorKernels` | WPPM (d 0.5, I 0) and PD (d 0.5) are pure sines; windowed PM with R 1.3 stays harmonic | Not antialiased |
+| Learned/offline [SYNTH-ADVANCED-LEARNED] | a7f657df4 | `Fitting` | Waveguide started at 250 Hz fits a 330 Hz target to 329.93 Hz (loss 21.7 → 0.048, 49 evaluations, seed 12345) | Spectral objective only; no provenance records, neural components or application preview UI |
+| Example patches [SYNTH-ADVANCED-DELIVERY] | ee2d13f1f | `Patches` | All eight patches render 4,096 samples with peak ≤ 0.5; the combined patch runs through `GraphClips` | Prism palette cards, observation Signals and saved patch files for these families are not built |

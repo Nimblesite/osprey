@@ -16,7 +16,26 @@ graphHistoryJourney () =
     noRedo = prismTap (branched, "Redo")
     expect (structuralEquals ((Drive::holding noRedo).graph, (Drive::holding branched).graph), true)
     expect (length (Drive::holding noRedo).future, 0)
+    sampleChoiceJourney ()
     historyRemovalJourney ()
+
+// [SYNTH-ADVANCED-GRAINS-IMPORT] Only the latest request may change the selected grain source.
+sampleChoiceJourney () =
+    added = prismTap (prismTap (editorLaunched ["--empty"], "Modules"), "Add Grain cloud")
+    opened = prismTap (added, "Patch controls")
+    first = Drive::press (opened, "Load WAV sample")
+    // A high note exceeds the built-in source's 16x rate and must preserve the editable graph.
+    errs (synth::EditorState::tune (Drive::holding first, 100))
+    second = Drive::press (first, "Load WAV sample")
+    ticket = (Drive::holding second).sampleTicket
+    expect (ticket != "", true)
+    expect (ticket != (Drive::holding first).sampleTicket, true)
+    stale = Drive::completed (second, (Drive::holding first).sampleTicket, false, "old selection")
+    expect ((Drive::holding stale).sampleTicket, ticket)
+    cancelled = Drive::completed (stale, ticket, true, "")
+    expect ((Drive::holding cancelled).sampleTicket, "")
+    expect (structuralEquals ((Drive::holding opened).graph, (Drive::holding cancelled).graph), true)
+    expect (length (Drive::holding opened).past, length (Drive::holding cancelled).past)
 
 // Deleting a routed module restores its parameters, position and cables as one operation.
 historyRemovalJourney () =

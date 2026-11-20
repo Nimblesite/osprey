@@ -1,0 +1,8 @@
+[project]
+name = "songs"
+source_roots = ["../../packages/synth/src", "main.ospml", "src", "../../packages/json/src"]
+default_namespace = "app"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

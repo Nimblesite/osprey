@@ -48,4 +48,10 @@ def streamSeed (seed offset : Float) : Float :=
 /-- Clip symmetric parameter spreads to the declared valid control domain. -/
 def spreadLow (center spread low : Float) : Float := if center - spread < low then low else center - spread
 def spreadHigh (center spread high : Float) : Float := if center + spread > high then high else center + spread
+/-- Advance an absolute fractional sample address, wrapping into [first, limit) when requested. -/
+def regionCursor (position rate first limit : Float) (looping : Bool) : Float :=
+  if looping then
+    let next := first + cursor (position - first) rate (limit - first)
+    if next >= limit then first else next
+  else position + rate
 end synth.GrainMath

@@ -21,6 +21,24 @@ module EditorView
         Mixer => "Mixer"
         Sink => "Output"
         Delay _ => "Delay"
+        Exciter _ => "Exciter"
+        Resonator => "Resonator"
+        Modal => "Modal bank"
+        Waveguide _ => "Waveguide string"
+        FractionalDelay _ => "Fractional delay"
+        LossFilter => "Loss filter"
+        Allpass => "Allpass dispersion"
+        TableOscillator _ => "Wavetable"
+        Additive => "Additive partials"
+        Spectral _ _ => "Spectral processor"
+        Shaper => "Waveshaper"
+        Reverb => "FDN reverb"
+        Shifter => "Frequency shifter"
+        PhaseOperator => "Phase operator"
+        Bowed _ => "Bowed string"
+        Smoother => "Smoother"
+        StrikeComb _ => "Strike comb"
+        Downmix => "Stereo to mono"
         External identifier => identifier
 
     componentName (editor, n) = match listGet (filterList (editor.pluginBindings, \binding => binding.pluginNode == n.identity)) 0
@@ -29,7 +47,7 @@ module EditorView
 
     plugins editor = Ui::column [Ui::field ("VST3 bundle", editor.pluginPath, "Path to a .vst3 bundle", PluginPath), Ui::button ("Scan VST3", "", ScanVst), Ui::picker ("Add VST3", mapList (editor.catalog, \entry => Ui::choice (entry.classId, entry.className)), "", CreateVst(identifier = ""))]
 
-    menu () = Ui::picker ("Add component", mapList (EditorState::kinds, \kind => Ui::choice (kind, EditorState::title kind)), "", Add(kind = ""))
+    menu () = Ui::picker ("Add component", mapList (EditorState::pickerKinds (), \kind => Ui::choice (kind, EditorState::pickerLabel kind)), "", Add(kind = ""))
 
     sourcePort (n, index) = match listGet n.outputs index
         Error _ => Ui::caption "Output port unavailable"
@@ -59,7 +77,10 @@ module EditorView
         parameters = match (length n.parameters == 0)
             true => []
             false => [Ui::section ("Parameters", "", mapList (n.parameters, \p => parameter (n, p)))]
-        Ui::column (listConcat parameters [Ui::section ("Connections", "", ports n), Ui::action ("Remove module", "delete", ui::Destructive, true, Remove)])
+        sample = match n.processor
+            Granular resource _ _ => [Ui::section ("Sample", "", [Ui::caption ("${resource.name} · ${resource.sampleRate} Hz · ${resource.sourceChannels} source channels · ${length resource.samples} frames · ${WaveMath::seconds (toFloat (length resource.samples), toFloat resource.sampleRate)} s"), Ui::button ("Load WAV sample", "", LoadSample), Ui::button ("Use built-in harmonic sample", "", BuiltinSample)])]
+            _ => []
+        Ui::column (listConcat (listConcat sample parameters) [Ui::section ("Connections", "", ports n), Ui::action ("Remove module", "delete", ui::Destructive, true, Remove)])
 
     x index = index.layoutX
 

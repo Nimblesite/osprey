@@ -1,0 +1,54 @@
+// [SYNTH-ADVANCED-TABLES] Bounded additive partial banks with independent ratios, gains, decays and phases.
+namespace synth
+
+(** Up to 64 sine partials. Every partial keeps its own phase, so count and layout edits never reset it. *)
+module PartialBanks
+    (** The fixed number of partial phases a bank carries. *)
+    export capacity = 64
+
+    (** Zero phases at age zero. *)
+    export initial () = PartialState(phases = mapList (toList (range (0, capacity)), \_ => 0.0), age = 0.0)
+
+    (** Restart every partial envelope; phases continue so a retrigger does not click from a phase jump. *)
+    export retrigger held = held(age = 0.0)
+
+    validRatio ratio = ratio > 0.0 && ratio <= 1000.0
+
+    layout config = match config.layout
+        HarmonicLayout => true
+        StiffLayout inharmonicity stretch => inharmonicity >= 0.0 && inharmonicity <= 0.1 && stretch >= 0.5 && stretch <= 2.0
+        RatioLayout ratios => length ratios >= 1 && length ratios <= capacity && length (filterList (ratios, validRatio)) == length ratios
+
+    (** Fundamental 0 to 0.45 of the rate, count 0–64 (fractional counts fade the last partial in). *)
+    export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 0.0 && config.frequency < config.sampleRate * 0.45 && config.count >= 0.0 && config.count <= toFloat capacity && config.tilt >= 0.0 && config.tilt <= 4.0 && config.parity >= -1.0 && config.parity <= 1.0 && config.decay >= 0.01 && config.decay <= 600.0 && config.damping >= 0.0 && config.damping <= 10.0 && config.amplitude >= 0.0 && config.amplitude <= 1.0 && layout config
+        true => Success(value = config)
+        false => Error(message = "Invalid partial-bank rate, frequency, count, shaping, decay, amplitude or layout.")
+
+    // Ratio-list partials beyond the list are silent by definition, not by error.
+    ratio (config, index) = match config.layout
+        HarmonicLayout => Success(value = toFloat (satAdd index 1))
+        StiffLayout inharmonicity stretch => Success(value = TableMath::stiffRatio (toFloat (satAdd index 1), inharmonicity, stretch))
+        RatioLayout ratios => listGet ratios index
+
+    gain (config, index, frequency, age) =
+        number = toFloat (satAdd index 1)
+        TableMath::countGain (config.count, toFloat index) * TableMath::tilt (number, config.tilt) * TableMath::parity (number, config.parity) * TableMath::nyquistFade (frequency, config.sampleRate) * TableMath::partialDecay (age, config.decay, config.damping, number, config.sampleRate)
+
+    voiced (voice, phase, level, step) = PartialVoice(sample = voice.sample + level * TableMath::sinePhase phase, gain = voice.gain + TableMath::magnitude level, phases = listAppend voice.phases (Waves::wrap (phase + step)))
+
+    partial (config, age, voice, index, phase) = match ratio (config, index)
+        Error _ => voice(phases = listAppend voice.phases phase)
+        Success r =>
+            frequency = config.frequency * r
+            voiced (voice, phase, gain (config, index, frequency, age), frequency / config.sampleRate)
+
+    stepped (config, age, phases, index, voice) = match phases
+        [] => voice
+        [phase, ...rest] => stepped (config, age, rest, satAdd index 1, partial (config, age, voice, index, phase))
+
+    (** One sample: peak-safe sum (divided by total gain when it exceeds one), scaled by amplitude. *)
+    export next (config, held) = match length held.phases == capacity
+        false => Error(message = "Partial state does not have one phase per partial.")
+        true =>
+            voice = stepped (config, held.age, held.phases, 0, PartialVoice(sample = 0.0, gain = 0.0, phases = []))
+            Success(value = PartialSample(sample = TableMath::normalised (voice.sample, voice.gain, config.amplitude), next = PartialState(phases = voice.phases, age = held.age + 1.0)))

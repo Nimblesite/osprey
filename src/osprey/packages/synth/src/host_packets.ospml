@@ -55,9 +55,17 @@ module HostPackets
             Error why => Error(message = why)
             Success text => Success(value = listAppend chunks text)
 
+    packetCount frames = intDiv (satAdd frames 255) 256
+
+    // Native readHex caps decoded requests at 1 MiB. Header, note and parameter widths follow packet above.
+    fitsTransport block =
+        headers = satMul (packetCount block.frames) 12
+        events = satAdd (satMul (length block.notes) 24) (satMul (length block.parameters) 16)
+        satAdd (satAdd headers events) (satMul (length block.samples) 4) <= 1048576
+
     (** A bounded clip becomes consecutive blocks while keeping event offsets sample-accurate. *)
-    export clip (layout, block) = match valid (layout.inputChannels, block) && ordered (block.notes, 0) && ordered (block.parameters, 0) && layout.outputChannels >= 1 && layout.outputChannels <= 64 && satMul block.frames layout.outputChannels <= 65536 && (layout.acceptsNotes || length block.notes == 0)
+    export clip (layout, block) = match fitsTransport block && valid (layout.inputChannels, block) && ordered (block.notes, 0) && ordered (block.parameters, 0) && layout.outputChannels >= 1 && layout.outputChannels <= 64 && satMul block.frames layout.outputChannels <= 65536 && (layout.acceptsNotes || length block.notes == 0)
         false => Error(message = "The VST clip exceeds its layout or capacity.")
-        true => match foldList (toList (range (0, intDiv (satAdd block.frames 255) 256)), Success(value = []), \(outcome, index) => next (layout.inputChannels, block, outcome, index))
+        true => match foldList (toList (range (0, packetCount block.frames)), Success(value = []), \(outcome, index) => next (layout.inputChannels, block, outcome, index))
             Error why => Error(message = why)
             Success chunks => Success(value = join chunks "")

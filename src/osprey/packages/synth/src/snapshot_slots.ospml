@@ -1,0 +1,18 @@
+// [SYNTH-ADVANCED-CORE-SIGNALS] Bounded, coalescing observation storage between renderer and subscribers.
+namespace synth
+
+(** One slot holds only the latest snapshot: publishing never blocks or grows, and a slow subscriber reads
+    the newest coherent snapshot together with how many it missed. *)
+module SnapshotSlots
+    (** An empty slot seeded with an initial snapshot. *)
+    export initial observation = SnapshotSlot(latest = observation, published = 0, delivered = 0)
+
+    (** Replace the held snapshot (constant storage); the renderer side never waits for readers. *)
+    export publish (slot, observation) = slot(latest = observation, published = satAdd slot.published 1)
+
+    skipped slot = match slot.published > slot.delivered
+        true => satSub (satSub slot.published slot.delivered) 1
+        false => 0
+
+    (** Read the newest snapshot; `coalesced` counts publications the reader skipped since its last read. *)
+    export read slot = SlotRead(observation = slot.latest, coalesced = skipped slot, next = slot(delivered = slot.published))

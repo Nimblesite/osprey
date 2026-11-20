@@ -1,0 +1,132 @@
+namespace synth
+
+// Generated from typeDiagram [CONV-OSPREY].
+type Tone =
+    breakpoint : float
+    feedback : float
+    attack : float
+    release : float
+    bloom : float
+    detune : float
+
+type Hit =
+    sweep : float
+    noise : float
+    colour : float
+    decay : float
+
+type Follow =
+    Constant
+    Pitched
+    Struck
+
+type Setting =
+    key : string
+    value : float
+    follow : Follow
+
+type PatchNode =
+    identity : int
+    component : string
+    size : int
+    seed : int
+    settings : List<Setting>
+
+type PatchCable =
+    source : int
+    outlet : int
+    destination : int
+    inlet : int
+
+type Routing =
+    nodes : List<PatchNode>
+    cables : List<PatchCable>
+    attack : float
+    release : float
+
+type Instrument =
+    PatchInstrument
+        routing : Routing
+    PluckInstrument
+        brightness : float
+        decay : float
+    BowInstrument
+        pressure : float
+        brightness : float
+        vibrato : float
+    BellInstrument
+        decay : float
+        brightness : float
+    MalletInstrument
+        decay : float
+        brightness : float
+    OperatorInstrument
+        tone : Tone
+    DrumInstrument
+        hit : Hit
+
+type Note =
+    pitch : int
+    start : float
+    length : float
+    velocity : float
+
+type Track =
+    name : string
+    instrument : Instrument
+    gain : float
+    pan : float
+    reverb : float
+    notes : List<Note>
+
+type Space =
+    size : float
+    decay : float
+    damping : float
+
+type Afterglow =
+    start : float
+    ratio : float
+    rise : float
+    hold : float
+    fade : float
+    gain : float
+    reverb : float
+
+type Arrangement =
+    title : string
+    tempo : float
+    sampleRate : int
+    drive : float
+    space : Space
+    sustains : List<Afterglow>
+    tracks : List<Track>
+
+type NoteRun S =
+    held : S
+    samples : List<float>
+    fault : string
+
+type NoteSpan =
+    gate : float
+    total : int
+
+type VoicePair A B =
+    one : A
+    other : B
+
+type TrackMix =
+    cursor : int
+    carry : List<float>
+    samples : List<float>
+    fault : string
+
+type Buses =
+    left : List<float>
+    right : List<float>
+    wet : List<float>
+
+type Mixdown =
+    left : List<float>
+    right : List<float>
+    peak : float

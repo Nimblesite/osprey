@@ -1,0 +1,10 @@
+// [SYNTH-ADVANCED-NONLINEAR] Lossless feedback matrices for delay networks, as a standalone building block.
+namespace synth
+
+(** Orthogonal mixing preserves the energy of its inputs exactly, so a network's decay is set only by its
+    per-line gains and damping. *)
+module FeedbackMatrices
+    (** Householder reflection `I − (2/N) 1 1ᵀ` applied to any number of lines. *)
+    export householder values =
+        sum = foldList (values, 0.0, \(total, value) => total + value)
+        mapList (values, \value => NonlinearMath::householder (value, sum, toFloat (length values)))

@@ -86,6 +86,8 @@ type Editor G P S M =
     pluginPath : string
     catalog : List<PluginClass>
     pluginBindings : List<PluginBinding>
+    sampleSerial : int
+    sampleTicket : string
     pluginSerial : int
     pluginTicket : string
     pluginClassId : string
@@ -137,6 +139,8 @@ type EditorAction =
     Strike
         note : int
     PluginPath
+    LoadSample
+    BuiltinSample
     ScanVst
     CreateVst
         identifier : string

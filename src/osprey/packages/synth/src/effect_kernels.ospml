@@ -1,0 +1,86 @@
+// [SYNTH-ADVANCED-NONLINEAR] Graph adapters for shapers, reverbs and shifters over the shared kernel state.
+namespace synth
+
+import synth::RenderInputs
+
+(** Each adapter unpacks its module state from kernel storage, runs one sample and packs it back. *)
+module EffectKernels
+    (** Shaper storage: up and down half-band histories (used only when oversampling). *)
+    export shaperStorage = 62
+
+    (** Shifter storage: eight four-value Hilbert sections; integratorOne holds the delayed in-phase sample. *)
+    export shifterStorage = 32
+
+    curve selector = match selector
+        0.0 => Success(value = TanhCurve)
+        1.0 => Success(value = HardCurve)
+        2.0 => Success(value = CubicCurve)
+        3.0 => Success(value = FoldCurve)
+        _ => Error(message = "Curve must be 0 tanh, 1 hard, 2 cubic or 3 fold.")
+
+    shaperState held = ShaperState(previous = held.phase, blockerInput = held.integratorOne, blockerOutput = held.integratorTwo)
+
+    shaperHeld (held, next) = held(phase = next.previous, integratorOne = next.blockerInput, integratorTwo = next.blockerOutput)
+
+    direct (frame, held, config, input) =
+        step = Waveshapers::next (config, shaperState held, input)
+        Success(value = RenderInputs::emitted (frame, shaperHeld (held, step.next), step.sample))
+
+    oversampled (frame, held, config, input) = match Oversamplers::next (config, OversampledState(shaper = shaperState held, up = Sequences::take (held.delay, Oversamplers::taps), down = Sequences::drop (held.delay, Oversamplers::taps)), input)
+        Error why => Error(message = why)
+        Success step => Success(value = RenderInputs::emitted (frame, shaperHeld (held(delay = listConcat step.next.up step.next.down), step.next.shaper), step.sample))
+
+    shape (rate, frame, held, input, chosen, drive, bias, level, antialias, oversample) = match chosen
+        Error why => Error(message = why)
+        Success kind => match Waveshapers::configure (ShaperConfig(sampleRate = rate, curve = kind, drive = drive, bias = bias, level = level, antialias = antialias >= 0.5))
+            Error why => Error(message = why)
+            Success config => match oversample >= 0.5
+                true => oversampled (frame, held, config, input)
+                false => direct (frame, held, config, input)
+
+    (** Waveshaper: curve, drive, bias, level, ADAA and 2× oversampling switches. *)
+    export shaper (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "curve", \selector => RenderInputs::bound (snapshot, held, "drive", \drive => RenderInputs::bound (snapshot, held, "bias", \bias => RenderInputs::bound (snapshot, held, "level", \level => RenderInputs::bound (snapshot, held, "antialias", \antialias => RenderInputs::bound (snapshot, held, "oversample", \oversample => shape (rate, frame, held, input, curve selector, drive, bias, level, antialias, oversample)))))))
+
+    reverbState (held: KernelState, sizes) =
+        parts = Sequences::chunks (held.delay, sizes)
+        ReverbState(lines = mapList (Sequences::take (parts, 4), \samples => DelayLine(samples = samples)), damped = Sequences::drop (held.delay, foldList (sizes, 0, \(total, size) => satAdd total size)), diffusers = mapList (Sequences::drop (parts, 4), \samples => DelayLine(samples = samples)))
+
+    reverbHeld (held: KernelState, next) = held(delay = listConcat (Sequences::flattened (mapList (listConcat next.lines next.diffusers, \line => line.samples))) next.damped)
+
+    reverberated (frame, held, config, input) = match Reverbs::capacities config
+        Error why => Error(message = why)
+        Success sizes => match Reverbs::next (config, reverbState (held, sizes), input)
+            Error why => Error(message = why)
+            Success step => Success(value = RenderInputs::emitted (frame, reverbHeld (held, step.next), step.sample))
+
+    verb (rate, frame, held, input, size, decay, damping, diffusion, mix, freeze) = match Reverbs::configure (ReverbConfig(sampleRate = rate, size = size, decay = decay, damping = damping, diffusion = diffusion, mix = mix, freeze = freeze >= 0.5))
+        Error why => Error(message = why)
+        Success config => reverberated (frame, held, config, input)
+
+    (** FDN reverb: size, decay (T60), damping, diffusion, mix and a lossless freeze switch. *)
+    export reverb (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "size", \size => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "damping", \damping => RenderInputs::bound (snapshot, held, "diffusion", \diffusion => RenderInputs::bound (snapshot, held, "mix", \mix => RenderInputs::bound (snapshot, held, "freeze", \freeze => verb (rate, frame, held, input, size, decay, damping, diffusion, mix, freeze)))))))
+
+    sections samples = match samples
+        [] => []
+        [a, ...rest] => match rest
+            [] => []
+            [b, ...more] => match more
+                [] => []
+                [c, ...others] => match others
+                    [] => []
+                    [d, ...remaining] => listPrepend (sections remaining) (HilbertSection(input = a, older = b, output = c, oldest = d))
+
+    flatSections all = Sequences::flattened (mapList (all, \s => [s.input, s.older, s.output, s.oldest]))
+
+    shifterState (held: KernelState) =
+        all = sections held.delay
+        ShifterState(first = Sequences::take (all, 4), second = Sequences::drop (all, 4), delayed = held.integratorOne, phase = held.phase)
+
+    shifted (frame, held, input, configured) = match configured
+        Error why => Error(message = why)
+        Success config => match Shifters::next (config, shifterState held, input)
+            Error why => Error(message = why)
+            Success step => Success(value = RenderInputs::emitted (frame, held(delay = flatSections (listConcat step.next.first step.next.second), integratorOne = step.next.delayed, phase = step.next.phase), step.sample))
+
+    (** Frequency shifter: shift in hertz, ring-modulation switch and mix. *)
+    export shifter (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "shift", \shift => RenderInputs::bound (snapshot, held, "ring", \ring => RenderInputs::bound (snapshot, held, "mix", \mix => shifted (frame, held, input, Shifters::configure (ShifterConfig(sampleRate = rate, shift = shift, ring = ring >= 0.5, mix = mix))))))

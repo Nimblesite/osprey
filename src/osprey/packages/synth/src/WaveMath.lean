@@ -12,4 +12,6 @@ def mono (left right : Float) : Float := (left + right) * 0.5
 /-- Source-sample advance per output sample, independent of recording duration. -/
 def playbackRate (sourceRate outputRate targetFrequency rootFrequency : Float) : Float :=
   (sourceRate / outputRate) * (targetFrequency / rootFrequency)
+/-- Duration of a complete decoded sample at its original sample rate. -/
+def seconds (frames rate : Float) : Float := frames / rate
 end synth.WaveMath

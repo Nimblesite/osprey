@@ -4,7 +4,13 @@ namespace synth
 (** RIFF/WAVE encoding for reference previews and high-resolution rendered audio. *)
 module WaveFiles
     (** The 8-bit reference preview shares byte/header primitives with float output. *)
-    export mono8 (rate, values) = "52494646${PcmWords::le32 (satAdd (length values) 36)}57415645666D7420${PcmWords::le32 16}${PcmWords::le16 1}${PcmWords::le16 1}${PcmWords::le32 rate}${PcmWords::le32 rate}${PcmWords::le16 1}${PcmWords::le16 8}64617461${PcmWords::le32 (length values)}${join (mapList (values, PcmWords::byte)) ""}"
+    export mono8 (rate, values) =
+        count = length values
+        odd = bitAnd count 1
+        pad = match odd == 1
+            true => "00"
+            false => ""
+        "52494646${PcmWords::le32 (satAdd (satAdd count odd) 36)}57415645666D7420${PcmWords::le32 16}${PcmWords::le16 1}${PcmWords::le16 1}${PcmWords::le32 rate}${PcmWords::le32 rate}${PcmWords::le16 1}${PcmWords::le16 8}64617461${PcmWords::le32 count}${join (mapList (values, PcmWords::byte)) ""}${pad}"
 
     finite value = value == value && abs value <= 1000000.0
 

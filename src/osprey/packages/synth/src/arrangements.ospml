@@ -1,0 +1,114 @@
+// [SYNTH-ARRANGEMENT] Piano-roll tracks rendered, overlap-added and mixed to stereo, offline.
+namespace synth
+
+(** A track is rendered note by note in start order: frames before the next note start are final and move
+    to the output, later frames wait in an overlap carry. Tracks then add into left, right and reverb
+    buses; the reverb bus feeds two feedback-delay networks of different size, one per side. *)
+module Arrangements
+    ordered (one, other) = match one.start < other.start
+        true => -1
+        false => match one.start > other.start
+            true => 1
+            false => 0
+
+    // Move `count` settled frames from the overlap carry to the output (silence past its end).
+    emitted (samples, carry, count) = foldList (toList (range (0, count)), samples, \(done, index) => listAppend done (listGet carry index ?: 0.0))
+
+    longer (one, other) = match one > other
+        true => one
+        false => other
+
+    // The carry after `gap` frames settled, with the new note overlap-added from its first frame.
+    overlapped (carry, gap, note) = foldList (toList (range (0, longer (satSub (length carry) gap, length note))), [], \(done, index) => listAppend done ((listGet carry (satAdd gap index) ?: 0.0) + (listGet note index ?: 0.0)))
+
+    placed (mix, start, note) = TrackMix(cursor = start, carry = overlapped (mix.carry, satSub start mix.cursor, note), samples = emitted (mix.samples, mix.carry, satSub start mix.cursor), fault = "")
+
+    noted (arrangement, part, mix, note) = match mix.fault == ""
+        false => mix
+        true => match frame (arrangement, note.start)
+            Error _ => mix(fault = "${part.name}: a note start is not finite.")
+            Success start => match start >= mix.cursor
+                false => mix(fault = "${part.name}: a note starts before the piece.")
+                true => match NoteRenders::render (note, arrangement.tempo, toFloat arrangement.sampleRate, part.instrument)
+                    Error why => mix(fault = "${part.name}: ${why}")
+                    Success samples => placed (mix, start, samples)
+
+    (** One track's notes as a mono buffer of exactly `frames` frames; later sound is cut. *)
+    export part (arrangement, voice, frames) =
+        mix = foldList (listSortBy (voice.notes, ordered), TrackMix(cursor = 0, carry = [], samples = [], fault = ""), \(mix, note) => noted (arrangement, voice, mix, note))
+        match mix.fault == ""
+            false => Error(message = mix.fault)
+            true => Success(value = emitted (mix.samples, mix.carry, satSub frames mix.cursor))
+
+    close (latest, note) = TableMath::larger (latest, note.start + note.length)
+
+    beats arrangement = foldList (arrangement.tracks, 0.0, \(latest, voice) => foldList (voice.notes, latest, close))
+
+    valid arrangement = arrangement.drive >= 0.1 && arrangement.drive <= 4.0 && arrangement.tempo >= 20.0 && arrangement.tempo <= 400.0 && arrangement.sampleRate >= 8000 && arrangement.sampleRate <= 192000 && length arrangement.tracks >= 1 && length arrangement.tracks <= 64
+
+    (** Frames in the piece: its last note end plus the reverb decay and two seconds; at most 28,800,000. *)
+    export frames arrangement = match valid arrangement
+        false => Error(message = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000, a drive of 0.1 to 4 and 1 to 64 tracks.")
+        true => match floatToInt (ArrangeMath::beatFrames (beats arrangement, arrangement.tempo, toFloat arrangement.sampleRate) + ArrangeMath::secondFrames (arrangement.space.decay + 2.0, toFloat arrangement.sampleRate))
+            Error _ => Error(message = "The arrangement length is not finite.")
+            Success count => match count >= 1 && count <= 28800000
+                false => Error(message = "An arrangement must last 1 to 28800000 frames.")
+                true => Success(value = count)
+
+    // `samples` enter `offset` frames into the bus; the bus grows to hold them.
+    bused (existing, samples, offset, gain) = foldList (toList (range (0, longer (length existing, satAdd offset (length samples)))), [], \(done, index) => listAppend done ((listGet existing index ?: 0.0) + gain * (listGet samples (satSub index offset) ?: 0.0)))
+
+    (** Silent buses. *)
+    export empty = Buses(left = [], right = [], wet = [])
+
+    (** Add a mono buffer to the buses from frame `offset` (0 or later): gain 0–4, pan −1 (left) to 1
+        (right), reverb send 0–1. *)
+    export layered (buses, samples, offset, gain, pan, reverb) = match offset >= 0 && gain >= 0.0 && gain <= 4.0 && pan >= -1.0 && pan <= 1.0 && reverb >= 0.0 && reverb <= 1.0
+        false => Error(message = "Gain must be 0 to 4, pan -1 to 1, reverb 0 to 1 and the offset not negative.")
+        true => Success(value = Buses(left = bused (buses.left, samples, offset, gain * ArrangeMath::panLeft pan), right = bused (buses.right, samples, offset, gain * ArrangeMath::panRight pan), wet = bused (buses.wet, samples, offset, gain * reverb)))
+
+    (** The frame at which `beat` starts. *)
+    export frame (arrangement, beat) = match floatToInt (ArrangeMath::beatFrames (beat, arrangement.tempo, toFloat arrangement.sampleRate))
+        Error _ => Error(message = "A start beat is not finite.")
+        Success start => Success(value = start)
+
+    (** Render one track and add it to the buses. *)
+    export added (arrangement, buses, voice, count) = match part (arrangement, voice, count)
+        Error why => Error(message = why)
+        Success samples => match layered (buses, samples, 0, voice.gain, voice.pan, voice.reverb)
+            Error why => Error(message = "${voice.name}: ${why}")
+            Success next => Success(value = next)
+
+    room (arrangement, scale) = ReverbConfig(sampleRate = toFloat arrangement.sampleRate, size = arrangement.space.size * scale, decay = arrangement.space.decay, damping = arrangement.space.damping, diffusion = 0.7, mix = 1.0, freeze = false)
+
+    echoStep (config, run, input) = match run.fault == ""
+        false => run
+        true => match Reverbs::next (config, run.held, input)
+            Error why => run(fault = why)
+            Success step => NoteRun(held = step.next, samples = listAppend run.samples step.sample, fault = "")
+
+    echoed (config, wet) = match Reverbs::configure config
+        Error why => Error(message = why)
+        Success accepted => match Reverbs::initial accepted
+            Error why => Error(message = why)
+            Success held => NoteRenders::finished (foldList (wet, NoteRun(held = held, samples = [], fault = ""), \(run, input) => echoStep (accepted, run, input)))
+
+    peak (high, value) = TableMath::larger (high, TableMath::magnitude value)
+
+    levelled (left, right, drive) =
+        top = foldList (right, foldList (left, 0.0, peak), peak)
+        Mixdown(left = mapList (left, \value => ArrangeMath::pressed (value, top, drive, 0.89)), right = mapList (right, \value => ArrangeMath::pressed (value, top, drive, 0.89)), peak = top)
+
+    (** Stereo mixdown: each side is its dry bus plus its own reverb of the shared send, then both sides pass
+        the same tanh soft limiter (`drive` 0.1–4), which puts the peak at 0.89 (about −1 dBFS). The limiter
+        is not oversampled, so a high drive adds audible harmonics; `peak` is the level before it. *)
+    export mixed (arrangement, buses) = match echoed (room (arrangement, 1.0), buses.wet)
+        Error why => Error(message = why)
+        Success near => match echoed (room (arrangement, 0.91), buses.wet)
+            Error why => Error(message = why)
+            Success far => Success(value = levelled (bused (buses.left, near, 0, 1.0), bused (buses.right, far, 0, 1.0), arrangement.drive))
+
+    interleave (mix, done, index) = listAppend (listAppend done (listGet mix.left index ?: 0.0)) (listGet mix.right index ?: 0.0)
+
+    (** Interleaved left/right samples for frames `from` up to `until`, for chunked file writing. *)
+    export interleaved (mix, from, until) = foldList (toList (range (from, longer (from, until))), [], \(done, index) => interleave (mix, done, index))

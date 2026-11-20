@@ -7,14 +7,17 @@ module GraphClips
         Delay _ => n(processor = Amplifier)
         _ => n
 
-    stateful n = match n.processor
+    (** Whether a component keeps DSP memory between blocks. *)
+    export stateful n = match n.processor
         Stereo => false
+        Downmix => false
         Sink => false
         MidiNotes => false
         External _ => false
         _ => true
 
-    validBank (graph, bank, position) = match Graphs::node (graph, bank.kernelNode)
+    (** Whether stored memory still fits its node in this graph at this clock position. *)
+    export validBank (graph, bank, position) = match Graphs::node (graph, bank.kernelNode)
         Invalid _ => false
         Valid n => match bank.kernelMemory
             GrainMemory cloud => GrainGraph::compatible (n, cloud, position)
@@ -98,8 +101,24 @@ module GraphClips
                 next = stored (held, n, MidiMemory(voice = rendered.heldKernel))
                 emitted (plan, clips, next, frames, n, 1, rendered.kernelSamples, [], remaining)
 
+    // [SYNTH-ADVANCED-CORE-PORTS] Explicit stereo-to-mono adapter: the documented (left + right) / 2 downmix.
+    downmixed (graph, clips, n) = match ClipInputs::routed (graph, clips, n.identity, 0)
+        Error why => Error(message = why)
+        Success clip => match clip.clipChannels == 2
+            false => Error(message = "Stereo-to-mono requires two audio channels.")
+            true => Success(value = pairs clip.clipSamples)
+
+    pairs samples = match samples
+        [] => []
+        [left, ...rest] => match rest
+            [] => []
+            [right, ...more] => listPrepend (pairs more) (WaveMath::mono (left, right))
+
     routed (plan, clips, held, frames, n, channels, remaining) = match n.processor
         Stereo => match converted (plan.graph, clips, n)
+            Error why => Error(message = why)
+            Success samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining)
+        Downmix => match downmixed (plan.graph, clips, n)
             Error why => Error(message = why)
             Success samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining)
         Sink => match ClipInputs::routed (plan.graph, clips, n.identity, 0)

@@ -16,3 +16,12 @@ module Observations
     export component identity = match listGet (filterList ((snapshot ()).components, \c => c.node == identity)) 0
         Success c => Success(value = c)
         Error _ => Error(message = "The component is absent from this snapshot.")
+
+    (** A selected-field view of one snapshot: only the named nodes and parameter keys, keeping the
+        revision and sample position so the subset stays coherent. Same-kind instances stay independent
+        because every entry is keyed by node identity. *)
+    export selected (observation, nodes, keys) = observation(parameters = filterList (observation.parameters, \p => listContains nodes p.node && listContains keys p.key), components = filterList (observation.components, \c => listContains nodes c.node))
+
+    (** Read the selected fields of the current snapshot. *)
+    export subscribed (nodes, keys) = selected (snapshot (), nodes, keys)
+
