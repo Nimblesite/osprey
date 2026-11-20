@@ -22,30 +22,14 @@ pub(super) fn too_deep(source: &str, limit: usize) -> Option<usize> {
             b'/' if next == Some(b'/') => line_end(bytes, at),
             b'/' if next == Some(b'*') => comment_end(bytes, at),
             b'\'' | b'"' => string_end(bytes, at, byte),
-            b'`' => {
-                let (end, hole) = template_text(bytes, at + 1);
-                if hole {
-                    levels.push(Level {
-                        operators: 0,
-                        hole: true,
-                    });
-                }
-                end
-            }
+            b'`' => template(bytes, at, &mut levels),
             b'(' | b'[' | b'{' => {
                 levels.push(Level::default());
                 at + 1
             }
             b'}' if levels.last().is_some_and(|level| level.hole) => {
                 let _ = levels.pop();
-                let (end, hole) = template_text(bytes, at + 1);
-                if hole {
-                    levels.push(Level {
-                        operators: 0,
-                        hole: true,
-                    });
-                }
-                end
+                template(bytes, at, &mut levels)
             }
             b')' | b']' | b'}' => {
                 if levels.len() > 1 {
@@ -85,6 +69,18 @@ pub(super) fn too_deep(source: &str, limit: usize) -> Option<usize> {
 
 const OPERATORS: &[u8] = b"?!~+-*/%<>=&|^.:";
 const PREFIX_WORDS: [&str; 6] = ["typeof", "void", "delete", "await", "new", "yield"];
+
+/// Scans template text after `at`; a `${` hole opens a level that its `}` closes.
+fn template(bytes: &[u8], at: usize, levels: &mut Vec<Level>) -> usize {
+    let (end, hole) = template_text(bytes, at + 1);
+    if hole {
+        levels.push(Level {
+            operators: 0,
+            hole: true,
+        });
+    }
+    end
+}
 
 fn count(levels: &mut [Level]) {
     if let Some(level) = levels.last_mut() {
