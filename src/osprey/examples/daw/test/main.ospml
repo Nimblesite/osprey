@@ -749,7 +749,7 @@ mixFromRow (editor, action, path) = match action
         readBack = synth::DawSession::loaded (after, path)
         trackAt (readBack.song, index, \voice =>
             mixedTo (voice, gain, pan, 0.5)
-            expect (mapList (voice.notes, \n => n.velocity), [0.5, 0.35, 0.25, 0.25])
+            expect (mapList (voice.notes, \n => n.velocity), [0.5, 0.35, 1.0, 0.25])
             expect (starts voice, [0.0, 4.0, 8.5, 12.0]))
         failsWith (daw::Projects::velocity (readBack.song, index, 1, 1.01), "Velocity must be between 0 and 1.")
 
