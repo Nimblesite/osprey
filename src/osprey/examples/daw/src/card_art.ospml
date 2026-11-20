@@ -33,4 +33,26 @@ module CardArts
         base = match same (before.skin, after.skin)
             true => after
             false => after(art = [])
-        base(art = mapList (after.graph.nodes, \n => card (base, n)))
+        base(art = listConcat [scenery base, dock base] (mapList (after.graph.nodes, \n => card (base, n))))
+
+    fixed (editor, slot, key, draw) = match listGet (filterList (editor.art, \art => art.artNode == slot && art.artKey == key)) 0
+        Success art => art
+        Error _ => draw ()
+
+    chosen editor = match Graphs::node (editor.graph, editor.selected)
+        Invalid _ => ""
+        Valid n => "${EditorView::componentName (editor, n)}:${settings n}:${sample n}"
+
+    sceneryKey editor = "${editor.selected}:${editor.detailsShown}:${editor.note}:${chosen editor}"
+
+    (** The header, inspector and legend: redrawn when the selection, its settings or the note change, not on a move. *)
+    export scenery editor = fixed (editor, -1, sceneryKey editor, \() => CardArt(artNode = -1, artKey = sceneryKey editor, artShapes = PrismArt::background editor, artControls = []))
+
+    dockKey editor = "${sceneryKey editor}:${editor.keyboardShown}:${editor.keyboardWidth}"
+
+    dockDrawn editor = match editor.keyboardShown
+        false => CardArt(artNode = -2, artKey = dockKey editor, artShapes = [], artControls = [])
+        true => CardArt(artNode = -2, artKey = dockKey editor, artShapes = PrismArt::deck (PrismArt::keyboardEditor editor), artControls = PrismArt::keyboardAccess (PrismArt::keyboardEditor editor))
+
+    (** The keyboard dock's artwork and keys, kept while the note and the dock's size stay. *)
+    export dock editor = fixed (editor, -2, dockKey editor, \() => dockDrawn editor)

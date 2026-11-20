@@ -1,7 +1,7 @@
 //! Prism's interaction budget, end to end through the real shared-memory boundary
 //! ([NATIVE-SHM-EVENT], [PRISM-ROUTING-EDITOR]): the linked Prism synth opens its studio, a module is
 //! dragged the way a hand drags it, and every pointer event must leave the application's `event`
-//! export within one 60 Hz display frame. Only the export's own time is measured
+//! export within one 120 Hz display frame. Only the export's own time is measured
 //! (`ffi::APP_MICROS`), so the host and its toolkit are not part of the budget.
 //!
 //! Needs Prism linked: `scripts/prism.sh` builds `target/prism-app/libOspreyApp.a`, and the test
@@ -15,8 +15,8 @@ use ferroui_osprey_native::regions::Regions;
 use ferroui_osprey_native::rows::Shown;
 use ferroui_osprey_native::tree::Tree;
 
-/// One display frame at 60 Hz, in milliseconds.
-const FRAME_MS: f64 = 1000.0 / 60.0;
+/// One display frame at 120 Hz, in milliseconds.
+const FRAME_MS: f64 = 1000.0 / 120.0;
 /// The Oscillator module's title bar in the studio preset, in scene units.
 const OSCILLATOR: (f64, f64) = (131.0, 376.0);
 /// Drag moves per run, and the first few left out of the budget while caches fill.

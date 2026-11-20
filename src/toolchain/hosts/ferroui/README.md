@@ -70,9 +70,9 @@ not changed.
 Both spend almost all of a frame in Prism's own `event` export. FerroUI turns the same work into
 more frames per second.
 
-**Since these runs, Prism's own cost per drag move fell from about 43 ms to 10.6 ms** (worst 12.2 ms),
-inside one 60 Hz frame: card artwork is sorted once per skin and each module's card is redrawn only when
-that module changes. [tests/prism_events.rs](tests/prism_events.rs) holds it there. The tables in this
+**Since these runs, Prism's own cost per drag move fell from about 43 ms to 5.1 ms** (worst 9.0 ms),
+inside one 120 Hz frame on average: card artwork is sorted once per skin, each module's card is redrawn only
+when that module changes, and the scenery and keyboard dock are kept while the selection and note stay. [tests/prism_events.rs](tests/prism_events.rs) holds it there. The tables in this
 file were measured before that change.
 
 ## FerroUI's own cost (`fast-release`, 282–292 scene shapes)

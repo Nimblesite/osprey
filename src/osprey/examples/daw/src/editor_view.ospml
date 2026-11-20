@@ -402,7 +402,7 @@ module EditorView
         details = match editor.detailsShown
             true => []
             false => listConcat (customInspector editor) (connectionRows editor)
-        shapes = listConcat (listConcat (PrismArt::background editor) details) (listConcat (CableCanvas::shapes editor) (listConcat nodes (listConcat (listAppend (toolbar ()) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))) library)))
+        shapes = listConcat (listConcat ((CardArts::scenery editor).artShapes) details) (listConcat (CableCanvas::shapes editor) (listConcat nodes (listConcat (listAppend (toolbar ()) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))) library)))
         scene = Ui::zoomed (0.75, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
         access = listConcat (toolbarAccess editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) ((CardArts::card (editor, n)).artControls))))
         extra = match editor.paletteShown
@@ -420,10 +420,10 @@ module EditorView
         Ui::themed (local(spacing = [4, 8, 8, 16, 24, 32]), Ui::framed (style(frameTextSize = 12, frameControlHeight = 28), Ui::column (listConcat [heading, transport, Ui::caption editor.message, chooser] (listConcat (mapList (selected, component)) [Ui::section ("Add to patch", "", [menu (), plugins editor])]))))
 
     keyboardDock editor =
-        dock = PrismArt::keyboardEditor editor
+        dock = CardArts::dock editor
         closeX = editor.keyboardWidth - 156.0
-        marks = listAppend (PrismArt::deck dock) (text ("Close keyboard ×", closeX + 8.0, 8.0, 14.0, 190, 12))
-        keys = mapList (PrismArt::keyboardAccess dock, \key => key(accessTop = key.accessTop - 828.0))
+        marks = listAppend dock.artShapes (text ("Close keyboard ×", closeX + 8.0, 8.0, 14.0, 190, 12))
+        keys = mapList (dock.artControls, \key => key(accessTop = key.accessTop - 828.0))
         access = listAppend keys (accessible ("Close keyboard", closeX, 0.0, 150.0, 32.0, false))
         style = ui::Frames::plain
         Ui::framed (style(frameHeight = 135), Ui::described (Ui::zoomed (0.75, 1536.0, 180.0, PrismArt::atlas editor.skin, marks, Keyboard), access))

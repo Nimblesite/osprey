@@ -32,12 +32,75 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] Stop cancels the FerroUI transport process group. Native Play → Stop left no renderer and a zero-byte WAV. The host process tests also exercise descendant cancellation.
 - [ ] The renderer is fast enough to play from the playhead without waiting (per-note patch voices dominate).
 
+## Timeline transport [DAW-TRANSPORT-TIMELINE]
+
+- [x] Play bars and Stop from the Timeline.
+- [ ] Playhead in daw.td, shown as `bar.beat`, set by tapping the ruler, saved (OspreyOpus1).
+- [ ] Start plays from the playhead; Stop, then return to start (OspreyOpus1).
+- [ ] Loop span on the ruler.
+- [ ] The line follows playback.
+
+## Dynamics [DAW-DYNAMICS]
+
+- [x] Compressor and limiter formulas in [DynamicsMath.lean](../../src/osprey/packages/synth/src/DynamicsMath.lean); the Osprey module generates.
+- [ ] `Compressor` and `Limiter` components in `@osprey/synth`, any channel count, linked (synth-advanced).
+- [ ] Tests: sine against the curve within 0.01 dB; inter-sample peaks under the ceiling (synth-advanced).
+- [ ] Master ends in the compressor and limiter, replacing the `ArrangeMath` limiter; settings in daw.td.
+- [ ] Gain reduction and true-peak meters on the Mix page.
+
+## MIDI keyboard [DAW-MIDI]
+
+- [ ] Realtime audio path: the renderer meets [DAW-PERF], then a callback backend plays one track's patch live.
+- [ ] Host lists MIDI sources and delivers timed events through the native boundary (CoreMIDI first).
+- [ ] Notes play the selected track's patch.
+- [ ] Record into the timeline at the playhead.
+- [ ] Controller learn, stored in the project.
+
+## OSC [DAW-OSC]
+
+- [ ] OSC 1.0 packet reader and writer in Osprey with bounds checks, as a package with tests.
+- [ ] UDP listener on localhost behind an effect.
+- [ ] Addresses generated from daw.td; messages go through the same checked edits.
+- [ ] Feedback of playhead, meters and changed values.
+
 ## Pages [DAW-PAGES]
 
 - [x] Timeline, Mix and Patch pages on FerroUI ([screens](../../src/osprey/examples/daw/screens)).
 - [ ] Screenshot goldens compared automatically in the app test targets.
 - [x] Piano-roll note selection and velocity edits are saved into the project.
 - [x] Native bar-9 journey on a copy of the codex project. Selected keysL, changed gain, pan and Space, inserted a delay, saved, reopened and played 13.75 seconds of stereo at 48 kHz.
+
+## Performance [DAW-PERF]
+
+Profiled 21 Nov with `sample` at 1 ms. Each fix is owned, and is done only when its owner reports the same measurement again with the target met.
+
+**Engine.** `target/daw/daw tracks/codex-version.json <out> 32 8` (bars 9 and 10, ARC): 42.2 s of CPU for 27.5 s of audio, so 0.65× real time. Target: under 14 s (2× real time).
+
+| Where the time goes | Share | Fix | Owner |
+|---|---|---|---|
+| Reference counting and allocation (`arc_drop_child`, `osp_retain`, `osp_release`, `arc_alloc`, `memset`) | 78% | See the next three rows; the DSP arithmetic itself is under 5% | synth-advanced |
+| `RenderInputs::emitted` copies every kernel state for each node of each sample, and `held` filters them again | largest | Keep states in schedule order and fold over them, so one node costs one state | synth-advanced |
+| Delay lines are rebuilt each sample (`listAppend tail input` copies the whole line) | large | A ring: fixed storage with a write position | synth-advanced |
+| `RenderInputs::parameter` finds each value by node and string key for each sample (`strlen`, `memcmp`, `filterList`) | 6% plus its allocations | Resolve each node's parameters, inputs and `enabled` once per block into the plan | OspreyOpus1 |
+
+- [ ] States folded in schedule order; before and after times reported (synth-advanced).
+- [ ] Ring delay lines; before and after times reported (synth-advanced).
+- [ ] Parameters and inputs resolved once per block; before and after times reported (OspreyOpus1).
+- [ ] Bars 9 and 10 of the codex project render in under 14 s.
+
+**Interface.** `tests/prism_events.rs` drag: 10.6 ms mean, 18.2 ms worst per pointer move. Timeline taps: 0.57 ms mean. Target: drag under 5 ms mean, under 8.3 ms worst (one 120 Hz frame).
+
+| Where a drag move goes | Share | Fix | Owner |
+|---|---|---|---|
+| `EditorView::keyboardDock` is rebuilt although nothing in it changed | 28% | Cache it with the card art | ferroui-prism-lead |
+| `CardArts::card` redraws the dragged card, because its key holds its position | 25% | Draw each card at the origin once and move it | ferroui-prism-lead |
+| `Tellings::render` and `Streams::write` encode the whole scene | 30% | Follows from the two rows above and the next | ferroui-prism-lead |
+| `PrismArt::backgroundPart` re-emits the scenery | 13% | Keep the built scenery in the editor | ferroui-prism-lead |
+
+- [x] Keyboard dock cached.
+- [ ] Dragged card moved, not redrawn.
+- [x] Scenery kept. With the dock: 5.1 ms mean, 9.0 ms worst (was 10.6 and 18.2); 22/22 journeys pass.
+- [x] `prism_events` holds a drag move to one 120 Hz frame on average (8.3 ms), two at worst.
 
 ## Verification
 
