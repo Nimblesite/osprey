@@ -140,6 +140,28 @@ Also tried and rejected: narrowing the snapshot to one component's parameters be
 - [ ] Parameters and inputs resolved once per block; before and after times reported (OspreyOpus1).
 - [ ] Bars 9 and 10 of the codex project render in under 14 s.
 
+**Runtime and code generation ([MEM-ARC-RECENT]).** The renderer is slow at every level under it, so each level has its own row. Second profile after the first fix (10,300 samples): `arc_release_zero_locked` 17%, `arc_drop_child` 15%, `arc_alloc_locked` 7%, `osp_release` 6%, `osprey_list_get` 6%, `osp_retain` 6%, `memset` 5%, `osp_arc_free` 4%, `osp_mem_string_length` with `strlen` 6%. The Osprey code itself is under 5%.
+
+| Level | Bottleneck | Fix | Result or owner |
+|---|---|---|---|
+| ARC runtime | Every dup, drop and child drop probed the registry hash table to ask "is this ours?" | Direct-mapped cache of recent members, cleared where membership ends | Done: 42.3 s to 35.1 s, identical audio |
+| ARC runtime | A freed large block left a tombstone, so probe runs grew until the next rebuild | Backward-shift deletion, no tombstones | Done: no measurable change once the cache was in (35.9 s); kept because probe length no longer depends on churn |
+| ARC runtime | A string literal is in rodata, so its length, dup and drop each ran a whole probe to miss | Cache of recent non-members, cleared on insert | Done: 35.0 s |
+| ARC runtime | A list of records drops each element through the probe (`arc_drop_list_hdr`) | Tag a list whose elements the compiler proves are ARC bodies, and drop them by direct header read, as `MASK_DIRECT` does for records | Open (lead) |
+| ARC runtime | `osp_mem_string_length` takes the heap lock and looks the string up for every comparison | Store the length beside the pointer for literals, or compare by pointer first when both are literals | Open (lead) |
+| Code generation | A record update (`run(held = …)`) allocates a new record and dups every field although the old one is unique and dead | Reuse the unique record in place: the drop-then-allocate pair of the same layout becomes a field store | Open (OspreyOpus1) |
+| Code generation | `mapList`, `filterList` and `listAppend` allocate a new list for each call inside the sample loop | Reuse the argument's storage when it is unique; fuse `listGet (filterList …) 0` into a search with no list | Open (OspreyOpus1) |
+| List runtime | No fixed float buffer, so a delay line is copied per sample | A `FloatBuffer` primitive in C with checked index, behind a `Result` | Open (synth-advanced reported the blocker) |
+| Renderer | The fixed price per component per sample | Block rendering, below | synth-advanced, OspreyOpus1 |
+| daw mix | `BusMix` and `Arrangements::bused` build each side with `listAppend` and `listGet` per sample | Fold into a builder once per side; measured at HEAD with buses: 35.6 s, so no regression yet | synth-advanced |
+
+The runtime fixes alone reach 0.79× real time. The 2× target needs the code generation rows and block rendering; no runtime change can remove allocations the generated code asks for.
+
+- [x] Member cache, non-member cache and tombstone-free deletion in the ARC registry (42.3 s to 35.0 s).
+- [ ] Direct element drops for proved lists.
+- [ ] In-place reuse of unique records and lists in generated code.
+- [ ] `FloatBuffer` primitive.
+
 **Interface.** `tests/prism_events.rs` drag: 10.6 ms mean, 18.2 ms worst per pointer move. Timeline taps: 0.57 ms mean. Target: drag under 5 ms mean, under 8.3 ms worst (one 120 Hz frame).
 
 | Where a drag move goes | Share | Fix | Owner |

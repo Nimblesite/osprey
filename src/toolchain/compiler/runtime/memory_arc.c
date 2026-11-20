@@ -310,9 +310,9 @@ void osp_mem_immortal(void *p) {
     return;
   }
   heap_lock();
-  uintptr_t *slot = arc_find((uintptr_t)p);
-  if (slot) {
-    arc_hdr((void *)*slot)->rc = -1;
+  OspArcHdr *h = arc_lookup_body((uintptr_t)p);
+  if (h) {
+    h->rc = -1;
   }
   heap_unlock();
 }
@@ -325,9 +325,9 @@ void osp_mem_set_layout(void *p, int64_t meta) {
     return;
   }
   heap_lock();
-  uintptr_t *slot = arc_find((uintptr_t)p);
-  if (slot) {
-    arc_hdr((void *)*slot)->meta = meta;
+  OspArcHdr *h = arc_lookup_body((uintptr_t)p);
+  if (h) {
+    h->meta = meta;
   }
   heap_unlock();
 }
