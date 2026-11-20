@@ -566,3 +566,15 @@ registerHostedJourneys ()
 registerWaveJourneys ()
 registerClipJourneys ()
 registerGrainJourneys ()
+
+// [SYNTH-ADVANCED-CORE-MODELS] A graph output that is NaN, infinite or past 10^6 is an error, never published audio.
+refusedOutput value = match synth::RenderInputs::sample (framed value, 4)
+    Error why => expect (why, "Non-finite or excessive graph output.")
+    Success _ => expect ("published ${value}", "refused")
+
+framed value = synth::SampleFrame(states = [], values = [synth::NodeSample(identity = 4, value = value)])
+
+test ("non-finite or runaway node output is refused, finite output up to the bound is published", \() => arithmetic (\() =>
+    forEachList ([sqrt (-1.0), pow (10.0, 400.0), -1.0 * pow (10.0, 400.0), 1000000.5, -2000000.0], refusedOutput)
+    forEachList ([0.0, -0.0, 0.5, -1.0, 1000000.0, -1000000.0, 0.000000000001], \value => succeeds (synth::RenderInputs::sample (framed value, 4), \got => expect (got == value, true)))
+    renderRefused (synth::RenderInputs::sample (framed 0.5, 5))))
