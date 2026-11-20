@@ -7,6 +7,7 @@ const clean = { tracked: ['Makefile', 'src', 'docs'], files: ['Makefile', '.env'
 test('a clean root has no violations', () => {
   assert.deepEqual(rootViolations(clean), [])
   assert.deepEqual(rootViolations({ tracked: [], files: [] }), [])
+  assert.deepEqual(rootViolations({ tracked: [], files: ['.git'] }), [], 'a linked worktree keeps .git as a file')
 })
 
 test('logs are embargoed whatever their name, even when tracked', () => {
