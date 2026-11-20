@@ -1076,6 +1076,9 @@ showcaseProject project =
     succeeds (ui::Lists::find (project.tracks, \t => t.name == "Rivet pulse"), \t =>
         expect (t.bus, "Objects")
         expect (structuralEquals (t.sends, [daw::AudioSend(sendId = 1, source = 6, outlet = 0, bus = "Undertow", level = 0.06, enabled = true)]), true))
+    pins = filterList (project.tracks, \t => t.bus == "Pin bed")
+    expect (mapList (pins, \t => t.name), ["Glass pins", "Glass filament", "Porcelain bell"])
+    succeeds (daw::BusPaths::path (project.buses, "Pin bed"), \path => expect (path, ["Pin bed", "Objects", "Master"]))
     forEachList (project.tracks, showcaseVoice)
 
 test ("Silt Relay opens its wired synth families and sounds its granular and MIDI channel paths", \() => ui::Runtime::guarded (\() => succeeds (readFile "src/osprey/examples/daw/tracks/silt-relay.json", \source => succeeds (daw::SongFiles::decode source, showcaseProject))))
