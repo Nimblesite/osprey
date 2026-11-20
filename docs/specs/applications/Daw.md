@@ -65,7 +65,7 @@ A project declares buses next to its tracks ([daw.td](../../../src/osprey/exampl
 - **EQ ([DAW-MIX-BUS-EQ]).** Three bands from two one-pole splits at 250 Hz and 4 kHz, each with a gain from −24 to 24 dB. At 0 dB the bands add back up to the input.
 - **Compressor ([DAW-MIX-BUS-COMPRESSOR]).** Threshold, ratio 1–20, knee 0–24 dB, attack and release 0–2 s, using the [DynamicsMath.lean](../../../src/osprey/packages/synth/src/DynamicsMath.lean) curve and detector. Both sides take one gain.
 - **Sidechain ([DAW-MIX-BUS-SIDECHAIN]).** `sidechain` names a track. Its signal, at its gain, drives the detector, so a kick ducks a pad bus. Empty means the bus keys itself from its louder side. A sidechain that is not a track in the song is refused.
-- Order: tracks → bus EQ → bus compressor → bus gain → Master. A track's Space send goes to the shared reverb before the bus.
+- **Group output ([DAW-MIX-BUS-OUTPUT]).** After EQ, compression and gain, a stereo group feeds its named `output` group. An empty or omitted output feeds Master. All upstream groups mix into a destination before its processing runs. The group declaration order does not change the sound. Paths may span any number of declared groups. The editor refuses missing destinations and feedback cycles, including on silent groups, and preserves the previous route. A track’s Space send remains independent of its dry groups.
 - The codex project routes `glow` and `tablepad` to a `pads` bus keyed by `kick`.
 
 ### Internal outlet sends [DAW-MIX-BUS-TAP]

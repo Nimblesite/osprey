@@ -111,15 +111,18 @@ module Arrangements
                             Error _ => Error(message = "A rendered send lane is missing.")
                             Success lane => Success(value = placed (mix, start, lane)))))
 
+    (** Sum a stereo signal into a named group without a second pan stage. *)
+    export feedGroup (buses, name, left, right, gain) =
+        previous = group (buses, name)
+        next = Stereo(name = name, left = bused (previous.left, left, 0, gain), right = bused (previous.right, right, 0, gain))
+        buses(groups = listAppend (others (buses, name)) next)
+
     // Overlay the send's two channels without panning the stereo signal a second time.
     sentGroup (buses, routeSend, lanes, index) = match listGet lanes (satAdd 1 (satMul 2 index))
         Error _ => Error(message = "The send has no left channel.")
         Success left => match listGet lanes (satAdd 2 (satMul 2 index))
             Error _ => Error(message = "The send has no right channel.")
-            Success right =>
-                previous = group (buses, routeSend.bus)
-                next = Stereo(name = routeSend.bus, left = bused (previous.left, left, 0, 1.0), right = bused (previous.right, right, 0, 1.0))
-                Success(value = buses(groups = listAppend (others (buses, routeSend.bus)) next))
+            Success right => Success(value = feedGroup (buses, routeSend.bus, left, right, 1.0))
 
     finishedSends (song, buses, voice, sends, lanes) = match listGet lanes 0
         Error _ => Error(message = "The track has no main output.")

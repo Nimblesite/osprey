@@ -77,6 +77,8 @@ type SendDraft =
     options : List<SendPort>
 
 type OutputEdit =
+    EditingBus
+        busName : string
     EditingSend
         draft : SendDraft
     OutputClosed
@@ -229,6 +231,9 @@ type EditorAction =
         index : int
         offset : int
     NewGroup
+    BrowseBuses
+    PickBus
+    RouteBus
     BeginSend
         identity : int
     SendSource

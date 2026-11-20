@@ -25,7 +25,8 @@ The original `codex/prism-synth-routing` work merged as PR #412. Completion cont
 - [x] Register the [six design screenshots and interaction contract](../designs/prism-timeline/README.md) and the [typed routing model](../designs/prism-timeline/routing.td) for the combined Prism DAW.
 - [ ] Open the same track from Timeline and Prism, with notes, track gain, pan, Master output and Space send backed by the arrangement. Verify track switching with a patch instrument and a built-in voice.
 - [x] Create, cancel, edit and remove independent sends from internal mono and stereo outlets to named groups through the native Routing menu. The host journey verifies the complete saved project, and the audio journey sums two pre-fader taps from one note evaluation. [DAW-MIX-BUS-TAP]
-- [ ] Support nested track and bus graphs and bus-to-bus returns. Exercise the design walkthrough with a second send from an occupied source outlet and a refused zero-delay loop.
+- [x] Route group outputs through other groups to Master. Validate missing destinations and cycles before saving. Both declaration orders produce the same stereo samples, and muting the downstream group silences the path. [DAW-MIX-BUS-OUTPUT]
+- [ ] Support nested patch racks in track and bus graphs. Exercise the design walkthrough with a second send from an occupied source outlet and a refused zero-delay loop.
 - [ ] Open or focus the detached Timeline from Prism, preserving the session, playhead, selected track and undo history across both windows. Compare the rendered states with the design on the FerroUI hosts.
 
 ## Acceptance evidence [PRISM-ROUTING-VERIFY]

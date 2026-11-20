@@ -957,7 +957,7 @@ test ("the transport renders two bars of the project as it stands, plays only re
 
 // [DAW-MIX-BUS] A bus EQ at 0 dB passes its tracks; its compressor ducks them by the sidechain track alone, or
 // by the bus itself; tracks route to a declared bus only, and the project file carries the buses.
-padsBus (ratio, sidechain) = daw::Bus(name = "pads", gain = 1.0, equaliser = daw::Equaliser(low = 0.0, mid = 0.0, high = 0.0), compressor = daw::Compressor(threshold = -20.0, ratio = ratio, knee = 0.0, attack = 0.0, release = 0.0, sidechain = sidechain))
+padsBus (ratio, sidechain) = daw::Bus(name = "pads", output = "", gain = 1.0, equaliser = daw::Equaliser(low = 0.0, mid = 0.0, high = 0.0), compressor = daw::Compressor(threshold = -20.0, ratio = ratio, knee = 0.0, attack = 0.0, release = 0.0, sidechain = sidechain))
 
 steady (value, count) = mapList (toList (range (0, count)), \_ => value)
 
@@ -1012,8 +1012,24 @@ projectBuses song =
     failsWith (daw::BusMix::named (song, "drums"), "Bus drums is not in the song.")
     succeeds (daw::SongFiles::encode song, \text => succeeds (daw::SongFiles::decode text, \again => expect (structuralEquals (again.buses, song.buses), true)))
 
+// [DAW-MIX-BUS-OUTPUT] Run every processor once, even with the downstream bus declared first.
+busChain song =
+    flat = padsBus (1.0, "")
+    pads = flat(output = "Print")
+    printBus = flat(name = "Print", gain = 0.5, output = "Glue")
+    glue = flat(name = "Glue", gain = 0.25)
+    forEachList ([[glue, printBus, pads], [pads, glue, printBus]], \order =>
+        succeeds (daw::BusMix::mastered (routedTo (song, order), grouped ()), \master =>
+            sampleAt (master.left, 150, 0.0625)
+            sampleAt (master.right, 150, 0.03125)))
+    project = routedTo (song, [glue, printBus, pads])
+    succeeds (daw::BusPaths::path (project.buses, "pads"), \names => expect (names, ["pads", "Print", "Glue", "Master"]))
+    failsWith (daw::BusPaths::routed (project, "Glue", "pads"), "Bus output cycle: Glue → pads → Print → Glue.")
+    failsWith (daw::BusPaths::routed (project, "Print", "Lost"), "Bus output Lost is not in the project.")
+
 busJourney () =
     song = timeline [bellTrack ()]
+    busChain song
     succeeds (daw::BusMix::mastered (routedTo (song, [padsBus (4.0, "kick")]), grouped ()), ducking)
     succeeds (daw::BusMix::mastered (routedTo (song, [padsBus (1.0, "kick")]), grouped ()), \master => sampleAt (master.left, 150, 0.5))
     succeeds (daw::BusMix::mastered (routedTo (song, [padsBus (4.0, "")]), grouped ()), selfKeyed)

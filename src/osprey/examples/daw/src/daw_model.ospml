@@ -136,6 +136,7 @@ type Compressor =
 
 type Bus =
     name : string
+    output : string
     gain : float
     equaliser : Equaliser
     compressor : Compressor

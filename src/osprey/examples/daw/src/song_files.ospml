@@ -55,7 +55,9 @@ module SongFiles
         false => Error(message = "A patch node has two layout positions.")
 
     // [DAW-MIX-BUS] A bus with its EQ and compressor.
-    bus doc = ProjectCodec::readBus (doc, ProjectCodec::readEqualiser (ui::Doc::field (doc, "equaliser")), ProjectCodec::readCompressor (ui::Doc::field (doc, "compressor")))
+    bus doc = match ui::Doc::has (doc, "output") && ui::Doc::kind (ui::Doc::field (doc, "output")) != "text"
+        true => Error(message = "A bus output must be a bus name or the empty Master output.")
+        false => Success(value = ProjectCodec::readBus (doc, ProjectCodec::readEqualiser (ui::Doc::field (doc, "equaliser")), ProjectCodec::readCompressor (ui::Doc::field (doc, "compressor"))))
 
     routeSend doc = match jsonInt (ui::Doc::field (doc, "sendId"))
         Success identity => match jsonInt (ui::Doc::field (doc, "source"))
@@ -86,15 +88,15 @@ module SongFiles
         true => Success(value = recording)
         false => Error(message = "The intro needs a recording path without quotes, a tail of 0.5–10 seconds and a crossfade no longer than the tail.")
 
-    arranged (doc, tracks) =
-        ProjectCodec::readArrangement (doc, ProjectCodec::readSpace (ui::Doc::field (doc, "space")), ProjectCodec::readIntro (ui::Doc::field (doc, "intro")), each (doc, "sustains", ProjectCodec::readAfterglow), each (doc, "buses", bus), tracks)
+    arranged (doc, tracks, buses) =
+        ProjectCodec::readArrangement (doc, ProjectCodec::readSpace (ui::Doc::field (doc, "space")), ProjectCodec::readIntro (ui::Doc::field (doc, "intro")), each (doc, "sustains", ProjectCodec::readAfterglow), buses, tracks)
 
     (** Decode a song project; malformed JSON, an unknown instrument or a malformed note is an error. *)
     export decode source = match jsonDecode source
         Error _ => Error(message = "The song project is not valid JSON.")
         Success doc => match checked (ProjectCodec::readIntro (ui::Doc::field (doc, "intro")))
             Error why => Error(message = why)
-            Success _ => synth::Outcomes::carried (folded (doc, "tracks", track), \tracks => SendRenders::project (arranged (doc, tracks)))
+            Success _ => synth::Outcomes::carried (folded (doc, "tracks", track), \tracks => synth::Outcomes::carried (folded (doc, "buses", bus), \buses => synth::Outcomes::carried (BusPaths::order buses, \_ => SendRenders::project (arranged (doc, tracks, buses)))))
 
     (** Write the complete project as JSON. *)
     export encode arrangement = match jsonEncode (ProjectCodec::writeArrangement arrangement)

@@ -262,6 +262,7 @@ module DawSession
     (** What a tap on the Timeline or Mix page does, if anything. *)
     export tappedAt (editor, x, y) = match editor.outputEdit
         ChoosingOutput offset => RoutingPicker::at (editor, offset, x - Header::shift editor, y)
+        EditingBus _ => Error(message = "Close the bus output inspector first.")
         EditingSend _ => Error(message = "Finish editing the send first.")
         NamingGroup _ => Error(message = "Finish naming the group first.")
         OutputClosed => workspaceAt (editor, x, y)

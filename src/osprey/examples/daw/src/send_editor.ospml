@@ -118,8 +118,4 @@ module SendEditor
         siblings = ui::Pick::either (length routes == 0, [], [Ui::section ("Other routes from this port", "", routes)])
         bottom = ui::Lists::flatten [ui::Pick::either (help == "", [], [Ui::text help]), [Ui::row actions], ui::Pick::either (draft.editingId < 0, [], [Ui::button ("Remove send", "", DeleteSend)])]
         local = EditorView::theme ()
-        content = Ui::themed (local(spacing = [4, 6, 12, 20, 28, 36]), Ui::framed (style(frameTextSize = 13, frameControlHeight = 30), Ui::column (ui::Lists::flatten [controls, siblings, bottom])))
-        frame = ui::Frames::plain
-        header = Ui::framed (frame(frameHeight = ui::Pick::either (editor.page == PatchPage, 40, 114)), ui::Spacer)
-        panel = Ui::framed (frame(frameGrow = true), content)
-        Ui::row [ui::Spacer, Ui::framed (frame(frameWidth = 310), Ui::column [header, panel])]
+        Ui::themed (local(spacing = [4, 6, 12, 20, 28, 36]), Ui::framed (style(frameTextSize = 13, frameControlHeight = 30), Ui::column (ui::Lists::flatten [controls, siblings, bottom])))

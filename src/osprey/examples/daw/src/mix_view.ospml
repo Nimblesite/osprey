@@ -45,7 +45,7 @@ module MixView
         space = TimelineView::area ("Inspect Space return", 1127.0, forkY voice, 222.0, 74.0, spaceSelected (editor, voice))
         match voice.bus == ""
             true => [space]
-            false => [space, TimelineView::area ("Inspect ${voice.bus} group", 789.0, 430.0, 222.0, 74.0, !editor.inspectSpace)]
+            false => listConcat [space, TimelineView::area ("Inspect ${voice.bus} group", 789.0, 430.0, 222.0, 74.0, !editor.inspectSpace)] (ui::Pick::either (editor.inspectSpace, [], [TimelineView::area ("Choose group output", 738.0, 853.0, 210.0, 44.0, false)]))
 
     sendAreas voice = match voice.sends
         [] => []
@@ -62,11 +62,18 @@ module MixView
         Success voice => match EditorView::areaAt (busAreas (editor, voice), x, y)
             0 => Success(value = InspectBus(space = true))
             1 => Success(value = InspectBus(space = false))
+            2 => Success(value = BrowseBuses)
             _ => sendAt (voice, x, y)
+
+    onward bus = ui::Pick::either (bus.output == "", "Master", bus.output)
+
+    via bus = match bus.output == ""
+        true => []
+        false => [TimelineView::box (906.0, 510.0, 115.0, 19.0, TimelineView::panelInk (), 6), label ("via ${bus.output}", 912.0, 511.0, 12.0, TimelineView::ink (), 0)]
 
     group (editor, voice) = match daw::BusMix::named (editor.song, voice.bus)
         Error _ => []
-        Success bus => listConcat (card (789.0, 430.0, bus.name, "EQ · compressor · ${TimelineView::hundredths bus.gain}×", border (!editor.inspectSpace))) (listConcat (port (900.0, 430.0)) (port (900.0, 504.0)))
+        Success bus => listConcat (card (789.0, 430.0, bus.name, "EQ · compressor · ${TimelineView::hundredths bus.gain}×", border (!editor.inspectSpace))) (ui::Lists::flatten [port (900.0, 430.0), port (900.0, 504.0), via bus])
 
     sendPath (voice, master) = match voice.sends
         [] => []
@@ -104,13 +111,14 @@ module MixView
         Error _ => space editor
         Success bus =>
             inputs = mapList (filterList (editor.song.tracks, \t => groupInput (t, bus.name)), \t => t.name)
-            joined = join inputs ", "
-            shown = ui::Pick::either (length joined > 24, "${length inputs} tracks", joined)
+            feeders = mapList (filterList (editor.song.buses, \other => other.output == bus.name), \other => other.name)
+            joined = join (listConcat inputs feeders) ", "
+            shown = ui::Pick::either (length joined > 24, ui::Pick::either (length feeders == 0, "${length inputs} tracks", "${length inputs} tracks · ${length feeders} groups"), joined)
             detector = ui::Pick::either (bus.compressor.sidechain == "", "Self", bus.compressor.sidechain)
             [label (bus.name, 738.0, 735.0, 23.0, TimelineView::ink (), 0), label ("Group bus", 1410.0, 740.0, 12.0, TimelineView::dim (), 2),
                 label ("INPUTS", 738.0, 787.0, 11.0, TimelineView::dim (), 0), label ("BUS GAIN", 961.0, 787.0, 11.0, TimelineView::dim (), 0), label ("CHANNELS", 1191.0, 787.0, 11.0, TimelineView::dim (), 0),
                 label (shown, 738.0, 819.0, 16.0, TimelineView::ink (), 0), label ("${TimelineView::hundredths bus.gain}×", 961.0, 819.0, 16.0, TimelineView::ink (), 0), label ("Stereo", 1191.0, 819.0, 16.0, TimelineView::ink (), 0),
-                label ("Output     Master", 738.0, 871.0, 12.0, TimelineView::dim (), 0), label ("Detector   ${detector}     ·     ${TimelineView::hundredths bus.compressor.ratio}× compression", 961.0, 871.0, 12.0, TimelineView::dim (), 0)]
+                label ("Output     ${onward bus}   ›", 738.0, 871.0, 12.0, TimelineView::dim (), 0), label ("Detector   ${detector}     ·     ${TimelineView::hundredths bus.compressor.ratio}× compression", 961.0, 871.0, 12.0, TimelineView::dim (), 0)]
 
     grid () = listConcat (mapList (toList (range (0, 37)), \i => TimelineView::box (711.0 + toFloat i * 20.0, 143.0, 1.0, 537.0, Scenes::rgb (30, 25, 44), 2))) (mapList (toList (range (0, 27)), \i => TimelineView::box (711.0, 143.0 + toFloat i * 20.0, 729.0, 1.0, Scenes::rgb (30, 25, 44), 2)))
 
@@ -138,7 +146,7 @@ module MixView
             Error _ => []
             Success voice =>
                 entries = mapList (RoutingPicker::names editor, \name => destination (editor.track, voice.bus, name))
-                [ui::Ui::section ("Routing", "", listConcat (listAppend entries (ui::Ui::button ("New stereo bus…", "", NewGroup))) (sendCommands voice))]
+                [ui::Ui::section ("Routing", "", listConcat (listAppend entries (ui::Ui::button ("New stereo bus…", "", NewGroup))) (listAppend (sendCommands voice) (ui::Ui::action ("Bus outputs…", "", ui::Plain, length editor.song.buses > 0, BrowseBuses))))]
 
     (** The whole Mix page. *)
     export shapes editor = listConcat (table editor) (listConcat (side editor) (RoutingPicker::shapes editor))

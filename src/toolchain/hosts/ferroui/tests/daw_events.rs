@@ -143,6 +143,9 @@ fn create_group(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     choose_control(regions, "field", "Bus name", " Keys bus ");
     choose_control(regions, "button", "Create and assign", "");
     let mut expected = original.clone();
+    for bus in expected["buses"].as_array_mut().expect("existing project buses") {
+        bus.as_object_mut().expect("group").entry("output").or_insert(serde_json::json!(""));
+    }
     let saved = read();
     let group = saved["buses"].as_array().expect("buses").last().expect("new group");
     assert_eq!(group["name"], "Keys bus");
@@ -198,8 +201,8 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
         let root = regions.get("root").expect("Mix workspace");
         let menus = window_menus(&root.node);
         let routing = menus.iter().find(|menu| menu.title == "Routing").expect("Mix has a Routing menu");
-        assert_eq!(routing.commands.len(), 5, "Master, two project buses, new group and add send");
-        assert_eq!(routing.commands.iter().filter(|command| command.enabled).count(), 4);
+        assert_eq!(routing.commands.len(), 6, "all track destinations, group creation, sends and bus outputs");
+        assert_eq!(routing.commands.iter().filter(|command| command.enabled).count(), 5);
         let destination = routing.commands.iter().find(|item| item.enabled && item.label == label).expect("available destination");
         let changed = Library::event(0, &Touch::control(destination.event, "")).expect("choose the output");
         regions.adopt(&changed).expect("redraw the routing diagram and menu");
@@ -246,6 +249,25 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     choose_control(regions, "button", "Remove send", "");
     expected["tracks"][5]["sends"] = serde_json::json!([]);
     assert_eq!(read(), expected, "removing both sends restores the complete project");
+    choose_control(regions, "button", "Bus outputs…", "");
+    choose_control(regions, "picker", "Group bus", "Keys bus");
+    choose_control(regions, "picker", "Stereo output", "pads");
+    expected["buses"][1]["output"] = "pads".into();
+    assert_eq!(read(), expected, "the group goes through pads, preserving track and send destinations");
+    choose_control(regions, "picker", "Group bus", "pads");
+    choose_control(regions, "picker", "Stereo output", "Keys bus");
+    assert_eq!(read(), expected, "a cycle retains the previous route and every audio setting");
+    choose_control(regions, "picker", "Group bus", "Keys bus");
+    choose_control(regions, "picker", "Stereo output", "Master");
+    expected["buses"][1]["output"] = "".into();
+    choose_control(regions, "button", "Close", "");
+    assert_eq!(read(), expected, "returning the group to Master restores its dry output");
+    point(canvas, (820.0, 875.0), true);
+    regions.adopt(&point(canvas, (820.0, 875.0), false).0).expect("open group output from the inspector");
+    choose_control(regions, "picker", "Stereo output", "pads");
+    expected["buses"][1]["output"] = "pads".into();
+    assert_eq!(read(), expected, "the group inspector edits the same route as the menu");
+    choose_control(regions, "button", "Close", "");
 }
 
 /// [DAW-PIANO-DRAG] Drag the stem and note on the canvas, preserving the rest of the project.

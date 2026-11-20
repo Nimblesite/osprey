@@ -423,10 +423,17 @@ module EditorView
         Ui::section ("View", "", [Ui::button ("Timeline", "Cmd+D1", ShowPage(page = TimelinePage)), Ui::button ("Track Patch", "Cmd+D2", ShowPage(page = PatchPage)), Ui::button ("Bus Routing", "Cmd+D3", ShowPage(page = MixPage)), Ui::button ("Modules", "Cmd+L", ShowModules), Ui::button ("Patch Controls", "Cmd+I", ShowDetails), Ui::button ("Keyboard", "Cmd+K", ShowKeyboard)]),
         Ui::section ("Transport", "", [Ui::button ("Play Song", "Cmd+Enter", PlaySong), Ui::button ("Stop Song", "Cmd+OemPeriod", StopSong), Ui::button ("Play Patch", "Cmd+P", PlayGraph), Ui::button ("Audition Patch", "Cmd+Shift+P", Audition), Ui::button ("Stop Patch", "Cmd+Shift+OemPeriod", StopGraph)])]
 
+    routeInspector (editor, content) =
+        frame = ui::Frames::plain
+        header = Ui::framed (frame(frameHeight = ui::Pick::either (editor.page == PatchPage, 40, 114)), ui::Spacer)
+        panel = Ui::framed (frame(frameGrow = true), content)
+        Ui::row [ui::Spacer, Ui::framed (frame(frameWidth = 310), Ui::column [header, panel])]
+
     root () =
         editor = editorSlice ()
         match editor.outputEdit
-            EditingSend draft => Ui::layer [workspace editor, SendEditor::form (editor, draft)]
+            EditingSend draft => Ui::layer [workspace editor, routeInspector (editor, SendEditor::form (editor, draft))]
+            EditingBus name => Ui::layer [workspace editor, routeInspector (editor, BusOutputs::form (editor, name))]
             NamingGroup proposed => Ui::layer [workspace editor, RoutingPicker::form (editor, proposed)]
             _ => Ui::contextMenu (workspace editor, listConcat (menus ()) (MixView::menus editor))
 

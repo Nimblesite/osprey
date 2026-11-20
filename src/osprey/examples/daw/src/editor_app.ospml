@@ -43,6 +43,7 @@ module EditorApp
         ChooseOutput index offset => RoutingPicker::open (editor, index, offset)
         InspectBus space => Runtime::step (editor(inspectSpace = space))
         CloseOutput => Runtime::step (editor(outputEdit = OutputClosed))
+        BrowseBuses => BusOutputs::open editor
         BeginSend identity => DawSession::saving (editor, \ready => SendEditor::open (ready, identity))
         CommitSend => SendEditor::commit editor
         DeleteSend => SendEditor::remove editor
@@ -80,6 +81,8 @@ module EditorApp
                 sounded(stepStore = played(graph = editor.graph))
 
     typed (editor, action, value) = match action
+        PickBus => BusOutputs::picked (editor, value)
+        RouteBus => BusOutputs::route (editor, value)
         SendSource => SendEditor::typed (editor, action, value)
         SendDestination => SendEditor::typed (editor, action, value)
         SendLevel => SendEditor::typed (editor, action, value)
@@ -114,6 +117,7 @@ module EditorApp
 
     surfacePointer (context, editor, x, y, down) = match editor.outputEdit
         EditingSend _ => Runtime::step editor
+        EditingBus _ => Runtime::step editor
         _ => workspacePointer (context, editor, x, y, down)
 
     workspacePointer (context, editor, x, y, down) = match editor.page

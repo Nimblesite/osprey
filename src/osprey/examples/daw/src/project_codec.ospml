@@ -27,10 +27,10 @@ module ProjectCodec
     (** Read the fields of Compressor after its nested values are decoded. *)
     export readCompressor doc = Compressor(threshold = ui::Doc::decimal (doc, "threshold"), ratio = ui::Doc::decimal (doc, "ratio"), knee = ui::Doc::decimal (doc, "knee"), attack = ui::Doc::decimal (doc, "attack"), release = ui::Doc::decimal (doc, "release"), sidechain = ui::Doc::text (doc, "sidechain"))
 
-    writeBus item = JsonObject [JsonMember "name" (JsonString item.name), JsonMember "gain" (JsonFloat item.gain), JsonMember "equaliser" (writeEqualiser item.equaliser), JsonMember "compressor" (writeCompressor item.compressor)]
+    writeBus item = JsonObject [JsonMember "name" (JsonString item.name), JsonMember "output" (JsonString item.output), JsonMember "gain" (JsonFloat item.gain), JsonMember "equaliser" (writeEqualiser item.equaliser), JsonMember "compressor" (writeCompressor item.compressor)]
 
     (** Read the fields of Bus after its nested values are decoded. *)
-    export readBus (doc, equaliser, compressor) = Bus(name = ui::Doc::text (doc, "name"), gain = ui::Doc::decimal (doc, "gain"), equaliser = equaliser, compressor = compressor)
+    export readBus (doc, equaliser, compressor) = Bus(name = ui::Doc::text (doc, "name"), output = ui::Doc::text (doc, "output"), gain = ui::Doc::decimal (doc, "gain"), equaliser = equaliser, compressor = compressor)
 
     writeFollow item = match item
         Constant => JsonString "Constant"

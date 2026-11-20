@@ -34,7 +34,7 @@ module Projects
         match name == "" || toLowerCase name == "master" || exists
             true => Error(message = "Choose a unique bus name other than Master.")
             false =>
-                bus = Bus(name = name, gain = 1.0, equaliser = Equaliser(low = 0.0, mid = 0.0, high = 0.0), compressor = Compressor(threshold = 0.0, ratio = 1.0, knee = 0.0, attack = 0.01, release = 0.1, sidechain = ""))
+                bus = Bus(name = name, output = "", gain = 1.0, equaliser = Equaliser(low = 0.0, mid = 0.0, high = 0.0), compressor = Compressor(threshold = 0.0, ratio = 1.0, knee = 0.0, attack = 0.01, release = 0.1, sidechain = ""))
                 routed (song(buses = listAppend song.buses bus), index, name)
 
     (** Replace one note by its index, preserving its siblings and the project instrument. *)

@@ -28,6 +28,8 @@ File → Save writes the open song, its patches and their layouts. Play renders 
 make -C src/toolchain/targets/macos daw SONG=src/osprey/examples/daw/tracks/silt-relay.json
 ```
 
+In **Bus routing**, choose **Routing → Bus outputs…** to feed a group into another group. Pick the source and stereo output to see its whole path to Master. A cycle displays the names of the groups involved and keeps the last saved route. [Group outputs](screens/bus-outputs.png)
+
 ## The project file
 
 The app and renderer use one JSON project. The field readers and writer are generated from [daw.td](daw.td). Project validation and error messages live in [song_files.ospml](src/song_files.ospml).
@@ -41,7 +43,7 @@ The app and renderer use one JSON project. The field readers and writer are gene
 | `space` | The shared reverb: `size` 0.25–2, `decay` in seconds, `damping` 0–0.95 |
 | `intro` | Optional. The recording the piece continues: `recording` (a path, `~/` for your home folder), `tail` seconds the engine holds (0.5–10), `crossfade` seconds into the piece (at most the tail) |
 | `sustains` | Appearances of the held tail of the intro: `start` beat, pitch `ratio`, `rise`, `hold` and `fade` in seconds, `gain`, `reverb` send |
-| `buses` | Named stereo groups with gain, three-band EQ and a compressor |
+| `buses` | Named stereo groups with gain, three-band EQ, a compressor and an `output` group. An empty output feeds Master |
 | `tracks` | The tracks, below |
 
 A track has a `name`, an `instrument`, `gain` (0–4), `pan` (−1 left to 1 right), a `reverb` send (0–1),

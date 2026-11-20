@@ -21,6 +21,7 @@ module RoutingPicker
 
     (** The picker state that requires its region to redraw. *)
     export stamp editor = match editor.outputEdit
+        EditingBus name => "bus ${name}"
         EditingSend draft => "send ${draft.editingId} ${draft.sourceKey} ${draft.targetBus} ${draft.levelText} ${draft.sendActive}"
         OutputClosed => "closed"
         ChoosingOutput focus => "choose ${focus}"
@@ -134,3 +135,42 @@ module RoutingPicker
             true => fields
             false => listAppend fields (Ui::text editor.message)
         Ui::framed (style(frameWidth = 340, frameHeight = 196), Ui::themed (EditorView::theme (), Ui::section ("New stereo bus", "", body)))
+
+(** [DAW-MIX-BUS-OUTPUT] Inspect and reassign any named stereo group's onward output. *)
+module BusOutputs
+    (** Select the source group whose path is shown. *)
+    export picked (editor, name) = match daw::BusMix::named (editor.song, name)
+        Error why => ui::Runtime::step (editor(message = why))
+        Success bus => ui::Runtime::step (editor(outputEdit = EditingBus(busName = bus.name), message = ""))
+
+    (** Start with the selected track's group, or the first declared group. *)
+    export open editor = match listGet editor.song.buses 0
+        Error _ => ui::Runtime::step (editor(message = "Create a stereo bus first."))
+        Success first => match listGet editor.song.tracks editor.track
+            Success voice => picked (editor, ui::Pick::either (voice.bus == "", first.name, voice.bus))
+            Error _ => picked (editor, first.name)
+
+    (** A valid selection commits once and displays the routed graph. A refused cycle retains its last output. *)
+    export route (editor, destination) = match editor.outputEdit
+        EditingBus name =>
+            result = daw::BusPaths::routed (editor.song, name, ui::Pick::either (destination == "Master", "", destination))
+            step = DawSession::savedTrack (editor, editor.track, result)
+            next = step.stepStore
+            step(stepStore = next(outputEdit = EditingBus(busName = name)))
+        _ => ui::Runtime::step editor
+
+    (** The output controls and complete signal path to Master for the selected group. *)
+    export form (editor, name) =
+        groups = editor.song.buses
+        choices = mapList (groups, \bus => ui::Ui::choice (bus.name, bus.name))
+        output = match daw::BusMix::named (editor.song, name)
+            Success bus => ui::Pick::either (bus.output == "", "Master", bus.output)
+            Error _ => ""
+        path = daw::BusPaths::path (groups, name) ?: []
+        current = ui::Ui::picker ("Group bus", choices, name, PickBus)
+        destinations = listPrepend (filterList (choices, \item => item.choiceKey != name)) (ui::Ui::choice ("Master", "Master"))
+        next = ui::Ui::picker ("Stereo output", destinations, output, RouteBus)
+        message = ui::Pick::either (editor.message == "" || startsWith editor.message "Saved ", [], [ui::Ui::text editor.message])
+        style = EditorView::theme ()
+        controls = [ui::Ui::styled ("BUS ROUTING", ui::Eyebrow, ui::Secondary), ui::Ui::styled ("Group outputs", ui::Heading, ui::Primary), current, next, ui::Ui::section ("Signal path", "", mapList (path, ui::Ui::text))]
+        ui::Ui::themed (style(spacing = [4, 6, 12, 20, 28, 36]), ui::Ui::column (listConcat controls (listAppend message (ui::Ui::button ("Close", "", CloseOutput)))))
