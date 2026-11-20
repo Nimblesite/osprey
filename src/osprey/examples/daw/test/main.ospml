@@ -1057,6 +1057,9 @@ showcaseVoice voice = match voice.instrument
 showcaseProject project =
     kinds = ui::Lists::flatten (mapList (project.tracks, showcaseKinds))
     forEachList (["sine", "operator", "additive", "wavetable", "exciter", "bowed", "resonator", "modal", "waveguide", "strikeComb", "fractionalDelay", "lossFilter", "allpass", "lowpass", "modulatedLowpass", "shaper", "shifter", "spectral", "smoother", "reverb", "grainCloud", "lfo", "gain", "modulatedGain", "stereoModulatedGain", "mixer", "delay", "midiNote", "midiOscillator", "stereo", "split", "join", "route", "downmix", "stereoOutput", "output"], \kind => expect (ui::Lists::any (kinds, \name => name == kind), true))
+    succeeds (ui::Lists::find (project.tracks, \t => t.name == "Rivet pulse"), \t =>
+        expect (t.bus, "Objects")
+        expect (structuralEquals (t.sends, [daw::AudioSend(sendId = 1, source = 6, outlet = 0, bus = "Undertow", level = 0.06, enabled = true)]), true))
     forEachList (project.tracks, showcaseVoice)
 
 test ("Silt Relay opens its wired synth families and sounds its granular and MIDI channel paths", \() => ui::Runtime::guarded (\() => succeeds (readFile "src/osprey/examples/daw/tracks/silt-relay.json", \source => succeeds (daw::SongFiles::decode source, showcaseProject))))

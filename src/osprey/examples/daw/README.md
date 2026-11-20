@@ -22,7 +22,7 @@ File → Save writes the open song, its patches and their layouts. Play renders 
 
 ## Silt Relay
 
-[Silt Relay](tracks/silt-relay.json) is an original 18-bar arrangement at 138 BPM. The pressure kick ducks the sub. Struck wire answers the bass on the offbeats, and the bowed breakdown gives way to a five-hit hi-hat roll. Open **Throat / metal** for a two-source spectral morph, **Spore wheel** for a seeded granular patch, or **Rivet pulse** to follow a MIDI note through the split, delay, join and channel swap. [See the kick-keyed Undertow bus in Prism.](screens/silt-relay.png)
+[Silt Relay](tracks/silt-relay.json) is an original 18-bar arrangement at 138 BPM. The pressure kick ducks the sub. Struck wire answers the bass on the offbeats, and the bowed breakdown gives way to a five-hit hi-hat roll. Open **Throat / metal** for a two-source spectral morph, **Spore wheel** for a seeded granular patch, or **Rivet pulse** to follow a MIDI note through the split, delay, join and channel swap. The **Glass pins** strike blends its metallic fundamental with a phase-vocoder voice a fifth above. **Rivet pulse** sends 6% of its stereo channel-swap outlet straight to the kick-keyed Undertow bus. Its dry signal still goes through Objects, and its 19% Space send stays audible between hits. [Inspect Undertow](screens/silt-relay.png) · [Trace the three Rivet pulse routes](screens/silt-rivet.png)
 
 ```sh
 make -C src/toolchain/targets/macos daw SONG=src/osprey/examples/daw/tracks/silt-relay.json
@@ -106,7 +106,7 @@ pad come from the engine.
   measuring it first: a pulse of about 97.5 beats per minute and an ending on a C drone in the D♭ major
   scale. The piece is in F Phrygian, so the drone is its dominant, and the held drone returns a fourth up
   and a fifth down (both F) in the breakdown and the ending.
-- Spectral processing and patch reverb can take minutes to render offline. *Silt Relay* combines them on **Throat / metal** and uses granular synthesis and MIDI routing on two other tracks. Its 34.49-second stereo render took about nine minutes on the development Mac.
+- Spectral processing and patch reverb can take minutes to render offline. *Silt Relay* combines them on **Throat / metal** and uses granular synthesis and MIDI routing on two other tracks. The 34.49-second stereo master with the pitch-shifted Glass pins and parallel Rivet pulse send took about fourteen minutes to render on the development Mac.
 - The recording itself is not in the repository; `phosphor-drift.json` expects it at
   `~/Documents/Audio/Broken Circuitry.wav`.
 - The two sides use reverbs of different size, so a steady low tone sent to the reverb adds in phase on
