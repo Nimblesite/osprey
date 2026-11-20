@@ -180,6 +180,7 @@ type PackageManifest {
   publication: Option<PublishedPackageMetadata>
   testRoots: List<RelativePath>
   pythonSources: List<RelativePath>
+  typescriptSources: Option<List<RelativePath>>
   dependencies: List<DependencyEdge>
   grants: List<DependencyGrant>
   systemRequirements: List<SystemRequirement>

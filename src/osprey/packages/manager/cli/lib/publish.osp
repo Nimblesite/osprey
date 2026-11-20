@@ -20,7 +20,7 @@ import registry::ReleasePath
 /// place this project as the next release of a folder registry, in the layout
 /// of [PACKAGE-FOLDER-REGISTRY]. The manifest must declare `[package]`; the
 /// release tree is the manifest, supplied legal documents, every file under `source_roots`, every
-/// `python_sources` entry and every declared asset, and it is checked and
+/// `python_sources` and `typescript_sources` entry and every declared asset, and it is checked and
 /// digested exactly as the server will (`ReleaseFiles::assemble`, the source
 /// rules of [PACKAGE-PUBLISH]) before a byte is written. The ordinal is the
 /// newest in the current epoch plus one; `--breaking` opens the next epoch;
@@ -53,6 +53,7 @@ module Publish {
     fn selected(mf: ManifestModel::Manifest, path) = if Paths::generatedCache(path) { false } else { Paths::publicationMetadata(path)
         || foldList(mf.sourceRoots, false, fn(found, root) => found || underRoot(path, root))
         || listContains(mf.pythonSources, path)
+        || listContains(mf.typescriptSources, path)
         || listContains(mapList(mf.assets, assetPath), path) }
 
     fn selectedWalk(mf, walk: Host::Walk) = Host::Walk {

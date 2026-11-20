@@ -65,7 +65,7 @@ module BuildTests {
 
     fn oneManifest() = "[project]\nname = \"one\"\nsource_roots = [\"lib\", \"src\"]\npython_sources = [\"src/model.py\"]\n"
 
-    fn twoManifest() = "[project]\nname = \"two\"\nsource_roots = [\"src\"]\n"
+    fn twoManifest() = "[project]\nname = \"two\"\nsource_roots = [\"src\"]\ntypescript_sources = [\"src/app.ts\"]\n"
 
     fn one() = Fixture::served("@demo/one/1.1", [
         Fixture::file("osprey.toml", oneManifest()),
@@ -102,15 +102,17 @@ module BuildTests {
     fn quoted(path) = "\"${path}\""
 
     /// The derived project: the root's own roots first, then each package's
-    /// own roots in lock order; the python sources likewise.
+    /// own roots in lock order; the Python and TypeScript sources likewise.
     fn derivedText() = {
         let roots = [quoted("../../src"), quoted("../../${Fetch::installDir(Fixture::idOf(one()))}/lib"), quoted("../../${Fetch::installDir(Fixture::idOf(one()))}/src"), quoted("../../${Fetch::installDir(Fixture::idOf(two()))}/src")]
         let python = [quoted("../../${Fetch::installDir(Fixture::idOf(one()))}/src/model.py")]
+        let typescript = [quoted("../../${Fetch::installDir(Fixture::idOf(two()))}/src/app.ts")]
         join([
             "[project]",
             "name = \"app\"",
             "source_roots = [${join(roots, ", ")}]",
             "python_sources = [${join(python, ", ")}]",
+            "typescript_sources = [${join(typescript, ", ")}]",
             "default_namespace = \"app\"",
             "entry = " + quoted("../../src/main.osp"),
             "[modules]",
@@ -145,14 +147,14 @@ module BuildTests {
     }
 
     fn relativeBuildAt(dir, args) = {
-        let text = manifestText() + "python_sources = [\"src/model.py\"]\n"
+        let text = manifestText() + "python_sources = [\"src/model.py\"]\ntypescript_sources = [\"src/view.ts\"]\n"
         let lock = lockText(ManifestJson::digest(Fixture::manifestOf(text)) ?: "", [])
         let reads = [Fixture::readRoute(Project::manifestPathAt(dir), text), Fixture::readRoute(Project::lockPathAt(dir), lock)]
         let a = runBuild(reads, [], args)
         checkAll("relative project ${dir} is rebased from the derived manifest", [
             a.report.status == 0,
             a.derivedAt == Project::pathAt(dir, derivedPath),
-            containsAll(a.derived, ["source_roots = [\"../../src\"]", "python_sources = [\"../../src/model.py\"]"]),
+            containsAll(a.derived, ["source_roots = [\"../../src\"]", "python_sources = [\"../../src/model.py\"]", "typescript_sources = [\"../../src/view.ts\"]"]),
             contains(a.derived, "entry = \"../../src/main.osp\"")
         ])
     }
@@ -168,7 +170,8 @@ module BuildTests {
         let a = runBuild(readsOf(matchingLock(mapList(packages, pkgOf)), packages), walksOf(packages), ["--project", project])
         checkAll("derived Python sources obey the compiler's manifest-relative path contract", [
             a.report.status == 0,
-            !contains(a.derived, "python_sources = [\"/")
+            !contains(a.derived, "python_sources = [\"/"),
+            !contains(a.derived, "typescript_sources = [\"/")
         ])
     }
 

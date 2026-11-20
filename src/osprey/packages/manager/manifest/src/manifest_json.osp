@@ -67,11 +67,16 @@ module ManifestJson {
         Json::member("pythonSources", strings(m.pythonSources))
     ]
 
-    fn optionals(m: ManifestModel::Manifest) = listConcat(listConcat(listConcat(
+    // Omitted when empty, so every manifest without TypeScript sources keeps
+    // the canonical bytes and digest it had before the field existed.
+    fn typescript(sources) = if isEmpty(sources) { [] } else { [Json::member("typescriptSources", strings(sources))] }
+
+    fn optionals(m: ManifestModel::Manifest) = listConcat(listConcat(listConcat(listConcat(
         optional("defaultNamespace", m.defaultNamespace, Json::str),
         optional("entry", m.entry, Json::str)),
         optional("flavor", m.flavor, flavor)),
-        optional("publication", m.publication, publication))
+        optional("publication", m.publication, publication)),
+        typescript(m.typescriptSources))
 
     /// The JSON value; member order is irrelevant because serialization sorts.
     export fn toJson(manifest) = Json::obj(listConcat(required(manifest), optionals(manifest)))
