@@ -88,25 +88,24 @@ fn process_builtins_match_the_result_returning_runtime() {
 fn file_builtins_include_the_host_tensor_loader() {
     // [BUILTIN-FILE-TENSOR] A safetensors tensor loads as a plain host list,
     // never as a GpuBuffer, so a host interpretation needs no GPU surface.
-    assert_eq!(
-        builtin_signature("loadTensor").as_deref(),
-        Some("loadTensor : (string, string) -> Result<List<float>, string>")
-    );
-    // [LLM-WEIGHTS-MAPPED] The program's use of the result picks the element.
-    assert_eq!(
-        builtin_signature("gpuMapFile").as_deref(),
-        Some("gpuMapFile : (string, int, int) -> Result<GpuBuffer<t0>, string>")
-    );
-    // [BUILTIN-FILE-BYTES] Binary stays bytes; a string would stop at a NUL.
-    assert_eq!(
-        builtin_signature("readFileBytes").as_deref(),
-        Some("readFileBytes : (string, int, int) -> Result<List<int>, string>")
-    );
-    // [BUILTIN-FILE-SIZE] A reader asks the length before the first read.
-    assert_eq!(
-        builtin_signature("fileSize").as_deref(),
-        Some("fileSize : (string) -> Result<int, string>")
-    );
+    // [LLM-WEIGHTS-MAPPED] The program's use of a mapped file picks the
+    // element. [BUILTIN-FILE-BYTES] Binary stays bytes; a string would stop
+    // at a NUL. [BUILTIN-FILE-SIZE] A reader asks the length first.
+    assert_signatures(&[
+        (
+            "loadTensor",
+            "loadTensor : (string, string) -> Result<List<float>, string>",
+        ),
+        (
+            "gpuMapFile",
+            "gpuMapFile : (string, int, int) -> Result<GpuBuffer<t0>, string>",
+        ),
+        (
+            "readFileBytes",
+            "readFileBytes : (string, int, int) -> Result<List<int>, string>",
+        ),
+        ("fileSize", "fileSize : (string) -> Result<int, string>"),
+    ]);
 }
 
 /// [GPU-BUFFER-TENSOR] Reject unsupported requested storage before codegen.
