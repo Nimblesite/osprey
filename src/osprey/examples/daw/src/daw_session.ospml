@@ -54,7 +54,7 @@ module DawSession
         parent = foldList (toList (range (0, satSub (length parts) 1)), [], \(kept, i) => listAppend kept (listGet parts i ?: ""))
         "${join parent "/"}/${stem editor.songPath}"
 
-    // Two bars from the piano roll's first bar: the window Play renders and plays.
+    // Implements [DAW-TRANSPORT]. Two bars from the piano roll's first bar: the window Play renders and plays.
     playedBeats = 8.0
 
     // One folder per bar, holding the snapshot it was rendered from and the audio.
@@ -181,11 +181,13 @@ module DawSession
         Error why => ui::Runtime::step (editor(page = PatchPage, message = "${why} The patch stays open."))
 
     (** Show another page, the patch saved into the project first. *)
-    export shown (editor, page) = match page
-        PatchPage => match editor.songPath == "" || editor.track == editor.patchTrack
-            true => ui::Runtime::step (editor(page = PatchPage))
-            false => saving (editor, \draft => ui::Runtime::step (opened (draft, draft.track)))
-        _ => saving (editor, \saved => ui::Runtime::step (saved(page = page)))
+    export shown (editor, page) = match synced editor
+        Error why => ui::Runtime::step (editor(page = PatchPage, message = "${why} The patch stays open."))
+        Success ready => match page
+            PatchPage => match ready.songPath == "" || ready.track == ready.patchTrack
+                true => ui::Runtime::step (ready(page = PatchPage))
+                false => ui::Runtime::step (opened (ready, ready.track))
+            _ => ui::Runtime::step (ready(page = page))
 
     (** What a tap on the Timeline or Mix page does, if anything. *)
     export tappedAt (editor, x, y) =

@@ -45,11 +45,19 @@ module EditorApp
         _ => Runtime::step (EditorState::tapped (editor, action))
 
     // Preview captures the pitched voice. The project keeps its authored parameters, even after many key presses.
-    strike (editor, note, platform) = match listGet editor.song.tracks editor.patchTrack
-        Error _ => match EditorState::tune (editor, note)
+    strike (editor, note, platform) = match editor.songPath == ""
+        true => match EditorState::tune (editor, note)
             Error why => Runtime::step (editor(armedNote = -1, message = why))
             Success tuned => GraphPreview::play (tuned, platform)
-        Success track => match daw::PatchRecords::audition (track, editor.graph, note)
+        false => match listGet editor.song.tracks editor.track
+            Error _ => Runtime::step (editor(armedNote = -1, message = "Select a track to play its patch."))
+            Success track => soundTrack (editor, track, note, platform)
+
+    soundTrack (editor, track, note, platform) =
+        voice = match editor.track == editor.patchTrack
+            true => daw::PatchRecords::audition (track, editor.graph, note)
+            false => daw::PatchVoices::patched (daw::Note(pitch = note, start = 0.0, length = 1.0, velocity = 1.0), daw::TrackPatches::routing track.instrument)
+        match voice
             Error why => Runtime::step (editor(armedNote = -1, message = why))
             Success graph =>
                 sounded = GraphPreview::play (editor(graph = graph, note = note, armedNote = -1), platform)

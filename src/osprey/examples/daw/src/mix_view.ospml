@@ -5,7 +5,7 @@ import ui::Scenes
 
 (** The Mix page: the routing table and the selected track's signal flow to the stereo out. *)
 module MixView
-    label (words, x, y, size, colour, anchor) = TimelineView::label (words, x, y, size, colour, anchor, 4)
+    label (words, x, y, size, colour, anchor) = TimelineView::label (words, x, y, size, colour, anchor, 8)
 
     height editor = TimelineGeometry::mixHeight (toFloat (length editor.song.tracks))
 

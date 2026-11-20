@@ -70,7 +70,7 @@ module TimelineView
         4 => PlaySong
         _ => StopSong
 
-    tile (a, fill) = [EditorView::panel (a.accessLeft, a.accessTop, a.accessWidth, a.accessHeight, fill, 2), label (a.accessLabel, a.accessLeft + a.accessWidth / 2.0, a.accessTop + 12.0, 16.0, ink (), 1, 3)]
+    tile (a, fill) = [EditorView::panel (a.accessLeft, a.accessTop, a.accessWidth, a.accessHeight, fill, 10), label (a.accessLabel, a.accessLeft + a.accessWidth / 2.0, a.accessTop + 12.0, 16.0, ink (), 1, 11)]
 
     status editor = DawSession::phase editor
 
