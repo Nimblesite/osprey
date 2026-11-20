@@ -18,21 +18,43 @@ module EditorApp
         audio = match context.platform == "windows"
             true => ui::Lists::after (context.arguments, "--audio-worker", "")
             false => ""
-        Runtime::step (editor(skin = PrismArt::sized (art, 1536.0, 828.0), workerPath = worker, audioPath = audio, assetFolder = "${ui::MachineDocs::folder (signalflow::App::documentPath context.arguments)}/skins/prism"))
+        song = ui::Lists::after (context.arguments, "--song", "")
+        opened = editor(skin = PrismArt::sized (art, 1536.0, 828.0), cards = PrismArt::classified art, workerPath = worker, audioPath = audio, assetFolder = "${ui::MachineDocs::folder (signalflow::App::documentPath context.arguments)}/skins/prism", renderer = ui::Lists::after (context.arguments, "--renderer", ""))
+        match song == ""
+            true => Runtime::step opened
+            false => Runtime::step (DawSession::loaded (opened, song))
 
     tapped (context, editor, action) = match action
         Strike note => match editor.renderContinuous || editor.renderTicket != ""
             true => Runtime::step (editor(armedNote = -1, message = "Stop playback before playing a new note."))
-            false => match EditorState::tune (editor, note)
-                Error why => Runtime::step (editor(armedNote = -1, message = why))
-                Success tuned => GraphPreview::play (tuned, context.platform)
+            false => strike (editor, note, context.platform)
         LoadSample => SamplePicker::choose editor
         BuiltinSample => SamplePicker::builtin editor
         ScanVst => Plugins::scan editor
         Audition => GraphPreview::play (editor, context.platform)
         PlayGraph => GraphPreview::live (editor, context.platform)
         StopGraph => GraphPreview::stop editor
+        ShowPage page => DawSession::shown (editor, page)
+        PickTrack index bar => Runtime::step (DawSession::pickedAt (editor, index, bar))
+        AdjustMix index gain pan reverb => DawSession::adjusted (editor, index, gain, pan, reverb)
+        OpenTrack index => match index == -2
+            true => DawSession::saving (editor, DawSession::choose)
+            false => DawSession::saving (editor, \saved => Runtime::step (DawSession::opened (saved, index)))
+        PlaySong => DawSession::saving (editor, DawSession::play)
+        StopSong => DawSession::stop editor
         _ => Runtime::step (EditorState::tapped (editor, action))
+
+    // Preview captures the pitched voice. The project keeps its authored parameters, even after many key presses.
+    strike (editor, note, platform) = match listGet editor.song.tracks editor.patchTrack
+        Error _ => match EditorState::tune (editor, note)
+            Error why => Runtime::step (editor(armedNote = -1, message = why))
+            Success tuned => GraphPreview::play (tuned, platform)
+        Success track => match daw::PatchRecords::audition (track, editor.graph, note)
+            Error why => Runtime::step (editor(armedNote = -1, message = why))
+            Success graph =>
+                sounded = GraphPreview::play (editor(graph = graph, note = note, armedNote = -1), platform)
+                played = sounded.stepStore
+                sounded(stepStore = played(graph = editor.graph))
 
     typed (editor, action, value) = match action
         PluginPath => Runtime::step (Plugins::path (editor, value))
@@ -43,7 +65,11 @@ module EditorApp
         true => SamplePicker::completed (editor, ticket, outcome)
         false => otherCompletion (editor, ticket, outcome)
 
-    otherCompletion (editor, ticket, outcome) = match startsWith ticket "prism-vst:"
+    otherCompletion (editor, ticket, outcome) = match startsWith ticket "daw-"
+        true => DawSession::completed (editor, ticket, outcome)
+        false => toolCompletion (editor, ticket, outcome)
+
+    toolCompletion (editor, ticket, outcome) = match startsWith ticket "prism-vst:"
         true => Plugins::completed (editor, ticket, outcome)
         false => match startsWith ticket "prism-audio:"
             true => GraphPreview::completed (editor, ticket, outcome)
@@ -59,7 +85,23 @@ module EditorApp
                     false => Runtime::step (editor(armedNote = -1))
                 Error _ => Runtime::step (editor(armedNote = -1))
 
-    surfacePointer (context, editor, x, y, down) = match editor.dragging >= 0 || editor.paletteDrag != "" || editor.wireDragging
+    surfacePointer (context, editor, x, y, down) = match editor.page
+        PatchPage => patchPointer (context, editor, x, y, down)
+        _ => match DawSession::tappedAt (editor, x, y)
+            Success action => pagePointer (context, editor, action, down)
+            Error _ => Runtime::step (editor(armedNote = -1))
+
+    pagePointer (context, editor, action, down) = match action
+        AdjustMix index _ _ _ => match down
+            true => Runtime::step (editor(armedNote = index))
+            false => match editor.armedNote == index
+                true => tapped (context, editor(armedNote = -1), action)
+                false => Runtime::step editor
+        _ => match down
+            true => tapped (context, editor(armedNote = -1), action)
+            false => Runtime::step (editor(armedNote = -1))
+
+    patchPointer (context, editor, x, y, down) = match editor.dragging >= 0 || editor.paletteDrag != "" || editor.wireDragging
         true => Runtime::step (EditorView::pointed (editor, x, y, down))
         false => match CableCanvas::deleteAt (editor, x, y)
             true => Runtime::step (ui::Pick::either (down, EditorState::tapped (editor, RemoveCable), editor))
@@ -105,7 +147,7 @@ module EditorApp
 
     update (context, editor, message) =
         step = routed (context, editor, message)
-        step(stepStore = EditorHistory::record (editor, step.stepStore))
+        step(stepStore = CardArts::refreshed (editor, EditorHistory::record (editor, step.stepStore)))
 
     (** Native controls and the canvas observe the same typed graph and applied edit revision. *)
     export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => EditorView::theme ())
@@ -128,19 +170,6 @@ module SamplePicker
                 _ => problem (editor, "Select a Grain cloud to load a WAV sample.")
             Invalid _ => problem (editor, "Select a Grain cloud to load a WAV sample.")
 
-    read path = match fileSize path
-        Error why => Error(message = why)
-        Success size => match size >= 12 && size <= 8388608
-            false => Error(message = "Choose a WAV file between 12 bytes and 8 MiB.")
-            true => match readFileBytes (path, 0, satAdd size 1)
-                Error why => Error(message = why)
-                Success bytes => match length bytes == size
-                    false => Error(message = "The file size changed during import.")
-                    true =>
-                        parts = split (replace path "\\" "/" ?: path) "/" ?: [path]
-                        name = foldList (parts, path, \(_, part) => part)
-                        SampleResources::decodeWave (name, 60.0, bytes)
-
     retained (previous, rate, descriptor) = match descriptor.key == "rate"
         true => descriptor(initial = rate)
         false => match listGet (filterList (previous, \p => p.key == descriptor.key)) 0
@@ -160,7 +189,7 @@ module SamplePicker
         Invalid _ => problem (editor, "The patch rejected this sample.")
         Valid prepared => match ClipLayouts::bounded (prepared.graph, 1)
             false => problem (editor, "The patch exceeds the renderer limits.")
-            true => Runtime::step (editor(graph = prepared.graph, revision = satAdd editor.revision 1, sampleTicket = "", message = "Loaded ${resource.name}."))
+            true => Runtime::step (editor(graph = prepared.graph, revision = satAdd editor.revision 1, sampleTicket = "", message = "Loaded ${daw::PatchVoices::fileName resource.name}."))
 
     apply (editor, resource) = match Graphs::node (editor.graph, editor.selected)
         Invalid _ => problem (editor, "Select a Grain cloud.")
@@ -173,7 +202,7 @@ module SamplePicker
     (** Restore the original harmonic resource through the same graph edit. *)
     export builtin editor = match idle editor
         false => problem (editor, "Stop playback before replacing the sample.")
-        true => apply (editor, EditorState::builtinSample ())
+        true => apply (editor, daw::PatchVoices::builtinSample ())
 
     (** Handle only the current selection, patch revision and playback generation. *)
     export completed (editor, key, outcome) = match key == editor.sampleTicket
@@ -184,6 +213,6 @@ module SamplePicker
                 Error why => problem (editor, why)
                 Success path => match path == ""
                     true => Runtime::step (editor(sampleTicket = ""))
-                    false => match read path
+                    false => match daw::PatchVoices::sampled path
                         Error why => problem (editor, why)
                         Success resource => apply (editor, resource)

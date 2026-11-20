@@ -5,12 +5,13 @@ type Tone { breakpoint: Float feedback: Float attack: Float release: Float bloom
 type Hit { sweep: Float noise: Float colour: Float decay: Float }
 union Follow { Constant {} Pitched {} Struck {} }
 type Setting { key: String value: Float follow: Follow }
-type PatchNode { identity: Int component: String size: Int seed: Int settings: List<Setting> }
+type PatchNode { identity: Int component: String size: Int seed: Int asset: String settings: List<Setting> }
 type PatchCable { source: Int outlet: Int destination: Int inlet: Int }
 type Routing { nodes: List<PatchNode> cables: List<PatchCable> attack: Float release: Float }
 union Instrument { PatchInstrument { routing: Routing } PluckInstrument { brightness: Float decay: Float } BowInstrument { pressure: Float brightness: Float vibrato: Float } BellInstrument { decay: Float brightness: Float } MalletInstrument { decay: Float brightness: Float } OperatorInstrument { tone: Tone } DrumInstrument { hit: Hit } }
 type Note { pitch: Int start: Float length: Float velocity: Float }
-type Track { name: String instrument: Instrument gain: Float pan: Float reverb: Float notes: List<Note> }
+type NodePosition { layoutNode: Int layoutX: Float layoutY: Float }
+type Track { name: String instrument: Instrument gain: Float pan: Float reverb: Float positions: List<NodePosition> notes: List<Note> }
 type Space { size: Float decay: Float damping: Float }
 type Afterglow { start: Float ratio: Float rise: Float hold: Float fade: Float gain: Float reverb: Float }
 type Intro { recording: String tail: Float crossfade: Float }

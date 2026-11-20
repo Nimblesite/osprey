@@ -38,17 +38,29 @@ type CableCurve =
     dx : float
     dy : float
 
-type NodePosition =
-    layoutNode : int
-    layoutX : float
-    layoutY : float
-
 type GraphSnapshot G =
     savedGraph : G
-    savedPositions : List<NodePosition>
+    savedPositions : List<daw::NodePosition>
     savedBindings : List<PluginBinding>
     savedSelected : int
     savedNote : int
+
+(** One card role's skin marks, sorted out once when the skin loads rather than on every event. *)
+type CardMarks =
+    cardRole : string
+    cardMarks : List<ui::Stamp>
+
+(** One module's drawn card: its shapes and control hit areas, current while `artKey` is. *)
+type CardArt =
+    artNode : int
+    artKey : string
+    artShapes : List<ui::Primitive>
+    artControls : List<ui::Accessible>
+
+type Page =
+    PatchPage
+    TimelinePage
+    MixPage
 
 type Editor G P S M =
     skin : M
@@ -65,7 +77,7 @@ type Editor G P S M =
     note : int
     armedNote : int
     scopeSamples : List<float>
-    positions : List<NodePosition>
+    positions : List<daw::NodePosition>
     dragging : int
     grabX : float
     grabY : float
@@ -103,6 +115,16 @@ type Editor G P S M =
     renderEmptyCallbacks : int
     renderContinuous : bool
     renderStopping : bool
+    cards : List<CardMarks>
+    art : List<CardArt>
+    page : Page
+    song : daw::Arrangement
+    songPath : string
+    renderer : string
+    track : int
+    patchTrack : int
+    rollBar : int
+    songTicket : string
 
 type EditorAction =
     Undo
@@ -144,3 +166,17 @@ type EditorAction =
     ScanVst
     CreateVst
         identifier : string
+    ShowPage
+        page : Page
+    PickTrack
+        index : int
+        bar : int
+    AdjustMix
+        index : int
+        gain : float
+        pan : float
+        reverb : float
+    OpenTrack
+        index : int
+    PlaySong
+    StopSong

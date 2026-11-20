@@ -40,6 +40,7 @@ type PatchNode =
     component : string
     size : int
     seed : int
+    asset : string
     settings : List<Setting>
 
 type PatchCable =
@@ -81,12 +82,18 @@ type Note =
     length : float
     velocity : float
 
+type NodePosition =
+    layoutNode : int
+    layoutX : float
+    layoutY : float
+
 type Track =
     name : string
     instrument : Instrument
     gain : float
     pan : float
     reverb : float
+    positions : List<NodePosition>
     notes : List<Note>
 
 type Space =

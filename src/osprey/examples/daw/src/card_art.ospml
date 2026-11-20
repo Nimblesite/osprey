@@ -1,0 +1,36 @@
+// [PRISM-ROUTING-EDITOR] Each module's artwork is drawn once and kept until that module changes.
+namespace synth
+
+(** Drawing a card expands its skin templates, the costliest part of an event. A drag moves one module, so
+    every other card's shapes and controls are kept from the event before; a card is redrawn only when
+    its own inputs (`key`) or the skin's live state change. *)
+module CardArts
+    settings n = join (mapList (n.parameters, \p => "${p.key}=${p.initial}")) ","
+
+    sample n = match n.processor
+        Granular resource _ _ => "${resource.name}:${length resource.samples}"
+        _ => ""
+
+    (** Everything a card's artwork and controls are drawn from, besides the skin. *)
+    export key (editor, n) =
+        at = EditorLayout::position (editor, n.identity)
+        "${at.layoutX}:${at.layoutY}:${editor.selected == n.identity}:${editor.detailsShown}:${EditorView::componentName (editor, n)}:${settings n}:${sample n}"
+
+    drawn (editor, n) = CardArt(artNode = n.identity, artKey = key (editor, n), artShapes = EditorView::nodeArtwork (editor, n, EditorLayout::position (editor, n.identity)), artControls = PrismArt::sliders (editor, n))
+
+    kept (editor, n) = listGet (filterList (editor.art, \art => art.artNode == n.identity && art.artKey == key (editor, n))) 0
+
+    (** The card for `n`: the kept one when it is still current, else drawn now. *)
+    export card (editor, n) = match kept (editor, n)
+        Success art => art
+        Error _ => drawn (editor, n)
+
+    // The skin's live state: its inputs, its layers' states and what the pointer holds.
+    same (one, other) = structuralEquals (one.knobs, other.knobs) && structuralEquals (one.currents, other.currents) && structuralEquals (one.machineGrip, other.machineGrip)
+
+    (** The cards for `after`, reusing `before`'s where the skin's live state and the card's key are unchanged. *)
+    export refreshed (before, after) =
+        base = match same (before.skin, after.skin)
+            true => after
+            false => after(art = [])
+        base(art = mapList (after.graph.nodes, \n => card (base, n)))

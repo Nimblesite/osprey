@@ -19,17 +19,39 @@ module PatchVoices
         Pitched => setting.value * hertz note
         Struck => setting.value * note.velocity
 
-    sources (item, table) = match item.component
+    constructorKey (item, key) = item.component == "wavetable" && key == "harmonics" || item.component == "spectral" && key == "hop"
+
+    // Older project files imply the original table and hop. Explicit construction settings are whole constants.
+    option (item, key, fallback) = match filterList (item.settings, \setting => setting.key == key)
+        [] => ok fallback
+        [setting] => match floatToInt setting.value
+            Success whole => match setting.follow == Constant && toFloat whole == setting.value
+                true => ok whole
+                false => Error(message = "Module ${item.identity} needs a whole constant for ${key}.")
+            Error _ => Error(message = "Module ${item.identity} needs an integer for ${key}.")
+        _ => Error(message = "Module ${item.identity} repeats ${key}.")
+
+    classic (size, count) = match count > 0 && count <= 256 && count <= intDiv size 4
+        true => synth::Wavetables::classic (size, count)
+        false => Error(message = "The wavetable harmonic count is outside the table's bounds.")
+
+    tableNode item =
+        size = match item.size == 0
+            true => 1024
+            false => item.size
+        chained (option (item, "harmonics", 128), \count => chained (classic (size, count), \table => ok (synth::Components::wavetable (item.identity, table, 220.0))))
+
+    sources item = match item.component
         "exciter" => ok (synth::Components::exciter (item.identity, item.seed))
         "sine" => ok (synth::Components::sine (item.identity, 440.0))
-        "wavetable" => ok (synth::Components::wavetable (item.identity, table, 220.0))
+        "wavetable" => tableNode item
         "additive" => ok (synth::Components::additive (item.identity, 220.0))
         "operator" => ok (synth::Components::phaseOperator (item.identity, 220.0, 0.0))
         "bowed" => ok (synth::Components::bowed (item.identity, 220.0, item.size))
         "lfo" => ok (synth::Components::lfo (item.identity, 1.0))
         other => Error(message = "Unknown module \"${other}\".")
 
-    resonant (item, table) = match item.component
+    resonant item = match item.component
         "resonator" => ok (synth::Components::resonator (item.identity, 440.0))
         "modal" => ok (synth::Components::modalBank (item.identity, 440.0, 3.0))
         "waveguide" => ok (synth::Components::waveguide (item.identity, 220.0, item.size))
@@ -37,32 +59,78 @@ module PatchVoices
         "fractionalDelay" => ok (synth::Components::fractionalDelay (item.identity, 1.0, item.size))
         "lossFilter" => ok (synth::Components::lossFilter (item.identity, 0.99, 0.5))
         "allpass" => ok (synth::Components::allpass (item.identity, 0.5))
+        "modulatedLowpass" => ok (synth::Components::modulatedLowpass (item.identity, 1000.0, 0.7))
         "lowpass" => ok (synth::Components::lowpass (item.identity, 1000.0, 0.7))
-        _ => sources (item, table)
+        _ => sources item
 
-    effects (item, table) = match item.component
+    effects item = match item.component
         "shaper" => ok (synth::Components::shaper (item.identity, 0.0, 1.5))
         "shifter" => ok (synth::Components::shifter (item.identity, 0.0))
-        "spectral" => ok (synth::Components::spectral (item.identity, item.size, intDiv item.size 4, 0.0))
+        "spectral" => chained (option (item, "hop", intDiv item.size 4), \hop => ok (synth::Components::spectral (item.identity, item.size, hop, 0.0)))
         "reverb" => ok (synth::Components::reverb (item.identity, 2.0))
         "smoother" => ok (synth::Components::smoother (item.identity, 0.01))
-        _ => resonant (item, table)
+        _ => resonant item
 
-    made (item, table) = match item.component
+    made item = match item.component
+        "midiNote" => ok (synth::Components::midiNote (item.identity, 60.0, 0.8, 6000.0))
+        "stereo" => ok (synth::Components::stereo item.identity)
+        "downmix" => ok (synth::Components::downmix item.identity)
+        "stereoOutput" => ok (synth::Components::stereoOutput item.identity)
+        "stereoModulatedGain" => ok (synth::Components::modulatedGain (item.identity, 2, 1.0))
+        "grainCloud" => grained item
         "gain" => ok (synth::Components::gain (item.identity, 1.0))
         "modulatedGain" => ok (synth::Components::modulatedGain (item.identity, 1, 1.0))
         "mixer" => ok (synth::Components::mixer item.identity)
         "delay" => ok (synth::Components::delay (item.identity, item.size))
         "output" => ok (synth::Components::output item.identity)
-        _ => effects (item, table)
+        _ => effects item
+
+    (** The built-in sample's name; an imported sample is named by its file path. *)
+    export builtinName = "Built-in harmonic sample"
+
+    (** The original single-cycle source a new grain cloud plays, also selectable after importing a WAV. *)
+    export builtinSample () = synth::SampleResource(name = builtinName, sampleRate = 48000, sourceChannels = 1, rootFrequency = 46.875, samples = mapList (toList (range (0, 1024)), \index => ArrangeMath::grainSample (toFloat index)))
+
+    // A grain cloud's room: 16 grains unless the project gives a size.
+    room size = match size == 0
+        true => grainRoom
+        false => size
+
+    // Grain clouds hold up to 16 grains unless the project gives a size.
+    grainRoom = 16
+
+    decoded (path, size, bytes) = match length bytes == size
+        false => Error(message = "The file size changed during import.")
+        true => synth::SampleResources::decodeWave (path, 60.0, bytes)
+
+    (** The sample a grain cloud plays: the WAV at `path` (1–8 MiB, named by its path), or the built-in one for "". *)
+    export sampled path = match path == ""
+        true => ok (builtinSample ())
+        false => match fileSize path
+            Error why => Error(message = why)
+            Success size => match size >= 12 && size <= 8388608
+                false => Error(message = "Choose a WAV file between 12 bytes and 8 MiB.")
+                true => chained (readFileBytes (path, 0, satAdd size 1), \bytes => decoded (path, size, bytes))
+
+    (** The last part of a path: what Prism shows for an imported sample. *)
+    export fileName path = foldList (split (replace path "\\" "/" ?: path) "/" ?: [path], path, \(_, part) => part)
+
+    grained item = chained (sampled item.asset, \resource => ok (synth::Components::granular (item.identity, resource, room item.size, item.seed)))
 
     known (n, setting) = counted (n.parameters, \p => p.key == setting.key) == 1
 
-    placed (note, item, n) = match counted (item.settings, \setting => known (n, setting)) == length item.settings
-        false => Error(message = "Module \"${item.component}\" has no such setting.")
-        true => ok (synth::Patches::adjusted (n, mapList (item.settings, \setting => synth::ParameterValue(node = item.identity, key = setting.key, value = resolved (note, setting)))))
+    optionControl (n, setting) = match setting.key
+        "enabled" => synth::Components::withOption (n, setting.key, "Enabled", 1.0, setting.value)
+        "waveform" => synth::Components::withOption (n, setting.key, "Waveform", 3.0, setting.value)
+        _ => n
 
-    nodeAdded (note, table, outcome, item) = chained (outcome, \nodes => chained (made (item, table), \n => chained (placed (note, item, n), \tuned => ok (listAppend nodes tuned))))
+    placed (note, item, n) = tuned (note, item.component, foldList (item.settings, n, optionControl), filterList (item.settings, \s => constructorKey (item, s.key) == false))
+
+    tuned (note, component, n, settings) = match counted (settings, \setting => known (n, setting)) == length settings
+        false => Error(message = "Module \"${component}\" has no such setting.")
+        true => ok (synth::Patches::adjusted (n, mapList (settings, \setting => synth::ParameterValue(node = n.identity, key = setting.key, value = resolved (note, setting)))))
+
+    nodeAdded (note, outcome, item) = chained (outcome, \nodes => chained (made item, \n => chained (placed (note, item, n), \tuned => ok (listAppend nodes tuned))))
 
     cabled routing = mapList (routing.cables, \cable => synth::Components::route (cable.source, cable.outlet, cable.destination, cable.inlet))
 
@@ -92,7 +160,7 @@ module PatchVoices
         synth::Valid graph => ok graph
 
     (** The routing as one graph, its settings resolved for `note`: what a note plays and Prism edits. *)
-    export patched (note, routing) = chained (synth::Wavetables::classic (1024, 128), \table => chained (foldList (routing.nodes, ok [], \(outcome, item) => nodeAdded (note, table, outcome, item)), \nodes => built (nodes, routing)))
+    export patched (note, routing) = chained (foldList (routing.nodes, ok [], \(outcome, item) => nodeAdded (note, outcome, item)), \nodes => built (nodes, routing))
 
     routed (graph, noteSpan, routing, rate) = match synth::Graphs::prepare graph
         synth::Invalid fault => Error(message = "The routing cannot be scheduled: ${fault}.")

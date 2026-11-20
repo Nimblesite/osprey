@@ -52,4 +52,7 @@ def pressed (sample peak drive ceiling : Float) : Float :=
 /-- Read position in a held recording played `ratio` times faster, after `skip` frames. -/
 def readAt (frame ratio skip : Float) : Float := skip + frame * ratio
 
+/-- A deterministic, normalised single-cycle harmonic sample for the initial grain-cloud patch. -/
+def grainSample (index : Float) : Float :=
+  0.5 * Float.sin (6.283185307179586 * index / 1024) + 0.25 * Float.sin (18.84955592153876 * index / 1024) + 0.125 * Float.sin (43.982297150257104 * index / 1024)
 end daw.ArrangeMath

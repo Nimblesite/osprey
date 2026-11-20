@@ -1,0 +1,203 @@
+// [DAW-PAGES] The daw's session: one song, its selected track, and the page showing them.
+namespace synth
+
+import ui::Runtime
+import ui::Requests
+
+(** Loading a song, picking a track, opening its patch in Prism and playing the whole song. *)
+module DawSession
+    (** No song loaded: the timeline asks for one. *)
+    export blank () = daw::Arrangement(title = "", tempo = 120.0, sampleRate = 48000, drive = 1.0, space = daw::Space(size = 1.0, decay = 1.0, damping = 0.5), intro = daw::Intro(recording = "", tail = 0.0, crossfade = 0.0), sustains = [], tracks = [])
+
+    (** The bar (from 0, four beats each) a beat falls in. *)
+    export bar beat = floatToInt (TimelineGeometry::bar beat) ?: 0
+
+    firstBar track = match listGet track.notes 0
+        Error _ => 0
+        Success note => bar note.start
+
+    (** Select a track and show the two bars where it first plays. *)
+    export picked (editor, index) = match listGet editor.song.tracks index
+        Error _ => editor
+        Success track => editor(track = index, rollBar = firstBar track, message = "${track.name}: ${length track.notes} notes.")
+
+    (** Select a track and keep the piano roll on `at`. *)
+    export pickedAt (editor, index, at) =
+        next = picked (editor, index)
+        match next.track == index && at >= 0
+            true => next(rollBar = at)
+            false => next
+
+    highest graph = foldList (graph.nodes, 0, \(top, n) => ui::Pick::either (n.identity >= top, n.identity, top))
+
+    (** Open the track's patch in Prism; a track that cannot become a graph stays on the timeline with the reason. *)
+    export opened (editor, index) = match listGet editor.song.tracks index
+        Error _ => editor(message = "Pick a track first.")
+        Success track => match daw::TrackPatches::patch track
+            Error why => editor(track = index, message = "${track.name}: ${why}")
+            Success graph => editor(graph = graph, positions = track.positions, pluginBindings = [], past = [], future = [], gesture = [], selected = -1, source = -1, selectedCable = -1, dragging = -1, nextIdentity = satAdd (highest graph) 1, revision = satAdd editor.revision 1, track = index, patchTrack = index, page = PatchPage, message = "${track.name}'s patch.")
+
+    (** Read and decode a song project; the session keeps its old song when this one is refused. *)
+    export loaded (editor, path) = match readFile path
+        Error why => editor(message = "Could not read ${path}: ${why}")
+        Success source => match daw::SongFiles::decode source
+            Error why => editor(message = "${path}: ${why}")
+            Success song => picked (editor(song = song, songPath = path, track = 0, patchTrack = -1, rollBar = 0, page = TimelinePage), 0)
+
+    stem path =
+        parts = split (replace path "\\" "/" ?: path) "/" ?: [path]
+        name = foldList (parts, path, \(_, part) => part)
+        replace name ".json" "" ?: name
+
+    folder editor =
+        parts = split editor.renderer "/" ?: [editor.renderer]
+        parent = foldList (toList (range (0, satSub (length parts) 1)), [], \(kept, i) => listAppend kept (listGet parts i ?: ""))
+        "${join parent "/"}/${stem editor.songPath}"
+
+    // Two bars from the piano roll's first bar: the window Play renders and plays.
+    playedBeats = 8.0
+
+    // One folder per bar, holding the snapshot it was rendered from and the audio.
+    excerpt editor = "${folder editor}/bar-${satAdd editor.rollBar 1}"
+
+    snapshot editor = "${excerpt editor}/project.json"
+
+    wave editor = "${excerpt editor}/piece.wav"
+
+    // The cached audio is current when it was rendered from exactly this project text.
+    fresh (editor, text) = (readFile (snapshot editor) ?: "") == text && (fileSize (wave editor) ?: 0) > 44
+
+    bars first = "bars ${first}–${satAdd first 1}"
+
+    window editor = bars (satAdd editor.rollBar 1)
+
+    // The bars a launched folder holds, read from its `bar-N` name.
+    heldBars bar = match split bar "/bar-" ?: []
+        [_, number] => bars (parseInt number ?: 0)
+        _ => "the bars"
+
+    busy editor = editor.songTicket != "" || editor.songPath == "" || editor.renderer == ""
+
+    (** Play two bars from the piano roll's first bar, as the project stands now, edits included. They are rendered
+        once per project state and bar; a failed render leaves no audio to replay. *)
+    export play editor = match busy editor
+        true => Runtime::step (editor(message = ui::Pick::either (editor.songTicket != "", "The song is already playing; Stop first.", "Open a song and launch with the daw renderer to play it.")))
+        false => match daw::SongFiles::encode editor.song
+            Error why => Runtime::step (editor(message = why))
+            Success text => match fresh (editor, text)
+                true => sounded (editor, excerpt editor)
+                false => prepared (editor, text)
+
+    // The old audio is emptied before the new snapshot is written, so it can never pass for this one.
+    prepared (editor, text) =
+        // An existing folder is fine; a missing one fails the first write below.
+        _made = makeDir (folder editor)
+        _bar = makeDir (excerpt editor)
+        match writeFile (wave editor) ""
+            Error why => Runtime::step (editor(message = "Could not prepare ${wave editor}: ${why}"))
+            Success _ => match writeFile (snapshot editor) text
+                Error why => Runtime::step (editor(message = "Could not write ${snapshot editor}: ${why}"))
+                Success _ => rendered editor
+
+    // Each ticket carries the bar folder it was launched for, so a completion acts on that bar's audio even when
+    // the piano roll has moved or another song opened since.
+    renderTicket = "daw-song:render:"
+
+    playTicket = "daw-song:play:"
+
+    launched (ticket, prefix) = match startsWith ticket prefix
+        true => substring ticket (length prefix) (length ticket)
+        false => Error(message = "not a ${prefix} ticket")
+
+    rendered editor =
+        ticket = "${renderTicket}${excerpt editor}"
+        Runtime::asking (editor(songTicket = ticket, message = "Rendering ${window editor} of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = editor.renderer, arguments = [snapshot editor, excerpt editor, "${toFloat editor.rollBar * 4.0}", "${playedBeats}"], timeout = 900000, outputLimit = 65536, plist = false, runSlice = ""))])
+
+    sounded (editor, bar) =
+        ticket = "${playTicket}${bar}"
+        Runtime::asking (editor(songTicket = ticket, message = "Playing ${heldBars bar} of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = "/usr/bin/afplay", arguments = ["${bar}/piece.wav"], timeout = 3600000, outputLimit = 4096, plist = false, runSlice = ""))])
+
+    (** What the transport is doing: "Rendering…", "Playing" or "Stopped". *)
+    export phase editor = match startsWith editor.songTicket renderTicket
+        true => "Rendering…"
+        false => ui::Pick::either (startsWith editor.songTicket playTicket, "Playing", "Stopped")
+
+    // The renderer reports a refused project on its output and still exits cleanly, so only audio counts.
+    heard (editor, bar, outcome) = match (fileSize "${bar}/piece.wav" ?: 0) > 44
+        true => sounded (editor, bar)
+        false => Runtime::step (editor(songTicket = "", message = "Rendering failed: ${reported outcome}"))
+
+    reported outcome = match outcome
+        Error why => why
+        Success text => trim (ui::Doc::text (ui::Doc::parse text, "stdout"))
+
+    (** Stop the render or the playback in flight. *)
+    export stop editor = match editor.songTicket == ""
+        true => Runtime::step (editor(message = "Nothing is playing."))
+        false => Runtime::asking (editor(songTicket = "", message = "Stopped."), [Requests::ask ("daw-song:stop", ui::Cancel(cancelled = editor.songTicket))])
+
+    (** Ask for a song project to open. *)
+    export choose editor = Runtime::asking (editor, [Requests::ask ("daw-open", ui::ChooseFile(types = ["json"], chosenLimit = 0, chosenSlice = ""))])
+
+    (** A render finishing starts playback; playback or a stop finishing frees the transport. *)
+    export completed (editor, ticket, outcome) = match ticket == "daw-open"
+        true => match outcome
+            Success path => Runtime::step (ui::Pick::either (path == "", editor, loaded (editor, path)))
+            Error why => Runtime::step (editor(message = why))
+        false => transport (editor, ticket, outcome)
+
+    transport (editor, ticket, outcome) = match ticket == editor.songTicket
+        false => Runtime::step editor
+        true => match ProcessResults::checked outcome
+            Error why => Runtime::step (editor(songTicket = "", message = "Song playback failed: ${why}"))
+            Success _ => match launched (ticket, renderTicket)
+                Success bar => heard (editor, bar, outcome)
+                Error _ => Runtime::step (editor(songTicket = "", message = "${editor.song.title} finished."))
+
+    written (editor, song) = match daw::Projects::saved (song, editor.songPath)
+        Error why => Error(message = "Could not save ${editor.songPath}: ${why}")
+        Success _ => Success(value = editor(song = song, message = "Saved ${stem editor.songPath}.json."))
+
+    (** Commit a mixer adjustment to the project after the fader is released. *)
+    export adjusted (editor, index, gain, pan, reverb) = match daw::Projects::mixed (editor.song, index, gain, pan, reverb)
+        Error why => ui::Runtime::step (editor(message = why))
+        Success song => match written (editor, song)
+            Success next => ui::Runtime::step (next(track = index))
+            Error why => ui::Runtime::step (editor(message = why))
+
+    (** Prism's patch goes back into its track and the project file is written; unchanged, nothing is written.
+        A patch the project cannot hold is an error, and the caller stays on the patch. *)
+    export synced editor = match editor.patchTrack >= 0 && editor.songPath != ""
+        false => Success(value = editor)
+        true => match daw::PatchRecords::savedAt (editor.song, editor.patchTrack, editor.graph, editor.positions)
+            Error why => Error(message = why)
+            Success song => match structuralEquals (song, editor.song)
+                true => Success(value = editor)
+                false => written (editor, song)
+
+    (** Run `next` on the editor with its patch saved, or stay put and say why it could not be saved. *)
+    export saving (editor, next) = match synced editor
+        Success saved => next saved
+        Error why => ui::Runtime::step (editor(page = PatchPage, message = "${why} The patch stays open."))
+
+    (** Show another page, the patch saved into the project first. *)
+    export shown (editor, page) = match page
+        PatchPage => match editor.songPath == "" || editor.track == editor.patchTrack
+            true => ui::Runtime::step (editor(page = PatchPage))
+            false => saving (editor, \draft => ui::Runtime::step (opened (draft, draft.track)))
+        _ => saving (editor, \saved => ui::Runtime::step (saved(page = page)))
+
+    (** What a tap on the Timeline or Mix page does, if anything. *)
+    export tappedAt (editor, x, y) =
+        index = ui::Lists::position (TimelineView::headerAreas editor, \a => EditorView::inside (x, y, a.accessLeft + a.accessWidth / 2.0, a.accessTop + a.accessHeight / 2.0, a.accessWidth / 2.0, a.accessHeight / 2.0))
+        match index < 0
+            true => pageAt (editor, x, y)
+            false => Success(value = TimelineView::headerAction index)
+
+    pageAt (editor, x, y) = match editor.page
+        MixPage => MixView::rowAt (editor, x, y)
+        _ =>
+            open = TimelineView::openArea ()
+            match EditorView::inside (x, y, open.accessLeft + open.accessWidth / 2.0, open.accessTop + open.accessHeight / 2.0, open.accessWidth / 2.0, open.accessHeight / 2.0)
+                true => Success(value = OpenTrack(index = editor.track))
+                false => TimelineView::laneAt (editor, x, y)

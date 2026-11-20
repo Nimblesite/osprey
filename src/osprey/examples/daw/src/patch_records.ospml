@@ -1,0 +1,102 @@
+// [DAW-TRACK-PATCH] Prism's edits go back into the project: the inverse of TrackPatches.
+namespace daw
+
+(** A graph Prism edited becomes the track's routing again, so the one project file holds every patch.
+    A setting that followed the note keeps following it: its value is divided back by middle C's frequency
+    (pitch) or full velocity. Every other parameter is stored as a constant. *)
+module PatchRecords
+    middle () = synth::Waves::midiFrequency 60.0
+
+    // The routing name of each module a project can hold; the rest exist only inside Prism.
+    named n = match n.processor
+        synth::Exciter seed => Success(value = PatchNode(identity = 0, component = "exciter", size = 0, seed = seed, asset = "", settings = []))
+        synth::Granular resource capacity seed => Success(value = PatchNode(identity = 0, component = "grainCloud", size = capacity, seed = seed, asset = ui::Pick::either (resource.name == PatchVoices::builtinName, "", resource.name), settings = []))
+        synth::Oscillator => plain "sine"
+        synth::TableOscillator table => configured ("wavetable", table.size, "harmonics", table.harmonics)
+        synth::Additive => plain "additive"
+        synth::PhaseOperator => plain "operator"
+        synth::Bowed capacity => sized ("bowed", capacity)
+        synth::Lfo => plain "lfo"
+        synth::Resonator => plain "resonator"
+        synth::Modal => plain "modal"
+        synth::Waveguide capacity => sized ("waveguide", capacity)
+        synth::StrikeComb capacity => sized ("strikeComb", capacity)
+        synth::FractionalDelay capacity => sized ("fractionalDelay", capacity)
+        synth::LossFilter => plain "lossFilter"
+        synth::Allpass => plain "allpass"
+        synth::Filter => plain (ui::Pick::either (length n.inputs == 2, "modulatedLowpass", "lowpass"))
+        _ => processing n
+
+    processing n = match n.processor
+        synth::Shaper => plain "shaper"
+        synth::Shifter => plain "shifter"
+        synth::Spectral size hop => configured ("spectral", size, "hop", hop)
+        synth::Reverb => plain "reverb"
+        synth::Smoother => plain "smoother"
+        synth::Amplifier => plain "gain"
+        synth::ModulatedGain => plain (ui::Pick::either (stereo n.inputs, "stereoModulatedGain", "modulatedGain"))
+        synth::Mixer => plain "mixer"
+        synth::Delay samples => sized ("delay", samples)
+        synth::MidiNotes => plain "midiNote"
+        synth::Stereo => plain "stereo"
+        synth::Downmix => plain "downmix"
+        synth::Sink => plain (ui::Pick::either (stereo n.inputs, "stereoOutput", "output"))
+        _ => Error(message = "${synth::Kinds::kind n.processor} modules can't be saved in a song project yet.")
+
+    stereo inputs = match listGet inputs 0
+        Success port => port.channels == 2
+        Error _ => false
+
+    configured (component, size, key, amount) = synth::Outcomes::carried (sized (component, size), \item => Success(value = item(settings = [Setting(key = key, value = toFloat amount, follow = Constant)])))
+
+    plain component = sized (component, 0)
+
+    sized (component, size) = Success(value = PatchNode(identity = 0, component = component, size = size, seed = 0, asset = "", settings = []))
+
+    // A setting the routing had keeps its follow; its value comes back from the graph.
+    kept (setting, value) = match setting.follow
+        Constant => setting(value = value)
+        Pitched => match setting.value * middle () == value
+            true => setting
+            false => setting(value = synth::FitMath::normalised (value, 0.0, middle ()))
+        Struck => setting(value = value)
+
+    // `key` and `initial` name fields of several records, so the parameter's type is stated.
+    setting (before, p: synth::Parameter) = match listGet (filterList (before, \s => s.key == p.key)) 0
+        Success had => kept (had, p.initial)
+        Error _ => Setting(key = p.key, value = p.initial, follow = Constant)
+
+    record (routing, n) =
+        before = foldList (filterList (routing.nodes, \item => item.identity == n.identity), [], \(_, item) => item.settings)
+        synth::Outcomes::carried (named n, \item => Success(value = item(identity = n.identity, settings = listConcat item.settings (mapList (n.parameters, \p => setting (before, p))))))
+
+    appended (carry, n, routing) = match carry
+        Error why => Error(message = why)
+        Success nodes => synth::Outcomes::carried (record (routing, n), \item => Success(value = listAppend nodes item))
+
+    (** The routing `graph` stores, settings that followed the note in `routing` still following it. *)
+    export routed (routing, graph) = synth::Outcomes::carried (foldList (graph.nodes, Success(value = []), \(carry, n) => appended (carry, n, routing)), \nodes => Success(value = routing(nodes = nodes, cables = mapList (graph.cables, \c => PatchCable(source = c.source, outlet = c.outlet, destination = c.destination, inlet = c.inlet)))))
+
+    (** The track with `graph` as its patch; a built-in instrument whose patch is unchanged stays built in. *)
+    export stored (track, graph) = match TrackPatches::patch track
+        Success opened => match structuralEquals (opened, graph)
+            true => Success(value = track)
+            false => edited (track, graph)
+        Error _ => edited (track, graph)
+
+    edited (track, graph) = synth::Outcomes::carried (routed (TrackPatches::routing track.instrument, graph), \routing => Success(value = track(instrument = PatchInstrument(routing = routing))))
+
+    (** Resolve the working patch for a keyboard strike without transposing the project itself. *)
+    export audition (track, graph, pitch) = match pitch >= 0 && pitch <= 127
+        false => Error(message = "Choose a MIDI note from 0 to 127.")
+        true => synth::Outcomes::carried (routed (TrackPatches::routing track.instrument, graph), \draft => PatchVoices::patched (Note(pitch = pitch, start = 0.0, length = 1.0, velocity = 1.0), draft))
+
+    (** The arrangement with track `index` storing `graph`. *)
+    export saved (arrangement, index, graph) = match listGet arrangement.tracks index
+        Error _ => Error(message = "The arrangement has no track ${satAdd index 1}.")
+        Success track => synth::Outcomes::carried (stored (track, graph), \next => Projects::replaced (arrangement, index, next))
+
+    (** Keep the canvas coordinates with their track. Moving a module leaves an unchanged built-in instrument intact. *)
+    export savedAt (arrangement, index, graph, positions) = match listGet arrangement.tracks index
+        Error _ => Error(message = "The selected track is missing.")
+        Success track => synth::Outcomes::carried (stored (track, graph), \next => Projects::replaced (arrangement, index, next(positions = filterList (positions, \at => ui::Lists::any (graph.nodes, \node => node.identity == at.layoutNode)))))

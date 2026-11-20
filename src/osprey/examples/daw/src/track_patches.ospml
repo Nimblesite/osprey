@@ -15,9 +15,10 @@ module TrackPatches
     pitched () = Setting(key = "frequency", value = 1.0, follow = Pitched)
 
     (** One voice node (identity 1) feeding the output (identity 2). *)
-    voice (component, size, settings) = Routing(nodes = [PatchNode(identity = 1, component = component, size = size, seed = 1, settings = settings), PatchNode(identity = 2, component = "output", size = 0, seed = 0, settings = [])], cables = [PatchCable(source = 1, outlet = 0, destination = 2, inlet = 0)], attack = 0.005, release = 0.2)
+    voice (component, size, settings) = Routing(nodes = [PatchNode(identity = 1, component = component, size = size, seed = 1, asset = "", settings = settings), PatchNode(identity = 2, component = "output", size = 0, seed = 0, asset = "", settings = [])], cables = [PatchCable(source = 1, outlet = 0, destination = 2, inlet = 0)], attack = 0.005, release = 0.2)
 
-    routing instrument = match instrument
+    (** The routing a track's instrument plays: its own, or one voice node for a built-in instrument. *)
+    export routing instrument = match instrument
         PatchInstrument routed => routed
         PluckInstrument brightness decay => voice ("waveguide", stringRoom, [pitched (), fixed ("brightness", brightness), fixed ("decay", decay)])
         BowInstrument pressure brightness _ => voice ("bowed", stringRoom, [pitched (), fixed ("pressure", pressure), fixed ("brightness", brightness)])

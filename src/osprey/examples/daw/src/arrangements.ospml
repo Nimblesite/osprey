@@ -45,7 +45,8 @@ module Arrangements
 
     close (latest, note) = synth::TableMath::larger (latest, note.start + note.length)
 
-    beats arrangement = foldList (arrangement.tracks, 0.0, \(latest, voice) => foldList (voice.notes, latest, close))
+    (** The beat the last note ends on. *)
+    export beats arrangement = foldList (arrangement.tracks, 0.0, \(latest, voice) => foldList (voice.notes, latest, close))
 
     valid arrangement = arrangement.drive >= 0.1 && arrangement.drive <= 4.0 && arrangement.tempo >= 20.0 && arrangement.tempo <= 400.0 && arrangement.sampleRate >= 8000 && arrangement.sampleRate <= 192000 && length arrangement.tracks >= 1 && length arrangement.tracks <= 64
 

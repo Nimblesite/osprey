@@ -4,7 +4,7 @@ namespace synth
 (** Draft graph editing shared by native controls and canvas interactions. *)
 module EditorState
     (** A fresh patch; identities are monotonic and never reused after deletion. *)
-    export initial () = Editor(skin = ui::MachineDocs::faulty "", graph = Graphs::empty, past = [], future = [], gesture = [], assetFolder = "src/osprey/packages/signal_flow/skins/prism", paletteShown = false, detailsShown = false, keyboardShown = true, keyboardWidth = 1536.0, paletteDrag = "", note = 57, armedNote = -1, scopeSamples = [], positions = [], dragging = -1, grabX = 0.0, grabY = 0.0, layoutRevision = 0, selected = -1, nextIdentity = 0, source = -1, outlet = 0, wireDragging = false, wireMonitor = false, wireX = 0.0, wireY = 0.0, selectedCable = -1, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", audioPath = "", pluginPath = "", catalog = [], pluginBindings = [], sampleSerial = 0, sampleTicket = "", pluginSerial = 0, pluginTicket = "", pluginClassId = "", renderPending = [], renderBindings = [], renderSerial = 0, renderTicket = "", renderSessions = [], renderOpening = false, renderInput = "", renderDevicePending = [], renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = false, renderStopping = false)
+    export initial () = Editor(skin = ui::MachineDocs::faulty "", graph = Graphs::empty, past = [], future = [], gesture = [], assetFolder = "src/osprey/packages/signal_flow/skins/prism", paletteShown = false, detailsShown = false, keyboardShown = true, keyboardWidth = 1536.0, paletteDrag = "", note = 57, armedNote = -1, scopeSamples = [], positions = [], dragging = -1, grabX = 0.0, grabY = 0.0, layoutRevision = 0, selected = -1, nextIdentity = 0, source = -1, outlet = 0, wireDragging = false, wireMonitor = false, wireX = 0.0, wireY = 0.0, selectedCable = -1, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", audioPath = "", pluginPath = "", catalog = [], pluginBindings = [], sampleSerial = 0, sampleTicket = "", pluginSerial = 0, pluginTicket = "", pluginClassId = "", renderPending = [], renderBindings = [], renderSerial = 0, renderTicket = "", renderSessions = [], renderOpening = false, renderInput = "", renderDevicePending = [], renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = false, renderStopping = false, cards = [], art = [], page = PatchPage, song = DawSession::blank (), songPath = "", renderer = "", track = -1, patchTrack = -1, rollBar = 0, songTicket = "")
 
     (** Available component factories expose their real audio or event ports. *)
     export kinds = ["grain-cloud", "sine", "filter", "gain", "mixer", "delay", "output", "midi-note", "stereo", "stereo-output", "lfo", "modulated-gain"]
@@ -88,13 +88,8 @@ module EditorState
         "smoother" => "Smoother"
         _ => "Unknown component"
 
-    (** The original single-cycle source, also selectable after importing a WAV. *)
-    export builtinSample () =
-        samples = mapList (toList (range (0, 1024)), \index => CanvasGeometry::grainSample (toFloat index))
-        SampleResource(name = "Built-in harmonic sample", sampleRate = 48000, sourceChannels = 1, rootFrequency = 46.875, samples = samples)
-
     grainCloud identity =
-        resource = builtinSample ()
+        resource = daw::PatchVoices::builtinSample ()
         cloud = Components::granular (identity, resource, 16, 1)
         withParameter (cloud, "rate", WaveMath::playbackRate (48000.0, 48000.0, 220.0, resource.rootFrequency))
 
@@ -286,7 +281,7 @@ module EditorState
                 true => Components::modulatedGain (2, 1, 0.25)
                 false => n)))
         routed = tapped (tapped (modulated, Source(identity = 4, outlet = 0)), Connect(identity = 2, inlet = 1))
-        match tune (routed(selected = 1, positions = [NodePosition(layoutNode = 0, layoutX = 175.5, layoutY = 438.5), NodePosition(layoutNode = 1, layoutX = 607.0, layoutY = 432.0), NodePosition(layoutNode = 2, layoutX = 1035.0, layoutY = 436.5), NodePosition(layoutNode = 3, layoutX = 609.0, layoutY = 695.0), NodePosition(layoutNode = 4, layoutX = 605.0, layoutY = 161.0)]), 57)
+        match tune (routed(selected = 1, positions = [daw::NodePosition(layoutNode = 0, layoutX = 175.5, layoutY = 438.5), daw::NodePosition(layoutNode = 1, layoutX = 607.0, layoutY = 432.0), daw::NodePosition(layoutNode = 2, layoutX = 1035.0, layoutY = 436.5), daw::NodePosition(layoutNode = 3, layoutX = 609.0, layoutY = 695.0), daw::NodePosition(layoutNode = 4, layoutX = 605.0, layoutY = 161.0)]), 57)
             Success ready => ready
             Error why => routed(message = why)
 
@@ -294,7 +289,6 @@ module EditorState
     export configured (editor, identity, key, label, maximum, value) = match Graphs::node (editor.graph, identity)
         Invalid _ => absent editor
         Valid n =>
-            descriptor = Parameter(key = key, label = label, unit = Ratio, minimum = 0.0, maximum = maximum, initial = value, automatable = true)
-            updated = n(parameters = listAppend (filterList (n.parameters, \p => p.key != key)) descriptor)
+            updated = Components::withOption (n, key, label, maximum, value)
             graph = editor.graph
             published (editor, Graphs::add (graph(nodes = filterList (graph.nodes, \p => p.identity != identity)), updated))

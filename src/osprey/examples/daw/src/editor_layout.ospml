@@ -4,7 +4,7 @@ namespace synth
 (** Stable component positions and pointer capture for the modular canvas. *)
 module EditorLayout
     (** Deleted neighbours do not change the default position of surviving identities. *)
-    export position (editor, identity) = listGet (filterList (editor.positions, \p => p.layoutNode == identity)) 0 ?: NodePosition(layoutNode = identity, layoutX = CanvasGeometry::gridX (toFloat (identity % 3)), layoutY = CanvasGeometry::gridY (toFloat (intDiv identity 3)))
+    export position (editor, identity) = listGet (filterList (editor.positions, \p => p.layoutNode == identity)) 0 ?: daw::NodePosition(layoutNode = identity, layoutX = CanvasGeometry::gridX (toFloat (identity % 3)), layoutY = CanvasGeometry::gridY (toFloat (intDiv identity 3)))
 
     (** Keep the initial pointer offset so clicking away from the centre does not snap the card. *)
     export begin (editor, identity, px, py) =
@@ -12,7 +12,7 @@ module EditorLayout
         editor(selected = identity, selectedCable = -1, dragging = identity, grabX = CanvasGeometry::offset (px, at.layoutX), grabY = CanvasGeometry::offset (py, at.layoutY))
 
     moved (editor, px, py) =
-        at = NodePosition(layoutNode = editor.dragging, layoutX = CanvasGeometry::dragX (px, editor.grabX), layoutY = CanvasGeometry::dragY (py, editor.grabY))
+        at = daw::NodePosition(layoutNode = editor.dragging, layoutX = CanvasGeometry::dragX (px, editor.grabX), layoutY = CanvasGeometry::dragY (py, editor.grabY))
         previous = position (editor, editor.dragging)
         match at.layoutX == previous.layoutX && at.layoutY == previous.layoutY
             true => editor
@@ -109,8 +109,30 @@ module PrismArt
         ui::Unboarded => []
         ui::Boarded _ _ _ paths _ _ => mapList (paths, \path => ui::Templates::fill (machine, path))
 
+    roles = ["source", "process", "control", "output", "monitor"]
+
+    (** Each card role's own marks, and the scenery (marks of no card), sorted once per skin: matching marks by
+        their templates on every event cost most of an event's time. *)
+    export classified machine = match (ui::Templates::skin machine).skinBoard
+        ui::Unboarded => []
+        ui::Boarded _ _ _ _ marks _ => listAppend (mapList (roles, \name => CardMarks(cardRole = name, cardMarks = filterList (marks, \mark => owns (mark, name))))) (CardMarks(cardRole = "scenery", cardMarks = filterList (marks, \mark => length (filterList (roles, \name => belongs (mark, name))) == 0)))
+
+    // An editor made without the cache (a test's, say) sorts the marks when asked.
+    roleMarks (editor, name) =
+        cards = match length editor.cards == 0
+            true => classified editor.skin
+            false => editor.cards
+        foldList (filterList (cards, \found => found.cardRole == name), [], \(_, found) => found.cardMarks)
+
+    drawn (machine, marks) = match (ui::Templates::skin machine).skinBoard
+        ui::Unboarded => []
+        ui::Boarded w h zoom atlas _ _ => match ui::Canvases::artboard (machine, zoom, w, h, atlas, marks)
+            ui::Scene _ _ _ _ primitives _ _ => primitives
+            _ => []
+
     (** Only the chosen node's original artwork; cross-node wires come from the real graph. *)
-    export card (editor, n) = shapes (prepared (editor, n), \mark => owns (mark, role n.processor) && !(n.processor == Sink && mark.markFigure == ui::PolylineFigure))
+    export card (editor, n) =
+        drawn (prepared (editor, n), filterList (roleMarks (editor, role n.processor), \mark => !(n.processor == Sink && mark.markFigure == ui::PolylineFigure)))
 
     (** Original header, inspector, legend and keyboard, driven by the current selection. *)
     export background editor = backgroundPart (editor, false)
@@ -123,13 +145,14 @@ module PrismArt
             Invalid _ => editor.skin
             Valid n => prepared (editor, n)
         machine = ui::Machines::feed (selected, [fact ("keys", 1.0), fact ("hertz", CanvasGeometry::frequency (toFloat editor.note)), ui::Machines::fact ("note", ui::Values::text (noteName editor.note))])
-        movedShapes (machine, \mark => backgroundMark (editor, machine, mark, keyboard), ui::Pick::either (keyboard, -828.0, 0.0))
+        dy = ui::Pick::either (keyboard, -828.0, 0.0)
+        drawn (machine, mapList (filterList (roleMarks (editor, "scenery"), \mark => backgroundMark (editor, machine, mark, keyboard)), \mark => shiftedMark (machine, mark, dy)))
 
     backgroundMark (editor, machine, mark, keyboard) =
         grid = mark.markFigure == ui::SpriteFigure && ui::Templates::measure (machine, mark.markIndex) == 0.0
         match grid
             true => !keyboard
-            false => (ui::Templates::measure (machine, mark.markY) >= 828.0 + ui::Machines::number (machine, "spareHeight")) == keyboard && !(editor.detailsShown && !keyboard && ui::Templates::measure (machine, mark.markX) >= 1210.0) && !connectionMark (machine, mark) && length (filterList (["source", "process", "control", "output", "monitor"], \name => belongs (mark, name))) == 0
+            false => (ui::Templates::measure (machine, mark.markY) >= 828.0 + ui::Machines::number (machine, "spareHeight")) == keyboard && !(editor.detailsShown && !keyboard && ui::Templates::measure (machine, mark.markX) >= 1210.0) && !connectionMark (machine, mark)
 
     connectionMark (machine, mark) =
         y = ui::Templates::measure (machine, mark.markY)
@@ -217,9 +240,15 @@ module PrismArt
         true => match Graphs::node (editor.graph, editor.selected)
             Invalid _ => Error(message = "The selected component was removed.")
             Valid n => Success(value = slide (editor, n, editor.skin, px, py, down))
-        false => match listGet (filterList (editor.graph.nodes, \n => frontmost (editor, n, px, py) && sliderAt (editor, n, px, py))) 0
+        false => match listGet (filterList (candidates (editor, px, py), \n => frontmost (editor, n, px, py) && sliderAt (editor, n, px, py))) 0
             Error _ => Error(message = "index out of bounds")
             Success n => Success(value = slide (editor, n, prepared (editor, n), px, py, down))
+
+    // Only the card under the pointer, or the selected node (whose inspector and open menu lie outside its
+    // card), can own a control there: hit-testing every node's controls made every tap slow.
+    candidates (editor, px, py) =
+        top = EditorView::nodeAt (editor, px, py)
+        filterList (editor.graph.nodes, \n => n.identity == top || n.identity == editor.selected)
 
     frontmost (editor, n, px, py) =
         top = EditorView::nodeAt (editor, px, py)

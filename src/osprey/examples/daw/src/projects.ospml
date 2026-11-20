@@ -20,10 +20,13 @@ module Projects
             Error _ => Error(message = "There is no track ${satAdd index 1}.")
             Success voice => replaced (arrangement, index, voice(gain = gain, pan = pan, reverb = reverb))
 
-    (** Write the project to `path` as the same JSON `SongFiles::decode` reads. *)
+    // The text is read back before it replaces the file, so a project that would not reopen is never written.
+    checked text = synth::Outcomes::carried (SongFiles::decode text, \_ => Success(value = text))
+
+    (** Write the project to `path` as the same JSON `SongFiles::decode` reads; the old file stays when encoding fails. *)
     export saved (arrangement, path) = match SongFiles::safe path
         false => Error(message = "A project path cannot contain a quote.")
-        true => synth::Outcomes::carried (writeFile path (SongFiles::encode arrangement), \_ => Success(value = path))
+        true => synth::Outcomes::carried (synth::Outcomes::carried (SongFiles::encode arrangement, checked), \text => synth::Outcomes::carried (writeFile path text, \_ => Success(value = path)))
 
     // `start` names a field of two records, so the note's type is stated.
     within (from, beats, note: Note) = note.start >= from && note.start - from < beats

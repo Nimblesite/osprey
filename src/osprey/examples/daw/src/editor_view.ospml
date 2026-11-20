@@ -9,7 +9,8 @@ import ui::Scenes
 module EditorView
     editorSlice () = perform Signal<Editor<Graph, GraphPending<Graph, ProcessorMemory<KernelState>>, GraphState<ProcessorMemory<KernelState>>, ui::Machine>>.read ()
 
-    processorTitle processor = match processor
+    (** The name Prism shows for a processor. *)
+    export processorTitle processor = match processor
         Granular _ _ _ => "Grain cloud"
         Lfo => "LFO"
         ModulatedGain => "Modulated gain"
@@ -41,7 +42,8 @@ module EditorView
         Downmix => "Stereo to mono"
         External identifier => identifier
 
-    componentName (editor, n) = match listGet (filterList (editor.pluginBindings, \binding => binding.pluginNode == n.identity)) 0
+    (** A module's name on the canvas: its plugin's, or its processor's, with its identity. *)
+    export componentName (editor, n) = match listGet (filterList (editor.pluginBindings, \binding => binding.pluginNode == n.identity)) 0
         Success binding => "${binding.pluginName} ${n.identity}"
         Error _ => "${processorTitle n.processor} ${n.identity}"
 
@@ -78,7 +80,7 @@ module EditorView
             true => []
             false => [Ui::section ("Parameters", "", mapList (n.parameters, \p => parameter (n, p)))]
         sample = match n.processor
-            Granular resource _ _ => [Ui::section ("Sample", "", [Ui::caption ("${resource.name} · ${resource.sampleRate} Hz · ${resource.sourceChannels} source channels · ${length resource.samples} frames · ${WaveMath::seconds (toFloat (length resource.samples), toFloat resource.sampleRate)} s"), Ui::button ("Load WAV sample", "", LoadSample), Ui::button ("Use built-in harmonic sample", "", BuiltinSample)])]
+            Granular resource _ _ => [Ui::section ("Sample", "", [Ui::caption ("${daw::PatchVoices::fileName resource.name} · ${resource.sampleRate} Hz · ${resource.sourceChannels} source channels · ${length resource.samples} frames · ${WaveMath::seconds (toFloat (length resource.samples), toFloat resource.sampleRate)} s"), Ui::button ("Load WAV sample", "", LoadSample), Ui::button ("Use built-in harmonic sample", "", BuiltinSample)])]
             _ => []
         Ui::column (listConcat (listConcat sample parameters) [Ui::section ("Connections", "", ports n), Ui::action ("Remove module", "delete", ui::Destructive, true, Remove)])
 
@@ -199,7 +201,7 @@ module EditorView
     export paletteAt (editor, px, py) = editor.paletteShown && px >= 0.0 && px < 196.0 && py >= 66.0 && py < 774.0
 
     placeAdded editor =
-        candidates = mapList (toList (range (0, 9)), \i => NodePosition(layoutNode = editor.selected, layoutX = CanvasGeometry::gridX (toFloat (i % 3)), layoutY = CanvasGeometry::gridY (toFloat (intDiv i 3))))
+        candidates = mapList (toList (range (0, 9)), \i => daw::NodePosition(layoutNode = editor.selected, layoutX = CanvasGeometry::gridX (toFloat (i % 3)), layoutY = CanvasGeometry::gridY (toFloat (intDiv i 3))))
         occupied = mapList (filterList (editor.graph.nodes, \n => n.identity != editor.selected), \n => EditorLayout::position (editor, n.identity))
         empty = filterList (candidates, \at => length (filterList (occupied, \other => inside (x at, y at, x other, y other, 300.0, 210.0))) == 0)
         at = listGet empty 0 ?: EditorLayout::position (editor, editor.selected)
@@ -266,9 +268,10 @@ module EditorView
 
     shape (editor, n) =
         at = EditorLayout::position (editor, n.identity)
-        listConcat (listConcat (listConcat (nodeArtwork (editor, n, at)) (cardTitle (editor, n, at))) (monitorTrace (editor, n, at))) (listConcat (portShapes (editor, at, n.inputs, false)) (portShapes (editor, at, n.outputs, true)))
+        listConcat (listConcat (listConcat ((CardArts::card (editor, n)).artShapes) (cardTitle (editor, n, at))) (monitorTrace (editor, n, at))) (listConcat (portShapes (editor, at, n.inputs, false)) (portShapes (editor, at, n.outputs, true)))
 
-    nodeArtwork (editor, n, at) = match n.processor
+    (** A module's card, drawn from the skin: the costly part `CardArts` keeps. *)
+    export nodeArtwork (editor, n, at) = match n.processor
         Granular resource _ _ => listConcat (moduleCard (editor, n, at)) (grainTrace (resource, at))
         Oscillator => PrismArt::card (editor, n)
         Lfo => PrismArt::card (editor, n)
@@ -338,9 +341,9 @@ module EditorView
 
     paletteAccess () = mapList (toList (range (0, length EditorState::kinds)), \i => accessible ("Add ${EditorState::title (listGet EditorState::kinds i ?: "")}", 12.0, CanvasGeometry::paletteY (toFloat i) - 17.0, 172.0, 35.0, false))
 
-    toolbar () = [text ("Modules", 380.0, 25.0, 16.0, 236, 12), text ("Patch controls", 500.0, 25.0, 16.0, 236, 12), text ("Audition", 680.0, 25.0, 16.0, 236, 12), text ("Play", 800.0, 25.0, 16.0, 236, 12), text ("Stop", 880.0, 25.0, 16.0, 236, 12), text ("Keyboard", 950.0, 25.0, 16.0, 236, 12)]
+    toolbar () = [text ("Modules", 380.0, 25.0, 16.0, 236, 12), text ("Patch controls", 500.0, 25.0, 16.0, 236, 12), text ("Audition", 680.0, 25.0, 16.0, 236, 12), text ("Play", 800.0, 25.0, 16.0, 236, 12), text ("Stop", 880.0, 25.0, 16.0, 236, 12), text ("Keyboard", 950.0, 25.0, 16.0, 236, 12), text ("Timeline", 1250.0, 25.0, 16.0, 236, 12), text ("Mix", 1390.0, 25.0, 16.0, 236, 12)]
 
-    toolbarItems () = [accessible ("Modules", 370.0, 10.0, 110.0, 45.0, false), accessible ("Patch controls", 490.0, 10.0, 170.0, 45.0, false), accessible ("Audition patch", 670.0, 10.0, 110.0, 45.0, false), accessible ("Play patch", 790.0, 10.0, 70.0, 45.0, false), accessible ("Stop playback", 870.0, 10.0, 70.0, 45.0, false), accessible ("Keyboard", 940.0, 10.0, 120.0, 45.0, false), accessible ("Undo", 1108.0, 15.0, 40.0, 37.0, false), accessible ("Redo", 1160.0, 15.0, 40.0, 37.0, false)]
+    toolbarItems () = [accessible ("Modules", 370.0, 10.0, 110.0, 45.0, false), accessible ("Patch controls", 490.0, 10.0, 170.0, 45.0, false), accessible ("Audition patch", 670.0, 10.0, 110.0, 45.0, false), accessible ("Play patch", 790.0, 10.0, 70.0, 45.0, false), accessible ("Stop playback", 870.0, 10.0, 70.0, 45.0, false), accessible ("Keyboard", 940.0, 10.0, 120.0, 45.0, false), accessible ("Undo", 1108.0, 15.0, 40.0, 37.0, false), accessible ("Redo", 1160.0, 15.0, 40.0, 37.0, false), accessible ("Timeline", 1240.0, 10.0, 120.0, 45.0, false), accessible ("Mix", 1380.0, 10.0, 90.0, 45.0, false)]
 
     rightX (editor, base) = CanvasGeometry::shifted (base, ui::Machines::number (editor.skin, "spareWidth"))
 
@@ -358,10 +361,12 @@ module EditorView
         4 => StopGraph
         6 => Undo
         7 => Redo
+        8 => ShowPage(page = TimelinePage)
+        9 => ShowPage(page = MixPage)
         _ => ShowKeyboard
 
     (** Match the compact command hit boxes in the original header. *)
-    export toolbarAt (editor, x, y) = listGet (filterList (toList (range (0, 8)), \i =>
+    export toolbarAt (editor, x, y) = listGet (filterList (toList (range (0, 10)), \i =>
         match listGet (toolbarAccess editor) i
             Error _ => false
             Success a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0
@@ -375,7 +380,16 @@ module EditorView
         ui::Lettering words x y size colour depth anchor weight => ui::Lettering(letters = words, x = x, y = y, size = size, color = colour, depth = satAdd depth offset, anchor = anchor, weight = weight)
         ui::Path steps outline paint x y scale depth => ui::Path(steps = steps, outline = outline, paint = paint, moveX = x, moveY = y, scale = scale, depth = satAdd depth offset)
 
-    canvas editor =
+    // The Timeline and Mix pages draw the song instead of the patch, on the same surface.
+    songPage editor = match editor.page
+        MixPage => Ui::described (Ui::zoomed (0.75, 1536.0, 828.0, PrismArt::atlas editor.skin, MixView::shapes editor, Surface), listConcat (TimelineView::headerAreas editor) (MixView::access editor))
+        _ => Ui::described (Ui::zoomed (0.75, 1536.0, 828.0, PrismArt::atlas editor.skin, TimelineView::shapes editor, Surface), listConcat (listConcat (TimelineView::headerAreas editor) (TimelineView::laneAccess editor)) [TimelineView::openArea ()])
+
+    canvas editor = match editor.page
+        PatchPage => patchCanvas editor
+        _ => songPage editor
+
+    patchCanvas editor =
         ordered = nodeOrder editor
         nodes = foldList (toList (range (0, length ordered)), [], \(all, i) =>
             match listGet ordered i
@@ -389,7 +403,7 @@ module EditorView
             false => listConcat (customInspector editor) (connectionRows editor)
         shapes = listConcat (listConcat (PrismArt::background editor) details) (listConcat (CableCanvas::shapes editor) (listConcat nodes (listConcat (listAppend (toolbar ()) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))) library)))
         scene = Ui::zoomed (0.75, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
-        access = listConcat (toolbarAccess editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) (PrismArt::sliders (editor, n)))))
+        access = listConcat (toolbarAccess editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) ((CardArts::card (editor, n)).artControls))))
         extra = match editor.paletteShown
             true => paletteAccess ()
             false => []
@@ -415,7 +429,7 @@ module EditorView
 
     root () =
         editor = editorSlice ()
-        pane = match editor.detailsShown
+        pane = match editor.detailsShown && TimelineView::pageIndex editor.page == 0
             false => canvas editor
             true => Ui::aside (canvas editor, ui::Trailing, inspector editor, 280, Surface)
         grow = ui::Frames::plain
@@ -424,7 +438,7 @@ module EditorView
             false => workspace
             true => Ui::column [workspace, keyboardDock editor]
 
-    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}"
+    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.rollBar}:${editor.songTicket}:${editor.songPath}:${length editor.song.tracks}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =
