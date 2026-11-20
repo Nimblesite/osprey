@@ -201,4 +201,6 @@ Rule from tonight: a commit to `packages/synth` is tested against `examples/daw`
 ## Verification
 
 - [x] The 22 DAW journeys passed under GC and ARC. The generated field codec also round-tripped the edited 17-track project with all 2,913 notes and every JSON value equal.
+- [x] 21 Nov 01:16: the daw suite passes 24/24 (Render song, buses and sidechain, arrangements), checked on a clean `git archive` of HEAD. `make -C src/toolchain/targets/macos/tests daw-events-headless` passes on the FerroUI host: Mix fader drags 1.16 ms mean (7.35 ms worst, 136 events), Timeline taps 0.51 ms (0.95 ms, 119), Prism drags 3.68 ms (4.00 ms, 55).
+- [ ] The duplication gate is green: 4.1% against the 4.00% ceiling on 21 Nov.
 - [ ] `make ci` passes; a coordinated push is made under the TMC lock.
