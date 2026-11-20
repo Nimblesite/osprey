@@ -972,3 +972,5 @@ busJourney () =
     succeeds (readFile "src/osprey/examples/daw/tracks/codex-version.json", \text => succeeds (daw::SongFiles::decode text, projectBuses))
 
 test ("bus EQ passes at 0 dB, the sidechain ducks a bus by exactly its curve, routing and project buses are checked", \() => Runtime::guarded busJourney)
+
+test ("arrangements lay tracks on the buses with exact pan and send, place notes on beat frames and refuse bad songs", \() => Runtime::guarded arrangementsJourney)
