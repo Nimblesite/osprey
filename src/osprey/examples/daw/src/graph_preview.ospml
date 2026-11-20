@@ -40,20 +40,12 @@ module GraphPreview
             BlockReady held clips => finished (editor, graph, held, clips)
             BlockWaiting block pending => waiting (editor, block, pending)
 
-    requiresHost n = match n.processor
-        Lfo => true
-        ModulatedGain => true
-        External _ => true
-        MidiNotes => true
-        Stereo => true
-        _ => length (filterList (listConcat n.inputs n.outputs, \p => p.channels != 1)) > 0
-
     (** Edits remain possible during rendering, but cannot mutate the captured graph or bindings. *)
     begin (editor, platform, continuous) = match platform == "macos" || (platform == "windows" && editor.audioPath != "")
         false => Runtime::step (editor(message = "Launch Prism with a supported audio device adapter."))
         true => match editor.renderTicket != ""
             true => Runtime::step (editor(message = "The current graph audition is still rendering."))
-            false => match platform == "macos" && continuous == false && editor.workerPath == "" && editor.audioPath == "" && length (filterList (editor.graph.nodes, requiresHost)) == 0
+            false => match platform == "macos" && continuous == false && editor.workerPath == "" && editor.audioPath == "" && length (filterList (editor.graph.nodes, ClipLayouts::requiresClips)) == 0
                 true => Preview::play (editor, platform)
                 false => match editor.renderSerial == 9223372036854775807
                     true => problem (editor, "No more render identities are available.")

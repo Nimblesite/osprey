@@ -105,6 +105,14 @@ module GraphClips
             false => Error(message = "Stereo-to-mono requires two audio channels.")
             true => Success(value = pairs clip.clipSamples)
 
+    (** The mono track panner accepts a mono sink or the mean of its stereo sink's left and right. *)
+    export trackSamples clip = match clip.clipChannels
+        1 => Success(value = clip.clipSamples)
+        2 => match length clip.clipSamples % 2 == 0
+            true => Success(value = pairs clip.clipSamples)
+            false => Error(message = "The stereo output ended on an incomplete frame.")
+        _ => Error(message = "Choose a mono or stereo track output.")
+
     pairs samples = match samples
         [] => []
         [left, ...rest] => match rest
@@ -124,13 +132,9 @@ module GraphClips
 
     joinedInlets (graph, clips, n) = foldList (toList (range (0, length n.inputs)), Success(value = []), \(outcome, index) => withInlet (graph, clips, n, outcome, index))
 
-    appended (values, outcome) = match outcome
-        Error _ => Error(message = "index out of bounds")
-        Success sample => Success(value = listAppend values sample)
-
     woven (sources, outcome, frame) = match outcome
         Error why => Error(message = why)
-        Success samples => foldList (sources, Success(value = samples), \(outcome, clip) => Outcomes::carried (outcome, \values => appended (values, listGet clip.clipSamples frame)))
+        Success samples => foldList (sources, Success(value = samples), \(outcome, clip) => Outcomes::carried (outcome, \values => ClipInputs::appended (values, listGet clip.clipSamples frame)))
 
     (** Interleave N one-channel inputs into one N-channel clip, in inlet order. *)
     joined (graph, clips, n) = match joinedInlets (graph, clips, n)
@@ -147,7 +151,7 @@ module GraphClips
 
     remapped (clip, entries, outcome, frame) = match outcome
         Error why => Error(message = why)
-        Success samples => foldList (entries, Success(value = samples), \(outcome, entry) => Outcomes::carried (outcome, \values => appended (values, entrySample (clip, frame, entry))))
+        Success samples => foldList (entries, Success(value = samples), \(outcome, entry) => Outcomes::carried (outcome, \values => ClipInputs::appended (values, entrySample (clip, frame, entry))))
 
     (** Copy each mapped input channel (or silence) per frame; the map length fixes the output width. *)
     routing (graph, clips, n, entries) = match ClipInputs::routed (graph, clips, n.identity, 0)

@@ -19,7 +19,7 @@ module PatchVoices
         Pitched => ArrangeMath::scaled (setting.value, hertz note)
         Struck => ArrangeMath::scaled (setting.value, note.velocity)
 
-    constructorKey (item, key) = item.component == "wavetable" && key == "harmonics" || item.component == "spectral" && key == "hop"
+    constructorKey (item, key) = item.component == "route" && startsWith key "channel" || item.component == "wavetable" && key == "harmonics" || item.component == "spectral" && key == "hop"
 
     // Older project files imply the original table and hop. Explicit construction settings are whole constants.
     option (item, key, fallback) = match filterList (item.settings, \setting => setting.key == key)
@@ -71,7 +71,31 @@ module PatchVoices
         "smoother" => ok (synth::Components::smoother (item.identity, 0.01))
         _ => resonant item
 
+    // [SYNTH-GRAPH-CHANNELS] Each output's channelN constant selects an input, or -1 for silence.
+    mapped (item, count) = match synth::Graphs::channelCount count
+        false => Error(message = "A channel route needs an output for each entry in its map.")
+        true => chained (foldList (toList (range (0, count)), ok [], \(result, i) =>
+            chained (result, \entries => chained (option (item, "channel${i}", -2), \entry =>
+                match entry >= -1 && entry < item.size
+                    true => ok (listAppend entries entry)
+                    false => Error(message = "Route output ${i} names a missing input channel.")))), \entries => ok (synth::Components::routeChannels (item.identity, item.size, entries)))
+
+    channels item = match synth::Graphs::channelCount item.size
+        false => Error(message = "The graph cannot prepare a port with ${item.size} channels.")
+        true => match item.component
+            "split" => ok (synth::Components::split (item.identity, item.size))
+            "join" => ok (synth::Components::join (item.identity, item.size))
+            _ => mapped (item, length item.settings)
+
+    midiOscillator identity =
+        oscillator = synth::Components::sine (identity, 440.0)
+        ok (oscillator(inputs = [synth::Port(name = "notes", rate = synth::Events, channels = 1, unit = synth::Notes)]))
+
     made item = match item.component
+        "split" => channels item
+        "join" => channels item
+        "route" => channels item
+        "midiOscillator" => midiOscillator item.identity
         "midiNote" => ok (synth::Components::midiNote (item.identity, 60.0, 0.8, 6000.0))
         "stereo" => ok (synth::Components::stereo item.identity)
         "downmix" => ok (synth::Components::downmix item.identity)
@@ -140,8 +164,8 @@ module PatchVoices
             Error why => run(fault = why)
             Success next => NoteRun(held = next, samples = listConcat run.samples next.samples, fault = "")
 
-    // Whole 8,192-frame blocks, then the remainder.
-    counts total = listAppend (mapList (toList (range (0, intDiv total 8192)), \_ => 8192)) (satSub total (satMul (intDiv total 8192) 8192))
+    // The scheduler carries state across every block, including the final partial block.
+    counts (total, limit) = listAppend (mapList (toList (range (0, intDiv total limit)), \_ => limit)) (total % limit)
 
     heard (samples, frame) = match listGet samples frame
         Error _ => 0.0
@@ -153,7 +177,7 @@ module PatchVoices
         true => ok run.samples
         false => Error(message = run.fault)
 
-    played (graph, plan, noteSpan, routing, rate) = chained (synth::Renderer::start graph, \initial => chained (finished (foldList (counts noteSpan.total, NoteRun(held = initial, samples = [], fault = ""), \(run, count) => block (plan, graph, rate, run, count))), \samples => ok (shaped (samples, noteSpan, routing, rate))))
+    played (graph, plan, noteSpan, routing, rate) = chained (synth::Renderer::start graph, \initial => chained (finished (foldList (counts (noteSpan.total, 8192), NoteRun(held = initial, samples = [], fault = ""), \(run, count) => block (plan, graph, rate, run, count))), \samples => ok (shaped (samples, noteSpan, routing, rate))))
 
     built (nodes, routing) = match synth::Patches::built (nodes, cabled routing)
         synth::Invalid fault => Error(message = "The routing is not a valid graph: ${fault}.")
@@ -162,9 +186,30 @@ module PatchVoices
     (** The routing as one graph, its settings resolved for `note`: what a note plays and Prism edits. *)
     export patched (note, routing) = chained (foldList (routing.nodes, ok [], \(outcome, item) => nodeAdded (note, outcome, item)), \nodes => built (nodes, routing))
 
+    clipBlock (graph, sink, run, count) = match run.fault == "" && count > 0
+        false => run
+        true => match synth::GraphClips::next (graph, run.held, count)
+            Error why => run(fault = why)
+            Success step => match step
+                synth::BlockWaiting _ _ => run(fault = "An external plug-in needs its audio worker.")
+                synth::BlockReady held clips => match chained (synth::ClipInputs::completed (clips, sink), synth::GraphClips::trackSamples)
+                    Error why => run(fault = why)
+                    Success audio => run(held = held, samples = listConcat run.samples audio)
+
+    clipVoice (graph, noteSpan, routing, rate) = match rate == 48000.0
+        false => Error(message = "MIDI, control and multichannel patch voices require a 48000 Hz project.")
+        true => match filterList (graph.nodes, \n => n.processor == synth::Sink)
+            [sink] =>
+                initial = NoteRun(held = synth::GraphState(graphPosition = 0, graphKernels = []), samples = [], fault = "")
+                run = foldList (counts (noteSpan.total, 1024), initial, \(current, count) => clipBlock (graph, sink.identity, current, count))
+                chained (finished run, \audio => ok (shaped (audio, noteSpan, routing, rate)))
+            _ => Error(message = "The patch needs one audio output.")
+
     routed (graph, noteSpan, routing, rate) = match synth::Graphs::prepare graph
         synth::Invalid fault => Error(message = "The routing cannot be scheduled: ${fault}.")
-        synth::Valid plan => played (graph, plan, noteSpan, routing, rate)
+        synth::Valid plan => match length (filterList (graph.nodes, synth::ClipLayouts::requiresClips)) > 0
+            true => clipVoice (graph, noteSpan, routing, rate)
+            false => played (graph, plan, noteSpan, routing, rate)
 
     (** Render one note through the routing: attack and release are 0.001–10 s. *)
     export render (note, noteSpan, rate, routing) = match routing.attack >= 0.001 && routing.attack <= 10.0 && routing.release >= 0.001 && routing.release <= 10.0

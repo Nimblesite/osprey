@@ -8,9 +8,28 @@ module ClipInputs
         [clip] => Success(value = clip)
         _ => Error(message = "A graph source has not rendered exactly once.")
 
+    // A Split stores one interleaved clip. Consumers that ask for a complete inlet need just the wired outlet.
+    splitOutlet (clip, outlet) = match outlet >= 0 && outlet < clip.clipChannels && length clip.clipSamples % clip.clipChannels == 0
+        false => Error(message = "The split outlet is outside its audio layout.")
+        true => Outcomes::carried (filterIndexedChannel (clip, outlet), \samples => Success(value = clip(clipChannels = 1, clipSamples = samples)))
+
+    (** Append a checked audio sample to an interleaved or extracted channel. *)
+    export appended (values, outcome) = match outcome
+        Error _ => Error(message = "index out of bounds")
+        Success sample => Success(value = listAppend values sample)
+
+    filterIndexedChannel (clip, outlet) = foldList (toList (range (0, intDiv (length clip.clipSamples) clip.clipChannels)), Success(value = []), \(result, frame) =>
+        Outcomes::carried (result, \samples => appended (samples, listGet clip.clipSamples (satAdd (satMul frame clip.clipChannels) outlet))))
+
+    fromOutlet (graph, cable, clip) = match Graphs::node (graph, cable.source)
+        Invalid _ => Error(message = "The routed source is missing.")
+        Valid n => match n.processor
+            Split => splitOutlet (clip, cable.outlet)
+            _ => Success(value = clip)
+
     (** Resolve the cable feeding one declared inlet. *)
     export routed (graph, clips, identity, inlet) = match filterList (graph.cables, \c => c.destination == identity && c.inlet == inlet)
-        [cable] => completed (clips, cable.source)
+        [cable] => Outcomes::carried (completed (clips, cable.source), \clip => fromOutlet (graph, cable, clip))
         _ => Error(message = "Every graph input needs exactly one connected source.")
 
     (** Control signals broadcast across audio channels without changing audio cable widths; a split

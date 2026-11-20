@@ -11,7 +11,7 @@ module PatchRecords
     named n = match n.processor
         synth::Exciter seed => Success(value = PatchNode(identity = 0, component = "exciter", size = 0, seed = seed, asset = "", settings = []))
         synth::Granular resource capacity seed => Success(value = PatchNode(identity = 0, component = "grainCloud", size = capacity, seed = seed, asset = ui::Pick::either (resource.name == PatchVoices::builtinName, "", resource.name), settings = []))
-        synth::Oscillator => plain "sine"
+        synth::Oscillator => plain (ui::Pick::either (length n.inputs == 0, "sine", "midiOscillator"))
         synth::TableOscillator table => configured ("wavetable", table.size, "harmonics", table.harmonics)
         synth::Additive => plain "additive"
         synth::PhaseOperator => plain "operator"
@@ -38,10 +38,17 @@ module PatchRecords
         synth::Mixer => plain "mixer"
         synth::Delay samples => sized ("delay", samples)
         synth::MidiNotes => plain "midiNote"
+        synth::Split => sized ("split", length n.outputs)
+        synth::Join => sized ("join", length n.inputs)
+        synth::Route entries => savedMap (n, entries)
         synth::Stereo => plain "stereo"
         synth::Downmix => plain "downmix"
         synth::Sink => plain (ui::Pick::either (stereo n.inputs, "stereoOutput", "output"))
         _ => Error(message = "${synth::Kinds::kind n.processor} modules can't be saved in a song project yet.")
+
+    savedMap (n, entries) = match listGet n.inputs 0
+        Error _ => Error(message = "The channel route needs an input port.")
+        Success port => synth::Outcomes::carried (sized ("route", port.channels), \item => Success(value = item(settings = mapList (toList (range (0, length entries)), \i => Setting(key = "channel${i}", value = toFloat (listGet entries i ?: -1), follow = Constant)))))
 
     stereo inputs = match listGet inputs 0
         Success port => port.channels == 2

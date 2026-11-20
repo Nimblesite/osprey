@@ -935,7 +935,8 @@ transportJourney () =
     expect (asked stopped, [ui::Cancel(cancelled = "daw-song:play:${barFolder}")])
     expect (synth::DawSession::phase stopped.stepStore, "Stopped")
     held = stopped.stepStore
-    expect (synth::DawSession::phase held(renderDeviceKey = "device"), "Auditioning")
+    auditioning = held(renderDeviceKey = "device")
+    expect (synth::DawSession::phase auditioning, "Auditioning")
     home = synth::DawSession::stop stopped.stepStore
     said (home, "", "Nothing is playing; the playhead is back at bar 1.")
     expect (stopped.stepStore.rollBar, 5)
@@ -1027,3 +1028,31 @@ test ("bus EQ passes at 0 dB, the sidechain ducks a bus by exactly its curve, ro
 test ("arrangements lay tracks on the buses with exact pan and send, place notes on beat frames and refuse bad songs", \() => Runtime::guarded arrangementsJourney)
 
 test ("every synthesis family plays a real, finite, repeatable note through the song renderer, pitched ones in tune", \() => Runtime::guarded familiesJourney)
+
+// [SYNTH-SHOWCASE] Open the shipped project, round-trip each wired patch through the studio,
+// and sound the two voices whose event, control and stereo lanes cross channel boundaries.
+showcasePatch (voice, routing) =
+    preview = daw::Note(pitch = 60, start = 0.0, length = 0.03, velocity = 1.0)
+    succeeds (daw::PatchVoices::patched (preview, routing), \graph =>
+        succeeds (daw::PatchRecords::routed (routing, graph), \saved =>
+            succeeds (daw::PatchVoices::patched (preview, saved), \again => expect (structuralEquals (graph, again), true))))
+    match voice.name == "Spore wheel" || voice.name == "Rivet pulse"
+        true => succeeds (daw::NoteRenders::render (preview, 138.0, 48000.0, voice.instrument), \samples =>
+            expect (length samples > 1000, true)
+            expect (ui::Lists::any (samples, \value => abs value > 0.00001), true))
+        false => expect (length voice.notes > 0, true)
+
+showcaseKinds voice = match voice.instrument
+    daw::PatchInstrument routing => mapList (routing.nodes, \n => n.component)
+    _ => []
+
+showcaseVoice voice = match voice.instrument
+    daw::PatchInstrument routing => showcasePatch (voice, routing)
+    _ => expect (length voice.notes > 0, true)
+
+showcaseProject project =
+    kinds = ui::Lists::flatten (mapList (project.tracks, showcaseKinds))
+    forEachList (["sine", "operator", "additive", "wavetable", "exciter", "bowed", "resonator", "modal", "waveguide", "strikeComb", "fractionalDelay", "lossFilter", "allpass", "lowpass", "modulatedLowpass", "shaper", "shifter", "spectral", "smoother", "reverb", "grainCloud", "lfo", "gain", "modulatedGain", "stereoModulatedGain", "mixer", "delay", "midiNote", "midiOscillator", "stereo", "split", "join", "route", "downmix", "stereoOutput", "output"], \kind => expect (ui::Lists::any (kinds, \name => name == kind), true))
+    forEachList (project.tracks, showcaseVoice)
+
+test ("Silt Relay opens its wired synth families and sounds its granular and MIDI channel paths", \() => ui::Runtime::guarded (\() => succeeds (readFile "src/osprey/examples/daw/tracks/silt-relay.json", \source => succeeds (daw::SongFiles::decode source, showcaseProject))))

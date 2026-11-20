@@ -16,7 +16,10 @@ module Graphs
 
     validParameter p = p.key != "" && p.minimum <= p.initial && p.initial <= p.maximum && abs p.minimum <= 1000000000000.0 && abs p.maximum <= 1000000000000.0
 
-    validPort p = p.name != "" && p.channels >= 1 && p.channels <= 64
+    (** The channel count the current graph engine can prepare for one port. *)
+    export channelCount count = count >= 1 && count <= 64
+
+    validPort p = p.name != "" && channelCount p.channels
 
     all<T> : (List<T>, (T) -> bool) -> bool
     all (items, predicate) = foldList (items, true, \(ok, item) => ok && predicate item)
