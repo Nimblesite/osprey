@@ -20,6 +20,13 @@ The original `codex/prism-synth-routing` work merged as PR #412. Completion cont
 - [ ] Run static analysis, required CI preparation and coverage checks; coordinate a single validated push and inspect its CI result.
 - [ ] Record remaining limitations and remove only this task's temporary processes/artifacts.
 
+## Timeline, track patches and bus routing [PRISM-ROUTING-TIMELINE]
+
+- [x] Register the [six design screenshots and interaction contract](../designs/prism-timeline/README.md) and the [typed routing model](../designs/prism-timeline/routing.td) for the combined Prism DAW.
+- [ ] Open the same track from Timeline and Prism, with notes, track gain, pan, Master output and Space send backed by the arrangement. Verify track switching with a patch instrument and a built-in voice.
+- [ ] Support nested track and bus graphs, parallel routes, per-port sends and named groups. Exercise the design walkthrough with a second send from an occupied source outlet and a refused zero-delay loop.
+- [ ] Open or focus the detached Timeline from Prism, preserving the session, playhead, selected track and undo history across both windows. Compare the rendered states with the design on the FerroUI hosts.
+
 ## Acceptance evidence [PRISM-ROUTING-VERIFY]
 
 A graph-edit test must add multiple instances, wire chains and fan-out, reject incompatible ports and illegal cycles, remove/reconnect routes, delete a connected node and verify unchanged snapshots on rejection. Audio tests must distinguish the sounds before and after a routing change, retain oscillator/filter state under parameter-only edits, and exercise block partitions and note-off ownership. UI tests must perform the edits through visible controls, not only construct the final graph directly.
