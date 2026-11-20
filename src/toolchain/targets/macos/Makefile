@@ -9,7 +9,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow songs-render songs-play synth storage tally probe
+.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow songs-render songs-play synth synth-ferroui storage tally probe
 
 .PHONY: pocket-orchestra _pocket-orchestra-models
 ## pocket-orchestra: Open Light Orchestra: this Mac plays audio, phones join by QR and WebSocket.
@@ -97,6 +97,12 @@ signal-flow: _runtime_macos
 synth: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh
+
+## synth-ferroui: Open Prism on the FerroUI host instead of GPUI (src/toolchain/hosts/ferroui).
+##        [NATIVE-SHM-BOUNDARY]
+synth-ferroui: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/ferroui/scripts/prism.sh
 
 ## storage: Rebuild the compiler, the Mac runtime and the Osprey Storage app,
 ##          then open it: where your disk space goes, folder by folder.

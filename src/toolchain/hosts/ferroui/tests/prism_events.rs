@@ -1,0 +1,102 @@
+//! Prism's interaction budget, end to end through the real shared-memory boundary
+//! ([NATIVE-SHM-EVENT], [PRISM-ROUTING-EDITOR]): the linked Prism synth opens its studio, a module is
+//! dragged the way a hand drags it, and every pointer event must leave the application's `event`
+//! export within one 60 Hz display frame. Only the export's own time is measured
+//! (`ffi::APP_MICROS`), so the host and its toolkit are not part of the budget.
+//!
+//! Needs Prism linked: `scripts/prism.sh` builds `target/prism-app/libOspreyApp.a`, and the test
+//! runs with `OSPREY_NATIVE_APP_DIR` naming it (README.md).
+
+use std::sync::atomic::Ordering;
+
+use ferroui_osprey_native::events::Touch;
+use ferroui_osprey_native::ffi::{self, Library};
+use ferroui_osprey_native::regions::Regions;
+use ferroui_osprey_native::rows::Shown;
+use ferroui_osprey_native::tree::Tree;
+
+/// One display frame at 60 Hz, in milliseconds.
+const FRAME_MS: f64 = 1000.0 / 60.0;
+/// The Oscillator module's title bar in the studio preset, in scene units.
+const OSCILLATOR: (f64, f64) = (131.0, 376.0);
+/// Drag moves per run, and the first few left out of the budget while caches fill.
+const MOVES: usize = 60;
+const WARM_UP: usize = 5;
+/// The shapes the studio's canvas and keyboard draw, at least.
+const STUDIO_SHAPES: usize = 250;
+
+fn machine() -> String {
+    format!(
+        "{}/../../../osprey/packages/signal_flow/signal_flow.machine.json",
+        env!("CARGO_MANIFEST_DIR")
+    )
+}
+
+/// The control number of the first scene at or below `node`, depth first.
+fn scene(node: &Tree) -> Option<i64> {
+    match node {
+        Tree::Record(members) => match members.get("kind") {
+            Some(Tree::Text(kind)) if kind == "scene" => match members.get("event") {
+                Some(Tree::Whole(ordinal)) => Some(*ordinal),
+                _ => None,
+            },
+            _ => members.values().find_map(scene),
+        },
+        Tree::Items(items) => items.iter().find_map(scene),
+        _ => None,
+    }
+}
+
+fn shapes(shown: &Shown) -> usize {
+    shown.scenes.values().map(|scene| scene.shapes.len()).sum()
+}
+
+/// One pointer event; returns its frame and the milliseconds the application took.
+fn point(canvas: i64, (x, y): (f64, f64), down: bool) -> (Shown, f64) {
+    match Library::event(0, &Touch::pointer(canvas, x, y, down, false)) {
+        Ok(shown) => (shown, ffi::APP_MICROS.load(Ordering::Relaxed) as f64 / 1000.0),
+        Err(problem) => panic!("Prism refused a pointer event at {x},{y}: {problem}"),
+    }
+}
+
+/// The scene point of move `index`: around a circle from the module's title bar.
+fn along(index: usize) -> (f64, f64) {
+    let turn = index as f64 / 30.0 * std::f64::consts::TAU;
+    (OSCILLATOR.0 + 120.0 * turn.sin(), OSCILLATOR.1 + 60.0 * (1.0 - turn.cos()))
+}
+
+#[test]
+fn dragging_a_prism_module_answers_every_pointer_event_within_one_display_frame() {
+    assert_eq!(Library::init(), Ok(()), "Prism's top level must run");
+    let arguments = vec!["--machine".to_owned(), machine()];
+    assert_eq!(Library::arguments(&arguments), Ok(()), "Prism takes its machine document");
+    let opened = Library::open(0, 0, "macos", "/tmp", true);
+    let Ok(first) = opened else {
+        panic!("Prism must draw its first frame: {opened:?}");
+    };
+    assert!(shapes(&first) >= STUDIO_SHAPES, "the studio draws {} shapes", shapes(&first));
+    let mut regions = Regions::new();
+    assert_eq!(regions.adopt(&first), Ok(()), "the first frame tells its regions");
+    let Some(canvas) = regions.get("root").and_then(|root| scene(&root.node)) else {
+        panic!("Prism's studio must draw a canvas");
+    };
+
+    let (pressed, _) = point(canvas, OSCILLATOR, true);
+    assert!(shapes(&pressed) >= STUDIO_SHAPES, "pressing keeps the studio drawn");
+    let mut costs = Vec::with_capacity(MOVES);
+    for index in 1..=MOVES {
+        let (moved, ms) = point(canvas, along(index), true);
+        assert!(shapes(&moved) >= STUDIO_SHAPES, "move {index} keeps the studio drawn");
+        assert!(moved.diagnostics().next().is_none(), "move {index} is not refused");
+        costs.push(ms);
+    }
+    let (released, _) = point(canvas, along(MOVES), false);
+    assert!(shapes(&released) >= STUDIO_SHAPES, "releasing keeps the studio drawn");
+
+    let measured = &costs[WARM_UP..];
+    let mean = measured.iter().sum::<f64>() / measured.len() as f64;
+    let worst = measured.iter().copied().fold(0.0, f64::max);
+    println!("prism drag: mean {mean:.2} ms, worst {worst:.2} ms over {} moves", measured.len());
+    assert!(mean < FRAME_MS, "a drag move takes {mean:.2} ms on average; one frame is {FRAME_MS:.2} ms");
+    assert!(worst < 2.0 * FRAME_MS, "the slowest drag move takes {worst:.2} ms; two frames are {:.2} ms", 2.0 * FRAME_MS);
+}
