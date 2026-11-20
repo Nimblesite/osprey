@@ -96,6 +96,10 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 
 - [x] Timeline, Mix and Patch pages on FerroUI ([screens](../../src/osprey/examples/daw/screens)).
 - [ ] Screenshot goldens compared automatically in the app test targets.
+- [x] Native video journey ([DAW-VIDEO]): 23 clicks across five voice types, Mix and Play bars; each click changes the screen; Play rendered 6.8 MB of bars audio in 26 s.
+- [ ] Fix: a render cancelled mid-way leaves a 0-byte `piece.wav` that the next Play replays as unchanged (found by [DAW-VIDEO]).
+- [ ] Fix: Patch → Timeline after Audition ignored the click in 1 of 3 native runs (found by [DAW-VIDEO]).
+- [ ] Audition audio in the video soundtrack (the host writes what it plays).
 - [x] Piano-roll note selection and velocity edits are saved into the project.
 - [x] Native bar-9 journey on a copy of the codex project. Selected keysL, changed gain, pan and Space, inserted a delay, saved, reopened and played 13.75 seconds of stereo at 48 kHz.
 

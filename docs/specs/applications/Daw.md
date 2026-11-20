@@ -113,6 +113,10 @@ One window shows three views of one session. **Timeline** shows the tracks, the 
 
 **Play bars** plays the two bars shown in the piano roll. **Save project** writes the current track patch and its layout alongside the timeline and mix without changing the view. Render a full song with `make -C src/toolchain/targets/macos daw-render`.
 
+### Video journey [DAW-VIDEO]
+
+`make -C src/toolchain/targets/macos/tests daw-video` opens the codex project in a real window and clicks it the way a user does. It opens and auditions the patch of each voice type: a patch graph, an FM operator, a modal bell, a bowed string and a drum. Then it visits Mix and presses **Play bars**. After every click a window screenshot must differ from the one before, and Play must write readable audio, or the journey fails. It records the window to `target/daw-video/prism-journey.mp4`, with the rendered bars as the soundtrack at the moment they play, and keeps the step screenshots beside it. Live auditions are not in the soundtrack, because the host plays them without writing a file.
+
 ## Math [DAW-MATH]
 
 Every formula is written in Lean and its Osprey code is generated ([MATH-CODE](../tooling/MathToCode.md)). [ArrangeMath.lean](../../../src/osprey/examples/daw/src/ArrangeMath.lean) holds timing, envelopes, pan, the limiter, mix ranges and the excerpt window. [TimelineGeometry.lean](../../../src/osprey/examples/daw/src/TimelineGeometry.lean) holds bars and page geometry. Osprey code calls these functions and contains no hand-written formulas.
