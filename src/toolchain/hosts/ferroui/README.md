@@ -7,7 +7,7 @@ FerroUI's drawing context. The host began as FerroUI's `ferroui-osprey-native` b
 ([PR #967](https://github.com/wieslawsoltes/FerroUI/pull/967)); FerroUI is MIT, credited in
 [NOTICE.md](NOTICE.md) with its licence in [LICENSE-FerroUI](LICENSE-FerroUI).
 
-`make -C src/toolchain/targets/macos synth-ferroui` builds and opens the Prism synth on it.
+`make -C src/toolchain/targets/macos daw` builds and opens the daw (its Prism patch studio) on it.
 
 # Prism Synth on FerroUI: can FerroUI replace GPUI?
 

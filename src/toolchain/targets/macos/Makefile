@@ -9,7 +9,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow daw-render daw-play synth synth-ferroui storage tally probe
+.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow daw daw-gpui daw-render daw-play storage tally probe
 
 .PHONY: pocket-orchestra _pocket-orchestra-models
 ## pocket-orchestra: Open Light Orchestra: this Mac plays audio, phones join by QR and WebSocket.
@@ -92,15 +92,15 @@ signal-flow: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/packages/signal_flow/app/run.sh
 
-## synth: Open Prism's signal-flow studio, inspector and playable keyboard.
+## daw-gpui: Open the daw's Prism patch studio on the GPUI host instead of FerroUI.
 ##        [PRISM-ROUTING-EDITOR] [PRISM-ROUTING-AUDIO]
-synth: _runtime_macos
+daw-gpui: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/daw/run.sh
 
-## synth-ferroui: Open Prism on the FerroUI host instead of GPUI (src/toolchain/hosts/ferroui).
-##        [NATIVE-SHM-BOUNDARY]
-synth-ferroui: _runtime_macos
+## daw: Open the daw on the FerroUI host (src/toolchain/hosts/ferroui): its Prism patch studio,
+##      inspector and playable keyboard. [NATIVE-SHM-BOUNDARY] [PRISM-ROUTING-EDITOR]
+daw: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/ferroui/scripts/prism.sh
 
@@ -119,7 +119,7 @@ SONG_WAV = $(SONG_DIR)/song.wav
 daw-render:
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	mkdir -p target/daw
-	$(BIN) build src/osprey/examples/daw -o target/daw/daw
+	$(BIN) build src/osprey/examples/daw/render -o target/daw/daw
 	target/daw/daw "$(SONG)" "$(SONG_DIR)"
 
 ## daw-play: Play SONG's rendered WAV with afplay; it never renders (run daw-render first).

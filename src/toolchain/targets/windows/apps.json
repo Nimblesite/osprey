@@ -39,7 +39,7 @@
       ]
     },
     "synth": {
-      "source": "src/osprey/examples/synth",
+      "source": "src/osprey/examples/daw",
       "name": "Prism Synth",
       "description": "Play a patch from the keyboard under the signal-flow editor.",
       "capabilities": [],

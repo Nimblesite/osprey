@@ -114,7 +114,7 @@ jobs:
           ./target/release/osprey test src/osprey/packages/uitest/tests
           ./target/release/osprey test src/osprey/examples/casting/test
           ./target/release/osprey test src/osprey/packages/signal_flow/tests
-          ./target/release/osprey test src/osprey/examples/synth/test
+          ./target/release/osprey test src/osprey/examples/daw/test
 
       - name: Example suites
         run: |

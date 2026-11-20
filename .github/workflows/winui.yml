@@ -110,7 +110,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          mkdir -p src/osprey/examples/storage/build src/osprey/examples/gpui/flock/build src/osprey/examples/gpui/painting/build src/osprey/packages/signal_flow/app/build src/toolchain/hosts/gpui/probe/build src/osprey/examples/casting/build src/osprey/examples/tally/build src/osprey/examples/synth/build src/osprey/examples/agent/build
+          mkdir -p src/osprey/examples/storage/build src/osprey/examples/gpui/flock/build src/osprey/examples/gpui/painting/build src/osprey/packages/signal_flow/app/build src/toolchain/hosts/gpui/probe/build src/osprey/examples/casting/build src/osprey/examples/tally/build src/osprey/examples/daw/build src/osprey/examples/agent/build
           pids=()
           ./target/release/osprey.exe build src/osprey/examples/storage --target=windows-x64 -o src/osprey/examples/storage/build/storage.dll &
           pids+=("$!")
@@ -126,7 +126,7 @@ jobs:
           pids+=("$!")
           ./target/release/osprey.exe build src/osprey/examples/tally --target=windows-x64 --no-warnings -o src/osprey/examples/tally/build/tally.dll &
           pids+=("$!")
-          ./target/release/osprey.exe build src/osprey/examples/synth --target=windows-x64 --no-warnings -o src/osprey/examples/synth/build/synth.dll &
+          ./target/release/osprey.exe build src/osprey/examples/daw --target=windows-x64 --no-warnings -o src/osprey/examples/daw/build/synth.dll &
           pids+=("$!")
           ./target/release/osprey.exe build src/osprey/examples/agent --target=windows-x64 --no-warnings -o src/osprey/examples/agent/build/agent.dll &
           pids+=("$!")
@@ -214,7 +214,7 @@ jobs:
             probe = 'src/toolchain/hosts/gpui/probe/build/probe.dll'
             casting = 'src/osprey/examples/casting/build/casting.dll'
             tally = 'src/osprey/examples/tally/build/tally.dll'
-            synth = 'src/osprey/examples/synth/build/synth.dll'
+            synth = 'src/osprey/examples/daw/build/synth.dll'
             agent = 'src/osprey/examples/agent/build/agent.dll'
           }
           $failed = @()

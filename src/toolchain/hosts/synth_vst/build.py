@@ -385,7 +385,7 @@ def prism_design(host, headless):
     """[PRISM-ROUTING-PRESENTATION] Real module insertion, cables and independently docked keys."""
     folder = ROOT / "target/pr-validation" / ("prism-design-headless" if headless else "prism-design-window")
     folder.mkdir(parents=True, exist_ok=True)
-    script = ROOT / "src/osprey/examples/synth/self-test.json"
+    script = ROOT / "src/osprey/examples/daw/self-test.json"
     run(str(host), "--machine", str(ROOT / "src/osprey/packages/signal_flow/signal_flow.machine.json"),
         "--self-test", str(script), str(folder), *(["--headless"] if headless else []))
 

@@ -19,7 +19,7 @@ The keyboard changes the source playback rate for the selected musical pitch, al
 ## Run
 
 ```sh
-make -C src/toolchain/targets/macos synth             # or: bash src/osprey/examples/synth/run.sh
+make -C src/toolchain/targets/macos daw-gpui          # or: bash src/osprey/examples/daw/run.sh
 make -C src/toolchain/targets/windows synth           # in its sandbox on Windows
 make -C src/toolchain/targets/windows/tests synth     # its Windows self-test against goldens/windows
 ```

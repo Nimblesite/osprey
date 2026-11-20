@@ -93,7 +93,7 @@ pocket-orchestra:
 
 ## synth: The Prism synth, driven by accessible label. [UI-MACHINE-TEST]
 synth:
-	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/synth/test
+	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/daw/test
 
 ## workbench: The Proof Workbench's imported-mathematics cases under GC and ARC.
 workbench: build
