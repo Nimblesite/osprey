@@ -164,6 +164,21 @@ The runtime fixes alone reach 0.79× real time. The 2× target needs the code ge
 - [ ] In-place reuse of unique records and lists in generated code.
 - [ ] `FloatBuffer` primitive.
 
+**Accountability, 01:06 on 21 Nov.** Each owner was asked for a hash and a measured time.
+
+| Owner | Asked for | Delivered |
+|---|---|---|
+| ferroui-prism-lead (lead) | Interface target; runtime and code generation rows | Interface target met (4.8 ms mean). ARC registry b730e7d28: 42.3 s to 35.0 s. Two code generation and two renderer experiments measured and rejected, recorded above. Engine target not met: 0.79× real time against 2× |
+| synth-advanced | States folded in order, ring delays, block kernels | None landed. Reported the ring-delay blocker (no fixed buffer primitive). Landed buses with EQ and a sidechain compressor on `DynamicsMath.lean` instead (cf62e50b7), committed while HEAD did not compile, tested on a dirty tree. No reply at 01:06 |
+| OspreyOpus1 | Parameters resolved once per block | Not started. Landed Split, Join and Route (bb930140d) without the daw's exhaustive match, so HEAD was red for 12 minutes until 6fc3979d6; the second red HEAD of the night. No reply on performance at 01:06 |
+
+Rule from tonight: a commit to `packages/synth` is tested against `examples/daw` on a clean `git archive HEAD` copy before it lands.
+
+**Open defects reported by OspreyOpus1 from the native journey (not yet reproduced by a test).**
+
+- [ ] A render killed part-way leaves `piece.wav` that the next Play accepts or replays as silence. `fresh` already refuses a file of 44 bytes or less, so the suspect is a partly written file; the renderer should write to a temporary name and rename. Failing test first.
+- [ ] A tap on Timeline right after Audition is ignored about one run in three. Failing test first.
+
 **Interface.** `tests/prism_events.rs` drag: 10.6 ms mean, 18.2 ms worst per pointer move. Timeline taps: 0.57 ms mean. Target: drag under 5 ms mean, under 8.3 ms worst (one 120 Hz frame).
 
 | Where a drag move goes | Share | Fix | Owner |
