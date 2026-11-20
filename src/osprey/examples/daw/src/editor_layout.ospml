@@ -368,7 +368,7 @@ module CableCanvas
         Error _ => false
         Success outlet => outlet == editor.outlet
 
-    dropped (editor, px, py) = match Graphs::node (editor.graph, EditorView::nodeAt (editor, px, py))
+    dropped (editor, px, py) = match Graphs::node (editor.graph, EditorView::targetAt (editor, px, py))
         Invalid _ => editor(source = -1, message = "Connection cancelled. Drop on an input socket.")
         Valid n => match EditorView::hitPort (editor, EditorLayout::position (editor, n.identity), n.inputs, false, px, py)
             Success inlet => EditorState::tapped (editor, Connect(identity = n.identity, inlet = inlet))

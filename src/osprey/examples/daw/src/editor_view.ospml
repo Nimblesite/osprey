@@ -168,7 +168,7 @@ module EditorView
         true => "output"
         false => "input"
 
-    portAccess (editor, n, index, ports, output) = mapList (indices ports, \port => accessible ("Canvas ${portLabel output} ${n.identity}:${port}", portX (editor, index, output, port) - 10.0, portY (editor, index, output, port) - 10.0, 20.0, 20.0, false))
+    portAccess (editor, n, index, ports, output) = mapList (indices ports, \port => accessible ("Canvas ${portLabel output} ${n.identity}:${port}", portX (editor, index, output, port) - 14.0, portY (editor, index, output, port) - 14.0, 28.0, 28.0, false))
 
     nodeAccess (editor, n) =
         index = EditorLayout::position (editor, n.identity)
@@ -178,7 +178,7 @@ module EditorView
     export inside (px, py, cx, cy, halfWidth, halfHeight) = px >= cx - halfWidth && px <= cx + halfWidth && py >= cy - halfHeight && py <= cy + halfHeight
 
     (** Resolve a pointer to a declared socket, never decorative artwork. *)
-    export hitPort (editor, index, ports, output, px, py) = listGet (filterList (indices ports, \port => inside (px, py, portX (editor, index, output, port), portY (editor, index, output, port), 10.0, 10.0))) 0
+    export hitPort (editor, index, ports, output, px, py) = listGet (filterList (indices ports, \port => inside (px, py, portX (editor, index, output, port), portY (editor, index, output, port), 14.0, 14.0))) 0
 
     nodeOrder editor = listConcat (filterList (editor.graph.nodes, \n => n.identity != editor.selected)) (filterList (editor.graph.nodes, \n => n.identity == editor.selected))
 
@@ -186,6 +186,23 @@ module EditorView
     export nodeAt (editor, px, py) = foldList (nodeOrder editor, -1, \(found, n) =>
         at = EditorLayout::position (editor, n.identity)
         ui::Pick::either (inside (px, py, x at, y at, halfWidth (editor, at) + 12.0, 90.0), n.identity, found))
+
+    // Whether the pointer is on one of the module's sockets.
+    onSocket (editor, n, px, py) = match ordinaryPort (editor, n, px, py)
+        Success _ => true
+        Error _ => false
+
+    ordinaryPort (editor, n, px, py) =
+        index = EditorLayout::position (editor, n.identity)
+        match hitPort (editor, index, n.outputs, true, px, py)
+            Success port => Success(value = port)
+            Error _ => hitPort (editor, index, n.inputs, false, px, py)
+
+    (** The module whose socket is under the pointer, else the module whose card is: a socket is a hand-sized
+        target and is never lost to a card that overlaps it [PRISM-ROUTING-CABLES]. *)
+    export targetAt (editor, px, py) = match listGet (filterList (nodeOrder editor, \n => onSocket (editor, n, px, py))) 0
+        Success n => n.identity
+        Error _ => nodeAt (editor, px, py)
 
     hitNode (editor, n, px, py) = match CableCanvas::monitorAt (editor, n, px, py)
         true => CableCanvas::begin (editor, n.identity, 0, px, py, true)
@@ -259,7 +276,7 @@ module EditorView
                     true => match paletteHit py
                         Error _ => editor
                         Success i => editor(paletteDrag = listGet EditorState::kinds i ?: "")
-                    false => match Graphs::node (editor.graph, nodeAt (editor, px, py))
+                    false => match Graphs::node (editor.graph, targetAt (editor, px, py))
                         Invalid _ => CableCanvas::selected (editor, px, py)
                         Valid n => hitNode (editor, n, px, py)
 

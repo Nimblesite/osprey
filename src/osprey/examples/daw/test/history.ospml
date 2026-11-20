@@ -18,10 +18,37 @@ graphHistoryJourney () =
     expect (length (Drive::holding noRedo).future, 0)
     sampleChoiceJourney ()
     historyRemovalJourney ()
+    wireDragJourney ()
+
+// One drag as a hand makes it: the pointer arrives, presses, moves in `steps` and lets go.
+dragged (driven, fromX, fromY, toX, toY, steps) =
+    arrived = Drive::pointer (driven, fromX, fromY, false)
+    pressed = Drive::pointer (arrived, fromX, fromY, true)
+    moved = foldList (toList (range (1, satAdd steps 1)), pressed, \(at, step) => Drive::pointer (at, fromX + (toX - fromX) * toFloat step / toFloat steps, fromY + (toY - fromY) * toFloat step / toFloat steps, true))
+    Drive::pointer (moved, toX, toY, false)
+
+// [PRISM-ROUTING-CABLES] Dragging from an output socket to an input socket wires them, from any point of either
+// socket a hand can land on, and a drag that ends on no socket wires nothing.
+wireDragJourney () =
+    opened = editorLaunched []
+    before = length (Drive::holding opened).graph.cables
+    from = portIn (opened, "Canvas output 4:0")
+    to = portIn (opened, "Canvas input 1:1")
+    forEachList ([0.5, 0.1, 0.9], \part =>
+        start = uitest::Semantics::point (from, part)
+        end = uitest::Semantics::point (to, 1.0 - part)
+        wired = dragged (opened, start.pointX, start.pointY, end.pointX, end.pointY, 30)
+        expect (length (Drive::holding wired).graph.cables, satAdd before 1)
+        expect (uitest::Semantics::offered (wired.drivenSeen.renderedAccess, "Cable 4:0 to 1:1"), true)
+        expect ((Drive::holding wired).wireDragging, false))
+    start = uitest::Semantics::point (from, 0.5)
+    missed = dragged (opened, start.pointX, start.pointY, start.pointX + 300.0, start.pointY + 40.0, 30)
+    expect (length (Drive::holding missed).graph.cables, before)
+    expect ((Drive::holding missed).wireDragging, false)
 
 // [DAW-INSPECTOR] A module without skin art is edited where it is shown: every parameter is a slider on the canvas,
 // a press sets it as one undoable edit, and no caption sends the user to another panel.
-inspectorJourney added =
+canvasInspectorJourney added =
     expect (uitest::Views::letters (added.drivenSeen, "Edit in Patch controls"), false)
     forEachList (["Grain cloud 0", "Parameters", "Connections", "Playback rate", "Grain gain", "Pan"], \text => lettersIn (added, text))
     forEachList (["Playback rate", "Grain gain", "Pan"], \name => expect (uitest::Semantics::offered (added.drivenSeen.renderedAccess, "Grain cloud 0 ${name}"), true))
@@ -36,7 +63,7 @@ inspectorJourney added =
 // [SYNTH-ADVANCED-GRAINS-IMPORT] Only the latest request may change the selected grain source.
 sampleChoiceJourney () =
     added = prismTap (prismTap (editorLaunched ["--empty"], "Modules"), "Add Grain cloud")
-    inspectorJourney added
+    canvasInspectorJourney added
     opened = Drive::press (added, "Patch Controls")
     first = Drive::press (opened, "Load WAV sample")
     // A high note exceeds the built-in source's 16x rate and must preserve the editable graph.
