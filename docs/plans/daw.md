@@ -34,7 +34,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 
 ## Rendering the song [DAW-RENDER]
 
-- [x] **Render song** in the header bounces the whole project to `<song>/song/piece.wav`: refused while busy, only real audio counts, an unchanged project is kept, Stop cancels it. The transport journey test covers it; the daw suite passes 22/22.
+- [x] **Render song** in the header bounces the whole project to `<song>/song/song.wav`: refused while busy, only real audio counts, an unchanged project is kept, Stop cancels it. The transport journey test covers it; the daw suite passes 22/22.
 - [ ] Natively verified on the FerroUI host with the codex project.
 
 ## Timeline transport [DAW-TRANSPORT-TIMELINE]

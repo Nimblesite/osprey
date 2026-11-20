@@ -29,9 +29,9 @@ Rendering is offline and slower than realtime. With the renderer built under ARC
 
 ## Rendering the song [DAW-RENDER]
 
-**Render song** renders the whole project, as it currently stands, to `<song>/song/piece.wav` beside the renderer. It is the same renderer and the same rules as Play, without the window.
+**Render song** renders the whole project, as it currently stands, to `<song>/song/song.wav` beside the renderer. It is the same renderer and the same rules as Play, without the window.
 
-1. The app encodes the current project to `<song>/song/project.json` and empties the old `piece.wav`, then runs `daw <project.json> <folder>` (no beats: the whole song, intro and sustains included) with a two-hour limit.
+1. The app encodes the current project to `<song>/song/project.json` and empties the old `song.wav`, then runs `daw <project.json> <folder>` (no beats: the whole song, intro and sustains included) with a two-hour limit.
 2. Only a WAV longer than its header counts. A refusal shows the renderer's message: "Rendering failed: …". A finished render says "Rendered <path>." and plays nothing.
 3. An unchanged project keeps its audio and says it "is already this project" without rendering.
 4. Play and Render song share one transport: while either is in flight, both refuse with "The song is already playing; Stop first." Stop cancels either one.

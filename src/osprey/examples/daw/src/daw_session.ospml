@@ -67,8 +67,11 @@ module DawSession
 
     wave place = "${place}/piece.wav"
 
+    // An excerpt is `piece.wav`; the whole song, with its intro, is `song.wav`.
+    mastered place = "${place}/song.wav"
+
     // The cached audio is current when it was rendered from exactly this project text.
-    fresh (place, text) = (readFile (snapshot place) ?: "") == text && (fileSize (wave place) ?: 0) > 44
+    fresh (place, audio, text) = (readFile (snapshot place) ?: "") == text && (fileSize audio ?: 0) > 44
 
     bars first = "bars ${first}–${satAdd first 1}"
 
@@ -87,29 +90,29 @@ module DawSession
         true => refused editor
         false => match daw::SongFiles::encode editor.song
             Error why => Runtime::step (editor(message = why))
-            Success text => match fresh (excerpt editor, text)
+            Success text => match fresh (excerpt editor, wave (excerpt editor), text)
                 true => sounded (editor, excerpt editor)
-                false => prepared (editor, text, excerpt editor, rendered)
+                false => prepared (editor, text, excerpt editor, wave (excerpt editor), rendered)
 
     refused editor = Runtime::step (editor(message = ui::Pick::either (editor.songTicket != "", "The song is already playing; Stop first.", "Open a song and launch with the daw renderer to play it.")))
 
-    (** Render the whole song, as the project stands now, to `<song>/song/piece.wav` beside the renderer; an
+    (** Render the whole song, as the project stands now, to `<song>/song/song.wav` beside the renderer; an
         unchanged project keeps the audio it already rendered. *)
     export bounce editor = match busy editor
         true => refused editor
         false => match daw::SongFiles::encode editor.song
             Error why => Runtime::step (editor(message = why))
-            Success text => match fresh (whole editor, text)
-                true => Runtime::step (editor(message = "${wave (whole editor)} is already this project."))
-                false => prepared (editor, text, whole editor, bounced)
+            Success text => match fresh (whole editor, mastered (whole editor), text)
+                true => Runtime::step (editor(message = "${mastered (whole editor)} is already this project."))
+                false => prepared (editor, text, whole editor, mastered (whole editor), bounced)
 
     // The old audio is emptied before the new snapshot is written, so it can never pass for this one.
-    prepared (editor, text, place, launch) =
+    prepared (editor, text, place, audio, launch) =
         // An existing folder is fine; a missing one fails the first write below.
         _made = makeDir (folder editor)
         _place = makeDir place
-        match writeFile (wave place) ""
-            Error why => Runtime::step (editor(message = "Could not prepare ${wave place}: ${why}"))
+        match writeFile audio ""
+            Error why => Runtime::step (editor(message = "Could not prepare ${audio}: ${why}"))
             Success _ => match writeFile (snapshot place) text
                 Error why => Runtime::step (editor(message = "Could not write ${snapshot place}: ${why}"))
                 Success _ => launch editor
@@ -148,8 +151,8 @@ module DawSession
         true => sounded (editor, bar)
         false => failed (editor, outcome)
 
-    exported (editor, place, outcome) = match (fileSize (wave place) ?: 0) > 44
-        true => Runtime::step (editor(songTicket = "", message = "Rendered ${wave place}."))
+    exported (editor, place, outcome) = match (fileSize (mastered place) ?: 0) > 44
+        true => Runtime::step (editor(songTicket = "", message = "Rendered ${mastered place}."))
         false => failed (editor, outcome)
 
     failed (editor, outcome) = Runtime::step (editor(songTicket = "", message = "Rendering failed: ${reported outcome}"))
@@ -160,7 +163,7 @@ module DawSession
 
     (** Stop the render or the playback in flight. *)
     export stop editor = match editor.songTicket == ""
-        true => Runtime::step (editor(message = "Nothing is playing."))
+        true => Runtime::step (editor(rollBar = 0, selectedNote = -1, message = "Nothing is playing; the playhead is back at bar 1."))
         false => Runtime::asking (editor(songTicket = "", message = "Stopped."), [Requests::ask ("daw-song:stop", ui::Cancel(cancelled = editor.songTicket))])
 
     (** Ask for a song project to open. *)

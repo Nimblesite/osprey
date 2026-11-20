@@ -738,6 +738,14 @@ excerptJourney arrangement =
     trackAt (cut, 2, \voice => expect (length voice.notes, 0))
     expect (length (daw::Projects::excerpt (arrangement, 13.0, 4.0)).tracks, 3)
 
+// [DAW-TRANSPORT-PLAYHEAD] A ruler tap keeps the track and moves the playhead to the tapped bar.
+playheadSet (editor, action, bar) = match action
+    synth::PickTrack index at =>
+        expect (index, editor.track)
+        expect (at, bar)
+        expect ((synth::DawSession::pickedAt (editor, index, at)).rollBar, bar)
+    _ => expect ("another action", "PickTrack")
+
 mixFromRow (editor, action, path) = match action
     synth::AdjustMix index gain pan reverb =>
         expect (index, 1)
@@ -833,17 +841,17 @@ bounceJourney ready =
     first = synth::DawSession::bounce ready
     said (first, "daw-song:bounce:${songFolder}", "Rendering all of Bridge.")
     ranWith (first, "${transportRoot}/bin/daw", ["${songFolder}/project.json", songFolder])
-    expect (fileSize "${songFolder}/piece.wav" ?: -1, 0)
+    expect (fileSize "${songFolder}/song.wav" ?: -1, 0)
     encoded (song (), \text => expect (readFile "${songFolder}/project.json" ?: "", text))
     expect (synth::DawSession::phase first.stepStore, "Rendering…")
     said (synth::DawSession::bounce first.stepStore, "daw-song:bounce:${songFolder}", "The song is already playing; Stop first.")
     said (synth::DawSession::play first.stepStore, "daw-song:bounce:${songFolder}", "The song is already playing; Stop first.")
     said (synth::DawSession::completed (first.stepStore, "daw-song:bounce:${songFolder}", rendererSaid "daw: refused"), "", "Rendering failed: daw: refused")
-    succeeds (writeFile "${songFolder}/piece.wav" (join (mapList (toList (range (0, 64)), \_ => "RIFF")) ""), \_ => expect (true, true))
+    succeeds (writeFile "${songFolder}/song.wav" (join (mapList (toList (range (0, 64)), \_ => "RIFF")) ""), \_ => expect (true, true))
     done = synth::DawSession::completed (first.stepStore, "daw-song:bounce:${songFolder}", rendererSaid "daw: wrote it")
-    said (done, "", "Rendered ${songFolder}/piece.wav.")
+    said (done, "", "Rendered ${songFolder}/song.wav.")
     expect (length done.requests, 0)
-    said (synth::DawSession::bounce ready, "", "${songFolder}/piece.wav is already this project.")
+    said (synth::DawSession::bounce ready, "", "${songFolder}/song.wav is already this project.")
     said (synth::DawSession::stop first.stepStore, "", "Stopped.")
 
 transportJourney () =
@@ -875,7 +883,14 @@ transportJourney () =
     said (stopped, "", "Stopped.")
     expect (asked stopped, [ui::Cancel(cancelled = "daw-song:play:${barFolder}")])
     expect (synth::DawSession::phase stopped.stepStore, "Stopped")
-    said (synth::DawSession::stop stopped.stepStore, "", "Nothing is playing.")
+    home = synth::DawSession::stop stopped.stepStore
+    said (home, "", "Nothing is playing; the playhead is back at bar 1.")
+    expect (stopped.stepStore.rollBar, 5)
+    expect (home.stepStore.rollBar, 0)
+    succeeds (synth::TimelineView::laneAt (ready, 230.0, 130.0), \action => playheadSet (ready, action, 0))
+    succeeds (synth::TimelineView::laneAt (ready, 1200.0, 113.0), \action => playheadSet (ready, action, synth::DawSession::bar (daw::Arrangements::beats ready.song)))
+    failsWith (synth::TimelineView::laneAt (ready, 229.0, 130.0), "No lane here.")
+    failsWith (synth::TimelineView::laneAt (ready, 700.0, 111.0), "No lane here.")
     succeeds (daw::Projects::mixed (ready.song, 1, 2.0, 0.5, 0.25), \louder => remixed (ready, louder))
     bounceJourney ready
 
