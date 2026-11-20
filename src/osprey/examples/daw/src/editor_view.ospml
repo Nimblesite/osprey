@@ -433,12 +433,23 @@ module EditorView
         style = ui::Frames::plain
         Ui::framed (style(frameHeight = 135), Ui::described (Ui::zoomed (0.75, 1536.0, 180.0, PrismArt::atlas editor.skin, marks, Keyboard), access))
 
-    // [DAW-MENU] The window's menu bar holds every command that is not played live; a button's symbol is its shortcut.
-    menus () = [
-        Ui::section ("File", "", [Ui::button ("Open Song…", "Cmd+O", OpenTrack(index = -2)), Ui::button ("Save", "Cmd+S", SaveProject), Ui::button ("Render Song", "Cmd+R", RenderSong)]),
-        Ui::section ("Edit", "", [Ui::button ("Undo", "Cmd+Z", Undo), Ui::button ("Redo", "Cmd+Shift+Z", Redo)]),
-        Ui::section ("View", "", [Ui::button ("Timeline", "Cmd+D1", ShowPage(page = TimelinePage)), Ui::button ("Track Patch", "Cmd+D2", ShowPage(page = PatchPage)), Ui::button ("Bus Routing", "Cmd+D3", ShowPage(page = MixPage)), Ui::button ("Modules", "Cmd+L", ShowModules), Ui::button ("Patch Controls", "Cmd+I", ShowDetails), Ui::button ("Keyboard", "Cmd+K", ShowKeyboard)]),
-        Ui::section ("Transport", "", [Ui::button ("Play Song", "Cmd+Enter", PlaySong), Ui::button ("Stop Song", "Cmd+OemPeriod", StopSong), Ui::button ("Play Patch", "Cmd+P", PlayGraph), Ui::button ("Audition Patch", "Cmd+Shift+P", Audition), Ui::button ("Stop Patch", "Cmd+Shift+OemPeriod", StopGraph)])]
+    // [DAW-MENU] [DAW-KEYS] The window's menu bar holds every command, each with the shortcut the keymap in use
+    // gives it. A command that cannot run now is disabled, which also frees its keys for its counterpart.
+    command (editor, label, name, enabled, action) = Ui::action (label, Keymaps::keys (editor.keymap, name), ui::Plain, enabled, action)
+
+    keymapChoice (editor, name) = Ui::action (name, "", ui::Pick::either (editor.keymap.name == name, ui::Prominent, ui::Plain), true, UseKeymap(name = name))
+
+    menus editor =
+        song = length editor.song.tracks > 0
+        playing = DawSession::phase editor != "Stopped" && DawSession::phase editor != "Auditioning"
+        sounding = editor.renderDeviceKey != "" || editor.renderContinuous || editor.renderTicket != ""
+        last = satSub (length editor.song.tracks) 1
+        [
+            Ui::section ("File", "", [command (editor, "Open Song…", "open", true, OpenTrack(index = -2)), command (editor, "Save", "save", true, SaveProject), command (editor, "Render Song", "render", song, RenderSong)]),
+            Ui::section ("Edit", "", [command (editor, "Undo", "undo", true, Undo), command (editor, "Redo", "redo", true, Redo)]),
+            Ui::section ("View", "", [command (editor, "Timeline", "timeline", true, ShowPage(page = TimelinePage)), command (editor, "Track Patch", "patch", true, ShowPage(page = PatchPage)), command (editor, "Bus Routing", "routing", true, ShowPage(page = MixPage)), command (editor, "Modules", "modules", true, ShowModules), command (editor, "Patch Controls", "controls", true, ShowDetails), command (editor, "Keyboard", "keyboard", true, ShowKeyboard)]),
+            Ui::section ("Transport", "", [command (editor, "Return to Start", "start", song, PickTrack(index = editor.track, bar = 0)), command (editor, "Play Song", "playSong", song && !playing, PlaySong), command (editor, "Stop Song", "stopSong", playing, StopSong), command (editor, "Play Patch", "playPatch", !sounding, PlayGraph), command (editor, "Stop Patch", "stopPatch", sounding, StopGraph), command (editor, "Audition Patch", "audition", true, Audition), command (editor, "Previous Track", "previousTrack", song && editor.track > 0, PickTrack(index = satSub editor.track 1, bar = editor.rollBar)), command (editor, "Next Track", "nextTrack", song && editor.track < last, PickTrack(index = satAdd editor.track 1, bar = editor.rollBar)), command (editor, "Previous Bar", "previousBar", song && editor.rollBar > 0, PickTrack(index = editor.track, bar = satSub editor.rollBar 1)), command (editor, "Next Bar", "nextBar", song, PickTrack(index = editor.track, bar = satAdd editor.rollBar 1))]),
+            Ui::section ("Shortcuts", "", listAppend (mapList (Keymaps::names, \name => keymapChoice (editor, name))) (Ui::button ("Load From File…", "", LoadKeymap)))]
 
     routeInspector (editor, content) =
         frame = ui::Frames::plain
@@ -449,10 +460,11 @@ module EditorView
     root () =
         editor = editorSlice ()
         match editor.outputEdit
+            BrowsingSends offset => Ui::layer [workspace editor, routeInspector (editor, SendList::form (editor, offset))]
             EditingSend draft => Ui::layer [workspace editor, routeInspector (editor, SendEditor::form (editor, draft))]
             EditingBus name => Ui::layer [workspace editor, routeInspector (editor, BusOutputs::form (editor, name))]
             NamingGroup proposed => Ui::layer [workspace editor, RoutingPicker::form (editor, proposed)]
-            _ => Ui::contextMenu (workspace editor, listConcat (menus ()) (MixView::menus editor))
+            _ => Ui::contextMenu (workspace editor, listConcat (menus editor) (MixView::menus editor))
 
     workspace editor =
         pane = match editor.detailsShown && TimelineView::pageIndex editor.page == 0
@@ -460,13 +472,12 @@ module EditorView
             true => Ui::aside (canvas editor, ui::Trailing, inspector editor, 280, Surface)
         grow = ui::Frames::plain
         page = Ui::framed (grow(frameGrow = true), pane)
-            BrowsingSends offset => Ui::layer [workspace editor, routeInspector (editor, SendList::form (editor, offset))]
         // The keyboard plays the patch, so it docks under the Patch page only.
         match editor.keyboardShown && TimelineView::pageIndex editor.page == 0
             false => page
             true => Ui::column [page, keyboardDock editor]
 
-    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${RollEdits::stamp editor.rollDrag}:${editor.rollBar}:${editor.lanePage}:${RoutingPicker::stamp editor}:${editor.inspectSpace}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.songPath}:${length editor.song.tracks}"
+    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${RollEdits::stamp editor.rollDrag}:${editor.rollBar}:${editor.lanePage}:${RoutingPicker::stamp editor}:${editor.inspectSpace}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.renderContinuous}:${editor.renderTicket}:${editor.keymap.name}:${editor.songPath}:${length editor.song.tracks}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =

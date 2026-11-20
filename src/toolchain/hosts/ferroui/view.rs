@@ -958,7 +958,8 @@ fn dialog(cx: &mut Cx, node: &Tree) -> Element {
 }
 
 /// A section among a context menu's actions as one menu of the window's menu bar: its title,
-/// and its buttons as commands, each button's symbol naming its shortcut.
+/// and its buttons as commands, each button's symbol naming its shortcut and a prominent button
+/// being the current choice.
 fn window_menu(section: &Tree) -> Menu {
     let commands = tree::list(section, "children")
         .iter()
@@ -968,6 +969,7 @@ fn window_menu(section: &Tree) -> Menu {
                 label: tree::string(item, "label").to_owned(),
                 keys: tree::string(item, "symbol").to_owned(),
                 enabled: tree::flag(item, "enabled"),
+                checked: tree::string(item, "role") == "prominent",
                 event: tree::ordinal(item)?,
             })
         })

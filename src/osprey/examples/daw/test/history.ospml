@@ -19,6 +19,40 @@ graphHistoryJourney () =
     sampleChoiceJourney ()
     historyRemovalJourney ()
     wireDragJourney ()
+    keymapJourney ()
+
+// [DAW-KEYS] Every shipped keymap passes its own checks and gives every command keys; a keymap file may change
+// some commands and leave the rest on their Prism keys; an unknown command, a clash or a missing name is refused
+// and the keymap in use stays; the choice is written where the next launch reads it.
+keymapJourney () =
+    forEachList (synth::Keymaps::names, \name =>
+        keymap = synth::Keymaps::preset name
+        succeeds (synth::Keymaps::checked keymap, \checked => expect (checked.name, name))
+        forEachList (synth::Keymaps::commands (), \command => expect (synth::Keymaps::keys (keymap, command) != "", true))
+        succeeds (synth::Keymaps::decode (synth::Keymaps::encode keymap), \again =>
+            forEachList (synth::Keymaps::commands (), \command => expect (synth::Keymaps::keys (again, command), synth::Keymaps::keys (keymap, command)))))
+    expect (length (synth::Keymaps::commands ()), 21)
+    expect (synth::Keymaps::keys (synth::Keymaps::preset "Logic Style", "routing"), "X")
+    expect (synth::Keymaps::keys (synth::Keymaps::preset "Logic Style", "save"), "Cmd+S")
+    expect (synth::Keymaps::keys (synth::Keymaps::preset "Ableton Style", "timeline"), "Tab")
+    expect (synth::Keymaps::keys (synth::Keymaps::preset "Prism", "playSong"), synth::Keymaps::keys (synth::Keymaps::preset "Prism", "stopSong"))
+    succeeds (synth::Keymaps::decode "{\"name\": \"Mine\", \"shortcuts\": {\"save\": \"Cmd+Alt+S\", \"playSong\": \"F5\", \"stopSong\": \"F5\"}}", \mine =>
+        expect (synth::Keymaps::keys (mine, "save"), "Cmd+Alt+S")
+        expect (synth::Keymaps::keys (mine, "open"), "Cmd+O")
+        expect (synth::Keymaps::keys (mine, "stopSong"), "F5"))
+    forEachList (["{\"name\": \"Typo\", \"shortcuts\": {\"sav\": \"Cmd+S\"}}", "{\"name\": \"Clash\", \"shortcuts\": {\"save\": \"Cmd+O\"}}", "{\"shortcuts\": {\"save\": \"Cmd+S\"}}", "not json"], \text => errs (synth::Keymaps::decode text))
+    succeeds (makeDir "target/daw-tests", \_ => expect (true, true))
+    blank = synth::EditorState::initial ()
+    chosen = synth::Keymaps::chosen (blank(keysPath = "target/daw-tests/shortcuts.json"), synth::Keymaps::preset "Logic Style")
+    expect (chosen.keymap.name, "Logic Style")
+    expect ((synth::Keymaps::stored "target/daw-tests/shortcuts.json").name, "Logic Style")
+    expect ((synth::Keymaps::stored "target/daw-tests/no-such-file.json").name, "Prism")
+    succeeds (writeFile "target/daw-tests/bad-shortcuts.json" "{\"name\": \"Bad\", \"shortcuts\": {\"save\": \"Cmd+O\"}}", \_ => expect (true, true))
+    kept = synth::Keymaps::loaded (chosen, Success(value = "target/daw-tests/bad-shortcuts.json"))
+    expect (kept.keymap.name, "Logic Style")
+    expect (startsWith kept.message "Shortcuts not changed.", true)
+    cancelled = synth::Keymaps::loaded (chosen, Success(value = ""))
+    expect (cancelled.keymap.name, "Logic Style")
 
 // One drag as a hand makes it: the pointer arrives, presses, moves in `steps` and lets go.
 dragged (driven, fromX, fromY, toX, toY, steps) =

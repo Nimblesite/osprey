@@ -102,6 +102,14 @@ type RollDrag =
     RollHeld
         motion : RollMotion
 
+type Shortcut =
+    command : string
+    keys : string
+
+type Keymap =
+    name : string
+    shortcuts : List<Shortcut>
+
 type Editor G P S M =
     skin : M
     graph : G
@@ -172,6 +180,8 @@ type Editor G P S M =
     rollDrag : RollDrag
     rollBar : int
     songTicket : string
+    keymap : Keymap
+    keysPath : string
 
 type EditorAction =
     Undo
@@ -234,6 +244,8 @@ type EditorAction =
         offset : int
     NewGroup
     BrowseBuses
+    BrowseSends
+        offset : int
     PickBus
     RouteBus
     BeginSend
@@ -244,8 +256,6 @@ type EditorAction =
     FlipSend
     CommitSend
     DeleteSend
-    BrowseSends
-        offset : int
     GroupName
     CommitGroup
     CloseOutput
@@ -260,3 +270,6 @@ type EditorAction =
     RenderSong
     StopSong
     SaveProject
+    UseKeymap
+        name : string
+    LoadKeymap

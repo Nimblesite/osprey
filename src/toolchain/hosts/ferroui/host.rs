@@ -31,12 +31,14 @@ pub type ClockHandler = Box<dyn Fn(&Rc<Host>)>;
 pub type MenusHandler = Box<dyn Fn(&[Menu])>;
 
 /// One command of a window menu: its label, its shortcut (`Cmd+S`, empty for none), whether it
-/// can be chosen, and the number its tap is sent under.
+/// can be chosen, whether it is the current choice, and the number its tap is sent under.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Command {
     pub label: String,
     pub keys: String,
     pub enabled: bool,
+    /// The current one of a set of choices: shown with a check mark.
+    pub checked: bool,
     pub event: i64,
 }
 

@@ -19,7 +19,8 @@ module EditorApp
             true => ui::Lists::after (context.arguments, "--audio-worker", "")
             false => ""
         song = ui::Lists::after (context.arguments, "--song", "")
-        opened = editor(skin = PrismArt::sized (art, 1536.0, 828.0), cards = PrismArt::classified art, workerPath = worker, audioPath = audio, assetFolder = "${ui::MachineDocs::folder (signalflow::App::documentPath context.arguments)}/skins/prism", renderer = ui::Lists::after (context.arguments, "--renderer", ""))
+        keys = "${context.home}/.prism/shortcuts.json"
+        opened = editor(keysPath = keys, keymap = Keymaps::stored keys, skin = PrismArt::sized (art, 1536.0, 828.0), cards = PrismArt::classified art, workerPath = worker, audioPath = audio, assetFolder = "${ui::MachineDocs::folder (signalflow::App::documentPath context.arguments)}/skins/prism", renderer = ui::Lists::after (context.arguments, "--renderer", ""))
         match song == ""
             true => Runtime::step opened
             false => Runtime::step (DawSession::loaded (opened, song))
@@ -56,6 +57,8 @@ module EditorApp
             true => DawSession::saving (editor, DawSession::choose)
             false => DawSession::saving (editor, \saved => Runtime::step (DawSession::opened (saved, index)))
         SaveProject => DawSession::save editor
+        UseKeymap name => Runtime::step (Keymaps::chosen (editor, Keymaps::preset name))
+        LoadKeymap => Runtime::asking (editor, [ui::Requests::ask ("prism-keys", ui::ChooseFile(types = ["json"], chosenLimit = 0, chosenSlice = ""))])
         PlaySong => DawSession::saving (editor, DawSession::play)
         RenderSong => DawSession::saving (editor, DawSession::bounce)
         StopSong => DawSession::stop editor
@@ -94,7 +97,9 @@ module EditorApp
 
     completed (editor, ticket, outcome) = match startsWith ticket "prism-sample:"
         true => SamplePicker::completed (editor, ticket, outcome)
-        false => otherCompletion (editor, ticket, outcome)
+        false => match ticket == "prism-keys"
+            true => Runtime::step (Keymaps::loaded (editor, outcome))
+            false => otherCompletion (editor, ticket, outcome)
 
     otherCompletion (editor, ticket, outcome) = match startsWith ticket "daw-"
         true => DawSession::completed (editor, ticket, outcome)
@@ -118,12 +123,12 @@ module EditorApp
 
     surfacePointer (context, editor, x, y, down) = match editor.outputEdit
         EditingSend _ => Runtime::step editor
+        BrowsingSends _ => Runtime::step editor
         EditingBus _ => Runtime::step editor
         _ => workspacePointer (context, editor, x, y, down)
 
     workspacePointer (context, editor, x, y, down) = match editor.page
         PatchPage => patchPointer (context, editor, x, y, down)
-        BrowsingSends _ => Runtime::step editor
         TimelinePage => match editor.rollDrag
             RollHeld motion => RollEdits::pointer (editor, motion, x - Header::shift editor, y, down)
             RollIdle => songPointer (context, editor, x, y, down)

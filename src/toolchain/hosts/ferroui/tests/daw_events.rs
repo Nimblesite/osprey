@@ -15,6 +15,7 @@ use ferroui_osprey_native::regions::Regions;
 use ferroui_osprey_native::rows::Shown;
 use ferroui_base::input::KeyGesture;
 use ferroui_osprey_native::tree::Tree;
+use ferroui_osprey_native::host::Menu;
 use ferroui_osprey_native::view::window_menus;
 
 /// One display frame at 60 Hz, in milliseconds.
@@ -64,26 +65,59 @@ fn lane(track: usize, along: f64) -> (f64, f64) {
     (198.0 + along * 894.0, 221.0 + ((track % 7) as f64 + 0.5) * 31.0)
 }
 
-/// [DAW-MENU] The daw's menu bar: File, Edit, View and Transport, every command enabled with a
-/// shortcut FerroUI reads, Save on Cmd+S, and Save chosen from the menu is not refused.
-fn menu_bar(regions: &Regions) {
-    let menus = regions.get("root").map(|root| window_menus(&root.node)).unwrap_or_default();
-    let titles: Vec<&str> = menus.iter().map(|menu| menu.title.as_str()).collect();
-    assert_eq!(titles, ["File", "Edit", "View", "Transport"], "the window's menus");
-    let sizes: Vec<usize> = menus.iter().map(|menu| menu.commands.len()).collect();
-    assert_eq!(sizes, [3, 2, 6, 5], "the commands of each menu");
-    let mut keys = std::collections::BTreeSet::new();
-    for command in menus.iter().flat_map(|menu| &menu.commands) {
-        assert!(command.enabled, "{} can be chosen", command.label);
-        assert!(KeyGesture::parse(&command.keys).is_ok(), "{} has the shortcut {}", command.label, command.keys);
-        assert!(keys.insert(command.keys.clone()), "{} shares the shortcut {}", command.label, command.keys);
+/// The window menus the root region names.
+fn menus_of(regions: &Regions) -> Vec<Menu> {
+    regions.get("root").map(|root| window_menus(&root.node)).unwrap_or_default()
+}
+
+/// Every command of `menus` has a shortcut FerroUI reads, and only a command and its counterpart
+/// (Play and Stop, which are never available together) share one.
+fn shortcuts(menus: &[Menu], keymap: &str) {
+    let mut owners: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+    for command in menus.iter().take(4).flat_map(|menu| &menu.commands) {
+        assert!(KeyGesture::parse(&command.keys).is_ok(), "{keymap}: {} has the shortcut {}", command.label, command.keys);
+        owners.entry(command.keys.as_str()).or_default().push(command.label.as_str());
     }
-    let save = menus[0].commands.iter().find(|command| command.label == "Save");
-    let Some(save) = save else {
-        panic!("File has Save: {:?}", menus[0]);
-    };
-    assert_eq!(save.keys, "Cmd+S", "Save's shortcut");
-    match Library::event(0, &Touch::control(save.event, "")) {
+    for (keys, labels) in owners {
+        let pair = labels == ["Play Song", "Stop Song"] || labels == ["Play Patch", "Stop Patch"];
+        assert!(labels.len() == 1 || pair, "{keymap}: {keys} is on {labels:?}");
+    }
+}
+
+fn keys_of(menus: &[Menu], label: &str) -> String {
+    let found = menus.iter().flat_map(|menu| &menu.commands).find(|command| command.label == label);
+    found.map(|command| command.keys.clone()).unwrap_or_else(|| panic!("no command {label}"))
+}
+
+/// [DAW-MENU] [DAW-KEYS] The daw's menu bar: File, Edit, View, Transport and Shortcuts. Each keymap gives
+/// every command a shortcut, choosing one changes the keys and checks it alone, and Save chosen from
+/// the menu is not refused.
+fn menu_bar(regions: &mut Regions) {
+    let menus = menus_of(regions);
+    let titles: Vec<&str> = menus.iter().map(|menu| menu.title.as_str()).collect();
+    assert_eq!(titles, ["File", "Edit", "View", "Transport", "Shortcuts"], "the window's menus");
+    let sizes: Vec<usize> = menus.iter().map(|menu| menu.commands.len()).collect();
+    assert_eq!(sizes, [3, 2, 6, 10, 4], "the commands of each menu");
+    for (keymap, routing, play) in [("Logic Style", "X", "Space"), ("Ableton Style", "Cmd+Alt+M", "Space"), ("Prism", "Cmd+D3", "Space")] {
+        let choice = menus_of(regions)[4].commands.iter().find(|command| command.label == keymap).map(|command| command.event);
+        let Some(choice) = choice else {
+            panic!("Shortcuts offers {keymap}");
+        };
+        let changed = Library::event(0, &Touch::control(choice, "")).expect("choosing a keymap");
+        assert!(changed.diagnostics().next().is_none(), "choosing {keymap} is not refused");
+        regions.adopt(&changed).expect("the menus after choosing a keymap");
+        let menus = menus_of(regions);
+        shortcuts(&menus, keymap);
+        assert_eq!(keys_of(&menus, "Bus Routing"), routing, "{keymap}: Bus Routing");
+        assert_eq!(keys_of(&menus, "Play Song"), play, "{keymap}: Play Song");
+        assert_eq!(keys_of(&menus, "Stop Song"), play, "{keymap}: Stop Song");
+        let checked: Vec<&str> = menus[4].commands.iter().filter(|command| command.checked).map(|command| command.label.as_str()).collect();
+        assert_eq!(checked, [keymap], "only the keymap in use is checked");
+    }
+    let menus = menus_of(regions);
+    assert_eq!(keys_of(&menus, "Save"), "Cmd+S", "Save's shortcut");
+    let save = menus[0].commands.iter().find(|command| command.label == "Save").map(|command| command.event);
+    match Library::event(0, &Touch::control(save.expect("File has Save"), "")) {
         Ok(saved) => assert!(saved.diagnostics().next().is_none(), "Save from the menu is not refused"),
         Err(problem) => panic!("the daw refused Save from the menu: {problem}"),
     }
@@ -235,40 +269,6 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     let second = serde_json::json!({"sendId":2,"source":3,"outlet":0,"bus":"Keys bus","level":0.75,"enabled":false});
     expected["tracks"][5]["sends"].as_array_mut().expect("keysL sends").push(second.clone());
     assert_eq!(read(), expected, "the same outlet feeds two independent groups");
-    choose_control(regions, "button", "Edit send 1 · pads…", "");
-    choose_control(regions, "button", "Remove send", "");
-    expected["tracks"][5]["sends"] = serde_json::json!([second]);
-    assert_eq!(read(), expected, "removing the first send preserves the muted sibling and its identity");
-    choose_control(regions, "button", "Edit send 2 · Keys bus…", "");
-    choose_control(regions, "button", "Enable send", "");
-    choose_control(regions, "field", "Send level (%)", "50");
-    choose_control(regions, "button", "Save send", "");
-    expected["tracks"][5]["sends"][0]["enabled"] = serde_json::json!(true);
-    expected["tracks"][5]["sends"][0]["level"] = serde_json::json!(0.5);
-    assert_eq!(read(), expected, "the surviving send responds to its own level and mute control");
-    choose_control(regions, "button", "Edit send 2 · Keys bus…", "");
-    choose_control(regions, "button", "Remove send", "");
-    expected["tracks"][5]["sends"] = serde_json::json!([]);
-    assert_eq!(read(), expected, "removing both sends restores the complete project");
-    choose_control(regions, "button", "Bus outputs…", "");
-    choose_control(regions, "picker", "Group bus", "Keys bus");
-    choose_control(regions, "picker", "Stereo output", "pads");
-    expected["buses"][1]["output"] = "pads".into();
-    assert_eq!(read(), expected, "the group goes through pads, preserving track and send destinations");
-    choose_control(regions, "picker", "Group bus", "pads");
-    choose_control(regions, "picker", "Stereo output", "Keys bus");
-    assert_eq!(read(), expected, "a cycle retains the previous route and every audio setting");
-    choose_control(regions, "picker", "Group bus", "Keys bus");
-    choose_control(regions, "picker", "Stereo output", "Master");
-    expected["buses"][1]["output"] = "".into();
-    choose_control(regions, "button", "Close", "");
-    assert_eq!(read(), expected, "returning the group to Master restores its dry output");
-    point(canvas, (820.0, 875.0), true);
-    regions.adopt(&point(canvas, (820.0, 875.0), false).0).expect("open group output from the inspector");
-    choose_control(regions, "picker", "Stereo output", "pads");
-    expected["buses"][1]["output"] = "pads".into();
-    assert_eq!(read(), expected, "the group inspector edits the same route as the menu");
-    choose_control(regions, "button", "Close", "");
     for id in [3, 4] {
         choose_control(regions, "button", "Add send…", "");
         choose_control(regions, "picker", "Source outlet", "3/0");
@@ -297,11 +297,46 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
         assert_eq!(read(), expected, "removing a tap on either page preserves all siblings");
     }
     choose_control(regions, "button", "Patch sends…", "");
+    choose_control(regions, "button", "Edit send 1 · pads…", "");
+    choose_control(regions, "button", "Remove send", "");
+    expected["tracks"][5]["sends"] = serde_json::json!([second]);
+    assert_eq!(read(), expected, "removing the first send preserves the muted sibling and its identity");
+    choose_control(regions, "button", "Patch sends…", "");
+    choose_control(regions, "button", "Edit send 2 · Keys bus…", "");
+    choose_control(regions, "button", "Enable send", "");
+    choose_control(regions, "field", "Send level (%)", "50");
+    choose_control(regions, "button", "Save send", "");
+    expected["tracks"][5]["sends"][0]["enabled"] = serde_json::json!(true);
+    expected["tracks"][5]["sends"][0]["level"] = serde_json::json!(0.5);
+    assert_eq!(read(), expected, "the surviving send responds to its own level and mute control");
+    choose_control(regions, "button", "Patch sends…", "");
+    choose_control(regions, "button", "Edit send 2 · Keys bus…", "");
+    choose_control(regions, "button", "Remove send", "");
+    expected["tracks"][5]["sends"] = serde_json::json!([]);
+    assert_eq!(read(), expected, "removing both sends restores the complete project");
+    choose_control(regions, "button", "Bus outputs…", "");
+    choose_control(regions, "picker", "Group bus", "Keys bus");
+    choose_control(regions, "picker", "Stereo output", "pads");
+    expected["buses"][1]["output"] = "pads".into();
+    assert_eq!(read(), expected, "the group goes through pads, preserving track and send destinations");
+    choose_control(regions, "picker", "Group bus", "pads");
+    choose_control(regions, "picker", "Stereo output", "Keys bus");
+    assert_eq!(read(), expected, "a cycle retains the previous route and every audio setting");
+    choose_control(regions, "picker", "Group bus", "Keys bus");
+    choose_control(regions, "picker", "Stereo output", "Master");
+    expected["buses"][1]["output"] = "".into();
+    choose_control(regions, "button", "Close", "");
+    assert_eq!(read(), expected, "returning the group to Master restores its dry output");
+    point(canvas, (820.0, 875.0), true);
+    regions.adopt(&point(canvas, (820.0, 875.0), false).0).expect("open group output from the inspector");
+    choose_control(regions, "picker", "Stereo output", "pads");
+    expected["buses"][1]["output"] = "pads".into();
+    assert_eq!(read(), expected, "the group inspector edits the same route as the menu");
+    choose_control(regions, "button", "Close", "");
 }
 
 /// [DAW-PIANO-DRAG] Drag the stem and note on the canvas, preserving the rest of the project.
 fn drag_piano_note(canvas: i64, song: &std::path::Path) {
-    choose_control(regions, "button", "Patch sends…", "");
     let read = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(song).expect("read project")).expect("project JSON");
     let mut expected = read();
     let index = expected["tracks"][5]["notes"].as_array().expect("keysL notes").iter()
@@ -309,7 +344,6 @@ fn drag_piano_note(canvas: i64, song: &std::path::Path) {
     point(canvas, (380.0, 391.0), true);
     point(canvas, (380.0, 391.0), false);
     point(canvas, (206.0, 862.0), true);
-    choose_control(regions, "button", "Patch sends…", "");
     point(canvas, (242.0, 870.0), true);
     let (stem, _) = point(canvas, (255.0, 883.25), true);
     assert!(shows_label(&stem, "25%"), "the inspector previews the stem during the drag");
@@ -360,7 +394,7 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
         panic!("the Timeline must draw a canvas");
     };
 
-    menu_bar(&regions);
+    menu_bar(&mut regions);
     create_group(&mut regions, canvas, &song);
     drag_piano_note(canvas, &song);
 

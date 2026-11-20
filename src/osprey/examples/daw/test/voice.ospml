@@ -345,9 +345,12 @@ keyboardDockJourney opened =
 // [DAW-MENU] The window's menu bar names every command once, each with its shortcut, and a menu command runs
 // the same action as the header's.
 menuJourney driven =
-    forEachList (["Open Song…", "Save", "Render Song", "Undo", "Redo", "Timeline", "Track Patch", "Bus Routing", "Modules", "Patch Controls", "Keyboard", "Play Song", "Stop Song", "Play Patch", "Audition Patch", "Stop Patch"], \label => expect (length (Views::labelled (driven.drivenSeen, label)), 1))
+    forEachList (["Open Song…", "Save", "Render Song", "Undo", "Redo", "Timeline", "Track Patch", "Bus Routing", "Modules", "Patch Controls", "Keyboard", "Play Song", "Stop Song", "Play Patch", "Audition Patch", "Stop Patch", "Return to Start", "Previous Track", "Next Track", "Previous Bar", "Next Bar", "Ableton Style", "Logic Style", "Load From File…"], \label => expect (length (Views::labelled (driven.drivenSeen, label)), 1))
     expect ((Views::control (driven.drivenSeen, "Save")).controlKind, "button")
-    timeline = Drive::press (driven, "Timeline")
+    logic = Drive::press (driven, "Logic Style")
+    expect ((Drive::holding logic).keymap.name, "Logic Style")
+    expect ((Views::control (logic.drivenSeen, "Bus Routing")).controlKind, "button")
+    timeline = Drive::press (logic, "Timeline")
     expect (synth::TimelineView::pageIndex (Drive::holding timeline).page, 1)
     expect (Views::shows (timeline.drivenSeen, "Save"), true)
     mix = Drive::press (timeline, "Bus Routing")

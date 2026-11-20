@@ -5,6 +5,7 @@
 //! keeps the controls dark whatever the system's appearance (an application that draws a dark canvas); `OSPREY_NATIVE_BENCH=<seconds>` prints frame timings and closes the process.
 
 use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
 use std::time::Instant;
 
@@ -12,7 +13,7 @@ use ferroui_base::media::MediaContext;
 use ferroui_base::styling::ThemeVariant;
 use ferroui_base::Ref;
 use ferroui_base::input::KeyGesture;
-use ferroui_controls::{AppBuilder, Application, NativeMenu, NativeMenuItem, Window};
+use ferroui_controls::{AppBuilder, Application, MenuItemToggleType, NativeMenu, NativeMenuItem, Window};
 use ferroui_desktop::AppBuilderDesktopExtensions;
 use ferroui_themes_fluent::FluentTheme;
 use ferroui_view::prelude::*;
@@ -20,7 +21,7 @@ use ferroui_view::prelude::*;
 use crate::bench::Bench;
 use crate::events::Touch;
 use crate::ffi::Library;
-use crate::host::{Command, Host};
+use crate::host::{Command, Host, Menu};
 
 /// Default content size: the GPUI host's.
 const DEFAULT_SIZE: (f64, f64) = (1200.0, 800.0);
@@ -158,11 +159,12 @@ fn show_menus(host: &Rc<Host>, window: &Ref<Window>) {
             }
         };
         bar.items().clear();
+        let keyed = keyed(menus);
         for menu in menus {
             let entry = NativeMenuItem::with_header(&menu.title);
             let list = NativeMenu::new();
             for command in &menu.commands {
-                list.add(menu_item(command, &sender));
+                list.add(menu_item(command, keyed.contains(&command.event), &sender));
             }
             entry.set_menu(Some(list));
             bar.add(entry);
@@ -170,10 +172,29 @@ fn show_menus(host: &Rc<Host>, window: &Ref<Window>) {
     }));
 }
 
-fn menu_item(command: &Command, host: &Weak<Host>) -> Ref<NativeMenuItem> {
+/// The commands that carry their shortcut. Commands that are never available together may share
+/// one (Play and Stop on Space): of those sharing keys the first that can be chosen has them, so the
+/// keys always run what is possible now.
+fn keyed(menus: &[Menu]) -> HashSet<i64> {
+    let commands: Vec<&Command> = menus.iter().flat_map(|menu| &menu.commands).collect();
+    let mut owners: HashMap<&str, &Command> = HashMap::new();
+    for command in commands.iter().filter(|command| !command.keys.is_empty()) {
+        let owner = owners.entry(command.keys.as_str()).or_insert(command);
+        if !owner.enabled && command.enabled {
+            *owner = command;
+        }
+    }
+    owners.values().map(|command| command.event).collect()
+}
+
+fn menu_item(command: &Command, keyed: bool, host: &Weak<Host>) -> Ref<NativeMenuItem> {
     let item = NativeMenuItem::with_header(&command.label);
     item.set_is_enabled(command.enabled);
-    item.set_gesture(KeyGesture::parse(&command.keys).ok());
+    if command.checked {
+        item.set_toggle_type(MenuItemToggleType::CheckBox);
+        item.set_is_checked(true);
+    }
+    item.set_gesture(keyed.then(|| KeyGesture::parse(&command.keys).ok()).flatten());
     let (host, event) = (host.clone(), command.event);
     item.click(move |_| {
         if let Some(host) = host.upgrade() {
