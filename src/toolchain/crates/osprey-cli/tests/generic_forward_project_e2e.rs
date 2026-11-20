@@ -6,6 +6,19 @@
 //! The bug: declaration schemes were bound monomorphically until the
 //! declaration's own body was inferred, and bodies are inferred in file order,
 //! so every call site in an earlier file shared one instantiation.
+//!
+//! The same harness covers a closure whose concrete instantiation
+//! is pinned only by a LATER use of the let-generalized binding that holds it:
+//! the Vigil shape, where `Sidebar::view` passes `\key => areaRow (key)` to a
+//! generic `Lists::map` from another namespace and only `Ui::rows`'s action
+//! argument settles `Row<A>`'s `A`. `--check` accepted the program while
+//! codegen rejected the staged copy of `view` with "a closure value with a
+//! still-generic type".
+//!
+//! That case builds a three-file project of its own — a `ui` namespace holding
+//! the generic vocabulary, a `vigil` namespace holding the sidebar, and a main
+//! that discharges a static signal so the staging pass specializes `view` —
+//! and hold the run to one exact output.
 
 #![expect(
     clippy::expect_used,
@@ -43,7 +56,7 @@ module Early
 
 #[test]
 fn module_record_updates_keep_the_original_and_apply_the_new_fields() {
-    run_project("record_update", |root| {
+    run_project("record_update", ORDER_OUTPUT, |root| {
         write_project(
             root,
             RECORD_DEFAULTS,
@@ -65,7 +78,9 @@ fn write_project(root: &Path, later: &str, early: &str, main: &str, entry: &str,
     write(&root.join("src").join(format!("main.{ext}")), main);
 }
 
-fn run_project(name: &str, project: impl FnOnce(&Path)) {
+const ORDER_OUTPUT: &str = "1,2 2\n";
+
+fn run_project(name: &str, expected: &str, project: impl FnOnce(&Path)) {
     let root = std::env::temp_dir().join(format!(
         "osprey_generic_forward_{name}_{}",
         std::process::id()
@@ -81,7 +96,7 @@ fn run_project(name: &str, project: impl FnOnce(&Path)) {
     let _ = std::fs::remove_dir_all(&root);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "1,2 2\n",
+        expected,
         "stderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -90,7 +105,7 @@ fn run_project(name: &str, project: impl FnOnce(&Path)) {
 
 #[test]
 fn generic_helper_in_a_later_file_instantiates_per_call_site_ml() {
-    run_project("ml", |root| {
+    run_project("ml", ORDER_OUTPUT, |root| {
         write_project(
             root,
             "namespace demo\n\nmodule Later\n    step<T, U> : (List<U>, List<T>, (T) -> U, int) -> List<U>\n    step (out, items, f, index) = match listGet items index\n        Success value => listAppend out (f value)\n        Error _ => out\n\n    export apply<T, U> : (List<T>, (T) -> U) -> List<U>\n    apply (items, f) = range (0, length items) |> fold [] (\\(out, index) => step (out, items, f, index))\n",
@@ -104,7 +119,7 @@ fn generic_helper_in_a_later_file_instantiates_per_call_site_ml() {
 
 #[test]
 fn generic_helper_in_a_later_file_instantiates_per_call_site_default() {
-    run_project("default", |root| {
+    run_project("default", ORDER_OUTPUT, |root| {
         write_project(
             root,
             "module Later {\n    fn step<T, U>(out: List<U>, items: List<T>, f: fn(T) -> U, index: int) -> List<U> = match listGet(items, index) {\n        Success { value } => listAppend(out, f(value))\n        Error => out\n    }\n\n    export fn apply<T, U>(items: List<T>, f: fn(T) -> U) -> List<U> = range(0, length(items)) |> fold([], fn(out, index) => step(out, items, f, index))\n}\n",
@@ -114,4 +129,92 @@ fn generic_helper_in_a_later_file_instantiates_per_call_site_default() {
             "osp",
         );
     });
+}
+
+fn write_sidebar_project(root: &Path, ui: &str, vigil: &str, main: &str) {
+    write(
+        &root.join("osprey.toml"),
+        "[project]\nname = \"sidebar\"\nsource_roots = [\"ui\", \"app\", \"src\"]\ndefault_namespace = \"app\"\nentry = \"src/main.ospml\"\n",
+    );
+    write(&root.join("ui").join("base.ospml"), ui);
+    write(&root.join("app").join("nav.ospml"), vigil);
+    write(&root.join("src").join("main.ospml"), main);
+}
+
+const UI_BASE: &str = r#"namespace ui
+
+type Node A =
+    Text
+        content : string
+    Bound
+        label : string
+        fire : A
+
+type Row A =
+    rowKey : string
+    cell : Node<A>
+
+module Ui
+    export label<A> : string -> Node<A>
+    label text = Text(content = text)
+
+    export entry<A> : (string, Node<A>) -> Row<A>
+    entry (key, cell) = Row(rowKey = key, cell = cell)
+
+    export rows<A> : (List<Row<A>>, A, int) -> Node<A>
+    rows (entries, picked, extra) = Bound(label = "${length entries}:${extra}", fire = picked)
+
+module Lists
+    step (out, items, f, index) = match listGet items index
+        Success item => listAppend out (f item)
+        Error _ => out
+
+    export mapOver<T, U> : (List<T>, (T) -> U) -> List<U>
+    mapOver (items, f) = range (0, length items) |> fold [] (\(out, index) => step (out, items, f, index))
+"#;
+
+const VIGIL_NAV: &str = r#"namespace vigil
+
+import ui::Lists
+import ui::Ui
+
+type Action = Navigate
+
+type Found =
+    warnings : int
+
+module Watch
+    export found () = perform Signal<Found>.read ()
+
+module Sidebar
+    areaRow (key) = Ui::entry (key, Ui::label key)
+
+    export view : Unit -> ui::Node<Action>
+    view () =
+        found = Watch::found ()
+        entries = Lists::mapOver (["startup", "files"], \key => areaRow key)
+        Ui::rows (entries, Navigate, found.warnings)
+"#;
+
+const MAIN: &str = r#"namespace app
+
+import vigil::Sidebar
+
+show () =
+    handle static Signal<vigil::Found>
+        read => vigil::Found(warnings = 3)
+    match Sidebar::view ()
+        ui::Bound shown => shown
+        ui::Text fallback => fallback
+
+test "sidebar rows keep their pinned instantiation" (\() => expect (show (), "2:3"))
+"#;
+
+#[test]
+fn a_staged_sidebar_closure_keeps_its_pinned_instantiation_across_namespaces() {
+    run_project(
+        "sidebar",
+        "ok 1 - sidebar rows keep their pinned instantiation\n1..1\n# tests=1 passed=1 failed=0 skipped=0\n",
+        |root| write_sidebar_project(root, UI_BASE, VIGIL_NAV, MAIN),
+    );
 }
