@@ -28,7 +28,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] The transport journey test (`the transport renders two bars …`) passes. The daw suite passes 22/22 under ARC.
 - [x] Natively verified: Play → renderer → afplay → finished, on the codex project (17.7 s stereo, peak −1.0 dB).
 - [x] **Play bars** names the two-bar transport. **Save project** writes the current patch without leaving its page.
-- [ ] Host cancellation stops the renderer and `afplay` processes (FerroUI).
+- [x] Stop cancels the FerroUI transport process group. Native Play → Stop left no renderer and a zero-byte WAV. The host process tests also exercise descendant cancellation.
 - [ ] The renderer is fast enough to play from the playhead without waiting (per-note patch voices dominate).
 
 ## Pages [DAW-PAGES]
@@ -36,7 +36,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] Timeline, Mix and Patch pages on FerroUI ([screens](../../src/osprey/examples/daw/screens)).
 - [ ] Screenshot goldens compared automatically in the app test targets.
 - [x] Piano-roll note selection and velocity edits are saved into the project.
-- [ ] A native end-to-end journey: open the codex project, select keysL at bar 9, change the mix, edit the patch, save, reopen and play.
+- [x] Native bar-9 journey on a copy of the codex project. Selected keysL, changed gain, pan and Space, inserted a delay, saved, reopened and played 13.75 seconds of stereo at 48 kHz.
 
 ## Verification
 
