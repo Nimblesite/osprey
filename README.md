@@ -13,7 +13,7 @@ Osprey is actively evolving. Try it on your projects, validate it against your w
 This is the package manager's install, trimmed. `install` and `writeLock` ask for a logger and a file write with `perform`, but nothing passes them a disk or a logger:
 
 ```osprey
-effect Files { write: fn(string, string) -> Result<int, Error> }
+effect Files { write: fn(string, string) -> Result<int, string> }
 effect Log { info: fn(string) -> Unit }
 
 // Deep in the app: no disk or logger is passed in.

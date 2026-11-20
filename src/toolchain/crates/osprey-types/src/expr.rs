@@ -26,10 +26,6 @@ mod tests_values;
 
 pub(crate) use arith::{is_deferred_arith, is_monomorphic_arith};
 
-fn generic_err() -> Type {
-    Type::prim("Error")
-}
-
 /// A bound type variable is a type, not a higher-kinded constructor. Check
 /// the written form before conversion resolves that name to its variable.
 fn applied_type_parameter<'a>(
@@ -316,7 +312,7 @@ impl Checker {
 }
 
 fn res_math_like(ok: Type) -> Type {
-    Type::result(ok, generic_err())
+    Type::result(ok, Type::string())
 }
 
 fn both_vars(l: &Type, r: &Type) -> bool {

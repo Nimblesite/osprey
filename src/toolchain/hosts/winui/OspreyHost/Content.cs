@@ -52,12 +52,12 @@ sealed partial class Renderer
             bar.Children.Add(piece);
         }
         AutomationProperties.SetName(bar, node.Text("label"));
-        return Column([bar, Words(node.Text("label"), "caption", "secondary")], 0);
+        return Column(new UIElement[] { bar, Words(node.Text("label"), "caption", "secondary") }, 0);
     }
 
     UIElement Empty(Node node)
     {
-        var column = Column([Glyph(node.Text("symbol"), 40), Words(node.Text("title"), "heading"), Words(node.Text("detail"), "body", "secondary")]);
+        var column = Column(new UIElement[] { Glyph(node.Text("symbol"), 40), Words(node.Text("title"), "heading"), Words(node.Text("detail"), "body", "secondary") });
         column.HorizontalAlignment = HorizontalAlignment.Center;
         column.VerticalAlignment = VerticalAlignment.Center;
         column.Padding = new Thickness(Gap(4));
@@ -65,7 +65,7 @@ sealed partial class Renderer
     }
 
     UIElement Progress(Node node) =>
-        Column([new ProgressBar { IsIndeterminate = true }, Words(node.Text("label")), Words(node.Text("detail"), "caption", "secondary")], 1);
+        Column(new UIElement[] { new ProgressBar { IsIndeterminate = true }, Words(node.Text("label")), Words(node.Text("detail"), "caption", "secondary") }, 1);
 
     /// <summary>[UI-COMPONENTS-METER] A determinate bar filled to value over total, read out by its label.</summary>
     UIElement Meter(Node node)

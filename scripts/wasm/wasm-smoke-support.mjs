@@ -99,7 +99,11 @@ export function ensureWasiCapableNode(scriptUrl) {
 // Parse argv, load the module and reject anything malformed. Exits 2 without a
 // path (usage error) and 1 when the bytes are not a valid module.
 export async function loadModuleFromArgv(usage) {
-  const [, , wasmPath, expectedPath] = process.argv;
+  // Everything after `--` is the program's own argv [BUILTIN-PROCESS-ARGS].
+  const split = process.argv.indexOf("--");
+  const own = split < 0 ? process.argv : process.argv.slice(0, split);
+  const programArgs = split < 0 ? [] : process.argv.slice(split + 1);
+  const [, , wasmPath, expectedPath] = own;
   if (!wasmPath) {
     console.error(usage);
     process.exit(2);
@@ -109,7 +113,7 @@ export async function loadModuleFromArgv(usage) {
     console.error(`FAIL: ${wasmPath} is not a valid WebAssembly module`);
     process.exit(1);
   }
-  return { wasmPath, expectedPath, bytes };
+  return { wasmPath, expectedPath, programArgs, bytes };
 }
 
 // Compare captured stdout against the golden, trimmed at both ends. No expected

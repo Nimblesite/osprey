@@ -65,15 +65,6 @@ fn validate_exports(abi: &HostAbi) -> Result<(), String> {
                 export.source_name
             ));
         }
-        if [CALL, OBJECT, INSTALL, ABI]
-            .iter()
-            .any(|name| *name == export.c_name)
-        {
-            return Err(format!(
-                "Python bridge symbol `{}` is reserved",
-                export.c_name
-            ));
-        }
     }
     Ok(())
 }

@@ -10,8 +10,6 @@ summary = "A signal-flow graph editor as a UI machine: four canvas skins drawn f
 keywords = ["desktop", "native", "reactive", "signals", "ui"]
 
 [dependencies]
-"@osprey/graphics" = { epoch = 1, min_release = 1 }
-"@osprey/json" = { epoch = 1, min_release = 1 }
 "@osprey/native" = { epoch = 1, min_release = 1 }
 
 [modules]

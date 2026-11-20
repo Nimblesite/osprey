@@ -18,7 +18,10 @@ impl Checker {
             let message = self
                 .undecided_comparison(operation, &resolved)
                 .or_else(|| self.undecided_structural_equals(operation, &resolved))
-                .or_else(|| crate::builtin_constraints::invalid_use(operation, &resolved));
+                .or_else(|| {
+                    let named = |name: &str, args: &[Type]| self.named_at_use(name, args);
+                    crate::builtin_constraints::invalid_use(operation, &resolved, &named)
+                });
             if let Some(message) = message {
                 self.errors.push(
                     TypeError::new(message)

@@ -48,6 +48,7 @@ char *osp_string_trim_end(const char *s);
 char *osp_string_reverse(const char *s);
 char *osp_string_replace(const char *s, const char *needle, const char *replacement);
 char *osp_string_repeat(const char *s, int64_t n);
+char *osp_string_show(const char *s, int64_t quoted);
 char *osp_string_pad_start(const char *s, int64_t target_length, const char *fill);
 char *osp_string_pad_end(const char *s, int64_t target_length, const char *fill);
 int64_t osp_parse_int_strict(const char *s, int64_t *out);
@@ -82,6 +83,8 @@ void osp_format_into(char *buf, int64_t cap, const char *fmt, ...);
 osp_string_list *osp_string_split(const char *s, const char *sep);
 osp_string_list *osp_string_lines(const char *s);
 osp_string_list *osp_string_words(const char *s);
+osp_string_list *osp_process_args(void);
+char *osp_process_env(const char *name);
 char *osp_string_join(const osp_string_list *list, const char *sep);
 /* The same join over a runtime OspreyList of string words (collection_runtime.h). */
 struct OspreyList;

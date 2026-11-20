@@ -32,13 +32,13 @@ pub(super) fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]
     let (cond, succ_val, err_val) = if disc.result_inner.is_some() {
         let d = crate::result::load_disc(cg, disc);
         let c = cg.emit_reg(format!("icmp eq i8 {d}, 0"));
-        // Success binds the value slot; Error binds the errmsg slot (the real
-        // reason), so `Error { message }` sees the message regardless of the
-        // success payload type. Implements [ERR-PAYLOAD].
+        // Success binds the value slot; Error binds the error payload at the
+        // Result's own error type, whatever the success payload type.
+        // Implements [ERR-PAYLOAD].
         let bound = (
             c,
             crate::result::load_value(cg, disc),
-            crate::result::load_errmsg_str(cg, disc),
+            crate::result::load_error_payload(cg, disc),
         );
         // Both slots are now in registers, so a freshly produced block is dead
         // here. Retiring it at the match — rather than letting the region-end
@@ -106,10 +106,11 @@ fn result_arm<'a>(arms: &'a [MatchArm], variant: &str) -> Option<&'a MatchArm> {
 }
 
 /// `match listGet(xs, i) { … }` without the Result: branch on the bounds check
-/// itself, read the element only on the Success path, and bind the constant
-/// reason on the Error one. The Result block the call would allocate exists
-/// only to be taken apart by these arms, so a lookup costs no allocation --
-/// and a scan over a list is a loop of lookups [BUILTIN-LIST-GET].
+/// itself, read the element only on the Success path, and build the
+/// `IndexOutOfBounds` record on the Error one only when that arm binds it. The
+/// Result block the call would allocate exists only to be taken apart by these
+/// arms, so a lookup costs no allocation -- and a scan over a list is a loop of
+/// lookups [BUILTIN-LIST-GET].
 ///
 /// `None` when the scrutinee is not a builtin `listGet` call, or when an arm
 /// binds the whole Result and so needs it to exist.
@@ -179,9 +180,16 @@ fn fused_list_get(cg: &mut Codegen, arguments: &[Expr], arms: &[MatchArm]) -> Re
     let element = crate::collections::elem_value(cg, &list, &raw);
     emit_result_body(cg, result_arm(arms, "Success"), element, None, &mut phi_in)?;
     cg.start_block(&el);
-    let reason = cg.string_constant(crate::collections::INDEX_OOB).operand;
-    let reason = Value::new(reason, LType::Str);
-    emit_result_body(cg, result_arm(arms, "Error"), reason, None, &mut phi_in)?;
+    let error = result_arm(arms, "Error");
+    // The record is built only for an arm that reads it: a miss in a scan is
+    // otherwise as free as a hit [BUILTIN-LIST-GET].
+    let reason = if error.is_some_and(reads_payload) {
+        let length = crate::collections::list_length(cg, &list);
+        crate::aggregate::index_out_of_bounds(cg, &index.operand, &length)?
+    } else {
+        Value::new("null", LType::Ptr)
+    };
+    emit_result_body(cg, error, reason, None, &mut phi_in)?;
     finish_phi(cg, &phi_in, &end, mark)
 }
 
@@ -215,25 +223,42 @@ fn emit_result_body(
         return Ok(());
     };
     emit_arm(cg, arm, phi_in, |cg| {
-        if let Pattern::Constructor {
-            fields,
-            sub_patterns,
-            ..
-        } = &arm.pattern
-        {
-            let binder = if sub_patterns.is_empty() {
-                fields.first()
-            } else {
-                sub_patterns.first().and_then(|pattern| match pattern {
-                    Pattern::Binding(name) => Some(name),
-                    _ => None,
-                })
-            };
-            if let Some(f) = binder {
+        if matches!(arm.pattern, Pattern::Constructor { .. }) {
+            if let Some(f) = payload_binder(arm) {
                 bind_value(cg, f.clone(), bound);
             }
         } else if let (false, Some(disc)) = (is_result_arm(&arm.pattern), disc) {
             bind_catch_all(cg, &arm.pattern, disc);
         }
+    })
+}
+
+/// Whether the arm's body reads the payload it binds. `Error _message` binds a
+/// name the body never uses, exactly like `Error`.
+fn reads_payload(arm: &MatchArm) -> bool {
+    payload_binder(arm).is_some_and(|name| {
+        let mut free = std::collections::BTreeSet::new();
+        osprey_ast::freevars::free_idents(&arm.body, &mut free);
+        free.contains(name)
+    })
+}
+
+/// The name a variant arm binds its payload to: its first field, or its first
+/// sub-pattern when that is a plain binding.
+fn payload_binder(arm: &MatchArm) -> Option<&String> {
+    let Pattern::Constructor {
+        fields,
+        sub_patterns,
+        ..
+    } = &arm.pattern
+    else {
+        return None;
+    };
+    if sub_patterns.is_empty() {
+        return fields.first();
+    }
+    sub_patterns.first().and_then(|pattern| match pattern {
+        Pattern::Binding(name) => Some(name),
+        _ => None,
     })
 }

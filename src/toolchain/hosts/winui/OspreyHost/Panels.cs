@@ -60,6 +60,6 @@ sealed partial class Renderer
         bar.SelectionChanged += (_, _) => emit(bar.SelectedItem?.Tag as string ?? "");
         var page = tabs.FirstOrDefault(tab => tab.Text("key") == selected);
         var content = page.IsRecord ? Draw(scope, page.Member("child")) : new Border();
-        return Column([bar, content]);
+        return Column(new UIElement[] { bar, content });
     }
 }

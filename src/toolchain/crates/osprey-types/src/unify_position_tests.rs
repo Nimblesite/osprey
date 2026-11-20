@@ -103,7 +103,7 @@ fn a_result_used_as_its_payload_names_how_to_decode_it() {
             assert_eq!(hinted.len(), 1, "{source}\n{errors:?}");
             for error in hinted {
                 let message = &error.message;
-                assert!(message.contains("Result<int, Error>"), "{message}");
+                assert!(message.contains("Result<int, string>"), "{message}");
                 assert!(message.ends_with(&format!("{HINT} `int`")), "{message}");
                 assert!(error.position.is_some(), "{message}");
             }

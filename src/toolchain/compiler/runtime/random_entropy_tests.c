@@ -269,7 +269,7 @@ static void diagnostic_names_the_shortfall(void) {
   CHECK(remove(DIAG_PATH) == 0);
 }
 
-// [BUILTIN-RANDOM]: `random()` answers `int`, not `Result<int, Error>`, so a
+// [BUILTIN-RANDOM]: `random()` answers `int`, not `Result<int, string>`, so a
 // draw that cannot be made has nowhere to report. Returning zeros or an
 // unwritten stack word would be a predictable "cryptographically-secure"
 // value -- undetectable by the caller, and worst exactly where it is used as a

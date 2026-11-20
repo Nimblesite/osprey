@@ -35,7 +35,7 @@ fn inspect_handler_source(effect: &str, resuming: bool) -> String {
         ("", "value", "7")
     };
     format!(
-        "effect {effect} {{ {control}inspect: fn(Result<int, Error>, Fiber<Result<int, Error>>) -> int }}\n\
+        "effect {effect} {{ {control}inspect: fn(Result<int, string>, Fiber<Result<int, string>>) -> int }}\n\
          fn ask() -> int !{effect} = perform {effect}.inspect(checkedAdd(9223372036854775807, 1), spawn(checkedAdd(9223372036854775807, 1)))\n\
          fn main() -> int = {{\n\
              handle {effect} {{\n\
@@ -107,14 +107,14 @@ fn result_parameters_preserve_the_wrapper_for_named_functions_and_closures() {
               print(\"${failed}:${wrapped}\")\n";
     for (head, expected) in [
         (
-            "fn choose(r: Result<int, Error>) -> int = ",
+            "fn choose(r: Result<int, string>) -> int = ",
             &[
                 "define internal i64 @choose(i8* %$p0)",
                 "bitcast i8* %$p0 to { i64, i8, i8* }*",
             ][..],
         ),
         (
-            "let choose = fn(r: Result<int, Error>) => ",
+            "let choose = fn(r: Result<int, string>) => ",
             &[
                 "define internal i64 @__closure_fn_",
                 "i8* %__env, i8* %$p0",

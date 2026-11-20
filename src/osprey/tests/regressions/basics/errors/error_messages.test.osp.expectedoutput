@@ -34,7 +34,7 @@ divide: division by zero
 
 divide-ok: 3.5
 
-listIndex: index out of bounds
+listIndex: index 9 of 3
 
 mapKey: mapGet: key not found
 

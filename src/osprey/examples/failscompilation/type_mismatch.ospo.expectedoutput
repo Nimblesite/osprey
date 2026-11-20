@@ -1,1 +1,9 @@
+28:0: `IndexOutOfBounds` is the built-in list-read error type
 6:0: let `y`: type mismatch: cannot unify string with int
+9:0: type mismatch: cannot unify string with int
+11:0: type mismatch: cannot unify int with string
+12:0: type mismatch: cannot unify string with bool
+16:3: function `refuse` body: type mismatch: cannot unify Refusal with int
+17:3: function `legacy` body: type mismatch: cannot unify Error with string
+18:3: type mismatch: cannot unify string with Refusal
+24:3: type mismatch: cannot unify string with IndexOutOfBounds

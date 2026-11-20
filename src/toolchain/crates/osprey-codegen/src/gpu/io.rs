@@ -2,7 +2,7 @@
 //! [GPU-MATMUL], `gpuLoad` [GPU-BUFFER-LOAD] and `gpuLoadTensor`
 //! [GPU-BUFFER-TENSOR] (docs/specs/runtime/0034-GPUComputation.md). Each is one
 //! call into `src/toolchain/compiler/runtime/gpu_host.c` that returns a buffer or NULL,
-//! wrapped as `Result<GpuBuffer<T>, Error>` whose `Error` carries the reason
+//! wrapped as `Result<GpuBuffer<T>, string>` whose `Error` carries the reason
 //! the runtime recorded — a missing file, an unknown tensor, a dtype the
 //! program did not ask for, a shape the operands do not have — through the
 //! same channel `readFile` uses [BUILTIN-FILE-ERRMSG].
@@ -216,7 +216,7 @@ pub(super) fn map_file(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     )
 }
 
-/// The numeric element of this call's `Result<GpuBuffer<T>, Error>`.
+/// The numeric element of this call's `Result<GpuBuffer<T>, string>`.
 fn result_elem(cg: &Codegen) -> Option<Numeric> {
     cg.expression_type
         .as_ref()

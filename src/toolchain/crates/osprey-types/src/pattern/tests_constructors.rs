@@ -39,7 +39,7 @@ fn record_constructor_pattern_unifies_owner() {
 fn bare_result_variant_bindings_match_the_builtin() {
     // `Success`/`Error` as bare bindings over a real Result match the builtin
     // variants and bind nothing.
-    ok("fn truthy(r: Result<int, Error>) -> int = match r {\n\
+    ok("fn truthy(r: Result<int, string>) -> int = match r {\n\
           Success => 1\n\
           Error => 0\n\
         }\n");
@@ -140,7 +140,7 @@ fn result_pattern_with_an_unknown_field_binds_a_fresh_var() {
     // success payload and a fresh var for a LATER, non-role field — the
     // first binder is the payload by role, whatever it is spelled
     // [FLAVOR-ML-MATCH].
-    ok("fn f(r: Result<int, Error>) -> int = match r {\n\
+    ok("fn f(r: Result<int, string>) -> int = match r {\n\
           Success { value, surplus } => value\n\
           Error { message } => 0\n\
         }\n");
@@ -157,14 +157,14 @@ fn renamed_result_binders_bind_the_payload_by_role() {
         "type Evidence = { evidenceId: string }\n\
          type Section = { records: List<Evidence> }\n\
          type Focus = { picked: string }\n\
-         fn find<T>(xs: List<T>, p: fn(T) -> bool) -> Result<T, Error> = match xs {\n\
+         fn find<T>(xs: List<T>, p: fn(T) -> bool) -> Result<T, string> = match xs {\n\
              [] => Error { message: \"missing\" }\n\
              [head, ...tail] => match p(head) {\n\
                  true => Success { value: head }\n\
                  false => find(tail, p)\n\
              }\n\
          }\n\
-         fn detail(focus: Focus) -> Result<Evidence, Error> =\n\
+         fn detail(focus: Focus) -> Result<Evidence, string> =\n\
              match Success { value: Section { records: [Evidence { evidenceId: \"a\" }] } } {\n\
                  Error { message } => Error { message: \"no section\" }\n\
                  Success { section } => match find(section.records, fn(record) => record.evidenceId == focus.picked) {\n\
@@ -245,7 +245,7 @@ fn result_owner_constructor_pattern_autowraps_payload() {
 
 #[test]
 fn result_is_not_a_boolean_condition_and_bool_matches_stay_exhaustive() {
-    let condition_errors = check("fn f(r: Result<int, Error>) -> int = r ? 1 : 0\n");
+    let condition_errors = check("fn f(r: Result<int, string>) -> int = r ? 1 : 0\n");
     assert!(condition_errors
         .iter()
         .any(|e| e.message.contains("Result") && e.message.contains("bool")));

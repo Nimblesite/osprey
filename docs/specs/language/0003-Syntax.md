@@ -167,8 +167,9 @@ fn size(tree) = match tree {
 
 Positional constructors require every slot and do not partially apply. Their
 slots have no source field names, so named arguments and field access cannot
-target them. Nested constructor patterns are not implemented; each positional
-pattern slot is a binding or `_`.
+target them. Nested constructor patterns are specified by
+[PATTERN-NESTED](0007-PatternMatching.md#nested-patterns--pattern-nested) and not implemented yet; today each
+positional pattern slot is a binding or `_`.
 
 ## Records
 
@@ -263,14 +264,17 @@ is [FLAVOR-ML-GENERICS](0024-MLFlavorSyntax.md#generics-flavor-ml-generics).
 
 ## Indexing
 
-Postfix indexing is available on lists, maps, and strings. It returns
-`Result<T, Error>` (or `Result<string, Error>` for a string), so callers can
-handle an invalid index or absent key.
+Postfix indexing is available on lists, maps, and strings. It returns a
+`Result`, so callers handle an invalid index or absent key: `Result<T,
+IndexOutOfBounds>` for a list ([BUILTIN-LIST-GET](../runtime/0012-Built-InFunctions.md#listgetlist-listt-index-int---resultt-indexoutofbounds--builtin-list-get)),
+`Result<V, string>` for a map and `Result<string, string>` for a string. An
+index on a parameter whose type a call decides takes that container's result
+at each call.
 
 ```osprey
 match values[0] {
     Success { value }   => print(value)
-    Error { message }   => print(message)
+    Error { message }   => print("no element ${message.index} in ${message.length}")
 }
 ```
 

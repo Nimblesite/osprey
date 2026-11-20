@@ -1,0 +1,192 @@
+import synth::WaveImport
+import synth::SampleResources
+import synth::WaveMath
+import synth::Waves
+
+// [SYNTH-ADVANCED-GRAINS-IMPORT] Decoding and downmixing real WAV bytes into grain resources.
+// [SYNTH-ADVANCED-GRAINS-IMPORT] Every refusal carries its own message; nothing fails silently.
+// [MATH-CODE] The generated WaveMath/Waves oracles are checked against hand-computed IEEE754 results.
+
+wavJoin parts = foldList (parts, [], \(joined, part) => listConcat (joined, part))
+
+wavCharacter (text, at) = match byteAt text at
+    Error _ => 0
+    Success byte => byte
+
+wavText text = mapList (toList (range (0, length text)), \at => wavCharacter (text, at))
+
+wavWord16 value = [bitAnd value 255, bitAnd (shiftRight value 8) 255]
+
+wavWord32 value = [bitAnd value 255, bitAnd (shiftRight value 8) 255, bitAnd (shiftRight value 16) 255, bitAnd (shiftRight value 24) 255]
+
+wavHeader size = wavJoin [wavText "RIFF", wavWord32 size, wavText "WAVE"]
+
+// An odd chunk body is stored with its required pad byte.
+wavPadded body = match bitAnd (length body) 1
+    1 => listAppend body 0
+    _ => body
+
+// A stored RIFF chunk: header, body, and the pad byte odd bodies require.
+wavChunk (tag, body) = listConcat (wavJoin [wavText tag, wavWord32 (length body)], wavPadded body)
+
+// A chunk written without its pad byte, to corrupt the stream on purpose.
+wavUnpadded (tag, body) = listConcat (wavJoin [wavText tag, wavWord32 (length body)], body)
+
+wavFormatBody (encoding, channels, rate, align, byteRate, bits) = wavJoin [wavWord16 encoding, wavWord16 channels, wavWord32 rate, wavWord32 byteRate, wavWord16 align, wavWord16 bits]
+
+wavPack chunks =
+    body = wavJoin chunks
+    listConcat (wavHeader (satAdd (length body) 4), body)
+
+wavFile (encoding, channels, rate, bits, data) = wavPack [wavChunk ("fmt ", wavFormatBody (encoding, channels, rate, satMul (shiftRight bits 3) channels, satMul rate (satMul (shiftRight bits 3) channels), bits)), wavChunk ("data", data)]
+
+// The refusals below assert the exact user-facing message, not merely failure.
+refusedWith (outcome, why) = match outcome
+    Error actual => expect (actual, why)
+    Success _ => unexpected ()
+
+wavMonoFmt () = wavChunk ("fmt ", wavFormatBody (1, 1, 48000, 2, 96000, 16))
+
+wavMonoData () = wavChunk ("data", [0, 64, 0, 128])
+
+registerWaveJourneys () =
+    test ("decoded WAV keeps every PCM width, channel layout and stereo downmix exact", \() => arithmetic (\() =>
+        succeeds (WaveImport::decode (wavFile (1, 1, 48000, 16, [0, 64, 0, 128])), \wave =>
+            sameSamples (wave.samples, [0.5, -1.0])
+            expect (wave.sampleRate, 48000)
+            expect (wave.channels, 1)
+            expect (wave.frames, 2))
+        forEachList ([
+            { bytes = wavFile (1, 1, 44100, 8, [0, 128, 255]), want = [-1.0, 0.0, 0.9921875], channels = 1, frames = 3 },
+            { bytes = wavFile (1, 1, 8000, 24, [0, 0, 128, 0, 0, 64, 255, 255, 127]), want = [-1.0, 0.5, 0.9999998807907104], channels = 1, frames = 3 },
+            { bytes = wavFile (1, 1, 192000, 32, [0, 0, 0, 128, 255, 255, 255, 127]), want = [-1.0, 0.9999999995343387], channels = 1, frames = 2 },
+            { bytes = wavFile (3, 2, 48000, 32, [0, 0, 128, 63, 0, 0, 0, 191, 0, 0, 128, 191, 0, 0, 128, 63]), want = [0.25, 0.0], channels = 2, frames = 2 },
+            { bytes = wavFile (1, 2, 48000, 16, [0, 64, 0, 192, 255, 127, 0, 128]), want = [0.0, -0.0000152587890625], channels = 2, frames = 2 }],
+            \held => succeeds (WaveImport::decode held.bytes, \wave =>
+                sameSamples (wave.samples, held.want)
+                expect (wave.channels, held.channels)
+                expect (wave.frames, held.frames)
+                expect (wave.sampleRate > 0, true)
+                expect (length wave.samples == wave.frames, true)))
+        // An 18-byte format extension, a metadata chunk and odd-body padding all survive.
+        succeeds (WaveImport::decode (wavPack [wavChunk ("fmt ", listConcat (wavFormatBody (1, 1, 48000, 2, 96000, 16)) (wavWord16 0)), wavChunk ("LIST", [9, 8, 7]), wavMonoData ()]), \wave => sameSamples (wave.samples, [0.5, -1.0]))))
+    test ("WAV import refuses corrupt sizes, headers, chunks, formats and out-of-range samples", \() => arithmetic (\() =>
+        fmt = wavMonoFmt ()
+        data = wavMonoData ()
+        standard = wavFormatBody (1, 1, 48000, 2, 96000, 16)
+        forEachList ([
+            { why = "WAV file size must be between 12 bytes and 8 MiB.", bad = [[], wavText "RIFF"] },
+            { why = "Expected a complete little-endian RIFF/WAVE file.", bad = [wavJoin [wavText "RIFX", wavWord32 4, wavText "WAVE"], wavJoin [wavText "RIFF", wavWord32 4, wavText "WAVX"], wavJoin [wavText "RIFF", wavWord32 99, wavText "WAVE"]] },
+            { why = "WAV input contains a value outside the byte range.", bad = [wavJoin [[999, 73, 70, 70], wavWord32 4, wavText "WAVE"], wavJoin [[-1, 73, 70, 70], wavWord32 4, wavText "WAVE"], listConcat (wavHeader 12) [999, 85, 78, 75, 4, 0, 0, 0]] },
+            { why = "Truncated WAV chunk header or too many chunks (limit 1024).", bad = [listConcat (wavHeader 10) [74, 85, 78, 75, 0, 0], wavPack (mapList (toList (range (0, 1025)), \_ => wavChunk ("LIST", [])))] },
+            { why = "Truncated WAV chunk body or padding.", bad = [wavPack [fmt, wavJoin [wavText "data", wavWord32 100]], wavPack [fmt, wavUnpadded ("LIST", [1, 2, 3])]] },
+            { why = "Duplicate or short WAV format chunk.", bad = [wavPack [fmt, fmt, data], wavPack [wavChunk ("fmt ", wavJoin [wavWord16 1, wavWord16 1, wavWord32 48000, wavWord32 96000, wavWord16 2, [16]]), data]] },
+            { why = "Duplicate WAV data chunk.", bad = [wavPack [fmt, data, data]] },
+            { why = "WAV requires one format chunk and one data chunk.", bad = [wavPack [fmt], wavPack [data]] },
+            { why = "Truncated WAV format extension.", bad = [wavPack [wavChunk ("fmt ", listAppend (standard, 0)), data]] },
+            { why = "Extended WAV formats are not supported by this importer.", bad = [wavPack [wavChunk ("fmt ", listConcat (standard, wavWord16 2)), data], wavPack [wavChunk ("fmt ", listConcat (standard, listAppend (wavWord16 0, 0))), data], wavPack [wavChunk ("fmt ", listConcat (standard, listAppend (wavWord16 2, 0))), data]] },
+            { why = "WAV requires 2–1048576 complete sample frames.", bad = [wavFile (1, 1, 48000, 16, [0, 64]), wavFile (1, 1, 48000, 16, [0, 64, 0, 128, 0])] },
+            { why = "WAV samples must be finite and within [-1, 1].", bad = [wavFile (3, 1, 48000, 32, [0, 0, 128, 63, 0, 0, 0, 64]), wavFile (3, 1, 48000, 32, [0, 0, 128, 63, 0, 0, 192, 127]), wavFile (3, 2, 48000, 32, [0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 128, 63, 0, 0, 0, 64])] }],
+            \held => forEachList (held.bad, \bad => refusedWith (WaveImport::decode bad, held.why)))
+        // Unsupported encodings and widths, three channels, rates outside 8–192 kHz, misaligned frames, wrong byte rate.
+        forEachList ([wavFormatBody (1, 1, 48000, 1, 48000, 12), wavFormatBody (2, 1, 48000, 2, 96000, 16), wavFormatBody (3, 1, 48000, 2, 96000, 16), wavFormatBody (1, 3, 48000, 6, 288000, 16), wavFormatBody (1, 1, 7999, 2, 15998, 16), wavFormatBody (1, 1, 192001, 2, 384002, 16), wavFormatBody (1, 1, 48000, 3, 96000, 16), wavFormatBody (1, 1, 48000, 2, 48000, 16)],
+            \body => refusedWith (WaveImport::decode (wavPack [wavChunk ("fmt ", body), wavMonoData ()]), "WAV requires PCM 8/16/24/32 or float32, mono/stereo, 8–192 kHz and consistent frame/byte rates."))))
+    test ("sample resources validate metadata, prepare grains and transpose by root pitch", \() => arithmetic (\() =>
+        kit = synth::SampleResource(name = "loop", sampleRate = 48000, sourceChannels = 2, rootFrequency = 261.6255653005986, samples = [0.5, -0.5])
+        longName = join (mapList (toList (range (0, 256)), \_ => "x")) ""
+        forEachList ([
+            { r = kit, want = true },
+            { r = kit(name = "x"), want = true },
+            { r = kit(name = longName), want = true },
+            { r = kit(sampleRate = 8000), want = true },
+            { r = kit(sampleRate = 192000), want = true },
+            { r = kit(sourceChannels = 1), want = true },
+            { r = kit(rootFrequency = 1.0), want = true },
+            { r = kit(rootFrequency = 20000.0), want = true },
+            { r = kit(name = ""), want = false },
+            { r = kit(name = join (mapList (toList (range (0, 257)), \_ => "x")) ""), want = false },
+            { r = kit(sampleRate = 7999), want = false },
+            { r = kit(sampleRate = 192001), want = false },
+            { r = kit(sourceChannels = 0), want = false },
+            { r = kit(sourceChannels = 3), want = false },
+            { r = kit(rootFrequency = 0.99), want = false },
+            { r = kit(rootFrequency = 20000.1), want = false }],
+            \held => expect (SampleResources::metadata held.r, held.want))
+        succeeds (SampleResources::prepare kit, \prepared => expect (structuralEquals prepared kit, true))
+        // kit(samples=...) variants fail inside grain preparation; the last fails metadata first.
+        forEachList ([kit(samples = []), kit(samples = [0.5]), kit(samples = [0.5, 1.5])], \bad => refusedWith (SampleResources::prepare bad, "Grains require 2–1048576 finite normalised mono samples and capacity 1–256."))
+        refusedWith (SampleResources::prepare (kit(sampleRate = 192001)), "Invalid sample resource name, sample rate, source channels or root frequency.")
+        wave = synth::WaveSamples(sampleRate = 48000, channels = 2, frames = 2, samples = [0.25, -0.25])
+        succeeds (SampleResources::fromWave ("loop", 60.0, wave), \resource =>
+            expect (resource.name, "loop")
+            expect (resource.sampleRate, 48000)
+            expect (resource.sourceChannels, 2)
+            near (resource.rootFrequency, 261.6255653005986, 0.000000001)
+            sameSamples (resource.samples, [0.25, -0.25]))
+        forEachList ([-0.5, 127.5], \root => refusedWith (SampleResources::fromWave ("loop", root, wave), "Invalid sample root pitch or decoded frame count."))
+        refusedWith (SampleResources::fromWave ("loop", 60.0, wave(frames = 3)), "Invalid sample root pitch or decoded frame count.")
+        refusedWith (SampleResources::fromWave ("loop", 60.0, wave(samples = [2.0, -2.0])), "Grains require 2–1048576 finite normalised mono samples and capacity 1–256.")
+        refusedWith (SampleResources::fromWave ("loop", 60.0, wave(channels = 3)), "Invalid sample resource name, sample rate, source channels or root frequency.")
+        succeeds (SampleResources::decodeWave ("loop", 60.0, wavFile (1, 1, 48000, 16, [0, 64, 0, 128])), \resource => sameSamples (resource.samples, [0.5, -1.0]))
+        refusedWith (SampleResources::decodeWave ("loop", 60.0, wavText "RIFF"), "WAV file size must be between 12 bytes and 8 MiB.")
+        succeeds (SampleResources::fromWave ("loop", 60.0, wave), \tuned =>
+            forEachList ([{ note = 60.0, rate = 48000.0, want = 1.0 }, { note = 72.0, rate = 48000.0, want = 2.0 }, { note = 48.0, rate = 96000.0, want = 0.25 }, { note = 60.0, rate = 44100.0, want = 1.08843537414966 }],
+                \held => succeeds (SampleResources::playbackRate (tuned, held.note, held.rate), \speed => near (speed, held.want, 0.000000001)))
+            forEachList ([-1.0, 128.0], \note => refusedWith (SampleResources::playbackRate (tuned, note, 48000.0), "Invalid sample pitch or output rate."))
+            forEachList ([7999.0, 384001.0], \rate => refusedWith (SampleResources::playbackRate (tuned, 60.0, rate), "Invalid sample pitch or output rate."))
+            expect (SampleResources::metadata kit, true))
+        refusedWith (SampleResources::playbackRate (kit(sampleRate = 192001), 60.0, 48000.0), "Invalid sample pitch or output rate.")
+        succeeds (SampleResources::fromWave ("sub", 0.0, wave), \low => refusedWith (SampleResources::playbackRate (low, 127.0, 48000.0), "The requested sample transposition exceeds the grain rate limit."))))
+    test ("generated wave math: PCM words, downmix, tuning and polyBLEP shapes hit exact IEEE754 values", \() => arithmetic (\() =>
+        forEachList ([
+            { w = 0.0, b = 8.0, want = -1.0 },
+            { w = 128.0, b = 8.0, want = 0.0 },
+            { w = 255.0, b = 8.0, want = 0.9921875 },
+            { w = 0.0, b = 16.0, want = 0.0 },
+            { w = 16384.0, b = 16.0, want = 0.5 },
+            { w = 32767.0, b = 16.0, want = 0.999969482421875 },
+            { w = 32768.0, b = 16.0, want = -1.0 },
+            { w = 65535.0, b = 16.0, want = -0.000030517578125 },
+            { w = 4194304.0, b = 24.0, want = 0.5 },
+            { w = 8388608.0, b = 24.0, want = -1.0 },
+            { w = 16777215.0, b = 24.0, want = -0.00000011920928955078125 },
+            { w = 0.0, b = 32.0, want = 0.0 },
+            { w = 2147483648.0, b = 32.0, want = -1.0 },
+            { w = 4294967295.0, b = 32.0, want = -0.00000000046566128730773926 }],
+            \held => expect (WaveMath::pcm (held.w, held.b), held.want))
+        forEachList ([{ l = 0.25, r = -0.5, want = -0.125 }, { l = -1.0, r = 1.0, want = 0.0 }, { l = 0.5, r = 0.5, want = 0.5 }, { l = 0.75, r = 0.25, want = 0.5 }],
+            \held => expect (WaveMath::mono (held.l, held.r), held.want))
+        forEachList ([
+            { s = 48000.0, o = 48000.0, t = 440.0, r = 220.0, want = 2.0 },
+            { s = 48000.0, o = 96000.0, t = 880.0, r = 880.0, want = 0.5 },
+            { s = 44100.0, o = 48000.0, t = 440.0, r = 440.0, want = 0.91875 },
+            { s = 24000.0, o = 48000.0, t = 440.0, r = 220.0, want = 1.0 }],
+            \held => near (WaveMath::playbackRate (held.s, held.o, held.t, held.r), held.want, 0.000000001))
+        forEachList ([{ got = Waves::midiFrequency 69.0, want = 440.0, within = 0.0 }, { got = Waves::midiFrequency 81.0, want = 880.0, within = 0.0 }, { got = Waves::midiFrequency 57.0, want = 220.0, within = 0.0 }, { got = Waves::midiFrequency 60.0, want = 261.6255653005986, within = 0.000000001 }, { got = Waves::midiFrequency 0.0, want = 8.175798915643707, within = 0.000000001 }], \c => near (c.got, c.want, c.within))
+        forEachList ([{ s = 0.5, v = 0.8, want = 0.4 }, { s = -1.0, v = 0.25, want = -0.25 }, { s = 0.25, v = 0.0, want = 0.0 }],
+            \held => expect (Waves::velocitySample (held.s, held.v), held.want))
+        forEachList ([{ p = 0.25, want = 0.25 }, { p = 1.25, want = 0.25 }, { p = -0.25, want = 0.75 }, { p = 3.0, want = 0.0 }],
+            \held => expect (Waves::wrap held.p, held.want))
+        forEachList ([{ p = 0.25, s = 0.5, want = -0.25 }, { p = 0.75, s = 0.5, want = 0.25 }, { p = 0.5, s = 0.5, want = 0.0 }, { p = 0.3, s = 0.0, want = 0.0 }, { p = 0.3, s = -0.5, want = 0.0 }, { p = 0.999, s = 0.01, want = 0.81 }],
+            \held => near (Waves::blep (held.p, held.s), held.want, 0.000000001))
+        forEachList ([{ p = 0.25, s = 0.5, want = 0.0416666666666667 }, { p = 0.75, s = 0.5, want = 0.0416666666666667 }, { p = 0.1, s = 0.2, want = 0.0416666666666667 }, { p = 0.5, s = 0.5, want = 0.0 }, { p = 0.9, s = 0.0, want = 0.0 }],
+            \held => near (Waves::blamp (held.p, held.s), held.want, 0.000000001))
+        forEachList ([{ got = Waves::sine 0.25, want = 1.0, within = 0.000000000001 }, { got = Waves::sine 0.0, want = 0.0, within = 0.0 }, { got = Waves::sine 0.5, want = 0.0, within = 0.000000000001 }, { got = Waves::sine 0.75, want = -1.0, within = 0.000000000001 }, { got = Waves::sine 0.125, want = sin (6.283185307179586 * 0.125), within = 0.0 }], \c => near (c.got, c.want, c.within))
+        forEachList ([{ p = 0.0, s = 0.01, want = 0.0 }, { p = 0.25, s = 0.01, want = -0.5 }, { p = 0.5, s = 0.01, want = 0.0 }, { p = 0.75, s = 0.01, want = 0.5 }],
+            \held => expect (Waves::saw (held.p, held.s), held.want))
+        forEachList ([{ p = 0.25, w = 0.5, want = 1.0 }, { p = 0.75, w = 0.5, want = -1.0 }, { p = 0.0, w = 0.5, want = 0.0 }, { p = 0.5, w = 0.5, want = 0.0 }],
+            \held => expect (Waves::pulse (held.p, 0.01, held.w), held.want))
+        forEachList ([{ got = Waves::triangle (0.5, 0.0), want = 1.0, within = 0.0 }, { got = Waves::triangle (0.25, 0.0), want = 0.0, within = 0.0 }, { got = Waves::triangle (0.0, 0.0), want = -1.0, within = 0.0 }, { got = Waves::triangle (0.75, 0.01), want = 0.0, within = 0.000000000001 }, { got = Waves::triangle (0.5, 0.01), want = 0.9866666666666667, within = 0.000000001 }, { got = Waves::harmonic (0.25, 0.01, 3.0), want = -1.0, within = 0.000000000001 }, { got = Waves::harmonic (0.125, 0.01, 2.0), want = 1.0, within = 0.000000000001 }], \c => near (c.got, c.want, c.within))
+        forEachList ([{ got = Waves::harmonic (0.25, 0.2, 3.0), want = 0.0 }, { got = Waves::harmonic (0.25, 0.25, 2.0), want = 0.0 }], \c => expect (c.got, c.want))
+        forEachList ([{ got = Waves::glass (0.25, 0.01, 0.0), want = 1.0, within = 0.000000000001 }, { got = Waves::glass (0.25, 0.01, 1.0), want = sin (6.283185307179586 * 0.25) * 0.7 + sin (6.283185307179586 * 0.75) * 0.3, within = 0.000000000001 }, { got = Waves::bass (0.25, 0.2, 1.0), want = sin (6.283185307179586 * 0.25) * 0.65, within = 0.000000000001 }, { got = Waves::bass (0.125, 0.01, 0.0), want = sin (6.283185307179586 * 0.125) * 0.65 + sin (6.283185307179586 * 0.25) * 0.1, within = 0.000000000001 }, { got = Waves::hollow (0.25, 0.2, 1.0), want = sin (6.283185307179586 * 0.25) * 0.6, within = 0.000000000001 }, { got = Waves::hollow (0.25, 0.01, 1.0), want = sin (6.283185307179586 * 0.25) * 0.6 + sin (6.283185307179586 * 0.75) * 0.25 + sin (6.283185307179586 * 1.25) * 0.15, within = 0.000000000001 }], \c => near (c.got, c.want, c.within))
+        expect (Waves::modulated (0.0, 0.0), 0.0)
+        near (Waves::modulated (0.25, 1.0), sin (6.283185307179586 * (0.25 + 0.35 * sin (6.283185307179586 * 0.5))), 0.000000000001)
+        forEachList ([{ got = Waves::ring (0.5, 0.0, 0.0), want = 0.5 }, { got = Waves::ring (0.5, 0.0, 1.0), want = 0.0 }], \c => expect (c.got, c.want))
+        near (Waves::ring (0.5, 0.25, 1.0), sin (6.283185307179586 * 1.75) * 0.5, 0.000000000001)
+        forEachList ([{ s = -1.0, want = 0.0 }, { s = 0.0, want = 0.5 }, { s = 0.25, want = 0.625 }, { s = 1.0, want = 1.0 }],
+            \held => expect (Waves::unipolar held.s, held.want))
+        forEachList ([{ got = Waves::controlledGain (0.5, 2.0, 0.25), want = 0.25 }, { got = Waves::controlledGain (-0.5, 0.5, 1.0), want = -0.25 }], \c => expect (c.got, c.want))
+        forEachList ([{ c = 1000.0, m = 0.0, want = 1.0 }, { c = 1000.0, m = 0.5, want = 500.5 }, { c = 1000.0, m = 1.0, want = 1000.0 }, { c = 20000.0, m = 0.25, want = 5000.75 }],
+            \held => expect (Waves::controlledCutoff (held.c, held.m), held.want))
+        forEachList ([{ r = 1.0, d = 4.0, want = 0.0 }, { r = 0.5, d = 2.0, want = 0.0 }, { r = 4.0, d = 4.0, want = 1.0 }, { r = 5.0, d = 3.0, want = 2.0 }, { r = 9.0, d = 5.0, want = 2.0 }],
+            \held => expect (Waves::releaseGain (held.r, held.d), held.want))))

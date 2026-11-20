@@ -183,7 +183,7 @@ fn decodeNull(documentId, path) = match jsonGet(documentId, path) {
     }
 }
 
-fn decodeTagsFrom(documentId, index, count, decoded) -> Result<JsonValue, Error> = match index == count {
+fn decodeTagsFrom(documentId, index, count, decoded) -> Result<JsonValue, string> = match index == count {
     true => {
         let array = JsonArray { values: decoded }
         Success { value: array }

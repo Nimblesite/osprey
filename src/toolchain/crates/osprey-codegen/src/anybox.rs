@@ -13,7 +13,9 @@
 //! narrowing test a pointer comparison — no name lookup at run time.
 
 mod render;
+mod typed;
 use render::emit_renderer;
+pub(crate) use typed::{box_typed, typed_word};
 
 use crate::builder::Codegen;
 use crate::error::{CodegenError, Result};
@@ -67,6 +69,9 @@ pub(crate) enum DescKey {
     /// A shape rendering cannot see into: lists, maps, closures, foreign
     /// handles. `.0` is the placeholder it renders as.
     Opaque(&'static str),
+    /// A value kept whole at its static type — a typed `Error` payload
+    /// ([`typed`]). `.0` keys its prototype in [`AnyState::typed`].
+    Typed(String),
 }
 
 /// Per-module erasure state carried by [`Codegen`].
@@ -78,8 +83,15 @@ pub(crate) struct AnyState {
     boxers: HashMap<String, String>,
     /// Concrete union types retained across erasure for payload projection.
     union_types: HashMap<String, osprey_types::Type>,
+    /// Typed-payload key → the operand-less value it restores to.
+    typed: HashMap<String, Value>,
+    /// Types `show` is expanding inline right now; a type met again inside
+    /// itself renders through its one render function instead.
+    pub(crate) showing: Vec<String>,
     /// Whether `@osp.any.to_string` has been emitted.
     to_string_emitted: bool,
+    /// Whether `@osp.any.show` has been emitted.
+    show_emitted: bool,
     /// Every row shape a declared record can erase to, in declaration order —
     /// the complete candidate table structural arms select from. Seeded
     /// before emission ([`seed_rows`]); erasing an anonymous record is
@@ -158,7 +170,7 @@ fn key_kind(key: &DescKey) -> i64 {
         DescKey::Row(_) => ROW,
         DescKey::Union(..) => KIND_UNION,
         DescKey::Result => KIND_RESULT,
-        DescKey::Opaque(_) => KIND_OPAQUE,
+        DescKey::Opaque(_) | DescKey::Typed(_) => KIND_OPAQUE,
     }
 }
 
@@ -179,6 +191,7 @@ fn key_slug(key: &DescKey, serial: usize) -> String {
         DescKey::Union(owner, Some(_)) => format!("union.{owner}.{serial}"),
         DescKey::Result => "result".to_string(),
         DescKey::Opaque(label) => format!("opaque.{}", label.trim_matches(['<', '>'])),
+        DescKey::Typed(_) => format!("typed.{serial}"),
     }
 }
 
@@ -213,6 +226,18 @@ fn ensure_to_string(cg: &mut Codegen) {
     }
     cg.anys.to_string_emitted = true;
     let saved = cg.enter_nested_fn();
+    let (desc, payload, dt) = guard_box(cg);
+    let raw = crate::aggregate::load_field(cg, DESC_TY, &dt, 1, LType::Str);
+    let f = cg.emit_reg(format!("bitcast i8* {raw} to {RENDER_SIG}*"));
+    let s = cg.emit_reg(format!("call i8* {f}(i8* {desc}, i64 {payload})"));
+    cg.emit(format!("ret i8* {s}"));
+    cg.exit_nested_fn(saved, "i8*", TO_STRING_FN, &[(LType::Ptr, "box".into())]);
+}
+
+/// Open the `%box` parameter of a nested function: a null box (a zeroed slot
+/// that never held a value) returns `null`; otherwise load its descriptor,
+/// payload and the descriptor cast to `DESC_TY*`.
+fn guard_box(cg: &mut Codegen) -> (String, String, String) {
     let null_lbl = cg.fresh_label();
     let body_lbl = cg.fresh_label();
     let isnull = cg.emit_reg("icmp eq i8* %box, null");
@@ -225,11 +250,7 @@ fn ensure_to_string(cg: &mut Codegen) {
     cg.start_block(&body_lbl);
     let (desc, payload) = load_box(cg, "%box");
     let dt = cg.emit_reg(format!("bitcast i8* {desc} to {DESC_TY}*"));
-    let raw = crate::aggregate::load_field(cg, DESC_TY, &dt, 1, LType::Str);
-    let f = cg.emit_reg(format!("bitcast i8* {raw} to {RENDER_SIG}*"));
-    let s = cg.emit_reg(format!("call i8* {f}(i8* {desc}, i64 {payload})"));
-    cg.emit(format!("ret i8* {s}"));
-    cg.exit_nested_fn(saved, "i8*", TO_STRING_FN, &[(LType::Ptr, "box".into())]);
+    (desc, payload, dt)
 }
 
 /// Load a box's `(desc, payload)` pair from its `i8*` operand.
@@ -256,7 +277,7 @@ pub(crate) fn box_any(cg: &mut Codegen, v: Value) -> Result<Value> {
     let v = crate::listlit::escaping(cg, v);
     let (key, payload, managed) = classify(cg, v)?;
     let desc = descriptor(cg, &key)?;
-    Ok(build_box(cg, &desc, payload, managed))
+    Ok(build_box(cg, &desc_operand(&desc), payload, managed))
 }
 
 /// Allocate and fill one `{ desc, payload }` box; the payload word is masked
@@ -274,7 +295,7 @@ fn build_box(cg: &mut Codegen, desc: &str, payload: Value, managed: bool) -> Val
     let dp = cg.emit_reg(format!(
         "getelementptr {BOX_TY}, {BOX_TY}* {obj}, i32 0, i32 0"
     ));
-    cg.emit(format!("store i8* {}, i8** {dp}", desc_operand(desc)));
+    cg.emit(format!("store i8* {desc}, i8** {dp}"));
     if managed && !crate::arc::consume_into_store(cg, &payload.operand) {
         crate::arc::dup_store(cg, "i8*", &payload.operand);
     }
@@ -314,6 +335,10 @@ fn classify(cg: &mut Codegen, v: Value) -> Result<(DescKey, Value, bool)> {
 /// renderer cannot truthfully walk becomes a named opaque.
 fn classify_handle(cg: &mut Codegen, v: Value) -> Result<(DescKey, Value, bool)> {
     let owner = v.osp_ty.clone().unwrap_or_default();
+    // A list keeps its element type, so it renders its elements.
+    if crate::collections::is_list_owner(&owner) {
+        return Ok((typed::key(cg, &v), v, true));
+    }
     if is_opaque_owner(&owner) {
         return Ok((DescKey::Opaque(opaque_label(&owner)), v, true));
     }

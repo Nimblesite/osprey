@@ -170,9 +170,9 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
 })
 
 test('the Android emulator is the Pixel 7 the phone goldens were taken on', () => {
-  const integration = job('test-integration', '.github/workflows/ci.yml')
-  assert.match(integration, /^ {10}profile: pixel_7$/m)
-  assert.ok(integration.includes('make -C src/toolchain/targets/android/tests tally-headless'))
+  const android = job('test-android', '.github/workflows/ci.yml')
+  assert.match(android, /^ {10}profile: pixel_7$/m)
+  assert.ok(android.includes('make -C src/toolchain/targets/android/tests tally-headless'))
   // Goldens are named by width: a golden for any other phone width would mean CI runs another device.
   assert.deepEqual(readdirSync('src/osprey/examples/tally/goldens/android'), ['1080-ready.png'])
 })

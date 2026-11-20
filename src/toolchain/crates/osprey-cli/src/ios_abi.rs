@@ -427,21 +427,14 @@ pub(crate) fn source_with_abi(
     extend_bool: bool,
     scope: &ExportScope,
 ) -> Result<(String, HostAbi), String> {
-    crate::target_capabilities::validate(program, target)?;
-    let abi_error = |error: String| format!("{path}: target `{target}` C ABI: {error}");
-    let checked = osprey_codegen::retained_check(program)
-        .map_err(|errors| abi_error(selection::joined(&errors)))?;
-    let types = checked.types().clone();
-    let exports = checked.library_exports().clone();
-    osprey_codegen::set_reused_check(Some(checked));
     // Entry-only programs have no later host calls needing globals. [IOS-TARGET-ENTRY]
-    let ir = if matches!(scope, ExportScope::EntryOnly) {
-        osprey_codegen::compile_host_program(program)
-    } else {
-        osprey_codegen::compile_library(program)
-    }
-    .map_err(|e| format!("{path}: {e}"))?;
-    let abi = host_abi_selected(program, &types, &exports, &ir, scope).map_err(abi_error)?;
+    let (ir, abi) = checked_abi(program, path, target, scope, |program| {
+        if matches!(scope, ExportScope::EntryOnly) {
+            osprey_codegen::compile_host_program(program)
+        } else {
+            osprey_codegen::compile_library(program)
+        }
+    })?;
     let adapted = if extend_bool {
         with_host_abi(&ir, &abi)?
     } else {
@@ -458,16 +451,35 @@ pub(crate) fn wasm_source(
     path: &str,
     scope: &ExportScope,
 ) -> Result<(String, HostAbi), String> {
-    crate::target_capabilities::validate(program, "wasm32")?;
-    let abi_error = |error: String| format!("{path}: target `wasm32` C ABI: {error}");
+    let (ir, abi) = checked_abi(
+        program,
+        path,
+        "wasm32",
+        scope,
+        osprey_codegen::compile_wasm_library,
+    )?;
+    Ok((with_host_abi_for_target(&ir, &abi, false)?, abi))
+}
+
+/// Validate `target`'s capabilities, type-check once (the check is reused by `compile`), compile,
+/// and select the host ABI of the scope's exports.
+fn checked_abi<E: std::fmt::Display>(
+    program: &Program,
+    path: &str,
+    target: &str,
+    scope: &ExportScope,
+    compile: impl FnOnce(&Program) -> Result<String, E>,
+) -> Result<(String, HostAbi), String> {
+    crate::target_capabilities::validate(program, target)?;
+    let abi_error = |error: String| format!("{path}: target `{target}` C ABI: {error}");
     let checked = osprey_codegen::retained_check(program)
         .map_err(|errors| abi_error(selection::joined(&errors)))?;
     let types = checked.types().clone();
     let exports = checked.library_exports().clone();
     osprey_codegen::set_reused_check(Some(checked));
-    let ir = osprey_codegen::compile_wasm_library(program).map_err(|e| format!("{path}: {e}"))?;
+    let ir = compile(program).map_err(|e| format!("{path}: {e}"))?;
     let abi = host_abi_selected(program, &types, &exports, &ir, scope).map_err(abi_error)?;
-    Ok((with_host_abi_for_target(&ir, &abi, false)?, abi))
+    Ok((ir, abi))
 }
 
 #[cfg(test)]

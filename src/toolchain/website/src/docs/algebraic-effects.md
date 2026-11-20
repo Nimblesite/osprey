@@ -25,8 +25,8 @@ The Osprey package manager does all its file work through the `Files` effect in 
 // The file-system effect from the package manager's host boundary
 // (src/osprey/packages/manager/host/src/host.osp), trimmed to two operations.
 effect Files {
-    read: fn(string) -> Result<string, Error>
-    write: fn(string, string) -> Result<int, Error>
+    read: fn(string) -> Result<string, string>
+    write: fn(string, string) -> Result<int, string>
 }
 
 // Application logic: change the manifest, then write the lock file. If the
@@ -138,8 +138,8 @@ In Python flavor, `@effect` declares the effect, `perform(...)` asks for an oper
 # The package manager's file-system effect, in Python flavor.
 @effect
 class Files:
-    def read(path: str) -> Result[str, Error]: ...
-    def write(path: str, text: str) -> Result[int, Error]: ...
+    def read(path: str) -> Result[str, str]: ...
+    def write(path: str, text: str) -> Result[int, str]: ...
 
 
 def commit_lock(previous, lock):
@@ -233,8 +233,8 @@ Each test double is a small class with one method per operation. `install` is or
 // The file-system effect from the package manager's host boundary
 // (src/osprey/packages/manager/host/src/host.osp), trimmed to two operations.
 effect Files
-    read : string => Result<string, Error>
-    write : (string, string) => Result<int, Error>
+    read : string => Result<string, string>
+    write : (string, string) => Result<int, string>
 
 // Application logic: change the manifest, then write the lock file. If the
 // lock write fails, put the old manifest back. It never touches a disk.
@@ -296,7 +296,7 @@ This is checked through helpers, lambdas and fibers, so production code can't ac
 `handle` installs a handler for the rest of a block:
 
 ```osprey
-effect Files { read: fn(string) -> Result<string, Error> }
+effect Files { read: fn(string) -> Result<string, string> }
 fn manifest() = perform Files.read("osprey.toml") ?: "missing"
 
 let shown = {
@@ -426,7 +426,7 @@ The safety rules for backtracking already work. Going back reruns everything aft
 
 ```osprey
 effect Versions { control many pick: fn(string) -> string }
-effect Files { write: fn(string, string) -> Result<int, Error> }
+effect Files { write: fn(string, string) -> Result<int, string> }
 
 fn plan() = {
     let serde = perform Versions.pick("serde")

@@ -26,7 +26,7 @@ export interface Request {
   readonly headers: string;
   readonly body: string;
   /** `req.get(name)` is the value of the request header `name`, matched without regard to case. */
-  get(name: string): Requires<Result<string, Error>, []>;
+  get(name: string): Requires<Result<string, string>, []>;
   /** A handler returns `req.next()` to pass the request to the next matching handler. */
   next(): Requires<Response, []>;
   /** A handler returns `req.fail(error)` to pass `error` to the error handlers, as `next(error)` does in Express. */
@@ -378,9 +378,20 @@ function bindFrom(patterns, parts, index, params) {
   if (index === listLength(patterns)) {
     return Success({ kind: "bound", params: params } satisfies Match);
   }
-  return andThen(listGet(patterns, index), (pattern) =>
-    andThen(listGet(parts, index), (part) => bindSegment(patterns, parts, index, params, pattern, part)),
+  return andThen(segment(patterns, index), (pattern) =>
+    andThen(segment(parts, index), (part) => bindSegment(patterns, parts, index, params, pattern, part)),
   );
+}
+
+/** The segment at `index`, or the list read's failure as a message. */
+function segment(segments, index) {
+  const read = listGet(segments, index);
+  switch (read.kind) {
+    case "success":
+      return Success(read.value);
+    case "error":
+      return Error("index out of bounds");
+  }
 }
 
 /** A `:name` segment captures as written; a literal one matches without regard to case. */

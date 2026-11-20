@@ -558,9 +558,17 @@ succeeds (outcome, check) = match outcome
     Error why => expect (why, "success")
     Success value => check value
 
+reads (outcome, check) = match outcome
+    Error why => expect ("no element ${why.index} of ${why.length}", "an element")
+    Success value => check value
+
 valid (outcome, check) = match outcome
     synth::Invalid _ => expect (false, true)
     synth::Valid value => check value
 
 // The `index`th parameter of graph node `identity`, which must exist.
-parameterAt (graph, identity, index, check) = valid (synth::Graphs::node (graph, identity), \n => succeeds (listGet n.parameters index, check))
+parameterAt (graph, identity, index, check) = valid (synth::Graphs::node (graph, identity), \n => reads (listGet n.parameters index, check))
+
+test ("graph history undoes module insertion, redoes it and branches without reusing identities", \() => Runtime::guarded (\() => hosted graphHistoryJourney))
+
+test ("resizing the graph keeps original header controls aligned and usable", \() => Runtime::guarded (\() => hosted graphResizeJourney))

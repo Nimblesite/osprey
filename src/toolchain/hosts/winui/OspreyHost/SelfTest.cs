@@ -397,7 +397,7 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
 
     static IEnumerable<DependencyObject> Tree(DependencyObject root)
     {
-        var pending = new Stack<DependencyObject>([root]);
+        var pending = new Stack<DependencyObject>(new DependencyObject[] { root });
         while (pending.TryPop(out var node))
         {
             yield return node;

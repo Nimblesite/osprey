@@ -376,3 +376,47 @@ fn extra_docs_member_listings_fall_back_to_the_member_signature() {
         "{module}"
     );
 }
+
+/// A documentation page is a Markdown file reached directly: a symlinked page and a directory
+/// entry that is not a file (a FIFO) are refused by name, and no site is written. [DOC-EXPORT]
+#[cfg(unix)]
+#[test]
+fn docs_pages_refuse_symlinks_and_entries_that_are_not_files() {
+    let root = temp_dir("docs_page_refusals");
+    let library = root.join("lib.osp");
+    std::fs::write(&library, "fn documented() = 1\n").expect("write library");
+    std::fs::write(root.join("notes.md"), "# Notes\n").expect("write notes");
+    std::os::unix::fs::symlink(root.join("notes.md"), root.join("link.md")).expect("link page");
+    let pages = root.join("pages");
+    std::fs::create_dir_all(&pages).expect("pages directory");
+    let fifo = std::process::Command::new("mkfifo")
+        .arg(pages.join("pipe"))
+        .status();
+    assert!(fifo.is_ok_and(|status| status.success()), "mkfifo failed");
+    for (page, refusal) in [
+        (
+            root.join("link.md"),
+            "documentation page symlinks are not supported".to_string(),
+        ),
+        (
+            pages.clone(),
+            format!("not a documentation file: {}", pages.join("pipe").display()),
+        ),
+    ] {
+        let site = root.join("site");
+        let mut command = osprey();
+        let _ = command
+            .arg("--docs")
+            .arg(&library)
+            .arg("--docs-dir")
+            .arg(&site)
+            .arg("--docs-page")
+            .arg(&page);
+        let result: Out = finish(&mut command);
+        result.expect_stderr(1, &[&refusal], &[]);
+        assert!(
+            !site.join("index.md").exists(),
+            "a refused site was written"
+        );
+    }
+}

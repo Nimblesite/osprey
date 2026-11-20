@@ -160,7 +160,7 @@ module ExportTests
     sole (items) = match length items == 1
         true => match listGet (items, 0)
             Success item => itemised (item)
-            Error message => "error: ${message}"
+            Error _ => "error: index out of bounds"
         false => "expected one declaration, found ${toString (length items)}"
 
     itemised (item) = match item

@@ -20,10 +20,7 @@ pub(crate) fn to_string_value(cg: &mut Codegen, v: Value) -> Result<Value> {
     }
     match v.ty {
         LType::Str => Ok(v),
-        LType::Ptr => {
-            let boxed = crate::anybox::box_any(cg, v)?;
-            Ok(crate::anybox::any_to_string(cg, &boxed))
-        }
+        LType::Ptr => crate::show::handle(cg, v),
         LType::I1 => Ok(bool_to_string(cg, &v)),
         // Every float width prints through the runtime function that finds the
         // shortest decimal reading back at THAT width [TYPE-NUMERIC-PRINT].
@@ -41,7 +38,7 @@ pub(crate) fn to_string_value(cg: &mut Codegen, v: Value) -> Result<Value> {
 /// payload comes from the errmsg slot (slot 2), which `load_errmsg` already
 /// falls back to the bare `"Error"` constant when unset. Implements [ERR-PAYLOAD].
 fn result_to_string(cg: &mut Codegen, v: &Value) -> Result<Value> {
-    result_string(cg, v, true)
+    result_string(cg, v, SuccessText::Wrapped)
 }
 
 /// [`result_to_string`] minus the `Success(…)` wrapping: a Success renders as
@@ -49,24 +46,42 @@ fn result_to_string(cg: &mut Codegen, v: &Value) -> Result<Value> {
 /// rendering — a Success compares as its payload, an Error is a visible
 /// mismatch, never a blind payload load. [TESTING-EQUALITY]
 pub(crate) fn result_payload_or_error_string(cg: &mut Codegen, v: &Value) -> Result<Value> {
-    result_string(cg, v, false)
+    result_string(cg, v, SuccessText::Payload)
 }
 
-fn result_string(cg: &mut Codegen, v: &Value, wrap_success: bool) -> Result<Value> {
+/// A Result as bare `Success` (payload never loaded, so any `T`) or
+/// `Error(<message>)` [TESTING-BUILTIN-EXPECT-ERROR].
+pub(crate) fn result_error_string(cg: &mut Codegen, v: &Value) -> Result<Value> {
+    result_string(cg, v, SuccessText::Bare)
+}
+
+/// How the Success side of a Result renders.
+#[derive(Clone, Copy)]
+enum SuccessText {
+    Payload,
+    Wrapped,
+    Bare,
+}
+
+fn result_string(cg: &mut Codegen, v: &Value, success: SuccessText) -> Result<Value> {
     let (_sl, el, end) = crate::result::open_result_branch(cg, v);
-    let val = crate::result::load_value(cg, v);
-    let vs = to_string_value(cg, val)?;
-    let succ = if wrap_success {
-        sprintf_wrap(cg, "Success(%s)", &vs.operand)
-    } else {
-        vs.operand
+    let succ = match success {
+        SuccessText::Bare => cg.string_constant("Success").operand,
+        SuccessText::Payload | SuccessText::Wrapped => {
+            let val = crate::result::load_value(cg, v);
+            let vs = to_string_value(cg, val)?;
+            match success {
+                SuccessText::Wrapped => sprintf_wrap(cg, "Success(%s)", &vs.operand),
+                _ => vs.operand,
+            }
+        }
     };
     let sb = cg.snapshot_to(&end);
 
     cg.start_block(&el);
     // A message-less Error (null errmsg slot) prints just `Error`; any real
     // reason prints `Error(<reason>)`.
-    let msg = crate::result::load_errmsg(cg, v);
+    let msg = crate::result::load_error_text(cg, v, false);
     let isnull = cg.emit_reg(format!("icmp eq i8* {}, null", msg.operand));
     let (nl, fl, jl) = cg.diamond(&isnull);
     cg.start_block(&fl);
@@ -111,23 +126,26 @@ fn sprintf_wrap(cg: &mut Codegen, fmt: &str, arg: &str) -> String {
 /// wasm32 and 64-bit natively, so a literal size type here mismatches
 /// wasi-libc at wasm-ld time. See `string_runtime.h`. [STRING-INTERPOLATION]
 pub(crate) fn format_sized(cg: &mut Codegen, fmt: &str, args: &[String]) -> Value {
+    let fmt = cg.string_constant(fmt);
+    format_sized_by(cg, &fmt.operand, args)
+}
+
+/// [`format_sized`] with the format string chosen at run time.
+pub(crate) fn format_sized_by(cg: &mut Codegen, fmt: &str, args: &[String]) -> Value {
     cg.add_extern("declare i64 @osp_format_size(i8*, ...)");
     cg.add_extern("declare void @osp_format_into(i8*, i64, i8*, ...)");
-    let fmtv = cg.string_constant(fmt);
     let extra = args.iter().fold(String::new(), |mut acc, a| {
         acc.push_str(", ");
         acc.push_str(a);
         acc
     });
     let len = cg.emit_reg(format!(
-        "call i64 (i8*, ...) @osp_format_size(i8* {}{extra})",
-        fmtv.operand
+        "call i64 (i8*, ...) @osp_format_size(i8* {fmt}{extra})"
     ));
     let size = cg.emit_reg(format!("add i64 {len}, 1"));
     let buf = cg.heap_alloc(&size);
     cg.emit(format!(
-        "call void (i8*, i64, i8*, ...) @osp_format_into(i8* {buf}, i64 {size}, i8* {}{extra})",
-        fmtv.operand
+        "call void (i8*, i64, i8*, ...) @osp_format_into(i8* {buf}, i64 {size}, i8* {fmt}{extra})"
     ));
     let v = Value::new(buf, LType::Str);
     crate::arc::own(cg, &v);

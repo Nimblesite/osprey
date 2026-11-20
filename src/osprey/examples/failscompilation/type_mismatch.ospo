@@ -5,3 +5,24 @@
 let x: Int = 42
 let y: String = x  // Type mismatch: cannot assign Int to String
 print(y)
+// expectError takes the Result's own `E`. [TESTING-BUILTIN-EXPECT-ERROR]
+expectError(checkedAdd(1, 2), 42)
+// The two operands of an assertion have one type. [TESTING-EQUALITY]
+expect(5, "5")
+check("one type", "true", true)
+// `E` is exact: a function declared to fail with a record cannot fail with
+// an int, and no built-in `Error` type exists to name. [ERR-RESULT]
+type Refusal = { code: int, why: string }
+fn refuse(n) -> Result<int, Refusal> = if n < 0 { Error { message: n } } else { Success { value: n } }
+fn legacy(n) -> Result<int, Error> = checkedAdd(n, n)
+fn decode(r: Result<int, Refusal>) -> string = match r {
+    Success { value } => toString(value)
+    Error { message } => message
+}
+// A list read fails with the built-in `IndexOutOfBounds` record: it is not
+// a string, and a program cannot declare its own. [BUILTIN-LIST-GET]
+fn firstOr(xs: List<int>) -> string = match xs[0] {
+    Success { value } => toString(value)
+    Error { message } => message
+}
+type IndexOutOfBounds = { at: string }

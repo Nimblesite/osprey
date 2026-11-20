@@ -248,7 +248,7 @@ fn named_args_reorder_and_fall_back() {
 fn index_string_and_unknown_target() {
     // String index yields Result<string, _>; an opaque target falls back to
     // a fresh Result.
-    ok("fn ch(s: string) -> Result<string, Error> = s[0]\n\
+    ok("fn ch(s: string) -> Result<string, string> = s[0]\n\
         fn anyIdx(x) = x[0]\n");
 }
 
@@ -293,11 +293,11 @@ fn natural_arithmetic_infers_plain_numbers() {
     assert_eq!(types.return_type("floatNeg"), Some(&Type::float()));
 
     // Arithmetic never unwraps a `Result` operand.
-    let errors = bad("fn wrong(r: Result<int, Error>) = r + 1\n");
+    let errors = bad("fn wrong(r: Result<int, string>) = r + 1\n");
     assert!(
         errors.iter().any(|e| e
             .message
-            .contains("cannot unify int with Result<int, Error>")),
+            .contains("cannot unify int with Result<int, string>")),
         "{errors:?}"
     );
 }
@@ -345,7 +345,7 @@ fn list_concat_when_only_right_is_a_list() {
 
 #[test]
 fn map_index_yields_value_result() {
-    ok("fn lookup(m: Map<string, int>) -> Result<int, Error> = m[\"k\"]\n");
+    ok("fn lookup(m: Map<string, int>) -> Result<int, string> = m[\"k\"]\n");
     // A key or index that is itself a `Result` is never silently unwrapped.
     assert_ne!(
         bad("fn bad(m: Map<string, int>) = m[checkedAdd(1, 1)]\n"),

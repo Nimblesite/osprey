@@ -207,7 +207,9 @@ erasedInList () =
         _ => "miss"
 
 erasedInRuntimeList () =
-    "${listGet (listAppend (listAppend (List ()) (forward ("ap" + "pended"))) (forward 8)) 0}"
+    match listGet (listAppend (listAppend (List ()) (forward ("ap" + "pended"))) (forward 8)) 0
+        Success value => "Success(${value})"
+        Error _message => "miss"
 
 (** A fold's loop-carried accumulator crosses a representation boundary as a
     raw word, and its rebind carried its own hand-written "is this a string or
@@ -263,7 +265,7 @@ anyTypeBehaviorCase () =
         describeAny (Pair 7 "seven") == "pair=7:seven",
         describeAny 42 == "other=42",
         describeAny (forward ("still" + "erased")) == "other=stillerased",
-        erasedKinds () == "1.75|true|Green|Circle { radius: 3 }|Success(5)|<list>|<map>",
+        erasedKinds () == "1.75|true|Green|Circle { radius: 3 }|Success(5)|[1]|<map>",
         erasedInList () == "other=boxed|other=7",
         erasedInRuntimeList () == "Success(appended)",
         swapped () == "other=11",

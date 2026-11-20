@@ -57,7 +57,7 @@ test("nested generic fanout preserves specialized values", sharedGenericCase)
 
 /// A shared Result-returning specialization must retain its payload layout.
 /// The recursive Result return needs this annotation to reach code generation.
-fn payloadResult(marker, present, step) -> Result<List<int>, string> = match step {
+fn payloadResult(marker, present, step) = match step {
     0 => match present {
         true => Success { value: [11, 22] }
         false => Error { message: "missing" }

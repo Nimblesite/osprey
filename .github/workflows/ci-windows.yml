@@ -10,7 +10,7 @@ on:
 concurrency:
   # Not github.workflow: a called workflow takes its caller's name, and sharing its group cancels it.
   group: ci-windows-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   # Website-only PRs don't touch the compiler, so `windows-core` skips — but it

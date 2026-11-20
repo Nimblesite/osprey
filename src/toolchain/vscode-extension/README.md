@@ -21,7 +21,7 @@ Every app above is Osprey, running natively on macOS and Windows. [Try it in you
 Declare what your code needs with `effect`. Supply it with `handle`. The app gets the real disk; the test gets a full one:
 
 ```osprey
-effect Files { write: fn(string, string) -> Result<int, Error> }
+effect Files { write: fn(string, string) -> Result<int, string> }
 
 fn install(name) = match perform Files.write("osprey.lock", "${name} = 2") {
     Success _ => "installed"

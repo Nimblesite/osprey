@@ -8,7 +8,6 @@
 - [Record Types](#record-types--type-record) — including [anonymous records](#anonymous-records--type-record-anon) and [tuples](#tuples--type-tuple)
 - [Union Types](#union-types)
 - [Collection Types](#collection-types)
-- [Built-in Error Types](#built-in-error-types)
 - [The `any` Type](#the-any-type--type-any)
 - [Type Annotations](#type-annotations--type-annotation-check)
 - [Redundant Annotations](#redundant-annotations--type-annotation-redundant)
@@ -76,25 +75,22 @@ A build solves its whole-program effect proofs once. The gate and codegen read t
 
 ### Reporting a Partly Inferred Type — [TYPE-RENDER-HOLES]
 
-Inference does not always reach a single ground type, and what a tool reports
-in that case is part of the language's contract. A slot the checker proved
-nothing about is written `_`, the type-level hole. Every slot it did prove is
-written normally, so a partial answer still carries its proven part.
+A tool reports every part of a type the checker proved, and writes `_` for a
+part it proved nothing about.
 
 ```osprey
 fn bothArms(f) = if f { Success { value: 1 } } else { Error { message: "e" } }
-// reported: fn bothArms(f: bool) -> Result<int, _>
+// reported: fn bothArms(f: bool) -> Result<int, string>
+
+fn onlySuccess() = Success { value: 1 }
+// reported: fn onlySuccess() -> Result<int, _>
 ```
 
 Reporting is a property of the canonical AST, so both surfaces report the same
 signature for the same program ([FLAVOR-IR-EQUIV]).
 
-The payload is `int` in both arms, so it is reported. The error side is open:
-`Error { message }` fixes only the message, leaving `E` free to unify with
-whichever error type a call site supplies, so `-> Result<int, string>`,
-`-> Result<int, Error>` and `-> int` all check
-([Result Preservation](#result-preservation)). A hole is the only honest
-spelling for that slot.
+`onlySuccess` builds no `Error`, so its `E` is undecided
+([ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result)) and is reported as `_`.
 
 A declared record is reported by its **name and its row** together:
 
@@ -115,14 +111,14 @@ Two spellings are forbidden. A tool must not print the checker's internal
 variable name — `t5` is private, its number is an artefact of one inference run
 and it moves when an unrelated line is edited. A tool must not substitute
 `Unit`, which is a positive claim the checker itself refutes: annotating
-`bothArms` with `-> Unit` fails to unify. Where a type is nothing but a hole
+`onlySuccess` with `-> Unit` fails to unify. Where a type is nothing but a hole
 there is nothing to report, and the slot is left as the author wrote it —
 bare — rather than decorated with `_`.
 
 A hole is a reporting spelling, not syntax. The annotation grammar has no
 wildcard, so `_` written in a type position is read as an ordinary nominal name
 like any other capitalized-or-not identifier, and it unifies only where the slot
-was already free. `-> Result<int, _>` therefore happens to check on `bothArms`,
+was already free. `-> Result<int, _>` therefore happens to check on `onlySuccess`,
 while `fn f(x: int) -> _ = x` is rejected — `cannot unify _ with int` — exactly
 as a misspelled type name would be. A reported signature containing a hole is
 not guaranteed to be a valid annotation, and reporting one is not a suggestion
@@ -326,7 +322,7 @@ operation results outputs ([Algebraic Effects](0017-AlgebraicEffects.md#generic-
 
 `[TYPE-VARIANCE-COERCION]` **Implicit `Success` promotion applies at direct value sites, never inside a constructor argument.** A bare `T` satisfies a `Result<T, E>` slot; the inverse never holds. `Feed<int>` therefore does not satisfy `Feed<Result<int, string>>`, regardless of its variance marker. A `Feed<(int) -> Result<int, string>>` cannot satisfy `Feed<(int) -> int>` either. Direct function assignments still compare parameters contravariantly and returns covariantly, with direct-site promotion where allowed: `(Result<int, string>) -> bool` satisfies an `(int) -> bool` slot.
 
-Erasure to `any` is a separate conversion. Supported list, Result and nominal record/union adapters rebuild the affected representation recursively rather than reinterpreting its pointer. For example, `List<List<int>>` can satisfy `List<List<any>>` by boxing the inner elements; `Result<List<int>, string>` can satisfy `Result<List<any>, string>` by adapting a success payload while preserving an error and its message. Neither conversion inserts nested `Success` wrappers.
+Erasure to `any` is a separate conversion. Supported list, Result and nominal record/union adapters rebuild the affected representation recursively rather than reinterpreting its pointer. For example, `List<List<int>>` can satisfy `List<List<any>>` by boxing the inner elements; `Result<List<int>, string>` can satisfy `Result<List<any>, string>` by adapting a success payload while preserving an error and its payload. Neither conversion inserts nested `Success` wrappers.
 
 For `Feed<out T>` with a field containing `T`, `Feed<int>` can satisfy `Feed<any>`. For `Gate<in T>` with an `(T) -> bool` field, `Gate<any>` can satisfy `Gate<int>`: its callable adapter boxes the supplied integer for the original consumer. This does not recover an arbitrary `any` as an integer. Function-valued payloads require the corresponding callable adapters. Rebuilding a record or union preserves its constructor tag, fields and original immutable value, including nullary variants; recursive nominal conversions reuse a memoized converter.
 
@@ -336,6 +332,35 @@ Built-in constructors' declared variance: `Result<out T, out E>`,
 `List<out T>`, `Fiber<out T>`, `Map<K, out V>` (keys invariant); `Channel<T>`
 and `Ptr` are invariant. Function types are structurally contravariant in
 parameters and covariant in returns.
+
+### Built-in constraints — [TYPE-CONSTRAINTS]
+
+**Implementation status:** not implemented. Today each obligation below is checked only where a concrete type reaches the built-in, so `fn show(x) = toString(x)` is accepted with no obligation on `x`, and a call that passes a function is rejected at the built-in's use inside `show`, not at the call. Plan: [generic error payloads, top priority](../../plans/generic-error-payload.md#-top-priority-gaps-that-block-top-tier).
+
+A type variable may carry a built-in constraint. The constraint is part of the function's type scheme: generalization keeps it, instantiation copies it to the fresh variable, and it is discharged where a concrete type is supplied. So an obligation a built-in places on its argument travels through every generic function to the call that decides the type, and the error is reported there.
+
+| Constraint | Types that satisfy it | Placed by |
+| --- | --- | --- |
+| `printable` | every type made of data ([BUILTIN-PRINT](../runtime/0012-Built-InFunctions.md#printvalue-printable---unit--builtin-print)) | `print`, `toString`, interpolation |
+| `comparable` | numbers, `string`, `bool`, and lists, records and unions of comparable parts | `==`, `!=`, `<`, `>`, `<=`, `>=`, `listSort`, assertion operands |
+| `number` | every numeric type ([TYPE-NUMERIC-SIZED](#sized-numeric-types--type-numeric-sized)) | arithmetic operators and numeric built-ins |
+| `sized` | `string`, `List<T>`, `Map<string, V>` | `length`, `isEmpty` |
+
+```osprey
+fn show(x) = "<${toString(x)}>"     // show : (printable a) -> string
+print(show(Overflow { by: 3 }))     // <Overflow { by: 3 }>
+print(show(|n| => n + 1))           // rejected here: a function is not printable
+```
+
+```osprey-ml
+show x = "<${toString x}>"          // show : printable a -> string
+print (show (Overflow(by = 3)))     // <Overflow { by: 3 }>
+print (show (\n => n + 1))          // rejected here: a function is not printable
+```
+
+The set of constraints is closed and each is derived structurally by the compiler: a program cannot declare a constraint or an instance, and no value's meaning depends on which instance is in scope. Osprey has no type classes. Behaviour a program chooses is not a constraint: it is an effect whose handler supplies it ([Algebraic Effects](0017-AlgebraicEffects.md)), a module signature ([Modules and Namespaces](0025-ModulesAndNamespaces.md)), or a record of functions passed as a value. An effect selects an implementation by where the code runs; a constraint selects one by the type of the value, which a handler cannot do.
+
+A constraint is inferred and never written in an annotation. Inferred signatures, hover and error messages show it before the variable it constrains.
 
 ## Built-in Types
 
@@ -376,7 +401,7 @@ Ten numeric types share one description: a kind (signed, unsigned or binary floa
 | `float32` | binary | 32 | IEEE 754 binary32 | `float` | `float` |
 | `float` | binary | 64 | IEEE 754 binary64 | `double` | `double` |
 
-There is no `uint64`: it would need its own division and comparison rules against `int`. There is no `bfloat16` type: a `BF16` tensor widens exactly into `float32` ([GPU-BUFFER-TENSOR](../runtime/0034-GPUComputation.md#gpuloadtensorpath-string-name-string---resultgpubuffert-error--gpu-buffer-tensor)).
+There is no `uint64`: it would need its own division and comparison rules against `int`. There is no `bfloat16` type: a `BF16` tensor widens exactly into `float32` ([GPU-BUFFER-TENSOR](../runtime/0034-GPUComputation.md#gpuloadtensorpath-string-name-string---resultgpubuffert-string--gpu-buffer-tensor)).
 
 The sized types are ordinary primitives. They appear in records, unions, lists, maps, `Result` payloads, effect operations, closures, pattern literals, string interpolation and `extern` signatures ([FFI-NUMERIC-WIDTH](../compiler/0019-ForeignFunctionInterface.md#numeric-widths-ffi-numeric-width)). Inside `List`, `Map`, `Result`, an `any` box or a closure environment a sized value occupies the uniform 8-byte word — integers sign- or zero-extended by kind, floats as their bit pattern zero-extended — and reads back at its own type ([TYPE-NUMERIC-WORD]). A `GpuBuffer<T>` is the dense form: it stores each element at the table's width ([GPU-BUFFER-ELEM](../runtime/0034-GPUComputation.md#element-restriction--gpu-buffer-elem)).
 
@@ -450,7 +475,7 @@ follow the [LLVM conversion contract](https://llvm.org/docs/LangRef.html#llvm-fp
 
 ## Result Preservation
 
-A fallible expression has type `Result<T, E>`, and the compiler never implicitly erases that wrapper ([FAILURE-EXPLICIT](0001-Introduction.md#failure-safety--failure-explicit)). Every consuming position — arguments, bindings, plain-`T` returns, comparisons, function-value calls — preserves the `Result` or is rejected; interpolation displays the complete `Success` or `Error` value. Callers obtain the payload only through an exhaustive `match` or an explicit `?:` fallback. This rule has no exceptions. Arithmetic is not one: it carries no `Result` wrapper at all, and its faults are discharged by an `Arith` handler rather than by erasing a wrapper ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
+Rule 5 of [ERR-RESULT](0013-ErrorHandling.md#resultt-e--err-result) holds at every position that consumes a value, with no exceptions: an argument, binding, plain-`T` return, comparison or function-value call either keeps the whole `Result` or is rejected, and interpolation shows the whole `Success` or `Error`. The one implicit step runs the other way, a bare `T` promoted to `Success` ([TYPE-VARIANCE-COERCION](#generics-and-variance)). Arithmetic has no `Result` to erase: its faults go to an `Arith` handler ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 ## Function Types
 
@@ -493,7 +518,7 @@ A lambda (`fn(...) => expr` or `|x| => expr`) captures every free identifier fro
 
 The same holds for a lambda whose type is still generic. It has no single closure value and is specialised at each call site, but it reads the bindings it captured where it was written, whether it is called there, from a nested lambda, from a handler arm or from a fiber, and it keeps them alive for as long as it can be called.
 
-A `Result<T, E>`'s error channel is phantom: the `Error` variant stores a string message, so `E` never shapes the value representation. A closure whose only open variable is a `Result` error channel therefore has a concrete ABI — the success channel `T` decides it — and materializes like any concrete closure, so a generic `with`-suite handler value needs no `Result` annotation to compile.
+Every `Result` has one block shape whatever its `T` and `E` ([TYPE-RECORD-RESULT](#result-fields--type-record-result)). A closure whose only undecided type is the `E` of a `Result` it builds no `Error` for is therefore concrete, and a generic `with`-suite handler value needs no `Result` annotation to compile.
 
 ```osprey
 fn makeAdder(n: int) -> (int) -> int = fn(x: int) => x + n
@@ -601,9 +626,9 @@ Not implemented yet: an anonymous record bound with no declared type, such as `o
 
 ### Result fields — [TYPE-RECORD-RESULT]
 
-A record or union payload field of type `Result<T, E>` stores the complete `Success` or `Error` value. Named, anonymous and generic records obey the same rule. Construction and immutable updates may promote a bare `T` to `Success(T)`; they MUST preserve an existing failure and its message. A field read, constructor or structural pattern, function argument, closure capture, shared cell or permitted conversion to `any` ([TYPE-ANY](#the-any-type--type-any)) MUST retain the concrete success payload type and the discriminant. Updating another field preserves the stored Result and the source record.
+A field of type `Result<T, E>`, in any record or union, stores the whole `Success` or `Error`. Every way of moving the value — a field read, a pattern, an argument, a closure capture, a shared cell, a permitted conversion to `any` ([TYPE-ANY](#the-any-type--type-any)), an update of another field — MUST keep which case it is and its payload.
 
-The native and wasm32 backends use one Result block shape: a 64-bit payload word, a byte discriminant and a message pointer, with target-specific alignment. Float payloads preserve their IEEE bits, booleans preserve their truth value, and pointer payloads retain their ownership and concrete type. An aggregate field holds a pointer to the whole block. Its static payload type cannot change the discriminant or message offsets.
+The native and wasm32 backends use one Result block for every `T` and `E`: a 64-bit success payload word, a byte discriminant and an error payload slot. Each payload keeps its exact value: floats their IEEE bits, booleans their truth value, pointers their ownership and concrete type. An aggregate field holds a pointer to the block.
 
 The `resultRecordCase`, `genericResultRecordCase`, `anonymousResultRecordCase`, `resultTransportCase` and `genericUnionResultCase` assertions in both `record_update_basic` twins pin failure preservation, promotion, nested payloads, erasure, pattern binding and live captures. The cross-flavor IR test pins the common block and bit-preserving float/boolean conversions.
 
@@ -865,7 +890,7 @@ signatures are listed in [Built-in Functions](../runtime/0012-Built-InFunctions.
 ### `List<T>` — [TYPE-LIST]
 
 `List<T>` is a homogeneous indexed sequence. Index access is bounds-checked
-and returns `Result<T, Error>`.
+and returns `Result<T, IndexOutOfBounds>` ([BUILTIN-LIST-GET](../runtime/0012-Built-InFunctions.md#listgetlist-listt-index-int---resultt-indexoutofbounds--builtin-list-get)).
 
 ```osprey
 let numbers = [1, 2, 3, 4, 5]            // List<int>
@@ -877,7 +902,7 @@ let total = sumOfInts([])                // ok if sumOfInts: (List<int>) -> int
 
 match numbers[0] {
     Success { value }   => print(value)
-    Error   { message } => print(message)
+    Error   { message } => print("no element ${message.index} in ${message.length}")
 }
 ```
 
@@ -935,7 +960,7 @@ a key.
 
 #### Lookup — [TYPE-MAP-LOOKUP]
 
-Index lookup returns `Result<V, Error>`:
+Index lookup returns `Result<V, string>`:
 
 ```osprey
 match ages["Alice"] {
@@ -957,14 +982,6 @@ let values     = mapValues(ages)
 ```
 
 `mapMerge` and map `+` are right-biased: the right map wins on duplicate keys.
-
-## Built-in Error Types
-
-| Type        | Used by |
-| ----------- | ------- |
-| `Error`     | Fallible builtins, including parsing, `checkedAdd`/`checkedSub`/`checkedMul`, collection lookup, files, and processes |
-
-`Success` and `Error` are the constructors of `Result<T, E>` (see [Error Handling](0013-ErrorHandling.md)).
 
 ## The `any` Type — [TYPE-ANY]
 
@@ -1010,10 +1027,11 @@ them.
 > DECLARED record rows by descriptor identity, so an erased record made by any
 > constructor with the same field names matches the same arm; a field bound
 > from a narrowing is itself `any` until matched further. `print`/`toString`
-> render through the descriptor: scalars and strings exactly, records as their
-> row (`{ x: 1, y: 2 }`), unions by variant, a `Result` as
-> `Success(…)`/`Error(…)`, and shapes rendering cannot see into — lists, maps,
-> closures, foreign handles — as a named placeholder such as `<list>`, never
+> render through the descriptor to the same text as the typed value
+> ([BUILTIN-PRINT-FORM](../runtime/0012-Built-InFunctions.md#printvalue-printable---unit--builtin-print)):
+> records as their row (`{ x: 1, y: "a" }`), unions by variant, lists by
+> element, a `Result` as `Success(…)`/`Error(…)`, and shapes that are not
+> data — maps, closures, foreign handles — as a kind label such as `<map>`, never
 > the raw word. Erasing an anonymous record is rejected
 > ([TYPE-RECORD-ANON](#anonymous-records--type-record-anon)); a structural arm
 > never selects an erased union, list or map — match the union before erasing
@@ -1028,7 +1046,7 @@ annotated `Int` is a type mismatch rather than a silent alias.
 
 ```osprey
 let xs: List<int> = []
-fn doubled(n) -> Result<int, Error> = checkedAdd(n, n)
+fn doubled(n) -> Result<int, string> = checkedAdd(n, n)
 ```
 
 Writing `-> int` for `doubled` would be a type error; a return annotation cannot

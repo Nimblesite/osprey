@@ -203,8 +203,8 @@ def stage_case(label, next, row_of, i):
     match listGet(next.walk.stages, i):
         case Success(value=stage):
             return compare(f"{label}_layer{i}", stage, row_of(1 + i))
-        case Error(message=message):
-            return Check.failed(f"{label}_layer{i}", toString(message))
+        case Error():
+            return Check.failed(f"{label}_layer{i}", "index out of bounds")
 
 
 def greedy_case(label, next):
@@ -226,8 +226,8 @@ def hook_case(next, t, i):
     match listGet(next.walk.stages, i):
         case Success(value=stage):
             return compare(f"model_hook{t}_layer{i}", stage, hook_row(f"layers.{i}", t, Expected.MODEL_HIDDEN))
-        case Error(message=message):
-            return Check.failed(f"model_hook{t}_layer{i}", toString(message))
+        case Error():
+            return Check.failed(f"model_hook{t}_layer{i}", "index out of bounds")
 
 
 def compare_heads(name, buffer, positions, cfg, want):

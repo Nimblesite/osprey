@@ -1,0 +1,4 @@
+//! The error types built-ins fail with. Implements [BUILTIN-LIST-GET].
+
+/// A list read outside `0 <= index < length`.
+type IndexOutOfBounds = { index: int, length: int }

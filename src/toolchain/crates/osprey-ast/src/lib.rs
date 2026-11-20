@@ -223,12 +223,12 @@ pub struct Program {
     pub doc: Option<DocComment>,
 }
 
-/// A type expression — `Result<Int, Error>`, `[String]`, `fn(Int) -> Bool`.
+/// A type expression — `Result<Int, string>`, `[String]`, `fn(Int) -> Bool`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeExpr {
     /// The head type name (`Result`, `Int`, the array/function marker aside).
     pub name: String,
-    /// Generic arguments, e.g. `Int`/`Error` in `Result<Int, Error>`.
+    /// Generic arguments, e.g. `Int`/`Error` in `Result<Int, string>`.
     pub generic_params: Vec<TypeExpr>,
     /// Whether this is an array type `[T]`.
     pub is_array: bool,

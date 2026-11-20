@@ -35,7 +35,10 @@ pub mod names {
     /// `Result`'s ok-variant constructor (`Success { value }`).
     pub(crate) const SUCCESS: &str = "Success";
     /// `Result`'s error-variant constructor (`Error { message }`).
-    pub(crate) const ERROR: &str = "Error";
+    pub const ERROR: &str = "Error";
+    /// The record a failed list read holds: `{ index, length }`
+    /// ([BUILTIN-LIST-GET]).
+    pub const INDEX_OUT_OF_BOUNDS: &str = "IndexOutOfBounds";
     /// The `List<elem>` collection type.
     pub const LIST: &str = "List";
     /// The `Map<key, value>` collection type.
@@ -196,7 +199,7 @@ impl Type {
 
     /// True if this is a nullary-or-applied constructor with the given name.
     #[must_use]
-    pub(crate) fn is_named(&self, n: &str) -> bool {
+    pub fn is_named(&self, n: &str) -> bool {
         matches!(self, Type::Con { name, .. } if name == n)
     }
 }

@@ -98,7 +98,10 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<String> {
                     names::STRING,
                     names::UNIT,
                     names::ANY,
+                    "List<printable>",
                     "Result<printable, printable>",
+                    "record",
+                    "union",
                 ])
                 .collect::<Vec<_>>()
                 .join(" | "),
@@ -110,8 +113,21 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<String> {
     }
 }
 
+/// The obligation an assertion places on its compared operand: assertions
+/// compare renderings, so the operand must have one [TESTING-EQUALITY].
+pub(crate) const ASSERTION: &str = "assertion";
+
+/// Which argument of an assertion built-in is compared by its rendering.
+pub(crate) fn asserted_operand(name: &str) -> Option<usize> {
+    match name {
+        "expect" => Some(0),
+        "check" | "expectError" => Some(1),
+        _ => None,
+    }
+}
+
 /// Validate the receiver/value of a representation-sensitive built-in.
-pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
+pub(crate) fn invalid_use(name: &str, ty: &Type, named: Lookup<'_>) -> Option<String> {
     // [FLOAT-OPERANDS] Schemes carry this obligation into each instantiation,
     // preserving numeric polymorphism while refusing concrete nonnumeric uses.
     if let Some(op) = name.strip_prefix(NUMERIC_OPERAND_PREFIX) {
@@ -139,7 +155,7 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
             "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()
         ),
-        "interpolation" if !is_interpolatable(ty) => {
+        "interpolation" if !is_interpolatable(ty, named) => {
             Some(format!("cannot convert value for interpolation: {ty}"))
         }
         "length" | "isEmpty" if !is_sized(ty) => Some(format!(
@@ -148,8 +164,11 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         "listSort" if !is_sortable_list(ty) => Some(format!(
             "`listSort` supports only List<int> or List<string>; got {ty}"
         )),
-        "print" if !is_printable(ty) => Some(format!("cannot convert value for printing: {ty}")),
-        "toString" if !is_printable(ty) => Some(format!("cannot convert value to string: {ty}")),
+        ASSERTION if !is_printable(ty, named, &mut Vec::new()) => Some(format!(
+            "cannot assert on a value with no rendering: {ty}"
+        )),
+        "print" if !is_printable(ty, named, &mut Vec::new()) => Some(format!("cannot convert value for printing: {ty}")),
+        "toString" if !is_printable(ty, named, &mut Vec::new()) => Some(format!("cannot convert value to string: {ty}")),
         // GPU buffer elements are scalars [GPU-BUFFER-ELEM]
         // (docs/specs/runtime/0034-GPUComputation.md).
         "toGpu" if !is_gpu_source(ty) => Some(format!(
@@ -270,51 +289,23 @@ fn is_sortable_elem(ty: &Type) -> bool {
     }
 }
 
-/// Values supported by `runtime::to_string_value`. `any` is retained as the
-/// explicit erased-compatibility escape hatch; concrete aggregate and runtime
-/// handles are rejected. Result errors use the runtime's stored string message,
-/// while the success payload is formatted recursively.
-fn is_printable(ty: &Type) -> bool {
-    match ty {
-        Type::Var(_) => true,
-        Type::Con { name, args }
-            if args.is_empty()
-                && (crate::numeric::Numeric::of_name(name).is_some()
-                    || matches!(
-                        name.as_str(),
-                        names::STRING | names::BOOL | names::UNIT | names::ANY
-                    )) =>
-        {
-            true
-        }
-        Type::Con { name, args } if name == names::RESULT => {
-            matches!(args.as_slice(), [ok, err] if is_printable(ok) && is_printable_error(err))
-        }
-        _ => false,
-    }
-}
+mod printable;
 
-/// What interpolation can render. That is everything `print` renders, plus a
-/// fiber handle, which interpolates as its id — `src/osprey/tests/regressions/fiber`
-/// prints `ids 1 2 3 4` from four of them. `print` has never taken a fiber on
-/// its own and still does not.
-fn is_interpolatable(ty: &Type) -> bool {
-    is_printable(ty) || ty.is_named(names::FIBER)
-}
-
-fn is_printable_error(ty: &Type) -> bool {
-    is_printable(ty)
-        || matches!(
-            ty,
-            Type::Con { name, args }
-                if args.is_empty() && name == names::ERROR
-        )
-}
+use printable::{is_interpolatable, is_printable};
+pub(crate) use printable::{Lookup, Named};
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    fn invalid_use(name: &str, ty: &Type) -> Option<String> {
+        super::invalid_use(name, ty, &|_, _| Named::Plain)
+    }
+
+    fn is_printable(ty: &Type) -> bool {
+        super::is_printable(ty, &|_, _| Named::Plain, &mut Vec::new())
+    }
 
     #[test]
     fn numeric_signatures_name_every_accepted_width() {
@@ -351,7 +342,9 @@ mod tests {
         let fiber = Type::con(names::FIBER, vec![Type::int()]);
         assert_eq!(invalid_use("interpolation", &fiber), None);
         assert!(invalid_use("print", &fiber).is_some());
-        assert!(invalid_use("interpolation", &Type::list(Type::int())).is_some());
+        let map = Type::con(names::MAP, vec![Type::string(), Type::int()]);
+        assert!(invalid_use("interpolation", &Type::list(map)).is_some());
+        assert!(invalid_use("interpolation", &Type::list(Type::int())).is_none());
         assert!(invalid_use("interpolation", &Type::string()).is_none());
     }
 
@@ -396,6 +389,17 @@ mod tests {
         // Still-unresolved receivers are deferred, exactly as `is_sized` defers.
         assert!(invalid_use("fromGpu", &Type::Var(9)).is_none());
         assert!(invalid_use("gpuFold", &Type::gpu_buffer(Type::Var(9))).is_none());
+        let row = Type::Record {
+            name: String::new(),
+            fields: BTreeMap::from([("x".to_owned(), Type::int())]),
+        };
+        assert!(invalid_use("gpuLength", &Type::gpu_buffer(row.clone())).is_some());
+        assert!(invalid_use("gpuLength", &Type::gpu_buffer(Type::list(Type::int()))).is_some());
+        let matmul = format!("{MATRIX_OPERAND_PREFIX}gpuMatMul");
+        assert!(invalid_use(&matmul, &Type::Var(3)).is_none());
+        assert!(invalid_use(&matmul, &row).is_some());
+        assert!(invalid_use(&matmul, &Type::gpu_buffer(Type::float())).is_none());
+        assert!(invalid_use(&matmul, &Type::gpu_buffer(Type::int())).is_some());
         assert_eq!(
             display_param_type("toGpu", 0),
             Some(container_display(&["List", "Iterator"]))
@@ -410,14 +414,32 @@ mod tests {
     #[test]
     fn printable_constraint_checks_result_payloads_recursively() {
         // [BUILTIN-PRINT] [BUILTIN-TOSTRING]
+        assert!(is_printable(&Type::result(Type::int(), Type::string(),)));
         assert!(is_printable(&Type::result(
-            Type::int(),
-            Type::prim(names::ERROR),
-        )));
-        assert!(!is_printable(&Type::result(
             Type::list(Type::int()),
-            Type::prim(names::ERROR),
+            Type::string(),
         )));
+        assert!(is_printable(&Type::result(Type::int(), Type::bool())));
+        assert!(is_printable(&Type::con("ParseError", vec![])));
+        assert!(is_printable(&Type::list(Type::con("MathError", vec![]))));
+        let callback = Type::fun(vec![Type::int()], Type::int());
+        assert!(!is_printable(&Type::result(Type::int(), callback.clone())));
+        assert!(!is_printable(&Type::list(callback)));
+        assert!(!is_printable(&Type::con(
+            names::MAP,
+            vec![Type::string(), Type::int()]
+        )));
+        assert!(!is_printable(&Type::con(names::FIBER, vec![Type::int()])));
         assert!(!is_printable(&Type::fun(vec![Type::int()], Type::int())));
+        let sealed = Type::list(Type::con("M::Token", vec![]));
+        assert!(is_printable(&sealed));
+        let token = |name: &str, _: &[Type]| {
+            if name == "M::Token" {
+                Named::Sealed
+            } else {
+                Named::Plain
+            }
+        };
+        assert!(!super::is_printable(&sealed, &token, &mut Vec::new()));
     }
 }

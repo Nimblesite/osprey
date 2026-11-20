@@ -6,8 +6,8 @@
 // the 26G operations per token. Under Metal the 640 dispatches of a token form
 // one command buffer and the host reads one logit at the end.
 let TOKENS = 64
-fn matrix(offset, bytes) -> Result<GpuBuffer<uint8>, Error> = gpuMapFile("block.bin", offset, bytes)
-fn inputs() -> Result<GpuBuffer<float32>, Error> = gpuMapFile("x.bin", 0, 5120)
+fn matrix(offset, bytes) -> Result<GpuBuffer<uint8>, string> = gpuMapFile("block.bin", offset, bytes)
+fn inputs() -> Result<GpuBuffer<float32>, string> = gpuMapFile("x.bin", 0, 5120)
 fn matvec(w, x, rows, nb) = kept(gpuMatMulQuant(x, w, "Q4_K", 1, nb * 256, rows), x)
 fn kept(result, fallback) = match result {
     Success { value } => value

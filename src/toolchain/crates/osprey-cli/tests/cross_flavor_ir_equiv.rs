@@ -469,8 +469,8 @@ fn module_debug_frames_keep_source_names_in_both_flavors() -> Result<(), String>
 }
 
 const RESULT_RECORD_ABI: [(&str, Flavor); 2] = [
-    ("type Packet = { number: Result<float, Error>, flag: Result<bool, Error> }\nfn make(n, b) = Packet { number: Success { value: n }, flag: Success { value: b } }\nlet packet = make(2.5, true)\nprint(\"${packet.number},${packet.flag}\")", Flavor::Default),
-    ("type Packet =\n    number: Result<float, Error>\n    flag: Result<bool, Error>\nmake (n, b) = Packet(number = Success(value = n), flag = Success(value = b))\npacket = make (2.5, true)\nprint \"${packet.number},${packet.flag}\"", Flavor::Ml),
+    ("type Packet = { number: Result<float, string>, flag: Result<bool, string> }\nfn make(n, b) = Packet { number: Success { value: n }, flag: Success { value: b } }\nlet packet = make(2.5, true)\nprint(\"${packet.number},${packet.flag}\")", Flavor::Default),
+    ("type Packet =\n    number: Result<float, string>\n    flag: Result<bool, string>\nmake (n, b) = Packet(number = Success(value = n), flag = Success(value = b))\npacket = make (2.5, true)\nprint \"${packet.number},${packet.flag}\"", Flavor::Ml),
 ];
 
 /// [TYPE-RECORD-RESULT] Payload bits must not move the tag or error-message slots.

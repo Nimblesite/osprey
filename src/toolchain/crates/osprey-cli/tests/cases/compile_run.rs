@@ -274,3 +274,126 @@ fn run_reports_an_uninvokable_c_compiler() {
     let o = run_file_cc(&prog, "--run", "osprey_no_such_cc_zzz");
     o.expect_rejected(&[]);
 }
+
+/// A package whose entry defines `argument`, `open` and `event` builds for wasm32 as the shared
+/// native boundary: one module exporting the three C entry points plus a WASI entry that runs the
+/// top level once. [NATIVE-SHM-WASM]
+#[test]
+fn a_native_boundary_package_builds_one_wasm_module_exporting_the_boundary() {
+    let out = std::env::temp_dir().join(format!("osprey_e2e_boundary_{}.wasm", std::process::id()));
+    let editor = repo_root().join("src/osprey/packages/manager/editor");
+    let mut command = super::osprey();
+    let _ = command
+        .arg("build")
+        .arg(&editor)
+        .args(["--target=wasm32", "--quiet", "--no-warnings", "-o"])
+        .arg(&out);
+    let built = super::finish(&mut command);
+    assert_eq!(built.code, Some(0), "stderr={}", built.stderr);
+    let module = std::fs::read(&out).unwrap_or_default();
+    let _ = std::fs::remove_file(&out);
+    assert_eq!(module.get(..4), Some(&b"\0asm"[..]), "not a wasm module");
+    for export in [
+        "osprey_app_argument",
+        "osprey_app_open",
+        "osprey_app_event",
+        "__main_void",
+    ] {
+        assert!(
+            module
+                .windows(export.len())
+                .any(|bytes| bytes == export.as_bytes()),
+            "the module does not name {export}"
+        );
+    }
+}
+
+/// A Python library may not export a name the bridge itself defines, and must be written with
+/// the host's shared-library extension. [PYTHON-HOST-ABI]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn python_libraries_refuse_reserved_bridge_names_and_foreign_extensions() {
+    let extension = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    let foreign = if cfg!(target_os = "macos") {
+        "so"
+    } else {
+        "dylib"
+    };
+    for reserved in [
+        "osprey_python_call",
+        "osprey_python_object",
+        "osprey_python_install",
+        "osprey_python_abi",
+    ] {
+        let out = std::env::temp_dir().join(format!("osprey_e2e_{reserved}.{extension}"));
+        let result = run_source(
+            &format!("python_{reserved}"),
+            &format!("fn {reserved}(n) = wrapAdd(n, 1)\n"),
+            &["--compile", "--target=python", "-o", &out.to_string_lossy()],
+        );
+        result.expect_stderr(
+            1,
+            &[&format!("Python bridge symbol `{reserved}` is reserved")],
+            &[],
+        );
+        assert!(
+            !out.exists(),
+            "a refused library was written: {}",
+            out.display()
+        );
+    }
+    let wrong = std::env::temp_dir().join(format!("osprey_e2e_python_wrong.{foreign}"));
+    let result = run_source(
+        "python_wrong_extension",
+        "fn twice(n) = wrapMul(n, 2)\n",
+        &[
+            "--compile",
+            "--target=python",
+            "-o",
+            &wrong.to_string_lossy(),
+        ],
+    );
+    result.expect_stderr(
+        1,
+        &[&format!("Python output must end in .{extension}")],
+        &[],
+    );
+    assert!(
+        !wrong.exists(),
+        "a refused library was written: {}",
+        wrong.display()
+    );
+}
+
+/// `--signature` reads one source file: a project directory, an unreadable path and a file that
+/// does not parse are each refused with their own message.
+#[test]
+fn signature_refuses_projects_unreadable_files_and_parse_errors() {
+    let project = super::temp_dir("signature_project");
+    std::fs::write(
+        project.join("osprey.toml"),
+        "[project]\nname = \"p\"\nsource_roots = [\"src\"]\n",
+    )
+    .expect("manifest");
+    run_args(&[&project.to_string_lossy(), "--signature"]).expect_stderr(
+        1,
+        &["--signature applies to a single source file"],
+        &[],
+    );
+    run_args(&["/no/such/osprey_signature_missing.osp", "--signature"]).expect_stderr(
+        1,
+        &["cannot read /no/such/osprey_signature_missing.osp"],
+        &[],
+    );
+    let broken = temp_osp("signature_parse", "fn = = =\n");
+    let name = broken.to_string_lossy().into_owned();
+    run_file(&broken, &["--signature"]).expect_stderr(
+        1,
+        &[&format!("{name}:1:0: syntax error near `fn = = =`")],
+        &[],
+    );
+}

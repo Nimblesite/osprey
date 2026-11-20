@@ -145,7 +145,7 @@ module PrismArt
 
     (** Decode only a key the original keyboard actually exposes. *)
     export keyAt (editor, x, y) = match listGet (filterList (keyboardAccess editor, \a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0
-        Error why => Error(message = why)
+        Error _ => Error(message = "index out of bounds")
         Success area =>
             index = ui::Lists::position (noteNames, \name => "Play ${name}" == area.accessLabel)
             match index >= 0
@@ -218,7 +218,7 @@ module PrismArt
             Invalid _ => Error(message = "The selected component was removed.")
             Valid n => Success(value = slide (editor, n, editor.skin, px, py, down))
         false => match listGet (filterList (editor.graph.nodes, \n => frontmost (editor, n, px, py) && sliderAt (editor, n, px, py))) 0
-            Error why => Error(message = why)
+            Error _ => Error(message = "index out of bounds")
             Success n => Success(value = slide (editor, n, prepared (editor, n), px, py, down))
 
     frontmost (editor, n, px, py) =

@@ -111,6 +111,26 @@ fn a_field_access_offers_only_that_records_fields() {
 }
 
 #[test]
+fn a_member_access_reads_the_receivers_annotation_or_its_inferred_type_name() {
+    // [LSP-COMPLETION-MEMBER] An annotated binding names its record directly; an
+    // inferred list or function names a type with no fields, so nothing is offered.
+    let annotated = "type Point = { x: int, y: int }\n\
+                     let origin: Point = Point { x: 1, y: 2 }\n\
+                     print(origin.";
+    assert_eq!(labels(&at_end(annotated, "file:///a.osp")), vec!["x", "y"]);
+    for src in [
+        "let xs = [1, 2]\nprint(xs.",
+        "fn twice(n) = wrapMul(n, 2)\nlet g = twice\nprint(g.",
+    ] {
+        assert_eq!(
+            at_end(src, "file:///a.osp"),
+            Vec::<CompletionItem>::new(),
+            "{src}"
+        );
+    }
+}
+
+#[test]
 fn a_match_arm_is_offered_constructors_and_the_wildcard_not_keywords() {
     let src = "type Shade = Light | Dark\nfn f(s) = match s {\n    ";
     let names = labels(&at_end(src, "file:///a.osp"));

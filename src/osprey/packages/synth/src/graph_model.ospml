@@ -29,7 +29,18 @@ type Parameter =
     initial : float
     automatable : bool
 
+type SampleResource =
+    name : string
+    sampleRate : int
+    sourceChannels : int
+    rootFrequency : float
+    samples : List<float>
+
 type Processor =
+    Granular
+        resource : SampleResource
+        capacity : int
+        seed : int
     Lfo
     ModulatedGain
     MidiNotes

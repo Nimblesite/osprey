@@ -3,7 +3,7 @@
 //! Assertion equality is canonical-string equality; a successful Result uses
 //! its payload string while an Error stays visible as `Error(<message>)`
 //! [TESTING-EQUALITY]. Implements [TESTING-CODEGEN], [TESTING-BUILTIN-TEST],
-//! [TESTING-BUILTIN-EXPECT], [TESTING-BUILTIN-CHECK]
+//! [TESTING-BUILTIN-EXPECT], [TESTING-BUILTIN-EXPECT-ERROR], [TESTING-BUILTIN-CHECK]
 //! (docs/specs/language/0027-TestingFramework.md).
 
 use crate::builder::Codegen;
@@ -34,6 +34,7 @@ pub(crate) fn gen(
         "expectAll" => gen_all(cg, &args, false).map(Some),
         "expectTrue" => gen_bool_expect(cg, &args, true, None).map(Some),
         "expectFalse" => gen_bool_expect(cg, &args, false, None).map(Some),
+        "expectError" => gen_expect_error(cg, &args).map(Some),
         "check" => gen_check(cg, &args).map(Some),
         "checkAll" => gen_all(cg, &args, true).map(Some),
         "checkTrue" => gen_bool_expect(cg, &args, true, Some("checkTrue")).map(Some),
@@ -204,6 +205,28 @@ fn gen_expect(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
     Ok(emit_assert(cg, "null", &e, &a))
 }
 
+/// `expectError(result, payload)` — passes when `result` is an `Error` holding
+/// that payload; the Success payload is never rendered, so any `T` is allowed.
+/// The payload compares by its rendering [TESTING-BUILTIN-EXPECT-ERROR].
+fn gen_expect_error(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
+    let [result, payload] = args else {
+        return Err(CodegenError::invalid(
+            "expectError needs (result, payload) arguments",
+        ));
+    };
+    let r = gen_expr(cg, result)?;
+    if r.result_inner.is_none() {
+        return Err(CodegenError::invalid(
+            "expectError needs a Result as its first argument",
+        ));
+    }
+    let e = gen_expr(cg, payload)?;
+    let a = crate::runtime::result_error_string(cg, &r)?;
+    let e = canonical_string(cg, e)?;
+    let wrapped = crate::runtime::format_sized(cg, "Error(%s)", &[format!("i8* {}", e.operand)]);
+    Ok(emit_assert(cg, "null", &wrapped, &a))
+}
+
 /// `check(label, expected, actual)` — expected value before computed value.
 fn gen_check(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
     let [label, expected, actual] = args else {
@@ -326,31 +349,19 @@ fn gen_reason_report(cg: &mut Codegen, runtime_fn: &str, reason: Option<&Expr>) 
 /// lowering [TESTING-EQUALITY].
 fn eval_to_string(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
     let v = gen_expr(cg, expr)?;
-    reject_opaque_handle(&v)?;
+    canonical_string(cg, v)
+}
+
+fn canonical_string(cg: &mut Codegen, v: Value) -> Result<Value> {
     if v.result_inner.is_some() {
         return crate::runtime::result_payload_or_error_string(cg, &v);
     }
     to_string_value(cg, v)
 }
 
-/// Lists, maps, records, and other runtime handles have no canonical string
-/// rendering yet, so an assertion on one would compare raw pointers — reject
-/// loudly instead [TESTING-EQUALITY].
-fn reject_opaque_handle(v: &Value) -> Result<()> {
-    let opaque = (v.result_inner.is_none() && v.ty == crate::llty::LType::Ptr)
-        || v.result_inner == Some(crate::llty::LType::Ptr);
-    if opaque {
-        return Err(CodegenError::unsupported(
-            "expect/check on a list, map, or record value; compare scalar fields or elements",
-        ));
-    }
-    Ok(())
-}
-
 /// Compare two canonical strings and record the verdict with the runtime.
 /// `label_op` is the rendered label operand — `null` for `expect`.
 fn emit_assert(cg: &mut Codegen, label_op: &str, expected: &Value, actual: &Value) -> Value {
-    cg.lowered.testing = true;
     let c = cg.call(
         "i32",
         "osp_string_compare",
@@ -358,6 +369,19 @@ fn emit_assert(cg: &mut Codegen, label_op: &str, expected: &Value, actual: &Valu
         &[&actual.operand, &expected.operand],
     );
     let ok = cg.emit_reg(format!("icmp eq i32 {c}, 0"));
+    record_verdict(cg, label_op, &ok, expected, actual)
+}
+
+/// Record the `i1` verdict `ok` with the runtime, with the two renderings a
+/// failure reports.
+fn record_verdict(
+    cg: &mut Codegen,
+    label_op: &str,
+    ok: &str,
+    expected: &Value,
+    actual: &Value,
+) -> Value {
+    cg.lowered.testing = true;
     let ok32 = cg.emit_reg(format!("zext i1 {ok} to i32"));
     cg.call_void(
         "osp_test_assert",

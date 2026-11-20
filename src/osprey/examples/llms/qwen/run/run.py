@@ -83,8 +83,8 @@ def nth_count(found, i):
     match listGet(found, i):
         case Success(value=word):
             return count_of(word)
-        case Error(message=message):
-            return Error(message=f"ids: {toString(message)}")
+        case Error():
+            return Error(message="ids: index out of bounds")
 
 
 def count_of(text):

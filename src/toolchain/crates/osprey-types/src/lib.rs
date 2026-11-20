@@ -121,7 +121,7 @@ pub use builtin_constraints::is_gpu_scalar;
 pub use builtin_docs::{
     builtin_doc_view, builtin_hover_markdown, builtin_names, BuiltinDocView, BuiltinParam,
 };
-pub use builtins::{builtin_callback_type, builtin_function_type, builtin_signature};
+pub use builtins::{builtin_callback_type, builtin_function_type, builtin_signature, list_read};
 pub use callback::{redundant_callbacks, REDUNDANT_CALLBACK};
 pub use check::{
     check_and_publish, check_program, check_program_exports, effect_check_count, erased_var,

@@ -1,7 +1,7 @@
 //! Render erased scalar, row and union values.
 use super::{
-    boxed_field, comma_join, ensure_to_string, owned_call, row_block_ty, Codegen, DescKey, LType,
-    Result, Value, TO_STRING_FN,
+    comma_join, ensure_to_string, owned_call, row_block_ty, Codegen, DescKey, LType, Result, Value,
+    TO_STRING_FN,
 };
 use osprey_types::numeric::Numeric;
 
@@ -9,7 +9,12 @@ use osprey_types::numeric::Numeric;
 /// `define i8* @osp.any.str.<slug>(i8* %desc, i64 %payload)`.
 pub(super) fn emit_renderer(cg: &mut Codegen, key: &DescKey, name: &str) -> Result<()> {
     let saved = cg.enter_nested_fn();
-    let rendered = render_body(cg, key)?;
+    // The body expands its own type afresh; only a type met again inside
+    // that expansion calls back here.
+    let showing = std::mem::take(&mut cg.anys.showing);
+    let rendered = render_body(cg, key);
+    cg.anys.showing = showing;
+    let rendered = rendered?;
     crate::arc::epilogue(cg, Some(&rendered));
     cg.emit(format!("ret i8* {}", rendered.operand));
     cg.exit_nested_fn(
@@ -69,30 +74,51 @@ fn render_body(cg: &mut Codegen, key: &DescKey) -> Result<Value> {
             crate::runtime::to_string_value(cg, Value::result(p, LType::Any))
         }
         DescKey::Opaque(label) => Ok(cg.string_constant(label)),
+        DescKey::Typed(key) => {
+            let proto = cg.anys.typed.get(key).cloned().unwrap_or_else(Value::unit);
+            let whole = super::typed::restore(cg, "%payload", &proto);
+            crate::runtime::to_string_value(cg, whole)
+        }
     }
 }
 
-/// `{ x: 1, y: 2 }` — each child box rendered through the shared entry, glued
+/// `{ x: 1, y: "a" }` — each child box rendered through the shared entry, glued
 /// by one exactly-sized format call.
 fn render_row(cg: &mut Codegen, names: &[String]) -> Value {
-    ensure_to_string(cg);
+    ensure_show(cg);
     let row_ty = row_block_ty(names.len());
     let block = cg.emit_reg(format!("inttoptr i64 %payload to {row_ty}*"));
     let mut args = Vec::with_capacity(names.len());
     for i in 0..names.len() {
         let child = crate::aggregate::load_field(cg, &row_ty, &block, i, LType::Any);
-        args.push(rendered_arg(cg, &child));
+        let shown = owned_call(cg, LType::Str, SHOW_FN, &child);
+        args.push(format!("i8* {}", shown.operand));
     }
-    let fmt = format!("{{ {} }}", comma_join(names, |n| format!("{n}: %s")));
-    crate::runtime::format_sized(cg, &fmt, &args)
+    crate::runtime::format_sized(cg, &crate::show::row_format(names), &args)
 }
 
-/// Render an already-boxed child through the shared entry, as one `i8*`
-/// argument for a format call.
-fn rendered_arg(cg: &mut Codegen, child: &str) -> String {
-    let s = owned_call(cg, LType::Str, TO_STRING_FN, child);
-    format!("i8* {}", s.operand)
+/// Emit `@osp.any.show` once: a box as it reads inside another value, which
+/// is its rendering, in quotes when it holds a string.
+fn ensure_show(cg: &mut Codegen) {
+    ensure_to_string(cg);
+    if cg.anys.show_emitted {
+        return;
+    }
+    cg.anys.show_emitted = true;
+    let saved = cg.enter_nested_fn();
+    let (_, _, dt) = super::guard_box(cg);
+    let kind = crate::aggregate::load_field(cg, super::DESC_TY, &dt, 0, LType::I64);
+    let is_text = cg.emit_reg(format!("icmp eq i64 {kind}, {}", super::KIND_STRING));
+    let quoted = cg.emit_reg(format!("zext i1 {is_text} to i64"));
+    let text = owned_call(cg, LType::Str, TO_STRING_FN, "%box");
+    let shown = crate::show::shown(cg, &text.operand, &quoted);
+    crate::arc::epilogue(cg, Some(&shown));
+    cg.emit(format!("ret i8* {}", shown.operand));
+    cg.exit_nested_fn(saved, "i8*", SHOW_FN, &[(LType::Ptr, "box".into())]);
 }
+
+/// The emitted name of [`ensure_show`]'s function.
+const SHOW_FN: &str = "osp.any.show";
 
 /// `Leaf` / `Node(1, 2)` / `Circle { radius: 1.0 }` — switch on the union
 /// block's leading tag and render the selected variant's declared fields.
@@ -144,7 +170,6 @@ fn render_variant(
     else {
         return Ok(cg.string_constant(variant));
     };
-    ensure_to_string(cg);
     let src = cg.emit_reg(format!("inttoptr i64 %payload to {struct_ty}*"));
     let positional = view
         .fields
@@ -176,15 +201,10 @@ fn variant_arguments(
     let mut args = Vec::new();
     for (i, (fname, fty)) in fields.iter().enumerate() {
         let inferred = crate::aggregate::field_type(cg, &source, variant, fname);
-        let child = boxed_field(
-            cg,
-            struct_ty,
-            src,
-            variant,
-            (i, fname, *fty),
-            inferred.as_ref(),
-        )?;
-        args.push(rendered_arg(cg, &child.operand));
+        let loaded = crate::aggregate::load_record_field(cg, variant, struct_ty, src, i, *fty);
+        let field = Value::new(loaded, *fty);
+        let field = crate::aggregate::restore_field(cg, field, variant, fname, inferred.as_ref());
+        args.push(format!("i8* {}", crate::show::nested(cg, field)?.operand));
     }
     Ok(args)
 }

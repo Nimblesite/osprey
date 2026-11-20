@@ -227,15 +227,17 @@ fn match_join_keeps_one_owner_for_one_row_layout() {
 }
 
 /// A Result that a match takes apart on the spot is never built: matching a
-/// `listGet` branches on the bounds check, reads the element only in bounds,
-/// and binds the reason as a constant. A member scan is a loop of these, so a
-/// box per step made every JSON field lookup allocate once per member.
+/// `listGet` branches on the bounds check and reads the element only in bounds.
+/// A member scan is a loop of these, so a box per step made every JSON field
+/// lookup allocate once per member. Only a failure that binds its
+/// `IndexOutOfBounds` record builds it, and only past the bounds branch
+/// [BUILTIN-LIST-GET].
 #[test]
 fn matching_a_list_lookup_allocates_no_result() {
     let ir = module(
         "fn pick(items, index) = match listGet(items, index) {\n\
              Success { value } => value\n\
-             Error { message } => length(message)\n\
+             Error { message } => message.index + message.length\n\
          }\n\
          fn named(items, index) = match listGet(items, index) {\n\
              Success { value } => value\n\
@@ -249,9 +251,21 @@ fn matching_a_list_lookup_allocates_no_result() {
         "define internal i8* @named(i8* %$p0, i64 %$p1)",
     ] {
         let body = function_body(&ir, header);
-        testkit::contents(&body, &[], &["@osp_alloc"]);
         let bounds = body.find("@osprey_list_in_bounds").unwrap_or(usize::MAX);
         let read = body.find("@osprey_list_get").unwrap_or(0);
+        let in_bounds = &body[read.min(body.len())..];
+        let in_bounds = &in_bounds[..in_bounds.find("br label").unwrap_or(0)];
+        testkit::contents(in_bounds, &["@osprey_list_get"], &["@osp_alloc"]);
+        let built = body.find("@osp_alloc").unwrap_or(usize::MAX);
+        assert_eq!(
+            built != usize::MAX,
+            header.contains("@pick"),
+            "only a bound failure builds its record:\n{body}"
+        );
+        assert!(
+            built == usize::MAX || built > bounds,
+            "{header} builds the failure before the bounds check:\n{body}"
+        );
         let branch = body[bounds.min(body.len())..]
             .find("br i1")
             .map(|at| at + bounds);

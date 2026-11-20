@@ -55,7 +55,7 @@ module Maths
             _ => Error(message = "a math node of kind `${name}` has a non-array `${key}`")
 
     // Propagate the first decoding error without evaluating later fields.
-    then<T, U> : (Result<T, Error>, (T) -> Result<U, Error>) -> Result<U, Error> !e
+    then<T, U> : (Result<T, string>, (T) -> Result<U, string>) -> Result<U, string> !e
     then (result, next) = match result
         Error problem => Error(message = problem)
         Success value => next value

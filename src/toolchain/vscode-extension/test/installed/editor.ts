@@ -37,13 +37,14 @@ export async function saveClean(document: vscode.TextDocument): Promise<void> {
   await save(document);
 }
 
-/** Undo the last edit and wait until `document` reads `expected` again. */
-export async function undoTo(
+/** Run the `undo` or `redo` command and wait until `document` reads `expected`. */
+async function historyTo(
+  command: "undo" | "redo",
   document: vscode.TextDocument,
   expected: string,
   description: string,
 ): Promise<void> {
-  await vscode.commands.executeCommand("undo");
+  await vscode.commands.executeCommand(command);
   await waitFor(
     () => document.getText(),
     (text) => text === expected,
@@ -51,19 +52,13 @@ export async function undoTo(
   );
 }
 
+/** Undo the last edit and wait until `document` reads `expected` again. */
+export const undoTo = (document: vscode.TextDocument, expected: string, description: string): Promise<void> =>
+  historyTo("undo", document, expected, description);
+
 /** Redo the last undone edit and wait until `document` reads `expected`. */
-export async function redoTo(
-  document: vscode.TextDocument,
-  expected: string,
-  description: string,
-): Promise<void> {
-  await vscode.commands.executeCommand("redo");
-  await waitFor(
-    () => document.getText(),
-    (text) => text === expected,
-    description,
-  );
-}
+export const redoTo = (document: vscode.TextDocument, expected: string, description: string): Promise<void> =>
+  historyTo("redo", document, expected, description);
 
 export function rangeOf(
   document: vscode.TextDocument,

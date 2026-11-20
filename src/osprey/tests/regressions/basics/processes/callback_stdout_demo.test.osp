@@ -86,26 +86,22 @@ processEventHandler(99, 1, "ne 2\nLine 3\n")
 processEventHandler(99, 2, "ing\n")
 processEventHandler(99, 3, "0")
 
+/// Whether [probe] spawns, is awaited and cleaned up, exiting with [expected].
+fn exitedCleanly(probe, expected) = match probe {
+    Success { value } => {
+        let exitCode = awaitProcess(value)
+        cleanupProcess(value)
+        exitCode == expected
+    }
+    Error => false
+}
+
 /// Drives stdout, exit callbacks, waits, and cleanup from inside the test body.
 fn callbackLifecycleCase() = {
     let outputProbe = spawnProcess("echo asserted callback output", processEventHandler)
-    let outputCompleted = match outputProbe {
-        Success { value } => {
-            let exitCode = awaitProcess(value)
-            cleanupProcess(value)
-            exitCode == 0
-        }
-        Error => false
-    }
+    let outputCompleted = exitedCleanly(outputProbe, 0)
     let errorProbe = spawnProcess("echo asserted callback error 1>&2 && exit 1", processEventHandler)
-    let errorCompleted = match errorProbe {
-        Success { value } => {
-            let exitCode = awaitProcess(value)
-            cleanupProcess(value)
-            exitCode == 1
-        }
-        Error => false
-    }
+    let errorCompleted = exitedCleanly(errorProbe, 1)
     checkAll("callback process lifecycle state", [outputCompleted, errorCompleted])
 }
 test("callbacks accompany successful and failing process exits", callbackLifecycleCase)

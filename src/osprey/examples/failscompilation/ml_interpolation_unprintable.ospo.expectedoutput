@@ -1,1 +1,3 @@
-cannot convert value for interpolation: List<int>
+cannot convert value for interpolation: List<Map<string, int>>
+cannot assert on a value with no rendering: List<Map<string, int>>
+cannot assert on a value with no rendering: (int) -> int

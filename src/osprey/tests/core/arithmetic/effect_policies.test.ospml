@@ -3,7 +3,7 @@
 
 effect ArithmeticFailure
     (** Decide what a failed calculation yields, preserving the original `Error`. *)
-    decide : string => Result<int, Error>
+    decide : string => Result<int, string>
 
 (** Convert a successful sum to text while preserving the exact error branch. *)
 renderSum (a, b) = match checkedAdd a b
@@ -145,8 +145,8 @@ test "recovery arithmetic forwards to the outer policy" outerRecovery
 
 (** #183: direct calls preserve whole Result blocks, including float payloads. *)
 effect ResultRelay
-    integer : Result<int, Error> => Result<int, Error>
-    fraction : Result<float, Error> => Result<float, Error>
+    integer : Result<int, string> => Result<int, string>
+    fraction : Result<float, string> => Result<float, string>
 
 (** Renders one relayed integer Result through the installed handler. *)
 renderedInteger value = toString (perform ResultRelay.integer value)

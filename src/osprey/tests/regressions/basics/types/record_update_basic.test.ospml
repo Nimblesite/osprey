@@ -167,7 +167,7 @@ httpRecordLayout () =
         { status, isComplete, .. } => status == 201 && !isComplete
     erased : any
     erased = response
-    rendered = "{ status: 200, headers: X: yes, contentType: text/plain, streamFd: -1, isComplete: true, partialBody: hi }"
+    rendered = "{ status: 200, headers: \"X: yes\", contentType: \"text/plain\", streamFd: -1, isComplete: true, partialBody: \"hi\" }"
     selected && response.status == 200 && response.headers == "X: yes" && response.contentType == "text/plain" && response.streamFd == -1 && response.isComplete && response.partialBody == "hi" && changed.partialBody == "updated" && changed.headers == "X: yes" && toString erased == rendered && httpRecordPattern changed && erasedRecordStatus response == "200" && erasedRecordStatus changed == "201"
 
 (** [TYPE-RECORD-ANON] Captures preserve nested anonymous layout identity. *)
@@ -180,10 +180,10 @@ nestedAnonymousCapture () =
 
 (** [TYPE-RECORD-UPDATE] Result fields retain their whole value across every record path. *)
 type Outcome =
-    answer: Result<int, Error>
+    answer: Result<int, string>
     note: string
 type GenericOutcome T =
-    answer: Result<T, Error>
+    answer: Result<T, string>
     note: string
 
 readOutcome record = record.answer
@@ -197,7 +197,7 @@ resultRecordCase () =
     copied = success(note = "copy")
     erased : any
     erased = copied
-    toString failed.answer == "Error(kept)" && toString success.answer == "Success(42)" && success.note == "first" && toString (readOutcome copied) == "Success(42)" && matchOutcome copied && structuralOutcome copied && toString erased == "{ answer: Success(42), note: copy }"
+    toString failed.answer == "Error(kept)" && toString success.answer == "Success(42)" && success.note == "first" && toString (readOutcome copied) == "Success(42)" && matchOutcome copied && structuralOutcome copied && toString erased == "{ answer: Success(42), note: \"copy\" }"
 genericResultRecordCase () =
     floating = GenericOutcome(answer = Success(value = 2.5), note = "float")
     failed = floating(answer = Error(message = "float error"))
@@ -212,7 +212,7 @@ genericResultRecordCase () =
     point = match readOutcome nested
         Success value => value
         Error _ => Point(x = 0, y = 0)
-    toString floating.answer == "Success(2.5)" && toString failed.answer == "Error(float error)" && toString promoted.answer == "Success(1.25)" && point.x == 4 && point.y == 5 && toString erasedFloat == "{ answer: Success(2.5), note: float }" && toString erasedError == "{ answer: Error(float error), note: float }" && toString erasedNested == "{ answer: Success({ x: 4, y: 5 }), note: nested }"
+    toString floating.answer == "Success(2.5)" && toString failed.answer == "Error(float error)" && toString promoted.answer == "Success(1.25)" && point.x == 4 && point.y == 5 && toString erasedFloat == "{ answer: Success(2.5), note: \"float\" }" && toString erasedError == "{ answer: Error(float error), note: \"float\" }" && toString erasedNested == "{ answer: Success({ x: 4, y: 5 }), note: \"nested\" }"
 anonymousResultRecordCase () =
     original = { answer = Success(value = false), note = "anonymous" }
     failed = original(answer = Error(message = "bool error"))
@@ -221,7 +221,7 @@ anonymousResultRecordCase () =
     toString original.answer == "Success(false)" && toString failed.answer == "Error(bool error)" && toString (readOutcome copied) == "Error(bool error)" && toString success.answer == "Success(true)" && copied.note == "copy"
 
 (** [TYPE-RECORD-RESULT] Constructors, generic slots and live cells preserve failures. *)
-type Delivery = Waiting | Delivered(answer: Result<float, Error>)
+type Delivery = Waiting | Delivered(answer: Result<float, string>)
 effect ReplaceOutcome
     replace: int => int
 deliveryResult delivery = match delivery
@@ -241,7 +241,7 @@ resultTransportCase () =
     changed == 42 && toString before == "Error(initial)" && toString (read ()) == "Success(42)" && toString boxed.held == "Success(42)" && toString errorBox.held == "Error(generic error)" && deliveryResult (Delivered(answer = 2.5)) == "Success(2.5)" && deliveryResult (Delivered(answer = Error(message = "delivery"))) == "Error(delivery)" && deliveryResult Waiting == "waiting"
 
 (** [TYPE-RECORD-RESULT] Generic union slots preserve concrete Result payloads. *)
-type Parcel T = Absent | Packed(answer: Result<T, Error>)
+type Parcel T = Absent | Packed(answer: Result<T, string>)
 parcelText parcel = match parcel
     Absent => "absent"
     Packed answer => toString answer
@@ -254,6 +254,18 @@ genericUnionResultCase () =
     erasedBool : any
     erasedBool = boolean
     parcelText floating == "Success(2.5)" && parcelText boolean == "Success(false)" && parcelText failed == "Error(parcel)" && parcelText Absent == "absent" && toString erasedFloat == "Packed { answer: Success(2.5) }" && toString erasedBool == "Packed { answer: Success(false) }"
+
+(** [BUILTIN-PRINT-FORM] A recursive type renders at any depth: the compiler
+    renders each type once and the nested value calls back into it. *)
+type Tree =
+    label : string
+    kids : List<Tree>
+type Chain = End | Link(next: Chain, tag: int)
+recursiveShowCase () =
+    leaf = Tree(label = "a", kids = [])
+    tree = Tree(label = "root", kids = [leaf, Tree(label = "b", kids = [leaf])])
+    chain = Link(next = Link(next = End, tag = 2), tag = 1)
+    toString tree == "{ label: \"root\", kids: [{ label: \"a\", kids: [] }, { label: \"b\", kids: [{ label: \"a\", kids: [] }] }] }" && "${leaf}" == "{ label: \"a\", kids: [] }" && toString chain == "Link { next: Link { next: End, tag: 2 }, tag: 1 }" && toString [tree.kids, leaf.kids] == "[[{ label: \"a\", kids: [] }, { label: \"b\", kids: [{ label: \"a\", kids: [] }] }], []]"
 
 flowUpdateCase () =
     start = Point(x = 0, y = 0)
@@ -270,7 +282,7 @@ flowUpdateCase () =
         describe (start(y = 9, x = 8)) == "8,9",
         structuralEquals [nestedAnonymousCapture (), httpRecordLayout (), resultRecordCase ()] [true, true, true],
         structuralEquals [genericResultRecordCase (), anonymousResultRecordCase ()] [true, true],
-        structuralEquals [resultTransportCase (), genericUnionResultCase ()] [true, true]
+        structuralEquals [resultTransportCase (), genericUnionResultCase (), recursiveShowCase ()] [true, true, true]
     ]
 
 erasedCell = erase (Cell(v = "s"))

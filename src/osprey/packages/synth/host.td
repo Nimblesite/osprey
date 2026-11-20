@@ -9,7 +9,7 @@ type HostRendered { renderChannels: Int renderFrames: Int renderLatency: Int ren
 type NodeClip { clipNode: Int clipChannels: Int clipSamples: List<Float> clipNotes: List<HostNote> }
 union ClipAction { ClipReady { clips: List<NodeClip> } ClipWaiting { node: Int request: HostBlock clips: List<NodeClip> } }
 type ClipKernel<K> { heldKernel: K kernelSamples: List<Float> }
-type NodeKernels<K> { kernelNode: Int kernelStates: List<K> }
+type NodeKernels<K> { kernelNode: Int kernelMemory: K }
 type GraphState<K> { graphPosition: Int graphKernels: List<NodeKernels<K>> }
 type GraphPending<G,K> { pendingGraph: G pendingState: GraphState<K> pendingClips: List<NodeClip> pendingFrames: Int pendingNode: Int }
 union BlockAction<G,K> { BlockReady { held: GraphState<K> clips: List<NodeClip> } BlockWaiting { request: HostBlock pending: GraphPending<G,K> } }

@@ -48,9 +48,11 @@ on:
   pull_request:
     branches: [main]
 
+# [CI-PUSH-ONE-RUN] A push never cancels the run in progress: it waits as the
+# one pending run (GitHub keeps only the newest), so every run reports a result.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -1026,7 +1028,9 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y clang llvm lld wabt zsh libssl-dev pkg-config pandoc jq
+          packages=(clang llvm lld wabt zsh libssl-dev pkg-config pandoc jq)
+          bash scripts/ci/apt-prefetch.sh "${packages[@]}"
+          sudo apt-get install -y "${packages[@]}"
           curl -fsSL --retry 3 --retry-max-time 60 -o /tmp/wasi-sysroot.tar.gz \
             "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
           sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
@@ -1038,8 +1042,19 @@ jobs:
         run: npm ci
         working-directory: ./src/toolchain/website
 
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+      # WebKit too, so tests/install-webkit.cjs finds it installed. Ubuntu 26 runners ship none
+      # of either browser's libraries; the dry run names the missing packages and the prefetch
+      # downloads them in parallel before apt installs them.
+      - name: Install Playwright browsers
+        run: |
+          set -euo pipefail
+          # The dry run exits 1 when it lists missing packages; any other failure stops the step.
+          status=0
+          npx playwright install-deps --dry-run chromium webkit > "$RUNNER_TEMP/deps.txt" || status=$?
+          [ "$status" -eq 0 ] || grep -q '^Missing system dependencies' "$RUNNER_TEMP/deps.txt"
+          mapfile -t missing < <(sed -n 's/^  \([^ ]*\)$/\1/p' "$RUNNER_TEMP/deps.txt")
+          [ "${#missing[@]}" -eq 0 ] || bash ../../../scripts/ci/apt-prefetch.sh --no-install-recommends "${missing[@]}"
+          npx playwright install --with-deps chromium webkit
         working-directory: ./src/toolchain/website
 
       - name: Run end-to-end tests
@@ -1069,7 +1084,8 @@ jobs:
   # The showcases that exercise the compiler as a PRODUCT rather than a
   # library: the `osprey test` subcommand over the bank's native suites, a real
   # Chromium against the compiled binary serving its HTTP API, the profiler,
-  # the containerised web compiler, and the shared mobile domain + Android host.
+  # the containerised web compiler and the shared mobile domain. The Android
+  # host runs in test-android.
   test-integration:
     name: "Tests: integration (bank, profiler, web compiler)"
     needs: [changes, build]
@@ -1078,7 +1094,7 @@ jobs:
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v7
-      # The phone goldens are LFS-stored; a pointer would reach scripts/mobile/goldens.py as a picture.
+      # scripts/mobile/test-mobile-tools.py decodes the LFS-stored phone golden; a pointer is not a picture.
       - name: Fetch the Android phone goldens
         run: git lfs install --local && git lfs pull --include="src/osprey/examples/tally/goldens/android/**"
       - uses: actions/setup-node@v7
@@ -1119,6 +1135,76 @@ jobs:
 
       - name: Osprey Agent suites
         run: make _test_agent
+
+      - name: Install bank e2e dependencies
+        run: npm ci
+        working-directory: ./src/osprey/examples/projects/modules/e2e
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: ./src/osprey/examples/projects/modules/e2e
+      - name: Bank e2e (Playwright)
+        run: npx playwright test
+        working-directory: ./src/osprey/examples/projects/modules/e2e
+
+      # The HTML documentation export is a shipped artifact with navigation,
+      # search, themes and a mobile layout. Its unit tests assert what the
+      # exporter writes; only a browser asserts what a reader gets — and every
+      # defect this step has caught passed those unit tests first. It reuses the
+      # Chromium and node_modules the bank e2e step above already installed.
+      - name: Documentation HTML browser acceptance
+        run: node scripts/ci/verify-docs-html.mjs target/release/osprey
+
+      - name: Upload bank e2e results on failure
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: bank-e2e-results
+          path: src/osprey/examples/projects/modules/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Test Web Compiler
+        run: |
+          set -euo pipefail
+          cd src/toolchain/webcompiler
+          docker build -t osprey-web-compiler-ci -f Dockerfile ../../..
+          docker run -d --name osprey-web-compiler-ci -p 3001:3001 \
+            -e NODE_ENV=production -e PORT=3001 \
+            --memory=256m --memory-reservation=256m \
+            osprey-web-compiler-ci
+          for _ in $(seq 1 60); do
+            curl -fsS http://localhost:3001/api >/dev/null 2>&1 && break
+            sleep 1
+          done
+          chmod +x test.sh && ./test.sh
+          docker stop osprey-web-compiler-ci
+          docker rm osprey-web-compiler-ci
+
+  # The Android host on a real emulator: ABI, language goldens, app persistence
+  # and lint. Its own job so neither it nor the integration showcases share one
+  # timeout.
+  test-android:
+    name: "Tests: Android (ABI, goldens, persistence, lint)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v7
+      # The phone goldens are LFS-stored; a pointer would reach scripts/mobile/goldens.py as a picture.
+      - name: Fetch the Android phone goldens
+        run: git lfs install --local && git lfs pull --include="src/osprey/examples/tally/goldens/android/**"
+
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
 
       - name: Set up Java for Android
         uses: actions/setup-java@v6
@@ -1205,50 +1291,6 @@ jobs:
           find /tmp/android-*/emu-crash-* -type f -printf '%p %s\n'
           pgrep -a qemu || echo "No qemu process is running"
           tail -80 src/osprey/examples/projects/modules/mobile/android/build/logcat.txt || echo "No logcat was captured"
-
-      - name: Install bank e2e dependencies
-        run: npm ci
-        working-directory: ./src/osprey/examples/projects/modules/e2e
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
-        working-directory: ./src/osprey/examples/projects/modules/e2e
-      - name: Bank e2e (Playwright)
-        run: npx playwright test
-        working-directory: ./src/osprey/examples/projects/modules/e2e
-
-      # The HTML documentation export is a shipped artifact with navigation,
-      # search, themes and a mobile layout. Its unit tests assert what the
-      # exporter writes; only a browser asserts what a reader gets — and every
-      # defect this step has caught passed those unit tests first. It reuses the
-      # Chromium and node_modules the bank e2e step above already installed.
-      - name: Documentation HTML browser acceptance
-        run: node scripts/ci/verify-docs-html.mjs target/release/osprey
-
-      - name: Upload bank e2e results on failure
-        uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: bank-e2e-results
-          path: src/osprey/examples/projects/modules/e2e/test-results/
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Test Web Compiler
-        run: |
-          set -euo pipefail
-          cd src/toolchain/webcompiler
-          docker build -t osprey-web-compiler-ci -f Dockerfile ../../..
-          docker run -d --name osprey-web-compiler-ci -p 3001:3001 \
-            -e NODE_ENV=production -e PORT=3001 \
-            --memory=256m --memory-reservation=256m \
-            osprey-web-compiler-ci
-          for _ in $(seq 1 60); do
-            curl -fsS http://localhost:3001/api >/dev/null 2>&1 && break
-            sleep 1
-          done
-          chmod +x test.sh && ./test.sh
-          docker stop osprey-web-compiler-ci
-          docker rm osprey-web-compiler-ci
 
   # iOS/macOS device and simulator builds, simulator tests and the native
   # Workbench host. The iOS parts run on macos-26. Both images are ARM64,
@@ -1563,6 +1605,7 @@ jobs:
       - test-wasm
       - test-website
       - test-integration
+      - test-android
       - test-apple
       - test-agent
       - coverage

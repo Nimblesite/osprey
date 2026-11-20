@@ -60,7 +60,7 @@ fn applied(head: &str, mut args: Vec<Type>) -> Type {
 }
 
 /// Convert a bare field/effect type string (e.g. `"int"`, `"T"`,
-/// `"Result<string, Error>"`, `"(int) -> bool"`) into a type. The shallow
+/// `"Result<string, string>"`, `"(int) -> bool"`) into a type. The shallow
 /// `Name<...>`, `[elem]` and function-arrow forms are recognised; that covers
 /// every field type used by the examples.
 pub(crate) fn type_name_to_type(s: &str, params: &HashMap<String, Type>) -> Type {
@@ -217,8 +217,8 @@ mod tests {
         m.insert("T".to_string(), Type::Var(7));
         assert_eq!(type_name_to_type("T", &m), Type::Var(7));
         assert_eq!(
-            type_name_to_type("Result<int, Error>", &m),
-            Type::result(Type::int(), Type::prim("Error"))
+            type_name_to_type("Result<int, string>", &m),
+            Type::result(Type::int(), Type::string())
         );
     }
 

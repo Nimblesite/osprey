@@ -138,7 +138,7 @@ fn assert_left_as_written(sources: &[&str]) {
 
 #[test]
 fn the_prelude_source_parses_clean_and_lives_past_every_source_line() {
-    let rebased = json();
+    let rebased = &units().json;
     assert_in_range(JSON, rebased, PRELUDE_LINE_BASE, is_prelude_line, &[]);
     assert!(
         attached(&rebased.program),
@@ -150,17 +150,17 @@ fn the_prelude_source_parses_clean_and_lives_past_every_source_line() {
 #[test]
 fn later_prelude_units_rebase_cleanly_into_ranges_past_every_earlier_unit() {
     for (index, source, unit, earlier) in [
-        (1, SIGNALS, signals(), &[json()][..]),
-        (2, TESTING, testing(), &[signals()][..]),
-        (3, TESTING_GPU, testing_gpu(), &[]),
-        (4, TESTING_RESULT, testing_result(), &[]),
+        (1, SIGNALS, (&units().signals), &[(&units().json)][..]),
+        (2, TESTING, (&units().testing), &[(&units().signals)][..]),
+        (3, TESTING_GPU, (&units().testing_gpu), &[]),
+        (4, TESTING_RESULT, (&units().testing_result), &[]),
     ] {
         let base = PRELUDE_LINE_BASE + index * PRELUDE_UNIT_STRIDE;
         assert_in_range(source, unit, base, |line| line >= base, earlier);
     }
     assert!(is_prelude_line(PRELUDE_LINE_BASE + PRELUDE_UNIT_STRIDE + 1));
     assert!(
-        attached(&testing().program),
+        attached(&units().testing.program),
         "the testing unit must recognise itself"
     );
 }

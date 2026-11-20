@@ -47,6 +47,18 @@ impl Checker {
         }
     }
 
+    /// Record the compared operand of an assertion as an obligation to have a
+    /// rendering. Implements [TESTING-EQUALITY].
+    pub(crate) fn constrain_assertion(&mut self, name: Option<&str>, args: &[Type]) {
+        let operand = name
+            .and_then(crate::builtin_constraints::asserted_operand)
+            .and_then(|index| args.get(index));
+        if let Some(operand) = operand {
+            let key = self.sited_use(crate::builtin_constraints::ASSERTION);
+            self.builtin_uses.push((key, operand.clone()));
+        }
+    }
+
     /// The diagnostic for a `structuralEquals` operand holding a part whose
     /// equality is not decided; `None` for any other obligation, or a decided
     /// one. An unresolved variable is left alone: nothing says what it is.
@@ -202,6 +214,31 @@ impl Checker {
             .find_map(|ty| self.undecided_part(ty, parts, visited))
     }
 
+    /// What a type name is where a built-in uses it: a sealed alias, a
+    /// declared union or record with its field types, or neither.
+    pub(crate) fn named_at_use(
+        &self,
+        name: &str,
+        args: &[Type],
+    ) -> crate::builtin_constraints::Named {
+        use crate::builtin_constraints::Named;
+        if self.ctx.is_alias(name) {
+            return Named::Sealed;
+        }
+        let variants = match self.union_variants.get(name) {
+            Some(variants) => variants.clone(),
+            None if self.ctors.contains_key(name) => vec![name.to_owned()],
+            None => return Named::Plain,
+        };
+        Named::Fields(
+            variants
+                .iter()
+                .flat_map(|ctor| self.ctor_fields(ctor, args))
+                .map(|(_, ty)| ty)
+                .collect(),
+        )
+    }
+
     /// A constructor's fields instantiated against the owner's type arguments.
     fn ctor_fields(&self, ctor: &str, args: &[Type]) -> Vec<Field> {
         let Some(info) = self.ctors.get(ctor) else {
@@ -236,7 +273,13 @@ fn describe(parts: &[Part]) -> String {
     if outer.is_empty() {
         return head;
     }
-    let path = outer.iter().map(hop).collect::<Vec<_>>().join(" inside ");
+    // Innermost first: each hop sits inside the one after it.
+    let path = outer
+        .iter()
+        .rev()
+        .map(hop)
+        .collect::<Vec<_>>()
+        .join(" inside ");
     format!("{head} inside {path}")
 }
 

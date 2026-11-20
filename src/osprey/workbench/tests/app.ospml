@@ -206,7 +206,7 @@ module Drive
         true => Success(value = act)
         false => Error(message = "another button")
 
-    buttonIn : (string, ui::Node<workbench::Act>) -> Result<workbench::Act, Error>
+    buttonIn : (string, ui::Node<workbench::Act>) -> Result<workbench::Act, string>
     buttonIn (label, node) = match node
         ui::Button text _ _ _ act => labelledAct (text == label, act)
         _ => searchChildren (node, \child => buttonIn (label, child))
@@ -244,17 +244,17 @@ module Drive
 
     editorPlace (case, key) = at (case, key, \found => editorIn found.snapshotValue ?: workbench::Place, workbench::Place)
 
-    rowsIn : ui::Node<workbench::Act> -> Result<workbench::Act, Error>
+    rowsIn : ui::Node<workbench::Act> -> Result<workbench::Act, string>
     rowsIn node = match node
         ui::Rows _ _ bind => Success(value = bind)
         _ => searchChildren (node, rowsIn)
 
-    editorIn : ui::Node<workbench::Act> -> Result<workbench::Act, Error>
+    editorIn : ui::Node<workbench::Act> -> Result<workbench::Act, string>
     editorIn node = match node
         ui::Editor _ _ _ _ _ _ _ place => Success(value = place)
         _ => searchChildren (node, editorIn)
 
-    searchChildren : (ui::Node<workbench::Act>, (ui::Node<workbench::Act>) -> Result<workbench::Act, Error>) -> Result<workbench::Act, Error>
+    searchChildren : (ui::Node<workbench::Act>, (ui::Node<workbench::Act>) -> Result<workbench::Act, string>) -> Result<workbench::Act, string>
     searchChildren (node, look) = foldList (childrenOf node, Error(message = "no such component"), \(found, child) => eitherFound (found, look child))
 
     eitherFound (found, next) = match found

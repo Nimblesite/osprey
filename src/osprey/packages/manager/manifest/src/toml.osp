@@ -46,7 +46,7 @@ module Toml {
     export fn pairSpan(pair: Pair) = pair.span
 
     /// Parse a TOML document into its root table, or the first problem.
-    export fn parse(text) -> Result<Value, Problem> = TomlParser::parse(text)
+    export fn parse(text) = TomlParser::parse(text)
 
     /// True when the value is a table. [PACKAGE-MANIFEST]
     export fn isTable(v) = match v {

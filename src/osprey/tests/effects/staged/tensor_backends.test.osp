@@ -22,13 +22,13 @@ module Backends {
     /// an interpretation that runs them on a device has a failure channel, and the
     /// list interpretation answers `Success`.
     export static effect Tensor<B> {
-        build: fn(int, fn(int) -> float) -> Result<B, Error>
+        build: fn(int, fn(int) -> float) -> Result<B, string>
         get: fn(B, int) -> float
         length: fn(B) -> int
-        zipWith: fn(B, B, fn(float, float) -> float) -> Result<B, Error>
-        reduce: fn(B, float, fn(float, float) -> float) -> Result<float, Error>
-        matMul: fn(B, B, int, int, int) -> Result<B, Error>
-        fromList: fn(List<float>) -> Result<B, Error>
+        zipWith: fn(B, B, fn(float, float) -> float) -> Result<B, string>
+        reduce: fn(B, float, fn(float, float) -> float) -> Result<float, string>
+        matMul: fn(B, B, int, int, int) -> Result<B, string>
+        fromList: fn(List<float>) -> Result<B, string>
         device: fn() -> string
     }
 

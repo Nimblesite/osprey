@@ -17,6 +17,25 @@ fn bind_effect_argument(
 }
 
 impl Checker {
+    /// A program cannot declare the record list reads fail with: the backend
+    /// builds it at its own layout. Implements [BUILTIN-LIST-GET].
+    pub(super) fn reject_builtin_type(
+        &mut self,
+        name: &str,
+        variants: &[TypeVariant],
+        position: Option<Position>,
+    ) {
+        let builtin = crate::names::INDEX_OUT_OF_BOUNDS;
+        let declares = name == builtin || variants.iter().any(|v| v.name == builtin);
+        let in_program = position.is_none_or(|p| !crate::prelude::is_prelude_line(p.line));
+        if declares && in_program {
+            self.record_err(
+                TypeError::new(format!("`{builtin}` is the built-in list-read error type")),
+                position,
+            );
+        }
+    }
+
     /// Registers constructor fields before body inference, including fields
     /// that refer to their own or another declared union [TYPE-UNION-REC].
     pub(super) fn collect_type(

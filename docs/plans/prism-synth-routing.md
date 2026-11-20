@@ -2,7 +2,7 @@
 
 The synth package remains UI-free. Prism becomes an editable instrument graph: add oscillators, effects, MIDI generators, modulators and VST3 host nodes from a menu, connect compatible ports, adjust parameters and hear the resulting graph. Existing audio and control work must remain usable while a replacement graph is validated. See [SYNTH-GRAPH], [SYNTH-SIGNALS], [SYNTH-RENDER] and [SYNTH-HOST-VST] in the [synthesis specification](../specs/runtime/Synthesis.md).
 
-Work is on `codex/prism-synth-routing`, originally based on `math-to-code` at `e3ebc1399`. The original 03:00 Australia/Melbourne checkpoint on 16 November 2026 was retained below; the user subsequently resumed work and requested wrap-up in the primary checkout. Historical measurements describe their recorded checkpoint, not current release readiness.
+The original `codex/prism-synth-routing` work merged as PR #412. Completion continues on `codex/prism-plan-completion` in the dedicated `~/.codex/worktrees/prism-synth-routing/osprey` worktree, created from the latest local code after fetching `origin/main` on 19 November 2026. The original branch was based on `math-to-code` at `e3ebc1399`; its 03:00 Australia/Melbourne checkpoint on 16 November remains below. Historical measurements describe their recorded checkpoint, not current release readiness.
 
 ## Delivery checklist [PRISM-ROUTING-DELIVERY]
 
@@ -117,7 +117,7 @@ All twelve app journeys pass under ARC, including frozen graph ownership, stale 
 - [x] Expand the existing package suite to 22 loaded journeys, covering stereo kernel chains, MIDI window boundaries, hosted modulation, native packet round trips, malformed buffers and invalid public graph records.
 - [x] Run coverage independently under GC and ARC: both report 848/913 own source lines (92.9%), exceeding the unchanged 92.2% package gate.
 - [x] Check formatting and compile the expanded suite with warnings treated as errors.
-- [ ] Resolve the expanded single test file's 771-line size while retaining its assertions and useful comments; this conflicts with the instruction to expand existing test files rather than create new ones.
+- [x] Split the expanded synth test entry into `main.ospml` and `hosted.ospml`, each below 500 lines, retaining every original assertion and useful comment. All 23 journeys pass under ARC and GC (2026-11-19); a line-multiset check confirms no original nonblank source line was lost. Evidence: `target/pr-validation/plan-completion/split-tests.log` and `split-tests-gc.log`.
 - [ ] Finish repository-wide CI preparation; package coverage alone does not establish readiness to push.
 
 Evidence is retained under `target/pr-validation/synth-coverage` and `target/pr-validation/synth-coverage-arc`. The app still provides bounded offline auditions; continuous audio and persistent hosted instances remain unfinished.
@@ -292,7 +292,9 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Bind original cutoff/master sliders, oscillator waveform, enable switches, LFO rate and keyboard to the graph. The loaded regression compares actual PCM for waveform changes and bypass silence.
 - [x] Pass 13 application journeys, the 19-step original-controls/module-drag journey in headless and windowed modes, and the 42-step real VST editing journey in both modes. Evidence: `target/pr-validation/wrap-up/main-art-tests.log`, `integrated-controls-*`, `integrated-routing-*`.
 - [x] Preserve the exact main-branch Prism artwork and logo; inspect `design/prism-audio-modulation.png` and captures of the packaged app, including newly added module cards.
-- [ ] Restore graph undo/redo and adaptive canvas resizing in the unified editor; the retained fixed-studio tests alone do not validate these in the graph editor.
+- [x] Restore graph undo/redo in the unified editor using the original Prism header controls. Typed snapshots retain graph, positions, selection, note and plug-in bindings; node identities remain monotonic, new edits discard redo, and one drag is one edit. The new loaded graph-history journey failed before the fix and passes under ARC and GC; all 17 app journeys and strict static analysis pass (2026-11-19). Evidence: `target/pr-validation/plan-completion/history-{red,gc,final-suite,final-check}.log`.
+- [x] Align original Undo/Redo hit areas and custom inspector content with the expanding canvas. The graph resize journey first reproduced x=1108 instead of 1408 for Undo and x=1264 instead of 1564 for rendered connection text, then passed; all 18 app journeys and strict static analysis pass (2026-11-19). Evidence: `target/pr-validation/plan-completion/resize-{red,inspector-red-detail,suite,final-check}.log`.
+- [ ] Restore adaptive canvas resizing in the unified editor and verify the updated native window against the original Prism design; fixed-studio tests do not validate the graph editor.
 - [ ] Complete sustained audio and full repository CI gates above; these visual/interaction checks do not establish realtime playback reliability.
 
 ## Direct cable editing [PRISM-ROUTING-CABLES]
@@ -304,3 +306,22 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Pass the expanded application/audio regressions: synth package 22/22 and app 15/15 (2026-11-16). GPUI host clippy still runs only in CI.
 - [x] Measure the audio the app actually writes to the device: a `Speaker` effect captures every float32 WAV block from Audition, then the test checks the header, pitch from zero crossings (110 Hz–7 kHz within 0.05 Hz), RMS, peak, block-boundary continuity, 0.5 gain and low-pass attenuation (4 kHz through a 400 Hz cutoff vs. 19 kHz). A 1% pitch error fails it.
 - [ ] Verify actual mouse dragging and cable deletion in the rebuilt window, and capture the windowed regression journey.
+
+### Advanced granular playback checkpoint [PRISM-ROUTING-GRAINS]
+
+The [advanced synthesis plan](advanced-synthesis.md) tracks the new granular implementation separately from these remaining host/release requirements. Native manual interaction added Grain Cloud, replaced the mono output with stereo output, created the actual cable and completed a device audition on 19 November 2026; its receipt reported three empty-queue callbacks. This does not satisfy the sustained zero-starvation requirement or prove speaker output quality. Redundant per-sample grain validation was subsequently moved to checked block boundaries; compilation/static review passed, with comparative runtime evidence still pending. Automated tests remain paused at the user's request.
+
+The previously prepared native Undo/Redo journey edits are preserved in version control without execution: nine added steps cover undoing/reapplying added Delay and Mixer nodes, including an undo screenshot request. JSON syntax is valid; native execution and new screenshot evidence remain outstanding during the testing pause.
+
+### Oscillator MIDI input [PRISM-ROUTING-MIDI-OSCILLATOR]
+
+- [x] Declare a typed optional MIDI event input on the built-in oscillator.
+- [x] Apply sample-offset note-on/off, pitch and velocity in the shared renderer with retained monophonic note ownership.
+- [x] Expose and manually connect the input in the original Prism card design; compile the native application and complete a device audition.
+- [ ] Verify numerical pitch/velocity, note ownership, exact block-boundary gating and long playback when synthesis verification resumes.
+- [x] Add configurable MIDI note-off release shaping with retained phase, exact endpoints and note ownership across blocks.
+- [ ] Verify rendered release endpoints, duration, repeated note-offs and retrigger behaviour; add attack/crossfades and live topology state migration before claiming click-free realtime MIDI instruments.
+
+See [SYNTH-HOST-MIDI-OSCILLATOR]. Manual audition on 19 November 2026 reported four empty-queue callbacks. No Prism automated tests were run, and they are excluded from current work by the user's latest instruction.
+
+Implementation checkpoint [SYNTH-HOST-MIDI-OSCILLATOR-RELEASE]: generated voice state retains release length/remaining frames. `Components.sine` exposes `releaseFrames`, defaulting to 240 frames at 48 kHz; matching note-off latches it, repeated/unrelated note-offs leave the tail intact, and note-on cancels it without resetting oscillator phase. Package strict compilation passed; rendered/audio evidence is still pending under the current testing pause.

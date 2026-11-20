@@ -254,8 +254,8 @@ def layer_input(row, index):
 
 def layer_interface_cases(model, cache, row, index):
     match listGet(model.layers, index):
-        case Error(message=message):
-            return [Check.failed(f"model.Layer.{index}", toString(message))]
+        case Error():
+            return [Check.failed(f"model.Layer.{index}", "index out of bounds")]
         case Success(value=layer):
             match Qwen3_5Cache.slot_at(cache, index):
                 case Error(message=message):

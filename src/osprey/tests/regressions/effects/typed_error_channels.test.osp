@@ -86,21 +86,22 @@ let combined = exactArithmetic(fn() => {
 )
 print("final combined result = ${toString(combined)}")
 
-/// Applies the strict inner Range policy in isolation.
-fn strictRangeForTest() = {
+/// The ordinary clamping policy: pin `value` to `limit` when it exceeds it.
+fn clampPolicy(value, limit) = match value > limit { true => limit false => value }
+
+/// Answers one Range.clamp with [policy], then runs `loadRetries raw high` under it.
+fn rangeUnder(policy, raw, high) = {
     handle Range {
-        clamp _v _hi => 1
+        clamp value limit => policy(value, limit)
     }
-    loadRetries(500)(10)
+    loadRetries(raw)(high)
 }
 
+/// Applies the strict inner Range policy in isolation.
+fn strictRangeForTest() = rangeUnder(fn(_v, _hi) => 1, 500, 10)
+
 /// Applies the ordinary clamping Range policy in isolation.
-fn relaxedRangeForTest() = {
-    handle Range {
-        clamp _v hi => hi
-    }
-    loadRetries(500)(10)
-}
+fn relaxedRangeForTest() = rangeUnder(fn(_v, hi) => hi, 500, 10)
 
 fn parseUnder(raw, replacement) = {
     handle Parse {
@@ -116,19 +117,9 @@ fn missingUnder(key) = {
     perform Missing.fill(key)
 }
 
-fn clampUnder(raw, high) = {
-    handle Range {
-        clamp value limit => match value > limit { true => limit false => value }
-    }
-    loadRetries(raw)(high)
-}
+fn clampUnder(raw, high) = rangeUnder(clampPolicy, raw, high)
 
-fn forceUnder(raw, high, replacement) = {
-    handle Range {
-        clamp _value _limit => replacement
-    }
-    loadRetries(raw)(high)
-}
+fn forceUnder(raw, high, replacement) = rangeUnder(fn(_value, _limit) => replacement, raw, high)
 
 fn rangePolicyTrace(raw, high) = {
     handle Range {

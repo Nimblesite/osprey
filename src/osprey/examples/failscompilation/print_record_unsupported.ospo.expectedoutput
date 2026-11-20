@@ -1,1 +1,4 @@
-cannot convert value for printing: { x: int, y: int }
+cannot convert value for printing: { grow: (int) -> int, x: int }
+cannot convert value for printing: Holder
+cannot assert on a value with no rendering: { grow: (int) -> int, x: int }
+cannot assert on a value with no rendering: Map<string, int>

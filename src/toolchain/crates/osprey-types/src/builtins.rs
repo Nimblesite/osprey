@@ -6,7 +6,7 @@
 //! Signatures use `any` only where one Hindley-Milner type cannot express the
 //! runtime's supported alternatives (`print`, `toString`, `length`,
 //! `isEmpty`); `builtin_constraints` checks their concrete call-site types.
-//! Result-returning runtime builtins return `Result<T, Error>` — the shape the C
+//! Result-returning runtime builtins return `Result<T, string>` — the shape the C
 //! runtime actually returns. Arithmetic returns no `Result`: `abs` preserves its numeric type and `intDiv`
 //! returns plain `int`, performing `Arith` operations
 //! on their faults ([ARITH-TOTAL]); `wrap*`/`sat*` are total. Only
@@ -36,11 +36,16 @@ fn u() -> Type {
 fn any() -> Type {
     Type::any()
 }
-fn err() -> Type {
-    Type::prim("Error")
-}
+/// Every fallible built-in fails with a message alone, so its `E` is
+/// `string`. Implements [ERR-RESULT].
 fn res(ok: Type) -> Type {
-    Type::result(ok, err())
+    Type::result(ok, s())
+}
+/// What a list read returns, under either spelling: the element, or the
+/// `IndexOutOfBounds` record. Implements [BUILTIN-LIST-GET].
+#[must_use]
+pub fn list_read(elem: Type) -> Type {
+    Type::result(elem, Type::con(crate::names::INDEX_OUT_OF_BOUNDS, vec![]))
 }
 
 /// How many low variable ids the builtin schemes below use as hand-written
@@ -70,6 +75,7 @@ pub(crate) const SHADOWABLE_BUILTINS: &[&str] = &[
     "expectAll",
     "expectTrue",
     "expectFalse",
+    "expectError",
     "check",
     "checkAll",
     "checkTrue",
@@ -145,13 +151,28 @@ fn testing(e: &mut TypeEnv) {
         vec![s(), Type::fun(vec![], Type::Var(0))],
         u(),
     );
-    // expect(actual, expected). [TESTING-BUILTIN-EXPECT]
-    mono(e, "expect", vec![any(), any()], u());
+    // expect(actual, expected): both sides one inferred type. [TESTING-BUILTIN-EXPECT]
+    poly(e, "expect", vec![0], vec![Type::Var(0), Type::Var(0)], u());
     mono(e, "expectAll", vec![Type::list(b())], u());
     mono(e, "expectTrue", vec![b()], u());
     mono(e, "expectFalse", vec![b()], u());
-    // check(label, expected, actual). [TESTING-BUILTIN-CHECK]
-    mono(e, "check", vec![s(), any(), any()], u());
+    // expectError(result, payload): the payload has the Result's own error
+    // type, inferred from it. [TESTING-BUILTIN-EXPECT-ERROR]
+    poly(
+        e,
+        "expectError",
+        vec![0, 1],
+        vec![Type::result(Type::Var(0), Type::Var(1)), Type::Var(1)],
+        u(),
+    );
+    // check(label, expected, actual): both values one inferred type. [TESTING-BUILTIN-CHECK]
+    poly(
+        e,
+        "check",
+        vec![0],
+        vec![s(), Type::Var(0), Type::Var(0)],
+        u(),
+    );
     mono(e, "checkAll", vec![s(), Type::list(b())], u());
     mono(e, "checkTrue", vec![s(), b()], u());
     mono(e, "checkFalse", vec![s(), b()], u());
@@ -161,7 +182,7 @@ fn strings(e: &mut TypeEnv) {
     mono(e, "contains", vec![s(), s()], b());
     mono(e, "startsWith", vec![s(), s()], b());
     mono(e, "endsWith", vec![s(), s()], b());
-    // The fallible string ops return Result<T, Error> (matched on Success/Error).
+    // The fallible string ops return Result<T, string> (matched on Success/Error).
     mono(e, "indexOf", vec![s(), s()], res(i()));
     mono(e, "split", vec![s(), s()], res(Type::list(s())));
     mono(e, "join", vec![Type::list(s()), s()], s());
@@ -265,7 +286,13 @@ fn lists(e: &mut TypeEnv) {
         Type::list(t()),
     );
     poly(e, "listLength", vec![0], vec![Type::list(t())], i());
-    poly(e, "listGet", vec![0], vec![Type::list(t()), i()], res(t()));
+    poly(
+        e,
+        "listGet",
+        vec![0],
+        vec![Type::list(t()), i()],
+        list_read(t()),
+    );
     poly(e, "listContains", vec![0], vec![Type::list(t()), t()], b());
     // Deep content comparison [BUILTIN-STRUCTURAL-EQUALS]: both operands are
     // the one type variable, and the operand type is validated as an

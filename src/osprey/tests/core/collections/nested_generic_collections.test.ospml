@@ -46,7 +46,7 @@ auditInts rows = auditLeaves (rows, 0, \(acc, value) => acc * 10 + value)
 
 auditStrings rows = auditLeaves (rows, "", \(acc, value) => acc + value + "/")
 
-(** One flow crosses generic instantiation, three list layers, `Result<T, Error>`
+(** One flow crosses generic instantiation, three list layers, `Result<T, string>`
     recovery, persistent producers, nested patterns, callbacks, and generic
     operation erasure. This jointly enforces [TYPE-GENERICS-FN], [TYPE-LIST],
     [TYPE-LIST-PATTERNS], [BUILTIN-LIST-GET], [BUILTIN-LIST-FOREACH], and

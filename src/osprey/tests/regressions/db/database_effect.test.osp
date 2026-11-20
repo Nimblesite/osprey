@@ -4,7 +4,7 @@
 // it in tests with zero changes to app code). The handler is the only place that
 // touches the generic-FFI SQLite bindings — there are NO hardcoded DB builtins,
 // and the connection/statement pointers are threaded through op arguments (so no
-// handler closes over outer state). Fallible ops return `Result<_, Error>`.
+// handler closes over outer state). Fallible ops return `Result<_, string>`.
 //
 // Plan: docs/plans/ffi-sqlite.md · Spec: docs/specs/compiler/0019-ForeignFunctionInterface.md
 //
@@ -31,7 +31,7 @@ extern fn osprey_ffi_transient() -> Ptr
 /// arms stay free of captured state.
 effect Database {
     /// Open the database at `path`, reporting failure as a `Result`.
-    open: fn(string) -> Result<Ptr, Error>
+    open: fn(string) -> Result<Ptr, string>
     /// Run one statement that returns no rows; yields the status code.
     exec: fn(Ptr, string) -> int
     /// Compile `sql` into a reusable prepared statement.

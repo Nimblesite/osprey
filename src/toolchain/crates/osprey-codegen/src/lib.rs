@@ -50,6 +50,7 @@ mod monofn;
 mod pattern;
 mod result;
 mod runtime;
+mod show;
 mod stmt;
 mod strings;
 mod structural_equals;

@@ -24,13 +24,19 @@ fn checks_arithmetic_and_let() {
 #[test]
 fn interpolation_rejects_unprintable_aggregates() {
     for (flavor, source) in [
-        (Flavor::Default, "let xs = [1, 2]\nprint(\"[${xs}]\")\n"),
-        (Flavor::Ml, "xs = [1, 2]\nprint \"[${xs}]\"\n"),
         (
             Flavor::Default,
-            "fn render(x) = \"[${x}]\"\nprint(render([1, 2]))\n",
+            "let xs = [fn(n) => n + 1]\nprint(\"[${xs}]\")\n",
         ),
-        (Flavor::Ml, "render x = \"[${x}]\"\nprint (render [1, 2])\n"),
+        (Flavor::Ml, "xs = [\\n => n + 1]\nprint \"[${xs}]\"\n"),
+        (
+            Flavor::Default,
+            "fn render(x) = \"[${x}]\"\nprint(render([fn(n) => n + 1]))\n",
+        ),
+        (
+            Flavor::Ml,
+            "render x = \"[${x}]\"\nprint (render [\\n => n + 1])\n",
+        ),
     ] {
         let parsed = parse_program_with_flavor(source, flavor);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
@@ -38,7 +44,7 @@ fn interpolation_rejects_unprintable_aggregates() {
         assert!(
             errors
                 .iter()
-                .any(|e| e.message == "cannot convert value for interpolation: List<int>"),
+                .any(|e| e.message == "cannot convert value for interpolation: List<(int) -> int>"),
             "{flavor}: {errors:?}"
         );
     }
@@ -176,7 +182,7 @@ fn records_field_access_and_update() {
 
 #[test]
 fn result_pattern_binds_payload_type() {
-    ok("fn unwrap(r: Result<int, Error>) -> int = match r {\n\
+    ok("fn unwrap(r: Result<int, string>) -> int = match r {\n\
           Success { value } => value\n\
           Error { message } => 0\n\
         }\n");
@@ -193,7 +199,7 @@ fn user_variant_shadowing_success_still_matches_real_results() {
           1 => Warning\n\
           _ => Failed\n\
         }\n\
-        fn total(r: Result<int, Error>) -> int = match r {\n\
+        fn total(r: Result<int, string>) -> int = match r {\n\
           Success { value } => value\n\
           Error { message } => 0\n\
         }\n");

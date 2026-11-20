@@ -89,7 +89,7 @@ embedOf (tokensGrid, positionsGrid, ids, grid0) =
 (** The product, preserving allocation and shape failures. *)
 product (l, r, rows, inner, cols) = gpuMatMul (l, r, rows, inner, cols)
 (** The reason a kernel failed, or "no error" when it succeeded. *)
-failureOf (result: Result<GpuBuffer<float32>, Error>) =
+failureOf (result: Result<GpuBuffer<float32>, string>) =
     match result
         Success _ => "no error"
         Error message => message

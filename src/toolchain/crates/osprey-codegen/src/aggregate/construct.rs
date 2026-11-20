@@ -66,6 +66,19 @@ pub(super) fn materialize(
     Ok(super::own_struct_handle(cg, &struct_ty, &obj, view.owner))
 }
 
+/// The built-in record a failed list read holds, from its two words.
+/// Implements [BUILTIN-LIST-GET].
+pub(crate) fn index_out_of_bounds(cg: &mut Codegen, index: &str, length: &str) -> Result<Value> {
+    let name = osprey_types::names::INDEX_OUT_OF_BOUNDS;
+    let view = cg
+        .ctor_layout(name)
+        .ok_or_else(|| CodegenError::unknown(name))?;
+    let words = [index, length].map(|word| (Value::new(word, LType::I64), MetaField::Word));
+    let mut record = materialize(cg, name, view, &words)?;
+    record.inferred_type = Some(osprey_types::Type::con(name, vec![]));
+    Ok(record)
+}
+
 fn store_tagged_fields(
     cg: &mut Codegen,
     struct_ty: &str,

@@ -156,7 +156,7 @@ plain_cases! {
     /// Under an invariant parameter.
     a_result_payload_does_not_collapse_under_an_invariant_container: rejects_with(Flavor::Default, feed_payload_program(""), "cannot unify");
 
-    /// "Function returns also match exactly, so a `Feed<(int) -> Result<int, Error>>`
+    /// "Function returns also match exactly, so a `Feed<(int) -> Result<int, string>>`
     /// does not match a `Feed<(int) -> int>` slot" — the spec's own example.
     a_function_payloads_return_channel_matches_exactly: rejects_with(Flavor::Default, r#"type Feed<out T> = Feed { supply: T } | Dry
 fn label(f: Feed<(int) -> int>) = match f {

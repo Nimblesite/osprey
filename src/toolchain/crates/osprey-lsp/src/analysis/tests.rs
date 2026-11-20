@@ -178,20 +178,28 @@ fn a_type_the_author_named_underscore_is_a_real_type_not_a_hole() {
 
 #[test]
 fn a_partially_resolved_return_type_reports_its_proven_part_never_unit() {
-    // Both arms build a `Result`, so the checker proves the payload is
-    // `int` — but the ERROR side stays free, because `Error { message }`
-    // unifies with whichever error type a caller supplies. Annotating this
-    // body `-> Result<int, string>`, `-> Result<int, Error>` and
-    // `-> Result<int, string>` all check, which is what "free" means.
+    // `onlySuccess` builds no `Error`, so the checker proves the payload is
+    // `int` and leaves `E` undecided ([ERR-RESULT] rule 2).
     //
     // [`fill_inferred`] refuses a type holding a variable — correctly, `t6`
     // is a private name — but the fallback then claimed `-> Unit`, and the
     // checker refutes that itself: annotating `-> Unit` fails with
     // "cannot unify Unit with Result<t5, t6>". A tool must not assert what
     // the compiler rejects. `Result<int, _>` says exactly what is proven.
-    let src = "fn bothArms(f) = if f { Success { value: 1 } } else { Error { message: \"e\" } }\n";
+    let src = "fn onlySuccess(s) = Success { value: length(s) }\n";
     let json = symbols_json(&parse_ok(src));
     crate::testkit::contents(&json, &["\"returnType\":\"Result<int, _>\""], &["Unit"]);
+    // An `Error` arm decides `E` from its payload, so both sides are proven.
+    let both = "fn bothArms(f) = if f { Success { value: 1 } } else { Error { message: \"e\" } }\n\
+                fn coded(f) = if f { Success { value: 1 } } else { Error { message: 7 } }\n";
+    crate::testkit::contents(
+        &symbols_json(&parse_ok(both)),
+        &[
+            "\"returnType\":\"Result<int, string>\"",
+            "\"returnType\":\"Result<int, int>\"",
+        ],
+        &["Unit", "_>"],
+    );
     assert!(
         !json.contains(">\"t") && !json.contains(", t6"),
         "a private inference name must never reach a reader; got {json}"

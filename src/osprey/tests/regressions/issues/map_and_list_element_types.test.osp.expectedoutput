@@ -2,5 +2,5 @@ map string  -> Success(heap)
 map float   -> Success(1.5)
 map bool    -> Success(true)
 map int     -> Success(42)
-list string -> Success(heap)
-list float  -> Success(1.5)
+list string -> heap
+list float  -> 1.5

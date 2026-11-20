@@ -10,7 +10,10 @@ a program: it serves only the optional tsc lint ([FLAVOR-TS-SELECT]). Files unde
 Left out, each checked elsewhere: failscompilation/ (must be rejected: the
 book's .expectederror goldens and osprey-cli's examples_compile), and the
 registry data (sample-registry/, e2e/consumer/, fixtures/manifests/), which
-resolves only through a registry and is built by make _test_registry.
+resolves only through a registry and is built by make _test_registry, and the
+errors prelude unit, which declares the built-in IndexOutOfBounds no program may
+redeclare and is checked attached to every program that reads a list
+([BUILTIN-LIST-GET]).
 Run: OSPREY_BIN=<compiler> osprey scripts/ci/check-programs.py --run
 """
 
@@ -18,7 +21,7 @@ WORK = "target/check-programs"
 COMPILER = "\"${OSPREY_BIN:-target/release/osprey}\""
 BATCH = 16
 NEWLINE = "\n"
-EXCLUDED = ["/failscompilation/", "/sample-registry/", "/e2e/consumer/", "/fixtures/manifests/"]
+EXCLUDED = ["/failscompilation/", "/sample-registry/", "/e2e/consumer/", "/fixtures/manifests/", "/osprey-types/src/prelude/errors.osp"]
 MARKERS = ["# osprey: flavor=", "#osprey: flavor=", "// osprey: flavor=", "//osprey: flavor="]
 SOURCE_KEY = "\"source\":\""
 SOURCES_KEY = "\"sources\":["

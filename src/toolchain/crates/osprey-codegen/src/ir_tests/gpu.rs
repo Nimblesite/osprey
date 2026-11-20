@@ -337,7 +337,7 @@ fn a_closure_valued_kernel_keeps_its_cell_call() {
 }
 #[test]
 fn a_result_returning_kernel_keeps_its_scalar_diagnostic() {
-    // `checkedMul` makes the kernel return Result<int, Error> (`*` itself
+    // `checkedMul` makes the kernel return Result<int, string> (`*` itself
     // is `int` [ARITH-EFFECT]); the host still rejects it where it always
     // did, with the same message.
     let err = compile_err(

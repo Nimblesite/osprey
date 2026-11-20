@@ -298,7 +298,7 @@ fn merging_results_and_fibers_keeps_every_callback_requirement() {
         for (declarations, expression) in [
             (
                 format!(
-                    "fn choose(flag) -> Result<()->int, Error> = match flag {{\n\
+                    "fn choose(flag) -> Result<()->int, string> = match flag {{\n\
                     true => Success{{value:{callback}}}\nfalse => Success{{value:pure}}\n}}\n"
                 ),
                 "(choose(true) ?: pure)()",

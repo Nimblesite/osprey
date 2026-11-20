@@ -72,7 +72,7 @@ sealed class Session
             _ = FrameReader.Read(call.Frame);
             if (call.Status != 0)
             {
-                report([$"The application refused argument {argument}: error {call.Status}"]);
+                report(new[] { $"The application refused argument {argument}: error {call.Status}" });
             }
         }
         Guarded(() => Apply(library.Open(Now(), offset, Platform, home, dark)));
@@ -144,7 +144,7 @@ sealed class Session
         }
         catch (HostException problem)
         {
-            report([problem.Message]);
+            report(new[] { problem.Message });
             return;
         }
         Send(Touch.Control(ordinal, words));
@@ -158,7 +158,7 @@ sealed class Session
         }
         catch (HostException problem)
         {
-            report([problem.Message]);
+            report(new[] { problem.Message });
         }
     }
 
@@ -176,7 +176,7 @@ sealed class Session
             }
             catch (HostException problem)
             {
-                report([problem.Message]);
+                report(new[] { problem.Message });
                 return;
             }
             var diagnostics = next.Diagnostics.ToList();

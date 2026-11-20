@@ -66,7 +66,8 @@ suite("native shared panel lifecycle", () => {
   });
   teardown(() => { sinon.restore(); fs.rmSync(root, { recursive: true, force: true }); });
 
-  test("closing a panel aborts its pending WASI command", async () => {
+  // Opens a panel through `command` whose WASI instance blocks until aborted; yields that instance's signal.
+  async function openBlockedPanel(command: string) {
     const fixture = fixturePanel();
     const started = new Promise<AbortSignal | undefined>(resolve => {
       sinon.stub(Runner, "startNativeRuntime").callsFake((_module, signal) => {
@@ -79,13 +80,17 @@ suite("native shared panel lifecycle", () => {
         };
       });
     });
-    const command = "osprey.test.native.cancel";
     const registration = host.registerNativePanel(context(), options(command, async () => application(artifact)));
+    await commands.executeCommand(command);
+    fixture.ready();
+    const signal = await started;
+    assert.ok(signal, "each panel must supply its own cancellation signal");
+    return { fixture, registration, signal };
+  }
+
+  test("closing a panel aborts its pending WASI command", async () => {
+    const { fixture, registration, signal } = await openBlockedPanel("osprey.test.native.cancel");
     try {
-      await commands.executeCommand(command);
-      fixture.ready();
-      const signal = await started;
-      assert.ok(signal, "each panel must supply its own cancellation signal");
       assert.strictEqual(signal.aborted, false);
       fixture.panel.dispose();
       assert.strictEqual(signal.aborted, true, "closing the panel must stop its instance");
@@ -93,25 +98,8 @@ suite("native shared panel lifecycle", () => {
   });
 
   test("closing a panel aborts its pending WASI command (extra: disposing the registration stops its open panel too)", async () => {
-    const fixture = fixturePanel();
-    const started = new Promise<AbortSignal | undefined>(resolve => {
-      sinon.stub(Runner, "startNativeRuntime").callsFake((_module, signal) => {
-        resolve(signal);
-        return {
-          open: async () => new Promise((_resolve, reject) => signal?.addEventListener("abort", () => reject(new Error("cancelled")), { once: true })),
-          event: async () => ({ status: 0, revision: 2, runs: { shapes: new ArrayBuffer(0), views: new ArrayBuffer(0), text: new ArrayBuffer(0), asks: new ArrayBuffer(0) } }),
-          hold: () => undefined,
-          dispose: () => undefined,
-        };
-      });
-    });
-    const command = "osprey.test.native.registration";
-    const registration = host.registerNativePanel(context(), options(command, async () => application(artifact)));
+    const { fixture, registration, signal } = await openBlockedPanel("osprey.test.native.registration");
     try {
-      await commands.executeCommand(command);
-      fixture.ready();
-      const signal = await started;
-      assert.ok(signal, "each panel must supply its own cancellation signal");
       registration.dispose();
       assert.strictEqual(signal.aborted, true, "disposing the registration must abort the panel it opened");
     } finally { registration.dispose(); fixture.dispose(); }

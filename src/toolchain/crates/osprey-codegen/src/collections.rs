@@ -22,16 +22,6 @@ use maps::{map_contains, map_get, map_merge, map_remove, map_set, map_to_list};
 pub(crate) const LIST_OWNER: &str = "List";
 pub(crate) const MAP_OWNER: &str = "Map";
 
-/// The `Error { message }` an out-of-range list read reports.
-///
-/// One constant, because [BUILTIN-LIST-GET] declares `listGet(list, index)`
-/// "equivalent to `list[index]`" — two spellings of one operation, which must
-/// therefore fail identically. They did not: the flat-literal index path said
-/// `index out of bounds` while `listGet` said `listGet: index out of bounds`,
-/// so a program that swapped one spelling for the other silently stopped
-/// matching its own error text [ERR-PAYLOAD].
-pub(crate) const INDEX_OOB: &str = "index out of bounds";
-
 /// Owner-tag prefix marking a runtime list whose element type is known; the
 /// suffix is the element's LLVM spelling (`List#double`), the same convention
 /// GPU buffers (`Gpu#double`) and flat literals (`[]double`) use.
@@ -398,7 +388,13 @@ pub(crate) fn runtime_list_get(cg: &mut Codegen, l: &Value, i: &Value) -> Result
     // The success payload is the ELEMENT's type, not the storage word's, so a
     // `List<float>` yields `Result<float, _>` [`LIST_TAG`].
     let value = elem_value(cg, l, &raw);
-    crate::result::make_result_unless_in_bounds(cg, &inb, value, INDEX_OOB)
+    let ok = cg.emit_reg(format!("icmp ne i32 {inb}, 0"));
+    crate::result::make_list_read(cg, &ok, value, &i.operand, |cg| list_length(cg, l))
+}
+
+/// The `i64` length of the runtime list `l`.
+pub(crate) fn list_length(cg: &mut Codegen, l: &Value) -> String {
+    cg.call("i64", "osprey_list_length", "i8*", &[&l.operand])
 }
 
 /// `listContains(l, x) -> bool`: linear scan, content-equality for strings.

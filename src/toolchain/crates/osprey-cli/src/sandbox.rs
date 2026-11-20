@@ -174,7 +174,7 @@ mod tests {
         let mut policy = Policy::allow_all();
         policy.fs = false;
         let v = violations(
-            &prog("let b = readFileBytes(\"a\", 0, 1)\nlet c = readFile(\"a.txt\")\nlet n = fileSize(\"a.txt\")\nlet w = writeFile(\"b\", c)\nlet m: Result<GpuBuffer<float32>, Error> = gpuMapFile(\"m\", 0, 1)\nlet t = loadTensor(\"m\", \"w\")\nlet g = gpuLoadTensor(\"m\", \"w\")\nlet r = gpuLoad(\"m\", 0, 1)\nlet d = listDir(\".\")\nlet k = kindOf(\".\")\nlet md = makeDir(\"d\")\n"),
+            &prog("let b = readFileBytes(\"a\", 0, 1)\nlet c = readFile(\"a.txt\")\nlet n = fileSize(\"a.txt\")\nlet w = writeFile(\"b\", c)\nlet m: Result<GpuBuffer<float32>, string> = gpuMapFile(\"m\", 0, 1)\nlet t = loadTensor(\"m\", \"w\")\nlet g = gpuLoadTensor(\"m\", \"w\")\nlet r = gpuLoad(\"m\", 0, 1)\nlet d = listDir(\".\")\nlet k = kindOf(\".\")\nlet md = makeDir(\"d\")\n"),
             policy,
         );
         assert_eq!(

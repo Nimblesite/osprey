@@ -8,7 +8,7 @@
  */
 
 /** The value of the first header called `name`, or an error when the request has none. */
-export function headerOf(headers: string, name: string): Result<string, Error> {
+export function headerOf(headers: string, name: string): Result<string, string> {
   return lineValue(headers, `${toLowerCase(name)}:`);
 }
 

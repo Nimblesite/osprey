@@ -43,9 +43,19 @@ type NodePosition =
     layoutX : float
     layoutY : float
 
+type GraphSnapshot G =
+    savedGraph : G
+    savedPositions : List<NodePosition>
+    savedBindings : List<PluginBinding>
+    savedSelected : int
+    savedNote : int
+
 type Editor G P S M =
     skin : M
     graph : G
+    past : List<GraphSnapshot<G>>
+    future : List<GraphSnapshot<G>>
+    gesture : List<GraphSnapshot<G>>
     assetFolder : string
     paletteShown : bool
     detailsShown : bool
@@ -93,6 +103,8 @@ type Editor G P S M =
     renderStopping : bool
 
 type EditorAction =
+    Undo
+    Redo
     Add
         kind : string
     Select

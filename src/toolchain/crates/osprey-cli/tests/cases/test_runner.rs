@@ -14,7 +14,20 @@ pub(super) const PASSING_TESTS: &str = "test(\"adds\", fn() => expect(1 + 1, 2))
 test(\"labeled\", fn() => check(\"sum\", 4, 2 + 2))\n";
 
 pub(super) const FAILING_TESTS: &str = "test(\"bad math\", fn() => expect(1 + 1, 3))\n\
-test(\"good math\", fn() => expect(2 + 2, 4))\n";
+test(\"good math\", fn() => expect(2 + 2, 4))\n\
+test(\"wrong error\", fn() => expectError(checkedMul(4294967296, 4294967296), \"nope\"))\n\
+test(\"not an error\", fn() => expectError(checkedAdd(1, 2), \"overflow\"))\n\
+type MathError = DivZero | Overflow { by: int }\n\
+type Point = { x: int, tag: string }\n\
+fn ratio(n) = if n > 9 { Error { message: Overflow { by: n } } } else { Success { value: n } }\n\
+test(\"typed payloads\", fn() => {\n\
+    expectError(ratio(12), DivZero)\n\
+    expectError(ratio(1), DivZero)\n\
+    expectError(if 1 > 0 { Error { message: Overflow { by: 3 } } } else { Success { value: 1 } }, Overflow { by: 4 })\n\
+    expect(Point { x: 1, tag: \"a\" }, Point { x: 2, tag: \"a\" })\n\
+    expect([DivZero, Overflow { by: 1 }], [DivZero])\n\
+    check(\"nested\", [ratio(12)], [ratio(3)])\n\
+})\n";
 
 /// Write `body` to `<dir>/<name>` and return the path.
 pub(super) fn write_in(dir: &Path, name: &str, body: &str) -> PathBuf {
@@ -132,7 +145,21 @@ fn test_builtins_emit_tap_and_exit_status() {
             "# expect failed: expected 3, got 2",
             "not ok 1 - bad math",
             "ok 2 - good math",
-            "# tests=2 passed=1 failed=1",
+            // [TESTING-BUILTIN-EXPECT-ERROR] a different message and a Success both fail.
+            "# expect failed: expected Error(nope), got Error(integer overflow)",
+            "not ok 3 - wrong error",
+            "# expect failed: expected Error(overflow), got Success",
+            "not ok 4 - not an error",
+            // [TESTING-EQUALITY] records, unions, lists and typed payloads
+            // show both rendered values.
+            "# expect failed: expected Error(DivZero), got Error(Overflow { by: 12 })",
+            "# expect failed: expected Error(DivZero), got Success",
+            "# expect failed: expected Error(Overflow { by: 4 }), got Error(Overflow { by: 3 })",
+            "# expect failed: expected { x: 2, tag: \"a\" }, got { x: 1, tag: \"a\" }",
+            "# expect failed: expected [DivZero], got [DivZero, Overflow { by: 1 }]",
+            "nested' failed: expected [Error(Overflow { by: 12 })], got [Success(3)]",
+            "not ok 5 - typed payloads",
+            "# tests=5 passed=1 failed=4",
         ],
         &[],
     );
@@ -230,6 +257,79 @@ fn list_tests_carries_case_documentation() {
         "{}",
         o.stdout
     );
+}
+
+const OWNED_NAMES: &str = "namespace observe;\n\nmodule Names {\n    /// A service id as a heading.\n    export fn title(name) = \"Svc ${name}\"\n}\n";
+
+const OWNED_SUITE: &str = "namespace observe;\n\nimport observe::Names::{title}\n\n\
+test(\"titles prefix the id\", fn() => expect(title(\"api\"), \"Svc api\"))\n\
+test(\"titles keep the id\", fn() => expect(title(\"db\"), \"Svc db\"))\n";
+
+/// A nested test project reaching its code through `../src`, as an app's
+/// `tests/osprey.toml` does; `other.test.osp` fails, so a file run that swept
+/// it up would go red.
+fn owned_suite_project() -> (PathBuf, PathBuf) {
+    let root = temp_dir("owned_suite");
+    for dir in ["src", "tests"] {
+        let _ = std::fs::create_dir_all(root.join(dir));
+    }
+    let _ = write_in(
+        &root,
+        "osprey.toml",
+        "[project]\nname = \"app\"\nsource_roots = [\"src\"]\ndefault_namespace = \"observe\"\n",
+    );
+    let _ = write_in(&root.join("src"), "names.osp", OWNED_NAMES);
+    let tests = root.join("tests");
+    let _ = write_in(&tests, "osprey.toml", "[project]\nname = \"app-tests\"\nsource_roots = [\"../src\", \".\"]\ndefault_namespace = \"observe\"\n");
+    let _ = write_in(
+        &tests,
+        "other.test.osp",
+        "namespace observe;\n\ntest(\"other file case\", fn() => expect(1, 2))\n",
+    );
+    let suite = write_in(&tests, "domain.test.osp", OWNED_SUITE);
+    (root, suite)
+}
+
+// [TESTING-LIST][TESTING-FILE-PROJECT] a test file one of its enclosing
+// manifest's source roots lists is listed, run, filtered and tested against
+// that project's code, at its own lines, without its sibling suites.
+#[test]
+fn a_test_file_in_a_project_lists_and_runs_against_the_project() {
+    let (root, suite) = owned_suite_project();
+    let listed = run_file(&suite, &["--list-tests"]);
+    assert_eq!(listed.code, Some(0), "{}", listed.stderr);
+    assert_eq!(
+        listed.stdout.trim(),
+        "[{\"name\":\"titles prefix the id\",\"line\":5,\"column\":1},\
+         {\"name\":\"titles keep the id\",\"line\":6,\"column\":1}]"
+    );
+    run_file(&suite, &["--run"]).expect_stdout(
+        0,
+        &[
+            "ok 1 - titles prefix the id",
+            "ok 2 - titles keep the id",
+            "1..2",
+        ],
+        &["other file case", "not ok"],
+    );
+    let mut filtered = osprey();
+    let _ = filtered
+        .arg(&suite)
+        .arg("--run")
+        .env("OSPREY_TEST_FILTER", "titles keep the id");
+    finish(&mut filtered).expect_stdout(
+        0,
+        &["ok 1 - titles keep the id", "1..1"],
+        &["prefix", "other file case"],
+    );
+    let file_suite = run_args(&["test", suite.to_string_lossy().as_ref()]);
+    file_suite.expect_stdout(0, &["# tests=2 passed=2 failed=0"], &["other file case"]);
+    // The directory stays one project suite of every test source, whose two
+    // top-level files leave its entry ambiguous ([TESTING-PROJECT-SUITE]).
+    let whole = run_args(&["test", root.join("tests").to_string_lossy().as_ref()]);
+    assert_eq!(whole.code, Some(1), "{}", whole.stdout);
+    assert!(whole.stderr.contains("is ambiguous"), "{}", whole.stderr);
+    let _ = std::fs::remove_dir_all(root);
 }
 
 // [TESTING-CLI-RUN][TESTING-FILE-CONVENTION] the runner discovers

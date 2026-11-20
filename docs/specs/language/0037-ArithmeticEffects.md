@@ -33,7 +33,7 @@ Integer arithmetic returns `int`. Failure is neither erased nor raised: an opera
 | `%` | `int`, MAY perform `Arith.remainderByZero` | `float`, MAY perform `Arith.divideByZero` | `float` (int promoted), MAY perform `Arith.divideByZero` |
 | unary `-`, `abs` | `int`, MAY perform `Arith.overflow` | `float` (total) | — |
 
-Outside the `Arith` channel: string, list and map `+` overloads; float `+ - *` and unary float `-` as plain IEEE-754 ([FLOAT-IEEE-RESULTS]); the negated-literal fold [ARITH-NEG-LITERAL](0013-ErrorHandling.md#negated-literals--arith-neg-literal); and `checkedAdd`/`checkedSub`/`checkedMul`, which return `Result<int, Error>` for code that wants overflow as data.
+Outside the `Arith` channel: string, list and map `+` overloads; float `+ - *` and unary float `-` as plain IEEE-754 ([FLOAT-IEEE-RESULTS]); the negated-literal fold [ARITH-NEG-LITERAL](0013-ErrorHandling.md#negated-literals--arith-neg-literal); and `checkedAdd`/`checkedSub`/`checkedMul`, which return `Result<int, string>` for code that wants overflow as data.
 
 No arithmetic type contains a `Result`, so [Result Preservation](0004-TypeSystem.md#result-preservation) governs arithmetic vacuously and has no arithmetic exception. `Result` is reserved for failures a value genuinely carries — indexing, HTTP, parsing, user functions.
 
@@ -213,7 +213,7 @@ Use the host backend when runtime recovery is required. Explicit total wrapping 
 
 ## Implementation and verification
 
-Integer arithmetic produces plain numeric values. `MathError` and arithmetic Result flattening have been removed; `checkedAdd`, `checkedSub` and `checkedMul` preserve their explicit `Result<int, Error>` interface. `osprey-types::arithmetic` classifies requirements and constant folds, `effect_rows` propagates and discharges them, and host lowering in `osprey-codegen::arithmetic` sends faults through the ordinary value-handler path.
+Integer arithmetic produces plain numeric values. `MathError` and arithmetic Result flattening have been removed; `checkedAdd`, `checkedSub` and `checkedMul` preserve their explicit `Result<int, string>` interface. `osprey-types::arithmetic` classifies requirements and constant folds, `effect_rows` propagates and discharges them, and host lowering in `osprey-codegen::arithmetic` sends faults through the ordinary value-handler path.
 
 | Contract | Regression evidence |
 | --- | --- |

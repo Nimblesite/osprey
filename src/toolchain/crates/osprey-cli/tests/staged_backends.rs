@@ -26,10 +26,10 @@ use staging::{assert_rejected, compile_for_target, compile_staged, diagnostics};
 /// 50 + 4 under either interpretation.
 const TWO_BACKENDS: &str = r#"
 static effect Tensor<B> {
-    build: fn(int, fn(int) -> float) -> Result<B, Error>
+    build: fn(int, fn(int) -> float) -> Result<B, string>
     get: fn(B, int) -> float
-    matMul: fn(B, B, int, int, int) -> Result<B, Error>
-    fromList: fn(List<float>) -> Result<B, Error>
+    matMul: fn(B, B, int, int, int) -> Result<B, string>
+    fromList: fn(List<float>) -> Result<B, string>
 }
 fn andThen(result, next) = match result {
     Success { value } => next(value)
@@ -77,10 +77,10 @@ fn main() = {
 
 const TWO_BACKENDS_ML: &str = r#"
 static effect Tensor B
-    build : (int, (int) -> float) => Result<B, Error>
+    build : (int, (int) -> float) => Result<B, string>
     get : (B, int) => float
-    matMul : (B, B, int, int, int) => Result<B, Error>
-    fromList : List<float> => Result<B, Error>
+    matMul : (B, B, int, int, int) => Result<B, string>
+    fromList : List<float> => Result<B, string>
 onLists work =
     handle static Tensor<List<float>>
         build n f => Success(value = range 0 n |> map f |> toList)
@@ -133,7 +133,7 @@ const BOTH_ANSWERS: &str = "54.0 54.0\n";
 /// touches it — including the `?:` fallback that builds an empty one.
 const RECORDS_OVER_B: &str = r#"
 static effect Tensor<B> {
-    fromList: fn(List<float>) -> Result<B, Error>
+    fromList: fn(List<float>) -> Result<B, string>
     get: fn(B, int) -> float
 }
 type Pair<B> = { left: B, right: B }

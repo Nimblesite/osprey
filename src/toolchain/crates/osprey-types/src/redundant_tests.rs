@@ -142,21 +142,21 @@ fn a_redundant_generic_signature_reports_only_what_can_go_together() {
 fn a_result_returning_annotation_that_matches_inference_is_still_redundant() {
     reports(
         Flavor::Default,
-        "fn twice(n: int) -> Result<int, Error> = checkedMul(n, 2)\n",
+        "fn twice(n: int) -> Result<int, string> = checkedMul(n, 2)\n",
         &[
             "redundant type annotation on parameter `n` of `twice`: inference derives `int` without it",
-            "redundant return type annotation on `twice`: inference derives `Result<int, Error>` without it",
+            "redundant return type annotation on `twice`: inference derives `Result<int, string>` without it",
         ],
     );
 }
 
 #[test]
 fn a_return_annotation_naming_the_wrong_error_type_is_a_type_error_not_a_warning() {
-    // `checkedMul` yields `Result<int, Error>`. Naming `string` instead is a
+    // `checkedMul` yields `Result<int, string>`. Naming `int` instead is a
     // mismatch the checker rejects, and a rejected program raises no warnings.
     silent(
         Flavor::Default,
-        "fn twice(n: int) -> Result<int, string> = checkedMul(n, 2)\n",
+        "fn twice(n: int) -> Result<int, int> = checkedMul(n, 2)\n",
     );
 }
 

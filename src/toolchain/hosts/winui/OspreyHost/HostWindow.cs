@@ -119,7 +119,7 @@ sealed partial class HostWindow : Window
         }
         catch (Exception problem) when (problem is HostException or DllNotFoundException or BadImageFormatException or IOException or System.Text.Json.JsonException)
         {
-            Report([problem.Message]);
+            Report(new[] { problem.Message });
             return null;
         }
     }

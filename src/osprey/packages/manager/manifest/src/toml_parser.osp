@@ -79,5 +79,5 @@ module TomlParser {
     }
 
     /// Parse a TOML document into its root table, or the first problem.
-    export fn parse(text) -> Result<Toml::Value, Toml::Problem> = parseDocument(TomlTree::emptyDoc, TomlLexer::start(text))
+    export fn parse(text) = parseDocument(TomlTree::emptyDoc, TomlLexer::start(text))
 }

@@ -25,6 +25,8 @@ enum Ret {
     Float,
     /// Plain `i8*` string, taken as-is (`input()` — the caller owns it).
     Str,
+    /// A fresh `List<string>` (`osp_string_list`), the caller owns it.
+    Strs,
     /// `void` — yields Unit.
     Unit,
     /// C `i64` status discarded by a language-level Unit function.
@@ -71,6 +73,13 @@ fn lookup(name: &str) -> Option<Sig> {
         "random" => sig("osp_random", &[], Ret::Int),
         "randomBelow" => sig("osp_random_below", &[I64], Ret::ResultInt),
         "input" => sig("osp_input", &[], Ret::Str),
+        // [BUILTIN-PROCESS-ARGS] [BUILTIN-PROCESS-ENV] (string_runtime_list.c)
+        "args" => sig("osp_process_args", &[], Ret::Strs),
+        "env" => sig(
+            "osp_process_env",
+            &[Str],
+            Ret::ResultStr(Some("env: variable is not set")),
+        ),
         // --- file I/O [BUILTIN-FILE] (system_runtime.c) ---
         "readFile" => sig("read_file", &[Str], Ret::ResultStr(Some("File read error"))),
         "writeFile" => sig("write_file", &[Str, Str], Ret::ResultInt),
@@ -332,6 +341,12 @@ fn emit(cg: &mut Codegen, sig: &Sig, ops: &[String]) -> Result<Value> {
         Ret::Str => {
             // Fresh malloc'd C buffer — the caller owns it [GC-ARC-PERCEUS].
             let v = Value::new(cg.call("i8*", sig.cname, &params, &op_refs), LType::Str);
+            crate::arc::own(cg, &v);
+            Ok(v)
+        }
+        Ret::Strs => {
+            let raw = cg.call("i8*", sig.cname, &params, &op_refs);
+            let v = Value::handle(raw, crate::listlit::STRING_LIST_OWNER);
             crate::arc::own(cg, &v);
             Ok(v)
         }

@@ -683,9 +683,9 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "lsp-profiler"
-version = "0.6.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb298f202dd03c38469fa71a50e8332853570610ffcb200a72f0117d7b2bbd40"
+checksum = "2ed08a15f032ac1f5fa1c3da91fea5edc47aee952d4c24f5c4caf6907cacd514"
 dependencies = [
  "async-trait",
  "inferno",
@@ -709,7 +709,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sysinfo",
- "thiserror",
  "tokio",
  "tracing",
 ]
@@ -729,9 +728,9 @@ dependencies = [
 
 [[package]]
 name = "lspkit"
-version = "0.6.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb9daedaef6866d13f20ace87f4f815974b171c6b9aefb78dff86d5d76f9bb45"
+checksum = "5784a8d329e17985a9224c83ffbbf095158d87ddb605955ba685cc093b6608bc"
 dependencies = [
  "async-trait",
  "dashmap",
@@ -742,13 +741,14 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml",
+ "tracing",
 ]
 
 [[package]]
 name = "lspkit-server"
-version = "0.6.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6d9f1e816e41bfc5b171b5f01f929467c88cbac2555c34df6010383e3608cd2"
+checksum = "2c64b5bd1c1d691ae642ca872623c81c67e70d12f31dd569f920acd7c06d76f4"
 dependencies = [
  "async-trait",
  "lsp-types",

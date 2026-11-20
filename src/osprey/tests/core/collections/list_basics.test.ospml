@@ -17,13 +17,13 @@ elementOr (xs, index, fallback) = listGet xs index ?: fallback
 (** The int at `index` in `xs`, or -999 past either end. *)
 intAt (xs, index) = elementOr (xs, index, (0 - 999))
 
-(** True when [BUILTIN-LIST-GET] answers `Error` for `index` with the exact
-    "index out of bounds" message, and false for any other outcome. *)
+(** True when [BUILTIN-LIST-GET] answers `Error` for `index` holding that index
+    and the list's length, and false for any other outcome. *)
 oobAt (xs, index) = match listGet xs index
     Success _value => false
-    Error message => message == "index out of bounds"
+    Error message => message.index == index && message.length == listLength xs
 
-(** Every listed index of `xs` answers `Error` with that exact message. *)
+(** Every listed index of `xs` answers `Error` with that exact record. *)
 allOob (xs, indices) = match indices
     [] => true
     [index, ...rest] => oobAt (xs, index) && allOob (xs, rest)
@@ -327,7 +327,7 @@ exactTests [
     { name = "list indexing, patterns, recursion, and receiver dispatch compose", work = indexingPatternsAndDispatchCase }
 ]
 
-(** [BUILTIN-LIST-GET] declares `listGet(list: List<T>, index: int) -> Result<T, Error>`
+(** [BUILTIN-LIST-GET] declares `listGet(list: List<T>, index: int) -> Result<T, string>`
     and says it is "equivalent to `list[index]`", with an out-of-range index
     returning `Error`. `T` is the element type, so a string list yields the
     string, a float list the float, a bool list the bool and a record list the

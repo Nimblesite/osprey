@@ -33,7 +33,7 @@ Both programs print `note: Hello`. The field pattern selects a matching record s
 Erasing a record keeps its fields, including complete `Result` values. A record update preserves every field it does not replace; it also leaves the original record unchanged.
 
 ```osprey
-type Outcome = { answer: Result<int, Error>, note: string }
+type Outcome = { answer: Result<int, string>, note: string }
 let original = Outcome { answer: Error { message: "saved" }, note: "first" }
 let copied = original { note: "copy" }
 let erased: any = copied
@@ -43,7 +43,7 @@ print(toString(erased))
 
 ```osprey-ml
 type Outcome =
-    answer: Result<int, Error>
+    answer: Result<int, string>
     note: string
 original = Outcome(answer = Error(message = "saved"), note = "first")
 copied = original(note = "copy")

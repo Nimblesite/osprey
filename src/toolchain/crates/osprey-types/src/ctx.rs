@@ -161,6 +161,13 @@ impl InferCtx {
         std::mem::replace(&mut self.site, site)
     }
 
+    /// Whether `name` is an opaque alias. A use site that may read through it
+    /// has already had it replaced by its representation, so one still
+    /// standing in a type is sealed there [MODULES-OPAQUE-TYPES].
+    pub(crate) fn is_alias(&self, name: &str) -> bool {
+        self.equations.contains_key(name)
+    }
+
     /// Whether the current declaration reads through any opaque alias at all.
     pub(crate) fn sees_through_aliases(&self) -> bool {
         self.equations

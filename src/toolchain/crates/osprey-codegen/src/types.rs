@@ -66,6 +66,7 @@ fn ltype_of_con(name: &str, args: &[Type]) -> LType {
         _ if Numeric::of_name(name).is_some() && args.is_empty() => {
             LType::Num(Numeric::of_name(name).unwrap_or(Numeric::INT))
         }
+        // The built-in `Error` travels as its message.
         names::STRING => LType::Str,
         names::BOOL => LType::I1,
         // `Value::result` separately records the discriminant-bearing pointer

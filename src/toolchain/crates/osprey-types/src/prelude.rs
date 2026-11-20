@@ -3,13 +3,16 @@
 //! to a program that names one of its declarations — so a program that does
 //! not is checked and compiled exactly as written. `json` implements
 //! [BUILTIN-JSON-TYPED]; `signals` implements [STAGE-SIGNALS-STD]; `testing`
-//! implements [TESTING-ARITH-POLICY].
+//! implements [TESTING-ARITH-POLICY]; `errors` implements [BUILTIN-LIST-GET].
 
 use osprey_ast::{walk_program, AstVisitor, Expr, Program, Stmt};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
+const ERRORS: &str = include_str!("prelude/errors.osp");
+/// The built-in a list read is; `xs[i]` is its other spelling.
+const LIST_GET: &str = "listGet";
 const JSON: &str = include_str!("prelude/json.osp");
 const SIGNALS: &str = include_str!("prelude/signals.osp");
 const TESTING: &str = include_str!("prelude/testing.osp");
@@ -46,35 +49,29 @@ fn loaded(source: &'static str, base: u32) -> Loaded {
     }
 }
 
-/// The json unit. Its source is a constant of this crate and a unit test
-/// proves it parses clean, so the parse never reports errors here.
-fn json() -> &'static Loaded {
-    static UNIT: OnceLock<Loaded> = OnceLock::new();
-    UNIT.get_or_init(|| loaded(JSON, PRELUDE_LINE_BASE))
+/// Every unit, parsed once. Each source is a constant of this crate and a
+/// unit test proves it parses clean, so the parse never reports errors here.
+/// Each is rebased one stride past the last, so the units share no line.
+struct Units {
+    json: Loaded,
+    signals: Loaded,
+    testing: Loaded,
+    testing_gpu: Loaded,
+    testing_result: Loaded,
+    errors: Loaded,
 }
 
-/// The signals unit, rebased past json's lines so the units share none.
-fn signals() -> &'static Loaded {
-    static UNIT: OnceLock<Loaded> = OnceLock::new();
-    UNIT.get_or_init(|| loaded(SIGNALS, PRELUDE_LINE_BASE + PRELUDE_UNIT_STRIDE))
-}
-
-/// The testing unit, rebased past signals' lines.
-fn testing() -> &'static Loaded {
-    static UNIT: OnceLock<Loaded> = OnceLock::new();
-    UNIT.get_or_init(|| loaded(TESTING, PRELUDE_LINE_BASE + 2 * PRELUDE_UNIT_STRIDE))
-}
-
-/// The GPU testing unit, rebased past the testing unit's lines.
-fn testing_gpu() -> &'static Loaded {
-    static UNIT: OnceLock<Loaded> = OnceLock::new();
-    UNIT.get_or_init(|| loaded(TESTING_GPU, PRELUDE_LINE_BASE + 3 * PRELUDE_UNIT_STRIDE))
-}
-
-/// The Result division unit, rebased past the GPU testing unit's lines.
-fn testing_result() -> &'static Loaded {
-    static UNIT: OnceLock<Loaded> = OnceLock::new();
-    UNIT.get_or_init(|| loaded(TESTING_RESULT, PRELUDE_LINE_BASE + 4 * PRELUDE_UNIT_STRIDE))
+fn units() -> &'static Units {
+    static UNITS: OnceLock<Units> = OnceLock::new();
+    let at = |source, n: u32| loaded(source, PRELUDE_LINE_BASE + n * PRELUDE_UNIT_STRIDE);
+    UNITS.get_or_init(|| Units {
+        json: at(JSON, 0),
+        signals: at(SIGNALS, 1),
+        testing: at(TESTING, 2),
+        testing_gpu: at(TESTING_GPU, 3),
+        testing_result: at(TESTING_RESULT, 4),
+        errors: at(ERRORS, 5),
+    })
 }
 
 /// The program with the prelude units it needs in front of it. A unit
@@ -83,6 +80,7 @@ fn testing_result() -> &'static Loaded {
 /// only beside it. A program that declares a prelude type, constructor or
 /// effect keeps its own and gets none of that unit; one that declares a
 /// prelude function name keeps its own function in place of that one.
+/// `errors` attaches beside every list read, the units' own included.
 /// Attaching is idempotent.
 pub(crate) fn with_prelude(program: &Program) -> Cow<'_, Program> {
     if attached(program) {
@@ -90,23 +88,24 @@ pub(crate) fn with_prelude(program: &Program) -> Cow<'_, Program> {
     }
     let own = Names::declared(program);
     let uses = Uses::of(program);
-    let (json, signals) = (json(), signals());
+    let all = units();
+    let (json, signals) = (&all.json, &all.signals);
     // `signals` is written against `json`'s declarations, so it attaches only
     // beside them: a program that declares json's data names gets no signals
     // unit either. [STAGE-SIGNALS-STD]
     let beside_json = own.data.is_disjoint(&json.names.data);
     let signals_wanted = beside_json && wanted(&signals.names, &own, &uses);
     let json_wanted = wanted(&json.names, &own, &uses) || signals_wanted;
-    let (testing, testing_gpu) = (testing(), testing_gpu());
+    let gpu_wanted = wanted(&all.testing_gpu.names, &own, &uses);
+    let reads_list = json_wanted || gpu_wanted || uses.names.contains(LIST_GET);
+    let want = |unit: &Loaded| wanted(&unit.names, &own, &uses);
     let units: Vec<&Loaded> = [
+        (reads_list || want(&all.errors), &all.errors),
         (json_wanted, json),
         (signals_wanted, signals),
-        (wanted(&testing.names, &own, &uses), testing),
-        (wanted(&testing_gpu.names, &own, &uses), testing_gpu),
-        (
-            wanted(&testing_result().names, &own, &uses),
-            testing_result(),
-        ),
+        (want(&all.testing), &all.testing),
+        (gpu_wanted, &all.testing_gpu),
+        (want(&all.testing_result), &all.testing_result),
     ]
     .into_iter()
     .filter_map(|(want, unit)| want.then_some(unit))
@@ -233,6 +232,12 @@ impl AstVisitor for Uses {
         match expression {
             Expr::Identifier(name) | Expr::TypeConstructor { name, .. } => {
                 let _ = self.names.insert(name.clone());
+            }
+            Expr::MethodCall { method, .. } if method == LIST_GET => {
+                let _ = self.names.insert(method.clone());
+            }
+            Expr::Index { .. } => {
+                let _ = self.names.insert(LIST_GET.to_owned());
             }
             // A perform or handler names the effect declaration it uses,
             // whatever instantiation the mention carries.

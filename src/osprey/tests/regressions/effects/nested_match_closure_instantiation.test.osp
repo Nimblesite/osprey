@@ -13,7 +13,7 @@ type Evidence = { evidenceId: string }
 type Section = { records: List<Evidence> }
 type Focus = { picked: string }
 
-fn find<T>(xs, p) -> Result<T, Error> = match xs {
+fn find<T>(xs, p) -> Result<T, string> = match xs {
     [] => Error { message: "missing" }
     [head, ...tail] => match p(head) {
         true => Success { value: head }
@@ -21,9 +21,9 @@ fn find<T>(xs, p) -> Result<T, Error> = match xs {
     }
 }
 
-fn detail() -> Result<Evidence, Error> = {
+fn detail() = {
     let focus = perform Signal<Focus>.read()
-    match perform Signal<Result<Section, Error>>.read() {
+    match perform Signal<Result<Section, string>>.read() {
         Error => Error { message: "no section" }
         Success { section } => match find(section.records, fn(record) => record.evidenceId == focus.picked) {
             Success { record } => Success { value: record }
@@ -34,7 +34,7 @@ fn detail() -> Result<Evidence, Error> = {
 
 fn runCase() = {
     handle static Signal<Focus> { read => Focus { picked: "b" } }
-    handle static Signal<Result<Section, Error>> { read => Success { value: Section { records: [Evidence { evidenceId: "a" }, Evidence { evidenceId: "b" }] } } }
+    handle static Signal<Result<Section, string>> { read => Success { value: Section { records: [Evidence { evidenceId: "a" }, Evidence { evidenceId: "b" }] } } }
     match detail() {
         Success { value } => value.evidenceId
         Error { message } => message

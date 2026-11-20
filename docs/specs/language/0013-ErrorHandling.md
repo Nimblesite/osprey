@@ -1,46 +1,79 @@
 # Error Handling
 
-Osprey has no language-level exceptions. Every fallible language operation
-uses `Result` or a statically handled algebraic effect. A raw foreign status is
-ABI data and MUST be translated at the safe Osprey boundary.
+Every operation that can fail returns a `Result<T, E>`. Osprey has no exceptions, no panics and no hidden failure channel: `Result<T, E>` is the one type failure travels in, for the language, the standard library and every program. The only other form is a statically handled algebraic effect, which arithmetic uses. A raw foreign status is ABI data and MUST be translated to a `Result` at the safe Osprey boundary.
 
-**Arithmetic cannot fail silently.** A total operation produces a defined value of its static type. A fallible operation transfers to a required `Arith` handler, whose value arm supplies the typed result on normal completion. The operation MUST NOT trap, panic, wrap silently, or produce an unspecified value, and a fault that cannot be proven impossible MUST be discharged — or the program is rejected at compile time. The clauses and conformance obligations are [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total). Host execution invokes the policy; current Metal/OpenCL kernels abort on faults instead, an unfinished [device-recovery requirement](0037-ArithmeticEffects.md#device-recovery-arith-device-recovery).
+Every flavor shares these semantics. Examples show Default and ML syntax.
 
-Default, ML and Python flavors share these semantics. Examples below show Default and ML syntax.
-
-## The Result Type
+## `Result<T, E>` — [ERR-RESULT]
 
 ```osprey
 type Result<T, E> = Success { value: T } | Error { message: E }
 ```
 
-The compiler rejects direct access to the contained value and never implicitly
-converts `Result<T, E>` to `T`. Callers must pattern-match the `Result` (see
-[Pattern Matching](0007-PatternMatching.md)) or use `?:` to supply a fallback
-([Result Default](0007-PatternMatching.md#result-default---pattern-result-default)).
-Assignments, arguments, comparisons, interpolation, and declared plain return
-types do not erase the wrapper ([Result Preservation](0004-TypeSystem.md#result-preservation)). Record and union fields preserve the complete Result through construction, updates, pattern binding and erasure; a bare payload may be promoted to `Success` ([TYPE-RECORD-RESULT](0004-TypeSystem.md#result-fields--type-record-result)).
+`T` is the type of the value on success. `E` is the type of the value on failure. Both are type parameters, and they obey the same rules:
+
+1. **Both are generic.** `T` and `E` may each be any type: a record, a union, a number, a `bool`, a `string`, a list, another `Result`. `Result` builds in no error type.
+2. **Both are inferred.** `Success { value: v }` fixes `T` to the type of `v`; `Error { message: e }` fixes `E` to the type of `e`. No annotation is needed. A side the program never builds stays open until a caller decides it.
+3. **Both are exact — [ERR-PAYLOAD].** Matching `Success { value }` binds `value : T`, and matching `Error { message }` binds `message : E`: the very value the producer wrote, never a rendering, placeholder or default, for every operator, builtin and user function on every backend and memory mode.
+4. **Both must agree.** Two `Result`s are the same type only when their `T`s agree and their `E`s agree. A `Result<int, ParseError>` is not a `Result<int, MathError>`.
+5. **Neither is unwrapped implicitly.** A `Result<T, E>` never becomes a `T`; callers `match` it or supply a fallback with `?:`. [Result Preservation](0004-TypeSystem.md#result-preservation) lists where this applies, and [Result Default](0007-PatternMatching.md#result-default---pattern-result-default) defines `?:`.
+6. **Neither is dropped.** See [ERROR-RESULT-DISCARD](#discarding-a-result--error-result-discard) for statements and [TYPE-RECORD-RESULT](0004-TypeSystem.md#result-fields--type-record-result) for fields.
+
+There is no built-in error type. A fallible function, built-in or user-written, states the `E` its failure needs: `string` when the failure is only a message, a record such as `IndexOutOfBounds { index: int, length: int }` when it carries several values, a union when it has several cases. Built-ins follow it: a list read fails with [`IndexOutOfBounds`](../runtime/0012-Built-InFunctions.md#listgetlist-listt-index-int---resultt-indexoutofbounds--builtin-list-get), every other fallible built-in with a `string`.
 
 ```osprey
-let result = someFunctionThatCanFail()
-let value  = someFunctionThatCanFail() ?: 0
+type ParseError = { code: int, why: string }
+type MathError = DivZero | Overflow { by: int }
 
-match result {
-    Success { value }   => print("Success: ${value}")
-    Error   { message } => print("Error: ${message}")
+fn parse(s) = if s == "" { Error { message: ParseError { code: 1, why: "empty" } } } else { Success { value: length(s) } }
+// inferred: fn parse(s: string) -> Result<int, ParseError>
+
+fn ratio(n) = if n == 0 { Error { message: DivZero } } else { Success { value: n } }
+// inferred: fn ratio(n: int) -> Result<int, MathError>
+
+fn code(n) = if n < 0 { Error { message: n } } else { Success { value: n } }
+// inferred: fn code(n: int) -> Result<int, int>
+
+let shown = match parse("") {
+    Success { value }   => "ok ${value}"
+    Error   { message } => "parse ${message.code}: ${message.why}"
 }
+let size = parse("abc") ?: 0
 ```
 
 ```osprey-ml
-result = someFunctionThatCanFail
-value  = someFunctionThatCanFail ?: 0
+type ParseError =
+    code : int
+    why : string
 
-match result
-    Success value   => print "Success: ${value}"
-    Error   message => print "Error: ${message}"
+parse "" = Error(message = ParseError(code = 1, why = "empty"))
+parse s  = Success(value = length s)
+
+shown = match parse ""
+    Success value   => "ok ${value}"
+    Error   message => "parse ${message.code}: ${message.why}"
+size = parse "abc" ?: 0
+```
+
+### Formatting — [ERR-RESULT-FORMAT]
+
+A `Result` formats as `Success(<value>)` or `Error(<payload>)`, each side rendered at its own type as `toString` renders it ([BUILTIN-PRINT-FORM](../runtime/0012-Built-InFunctions.md#printvalue-printable---unit--builtin-print)): a record payload as `Error({ code: 1, why: "empty" })`, a union payload as `Error(Overflow { by: 3 })`. It is printable exactly when both `T` and `E` are.
+
+```osprey
+print(toString(checkedAdd(2, 3)))   // "Success(5)"
+print(toString(checkedMul(4294967296, 4294967296)))  // "Error(integer overflow)"
+print(toString(code(-7)))           // "Error(-7)"
+```
+
+```osprey-ml
+print (toString (checkedAdd (2, 3)))   // "Success(5)"
+print (toString (checkedMul (4294967296, 4294967296)))  // "Error(integer overflow)"
+print (toString (code (-7)))           // "Error(-7)"
 ```
 
 ## Arithmetic — [ARITH-CHECKED]
+
+**Arithmetic cannot fail silently.** A total operation produces a defined value of its static type. A fallible operation transfers to a required `Arith` handler, whose value arm supplies the typed result on normal completion. The operation MUST NOT trap, panic, wrap silently, or produce an unspecified value, and a fault that cannot be proven impossible MUST be discharged — or the program is rejected at compile time. The clauses and conformance obligations are [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total). Host execution invokes the policy; current Metal/OpenCL kernels abort on faults instead, an unfinished [device-recovery requirement](0037-ArithmeticEffects.md#device-recovery-arith-device-recovery).
 
 Integer `+`, `-`, `*`, `%`, unary `-`, and `abs` have type `int`; `/` has type `float`. There is no `Result` in an arithmetic type. A fallible operation requires an `Arith` handler, whose normal value-arm completion substitutes a defined value of that type.
 
@@ -52,14 +85,14 @@ An operation whose mathematical result is unrepresentable — integer overflow, 
 | `/` | `float` | `float` | `float` |
 | `%` | `int` | `float` | `float` (int promoted) |
 
-`/` always yields `float`. Unary integer `-` has type `int -> int`; unary float `-` has type `float -> float`. Floating-point `+`, `-`, `*`, and unary `-` are plain IEEE-754 operations; infinity, NaN, signed zero and gradual underflow follow [FLOAT-IEEE-RESULTS](0037-ArithmeticEffects.md#floating-point-results--float-ieee-results). Float `/` and `%` request `Arith.divideByZero` for either signed zero divisor, even with a NaN numerator. Integer `-9223372036854775808 % -1` yields `0`; the representable remainder is produced without executing LLVM's faulting `srem` case. The builtins `checkedAdd`, `checkedSub`, and `checkedMul` return `Result<int, Error>` and are the explicit value-level spelling for code that wants overflow as data.
+`/` always yields `float`. Unary integer `-` has type `int -> int`; unary float `-` has type `float -> float`. Floating-point `+`, `-`, `*`, and unary `-` are plain IEEE-754 operations; infinity, NaN, signed zero and gradual underflow follow [FLOAT-IEEE-RESULTS](0037-ArithmeticEffects.md#floating-point-results--float-ieee-results). Float `/` and `%` request `Arith.divideByZero` for either signed zero divisor, even with a NaN numerator. Integer `-9223372036854775808 % -1` yields `0`; the representable remainder is produced without executing LLVM's faulting `srem` case. The builtins `checkedAdd`, `checkedSub`, and `checkedMul` return `Result<int, string>` and are the explicit value-level spelling for code that wants overflow as data.
 
 ```osprey
 let sum       = 1 + 3      // int
 let quotient  = 10 / 3     // float
 let remainder = 10 % 3     // int
 let mixed     = 10 + 5.5   // float
-let checked   = checkedAdd(a: 1, b: 3)   // Result<int, Error>
+let checked   = checkedAdd(a: 1, b: 3)   // Result<int, string>
 ```
 
 ```osprey-ml
@@ -67,7 +100,7 @@ sum       = 1 + 3      // int
 quotient  = 10 / 3     // float
 remainder = 10 % 3     // int
 mixed     = 10 + 5.5   // float
-checked   = checkedAdd (1, 3)   // Result<int, Error>
+checked   = checkedAdd (1, 3)   // Result<int, string>
 ```
 
 ### Negated Literals — [ARITH-NEG-LITERAL]
@@ -86,42 +119,6 @@ An unhandled arithmetic operation is a compile error naming the effect and opera
 unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
 ```
 
-
-### toString Format
-
-A `Result` formats as `Success(<value>)` or `Error(<message>)`:
-
-```osprey
-print(toString(15 / 3))          // "5.0"  — division is always float
-print(toString(checkedAdd(2, 3)))   // "Success(5)"
-print(toString(checkedMul(4294967296, 4294967296)))  // "Error(integer overflow)"
-```
-
-```osprey-ml
-print (toString (15 / 3))          // "5.0"  — division is always float
-print (toString (checkedAdd (2, 3)))   // "Success(5)"
-print (toString (checkedMul (4294967296, 4294967296)))  // "Error(integer overflow)"
-```
-
-## Error Payload Propagation — [ERR-PAYLOAD]
-
-When a function produces `Error { message: E }`, the value bound to `message` in the caller's `match` arm MUST be the exact `E` value that the producer wrote, not a placeholder, static string, or default.
-
-```osprey
-match split("abc", "") {
-    Success { value }   => forEachList(value, print)
-    Error   { message } => print(message)   // "split: separator must not be empty"
-}
-```
-
-```osprey-ml
-match split ("abc", "")
-    Success value   => forEachList value print
-    Error   message => print message   // "split: separator must not be empty"
-```
-
-This requirement applies to every `Result`-returning operator, builtin, and
-user function, including failure-preserving arithmetic chains.
 
 ## Discarding a Result — [ERROR-RESULT-DISCARD]
 

@@ -17,6 +17,8 @@
 
 #include "string_tests_shared.h"
 
+#include <unistd.h>
+
 // Runtime-produced text belongs to the selected manager; fixture buffers remain libc-owned.
 void release_test_buffer(void *p) {
     if (osp_mem_string_length(p) >= 0) osp_release(p);
@@ -364,9 +366,48 @@ static void test_compare_and_concat(void) {
     for (size_t i = 0; i < sizeof strings / sizeof strings[0]; ++i) release_test_buffer(strings[i]);
 }
 
+/* ---------- process arguments and environment ---------- */
+
+// [BUILTIN-PROCESS-ARGS] [BUILTIN-PROCESS-ENV] Every argument after the program name, in order and
+// byte-exact (an empty argument stays empty); a variable is a fresh copy, and NULL when unset.
+static void test_process_args_and_env(int argc, char **argv) {
+    osp_string_list *args = osp_process_args();
+    assert(args != NULL && args->length == (int64_t)argc - 1);
+    for (int i = 1; i < argc; ++i) assert(strcmp(args->items[i - 1], argv[i]) == 0);
+    osp_string_list_free(args);
+    assert(setenv("OSP_STRING_TESTS_VAR", "value with spaces", 1) == 0);
+    text_is(osp_process_env("OSP_STRING_TESTS_VAR"), "value with spaces");
+    assert(setenv("OSP_STRING_TESTS_VAR", "", 1) == 0);
+    text_is(osp_process_env("OSP_STRING_TESTS_VAR"), "");
+    assert(unsetenv("OSP_STRING_TESTS_VAR") == 0);
+    assert(osp_process_env("OSP_STRING_TESTS_VAR") == NULL);
+    assert(osp_process_env(NULL) == NULL);
+}
+
+/* [BUILTIN-PRINT-FORM] a nested string is quoted and escaped as its literal. */
+static void test_show(void) {
+    text_is(osp_string_show("plain", 0), "plain");
+    text_is(osp_string_show("a\"b", 0), "a\"b");
+    text_is(osp_string_show("", 1), "\"\"");
+    text_is(osp_string_show("osprey", 1), "\"osprey\"");
+    text_is(osp_string_show("a\"b", 1), "\"a\\\"b\"");
+    text_is(osp_string_show("back\\slash", 1), "\"back\\\\slash\"");
+    text_is(osp_string_show("l1\nl2\r\t\x1b", 1), "\"l1\\nl2\\r\\t\\e\"");
+    text_is(osp_string_show("\"\"", 1), "\"\\\"\\\"\"");
+    text_is(osp_string_show(NULL, 1), "\"\"");
+}
+
 /* ---------- entry point ---------- */
 
-int main(void) {
+int main(int argc, char **argv) {
+    // Re-run this binary with known arguments so argv is read from a real process launch.
+    if (argc == 1) {
+        char *again[] = {argv[0], "alpha", "", "two words", NULL};
+        execv(argv[0], again);
+        perror("execv");
+        return 1;
+    }
+    assert(argc == 4 && strcmp(argv[1], "alpha") == 0 && argv[2][0] == '\0');
     printf("🧪 string_runtime_tests\n");
     test_is_empty();
     test_starts_with();
@@ -388,6 +429,7 @@ int main(void) {
     test_words();
     test_join();
     test_join_runtime_list();
+    test_show();
     /* adversarial coverage */
     test_long_strings();
     test_round_trips();
@@ -415,6 +457,7 @@ int main(void) {
     test_format_measure_write();
     test_internal_helpers();
     test_compare_and_concat();
+    test_process_args_and_env(argc, argv);
     printf("✅ all string_runtime tests passed\n");
     return 0;
 }

@@ -8,10 +8,10 @@ import synth::RenderKernels
 module Renderer
     mono port = port.rate == Audio && port.channels == 1 && port.unit == Amplitude
 
-    validPorts n = length (filterList (listConcat n.inputs n.outputs, \port => mono port || (n.processor == Filter && port.rate == Control && port.unit == Normalised && port.channels == 1 && port.name == "cutoff"))) == length n.inputs + length n.outputs
+    validPorts n = length (filterList (listConcat n.inputs n.outputs, \port => mono port || (n.processor == Oscillator && port.rate == Events && port.unit == Notes && port.channels == 1) || (n.processor == Filter && port.rate == Control && port.unit == Normalised && port.channels == 1 && port.name == "cutoff"))) == length n.inputs + length n.outputs
 
     layout n = match n.processor
-        Oscillator => length n.inputs == 0 && length n.outputs == 1
+        Oscillator => ClipLayouts::supported n
         Sink => length n.inputs == 1 && length n.outputs == 0
         Mixer => length n.inputs == 2 && length n.outputs == 1
         Filter => ClipLayouts::supported n
@@ -26,7 +26,11 @@ module Renderer
         Delay count => count
         _ => 0
 
-    supported plan = length (filterList (plan.graph.nodes, validNode)) == length plan.graph.nodes && length (outputs plan.graph) == 1 && length (filterList (plan.graph.nodes, \n => ClipLayouts::connected (plan.graph, n))) == length plan.graph.nodes && foldList (plan.graph.nodes, 0, \(total, n) => satAdd total (delaySize n)) <= 1920000
+    midiCable (graph, c) = match Graphs::node (graph, c.destination)
+        Valid n => n.processor == Oscillator
+        Invalid _ => true
+
+    supported plan = length (filterList (plan.graph.cables, \c => midiCable (plan.graph, c))) == 0 && length (filterList (plan.graph.nodes, validNode)) == length plan.graph.nodes && length (outputs plan.graph) == 1 && length (filterList (plan.graph.nodes, \n => ClipLayouts::connected (plan.graph, n))) == length plan.graph.nodes && foldList (plan.graph.nodes, 0, \(total, n) => satAdd total (delaySize n)) <= 1920000
 
     (** Prepare and allocate reference state. Unknown layouts and external plug-ins are explicit errors. *)
     export start graph = match Graphs::prepare graph
@@ -81,7 +85,7 @@ module Renderer
     export observed (snapshot, rendered) = snapshot(samplePosition = rendered.position, components = mapList (rendered.meters, \m => ComponentState(node = m.identity, activeVoices = 0, peak = m.peak, rms = sqrt (m.energy / toFloat m.count))))
 
     finished (plan, rendered, frame) = match listGet (outputs plan.graph) 0
-        Error why => Error(message = why)
+        Error _ => Error(message = "index out of bounds")
         Success sink => match RenderInputs::sample (frame, sink.identity)
             Error why => Error(message = why)
             Success output => Success(value = Rendered(states = frame.states, samples = listAppend rendered.samples output, position = satAdd rendered.position 1, meters = metered (rendered.meters, frame.values)))

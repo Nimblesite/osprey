@@ -56,6 +56,7 @@ impl Checker {
                             *position,
                         );
                     }
+                    self.reject_builtin_type(name, variants, *position);
                     self.collect_type(name, type_params, variants, *position);
                 }
                 Stmt::Effect {

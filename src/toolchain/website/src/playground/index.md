@@ -580,8 +580,8 @@ date: "git Last Modified"
         osp: `/// The package manager's file-system effect: one install, a real disk and
 /// three test doubles. The Playground opens on this program in every flavor.
 effect Files {
-    read: fn(string) -> Result<string, Error>
-    write: fn(string, string) -> Result<int, Error>
+    read: fn(string) -> Result<string, string>
+    write: fn(string, string) -> Result<int, string>
 }
 
 /// Write the lock file; if that fails, put the old manifest back.
@@ -631,8 +631,8 @@ test("a read-only disk changes nothing", fn() => expect(readOnlyDisk(upgrade), "
         ospml: `(** The package manager's file-system effect: one install, a real disk and
     three test doubles. The Playground opens on this program in every flavor. *)
 effect Files
-    read : string => Result<string, Error>
-    write : (string, string) => Result<int, Error>
+    read : string => Result<string, string>
+    write : (string, string) => Result<int, string>
 
 (** Write the lock file; if that fails, put the old manifest back. *)
 commitLock (previous, lock) = match perform Files.write "osprey.lock" lock
@@ -679,8 +679,8 @@ test "a read-only disk changes nothing" (\\() => expect (readOnlyDisk upgrade) "
 # three test doubles. The Playground opens on this program in every flavor.
 @effect
 class Files:
-    def read(path: str) -> Result[str, Error]: ...
-    def write(path: str, text: str) -> Result[int, Error]: ...
+    def read(path: str) -> Result[str, str]: ...
+    def write(path: str, text: str) -> Result[int, str]: ...
 
 
 def commit_lock(previous, lock):
