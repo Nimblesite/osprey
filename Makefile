@@ -123,6 +123,9 @@ clean:
 	$(RM) $(RTB) src/toolchain/compiler/lib
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
+# The commit make ci started on: a commit landing mid-run is not stamped as tested.
+CI_HEAD := $(shell git rev-parse HEAD)
+
 ## ci: lint + test + build + hawk + the bank, docs and inbox suites (full CI simulation)
 ci: lint test build
 	$(MAKE) -C src/toolchain hawk
@@ -131,7 +134,7 @@ ci: lint test build
 	$(MAKE) -C src/toolchain/website docs-html-test
 	$(MAKE) -C src/toolchain/targets/tests inbox
 	$(MAKE) -C src/toolchain/targets/tests bank-mobile
-	mkdir -p target && git rev-parse HEAD > target/ci-green
+	mkdir -p target && echo $(CI_HEAD) > target/ci-green
 
 ## push: The only way to push ([CI-PUSH-GREEN], docs/plans/coordinated-push.md). Hold the TMC lock PUSH-<branch> first. Refuses unless make ci passed on this exact HEAD and no CI run on the branch is queued or running; then pushes.
 .PHONY: push
