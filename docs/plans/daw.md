@@ -124,7 +124,7 @@ Found while fixing these:
 - [x] Both native event journeys passed against the integrated macOS DAW archive on 21 November (9c33cf379). The separate root `make test` run reached Rust coverage compilation before its four-minute timeout.
 
 - [x] [DAW-TRANSPORT-REFUSAL] Exercise Play with no project, an open project and no renderer, and playback already in progress. Each refusal must identify the condition and preserve the current project.
-- [ ] The daw test suite cannot be run: type checking `src/osprey/examples/daw/test` did not finish in 55 minutes and held 5.6 GB (effect-row convergence, owner OspreyOpus1). The live transport and unplugged-input journeys were run alone in a scratch project with the same sources (both pass, and both fail when their expectations are changed).
+- [x] Run the full integrated DAW suite [DAW-TESTS]. The local release replay passed all 36 journeys at `973981395`. It includes the patch Gain drag during playback, its displayed value before release, and the next block's stereo output. The [coordinated push plan](coordinated-push.md) tracks the hosted replay.
 - [ ] Find how the sub patch lost its Mixer→Gain cable during the user's drag, and add the regression.
 - [ ] Toggle Loop and move the end marker while the song plays (today both say "Stop first").
 - [ ] A play that hits a track which cannot render names the track and module in plain words.
