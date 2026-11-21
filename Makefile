@@ -127,7 +127,7 @@ clean:
 override CI_HEAD := $(shell git rev-parse HEAD)
 
 ## ci: dependency audit + lint + test + build + hawk + the bank, docs and inbox suites (full CI simulation)
-ci: audit lint test build
+ci: _invalidate_ci_stamp audit lint test build
 	$(MAKE) -C src/toolchain hawk
 	$(MAKE) -C src/toolchain/targets/tests bank
 	$(MAKE) -C src/toolchain/targets/web/tests bank
@@ -135,6 +135,11 @@ ci: audit lint test build
 	$(MAKE) -C src/toolchain/targets/tests inbox
 	$(MAKE) -C src/toolchain/targets/tests bank-app
 	mkdir -p target && echo $(CI_HEAD) > target/ci-green
+
+# External advisories can turn the same commit red on a later run.
+.PHONY: _invalidate_ci_stamp
+_invalidate_ci_stamp:
+	$(RM) target/ci-green
 
 ## push: The only way to push ([CI-PUSH-GREEN], docs/plans/coordinated-push.md). Hold the TMC lock PUSH-<branch> first. Refuses unless make ci passed on this exact HEAD and no CI run on the branch is queued or running; then pushes.
 .PHONY: push

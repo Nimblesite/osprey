@@ -379,6 +379,22 @@ test('every release publishes only after an unconditional dependency audit', () 
   }
 })
 
+test('a failed local dependency audit invalidates a previous green push stamp', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'osprey-push-gate-'))
+  try {
+    mkdirSync(join(dir, 'target'))
+    const stamp = join(dir, 'target/ci-green')
+    writeFileSync(stamp, 'previously tested commit')
+    writeFileSync(join(dir, 'audit.mk'), 'audit:\n\t@echo fixture-audit-failure >&2\n\t@false\n')
+    const result = spawnSync('make', ['-I', resolve('.'), '-f', resolve('Makefile'), '-f', 'audit.mk', 'ci'], { cwd: dir, encoding: 'utf8' })
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /fixture-audit-failure/)
+    assert.throws(() => readFileSync(stamp), { code: 'ENOENT' })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('standalone deployment dispatch runs the mandatory dependency audit first', () => {
   for (const file of ['.github/workflows/deploy-pages.yml', '.github/workflows/deploy-webcompiler.yml']) {
     const audit = job('audit', file)
