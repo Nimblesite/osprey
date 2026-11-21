@@ -762,15 +762,21 @@ shifterKeyed (found, p, key) = match p.key == key
 
 shifterValue (n, key) = foldList (n.parameters, -1.0, \(found, p) => shifterKeyed (found, p, key))
 
-test ("the FFT pitch shifter is a preset phase-vocoder node with its ratio, formant and latency declared", \() => arithmetic (\() =>
-    forEachList ([{ size = 256, ratio = 0.25 }, { size = 1024, ratio = 1.5 }, { size = 4096, ratio = 4.0 }], \c =>
-        n = Components::pitchShifter (1, c.size, c.ratio)
+import synth::SpectralMath
+
+test ("the FFT pitch shifter effect is set in semitones and cents within an octave, its formants moving with the pitch unless kept", \() => arithmetic (\() =>
+    forEachList ([{ size = 256, semitones = -12.0, cents = 0.0 }, { size = 1024, semitones = 7.0, cents = 1.955 }, { size = 4096, semitones = 12.0, cents = -100.0 }, { size = 512, semitones = 0.0, cents = 50.0 }], \c =>
+        n = Components::pitchShifter (1, c.size, c.semitones, c.cents)
         expect (n.processor, synth::Spectral(size = c.size, hop = intDiv c.size 4))
         expect (shifterValue (n, "transform"), 6.0)
-        expect (shifterValue (n, "ratio"), c.ratio)
-        expect (shifterValue (n, "formant"), c.ratio)
+        expect (shifterValue (n, "semitones"), c.semitones)
+        expect (shifterValue (n, "cents"), c.cents)
+        expect (shifterValue (n, "keepFormants"), 0.0)
         expect (shifterValue (n, "mix"), 1.0)
-        expect (Kinds::kind n.processor, "synth.spectral"))))
+        expect (Kinds::kind n.processor, "synth.spectral"))
+    // 2 ^ ((semitones + cents / 100) / 12): an octave doubles, a fifth is 1.4983, a cent is 1.000578.
+    forEachList ([{ s = 12.0, c = 0.0, want = 2.0 }, { s = -12.0, c = 0.0, want = 0.5 }, { s = 7.0, c = 0.0, want = 1.4983070768766815 }, { s = 7.0, c = 1.955, want = 1.5 }, { s = 0.0, c = 1.0, want = 1.0005777895065548 }, { s = 0.0, c = -100.0, want = 0.9438743126816935 }, { s = 0.0, c = 0.0, want = 1.0 }], \r => near (SpectralMath::semitoneRatio (r.s, r.c), r.want, 0.00001))
+    forEachList ([{ keep = 1.0, ratio = 1.5, want = 1.0 }, { keep = 0.0, ratio = 1.5, want = 1.5 }, { keep = 0.5, ratio = 0.5, want = 1.0 }, { keep = 0.49, ratio = 0.5, want = 0.5 }], \f => expect (SpectralMath::formantRatio (f.keep, f.ratio), f.want))))
 
 import synth::Limiters
 

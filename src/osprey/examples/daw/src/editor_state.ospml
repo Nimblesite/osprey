@@ -127,7 +127,7 @@ module EditorState
         "wavetable" => wavetable identity
         "additive" => made (Components::additive (identity, 220.0))
         "spectral" => made (Components::spectral (identity, 1024, 256, 0.0))
-        "pitch-shifter" => made (Components::pitchShifter (identity, 1024, 1.5))
+        "pitch-shifter" => made (Components::pitchShifter (identity, 1024, 7.0, 0.0))
         "shaper" => made (Components::shaper (identity, 0.0, 2.0))
         "reverb" => made (Components::reverb (identity, 2.5))
         "shifter" => made (Components::shifter (identity, 5.0))

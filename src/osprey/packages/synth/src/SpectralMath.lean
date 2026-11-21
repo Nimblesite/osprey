@@ -100,6 +100,12 @@ def lobePhase (centre offset : Float) : Float := principal (centre + 3.141592653
 /-- Whole bins a peak region moves so its lobe lands nearest the peak's true `frequency` (in bins) times `ratio`. -/
 def peakShift (frequency ratio : Float) : Float := nearest (frequency * ratio - frequency)
 
+/-- Pitch ratio of a shift by `semitones` plus `cents` hundredths of a semitone: 2 ^ ((semitones + cents / 100) / 12). -/
+def semitoneRatio (semitones cents : Float) : Float := Float.pow 2 ((semitones + cents / 100) / 12)
+
+/-- Formant ratio of a pitch shift by `ratio`: 1 with `keep` on holds the formants still, otherwise they move with it. -/
+def formantRatio (keep ratio : Float) : Float := if keep >= 0.5 then 1 else ratio
+
 /-- Identity phase locking: a bin near a moved peak keeps its analysed phase offset from that peak. -/
 def lockedPhase (peakPhase phase peakAnalysis : Float) : Float := principal (peakPhase + phase - peakAnalysis)
 

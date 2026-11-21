@@ -67,7 +67,7 @@ module PatchVoices
         "shaper" => ok (synth::Components::shaper (item.identity, 0.0, 1.5))
         "shifter" => ok (synth::Components::shifter (item.identity, 0.0))
         "spectral" => chained (option (item, "hop", intDiv item.size 4), \hop => ok (synth::Components::spectral (item.identity, item.size, hop, 0.0)))
-        "pitchShifter" => ok (synth::Components::pitchShifter (item.identity, item.size, 1.0))
+        "pitchShifter" => ok (synth::Components::pitchShifter (item.identity, item.size, 0.0, 0.0))
         "reverb" => ok (synth::Components::reverb (item.identity, 2.0))
         "smoother" => ok (synth::Components::smoother (item.identity, 0.01))
         _ => resonant item
