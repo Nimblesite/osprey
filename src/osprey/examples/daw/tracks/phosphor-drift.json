@@ -300,6 +300,51 @@
       ]
     },
     {
+      "name": "Whisper reel",
+      "instrument": {"kind": "PatchInstrument", "routing": {
+        "nodes": [
+          {"identity": 0, "component": "grainCloud", "size": 16, "seed": 41, "asset": "src/osprey/examples/daw/tracks/samples/ai-whisper.wav", "settings": [
+            {"key": "start", "value": 0, "follow": "Constant"}, {"key": "positionSpread", "value": 360000, "follow": "Constant"}, {"key": "duration", "value": 4800, "follow": "Constant"},
+            {"key": "period", "value": 1200, "follow": "Constant"}, {"key": "jitter", "value": 600, "follow": "Constant"}, {"key": "gain", "value": 0.45, "follow": "Struck"},
+            {"key": "rate", "value": 1, "follow": "Constant"}, {"key": "rateSpread", "value": 0.05, "follow": "Constant"}, {"key": "panSpread", "value": 1.5, "follow": "Constant"},
+            {"key": "window", "value": 1, "follow": "Constant"}, {"key": "attack", "value": 0.3, "follow": "Constant"}, {"key": "release", "value": 0.4, "follow": "Constant"}]},
+          {"identity": 1, "component": "lfo", "size": 0, "seed": 1, "asset": "", "settings": [{"key": "frequency", "value": 0.33, "follow": "Constant"}]},
+          {"identity": 2, "component": "stereoModulatedGain", "size": 0, "seed": 1, "asset": "", "settings": [{"key": "gain", "value": 0.9, "follow": "Constant"}]},
+          {"identity": 3, "component": "stereoOutput", "size": 0, "seed": 1, "asset": "", "settings": []}],
+        "cables": [{"source": 0, "outlet": 0, "destination": 2, "inlet": 0}, {"source": 1, "outlet": 0, "destination": 2, "inlet": 1}, {"source": 2, "outlet": 0, "destination": 3, "inlet": 0}],
+        "attack": 0.8, "release": 1.5}},
+      "gain": 0.5, "pan": 0, "reverb": 0.45, "bus": "Fog", "sends": [], "positions": [],
+      "notes": [
+        {"pitch": 60, "start": 16, "length": 8, "velocity": 0.35},
+        {"pitch": 60, "start": 96, "length": 8, "velocity": 0.6}, {"pitch": 60, "start": 104, "length": 8, "velocity": 0.55}, {"pitch": 60, "start": 112, "length": 8, "velocity": 0.6}, {"pitch": 60, "start": 120, "length": 8, "velocity": 0.65},
+        {"pitch": 60, "start": 152, "length": 8, "velocity": 0.4}
+      ]
+    },
+    {
+      "name": "Glow voice",
+      "instrument": {"kind": "PatchInstrument", "routing": {
+        "nodes": [
+          {"identity": 0, "component": "grainCloud", "size": 16, "seed": 43, "asset": "src/osprey/examples/daw/tracks/samples/ai-sam.wav", "settings": [
+            {"key": "start", "value": 4000, "follow": "Constant"}, {"key": "positionSpread", "value": 150000, "follow": "Constant"}, {"key": "duration", "value": 2400, "follow": "Constant"},
+            {"key": "period", "value": 600, "follow": "Constant"}, {"key": "jitter", "value": 300, "follow": "Constant"}, {"key": "gain", "value": 0.4, "follow": "Struck"},
+            {"key": "rate", "value": 0.005102, "follow": "Pitched"}, {"key": "rateSpread", "value": 0.01, "follow": "Constant"}, {"key": "panSpread", "value": 1.2, "follow": "Constant"},
+            {"key": "window", "value": 0, "follow": "Constant"}]},
+          {"identity": 1, "component": "downmix", "size": 0, "seed": 1, "asset": "", "settings": []},
+          {"identity": 2, "component": "lfo", "size": 0, "seed": 1, "asset": "", "settings": [{"key": "frequency", "value": 0.4, "follow": "Constant"}]},
+          {"identity": 3, "component": "modulatedLowpass", "size": 0, "seed": 1, "asset": "", "settings": [{"key": "cutoff", "value": 3200, "follow": "Constant"}, {"key": "resonance", "value": 1.0, "follow": "Constant"}]},
+          {"identity": 4, "component": "output", "size": 0, "seed": 1, "asset": "", "settings": []}],
+        "cables": [{"source": 0, "outlet": 0, "destination": 1, "inlet": 0}, {"source": 1, "outlet": 0, "destination": 3, "inlet": 0}, {"source": 2, "outlet": 0, "destination": 3, "inlet": 1}, {"source": 3, "outlet": 0, "destination": 4, "inlet": 0}],
+        "attack": 0.25, "release": 0.9}},
+      "gain": 0.4, "pan": 0.18, "reverb": 0.5, "bus": "Fog", "sends": [], "positions": [],
+      "notes": [
+        {"pitch": 65, "start": 96, "length": 4, "velocity": 0.5}, {"pitch": 68, "start": 100, "length": 4, "velocity": 0.45},
+        {"pitch": 66, "start": 104, "length": 4, "velocity": 0.5}, {"pitch": 70, "start": 108, "length": 4, "velocity": 0.45},
+        {"pitch": 63, "start": 112, "length": 4, "velocity": 0.5}, {"pitch": 66, "start": 116, "length": 4, "velocity": 0.45},
+        {"pitch": 65, "start": 120, "length": 4, "velocity": 0.5}, {"pitch": 60, "start": 124, "length": 4, "velocity": 0.55},
+        {"pitch": 77, "start": 144, "length": 2, "velocity": 0.4}, {"pitch": 75, "start": 146, "length": 2, "velocity": 0.35}, {"pitch": 73, "start": 148, "length": 4, "velocity": 0.4}, {"pitch": 72, "start": 152, "length": 4, "velocity": 0.45}
+      ]
+    },
+    {
       "name": "Kick",
       "instrument": {"kind": "PatchInstrument", "routing": {
         "nodes": [
