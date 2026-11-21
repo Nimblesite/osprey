@@ -32,6 +32,13 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] Stop cancels the FerroUI transport process group. Native Play → Stop left no renderer and a zero-byte WAV. The host process tests also exercise descendant cancellation.
 - [ ] The renderer is fast enough to play from the playhead without waiting (per-note patch voices dominate).
 
+## One graph [DAW-GRAPH]
+
+**The project is one big graph of cables, and a patch is a subgraph of it.** Every item below builds on that: tracks, buses, Space and Master are nodes; a track's patch is the graph nested inside its node, and its Output is the track's output. Play and render run the whole graph in one block loop into Master. No work item may add a per-track render path, a separate mix stage or a second routing model.
+
+- [ ] One block loop runs every track, bus, send, pad and the Space into Master ([DAW-RENDER-PLAY]). `daw::Playback` (in progress, OspreyOpus1): the render and the journey test run on it. Patch modules still render a whole note when it starts, inside its track node. Running them in the same block loop is the next step ([DAW-GRAPH-SUBGRAPH]).
+- [ ] A patch's audio and MIDI inputs take cables from other nodes in the project graph ([DAW-MODULAR]).
+
 ## Rendering the song [DAW-RENDER]
 
 - [x] **Render song** in the header bounces the whole project to `<song>/song/song.wav`: refused while busy, only real audio counts, an unchanged project is kept, Stop cancels it. The transport journey test covers it; the daw suite passes 22/22.

@@ -2,7 +2,7 @@
 
 Status: in progress. The daw runs on the FerroUI host. It opens a project, shows the Timeline, Mix and patch pages, saves edits into the project file, and plays bars through the renderer. The [delivery plan](../../plans/daw.md) records what is verified.
 
-The daw is the [Prism](../../../src/osprey/examples/daw/PRISM.md) patch studio with a song around it. A song project holds tracks of notes. Every track plays through a patch and feeds a stereo Master and a shared reverb, Space. The app opens a project, shows its tracks on a timeline and lets you edit a track's notes, mix and patch. It plays the song as it currently stands and saves everything back to the same file.
+The daw is the [Prism](../../../src/osprey/examples/daw/PRISM.md) patch studio with a song around it. A project is **one big graph of cables** ([DAW-GRAPH]): tracks, buses, the Space reverb and Master are its nodes, and every route ends at Master. **A patch is a subgraph**: the same kind of graph, nested inside a track. The app opens a project, shows its tracks on a timeline and lets you edit a track's notes, mix and patch. It plays the song as it currently stands and saves everything back to the same file.
 
 ## Built around the person using it [DAW-HUMAN]
 
@@ -29,13 +29,34 @@ Modularity is the principle the daw is built on. A patch holds any number of mod
 
 ### The project is a graph [DAW-GRAPH]
 
-A project is one graph. Its nodes are tracks, buses, the Space, the Master channel and the modules inside every patch. Its cables carry audio, MIDI and OSC between them. Everything the daw does with sound follows from this.
+**The project is one big graph of cables. A patch is a subgraph.** There is no other structure: no fixed mixer strip, no separate per-track pipeline, no second path for rendering. Everything the daw does with sound follows from these two sentences.
+
+A project is one graph. Its nodes are tracks, buses, the Space, the Master channel and the modules inside every patch. Its cables carry audio, MIDI and OSC between them. A patch is a subgraph: a graph of the same kind, nested inside a track node, whose inputs are the track's inputs and whose one Output is the track's output. Opening a track's patch is looking inside that node; the cables inside it and the cables between tracks, buses and Master are the same kind of cable in the same graph.
+
+```mermaid
+flowchart LR
+    subgraph Keys["Track: Keys (its patch is a subgraph)"]
+        direction LR
+        KIn["MIDI input"] --> Osc["Oscillator"] --> Flt["Filter"] --> KOut["Output"]
+        Osc --> Flt2["Delay"] --> KOut
+    end
+    subgraph Kick["Track: Kick (its patch is a subgraph)"]
+        direction LR
+        DIn["MIDI input"] --> Hit["Drum"] --> DOut["Output"]
+    end
+    KOut --> Pads["Bus: Pads"]
+    KOut -- send --> Space["Space"]
+    DOut --> Master["Master (project layout)"]
+    DOut -. sidechain key .-> Pads
+    Pads --> Master
+    Space --> Master
+```
 
 - **Tracks are where sound starts.** A track originates audio from its patch. It can also take inputs: MIDI (its own notes, another track's MIDI, a live keyboard or OSC control) and audio (another track's output, a sidechain, a live instrument).
 - **Every track can go anywhere.** Audio and MIDI tracks alike can be cabled to any other node that accepts them: a bus, another track's input, a sidechain, the Space or Master. A track is not tied to a fixed strip.
 - **Master is the main output.** The Master channel is the graph's one output, and every route ends there, directly or through other nodes ([DAW-MIX-MASTER]). Master carries the project's channel layout: stereo by default, or mono, 5.1, 7.1 or any other layout.
 - **Play and render run the whole graph at once.** Every node runs together, block by block, and the result leaves through Master ([DAW-RENDER-PLAY]). Nothing is played or rendered one track at a time.
-- **A patch is a subgraph.** Inside a track, a patch is a graph of its own, with audio and MIDI inputs and exactly one audio output.
+- **A patch is a subgraph ([DAW-GRAPH-SUBGRAPH]).** A track's patch is part of the project graph, nested inside the track node: any number of modules and cables, audio and MIDI inputs, and exactly one audio Output, which is the track's output into the rest of the graph. Play and render run the patch's modules in the same block loop as every bus and Master; a patch is never rendered on its own and then mixed in.
 
 The system's power is that routing is free. Any output can be cabled to any input that fits, so the ways to route a project are without limit.
 
