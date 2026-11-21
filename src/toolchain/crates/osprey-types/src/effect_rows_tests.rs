@@ -479,3 +479,22 @@ fn a_curried_declared_row_bounds_the_full_application() {
 
 mod curried_callbacks;
 mod gpu;
+
+#[test]
+fn wide_local_record_preserves_the_selected_callbacks_effects() {
+    let fields: Vec<_> = (0..260).map(|i| format!("f{i}: fn() -> int")).collect();
+    let mut values: Vec<_> = (0..260).map(|i| format!("f{i}: fn() => {i}")).collect();
+    values[259] = "f259: fn() => perform Read.value()".into();
+    let record = format!(
+        "effect Read {{ value: fn() -> int }}\ntype Callbacks = {{ {} }}",
+        fields.join(", ")
+    );
+    let run = |index| {
+        format!(
+        "{record}\nfn run() -> int ![] = {{\n    let c = Callbacks {{ {} }}\n    c.f{index}()\n}}\n",
+        values.join(", ")
+    )
+    };
+    accepts(Flavor::Default, run(0));
+    rejects_with(Flavor::Default, run(259), "Read");
+}
