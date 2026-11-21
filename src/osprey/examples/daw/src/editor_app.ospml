@@ -292,7 +292,8 @@ module EditorApp
 
     update (context, editor, message) =
         step = routed (context, editor, message)
-        step(stepStore = CardArts::refreshed (editor, EditorHistory::record (editor, DawSession::liveEdit (editor, step.stepStore))))
+        accepted = GraphPreview::liveEdit (editor, DawSession::liveEdit (editor, step.stepStore))
+        step(stepStore = CardArts::refreshed (editor, EditorHistory::record (editor, accepted)))
 
     (** Native controls and the canvas observe the same typed graph and applied edit revision. *)
     export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => EditorView::theme ())

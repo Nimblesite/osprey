@@ -663,6 +663,19 @@ sidesDiffer (one, other) = length (filterList (toList (range (0, length one)), \
 liveDialBlock (place, stream, check) = succeeds (daw::LiveControls::receive ("${place}/knobs/live/controls", stream), \applied =>
     succeeds (daw::Playback::next (applied.controlScore, applied.playing, 64), \packet => check (packet, applied(playing = packet.playing))))
 
+// [DAW-TRANSPORT-LIVE-CONTROLS] A running patch applies inspector values after the current device block.
+livePatchDialJourney () =
+    graph = patched ["sine", "gain", "output"]
+    playing = audioDone (Drive::press (graph, "Play Patch"))
+    expect (loudest (Drive::holding playing).scopeSamples > 0.01, true)
+    changed = tuned (playing, 1, "Gain", "0")
+    expect ((Drive::holding changed).renderTicket, (Drive::holding playing).renderTicket)
+    quiet = audioDone changed
+    expect (loudest (Drive::holding quiet).scopeSamples, 0.0)
+    restored = audioDone (tuned (quiet, 1, "Gain", "0.5"))
+    expect (loudest (Drive::holding restored).scopeSamples > 0.01, true)
+    expect ((Drive::holding restored).renderContinuous, true)
+
 // [DAW-TRANSPORT-LIVE-CONTROLS] Drive a real knob before release, then read the song producer's control channel.
 liveDialJourney () =
     place = "target/daw-tests/live-dial"
@@ -728,6 +741,7 @@ liveKnobJourney () =
                     expect (loudest again.left > 0.01, true)))))
 
 masterPlayJourney () =
+    livePatchDialJourney ()
     liveKnobJourney ()
     song = playedSong 4.0
     playedIn (song, [6000], \whole =>

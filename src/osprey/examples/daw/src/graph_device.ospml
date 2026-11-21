@@ -34,7 +34,7 @@ module GraphDevice
             Success value => listAppend samples value)
 
     (** Decode/encode PCM outside the device callback, then hold the exact next graph state. *)
-    export request (editor, graph, held, clip) = synth::Outcomes::carried (WaveFiles::interleaved (48000, clip.clipChannels, clip.clipSamples), \hex => Success(value = prepared (editor(scopeSamples = monitored clip), DevicePending(deviceGraph = graph, deviceState = held, deviceChannels = clip.clipChannels), hex)))
+    export request (editor, held, clip) = synth::Outcomes::carried (WaveFiles::interleaved (48000, clip.clipChannels, clip.clipSamples), \hex => Success(value = prepared (editor(scopeSamples = monitored clip), DevicePending(deviceState = held, deviceChannels = clip.clipChannels), hex)))
 
     (** Adopt the device handle before sending data, so any later failure can release it. *)
     export opened (editor, text) = match GraphWorkers::opened (editor, text)

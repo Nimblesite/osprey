@@ -16,8 +16,7 @@ type RenderSession =
     sessionNode : int
     sessionKey : string
 
-type DevicePending G S =
-    deviceGraph : G
+type DevicePending S =
     deviceState : S
     deviceChannels : int
 
@@ -196,7 +195,10 @@ type Editor G P S M =
     renderSessions : List<RenderSession>
     renderOpening : bool
     renderInput : string
-    renderDevicePending : List<DevicePending<G, S>>
+    renderDevicePending : List<DevicePending<S>>
+    renderGraph : G
+    renderProject : string
+    renderTrack : int
     renderDeviceKey : string
     renderEmptyCallbacks : int
     renderContinuous : bool
