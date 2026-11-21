@@ -1,0 +1,47 @@
+namespace ProductionFft
+
+/-- The hard and cubic curves both return the positive rail above their upper threshold. -/
+theorem upperClipRails (ops : Ops α) (x : α)
+    (above : ops.greater x (ops.literal 1) = true)
+    (atLeast : ops.atLeast x (ops.literal 1) = true) :
+    Waveshapers.curve ops .HardCurve x = ops.literal 1 ∧
+    Waveshapers.curve ops .CubicCurve x = ops.literal 1 := by
+  unfold Waveshapers.curve NonlinearMath.hard NonlinearMath.cubic
+  dsimp only
+  rw [above, atLeast]
+  exact ⟨rfl, rfl⟩
+
+/-- The clamped exponential computation is identical for all inputs above +20.
+    0x4034000000000000 is the production binary64 literal 20.0. -/
+theorem tanhUpperPlateau (ops : Ops α) (x y : α)
+    (aboveX : ops.greater x (ops.binary64 0x4034000000000000) = true)
+    (aboveY : ops.greater y (ops.binary64 0x4034000000000000) = true) :
+    Waveshapers.curve ops .TanhCurve x = Waveshapers.curve ops .TanhCurve y := by
+  unfold Waveshapers.curve NonlinearMath.tanh
+  dsimp only
+  rw [aboveX, aboveY]
+
+/-- A first-order antialiased hard clipper returns unity between two separated
+    samples on its positive rail. The offset in the shipped primitive cancels. -/
+theorem hardClipPositiveInterval (ops : Ops α) (x prev : α)
+    (separated : ops.less (ops.abs (ops.minus x prev)) ops.epsilon = false)
+    (absX : ops.abs x = x) (absPrev : ops.abs prev = prev)
+    (aboveX : ops.atMost x (ops.literal 1) = false)
+    (abovePrev : ops.atMost prev (ops.literal 1) = false)
+    (cancel : ops.minus (ops.minus x ops.half) (ops.minus prev ops.half) = ops.minus x prev)
+    (selfRatio : ops.divide (ops.minus x prev) (ops.minus x prev) = ops.literal 1) :
+    Waveshapers.shaped ops ⟨true, .HardCurve⟩ x prev = ops.literal 1 := by
+  rw [shaperQuotient ops .HardCurve x prev separated]
+  unfold Waveshapers.integral NonlinearMath.hardIntegral
+  dsimp only
+  rw [absX, absPrev, aboveX, abovePrev]
+  exact (congrArg (fun d => ops.divide d (ops.minus x prev)) cancel).trans selfRatio
+
+/-- The wavefolder uses sin(π x / 2) and its primitive uses the same angle,
+    scaled by the binary64 representation of −2/π. -/
+theorem wavefolderPair (ops : Ops α) (x : α) :
+    let angle := ops.times (ops.binary64 0x3ff921fb54442d18) x
+    (Waveshapers.curve ops .FoldCurve x, Waveshapers.integral ops .FoldCurve x) =
+      (ops.sin angle, ops.times (ops.binary64 0xbfe45f306dc9c883) (ops.cos angle)) := rfl
+
+end ProductionFft

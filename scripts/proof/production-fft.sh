@@ -24,14 +24,14 @@ mkdir -p "$out"
 reflect() {
     local file
     local bodies=()
-    for file in "${source%/*}/delay_lines.ospml" "${source%/*}/fit_math.ospml" "${arrange%/*}/dial_math.ospml" "${arrange%/*}/canvas_geometry.ospml" "${arrange%/*}/timeline_geometry.ospml" "$arrange" "$table" "$waves" "$math" "$source" "$frames" "$strike" "$allpass" "$shaper" "$interpolation" "$phase_math" "$phase" "$grain_math" "$grain" "$streams"; do
+    for file in "${source%/*}/delay_lines.ospml" "${source%/*}/fit_math.ospml" "${arrange%/*}/dial_math.ospml" "${arrange%/*}/canvas_geometry.ospml" "${arrange%/*}/timeline_geometry.ospml" "$arrange" "$table" "$waves" "$math" "$source" "$frames" "$strike" "$allpass" "${source%/*}/nonlinear_math.ospml" "$shaper" "$interpolation" "$phase_math" "$phase" "$grain_math" "$grain" "$streams"; do
         if [[ "$file" == "${1:-}" ]]; then file="$out/mutant.ospml"; fi
         bodies+=("$file")
     done
     cargo run --quiet --manifest-path "$root/src/toolchain/Cargo.toml" -p osprey-syntax --example synth_proof -- "${bodies[@]}" > "$out/bodies"
     awk -v body="$out/bodies" '/^-- INSERT PRODUCTION BODIES$/ {while ((getline line < body) > 0) print line; next} {print}' \
         "$tools/ProductionFft.lean.in" > "$out/ProductionFft.lean"
-    cat "$tools/ProductionSpectral.lean.in" "$tools/ProductionTransform.lean.in" >> "$out/ProductionFft.lean"
+    cat "$tools/ProductionSpectral.lean.in" "$tools/ProductionTransform.lean.in" "$tools/ProductionWaveshaper.lean.in" >> "$out/ProductionFft.lean"
 }
 cd "$tools"
 reflect
@@ -47,7 +47,7 @@ check_export() {
         printf '%s\t%s\n' "$out/$file" "$name" | "$checker.$backend"
     fi
 }
-for theorem in rotationComponents rotationUnitPower realSamplesConjugate addedDftBin grainAsrBoundarySamples grainAsrInterior windowedModulation windowedZeroIndex supportedTransformDepths transformSchedule overlapNecessary hannEnergyEighth hannEnergyQuarter delayPropagation delayFullTraversal heardTimeClamped dialMovement canvasGrabOffset envelopeSustain envelopeReleased stridedQuartet additiveSample additivePeriod rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
+for theorem in hardClipPositiveInterval tanhUpperPlateau upperClipRails wavefolderPair rotationComponents rotationUnitPower realSamplesConjugate addedDftBin grainAsrBoundarySamples grainAsrInterior windowedModulation windowedZeroIndex supportedTransformDepths transformSchedule overlapNecessary hannEnergyEighth hannEnergyQuarter delayPropagation delayFullTraversal heardTimeClamped dialMovement canvasGrabOffset envelopeSustain envelopeReleased stridedQuartet additiveSample additivePeriod rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
     name="ProductionFft.$theorem"
     LEAN_PATH="$out:$lean_path" "$exporter" ProductionFft -- "$name" > "$out/$theorem.ndjson"
     for backend in gc arc wasm; do
@@ -77,6 +77,10 @@ reject_edit() {
     awk -F: -v start="$start" -v end="$end" '/ProductionFft.lean:[0-9]+:[0-9]+: error:/ && $2 >= start && $2 < end { rejected=1 } END {exit !rejected}' "$out/rejected.log"
     echo "REJECT $theorem production mutation"
 }
+reject_edit hardClipPositiveInterval 's/false => a - 0.5/false => a * 0.5/' "${source%/*}/nonlinear_math.ospml"
+reject_edit tanhUpperPlateau 's/true => 20.0/true => x/' "${source%/*}/nonlinear_math.ospml"
+reject_edit upperClipRails 's/match x >= 1.0/match x <= 1.0/' "${source%/*}/nonlinear_math.ospml"
+reject_edit wavefolderPair 's/0.6366197723675814/0.6366197723675815/' "${source%/*}/nonlinear_math.ospml"
 reject_edit rotationComponents 's/re \* re + im \* im/re * re - im * im/' "$math"
 reject_edit rotationComponents 's/false => floatDiv (im, m)/false => floatDiv (re, m)/' "$math"
 reject_edit realSamplesConjugate 's/im = 0.0 - value.im/im = value.im/'

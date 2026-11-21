@@ -115,19 +115,11 @@ fn callee(e: &Expr, module: &str) -> Result<String, String> {
         if let Expr::Path(path) = e {
             if let [module, op] = path.segments.as_slice() {
                 if module == "NonlinearMath"
-                    && matches!(
-                        op.as_str(),
-                        "tanh"
-                            | "hard"
-                            | "cubic"
-                            | "fold"
-                            | "tanhIntegral"
-                            | "hardIntegral"
-                            | "cubicIntegral"
-                            | "foldIntegral"
-                    )
+                    && signatures(module)?
+                        .iter()
+                        .any(|(member, _, _)| member == op)
                 {
-                    return Ok(format!("ops.{op}"));
+                    return Ok(format!("NonlinearMath.{} ops", ident(op)?));
                 }
             }
             return match path.to_string().as_str() {
@@ -167,6 +159,8 @@ fn primitive(name: &str) -> Option<&'static str> {
     Some(match name {
         "satAdd" => "ops.satAdd",
         "toFloat" => "ops.toFloat",
+        "exp" => "ops.exp",
+        "ln" => "ops.ln",
         "pow" => "ops.pow",
         "sin" => "ops.sin",
         "cos" => "ops.cos",
@@ -279,21 +273,32 @@ fn block(statements: &[Stmt], value: &Expr, module: &str) -> Result<String, Stri
     Ok(body)
 }
 
+fn float_literal(n: f64) -> String {
+    let bits = n.to_bits();
+    for (value, op) in [
+        (std::f64::consts::PI, "ops.pi"),
+        (std::f64::consts::TAU, "ops.tau"),
+        (0.5, "ops.half"),
+        (0.00001, "ops.epsilon"),
+    ] {
+        if bits == value.to_bits() {
+            return op.into();
+        }
+    }
+    if [0.0_f64, 1.0, 2.0, 3.0, 4.0, 8.0]
+        .iter()
+        .any(|v| bits == v.to_bits())
+    {
+        return format!("(ops.literal {n:.0})");
+    }
+    format!("(ops.binary64 0x{bits:016x})")
+}
+
 fn term(e: &Expr, module: &str) -> Result<String, String> {
     match e {
         Expr::Identifier(n) => ident(n),
         Expr::Integer(n) if *n >= 0 => Ok(n.to_string()),
-        Expr::Float(n) if n.to_bits() == std::f64::consts::PI.to_bits() => Ok("ops.pi".into()),
-        Expr::Float(n) if n.to_bits() == std::f64::consts::TAU.to_bits() => Ok("ops.tau".into()),
-        Expr::Float(n) if n.to_bits() == 0.5_f64.to_bits() => Ok("ops.half".into()),
-        Expr::Float(n) if n.to_bits() == 0.00001_f64.to_bits() => Ok("ops.epsilon".into()),
-        Expr::Float(n)
-            if [0.0_f64, 1.0, 2.0, 3.0, 4.0, 8.0]
-                .iter()
-                .any(|v| n.to_bits() == v.to_bits()) =>
-        {
-            Ok(format!("(ops.literal {n:.0})"))
-        }
+        Expr::Float(n) => Ok(float_literal(*n)),
         Expr::List(items, _) => Ok(format!(
             "[{}]",
             items

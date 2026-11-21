@@ -86,14 +86,9 @@ structure Ops (α : Type) where
   atMost : α → α → Bool
   atLeast : α → α → Bool
   equal : α → α → Bool
-  tanh : α → α
-  hard : α → α
-  cubic : α → α
-  fold : α → α
-  tanhIntegral : α → α
-  hardIntegral : α → α
-  cubicIntegral : α → α
-  foldIntegral : α → α
+  binary64 : Nat → α
+  exp : α → α
+  ln : α → α
   ieeeDivide : α → α → α
   divide : α → α → α
   plus : α → α → α
@@ -349,10 +344,10 @@ theorem shaperIntervalAverage (ops : Ops α) (shape : Curve) (x previous zero : 
 /-- Curve and primitive dispatch remain paired for each supported shape. -/
 theorem shaperCurvePair (ops : Ops α) (shape : Curve) (x : α) :
     (Waveshapers.curve ops shape x, Waveshapers.integral ops shape x) = (match shape with
-      | .TanhCurve => (ops.tanh x, ops.tanhIntegral x)
-      | .HardCurve => (ops.hard x, ops.hardIntegral x)
-      | .CubicCurve => (ops.cubic x, ops.cubicIntegral x)
-      | .FoldCurve => (ops.fold x, ops.foldIntegral x)) := by cases shape <;> rfl
+      | .TanhCurve => (NonlinearMath.tanh ops x, NonlinearMath.tanhIntegral ops x)
+      | .HardCurve => (NonlinearMath.hard ops x, NonlinearMath.hardIntegral ops x)
+      | .CubicCurve => (NonlinearMath.cubic ops x, NonlinearMath.cubicIntegral ops x)
+      | .FoldCurve => (NonlinearMath.fold ops x, NonlinearMath.foldIntegral ops x)) := by cases shape <;> rfl
 
 theorem shaperPrimitiveOffset (ops : Ops α) (shape : Curve) (x prev c : α)
     (separated : ops.less (ops.abs (ops.minus x prev)) ops.epsilon = false)

@@ -26,6 +26,16 @@ pub(super) fn signatures(module: &str) -> Result<&'static [Signature], String> {
             ("value", &["Envelope α", "Nat", "Nat"], "α"),
         ],
         "Interpolation" => &[("linear", &["α", "α", "α"], "α")],
+        "NonlinearMath" => &[
+            ("tanh", &["α"], "α"),
+            ("hard", &["α"], "α"),
+            ("cubic", &["α"], "α"),
+            ("fold", &["α"], "α"),
+            ("tanhIntegral", &["α"], "α"),
+            ("hardIntegral", &["α"], "α"),
+            ("cubicIntegral", &["α"], "α"),
+            ("foldIntegral", &["α"], "α"),
+        ],
         "Waveshapers" => &[
             ("curve", &["Curve", "α"], "α"),
             ("integral", &["Curve", "α"], "α"),
