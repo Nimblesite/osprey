@@ -361,8 +361,6 @@ connectionLefts driven =
 
 // [SYNTH-ARRANGEMENT] daw::Arrangements checked directly on small hand-built songs: the bus math and
 // beat arithmetic from ArrangeMath, one drum note's exact samples from PhaseMath, and every refusal.
-arrangedNear (got, want) = expect (abs (got - want) <= 0.000000001, true)
-
 // A song from its tempo, rate and tracks; the beat frame is 60/tempo*rate rounded.
 arrangedSong (tempo, rate, tracks) = daw::Arrangement(title = "Bridge", tempo = tempo, meterTop = 4, meterBottom = 4, sampleRate = rate, buses = [], tracks = tracks)
 
@@ -372,11 +370,12 @@ arrangedBell (name, decay, notes) = daw::Track(name = name, instrument = daw::Be
 arrangedDrum (name, gain, decay, notes) = daw::Track(name = name, instrument = daw::DrumInstrument(hit = daw::Hit(sweep = 0.0, noise = 0.0, colour = 0.0, decay = decay)), gain = gain, pan = 0.0, bus = "", sends = [], positions = [], notes = notes)
 
 // One bell note at beat 0 on an otherwise plain song.
-oneBell (tempo, rate) = arrangedSong (tempo, rate, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])
+// One bell at beat 0 whose single note lasts `beats`.
+oneBell (tempo, rate, beats) = arrangedSong (tempo, rate, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, beats)])])
 
-lasts (tempo, rate, frames) = succeeds (daw::Arrangements::frames (oneBell (tempo, rate)), \total => expect (total, frames))
+lasts (tempo, rate, frames) = succeeds (daw::Arrangements::frames (oneBell (tempo, rate, 1.0)), \total => expect (total, frames))
 
-refusedBell (tempo, rate) = failsWith (daw::Arrangements::frames (oneBell (tempo, rate)), "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks.")
+refusedBell (tempo, rate) = failsWith (daw::Arrangements::frames (oneBell (tempo, rate, 1.0)), "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks.")
 
 arrangedNote (start, length) = daw::Note(pitch = 60, start = start, length = length, velocity = 0.5)
 
@@ -393,24 +392,24 @@ arrangedBusFrames (buses, count) = forEachList ([buses.left, buses.right], \samp
 // Buses after layered (empty, [1.0, 0.5, -0.25], 0, 2.0, 0.0): equal-power pan.
 arrangedFirstBuses buses =
     arrangedBusFrames (buses, 3)
-    arrangedReadings (buses.left, arrangedNear, [
+    arrangedReadings (buses.left, closeTo, [
         { frame = 0, want = 1.4142135623730951 }, { frame = 1, want = 0.7071067811865476 },
         { frame = 2, want = -0.3535533905932738 }])
-    arrangedReadings (buses.right, arrangedNear, [
+    arrangedReadings (buses.right, closeTo, [
         { frame = 0, want = 1.414213562373095 }, { frame = 1, want = 0.7071067811865475 },
         { frame = 2, want = -0.35355339059327373 }])
 
 // After layered (first, [0.1, 0.2], 2, 1.0, -1.0): placed at frame 2, hard left.
 arrangedSecondBuses buses =
     arrangedBusFrames (buses, 4)
-    arrangedReadings (buses.left, arrangedNear, [{ frame = 2, want = -0.25355339059327375 }, { frame = 3, want = 0.2 }])
+    arrangedReadings (buses.left, closeTo, [{ frame = 2, want = -0.25355339059327375 }, { frame = 3, want = 0.2 }])
     expect (arrangedAt (buses.right, 3), 0.0)
 
 // After layered (second, [3.0], 1, 0.5, 1.0): one frame added over the middle, hard right.
 arrangedThirdBuses buses =
     arrangedBusFrames (buses, 4)
-    arrangedReadings (buses.left, arrangedNear, [{ frame = 0, want = 1.4142135623730951 }, { frame = 1, want = 0.7071067811865477 }])
-    arrangedNear (arrangedAt (buses.right, 1), 2.2071067811865475)
+    arrangedReadings (buses.left, closeTo, [{ frame = 0, want = 1.4142135623730951 }, { frame = 1, want = 0.7071067811865477 }])
+    closeTo (arrangedAt (buses.right, 1), 2.2071067811865475)
 
 arrangedLayeredSteps first =
     arrangedFirstBuses first
@@ -424,13 +423,13 @@ arrangedSecondSteps second =
 arrangedKickHead samples =
     expect (length samples, 5)
     expect (arrangedAt (samples, 0), -0.5)
-    arrangedReadings (samples, arrangedNear, [
+    arrangedReadings (samples, closeTo, [
         { frame = 1, want = -0.4994192478404178 }, { frame = 2, want = -0.49825365548570233 },
         { frame = 3, want = -0.49650526238606774 }, { frame = 4, want = -0.49417678890818284 }])
 
 arrangedKickWhole samples =
     expect (length samples, 12000)
-    arrangedNear (arrangedAt (samples, 11999), 0.0004064725874341686)
+    closeTo (arrangedAt (samples, 11999), 0.0004064725874341686)
 
 arrangedKickPadded samples =
     expect (length samples, 12003)
@@ -440,7 +439,7 @@ arrangedKickPadded samples =
 arrangedPairSamples samples =
     expect (length samples, 12002)
     expect (arrangedAt (samples, 0), -0.5)
-    arrangedReadings (samples, arrangedNear, [
+    arrangedReadings (samples, closeTo, [
         { frame = 5999, want = 0.005101474122257177 }, { frame = 6000, want = -0.4954169144577917 },
         { frame = 6001, want = -0.49535932751606987 }, { frame = 12000, want = 0.0045830855422083275 },
         { frame = 12001, want = 0.004059920324347923 }])
@@ -449,7 +448,7 @@ arrangedPairSamples samples =
 arrangedTwinSamples samples =
     expect (length samples, 12000)
     expect (arrangedAt (samples, 0), -1.0)
-    arrangedNear (arrangedAt (samples, 1), -0.9988384956808356)
+    closeTo (arrangedAt (samples, 1), -0.9988384956808356)
 
 // A note from beat 0 and one from beat 1: frames 12000 to 23999 settle as silence between them.
 arrangedGapSamples samples =
@@ -464,10 +463,10 @@ arrangedLateSamples samples =
 // added: the kick at gain 2, pan 0, so the buses carry the part exactly.
 arrangedAddedBuses buses =
     arrangedBusFrames (buses, 3)
-    arrangedReadings (buses.left, arrangedNear, [
+    arrangedReadings (buses.left, closeTo, [
         { frame = 0, want = -0.7071067811865476 }, { frame = 1, want = -0.706285473606089 },
         { frame = 2, want = -0.7046370770898519 }])
-    arrangedReadings (buses.right, arrangedNear, [{ frame = 0, want = -0.7071067811865475 }, { frame = 1, want = -0.7062854736060888 }])
+    arrangedReadings (buses.right, closeTo, [{ frame = 0, want = -0.7071067811865475 }, { frame = 1, want = -0.7062854736060888 }])
 
 // [SYNTH-ARRANGEMENT] The same drum rendered into each window, including reversed overlap and a silent gap.
 arrangedDrumParts (song, kick) =
@@ -527,28 +526,28 @@ arrangementsJourney () =
     lasts (120.0, 192000, 480000)
     repeated = \count => song120(tracks = mapList (toList (range (0, count)), \_ => bell))
     succeeds (daw::Arrangements::frames (repeated 64), \total => expect (total, 120000))
-    succeeds (daw::Arrangements::frames (arrangedSong (20.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 198.5)])])), \total => expect (total, 28680000))
+    succeeds (daw::Arrangements::frames (oneBell (20.0, 48000, 198.5)), \total => expect (total, 28680000))
     refusesSong = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks."
     refusedBell (19.99, 48000)
     refusedBell (400.01, 48000)
     refusedBell (120.0, 7999)
     refusedBell (120.0, 192001)
     forEachList ([0, 65], \count => failsWith (daw::Arrangements::frames (repeated count), refusesSong))
-    succeeds (daw::Arrangements::frames (arrangedSong (20.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 199.0)])])), \total => expect (total, 28752000))
-    failsWith (daw::Arrangements::frames (arrangedSong (20.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 199.5)])])), "An arrangement must last 1 to 28800000 frames.")
-    failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (sqrt (-1.0), 1.0)])])), "The arrangement length is not finite.")
-    failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (pow (10.0, 400.0), 1.0)])])), "The arrangement length is not finite.")
+    succeeds (daw::Arrangements::frames (oneBell (20.0, 48000, 199.0)), \total => expect (total, 28752000))
+    failsWith (daw::Arrangements::frames (oneBell (20.0, 48000, 199.5)), "An arrangement must last 1 to 28800000 frames.")
+    failsWith (daw::Arrangements::frames (oneBell (120.0, 48000, sqrt (-1.0))), "The arrangement length is not finite.")
+    failsWith (daw::Arrangements::frames (oneBell (120.0, 48000, pow (10.0, 400.0))), "The arrangement length is not finite.")
     // layered: three steps of overlap-add on the buses, every pan and gain guard, and the offset rule.
     succeeds (daw::Arrangements::layered (silent, [1.0, 0.5, -0.25], 0, 2.0, 0.0), \first => arrangedLayeredSteps first)
     succeeds (daw::Arrangements::layered (silent, [5.0], 0, 2.0, -1.0), \hard =>
         expect (hard.left, [10.0])
         expect (hard.right, [0.0]))
     succeeds (daw::Arrangements::layered (silent, [5.0], 0, 2.0, 1.0), \wide =>
-        arrangedNear (arrangedAt (wide.left, 0), 0.0000000000000006123233995736766)
+        closeTo (arrangedAt (wide.left, 0), 0.0000000000000006123233995736766)
         expect (wide.right, [10.0]))
     succeeds (daw::Arrangements::layered (silent, [0.25], 0, 4.0, 0.0), \loud =>
-        arrangedNear (arrangedAt (loud.left, 0), 0.7071067811865476)
-        arrangedNear (arrangedAt (loud.right, 0), 0.7071067811865475))
+        closeTo (arrangedAt (loud.left, 0), 0.7071067811865476)
+        closeTo (arrangedAt (loud.right, 0), 0.7071067811865475))
     succeeds (daw::Arrangements::layered (silent, [5.0], 0, 0.0, 0.5), \mute => expect (mute.left, [0.0]))
     succeeds (daw::Arrangements::layered (silent, [7.0, 8.0], 3, 1.0, -1.0), \placed => expect (placed.left, [0.0, 0.0, 0.0, 7.0, 8.0]))
     refusesMix = "Gain must be 0 to 4, pan -1 to 1 and the offset not negative."
