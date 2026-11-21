@@ -451,7 +451,8 @@ fn drag_piano_note(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     point(canvas, snare_gain, false);
     point(canvas, (330.0, 29.0), true);
     let (returned, _) = point(canvas, (330.0, 29.0), false);
-    assert!(shows_label(&returned, "hat") && shows_label(&returned, "snare"), "returning from Mix reveals the selected track's lane page");
+    assert!(shows_label(&returned, "echoes") && shows_label(&returned, "snare"), "scrolling reveals snare in the last row and retains the six lanes above it");
+    assert!(!shows_label(&returned, "hat"), "revealing snare scrolls only as far as needed");
     assert!(!shows_label(&returned, "SELECTED NOTE"), "a mixer edit on another track clears the old piano note");
 
 }
@@ -642,12 +643,13 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     let mut drawn = std::collections::BTreeSet::new();
     for round in 0..3 {
         for track in 0..TRACKS {
+            let top = (track / 7 * 7).min(TRACKS - 7);
             if track % 7 == 0 {
-                let rail = (1121.0, 221.0 + (track / 7) as f64 * (217.0 / 3.0) + 10.0);
+                let rail = (1121.0, 221.0 + (top as f64 + 3.5) * 217.0 / TRACKS as f64);
                 point(canvas, rail, true);
                 point(canvas, rail, false);
             }
-            let at = lane(track, (track * 5 + round * 13) as f64 % 40.0 / 40.0);
+            let at = lane(track - top, (track * 5 + round * 13) as f64 % 40.0 / 40.0);
             let (pressed, down) = point(canvas, at, true);
             assert!(shapes(&pressed) >= TIMELINE_SHAPES, "track {track} keeps the Timeline drawn");
             assert!(pressed.diagnostics().next().is_none(), "the tap on track {track} is not refused");
@@ -676,6 +678,8 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     let (mix, _) = point(canvas, MIX_TAB, false);
     assert!(shapes(&mix) >= MIX_SHAPES, "the Mix page draws {} shapes", shapes(&mix));
     output_routing(&mut regions, canvas, &song);
+    let read_mix = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(&song).expect("mixed project")).expect("project JSON");
+    let before_drag = read_mix();
     let mut drags = Vec::new();
     for track in 0..TRACKS {
         let y = 235.0 + (track as f64 + 0.5) * 37.0;
@@ -683,13 +687,25 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
             let (moved, cost) = point(canvas, (216.0 + f64::from(step) * 8.0, y), true);
             assert!(shapes(&moved) >= MIX_SHAPES, "dragging track {track}'s gain keeps the Mix drawn");
             assert!(moved.diagnostics().next().is_none(), "the drag on track {track} is not refused");
+            let gain = 4.0 * (1.0 + f64::from(step) * 8.0) / 55.0;
+            assert!(shows_label(&moved, &format!("{gain:.2}×")), "track {track} gain is drawn at this pointer position before release");
             drags.push(cost);
         }
+        if track == 0 { assert_eq!(read_mix(), before_drag, "pointer moves are provisional"); }
         let (released, cost) = point(canvas, (264.0, y), false);
         assert!(shapes(&released) >= MIX_SHAPES, "releasing track {track}'s gain keeps the Mix drawn");
         drags.push(cost);
+        if track == 0 {
+            regions.adopt(&released).expect("release updates Undo");
+            let after_drag = read_mix();
+            assert!(after_drag["tracks"][0]["gain"].as_f64().expect("released gain") > 2.0);
+            choose_menu(&mut regions, "Edit", "Undo");
+            assert_eq!(read_mix(), before_drag, "one Undo restores the entire fader gesture");
+            choose_menu(&mut regions, "Edit", "Redo");
+            assert_eq!(read_mix(), after_drag);
+        }
     }
-    let rendered: serde_json::Value = serde_json::from_slice(&std::fs::read(&song).expect("read the mixed project")).expect("valid JSON");
+    let rendered = read_mix();
     let tracks = rendered["tracks"].as_array().expect("project tracks");
     assert_eq!(tracks.len(), TRACKS);
     for track in tracks {

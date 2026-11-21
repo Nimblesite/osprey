@@ -54,7 +54,8 @@ module EditorHistory
             Error _ => changed (snapshot before, after)
 
     (** Record successful edits and collapse a pointer drag into one history entry. *)
-    export record (before, after) = match length before.past != length after.past || length before.future != length after.future || before.patchTrack != after.patchTrack
+    // The mixer owns its snapshot from first motion through release, including its single project undo.
+    export record (before, after) = match DawSession::holding after || DawSession::holding before || length before.past != length after.past || length before.future != length after.future || before.patchTrack != after.patchTrack
         true => after
         false => match before.revision == after.revision && before.layoutRevision == after.layoutRevision && before.dragging == after.dragging
             true => after
