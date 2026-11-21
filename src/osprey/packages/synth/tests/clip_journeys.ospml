@@ -287,7 +287,7 @@ registerClipJourneys () =
                             synth::GrainMemory _ => expect (bank.kernelNode, 1)
                             _ => unexpected ()
                         _ => unexpected ()
-                    succeeds (synth::GraphClips::advance (granularGraph (), [], 256), \again => expect (structuralEquals (again, synth::ClipReady(clips = clips)), true))
+                    succeeds (synth::GraphClips::advance (granularGraph (), [], 256), \again => sameStructure (again, synth::ClipReady(clips = clips)))
         renderRefused (synth::GraphClips::advance (granularGraph (), [], 2049))
         channelForged = synth::NodeKernels(kernelNode = 1, kernelMemory = synth::ChannelMemory(channels = [synth::RenderInputs::initialState (granularNode ())]))
         renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = [channelForged]), 64))
@@ -409,7 +409,7 @@ registerClipJourneys () =
         forEachList ([again, lifeMoved (again, synth::ReleaseTail), last, ready], \live =>
             restarted = lifeMoved (live, synth::Reset)
             expect (restarted.stage, synth::Ready)
-            expect (structuralEquals (restarted.audio, ready.audio), true)
+            sameStructure (restarted.audio, ready.audio)
             sameSamples ((lifePlayed (lifeMoved (restarted, synth::Activate), snapshot, 64)).audio.samples, first.audio.samples))
         // Re-preparing at a new rate starts silent and steps every phase at that rate.
         long = lived (Lifecycles::prepared (graph, 48000.0, 2048))

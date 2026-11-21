@@ -7,7 +7,7 @@ meshImpulse config =
     gain = 0.25 / (1.0 + 6.907755278982137 / 8000.0)
     succeeds (Meshes::next (config, silent, 1.0), \strike =>
         expect (strike.sample, 1.0)
-        expect (structuralEquals (strike.next.previous, silent.current), true)
+        sameStructure (strike.next.previous, silent.current)
         succeeds (Meshes::next (adjacent, strike.next, 0.0), \east => near (east.sample, gain, 0.000000000001))
         succeeds (Meshes::next (config(pickY = 1), strike.next, 0.0), \south => near (south.sample, gain, 0.000000000001))
         succeeds (Meshes::next (adjacent(pickY = 1), strike.next, 0.0), \diagonal => expect (diagonal.sample, 0.0)))

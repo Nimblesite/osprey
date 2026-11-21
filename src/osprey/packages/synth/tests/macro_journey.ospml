@@ -10,8 +10,8 @@ macroGainJourney () =
     succeeds (Macros::apply (original, macro, 0.5), \edited =>
         forEachList ([{ id = 1, key = "frequency", value = 330.0 }, { id = 2, key = "gain", value = 1.5 }], \row =>
             expect ((grainParameterOf (hostNode (Graphs::node (edited, row.id)), row.key)).initial, row.value))
-        expect (structuralEquals (edited.cables, original.cables), true))
+        sameStructure (edited.cables, original.cables))
     forEachList ([gain(minimum = 9.0), gain(maximum = -1.0), gain(node = 90), gain(key = "unknown"), gain(exponent = 4.1)], \bad =>
         renderRefused (Macros::apply (original, macro(targets = [pitch, bad]), 0.5)))
     forEachList ([-0.1, 1.1], \amount => renderRefused (Macros::apply (original, macro, amount)))
-    expect (structuralEquals (original, sineThrough 0.5), true)
+    sameStructure (original, sineThrough 0.5)

@@ -53,7 +53,7 @@ test ("feedback needs a delay; disconnected components and fan-out have determin
     prepared (graph, 2)
     // Node 30 becomes ready after 10 and must run before the already-ready 20.
     ordered = graph(nodes = [a(identity = 30), a(identity = 10), a(identity = 20)], cables = [cable (10, 30)])
-    valid (Graphs::prepare ordered, \plan => expect (structuralEquals (plan.order, [10, 30, 20]), true))))
+    valid (Graphs::prepare ordered, \plan => sameStructure (plan.order, [10, 30, 20]))))
 
 test ("Signals expose separate same-kind component instances without a UI framework", \() => arithmetic (\() =>
     snapshot = synth::Observation(revision = 4, samplePosition = 1024, parameters = [synth::ParameterValue(node = 10, key = "cutoff", value = 440.0), synth::ParameterValue(node = 20, key = "cutoff", value = 880.0)], components = [synth::ComponentState(node = 10, activeVoices = 3, peak = 0.8, rms = 0.2)])
@@ -152,10 +152,10 @@ test ("module switches pick the waveform, bypass a module and modulate the filte
     renderRefused (switchedRender (switched (sine, "waveform", 4.0, 4.0), filter, lfo))
     modulated = switchedSamples (sine, filter, lfo)
     expect (structuralEquals (modulated, plainLowpass ()), false)
-    expect (structuralEquals (switchedSamples (sine, filter, disabled lfo), plainLowpass ()), true)
+    sameStructure (switchedSamples (sine, filter, disabled lfo), plainLowpass ())
     forEachList (toList (range (0, 64)), \i => near (listGet (switchedSamples (sine, disabled filter, lfo)) i ?: 9.0, sin (6.283185307179586 * 440.0 * toFloat i / 48000.0), 0.00000000001))
-    expect (structuralEquals (switchedSamples (sine, switched (filter, "enabled", 1.0, 1.0), lfo), modulated), true)
-    expect (structuralEquals (switchedSamples (disabled sine, filter, lfo), mapList (modulated, \_ => 0.0)), true)
+    sameStructure (switchedSamples (sine, switched (filter, "enabled", 1.0, 1.0), lfo), modulated)
+    sameStructure (switchedSamples (disabled sine, filter, lfo), mapList (modulated, \_ => 0.0))
     renderRefused (switchedRender (sine, switched (filter, "enabled", 2.0, 2.0), lfo))))
 
 test ("a routed oscillator and gain render exact continuous PCM across unequal blocks", \() => arithmetic (\() =>
@@ -217,7 +217,7 @@ test ("same-frame automation applies in order and every block split renders the 
         // Both frame-20 edits land before frame 20; the later one (0.25) is what sounds.
         forEachList ([20, 21, 30, 39], \i => near (listGet whole.audio.samples i ?: -1.0, 0.25 * sin (6.283185307179586 * 440.0 * toFloat i / 48000.0), 0.00000000001))
         forEachList ([0, 19, 40, 63], \i => near (listGet whole.audio.samples i ?: -1.0, sin (6.283185307179586 * 440.0 * toFloat i / 48000.0), 0.00000000001))
-        forEachList ([1, 7, 19, 20, 21, 33, 40, 41, 63], \cut => succeeds (splitAt (plan, snapshot, first, events, cut), \pieces => expect (structuralEquals (pieces, whole.audio.samples), true))))
+        forEachList ([1, 7, 19, 20, 21, 33, 40, 41, 63], \cut => succeeds (splitAt (plan, snapshot, first, events, cut), \pieces => sameStructure (pieces, whole.audio.samples))))
     renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [quiet, mute]))))
 
 test ("performance timbres and metallic warp stay bounded across rates and control extremes", \() => arithmetic (\() =>
@@ -303,7 +303,7 @@ test ("non-finite or runaway node output is refused, finite output up to the bou
     renderRefused (synth::RenderInputs::sample (framed 0.5, 5))))
 
 (** [SYNTH-ADVANCED-CORE-PORTS] Inspect the actual inlet selected by each parameter. *)
-checkRule (n, key, wanted) = expect (structuralEquals (Descriptors::modulation (n, key), wanted), true)
+checkRule (n, key, wanted) = sameStructure (Descriptors::modulation (n, key), wanted)
 
 descriptorRoutes () =
     succeeds (synth::Wavetables::classic (64, 3), \table =>
@@ -358,7 +358,7 @@ test ("controller writes stay pending until resolved, then apply with a revision
     // Resolving an applied receipt changes nothing.
     again = Commands::resolve (graph, done)
     appliedAt (again, 1)
-    expect (structuralEquals (again.snapshot, done.snapshot), true)
+    sameStructure (again.snapshot, done.snapshot)
     // The same edit against the new snapshot is stale; the snapshot keeps the applied value.
     stale = Commands::resolve (graph, Commands::pending (done.snapshot, edit))
     rejectedWith (stale, synth::StaleRevision)

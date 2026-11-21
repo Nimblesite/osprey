@@ -33,8 +33,8 @@ scheduleEdit (graph, identity, key, value, start) =
             succeeds (synth::Renderer::automated (plan, rate, snapshot, first, 23, [edit]), \dynamic =>
                 valid (synth::Parameters::apply (graph, snapshot(samplePosition = start), edit), \changed =>
                     succeeds (synth::Renderer::block (plan, rate, changed, first, 23), \fixed =>
-                        expect (structuralEquals (fixed.samples, dynamic.audio.samples), true)
-                        expect (structuralEquals (fixed.states, dynamic.audio.states), true))))))
+                        sameStructure (fixed.samples, dynamic.audio.samples)
+                        sameStructure (fixed.states, dynamic.audio.states))))))
 
 // The stiff-string patch's partial k lies √(1 + B k²) above k f: 0.35 cents for the first at B = 0.0004.
 stiffHeld () =

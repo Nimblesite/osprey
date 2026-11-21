@@ -22,7 +22,7 @@ rebaseRunning held =
         graph = built ([oscillator, Components::delay (row.id, row.size), sink], [cable (1, row.id), cable (row.id, 3)])
         succeeds (GraphRebase::rebased (graph, held), \next =>
             expect (next.graphPosition, 64)
-            expect (structuralEquals (banksAt (next, 1), before), true)
+            sameStructure (banksAt (next, 1), before)
             delayAfterEdit (next, row.id, row.size)))
     cloud = Components::granular (4, grainFlatSource (), 4, 7)
     changed = built ([cloud, Components::stereoOutput 3], [cable (4, 3)])

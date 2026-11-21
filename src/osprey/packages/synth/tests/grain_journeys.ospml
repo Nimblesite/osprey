@@ -165,21 +165,21 @@ captureJourney writer =
                 refusedWith (GrainCapture::write (frozen, [0.0]), "Resume capture before writing.")
                 succeeds (GrainCapture::resource (frozen, "captured", 60.0), \resource =>
                     expect (resource.sampleRate == 24000 && resource.sourceChannels == 1, true)
-                    expect (structuralEquals (resource.samples, frozen.samples), true))
+                    sameStructure (resource.samples, frozen.samples))
                 succeeds (GrainCapture::thaw frozen, \resumed =>
                     succeeds (GrainCapture::write (resumed, [-1.0, 0.0, 0.25, 0.5, 0.75]), \next =>
                         expect (next.written == 10 && structuralEquals (next.samples, [0.0, 0.25, 0.5, 0.75]), true)
-                        expect (structuralEquals (frozen.samples, [0.25, 0.5, 0.75, 1.0]), true))))))
+                        sameStructure (frozen.samples, [0.25, 0.5, 0.75, 1.0]))))))
 
 // Each upward crossing in an external monophonic reference owns exactly one absolute sample.
 pitchMarkJourney () =
     succeeds (PitchMarks::prepare 27, \clock =>
         succeeds (PitchMarks::block (clock, [0.5, -0.5, 0.0, 0.0, 0.5, -0.5, 0.25]), \whole =>
-            expect (structuralEquals (whole.positions, [29, 33]), true)
+            sameStructure (whole.positions, [29, 33])
             succeeds (PitchMarks::block (clock, [0.5, -0.5]), \head =>
                 succeeds (PitchMarks::block (head.next, [0.0, 0.0, 0.5, -0.5, 0.25]), \tail =>
-                    expect (structuralEquals (listConcat head.positions tail.positions, whole.positions), true)
-                    expect (structuralEquals (tail.next, whole.next), true))))
+                    sameStructure (listConcat head.positions tail.positions, whole.positions)
+                    sameStructure (tail.next, whole.next))))
         refusedWith (PitchMarks::block (clock, [-0.5, 1.5]), "Pitch reference samples must be finite and normalised.")
         refusedWith (PitchMarks::block (clock, []), "Invalid pitch reference block or exhausted sample clock."))
 
@@ -280,7 +280,7 @@ grainOverloadJourney () =
             succeeds (Grains::block (born.pool, 3), \aged =>
                 succeeds (Grains::trigger (aged.next, controls), \full =>
                     expect (full.accepted, false)
-                    expect (structuralEquals (full.pool.voices, aged.next.voices), true)
+                    sameStructure (full.pool.voices, aged.next.voices)
                     watched = Grains::observation full.pool
                     expect (watched.requestedGrains == 2 && watched.acceptedGrains == 1 && watched.rejectedGrains == 1, true)
                     expect (watched.stolenGrains, 0)
@@ -290,9 +290,9 @@ grainOverloadJourney () =
                     // The rejection changed no audio: either pool renders the same samples and state.
                     succeeds (Grains::block (full.pool, 4), \rejected =>
                         succeeds (Grains::block (aged.next, 4), \plain =>
-                            expect (structuralEquals (rejected.left, plain.left), true)
-                            expect (structuralEquals (rejected.right, plain.right), true)
-                            expect (structuralEquals (rejected.next.voices, plain.next.voices), true)
+                            sameStructure (rejected.left, plain.left)
+                            sameStructure (rejected.right, plain.right)
+                            sameStructure (rejected.next.voices, plain.next.voices)
                             expect (rejected.next.position, 7)))
                     // Scheduled rendering consumes rejected events, counts them and advances normally.
                     succeeds (Grains::scheduled (aged.next, 5, GrainScheduler::events ([3, 4, 4], controls)), \consumed =>
@@ -374,18 +374,18 @@ grainDistributionJourney () =
             expect (event.controls.duration, 12)
             near (event.controls.amplitude, 0.50246980297609212, 0.000000000000001)
             near (event.controls.pan, -0.080388221964601658, 0.000000000000001)
-            expect (structuralEquals (single.next, grainAdvancedOnce seeds), true))
+            sameStructure (single.next, grainAdvancedOnce seeds))
         // Duration is inclusive discrete uniform: every value in [8, 12] is reachable, in a replayable order.
         succeeds (GrainDistributions::events (toList (range (0, 12)), ranges, 16, seeds), \batch =>
             expect (length batch.events, 12)
-            expect (structuralEquals (grainDurations batch.events, [12, 11, 9, 9, 9, 12, 9, 9, 8, 11, 9, 8]), true)
+            sameStructure (grainDurations batch.events, [12, 11, 9, 9, 9, 12, 9, 9, 8, 11, 9, 8])
             forEachList (grainDurations batch.events, \duration => expect (duration >= 8 && duration <= 12, true))
-            expect (structuralEquals (batch.next, grainAdvancedTimes (seeds, 12)), true))
+            sameStructure (batch.next, grainAdvancedTimes (seeds, 12)))
         // Empty batches advance no randomness; non-empty batches with fixed ranges still advance.
-        succeeds (GrainDistributions::events ([], ranges, 16, seeds), \none => expect (structuralEquals (none.next, seeds), true))
+        succeeds (GrainDistributions::events ([], ranges, 16, seeds), \none => sameStructure (none.next, seeds))
         succeeds (GrainDistributions::events ([5], fixed, 16, seeds), \held =>
-            expect (structuralEquals ((grainEventAt (held.events, 0)).controls, low), true)
-            expect (structuralEquals (held.next, grainAdvancedOnce seeds), true))
+            sameStructure ((grainEventAt (held.events, 0)).controls, low)
+            sameStructure (held.next, grainAdvancedOnce seeds))
         // Identical window settings and ordered minima are required at both ends.
         forEachList ([synth::GrainDistribution(minimum = low(window = synth::AsrWindow(attack = 0.25, release = 0.25)), maximum = high), synth::GrainDistribution(minimum = low(start = 3.5), maximum = high), synth::GrainDistribution(minimum = low(rate = 2.5), maximum = high), synth::GrainDistribution(minimum = low(duration = 13), maximum = high), synth::GrainDistribution(minimum = low(amplitude = 0.8), maximum = high), synth::GrainDistribution(minimum = low(pan = 0.6), maximum = high)], \bad =>
             refusedWith (GrainDistributions::events ([0], bad, 16, seeds), "Invalid grain distribution bounds, sample positions or random seeds."))
@@ -416,8 +416,8 @@ grainSpreadJourney () =
         expect (edges.maximum.pan, 1.0))
     // Zero widths hold every parameter while producing an exactly fixed distribution.
     succeeds (GrainSpreads::around (controls, 4, still), \held =>
-        expect (structuralEquals (held.minimum, held.maximum), true)
-        expect (structuralEquals (held.minimum, controls), true))
+        sameStructure (held.minimum, held.maximum)
+        sameStructure (held.minimum, controls))
     forEachList ([still(position = 4.0), still(rate = 33.0), still(duration = 65534), still(amplitude = 1.5), still(pan = 2.5)], \bad =>
         refusedWith (GrainSpreads::around (controls, 4, bad), "Invalid grain variation center or spread."))
     forEachList ([controls(start = 4.0), controls(rate = 17.0), controls(rate = -17.0), controls(duration = 2), controls(duration = 65537), controls(amplitude = 1.5), controls(pan = 1.5), controls(window = synth::AsrWindow(attack = 0.8, release = 0.8))], \bad =>
@@ -457,7 +457,7 @@ grainCloudCommitJourney () =
     succeeds (GrainDistributions::seeded 7, \base =>
         succeeds (variedCloud 7, \seeded =>
             succeeds (GrainClouds::variedBlock (seeded, wideGrainDistribution (), 8), \drawn =>
-                expect (structuralEquals (drawn.next.seeds, grainAdvancedTimes (base, 8)), true)
+                sameStructure (drawn.next.seeds, grainAdvancedTimes (base, 8))
                 counted = GrainClouds::observation drawn.next
                 expect (counted.playback.requestedGrains == 8 && counted.playback.acceptedGrains == 4 && counted.playback.rejectedGrains == 4, true)
                 expect (counted.playback.activeGrains, 4))))
@@ -471,8 +471,8 @@ grainCloudReplayJourney () =
             run = grainCloudAudio (first, wide, blocks)
             again = grainCloudAudio (replay, wide, blocks)
             expect (length run.audio, 88)
-            expect (structuralEquals (run.audio, again.audio), true)
-            expect (structuralEquals (run.cloud.seeds, again.cloud.seeds), true)
+            sameStructure (run.audio, again.audio)
+            sameStructure (run.cloud.seeds, again.cloud.seeds)
             expect (run.cloud.pool.position == 44 && run.cloud.clock.position == 44, true)
             succeeds (variedCloud 999999, \other =>
                 differed = grainCloudAudio (other, wide, blocks)
@@ -506,18 +506,18 @@ grainGraphVariationJourney () =
     succeeds (GrainDistributions::seeded 7, \base =>
         succeeds (GrainGraph::prepare node, \cloud =>
             // variationSeed initialises the five offset seed states exactly once, when preparing a new cloud.
-            expect (structuralEquals (cloud.seeds, base), true)
+            sameStructure (cloud.seeds, base)
             succeeds (GrainGraph::block (node, cloud, 16), \first =>
                 // Default period 2400 frames: one onset at sample zero advances each stream exactly once.
-                expect (structuralEquals (first.next.seeds, grainAdvancedOnce base), true)
+                sameStructure (first.next.seeds, grainAdvancedOnce base)
                 succeeds (GrainGraph::block (grainSet (node, "variationSeed", 999.0), first.next, 16), \second =>
-                    expect (structuralEquals (second.next.seeds, first.next.seeds), true)
+                    sameStructure (second.next.seeds, first.next.seeds)
                     // Changing widths neither reseeds nor disturbs the active grain: no new onsets, identical state.
                     widened = grainTuned (node, [{ key = "gainSpread", value = 1.0 }, { key = "panSpread", value = 2.0 }, { key = "rateSpread", value = 0.5 }])
                     succeeds (GrainGraph::block (widened, first.next, 16), \spread =>
-                        expect (structuralEquals (spread.left, second.left), true)
-                        expect (structuralEquals (spread.right, second.right), true)
-                        expect (structuralEquals (spread.next, second.next), true)
+                        sameStructure (spread.left, second.left)
+                        sameStructure (spread.right, second.right)
+                        sameStructure (spread.next, second.next)
                         // The first block itself is audible and the grain is still alive.
                         expect (foldList (first.left, 0.0, \(sum, value) => sum + abs value) > 0.0, true)
                         retained = Grains::observation first.next.pool
@@ -620,12 +620,12 @@ grainCaptureBoundsJourney () =
             // Only the most recent capacity frames survive each append.
             succeeds (GrainCapture::write (big, [0.5, 0.75, 1.0, -1.0]), \wrapped =>
                 expect (wrapped.written, 2052)
-                expect (structuralEquals (wrapped.samples, [0.75, 1.0, -1.0]), true)
+                sameStructure (wrapped.samples, [0.75, 1.0, -1.0])
                 succeeds (GrainCapture::freeze wrapped, \frozen =>
                     succeeds (GrainCapture::resource (frozen, "frozen", 69.0), \resource =>
                         expect (resource.rootFrequency, 440.0)
                         expect (resource.sampleRate, 48000)
-                        expect (structuralEquals (resource.samples, frozen.samples), true))))))
+                        sameStructure (resource.samples, frozen.samples))))))
 
 registerGrainJourneys () =
     test ("grain windows and timing selectors decode exactly and refuse unsupported modes", \() => arithmetic (\() =>
@@ -649,18 +649,18 @@ registerGrainJourneys () =
         windowRows (synth::AsrWindow(attack = 0.25, release = 0.25), 9, 0.000000000000001, [{ age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 6, want = 1.0 }, { age = 7, want = 0.5 }])
         windowRows (synth::AsrWindow(attack = 0.5, release = 0.5), 5, 0.000000000000001, [{ age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 3, want = 0.5 }])
         forEachList ([{ shape = synth::AsrWindow(attack = 0.5, release = 0.5), ok = true }, { shape = synth::AsrWindow(attack = 0.25, release = 0.75), ok = true }, { shape = synth::AsrWindow(attack = 0.6, release = 0.5), ok = false }, { shape = synth::AsrWindow(attack = 0.0, release = 0.5), ok = false }, { shape = synth::AsrWindow(attack = 1.0, release = 0.0), ok = false }, { shape = synth::AsrWindow(attack = 0.5, release = 0.5000001), ok = false }, { shape = synth::AsrWindow(attack = 1.000001, release = 0.000001), ok = false }, { shape = synth::AsrWindow(attack = floatFromBits 9218868437227405312, release = 0.5), ok = false }, { shape = synth::HannWindow, ok = true }], \c => expect (GrainWindows::valid c.shape, c.ok))
-        succeeds (GrainWindows::decode (1.0, 0.25, 0.25), \shape => expect (structuralEquals (shape, synth::AsrWindow(attack = 0.25, release = 0.25)), true))
-        succeeds (GrainWindows::decode (0.0, 0.9, 0.9), \shape => expect (structuralEquals (shape, synth::HannWindow), true))
+        succeeds (GrainWindows::decode (1.0, 0.25, 0.25), \shape => sameStructure (shape, synth::AsrWindow(attack = 0.25, release = 0.25)))
+        succeeds (GrainWindows::decode (0.0, 0.9, 0.9), \shape => sameStructure (shape, synth::HannWindow))
         forEachList ([{ attack = 0.75, release = 0.5 }, { attack = 0.0, release = 0.25 }, { attack = 0.25, release = floatFromBits 9218868437227405312 }],
             \c => refusedWith (GrainWindows::decode (1.0, c.attack, c.release), "Grain attack and release must be positive fractions whose sum is at most one."))
         forEachList ([2.0, 0.5, -1.0], \mode => refusedWith (GrainWindows::decode (mode, 0.25, 0.25), "Grain window must be 0 (Hann) or 1 (ASR)."))
         // [SYNTH-ADVANCED-GRAINS-TIMING] Exponential mean in [1, 1048576] and integer maximum in [1, 1048576].
         forEachList ([{ timing = synth::ExponentialTiming(mean = 1.0, maximum = 1), ok = true }, { timing = synth::ExponentialTiming(mean = 0.5, maximum = 1), ok = false }, { timing = synth::ExponentialTiming(mean = 0.999, maximum = 9), ok = false }, { timing = synth::ExponentialTiming(mean = 1048576.0, maximum = 1048576), ok = true }, { timing = synth::ExponentialTiming(mean = 1048577.0, maximum = 9), ok = false }, { timing = synth::ExponentialTiming(mean = 1.0, maximum = 0), ok = false }, { timing = synth::ExponentialTiming(mean = 1.0, maximum = 1048577), ok = false }, { timing = synth::PeriodicTiming(period = 1, jitter = 0), ok = true }, { timing = synth::PeriodicTiming(period = 0, jitter = 0), ok = false }, { timing = synth::PeriodicTiming(period = 1048577, jitter = 0), ok = false }, { timing = synth::PeriodicTiming(period = 1048576, jitter = 1048575), ok = true }, { timing = synth::PeriodicTiming(period = 4, jitter = 4), ok = false }], \c => expect (GrainTimings::valid c.timing, c.ok))
         expect (GrainTimings::interval (synth::ExponentialTiming(mean = 10.0, maximum = 100), 1073741824), 7.0)
-        succeeds (GrainTimings::decode (1.0, 10, 0, 100), \timing => expect (structuralEquals (timing, synth::ExponentialTiming(mean = 10.0, maximum = 100)), true))
-        succeeds (GrainTimings::decode (0.0, 4, 1, 0), \timing => expect (structuralEquals (timing, synth::PeriodicTiming(period = 4, jitter = 1)), true))
+        succeeds (GrainTimings::decode (1.0, 10, 0, 100), \timing => sameStructure (timing, synth::ExponentialTiming(mean = 10.0, maximum = 100)))
+        succeeds (GrainTimings::decode (0.0, 4, 1, 0), \timing => sameStructure (timing, synth::PeriodicTiming(period = 4, jitter = 1)))
         // Inactive settings do not alter the selected distribution: exponential mode ignores the jitter field.
-        succeeds (GrainTimings::decode (1.0, 10, 600, 9600), \timing => expect (structuralEquals (timing, synth::ExponentialTiming(mean = 10.0, maximum = 9600)), true))
+        succeeds (GrainTimings::decode (1.0, 10, 600, 9600), \timing => sameStructure (timing, synth::ExponentialTiming(mean = 10.0, maximum = 9600)))
         forEachList ([{ mode = 1.0, mean = 0, jitter = 0, maximum = 100 }, { mode = 0.0, mean = 1048577, jitter = 0, maximum = 1 }, { mode = 1.0, mean = 1048577, jitter = 0, maximum = 100 }],
             \c => refusedWith (GrainTimings::decode (c.mode, c.mean, c.jitter, c.maximum), "Invalid grain timing distribution or bounds."))
         forEachList ([2.0, 0.25], \mode => refusedWith (GrainTimings::decode (mode, 4, 1, 9), timingModes ()))))
@@ -709,22 +709,22 @@ registerGrainJourneys () =
     test ("onset clocks follow the seeded exponential stream and refuse exhausted or invalid clocks", \() => arithmetic (\() =>
         forEachList ([{ at = -1, seed = 1 }, { at = 0, seed = 0 }], \c => refusedWith (GrainScheduler::prepare (c.at, synth::PeriodicTiming(period = 4, jitter = 0), c.seed), "Invalid grain clock, interval, jitter or seed."))
         succeeds (schedulerRan (synth::ExponentialTiming(mean = 10.0, maximum = 100), 1, 64), \onsets =>
-            expect (structuralEquals (onsets.positions, [0, 1, 2, 12, 35]), true)
+            sameStructure (onsets.positions, [0, 1, 2, 12, 35])
             expect (onsets.next.position == 64 && onsets.next.nextOnset == 70 && onsets.next.seed == 2078669041, true))
         // The first onset is immediate, gaps never repeat a sample and the stream survives partitions.
         succeeds (schedulerRan (synth::ExponentialTiming(mean = 7.5, maximum = 40), 99, 200), \whole =>
-            expect (structuralEquals (whole.positions, [0, 1, 6, 12, 15, 29, 41, 72, 76, 77, 85, 101, 106, 114, 116, 123, 132, 144, 150, 167, 176, 180, 182, 183, 191, 194, 196, 199]), true)
+            sameStructure (whole.positions, [0, 1, 6, 12, 15, 29, 41, 72, 76, 77, 85, 101, 106, 114, 116, 123, 132, 144, 150, 167, 176, 180, 182, 183, 191, 194, 196, 199])
             expect (whole.next.position == 200 && whole.next.nextOnset == 221 && whole.next.seed == 2020237872, true)
             expect (length whole.positions, 28)
             expect (grainStrictlyRising whole.positions, true)
             succeeds (schedulerRan (synth::ExponentialTiming(mean = 7.5, maximum = 40), 99, 64), \a =>
                 succeeds (GrainScheduler::block (a.next, 31), \b =>
                     succeeds (GrainScheduler::block (b.next, 105), \c =>
-                        expect (structuralEquals (listConcat (listConcat a.positions b.positions) c.positions, whole.positions), true)
-                        expect (structuralEquals (c.next, whole.next), true)))))
+                        sameStructure (listConcat (listConcat a.positions b.positions) c.positions, whole.positions)
+                        sameStructure (c.next, whole.next)))))
         // Periodic jitter uses the same seed stream: [period - jitter, period + jitter] gaps.
         succeeds (schedulerRan (synth::PeriodicTiming(period = 5, jitter = 3), 11, 60), \jittered =>
-            expect (structuralEquals (jittered.positions, [0, 2, 10, 16, 23, 29, 31, 37, 41, 49, 52]), true)
+            sameStructure (jittered.positions, [0, 2, 10, 16, 23, 29, 31, 37, 41, 49, 52])
             expect (jittered.next.nextOnset == 60 && jittered.next.seed == 2115326081, true)
             expect (grainStrictlyRising jittered.positions, true))
         // Zero jitter is strictly periodic for every seed.
@@ -739,11 +739,11 @@ registerGrainJourneys () =
             expect (listGet every.positions 2047 ?: -1, 2047))
         // Switching policy preserves the pending onset and seed; only later gaps use the new policy.
         succeeds (schedulerRan (synth::PeriodicTiming(period = 5, jitter = 3), 11, 20), \first =>
-                expect (structuralEquals (first.positions, [0, 2, 10, 16]), true)
+                sameStructure (first.positions, [0, 2, 10, 16])
                 expect (first.next.nextOnset == 23 && first.next.seed == 1734574184, true)
                 resumed = synth::GrainClock(position = first.next.position, nextOnset = first.next.nextOnset, timing = synth::ExponentialTiming(mean = 2.0, maximum = 6), seed = first.next.seed)
                 succeeds (GrainScheduler::block (resumed, 20), \switched =>
-                    expect (structuralEquals (switched.positions, [23, 26, 27, 30, 31, 36, 37]), true)
+                    sameStructure (switched.positions, [23, 26, 27, 30, 31, 36, 37])
                     expect (switched.next.nextOnset == 43 && switched.next.seed == 2115326081, true)))
         succeeds (GrainScheduler::prepare (9223372036854775743, synth::PeriodicTiming(period = 1048576, jitter = 0), 1), \late => refusedWith (GrainScheduler::block (late, 64), "The grain scheduler exhausted its onset clock."))
         refusedWith (GrainScheduler::block (synth::GrainClock(position = 0, nextOnset = 0, timing = synth::PeriodicTiming(period = 4, jitter = 0), seed = 1), 2049), "Invalid grain scheduler state or block size.")
@@ -752,7 +752,7 @@ registerGrainJourneys () =
             refusedWith (GrainScheduler::block (bad, 8), "Invalid grain scheduler state or block size."))
         // The refused zero-length block left the fresh clock untouched.
         refusedWith (schedulerRan (synth::PeriodicTiming(period = 4, jitter = 0), 1, 0), "Invalid grain scheduler state or block size.")
-        succeeds (schedulerRan (synth::PeriodicTiming(period = 4, jitter = 0), 1, 8), \after => expect (structuralEquals (after.positions, [0, 4]), true))
+        succeeds (schedulerRan (synth::PeriodicTiming(period = 4, jitter = 0), 1, 8), \after => sameStructure (after.positions, [0, 4]))
         controls = grainControls synth::HannWindow
         forEachList (GrainScheduler::events ([3, 9], controls), \event => expect (structuralEquals (event.controls, controls) && (event.position == 3 || event.position == 9), true))
         expect (length (GrainScheduler::events ([3, 9], controls)), 2)))

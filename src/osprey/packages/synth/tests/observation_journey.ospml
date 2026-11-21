@@ -14,7 +14,7 @@ knobSnapshotJourney () =
     valid (Parameters::apply (graph, initial, edit), \first =>
         valid (Parameters::apply (graph, first, edit(revision = 1, value = 0.25)), \second =>
             latest = SnapshotSlots::read (SnapshotSlots::publish (SnapshotSlots::publish (slot, first), second))
-            expect (structuralEquals (latest.observation, second), true)
+            sameStructure (latest.observation, second)
             expect (latest.coalesced, 1)
             expect ((SnapshotSlots::read latest.next).coalesced, 0)
             expect ((SnapshotSlots::read slot).observation.revision, 0)))
