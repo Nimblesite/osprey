@@ -44,4 +44,28 @@ theorem wavefolderPair (ops : Ops α) (x : α) :
     (Waveshapers.curve ops .FoldCurve x, Waveshapers.integral ops .FoldCurve x) =
       (ops.sin angle, ops.times (ops.binary64 0xbfe45f306dc9c883) (ops.cos angle)) := rfl
 
+/-- Every shipped waveshaper primitive is even under the scalar sign laws.
+    Consequently a divided-difference step between opposite samples cancels. -/
+theorem shaperSymmetricInterval (ops : Ops α) (neg : α → α) (shape : Curve) (x : α)
+    (absEven : ops.abs (neg x) = ops.abs x)
+    (mulNeg : ∀ a b, ops.times a (neg b) = neg (ops.times a b))
+    (negMul : ∀ a b, ops.times (neg a) b = neg (ops.times a b))
+    (involutive : ∀ a, neg (neg a) = a) (cosEven : ∀ a, ops.cos (neg a) = ops.cos a)
+    (separated : ops.less (ops.abs (ops.minus x (neg x))) ops.epsilon = false)
+    (subSelf : ∀ a, ops.minus a a = ops.literal 0)
+    (zeroRatio : ops.divide (ops.literal 0) (ops.minus x (neg x)) = ops.literal 0) :
+    Waveshapers.shaped ops ⟨true, shape⟩ x (neg x) = ops.literal 0 := by
+  have square : ops.times (neg x) (neg x) = ops.times x x := by
+    rw [mulNeg, negMul, involutive]
+  have even : Waveshapers.integral ops shape (neg x) = Waveshapers.integral ops shape x := by
+    cases shape with
+    | TanhCurve => unfold Waveshapers.integral NonlinearMath.tanhIntegral; dsimp only; rw [absEven]
+    | HardCurve => unfold Waveshapers.integral NonlinearMath.hardIntegral; dsimp only; rw [absEven, square]
+    | CubicCurve =>
+      unfold Waveshapers.integral NonlinearMath.cubicIntegral
+      dsimp only
+      rw [absEven, square, mulNeg, mulNeg, negMul, involutive]
+    | FoldCurve => unfold Waveshapers.integral NonlinearMath.foldIntegral; dsimp only; rw [mulNeg, cosEven]
+  rw [shaperQuotient ops shape x (neg x) separated, even, subSelf, zeroRatio]
+
 end ProductionFft

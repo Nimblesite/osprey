@@ -47,7 +47,7 @@ check_export() {
         printf '%s\t%s\n' "$out/$file" "$name" | "$checker.$backend"
     fi
 }
-for theorem in hardClipPositiveInterval tanhUpperPlateau upperClipRails wavefolderPair rotationComponents rotationUnitPower realSamplesConjugate addedDftBin grainAsrBoundarySamples grainAsrInterior windowedModulation windowedZeroIndex supportedTransformDepths transformSchedule overlapNecessary hannEnergyEighth hannEnergyQuarter delayPropagation delayFullTraversal heardTimeClamped dialMovement canvasGrabOffset envelopeSustain envelopeReleased stridedQuartet additiveSample additivePeriod rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
+for theorem in shaperSymmetricInterval hardClipPositiveInterval tanhUpperPlateau upperClipRails wavefolderPair rotationComponents rotationUnitPower realSamplesConjugate addedDftBin grainAsrBoundarySamples grainAsrInterior windowedModulation windowedZeroIndex supportedTransformDepths transformSchedule overlapNecessary hannEnergyEighth hannEnergyQuarter delayPropagation delayFullTraversal heardTimeClamped dialMovement canvasGrabOffset envelopeSustain envelopeReleased stridedQuartet additiveSample additivePeriod rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
     name="ProductionFft.$theorem"
     LEAN_PATH="$out:$lean_path" "$exporter" ProductionFft -- "$name" > "$out/$theorem.ndjson"
     for backend in gc arc wasm; do
@@ -77,6 +77,7 @@ reject_edit() {
     awk -F: -v start="$start" -v end="$end" '/ProductionFft.lean:[0-9]+:[0-9]+: error:/ && $2 >= start && $2 < end { rejected=1 } END {exit !rejected}' "$out/rejected.log"
     echo "REJECT $theorem production mutation"
 }
+reject_edit shaperSymmetricInterval 's/x \* x \* x \* x \/ 12.0/x * x * x \/ 12.0/' "${source%/*}/nonlinear_math.ospml"
 reject_edit hardClipPositiveInterval 's/false => a - 0.5/false => a * 0.5/' "${source%/*}/nonlinear_math.ospml"
 reject_edit tanhUpperPlateau 's/true => 20.0/true => x/' "${source%/*}/nonlinear_math.ospml"
 reject_edit upperClipRails 's/match x >= 1.0/match x <= 1.0/' "${source%/*}/nonlinear_math.ospml"
