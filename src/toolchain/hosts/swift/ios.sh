@@ -4,11 +4,12 @@
 # OspreyShared library links it as on macOS, and the bundle that results is installed with
 # simctl — only `--launch` opens Simulator.app. [NATIVE-SHM-VIEW]
 #   OSPREY_SWIFT_APP=<folder> [OSPREY_IOS_ID=<bundle id>] [OSPREY_IOS_NAME=<name>] \
-#     [OSPREY_IOS_SIMULATOR=<device>] ios.sh [ios-sim|ios] [--view-check|--launch|--golden]...
+#     [OSPREY_IOS_SIMULATOR=<device>] ios.sh [ios-sim|ios] [--view-check|--open-check|--launch|--golden]...
 # Several actions run in order on one build. `--golden` (ios-sim) launches the app, waits for it to settle and compares the screen, without
 # its system bars, with the application's `goldens/ios/<width>-ready.png` (scripts/mobile/goldens.py).
 # `--view-check` (ios-sim) runs the headless journey with no person present and fails unless it
-# reads OSPREY_IOS_VIEW_OK; `--launch` (ios-sim) installs the app and opens it in the Simulator. The default
+# reads OSPREY_IOS_VIEW_OK; `--open-check` (ios-sim) only requires any application to open to a checked frame with
+# controls, and reads the same verdict; `--launch` (ios-sim) installs the app and opens it in the Simulator. The default
 # application is Tally.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -21,10 +22,10 @@ name=${OSPREY_IOS_NAME:-$(basename "$app")}
 identifier=${OSPREY_IOS_ID:-org.ospreylang.$name}
 target=${1:-ios-sim}
 actions=("${@:2}")
-usage() { echo "Usage: ios.sh [ios-sim|ios] [--view-check|--launch|--golden]..." >&2; exit 2; }
+usage() { echo "Usage: ios.sh [ios-sim|ios] [--view-check|--open-check|--launch|--golden]..." >&2; exit 2; }
 [[ $target == ios-sim || $target == ios ]] || usage
 for action in ${actions[@]+"${actions[@]}"}; do
-    case "$target/$action" in ios-sim/--view-check|ios-sim/--launch|ios-sim/--golden) ;; *) usage ;; esac
+    case "$target/$action" in ios-sim/--view-check|ios-sim/--open-check|ios-sim/--launch|ios-sim/--golden) ;; *) usage ;; esac
 done
 
 # The runtime and the application archive: the same ARC runtime and ABI macOS links.
@@ -107,13 +108,13 @@ golden() {
 
 # The headless journey: launch with the console attached and read the verdict back.
 view_check() {
-    local log="$build/view-check.log" launched seconds=0 written
+    local check=${1:---view-check} log="$build/view-check.log" launched seconds=0 written
     xcrun simctl terminate "$device" "$identifier" 2>/dev/null || true
     # The app also writes its verdict to a file: simctl's console capture sometimes drops the app's
     # output, so either source counts. A verdict left by an earlier run never does.
     written=$(xcrun simctl get_app_container "$device" "$identifier" data 2>/dev/null)/Documents/view-check.txt
     rm -f "$written"
-    xcrun simctl launch --console "$device" "$identifier" --resources "$app" --view-check >"$log" 2>&1 &
+    xcrun simctl launch --console "$device" "$identifier" --resources "$app" "$check" >"$log" 2>&1 &
     launched=$!
     while kill -0 "$launched" 2>/dev/null && (( seconds < 180 )); do
         sleep 1; seconds=$((seconds + 1))
@@ -137,5 +138,6 @@ for action in ${actions[@]+"${actions[@]}"}; do
         --launch) launch ;;
         --golden) golden ;;
         --view-check) view_check ;;
+        --open-check) view_check --open-check ;;
     esac
 done

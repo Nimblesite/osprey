@@ -9,9 +9,9 @@ include Makefile
 
 .PHONY: bank casting casting-headless casting-update examples inbox tally tally-headless
 
-## bank: Talon Bank in the iPhone simulator with no person present: a first frame and its first control pressed.
+## bank: Talon Bank in the iPhone simulator with no person present: it must open to a checked frame with controls.
 bank:
-	$(BANK_IOS) bash src/toolchain/hosts/swift/ios.sh ios-sim --view-check
+	$(BANK_IOS) bash src/toolchain/hosts/swift/ios.sh ios-sim --open-check
 
 ## casting: Run the casting player's native UI journey with the simulator visible.
 casting:

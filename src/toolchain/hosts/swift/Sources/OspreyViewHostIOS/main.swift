@@ -7,15 +7,17 @@ import SwiftUI
 // OspreyShared library the macOS host runs. It opens the application's archive over the shared
 // frame — platform "ios", home the app's Documents folder, dark from the system — and shows its
 // root region with this device's native components. No application state, screen or policy
-// lives here. `--view-check` runs SelfCheck with no person present, reports the verdict on
-// stdout and in the app's Documents, and exits; macOS's entry is Sources/OspreyViewHost.
+// lives here. `--view-check` runs Tally's SelfCheck journey and `--open-check` checks that any
+// application opens to a checked frame with controls; either runs with no person present, reports
+// the verdict on stdout and in the app's Documents, and exits. macOS's entry is Sources/OspreyViewHost.
 
 let launch = HostLaunch.ready(from: Array(CommandLine.arguments.dropFirst()))
-guard launch.contains("--view-check") else {
+let opening = launch.contains("--open-check")
+guard opening || launch.contains("--view-check") else {
     IOSHostApp.main()
     exit(0)
 }
-exit(MainActor.assumeIsolated { IOSCheck.run() })
+exit(MainActor.assumeIsolated { IOSCheck.run(opening ? SelfCheck.opened() : SelfCheck.run()) })
 
 struct IOSHostApp: App {
     @StateObject private var store = makeStore(arguments: HostLaunch.arguments(from: Array(CommandLine.arguments.dropFirst())),
@@ -31,8 +33,7 @@ struct IOSHostApp: App {
 /// The headless verdict, written where the launch that asked for the check reads it back.
 @MainActor
 enum IOSCheck {
-    static func run() -> Int32 {
-        let verdict = SelfCheck.run()
+    static func run(_ verdict: Int32) -> Int32 {
         let marker = verdict == 0 ? "OSPREY_IOS_VIEW_OK" : "OSPREY_IOS_VIEW_FAILED"
         print(marker)
         guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
