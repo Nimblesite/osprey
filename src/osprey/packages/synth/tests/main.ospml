@@ -297,7 +297,31 @@ test ("non-finite or runaway node output is refused, finite output up to the bou
     forEachList ([0.0, -0.0, 0.5, -1.0, 1000000.0, -1000000.0, 0.000000000001], \value => succeeds (synth::RenderInputs::sample (framed value, 4), \got => expect (got == value, true)))
     renderRefused (synth::RenderInputs::sample (framed 0.5, 5))))
 
+// [SYNTH-ADVANCED-CORE-PORTS] Inspect the actual inlet selected by each parameter.
+checkRule (n, key, wanted) = expect (structuralEquals (Descriptors::modulation (n, key), wanted), true)
+
+descriptorRoutes () =
+    succeeds (synth::Wavetables::classic (64, 3), \table =>
+        n = Components::wavetable (1, table, 440.0)
+        checkRule (n, "position", synth::Replacing(inlet = 0))
+        checkRule (n, "amplitude", synth::Multiplying(inlet = 1))
+        checkRule (n, "frequency", synth::Exponential(inlet = 2, octaves = 2.0))
+        checkRule (n, "phase", synth::Unmodulated))
+    filter = Components::modulatedLowpass (2, 440.0, 0.7)
+    gain = Components::modulatedGain (3, 2, 0.5)
+    checkRule (filter, "cutoff", synth::Multiplying(inlet = 1))
+    checkRule (filter, "resonance", synth::Unmodulated)
+    checkRule (gain, "gain", synth::Multiplying(inlet = 1))
+    checkRule (gain, "frequency", synth::Unmodulated)
+    checkRule (Components::gain (4, 1.0), "gain", synth::Unmodulated)
+    graph = hostGraph ()
+    valid (Graphs::node (graph, 2), \n => checkRule (n, "vst:100", synth::Unmodulated))
+    valid (Graphs::node (reconnected graph, 2), \n =>
+        checkRule (n, "vst:100", synth::Replacing(inlet = 1))
+        checkRule (n, "vst:101", synth::Unmodulated))
+
 test ("every component parameter maps a 0-1 control onto its range and back, logarithmic for frequencies and times", \() => arithmetic (\() =>
+    descriptorRoutes ()
     expect (length (adapted ()), 24)
     forEachList (adapted (), \n => forEachList (n.parameters, adapter))
     every = foldList (adapted (), [], \(all, n) => listConcat all n.parameters)
