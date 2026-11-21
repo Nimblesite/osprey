@@ -232,7 +232,9 @@ module Arrangements
         others = filterList (play.recordings, \item => !sameTake (item, sound))
         match lasting (until, sound)
             true => play(recordings = listPrepend others take)
-            false => play(recordings = others, made = listAppend play.made take)
+            false => match ui::Lists::any (play.made, \item => same (item.struck, take.struck))
+                true => play(recordings = others)
+                false => play(recordings = others, made = listAppend play.made take)
 
     mixedWindow (song, buses, voice, next, from, until) =
         lanes = toList (map (range (0, satAdd 1 (satMul 2 (length next.sends))), \lane => activeLane (next.sounding, lane, from, until)))

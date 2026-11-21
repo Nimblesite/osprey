@@ -765,6 +765,13 @@ streamedRepeatJourney () =
             reads (listGet attack.playing.tracks 0, \track =>
                 expect (length track.made, 0)
                 expect (length track.recordings, 1)
+                // A maker can publish the same note before the streamed recording finishes.
+                succeeds (daw::Arrangements::lanesOf (song, voice, [tap], first), \expected =>
+                    published = track(made = [daw::Made(struck = first, chord = expected)])
+                    prior = attack.playing
+                    ready = prior(tracks = [published])
+                    succeeds (daw::Playback::step (song, ready, 5400, true), \done =>
+                        reads (listGet done.playing.tracks 0, \last => expect (length last.made, 1))))
                 succeeds (daw::Arrangements::focused (song, voice, track, 128), \edited => expect (length edited.recordings, 0)))
             succeeds (daw::Playback::step (song, attack.playing, 5400, true), \release =>
                 reads (listGet release.playing.tracks 0, \track =>
