@@ -177,10 +177,7 @@ letters text = Drive::letters (driven, text)
 press label = post (\d => Drive::press (d, label))
 choose (label, key) = post (\d => Drive::choose (d, label, key))
 pointer (x, y, down) = post (\d => Drive::pointer (d, x, y, down))
-tapAt (label, fraction) =
-    p = Semantics::point (element label, fraction)
-    pointer (p.pointX, p.pointY, true)
-    pointer (p.pointX, p.pointY, false)
+tapAt (label, fraction) = Drive::tapAt (pointer, element label, fraction)
 tap label = tapAt (label, 0.5)
 hover label =
     p = Semantics::point (element label, 0.5)

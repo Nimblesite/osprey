@@ -331,7 +331,7 @@ tick elapsed = post (\d => Drive::frame (d, elapsed))
 openedPath path = post (\d => Drive::opened (d, path))
 elements () = driven.drivenSeen.renderedAccess
 elementAt label = Semantics::element (elements (), label)
-tapAt (label, fraction) = crossed (elementAt label, fraction, \p => clickAt (p.pointX, p.pointY))
+tapAt (label, fraction) = Drive::tapAt (pointer, elementAt label, fraction)
 
 clickAt (x, y) =
     pointer (x, y, true)
@@ -359,6 +359,9 @@ retiredItem (label) =
 levelAt row =
     tapAt ("Level", row.fraction)
     expect (levelOf (elements ()), row.want)
+    machine = Drive::holding driven
+    expect (Drive::numberNear (machine, "level", row.want + 0.0000001), true)
+    expect (Drive::numberNear (machine, "level", row.want - 0.00001), false)
 
 // The slider's reading off the driven view.
 levelled want = expect (levelOf (elements ()), want)

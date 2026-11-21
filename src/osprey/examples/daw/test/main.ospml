@@ -60,10 +60,7 @@ post step = hosted (\() => kept (step (driven ())))
 
 pointer (x, y, down) = post (\d => Drive::pointer (d, x, y, down))
 
-tapAt (label, fraction) =
-    at = Semantics::point (element label, fraction)
-    pointer (at.pointX, at.pointY, true)
-    pointer (at.pointX, at.pointY, false)
+tapAt (label, fraction) = Drive::tapAt (pointer, element label, fraction)
 
 tap label = tapAt (label, 0.5)
 
@@ -81,24 +78,13 @@ changed before = apart (described (), before)
 
 elements () = Canvases::semantics (machine ())
 
-labels () = Semantics::labels (elements ())
-
 element label = Semantics::element (elements (), label)
 
-// A check that names what was missing, so a silent false still says why it failed.
-reports (ok, missing) = match ok
-    true => true
-    false =>
-        print "# ${missing}"
-        false
-
-offers label = reports (Semantics::offered (elements (), label), "not offered: ${label}; the tree offers ${labels ()}")
+offers label = Drive::offers (elements (), label)
 
 offered label = expect (offers label, true)
 
-letters text =
-    seen = (driven ()).drivenSeen
-    reports (Views::letters (seen, text), "not lettered: ${text}; the artboard letters ${Views::lettered seen}")
+letters text = Drive::letters (driven (), text)
 
 // The console's readout `name`, read by `read`, against what it must show.
 shows (read, name, expected) = expect (read (machine (), name), expected)
@@ -107,9 +93,7 @@ flag (name, expected) = shows (Machines::flag, name, expected)
 
 knobText (name, expected) = shows (Machines::text, name, expected)
 
-knobNumber (name, expected) =
-    actual = Machines::number (machine (), name)
-    expect (actual - expected < 0.000001 && expected - actual < 0.000001, true)
+knobNumber (name, expected) = expect (Drive::numberNear (machine (), name, expected), true)
 
 layer (name, expected) = shows (Machines::current, name, expected)
 

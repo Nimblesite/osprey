@@ -55,10 +55,7 @@ post step = hosted (\() => kept (step driven))
 pointer (x, y, down) = post (\d => Drive::pointer (d, x, y, down))
 
 // A click at `fraction` across the element labelled `label`, as a pointer or a screen reader would.
-tapAt (label, fraction) =
-    at = Semantics::point (element label, fraction)
-    pointer (at.pointX, at.pointY, true)
-    pointer (at.pointX, at.pointY, false)
+tapAt (label, fraction) = Drive::tapAt (pointer, element label, fraction)
 
 tap label = tapAt (label, 0.5)
 
@@ -85,9 +82,7 @@ flag (name, expected) = knob (Machines::flag, name, expected)
 
 knobText (name, expected) = knob (Machines::text, name, expected)
 
-knobNumber (name, expected) =
-    actual = Machines::number (machine (), name)
-    expect (actual - expected < 0.000001 && expected - actual < 0.000001, true)
+knobNumber (name, expected) = expect (Drive::numberNear (machine (), name, expected), true)
 
 layer (name, expected) = knob (Machines::current, name, expected)
 
