@@ -467,7 +467,17 @@ arrangedAddedBuses buses =
     arrangedNear (arrangedAt (buses.right, 0), -0.7071067811865475)
     arrangedNear (arrangedAt (buses.right, 1), -0.7062854736060888)
 
+// A fully noisy hit still passes through the same signed-zero sum at subnormal velocity.
+arrangedNoiseFloor () =
+    note = daw::Note(pitch = 90, start = 0.0, length = 0.25, velocity = floatFromBits 1)
+    hit = daw::DrumInstrument(hit = daw::Hit(sweep = 0.7, noise = 1.0, colour = 0.3, decay = 0.5))
+    succeeds (daw::NoteRenders::render (note, 120.0, 48000.0, hit), \samples =>
+        expect (length samples, 24000)
+        expect (floatBits (arrangedAt (samples, 99)), 1)
+        expect (floatBits (arrangedAt (samples, 23999)), floatBits (-0.0)))
+
 arrangementsJourney () =
+    arrangedNoiseFloor ()
     silent = daw::Arrangements::empty
     expect (silent.left, [])
     expect (silent.right, [])

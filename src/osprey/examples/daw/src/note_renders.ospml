@@ -115,16 +115,32 @@ module NoteRenders
 
     rattle (note, noteSpan, hit) = synth::ExciterConfig(strength = ArrangeMath::scaled (note.velocity, hit.noise), duration = noteSpan.total, interval = 0, excitation = synth::NoiseExcitation(colour = hit.colour))
 
-    drumStep (note, noteSpan, rate, hit, run, frame) =
+    drumStep (note, rate, hit, noise, run, frame) =
         tone = synth::PhaseOperators::next (body (note, rate, hit, toFloat frame), run.held.one, 0.0, 0.0)
-        burst = synth::Exciters::next (rattle (note, noteSpan, hit), run.held.other)
+        burst = synth::Exciters::next (noise, run.held.other)
         ran (run, VoicePair(one = tone.next, other = burst.next), tone.sample + burst.sample)
+
+    mixedDrum (note, span, rate, hit, noise, held) = folded (span, VoicePair(one = synth::PhaseOperators::initial, other = held), \(run, frame) => drumStep (note, rate, hit, noise, run, frame))
+
+    noiseStep (noise, run) =
+        burst = synth::Exciters::next (noise, run.held)
+        ran (run, burst.next, burst.sample)
+
+    drumFrames (note, span, rate, hit, noise) =
+        held = synth::Exciters::initial (satAdd note.pitch 1)
+        match hit.noise == 1.0
+            false => mixedDrum (note, span, rate, hit, noise, held)
+            true => synth::Outcomes::carried (folded (span, held, \(run, _) => noiseStep (noise, run)), \samples =>
+                // A silent carrier can change the sign of a negative zero in the sum.
+                match ui::Lists::any (samples, \x => floatBits x == floatBits (-0.0))
+                    true => mixedDrum (note, span, rate, hit, noise, held)
+                    false => Success(value = samples))
 
     drummed (note, noteSpan, rate, hit) = match hit.noise >= 0.0 && hit.noise <= 1.0 && hit.sweep >= 0.0 && hit.sweep <= 8.0 && hit.decay >= 0.01 && hit.decay <= 1.0
         false => Error(message = "Drum noise must be 0 to 1, sweep 0 to 8 and decay 0.01 to 1 s.")
         true => match PatchVoices::told (synth::PhaseOperators::configure (body (note, rate, hit, 0.0)))
             Error why => Error(message = why)
-            Success _ => synth::Outcomes::carried (PatchVoices::told (synth::Exciters::configure (rattle (note, noteSpan, hit))), \_ => folded (noteSpan, VoicePair(one = synth::PhaseOperators::initial, other = synth::Exciters::initial (satAdd note.pitch 1)), \(run, frame) => drumStep (note, noteSpan, rate, hit, run, frame)))
+            Success _ => synth::Outcomes::carried (PatchVoices::told (synth::Exciters::configure (rattle (note, noteSpan, hit))), \noise => drumFrames (note, noteSpan, rate, hit, noise))
 
     stringed (note, noteSpan, rate, instrument) = match loop (rate, note)
         Error why => Error(message = why)
