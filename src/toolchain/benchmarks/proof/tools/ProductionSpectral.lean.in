@@ -119,6 +119,56 @@ theorem stridedQuartet (ops : Ops α) (values : List (Bin α)) (first stride : N
   cases binAt values first <;> cases binAt values (first + stride) <;>
     cases binAt values (first + stride + stride) <;> cases binAt values (first + stride + stride + stride) <;> rfl
 
+/-- Four successive analysis or synthesis windows at one quarter-window spacing. -/
+def hannEnergy4 (ops : Ops α) (start hop size : α) : α :=
+  let square (i : α) := let w := SpectralMath.hann ops i size; ops.times w w
+  let i₁ := ops.plus start hop
+  let i₂ := ops.plus i₁ hop
+  let i₃ := ops.plus i₂ hop
+  ops.plus (ops.plus (square start) (square i₁)) (ops.plus (square i₂) (square i₃))
+
+/-- Half-amplitude cosine at the sample's angle. This gives the assumptions on
+    the primitive trig evaluations independently of the production subtraction. -/
+def halfCos (ops : Ops α) (i size : α) :=
+  ops.times ops.half (ops.cos (ops.ieeeDivide (ops.times ops.tau i) size))
+
+structure HannLaws (ops : Ops α) (neg : α → α) : Prop where
+  opposite : ∀ x, ops.minus ops.half (neg x) = ops.plus ops.half x
+  assoc : ∀ a b c, ops.plus (ops.plus a b) c = ops.plus a (ops.plus b c)
+  comm : ∀ a b, ops.plus a b = ops.plus b a
+  squares : ∀ a b, let sq x := ops.times x x
+    ops.plus (sq (ops.minus a b)) (sq (ops.plus a b)) =
+      ops.plus (ops.plus (sq a) (sq a)) (ops.plus (sq b) (sq b))
+
+def quarterPhases (ops : Ops α) (neg : α → α) (start hop size : α) : Prop :=
+  ∃ c s, halfCos ops start size = c ∧ halfCos ops (ops.plus start hop) size = neg s ∧
+    halfCos ops (ops.plus (ops.plus start hop) hop) size = neg c ∧
+    halfCos ops (ops.plus (ops.plus (ops.plus start hop) hop) hop) size = s ∧
+    ops.plus (ops.times c c) (ops.times s s) = ops.times ops.half ops.half
+
+/-- Smith (9.45). Opposite cosines cancel and the four squared production
+    window values sum to six times one half squared. -/
+theorem hannEnergyQuarter (ops : Ops α) (neg : α → α) (laws : HannLaws ops neg)
+    (start hop size : α) (angles : quarterPhases ops neg start hop size) :
+    hannEnergy4 ops start hop size = Synthesis.sixSquares ops.plus (fun x => ops.times x x) ops.half := by
+  obtain ⟨c, s, h₀, h₁, h₂, h₃, circle⟩ := angles
+  unfold hannEnergy4 SpectralMath.hann
+  simp only [halfCos] at h₀ h₁ h₂ h₃
+  simp only [h₀, h₁, h₂, h₃, laws.opposite]
+  exact Synthesis.hannQuarterEnergy ops.plus ops.minus (fun x => ops.times x x)
+    laws.assoc laws.comm laws.squares ops.half c s circle
+
+/-- At N/8 spacing, the four even shifts and the four odd shifts each give
+    the quarter-hop energy, for twelve times one half squared in total. -/
+theorem hannEnergyEighth (ops : Ops α) (neg : α → α) (laws : HannLaws ops neg)
+    (start hop size : α) (even : quarterPhases ops neg start (ops.plus hop hop) size)
+    (odd : quarterPhases ops neg (ops.plus start hop) (ops.plus hop hop) size) :
+    let energy := Synthesis.sixSquares ops.plus (fun x => ops.times x x) ops.half
+    ops.plus (hannEnergy4 ops start (ops.plus hop hop) size)
+      (hannEnergy4 ops (ops.plus start hop) (ops.plus hop hop) size) = ops.plus energy energy := by
+  dsimp only
+  rw [hannEnergyQuarter ops neg laws _ _ _ even, hannEnergyQuarter ops neg laws _ _ _ odd]
+
 /-- Reciprocal of the squared-Hann overlap gain, in the production evaluation order. -/
 theorem overlapNormalization (ops : Ops α) (size hop : α) :
     SpectralStreams.overlapScale ops size hop =
