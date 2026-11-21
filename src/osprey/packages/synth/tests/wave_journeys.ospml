@@ -182,10 +182,14 @@ harmonicTone (fundamental, n) = partialsTone (fundamental, 6, n)
 // Blend of two 500 Hz sines at levels m and s lands on the geometric path exp((1 - a) ln m + a ln s), within 5%.
 blendLanded (c) = near (morphLevel (morphConfig (c.a, synth::Blend), { main = \n => formantTone (c.m, n), side = \n => formantTone (c.s, n) }, 500.0) / exp ((1.0 - c.a) * ln c.m + c.a * ln c.s), 1.0, 0.05)
 
-// The 1.875 kHz : 937.5 Hz level ratio of the main vowel under the side vowel's envelope at amount a.
-envelopeTilt a = match spectralRendered (morphConfig (a, synth::Envelope), { main = formantVoice, side = \n => formantVoiceAt (1875.0, n) })
-    Error _ => -1.0
-    Success run => formantLevel (run.samples, 1875.0) / formantLevel (run.samples, 937.5)
+// Measure both resonances and the gap between harmonics from the same rendered vowel.
+envelopeLevels a = match spectralRendered (morphConfig (a, synth::Envelope), { main = formantVoice, side = \n => formantVoiceAt (1875.0, n) })
+    Error why =>
+        expect (synth::Faults::detail why, "a rendered vowel")
+        { low = 1.0, high = 1.0 }
+    Success run =>
+        expect (formantLevel (run.samples, 1015.625) / 256.0 < 0.000001, true)
+        { low = formantLevel (run.samples, 937.5), high = formantLevel (run.samples, 1875.0) }
 
 // Six main harmonics against three side harmonics: three pairs glide, the main's harmonics 4-6 fade by 1 - a where they stand.
 orphansLanded (c) = match spectralRendered (morphConfig (c.a, synth::Partial), { main = \n => partialsTone (220.0, 6, n), side = \n => partialsTone (330.0, 3, n) })
@@ -395,19 +399,17 @@ registerWaveJourneys () =
         // Blend walks the geometric path: 0.5 at 0, sqrt(0.5 x 0.05) = 0.158 halfway (a crossfade would give 0.275), 0.05 at 1.
         forEachList ([{ m = 1.0, s = 0.01, a = 0.5 }, { m = 0.2, s = 0.8, a = 0.5 }, { m = 0.4, s = 0.4, a = 0.3 }, { m = 0.9, s = 0.1, a = 0.1 }, { m = 0.05, s = 0.6, a = 0.8 }, { m = 0.3, s = 0.03, a = 0.66 }], blendLanded)
         // Envelope tilt rises monotonically with the amount, from the main vowel's own shape to the side's.
-        tilts = mapList ([0.0, 0.25, 0.5, 0.75, 1.0], envelopeTilt)
+        levels = mapList ([0.0, 0.25, 0.5, 0.75, 1.0], envelopeLevels)
+        tilts = mapList (levels, \level => level.high / level.low)
         forEachList ([0, 1, 2, 3], \i => expect ((listGet tilts (satAdd i 1) ?: 0.0) > (listGet tilts i ?: 0.0) * 1.2, true))
         expect ((listGet tilts 0 ?: 9.0) < 0.2 && (listGet tilts 4 ?: 0.0) > 5.0, true)
         forEachList ([{ a = 0.0, want = 0.5 }, { a = 0.25, want = 0.2812 }, { a = 0.5, want = 0.1581 }, { a = 0.75, want = 0.0889 }, { a = 1.0, want = 0.05 }],
             \c => near (morphLevel (morphConfig (c.a, synth::Blend), tones, 500.0) / c.want, 1.0, 0.05))
         // Envelope: the main voice's harmonics (resonance 1 kHz) take on the side voice's resonance at 1.875 kHz.
-        vowels = { main = formantVoice, side = \n => formantVoiceAt (1875.0, n) }
-        own = { low = morphLevel (morphConfig (0.0, synth::Envelope), vowels, 937.5), high = morphLevel (morphConfig (0.0, synth::Envelope), vowels, 1875.0) }
-        crossed = { low = morphLevel (morphConfig (1.0, synth::Envelope), vowels, 937.5), high = morphLevel (morphConfig (1.0, synth::Envelope), vowels, 1875.0) }
+        own = listGet levels 0 ?: { low = 0.0, high = 0.0 }
+        crossed = listGet levels 4 ?: own
         expect (own.low > own.high * 5.0, true)
         expect (crossed.high > crossed.low * 5.0, true)
-        // The harmonics stay the main voice's: no energy appears between them.
-        forEachList ([0.0, 0.5, 1.0], \a => expect (morphLevel (morphConfig (a, synth::Envelope), vowels, 1015.625) < 0.000001, true))
         forEachList ([{ a = -0.1, ok = false }, { a = 1.1, ok = false }, { a = 0.0, ok = true }, { a = 1.0, ok = true }], \c => expect (configured (morphConfig (c.a, synth::Blend)), c.ok))
         forEachList ([{ a = 0.0, b = 0.0, t = 0.5, want = 0.0 }, { a = 0.5, b = 0.05, t = 0.0, want = 0.5 }, { a = 1.0, b = 4.0, t = 0.5, want = 2.0 }], \c => near (SpectralMath::logBlend (c.a, c.b, c.t), c.want, 0.0000001))
         forEachList ([{ w = 4.0, o = 1.0, t = 0.5, want = 2.0 }, { w = 4.0, o = 1.0, t = 0.0, want = 1.0 }, { w = 1.0, o = 0.0, t = 1.0, want = 1.0 }, { w = 1000.0, o = 1.0, t = 1.0, want = 16.0 }], \c => near (SpectralMath::envelopeMorph (c.w, c.o, c.t), c.want, 0.0000001))))
