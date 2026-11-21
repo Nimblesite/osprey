@@ -12,52 +12,21 @@ import synth::Outcomes
 module NoteCache
     ok value = Success(value = value)
 
-    // Everything a note's lanes depend on besides the note itself, as text.
-    keyText (song, voice) = SongFiles::encode (song(title = "", buses = [], tracks = [voice(name = "", gain = 1.0, pan = 0.0, bus = "", positions = [], notes = [])]))
-
-    keyPath (folder, tag, index) = "${folder}/key.${tag}.${index}.txt"
-
-    noted (file, text) = match writeFile file text
-        Error why => Error(message = why)
-        Success _ => ok (Shell::quoted file)
-
-    keyed (song, folder, tag, index) = match listGet song.tracks index
-        Error _ => Error(message = "A track is missing.")
-        Success voice => Outcomes::carried (keyText (song, voice), \text => noted (keyPath (folder, tag, index), text))
-
-    digest line = take line 16
-
-    named (folder, text) = mapList (filterList (lines text, \line => length line >= 16), \line => "${folder}/notes/${digest line}")
-
-    summed (folder, sums) = match readFile sums
-        Error why => Error(message = why)
-        Success text => ok (named (folder, text))
-
-    hashed (folder, tag, paths) =
-        sums = "${folder}/sums.${tag}.txt"
-        Outcomes::carried (Shell::ran (20, "shasum ${join paths " "} > ${Shell::quoted sums} && rm ${join paths " "}"), \_ => summed (folder, sums))
-
-    // Each track's note folder, in track order; `tag` keeps this maker's working files apart from the others'.
-    folders (song, folder, tag) = Outcomes::carried (SendRenders::collect (toList (range (0, length song.tracks)), \index => keyed (song, folder, tag, index)), \paths => hashed (folder, tag, paths))
-
-    texts song = SendRenders::collect (song.tracks, \voice => keyText (song, voice))
+    texts song = SendRenders::collect (song.tracks, \voice => SongFiles::noteCacheKey (song, voice))
 
     labelled (dir, text) = match readFile "${dir}key.txt"
         Error _ => false
         Success label => label == text
 
-    // The note folder whose label is this track's key; none reads as a folder that holds nothing.
-    home (entries, text) = match listGet (filterList (entries, \dir => endsWith dir "/" && labelled (dir, text))) 0
-        Error _ => ""
+    // A new track has the same content address in the player and every maker, even before its folder exists.
+    home (folder, entries, text) = match ui::Lists::find (entries, \dir => endsWith dir "/" && labelled (dir, text))
+        Error _ => "${folder}/notes/${registry::Sha256::ofString text}"
         Success dir => take dir (satSub (length dir) 1)
 
-    listing (folder, keys) = match listDir "${folder}/notes"
-        Error _ => []
-        Success entries => mapList (keys, \text => home (entries, text))
-
-    (** Each track's note folder as the makers labelled it, in track order, found without starting a process:
-        live play stays single-threaded, where the heap needs no lock. *)
-    export found (song, folder) = Outcomes::carried (texts song, \keys => ok (listing (folder, keys)))
+    (** Each track's note folder, in track order, including folders a concurrent maker will publish. *)
+    export found (song, folder) = Outcomes::carried (texts song, \keys =>
+        entries = listDir "${folder}/notes" ?: []
+        ok (mapList (keys, \text => home (folder, entries, text))))
 
     path (dir, note) = "${dir}/${note.pitch}_${note.length}_${note.velocity}.st"
 
@@ -80,7 +49,9 @@ module NoteCache
             Success _ => taken (dir, play, cue.note)
 
     (** `play` with every kept note that is due before frame `until` read from `dir`, so playing it makes nothing. *)
-    export seeded (dir, play, until) = foldList (filterList (play.pending, \cue => cue.due < until), play, \(held, cue) => seed (dir, held, cue))
+    export seeded (dir, play, until) = match dir == ""
+        true => play
+        false => foldList (filterList (play.pending, \cue => cue.due < until), play, \(held, cue) => seed (dir, held, cue))
 
     first (jobs, track, cue) = match length (filterList (jobs, \job => job.track == track && Arrangements::same (job.note, cue.note))) > 0
         true => jobs
@@ -173,6 +144,6 @@ module NoteCache
         yet, in song order. Maker 0 first removes the note folders no track uses. Yields how many it made. *)
     export warmed (song, folder, worker, workers) = match worker >= 0 && worker < workers && workers <= 64
         false => Error(message = "A maker needs its number, from 0, and the count of makers, at most 64.")
-        true => Outcomes::carried (folders (song, folder, "w${worker}"), \dirs => Outcomes::carried (prepared (song, folder, dirs, worker), \_ =>
+        true => Outcomes::carried (found (song, folder), \dirs => Outcomes::carried (prepared (song, folder, dirs, worker), \_ =>
             all = jobs song
             ok (worked (song, dirs, "w${worker}", all, share (all, worker, workers)))))

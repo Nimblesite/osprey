@@ -1407,6 +1407,19 @@ test ("Silt Relay opens its wired synth families and sounds its granular and MID
 
 test ("every synthesis family plays a real, finite, repeatable note through the song renderer, pitched ones in tune", \() => Runtime::guarded familiesJourney)
 
+// [DAW-TRANSPORT-LIVE-SPEED] Only changes to the sound of an individual note require it to be made again.
+noteCacheIdentityJourney () =
+    voice = keysTrack ()
+    song = timeline [voice]
+    succeeds (daw::SongFiles::noteCacheKey (song, voice), \key =>
+        moved = voice(name = "Elsewhere", gain = 0.25, pan = -0.8, bus = "Pads", notes = [])
+        succeeds (daw::SongFiles::noteCacheKey (song(title = "Renamed", meterTop = 7, meterBottom = 8), moved), \same => expect (same, key))
+        succeeds (daw::SongFiles::noteCacheKey (song(tempo = 80.0), voice), \changed => expect (changed == key, false))
+        succeeds (daw::SongFiles::noteCacheKey (song(sampleRate = 44100), voice), \changed => expect (changed == key, false))
+        succeeds (daw::SongFiles::noteCacheKey (song, bellTrack ()), \changed => expect (changed == key, false)))
+
+test ("cached note identity follows the sound across meter, mix and tempo edits", \() => ui::Runtime::guarded noteCacheIdentityJourney)
+
 test ("two internal audio sends survive a project round trip and sum before the track fader", \() => ui::Runtime::guarded tapJourney)
 
 test ("the project plays as one loop over time: every track, bus and send advance together into Master, at any block size", \() => ui::Runtime::guarded masterPlayJourney)
