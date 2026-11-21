@@ -43,14 +43,10 @@ The app and renderer use one JSON project. The field readers and writer are gene
 | `title` | The song's name |
 | `tempo` | Beats per minute, 20–400 |
 | `sampleRate` | Frames per second, 8,000–192,000 |
-| `drive` | Master soft limiter, 0.1 (nearly linear) to 4 |
-| `space` | The shared reverb: `size` 0.25–2, `decay` in seconds, `damping` 0–0.95 |
-| `intro` | Optional. The recording the piece continues: `recording` (a path, `~/` for your home folder), `tail` seconds the engine holds (0.5–10), `crossfade` seconds into the piece (at most the tail) |
-| `sustains` | Appearances of the held tail of the intro: `start` beat, pitch `ratio`, `rise`, `hold` and `fade` in seconds, `gain`, `reverb` send |
 | `buses` | Named stereo groups with gain, three-band EQ, a compressor and an `output` group. An empty output feeds Master |
 | `tracks` | The tracks, below |
 
-A track has a `name`, an `instrument`, `gain` (0–4), `pan` (−1 left to 1 right), a `reverb` send (0–1),
+A track has a `name`, an `instrument`, `gain` (0–4), `pan` (−1 left to 1 right),
 `bus` (the dry destination), a list of internal outlet `sends`,
 `positions` (where its patch's modules sit in Prism) and `notes`. A note is
 `{"pitch", "start", "length", "velocity"}`: pitch is a MIDI note number, start and length are in beats,
@@ -78,7 +74,7 @@ The available graph components include `exciter`, `sine`, `wavetable`, `additive
 
 On Track patch or Bus routing, choose **Routing → Add send…**. Select a source outlet and destination bus, enter a percentage, and choose **Connect send**. The inspector lists the other cables and sends leaving that outlet. Choose **Routing → Patch sends…** to see each tap’s source, level, mute state and path to Master. Click **Edit send** to change a tap or remove it. Create a destination with **New stereo bus…** in Bus routing.
 
-For example, `{"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabled":true}` sends a quarter of node 3’s first audio outlet to pads. The existing dry cable and Space send keep playing. The project file holds the whole edit.
+For example, `{"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabled":true}` sends a quarter of node 3’s first audio outlet to pads. The existing dry cable keeps playing. The project file holds the whole edit.
 
 ## How it renders [SYNTH-ARRANGEMENT]
 
