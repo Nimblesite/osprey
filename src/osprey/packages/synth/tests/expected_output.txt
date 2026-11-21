@@ -83,5 +83,8 @@ ok 82 - spectral controls select all morph modes, shift an octave with independe
 ok 83 - a sampled strike subtracts its integer or fractional echo and mono routes preserve or mute the impulse
 ok 84 - physical instruments reject fractional burst lengths, repeat intervals and mode counts
 ok 85 - replacing a live delay resets its storage, retains oscillator state and refuses a fresh grain clock
-1..85
-# tests=85 passed=85 failed=0 skipped=0
+ok 86 - send taps retain frame position across blocks and report missing sources
+ok 87 - spectral inspection reports the channel, clock and complex phase of a centered impulse
+ok 88 - a slow knob subscriber sees the latest edit and missed count while linear slew follows reversals
+1..88
+# tests=88 passed=88 failed=0 skipped=0

@@ -422,3 +422,9 @@ test ("a sampled strike subtracts its integer or fractional echo and mono routes
 test ("physical instruments reject fractional burst lengths, repeat intervals and mode counts", \() => arithmetic physicalCountJourney)
 
 test ("replacing a live delay resets its storage, retains oscillator state and refuses a fresh grain clock", \() => arithmetic rebaseJourney)
+
+test ("send taps retain frame position across blocks and report missing sources", \() => arithmetic sendCaptureJourney)
+
+test ("spectral inspection reports the channel, clock and complex phase of a centered impulse", \() => arithmetic inspectionJourney)
+
+test ("a slow knob subscriber sees the latest edit and missed count while linear slew follows reversals", \() => arithmetic knobSnapshotJourney)
