@@ -82,8 +82,8 @@ jobs:
       - uses: ./.github/actions/detect-ci-scope
         id: filter
 
-      - name: Change detection contracts
-        run: node --test scripts/ci/ci-scope.test.mjs
+      - name: CI contracts
+        run: make _ci-contracts
 
       - name: Install benchmark harness shell
         if: steps.filter.outputs.benchmarks == 'true' || steps.filter.outputs.code == 'true'

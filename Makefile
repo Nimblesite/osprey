@@ -137,6 +137,7 @@ endef
 ## ci: dependency audit + lint + test + build + hawk + the bank, docs and inbox suites (full CI simulation)
 ci: _invalidate_ci_stamp
 	$(MAKE) audit
+	$(MAKE) _ci-contracts
 	$(MAKE) lint
 	$(MAKE) test
 	$(MAKE) -C src/toolchain hawk
@@ -153,6 +154,10 @@ ci: _invalidate_ci_stamp
 _invalidate_ci_stamp:
 	$(RM) target/ci-green
 	$(check_ci_source)
+
+.PHONY: _ci-contracts
+_ci-contracts:
+	node --test scripts/ci/ci-scope.test.mjs scripts/ci/preflight.test.mjs
 
 ## push: The only way to push ([CI-PUSH-GREEN], docs/plans/coordinated-push.md). Hold the TMC lock PUSH-<branch> first. Refuses unless make ci passed on this exact HEAD and no CI run on the branch is queued or running; then pushes.
 .PHONY: push
