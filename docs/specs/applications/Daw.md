@@ -249,9 +249,11 @@ The daw answers Open Sound Control over UDP, so a control surface, a lighting de
 
 **A render takes at most a fifth of the song's length ([DAW-PERF-RENDER]).** Offline rendering compresses time: a render that runs at real time, or slower, has failed. A 5 minute song with basic tracks and routing renders, through the whole graph into Master and onto disk, in about one minute or less. No project in `tracks/`, however dense its patches, takes more than half its length. Anything slower is a defect that needs optimising. Every pointer event must answer within one display frame. The [plan](../../plans/daw.md) holds the profile, the owners and the targets: two bars of the codex project in under 14 s, and a Prism drag move under 5 ms mean.
 
+**Song timing [DAW-HEADER-TIMING].** Click BPM or Meter in the header to edit the tempo and time signature. Apply saves both to the song and updates the bar grid. Undo restores the previous timing.
+
 ## The inspector [DAW-INSPECTOR]
 
-Selecting a module shows it in the inspector on the canvas: its name, a slider for each parameter with its value and unit, and its connections. A press or a drag on a slider sets the parameter, as one undoable edit. This is the same for a module the skin draws and for one it does not.
+Selecting a module shows it in the inspector on the canvas: its name and a slider for each parameter with its value and unit. Connect and disconnect cables on the canvas. Right-click a node and choose **Delete node** to remove it. File → Settings stores the VST3 folder. Prism discovers its plug-ins in the background on launch and when the folder changes. A press or a drag on a slider sets the parameter, as one undoable edit. This is the same for a module the skin draws and for one it does not.
 
 ## Pages [DAW-PAGES]
 

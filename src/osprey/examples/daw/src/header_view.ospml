@@ -82,7 +82,7 @@ module Header
     // The position shown: the beat sounding while the song plays, else the start marker.
     position editor = match editor.playBeat < 0.0
         true => "${threeDigits (satAdd editor.rollBar 1)}.01.01"
-        false => "${threeDigits (satAdd (DawSession::bar editor.playBeat) 1)}.0${floatToInt (TimelineGeometry::beatInBar editor.playBeat) ?: 1}.01"
+        false => "${threeDigits (satAdd (DawSession::bar (editor.song, editor.playBeat)) 1)}.0${floatToInt (TimelineGeometry::beatInBar (editor.playBeat, DawSession::measure editor.song, DawSession::unit editor.song)) ?: 1}.01"
 
     songTransport editor =
         x = 1277.0 + 46.5 / 2.0
@@ -90,7 +90,7 @@ module Header
 
     caps (words, left, top) = TimelineView::label (words, left, top, 10.0, TimelineView::dim (), 0, 3)
 
-    readout (name, value, left) = [caps (name, left, 77.0), TimelineView::label (value, left, 101.0, 19.0, TimelineView::ink (), 0, 3)]
+    readout (name, value, left) = listConcat (plaque (left - 7.0, 73.0, 83.0, 55.0, Scenes::rgb (31, 26, 52), 2)) [caps (name, left, 77.0), TimelineView::label (value, left, 101.0, 19.0, TimelineView::ink (), 0, 3)]
 
     // A tempo as the design writes it: one decimal unless it needs two.
     tempo value =
@@ -109,8 +109,6 @@ module Header
         true => [TimelineView::box (180.0, 40.0, 100.0, 21.0, Scenes::rgb (17, 16, 33), 11), TimelineView::label ("Track patch", 184.0, 41.0, 13.0, TimelineView::dim (), 0, 12)]
         false => []
 
-    barOf (note: daw::Note) = floatToInt (TimelineGeometry::bar note.start) ?: 0
-
     column (index, bars, count, most) =
         left = TimelineGeometry::overviewX (index, bars)
         right = left + TimelineGeometry::overviewWidth bars
@@ -120,8 +118,8 @@ module Header
     (** The song overview's columns, cached when a song opens: one per bar, as tall as the bar is busy. *)
     export overview song =
         beats = daw::Arrangements::beats song
-        bars = satAdd (floatToInt (TimelineGeometry::playableBar (beats, beats)) ?: 0) 1
-        starts = ui::Lists::flatten (mapList (song.tracks, \voice => mapList (voice.notes, barOf)))
+        bars = satAdd (floatToInt (TimelineGeometry::playableBar (beats, beats, DawSession::measure song)) ?: 0) 1
+        starts = ui::Lists::flatten (mapList (song.tracks, \voice => mapList (voice.notes, \note => DawSession::bar (song, note.start))))
         counts = mapList (toList (range (0, bars)), \bar => length (filterList (starts, \at => at == bar)))
         most = foldList (counts, 0, \(best, count) => ui::Pick::either (count > best, count, best))
         mapList (toList (range (0, bars)), \bar => column (toFloat bar, toFloat bars, toFloat (listGet counts bar ?: 0), toFloat most))
@@ -142,7 +140,7 @@ module Header
     brand editor = listConcat (ui::Pick::either (length (PrismArt::atlas editor.skin) > 15, [Scenes::sprite (15, 123.0, 29.5, 46.0, 46.0, 0.0, Scenes::rgb (255, 255, 255), 2)], [])) [TimelineView::label ("Prism", 151.0, 11.0, 20.0, TimelineView::ink (), 0, 3), TimelineView::label (listGet pages (slot editor.page) ?: "", 151.0, 36.0, 11.0, TimelineView::dim (), 0, 3)]
 
     // The song strip: title, tempo, meter, the playhead's bar and the transport.
-    strip editor = listConcat (listConcat [caps ("ARRANGEMENT", 24.0, 77.0), TimelineView::label (editor.song.title, 24.0, 99.0, 24.0, TimelineView::ink (), 0, 3)] (listConcat (overviewShapes editor) (listConcat (readout ("BPM", tempo editor.song.tempo, 877.0)) (readout ("METER", "4/4", 967.0))))) (listConcat (listConcat (plaque (1051.0, 76.0, 160.0, 51.0, Scenes::rgb (20, 17, 38), 2)) [caps ("POSITION", 1065.0, 84.0), TimelineView::label (position editor, 1065.0, 101.0, 19.0, TimelineView::ink (), 0, 4)]) (listConcat (loopCell editor) (songTransport editor)))
+    strip editor = listConcat (listConcat [caps ("ARRANGEMENT", 24.0, 77.0), TimelineView::label (editor.song.title, 24.0, 99.0, 24.0, TimelineView::ink (), 0, 3)] (listConcat (overviewShapes editor) (listConcat (readout ("BPM", tempo editor.song.tempo, 877.0)) (readout ("METER", "${editor.song.meterTop}/${editor.song.meterBottom}", 967.0))))) (listConcat (listConcat (plaque (1051.0, 76.0, 160.0, 51.0, Scenes::rgb (20, 17, 38), 2)) [caps ("POSITION", 1065.0, 84.0), TimelineView::label (position editor, 1065.0, 101.0, 19.0, TimelineView::ink (), 0, 4)]) (listConcat (loopCell editor) (songTransport editor)))
 
     // The status footer: what is sounding, the song's rate, the last thing the app said and the selected track's route.
     footer editor =
@@ -188,7 +186,7 @@ module Header
         to start, Play and Stop once one is. *)
     export songAreas editor = match length editor.song.tracks
         0 => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, [emptyArea ()]))
-        _ => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, listConcat [TimelineView::area ("Return to start", 1277.0, 80.0, 46.5, 43.0, false)] (listConcat (transportAreas (1323.5, 80.0, 46.5, 43.0, "Play", "Stop")) [TimelineView::area ("Loop", 1222.0, 80.0, 46.5, 43.0, editor.looping)])))
+        _ => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, listConcat [TimelineView::area ("Return to start", 1277.0, 80.0, 46.5, 43.0, false)] (listConcat (transportAreas (1323.5, 80.0, 46.5, 43.0, "Play", "Stop")) [TimelineView::area ("Loop", 1222.0, 80.0, 46.5, 43.0, editor.looping), TimelineView::area ("Edit BPM", 870.0, 73.0, 83.0, 55.0, false), TimelineView::area ("Edit meter", 960.0, 73.0, 83.0, 55.0, false)])))
 
     (** The command behind header area `index` of a song page. *)
     export songAction (editor, index) = match index < 3
@@ -199,7 +197,8 @@ module Header
                 3 => PickTrack(index = editor.track, bar = 0)
                 4 => PlaySong
                 5 => StopSong
-                _ => ToggleLoop
+                6 => ToggleLoop
+                _ => EditTiming
 
     (** The part of a song page that stays at the window's edge: the background and the top bar with the name
         and the tabs, as wide as the region. *)
@@ -212,3 +211,36 @@ module Header
     export page (editor, body) = match length editor.song.tracks
         0 => empty ()
         _ => listConcat (listConcat [TimelineView::box (0.0, 142.0, 1440.0, 1.0, rule (), 1)] (strip editor)) (listConcat (footer editor) body)
+
+(** [DAW-HEADER-TIMING] BPM and meter are project edits, committed together to disk and history. *)
+module SongTimingEditor
+    export open editor = match editor.songTicket != ""
+        true => ui::Runtime::step (editor(message = "Stop playback to edit song timing."))
+        false => ui::Runtime::step (editor(outputEdit = SongTiming(bpm = "${editor.song.tempo}", meter = "${editor.song.meterTop}/${editor.song.meterBottom}"), message = ""))
+
+    export form (editor, bpm, meter) = ui::Ui::dialog ("Song timing", ui::Ui::column [ui::Ui::field ("BPM", bpm, "20–400", TempoText), ui::Ui::field ("Time signature", meter, "4/4", PickMeter), ui::Ui::caption editor.message, ui::Ui::row [ui::Ui::button ("Cancel", "", CloseOutput), ui::Ui::button ("Apply timing", "", ApplyTiming)]], CloseOutput)
+
+    export typed (editor, value, tempo) = match editor.outputEdit
+        SongTiming bpm meter => ui::Runtime::step (editor(outputEdit = SongTiming(bpm = ui::Pick::either (tempo, value, bpm), meter = ui::Pick::either (tempo, meter, value))))
+        _ => ui::Runtime::step editor
+
+    parsed (editor, bpm, meter) = match split meter "/"
+        Success [n, d] =>
+            top = parseInt (trim n) ?: 0
+            bottom = parseInt (trim d) ?: 0
+            speed = parseFloat (trim bpm) ?: 0.0
+            match speed >= 20.0 && speed <= 400.0 && daw::Arrangements::validMeter (top, bottom)
+                true =>
+                    song = editor.song
+                    Success(value = song(tempo = speed, meterTop = top, meterBottom = bottom))
+                false => Error(message = "Enter 20–400 BPM and a time signature such as 3/4 or 6/8.")
+        _ => Error(message = "Enter a time signature such as 3/4 or 6/8.")
+
+    export apply editor = match editor.outputEdit
+        SongTiming bpm meter =>
+            step = DawSession::savedTrack (editor, editor.track, parsed (editor, bpm, meter))
+            next = step.stepStore
+            match next.outputEdit
+                OutputClosed => step(stepStore = next(overview = Header::overview next.song))
+                _ => step
+        _ => ui::Runtime::step editor

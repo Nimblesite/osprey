@@ -26,6 +26,7 @@ pub mod kind {
     pub const PHASE: i64 = 9;
     pub const FRAME: i64 = 10;
     pub const APPEARANCE: i64 = 11;
+    pub const SECONDARY: i64 = 12;
 }
 
 impl Touch {
@@ -66,6 +67,11 @@ impl Touch {
             shift,
             ..Self::of(kind::POINTER)
         }
+    }
+
+    /// A secondary click, in scene units.
+    pub fn secondary(ordinal: i64, x: f64, y: f64) -> Self {
+        Self { ordinal, x, y, ..Self::of(kind::SECONDARY) }
     }
 
     /// The scene numbered `ordinal` measured in scene units.

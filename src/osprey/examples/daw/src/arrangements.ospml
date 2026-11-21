@@ -25,7 +25,9 @@ module Arrangements
     (** The beat the last note ends on. *)
     export beats arrangement = foldList (arrangement.tracks, 0.0, \(latest, voice) => foldList (voice.notes, latest, close))
 
-    valid arrangement = arrangement.tempo >= 20.0 && arrangement.tempo <= 400.0 && arrangement.sampleRate >= 8000 && arrangement.sampleRate <= 192000 && length arrangement.tracks >= 1 && length arrangement.tracks <= 64
+    export validMeter (top, bottom) = top >= 1 && top <= 32 && (bottom == 1 || bottom == 2 || bottom == 4 || bottom == 8 || bottom == 16 || bottom == 32)
+
+    valid arrangement = validMeter (arrangement.meterTop, arrangement.meterBottom) && arrangement.tempo >= 20.0 && arrangement.tempo <= 400.0 && arrangement.sampleRate >= 8000 && arrangement.sampleRate <= 192000 && length arrangement.tracks >= 1 && length arrangement.tracks <= 64
 
     (** Frames in the piece: its last note end plus two seconds; at most 28,800,000. *)
     export frames arrangement = match valid arrangement

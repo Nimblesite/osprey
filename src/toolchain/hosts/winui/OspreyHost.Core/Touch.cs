@@ -32,6 +32,9 @@ public sealed record Touch(long Kind, long Ordinal, string Words, string Detail,
     public static Touch Pointer(long ordinal, double x, double y, bool down, bool shift) =>
         Of(TouchKind.Pointer) with { Ordinal = ordinal, X = x, Y = y, Down = down, Shift = shift };
 
+    /// <summary>A secondary click at a scene position.</summary>
+    public static Touch Secondary(long ordinal, double x, double y) => Of(TouchKind.Secondary) with { Ordinal = ordinal, X = x, Y = y };
+
     /// <summary>The scene numbered <paramref name="ordinal"/> measured in scene units.</summary>
     public static Touch Viewed(long ordinal, double width, double height) => Of(TouchKind.Viewed) with { Ordinal = ordinal, X = width, Y = height };
 
@@ -92,4 +95,5 @@ public static class TouchKind
 
     /// <summary>The system appearance changed.</summary>
     public const long Appearance = 11;
+    public const long Secondary = 12;
 }

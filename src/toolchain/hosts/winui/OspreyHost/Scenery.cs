@@ -355,6 +355,13 @@ sealed class SceneView
     void Pressed(PointerRoutedEventArgs args)
     {
         holder.Focus(FocusState.Pointer);
+        var point = args.GetCurrentPoint(canvas);
+        if (point.Properties.IsRightButtonPressed)
+        {
+            emit(Touch.Secondary(ordinal, point.Position.X, point.Position.Y));
+            args.Handled = true;
+            return;
+        }
         canvas.CapturePointer(args.Pointer);
         Pointed(args, down: true);
     }

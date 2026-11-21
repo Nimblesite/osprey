@@ -97,7 +97,7 @@ fn menu_bar(regions: &mut Regions) {
     let titles: Vec<&str> = menus.iter().map(|menu| menu.title.as_str()).collect();
     assert_eq!(titles, ["File", "Edit", "View", "Transport", "Shortcuts"], "the window's menus");
     let sizes: Vec<usize> = menus.iter().map(|menu| menu.commands.len()).collect();
-    assert_eq!(sizes, [3, 2, 9, 11, 4], "the commands of each menu");
+    assert_eq!(sizes, [4, 2, 9, 11, 4], "the commands of each menu");
     for (keymap, routing, play, zoom) in [("Logic Style", "X", "Space", ["Cmd+Right", "Cmd+Left", "Z"]), ("Ableton Style", "Cmd+Alt+M", "Space", ["OemPlus", "OemMinus", "Cmd+D0"]), ("Prism", "Cmd+D3", "Space", ["Cmd+OemPlus", "Cmd+OemMinus", "Cmd+D0"])] {
         let choice = menus_of(regions)[4].commands.iter().find(|command| command.label == keymap).map(|command| command.event);
         let Some(choice) = choice else {
@@ -626,6 +626,14 @@ fn signal_path_layout(regions: &mut Regions, song: &std::path::Path) {
     assert_eq!(saved["tracks"][5]["positions"], serde_json::json!([
         {"layoutNode":5, "layoutX":original_x + 30.0, "layoutY":original_y + 20.0}
     ]), "only the dragged Output gets a position, in project coordinates");
+    let (target_x, target_y, _, _) = card(&moved, 4);
+    let menu = Library::event(0, &Touch::secondary(canvas, target_x, target_y)).expect("right-click another node");
+    let action = menu.scenes.values().flat_map(|s| &s.access).find(|a| a.label == "Delete node").expect("node menu");
+    let deleted = point(canvas, (action.x + action.w / 2.0, action.y + action.h / 2.0), true).0;
+    assert!(!deleted.scenes.values().flat_map(|s| &s.access).any(|a| a.label.starts_with("Canvas ") && a.label.ends_with(" 4")));
+    card(&deleted, 5);
+    regions.adopt(&deleted).expect("adopt deletion");
+    choose_menu(regions, "Edit", "Undo");
 }
 
 fn position_on_release(regions: &mut Regions, song: &std::path::Path) {
@@ -767,6 +775,16 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
         panic!("the Timeline must draw a canvas");
     };
 
+    // [DAW-HEADER-TIMING] Edit the header through native controls and verify the persisted project.
+    let timing = point(canvas, (900.0, 105.0), true).0;
+    regions.adopt(&timing).expect("open BPM editor");
+    choose_control(&mut regions, "field", "BPM", "96.5");
+    choose_control(&mut regions, "field", "Time signature", "6/8");
+    choose_control(&mut regions, "button", "Apply timing", "");
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&song).expect("timing file")).expect("timing JSON");
+    assert_eq!(saved["tempo"], 96.5);
+    assert_eq!((saved["meterTop"].as_i64(), saved["meterBottom"].as_i64()), (Some(6), Some(8)));
+    choose_menu(&mut regions, "Edit", "Undo");
     signal_path_layout(&mut regions, &song);
     position_on_release(&mut regions, &song);
     modulation_sockets(&mut regions, &song);

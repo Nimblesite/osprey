@@ -15,9 +15,9 @@ module PluginDocuments
 
     scanned text = match jsonDecode text
         Error why => Error(message = why)
-        Success doc => match isText (doc, "id") && isText (doc, "name") && Doc::text (doc, "event") == "vst.class" && length (Doc::text (doc, "id")) == 32 && Doc::text (doc, "name") != ""
+        Success doc => match isText (doc, "id") && isText (doc, "name") && Doc::text (doc, "bundle") != "" && Doc::text (doc, "event") == "vst.class" && length (Doc::text (doc, "id")) == 32 && Doc::text (doc, "name") != ""
             false => Error(message = "The worker returned an invalid VST class.")
-            true => Success(value = PluginClass(classId = Doc::text (doc, "id"), className = Doc::text (doc, "name")))
+            true => Success(value = PluginClass(classId = Doc::text (doc, "id"), className = Doc::text (doc, "name"), bundle = Doc::text (doc, "bundle")))
 
     scanLine (outcome, text) = match outcome
         Error why => Error(message = why)
@@ -32,9 +32,17 @@ module PluginDocuments
         Error why => Error(message = why)
         Success lines =>
             rows = filterList (lines, \line => trim line != "")
-            match length rows > 0 && length rows <= 256
+            match length rows <= 4096
                 false => Error(message = "The module contains no supported classes or too many classes.")
                 true => foldList (rows, Success(value = []), scanLine)
+
+    export bundles text = match jsonDecode text
+        Error why => Error(message = why)
+        Success doc =>
+            paths = mapList (Doc::items doc, Doc::string)
+            match Doc::kind doc == "list" && length paths <= 4096 && !ui::Lists::any (paths, \p => p == "")
+                true => Success(value = paths)
+                false => Error(message = "Invalid VST3 folder inventory.")
 
     control doc = match isInt (doc, "id") && isText (doc, "name") && Doc::kind (Doc::field (doc, "initial")) == "number" && isBool (doc, "automatable")
         false => Error(message = "The worker returned an invalid VST parameter.")

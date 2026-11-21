@@ -579,7 +579,7 @@ keysTrack () = daw::Track(name = "keys", instrument = daw::PatchInstrument(routi
 
 bellTrack () = daw::Track(name = "bell", instrument = daw::BellInstrument(decay = 2.0, brightness = 0.5), gain = 1.0, pan = 0.0, bus = "", sends = [], positions = [], notes = [])
 
-timeline tracks = daw::Arrangement(title = "Bridge", tempo = 120.0, sampleRate = 48000, buses = [], tracks = tracks)
+timeline tracks = daw::Arrangement(title = "Bridge", tempo = 120.0, meterTop = 4, meterBottom = 4, sampleRate = 48000, buses = [], tracks = tracks)
 
 pluckTrack () = daw::Track(name = "pluck", instrument = daw::PluckInstrument(brightness = 0.7, decay = 0.9), gain = 1.0, pan = 0.0, bus = "", sends = [], positions = [], notes = [])
 
@@ -872,6 +872,22 @@ projectJourney () =
     mixJourney (song ())
     excerptJourney (song ())
     saveJourney (song ())
+    timingJourney ()
+
+timingJourney () =
+    path = "target/daw-tests/timing.json"
+    succeeds (daw::Projects::saved (song (), path), \_ => expect (true, true))
+    session = editorLaunched ["--song", path]
+    editing = prismTap (session, "Edit BPM")
+    invalid = Drive::press (Drive::choose (editing, "BPM", "401"), "Apply timing")
+    expect ((Drive::holding invalid).song.tempo, (Drive::holding session).song.tempo)
+    changed = Drive::press (Drive::choose (Drive::choose (invalid, "BPM", "96.5"), "Time signature", "6/8"), "Apply timing")
+    stored = synth::DawSession::loaded (Drive::holding changed, path)
+    expect (stored.song.tempo, 96.5)
+    expect ([stored.song.meterTop, stored.song.meterBottom], [6, 8])
+    expect (synth::DawSession::rangeStart (stored(rollBar = 2)), 6.0)
+    cancelled = Drive::press (Drive::choose (prismTap (changed, "Edit meter"), "Time signature", "3/4"), "Cancel")
+    expect ((Drive::holding cancelled).song.meterTop, 6)
 
 test ("a project file saves and reopens its notes, mix and patches; mix edits are checked", \() => Runtime::guarded projectJourney)
 
@@ -940,10 +956,10 @@ followJourney playing =
     heardAt (waiting, 6.0, 1.0)
     caught = framedAfter (waiting, deviceSaid (144000, 96000, "true"), 0.0)
     heardAt (caught, 8.0, 2.0)
-    expect (synth::TimelineGeometry::rollPage (caught.playBeat, 1.0), 1.0)
+    expect (synth::TimelineGeometry::rollPage (caught.playBeat, 1.0, 4.0), 1.0)
     paged = framedAfter (caught, deviceSaid (480000, 196800, "true"), 0.0)
     heardAt (paged, 12.2, 4.1)
-    expect (synth::TimelineGeometry::rollPage (paged.playBeat, 1.0), 3.0)
+    expect (synth::TimelineGeometry::rollPage (paged.playBeat, 1.0, 4.0), 3.0)
     heardAt (framedAfter (paged, deviceSaid (480000, 480000, "true"), 0.0), 13.0, 10.0)
     expect (paged.rollBar, 1)
     expect (paged.songTicket, "daw-song:live:${liveFolder}")
@@ -1003,8 +1019,8 @@ rangeJourney ready =
     expect (synth::DawSession::rangeEnd earlier.stepStore, 12.0)
     expect (synth::TimelineView::endAt (ready, 198.0), 2)
     expect (synth::TimelineView::endAt (ready, 1092.0), 3)
-    expect (synth::TimelineGeometry::endBar (9.9, 1.0), 2.0)
-    expect (synth::TimelineGeometry::endBar (10.0, 1.0), 3.0)
+    expect (synth::TimelineGeometry::endBar (9.9, 1.0, 4.0), 2.0)
+    expect (synth::TimelineGeometry::endBar (10.0, 1.0, 4.0), 3.0)
     expect (synth::TimelineGeometry::grabs (100.0, 106.0), true)
     expect (synth::TimelineGeometry::grabs (100.0, 106.5), false)
     said (synth::DawSession::play (ready(rollBar = 4)), "", "The start marker is at the song's end; move it back to play.")
@@ -1163,11 +1179,11 @@ zoomJourney lined =
     expect (synth::TimelineGeometry::zoomed (4.0, 1.25, 16.0), 5.0)
     // The ruler: bars with every fourth numbered, then every bar, then beats, then sixteenths.
     forEachList ([[65.0, 4.0, 16.0], [64.0, 4.0, 4.0], [17.0, 4.0, 4.0], [16.0, 1.0, 4.0], [5.0, 1.0, 4.0], [4.0, 0.25, 1.0], [1.0, 0.25, 1.0]], \row =>
-        expect (synth::TimelineGeometry::rulerStep (listGet row 0 ?: 0.0), listGet row 1 ?: 0.0)
-        expect (synth::TimelineGeometry::rulerMajor (listGet row 0 ?: 0.0), listGet row 2 ?: 0.0))
+        expect (synth::TimelineGeometry::rulerStep (listGet row 0 ?: 0.0, 4.0, 1.0), listGet row 1 ?: 0.0)
+        expect (synth::TimelineGeometry::rulerMajor (listGet row 0 ?: 0.0, 4.0, 1.0), listGet row 2 ?: 0.0))
     expect (synth::TimelineGeometry::onDivision (8.0, 4.0), 1.0)
     expect (synth::TimelineGeometry::onDivision (9.0, 4.0), 0.0)
-    expect (synth::TimelineGeometry::beatInBar 6.0, 3.0)
+    expect (synth::TimelineGeometry::beatInBar (6.0, 4.0, 1.0), 3.0)
     expect (synth::TimelineGeometry::rulerBeat (2.0, 1.0, 3.0), 5.0)
     expect (synth::TimelineGeometry::rulerCount (8.0, 1.0), 10.0)
     // Every keymap gives the three zoom commands keys.
@@ -1193,8 +1209,8 @@ barLineJourney ready =
     // The song overview has one column per bar of the song.
     expect (length (synth::Header::overview lined.song), 4)
     expect (length (synth::Header::overview (timeline [])), 1)
-    expect (synth::TimelineGeometry::playableBar (-1.0, 16.0), 0.0)
-    expect (synth::TimelineGeometry::playableBar (8.0, 0.0), 0.0)
+    expect (synth::TimelineGeometry::playableBar (-1.0, 16.0, 4.0), 0.0)
+    expect (synth::TimelineGeometry::playableBar (8.0, 0.0, 4.0), 0.0)
     expect (synth::Header::songAction (ready(track = 0), 3), synth::PickTrack(index = 0, bar = 0))
     expect (synth::Header::songAction (ready, 4), synth::PlaySong)
     expect (synth::Header::songAction (ready, 5), synth::StopSong)
@@ -1252,7 +1268,7 @@ transportJourney () =
     expect (stopped.stepStore.rollBar, 5)
     expect (home.stepStore.rollBar, 0)
     succeeds (synth::TimelineView::laneAt (ready, 205.0, 205.0), \action => playheadSet (ready, action, 0))
-    succeeds (synth::TimelineView::laneAt (ready, 1085.0, 200.0), \action => playheadSet (ready, action, synth::DawSession::bar (daw::Arrangements::beats ready.song)))
+    succeeds (synth::TimelineView::laneAt (ready, 1085.0, 200.0), \action => playheadSet (ready, action, synth::DawSession::bar (ready.song, daw::Arrangements::beats ready.song)))
     failsWith (synth::TimelineView::laneAt (ready, 197.0, 205.0), "No lane here.")
     barLineJourney ready
     failsWith (synth::TimelineView::laneAt (ready, 700.0, 192.0), "No lane here.")

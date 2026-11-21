@@ -103,7 +103,7 @@ module ProjectCodec
     export readTrack (doc, instrument, sends, positions, notes) = Track(name = ui::Doc::text (doc, "name"), instrument = instrument, gain = ui::Doc::decimal (doc, "gain"), pan = ui::Doc::decimal (doc, "pan"), bus = ui::Doc::text (doc, "bus"), sends = sends, positions = positions, notes = notes)
 
     (** Encode the complete project document. *)
-    export writeArrangement item = JsonObject [JsonMember "title" (JsonString item.title), JsonMember "tempo" (JsonFloat item.tempo), JsonMember "sampleRate" (JsonInt item.sampleRate), JsonMember "buses" (JsonArray (mapList (item.buses, writeBus))), JsonMember "tracks" (JsonArray (mapList (item.tracks, writeTrack)))]
+    export writeArrangement item = JsonObject [JsonMember "title" (JsonString item.title), JsonMember "tempo" (JsonFloat item.tempo), JsonMember "meterTop" (JsonInt item.meterTop), JsonMember "meterBottom" (JsonInt item.meterBottom), JsonMember "sampleRate" (JsonInt item.sampleRate), JsonMember "buses" (JsonArray (mapList (item.buses, writeBus))), JsonMember "tracks" (JsonArray (mapList (item.tracks, writeTrack)))]
 
     (** Read the fields of Arrangement after its nested values are decoded. *)
-    export readArrangement (doc, buses, tracks) = Arrangement(title = ui::Doc::text (doc, "title"), tempo = ui::Doc::decimal (doc, "tempo"), sampleRate = ui::Doc::number (doc, "sampleRate"), buses = buses, tracks = tracks)
+    export readArrangement (doc, buses, tracks) = Arrangement(title = ui::Doc::text (doc, "title"), tempo = ui::Doc::decimal (doc, "tempo"), meterTop = ui::Doc::number (doc, "meterTop"), meterBottom = ui::Doc::number (doc, "meterBottom"), sampleRate = ui::Doc::number (doc, "sampleRate"), buses = buses, tracks = tracks)

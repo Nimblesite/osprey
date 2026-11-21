@@ -130,6 +130,7 @@ module Surfaces
         Key _ _ => []
         Pointer x y _ _ => [x, y]
         Viewed width height => [width, height]
+        ContextClick x y => [x, y]
 
     strokeMessage<A> : (Binding<A>, List<Point>, int, int) -> Result<Message<A>, string>
     strokeMessage (binding, points, width, at) = match binding

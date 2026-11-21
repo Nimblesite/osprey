@@ -51,7 +51,7 @@ keymapJourney () =
         forEachList (synth::Keymaps::commands (), \command => expect (synth::Keymaps::keys (keymap, command) != "", true))
         succeeds (synth::Keymaps::decode (synth::Keymaps::encode keymap), \again =>
             forEachList (synth::Keymaps::commands (), \command => expect (synth::Keymaps::keys (again, command), synth::Keymaps::keys (keymap, command)))))
-    expect (length (synth::Keymaps::commands ()), 24)
+    expect (length (synth::Keymaps::commands ()), 26)
     expect (synth::Keymaps::keys (synth::Keymaps::preset "Logic Style", "routing"), "X")
     expect (synth::Keymaps::keys (synth::Keymaps::preset "Logic Style", "save"), "Cmd+S")
     expect (synth::Keymaps::keys (synth::Keymaps::preset "Ableton Style", "timeline"), "Tab")
@@ -259,7 +259,7 @@ sampleFileJourney driven =
     // A choice still open when its node is removed completes into nothing: the node is not resurrected.
     asked = Drive::press (again, "Load WAV sample")
     pending = (Drive::holding asked).sampleTicket
-    gone = Drive::press (asked, "Remove module")
+    gone = deleteNode (asked, (Drive::holding asked).selected)
     expect (length (Drive::holding gone).graph.nodes, satSub (length (Drive::holding again).graph.nodes) 1)
     late = Drive::completed (gone, pending, true, "target/daw-tests/text.wav")
     expect (structuralEquals ((Drive::holding late).graph, (Drive::holding gone).graph), true)
@@ -294,7 +294,7 @@ sourceOf (n, name, frames) = match n.processor
 historyRemovalJourney () =
     opened = Drive::press (editorLaunched [], "Patch Controls")
     changed = Drive::choose (dialTapped (opened, "Cutoff"), "Cutoff", "3200")
-    removed = Drive::press (changed, "Remove module")
+    removed = deleteNode (changed, (Drive::holding changed).selected)
     expect (length (Drive::holding removed).graph.nodes, 4)
     restored = prismTap (removed, "Undo")
     expect (structuralEquals ((Drive::holding restored).graph, (Drive::holding changed).graph), true)
@@ -354,7 +354,7 @@ connectionLefts driven =
 arrangedNear (got, want) = expect (abs (got - want) <= 0.000000001, true)
 
 // A song from its tempo, rate and tracks; the beat frame is 60/tempo*rate rounded.
-arrangedSong (tempo, rate, tracks) = daw::Arrangement(title = "Bridge", tempo = tempo, sampleRate = rate, buses = [], tracks = tracks)
+arrangedSong (tempo, rate, tracks) = daw::Arrangement(title = "Bridge", tempo = tempo, meterTop = 4, meterBottom = 4, sampleRate = rate, buses = [], tracks = tracks)
 
 arrangedBell (name, decay, notes) = daw::Track(name = name, instrument = daw::BellInstrument(decay = decay, brightness = 0.5), gain = 1.0, pan = 0.0, bus = "", sends = [], positions = [], notes = notes)
 

@@ -458,3 +458,36 @@ module CableCanvas
     erase editor = match editor.selectedCable >= 0
         true => EditorState::tapped (editor, RemoveCable)
         false => editor
+
+(** [PRISM-ROUTING-EDITOR] Context actions belong to the card under the secondary click. *)
+module NodeContext
+    export open (editor, x, y) = match editor.page == PatchPage && (editor.outputEdit == OutputClosed || showing editor) && !EditorView::paletteAt (editor, x, y)
+        false => ui::Runtime::step editor
+        true =>
+            id = EditorView::nodeAt (editor, x, y)
+            limit = ui::Pick::either (editor.detailsShown, 1072.0, 1396.0)
+            left = ui::Pick::either (x > limit, limit, x)
+            top = ui::Pick::either (y > 752.0, 752.0, y)
+            menu = ui::Pick::either (id < 0, OutputClosed, NodeMenu(nodeId = id, left = left, top = top))
+            ui::Runtime::step (editor(outputEdit = menu))
+
+    showing editor = match editor.outputEdit
+        NodeMenu _ _ _ => true
+        _ => false
+
+    export pointed (editor, id, left, top, x, y, down) = match down
+        false => ui::Runtime::step editor
+        true =>
+            closed = editor(outputEdit = OutputClosed)
+            hit = EditorView::inside (x, y, left + 70.0, top + 18.0, 70.0, 18.0)
+            match hit && ui::Lists::any (editor.graph.nodes, \n => n.identity == id)
+                true => ui::Runtime::step (EditorState::tapped (closed(selected = id), Remove))
+                false => ui::Runtime::step closed
+
+    export shapes editor = match editor.outputEdit
+        NodeMenu _ x y => [EditorView::panel (x, y, 140.0, 36.0, 3944028, 40000), EditorView::text ("Delete node", x + 14.0, y + 9.0, 16.0, 250, 40001)]
+        _ => []
+
+    export access editor = match editor.outputEdit
+        NodeMenu _ x y => [EditorView::accessible ("Delete node", x, y, 140.0, 36.0, false)]
+        _ => []

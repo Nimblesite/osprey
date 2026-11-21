@@ -4,6 +4,7 @@ namespace synth
 type PluginClass =
     classId : string
     className : string
+    bundle : string
 
 type PluginBinding =
     pluginNode : int
@@ -84,6 +85,15 @@ type SendDraft =
     options : List<SendPort>
 
 type OutputEdit =
+    SongTiming
+        bpm : string
+        meter : string
+    PluginSettings
+        folder : string
+    NodeMenu
+        nodeId : int
+        left : float
+        top : float
     BrowsingSends
         offset : int
     EditingBus
@@ -170,6 +180,8 @@ type Editor G P S M =
     workerPath : string
     audioPath : string
     pluginPath : string
+    scanQueue : List<string>
+    scanWarning : string
     catalog : List<PluginClass>
     pluginBindings : List<PluginBinding>
     sampleSerial : int
@@ -254,9 +266,12 @@ type EditorAction =
     PluginPath
     LoadSample
     BuiltinSample
-    ScanVst
-    CreateVst
-        identifier : string
+    EditTiming
+    TempoText
+    PickMeter
+    ApplyTiming
+    ShowSettings
+    SaveSettings
     ShowPage
         page : Page
     PickTrack

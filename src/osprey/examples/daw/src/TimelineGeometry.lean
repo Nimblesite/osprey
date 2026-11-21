@@ -5,14 +5,16 @@ private def bounded (value low high : Float) : Float :=
   if value < low then low else if value > high then high else value
 
 /-- The bar (from 0, four beats each) a beat falls in. -/
-def bar (beat : Float) : Float := Float.floor (beat / 4)
+def measure (top bottom : Float) : Float := top * 4 / bottom
+
+def bar (beat size : Float) : Float := Float.floor (beat / size)
 /-- The bar a beat falls in, but never past the bar holding the song's last sound: a song `beats` long that ends
 on a bar line has no bar after it to play [DAW-TRANSPORT-PLAYHEAD]. -/
-def playableBar (beat beats : Float) : Float :=
-  let last := if beats <= 0 then 0 else Float.ceil (beats / 4) - 1
-  bounded (bar beat) 0 last
+def playableBar (beat beats size : Float) : Float :=
+  let last := if beats <= 0 then 0 else Float.ceil (beats / size) - 1
+  bounded (bar beat size) 0 last
 /-- The beat a bar (from 0) starts on. -/
-def barStart (index : Float) : Float := index * 4
+def barStart (index size : Float) : Float := index * size
 
 /-- The song overview in the strip spans x 468 to 792: one column per bar, two units apart, as tall as the bar is
 busy (2 to 25 units above y 122) [DAW-HEADER]. -/
@@ -51,15 +53,15 @@ def followFirst (playhead first span beats : Float) : Float :=
   else first
 /-- Ruler divisions in beats: a line every `rulerStep`, a number every `rulerMajor`. Bars with every fourth
 numbered, then every bar, then beats, then sixteenths, so labels never crowd or thin out. -/
-def rulerStep (span : Float) : Float := if span > 16 then 4 else if span > 4 then 1 else 0.25
-def rulerMajor (span : Float) : Float := if span > 64 then 16 else if span > 4 then 4 else 1
+def rulerStep (span size unit : Float) : Float := if span > size * 4 then size else if span > size then unit else unit / 4
+def rulerMajor (span size unit : Float) : Float := if span > size * 16 then size * 4 else if span > size then size else unit
 def rulerBeat (first step index : Float) : Float := (Float.floor (first / step) + index) * step
 def rulerCount (span step : Float) : Float := Float.ceil (span / step) + 2
 /-- 1 when `beat` falls on a multiple of `major`, else 0. -/
 def onDivision (beat major : Float) : Float :=
   if beat - Float.floor (beat / major) * major < 0.001 then 1 else 0
 /-- The beat within its bar, from 1. -/
-def beatInBar (beat : Float) : Float := Float.floor (beat - Float.floor (beat / 4) * 4) + 1
+def beatInBar (beat size unit : Float) : Float := Float.floor ((beat - Float.floor (beat / size) * size) / unit) + 1
 
 /-- The arrangement shows seven 31-unit rows above the roll. -/
 /-- [DAW-LAYOUT-FILL] The lanes' scrollbar runs y 221 to 438 beside `rows` visible lanes of `count` tracks. Its thumb
@@ -82,9 +84,9 @@ def lanePitch (top height pitch low high : Float) : Float :=
   if high <= low then top + height / 2 else top + 2 + (high - pitch) / (high - low) * (height - 4)
 
 /-- The piano roll shows two bars (eight beats) from x 76 to 1110. -/
-def rollX (beat first : Float) : Float := 76 + bounded (beat - first) 0 8 * 129.25
-def rollWidth (beat length first : Float) : Float :=
-  rollX (beat + length) first - rollX beat first
+def rollX (beat first size : Float) : Float := 76 + bounded ((beat - first) / size) 0 2 * 517
+def rollWidth (beat length first size : Float) : Float :=
+  rollX (beat + length) first size - rollX beat first size
 /-- Pitch rows fill y 542 to 802, the highest pitch at the top. -/
 def pitchHeight (rows : Float) : Float := 260 / rows
 def pitchY (pitch high rows : Float) : Float := 542 + (high - pitch) * (260 / rows)
@@ -97,8 +99,8 @@ def noteLabelY (top height size : Float) : Float := top + (height - size * 1.32)
 /-- Velocity stems share the same note start coordinate as the piano roll. -/
 def velocityHeight (value : Float) : Float := bounded value 0 1 * 43
 /-- Dragging preserves the note's original timing offset and moves by sixteenths (one quarter beat). -/
-def draggedStart (start offset : Float) : Float :=
-  let beat := start + Float.floor (offset / 129.25 * 4 + 0.5) / 4
+def draggedStart (start offset size : Float) : Float :=
+  let beat := start + Float.floor (offset * size / 517 * 4 + 0.5) / 4
   if beat < 0 then 0 else beat
 /-- One vertical pitch row is one semitone. -/
 def draggedPitch (pitch offset height : Float) : Float :=
@@ -129,21 +131,21 @@ def loopBeat (first span seconds tempo : Float) : Float :=
   first + (beats - Float.floor (beats / span) * span)
 /-- The first bar of the two the piano roll shows while `beat` sounds: it turns the page every two bars from
 the start marker's bar `start`. -/
-def rollPage (beat start : Float) : Float :=
-  if beat < start * 4 then start else start + Float.floor ((beat - start * 4) / 8) * 2
+def rollPage (beat start size : Float) : Float :=
+  if beat < start * size then start else start + Float.floor ((beat - start * size) / (2 * size)) * 2
 /-- [DAW-TRANSPORT-RANGE] The beat Play ends on: the end marker's bar line when it is after the start bar and
 inside the song, else the song's end. -/
-def rangeEnd (start finish beats : Float) : Float :=
-  if finish > start && finish * 4 < beats then finish * 4 else beats
+def rangeEnd (start finish beats size : Float) : Float :=
+  if finish > start && finish * size < beats then finish * size else beats
 /-- The end marker's bar under beat `beat`: the nearest bar line, at least one bar after the start bar. -/
-def endBar (beat start : Float) : Float :=
-  let nearest := Float.floor (beat / 4 + 0.5)
+def endBar (beat start size : Float) : Float :=
+  let nearest := Float.floor (beat / size + 0.5)
   if nearest <= start then start + 1 else nearest
 /-- The start marker's bar under beat `beat`: the nearest bar line, from the first bar to the bar before the end
 marker (`finish` bar lines from 0, or 0 for the song's end) [DAW-TRANSPORT-RANGE]. -/
-def startBar (beat finish beats : Float) : Float :=
-  let whole := if beats <= 0 then 0 else Float.ceil (beats / 4) - 1
-  let last := if finish > 0 && finish * 4 < beats then finish - 1 else whole
-  bounded (Float.floor (beat / 4 + 0.5)) 0 last
+def startBar (beat finish beats size : Float) : Float :=
+  let whole := if beats <= 0 then 0 else Float.ceil (beats / size) - 1
+  let last := if finish > 0 && finish * size < beats then finish - 1 else whole
+  bounded (Float.floor (beat / size + 0.5)) 0 last
 /-- A marker's handle at `at` is grabbed by a press at `x`: within six units either side. -/
 def grabs (x at : Float) : Bool := x >= at - 6 && x <= at + 6

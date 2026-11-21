@@ -21,9 +21,10 @@ module EditorApp
         song = ui::Lists::after (context.arguments, "--song", "")
         keys = "${context.home}/.prism/shortcuts.json"
         opened = editor(keysPath = keys, keymap = Keymaps::stored keys, skin = PrismArt::sized (art, 1536.0, 828.0), cards = PrismArt::classified art, workerPath = worker, audioPath = audio, assetFolder = "${ui::MachineDocs::folder (signalflow::App::documentPath context.arguments)}/skins/prism", renderer = ui::Lists::after (context.arguments, "--renderer", ""))
-        match song == ""
+        first = match song == ""
             true => Runtime::step opened
             false => DawSession::opening (opened, song)
+        Plugins::startup (context, first)
 
     // View commands open the selected track's patch from any page and toggle the tool once there.
     patchTool (editor, next) = match editor.page
@@ -41,7 +42,10 @@ module EditorApp
             false => strike (editor, note, context.platform)
         LoadSample => SamplePicker::choose editor
         BuiltinSample => SamplePicker::builtin editor
-        ScanVst => Plugins::scan editor
+        EditTiming => SongTimingEditor::open editor
+        ApplyTiming => SongTimingEditor::apply editor
+        ShowSettings => Runtime::step (editor(outputEdit = PluginSettings(folder = editor.pluginPath)))
+        SaveSettings => Plugins::save editor
         Audition => GraphPreview::play (editor, context.platform)
         PlayGraph => GraphPreview::live (editor, context.platform)
         StopGraph => GraphPreview::stop editor
@@ -105,8 +109,12 @@ module EditorApp
         SendDestination => SendEditor::typed (editor, action, value)
         SendLevel => SendEditor::typed (editor, action, value)
         GroupName => Runtime::step (editor(outputEdit = NamingGroup(proposed = value), message = ""))
-        PluginPath => Runtime::step (Plugins::path (editor, value))
-        CreateVst _ => Plugins::create (editor, value)
+        TempoText => SongTimingEditor::typed (editor, value, true)
+        PickMeter => SongTimingEditor::typed (editor, value, false)
+        PluginPath => Runtime::step (editor(outputEdit = PluginSettings(folder = value)))
+        Add _ => match startsWith value "vst:"
+            true => Plugins::create (editor, drop value 4)
+            false => Runtime::step (EditorState::typed (editor, action, value))
         _ => Runtime::step (EditorState::typed (editor, action, value))
 
     completed (editor, ticket, outcome) = match startsWith ticket "prism-sample:"
@@ -136,6 +144,9 @@ module EditorApp
                 Error _ => Runtime::step (editor(armedNote = -1))
 
     surfacePointer (context, editor, x, y, down) = match editor.outputEdit
+        SongTiming _ _ => Runtime::step editor
+        PluginSettings _ => Runtime::step editor
+        NodeMenu id left top => NodeContext::pointed (editor, id, left, top, x, y, down)
         EditingSend _ => Runtime::step editor
         BrowsingSends _ => Runtime::step editor
         EditingBus _ => Runtime::step editor
@@ -272,9 +283,9 @@ module EditorApp
         _ => Runtime::step (ui::Pick::either (down && key == "escape", editor(outputEdit = OutputClosed), editor))
 
     controlled (context, editor, action, input) = match action
-        Keyboard => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => dockPointer (context, editor, x, y, down), \(w, _) => Runtime::step (editor(keyboardWidth = w)))
-        Surface => ui::Inputs::route (input, \(key, down) => surfaceKey (editor, key, down), \(x, y, down, shift) => surfacePointer (context, editor(fineHeld = shift), x, y, down), \(w, h) => viewed (editor, w, h))
-        Controls => ui::Inputs::route (input, \(key, down) => Runtime::step (ui::Pick::either (down && key == "escape", Dials::escaped editor, editor)), \(x, y, down, shift) => Runtime::step (EditorView::dialled (editor(fineHeld = shift), x, y, down)), \(_, _) => Runtime::step editor)
+        Keyboard => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => dockPointer (context, editor, x, y, down), \(w, _) => Runtime::step (editor(keyboardWidth = w)), \(_, _) => Runtime::step editor)
+        Surface => ui::Inputs::route (input, \(key, down) => surfaceKey (editor, key, down), \(x, y, down, shift) => surfacePointer (context, editor(fineHeld = shift), x, y, down), \(w, h) => viewed (editor, w, h), \(x, y) => NodeContext::open (editor, x, y))
+        Controls => ui::Inputs::route (input, \(key, down) => Runtime::step (ui::Pick::either (down && key == "escape", Dials::escaped editor, editor)), \(x, y, down, shift) => Runtime::step (EditorView::dialled (editor(fineHeld = shift), x, y, down)), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor)
         _ => Runtime::step editor
 
     routed (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \elapsed => DawSession::framed (editor, elapsed), \(action, input) => controlled (context, editor, action, input))

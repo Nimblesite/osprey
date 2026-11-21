@@ -343,6 +343,14 @@ impl LayoutableImpl for SceneSurface {
 impl InputElementImpl for SceneSurface {
     fn on_pointer_pressed(this: &Self, e: &PointerPressedEventArgs) {
         e.set_handled(true);
+        if e.get_current_point(Some(this)).properties.is_right_button_pressed
+            || (cfg!(target_os = "macos") && e.key_modifiers().contains(KeyModifiers::CONTROL))
+        {
+            let at = e.get_position(Some(this));
+            let scale = this.placement().scale;
+            this.link().send(|ordinal| Touch::secondary(ordinal, at.x / scale, at.y / scale));
+            return;
+        }
         if this.moves_window(e) {
             return;
         }

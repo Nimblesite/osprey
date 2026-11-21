@@ -51,23 +51,12 @@ module EditorView
         Success binding => "${binding.pluginName} ${n.identity}"
         Error _ => "${processorTitle n.processor} ${n.identity}"
 
-    plugins editor = Ui::column [Ui::field ("VST3 bundle", editor.pluginPath, "Path to a .vst3 bundle", PluginPath), Ui::button ("Scan VST3", "", ScanVst), Ui::picker ("Add VST3", mapList (editor.catalog, \entry => Ui::choice (entry.classId, entry.className)), "", CreateVst(identifier = ""))]
-
-    menu () = Ui::picker ("Add component", mapList (EditorState::pickerKinds (), \kind => Ui::choice (kind, EditorState::pickerLabel kind)), "", Add(kind = ""))
-
-    sourcePort (n, index) = match listGet n.outputs index
-        Error _ => Ui::caption "Output port unavailable"
-        Success port => Ui::button ("Use ${port.name} output", "external", Source(identity = n.identity, outlet = index))
-
-    inputName (n, port) = match (port.rate == Control)
-        false => port.name
-        true => match listGet (filterList (n.parameters, \p => p.key == port.name)) 0
-            Error _ => port.name
-            Success p => p.label
-
-    inputPort (n, index) = match listGet n.inputs index
-        Error _ => Ui::caption "Input port unavailable"
-        Success port => Ui::column [Ui::caption (inputName (n, port)), Ui::column [Ui::button ("Connect ${inputName (n, port)}", "", Connect(identity = n.identity, inlet = index)), Ui::button ("Disconnect ${inputName (n, port)}", "", Disconnect(identity = n.identity, inlet = index))]]
+    menu editor =
+        builtins = mapList (EditorState::pickerKinds (), \kind => Ui::choice (kind, EditorState::title kind))
+        plugins = match editor.scanQueue
+            [_, ..._] => []
+            [] => mapList (editor.catalog, \entry => Ui::choice ("vst:${entry.classId}", entry.className))
+        Ui::picker ("Add component", listConcat [Ui::choice ("", "Choose module…")] (listConcat builtins plugins), "", Add(kind = ""))
 
     // [DAW-CONTROLS-DIAL] Patch Controls draws the module's numbers as the canvas does: a dial and its value.
     dialTop () = 4.0 + Dials::pitch () / 2.0
@@ -95,8 +84,6 @@ module EditorView
         External _ => mapList (filterList (n.parameters, \p => p.automatable), \p => Ui::button ("Modulate ${p.label}", "", Modulate(identity = n.identity, key = p.key)))
         _ => []
 
-    ports n = listConcat (mapList (toList (range (0, length n.outputs)), \index => sourcePort (n, index))) (mapList (toList (range (0, length n.inputs)), \index => inputPort (n, index)))
-
     component (editor, n) =
         parameters = match (length n.parameters == 0)
             true => []
@@ -104,7 +91,7 @@ module EditorView
         sample = match n.processor
             Granular resource _ _ => [Ui::section ("Sample", "", [Ui::caption ("${daw::PatchVoices::fileName resource.name} · ${resource.sampleRate} Hz · ${resource.sourceChannels} source channels · ${length resource.samples} frames · ${WaveMath::seconds (toFloat (length resource.samples), toFloat resource.sampleRate)} s"), Ui::button ("Load WAV sample", "", LoadSample), Ui::button ("Use built-in harmonic sample", "", BuiltinSample)])]
             _ => []
-        Ui::column (listConcat (listConcat sample parameters) [Ui::section ("Connections", "", ports n), Ui::action ("Remove module", "delete", ui::Destructive, true, Remove)])
+        Ui::column (listConcat sample parameters)
 
     x index = index.layoutX
 
@@ -442,13 +429,13 @@ module EditorView
             true => []
             false => ModuleInspector::shapes editor
         chrome = listConcat details (listAppend (toolbar editor) (text (editor.message, 32.0, 767.0, 12.0, 170, 12)))
-        shapes = ui::Lists::flatten [(CardArts::scenery editor).artShapes, CableCanvas::shapes editor, nodes, mapList (chrome, \item => Header::placedShape (item, 0.0, 0.0, PrismArt::chromeLayer editor)), library]
+        shapes = ui::Lists::flatten [(CardArts::scenery editor).artShapes, CableCanvas::shapes editor, nodes, mapList (chrome, \item => Header::placedShape (item, 0.0, 0.0, PrismArt::chromeLayer editor)), library, NodeContext::shapes editor]
         scene = Ui::zoomed (pageZoom, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
         access = listConcat (toolbarItems editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) (CardArts::controls (editor, n)))))
         extra = match editor.paletteShown
             true => paletteAccess ()
             false => []
-        Ui::described (scene, listConcat (listConcat access (CableCanvas::access editor)) (listConcat extra (ModuleInspector::access editor)))
+        Ui::described (scene, listConcat (listConcat access (CableCanvas::access editor)) (listConcat extra (listConcat (ModuleInspector::access editor) (NodeContext::access editor))))
 
     inspector editor =
         style = ui::Frames::inset (16, 12, 16, 12)
@@ -456,7 +443,7 @@ module EditorView
         chooser = Ui::picker ("Module", mapList (editor.graph.nodes, \n => Ui::choice ("${n.identity}", componentName (editor, n))), "${editor.selected}", Select(identity = -1))
         heading = Ui::row [Ui::styled ("Patch", ui::Heading, ui::Primary), ui::Spacer, Ui::button ("Close", "dismiss", ShowDetails)]
         local = theme ()
-        Ui::themed (local(spacing = [4, 8, 8, 16, 24, 32]), Ui::framed (style(frameTextSize = 12, frameControlHeight = 28), Ui::column (listConcat [heading, chooser] (listConcat (mapList (selected, \n => component (editor, n))) [Ui::section ("Add to patch", "", [menu (), plugins editor])]))))
+        Ui::themed (local(spacing = [4, 8, 8, 16, 24, 32]), Ui::framed (style(frameTextSize = 12, frameControlHeight = 28), Ui::column (listConcat [heading, menu editor, chooser] (mapList (selected, \n => component (editor, n))))))
 
     keyboardDock editor =
         dock = CardArts::dock editor
@@ -479,7 +466,7 @@ module EditorView
         sounding = editor.renderDeviceKey != "" || editor.renderContinuous || editor.renderTicket != ""
         last = satSub (length editor.song.tracks) 1
         [
-            Ui::section ("File", "", [command (editor, "Open Song…", "open", true, OpenTrack(index = -2)), command (editor, "Save", "save", true, SaveProject), command (editor, "Render Song", "render", song, RenderSong)]),
+            Ui::section ("File", "", [command (editor, "Settings…", "settings", true, ShowSettings), command (editor, "Open Song…", "open", true, OpenTrack(index = -2)), command (editor, "Save", "save", true, SaveProject), command (editor, "Render Song", "render", song, RenderSong)]),
             Ui::section ("Edit", "", [command (editor, "Undo", "undo", length editor.past > 0, Undo), command (editor, "Redo", "redo", length editor.future > 0, Redo)]),
             Ui::section ("View", "", [command (editor, "Timeline", "timeline", true, ShowPage(page = TimelinePage)), command (editor, "Track Patch", "patch", true, ShowPage(page = PatchPage)), command (editor, "Bus Routing", "routing", true, ShowPage(page = MixPage)), command (editor, "Modules", "modules", true, ShowModules), command (editor, "Patch Controls", "controls", true, ShowDetails), command (editor, "Keyboard", "keyboard", true, ShowKeyboard), command (editor, "Zoom In", "zoomIn", song && editor.page == TimelinePage, ZoomLanes(factor = 1.25)), command (editor, "Zoom Out", "zoomOut", song && editor.page == TimelinePage, ZoomLanes(factor = 0.8)), command (editor, "Zoom to Fit", "zoomFit", song && editor.page == TimelinePage, ZoomLanes(factor = 0.0))]),
             Ui::section ("Transport", "", [command (editor, "Return to Start", "start", song, PickTrack(index = editor.track, bar = 0)), command (editor, "Play Song", "playSong", song && !playing, PlaySong), command (editor, "Stop Song", "stopSong", playing, StopSong), command (editor, "Loop", "loop", song && !playing, ToggleLoop), command (editor, "Play Patch", "playPatch", !sounding, PlayGraph), command (editor, "Stop Patch", "stopPatch", sounding, StopGraph), command (editor, "Audition Patch", "audition", true, Audition), command (editor, "Previous Track", "previousTrack", song && editor.track > 0, PickTrack(index = satSub editor.track 1, bar = editor.rollBar)), command (editor, "Next Track", "nextTrack", song && editor.track < last, PickTrack(index = satAdd editor.track 1, bar = editor.rollBar)), command (editor, "Previous Bar", "previousBar", song && editor.rollBar > 0, PickTrack(index = editor.track, bar = satSub editor.rollBar 1)), command (editor, "Next Bar", "nextBar", song, PickTrack(index = editor.track, bar = satAdd editor.rollBar 1))]),
@@ -494,6 +481,8 @@ module EditorView
     root () =
         editor = editorSlice ()
         match editor.outputEdit
+            SongTiming bpm meter => Ui::layer [workspace editor, SongTimingEditor::form (editor, bpm, meter)]
+            PluginSettings folder => Ui::layer [workspace editor, Ui::dialog ("Settings", Ui::column [Ui::field ("VST3 folder", folder, "Folder containing VST3 plug-ins", PluginPath), Ui::caption editor.message, Ui::row [Ui::button ("Cancel", "", CloseOutput), Ui::button ("Save settings", "", SaveSettings)]], CloseOutput)]
             BrowsingSends offset => Ui::layer [workspace editor, routeInspector (editor, SendList::form (editor, offset))]
             EditingSend draft => Ui::layer [workspace editor, routeInspector (editor, SendEditor::form (editor, draft))]
             EditingBus name => Ui::layer [workspace editor, routeInspector (editor, BusOutputs::form (editor, name))]

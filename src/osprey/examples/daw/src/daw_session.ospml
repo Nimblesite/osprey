@@ -7,20 +7,24 @@ import ui::Requests
 (** Loading a song, picking a track, opening its patch in Prism and playing the whole song. *)
 module DawSession
     (** No song loaded: the timeline asks for one. *)
-    export blank () = daw::Arrangement(title = "", tempo = 120.0, sampleRate = 48000, buses = [], tracks = [])
+    export blank () = daw::Arrangement(title = "", tempo = 120.0, meterTop = 4, meterBottom = 4, sampleRate = 48000, buses = [], tracks = [])
 
     (** The bar (from 0, four beats each) a beat falls in. *)
-    export bar beat = floatToInt (TimelineGeometry::bar beat) ?: 0
+    export measure song = TimelineGeometry::measure (toFloat song.meterTop, toFloat song.meterBottom)
 
-    firstBar track = match listGet track.notes 0
+    export unit song = TimelineGeometry::measure (1.0, toFloat song.meterBottom)
+
+    export bar (song, beat) = floatToInt (TimelineGeometry::bar (beat, measure song)) ?: 0
+
+    firstBar (song, track) = match listGet track.notes 0
         Error _ => 0
-        Success note => bar note.start
+        Success note => bar (song, note.start)
 
     (** Select a track and show the two bars where it first plays. *)
     export picked (editor, index) = match listGet editor.song.tracks index
         Error _ => editor
         Success track =>
-            next = editor(track = index, rollDrag = RollIdle, outputEdit = OutputClosed, selectedNote = -1, rollBar = firstBar track, message = "${track.name}: ${length track.notes} notes.")
+            next = editor(track = index, rollDrag = RollIdle, outputEdit = OutputClosed, selectedNote = -1, rollBar = firstBar (editor.song, track), message = "${track.name}: ${length track.notes} notes.")
             TimelineView::scrolled (next, TimelineView::keeping (next, index))
 
     (** Select a track and keep the piano roll on `at`. *)
@@ -85,13 +89,13 @@ module DawSession
     fresh (place, audio, text) = (readFile (snapshot place) ?: "") == text && (fileSize audio ?: 0) > 44
 
     (** [DAW-TRANSPORT-RANGE] The beat Play starts on: the start marker's bar line. *)
-    export rangeStart editor = TimelineGeometry::barStart (toFloat editor.rollBar)
+    export rangeStart editor = TimelineGeometry::barStart (toFloat editor.rollBar, measure editor.song)
 
     (** The beat Play ends on: the end marker's bar line when it is after the start marker, else the song's end. *)
-    export rangeEnd editor = TimelineGeometry::rangeEnd (toFloat editor.rollBar, toFloat editor.playEnd, TimelineView::beats editor)
+    export rangeEnd editor = TimelineGeometry::rangeEnd (toFloat editor.rollBar, toFloat editor.playEnd, TimelineView::beats editor, measure editor.song)
 
     // The bars Play covers, named from 1.
-    span editor = "bars ${satAdd editor.rollBar 1}–${satAdd (floatToInt (TimelineGeometry::playableBar (rangeEnd editor, rangeEnd editor)) ?: editor.rollBar) 1}"
+    span editor = "bars ${satAdd editor.rollBar 1}–${satAdd (floatToInt (TimelineGeometry::playableBar (rangeEnd editor, rangeEnd editor, measure editor.song)) ?: editor.rollBar) 1}"
 
     busy editor = editor.songTicket != "" || editor.songPath == "" || editor.renderer == ""
 
@@ -422,6 +426,7 @@ module DawSession
         EditingSend _ => Error(message = "Finish editing the send first.")
         NamingGroup _ => Error(message = "Finish naming the group first.")
         OutputClosed => workspaceAt (editor, x, y)
+        _ => Error(message = "Finish the current edit first.")
 
     workspaceAt (editor, x, y) =
         index = EditorView::areaAt (TimelineView::headerAreas editor, x, y)

@@ -83,7 +83,11 @@ module SongFiles
     export safe path = contains path "'" == false
 
     arranged (doc, tracks, buses) =
-        ProjectCodec::readArrangement (doc, buses, tracks)
+        song = ProjectCodec::readArrangement (doc, buses, tracks)
+        keys = ui::Doc::keys doc
+        match !ui::Lists::any (keys, \key => key == "meterTop" || key == "meterBottom")
+            true => song(meterTop = 4, meterBottom = 4)
+            false => song
 
     // Every track name is unique (a sidechain keys on the name), so a bad project is refused on opening, not
     // halfway through a render.
@@ -92,7 +96,11 @@ module SongFiles
         Error _ => opened song
 
     // A project with tracks must be one the renderer can play; a new, empty one still opens and saves.
-    opened song = match length song.tracks == 0
+    opened song = match Arrangements::validMeter (song.meterTop, song.meterBottom)
+        false => Error(message = "The project time signature is invalid.")
+        true => sized song
+
+    sized song = match length song.tracks == 0
         true => Success(value = song)
         false => synth::Outcomes::carried (Arrangements::frames song, \_ => Success(value = song))
 

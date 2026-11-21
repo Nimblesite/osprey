@@ -81,7 +81,7 @@ module App
         ui::Pick::either (Machines::sets (lever, "skin"), chosen (store, next), next)
     pointed (store, input) =
         next = Link::pointed (store, input)
-        choosing = Inputs::route (input, \(_, _) => false, \(x, y, down, _) => Canvases::chooses (store.screen.screenMachine, "skin", x, y, down), \(_, _) => false)
+        choosing = Inputs::route (input, \(_, _) => false, \(x, y, down, _) => Canvases::chooses (store.screen.screenMachine, "skin", x, y, down), \(_, _) => false, \(_, _) => false)
         ui::Pick::either (choosing, chosen (store, next), next)
     phased (store, phase) =
         next = Link::phased (store, phase)

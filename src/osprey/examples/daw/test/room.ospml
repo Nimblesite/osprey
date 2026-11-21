@@ -54,7 +54,7 @@ editorUiJourney () =
         match shape
             ui::Rect _ _ _ _ angle _ _ => expect (angle, 0.0)
             _ => expect (true, true)))
-    inspectorShows (output, 0, "Use audio output")
+    offeredIn (output, "Canvas output 0:0", true)
     lettersIn (output, "Oscillator 0")
     offeredIn (output, "Canvas input 1:0", true)
     portAt (output, "Canvas input 1:0", 509.0, 161.5)
@@ -89,11 +89,11 @@ editorUiJourney () =
     hovered = Drive::pointer (released, 600.0, 400.0, false)
     still = portIn (hovered, "Canvas input 1:0")
     expect (structuralEquals ([still.accessLeft, still.accessTop], [movedPort.accessLeft, movedPort.accessTop]), true)
-    disconnected = inspectorAction (released, 1, "Disconnect audio")
+    disconnected = cutCable (released, "Cable 0:0 to 1:0")
     rearmed = Drive::pointer (disconnected, 488.5, 169.5, true)
     reconnected = drawnFrom (rearmed, 488.5, 169.5, 579.0, 301.5)
     cablesOf (reconnected, 1)
-    erased = inspectorAction (released, 0, "Remove module")
+    erased = deleteNode (released, 0)
     portAt (erased, "Canvas input 1:0", 569.0, 291.5)
     offsetGrab = Drive::pointer (released, 730.0, 310.0, true)
     offsetMove = grabbedAt (offsetGrab, 750.0, 340.0)
@@ -131,7 +131,7 @@ editorUiJourney () =
     invalid = choseAt (tuned, 0, "Frequency", "not a frequency")
     sameGraph (invalid, tuned)
     selected = inspectorSelected (invalid, 1)
-    removed = Drive::press (selected, "Remove module")
+    removed = deleteNode (selected, 1)
     nodesOf (removed, 2)
     expect (uitest::Views::letters (removed.drivenSeen, "Gain 1"), false)
     cablesOf (removed, 0)
@@ -142,16 +142,23 @@ descriptorFixture = "{\"id\":\"0CDBB66985D548A9BFD8371909D24BB3\",\"name\":\"ADe
 pluginUiJourney () =
     handle ui::Slices
         fetch key => match key
-            "prism-vst:scan:2" => "{\"event\":\"vst.class\",\"id\":\"0CDBB66985D548A9BFD8371909D24BB3\",\"name\":\"ADelay\",\"categories\":\"Fx|Delay\"}\n"
+            "prism-vst:list:1" => "[\"/plugins/adelay.vst3\"]"
+            "prism-vst:scan:2" => "{\"event\":\"vst.class\",\"id\":\"0CDBB66985D548A9BFD8371909D24BB3\",\"name\":\"ADelay\",\"bundle\":\"/plugins/adelay.vst3\",\"categories\":\"Fx|Delay\"}\n"
             "prism-vst:describe:3" => descriptorFixture
             "prism-vst:describe:4" => descriptorFixture
             _ => match startsWith key "prism-worker:"
                 true => zeroStereoResponse ()
                 false => "malformed metadata"
-    opened = openedEditor ["--empty", "--vst-worker", "/worker/osprey-vst-worker"]
-    path = Drive::choose (opened, "VST3 bundle", "/plugins/adelay.vst3")
-    showsIn (opened, "Scan VST3", true)
-    scanning = pressedFor (path, "Scan VST3", 1)
+    home = "target/daw-tests/vst-home"
+    _root = makeDir "target/daw-tests"
+    _homeDir = makeDir home
+    _prefs = makeDir "${home}/.prism"
+    _initial = writeFile "${home}/.prism/vst3-folder" "/plugins"
+    launch = Drive::launchedAt (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "macos", ["--empty", "--vst-worker", "/worker/osprey-vst-worker"], home)
+    opened = Drive::press (launch, "Patch Controls")
+    showsIn (opened, "Scan VST3", false)
+    showsIn (opened, "VST3 folder", false)
+    scanning = receipt (opened, "prism-vst:list:1")
     firstAsk (scanning, \request =>
         match request.capability
             ui::Run executable arguments timeout limit _ _ =>
@@ -184,15 +191,15 @@ pluginUiJourney () =
     sink = chained (connected, ["sine", "stereo", "stereo-output"])
     finished = audioLinked (audioLinked (audioLinked (sink, 2, 3), 3, 0), 1, 4)
     lfoPatch = component (finished, "lfo")
-    armedModulator = inspectorAction (lfoPatch, 5, "Use control output")
+    armedModulator = prismTap (lfoPatch, "Canvas output 5:0")
     inspectorShows (armedModulator, 0, "Modulate Delay")
     controlled = inspectorAction (armedModulator, 0, "Modulate Delay")
     hostedModulationJourney (Drive::holding controlled).graph
     cablesOf (controlled, 5)
-    unbound = inspectorAction (controlled, 0, "Disconnect Delay")
+    unbound = cutCable (controlled, "Cable 5:0 to 0:1")
     cablesOf (unbound, 4)
     restoresParameter ((Drive::holding unbound).graph)
-    wrongSource = inspectorAction (controlled, 2, "Use audio output")
+    wrongSource = prismTap (controlled, "Canvas output 2:0")
     refusedModulation = inspectorAction (wrongSource, 0, "Modulate Delay")
     sameGraph (refusedModulation, controlled)
     audition = pressedFor (finished, "Audition Patch", 1)
@@ -213,7 +220,7 @@ pluginUiJourney () =
         expect (contains lost.stepStore.message "no unique pending graph request", true)
         expect (length lost.stepStore.renderPending, 0)
         expect (lost.stepStore.renderTicket, ""))
-    changed = inspectorAction (audition, 1, "Remove module")
+    changed = deleteNode (audition, 1)
     openedAudio = sessioned (changed, "prism-audio:1:0:open", "effect-zero")
     heldIs (changed, \held => length held.pluginBindings, 1)
     sessionsOf (openedAudio, 1)
@@ -255,13 +262,15 @@ pluginUiJourney () =
     malformed = receipt (vstAdded twice, "prism-vst:describe:5")
     sameGraph (malformed, twice)
     failed = failedWith (scanning, "prism-vst:scan:2", "module unavailable")
-    showsIn (failed, "VST3 inspection failed: module unavailable", true)
-    replaced = Drive::choose (scanning, "VST3 bundle", "/different.vst3")
+    mentions (failed, "module unavailable")
+    preferences = Drive::press (scanning, "Settings…")
+    replaced = Drive::press (Drive::choose (preferences, "VST3 folder", "/another-folder"), "Save settings")
+    expect (readFile "${home}/.prism/vst3-folder" ?: "", "/another-folder")
     ignored = receipt (replaced, "prism-vst:scan:2")
     countOf ((Drive::holding ignored).catalog, 0)
-    removedSecond = Drive::press (connected, "Remove module")
+    removedSecond = deleteNode (connected, 1)
     expect (structuralEquals ([length (Drive::holding removedSecond).pluginBindings, length (Drive::holding removedSecond).graph.cables], [1, 0]), true)
-    removed = Drive::press (added, "Remove module")
+    removed = deleteNode (added, 0)
     countOf ((Drive::holding removed).graph.nodes, 0)
     countOf ((Drive::holding removed).pluginBindings, 0)
 
@@ -292,16 +301,17 @@ midiMenuJourney () =
     opened = openedEditor ["--empty"]
     notes = component (opened, "midi-note")
     nodesOf (notes, 1)
-    forEachList (["Pitch", "Velocity", "Use notes output"], \text => inspectorShows (notes, 0, text))
+    forEachList (["Pitch", "Velocity"], \text => inspectorShows (notes, 0, text))
+    offeredIn (notes, "Canvas output 0:0", true)
     output = component (notes, "stereo-output")
     nodesOf (output, 2)
-    incompatible = linkedCables (output, "Use notes output", 0, "Connect audio", 1, 0)
+    incompatible = linkedCables (output, 0, 1, 0, 0)
     mentions (incompatible, "different rates")
     gain = chained (output, ["lfo", "modulated-gain"])
     nodesOf (gain, 4)
     inspectorShows (gain, 2, "Frequency")
-    modulated = linkedCables (gain, "Use control output", 2, "Connect control", 3, 1)
-    _ = linkedCables (modulated, "Use control output", 2, "Connect audio", 1, 1)
+    modulated = linkedCables (gain, 2, 3, 1, 1)
+    _ = linkedCables (modulated, 2, 1, 0, 1)
     tuned = choseAt (output, 0, "Pitch", "72")
     unchosenAt (tuned, 0, "Velocity", "1.1")
 
@@ -429,15 +439,21 @@ firstAsk (driven, check) =
         Error _ => expect (false, true)
         Success request => check request
 
-// One module armed through its inspector, then wired into the next module.
-linked (from, arm, source, socket, inlet) = inspectorAction (inspectorAction (from, source, arm), inlet, socket)
+cutCable (session, label) = Drive::key (prismTap (session, label), "backspace", true)
 
-// A source armed, then its audio wired into the next module.
-audioLinked (from, source, inlet) = linked (from, "Use audio output", source, "Connect audio", inlet)
+deleteNode (session, identity) =
+    editor = Drive::holding session
+    at = synth::EditorLayout::position (editor, identity)
+    menu = Drive::sent (session, ui::Touch(touchNow = session.drivenNow, touchKind = ui::Hosting::secondary, touchOrdinal = session.drivenSeen.renderedOrdinal, touchWords = "", touchDetail = "", touchX = at.layoutX, touchY = at.layoutY, touchDown = false, touchShift = false))
+    offeredIn (menu, "Delete node", true)
+    prismTap (menu, "Delete node")
 
-// One module armed and wired, its `count` cables checked, keeping the driven state.
-linkedCables (from, arm, source, socket, inlet, count) =
-    wired = linked (from, arm, source, socket, inlet)
+linked (from, source, destination, inlet) = prismTap (prismTap (from, "Canvas output ${source}:0"), "Canvas input ${destination}:${inlet}")
+
+audioLinked (from, source, destination) = linked (from, source, destination, 0)
+
+linkedCables (from, source, destination, inlet, count) =
+    wired = linked (from, source, destination, inlet)
     cablesOf (wired, count)
     wired
 
@@ -450,7 +466,7 @@ choseAt (driven, identity, label, value) =
 unchosenAt (driven, identity, label, value) = sameGraph (choseAt (driven, identity, label, value), driven)
 
 // One more scanned ADelay added through the real menu.
-vstAdded driven = Drive::choose (driven, "Add VST3", "0CDBB66985D548A9BFD8371909D24BB3")
+vstAdded driven = Drive::choose (driven, "Add component", "vst:0CDBB66985D548A9BFD8371909D24BB3")
 
 // A parameter of the editor state edited through the typed boundary.
 edited (editor, identity, key, value) = synth::EditorState::typed (editor, synth::EditParameter(identity = identity, key = key), value)

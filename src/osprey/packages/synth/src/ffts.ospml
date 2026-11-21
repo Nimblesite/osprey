@@ -8,14 +8,6 @@ module Ffts
     (** Whether a transform of this size is supported. *)
     export valid size = length (filterList (sizes, \s => s == size)) == 1
 
-    split values = match values
-        [] => ComplexSplit(evens = [], odds = [])
-        [even, ...rest] => match rest
-            [] => ComplexSplit(evens = [even], odds = [])
-            [odd, ...more] =>
-                tail = split more
-                ComplexSplit(evens = listPrepend tail.evens even, odds = listPrepend tail.odds odd)
-
     (** Multiply by the unit phasor at `angle`. *)
     export rotated (value, angle) = Complex(re = SpectralMath::productRe (value.re, value.im, cos angle, sin angle), im = SpectralMath::productIm (value.re, value.im, cos angle, sin angle))
 
@@ -28,19 +20,26 @@ module Ffts
                 rest = combined (moreEvens, moreOdds, satAdd index 1, size, sign)
                 ComplexHalves(lower = listPrepend rest.lower (Complex(re = e.re + t.re, im = e.im + t.im)), upper = listPrepend rest.upper (Complex(re = e.re - t.re, im = e.im - t.im)))
 
-    transform (values, sign) = match values
-        [] => []
-        [only, ...rest] => match rest
-            [] => [only]
-            _ =>
-                parts = split values
-                halves = combined (transform (parts.evens, sign), transform (parts.odds, sign), 0, length values, sign)
-                listConcat halves.lower halves.upper
+    // The recursive halves borrow alternating bins of the same input frame.
+    transform (values, first, stride, size, sign) = match size == 1
+        true => match listGet values first
+            Error _ => Error(message = InvalidConfiguration(detail = "FFT input frame is incomplete."))
+            Success only => Success(value = [only])
+        false =>
+            half = intDiv size 2
+            step = satAdd stride stride
+            match transform (values, first, step, half, sign)
+                Error why => Error(message = why)
+                Success evens => match transform (values, satAdd first stride, step, half, sign)
+                    Error why => Error(message = why)
+                    Success odds =>
+                        halves = combined (evens, odds, 0, size, sign)
+                        Success(value = listConcat halves.lower halves.upper)
 
     (** Real frame to bins 0..size/2. *)
     export forward samples = match valid (length samples)
         false => Error(message = InvalidConfiguration(detail = "FFT size must be a power of two from 64 to 4096."))
-        true => Success(value = Sequences::take (transform (mapList (samples, \x => Complex(re = x, im = 0.0)), -1.0), satAdd (intDiv (length samples) 2) 1))
+        true => Outcomes::carried (transform (mapList (samples, \x => Complex(re = x, im = 0.0)), 0, 1, length samples, -1.0), \bins => Success(value = Sequences::take (bins, satAdd (intDiv (length samples) 2) 1)))
 
     conjugate value = Complex(re = value.re, im = 0.0 - value.im)
 
@@ -49,4 +48,4 @@ module Ffts
         false => Error(message = InvalidConfiguration(detail = "Inverse FFT needs size/2 + 1 bins of a supported size."))
         true =>
             mirrored = listReverse (mapList (Sequences::drop (Sequences::take (bins, intDiv size 2), 1), conjugate))
-            Success(value = mapList (transform (listConcat bins mirrored, 1.0), \value => value.re / toFloat size))
+            Outcomes::carried (transform (listConcat bins mirrored, 0, 1, size, 1.0), \values => Success(value = mapList (values, \value => value.re / toFloat size)))

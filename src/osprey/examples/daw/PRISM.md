@@ -24,7 +24,9 @@ make -C src/toolchain/targets/windows synth           # in its sandbox on Window
 make -C src/toolchain/targets/windows/tests synth     # its Windows self-test against goldens/windows
 ```
 
-Open **Modules** and click a component to add it, or drag it onto the canvas. **Patch controls** opens the selected-module inspector: choose a **Module**, edit its **Parameters**, then use **Connections** to select an output and connect or disconnect an input. Only the chosen module's controls are shown; **Remove module** removes that module and its cables. Compact **Audition**, **Play** and **Stop** controls remain together above the inspector; **Add to patch** holds component and VST creation. The inspector journey exercises selection and routing through these visible controls [PRISM-ROUTING-EDITOR].
+Open **Patch Controls** and choose **Add component** to insert a built-in module or a discovered VST3. Select a module to edit its parameters. Drag from an output socket to an input socket to connect them. Select a cable and press Backspace to disconnect it. Right-click a module and choose **Delete node** to remove it and its cables. Undo restores both [PRISM-ROUTING-EDITOR].
+
+
 
 Drag from an output socket to a compatible input socket to draw a cable; clicking the output and then the input also works. Click an exposed cable to highlight it, then click **Delete cable ×** or press **Backspace/Delete**. **Escape** cancels a pending connection. A rejected connection preserves the existing cables. The Filter's purple **CUTOFF** input accepts normalized modulation (unplugged uses the Cutoff value); its cyan monitor socket routes the same audio output to the Scope. These interactions are covered by [PRISM-ROUTING-CABLES].
 
@@ -50,7 +52,8 @@ The application tests exercise both the existing fixed-patch interaction coverag
 The VST target builds a separate worker against a pinned official SDK, scans actual ADelay and mda binaries, processes audio/MIDI and checks automation/state restoration. The native headless journey drives the menu and canvas through a real MIDI instrument, two real effects and LFO-controlled gain; it verifies 18 graph transactions across three retained workers, exact effect-chain PCM and sample-positioned MIDI/automation. Windowed screenshots, live graph replacement, graph persistence and plug-in latency compensation remain unfinished. See the [delivery checklist](../../../../docs/plans/prism-synth-routing.md) and [worker scope](../../../toolchain/hosts/synth_vst/README.md) for verified capabilities and remaining work.
 
 
-VST3 bundles can now be scanned from the native **VST3 bundle** field. **Add VST3** lists the actual classes; choosing one loads its checked stereo/MIDI ports and normalized controls into an independent graph node. The worker is packaged beside Prism. Scan failures remain visible, and stale responses cannot add nodes to a newer module selection. External-node audio runs through the preview engine using persistent worker instances.
+Choose **File → Settings…** to set your VST3 folder. Prism discovers plug-ins in the background at startup and when you save a new folder. Each bundle runs in a separate worker. Its available instruments and effects appear in **Add component** [PRISM-ROUTING-VST].
+
 
 `make -C src/toolchain/targets/macos/tests synth-vst-headless` drives the native application against real SDK plug-ins and real bounded worker processes. `synth-vst` runs the same journey in a window. The headless records are accessibility trees; the windowed run records screenshots. These commands do not substitute a fake successful scan or descriptor.
 

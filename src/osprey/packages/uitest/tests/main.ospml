@@ -113,7 +113,7 @@ finishedAs (ticket, outcome) = match outcome
 
 // One message as a short string, so a table of expectations can hold it. Pinned to `int` actions until Nimblesite/osprey#278 generalizes the router.
 spelled : ui::Message<int> -> string
-spelled message = Messages::route (message, \_ => "act", \(_, text) => "entered:${text}", \(_, on) => "switched:${on}", \(_, points) => "sized:${points}", \(ticket, outcome) => finishedAs (ticket, outcome), \phase => "phase:${phase}", \(_, _) => "stroked", \(_, _) => "lassoed", \elapsed => "frame:${elapsed}", \(_, input) => Inputs::route (input, \(name, down) => "key:${name}:${down}", \(x, y, down, shift) => "pointer:${x}:${y}:${down}:${shift}", \(w, h) => "viewed:${w}:${h}"))
+spelled message = Messages::route (message, \_ => "act", \(_, text) => "entered:${text}", \(_, on) => "switched:${on}", \(_, points) => "sized:${points}", \(ticket, outcome) => finishedAs (ticket, outcome), \phase => "phase:${phase}", \(_, _) => "stroked", \(_, _) => "lassoed", \elapsed => "frame:${elapsed}", \(_, input) => Inputs::route (input, \(name, down) => "key:${name}:${down}", \(x, y, down, shift) => "pointer:${x}:${y}:${down}:${shift}", \(w, h) => "viewed:${w}:${h}", \(_, _) => "secondary"))
 
 // The words told under one member name through a told tree, in telling order: a member a host draws that no `Control` field carries.
 carried key told = match told
@@ -294,7 +294,7 @@ initial context =
     Runtime::step (Machines::feed (fixture (), [Machines::fact ("skin", Values::text skin), Machines::fact ("caption", Values::text caption)]))
 
 pulled (machine, lever, value) = Runtime::step (Machines::pull (machine, lever, value))
-pointed (machine, input) = Inputs::route (input, \(_, _) => Runtime::step machine, \(x, y, down, _) => Runtime::step (Canvases::pointer (machine, x, y, down)), \(width, height) => Runtime::step (Canvases::viewed (machine, width, height)))
+pointed (machine, input) = Inputs::route (input, \(_, _) => Runtime::step machine, \(x, y, down, _) => Runtime::step (Canvases::pointer (machine, x, y, down)), \(width, height) => Runtime::step (Canvases::viewed (machine, width, height)), \(_, _) => Runtime::step machine)
 update (_, machine, message) =
     settled = \_ => Runtime::step machine
     settled2 = \(_, _) => Runtime::step machine
@@ -496,7 +496,7 @@ probeRegions (_, _, frames, _) = [Keyed::region (frames, Surfaces::rootKey, [], 
 probeHeard (heard, message) =
     settled = \_ => Runtime::step heard
     settled2 = \(_, _) => Runtime::step heard
-    Messages::route (message, \_ => Runtime::asking (listAppend heard "asked", [Requests::ask ("job:1", ui::ChooseFolder)]), settled2, settled2, settled2, settled2, settled, settled2, settled2, settled, \(_, input) => Runtime::step (listAppend heard (Inputs::route (input, \(name, down) => "key ${name} ${down}", \(_, _, _, _) => "pointer", \(_, _) => "viewed"))))
+    Messages::route (message, \_ => Runtime::asking (listAppend heard "asked", [Requests::ask ("job:1", ui::ChooseFolder)]), settled2, settled2, settled2, settled2, settled, settled2, settled2, settled, \(_, input) => Runtime::step (listAppend heard (Inputs::route (input, \(name, down) => "key ${name} ${down}", \(_, _, _, _) => "pointer", \(_, _) => "viewed", \(_, _) => "secondary"))))
 
 probeProgram () = ui::Program(programInit = \_ => Runtime::step [], programUpdate = \(_, heard, message) => probeHeard (heard, message), programRender = probeRegions, programTheme = \_ => ui::Theme(tokens = [], spacing = [4, 8], feedback = 120, settle = 220))
 

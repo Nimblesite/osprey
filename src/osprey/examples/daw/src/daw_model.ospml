@@ -138,6 +138,8 @@ type Bus =
 type Arrangement =
     title : string
     tempo : float
+    meterTop : int
+    meterBottom : int
     sampleRate : int
     buses : List<Bus>
     tracks : List<Track>

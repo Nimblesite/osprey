@@ -112,7 +112,7 @@ sceneHeld binding =
 sceneSaid : (ui::Binding<Act>, ui::Input) -> string
 sceneSaid (binding, input) = match Surfaces::scene (sceneHeld (binding), 0, input)
     Error problem => problem
-    Success message => Messages::route (message, \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \(_, _) => "stroke", \(_, _) => "lasso", \_ => "frame", \(_, theInput) => Inputs::route (theInput, \(name, down) => "key ${name} ${down}", \(x, y, down, shift) => "pointer ${x} ${y} ${down} ${shift}", \(w, h) => "viewed ${w} ${h}"))
+    Success message => Messages::route (message, \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \(_, _) => "stroke", \(_, _) => "lasso", \_ => "frame", \(_, theInput) => Inputs::route (theInput, \(name, down) => "key ${name} ${down}", \(x, y, down, shift) => "pointer ${x} ${y} ${down} ${shift}", \(w, h) => "viewed ${w} ${h}", \(_, _) => "secondary"))
 
 // `binding`, which owns no scene, refuses `value` as the wrong kind.
 notScene (binding, value) = expect (sceneSaid (binding, value), "A non-scene control was sent a value of the wrong kind")

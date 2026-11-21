@@ -545,7 +545,12 @@ grainImportJourney () =
         expect (resource.sampleRate, 44100)
         expect (resource.sourceChannels, 2)
         expect (resource.rootFrequency, 440.0)
-        sameSamples (resource.samples, [0.0, 0.375]))
+        expect ((synth::Resources::sample resource).frames, 2)
+        sameSamples (resource.samples, [1.0, -1.0, 0.5, 0.25])
+        reversed = wavFile (3, 2, 44100, 32, wavJoin [wavWord32 3212836864, wavWord32 1065353216, wavWord32 1048576000, wavWord32 1056964608])
+        succeeds (SampleResources::decodeWave ("stereo", 69.0, reversed), \other =>
+            expect ((synth::Resources::sample other).hash != (synth::Resources::sample resource).hash, true))
+        succeeds (GrainGraph::prepare (grainTestNode (resource, 4, 7)), \cloud => sameSamples (cloud.pool.source, [0.0, 0.375])))
     // 24-bit PCM at its original rate, still mono, tuned from MIDI 60.
     succeeds (SampleResources::decodeWave ("mono24", 60.0, wavFile (1, 1, 96000, 24, [0, 0, 64, 0, 0, 192])), \resource =>
         expect (resource.sampleRate, 96000)

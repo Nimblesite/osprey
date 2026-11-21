@@ -1,7 +1,10 @@
 // [SYNTH-HOST-VST] Third-party module loading lives in this disposable worker process.
 #include "public.sdk/source/vst/hosting/module.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
+#include <algorithm>
+#include <filesystem>
 #include <iostream>
+#include <vector>
 #include <string>
 
 int audioDevice();
@@ -37,11 +40,30 @@ int scan(const std::string& path) {
     for (const auto& info : module->getFactory().classInfos()) {
         if (info.category() != kVstAudioEffectClass) continue;
         std::cout << "{\"event\":\"vst.class\",\"id\":" << quoted(info.ID().toString())
-                  << ",\"name\":" << quoted(info.name()) << ",\"categories\":"
+                  << ",\"bundle\":" << quoted(path) << ",\"name\":" << quoted(info.name()) << ",\"categories\":"
                   << quoted(info.subCategoriesString()) << "}\n";
         ++count;
     }
     return count ? 0 : failed("The module contains no VST3 audio components.");
+}
+
+int discover(const std::filesystem::path& root) {
+    if (!root.is_absolute()) return failed("Choose an absolute VST3 folder.");
+    std::vector<std::filesystem::path> bundles;
+    for (std::filesystem::recursive_directory_iterator it(root), end; it != end; ++it) {
+        if (it->path().extension() != ".vst3") continue;
+        it.disable_recursion_pending();
+        bundles.push_back(it->path());
+    }
+    std::sort(bundles.begin(), bundles.end());
+    std::cout << "[";
+    bool first = true;
+    for (const auto& bundle : bundles) {
+        std::cout << (first ? "" : ",") << quoted(bundle.string());
+        first = false;
+    }
+    std::cout << "]\n";
+    return 0;
 }
 }
 
@@ -58,8 +80,9 @@ int main(int argc, char** argv) {
         if (argc == 4 && std::string(argv[1]) == "stream") return streamPlugin(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "verify-state") return verifyState(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "probe") return probe(argv[2], argv[3]);
+        if (argc == 3 && std::string(argv[1]) == "list") return discover(argv[2]);
         if (argc == 3 && std::string(argv[1]) == "scan") return scan(argv[2]);
-        return failed("Usage: osprey-vst-worker audio-device | scan <plugin.vst3> | describe|probe|verify-state|stream|stream-text|stream-session <plugin.vst3> <class-id>");
+        return failed("Usage: osprey-vst-worker audio-device | list <folder> | scan <plugin.vst3> | describe|probe|verify-state|stream|stream-text|stream-session <plugin.vst3> <class-id>");
     } catch (const std::exception& error) {
         return failed(error.what());
     } catch (...) {

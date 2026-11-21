@@ -58,6 +58,9 @@ type Input =
         pointerY : float
         pointerDown : bool
         pointerShift : bool
+    ContextClick
+        contextX : float
+        contextY : float
     Viewed
         viewWidth : float
         viewHeight : float
@@ -83,8 +86,9 @@ module Messages
 (** Takes a scene's input apart for the application's `update` ([UI-SCENE]). *)
 module Inputs
     (** Calls `keyed` with a key's name and whether it went down, `pointed` with the pointer's scene position, whether it is pressed and whether Shift is held, or `viewed` with the region's width and height in scene units. *)
-    export route<R> : (Input, (string, bool) -> R, (float, float, bool, bool) -> R, (float, float) -> R) -> R !e
-    route (input, keyed, pointed, viewed) = match input
+    export route<R> : (Input, (string, bool) -> R, (float, float, bool, bool) -> R, (float, float) -> R, (float, float) -> R) -> R !e
+    route (input, keyed, pointed, viewed, secondary) = match input
         Key name down => keyed (name, down)
         Pointer x y down shift => pointed (x, y, down, shift)
         Viewed width height => viewed (width, height)
+        ContextClick x y => secondary (x, y)

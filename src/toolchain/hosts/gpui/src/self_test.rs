@@ -19,7 +19,7 @@ use crate::smoke;
 
 #[path = "self_test_find.rs"]
 mod find;
-use find::{clicked, dragged, valued};
+use find::{clicked, contextual, dragged, valued};
 
 /// How long a windowed step waits for what it needs before it fails, and how often it looks.
 const PATIENCE: Duration = Duration::from_secs(60);
@@ -139,6 +139,10 @@ pub fn attempt(shown: &Shown, verb: &str, words: &[String]) -> Result<Attempt, S
             (Some((action, access)), _) => clicked(access, action),
             (None, Some((action, _))) => Attempt::Sending(vec![Touch::control(action, "")]),
             (None, None) => Attempt::Waiting(format!("nothing offers \"{}\"", word(0)?)),
+        },
+        "context" => match screen.element(word(0)?) {
+            Some((action, access)) => contextual(access, action),
+            None => Attempt::Waiting(format!("no context target {}", word(0)?)),
         },
         "set" => match screen.element(word(0)?) {
             Some((action, access)) => valued(access, action, number(1)?)?,
