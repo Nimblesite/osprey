@@ -387,7 +387,9 @@ cableGestureJourney () =
     launched = editorLaunched ["--empty"]
     opened = Drive::press (launched, "Patch Controls")
     disconnected = Drive::choose (Drive::choose (opened, "Add component", "sine"), "Add component", "filter")
-    armed = Drive::pointer (disconnected, 488.5, 169.5, true)
+    oscillator = controlPoint (disconnected, "Canvas output 0:0", 0.5)
+    filter = controlPoint (disconnected, "Canvas input 1:0", 0.5)
+    armed = grabbedAt (disconnected, oscillator.pointX, oscillator.pointY)
     expect ((Drive::holding armed).wireDragging, true)
     preview = Drive::pointer (armed, 450.0, 300.0, true)
     cablesOf (preview, 0)
@@ -395,11 +397,11 @@ cableGestureJourney () =
     cancelled = Drive::pointer (preview, 450.0, 300.0, false)
     expect ((Drive::holding cancelled).wireDragging, false)
     cablesOf (cancelled, 0)
-    source = Drive::pointer (cancelled, 488.5, 169.5, true)
-    connected = clickAt (source, 514.0, 176.0)
+    source = grabbedAt (cancelled, oscillator.pointX, oscillator.pointY)
+    connected = clickAt (source, filter.pointX, filter.pointY)
     cablesOf (connected, 1)
     expect ((Drive::holding connected).wireDragging, false)
-    selected = clickAt (connected, 501.25, 172.75)
+    selected = prismTap (connected, "Cable 0:0 to 1:0")
     expect ((Drive::holding selected).selectedCable, 0)
     offeredIn (selected, "Delete selected cable", true)
     removed = prismTap (selected, "Delete selected cable")
@@ -468,7 +470,7 @@ auditioned driven =
         match (Drive::holding previous).renderTicket == ""
             true => previous
             false => spoken previous)
-    showsIn (finished, "Preview finished.", true)
+    lettersIn (finished, "Preview finished.")
     expect (length speaker.blocks, 6)
     foldList (speaker.blocks, [], \(all, hex) => listConcat all (pcm hex))
 
