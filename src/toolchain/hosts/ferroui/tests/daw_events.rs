@@ -500,6 +500,34 @@ fn position_on_release(regions: &mut Regions, song: &std::path::Path) {
     assert!((restored_outlet.0 - outlet.0 - (end.0 - start.0)).abs() < 0.001);
     assert!((restored_outlet.1 - outlet.1 - (end.1 - start.1)).abs() < 0.001);
 }
+/// [DAW-CONTROLS-DIAL] A tap on a canvas dial opens a numeric field for that same parameter.
+fn type_into_canvas_dial(regions: &mut Regions, song: &std::path::Path) {
+    let (canvas, (x, y), _) = tablepad_card(regions);
+    let title = (x - 55.0, y - 45.0);
+    point(canvas, title, true);
+    let selected = point(canvas, title, false).0;
+    let dial = selected.scenes.values().flat_map(|scene| &scene.access)
+        .find(|a| a.label == "Wavetable 0 Level").expect("the selected wavetable's level dial");
+    let at = (dial.x + dial.w / 2.0, dial.y + dial.h / 2.0);
+    let original = std::fs::read(song).expect("open project");
+    point(canvas, at, true);
+    regions.adopt(&point(canvas, at, false).0).expect("tap the level dial");
+    choose_control(regions, "field", "Level", "99");
+    assert_eq!(std::fs::read(song).expect("project after refused value"), original);
+    choose_control(regions, "field", "Level", "0.375");
+    choose_menu(regions, "File", "Save");
+    let read = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(song).expect("saved project")).expect("project JSON");
+    let saved = read();
+    let routing = &saved["tracks"][1]["instrument"]["routing"];
+    let level = routing["nodes"][0]["settings"].as_array().expect("settings").iter()
+        .find(|setting| setting["key"] == "amplitude").expect("wavetable level");
+    assert_eq!(level["value"], 0.375);
+    choose_menu(regions, "Edit", "Undo");
+    assert_eq!(read(), serde_json::from_slice::<serde_json::Value>(&original).expect("original project"));
+    choose_menu(regions, "View", "Patch Controls");
+    choose_menu(regions, "View", "Timeline");
+}
+
 #[test]
 fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     assert_eq!(Library::init(), Ok(()), "the daw's top level must run");
@@ -532,6 +560,7 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     let reset = Library::event(0, &Touch::completed("daw-open", Ok(song.display().to_string()))).expect("return to the test project");
     regions.adopt(&reset).expect("restore the timeline");
     menu_bar(&mut regions);
+    type_into_canvas_dial(&mut regions, &song);
     create_group(&mut regions, canvas, &song);
     drag_piano_note(&mut regions, canvas, &song);
 

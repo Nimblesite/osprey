@@ -210,7 +210,7 @@ module EditorState
         edit = ParameterChange(node = identity, key = key, value = value, revision = snapshot.revision, samplePosition = snapshot.samplePosition)
         match Parameters::apply (editor.graph, snapshot, edit)
             Invalid _ => editor(message = "That parameter value is outside its allowed range.")
-            Valid _ => published (editor, Valid(value = graph(nodes = mapList (editor.graph.nodes, \n => nodeValue (identity, key, value, n)))))
+            Valid _ => published (editor(dialEntry = ""), Valid(value = graph(nodes = mapList (editor.graph.nodes, \n => nodeValue (identity, key, value, n)))))
 
     checkedValue (editor, identity, key, value) = match Graphs::node (editor.graph, identity)
         Invalid _ => absent editor
@@ -226,7 +226,7 @@ module EditorState
         Add _ => tapped (editor, Add(kind = text))
         EditParameter identity key => match parseFloat text
             Error _ => editor(message = "Enter a finite number for this parameter.")
-            Success value => checkedValue (editor(dialEntry = ""), identity, key, value)
+            Success value => checkedValue (editor, identity, key, value)
         _ => editor
 
     withParameter (n, key, value) = n(parameters = mapList (n.parameters, \p => parameterValue (key, value, p)))
