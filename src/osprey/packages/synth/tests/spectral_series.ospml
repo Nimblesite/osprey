@@ -22,6 +22,12 @@ seriesOrderJourney () =
             expect (structuralEquals (frame.memory, held.memory), true)))
     forEachList ([[], [synth::SpectralFreeze(held = true)], mapList (toList (range (0, 9)), \_ => band)], \steps =>
         refusedAs (SpectralFrames::apply (config(transform = synth::SpectralSeries(steps = steps)), bins, bins, held), "configuration", "A spectral series accepts 1-8 band, shift or morph steps only."))
+    voices = { main = centerImpulse, side = \_ => 0.0 }
+    morph = synth::SpectralMorph(amount = 1.0, mode = synth::Blend)
+    forEachList ([band, morph], \step =>
+        succeeds (spectralFor (config(transform = step), voices, 128), \direct =>
+            succeeds (spectralFor (config(transform = synth::SpectralSeries(steps = [step])), voices, 128), \series =>
+                expect (structuralEquals (direct.samples, series.samples), true))))
 
 // A centered impulse has unit Hann weight and alternating real Fourier coefficients.
 centerImpulse i = match i == 32
@@ -42,6 +48,15 @@ inspectionJourney () =
         expect (captured.active, 1)
         expect (captured.held, true)
         expect (captured.energy, 0.0))
+    succeeds (spectralFor (frozen, { main = \_ => 1.0, side = \_ => 0.5 }, 17), \before =>
+        jumped = SpectralStreams::relocated (frozen, before.held)
+        expect (structuralEquals (jumped.input, blank.input), true)
+        expect (structuralEquals (jumped.side, blank.side), true)
+        expect (structuralEquals (jumped.output, before.held.output), true)
+        expect (structuralEquals (jumped.memory, before.held.memory), true)
+        expect (structuralEquals (jumped.motion, before.held.motion), true)
+        expect (jumped.countdown, config.hop)
+        expect (jumped.captured, true))
     input = mapList (toList (range (0, 64)), centerImpulse)
     succeeds (SpectralStreams::view (config, blank(input = input), 2, 1984), \view =>
         expect (view.channel, 2)
