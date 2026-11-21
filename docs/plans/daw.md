@@ -15,7 +15,9 @@ The [daw specification](../specs/applications/Daw.md) defines the requirements. 
 - [ ] Loop toggle ([DAW-TRANSPORT-LOOP]) in the transport: the range repeats until Stop.
 - [ ] Following ([DAW-TRANSPORT-FOLLOW]): the playhead, the lanes, the piano roll page and the position readout follow the frames the device has played.
 - [ ] The hex text between the renderer and the device costs encoding time on every block; a binary block needs a byte-writing output in the language or the runtime.
-- [ ] The interactive launch never closes by itself. Fixed in 5c0357a74: `prism.sh` wrapped the app in a ten-minute `gtimeout`, which closed it during the user's test.
+- [x] Interactive launch stays open until the user closes it. Commit `5c0357a74` removed the default ten-minute timeout.
+- [x] Reduce ARC list allocation in the playback path. In `3b69dd0e8`, a live render of the committed 17-track codex project from beat 0 for two beats, including its tail, produced 851,077 stereo frames at 48 kHz. Across three alternating runs per build, median wall time fell from 19.49 s to 18.20 s. All 208 output blocks were byte-identical. This excerpt reached 0.97× real time. The 1.5× live target above and the whole-project offline targets under [DAW-PERF-RENDER] remain open.
+- [ ] Project edits must remain playable when a patch branch is disconnected [DAW-PATCH-HEARD]. The edited codex `sub` track with its mixer-to-gain cable removed refused playback before the first block and reported an unsupported graph. Reproduce in a disposable project, verify silence on the disconnected path and continued audio from the other tracks, then reconnect and verify the bass returns.
 
 ## Slider drag lag [DAW-MIX-DRAG]
 
@@ -32,7 +34,26 @@ Reported by the user on 2026-11-21 with two screenshots: a track's patch opened 
 
 - [ ] A patch with no saved positions is laid out along its signal flow: sources on the left, the Output on the right, one column per step, branches stacked, no card over another and no cable through a card. Owner: prism-routing-design.
 - [ ] Cards keep their designed size in a patch opened from a track (the generic cards in the report are larger than the designed Oscillator, Master and Scope cards).
-- [ ] Moving a node saves its position in the project file, and the patch reopens the way the user arranged it (also listed under [DAW-PROJECT]: "Node positions … are stored in the project").
+- [ ] Releasing a dragged node saves its position in the unified project JSON. Check the file immediately after release, reopen it in a fresh patch window and verify the card and sockets are at the saved coordinates. A close or page switch must not be required to trigger the save [DAW-PROJECT].
+
+## Patch windows and routing interactions [DAW-PAGES-PATCH-WINDOW]
+
+- [ ] **Open a track’s patch in its own window.** Opening it from Timeline or Bus Routing leaves the project window visible at its current track, selection and playhead. The patch window edits the same project. Verify during playback that closing it with the window close control or the focused window’s Close command leaves the project open and transport running. Reopen the patch and check its saved parameters, cables and node positions.
+- [ ] **Use the patch node editor for Bus Routing** [DAW-GRAPH-SUBGRAPH]. Replace the separately drawn cards, ports, wires and hit areas in `MixView.flow` with the patch editor bound to the project graph. Exercise the reported `glow` route through Stereo pan, pads, Space and Master. Select each node, adjust Space decay and group gain, drag a cable, fan out an outlet, undo, redo and reopen. Verify the displayed values, saved routing and resulting audio agree.
+- [ ] **Make every parameter reachable and readable** [DAW-CONTROLS-DIAL]. Both inspectors currently take only the first ten parameters. Test 10, 11 and 21 parameters, including the last one. Fine adjustment must show the actual precision and unit (for example, 1.808× Drive), expose the fine-mode cue, and retain the Curve selector and boolean switches. Keyboard focus, arrow steps, default reset and card controls are tracked under [DAW-HUMAN].
+- [x] **Quit exits Prism on macOS.** In `0af119f64` the host registers a desktop application lifetime. A native accessibility press on the Quit menu item previously left the process running after five seconds. The same press on the fixed disposable instance closed it with exit status zero.
+
+### Regressions from the native review [DAW-PAGES-REGRESSIONS]
+
+The following four host-free journeys failed independently. Keep each open until its existing assertions pass alongside the native interaction tests. [Screenshots and review](../designs/prism-timeline/native-review/README.md)
+
+- [ ] Verify the drawn sockets and cable hit areas select, connect and disconnect the intended patch ports.
+- [ ] Verify that changing module selection shows only that module’s controls and preserves its routing.
+- [ ] Restore the VST discovery journey that inserts independent plug-in nodes through native controls.
+- [ ] Restore the device journey that checks pitch, level and filter response and displays playback completion or device failure.
+- [ ] Investigate the separate installed TAL-NoiseMaker failure. Scanning succeeds, but adding the plug-in stops during initial processor/controller state synchronization. Verify insertion, parameter display and audible output. Keep the working SDK ADelay case as a control.
+- [ ] Verify the patch popup, focused-window Close, application Quit, keyboard focus return and screen-reader announcements on macOS and Windows. The screenshot review covered pointer interaction on macOS.
+- [ ] Verify spectral, shifter and reverb state after the generic fold fix. The synth owner reported float samples being interpreted as integers when a generic function is passed directly to `foldList`. Check fractional samples under GC and ARC and the rendered audio against a known-good reference. [Compiler regression](../regressions.md)
 
 ## Math is Lean [DAW-MATH]
 
@@ -182,7 +203,7 @@ The three-band split is a start, not the EQ. Target: a parametric EQ as good as 
 - [x] The song strip shows the song overview: one column per bar, as tall as the bar is busy, with the piano roll's two bars framed; cached when the song opens.
 - [x] The application menu is Services, Hide Prism, Hide Others, Show All and Quit: the toolkit's "About FerroUI" is dropped (read back from the running app).
 - [x] The Patch page's header reads "Prism / Patch": the open page is lettered over the subtitle baked into the skin's art.
-- [ ] Separate windows for Timeline, Patch and Mix (user: "shoot towards multi window"); the host mounts one window today.
+- [ ] Provide separate Timeline and Mix windows where the host supports them. The required independent track patch window is tracked under [DAW-PAGES-PATCH-WINDOW].
 
 ### Human-centred UI, user orders of 21 Nov [DAW-HUMAN]
 
@@ -193,7 +214,7 @@ Spec: [Daw.md](../specs/applications/Daw.md) sections [DAW-HUMAN], [DAW-MODULAR]
 - [x] Sockets are 28-unit targets that win over overlapping cards; a wire drag is tested the way a hand drags (3996374e3).
 - [x] Song pages centre in a wide window, show "No song open" with Open Song, and the patch keyboard docks under Track patch only (a9cfc0a76).
 - [x] Patch Controls panel is dark in the Prism palette, without a second transport row (3cd896ee6).
-- [x] **Dials ([DAW-CONTROLS-DIAL]).** Every numeric field is a round dial with its number: press, hold, move up or down; Shift for fine steps; double-press for the default; typing and arrow keys. Slider (horizontal or vertical) where a length reads better. Design worked out with prism-routing-design. Owner: ferroui-prism-lead. Built (c608c5131) in Patch Controls and the canvas inspector: 180 units of travel cross the range, Shift ten times finer, sideways does nothing, one undo per turn, Escape puts the value back, a tap opens the number to type, each dial reports name, value and range. Not built, tracked under Accessibility and Patch Controls: arrow-key steps and focus, double-press for the default (a `Parameter` has no default field yet), dials on the cards, sliders. Not yet compared with `docs/designs/prism-timeline/patch-controls.png` in a live window.
+- [ ] **Dials ([DAW-CONTROLS-DIAL]).** Every numeric field is a round dial with its number: press, hold, move up or down; Shift for fine steps; double-press for the default; typing and arrow keys. Slider (horizontal or vertical) where a length reads better. Design worked out with prism-routing-design. Owner: ferroui-prism-lead. Built (c608c5131) in Patch Controls and the canvas inspector: 180 units of travel cross the range, Shift ten times finer, sideways does nothing, one undo per turn, Escape puts the value back, a tap opens the number to type, each dial reports name, value and range. Not built, tracked under Accessibility and Patch Controls: arrow-key steps and focus, double-press for the default (a `Parameter` has no default field yet), dials on the cards, sliders. Not yet compared with `docs/designs/prism-timeline/patch-controls.png` in a live window.
 - [ ] **Patch Controls uses the design's controls.** The text boxes, "Connect/Disconnect" buttons and platform-styled menu in that panel are replaced by the toggle, dial, slider, menu and button of [DAW-CONTROLS]; the number box that reformats while typing (392 became 923.0) goes with them.
 - [x] **Keymaps ([DAW-KEYS]).** Prism, Ableton style and Logic style from a Shortcuts menu with the one in use ticked, a custom keymap file checked before it replaces the one in use, the choice kept between launches, and a shortcut on every command (486b165cf). Not yet: arguments and stacks on a keymap line ([DAW-COMMANDS]).
 - [ ] **Command palette ([DAW-COMMANDS]).** One command list feeding menus, shortcuts and a VS Code style palette.
