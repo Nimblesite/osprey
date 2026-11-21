@@ -81,7 +81,9 @@ object RenderFramed {
         val grows = style.flag("grow")
         val params = LinearLayout.LayoutParams(
             if (grows) ViewGroup.LayoutParams.MATCH_PARENT
-            else if (width > 0) dp(box.context, width.toDouble()) else ViewGroup.LayoutParams.WRAP_CONTENT,
+            else if (width > 0) dp(box.context, width.toDouble())
+            // [UI-COMPONENTS-FRAMED] A zero-width frame fills its proposal unless it hugs.
+            else if (style.flag("hug")) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
             if (grows) 0 else if (height > 0) dp(box.context, height.toDouble())
             else ViewGroup.LayoutParams.WRAP_CONTENT)
         if (grows) params.weight = 1f
