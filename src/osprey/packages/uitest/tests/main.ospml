@@ -296,9 +296,7 @@ initial context =
 pulled (machine, lever, value) = Runtime::step (Machines::pull (machine, lever, value))
 pointed (machine, input) = Inputs::route (input, \(_, _) => Runtime::step machine, \(x, y, down, _) => Runtime::step (Canvases::pointer (machine, x, y, down)), \(width, height) => Runtime::step (Canvases::viewed (machine, width, height)), \(_, _) => Runtime::step machine)
 update (_, machine, message) =
-    settled = \_ => Runtime::step machine
-    settled2 = \(_, _) => Runtime::step machine
-    Messages::route (message, \lever => pulled (machine, lever, Values::none ()), \(lever, text) => pulled (machine, lever, Values::text text), \(lever, on) => pulled (machine, lever, Values::flag on), settled2, settled2, settled, settled2, settled2, settled, \(_, input) => pointed (machine, input))
+    Messages::route (message, \lever => pulled (machine, lever, Values::none ()), \(lever, text) => pulled (machine, lever, Values::text text), \(lever, on) => pulled (machine, lever, Values::flag on), \(_, _) => Runtime::step machine, \(_, _) => Runtime::step machine, \_ => Runtime::step machine, \(_, _) => Runtime::step machine, \(_, _) => Runtime::step machine, \_ => Runtime::step machine, \(_, input) => pointed (machine, input))
 machineSlice () = perform Signal<ui::Machine>.read ()
 root () = Templates::view (machineSlice ())
 regions (before, after, frames, _) =
@@ -494,9 +492,7 @@ pathed [moveTo (1.0, 1.0), lineTo (2.0, 2.0)],
 probeRegions (_, _, frames, _) = [Keyed::region (frames, Surfaces::rootKey, [], \() => Ui::column [Ui::scene (40.0, 20.0, [], sketched (), Play), Ui::button ("Ask", "", Ask)])]
 
 probeHeard (heard, message) =
-    settled = \_ => Runtime::step heard
-    settled2 = \(_, _) => Runtime::step heard
-    Messages::route (message, \_ => Runtime::asking (listAppend heard "asked", [Requests::ask ("job:1", ui::ChooseFolder)]), settled2, settled2, settled2, settled2, settled, settled2, settled2, settled, \(_, input) => Runtime::step (listAppend heard (Inputs::route (input, \(name, down) => "key ${name} ${down}", \(_, _, _, _) => "pointer", \(_, _) => "viewed", \(_, _) => "secondary"))))
+    Messages::route (message, \_ => Runtime::asking (listAppend heard "asked", [Requests::ask ("job:1", ui::ChooseFolder)]), \(_, _) => Runtime::step heard, \(_, _) => Runtime::step heard, \(_, _) => Runtime::step heard, \(_, _) => Runtime::step heard, \_ => Runtime::step heard, \(_, _) => Runtime::step heard, \(_, _) => Runtime::step heard, \_ => Runtime::step heard, \(_, input) => Runtime::step (listAppend heard (Inputs::route (input, \(name, down) => "key ${name} ${down}", \(_, _, _, _) => "pointer", \(_, _) => "viewed", \(_, _) => "secondary"))))
 
 probeProgram () = ui::Program(programInit = \_ => Runtime::step [], programUpdate = \(_, heard, message) => probeHeard (heard, message), programRender = probeRegions, programTheme = \_ => ui::Theme(tokens = [], spacing = [4, 8], feedback = 120, settle = 220))
 
@@ -542,4 +538,4 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
     reading (["Pressed"], lettersIn, true)
     tick 0.5
     expect (driven.drivenSurface.surfaceProblem, "")
-    levelled 0.25)))
+    levelled 0.25))
