@@ -502,20 +502,13 @@ arrangementsJourney () =
     failsWith (daw::Arrangements::frame (song120, sqrt (-1.0)), "A start beat is not finite.")
     failsWith (daw::Arrangements::frame (song120, pow (10.0, 400.0)), "A start beat is not finite.")
     // frames: the last note end plus two seconds, each guard at its boundary.
-    // TODO-MODEL: expected value depended on Space/drive; re-measure
-    succeeds (daw::Arrangements::frames song120, \total => expect (total, 216000))
-    // TODO-MODEL: expected value depended on Space/drive; re-measure
-    succeeds (daw::Arrangements::frames song20, \total => expect (total, 336000))
-    // TODO-MODEL: expected value depended on Space/drive; re-measure
-    lasts (400.0, 48000, 199200)
-    // TODO-MODEL: expected value depended on Space/drive; re-measure
-    lasts (120.0, 8000, 36000)
-    // TODO-MODEL: expected value depended on Space/drive; re-measure
-    lasts (120.0, 192000, 864000)
-    // TODO-MODEL: expected value depended on Space/drive; re-measure
-    succeeds (daw::Arrangements::frames (arrangedSong (120.0, 48000, mapList (toList (range (0, 64)), \_ => arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])))), \total => expect (total, 216000))
-    // TODO-MODEL: expected value depended on Space/drive; re-measure
-    succeeds (daw::Arrangements::frames (arrangedSong (20.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 198.5)])])), \total => expect (total, 28776000))
+    succeeds (daw::Arrangements::frames song120, \total => expect (total, 120000))
+    succeeds (daw::Arrangements::frames song20, \total => expect (total, 240000))
+    lasts (400.0, 48000, 103200)
+    lasts (120.0, 8000, 20000)
+    lasts (120.0, 192000, 480000)
+    succeeds (daw::Arrangements::frames (arrangedSong (120.0, 48000, mapList (toList (range (0, 64)), \_ => arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])))), \total => expect (total, 120000))
+    succeeds (daw::Arrangements::frames (arrangedSong (20.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 198.5)])])), \total => expect (total, 28680000))
     refusesSong = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks."
     refusedBell (19.99, 48000)
     refusedBell (400.01, 48000)
@@ -523,8 +516,8 @@ arrangementsJourney () =
     refusedBell (120.0, 192001)
     failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, [])), refusesSong)
     failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, mapList (toList (range (0, 65)), \_ => arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])))), refusesSong)
-    // TODO-MODEL: expected value depended on Space/drive; re-measure
-    failsWith (daw::Arrangements::frames (arrangedSong (20.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 199.0)])])), "An arrangement must last 1 to 28800000 frames.")
+    succeeds (daw::Arrangements::frames (arrangedSong (20.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 199.0)])])), \total => expect (total, 28752000))
+    failsWith (daw::Arrangements::frames (arrangedSong (20.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 199.5)])])), "An arrangement must last 1 to 28800000 frames.")
     failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (sqrt (-1.0), 1.0)])])), "The arrangement length is not finite.")
     failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (pow (10.0, 400.0), 1.0)])])), "The arrangement length is not finite.")
     // layered: three steps of overlap-add on the buses, every pan and gain guard, and the offset rule.
@@ -553,6 +546,7 @@ arrangementsJourney () =
     succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.0, 0.5), arrangedNote (0.0, 0.5)]), 12000), \twin => arrangedTwinSamples twin)
     succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.0, 0.5), arrangedNote (1.0, 0.5)]), 24001), \gap => arrangedGapSamples gap)
     succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (1.0, 0.5)]), 100), \late => arrangedLateSamples late)
+    failsWith (daw::Arrangements::part (song120, arrangedBell ("far", 1.0, [arrangedNote (1201.0, 0.5)]), 100), "far: An arrangement must last 1 to 28800000 frames.")
     succeeds (daw::Arrangements::part (song120, arrangedBell ("rest", 1.0, []), 4), \hush => expect (hush, [0.0, 0.0, 0.0, 0.0]))
     succeeds (daw::Arrangements::part (song120, arrangedBell ("rest", 1.0, []), 0), \hush => expect (hush, []))
     refusesNote = "A note needs pitch 0 to 127, velocity 0 to 1, a positive length and a tempo of 20 to 400."
