@@ -65,7 +65,8 @@ module Update
         SubmitMove => submitMove store
         Dismiss => Runtime::step (store(bankNotice = quiet ()))
         QuickMove mode => Runtime::step (store(bankPage = "move", bankMode = mode))
-        SeePage page => Runtime::step (store(bankPage = page))
+        SeePage page => Runtime::step (paged (store, page))
+        ShowKind kind => Runtime::step (store(bankFilter = kind))
         _ => Runtime::step store
 
     pages () = ["overview", "accounts", "move", "activity", "security"]
@@ -89,11 +90,8 @@ module Update
             EditNote => drafted (store, draft(draftNote = words))
             EditOwner => drafted (store, draft(draftOwner = words))
             EditSearch => Runtime::step (store(bankSearch = words))
-            PickPage => Runtime::step (paged (store, words))
-            PickMode => Runtime::step (store(bankMode = words))
             PickAccount => drafted (store, draft(draftAccount = words))
             PickFrom => drafted (store, draft(draftFrom = words))
             PickTo => drafted (store, draft(draftTo = words))
-            PickFilter => Runtime::step (store(bankFilter = words))
             PickRow => chosen (store, words)
             _ => Runtime::step store

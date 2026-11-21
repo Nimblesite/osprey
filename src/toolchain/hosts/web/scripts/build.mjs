@@ -4,7 +4,7 @@
 // `script` and `style` functions a server written in Osprey can answer with.
 //   node scripts/build.mjs --app <folder> --title <title> --out <folder> [--module <file> --namespace <ns>]
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -45,6 +45,18 @@ async function script(wasm) {
   return result.outputFiles[0].text;
 }
 
+// [UI-COMPONENTS-FRAMED] The typefaces an application bundles in assets/fonts travel inside its
+// stylesheet, each named by its file, so a frame's `frameFont = "Inter"` draws fonts/Inter.ttf.
+function faces(app) {
+  const folder = path.join(app, "assets", "fonts");
+  if (!existsSync(folder)) return "";
+  return readdirSync(folder).filter((name) => /^[A-Z][A-Za-z0-9-]{0,63}\.(ttf|otf)$/.test(name)).sort().map((name) => {
+    const [family, kind] = name.split(".");
+    const data = readFileSync(path.join(folder, name)).toString("base64");
+    return `@font-face{font-family:"${family}";src:url(data:font/${kind};base64,${data}) format("${kind === "otf" ? "opentype" : "truetype"}");font-weight:100 900;font-display:block}`;
+  }).join("");
+}
+
 function page(title) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${title}</title><link rel="stylesheet" href="host.css"><script defer src="host.js"></script></head><body><div class="osp-shell"><div id="osprey-diagnostics" hidden></div><div id="osprey-runtime-status" role="status" hidden>Updating · previous results shown</div><div id="osprey-root"><div class="osp-loading"><span class="osp-spinner" aria-hidden="true"></span><p>Loading ${title}…</p></div></div></div></body></html>`;
 }
@@ -62,7 +74,7 @@ const app = path.resolve(option("--app"));
 const out = path.resolve(option("--out"));
 const title = option("--title", "Osprey");
 mkdirSync(out, { recursive: true });
-const files = { page: page(title), script: await script(compiled(app, out)), style: await styles(out) };
+const files = { page: page(title), script: await script(compiled(app, out)), style: faces(app) + await styles(out) };
 writeFileSync(path.join(out, "index.html"), files.page);
 writeFileSync(path.join(out, "host.js"), files.script);
 writeFileSync(path.join(out, "host.css"), files.style);

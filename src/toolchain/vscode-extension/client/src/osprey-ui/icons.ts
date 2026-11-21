@@ -41,6 +41,7 @@ const ALIASES: Readonly<Record<string, string>> = {
   "arrow.right": "arrow-right",
   minus: "remove",
   "chevron.left": "chevron-left",
+  "chevron.down": "chevron-down",
   network: "type-hierarchy",
   branch: "type-hierarchy",
   cube: "package",

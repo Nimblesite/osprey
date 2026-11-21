@@ -107,7 +107,8 @@ function richText(node: Record<string, unknown>): string {
     if (!record(run) || typeof run.text !== "string" || typeof run.italic !== "boolean" || typeof run.ink !== "string") throw new Error("Rich text run is malformed");
     if (run.ink !== "" && !/^[a-z][a-zA-Z0-9-]{0,31}$/.test(run.ink)) throw new Error("Rich text ink must name a theme token");
     const ink = run.ink === "" ? "" : `color:var(--osp-brand-${run.ink});`;
-    return `<span style="${ink}font-style:${run.italic ? "italic" : "normal"}">${escapeHtml(run.text)}</span>`;
+    const emphasis = run.emphasis === "strong" ? "font-weight:600;" : run.emphasis === "code" ? "font-family:var(--osp-font-mono);" : "";
+    return `<span style="${ink}${emphasis}font-style:${run.italic ? "italic" : "normal"}">${escapeHtml(run.text)}</span>`;
   }).join("");
   return `<p class="osp-text osp-rich-text osp-role-${role} osp-tone-primary">${content}</p>`;
 }
@@ -341,7 +342,8 @@ function choiceList(node: Record<string, unknown>): string {
 }
 
 function picker(node: Record<string, unknown>, ctx: Context): string {
-  return `<label class="osp-field"><span>${escapeHtml(text(node, "label"))}</span><select data-commit="submit"${control(ctx, node, "string", text(node, "selected"))}>${choiceList(node)}</select></label>`;
+  // [UI-COMPONENTS] A picker is a menu button showing its choice, as SwiftUI and Android draw it; its label is its accessible name.
+  return `<span class="osp-picker"><select aria-label="${escapeHtml(text(node, "label"))}" data-commit="submit"${control(ctx, node, "string", text(node, "selected"))}>${choiceList(node)}</select>${symbol("chevron.down", ctx)}</span>`;
 }
 
 function disclosure(node: Record<string, unknown>, ctx: Context): string {

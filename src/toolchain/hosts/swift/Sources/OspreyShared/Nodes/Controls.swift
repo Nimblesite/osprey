@@ -33,7 +33,7 @@ struct ButtonView: View {
 
     var body: some View {
         Button(action: tap) { face }
-            .buttonStyle(Surface(role: node.text("role"), quiet: inherited.quiet, round: iconOnly, height: inherited.controlHeight, padding: iconOnly ? 0 : inherited.controlPadding, theme: theme, dark: scheme == .dark, focused: focused))
+            .buttonStyle(Surface(role: node.text("role"), quiet: inherited.quiet, ink: inherited.ink, round: iconOnly, height: inherited.controlHeight, padding: iconOnly ? 0 : inherited.controlPadding, theme: theme, dark: scheme == .dark, focused: focused))
             .focused($focused)
             .disabled(!node.flag("enabled"))
             .help(node.text("label"))
@@ -86,6 +86,8 @@ struct ButtonView: View {
 struct Surface: ButtonStyle {
     let role: String
     let quiet: Bool
+    /// The frame's ink token, which a plain button's label takes ([UI-COMPONENTS-FRAMED]).
+    var ink = ""
     let round: Bool
     let height: CGFloat
     let padding: CGFloat
@@ -147,7 +149,9 @@ struct Surface: ButtonStyle {
             switch style.role {
             case "filled", "prominent": return AnyShapeStyle(style.theme.color("onAccent", dark: style.dark) ?? .white)
             case "destructive": return AnyShapeStyle(style.theme.color("danger", dark: style.dark) ?? .red)
-            default: return style.theme.foreground(dark: style.dark)
+            default:
+                if let framed = style.theme.color(style.ink, dark: style.dark) { return AnyShapeStyle(framed) }
+                return style.theme.foreground(dark: style.dark)
             }
         }
 
@@ -171,6 +175,8 @@ struct FieldView: View {
     @State private var pasteMonitor: Any?
     @State private var pasteID = UUID()
     @Environment(\.ospreyInherited) private var inherited
+    @Environment(\.ospreyTheme) private var theme
+    @Environment(\.colorScheme) private var scheme
     private static let singleLineHeight: CGFloat = 25
 
     init(node: Tree, revision: Int, send: @escaping (String) -> Void) {
@@ -185,7 +191,7 @@ struct FieldView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if !node.text("label").isEmpty && !node.flag("multiline") { Text(node.text("label")).font(Type.font("caption", inherited)).foregroundStyle(.secondary) }
+            if !node.text("label").isEmpty && !node.flag("multiline") { Text(node.text("label")).font(Type.font("caption", labelFace).weight(.semibold)).foregroundStyle(theme.color("secondary", dark: scheme == .dark) ?? .secondary) }
             input
                 .focused($focused)
                 .font(Type.font("body", inherited))
@@ -211,8 +217,25 @@ struct FieldView: View {
             TextField("", text: $draft, prompt: Text(node.text("prompt")), axis: .vertical).lineLimit(1...12).textFieldStyle(.plain).onSubmit(returned)
         } else {
             // A fixed height: left to fit, a field in a growing frame settles at 22 or 25 points from one layout to the next.
-            TextField("", text: $draft, prompt: Text(node.text("prompt"))).onSubmit(submit).textFieldStyle(inherited.quiet ? AnyTextFieldStyle(.plain) : AnyTextFieldStyle(.roundedBorder)).frame(height: Self.singleLineHeight)
+            let line = TextField("", text: $draft, prompt: Text(node.text("prompt"))).onSubmit(submit).textFieldStyle(.plain)
+            if inherited.quiet { line.frame(height: Self.singleLineHeight) } else { boxed(line) }
         }
+    }
+
+    /// The label's face: 11 points in the frame's family, as every host draws a field's label.
+    private var labelFace: Inherited {
+        var face = inherited
+        face.size = 11
+        return face
+    }
+
+    /// [UI-COMPONENTS] A field's box, as every host draws it: the `surface` fill and the `border`
+    /// line with 8-point corners, at least the frame's control height.
+    private func boxed(_ line: some View) -> some View {
+        line.padding(.horizontal, 10)
+            .frame(minHeight: max(inherited.controlHeight, 34))
+            .background(theme.color("surface", dark: scheme == .dark) ?? Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(focused ? (theme.color("accent", dark: scheme == .dark) ?? .accentColor) : (theme.color("border", dark: scheme == .dark) ?? Color.primary.opacity(0.2)), lineWidth: 1))
     }
 
     private func submit() { if !edits { send(draft) } }

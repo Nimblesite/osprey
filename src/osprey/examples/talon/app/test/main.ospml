@@ -87,7 +87,10 @@ asked () = join (mapList (driven.drivenSurface.surfaceAsked, described)) ";"
 askedNothing () = expect (asked (), "")
 
 // The keys the picker `label` offers, comma-joined.
-choices (label, expected) = expect (join (Views::control (driven.drivenSeen, label)).controlChoices ",", expected)
+// The choices of the picker labelled `label`; its heading above it shares the words.
+choices (label, expected) = match Lists::find (Views::labelled (driven.drivenSeen, label), \c => c.controlKind == "picker")
+    Success c => expect (join c.controlChoices ",", expected)
+    Error _ => expect ("no picker labelled ${label}", expected)
 
 test ("typed amounts read as whole cents, and anything else as zero", \() =>
     expect (Amounts::cents "$1,980.25", 198025)
@@ -137,15 +140,16 @@ test ("a failed listing says the bank data is unavailable", \() => bench (\() =>
     expect ((store ()).bankLoads, 0)
     press "Refresh"
     expect ((store ()).bankLoads, 2)))
-test ("the tabs move between the five pages and refuse an unknown one", \() => bench (\() =>
+test ("the pages move between the five pages and refuse an unknown one", \() => bench (\() =>
     loaded ()
-    picked ("tabs", "activity")
+    press "Activity"
     expect ((store ()).bankPage, "activity")
-    picked ("tabs", "security")
+    press "Security"
     expect ((store ()).bankPage, "security")
     shows "Storage isolation"
-    picked ("tabs", "vault")
-    expect ((store ()).bankPage, "security")
+    expect ((Update::tapped (store (), talon::SeePage(seenPage = "vault"))).stepStore.bankPage, "security")
+    press "Overview"
+    expect ((store ()).bankPage, "overview")
     press "Full history"
     expect ((store ()).bankPage, "activity")))
 test ("choosing an account opens it in detail and every form starts from it", \() => bench (\() =>
@@ -159,12 +163,19 @@ test ("choosing an account opens it in detail and every form starts from it", \(
     shows "Ready to move"))
 test ("activity filters by kind and searches notes and owners", \() => bench (\() =>
     loaded ()
-    picked ("tabs", "activity")
-    choices ("Show", "all,in,out,refused")
+    press "Activity"
+    shows "All 3"
+    shows "In 1"
+    shows "Out 1"
+    shows "Declined 1"
     expect (talon::Parts::counted ((store ()).bankJournal, "refused"), 1)
-    typed ("Show", "refused")
+    press "Declined 1"
+    expect ((store ()).bankFilter, "refused")
     expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", "vintage synthesizer")
-    typed ("Show", "all")
+    press "Out 1"
+    expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", "rent — 12 Fern St")
+    press "All 3"
+    expect ((store ()).bankFilter, "all")
     typed ("Search", "  AMELIA ")
     expect (length (talon::Forms::shown (store ())), 2)
     typed ("Search", "nobody")
@@ -174,11 +185,12 @@ test ("a deposit is validated before anything is sent, then sent once", \() => b
     press "Deposit"
     expect ((store ()).bankMode, "deposit")
     expect ((store ()).bankPage, "move")
+    choices ("Deposit to", "1,2,3")
     typed ("Amount", "-4")
     press "Confirm deposit"
     askedNothing ()
     shows "Check the amount"
-    picked ("alert", "")
+    press "Dismiss"
     expect ((store ()).bankNotice.noticeHeading, "")
     typed ("Amount", "$1,250.50")
     typed ("Description", " bonus ")
@@ -193,7 +205,9 @@ test ("a deposit is validated before anything is sent, then sent once", \() => b
     expect ((store ()).bankLoads, 2)))
 test ("a refused withdrawal reports the ledger's reason and reloads the journal", \() => bench (\() =>
     loaded ()
-    typed ("Movement", "withdraw")
+    press "Withdraw"
+    expect ((store ()).bankPage, "move")
+    expect ((store ()).bankMode, "withdraw")
     typed ("Withdraw from", "2")
     typed ("Amount", "99999")
     press "Confirm withdrawal"
@@ -204,7 +218,9 @@ test ("a refused withdrawal reports the ledger's reason and reloads the journal"
     expect ((store ()).bankLoads, 2)))
 test ("a transfer needs two different accounts and a positive amount", \() => bench (\() =>
     loaded ()
-    typed ("Movement", "transfer")
+    press "Move"
+    press "Transfer"
+    expect ((store ()).bankMode, "transfer")
     typed ("From account", "2")
     typed ("To account", "2")
     typed ("Amount", "10")

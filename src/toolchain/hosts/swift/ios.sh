@@ -61,6 +61,8 @@ bundle="$build/$name.app"
 rm -rf "$bundle"
 mkdir -p "$bundle"
 cp -p "$binary" "$bundle/OspreyViewHostIOS"
+# An application's assets folder travels with it, as on macOS: the typefaces its frames name.
+if [[ -d "$app/assets" ]]; then cp -R "$app/assets/." "$bundle/"; fi
 # The bundle's Info.plist, with the identifier and name filled in as plist strings by plutil.
 cat >"$bundle/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

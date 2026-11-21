@@ -59,14 +59,13 @@ type BankAct =
         quickMode : string
     SeePage
         seenPage : string
+    ShowKind
+        shownKind : string
     EditAmount
     EditNote
     EditOwner
     EditSearch
-    PickPage
-    PickMode
     PickAccount
     PickFrom
     PickTo
-    PickFilter
     PickRow

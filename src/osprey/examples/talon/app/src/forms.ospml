@@ -1,22 +1,22 @@
 // Implements [UI-COMPONENTS] for Talon Bank's forms: moving money, searching the journal and
 // opening an account. Every field reports each edit to the store, so validation in `Update`
-// sees exactly what the person typed.
+// sees exactly what the person typed; every surface is a talon::Look frame.
 namespace talon
 
 import ui::Ui
 import ui::Symbols
+import talon::Look
 import talon::Parts
-import talon::Screens
 
 (** Move money, Activity and the new-account dialog. *)
 module Forms
-    modes () = [Ui::choice ("deposit", "Deposit"), Ui::choice ("withdraw", "Withdraw"), Ui::choice ("transfer", "Transfer")]
+    mode (store, key, label) = Look::segment (label, store.bankMode == key, QuickMove(quickMode = key))
 
-    amount draft = Ui::field ("Amount", draft.draftAmount, "0.00", EditAmount)
+    modes store = Look::segments [mode (store, "deposit", "Deposit"), mode (store, "withdraw", "Withdraw"), mode (store, "transfer", "Transfer")]
 
-    note draft = Ui::field ("Description", draft.draftNote, "What is this for?", EditNote)
+    amount draft = Look::field (Ui::field ("Amount", draft.draftAmount, "0.00", EditAmount))
 
-    submit (store, words) = Ui::action (words, Symbols::name ui::Send, ui::Prominent, store.bankBusy == false, SubmitMove)
+    note draft = Look::field (Ui::field ("Description", draft.draftNote, "What is this for?", EditNote))
 
     // The fields of the chosen mode: one account for a deposit or withdrawal, two for a transfer.
     accounts store =
@@ -44,14 +44,15 @@ module Forms
 
     form store =
         mode = store.bankMode
-        Ui::section (heading mode, lead mode, listConcat (accounts store) [amount store.bankDraft, note store.bankDraft, submit (store, verb mode)])
+        head = Look::stack (4, [Look::heading (heading mode, 22), Look::words (lead mode, 14, "ink500")])
+        Look::card (Look::stack (16, listConcat (listConcat [head] (accounts store)) [amount store.bankDraft, note store.bankDraft, Look::primary (verb mode, Symbols::name ui::Send, store.bankBusy == false, SubmitMove)]))
 
-    tip (heading, detail) = Ui::column [Ui::label (heading, Symbols::name ui::Check), Ui::caption detail]
+    tip (heading, detail) = Look::line (12, [Look::chip (Symbols::name ui::Check, "ink700", "mint", 32), Look::share (Look::stack (2, [Look::strong (heading, 14, "white"), Look::words (detail, 13, "ink300")]))])
 
-    guidance () = Ui::section ("Every movement is protected", "", [tip ("Atomic transfers", "Both sides land together, or not at all."), tip ("Complete journal", "Successful and refused attempts are recorded."), tip ("Integer precision", "Money stays in whole cents from form to ledger.")])
+    guidance () = Look::dark (Look::stack (16, [Look::eyebrow ("Every movement is protected", "coral"), tip ("Atomic transfers", "Both sides land together, or not at all."), tip ("Complete journal", "Successful and refused attempts are recorded."), tip ("Integer precision", "Money stays in whole cents from form to ledger.")]))
 
     (** Deposit, withdraw or transfer, guarded by the same rules on every platform. *)
-    export move store = Ui::screen ("Move money", "Client funds, in motion", Screens::tools (), [Ui::picker ("Movement", modes (), store.bankMode, PickMode), form store, guidance ()])
+    export move store = Look::stack (24, [modes store, form store, guidance ()])
 
     kept (line, filter) = match filter
         "in" => line.movementKind == "credit"
@@ -66,10 +67,14 @@ module Forms
         query = toLowerCase (trim store.bankSearch)
         filterList (store.bankJournal, \line => kept (line, store.bankFilter) && found (line, query))
 
-    filters journal = [Ui::choice ("all", "All ${length journal}"), Ui::choice ("in", "Money in ${Parts::counted (journal, "credit")}"), Ui::choice ("out", "Money out ${Parts::counted (journal, "debit")}"), Ui::choice ("refused", "Declined ${Parts::counted (journal, "refused")}")]
+    kind (store, key, label) = Look::segment (label, store.bankFilter == key, ShowKind(shownKind = key))
+
+    filters store =
+        journal = store.bankJournal
+        Look::segments [kind (store, "all", "All ${length journal}"), kind (store, "in", "In ${Parts::counted (journal, "credit")}"), kind (store, "out", "Out ${Parts::counted (journal, "debit")}"), kind (store, "refused", "Declined ${Parts::counted (journal, "refused")}")]
 
     (** Every credit, debit and refusal, searchable and filtered by kind. *)
-    export activity store = Ui::screen ("Activity", "Audit trail", Screens::tools (), listConcat [Ui::field ("Search", store.bankSearch, "Search description or owner", EditSearch), Ui::picker ("Show", filters store.bankJournal, store.bankFilter, PickFilter)] (Parts::journal (shown store, 100, Symbols::name ui::Search, "No matching activity", "Try another search or broaden the filter.")))
+    export activity store = Look::stack (16, [Look::field (Ui::field ("Search", store.bankSearch, "Search description or owner", EditSearch)), filters store, Parts::journal (shown store, 100, Symbols::name ui::Search, "No matching activity", "Try another search or broaden the filter.")])
 
     (** The new-account dialog. *)
-    export opening store = Ui::dialog ("Open account", Ui::column [Ui::caption "Create a protected client account in one step. Storage stays on the server.", Ui::field ("Account owner", store.bankDraft.draftOwner, "Full legal name", EditOwner), Ui::row [Ui::button ("Cancel", Symbols::name ui::Dismiss, CloseDialog), Ui::action ("Create account", Symbols::name ui::Add, ui::Prominent, store.bankBusy == false, SubmitOpen)]], CloseDialog)
+    export opening store = Ui::dialog ("Open account", Ui::column [Look::stack (16, [Look::heading ("Open account", 22), Look::words ("Create a protected client account in one step. Storage stays on the server.", 14, "ink500"), Look::field (Ui::field ("Account owner", store.bankDraft.draftOwner, "Full legal name", EditOwner)), Look::line (10, [Look::secondary ("Cancel", Symbols::name ui::Dismiss, CloseDialog), Look::primary ("Create account", Symbols::name ui::Add, store.bankBusy == false, SubmitOpen)])])], CloseDialog)
