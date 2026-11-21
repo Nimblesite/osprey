@@ -50,6 +50,7 @@ Every issue the user raised while testing Prism by hand, with where it is tracke
 | 22 | Stop appears active when the transport is idle | [DAW-TRANSPORT-STOP-IDLE] | Open. Verify the drawn control, its hit target and the menu across play, end and cancellation |
 | 23 | A track needs as many internal routes and sends as the project requires | [DAW-GRAPH-SUBGRAPH] | Open. Exercise branching, merging and routing into several buses using the shared node editor. Save and reopen the full graph and timeline from one project JSON file |
 | 24 | The example music sounds too simple | [DAW-DEMO-SOUND] | Open. Hand-author the Silt Relay arrangement and patches, exercise the synth module palette, render the master and listen through its section changes. The team is revisiting the other demo songs too |
+| 25 | The Scope is useless inside the patch. The user must see a track's sound from the main view, perhaps not as a node at all but as a panel shown when a track or channel is selected, and it must say whether the sound hits the right frequencies for what it is | [DAW-ANALYSIS-TRACK] | Open |
 
 Found while fixing these:
 
@@ -202,6 +203,7 @@ The three-band split is a start, not the EQ. Target: a parametric EQ as good as 
 
 ## Spectral analysis and mix advice [DAW-ANALYSIS]
 
+- [ ] **Track scope on the main view ([DAW-ANALYSIS-TRACK]).** Reported by the user on 2026-11-21: "scope is useless in the patch. we need to be able to see this from the main view. Potentially this should not be a node at all, maybe just an extra thing that you can see when selecting a channel/track. And again, this should tell the user if it's hitting the right frequencies for what it is." Selecting a track on the Timeline shows that track's waveform and band spectrum in the track panel, with no Scope module needed in its patch. The panel states the verdict in words: the range its notes ask for, the range where the energy is, and what is wrong (for example "bass: most energy above 2 kHz"). The patch's Output card stops drawing an empty trace.
 - [ ] Band spectrum per track, bus and Master from the STFT, with peak and RMS, on the Mix page. Partial: `synth::Spectra` reads ten octave bands (31.25 Hz–16 kHz) from Hann-windowed FFT frames, mean and loudest level, where a full-scale sine reads 0 dB; tested within 0.1 dB on single and paired sines, silence at −120, a half-length tone 3 dB below its peak, 4 refusals (4e212e09f). Every render prints Master's bands (1b45a3ba0). Per track and bus, and the Mix page, remain.
 - [ ] Pitch fit: measured fundamental and partials against the played notes, detuning in cents.
 - [ ] Per-instrument expected ranges in daw.td; energy outside them reported.

@@ -216,6 +216,7 @@ The engine takes all enabled taps from the same note evaluation as the main outp
 The daw analyses each track, bus and Master and says whether the sound sits where its instrument should.
 
 - **Spectrum ([DAW-ANALYSIS-SPECTRUM]).** An STFT ([SYNTH-ADVANCED-SPECTRAL]) averaged into bands, shown on the Mix page per track, bus and Master, with peak and RMS levels.
+- **Track scope ([DAW-ANALYSIS-TRACK]).** Selecting a track on the Timeline shows its waveform and band spectrum in the track panel; a Scope module in the patch is not needed to see a track. The panel says in words whether the energy lies where the track's notes and instrument put it.
 - **Pitch fit ([DAW-ANALYSIS-PITCH]).** For pitched tracks, the measured fundamental and partials against the notes the timeline plays: reports detuning in cents and partials missing or out of place.
 - **Instrument ranges ([DAW-ANALYSIS-RANGE]).** Each instrument kind declares where its fundamental and body energy should lie. The analysis reports energy outside those ranges, such as sub-bass rumble on a hat, or a bass with no fundamental.
 - **Advice ([DAW-ANALYSIS-ADVICE]).** It suggests concrete EQ moves: the band, a gain in dB and the reason (masking between two tracks in the same band, a resonance, mud at 200–500 Hz, harshness at 2–5 kHz, a low end that needs a cut). An accepted suggestion becomes a checked edit to the bus or track EQ in the project.
