@@ -530,10 +530,11 @@ _lint: $(EXT_NODE_DEPS)
 # lives in that committed config — the single source of truth.
 # The installer resolves the latest release for both local and hosted CI.
 
+DESLOP_BIN_DIR := $(CURDIR)/target/ci-tools
 _deslop:
 	@echo "==> Duplication gate (deslop)..."
-	bash scripts/ci/install-deslop.sh
-	deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
+	bash scripts/ci/install-deslop.sh "$(DESLOP_BIN_DIR)"
+	"$(DESLOP_BIN_DIR)/deslop" . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
 
 # Package, agent and Python-port steps behind `make test`.
 .PHONY: _test_packages _coverage_check_packages

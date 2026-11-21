@@ -25,12 +25,6 @@ fail() { echo -e "${RED}✗ $*${RESET}" >&2; exit 1; }
 DESLOP_VERSION="0.41.0"
 BASE_URL="https://github.com/Nimblesite/Deslop/releases/download/v${DESLOP_VERSION}"
 
-# Already at this release? Nothing to do (keeps `make setup` idempotent).
-if command -v deslop-mcp &>/dev/null && command -v deslop &>/dev/null && deslop --version 2>/dev/null | grep -q "${DESLOP_VERSION}"; then
-    ok "deslop ${DESLOP_VERSION} already installed ($(command -v deslop))"
-    exit 0
-fi
-
 case "$(uname -s)" in
     Linux)  os=linux ;;
     Darwin) os=macos ;;
@@ -49,6 +43,13 @@ asset="${stem}.tar.gz"
 dest="${1:-}"
 if [[ -z "$dest" ]]; then
     if [[ -w /usr/local/bin ]]; then dest=/usr/local/bin; else dest="$HOME/.local/bin"; fi
+fi
+if [[ -n "${GITHUB_PATH:-}" ]]; then
+    echo "$dest" >> "$GITHUB_PATH"
+fi
+if [[ -x "$dest/deslop" && -x "$dest/deslop-mcp" && "$("$dest/deslop" --version)" == "deslop $DESLOP_VERSION" ]]; then
+    ok "deslop $DESLOP_VERSION already installed ($dest/deslop)"
+    exit 0
 fi
 mkdir -p "$dest"
 
@@ -74,11 +75,6 @@ for tool in deslop deslop-mcp; do
     install -m 0755 "$tmp/$stem/$tool" "$dest/$tool"
     ok "installed $tool ${DESLOP_VERSION} → $dest/$tool"
 done
-
-# CI: make the install dir discoverable by subsequent steps.
-if [[ -n "${GITHUB_PATH:-}" ]]; then
-    echo "$dest" >> "$GITHUB_PATH"
-fi
 
 # Local: nudge if the dir isn't already on PATH.
 case ":$PATH:" in
