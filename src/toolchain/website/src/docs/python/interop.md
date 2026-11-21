@@ -7,7 +7,7 @@ tags: [python, interop, python-interop, python-ffi, embed-python, numpy, pytorch
 ---
 {% from "native-capture.njk" import capture %}
 
-Osprey goes all in on Python. Call it **Python interopmaxxing**: keep your Python libraries and habits, and add a compiled, statically typed language whose algebraic effects make it easy to test. If your work runs on NumPy, pandas, PyTorch, scikit-learn or SciPy, you keep them.
+Keep your Python libraries and habits, and add a compiled, statically typed language whose effects make the code easy to test. If your work runs on NumPy, pandas, PyTorch, scikit-learn or SciPy, you keep them.
 
 There are three ways in:
 
