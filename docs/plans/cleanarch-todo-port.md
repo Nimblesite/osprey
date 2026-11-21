@@ -66,6 +66,16 @@ The README argues, with code from this example, that a language feature beats a 
 
 Every claim must be true of the code. A claim the code does not demonstrate is a defect.
 
+### [EXAMPLE-CLEANARCH-INV-BOOK] Clean Architecture as the book defines it
+
+The example follows Robert C. Martin's *Clean Architecture* (2017). It does not follow the common C# template convention of Domain/Application/Infrastructure/Web projects with mapping and layering ceremony. In particular:
+
+- **[EXAMPLE-CLEANARCH-BOOK-DEPENDENCY] The Dependency Rule.** Source dependencies point only inward. Entities and use cases never import HTTP, JSON, storage, clocks, logging or any framework module.
+- **[EXAMPLE-CLEANARCH-BOOK-BOUNDARY] Inner circles own their boundaries.** A use case declares the effects it needs: `Store`, `Clock`, `Publish`, `Auth` and `Log`. Outer-ring handlers implement them. This is dependency inversion as a language feature, with no interfaces, adapters or container.
+- **[EXAMPLE-CLEANARCH-BOOK-SCREAMING] Screaming architecture.** Modules are named for the domain (todo lists, todo items) and its use cases, not for technical layers. The code has no `Services`, `Repositories`, `Dtos` or `Mappers` modules.
+- **[EXAMPLE-CLEANARCH-BOOK-DATA] Plain data crosses boundaries.** Immutable records go in and come out of use cases. Nothing maps per layer (no AutoMapper-style projections or DTO copies of every entity). JSON is decoded into those records once, at the outermost edge.
+- **[EXAMPLE-CLEANARCH-BOOK-DETAILS] The database, the web and the framework are details.** Swapping the in-memory store handler or the HTTP edge never touches an entity or a use case, and the tests prove it by running every use case without HTTP.
+
 ### [EXAMPLE-CLEANARCH-INV-FLAVOR] Default flavour only
 
 Every source and test file is Default-flavour `.osp`. The example has no `.ospml` files.
