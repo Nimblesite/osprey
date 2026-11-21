@@ -41,7 +41,7 @@ faulted (request, why) =
 // [DAW-TRANSPORT-LIVE] Play the window to standard output, once or as a loop.
 live (request, loop, source) = match daw::SongFiles::decode source
     Error why => faulted (request, why)
-    Success arrangement => match daw::Streams::played (request, windowed (request, arrangement), loop)
+    Success arrangement => match daw::Streams::played (request, windowed (request, arrangement), loop, listGet (args ()) 5 ?: "")
         Error why => faulted (request, why)
         Success _ => 0
 

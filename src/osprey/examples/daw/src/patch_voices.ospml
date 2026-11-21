@@ -108,6 +108,7 @@ module PatchVoices
         "downmix" => ok (synth::Components::downmix item.identity)
         "stereoOutput" => ok (synth::Components::stereoOutput item.identity)
         "stereoModulatedGain" => ok (synth::Components::modulatedGain (item.identity, 2, 1.0))
+        "sample" => chained (sampled item.asset, \resource => ok (synth::Components::samplePlayer (item.identity, resource)))
         "grainCloud" => grained item
         "gain" => ok (synth::Components::gain (item.identity, 1.0))
         "modulatedGain" => ok (synth::Components::modulatedGain (item.identity, 1, 1.0))

@@ -38,6 +38,9 @@ module Graphs
     all (items, predicate) = foldList (items, true, \(ok, item) => ok && predicate item)
 
     processorValid processor = match processor
+        SamplePlayer resource => match SampleResources::prepare resource
+            Error _ => false
+            Success _ => true
         Granular resource capacity seed => match Grains::prepare (resource.samples, capacity)
             Error _ => false
             Success _ => SampleResources::metadata resource && seed >= 1 && seed <= 2147483646

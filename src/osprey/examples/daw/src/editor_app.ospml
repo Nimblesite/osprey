@@ -292,7 +292,7 @@ module EditorApp
 
     update (context, editor, message) =
         step = routed (context, editor, message)
-        step(stepStore = CardArts::refreshed (editor, EditorHistory::record (editor, step.stepStore)))
+        step(stepStore = CardArts::refreshed (editor, EditorHistory::record (editor, DawSession::liveEdit (editor, step.stepStore))))
 
     (** Native controls and the canvas observe the same typed graph and applied edit revision. *)
     export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => EditorView::theme ())
@@ -301,19 +301,26 @@ module EditorApp
 module SamplePicker
     idle editor = editor.renderTicket == "" && editor.renderDeviceKey == "" && editor.renderContinuous == false && editor.renderStopping == false
     ticket (editor, serial) = "prism-sample:${serial}:${editor.selected}:${editor.revision}:${editor.renderSerial}"
-    problem (editor, text) = Runtime::step (editor(sampleTicket = "", message = "Grain cloud ${editor.selected}: ${text}"))
+    problem (editor, text) =
+        title = match Graphs::node (editor.graph, editor.selected)
+            Valid n => EditorView::processorTitle n.processor
+            Invalid _ => "Module"
+        Runtime::step (editor(sampleTicket = "", message = "${title} ${editor.selected}: ${text}"))
 
     (** Open the native WAV chooser for the selected grain cloud. *)
     export choose editor = match idle editor && editor.sampleSerial < 9223372036854775807
         false => problem (editor, "Sample selection is unavailable while playing or when request IDs run out.")
         true => match Graphs::node (editor.graph, editor.selected)
             Valid n => match n.processor
-                Granular _ _ _ =>
-                    serial = satAdd editor.sampleSerial 1
-                    key = ticket (editor, serial)
-                    Runtime::asking (editor(sampleSerial = serial, sampleTicket = key), [ui::Requests::ask (key, ui::ChooseFile(types = ["wav"], chosenLimit = 0, chosenSlice = ""))])
-                _ => problem (editor, "Select a Grain cloud to load a WAV sample.")
-            Invalid _ => problem (editor, "Select a Grain cloud to load a WAV sample.")
+                Granular _ _ _ => request editor
+                SamplePlayer _ => request editor
+                _ => problem (editor, "Select a Sample or Grain cloud to load a WAV sample.")
+            Invalid _ => problem (editor, "Select a Sample or Grain cloud to load a WAV sample.")
+
+    request editor =
+        serial = satAdd editor.sampleSerial 1
+        key = ticket (editor, serial)
+        Runtime::asking (editor(sampleSerial = serial, sampleTicket = key), [ui::Requests::ask (key, ui::ChooseFile(types = ["wav"], chosenLimit = 0, chosenSlice = ""))])
 
     retained (previous, rate, descriptor) = match descriptor.key == "rate"
         true => descriptor(initial = rate)
@@ -337,12 +344,16 @@ module SamplePicker
             true => Runtime::step (editor(graph = prepared.graph, revision = satAdd editor.revision 1, sampleTicket = "", message = "Loaded ${daw::PatchVoices::fileName resource.name}."))
 
     apply (editor, resource) = match Graphs::node (editor.graph, editor.selected)
-        Invalid _ => problem (editor, "Select a Grain cloud.")
+        Invalid _ => problem (editor, "Select a Sample or Grain cloud.")
         Valid n => match n.processor
+            SamplePlayer _ =>
+                graph = editor.graph
+                next = n(processor = SamplePlayer(resource = resource))
+                publish (editor, graph(nodes = mapList (graph.nodes, \item => ui::Pick::either (item.identity == next.identity, next, item))), resource)
             Granular _ capacity seed => match SampleResources::playbackRate (resource, toFloat editor.note, 48000.0)
                 Error why => problem (editor, why)
                 Success rate => replaceNode (editor, n, resource, capacity, seed, rate)
-            _ => problem (editor, "Select a Grain cloud.")
+            _ => problem (editor, "Select a Sample or Grain cloud.")
 
     (** Restore the original harmonic resource through the same graph edit. *)
     export builtin editor = match idle editor

@@ -11,13 +11,14 @@ module EditorState
 
     (** [SYNTH-ADVANCED-PRISM] Advanced modules, offered in the native picker so the canvas palette keeps its
         original layout and artwork. *)
-    export advancedKinds = ["exciter", "waveguide", "bowed-string", "strike-comb", "resonator", "modal-bank", "fractional-delay", "loss-filter", "allpass", "wavetable", "additive", "spectral", "pitch-shifter", "shaper", "reverb", "shifter", "phase-operator", "smoother", "split", "join", "route", "panner"]
+    export advancedKinds = ["sample", "exciter", "waveguide", "bowed-string", "strike-comb", "resonator", "modal-bank", "fractional-delay", "loss-filter", "allpass", "wavetable", "additive", "spectral", "pitch-shifter", "shaper", "reverb", "shifter", "phase-operator", "smoother", "split", "join", "route", "panner"]
 
     (** The browsing groups, in picker order. *)
     export categories = ["Sources", "Grains", "Physical", "Spectral", "Modulators", "Effects", "Utilities", "Output"]
 
     (** The browsing group of a component kind. *)
     export category kind = match kind
+        "sample" => "Sources"
         "sine" => "Sources"
         "midi-note" => "Sources"
         "wavetable" => "Sources"
@@ -56,6 +57,7 @@ module EditorState
 
     (** Human-readable names for the available component factories. *)
     export title kind = match kind
+        "sample" => "Sample"
         "grain-cloud" => "Grain cloud"
         "lfo" => "LFO modulator"
         "modulated-gain" => "Modulated stereo gain"
@@ -101,6 +103,9 @@ module EditorState
     made component = Valid(value = component)
 
     factory (kind, identity) = match kind
+        "sample" => match daw::PatchVoices::sampled "src/osprey/examples/daw/tracks/samples/808-kick.wav"
+            Error _ => Invalid(fault = InvalidNode)
+            Success resource => made (Components::samplePlayer (identity, resource))
         "grain-cloud" => made (grainCloud identity)
         "lfo" => made (Components::lfo (identity, 2.0))
         "modulated-gain" => made (Components::modulatedGain (identity, 2, 0.5))

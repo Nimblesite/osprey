@@ -84,9 +84,20 @@ module RenderKernels
         Shifter => EffectKernels::shifter (rate, snapshot, frame, held, input)
         _ => PhysicalKernels::process (rate, snapshot, frame, held, n, input)
 
+    playback (resource, rate, snapshot, frame, held) = match floatToInt (floor held.phase)
+        Error _ => Error(message = InvalidConfiguration(detail = "Invalid sample cursor."))
+        Success index => match listGet resource.samples index
+            Error _ => Success(value = RenderInputs::emitted (frame, held, 0.0))
+            Success left => Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "rate"), \speed =>
+                right = listGet resource.samples (satAdd index 1) ?: 0.0
+                step = WaveMath::playbackRate (toFloat resource.sampleRate, rate, speed, 1.0)
+                sample = GrainMath::interpolated (left, right, GrainMath::fraction held.phase)
+                Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "gain"), \gain => Success(value = RenderInputs::emitted (frame, held(phase = GrainMath::summed (held.phase, step)), GrainMath::placed (sample, gain)))))
+
     selected (plan, rate, snapshot, frame, held, n) = match n.processor
         Oscillator => Outcomes::carried (waveform (snapshot, n), \wave => sine (rate, snapshot, frame, held, wave, \value => value))
         Lfo => sine (rate, snapshot, frame, held, Sine, Waves::unipolar)
+        SamplePlayer resource => playback (resource, rate, snapshot, frame, held)
         Exciter _ => PhysicalKernels::excite (snapshot, frame, held)
         TableOscillator table => TableKernels::wavetable (rate, plan, snapshot, frame, held, table)
         Additive => TableKernels::additive (rate, snapshot, frame, held)

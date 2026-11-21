@@ -32,7 +32,9 @@ module TimelineView
 
     (** An instrument's kind as the timeline names it. *)
     export instrumentName instrument = match instrument
-        daw::PatchInstrument _ => "Patch"
+        daw::PatchInstrument routing => match routing.nodes
+            [voice, sink] => ui::Pick::either (voice.component == "sample" && sink.component == "output", "Sample", "Patch")
+            _ => "Patch"
         daw::PluckInstrument _ _ => "Pluck"
         daw::BowInstrument _ _ _ => "Bow"
         daw::BellInstrument _ _ => "Bell"

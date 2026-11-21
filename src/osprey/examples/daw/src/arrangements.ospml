@@ -39,7 +39,9 @@ module Arrangements
                 true => Success(value = count)
 
     (** `samples` enter `offset` frames into the bus, scaled by `gain`; the bus grows to hold them. *)
-    export bused (existing, samples, offset, gain) = foldList (toList (range (0, longer (length existing, satAdd offset (length samples)))), [], \(done, index) => listAppend done (ArrangeMath::bused (listGet existing index ?: 0.0, gain, listGet samples (satSub index offset) ?: 0.0)))
+    export bused (existing, samples, offset, gain) = match length samples == 0 && offset <= length existing
+        true => existing
+        false => toList (map (range (0, longer (length existing, satAdd offset (length samples))), \index => ArrangeMath::bused (listGet existing index ?: 0.0, gain, listGet samples (satSub index offset) ?: 0.0)))
 
     // One bus takes the mono buffer from frame `offset`, scaled by `gain * shade`.
     sent (bus, samples, offset, gain, shade) = bused (bus, samples, offset, ArrangeMath::scaled (gain, shade))
@@ -169,7 +171,9 @@ module Arrangements
     (** Advance one track over song frames `from` up to `until` into `buses`: notes due start sounding, each
         lane is summed for the window and routed, and notes that have ended stop. *)
     export advanced (song, buses, voice, play, from, until) = named (voice, Outcomes::carried (begun (song, voice, play, until), \next =>
-        lanes = mapList (toList (range (0, satAdd 1 (satMul 2 (length next.sends)))), \lane => window (next.sounding, lane, from, until))
+        lanes = toList (map (range (0, satAdd 1 (satMul 2 (length next.sends))), \lane => match next.sounding
+            [] => []
+            _ => window (next.sounding, lane, from, until)))
         Outcomes::carried (fed (song, buses, voice, next.sends, lanes), \into => ok (Advanced(play = next(sounding = filterList (next.sounding, \v => lasting (until, v))), buses = into)))))
 
     (** One track alone, played from the start for `frames` frames as its dry mono output; later sound is cut. *)

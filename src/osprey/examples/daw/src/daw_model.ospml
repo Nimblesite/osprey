@@ -204,6 +204,12 @@ type Playing =
     tracks : List<TrackPlay>
     states : List<BusState>
 
+type LiveStream =
+    playing : Playing
+    controlVersion : int
+    controlScore : Arrangement
+    noteFolders : List<string>
+
 type Played =
     playing : Playing
     left : List<float>

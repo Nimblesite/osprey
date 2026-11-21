@@ -20,6 +20,7 @@ module Kinds
 
     (** The stable kind identifier of a processor. *)
     export kind processor = match processor
+        SamplePlayer _ => "synth.sample"
         Granular _ _ _ => "synth.grain-cloud"
         Exciter _ => "synth.exciter"
         Resonator => "synth.resonator"

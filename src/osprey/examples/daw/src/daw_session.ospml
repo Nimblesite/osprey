@@ -162,7 +162,7 @@ module DawSession
 
     // `$0` is the audio worker, then the renderer and its arguments. The makers start first, run beside the
     // stream and end with it, so makers never pile up. Each receipt the device answers replaces `played.json`; the host cancels the whole process group.
-    pipeline = "${makers}; \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" | \"$0\" audio-device | while read -r line; do printf '%s\\n' \"$line\" > \"$3/played.json\"; done; kill $m 2>/dev/null"
+    pipeline = "${makers}; \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" \"$3/controls\" | \"$0\" audio-device | while read -r line; do printf '%s\\n' \"$line\" > \"$3/played.json\"; done; kill $m 2>/dev/null"
 
     // One set of makers per song: its ticket names the song, so opening another song or playing ends them.
     warmTicket editor = "daw-notes:${editor.songPath}"
@@ -187,7 +187,11 @@ module DawSession
 
     clock on = Requests::ask (clockTicket, ui::Animate(animated = on))
 
-    streamed editor =
+    streamed editor = match daw::LiveControls::reset "${live editor}/controls"
+        Error why => Runtime::step (editor(message = "Could not open live controls: ${why}"))
+        Success _ => streaming editor
+
+    streaming editor =
         place = live editor
         ticket = "${liveTicket}${place}"
         _cleared = writeFile (fault place) ""
@@ -367,6 +371,24 @@ module DawSession
     draft editor = match editor.patchTrack >= 0 && editor.songPath != ""
         true => daw::PatchRecords::savedAt (editor.song, editor.patchTrack, editor.graph, editor.positions)
         false => Success(value = editor.song)
+
+    (** Publish accepted drags, typed edits and history changes through the same song-control Signal. *)
+    export liveEdit (before, after) = match startsWith after.songTicket liveTicket && before.songTicket == after.songTicket && before.revision != after.revision
+        false => after
+        true => match before.patchTrack == after.patchTrack && after.page == PatchPage && after.patchTrack >= 0 && !structuralEquals (before.graph, after.graph)
+            true => publish (before, after, daw::PatchRecords::live (after.song, after.patchTrack, after.graph))
+            false => match structuralEquals (daw::LiveControls::settings before.song, daw::LiveControls::settings after.song)
+                true => after
+                false => publish (before, after, Success(value = after.song))
+
+    publish (before, after, result) = match result
+        Error why => before(message = why)
+        Success song =>
+            handle static Signal<daw::Arrangement>
+                read => song
+            match daw::LiveControls::publish "${live after}/controls"
+                Error why => before(message = "Live controls: ${why}")
+                Success _ => after
 
     // Undo from Patch may target a lane that was edited before it had ever been opened as a patch.
     historyView (editor, song) =

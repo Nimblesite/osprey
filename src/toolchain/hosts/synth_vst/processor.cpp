@@ -97,15 +97,21 @@ bool saved(IComponent& component, MemoryStream& stream) {
            stream.getSize() <= 16 * 1024 * 1024;
 }
 
+// Controllers that do not consume processor state report kNotImplemented (e.g. TAL-NoiseMaker).
+static bool notifyController(IEditController& controller, MemoryStream& stream) {
+    const auto result = controller.setComponentState(&stream);
+    return result == kResultOk || result == kNotImplemented;
+}
+
 // A separate edit controller must receive the processor's initial state before any UI read.
 bool Plugin::synchronizeController() {
     const auto controller = provider->getControllerPtr();
-    if (!controller) return true;
+    if (!controller || FUnknownPtr<IEditController>(component).getInterface()) return true;
     MemoryStream stream;
     error = "Initial processor/controller state synchronization failed";
     return saved(*component, stream) &&
            stream.seek(0, IBStream::kIBSeekSet, nullptr) == kResultOk &&
-           controller->setComponentState(&stream) == kResultOk;
+           notifyController(*controller, stream);
 }
 
 bool sameState(const MemoryStream& first, const MemoryStream& second) {
@@ -148,7 +154,7 @@ bool restore(Plugin& plugin, IEditController& controller, MemoryStream& stream) 
     if (stream.seek(0, IBStream::kIBSeekSet, nullptr) != kResultOk) return false;
     if (plugin.component->setState(&stream) != kResultOk) return false;
     if (stream.seek(0, IBStream::kIBSeekSet, nullptr) != kResultOk) return false;
-    return controller.setComponentState(&stream) == kResultOk && flushState(plugin);
+    return notifyController(controller, stream) && flushState(plugin);
 }
 
 bool Plugin::stateRoundTrip() {

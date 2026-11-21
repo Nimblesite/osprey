@@ -115,3 +115,49 @@ module SongFiles
     export encode arrangement = match jsonEncode (ProjectCodec::writeArrangement arrangement)
         Error why => Error(message = "The project could not be written as JSON: ${why}")
         Success text => Success(value = text)
+
+(** [DAW-TRANSPORT-LIVE-CONTROLS] The editor publishes the current mix and instruments.
+    The producer reads a complete revision between audio blocks, outside the device callback. *)
+module LiveControls
+    (** Control snapshots omit the score and canvas positions; the playing window owns its cues. *)
+    export settings song = song(tracks = mapList (song.tracks, \track => track(notes = [], positions = [])))
+
+    (** Play opens an empty control channel before it starts the song producer. *)
+    export reset path = writeFile path "0\n"
+
+    version text = match endsWith text "\n"
+        false => Error(message = "Incomplete live control revision.")
+        true => parseInt (trim text)
+
+    slot (path, revision) = "${path}.${revision % 2}"
+
+    write (path, revision, text) = synth::Outcomes::carried (writeFile (slot (path, revision)) "${revision}\n${text}", \_ => writeFile path "${revision}\n")
+
+    (** The slot is complete before its revision is published. A fast drag coalesces to its latest value. *)
+    export publish path = synth::Outcomes::carried (readFile path, \head => synth::Outcomes::carried (version head, \prior =>
+        match prior >= 0 && prior < 9223372036854775807
+            false => Error(message = "Live control revisions are exhausted.")
+            true => synth::Outcomes::carried (SongFiles::encode (settings (perform Signal<Arrangement>.read ())), \text => write (path, satAdd prior 1, text))))
+
+    // The same track retains its excerpt notes when an instrument, fader, pan or send changes.
+    overlay (score, controls) = synth::Outcomes::carried (SendRenders::collect (score.tracks, \prior =>
+        synth::Outcomes::carried (ui::Lists::find (controls.tracks, \t => t.name == prior.name), \track => Success(value = track(notes = prior.notes)))), \tracks => Success(value = score(tracks = tracks, buses = controls.buses)))
+
+    decoded (stream, revision, body) = synth::Outcomes::carried (SongFiles::decode body, \controls =>
+        synth::Outcomes::carried (overlay (stream.playing.score, controls), \song => Success(value = stream(controlVersion = revision, controlScore = song))))
+
+    payload (path, stream, revision, head) = synth::Outcomes::carried (readFile (slot (path, revision)), \body =>
+        synth::Outcomes::carried (readFile path, \latest =>
+            match head == latest && startsWith body head
+                false => Success(value = stream)
+                true => synth::Outcomes::carried (substring body (length head) (length body), \text => decoded (stream, revision, text))))
+
+    (** A torn or superseded publication waits for the following block; a complete invalid one is an error. *)
+    export receive (path, stream) = match path == ""
+        true => Success(value = stream)
+        false => synth::Outcomes::carried (readFile path, \head =>
+            match version head
+                Error _ => Success(value = stream)
+                Success revision => match revision > stream.controlVersion
+                    false => Success(value = stream)
+                    true => payload (path, stream, revision, head))

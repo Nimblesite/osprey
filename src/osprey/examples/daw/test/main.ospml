@@ -1216,6 +1216,7 @@ barLineJourney ready =
     expect (synth::Header::songAction (ready, 5), synth::StopSong)
 
 transportJourney () =
+    liveDialJourney ()
     succeeds (makeDir "target/daw-tests", \_ => expect (true, true))
     _made = makeDir transportRoot
     _bin = makeDir "${transportRoot}/bin"
@@ -1409,3 +1410,17 @@ test ("every synthesis family plays a real, finite, repeatable note through the 
 test ("two internal audio sends survive a project round trip and sum before the track fader", \() => ui::Runtime::guarded tapJourney)
 
 test ("the project plays as one loop over time: every track, bus and send advance together into Master, at any block size", \() => ui::Runtime::guarded masterPlayJourney)
+
+test ("Violet Static opens the kick as a wired WAV sample", \() => ui::Runtime::guarded (\() =>
+    succeeds (readFile "src/osprey/examples/daw/tracks/violet-static.json", \source =>
+        succeeds (daw::SongFiles::decode source, \song =>
+            succeeds (ui::Lists::find (song.tracks, \t => t.name == "Kick"), \kick =>
+                routing = daw::TrackPatches::routing kick.instrument
+                expect (structuralEquals (mapList (routing.nodes, \n => n.component), ["sample", "output"]), true)
+                reads (listGet routing.nodes 0, \n =>
+                    expect (daw::PatchVoices::fileName n.asset, "808-kick.wav")
+                    succeeds (daw::PatchVoices::sampled n.asset, \resource =>
+                        note = daw::Note(pitch = 32, start = 0.0, length = 0.2, velocity = 1.0)
+                        span = daw::NoteSpan(gate = 1000.0, total = 256)
+                        succeeds (daw::PatchVoices::render (note, span, 48000.0, routing), \audio =>
+                            forEachList ([48, 64, 127, 255], \i => reads (listGet audio i, \actual => reads (listGet resource.samples i, \wanted => expect (actual, wanted))))))))))))

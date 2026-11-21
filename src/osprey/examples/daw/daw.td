@@ -35,6 +35,7 @@ type Heard { plays: List<TrackPlay> buses: Buses }
 type BusState { name: String leftBand: BandState rightBand: BandState level: Float }
 type Mastering { buses: Buses states: List<BusState> }
 type Playing { score: Arrangement cursor: Int tracks: List<TrackPlay> states: List<BusState> }
+type LiveStream { playing: Playing controlVersion: Int controlScore: Arrangement noteFolders: List<String> }
 type Played { playing: Playing left: List<Float> right: List<Float> }
 type Take { playing: Playing lefts: List<List<Float>> rights: List<List<Float>> }
 type Stereo { name: String left: List<Float> right: List<Float> }

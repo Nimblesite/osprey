@@ -49,6 +49,8 @@ type SampleResource =
     samples : List<float>
 
 type Processor =
+    SamplePlayer
+        resource : SampleResource
     Granular
         resource : SampleResource
         capacity : int

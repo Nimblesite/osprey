@@ -86,6 +86,7 @@ module ClipLayouts
     export supported n = match n.processor
         Granular _ _ _ => uniform (n, 0, 1) && length (filterList (n.outputs, \port => port.channels == 2)) == 1
         Lfo => lfo n
+        SamplePlayer _ => uniform (n, 0, 1)
         Exciter _ => uniform (n, 0, 1)
         TableOscillator _ => length n.inputs == 4 && length (filterList (n.inputs, control)) == 4 && length n.outputs == 1 && audio n.outputs
         Additive => uniform (n, 0, 1)
@@ -139,6 +140,7 @@ module ClipLayouts
             Success port => Success(value = port.channels)
 
     delay n = match n.processor
+        SamplePlayer resource => length resource.samples
         Granular resource _ _ => length resource.samples
         TableOscillator table => foldList (table.frames, 0, \(total, frame) => foldList (frame.levels, total, \(sum, level) => satAdd sum (length level.samples)))
         _ => match channels n

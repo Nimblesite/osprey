@@ -36,6 +36,9 @@ module Components
 
     processing (identity, processor, parameters) = node (identity, processor, [port "audio"], [port "audio"], parameters)
 
+    (** Play the prepared waveform once from its first frame. *)
+    export samplePlayer (identity, resource) = source (identity, SamplePlayer(resource = resource), [parameter ("rate", "Playback speed", Ratio, 0.01, 32.0, 1.0), amplitude ("gain", "Level", 1.0)])
+
     (** Sine oscillator. Its frequency is a parameter, separate from its phase state. A graph can feed a custom oscillator node's optional notes inlet instead; the built-in factory stays input-free. *)
     export sine (identity, frequency) = source (identity, Oscillator, [parameter ("frequency", "Frequency", Hertz, 0.0, 19000.0, frequency)])
 

@@ -11,6 +11,7 @@ module EditorView
 
     (** The name Prism shows for a processor. *)
     export processorTitle processor = match processor
+        SamplePlayer _ => "Sample"
         Granular _ _ _ => "Grain cloud"
         Lfo => "LFO"
         ModulatedGain => "Modulated gain"
@@ -89,6 +90,7 @@ module EditorView
             true => []
             false => [Ui::section ("Parameters", "", listConcat [dialRows (editor, n)] (listConcat (entry (editor, n)) (modulations n)))]
         sample = match n.processor
+            SamplePlayer resource => [Ui::section ("Sample", "", [Ui::caption (daw::PatchVoices::fileName resource.name), Ui::button ("Load WAV sample", "", LoadSample)])]
             Granular resource _ _ => [Ui::section ("Sample", "", [Ui::caption ("${daw::PatchVoices::fileName resource.name} · ${resource.sampleRate} Hz · ${resource.sourceChannels} source channels · ${length resource.samples} frames · ${WaveMath::seconds (toFloat (length resource.samples), toFloat resource.sampleRate)} s"), Ui::button ("Load WAV sample", "", LoadSample), Ui::button ("Use built-in harmonic sample", "", BuiltinSample)])]
             _ => []
         Ui::column (listConcat sample parameters)
@@ -328,6 +330,7 @@ module EditorView
 
     (** A module's card, drawn from the skin: the costly part `CardArts` keeps. *)
     export nodeArtwork (editor, n, at) = match n.processor
+        SamplePlayer resource => listConcat (moduleCard (editor, n, at)) (grainTrace (resource, at))
         Granular resource _ _ => listConcat (moduleCard (editor, n, at)) (grainTrace (resource, at))
         Oscillator => PrismArt::card (editor, n)
         Lfo => PrismArt::card (editor, n)
@@ -341,6 +344,7 @@ module EditorView
         border = ui::Pick::either (editor.selected == n.identity, 16745538, 6246296)
         paint = ui::Linear(angle = 90.0, from = Scenes::hex (2364225, 1.0), fromAt = 0.0, to = Scenes::hex (1117472, 1.0), toAt = 1.0, oklab = false)
         caption = match n.processor
+            SamplePlayer _ => ""
             Granular _ _ _ => ""
             _ => match listGet n.parameters 0
                 Error _ => ""

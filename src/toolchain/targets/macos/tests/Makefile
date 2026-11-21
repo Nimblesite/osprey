@@ -99,6 +99,18 @@ daw-events-headless: daw-icon _runtime_macos
 	nice -n 10 cargo test --manifest-path src/toolchain/hosts/ferroui/Cargo.toml --release --features desktop \
 	    --test prism_events --test daw_events -- --nocapture
 
+## daw-playback-rate: Verify cold live rendering at 1.5× real time and report start time and longest block gap.
+DAW_RATE_RENDERER ?= target/daw-profile/rate-renderer
+DAW_RATE_SONG ?= src/osprey/examples/daw/tracks/codex-version.json
+DAW_RATE_FROM ?= 0
+DAW_RATE_BEATS ?= 2
+.PHONY: daw-playback-rate
+daw-playback-rate: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	mkdir -p target/daw-profile
+	nice -n 10 $(BIN) build src/osprey/examples/daw/render --memory=arc -o "$(DAW_RATE_RENDERER)"
+	node scripts/make/daw-playback-rate.mjs "$(DAW_RATE_RENDERER)" "$(DAW_RATE_SONG)" "$(DAW_RATE_FROM)" "$(DAW_RATE_BEATS)"
+
 ## daw-profile: Measure the daw and say where the time goes ([DAW-PERF]): milliseconds per kind of user action on
 ##              every page, then a 1 ms sample of the Timeline, Mix and Patch pages and of the song renderer, each
 ##              attributed to Osprey functions and the runtime calls they make. Reports in target/daw-profile.

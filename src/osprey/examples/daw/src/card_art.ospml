@@ -7,6 +7,7 @@ module CardArts
     settings n = join (mapList (n.parameters, \p => "${p.key}=${p.initial}")) ","
 
     sample n = match n.processor
+        SamplePlayer resource => "${resource.name}:${length resource.samples}"
         Granular resource _ _ => "${resource.name}:${length resource.samples}"
         _ => ""
 
