@@ -86,10 +86,10 @@ module RenderKernels
 
     playback (resource, rate, snapshot, frame, held) = match floatToInt (floor held.phase)
         Error _ => Error(message = InvalidConfiguration(detail = "Invalid sample cursor."))
-        Success index => match listGet resource.samples index
+        Success index => match SampleResources::monoAt (resource, index)
             Error _ => Success(value = RenderInputs::emitted (frame, held, 0.0))
             Success left => Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "rate"), \speed =>
-                right = listGet resource.samples (satAdd index 1) ?: 0.0
+                right = SampleResources::monoAt (resource, satAdd index 1) ?: 0.0
                 step = WaveMath::playbackRate (toFloat resource.sampleRate, rate, speed, 1.0)
                 sample = GrainMath::interpolated (left, right, GrainMath::fraction held.phase)
                 Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "gain"), \gain => Success(value = RenderInputs::emitted (frame, held(phase = GrainMath::summed (held.phase, step)), GrainMath::placed (sample, gain)))))

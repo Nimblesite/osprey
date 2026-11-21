@@ -91,7 +91,7 @@ module EditorView
             false => [Ui::section ("Parameters", "", listConcat [dialRows (editor, n)] (listConcat (entry (editor, n)) (modulations n)))]
         sample = match n.processor
             SamplePlayer resource => [Ui::section ("Sample", "", [Ui::caption (daw::PatchVoices::fileName resource.name), Ui::button ("Load WAV sample", "", LoadSample)])]
-            Granular resource _ _ => [Ui::section ("Sample", "", [Ui::caption ("${daw::PatchVoices::fileName resource.name} · ${resource.sampleRate} Hz · ${resource.sourceChannels} source channels · ${length resource.samples} frames · ${WaveMath::seconds (toFloat (length resource.samples), toFloat resource.sampleRate)} s"), Ui::button ("Load WAV sample", "", LoadSample), Ui::button ("Use built-in harmonic sample", "", BuiltinSample)])]
+            Granular resource _ _ => [Ui::section ("Sample", "", [Ui::caption ("${daw::PatchVoices::fileName resource.name} · ${resource.sampleRate} Hz · ${resource.sourceChannels} source channels · ${SampleResources::frames resource} frames · ${WaveMath::seconds (toFloat (SampleResources::frames resource), toFloat resource.sampleRate)} s"), Ui::button ("Load WAV sample", "", LoadSample), Ui::button ("Use built-in harmonic sample", "", BuiltinSample)])]
             _ => []
         Ui::column (listConcat sample parameters)
 
@@ -353,9 +353,9 @@ module EditorView
         returnShapes
 
     grainTrace (resource, at) = [Scenes::strip (foldList (toList (range (0, 48)), [], \(points, index) =>
-        match floatToInt (CanvasGeometry::grainIndex (toFloat index, toFloat (length resource.samples)))
+        match floatToInt (CanvasGeometry::grainIndex (toFloat index, toFloat (SampleResources::frames resource)))
             Error _ => points
-            Success source => match listGet resource.samples source
+            Success source => match SampleResources::monoAt (resource, source)
                 Error _ => points
                 Success value => listConcat points [CanvasGeometry::grainX (x at, toFloat index), CanvasGeometry::waveY (y at + 5.0, value)]), Scenes::rgb (80, 229, 216), 2.0, 6), text (resource.name, x at - 120.0, y at - 34.0, 11.0, 190, 7)]
 

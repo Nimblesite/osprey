@@ -41,9 +41,9 @@ module Graphs
         SamplePlayer resource => match SampleResources::prepare resource
             Error _ => false
             Success _ => true
-        Granular resource capacity seed => match Grains::prepare (resource.samples, capacity)
+        Granular resource capacity seed => match SampleResources::prepare resource
             Error _ => false
-            Success _ => SampleResources::metadata resource && seed >= 1 && seed <= 2147483646
+            Success _ => capacity >= 1 && capacity <= 256 && seed >= 1 && seed <= 2147483646
         Delay count => count >= 1 && count <= 1920000
         Exciter seed => seed >= 1 && seed <= 2147483646
         Spectral size hop => Ffts::valid size && (hop == intDiv size 4 || hop == intDiv size 8)

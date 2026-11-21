@@ -1,7 +1,7 @@
 // [SYNTH-ADVANCED-GRAINS-IMPORT] Pure, allocating resource preparation; never call from rendering.
 namespace synth
 
-(** Bounded RIFF/WAVE PCM import. Stereo is explicitly downmixed to mono for grain resources. *)
+(** Bounded RIFF/WAVE PCM import. Samples retain their interleaved channel order. *)
 module WaveImport
     part (bytes, at, outcome, index) = match outcome
         Error why => Error(message = why)
@@ -88,23 +88,17 @@ module WaveImport
                 false => Error(message = MissingResource(detail = "WAV samples must be finite and within [-1, 1]."))
                 true => Success(value = value)
 
-    frame (bytes, fmt, at) = match sample (bytes, fmt, at)
-        Error why => Error(message = why)
-        Success left => match fmt.channels == 1
-            true => Success(value = left)
-            false => Outcomes::carried (sample (bytes, fmt, satAdd at fmt.sampleBytes), \right => Success(value = WaveMath::mono (left, right)))
-
     append (bytes, fmt, outcome, index) = match outcome
         Error why => Error(message = why)
-        Success samples => Outcomes::carried (frame (bytes, fmt, satAdd fmt.dataStart (satMul index fmt.blockAlign)), \value => Success(value = listPrepend samples value))
+        Success samples => Outcomes::carried (sample (bytes, fmt, satAdd fmt.dataStart (satMul index fmt.sampleBytes)), \value => Success(value = listPrepend samples value))
 
-    decoded (bytes, fmt) = Outcomes::carried (foldList (toList (range (0, fmt.frames)), Success(value = []), \(outcome, index) => append (bytes, fmt, outcome, index)), \samples => Success(value = WaveSamples(sampleRate = fmt.sampleRate, channels = fmt.channels, frames = fmt.frames, samples = listReverse samples)))
+    decoded (bytes, fmt) = Outcomes::carried (foldList (toList (range (0, satMul fmt.frames fmt.channels)), Success(value = []), \(outcome, index) => append (bytes, fmt, outcome, index)), \samples => Success(value = WaveSamples(sampleRate = fmt.sampleRate, channels = fmt.channels, frames = fmt.frames, samples = listReverse samples)))
 
     body bytes = match chunks (bytes, 12, WaveChunks(formatStart = -1, formatBytes = 0, dataStart = -1, dataBytes = 0), 1024)
         Error why => Error(message = why)
         Success held => Outcomes::carried (format (bytes, held), \fmt => decoded (bytes, fmt))
 
-    (** Decode at most 8 MiB; metadata preserves the original channel count while samples are mono. No resampling. *)
+    (** Decode at most 8 MiB; preserve every source channel and the frame count. No resampling. *)
     export decode bytes = match length bytes >= 12 && length bytes <= 8388608
         false => Error(message = MissingResource(detail = "WAV file size must be between 12 bytes and 8 MiB."))
         true => match fields (bytes, 0, [WaveField(offset = 0, width = 4), WaveField(offset = 4, width = 4), WaveField(offset = 8, width = 4)])

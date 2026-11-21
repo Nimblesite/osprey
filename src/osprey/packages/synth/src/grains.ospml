@@ -3,6 +3,9 @@ namespace synth
 
 (** Bounded sampled grains with explicit state, stereo placement and independent lifetime/pitch. *)
 module Grains
+    (** Refusal for an invalid prepared source or grain-pool capacity. *)
+    export invalidSource () = Error(message = InvalidConfiguration(detail = "Grains require 2–1048576 finite normalised mono samples and capacity 1–256."))
+
     sourceSample value = value >= -1.0 && value <= 1.0
 
     sourceSize source = length source >= 2 && length source <= 1048576
@@ -33,7 +36,7 @@ module Grains
         pool = GrainPool(region = fullRegion (source, LoopSource), source = source, retiredSource = [], retiredBefore = 0, capacity = capacity, voices = [], revision = 0, position = 0, nextIdentity = 0)
         match layout pool && length (filterList (source, sourceSample)) == length source
             true => Success(value = pool)
-            false => Error(message = InvalidConfiguration(detail = "Grains require 2–1048576 finite normalised mono samples and capacity 1–256."))
+            false => invalidSource ()
 
     (** Select an absolute, half-open source region for future triggers. Existing voices retain theirs. *)
     export withRegion (pool, region) = match layout pool && regionValid (length pool.source, region)

@@ -20,7 +20,7 @@ type GrainTimelineState { audio: GrainBlock events: List<GrainEvent> }
 union GrainTiming { PeriodicTiming { period: Int jitter: Int } ExponentialTiming { mean: Float maximum: Int } }
 type GrainClock { position: Int nextOnset: Int timing: GrainTiming seed: Int }
 type GrainOnsets { positions: List<Int> next: GrainClock }
-type GrainCloudState { pool: GrainPool clock: GrainClock seeds: GrainSeeds }
+type GrainCloudState { sourceSamples: List<Float> pool: GrainPool clock: GrainClock seeds: GrainSeeds }
 type GrainCloudBlock { left: List<Float> right: List<Float> next: GrainCloudState }
 type GrainCloudObservation { playback: GrainObservation timing: GrainTiming nextOnset: Int }
 type GrainNodeControls { playback: GrainControls timing: GrainTiming }

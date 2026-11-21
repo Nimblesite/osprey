@@ -287,7 +287,7 @@ grainSource (driven, name, frames) = valid (synth::Graphs::node ((Drive::holding
 sourceOf (n, name, frames) = match n.processor
     synth::Granular resource _ _ =>
         expect (resource.name, name)
-        expect (length resource.samples, frames)
+        expect (synth::SampleResources::frames resource, frames)
     _ => expect ("another module", name)
 
 // Deleting a routed module restores its parameters, position and cables as one operation.

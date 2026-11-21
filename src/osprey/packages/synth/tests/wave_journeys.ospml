@@ -254,11 +254,11 @@ registerWaveJourneys () =
             { bytes = wavFile (3, 2, 48000, 32, [0, 0, 128, 63, 0, 0, 0, 191, 0, 0, 128, 191, 0, 0, 128, 63]), want = [0.25, 0.0], channels = 2, frames = 2 },
             { bytes = wavFile (1, 2, 48000, 16, [0, 64, 0, 192, 255, 127, 0, 128]), want = [0.0, -0.0000152587890625], channels = 2, frames = 2 }],
             \held => succeeds (WaveImport::decode held.bytes, \wave =>
-                sameSamples (wave.samples, held.want)
+                succeeds (SampleResources::fromWave ("decoded", 60.0, wave), \resource => succeeds (SampleResources::mono resource, \mono => sameSamples (mono, held.want)))
                 expect (wave.channels, held.channels)
                 expect (wave.frames, held.frames)
                 expect (wave.sampleRate > 0, true)
-                expect (length wave.samples == wave.frames, true)))
+                expect (length wave.samples == satMul wave.frames wave.channels, true)))
         // An 18-byte format extension, a metadata chunk and odd-body padding all survive.
         succeeds (WaveImport::decode (wavPack [wavChunk ("fmt ", listConcat (wavFormatBody (1, 1, 48000, 2, 96000, 16)) (wavWord16 0)), wavChunk ("LIST", [9, 8, 7]), wavMonoData ()]), \wave => sameSamples (wave.samples, [0.5, -1.0]))))
     test ("WAV import refuses corrupt sizes, headers, chunks, formats and out-of-range samples", \() => arithmetic (\() =>
@@ -283,7 +283,7 @@ registerWaveJourneys () =
         forEachList ([wavFormatBody (1, 1, 48000, 1, 48000, 12), wavFormatBody (2, 1, 48000, 2, 96000, 16), wavFormatBody (3, 1, 48000, 2, 96000, 16), wavFormatBody (1, 3, 48000, 6, 288000, 16), wavFormatBody (1, 1, 7999, 2, 15998, 16), wavFormatBody (1, 1, 192001, 2, 384002, 16), wavFormatBody (1, 1, 48000, 3, 96000, 16), wavFormatBody (1, 1, 48000, 2, 48000, 16)],
             \body => refusedWith (WaveImport::decode (wavPack [wavChunk ("fmt ", body), wavMonoData ()]), "WAV requires PCM 8/16/24/32 or float32, mono/stereo, 8–192 kHz and consistent frame/byte rates."))))
     test ("sample resources validate metadata, prepare grains and transpose by root pitch", \() => arithmetic (\() =>
-        kit = synth::SampleResource(name = "loop", sampleRate = 48000, sourceChannels = 2, rootFrequency = 261.6255653005986, samples = [0.5, -0.5])
+        kit = synth::SampleResource(name = "loop", sampleRate = 48000, sourceChannels = 2, rootFrequency = 261.6255653005986, samples = [0.5, -0.5, 0.25, -0.25])
         longName = join (mapList (toList (range (0, 256)), \_ => "x")) ""
         forEachList ([
             { r = kit, want = true },
@@ -307,16 +307,16 @@ registerWaveJourneys () =
         // kit(samples=...) variants fail inside grain preparation; the last fails metadata first.
         forEachList ([kit(samples = []), kit(samples = [0.5]), kit(samples = [0.5, 1.5])], \bad => refusedWith (SampleResources::prepare bad, "Grains require 2–1048576 finite normalised mono samples and capacity 1–256."))
         refusedWith (SampleResources::prepare (kit(sampleRate = 192001)), "Invalid sample resource name, sample rate, source channels or root frequency.")
-        wave = synth::WaveSamples(sampleRate = 48000, channels = 2, frames = 2, samples = [0.25, -0.25])
+        wave = synth::WaveSamples(sampleRate = 48000, channels = 2, frames = 2, samples = [0.25, -0.25, 0.75, -0.75])
         succeeds (SampleResources::fromWave ("loop", 60.0, wave), \resource =>
             expect (resource.name, "loop")
             expect (resource.sampleRate, 48000)
             expect (resource.sourceChannels, 2)
             near (resource.rootFrequency, 261.6255653005986, 0.000000001)
-            sameSamples (resource.samples, [0.25, -0.25]))
+            sameSamples (resource.samples, [0.25, -0.25, 0.75, -0.75]))
         forEachList ([-0.5, 127.5], \root => refusedWith (SampleResources::fromWave ("loop", root, wave), "Invalid sample root pitch or decoded frame count."))
         refusedWith (SampleResources::fromWave ("loop", 60.0, wave(frames = 3)), "Invalid sample root pitch or decoded frame count.")
-        refusedWith (SampleResources::fromWave ("loop", 60.0, wave(samples = [2.0, -2.0])), "Grains require 2–1048576 finite normalised mono samples and capacity 1–256.")
+        refusedWith (SampleResources::fromWave ("loop", 60.0, wave(samples = [2.0, -2.0, 0.25, -0.25])), "Grains require 2–1048576 finite normalised mono samples and capacity 1–256.")
         refusedWith (SampleResources::fromWave ("loop", 60.0, wave(channels = 3)), "Invalid sample resource name, sample rate, source channels or root frequency.")
         succeeds (SampleResources::decodeWave ("loop", 60.0, wavFile (1, 1, 48000, 16, [0, 64, 0, 128])), \resource => sameSamples (resource.samples, [0.5, -1.0]))
         refusedAs (SampleResources::decodeWave ("loop", 60.0, wavText "RIFF"), "resource", "WAV file size must be between 12 bytes and 8 MiB.")

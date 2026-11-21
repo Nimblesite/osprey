@@ -135,6 +135,7 @@ type GrainOnsets =
     next : GrainClock
 
 type GrainCloudState =
+    sourceSamples : List<float>
     pool : GrainPool
     clock : GrainClock
     seeds : GrainSeeds

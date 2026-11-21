@@ -536,10 +536,10 @@ grainGraphVariationRefusalJourney () =
     succeeds (GrainGraph::prepare (grainSet (regionNode, "start", 1.0)), \cloud =>
         refusedWith (GrainGraph::block (regionNode, cloud, 8), "Grain start positions and spread must stay inside the selected region."))
 
-// [SYNTH-SAMPLES-IMPORT] The pure preparation API preserves rate/channels, downmixes stereo and tunes by root.
+// [SYNTH-SAMPLES-IMPORT] The pure preparation API preserves rate, channels and interleaved PCM and tunes by root.
 // The little-endian RIFF bytes come from the shared builders in wave_journeys.
 grainImportJourney () =
-    // Stereo float32 with equal half weights: (1.0 + -1.0)/2 = 0 and (0.5 + 0.25)/2 = 0.375.
+    // The mono grain consumer uses equal half weights: (1.0 + -1.0)/2 = 0 and (0.5 + 0.25)/2 = 0.375.
     stereo = wavFile (3, 2, 44100, 32, wavJoin [wavWord32 1065353216, wavWord32 3212836864, wavWord32 1056964608, wavWord32 1048576000])
     succeeds (SampleResources::decodeWave ("stereo", 69.0, stereo), \resource =>
         expect (resource.sampleRate, 44100)

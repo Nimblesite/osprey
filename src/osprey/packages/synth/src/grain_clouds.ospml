@@ -8,7 +8,7 @@ module GrainClouds
         Error why => Error(message = why)
         Success pool => match GrainScheduler::prepare (pool.position, timing, seed)
             Error why => Error(message = why)
-            Success clock => Outcomes::carried (GrainDistributions::seeded variationSeed, \seeds => Success(value = GrainCloudState(pool = pool, clock = clock, seeds = seeds)))
+            Success clock => Outcomes::carried (GrainDistributions::seeded variationSeed, \seeds => Success(value = GrainCloudState(sourceSamples = source, pool = pool, clock = clock, seeds = seeds)))
 
     schedule (held, frames) = match held.pool.position == held.clock.position
         false => Error(message = InvalidConfiguration(detail = "The grain player and scheduler clocks have diverged."))

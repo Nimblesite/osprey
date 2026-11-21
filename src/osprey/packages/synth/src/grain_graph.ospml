@@ -72,12 +72,13 @@ module GrainGraph
                 false => Error(message = InvalidConfiguration(detail = "Invalid grain sample metadata."))
                 true => match variationSeed n
                     Error why => Error(message = why)
-                    Success randomSeed => Outcomes::carried (GrainClouds::prepare (resource.samples, capacity, controls.timing, seed, randomSeed), \cloud => withRegion (n, cloud))
+                    Success randomSeed => Outcomes::carried (SampleResources::mono resource, \samples =>
+                        Outcomes::carried (GrainClouds::prepare (samples, capacity, controls.timing, seed, randomSeed), \cloud => withRegion (n, cloud(sourceSamples = resource.samples))))
         _ => Error(message = MissingResource(detail = "The component is not a grain cloud."))
 
     (** Reject memory from a different resource, pool capacity or graph sample position. *)
     export compatible (n, cloud, position) = match n.processor
-        Granular resource capacity _ => SampleResources::metadata resource && structuralEquals (resource.samples, cloud.pool.source) && capacity == cloud.pool.capacity && cloud.pool.position == position && cloud.clock.position == position
+        Granular resource capacity _ => SampleResources::metadata resource && structuralEquals (resource.samples, cloud.sourceSamples) && SampleResources::frames resource == length cloud.pool.source && capacity == cloud.pool.capacity && cloud.pool.position == position && cloud.clock.position == position
         _ => false
 
     (** Apply graph controls to newly emitted grains; surviving grains retain their own envelopes and cursors. *)
