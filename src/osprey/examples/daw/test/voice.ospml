@@ -561,6 +561,29 @@ dialTapped (d, label) = match dialOf (d, label)
 
 tuned (driven, node, label, words) = Drive::choose (dialTapped (inspectorSelected (driven, node), label), label, words)
 
+panelFrequency driven = match synth::Graphs::node ((Drive::holding driven).graph, 0)
+    synth::Invalid _ => 0.0 - 1.0
+    synth::Valid n => match listGet (filterList (n.parameters, \p => p.key == "frequency")) 0
+        Error _ => 0.0 - 1.0
+        Success p => p.initial
+
+panelDialHistory (selected, released, coarse) =
+    undone = prismTap (released, "Undo")
+    sameGraph (undone, selected)
+    redone = prismTap (undone, "Redo")
+    expect (panelFrequency redone, coarse)
+    asked = dialTapped (prismTap (redone, "Undo"), "Frequency")
+    expect ((Drive::holding asked).dialEntry, "frequency")
+    viewShows (asked, "Frequency", true)
+    refused = Drive::choose (asked, "Frequency", "loud")
+    expect ((Drive::holding refused).dialEntry, "frequency")
+    sameGraph (refused, selected)
+    typed = Drive::choose (refused, "Frequency", "523.25")
+    expect (panelFrequency typed, 523.25)
+    expect ((Drive::holding typed).dialEntry, "")
+    viewShows (typed, "Frequency", false)
+    expect (Drive::letters (typed, "523.25 Hz"), true)
+
 // [DAW-CONTROLS-DIAL] The Patch Controls panel turns a module's numbers with dials: a held drag upward raises the
 // value, Shift turns a tenth as fast, sideways movement does nothing, the whole turn is one undo, and the value
 // can be typed after a press that never moved; a bad entry is refused and the field stays open.
@@ -568,12 +591,7 @@ panelDialJourney selected =
     expect (length selected.drivenSeen.renderedScenes, 3)
     expect (length (filterList (selected.drivenSeen.renderedScenes, \ordinal => dialTarget (selected, ordinal))), 1)
     before = (Drive::holding selected).graph
-    frequency editor = match synth::Graphs::node (editor.graph, 0)
-        synth::Invalid _ => 0.0 - 1.0
-        synth::Valid n => match listGet (filterList (n.parameters, \p => p.key == "frequency")) 0
-            Error _ => 0.0 - 1.0
-            Success p => p.initial
-    expect (frequency (Drive::holding selected), 440.0)
+    expect (panelFrequency selected, 440.0)
     expect (Drive::letters (selected, "440.00 Hz"), true)
     valid (synth::Graphs::node (before, 0), \n => forEachList (filterList (n.parameters, \p => p.key == "frequency"), \p =>
         expect ([p.minimum, p.maximum], [0.0, 19000.0])
@@ -610,35 +628,21 @@ panelDialJourney selected =
             sideways = dialPointer (pressed, x + 80.0, y + 1.0, true, false)
             sameGraph (sideways, selected)
             lifted = dialPointer (sideways, x + 80.0, y - 36.0, true, false)
-            coarse = frequency (Drive::holding lifted)
+            coarse = panelFrequency lifted
             expect (coarse > 440.0, true)
             expect ((Drive::holding lifted).dragging, 0)
             fine = dialPointer (lifted, x, y - 36.0, true, true)
-            expect (frequency (Drive::holding fine) > 440.0 && frequency (Drive::holding fine) < coarse, true)
+            expect (panelFrequency fine > 440.0 && panelFrequency fine < coarse, true)
             lowered = dialPointer (fine, x, y + 36.0, true, false)
-            expect (frequency (Drive::holding lowered) < 440.0, true)
+            expect (panelFrequency lowered < 440.0, true)
             back = dialPointer (lowered, x, y - 36.0, true, false)
-            expect (frequency (Drive::holding back), coarse)
+            expect (panelFrequency back, coarse)
             released = dialPointer (back, x, y - 36.0, false, false)
             expect ((Drive::holding released).dial, synth::DialIdle)
             expect ((Drive::holding released).dragging, 0 - 1)
             expect ((Drive::holding released).dialEntry, "")
-            expect (frequency (Drive::holding released), coarse)
-            undone = prismTap (released, "Undo")
-            sameGraph (undone, selected)
-            redone = prismTap (undone, "Redo")
-            expect (frequency (Drive::holding redone), coarse)
-            asked = dialTapped (prismTap (redone, "Undo"), "Frequency")
-            expect ((Drive::holding asked).dialEntry, "frequency")
-            viewShows (asked, "Frequency", true)
-            refused = Drive::choose (asked, "Frequency", "loud")
-            expect ((Drive::holding refused).dialEntry, "frequency")
-            sameGraph (refused, selected)
-            typed = Drive::choose (refused, "Frequency", "523.25")
-            expect (frequency (Drive::holding typed), 523.25)
-            expect ((Drive::holding typed).dialEntry, "")
-            viewShows (typed, "Frequency", false)
-            expect (Drive::letters (typed, "523.25 Hz"), true)
+            expect (panelFrequency released, coarse)
+            panelDialHistory (selected, released, coarse)
 
 // A pure tone reaches the device at its exact pitch and level with no click at any block boundary.
 toneJourney hz =
