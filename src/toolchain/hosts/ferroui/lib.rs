@@ -22,6 +22,8 @@ pub mod ffi;
 mod frame;
 pub mod host;
 pub mod regions;
+// Both desktop renderers consume the same checked native scene protocol.
+#[path = "../gpui/src/rows.rs"]
 pub mod rows;
 pub mod scene;
 pub mod store;

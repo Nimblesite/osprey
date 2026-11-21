@@ -9,6 +9,8 @@ use crate::rows::Scene;
 use crate::tree::{self, Tree};
 
 pub mod access;
+pub(crate) use access::Access;
+pub(crate) use gpui_kit::accesskit::Role;
 pub mod atlas;
 mod input;
 mod paint;
@@ -166,16 +168,14 @@ pub struct Transform {
 }
 
 impl Transform {
-    /// Places the scene's origin at the region's top left at its fixed `zoom`, so a larger window
-    /// shows more of the canvas and never resizes what is on it, or with zoom 0 as large as fits the
-    /// region whole. A fixed zoom never magnifies the scene past what its region fits whole either,
-    /// so a narrow window or phone sees the whole artboard instead of clipping it. A zero-sized
-    /// scene is in window pixels, so its origin is the window's.
+    /// Positive zoom fits inside the region, zero fits it exactly, and negative zoom keeps its
+    /// absolute scale at every size. Pointer and painting use the same origin and scale.
     fn new(bounds: Bounds<Pixels>, decoded: &Decoded) -> Self {
         let (width, height) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
         let whole = (width / decoded.width).min(height / decoded.height);
         let scale = match decoded.zoom {
             0. => whole,
+            zoom if zoom < 0. => -zoom,
             zoom => zoom.min(whole),
         };
         match decoded.width == 0. {
@@ -336,6 +336,20 @@ mod tests {
                 origin.1 + decoded.height * scale,
             );
             assert!(right <= 10. + w + 1e-4 && bottom <= 20. + h + 1e-4);
+        }
+    }
+
+    /// [DAW-LAYOUT-FIXED-SCALE] Shrinking the region crops the patch and preserves pointer coordinates.
+    #[test]
+    fn a_fixed_scale_canvas_keeps_its_pointer_mapping_when_resized() {
+        for zoom in [0.75, 1.0, 2.0] {
+            for (w, h) in [(80.0, 60.0), (400.0, 300.0)] {
+                let region = bounds(point(px(10.0), px(20.0)), size(px(w), px(h)));
+                let placement = Transform::new(region, &scene(200.0, 100.0, -zoom));
+                assert_eq!(placement.scale, zoom);
+                assert_eq!(placement.viewed, (w / zoom, h / zoom));
+                assert_eq!(placement.scene(placement.point(40.0, 20.0)), (40.0, 20.0));
+            }
         }
     }
 
