@@ -10,17 +10,15 @@ tags: [native, applications, ui, gpui, vscode]
 {% from "mobile-gallery.njk" import gallery %}
 {% from "native-capture.njk" import capture %}
 
-**Safety, elegance and performance:** typed effects for platform services, inferred types for concise code, and ahead-of-time LLVM compilation for native execution.
+**Osprey Native** (`@osprey/native`) is a cross-platform app framework. You write one app in Osprey, with its state, logic and screens, and it compiles ahead of time to native code. Each platform draws it with its own widgets: SwiftUI on the Mac and iPhone, WinUI on Windows, Android widgets on Android. Or draw on a GPU canvas with GPUI.
 
 **macOS · Windows · iOS · Android · Web**
 
 {% videoPlayer "agent-native", true %}
 
-[Watch the agent walkthrough with chapters and transcript →](/docs/osprey-native/agent/)
+The film shows Osprey Agent, a coding agent built with Osprey Native. [Chapters and transcript →](/docs/osprey-native/agent/) **Osprey Agent is not sandboxed:** it can run commands and change files your account can.
 
-**Osprey Agent is not sandboxed:** it can run commands and change files your account can.
-
-## Native builds: no JavaScript engine to ship.
+## No JavaScript engine to ship
 
 Osprey application logic compiles **ahead of time to native machine code** on desktop and mobile. Native builds ship no JavaScript engine or JavaScript application bundle; Osprey code needs no JIT warm-up. On the web, Osprey compiles to **WebAssembly**; its browser host can use JavaScript.
 
@@ -58,7 +56,7 @@ Light Orchestra turns any phone on your network into an instrument for your Mac:
 
 {% videoPlayer "light-orchestra", true %}
 
-Prism is a daw built the same way: every voice in its songs is synthesised by `@osprey/synth`, and the page you see is Osprey drawing through the FerroUI host.
+Prism, a music studio (DAW), is built the same way: every voice in its songs is synthesised by `@osprey/synth`, and the page you see is Osprey drawing through the FerroUI host.
 
 {% videoPlayer "prism-daw", true %}
 

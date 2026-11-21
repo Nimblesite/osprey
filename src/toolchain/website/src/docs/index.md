@@ -6,21 +6,21 @@ description: "Install Osprey, follow a guide, or watch real apps built with it: 
 
 {% from "native-capture.njk" import capture %}
 
-Osprey compiles to native code through LLVM. Failures are `Result` values or typed effects, and types are inferred. The film below profiles a running Osprey program in VS Code.
+Osprey is uncompromising: safe, elegant and fast, with no trade between them. It compiles to native code through LLVM, failures are `Result` values you must handle, and types are inferred. The film below profiles a running Osprey program in VS Code.
 
 {% videoPlayer "profiler", true %}
 
 ## Start here
 
+- **[Install Osprey](/docs/installation/)** — the compiler and LLVM/clang on macOS, Linux or Windows.
+- **[Try the Playground](/playground/)** — run programs in the browser, no install.
+- **[Build My First App](/docs/my-first-app/)** — a native CLI that reads, validates and updates a JSON file.
 - **[Algebraic effects](/docs/effects/)** — declare an operation, handle it, swap the handler in a test.
-- **[Run the same model on CPU or GPU](/docs/cpu-or-gpu/)**: GPT-2 runs on the CPU or the GPU by changing one handler.
+- **[Run the same model on CPU or GPU](/docs/cpu-or-gpu/)** — GPT-2 runs on the CPU or the GPU by changing one handler.
 - **[Write Osprey in the Python flavor](/docs/python/flavor/)** — compile Python-style Osprey code, declare effects and call CPython through interop.
 - **[Call Python from Osprey, and Osprey from Python](/docs/python/interop/)** — the `Python` effect, `import osprey`, and test doubles for Python calls.
 - **[Python flavor for AI agents](/docs/python/for-ai/)** — commands, effect decorators and supported syntax, written for coding agents.
 - **[Write Osprey in the TypeScript flavor](/docs/typescript/flavor/)** — serve the Express README example natively, and see it measured against Express on Node.js.
-- **[Install Osprey](/docs/installation/)** — the compiler and LLVM/clang on macOS, Linux or Windows.
-- **[Build My First App](/docs/my-first-app/)** — a native CLI that reads, validates and updates a JSON file.
-- **[Try the Playground](/playground/)** — run programs in the browser, no install.
 
 ## Tutorials
 
