@@ -68,5 +68,6 @@ ok 67 - a rendered grain shows its window: zero ends, Hann peak, ASR sustain, sh
 ok 68 - the FFT pitch shifter effect is set in semitones and cents within an octave, its formants moving with the pitch unless kept
 ok 69 - the true-peak brick-wall limiter holds every frame and inter-sample peak inside its ceiling by lookahead, passes quiet signals bit-exact and refuses bad settings
 ok 70 - the octave-band analyser reads sines of known level in their bands within 0.1 dB, silence at the floor, and refuses bad frames
-1..70
-# tests=70 passed=70 failed=0 skipped=0
+ok 71 - FFT bins match the direct three-impulse spectrum and recover every sample at all seven frame sizes
+1..71
+# tests=71 passed=71 failed=0 skipped=0
