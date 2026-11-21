@@ -324,6 +324,7 @@ Targets: an event that changes nothing under 0.1 ms; a Timeline or Mix event und
 Leaf time is the runtime, not arithmetic: `arc_drop_child` 18.2%, `arc_release_zero_locked` 18.1%, `osp_retain` 7.8%, `arc_alloc_locked` 6.9%, `osprey_list_get` 6.6%, `osp_release` 6.5%, `memset` 5.1%, `osp_mem_string_length` 3.0%.
 
 - [ ] `RenderInputs::parameter`, `input`, `held` and `Graphs::node` resolved once per block into the plan (the existing block-rendering items; owner still OspreyOpus1 and synth-advanced, nothing delivered).
+- [x] First step, 21 Nov 11:55: the per-sample lookups (`RenderInputs::held`, `parameter`, `input`, `sample`, `Renderer::measured`, two in `RenderKernels`) stop at the first match through `synth::Seek::first` and build no list: bars 9 and 10 render in 35.2 s, from 39.8 s at the same commit and load, audio byte-identical. `Graphs::node` keeps the filter: its closure is still generic where the daw's tests instantiate it, and code generation refuses a generic closure value. `Seek::from` is now 19% of the render, so resolving once per block is still the fix.
 - [ ] `Renderer::finished` finds the sink once per render, collects a block's samples in one builder and meters once per block, not per sample.
 
 **Code generation and runtime: what the generated code does that it need not.** Each row was read from the LLVM IR of the daw (`osprey src/osprey/examples/daw --llvm --memory=arc --target=macos`) and matched to the samples. These cost every Osprey program, not only the daw.

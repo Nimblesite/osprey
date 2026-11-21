@@ -9,12 +9,12 @@ module RenderInputs
         Invalid _ => Error(message = "Render schedule names an absent component.")
 
     (** Find persistent kernel state by identity. *)
-    export held (frame, identity) = match listGet (filterList (frame.states, \s => s.identity == identity)) 0
+    export held (frame, identity) = match Seek::first (frame.states, \s => s.identity == identity)
         Error _ => Error(message = "index out of bounds")
         Success found => Success(value = found)
 
     (** Read a required parameter without substituting a fake value. *)
-    export parameter (snapshot, identity, key) = match listGet (filterList (snapshot.parameters, \p => p.node == identity && p.key == key)) 0
+    export parameter (snapshot, identity, key) = match Seek::first (snapshot.parameters, \p => p.node == identity && p.key == key)
         Success p => Success(value = p.value)
         Error _ => Error(message = "Required render parameter is missing.")
 
@@ -32,14 +32,14 @@ module RenderInputs
                 true => Success(value = combine (base, control))
 
     (** Resolve a routed mono input from an already rendered source. *)
-    export input (plan, frame, identity, inlet) = match listGet (filterList (plan.graph.cables, \c => c.destination == identity && c.inlet == inlet)) 0
+    export input (plan, frame, identity, inlet) = match Seek::first (plan.graph.cables, \c => c.destination == identity && c.inlet == inlet)
         Error _ => Error(message = "An audio input is not connected.")
-        Success cable => match listGet (filterList (frame.values, \v => v.identity == cable.source)) 0
+        Success cable => match Seek::first (frame.values, \v => v.identity == cable.source)
             Error _ => Error(message = "An input was read before its source was rendered.")
             Success value => Success(value = value.value)
 
     (** Read one produced sample and reject invalid numeric output before publication. *)
-    export sample (frame, identity) = match listGet (filterList (frame.values, \v => v.identity == identity)) 0
+    export sample (frame, identity) = match Seek::first (frame.values, \v => v.identity == identity)
         Error _ => Error(message = "index out of bounds")
         Success output => match output.value == output.value && abs output.value <= 1000000.0
             false => Error(message = "Non-finite or excessive graph output.")

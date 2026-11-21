@@ -1,6 +1,19 @@
 // Implements [SYNTH-GRAPH]. Graph edits are pure; a rejected edit preserves the caller's graph.
 namespace synth
 
+(** Searching a list for one item. *)
+module Seek
+    (** The first item that `matches`, found without building a list of the matches: the renderer asks this for every node of every sample ([DAW-PERF-ROUND]). *)
+    export first<T> : (List<T>, (T) -> bool) -> Result<T, string>
+    first (items, matches) = from (items, matches, 0)
+
+    from<T> : (List<T>, (T) -> bool, int) -> Result<T, string>
+    from (items, matches, index) = match listGet items index
+        Error _ => Error(message = "No item matches.")
+        Success item => match matches item
+            true => Success(value = item)
+            false => from (items, matches, index + 1)
+
 (** Immutable graph editing and checked scheduling before rendering begins. *)
 module Graphs
     (** A graph with no components or routes. *)
