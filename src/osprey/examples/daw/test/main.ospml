@@ -1002,7 +1002,7 @@ firstTrace editor = length (listGet editor.laneTraces 0 ?: [])
 // and the ruler follow it; the song, the playhead, the track and the undo history stay. Moving the playhead out
 // of view brings the lanes with it.
 zoomJourney lined =
-    at = lined(rollBar = 1, laneTraces = synth::TimelineView::traces (lined.song, 1.0, 0.0))
+    at = lined(rollBar = 1, laneTraces = synth::TimelineView::traces (lined.song, 1.0, 0.0, 0))
     expect (synth::TimelineView::shownBeats at, 16.0)
     expect (synth::TimelineView::shownFrom at, 0.0)
     expect (firstTrace at, 4)

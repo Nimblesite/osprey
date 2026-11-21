@@ -50,7 +50,7 @@ module EditorApp
         SelectNote index => Runtime::step (editor(selectedNote = index))
         SetVelocity value => DawSession::velocity (editor, value)
         AdjustMix index gain pan => DawSession::adjusted (editor, index, gain, pan)
-        ScrollLanes page => Runtime::step (editor(lanePage = page))
+        ScrollLanes top => Runtime::step (TimelineView::scrolled (editor, top))
         ZoomLanes factor => Runtime::step (TimelineView::zoomedBy (editor, factor))
         ChooseOutput index offset => RoutingPicker::open (editor, index, offset)
         CloseOutput => Runtime::step (editor(outputEdit = OutputClosed))

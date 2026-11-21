@@ -182,7 +182,7 @@ type Editor G P S M =
     art : List<CardArt>
     page : Page
     outputEdit : OutputEdit
-    lanePage : int
+    laneTop : int
     laneZoom : float
     laneStart : float
     laneTraces : List<List<ui::PathStep>>
@@ -260,7 +260,7 @@ type EditorAction =
         gain : float
         pan : float
     ScrollLanes
-        page : int
+        top : int
     ZoomLanes
         factor : float
     ChooseOutput

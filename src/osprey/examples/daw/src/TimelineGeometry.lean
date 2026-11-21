@@ -62,7 +62,18 @@ def onDivision (beat major : Float) : Float :=
 def beatInBar (beat : Float) : Float := Float.floor (beat - Float.floor (beat / 4) * 4) + 1
 
 /-- The arrangement shows seven 31-unit rows above the roll. -/
-def scrollPage (y pages : Float) : Float := bounded (Float.floor ((y - 221) / 217 * pages)) 0 (pages - 1)
+/-- [DAW-LAYOUT-FILL] The lanes' scrollbar runs y 221 to 438 beside `rows` visible lanes of `count` tracks. Its thumb
+starts at the share of the tracks above the first visible one and is as tall as the share that is visible. -/
+def thumbTop (top count : Float) : Float := 221 + 217 * top / count
+def thumbHeight (rows count : Float) : Float := 217 * rows / count
+/-- The first visible track when the thumb's middle is put under `y`: any row, not only whole pages. -/
+def scrollTop (y rows count : Float) : Float :=
+  bounded (Float.floor ((y - 221) / 217 * count - rows / 2 + 0.5)) 0 (count - rows)
+/-- The first visible track that keeps track `index` in view, moving no further than it must. -/
+def keptTop (top index rows count : Float) : Float :=
+  let wanted := if index < top then index else if index >= top + rows then index - rows + 1 else top
+  let last := if count > rows then count - rows else 0
+  bounded wanted 0 last
 def rowY (index height : Float) : Float := 221 + index * height
 def rowAt (y height : Float) : Float := Float.floor ((y - 221) / height)
 

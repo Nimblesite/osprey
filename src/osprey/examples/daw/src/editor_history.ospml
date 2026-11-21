@@ -19,7 +19,7 @@ module EditorHistory
 
     remaining frames = window (frames, 1, length frames)
 
-    restore (editor, frame) = editor(song = frame.savedSong, track = frame.savedTrack, lanePage = intDiv frame.savedTrack 7, patchTrack = frame.savedPatchTrack, selectedNote = frame.savedTimelineNote, nextIdentity = ui::Pick::either (editor.nextIdentity >= frame.savedNextIdentity, editor.nextIdentity, frame.savedNextIdentity), rollDrag = RollIdle, outputEdit = OutputClosed, graph = frame.savedGraph, positions = frame.savedPositions, pluginBindings = frame.savedBindings, selected = frame.savedSelected, note = frame.savedNote, armedNote = -1, selectedCable = -1, source = -1, dragging = -1, wireDragging = false, paletteDrag = "", gesture = [], revision = satAdd editor.revision 1, layoutRevision = satAdd editor.layoutRevision 1)
+    restore (editor, frame) = editor(song = frame.savedSong, track = frame.savedTrack, patchTrack = frame.savedPatchTrack, selectedNote = frame.savedTimelineNote, nextIdentity = ui::Pick::either (editor.nextIdentity >= frame.savedNextIdentity, editor.nextIdentity, frame.savedNextIdentity), rollDrag = RollIdle, outputEdit = OutputClosed, graph = frame.savedGraph, positions = frame.savedPositions, pluginBindings = frame.savedBindings, selected = frame.savedSelected, note = frame.savedNote, armedNote = -1, selectedCable = -1, source = -1, dragging = -1, wireDragging = false, paletteDrag = "", gesture = [], revision = satAdd editor.revision 1, layoutRevision = satAdd editor.layoutRevision 1)
 
     (** Restore the preceding edit from any project view. *)
     export undo editor = match listGet editor.past 0

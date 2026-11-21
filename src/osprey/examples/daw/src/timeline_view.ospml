@@ -81,7 +81,7 @@ module TimelineView
     (** The first beat the lanes show. *)
     export shownFrom editor = TimelineGeometry::laneFirst (editor.laneStart, shownBeats editor, beats editor)
 
-    viewed (editor, zoom, start) = editor(laneZoom = zoom, laneStart = start, laneTraces = traces (editor.song, zoom, start))
+    viewed (editor, zoom, start) = editor(laneZoom = zoom, laneStart = start, laneTraces = traces (editor.song, zoom, start, editor.laneTop))
 
     (** The lanes zoomed by `factor` about the playhead: above 1 closer, below 1 wider, 0 the whole song. Only
         the view changes: not the song, the playhead, the selection or the undo history. *)
@@ -100,11 +100,20 @@ module TimelineView
     rowHeight = 31.0
 
     visible editor =
-        first = satMul editor.lanePage pageSize
+        first = editor.laneTop
         stop = satAdd first pageSize
         toList (range (first, ui::Pick::either (stop < length editor.song.tracks, stop, length editor.song.tracks)))
 
-    pages editor = intDiv (satAdd (length editor.song.tracks) (satSub pageSize 1)) pageSize
+    (** The lanes scrolled so track `top` is the first one shown, with every lane's notes drawn at its new row. *)
+    export scrolled (editor, top) = match top == editor.laneTop
+        true => editor
+        false => editor(laneTop = top, laneTraces = traces (editor.song, editor.laneZoom, editor.laneStart, top), revision = satAdd editor.revision 1)
+
+    (** The first lane to show so track `index` is in view, moving the lanes no further than that needs. *)
+    export keeping (editor, index) = floatToInt (TimelineGeometry::keptTop (toFloat editor.laneTop, toFloat index, toFloat pageSize, toFloat (length editor.song.tracks))) ?: 0
+
+    // [DAW-LAYOUT-FILL] More tracks than lanes: the lanes scroll, one row at a time.
+    scrolls editor = length editor.song.tracks > pageSize
 
     noteTrace (voice, top, height, origin, span) =
         low = toFloat (lowest voice.notes)
@@ -124,14 +133,14 @@ module TimelineView
 
     (** Cache the pitch traces of the beats span, on open and on zoom. Selecting a note or moving a fader only
         changes the overlay. *)
-    export traces (song, zoom, start) =
+    export traces (song, zoom, start, top) =
         height = rowHeight
         span = TimelineGeometry::laneSpan (songBeats song, zoom)
         origin = TimelineGeometry::laneFirst (start, span, songBeats song)
         mapList (toList (range (0, length song.tracks)), \i =>
             match listGet song.tracks i
                 Error _ => []
-                Success voice => noteTrace (voice, TimelineGeometry::rowY (toFloat (i % pageSize), height), height, origin, span))
+                Success voice => noteTrace (voice, TimelineGeometry::rowY (toFloat (satSub i top), height), height, origin, span))
 
     traceShape (steps, colour) = Scenes::path (steps, ui::Line(width = 1.7, dashes = [], bevel = false), ui::Solid(tint = Scenes::hex (shiftRight colour 8, 1.0)), 4)
 
@@ -146,7 +155,7 @@ module TimelineView
 
     lane (editor, index, voice) =
         height = rowHeight
-        top = TimelineGeometry::rowY (toFloat (index % pageSize), height)
+        top = TimelineGeometry::rowY (toFloat (satSub index editor.laneTop), height)
         chosen = index == editor.track
         colour = ui::Pick::either (chosen, accent (), lavender ())
         size = 13.0
@@ -194,11 +203,11 @@ module TimelineView
             Error _ => all
             Success voice => listConcat all (lane (editor, index, voice)))) (ui::Lists::flatten [finish editor, playhead editor, sounding editor, scroll editor]))
 
-    scroll editor = match pages editor > 1
+    scroll editor = match scrolls editor
         false => []
         true =>
-            height = 217.0 / toFloat (pages editor)
-            [box (1119.0, 221.0, 5.0, 217.0, panelInk (), 6), box (1119.0, 221.0 + toFloat editor.lanePage * height, 5.0, height, dim (), 7)]
+            count = toFloat (length editor.song.tracks)
+            [box (1119.0, 221.0, 5.0, 217.0, panelInk (), 6), box (1119.0, TimelineGeometry::thumbTop (toFloat editor.laneTop, count), 5.0, TimelineGeometry::thumbHeight (toFloat pageSize, count), dim (), 7)]
 
     // [DAW-TRANSPORT-PLAYHEAD] Where Play starts: the start marker, a line down the lanes with its handle on the ruler.
     playhead editor = marker (startX editor, accent ())
@@ -221,13 +230,13 @@ module TimelineView
 
     (** Every lane's hit area: a press on a marker takes hold of it; elsewhere a tap picks the track at that bar,
         and its name opens the patch. *)
-    export laneAt (editor, x, y) = match x >= 1113.0 && x < 1132.0 && y >= 221.0 && y < 438.0 && pages editor > 1
-        true => Success(value = ScrollLanes(page = floatToInt (TimelineGeometry::scrollPage (y, toFloat (pages editor))) ?: 0))
+    export laneAt (editor, x, y) = match x >= 1113.0 && x < 1132.0 && y >= 221.0 && y < 438.0 && scrolls editor
+        true => Success(value = ScrollLanes(top = floatToInt (TimelineGeometry::scrollTop (y, toFloat pageSize, toFloat (length editor.song.tracks))) ?: 0))
         false => marked (editor, x, y)
 
     lanePick (editor, x, y) =
         within = floatToInt (TimelineGeometry::rowAt (y, rowHeight)) ?: -1
-        row = satAdd (satMul editor.lanePage pageSize) within
+        row = satAdd editor.laneTop within
         match within >= 0 && within < pageSize && row < length editor.song.tracks && y >= 221.0 && x < 1113.0
             false => rulerAt (editor, x, y)
             true => match x < 198.0
@@ -249,7 +258,7 @@ module TimelineView
         false => Error(message = "No lane here.")
 
     (** Accessibility regions for the arrangement track rows. *)
-    export laneAccess editor = mapList (visible editor, \index => area ("Track ${satAdd index 1}", 0.0, TimelineGeometry::rowY (toFloat (index % pageSize), rowHeight), 1132.0, rowHeight, index == editor.track))
+    export laneAccess editor = mapList (visible editor, \index => area ("Track ${satAdd index 1}", 0.0, TimelineGeometry::rowY (toFloat (satSub index editor.laneTop), rowHeight), 1132.0, rowHeight, index == editor.track))
 
     // The first of the two bars the piano roll shows: the start marker's, or the page being heard.
     shownBar editor = match editor.playBeat < 0.0
