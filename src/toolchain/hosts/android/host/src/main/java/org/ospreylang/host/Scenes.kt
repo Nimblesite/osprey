@@ -10,7 +10,14 @@ import java.nio.ByteBuffer
 
 /** A canvas's scene: extent, zoom, atlas, shapes and accessibility elements. */
 class Scene(val width: Double, val height: Double, val zoom: Double,
-            val atlas: List<String>, val shapes: List<Shape>, val access: List<Element>)
+            val atlas: List<String>, val shapes: List<Shape>, val access: List<Element>) {
+    /** Window pixels per scene unit. A negative zoom fixes the scale. */
+    fun scaleIn(regionWidth: Int, regionHeight: Int): Float {
+        if (zoom != 0.0) return kotlin.math.abs(zoom).toFloat()
+        if (width <= 0 || height <= 0 || regionWidth == 0 || regionHeight == 0) return 1f
+        return minOf(regionWidth / width, regionHeight / height).toFloat()
+    }
+}
 
 // The scene row codes native.td declares.
 private const val POINT = 7L
@@ -158,7 +165,7 @@ object Scenes {
             val row = head.index.toInt()
             if (head.index < 0 || row !in canvases || all.containsKey(row))
                 throw RowRefusal("a scene that names no canvas, or one twice")
-            all[row] = Building(Rows.extent(head.values[0]), Rows.extent(head.values[1]), Rows.extent(head.values[2]))
+            all[row] = Building(Rows.extent(head.values[0]), Rows.extent(head.values[1]), head.values[2])
             walker.current = row
             return
         }
