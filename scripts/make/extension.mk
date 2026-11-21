@@ -102,7 +102,7 @@ _vsix_verify:
 	done
 	diff -qr src/osprey/workbench/lessons "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/lessons"
 	diff -qr -x lessons -x osprey-logo.png -x proof-libraries src/osprey/workbench/assets "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench"
-	python3 scripts/proof/workbench-proof-assets.py "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench" --check
+	scripts/proof/workbench-proof-assets.py "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench" --check
 	cmp src/toolchain/website/src/assets/images/logo.png "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/osprey-logo.png"
 	cd $(EXT_DIR) && node scripts/verify-package-client.mjs
 
