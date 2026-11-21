@@ -115,7 +115,13 @@ module SendRenders
             ok (Sounding(cue = cue, at = cue.due, lanes = [], driver = PerformingNote(patch = ActivePatch(plan = plan, ports = ports, span = span, attack = routing.attack, release = routing.release, memory = held)))))
 
     (** Prepare a routed note for the blocks the playhead actually reaches. *)
-    export started (song, voice, sends, routing, cue) = starting (song, voice, sends, routing, cue, PatchVoices::patched (cue.note, routing))
+    export started (song, voice, sends, routing, cue, sounding) = match ui::Lists::find (sounding, \sound => performing sound)
+        Success sound => starting (song, voice, sends, routing, cue, rebuilt (sound, cue.note, routing))
+        Error _ => starting (song, voice, sends, routing, cue, PatchVoices::patched (cue.note, routing))
+
+    performing sound = match sound.driver
+        PerformingNote _ => true
+        _ => false
 
     starting (song, voice, sends, routing, cue, built) = Outcomes::carried (NoteRenders::checkedSpan (cue.note, song.tempo, toFloat song.sampleRate, voice.instrument), \span =>
         Outcomes::carried (built, \graph => Outcomes::carried (outputs (graph, sends), \ports =>
@@ -177,13 +183,13 @@ module SendRenders
     export activeBefore (song, prior, sends, sound, from) = match sound.driver
         PerformingNote _ => ok sound
         RecordedNote => match prior.instrument
-            PatchInstrument routing => Outcomes::carried (started (song, prior, sends, routing, sound.cue), \fresh => window (fresh, fresh.cue.due, from, toFloat song.sampleRate))
+            PatchInstrument routing => Outcomes::carried (started (song, prior, sends, routing, sound.cue, []), \fresh => window (fresh, fresh.cue.due, from, toFloat song.sampleRate))
             _ => ok sound
 
-    rebuilt (old, routing) = match old.driver
-        PerformingNote patch => PatchVoices::repatched (old.cue.note, routing, patch.plan.graph)
-        RecordedNote => PatchVoices::patched (old.cue.note, routing)
+    rebuilt (old, note, routing) = match old.driver
+        PerformingNote patch => PatchVoices::repatched (note, routing, patch.plan.graph)
+        RecordedNote => PatchVoices::patched (note, routing)
 
     (** Switch a sounding note to the accepted parameters without replaying its attack or losing its phase. *)
     export retuned (song, voice, prior, oldSends, sends, sound, from, routing) = Outcomes::carried (activeBefore (song, prior, oldSends, sound, from), \old =>
-        Outcomes::carried (starting (song, voice, sends, routing, sound.cue, rebuilt (old, routing)), \fresh => transfer (fresh, old, from, toFloat song.sampleRate)))
+        Outcomes::carried (starting (song, voice, sends, routing, sound.cue, rebuilt (old, old.cue.note, routing)), \fresh => transfer (fresh, old, from, toFloat song.sampleRate)))

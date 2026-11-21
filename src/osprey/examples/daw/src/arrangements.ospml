@@ -138,7 +138,7 @@ module Arrangements
     // A note starts sounding at its frame; a note this track has made before reuses its lanes.
     struck (song, voice, play, due) = match play.edited
         true => match voice.instrument
-            PatchInstrument routing => Outcomes::carried (SendRenders::started (song, voice, play.sends, routing, due), \sound => ok (play(sounding = listAppend play.sounding sound)))
+            PatchInstrument routing => Outcomes::carried (SendRenders::started (song, voice, play.sends, routing, due, play.sounding), \sound => ok (play(sounding = listAppend play.sounding sound)))
             _ => cached (song, voice, play, due)
         false => cached (song, voice, play, due)
 
