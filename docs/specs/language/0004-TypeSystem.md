@@ -1063,6 +1063,14 @@ solver reaches the same type without it — so it can only go stale, disagree
 with the body a later edit produces, and cost a reader a second reading to
 confirm it says nothing. Osprey reports every one of them.
 
+**A separate pass.** The check is an analyser of its own, never part of a plain
+build, test or run: it re-infers the whole program once per proof, and a build
+must not wait for advice. `--analyse` runs it and prints its findings with the
+other warnings. `--warnings-as-errors` runs it too and fails on any finding, so
+a gate on removable annotations holds. The editor runs it in the background.
+Without either flag only the cheap warnings (unused bindings, undocumented
+exports) are computed, and `--no-warnings` computes none.
+
 **The rule.** A written type is *redundant* when erasing it leaves the solved
 type unchanged. Redundancy is not a syntactic property and cannot be decided by
 reading the annotation: `string -> int -> string` is redundant on one function

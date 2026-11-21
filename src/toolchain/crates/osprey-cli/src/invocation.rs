@@ -5,10 +5,10 @@ use osprey_syntax::Flavor;
 
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
---symbols | --signature | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--no-warnings | --warnings-as-errors] [--debug] [--profile] [--flavor default|ml|python|typescript] \
+--symbols | --signature | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--no-warnings | --analyse | --warnings-as-errors] [--debug] [--profile] [--flavor default|ml|python|typescript] \
 [--memory=gc|arc|none] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [--entry-only] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi] [-- <program args>]\n\
-       osprey build [project] [--quiet] [--no-warnings | --warnings-as-errors] [--debug] [--memory=gc|arc|none] \
+       osprey build [project] [--quiet] [--no-warnings | --analyse | --warnings-as-errors] [--debug] [--memory=gc|arc|none] \
 [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
 [--coverage-json <path>] [--memory=gc|arc|none]\n\
@@ -40,15 +40,46 @@ impl MobileExports {
     }
 }
 
-/// Whether the warning pass runs and whether its findings fail the invocation.
-/// `--no-warnings` skips it, computation and all; `--warnings-as-errors` prints
-/// the same text and then fails. `--quiet` never touches it: quiet silences
-/// progress, and a warning is a diagnostic, not progress.
+/// Which warnings an invocation computes and whether they fail it.
+///
+/// A build gives the cheap advice (unused names, undocumented exports) and no
+/// more. The redundant-annotation analyser is its own pass because it re-infers
+/// the whole program once per proof: `--analyse` runs it, and so does
+/// `--warnings-as-errors`, which prints everything and then fails, so the gate
+/// on a removable annotation holds. `--no-warnings` computes nothing.
+/// `--quiet` never touches any of it: quiet silences progress, and a warning
+/// is a diagnostic, not progress.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Warnings {
     Report,
+    Analyse,
     Skip,
     Deny,
+}
+
+impl Warnings {
+    /// Whether the redundant-annotation analyser runs ([TYPE-ANNOTATION-REDUNDANT]).
+    pub(crate) fn analyses(self) -> bool {
+        matches!(self, Self::Analyse | Self::Deny)
+    }
+
+    /// `--no-warnings`: nothing is computed, unless the analyser was asked for by name.
+    fn silenced(self) -> Self {
+        if self == Self::Analyse {
+            self
+        } else {
+            Self::Skip
+        }
+    }
+
+    /// `--analyse`: the analyser runs; a gate that already fails on warnings stays one.
+    fn analysed(self) -> Self {
+        if self == Self::Deny {
+            self
+        } else {
+            Self::Analyse
+        }
+    }
 }
 
 /// The parsed invocation: source path, mode flag, and behaviour switches.
@@ -211,7 +242,8 @@ fn parse_option(
     }
     match argument {
         "--quiet" => cli.quiet = true,
-        "--no-warnings" => cli.warnings = Warnings::Skip,
+        "--no-warnings" => cli.warnings = cli.warnings.silenced(),
+        "--analyse" => cli.warnings = cli.warnings.analysed(),
         "--warnings-as-errors" => cli.warnings = Warnings::Deny,
         "--debug" => cli.debug = true,
         "--profile" => cli.profile = true,
