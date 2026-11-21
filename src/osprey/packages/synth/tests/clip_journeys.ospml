@@ -202,6 +202,67 @@ timingJourney () =
         expect (structuralEquals (listGet heard 0 ?: [], listGet heard 1 ?: []), c.varies == false)
         expect (structuralEquals (listGet heard 1 ?: [], listGet heard 2 ?: []), c.varies == false))
 
+// [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Distributed events at `positions` from `seeds`, or none after a failed expectation.
+spreadEvents (positions, ranges, seeds) = match synth::GrainDistributions::events (positions, ranges, 1024, seeds)
+    Error why =>
+        expect (synth::Faults::detail why, "distributed events")
+        synth::GrainDistributedEvents(events = [], next = seeds)
+    Success held => held
+
+spreadSeeds seed = match synth::GrainDistributions::seeded seed
+    Error why =>
+        expect (synth::Faults::detail why, "seeds")
+        synth::GrainSeeds(position = 1, rate = 1, duration = 1, amplitude = 1, pan = 1)
+    Success seeds => seeds
+
+spreadLow (low, x) = match x < low
+    true => x
+    false => low
+
+spreadHigh (high, x) = match x > high
+    true => x
+    false => high
+
+// One field of every event: inside [low, high], its mean within 4% of the range of the midpoint, and both ends approached.
+spreadField (label, values, low, high) =
+    expect ("${label} low ${foldList (values, high, spreadLow) >= low}", "${label} low true")
+    expect ("${label} high ${foldList (values, low, spreadHigh) <= high}", "${label} high true")
+    within ("${label} mean", foldList (values, 0.0, \(sum, x) => sum + x) / toFloat (length values), (low + high) / 2.0, 0.04 * (high - low))
+    below ("${label} nearest the floor", foldList (values, high, spreadLow) - low, 0.01 * (high - low))
+    below ("${label} nearest the ceiling", high - foldList (values, low, spreadHigh), 0.01 * (high - low))
+
+spreadJourney () =
+    plain = grainControls synth::HannWindow
+    ranges = synth::GrainDistribution(minimum = plain(start = 100.0, rate = 0.5, duration = 10, amplitude = 0.1, pan = -0.8), maximum = plain(start = 900.0, rate = 2.0, duration = 50, amplitude = 0.9, pan = 0.6))
+    positions = toList (range (0, 2000))
+    heard = mapList ([1, 777, 2147483646], \seed =>
+        seeds = spreadSeeds seed
+        whole = spreadEvents (positions, ranges, seeds)
+        expect (length whole.events, 2000)
+        expect (structuralEquals (mapList (whole.events, \e => e.position), positions), true)
+        controls = mapList (whole.events, \e => e.controls)
+        spreadField ("start", mapList (controls, \c => c.start), 100.0, 900.0)
+        spreadField ("rate", mapList (controls, \c => c.rate), 0.5, 2.0)
+        spreadField ("duration", mapList (controls, \c => toFloat c.duration), 10.0, 50.0)
+        spreadField ("amplitude", mapList (controls, \c => c.amplitude), 0.1, 0.9)
+        spreadField ("pan", mapList (controls, \c => c.pan), -0.8, 0.6)
+        // Splitting the batch at any event and carrying the seeds reproduces it; an empty batch consumes nothing.
+        forEachList ([1, 700, 1999], \cut =>
+            head = spreadEvents (synth::Sequences::take (positions, cut), ranges, seeds)
+            tail = spreadEvents (synth::Sequences::drop (positions, cut), ranges, head.next)
+            expect (structuralEquals (listConcat head.events tail.events, whole.events), true)
+            expect (structuralEquals (tail.next, whole.next), true))
+        expect (structuralEquals ((spreadEvents ([], ranges, seeds)).next, seeds), true)
+        expect (structuralEquals (spreadEvents (positions, ranges, seeds), whole), true)
+        whole.events)
+    expect (structuralEquals (listGet heard 0 ?: [], listGet heard 1 ?: []), false)
+    expect (structuralEquals (listGet heard 1 ?: [], listGet heard 2 ?: []), false)
+    // A collapsed range plays exactly its one setting.
+    fixed = spreadEvents ([0, 5, 5, 9], synth::GrainDistribution(minimum = ranges.minimum, maximum = ranges.minimum), spreadSeeds 42)
+    forEachList (fixed.events, \e => expect (structuralEquals (e.controls, ranges.minimum), true))
+    renderRefused (synth::GrainDistributions::events ([5, 4], ranges, 1024, spreadSeeds 1))
+    renderRefused (synth::GrainDistributions::events (positions, synth::GrainDistribution(minimum = ranges.maximum, maximum = ranges.minimum), 1024, spreadSeeds 1))
+
 registerClipJourneys () =
     audio = monoPort ("audio", synth::Audio, synth::Amplitude)
     test ("MIDI oscillator state validation rejects forged voices, capacity and malformed events", \() => arithmetic (\() =>
@@ -424,3 +485,4 @@ registerClipJourneys () =
     test ("overlapping grains crossing a loop's end, at 1.5x and reversed across its start, stay inside the region every frame and sum exactly [SYNTH-ADVANCED-GRAINS-BOUNDARY]", \() => arithmetic (\() =>
         succeeds (synth::Grains::prepare (mapList (toList (range (0, 8)), \i => toFloat i * 0.1), 4), loopOverlaps)))
     test ("periodic, jittered and censored exponential onset schedules keep every gap in bounds, match their mean, replay per seed and ignore block splits [SYNTH-ADVANCED-GRAINS-SCHEDULING]", \() => arithmetic timingJourney)
+    test ("grain position, rate, duration, gain and pan distributions stay in their bounds, centre on their midpoints, reach both ends, replay per seed and ignore batch splits [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS]", \() => arithmetic spreadJourney)
