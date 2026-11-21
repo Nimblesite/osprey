@@ -18,6 +18,7 @@ import ui::Pick
 import ui::Views
 import ui::Streams
 import ui::Surfaces
+import ui::Tell
 import ui::Tellings
 import uitests::Probes
 
@@ -89,6 +90,11 @@ sceneCaseASceneEncodesItsPrimitivesAsFlat () =
     // The button binds control 0 and the scene control 1, as their told event members say.
     expect (childEvent (held, 0), 0)
     expect (childEvent (held, 1), 1)
+    root = toldOf held
+    scene = childTold (root, 1)
+    expect (Tell::nameOf scene, "")
+    expect (length (Tell::childrenOf (memberTold (insideTold root, "children"))), 2)
+    expect (length (Tell::childrenOf (memberTold (insideTold scene, "width"))), 0)
     binds (walked, 2)
     zoomed = Ui::zoomed (0.75, 1536.0, 828.0, [], drawn, Typed)
     expect (etchedAt (firstRows (drawnOf zoomed), 0), "20 2 1536.0 828.0 0.75 0.0 0.0 0 0 ")
