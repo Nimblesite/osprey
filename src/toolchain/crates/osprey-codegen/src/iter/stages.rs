@@ -170,7 +170,7 @@ fn count_application(cg: &mut Codegen, function: &Expr, arguments: &[Expr]) -> R
         });
     }
     let source = super::list_arg(cg, arguments, 0)?;
-    let predicate = callback_of(cg, &arguments[1])?;
+    let predicate = callback_of(cg, nth(arguments, 1)?)?;
     let count = cg.hoist_slot("i64");
     cg.emit(format!("store i64 0, i64* {count}"));
     super::each_list_elem(cg, &source, |cg, _, elem| {
