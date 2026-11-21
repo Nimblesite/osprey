@@ -25,7 +25,7 @@ type NoteSpan { gate: Float total: Int }
 type VoicePair<A, B> { one: A other: B }
 # [DAW-RENDER-PLAY] Playback state: cued notes, sounding notes and per-bus processor state.
 type Cue { due: Int note: Note }
-type Sounding { at: Int lanes: List<List<Float>> }
+type Sounding { cue: Cue lanes: List<List<Float>> }
 # A note's sound depends on its pitch, length and velocity alone, so each distinct note renders once.
 type Made { struck: Note chord: List<List<Float>> }
 type NoteJob { track: Int due: Int note: Note }
@@ -34,7 +34,7 @@ type Advanced { play: TrackPlay buses: Buses }
 type Heard { plays: List<TrackPlay> buses: Buses }
 type BusState { name: String leftBand: BandState rightBand: BandState level: Float }
 type Mastering { buses: Buses states: List<BusState> }
-type Playing { cursor: Int tracks: List<TrackPlay> states: List<BusState> }
+type Playing { score: Arrangement cursor: Int tracks: List<TrackPlay> states: List<BusState> }
 type Played { playing: Playing left: List<Float> right: List<Float> }
 type Take { playing: Playing lefts: List<List<Float>> rights: List<List<Float>> }
 type Stereo { name: String left: List<Float> right: List<Float> }

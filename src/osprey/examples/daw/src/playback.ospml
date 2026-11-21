@@ -16,7 +16,7 @@ module Playback
     (** The project at its first frame: every track's notes cued. A bad note, route or send fails here. *)
     export start song = Outcomes::carried (BusPaths::order song.buses, \_ =>
         Outcomes::carried (SendRenders::collect (song.tracks, \voice => Arrangements::opened (song, voice)), \tracks =>
-            ok (Playing(cursor = 0, tracks = tracks, states = []))))
+            ok (Playing(score = song, cursor = 0, tracks = tracks, states = []))))
 
     silence count = mapList (toList (range (0, count)), \_ => 0.0)
 
@@ -27,7 +27,10 @@ module Playback
         Error _ => Error(message = "A track is missing.")
         Success voice => match listGet playing.tracks index
             Error _ => Error(message = "A track is missing.")
-            Success play => Outcomes::carried (Arrangements::advanced (song, held.buses, voice, play, from, until), \step => ok (Heard(plays = listAppend held.plays step.play, buses = step.buses)))
+            Success play => match listGet playing.score.tracks index
+                Error _ => Error(message = "The playing track has no previous patch.")
+                Success prior => Outcomes::carried (Arrangements::refreshed (song, voice, prior, play), \ready =>
+                    Outcomes::carried (Arrangements::advanced (song, held.buses, voice, ready, from, until), \step => ok (Heard(plays = listAppend held.plays step.play, buses = step.buses))))
 
     // Every track advances over the same frames into the same buses.
     heard (song, playing, buses, from, until) = foldList (toList (range (0, length song.tracks)), ok (Heard(plays = [], buses = buses)), \(outcome, index) => Outcomes::carried (outcome, \held => trackStep (song, playing, held, index, from, until)))
@@ -38,4 +41,4 @@ module Playback
         until = satAdd from frames
         Outcomes::carried (heard (song, playing, seeded (song, frames), from, until), \tracked =>
             Outcomes::carried (BusMix::stepped (song, tracked.buses, playing.states), \master =>
-                ok (Played(playing = Playing(cursor = until, tracks = tracked.plays, states = master.states), left = master.buses.left, right = master.buses.right))))
+                ok (Played(playing = Playing(score = song, cursor = until, tracks = tracked.plays, states = master.states), left = master.buses.left, right = master.buses.right))))

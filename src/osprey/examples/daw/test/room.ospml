@@ -660,7 +660,26 @@ loudest side = foldList (side, 0.0, \(high, value) => synth::TableMath::larger (
 
 sidesDiffer (one, other) = length (filterList (toList (range (0, length one)), \i => abs ((listGet one i ?: 0.0) - (listGet other i ?: 0.0)) > 0.000001)) > 0
 
+// [DAW-TRANSPORT-LIVE-CONTROLS] A gain edit changes the sounding note on the next block.
+liveKnobJourney () =
+    track = keysTrack ()
+    note = daw::Note(pitch = 60, start = 0.0, length = 0.125, velocity = 1.0)
+    score = timeline [track(notes = [note])]
+    routing = daw::TrackPatches::routing track.instrument
+    muted = routing(nodes = mapList (routing.nodes, \n => ui::Pick::either (n.component == "gain", n(settings = [daw::Setting(key = "gain", value = 0.0, follow = daw::Constant)]), n)))
+    quiet = score(tracks = [track(notes = [note], instrument = daw::PatchInstrument(routing = muted))])
+    succeeds (daw::Playback::start score, \start =>
+        succeeds (daw::Playback::next (score, start, 512), \first =>
+            expect (loudest first.left > 0.01, true)
+            succeeds (daw::Playback::next (quiet, first.playing, 128), \silent =>
+                expect (loudest silent.left, 0.0)
+                expect (loudest silent.right, 0.0)
+                succeeds (daw::Playback::next (score, silent.playing, 128), \again =>
+                    expect (again.playing.cursor, 768)
+                    expect (loudest again.left > 0.01, true)))))
+
 masterPlayJourney () =
+    liveKnobJourney ()
     song = playedSong 4.0
     playedIn (song, [6000], \whole =>
         expect (loudest (sideOf (whole, false)) > 0.01, true)

@@ -114,6 +114,8 @@ Reported by the user on 2026-11-21 with two screenshots of a tall, narrow window
 
 ## Slider drag lag [DAW-MIX-DRAG]
 
+- [ ] **Hear each knob move while the song plays [DAW-TRANSPORT-LIVE-CONTROLS].** During a drag, the dial, its displayed value and the playing track must follow the same accepted parameter Signal. Verify the next audio block of a held note, subsequent notes, mixer and bus controls, Undo and a looping song. Measure the time to audible output while dragging on the codex song. The original held-note regression measured a peak of 0.353518 on both channels after gain was set to zero.
+
 Reported by the user on 2026-11-21: dragging the Track Inspector's Gain and Pan sliders is very clunky, with a huge delay.
 
 - [x] The Timeline inspector and Mix table preview gain during each pointer move. Release writes the project and creates one undo step. The native journey checks all 17 Mix gain faders, Undo, Redo and a Timeline drag with 16,384 offscreen notes (c0e67f73d, 9c33cf379).

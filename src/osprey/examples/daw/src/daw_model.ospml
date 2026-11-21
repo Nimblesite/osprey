@@ -162,7 +162,7 @@ type Cue =
     note : Note
 
 type Sounding =
-    at : int
+    cue : Cue
     lanes : List<List<float>>
 
 type Made =
@@ -199,6 +199,7 @@ type Mastering =
     states : List<BusState>
 
 type Playing =
+    score : Arrangement
     cursor : int
     tracks : List<TrackPlay>
     states : List<BusState>
