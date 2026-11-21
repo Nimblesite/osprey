@@ -25,6 +25,37 @@ pub(super) fn project_field_value(
     );
     projected
 }
+pub(super) fn project_borrowed_field_value(value: &Value, field: &str) -> Option<Value> {
+    let mut projected = value.fields.get(field).cloned();
+    project_unknown_structure(value.unknown_structure, &mut projected);
+    if let Some(callable) = &value.callable {
+        project_borrowed_callable_field(callable, field, &mut projected);
+    }
+    projected
+}
+
+fn project_borrowed_callable_field(
+    callable: &Callable,
+    field: &str,
+    projected: &mut Option<Value>,
+) {
+    match callable {
+        Callable::Alternatives(choices) => {
+            for choice in choices {
+                project_borrowed_callable_field(choice, field, projected);
+            }
+        }
+        Callable::Parameter { .. } => {
+            project_callable(
+                Some(callable.clone()),
+                Projection::Field(field.to_owned()),
+                projected,
+            );
+        }
+        Callable::Known(_) | Callable::Unknown => {}
+    }
+}
+
 pub(super) fn project_element(mut value: Value) -> Option<Value> {
     let payload = value.element.take().map(|value| *value);
     project_from(payload, value, Projection::Element)

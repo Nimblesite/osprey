@@ -274,12 +274,7 @@ impl Analyzer<'_> {
     }
 
     pub(super) fn project_borrowed_field(&self, value: &Value, field: &str) -> Option<Value> {
-        let projected = super::value_shapes::project_field_value(
-            value.fields.get(field).cloned(),
-            value.unknown_structure,
-            value.callable.clone(),
-            field,
-        );
+        let projected = super::value_shapes::project_borrowed_field_value(value, field);
         self.project_field_owner(value.field_owner.as_ref(), field, projected)
     }
 
