@@ -30,15 +30,19 @@ module ModalBanks
     (** Zero stored energy in every mode. *)
     export initial bank = ModalState(modes = mapList (bank.modes, \_ => Resonators::initial))
 
-    stepped (modes, states, input, total, next) = match modes
-        [] => match states
-            [] => Success(value = ModalSample(sample = total, next = ModalState(modes = next)))
-            _ => Error(message = IncompatibleLayout(detail = "Modal state does not match its bank."))
-        [c, ...rest] => match states
-            [] => Error(message = IncompatibleLayout(detail = "Modal state does not match its bank."))
-            [held, ...others] =>
-                step = Resonators::next (c, held, input)
-                stepped (rest, others, input, total + step.sample, listAppend next step.next)
+    mismatch () = Error(message = IncompatibleLayout(detail = "Modal state does not match its bank."))
+
+    stepped (modes, states, index, input, total, next) = match index == length modes
+        true => Success(value = ModalSample(sample = total, next = ModalState(modes = next)))
+        false => match listGet modes index
+            Error _ => mismatch ()
+            Success c => match listGet states index
+                Error _ => mismatch ()
+                Success held =>
+                    step = Resonators::next (c, held, input)
+                    stepped (modes, states, satAdd index 1, input, total + step.sample, listAppend next step.next)
 
     (** Excite every mode with the same input and sum them; mismatched state is an error. *)
-    export next (bank, held, input) = stepped (bank.modes, held.modes, input, 0.0, [])
+    export next (bank, held, input) = match length bank.modes == length held.modes
+        false => mismatch ()
+        true => stepped (bank.modes, held.modes, 0, input, 0.0, [])
