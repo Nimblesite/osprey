@@ -85,7 +85,6 @@ structure Ops (α : Type) where
   less : α → α → Bool
   atMost : α → α → Bool
   atLeast : α → α → Bool
-  asr : α → α → α → α → α
   equal : α → α → Bool
   tanh : α → α
   hard : α → α

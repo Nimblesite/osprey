@@ -20,6 +20,7 @@ pub(super) fn signatures(module: &str) -> Result<&'static [Signature], String> {
             ("pulse", &["α", "Pulse α"], "α"),
             ("shaped", &["PhaseShape α", "α"], "α"),
         ],
+        "GrainMath" => &[("asr", &["α", "α", "α", "α"], "α")],
         "GrainWindows" => &[
             ("hann", &["α", "α"], "α"),
             ("value", &["Envelope α", "Nat", "Nat"], "α"),

@@ -1,5 +1,37 @@
 namespace ProductionFft
 
+/-- At both ends of a grain, the ASR window is silent for any attack and release. -/
+theorem grainAsrBoundarySamples (ops : Ops α) (attack release : α) (n : Nat)
+    (zeroCast : ops.toFloat 0 = ops.literal 0)
+    (exactLast : ops.minus (ops.toFloat (n+1)) (ops.literal 1) = ops.toFloat n)
+    (leRefl : ∀ x, ops.atMost x x = true) (geRefl : ∀ x, ops.atLeast x x = true) :
+    GrainWindows.value ops (.AsrWindow attack release) 0 (n+1) = ops.literal 0 ∧
+    GrainWindows.value ops (.AsrWindow attack release) n (n+1) = ops.literal 0 := by
+  unfold GrainWindows.value GrainMath.asr
+  dsimp only
+  constructor
+  · rw [zeroCast, leRefl]; rfl
+  · rw [exactLast, geRefl]; cases ops.atMost (ops.toFloat n) (ops.literal 0) <;> rfl
+
+/-- Interior samples use the attack ramp, the release ramp, or unity at
+    sustain. The two strict comparisons put the exact transition points on
+    the plateau for valid, nonoverlapping controls. -/
+theorem grainAsrInterior (ops : Ops α) (age duration : Nat) (attack release : α)
+    (started : ops.atMost (ops.toFloat age) (ops.literal 0) = false)
+    (unfinished : ops.atLeast (ops.toFloat age) (ops.minus (ops.toFloat duration) (ops.literal 1)) = false) :
+    GrainWindows.value ops (.AsrWindow attack release) age duration =
+      let sample := ops.toFloat age
+      let last := ops.minus (ops.toFloat duration) (ops.literal 1)
+      match ops.less sample (ops.times attack last) with
+      | true => ops.ieeeDivide sample (ops.times attack last)
+      | false => match ops.greater sample (ops.times (ops.minus (ops.literal 1) release) last) with
+        | true => ops.ieeeDivide (ops.minus last sample) (ops.times release last)
+        | false => ops.literal 1 := by
+  unfold GrainWindows.value GrainMath.asr
+  dsimp only
+  rw [started, unfinished]
+  rfl
+
 /-- A waveguide FIFO advances its stored samples by one site and places the
     input at the newest end. Its allocated capacity is invariant. -/
 theorem delayPropagation (ops : Ops α) (oldest input : α) (rest : List α) :

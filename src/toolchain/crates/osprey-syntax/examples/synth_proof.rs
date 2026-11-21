@@ -155,7 +155,7 @@ fn callee(e: &Expr) -> Result<String, String> {
             }
             return match path.to_string().as_str() {
                 "FitMath::clip" => Ok("FitMath.clip ops".into()),
-                "GrainMath::asr" => Ok("ops.asr".into()),
+                "GrainMath::asr" => Ok("GrainMath.asr ops".into()),
                 "PhaseMath::window" => Ok("PhaseMath.window ops".into()),
                 "PhaseMath::windowedPhase" => Ok("PhaseMath.windowedPhase ops".into()),
                 "DelayLines::push" => Ok("DelayLines.push ops".into()),
