@@ -17,7 +17,7 @@ reflect "$source"
 lake env lean --root="$out" -o "$out/ProductionFft.olean" "$out/ProductionFft.lean"
 lean_path=$(lake env printenv LEAN_PATH)
 exporter=$(lake env which lean4export)
-for theorem in combinedCorrect quartetCorrect conjugateComponents conjugateTwice; do
+for theorem in combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins; do
     name="ProductionFft.$theorem"
     LEAN_PATH="$out:$lean_path" "$exporter" ProductionFft -- "$name" > "$out/$theorem.ndjson"
     result=$(printf '%s\t%s\n' "$out/$theorem.ndjson" "$name" | "$checker")

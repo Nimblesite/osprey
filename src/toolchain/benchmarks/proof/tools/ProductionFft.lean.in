@@ -1,6 +1,8 @@
 /- [SYNTH-DSP-PROOFS] The marked declarations are emitted by the Osprey
    frontend from ffts.ospml. Scalar primitives are unconstrained, so the
    theorem also holds for rounding arithmetic with these operations. -/
+import Synthesis
+
 namespace ProductionFft
 
 structure Bin (α : Type) where
@@ -77,5 +79,33 @@ theorem conjugateTwice (ops : Ops α) (z : Bin α)
     conjugate ops (conjugate ops z) = z := by
   cases z with
   | mk re im => exact congrArg (Bin.mk re) (involution im)
+
+/-- Apply Smith A.1 directly to the production combine. When the incoming
+    halves are the two subtransform bins and the twiddle implements the root
+    multiplication, its outputs are the two full-size DFT polynomials. -/
+theorem combinedDftBins (ops : Ops α) (mul : Bin α → Bin α → Bin α) (neg : Bin α → Bin α)
+    (zero z : Bin α) (index size : Nat) (sign : α) (frame : List (Bin α × Bin α))
+    (plusZero : ∀ x, added ops x zero = x) (timesZero : ∀ x, mul x zero = zero)
+    (assoc : ∀ a b c, added ops (added ops a b) c = added ops a (added ops b c))
+    (comm : ∀ a b, added ops a b = added ops b a)
+    (mulAssoc : ∀ a b c, mul (mul a b) c = mul a (mul b c))
+    (dist : ∀ a b c, mul a (added ops b c) = added ops (mul a b) (mul a c))
+    (negSquare : ∀ a, mul (neg a) (neg a) = mul a a)
+    (negMul : ∀ a b, mul (neg a) b = neg (mul a b))
+    (subtract : ∀ a b, subtracted ops a b = added ops a (neg b))
+    (rotation : ∀ x, rotated ops x (ops.twiddle sign (ops.toFloat index) (ops.toFloat size)) = mul z x) :
+    let even := Synthesis.bin (added ops) mul zero (mul z z) Prod.fst frame
+    let odd := Synthesis.bin (added ops) mul zero (mul z z) Prod.snd frame
+    combined ops [even] [odd] index size sign =
+      ⟨[Synthesis.pairedBin (added ops) mul zero z frame],
+       [Synthesis.pairedBin (added ops) mul zero (neg z) frame]⟩ := by
+  dsimp only
+  rw [Synthesis.radixTwoSplit (added ops) mul zero z plusZero timesZero assoc comm mulAssoc dist,
+      Synthesis.radixTwoUpper (added ops) mul neg zero z plusZero timesZero assoc comm mulAssoc dist negSquare negMul]
+  have step (e o : Bin α) : combined ops [e] [o] index size sign =
+      ⟨[added ops e (mul z o)], [added ops e (neg (mul z o))]⟩ := by
+    rw [← rotation o, ← subtract]
+    rfl
+  exact step _ _
 
 end ProductionFft

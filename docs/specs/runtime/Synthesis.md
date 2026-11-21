@@ -98,6 +98,7 @@ The synthesis CI gate parses the shipped `src/osprey/packages/synth/src/ffts.osp
 | Production proof | Property checked for every input |
 | --- | --- |
 | `ProductionFft.combinedCorrect` | Each paired even/odd bin yields a lower sum and upper difference in input order, with the correct rotation arguments, sign, size and successive indices. Output stops at the shorter input. |
+| `ProductionFft.combinedDftBins` | Given the two half-transform bin values, the production combine emits the full-transform bins at roots z and −z. This applies Smith (A.1) to the parsed body under exact scalar algebra and the hypothesis that rotation implements multiplication by z. |
 | `ProductionFft.quartetCorrect` | The fused four-sample base case computes two consecutive radix-two stages, including the twiddle arguments and the order of all four outputs. |
 | `ProductionFft.conjugateComponents` and `conjugateTwice` | Conjugation preserves the real component and subtracts the imaginary component from zero. Double conjugation recovers the bin under the stated scalar involution law. |
 
