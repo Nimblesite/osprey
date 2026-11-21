@@ -38,7 +38,7 @@ module RenderKernels
         Error why => Error(message = why)
         Success level => match level >= 0.0 && level <= 8.0
             false => Error(message = InvalidConfiguration(detail = "Invalid gain."))
-            true => Success(value = RenderInputs::emitted (frame, held, input * level))
+            true => Success(value = RenderInputs::output (frame, held.identity, input * level))
 
     mixer (plan, snapshot, frame, held, first) = match RenderInputs::input (plan, frame, held.identity, 1)
         Error why => Error(message = why)
@@ -46,7 +46,7 @@ module RenderKernels
             RenderInputs::bound (snapshot, held, "secondGain", \b =>
                 match a >= 0.0 && a <= 1.0 && b >= 0.0 && b <= 1.0
                     false => Error(message = InvalidConfiguration(detail = "Mixer input gains must be between zero and one."))
-                    true => Success(value = RenderInputs::emitted (frame, held, WaveMath::mixed (first, a, second, b)))))
+                    true => Success(value = RenderInputs::output (frame, held.identity, WaveMath::mixed (first, a, second, b)))))
 
     controlled (plan, snapshot, frame, held, input) = match RenderInputs::input (plan, frame, held.identity, 1)
         Error why => Error(message = why)
@@ -56,16 +56,16 @@ module RenderKernels
                 Error why => Error(message = why)
                 Success level => match level >= 0.0 && level <= 8.0
                     false => Error(message = InvalidConfiguration(detail = "Invalid gain."))
-                    true => Success(value = RenderInputs::emitted (frame, held, Waves::controlledGain (input, level, control)))
+                    true => Success(value = RenderInputs::output (frame, held.identity, Waves::controlledGain (input, level, control)))
 
-    passthrough (frame, held, input) = Success(value = RenderInputs::emitted (frame, held, input))
+    passthrough (frame, held, input) = Success(value = RenderInputs::output (frame, held.identity, input))
 
     // [SYNTH-GRAPH-CHANNELS] Mono split, join and route are identity (or mapped silence); wider layouts
     // never reach this mono renderer because their ports fail its layout checks.
     monoRouted (entries, frame, held, input) = match listGet entries 0
         Error _ => Error(message = IncompatibleLayout(detail = "A channel route needs at least one output channel."))
         Success entry => match entry
-            -1 => Success(value = RenderInputs::emitted (frame, held, 0.0))
+            -1 => Success(value = RenderInputs::output (frame, held.identity, 0.0))
             _ => passthrough (frame, held, input)
 
     processor (plan, rate, snapshot, frame, held, n, input) = match n.processor
@@ -87,7 +87,7 @@ module RenderKernels
     playback (resource, rate, snapshot, frame, held) = match floatToInt (floor held.phase)
         Error _ => Error(message = InvalidConfiguration(detail = "Invalid sample cursor."))
         Success index => match SampleResources::monoAt (resource, index)
-            Error _ => Success(value = RenderInputs::emitted (frame, held, 0.0))
+            Error _ => Success(value = RenderInputs::output (frame, held.identity, 0.0))
             Success left => Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "rate"), \speed =>
                 right = SampleResources::monoAt (resource, satAdd index 1) ?: 0.0
                 step = WaveMath::playbackRate (toFloat resource.sampleRate, rate, speed, 1.0)
@@ -105,7 +105,7 @@ module RenderKernels
         Bowed capacity => PhysicalKernels::bowed (rate, snapshot, frame, held, capacity)
         Delay _ => match listGet held.delay 0
             Error _ => Error(message = MissingResource(detail = "index out of bounds"))
-            Success previous => Success(value = RenderInputs::emitted (frame, held, previous))
+            Success previous => Success(value = RenderInputs::output (frame, held.identity, previous))
         _ => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \input => processor (plan, rate, snapshot, frame, held, n, input))
 
     (** Render one scheduled component or return its explicit fault. *)
@@ -127,6 +127,6 @@ module RenderKernels
         Success _ => Outcomes::carried (RenderInputs::parameter (snapshot, n.identity, "waveform"), \value => Outcomes::chosen (value, [Sine, Triangle, Saw, Pulse], "Unknown oscillator waveform."))
 
     bypassed (plan, frame, held, n) = match n.processor
-        Filter => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \value => Success(value = RenderInputs::emitted (frame, held, value)))
-        Lfo => Success(value = RenderInputs::emitted (frame, held, 1.0))
-        _ => Success(value = RenderInputs::emitted (frame, held, 0.0))
+        Filter => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \value => Success(value = RenderInputs::output (frame, held.identity, value)))
+        Lfo => Success(value = RenderInputs::output (frame, held.identity, 1.0))
+        _ => Success(value = RenderInputs::output (frame, held.identity, 0.0))

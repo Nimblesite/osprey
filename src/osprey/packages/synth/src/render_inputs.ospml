@@ -49,8 +49,13 @@ module RenderInputs
         true => next
         false => held
 
+    sampled (frame, identity, sample) = listAppend frame.values (NodeSample(identity = identity, value = sample))
+
+    (** Publish the output of a node whose state is unchanged. *)
+    export output (frame, identity, sample) = frame(values = sampled (frame, identity, sample))
+
     (** Publish one sample and its updated persistent state. *)
-    export emitted (frame, next, sample) = frame(states = mapList (frame.states, \s => replaced (next, s)), values = listAppend frame.values (NodeSample(identity = next.identity, value = sample)))
+    export emitted (frame, next, sample) = frame(states = mapList (frame.states, \s => replaced (next, s)), values = sampled (frame, next.identity, sample))
 
     emptyState identity = KernelState(identity = identity, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)
 
