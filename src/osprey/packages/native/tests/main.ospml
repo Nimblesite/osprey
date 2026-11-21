@@ -41,10 +41,10 @@ test ("mathematics keeps accessibility text and consumes no control ordinal", \(
     walked = drawnOf (Ui::column [Ui::button ("Before", "", Increment), Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"), Ui::button ("After", "", Load)])
     binds (walked, 2)
     // The typeset node is told as one leaf carrying the whole tree and its spoken text, and takes no ordinal.
-    expect (spelled (toldOf (Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"))), "{kind=\"math\",math={kind=\"seq\",items=[{kind=\"sym\",text=\"α\"},{kind=\"sym\",text=\"<\"},{kind=\"num\",text=\"2\"}]},spoken=\"α < 2 \"quoted\"\n\"}")
+    expectTold ((Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n")), "{kind=\"math\",math={kind=\"seq\",items=[{kind=\"sym\",text=\"α\"},{kind=\"sym\",text=\"<\"},{kind=\"num\",text=\"2\"}]},spoken=\"α < 2 \"quoted\"\n\"}")
     // Every layout variant is told as its own record, its children named and nested in order.
     everyLayout = ui::Seq [ui::Sup (ui::Sym "x") (ui::Num "2"), ui::Sub (ui::Sym "a") (ui::Num "1"), ui::Frac (ui::Num "1") (ui::Sym "n"), ui::Root (ui::Sym "y"), ui::Binder "λ" [ui::Sym "x"] (ui::Sym "x"), ui::Op "+" (ui::Num "1") (ui::Num "2"), ui::Paren (ui::Sym "z"), ui::Big "∑" (ui::Num "0") (ui::Sym "n") (ui::Sym "k")]
-    expect (spelled (toldOf (Maths::typeset (everyLayout, "every layout"))), "{kind=\"math\",math={kind=\"seq\",items=[{kind=\"sup\",base={kind=\"sym\",text=\"x\"},script={kind=\"num\",text=\"2\"}},{kind=\"sub\",base={kind=\"sym\",text=\"a\"},script={kind=\"num\",text=\"1\"}},{kind=\"frac\",top={kind=\"num\",text=\"1\"},bottom={kind=\"sym\",text=\"n\"}},{kind=\"root\",body={kind=\"sym\",text=\"y\"}},{kind=\"binder\",symbol=\"λ\",names=[{kind=\"sym\",text=\"x\"}],body={kind=\"sym\",text=\"x\"}},{kind=\"op\",symbol=\"+\",left={kind=\"num\",text=\"1\"},right={kind=\"num\",text=\"2\"}},{kind=\"paren\",body={kind=\"sym\",text=\"z\"}},{kind=\"big\",symbol=\"∑\",lower={kind=\"num\",text=\"0\"},upper={kind=\"sym\",text=\"n\"},body={kind=\"sym\",text=\"k\"}}]},spoken=\"every layout\"}")
+    expectTold ((Maths::typeset (everyLayout, "every layout")), "{kind=\"math\",math={kind=\"seq\",items=[{kind=\"sup\",base={kind=\"sym\",text=\"x\"},script={kind=\"num\",text=\"2\"}},{kind=\"sub\",base={kind=\"sym\",text=\"a\"},script={kind=\"num\",text=\"1\"}},{kind=\"frac\",top={kind=\"num\",text=\"1\"},bottom={kind=\"sym\",text=\"n\"}},{kind=\"root\",body={kind=\"sym\",text=\"y\"}},{kind=\"binder\",symbol=\"λ\",names=[{kind=\"sym\",text=\"x\"}],body={kind=\"sym\",text=\"x\"}},{kind=\"op\",symbol=\"+\",left={kind=\"num\",text=\"1\"},right={kind=\"num\",text=\"2\"}},{kind=\"paren\",body={kind=\"sym\",text=\"z\"}},{kind=\"big\",symbol=\"∑\",lower={kind=\"num\",text=\"0\"},upper={kind=\"sym\",text=\"n\"},body={kind=\"sym\",text=\"k\"}}]},spoken=\"every layout\"}")
     expect (eventsOf (Ui::column [Ui::button ("Before", "", Increment), Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"), Ui::button ("After", "", Load)], "button"), "Before@0,After@1")))
 
 tree () = Ui::column [
@@ -122,7 +122,7 @@ test ("a screen's toolbar controls take ordinals before its children", \() => ui
     walked = drawnOf page
     binds (walked, 2)
     // The toolbar's field binds first; the child's button second.
-    expect (spelled (toldOf page), "{kind=\"screen\",title=\"T\",subtitle=\"\",toolbar=[{kind=\"field\",label=\"F\",value=\"\",prompt=\"p\",secure=?false,multiline=?false,commit=\"edit\",event=#0}],children=[{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]}")
+    expectTold (page, "{kind=\"screen\",title=\"T\",subtitle=\"\",toolbar=[{kind=\"field\",label=\"F\",value=\"\",prompt=\"p\",secure=?false,multiline=?false,commit=\"edit\",event=#0}],children=[{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]}")
     delivers (page, [ui::TextInput(action = Typed), ui::Tap(action = Increment)])))
 // [UI-COMPONENTS]: an aside's pane takes ordinals before its column; rows carry their symbol and group.
 inspected () = Ui::aside (Ui::rows ([Ui::entry ("a", "star", "Recent", Ui::text "A")], "a", Load), ui::Trailing, Ui::column [Ui::icon "info", ui::Divider, Ui::button ("Go", "play", Increment)], 420, Typed)
@@ -133,7 +133,7 @@ inspectedMembers () = insideTold (toldOf (inspected ()))
 test ("an aside's pane takes ordinals before its column and rows keep their symbol and group", \() => ui::Runtime::guarded (\() =>
     walked = drawnOf (inspected ())
     binds (walked, 3)
-    expect (spelled (toldOf (inspected ())), "{kind=\"aside\",side=\"trailing\",pane={kind=\"rows\",selected=\"a\",rows=[{key=\"a\",symbol=\"star\",group=\"Recent\",child={kind=\"text\",text=\"A\",role=\"body\",tone=\"primary\"}}],event=#0},aside={kind=\"stack\",axis=\"vertical\",children=[{kind=\"icon\",symbol=\"info\"},{kind=\"divider\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]},width=#420,least=#260,most=#640,keep=#340,event=#2}")
+    expectTold ((inspected ()), "{kind=\"aside\",side=\"trailing\",pane={kind=\"rows\",selected=\"a\",rows=[{key=\"a\",symbol=\"star\",group=\"Recent\",child={kind=\"text\",text=\"A\",role=\"body\",tone=\"primary\"}}],event=#0},aside={kind=\"stack\",axis=\"vertical\",children=[{kind=\"icon\",symbol=\"info\"},{kind=\"divider\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]},width=#420,least=#260,most=#640,keep=#340,event=#2}")
     // The row's selection binds first and the column's button second; the splitter binds after both columns.
     delivers (inspected (), [ui::ChoiceInput(action = Load), ui::Tap(action = Increment), ui::SizeInput(action = Typed)])))
 // [UI-COMPONENTS-SPLITTER]: the splitter between an aside's pane and its column carries the
@@ -181,7 +181,7 @@ countRows (held, key) = length (filterList ((Probes::seen held).walkRows, \row =
 
 test ("an encoded region decodes with its components and text intact", \() => ui::Runtime::guarded (\() =>
     binds (drawnOf (tree ()), 3)
-    expect (spelled (toldOf (tree ())), "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"text\",text=\"Title \"quoted\"\n\",role=\"body\",tone=\"primary\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#0},{kind=\"section\",title=\"S\",footer=\"\",children=[{kind=\"field\",label=\"Q\",value=\"\",prompt=\"\",secure=?false,multiline=?false,commit=\"submit\",event=#1}]},{kind=\"picker\",label=\"P\",choices=[{key=\"a\",label=\"A\"}],selected=\"a\",event=#2}]}")))
+    expectTold ((tree ()), "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"text\",text=\"Title \"quoted\"\n\",role=\"body\",tone=\"primary\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#0},{kind=\"section\",title=\"S\",footer=\"\",children=[{kind=\"field\",label=\"Q\",value=\"\",prompt=\"\",secure=?false,multiline=?false,commit=\"submit\",event=#1}]},{kind=\"picker\",label=\"P\",choices=[{key=\"a\",label=\"A\"}],selected=\"a\",event=#2}]}")))
 test ("a control carries the ordinal of its binding", \() => ui::Runtime::guarded (\() =>
     walked = tree ()
     children = memberItems (insideTold (toldOf walked), "children")
@@ -465,7 +465,7 @@ test ("host capabilities preserve namespace operation arguments and bounds", \()
 test ("context menus bind actions after their content controls", \() => ui::Runtime::guarded (\() =>
     menu = Ui::contextMenu (Ui::button ("Select", "package", Increment), [Ui::button ("Remove", "delete", Load)])
     binds (drawnOf menu, 2)
-    expect (spelled (toldOf menu), "{kind=\"context-menu\",body={kind=\"button\",label=\"Select\",symbol=\"package\",role=\"plain\",enabled=?true,event=#0},items=[{kind=\"button\",label=\"Remove\",symbol=\"delete\",role=\"plain\",enabled=?true,event=#1}]}")
+    expectTold (menu, "{kind=\"context-menu\",body={kind=\"button\",label=\"Select\",symbol=\"package\",role=\"plain\",enabled=?true,event=#0},items=[{kind=\"button\",label=\"Remove\",symbol=\"delete\",role=\"plain\",enabled=?true,event=#1}]}")
     delivers (menu, [ui::Tap(action = Increment), ui::Tap(action = Load)])))
 
 // Runs a registered case's body with integer faults resolved, so arithmetic in a view or a package helper never escapes it.
@@ -549,7 +549,7 @@ test ("scoped themes and dialogs retain their inner controls and dismissal prove
     local = scopedTheme "canvas"
     review = Ui::themed (local, Ui::dialog ("Review transcription", Ui::button ("Insert", "", Increment), Load))
     binds (drawnOf review, 2)
-    expect (spelled (toldOf review), "{kind=\"themed\",theme={tokens=[{name=\"canvas\",light=\"#202723\",dark=\"#202723\"}],spacing=[#8],feedback=#140,settle=#240},body={kind=\"dialog\",title=\"Review transcription\",event=#0,body={kind=\"button\",label=\"Insert\",symbol=\"\",role=\"plain\",enabled=?true,event=#1}}}")
+    expectTold (review, "{kind=\"themed\",theme={tokens=[{name=\"canvas\",light=\"#202723\",dark=\"#202723\"}],spacing=[#8],feedback=#140,settle=#240},body={kind=\"dialog\",title=\"Review transcription\",event=#0,body={kind=\"button\",label=\"Insert\",symbol=\"\",role=\"plain\",enabled=?true,event=#1}}}")
     // The dismissal binds before the body the dialog shows.
     delivers (review, [ui::Tap(action = Load), ui::Tap(action = Increment)])
     // A scoped theme's own tokens cross with the subtree it inks.
@@ -560,10 +560,10 @@ richDocument : ui::Node<Act>
 richDocument = Ui::rich ([Ui::run ("For all ", "", false), Ui::run ("p", "sourceType", true)], ui::Lead)
 test ("inline text retains mathematical emphasis and semantic source colours without bindings", \() => ui::Runtime::guarded (\() =>
     binds (drawnOf richDocument, 0)
-    expect (spelled (toldOf richDocument), "{kind=\"rich-text\",runs=[{text=\"For all \",ink=\"\",italic=?false,emphasis=\"\"},{text=\"p\",ink=\"sourceType\",italic=?true,emphasis=\"\"}],role=\"lead\"}")
+    expectTold (richDocument, "{kind=\"rich-text\",runs=[{text=\"For all \",ink=\"\",italic=?false,emphasis=\"\"},{text=\"p\",ink=\"sourceType\",italic=?true,emphasis=\"\"}],role=\"lead\"}")
     spaced = Ui::column [ui::Spacer, Ui::button ("Continue", "", Increment)]
     binds (drawnOf spaced, 1)
-    expect (spelled (toldOf spaced), "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"spacer\"},{kind=\"button\",label=\"Continue\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}]}")))
+    expectTold (spaced, "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"spacer\"},{kind=\"button\",label=\"Continue\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}]}")))
 
 // Machine documents end to end, each driven as one registered case.
 testCases [
@@ -788,7 +788,7 @@ journeyCase () =
     expect (Runtime::guarded (\() => biggest + 1), 0 - biggest - 1)
     // A scene in window pixels has no unit space: it tells a zero size at a zoom of one.
     pixels = Ui::canvas ([Scenes::disc (1.0, 1.0, 1.0, 0, 0)], Load)
-    expect (spelled (toldOf pixels), "{scene 0.0x0.0x1.0,kind=\"scene\",width=~0.0,height=~0.0,zoom=~1.0,event=#0}")
+    expectTold (pixels, "{scene 0.0x0.0x1.0,kind=\"scene\",width=~0.0,height=~0.0,zoom=~1.0,event=#0}")
     delivers (pixels, [ui::SceneInput(action = Load)])
     // Every symbol has its own name.
     expect (join (mapList ([ui::Clock, ui::Person, ui::Cursor, ui::Chevron, ui::Send, ui::Terminal, ui::Edit, ui::Panel, ui::Sparkle], \symbol => Symbols::name symbol)) ",", "clock,person,cursor,chevron,send,terminal,edit,panel,sparkle")

@@ -196,6 +196,9 @@ spelled told = match told
 toldOf : ui::Node<Act> -> ui::Told
 toldOf node = Tell::first (Tell::walk ([], node))
 
+// Compare the whole component record sent to the host, with the wire fields in order.
+expectTold (node, wanted) = expect (spelled (toldOf node), wanted)
+
 // A component record's own members, or none when they name no kind.
 ownControls members = match memberText (members, "kind") == ""
     true => []

@@ -104,12 +104,12 @@ module Extras
     export constructorNames () =
         plain = Ui::column [Ui::pair ("L", "V"), Ui::label ("N", "star"), Ui::icon "info", ui::Divider, Ui::empty ("inbox", "T", "D")]
         binds (drawnOf plain, 0)
-        expect (spelled (toldOf plain), "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"pair\",label=\"L\",value=\"V\"},{kind=\"label\",label=\"N\",symbol=\"star\"},{kind=\"icon\",symbol=\"info\"},{kind=\"divider\"},{kind=\"empty\",symbol=\"inbox\",title=\"T\",detail=\"D\"}]}")
+        expectTold (plain, "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"pair\",label=\"L\",value=\"V\"},{kind=\"label\",label=\"N\",symbol=\"star\"},{kind=\"icon\",symbol=\"info\"},{kind=\"divider\"},{kind=\"empty\",symbol=\"inbox\",title=\"T\",detail=\"D\"}]}")
 
     (** "semantic text roles preserve every protocol spelling (extra: every tone keeps its own spelling beside the role)". *)
     export roleTones () =
         forEachList ([{ tone = ui::Primary, said = "primary" }, { tone = ui::Secondary, said = "secondary" }, { tone = ui::Accent, said = "accent" }, { tone = ui::Good, said = "good" }, { tone = ui::Caution, said = "caution" }, { tone = ui::Danger, said = "danger" }], \probe =>
-            expect (spelled (toldOf (Ui::styled ("sample", ui::Body, probe.tone))), "{kind=\"text\",text=\"sample\",role=\"body\",tone=\"${probe.said}\"}"))
+            expectTold ((Ui::styled ("sample", ui::Body, probe.tone)), "{kind=\"text\",text=\"sample\",role=\"body\",tone=\"${probe.said}\"}"))
 
     (** "tabs carry their pages and bind after the pages' controls, and segments carry their tones (extra: three pages bind in order before the choice)". *)
     export tabsPages () =
@@ -132,7 +132,7 @@ module Extras
     export inlineEmphasis () =
         emphasised = Ui::rich ([Ui::emphasised ("for all ", "", "strong"), Ui::emphasised ("p", "sourceType", "code"), Ui::run ("i", "sourceType", true)], ui::Mono)
         binds (drawnOf emphasised, 0)
-        expect (spelled (toldOf emphasised), "{kind=\"rich-text\",runs=[{text=\"for all \",ink=\"\",italic=?false,emphasis=\"strong\"},{text=\"p\",ink=\"sourceType\",italic=?false,emphasis=\"code\"},{text=\"i\",ink=\"sourceType\",italic=?true,emphasis=\"\"}],role=\"mono\"}")
+        expectTold (emphasised, "{kind=\"rich-text\",runs=[{text=\"for all \",ink=\"\",italic=?false,emphasis=\"strong\"},{text=\"p\",ink=\"sourceType\",italic=?false,emphasis=\"code\"},{text=\"i\",ink=\"sourceType\",italic=?true,emphasis=\"\"}],role=\"mono\"}")
 
     (** "text input reaches update through its binding and patches its own region (extra: a second edit replaces the slice and the frame keeps the latest text)". *)
     export textRegion () =
