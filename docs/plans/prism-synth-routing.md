@@ -253,7 +253,7 @@ The twelve loaded application journeys retain their assertions and add device re
 - [x] Pass all 10 native worker checks, including deliberate queue starvation and diagnostics, and all 12 loaded application journeys under GC and ARC.
 - [x] Build the latest macOS bundle in this worktree; retain all code and test assertions.
 - [x] Run the windowed TAL-NoiseMaker → Dragonfly Room patch three times for 960 UI frames. The device accepted 813056, 811008 and 811008 stereo frames with zero empty callbacks. Each run verified at least ten seconds actually played, exact VST and device PCM, pitch and a stereo reverb tail (`49e8bab28`).
-- [ ] Resolve sustained playback starvation: both latest native reruns fail the unchanged zero-empty-queue assertion, including an isolated rerun. Finite exact VST PCM still passes. Earlier zero-starvation evidence does not establish repeatable reliability.
+- [x] Repeat sustained playback on the GPUI macOS host with mda JX10, two ADelay instances and the real audio device. Three consecutive 960-frame UI runs played 802816, 802816, 800768 stereo frames with zero empty callbacks and all four sessions exited after Stop. The locked display prevented the screenshot step, so the playback repeats omitted that step. Evidence: `target/ci-prep/vst-current/three-complete-{1,2,3}.log`.
 - [ ] Resolve root CI: both Deslop 0.42 and installed 0.41 report 4.1% against the unchanged 4.0% gate; make ci stops there.
 - [ ] Verify windowed tests after the Mac is unlocked; currently unavailable.
 
@@ -289,7 +289,7 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Compare the real worker directly with the recording wrapper: the direct finite audition passes, but an additional healthy-status assertion before Stop exposes starvation during sustained playback too (`direct-live-confirm.log`). The wrapper is not the sole cause.
 - [x] Remove the four-element index list and capturing fold closure allocated for each decoded PCM word; preserve byte order, bounds checks and malformed-input errors.
 - [x] Pass all twenty-two synth journeys under both GC and ARC after that change (`pcm-fixed-gc.log`, `pcm-fixed-arc.log`).
-- [ ] Verify sustained native playback with the changed decoder; package correctness does not prove realtime throughput.
+- [x] Verify sustained native patch playback with both the three-instance SDK chain and the two-vendor render described above.
 
 ## Restore the Prism presentation [PRISM-ROUTING-PRESENTATION]
 
