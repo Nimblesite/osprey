@@ -1,0 +1,23 @@
+import synth::Components
+import synth::Parameters
+import synth::SpectralKernels
+
+// [SYNTH-ADVANCED-SPECTRAL-MODULES] Decode front-panel settings against the current parameter snapshot.
+spectralControl (n, fixed) = SpectralKernels::prepare (48000.0, Parameters::initial (serial ([Components::sine (1, 440.0), n, Components::output 3])), n.identity, n.processor, fixed)
+
+spectralTransform (n, wanted) = match spectralControl (n, true)
+    synth::FixedSpectrum config => expect (structuralEquals (config.transform, wanted), true)
+    _ => unexpected ()
+
+spectralControlJourney () =
+    morph = Components::spectral (2, 64, 16, 5.0)
+    forEachList ([{ value = 0.0, mode = synth::Blend }, { value = 1.0, mode = synth::Envelope }, { value = 2.0, mode = synth::Partial }], \row =>
+        spectralTransform (grainSet (morph, "morphMode", row.value), synth::SpectralMorph(amount = 0.5, mode = row.mode)))
+    pitch = grainSet (Components::spectral (2, 64, 16, 6.0), "semitones", 12.0)
+    spectralTransform (pitch, synth::SpectralPitch(ratio = 2.0, formant = 2.0))
+    spectralTransform (grainSet (pitch, "keepFormants", 1.0), synth::SpectralPitch(ratio = 2.0, formant = 1.0))
+    expect (structuralEquals (spectralControl (pitch, false), synth::LiveSpectrum), true)
+    forEachList ([grainSet (morph, "morphMode", 1.5), grainSet (morph, "transform", 0.5)], \bad =>
+        expect (structuralEquals (spectralControl (bad, true), synth::LiveSpectrum), true)
+        graph = serial ([Components::sine (1, 440.0), bad, Components::output 3])
+        renderRefused (synth::Renderer::block (planFor graph, 48000.0, Parameters::initial graph, rendered (synth::Renderer::start graph), 16)))

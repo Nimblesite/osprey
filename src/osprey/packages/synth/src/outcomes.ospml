@@ -11,13 +11,15 @@ module Outcomes
         Error _ => Error(message = InvalidConfiguration(detail = message))
         Success option => Success(value = option)
 
-    (** The option a whole-number `selector` names (0 is the first); anything else is `message`. *)
-    export chosen (selector, options, message) = match floatToInt selector
+    (** Decode a discrete graph control without truncating fractional settings. *)
+    export integer (selector, message) = match floatToInt selector
         Error _ => Error(message = InvalidConfiguration(detail = message))
         Success index => match toFloat index == selector
             false => Error(message = InvalidConfiguration(detail = message))
-            true => picked (options, index, message)
+            true => Success(value = index)
 
+    (** The option a whole-number selector names, starting at zero. *)
+    export chosen (selector, options, message) = carried (integer (selector, message), \index => picked (options, index, message))
 
     (** `value` as a whole number into `step`; a nonfinite or out-of-range value is a numerical fault. *)
     export whole (value, step) = match floatToInt value

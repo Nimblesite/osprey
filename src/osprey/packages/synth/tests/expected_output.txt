@@ -79,5 +79,9 @@ ok 78 - compressor reduction crosses the soft knee continuously and recovers on 
 ok 79 - one macro moves two knobs on opposite curves and refuses either endpoint outside the declared range
 ok 80 - quarter-cycle partials retain phase on retrigger and agree with prepared coefficients
 ok 81 - changing a playing sample's gain and speed affects the exact addressed audio frame
-1..81
-# tests=81 passed=81 failed=0 skipped=0
+ok 82 - spectral controls select all morph modes, shift an octave with independent formants, and refuse fractional selectors
+ok 83 - a sampled strike subtracts its integer or fractional echo and mono routes preserve or mute the impulse
+ok 84 - physical instruments reject fractional burst lengths, repeat intervals and mode counts
+ok 85 - replacing a live delay resets its storage, retains oscillator state and refuses a fresh grain clock
+1..85
+# tests=85 passed=85 failed=0 skipped=0

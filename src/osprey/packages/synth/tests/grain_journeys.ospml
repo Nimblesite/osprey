@@ -800,6 +800,7 @@ registerGrainJourneys () =
         partial = original(parameters = filterList (original.parameters, \p => p.key != "regionEnd"))
         refusedWith (GrainGraph::prepare partial, "Incomplete grain source region.")
         succeeds (GrainGraph::prepare (granularNode ()), \cloud =>
+            grainFaultJourney (granularNode (), cloud)
             forEachList ([{ n = Components::gain (1, 1.0), at = 0, ok = false }, { n = granularNode (), at = 0, ok = true }, { n = granularNode (), at = 1, ok = false }], \c => expect (GrainGraph::compatible (c.n, cloud, c.at), c.ok))
             forEachList ([{ key = "durationSpread", value = 0.5, why = wholeCounts () }, { key = "timing", value = 3.0, why = timingModes () }], \c => refusedWith (GrainGraph::block (retuned (c.key, c.value), cloud, 8), c.why))
             // Interleaved output carries exact left/right pairs for the device transport.

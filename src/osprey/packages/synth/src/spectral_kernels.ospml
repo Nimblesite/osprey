@@ -8,9 +8,6 @@ module SpectralKernels
     (** Kernel storage for a stream of `size`: three sample buffers and two complex bin buffers. *)
     export storage size = satAdd (satMul size 5) 4
 
-    // A spectral shift moves whole bins; a fraction is refused, never truncated.
-    fractional = Error(message = InvalidConfiguration(detail = "Spectral shift must be a whole number of bins."))
-
     // A pitch shift in semitones and cents; its formants stay put only when `keep` is on.
     pitched pitch =
         ratio = SpectralMath::semitoneRatio (pitch.semitones, pitch.cents)
@@ -20,11 +17,7 @@ module SpectralKernels
         0.0 => Success(value = SpectralPass)
         1.0 => Success(value = SpectralFreeze(held = hold >= 0.5))
         2.0 => Success(value = SpectralBand(low = low, high = high))
-        3.0 => match floatToInt shift
-            Success bins => match toFloat bins == shift
-                true => Success(value = SpectralShift(bins = bins))
-                false => fractional
-            Error _ => fractional
+        3.0 => Outcomes::carried (Outcomes::integer (shift, "Spectral shift must be a whole number of bins."), \bins => Success(value = SpectralShift(bins = bins)))
         4.0 => Success(value = SpectralSmear(amount = amount))
         5.0 => match morphMode
             0.0 => Success(value = SpectralMorph(amount = amount, mode = Blend))

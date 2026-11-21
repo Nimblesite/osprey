@@ -12,10 +12,10 @@ module PhysicalKernels
 
     exciterConfig (strength, duration, interval, kind, colour) = match excitation (kind, colour)
         Error why => Error(message = why)
-        Success shape => match floatToInt duration
-            Error _ => Error(message = InvalidConfiguration(detail = "Exciter duration must be a whole number of samples."))
-            Success frames => match floatToInt interval
-                Error _ => Error(message = InvalidConfiguration(detail = "Exciter interval must be a whole number of samples."))
+        Success shape => match Outcomes::integer (duration, "Exciter duration must be a whole number of samples.")
+            Error why => Error(message = why)
+            Success frames => match Outcomes::integer (interval, "Exciter interval must be a whole number of samples.")
+                Error why => Error(message = why)
                 Success every => Exciters::configure (ExciterConfig(strength = strength, duration = frames, interval = every, excitation = shape))
 
     excitationSettings (snapshot, identity) = RenderInputs::setting (snapshot, identity, "strength", \strength => RenderInputs::setting (snapshot, identity, "duration", \duration => RenderInputs::setting (snapshot, identity, "interval", \interval => RenderInputs::setting (snapshot, identity, "excitation", \kind => RenderInputs::setting (snapshot, identity, "colour", \colour => exciterConfig (strength, duration, interval, kind, colour))))))
@@ -58,8 +58,8 @@ module PhysicalKernels
 
     bodied (selector, count, shape) = match body selector
         Error why => Error(message = why)
-        Success modes => match floatToInt count
-            Error _ => Error(message = InvalidConfiguration(detail = "Mode count must be a whole number."))
+        Success modes => match Outcomes::integer (count, "Mode count must be a whole number.")
+            Error why => Error(message = why)
             Success whole => Success(value = shape (modes, whole))
 
     modalSettings (rate, snapshot, identity) = RenderInputs::setting (snapshot, identity, "body", \selector => RenderInputs::setting (snapshot, identity, "modes", \count => RenderInputs::setting (snapshot, identity, "frequency", \frequency => RenderInputs::setting (snapshot, identity, "decay", \decay => RenderInputs::setting (snapshot, identity, "brightness", \brightness => RenderInputs::setting (snapshot, identity, "strike", \strike => bodied (selector, count, \(modes, whole) => ModalConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, strike = strike, count = whole, modes = modes))))))))

@@ -414,3 +414,11 @@ test ("one macro moves two knobs on opposite curves and refuses either endpoint 
 test ("quarter-cycle partials retain phase on retrigger and agree with prepared coefficients", \() => arithmetic partialJourney)
 
 test ("changing a playing sample's gain and speed affects the exact addressed audio frame", \() => arithmetic sampleControlJourney)
+
+test ("spectral controls select all morph modes, shift an octave with independent formants, and refuse fractional selectors", \() => arithmetic spectralControlJourney)
+
+test ("a sampled strike subtracts its integer or fractional echo and mono routes preserve or mute the impulse", \() => arithmetic strikeRouteJourney)
+
+test ("physical instruments reject fractional burst lengths, repeat intervals and mode counts", \() => arithmetic physicalCountJourney)
+
+test ("replacing a live delay resets its storage, retains oscillator state and refuses a fresh grain clock", \() => arithmetic rebaseJourney)
