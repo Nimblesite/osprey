@@ -23,7 +23,7 @@ The original `codex/prism-synth-routing` work merged as PR #412. Completion cont
 ## Timeline, track patches and bus routing [PRISM-ROUTING-TIMELINE]
 
 - [x] Register the [six design screenshots and interaction contract](../designs/prism-timeline/README.md) and the [typed routing model](../designs/prism-timeline/routing.td) for the combined Prism DAW.
-- [ ] Open the same track from Timeline and Prism, with notes, track gain, pan, Master output and Space send backed by the arrangement. Verify track switching with a patch instrument and a built-in voice.
+- [x] Open a timeline track in Prism with its notes, gain, pan, output and Space send in the same arrangement. The track-opening journey exercises built-in and patched voices, and the project JSON journey reopens their mix and timeline.
 - [x] Create, cancel, edit and remove independent sends from internal mono and stereo outlets to named groups through the native Routing menu. The host journey verifies the complete saved project, and the audio journey sums two pre-fader taps from one note evaluation. [DAW-MIX-BUS-TAP]
 - [x] Browse every internal send from the Mix graph or Routing menu. The native host opens and edits the fourth of four sends on a single outlet, verifies both pages, cancels a draft and checks that removing one tap retains all siblings. [DAW-MIX-BUS-TAP]
 - [x] Route group outputs through other groups to Master. Validate missing destinations and cycles before saving. Both declaration orders produce the same stereo samples, and muting the downstream group silences the path. [DAW-MIX-BUS-OUTPUT]

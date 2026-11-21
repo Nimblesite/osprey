@@ -123,6 +123,15 @@ fn menu_bar(regions: &mut Regions) {
     }
 }
 
+fn choose_menu(regions: &mut Regions, title: &str, label: &str) {
+    let menus = menus_of(regions);
+    let event = menus.iter().find(|menu| menu.title == title)
+        .and_then(|menu| menu.commands.iter().find(|item| item.label == label && item.enabled))
+        .unwrap_or_else(|| panic!("missing enabled {title} > {label}")).event;
+    let shown = Library::event(0, &Touch::control(event, "")).expect("dispatch menu command");
+    regions.adopt(&shown).expect("adopt the command's workspace");
+}
+
 fn named_control(node: &Tree, kind: &str, label: &str) -> Option<i64> {
     match node {
         Tree::Record(fields) => {
@@ -255,6 +264,12 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
         {"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabled":true}
     ]);
     assert_eq!(read(), expected, "keysL keeps its dry group, Space send, notes and patch cables");
+    choose_menu(regions, "Edit", "Undo");
+    let mut dry = expected.clone();
+    dry["tracks"][5]["sends"] = serde_json::json!([]);
+    assert!(read() == dry, "Undo removes only the new internal send");
+    choose_menu(regions, "Edit", "Redo");
+    assert!(read() == expected, "Redo restores its outlet, destination, level and enabled state");
     let (pads, _) = point(canvas, (665.0, 251.0), true);
     assert!(shows_label(&pads, "4 tracks"), "pads receives glow, tablepad, keysR and the new keysL outlet");
     point(canvas, (665.0, 251.0), false);
@@ -367,9 +382,10 @@ fn pitch_label_fits(shown: &Shown) {
 }
 
 /// [DAW-PIANO-DRAG] Drag the stem and note on the canvas, preserving the rest of the project.
-fn drag_piano_note(canvas: i64, song: &std::path::Path) {
+fn drag_piano_note(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     let read = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(song).expect("read project")).expect("project JSON");
     let mut expected = read();
+    let original = expected.clone();
     let index = expected["tracks"][5]["notes"].as_array().expect("keysL notes").iter()
         .position(|n| n["start"] == 33.0 && n["pitch"] == 80).expect("G-sharp at beat 33");
     point(canvas, (380.0, 391.0), true);
@@ -383,6 +399,7 @@ fn drag_piano_note(canvas: i64, song: &std::path::Path) {
     point(canvas, (255.0, 883.25), false);
     expected["tracks"][5]["notes"][index]["velocity"] = 0.25.into();
     assert!(read() == expected, "releasing the stem changes only the grabbed G-sharp to 25%");
+    let softer = expected.clone();
     point(canvas, (218.0, 606.0), true);
     point(canvas, (247.0, 597.0), true);
     let (moved, _) = point(canvas, (282.625, 582.363636), true);
@@ -397,6 +414,25 @@ fn drag_piano_note(canvas: i64, song: &std::path::Path) {
     Library::event(0, &Touch::key(canvas, "escape", true)).expect("cancel drag");
     point(canvas, (346.0, 570.0), false);
     assert!(read() == expected, "Escape releases the captured note and discards the draft");
+    choose_menu(regions, "Transport", "Next Track");
+    choose_menu(regions, "View", "Track Patch");
+    let backup = song.with_extension("held");
+    std::fs::rename(song, &backup).expect("hold the saved project");
+    std::fs::create_dir(song).expect("make the project path unwritable as a file");
+    choose_menu(regions, "Edit", "Undo");
+    std::fs::remove_dir(song).expect("clear the failed save destination");
+    std::fs::rename(&backup, song).expect("restore the saved project");
+    assert!(read() == expected, "a failed history write preserves the saved project");
+    choose_menu(regions, "Edit", "Undo");
+    assert!(read() == softer, "Undo from a different patch restores the note's pitch and time on disk");
+    choose_menu(regions, "View", "Bus Routing");
+    choose_menu(regions, "Edit", "Undo");
+    assert!(read() == original, "one more Undo restores only the note's previous velocity");
+    choose_menu(regions, "Edit", "Redo");
+    assert!(read() == softer, "Redo from Mix restores the released stem");
+    choose_menu(regions, "View", "Timeline");
+    choose_menu(regions, "Edit", "Redo");
+    assert!(read() == expected, "Redo restores the complete saved project after navigating");
 }
 
 #[test]
@@ -428,7 +464,7 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
 
     menu_bar(&mut regions);
     create_group(&mut regions, canvas, &song);
-    drag_piano_note(canvas, &song);
+    drag_piano_note(&mut regions, canvas, &song);
 
     let mut costs = Vec::new();
     let mut drawn = std::collections::BTreeSet::new();

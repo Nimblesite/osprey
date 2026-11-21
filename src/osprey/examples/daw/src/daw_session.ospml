@@ -35,14 +35,14 @@ module DawSession
         Error _ => editor(message = "Pick a track first.")
         Success track => match daw::TrackPatches::patch track
             Error why => editor(track = index, message = "${track.name}: ${why}")
-            Success graph => editor(graph = graph, positions = track.positions, pluginBindings = [], past = [], future = [], gesture = [], selected = -1, source = -1, selectedCable = -1, dragging = -1, nextIdentity = satAdd (highest graph) 1, revision = satAdd editor.revision 1, track = index, patchTrack = index, page = PatchPage, message = "${track.name}'s patch.")
+            Success graph => editor(graph = graph, positions = track.positions, pluginBindings = [], gesture = [], selected = -1, source = -1, selectedCable = -1, dragging = -1, nextIdentity = satAdd (highest graph) 1, revision = satAdd editor.revision 1, track = index, patchTrack = index, page = PatchPage, message = "${track.name}'s patch.")
 
     (** Read and decode a song project; the session keeps its old song when this one is refused. *)
     export loaded (editor, path) = match readFile path
         Error why => editor(message = "Could not read ${path}: ${why}")
         Success source => match daw::SongFiles::decode source
             Error why => editor(message = "${path}: ${why}")
-            Success song => picked (editor(song = song, laneTraces = TimelineView::traces song, overview = Header::overview song, songPath = path, keyboardShown = false, track = 0, patchTrack = -1, rollBar = 0, page = TimelinePage), 0)
+            Success song => picked (editor(song = song, past = [], future = [], gesture = [], laneTraces = TimelineView::traces song, overview = Header::overview song, songPath = path, keyboardShown = false, track = 0, patchTrack = -1, rollBar = 0, page = TimelinePage), 0)
 
     stem path =
         parts = split (replace path "\\" "/" ?: path) "/" ?: [path]
@@ -193,6 +193,8 @@ module DawSession
         Error why => Error(message = "Could not save ${editor.songPath}: ${why}")
         Success _ => Success(value = editor(song = song, message = "Saved ${stem editor.songPath}.json."))
 
+    committed (editor, song) = synth::Outcomes::carried (written (editor, song), \next => Success(value = EditorHistory::project (editor, next)))
+
     (** Commit a mixer adjustment to the project after the fader is released. *)
     export adjusted (editor, index, gain, pan, reverb) = savedTrack (editor, index, daw::Projects::mixed (editor.song, index, gain, pan, reverb))
 
@@ -207,14 +209,14 @@ module DawSession
     (** Publish a validated routing edit to the open project. *)
     export savedTrack (editor, index, result) = match result
         Error why => ui::Runtime::step (editor(message = why))
-        Success song => match written (editor, song)
+        Success song => match committed (editor, song)
             Success next => ui::Runtime::step (next(track = index, outputEdit = OutputClosed, revision = satAdd next.revision 1))
             Error why => ui::Runtime::step (editor(message = why))
 
     (** Write the selected note's new velocity into its track in the same song file. *)
     export velocity (editor, value) = match daw::Projects::velocity (editor.song, editor.track, editor.selectedNote, value)
         Error why => ui::Runtime::step (editor(message = why))
-        Success song => match written (editor, song)
+        Success song => match committed (editor, song)
             Error why => ui::Runtime::step (editor(message = why))
             Success next => ui::Runtime::step (next(message = "Saved note velocity ${TimelineView::percent value}."))
 
@@ -223,13 +225,35 @@ module DawSession
         true => velocity (editor, note.velocity)
         false => match daw::Projects::editedNote (editor.song, editor.track, editor.selectedNote, \_ => note)
             Error why => ui::Runtime::step (editor(message = why))
-            Success song => match written (editor, song)
+            Success song => match committed (editor, song)
                 Error why => ui::Runtime::step (editor(message = why))
                 Success next => ui::Runtime::step (next(laneTraces = TimelineView::traces song, overview = Header::overview song, revision = satAdd next.revision 1))
 
     draft editor = match editor.patchTrack >= 0 && editor.songPath != ""
         true => daw::PatchRecords::savedAt (editor.song, editor.patchTrack, editor.graph, editor.positions)
         false => Success(value = editor.song)
+
+    // Undo from Patch may target a lane that was edited before it had ever been opened as a patch.
+    historyView (editor, song) =
+        ready = editor(song = song, laneTraces = TimelineView::traces song, overview = Header::overview song)
+        match ready.page == PatchPage && ready.patchTrack != ready.track
+            false => Success(value = ready)
+            true =>
+                next = opened (ready, ready.track)
+                match next.patchTrack == ready.track
+                    true => Success(value = next)
+                    false => Error(message = next.message)
+
+    (** Commit the file before advancing the history cursor. A failed save can be retried. *)
+    export restored (previous, candidate) = match candidate.songPath == "" || previous.revision == candidate.revision
+        true => Runtime::step candidate
+        false => match draft candidate
+            Error why => Runtime::step (previous(message = why))
+            Success song => match historyView (candidate, song)
+                Error why => Runtime::step (previous(message = why))
+                Success ready => match written (ready, song)
+                    Error why => Runtime::step (previous(message = why))
+                    Success saved => Runtime::step (saved(message = candidate.message))
 
     (** Save the current patch, timeline and mixer to the open project without switching views. *)
     export save editor = match editor.songPath == ""

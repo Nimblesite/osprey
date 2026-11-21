@@ -184,8 +184,6 @@ module EditorState
 
     (** One native or canvas action produces one immutable editor snapshot. *)
     export tapped (editor, action) = match action
-        Undo => EditorHistory::undo editor
-        Redo => EditorHistory::redo editor
         ShowModules => editor(paletteShown = !editor.paletteShown)
         ShowDetails => editor(detailsShown = !editor.detailsShown)
         ShowKeyboard => editor(keyboardShown = !editor.keyboardShown, armedNote = -1)

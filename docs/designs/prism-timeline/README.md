@@ -16,6 +16,8 @@ In Bus routing, keysL feeds Keys bus, which feeds pads. Selecting the group’s 
 
 On keysL, the Patch sends inspector shows four sends from the loss filter. Three are active and the 75% send to Keys bus is muted. Each entry opens its own saved route. The paging controls reach the fourth send while the track graph stays in view. [Patch sends in the native window](../../../src/osprey/examples/daw/screens/patch-sends.png)
 
+**Edit → Undo** and **Redo** follow the open project across all three pages. For example, move a note, open another track’s patch, then undo. The saved note returns to its previous pitch and time. A second Undo can restore its independently edited velocity. A refused save keeps the same edit available to retry.
+
 ## Patch controls [DAW-CONTROLS-DIAL]
 
 The panel and module card share the same Drive value on keysL’s Waveshaper 4. The example opens at 1.40×, with zero bias and an output level of 0.60. Curve selects a named shape. Antialiasing and oversampling are switches. The ports show the actual connection from Loss filter 3 through Waveshaper 4 to Output 5. [Design screenshot](patch-controls.png) · [Fine adjustment in the inspector](dial-detail.png) · [Interactive dial prototype](patch-controls.html)

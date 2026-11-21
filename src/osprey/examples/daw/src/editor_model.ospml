@@ -40,6 +40,11 @@ type CableCurve =
 
 type GraphSnapshot G =
     savedGraph : G
+    savedSong : daw::Arrangement
+    savedTrack : int
+    savedPatchTrack : int
+    savedTimelineNote : int
+    savedNextIdentity : int
     savedPositions : List<daw::NodePosition>
     savedBindings : List<PluginBinding>
     savedSelected : int

@@ -1,9 +1,9 @@
-// [PRISM-ROUTING-EDITOR] History stores editable patch state, never audio sessions or UI resources.
+// [PRISM-ROUTING-EDITOR] History stores the editable project and its working patch, never audio sessions or UI resources.
 namespace synth
 
-(** Bounded patch history, independent of runtime session ownership. *)
+(** Bounded project history, independent of runtime session ownership. *)
 module EditorHistory
-    snapshot editor = GraphSnapshot(savedGraph = editor.graph, savedPositions = editor.positions, savedBindings = editor.pluginBindings, savedSelected = editor.selected, savedNote = editor.note)
+    snapshot editor = GraphSnapshot(savedGraph = editor.graph, savedSong = editor.song, savedTrack = editor.track, savedPatchTrack = editor.patchTrack, savedTimelineNote = editor.selectedNote, savedNextIdentity = editor.nextIdentity, savedPositions = editor.positions, savedBindings = editor.pluginBindings, savedSelected = editor.selected, savedNote = editor.note)
 
     same (a, b) = structuralEquals (a.savedGraph, b.savedGraph) && structuralEquals (a.savedPositions, b.savedPositions) && structuralEquals (a.savedBindings, b.savedBindings)
 
@@ -18,21 +18,26 @@ module EditorHistory
 
     remaining frames = window (frames, 1, length frames)
 
-    restore (editor, frame) = editor(graph = frame.savedGraph, positions = frame.savedPositions, pluginBindings = frame.savedBindings, selected = frame.savedSelected, note = frame.savedNote, armedNote = -1, selectedCable = -1, source = -1, dragging = -1, wireDragging = false, paletteDrag = "", gesture = [], revision = satAdd editor.revision 1, layoutRevision = satAdd editor.layoutRevision 1)
+    restore (editor, frame) = editor(song = frame.savedSong, track = frame.savedTrack, lanePage = intDiv frame.savedTrack 7, patchTrack = frame.savedPatchTrack, selectedNote = frame.savedTimelineNote, nextIdentity = ui::Pick::either (editor.nextIdentity >= frame.savedNextIdentity, editor.nextIdentity, frame.savedNextIdentity), rollDrag = RollIdle, outputEdit = OutputClosed, graph = frame.savedGraph, positions = frame.savedPositions, pluginBindings = frame.savedBindings, selected = frame.savedSelected, note = frame.savedNote, armedNote = -1, selectedCable = -1, source = -1, dragging = -1, wireDragging = false, paletteDrag = "", gesture = [], revision = satAdd editor.revision 1, layoutRevision = satAdd editor.layoutRevision 1)
 
-    (** Restore the previous patch while keeping allocation identities monotonic. *)
+    (** Restore the preceding edit from any project view. *)
     export undo editor = match listGet editor.past 0
         Error _ => editor(message = "Nothing to undo.")
         Success frame =>
-            restored = restore (editor, frame)
-            restored(past = remaining editor.past, future = pushed (snapshot editor, editor.future), message = "Undid patch edit.")
+            next = restore (editor, frame)
+            next(past = remaining editor.past, future = pushed (snapshot editor, editor.future), message = "Undid edit.")
 
-    (** Restore an undone patch without reviving old host sessions. *)
+    (** Reapply the edit and its saved project state. *)
     export redo editor = match listGet editor.future 0
         Error _ => editor(message = "Nothing to redo.")
         Success frame =>
-            restored = restore (editor, frame)
-            restored(past = pushed (snapshot editor, editor.past), future = remaining editor.future, message = "Redid patch edit.")
+            next = restore (editor, frame)
+            next(past = pushed (snapshot editor, editor.past), future = remaining editor.future, message = "Redid edit.")
+
+    (** Only committed mixer, routing or note changes enter history. *)
+    export project (before, after) = match structuralEquals (before.song, after.song)
+        true => after
+        false => after(past = pushed (snapshot before, before.past), future = [])
 
     changed (before, after) = match same (before, snapshot after)
         true => after

@@ -26,6 +26,8 @@ module EditorApp
             false => Runtime::step (DawSession::loaded (opened, song))
 
     tapped (context, editor, action) = match action
+        Undo => DawSession::restored (editor, EditorHistory::undo editor)
+        Redo => DawSession::restored (editor, EditorHistory::redo editor)
         Strike note => match editor.renderContinuous || editor.renderTicket != ""
             true => Runtime::step (editor(armedNote = -1, message = "Stop playback before playing a new note."))
             false => strike (editor, note, context.platform)

@@ -42,7 +42,7 @@ type DevicePending<G,S> { deviceGraph: G deviceState: S deviceChannels: Int }
 type DeviceReceipt { acceptedFrames: Int returnedFrames: Int queuedFrames: Int deviceChannels: Int emptyCallbacks: Int deviceRunning: Bool }
 type CablePoint { x: Float y: Float }
 type CableCurve { sx: Float sy: Float dx: Float dy: Float }
-type GraphSnapshot<G> { savedGraph: G savedPositions: List<NodePosition> savedBindings: List<PluginBinding> savedSelected: Int savedNote: Int }
+type GraphSnapshot<G> { savedGraph: G savedSong: Arrangement savedTrack: Int savedPatchTrack: Int savedTimelineNote: Int savedNextIdentity: Int savedPositions: List<NodePosition> savedBindings: List<PluginBinding> savedSelected: Int savedNote: Int }
 # [DAW-PAGES] The daw's three views of one session: a track's patch, the timeline and the mix.
 # Skin marks classified once per role.
 type CardMarks { cardRole: String cardMarks: List<Stamp> }
