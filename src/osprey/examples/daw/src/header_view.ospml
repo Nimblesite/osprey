@@ -59,8 +59,8 @@ module Header
             Error _ => all
             Success a => listConcat all (tab (a, i, k)))
 
-    (** Play and Stop as hit areas named `play` and `stop`: two cells `cell` wide from `left`, `top`. *)
-    export transportAreas (left, top, cell, height, play, stop) = [TimelineView::area (play, left, top, cell, height, false), TimelineView::area (stop, left + cell, top, cell, height, false)]
+    // [DAW-TRANSPORT-STOP-IDLE] An idle Stop has no hit target.
+    export stopArea (running, label, left, top, width, height) = ui::Pick::either (running, [TimelineView::area (label, left, top, width, height, false)], [])
 
     divider (left, top, height) = TimelineView::box (left, top + 6.0, 1.0, height - 12.0, edge (), 13)
 
@@ -68,7 +68,7 @@ module Header
     playStop (left, top, cell, height, playing) =
         x = left + cell / 2.0
         y = top + height / 2.0
-        [divider (left + cell, top, height), Scenes::path ([ui::Polygon(corners = [x - 6.0, y - 8.5, x + 8.0, y, x - 6.0, y + 8.5], closed = true)], ui::Fill, paint (ui::Pick::either (playing, sounding (), TimelineView::ink ())), 13), TimelineView::box (x + cell - 6.5, y - 6.5, 13.0, 13.0, TimelineView::ink (), 13)]
+        [divider (left + cell, top, height), Scenes::path ([ui::Polygon(corners = [x - 6.0, y - 8.5, x + 8.0, y, x - 6.0, y + 8.5], closed = true)], ui::Fill, paint (ui::Pick::either (playing, sounding (), TimelineView::ink ())), 13), TimelineView::box (x + cell - 6.5, y - 6.5, 13.0, 13.0, ui::Pick::either (playing, TimelineView::ink (), edge ()), 13)]
 
     (** The transport group over those cells: Play and Stop on one plate. *)
     export transport (left, top, cell, height, playing) = listConcat (plaque (left, top, cell * 2.0, height, Scenes::rgb (27, 23, 50), 11)) (playStop (left, top, cell, height, playing))
@@ -86,7 +86,7 @@ module Header
 
     songTransport editor =
         x = 1277.0 + 46.5 / 2.0
-        listConcat (listConcat (plaque (1277.0, 80.0, 139.5, 43.0, Scenes::rgb (27, 23, 50), 11)) [divider (1323.5, 80.0, 43.0), TimelineView::box (x - 8.0, 93.0, 2.5, 17.0, TimelineView::ink (), 13), Scenes::path ([ui::Polygon(corners = [x + 8.0, 93.0, x - 4.5, 101.5, x + 8.0, 110.0], closed = true)], ui::Fill, paint (TimelineView::ink ()), 13)]) (playStop (1323.5, 80.0, 46.5, 43.0, DawSession::phase editor != "Stopped"))
+        listConcat (listConcat (plaque (1277.0, 80.0, 139.5, 43.0, Scenes::rgb (27, 23, 50), 11)) [divider (1323.5, 80.0, 43.0), TimelineView::box (x - 8.0, 93.0, 2.5, 17.0, TimelineView::ink (), 13), Scenes::path ([ui::Polygon(corners = [x + 8.0, 93.0, x - 4.5, 101.5, x + 8.0, 110.0], closed = true)], ui::Fill, paint (TimelineView::ink ()), 13)]) (playStop (1323.5, 80.0, 46.5, 43.0, editor.songTicket != ""))
 
     caps (words, left, top) = TimelineView::label (words, left, top, 10.0, TimelineView::dim (), 0, 3)
 
@@ -186,7 +186,7 @@ module Header
         to start, Play and Stop once one is. *)
     export songAreas editor = match length editor.song.tracks
         0 => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, [emptyArea ()]))
-        _ => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, listConcat [TimelineView::area ("Return to start", 1277.0, 80.0, 46.5, 43.0, false)] (listConcat (transportAreas (1323.5, 80.0, 46.5, 43.0, "Play", "Stop")) [TimelineView::area ("Loop", 1222.0, 80.0, 46.5, 43.0, editor.looping), TimelineView::area ("Edit BPM", 870.0, 73.0, 83.0, 55.0, false), TimelineView::area ("Edit meter", 960.0, 73.0, 83.0, 55.0, false)])))
+        _ => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, listConcat [TimelineView::area ("Return to start", 1277.0, 80.0, 46.5, 43.0, false), TimelineView::area ("Play", 1323.5, 80.0, 46.5, 43.0, false), TimelineView::area ("Loop", 1222.0, 80.0, 46.5, 43.0, editor.looping), TimelineView::area ("Edit BPM", 870.0, 73.0, 83.0, 55.0, false), TimelineView::area ("Edit meter", 960.0, 73.0, 83.0, 55.0, false)] (stopArea (editor.songTicket != "", "Stop", 1370.0, 80.0, 46.5, 43.0))))
 
     (** The command behind header area `index` of a song page. *)
     export songAction (editor, index) = match index < 3
@@ -196,8 +196,8 @@ module Header
             _ => match index
                 3 => PickTrack(index = editor.track, bar = 0)
                 4 => PlaySong
-                5 => StopSong
-                6 => ToggleLoop
+                5 => ToggleLoop
+                8 => StopSong
                 _ => EditTiming
 
     (** The part of a song page that stays at the window's edge: the background and the top bar with the name

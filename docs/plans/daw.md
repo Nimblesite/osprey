@@ -74,7 +74,7 @@ Every issue the user raised while testing Prism by hand, with where it is tracke
 | 19 | Open track patches in a separate window and close them while the song keeps playing | [DAW-PAGES-PATCH-WINDOW] | Open. Verify both window close and the focused Close command from Timeline and Bus Routing |
 | 20 | Quit in the application menu leaves Prism running | [DAW-PAGES-PATCH-WINDOW] | Fixed on macOS in `0af119f64`. The native Quit command exited a disposable instance with status zero |
 | 21 | Play asks for a song even though a project is already open | [DAW-TRANSPORT-REFUSAL] | Fixed (`757b36f2d`), test first: with a song open and no renderer, Play and Render say Prism was launched without its song renderer; with no song they say to open one; while playing they say to stop first. The project is kept. The transport journey, run alone, was red before and passes after. [Issue 425](https://github.com/Nimblesite/osprey/issues/425) stays open until the user sees it in a release build |
-| 22 | Stop appears active when the transport is idle | [DAW-TRANSPORT-STOP-IDLE] | Open. Verify the drawn control, its hit target and the menu across play, end and cancellation |
+| 22 | Stop appears active when the transport is idle | [DAW-TRANSPORT-STOP-IDLE] | Fixed. The song and patch Stop controls dim and lose their hit targets when idle. |
 | 23 | A track needs as many internal routes and sends as the project requires | [DAW-GRAPH-SUBGRAPH] | Open. Exercise branching, merging and routing into several buses using the shared node editor. Save and reopen the full graph and timeline from one project JSON file |
 | 24 | The example music sounds too simple | [DAW-DEMO-SOUND] | Open. Hand-author the Silt Relay arrangement and patches, exercise the synth module palette, render the master and listen through its section changes. The team is revisiting the other demo songs too Violet Static is finished in `0f67e51a0`. Its 48 kHz stereo master runs 55.657 seconds at −10.9 LUFS with a −0.9 dB true peak. |
 | 25 | The Scope is useless inside the patch. The user must see a track's sound from the main view, perhaps not as a node at all but as a panel shown when a track or channel is selected, and it must say whether the sound hits the right frequencies for what it is | [DAW-ANALYSIS-TRACK] | Open |
@@ -90,7 +90,7 @@ Every issue the user raised while testing Prism by hand, with where it is tracke
 | 35 | The patch screens need zoom and pan | [DAW-LAYOUT-FILL] | Open. Zoom is the user's own setting, never the window's size |
 | 36 | Play takes too long to start, then plays a few bars and stops | [DAW-TRANSPORT-LIVE-SPEED] | Cause found in the running system: every song opened and every Play started twelve note makers that were never ended, so 30 and more of them ran at once (load average 258) and starved the stream. Fixed in the app code: one maker for every three cores at the lowest priority, the makers of a Play end with it, and opening another song or pressing Play ends the song's earlier makers. Open: a song whose notes are not made yet still starts rough; not yet heard by the user |
 | 37 | Parameter names overlap the dial and the value in the patch inspector ("Transform (0 pass, 1 freeze, …") | [DAW-INSPECTOR] | Fixed in `92ab7207b`. The [Spectral inspector](../designs/prism-timeline/native-review/spectral-controls.webp) shows the current transform by name. The native journey selected freeze from all seven named options and checked the saved value in the project. |
-| 38 | Found by the lead while fixing 28, not yet reported by the user: selecting a track moves the start marker to that track's first bar, and a second Stop moves it to bar 1, because one field (`rollBar`) is both the piano roll's bar and Play's start | [DAW-TRANSPORT-RANGE] | Open. Give Play's start its own field so only the user moves it; 18 test lines read `rollBar` |
+| 38 | Found by the lead while fixing 28, not yet reported by the user: selecting a track moves the start marker to that track's first bar, because one field (`rollBar`) is both the piano roll's bar and Play's start | [DAW-TRANSPORT-RANGE] | Open. Give Play's start its own field so only the user moves it; 18 test lines read `rollBar` |
 | 39 | The four wavetable modulation inputs shared one socket in the track patch | [PRISM-ROUTING-CABLES] | Fixed. Multi-input control sockets sit 34 points apart with independent 28-point hit targets. The native journey wires a single LFO to position, amplitude, pitch and phase, saves and reopens the project, moves the wavetable and reopens it again. It verifies all four cable destinations from the project JSON and the restored position of every inlet. The former build lost the cable to inlet 1. |
 
 Found while fixing these:
@@ -198,7 +198,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] **Play bars** names the two-bar transport. **Save project** writes the current patch without leaving its page.
 - [x] Stop cancels the FerroUI transport process group. Native Play → Stop left no renderer and a zero-byte WAV. The host process tests also exercise descendant cancellation.
 - [ ] The renderer is faster than real time: see [DAW-TRANSPORT-LIVE] at the top of this plan.
-- [ ] **Stop is disabled when nothing plays ([DAW-TRANSPORT-STOP-IDLE]).** Reported by the user on 21 Nov: the transport's Stop button looks and acts enabled while no audio is playing. It must be drawn disabled and ignore taps until Play starts sound or a render, and go back to disabled when playback ends or is cancelled. Needs a journey test that taps Stop while idle and checks nothing changes, then checks Stop is enabled while playing and disabled again afterwards.
+- [x] **Stop is disabled when nothing plays ([DAW-TRANSPORT-STOP-IDLE]).** Stop preserves the playhead and selection while idle. The GC and ARC transport journey checks the hit target during playback, rendering and patch startup, and after cancellation and natural completion.
 
 ## One graph [DAW-GRAPH]
 
@@ -216,7 +216,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 
 - [x] Play bars and Stop from the Timeline.
 - [x] Playhead at bar resolution (`Editor.rollBar` in daw.td): a line down the lanes with its handle on the ruler and its position shown; tapping the ruler moves it and keeps the track. Tested in the transport journey.
-- [x] Play bars starts at the playhead. Stop halts; Stop again returns the playhead to bar 1.
+- [x] Play bars starts at the playhead. Stop halts. Return to Start moves the playhead to bar 1.
 - [ ] Playhead in beats, saved in the project file.
 - [ ] Range markers, Loop and the following playhead: see [DAW-TRANSPORT-LIVE] at the top of this plan.
 

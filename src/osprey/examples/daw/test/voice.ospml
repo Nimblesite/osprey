@@ -243,7 +243,8 @@ prismIntegratedJourney () =
     opened = editorLaunched []
     expect (length (Drive::holding opened).graph.nodes, 5)
     cablesOf (opened, 4)
-    forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Play patch", "Stop playback", "Undo", "Redo", "Timeline", "Track patch", "Bus routing"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), true))
+    expect (Semantics::offered (opened.drivenSeen.renderedAccess, "Stop playback"), false)
+    forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Play patch", "Undo", "Redo", "Timeline", "Track patch", "Bus routing"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), true))
     forEachList (["Patch controls", "Audition patch", "Keyboard", "Save project"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), false))
     cutoff = Semantics::point (Semantics::element (opened.drivenSeen.renderedAccess, "Filter Cutoff"), 0.5)
     changed = clickAt (opened, cutoff.pointX, cutoff.pointY)

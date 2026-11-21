@@ -286,7 +286,7 @@ module DawSession
 
     (** Stop the render or the playback in flight; the playhead returns to the start marker. *)
     export stop editor = match editor.songTicket == ""
-        true => Runtime::step (editor(rollBar = 0, selectedNote = -1, message = "Nothing is playing; the playhead is back at bar 1."))
+        true => Runtime::step editor
         false => Runtime::asking (editor(songTicket = "", playBeat = -1.0, playClock = 0.0, message = "Stopped."), [Requests::ask ("daw-song:stop", ui::Cancel(cancelled = editor.songTicket)), clock false])
 
     (** Ask for a song project to open. *)

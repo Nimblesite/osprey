@@ -1212,9 +1212,9 @@ barLineJourney ready =
     succeeds (synth::TimelineView::laneAt (lined, 868.5, 200.0), \action => playheadSet (lined, action, 3))
     succeeds (synth::TimelineView::laneAt (lined, 1085.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 3)))
     // [DAW-HEADER] The header holds the page tabs and the transport; every other command is in the menu bar.
-    forEachList (["Timeline", "Track patch", "Bus routing", "Return to start", "Play", "Stop"], \label => expect (length (labelled (ready, label)), 1))
-    forEachList (["Render song", "Open song", "Save project", "Keyboard", "Play bars"], \label => expect (length (labelled (ready, label)), 0))
-    expect (length (synth::TimelineView::headerAreas ready), 7)
+    forEachList (["Timeline", "Track patch", "Bus routing", "Return to start", "Play"], \label => expect (length (labelled (ready, label)), 1))
+    forEachList (["Render song", "Open song", "Save project", "Keyboard", "Play bars", "Stop"], \label => expect (length (labelled (ready, label)), 0))
+    expect (length (synth::TimelineView::headerAreas ready), 8)
     // The song overview has one column per bar of the song.
     expect (length (synth::Header::overview lined.song), 4)
     expect (length (synth::Header::overview (timeline [])), 1)
@@ -1222,7 +1222,28 @@ barLineJourney ready =
     expect (synth::TimelineGeometry::playableBar (8.0, 0.0, 4.0), 0.0)
     expect (synth::Header::songAction (ready(track = 0), 3), synth::PickTrack(index = 0, bar = 0))
     expect (synth::Header::songAction (ready, 4), synth::PlaySong)
-    expect (synth::Header::songAction (ready, 5), synth::StopSong)
+
+// [DAW-TRANSPORT-STOP-IDLE]
+songStopAt editor = synth::EditorView::areaAt (synth::Header::songAreas editor, 1390.0 + synth::Header::shift editor, 100.0)
+
+stopJourney ready =
+    idle = ready(rollBar = 4, selectedNote = 1)
+    stopped = synth::DawSession::stop idle
+    expect (stopped.stepStore.rollBar, 4)
+    expect (stopped.stepStore.selectedNote, 1)
+    expect (stopped.stepStore.message, idle.message)
+    expect (songStopAt idle, -1)
+    live = idle(songTicket = "daw-song:live:project")
+    expect (synth::Header::songAction (live, songStopAt live), synth::StopSong)
+    expect (songStopAt (synth::DawSession::stop live).stepStore, -1)
+    expect (songStopAt (idle(renderDeviceKey = "audition")), -1)
+    ended = synth::DawSession::completed (live, live.songTicket, rendererSaid "")
+    expect (songStopAt ended.stepStore, -1)
+    bounce = idle(songTicket = "daw-song:bounce:project")
+    expect (synth::Header::songAction (bounce, songStopAt bounce), synth::StopSong)
+    expect (synth::EditorView::toolbarAt (idle, 900.0, 32.0) ?: -1, -1)
+    patch = idle(renderTicket = "opening")
+    expect (synth::EditorView::toolbarAction (synth::EditorView::toolbarAt (patch, 900.0, 32.0) ?: -1), synth::StopGraph)
 
 transportJourney () =
     liveDialJourney ()
@@ -1231,6 +1252,7 @@ transportJourney () =
     _bin = makeDir "${transportRoot}/bin"
     editor = synth::EditorState::initial ()
     ready = editor(song = song (), songPath = "${transportRoot}/song.json", renderer = "${transportRoot}/bin/daw", workerPath = "${transportRoot}/bin/worker", rollBar = 1)
+    stopJourney ready
     expect (ready.playBeat, -1.0)
     // [DAW-TRANSPORT-REFUSAL] Each refusal names its own cause and keeps the project.
     said (synth::DawSession::play (ready(renderer = "")), "", "Prism was launched without its song renderer, so it cannot play or render this song.")
@@ -1269,14 +1291,14 @@ transportJourney () =
     expect (synth::DawSession::phase stopped.stepStore, "Stopped")
     loopJourney ready
     rangeJourney ready
-    expect (synth::Header::songAction (ready, 6), synth::ToggleLoop)
+    expect (synth::Header::songAction (ready, 5), synth::ToggleLoop)
     held = stopped.stepStore
     auditioning = held(renderDeviceKey = "device")
     expect (synth::DawSession::phase auditioning, "Auditioning")
     home = synth::DawSession::stop stopped.stepStore
-    said (home, "", "Nothing is playing; the playhead is back at bar 1.")
+    said (home, "", stopped.stepStore.message)
     expect (stopped.stepStore.rollBar, 5)
-    expect (home.stepStore.rollBar, 0)
+    expect (home.stepStore.rollBar, 5)
     succeeds (synth::TimelineView::laneAt (ready, 205.0, 205.0), \action => playheadSet (ready, action, 0))
     succeeds (synth::TimelineView::laneAt (ready, 1085.0, 200.0), \action => playheadSet (ready, action, synth::DawSession::bar (ready.song, daw::Arrangements::beats ready.song)))
     failsWith (synth::TimelineView::laneAt (ready, 197.0, 205.0), "No lane here.")

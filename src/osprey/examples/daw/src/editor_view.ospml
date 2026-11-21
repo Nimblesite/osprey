@@ -381,18 +381,20 @@ module EditorView
 
     // [DAW-HEADER] The Patch page's header: the shared tabs, the transport and Add module. Every other command
     // is in the window's menu bar ([DAW-MENU]).
-    toolbar editor = listConcat (listConcat (listConcat (Header::patchSubtitle editor) (Header::tabs (editor, Header::patchScale ()))) (Header::transport (826.0, 14.0, 50.0, 38.0, editor.renderDeviceKey != ""))) (listAppend (Header::plaque (943.0, 14.0, 134.0, 38.0, Scenes::rgb (52, 41, 110), 11)) (Scenes::lettering ("+  Add module", 1010.0, 25.0, 14.0, Scenes::rgb (240, 236, 255), 1, 500.0, 13)))
+    toolbar editor = listConcat (listConcat (listConcat (Header::patchSubtitle editor) (Header::tabs (editor, Header::patchScale ()))) (Header::transport (826.0, 14.0, 50.0, 38.0, GraphPreview::active editor))) (listAppend (Header::plaque (943.0, 14.0, 134.0, 38.0, Scenes::rgb (52, 41, 110), 11)) (Scenes::lettering ("+  Add module", 1010.0, 25.0, 14.0, Scenes::rgb (240, 236, 255), 1, 500.0, 13)))
 
-    toolbarItems editor = listConcat (listConcat [accessible ("Modules", 943.0, 14.0, 134.0, 38.0, editor.paletteShown)] (Header::transportAreas (826.0, 14.0, 50.0, 38.0, "Play patch", "Stop playback"))) (listConcat [accessible ("Undo", rightX (editor, 1108.0), 15.0, 40.0, 37.0, false), accessible ("Redo", rightX (editor, 1160.0), 15.0, 40.0, 37.0, false)] (Header::tabAreas (editor, Header::patchScale ())))
+    toolbarItems editor =
+        buttons = [accessible ("Modules", 943.0, 14.0, 134.0, 38.0, editor.paletteShown), accessible ("Play patch", 826.0, 14.0, 50.0, 38.0, false), accessible ("Undo", rightX (editor, 1108.0), 15.0, 40.0, 37.0, false), accessible ("Redo", rightX (editor, 1160.0), 15.0, 40.0, 37.0, false)]
+        listConcat buttons (listConcat (Header::tabAreas (editor, Header::patchScale ())) (Header::stopArea (GraphPreview::active editor, "Stop playback", 876.0, 14.0, 50.0, 38.0)))
 
     (** The command behind header area `index` of the Patch page. *)
     export toolbarAction index = match index
         0 => ShowModules
         1 => PlayGraph
-        2 => StopGraph
-        3 => Undo
-        4 => Redo
-        _ => ShowPage(page = Header::tabPage (satSub index 5))
+        2 => Undo
+        3 => Redo
+        7 => StopGraph
+        _ => ShowPage(page = Header::tabPage (satSub index 4))
 
     (** The header area under a point of the Patch page, if any. *)
     export toolbarAt (editor, x, y) = listGet (filterList (toList (range (0, length (toolbarItems editor))), \i =>
@@ -464,8 +466,8 @@ module EditorView
 
     menus editor =
         song = length editor.song.tracks > 0
-        playing = DawSession::phase editor != "Stopped" && DawSession::phase editor != "Auditioning"
-        sounding = editor.renderDeviceKey != "" || editor.renderContinuous || editor.renderTicket != ""
+        playing = editor.songTicket != ""
+        sounding = GraphPreview::active editor
         last = satSub (length editor.song.tracks) 1
         [
             Ui::section ("File", "", [command (editor, "Settings…", "settings", true, ShowSettings), command (editor, "Open Song…", "open", true, OpenTrack(index = -2)), command (editor, "Save", "save", true, SaveProject), command (editor, "Render Song", "render", song, RenderSong)]),

@@ -59,6 +59,8 @@ module GraphPreview
         true => problem (editor, "Launch Prism with its packaged audio worker to play continuously.")
         false => begin (editor, platform, true)
 
+    export active editor = editor.renderDeviceKey != "" || editor.renderContinuous || editor.renderTicket != ""
+
     (** An in-flight request must complete before its newly opened handle can be released. *)
     export stop editor = match editor.renderTicket == ""
         true => GraphWorkers::release (Runtime::step (editor(message = "Playback stopped.")))
