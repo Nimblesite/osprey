@@ -145,8 +145,7 @@ pub fn signal_dependencies(
     let types = crate::check::infer_checked(program)?;
     let mut static_effects = StaticEffects::default();
     walk_program(program, &mut static_effects);
-    Ok(types
-        .function_effects
+    Ok(std::sync::Arc::unwrap_or_clone(types.function_effects)
         .into_iter()
         .map(|(name, requirements)| {
             (

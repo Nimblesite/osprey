@@ -263,9 +263,9 @@ mod tests {
 
     /// Constructor layouts registered under their own owners.
     fn types_with(ctors: impl IntoIterator<Item = CtorLayout>) -> ProgramTypes {
+        let ctors = ctors.into_iter().map(|ctor| (ctor.owner.clone(), ctor));
         let mut prog = ProgramTypes::default();
-        prog.ctors
-            .extend(ctors.into_iter().map(|ctor| (ctor.owner.clone(), ctor)));
+        prog.ctors = std::sync::Arc::new(ctors.collect());
         prog
     }
 

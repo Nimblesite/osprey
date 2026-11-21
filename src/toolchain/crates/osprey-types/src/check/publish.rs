@@ -133,21 +133,21 @@ pub(super) fn publish_program(
     }));
     ProgramTypes {
         obligations: Arc::new(publish_obligations(&mut checker)),
-        methods: crate::methods::collect(program, &checker.methods),
-        functions,
-        signal_queries: checker.signal_queries.clone(),
-        function_effects: checker.function_effects.clone(),
-        ctors,
-        unions,
-        effects,
+        methods: crate::methods::collect(program, &checker.methods).into(),
+        functions: functions.into(),
+        signal_queries: checker.signal_queries.clone().into(),
+        function_effects: checker.function_effects.clone().into(),
+        ctors: ctors.into(),
+        unions: unions.into(),
+        effects: effects.into(),
         lambdas,
         lets,
         source_lets,
         binders: Arc::new(checker.binder_tys.resolved(|ty| checker.ctx.apply(ty))),
         lists,
-        performs,
-        handler_ops,
-        capabilities: published_capabilities(&checker),
+        performs: performs.into(),
+        handler_ops: handler_ops.into(),
+        capabilities: published_capabilities(&checker).into(),
         call_bindings: Arc::new(call_bindings),
         applications: checker
             .application_tys
@@ -174,7 +174,8 @@ pub(super) fn publish_program(
                         .collect(),
                 )
             })
-            .collect(),
+            .collect::<HashMap<_, _>>()
+            .into(),
     }
 }
 /// Publish constructor fields using the common erased binder numbering.

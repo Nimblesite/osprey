@@ -130,7 +130,8 @@ pub use check::{
 pub use effect_rows::LibraryExports;
 pub use error::TypeError;
 pub use info::{
-    CtorLayout, EffectRequirements, HandlerSite, OpType, PerformSite, ProgramTypes, SiteTable,
+    CtorLayout, EffectRequirements, HandlerSite, Named, OpType, PerformSite, ProgramTypes,
+    SiteTable, Typed,
 };
 pub use redundant::{
     redundant_annotation_sites, redundant_annotation_sites_for, redundant_annotation_sites_where,

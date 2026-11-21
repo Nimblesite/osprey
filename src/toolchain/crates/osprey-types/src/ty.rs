@@ -239,12 +239,18 @@ fn map_type_fields(
 /// mark of a polymorphic signature that must be specialised per use.
 #[must_use]
 pub fn has_type_var(ty: &Type) -> bool {
+    any_type_var(ty, &|_| true)
+}
+
+/// Whether `ty` mentions a type variable that `found` accepts.
+pub(crate) fn any_type_var(ty: &Type, found: &impl Fn(VarId) -> bool) -> bool {
+    let any = |types: &[Type]| types.iter().any(|ty| any_type_var(ty, found));
     match ty {
-        Type::Var(_) => true,
-        Type::Con { args, .. } => args.iter().any(has_type_var),
-        Type::Fun { params, ret } => params.iter().any(has_type_var) || has_type_var(ret),
-        Type::Record { fields, .. } => fields.values().any(has_type_var),
-        Type::Union { variants, .. } => variants.iter().any(has_type_var),
+        Type::Var(var) => found(*var),
+        Type::Con { args, .. } => any(args),
+        Type::Fun { params, ret } => any(params) || any_type_var(ret, found),
+        Type::Record { fields, .. } => fields.values().any(|ty| any_type_var(ty, found)),
+        Type::Union { variants, .. } => any(variants),
     }
 }
 
