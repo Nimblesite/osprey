@@ -56,6 +56,8 @@ Every issue the user raised while testing Prism by hand, with where it is tracke
 | 28 | The start and end markers must move independently | [DAW-TRANSPORT-RANGE] | Fixed in the app code: either marker is taken by its handle or anywhere down its line, in the ruler or the lanes, and drags alone; the start stops one bar before the end and the end one bar after the start. Before, only the end had a handle (a 14-unit band on the ruler) and a press anywhere else moved the start. Not yet seen by the user; journey test owed |
 | 29 | Tapping a key on the piano roll's keyboard does nothing. It must play that note through the track's patch | [DAW-ROLL-KEYS] | Fixed in the app code (5a9f73628): a press on a key sounds that pitch through the selected track's patch. Not yet heard by the user; journey test owed |
 | 30 | Delete the Connections list in the patch inspector: the cables already show it | [DAW-INSPECTOR] | Done: the list and its heading are gone; the tests expect no connection rows |
+| 31 | The app shows a generic icon in the Dock | [DAW-MACOS-ICON] | Fixed in `19a98d9f7` (prism-routing-design): the Prism icon is restored on the real launch path and in Finder; the macOS packaging test passes |
+| 32 | The patch inspector's knobs are too small and its rows too tight | [DAW-INSPECTOR] | In progress (prism-routing-design): row pitch 44 to 52, dial radius 13 to 16, whole-row hit targets, long captions split |
 
 Found while fixing these:
 
