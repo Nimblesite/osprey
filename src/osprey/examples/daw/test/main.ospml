@@ -843,6 +843,8 @@ playheadSet (editor, action, bar) = match action
 mixFromRow (editor, action, path) = match action
     synth::AdjustMix index gain pan =>
         expect (index, 1)
+        expect (gain, 2.0)
+        expect (pan, 0.0)
         changed = (synth::DawSession::adjusted (editor, index, gain, pan)).stepStore
         expect (changed.track, 1)
         fresh = synth::DawSession::loaded (editor, path)
@@ -872,8 +874,9 @@ saveJourney arrangement =
     patch = (synth::DawSession::shown (selected, synth::PatchPage)).stepStore
     expect (patch.patchTrack, 1)
     succeeds (daw::TrackPatches::picked (arrangement, 1), \graph => expect (structuralEquals (patch.graph, graph), true))
-    succeeds (synth::MixView::rowAt (reopened, 560.0, 290.0), \action => mixFromRow (reopened, action, path))
-
+    row = Semantics::element (synth::MixView::access reopened, "Mix track 2")
+    center = Semantics::point (row, 0.5)
+    succeeds (synth::MixView::rowAt (reopened, 242.5, center.pointY), \action => mixFromRow (reopened, action, path))
 
 
 projectJourney () =
