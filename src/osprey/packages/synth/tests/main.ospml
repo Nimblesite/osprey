@@ -412,3 +412,5 @@ test ("compressor reduction crosses the soft knee continuously and recovers on i
 test ("one macro moves two knobs on opposite curves and refuses either endpoint outside the declared range", \() => arithmetic macroGainJourney)
 
 test ("quarter-cycle partials retain phase on retrigger and agree with prepared coefficients", \() => arithmetic partialJourney)
+
+test ("changing a playing sample's gain and speed affects the exact addressed audio frame", \() => arithmetic sampleControlJourney)

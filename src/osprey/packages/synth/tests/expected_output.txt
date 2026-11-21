@@ -78,5 +78,6 @@ ok 77 - a delay line retains wall-clock history across sample-rate changes and p
 ok 78 - compressor reduction crosses the soft knee continuously and recovers on its release coefficient
 ok 79 - one macro moves two knobs on opposite curves and refuses either endpoint outside the declared range
 ok 80 - quarter-cycle partials retain phase on retrigger and agree with prepared coefficients
-1..80
-# tests=80 passed=80 failed=0 skipped=0
+ok 81 - changing a playing sample's gain and speed affects the exact addressed audio frame
+1..81
+# tests=81 passed=81 failed=0 skipped=0
