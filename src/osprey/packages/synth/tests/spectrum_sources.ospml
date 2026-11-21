@@ -51,7 +51,9 @@ modeRatio (body, index) = match body
 // Each struck body rings its first four modes at their ratios to 200 Hz, each within a cent.
 // A decaying mode beside its neighbours reads up to 0.25 cents off its Rayleigh ratio in a 7,192-sample window.
 modesHeld body =
-    s = renderedFrom ([Components::exciter (0, 7), Components::modalBank (1, 200.0, toFloat body), Components::output 2], 1000)
+    nodes = [Components::exciter (0, 7), Components::modalBank (1, 200.0, toFloat body), Components::output 2]
+    scheduleEdit (spectrumChain nodes, 1, "frequency", 370.0, 19)
+    s = renderedFrom (nodes, 1000)
     forEachList ([0.0, 1.0, 2.0, 3.0], \index =>
         mode = 200.0 * modeRatio (body, index)
         above ("body ${body} mode ${index} level", decibelsAt (s, mode), -60.0)

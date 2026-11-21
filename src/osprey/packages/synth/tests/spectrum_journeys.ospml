@@ -122,10 +122,12 @@ registerSpectrumJourneys () =
 
 setTo (n, pairs) = Patches::adjusted (n, mapList (pairs, \p => synth::ParameterValue(node = 0, key = p.key, value = p.value)))
 
-// 8,192 frames rendered through `nodes` in a chain, from `first` on.
-renderedFrom (nodes, first) =
+spectrumChain nodes =
     routes = mapList (toList (range (1, length nodes)), \i => Components::route (satSub i 1, 0, i, 0))
-    Sequences::drop ((blockOf (accepted (Patches::built (nodes, routes)), 8192)).samples, first)
+    accepted (Patches::built (nodes, routes))
+
+// 8,192 frames rendered through `nodes` in a chain, from `first` on.
+renderedFrom (nodes, first) = Sequences::drop ((blockOf (spectrumChain nodes, 8192)).samples, first)
 
 // The last 4,800 frames (10 Hz bins) of a sine at `frequency` through one processor.
 processedAt (processor, frequency) = renderedFrom ([Components::sine (0, frequency), processor, Components::output 2], 3392)

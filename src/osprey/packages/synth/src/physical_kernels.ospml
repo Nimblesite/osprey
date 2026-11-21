@@ -56,13 +56,22 @@ module PhysicalKernels
             false => Outcomes::carried (ModalBanks::configure config, \changed => playedBank (frame, held, input, config, changed, resonators))
         _ => Error(message = IncompatibleLayout(detail = "Modal bank requires resonator state."))
 
-    bodied (frame, held, input, selector, count, shape) = match body selector
+    bodied (selector, count, shape) = match body selector
         Error why => Error(message = why)
         Success modes => match floatToInt count
             Error _ => Error(message = InvalidConfiguration(detail = "Mode count must be a whole number."))
-            Success whole => modal (frame, held, input, shape (modes, whole))
+            Success whole => Success(value = shape (modes, whole))
 
-    modalBank (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "body", \selector => RenderInputs::bound (snapshot, held, "modes", \count => RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "brightness", \brightness => RenderInputs::bound (snapshot, held, "strike", \strike => bodied (frame, held, input, selector, count, \(modes, whole) => ModalConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, strike = strike, count = whole, modes = modes))))))))
+    modalSettings (rate, snapshot, identity) = RenderInputs::setting (snapshot, identity, "body", \selector => RenderInputs::setting (snapshot, identity, "modes", \count => RenderInputs::setting (snapshot, identity, "frequency", \frequency => RenderInputs::setting (snapshot, identity, "decay", \decay => RenderInputs::setting (snapshot, identity, "brightness", \brightness => RenderInputs::setting (snapshot, identity, "strike", \strike => bodied (selector, count, \(modes, whole) => ModalConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, strike = strike, count = whole, modes = modes))))))))
+
+    (** Resolve constant modal controls once per block, retaining the running resonator state. *)
+    export prepareModal (rate, snapshot, identity) = match modalSettings (rate, snapshot, identity)
+        Error _ => LivePhysical
+        Success config => FixedModal(config = config)
+
+    modalBank (rate, snapshot, frame, held, input, prepared) = match prepared
+        FixedModal config => modal (frame, held, input, config)
+        _ => Outcomes::carried (modalSettings (rate, snapshot, held.identity), \config => modal (frame, held, input, config))
 
     guideSettings (rate, snapshot, identity, capacity) = RenderInputs::setting (snapshot, identity, "frequency", \frequency => RenderInputs::setting (snapshot, identity, "decay", \decay => RenderInputs::setting (snapshot, identity, "brightness", \brightness => RenderInputs::setting (snapshot, identity, "dispersion", \dispersion => RenderInputs::setting (snapshot, identity, "pickup", \pickup => Waveguides::configure (WaveguideConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, dispersion = dispersion, pickup = pickup, capacity = capacity)))))))
 
@@ -97,7 +106,7 @@ module PhysicalKernels
     (** Process one routed input sample; non-physical processors are an explicit error. *)
     export process (rate, snapshot, frame, held, n, input, guide) = match n.processor
         Resonator => resonator (rate, snapshot, frame, held, input)
-        Modal => modalBank (rate, snapshot, frame, held, input)
+        Modal => modalBank (rate, snapshot, frame, held, input, guide)
         Waveguide capacity => waveguide (rate, snapshot, frame, held, input, capacity, guide)
         FractionalDelay _ => fractional (snapshot, frame, held, input)
         LossFilter => loss (snapshot, frame, held, input)

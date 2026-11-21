@@ -277,6 +277,8 @@ type PhysicalSchedule =
     LivePhysical
     FixedExciter
         config : ExciterConfig
+    FixedModal
+        config : ModalConfig
     FixedGuide
         coefficients : GuideCoefficients
     FixedShaper

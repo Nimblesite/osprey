@@ -117,6 +117,7 @@ module RenderKernels
     physical (rate, snapshot, n, fixed) = match fixed
         false => LivePhysical
         true => match n.processor
+            Modal => PhysicalKernels::prepareModal (rate, snapshot, n.identity)
             Exciter _ => PhysicalKernels::prepareExciter (snapshot, n.identity)
             Waveguide capacity => PhysicalKernels::prepare (rate, snapshot, n.identity, capacity)
             Shaper => EffectKernels::prepare (rate, snapshot, n.identity)
