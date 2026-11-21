@@ -204,6 +204,27 @@ theorem overlapReconstructs (ops : Ops α) (size hop sample : α) (products : Li
   rw [zero] at h
   exact h.trans ((congrArg (ops.times sample) normalized).trans one)
 
+/-- Smith (9.44), converse: reconstructing every constant input in the
+    production accumulator also reconstructs one, so its effective gains sum to one. -/
+theorem overlapNecessary (ops : Ops α) (size hop : α) (products : List α)
+    (unit : ∀ w, ops.times (ops.literal 1) w = w)
+    (reconstructs : ∀ sample, products.foldl (fun acc w => SpectralStreams.overlapped ops acc
+      (ops.times sample w) (SpectralStreams.overlapScale ops size hop)) (ops.literal 0) = sample) :
+    products.foldl (fun acc w => ops.plus acc (ops.times w (SpectralStreams.overlapScale ops size hop)))
+      (ops.literal 0) = ops.literal 1 := by
+  let scale := SpectralStreams.overlapScale ops size hop
+  have unchanged (xs : List α) (initial : α) :
+      xs.foldl (fun acc w => SpectralStreams.overlapped ops acc (ops.times (ops.literal 1) w) scale) initial =
+      xs.foldl (fun acc w => ops.plus acc (ops.times w scale)) initial := by
+    induction xs generalizing initial with
+    | nil => rfl
+    | cons w ws ih =>
+      simp only [List.foldl_cons]
+      change List.foldl _ (ops.plus initial (ops.times (ops.times (ops.literal 1) w) scale)) ws = _
+      rw [unit w]
+      exact ih _
+  exact (unchanged products (ops.literal 0)).symm.trans (reconstructs (ops.literal 1))
+
 /-- Puckette's finite additive sum, including DC and the source order of accumulation. -/
 theorem additiveSample (ops : Ops α) (partials : List (Harmonic α)) (position base : α) :
     Wavetables.value ops partials position base =
