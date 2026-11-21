@@ -72,7 +72,7 @@ safeSub (a, b) = exactArithmetic (\() => a - b)
 safeMul (a, b) = exactArithmetic (\() => a * b)
 safeDiv (a, b) = exactArithmetic (\() => a / b)
 
-// Cargo valuation has an explicit ceiling at the maximum representable credit value.
+(** Cargo valuation has an explicit ceiling at the maximum representable credit value. *)
 calculateCargoValue (amount, price) = satMul (amount, price)
 
 getShipStatus fuel = match fuel

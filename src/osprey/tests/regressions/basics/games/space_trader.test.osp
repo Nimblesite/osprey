@@ -75,7 +75,7 @@ fn safeSub(a, b) = exactArithmetic(fn() => a - b)
 fn safeMul(a, b) = exactArithmetic(fn() => a * b)
 fn safeDiv(a, b) = exactArithmetic(fn() => a / b)
 
-// Cargo valuation has an explicit ceiling at the maximum representable credit value.
+/// Cargo valuation has an explicit ceiling at the maximum representable credit value.
 fn calculateCargoValue(amount, price) = satMul(amount, price)
 
 fn getShipStatus(fuel) = match fuel {
