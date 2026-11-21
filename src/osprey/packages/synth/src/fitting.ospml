@@ -26,16 +26,19 @@ module Fitting
         true => p(initial = FitMath::denormalised (value, parameter.minimum, parameter.maximum))
         false => p
 
-    written (graph, parameters, values) = match parameters
-        [] => graph
-        [parameter, ...rest] => match values
-            [] => graph
-            [value, ...others] => written (graph(nodes = mapList (graph.nodes, \n => tuned (n, parameter, value))), rest, others)
+    invalidValues () = Error(message = InvalidConfiguration(detail = "Fitted values must match the parameters one-to-one and lie in [0, 1]."))
 
-    (** The graph with normalised values written into the fitted parameters; a length mismatch is an error. *)
-    export applied (graph, parameters, values) = match length parameters == length values && length (filterList (values, \v => v >= 0.0 && v <= 1.0)) == length values
-        false => Error(message = InvalidConfiguration(detail = "Fitted values must match the parameters one-to-one and lie in [0, 1]."))
-        true => Success(value = written (graph, parameters, values))
+    (** Recheck each target against the current patch before adopting its normalised value. *)
+    export applied (graph, parameters, values) = match parameters
+        [] => match values
+            [] => Success(value = graph)
+            _ => invalidValues ()
+        [parameter, ...rest] => match values
+            [] => invalidValues ()
+            [value, ...others] => match value >= 0.0 && value <= 1.0
+                false => invalidValues ()
+                true => Outcomes::carried (descriptor (graph, parameter), \_ =>
+                    applied (graph(nodes = mapList (graph.nodes, \n => tuned (n, parameter, value))), rest, others))
 
     windowed samples = Sequences::mapIndexed (samples, \(index, value) => value * SpectralMath::hann (toFloat index, toFloat (length samples)))
 
