@@ -217,7 +217,7 @@ fn term(e: &Expr) -> Result<String, String> {
         Expr::Float(n) if n.to_bits() == 0.5_f64.to_bits() => Ok("ops.half".into()),
         Expr::Float(n) if n.to_bits() == 0.00001_f64.to_bits() => Ok("ops.epsilon".into()),
         Expr::Float(n)
-            if [0.0_f64, 1.0, 2.0, 4.0]
+            if [0.0_f64, 1.0, 2.0, 3.0, 4.0, 8.0]
                 .iter()
                 .any(|v| n.to_bits() == v.to_bits()) =>
         {
@@ -339,6 +339,10 @@ fn reflect(file: &str) -> Result<(), String> {
                 &["Strike α", "ops.History", "α"],
                 "Except ops.Fault (LineSample α ops.History)",
             ),
+        ],
+        "SpectralStreams" => &[
+            ("overlapScale", &["α", "α"], "α"),
+            ("overlapped", &["α", "α", "α"], "α"),
         ],
         "SpectralFrames" => &[
             ("scaled", &["Bin α", "α"], "Bin α"),

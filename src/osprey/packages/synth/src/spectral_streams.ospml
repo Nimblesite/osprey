@@ -52,11 +52,15 @@ module SpectralStreams
         SpectralMorph _ _ => true
         _ => false
 
+    overlapScale (size, hop) = 8.0 * hop / (3.0 * size)
+
+    overlapped (sum, value, scale) = sum + value * scale
+
     synthesised (config, held, frame) = match Ffts::inverse (frame.bins, config.size)
         Error why => Error(message = why)
         Success samples =>
-            scale = SpectralMath::overlapScale (toFloat config.size, toFloat config.hop)
-            added = Sequences::combined (held.output, windowed (samples, config.size), \(sum, value) => sum + value * scale)
+            scale = overlapScale (toFloat config.size, toFloat config.hop)
+            added = Sequences::combined (held.output, windowed (samples, config.size), \(sum, value) => overlapped (sum, value, scale))
             Success(value = held(output = added, memory = frame.memory, motion = frame.motion, captured = frame.captured, frames = satAdd held.frames 1, countdown = config.hop))
 
     processed (config, held) = match Ffts::forward (windowed (held.input, config.size))

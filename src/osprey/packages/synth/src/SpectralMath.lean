@@ -9,9 +9,6 @@ namespace synth.SpectralMath
 /-- Periodic Hann window value at `index` of `size`. -/
 def hann (index size : Float) : Float := 0.5 - 0.5 * Float.cos (6.283185307179586 * index / size)
 
-/-- Overlap-add gain restoring unity after analysis and synthesis Hann windows. -/
-def overlapScale (size hop : Float) : Float := 8 * hop / (3 * size)
-
 /-- FFT twiddle angle for bin `index` of a transform of `size`; `sign` is -1 forward, +1 inverse. -/
 def twiddle (sign index size : Float) : Float := sign * 6.283185307179586 * index / size
 
