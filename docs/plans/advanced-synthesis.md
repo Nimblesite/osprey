@@ -144,7 +144,7 @@ Implementation: `grain_scheduler.ospml`, `grains.ospml` and the `GrainClouds` co
 - [x] Implement explicit sample-position grain events, independent of host block size.
 - [x] Add periodic/quasi-synchronous scheduling with seeded bounded inter-onset jitter.
 - [x] Add bounded exponential asynchronous timing, explicitly rounded/censored rather than claiming an exact Poisson process.
-- [ ] Verify timing gap bounds, seeded replay, block partition invariance and observed distribution statistics.
+- [x] Verify timing gap bounds, seeded replay, block partition invariance and observed distribution statistics. The clip journey "periodic, jittered and censored exponential onset schedules…" (GC and ARC) runs five timings (periodic 100, jittered 100±40 and 7±6, exponential mean 50 capped 400, mean 20 capped 30) at three seeds over 8,192 frames: every gap lies in its Lean bound, the mean gap matches the censored mean (50.5, 15.93) within its slack, the extremes spread as the jitter allows, three irregular block splits give identical onsets and clocks, the same seed replays exactly and different seeds move every non-periodic schedule.
 - [x] Add independent onset timing and bounded uniform duration, source-position, playback-rate, gain and pan distributions with separately retained parameter seeds.
 - [x] Expose five distribution widths and a restart-only variation seed through Grain Cloud graph descriptors consumed by the existing Prism inspector.
 - [ ] Verify native distribution controls, replay, partition invariance and observed statistics.
