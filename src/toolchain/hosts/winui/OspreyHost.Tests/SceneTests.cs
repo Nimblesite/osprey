@@ -37,14 +37,42 @@ public sealed class SceneTests
         Assert.Null(Decode([Row(20, x: 1728, y: 893)]).Opening);
         Assert.Null(Decode([Row(20)]).Opening);
         Assert.Null(Decode([Row(20, x: 0, y: 0, width: 5)]).Opening);
-        var fixedScale = Decode([Row(20, x: 434, y: 557, width: -1)]);
-        Assert.Equal(-1, fixedScale.Zoom);
-        Assert.Equal((434.0, 557.0), fixedScale.Opening);
-        Assert.Equal(1, fixedScale.ScaleIn(320, 240));
-        Assert.Equal(1, fixedScale.ScaleIn(1600, 1200));
+        Assert.Throws<HostException>(() => Decode([Row(20, x: -10, y: 10, width: 1)]));
         foreach (var invalid in new[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity })
         {
-            Assert.Throws<HostException>(() => Decode([Row(20, x: 434, y: 557, width: invalid)]));
+            Assert.Throws<HostException>(() => Decode([Row(20, x: 10, y: 10, width: invalid)]));
+        }
+    }
+
+    /// <summary>[DAW-LAYOUT-FIXED-SCALE] A negative zoom is that exact scale: it decodes, opens the window at its artboard and never refits.</summary>
+    [Fact]
+    public void ANegativeZoomIsAFixedScaleThatOpensAtItsArtboard()
+    {
+        var scene = Decode([Row(20, x: 1536, y: 828, width: -1)]);
+        Assert.Equal((1536.0, 828.0, -1.0), (scene.Width, scene.Height, scene.Zoom));
+        Assert.Equal((1536.0, 828.0), scene.Opening);
+        Assert.Equal((768.0, 414.0), Decode([Row(20, x: 1536, y: 828, width: -0.5)]).Opening);
+        var compact = Decode([Row(20, x: 434, y: 557, width: -1)]);
+        Assert.Equal((434.0, 557.0, -1.0), (compact.Width, compact.Height, compact.Zoom));
+        Assert.Equal((434.0, 557.0), compact.Opening);
+        Assert.Equal(1, compact.Scale(320, 240));
+        Assert.Equal(1, compact.Scale(1600, 1200));
+    }
+
+    /// <summary>Zoom 0 fits the region whole, a positive zoom fits it up to that zoom, a negative zoom is its magnitude at every region size.</summary>
+    [Fact]
+    public void TheScaleFitsZeroCapsPositiveAndFixesNegativeZoom()
+    {
+        Assert.Equal(1, Decode([Row(20)]).Scale(400, 300));
+        foreach (var (w, h) in new[] { (80.0, 60.0), (400.0, 300.0), (4000.0, 3000.0) })
+        {
+            var whole = Math.Min(w / 200, h / 100);
+            Assert.Equal(whole, Decode([Row(20, x: 200, y: 100, width: 0)]).Scale(w, h));
+            Assert.Equal(Math.Min(2.0, whole), Decode([Row(20, x: 200, y: 100, width: 2)]).Scale(w, h));
+            foreach (var zoom in new[] { 0.75, 1.0, 2.0 })
+            {
+                Assert.Equal(zoom, Decode([Row(20, x: 200, y: 100, width: -zoom)]).Scale(w, h));
+            }
         }
     }
 
