@@ -9,6 +9,12 @@ type KernelMemory =
         bow : synth::BowState
     ReverbRunning
         reverb : synth::ReverbState
+    ModalRunning
+        settings : synth::ModalConfig
+        bank : synth::ModalBank
+        resonators : synth::ModalState
+    ShifterRunning
+        shifter : synth::ShifterState
 
 type KernelState =
     identity : int

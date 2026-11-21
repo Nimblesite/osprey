@@ -8,7 +8,7 @@ module EffectKernels
     (** Shaper storage: up and down half-band histories (used only when oversampling). *)
     export shaperStorage = 62
 
-    (** Shifter storage: eight four-value Hilbert sections; integratorOne holds the delayed in-phase sample. *)
+    (** Shifter storage: eight four-value Hilbert sections. *)
     export shifterStorage = 32
 
     curve selector = Outcomes::chosen (selector, [TanhCurve, HardCurve, CubicCurve, FoldCurve], "Curve must be 0 tanh, 1 hard, 2 cubic or 3 fold.")
@@ -48,25 +48,15 @@ module EffectKernels
     (** FDN reverb: size, decay (T60), damping, diffusion, mix and a lossless freeze switch. *)
     export reverb (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "size", \size => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "damping", \damping => RenderInputs::bound (snapshot, held, "diffusion", \diffusion => RenderInputs::bound (snapshot, held, "mix", \mix => RenderInputs::bound (snapshot, held, "freeze", \freeze => verb (rate, frame, held, input, size, decay, damping, diffusion, mix, freeze)))))))
 
-    sections samples = match samples
-        [] => []
-        [a, ...rest] => match rest
-            [] => []
-            [b, ...more] => match more
-                [] => []
-                [c, ...others] => match others
-                    [] => []
-                    [d, ...remaining] => listPrepend (sections remaining) (HilbertSection(input = a, older = b, output = c, oldest = d))
+    shifterState memory = match memory
+        KernelIdle => Success(value = Shifters::initial)
+        ShifterRunning shifter => Success(value = shifter)
+        _ => Error(message = IncompatibleLayout(detail = "Frequency shifter requires its two allpass chains."))
 
-    flatSections all = Sequences::flattened (mapList (all, \s => [s.input, s.older, s.output, s.oldest]))
-
-    shifterState (held: KernelState) =
-        all = sections held.delay
-        ShifterState(first = Sequences::take (all, 4), second = Sequences::drop (all, 4), delayed = held.integratorOne, phase = held.phase)
-
-    shifted (frame, held, input, configured) = match configured
-        Error why => Error(message = why)
-        Success config => Outcomes::carried (Shifters::next (config, shifterState held, input), \step => Success(value = RenderInputs::emitted (frame, held(delay = flatSections (listConcat step.next.first step.next.second), integratorOne = step.next.delayed, phase = step.next.phase), step.sample)))
+    shifted (frame, held, input, configured) = Outcomes::carried (configured, \config =>
+        Outcomes::carried (shifterState held.memory, \shifter =>
+            Outcomes::carried (Shifters::next (config, shifter, input), \step =>
+                Success(value = RenderInputs::emitted (frame, held(memory = ShifterRunning(shifter = step.next)), step.sample)))))
 
     (** Frequency shifter: shift in hertz, ring-modulation switch and mix. *)
     export shifter (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "shift", \shift => RenderInputs::bound (snapshot, held, "ring", \ring => RenderInputs::bound (snapshot, held, "mix", \mix => shifted (frame, held, input, Shifters::configure (ShifterConfig(sampleRate = rate, shift = shift, ring = ring >= 0.5, mix = mix))))))

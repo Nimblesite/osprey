@@ -39,19 +39,15 @@ module PhysicalKernels
 
     body selector = Outcomes::chosen (selector, [HarmonicModes, BarModes, MembraneModes, BellModes], "Body must be 0 string, 1 bar, 2 membrane or 3 bell.")
 
-    // Kernel storage holds (real, imag) per mode, in mode order.
-    // An odd tail yields no state, so the bank reports the mismatch.
-    pairs samples = match samples
-        [] => []
-        [real, ...rest] => match rest
-            [] => []
-            [imag, ...others] => listConcat [ResonatorState(real = real, imag = imag)] (pairs others)
+    playedBank (frame, held, input, config, bank, resonators) =
+        Outcomes::carried (ModalBanks::next (bank, resonators, input), \step => published (frame, held(memory = ModalRunning(settings = config, bank = bank, resonators = step.next)), step.sample))
 
-    flattened modal = foldList (modal.modes, [], \(all, m) => listAppend (listAppend all m.real) m.imag)
-
-    modal (frame, held, input, config) = match ModalBanks::configure config
-        Error why => Error(message = why)
-        Success bank => Outcomes::carried (ModalBanks::next (bank, ModalState(modes = pairs held.delay), input), \step => published (frame, held(delay = flattened step.next), step.sample))
+    modal (frame, held, input, config) = match held.memory
+        KernelIdle => Outcomes::carried (ModalBanks::configure config, \bank => playedBank (frame, held, input, config, bank, ModalBanks::initial bank))
+        ModalRunning previous bank resonators => match structuralEquals (previous, config)
+            true => playedBank (frame, held, input, config, bank, resonators)
+            false => Outcomes::carried (ModalBanks::configure config, \changed => playedBank (frame, held, input, config, changed, resonators))
+        _ => Error(message = IncompatibleLayout(detail = "Modal bank requires resonator state."))
 
     bodied (frame, held, input, selector, count, shape) = match body selector
         Error why => Error(message = why)
