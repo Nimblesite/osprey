@@ -43,6 +43,7 @@ Every issue the user raised while testing Prism by hand, with where it is tracke
 | 15 | Dials against the design: parameters after the tenth are dropped, readings are always hundredths, fine drag has no Shift cue, no arrow keys or focus, no double-press to default | Patch Controls | Open |
 | 16 | In a tall window the pages do not fill it: the song pages sit in the top third with empty space below, and nothing scrolls or pans to use the room | [DAW-LAYOUT-FILL] | Open |
 | 17 | On the patch page a module cannot be dragged lower than about the first quarter of the canvas | [DAW-LAYOUT-FILL] | Open |
+| 18 | Stretching the window sideways changes the zoom: everything grows or shrinks with the window's width | [DAW-LAYOUT-FILL] | Open |
 
 Found while fixing these:
 
@@ -55,6 +56,7 @@ Found while fixing these:
 
 Reported by the user on 2026-11-21 with two screenshots of a tall, narrow window: "The UI is totally fucked. Nothing is scrollable so we can fill the empty space with more canvas anywhere. I can't even drag the modules lower than about the first quarter of the vertical space."
 
+- [ ] **Resizing the window never changes the zoom.** Reported by the user as "a huge bug": stretching the window horizontally scales every card, label and control. Cause: each page is one fixed scene (1440 units wide) scaled to fit the region, so the scale is the window's width divided by 1440. Required: one scene unit is one point at 100% zoom on every page; a larger window shows more canvas, lanes and rows at the same size, a smaller one shows less and scrolls; only the user's zoom commands change the scale. Needs the scene drawn unscaled by the host (or the region's size in points given to the app so it lays out to it), and every page laid out from the region's width and height instead of 1440 × 940.
 - [ ] **Song pages use the whole window.** The Timeline and Bus routing pages are drawn on a fixed 1440 × 940 scene scaled to the window's width, so a tall window shows the page in its top third and a dead area below (`Header::shift` centres only sideways; `TimelineGeometry.centred`). The page must lay out to the region's real width and height: more track lanes, a taller piano roll, a taller routing table and signal flow.
 - [ ] **A module drags anywhere on the patch canvas.** The drag is clamped to the 940-unit scene height, not to the canvas actually shown, so in a tall window a module stops about a quarter of the way down. Clamp to the visible canvas, measured from the region.
 - [ ] **The patch canvas pans and zooms.** Drag on empty canvas, or two-finger scroll, pans; pinch or Cmd-wheel zooms; the canvas is larger than the window and Zoom to Fit shows the whole patch. Needs the wheel and pinch events the host does not send yet (also needed by [DAW-TIMELINE-ZOOM]).
