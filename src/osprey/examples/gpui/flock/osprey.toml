@@ -1,6 +1,6 @@
 [project]
 name = "flock"
-source_roots = ["../../../packages/native/host/entry.ospml", "main.ospml", "src", "../../../packages/native/src", "../../../packages/graphics/src", "../../../packages/json/src"]
+source_roots = ["../../../packages/native/host", "main.ospml", "src", "../../../packages/native/src", "../../../packages/graphics/src", "../../../packages/json/src"]
 default_namespace = "app"
 entry = "../../../packages/native/host/entry.ospml"
 

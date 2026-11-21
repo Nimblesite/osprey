@@ -1,0 +1,12 @@
+// [NATIVE-SHM-BOUNDARY] Connect slice reads to the native host for the resident surface.
+namespace app
+
+import ui::Runtime
+import ui::Views
+
+extern native_slice (key : string) -> string
+
+platform work =
+    handle ui::Slices
+        fetch key => native_slice key
+    Runtime::guarded (\() => Views::shared work)

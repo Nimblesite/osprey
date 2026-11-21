@@ -1,11 +1,7 @@
 namespace app
 
-import ui::Runtime
-import ui::Views
 import storage::App
 import storage::Browse
-
-extern native_slice (key : string) -> string
 
 (** Retains the application-specific surface between host calls. *)
 effect Keep
@@ -13,8 +9,3 @@ effect Keep
 
 initial () = Browse::launched ("", "")
 program () = App::program ()
-
-platform work =
-    handle ui::Slices
-        fetch key => native_slice key
-    Runtime::guarded (\() => Views::shared work)
