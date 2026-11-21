@@ -79,12 +79,7 @@ module ProofNotation
 
     numeralNames () = ["Nat", "Nat.succ", "Nat.zero", "OfNat", "OfNat.mk", "OfNat.ofNat", "instOfNatNat"]
 
-    allowed (env, head, names, expected) = match complete (names, expected) && foldList (expected, true, \(ok, decl) => ok && debugMatch (env, head, decl))
-    debugMatch (env, head, decl) = match matches (env, decl)
-        true => true
-        false =>
-            print ("DEBUG ${head} mismatch ${decl.name} params=${join (decl.params, ",")}")
-            false
+    allowed (env, head, names, expected) = match complete (names, expected) && foldList (expected, true, \(ok, decl) => ok && matches (env, decl))
         true => [head]
         false => []
 
