@@ -12,7 +12,7 @@ module Preview
 
     (** Render 256 ms of the connected mono graph as float32 PCM, with explicit failures. *)
     export wave graph = match Graphs::prepare graph
-        Invalid _ => Error(message = "The patch has invalid routes.")
+        Invalid _ => Error(message = InvalidConfiguration(detail = "The patch has invalid routes."))
         Valid plan => synth::Outcomes::carried (Renderer::start graph, \initial => blocks (plan, Parameters::initial graph, initial, 48, []))
 
     // File::Temp creates the file exclusively and removes it after playback, including failures.
@@ -25,7 +25,7 @@ module Preview
     export play (editor, platform) = match platform == "macos"
         false => Runtime::step (editor(message = "This preview device adapter currently requires macOS."))
         true => match wave editor.graph
-            Error why => Runtime::step (editor(message = why))
+            Error why => Runtime::step (editor(message = Faults::detail why))
             Success hex => playWave (editor, hex)
 
     (** Host failures remain visible instead of silently leaving the app in a playing state. *)

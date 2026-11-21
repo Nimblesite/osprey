@@ -26,22 +26,22 @@ module SendRenders
     // The mono scheduler has already resolved each selected audio port to one sample.
     monoFrame (ports, buffers, frame) = collect (toList (range (0, length ports)), \index =>
         match listGet ports index
-            Success port => Outcomes::carried (PatchVoices::told (synth::RenderInputs::sample (frame, port.tapNode)), \value =>
+            Success port => Outcomes::carried (synth::RenderInputs::sample (frame, port.tapNode), \value =>
                 match listGet buffers index
                     Success samples => ok (listPrepend samples value)
                     Error _ => Error(message = synth::MissingResource(detail = "A send lane is missing.")))
             _ => Error(message = synth::MissingResource(detail = "A send port is missing.")))
 
-    mono (graph, plan, rate, count, ports, empty) = PatchVoices::told (Outcomes::carried (PatchVoices::told (synth::Renderer::start graph), \audio =>
-        Outcomes::carried (foldList (PatchVoices::counts (count, 8192), ok (synth::Timeline(audio = audio, observation = empty)), \(held, size) => Outcomes::carried (held, \progress => PatchVoices::told (synth::Renderer::capture (plan, rate, synth::Parameters::initial graph, progress, size, \(buffers, frame) => monoFrame (ports, buffers, frame))))), \result => ok (mapList (result.observation, listReverse)))))
+    mono (graph, plan, rate, count, ports, empty) = Outcomes::carried (PatchVoices::told (synth::Renderer::start graph), \audio =>
+        Outcomes::carried (foldList (PatchVoices::counts (count, 8192), ok (synth::Timeline(audio = audio, observation = empty)), \(held, size) => Outcomes::carried (held, \progress => PatchVoices::told (synth::Renderer::capture (plan, rate, synth::Parameters::initial graph, progress, size, \(buffers, frame) => monoFrame (ports, buffers, frame))))), \result => ok (mapList (result.observation, listReverse))))
 
     fromClip (graph, clips, port) = match port.tapOutlet < 0
-        true => Outcomes::carried (PatchVoices::told (synth::ClipInputs::completed (clips, port.tapNode)), synth::GraphClips::trackSamples)
+        true => PatchVoices::told (Outcomes::carried (synth::ClipInputs::completed (clips, port.tapNode), synth::GraphClips::trackSamples))
         false => PatchVoices::told (synth::ClipInputs::tapped (graph, clips, port.tapNode, port.tapOutlet, port.tapChannel))
 
     extend (graph, clips, ports, buffers, index) = match listGet ports index
         Error _ => Error(message = "A send port is missing.")
-        Success port => Outcomes::carried (PatchVoices::told (fromClip (graph, clips, port)), \samples =>
+        Success port => Outcomes::carried (fromClip (graph, clips, port), \samples =>
             match listGet buffers index
                 Success prior => ok (listConcat prior samples)
                 Error _ => Error(message = "A send lane is missing."))

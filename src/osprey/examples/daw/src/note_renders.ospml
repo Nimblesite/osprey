@@ -96,7 +96,7 @@ module NoteRenders
         true => strength
         false => 0.0
 
-    modal (note, noteSpan, rate, decay, brightness, modes) = synth::Outcomes::carried (PatchVoices::told (synth::ModalBanks::configure (synth::ModalConfig(sampleRate = rate, frequency = hertz note, decay = decay, brightness = brightness, strike = 0.37, count = 8, modes = modes))), \bank => folded (noteSpan, synth::ModalBanks::initial bank, \(run, frame) => stepped (run, synth::ModalBanks::next (bank, run.held, impulse (note.velocity, frame)))))
+    modal (note, noteSpan, rate, decay, brightness, modes) = synth::Outcomes::carried (PatchVoices::told (synth::ModalBanks::configure (synth::ModalConfig(sampleRate = rate, frequency = hertz note, decay = decay, brightness = brightness, strike = 0.37, count = 8, modes = modes))), \bank => folded (noteSpan, synth::ModalBanks::initial bank, \(run, frame) => stepped (run, PatchVoices::told (synth::ModalBanks::next (bank, run.held, impulse (note.velocity, frame))))))
 
     voice (note, noteSpan, rate, tone, cents, age) = synth::OperatorConfig(sampleRate = rate, frequency = ArrangeMath::detuned (hertz note, cents), shape = synth::DistortedPhase(breakpoint = ArrangeMath::bloomed (tone.breakpoint, age, tone.bloom, rate)), depth = 0.0, spread = 0.0, feedback = tone.feedback, amplitude = ArrangeMath::operatorLevel (note.velocity, age, noteSpan.gate, tone.attack, tone.release, rate))
 

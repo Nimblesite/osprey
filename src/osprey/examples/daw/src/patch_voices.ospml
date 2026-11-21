@@ -158,7 +158,7 @@ module PatchVoices
 
     tuned (note, component, n, settings) = match counted (settings, \setting => known (n, setting)) == length settings
         false => Error(message = "Module \"${component}\" has no such setting.")
-        true => ok (told (synth::Patches::adjusted (n, mapList (settings, \setting => synth::ParameterValue(node = n.identity, key = setting.key, value = resolved (note, setting))))))
+        true => ok (synth::Patches::adjusted (n, mapList (settings, \setting => synth::ParameterValue(node = n.identity, key = setting.key, value = resolved (note, setting)))))
 
     nodeAdded (note, outcome, item) = chained (outcome, \nodes => chained (made item, \n => chained (placed (note, item, n), \tuned => ok (listAppend nodes tuned))))
 
@@ -166,9 +166,9 @@ module PatchVoices
 
     block (plan, graph, rate, run, count) = match run.fault == ""
         false => run
-        true => match told (synth::Renderer::block (plan, rate, synth::Parameters::initial graph, run.held, count))
+        true => match synth::Renderer::block (plan, rate, synth::Parameters::initial graph, run.held, count)
             Error why => run(fault = synth::Faults::detail why)
-            Success next => NoteRun(held = next, samples = told (synth::Sequences::joined (run.samples, next.samples)), fault = "")
+            Success next => NoteRun(held = next, samples = synth::Sequences::joined (run.samples, next.samples), fault = "")
 
     // The scheduler carries state across every block, including the final partial block.
     (** Partition a note into bounded DSP blocks. *)
@@ -187,7 +187,7 @@ module PatchVoices
 
     played (graph, plan, noteSpan, routing, rate) = chained (told (synth::Renderer::start graph), \initial => chained (finished (foldList (counts (noteSpan.total, 8192), NoteRun(held = initial, samples = [], fault = ""), \(run, count) => block (plan, graph, rate, run, count))), \samples => ok (shaped (samples, noteSpan, routing, rate))))
 
-    graphed (nodes, cables) = match told (synth::Patches::built (nodes, cables))
+    graphed (nodes, cables) = match synth::Patches::built (nodes, cables)
         synth::Invalid fault => Error(message = "The routing is not a valid graph: ${fault}.")
         synth::Valid graph => ok graph
 
@@ -237,13 +237,13 @@ module PatchVoices
 
     clipBlock (graph, sink, run, count) = match run.fault == "" && count > 0
         false => run
-        true => match told (synth::GraphClips::next (graph, run.held, count))
+        true => match synth::GraphClips::next (graph, run.held, count)
             Error why => run(fault = synth::Faults::detail why)
             Success step => match step
                 synth::BlockWaiting _ _ => run(fault = "An external plug-in needs its audio worker.")
-                synth::BlockReady held clips => match chained (told (synth::ClipInputs::completed (clips, sink)), synth::GraphClips::trackSamples)
-                    Error why => run(fault = synth::Faults::detail why)
-                    Success audio => run(held = held, samples = told (synth::Sequences::joined (run.samples, audio)))
+                synth::BlockReady held clips => match told (chained (synth::ClipInputs::completed (clips, sink), synth::GraphClips::trackSamples))
+                    Error why => run(fault = why)
+                    Success audio => run(held = held, samples = synth::Sequences::joined (run.samples, audio))
 
     clipVoice (graph, noteSpan, routing, rate) = match rate == 48000.0
         false => Error(message = "MIDI, control and multichannel patch voices require a 48000 Hz project.")
