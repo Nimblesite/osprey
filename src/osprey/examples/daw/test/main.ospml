@@ -524,7 +524,7 @@ test ("the modular editor adds, connects and removes independent synth component
 
 test ("native component menus and cable controls edit the same graph drawn on the canvas", \() => Runtime::guarded (\() => hosted editorUiJourney))
 
-test ("VST discovery creates typed independent plug-in nodes through native controls", \() => Runtime::guarded (\() => ui::Views::quiet pluginUiJourney))
+test ("VST discovery creates typed independent plug-in nodes through native controls", \() => Runtime::guarded (\() => hosted pluginUiJourney))
 
 test ("VST audio packets preserve float samples, stereo frames and exact MIDI offsets", \() => Runtime::guarded hostWireJourney)
 
@@ -562,7 +562,9 @@ portAt (d, label, left, top) =
     expect (port.accessTop, top)
 
 succeeds (outcome, check) = match outcome
-    Error why => expect (why, "success")
+    Error why =>
+        print "# expected success, got ${why}"
+        expect (false, true)
     Success value => check value
 
 reads (outcome, check) = match outcome
@@ -879,7 +881,7 @@ projectJourney () =
     mixJourney (song ())
     excerptJourney (song ())
     saveJourney (song ())
-    timingJourney ()
+    hosted timingJourney
 
 timingJourney () =
     path = "target/daw-tests/timing.json"
