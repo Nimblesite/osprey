@@ -153,7 +153,7 @@ if (scenario === 'latency') {
         wait('Cable 5:0 to 4:0');
         type('Module', 1);
         edit('MIDI notes 1', 'Gate (frames)', 48000);
-        playAndStop(mode === 'window' ? 240 : 85);
+        playAndStop(mode === 'window' ? 960 : 85);
     }
 }
 function replay(name, actions) {
@@ -310,7 +310,8 @@ if (scenario !== 'tal') {
     const output = plugins.pop();
     const receipt = lastDeviceReceipt(device);
     const frames = receipt.acceptedFrames;
-    assert(receipt.returnedFrames >= 48000);
+    const minimumSeconds = paired && mode === 'window' ? 10 : 1;
+    assert(receipt.returnedFrames >= minimumSeconds * 48000, `Device must play ${minimumSeconds} seconds before Stop`);
     if (paired) {
         const dry = verifyCable(plugins.pop(), output);
         const pcm = deviceAudio(device, false);
