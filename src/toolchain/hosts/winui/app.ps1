@@ -146,4 +146,7 @@ if ($entry.sandboxed -eq $false) {
 }
 Write-Package
 $family = Register-Package
+# A development server on this machine, such as Talon Bank's demo API, is reached only through a loopback
+# exemption: an AppContainer is otherwise kept off loopback whatever its capabilities.
+if ($entry.loopback) { Invoke-Checked "letting Osprey.$App reach this machine" { CheckNetIsolation.exe LoopbackExempt -a "-n=$family" } }
 if ($Test) { Test-Package $family } else { Start-Process "shell:AppsFolder\$family!App" }

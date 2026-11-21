@@ -8,6 +8,7 @@ Talon Bank is a small bank with accounts, deposits, withdrawals, transfers and a
 | Android | [Android view host](../../../../toolchain/hosts/android) | `make -C src/toolchain/targets/android bank` |
 | iPhone | [SwiftUI host](../../../../toolchain/hosts/swift) (iOS) | `make -C src/toolchain/targets/ios bank` |
 | Mac | [SwiftUI host](../../../../toolchain/hosts/swift) | `make -C src/toolchain/targets/macos bank` |
+| Windows | [WinUI host](../../../../toolchain/hosts/winui), in its AppContainer | `make -C src/toolchain/targets/windows bank` (on Windows; no headless suite or goldens yet) |
 
 Start the server first with `make -C src/toolchain/targets/web bank`. It serves the API and the web app at <http://127.0.0.1:18790>, and resets the demo database at `/tmp/talon_bank.db` on each run. The Android target forwards that port to the device with `adb reverse`, and the iPhone simulator reaches it directly. An app launched with a server URL as its first argument talks to that server instead.
 

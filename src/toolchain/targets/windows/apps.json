@@ -76,6 +76,18 @@
       "arguments": [],
       "fixture": "fixture.ps1"
     },
+    "talon": {
+      "source": "src/osprey/examples/projects/modules/app",
+      "name": "Talon Bank",
+      "description": "Open accounts, move money and audit the journal of a demo bank.",
+      "capabilities": [
+        "internetClient",
+        "privateNetworkClientServer"
+      ],
+      "loopback": true,
+      "files": [],
+      "arguments": []
+    },
     "tally": {
       "source": "src/osprey/examples/tally",
       "name": "Tally",

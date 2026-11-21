@@ -23,12 +23,12 @@ class ThemeResolver(val theme: Theme?, private val dark: Boolean) {
         return hex.toLongOrNull(16)?.let { (0xFF000000 or it).toInt() }
     }
 
-    /** The page's canvas: the `background` token, else the system's own background. */
+    /** The page's canvas: the `background` token, else the `canvas` token the web host also reads, else the system's own background. */
     fun canvas(context: Context): Int {
         val typed = context.obtainStyledAttributes(intArrayOf(android.R.attr.colorBackground))
         val fallback = typed.getColor(0, if (dark) 0xFF1C1C1E.toInt() else 0xFFFFFFFF.toInt())
         typed.recycle()
-        return colour("background") ?: fallback
+        return colour("background") ?: colour("canvas") ?: fallback
     }
 
     /** Text resolves the `text` token; unresolved text is the system ink. */
