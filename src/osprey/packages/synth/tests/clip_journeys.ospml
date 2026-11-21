@@ -100,12 +100,42 @@ combinedGrainJourney () =
     graph = accepted (Patches::combined ())
     kinds = mapList (graph.nodes, \n => synth::Kinds::kind n.processor)
     forEachList (["synth.grain-cloud", "synth.modal-bank", "synth.spectral", "synth.lfo"], \kind => expect (length (filterList (kinds, \k => k == kind)), 1))
+    combinedHostBudget graph
     // Check every audible stage and the final sink after the spectral window fills.
     succeeds (clipsOf (graph, 1024), \clips =>
         forEachList ([0, 1, 2, 5, 7], \node =>
             samples = (clipFrom (clips, node)).clipSamples
             expect (foldList (samples, 0.0, \(peak, sample) => synth::TableMath::larger (peak, abs sample)) > 0.000001, true)
             expect (length (filterList (samples, \sample => sample >= -1.0 && sample <= 1.0)), length samples)))
+
+// [SYNTH-ADVANCED-DELIVERY] The reverb's feedback network feeds the external processor.
+combinedHostBudget graph =
+    original = hostDescriptor ()
+    descriptor = original(inputChannels = 1, outputChannels = 1, notes = false)
+    valid (synth::Hosted::component (9, descriptor), \hosted => budgetedHost (graph, hosted))
+
+budgetedHost (graph, hosted) =
+    routed = built (listAppend graph.nodes hosted, listConcat (filterList (graph.cables, \c => c.destination != 7)) [cable (6, 9), cable (9, 7)])
+    forEachList ([0, 32769], \frames => renderRefused (synth::GraphClips::start (routed, frames)))
+    heavy = routed(nodes = listAppend routed.nodes (Components::delay (10, 1920000)))
+    expect (synth::ClipLayouts::bounded (heavy, 1024), false)
+    renderRefused (synth::GraphClips::start (heavy, 1024))
+    match synth::GraphClips::start (routed, 1024)
+        Error why => expect (synth::Faults::detail why, "combined graph reaches hosted effect")
+        Success action => match action
+            synth::BlockReady _ _ => unexpected ()
+            synth::BlockWaiting block pending =>
+                expect (pending.pendingNode, 9)
+                expect (length block.samples, 1024)
+                expect (length (filterList (block.samples, \s => abs s > 0.000001)) > 0, true)
+                wet = synth::NodeClip(clipNode = 9, clipChannels = 1, clipSamples = block.samples, clipNotes = [])
+                match synth::GraphClips::replied (pending, wet)
+                    Error why => expect (synth::Faults::detail why, "combined graph resumed")
+                    Success done => match done
+                        synth::BlockWaiting _ _ => unexpected ()
+                        synth::BlockReady held clips =>
+                            expect (held.graphPosition, 1024)
+                            sameSamples ((clipFrom (clips, 7)).clipSamples, wet.clipSamples)
 
 granularNode () = Components::granular (1, granularSource (), 4, 7)
 
