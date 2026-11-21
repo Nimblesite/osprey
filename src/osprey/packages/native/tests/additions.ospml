@@ -36,6 +36,15 @@ module AdditionCases
 
     sampleStroke () = ui::Stroke(strokePoints = samplePoints (), strokeWidth = 2, strokeAt = 9)
 
+    // A control drawn after a plain button, so its bindings start at ordinal 1.
+    afterButton node = Ui::column [Ui::button ("Before", "", Increment), node]
+
+    // The bindings an editor control delivers: its text, then its cursor.
+    editorEvents () = [ui::TextInput(action = Typed), ui::PlaceInput(action = Load)]
+
+    // The bindings a panning board control delivers: stroke, lasso, then camera.
+    cameraEvents () = [ui::StrokeInput(action = Increment), ui::LassoInput(action = Typed), ui::TextInput(action = Load)]
+
     // The editor node of the sample, read as the typed record it is.
     editorSample () = Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)
 
@@ -58,18 +67,18 @@ module AdditionCases
     export editorEncoding () =
         focusedEditorEncoding ()
         sample = editorSample ()
-        column = Ui::column [Ui::button ("Before", "", Increment), sample]
+        column = afterButton sample
         expect (editorSpelled sample, "Proof|one\ntwo|false|3|0|2|true|danger|E|Expected a premise")
         binds (drawnOf column, 3)
         expect (spelled (toldOf sample), "{kind=\"editor\",label=\"Proof\",value=\"one\ntwo\",inline=?false,cursor=#3,focusEpoch=#0,marks=[{line=#2,underlined=?true,tone=\"danger\",badge=\"E\",note=\"Expected a premise\"}],event=#0,placeEvent=#1}")
-        delivers (column, [ui::Tap(action = Increment), ui::TextInput(action = Typed), ui::PlaceInput(action = Load)])
+        delivers (column, listPrepend (editorEvents ()) (ui::Tap(action = Increment)))
 
     // `node` spells `nodeSpelled` as an editor, and its told record spells `toldSpelled` with the text binding before the cursor's.
     editorDrawn (node, nodeSpelled, toldSpelled) =
         expect (editorSpelled node, nodeSpelled)
         expect (spelled (toldOf node), toldSpelled)
         binds (drawnOf node, 2)
-        delivers (node, [ui::TextInput(action = Typed), ui::PlaceInput(action = Load)])
+        delivers (node, editorEvents ())
 
     focusedEditorEncoding () =
         node = Editors::focused ("Formula", "p\u2192q", length "p\u2192", 3, Typed, Load)
@@ -97,7 +106,7 @@ module AdditionCases
     (** [UI-COMPONENTS-BOARD]: the board names its host slice and binds strokes before the lasso. *)
     export boardEncoding () =
         board = Boards::illustrated ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)
-        column = Ui::column [Ui::button ("Before", "", Increment), board]
+        column = afterButton board
         boardDrawn (board, "proof/strokes|2|true|chalk-study.png|false|false", "{kind=\"board\",slice=\"proof/strokes\",count=#2,lasso=?true,backdrop=\"chalk-study.png\",panning=?false,event=#0,lassoEvent=#1}")
         binds (drawnOf column, 3)
         delivers (column, [ui::Tap(action = Increment), ui::StrokeInput(action = Typed), ui::LassoInput(action = Load)])
@@ -244,7 +253,7 @@ module AdditionCases
         board = Boards::interactive ("board", 0, true, "chalk-study.png", true, Increment, Typed, Load)
         boardDrawn (board, "board|0|true|chalk-study.png|true|true", "{kind=\"board\",slice=\"board\",count=#0,lasso=?true,backdrop=\"chalk-study.png\",panning=?true,event=#0,lassoEvent=#1,panEvent=#2}")
         binds (drawnOf board, 3)
-        delivers (board, [ui::StrokeInput(action = Increment), ui::LassoInput(action = Typed), ui::TextInput(action = Load)])
+        delivers (board, cameraEvents ())
         expect (delivered (Surfaces::told (ui::TextInput(action = Load), "{x:12}")), "text load:{x:12}")
         narrowMargin ()
 
@@ -478,10 +487,10 @@ module AdditionCases
         expect (spelled (toldOf spoken), "{kind=\"math\",math={kind=\"sym\",text=\"x\"},spoken=\"x equals two\"}")
         editor = Editors::editor ("Proof", "one", 3, [], Typed, Load)
         expect (spelled (toldOf editor), "{kind=\"editor\",label=\"Proof\",value=\"one\",inline=?false,cursor=#3,focusEpoch=#0,marks=[],event=#0,placeEvent=#1}")
-        delivers (editor, [ui::TextInput(action = Typed), ui::PlaceInput(action = Load)])
+        delivers (editor, editorEvents ())
         board = Boards::interactive ("board", 2, true, "background", true, Increment, Typed, Load)
         expect (spelled (toldOf board), "{kind=\"board\",slice=\"board\",count=#2,lasso=?true,backdrop=\"background\",panning=?true,event=#0,lassoEvent=#1,panEvent=#2}")
-        delivers (board, [ui::StrokeInput(action = Increment), ui::LassoInput(action = Typed), ui::TextInput(action = Load)])
+        delivers (board, cameraEvents ())
         still = Boards::board ("board", 2, true, Increment, Typed)
         expect (spelled (toldOf still), "{kind=\"board\",slice=\"board\",count=#2,lasso=?true,backdrop=\"\",panning=?false,event=#0,lassoEvent=#1}")
         binds (drawnOf still, 2)
