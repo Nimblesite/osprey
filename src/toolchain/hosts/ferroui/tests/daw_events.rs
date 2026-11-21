@@ -523,6 +523,13 @@ fn type_into_canvas_dial(regions: &mut Regions, song: &std::path::Path) {
     let selected = point(canvas, title, false).0;
     let dial = selected.scenes.values().flat_map(|scene| &scene.access)
         .find(|a| a.label == "Wavetable 0 Level").expect("the selected wavetable's level dial");
+    let previous = selected.scenes.values().flat_map(|scene| &scene.access)
+        .find(|a| a.label == "Wavetable 0 Table position").expect("preceding parameter");
+    assert!(dial.h >= 44.0 && dial.y - previous.y >= 52.0, "parameter rows need their full pointer target and gutter");
+    assert!(selected.scenes.values().flat_map(|s| &s.shapes).any(|shape| matches!(shape,
+        ferroui_osprey_native::scene::Shape::Disc { x, y, radius, .. } if *radius >= 12.0
+            && f64::from(*x) > dial.x && f64::from(*x) < dial.x + dial.w
+            && (f64::from(*y) - (dial.y + dial.h / 2.0)).abs() < 0.01)), "the dial face grows with its target");
     let at = (dial.x + dial.w / 2.0, dial.y + dial.h / 2.0);
     let original = std::fs::read(song).expect("open project");
     point(canvas, at, true);

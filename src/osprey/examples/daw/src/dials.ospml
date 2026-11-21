@@ -9,9 +9,9 @@ import ui::Scenes
 (** A module's parameters as rows of dials: drawing, hit areas and the drag. *)
 module Dials
     (** Rows are this far apart. *)
-    export pitch () = 44.0
+    export pitch () = 52.0
 
-    radius () = 13.0
+    radius () = 16.0
 
     (** As many parameters as a panel holds. *)
     export shown n = ui::Lists::slice (n.parameters, 0, 10)
@@ -54,7 +54,12 @@ module Dials
         DialHeld identity key _ _ _ => identity == n.identity && key == p.key
         DialIdle => false
 
-    row (editor, n, p, x, cy, width, depth) = listConcat [EditorView::text (p.label, x, cy - 8.0, 13.0, 225, depth), Scenes::lettering (reading p, x + width, cy - 8.0, 13.0, TimelineView::ink (), 2, 600.0, depth)] (dial (p, x + width - 78.0, cy, lit (editor, n, p), depth))
+    // Keep the parameter name and its qualifier in the label column, clear of the dial.
+    caption (label, x, cy, depth) = match split label " (" ?: [label]
+        [name, detail] => [EditorView::text (name, x, cy - 15.0, 13.0, 225, depth), EditorView::text ("(${detail}", x, cy + 2.0, 10.0, 190, depth)]
+        _ => [EditorView::text (label, x, cy - 8.0, 13.0, 225, depth)]
+
+    row (editor, n, p, x, cy, width, depth) = ui::Lists::flatten [caption (p.label, x, cy, depth), dial (p, x + width - 78.0, cy, lit (editor, n, p), depth), [Scenes::lettering (reading p, x + width, cy - 8.0, 13.0, TimelineView::ink (), 2, 600.0, depth)]]
 
     (** The dial rows of module `n`: labels from `x`, values ending at `x + width`, the first row centred on `top`. *)
     export shapes (editor, n, x, top, width, depth) = foldList (toList (range (0, length (shown n))), [], \(all, index) =>
@@ -63,7 +68,7 @@ module Dials
             Success p => listConcat all (row (editor, n, p, x, top + toFloat index * pitch (), width, depth)))
 
     area (editor, n, p, x, cy, width) =
-        plain = EditorView::accessible ("${EditorView::componentName (editor, n)} ${p.label}", x + width - 100.0, cy - 20.0, 104.0, 40.0, false)
+        plain = EditorView::accessible ("${EditorView::componentName (editor, n)} ${p.label}", x + width - 100.0, cy - pitch () / 2.0, 104.0, pitch (), false)
         plain(accessValue = p.initial, accessMin = p.minimum, accessMax = p.maximum)
 
     (** Each dial with its number as one hit area, named after the module and the parameter and carrying its value and range. *)
