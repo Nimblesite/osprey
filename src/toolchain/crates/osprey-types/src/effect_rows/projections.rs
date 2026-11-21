@@ -206,7 +206,7 @@ impl Analyzer<'_> {
             Callable::Known(known) => {
                 let values =
                     ordered_values(&known.parameters, &arguments.positional, &arguments.named);
-                self.substitute_summary_at(known.summary.clone(), 0, &values)
+                self.substitute_summary_at(known.summary, 0, &values)
             }
             Callable::Unknown => Summary {
                 unresolved_dynamic_call: true,

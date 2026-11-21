@@ -217,3 +217,44 @@ fn direct_callback_substitution_only_copies_the_selected_field() {
         assert!(clones <= 1, "copied {clones} values to select one callback");
     });
 }
+
+#[test]
+fn invoking_owned_callback_moves_its_deferred_arguments() {
+    use super::{CallArguments, KnownCallable, ParameterUse};
+    super::identity_tests::with_empty_analyzer(|analyzer| {
+        let deferred = ParameterUse {
+            level: 1,
+            index: 2,
+            projection: Vec::new(),
+            arguments: CallArguments {
+                positional: vec![Some(Value::unknown_value())],
+                named: Vec::new(),
+            },
+            scopes: Vec::new(),
+        };
+        let callback = KnownCallable {
+            parameters: Vec::new(),
+            returned: None,
+            summary: Summary {
+                parameter_uses: [deferred].into_iter().collect(),
+                ..Summary::default()
+            },
+        };
+        let (result, clones) = super::provenance::measured_clones(|| {
+            analyzer.invoke_with_arguments(
+                Callable::Known(Box::new(callback)),
+                CallArguments::default(),
+            )
+        });
+        let captured = result
+            .parameter_uses
+            .first()
+            .expect("preserved outer callback");
+        assert_eq!((captured.level, captured.index), (0, 2));
+        assert_eq!(
+            captured.arguments.positional,
+            [Some(Value::unknown_value())]
+        );
+        assert_eq!(clones, 0);
+    });
+}
