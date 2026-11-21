@@ -1,5 +1,14 @@
 //! Ownership transferred into constructor fields.
 use super::{conditional_floor, Codegen};
+use crate::llty::Value;
+
+/// Hand one reference to a container. Borrowed elements need their own hold;
+/// an unnamed owner in the current iteration can transfer its existing one.
+pub(crate) fn transfer_or_retain(cg: &mut Codegen, value: &Value) {
+    if value.ty.is_managed_ptr() && !consume_into_store(cg, &value.operand) {
+        super::escape_retain(cg, value);
+    }
+}
 
 /// Perceus "move into constructor" (TR §2.3, the *own* argument rule): a store
 /// into a heap slot normally dups, because the owning block's drop mask will

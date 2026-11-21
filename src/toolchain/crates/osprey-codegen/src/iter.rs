@@ -277,9 +277,7 @@ pub(crate) fn acc_step(
     // borrowed incoming value before releasing the old accumulator. Returning
     // `acc` unchanged must keep it alive. [GC-ARC-PERCEUS]
     if new.ty.is_managed_ptr() {
-        if !crate::arc::consume_into_store(cg, &new.operand) {
-            crate::arc::escape_retain(cg, &new);
-        }
+        crate::arc::transfer_or_retain(cg, &new);
         let old = cg.emit_reg(format!("inttoptr i64 {a} to i8*"));
         crate::arc::release_operand(cg, &old);
     }
@@ -424,10 +422,9 @@ pub(crate) fn push_built(
         )));
     }
     let spelling = crate::llty::elem_spelling(&elem);
-    // The built list stores the element: dup it before the per-iteration
-    // region drop, and tell the builder its kind [GC-ARC-PERCEUS].
+    // The builder owns its element after the iteration ends [GC-ARC-PERCEUS].
     let managed = crate::collections::managed_flag(&elem);
-    crate::arc::escape_retain(cg, &elem);
+    crate::arc::transfer_or_retain(cg, &elem);
     let boxed = box_to_i64(cg, elem);
     crate::collections::list_builder_push(cg, bld, &boxed.operand, managed);
     Ok(spelling)

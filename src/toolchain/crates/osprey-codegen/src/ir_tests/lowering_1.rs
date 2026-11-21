@@ -384,6 +384,23 @@ fn fold_transfers_owned_callback_results_but_retains_borrowed_accumulators() {
 }
 
 #[test]
+fn list_builder_moves_fresh_records_and_retains_borrowed_records() {
+    let ir = module("type Box = { n: int }\nfn made(items: List<int>) = mapList(items, fn(i) => Box { n: i })\nfn kept(items: List<Box>) = mapList(items, fn(item) => item)\n");
+    let made = function_body(&ir, "define internal i8* @made(");
+    let kept = function_body(&ir, "define internal i8* @kept(");
+    testkit::contents(
+        &made,
+        &["@osprey_list_builder_push_of"],
+        &["call void @osp_retain("],
+    );
+    testkit::contents(
+        &kept,
+        &["call void @osp_retain(", "@osprey_list_builder_push_of"],
+        &[],
+    );
+}
+
+#[test]
 fn spawn_lowers_to_a_per_instance_closure_cell() {
     // `spawn` lowers its expression as a zero-parameter closure: the thunk
     // takes its heap cell as env (so two in-flight spawns from one site
