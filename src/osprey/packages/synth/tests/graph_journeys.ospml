@@ -336,6 +336,31 @@ framed value = synth::SampleFrame(states = [], values = [synth::NodeSample(ident
 // back: 0 is the minimum, 1 the maximum, the round trip returns the control, and the mapping only rises.
 adapted () = [Components::sine (1, 440.0), Components::lowpass (2, 1000.0, 0.7), Components::modulatedLowpass (3, 1000.0, 0.7), Components::gain (4, 0.5), Components::delay (5, 480), Components::midiNote (6, 60.0, 0.8, 6000.0), Components::lfo (7, 2.0), Components::modulatedGain (8, 2, 0.5), Components::exciter (9, 1), Components::resonator (10, 440.0), Components::modalBank (11, 220.0, 1.0), Components::waveguide (12, 220.0, 2400), Components::fractionalDelay (13, 4.5, 64), Components::lossFilter (14, 0.99, 0.5), Components::allpass (15, 0.5), Components::additive (16, 220.0), Components::spectral (17, 1024, 256, 0.0), Components::shaper (18, 0.0, 2.0), Components::reverb (19, 2.0), Components::shifter (20, 100.0), Components::phaseOperator (21, 220.0, 0.0), Components::bowed (22, 220.0, 2400), Components::smoother (23, 0.01), Components::strikeComb (24, 220.0, 2400)]
 
+// [SYNTH-ADVANCED-CORE-MODELS] A stored processor has a stable name and version; keyboard tuning follows its kind.
+storedProcessor (processor, name, version, pitched) =
+    expect (synth::Kinds::kind processor, name)
+    expect (synth::Kinds::version processor, version)
+    expect (synth::Kinds::keyFrequency processor, pitched)
+    expect (synth::Kinds::compatible (processor, name, version), true)
+    expect (synth::Kinds::compatible (processor, name, version + 1), false)
+    expect (synth::Kinds::compatible (processor, "other", version), false)
+
+storedProcessors nodes =
+    names = ["oscillator", "filter", "filter", "gain", "delay", "midi-notes", "lfo", "modulated-gain", "exciter", "resonator", "modal-bank", "waveguide", "fractional-delay", "loss-filter", "allpass", "additive", "spectral", "shaper", "fdn-reverb", "frequency-shifter", "phase-operator", "bowed-string", "smoother", "strike-comb", "mixer", "output", "stereo", "downmix", "output", "split", "join", "route"]
+    expect (length nodes, length names)
+    forEachList (toList (range (0, length names)), \i => reads (listGet names i, \name => reads (listGet nodes i, \n =>
+        version = match name == "modal-bank" || name == "resonator"
+            true => 2
+            false => 1
+        pitched = length (filterList (["oscillator", "resonator", "modal-bank", "waveguide", "additive", "phase-operator", "bowed-string", "strike-comb"], \kind => kind == name)) == 1
+        storedProcessor (n.processor, "synth.${name}", version, pitched))))
+    source = grainFlatSource ()
+    storedProcessor (synth::SamplePlayer(resource = source), "synth.sample", 1, false)
+    storedProcessor (synth::Granular(resource = source, capacity = 2, seed = 7), "synth.grain-cloud", 1, false)
+    storedProcessor (synth::Panner, "synth.panner", 1, false)
+    storedProcessor (synth::External(identifier = "vendor.module", latency = 80), "external:vendor.module", 1, false)
+    succeeds (synth::Wavetables::prepare (64, [synth::TableSpectrum(amplitudes = [1.0], phases = [0.0])]), \table => storedProcessor (synth::TableOscillator(table = table), "synth.wavetable", 1, true))
+
 controls () = [0.0, 0.001, 0.1, 0.25, 0.5, 0.75, 0.9, 0.999, 1.0]
 
 closeEnough (got, want, scale) = expect (abs (got - want) <= 0.000000001 * (1.0 + abs scale), true)
