@@ -104,9 +104,9 @@ module Header
 
     threeDigits bar = "${ui::Pick::either (bar < 100, "0", "")}${ui::Pick::either (bar < 10, "0", "")}${bar}"
 
-    (** The Patch page's name over the subtitle baked into the Prism skin's header art, in that page's units. *)
+    (** Cover the page subtitle baked into the skin. The selected tab names the page. *)
     export patchSubtitle editor = match length (PrismArt::atlas editor.skin) > 15
-        true => [TimelineView::box (180.0, 40.0, 100.0, 21.0, Scenes::rgb (17, 16, 33), 11), TimelineView::label ("Track patch", 184.0, 41.0, 13.0, TimelineView::dim (), 0, 12)]
+        true => [TimelineView::box (180.0, 40.0, 100.0, 21.0, Scenes::rgb (17, 16, 33), 11)]
         false => []
 
     column (index, bars, count, most) =
@@ -136,8 +136,8 @@ module Header
         0 => []
         bars => listConcat (inView editor) [caps ("SONG OVERVIEW", 468.0, 77.0), Scenes::path (editor.overview, ui::Fill, paint (Scenes::rgb (96, 86, 150)), 3), EditorView::rounded (TimelineGeometry::overviewX (toFloat editor.rollBar, toFloat bars) - 2.0, 95.0, 2.0 * (TimelineGeometry::overviewWidth (toFloat bars) + 2.0) + 2.0, 30.0, 2.0, ui::Line(width = 1.2, dashes = [], bevel = false), paint (TimelineView::accent ()), 4)]
 
-    // The skin's logo when its atlas carries one (entry 15), then the name and the open page.
-    brand editor = listConcat (ui::Pick::either (length (PrismArt::atlas editor.skin) > 15, [Scenes::sprite (15, 123.0, 29.5, 46.0, 46.0, 0.0, Scenes::rgb (255, 255, 255), 2)], [])) [TimelineView::label ("Prism", 151.0, 11.0, 20.0, TimelineView::ink (), 0, 3), TimelineView::label (listGet pages (slot editor.page) ?: "", 151.0, 36.0, 11.0, TimelineView::dim (), 0, 3)]
+    // The skin's logo when its atlas carries one (entry 15), then the name vertically centred in the header band.
+    brand editor = listConcat (ui::Pick::either (length (PrismArt::atlas editor.skin) > 15, [Scenes::sprite (15, 123.0, 29.5, 46.0, 46.0, 0.0, Scenes::rgb (255, 255, 255), 2)], [])) [TimelineView::label ("Prism", 151.0, 19.5, 20.0, TimelineView::ink (), 0, 3)]
 
     // The song strip: title, tempo, meter, the playhead's bar and the transport.
     strip editor = listConcat (listConcat [caps ("ARRANGEMENT", 24.0, 77.0), TimelineView::label (editor.song.title, 24.0, 99.0, 24.0, TimelineView::ink (), 0, 3)] (listConcat (overviewShapes editor) (listConcat (readout ("BPM", tempo editor.song.tempo, 877.0)) (readout ("METER", "${editor.song.meterTop}/${editor.song.meterBottom}", 967.0))))) (listConcat (listConcat (plaque (1051.0, 76.0, 160.0, 51.0, Scenes::rgb (20, 17, 38), 2)) [caps ("POSITION", 1065.0, 84.0), TimelineView::label (position editor, 1065.0, 101.0, 19.0, TimelineView::ink (), 0, 4)]) (listConcat (loopCell editor) (songTransport editor)))

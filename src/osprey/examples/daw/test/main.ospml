@@ -1439,3 +1439,5 @@ test ("Violet Static opens the kick as a wired WAV sample", \() => ui::Runtime::
                             forEachList ([48, 64, 127, 255], \i => reads (listGet audio i, \actual => reads (listGet resource.samples i, \wanted => expect (actual, wanted))))))))))))
 
 test ("Every grain control can be reached and edited in both inspectors", \() => Runtime::guarded (\() => hosted dialPagesJourney))
+
+test ("A page name appears once and empty inspectors omit the parameter heading", \() => Runtime::guarded (\() => hosted pageHeadingsJourney))

@@ -352,8 +352,8 @@ From the committed screens: cut everything that repeats or says nothing (ferroui
 - [ ] Drop "1 inputs · 1 outputs" (the ports show it) and the bottom legend of cable kinds.
 - [x] One play control: the header has one Play and one Stop (an icon group); Audition is a Transport menu command.
 - [x] Long enumerated labels become named choices in both patch inspectors and on the module card [DAW-INSPECTOR]. The current mode stays visible and the picker writes its original numeric project value.
-- [ ] Header subtitles ("Signal flow", "Timeline") repeat the selected tab; drop them.
-- [ ] Inspector shows the selected node's parameters, never an empty "Parameters" heading.
+- [x] The selected tab names the page. The native journey checks that each of the three page names appears once when selected.
+- [x] The inspector shows parameters only when the selected module has them. The native journey selects a stereo output and checks both inspectors.
 - [ ] Timeline: the piano-roll "Bar 23" label must not collide with the "Piano roll" title.
 
 ## Performance [DAW-PERF]

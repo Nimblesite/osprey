@@ -688,3 +688,22 @@ dialPagesJourney () =
         reads (dialOf (moved, "Drive"), \p => expect (p.accessValue > 1.808 && p.accessValue < 2.0, true))
         up = dialPointer (moved, point.pointX, point.pointY - 9.0, false, false)
         expect (Views::letters (up.drivenSeen, "Fine adjustment"), false))
+
+// [DAW-PAGES-STRIP] Each tab names its page once. An output has no parameter section.
+namedPage (driven, label) =
+    expect (length (filterList (driven.drivenSeen.renderedLetters, \word => word == label)), 1)
+    offeredIn (driven, label, true)
+
+pageHeadingsJourney () =
+    opened = editorLaunched ["--empty"]
+    namedPage (opened, "Track patch")
+    timelinePage = prismTap (opened, "Timeline")
+    namedPage (timelinePage, "Timeline")
+    routing = prismTap (timelinePage, "Bus routing")
+    namedPage (routing, "Bus routing")
+    patch = prismTap (routing, "Track patch")
+    selected = Drive::choose (Drive::press (patch, "Patch Controls"), "Add component", "stereo-output")
+    expect (Views::letters (selected.drivenSeen, "Parameters"), false)
+    expect (Views::shows (selected.drivenSeen, "Parameters"), false)
+    hidden = Drive::press (selected, "Patch Controls")
+    expect (Views::letters (hidden.drivenSeen, "Parameters"), false)
