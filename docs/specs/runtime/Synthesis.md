@@ -78,6 +78,11 @@ Research candidates include bandlimited/corrected oscillators, wavetable/additiv
 
 The Osprey kernel checks `Synthesis.weightedOverlapAdd` in `make _test_synthesis_proofs`. It proves the reconstruction direction of Smith’s equation (9.44) for any finite list of overlapping window products whose sum is one. The proof factors the sample out of the sum by distributivity and applies the unit law. Establishing the Hann normalization for the chosen hops is a separate obligation.
 
+The same gate checks two further published results.
+
+- `Synthesis.travelingWavePropagation` follows Smith’s sampled solution (7.3). For arbitrary rail signals at any nonnegative site, a time step carries the right-going value one site right and the left-going value one site left. The time indices have a successor and a predecessor that undoes that successor. This covers integer-grid transport inside an ideal delay line; `DelayLines.tap` also interpolates fractional positions. [Smith, Sampled Traveling-Wave Solution](https://www.dsprelated.com/freebooks/pasp/Digital_Waveguide_Models.html)
+- `Synthesis.additivePeriod` follows Puckette’s finite Fourier sum. For any finite set of partials that repeat after a common phase advance, their sum with a constant offset repeats after that advance. This gives the period-preservation step in additive table construction, conditional on each partial repeating. It makes no smallest-period or floating-point equality claim. [Puckette, Periodic Signals](https://msp.ucsd.edu/techniques/latest/book-html/node14.html)
+
 Each checked proof must identify its source result, hypotheses, corresponding library operation and CI entry point. A real-arithmetic derivation establishes the ideal operation; claims about rendered samples also require a bound or equivalence for the implemented arithmetic.
 
 ## Spectral processing [SYNTH-SPECTRAL]

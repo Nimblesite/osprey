@@ -172,9 +172,13 @@ _test_proof_unicode:
 
 # [SYNTH-DSP-PROOFS] Check the current source export with the Osprey kernel.
 .PHONY: _test_synthesis_proofs
-_test_synthesis_proofs:
-	@$(MKDIR) target/proof
+SYNTHESIS_THEOREMS := weightedOverlapAdd travelingWavePropagation additivePeriod
+
+_test_synthesis_proofs: _test_proof_batch_arc
 	cd src/toolchain/benchmarks/proof/tools && lake build lean4export Synthesis
-	cd src/toolchain/benchmarks/proof/tools && lake exe lean4export Synthesis -- Synthesis.weightedOverlapAdd > "$(abspath target/proof/synthesis.ndjson)"
-	printf '%s\t%s\n' target/proof/synthesis.ndjson Synthesis.weightedOverlapAdd | ./$(BIN) src/osprey/examples/proof/batch --run --memory=arc > target/proof/synthesis.result
-	grep -Fx 'PASS Synthesis.weightedOverlapAdd | axioms: none' target/proof/synthesis.result
+	@set -e; for name in $(SYNTHESIS_THEOREMS); do \
+		theorem="Synthesis.$$name"; export_file="$(abspath target/proof)/$$theorem.ndjson"; \
+		(cd src/toolchain/benchmarks/proof/tools && lake exe lean4export Synthesis -- "$$theorem") > "$$export_file"; \
+		printf '%s\t%s\n' "$$export_file" "$$theorem" | target/proof/openai/check-batch.arc > "$$export_file.result"; \
+		cat "$$export_file.result"; test "$$(cat "$$export_file.result")" = "PASS $$theorem | axioms: none"; \
+	done
