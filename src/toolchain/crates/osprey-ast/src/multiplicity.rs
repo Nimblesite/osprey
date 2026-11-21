@@ -63,6 +63,13 @@ pub enum Multiplicity {
 pub const REPLAYABLE_KEYWORD: &str = "replayable";
 
 impl Multiplicity {
+    /// Whether this is [`Multiplicity::Many`] — the reusable-continuation
+    /// multiplicity the backend and the checker's replay rules key on.
+    #[must_use]
+    pub const fn is_many(self) -> bool {
+        matches!(self, Self::Many)
+    }
+
     /// The keyword that declares this multiplicity, as diagnostics spell it.
     #[must_use]
     pub const fn as_str(self) -> &'static str {

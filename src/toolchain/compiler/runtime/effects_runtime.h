@@ -58,6 +58,29 @@ void __osprey_owner_frame_push(void *frame, void ***slots, int64_t count);
 void __osprey_owner_frame_pop(void *frame);
 void __osprey_owner_frames_unwind(void);
 
+// Reusable continuations ([MULTI-HANDLE-MANY], plan 0016 phase 3). A `many`
+// suspension snapshots this thread's per-branch state — how many finalizers
+// are pending and which owner frame heads the chain — so restoring the
+// snapshot rewinds exactly the branch-local lifetime, and the claim walks
+// keep ARC balanced: a restore re-retains the snapshot's owned slots (each
+// branch's epilogues release them again), and killing a snapshot releases
+// whatever claims its lifecycle still owes. Implements [GC-ARC-PERCEUS],
+// [MULTI-COST-ABORT], [EFFECTS-FINALIZATION].
+int __osprey_finalizer_count(void);
+void __osprey_finalizer_truncate(int count);
+// Run pending finalizers inner to outer until `count` remain ([MULTI-COST-ABORT]).
+void __osprey_finalizer_unwind_to(int count);
+OspOwnerFrame *__osprey_owner_frames_head(void);
+void __osprey_owner_frames_set(OspOwnerFrame *head);
+// Re-claim every owned slot on the chain from `head` outward: the +1 a
+// restored branch's epilogues will spend. The live counterpart of a
+// snapshot's release walk.
+void __osprey_owner_frames_retain_from(OspOwnerFrame *head);
+// Release the owned slots of every frame from the chain head down to (not
+// including) `floor`, unlinking them — the live-stack half of killing a
+// snapshot whose frames are still resident.
+void __osprey_owner_frames_release_to(OspOwnerFrame *floor);
+
 // Operand kinds in an operation mailbox. A MANAGED slot holds a heap pointer
 // the mailbox OWNS — the performer hands over its +1 at suspend and retiring
 // the mailbox releases it. A SCALAR slot is a bare machine word nobody owns.

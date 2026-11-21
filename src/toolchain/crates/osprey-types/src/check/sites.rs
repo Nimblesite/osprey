@@ -26,6 +26,7 @@ pub(super) fn resolve_op(ctx: &mut InferCtx, op: &crate::info::OpType) -> crate:
         params: op.params.iter().map(|t| ctx.apply(t)).collect(),
         ret: ctx.apply(&op.ret),
         mode: op.mode,
+        multiplicity: op.multiplicity,
     }
 }
 /// A type is resolved once it mentions no inference variable anywhere — the

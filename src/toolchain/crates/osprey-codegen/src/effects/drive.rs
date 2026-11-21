@@ -28,6 +28,11 @@ pub(super) fn emit_drive_fn(
     // taking clears the coro's slot so the two activations never alias, and
     // makes this activation responsible for retiring the one it holds.
     let mail = cg.call("i8*", "__osprey_coro_take_args", "i8*", &["%__coro"]);
+    // The token names THIS suspension: a `many` operation's mailbox carries its
+    // reusable snapshot, so the arm resumes exactly the continuation it was
+    // dispatched for — never a deeper or stale one. Implements
+    // [MULTI-HANDLE-MANY], [EFFECTS-CONTINUATION-OWNERSHIP].
+    let token = cg.call("i8*", "__osprey_coro_mail_token", "i8*", &[&mail]);
     let op = cg.call("i64", "__osprey_coro_mail_op", "i8*", &[&mail]);
     let miss_lbl = cg.fresh_label();
     let check_labels: Vec<String> = arms.iter().map(|_| cg.fresh_label()).collect();
@@ -49,7 +54,7 @@ pub(super) fn emit_drive_fn(
 
     for (arm, arm_label) in arms.iter().zip(&arm_labels) {
         cg.start_block(arm_label);
-        let mut args = vec![String::from("i8* %__env"), String::from("i8* %__coro")];
+        let mut args = vec![String::from("i8* %__env"), format!("i8* {token}")];
         for (idx, param) in arm.sig.params.iter().cloned().enumerate() {
             let raw = cg.call(
                 "i64",
@@ -67,9 +72,9 @@ pub(super) fn emit_drive_fn(
         // handler state, returned, or passed to `resume` — it retained itself.
         cg.call_void("__osprey_coro_mail_free", "i8*", &[&mail]);
         if arm.sig.mode.is_control() {
-            emit_abandon_or_answer(cg, &arm_result);
+            emit_abandon_or_answer(cg, &arm_result, &token);
         } else {
-            emit_substitute_and_continue(cg, name, &arm_result);
+            emit_substitute_and_continue(cg, name, &arm_result, &token);
         }
     }
 
@@ -87,9 +92,11 @@ pub(super) fn emit_drive_fn(
 /// already drove the computation, so reaching here with the computation still
 /// suspended means this arm returned WITHOUT resuming on the path it took: that
 /// ABANDONS the continuation, and the arm's value answers for the whole region.
-/// Implements [EFFECTS-HANDLER-ARMS].
-pub(super) fn emit_abandon_or_answer(cg: &mut Codegen, arm_result: &str) {
-    let done = cg.call("i64", "__osprey_coro_done", "i8*", &["%__coro"]);
+/// A `many` suspension's snapshot dies with the abandonment while the body
+/// thread stays available to any live outer resumption. Implements
+/// [EFFECTS-HANDLER-ARMS], [MULTI-COST-ABORT].
+pub(super) fn emit_abandon_or_answer(cg: &mut Codegen, arm_result: &str, token: &str) {
+    let done = cg.call("i64", "__osprey_coro_done", "i8*", &[token]);
     let cond = cg.emit_reg(format!("icmp ne i64 {done}, 0"));
     let abort_lbl = cg.fresh_label();
     let return_lbl = cg.fresh_label();
@@ -97,7 +104,7 @@ pub(super) fn emit_abandon_or_answer(cg: &mut Codegen, arm_result: &str) {
         "br i1 {cond}, label %{return_lbl}, label %{abort_lbl}"
     ));
     cg.start_block(&abort_lbl);
-    cg.call_void("__osprey_coro_abort", "i8*", &["%__coro"]);
+    cg.call_void("__osprey_coro_abort", "i8*", &[token]);
     cg.emit(format!("br label %{return_lbl}"));
     cg.start_block(&return_lbl);
     cg.emit(format!("ret i64 {arm_result}"));
@@ -109,17 +116,17 @@ pub(super) fn emit_abandon_or_answer(cg: &mut Codegen, arm_result: &str) {
 /// body's own value. Killing the computation here instead is issue #177 — a
 /// sibling arm's `resume` silently converted this arm into an early exit.
 /// Implements [EFFECTS-HANDLER-ARMS].
-pub(super) fn emit_substitute_and_continue(cg: &mut Codegen, drive_fn: &str, arm_result: &str) {
+pub(super) fn emit_substitute_and_continue(cg: &mut Codegen, drive_fn: &str, arm_result: &str, token: &str) {
     let _ = cg.call(
         "i64",
         "__osprey_coro_resume",
         "i8*, i64",
-        &["%__coro", arm_result],
+        &[token, arm_result],
     );
     // One completion path applies the return clause; musttail keeps repeated
     // value requests in a mixed handler constant-space.
     let answer = cg.emit_reg(format!(
-        "musttail call i64 @{drive_fn}(i8* %__env, i8* %__coro)"
+        "musttail call i64 @{drive_fn}(i8* %__env, i8* {token})"
     ));
     cg.emit(format!("ret i64 {answer}"));
 }

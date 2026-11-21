@@ -217,6 +217,7 @@ fn conflicting_effect_site_keys_are_dropped() {
             params: Vec::new(),
             ret: t.clone(),
             mode: osprey_ast::OperationMode::default(),
+            multiplicity: osprey_ast::Multiplicity::default(),
         },
         effect_args: vec![t],
     };

@@ -480,6 +480,7 @@ pub(crate) fn builtin_effects() -> std::collections::HashMap<String, crate::chec
                         name.to_owned(),
                         ty.to_owned(),
                         osprey_ast::OperationMode::Value,
+                        osprey_ast::Multiplicity::default(),
                     )
                 })
                 .collect(),

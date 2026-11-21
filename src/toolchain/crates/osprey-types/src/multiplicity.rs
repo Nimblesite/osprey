@@ -2,9 +2,9 @@
 //!
 //! [`Multiplicity`] rides on the operation declaration, so every mention of an
 //! operation in every row carries how many times its request may be answered.
-//! This module turns that declaration into the four rejections it buys: the
-//! affine rule on a `once` arm, the no-`resume` rule on an `abort` arm, and the
-//! replay obligations a multi-shot handler region owes.
+//! This module turns that declaration into the rejections it buys: the
+//! affine rule on a `once` arm, the no-`resume` rule on an `abort` arm, and
+//! the replay obligations a multi-shot handler region owes.
 //!
 //! The purely syntactic rules live here; the handle-site rules that need the
 //! handled expression's effect row are driven from
@@ -103,7 +103,12 @@ pub(crate) fn arm_errors(
         Multiplicity::Once => Vec::new(),
         Multiplicity::Abort if resumes > 0 => at(abort_message(effect, operation)),
         Multiplicity::Abort => at(unimplemented_abort(effect, operation)),
-        Multiplicity::Many => at(many_message(axis, effect, arm, handled_row, fibered)),
+        // A region that breaks none of the replay rules is well formed and the
+        // reusable-continuation runtime answers it: each resume re-enters the
+        // captured remainder as its own branch ([MULTI-HANDLE-MANY]).
+        Multiplicity::Many => many_message(axis, effect, arm, handled_row, fibered)
+            .map(|message| at(message))
+            .unwrap_or_default(),
     }
 }
 
@@ -125,22 +130,22 @@ fn abort_message(effect: &str, operation: &str) -> String {
     )
 }
 
-/// The replay obligations of a multi-shot region in order, then the
-/// representation it needs. The order is what keeps each rule's diagnostic the
-/// informative one: what the region does wrong is reported before what the
-/// compiler cannot yet build. Implements [MULTI-REPLAY-CHECK],
-/// [MULTI-REPLAY-STATE], [MULTI-REPLAY-FIBER], [MULTI-HANDLE-MANY].
+/// The replay obligations of a multi-shot region in order. The order is what
+/// keeps each rule's diagnostic the informative one: what the region does
+/// wrong is reported before anything else. A region that breaks none of them
+/// answers through the reusable-continuation runtime. Implements
+/// [MULTI-REPLAY-CHECK], [MULTI-REPLAY-STATE], [MULTI-REPLAY-FIBER],
+/// [MULTI-HANDLE-MANY].
 fn many_message(
     axis: &OperationAxis,
     effect: &str,
     arm: &HandlerArm,
     handled_row: &BTreeSet<(String, String)>,
     fibered: Option<&str>,
-) -> String {
+) -> Option<String> {
     non_replayable_entry(axis, effect, &arm.operation, handled_row)
         .or_else(|| captured_state(axis, effect, arm))
         .or_else(|| fiber_boundary(effect, &arm.operation, fibered))
-        .unwrap_or_else(|| unimplemented_many(effect, &arm.operation))
 }
 
 /// The shared opening of the two rules that read the handled expression.
@@ -196,18 +201,6 @@ fn fiber_boundary(effect: &str, operation: &str, fibered: Option<&str>) -> Optio
 resumption of a continuation spanning a spawned fiber has no serialization order"
         )
     })
-}
-
-/// A region that breaks none of the replay rules is well formed and the
-/// compiler still cannot run it. Saying so is the whole obligation: accepting
-/// it would answer a re-entrant request with a continuation that cannot be
-/// re-entered, which is a silently wrong answer. Implements [MULTI-COST].
-fn unimplemented_many(effect: &str, operation: &str) -> String {
-    format!(
-        "`{effect}.{operation}` is declared `many`, but a re-entrant continuation does not exist: \
-native resume is one suspended stack, switched to and never switched back \
-(docs/plans/0016-algebraic-effects-and-handlers.md). Declare `{effect}.{operation}` `once`"
-    )
 }
 
 /// An `abort` arm reads its mode from the DECLARATION, so a `resume`-free arm

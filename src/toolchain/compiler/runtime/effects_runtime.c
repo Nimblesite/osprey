@@ -395,6 +395,66 @@ void __osprey_owner_frames_unwind(void) {
     }
 }
 
+// --- Reusable continuations ([MULTI-HANDLE-MANY]) --------------------------
+// A `many` snapshot must rewind this thread's branch-local lifetime exactly:
+// the pending-finalizer count and the owner-frame chain head it captured. The
+// claim walks mirror __osprey_owner_frames_unwind so a restored branch and an
+// abandoned one stay ARC-balanced against the same slots. Implements
+// [GC-ARC-PERCEUS], [MULTI-COST-ABORT].
+
+int __osprey_finalizer_count(void) {
+    return g_finalizers.count;
+}
+
+void __osprey_finalizer_truncate(int count) {
+    if (count < 0 || count > g_finalizers.count) {
+        fprintf(stderr, "FATAL: handler finalizer count %d outside 0..%d\n", count,
+                g_finalizers.count);
+        abort();
+    }
+    g_finalizers.count = count;
+}
+
+void __osprey_finalizer_unwind_to(int count) {
+    if (count < 0 || count > g_finalizers.count) {
+        fprintf(stderr, "FATAL: handler finalizer floor %d outside 0..%d\n", count,
+                g_finalizers.count);
+        abort();
+    }
+    while (g_finalizers.count > count) {
+        run_innermost_finalizer();
+    }
+}
+
+OspOwnerFrame *__osprey_owner_frames_head(void) {
+    return g_owner_frames;
+}
+
+void __osprey_owner_frames_set(OspOwnerFrame *head) {
+    g_owner_frames = head;
+}
+
+void __osprey_owner_frames_retain_from(OspOwnerFrame *head) {
+    for (OspOwnerFrame *frame = head; frame != NULL; frame = frame->previous) {
+        for (int64_t i = 0; i < frame->count; i++) {
+            osp_retain(*frame->slots[i]);
+        }
+    }
+}
+
+void __osprey_owner_frames_release_to(OspOwnerFrame *floor) {
+    while (g_owner_frames != NULL && g_owner_frames != floor) {
+        OspOwnerFrame *frame = g_owner_frames;
+        g_owner_frames = frame->previous;
+        for (int64_t i = frame->count; i > 0; i--) {
+            void **slot = frame->slots[i - 1];
+            void *value = *slot;
+            *slot = NULL;
+            osp_release(value);
+        }
+    }
+}
+
 // Cleanup handler stack (call at thread exit)
 void __osprey_handler_stack_cleanup(void) {
     free(g_finalizers.items);
