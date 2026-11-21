@@ -83,22 +83,35 @@ module HostModulation
         External _ _ => true
         _ => false
 
-    controls n = mapList (n.parameters, \p => ParameterStamp(stampKey = p.key, stampValue = p.initial))
+    boundKey (n, keys, c) = match c.destination == n.identity
+        false => keys
+        true => match listGet n.inputs c.inlet
+            Success port => match (port.rate == Control)
+                true => listPrepend keys port.name
+                false => keys
+            Error _ => keys
 
-    export stamps graph = mapList (filterList (graph.nodes, external), \n => HostedStamp(stampNode = n.identity, stampControls = controls n))
+    (** Remember the dials without a connected modulator so unplugging one restores its stored value. *)
+    manual (graph, n) =
+        bound = foldList (graph.cables, [], \(keys, c) => boundKey (n, keys, c))
+        filterList (n.parameters, \p => p.automatable && !listContains (bound, p.key))
+
+    controls parameters = mapList (parameters, \p => ParameterStamp(stampKey = p.key, stampValue = p.initial))
+
+    export stamps graph = mapList (filterList (graph.nodes, external), \n => HostedStamp(stampNode = n.identity, stampControls = controls (manual (graph, n))))
 
     // A changed dial on a retained worker takes effect on the next block, also off the modulation grid.
-    edit (graph, n, prior, outcome, p) = match filterList (prior.stampControls, \old => old.stampKey == p.key && old.stampValue == p.initial)
-        [] => match binding (graph, n, p.key)
-            [] => Outcomes::carried (outcome, \points => point (points, p, 0, p.initial))
-            _ => outcome
+    edit (prior, outcome, p) = match filterList (prior.stampControls, \old => old.stampKey == p.key && old.stampValue == p.initial)
+        [] => Outcomes::carried (outcome, \points => point (points, p, 0, p.initial))
         _ => outcome
 
     export edits (graph, previous, n, automation) = match filterList (previous, \old => old.stampNode == n.identity)
-        [prior] => match structuralEquals (prior.stampControls, controls n)
-            true => Success(value = automation)
-            false => Outcomes::carried (foldList (filterList (n.parameters, \p => p.automatable), Success(value = []), \(outcome, p) => edit (graph, n, prior, outcome, p)), \changed =>
-                match satAdd (length changed) (length automation) <= 1024
-                    true => Success(value = listConcat changed automation)
-                    false => Error(message = InvalidConfiguration(detail = "VST edits exceed the block automation budget.")))
+        [prior] => changedPoints (prior, manual (graph, n), automation)
         _ => Success(value = automation)
+
+    changedPoints (prior, parameters, automation) = match structuralEquals (prior.stampControls, controls parameters)
+        true => Success(value = automation)
+        false => Outcomes::carried (foldList (parameters, Success(value = []), \(outcome, p) => edit (prior, outcome, p)), \changed =>
+            match satAdd (length changed) (length automation) <= 1024
+                true => Success(value = listConcat changed automation)
+                false => Error(message = InvalidConfiguration(detail = "VST edits exceed the block automation budget.")))

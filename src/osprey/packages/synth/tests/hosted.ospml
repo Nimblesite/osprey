@@ -232,6 +232,25 @@ latencyJourney () =
                 expect (length graph.nodes, 4)
                 latencyPartitions (aligned, synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), steady (5, 0.0), [2, 3, 9, 12]))
 
+(** [SYNTH-HOST-MODULATION] Inspect a running VST awaiting its next audio block. *)
+waitingBlock (step, use) = match step
+    synth::BlockReady _ _ => unexpected ()
+    synth::BlockWaiting request pending => use (request, pending)
+
+afterUnplug (graph, reply) = match reply
+    synth::BlockWaiting _ _ => unexpected ()
+    synth::BlockReady held _ =>
+        succeeds (synth::GraphRebase::rebased (graph, held), \next =>
+            expect (next.graphPosition, 3)
+            succeeds (synth::GraphClips::next (graph, next, 1), \step => waitingBlock (step, \(request, _) =>
+                expect (structuralEquals (request.parameters, [synth::HostParameter(identity = 100, offset = 0, value = 0.25)]), true))))
+
+unpluggedDial () =
+    plain = hostGraph ()
+    succeeds (synth::GraphClips::start (reconnected plain, 3), \step => waitingBlock (step, \(request, pending) =>
+        expect (length request.parameters, 1)
+        succeeds (synth::GraphClips::replied (pending, hostClip (steady (6, 0.0))), \reply => afterUnplug (plain, reply))))
+
 // Register the unchanged hosted graph journeys from the suite entry point.
 registerHostedJourneys () =
     audio = monoPort ("audio", synth::Audio, synth::Amplitude)
@@ -354,6 +373,7 @@ registerHostedJourneys () =
         renderRefused (synth::GraphClips::advance (graph(cables = []), [], 256))
         renderRefused (synth::GraphClips::advance (Graphs::empty, [], 256))))
     test ("MIDI and modulation become checked native packets, then real-shaped stereo responses resume the graph", \() => arithmetic (\() =>
+        unpluggedDial ()
         original = hostGraph ()
         graph = reconnected original
         expect (length graph.cables, 3)
