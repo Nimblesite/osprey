@@ -633,20 +633,18 @@ registerGrainJourneys () =
         pitchMarkJourney ()
         // ASR over 11 frames: a 2-frame attack ramp, a held sustain, then a 3-frame release.
         windowRows (synth::AsrWindow(attack = 0.2, release = 0.3), 11, 0.000000000001, [{ age = 0, want = 0.0 }, { age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 5, want = 1.0 }, { age = 8, want = 2.0 / 3.0 }, { age = 10, want = 0.0 }])
-        // [SYNTH-ADVANCED-GRAINS-WINDOWS] [SYNTH-ADVANCED-GRANULAR] Both shapes return exactly zero at the first and last sample:
-        // grain envelopes reach zero at both endpoints.
-        forEachList ([3, 4, 5, 9, 11, 4800], \duration =>
-            expect (GrainWindows::value (synth::HannWindow, 0, duration), 0.0)
-            expect (GrainWindows::value (synth::HannWindow, duration - 1, duration), 0.0)
-            expect (GrainWindows::value (synth::AsrWindow(attack = 0.25, release = 0.25), 0, duration), 0.0)
-            expect (GrainWindows::value (synth::AsrWindow(attack = 0.25, release = 0.25), duration - 1, duration), 0.0))
+        // [SYNTH-ADVANCED-GRAINS-WINDOWS] [SYNTH-ADVANCED-GRANULAR] Both shapes return exactly zero at
+        // the first and last sample for every duration: grain envelopes reach zero at both endpoints.
+        forEachList ([synth::HannWindow, synth::AsrWindow(attack = 0.25, release = 0.25)], \shape =>
+            forEachList ([3, 4, 5, 9, 11, 4800], \duration =>
+                forEachList ([0, duration - 1], \age => expect (GrainWindows::value (shape, age, duration), 0.0))))
         // The symmetric Hann hits unity at its centre and misses the peak on short discrete grains.
-        near (GrainWindows::value (synth::HannWindow, 5, 11), 1.0, 0.000000000000001)
-        near (GrainWindows::value (synth::HannWindow, 2, 5), 1.0, 0.000000000000001)
-        near (GrainWindows::value (synth::HannWindow, 1, 11), GrainWindows::value (synth::HannWindow, 9, 11), 0.000000000000001)
+        forEachList ([{ age = 5, duration = 11 }, { age = 2, duration = 5 }, { age = 1, duration = 3 }], \c =>
+            near (GrainWindows::value (synth::HannWindow, c.age, c.duration), 1.0, 0.000000000000001))
+        forEachList ([{ age = 1, mirror = 9, duration = 11 }, { age = 1, mirror = 2, duration = 4 }], \c =>
+            near (GrainWindows::value (synth::HannWindow, c.age, c.duration), GrainWindows::value (synth::HannWindow, c.mirror, c.duration), 0.000000000000001))
         forEachList ([1, 2], \age => near (GrainWindows::value (synth::HannWindow, age, 4), 0.75, 0.000000000000001))
         expect (GrainWindows::value (synth::HannWindow, 1, 4) < 1.0, true)
-        near (GrainWindows::value (synth::HannWindow, 1, 3), 1.0, 0.000000000000001)
         // Attack/release fractions partition duration - 1 into linear ramps and an exact unity sustain.
         windowRows (synth::AsrWindow(attack = 0.5, release = 0.5), 11, 0.000000000000001, [{ age = 1, want = 0.2 }, { age = 2, want = 0.4 }, { age = 3, want = 0.6 }, { age = 4, want = 0.8 }, { age = 5, want = 1.0 }, { age = 6, want = 0.8 }, { age = 9, want = 0.2 }])
         windowRows (synth::AsrWindow(attack = 0.25, release = 0.25), 9, 0.000000000000001, [{ age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 6, want = 1.0 }, { age = 7, want = 0.5 }])
