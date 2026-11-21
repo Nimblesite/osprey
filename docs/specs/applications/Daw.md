@@ -122,20 +122,32 @@ A song is one JSON file, and nothing about a song lives anywhere else. It contai
 
 ## Transport [DAW-TRANSPORT]
 
-**Play** renders and plays two bars, starting at the first bar shown in the piano roll. It uses the project as it currently stands, including unsaved edits.
+**Play is real time ([DAW-TRANSPORT-LIVE]).** This is the daw's first requirement: an app that makes the user wait for a render before hearing the song is not usable. Play makes sound at once and keeps making it at the speed the music is written, and the playhead moves with what is heard. Play never renders the range to a file first and plays the file afterwards.
 
-1. The app encodes the current project and stores it as `project.json` in a per-bar folder beside the renderer (`<song>/bar-N/`).
-2. The renderer `daw <project.json> <folder> <from-beat> <beats>` renders only that window to `piece.wav`. It plays notes starting inside the window, moved to its start, at full length. The intro and sustains are left out.
-3. Audio counts only when the renderer actually wrote a WAV. The renderer reports a refused project on stdout and still exits cleanly, so the app shows its message instead of playing.
-4. Each ticket carries the folder it was launched for. If the piano roll moves or another song opens during a render, the bars that were launched are still the ones that play.
-5. If the stored snapshot equals the current project, the cached bars replay without rendering. Any edit renders again. Before a render, the old audio is emptied so it can never pass for the new snapshot.
-6. **Stop** cancels the render or playback in flight. While anything is in flight, Play refuses with "The song is already playing; Stop first."
+1. **Range ([DAW-TRANSPORT-RANGE]).** Play runs from the start marker to the end marker. The start marker is the playhead's bar. The end marker is the song's end until the user moves it. Both markers are lines down the lanes with handles on the ruler, and the user drags either one left or right. The end marker is always after the start marker: an end at or before the start counts as the song's end.
+2. **Loop ([DAW-TRANSPORT-LOOP]).** A Loop toggle in the transport. With Loop on, Play repeats the range from the start marker to the end marker until Stop. With Loop off, Play runs once and rings out.
+3. **Live stream.** The app encodes the current project, unsaved edits included, to `<song>/live/project.json` beside the renderer and runs `daw <project.json> <folder> <from-beat> <beats> live|loop`. The renderer plays the graph forward block by block ([DAW-RENDER-PLAY]) and prints each block as soon as it is made; the blocks go straight into the audio device adapter (`osprey-vst-worker audio-device`). Nothing is written to a WAV and nothing waits for the range to finish.
+4. **Following ([DAW-TRANSPORT-FOLLOW]).** The device answers every block with the frames it has accepted and the frames it has finished playing. While the song plays, every display frame moves the playhead to the beat being heard: the frame clock, held between those two counts ([TimelineGeometry.lean](../../../src/osprey/examples/daw/src/TimelineGeometry.lean), `heardSeconds`). The lanes scroll to keep the playhead in view, the piano roll turns its page every two bars, and the position readout shows `bar.beat`. When sound waits, the playhead waits.
+5. **Stop** cancels the stream's whole process group at once and puts the playhead back on the start marker. While anything is in flight, Play refuses with "The song is already playing; Stop first."
+6. A refused project never reaches the device: the renderer writes its reason to `<folder>/fault.txt` and the app shows it as "Playback failed: …".
+7. **Live level.** Live play cannot know the song's peak before it sounds, so each sample passes a fixed soft clip (`ArrangeMath.live`) in place of the whole-song limiter of [DAW-DYNAMICS-LIMITER]. Render song is the reference for loudness.
 
-Rendering is offline and slower than realtime. With the renderer built under ARC, four beats of the codex song take about 32 s. The per-note patch voices dominate that time.
+**The engine must be faster than real time ([DAW-TRANSPORT-LIVE-SPEED]).** This is not negotiable. Real-time play needs the renderer to make every block faster than it plays, with room to spare: at least 1.5× real time on the reference song (17 tracks) on one performance core. Measured on 2026-11-21, the live stream of the codex song makes 0.37 s of audio per second (17.1 s of audio in 45.8 s), with reference counting and allocation taking most of the time, so the device runs empty and the sound breaks up. Until the engine meets the target, live play of a full song is not acceptable and this requirement is not met. It is the largest open defect in the daw.
+
+**Start latency ([DAW-TRANSPORT-LIVE-LATENCY]).** Play buffers 5 to 10 ms of audio before the device starts, and no more: at 48 kHz that is 240 to 480 frames. The first sound follows the Play command by that buffer plus the device's own output latency. Today the device adapter waits for two blocks of 4,096 frames (171 ms) before it starts; that is a defect against this requirement.
+
+**MIDI clock ([DAW-TRANSPORT-MIDI-CLOCK]).** Playing is synchronised with the MIDI clock. The transport is one clock in beats, and audio, the playhead and MIDI all read it.
+
+1. **Sending.** While the song plays, the daw sends MIDI timing clock (0xF8, 24 per quarter note) from the same sample clock that drives the audio, so an external sequencer, drum machine or arpeggiator stays in time with what is heard. Play from the song's first beat sends Start (0xFA); Play from any other start marker sends Song Position Pointer (0xF2, in sixteenth notes) and then Continue (0xFB); Stop sends Stop (0xFC). A loop sends Song Position Pointer at each return to the start marker.
+2. **Following.** With external sync on, the daw follows an incoming MIDI clock: Start, Continue, Stop and Song Position Pointer move the transport, and the tempo follows the incoming clock's rate. The tempo shown is the tempo heard.
+3. Clock messages are scheduled against the audio device's played-frame count, not against the display or a wall-clock timer, so they do not drift from the audio.
+4. The clock source (internal or external) and the MIDI ports are project settings in [daw.td](../../../src/osprey/examples/daw/daw.td).
+
+Not built: the daw has no MIDI port access yet.
 
 ## Rendering the song [DAW-RENDER]
 
-**Render song** renders the whole project, as it currently stands, to `<song>/song/song.wav` beside the renderer. It is the same renderer and the same rules as Play, without the window.
+**Render song** renders the whole project, as it currently stands, to `<song>/song/song.wav` beside the renderer. It is the same renderer and the same project snapshot as Play, written to a file instead of the audio device.
 
 1. The app encodes the current project to `<song>/song/project.json` and empties the old `song.wav`, then runs `daw <project.json> <folder>` (no beats: the whole song, intro and sustains included) with a two-hour limit.
 2. Only a WAV longer than its header counts. A refusal shows the renderer's message: "Rendering failed: …". A finished render says "Rendered <path>." and plays nothing.
@@ -153,9 +165,8 @@ Outside the app, `make -C src/toolchain/targets/macos daw-render SONG=<project.j
 The Timeline carries the transport, and its state is in the project model ([daw.td](../../../src/osprey/examples/daw/daw.td)), not in the view.
 
 - **Playhead ([DAW-TRANSPORT-PLAYHEAD]).** A position in beats, shown as `bar.beat` and as a line across the lanes and the piano roll. Tapping the ruler sets it. It is saved with the project. Built so far: whole bars, a line down the lanes, and not yet saved.
-- **Start and Stop ([DAW-TRANSPORT-START]).** Start plays from the playhead. Stop halts and leaves the playhead where playback began; a second Stop returns it to the start of the song. Built: Play bars and Stop behave this way.
-- **Loop ([DAW-TRANSPORT-LOOP]).** A start and a length in beats on the ruler. With the loop on, Start plays that span and repeats it.
-- **Following ([DAW-TRANSPORT-FOLLOW]).** While audio plays, the line moves with it, from the time playback started and the tempo ([ArrangeMath.lean](../../../src/osprey/examples/daw/src/ArrangeMath.lean)).
+- **Start and Stop ([DAW-TRANSPORT-START]).** Start plays in real time from the start marker to the end marker ([DAW-TRANSPORT-LIVE]). Stop halts and leaves the playhead where playback began; a second Stop returns it to the start of the song.
+- **Range, Loop and Following** are defined under [Transport](#transport-daw-transport): [DAW-TRANSPORT-RANGE], [DAW-TRANSPORT-LOOP] and [DAW-TRANSPORT-FOLLOW].
 
 ## Timeline zoom [DAW-TIMELINE-ZOOM]
 
@@ -252,7 +263,7 @@ One window shows three views of one session. **Timeline** shows the tracks, the 
 | --- | --- | --- |
 | Tracks, song overview, piano roll and track inspector | The selected track's patch in Prism | Gain, pan and Space send per track, saved on release |
 
-**Play bars** plays the two bars shown in the piano roll. **Save project** writes the current track patch and its layout alongside the timeline and mix without changing the view. Render a full song with `make -C src/toolchain/targets/macos daw-render`.
+**Play** plays in real time from the start marker to the end marker ([DAW-TRANSPORT-LIVE]). **Save project** writes the current track patch and its layout alongside the timeline and mix without changing the view. Render a full song with `make -C src/toolchain/targets/macos daw-render`.
 
 ### Video journey [DAW-VIDEO]
 

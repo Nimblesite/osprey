@@ -2,6 +2,29 @@
 
 The [daw specification](../specs/applications/Daw.md) defines the requirements. The [Timeline designs](../designs/prism-timeline/README.md) are the visual reference, within the [scope](../specs/applications/Daw.md#scope-daw-scope) the specification sets.
 
+## Real-time play [DAW-TRANSPORT-LIVE]: the first blocker
+
+**The user's verdict (2026-11-21): without real-time playing the app is useless. This is the largest open defect and comes before every other item in this plan.** Play used to render two bars to a WAV ("Rendering…") and then play the file. The requirement is in the specification under [Transport](../specs/applications/Daw.md#transport-daw-transport).
+
+- [ ] **Engine at 1.5× real time or better on the codex song ([DAW-TRANSPORT-LIVE-SPEED]).** Measured 2026-11-21: the live stream makes 0.37 s of audio per second (17.1 s in 45.8 s, one core, machine under load); the offline two-bar render makes 0.56. A 12 s profile of the live stream is mostly reference counting and allocation (`arc_drop_child`, `arc_release_zero_locked`, `osp_retain`, `osp_release`, `arc_alloc_locked`), then `osprey_list_get`. Owners: OspreyOpus1 (synth kernels, delay lines, effect state), ferroui-prism-lead (stream encoding, block loop, code generation). Until this is met the device runs empty and live sound breaks up.
+- [ ] **Start latency of 5 to 10 ms ([DAW-TRANSPORT-LIVE-LATENCY]).** The device starts after 240 to 480 buffered frames. Today it waits for two 4,096-frame blocks (171 ms) and the renderer's output is buffered by a further block. Needs: small device blocks, an unbuffered or flushed renderer output, and the engine speed above.
+- [ ] **MIDI clock sync ([DAW-TRANSPORT-MIDI-CLOCK]).** Send timing clock, Start, Continue, Stop and Song Position Pointer from the audio sample clock; follow an external clock when external sync is on. Needs: MIDI port access in the host (CoreMIDI on macOS, Windows MIDI Services), the clock source and ports in `daw.td`, and scheduling against the device's played frames. Nothing is built.
+- [ ] The renderer's live mode: `daw <project.json> <folder> <from-beat> <beats> live|loop` prints each block as one hex line for the audio device (`render/stream.ospml`, `ArrangeMath.live`). Built and compiling; not yet committed.
+- [ ] Play streams the range into the audio device through one process group; Stop cancels it; a refusal shows as "Playback failed: …".
+- [ ] Range ([DAW-TRANSPORT-RANGE]): Play runs from the start marker (the playhead's bar) to the end marker (the song's end by default); both markers are drawn on the lanes and dragged on the ruler; the end is always after the start.
+- [ ] Loop toggle ([DAW-TRANSPORT-LOOP]) in the transport: the range repeats until Stop.
+- [ ] Following ([DAW-TRANSPORT-FOLLOW]): the playhead, the lanes, the piano roll page and the position readout follow the frames the device has played.
+- [ ] The hex text between the renderer and the device costs encoding time on every block; a binary block needs a byte-writing output in the language or the runtime.
+- [ ] The interactive launch never closes by itself. Fixed in 5c0357a74: `prism.sh` wrapped the app in a ten-minute `gtimeout`, which closed it during the user's test.
+
+## Patch layout [PRISM-PATCH-LAYOUT]
+
+Reported by the user on 2026-11-21 with two screenshots: a track's patch opened as a tight grid of oversized cards with cables crossing over the cards, where the design shows cards at their natural size, spaced along the signal path from left to right with cables between them.
+
+- [ ] A patch with no saved positions is laid out along its signal flow: sources on the left, the Output on the right, one column per step, branches stacked, no card over another and no cable through a card. Owner: prism-routing-design.
+- [ ] Cards keep their designed size in a patch opened from a track (the generic cards in the report are larger than the designed Oscillator, Master and Scope cards).
+- [ ] Moving a node saves its position in the project file, and the patch reopens the way the user arranged it (also listed under [DAW-PROJECT]: "Node positions … are stored in the project").
+
 ## Math is Lean [DAW-MATH]
 
 Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is generated from that file ([MATH-CODE](../specs/tooling/MathToCode.md)). This covers timing, envelopes, mix ranges, pan laws, the excerpt window, and timeline and piano-roll geometry. No arithmetic formula is written by hand in `.ospml`. The generated modules are never committed. A Lean construct the reader cannot handle is fixed by extending the reader, not by writing Osprey math.
@@ -31,7 +54,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] Natively verified: Play → renderer → afplay → finished, on the codex project (17.7 s stereo, peak −1.0 dB).
 - [x] **Play bars** names the two-bar transport. **Save project** writes the current patch without leaving its page.
 - [x] Stop cancels the FerroUI transport process group. Native Play → Stop left no renderer and a zero-byte WAV. The host process tests also exercise descendant cancellation.
-- [ ] The renderer is fast enough to play from the playhead without waiting (per-note patch voices dominate).
+- [ ] The renderer is faster than real time: see [DAW-TRANSPORT-LIVE] at the top of this plan.
 
 ## One graph [DAW-GRAPH]
 
@@ -51,8 +74,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] Playhead at bar resolution (`Editor.rollBar` in daw.td): a line down the lanes with its handle on the ruler and its position shown; tapping the ruler moves it and keeps the track. Tested in the transport journey.
 - [x] Play bars starts at the playhead. Stop halts; Stop again returns the playhead to bar 1.
 - [ ] Playhead in beats, saved in the project file.
-- [ ] Loop span on the ruler.
-- [ ] The line follows playback.
+- [ ] Range markers, Loop and the following playhead: see [DAW-TRANSPORT-LIVE] at the top of this plan.
 
 ## Dynamics [DAW-DYNAMICS]
 
