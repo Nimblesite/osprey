@@ -279,6 +279,7 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Compile the current Prism source with warnings treated as errors.
 - [x] Re-run all twelve application journeys under GC: all pass.
 - [x] Rebuild the pinned VST SDK worker and pass all ten CTest checks, including real instrument/effect streams and audio-device diagnostics.
+- [x] Restore a captured parameter change in a fresh worker for TAL-NoiseMaker, CHOWTapeModel and four Dragonfly plug-ins. A stereo impulse independently verifies the restored dry mix on every Dragonfly effect. The same test detects a deliberately restored wrong preset (`917b7cce9`).
 - [x] Disconnect a modulation cable during playback with the Dragonfly Room editor open. The windowed patch journey verifies the plug-in receives the saved dry level, then follows mute and restore edits. All 153600 stereo frames reached the device without starvation in this run (`eadb9e12c`).
 - [x] Complete native headless and windowed VST/audio journeys against the rebuilt app. The 60-step TAL–Dragonfly patch and six settings steps pass in both modes. The captured stereo WAV matches the routed effect output.
 - [ ] Resolve any reproduced playback failures before claiming smooth sustained playback.
