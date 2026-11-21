@@ -111,6 +111,49 @@ sineHeard (label, samples, frequency) =
     inTune (label, steady, frequency, 0.5)
     within ("${label} level (dB)", decibelsAt (steady, frequency), -12.0412, 0.1)
 
+// [SYNTH-ADVANCED-GRAINS-BOUNDARY] One grain admitted to `pool`, full level, hard left, nine frames long.
+loopAdmitted (pool, s) =
+    plain = grainControls synth::HannWindow
+    loopTriggered (pool, synth::Grains::trigger (pool, plain(start = s.start, rate = s.rate, pan = -1.0, amplitude = 1.0, duration = 9)))
+
+loopTriggered (pool, outcome) = match outcome
+    Error why =>
+        expect (synth::Faults::detail why, "an admitted grain")
+        pool
+    Success admission =>
+        expect (admission.accepted, true)
+        admission.pool
+
+// Frame-by-frame left output, and whether every live grain's cursor stayed inside the region [2, 6).
+loopFrames (pool, count) = foldList (toList (range (0, count)), { pool = pool, left = [], inside = true, voices = 0 }, loopFrame)
+
+loopFrame (run, _) = match synth::Grains::block (run.pool, 1)
+    Error why =>
+        expect (synth::Faults::detail why, "a grain frame")
+        run
+    Success b =>
+        seen = (synth::Grains::observation b.next).voices
+        { pool = b.next, left = listConcat run.left b.left, inside = run.inside && length (filterList (seen, \v => v.cursor < 2.0 || v.cursor >= 6.0)) == 0, voices = satAdd run.voices (length seen) }
+
+// Overlapping grains crossing the loop's end (and, reversed, its start) wrap inside the region on every frame,
+// and together they sound exactly the sum of each alone.
+loopOverlaps pool =
+    region = synth::GrainRegion(first = 2, limit = 6, boundary = synth::LoopSource)
+    starts = [{ start = 4.5, rate = 1.0 }, { start = 5.0, rate = 1.0 }, { start = 5.75, rate = 1.5 }, { start = 2.25, rate = -1.0 }]
+    succeeds (synth::Grains::withRegion (pool, region), \looped =>
+        mixed = loopFrames (foldList (starts, looped, loopAdmitted), 12)
+        alone = mapList (starts, \s => loopFrames (loopAdmitted (looped, s), 12))
+        expect (length mixed.left, 12)
+        expect (mixed.inside, true)
+        forEachList (alone, \single => expect (single.inside, true))
+        expect (mixed.voices, foldList (alone, 0, \(sum, single) => satAdd sum single.voices))
+        forEachList (toList (range (0, 12)), \i => near (listGet mixed.left i ?: 99.0, foldList (alone, 0.0, \(sum, single) => sum + (listGet single.left i ?: 99.0)), 0.000000000001))
+        expect (foldList (mixed.left, 0.0, loopPeak) > 0.5, true))
+
+loopPeak (top, x) = match x > top
+    true => x
+    false => top
+
 registerClipJourneys () =
     audio = monoPort ("audio", synth::Audio, synth::Amplitude)
     test ("MIDI oscillator state validation rejects forged voices, capacity and malformed events", \() => arithmetic (\() =>
@@ -330,3 +373,5 @@ registerClipJourneys () =
             expect (length gone.audio.states, 0)
             expect (length gone.audio.samples, 0)
             allRefused (gone, snapshot, "disposed"))))
+    test ("overlapping grains crossing a loop's end, at 1.5x and reversed across its start, stay inside the region every frame and sum exactly [SYNTH-ADVANCED-GRAINS-BOUNDARY]", \() => arithmetic (\() =>
+        succeeds (synth::Grains::prepare (mapList (toList (range (0, 8)), \i => toFloat i * 0.1), 4), loopOverlaps)))
