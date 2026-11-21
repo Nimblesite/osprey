@@ -75,6 +75,7 @@ reject_edit() {
     awk -F: -v start="$start" -v end="$end" '/ProductionFft.lean:[0-9]+:[0-9]+: error:/ && $2 >= start && $2 < end { rejected=1 } END {exit !rejected}' "$out/rejected.log"
     echo "REJECT $theorem production mutation"
 }
+reject_edit supportedTransformDepths 's/2048, 4096]/2048, 2048]/'
 reject_edit transformSchedule 's/step = satAdd stride stride/step = satAdd stride 1/'
 reject_edit transformSchedule 's/listConcat halves.lower halves.upper/listConcat halves.upper halves.lower/'
 reject_edit hannEnergyQuarter 's/0.5 - 0.5 [*] cos/0.5 - 1.0 * cos/' "$math"

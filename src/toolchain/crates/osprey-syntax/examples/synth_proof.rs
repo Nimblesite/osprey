@@ -380,6 +380,24 @@ fn reflect(file: &str) -> Result<(), String> {
     if namespace.label() != owner {
         return Err(format!("expected {owner} namespace for {module}"));
     }
+    if module == "Ffts" {
+        let mut sizes = body
+            .iter()
+            .filter_map(|item| match item.declaration.as_ref() {
+                Stmt::Let {
+                    name,
+                    mutable: false,
+                    value,
+                    ..
+                } if name == "sizes" => Some(value),
+                _ => None,
+            });
+        let value = sizes.next().ok_or("missing immutable Ffts.sizes")?;
+        if sizes.next().is_some() {
+            return Err("ambiguous Ffts.sizes".into());
+        }
+        println!("def Ffts.sizes : List Nat := {}", term(value)?);
+    }
     for &(name, types, result) in signatures(&module)? {
         let mut functions = body
             .iter()

@@ -78,11 +78,15 @@ private theorem doubledStages {n d : Nat} (prev : Stages n (d+1))
   rw [halveDouble]
   exact prev
 
+/-- Assign successive depths to the shipped size table. Depth twelve marks
+    the end, so adding or dropping a size also changes this obligation. -/
+def stageDepths : List Nat → Nat → Prop
+  | [], depth => depth = 12
+  | size :: sizes, depth => Stages size depth ∧ stageDepths sizes (depth+1)
+
 /-- The renderer's supported frame sizes need five through eleven calls on
     each branch, including the fused quartet at depth one. -/
-theorem supportedTransformDepths :
-    Stages 64 5 ∧ Stages 128 6 ∧ Stages 256 7 ∧ Stages 512 8 ∧
-    Stages 1024 9 ∧ Stages 2048 10 ∧ Stages 4096 11 := by
+theorem supportedTransformDepths : stageDepths Ffts.sizes 5 := by
   have s8 : Stages 8 2 := doubledStages Stages.four rfl
   have s16 : Stages 16 3 := doubledStages s8 rfl
   have s32 : Stages 32 4 := doubledStages s16 rfl
@@ -92,5 +96,5 @@ theorem supportedTransformDepths :
   have s512 : Stages 512 8 := doubledStages s256 rfl
   have s1024 : Stages 1024 9 := doubledStages s512 rfl
   have s2048 : Stages 2048 10 := doubledStages s1024 rfl
-  exact ⟨s64, s128, s256, s512, s1024, s2048, doubledStages s2048 rfl⟩
+  exact ⟨s64, s128, s256, s512, s1024, s2048, doubledStages s2048 rfl, rfl⟩
 end ProductionFft
