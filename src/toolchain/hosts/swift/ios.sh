@@ -6,7 +6,7 @@
 #   OSPREY_SWIFT_APP=<folder> [OSPREY_IOS_ID=<bundle id>] [OSPREY_IOS_NAME=<name>] \
 #     [OSPREY_IOS_SIMULATOR=<device>] ios.sh [ios-sim|ios] [--view-check|--open-check|--launch|--golden]...
 # Several actions run in order on one build. `--golden` (ios-sim) launches the app, waits for it to settle and compares the screen, without
-# its system bars, with the application's `goldens/ios/<width>-ready.png` (scripts/mobile/goldens.py).
+# its system bars, with the application's `goldens/ios/<width>-ready.png` (scripts/mobile/goldens.mjs).
 # `--view-check` (ios-sim) runs the headless journey with no person present and fails unless it
 # reads OSPREY_IOS_VIEW_OK; `--open-check` (ios-sim) only requires any application to open to a checked frame with
 # controls, and reads the same verdict; `--launch` (ios-sim) installs the app and opens it in the Simulator. The default
@@ -103,7 +103,7 @@ golden() {
     xcrun simctl launch "$device" "$identifier" --resources "$app" >/dev/null
     sleep 3
     xcrun simctl io "$device" screenshot "$build/ready.png" >/dev/null
-    (cd "$repo" && python3 scripts/mobile/goldens.py "$build/ready.png" "$app/goldens/ios")
+    (cd "$repo" && node scripts/mobile/goldens.mjs "$build/ready.png" "$app/goldens/ios")
 }
 
 # The headless journey: launch with the console attached and read the verdict back.

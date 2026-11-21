@@ -4,7 +4,7 @@
 # verdict line. Modelled on src/osprey/examples/mobile/android/run.sh.
 #   run.sh [--view-check|--golden]
 # `--golden` opens the application, waits for it to settle and compares the screen, without its
-# system bars, with the application's `goldens/android/<width>-ready.png` (scripts/mobile/goldens.py).
+# system bars, with the application's `goldens/android/<width>-ready.png` (scripts/mobile/goldens.mjs).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
@@ -63,6 +63,6 @@ if [[ ${1:-} == --golden ]]; then
         mv "$shot.next" "$shot"
     done
     rm -f "$shot.next"
-    cd "$repo" && exec python3 scripts/mobile/goldens.py "$shot" "$app/goldens/android"
+    cd "$repo" && exec node scripts/mobile/goldens.mjs "$shot" "$app/goldens/android"
 fi
 printf '\nRunning %s on %s\n' "$id" "$serial"
