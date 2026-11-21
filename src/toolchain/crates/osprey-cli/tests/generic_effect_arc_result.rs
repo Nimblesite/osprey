@@ -1,8 +1,8 @@
 //! Focused ownership regressions for generic values under ARC.
 
-#[path = "common/repo_root.rs"]
-mod repo_root;
-use repo_root::repo_root;
+#[path = "common/launcher.rs"]
+mod launcher;
+use launcher::{osprey as launcher, repo_root};
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -13,13 +13,6 @@ mod effect_execution;
 
 #[path = "common/workbench_fixture.rs"]
 mod workbench_fixture;
-
-/// A launcher invocation rooted at the repository checkout.
-fn launcher() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
-    let _ = command.current_dir(repo_root());
-    command
-}
 
 /// Asserts `output` succeeded and printed exactly `expected`.
 fn assert_stdout(output: &Output, expected: &str, context: &str) {

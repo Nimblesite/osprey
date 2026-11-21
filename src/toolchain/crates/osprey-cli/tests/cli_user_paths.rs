@@ -33,12 +33,12 @@ impl Drop for Scratch {
     }
 }
 
-fn osprey() -> Command {
-    in_repository(Command::new(env!("CARGO_BIN_EXE_osprey")))
-}
+#[path = "common/launcher.rs"]
+mod launcher;
+use launcher::osprey;
 
 fn in_repository(mut command: Command) -> Command {
-    let _ = command.current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../.."));
+    let _ = command.current_dir(launcher::repo_root());
     command
 }
 

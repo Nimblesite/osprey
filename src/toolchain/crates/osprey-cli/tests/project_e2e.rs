@@ -4,9 +4,9 @@
     reason = "subprocess and fixture setup failures must fail these end-to-end tests immediately"
 )]
 
-#[path = "common/repo_root.rs"]
-mod repo_root;
-use repo_root::repo_root;
+#[path = "common/launcher.rs"]
+mod launcher;
+use launcher::{osprey, repo_root};
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -19,12 +19,6 @@ type Rewritten = (PathBuf, String, String);
 
 fn fixture() -> PathBuf {
     repo_root().join("src/osprey/examples/talon/backend")
-}
-
-fn osprey() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
-    let _ = command.current_dir(repo_root());
-    command
 }
 
 struct Output {
