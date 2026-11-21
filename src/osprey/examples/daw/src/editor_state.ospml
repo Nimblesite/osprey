@@ -184,9 +184,6 @@ module EditorState
 
     (** One native or canvas action produces one immutable editor snapshot. *)
     export tapped (editor, action) = match action
-        ShowModules => editor(paletteShown = !editor.paletteShown)
-        ShowDetails => editor(detailsShown = !editor.detailsShown)
-        ShowKeyboard => editor(keyboardShown = !editor.keyboardShown, armedNote = -1)
         Add kind => added (editor, kind)
         Select identity => selected (editor, identity)
         Source identity outlet => armed (editor, identity, outlet)

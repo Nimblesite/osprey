@@ -28,14 +28,21 @@ module DawSession
             true => next(rollBar = at)
             false => next
 
+    (** Follow a new track across pages while retaining the playhead and same-track note selection. *)
+    export focused (editor, index) = match editor.track == index
+        true => editor
+        false => pickedAt (editor, index, editor.rollBar)
+
     highest graph = foldList (graph.nodes, 0, \(top, n) => ui::Pick::either (n.identity >= top, n.identity, top))
 
     (** Open the track's patch in Prism; a track that cannot become a graph stays on the timeline with the reason. *)
     export opened (editor, index) = match listGet editor.song.tracks index
         Error _ => editor(message = "Pick a track first.")
-        Success track => match daw::TrackPatches::patch track
-            Error why => editor(track = index, message = "${track.name}: ${why}")
-            Success graph => editor(graph = graph, positions = track.positions, pluginBindings = [], gesture = [], selected = -1, source = -1, selectedCable = -1, dragging = -1, nextIdentity = satAdd (highest graph) 1, revision = satAdd editor.revision 1, track = index, patchTrack = index, page = PatchPage, message = "${track.name}'s patch.")
+        Success track =>
+            ready = focused (editor, index)
+            match daw::TrackPatches::patch track
+                Error why => ready(message = "${track.name}: ${why}")
+                Success graph => ready(graph = graph, positions = track.positions, pluginBindings = [], gesture = [], selected = -1, source = -1, selectedCable = -1, dragging = -1, nextIdentity = satAdd (highest graph) 1, revision = satAdd editor.revision 1, patchTrack = index, page = PatchPage, message = "${track.name}'s patch.")
 
     (** Read and decode a song project; the session keeps its old song when this one is refused. *)
     export loaded (editor, path) = match readFile path
@@ -210,7 +217,7 @@ module DawSession
     export savedTrack (editor, index, result) = match result
         Error why => ui::Runtime::step (editor(message = why))
         Success song => match committed (editor, song)
-            Success next => ui::Runtime::step (next(track = index, outputEdit = OutputClosed, revision = satAdd next.revision 1))
+            Success next => ui::Runtime::step (focused (next(outputEdit = OutputClosed, revision = satAdd next.revision 1), index))
             Error why => ui::Runtime::step (editor(message = why))
 
     (** Write the selected note's new velocity into its track in the same song file. *)

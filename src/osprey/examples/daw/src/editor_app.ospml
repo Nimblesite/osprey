@@ -25,7 +25,15 @@ module EditorApp
             true => Runtime::step opened
             false => Runtime::step (DawSession::loaded (opened, song))
 
+    // View commands open the selected track's patch from any page and toggle the tool once there.
+    patchTool (editor, next) = match editor.page
+        PatchPage => Runtime::step next
+        _ => DawSession::shown (next, PatchPage)
+
     tapped (context, editor, action) = match action
+        ShowModules => patchTool (editor, editor(paletteShown = editor.page != PatchPage || !editor.paletteShown))
+        ShowDetails => patchTool (editor, editor(detailsShown = editor.page != PatchPage || !editor.detailsShown))
+        ShowKeyboard => patchTool (editor, editor(keyboardShown = editor.page != PatchPage || !editor.keyboardShown, armedNote = -1))
         Undo => DawSession::restored (editor, EditorHistory::undo editor)
         Redo => DawSession::restored (editor, EditorHistory::redo editor)
         Strike note => match editor.renderContinuous || editor.renderTicket != ""

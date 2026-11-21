@@ -32,9 +32,7 @@ module RoutingPicker
     export open (editor, index, offset) = match listGet editor.song.tracks index
         Error _ => Runtime::step (editor(message = "Select a track first."))
         Success track =>
-            selected = match index == editor.track
-                true => editor
-                false => DawSession::picked (editor, index)
+            selected = DawSession::focused (editor, index)
             focus = match offset < 0
                 true => ui::Lists::position (names selected, \name => name == track.bus)
                 false => offset

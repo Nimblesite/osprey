@@ -433,6 +433,16 @@ fn drag_piano_note(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     choose_menu(regions, "View", "Timeline");
     choose_menu(regions, "Edit", "Redo");
     assert!(read() == expected, "Redo restores the complete saved project after navigating");
+    // A mixer gesture on another track must not reinterpret a selected note's index.
+    choose_menu(regions, "View", "Bus Routing");
+    let snare_gain = (225.0, 235.0 + 14.5 * 37.0);
+    point(canvas, snare_gain, true);
+    point(canvas, snare_gain, false);
+    point(canvas, (330.0, 29.0), true);
+    let (returned, _) = point(canvas, (330.0, 29.0), false);
+    assert!(shows_label(&returned, "hat") && shows_label(&returned, "snare"), "returning from Mix reveals the selected track's lane page");
+    assert!(!shows_label(&returned, "SELECTED NOTE"), "a mixer edit on another track clears the old piano note");
+
 }
 
 #[test]
