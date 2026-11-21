@@ -6,37 +6,14 @@
 import { diagnostics, readAsks, requests, sliceWrites, type Ask, type Completion } from "./asks";
 import { RegionStore, sourcesOf, toldFrame, type Regions, type ToldFrame } from "./nodes";
 import { readFrame, type Shown } from "./webview/rows";
-import { EVENT } from "./webview/events";
+import { EVENT, type HostMessage } from "./webview/events";
 import type { FrameResult, NativeRuntime, NativeTouch, OpenOptions } from "./wasi-runner";
 
-export interface FrameMessage {
-  readonly type: "frame";
-  readonly shapes: ArrayBuffer;
-  readonly views: ArrayBuffer;
-  readonly text: ArrayBuffer;
-  readonly assets: Readonly<Record<string, string>>;
-  readonly diagnostics: readonly string[];
-}
-
-/** A frame the Node renderer told as component markup; the runs ride along for its scenes. */
-export interface RenderMessage extends Omit<FrameMessage, "type"> {
-  readonly type: "render";
-  readonly html: string;
-}
-
-export interface BusyMessage {
-  readonly type: "busy";
-  readonly active: boolean;
-}
-
-export interface FatalMessage {
-  readonly type: "fatal";
-  readonly message: string;
-}
+export type { FrameMessage, RenderMessage, BusyMessage, FatalMessage } from "./webview/events";
 
 export interface SessionDeps {
   readonly runtime: NativeRuntime;
-  send(message: RenderMessage | FrameMessage | BusyMessage | FatalMessage): void;
+  send(message: HostMessage): void;
   execute(ask: Ask, slices: ReadonlyMap<string, string>): Promise<Completion>;
   /** Draws a told frame's regions and theme as the markup the webview shows. */
   draw(frame: ToldFrame, regions: Regions, slices: ReadonlyMap<string, string>): string;

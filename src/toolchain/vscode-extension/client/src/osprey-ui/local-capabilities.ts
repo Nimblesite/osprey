@@ -6,7 +6,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { document, type Ask, type Completion } from "./asks";
+import { document, required, limitOf, type Ask, type Completion } from "./asks";
 import { approvedFile, inside, boundedText, persist, PRIVATE_DIRECTORY_MODE } from "./local-files";
 import { documentRequest, type DocumentDialogs } from "./document-capabilities";
 
@@ -24,20 +24,6 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function required(ask: Ask, field: number, name: string): string {
-  const value = ask.text(field);
-  if (value === "") throw new Error(`${ask.kind} has no valid ${name}`);
-  return value;
-}
-
-function bounded(ask: Ask, field: number, name: string, most: number): number {
-  const value = ask.number(field);
-  if (!ask.fields.some((item) => item.field === field) || value <= 0 || value > most) {
-    throw new Error(`${ask.kind} has no valid ${name} between 1 and ${most}`);
-  }
-  return value;
-}
-
 function fileText(assets: string, source: string, limit: number): { path: string; text: string; error: string } {
   try {
     return { path: source, text: boundedText(approvedFile(assets, source), limit), error: "" };
@@ -47,7 +33,7 @@ function fileText(assets: string, source: string, limit: number): { path: string
 }
 
 function readTexts(ask: Ask, assets: string): Completion {
-  const limit = bounded(ask, 2, "limit", MAX_TEXT);
+  const limit = limitOf(ask, 2, MAX_TEXT);
   const sources = ask.texts(1);
   if (sources.length === 0 || sources.length > 64) throw new Error("read-texts has no valid paths");
   const key = required(ask, 3, "slice");
@@ -80,7 +66,7 @@ function existingAncestor(directory: string): string {
 }
 
 function storeRead(ask: Ask, store: string): Completion {
-  const limit = bounded(ask, 2, "limit", MAX_TEXT);
+  const limit = limitOf(ask, 2, MAX_TEXT);
   const key = required(ask, 3, "slice");
   const { target } = rooted(store, required(ask, 1, "name"));
   if (!fs.existsSync(target) || !fs.statSync(target).isFile()) return document({ found: false });

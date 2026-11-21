@@ -141,3 +141,17 @@ export function document(value: unknown): Completion {
 export function bare(path: string): Completion {
   return { detail: path };
 }
+
+export function required(ask: Ask, field: number, name: string): string {
+  const value = ask.text(field);
+  if (value === "") throw new Error(`${ask.kind} has no valid ${name}`);
+  return value;
+}
+
+export function limitOf(ask: Ask, field: number, most: number): number {
+  const value = ask.number(field);
+  if (!ask.fields.some((item) => item.field === field) || value <= 0 || value > most) {
+    throw new Error(`${ask.kind} has no valid limit between 1 and ${most}`);
+  }
+  return value;
+}
