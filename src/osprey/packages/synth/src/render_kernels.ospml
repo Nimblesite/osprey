@@ -100,7 +100,7 @@ module RenderKernels
             Oscillator => Outcomes::carried (waveform (snapshot, scheduled), \wave => sine (rate, snapshot, frame, held, wave, \value => value))
             Lfo => sine (rate, snapshot, frame, held, Sine, Waves::unipolar)
             SamplePlayer resource => playback (resource, rate, snapshot, frame, held)
-            Exciter _ => PhysicalKernels::excite (snapshot, frame, held)
+            Exciter _ => PhysicalKernels::excite (snapshot, frame, held, scheduled.physical)
             TableOscillator table => TableKernels::wavetable (rate, plan, snapshot, frame, held, table)
             Additive => TableKernels::scheduled (rate, snapshot, frame, held, scheduled.bank)
             PhaseOperator => OperatorKernels::process (plan, rate, snapshot, frame, held)
@@ -117,6 +117,7 @@ module RenderKernels
     physical (rate, snapshot, n, fixed) = match fixed
         false => LivePhysical
         true => match n.processor
+            Exciter _ => PhysicalKernels::prepareExciter (snapshot, n.identity)
             Waveguide capacity => PhysicalKernels::prepare (rate, snapshot, n.identity, capacity)
             Shaper => EffectKernels::prepare (rate, snapshot, n.identity)
             _ => LivePhysical

@@ -51,4 +51,4 @@ type MeshSample { sample: Float next: MeshState }
 type StrikeConfig { sampleRate: Float frequency: Float position: Float capacity: Int }
 type LineSample { sample: Float next: DelayLine }
 type GuideCoefficients { tuning: Float pickup: Float attenuation: LossConfig dispersion: Float }
-union PhysicalSchedule { LivePhysical {} FixedGuide { coefficients: GuideCoefficients } FixedShaper { config: ShaperConfig weights: List<Float> } }
+union PhysicalSchedule { LivePhysical {} FixedExciter { config: ExciterConfig } FixedGuide { coefficients: GuideCoefficients } FixedShaper { config: ShaperConfig weights: List<Float> } }

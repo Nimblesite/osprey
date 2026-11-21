@@ -18,14 +18,21 @@ module PhysicalKernels
                 Error _ => Error(message = InvalidConfiguration(detail = "Exciter interval must be a whole number of samples."))
                 Success every => Exciters::configure (ExciterConfig(strength = strength, duration = frames, interval = every, excitation = shape))
 
-    excited (frame, held, configured) = match configured
-        Error why => Error(message = why)
-        Success config =>
-            step = Exciters::next (config, ExciterState(age = held.phase, seed = held.integratorOne, smoothed = held.integratorTwo))
-            published (frame, held(phase = step.next.age, integratorOne = step.next.seed, integratorTwo = step.next.smoothed), step.sample)
+    excitationSettings (snapshot, identity) = RenderInputs::setting (snapshot, identity, "strength", \strength => RenderInputs::setting (snapshot, identity, "duration", \duration => RenderInputs::setting (snapshot, identity, "interval", \interval => RenderInputs::setting (snapshot, identity, "excitation", \kind => RenderInputs::setting (snapshot, identity, "colour", \colour => exciterConfig (strength, duration, interval, kind, colour))))))
 
-    (** A source: phase holds the burst age, the integrators the noise seed and colour filter. *)
-    export excite (snapshot, frame, held) = RenderInputs::bound (snapshot, held, "strength", \strength => RenderInputs::bound (snapshot, held, "duration", \duration => RenderInputs::bound (snapshot, held, "interval", \interval => RenderInputs::bound (snapshot, held, "excitation", \kind => RenderInputs::bound (snapshot, held, "colour", \colour => excited (frame, held, exciterConfig (strength, duration, interval, kind, colour)))))))
+    (** Resolve the burst controls once when there are no automation events in this block. *)
+    export prepareExciter (snapshot, identity) = match excitationSettings (snapshot, identity)
+        Success config => FixedExciter(config = config)
+        Error _ => LivePhysical
+
+    excited (frame, held, config) =
+        step = Exciters::next (config, ExciterState(age = held.phase, seed = held.integratorOne, smoothed = held.integratorTwo))
+        published (frame, held(phase = step.next.age, integratorOne = step.next.seed, integratorTwo = step.next.smoothed), step.sample)
+
+    (** Advance one burst sample, retaining its age, noise seed and colour filter. *)
+    export excite (snapshot, frame, held, prepared) = match prepared
+        FixedExciter config => excited (frame, held, config)
+        _ => Outcomes::carried (excitationSettings (snapshot, held.identity), \config => excited (frame, held, config))
 
     rang (frame, held, step) = published (frame, held(integratorOne = step.next.real, integratorTwo = step.next.imag), step.sample)
 

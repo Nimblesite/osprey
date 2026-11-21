@@ -275,6 +275,8 @@ type GuideCoefficients =
 
 type PhysicalSchedule =
     LivePhysical
+    FixedExciter
+        config : ExciterConfig
     FixedGuide
         coefficients : GuideCoefficients
     FixedShaper

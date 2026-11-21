@@ -58,6 +58,7 @@ modesHeld body =
         inTuneWithin ("body ${body} mode ${index} at ${mode} Hz", s, mode, 40.0, 0.3))
 
 stringsHeld () =
+    scheduleEdit (accepted (Patches::spectralFreeze ()), 0, "excitation", 1.0, 7)
     scheduleEdit (accepted (Patches::spectralFreeze ()), 1, "frequency", 329.63, 401)
     scheduleEdit (serial ([Components::sine (1, 440.0), Components::shaper (2, 0.0, 2.0), Components::output 3]), 2, "oversample", 1.0, 41)
     forEachList ([110.0, 220.0, 440.0], \f => inTune ("plucked waveguide ${f} Hz", renderedFrom ([Components::exciter (0, 7), Components::waveguide (1, f, 2400), Components::output 2], 3392), f, 0.5))
