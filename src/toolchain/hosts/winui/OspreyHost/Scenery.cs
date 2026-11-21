@@ -208,9 +208,8 @@ sealed partial class SceneView
             Viewed((holder.ActualWidth, holder.ActualHeight));
             return;
         }
-        var scale = scene.Scale(holder.ActualWidth, holder.ActualHeight);
-        if (scale <= 0) return;
-        var viewport = (Width: holder.ActualWidth / scale, Height: holder.ActualHeight / scale);
+        var scale = scene.Scale;
+        var viewport = scene.Viewport(holder.ActualWidth, holder.ActualHeight);
         canvas.Clip = new RectangleGeometry { Rect = new Rect(0, 0, viewport.Width, viewport.Height) };
         canvas.RenderTransform = new ScaleTransform { ScaleX = scale, ScaleY = scale };
         Viewed(viewport);

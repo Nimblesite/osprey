@@ -31,10 +31,10 @@ public sealed class SceneTests
     }
 
     [Fact]
-    public void OnlyASceneWithAZoomOpensItsWindowAtItsSize()
+    public void OnlyASceneWithAnExtentSetsItsOpeningSize()
     {
         Assert.Equal((217.0, 278.5), Decode([Row(20, x: 434, y: 557, width: 0.5)]).Opening);
-        Assert.Null(Decode([Row(20, x: 1728, y: 893)]).Opening);
+        Assert.Equal((1728.0, 893.0), Decode([Row(20, x: 1728, y: 893)]).Opening);
         Assert.Null(Decode([Row(20)]).Opening);
         Assert.Null(Decode([Row(20, x: 0, y: 0, width: 5)]).Opening);
         Assert.Throws<HostException>(() => Decode([Row(20, x: -10, y: 10, width: 1)]));
@@ -55,8 +55,8 @@ public sealed class SceneTests
         var compact = Decode([Row(20, x: 434, y: 557, width: -1)]);
         Assert.Equal((434.0, 557.0, -1.0), (compact.Width, compact.Height, compact.Zoom));
         Assert.Equal((434.0, 557.0), compact.Opening);
-        Assert.Equal(1, compact.Scale(320, 240));
-        Assert.Equal(1, compact.Scale(1600, 1200));
+        Assert.Equal((320.0, 240.0), compact.Viewport(320, 240));
+        Assert.Equal((1600.0, 1200.0), compact.Viewport(1600, 1200));
     }
 
     /// <summary>
@@ -67,14 +67,16 @@ public sealed class SceneTests
     [Fact]
     public void ResizingTheRegionNeverChangesASceneScale()
     {
-        Assert.Equal(1, Decode([Row(20)]).Scale(400, 300));
+        Assert.Equal((400.0, 300.0), Decode([Row(20)]).Viewport(400, 300));
         var regions = new[] { (1.0, 1.0), (80.0, 60.0), (200.0, 100.0), (400.0, 300.0), (4000.0, 3000.0), (5000.0, 40.0) };
         foreach (var (zoom, scale) in new[] { (0.0, 1.0), (0.25, 0.25), (1.0, 1.0), (2.0, 2.0), (-0.75, 0.75), (-1.0, 1.0), (-2.0, 2.0) })
         {
             var scene = Decode([Row(20, x: 200, y: 100, width: zoom)]);
+            Assert.Equal(scale, scene.Scale);
+            Assert.Equal((200 * scale, 100 * scale), scene.Opening);
             foreach (var (w, h) in regions)
             {
-                Assert.True(scale == scene.Scale(w, h), $"zoom {zoom} in a {w}x{h} region drew at {scene.Scale(w, h)}, not {scale}");
+                Assert.Equal((w / scale, h / scale), scene.Viewport(w, h));
             }
         }
     }
