@@ -123,6 +123,12 @@ sceneSaid (binding, input) = match Surfaces::scene (sceneHeld (binding), 0, inpu
 // `binding`, which owns no scene, refuses `value` as the wrong kind.
 notScene (binding, value) = expect (sceneSaid (binding, value), "A non-scene control was sent a value of the wrong kind")
 
+sceneKeyInput (name, down) = ui::Key(keyName = name, keyDown = down)
+
+scenePointerInput (x, y, down, shift) = ui::Pointer(pointerX = x, pointerY = y, pointerDown = down, pointerShift = shift)
+
+sceneViewInput (width, height) = ui::Viewed(viewWidth = width, viewHeight = height)
+
 // [UI-SCENE]: a path carries its builder commands, outline, paint and transform in the order a
 // host's path builder takes them, with float colours a host can use without rounding.
 (** a path sends its steps, outline, paint and transform. *)
@@ -142,20 +148,20 @@ sceneCaseAPathEncodesItsStepsOutlinePaint () =
 (** a scene binding delivers keys, pointer positions and its region's size in scene units. *)
 sceneCaseASceneBindingDeliversKeysAndPointer () =
     scene = ui::SceneInput(action = Typed)
-    expect (sceneSaid (scene, ui::Key(keyName = "ArrowLeft", keyDown = true)), "key ArrowLeft true")
-    expect (sceneSaid (scene, ui::Pointer(pointerX = 12.5, pointerY = 3.0, pointerDown = false, pointerShift = false)), "pointer 12.5 3.0 false false")
-    expect (sceneSaid (scene, ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = true, pointerShift = true)), "pointer 1.0 2.0 true true")
-    expect (sceneSaid (scene, ui::Viewed(viewWidth = 1536.0, viewHeight = 1008.0)), "viewed 1536.0 1008.0")
-    expect (sceneSaid (scene, ui::Viewed(viewWidth = 0.5, viewHeight = 2.25)), "viewed 0.5 2.25")
-    notScene (ui::Tap(action = Load), ui::Key(keyName = "ArrowLeft", keyDown = true))
-    notScene (ui::TextInput(action = Load), ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = false, pointerShift = false))
-    notScene (ui::FlagInput(action = Load), ui::Viewed(viewWidth = 4.0, viewHeight = 2.0))
-    notScene (ui::ChoiceInput(action = Load), ui::Key(keyName = "a", keyDown = false))
+    expect (sceneSaid (scene, sceneKeyInput ("ArrowLeft", true)), "key ArrowLeft true")
+    expect (sceneSaid (scene, scenePointerInput (12.5, 3.0, false, false)), "pointer 12.5 3.0 false false")
+    expect (sceneSaid (scene, scenePointerInput (1.0, 2.0, true, true)), "pointer 1.0 2.0 true true")
+    expect (sceneSaid (scene, sceneViewInput (1536.0, 1008.0)), "viewed 1536.0 1008.0")
+    expect (sceneSaid (scene, sceneViewInput (0.5, 2.25)), "viewed 0.5 2.25")
+    notScene (ui::Tap(action = Load), sceneKeyInput ("ArrowLeft", true))
+    notScene (ui::TextInput(action = Load), scenePointerInput (1.0, 2.0, false, false))
+    notScene (ui::FlagInput(action = Load), sceneViewInput (4.0, 2.0))
+    notScene (ui::ChoiceInput(action = Load), sceneKeyInput ("a", false))
     // Every remaining control that takes another value kind refuses the same key value.
-    forEachList ([ui::SizeInput(action = Load), ui::PlaceInput(action = Load), ui::StrokeInput(action = Load), ui::LassoInput(action = Load)], \binding => notScene (binding, ui::Key(keyName = "a", keyDown = true)))
+    forEachList ([ui::SizeInput(action = Load), ui::PlaceInput(action = Load), ui::StrokeInput(action = Load), ui::LassoInput(action = Load)], \binding => notScene (binding, sceneKeyInput ("a", true)))
     // A surface that drew no scene at that control number refuses too.
     bare = Surfaces::idle 0
-    bareScene = match Surfaces::scene (bare, 0, ui::Key(keyName = "a", keyDown = true))
+    bareScene = match Surfaces::scene (bare, 0, sceneKeyInput ("a", true))
         Error problem => problem
         Success _ => "delivered"
     expect (bareScene, "Unknown control 0")
