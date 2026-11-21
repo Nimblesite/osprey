@@ -4,7 +4,7 @@ namespace synth
 (** Bounded project history, independent of runtime session ownership. *)
 module EditorHistory
     (** The project and working patch as they stand, for history or to hold while a gesture is under way. *)
-    export snapshot editor = GraphSnapshot(savedGraph = editor.graph, savedSong = editor.song, savedTrack = editor.track, savedPatchTrack = editor.patchTrack, savedTimelineNote = editor.selectedNote, savedNextIdentity = editor.nextIdentity, savedPositions = editor.positions, savedBindings = editor.pluginBindings, savedSelected = editor.selected, savedNote = editor.note)
+    export snapshot editor = GraphSnapshot(savedGraph = editor.graph, savedSong = editor.song, savedTrack = editor.track, savedPatchTrack = editor.patchTrack, savedTimelineNote = editor.selectedNote, savedNextIdentity = editor.nextIdentity, savedPositions = editor.positions, savedFlow = editor.flowPositions, savedBindings = editor.pluginBindings, savedSelected = editor.selected, savedNote = editor.note)
 
     same (a, b) = structuralEquals (a.savedGraph, b.savedGraph) && structuralEquals (a.savedPositions, b.savedPositions) && structuralEquals (a.savedBindings, b.savedBindings)
 
@@ -19,7 +19,7 @@ module EditorHistory
 
     remaining frames = window (frames, 1, length frames)
 
-    restore (editor, frame) = editor(song = frame.savedSong, track = frame.savedTrack, patchTrack = frame.savedPatchTrack, selectedNote = frame.savedTimelineNote, nextIdentity = ui::Pick::either (editor.nextIdentity >= frame.savedNextIdentity, editor.nextIdentity, frame.savedNextIdentity), rollDrag = RollIdle, outputEdit = OutputClosed, graph = frame.savedGraph, positions = frame.savedPositions, pluginBindings = frame.savedBindings, selected = frame.savedSelected, note = frame.savedNote, armedNote = -1, selectedCable = -1, source = -1, dragging = -1, wireDragging = false, paletteDrag = "", gesture = [], revision = satAdd editor.revision 1, layoutRevision = satAdd editor.layoutRevision 1)
+    restore (editor, frame) = editor(song = frame.savedSong, track = frame.savedTrack, patchTrack = frame.savedPatchTrack, selectedNote = frame.savedTimelineNote, nextIdentity = ui::Pick::either (editor.nextIdentity >= frame.savedNextIdentity, editor.nextIdentity, frame.savedNextIdentity), rollDrag = RollIdle, outputEdit = OutputClosed, graph = frame.savedGraph, positions = frame.savedPositions, flowPositions = frame.savedFlow, panning = PanIdle, pluginBindings = frame.savedBindings, selected = frame.savedSelected, note = frame.savedNote, armedNote = -1, selectedCable = -1, source = -1, dragging = -1, wireDragging = false, paletteDrag = "", gesture = [], revision = satAdd editor.revision 1, layoutRevision = satAdd editor.layoutRevision 1)
 
     (** Restore the preceding edit from any project view. *)
     export undo editor = match listGet editor.past 0

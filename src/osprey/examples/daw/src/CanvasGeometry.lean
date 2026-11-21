@@ -4,6 +4,10 @@ namespace synth.CanvasGeometry
 /-- Node centres leave a dedicated palette at the left of the canvas. -/
 def gridX (column : Float) : Float := 350 + column * 310
 def gridY (row : Float) : Float := 170 + row * 235
+/-- Leave room between the widest Prism cards for the cable and both sockets. -/
+def signalX (depth : Float) : Float := 350 + depth * 340
+def collides (x y otherX otherY : Float) : Bool :=
+  Float.abs (x - otherX) < 320 && Float.abs (y - otherY) < 205
 /-- Centre a row of control sockets with a gap between their 28-point hit targets. -/
 def controlSocketX (centre rank count : Float) : Float := centre + (rank - (count - 1) / 2) * 34
 def offset (pointer centre : Float) : Float := pointer - centre
@@ -11,6 +15,9 @@ def offset (pointer centre : Float) : Float := pointer - centre
 def shifted (base extra : Float) : Float := base + extra
 private def bounded (value low high : Float) : Float :=
   if value < low then low else if value > high then high else value
+def panOffset (origin grab pointer last first : Float) : Float :=
+  let limit := if last > first then last - first else 0
+  bounded (origin + grab - pointer) 0 limit
 /-- Node hit areas remain entirely in the graph, outside the palette. -/
 def dragX (pointer grab spareWidth : Float) : Float := bounded (pointer - grab) 155 (1065 + spareWidth)
 def dragY (pointer grab spareHeight : Float) : Float := bounded (pointer - grab) 155 (700 + spareHeight)

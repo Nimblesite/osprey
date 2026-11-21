@@ -16,7 +16,7 @@ module CardArts
     // Keep module artwork and its listeners in node-local coordinates, including sampled waveforms.
     drawn (editor, n, wanted) =
         origin = daw::NodePosition(layoutNode = n.identity, layoutX = 0.0, layoutY = 0.0)
-        local = editor(positions = [origin])
+        local = editor(positions = [origin], panX = 0.0, panY = 0.0)
         CardArt(artNode = n.identity, artKey = wanted, artShapes = EditorView::nodeArtwork (local, n, origin), artControls = PrismArt::sliders (local, n))
 
     (** Reuse the artwork across pointer moves; selection, skin and parameter changes redraw it. *)
@@ -57,7 +57,7 @@ module CardArts
         Invalid _ => ""
         Valid n => "${EditorView::componentName (editor, n)}:${settings n}:${sample n}"
 
-    sceneryKey editor = "${editor.selected}:${editor.detailsShown}:${editor.note}:${chosen editor}"
+    sceneryKey editor = "${length editor.graph.nodes}:${editor.selected}:${editor.detailsShown}:${editor.note}:${chosen editor}"
 
     (** The header, inspector and legend: redrawn when the selection, its settings or the note change, not on a move. *)
     export scenery editor = fixed (editor, -1, sceneryKey editor, \() => CardArt(artNode = -1, artKey = sceneryKey editor, artShapes = PrismArt::background editor, artControls = []))

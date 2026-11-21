@@ -583,6 +583,51 @@ fn modulation_sockets(regions: &mut Regions, song: &std::path::Path) {
     std::fs::remove_file(copy).expect("remove test project");
 }
 
+fn signal_path_layout(regions: &mut Regions, song: &std::path::Path) {
+    choose_menu(regions, "View", "Bus Routing");
+    let canvas = regions.get("root").and_then(|root| scene(&root.node)).expect("routing canvas");
+    let keys = (80.0, 235.0 + 5.5 * 37.0);
+    point(canvas, keys, true);
+    let patch = point(canvas, keys, false).0;
+    regions.adopt(&patch).expect("open keysL");
+    let card = |shown: &Shown, id| {
+        let suffix = format!(" {id}");
+        let a = shown.scenes.values().flat_map(|s| &s.access)
+            .find(|a| a.label.starts_with("Canvas ") && a.label.ends_with(&suffix)).expect("patch card");
+        (a.x + a.w / 2.0, a.y + a.h / 2.0, a.w, a.h)
+    };
+    for id in 1..6 {
+        let (left, row, width, _) = card(&patch, id - 1);
+        let (right, next_row, next_width, _) = card(&patch, id);
+        assert!(left + width / 2.0 < right - next_width / 2.0 && row == next_row,
+            "keysL signal path wraps or overlaps between modules {} and {id}", id - 1);
+    }
+    let canvas = regions.get("root").and_then(|root| scene(&root.node)).expect("patch canvas");
+    let initial = std::fs::read(song).expect("saved project");
+    let (original_x, original_y, _, _) = card(&patch, 5);
+    let mut moved = patch;
+    for _ in 0..3 {
+        point(canvas, (950.0, 650.0), true);
+        point(canvas, (450.0, 650.0), true);
+        moved = point(canvas, (450.0, 650.0), false).0;
+    }
+    let (x, y, _, _) = card(&moved, 5);
+    assert!((150.0..1050.0).contains(&x), "dragging the background reveals the Output at {x}");
+    let selected = point(canvas, (x - 55.0, y - 45.0), true).0;
+    point(canvas, (x - 55.0, y - 45.0), false);
+    let selected_cards: Vec<_> = selected.scenes.values().flat_map(|s| &s.access)
+        .filter(|a| a.selected && a.label.starts_with("Canvas ")).map(|a| &a.label).collect();
+    assert!(selected_cards.iter().any(|label| label.ends_with(" 5")), "select the panned Output at ({x}, {y}): {selected_cards:?}");
+    assert_eq!(std::fs::read(song).expect("viewed project"), initial, "navigating the patch preserves its project");
+    point(canvas, (x - 55.0, y - 45.0), true);
+    point(canvas, (x - 25.0, y - 25.0), true);
+    point(canvas, (x - 25.0, y - 25.0), false);
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(song).expect("dragged project")).expect("JSON");
+    assert_eq!(saved["tracks"][5]["positions"], serde_json::json!([
+        {"layoutNode":5, "layoutX":original_x + 30.0, "layoutY":original_y + 20.0}
+    ]), "only the dragged Output gets a position, in project coordinates");
+}
+
 fn position_on_release(regions: &mut Regions, song: &std::path::Path) {
     let (canvas, (x, y), outlet) = tablepad_card(regions, false);
     choose_menu(regions, "File", "Save");
@@ -722,6 +767,7 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
         panic!("the Timeline must draw a canvas");
     };
 
+    signal_path_layout(&mut regions, &song);
     position_on_release(&mut regions, &song);
     modulation_sockets(&mut regions, &song);
     spectral_picker(&mut regions, &song);

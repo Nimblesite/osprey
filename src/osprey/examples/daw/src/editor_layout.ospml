@@ -3,8 +3,55 @@ namespace synth
 
 (** Stable component positions and pointer capture for the modular canvas. *)
 module EditorLayout
-    (** Deleted neighbours do not change the default position of surviving identities. *)
-    export position (editor, identity) = listGet (filterList (editor.positions, \p => p.layoutNode == identity)) 0 ?: daw::NodePosition(layoutNode = identity, layoutX = CanvasGeometry::gridX (toFloat (identity % 3)), layoutY = CanvasGeometry::gridY (toFloat (intDiv identity 3)))
+    availableRow (saved, x, row) = match ui::Lists::any (saved, \p => CanvasGeometry::collides (x, CanvasGeometry::gridY (toFloat row), p.layoutX, p.layoutY))
+        true => availableRow (saved, x, satAdd row 1)
+        false => row
+
+    place (inputs, saved, held, id) =
+        parents = mapGet inputs (toString id) ?: []
+        depth = foldList (parents, 0, \(largest, parent) =>
+            next = satAdd (mapGet held.depths (toString parent) ?: -1) 1
+            ui::Pick::either (next > largest, next, largest))
+        key = toString depth
+        x = CanvasGeometry::signalX (toFloat depth)
+        row = availableRow (saved, x, mapGet held.rows key ?: 0)
+        at = daw::NodePosition(layoutNode = id, layoutX = x, layoutY = CanvasGeometry::gridY (toFloat row))
+        { depths = mapSet held.depths (toString id) depth, rows = mapSet held.rows key (satAdd row 1), placed = listPrepend held.placed at }
+
+    (** Compute default positions once on open, in the graph scheduler's dependency order. *)
+    export flow (plan, saved) =
+        inputs = foldList (plan.graph.cables, Map(), \(index, wire) =>
+            key = toString wire.destination
+            mapSet index key (listPrepend (mapGet index key ?: []) wire.source))
+        (foldList (plan.order, { depths = Map(), rows = Map(), placed = [] }, \(held, id) => place (inputs, saved, held, id))).placed
+
+    stored (editor, identity) = match ui::Lists::find (editor.positions, \p => p.layoutNode == identity)
+        Success at => at
+        Error _ => ui::Lists::find (editor.flowPositions, \p => p.layoutNode == identity) ?: daw::NodePosition(layoutNode = identity, layoutX = CanvasGeometry::gridX (toFloat (identity % 3)), layoutY = CanvasGeometry::gridY (toFloat (intDiv identity 3)))
+
+    (** Painting, socket hit testing and accessibility share the same viewport coordinates. *)
+    export position (editor, identity) =
+        at = stored (editor, identity)
+        at(layoutX = CanvasGeometry::offset (at.layoutX, editor.panX), layoutY = CanvasGeometry::offset (at.layoutY, editor.panY))
+
+    (** Convert a placed canvas card back to project coordinates before saving. *)
+    export world (editor, at: daw::NodePosition) = at(layoutX = CanvasGeometry::shifted (at.layoutX, editor.panX), layoutY = CanvasGeometry::shifted (at.layoutY, editor.panY))
+
+    (** Capture the viewport extent once when a background drag begins. *)
+    export background (editor, x, y) = match editor.selectedCable >= 0
+        true => editor
+        false =>
+            far = foldList (editor.graph.nodes, { x = 0.0, y = 0.0 }, \(edge, n) =>
+                at = stored (editor, n.identity)
+                { x = ui::Pick::either (at.layoutX > edge.x, at.layoutX, edge.x), y = ui::Pick::either (at.layoutY > edge.y, at.layoutY, edge.y) })
+            editor(panning = PanHeld(lastX = far.x, lastY = far.y), grabX = x, grabY = y)
+
+    (** Keep the graph reachable while panning without changing a single stored card. *)
+    export panned (editor, x, y, down) = match editor.panning
+        PanIdle => editor
+        PanHeld lastX lastY => match CanvasGeometry::valid (x, y)
+            false => editor(panning = PanIdle)
+            true => editor(panning = ui::Pick::either (down, editor.panning, PanIdle), grabX = x, grabY = y, panX = CanvasGeometry::panOffset (editor.panX, editor.grabX, x, lastX, CanvasGeometry::gridX 0.0), panY = CanvasGeometry::panOffset (editor.panY, editor.grabY, y, lastY, CanvasGeometry::gridY 0.0))
 
     (** Keep the initial pointer offset so clicking away from the centre does not snap the card. *)
     export begin (editor, identity, px, py) =
@@ -16,7 +63,7 @@ module EditorLayout
         previous = position (editor, editor.dragging)
         match at.layoutX == previous.layoutX && at.layoutY == previous.layoutY
             true => editor
-            false => editor(positions = listAppend (filterList (editor.positions, \p => p.layoutNode != editor.dragging)) at, layoutRevision = satAdd editor.layoutRevision 1)
+            false => editor(positions = listAppend (filterList (editor.positions, \p => p.layoutNode != editor.dragging)) (world (editor, at)), layoutRevision = satAdd editor.layoutRevision 1)
 
     (** Ignore nonfinite coordinates and release capture even when a release position is invalid. *)
     export drag (editor, px, py, down) =
@@ -135,7 +182,18 @@ module PrismArt
         drawn (prepared (editor, n), filterList (roleMarks (editor, role n.processor), \mark => !(n.processor == Sink && mark.markFigure == ui::PolylineFigure)))
 
     (** Original header, inspector, legend and keyboard, driven by the current selection. *)
-    export background editor = backgroundPart (editor, false)
+    export background editor = mapList (backgroundPart (editor, false), \part => fixedPart (editor, part))
+
+    fixedPart (editor, part) = match grid part
+        true => part
+        false => Header::placedShape (part, 0.0, 0.0, chromeLayer editor)
+
+    grid part = match part
+        ui::Sprite sprite _ _ _ _ _ _ _ => sprite == 0
+        _ => false
+
+    (** Keep fixed panels above every card when the graph pans beneath them. *)
+    export chromeLayer editor = satMul (satAdd (length editor.graph.nodes) 1) 100
 
     (** Keyboard artwork in local dock coordinates. *)
     export deck editor = backgroundPart (editor, true)

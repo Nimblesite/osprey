@@ -221,7 +221,11 @@ module EditorApp
                         Error why => Runtime::step (next(message = why))
                 [] => Runtime::step next
 
-    patchPointer (context, editor, x, y, down) = match editor.dragging >= 0 || editor.paletteDrag != "" || editor.wireDragging
+    patchPointer (context, editor, x, y, down) = match editor.panning
+        PanHeld _ _ => Runtime::step (EditorLayout::panned (editor, x, y, down))
+        PanIdle => patchControl (context, editor, x, y, down)
+
+    patchControl (context, editor, x, y, down) = match editor.dragging >= 0 || editor.paletteDrag != "" || editor.wireDragging
         true => capturedPointer (editor, x, y, down)
         false => match CableCanvas::deleteAt (editor, x, y)
             true => Runtime::step (ui::Pick::either (down, EditorState::tapped (editor, RemoveCable), editor))

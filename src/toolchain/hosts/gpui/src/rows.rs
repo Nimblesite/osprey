@@ -627,8 +627,7 @@ fn element(rows: &mut Rows, head: &Streamed) -> Result<Option<Access>, String> {
         value: head.values[4],
         min: range.values[0],
         max: range.values[1],
-        // Only a menu item is announced as the current choice ([UI-MACHINE-A11Y]).
-        selected: role == Role::MenuItem && head.colour & 1 != 0,
+        selected: head.colour & 1 != 0,
     }))
 }
 

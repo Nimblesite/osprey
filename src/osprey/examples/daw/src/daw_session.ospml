@@ -44,7 +44,9 @@ module DawSession
             ready = focused (editor, index)
             match daw::TrackPatches::patch track
                 Error why => ready(message = "${track.name}: ${why}")
-                Success graph => ready(graph = graph, positions = track.positions, pluginBindings = [], gesture = [], selected = -1, source = -1, selectedCable = -1, dragging = -1, nextIdentity = satAdd (highest graph) 1, revision = satAdd editor.revision 1, patchTrack = index, page = PatchPage, message = "${track.name}'s patch.")
+                Success graph => match Graphs::prepare graph
+                    Invalid fault => ready(message = EditorState::faultText fault)
+                    Valid plan => ready(graph = graph, positions = track.positions, flowPositions = EditorLayout::flow (plan, track.positions), panX = 0.0, panY = 0.0, panning = PanIdle, pluginBindings = [], gesture = [], selected = -1, source = -1, selectedCable = -1, dragging = -1, nextIdentity = satAdd (highest graph) 1, revision = satAdd editor.revision 1, patchTrack = index, page = PatchPage, message = "${track.name}'s patch.")
 
     (** Read and decode a song project; the session keeps its old song when this one is refused. *)
     export loaded (editor, path) = match readFile path

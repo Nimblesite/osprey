@@ -46,6 +46,7 @@ type GraphSnapshot G =
     savedTimelineNote : int
     savedNextIdentity : int
     savedPositions : List<daw::NodePosition>
+    savedFlow : List<daw::NodePosition>
     savedBindings : List<PluginBinding>
     savedSelected : int
     savedNote : int
@@ -125,6 +126,12 @@ type DialTurn =
         startValue : float
         moved : bool
 
+type PatchPan =
+    PanIdle
+    PanHeld
+        lastX : float
+        lastY : float
+
 type Editor G P S M =
     skin : M
     graph : G
@@ -141,6 +148,10 @@ type Editor G P S M =
     armedNote : int
     scopeSamples : List<float>
     positions : List<daw::NodePosition>
+    flowPositions : List<daw::NodePosition>
+    panX : float
+    panY : float
+    panning : PatchPan
     dragging : int
     grabX : float
     grabY : float
