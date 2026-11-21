@@ -11,12 +11,18 @@ allpass="${source%/*}/allpasses.ospml"
 checker="$root/target/proof/openai/check-batch"
 mkdir -p "$out"
 reflect() {
-    cargo run --quiet --manifest-path "$root/src/toolchain/Cargo.toml" -p osprey-syntax --example synth_proof -- "$1" "$2" "${3:-$strike}" "${4:-$allpass}" > "$out/bodies"
+    local file
+    local bodies=()
+    for file in "$source" "$frames" "$strike" "$allpass"; do
+        if [[ "$file" == "${1:-}" ]]; then file="$out/mutant.ospml"; fi
+        bodies+=("$file")
+    done
+    cargo run --quiet --manifest-path "$root/src/toolchain/Cargo.toml" -p osprey-syntax --example synth_proof -- "${bodies[@]}" > "$out/bodies"
     awk -v body="$out/bodies" '/^-- INSERT PRODUCTION BODIES$/ {while ((getline line < body) > 0) print line; next} {print}' \
         "$tools/ProductionFft.lean.in" > "$out/ProductionFft.lean"
 }
 cd "$tools"
-reflect "$source" "$frames"
+reflect
 lake env lean --root="$out" -o "$out/ProductionFft.olean" "$out/ProductionFft.lean"
 lean_path=$(lake env printenv LEAN_PATH)
 exporter=$(lake env which lean4export)
@@ -47,13 +53,7 @@ reject_edit() {
         echo "mutation did not change $input" >&2
         return 1
     fi
-    case "$input" in
-        "$source") reflect "$out/mutant.ospml" "$frames" ;;
-        "$frames") reflect "$source" "$out/mutant.ospml" ;;
-        "$strike") reflect "$source" "$frames" "$out/mutant.ospml" ;;
-        "$allpass") reflect "$source" "$frames" "$strike" "$out/mutant.ospml" ;;
-        *) return 1 ;;
-    esac
+    reflect "$input"
     if lake env lean --root="$out" "$out/ProductionFft.lean" > "$out/rejected.log" 2>&1; then
         echo "accepted broken production $theorem" >&2
         return 1
@@ -69,8 +69,9 @@ reject_edit quartetCorrect 's/added (upper, difference), subtracted (lower, sum)
 reject_edit conjugateComponents 's/im = 0.0 - value.im/im = value.im/'
 reject_edit scaledComponents 's/im = value.im [*] gain/im = value.re * gain/' "$frames"
 reject_edit strikeDifference 's/delay config + 1.0/delay config + 0.0/' "$strike"
+reject_edit allpassStateStep 's/held.input - coefficient/held.input + coefficient/' "$allpass"
 reject_edit allpassStateStep 's/input = input, output = value/input = held.input, output = value/' "$allpass"
-reflect "$source" "$frames"
+reflect
 
 # Replay an unchanged proof certificate against a different, well-typed
 # production operation. The Osprey kernel itself must reject the stale proof.
