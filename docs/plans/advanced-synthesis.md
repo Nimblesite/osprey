@@ -189,7 +189,7 @@ Evidence on 19 November 2026: strict package/app checks and compilation checks o
 - [ ] Add Grain Scheduler and Sample Source entries to the module browser.
 - [ ] Provide source selection, waveform/position display, density, duration, pitch, spread, seed and freeze controls in the existing inspector design.
 - [ ] Map keyboard/phone expression to declared parameters rather than hard-coded instrument-specific commands.
-- [ ] Ship playable cloud, rhythmic-grain and frozen-texture patches, each with useful initial levels and visible modulation routes.
+- [x] Ship playable cloud, rhythmic-grain and frozen-texture patches with visible modulation routes. The three [Patches factories](../../src/osprey/packages/synth/src/patches.ospml) wire an LFO to gain or cutoff. On 21 November the [loaded preset journey](../../src/osprey/packages/synth/tests/clip_journeys.ospml) verified each cable, distinct nonzero PCM bounded by unity, repeatable state and equivalent audio across block splits under GC and ARC. This is offline graph evidence.
 - [ ] Save resource identity and scheduler state in patches; make unavailable samples a visible recoverable error.
 
 ## Physical and modal synthesis [SYNTH-ADVANCED-PHYSICAL]

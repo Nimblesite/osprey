@@ -2,6 +2,7 @@ import synth::Components
 import synth::Graphs
 import synth::Lifecycles
 import synth::Parameters
+import synth::Patches
 import synth::Renderer
 
 // [SYNTH-HOST-MIDI-OSCILLATOR] Journey tests for connected MIDI oscillators, granular clips and layout validation.
@@ -75,6 +76,22 @@ continuedJourney (graph, output, journey, size) = renderedOr (synth::GraphClips:
 graphRun (graph, output, sizes, check) =
     journey = foldList (sizes, failedJourney (), \(prior, span) => continuedJourney (graph, output, prior, span))
     check journey.runHeld journey.runAudio
+
+// [SYNTH-ADVANCED-GRAINS-INTEGRATION] One playable preset graph through the hosted GraphClips executor: finite,
+// bounded, nonzero audio that survives 512-frame partitioning and repeats its exact state and samples.
+presetHeard outcome =
+    graph = accepted outcome
+    output = 5
+    expect (length (filterList (graph.cables, \wire => wire.source == 3 && wire.destination == 2 && wire.inlet == 1)), 1)
+    whole = outputClip (output, synth::GraphClips::advance (graph, [], 1024))
+    expect (whole.clipChannels == 1 && length whole.clipSamples == 1024, true)
+    forEachList (whole.clipSamples, \sample => expect (sample == sample && abs sample <= 1.0, true))
+    expect (foldList (whole.clipSamples, 0.0, \(energy, sample) => energy + abs sample) > 0.0, true)
+    graphRun (graph, output, [512, 512], \clock audio =>
+        sameSamples (audio, whole.clipSamples)
+        graphRun (graph, output, [512, 512], \againClock againAudio =>
+            expect (structuralEquals (againClock, clock) && structuralEquals (againAudio, audio), true)))
+    whole.clipSamples
 
 granularSource () = synth::SampleResource(name = "grain", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5, 0.25, -0.25])
 
@@ -200,6 +217,13 @@ registerClipJourneys () =
         renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphPosition = 0, graphKernels = [channelForged]), 64))
         absentForged = synth::NodeKernels(kernelNode = 99, kernelMemory = synth::MidiMemory(voice = synth::MidiOscillators::initial (granularNode ())))
         renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphPosition = 0, graphKernels = [absentForged]), 64))))
+    test ("granular preset patches [SYNTH-ADVANCED-GRAINS-INTEGRATION] render finite, bounded, nonzero, deterministic and distinct audio", \() => arithmetic (\() =>
+        cloud = presetHeard (Patches::grainCloud ())
+        rhythm = presetHeard (Patches::rhythmicGrains ())
+        frozen = presetHeard (Patches::frozenTexture ())
+        expect (structuralEquals (cloud, rhythm), false)
+        expect (structuralEquals (rhythm, frozen), false)
+        expect (structuralEquals (cloud, frozen), false)))
     test ("graph layouts and cached clips revalidate channel contracts at every edge", \() => arithmetic (\() =>
         graph = sineThrough (0.5)
         duplicated = Components::stereo 1

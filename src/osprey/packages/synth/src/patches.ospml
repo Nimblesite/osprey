@@ -50,6 +50,36 @@ module Patches
         band-pass resonator into the reverb (hosted executor, 2,048-frame grain blocks). *)
     export granularResonance () = built ([set (Components::granular (0, sineSource (), 16, 1), [value ("rate", 7.04), value ("gain", 0.3)]), Components::downmix 1, set (Components::resonator (2, 330.0), [value ("response", 0.0), value ("gain", 1.0), value ("decay", 0.5)]), Components::reverb (3, 3.0), Components::output 4], chain [0, 1, 2, 3, 4])
 
+    // [SYNTH-ADVANCED-GRAINS-INTEGRATION] Each preset keeps its modulation cable in the editable graph.
+    cloudPatch (cloud, control, lfoRate, processor) =
+        nodes = [cloud, Components::downmix 1, control, Components::lfo (3, lfoRate), processor, Components::output 5]
+        built (nodes, [Components::route (0, 0, 1, 0), Components::route (1, 0, 2, 0), Components::route (3, 0, 2, 1), Components::route (2, 0, 4, 0), Components::route (4, 0, 5, 0)])
+
+    (** A drifting cloud with independent onset, position, pitch and duration variation. *)
+    export grainCloud () =
+        cloud = set (Components::granular (0, sineSource (), 24, 11), [value ("rate", 6.0), value ("period", 600.0), value ("duration", 2400.0), value ("jitter", 299.0), value ("positionSpread", 300.0), value ("rateSpread", 0.4), value ("durationSpread", 1200.0), value ("panSpread", 1.0), value ("gain", 0.3)])
+        cloudPatch (cloud, Components::modulatedGain (2, 1, 0.5), 0.4, Components::reverb (4, 2.5))
+
+    (** Short ASR grains repeat at 25 Hz through a swept filter and resonator. *)
+    export rhythmicGrains () =
+        cloud = set (Components::granular (0, sineSource (), 8, 23), [value ("rate", 12.0), value ("period", 1920.0), value ("duration", 960.0), value ("jitter", 0.0), value ("window", 1.0), value ("attack", 0.1), value ("release", 0.1), value ("gain", 0.35)])
+        body = set (Components::resonator (4, 110.0), [value ("response", 0.0), value ("decay", 0.4)])
+        cloudPatch (cloud, Components::modulatedLowpass (2, 1800.0, 2.0), 0.8, body)
+
+    // One cycle of 1,024 frames at 56,320 Hz has its root at A1 (MIDI 33).
+    frozenSource () =
+        samples = (sineSource ()).samples
+        Outcomes::carried (GrainCapture::prepare (length samples, 56320), \writer =>
+            Outcomes::carried (GrainCapture::write (writer, samples), \filled =>
+                Outcomes::carried (GrainCapture::freeze filled, \frozen => GrainCapture::resource (frozen, "Frozen capture", 33.0))))
+
+    (** Overlapping grains scan the immutable capture under slow level modulation and long reverb. *)
+    export frozenTexture () = match frozenSource ()
+        Error _ => Invalid(fault = InvalidNode)
+        Success source =>
+            cloud = set (Components::granular (0, source, 16, 37), [value ("period", 1200.0), value ("duration", 4800.0), value ("jitter", 300.0), value ("positionSpread", 400.0), value ("gain", 0.3)])
+            cloudPatch (cloud, Components::modulatedGain (2, 1, 0.45), 0.25, set (Components::reverb (4, 6.0), [value ("mix", 0.55)]))
+
     (** Pitch-shifted feedback: a burst circulates through a +7 Hz shifter and a 50 ms delay at 0.7 gain, so
         each pass rises in frequency while decaying (needs the mono reference Renderer, which allows the cycle). *)
     export shiftedFeedback () = built ([Components::exciter (0, 9), Components::mixer 1, Components::shifter (2, 7.0), Components::gain (3, 0.7), Components::delay (4, 2400), Components::output 5], [Components::route (0, 0, 1, 0), Components::route (1, 0, 2, 0), Components::route (2, 0, 3, 0), Components::route (3, 0, 4, 0), Components::route (4, 0, 1, 1), Components::route (1, 0, 5, 0)])
