@@ -241,6 +241,7 @@ fitGainJourney (graph, samples) =
     evaluation = synth::FitReference(source = source(identifier = "silent fixture"), samples = mapList (samples, \_ => 0.0))
     config = synth::FitConfig(parameters = [synth::FitParameter(node = 2, key = "gain", minimum = 0.0, maximum = 1.0)], seed = 17, evaluations = 1, tolerance = 0.0001)
     refusedWith (synth::FitReports::fit (graph, config, training, training), "Training and evaluation need distinct source identities and sample data.")
+    forEachList ([source(licence = ""), source(identifier = ""), source(sampleRate = 44100)], \bad => refusedWith (synth::FitReports::fit (graph, config, training, evaluation(source = bad)), "Fit references need labelled, licensed, finite mono clips at 48 kHz and a supported FFT length."))
     succeeds (synth::FitReports::fit (graph, config, training, evaluation), \report =>
         expect (report.result.evaluations == 1 && report.evaluationLoss > report.result.best.loss, true)
         expect (structuralEquals (report.training, training.source) && structuralEquals (report.evaluation, evaluation.source), true)

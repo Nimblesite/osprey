@@ -307,7 +307,7 @@ Reference: Smith's waveguide material and Bilbao's numerical synthesis reference
 
 - [x] Expose offline parameter trajectories for the same production DSP operators; avoid a separate incompatible synthesis model.
 - [x] Add parameter fitting with explicit objective functions, constraints, seed and stopping conditions.
-- [ ] Record model/data/licence provenance and distinguish training data from evaluation material.
+- [ ] Record model/data/licence provenance and distinguish training data from evaluation material. Partial: `FitSource` carries identifier, licence and rate; `FitReports.fit` records the training and evaluation sources and the config in its report, refuses a shared source, and refuses an unlicensed, unlabelled or non-48 kHz clip (`fitGainJourney`, GC). The report does not yet record the fitted patch's identity or component versions.
 - [x] Keep learned results editable as ordinary parameters, tables or automation curves.
 - [x] Run training, patch search and expensive inference off the audio callback and outside the library's mandatory runtime dependencies.
 - [x] Define cancellation, progress, resource limits and explicit failure results for long offline jobs.
