@@ -54,7 +54,7 @@ module Kinds
         Mixer => "synth.mixer"
         Sink => "synth.output"
         Delay _ => "synth.delay"
-        External identifier => "external:${identifier}"
+        External identifier _ => "external:${identifier}"
 
     (** The algorithm version: 2 where output changed since the kind was introduced (coupled resonators
         and modal banks; spectral transforms returning typed results did not change output). *)

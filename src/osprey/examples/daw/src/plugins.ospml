@@ -39,11 +39,11 @@ module Plugins
                     _dir = makeDir (ui::MachineDocs::folder editor.keysPath)
                     match writeFile (preference editor) folder
                         Error why => Runtime::step (editor(message = "Could not save VST3 folder: ${why}"))
-                        Success _ => scan (closed(pluginPath = folder, catalog = [], scanQueue = [], scanWarning = "", pluginTicket = "", pluginClassId = ""))
+                        Success _ => scan (closed(pluginPath = folder, pluginBindings = mapList (closed.pluginBindings, \b => b(pluginModule = "")), catalog = [], scanQueue = [], scanWarning = "", pluginTicket = "", pluginClassId = ""))
         _ => Runtime::step editor
 
     projected (bindings, n) = match n.processor
-        External identifier => listAppend bindings (PluginBinding(pluginNode = n.identity, pluginModule = "", pluginClass = identifier, pluginName = identifier))
+        External identifier _ => listAppend bindings (PluginBinding(pluginNode = n.identity, pluginModule = "", pluginClass = identifier, pluginName = identifier))
         _ => bindings
 
     export projectBindings graph = foldList (graph.nodes, [], projected)
@@ -73,7 +73,7 @@ module Plugins
                     Error why => problem (editor, why)
 
     advance (editor, queue) = match queue
-        [] => Runtime::step (editor(scanQueue = [], pluginTicket = "", message = ui::Pick::either (editor.scanWarning == "", "${length editor.catalog} VST3 plug-ins available.", editor.scanWarning)))
+        [] => Runtime::step (editor(scanQueue = [], pluginTicket = "", pluginBindings = mapList (editor.pluginBindings, \binding => resolved (editor.catalog, binding)), message = ui::Pick::either (editor.scanWarning == "", "${length editor.catalog} VST3 plug-ins available.", editor.scanWarning)))
         [bundle, ..._] => requested (editor(scanQueue = queue), "scan", ["scan", bundle], "")
 
     scanned (editor, bundle, rest, outcome) = match outcome

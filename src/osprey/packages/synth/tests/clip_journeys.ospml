@@ -63,7 +63,7 @@ without (plan, identity) = plan(order = filterList (plan.order, \scheduled => sc
 played (plan, fresh, notes, frames, check) = succeeds (synth::MidiOscillators::block (plan, [eventClip notes], midiOscillator (), fresh, frames), check)
 
 // [SYNTH-RENDER-BLOCKS] Drive one graph through arbitrary block partitions, collecting the output clip.
-failedJourney () = { runHeld = synth::GraphState(graphPosition = 0, graphKernels = []), runAudio = [] }
+failedJourney () = { runHeld = synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), runAudio = [] }
 
 continuedBlock (output, journey, action) = match action
     synth::BlockWaiting _ _ =>
@@ -256,9 +256,9 @@ registerClipJourneys () =
                     succeeds (synth::GraphClips::advance (granularGraph (), [], 256), \again => expect (structuralEquals (again, synth::ClipReady(clips = clips)), true))
         renderRefused (synth::GraphClips::advance (granularGraph (), [], 2049))
         channelForged = synth::NodeKernels(kernelNode = 1, kernelMemory = synth::ChannelMemory(channels = [synth::RenderInputs::initialState (granularNode ())]))
-        renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphPosition = 0, graphKernels = [channelForged]), 64))
+        renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = [channelForged]), 64))
         absentForged = synth::NodeKernels(kernelNode = 99, kernelMemory = synth::MidiMemory(voice = synth::MidiOscillators::initial (granularNode ())))
-        renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphPosition = 0, graphKernels = [absentForged]), 64))))
+        renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = [absentForged]), 64))))
     test ("granular preset patches [SYNTH-ADVANCED-GRAINS-INTEGRATION] render finite, bounded, nonzero, deterministic and distinct audio", \() => arithmetic (\() =>
         cloud = presetHeard (Patches::grainCloud ())
         rhythm = presetHeard (Patches::rhythmicGrains ())

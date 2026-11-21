@@ -32,6 +32,7 @@ type HostControl =
     automatable : bool
 
 type HostDescriptor =
+    latency : int
     identifier : string
     name : string
     inputChannels : int
@@ -67,8 +68,17 @@ type NodeKernels K =
     kernelNode : int
     kernelMemory : K
 
+type ParameterStamp =
+    stampKey : string
+    stampValue : float
+
+type HostedStamp =
+    stampNode : int
+    stampControls : List<ParameterStamp>
+
 type GraphState K =
     graphPosition : int
+    graphHosted : List<HostedStamp>
     graphKernels : List<NodeKernels<K>>
 
 type GraphPending G K =

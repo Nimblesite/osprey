@@ -99,6 +99,7 @@ type Processor =
         samples : int
     External
         identifier : string
+        latency : int
 
 type Node =
     identity : int
@@ -255,3 +256,13 @@ type ResourceIdentity =
     sampleRate : int
     frames : int
     version : int
+
+type PathLatency =
+    latencyNode : int
+    arrival : int
+
+type Alignment =
+    alignedGraph : Graph
+    arrivals : List<PathLatency>
+    lastDelay : int
+    reservedSamples : int

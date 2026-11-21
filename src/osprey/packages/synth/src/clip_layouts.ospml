@@ -76,7 +76,7 @@ module ClipLayouts
     export requiresClips n = match n.processor
         Lfo => true
         ModulatedGain => true
-        External _ => true
+        External _ _ => true
         MidiNotes => true
         Stereo => true
         Panner => true
@@ -105,7 +105,7 @@ module ClipLayouts
         Oscillator => oscillator n
         Sink => uniform (n, 1, 0)
         Mixer => uniform (n, 2, 1)
-        External _ => external n
+        External _ _ => external n
         _ => uniform (n, 1, 1)
 
     oscillator n = length n.inputs <= 1 && notes n.inputs && length n.outputs == 1 && audio n.outputs && length (filterList (n.outputs, \p => p.channels == 1)) == 1
@@ -113,7 +113,7 @@ module ClipLayouts
     (** Inputs that may stay unplugged: their parameters then apply unchanged. *)
     export optional (n, port) = match n.processor
         Oscillator => port.rate == Events
-        External _ => port.rate == Control
+        External _ _ => port.rate == Control
         Filter => port.rate == Control && port.name == "cutoff"
         Spectral _ _ => port.name == "side"
         TableOscillator _ => port.rate == Control

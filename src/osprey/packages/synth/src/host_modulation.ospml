@@ -29,7 +29,7 @@ module HostModulation
     export connect (graph, source, outlet, destination, key) = match Graphs::node (graph, destination)
         Invalid fault => Invalid(fault = fault)
         Valid n => match n.processor
-            External _ => match parameter (n, key)
+            External _ _ => match parameter (n, key)
                 Invalid fault => Invalid(fault = fault)
                 Valid _ => wired (graph, source, outlet, n, key)
             _ => Invalid(fault = InvalidNode)
@@ -78,3 +78,27 @@ module HostModulation
 
     (** Emit a stable 128-frame automation grid, with defaults once and exact event offsets. *)
     export points (graph, clips, n, frames) = window (graph, clips, n, 0, frames)
+
+    external n = match n.processor
+        External _ _ => true
+        _ => false
+
+    controls n = mapList (n.parameters, \p => ParameterStamp(stampKey = p.key, stampValue = p.initial))
+
+    export stamps graph = mapList (filterList (graph.nodes, external), \n => HostedStamp(stampNode = n.identity, stampControls = controls n))
+
+    // A changed dial on a retained worker takes effect on the next block, also off the modulation grid.
+    edit (graph, n, prior, outcome, p) = match filterList (prior.stampControls, \old => old.stampKey == p.key && old.stampValue == p.initial)
+        [] => match binding (graph, n, p.key)
+            [] => Outcomes::carried (outcome, \points => point (points, p, 0, p.initial))
+            _ => outcome
+        _ => outcome
+
+    export edits (graph, previous, n, automation) = match filterList (previous, \old => old.stampNode == n.identity)
+        [prior] => match structuralEquals (prior.stampControls, controls n)
+            true => Success(value = automation)
+            false => Outcomes::carried (foldList (filterList (n.parameters, \p => p.automatable), Success(value = []), \(outcome, p) => edit (graph, n, prior, outcome, p)), \changed =>
+                match satAdd (length changed) (length automation) <= 1024
+                    true => Success(value = listConcat changed automation)
+                    false => Error(message = InvalidConfiguration(detail = "VST edits exceed the block automation budget.")))
+        _ => Success(value = automation)

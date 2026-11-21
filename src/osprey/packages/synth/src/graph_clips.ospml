@@ -17,7 +17,7 @@ module GraphClips
         Downmix => false
         Sink => false
         MidiNotes => false
-        External _ => false
+        External _ _ => false
         _ => true
 
     (** Whether stored memory still fits its node in this graph at this clock position. *)
@@ -178,24 +178,29 @@ module GraphClips
         Sink => Outcomes::carried (ClipInputs::routed (plan.graph, clips, n.identity, 0), \clip => emitted (plan, clips, held, frames, n, channels, clip.clipSamples, [], remaining))
         _ => processed (plan, clips, held, frames, n, channels, remaining)
 
+    hostRequest (graph, clips, n, held, frames) = Outcomes::carried (ClipInputs::requestAt (graph, clips, n, held.graphPosition, frames), \request =>
+        Outcomes::carried (HostModulation::edits (graph, held.graphHosted, n, request.parameters), \points => Success(value = request(parameters = points))))
+
     node (plan, clips, held, frames, n, remaining) = match n.processor
         Oscillator => match MidiOscillators::connected (plan.graph, n)
             true => midi (plan, clips, held, frames, n, remaining)
             false => processed (plan, clips, held, frames, n, 1, remaining)
         Granular _ _ _ => granular (plan, clips, held, frames, n, remaining)
-        External _ => Outcomes::carried (ClipInputs::requestAt (plan.graph, clips, n, held.graphPosition, frames), \request => Success(value = BlockWaiting(request = request, pending = GraphPending(pendingGraph = plan.graph, pendingState = held, pendingClips = clips, pendingFrames = frames, pendingNode = n.identity))))
+        External _ _ => Outcomes::carried (hostRequest (plan.graph, clips, n, held, frames), \request => Success(value = BlockWaiting(request = request, pending = GraphPending(pendingGraph = plan.graph, pendingState = held, pendingClips = clips, pendingFrames = frames, pendingNode = n.identity))))
         MidiNotes => Outcomes::carried (MidiClips::timeline (n, held.graphPosition, frames), \notes => emitted (plan, clips, held, frames, n, 0, [], notes, remaining))
         _ => Outcomes::carried (ClipLayouts::channels n, \count => routed (plan, clips, held, frames, n, count, remaining))
 
     scheduled (plan, clips, held, frames, identities) = match identities
-        [] => Success(value = BlockReady(held = held(graphPosition = satAdd held.graphPosition frames), clips = clips))
+        [] => Success(value = BlockReady(held = held(graphPosition = satAdd held.graphPosition frames, graphHosted = HostModulation::stamps plan.graph), clips = clips))
         [identity, ...remaining] => match length (filterList (clips, \clip => clip.clipNode == identity)) == 1
             true => scheduled (plan, clips, held, frames, remaining)
             false => Outcomes::carried (RenderInputs::component (plan, identity), \n => node (plan, clips, held, frames, n, remaining))
 
+    export ordered graph = Graphs::prepare (graph(nodes = mapList (graph.nodes, acyclic)))
+
     prepared (graph, clips, held, frames) = match Graphs::prepare graph
         Invalid _ => Error(message = InvalidConfiguration(detail = "The graph has invalid nodes or routes."))
-        Valid _ => match Graphs::prepare (graph(nodes = mapList (graph.nodes, acyclic)))
+        Valid _ => match ordered graph
             Invalid _ => Error(message = InvalidConfiguration(detail = "Hosted graph rendering requires an acyclic graph."))
             Valid plan => scheduled (plan(graph = graph), clips, held, frames, plan.order)
 
@@ -207,7 +212,7 @@ module GraphClips
     export next (graph, held, frames) = checked (graph, [], held, frames)
 
     (** Start an acyclic graph at sample zero; hosted instances belong to the caller. *)
-    export start (graph, frames) = next (graph, GraphState(graphPosition = 0, graphKernels = []), frames)
+    export start (graph, frames) = next (graph, GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), frames)
 
     (** Resume only the pending external node, using its frozen graph and exact response shape. *)
     export replied (pending, clip) = match clip.clipNode == pending.pendingNode && length (filterList (pending.pendingClips, \old => old.clipNode == clip.clipNode)) == 0
@@ -215,11 +220,11 @@ module GraphClips
         true => match Graphs::node (pending.pendingGraph, pending.pendingNode)
             Invalid _ => Error(message = MissingResource(detail = "The pending component is absent."))
             Valid n => match n.processor
-                External _ => checked (pending.pendingGraph, listAppend pending.pendingClips clip, pending.pendingState, pending.pendingFrames)
+                External _ _ => checked (pending.pendingGraph, listAppend pending.pendingClips clip, pending.pendingState, pending.pendingFrames)
                 _ => Error(message = InvalidConfiguration(detail = "Only an external component can resume a worker response."))
 
     (** Whole-clip execution uses the same scheduler, with a zero-origin clock. *)
-    export advance (graph, clips, frames) = match checked (graph, clips, GraphState(graphPosition = 0, graphKernels = []), frames)
+    export advance (graph, clips, frames) = match checked (graph, clips, GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), frames)
         Error why => Error(message = why)
         Success action => match action
             BlockReady _ rendered => Success(value = ClipReady(clips = rendered))

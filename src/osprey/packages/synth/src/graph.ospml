@@ -52,7 +52,7 @@ module Graphs
         Bowed capacity => capacity >= 4 && capacity <= 96000
         StrikeComb capacity => capacity >= 2 && capacity <= 96000
         FractionalDelay capacity => capacity >= 2 && capacity <= 1920000
-        External identity => identity != ""
+        External identity latency => identity != "" && latency >= 0 && latency <= 1920000
         _ => true
 
     validNode n = n.identity >= 0 && routed n && processorValid n.processor && all (n.inputs, validPort) && all (n.outputs, validPort)

@@ -45,7 +45,7 @@ module EditorView
         Smoother => "Smoother"
         StrikeComb _ => "Strike comb"
         Downmix => "Stereo to mono"
-        External identifier => identifier
+        External identifier _ => identifier
 
     (** A module's name on the canvas: its plugin's, or its processor's, with its identity. *)
     export componentName (editor, n) = match listGet (filterList (editor.pluginBindings, \binding => binding.pluginNode == n.identity)) 0
@@ -82,7 +82,7 @@ module EditorView
 
     // A plug-in's parameters can be driven by a control cable.
     modulations n = match n.processor
-        External _ => mapList (filterList (n.parameters, \p => p.automatable), \p => Ui::button ("Modulate ${p.label}", "", Modulate(identity = n.identity, key = p.key)))
+        External _ _ => mapList (filterList (n.parameters, \p => p.automatable), \p => Ui::button ("Modulate ${p.label}", "", Modulate(identity = n.identity, key = p.key)))
         _ => []
 
     component (editor, n) =

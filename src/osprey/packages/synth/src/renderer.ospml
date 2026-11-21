@@ -15,7 +15,7 @@ module Renderer
         Sink => length n.inputs == 1 && length n.outputs == 0
         Mixer => length n.inputs == 2 && length n.outputs == 1
         Filter => ClipLayouts::supported n
-        External _ => false
+        External _ _ => false
         SamplePlayer _ => length n.inputs == 0 && length n.outputs == 1
         Exciter _ => length n.inputs == 0 && length n.outputs == 1
         TableOscillator _ => length n.inputs == 4 && length n.outputs == 1

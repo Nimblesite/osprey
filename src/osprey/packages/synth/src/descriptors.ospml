@@ -43,5 +43,5 @@ module Descriptors
         ModulatedGain => match key
             "gain" => ruled (n, "control", \inlet => Multiplying(inlet = inlet))
             _ => Unmodulated
-        External _ => ruled (n, key, \inlet => Replacing(inlet = inlet))
+        External _ _ => ruled (n, key, \inlet => Replacing(inlet = inlet))
         _ => Unmodulated

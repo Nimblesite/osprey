@@ -56,7 +56,7 @@ module SendRenders
     clips (graph, rate, count, ports, empty) = match rate == 48000.0
         false => Error(message = "MIDI, control and multichannel patch voices require a 48000 Hz project.")
         true =>
-            initial = Capture(captureState = synth::GraphState(graphPosition = 0, graphKernels = []), captureLanes = empty)
+            initial = Capture(captureState = synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), captureLanes = empty)
             Outcomes::carried (foldList (PatchVoices::counts (count, 1024), ok initial, \(result, size) => Outcomes::carried (result, \progress => block (graph, ports, progress, size))), \done => ok done.captureLanes)
 
     captured (graph, rate, span, ports) = match synth::Graphs::prepare graph
@@ -106,7 +106,7 @@ module SendRenders
 
     // [DAW-TRANSPORT-LIVE-CONTROLS] Edited notes retain oscillator phase, filter memory and their original gate.
     memory graph = match ui::Lists::any (graph.nodes, synth::ClipLayouts::requiresClips)
-        true => ok (MultichannelNote(clock = synth::GraphState(graphPosition = 0, graphKernels = [])))
+        true => ok (MultichannelNote(clock = synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = [])))
         false => Outcomes::carried (PatchVoices::told (synth::Renderer::start graph), \audio => ok (ScalarNote(audio = audio)))
 
     preparedNote (graph, ports, span, routing, cue) = match synth::Graphs::prepare graph

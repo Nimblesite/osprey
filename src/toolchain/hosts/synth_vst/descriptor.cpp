@@ -57,6 +57,7 @@ bool descriptor(osprey::vst::Plugin& plugin, const std::string& identifier, std:
     for (const auto& info : plugin.module->getFactory().classInfos()) {
         if (info.ID().toString() != identifier) continue;
         out << "{\"id\":" << quoted(identifier) << ",\"name\":" << quoted(info.name())
+            << ",\"latency\":" << plugin.processor->getLatencySamples()
             << ",\"inputs\":" << (plugin.data.numInputs ? plugin.data.inputs[0].numChannels : 0)
             << ",\"outputs\":" << plugin.data.outputs[0].numChannels << ",\"notes\":"
             << (plugin.component->getBusCount(kEvent, kInput) ? "true" : "false") << ",\"parameters\":[";

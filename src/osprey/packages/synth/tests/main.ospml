@@ -106,7 +106,7 @@ test ("graph validation covers corrupt persisted metadata, missing endpoints, fa
     forEachList ([{ bad = cable (1, 99), why = synth::MissingNode }, { bad = invalidInlet(inlet = 9), why = synth::InvalidPort }], \r => refused (Graphs::connect (graph, r.bad), r.why))
     refused (Graphs::prepare (graph(cables = [cable (1, 99)])), synth::MissingNode)
     invalidParameter = parameter "cutoff"
-    forEachList ([{ bad = source(identity = -1), why = synth::InvalidNode }, { bad = source(outputs = [audio(channels = 0)]), why = synth::InvalidNode }, { bad = source(processor = synth::External(identifier = "")), why = synth::InvalidNode }, { bad = source(parameters = [parameter "cutoff", parameter "cutoff"]), why = synth::DuplicateParameter }, { bad = source(parameters = [invalidParameter(initial = -1.0)]), why = synth::InvalidParameter }], \r => refused (Graphs::add (Graphs::empty, r.bad), r.why))
+    forEachList ([{ bad = source(identity = -1), why = synth::InvalidNode }, { bad = source(outputs = [audio(channels = 0)]), why = synth::InvalidNode }, { bad = source(processor = synth::External(latency = 0, identifier = "")), why = synth::InvalidNode }, { bad = source(parameters = [parameter "cutoff", parameter "cutoff"]), why = synth::DuplicateParameter }, { bad = source(parameters = [invalidParameter(initial = -1.0)]), why = synth::InvalidParameter }], \r => refused (Graphs::add (Graphs::empty, r.bad), r.why))
     stereo = graph(nodes = [source, output(inputs = [audio(channels = 2)])])
     refused (Graphs::connect (stereo, cable (1, 2)), synth::IncompatiblePorts)
     outlets = toList (range (2, 2052))
@@ -182,7 +182,7 @@ test ("mixing, filtering and explicit two-sample feedback execute the compiled g
     filterGraph = sineFiltered (1000.0, 0.707)
     filtered = blockOf (filterGraph, 64)
     energetic (filtered.samples, 64)
-    forEachList ([Graphs::empty, built ([node (1, synth::External(identifier = "future-vst3"), [], [audio]), Components::output 2], [cable (1, 2)]), built ([Components::gain (1, 1.0), Components::output 2], [cable (1, 2)])], \unconnected => renderRefused (Renderer::start unconnected))))
+    forEachList ([Graphs::empty, built ([node (1, synth::External(latency = 0, identifier = "future-vst3"), [], [audio]), Components::output 2], [cable (1, 2)]), built ([Components::gain (1, 1.0), Components::output 2], [cable (1, 2)])], \unconnected => renderRefused (Renderer::start unconnected))))
 
 test ("sample-accurate automation applies before its frame, preserves ordering and rejects stale or out-of-block events", \() => arithmetic (\() =>
     graph = sineThrough (1.0)

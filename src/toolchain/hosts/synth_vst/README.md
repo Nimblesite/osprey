@@ -51,3 +51,9 @@ make -C src/toolchain/targets/macos/tests synth-vst-spectrum VST3_FOLDER="/folde
 The first command uses Dragonfly Room Reverb 3.2.10. Its macOS universal disk image has SHA-256 `e0b854b92a4e51ce5851320fb1a9f91ab1a4309f997de070e175b3e5cab4adaf`. The test compares dry, muted and wet auditions and exercises continuous Play and Stop. The second command uses TAL-NoiseMaker and measures the change in fundamental frequency after raising the MIDI note by one octave. Both compare the stereo samples leaving the VST3 instance with the samples submitted to the device. [Dragonfly release](https://github.com/michaelwillis/dragonfly-reverb/releases/tag/3.2.10)
 
 The `patch` case connects TAL-NoiseMaker to Dragonfly Room Reverb and a stereo output. It checks both cables after deleting and undoing the reverb, renders the patch into `Prism-TAL-Dragonfly.wav` in the reported run directory, and verifies the pitch and reverb tail in that file.
+
+## VST3 project and worker state
+
+Prism stores each node’s class ID, graph-facing ports, normalized controls and modulation routes in the song. It resolves bundle paths from the configured library on this machine. A persistent worker accepts a hexadecimal `SAVE` line and returns an opaque, class-bound `OPS1` state frame. Sending that frame to a fresh session restores the processor and optional private controller state and returns hexadecimal `OK`. The session tests exercise two SDK classes, changed parameters, multiple restores and class mismatch rejection.
+
+The spectrum target accepts `VST3_CASE=latency` with CHOW Tape Model 2.11.4. At 48 kHz the plug-in reports 39 frames of latency. The test checks each stereo output sample against parallel dry and processed paths. Set `VST3_UI=window` to run the spectrum journeys in a native window.

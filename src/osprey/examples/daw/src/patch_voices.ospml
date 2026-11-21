@@ -284,7 +284,7 @@ module PatchVoices
         false => Error(message = "MIDI, control and multichannel patch voices require a 48000 Hz project.")
         true => match filterList (graph.nodes, \n => n.processor == synth::Sink)
             [sink] =>
-                initial = NoteRun(held = synth::GraphState(graphPosition = 0, graphKernels = []), samples = [], fault = "")
+                initial = NoteRun(held = synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), samples = [], fault = "")
                 run = foldList (counts (noteSpan.total, 1024), initial, \(current, count) => clipBlock (graph, sink.identity, current, count))
                 chained (finished run, \audio => ok (shaped (audio, noteSpan, routing, rate)))
             _ => Error(message = "The patch needs one audio output.")

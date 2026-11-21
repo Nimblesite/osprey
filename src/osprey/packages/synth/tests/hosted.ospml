@@ -73,7 +73,7 @@ partitionedGraph (graph, output) =
                                             synth::ClipReady all => succeeds (synth::ClipInputs::completed (all, output), \whole => sameSamples (whole.clipSamples, listConcat a.clipSamples b.clipSamples))
 
 // [SYNTH-HOST-GRAPH] A complete stereo/modulation chain shares the reusable kernels.
-hostDescriptor () = synth::HostDescriptor(identifier = "instrument", name = "Fixture", inputChannels = 0, outputChannels = 2, notes = true, controls = [synth::HostControl(identity = 100, name = "Tone", initial = 0.25, automatable = true)])
+hostDescriptor () = synth::HostDescriptor(latency = 0, identifier = "instrument", name = "Fixture", inputChannels = 0, outputChannels = 2, notes = true, controls = [synth::HostControl(identity = 100, name = "Tone", initial = 0.25, automatable = true)])
 
 // The LFO-to-host-parameter modulation every hosted-graph test wires in.
 reconnected (graph) = accepted (synth::HostModulation::connect (graph, 3, 0, 2, "vst:100"))
@@ -188,6 +188,50 @@ streamedHostTail (graph, held) = match synth::GraphClips::next (graph, held, 192
 // [SYNTH-HOST-STREAM] Malformed native data must fail before it becomes playable audio.
 // [SYNTH-GRAPH] Public prepared/state records are checked even outside the editor.
 
+// [PRISM-ROUTING-VST] The worker returns the input five frames late. The parallel dry branch
+// must reach the mixer on the same frame across unequal blocks and an initial short block.
+latencyPartitions (graph, held, history, sizes) = match sizes
+    [] => expect (held.graphPosition, 26)
+    [size, ...rest] => match synth::GraphClips::next (graph, held, size)
+        Error why => expect (synth::Faults::detail why, "latency block")
+        Success action => match action
+            synth::BlockReady _ _ => unexpected ()
+            synth::BlockWaiting request pending =>
+                match held.graphPosition
+                    0 => expect (structuralEquals (request.parameters, [synth::HostParameter(identity = 100, offset = 0, value = 0.25)]), true)
+                    2 => expect (structuralEquals (request.parameters, [synth::HostParameter(identity = 100, offset = 0, value = 0.125)]), true)
+                    _ => expect (length request.parameters, 0)
+                joined = listConcat history request.samples
+                expected = synth::Sequences::take (joined, size)
+                wet = synth::NodeClip(clipNode = 2, clipChannels = 1, clipSamples = expected, clipNotes = [])
+                match synth::GraphClips::replied (pending, wet)
+                    Error why => expect (synth::Faults::detail why, "latency reply")
+                    Success reply => match reply
+                        synth::BlockWaiting _ _ => unexpected ()
+                        synth::BlockReady next clips =>
+                            sameSamples ((clipFrom (clips, 5)).clipSamples, expected)
+                            sameSamples ((clipFrom (clips, 4)).clipSamples, expected)
+                            edited = match held.graphPosition == 0
+                                true => graph(nodes = mapList (graph.nodes, moveHostDial))
+                                false => graph
+                            latencyPartitions (edited, next, synth::Sequences::drop (joined, size), rest)
+
+moveHostDial n = match n.identity == 2
+    true => n(parameters = mapList (n.parameters, \p => p(initial = 0.125)))
+    false => n
+
+latencyJourney () =
+    plain = hostDescriptor ()
+    descriptor = plain(inputChannels = 1, outputChannels = 1, notes = false, latency = 5)
+    valid (synth::Hosted::component (2, descriptor), \hosted =>
+        graph = built ([Components::sine (1, 440.0), hosted, Components::mix (3, 1, 0.5, 0.5), Components::output 4], [cable (1, 2), cable (2, 3), Components::route (1, 0, 3, 1), cable (3, 4)])
+        match synth::Hosted::compensated graph
+            Error why => expect (why, "compensated graph")
+            Success aligned =>
+                expect (length aligned.nodes, 5)
+                expect (length graph.nodes, 4)
+                latencyPartitions (aligned, synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), steady (5, 0.0), [2, 3, 9, 12]))
+
 // Register the unchanged hosted graph journeys from the suite entry point.
 registerHostedJourneys () =
     audio = monoPort ("audio", synth::Audio, synth::Amplitude)
@@ -266,9 +310,10 @@ registerHostedJourneys () =
         renderRefused (synth::WaveFiles::interleaved (48000, 2, [0.0]))
         renderRefused (synth::WaveFiles::monoFloat (0, [0.0]))
         forEachList ([9218868437227405312, 9221120237041090560], \bits => renderRefused (synth::WaveFiles::monoFloat (48000, [floatFromBits bits])))))
+    test ("parallel hosted and dry paths arrive at the mixer on the same sample", \() => arithmetic latencyJourney)
     test ("external descriptors preserve channel types, MIDI ports and independent parameter identities", \() => arithmetic (\() =>
         control = synth::HostControl(identity = 100, name = "Delay", initial = 1.0, automatable = true)
-        descriptor = synth::HostDescriptor(identifier = "0CDBB66985D548A9BFD8371909D24BB3", name = "ADelay", inputChannels = 2, outputChannels = 2, notes = false, controls = [control])
+        descriptor = synth::HostDescriptor(latency = 0, identifier = "0CDBB66985D548A9BFD8371909D24BB3", name = "ADelay", inputChannels = 2, outputChannels = 2, notes = false, controls = [control])
         first = hostNode (synth::Hosted::component (10, descriptor))
         second = hostNode (synth::Hosted::component (11, descriptor))
         expect (length first.inputs, 1)

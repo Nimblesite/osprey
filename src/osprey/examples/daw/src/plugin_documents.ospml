@@ -52,9 +52,9 @@ module PluginDocuments
         Error why => Error(message = why)
         Success controls => synth::Outcomes::carried (control doc, \entry => Success(value = listAppend controls entry))
 
-    metadata doc = match isText (doc, "id") && isText (doc, "name") && isInt (doc, "inputs") && isInt (doc, "outputs") && isBool (doc, "notes") && Doc::kind (Doc::field (doc, "parameters")) == "list" && length (Doc::fieldItems (doc, "parameters")) <= 1024
+    metadata doc = match (!Doc::has (doc, "latency") || isInt (doc, "latency")) && isText (doc, "id") && isText (doc, "name") && isInt (doc, "inputs") && isInt (doc, "outputs") && isBool (doc, "notes") && Doc::kind (Doc::field (doc, "parameters")) == "list" && length (Doc::fieldItems (doc, "parameters")) <= 1024
         false => Error(message = "The worker returned an incomplete VST descriptor.")
-        true => synth::Outcomes::carried (foldList (Doc::fieldItems (doc, "parameters"), Success(value = []), readControl), \controls => Success(value = HostDescriptor(identifier = Doc::text (doc, "id"), name = Doc::text (doc, "name"), inputChannels = Doc::number (doc, "inputs"), outputChannels = Doc::number (doc, "outputs"), notes = Doc::flag (doc, "notes"), controls = controls)))
+        true => synth::Outcomes::carried (foldList (Doc::fieldItems (doc, "parameters"), Success(value = []), readControl), \controls => Success(value = HostDescriptor(latency = Doc::number (doc, "latency"), identifier = Doc::text (doc, "id"), name = Doc::text (doc, "name"), inputChannels = Doc::number (doc, "inputs"), outputChannels = Doc::number (doc, "outputs"), notes = Doc::flag (doc, "notes"), controls = controls)))
 
     (** Decode required fields; graph validation then checks ranges and unique IDs. *)
     export describe text = synth::Outcomes::carried (jsonDecode text, \doc => metadata doc)
@@ -65,11 +65,11 @@ module PluginDocuments
             Error _ => Error(message = "Invalid hosted parameter key.")
             Success id => Success(value = listAppend docs (JsonObject [JsonMember "id" (JsonInt id), JsonMember "name" (JsonString p.label), JsonMember "initial" (JsonFloat p.initial), JsonMember "automatable" (JsonBool p.automatable)])))
 
-    export stored (n, identifier) = match ClipInputs::layout n
+    export stored (n, identifier, latency) = match ClipInputs::layout n
         Error _ => Error(message = "The VST3 node has an invalid layout.")
         Success layout => Outcomes::carried (foldList (n.parameters, Success(value = []), controlDoc), \controls =>
             modulation = mapList (filterList (n.inputs, \p => p.rate == Control), \p => JsonString p.name)
-            jsonEncode (JsonObject [JsonMember "id" (JsonString identifier), JsonMember "name" (JsonString identifier), JsonMember "inputs" (JsonInt layout.inputChannels), JsonMember "outputs" (JsonInt layout.outputChannels), JsonMember "notes" (JsonBool layout.acceptsNotes), JsonMember "parameters" (JsonArray controls), JsonMember "modulation" (JsonArray modulation)]))
+            jsonEncode (JsonObject [JsonMember "latency" (JsonInt latency), JsonMember "id" (JsonString identifier), JsonMember "name" (JsonString identifier), JsonMember "inputs" (JsonInt layout.inputChannels), JsonMember "outputs" (JsonInt layout.outputChannels), JsonMember "notes" (JsonBool layout.acceptsNotes), JsonMember "parameters" (JsonArray controls), JsonMember "modulation" (JsonArray modulation)]))
 
     restoredPort (outcome, key) = Outcomes::carried (outcome, \n =>
         match ui::Lists::any (n.parameters, \p => p.key == key && p.automatable) && !ui::Lists::any (n.inputs, \p => p.name == key)

@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const [pluginFolder, scenario = 'dragonfly', mode = 'headless'] = process.argv.slice(2);
-assert(pluginFolder && ['dragonfly', 'tal', 'patch'].includes(scenario), 'Pass the VST3 folder and dragonfly, tal or patch');
+assert(pluginFolder && ['dragonfly', 'tal', 'patch', 'latency'].includes(scenario), 'Pass the VST3 folder and dragonfly, tal, patch or latency');
 assert(['headless', 'window'].includes(mode), 'Choose headless or window');
 const paired = scenario === 'patch';
 const reverbName = 'Dragonfly Room Reverb';
@@ -47,7 +47,7 @@ function edit(node, label, value) {
 }
 function playAndStop(frames) {
     press('Play Patch');
-    wait('Playing the started patch. Stop and play again to apply edits.');
+    wait('Playing the patch.');
     steps.push({ frames: String(frames) });
     press('Stop Patch');
     wait('Playback stopped.');
@@ -62,7 +62,21 @@ function insert(name, id, node = 0) {
     wait(name + ' ' + node);
 }
 press('Patch Controls');
-if (scenario === 'dragonfly') {
+if (scenario === 'latency') {
+    insert('CHOWTapeModel', 'ABCDEF019182FAEB43686F774A646F78');
+    ['sine', 'stereo', 'split', 'mixer', 'stereo', 'stereo-output'].forEach(add);
+    connect(1, 2);
+    connect(2, 0);
+    connect(0, 3);
+    connect(3, 4);
+    connect(1, 4, 1);
+    connect(4, 5);
+    connect(5, 6);
+    type('Module', 4);
+    edit('Mixer 4', 'First input gain', 0.25);
+    edit('Mixer 4', 'Second input gain', 0.25);
+    audition();
+} else if (scenario === 'dragonfly') {
     const name = reverbName;
     insert(name, reverbId);
     ['sine', 'stereo', 'stereo-output'].forEach(add);
@@ -78,7 +92,17 @@ if (scenario === 'dragonfly') {
     audition();
     edit(name + ' 0', 'Late Level', 0.65);
     audition();
-    playAndStop(48);
+    edit(name + ' 0', 'Late Level', 0);
+    edit(name + ' 0', 'Dry Level', 1);
+    press('Play Patch');
+    wait('Playing the patch.');
+    steps.push({ frames: '24' });
+    edit(name + ' 0', 'Dry Level', 0);
+    steps.push({ frames: '48' });
+    edit(name + ' 0', 'Dry Level', 1);
+    steps.push({ frames: '48' });
+    press('Stop Patch');
+    wait('Playback stopped.');
 } else {
     insert('TAL-NoiseMaker', '5653546E63757474616C2D6E6F697365');
     type('Module', 0);
@@ -129,7 +153,7 @@ function replay(name, actions) {
         VST_WORKER: join(root, 'target/vst-worker/osprey-vst-worker') } });
 }
 
-const pluginName = scenario === 'dragonfly' ? reverbName : 'TAL-NoiseMaker';
+const pluginName = scenario === 'latency' ? 'CHOWTapeModel' : scenario === 'dragonfly' ? reverbName : 'TAL-NoiseMaker';
 replay('settings', [
     { invoke: 'Patch Controls' }, { gone: pluginName },
     { invoke: 'Settings…' }, { type: ['VST3 folder', resolve(pluginFolder)] },
@@ -139,7 +163,7 @@ assert.equal(readFileSync(preference, 'utf8'), resolve(pluginFolder));
 replay('journey', steps);
 
 const lines = file => readFileSync(file, 'utf8').trim().split('\n');
-function pluginPcm(line) {
+function pluginPcm(line, latency) {
     const b = Buffer.from(line, 'hex');
     assert.equal(b.toString('ascii', 0, 4), 'OSV1');
     assert.equal(b.readUInt32LE(8), 2);
@@ -147,6 +171,7 @@ function pluginPcm(line) {
     for (let offset = 16; offset < b.length;) {
         const frames = b.readUInt32LE(offset);
         assert(frames > 0 && frames <= 256 && offset + 8 + frames * 8 <= b.length);
+        if (latency !== undefined) assert.equal(b.readUInt32LE(offset + 4), latency);
         blocks.push(b.subarray(offset + 8, offset + 8 + frames * 8));
         offset += 8 + frames * 8;
     }
@@ -168,7 +193,7 @@ function effectInput(line) {
     return Buffer.concat(blocks);
 }
 function pluginOutput(session) {
-    return Buffer.concat(lines(session + '.out').map(pluginPcm));
+    return Buffer.concat(lines(session + '.out').map(line => pluginPcm(line)));
 }
 function verifyCable(instrument, effect) {
     const input = Buffer.concat(lines(effect + '.in').map(effectInput));
@@ -240,6 +265,24 @@ function spectrum(pcm, start, size, low, high) {
 }
 const plugins = lines(join(run, 'stream-session.order'));
 const devices = lines(join(run, 'audio-device.order'));
+if (scenario === 'latency') {
+    assert.equal(devices.length, 1);
+    assert.equal(plugins.length, 1);
+    const lag = 39; // CHOW Tape Model 2.11.4 reports 39 frames at 48 kHz.
+    const wet = Buffer.concat(lines(plugins[0] + '.out').map(line => pluginPcm(line, lag)));
+    const dry = Buffer.concat(lines(plugins[0] + '.in').map(effectInput));
+    const mix = deviceAudio(devices[0], true);
+    assert.equal(mix.length, wet.length);
+    assert.equal(dry.length, wet.length);
+    assert(mix.length >= 12288 * 8 && wet.some(byte => byte !== 0));
+    for (let frame = 0; frame < mix.length / 8; frame++) {
+        const source = frame < lag ? 0 : dry.readFloatLE(8 * (frame - lag));
+        const expected = (source + wet.readFloatLE(8 * frame)) * 0.25;
+        for (const channel of [0, 1]) assert(Math.abs(mix.readFloatLE(8 * frame + 4 * channel) - expected) < 2e-6, 'Misaligned parallel paths at frame ' + frame);
+    }
+    console.log('Verified', mix.length / 8, 'stereo frames against the wet output and the delayed dry source.');
+    process.exit(0);
+}
 assert.equal(devices.length, paired ? 3 : scenario === 'tal' ? 2 : 4);
 assert.equal(plugins.length, devices.length * (paired ? 2 : 1));
 if (scenario !== 'tal') {
@@ -261,6 +304,21 @@ if (scenario !== 'tal') {
             const tail = tailRms(rendered, channel);
             assert(tail > 0.00001 && tail > 2 * tailRms(dry, channel), 'Reverb tail must survive note-off');
         }
+    }
+    if (scenario === 'dragonfly') {
+        // Device receipts prove the same process stayed alive across both edits.
+        const pcm = deviceAudio(device, false);
+        let heard = false, quiet = 0, muted = false, recovered = false;
+        for (let i = 0; i < pcm.length; i += 8) {
+            const level = Math.abs(pcm.readFloatLE(i));
+            if (level > 0.1) {
+                heard = true;
+                if (muted) recovered = true;
+            }
+            quiet = level === 0 && heard ? quiet + 1 : 0;
+            if (quiet >= 2048) muted = true;
+        }
+        assert(heard && muted && recovered, 'Live dry level edits must mute and restore the sounding effect');
     }
     console.log('Live frames accepted without starvation:', frames);
 }

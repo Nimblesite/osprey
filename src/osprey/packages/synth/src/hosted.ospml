@@ -20,8 +20,73 @@ module Hosted
         Valid _ => Valid(value = n)
 
     (** Reject malformed metadata before publishing any ports or parameters to clients. *)
-    export component (identity, descriptor) = match descriptor.inputChannels >= 0 && descriptor.inputChannels <= 64 && descriptor.outputChannels >= 1 && descriptor.outputChannels <= 64 && descriptor.identifier != "" && length descriptor.controls <= 1024
+    export component (identity, descriptor) = match descriptor.latency >= 0 && descriptor.latency <= 1920000 && descriptor.inputChannels >= 0 && descriptor.inputChannels <= 64 && descriptor.outputChannels >= 1 && descriptor.outputChannels <= 64 && descriptor.identifier != "" && length descriptor.controls <= 1024
         false => Invalid(fault = InvalidNode)
         true => match length (filterList (descriptor.controls, \c => c.identity < 0 || c.identity > 4294967295 || c.name == "")) > 0
             true => Invalid(fault = InvalidParameter)
-            false => checked (Node(identity = identity, processor = External(identifier = descriptor.identifier), inputs = inputs descriptor, outputs = [audio descriptor.outputChannels], parameters = mapList (descriptor.controls, parameter)))
+            false => checked (Node(identity = identity, processor = External(latency = descriptor.latency, identifier = descriptor.identifier), inputs = inputs descriptor, outputs = [audio descriptor.outputChannels], parameters = mapList (descriptor.controls, parameter)))
+
+    (** Reported processing latency in frames, independent of deliberately authored delay effects. *)
+    export latency n = match n.processor
+        External _ frames => frames
+        _ => 0
+
+    arrival (draft, node) = foldList (draft.arrivals, 0, \(seen, entry) => matchArrival (seen, entry, node))
+
+    matchArrival (seen, entry, node) = match entry.latencyNode == node
+        true => entry.arrival
+        false => seen
+
+    incoming (graph, n) = filterList (graph.cables, \c => audioCable (n, c))
+
+    audioCable (n, c) = match c.destination == n.identity
+        false => false
+        true => match listGet n.inputs c.inlet
+            Error _ => false
+            Success port => port.rate == Audio
+
+    later (a, b) = match a > b
+        true => a
+        false => b
+
+    alignedWire (draft, target, n, cable) =
+        wait = satSub target (arrival (draft, cable.source))
+        match wait == 0
+            true => Success(value = draft)
+            false => match listGet n.inputs cable.inlet
+                Error _ => Error(message = "Missing audio input for plug-in latency compensation.")
+                Success port => delayedWire (draft, cable, port, wait)
+
+    delayedWire (draft, cable, port, wait) =
+        reserved = satAdd draft.reservedSamples (satMul port.channels wait)
+        match reserved <= 1920000 && draft.lastDelay < 9223372036854775807
+            false => Error(message = "Plug-in latency compensation exceeds the delay budget.")
+            true =>
+                identity = satAdd draft.lastDelay 1
+                delay = Components::delay (identity, wait)
+                graph = draft.alignedGraph
+                cables = filterList (graph.cables, \wire => !structuralEquals (wire, cable))
+                next = graph(nodes = listAppend graph.nodes (delay(inputs = [port], outputs = [port])), cables = listConcat cables [cable(destination = identity, inlet = 0), cable(source = identity, outlet = 0)])
+                Success(value = draft(alignedGraph = next, lastDelay = identity, reservedSamples = reserved))
+
+    alignedNode (original, draft, n) =
+        wires = incoming (original, n)
+        target = foldList (wires, 0, \(maximum, c) => later (maximum, arrival (draft, c.source)))
+        total = satAdd target (latency n)
+        match total <= 1920000
+            false => Error(message = "Cumulative plug-in latency exceeds the delay budget.")
+            true => Outcomes::carried (foldList (wires, Success(value = draft), \(carry, c) => Outcomes::carried (carry, \held => alignedWire (held, target, n, c))), \done => Success(value = done(arrivals = listAppend done.arrivals (PathLatency(latencyNode = n.identity, arrival = total)))))
+
+    visit (graph, carry, identity) = match Graphs::node (graph, identity)
+        Invalid _ => Error(message = "The latency schedule contains a missing node.")
+        Valid n => Outcomes::carried (carry, \draft => alignedNode (graph, draft, n))
+
+    (** Prepare a playback copy whose audio inputs meet at the same sample. Stored cables keep their original endpoints. *)
+    export compensated graph = match length (filterList (graph.nodes, \n => latency n != 0)) == 0
+        true => Success(value = graph)
+        false => match GraphClips::ordered graph
+            Invalid _ => Error(message = "Plug-in latency compensation needs an acyclic audio graph.")
+            Valid plan =>
+                highest = foldList (graph.nodes, 0, \(top, n) => later (top, n.identity))
+                initial = Alignment(alignedGraph = graph, arrivals = [], lastDelay = highest, reservedSamples = 0)
+                Outcomes::carried (foldList (plan.order, Success(value = initial), \(carry, id) => visit (graph, carry, id)), \done => Success(value = done.alignedGraph))
