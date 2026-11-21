@@ -126,8 +126,8 @@ clean:
 # The commit make ci started on: a commit landing mid-run is not stamped as tested.
 override CI_HEAD := $(shell git rev-parse HEAD)
 
-## ci: lint + test + build + hawk + the bank, docs and inbox suites (full CI simulation)
-ci: lint test build
+## ci: dependency audit + lint + test + build + hawk + the bank, docs and inbox suites (full CI simulation)
+ci: audit lint test build
 	$(MAKE) -C src/toolchain hawk
 	$(MAKE) -C src/toolchain/targets/tests bank
 	$(MAKE) -C src/toolchain/targets/web/tests bank
