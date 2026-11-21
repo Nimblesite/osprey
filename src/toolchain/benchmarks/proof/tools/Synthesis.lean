@@ -100,4 +100,55 @@ theorem hannEndpoints {α : Type} (sub mul : α → α → α) (cos : α → α)
   rw [cosZero, cosTurn, timesOne, selfSub]
   exact ⟨rfl, rfl⟩
 
+/-- Smith (5.2). On the unit circle the numerator is a unit rotation of the
+    conjugate denominator. Their magnitudes agree at every frequency. -/
+theorem allpassMagnitude {α β : Type} (add mul : α → α → α) (conj : α → α) (norm : α → β)
+    (one coeff delay : α) (realCoeff : conj coeff = coeff) (conjOne : conj one = one)
+    (conjAdd : ∀ x y, conj (add x y) = add (conj x) (conj y))
+    (conjMul : ∀ x y, conj (mul x y) = mul (conj x) (conj y))
+    (normConj : ∀ x, norm (conj x) = norm x)
+    (unitRotation : ∀ x, norm (mul x delay) = norm x) (circle : mul (conj delay) delay = one)
+    (unitL : ∀ x, mul one x = x) (unitR : ∀ x, mul x one = x)
+    (assoc : ∀ x y z, mul (mul x y) z = mul x (mul y z))
+    (dist : ∀ x y z, mul (add x y) z = add (mul x z) (mul y z))
+    (swap : ∀ x y, add x y = add y x) :
+    norm (add coeff delay) = norm (add one (mul coeff delay)) := by
+  have numerator : mul (conj (add one (mul coeff delay))) delay = add coeff delay := by
+    rw [conjAdd, conjOne, conjMul, realCoeff, dist, unitL, assoc, circle, unitR, swap]
+  exact (congrArg norm numerator).symm.trans ((unitRotation _).trans (normConj _))
+
+/-- Smith's difference equation immediately preceding (5.2), factored by η. -/
+theorem allpassRecurrence {α : Type} (add sub mul : α → α → α) (a x prevX prevY : α)
+    (dist : ∀ u v w, mul u (sub v w) = sub (mul u v) (mul u w))
+    (moveSub : ∀ u v w, sub (add u v) w = add (sub u w) v) :
+    sub (add (mul a x) prevX) (mul a prevY) = add (mul a (sub x prevY)) prevX := by
+  rw [moveSub, dist]
+
+/-- Parker et al., equations (8)–(9). Apply the fundamental theorem of calculus
+    to the oriented integral, then reverse both differences in the quotient. -/
+theorem antiderivativeAverage {α : Type} (sub div integral : α → α → α) (primitive : α → α)
+    (curr prev zero : α) (distinct : sub curr prev ≠ zero)
+    (fundamental : ∀ a b, integral a b = sub (primitive b) (primitive a))
+    (reverse : ∀ a b x y, sub x y ≠ zero → div (sub b a) (sub y x) = div (sub a b) (sub x y)) :
+    div (integral curr prev) (sub prev curr) =
+      div (sub (primitive curr) (primitive prev)) (sub curr prev) := by
+  rw [fundamental]
+  exact reverse _ _ _ _ distinct
+
+/-- An arbitrary additive constant in the primitive cancels from (9). -/
+theorem antiderivativeOffset {α : Type} (add sub div : α → α → α) (primitive : α → α)
+    (curr prev c : α) (cancel : ∀ a b k, sub (add a k) (add b k) = sub a b) :
+    div (sub (add (primitive curr) c) (add (primitive prev) c)) (sub curr prev) =
+    div (sub (primitive curr) (primitive prev)) (sub curr prev) := by rw [cancel]
+
+/-- In a constant segment f(x)=g the primitive is g*x+c, so (9) returns g. -/
+theorem antiderivativeConstantCurve {α : Type} (add sub mul div : α → α → α)
+    (curr prev gain c zero : α) (distinct : sub curr prev ≠ zero)
+    (shift : ∀ a b k, sub (add a k) (add b k) = sub a b)
+    (dist : ∀ a b k, sub (mul k a) (mul k b) = mul k (sub a b))
+    (cancel : ∀ k x, x ≠ zero → div (mul k x) x = k) :
+    div (sub (add (mul gain curr) c) (add (mul gain prev) c)) (sub curr prev) = gain := by
+  rw [shift, dist]
+  exact cancel _ _ distinct
+
 end Synthesis
