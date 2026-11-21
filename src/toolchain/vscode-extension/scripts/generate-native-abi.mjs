@@ -66,4 +66,10 @@ const lines = [
   "",
 ];
 fs.mkdirSync(path.dirname(target), { recursive: true });
-fs.writeFileSync(target, lines.join("\n"));
+const temporary = `${target}.${process.pid}.tmp`;
+try {
+  fs.writeFileSync(temporary, lines.join("\n"), { flag: "wx" });
+  fs.renameSync(temporary, target);
+} finally {
+  fs.rmSync(temporary, { force: true });
+}
