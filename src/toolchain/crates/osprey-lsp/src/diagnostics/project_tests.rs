@@ -9,10 +9,7 @@ fn module_files_use_the_assembled_project_graph() {
             "src/osprey/examples/talon/backend/main.ospml",
             main_warnings.as_slice(),
         ),
-        (
-            "src/osprey/examples/talon/backend/web/pages.ospml",
-            &[],
-        ),
+        ("src/osprey/examples/talon/backend/web/pages.ospml", &[]),
     ] {
         let path = root.join(relative);
         let source = std::fs::read_to_string(&path).expect("read module example");

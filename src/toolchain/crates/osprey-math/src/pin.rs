@@ -244,7 +244,9 @@ impl Pins<'_> {
 
     /// A float builtin unifies its operands and result, each obliged to be a float.
     fn builtin(&mut self, operands: &[usize]) -> usize {
-        let result = operands.iter().fold(self.fresh(), |shared, node| self.joined(shared, *node));
+        let result = operands
+            .iter()
+            .fold(self.fresh(), |shared, node| self.joined(shared, *node));
         self.obliged.push(result);
         result
     }
@@ -252,9 +254,14 @@ impl Pins<'_> {
     /// A definition takes and returns its emitted types: a concrete parameter fixes its argument,
     /// and a generic one marks it. `abs` is open over `int` too, so it fixes nothing.
     fn call(&mut self, callee: &str, arguments: &[Expr]) -> usize {
-        let nodes: Vec<usize> = arguments.iter().map(|argument| self.expr(argument)).collect();
+        let nodes: Vec<usize> = arguments
+            .iter()
+            .map(|argument| self.expr(argument))
+            .collect();
         let found = self.earlier.iter().position(|def| def.name == callee);
-        if let Some((def, concrete)) = found.and_then(|at| self.earlier.get(at).zip(self.known.get(at))) {
+        if let Some((def, concrete)) =
+            found.and_then(|at| self.earlier.get(at).zip(self.known.get(at)))
+        {
             return self.instantiated(def, concrete, &nodes);
         }
         if callee == "abs" {

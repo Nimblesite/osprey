@@ -371,8 +371,7 @@ fn a_symbol_declared_in_a_sibling_file_resolves_across_the_project() {
         .join("../../../osprey/examples/talon/backend");
     let entry = root.join("main.ospml");
     let text = std::fs::read_to_string(&entry).expect("read the composition root");
-    let uri =
-        crate::test_support::repo_uri("../../../osprey/examples/talon/backend/main.ospml");
+    let uri = crate::test_support::repo_uri("../../../osprey/examples/talon/backend/main.ospml");
     let (line, column) = position_of(&text, "Ledger::sqlite");
 
     let hovered = hover(&text, &uri, line, column, U16).expect("cross-file hover");
