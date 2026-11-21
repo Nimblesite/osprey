@@ -8,6 +8,18 @@ blocks, whitespace applies curried functions, and all forms lower to the shared
 Select ML with `--flavor ml`, a `.ospml` extension, or a leading
 `// osprey: flavor=ml` marker.
 
+## Mathematical notation [FLAVOR-ML-MATH-NOTATION]
+
+Native DSP source should preserve the grouping and precision of the published formula. The synth migration exposed the following gaps. These are proposed language and tooling requirements. The [implementation checklist](../../plans/math-to-code.md#native-osprey-formulas-math-code-native-notation) records examples and acceptance checks.
+
+| Construct | Required behavior |
+| --- | --- |
+| Conditional expression | A chain of scalar cases can use `if … then … else if … else …`. Evaluate only the chosen branch and lower the expression to the existing Boolean match. |
+| IEEE division | Provide infix notation for the existing `floatDiv` operation so a ratio can be read in operand order inside a larger equation. Preserve signed zero, infinity and NaN behavior and the distinct effect contract of checked division. |
+| Powers | Express exponentiation in infix form with documented associativity and precedence relative to unary minus. Preserve the numeric operation used by the source formula. |
+| Small constants | Accept decimal scientific notation such as `1e-9` and `1e-18`. Decimal-point and scientific notation for the same value must produce the same binary64 bits. |
+| Unary negation | When native prefix negation preserves the original floating-point behavior, keep `-x` in the source and formatter output. |
+
 ## Layout Model
 
 `[FLAVOR-ML-LAYOUT]` The lexer derives `Indent`, `Dedent`, and `Newline` tokens

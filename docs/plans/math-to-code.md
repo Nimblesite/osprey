@@ -62,6 +62,16 @@ Each is a specification change first: meaning table, refusals, oracle.
 - [ ] Imports between math sources.
 - [ ] Definitions over Mathlib's `ℝ` under a declared binary64 approximation profile, so `@osprey/math` reads Mathlib's own text: `ℝ`, `x⁻¹`, `√x`, `π` and Greek names.
 
+### Native Osprey formulas [MATH-CODE-NATIVE-NOTATION]
+
+The comparison is between the production synth modules introduced in `4f8ad8a14` and the Lean sources in its parent. [ML notation requirements](../specs/language/0024-MLFlavorSyntax.md#mathematical-notation-flavor-ml-math-notation) apply to the native source and its proofs. Recheck each example through parsing, formatting, the native backends and the source-to-proof translation when it changes.
+
+- [ ] **[MATH-CODE-NATIVE-CONDITIONAL]** Flatten the soft-knee cases in `DynamicsMath.curve`. Lean reads top to bottom; the converted body repeats `match`, `true` and `false` and indents the third case twice. Accept a chained conditional whose canonical AST and lazy branch behavior match the existing implementation.
+- [ ] **[MATH-CODE-NATIVE-DIVISION]** Make the two variable-denominator ratios inside the compressor knee readable as infix IEEE division. Check ordinary results, division by signed zero and zero divided by zero. Preserve the current checked division operator’s handlers.
+- [ ] **[MATH-CODE-NATIVE-POWER]** Restore the cube notation from `Waves.blamp` so the exponent stays beside its base. Check nested powers, a negative base, a negative exponent, and the difference between a negated power and a power of a negative base.
+- [ ] **[MATH-CODE-NATIVE-LITERAL]** Let `DynamicsMath.rmsLevel` spell its floor as `1e-18`. Confirm the literal parses as a single float and survives formatting and proof extraction with identical bits.
+- [ ] **[MATH-CODE-NATIVE-NEGATION]** Replace converter artifacts such as `(-1.0) * knee` with native `-knee` when their scalar behavior agrees. The native parser already accepts prefix negation. Compare signed zeros, finite values, infinities and NaNs before changing the emitter or the migrated sources.
+
 ## Phase 7 — workbench [MATH-CODE-WORKBENCH]
 
 - [ ] The `.lean` document of [plan 0042](0042-proof-workbench.md) phase 1 shows the generated module read-only beside it, through the toolchain.
