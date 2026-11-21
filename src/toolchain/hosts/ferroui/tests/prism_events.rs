@@ -65,6 +65,32 @@ fn along(index: usize) -> (f64, f64) {
     (OSCILLATOR.0 + 120.0 * turn.sin(), OSCILLATOR.1 + 60.0 * (1.0 - turn.cos()))
 }
 
+/// [DAW-LAYOUT-FILL] Drag by the title in three viewport shapes and trace the real output socket.
+fn drag_across_resized_canvas(canvas: i64) {
+    let center = |frame: &Shown, label: &str| {
+        let area = frame.scenes.values().flat_map(|scene| &scene.access)
+            .find(|area| area.label == label).expect("the oscillator and its outlet are visible");
+        (area.x + area.w / 2.0, area.y + area.h / 2.0)
+    };
+    for (width, height, dx, dy) in [
+        (1536.0, 828.0, 450.0, 150.0),
+        (1536.0, 1850.0, 400.0, 1130.0),
+        (2260.0, 828.0, 1420.0, 140.0),
+    ] {
+        Library::event(0, &Touch::viewed(canvas, width, height)).expect("resize patch workspace");
+        let start = point(canvas, OSCILLATOR, true).0;
+        let end = (OSCILLATOR.0 + dx, OSCILLATOR.1 + dy);
+        point(canvas, end, true);
+        let release = point(canvas, end, false).0;
+        for label in ["Canvas Oscillator 0", "Canvas output 0:0"] {
+            let (x, y) = center(&start, label);
+            assert_eq!(center(&release, label), (x + dx, y + dy), "{label} after drag in {width} × {height}");
+        }
+        point(canvas, end, true);
+        point(canvas, OSCILLATOR, false);
+    }
+}
+
 #[test]
 fn dragging_a_prism_module_answers_every_pointer_event_within_one_display_frame() {
     assert_eq!(Library::init(), Ok(()), "Prism's top level must run");
@@ -99,4 +125,5 @@ fn dragging_a_prism_module_answers_every_pointer_event_within_one_display_frame(
     println!("prism drag: mean {mean:.2} ms, worst {worst:.2} ms over {} moves", measured.len());
     assert!(mean < FRAME_MS, "a drag move takes {mean:.2} ms on average; one frame is {FRAME_MS:.2} ms");
     assert!(worst < 2.0 * FRAME_MS, "the slowest drag move takes {worst:.2} ms; two frames are {:.2} ms", 2.0 * FRAME_MS);
+    drag_across_resized_canvas(canvas);
 }

@@ -12,7 +12,7 @@ module EditorLayout
         editor(selected = identity, selectedCable = -1, dragging = identity, grabX = CanvasGeometry::offset (px, at.layoutX), grabY = CanvasGeometry::offset (py, at.layoutY))
 
     moved (editor, px, py) =
-        at = daw::NodePosition(layoutNode = editor.dragging, layoutX = CanvasGeometry::dragX (px, editor.grabX), layoutY = CanvasGeometry::dragY (py, editor.grabY))
+        at = daw::NodePosition(layoutNode = editor.dragging, layoutX = CanvasGeometry::dragX (px, editor.grabX, ui::Machines::number (editor.skin, "spareWidth")), layoutY = CanvasGeometry::dragY (py, editor.grabY, ui::Machines::number (editor.skin, "spareHeight")))
         previous = position (editor, editor.dragging)
         match at.layoutX == previous.layoutX && at.layoutY == previous.layoutY
             true => editor
