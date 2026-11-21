@@ -9,6 +9,7 @@ mod lex;
 mod literal;
 mod model;
 mod names;
+mod pin;
 mod read;
 mod reader;
 mod refusal;

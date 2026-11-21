@@ -101,7 +101,7 @@ A literal is emitted as the same decimal: digit for digit, with `.0` appended to
 One math source generates one ML-flavor module.
 
 - `namespace a.M` generates `namespace a` and `module M`; `namespace M` generates `module M` in the project's default namespace; a source with no namespace generates `module <file stem>`.
-- A `def` is `export`ed with a signature carrying its declared types, so the API is the one Lean checked and never an inferred generalisation. A `private def` has no `export` and no signature.
+- A `def` is `export`ed; a `private def` is not. The generated Osprey is as tight as the Lean source [MATH-CODE-EMIT-ELEGANT]: no `name : type` header is written, because every value of the fragment is `Float` or `Bool` and the body fixes almost every type (a float literal, a `Float` builtin, `floatDiv`, a boolean operator or a call to an earlier definition). Where it does not, as in `re * re + im * im`, the first open parameter is annotated inline (`power (re: float, im) = re * re + im * im`), and so on until the parameters and result all carry Lean's declared types. The API is therefore always the one Lean checked, never an inferred generalisation, and nothing is stated twice. `floatDiv` stays wherever the divisor is not a nonzero literal, because Osprey's `/` asks `Arith.divideByZero` where Lean gives IEEE infinity.
 - Documentation is the Lean docstring; a public definition without one is documented by its name and source file.
 - The bytes are a function of the source text and file name alone. Generation reads no clock, locale, environment or other file.
 - Every definition of the source appears in source order, or nothing is generated.

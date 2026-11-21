@@ -24,7 +24,7 @@ pub(crate) fn emit(file: &str, module: &Module) -> String {
         if index > 0 {
             out.0.push('\n');
         }
-        out.definition(file, def);
+        out.definition(file, def, module.defs.get(..index).unwrap_or_default());
     }
     out.0
 }
@@ -38,23 +38,38 @@ impl Out {
         self.0.push('\n');
     }
 
-    fn definition(&mut self, file: &str, def: &Def) {
+    fn definition(&mut self, file: &str, def: &Def, earlier: &[Def]) {
         let name = &def.name;
         let doc = def.doc.clone().filter(|doc| !doc.is_empty());
         let generated = format!("`{name}`, generated from {file}.");
         if let Some(doc) = doc.or_else(|| def.public.then_some(generated)) {
             self.line(1, &format!("(** {} *)", doc.replace("*)", "* )")));
         }
-        if def.public {
-            self.line(1, &format!("export {name} : {}", signature(def)));
+        let export = if def.public { "export " } else { "" };
+        let pinned = crate::pin::annotated(def, earlier);
+        if pinned.is_none() {
+            self.line(1, &format!("{export}{name} : {}", signature(def)));
         }
-        let names: Vec<&str> = def.params.iter().map(|(param, _)| param.as_str()).collect();
-        let head = match names.as_slice() {
-            [] => name.clone(),
-            [one] => format!("{name} {one}"),
-            many => format!("{name} ({})", many.join(", ")),
+        let inline = pinned.clone().unwrap_or_default();
+        let names: Vec<String> = def
+            .params
+            .iter()
+            .enumerate()
+            .map(|(index, (param, ty))| {
+                if inline.contains(&index) {
+                    format!("{param}: {}", ty.osprey())
+                } else {
+                    param.clone()
+                }
+            })
+            .collect();
+        let head = match (names.as_slice(), inline.is_empty()) {
+            ([], _) => name.clone(),
+            ([one], true) => format!("{name} {one}"),
+            (many, _) => format!("{name} ({})", many.join(", ")),
         };
-        self.tail(&def.body, 1, &format!("{head} ="));
+        let visible = if pinned.is_some() { export } else { "" };
+        self.tail(&def.body, 1, &format!("{visible}{head} ="));
     }
 
     /// `lead` and then the term: on one line, as a `match`, or as a block.
