@@ -15,10 +15,7 @@ fn parsed(src: &str, flavor: Flavor) -> osprey_ast::Program {
 
 /// A debug source named `filename` in `/tmp`.
 fn tmp_source(filename: &str) -> DebugSource {
-    DebugSource {
-        filename: filename.to_string(),
-        directory: "/tmp".to_string(),
-    }
+    DebugSource::from_path(&format!("/tmp/{filename}"))
 }
 
 fn module(src: &str) -> String {

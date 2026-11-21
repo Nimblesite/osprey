@@ -153,15 +153,12 @@ pub(super) fn run_build_step(mut cmd: Command, input: &Path) -> Result<(), ExitC
 /// eliminate non-escaping per-operation `Result` allocations. Allocation
 /// reclamation is selected independently by `--memory` ([MEM-BACKENDS]).
 pub(super) fn compile_ir(
-    path: &str,
+    source: impl FnOnce() -> osprey_codegen::DebugSource,
     program: &osprey_ast::Program,
     kind: osprey_debug::BuildKind,
 ) -> osprey_codegen::Result<String> {
     if kind.wants_debug_info() {
-        return osprey_codegen::compile_program_debug(
-            program,
-            osprey_codegen::DebugSource::from_path(path),
-        );
+        return osprey_codegen::compile_program_debug(program, source());
     }
     if kind == osprey_debug::BuildKind::Coverage {
         return osprey_codegen::compile_program_coverage(program);

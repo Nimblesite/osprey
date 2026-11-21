@@ -4,6 +4,9 @@ use super::{host_dwarf_version, metadata_escape, DebugSource, LType, Position};
 #[derive(Debug, Clone)]
 pub(super) struct DebugState {
     pub(super) source: DebugSource,
+    source_files: Vec<(u32, u32, usize)>,
+    pub(super) scope_files: std::collections::HashMap<usize, usize>,
+    file_scopes: std::collections::HashMap<(usize, usize), usize>,
     pub(super) current_scope: Option<usize>,
     pub(super) current_function: Option<usize>,
     pub(super) current_position: Option<Position>,
@@ -31,8 +34,11 @@ pub(super) struct DebugState {
 
 impl DebugState {
     pub(super) fn new(source: DebugSource) -> Self {
-        DebugState {
+        let mut state = DebugState {
             source,
+            source_files: Vec::new(),
+            scope_files: std::collections::HashMap::new(),
+            file_scopes: std::collections::HashMap::new(),
             current_scope: None,
             current_function: None,
             current_position: None,
@@ -56,6 +62,36 @@ impl DebugState {
             opaque_ptr_type_id: 13,
             record_types: std::collections::HashMap::new(),
             dynamic: Vec::new(),
+        };
+        for (start, end, path) in std::mem::take(&mut state.source.ranges) {
+            let source = DebugSource::from_path(&path.to_string_lossy());
+            let file = if source.path() == state.source.path() {
+                state.file_id
+            } else {
+                let id = state.alloc_id();
+                let name = metadata_escape(&source.filename);
+                let dir = metadata_escape(&source.directory);
+                state.dynamic.push((
+                    id,
+                    format!("!{id} = !DIFile(filename: \"{name}\", directory: \"{dir}\")"),
+                ));
+                id
+            };
+            state.source_files.push((start, end, file));
+        }
+        state
+    }
+
+    pub(super) fn source_line(&self, global: u32) -> (usize, u32) {
+        if self.source_files.is_empty() {
+            return (self.file_id, global.max(1));
+        }
+        let next = self
+            .source_files
+            .partition_point(|&(_, end, _)| end < global);
+        match self.source_files.get(next) {
+            Some(&(start, _, file)) if global >= start => (file, global - start + 1),
+            _ => (self.file_id, 0),
         }
     }
 
@@ -66,7 +102,7 @@ impl DebugState {
     pub(super) fn begin_function(&mut self, name: &str, position: Option<Position>) -> usize {
         let retained_id = self.alloc_id();
         let id = self.alloc_id();
-        let line = position.map_or(1, |p| p.line.max(1));
+        let (file, line) = position.map_or((self.file_id, 0), |p| self.source_line(p.line));
         // [MODULES-ABI] LLDB prefers linkageName even when it cannot decode
         // our encoding. Keep DWARF names readable; native LLVM symbols keep ABI.
         let name = metadata_escape(&osprey_ast::symbol::demangle_message(name));
@@ -74,14 +110,15 @@ impl DebugState {
             id,
             format!(
                 "!{id} = distinct !DISubprogram(name: \"{name}\", scope: !{}, file: !{}, line: {line}, type: !{}, scopeLine: {line}, spFlags: DISPFlagDefinition, unit: !{}, retainedNodes: !{})",
-                self.file_id,
-                self.file_id,
+                file,
+                file,
                 self.subroutine_type_id,
                 self.cu_id,
                 retained_id
             ),
         ));
         self.current_scope = Some(id);
+        let _ = self.scope_files.insert(id, file);
         self.current_function = Some(id);
         self.current_position = position;
         self.current_retained_nodes = Some(retained_id);
@@ -122,8 +159,22 @@ impl DebugState {
         let scope = self.current_scope?;
         let position = self.current_position?;
         let id = self.alloc_id();
-        let line = position.line.max(1);
-        let column = position.column.saturating_add(1).max(1);
+        let (file, line) = self.source_line(position.line);
+        let scope = if self.scope_files.get(&scope) == Some(&file) {
+            scope
+        } else if let Some(known) = self.file_scopes.get(&(scope, file)) {
+            *known
+        } else {
+            let block = self.alloc_id();
+            self.dynamic.push((block, format!("!{block} = !DILexicalBlockFile(scope: !{scope}, file: !{file}, discriminator: 0)")));
+            let _ = self.file_scopes.insert((scope, file), block);
+            block
+        };
+        let column = if line == 0 {
+            0
+        } else {
+            position.column.saturating_add(1)
+        };
         self.dynamic.push((
             id,
             format!("!{id} = !DILocation(line: {line}, column: {column}, scope: !{scope})"),
@@ -140,14 +191,13 @@ impl DebugState {
         let scope = self.current_scope?;
         let position = self.current_position?;
         let id = self.alloc_id();
-        let line = position.line.max(1);
+        let (file, line) = self.source_line(position.line);
         let name = metadata_escape(name);
         let argument = argument.map_or_else(String::new, |index| format!("arg: {index}, "));
         self.dynamic.push((
             id,
             format!(
-                "!{id} = !DILocalVariable(name: \"{name}\", {argument}scope: !{scope}, file: !{}, line: {line}, type: !{type_id})",
-                self.file_id
+                "!{id} = !DILocalVariable(name: \"{name}\", {argument}scope: !{scope}, file: !{file}, line: {line}, type: !{type_id})"
             ),
         ));
         self.current_local_ids.push(id);

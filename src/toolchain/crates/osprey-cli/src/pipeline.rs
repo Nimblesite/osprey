@@ -317,7 +317,7 @@ pub(super) fn target_ir(cli: &Cli, input: &CompilationInput) -> Result<String, S
     if cli.target == "wasm32" {
         return wasm::program_ir(program).map_err(|error| error.to_string());
     }
-    compile_ir(path, program, build_kind(cli)).map_err(|error| error.to_string())
+    compile_ir(|| input.debug_source(), program, build_kind(cli)).map_err(|error| error.to_string())
 }
 
 pub(super) fn reject_debug_cross_target(cli: &Cli) -> Option<ExitCode> {

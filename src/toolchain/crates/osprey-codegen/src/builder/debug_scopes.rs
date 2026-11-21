@@ -8,13 +8,17 @@ impl DebugState {
         let parent = self.current_scope?;
         let position = position.or(self.current_position)?;
         let id = self.alloc_id();
-        let line = position.line.max(1);
-        let column = position.column.saturating_add(1);
+        let (file, line) = self.source_line(position.line);
+        let column = if line == 0 {
+            0
+        } else {
+            position.column.saturating_add(1)
+        };
         self.dynamic.push((id, format!(
-            "!{id} = distinct !DILexicalBlock(scope: !{parent}, file: !{}, line: {line}, column: {column})",
-            self.file_id
+            "!{id} = distinct !DILexicalBlock(scope: !{parent}, file: !{file}, line: {line}, column: {column})"
         )));
         self.current_scope = Some(id);
+        let _ = self.scope_files.insert(id, file);
         self.current_position = Some(position);
         Some(parent)
     }
