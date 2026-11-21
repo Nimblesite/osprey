@@ -29,7 +29,7 @@ reflect() {
     cargo run --quiet --manifest-path "$root/src/toolchain/Cargo.toml" -p osprey-syntax --example synth_proof -- "${bodies[@]}" > "$out/bodies"
     awk -v body="$out/bodies" '/^-- INSERT PRODUCTION BODIES$/ {while ((getline line < body) > 0) print line; next} {print}' \
         "$tools/ProductionFft.lean.in" > "$out/ProductionFft.lean"
-    cat "$tools/ProductionSpectral.lean.in" >> "$out/ProductionFft.lean"
+    cat "$tools/ProductionSpectral.lean.in" "$tools/ProductionTransform.lean.in" >> "$out/ProductionFft.lean"
 }
 cd "$tools"
 reflect
@@ -39,12 +39,13 @@ exporter=$(lake env which lean4export)
 check_export() {
     local backend=$1 file=$2 name=$3
     if [[ "$backend" == wasm ]]; then
-        printf '%s\t%s\n' "$file" "$name" | node "$root/scripts/proof/proof-batch-wasm.mjs" "$checker.wasm" "$out"
+        # The division lemma for the supported FFT sizes exceeds Node's default Wasm call stack.
+        printf '%s\t%s\n' "$file" "$name" | node --stack-size=4096 "$root/scripts/proof/proof-batch-wasm.mjs" "$checker.wasm" "$out"
     else
         printf '%s\t%s\n' "$out/$file" "$name" | "$checker.$backend"
     fi
 }
-for theorem in overlapNecessary hannEnergyEighth hannEnergyQuarter delayPropagation delayFullTraversal heardTimeClamped dialMovement canvasGrabOffset envelopeSustain envelopeReleased stridedQuartet additiveSample additivePeriod rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
+for theorem in supportedTransformDepths transformSchedule overlapNecessary hannEnergyEighth hannEnergyQuarter delayPropagation delayFullTraversal heardTimeClamped dialMovement canvasGrabOffset envelopeSustain envelopeReleased stridedQuartet additiveSample additivePeriod rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
     name="ProductionFft.$theorem"
     LEAN_PATH="$out:$lean_path" "$exporter" ProductionFft -- "$name" > "$out/$theorem.ndjson"
     for backend in gc arc wasm; do
@@ -74,6 +75,8 @@ reject_edit() {
     awk -F: -v start="$start" -v end="$end" '/ProductionFft.lean:[0-9]+:[0-9]+: error:/ && $2 >= start && $2 < end { rejected=1 } END {exit !rejected}' "$out/rejected.log"
     echo "REJECT $theorem production mutation"
 }
+reject_edit transformSchedule 's/step = satAdd stride stride/step = satAdd stride 1/'
+reject_edit transformSchedule 's/listConcat halves.lower halves.upper/listConcat halves.upper halves.lower/'
 reject_edit hannEnergyQuarter 's/0.5 - 0.5 [*] cos/0.5 - 1.0 * cos/' "$math"
 reject_edit delayPropagation 's/listAppend rest sample/listPrepend rest sample/' "${source%/*}/delay_lines.ospml"
 reject_edit heardTimeClamped 's/floatDiv (returned, rate), floatDiv (accepted, rate)/floatDiv (accepted, rate), floatDiv (returned, rate)/' "${arrange%/*}/timeline_geometry.ospml"

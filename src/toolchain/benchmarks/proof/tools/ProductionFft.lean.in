@@ -109,6 +109,8 @@ structure Ops (α : Type) where
   toFloat : Nat → α
   satAdd : Nat → Nat → Nat
 
+abbrev Transform (α ε : Type) := List (Bin α) → Nat → Nat → Nat → α → Except ε (List (Bin α))
+
 -- INSERT PRODUCTION BODIES
 
 open Ffts SpectralFrames StrikeCombs

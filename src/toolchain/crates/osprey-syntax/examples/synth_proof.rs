@@ -1,6 +1,9 @@
 //! Reflect the production FFT's pure ML bodies into the synthesis proof environment.
+#[path = "synth_proof/signatures.rs"]
+mod signatures;
 use osprey_ast::{Expr, Pattern, Stmt};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
+use signatures::signatures;
 use std::{env, fs};
 
 fn ident(name: &str) -> Result<String, String> {
@@ -21,6 +24,11 @@ fn binder(name: &str) -> Result<String, String> {
             | "listGet"
             | "incomplete"
             | "quartet"
+            | "four"
+            | "transform"
+            | "recur"
+            | "listConcat"
+            | "intDiv"
             | "gated"
             | "foldList"
             | "floatDiv"
@@ -177,7 +185,10 @@ fn callee(e: &Expr) -> Result<String, String> {
         "hann" => Ok("GrainWindows.hann ops".into()),
         "gated" => Ok("ArrangeMath.gated ops".into()),
         "listGet" => Ok("readBin".into()),
-        "incomplete" | "quartet" => Ok(format!("Ffts.{} ops", ident(name)?)),
+        "transform" => Ok("recur".into()),
+        "intDiv" => Ok("Nat.div".into()),
+        "listConcat" => Ok("List.append".into()),
+        "incomplete" | "quartet" | "four" => Ok(format!("Ffts.{} ops", ident(name)?)),
         "foldList" => Ok("foldList".into()),
         "floatDiv" => Ok("ops.ieeeDivide".into()),
         "abs" => Ok("ops.abs".into()),
@@ -236,6 +247,23 @@ fn constructor(name: &str, fields: &[osprey_ast::FieldAssignment]) -> Result<Str
     ))
 }
 
+fn binary_operator(op: &str, right: &Expr) -> Result<&'static str, String> {
+    match op {
+        "==" if matches!(right, Expr::Integer(_)) => Ok("BEq.beq (α := Nat)"),
+        "||" => Ok("or"),
+        "<=" => Ok("ops.atMost"),
+        ">=" => Ok("ops.atLeast"),
+        "+" => Ok("ops.plus"),
+        "*" => Ok("ops.times"),
+        "<" => Ok("ops.less"),
+        ">" => Ok("ops.greater"),
+        "==" => Ok("ops.equal"),
+        "/" => Ok("ops.divide"),
+        "-" => Ok("ops.minus"),
+        _ => Err(format!("unsupported operator {op}")),
+    }
+}
+
 fn term(e: &Expr) -> Result<String, String> {
     match e {
         Expr::Identifier(n) => ident(n),
@@ -262,28 +290,19 @@ fn term(e: &Expr) -> Result<String, String> {
         Expr::Binary {
             op, left, right, ..
         } => {
-            if op == "||" {
-                return Ok(format!("(or {} {})", term(left)?, term(right)?));
-            }
-            let name = match op.as_str() {
-                "<=" => "atMost",
-                ">=" => "atLeast",
-                "+" => "plus",
-                "*" => "times",
-                "<" => "less",
-                ">" => "greater",
-                "==" => "equal",
-                "/" => "divide",
-                "-" => "minus",
-                _ => return Err(format!("unsupported operator {op}")),
-            };
-            Ok(format!("(ops.{name} {} {})", term(left)?, term(right)?))
+            let operator = binary_operator(op, right)?;
+            Ok(format!("({operator} {} {})", term(left)?, term(right)?))
         }
         Expr::Call {
             function,
             arguments,
             named_arguments,
         } if named_arguments.is_empty() => {
+            if matches!(function.as_ref(), Expr::Identifier(n) if n == "intDiv")
+                && !matches!(arguments.as_slice(), [_, Expr::Integer(2)])
+            {
+                return Err("only nonnegative frame-size halving is supported".into());
+            }
             let args = arguments.iter().map(term).collect::<Result<Vec<_>, _>>()?;
             Ok(format!("({} {})", callee(function)?, args.join(" ")))
         }
@@ -333,86 +352,6 @@ fn term(e: &Expr) -> Result<String, String> {
         }
         _ => Err(format!("unsupported expression {e:?}")),
     }
-}
-
-type Signature = (&'static str, &'static [&'static str], &'static str);
-
-fn signatures(module: &str) -> Result<&'static [Signature], String> {
-    Ok(match module {
-        "CanvasGeometry" => &[("offset", &["α", "α"], "α"), ("shifted", &["α", "α"], "α")],
-        "DialMath" => &[("moved", &["α", "α"], "α")],
-        "FitMath" => &[("clip", &["α", "α", "α"], "α")],
-        "TimelineGeometry" => &[("heardSeconds", &["α", "α", "α", "α", "α"], "α")],
-        "DelayLines" => &[("push", &["DelayLine α", "α"], "DelayLine α")],
-        "ArrangeMath" => &[
-            ("gated", &["α", "α", "α", "α"], "α"),
-            ("enveloped", &["α", "α", "α", "α", "α", "α"], "α"),
-        ],
-        "PhaseOperators" => &[
-            ("basePhase", &["α", "α"], "α"),
-            ("pulse", &["α", "Pulse α"], "α"),
-            ("shaped", &["PhaseShape α", "α"], "α"),
-        ],
-        "GrainWindows" => &[
-            ("hann", &["α", "α"], "α"),
-            ("value", &["Envelope α", "Nat", "Nat"], "α"),
-        ],
-        "Interpolation" => &[("linear", &["α", "α", "α"], "α")],
-        "Waveshapers" => &[
-            ("curve", &["Curve", "α"], "α"),
-            ("integral", &["Curve", "α"], "α"),
-            ("shaped", &["Shaper", "α", "α"], "α"),
-        ],
-        "Allpasses" => &[("next", &["α", "AllpassState α", "α"], "AllpassSample α")],
-        "StrikeCombs" => &[
-            ("delay", &["Strike α"], "α"),
-            (
-                "next",
-                &["Strike α", "DelayLine α", "α"],
-                "Except ops.Fault (LineSample α (DelayLine α))",
-            ),
-        ],
-        "SpectralStreams" => &[
-            ("overlapScale", &["α", "α"], "α"),
-            ("overlapped", &["α", "α", "α"], "α"),
-        ],
-        "TableMath" => &[("harmonic", &["α", "α", "α", "α"], "α")],
-        "Wavetables" => &[("value", &["List (Harmonic α)", "α", "α"], "α")],
-        "SpectralMath" => &[
-            ("hann", &["α", "α"], "α"),
-            ("twiddle", &["α", "α", "α"], "α"),
-            ("productRe", &["α", "α", "α", "α"], "α"),
-            ("productIm", &["α", "α", "α", "α"], "α"),
-        ],
-        "SpectralFrames" => &[
-            ("scaled", &["Bin α", "α"], "Bin α"),
-            ("turned", &["Bin α", "Bin α"], "Bin α"),
-            ("rotation", &["Bin α", "Bin α"], "Bin α"),
-        ],
-        "Ffts" => &[
-            ("incomplete", &[], "Except ops.Fault (List (Bin α))"),
-            ("conjugate", &["Bin α"], "Bin α"),
-            ("added", &["Bin α", "Bin α"], "Bin α"),
-            ("subtracted", &["Bin α", "Bin α"], "Bin α"),
-            ("rotated", &["Bin α", "α"], "Bin α"),
-            (
-                "quartet",
-                &["Bin α", "Bin α", "Bin α", "Bin α", "α"],
-                "List (Bin α)",
-            ),
-            (
-                "four",
-                &["List (Bin α)", "Nat", "Nat", "α"],
-                "Except ops.Fault (List (Bin α))",
-            ),
-            (
-                "combined",
-                &["List (Bin α)", "List (Bin α)", "Nat", "Nat", "α"],
-                "Halves α",
-            ),
-        ],
-        other => return Err(format!("unsupported production module {other}")),
-    })
 }
 
 fn reflect(file: &str) -> Result<(), String> {
@@ -467,8 +406,15 @@ fn reflect(file: &str) -> Result<(), String> {
         } else {
             "ops"
         };
+        // Interpret recursive call sites explicitly so finite evaluation can
+        // quantify over its depth and prove that the exhaustion case is unreachable.
+        let (definition, recursion) = if module == "Ffts" && name == "transform" {
+            ("transformStep", "(recur : Transform α ops.Fault)")
+        } else {
+            (name, "")
+        };
         println!(
-            "def {module}.{name} {{α : Type}} ({ops_name} : Ops α) {} : {result} := {}",
+            "def {module}.{definition} {{α : Type}} ({ops_name} : Ops α) {recursion} {} : {result} := {}",
             params.join(" "),
             term(expr)?
         );

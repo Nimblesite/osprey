@@ -1,0 +1,96 @@
+namespace ProductionFft
+
+/-- Depth counts the base call. The caller supplies any result at exhaustion.
+    The scheduling theorem shows valid FFT sizes never observe it. -/
+def unfoldTransform (ops : Ops α) (exhausted : Transform α ops.Fault) : Nat → Transform α ops.Fault
+  | 0 => exhausted
+  | depth + 1 => Ffts.transformStep ops (unfoldTransform ops exhausted depth)
+
+/-- A valid sequence of halvings terminates at four samples. -/
+inductive Stages : Nat → Nat → Prop
+  | four : Stages 4 1
+  | split {size depth} (larger : (size == 4) = false) (half : Stages (Nat.div size 2) (depth+1)) :
+      Stages size (depth+2)
+
+/-- Independent stage schedule. The base consumes four strided samples. Each
+    parent joins the even and odd children using the reference butterfly list. -/
+def scheduled (ops : Ops α) : Nat → Transform α ops.Fault
+  | 0 => fun _ _ _ _ _ => .error ops.incompleteFrame
+  | 1 => fun values first stride _ sign => Ffts.four ops values first stride sign
+  | n+2 => fun values first stride size sign =>
+    let step := ops.satAdd stride stride
+    match scheduled ops (n+1) values first step (Nat.div size 2) sign with
+    | .error e => .error e
+    | .ok evens =>
+      match scheduled ops (n+1) values (ops.satAdd first stride) step (Nat.div size 2) sign with
+      | .error e => .error e
+      | .ok odds =>
+        let pairs := butterflies ops size sign 0 (evens.zip odds)
+        .ok (pairs.map Prod.fst ++ pairs.map Prod.snd)
+
+/-- Every call made by the production body on a valid size reaches its quartet
+    at the required depth. Buffer offsets, child order, errors and lower/upper
+    concatenation agree with the stage schedule for either transform sign. -/
+theorem transformSchedule (ops : Ops α) (exhausted : Transform α ops.Fault) {size depth : Nat}
+    (valid : Stages size depth) (values : List (Bin α)) (first stride : Nat) (sign : α) :
+    unfoldTransform ops exhausted depth values first stride size sign =
+      scheduled ops depth values first stride size sign := by
+  induction valid generalizing first stride with
+  | four => rfl
+  | @split size depth larger half ih =>
+    unfold unfoldTransform Ffts.transformStep
+    rw [larger]
+    dsimp only
+    rw [ih first (ops.satAdd stride stride), ih (ops.satAdd first stride) (ops.satAdd stride stride)]
+    conv => rhs; unfold scheduled
+    dsimp only
+    cases scheduled ops (depth+1) values first (ops.satAdd stride stride) (Nat.div size 2) sign with
+    | error e => rfl
+    | ok evens =>
+      cases scheduled ops (depth+1) values (ops.satAdd first stride) (ops.satAdd stride stride) (Nat.div size 2) sign with
+      | error e => rfl
+      | ok odds => simp only [combinedCorrect]; rfl
+
+private theorem halveDouble (n : Nat) : Nat.div (n * 2) 2 = n := by
+  have go (k fuel x : Nat) (bound : x < fuel) (value : x = k * 2) :
+      Nat.div.go 2 (by decide) fuel x bound = k := by
+    induction k generalizing fuel x with
+    | zero =>
+      subst x
+      cases fuel with
+      | zero => cases bound
+      | succ f => rfl
+    | succ k ih =>
+      rw [Nat.succ_mul] at value
+      subst x
+      cases fuel with
+      | zero => cases bound
+      | succ f =>
+        rw [Nat.div.go, dif_pos (Nat.le_add_left 2 (k * 2))]
+        exact congrArg Nat.succ (ih _ _ _ rfl)
+  unfold Nat.div
+  rw [dif_pos (by decide : 0 < 2)]
+  exact go n _ _ _ rfl
+
+private theorem doubledStages {n d : Nat} (prev : Stages n (d+1))
+    (larger : (n*2 == 4) = false) : Stages (n*2) (d+2) := by
+  apply Stages.split larger
+  rw [halveDouble]
+  exact prev
+
+/-- The renderer's supported frame sizes need five through eleven calls on
+    each branch, including the fused quartet at depth one. -/
+theorem supportedTransformDepths :
+    Stages 64 5 ∧ Stages 128 6 ∧ Stages 256 7 ∧ Stages 512 8 ∧
+    Stages 1024 9 ∧ Stages 2048 10 ∧ Stages 4096 11 := by
+  have s8 : Stages 8 2 := doubledStages Stages.four rfl
+  have s16 : Stages 16 3 := doubledStages s8 rfl
+  have s32 : Stages 32 4 := doubledStages s16 rfl
+  have s64 : Stages 64 5 := doubledStages s32 rfl
+  have s128 : Stages 128 6 := doubledStages s64 rfl
+  have s256 : Stages 256 7 := doubledStages s128 rfl
+  have s512 : Stages 512 8 := doubledStages s256 rfl
+  have s1024 : Stages 1024 9 := doubledStages s512 rfl
+  have s2048 : Stages 2048 10 := doubledStages s1024 rfl
+  exact ⟨s64, s128, s256, s512, s1024, s2048, doubledStages s2048 rfl⟩
+end ProductionFft
