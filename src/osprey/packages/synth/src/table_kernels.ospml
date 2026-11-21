@@ -33,22 +33,35 @@ module TableKernels
         true => 0.0
         false => held.integratorOne + 1.0
 
-    voiced (frame, held, interval, configured) = match interval >= 0.0 && interval <= 1048576.0
-        false => Error(message = InvalidConfiguration(detail = "Retrigger interval must be 0 to 1048576 samples."))
-        true => partials (frame, held, interval, configured)
-
-    partials (frame, held, interval, configured) = match configured
+    played (frame, held, bank, coefficients) = match PartialBanks::withCoefficients (bank.config, coefficients, PartialState(phases = held.delay, age = held.phase))
         Error why => Error(message = why)
-        Success config => match PartialBanks::next (config, PartialState(phases = held.delay, age = held.phase))
-            Error why => Error(message = why)
-            Success step =>
-                cycle = restarted (held, interval)
-                age = match cycle == 0.0 && interval > 0.0
-                    true => 0.0
-                    false => step.next.age
-                Success(value = RenderInputs::emitted (frame, held(delay = step.next.phases, phase = age, integratorOne = cycle), step.sample))
+        Success step =>
+            interval = bank.interval
+            cycle = restarted (held, interval)
+            age = match cycle == 0.0 && interval > 0.0
+                true => 0.0
+                false => step.next.age
+            Success(value = RenderInputs::emitted (frame, held(delay = step.next.phases, phase = age, integratorOne = cycle), step.sample))
 
     shaped (rate, frequency, count, tilt, parity, decay, damping, amplitude, inharmonicity, stretch) = PartialBanks::configure (PartialConfig(sampleRate = rate, frequency = frequency, count = count, tilt = tilt, parity = parity, decay = decay, damping = damping, amplitude = amplitude, layout = StiffLayout(inharmonicity = inharmonicity, stretch = stretch)))
 
+    bank (interval, configured) = match interval >= 0.0 && interval <= 1048576.0
+        false => Error(message = InvalidConfiguration(detail = "Retrigger interval must be 0 to 1048576 samples."))
+        true => Outcomes::carried (configured, \config => Success(value = PartialSettings(interval = interval, config = config)))
+
+    settings (rate, snapshot, identity) = RenderInputs::setting (snapshot, identity, "frequency", \frequency => RenderInputs::setting (snapshot, identity, "partials", \count => RenderInputs::setting (snapshot, identity, "tilt", \tilt => RenderInputs::setting (snapshot, identity, "parity", \parity => RenderInputs::setting (snapshot, identity, "decay", \decay => RenderInputs::setting (snapshot, identity, "damping", \damping => RenderInputs::setting (snapshot, identity, "amplitude", \amplitude => RenderInputs::setting (snapshot, identity, "inharmonicity", \inharmonicity => RenderInputs::setting (snapshot, identity, "stretch", \stretch => RenderInputs::setting (snapshot, identity, "interval", \interval => bank (interval, shaped (rate, frequency, count, tilt, parity, decay, damping, amplitude, inharmonicity, stretch))))))))))))
+
+    (** Prepare the additive bank when the block uses a fixed control snapshot. *)
+    export prepare (rate, snapshot, identity) = match settings (rate, snapshot, identity)
+        Error _ => DynamicPartials
+        Success bank => match bank.config.layout
+            StiffLayout stiffness stretch => FixedPartials(settings = bank, coefficients = PartialBanks::stiffCoefficients (bank.config, stiffness, stretch))
+            _ => DynamicPartials
+
     (** An additive source: storage holds partial phases, phase the envelope age, integratorOne the retrigger clock. *)
-    export additive (rate, snapshot, frame, held) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "partials", \count => RenderInputs::bound (snapshot, held, "tilt", \tilt => RenderInputs::bound (snapshot, held, "parity", \parity => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "damping", \damping => RenderInputs::bound (snapshot, held, "amplitude", \amplitude => RenderInputs::bound (snapshot, held, "inharmonicity", \inharmonicity => RenderInputs::bound (snapshot, held, "stretch", \stretch => RenderInputs::bound (snapshot, held, "interval", \interval => voiced (frame, held, interval, shaped (rate, frequency, count, tilt, parity, decay, damping, amplitude, inharmonicity, stretch))))))))))))
+    export additive (rate, snapshot, frame, held) = Outcomes::carried (settings (rate, snapshot, held.identity), \bank => played (frame, held, bank, []))
+
+    (** Fixed snapshots reuse the prepared bank; automation resolves settings at its exact sample. *)
+    export scheduled (rate, snapshot, frame, held, prepared) = match prepared
+        DynamicPartials => additive (rate, snapshot, frame, held)
+        FixedPartials settings coefficients => played (frame, held, settings, coefficients)

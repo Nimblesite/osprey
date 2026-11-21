@@ -55,3 +55,18 @@ type PartialVoice =
     sample : float
     gain : float
     phases : List<float>
+
+type PartialCoefficient =
+    increment : float
+    weight : float
+
+type PartialSettings =
+    config : PartialConfig
+    interval : float
+
+type PartialSchedule =
+    DynamicPartials
+    FixedPartials
+        settings : PartialSettings
+        coefficients : List<PartialCoefficient>
+

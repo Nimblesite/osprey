@@ -24,15 +24,29 @@ module PartialBanks
         true => Success(value = config)
         false => Error(message = InvalidConfiguration(detail = "Invalid partial-bank rate, frequency, count, shaping, decay, amplitude or layout."))
 
+    stiffRatio (index, stiffness, stretch) = TableMath::stiffRatio (toFloat (satAdd index 1), stiffness, stretch)
+
     // Ratio-list partials beyond the list are silent by definition, not by error.
     ratio (config, index) = match config.layout
         HarmonicLayout => Success(value = toFloat (satAdd index 1))
-        StiffLayout inharmonicity stretch => Success(value = TableMath::stiffRatio (toFloat (satAdd index 1), inharmonicity, stretch))
+        StiffLayout inharmonicity stretch => Success(value = stiffRatio (index, inharmonicity, stretch))
         RatioLayout ratios => listGet ratios index
 
-    gain (config, index, frequency, age) =
-        number = toFloat (satAdd index 1)
-        TableMath::countGain (config.count, toFloat index) * TableMath::tilt (number, config.tilt) * TableMath::parity (number, config.parity) * TableMath::nyquistFade (frequency, config.sampleRate) * TableMath::partialDecay (age, config.decay, config.damping, number, config.sampleRate)
+    weight (config, index, frequency) = match toFloat index >= config.count
+        true => 0.0
+        false =>
+            number = toFloat (satAdd index 1)
+            TableMath::countGain (config.count, toFloat index) * TableMath::tilt (number, config.tilt) * TableMath::parity (number, config.parity) * TableMath::nyquistFade (frequency, config.sampleRate)
+
+    coefficient (config, index, stiffness, stretch) =
+        frequency = config.frequency * stiffRatio (index, stiffness, stretch)
+        PartialCoefficient(increment = frequency / config.sampleRate, weight = weight (config, index, frequency))
+
+    (** Phase increments and spectral weights stay fixed until the next control change. *)
+    export stiffCoefficients (config, stiffness, stretch) = mapList (toList (range (0, capacity)), \index => coefficient (config, index, stiffness, stretch))
+
+
+    decayed (config, age, index, spectral) = spectral * TableMath::partialDecay (age, config.decay, config.damping, toFloat (satAdd index 1), config.sampleRate)
 
     stepped (config, age, phases, index, sample, total, updated) = match listGet phases index
         Error _ => PartialVoice(sample = sample, gain = total, phases = updated)
@@ -44,12 +58,32 @@ module PartialBanks
                 match toFloat index >= config.count
                     true => stepped (config, age, phases, satAdd index 1, sample, total, next)
                     false =>
-                        level = gain (config, index, frequency, age)
+                        level = decayed (config, age, index, weight (config, index, frequency))
                         stepped (config, age, phases, satAdd index 1, sample + level * TableMath::sinePhase phase, total + TableMath::magnitude level, next)
 
-    (** One sample: peak-safe sum (divided by total gain when it exceeds one), scaled by amplitude. *)
+    finished (config, age, voice) = Success(value = PartialSample(sample = TableMath::normalised (voice.sample, voice.gain, config.amplitude), next = PartialState(phases = voice.phases, age = age + 1.0)))
+
+    (** Advance a live bank with potentially different controls on every sample. *)
     export next (config, held) = match length held.phases == capacity
         false => Error(message = IncompatibleLayout(detail = "Partial state does not have one phase per partial."))
-        true =>
-            voice = stepped (config, held.age, held.phases, 0, 0.0, 0.0, [])
-            Success(value = PartialSample(sample = TableMath::normalised (voice.sample, voice.gain, config.amplitude), next = PartialState(phases = voice.phases, age = held.age + 1.0)))
+        true => finished (config, held.age, stepped (config, held.age, held.phases, 0, 0.0, 0.0, []))
+
+    // Every oscillator advances, including partials that are currently inaudible.
+    fixed (config, age, phases, prepared, index, sample, gain, updated) = match listGet prepared index
+        Error _ => finished (config, age, PartialVoice(sample = sample, gain = gain, phases = updated))
+        Success partial => match listGet phases index
+            Error _ => Error(message = IncompatibleLayout(detail = "Missing phase for a prepared partial."))
+            Success phase =>
+                next = listAppend updated (Waves::wrap (phase + partial.increment))
+                match toFloat index >= config.count
+                    true => fixed (config, age, phases, prepared, satAdd index 1, sample, gain, next)
+                    false =>
+                        level = decayed (config, age, index, partial.weight)
+                        fixed (config, age, phases, prepared, satAdd index 1, sample + level * TableMath::sinePhase phase, gain + TableMath::magnitude level, next)
+
+    (** Advance one sample using coefficients prepared for this block, or live controls for an empty schedule. *)
+    export withCoefficients (config, prepared, held) = match length prepared
+        0 => next (config, held)
+        n => match n == capacity && length held.phases == capacity
+            true => fixed (config, held.age, held.phases, prepared, 0, 0.0, 0.0, [])
+            false => Error(message = IncompatibleLayout(detail = "Partial phases and prepared coefficients must cover the bank."))

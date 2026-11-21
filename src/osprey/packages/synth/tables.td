@@ -9,3 +9,6 @@ type PartialConfig { sampleRate: Float frequency: Float count: Float tilt: Float
 type PartialState { phases: List<Float> age: Float }
 type PartialSample { sample: Float next: PartialState }
 type PartialVoice { sample: Float gain: Float phases: List<Float> }
+type PartialCoefficient { increment: Float weight: Float }
+type PartialSettings { config: PartialConfig interval: Float }
+union PartialSchedule { DynamicPartials {} FixedPartials { settings: PartialSettings coefficients: List<PartialCoefficient> } }

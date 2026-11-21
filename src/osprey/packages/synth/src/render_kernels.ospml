@@ -102,7 +102,7 @@ module RenderKernels
             SamplePlayer resource => playback (resource, rate, snapshot, frame, held)
             Exciter _ => PhysicalKernels::excite (snapshot, frame, held)
             TableOscillator table => TableKernels::wavetable (rate, plan, snapshot, frame, held, table)
-            Additive => TableKernels::additive (rate, snapshot, frame, held)
+            Additive => TableKernels::scheduled (rate, snapshot, frame, held, scheduled.bank)
             PhaseOperator => OperatorKernels::process (plan, rate, snapshot, frame, held)
             Bowed capacity => PhysicalKernels::bowed (rate, snapshot, frame, held, capacity)
             Delay _ => match listGet held.delay 0
@@ -114,17 +114,21 @@ module RenderKernels
         Error _ => false
         Success _ => true
 
+    bankFor (n, rate, controls, fixed) = match fixed && (n.processor == Additive)
+        true => TableKernels::prepare (rate, controls, n.identity)
+        false => DynamicPartials
+
     (** Resolve optional parameter declarations once for the scheduled node. *)
-    export schedule (plan, identity, snapshot, fixed) = match Graphs::node (plan.graph, identity)
+    export schedule (plan, identity, rate, snapshot, fixed) = match Graphs::node (plan.graph, identity)
         Invalid why => Invalid(fault = why)
         Valid n =>
             controls = match fixed
                 true => snapshot(parameters = filterList (snapshot.parameters, \p => p.node == identity))
                 false => snapshot
-            Valid(value = { node = n, controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
+            Valid(value = { node = n, bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
 
     (** Render one scheduled component or return its explicit fault. *)
-    export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, snapshot, false))
+    export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, rate, snapshot, false))
 
     (** Run a scheduled component resolved for this block. *)
     export resolved (plan, rate, current, frame, component) = match component

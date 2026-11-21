@@ -19,7 +19,11 @@ module RenderInputs
         Error _ => Error(message = MissingResource(detail = "Required render parameter is missing."))
 
     (** Read one declared parameter, then continue; a missing parameter stops with its error. *)
-    export bound (snapshot, held, key, continue) = Outcomes::carried (parameter (snapshot, held.identity, key), \value => continue value)
+    export bound (snapshot, held, key, continue) = setting (snapshot, held.identity, key, continue)
+
+    (** Resolve a parameter while preparing a node before its first sample. *)
+    export setting<T> : (Observation, int, string, (float) -> Result<T, Fault>) -> Result<T, Fault>
+    setting (snapshot, identity, key, continue) = Outcomes::carried (parameter (snapshot, identity, key), \value => continue value)
 
     (** An optional normalised control inlet: unplugged keeps `base`; plugged values must lie in [0, 1] and are
         combined with `base` by the caller's declared rule (replacement, multiplication, ...). *)
