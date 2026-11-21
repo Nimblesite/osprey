@@ -223,7 +223,9 @@ test ("performance timbres and metallic warp stay bounded across rates and contr
 test ("an 8-channel graph splits, joins and route-reorders every 7.1 channel sample-for-sample", \() => arithmetic (\() =>
     frames = toList (range (0, 64))
     channels = toList (range (0, 8))
-    succeeds (clipsOf (built (listConcat (channelChain (1, 2, 3, 11, 8)) [Components::routeChannels (12, 8, [7, 6, 5, 4, 3, 2, 1, 0]), sinkOf (13, 8)], listConcat (channelCables (1, 2, 3, 11, 8)) [cable (11, 12), cable (12, 13)]), 64), \clips =>
+    nodes = listConcat (channelChain (1, 2, 3, 11, 8)) [Components::routeChannels (12, 8, [7, 6, 5, 4, 3, 2, 1, 0]), Components::mix (13, 8, 0.25, 0.75), sinkOf (14, 8)]
+    wires = listConcat (channelCables (1, 2, 3, 11, 8)) [cable (11, 12), cable (11, 13), Components::route (12, 0, 13, 1), cable (13, 14)]
+    succeeds (clipsOf (built (nodes, wires), 64), \clips =>
         source = clipFrom (clips, 1)
         split = clipFrom (clips, 2)
         join = clipFrom (clips, 11)
@@ -242,8 +244,11 @@ test ("an 8-channel graph splits, joins and route-reorders every 7.1 channel sam
         forEachList (channels, \c => forEachList (frames, \f => near (channelOf (join, f, c), channelOf (listGet gains c ?: clipFrom (clips, 0), f, 0), 0.0)))
         expect (route.clipChannels == 8 && length route.clipSamples == 512, true)
         forEachList (channels, \c => forEachList (frames, \f => near (channelOf (route, f, c), channelOf (listGet gains (satSub 7 c) ?: clipFrom (clips, 0), f, 0), 0.0)))
-        sink = clipFrom (clips, 13)
-        expect (sink.clipChannels == 8 && structuralEquals (sink.clipSamples, route.clipSamples), true))))
+        mixed = clipFrom (clips, 13)
+        sink = clipFrom (clips, 14)
+        expect (mixed.clipChannels, 8)
+        forEachList (channels, \c => forEachList (frames, \f => near (channelOf (mixed, f, c), channelOf (join, f, c) * 0.25 + channelOf (route, f, c) * 0.75, 0.000000000001)))
+        expect (sink.clipChannels == 8 && structuralEquals (sink.clipSamples, mixed.clipSamples), true))))
 
 test ("a five-channel graph duplicates, silences and resizes channels through explicit route maps", \() => arithmetic (\() =>
     frames = toList (range (0, 64))

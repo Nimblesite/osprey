@@ -40,9 +40,13 @@ module RenderKernels
             false => Error(message = InvalidConfiguration(detail = "Invalid gain."))
             true => Success(value = RenderInputs::emitted (frame, held, input * level))
 
-    mixer (plan, frame, held, first) = match RenderInputs::input (plan, frame, held.identity, 1)
+    mixer (plan, snapshot, frame, held, first) = match RenderInputs::input (plan, frame, held.identity, 1)
         Error why => Error(message = why)
-        Success second => Success(value = RenderInputs::emitted (frame, held, first + second))
+        Success second => RenderInputs::bound (snapshot, held, "firstGain", \a =>
+            RenderInputs::bound (snapshot, held, "secondGain", \b =>
+                match a >= 0.0 && a <= 1.0 && b >= 0.0 && b <= 1.0
+                    false => Error(message = InvalidConfiguration(detail = "Mixer input gains must be between zero and one."))
+                    true => Success(value = RenderInputs::emitted (frame, held, WaveMath::mixed (first, a, second, b)))))
 
     controlled (plan, snapshot, frame, held, input) = match RenderInputs::input (plan, frame, held.identity, 1)
         Error why => Error(message = why)
@@ -68,7 +72,7 @@ module RenderKernels
         ModulatedGain => controlled (plan, snapshot, frame, held, input)
         Filter => lowpass (plan, rate, snapshot, frame, held, input)
         Amplifier => gain (snapshot, frame, held, input)
-        Mixer => mixer (plan, frame, held, input)
+        Mixer => mixer (plan, snapshot, frame, held, input)
         Sink => passthrough (frame, held, input)
         Split => passthrough (frame, held, input)
         Join => passthrough (frame, held, input)

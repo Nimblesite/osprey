@@ -50,8 +50,11 @@ module Components
     (** Linear gain; values above unity are explicit and may exceed output headroom. *)
     export gain (identity, level) = processing (identity, Amplifier, [headroom level])
 
-    (** Two audio inputs are summed without implicit attenuation or clipping. *)
-    export mixer identity = node (identity, Mixer, [port "first", port "second"], [port "audio"], [])
+    (** [SYNTH-GRAPH-CHANNELS] Two equal-width inputs, each with an independent linear gain. *)
+    export mix (identity, channels, firstGain, secondGain) = node (identity, Mixer, [audioPort ("first", channels), audioPort ("second", channels)], [audioPort ("audio", channels)], [amplitude ("firstGain", "First input gain", firstGain), amplitude ("secondGain", "Second input gain", secondGain)])
+
+    (** The mixer inserted from the palette sums both mono inputs at unity. *)
+    export mixer identity = mix (identity, 1, 1.0, 1.0)
 
     (** A mono graph output. *)
     export output identity = node (identity, Sink, [port "audio"], [], [])
