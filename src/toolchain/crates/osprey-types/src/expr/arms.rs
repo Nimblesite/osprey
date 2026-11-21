@@ -83,7 +83,6 @@ impl Checker {
                     params: op.params.clone(),
                     ret: op.ret.clone(),
                     mode: op.mode,
-                    multiplicity: op.multiplicity,
                 },
                 eff_args,
             ));

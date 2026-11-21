@@ -55,11 +55,6 @@ pub(crate) struct OpSig {
     /// operation's arms are plain functions returning the operation's result.
     /// Implements [EFFECTS-HANDLER-ARMS].
     pub mode: osprey_ast::OperationMode,
-    /// The DECLARED multiplicity: `many` suspends through the reusable
-    /// continuation path (`__osprey_coro_suspend_many`), so one suspension can
-    /// be answered any number of times; every other multiplicity keeps the
-    /// single-shot suspend. Implements [MULTI-HANDLE-MANY], [MULTI-COST].
-    pub multiplicity: osprey_ast::Multiplicity,
 }
 
 impl OpSig {
@@ -199,7 +194,6 @@ pub(crate) fn op_sig_of(prog: &ProgramTypes, op: &osprey_types::OpType) -> OpSig
         param_erased: op.params.iter().map(osprey_types::has_type_var).collect(),
         ret_erased,
         mode: op.mode,
-        multiplicity: op.multiplicity,
     }
 }
 
@@ -266,13 +260,11 @@ fn declare_coro(cg: &mut Codegen) {
     cg.add_extern("declare i8* @__osprey_coro_new(i8*)");
     cg.add_extern("declare void @__osprey_coro_start(i8*, i64 (i8*)*, i8*, i8*)");
     cg.add_extern("declare i64 @__osprey_coro_suspend(i8*, i64, i64*, i8*, i64)");
-    cg.add_extern("declare i64 @__osprey_coro_suspend_many(i8*, i64, i64*, i8*, i64)");
     cg.add_extern("declare i64 @__osprey_coro_resume(i8*, i64)");
     cg.add_extern("declare i64 @__osprey_coro_done(i8*)");
     cg.add_extern("declare i8* @__osprey_coro_take_args(i8*)");
     cg.add_extern("declare i64 @__osprey_coro_mail_op(i8*)");
     cg.add_extern("declare i64 @__osprey_coro_mail_arg(i8*, i64)");
-    cg.add_extern("declare i8* @__osprey_coro_mail_token(i8*)");
     cg.add_extern("declare void @__osprey_coro_mail_free(i8*)");
     cg.add_extern("declare i64 @__osprey_coro_result(i8*)");
     cg.add_extern("declare void @__osprey_coro_abort(i8*)");

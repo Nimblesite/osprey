@@ -210,19 +210,9 @@ pub(super) fn emit_suspend_fn(
     } else {
         crate::effect_mailbox::emit_mailbox_arrays(cg, sig, resolved)?
     };
-    // `many` operations suspend through the reusable-continuation entry: the
-    // runtime captures a per-suspension snapshot that any later resume
-    // restores, so one suspension can be answered any number of times. Every
-    // other multiplicity is one suspended stack, kept on the single-shot path.
-    // Implements [MULTI-HANDLE-MANY], [MULTI-COST].
-    let suspend_callee = if sig.multiplicity.is_many() {
-        "__osprey_coro_suspend_many"
-    } else {
-        "__osprey_coro_suspend"
-    };
     let raw = cg.call(
         "i64",
-        suspend_callee,
+        "__osprey_coro_suspend",
         "i8*, i64, i64*, i8*, i64",
         &[
             "%__coro",

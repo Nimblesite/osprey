@@ -122,9 +122,9 @@ pub(crate) struct EffectScope {
 pub(crate) struct EffectInfo {
     /// The effect's declared type parameter names, in order.
     pub type_params: Vec<String>,
-    /// Operation name → written signature (`fn(T) -> Unit`), declared mode and
-    /// declared multiplicity, in declaration order.
-    pub ops: Vec<(String, String, osprey_ast::OperationMode, osprey_ast::Multiplicity)>,
+    /// Operation name → written signature (`fn(T) -> Unit`) and declared mode,
+    /// in declaration order.
+    pub ops: Vec<(String, String, osprey_ast::OperationMode)>,
 }
 
 /// One value thrown away, banked until the substitution is final.

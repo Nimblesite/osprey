@@ -82,11 +82,6 @@ pub struct OpType {
     /// Carried on the resolved signature so the checker and the backend read
     /// one source of truth. Implements [EFFECTS-HANDLER-ARMS].
     pub mode: osprey_ast::OperationMode,
-    /// The DECLARED multiplicity: how often the captured continuation may be
-    /// answered ([MULTI-AXIS]). The backend reads it to pick the continuation
-    /// representation — `once` keeps the single-shot suspend, `many` captures
-    /// a reusable snapshot. Implements [MULTI-COST].
-    pub multiplicity: osprey_ast::Multiplicity,
 }
 
 /// Everything the code generator needs from inference: per-function signatures

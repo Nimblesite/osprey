@@ -102,7 +102,7 @@ impl Checker {
                 type_params: type_params.iter().map(|p| p.name.clone()).collect(),
                 ops: operations
                     .iter()
-                    .map(|op| (op.name.clone(), op.ty.clone(), op.mode, op.multiplicity()))
+                    .map(|op| (op.name.clone(), op.ty.clone(), op.mode))
                     .collect(),
             },
         );
@@ -224,7 +224,7 @@ impl Checker {
     ) -> HashMap<String, crate::info::OpType> {
         info.ops
             .iter()
-            .map(|(op_name, sig, mode, multiplicity)| {
+            .map(|(op_name, sig, mode)| {
                 let (params, ret) = parse_fn_sig(sig, pmap);
                 (
                     op_name.clone(),
@@ -232,7 +232,6 @@ impl Checker {
                         params,
                         ret,
                         mode: *mode,
-                        multiplicity: *multiplicity,
                     },
                 )
             })
