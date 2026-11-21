@@ -541,6 +541,36 @@ fn tinted(row: &Streamed) -> Result<u32, String> {
     colour(row.colour)
 }
 
+fn text_shape(rows: &mut Rows, head: &Streamed, depth: f32) -> Result<Shape, String> {
+    let text = rows.text(head)?;
+    let (x, y, size) = (f(head, 0), f(head, 1), f(head, 2));
+    let colour = tinted(head)?;
+    if head.code == 4 {
+        return Ok(Shape::Glyphs {
+            text,
+            x,
+            y,
+            size,
+            colour,
+            depth,
+        });
+    }
+    let anchor = u8::try_from(head.index)
+        .ok()
+        .filter(|anchor| *anchor <= 2)
+        .ok_or_else(|| "an unknown lettering anchor".to_owned())?;
+    Ok(Shape::Lettering {
+        text,
+        x,
+        y,
+        size,
+        colour,
+        depth,
+        anchor,
+        weight: f(head, 3),
+    })
+}
+
 fn shape(rows: &mut Rows, head: &Streamed) -> Result<Shape, String> {
     let depth = head.depth as f32;
     match head.code {
@@ -577,28 +607,8 @@ fn shape(rows: &mut Rows, head: &Streamed) -> Result<Shape, String> {
             tint: tinted(head)?,
             depth,
         }),
-        4 => Ok(Shape::Glyphs {
-            text: rows.text(head)?,
-            x: f(head, 0),
-            y: f(head, 1),
-            size: f(head, 2),
-            colour: tinted(head)?,
-            depth,
-        }),
+        4 | 6 => text_shape(rows, head, depth),
         5 => path(rows, head),
-        6 => Ok(Shape::Lettering {
-            text: rows.text(head)?,
-            x: f(head, 0),
-            y: f(head, 1),
-            size: f(head, 2),
-            colour: tinted(head)?,
-            depth,
-            anchor: u8::try_from(head.index)
-                .ok()
-                .filter(|a| *a <= 2)
-                .ok_or_else(|| "an unknown lettering anchor".to_owned())?,
-            weight: f(head, 3),
-        }),
         other => Err(format!("an unknown scene code {other}")),
     }
 }
