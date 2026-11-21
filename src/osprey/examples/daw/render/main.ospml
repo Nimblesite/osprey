@@ -1,6 +1,6 @@
-// [SYNTH-ARRANGEMENT-PLAYER] daw <project.json> <output-folder> [<from-beat> <beats>]
+// [SYNTH-ARRANGEMENT-PLAYER] [DAW-TRANSPORT-LIVE] daw <project.json> <output-folder> [<from-beat> <beats> [live|loop]]
 
-usage = "usage: daw <project.json> <output-folder> [<from-beat> <beats>]"
+usage = "usage: daw <project.json> <output-folder> [<from-beat> <beats> [live|loop]]"
 
 // A number argument; absent reads 0 (the whole song), malformed reads -1 (refused).
 beatArgument (items, index) = match listGet items index
@@ -33,15 +33,33 @@ performed (request, source) = match daw::SongFiles::decode source
             print "daw: ${arrangement.title}, ${arrangement.tempo} bpm, ${length arrangement.tracks} tracks"
             finished (daw::Player::rendered (request, windowed (request, arrangement)))
 
-started request = match request.project != "" && request.folder != "" && request.from >= 0.0 && request.beats >= 0.0 && daw::SongFiles::safe request.project && daw::SongFiles::safe request.folder
+// A live refusal goes to `fault.txt` in the folder: standard output carries only audio blocks.
+faulted (request, why) =
+    _told = writeFile "${request.folder}/fault.txt" why
+    1
+
+// [DAW-TRANSPORT-LIVE] Play the window to standard output, once or as a loop.
+live (request, loop, source) = match daw::SongFiles::decode source
+    Error why => faulted (request, why)
+    Success arrangement => match daw::Streams::played (request, windowed (request, arrangement), loop)
+        Error why => faulted (request, why)
+        Success _ => 0
+
+routed (request, mode, source) = match mode
+    "" => performed (request, source)
+    "live" => live (request, false, source)
+    "loop" => live (request, true, source)
+    _ => said (usage, 1)
+
+started (request, mode) = match request.project != "" && request.folder != "" && request.from >= 0.0 && request.beats >= 0.0 && daw::SongFiles::safe request.project && daw::SongFiles::safe request.folder
     false => said (usage, 1)
     true => match readFile request.project
         Error why => refused why
-        Success source => performed (request, source)
+        Success source => routed (request, mode, source)
 
 main () =
     handle Arith
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    started (request (args ()))
+    started (request (args ()), listGet (args ()) 4 ?: "")

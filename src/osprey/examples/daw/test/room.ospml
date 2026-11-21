@@ -595,3 +595,71 @@ tapJourney () =
                             sampleAt (group.right, i, reference * 1.25 * daw::ArrangeMath::panRight 0.0)
                             sampleAt (mixed.left, i, 0.0))))
                 encoded (opened, \saved => expect (contains saved "\"sendId\":2", true))))))
+
+// [DAW-RENDER-PLAY] The project plays as one loop over time: each block advances every track, its bus
+// (EQ and kick-keyed compressor), its send, the held pad and the Space together into Master.
+playedNote (start, length) = daw::Note(pitch = 60, start = start, length = length, velocity = 0.9)
+
+playedKick notes = daw::Track(name = "kick", instrument = daw::DrumInstrument(hit = daw::Hit(sweep = 2.0, noise = 0.3, colour = 0.5, decay = 0.05)), gain = 1.0, pan = -0.4, reverb = 0.3, bus = "", sends = [], positions = [], notes = notes)
+
+playedBus ratio =
+    bus = shaped (padsBus (ratio, "kick"))
+    bus(compressor = daw::Compressor(threshold = -30.0, ratio = ratio, knee = 3.0, attack = 0.002, release = 0.03, sidechain = "kick"))
+
+playedSong ratio =
+    bell = bellTrack ()
+    keys = keysTrack ()
+    tap = daw::AudioSend(sendId = 1, source = 1, outlet = 0, bus = "pads", level = 0.5, enabled = true)
+    tracks = [playedKick [playedNote (0.0, 0.05), playedNote (0.1, 0.05), playedNote (0.125, 0.05)], bell(bus = "pads", reverb = 0.5, notes = [playedNote (0.05, 0.1), playedNote (0.2, 0.1)]), keys(pan = 0.3, reverb = 0.2, sends = [tap], notes = [playedNote (0.0, 0.015), playedNote (0.2, 0.015)])]
+    routedTo (timeline tracks, [playedBus ratio])
+
+playedPads () = [daw::Pad(glow = daw::Afterglow(start = 0.0, ratio = 1.0, rise = 0.01, hold = 0.0, fade = 0.01, gain = 0.5, reverb = 0.2), sound = daw::Sounding(at = 2500, lanes = [steady (0.1, 2000)]))]
+
+// Master's next block is exactly `size` frames on each side, and nothing else leaves it.
+playedBlock (song, outcome, size) = match outcome
+    Error why => Error(message = why)
+    Success take => match daw::Playback::next (song, take.playing, size)
+        Error why => Error(message = why)
+        Success played =>
+            expect (length played.left, size)
+            expect (length played.right, size)
+            Success(value = daw::Take(playing = played.playing, lefts = listAppend take.lefts played.left, rights = listAppend take.rights played.right))
+
+playedIn (song, sizes, check) = succeeds (daw::Playback::start (song, playedPads ()), \playing =>
+    succeeds (foldList (sizes, Success(value = daw::Take(playing = playing, lefts = [], rights = [])), \(outcome, size) => playedBlock (song, outcome, size)), \take =>
+        expect (take.playing.cursor, 6000)
+        check (daw::Take(playing = take.playing, lefts = [ui::Lists::flatten take.lefts], rights = [ui::Lists::flatten take.rights]))))
+
+sideOf (take, right) = match right
+    true => listGet take.rights 0 ?: []
+    false => listGet take.lefts 0 ?: []
+
+sameSide (one, other) =
+    expect (length other, length one)
+    forEachList (toList (range (0, length one)), \i => sampleAt (other, i, listGet one i ?: 0.0))
+
+sameMaster (one, other) =
+    sameSide (sideOf (one, false), sideOf (other, false))
+    sameSide (sideOf (one, true), sideOf (other, true))
+
+loudest side = foldList (side, 0.0, \(high, value) => synth::TableMath::larger (high, abs value))
+
+sidesDiffer (one, other) = length (filterList (toList (range (0, length one)), \i => abs ((listGet one i ?: 0.0) - (listGet other i ?: 0.0)) > 0.000001)) > 0
+
+masterPlayJourney () =
+    song = playedSong 4.0
+    playedIn (song, [6000], \whole =>
+        expect (loudest (sideOf (whole, false)) > 0.01, true)
+        expect (loudest (sideOf (whole, true)) > 0.01, true)
+        // Any block size plays the same Master: every stage carries its state across the block edge.
+        forEachList ([[1000, 1000, 1000, 1000, 1000, 1000], [4097, 1903], [3000, 3000], [1, 2499, 1, 3499], [2500, 2500, 1000]], \sizes =>
+            playedIn (song, sizes, \blocks => sameMaster (whole, blocks)))
+        // Tracks play together, so their order in the project does not change Master.
+        playedIn (song(tracks = listReverse song.tracks), [2048, 2048, 1904], \reordered => sameMaster (whole, reordered))
+        // The kick keys the pads bus inside the same block it sounds in.
+        playedIn (playedSong 1.0, [6000], \open => expect (sidesDiffer (sideOf (whole, false), sideOf (open, false)), true)))
+    // A bad note or route fails before anything plays.
+    failsWith (daw::Playback::start (timeline [playedKick [playedNote (sqrt (-1.0), 0.1)]], []), "kick: a note start is not finite.")
+    failsWith (daw::Playback::start (timeline [playedKick [playedNote (0.5, 0.1), playedNote (-0.25, 0.1)]], []), "kick: a note starts before the piece.")
+    bell = bellTrack ()
+    failsWith (daw::Playback::start (timeline [bell(bus = "pads")], []), "bell: Bus pads is not in the song.")

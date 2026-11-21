@@ -196,6 +196,10 @@ type Editor G P S M =
     selectedNote : int
     rollDrag : RollDrag
     rollBar : int
+    playEnd : int
+    playBeat : float
+    playClock : float
+    looping : bool
     songTicket : string
     keymap : Keymap
     keysPath : string
@@ -293,6 +297,9 @@ type EditorAction =
     PlaySong
     RenderSong
     StopSong
+    ToggleLoop
+    MoveEnd
+        bar : int
     SaveProject
     UseKeymap
         name : string

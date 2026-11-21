@@ -74,7 +74,7 @@ module SendRenders
             Success samples => ok (mapList (PatchVoices::shaped (samples, span, routing, rate), \v => ArrangeMath::scaled (v, port.tapGain)))
 
     prepared (graph, sends, rate, span, routing) = Outcomes::carried (outputs (graph, sends), \ports =>
-        Outcomes::carried (PatchVoices::audible (graph, mapList (sends, \s => s.source)), \heard => Outcomes::carried (captured (heard, rate, span, ports), \buffers => collect (toList (range (0, length ports)), \i => scale (ports, buffers, span, routing, rate, i)))))
+        Outcomes::carried (Outcomes::carried (PatchVoices::grounded graph, \whole => PatchVoices::audible (whole, mapList (sends, \s => s.source))), \heard => Outcomes::carried (captured (heard, rate, span, ports), \buffers => collect (toList (range (0, length ports)), \i => scale (ports, buffers, span, routing, rate, i)))))
 
     builtIn (samples, sends) = listPrepend (ui::Lists::flatten (mapList (sends, \routeSend =>
         [mapList (samples, \v => ArrangeMath::scaled (v, ArrangeMath::scaled (routeSend.level, ArrangeMath::panLeft 0.0))), mapList (samples, \v => ArrangeMath::scaled (v, ArrangeMath::scaled (routeSend.level, ArrangeMath::panRight 0.0)))]))) samples
@@ -91,9 +91,7 @@ module SendRenders
             true => Outcomes::carried (BusMix::named (song, routeSend.bus), \_ => ok routeSend)
 
     sourcePorts (voice, sends) = match voice.instrument
-        PatchInstrument routing => match routing.attack >= 0.001 && routing.attack <= 10.0 && routing.release >= 0.001 && routing.release <= 10.0
-            false => Error(message = "A routing's attack and release must be 0.001 to 10 s.")
-            true => Outcomes::carried (PatchVoices::patched (Note(pitch = 60, start = 0.0, length = 1.0, velocity = 1.0), routing), \graph => Outcomes::carried (outputs (graph, sends), \_ => ok voice))
+        PatchInstrument routing => Outcomes::carried (PatchVoices::enveloped routing, \_ => Outcomes::carried (PatchVoices::patched (Note(pitch = 60, start = 0.0, length = 1.0, velocity = 1.0), routing), \graph => Outcomes::carried (outputs (graph, sends), \_ => ok voice)))
         _ => match ui::Lists::all (sends, \s => s.source == 1 && s.outlet == 0)
             true => ok voice
             false => Error(message = "A built-in voice has one audio outlet on node 1.")

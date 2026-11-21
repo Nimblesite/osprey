@@ -163,7 +163,7 @@ module PatchVoices
         false => run
         true => match synth::Renderer::block (plan, rate, synth::Parameters::initial graph, run.held, count)
             Error why => run(fault = why)
-            Success next => NoteRun(held = next, samples = listConcat run.samples next.samples, fault = "")
+            Success next => NoteRun(held = next, samples = synth::Sequences::joined (run.samples, next.samples), fault = "")
 
     // The scheduler carries state across every block, including the final partial block.
     (** Partition a note into bounded DSP blocks. *)
@@ -209,6 +209,27 @@ module PatchVoices
             true => Error(message = "The routing has nothing wired to its output.")
             false => graphed (filterList (graph.nodes, \n => member (ids, n.identity)), cables)
 
+    // A mono audio input the renderer needs wired, with no cable in it.
+    unplugged (graph : synth::Graph, n, index) = match listGet n.inputs index
+        Error _ => false
+        Success port => port.rate == synth::Audio && port.channels == 1 && synth::ClipLayouts::optional (n, port) == false && length (filterList (graph.cables, \c => c.destination == n.identity && c.inlet == index)) == 0
+
+    grounds (graph : synth::Graph, quiet, n) = mapList (filterList (toList (range (0, length n.inputs)), \index => unplugged (graph, n, index)), \index => synth::Components::route (quiet, 0, n.identity, index))
+
+    above (top, n) = match n.identity > top
+        true => n.identity
+        false => top
+
+    // [DAW-PATCH-HEARD] An input left unplugged hears silence: one still oscillator (0 Hz, so every sample is 0)
+    // feeds every such input. A patch being rewired keeps playing what is wired, and one whose output has
+    // nothing in it is a silent track, so a pulled cable never refuses the song.
+    (** The graph with every unplugged mono audio input fed silence. *)
+    export grounded (graph : synth::Graph) =
+        quiet = satAdd (foldList (graph.nodes, 0, above)) 1
+        match foldList (graph.nodes, [], \(cables, n) => listConcat cables (grounds (graph, quiet, n)))
+            [] => ok graph
+            silent => graphed (listAppend graph.nodes (synth::Components::sine (quiet, 0.0)), listConcat graph.cables silent)
+
     clipBlock (graph, sink, run, count) = match run.fault == "" && count > 0
         false => run
         true => match synth::GraphClips::next (graph, run.held, count)
@@ -217,7 +238,7 @@ module PatchVoices
                 synth::BlockWaiting _ _ => run(fault = "An external plug-in needs its audio worker.")
                 synth::BlockReady held clips => match chained (synth::ClipInputs::completed (clips, sink), synth::GraphClips::trackSamples)
                     Error why => run(fault = why)
-                    Success audio => run(held = held, samples = listConcat run.samples audio)
+                    Success audio => run(held = held, samples = synth::Sequences::joined (run.samples, audio))
 
     clipVoice (graph, noteSpan, routing, rate) = match rate == 48000.0
         false => Error(message = "MIDI, control and multichannel patch voices require a 48000 Hz project.")
@@ -234,7 +255,10 @@ module PatchVoices
             true => clipVoice (graph, noteSpan, routing, rate)
             false => played (graph, plan, noteSpan, routing, rate)
 
-    (** Render one note through the routing: attack and release are 0.001–10 s. *)
-    export render (note, noteSpan, rate, routing) = match routing.attack >= 0.001 && routing.attack <= 10.0 && routing.release >= 0.001 && routing.release <= 10.0
+    (** A routing whose gate can play: attack and release are 0.001–10 s. *)
+    export enveloped routing = match routing.attack >= 0.001 && routing.attack <= 10.0 && routing.release >= 0.001 && routing.release <= 10.0
         false => Error(message = "A routing's attack and release must be 0.001 to 10 s.")
-        true => chained (patched (note, routing), \graph => chained (audible (graph, []), \heard => routed (heard, noteSpan, routing, rate)))
+        true => ok routing
+
+    (** Render one note through the routing. *)
+    export render (note, noteSpan, rate, routing) = chained (enveloped routing, \_ => chained (patched (note, routing), \graph => chained (grounded graph, \whole => chained (audible (whole, []), \heard => routed (heard, noteSpan, routing, rate)))))

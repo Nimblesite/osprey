@@ -1,0 +1,70 @@
+// [DAW-RENDER-PLAY] Play the whole project block by block: every track, bus, send and the Space advance together into Master.
+namespace daw
+
+import synth::Outcomes
+
+(** Playing is one loop over time, never one track after another. Each block advances every track's
+    sounding notes over the same frames, routes them through their groups, sends and sidechain keys, runs
+    every group's EQ and compressor and the Space reverb, carrying all their state into the next block, and
+    yields Master's two sides. Nothing else leaves a block; rendering keeps Master's frames. *)
+module Playback
+    ok value = Success(value = value)
+
+    (** Frames per block. *)
+    export block = 8192
+
+    room (song, scale) = synth::ReverbConfig(sampleRate = toFloat song.sampleRate, size = ArrangeMath::scaled (song.space.size, scale), decay = song.space.decay, damping = song.space.damping, diffusion = 0.7, mix = 1.0, freeze = false)
+
+    // One side's Space reverb, configured once and at rest.
+    roomed (song, scale) = Outcomes::carried (synth::Reverbs::configure (room (song, scale)), \config => Outcomes::carried (synth::Reverbs::initial config, \held => ok (Room(config = config, held = held))))
+
+    (** The project at its first frame: every track's notes cued, both Space rooms at rest, and `pads`, held
+        sounds already made, waiting at their start frames. A bad note, route, send or Space fails here. *)
+    export start (song, pads) = Outcomes::carried (BusPaths::order song.buses, \_ =>
+        Outcomes::carried (SendRenders::collect (song.tracks, \voice => Arrangements::opened (song, voice)), \tracks =>
+            Outcomes::carried (roomed (song, 1.0), \near => Outcomes::carried (roomed (song, 0.91), \far =>
+                ok (Playing(cursor = 0, tracks = tracks, pads = pads, states = [], near = near, far = far))))))
+
+    silence count = mapList (toList (range (0, count)), \_ => 0.0)
+
+    // Master and every group start each block with `count` silent frames, so every processor runs every block.
+    seeded (song, count) = Buses(left = silence count, right = silence count, wet = silence count, groups = mapList (song.buses, \bus => Stereo(name = bus.name, left = silence count, right = silence count)), keys = [])
+
+    trackStep (song, playing, held, index, from, until) = match listGet song.tracks index
+        Error _ => Error(message = "A track is missing.")
+        Success voice => match listGet playing.tracks index
+            Error _ => Error(message = "A track is missing.")
+            Success play => Outcomes::carried (Arrangements::advanced (song, held.buses, voice, play, from, until), \step => ok (Heard(plays = listAppend held.plays step.play, buses = step.buses)))
+
+    // Every track advances over the same frames into the same buses.
+    heard (song, playing, buses, from, until) = foldList (toList (range (0, length song.tracks)), ok (Heard(plays = [], buses = buses)), \(outcome, index) => Outcomes::carried (outcome, \held => trackStep (song, playing, held, index, from, until)))
+
+    padded (buses, pad, from, until) = Arrangements::layered (buses, Arrangements::window ([pad.sound], 0, from, until), 0, pad.glow.gain, 0.0, pad.glow.reverb)
+
+    glowing (buses, pads, from, until) = foldList (pads, ok buses, \(outcome, pad) => Outcomes::carried (outcome, \held => padded (held, pad, from, until)))
+
+    echoStep (config, run, input) = match run.fault == ""
+        false => run
+        true => match synth::Reverbs::next (config, run.held, input)
+            Error why => run(fault = why)
+            Success step => NoteRun(held = step.next, samples = listAppend run.samples step.sample, fault = "")
+
+    // One room over the block's Space send, continuing from its last state.
+    echoed (space, wet) = foldList (wet, NoteRun(held = space.held, samples = [], fault = ""), \(run, input) => echoStep (space.config, run, input))
+
+    // Each side of Master is its dry sum plus its own room's reverb of the shared send.
+    spaced (playing, plays, master, until) =
+        nearRun = echoed (playing.near, master.buses.wet)
+        farRun = echoed (playing.far, master.buses.wet)
+        nearRoom = playing.near
+        farRoom = playing.far
+        Outcomes::carried (NoteRenders::finished nearRun, \wetLeft => Outcomes::carried (NoteRenders::finished farRun, \wetRight =>
+            ok (Played(playing = Playing(cursor = until, tracks = plays, pads = filterList (playing.pads, \pad => Arrangements::lasting (until, pad.sound)), states = master.states, near = nearRoom(held = nearRun.held), far = farRoom(held = farRun.held)), left = Arrangements::bused (master.buses.left, wetLeft, 0, 1.0), right = Arrangements::bused (master.buses.right, wetRight, 0, 1.0)))))
+
+    (** Play the next `frames` frames: Master's left and right sides for them, and the project after them. *)
+    export next (song, playing, frames) =
+        from = playing.cursor
+        until = satAdd from frames
+        Outcomes::carried (heard (song, playing, seeded (song, frames), from, until), \tracked =>
+            Outcomes::carried (glowing (tracked.buses, playing.pads, from, until), \buses =>
+                Outcomes::carried (BusMix::stepped (song, buses, playing.states), \master => spaced (playing, tracked.plays, master, until))))

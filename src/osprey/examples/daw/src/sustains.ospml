@@ -27,9 +27,9 @@ module Sustains
         NoteRenders::finished (foldList (toList (range (0, count)), analysed, \(run, _frame) => sung (rate, run)))
 
     (** `source` is mono audio (at least 4,096 samples) ending at the moment to hold; the result is
-        `seconds` (0.1–120) of the held sound at full level. *)
-    export frozen (rate, source, seconds) = match length source >= 4096 && seconds >= 0.1 && seconds <= 120.0
-        false => Error(message = "A sustain needs 4096 source samples and 0.1 to 120 seconds.")
+        `seconds` (above 0, at most 120) of the held sound at full level. *)
+    export frozen (rate, source, seconds) = match length source >= 4096 && seconds > 0.0 && seconds <= 120.0
+        false => Error(message = "A sustain needs 4096 source samples and at most 120 seconds.")
         true => match synth::SpectralStreams::configure (stream (rate, true))
             Error why => Error(message = why)
             Success _ => match floatToInt (ArrangeMath::secondFrames (seconds, rate))
@@ -38,7 +38,9 @@ module Sustains
 
     lasting glow = glow.rise + glow.hold + glow.fade
 
-    valid glow = glow.start >= 0.0 && glow.ratio >= 0.25 && glow.ratio <= 4.0 && glow.rise >= 0.01 && glow.rise <= 60.0 && glow.hold >= 0.0 && glow.hold <= 60.0 && glow.fade >= 0.01 && glow.fade <= 60.0
+    // Each control in range, and the held sound it reads (its length times its speed ratio) at most 119 s, so every
+    // appearance together still fits the 120 s `frozen` holds.
+    export valid glow = glow.start >= 0.0 && glow.ratio >= 0.25 && glow.ratio <= 4.0 && glow.rise >= 0.01 && glow.rise <= 60.0 && glow.hold >= 0.0 && glow.hold <= 60.0 && glow.fade >= 0.01 && glow.fade <= 60.0 && ArrangeMath::scaled (lasting glow, glow.ratio) <= 119.0
 
     (** Seconds of held sound that these appearances read, including the skipped start. *)
     export needed (rate, glows) = ArrangeMath::neededSeconds (foldList (glows, 0.0, longest), toFloat skipped, rate)

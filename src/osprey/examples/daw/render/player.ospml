@@ -1,7 +1,7 @@
-// [SYNTH-ARRANGEMENT-PLAYER] [DAW-RENDER-MASTER] Render a song project to one WAV, the Master mix (never per-track stems), after the recording it continues.
+// [SYNTH-ARRANGEMENT-PLAYER] [DAW-RENDER-MASTER] [DAW-RENDER-PLAY] Play a song project's graph into Master and write Master to one WAV, after the recording it continues.
 namespace daw
 
-(** The engine renders every track and the held end of the intro; `ffmpeg` only cuts the intro's last
+(** The engine plays the project's graph once into Master, with the held end of the intro; `ffmpeg` only cuts the intro's last
     seconds, joins the rendered parts and crossfades them after the intro. *)
 module Player
     // Frames per WAV part: 960,000 interleaved samples, half the encoder's limit.
@@ -22,28 +22,20 @@ module Player
         Error why => Error(message = why)
         Success _ => synth::Outcomes::carried (fileSize (tailPath request), \size => decoded (request, size))
 
-    glowed (arrangement, raw, outcome, glow) = match outcome
-        Error why => Error(message = why)
-        Success buses => match Sustains::voiced (toFloat arrangement.sampleRate, raw, glow)
-            Error why => Error(message = why)
-            Success pad => synth::Outcomes::carried (Arrangements::frame (arrangement, glow.start), \start => Arrangements::layered (buses, pad, start, glow.gain, 0.0, glow.reverb))
+    glowed (arrangement, raw, outcome, glow) = synth::Outcomes::carried (outcome, \pads =>
+        synth::Outcomes::carried (Sustains::voiced (toFloat arrangement.sampleRate, raw, glow), \pad =>
+            synth::Outcomes::carried (Arrangements::frame (arrangement, glow.start), \start => Success(value = listAppend pads (Pad(glow = glow, sound = Sounding(at = start, lanes = [pad])))))))
 
-    held (arrangement, buses, source) = synth::Outcomes::carried (Sustains::frozen (toFloat arrangement.sampleRate, source, Sustains::needed (toFloat arrangement.sampleRate, arrangement.sustains)), \raw => foldList (arrangement.sustains, Success(value = buses), \(outcome, glow) => glowed (arrangement, raw, outcome, glow)))
+    held (arrangement, source) = synth::Outcomes::carried (Sustains::frozen (toFloat arrangement.sampleRate, source, Sustains::needed (toFloat arrangement.sampleRate, arrangement.sustains)), \raw => foldList (arrangement.sustains, Success(value = []), \(outcome, glow) => glowed (arrangement, raw, outcome, glow)))
 
-    // Without an intro recording there is no held end to sustain.
-    bridged (request, arrangement, buses) = match length arrangement.sustains == 0 || arrangement.intro.recording == ""
-        true => Success(value = buses)
+    // The intro's held end, as sounds waiting at their start frames; without a recording there is none.
+    bridged (request, arrangement) = match length arrangement.sustains == 0 || arrangement.intro.recording == ""
+        true => Success(value = [])
         false => match tail (request, arrangement)
             Error why => Error(message = why)
             Success source =>
                 print "  holding the intro's last moment (${length arrangement.sustains} appearances)"
-                held (arrangement, buses, source)
-
-    tracked (arrangement, count, outcome, voice) = match outcome
-        Error why => Error(message = why)
-        Success buses =>
-            print "  rendering ${voice.name} (${length voice.notes} notes)"
-            Arrangements::added (arrangement, buses, voice, count)
+                held (arrangement, source)
 
     least (one, other) = match one < other
         true => one
@@ -100,7 +92,23 @@ module Player
         Error why => print "  Master spectrum: ${why}"
         Success bands => print "  Master spectrum (mean / loudest dB): ${join (mapList (bands, \band => "${hertz band.centre} ${decibel band.level}/${decibel band.peak}")) " · "}"
 
-    mixed (request, arrangement, buses) = match synth::Outcomes::carried (BusMix::mastered (arrangement, buses), \master => Arrangements::mixed (arrangement, master))
+    // Progress through the song in time, every 64 blocks.
+    reported (arrangement, count, played) = match played.playing.cursor % (Playback::block * 64) == 0
+        true =>
+            print "  played ${intDiv played.playing.cursor arrangement.sampleRate} of ${intDiv count arrangement.sampleRate} s"
+            played
+        false => played
+
+    kept (take, played) = Take(playing = played.playing, lefts = listPrepend take.lefts played.left, rights = listPrepend take.rights played.right)
+
+    taken (arrangement, count, outcome) = synth::Outcomes::carried (outcome, \take =>
+        synth::Outcomes::carried (Playback::next (arrangement, take.playing, least (Playback::block, satSub count take.playing.cursor)), \played => Success(value = kept (take, reported (arrangement, count, played)))))
+
+    // [DAW-RENDER-PLAY] The whole graph played once, block by block, keeping only Master.
+    played (arrangement, count, pads) = synth::Outcomes::carried (Playback::start (arrangement, pads), \playing =>
+        foldList (toList (range (0, intDiv (satAdd count (satSub Playback::block 1)) Playback::block)), Success(value = Take(playing = playing, lefts = [], rights = [])), \(outcome, _) => taken (arrangement, count, outcome)))
+
+    mixed (request, arrangement, take) = match Arrangements::levelled (toFloat arrangement.sampleRate, ui::Lists::flatten (listReverse take.lefts), ui::Lists::flatten (listReverse take.rights), arrangement.drive)
         Error why => Error(message = why)
         Success mix =>
             print "  mixed ${length mix.left} frames, peak ${mix.peak} before the true-peak limiter at -1 dBTP"
@@ -110,8 +118,6 @@ module Player
     (** Render the song into the request's folder; the result is the finished WAV's path. *)
     export rendered (request, arrangement) = match Arrangements::frames arrangement
         Error why => Error(message = why)
-        // The held intro comes first, so a bad sustain fails before the long track renders.
-        Success count => match bridged (request, arrangement, Arrangements::empty)
-            Error why => Error(message = why)
-            Success buses => synth::Outcomes::carried (foldList (arrangement.tracks, Success(value = buses), \(outcome, voice) => tracked (arrangement, count, outcome, voice)), \all => mixed (request, arrangement, all))
-
+        // The held intro comes first, so a bad sustain fails before the long play.
+        Success count => synth::Outcomes::carried (bridged (request, arrangement), \pads =>
+            synth::Outcomes::carried (played (arrangement, count, pads), \take => mixed (request, arrangement, take)))

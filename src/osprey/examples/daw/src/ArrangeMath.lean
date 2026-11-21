@@ -120,4 +120,11 @@ def busValid (gain low mid high ratio knee attack release : Float) : Bool :=
   gain >= 0 && gain <= 4 && low >= -24 && low <= 24 && mid >= -24 && mid <= 24 && high >= -24 && high <= 24
     && ratio >= 1 && ratio <= 20 && knee >= 0 && knee <= 24 && attack >= 0 && attack <= 2 && release >= 0 && release <= 2
 
+/-- [DAW-TRANSPORT-LIVE] A live sample: Master times `drive`, three quarters up, through a cubic soft clip that
+never leaves -1 to 1, since live play cannot know the song's peak before it sounds. -/
+def live (sample drive : Float) : Float :=
+  let raw := sample * drive * 0.75
+  let held := if raw < -1 then -1 else if raw > 1 then 1 else raw
+  1.5 * held - 0.5 * held * held * held
+
 end daw.ArrangeMath

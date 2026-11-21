@@ -74,6 +74,16 @@ module Header
     export transport (left, top, cell, height, playing) = listConcat (plaque (left, top, cell * 2.0, height, Scenes::rgb (27, 23, 50), 11)) (playStop (left, top, cell, height, playing))
 
     // The song's transport as the design draws it: return to start, Play and Stop on one plate.
+    // [DAW-TRANSPORT-LOOP] The Loop toggle: a closed track with its arrowhead, lit while Loop is on.
+    loopCell editor =
+        colour = ui::Pick::either (editor.looping, TimelineView::accent (), TimelineView::dim ())
+        listConcat (plaque (1222.0, 80.0, 46.5, 43.0, Scenes::rgb (27, 23, 50), 11)) [EditorView::rounded (1234.0, 94.0, 22.5, 15.0, 7.0, ui::Line(width = 2.0, dashes = [], bevel = false), paint colour, 13), Scenes::path ([ui::Polygon(corners = [1243.0, 89.5, 1249.5, 94.0, 1243.0, 98.5], closed = true)], ui::Fill, paint colour, 13)]
+
+    // The position shown: the beat sounding while the song plays, else the start marker.
+    position editor = match editor.playBeat < 0.0
+        true => "${threeDigits (satAdd editor.rollBar 1)}.01.01"
+        false => "${threeDigits (satAdd (DawSession::bar editor.playBeat) 1)}.0${floatToInt (TimelineGeometry::beatInBar editor.playBeat) ?: 1}.01"
+
     songTransport editor =
         x = 1277.0 + 46.5 / 2.0
         listConcat (listConcat (plaque (1277.0, 80.0, 139.5, 43.0, Scenes::rgb (27, 23, 50), 11)) [divider (1323.5, 80.0, 43.0), TimelineView::box (x - 8.0, 93.0, 2.5, 17.0, TimelineView::ink (), 13), Scenes::path ([ui::Polygon(corners = [x + 8.0, 93.0, x - 4.5, 101.5, x + 8.0, 110.0], closed = true)], ui::Fill, paint (TimelineView::ink ()), 13)]) (playStop (1323.5, 80.0, 46.5, 43.0, DawSession::phase editor != "Stopped"))
@@ -132,7 +142,7 @@ module Header
     brand editor = listConcat (ui::Pick::either (length (PrismArt::atlas editor.skin) > 15, [Scenes::sprite (15, 123.0, 29.5, 46.0, 46.0, 0.0, Scenes::rgb (255, 255, 255), 2)], [])) [TimelineView::label ("Prism", 151.0, 11.0, 20.0, TimelineView::ink (), 0, 3), TimelineView::label (listGet pages (slot editor.page) ?: "", 151.0, 36.0, 11.0, TimelineView::dim (), 0, 3)]
 
     // The song strip: title, tempo, meter, the playhead's bar and the transport.
-    strip editor = listConcat (listConcat [caps ("ARRANGEMENT", 24.0, 77.0), TimelineView::label (editor.song.title, 24.0, 99.0, 24.0, TimelineView::ink (), 0, 3)] (listConcat (overviewShapes editor) (listConcat (readout ("BPM", tempo editor.song.tempo, 877.0)) (readout ("METER", "4/4", 967.0))))) (listConcat (listConcat (plaque (1051.0, 76.0, 210.0, 51.0, Scenes::rgb (20, 17, 38), 2)) [caps ("POSITION", 1065.0, 84.0), TimelineView::label ("${threeDigits (satAdd editor.rollBar 1)}.01.01", 1065.0, 101.0, 19.0, TimelineView::ink (), 0, 4)]) (songTransport editor))
+    strip editor = listConcat (listConcat [caps ("ARRANGEMENT", 24.0, 77.0), TimelineView::label (editor.song.title, 24.0, 99.0, 24.0, TimelineView::ink (), 0, 3)] (listConcat (overviewShapes editor) (listConcat (readout ("BPM", tempo editor.song.tempo, 877.0)) (readout ("METER", "4/4", 967.0))))) (listConcat (listConcat (plaque (1051.0, 76.0, 160.0, 51.0, Scenes::rgb (20, 17, 38), 2)) [caps ("POSITION", 1065.0, 84.0), TimelineView::label (position editor, 1065.0, 101.0, 19.0, TimelineView::ink (), 0, 4)]) (listConcat (loopCell editor) (songTransport editor)))
 
     // The status footer: what is sounding, the song's rate, the last thing the app said and the selected track's route.
     footer editor =
@@ -171,7 +181,7 @@ module Header
         to start, Play and Stop once one is. *)
     export songAreas editor = match length editor.song.tracks
         0 => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, [emptyArea ()]))
-        _ => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, listConcat [TimelineView::area ("Return to start", 1277.0, 80.0, 46.5, 43.0, false)] (transportAreas (1323.5, 80.0, 46.5, 43.0, "Play", "Stop"))))
+        _ => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, listConcat [TimelineView::area ("Return to start", 1277.0, 80.0, 46.5, 43.0, false)] (listConcat (transportAreas (1323.5, 80.0, 46.5, 43.0, "Play", "Stop")) [TimelineView::area ("Loop", 1222.0, 80.0, 46.5, 43.0, editor.looping)])))
 
     (** The command behind header area `index` of a song page. *)
     export songAction (editor, index) = match index < 3
@@ -181,7 +191,8 @@ module Header
             _ => match index
                 3 => PickTrack(index = editor.track, bar = 0)
                 4 => PlaySong
-                _ => StopSong
+                5 => StopSong
+                _ => ToggleLoop
 
     (** The part of a song page that stays at the window's edge: the background and the top bar with the name
         and the tabs, as wide as the region. *)

@@ -55,8 +55,8 @@ module EditorApp
         ChooseOutput index offset => RoutingPicker::open (editor, index, offset)
         InspectBus space => Runtime::step (editor(inspectSpace = space))
         CloseOutput => Runtime::step (editor(outputEdit = OutputClosed))
-        BrowseBuses => BusOutputs::open editor
         BrowseSends offset => DawSession::saving (editor, \ready => Runtime::step (ready(outputEdit = BrowsingSends(offset = offset), message = "")))
+        BrowseBuses => BusOutputs::open editor
         BeginSend identity => DawSession::saving (editor, \ready => SendEditor::open (ready, identity))
         PagePortRoutes offset => SendEditor::page (editor, offset)
         CommitSend => SendEditor::commit editor
@@ -74,6 +74,8 @@ module EditorApp
         PlaySong => DawSession::saving (editor, DawSession::play)
         RenderSong => DawSession::saving (editor, DawSession::bounce)
         StopSong => DawSession::stop editor
+        ToggleLoop => DawSession::looped editor
+        MoveEnd bar => DawSession::ended (editor, bar)
         _ => Runtime::step (EditorState::tapped (editor, action))
 
     // Preview captures the pitched voice. The project keeps its authored parameters, even after many key presses.
@@ -146,7 +148,19 @@ module EditorApp
             RollIdle => songPointer (context, editor, x, y, down)
         _ => songPointer (context, editor, x, y, down)
 
-    songPointer (context, editor, x, y, down) = match DawSession::tappedAt (editor, x, y)
+    // [DAW-TRANSPORT-RANGE] `armedNote` while the end marker's handle is held.
+    endHeld = -3
+
+    // The held end marker follows the pointer to the nearest bar line; release lets go.
+    endDrag (editor, x, down) = match down
+        true => DawSession::ended (editor, TimelineView::endAt (editor, x - Header::shift editor))
+        false => Runtime::step (editor(armedNote = -1))
+
+    songPointer (context, editor, x, y, down) = match editor.armedNote == endHeld
+        true => endDrag (editor, x, down)
+        false => songTap (context, editor, x, y, down)
+
+    songTap (context, editor, x, y, down) = match DawSession::tappedAt (editor, x, y)
         Success (SelectNote index) => match down
             true => RollEdits::start (editor, index, x - Header::shift editor, y)
             false => Runtime::step editor
@@ -154,6 +168,9 @@ module EditorApp
         Error _ => Runtime::step (editor(armedNote = -1))
 
     pagePointer (context, editor, action, down) = match action
+        MoveEnd bar => match down
+            true => DawSession::ended (editor(armedNote = endHeld), bar)
+            false => Runtime::step editor
         AdjustMix index _ _ _ => match down
             true => Runtime::step (editor(armedNote = index))
             false => match editor.armedNote == index
@@ -220,7 +237,7 @@ module EditorApp
         Controls => ui::Inputs::route (input, \(key, down) => Runtime::step (ui::Pick::either (down && key == "escape", Dials::escaped editor, editor)), \(x, y, down, shift) => Runtime::step (EditorView::dialled (editor(fineHeld = shift), x, y, down)), \(_, _) => Runtime::step editor)
         _ => Runtime::step editor
 
-    routed (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \_ => Runtime::step editor, \(action, input) => controlled (context, editor, action, input))
+    routed (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \elapsed => DawSession::framed (editor, elapsed), \(action, input) => controlled (context, editor, action, input))
 
     update (context, editor, message) =
         step = routed (context, editor, message)

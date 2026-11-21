@@ -20,6 +20,10 @@ make -C src/toolchain/targets/tests synth          # the app's tests, with no ho
 
 File → Save writes the open song, its patches and their layouts. Play renders two bars from the playhead. Stop cancels playback. File → Open Song opens another project in the same window.
 
+## The songs are hand-written
+
+Every song in [tracks/](tracks/) is composed by hand: each note, pattern, patch and mix setting is written into its project file one at a time. No script, loop or generator ever writes notes, patterns, arrangements or project files; a song made that way is not accepted. Each song has its own style, its own synthesis techniques and its own arrangement.
+
 ## Silt Relay
 
 [Silt Relay](tracks/silt-relay.json) is an original 18-bar arrangement at 138 BPM. The pressure kick ducks the sub. Struck wire answers the bass on the offbeats, and the bowed breakdown gives way to a five-hit hi-hat roll. Open **Throat / metal** for a two-source spectral morph, **Spore wheel** for a seeded granular patch, or **Rivet pulse** to follow a MIDI note through the split, delay, join and channel swap. On **Glass pins**, the FFT pitch shifter mixes a perfect fifth into the metallic strike at 22% wet and keeps the original formants. Glass pins, Glass filament and Porcelain bell share a gentle high lift and compression in Pin bed before they meet the struck wire on Objects. **Rivet pulse** sends 6% of its stereo channel-swap outlet straight to the kick-keyed Undertow bus. Its dry signal still goes through Objects, and its 19% Space send stays audible between hits. [Follow Glass pins through both buses](screens/silt-pin-bed.png) · [Inspect Undertow](screens/silt-relay.png) · [Trace the three Rivet pulse routes](screens/silt-rivet.png)

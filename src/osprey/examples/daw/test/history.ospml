@@ -86,6 +86,11 @@ canvasInspectorJourney added =
     expect (uitest::Views::letters (added.drivenSeen, "Edit in Patch controls"), false)
     forEachList (["Grain cloud 0", "Parameters", "Connections", "Playback rate", "Grain gain", "Pan"], \text => lettersIn (added, text))
     forEachList (["Playback rate", "Grain gain", "Pan"], \name => expect (uitest::Semantics::offered (added.drivenSeen.renderedAccess, "Grain cloud 0 ${name}"), true))
+    // Every control is bounded, starts inside its range and names its unit where it has one.
+    valid (synth::Graphs::node ((Drive::holding added).graph, 0), \n =>
+        expect (length n.parameters, 21)
+        forEachList (n.parameters, \p => expect (p.minimum < p.maximum && p.initial >= p.minimum && p.initial <= p.maximum, true))
+        forEachList (["Source position (samples)", "Grain length (frames)", "Onset interval / mean (frames)", "Timing jitter (frames)", "Region end frame (exclusive)", "Boundary (0 loop, 1 one-shot)", "Window (0 Hann, 1 ASR)"], \label => expect (length (filterList (n.parameters, \p => p.label == label)), 1)))
     // [DAW-CONTROLS-DIAL] Pan is a dial: press it, hold, lift 45 units for a quarter of its range; sideways
     // movement does nothing; the turn is one undo; Escape puts back the value the turn began with.
     before = (Drive::holding added).graph
@@ -145,6 +150,48 @@ sampleChoiceJourney () =
     expect (structuralEquals ((Drive::holding opened).graph, (Drive::holding cancelled).graph), true)
     expect (length (Drive::holding opened).past, length (Drive::holding cancelled).past)
     sampleFileJourney cancelled
+    pitchRangeJourney ()
+    projectRefusalJourney ()
+
+// A key a module cannot reach refuses the whole strike and names it; the patch keeps its last tuning.
+pitchRangeJourney () =
+    strings = prismTap (prismTap (prismTap (prismTap (editorLaunched ["--empty"], "Modules"), "Add Waveguide string"), "Modules"), "Add Bowed string")
+    held = Drive::holding strings
+    expect (length held.graph.nodes, 2)
+    forEachList ([48, 60, 71, 100, 126], \note => succeeds (synth::EditorState::tune (held, note), \tuned => expect (tuned.note, note)))
+    // 19.45 Hz is under both strings' 20 Hz; 12.5 kHz is over the bow's 12 kHz.
+    forEachList ([0, 15], \note => failsWith (synth::EditorState::tune (held, note), "Module 0 cannot play MIDI note ${note}: ${synth::Waves::midiFrequency (toFloat note)} Hz is outside its pitch range."))
+    failsWith (synth::EditorState::tune (held, 127), "Module 1 cannot play MIDI note 127: ${synth::Waves::midiFrequency 127.0} Hz is outside its pitch range.")
+
+// [DAW-PROJECT] A project the renderer could not play is refused when it opens and says why: a zero or 500 bpm tempo,
+// a 0.5 drive, or a routing whose gate is zero or missing. A new, empty project still opens.
+projectRefusalJourney () = succeeds (daw::SongFiles::encode (timeline [keysTrack ()]), \text =>
+    succeeds (daw::SongFiles::decode text, \song => expect (length song.tracks, 1))
+    arranged = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000, a drive of 0.1 to 4 and 1 to 64 tracks."
+    gated = "A routing's attack and release must be 0.001 to 10 s."
+    forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":0.0", why = arranged }, { from = "\"tempo\":120.0", to = "\"tempo\":500.0", why = arranged }, { from = "\"drive\":1.0", to = "\"drive\":0.05", why = arranged }, { from = "\"attack\":0.01", to = "\"attack\":0.0", why = gated }, { from = "\"attack\":0.01,", to = "", why = gated }, { from = "\"release\":0.1", to = "\"release\":11.0", why = gated }], \c =>
+        expect (contains text c.from, true)
+        failsWith (daw::SongFiles::decode (replace text c.from c.to ?: text), c.why))
+    // Just past each edge is refused; each edge itself opens.
+    forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":19.9", why = arranged }, { from = "\"tempo\":120.0", to = "\"tempo\":400.5", why = arranged }, { from = "\"drive\":1.0", to = "\"drive\":4.5", why = arranged }, { from = "\"attack\":0.01", to = "\"attack\":10.5", why = gated }, { from = "\"release\":0.1", to = "\"release\":0.0005", why = gated }, { from = "\"release\":0.1", to = "\"release\":0.0", why = gated }], \c => failsWith (daw::SongFiles::decode (replace text c.from c.to ?: text), c.why))
+    forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":20.0" }, { from = "\"tempo\":120.0", to = "\"tempo\":400.0" }, { from = "\"drive\":1.0", to = "\"drive\":0.1" }, { from = "\"drive\":1.0", to = "\"drive\":4.0" }, { from = "\"attack\":0.01", to = "\"attack\":0.001" }, { from = "\"attack\":0.01", to = "\"attack\":10.0" }, { from = "\"release\":0.1", to = "\"release\":0.001" }, { from = "\"release\":0.1", to = "\"release\":10.0" }], \c => succeeds (daw::SongFiles::decode (replace text c.from c.to ?: text), \song => expect (length song.tracks, 1)))
+    sustainRefusalJourney ()
+    succeeds (daw::SongFiles::encode (timeline []), \empty => succeeds (daw::SongFiles::decode empty, \song => expect (length song.tracks, 0))))
+
+// [DAW-MIX-SUSTAIN] Each sustain appearance holds at most 119 s of sound, so the shortest legal one (0.09 s) and the
+// longest both render; one reading 720 s, or two tracks sharing a name a sidechain keys on, is refused on opening.
+glow (ratio, rise, hold, fade) = daw::Afterglow(start = 0.0, ratio = ratio, rise = rise, hold = hold, fade = fade, gain = 0.5, reverb = 0.3)
+
+reopened song = synth::Outcomes::carried (daw::SongFiles::encode song, daw::SongFiles::decode)
+
+sustainRefusalJourney () =
+    one = timeline [keysTrack ()]
+    forEachList ([glow (0.25, 0.01, 0.0, 0.01), glow (1.0, 0.5, 30.0, 2.0), glow (2.0, 19.0, 20.0, 20.0), glow (4.0, 9.0, 10.0, 10.75)], \g => succeeds (reopened (one(sustains = [g])), \song => expect (length song.sustains, 1)))
+    forEachList ([glow (4.0, 60.0, 60.0, 60.0), glow (2.0, 20.0, 20.0, 20.0), glow (0.2, 1.0, 1.0, 1.0), glow (1.0, 0.0, 1.0, 1.0)], \g => failsWith (reopened (one(sustains = [g])), "A sustain appearance has controls out of range or holds more than 119 s."))
+    failsWith (reopened (timeline [keysTrack (), keysTrack ()]), "Track names must be unique: \"keys\" names more than one track.")
+    silence = mapList (toList (range (0, 4096)), \_ => 0.0)
+    forEachList ([{ seconds = 0.0904, frames = 4339 }, { seconds = 1.0, frames = 48000 }], \c => succeeds (daw::Sustains::frozen (48000.0, silence, c.seconds), \held => expect (length held, c.frames)))
+    forEachList ([0.0, -1.0, 120.5, 1000.0], \seconds => failsWith (daw::Sustains::frozen (48000.0, silence, seconds), "A sustain needs 4096 source samples and at most 120 seconds."))
 
 // One chosen file through the picker: the graph and history stay as they were and the node says why.
 refusedFile (driven, path, check) =
@@ -176,14 +223,60 @@ sampleFileJourney driven =
     expect ((Drive::holding builtin).message, "Loaded ${daw::PatchVoices::builtinName}.")
     expect ((Drive::holding builtin).revision > (Drive::holding failed).revision, true)
     expect (length (Drive::holding builtin).graph.nodes, length (Drive::holding driven).graph.nodes)
+    // A real WAV replaces the source and the inspector names it with its rate, channels, frames and length; Undo
+    // brings the built-in source back and Redo the WAV, each kept whole by history.
+    asking = Drive::press (builtin, "Load WAV sample")
+    loaded = Drive::chosen (asking, (Drive::holding asking).sampleTicket, motifWav)
+    expect ((Drive::holding loaded).message, "Loaded elise-motif.wav.")
+    expect (Drive::shows (loaded, "elise-motif.wav · 48000 Hz · 1 source channels · 172800 frames · 3.6 s"), true)
+    expect (length (Drive::holding loaded).past, length (Drive::holding builtin).past + 1)
+    grainSource (loaded, motifWav, 172800)
+    // Keys set the rate from the source rate and its C4 root, never its length, and leave the scan position alone.
+    forEachList ([{ note = 72, rate = 2.0 }, { note = 60, rate = 1.0 }, { note = 48, rate = 0.5 }, { note = 67, rate = 1.4983070768766815 }], \key => keyedRate (loaded, key.note, key.rate))
+    back = prismTap (loaded, "Undo")
+    grainSource (back, daw::PatchVoices::builtinName, 1024)
+    keyedRate (back, 57, 4.693333333333333)
+    again = prismTap (back, "Redo")
+    grainSource (again, motifWav, 172800)
+    // While a patch plays, no sample is swapped: neither a WAV choice nor the built-in source.
+    stopped = Drive::holding again
+    playing = stopped(renderTicket = "playing")
+    expect ((synth::SamplePicker::choose playing).stepStore.message, "Grain cloud ${playing.selected}: Sample selection is unavailable while playing or when request IDs run out.")
+    expect ((synth::SamplePicker::builtin playing).stepStore.message, "Grain cloud ${playing.selected}: Stop playback before replacing the sample.")
+    expect (structuralEquals ((synth::SamplePicker::builtin playing).stepStore.graph, playing.graph), true)
     // A choice still open when its node is removed completes into nothing: the node is not resurrected.
-    asked = Drive::press (builtin, "Load WAV sample")
+    asked = Drive::press (again, "Load WAV sample")
     pending = (Drive::holding asked).sampleTicket
     gone = Drive::press (asked, "Remove module")
-    expect (length (Drive::holding gone).graph.nodes, satSub (length (Drive::holding builtin).graph.nodes) 1)
+    expect (length (Drive::holding gone).graph.nodes, satSub (length (Drive::holding again).graph.nodes) 1)
     late = Drive::completed (gone, pending, true, "target/daw-tests/text.wav")
     expect (structuralEquals ((Drive::holding late).graph, (Drive::holding gone).graph), true)
     expect ((Drive::holding late).sampleTicket, "")
+
+motifWav = "src/osprey/examples/daw/tracks/samples/elise-motif.wav"
+
+// [SYNTH-ADVANCED-GRAINS-IMPORT] Striking `note` sets the selected cloud's playback rate to `want`; where it scans stays put.
+keyedRate (driven, note, want) =
+    before = Drive::holding driven
+    succeeds (synth::EditorState::tune (before, note), \tuned =>
+        forEachList (["start", "regionStart", "regionEnd", "positionSpread"], \key => expect (initialOf (tuned.graph, tuned.selected, key), initialOf (before.graph, before.selected, key)))
+        expect (initialOf (tuned.graph, tuned.selected, "regionEnd") > 1.0, true)
+        near (initialOf (tuned.graph, tuned.selected, "rate"), want))
+
+initialOf (graph, identity, key) = match synth::Graphs::node (graph, identity)
+    synth::Invalid _ => -1.0
+    synth::Valid n => match listGet (filterList (n.parameters, \p => p.key == key)) 0
+        Error _ => -1.0
+        Success p => p.initial
+
+// The selected grain cloud plays the resource called `name` of `frames` frames.
+grainSource (driven, name, frames) = valid (synth::Graphs::node ((Drive::holding driven).graph, (Drive::holding driven).selected), \n => sourceOf (n, name, frames))
+
+sourceOf (n, name, frames) = match n.processor
+    synth::Granular resource _ _ =>
+        expect (resource.name, name)
+        expect (length resource.samples, frames)
+    _ => expect ("another module", name)
 
 // Deleting a routed module restores its parameters, position and cables as one operation.
 historyRemovalJourney () =
@@ -508,12 +601,26 @@ finite samples = length (filterList (samples, \value => value == value && synth:
 // itself one period later far more than half a period later (which an octave error would favour).
 lagged (samples, lag) = foldList (toList (range (2400, 12000)), 0.0, \(sum, index) => sum + (listGet samples index ?: 0.0) * (listGet samples (satAdd index lag) ?: 0.0))
 
-inTune samples =
+inTune samples = periodic (samples, 183, 92, 160)
+
+// A voice repeating every `period` frames: strong self-similarity there, weaker at half a period and nearby.
+periodic (samples, period, half, near) =
     energy = lagged (samples, 0)
     expect (energy > 0.0, true)
-    expect (lagged (samples, 183) > 0.6 * energy, true)
-    expect (lagged (samples, 183) > lagged (samples, 92), true)
-    expect (lagged (samples, 183) > lagged (samples, 160), true)
+    expect (lagged (samples, period) > 0.6 * energy, true)
+    expect (lagged (samples, period) > lagged (samples, half), true)
+    expect (lagged (samples, period) > lagged (samples, near), true)
+
+// [SYNTH-SPECTRAL-PITCH-EFFECT] The FFT pitch shifter moves middle C up a fifth (7 semitones, G4 at 122 frames) and an
+// octave (12 semitones, C5 at 92 frames), anti-correlated at its half period, with the shifted level kept.
+shifted (semitones, period, half, near) = succeeds (daw::NoteRenders::render (middleC (), 120.0, 48000.0, chainOf [part ("sine", 0, [pitched "frequency"]), part ("pitchShifter", 1024, [fixed ("semitones", semitones)])]), \samples =>
+    expect (length samples, 14400)
+    expect (finite samples, true)
+    expect (peakOf samples > 0.05, true)
+    periodic (samples, period, half, near)
+    expect (lagged (samples, half) < 0.0 - 0.5 * lagged (samples, 0), true)
+    // A unit sine carries 4800 over the 9600 measured frames; the shifted note keeps more than half of it.
+    expect (lagged (samples, 0) > 0.55 * 4800.0, true))
 
 heardFamily (name, instrument, pitch) = succeeds (daw::NoteRenders::render (middleC (), 120.0, 48000.0, instrument), \samples => familyHeard (name, instrument, pitch, samples))
 
@@ -536,4 +643,6 @@ familiesJourney () =
     heardFamily ("spectral", chainOf [part ("sine", 0, [pitched "frequency"]), part ("spectral", 1024, [])], true)
     heardFamily ("nonlinear", chainOf [part ("sine", 0, [pitched "frequency"]), part ("shaper", 0, [fixed ("drive", 3.0)])], true)
     heardFamily ("phase", chainOf [part ("operator", 0, [pitched "frequency"])], true)
+    shifted (7.0, 122, 61, 140)
+    shifted (12.0, 92, 46, 110)
     failsWith (daw::NoteRenders::render (middleC (), 120.0, 48000.0, chainOf [part ("noSuchModule", 0, [])]), "Unknown module \"noSuchModule\".")

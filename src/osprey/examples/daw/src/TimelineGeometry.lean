@@ -104,3 +104,27 @@ def fader (x left width low high : Float) : Float :=
   Float.floor ((low + bounded ((x - left) / width) 0 1 * (high - low)) * 100 + 0.5) / 100
 /-- Whole percent and hundredths, rounded to nearest. -/
 def percent (value : Float) : Float := Float.floor (value * 100 + 0.5)
+/-- [DAW-TRANSPORT-LIVE] Seconds of audio heard: the frame clock advanced by `elapsed`, held between what the
+device has finished (`returned` frames) and what it was given (`accepted`), so the playhead waits when sound does. -/
+def heardSeconds (clock elapsed returned accepted rate : Float) : Float :=
+  bounded (clock + elapsed) (returned / rate) (accepted / rate)
+/-- The beat sounding `seconds` into one pass from `first` over `span` beats; it stops at the end. -/
+def passBeat (first span seconds tempo : Float) : Float := first + bounded (seconds * tempo / 60) 0 span
+/-- The beat sounding `seconds` into a loop of `span` beats from `first`: each pass starts again at `first`. -/
+def loopBeat (first span seconds tempo : Float) : Float :=
+  let beats := seconds * tempo / 60
+  first + (beats - Float.floor (beats / span) * span)
+/-- The first bar of the two the piano roll shows while `beat` sounds: it turns the page every two bars from
+the start marker's bar `start`. -/
+def rollPage (beat start : Float) : Float :=
+  if beat < start * 4 then start else start + Float.floor ((beat - start * 4) / 8) * 2
+/-- [DAW-TRANSPORT-RANGE] The beat Play ends on: the end marker's bar line when it is after the start bar and
+inside the song, else the song's end. -/
+def rangeEnd (start finish beats : Float) : Float :=
+  if finish > start && finish * 4 < beats then finish * 4 else beats
+/-- The end marker's bar under beat `beat`: the nearest bar line, at least one bar after the start bar. -/
+def endBar (beat start : Float) : Float :=
+  let nearest := Float.floor (beat / 4 + 0.5)
+  if nearest <= start then start + 1 else nearest
+/-- A marker's handle at `at` is grabbed by a press at `x`: within six units either side. -/
+def grabs (x at : Float) : Bool := x >= at - 6 && x <= at + 6

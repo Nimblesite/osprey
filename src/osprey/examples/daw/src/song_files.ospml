@@ -20,7 +20,8 @@ module SongFiles
 
     each (doc, key, read) = mapList (ui::Doc::fieldItems (doc, key), read)
 
-    routing doc = synth::Outcomes::carried (folded (doc, "nodes", node), \nodes => Success(value = ProjectCodec::readRouting (doc, nodes, each (doc, "cables", ProjectCodec::readPatchCable))))
+    // A routing must carry a playable gate; a missing `routing`, `attack` or `release` reads as 0 and is refused here.
+    routing doc = synth::Outcomes::carried (folded (doc, "nodes", node), \nodes => PatchVoices::enveloped (ProjectCodec::readRouting (doc, nodes, each (doc, "cables", ProjectCodec::readPatchCable))))
 
     instrument doc = match ui::Doc::text (doc, "kind")
         "PluckInstrument" => Success(value = ProjectCodec::readPluckInstrument doc)
@@ -91,12 +92,27 @@ module SongFiles
     arranged (doc, tracks, buses) =
         ProjectCodec::readArrangement (doc, ProjectCodec::readSpace (ui::Doc::field (doc, "space")), ProjectCodec::readIntro (ui::Doc::field (doc, "intro")), each (doc, "sustains", ProjectCodec::readAfterglow), buses, tracks)
 
-    (** Decode a song project; malformed JSON, an unknown instrument or a malformed note is an error. *)
+    // Every sustain appearance must play and every track name is unique (a sidechain keys on the name), so a bad
+    // project is refused on opening, not halfway through a render.
+    playable song = match length (filterList (song.sustains, \glow => Sustains::valid glow == false)) == 0
+        false => Error(message = "A sustain appearance has controls out of range or holds more than 119 s.")
+        true => match listGet (filterList (song.tracks, \voice => length (filterList (song.tracks, \other => other.name == voice.name)) > 1)) 0
+            Success twin => Error(message = "Track names must be unique: \"${twin.name}\" names more than one track.")
+            Error _ => opened song
+
+    // A project with tracks must be one the renderer can play; a new, empty one still opens and saves.
+    opened song = match length song.tracks == 0
+        true => Success(value = song)
+        false => synth::Outcomes::carried (Arrangements::frames song, \_ => Success(value = song))
+
+    (** Decode a song project; malformed JSON, an unknown instrument, a malformed note, a routing without a playable
+        gate, a sustain out of range, a repeated track name, or a tempo, rate, drive or track count the renderer cannot
+        play is an error. *)
     export decode source = match jsonDecode source
         Error _ => Error(message = "The song project is not valid JSON.")
         Success doc => match checked (ProjectCodec::readIntro (ui::Doc::field (doc, "intro")))
             Error why => Error(message = why)
-            Success _ => synth::Outcomes::carried (folded (doc, "tracks", track), \tracks => synth::Outcomes::carried (folded (doc, "buses", bus), \buses => synth::Outcomes::carried (BusPaths::order buses, \_ => SendRenders::project (arranged (doc, tracks, buses)))))
+            Success _ => synth::Outcomes::carried (folded (doc, "tracks", track), \tracks => synth::Outcomes::carried (folded (doc, "buses", bus), \buses => synth::Outcomes::carried (BusPaths::order buses, \_ => synth::Outcomes::carried (SendRenders::project (arranged (doc, tracks, buses)), \song => playable song))))
 
     (** Write the complete project as JSON. *)
     export encode arrangement = match jsonEncode (ProjectCodec::writeArrangement arrangement)

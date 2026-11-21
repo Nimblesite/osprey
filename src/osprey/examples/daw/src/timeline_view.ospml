@@ -87,11 +87,11 @@ module TimelineView
         the view changes: not the song, the playhead, the selection or the undo history. *)
     export zoomedBy (editor, factor) =
         zoom = ui::Pick::either (factor <= 0.0, 1.0, TimelineGeometry::zoomed (editor.laneZoom, factor, beats editor))
-        viewed (editor, zoom, TimelineGeometry::zoomFirst (rollStart editor, shownFrom editor, shownBeats editor, TimelineGeometry::laneSpan (beats editor, zoom), beats editor))
+        viewed (editor, zoom, TimelineGeometry::zoomFirst (cursor editor, shownFrom editor, shownBeats editor, TimelineGeometry::laneSpan (beats editor, zoom), beats editor))
 
     (** The lanes moved, when they must, so the playhead and the piano roll's two bars stay in view. *)
     export following editor =
-        start = TimelineGeometry::followFirst (rollStart editor, shownFrom editor, shownBeats editor, beats editor)
+        start = TimelineGeometry::followFirst (cursor editor, shownFrom editor, shownBeats editor, beats editor)
         match start == shownFrom editor
             true => editor
             false => viewed (editor, editor.laneZoom, start)
@@ -174,20 +174,25 @@ module TimelineView
 
     ruler editor = ui::Lists::flatten (mapList (toList (range (0, whole (TimelineGeometry::rulerCount (shownBeats editor, TimelineGeometry::rulerStep (shownBeats editor))))), \index => division (editor, index)))
 
-    // The piano roll's two bars framed on the lanes, as much of the frame as is in view.
-    viewport editor =
-        left = TimelineGeometry::laneX (rollStart editor, shownFrom editor, shownBeats editor)
-        right = TimelineGeometry::laneX (rollStart editor + 8.0, shownFrom editor, shownBeats editor)
-        near = TimelineGeometry::laneEdge left
-        far = TimelineGeometry::laneEdge right
-        match right <= 198.0 || left >= 1092.0
-            true => []
-            false => [Scenes::strip ([near, 221.0, far, 221.0, far, 438.0, near, 438.0, near, 221.0], dim (), 1.0, 6)]
+    // A marker: a line down the lanes with its handle on the ruler, when it is in view.
+    marker (at, colour) = match at < 197.5 || at > 1092.5
+        true => []
+        false => [box (at, 211.0, 1.0, 227.0, colour, 7), box (at - 3.0, 210.0, 7.0, 5.0, colour, 7)]
+
+    endX editor = TimelineGeometry::laneX (DawSession::rangeEnd editor, shownFrom editor, shownBeats editor)
+
+    // [DAW-TRANSPORT-RANGE] Where Play ends: the end marker, dragged by its handle on the ruler.
+    finish editor = marker (endX editor, ink ())
+
+    // [DAW-TRANSPORT-FOLLOW] The beat sounding now, while the song plays.
+    sounding editor = match editor.playBeat < 0.0
+        true => []
+        false => marker (TimelineGeometry::laneX (editor.playBeat, shownFrom editor, shownBeats editor), Scenes::rgb (120, 232, 150))
 
     arrangement (editor, duration) = listConcat (listConcat [label ("Arrangement", 24.0, 160.0, 18.0, ink (), 0, 4), label ("${length editor.song.tracks} tracks", 154.0, 163.0, 13.0, dim (), 0, 4), label ("Bars 1–${satAdd (DawSession::bar duration) 1}", 1108.0, 163.0, 13.0, dim (), 2, 4), label ("TRACKS", 24.0, 200.0, 12.0, dim (), 0, 3)] (ruler editor)) (listConcat (foldList (visible editor, [], \(all, index) =>
         match listGet editor.song.tracks index
             Error _ => all
-            Success voice => listConcat all (lane (editor, index, voice)))) (ui::Lists::flatten [viewport editor, playhead editor, scroll editor]))
+            Success voice => listConcat all (lane (editor, index, voice)))) (ui::Lists::flatten [finish editor, playhead editor, sounding editor, scroll editor]))
 
     scroll editor = match pages editor > 1
         false => []
@@ -195,12 +200,8 @@ module TimelineView
             height = 217.0 / toFloat (pages editor)
             [box (1119.0, 221.0, 5.0, 217.0, panelInk (), 6), box (1119.0, 221.0 + toFloat editor.lanePage * height, 5.0, height, dim (), 7)]
 
-    // [DAW-TRANSPORT-PLAYHEAD] Where Start plays from: a line down the lanes with its handle on the ruler; the piano roll names the bars.
-    playhead editor =
-        at = TimelineGeometry::laneX (rollStart editor, shownFrom editor, shownBeats editor)
-        match at < 197.5 || at > 1092.5
-            true => []
-            false => [box (at, 211.0, 1.0, 227.0, accent (), 7), box (at - 3.0, 210.0, 7.0, 5.0, accent (), 7)]
+    // [DAW-TRANSPORT-PLAYHEAD] Where Play starts: the start marker, a line down the lanes with its handle on the ruler.
+    playhead editor = marker (TimelineGeometry::laneX (DawSession::rangeStart editor, shownFrom editor, shownBeats editor), accent ())
 
     (** Every lane's hit area: a tap picks the track at that bar; its name opens the patch. *)
     export laneAt (editor, x, y) = match x >= 1113.0 && x < 1132.0 && y >= 221.0 && y < 438.0 && pages editor > 1
@@ -219,15 +220,29 @@ module TimelineView
     // The bar under `x`, kept inside the song so Play always has music under it.
     barAt (editor, x) = floatToInt (TimelineGeometry::playableBar (TimelineGeometry::laneBeat (x, shownFrom editor, shownBeats editor, beats editor), beats editor)) ?: 0
 
-    // [DAW-TRANSPORT-PLAYHEAD] A tap on the ruler moves the playhead to that bar and keeps the track.
-    rulerAt (editor, x, y) = match y >= 193.0 && y < 221.0 && x >= 198.0 && x <= 1092.0
-        true => Success(value = PickTrack(index = editor.track, bar = barAt (editor, x)))
+    (** [DAW-TRANSPORT-RANGE] The end marker's bar line under `x`: the nearest one, after the start marker. *)
+    export endAt (editor, x) = floatToInt (TimelineGeometry::endBar (TimelineGeometry::laneBeat (x, shownFrom editor, shownBeats editor, beats editor), toFloat editor.rollBar)) ?: 0
+
+    // [DAW-TRANSPORT-PLAYHEAD] A press on the end marker's handle, in the ruler's lower band, takes hold of it; anywhere else on the ruler
+    // moves the start marker to that bar and keeps the track.
+    rulerAt (editor, x, y) = match y >= 193.0 && y < 221.0 && x >= 198.0 && x <= 1098.0
+        true => match y >= 207.0 && TimelineGeometry::grabs (x, endX editor)
+            true => Success(value = MoveEnd(bar = endAt (editor, x)))
+            false => Success(value = PickTrack(index = editor.track, bar = barAt (editor, x)))
         false => Error(message = "No lane here.")
 
     (** Accessibility regions for the arrangement track rows. *)
     export laneAccess editor = mapList (visible editor, \index => area ("Track ${satAdd index 1}", 0.0, TimelineGeometry::rowY (toFloat (index % pageSize), rowHeight), 1132.0, rowHeight, index == editor.track))
 
-    rollStart editor = TimelineGeometry::barStart (toFloat editor.rollBar)
+    // The first of the two bars the piano roll shows: the start marker's, or the page being heard.
+    shownBar editor = match editor.playBeat < 0.0
+        true => editor.rollBar
+        false => floatToInt (TimelineGeometry::rollPage (editor.playBeat, toFloat editor.rollBar)) ?: editor.rollBar
+
+    rollStart editor = TimelineGeometry::barStart (toFloat (shownBar editor))
+
+    // What the lanes follow and zoom about: the beat being heard, or the start marker.
+    cursor editor = ui::Pick::either (editor.playBeat < 0.0, DawSession::rangeStart editor, editor.playBeat)
 
     playing (editor, note: daw::Note) = note.start + note.length > rollStart editor && note.start < rollStart editor + 8.0
 
@@ -284,7 +299,12 @@ module TimelineView
         x = TimelineGeometry::rollX (rollStart editor + toFloat step / 4.0, rollStart editor)
         box (x, 542.0, ui::Pick::either (step % 16 == 0, 2.0, 1.0), 260.0, ui::Pick::either (step % 4 == 0, Scenes::rgb (59, 50, 82), Scenes::rgb (34, 29, 52)), 5))
 
-    bars editor = mapList (toList (range (0, 8)), \beat => label ("${satAdd (satAdd editor.rollBar (intDiv beat 4)) 1}.${satAdd (beat % 4) 1}", TimelineGeometry::rollX (rollStart editor + toFloat beat, rollStart editor) + 4.0, 520.0, 11.0, dim (), 0, 5))
+    bars editor = mapList (toList (range (0, 8)), \beat => label ("${satAdd (satAdd (shownBar editor) (intDiv beat 4)) 1}.${satAdd (beat % 4) 1}", TimelineGeometry::rollX (rollStart editor + toFloat beat, rollStart editor) + 4.0, 520.0, 11.0, dim (), 0, 5))
+
+    // [DAW-TRANSPORT-FOLLOW] The beat sounding now, down the piano roll.
+    rollSounding editor = match editor.playBeat < 0.0
+        true => []
+        false => [box (TimelineGeometry::rollX (editor.playBeat, rollStart editor), 542.0, 2.0, 352.0, Scenes::rgb (120, 232, 150), 8)]
 
     pitchTop notes = match notes
         [] => 72
@@ -332,7 +352,7 @@ module TimelineView
                 RollIdle => bounds
                 RollHeld _ => shown (editor, voice)
             heading = [box (0.0, 437.0, 1132.0, 18.0, panelInk (), 3), box (0.0, 511.0, 1132.0, 30.0, panelInk (), 3), label ("PITCH", 16.0, 520.0, 10.0, dim (), 0, 5), label ("VELOCITY", 8.0, 815.0, 10.0, dim (), 0, 5), label ("0–1", 28.0, 870.0, 10.0, dim (), 0, 5), box (0.0, 803.0, 1132.0, 1.0, Scenes::rgb (50, 42, 70), 4), box (76.0, 894.0, 1034.0, 1.0, dim (), 4), label ("Piano roll", 24.0, 477.0, 18.0, ink (), 0, 3), label ("${voice.name}    ${length notes} of ${length voice.notes} notes", 130.0, 481.0, 14.0, accent (), 0, 3)]
-            listConcat (ui::Lists::flatten [heading, pianoKeys (high, rows), beatLines editor, bars editor, selectedCursor (editor, voice), velocityGrid editor]) (foldList (notes, [], \(all, note) => listConcat all (rollNote (rollStart editor, high, rows, selected (editor, voice, note), note))))
+            listConcat (ui::Lists::flatten [heading, pianoKeys (high, rows), beatLines editor, bars editor, selectedCursor (editor, voice), velocityGrid editor, rollSounding editor]) (foldList (notes, [], \(all, note) => listConcat all (rollNote (rollStart editor, high, rows, selected (editor, voice, note), note))))
 
     (** The empty dry destination in a project is the direct Master input. *)
     export destination voice = ui::Pick::either (voice.bus == "", "Master", voice.bus)

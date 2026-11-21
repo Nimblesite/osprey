@@ -17,18 +17,20 @@ module BusMix
     (** Whether some bus compressor is keyed by the track called `name`. *)
     export keys (arrangement, name) = length (filterList (arrangement.buses, \bus => bus.compressor.sidechain == name)) > 0
 
-    silent () = NoteRun(held = BandState(low = 0.0, band = 0.0, level = 0.0), samples = [], fault = "")
+    rest = BandState(low = 0.0, band = 0.0, level = 0.0)
+
+    silent held = NoteRun(held = held, samples = [], fault = "")
 
     banded (eq, lowPole, highPole, run, input) =
         low = ArrangeMath::onePole (run.held.low, input, lowPole)
         band = ArrangeMath::onePole (run.held.band, input, highPole)
         NoteRun(held = BandState(low = low, band = band, level = run.held.level), fault = "", samples = listAppend run.samples (ArrangeMath::banded (input, low, band, eq.low, eq.mid, eq.high)))
 
-    // One side through the EQ.
-    equalised (rate, eq, side) =
+    // One side through the EQ, its filters starting where the last block left them.
+    equalised (rate, eq, side, held) =
         lowPole = ArrangeMath::poleCoefficient (lowCorner, rate)
         highPole = ArrangeMath::poleCoefficient (highCorner, rate)
-        (foldList (side, silent (), \(run, input) => banded (eq, lowPole, highPole, run, input))).samples
+        foldList (side, silent held, \(run, input) => banded (eq, lowPole, highPole, run, input))
 
     // The compressor's linear gain after one detector sample: the reduction smoothed in dB, attack when it deepens.
     reduced (c, attack, release, run, key) =
@@ -36,11 +38,11 @@ module BusMix
         level = synth::DynamicsMath::smoothed (run.held.level, target, attack, release)
         NoteRun(held = BandState(low = run.held.low, band = run.held.band, level = level), fault = "", samples = listAppend run.samples (synth::DynamicsMath::linear level))
 
-    // One gain per bus frame; the key is silent where it has ended.
-    gains (rate, c, key, count) =
+    // One gain per bus frame, the reduction continuing from `level`; the key is silent where it has ended.
+    gains (rate, c, key, count, level) =
         attack = synth::DynamicsMath::coefficient (c.attack, rate)
         release = synth::DynamicsMath::coefficient (c.release, rate)
-        (foldList (toList (range (0, count)), silent (), \(run, index) => reduced (c, attack, release, run, listGet key index ?: 0.0))).samples
+        foldList (toList (range (0, count)), silent (rest(level = level)), \(run, index) => reduced (c, attack, release, run, listGet key index ?: 0.0))
 
     louder (group, index) = synth::DynamicsMath::truePeak (synth::DynamicsMath::truePeak (0.0, listGet group.left index ?: 0.0), listGet group.right index ?: 0.0)
 
@@ -53,23 +55,34 @@ module BusMix
 
     applied (side, gain) = mapList (toList (range (0, length side)), \index => ArrangeMath::scaled (listGet side index ?: 0.0, listGet gain index ?: 1.0))
 
-    // EQ, then the compressor's gain on both sides, then into the selected destination at the bus gain.
-    joined (rate, buses, bus, group, key) =
-        gain = gains (rate, bus.compressor, key, length group.left)
-        left = applied (equalised (rate, bus.equaliser, group.left), gain)
-        right = applied (equalised (rate, bus.equaliser, group.right), gain)
-        match bus.output == ""
-            true => buses(left = Arrangements::bused (buses.left, left, 0, bus.gain), right = Arrangements::bused (buses.right, right, 0, bus.gain))
-            false => Arrangements::feedGroup (buses, bus.output, left, right, bus.gain)
+    // A bus's EQ and compressor state as the last block left it, or at rest before its first.
+    stateOf (states, name) = listGet (filterList (states, \s => s.name == name)) 0 ?: BusState(name = name, leftBand = rest, rightBand = rest, level = 0.0)
 
-    processed (rate, buses, bus) = match listGet (filterList (buses.groups, \g => g.name == bus.name)) 0
-        Error _ => Success(value = buses)
+    destined (buses, bus, left, right) = match bus.output == ""
+        true => buses(left = Arrangements::bused (buses.left, left, 0, bus.gain), right = Arrangements::bused (buses.right, right, 0, bus.gain))
+        false => Arrangements::feedGroup (buses, bus.output, left, right, bus.gain)
+
+    // EQ, then the compressor's gain on both sides, then into the selected destination at the bus gain.
+    joined (rate, mastering, bus, group, key) =
+        held = stateOf (mastering.states, bus.name)
+        gain = gains (rate, bus.compressor, key, length group.left, held.level)
+        left = equalised (rate, bus.equaliser, group.left, held.leftBand)
+        right = equalised (rate, bus.equaliser, group.right, held.rightBand)
+        next = BusState(name = bus.name, leftBand = left.held, rightBand = right.held, level = gain.held.level)
+        Mastering(buses = destined (mastering.buses, bus, applied (left.samples, gain.samples), applied (right.samples, gain.samples)), states = listAppend (filterList (mastering.states, \s => s.name != bus.name)) next)
+
+    processed (rate, mastering, bus) = match listGet (filterList (mastering.buses.groups, \g => g.name == bus.name)) 0
+        Error _ => Success(value = mastering)
         Success group => match ArrangeMath::busValid (bus.gain, bus.equaliser.low, bus.equaliser.mid, bus.equaliser.high, bus.compressor.ratio, bus.compressor.knee, bus.compressor.attack, bus.compressor.release)
             false => Error(message = "Bus ${bus.name}: gain must be 0 to 4, EQ -24 to 24 dB, ratio 1 to 20, knee 0 to 24 dB, attack and release 0 to 2 s.")
-            true => synth::Outcomes::carried (detector (buses, bus, group), \key => Success(value = joined (rate, buses, bus, group, key)))
+            true => synth::Outcomes::carried (detector (mastering.buses, bus, group), \key => Success(value = joined (rate, mastering, bus, group, key)))
 
-    (** Process groups from their inputs to Master, applying each group’s EQ, compressor and gain once. *)
-    export mastered (arrangement, buses) = synth::Outcomes::carried (BusPaths::order arrangement.buses, \groups => foldList (groups, Success(value = buses), \(outcome, bus) => synth::Outcomes::carried (outcome, \held => processed (toFloat arrangement.sampleRate, held, bus))))
+    (** One block of every group, from its inputs to Master: each group's EQ, compressor and gain run once,
+        continuing from `states` (the last block's), and the result carries this block's states on. *)
+    export stepped (arrangement, buses, states) = synth::Outcomes::carried (BusPaths::order arrangement.buses, \groups => foldList (groups, Success(value = Mastering(buses = buses, states = states)), \(outcome, bus) => synth::Outcomes::carried (outcome, \held => processed (toFloat arrangement.sampleRate, held, bus))))
+
+    (** One buffer of every group into Master, every processor starting at rest. *)
+    export mastered (arrangement, buses) = synth::Outcomes::carried (stepped (arrangement, buses, []), \done => Success(value = done.buses))
 
 (** [DAW-MIX-BUS-OUTPUT] A group has a single stereo output. Upstream groups finish before their destinations. *)
 module BusPaths
