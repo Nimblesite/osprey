@@ -11,7 +11,7 @@ module EditorState
 
     (** [SYNTH-ADVANCED-PRISM] Advanced modules, offered in the native picker so the canvas palette keeps its
         original layout and artwork. *)
-    export advancedKinds = ["exciter", "waveguide", "bowed-string", "strike-comb", "resonator", "modal-bank", "fractional-delay", "loss-filter", "allpass", "wavetable", "additive", "spectral", "pitch-shifter", "shaper", "reverb", "shifter", "phase-operator", "smoother"]
+    export advancedKinds = ["exciter", "waveguide", "bowed-string", "strike-comb", "resonator", "modal-bank", "fractional-delay", "loss-filter", "allpass", "wavetable", "additive", "spectral", "pitch-shifter", "shaper", "reverb", "shifter", "phase-operator", "smoother", "split", "join", "route", "panner"]
 
     (** The browsing groups, in picker order. *)
     export categories = ["Sources", "Grains", "Physical", "Spectral", "Modulators", "Effects", "Utilities", "Output"]
@@ -65,6 +65,10 @@ module EditorState
         "filter" => "Low-pass filter"
         "gain" => "Gain"
         "mixer" => "Mixer"
+        "split" => "Channel split"
+        "join" => "Channel join"
+        "route" => "Channel route"
+        "panner" => "Panner"
         "delay" => "Delay"
         "midi-note" => "MIDI note generator"
         "stereo" => "Mono to stereo"
@@ -109,6 +113,10 @@ module EditorState
         "delay" => made (Components::delay (identity, 2400))
         "midi-note" => made (Components::midiNote (identity, 60.0, 0.8, 6000.0))
         "stereo" => made (Components::stereo identity)
+        "split" => made (Components::split (identity, 2))
+        "join" => made (Components::join (identity, 2))
+        "route" => made (Components::routeChannels (identity, 2, [1, 0]))
+        "panner" => made (Components::panner (identity, 2, 0.0))
         "stereo-output" => made (Components::stereoOutput identity)
         "output" => made (Components::output identity)
         _ => advanced (kind, identity)

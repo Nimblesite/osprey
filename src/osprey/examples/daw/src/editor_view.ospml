@@ -16,6 +16,7 @@ module EditorView
         ModulatedGain => "Modulated gain"
         MidiNotes => "MIDI notes"
         Stereo => "Mono to stereo"
+        Panner => "Panner"
         Split => "Channel split"
         Join => "Channel join"
         Route _ => "Channel route"

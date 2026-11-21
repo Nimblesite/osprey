@@ -2,6 +2,7 @@ import uitest::Drive
 
 // [PRISM-ROUTING-EDITOR] History must edit the live graph, not only the retained skin.
 graphHistoryJourney () =
+    channelUtilitiesJourney ()
     opened = editorLaunched ["--empty"]
     library = prismTap (opened, "Modules")
     added = prismTap (library, "Add Sine oscillator")
@@ -20,6 +21,25 @@ graphHistoryJourney () =
     historyRemovalJourney ()
     wireDragJourney ()
     keymapJourney ()
+
+// [SYNTH-GRAPH-CHANNELS] A picker selection creates a real routing module on the canvas, with undoable ports.
+channelUtilitiesJourney () =
+    opened = openedEditor ["--empty"]
+    forEachList (["split", "join", "route", "mixer", "panner"], \kind =>
+        expect (length (filterList (synth::EditorState::pickerKinds (), \offered => offered == kind)), 1)
+        selected = component (opened, kind)
+        graph = (Drive::holding selected).graph
+        valid (synth::Graphs::node (graph, 0), \n =>
+            expect (synth::EditorView::processorTitle n.processor, synth::EditorState::title kind)
+            match kind
+                "split" => expect (mapList (n.outputs, \p => p.channels), [1, 1])
+                "join" => expect (mapList (n.inputs, \p => p.channels), [1, 1])
+                "route" => expect (structuralEquals (n.processor, synth::Route(channelMap = [1, 0])), true)
+                "panner" => expect (mapList (n.outputs, \p => p.channels), [2])
+                _ => expect (mapList (n.parameters, \p => p.key), ["firstGain", "secondGain"]))
+        undone = prismTap (selected, "Undo")
+        expect (length (Drive::holding undone).graph.nodes, 0)
+        expect (structuralEquals ((Drive::holding (prismTap (undone, "Redo"))).graph, graph), true))
 
 // [DAW-KEYS] Every shipped keymap passes its own checks and gives every command keys; a keymap file may change
 // some commands and leave the rest on their Prism keys; an unknown command, a clash or a missing name is refused
