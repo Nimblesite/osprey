@@ -2,7 +2,7 @@
 
 Contract: [MATH-CODE](../specs/tooling/MathToCode.md). Related: [plan 0041](0041-dependent-types-and-mathlib.md) (proofs in `.lean`), [plan 0042](0042-proof-workbench.md) (the workbench that displays generated modules).
 
-Write production formulas in native Osprey and use Lean to prove properties of the shipped functions. CI derives the executable terms from the parsed Osprey source. The existing importer also serves Lean-based packages and Proof Workbench exercises.
+Write production formulas in native Osprey and use Lean to prove properties of the shipped functions. The source-to-proof translation now makes this practical. A developer can change the Osprey function and rerun its Lean proof against that revision. CI derives the executable terms from the parsed Osprey source. The existing importer also serves Lean-based packages and Proof Workbench exercises.
 
 ## Constraints
 
