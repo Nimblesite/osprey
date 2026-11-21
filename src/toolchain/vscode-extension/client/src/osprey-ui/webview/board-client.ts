@@ -63,6 +63,15 @@ function chalkTexture(colour: string): HTMLCanvasElement {
   return canvas;
 }
 
+/** Trace a point sequence onto the context as one continuous path. */
+function tracePath(context: CanvasRenderingContext2D, points: readonly (readonly [number, number])[]): void {
+  context.beginPath();
+  points.forEach((point, index) => {
+    if (index === 0) context.moveTo(point[0], point[1]);
+    else context.lineTo(point[0], point[1]);
+  });
+}
+
 function chalkStroke(context: CanvasRenderingContext2D, stroke: { points: readonly (readonly [number, number])[]; width: number }, scene: BoardScene): void {
   const pattern = context.createPattern(scene.texture, "repeat");
   if (pattern === null) throw new Error("The drawing board cannot create its chalk texture");
@@ -71,11 +80,7 @@ function chalkStroke(context: CanvasRenderingContext2D, stroke: { points: readon
   context.lineWidth = stroke.width;
   context.lineCap = "round";
   context.lineJoin = "round";
-  context.beginPath();
-  stroke.points.forEach((point, index) => {
-    if (index === 0) context.moveTo(point[0], point[1]);
-    else context.lineTo(point[0], point[1]);
-  });
+  tracePath(context, stroke.points);
   context.stroke();
   const first = stroke.points[0];
   if (first !== undefined) {
@@ -126,11 +131,7 @@ function paintLasso(context: CanvasRenderingContext2D, points: readonly [number,
   context.strokeStyle = scene.colour;
   context.lineWidth = 1 / scene.frame.scale;
   context.setLineDash([6 / scene.frame.scale, 5 / scene.frame.scale]);
-  context.beginPath();
-  points.forEach((point, index) => {
-    if (index === 0) context.moveTo(point[0], point[1]);
-    else context.lineTo(point[0], point[1]);
-  });
+  tracePath(context, points);
   context.closePath();
   context.stroke();
   context.setLineDash([]);
