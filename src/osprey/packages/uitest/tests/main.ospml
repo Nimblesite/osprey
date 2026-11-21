@@ -44,12 +44,6 @@ canvas machine = Canvases::semantics machine
 letters (machine, text) = Seen::letters (seen machine, text)
 // The slider's reading off a tree of accessible nodes, on a canvas or a driven view.
 levelOf nodes = Semantics::value (nodes, "Level")
-feed (machine, name, text) = Machines::feed (machine, [Machines::fact (name, Values::text text)])
-// `act` at the point `fraction` across `node`, where a pointer or a release lands.
-crossed (node, fraction, act) = act (Semantics::point (node, fraction))
-
-releasedAt (machine, label, fraction) =
-    crossed (Semantics::element (canvas machine, label), fraction, \p => Canvases::released (machine, p.pointX, p.pointY))
 
 // Acting on the slider at `fraction` of its width leaves it reading `fraction`.
 slidTo (machine, fraction) =
@@ -76,7 +70,7 @@ tracked (slider, spot) =
 
 // Feeding a fresh caption shows its lettering and retires the previous one.
 captioned (machine, shown, gone) =
-    fed = feed (machine, "caption", shown)
+    fed = Machines::feed (machine, [Machines::fact ("caption", Values::text shown)])
     lettering (fed, [shown], [gone])
     fed
 
@@ -96,8 +90,6 @@ speltAs outcome = match outcome
 // A frame's elapsed seconds, one message, one scene input or one lasso's strokes, spelt back.
 framedAs elapsed = speltAs (Surfaces::framed elapsed)
 meant (binding, words) = speltAs (Surfaces::told (binding, words))
-scened (binding, input) = speltAs (Surfaces::scene (heldOf (binding), 0, input))
-lassoedAs (binding, indices) = speltAs (Surfaces::lasso (heldOf (binding), 0, indices))
 completedAs (ticket, ok, path) = spelled (Surfaces::completed (ticket, ok, path))
 phasedAs phase = spelled (Surfaces::phased phase)
 
@@ -139,7 +131,8 @@ test ("the canvas use case: accessible controls, geometry, sliders, repeated men
     pressed = pressedOn (fresh, "Press")
     lettering (pressed, ["Pressed"], ["Hello"])
     full = slidTo (slidTo (slidTo (pressed, 0.0), 0.5), 1.0)
-    released = releasedAt (full, "Level", 0.75)
+    spot = Semantics::point (Semantics::element (canvas full, "Level"), 0.75)
+    released = Canvases::released (full, spot.pointX, spot.pointY)
     canvasLevel (released, 0.75)
     opened = pressedOn (released, "Menu")
     shut (opened, "One|Two|Three|Menu|Press|Level")
@@ -177,11 +170,10 @@ meaningCases () = [
 // The scene inputs a control reads, their numbers in scene units, and the message each means.
 sceneKey (name, down) = ui::Key(keyName = name, keyDown = down)
 scenePointer (x, y, down, shift) = ui::Pointer(pointerX = x, pointerY = y, pointerDown = down, pointerShift = shift)
-sceneViewed (w, h) = ui::Viewed(viewWidth = w, viewHeight = h)
 
 sceneCases () = [
 { binding = sceneAct, input = sceneKey ("ArrowLeft", true), want = "key:ArrowLeft:true" }, { binding = sceneAct, input = scenePointer (12.5, 20.0, false, false), want = "pointer:12.5:20.0:false:false" },
-{ binding = sceneAct, input = scenePointer (1.0, 2.0, true, true), want = "pointer:1.0:2.0:true:true" }, { binding = sceneAct, input = sceneViewed (1536.0, 1008.0), want = "viewed:1536.0:1008.0" },
+{ binding = sceneAct, input = scenePointer (1.0, 2.0, true, true), want = "pointer:1.0:2.0:true:true" }, { binding = sceneAct, input = ui::Viewed(viewWidth = 1536.0, viewHeight = 1008.0), want = "viewed:1536.0:1008.0" },
 { binding = tapAct, input = sceneKey ("a", true), want = "A non-scene control was sent a value of the wrong kind" },
 ]
 
@@ -208,8 +200,8 @@ test ("native views are found by what they say, and every host event keeps its w
     // A control's value crosses as its words through the binding the view issued ([UI-EVENTS]).
     forEachList (meaningCases (), \row => expect (meant (row.binding, row.words), row.want))
     // A scene's input crosses as typed numbers in scene units, never as text.
-    forEachList (sceneCases (), \row => expect (scened (row.binding, row.input), row.want))
-    forEachList (lassoCases (), \row => expect (lassoedAs (lassoAct, row.indices), row.want))
+    forEachList (sceneCases (), \row => expect (speltAs (Surfaces::scene (heldOf (row.binding), 0, row.input)), row.want))
+    forEachList (lassoCases (), \row => expect (speltAs (Surfaces::lasso (heldOf (lassoAct), 0, row.indices)), row.want))
     // Completions, lifecycle phases and frames cross as typed calls.
     expect (completedAs ("choose", true, "/music/a \"b\".mp3"), "completed:choose:/music/a \"b\".mp3")
     expect (completedAs ("discover", false, "no route"), "failed:discover:no route")
@@ -294,9 +286,8 @@ initial context =
     Runtime::step (Machines::feed (fixture (), [Machines::fact ("skin", Values::text skin), Machines::fact ("caption", Values::text caption)]))
 
 pulled (machine, lever, value) = Runtime::step (Machines::pull (machine, lever, value))
-pointed (machine, input) = Inputs::route (input, \(_, _) => Runtime::step machine, \(x, y, down, _) => Runtime::step (Canvases::pointer (machine, x, y, down)), \(width, height) => Runtime::step (Canvases::viewed (machine, width, height)), \(_, _) => Runtime::step machine)
 update (_, machine, message) =
-    Messages::route (message, \lever => pulled (machine, lever, Values::none ()), \(lever, text) => pulled (machine, lever, Values::text text), \(lever, on) => pulled (machine, lever, Values::flag on), \(_, _) => Runtime::step machine, \(_, _) => Runtime::step machine, \_ => Runtime::step machine, \(_, _) => Runtime::step machine, \(_, _) => Runtime::step machine, \_ => Runtime::step machine, \(_, input) => pointed (machine, input))
+    Messages::route (message, \lever => pulled (machine, lever, Values::none ()), \(lever, text) => pulled (machine, lever, Values::text text), \(lever, on) => pulled (machine, lever, Values::flag on), \(_, _) => Runtime::step machine, \(_, _) => Runtime::step machine, \_ => Runtime::step machine, \(_, _) => Runtime::step machine, \(_, _) => Runtime::step machine, \_ => Runtime::step machine, \(_, input) => Inputs::route (input, \(_, _) => Runtime::step machine, \(x, y, down, _) => Runtime::step (Canvases::pointer (machine, x, y, down)), \(width, height) => Runtime::step (Canvases::viewed (machine, width, height)), \(_, _) => Runtime::step machine))
 machineSlice () = perform Signal<ui::Machine>.read ()
 root () = Templates::view (machineSlice ())
 regions (before, after, frames, _) =
@@ -312,10 +303,6 @@ bench work =
         drive d => driven := d
     Runtime::guarded work
 
-begun skin =
-    perform Bench.drive (Drive::idle (program (), MachineDocs::faulty ""))
-    post (\d => Drive::launched (d, "macos", ["--skin", skin]))
-
 // One typed host event, sent the way a host sends it: crossed through `Slices` and the bench.
 post step =
     handle ui::Slices
@@ -323,15 +310,12 @@ post step =
     perform Bench.drive (step driven)
 
 // Host events, each as the driver carries it.
-press label = post (\d => Drive::press (d, label))
 choose (label, key) = post (\d => Drive::choose (d, label, key))
 pointer (x, y, down) = post (\d => Drive::pointer (d, x, y, down))
-viewed (width, height) = post (\d => Drive::viewed (d, width, height))
 tick elapsed = post (\d => Drive::frame (d, elapsed))
 openedPath path = post (\d => Drive::opened (d, path))
 elements () = driven.drivenSeen.renderedAccess
-elementAt label = Semantics::element (elements (), label)
-tapAt (label, fraction) = Drive::tapAt (pointer, elementAt label, fraction)
+tapAt (label, fraction) = Drive::tapAt (pointer, Semantics::element (elements (), label), fraction)
 
 clickAt (x, y) =
     pointer (x, y, true)
@@ -345,7 +329,6 @@ showsIn label = Drive::shows (driven, label)
 
 // Which of `names` the driver offers, and whether each should be offered.
 offering (names, want) = reading (names, \label => Drive::offers (elements (), label), want)
-offeredRow row = offering (row.names, row.want)
 
 // The chosen item's lettering is on show.
 choiceShown () = reading (["Choice two"], lettersIn, true)
@@ -376,7 +359,8 @@ pickedKey (key) =
 
 // A freshly begun session reads its first frame on the second tick.
 restarted skin =
-    begun skin
+    perform Bench.drive (Drive::idle (program (), MachineDocs::faulty ""))
+    post (\d => Drive::launched (d, "macos", ["--skin", skin]))
     expect (driven.drivenNow, 2)
 
 // A completion the host finishes with a chosen path.
@@ -390,7 +374,7 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
     curveAt = \spot => expect (listGet curve spot.at ?: 0.0, spot.want)
     forEachList ([{ at = 0, want = 10.0 }, { at = 1, want = 20.0 }, { at = 2, want = 110.0 }, { at = 3, want = 80.0 }], curveAt)
     letteredOver (lettersIn, ["Hello", "Choice "], ["Missing lettering"])
-    forEachList ([{ names = ["Menu", "Level"], want = true }, { names = ["Dismiss"], want = false }], offeredRow)
+    forEachList ([{ names = ["Menu", "Level"], want = true }, { names = ["Dismiss"], want = false }], \row => offering (row.names, row.want))
     tap "Press"
     letteredOver (lettersIn, ["Pressed"], ["Hello"])
     forEachList ([{ fraction = 0.0, want = 0.0 }, { fraction = 0.5, want = 0.5 }, { fraction = 1.0, want = 1.0 }, { fraction = 0.75, want = 0.75 }], levelAt)
@@ -403,7 +387,7 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
     tap "Menu"
     clickAt (5.0, 5.0)
     retiredItem "Three"
-    forEachList ([{ width = 400.0, height = 400.0 }, { width = 800.0, height = 600.0 }], \size => viewed (size.width, size.height))
+    forEachList ([{ width = 400.0, height = 400.0 }, { width = 800.0, height = 600.0 }], \size => post (\d => Drive::viewed (d, size.width, size.height)))
     choiceShown ()
     tick 0.25
     // A key over the canvas reaches the machine, which binds no key: nothing changes and nothing is refused.
@@ -425,11 +409,11 @@ test ("native controls are pressed and repeatedly chosen through Drive, includin
     restarted "plain"
     forEachList ([{ names = ["Native", "Native action", "Pick"], want = true }, { names = ["Missing control"], want = false }], \row => reading (row.names, showsIn, row.want))
     expect (selected (), "")
-    press "Native action"
+    post (\d => Drive::press (d, "Native action"))
     letteredOver (showsIn, ["Pressed"], ["Native"])
     forEachList (["one", "three"], pickedKey)
     // An option's key is the picker's selection while the options are drawn, so a choice is read off the picker component.
-    expect ((Seen::control (driven.drivenSeen, "Pick")).controlSelected, "three")
+    expect (selected (), "three")
     pickedKey "two"
     reading (["two", "Pressed"], showsIn, true)
     tick 0.5
@@ -448,13 +432,7 @@ test ("native controls are pressed and repeatedly chosen through Drive, includin
 
 spotted (role, label, x) = ui::Accessible(accessRole = role, accessLabel = label, accessLeft = x, accessTop = 10.0, accessWidth = 100.0, accessHeight = 20.0, accessValue = 0.5, accessMin = 0.0, accessMax = 1.0, accessSelected = false, accessMovable = false)
 
-// Where an activation a quarter across each named control lands, horizontally.
-landed (nodes, spots) = forEachList (spots, \spot => expect ((Semantics::spot (nodes, spot.named, 0.25)).pointX, spot.lands))
-
 // Each row of the tree tables: a node's announcement, a selection's hit, and what makes a run unclear.
-announcedRow row = expect (Semantics::announced row.node, row.words)
-selectedRow row = expect (Semantics::selected (row.nodes, row.named), row.found)
-unclearRow row = expect (Semantics::unclear row.nodes, row.said)
 
 test ("the accessibility tree reads clearly to an agent: roles, values and ranges, where an activation lands, and what makes it unclear", \() =>
     play = spotted (ui::Pressable, "Play", 0.0)
@@ -464,11 +442,11 @@ test ("the accessibility tree reads clearly to an agent: roles, values and range
     node = play(accessLabel = "Select Filter", accessMovable = true)
     picked = item(accessSelected = true)
     clear = [play, volume, menu, item, node]
-    forEachList ([{ node = play, words = "button \"Play\"" }, { node = volume, words = "slider \"Volume\" value 0.5 of 0.0 to 1.0" }, { node = menu, words = "popup \"Speed: 1x\"" }, { node = item, words = "menuitem \"Kitchen\"" }, { node = picked, words = "menuitem \"Kitchen\" selected" }, { node = node, words = "button \"Select Filter\" movable" }], announcedRow)
-    forEachList ([{ nodes = [play, item, picked], named = "Kitchen", found = true }, { nodes = clear, named = "Kitchen", found = false }, { nodes = [play], named = "Missing", found = false }], selectedRow)
+    forEachList ([{ node = play, words = "button \"Play\"" }, { node = volume, words = "slider \"Volume\" value 0.5 of 0.0 to 1.0" }, { node = menu, words = "popup \"Speed: 1x\"" }, { node = item, words = "menuitem \"Kitchen\"" }, { node = picked, words = "menuitem \"Kitchen\" selected" }, { node = node, words = "button \"Select Filter\" movable" }], \row => expect (Semantics::announced row.node, row.words))
+    forEachList ([{ nodes = [play, item, picked], named = "Kitchen", found = true }, { nodes = clear, named = "Kitchen", found = false }, { nodes = [play], named = "Missing", found = false }], \row => expect (Semantics::selected (row.nodes, row.named), row.found))
     expect (Semantics::outline [play, picked], "button \"Play\"\nmenuitem \"Kitchen\" selected")
-    forEachList ([{ nodes = clear, said = "" }, { nodes = [play, play], said = "twice: \"Play\"|twice: \"Play\"" }, { nodes = [spotted (ui::Pressable, "", 0.0)], said = "unnamed: \"\"" }, { nodes = [spotted (ui::Popup, "Receiver: ", 0.0)], said = "unnamed: \"Receiver: \"" }], unclearRow)
-    landed (clear, [{ named = "Volume", lands = 125.0 }, { named = "Play", lands = 50.0 }, { named = "Nope", lands = 0.0 }])
+    forEachList ([{ nodes = clear, said = "" }, { nodes = [play, play], said = "twice: \"Play\"|twice: \"Play\"" }, { nodes = [spotted (ui::Pressable, "", 0.0)], said = "unnamed: \"\"" }, { nodes = [spotted (ui::Popup, "Receiver: ", 0.0)], said = "unnamed: \"Receiver: \"" }], \row => expect (Semantics::unclear row.nodes, row.said))
+    forEachList ([{ named = "Volume", lands = 125.0 }, { named = "Play", lands = 50.0 }, { named = "Nope", lands = 0.0 }], \spot => expect ((Semantics::spot (clear, spot.named, 0.25)).pointX, spot.lands))
     expect ((Semantics::spot (clear, "Volume", 0.25)).pointY, 20.0))
 
 // [UI-MACHINE-TEST] [NATIVE-SHM-EVENT]: a scene with glyphs and every shape of path, driven by key and by a press
@@ -476,9 +454,8 @@ test ("the accessibility tree reads clearly to an agent: roles, values and range
 // as lettering; the quiet host takes the ask the press sends and the test reads it from the surface.
 type Probe = Ask | Play
 
-// The ink every sketched path fills with, and one path, move or line drawn in it.
-ink = ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0))
-pathed parts = Scenes::path (parts, ui::Fill, ink, 0)
+// One path, move or line drawn in solid black ink.
+pathed parts = Scenes::path (parts, ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0)
 moveTo (x, y) = ui::MoveTo(toX = x, toY = y)
 lineTo (x, y) = ui::LineTo(toX = x, toY = y)
 
