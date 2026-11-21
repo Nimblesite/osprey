@@ -85,6 +85,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] **Play bars** names the two-bar transport. **Save project** writes the current patch without leaving its page.
 - [x] Stop cancels the FerroUI transport process group. Native Play → Stop left no renderer and a zero-byte WAV. The host process tests also exercise descendant cancellation.
 - [ ] The renderer is faster than real time: see [DAW-TRANSPORT-LIVE] at the top of this plan.
+- [ ] **Stop is disabled when nothing plays ([DAW-TRANSPORT-STOP-IDLE]).** Reported by the user on 21 Nov: the transport's Stop button looks and acts enabled while no audio is playing. It must be drawn disabled and ignore taps until Play starts sound or a render, and go back to disabled when playback ends or is cancelled. Needs a journey test that taps Stop while idle and checks nothing changes, then checks Stop is enabled while playing and disabled again afterwards.
 
 ## One graph [DAW-GRAPH]
 
