@@ -396,3 +396,6 @@ test ("the true-peak brick-wall limiter holds every frame and inter-sample peak 
 test ("the octave-band analyser reads sines of known level in their bands within 0.1 dB, silence at the floor, and refuses bad frames", \() => arithmetic spectrumJourney)
 
 test ("FFT bins match the direct three-impulse spectrum and recover every sample at all seven frame sizes", \() => arithmetic (\() => forEachList (spectralSizes, fftImpulseJourney)))
+
+registerMeshJourney ()
+registerStringJourney ()

@@ -69,5 +69,7 @@ ok 68 - the FFT pitch shifter effect is set in semitones and cents within an oct
 ok 69 - the true-peak brick-wall limiter holds every frame and inter-sample peak inside its ceiling by lookahead, passes quiet signals bit-exact and refuses bad settings
 ok 70 - the octave-band analyser reads sines of known level in their bands within 0.1 dB, silence at the floor, and refuses bad frames
 ok 71 - FFT bins match the direct three-impulse spectrum and recover every sample at all seven frame sizes
-1..71
-# tests=71 passed=71 failed=0 skipped=0
+ok 72 - a corner impulse reaches adjacent membrane pickups before the diagonal and invalid grids are refused
+ok 73 - a string pool prepares and plucks voices, frees released tails, steals explicitly, refuses invalid control and preserves untouched voices
+1..73
+# tests=73 passed=73 failed=0 skipped=0
