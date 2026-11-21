@@ -449,6 +449,53 @@ fn drag_piano_note(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
 
 }
 
+// [PRISM-ROUTING-LAYOUT] A card move survives reopening the project before another action can save it.
+fn tablepad_card(regions: &mut Regions) -> (i64, f64, f64) {
+    choose_menu(regions, "View", "Bus Routing");
+    let canvas = regions.get("root").and_then(|root| scene(&root.node)).expect("Bus Routing canvas");
+    let row = (80.0, 235.0 + 1.5 * 37.0);
+    point(canvas, row, true);
+    let patch = point(canvas, row, false).0;
+    regions.adopt(&patch).expect("open tablepad's track patch");
+    let patch_canvas = regions.get("root").and_then(|r| scene(&r.node)).expect("track patch canvas");
+    patch.scenes.values().find_map(|scene| {
+        let card = scene.access.iter().find(|a| a.label.starts_with("Canvas ") && a.label.ends_with(" 0"))?;
+        Some((patch_canvas, card.x + card.w / 2.0, card.y + card.h / 2.0))
+    }).expect("the patch exposes node zero through its native canvas")
+}
+
+fn position_on_release(regions: &mut Regions, song: &std::path::Path) {
+    let (canvas, x, y) = tablepad_card(regions);
+    choose_menu(regions, "File", "Save");
+    let read = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(song).expect("saved project")).expect("valid project");
+    let original = read();
+    let off = (-55.0, -45.0);
+    let start = (x + off.0, y + off.1);
+    let end = (start.0 + if x < 700.0 { 24.0 } else { -24.0 }, start.1 + if y < 500.0 { 18.0 } else { -18.0 });
+    point(canvas, start, true);
+    point(canvas, end, true);
+    assert_eq!(read(), original, "pointer moves leave the saved project alone");
+    regions.adopt(&point(canvas, end, false).0).expect("release tablepad node zero");
+    // Capture the bytes before switching workspace, saving manually or even opening the chooser.
+    let saved = read();
+    let mut expected = original;
+    let positions = expected["tracks"][1]["positions"].as_array_mut().expect("positions");
+    positions.retain(|p| p["layoutNode"] != 0);
+    positions.push(serde_json::json!({"layoutNode":0, "layoutX":end.0-off.0, "layoutY":end.1-off.1}));
+    let normalized = |mut project: serde_json::Value| {
+        project["tracks"][1]["positions"].as_array_mut().expect("positions").sort_by_key(|p| p["layoutNode"].as_i64());
+        project
+    };
+    assert!(normalized(saved) == normalized(expected), "release persists exactly one layout edit");
+    let reopened = song.with_extension("reload.json");
+    std::fs::copy(song, &reopened).expect("separate path for a fresh load");
+    choose_menu(regions, "File", "Open Song…");
+    let loaded = Library::event(0, &Touch::completed("daw-open", Ok(reopened.display().to_string()))).expect("load the saved file");
+    regions.adopt(&loaded).expect("fresh project");
+    let (_, restored_x, restored_y) = tablepad_card(regions);
+    std::fs::remove_file(reopened).expect("remove the reopened project copy");
+    assert!((restored_x - (end.0-off.0)).abs() < 0.001 && (restored_y - (end.1-off.1)).abs() < 0.001);
+}
 #[test]
 fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     assert_eq!(Library::init(), Ok(()), "the daw's top level must run");
@@ -476,6 +523,10 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
         panic!("the Timeline must draw a canvas");
     };
 
+    position_on_release(&mut regions, &song);
+    choose_menu(&mut regions, "File", "Open Song…");
+    let reset = Library::event(0, &Touch::completed("daw-open", Ok(song.display().to_string()))).expect("return to the test project");
+    regions.adopt(&reset).expect("restore the timeline");
     menu_bar(&mut regions);
     create_group(&mut regions, canvas, &song);
     drag_piano_note(&mut regions, canvas, &song);

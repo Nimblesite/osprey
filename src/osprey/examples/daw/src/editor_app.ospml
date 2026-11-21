@@ -185,8 +185,20 @@ module EditorApp
             true => tapped (context, editor(armedNote = -1), action)
             false => Runtime::step (editor(armedNote = -1))
 
+    capturedPointer (editor, x, y, down) =
+        next = EditorView::pointed (editor, x, y, down)
+        match down || editor.dragging < 0 || editor.patchTrack < 0 || editor.songPath == ""
+            true => Runtime::step next
+            false => match editor.gesture
+                [start, ..._] => match structuralEquals (start.savedPositions, next.positions)
+                    true => Runtime::step next
+                    false => match DawSession::synced next
+                        Success saved => Runtime::step saved
+                        Error why => Runtime::step (next(message = why))
+                [] => Runtime::step next
+
     patchPointer (context, editor, x, y, down) = match editor.dragging >= 0 || editor.paletteDrag != "" || editor.wireDragging
-        true => Runtime::step (EditorView::pointed (editor, x, y, down))
+        true => capturedPointer (editor, x, y, down)
         false => match CableCanvas::deleteAt (editor, x, y)
             true => Runtime::step (ui::Pick::either (down, EditorState::tapped (editor, RemoveCable), editor))
             false => uncapturedPointer (context, editor, x, y, down)
