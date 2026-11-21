@@ -4,8 +4,9 @@
 //! framework issued, in scene units, as typed host events over the shared-memory boundary.
 //!
 //! Placement follows Osprey's GPUI host: the scene's origin at the control's top left at its
-//! `zoom`, never magnified past what the region fits whole; zoom 0 fits it whole; a scene of zero
-//! width is in window pixels.
+//! `zoom`, never magnified past what the region fits whole; zoom 0 fits it whole; a negative zoom is
+//! that scale exactly, whatever the region's size, so resizing the window never resizes what is drawn
+//! ([DAW-LAYOUT-FIXED-SCALE]); a scene of zero width is in window pixels.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -211,6 +212,7 @@ impl Placement {
         let whole = (size.width / scene.width).min(size.height / scene.height);
         let scale = match scene.zoom {
             zoom if zoom > 0.0 => zoom.min(whole),
+            zoom if zoom < 0.0 => -zoom,
             _ => whole,
         };
         let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
@@ -329,7 +331,7 @@ impl LayoutableImpl for SceneSurface {
     /// A canvas takes the space its region gives it; unbounded, it asks for its size at its zoom.
     fn measure_override(this: &Self, available: Size) -> Size {
         let scene = this.scene();
-        let zoom = if scene.zoom > 0.0 { scene.zoom } else { 1.0 };
+        let zoom = if scene.zoom == 0.0 { 1.0 } else { scene.zoom.abs() };
         let length = |given: f64, natural: f64| if given.is_finite() { given } else { natural };
         Size::new(
             length(available.width, scene.width * zoom).max(0.0),

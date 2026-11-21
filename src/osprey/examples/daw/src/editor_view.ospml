@@ -394,9 +394,9 @@ module EditorView
         ui::Lettering words x y size colour depth anchor weight => ui::Lettering(letters = words, x = x, y = y, size = size, color = colour, depth = satAdd depth offset, anchor = anchor, weight = weight)
         ui::Path steps outline paint x y scale depth => ui::Path(steps = steps, outline = outline, paint = paint, moveX = x, moveY = y, scale = scale, depth = satAdd depth offset)
 
-    // A page fills its region and grows with the window (zoom 0 fits it whole). With the keyboard docked under
-    // it the page keeps its scale and is cut off at the dock instead of shrinking.
-    pageZoom editor = ui::Pick::either (editor.keyboardShown && !editor.detailsShown, 0.75, 0.0)
+    // [DAW-LAYOUT-FIXED-SCALE] One scene unit is one point at every window size (a negative zoom is that scale
+    // exactly): resizing the window shows more or less of the page and never resizes a control.
+    pageZoom = -1.0
 
     // The Timeline and Mix pages draw the song instead of the patch, on the same surface.
     songPage editor =
@@ -408,7 +408,7 @@ module EditorView
             MixPage => MixView::access editor
             _ => listConcat (TimelineView::laneAccess editor) (TimelineView::inspectorAreas ())
         shapes = listConcat (Header::bar editor) (Header::placed (editor, Header::page (editor, ui::Pick::either (open, body, []))))
-        Ui::described (Ui::zoomed (0.0, 1440.0, 940.0, PrismArt::atlas editor.skin, shapes, Surface), listConcat (Header::songAreas editor) (Header::placedAreas (editor, ui::Pick::either (open, areas, []))))
+        Ui::described (Ui::zoomed (pageZoom, 1440.0, 940.0, PrismArt::atlas editor.skin, shapes, Surface), listConcat (Header::songAreas editor) (Header::placedAreas (editor, ui::Pick::either (open, areas, []))))
 
     canvas editor = match editor.page
         PatchPage => patchCanvas editor
@@ -427,7 +427,7 @@ module EditorView
             true => []
             false => ModuleInspector::shapes editor
         shapes = listConcat (listConcat ((CardArts::scenery editor).artShapes) details) (listConcat (CableCanvas::shapes editor) (listConcat nodes (listConcat (listAppend (toolbar editor) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))) library)))
-        scene = Ui::zoomed (pageZoom editor, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
+        scene = Ui::zoomed (pageZoom, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
         access = listConcat (toolbarItems editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) ((CardArts::card (editor, n)).artControls))))
         extra = match editor.paletteShown
             true => paletteAccess ()
@@ -449,7 +449,7 @@ module EditorView
         keys = mapList (dock.artControls, \key => key(accessTop = key.accessTop - 828.0))
         access = listAppend keys (accessible ("Close keyboard", closeX, 0.0, 150.0, 32.0, false))
         style = ui::Frames::plain
-        Ui::framed (style(frameHeight = 135), Ui::described (Ui::zoomed (0.75, 1536.0, 180.0, PrismArt::atlas editor.skin, marks, Keyboard), access))
+        Ui::framed (style(frameHeight = 135), Ui::described (Ui::zoomed (-0.75, 1536.0, 180.0, PrismArt::atlas editor.skin, marks, Keyboard), access))
 
     // [DAW-MENU] [DAW-KEYS] The window's menu bar holds every command, each with the shortcut the keymap in use
     // gives it. A command that cannot run now is disabled, which also frees its keys for its counterpart.
