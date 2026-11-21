@@ -490,7 +490,9 @@ fn the_daw_renderer_exits_one_on_every_failure_and_zero_when_it_writes() -> Test
 
     assert_rendered_excerpt(&binary, &folder)?;
     let mut playable = project;
-    playable["tracks"][0]["instrument"]["brightness"] = 0.5.into();
+    *playable
+        .pointer_mut("/tracks/0/instrument/brightness")
+        .ok_or("missing bell brightness")? = 0.5.into();
     std::fs::write(&bell, serde_json::to_vec(&playable)?)?;
     assert_repairs_truncated_note(&binary, &bell, &out)?;
     std::fs::remove_dir_all(&root)?;

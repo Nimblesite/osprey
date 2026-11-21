@@ -47,9 +47,9 @@ live (request, loop, source) = match daw::SongFiles::decode source
 
 // [DAW-TRANSPORT-LIVE-SPEED] One maker: keep its share of the window's notes for live play to read.
 warm (request, source) = match daw::SongFiles::decode source
-    Error _ => 1
+    Error why => refused why
     Success arrangement => match daw::NoteCache::warmed (windowed (request, arrangement), request.folder, parseInt (listGet (args ()) 5 ?: "") ?: -1, parseInt (listGet (args ()) 6 ?: "") ?: 0)
-        Error _ => 1
+        Error why => refused why
         Success _ => 0
 
 routed (request, mode, source) = match mode

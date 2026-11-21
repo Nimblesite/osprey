@@ -90,7 +90,7 @@ module NoteCache
         top = header lanes
         "${synth::PcmWords::le32 (length top)}00000000${hex top}${body lanes}"
 
-    // Keep private output until the full binary exists. Simultaneous makers may share the same note input.
+    // Each maker owns its hex input and publishes a complete binary by atomic rename.
     publish = "staged=$(mktemp \"$2.XXXXXX\") || exit 1; if xxd -r -p \"$1\" \"$staged\" && [ \"$(wc -c < \"$staged\")\" -eq \"$3\" ] && mv -f \"$staged\" \"$2\"; then rm -f \"$1\"; else rm -f \"$staged\"; exit 1; fi"
 
     kept (file, tag, lanes) =
@@ -151,4 +151,4 @@ module NoteCache
         false => Error(message = "A maker needs its number, from 0, and the count of makers, at most 64.")
         true => Outcomes::carried (found (song, folder), \dirs => Outcomes::carried (prepared (song, folder, dirs, worker), \_ =>
             all = jobs song
-            worked (song, dirs, "w${worker}", all, share (all, worker, workers))))
+            worked (song, dirs, "w${worker}-${random ()}", all, share (all, worker, workers))))
