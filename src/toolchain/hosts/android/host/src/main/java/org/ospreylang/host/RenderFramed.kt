@@ -69,7 +69,8 @@ object RenderFramed {
     /** The frame's insets, extents, fill and line, and its fill of its parent. */
     private fun inset(renderer: ToldRenderer, box: FrameLayout, style: Tree?) {
         style ?: return
-        box.setPadding(style.count("left"), style.count("top"), style.count("right"), style.count("bottom"))
+        val edge = { name: String -> dp(box.context, style.count(name).toDouble()) }
+        box.setPadding(edge("left"), edge("top"), edge("right"), edge("bottom"))
         sized(box, style)
         dress(renderer, box, style)
     }
