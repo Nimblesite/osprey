@@ -49,6 +49,18 @@ refusedWith (outcome, why) = match outcome
     Error actual => expect (synth::Faults::detail actual, why)
     Success _ => unexpected ()
 
+// [SYNTH-ADVANCED-CORE-MODELS] The refusal's typed class as well as its exact message.
+refusedAs (outcome, kind, why) = match outcome
+    Error actual => expect ("${faultClass actual}: ${synth::Faults::detail actual}", "${kind}: ${why}")
+    Success _ => unexpected ()
+
+faultClass fault = match fault
+    synth::InvalidConfiguration _ => "configuration"
+    synth::ExhaustedCapacity _ => "capacity"
+    synth::MissingResource _ => "resource"
+    synth::IncompatibleLayout _ => "layout"
+    synth::NumericalFailure _ => "numerical"
+
 // One shared runner per assertion shape: rows carry the inputs and the expected value.
 exactRows rows = forEachList (rows, \c => expect (c.got, c.want))
 
@@ -196,6 +208,38 @@ configured config = match SpectralStreams::configure config
     Error _ => false
     Success _ => true
 
+// [SYNTH-ADVANCED-CORE-RESOURCES] A sample resource from its five fields.
+resourceOf (name, rate, channels, root, samples) = synth::SampleResource(name = name, sampleRate = rate, sourceChannels = channels, rootFrequency = root, samples = samples)
+
+// No two of `hashes` collide.
+allDistinct hashes = forEachList (toList (range (0, length hashes)), \i => forEachList (toList (range (satAdd i 1, length hashes)), \j => expect ((listGet hashes i ?: 0) == (listGet hashes j ?: 1), false)))
+
+tableIdentity (name, size, count) = match synth::Wavetables::classic (size, count)
+    Error why =>
+        expect (synth::Faults::detail why, "a table")
+        synth::ResourceIdentity(name = "", hash = 0, channels = 0, sampleRate = 0, frames = 0, version = 0)
+    Success t => synth::Resources::table (name, t)
+
+identityJourney () =
+    base = resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5, 1.0])
+    id = synth::Resources::sample base
+    expect ("${id.name} ${id.channels} ${id.sampleRate} ${id.frames} ${id.version}", "kick 1 48000 4 1")
+    expect ((synth::Resources::sample (resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5, 1.0]))).hash, id.hash)
+    // The name labels; it does not hash. Every word and every field of metadata does.
+    expect ((synth::Resources::sample (resourceOf ("renamed", 48000, 1, 60.0, [0.0, 0.5, -0.5, 1.0]))).hash, id.hash)
+    variants = [base, resourceOf ("kick", 48000, 1, 60.0, [-1.0 * 0.0, 0.5, -0.5, 1.0]), resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5, 0.9999999999999999]), resourceOf ("kick", 44100, 1, 60.0, [0.0, 0.5, -0.5, 1.0]), resourceOf ("kick", 48000, 2, 60.0, [0.0, 0.5, -0.5, 1.0]), resourceOf ("kick", 48000, 1, 60.000000000001, [0.0, 0.5, -0.5, 1.0]), resourceOf ("kick", 48000, 1, 60.0, [0.5, 0.0, -0.5, 1.0]), resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5]), resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5, 1.0, 0.0]), resourceOf ("kick", 48000, 1, 60.0, [])]
+    allDistinct (mapList (variants, \r => (synth::Resources::sample r).hash))
+    forEachList ([{ channels = 1, count = 6, frames = 6 }, { channels = 2, count = 6, frames = 3 }, { channels = 2, count = 7, frames = 3 }, { channels = 8, count = 64, frames = 8 }, { channels = 0, count = 5, frames = 5 }], \c => expect ((synth::Resources::sample (resourceOf ("pad", 48000, c.channels, 60.0, mapList (toList (range (0, c.count)), toFloat)))).frames, c.frames))
+    expect ((synth::Resources::matches (id, id)) ?: id(hash = 0), id)
+    refusedAs (synth::Resources::matches (id, synth::Resources::sample (resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5, 0.75]))), "resource", "The resource kick changed since the project saved it.")
+    refusedAs (synth::Resources::matches (id, synth::Resources::sample (resourceOf ("kick", 96000, 1, 60.0, [0.0, 0.5, -0.5, 1.0]))), "resource", "The resource kick changed since the project saved it.")
+    forEachList ([id(name = "snare"), id(version = 2), id(version = 0)], \saved => refusedAs (synth::Resources::matches (saved, id), "resource", "The saved resource ${saved.name} is missing or uses another identity version."))
+    // Tables hash every frame and level; a table is one rate-independent channel of `size` samples.
+    wide = tableIdentity ("classic", 256, 32)
+    expect ("${wide.name} ${wide.channels} ${wide.sampleRate} ${wide.frames} ${wide.version}", "classic 1 0 256 1")
+    expect ((tableIdentity ("classic", 256, 32)).hash, wide.hash)
+    allDistinct ([wide.hash, (tableIdentity ("classic", 256, 16)).hash, (tableIdentity ("classic", 512, 32)).hash, (tableIdentity ("classic", 128, 32)).hash, id.hash])
+
 registerWaveJourneys () =
     test ("decoded WAV keeps every PCM width, channel layout and stereo downmix exact", \() => arithmetic (\() =>
         succeeds (WaveImport::decode (wavFile (1, 1, 48000, 16, [0, 64, 0, 128])), \wave =>
@@ -275,7 +319,7 @@ registerWaveJourneys () =
         refusedWith (SampleResources::fromWave ("loop", 60.0, wave(samples = [2.0, -2.0])), "Grains require 2–1048576 finite normalised mono samples and capacity 1–256.")
         refusedWith (SampleResources::fromWave ("loop", 60.0, wave(channels = 3)), "Invalid sample resource name, sample rate, source channels or root frequency.")
         succeeds (SampleResources::decodeWave ("loop", 60.0, wavFile (1, 1, 48000, 16, [0, 64, 0, 128])), \resource => sameSamples (resource.samples, [0.5, -1.0]))
-        refusedWith (SampleResources::decodeWave ("loop", 60.0, wavText "RIFF"), "WAV file size must be between 12 bytes and 8 MiB.")
+        refusedAs (SampleResources::decodeWave ("loop", 60.0, wavText "RIFF"), "resource", "WAV file size must be between 12 bytes and 8 MiB.")
         succeeds (SampleResources::fromWave ("loop", 60.0, wave), \tuned =>
             forEachList ([{ note = 60.0, rate = 48000.0, want = 1.0 }, { note = 72.0, rate = 48000.0, want = 2.0 }, { note = 48.0, rate = 96000.0, want = 0.25 }, { note = 60.0, rate = 44100.0, want = 1.08843537414966 }],
                 \held => succeeds (SampleResources::playbackRate (tuned, held.note, held.rate), \speed => near (speed, held.want, 0.000000001)))
@@ -283,7 +327,7 @@ registerWaveJourneys () =
             forEachList ([7999.0, 384001.0], \rate => refusedWith (SampleResources::playbackRate (tuned, 60.0, rate), "Invalid sample pitch or output rate."))
             expect (SampleResources::metadata kit, true))
         refusedWith (SampleResources::playbackRate (kit(sampleRate = 192001), 60.0, 48000.0), "Invalid sample pitch or output rate.")
-        succeeds (SampleResources::fromWave ("sub", 0.0, wave), \low => refusedWith (SampleResources::playbackRate (low, 127.0, 48000.0), "The requested sample transposition exceeds the grain rate limit."))))
+        succeeds (SampleResources::fromWave ("sub", 0.0, wave), \low => refusedAs (SampleResources::playbackRate (low, 127.0, 48000.0), "capacity", "The requested sample transposition exceeds the grain rate limit."))))
     test ("generated wave math: PCM words, downmix, tuning and polyBLEP shapes hit exact IEEE754 values", \() => arithmetic (\() =>
         exactRows ([{ got = WaveMath::pcm (0.0, 8.0), want = -1.0 }, { got = WaveMath::pcm (128.0, 8.0), want = 0.0 }, { got = WaveMath::pcm (255.0, 8.0), want = 0.9921875 }, { got = WaveMath::pcm (0.0, 16.0), want = 0.0 }, { got = WaveMath::pcm (16384.0, 16.0), want = 0.5 }, { got = WaveMath::pcm (32767.0, 16.0), want = 0.999969482421875 }, { got = WaveMath::pcm (32768.0, 16.0), want = -1.0 }, { got = WaveMath::pcm (65535.0, 16.0), want = -0.000030517578125 }, { got = WaveMath::pcm (4194304.0, 24.0), want = 0.5 }, { got = WaveMath::pcm (8388608.0, 24.0), want = -1.0 }, { got = WaveMath::pcm (16777215.0, 24.0), want = -0.00000011920928955078125 }, { got = WaveMath::pcm (0.0, 32.0), want = 0.0 }, { got = WaveMath::pcm (2147483648.0, 32.0), want = -1.0 }, { got = WaveMath::pcm (4294967295.0, 32.0), want = -0.00000000046566128730773926 }])
         exactRows ([{ got = WaveMath::mono (0.25, -0.5), want = -0.125 }, { got = WaveMath::mono (-1.0, 1.0), want = 0.0 }, { got = WaveMath::mono (0.5, 0.5), want = 0.5 }, { got = WaveMath::mono (0.75, 0.25), want = 0.5 }])
@@ -367,3 +411,4 @@ registerWaveJourneys () =
         expect (configured (synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = synth::SpectralSeries(steps = [synth::SpectralMorph(amount = 0.5, mode = synth::Blend)]), mix = 1.0)), true)
         forEachList ([{ a = 1.0, b = 2.0, c = 1.0, want = 0.0 }, { a = 0.0, b = 0.0, c = 0.0, want = 0.0 }, { a = 0.0, b = 1.0, c = 0.5, want = 0.1666666667 }, { a = 0.5, b = 1.0, c = 0.0, want = -0.1666666667 }, { a = 0.0, b = 1.0, c = 1.0, want = 0.5 }, { a = 1.0, b = 1.0, c = 0.0, want = -0.5 }, { a = -2.0, b = 0.0, c = -2.0, want = 0.0 }], \p => near (SpectralMath::peakOffset (p.a, p.b, p.c), p.want, 0.0000001))
         near (SpectralMath::logLevel 1.0, 0.000000001, 0.0000000001)))
+    test ("sample, impulse and table resources carry a content identity: name, 64-bit hash, channels, rate, frames and version, and a changed or renamed resource is refused [SYNTH-ADVANCED-CORE-RESOURCES]", \() => arithmetic identityJourney)

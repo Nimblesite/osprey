@@ -59,21 +59,21 @@ module Grains
             false => Success(value = GrainAdmission(pool = pool(revision = satAdd pool.revision 1), accepted = false))
             true => Success(value = GrainAdmission(pool = pool(voices = listAppend pool.voices (GrainVoice(region = pool.region, identity = pool.nextIdentity, controls = settings, cursor = settings.start, age = 0)), revision = satAdd pool.revision 1, nextIdentity = satAdd pool.nextIdentity 1), accepted = true))
 
-    interpolated (source, cursor, region) = match floatToInt (floor cursor)
-        Error _ => Error(message = NumericalFailure(detail = "A whole-number value is not finite or is out of range."))
-        Success index => match listGet source index
-            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
-            Success a =>
-                following = match index == satSub region.limit 1
-                    true => match region.boundary
-                        LoopSource => region.first
-                        OneShotSource => index
-                    false => satAdd index 1
-                match listGet source following
-                    Error _ => Error(message = MissingResource(detail = "index out of bounds"))
-                    Success b => match sourceSample a && sourceSample b
-                        false => Error(message = NumericalFailure(detail = "A grain read a nonfinite or unnormalised source sample."))
-                        true => Success(value = GrainMath::interpolated (a, b, GrainMath::fraction cursor))
+    interpolated (source, cursor, region) = Outcomes::whole (floor cursor, \index => tapped (source, cursor, region, index))
+
+    tapped (source, cursor, region, index) = match listGet source index
+        Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+        Success a =>
+            following = match index == satSub region.limit 1
+                true => match region.boundary
+                    LoopSource => region.first
+                    OneShotSource => index
+                false => satAdd index 1
+            match listGet source following
+                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+                Success b => match sourceSample a && sourceSample b
+                    false => Error(message = NumericalFailure(detail = "A grain read a nonfinite or unnormalised source sample."))
+                    true => Success(value = GrainMath::interpolated (a, b, GrainMath::fraction cursor))
 
     // Only reached from checked entry points; advancing preserves cursor/lifetime invariants.
     contribution (source, voice) = match interpolated (source, voice.cursor, voice.region)

@@ -9,11 +9,11 @@ module MidiClips
 
     integer (value, low, high) = match value >= low && value <= high
         false => Error(message = InvalidConfiguration(detail = "The MIDI generator parameter is outside its range."))
-        true => match floatToInt value
-            Error _ => Error(message = NumericalFailure(detail = "A whole-number value is not finite or is out of range."))
-            Success count => match toFloat count == value
-                false => Error(message = InvalidConfiguration(detail = "MIDI pitch and gate frames must be whole numbers."))
-                true => Success(value = count)
+        true => Outcomes::whole (value, \count => exact (count, value))
+
+    exact (count, value) = match toFloat count == value
+        false => Error(message = InvalidConfiguration(detail = "MIDI pitch and gate frames must be whole numbers."))
+        true => Success(value = count)
 
     events (identity, pitch, velocity, gate) =
         on = HostNote(kind = 1, offset = 0, pitch = pitch, channel = 0, identity = identity, velocity = velocity)

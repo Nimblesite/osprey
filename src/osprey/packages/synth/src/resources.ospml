@@ -1,0 +1,39 @@
+// [SYNTH-ADVANCED-CORE-RESOURCES] Identity, content hash, layout, rate, length and version of prepared resources.
+namespace synth
+
+(** A resource's identity is derived from its content, never assigned: two samples or tables with the same
+    words and metadata share a hash, and one changed bit (even 0.0 to -0.0) changes it. An impulse response
+    is a sample resource. The hash is 64-bit FNV-1a over whole 64-bit words, so it detects change; it is not
+    a cryptographic digest. *)
+module Resources
+    (** The identity layout; raise it when the hashed words or their order change. *)
+    export version = 1
+
+    offset = -3750763034362895579
+
+    prime = 1099511628211
+
+    mixed (hash, word) = wrapMul (bitXor hash word) prime
+
+    hashed (seed, values) = foldList (values, seed, \(hash, value) => mixed (hash, floatBits value))
+
+    (** A sample's identity: its name, channels, rate and root pitch hashed with every sample word. *)
+    export sample resource = ResourceIdentity(name = resource.name, hash = hashed (foldList ([resource.sampleRate, resource.sourceChannels, floatBits resource.rootFrequency, length resource.samples], offset, mixed), resource.samples), channels = resource.sourceChannels, sampleRate = resource.sampleRate, frames = intDiv (length resource.samples) (atLeastOne resource.sourceChannels), version = version)
+
+    atLeastOne count = match count >= 1
+        true => count
+        false => 1
+
+    levelHashed (hash, level) = hashed (mixed (hash, level.harmonics), level.samples)
+
+    frameHashed (hash, frame) = foldList (frame.levels, mixed (hash, length frame.levels), levelHashed)
+
+    (** A wavetable's identity under `name`: one rate-independent channel of `size`-sample frames. *)
+    export table (name, t) = ResourceIdentity(name = name, hash = foldList (t.frames, foldList ([t.size, t.harmonics, length t.frames], offset, mixed), frameHashed), channels = 1, sampleRate = 0, frames = t.size, version = version)
+
+    (** `current` still matches the identity a project saved: same version, name, hash and layout. *)
+    export matches (saved, current) = match saved.version == current.version && saved.name == current.name
+        false => Error(message = MissingResource(detail = "The saved resource ${saved.name} is missing or uses another identity version."))
+        true => match saved.hash == current.hash && saved.channels == current.channels && saved.sampleRate == current.sampleRate && saved.frames == current.frames
+            false => Error(message = MissingResource(detail = "The resource ${saved.name} changed since the project saved it."))
+            true => Success(value = current)

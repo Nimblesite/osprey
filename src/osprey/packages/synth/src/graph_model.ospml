@@ -245,3 +245,11 @@ type PatchResources =
     samples : List<NamedResource>
     tables : List<NamedTable>
 
+
+type ResourceIdentity =
+    name : string
+    hash : int
+    channels : int
+    sampleRate : int
+    frames : int
+    version : int

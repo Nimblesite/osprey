@@ -16,15 +16,13 @@ module GrainScheduler
         true =>
             clock = held.next
             Success(value = held(positions = listReverse held.positions, next = clock(position = end)))
-        false => match floatToInt (GrainMath::nextSeed (toFloat held.next.seed))
-            Error _ => Error(message = NumericalFailure(detail = "A whole-number value is not finite or is out of range."))
-            Success seed => match floatToInt (GrainTimings::interval (held.next.timing, seed))
-                Error _ => Error(message = NumericalFailure(detail = "A whole-number value is not finite or is out of range."))
-                Success interval => match interval >= 1 && held.next.nextOnset <= satSub 9223372036854775807 interval
-                    false => Error(message = ExhaustedCapacity(detail = "The grain scheduler exhausted its onset clock."))
-                    true =>
-                        clock = held.next
-                        continued (held(positions = listPrepend held.positions clock.nextOnset, next = clock(nextOnset = satAdd clock.nextOnset interval, seed = seed)), end)
+        false => Outcomes::whole (GrainMath::nextSeed (toFloat held.next.seed), \seed => Outcomes::whole (GrainTimings::interval (held.next.timing, seed), \interval => onset (held, end, seed, interval)))
+
+    onset (held, end, seed, interval) = match interval >= 1 && held.next.nextOnset <= satSub 9223372036854775807 interval
+        false => Error(message = ExhaustedCapacity(detail = "The grain scheduler exhausted its onset clock."))
+        true =>
+            clock = held.next
+            continued (held(positions = listPrepend held.positions clock.nextOnset, next = clock(nextOnset = satAdd clock.nextOnset interval, seed = seed)), end)
 
     (** Returns absolute onsets in [position, position + frames); at most one onset per sample. Retain the returned clock. *)
     export block (clock, frames) = match valid clock && frames >= 1 && frames <= 2048 && clock.position <= satSub 9223372036854775807 frames

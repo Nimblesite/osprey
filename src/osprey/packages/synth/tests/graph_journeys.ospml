@@ -308,9 +308,7 @@ clipFrom (clips, identity) = match synth::ClipInputs::completed (clips, identity
 channelOf (clip, frame, channel) = listGet clip.clipSamples (satAdd (satMul frame clip.clipChannels) channel) ?: 999.0
 
 // [SYNTH-ADVANCED-CORE-MODELS] A graph output that is NaN, infinite or past 10^6 is an error, never published audio.
-refusedOutput value = match synth::RenderInputs::sample (framed value, 4)
-    Error why => expect (synth::Faults::detail why, "Non-finite or excessive graph output.")
-    Success _ => expect ("published ${value}", "refused")
+refusedOutput value = refusedAs (synth::RenderInputs::sample (framed value, 4), "numerical", "Non-finite or excessive graph output.")
 
 framed value = synth::SampleFrame(states = [], values = [synth::NodeSample(identity = 4, value = value)])
 

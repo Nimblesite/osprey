@@ -33,3 +33,4 @@ type PatchDocument { format: Int nodes: List<SavedNode> cables: List<Cable> macr
 type NamedResource { name: String sample: SampleResource }
 type NamedTable { name: String table: Wavetable }
 type PatchResources { samples: List<NamedResource> tables: List<NamedTable> }
+type ResourceIdentity { name: String hash: Int channels: Int sampleRate: Int frames: Int version: Int }

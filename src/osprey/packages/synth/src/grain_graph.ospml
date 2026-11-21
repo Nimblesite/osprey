@@ -3,11 +3,11 @@ namespace synth
 
 (** Parameter decoding and persistent stereo graph execution for sampled grain clouds. *)
 module GrainGraph
-    integer value = match floatToInt value
-        Error _ => Error(message = NumericalFailure(detail = "A whole-number value is not finite or is out of range."))
-        Success count => match toFloat count == value
-            true => Success(value = count)
-            false => Error(message = InvalidConfiguration(detail = "Grain timing requires whole output-sample counts."))
+    integer value = Outcomes::whole (value, \count => exact (count, value))
+
+    exact (count, value) = match toFloat count == value
+        true => Success(value = count)
+        false => Error(message = InvalidConfiguration(detail = "Grain timing requires whole output-sample counts."))
 
     parameter (n, outcome, key) = match outcome
         Error why => Error(message = why)
