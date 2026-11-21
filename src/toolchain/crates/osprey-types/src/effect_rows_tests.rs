@@ -483,8 +483,8 @@ mod gpu;
 #[test]
 fn wide_local_record_preserves_the_selected_callbacks_effects() {
     let fields: Vec<_> = (0..260).map(|i| format!("f{i}: fn() -> int")).collect();
-    let mut values: Vec<_> = (0..260).map(|i| format!("f{i}: fn() => {i}")).collect();
-    values[259] = "f259: fn() => perform Read.value()".into();
+    let mut values: Vec<_> = (0..259).map(|i| format!("f{i}: fn() => {i}")).collect();
+    values.push("f259: fn() => perform Read.value()".into());
     let record = format!(
         "effect Read {{ value: fn() -> int }}\ntype Callbacks = {{ {} }}",
         fields.join(", ")
