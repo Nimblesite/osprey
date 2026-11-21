@@ -41,6 +41,8 @@ Every issue the user raised while testing Prism by hand, with where it is tracke
 | 13 | Editing a built-in instrument silently swaps its sound and drops settings | "Built-in instruments become patches" | Open |
 | 14 | The routing page must use the real patch nodes and cables, not its own drawn cards | [PRISM-ROUTING-EDITOR] | Open. Owner: prism-routing-design |
 | 15 | Dials against the design: parameters after the tenth are dropped, readings are always hundredths, fine drag has no Shift cue, no arrow keys or focus, no double-press to default | Patch Controls | Open |
+| 16 | In a tall window the pages do not fill it: the song pages sit in the top third with empty space below, and nothing scrolls or pans to use the room | [DAW-LAYOUT-FILL] | Open |
+| 17 | On the patch page a module cannot be dragged lower than about the first quarter of the canvas | [DAW-LAYOUT-FILL] | Open |
 
 Found while fixing these:
 
@@ -48,6 +50,16 @@ Found while fixing these:
 - [ ] Find how the sub patch lost its Mixer→Gain cable during the user's drag, and add the regression.
 - [ ] Toggle Loop and move the end marker while the song plays (today both say "Stop first").
 - [ ] A play that hits a track which cannot render names the track and module in plain words.
+
+## Pages fill the window; the canvas pans [DAW-LAYOUT-FILL]
+
+Reported by the user on 2026-11-21 with two screenshots of a tall, narrow window: "The UI is totally fucked. Nothing is scrollable so we can fill the empty space with more canvas anywhere. I can't even drag the modules lower than about the first quarter of the vertical space."
+
+- [ ] **Song pages use the whole window.** The Timeline and Bus routing pages are drawn on a fixed 1440 × 940 scene scaled to the window's width, so a tall window shows the page in its top third and a dead area below (`Header::shift` centres only sideways; `TimelineGeometry.centred`). The page must lay out to the region's real width and height: more track lanes, a taller piano roll, a taller routing table and signal flow.
+- [ ] **A module drags anywhere on the patch canvas.** The drag is clamped to the 940-unit scene height, not to the canvas actually shown, so in a tall window a module stops about a quarter of the way down. Clamp to the visible canvas, measured from the region.
+- [ ] **The patch canvas pans and zooms.** Drag on empty canvas, or two-finger scroll, pans; pinch or Cmd-wheel zooms; the canvas is larger than the window and Zoom to Fit shows the whole patch. Needs the wheel and pinch events the host does not send yet (also needed by [DAW-TIMELINE-ZOOM]).
+- [ ] **Lists scroll.** The track list, the lanes and the routing table scroll with the wheel when they hold more rows than fit.
+- [ ] A journey test at three window shapes (wide, square, tall) asserts that each page's body reaches the bottom of its region and that a module dragged to the bottom edge lands there.
 
 ## Slider drag lag [DAW-MIX-DRAG]
 
