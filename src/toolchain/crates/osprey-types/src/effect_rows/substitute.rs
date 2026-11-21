@@ -75,12 +75,9 @@ impl Analyzer<'_> {
         // A replacement already belongs to the caller: walking it again can
         // replace its parameter with itself indefinitely for nested records,
         // and can also attribute a callback to the wrong lexical binder.
-        for nested in value.fields.values_mut() {
+        for nested in value.container_children_mut() {
             *nested = self.substitute_value_at(std::mem::take(nested), target_level, arguments);
         }
-        self.substitute_payload_at(&mut value.element, target_level, arguments);
-        self.substitute_payload_at(&mut value.result_payload, target_level, arguments);
-        self.substitute_payload_at(&mut value.fiber_payload, target_level, arguments);
         value.deferred = self.substitute_summary_at(value.deferred, target_level, arguments);
         if let Some(Callable::Parameter { projection, .. }) = &mut value.callable {
             map_projection_values(projection, |value| {
@@ -152,33 +149,19 @@ impl Analyzer<'_> {
                 Callable::Known(mut known) => {
                     known.summary =
                         self.substitute_summary_at(known.summary, target_level + 1, arguments);
-                    known.returned = known.returned.map(|returned| {
-                        Box::new(self.substitute_value_at(*returned, target_level + 1, arguments))
-                    });
+                    if let Some(returned) = known.returned.as_deref_mut() {
+                        *returned = self.substitute_value_at(
+                            std::mem::take(returned),
+                            target_level + 1,
+                            arguments,
+                        );
+                    }
                     value.callable = Some(Callable::Known(known));
                 }
                 Callable::Unknown => value.callable = Some(Callable::Unknown),
             }
         }
         value
-    }
-
-    /// Substitute through one optional boxed payload slot. The element, result
-    /// and fiber payloads are all single nested values, so each descends the
-    /// same way — an absent payload stays absent.
-    pub(super) fn substitute_payload_at(
-        &self,
-        slot: &mut Option<Box<Value>>,
-        target_level: usize,
-        arguments: &[Option<Value>],
-    ) {
-        if let Some(payload) = slot.take() {
-            *slot = Some(Box::new(self.substitute_value_at(
-                *payload,
-                target_level,
-                arguments,
-            )));
-        }
     }
 }
 
