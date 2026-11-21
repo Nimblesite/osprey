@@ -185,13 +185,12 @@ The following four host-free journeys failed independently. Keep each open until
 - [ ] Verify the patch popup, focused-window Close, application Quit, keyboard focus return and screen-reader announcements on macOS and Windows. The screenshot review covered pointer interaction on macOS.
 - [ ] Verify spectral, shifter and reverb state after the generic fold fix. The synth owner reported float samples being interpreted as integers when a generic function is passed directly to `foldList`. Check fractional samples under GC and ARC and the rendered audio against a known-good reference. [Compiler regression](../regressions.md)
 
-## Math is Lean [DAW-MATH]
+## Native Osprey formulas and Lean proofs [DAW-MATH]
 
-Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is generated from that file ([MATH-CODE](../specs/tooling/MathToCode.md)). This covers timing, envelopes, mix ranges, pan laws, the excerpt window, and timeline and piano-roll geometry. No arithmetic formula is written by hand in `.ospml`. The generated modules are never committed. A Lean construct the reader cannot handle is fixed by extending the reader, not by writing Osprey math.
+Keep the production formulas in native Osprey and derive the definitions checked by Lean from those files. Track notation that obscures the original mathematical expression in the [native formula checklist](math-to-code.md#native-osprey-formulas-math-code-native-notation).
 
-- [x] `ArrangeMath.lean`: beat and second frames, envelopes, pan, the limiter, `mixable`, `inWindow` and `shifted`. `Projects` and `Arrangements` call them.
-- [x] `TimelineGeometry.lean`: bars, `barStart`, and lane, roll and mix placement. The transport and timeline call `barStart`.
-- [ ] Find the remaining hand-written arithmetic in `src/osprey/examples/daw/src/*.ospml` (pixel offsets, meters, percentages) and move it to Lean.
+- [x] Move the 30 arrangement functions to `arrange_math.ospml`, including timing, envelopes, pan and mix ranges. Connect the renderer manifest to that file and check sustain and release against its production envelope.
+- [ ] Migrate the dial, canvas and timeline geometry from Lean. Verify the native source through its callers and connect each newly proved property to its production function.
 
 ## Project file [DAW-PROJECT]
 
