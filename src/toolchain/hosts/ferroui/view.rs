@@ -74,6 +74,10 @@ pub struct Cx<'s> {
 
 /// The element of the root region; a frame that told no components is drawn as an empty border.
 pub fn root(host: &Rc<Host>, look: Look) -> Element {
+    region(host, look, "root")
+}
+
+pub fn region(host: &Rc<Host>, look: Look, key: &str) -> Element {
     let told = host.regions().told();
     if !told {
         return border().into();
@@ -83,7 +87,7 @@ pub fn root(host: &Rc<Host>, look: Look) -> Element {
         look,
         stack: Vec::new(),
     };
-    embed(&mut cx, "root")
+    embed(&mut cx, key)
 }
 
 /// The element of a region, in place of the slot that names it.

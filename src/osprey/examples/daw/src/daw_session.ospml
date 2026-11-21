@@ -39,6 +39,13 @@ module DawSession
         true => editor
         false => pickedAt (editor, index, editor.rollBar)
 
+    (** Open this track in a separate patch window while keeping the arrangement visible. *)
+    export detached (editor, index) =
+        next = opened (editor, index)
+        match next.patchTrack == index && index >= 0
+            true => next(page = ui::Pick::either (editor.page == PatchPage, TimelinePage, editor.page), patchWindowSerial = satAdd editor.patchWindowSerial 1)
+            false => next
+
     highest graph = foldList (graph.nodes, 0, \(top, n) => ui::Pick::either (n.identity >= top, n.identity, top))
 
     (** Open the track's patch in Prism; a track that cannot become a graph stays on the timeline with the reason. *)
@@ -404,7 +411,7 @@ module DawSession
                 Success song => publishSong (before, after, song)
         _ => publishSong (before, after, after.song)
 
-    projectEdit (before, after) = match before.patchTrack == after.patchTrack && after.page == PatchPage && after.patchTrack >= 0 && !structuralEquals (before.graph, after.graph)
+    projectEdit (before, after) = match before.patchTrack == after.patchTrack && (after.page == PatchPage || after.patchWindowSerial > 0) && after.patchTrack >= 0 && !structuralEquals (before.graph, after.graph)
         true => publish (before, after, daw::PatchRecords::live (after.song, after.patchTrack, after.graph))
         false => match focus before == focus after && structuralEquals (daw::LiveControls::settings before.song, daw::LiveControls::settings after.song)
             true => after
@@ -466,9 +473,9 @@ module DawSession
     export shown (editor, page) = match synced (editor(rollDrag = RollIdle))
         Error why => ui::Runtime::step (editor(page = PatchPage, message = "${why} The patch stays open."))
         Success ready => match page
-            PatchPage => match ready.songPath == "" || ready.track == ready.patchTrack
+            PatchPage => match ready.songPath == ""
                 true => ui::Runtime::step (ready(page = PatchPage))
-                false => ui::Runtime::step (opened (ready, ready.track))
+                false => ui::Runtime::step (detached (ready, ready.track))
             _ => ui::Runtime::step (ready(page = page))
 
     (** What a tap on the Timeline or Mix page does, if anything. *)

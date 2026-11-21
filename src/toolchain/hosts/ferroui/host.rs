@@ -68,6 +68,8 @@ pub struct Host {
     calling: Cell<bool>,
     animating: Cell<bool>,
     clock: RefCell<Option<ClockHandler>>,
+    #[cfg(feature = "desktop")]
+    pub windows: RefCell<Option<ClockHandler>>,
     storage: RefCell<Option<Rc<dyn IStorageProvider>>>,
     messages: RefCell<Vec<String>>,
     rendered: RefCell<Vec<String>>,
@@ -97,6 +99,8 @@ impl Host {
             calling: Cell::new(false),
             animating: Cell::new(false),
             clock: RefCell::new(None),
+            #[cfg(feature = "desktop")]
+            windows: RefCell::new(None),
             storage: RefCell::new(None),
             messages: RefCell::new(Vec::new()),
             rendered: RefCell::new(Vec::new()),
@@ -252,6 +256,8 @@ impl Host {
         self.patching.set(true);
         self.version.update(|version| *version += 1);
         self.patching.set(false);
+        #[cfg(feature = "desktop")]
+        if let Some(sync) = self.windows.borrow().as_ref() { sync(self); }
         self.answer_pending();
     }
 
@@ -369,6 +375,18 @@ impl Host {
                 handler(self);
             }
         }
+    }
+
+    #[cfg(feature = "desktop")]
+    pub fn detached_element(self: &Rc<Self>, key: String) -> Element {
+        let host = self.clone();
+        border().child(rerender(move || {
+            host.version.get();
+            let dark = host.dark.get();
+            let theme = host.regions().theme().cloned().map(Rc::new);
+            if host.regions().get(&key).is_none() { return border().into(); }
+            crate::view::region(&host, Look { theme, dark }, &key)
+        })).into()
     }
 
     /// The element of the whole window: the root region above the diagnostics strip.

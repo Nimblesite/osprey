@@ -14,8 +14,8 @@ The original `codex/prism-synth-routing` work merged as PR #412. Completion cont
 - [x] Expand typed component descriptors and rendering for MIDI generators, modulators and effects; declare new models in typeDiagram and derive their representations.
 - [x] Replace Prism's fixed patch mapping with the synth graph, with a component menu, selectable nodes, compatible cable endpoints and parameter inspection.
 - [ ] Publish applied graph/parameter revisions and component activity through Signals without a UI dependency in the package.
-- [ ] Implement actual VST3 discovery, out-of-process scanning, activation, processing, MIDI/automation, state save/restore and disposal as an external graph node.
-- [ ] Verify an SDK instrument and effect with real audio, MIDI, parameter and state round trips; surface unavailable or failed plug-ins explicitly.
+- [x] Implement actual VST3 discovery, out-of-process scanning, activation, processing, MIDI/automation, state save/restore and disposal as an external graph node. The worker session can snapshot both states and restore them in a fresh process by class ID.
+- [x] Verify an SDK instrument and effect with real audio, MIDI, parameter and state round trips; surface unavailable or failed plug-ins explicitly. ADelay and mda JX10 pass independent-process restore tests, malformed-state rejection and real processing.
 - [ ] Exercise native and canvas interfaces with loaded headless and windowed journeys, screenshots and audio evidence; retain cross-platform availability with explicit platform limits.
 - [ ] Run static analysis, required CI preparation and coverage checks; coordinate a single validated push and inspect its CI result.
 - [ ] Record remaining limitations and remove only this task's temporary processes/artifacts.
@@ -57,8 +57,8 @@ The current component picker offers the six already rendered reference processor
 - [x] Pin and build the official SDK and a separate native scanning/processing worker without installing user plug-ins.
 - [x] Scan real ADelay and mda modules by stable VST3 class IDs.
 - [x] Initialize, activate and process a real effect and instrument, including note-on/off delivery, finite-output checks, teardown and unload; six bounded worker tests pass on macOS arm64.
-- [ ] Add parameter automation, controller/component state round trips and restart notifications.
-- [ ] Add bounded streaming transport and connect external processor instances to synth graph ports and parameter Signals.
+- [x] Add parameter automation, controller/component state round trips and restart notifications. Changing the JX10 program triggers a real controller restart notification. Unsupported topology changes stop the worker with an explicit diagnostic.
+- [x] Add bounded streaming transport and connect external processor instances to synth graph ports and parameter Signals. The synth and native Prism journeys check the worker packets, modulation points and device output.
 - [x] Drive VST discovery/creation and actual playback from Prism's component menu.
 
 `make -C src/toolchain/targets/tests synth-vst` is the repeatable entry point. The ADelay probe measured peak 0.25 from an input impulse; mda JX10 measured peak 0.652497 from MIDI note events. These checks prove real loaded-binary audio processing, not live UI routing, arbitrary plug-in compatibility, process sandboxing or note-release correctness. The seven Prism journeys also pass under ARC. The default-app switch is complete; no full CI push has occurred yet.
@@ -100,9 +100,9 @@ The expanded app suite passes eleven journeys; the synth package passes seventee
 - [x] Execute MIDI → real mda JX10 → real ADelay → real ADelay → stereo playback through native UI controls and bounded workers.
 - [x] Compare captured effect PCM exactly against its upstream buffer with the SDK delay's documented one-sample minimum; confirm note-on at frame zero and note-off at frame 6000.
 - [x] Share built-in kernels with the mono reference renderer and verify exact PCM equality, malformed-cache rejection, frozen graph/binding ownership and stale completion handling.
-- [ ] Implement continuous device rendering, persistent hosted instances, live modulation, graph persistence and latency compensation.
+- [x] Implement continuous device rendering, persistent hosted instances, live modulation, graph persistence and latency compensation. The live Dragonfly journey changes the mix during one device session. The CHOW Tape journey compares 12,288 stereo frames against the delayed dry route plus the hosted output.
 
-The native headless journey now runs 36 steps with real processes and playback. The host-free app suite has twelve loaded journeys. The graph clip renderer is deliberately bounded and offline; feedback stays in the reference renderer, and nonzero plug-in latency is reported explicitly. Windowed screenshot evidence and full CI remain outstanding.
+The macOS windowed and headless patch journeys route a note generator through TAL-NoiseMaker and Dragonfly Room Reverb, edit the controls, verify the stereo tail, and write the captured PCM to a WAV.
 
 ### Routed LFO modulation [PRISM-ROUTING-MODULATION]
 
@@ -278,7 +278,7 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Compile the current Prism source with warnings treated as errors.
 - [x] Re-run all twelve application journeys under GC: all pass.
 - [x] Rebuild the pinned VST SDK worker and pass all ten CTest checks, including real instrument/effect streams and audio-device diagnostics.
-- [ ] Complete native headless and windowed VST/audio journeys against the rebuilt app.
+- [x] Complete native headless and windowed VST/audio journeys against the rebuilt app. The 60-step TAL–Dragonfly patch and six settings steps pass in both modes. The captured stereo WAV matches the routed effect output.
 - [ ] Resolve any reproduced playback failures before claiming smooth sustained playback.
 
 ### PCM decoding wrap-up [PRISM-ROUTING-PCM-ALLOCATION]

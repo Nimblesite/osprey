@@ -203,3 +203,8 @@ synth-vst-headless:
 .PHONY: synth-vst-spectrum
 synth-vst-spectrum:
 	cd "$(ROOT)" && node src/toolchain/hosts/synth_vst/spectrum.mjs "$(VST3_FOLDER)" "$(or $(VST3_CASE),dragonfly)" "$(or $(VST3_UI),headless)"
+
+## synth-vst-editors: Edit installed VST3 parameters and open, focus, close and reopen each native editor.
+.PHONY: synth-vst-editors
+synth-vst-editors:
+	cd "$(ROOT)" && node src/toolchain/hosts/synth_vst/editors.mjs "$(VST3_FOLDER)"

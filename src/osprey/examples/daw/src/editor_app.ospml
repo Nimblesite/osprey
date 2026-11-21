@@ -27,14 +27,16 @@ module EditorApp
         Plugins::startup (context, first)
 
     // View commands open the selected track's patch from any page and toggle the tool once there.
-    patchTool (editor, next) = match editor.page
-        PatchPage => Runtime::step next
-        _ => DawSession::shown (next, PatchPage)
+    patchVisible editor = editor.page == PatchPage || (editor.patchWindowSerial > 0 && editor.patchTrack == editor.track)
+
+    patchTool (editor, next) = match patchVisible editor
+        true => Runtime::step next
+        false => DawSession::shown (next, PatchPage)
 
     tapped (context, editor, action) = match action
-        ShowModules => patchTool (editor, editor(paletteShown = editor.page != PatchPage || !editor.paletteShown))
-        ShowDetails => patchTool (editor, editor(detailsShown = editor.page != PatchPage || !editor.detailsShown))
-        ShowKeyboard => patchTool (editor, editor(keyboardShown = editor.page != PatchPage || !editor.keyboardShown, armedNote = -1))
+        ShowModules => patchTool (editor, editor(paletteShown = !(patchVisible editor) || !editor.paletteShown))
+        ShowDetails => patchTool (editor, editor(detailsShown = !(patchVisible editor) || !editor.detailsShown))
+        ShowKeyboard => patchTool (editor, editor(keyboardShown = !(patchVisible editor) || !editor.keyboardShown, armedNote = -1))
         Undo => DawSession::restored (editor, EditorHistory::undo editor)
         Redo => DawSession::restored (editor, EditorHistory::redo editor)
         Strike note => match editor.renderContinuous || editor.renderTicket != ""
@@ -45,6 +47,8 @@ module EditorApp
         EditTiming => SongTimingEditor::open editor
         ApplyTiming => SongTimingEditor::apply editor
         ShowSettings => Runtime::step (editor(outputEdit = PluginSettings(folder = editor.pluginPath)))
+        ClosePluginWindow identity => PluginWindows::close (editor, identity)
+        OpenPluginWindow identity => PluginWindows::open (editor, identity, context.platform)
         SaveSettings => Plugins::save editor
         Audition => GraphPreview::play (editor, context.platform)
         PlayGraph => GraphPreview::live (editor, context.platform)
@@ -71,7 +75,7 @@ module EditorApp
         AssignBus index bus => DawSession::routed (editor, index, bus)
         OpenTrack index => match index == -2
             true => DawSession::saving (editor, DawSession::choose)
-            false => DawSession::saving (editor, \saved => Runtime::step (DawSession::opened (saved, index)))
+            false => DawSession::saving (editor, \saved => Runtime::step (DawSession::detached (saved, index)))
         SaveProject => DawSession::save editor
         UseKeymap name => Runtime::step (Keymaps::chosen (editor, Keymaps::preset name))
         LoadKeymap => Runtime::asking (editor, [ui::Requests::ask ("prism-keys", ui::ChooseFile(types = ["json"], chosenLimit = 0, chosenSlice = ""))])
@@ -128,7 +132,11 @@ module EditorApp
         true => DawSession::completed (editor, ticket, outcome)
         false => toolCompletion (editor, ticket, outcome)
 
-    toolCompletion (editor, ticket, outcome) = match startsWith ticket "prism-vst:"
+    toolCompletion (editor, ticket, outcome) = match startsWith ticket "prism-editor:"
+        true => PluginWindows::completed (editor, ticket, outcome)
+        false => workerCompletion (editor, ticket, outcome)
+
+    workerCompletion (editor, ticket, outcome) = match startsWith ticket "prism-vst:"
         true => Plugins::completed (editor, ticket, outcome)
         false => match startsWith ticket "prism-audio:"
             true => GraphPreview::completed (editor, ticket, outcome)
@@ -291,9 +299,18 @@ module EditorApp
 
     controlled (context, editor, action, input) = match action
         Keyboard => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => dockPointer (context, editor, x, y, down), \(w, _) => Runtime::step (editor(keyboardWidth = w)), \(_, _) => Runtime::step editor)
-        Surface => ui::Inputs::route (input, \(key, down) => surfaceKey (editor, key, down), \(x, y, down, shift) => surfacePointer (context, editor(fineHeld = shift), x, y, down), \(w, h) => viewed (editor, w, h), \(x, y) => NodeContext::open (editor, x, y))
-        Controls => ui::Inputs::route (input, \(key, down) => Runtime::step (ui::Pick::either (down && key == "escape", Dials::escaped editor, editor)), \(x, y, down, shift) => Runtime::step (EditorView::dialled (editor(fineHeld = shift), x, y, down)), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor)
+        PatchSurface =>
+            patch = editor(page = PatchPage)
+            moved = surface (context, patch, input)
+            next = moved.stepStore
+            moved(stepStore = next(page = editor.page))
+        Surface => surface (context, editor, input)
+        Controls => dialInput (editor, input)
         _ => Runtime::step editor
+
+    surface (context, editor, input) = ui::Inputs::route (input, \(key, down) => surfaceKey (editor, key, down), \(x, y, down, shift) => surfacePointer (context, editor(fineHeld = shift), x, y, down), \(w, h) => viewed (editor, w, h), \(x, y) => NodeContext::open (editor, x, y))
+
+    dialInput (editor, input) = ui::Inputs::route (input, \(key, down) => Runtime::step (ui::Pick::either (down && key == "escape", Dials::escaped editor, editor)), \(x, y, down, shift) => Runtime::step (EditorView::dialled (editor(fineHeld = shift), x, y, down)), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor)
 
     routed (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \elapsed => DawSession::framed (editor, elapsed), \(action, input) => controlled (context, editor, action, input))
 

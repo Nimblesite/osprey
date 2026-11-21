@@ -41,9 +41,19 @@ fn scene(node: &Tree) -> Option<i64> {
                 Some(Tree::Whole(ordinal)) => Some(*ordinal),
                 _ => None,
             },
-            _ => members.values().find_map(scene),
+            _ => members.get("body").and_then(scene).or_else(|| members.values().find_map(scene)),
         },
         Tree::Items(items) => items.iter().find_map(scene),
+        _ => None,
+    }
+}
+
+fn scene_event(node: &Tree, row: i64) -> Option<i64> {
+    match node {
+        Tree::Record(fields) if fields.get("sceneRow") == Some(&Tree::Whole(row)) =>
+            match fields.get("event") { Some(Tree::Whole(event)) => Some(*event), _ => None },
+        Tree::Record(fields) => fields.values().find_map(|child| scene_event(child, row)),
+        Tree::Items(items) => items.iter().find_map(|child| scene_event(child, row)),
         _ => None,
     }
 }
@@ -153,9 +163,14 @@ fn named_control<'a>(node: &'a Tree, kind: &str, label: &str) -> Option<&'a std:
     }
 }
 
+fn patch_region(regions: &Regions) -> &Tree {
+    let key = regions.detached().expect("a separate track patch window");
+    &regions.get(&key).expect("patch content").node
+}
+
 fn choose_control(regions: &mut Regions, kind: &str, label: &str, text: &str) {
     let root = &regions.get("root").expect("workspace").node;
-    let fields = named_control(root, kind, label).unwrap_or_else(|| panic!("missing {kind} {label}"));
+    let fields = named_control(root, kind, label).or_else(|| named_control(patch_region(regions), kind, label)).unwrap_or_else(|| panic!("missing {kind} {label}"));
     let Some(Tree::Whole(event)) = fields.get("event") else { panic!("missing event for {label}"); };
     let changed = Library::event(0, &Touch::control(*event, text)).expect("dispatch routing control");
     regions.adopt(&changed).expect("updated workspace");
@@ -476,6 +491,8 @@ fn spectral_picker(regions: &mut Regions, song: &std::path::Path) {
     let row = lane.y + lane.h / 2.0;
     point(canvas, (80.0, row), true);
     let patch = point(canvas, (80.0, row), false).0;
+    regions.adopt(&patch).expect("open spectral patch window");
+    let canvas = scene(patch_region(regions)).expect("spectral patch canvas");
     let card = patch.scenes.values().flat_map(|s| &s.access).find(|a| a.label == "Canvas Spectral processor 2").expect("spectral card");
     let title = (card.x + 55.0, card.y + 28.0);
     point(canvas, title, true);
@@ -486,7 +503,7 @@ fn spectral_picker(regions: &mut Regions, song: &std::path::Path) {
     let at = (mode.x + mode.w / 2.0, mode.y + mode.h / 2.0);
     point(canvas, at, true);
     regions.adopt(&point(canvas, at, false).0).expect("open the named modes");
-    let picker = named_control(&regions.get("root").expect("controls").node, "picker", "Transform").expect("mode picker");
+    let picker = named_control(patch_region(regions), "picker", "Transform").expect("mode picker");
     assert_eq!(picker.get("selected"), Some(&Tree::Text("5".into())));
     let Some(Tree::Items(choices)) = picker.get("choices") else { panic!("missing choices"); };
     let expected = ["pass", "freeze", "band", "shift", "smear", "morph", "pitch"];
@@ -519,7 +536,7 @@ fn tablepad_patch(regions: &mut Regions, from_signal_flow: bool) -> (i64, Shown)
     point(canvas, open, true);
     let patch = point(canvas, open, false).0;
     regions.adopt(&patch).expect("open tablepad's track patch");
-    let patch_canvas = regions.get("root").and_then(|r| scene(&r.node)).expect("track patch canvas");
+    let patch_canvas = scene(patch_region(regions)).expect("track patch canvas");
     (patch_canvas, patch)
 }
 
@@ -602,7 +619,7 @@ fn signal_path_layout(regions: &mut Regions, song: &std::path::Path) {
         assert!(left + width / 2.0 < right - next_width / 2.0 && row == next_row,
             "keysL signal path wraps or overlaps between modules {} and {id}", id - 1);
     }
-    let canvas = regions.get("root").and_then(|root| scene(&root.node)).expect("patch canvas");
+    let canvas = scene(patch_region(regions)).expect("patch canvas");
     let initial = std::fs::read(song).expect("saved project");
     let (original_x, original_y, _, _) = card(&patch, 5);
     let mut moved = patch;
@@ -682,10 +699,11 @@ fn type_into_canvas_dial(regions: &mut Regions, song: &std::path::Path) {
     let title = (x - 55.0, y - 45.0);
     point(canvas, title, true);
     let selected = point(canvas, title, false).0;
-    let dial = selected.scenes.values().flat_map(|scene| &scene.access)
-        .find(|a| a.label == "Wavetable 0 Level").expect("the selected wavetable's level dial");
-    let previous = selected.scenes.values().flat_map(|scene| &scene.access)
-        .find(|a| a.label == "Wavetable 0 Table position").expect("preceding parameter");
+    let (row, dial_scene) = selected.scenes.iter().find(|(_, s)| s.access.iter().any(|a| a.label == "Wavetable 0 Level")).expect("selected module's dials");
+    regions.adopt(&selected).expect("select wavetable");
+    let dial_canvas = scene_event(patch_region(regions), *row as i64).expect("dial scene event");
+    let dial = dial_scene.access.iter().find(|a| a.label == "Wavetable 0 Level").expect("level dial");
+    let previous = dial_scene.access.iter().find(|a| a.label == "Wavetable 0 Table position").expect("preceding parameter");
     assert!(dial.h >= 44.0 && dial.y - previous.y >= 52.0, "parameter rows need their full pointer target and gutter");
     assert!(selected.scenes.values().flat_map(|s| &s.shapes).any(|shape| matches!(shape,
         ferroui_osprey_native::scene::Shape::Disc { x, y, radius, .. } if *radius >= 12.0
@@ -693,8 +711,8 @@ fn type_into_canvas_dial(regions: &mut Regions, song: &std::path::Path) {
             && (f64::from(*y) - (dial.y + dial.h / 2.0)).abs() < 0.01)), "the dial face grows with its target");
     let at = (dial.x + dial.w / 2.0, dial.y + dial.h / 2.0);
     let original = std::fs::read(song).expect("open project");
-    point(canvas, at, true);
-    regions.adopt(&point(canvas, at, false).0).expect("tap the level dial");
+    point(dial_canvas, at, true);
+    regions.adopt(&point(dial_canvas, at, false).0).expect("tap the level dial");
     choose_control(regions, "field", "Level", "99");
     assert_eq!(std::fs::read(song).expect("project after refused value"), original);
     choose_control(regions, "field", "Level", "0.375");

@@ -370,7 +370,7 @@ Testing resumed on 21 November 2026. Record results for the stated workload, bac
 
 - [ ] Instrument allocation, locking and unbounded operations in the compiled native callback path.
 - [ ] Measure worst observed callback time, queue starvation, CPU, memory and latency on named hardware with declared workloads.
-- [ ] Exercise simultaneous grains, modes, spectral transforms, feedback and VST nodes under explicit resource budgets.
+- [x] Exercise simultaneous grains, modes, spectral transforms, feedback and VST nodes under explicit resource budgets. The combined preset routes its grain cloud, modal bank, spectral transform and feedback reverb through a hosted effect and verifies its output. The same journey rejects out-of-range blocks and excessive delay storage.
 - [ ] Verify slow/detached Signal subscribers never stall rendering and observations retain coherent revisions/sample positions.
 - [ ] Verify live graph/resource swaps, state transfer, crossfade policy, tail disposal and failure rollback.
 - [ ] Separate reference/offline availability from verified realtime capability in public descriptors and documentation.

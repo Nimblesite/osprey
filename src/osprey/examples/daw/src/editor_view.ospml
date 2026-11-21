@@ -93,7 +93,12 @@ module EditorView
             SamplePlayer resource => [Ui::section ("Sample", "", [Ui::caption (daw::PatchVoices::fileName resource.name), Ui::button ("Load WAV sample", "", LoadSample)])]
             Granular resource _ _ => [Ui::section ("Sample", "", [Ui::caption ("${daw::PatchVoices::fileName resource.name} · ${resource.sampleRate} Hz · ${resource.sourceChannels} source channels · ${SampleResources::frames resource} frames · ${WaveMath::seconds (toFloat (SampleResources::frames resource), toFloat resource.sampleRate)} s"), Ui::button ("Load WAV sample", "", LoadSample), Ui::button ("Use built-in harmonic sample", "", BuiltinSample)])]
             _ => []
-        Ui::column (listConcat sample parameters)
+        native = match n.processor
+            External _ _ => match ui::Lists::any (editor.editorWindows, \w => w.windowNode == n.identity && w.windowTrack == editor.patchTrack && w.windowProject == editor.songPath)
+                true => [Ui::button ("Focus plug-in window", "", OpenPluginWindow(identity = n.identity)), Ui::button ("Close plug-in window", "", ClosePluginWindow(identity = n.identity))]
+                false => [Ui::button ("Open plug-in window", "", OpenPluginWindow(identity = n.identity))]
+            _ => []
+        Ui::column (listConcat native (listConcat sample parameters))
 
     x index = index.layoutX
 
@@ -434,7 +439,7 @@ module EditorView
         details = ModuleInspector::shapes editor
         chrome = listConcat details (listAppend (toolbar editor) (text (editor.message, 32.0, 767.0, 12.0, 170, 12)))
         shapes = ui::Lists::flatten [(CardArts::scenery editor).artShapes, CableCanvas::shapes editor, nodes, mapList (chrome, \item => Header::placedShape (item, 0.0, 0.0, PrismArt::chromeLayer editor)), library, NodeContext::shapes editor]
-        scene = Ui::zoomed (pageZoom, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
+        scene = Ui::zoomed (pageZoom, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, ui::Pick::either (editor.patchWindowSerial > 0, PatchSurface, Surface))
         access = listConcat (toolbarItems editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) (CardArts::controls (editor, n)))))
         extra = match editor.paletteShown
             true => paletteAccess ()
@@ -482,8 +487,13 @@ module EditorView
         panel = Ui::framed (frame(frameGrow = true), content)
         Ui::row [ui::Spacer, Ui::framed (frame(frameWidth = 310), Ui::column [header, panel])]
 
-    root () =
+    root () = content (editorSlice ())
+
+    detached () =
         editor = editorSlice ()
+        content (editor(page = PatchPage))
+
+    content editor =
         match editor.outputEdit
             SongTiming bpm meter => Ui::layer [workspace editor, SongTimingEditor::form (editor, bpm, meter)]
             PluginSettings folder => Ui::layer [workspace editor, Ui::dialog ("Settings", Ui::column [Ui::field ("VST3 folder", folder, "Folder containing VST3 plug-ins", PluginPath), Ui::caption editor.message, Ui::row [Ui::button ("Cancel", "", CloseOutput), Ui::button ("Save settings", "", SaveSettings)]], CloseOutput)]
@@ -504,14 +514,19 @@ module EditorView
             false => page
             true => Ui::column [page, keyboardDock editor]
 
-    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.panX}:${editor.panY}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${RollEdits::stamp editor.rollDrag}:${editor.rollBar}:${editor.laneTop}:${editor.laneZoom}:${editor.laneStart}:${RoutingPicker::stamp editor}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.renderContinuous}:${editor.renderTicket}:${editor.keymap.name}:${editor.dial != DialIdle}:${editor.dialEntry}:${editor.dialOffset}:${editor.fineHeld}:${editor.songPath}:${length editor.song.tracks}"
+    stamp editor = JsonString "${length editor.editorWindows}:${editor.patchWindowSerial}:${editor.revision}:${editor.layoutRevision}:${editor.panX}:${editor.panY}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${RollEdits::stamp editor.rollDrag}:${editor.rollBar}:${editor.laneTop}:${editor.laneZoom}:${editor.laneStart}:${RoutingPicker::stamp editor}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.renderContinuous}:${editor.renderTicket}:${editor.keymap.name}:${editor.dial != DialIdle}:${editor.dialEntry}:${editor.dialOffset}:${editor.fineHeld}:${editor.songPath}:${length editor.song.tracks}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =
         handle static Signal<Editor<Graph, GraphPending<Graph, ProcessorMemory<KernelState>>, GraphState<ProcessorMemory<KernelState>>, ui::Machine>>
             read => editor
         changed = signalChanges before editor stamp (signalDependencies editorSlice)
-        [Keyed::region (frames, "root", changed, root)]
+        primary = [Keyed::region (frames, "root", changed, root)]
+        match editor.patchWindowSerial > 0 && editor.patchTrack >= 0
+            false => primary
+            true => match listGet editor.song.tracks editor.patchTrack
+                Error _ => primary
+                Success track => listAppend primary (Keyed::region (frames, "window:${editor.patchWindowSerial}:Patch — ${track.name}", changed, detached))
 
     token (name, light, dark) = ui::Token(tokenName = name, tokenLight = light, tokenDark = dark)
 

@@ -317,7 +317,7 @@ def prism_test(host, headless):
     live.mkdir(exist_ok=True)
     live_worker = recording_worker(live)
     live_steps = steps[:steps.index({"invoke": "Audition Patch"})] + [
-        {"invoke": "Play Patch"}, {"wait": "Playing the started patch. Stop and play again to apply edits."}, {"frames": "480"},
+        {"invoke": "Play Patch"}, {"wait": "Playing the patch."}, {"frames": "480"},
         {"invoke": "Stop Patch"}, {"wait": "Playback stopped."}, {"frames": "8"}, {"shot": "live-stopped"}]
     script = live / "journey.json"
     script.write_text(json.dumps({"steps": live_steps}))

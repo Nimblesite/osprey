@@ -6,6 +6,18 @@ type PluginClass =
     className : string
     bundle : string
 
+type PluginWindow =
+    windowNode : int
+    windowClass : string
+    windowTrack : int
+    windowProject : string
+    windowSerial : int
+    windowCycle : int
+    windowFocus : bool
+    windowClosing : bool
+    windowHandle : string
+    windowSent : List<float>
+
 type PluginBinding =
     pluginNode : int
     pluginModule : string
@@ -194,6 +206,8 @@ type Editor G P S M =
     sampleSerial : int
     sampleTicket : string
     pluginSerial : int
+    patchWindowSerial : int
+    editorWindows : List<PluginWindow>
     pluginTicket : string
     pluginClassId : string
     renderPending : List<P>
@@ -242,6 +256,11 @@ type Editor G P S M =
     fineHeld : bool
 
 type EditorAction =
+    PatchSurface
+    ClosePluginWindow
+        identity : int
+    OpenPluginWindow
+        identity : int
     Undo
     Redo
     Add

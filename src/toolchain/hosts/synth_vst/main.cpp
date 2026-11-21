@@ -13,6 +13,9 @@ int describePlugin(const std::string& path, const std::string& identifier);
 int streamPlugin(const std::string& path, const std::string& identifier);
 int probe(const std::string& path, const std::string& identifier);
 int verifyRestart(const std::string& path, const std::string& identifier);
+#ifdef __APPLE__
+int editPlugin(const std::string& path, const std::string& identifier);
+#endif
 int verifyState(const std::string& path, const std::string& identifier);
 
 // JSON escaping is confined to this process boundary; metadata is untrusted text.
@@ -80,6 +83,9 @@ int main(int argc, char** argv) {
         if (argc == 4 && std::string(argv[1]) == "describe") return describePlugin(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "stream") return streamPlugin(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "verify-restart") return verifyRestart(argv[2], argv[3]);
+#ifdef __APPLE__
+        if (argc == 4 && std::string(argv[1]) == "editor-session") return editPlugin(argv[2], argv[3]);
+#endif
         if (argc == 4 && std::string(argv[1]) == "verify-state") return verifyState(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "probe") return probe(argv[2], argv[3]);
         if (argc == 3 && std::string(argv[1]) == "list") return discover(argv[2]);

@@ -65,6 +65,7 @@ pub fn run(arguments: &[String]) -> i32 {
             let Some(host) = made.borrow_mut().take() else {
                 return;
             };
+            watch_detached(&host, window.clone());
             host.set_storage(window.storage_provider());
             host.open(is_dark(window));
             follow_appearance(&host, window);
@@ -79,6 +80,25 @@ pub fn run(arguments: &[String]) -> i32 {
     );
     drop(crate::adapters::Cleanup);
     status
+}
+
+/// Each generation opens once, so closing a patch by its title bar lasts until it is reopened.
+fn watch_detached(host: &Rc<Host>, owner: Ref<Window>) {
+    let owner = owner.downgrade();
+    let active = RefCell::new(None::<(String, Ref<Window>)>);
+    *host.windows.borrow_mut() = Some(Box::new(move |host| {
+        let Some(owner) = owner.upgrade() else { return };
+        let key = host.regions().detached();
+        if active.borrow().as_ref().map(|(old, _)| old) == key.as_ref() { return; }
+        if let Some((_, old)) = active.borrow_mut().take() { old.close(); }
+        if let Some(key) = key {
+            let title = key.splitn(3, ':').nth(2).unwrap_or("Patch").to_owned();
+            let content = host.detached_element(key.clone());
+            let panel = ferroui_view::mount_window(|| window().title(title).width(1200.).height(800.).child(content).into());
+            panel.show_with_owner(&owner);
+            *active.borrow_mut() = Some((key, panel));
+        }
+    }));
 }
 
 /// Runs the application as `ferroui_view::launch_with` does (the operating system's platform, the
