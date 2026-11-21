@@ -193,6 +193,19 @@ stereoTapJourney () =
 
 registerClipJourneys () =
     audio = monoPort ("audio", synth::Audio, synth::Amplitude)
+    test ("a wavetable clip carries oscillator phase across offline render blocks", \() => arithmetic (\() =>
+        succeeds (synth::Wavetables::prepare (64, [synth::TableSpectrum(amplitudes = [1.0], phases = [0.0])]), \table =>
+            oscillator = Components::wavetable (1, table, 440.0)
+            graph = built ([oscillator, Components::output 2], [cable (1, 2)])
+            whole = outputClip (2, synth::GraphClips::advance (graph, [], 128))
+            expect (whole.clipChannels, 1)
+            expect (length whole.clipSamples, 128)
+            expect (foldList (whole.clipSamples, 0.0, \(total, sample) => total + sample * sample) > 0.0, true)
+            graphRun (graph, 2, [17, 63, 48], \clock samples =>
+                expect (clock.graphPosition, 128)
+                sameSamples (samples, whole.clipSamples))
+            invalid = graph(nodes = [oscillator(inputs = []), Components::output 2])
+            renderRefused (synth::GraphClips::start (invalid, 128)))))
     test ("MIDI oscillator state validation rejects forged voices, capacity and malformed events", \() => arithmetic (\() =>
         graph = midiInstrument (69.0, 0.5, 8.0)
         expect (synth::MidiOscillators::connected (graph, midiOscillator ()), true)
