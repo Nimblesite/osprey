@@ -182,6 +182,109 @@ print(newestThatWorks(plan))
 "#,
         "serde 2, toml 1\n",
     ),
+    (
+        // Two `many` operations of one effect, a Unit request resumed with no
+        // value, named and `let`-bound direct functions passed where a capturing
+        // callback is expected, and a lazy `||` whose right side asks only when
+        // the left is false. The tick before every capture is counted once.
+        "direct functions as callbacks, a unit resume and a lazy or",
+        r#"
+effect Flip {
+    control many replayable toss: fn() -> bool
+    control many replayable tick: fn() -> Unit
+}
+effect Tally { replayable add: fn(int) -> Unit }
+fn hundred() = 100
+fn twice(first, second) = satAdd(first(), second())
+fn coin() = match perform Flip.toss() {
+    true => 1
+    false => 0
+}
+fn walk() = {
+    perform Flip.tick()
+    let small = fn() => 7
+    let total = satAdd(twice(coin, hundred), twice(small, coin))
+    match total > 107 || perform Flip.toss() {
+        true => "hi${total}"
+        false => "lo${total}"
+    }
+}
+fn main() = {
+    mut ticks = 0
+    let all = {
+        handle Tally {
+            add n => { ticks = satAdd(ticks, n) }
+        }
+        handle Flip {
+            toss => "${resume(true)},${resume(false)}"
+            tick => {
+                perform Tally.add(1)
+                resume()
+            }
+        }
+        walk()
+    }
+    print("all=${all} ticks=${ticks}")
+}
+"#,
+        "all=hi109,hi108,hi108,hi107,lo107 ticks=1\n",
+    ),
+    (
+        // Two captured effects, one handled outside the other, around a direct
+        // handler with a return clause: the outer
+        // handler resumes continuations that pass back through the inner one.
+        "nested multi-shot handlers resume through each other",
+        r#"
+effect Choice { control many replayable pick: fn(int) -> int }
+effect Extra { control many replayable guess: fn(int) -> int }
+effect Scale { replayable by: fn() -> int }
+fn pair(seed) = satAdd(satMul(perform Choice.pick(seed), perform Scale.by()), perform Extra.guess(seed))
+fn inner(seed) = {
+    handle Scale {
+        by => 10
+        return found => satAdd(found, 1000)
+    }
+    pair(seed)
+}
+fn main() = {
+    let all = {
+        handle Extra {
+            guess n => satAdd(resume(n), satMul(resume(satAdd(n, 1)), 1000000))
+        }
+        handle Choice {
+            pick n => satAdd(resume(n), resume(satAdd(n, 2)))
+        }
+        inner(1)
+    }
+    print("all=${all}")
+}
+"#,
+        "all=2044004086002042\n",
+    ),
+    (
+        // `?:` asks for its fallback only when the left side failed.
+        "a fallback operator captures only on failure",
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+fn risky(n) = checkedAdd(n, 9223372036854775807) ?: perform Choice.pick(n)
+fn main() = {
+    let fine = {
+        handle Choice {
+            pick _bound => satAdd(resume(1), resume(2))
+        }
+        risky(0)
+    }
+    let fallback = {
+        handle Choice {
+            pick bound => satAdd(resume(bound), resume(satMul(bound, 10)))
+        }
+        risky(3)
+    }
+    print("fine=${fine} fallback=${fallback}")
+}
+"#,
+        "fine=9223372036854775807 fallback=33\n",
+    ),
 ];
 
 /// Run `source` under `memory` through the real CLI and return its stdout.
