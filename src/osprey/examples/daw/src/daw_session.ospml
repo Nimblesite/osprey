@@ -50,7 +50,7 @@ module DawSession
                 Error why => ready(message = "${track.name}: ${why}")
                 Success graph => match Graphs::prepare graph
                     Invalid fault => ready(message = EditorState::faultText fault)
-                    Valid plan => ready(graph = graph, positions = track.positions, flowPositions = EditorLayout::flow (plan, track.positions), panX = 0.0, panY = 0.0, panning = PanIdle, pluginBindings = [], gesture = [], selected = -1, source = -1, selectedCable = -1, dragging = -1, nextIdentity = satAdd (highest graph) 1, revision = satAdd editor.revision 1, patchTrack = index, page = PatchPage, message = "${track.name}'s patch.")
+                    Valid plan => ready(graph = graph, positions = track.positions, flowPositions = EditorLayout::flow (plan, track.positions), panX = 0.0, panY = 0.0, panning = PanIdle, pluginBindings = mapList (Plugins::projectBindings graph, \binding => Plugins::resolved (editor.catalog, binding)), gesture = [], selected = -1, source = -1, selectedCable = -1, dragging = -1, nextIdentity = satAdd (highest graph) 1, revision = satAdd editor.revision 1, patchTrack = index, page = PatchPage, message = "${track.name}'s patch.")
 
     (** Read and decode a song project; the session keeps its old song when this one is refused. *)
     export loaded (editor, path) = match readFile path
@@ -165,14 +165,13 @@ module DawSession
 
     renderLog = "prism-song-report"
 
-    // [DAW-TRANSPORT-LIVE-SPEED] Note makers, one for every three of the processor's cores, at the lowest useful priority so they never
-    // take time from the stream or the app; `$m` holds their process numbers. Each keeps its
-    // share of the window's notes (`$1` renderer, `$2` project, `$3` folder, `$4` from, `$5` beats) for play to read.
-    makers = "w=$(($(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4) / 3)); [ \"$w\" -ge 1 ] || w=1; i=0; m=; while [ \"$i\" -lt \"$w\" ]; do nice -n 15 \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" warm \"$i\" \"$w\" >/dev/null 2>&1 & m=\"$m $!\"; i=$((i+1)); done"
+    // [DAW-TRANSPORT-LIVE-SPEED] Keep a third of the cores available for the interface and the audio device.
+    // Each low-priority maker prepares its share of the notes. The stream owns the process IDs in $m.
+    makers = "w=$(($(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2) * 2 / 3)); [ \"$w\" -ge 1 ] || w=1; [ \"$w\" -le 9 ] || w=9; i=0; m=; while [ \"$i\" -lt \"$w\" ]; do nice -n 15 \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" warm \"$i\" \"$w\" \"$note_clock\" >/dev/null 2>&1 & m=\"$m $!\"; i=$((i+1)); done"
 
     // `$0` is the audio worker, then the renderer and its arguments. The makers start first, run beside the
-    // stream and end with it, so makers never pile up. Each receipt the device answers replaces `played.json`; the host cancels the whole process group.
-    pipeline = "d=$(mktemp -d \"$3/device.XXXXXX\") || exit 1; mkfifo \"$d/next\" || { rmdir \"$d\"; exit 1; }; trap 'rm -f \"$d/next\" \"$d/render-status\" \"$d/device-status\"; rmdir \"$d\"' EXIT; ${makers}; { \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" \"$3/controls\"; echo $? > \"$d/render-status\"; } < \"$d/next\" | { \"$0\" audio-device; echo $? > \"$d/device-status\"; } | { trap '' PIPE; while read -r line; do printf '%s\\n' \"$line\" > \"$3/played.json\" || exit 1; printf 'next\\n' 2>/dev/null || { exec >/dev/null; echo; }; done; } > \"$d/next\"; relay=$?; kill $m 2>/dev/null || :; wait; [ \"$relay\" -eq 0 ] && read -r rendered < \"$d/render-status\" && [ \"$rendered\" -eq 0 ] && read -r played < \"$d/device-status\" && [ \"$played\" -eq 0 ]"
+    // stream and end with it. Acknowledge every packet and publish the display clock on the first, every fourth, and final receipt.
+    pipeline = "d=$(mktemp -d \"$3/device.XXXXXX\") || exit 1; mkfifo \"$d/next\" || { rmdir \"$d\"; exit 1; }; trap 'rm -f \"$d/next\" \"$d/render-status\" \"$d/device-status\"; rmdir \"$d\"' EXIT; note_clock=\"$3/played.json\"; ${makers}; { \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" \"$3/controls\" makers; echo $? > \"$d/render-status\"; } < \"$d/next\" | { \"$0\" audio-device; echo $? > \"$d/device-status\"; } | { trap '' PIPE; clock_tick=0; last=; while read -r line; do if [ \"$clock_tick\" -eq 0 ]; then printf '%s\\n' \"$line\" > \"$3/played.json\"; fi; clock_tick=$(((clock_tick+1)%4)); last=$line; printf 'next\\n' 2>/dev/null || { exec >/dev/null; echo; }; done; [ -z \"$last\" ] || printf '%s\\n' \"$last\" > \"$3/played.json\"; } > \"$d/next\"; relay=$?; kill $m 2>/dev/null || :; wait; [ \"$relay\" -eq 0 ] && read -r rendered < \"$d/render-status\" && [ \"$rendered\" -eq 0 ] && read -r played < \"$d/device-status\" && [ \"$played\" -eq 0 ]"
 
     // One set of makers per song: its ticket names the song, so opening another song or playing ends them.
     warmTicket editor = "daw-notes:${editor.songPath}"
@@ -180,7 +179,7 @@ module DawSession
     calmed editor = Requests::ask ("daw-notes-end", ui::Cancel(cancelled = warmTicket editor))
 
     // The makers alone, over the whole song as saved.
-    warming editor = Requests::ask (warmTicket editor, ui::Run(executable = "/bin/sh", arguments = ["-c", "${makers}; wait", "sh", editor.renderer, editor.songPath, live editor, "0", "0"], timeout = 1800000, outputLimit = 4096, plist = false, runSlice = ""))
+    warming editor = Requests::ask (warmTicket editor, ui::Run(executable = "/bin/sh", arguments = ["-c", "note_clock=; ${makers}; wait", "sh", editor.renderer, editor.songPath, live editor, "0", "0"], timeout = 1800000, outputLimit = 4096, plist = false, runSlice = ""))
 
     readied (before, editor) =
         _made = makeDir (folder editor)

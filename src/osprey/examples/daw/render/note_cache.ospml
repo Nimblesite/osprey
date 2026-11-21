@@ -23,10 +23,18 @@ module NoteCache
         Error _ => "${folder}/notes/${registry::Sha256::ofString text}"
         Success dir => take dir (satSub (length dir) 1)
 
-    (** Each track's note folder, in track order, including folders a concurrent maker will publish. *)
-    export found (song, folder) = Outcomes::carried (texts song, \keys =>
+    folders (keys, folder) =
         entries = listDir "${folder}/notes" ?: []
-        ok (mapList (keys, \text => home (folder, entries, text))))
+        mapList (keys, \text => home (folder, entries, text))
+
+    playableHome (song, voice, folder, entries) = match voice.notes
+        [] => ok ""
+        _ => Outcomes::carried (SongFiles::noteCacheKey (song, voice), \text => ok (home (folder, entries, text)))
+
+    (** Resolve note folders for tracks that sound in this range, preserving their track indexes. *)
+    export found (song, folder) =
+        entries = listDir "${folder}/notes" ?: []
+        SendRenders::collect (song.tracks, \voice => playableHome (song, voice, folder, entries))
 
     path (dir, note) = "${dir}/${note.pitch}_${note.length}_${note.velocity}.st"
 
@@ -36,7 +44,13 @@ module NoteCache
 
     read (file, lanes) = SendRenders::collect (toList (range (0, lanes)), \index => lane (file, index))
 
-    known (play, note) = length (filterList (play.made, \m => Arrangements::same (m.struck, note))) > 0
+    known (play, note) = match ui::Lists::find (play.made, \m => Arrangements::same (m.struck, note))
+        Success _ => true
+        Error _ => false
+
+    openingReady (play, until, index) = match listGet play.pending index
+        Error _ => true
+        Success cue => cue.due >= until || (known (play, cue.note) && openingReady (play, until, satAdd index 1))
 
     taken (dir, play, note) = match read (path (dir, note), satAdd 1 (satMul 2 (length play.sends)))
         Error _ => play
@@ -58,6 +72,37 @@ module NoteCache
     export seeded (dir, play, until) = match dir == ""
         true => play
         false => seedDue (dir, play, until, 0)
+
+    (** Give the concurrent makers a bounded head start only while the opening second is missing. *)
+    export opening (playing, dirs, attempts) =
+        tracks = synth::Sequences::mapIndexed (playing.tracks, \(i, track) => seeded (listGet dirs i ?: "", track, 48000))
+        ready = playing(tracks = tracks)
+        match attempts == 0 || ui::Lists::all (tracks, \track => openingReady (track, 48000, 0))
+            true => ready
+            false =>
+                sleep 25
+                opening (ready, dirs, satSub attempts 1)
+
+    performing sound = match sound.driver
+        RecordedNote => false
+        _ => true
+
+    adopted (dir, sound, channels, frames) = match read (path (dir, sound.cue.note), channels)
+        Error _ => sound
+        Success lanes => match ui::Lists::all (lanes, \lane => length lane == frames)
+            true => sound(at = sound.cue.due, lanes = lanes, driver = RecordedNote)
+            false => sound
+
+    recorded (dir, sound) = match sound.driver
+        RecordedNote => sound
+        PerformingNote patch => adopted (dir, sound, length patch.ports, patch.span.total)
+
+    (** A note maker may finish after the attack. Resume its PCM at the next block's exact note age. *)
+    export sounding (dir, play, from, until) = match intDiv from 4096 == intDiv until 4096
+        true => play
+        false => match ui::Lists::any (play.sounding, performing)
+            false => play
+            true => play(sounding = mapList (play.sounding, \sound => recorded (dir, sound)))
 
     first (jobs, track, cue) = match ui::Lists::any (jobs, \job => job.track == track && Arrangements::same (job.note, cue.note))
         true => jobs
@@ -107,54 +152,74 @@ module NoteCache
             Success _ => Shell::ran (60, "sh -c ${Shell::quoted publish} sh ${Shell::quoted source} ${Shell::quoted file} ${intDiv (byteLength data) 2}")
 
     // Readers use the same tensor decoder: a partial file must be rebuilt even when its path exists.
-    ensure (song, voice, dir, tag, note, sends) =
-        file = path (dir, note)
+    ensure (song, voice, dir, tag, job, sends, clock) =
+        file = path (dir, job.note)
         match read (file, satAdd 1 (satMul 2 (length sends)))
             Success _ => ok 0
-            Error _ => Outcomes::carried (Arrangements::lanesOf (song, voice, sends, note), \lanes =>
-                Outcomes::carried (kept (file, tag, lanes), \_ => ok 1))
+            Error _ =>
+                _ready = match clock != "" && job.due > leadFrames
+                    true => waitForClock (clock, job.due, -1)
+                    false => 0
+                Outcomes::carried (Arrangements::lanesOf (song, voice, sends, job.note), \lanes =>
+                    Outcomes::carried (kept (file, tag, lanes), \_ => ok 1))
 
-    made (song, dirs, tag, job) = match listGet dirs job.track
+    made (song, dirs, tag, job, clock) = match listGet dirs job.track
         Error _ => Error(message = "A cached note has no track folder.")
         Success dir => match listGet song.tracks job.track
             Error _ => Error(message = "A cached note has no track.")
-            Success voice => Outcomes::carried (Arrangements::opened (song, voice(notes = [])), \play => ensure (song, voice, dir, tag, job.note, play.sends))
+            Success voice => Outcomes::carried (Arrangements::opened (song, voice(notes = [])), \play => ensure (song, voice, dir, tag, job, play.sends, clock))
 
     share (all, worker, workers) = filterList (toList (range (0, length all)), \index => index % workers == worker)
 
-    turn (song, dirs, tag, all, index) = match listGet all index
-        Error _ => Error(message = "A cache worker has no job at this index.")
-        Success job => made (song, dirs, tag, job)
+    // Eight seconds of work ahead at the live device's fixed 48 kHz.
+    leadFrames = 384000
 
-    worked (song, dirs, tag, all, indexes) = foldList (indexes, ok 0, \(total, index) => Outcomes::carried (total, \count => Outcomes::carried (turn (song, dirs, tag, all, index), \added => ok (satAdd count added))))
+    // A stopped or absent clock releases the maker back to its ordinary offline schedule.
+    waitForClock (clock, due, previous) = match readFile clock
+        Error _ => 0
+        Success text => match jsonInt (ui::Doc::field (ui::Doc::parse text, "returnedFrames"))
+            Error _ => 0
+            Success frame => match frame <= previous || due <= satAdd frame leadFrames
+                true => 0
+                false =>
+                    sleep 200
+                    waitForClock (clock, due, frame)
+
+    turn (song, dirs, tag, all, index, clock) = match listGet all index
+        Error _ => Error(message = "A cache worker has no job at this index.")
+        Success job => made (song, dirs, tag, job, clock)
+
+    worked (song, dirs, tag, all, indexes, clock) = foldList (indexes, ok 0, \(total, index) => Outcomes::carried (total, \count => Outcomes::carried (turn (song, dirs, tag, all, index, clock), \added => ok (satAdd count added))))
 
     stale (dirs, entry) = endsWith entry "/" && length (filterList (dirs, \dir => "${dir}/" == entry)) == 0
 
     // Folders of keys no track has any more: an edited instrument's old notes.
     swept (folder, dirs) = match listDir "${folder}/notes"
-        Error _ => 0
+        Error why => Error(message = why)
         Success entries => match filterList (entries, \entry => stale (dirs, entry) && SongFiles::safe entry)
-            [] => 0
-            old => match Shell::ran (60, "rm -r ${join (mapList (old, Shell::quoted)) " "}")
-                Error _ => 0
-                Success _ => length old
+            [] => ok 0
+            old => Outcomes::carried (Shell::ran (60, "rm -r ${join (mapList (old, Shell::quoted)) " "}"), \_ => ok (length old))
 
-    label (dirs, keys, index) = match writeFile "${listGet dirs index ?: ""}/key.txt" (listGet keys index ?: "")
-        Error _ => 0
-        Success _ => 1
+    label (dirs, keys, index) = match listGet dirs index
+        Error _ => Error(message = "A cache label has no folder.")
+        Success dir => match listGet keys index
+            Error _ => Error(message = "A cache label has no key.")
+            Success key => match writeFile "${dir}/key.txt" key
+                Error why => Error(message = "Cannot write ${dir}/key.txt: ${why}")
+                Success _ => ok 1
 
-    labels (dirs, keys) = foldList (toList (range (0, length dirs)), 0, \(count, index) => satAdd count (label (dirs, keys, index)))
-
-    prepared (song, folder, dirs, worker) = match Shell::ran (20, "mkdir -p ${join (mapList (dirs, Shell::quoted)) " "}")
+    prepared (keys, folder, dirs, worker) = match Shell::ran (20, "mkdir -p ${join (mapList (dirs, Shell::quoted)) " "}")
         Error why => Error(message = why)
         Success _ => match worker == 0
             false => ok 0
-            true => Outcomes::carried (texts song, \keys => ok (satAdd (labels (dirs, keys)) (swept (folder, dirs))))
+            true => Outcomes::carried (SendRenders::collect (toList (range (0, length dirs)), \index => label (dirs, keys, index)), \_ => swept (folder, dirs))
 
     (** Maker `worker` of `workers`: makes and keeps its share of the song's distinct notes that are not kept
         yet, in song order. Maker 0 first removes the note folders no track uses. Yields how many it made. *)
-    export warmed (song, folder, worker, workers) = match worker >= 0 && worker < workers && workers <= 64
+    export warmed (song, folder, worker, workers, clock) = match worker >= 0 && worker < workers && workers <= 64
         false => Error(message = "A maker needs its number, from 0, and the count of makers, at most 64.")
-        true => Outcomes::carried (found (song, folder), \dirs => Outcomes::carried (prepared (song, folder, dirs, worker), \_ =>
-            all = jobs song
-            worked (song, dirs, "w${worker}-${random ()}", all, share (all, worker, workers))))
+        true => Outcomes::carried (texts song, \keys =>
+            dirs = folders (keys, folder)
+            Outcomes::carried (prepared (keys, folder, dirs, worker), \_ =>
+                all = jobs song
+                worked (song, dirs, "w${worker}-${random ()}", all, share (all, worker, workers), clock)))

@@ -495,7 +495,74 @@ fn the_daw_renderer_exits_one_on_every_failure_and_zero_when_it_writes() -> Test
         .ok_or("missing bell brightness")? = 0.5.into();
     std::fs::write(&bell, serde_json::to_vec(&playable)?)?;
     assert_repairs_truncated_note(&binary, &bell, &out)?;
+    assert_late_note_pickup(&binary, &root.join("late-notes"))?;
     std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+
+const CODEX_SCORE: &str = "src/osprey/examples/daw/tracks/codex-version.json";
+
+/// Hold the actual 160-frame producer at each device receipt so cache publication is deterministic.
+fn opening_packets(
+    binary: &Path,
+    folder: &Path,
+    publish: bool,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+    let clock = folder.join("controls");
+    std::fs::write(&clock, "0")?;
+    let mut child = Command::new(binary)
+        .current_dir(repo_root())
+        .args([CODEX_SCORE, &arg(folder), "0", "2", "live", &arg(&clock)])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let result = (|| {
+        let mut lines = BufReader::new(child.stdout.take().ok_or("missing audio pipe")?).lines();
+        let mut receipt = child.stdin.take().ok_or("missing receipt pipe")?;
+        let mut packets = Vec::new();
+        for number in 1..=64 {
+            packets.push(lines.next().ok_or("audio ended early")??);
+            if publish && number == 8 {
+                std::fs::rename(folder.join("staged"), folder.join("notes"))?;
+            }
+            writeln!(receipt, "next")?;
+        }
+        Ok(packets)
+    })();
+    let _ = child.kill();
+    let _status = child.wait()?;
+    result
+}
+
+/// [DAW-TRANSPORT-LIVE-SPEED] Prepared audio joins a sounding note at its current sample.
+fn assert_late_note_pickup(binary: &Path, folder: &Path) -> TestResult {
+    std::fs::create_dir_all(folder)?;
+    let made = daw(
+        binary,
+        &[CODEX_SCORE, &arg(folder), "0", "2", "warm", "0", "1"],
+    );
+    assert_eq!(made.code, Some(0), "{}", made.stderr);
+    let warm = opening_packets(binary, folder, false)?;
+    std::fs::rename(folder.join("notes"), folder.join("staged"))?;
+    let cold = opening_packets(binary, folder, false)?;
+    let joined = opening_packets(binary, folder, true)?;
+    assert_eq!(
+        cold[..8],
+        joined[..8],
+        "publishing later changed the attack"
+    );
+    assert_ne!(
+        cold[27..],
+        warm[27..],
+        "the fixture must distinguish live doubles from cached F32"
+    );
+    assert_eq!(
+        joined[27..],
+        warm[27..],
+        "the prepared note restarted or missed its handoff"
+    );
     Ok(())
 }
 
@@ -544,7 +611,7 @@ fn assert_repairs_truncated_note(binary: &Path, song: &Path, out: &Path) -> Test
         .next()
         .ok_or("no note directory")??
         .path();
-    let note = std::fs::read_dir(dir)?
+    let note = std::fs::read_dir(&dir)?
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .find(|path| path.extension().is_some_and(|ext| ext == "st"))
@@ -557,8 +624,13 @@ fn assert_repairs_truncated_note(binary: &Path, song: &Path, out: &Path) -> Test
         .set_len(128)?;
     let repaired = warm();
     assert_eq!(repaired.code, Some(0), "{}", repaired.stderr);
-    let restored = std::fs::read(note)?;
+    let restored = std::fs::read(&note)?;
     assert_eq!(restored.len(), original.len(), "a truncated note was kept");
     assert_eq!(restored, original);
+    let label = dir.join("key.txt");
+    std::fs::remove_file(&label)?;
+    std::fs::create_dir(&label)?;
+    refused(&warm(), "key.txt");
+    assert_eq!(std::fs::read(note)?, original);
     Ok(())
 }

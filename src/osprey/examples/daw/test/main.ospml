@@ -922,7 +922,10 @@ streams (step, message, from, beats, mode) =
             expect (length given, 9)
             expect (listGet given 0 ?: "", "-c")
             // [DAW-TRANSPORT-LIVE-SPEED] The note makers start before the stream.
-            expect (contains (listGet given 1 ?: "") "warm \"$i\" \"$w\" >/dev/null 2>&1 & m=", true)
+            command = listGet given 1 ?: ""
+            expect (contains command "warm \"$i\" \"$w\" \"$note_clock\" >/dev/null 2>&1 & m=", true)
+            expect (contains command "note_clock=\"$3/played.json\"", true)
+            expect (contains command "\"$3/controls\" makers", true)
             expect (mapList ([2, 3, 4, 5, 6, 7, 8], \index => listGet given index ?: ""), ["${transportRoot}/bin/worker", "${transportRoot}/bin/daw", "${liveFolder}/project.json", liveFolder, from, beats, mode])
             expect (on, true)
         _ => expect (length step.requests, 3)

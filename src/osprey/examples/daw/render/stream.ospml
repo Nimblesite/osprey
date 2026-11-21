@@ -38,7 +38,7 @@ module Streams
             Error _ => track
             Success dir => match dir == "" || track.edited
                 true => track
-                false => NoteCache::seeded (dir, track, until)
+                false => NoteCache::sounding (dir, NoteCache::seeded (dir, track, until), playing.cursor, until)
 
     // Notes due in the next block that a maker has kept are read, not made ([DAW-TRANSPORT-LIVE-SPEED]).
     seeded (dirs, playing, until) = playing(tracks = mapList (toList (range (0, length playing.tracks)), \index => warm (dirs, playing, index, until)))
@@ -97,11 +97,14 @@ module Streams
             true => foldList (toList (range (0, passes)), initial, \(outcome, _) => again (path, count, outcome))
             false => pass (path, count, initial)
 
-    initial (arrangement, folder) = synth::Outcomes::carried (Playback::start arrangement, \playing =>
+    initial (arrangement, folder, withMakers) = synth::Outcomes::carried (Playback::start arrangement, \playing =>
         synth::Outcomes::carried (NoteCache::found (arrangement, folder), \dirs =>
-            Success(value = LiveStream(playing = playing, controlVersion = 0, controlScore = arrangement, noteFolders = dirs))))
+            ready = match withMakers
+                true => NoteCache::opening (playing, dirs, 96)
+                false => playing
+            Success(value = LiveStream(playing = ready, controlVersion = 0, controlScore = arrangement, noteFolders = dirs))))
 
     (** Play the requested window, reading live parameter revisions between device blocks. *)
-    export played (request, arrangement, loop, path) = match arrangement.sampleRate == 48000
+    export played (request, arrangement, loop, path, withMakers) = match arrangement.sampleRate == 48000
         false => Error(message = "Live play needs a 48 kHz project; this one is ${arrangement.sampleRate} Hz.")
-        true => synth::Outcomes::carried (measured (request, arrangement, loop), \count => ran (path, count, loop, initial (arrangement, request.folder)))
+        true => synth::Outcomes::carried (measured (request, arrangement, loop), \count => ran (path, count, loop, initial (arrangement, request.folder, withMakers)))
