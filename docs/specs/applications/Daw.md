@@ -235,7 +235,7 @@ The daw answers Open Sound Control over UDP, so a control surface, a lighting de
 
 ## Performance [DAW-PERF]
 
-The engine must render faster than real time, and every pointer event must answer within one display frame. The [plan](../../plans/daw.md) holds the profile, the owners and the targets: two bars of the codex project in under 14 s, and a Prism drag move under 5 ms mean.
+**A render takes at most half the song's length ([DAW-PERF-RENDER]).** A 100 s song renders, through the whole graph into Master and onto disk, in 50 s or less. Anything slower is a defect that needs optimising, for every project in `tracks/`. Every pointer event must answer within one display frame. The [plan](../../plans/daw.md) holds the profile, the owners and the targets: two bars of the codex project in under 14 s, and a Prism drag move under 5 ms mean.
 
 ## The inspector [DAW-INSPECTOR]
 
