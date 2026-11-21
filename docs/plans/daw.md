@@ -398,6 +398,7 @@ Profiled 21 Nov with `sample` at 1 ms. Each fix is owned, and is done only when 
 **Engine.** `target/daw/daw tracks/codex-version.json <out> 32 8` (bars 9 and 10, ARC): 42.2 s of CPU for 27.5 s of audio, so 0.65× real time. Target: under 14 s (2× real time).
 
 - [ ] [DAW-PERF-RENDER] A song with basic tracks and routing renders in at most a fifth of its length (5 minutes in about 1 minute), and no project in `tracks/` takes more than half its length. Phosphor Drift on 21 Nov: 1229 s for 226.9 s, so 5.4× its length, about 27× too slow. The pi bench (pi-render-bench-1..3) is measuring the other projects. Per module, 1 beat of Violet Static (beat 64, one track alone): the bowed+additive+pitchShifter+spectral Choir smear took over 150 s, bowed swapped for a wavetable still over 150 s (additive), wavetable+LFO lowpass+shifter 8 s; the Melt lead fell from 29 s to 5 s without its FFT pitch shifter. A full Violet Static (54.9 s) did not finish in 1800 s, so bowed, additive, pitchShifter and spectral are the first kernels to optimise.
+- [x] Index upstream routes once for [DAW-PATCH-HEARD]. The graph fixture with up to 320 routed modules, a parallel send, repeated roots, and both cable orders fell from 5.01 billion to 94.7 million retired instructions in `24be3243e`. The Silt Relay render from beat 9 for two beats retained all 141,496 frames byte for byte. The synth suite passed 91 tests under both GC and ARC, including delayed feedback.
 
 | Where the time goes | Share | Fix | Owner |
 |---|---|---|---|
