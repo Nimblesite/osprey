@@ -40,8 +40,7 @@ sealed partial class SharedViewPage
         var pile = new Grid();
         var card = new Border { Child = pile };
         var seat = new Seat(card, across ? RowKind.Line : RowKind.Column) { Panel = pile, Across = across };
-        seat.Restyle = (next, at) => Stacked(card, pile, next.Controls[at], across);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Stacked(card, pile, next.Controls[at], across));
         return seat;
     }
 
@@ -66,8 +65,7 @@ sealed partial class SharedViewPage
         };
         var card = new Border { Child = through };
         var seat = new Seat(card, RowKind.Scroll) { Panel = pile };
-        seat.Restyle = (next, at) => Stacked(card, pile, next.Controls[at], across: false);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Stacked(card, pile, next.Controls[at], across: false));
         return seat;
     }
 
@@ -77,8 +75,7 @@ sealed partial class SharedViewPage
         var pile = new Grid();
         var card = new Border { Child = pile };
         var seat = new Seat(card, RowKind.Layer) { Panel = pile };
-        seat.Restyle = (next, at) => Stacked(card, pile, next.Controls[at], across: false);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Stacked(card, pile, next.Controls[at], across: false));
         return seat;
     }
 
@@ -89,8 +86,7 @@ sealed partial class SharedViewPage
         words.Children.Add(block);
         var card = new Border { Child = words };
         var seat = new Seat(card, icon ? RowKind.Label : RowKind.Option);
-        seat.Restyle = (next, at) => Worded(block, words, card, next.Controls[at], icon);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Worded(block, words, card, next.Controls[at], icon));
         return seat;
     }
 
@@ -115,8 +111,7 @@ sealed partial class SharedViewPage
     {
         var button = new Button();
         var seat = new Seat(button, RowKind.Press);
-        seat.Restyle = (next, at) => Pressed(button, next.Controls[at]);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Pressed(button, next.Controls[at]));
         button.Click += (_, _) => control(seat.Action, "");
         return seat;
     }
@@ -143,8 +138,7 @@ sealed partial class SharedViewPage
     {
         var box = new TextBox();
         var seat = new Seat(box, RowKind.Entry);
-        seat.Restyle = (next, at) => Entered(box, seat, next.Controls[at]);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Entered(box, seat, next.Controls[at]));
         box.TextChanged += (_, _) => { if (!applying && !seat.Commit) control(seat.Action, box.Text); };
         box.KeyDown += (_, args) =>
         {
@@ -169,8 +163,7 @@ sealed partial class SharedViewPage
     {
         var box = new PasswordBox();
         var seat = new Seat(box, RowKind.Entry) { Secure = true };
-        seat.Restyle = (next, at) => Secured(box, next.Controls[at]);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Secured(box, next.Controls[at]));
         box.PasswordChanged += (_, _) => { if (!applying) control(seat.Action, box.Password); };
         return seat;
     }
@@ -190,8 +183,7 @@ sealed partial class SharedViewPage
         var box = new TextBox { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap };
         ScrollViewer.SetVerticalScrollBarVisibility(box, ScrollBarVisibility.Auto);
         var seat = new Seat(box, RowKind.Editor);
-        seat.Restyle = (next, at) => Wrote(box, next.Controls[at]);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Wrote(box, next.Controls[at]));
         box.TextChanged += (_, _) => { if (!applying) control(seat.Action, box.Text); };
         return seat;
     }
@@ -209,8 +201,7 @@ sealed partial class SharedViewPage
     {
         var flip = new ToggleSwitch();
         var seat = new Seat(flip, RowKind.Toggle);
-        seat.Restyle = (next, at) => Switched(flip, next.Controls[at]);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Switched(flip, next.Controls[at]));
         flip.Toggled += (_, _) => { if (!applying) control(seat.Action, flip.IsOn ? "true" : "false"); };
         return seat;
     }
@@ -229,8 +220,7 @@ sealed partial class SharedViewPage
     {
         var menu = new ComboBox();
         var seat = new Seat(menu, RowKind.Picker); // no panel: its option children become its items
-        seat.Restyle = (next, at) => Chosen(menu, next, at);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Chosen(menu, next, at));
         menu.SelectionChanged += (_, _) =>
         {
             if (!applying && menu.SelectedItem is ComboBoxItem picked) control(seat.Action, picked.Tag as string ?? "");
@@ -266,8 +256,7 @@ sealed partial class SharedViewPage
     {
         var bar = new Border();
         var seat = new Seat(bar, RowKind.Rule);
-        seat.Restyle = (next, at) => Ruled(bar, next.Controls[at], Upright(next, at));
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Ruled(bar, next.Controls[at], Upright(next, at)));
         return seat;
     }
 
@@ -297,8 +286,7 @@ sealed partial class SharedViewPage
         var picture = new Image();
         var card = new Border { Child = picture };
         var seat = new Seat(card, RowKind.Image);
-        seat.Restyle = (next, at) => Pictured(picture, card, next.Controls[at]);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Pictured(picture, card, next.Controls[at]));
         return seat;
     }
 
@@ -315,8 +303,7 @@ sealed partial class SharedViewPage
     {
         var scene = new SceneView(problem => report(new[] { problem }));
         var seat = new Seat(scene.Element, RowKind.Canvas) { Scene = scene };
-        seat.Restyle = (next, at) => Scene(scene, next, at);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Scene(scene, next, at));
         return seat;
     }
 
@@ -339,8 +326,7 @@ sealed partial class SharedViewPage
         var items = new MenuFlyout();
         card.ContextFlyout = items; // the menu opens on right-click or a long press
         var seat = new Seat(card, RowKind.Menu) { Panel = pile };
-        seat.Restyle = (next, at) => Menued(card, items, next, at);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Menued(card, items, next, at));
         return seat;
     }
 
@@ -374,8 +360,7 @@ sealed partial class SharedViewPage
         };
         var veil = new Border { Child = card, Background = SeeThrough };
         var seat = new Seat(veil, RowKind.Sheet) { Panel = pile, Floating = true };
-        seat.Restyle = (next, at) => Stacked(card, pile, next.Controls[at], across: false);
-        seat.Restyle(shown, index);
+        seat.Style(shown, index, (next, at) => Stacked(card, pile, next.Controls[at], across: false));
         var close = new Button
         {
             HorizontalAlignment = HorizontalAlignment.Right,

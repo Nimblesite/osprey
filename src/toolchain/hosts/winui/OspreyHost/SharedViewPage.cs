@@ -215,7 +215,13 @@ sealed partial class SharedViewPage
         /// <summary>A canvas's scene, kept between frames and given the row's binding.</summary>
         public SceneView? Scene { get; init; }
 
-        public Restyling? Restyle { get; set; }
+        public Restyling? Restyle { get; private set; }
+
+        public void Style(Shown shown, int index, Restyling apply)
+        {
+            Restyle = apply;
+            apply(shown, index);
+        }
 
         public long Action { get; set; }
 
