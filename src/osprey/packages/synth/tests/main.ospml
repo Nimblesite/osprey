@@ -357,7 +357,9 @@ test ("the FFT pitch shifter effect is set in semitones and cents within an octa
     forEachList ([{ keep = 1.0, ratio = 1.5, want = 1.0 }, { keep = 0.0, ratio = 1.5, want = 1.5 }, { keep = 0.5, ratio = 0.5, want = 1.0 }, { keep = 0.49, ratio = 0.5, want = 0.5 }], \f => expect (SpectralMath::formantRatio (f.keep, f.ratio), f.want))
     // A spectral shift moves whole bins: 10, -3 and 0 render; 10.7, -0.5 and 0.25 are refused, never truncated.
     forEachList ([10.0, -3.0, 0.0], \bins => expect (renders (shiftedBy bins), true))
-    forEachList ([10.7, -0.5, 0.25], \bins => refusedWith (shiftedBy bins, "Spectral shift must be a whole number of bins."))))
+    forEachList ([10.7, -0.5, 0.25], \bins => refusedWith (shiftedBy bins, "Spectral shift must be a whole number of bins."))
+    // The shift control spans what the node plays: up to size / 2 − 1 bins either way (31 at 64 points, 2047 at 4096).
+    forEachList ([{ size = 64, most = 31.0 }, { size = 1024, most = 511.0 }, { size = 4096, most = 2047.0 }], \c => expect (length (filterList ((Components::spectral (2, c.size, intDiv c.size 4, 3.0)).parameters, \p => p.key == "shift" && p.minimum == 0.0 - c.most && p.maximum == c.most)), 1))))
 
 test ("the true-peak brick-wall limiter holds every frame and inter-sample peak inside its ceiling by lookahead, passes quiet signals bit-exact and refuses bad settings", \() => arithmetic limitJourney)
 
