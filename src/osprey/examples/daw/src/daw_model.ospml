@@ -161,9 +161,30 @@ type Cue =
     due : int
     note : Note
 
+type NoteMemory =
+    ScalarNote
+        audio : synth::Rendered
+    MultichannelNote
+        clock : synth::GraphState<synth::ProcessorMemory<synth::KernelState>>
+
+type ActivePatch =
+    plan : synth::Prepared
+    ports : List<TapLane>
+    span : NoteSpan
+    attack : float
+    release : float
+    memory : NoteMemory
+
+type NoteDriver =
+    RecordedNote
+    PerformingNote
+        patch : ActivePatch
+
 type Sounding =
     cue : Cue
+    at : int
     lanes : List<List<float>>
+    driver : NoteDriver
 
 type Made =
     struck : Note
@@ -175,6 +196,7 @@ type NoteJob =
     note : Note
 
 type TrackPlay =
+    edited : bool
     pending : List<Cue>
     sounding : List<Sounding>
     sends : List<AudioSend>

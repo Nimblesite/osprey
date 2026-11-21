@@ -30,7 +30,7 @@ module Streams
         true => one
         false => other
 
-    silent = TrackPlay(pending = [], sounding = [], sends = [], made = [])
+    silent = TrackPlay(edited = false, pending = [], sounding = [], sends = [], made = [])
 
     warm (dirs, playing, index, until) =
         track = listGet playing.tracks index ?: silent
@@ -75,7 +75,7 @@ module Streams
     kept (fresh, last, index) =
         track = listGet fresh.tracks index ?: silent
         prior = listGet last.tracks index ?: track
-        track(made = prior.made)
+        track(edited = prior.edited, made = prior.made)
 
     // The project back at its first frame, every track keeping the notes it has already made: a loop makes each
     // distinct note once, in its first pass.

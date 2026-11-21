@@ -29,7 +29,7 @@ module Playback
             Error _ => Error(message = "A track is missing.")
             Success play => match listGet playing.score.tracks index
                 Error _ => Error(message = "The playing track has no previous patch.")
-                Success prior => Outcomes::carried (Arrangements::refreshed (song, voice, prior, play), \ready =>
+                Success prior => Outcomes::carried (Arrangements::refreshed (song, voice, prior, play, from), \ready =>
                     Outcomes::carried (Arrangements::advanced (song, held.buses, voice, ready, from, until), \step => ok (Heard(plays = listAppend held.plays step.play, buses = step.buses))))
 
     // Every track advances over the same frames into the same buses.
