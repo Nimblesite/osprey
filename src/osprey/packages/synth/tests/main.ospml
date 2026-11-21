@@ -45,6 +45,11 @@ test ("feedback needs a delay; disconnected components and fan-out have determin
         expect (listGet plan.order 0 ?: -1, 2)
         expect (listGet plan.order 1 ?: -1, 1)
         expect (length plan.feedback, 1))
+    forEachList ([[1], [2], [2, 2]], \roots =>
+        ancestors = Graphs::inputAncestors (delayed.cables, roots)
+        expect (mapLength ancestors, 2)
+        expect (mapContains ancestors "1" && mapContains ancestors "2", true))
+    expect (mapLength (Graphs::inputAncestors (delayed.cables, [])), 0)
     prepared (graph, 2)
     // Node 30 becomes ready after 10 and must run before the already-ready 20.
     ordered = graph(nodes = [a(identity = 30), a(identity = 10), a(identity = 20)], cables = [cable (10, 30)])
