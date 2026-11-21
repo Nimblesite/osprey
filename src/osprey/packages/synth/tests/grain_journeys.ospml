@@ -361,11 +361,10 @@ grainDistributionJourney () =
     fixed = synth::GrainDistribution(minimum = low, maximum = low)
     succeeds (GrainDistributions::seeded 7, \seeds =>
         // One checked seed per stream, initialised by offset from the caller's seed.
-        expect (seeds.position, 7)
-        expect (seeds.rate, 104736)
-        expect (seeds.duration, 130370)
-        expect (seeds.amplitude, 155928)
-        expect (seeds.pan, 196620)
+        exactRows ([
+            { got = seeds.position, want = 7 }, { got = seeds.rate, want = 104736 },
+            { got = seeds.duration, want = 130370 }, { got = seeds.amplitude, want = 155928 },
+            { got = seeds.pan, want = 196620 }])
         // The first event advances every stream once and draws each value by the Lean formulas.
         succeeds (GrainDistributions::events ([0], ranges, 16, seeds), \single =>
             event = grainEventAt (single.events, 0)
@@ -671,13 +670,15 @@ registerGrainJourneys () =
         near (GrainMath::asr (8.0, 11.0, 0.2, 0.3), 2.0 / 3.0, 0.000000000001)
         // [SYNTH-ADVANCED-GRAINS-PLAYBACK] Equal-power placement: the squared gains sum to one.
         forEachList ([-1.0, -0.5, 0.0, 0.5, 1.0], \pan => near (GrainMath::leftGain pan * GrainMath::leftGain pan + GrainMath::rightGain pan * GrainMath::rightGain pan, 1.0, 0.000000000000001))
-        expect (GrainMath::leftGain (-1.0), 1.0)
-        expect (GrainMath::rightGain (-1.0), 0.0)
-        expect (GrainMath::rightGain 1.0, 1.0)
-        near (GrainMath::leftGain 0.0, 0.7071067811865476, 0.000000000000001)
-        near (GrainMath::rightGain 0.0, 0.7071067811865476, 0.000000000000001)
-        near (GrainMath::leftGain (-0.5), 0.9238795325112867, 0.000000000000001)
-        near (GrainMath::rightGain (-0.5), 0.3826834323650898, 0.000000000000001)
+        exactRows ([
+            { got = GrainMath::leftGain (-1.0), want = 1.0 },
+            { got = GrainMath::rightGain (-1.0), want = 0.0 },
+            { got = GrainMath::rightGain 1.0, want = 1.0 }])
+        forEachList ([
+            { pan = 0.0, left = 0.7071067811865476, right = 0.7071067811865476 },
+            { pan = -0.5, left = 0.9238795325112867, right = 0.3826834323650898 }], \row =>
+            near (GrainMath::leftGain row.pan, row.left, 0.000000000000001)
+            near (GrainMath::rightGain row.pan, row.right, 0.000000000000001))
         // Periodic linear interpolation is the declared, non-bandlimited resampler.
         expect (Interpolation::linear (0.25, 0.75, 0.5), 0.5)
         expect (Interpolation::linear (-1.0, 0.00000000000000001, 1.0), 0.00000000000000001)
@@ -685,9 +686,9 @@ registerGrainJourneys () =
         expect (GrainMath::fraction 3.25, 0.25)
         expect (GrainMath::fraction 4.0, 0.0)
         // Park-Miller update with multiplier 48271 and modulus 2147483647.
-        expect (GrainMath::nextSeed 1.0, 48271.0)
-        expect (GrainMath::nextSeed 48271.0, 182605794.0)
-        expect (GrainMath::nextSeed 2147483646.0, 2147435376.0)
+        forEachList ([
+            { seed = 1.0, want = 48271.0 }, { seed = 48271.0, want = 182605794.0 },
+            { seed = 2147483646.0, want = 2147435376.0 }], \row => expect (GrainMath::nextSeed row.seed, row.want))
         expect (grainParkMiller 48271.0, 182605794.0)
         // Inclusive integer jitter spans [period - jitter, period + jitter] at the seed extremes.
         expect (GrainMath::interval (4.0, 2.0, 1.0), 2.0)
