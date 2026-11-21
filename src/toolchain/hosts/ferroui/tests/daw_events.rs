@@ -166,8 +166,10 @@ fn create_group(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     };
     let original = read();
     let open = |regions: &mut Regions, row: usize| {
-        point(canvas, lane(row, 0.2), true);
-        point(canvas, lane(row, 0.2), false);
+        // The start marker intercepts presses along its line. Select each track away from the preceding marker.
+        let at = lane(row, 0.21 + 0.04 * row as f64);
+        point(canvas, at, true);
+        point(canvas, at, false);
         point(canvas, (1200.0, 535.0), true);
         regions.adopt(&point(canvas, (1200.0, 535.0), false).0).expect("open the inline chooser");
     };
