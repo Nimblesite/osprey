@@ -858,7 +858,8 @@ liveFolder = "${transportRoot}/bin/song/live"
 streams (step, message, from, beats, mode) =
     said (step, "daw-song:live:${liveFolder}", message)
     match asked step
-        [ui::Run ran given _ _ _ _, ui::Animate on] =>
+        // The song's earlier note makers are ended as the stream starts.
+        [ui::Run ran given _ _ _ _, ui::Cancel _, ui::Animate on] =>
             expect (ran, "/bin/sh")
             expect (length given, 9)
             expect (listGet given 0 ?: "", "-c")
@@ -866,7 +867,7 @@ streams (step, message, from, beats, mode) =
             expect (contains (listGet given 1 ?: "") "warm \"$i\" \"$w\" >/dev/null 2>&1 & m=", true)
             expect (mapList ([2, 3, 4, 5, 6, 7, 8], \index => listGet given index ?: ""), ["${transportRoot}/bin/worker", "${transportRoot}/bin/daw", "${liveFolder}/project.json", liveFolder, from, beats, mode])
             expect (on, true)
-        _ => expect (length step.requests, 2)
+        _ => expect (length step.requests, 3)
     expect (synth::DawSession::phase step.stepStore, "Playing")
     expect (step.stepStore.playClock, 0.0)
     expect (readFile "${liveFolder}/played.json" ?: "unread", "")
@@ -922,6 +923,10 @@ endMoved (editor, action, bar) = match action
     synth::MoveEnd at => expect (at, bar)
     _ => expect ("another action", "MoveEnd")
 
+startMoved (action, bar) = match action
+    synth::MoveStart at => expect (at, bar)
+    _ => expect ("another action", "MoveStart")
+
 // [DAW-TRANSPORT-RANGE] The end marker starts at the song's end (beat 13); moved to a bar line after the start
 // marker it ends Play there; at or before the start marker, or past the song, it means the song's end again.
 rangeJourney ready =
@@ -938,7 +943,22 @@ rangeJourney ready =
     expect (synth::DawSession::rangeEnd (short(rollBar = 2)), 12.0)
     expect (synth::DawSession::rangeEnd (short(rollBar = 3)), 13.0)
     succeeds (synth::TimelineView::laneAt (ready, 1092.0, 212.0), \action => endMoved (ready, action, 3))
-    succeeds (synth::TimelineView::laneAt (ready, 1092.0, 200.0), \action => playheadSet (ready, action, 3))
+    // Either marker is taken anywhere down its line, in the ruler or the lanes, and moves alone.
+    succeeds (synth::TimelineView::laneAt (ready, 1092.0, 200.0), \action => endMoved (ready, action, 3))
+    succeeds (synth::TimelineView::laneAt (ready, 1090.0, 400.0), \action => endMoved (ready, action, 3))
+    succeeds (synth::TimelineView::laneAt (ready, 473.0, 200.0), \action => startMoved (action, 1))
+    succeeds (synth::TimelineView::laneAt (ready, 475.0, 400.0), \action => startMoved (action, 1))
+    succeeds (synth::TimelineView::laneAt (ready, 600.0, 200.0), \action => playheadSet (ready, action, 1))
+    expect (synth::TimelineView::startAt (ready, 198.0), 0)
+    expect (synth::TimelineView::startAt (ready, 1092.0), 3)
+    expect (synth::TimelineView::startAt (short, 1092.0), 2)
+    later = synth::DawSession::started (short, 2)
+    said (later, "", "Play runs bars 3–3.")
+    expect (synth::DawSession::rangeStart later.stepStore, 8.0)
+    expect (synth::DawSession::rangeEnd later.stepStore, 12.0)
+    earlier = synth::DawSession::started (short, 0)
+    expect (synth::DawSession::rangeStart earlier.stepStore, 0.0)
+    expect (synth::DawSession::rangeEnd earlier.stepStore, 12.0)
     expect (synth::TimelineView::endAt (ready, 198.0), 2)
     expect (synth::TimelineView::endAt (ready, 1092.0), 3)
     expect (synth::TimelineGeometry::endBar (9.9, 1.0), 2.0)
@@ -948,6 +968,7 @@ rangeJourney ready =
     said (synth::DawSession::play (ready(rollBar = 4)), "", "The start marker is at the song's end; move it back to play.")
     playing = synth::DawSession::play ready
     said (synth::DawSession::ended (playing.stepStore, 3), "daw-song:live:${liveFolder}", "Stop first to move the end marker.")
+    said (synth::DawSession::started (playing.stepStore, 0), "daw-song:live:${liveFolder}", "Stop first to move the start marker.")
 
 // After a mix edit Play streams the edited snapshot.
 remixed (ready, louder) =
@@ -1017,10 +1038,10 @@ zoomJourney lined =
     expect (daw::Arrangements::beats closer.song, 16.0)
     // Beats 2 to 10 are in view: both notes lie outside, so the lane draws no trace, and a tap reads the new scale.
     expect (firstTrace closer, 0)
-    succeeds (synth::TimelineView::laneAt (closer, 198.0, 200.0), \action => playheadSet (closer, action, 0))
+    succeeds (synth::TimelineView::laneAt (closer, 205.0, 200.0), \action => playheadSet (closer, action, 0))
     succeeds (synth::TimelineView::laneAt (closer, 645.0, 200.0), \action => playheadSet (closer, action, 1))
-    succeeds (synth::TimelineView::laneAt (closer, 1092.0, 200.0), \action => playheadSet (closer, action, 2))
-    succeeds (synth::TimelineView::laneAt (closer, 1092.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 2)))
+    succeeds (synth::TimelineView::laneAt (closer, 1085.0, 200.0), \action => playheadSet (closer, action, 2))
+    succeeds (synth::TimelineView::laneAt (closer, 1085.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 2)))
     // The closest zoom is one beat across the lanes, still about the playhead; the widest is the whole song.
     closest = synth::TimelineView::zoomedBy (closer, 100.0)
     expect (closest.laneZoom, 16.0)
@@ -1066,16 +1087,16 @@ barLineJourney ready =
     lined = ready(song = timeline [barLined (pluckTrack ())], track = 0)
     zoomJourney lined
     expect (daw::Arrangements::beats lined.song, 16.0)
-    succeeds (synth::TimelineView::laneAt (lined, 1092.0, 200.0), \action => playheadSet (lined, action, 3))
-    succeeds (synth::TimelineView::laneAt (lined, 1091.0, 200.0), \action => playheadSet (lined, action, 3))
-    succeeds (synth::TimelineView::laneAt (lined, 198.0, 200.0), \action => playheadSet (lined, action, 0))
-    succeeds (synth::TimelineView::laneAt (lined, 421.5, 200.0), \action => playheadSet (lined, action, 1))
+    succeeds (synth::TimelineView::laneAt (lined, 1085.0, 200.0), \action => playheadSet (lined, action, 3))
+    succeeds (synth::TimelineView::laneAt (lined, 1084.0, 200.0), \action => playheadSet (lined, action, 3))
+    succeeds (synth::TimelineView::laneAt (lined, 205.0, 200.0), \action => playheadSet (lined, action, 0))
+    succeeds (synth::TimelineView::laneAt (lined, 428.0, 200.0), \action => playheadSet (lined, action, 1))
     succeeds (synth::TimelineView::laneAt (lined, 868.5, 200.0), \action => playheadSet (lined, action, 3))
-    succeeds (synth::TimelineView::laneAt (lined, 1092.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 3)))
+    succeeds (synth::TimelineView::laneAt (lined, 1085.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 3)))
     // [DAW-HEADER] The header holds the page tabs and the transport; every other command is in the menu bar.
     forEachList (["Timeline", "Track patch", "Bus routing", "Return to start", "Play", "Stop"], \label => expect (length (labelled (ready, label)), 1))
     forEachList (["Render song", "Open song", "Save project", "Keyboard", "Play bars"], \label => expect (length (labelled (ready, label)), 0))
-    expect (length (synth::TimelineView::headerAreas ready), 6)
+    expect (length (synth::TimelineView::headerAreas ready), 7)
     // The song overview has one column per bar of the song.
     expect (length (synth::Header::overview lined.song), 4)
     expect (length (synth::Header::overview (timeline [])), 1)
@@ -1134,8 +1155,8 @@ transportJourney () =
     said (home, "", "Nothing is playing; the playhead is back at bar 1.")
     expect (stopped.stepStore.rollBar, 5)
     expect (home.stepStore.rollBar, 0)
-    succeeds (synth::TimelineView::laneAt (ready, 198.0, 205.0), \action => playheadSet (ready, action, 0))
-    succeeds (synth::TimelineView::laneAt (ready, 1092.0, 200.0), \action => playheadSet (ready, action, synth::DawSession::bar (daw::Arrangements::beats ready.song)))
+    succeeds (synth::TimelineView::laneAt (ready, 205.0, 205.0), \action => playheadSet (ready, action, 0))
+    succeeds (synth::TimelineView::laneAt (ready, 1085.0, 200.0), \action => playheadSet (ready, action, synth::DawSession::bar (daw::Arrangements::beats ready.song)))
     failsWith (synth::TimelineView::laneAt (ready, 197.0, 205.0), "No lane here.")
     barLineJourney ready
     failsWith (synth::TimelineView::laneAt (ready, 700.0, 192.0), "No lane here.")
