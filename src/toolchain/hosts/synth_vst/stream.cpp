@@ -56,18 +56,8 @@ bool parameter(std::istream& input, Plugin& plugin, ParameterChanges& changes, u
     double value = 0;
     if (!word(input, identity) || !word(input, offset) || !normalized(input, value) || offset >= frames || offset < previous) return false;
     previous = offset;
-    const auto controller = plugin.provider->getControllerPtr();
-    if (!controller) return false;
-    bool found = false;
-    const auto count = controller->getParameterCount();
-    if (count < 0 || count > 65536) return false;
-    for (int32 i = 0; i < count; ++i) {
-        ParameterInfo info{};
-        if (controller->getParameterInfo(i, info) != kResultOk) return false;
-        if (info.id == identity) found = (info.flags & ParameterInfo::kCanAutomate) && !(info.flags & ParameterInfo::kIsReadOnly);
-    }
     int32 index = 0;
-    auto* queue = found ? changes.addParameterData(identity, index) : nullptr;
+    auto* queue = plugin.acceptsParameter(identity) ? changes.addParameterData(identity, index) : nullptr;
     return queue && queue->addPoint(static_cast<int32>(offset), value, index) == kResultOk;
 }
 
@@ -112,6 +102,25 @@ bool processBlock(std::istream& input, std::ostream& output, Plugin& plugin, uin
     plugin.error = "Stream output closed";
     return bool(output);
 }
+}
+
+// A stream-session retains a plug-in instance across transactions; inspect its controller once.
+bool Plugin::acceptsParameter(ParamID id) {
+    if (!automatableIds) {
+        const auto controller = provider->getControllerPtr();
+        if (!controller) return false;
+        const auto count = controller->getParameterCount();
+        if (count < 0 || count > 65536) return false;
+        std::unordered_set<ParamID> ids;
+        for (int32 i = 0; i < count; ++i) {
+            ParameterInfo info{};
+            if (controller->getParameterInfo(i, info) != kResultOk) return false;
+            if ((info.flags & ParameterInfo::kCanAutomate) && !(info.flags & ParameterInfo::kIsReadOnly))
+                ids.insert(info.id);
+        }
+        automatableIds.emplace(std::move(ids));
+    }
+    return automatableIds->count(id) != 0;
 }
 
 bool Plugin::stream(std::istream& input, std::ostream& output, uint64_t frameLimit) {

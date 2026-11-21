@@ -198,3 +198,8 @@ synth-vst:
 ## synth-vst-headless: The same Prism VST journey without a window, using real worker processes.
 synth-vst-headless:
 	$(MAKE) -C $(ROOT) _prism_vst_ui_test PRISM_TEST_MODE=--headless
+
+## synth-vst-spectrum: Measure the real Dragonfly or TAL output in the built Prism host.
+.PHONY: synth-vst-spectrum
+synth-vst-spectrum:
+	cd "$(ROOT)" && node src/toolchain/hosts/synth_vst/spectrum.mjs "$(VST3_FOLDER)" "$(or $(VST3_CASE),dragonfly)"

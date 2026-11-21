@@ -37,3 +37,14 @@ The session test reads each reply before closing stdin, checks exact ADelay stat
 On macOS, `osprey-vst-worker audio-device` accepts newline-framed hex blocks containing the synth package's canonical mono/stereo 48 kHz IEEE float32 WAV. Blocks contain 1–8192 frames and samples within -1..1. It preallocates four AudioQueue buffers, prefills two, and acknowledges each accepted block with bounded queue counters. `!drain` waits for every queued frame to be returned by the device before acknowledging; closing/killing the session cancels ownership. JSON diagnostics report device start, drain and failures. Other platforms explicitly report the adapter as unavailable.
 
 `python3 src/toolchain/hosts/synth_vst/build.py --device-test` verifies real queue operation, drain and malformed PCM rejection; it is included in the macOS worker CTest suite. A returned buffer proves device-queue consumption, not an independent acoustic recording. Prism now uses this queue for bounded auditions and continuous Play/Stop. Its loaded native journey captures actual queue receipts and verifies that all instrument, effect and device workers are gone after Stop.
+
+## Third-party spectrum test on macOS
+
+With the Prism GPUI host built for the DAW and the VST worker built, run the following from the repository root. Point `VST3_FOLDER` at a folder containing the extracted VST3 bundle. The test runs Prism with a temporary preferences folder and the real audio device. It keeps the plug-in output, the PCM submitted to the device and the device receipts under `target/pr-validation/vst-spectrum-*`.
+
+```sh
+make -C src/toolchain/targets/macos/tests synth-vst-spectrum VST3_FOLDER="/absolute/path/to/plug-ins"
+make -C src/toolchain/targets/macos/tests synth-vst-spectrum VST3_FOLDER="/Library/Audio/Plug-Ins/VST3" VST3_CASE=tal
+```
+
+The first command uses Dragonfly Room Reverb 3.2.10. Its macOS universal disk image has SHA-256 `e0b854b92a4e51ce5851320fb1a9f91ab1a4309f997de070e175b3e5cab4adaf`. The test compares dry, muted and wet auditions and exercises continuous Play and Stop. The second command uses TAL-NoiseMaker and measures the change in fundamental frequency after raising the MIDI note by one octave. Both compare the stereo samples leaving the VST3 instance with the samples submitted to the device. [Dragonfly release](https://github.com/michaelwillis/dragonfly-reverb/releases/tag/3.2.10)

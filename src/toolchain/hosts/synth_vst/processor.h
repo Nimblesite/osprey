@@ -10,6 +10,8 @@
 #include "public.sdk/source/vst/hosting/parameterchanges.h"
 #include "public.sdk/source/common/memorystream.h"
 #include <cstring>
+#include <optional>
+#include <unordered_set>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -37,6 +39,10 @@ public:
     bool active = false;
     bool processing = false;
     std::string error;
+    bool acceptsParameter(ParamID id);
+private:
+    std::optional<std::unordered_set<ParamID>> automatableIds;
+public:
     ~Plugin() {
         if (processing) processor->setProcessing(false);
         if (active) component->setActive(false);

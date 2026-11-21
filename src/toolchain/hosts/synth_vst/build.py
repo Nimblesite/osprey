@@ -284,12 +284,12 @@ def prism_test(host, headless):
     destination.mkdir(parents=True, exist_ok=True)
     class_id = "0CDBB66985D548A9BFD8371909D24BB3"
     steps = [{"wait": "ADelay"}, {"type": ["Add component", "vst:" + class_id]}, {"wait": "ADelay 0"},
-             {"type": ["Module", "0"]}, {"type": ["Delay", "0.5"]},
+             {"type": ["Module", "0"]}, {"invoke": "ADelay 0 Delay"}, {"type": ["Delay", "0.5"]},
              {"type": ["Add component", "vst:" + class_id]}, {"wait": "ADelay 1"},
-             {"invoke": "Canvas output 0:0"}, {"invoke": "Canvas input 1:0"}, {"wait": "Patch updated."},
+             {"invoke": "Canvas output 0:0"}, {"invoke": "Canvas input 1:0"}, {"wait": "Cable 0:0 to 1:0"},
              {"drag": ["Canvas ADelay 0", "20", "130"]}, {"shot": "vst-routed"},
              {"context": "Canvas ADelay 1"}, {"invoke": "Delete node"}, {"gone": "ADelay 1"}, {"wait": "ADelay 0"}, {"shot": "vst-removed"}]
-    audition = [{"type": ["Module", "0"]}, {"type": ["Delay", "0"]}, {"type": ["Module", "1"]}, {"type": ["Delay", "0"]},
+    audition = [{"type": ["Module", "0"]}, {"invoke": "ADelay 0 Delay"}, {"type": ["Delay", "0"]}, {"type": ["Module", "1"]}, {"invoke": "ADelay 1 Delay"}, {"type": ["Delay", "0"]},
                 {"type": ["Add component", "vst:5653544D44416A6D6461206A78313000"]}, {"wait": "mda JX10 2"},
                 {"type": ["Add component", "midi-note"]}, {"type": ["Add component", "stereo-output"]},
                 {"invoke": "Canvas output 3:0"}, {"invoke": "Canvas input 2:0"},
@@ -299,9 +299,9 @@ def prism_test(host, headless):
                 {"invoke": "Canvas output 5:0"}, {"invoke": "Canvas input 6:1"},
                 {"type": ["Module", "2"]}, {"invoke": "Modulate VCF Freq"},
                 {"invoke": "Canvas output 6:0"}, {"invoke": "Canvas input 4:0"},
-                {"invoke": "Audition"}, {"wait": "Preview finished."}, {"shot": "vst-audition"},
+                {"invoke": "Audition Patch"}, {"wait": "Preview finished."}, {"shot": "vst-audition"},
                 {"type": ["Module", "1"]}]
-    steps.insert(0, {"invoke": "Patch controls"})
+    steps.insert(0, {"invoke": "Patch Controls"})
     before_remove = steps.index({"context": "Canvas ADelay 1"})
     steps[before_remove:before_remove] = audition
     worker = recording_worker(destination)
@@ -316,9 +316,9 @@ def prism_test(host, headless):
     live = destination / "live"
     live.mkdir(exist_ok=True)
     live_worker = recording_worker(live)
-    live_steps = steps[:steps.index({"invoke": "Audition"})] + [
-        {"invoke": "Play"}, {"wait": "Playing the started patch. Stop and play again to apply edits."}, {"frames": "480"},
-        {"invoke": "Stop"}, {"wait": "Playback stopped."}, {"frames": "8"}, {"shot": "live-stopped"}]
+    live_steps = steps[:steps.index({"invoke": "Audition Patch"})] + [
+        {"invoke": "Play Patch"}, {"wait": "Playing the started patch. Stop and play again to apply edits."}, {"frames": "480"},
+        {"invoke": "Stop Patch"}, {"wait": "Playback stopped."}, {"frames": "8"}, {"shot": "live-stopped"}]
     script = live / "journey.json"
     script.write_text(json.dumps({"steps": live_steps}))
     arguments[arguments.index("--self-test") + 1:arguments.index("--self-test") + 3] = [str(script), str(live)]
