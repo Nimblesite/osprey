@@ -76,7 +76,7 @@ impl Regions {
         (regions, controls)
     }
 
-    #[cfg(feature = "desktop")]
+    /// The key of the detached region in the current frame, when one was drawn.
     pub fn detached(&self) -> Option<String> {
         self.regions.keys().find(|key| key.starts_with("window:")).cloned()
     }
