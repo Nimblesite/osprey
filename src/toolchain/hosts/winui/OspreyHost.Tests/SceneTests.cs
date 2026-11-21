@@ -52,18 +52,21 @@ public sealed class SceneTests
         Assert.Equal((768.0, 414.0), Decode([Row(20, x: 1536, y: 828, width: -0.5)]).Opening);
     }
 
-    /// <summary>Zoom 0 fits the region whole, a positive zoom fits it up to that zoom, a negative zoom is its magnitude at every region size.</summary>
+    /// <summary>
+    /// [WINUI-HOST-SCENE-SCALE] Resizing never changes scale: the application alone sets a scene's
+    /// scale with its zoom, and the host draws it at exactly that scale in a region of any size,
+    /// smaller, equal to or far larger than the artboard. A zoom of 0 is one window unit per scene unit.
+    /// </summary>
     [Fact]
-    public void TheScaleFitsZeroCapsPositiveAndFixesNegativeZoom()
+    public void ResizingTheRegionNeverChangesASceneScale()
     {
-        foreach (var (w, h) in new[] { (80.0, 60.0), (400.0, 300.0), (4000.0, 3000.0) })
+        var regions = new[] { (1.0, 1.0), (80.0, 60.0), (200.0, 100.0), (400.0, 300.0), (4000.0, 3000.0), (5000.0, 40.0) };
+        foreach (var (zoom, scale) in new[] { (0.0, 1.0), (0.25, 0.25), (1.0, 1.0), (2.0, 2.0), (-0.75, 0.75), (-1.0, 1.0), (-2.0, 2.0) })
         {
-            var whole = Math.Min(w / 200, h / 100);
-            Assert.Equal(whole, Decode([Row(20, x: 200, y: 100, width: 0)]).Scale(w, h));
-            Assert.Equal(Math.Min(2.0, whole), Decode([Row(20, x: 200, y: 100, width: 2)]).Scale(w, h));
-            foreach (var zoom in new[] { 0.75, 1.0, 2.0 })
+            var scene = Decode([Row(20, x: 200, y: 100, width: zoom)]);
+            foreach (var (w, h) in regions)
             {
-                Assert.Equal(zoom, Decode([Row(20, x: 200, y: 100, width: -zoom)]).Scale(w, h));
+                Assert.True(scale == scene.Scale(w, h), $"zoom {zoom} in a {w}x{h} region drew at {scene.Scale(w, h)}, not {scale}");
             }
         }
     }

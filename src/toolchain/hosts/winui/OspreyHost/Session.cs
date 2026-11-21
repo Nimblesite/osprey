@@ -98,6 +98,20 @@ sealed class Session
     /// <summary>The window-unit size of the application when it is one sized scene, else null.</summary>
     public (double Width, double Height)? CanvasSize() => renderer.CanvasSize() ?? rows.CanvasSize();
 
+    /// <summary>
+    /// The size <paramref name="content"/> asks for when nothing limits it, when the scene on show
+    /// opens at a size inside a larger layout, so the window shows that whole artboard; else null.
+    /// </summary>
+    public (double Width, double Height)? NaturalSize(UIElement content)
+    {
+        if (OnShow()?.Opening is null)
+        {
+            return null;
+        }
+        content.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        return (content.DesiredSize.Width, content.DesiredSize.Height);
+    }
+
     /// <summary>Presses and releases a key in the scene on screen; false when no scene is drawn.</summary>
     public bool Press(string key)
     {
