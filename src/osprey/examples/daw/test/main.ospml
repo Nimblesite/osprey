@@ -151,7 +151,7 @@ played expectedPeak =
 // The readout shows `readout`: the `name` key then plays at `peak`.
 readThenPlay (readout, name, peak) =
     expect (letters readout, true)
-    heardAt (name, peak)
+    sounds (name, peak)
 
 // Nothing reached the host, so the patch it would have played is untouched.
 silent () = expect (runCount (), 0)
@@ -159,7 +159,7 @@ silent () = expect (runCount (), 0)
 // An edit that plays nothing, then the key that plays the patch it left behind.
 quietKey peak =
     silent ()
-    heardAt ("A3", peak)
+    sounds ("A3", peak)
 
 quietPatch before =
     silent ()
@@ -193,7 +193,7 @@ pressedAt (before, x, y) =
 
 // The first clip, then the chooser `menu` opens.
 firstClip (menu, name) =
-    heardAt ("A3", 17)
+    sounds ("A3", 17)
     pressed = argument 2
     tap menu
     layer ("menu", name)
@@ -266,7 +266,7 @@ launchAndCutoff () =
     offered "Play C3"
     offered "Play C#3"
     offered "Play B4"
-    heardAt ("A3", 75)
+    sounds ("A3", 75)
     before = startingAt "220.0 Hz"
     slid ("Filter Cutoff", 0.1, "process", 0.1)
     quietEdit before
@@ -285,10 +285,10 @@ filterHistory () =
 keyboard () =
     tap "Bypass Filter"
     tap "Bypass LFO"
-    heardAt ("A3", 75)
-    heardAt ("A3", 75)
+    sounds ("A3", 75)
+    sounds ("A3", 75)
     a3 = argument 2
-    heardAt ("A4", 75)
+    sounds ("A4", 75)
     apart (argument 2, a3)
     expect (letters "440.0 Hz", true)
     struck ("C3", 130.8128)
@@ -425,7 +425,7 @@ slidQuietly () =
     forEachList ([true, false], \down =>
         quietPointer (high, down)
         knobNumber ("volume", 0.6))
-    heardAt ("A3", 60)
+    sounds ("A3", 60)
 
 // A key is struck on release: pressing it, or hovering over it, plays nothing.
 keyPress () =
