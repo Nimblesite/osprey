@@ -168,20 +168,25 @@ module TimelineView
         false => "${satAdd (whole (TimelineGeometry::bar beat)) 1}"
 
     // [DAW-TIMELINE-ZOOM] One ruler line of the beats shown, numbered when it falls on a major division.
-    division (editor, index) =
-        major = TimelineGeometry::rulerMajor (shownBeats editor)
-        beat = TimelineGeometry::rulerBeat (shownFrom editor, TimelineGeometry::rulerStep (shownBeats editor), toFloat index)
-        x = TimelineGeometry::laneX (beat, shownFrom editor, shownBeats editor)
+    division (origin, span, step, major, duration, index) =
+        beat = TimelineGeometry::rulerBeat (origin, step, toFloat index)
+        x = TimelineGeometry::laneX (beat, origin, span)
         strong = TimelineGeometry::onDivision (beat, major) > 0.5
         line = box (x, 221.0, 1.0, 217.0, ui::Pick::either (strong, Scenes::rgb (54, 46, 73), Scenes::rgb (36, 30, 52)), 3)
         tick = box (x, 215.0, 1.0, ui::Pick::either (strong, 8.0, 4.0), dim (), 4)
-        match x >= 197.5 && x <= 1092.5 && beat <= beats editor
+        match x >= 197.5 && x <= 1092.5 && beat <= duration
             false => []
             true => match strong
                 true => [line, tick, label (rulerLabel (beat, major), x, 200.0, 11.0, dim (), 0, 4)]
                 false => [line, tick]
 
-    ruler editor = ui::Lists::flatten (mapList (toList (range (0, whole (TimelineGeometry::rulerCount (shownBeats editor, TimelineGeometry::rulerStep (shownBeats editor))))), \index => division (editor, index)))
+    // Share the visible interval across all ticks. A duration lookup traverses every track's notes.
+    ruler (editor, duration) =
+        span = TimelineGeometry::laneSpan (duration, editor.laneZoom)
+        origin = TimelineGeometry::laneFirst (editor.laneStart, span, duration)
+        step = TimelineGeometry::rulerStep span
+        major = TimelineGeometry::rulerMajor span
+        ui::Lists::flatten (mapList (toList (range (0, whole (TimelineGeometry::rulerCount (span, step)))), \index => division (origin, span, step, major, duration, index)))
 
     // A marker: a line down the lanes with its handle on the ruler, when it is in view.
     marker (at, colour) = match at < 197.5 || at > 1092.5
@@ -198,7 +203,7 @@ module TimelineView
         true => []
         false => marker (TimelineGeometry::laneX (editor.playBeat, shownFrom editor, shownBeats editor), Scenes::rgb (120, 232, 150))
 
-    arrangement (editor, duration) = listConcat (listConcat [label ("Arrangement", 24.0, 160.0, 18.0, ink (), 0, 4), label ("${length editor.song.tracks} tracks", 154.0, 163.0, 13.0, dim (), 0, 4), label ("Bars 1–${satAdd (DawSession::bar duration) 1}", 1108.0, 163.0, 13.0, dim (), 2, 4), label ("TRACKS", 24.0, 200.0, 12.0, dim (), 0, 3)] (ruler editor)) (listConcat (foldList (visible editor, [], \(all, index) =>
+    arrangement (editor, duration) = listConcat (listConcat [label ("Arrangement", 24.0, 160.0, 18.0, ink (), 0, 4), label ("${length editor.song.tracks} tracks", 154.0, 163.0, 13.0, dim (), 0, 4), label ("Bars 1–${satAdd (DawSession::bar duration) 1}", 1108.0, 163.0, 13.0, dim (), 2, 4), label ("TRACKS", 24.0, 200.0, 12.0, dim (), 0, 3)] (ruler (editor, duration))) (listConcat (foldList (visible editor, [], \(all, index) =>
         match listGet editor.song.tracks index
             Error _ => all
             Success voice => listConcat all (lane (editor, index, voice)))) (ui::Lists::flatten [finish editor, playhead editor, sounding editor, scroll editor]))

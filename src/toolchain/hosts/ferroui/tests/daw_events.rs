@@ -602,6 +602,43 @@ fn type_into_canvas_dial(regions: &mut Regions, song: &std::path::Path) {
     choose_menu(regions, "View", "Timeline");
 }
 
+/// [DAW-MIX-DRAG] Offscreen notes must not stall a drag in the visible Timeline inspector.
+fn dense_timeline_drag(regions: &mut Regions, song: &std::path::Path, mut project: serde_json::Value) {
+    // Eight offscreen parts each play sixteenths over a 128-bar arrangement.
+    for track in &mut project["tracks"].as_array_mut().expect("tracks")[TRACKS - 8..] {
+        let notes = track["notes"].as_array_mut().expect("part notes");
+        let base = notes[0].clone();
+        *notes = (0..2048).map(|index| {
+            let mut note = base.clone();
+            note["start"] = serde_json::json!(f64::from(index) / 4.0);
+            note
+        }).collect();
+    }
+    let dense = song.with_file_name("dense.json");
+    std::fs::write(&dense, serde_json::to_vec(&project).expect("encode dense song")).expect("write dense song");
+    choose_menu(regions, "File", "Open Song…");
+    let opened = Library::event(0, &Touch::completed("daw-open", Ok(dense.display().to_string()))).expect("open dense song");
+    assert!(shows_label(&opened, "Arrangement"), "the dense project opens on its Timeline");
+    regions.adopt(&opened).expect("draw dense timeline");
+    let canvas = regions.get("root").and_then(|root| scene(&root.node)).expect("timeline canvas");
+    point(canvas, (1160.0, 348.0), true);
+    let mut elapsed = 0.0;
+    for step in 1..=24 {
+        let x = 1160.0 + f64::from(step) * 9.0;
+        let (shown, ms) = point(canvas, (x, 348.0), true);
+        let gain = (x - 1154.0) * 4.0 / 262.0;
+        assert!(shows_label(&shown, &format!("{gain:.2}×")), "the timeline inspector follows the drag");
+        elapsed += ms;
+    }
+    let (_, release) = point(canvas, (1376.0, 348.0), false);
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&dense).expect("released file")).expect("project");
+    assert_eq!(saved["tracks"][0]["gain"], 3.39);
+    let mean = elapsed / 24.0;
+    println!("dense timeline drag: {mean:.2} ms mean over 24 moves with 16,384 offscreen notes; release and save {release:.2} ms");
+    assert!(mean < 1000.0 / 120.0, "dragging a timeline control averaged {mean:.2} ms per move");
+    std::fs::remove_file(dense).expect("remove dense song");
+}
+
 #[test]
 fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     assert_eq!(Library::init(), Ok(()), "the daw's top level must run");
@@ -725,6 +762,7 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     println!("timeline taps: mean {mean:.2} ms, worst {worst:.2} ms over {} events", measured.len());
     assert!(mean < FRAME_MS, "a Timeline tap takes {mean:.2} ms on average; one frame is {FRAME_MS:.2} ms");
     assert!(worst < 2.0 * FRAME_MS, "the slowest Timeline tap takes {worst:.2} ms; two frames are {:.2} ms", 2.0 * FRAME_MS);
+    dense_timeline_drag(&mut regions, &song, rendered);
     std::fs::remove_file(&song).expect("remove this run's project");
     std::fs::remove_dir(&folder).expect("remove this run's folder");
 }
