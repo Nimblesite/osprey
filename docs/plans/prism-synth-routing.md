@@ -252,6 +252,7 @@ The twelve loaded application journeys retain their assertions and add device re
 - [x] Generate the monotonic device observation counter from the canonical editor model; show persistent queue warnings and reject decreasing counters.
 - [x] Pass all 10 native worker checks, including deliberate queue starvation and diagnostics, and all 12 loaded application journeys under GC and ARC.
 - [x] Build the latest macOS bundle in this worktree; retain all code and test assertions.
+- [x] Run the windowed TAL-NoiseMaker → Dragonfly Room patch three times for 960 UI frames. The device accepted 813056, 811008 and 811008 stereo frames with zero empty callbacks. Each run verified at least ten seconds actually played, exact VST and device PCM, pitch and a stereo reverb tail (`49e8bab28`).
 - [ ] Resolve sustained playback starvation: both latest native reruns fail the unchanged zero-empty-queue assertion, including an isolated rerun. Finite exact VST PCM still passes. Earlier zero-starvation evidence does not establish repeatable reliability.
 - [ ] Resolve root CI: both Deslop 0.42 and installed 0.41 report 4.1% against the unchanged 4.0% gate; make ci stops there.
 - [ ] Verify windowed tests after the Mac is unlocked; currently unavailable.
