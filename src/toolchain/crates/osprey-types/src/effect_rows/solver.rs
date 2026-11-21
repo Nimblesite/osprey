@@ -10,14 +10,14 @@ pub(super) fn advance_function(
     analyzer: &Analyzer<'_>,
     id: usize,
     function: &Function<'_>,
-    rows: &mut [Summary],
-    returns: &mut [Option<Value>],
+    row: Option<&mut Summary>,
+    slot: Option<&mut Option<Value>>,
     history: &mut ReturnHistory,
 ) -> bool {
     let (mut actual, returned) = analyzer.function_body_model(function);
     actual.widen();
     let merge = history.merge_for(id);
-    let mut changed = rows.get_mut(id).is_some_and(|row| {
+    let mut changed = row.is_some_and(|row| {
         let before = (merge != Merge::Join).then(|| recomputed_part(row));
         let moved = row.merge_inferred_row(actual, analyzer.rows.get(id), merge);
         if let Some(before) = before {
@@ -25,7 +25,7 @@ pub(super) fn advance_function(
         }
         moved
     });
-    if let (Some(returned), Some(slot)) = (returned, returns.get_mut(id)) {
+    if let (Some(returned), Some(slot)) = (returned, slot) {
         changed |= advance_return(slot, returned, id, history);
     }
     changed
@@ -265,40 +265,43 @@ impl Solve<'_> {
             instances,
             file_scope,
         };
-        let mut next = (rows.clone(), returns.clone());
-        let moved = self.advance(&analyzer, dirty, &mut next, history, reads);
-        // `analyzer` borrows `rows`/`returns`; its last use is the advance
-        // above, so the borrow has ended by the time the new state is written.
-        (*rows, *returns) = next;
-        super::worklist::affected(&moved, &file_reads, reads)
-    }
-
-    /// Advance each dirty function one iteration, recording what it read;
-    /// returns the functions that moved.
-    fn advance(
-        &self,
-        analyzer: &Analyzer<'_>,
-        dirty: &BTreeSet<usize>,
-        (rows, returns): &mut (Vec<Summary>, Vec<Option<Value>>),
-        history: &mut ReturnHistory,
-        reads: &mut [BTreeSet<usize>],
-    ) -> BTreeSet<usize> {
-        let mut moved = BTreeSet::new();
+        // All functions read the same pre-sweep state. Hold only changed slots until
+        // that borrow ends, leaving every clean function's provenance in place.
+        let mut updates = Vec::new();
         for &id in dirty {
-            let Some(function) = self.index.functions.get(id) else {
+            let Some(function) = index.functions.get(id) else {
                 continue;
             };
+            let mut row = rows.get(id).cloned();
+            let mut returned = returns.get(id).cloned();
             let (changed, read) = super::worklist::recording(|| {
-                advance_function(analyzer, id, function, rows, returns, history)
+                advance_function(
+                    &analyzer,
+                    id,
+                    function,
+                    row.as_mut(),
+                    returned.as_mut(),
+                    history,
+                )
             });
             if let Some(slot) = reads.get_mut(id) {
                 *slot = read;
             }
             if changed {
-                let _ = moved.insert(id);
+                updates.push((id, row, returned));
             }
         }
-        moved
+        let mut moved = BTreeSet::new();
+        for (id, row, returned) in updates {
+            if let (Some(slot), Some(row)) = (rows.get_mut(id), row) {
+                *slot = row;
+            }
+            if let (Some(slot), Some(returned)) = (returns.get_mut(id), returned) {
+                *slot = returned;
+            }
+            let _ = moved.insert(id);
+        }
+        super::worklist::affected(&moved, &file_reads, reads)
     }
 }
 
@@ -436,3 +439,33 @@ mod settle_tests;
 #[cfg(test)]
 #[path = "solver_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[test]
+fn sparse_sweep_leaves_unread_return_trees_in_place() {
+    let parsed = osprey_syntax::parse_program("fn active()=1\nfn unused()=2\n");
+    assert_eq!(parsed.errors, []);
+    let index = Index::collect(&parsed.program);
+    let solve = Solve {
+        index: &index,
+        instances: &Instances::default(),
+        statements: &parsed.program.statements,
+    };
+    let trees = |unread| {
+        let mut rows = vec![Summary::default(); 2];
+        let mut returns = vec![None, Some(unread)];
+        let mut reads = vec![BTreeSet::new(); 2];
+        super::provenance::measured_clones(|| {
+            solve.sweep(
+                &BTreeSet::from([0]),
+                (&mut rows, &mut returns),
+                &mut ReturnHistory::default(),
+                &mut reads,
+            )
+        })
+    };
+    assert_eq!(
+        trees(Value::default()),
+        trees(super::model_values::snapshot_value())
+    );
+}

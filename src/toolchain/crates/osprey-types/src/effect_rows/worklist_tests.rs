@@ -105,8 +105,8 @@ fn acyclic_rows_replace_superseded_callback_arguments() {
             &analyzer,
             id,
             function,
-            &mut state.0,
-            &mut state.1,
+            state.0.get_mut(id),
+            state.1.get_mut(id),
             &mut history,
         );
         assert_eq!(
@@ -213,7 +213,14 @@ fn advance_all(
 ) -> bool {
     let mut moved = false;
     for (id, function) in analyzer.index.functions.iter().enumerate() {
-        moved |= advance_function(analyzer, id, function, &mut next.0, &mut next.1, history);
+        moved |= advance_function(
+            analyzer,
+            id,
+            function,
+            next.0.get_mut(id),
+            next.1.get_mut(id),
+            history,
+        );
     }
     moved
 }
@@ -356,8 +363,8 @@ fn advanced_function_model(
         analyzer,
         id,
         function,
-        &mut next.0,
-        &mut next.1,
+        next.0.get_mut(id),
+        next.1.get_mut(id),
         &mut history,
     );
     (
