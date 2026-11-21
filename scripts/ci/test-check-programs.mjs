@@ -45,6 +45,11 @@ function check(failGraph, expected, total) {
   for (const excluded of ['pyflavor/plain.py', 'x/failscompilation/red.osp', 'x/sample-registry/red.osp']) {
     assert(!calls.includes(excluded) && !stdout.includes(excluded), excluded);
   }
+  const logs = path.join(root, 'target/check-programs');
+  for (const file of fs.readdirSync(logs).filter(file => file.endsWith('.log'))) {
+    assert(!/^define /m.test(fs.readFileSync(path.join(logs, file), 'utf8')), 'successful LLVM output accumulated in ' + file);
+  }
+  assert.match(stdout, /loose\/bad\.osp:1:[0-9]+: type mismatch:/, 'the failure report includes compiler diagnostics');
   assert(!fs.existsSync(path.join(root, 'target/release/osprey')), 'all jobs must use the supplied compiler');
 }
 
