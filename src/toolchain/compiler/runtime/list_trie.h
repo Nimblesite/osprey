@@ -99,19 +99,24 @@ static inline OspreyListNode *alloc_node(int64_t layout) {
   return alloc_trie_storage(sizeof(OspreyListNode), layout, 1);
 }
 
-/* Copy a node. The copy shares every slot `src` pointed at, so each managed
+/* Copy a node. Only the first `used` slots can contain references, so each managed
  * slot gains a reference — children for an internal node, elements for a
  * managed leaf; a scalar leaf none. NULL slots probe-miss. */
-static inline OspreyListNode *clone_node(OspreyListNode *src, int64_t layout) {
+static inline OspreyListNode *clone_slots(OspreyListNode *src, int64_t layout,
+                                         int32_t used) {
   if (src == NULL) return alloc_node(layout);
   OspreyListNode *n = alloc_trie_storage(sizeof(*n), layout, 0);
   memcpy(n->slots, src->slots, sizeof(src->slots));
   if (layout == NODE_PTRS_LAYOUT) {
-    for (int32_t i = 0; i < OSPREY_LIST_BRANCH; i++) {
+    for (int32_t i = 0; i < used; i++) {
       osp_retain(as_node_ptr(n->slots[i]));
     }
   }
   return n;
+}
+
+static inline OspreyListNode *clone_node(OspreyListNode *src, int64_t layout) {
+  return clone_slots(src, layout, OSPREY_LIST_BRANCH);
 }
 
 /* Wrap `node` in fresh internal nodes down to the leaf level, moving the

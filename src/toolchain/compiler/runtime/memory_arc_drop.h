@@ -136,7 +136,10 @@ static void arc_drop_list_hdr(char *body, uint32_t size, int kind) {
 // load reads the low half — where an address always lands [MEM-BACKENDS].
 static void arc_drop_ptr_array(char *body, uint32_t size) {
   for (size_t off = 0; off + 8 <= size; off += 8) {
-    arc_drop_child(arc_load_child(body + off));
+    void *child = arc_load_child(body + off);
+    if (child != NULL) {
+      arc_drop_child(child);
+    }
   }
 }
 
