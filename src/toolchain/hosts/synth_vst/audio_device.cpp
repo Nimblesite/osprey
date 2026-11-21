@@ -60,11 +60,12 @@ class Device {
     static constexpr size_t MaxLivePackets = 9;
     static constexpr uint32_t LiveQueueFrames = 960; // 20 ms at 48 kHz.
     static constexpr uint32_t RecoveryQueueFrames = 1440;
+    static constexpr uint32_t RecoveryStableFrames = Rate / 10; // 100 ms of submitted audio.
     std::array<Slot, MaxLivePackets> slots;
     std::atomic<uint64_t> returned{0}, accepted{0}, emptyCallbacks{0};
     std::atomic<bool> draining{false};
     uint32_t channels = 0;
-    uint64_t reportedEmpty = 0;
+    uint64_t reportedEmpty = 0, lastEmptyFrame = 0;
     bool running = false, finished = false;
     std::string error;
 
@@ -110,13 +111,18 @@ class Device {
     }
 
     Slot* available(uint32_t frames) {
-        // Keep live edits close to the device. Give a stream that ran empty another callback batch.
-        const auto budget = emptyCallbacks.load(std::memory_order_acquire) ? RecoveryQueueFrames : LiveQueueFrames;
+        const auto sent = accepted.load(std::memory_order_relaxed);
+        const auto recovering = reportedEmpty && sent - lastEmptyFrame < RecoveryStableFrames;
+        const auto budget = recovering ? RecoveryQueueFrames : LiveQueueFrames;
         const auto count = std::clamp<size_t>((budget + frames - 1) / frames, 4, slots.size());
+        const auto beforeEnqueue = (count - 1) * frames;
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
         do {
-            for (size_t i = 0; i < count; ++i)
-                if (slots[i].available.load(std::memory_order_acquire)) return &slots[i];
+            // Recovery slots can still be occupied when the normal limit resumes.
+            if (!running || sent - returned.load(std::memory_order_acquire) <= beforeEnqueue) {
+                for (size_t i = 0; i < count; ++i)
+                    if (slots[i].available.load(std::memory_order_acquire)) return &slots[i];
+            }
             std::this_thread::sleep_for(std::chrono::microseconds(250));
         } while (std::chrono::steady_clock::now() < deadline);
         error = "Audio output did not return a buffer within two seconds";
@@ -163,14 +169,15 @@ public:
     }
 
     void receipt() {
+        const auto sent = accepted.load(std::memory_order_acquire);
         const auto empty = emptyCallbacks.load(std::memory_order_acquire);
         if (empty > reportedEmpty) {
             std::cerr << "{\"event\":\"audio.queue_empty\",\"count\":" << empty
-                      << ",\"acceptedFrames\":" << accepted.load() << "}\n";
+                      << ",\"acceptedFrames\":" << sent << "}\n";
             reportedEmpty = empty;
+            lastEmptyFrame = sent;
         }
         const auto done = returned.load(std::memory_order_acquire);
-        const auto sent = accepted.load(std::memory_order_acquire);
         std::cout << "{\"status\":0,\"acceptedFrames\":" << sent << ",\"returnedFrames\":" << done
                   << ",\"queuedFrames\":" << sent - done << ",\"channels\":" << channels
                   << ",\"emptyCallbacks\":" << empty << ",\"running\":" << (running ? "true" : "false") << "}\n" << std::flush;

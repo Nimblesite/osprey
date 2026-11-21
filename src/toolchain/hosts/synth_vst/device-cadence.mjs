@@ -52,8 +52,14 @@ try {
     assert.ok(receipt.queuedFrames <= 1440);
   }
   assert.ok(recoveredDepth > 960, 'a starved producer gets additional queue headroom');
+  const recoveredEmpty = receipt.emptyCallbacks;
+  for (let i = 0; i < 40; ++i) {
+    receipt = await exchange(line);
+    assert.ok(receipt.queuedFrames <= 960, 'recovered playback returns to the 20 ms limit');
+    assert.equal(receipt.emptyCallbacks, recoveredEmpty, 'reducing queue depth must preserve stable playback');
+  }
   receipt = await exchange('!drain\n');
-  assert.equal(receipt.returnedFrames, 1021 * frames);
+  assert.equal(receipt.returnedFrames, 1061 * frames);
   assert.equal(receipt.queuedFrames, 0);
   assert.equal(receipt.running, false);
   worker.stdin.end();
