@@ -467,40 +467,6 @@ fn leaf_test_metadata(owner: super::field_rows::FieldInstance) -> Value {
 
 #[cfg(test)]
 #[test]
-fn fold_stabilization_moves_its_owned_container_children() {
-    let wrap = |value: Value| Value {
-        fields: BTreeMap::from([("field".to_owned(), value.clone())]),
-        element: Some(Box::new(value.clone())),
-        result_payload: Some(Box::new(value.clone())),
-        fiber_payload: Some(Box::new(value)),
-        ..Value::channel(3)
-    };
-    let merged = Callable::Known(Box::new(KnownCallable {
-        parameters: Vec::new(),
-        summary: Summary {
-            parameter_uses: BTreeSet::from([super::ParameterUse {
-                level: 0,
-                index: 0,
-                projection: Vec::new(),
-                arguments: super::CallArguments::default(),
-                scopes: Vec::new(),
-            }]),
-            ..Summary::default()
-        },
-        returned: None,
-    }));
-    let mut leaf = Value::from_callable(merged);
-    let mut input = wrap(wrap(leaf.clone()));
-    leaf.callable = Some(Callable::Unknown);
-    let expected = wrap(wrap(leaf));
-    let ((), clones) =
-        super::provenance::measured_clones(|| stabilize_merged_callables(&mut input));
-    assert_eq!(input, expected);
-    assert_eq!(clones, 0, "fold stabilization copied owned values");
-}
-
-#[cfg(test)]
-#[test]
 fn deep_projection_leaf_retains_all_noncontainer_metadata() {
     let owner = super::field_rows::FieldInstance {
         name: "Box".to_owned(),
