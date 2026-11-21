@@ -1441,3 +1441,5 @@ test ("Violet Static opens the kick as a wired WAV sample", \() => ui::Runtime::
 test ("Every grain control can be reached and edited in both inspectors", \() => Runtime::guarded (\() => hosted dialPagesJourney))
 
 test ("A page name appears once and empty inspectors omit the parameter heading", \() => Runtime::guarded (\() => hosted pageHeadingsJourney))
+
+test ("A held mix fader, the following note, Undo and Redo affect the playing song", \() => Runtime::guarded (\() => hosted liveMixJourney))

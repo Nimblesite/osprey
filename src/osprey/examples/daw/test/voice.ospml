@@ -707,3 +707,44 @@ pageHeadingsJourney () =
     expect (Views::shows (selected.drivenSeen, "Parameters"), false)
     hidden = Drive::press (selected, "Patch Controls")
     expect (Views::letters (hidden.drivenSeen, "Parameters"), false)
+
+// [DAW-TRANSPORT-LIVE-CONTROLS] Read the same controls and audio block as the renderer between UI events.
+liveMixHistory (place, released, muted) =
+    undone = Drive::press (released, "Undo")
+    expect ((Drive::holding undone).songTicket, (Drive::holding released).songTicket)
+    liveDialBlock (place, muted, \(loud, heard) =>
+        expect (heard.controlVersion > muted.controlVersion, true)
+        expect (loudest loud.left > 0.01, true)
+        expect (loudest loud.right > 0.01, true)
+        redone = Drive::press (undone, "Redo")
+        liveDialBlock (place, heard, \(quiet, again) =>
+            expect (again.controlVersion > heard.controlVersion, true)
+            expect (again.playing.cursor, 640)
+            expect (loudest quiet.left, 0.0)
+            expect (loudest quiet.right, 0.0)))
+
+liveMixJourney () =
+    place = "target/daw-tests/live-mixer"
+    _root = makeDir "target/daw-tests"
+    _dir = makeDir place
+    track = keysTrack ()
+    first = daw::Note(pitch = 60, start = 0.0, length = 0.02, velocity = 1.0)
+    score = timeline [track(notes = [first, first(pitch = 67, start = 0.02)])]
+    succeeds (daw::Projects::saved (score, "${place}/knobs.json"), \_ =>
+        session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
+        started = Drive::press (prismTap (session, "Timeline"), "Play Song")
+        expect ((Drive::holding started).songTicket, "daw-song:live:${place}/knobs/live")
+        point = Semantics::point (Semantics::element (started.drivenSeen.renderedAccess, "Track gain"), 0.0)
+        down = Drive::pointer (started, point.pointX, point.pointY, true)
+        expect (synth::DawSession::holding (Drive::holding down), true)
+        succeeds (daw::Playback::start score, \initial =>
+            succeeds (daw::Playback::next (score, initial, 448), \before =>
+                expect (loudest before.left > 0.01, true)
+                stream = daw::LiveStream(playing = before.playing, controlVersion = 0, controlScore = score, noteFolders = [])
+                liveDialBlock (place, stream, \(quiet, muted) =>
+                    // The held note crosses into the second note at frame 480 while the fader is still down.
+                    expect (loudest quiet.left, 0.0)
+                    expect (loudest quiet.right, 0.0)
+                    up = Drive::pointer (down, point.pointX, point.pointY, false)
+                    expect (synth::DawSession::holding (Drive::holding up), false)
+                    liveMixHistory (place, up, muted)))))
