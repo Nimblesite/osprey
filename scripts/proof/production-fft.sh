@@ -6,10 +6,11 @@ out="$root/target/proof/production-fft"
 tools="$root/src/toolchain/benchmarks/proof/tools"
 source="$root/src/osprey/packages/synth/src/ffts.ospml"
 frames="${source%/*}/spectral_frames.ospml"
+strike="${source%/*}/strike_combs.ospml"
 checker="$root/target/proof/openai/check-batch"
 mkdir -p "$out"
 reflect() {
-    cargo run --quiet --manifest-path "$root/src/toolchain/Cargo.toml" -p osprey-syntax --example synth_proof -- "$1" "$2" > "$out/bodies"
+    cargo run --quiet --manifest-path "$root/src/toolchain/Cargo.toml" -p osprey-syntax --example synth_proof -- "$1" "$2" "${3:-$strike}" > "$out/bodies"
     awk -v body="$out/bodies" '/^-- INSERT PRODUCTION BODIES$/ {while ((getline line < body) > 0) print line; next} {print}' \
         "$tools/ProductionFft.lean.in" > "$out/ProductionFft.lean"
 }
@@ -26,7 +27,7 @@ check_export() {
         printf '%s\t%s\n' "$out/$file" "$name" | "$checker.$backend"
     fi
 }
-for theorem in combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate; do
+for theorem in combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull; do
     name="ProductionFft.$theorem"
     LEAN_PATH="$out:$lean_path" "$exporter" ProductionFft -- "$name" > "$out/$theorem.ndjson"
     for backend in gc arc wasm; do
@@ -45,7 +46,12 @@ reject_edit() {
         echo "mutation did not change $input" >&2
         return 1
     fi
-    if [[ "$input" == "$source" ]]; then reflect "$out/mutant.ospml" "$frames"; else reflect "$source" "$out/mutant.ospml"; fi
+    case "$input" in
+        "$source") reflect "$out/mutant.ospml" "$frames" ;;
+        "$frames") reflect "$source" "$out/mutant.ospml" ;;
+        "$strike") reflect "$source" "$frames" "$out/mutant.ospml" ;;
+        *) return 1 ;;
+    esac
     if lake env lean --root="$out" "$out/ProductionFft.lean" > "$out/rejected.log" 2>&1; then
         echo "accepted broken production $theorem" >&2
         return 1
@@ -60,6 +66,7 @@ reject_edit combinedCorrect 's/listPrepend rest.upper (subtracted (e, t))/listPr
 reject_edit quartetCorrect 's/added (upper, difference), subtracted (lower, sum)/subtracted (lower, sum), added (upper, difference)/'
 reject_edit conjugateComponents 's/im = 0.0 - value.im/im = value.im/'
 reject_edit scaledComponents 's/im = value.im [*] gain/im = value.re * gain/' "$frames"
+reject_edit strikeDifference 's/delay config + 1.0/delay config + 0.0/' "$strike"
 reflect "$source" "$frames"
 
 # Replay an unchanged proof certificate against a different, well-typed

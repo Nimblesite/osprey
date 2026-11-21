@@ -13,7 +13,21 @@ structure Halves (α : Type) where
   lower : List (Bin α)
   upper : List (Bin α)
 
+structure Strike (α : Type) where
+  position : α
+  sampleRate : α
+  frequency : α
+
+structure LineSample (α history : Type) where
+  sample : α
+  next : history
+
 structure Ops (α : Type) where
+  History : Type
+  Fault : Type
+  push : History → α → History
+  tap : History → α → Except Fault α
+  divide : α → α → α
   plus : α → α → α
   times : α → α → α
   unitRe : α → α → α
@@ -148,5 +162,28 @@ theorem rotationConjugate (ops : Ops α) (current previous : Bin α) :
     rotation ops current previous =
       let delta := turned ops current (conjugate ops previous)
       ⟨ops.unitRe delta.re delta.im, ops.unitIm delta.re delta.im⟩ := rfl
+
+/-- The strike comb returns the difference and the newly pushed history on a
+    successful delay read, or propagates the precise delay error. -/
+theorem strikeDifference (ops : Ops α) (cfg : Strike α) (held : ops.History) (input : α) :
+    next ops cfg held input =
+      let line := ops.push held input
+      let d := ops.divide (ops.times cfg.position cfg.sampleRate) cfg.frequency
+      match ops.tap line (ops.plus d (ops.literal 1)) with
+      | .error why => .error why
+      | .ok older => .ok ⟨ops.minus input older, line⟩ := rfl
+
+/-- A periodic component whose delayed sample equals the excitation is
+    cancelled. The successful read must use the newly pushed history and the
+    strike-position delay, including the one-sample read convention. -/
+theorem strikePeriodicNull (ops : Ops α) (cfg : Strike α) (held : ops.History) (input : α)
+    (repeats : ops.tap (ops.push held input)
+      (ops.plus (ops.divide (ops.times cfg.position cfg.sampleRate) cfg.frequency) (ops.literal 1)) =
+      .ok input) (selfSub : ops.minus input input = ops.literal 0) :
+    next ops cfg held input = .ok ⟨ops.literal 0, ops.push held input⟩ := by
+  rw [strikeDifference]
+  dsimp only
+  rw [repeats]
+  exact congrArg (fun x => Except.ok (LineSample.mk x (ops.push held input))) selfSub
 
 end ProductionFft

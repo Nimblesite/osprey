@@ -23,6 +23,7 @@ fn binder(name: &str) -> Result<String, String> {
             | "sin"
             | "cos"
             | "listPrepend"
+            | "delay"
     ) {
         return Err(format!("binding shadows a reflected operation: {name}"));
     }
@@ -42,7 +43,22 @@ fn pattern(p: &Pattern) -> Result<String, String> {
             [Pattern::Binding(head)] => Ok(format!("{} :: {}", binder(head)?, binder(tail)?)),
             _ => Err("unsupported list head".into()),
         },
-        _ => Err("unsupported pattern".into()),
+        Pattern::Constructor {
+            name,
+            fields,
+            sub_patterns,
+        } if sub_patterns.is_empty() => {
+            let ctor = match name.as_str() {
+                "Error" => "Except.error",
+                "Success" => "Except.ok",
+                _ => return Err(format!("unsupported pattern {name}")),
+            };
+            let [n] = fields.as_slice() else {
+                return Err("expected unary constructor pattern".into());
+            };
+            Ok(format!("{ctor} {}", binder(n)?))
+        }
+        _ => Err(format!("unsupported pattern {p:?}")),
     }
 }
 
@@ -50,6 +66,8 @@ fn callee(e: &Expr) -> Result<String, String> {
     let Expr::Identifier(name) = e else {
         if let Expr::Path(path) = e {
             return match path.to_string().as_str() {
+                "DelayLines::push" => Ok("ops.push".into()),
+                "DelayLines::tap" => Ok("ops.tap".into()),
                 "SpectralMath::twiddle" => Ok("ops.twiddle".into()),
                 "SpectralMath::productRe" => Ok("ops.productRe".into()),
                 "SpectralMath::productIm" => Ok("ops.productIm".into()),
@@ -61,11 +79,48 @@ fn callee(e: &Expr) -> Result<String, String> {
         return Err("unsupported callee".into());
     };
     match name.as_str() {
-        "added" | "subtracted" | "rotated" | "combined" => Ok(format!("{} ops", ident(name)?)),
+        "added" | "subtracted" | "rotated" | "combined" | "delay" => {
+            Ok(format!("{} ops", ident(name)?))
+        }
         "satAdd" | "toFloat" | "sin" | "cos" => Ok(format!("ops.{name}")),
         "listPrepend" => Ok("(fun tail head => List.cons head tail)".into()),
         _ => Err(format!("unsupported callee {name}")),
     }
+}
+
+fn constructor(name: &str, fields: &[osprey_ast::FieldAssignment]) -> Result<String, String> {
+    if let Some((ctor, field)) = match name {
+        "Error" => Some(("Except.error", "message")),
+        "Success" => Some(("Except.ok", "value")),
+        _ => None,
+    } {
+        let [payload] = fields else {
+            return Err(format!("invalid {name} fields"));
+        };
+        if payload.name != field {
+            return Err(format!("invalid {name} field {}", payload.name));
+        }
+        return Ok(format!("({ctor} {})", term(&payload.value)?));
+    }
+    let record = match name {
+        "LineSample" => "LineSample",
+        "Complex" => "Bin",
+        "ComplexHalves" => "Halves",
+        _ => return Err(format!("unsupported constructor {name}")),
+    };
+    let assignments = fields
+        .iter()
+        .map(|f| Ok(format!("{} := {}", ident(&f.name)?, term(&f.value)?)))
+        .collect::<Result<Vec<_>, String>>()?;
+    let args = if record == "LineSample" {
+        "α ops.History"
+    } else {
+        "α"
+    };
+    Ok(format!(
+        "({{ {} }} : {record} {args})",
+        assignments.join(", ")
+    ))
 }
 
 fn term(e: &Expr) -> Result<String, String> {
@@ -94,6 +149,7 @@ fn term(e: &Expr) -> Result<String, String> {
             let name = match op.as_str() {
                 "+" => "plus",
                 "*" => "times",
+                "/" => "divide",
                 "-" => "minus",
                 _ => return Err(format!("unsupported operator {op}")),
             };
@@ -111,18 +167,7 @@ fn term(e: &Expr) -> Result<String, String> {
             name,
             type_args,
             fields,
-        } if type_args.is_empty() => {
-            let record = match name.as_str() {
-                "Complex" => "Bin",
-                "ComplexHalves" => "Halves",
-                _ => return Err(format!("unsupported constructor {name}")),
-            };
-            let assignments = fields
-                .iter()
-                .map(|f| Ok(format!("{} := {}", ident(&f.name)?, term(&f.value)?)))
-                .collect::<Result<Vec<_>, String>>()?;
-            Ok(format!("({{ {} }} : {record} α)", assignments.join(", ")))
-        }
+        } if type_args.is_empty() => constructor(name, fields),
         Expr::Block {
             statements,
             value: Some(value),
@@ -175,6 +220,14 @@ fn reflect(file: &str) -> Result<(), String> {
         return Err("expected synth namespace".into());
     }
     let signatures: &[(&str, &[&str], &str)] = match path.to_string().as_str() {
+        "StrikeCombs" => &[
+            ("delay", &["Strike α"], "α"),
+            (
+                "next",
+                &["Strike α", "ops.History", "α"],
+                "Except ops.Fault (LineSample α ops.History)",
+            ),
+        ],
         "SpectralFrames" => &[
             ("scaled", &["Bin α", "α"], "Bin α"),
             ("turned", &["Bin α", "Bin α"], "Bin α"),
