@@ -266,3 +266,15 @@ type StrikeConfig =
 type LineSample =
     sample : float
     next : DelayLine
+
+type GuideCoefficients =
+    tuning : float
+    pickup : float
+    attenuation : LossConfig
+    dispersion : float
+
+type GuideSchedule =
+    LiveGuide
+    FixedGuide
+        coefficients : GuideCoefficients
+

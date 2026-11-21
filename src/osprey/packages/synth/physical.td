@@ -50,3 +50,5 @@ type MeshState { current: List<List<Float>> previous: List<List<Float>> }
 type MeshSample { sample: Float next: MeshState }
 type StrikeConfig { sampleRate: Float frequency: Float position: Float capacity: Int }
 type LineSample { sample: Float next: DelayLine }
+type GuideCoefficients { tuning: Float pickup: Float attenuation: LossConfig dispersion: Float }
+union GuideSchedule { LiveGuide {} FixedGuide { coefficients: GuideCoefficients } }

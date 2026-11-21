@@ -57,11 +57,23 @@ module PhysicalKernels
 
     modalBank (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "body", \selector => RenderInputs::bound (snapshot, held, "modes", \count => RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "brightness", \brightness => RenderInputs::bound (snapshot, held, "strike", \strike => bodied (frame, held, input, selector, count, \(modes, whole) => ModalConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, strike = strike, count = whole, modes = modes))))))))
 
-    guided (frame, held, input, config) = match Waveguides::configure config
-        Error why => Error(message = why)
-        Success accepted => Outcomes::carried (Waveguides::next (accepted, WaveguideState(line = DelayLine(samples = held.delay), loss = LossState(previous = held.integratorOne), dispersion = AllpassState(input = held.integratorTwo, output = held.phase)), input), \step => published (frame, held(delay = step.next.line.samples, integratorOne = step.next.loss.previous, integratorTwo = step.next.dispersion.input, phase = step.next.dispersion.output), step.sample))
+    guideSettings (rate, snapshot, identity, capacity) = RenderInputs::setting (snapshot, identity, "frequency", \frequency => RenderInputs::setting (snapshot, identity, "decay", \decay => RenderInputs::setting (snapshot, identity, "brightness", \brightness => RenderInputs::setting (snapshot, identity, "dispersion", \dispersion => RenderInputs::setting (snapshot, identity, "pickup", \pickup => Waveguides::configure (WaveguideConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, dispersion = dispersion, pickup = pickup, capacity = capacity)))))))
 
-    waveguide (rate, snapshot, frame, held, input, capacity) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "brightness", \brightness => RenderInputs::bound (snapshot, held, "dispersion", \dispersion => RenderInputs::bound (snapshot, held, "pickup", \pickup => guided (frame, held, input, WaveguideConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, dispersion = dispersion, pickup = pickup, capacity = capacity)))))))
+    (** Prepare physical string tuning for a fixed snapshot. *)
+    export prepare (rate, snapshot, identity, processor, fixed) = match processor
+        Waveguide capacity => match fixed
+            false => LiveGuide
+            true => match guideSettings (rate, snapshot, identity, capacity)
+                Success config => FixedGuide(coefficients = Waveguides::coefficients config)
+                Error _ => LiveGuide
+        _ => LiveGuide
+
+    waveguide (rate, snapshot, frame, held, input, capacity, prepared) =
+        voice = WaveguideState(line = DelayLine(samples = held.delay), loss = LossState(previous = held.integratorOne), dispersion = AllpassState(input = held.integratorTwo, output = held.phase))
+        result = match prepared
+            FixedGuide c => Waveguides::advance (c.tuning, c.pickup, c.attenuation, c.dispersion, voice, input)
+            LiveGuide => Outcomes::carried (guideSettings (rate, snapshot, held.identity, capacity), \config => Waveguides::next (config, voice, input))
+        Outcomes::carried (result, \step => published (frame, held(delay = step.next.line.samples, integratorOne = step.next.loss.previous, integratorTwo = step.next.dispersion.input, phase = step.next.dispersion.output), step.sample))
 
     delayed (frame, held, input, delay) = Outcomes::carried (DelayLines::tap (DelayLine(samples = held.delay), delay), \read => published (frame, held(delay = (DelayLines::push (DelayLine(samples = held.delay), input)).samples), read))
 
@@ -80,10 +92,10 @@ module PhysicalKernels
     allpass (snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "coefficient", \value => allpassed (frame, held, input, Allpasses::configure value))
 
     (** Process one routed input sample; non-physical processors are an explicit error. *)
-    export process (rate, snapshot, frame, held, n, input) = match n.processor
+    export process (rate, snapshot, frame, held, n, input, guide) = match n.processor
         Resonator => resonator (rate, snapshot, frame, held, input)
         Modal => modalBank (rate, snapshot, frame, held, input)
-        Waveguide capacity => waveguide (rate, snapshot, frame, held, input, capacity)
+        Waveguide capacity => waveguide (rate, snapshot, frame, held, input, capacity, guide)
         FractionalDelay _ => fractional (snapshot, frame, held, input)
         LossFilter => loss (snapshot, frame, held, input)
         Allpass => allpass (snapshot, frame, held, input)

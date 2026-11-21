@@ -82,7 +82,7 @@ module RenderKernels
         Shaper => EffectKernels::shaper (rate, snapshot, frame, held, input)
         Reverb => EffectKernels::reverb (rate, snapshot, frame, held, input)
         Shifter => EffectKernels::shifter (rate, snapshot, frame, held, input)
-        _ => PhysicalKernels::process (rate, snapshot, frame, held, scheduled.node, input)
+        _ => PhysicalKernels::process (rate, snapshot, frame, held, scheduled.node, input, scheduled.guide)
 
     playback (resource, rate, snapshot, frame, held) = match floatToInt (floor held.phase)
         Error _ => Error(message = InvalidConfiguration(detail = "Invalid sample cursor."))
@@ -125,7 +125,7 @@ module RenderKernels
             controls = match fixed
                 true => snapshot(parameters = filterList (snapshot.parameters, \p => p.node == identity))
                 false => snapshot
-            Valid(value = { node = n, spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
+            Valid(value = { node = n, guide = PhysicalKernels::prepare (rate, controls, identity, n.processor, fixed), spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
 
     (** Render one scheduled component or return its explicit fault. *)
     export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, rate, snapshot, false))

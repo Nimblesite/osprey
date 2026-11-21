@@ -19,21 +19,27 @@ module Waveguides
     export initial config = Outcomes::carried (DelayLines::prepare config.capacity, \line => Success(value = WaveguideState(line = line, loss = LossFilters::initial, dispersion = Allpasses::initial)))
 
     // A pickup at fraction p of the string is the comb `y[n] - y[n - pD]` (zero disables it).
-    picked (config, line, read) = match config.pickup == 0.0
+    picked (pickup, tuning, line, read) = match pickup == 0.0
         true => Success(value = read)
-        false => match DelayLines::tap (line, delay config * (1.0 - config.pickup))
+        false => match DelayLines::tap (line, tuning * (1.0 - pickup))
             Error why => Error(message = why)
             Success earlier => Success(value = read - earlier)
 
-    looped (config, held, input, read, output) =
-        lost = LossFilters::next (loss config, held.loss, read)
-        dispersed = Allpasses::next (config.dispersion, held.dispersion, lost.sample)
+    looped (attenuation, dispersion, held, input, read, output) =
+        lost = LossFilters::next (attenuation, held.loss, read)
+        dispersed = Allpasses::next (dispersion, held.dispersion, lost.sample)
         WaveguideSample(sample = output, next = WaveguideState(line = DelayLines::push (held.line, PhysicalMath::flushed (input + dispersed.sample)), loss = lost.next, dispersion = dispersed.next))
 
     (** One sample: excitation enters the loop; frequency edits keep the stored line (energy is re-tuned). *)
-    export next (config, held, input) = match DelayLines::tap (held.line, delay config)
+    export next (config, held, input) = advance (delay config, config.pickup, loss config, config.dispersion, held, input)
+
+    (** Derive fixed tuning and attenuation from a validated configuration. *)
+    export coefficients config = GuideCoefficients(tuning = delay config, pickup = config.pickup, attenuation = loss config, dispersion = config.dispersion)
+
+    (** Advance the feedback loop using the current tuning and attenuation. *)
+    export advance (tuning, pickup, attenuation, dispersion, held, input) = match DelayLines::tap (held.line, tuning)
         Error why => Error(message = why)
-        Success read => Outcomes::carried (picked (config, held.line, read), \output => Success(value = looped (config, held, input, read, output)))
+        Success read => Outcomes::carried (picked (pickup, tuning, held.line, read), \output => Success(value = looped (attenuation, dispersion, held, input, read, output)))
 
     (** Sample-rate change: tuning and T60 are recomputed from the new configuration, and the stored loop
         is resampled (linear) into the new capacity, so a sounding string keeps its pitch and decay. *)
