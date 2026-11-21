@@ -306,9 +306,9 @@ Targets: an event that changes nothing under 0.1 ms; a Timeline or Mix event und
 
 - [x] `Header::placed` and `placedAreas` bind the shift once. Same machine load, before and after: Timeline 2.52 ms to 1.71 ms per event, Mix 1.92 ms to 0.89 ms (the quiet-machine figures in the table above were 2.05 and 1.55).
 - [ ] Unchanged events answered without rebuilding the view.
-- [ ] `Streams` writes rows directly, with no intermediate list.
-- [ ] Knobs read by index or map, not by name search.
-- [ ] Card art refreshed only on the Patch page and only when its scale changes (before: resize 12.4 ms).
+- [x] `Streams` writes rows directly, with no intermediate list: one fold-style encoding (`Streams::laid`, `etched`) that the reader collects and the writer sends row by row. With the three fixes below it, 21 Nov 11:46, same probe: Timeline event 1.65 ms to 0.52 ms, Timeline frame tick 1.88 to 0.58, Mix 0.93 to 0.65, Patch 0.60 to 0.40, command Timeline 1.98 to 0.60.
+- [x] Knob search stops at the first match and builds no list (`ui::Lists::find` through `sought`); the name compare no longer takes a lock (code generation row 1). A map by name is still open if `Machines::knob` shows again in a profile.
+- [x] Card art refreshed only on the Patch page (`CardArts::cards`): Timeline resize 12.43 ms to 2.34 ms. Still open: a Patch resize redraws every card (3.38 ms to 2.84 ms) although only the card scale matters.
 - [ ] Atlas, toolbar and patch subtitle cached.
 
 **Engine.** Bars 9 and 10 again: 36.0 s (35.4 s of CPU, with the sampler attached). Nothing has moved since 35.0 s, and none of the block-rendering items above has landed. The same functions hold the time (12,808 samples, own code plus the runtime each calls directly):
@@ -345,8 +345,8 @@ Leaf time is the runtime, not arithmetic: `arc_drop_child` 18.2%, `arc_release_z
 
 Order by what it buys across all four profiles: 11 (drops), 1 (string equality), 2 (find), 7 (`Result` by value), 3 (inline lambdas), 4 (inline element reads), then 5, 6, 9, 10, 8.
 
-- [ ] 1. `osp_string_equal` for `==` and `!=`, with the literal's length when one side is a literal.
-- [ ] 2. First-match search with no list for `listGet (filterList …) 0`.
+- [x] 1. String compare decides at the first unequal byte with no length lookup (`osp_string_compare`, [string_runtime.c:63](../../src/toolchain/compiler/runtime/string_runtime.c)); only strings equal up to a NUL take the two locked lengths. No new entry point was needed, so `==`, `!=`, ordering, list search and structural equality all gain. Timeline tick: `osp_mem_string_length` + `osp_string_compare` + `memcmp` 23% to 1.4% of samples. Still open: equal strings (one hit per search) take the slow path; a literal's length known at compile time would remove it.
+- [ ] 2. First-match search with no list for `listGet (filterList …) 0`. Done by hand in `ui::Lists::find`; the compiler still builds the list at every other site (`RenderInputs::parameter`, `Graphs::node`, `CardArts::fixed`).
 - [ ] 3. Literal lambdas at built-in loop sites emitted inline, no heap environment.
 - [ ] 4. Inline element reads in proved loops, or runtime fast paths as bitcode.
 - [ ] 5. List literals as one allocation.

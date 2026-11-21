@@ -20,9 +20,15 @@ module Lists
 
     (** The first item that `matches`, or an error when none does. *)
     export find<T> : (List<T>, (T) -> bool) -> Result<T, string>
-    find (items, matches) = match listGet (filterList (items, matches)) 0
+    find (items, matches) = sought (items, matches, 0)
+
+    // Stops at the first match: no list of the matches is built ([DAW-PERF-ROUND]).
+    sought<T> : (List<T>, (T) -> bool, int) -> Result<T, string>
+    sought (items, matches, index) = match listGet items index
         Error _ => Error(message = "index out of bounds")
-        Success item => Success(value = item)
+        Success item => match matches item
+            true => Success(value = item)
+            false => sought (items, matches, satAdd index 1)
 
     locate<T> : (int, List<T>, (T) -> bool, int) -> int
     locate (found, items, matches, index) = match found >= 0

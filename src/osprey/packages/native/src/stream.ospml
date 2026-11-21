@@ -47,46 +47,54 @@ module Streams
 
     bit on = Pick::either (on, 1, 0)
 
+    // Every row is handed to `put` with what the rows before it came to, so a reader collects a list and the
+    // writer sends each row as it is made: one encoding, and no list between a shape and the frame
+    // ([DAW-PERF-ROUND]).
+
     // Consecutive values as point rows: pairs for a strip or polygon, singles for dashes.
-    pairs values = mapList (toList (range (0, intDiv (length values) 2)), \i => bare (point, 0, listGet values (2 * i) ?: 0.0, listGet values (2 * i + 1) ?: 0.0, 0.0, 0.0))
+    pairs (out, values, put) = range (0, intDiv (length values) 2) |> fold out (\(acc, i) => put (acc, bare (point, 0, listGet values (2 * i) ?: 0.0, listGet values (2 * i + 1) ?: 0.0, 0.0, 0.0)))
 
-    singles values = mapList (values, \value => bare (point, 0, value, 0.0, 0.0, 0.0))
+    singles (out, values, put) = foldList (values, out, \(acc, value) => put (acc, bare (point, 0, value, 0.0, 0.0, 0.0)))
 
-    step command = match command
-        MoveTo x y => [bare (pathStep, 0, x, y, 0.0, 0.0)]
-        LineTo x y => [bare (pathStep, 1, x, y, 0.0, 0.0)]
-        CurveTo x y cx cy => [bare (pathStep, 2, x, y, cx, cy)]
-        CubicTo x y ax ay bx by => [etch (pathStep, 3, x, y, ax, ay, bx, 0, 0, ""), bare (point, 0, by, 0.0, 0.0, 0.0)]
-        ArcTo rx ry rotation large sweep x y => [etch (pathStep, 4, rx, ry, rotation, x, y, bit large + 2 * bit sweep, 0, "")]
-        Polygon corners closed => listConcat [etch (pathStep, 5, 0.0, 0.0, 0.0, 0.0, 0.0, bit closed, intDiv (length corners) 2, "")] (pairs corners)
-        Close => [bare (pathStep, 6, 0.0, 0.0, 0.0, 0.0)]
+    step (out, command, put) = match command
+        MoveTo x y => put (out, bare (pathStep, 0, x, y, 0.0, 0.0))
+        LineTo x y => put (out, bare (pathStep, 1, x, y, 0.0, 0.0))
+        CurveTo x y cx cy => put (out, bare (pathStep, 2, x, y, cx, cy))
+        CubicTo x y ax ay bx by => put (put (out, etch (pathStep, 3, x, y, ax, ay, bx, 0, 0, "")), bare (point, 0, by, 0.0, 0.0, 0.0))
+        ArcTo rx ry rotation large sweep x y => put (out, etch (pathStep, 4, rx, ry, rotation, x, y, bit large + 2 * bit sweep, 0, ""))
+        Polygon corners closed => pairs (put (out, etch (pathStep, 5, 0.0, 0.0, 0.0, 0.0, 0.0, bit closed, intDiv (length corners) 2, "")), corners, put)
+        Close => put (out, bare (pathStep, 6, 0.0, 0.0, 0.0, 0.0))
 
-    outline line = match line
-        Fill => [bare (outlined, 0, 0.0, 0.0, 0.0, 0.0)]
-        Line width dashes bevel => listConcat [etch (outlined, 1, width, 0.0, 0.0, 0.0, 0.0, bit bevel, length dashes, "")] (singles dashes)
+    outline (out, line, put) = match line
+        Fill => put (out, bare (outlined, 0, 0.0, 0.0, 0.0, 0.0))
+        Line width dashes bevel => singles (put (out, etch (outlined, 1, width, 0.0, 0.0, 0.0, 0.0, bit bevel, length dashes, "")), dashes, put)
 
     tint colour = match colour
         Rgb r g b a => bare (tinted, 0, r, g, b, a)
         Hsl h s l a => bare (tinted, 1, h, s, l, a)
 
-    paint fill = match fill
-        Solid colour => [bare (painted, 0, 0.0, 0.0, 0.0, 0.0), tint colour]
-        Linear angle from fromAt to toAt oklab => [etch (painted, 1, angle, fromAt, toAt, 0.0, 0.0, bit oklab, 0, ""), tint from, tint to]
+    paint (out, fill, put) = match fill
+        Solid colour => put (put (out, bare (painted, 0, 0.0, 0.0, 0.0, 0.0)), tint colour)
+        Linear angle from fromAt to toAt oklab => put (put (put (out, etch (painted, 1, angle, fromAt, toAt, 0.0, 0.0, bit oklab, 0, "")), tint from), tint to)
 
-    path (steps, line, fill, moveX, moveY, scale, depth) =
-        head = etch (5, length steps, moveX, moveY, scale, 0.0, 0.0, 0, depth, "")
-        listConcat [head] (listConcat (Lists::flatten (mapList (steps, step))) (listConcat (outline line) (paint fill)))
+    path (out, steps, line, fill, moveX, moveY, scale, depth, put) =
+        headed = put (out, etch (5, length steps, moveX, moveY, scale, 0.0, 0.0, 0, depth, ""))
+        paint (outline (foldList (steps, headed, \(acc, command) => step (acc, command, put)), line, put), fill, put)
+
+    etched (out, primitive, put) = match primitive
+        Rect x y w h angle color depth => put (out, etch (0, 0, x, y, w, h, angle, color, depth, ""))
+        Disc x y radius color depth => put (out, etch (1, 0, x, y, radius, 0.0, 0.0, color, depth, ""))
+        Strip points color stroke depth => pairs (put (out, etch (2, intDiv (length points) 2, 0.0, 0.0, stroke, 0.0, 0.0, color, depth, "")), points, put)
+        Sprite index x y w h angle color depth => put (out, etch (3, index, x, y, w, h, angle, color, depth, ""))
+        Glyphs text x y size color depth => put (out, etch (4, 0, x, y, size, 0.0, 0.0, color, depth, text))
+        Lettering text x y size color depth anchor weight => put (out, etch (6, anchor, x, y, size, weight, 0.0, color, depth, text))
+        Path steps line fill moveX moveY scale depth => path (out, steps, line, fill, moveX, moveY, scale, depth, put)
+
+    kept (out, e) = listAppend out e
 
     (** The scene rows of `primitive`, in the order a host reads them back. *)
     export etches : Primitive -> List<Etch>
-    etches primitive = match primitive
-        Rect x y w h angle color depth => [etch (0, 0, x, y, w, h, angle, color, depth, "")]
-        Disc x y radius color depth => [etch (1, 0, x, y, radius, 0.0, 0.0, color, depth, "")]
-        Strip points color stroke depth => listConcat [etch (2, intDiv (length points) 2, 0.0, 0.0, stroke, 0.0, 0.0, color, depth, "")] (pairs points)
-        Sprite index x y w h angle color depth => [etch (3, index, x, y, w, h, angle, color, depth, "")]
-        Glyphs text x y size color depth => [etch (4, 0, x, y, size, 0.0, 0.0, color, depth, text)]
-        Lettering text x y size color depth anchor weight => [etch (6, anchor, x, y, size, weight, 0.0, color, depth, text)]
-        Path steps line fill moveX moveY scale depth => path (steps, line, fill, moveX, moveY, scale, depth)
+    etches primitive = etched ([], primitive, kept)
 
     roleCode role = match role
         Pressable => 0
@@ -95,23 +103,20 @@ module Streams
         MenuItem => 3
         Unannounced => 4
 
-    announced e = [etch (element, roleCode e.accessRole, e.accessLeft, e.accessTop, e.accessWidth, e.accessHeight, e.accessValue, bit e.accessSelected + 2 * bit e.accessMovable, 0, e.accessLabel), bare (point, 0, e.accessMin, e.accessMax, 0.0, 0.0)]
+    announced (out, e, put) = put (put (out, etch (element, roleCode e.accessRole, e.accessLeft, e.accessTop, e.accessWidth, e.accessHeight, e.accessValue, bit e.accessSelected + 2 * bit e.accessMovable, 0, e.accessLabel)), bare (point, 0, e.accessMin, e.accessMax, 0.0, 0.0))
 
-    marker (row, sketch) = bare (scene, row, sketch.sketchWidth, sketch.sketchHeight, sketch.sketchZoom, 0.0)
-
-    named name = etch (atlasEntry, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, name)
+    // Every row of `sketch` at view row `row`: its marker, atlas, shapes and accessible elements.
+    laid (out, row, sketch, put) =
+        head = foldList (sketch.sketchAtlas, put (out, bare (scene, row, sketch.sketchWidth, sketch.sketchHeight, sketch.sketchZoom, 0.0)), \(acc, name) => put (acc, etch (atlasEntry, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, name)))
+        drawn = foldList (sketch.sketchShapes, head, \(acc, shape) => etched (acc, shape, put))
+        foldList (sketch.sketchAccess, drawn, \(acc, e) => announced (acc, e, put))
 
     (** Every scene row of `sketch` drawn on the canvas at view row `row`: its marker, atlas, shapes and accessible elements, as a reader sees them. *)
     export rows : (int, Sketch) -> List<Etch>
-    rows (row, sketch) = Lists::flatten (listConcat (listConcat [[marker (row, sketch)]] (mapList (sketch.sketchAtlas, \name => [named name]))) (listConcat (mapList (sketch.sketchShapes, etches)) (mapList (sketch.sketchAccess, announced))))
+    rows (row, sketch) = laid ([], row, sketch, kept)
 
-    sent e = nativeSceneShape (e.etchCode, e.etchIndex, e.etchX, e.etchY, e.etchW, e.etchH, e.etchTurn, e.etchTint, e.etchDepth, e.etchText)
+    sent (refused, e) = satAdd refused (nativeSceneShape (e.etchCode, e.etchIndex, e.etchX, e.etchY, e.etchW, e.etchH, e.etchTurn, e.etchTint, e.etchDepth, e.etchText))
 
-    each etched = foldList (etched, 0, \(refused, e) => satAdd refused (sent e))
-
-    (** Writes the rows of `sketch` at view row `row` into the shared frame, one shape at a time, in the order `rows` lists them; nonzero once the frame refused one. *)
+    (** Writes the rows of `sketch` at view row `row` into the shared frame, one row at a time, in the order `rows` lists them; nonzero once the frame refused one. *)
     export write : (int, Sketch) -> int
-    write (row, sketch) =
-        head = satAdd (sent (marker (row, sketch))) (each (mapList (sketch.sketchAtlas, named)))
-        drawn = foldList (sketch.sketchShapes, head, \(refused, shape) => satAdd refused (each (etches shape)))
-        foldList (sketch.sketchAccess, drawn, \(refused, e) => satAdd refused (each (announced e)))
+    write (row, sketch) = laid (0, row, sketch, sent)
