@@ -15,8 +15,10 @@
 // [BUILTIN-STRING-FROMCODEPOINT].
 // Failure payloads are threaded through Result<T, E> per [ERR-PAYLOAD].
 
-/// Shared integer fixtures use checked subtraction so every case reads the
-/// same number it asserts. Their bodies run at call sites inside handled regions.
+/// Use checked subtraction to spell the negative fixtures and the 64-bit minimum.
+/// Each test reads the same value it asserts.
+/// Delaying evaluation until the call keeps the arithmetic effects
+/// inside the handlers installed by the test case.
 fn negOne() = (0 - 1)
 fn negFive() = (0 - 5)
 fn negSeven() = (0 - 7)
