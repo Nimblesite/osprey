@@ -76,7 +76,10 @@ The example follows Robert C. Martin's *Clean Architecture* (2017). It does not 
 - **[EXAMPLE-CLEANARCH-BOOK-DATA] Plain data crosses boundaries.** Immutable records go in and come out of use cases. Nothing maps per layer (no AutoMapper-style projections or DTO copies of every entity). JSON is decoded into those records once, at the outermost edge.
 - **[EXAMPLE-CLEANARCH-BOOK-DETAILS] The database, the web and the framework are details.** Swapping the in-memory store handler or the HTTP edge never touches an entity or a use case, and the tests prove it by running every use case without HTTP.
 
-- **[EXAMPLE-CLEANARCH-BOOK-QUOTE] Quote the source.** Where the README or a module comment states a rule above, it quotes Robert C. Martin's own wording from [The Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html) (The Clean Code Blog, 13 August 2012). Each quote is exact, short (under 15 words), in quotation marks and attributed with the link. Quotes are few, and never a long excerpt or a reconstruction of the post. Everything else is in our own words.
+- **[EXAMPLE-CLEANARCH-BOOK-QUOTE] Quote the source.** Where the README or a module comment states a rule above, it quotes Robert C. Martin's own wording:
+  - **First choice: the book.** Quote *Clean Architecture: A Craftsman's Guide to Software Structure and Design* (Pearson, 2017, ISBN 978-0134494166), but only from text the publisher or an authorised retailer makes legitimately readable online: an InformIT sample chapter, the O'Reilly Learning preview or the Google Books preview. Each citation names the book, the chapter and the page or section, and links the legitimate source the quote was read from. Never quote from a pirated copy, and never present a paraphrase or a remembered line as a quote.
+  - **Fallback: the post.** Where no legitimate online book text covers a rule, quote [The Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html) (The Clean Code Blog, 13 August 2012).
+  - Every quote is exact and checked against that source, under 15 words, in quotation marks and attributed. Quotes are few, and never a long excerpt or a reconstruction of the text. Everything else is in our own words.
 
 ### [EXAMPLE-CLEANARCH-INV-FLAVOR] Default flavour only
 
