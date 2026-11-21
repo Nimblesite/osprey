@@ -488,11 +488,21 @@ fn the_daw_renderer_exits_one_on_every_failure_and_zero_when_it_writes() -> Test
         "a refused render wrote a song"
     );
 
+    assert_rendered_excerpt(&binary, &folder)?;
+    let mut playable = project;
+    playable["tracks"][0]["instrument"]["brightness"] = 0.5.into();
+    std::fs::write(&bell, serde_json::to_vec(&playable)?)?;
+    assert_repairs_truncated_note(&binary, &bell, &out)?;
+    std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+
+fn assert_rendered_excerpt(binary: &Path, folder: &str) -> TestResult {
     let written = daw(
-        &binary,
+        binary,
         &[
             "src/osprey/examples/daw/tracks/elise-motif.json",
-            &folder,
+            folder,
             "0",
             "1",
         ],
@@ -518,6 +528,35 @@ fn the_daw_renderer_exits_one_on_every_failure_and_zero_when_it_writes() -> Test
         std::fs::metadata(path.trim())?.len() > 44,
         "the written song has audio: {path}"
     );
-    std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+
+// [DAW-TRANSPORT-LIVE-SPEED] An interrupted writer must not force synthesis at every subsequent Play.
+fn assert_repairs_truncated_note(binary: &Path, song: &Path, out: &Path) -> TestResult {
+    let song = arg(song);
+    let folder = arg(out);
+    let warm = || daw(binary, &[&song, &folder, "0", "1", "warm", "0", "1"]);
+    let made = warm();
+    assert_eq!(made.code, Some(0), "{}", made.stderr);
+    let dir = std::fs::read_dir(out.join("notes"))?
+        .next()
+        .ok_or("no note directory")??
+        .path();
+    let note = std::fs::read_dir(dir)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "st"))
+        .ok_or("no rendered note")?;
+    let original = std::fs::read(&note)?;
+    assert!(original.len() > 128);
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&note)?
+        .set_len(128)?;
+    let repaired = warm();
+    assert_eq!(repaired.code, Some(0), "{}", repaired.stderr);
+    let restored = std::fs::read(note)?;
+    assert_eq!(restored.len(), original.len(), "a truncated note was kept");
+    assert_eq!(restored, original);
     Ok(())
 }

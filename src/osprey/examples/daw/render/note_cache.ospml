@@ -90,32 +90,37 @@ module NoteCache
         top = header lanes
         "${synth::PcmWords::le32 (length top)}00000000${hex top}${body lanes}"
 
-    // Written beside the file and moved into place, so a reader never sees half a note.
-    kept (file, tag, lanes) = match writeFile "${file}.${tag}.hex" (packed lanes)
-        Error why => Error(message = why)
-        Success _ => Shell::ran (60, "xxd -r -p ${Shell::quoted "${file}.${tag}.hex"} ${Shell::quoted "${file}.${tag}"} && mv ${Shell::quoted "${file}.${tag}"} ${Shell::quoted file} && rm ${Shell::quoted "${file}.${tag}.hex"}")
+    // Keep private output until the full binary exists. Simultaneous makers may share the same note input.
+    publish = "staged=$(mktemp \"$2.XXXXXX\") || exit 1; if xxd -r -p \"$1\" \"$staged\" && [ \"$(wc -c < \"$staged\")\" -eq \"$3\" ] && mv -f \"$staged\" \"$2\"; then rm -f \"$1\"; else rm -f \"$staged\"; exit 1; fi"
 
-    struck (song, voice, dir, tag, note) = match Arrangements::opened (song, voice)
-        Error why => Error(message = why)
-        Success play => Outcomes::carried (Arrangements::lanesOf (song, voice, play.sends, note), \lanes => kept (path (dir, note), tag, lanes))
+    kept (file, tag, lanes) =
+        source = "${file}.${tag}.hex"
+        data = packed lanes
+        match writeFile source data
+            Error why => Error(message = why)
+            Success _ => Shell::ran (60, "sh -c ${Shell::quoted publish} sh ${Shell::quoted source} ${Shell::quoted file} ${intDiv (byteLength data) 2}")
+
+    // Readers use the same tensor decoder: a partial file must be rebuilt even when its path exists.
+    ensure (song, voice, dir, tag, note, sends) =
+        file = path (dir, note)
+        match read (file, satAdd 1 (satMul 2 (length sends)))
+            Success _ => ok 0
+            Error _ => Outcomes::carried (Arrangements::lanesOf (song, voice, sends, note), \lanes =>
+                Outcomes::carried (kept (file, tag, lanes), \_ => ok 1))
 
     made (song, dirs, tag, job) = match listGet dirs job.track
-        Error _ => 0
-        Success dir => match fileSize (path (dir, job.note))
-            Success _ => 0
-            Error _ => match listGet song.tracks job.track
-                Error _ => 0
-                Success voice => match struck (song, voice, dir, tag, job.note)
-                    Error _ => 0
-                    Success _ => 1
+        Error _ => Error(message = "A cached note has no track folder.")
+        Success dir => match listGet song.tracks job.track
+            Error _ => Error(message = "A cached note has no track.")
+            Success voice => Outcomes::carried (Arrangements::opened (song, voice(notes = [])), \play => ensure (song, voice, dir, tag, job.note, play.sends))
 
     share (all, worker, workers) = filterList (toList (range (0, length all)), \index => index % workers == worker)
 
     turn (song, dirs, tag, all, index) = match listGet all index
-        Error _ => 0
+        Error _ => Error(message = "A cache worker has no job at this index.")
         Success job => made (song, dirs, tag, job)
 
-    worked (song, dirs, tag, all, indexes) = foldList (indexes, 0, \(count, index) => satAdd count (turn (song, dirs, tag, all, index)))
+    worked (song, dirs, tag, all, indexes) = foldList (indexes, ok 0, \(total, index) => Outcomes::carried (total, \count => Outcomes::carried (turn (song, dirs, tag, all, index), \added => ok (satAdd count added))))
 
     stale (dirs, entry) = endsWith entry "/" && length (filterList (dirs, \dir => "${dir}/" == entry)) == 0
 
@@ -146,4 +151,4 @@ module NoteCache
         false => Error(message = "A maker needs its number, from 0, and the count of makers, at most 64.")
         true => Outcomes::carried (found (song, folder), \dirs => Outcomes::carried (prepared (song, folder, dirs, worker), \_ =>
             all = jobs song
-            ok (worked (song, dirs, "w${worker}", all, share (all, worker, workers)))))
+            worked (song, dirs, "w${worker}", all, share (all, worker, workers))))
