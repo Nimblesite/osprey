@@ -61,7 +61,7 @@ settings (peer, sequence, instrument, tone, echo, reverb, warp) = hosted (\() =>
         Rejected _ => 1
         Accepted selected => accepted (Sessions::configure (live, peer, sequence, selected, Sound(tone = tone, echo = echo, reverb = reverb, warp = warp))))
 
-wave (instrument, phase, step, tone, warp) = Performance::wave (instrument, phase, step, tone, warp)
+wave (instrument, phase, step, tone: float, warp: float) = Performance::wave (instrument, phase, step, tone, warp)
 
 // The small example uses a pentatonic ribbon. Musical mapping stays in Osprey.
 scaleStep degree = match degree < 1.0
