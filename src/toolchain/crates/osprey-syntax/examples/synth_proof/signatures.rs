@@ -47,6 +47,10 @@ pub(super) fn signatures(module: &str) -> Result<&'static [Signature], String> {
         "TableMath" => &[("harmonic", &["α", "α", "α", "α"], "α")],
         "Wavetables" => &[("value", &["List (Harmonic α)", "α", "α"], "α")],
         "SpectralMath" => &[
+            ("power", &["α", "α"], "α"),
+            ("magnitude", &["α", "α"], "α"),
+            ("unitRe", &["α", "α"], "α"),
+            ("unitIm", &["α", "α"], "α"),
             ("hann", &["α", "α"], "α"),
             ("twiddle", &["α", "α", "α"], "α"),
             ("productRe", &["α", "α", "α", "α"], "α"),

@@ -98,8 +98,7 @@ structure Ops (α : Type) where
   divide : α → α → α
   plus : α → α → α
   times : α → α → α
-  unitRe : α → α → α
-  unitIm : α → α → α
+  pow : α → α → α
   minus : α → α → α
   cos : α → α
   sin : α → α
@@ -237,7 +236,7 @@ theorem scaledDftBin (ops : Ops α) (zero gain : α) (root : Bin α)
 theorem rotationConjugate (ops : Ops α) (current previous : Bin α) :
     rotation ops current previous =
       let delta := turned ops current (conjugate ops previous)
-      ⟨ops.unitRe delta.re delta.im, ops.unitIm delta.re delta.im⟩ := rfl
+      ⟨SpectralMath.unitRe ops delta.re delta.im, SpectralMath.unitIm ops delta.re delta.im⟩ := rfl
 
 /-- The strike comb returns the difference and the newly pushed history on a
     successful delay read, or propagates the precise delay error. -/

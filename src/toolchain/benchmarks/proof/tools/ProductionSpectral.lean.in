@@ -340,4 +340,45 @@ theorem addedDftBin (ops : Ops α) (zero : α) (root : Bin α) (x y : ι → Bin
     dsimp only
     rw [dist, dist, dist, dist, subSums, exchange]
 
+
+/-- Exact operation order for the shipped phase-vocoder normalization,
+    including the unit phasor selected for zero magnitude. -/
+theorem rotationComponents (ops : Ops α) (current previous : Bin α) :
+    let z := turned ops current (conjugate ops previous)
+    let m := ops.pow (ops.plus (ops.times z.re z.re) (ops.times z.im z.im)) ops.half
+    rotation ops current previous = match ops.atMost m (ops.literal 0) with
+      | true => ⟨ops.literal 1, ops.literal 0⟩
+      | false => ⟨ops.ieeeDivide z.re m, ops.ieeeDivide z.im m⟩ := by
+  dsimp only
+  rw [rotationConjugate]
+  unfold SpectralMath.unitRe SpectralMath.unitIm SpectralMath.magnitude SpectralMath.power
+  dsimp only
+  let z := turned ops current (conjugate ops previous)
+  let m := ops.pow (ops.plus (ops.times z.re z.re) (ops.times z.im z.im)) ops.half
+  cases ops.atMost m (ops.literal 0) <;> rfl
+
+/-- Under exact square-root and division laws a nonsilent measured rotation
+    has squared modulus one, independently of the input amplitudes. -/
+theorem rotationUnitPower (ops : Ops α) (current previous : Bin α) :
+    let z := turned ops current (conjugate ops previous)
+    let p := SpectralMath.power ops z.re z.im
+    let m := ops.pow p ops.half
+    ops.atMost m (ops.literal 0) = false →
+    ops.times m m = p →
+    (∀ x, ops.times (ops.ieeeDivide x m) (ops.ieeeDivide x m) =
+      ops.ieeeDivide (ops.times x x) (ops.times m m)) →
+    (∀ x y, ops.plus (ops.ieeeDivide x p) (ops.ieeeDivide y p) = ops.ieeeDivide (ops.plus x y) p) →
+    ops.ieeeDivide p p = ops.literal 1 →
+    let r := rotation ops current previous
+    SpectralMath.power ops r.re r.im = ops.literal 1 := by
+  intro z p m nonsilent square ratio join unit
+  rw [rotationComponents]
+  change ops.atMost (ops.pow (ops.plus (ops.times z.re z.re) (ops.times z.im z.im)) ops.half) (ops.literal 0) = false at nonsilent
+  dsimp only
+  rw [nonsilent]
+  change ops.plus (ops.times (ops.ieeeDivide z.re m) (ops.ieeeDivide z.re m))
+    (ops.times (ops.ieeeDivide z.im m) (ops.ieeeDivide z.im m)) = ops.literal 1
+  rw [ratio, ratio, square, join]
+  exact unit
+
 end ProductionFft

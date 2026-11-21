@@ -141,8 +141,8 @@ fn callee(e: &Expr, module: &str) -> Result<String, String> {
                 "SpectralMath::twiddle" => Ok("SpectralMath.twiddle ops".into()),
                 "SpectralMath::productRe" => Ok("SpectralMath.productRe ops".into()),
                 "SpectralMath::productIm" => Ok("SpectralMath.productIm ops".into()),
-                "SpectralMath::unitRe" => Ok("ops.unitRe".into()),
-                "SpectralMath::unitIm" => Ok("ops.unitIm".into()),
+                "SpectralMath::unitRe" => Ok("SpectralMath.unitRe ops".into()),
+                "SpectralMath::unitIm" => Ok("SpectralMath.unitIm ops".into()),
                 other => Err(format!("unsupported qualified call {other}")),
             };
         }
@@ -167,6 +167,7 @@ fn primitive(name: &str) -> Option<&'static str> {
     Some(match name {
         "satAdd" => "ops.satAdd",
         "toFloat" => "ops.toFloat",
+        "pow" => "ops.pow",
         "sin" => "ops.sin",
         "cos" => "ops.cos",
         "listGet" => "readBin",
