@@ -58,6 +58,8 @@ modesHeld body =
         inTuneWithin ("body ${body} mode ${index} at ${mode} Hz", s, mode, 40.0, 0.3))
 
 stringsHeld () =
+    synced = built ([Components::sine (1, 110.0), Components::phaseOperator (2, 440.0, 1.0), Components::output 3], [Components::route (1, 0, 2, 1), Components::route (2, 0, 3, 0)])
+    scheduleEdit (synced, 2, "oversample", 1.0, 69)
     scheduleEdit (accepted (Patches::spectralFreeze ()), 0, "excitation", 1.0, 7)
     scheduleEdit (accepted (Patches::spectralFreeze ()), 1, "frequency", 329.63, 401)
     scheduleEdit (serial ([Components::sine (1, 440.0), Components::shaper (2, 0.0, 2.0), Components::output 3]), 2, "oversample", 1.0, 41)

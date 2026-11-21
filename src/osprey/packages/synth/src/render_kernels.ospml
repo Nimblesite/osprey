@@ -103,7 +103,7 @@ module RenderKernels
             Exciter _ => PhysicalKernels::excite (snapshot, frame, held, scheduled.physical)
             TableOscillator table => TableKernels::wavetable (rate, plan, snapshot, frame, held, table)
             Additive => TableKernels::scheduled (rate, snapshot, frame, held, scheduled.bank)
-            PhaseOperator => OperatorKernels::process (plan, rate, snapshot, frame, held)
+            PhaseOperator => OperatorKernels::process (plan, rate, snapshot, frame, held, scheduled.phase)
             Bowed capacity => PhysicalKernels::bowed (rate, snapshot, frame, held, capacity)
             Delay _ => match listGet held.delay 0
                 Error _ => Error(message = MissingResource(detail = "index out of bounds"))
@@ -140,7 +140,10 @@ module RenderKernels
             controls = match fixed
                 true => snapshot(parameters = filterList (snapshot.parameters, \p => p.node == identity))
                 false => snapshot
-            Valid(value = { node = n, slot = stateSlot (states, identity, 0), physical = physical (rate, controls, n, fixed), spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
+            phase = match fixed && (n.processor == PhaseOperator)
+                true => OperatorKernels::prepare (rate, controls, identity)
+                false => LiveOperator
+            Valid(value = { phase = phase, node = n, slot = stateSlot (states, identity, 0), physical = physical (rate, controls, n, fixed), spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
 
     (** Render one scheduled component or return its explicit fault. *)
     export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, rate, snapshot, false, frame.states))

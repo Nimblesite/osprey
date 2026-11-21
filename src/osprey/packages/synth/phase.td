@@ -6,3 +6,5 @@ type OperatorState { phase: Float previous: Float older: Float sync: Float }
 type OperatorSample { sample: Float next: OperatorState }
 type OversampledOperator { operator: OperatorState down: List<Float> }
 type OversampledOperatorSample { sample: Float next: OversampledOperator }
+type OperatorControls { selector: Float breakpoint: Float first: PulseControls second: PulseControls frequency: Float depth: Float spread: Float feedback: Float amplitude: Float oversample: Float }
+union OperatorSchedule { LiveOperator {} FixedOperator { config: OperatorConfig oversample: Float } }

@@ -44,3 +44,22 @@ type OversampledOperator =
 type OversampledOperatorSample =
     sample : float
     next : OversampledOperator
+
+type OperatorControls =
+    selector : float
+    breakpoint : float
+    first : PulseControls
+    second : PulseControls
+    frequency : float
+    depth : float
+    spread : float
+    feedback : float
+    amplitude : float
+    oversample : float
+
+type OperatorSchedule =
+    LiveOperator
+    FixedOperator
+        config : OperatorConfig
+        oversample : float
+
