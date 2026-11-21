@@ -138,30 +138,21 @@ fn leaf_metadata(value: &Value) -> Value {
 /// `Unknown`: fail-closed and idempotent, so the recursion through values
 /// reaches the finite fixed point [EFFECTS-PROVENANCE] requires. A real
 /// closure always names its parameters, so only joined alternatives flatten.
-pub(super) fn stabilize_merged_callables(value: &Value) -> Value {
-    let mut stabilized = value.clone();
-    if let Some(Callable::Alternatives(choices)) = &mut stabilized.callable {
-        super::provenance::map_alternatives(choices, |branch| {
-            *branch = stabilize_merged_callables(branch);
-        });
-    }
-    if let Some(Callable::Known(known)) = &value.callable {
-        if known.parameters.is_empty() && !known.summary.parameter_uses.is_empty() {
-            stabilized.callable = Some(Callable::Unknown);
+pub(super) fn stabilize_merged_callables(value: &mut Value) {
+    match &mut value.callable {
+        Some(Callable::Alternatives(choices)) => {
+            super::provenance::map_alternatives(choices, stabilize_merged_callables);
         }
+        Some(Callable::Known(known))
+            if known.parameters.is_empty() && !known.summary.parameter_uses.is_empty() =>
+        {
+            value.callable = Some(Callable::Unknown);
+        }
+        _ => {}
     }
-    stabilized.fields = value
-        .fields
-        .iter()
-        .map(|(name, nested)| (name.clone(), stabilize_merged_callables(nested)))
-        .collect();
-    stabilized.element = stabilize_boxed(value.element.as_deref());
-    stabilized.result_payload = stabilize_boxed(value.result_payload.as_deref());
-    stabilized.fiber_payload = stabilize_boxed(value.fiber_payload.as_deref());
-    stabilized
-}
-fn stabilize_boxed(nested: Option<&Value>) -> Option<Box<Value>> {
-    nested.map(|nested| Box::new(stabilize_merged_callables(nested)))
+    for child in value.container_children_mut() {
+        stabilize_merged_callables(child);
+    }
 }
 
 pub(super) fn project_callable(
@@ -472,6 +463,40 @@ fn leaf_test_metadata(owner: super::field_rows::FieldInstance) -> Value {
         },
         ..Value::parameter(1, 2)
     }
+}
+
+#[cfg(test)]
+#[test]
+fn fold_stabilization_moves_its_owned_container_children() {
+    let wrap = |value: Value| Value {
+        fields: BTreeMap::from([("field".to_owned(), value.clone())]),
+        element: Some(Box::new(value.clone())),
+        result_payload: Some(Box::new(value.clone())),
+        fiber_payload: Some(Box::new(value)),
+        ..Value::channel(3)
+    };
+    let merged = Callable::Known(Box::new(KnownCallable {
+        parameters: Vec::new(),
+        summary: Summary {
+            parameter_uses: BTreeSet::from([super::ParameterUse {
+                level: 0,
+                index: 0,
+                projection: Vec::new(),
+                arguments: super::CallArguments::default(),
+                scopes: Vec::new(),
+            }]),
+            ..Summary::default()
+        },
+        returned: None,
+    }));
+    let mut leaf = Value::from_callable(merged);
+    let mut input = wrap(wrap(leaf.clone()));
+    leaf.callable = Some(Callable::Unknown);
+    let expected = wrap(wrap(leaf));
+    let ((), clones) =
+        super::provenance::measured_clones(|| stabilize_merged_callables(&mut input));
+    assert_eq!(input, expected);
+    assert_eq!(clones, 0, "fold stabilization copied owned values");
 }
 
 #[cfg(test)]
