@@ -48,6 +48,10 @@ inductive PhaseShape (α : Type) where
   | DistortedPhase (d : α)
   | WavePulsePhase (d : α) (first second : Pulse α)
 
+inductive Envelope (α : Type) where
+  | HannWindow
+  | AsrWindow (attack release : α)
+
 structure Ops (α : Type) where
   History : Type
   Fault : Type
@@ -60,6 +64,9 @@ structure Ops (α : Type) where
   epsilon : α
   abs : α → α
   less : α → α → Bool
+  atMost : α → α → Bool
+  atLeast : α → α → Bool
+  asr : α → α → α → α → α
   equal : α → α → Bool
   tanh : α → α
   hard : α → α
@@ -412,5 +419,41 @@ theorem wavePulseSegments (ops : Ops α) (phase d : α) (first second : Pulse α
   unfold PhaseOperators.shaped PhaseOperators.basePhase
   dsimp only
   cases ops.less phase d <;> rfl
+
+/-- First and last grain samples have exactly zero amplitude, regardless of
+    the rounding of the cosine implementation. -/
+theorem grainHannEndpoints (ops : Ops α) (first last duration : Nat)
+    (firstGuard : ops.atMost (ops.toFloat first) (ops.literal 0) = true)
+    (lastGuard : ops.atLeast (ops.toFloat last) (ops.minus (ops.toFloat duration) (ops.literal 1)) = true) :
+    GrainWindows.value ops .HannWindow first duration = ops.literal 0 ∧
+    GrainWindows.value ops .HannWindow last duration = ops.literal 0 := by
+  unfold GrainWindows.value GrainWindows.hann
+  dsimp only
+  constructor
+  · rw [firstGuard]; rfl
+  · rw [lastGuard]; cases ops.atMost (ops.toFloat last) (ops.literal 0) <;> rfl
+
+theorem grainHannInterior (ops : Ops α) (age duration : Nat)
+    (started : ops.atMost (ops.toFloat age) (ops.literal 0) = false)
+    (unfinished : ops.atLeast (ops.toFloat age) (ops.minus (ops.toFloat duration) (ops.literal 1)) = false) :
+    GrainWindows.value ops .HannWindow age duration =
+      ops.minus ops.half (ops.times ops.half (ops.cos (ops.divide
+        (ops.times ops.tau (ops.toFloat age)) (ops.minus (ops.toFloat duration) (ops.literal 1))))) := by
+  unfold GrainWindows.value GrainWindows.hann
+  dsimp only
+  rw [started, unfinished]
+  rfl
+
+/-- In the supported integer range the cast of n+1 minus one is exactly
+    the cast of n. Specialize the guard result to the actual sample indices. -/
+theorem grainHannBoundarySamples (ops : Ops α) (n : Nat)
+    (zeroCast : ops.toFloat 0 = ops.literal 0)
+    (exactLast : ops.minus (ops.toFloat (n+1)) (ops.literal 1) = ops.toFloat n)
+    (leRefl : ∀ x, ops.atMost x x = true) (geRefl : ∀ x, ops.atLeast x x = true) :
+    GrainWindows.value ops .HannWindow 0 (n+1) = ops.literal 0 ∧
+    GrainWindows.value ops .HannWindow n (n+1) = ops.literal 0 := by
+  apply grainHannEndpoints
+  · rw [zeroCast, leRefl]
+  · rw [exactLast, geRefl]
 
 end ProductionFft

@@ -26,6 +26,7 @@ fn binder(name: &str) -> Result<String, String> {
             | "curve"
             | "integral"
             | "abs"
+            | "hann"
             | "basePhase"
             | "pulse"
             | "delay"
@@ -67,7 +68,12 @@ fn pattern(p: &Pattern) -> Result<String, String> {
         } if fields.is_empty()
             && matches!(
                 name.as_str(),
-                "PlainPhase" | "WindowedPhase" | "DistortedPhase" | "WavePulsePhase"
+                "HannWindow"
+                    | "AsrWindow"
+                    | "PlainPhase"
+                    | "WindowedPhase"
+                    | "DistortedPhase"
+                    | "WavePulsePhase"
             ) =>
         {
             let args = sub_patterns
@@ -77,7 +83,12 @@ fn pattern(p: &Pattern) -> Result<String, String> {
                     _ => Err("expected phase field binder".into()),
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(format!("PhaseShape.{name} {}", args.join(" ")))
+            let ty = if matches!(name.as_str(), "HannWindow" | "AsrWindow") {
+                "Envelope"
+            } else {
+                "PhaseShape"
+            };
+            Ok(format!("{ty}.{name} {}", args.join(" ")))
         }
         Pattern::Constructor {
             name,
@@ -127,6 +138,7 @@ fn callee(e: &Expr) -> Result<String, String> {
                 }
             }
             return match path.to_string().as_str() {
+                "GrainMath::asr" => Ok("ops.asr".into()),
                 "PhaseMath::window" => Ok("ops.window".into()),
                 "PhaseMath::windowedPhase" => Ok("ops.windowedPhase".into()),
                 "DelayLines::push" => Ok("ops.push".into()),
@@ -153,6 +165,7 @@ fn callee(e: &Expr) -> Result<String, String> {
         "satAdd" | "toFloat" | "sin" | "cos" => Ok(format!("ops.{name}")),
         "curve" | "integral" => Ok(format!("Waveshapers.{} ops", ident(name)?)),
         "basePhase" | "pulse" => Ok(format!("PhaseOperators.{} ops", ident(name)?)),
+        "hann" => Ok("GrainWindows.hann ops".into()),
         "abs" => Ok("ops.abs".into()),
         "listPrepend" => Ok("(fun tail head => List.cons head tail)".into()),
         _ => Err(format!("unsupported callee {name}")),
@@ -222,7 +235,12 @@ fn term(e: &Expr) -> Result<String, String> {
         Expr::Binary {
             op, left, right, ..
         } => {
+            if op == "||" {
+                return Ok(format!("(or {} {})", term(left)?, term(right)?));
+            }
             let name = match op.as_str() {
+                "<=" => "atMost",
+                ">=" => "atLeast",
                 "+" => "plus",
                 "*" => "times",
                 "<" => "less",
@@ -302,6 +320,10 @@ fn reflect(file: &str) -> Result<(), String> {
             ("basePhase", &["α", "α"], "α"),
             ("pulse", &["α", "Pulse α"], "α"),
             ("shaped", &["PhaseShape α", "α"], "α"),
+        ],
+        "GrainWindows" => &[
+            ("hann", &["α", "α"], "α"),
+            ("value", &["Envelope α", "Nat", "Nat"], "α"),
         ],
         "Interpolation" => &[("linear", &["α", "α", "α"], "α")],
         "Waveshapers" => &[

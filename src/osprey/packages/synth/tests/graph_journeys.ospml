@@ -2,7 +2,6 @@ import synth::Components
 import synth::Descriptors
 import synth::Envelopes
 import synth::Filters
-import synth::GrainMath
 import synth::Grains
 import synth::Graphs
 import synth::Observations
@@ -399,7 +398,7 @@ hann9 block =
     near (frameAt (block.left, 0), 0.0, 0.0)
     near (frameAt (block.left, 8), 0.0, 0.0)
     near (frameAt (block.left, 4), centre, 0.000000000001)
-    forEachList (toList (range (0, 9)), \k => near (frameAt (block.left, k), centre * GrainMath::window (toFloat k, 9.0), 0.000000000001))
+    forEachList (toList (range (0, 9)), \k => near (frameAt (block.left, k), centre * (sin (3.141592653589793 * toFloat k / 8.0) * sin (3.141592653589793 * toFloat k / 8.0)), 0.000000000001))
     // cos and sin of π/4 differ in the last bit, so the centred sides agree to 1e-15, not bit for bit.
     forEachList (toList (range (0, 16)), \k => near (frameAt (block.left, k), frameAt (block.right, k), 0.000000000000001))
     forEachList (toList (range (9, 16)), \k => near (frameAt (block.left, k), 0.0, 0.0))
