@@ -17,11 +17,8 @@ impl Analyzer<'_> {
                 *value = self.substitute_value_at(std::mem::take(value), target_level, arguments);
             });
             if use_.level == target_level {
-                if arguments
-                    .get(use_.index)
-                    .and_then(Option::as_ref)
-                    .is_some_and(|value| self.projection_absent(value, &use_.projection))
-                {
+                let argument = arguments.get(use_.index).and_then(Option::as_ref);
+                if argument.is_some_and(|value| self.projection_absent(value, &use_.projection)) {
                     continue;
                 }
                 // The callback is caller provenance, but the arguments this
@@ -30,15 +27,16 @@ impl Analyzer<'_> {
                 // summary instead re-attributes a returned closure's own
                 // parameter to its maker's caller, so `one(f) = fn(w) => f(w)`
                 // left `w` undischargeable at the entry. [EFFECTS-PROVENANCE]
-                let callback = arguments
-                    .get(use_.index)
-                    .and_then(Option::as_ref)
-                    .cloned()
-                    .and_then(|mut value| {
-                        shift_value_levels(&mut value, target_level, 0);
-                        self.project_path(value, &use_.projection)
-                    })
-                    .and_then(|value| value.callable);
+                let callback = argument.and_then(|value| {
+                    if target_level == 0 {
+                        return self
+                            .project_borrowed_path(value, &use_.projection)?
+                            .callable;
+                    }
+                    let mut lifted = value.clone();
+                    shift_value_levels(&mut lifted, target_level, 0);
+                    self.project_path(lifted, &use_.projection)?.callable
+                });
                 if let Some(callback) = callback {
                     summary.union(
                         self.invoke_with_arguments(callback, use_.arguments)
@@ -188,4 +186,34 @@ impl Analyzer<'_> {
             )));
         }
     }
+}
+
+#[test]
+fn direct_callback_substitution_only_copies_the_selected_field() {
+    use super::{CallArguments, ParameterUse, Projection};
+    super::identity_tests::with_empty_analyzer(|analyzer| {
+        let receiver = Value {
+            fields: (0..128)
+                .map(|i| (format!("field{i}"), Value::unknown_value()))
+                .collect(),
+            ..Value::default()
+        };
+        let summary = Summary {
+            parameter_uses: [ParameterUse {
+                level: 0,
+                index: 0,
+                projection: vec![Projection::Field("field73".into())],
+                arguments: CallArguments::default(),
+                scopes: Vec::new(),
+            }]
+            .into_iter()
+            .collect(),
+            ..Summary::default()
+        };
+        let (result, clones) = super::provenance::measured_clones(|| {
+            analyzer.substitute_summary_at(summary, 0, &[Some(receiver)])
+        });
+        assert!(result.unresolved_dynamic_call);
+        assert!(clones <= 1, "copied {clones} values to select one callback");
+    });
 }
