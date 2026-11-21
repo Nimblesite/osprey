@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds Osprey's Prism synth as a C library, links it into the FerroUI host over the shared-memory
 # boundary and opens it. Every step is bounded: nothing here can run unattended forever.
-#   prism.sh                  build and open (closes after PRISM_SECONDS, default 600)
+#   prism.sh                  build and open; it stays open until you close it (PRISM_SECONDS=<n> closes it after n seconds, for scripts)
 #   prism.sh --shot <png>     build, open, wait PRISM_SETTLE seconds (default 6), capture the window, close
 #                             (PRISM_TAP="x,y;x,y" clicks those points in scene units before the capture)
 #   prism.sh --repaint <secs> build, open, rebuild and repaint the whole view every frame, print timings
@@ -51,5 +51,6 @@ case "${1:-}" in
     --bench)
         OSPREY_NATIVE_BENCH="$2" exec gtimeout $(( ${2%.*} + 60 )) "$binary" "${launch[@]}" ;;
     *)
-        exec gtimeout "${PRISM_SECONDS:-600}" "$binary" "${launch[@]}" ;;
+        [ -n "${PRISM_SECONDS:-}" ] || exec "$binary" "${launch[@]}"
+        exec gtimeout "$PRISM_SECONDS" "$binary" "${launch[@]}" ;;
 esac
