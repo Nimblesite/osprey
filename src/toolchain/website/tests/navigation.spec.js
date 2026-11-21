@@ -181,14 +181,14 @@ for (const [width, height, panel] of [[1440, 900, ".docs-nav-desktop"], [390, 84
   });
 }
 
-test("the docs index shows the Prism Synth app under Build applications, not under proofs", async ({ page }) => {
+test("the docs index shows the Prism DAW under Build applications, not under proofs", async ({ page }) => {
   await page.goto("/docs/");
   const section = (img) => img.evaluate((el) => {
     let node = el.closest("figure") || el;
     while (node && node.tagName !== "H2") node = node.previousElementSibling || node.parentElement;
     return node && node.textContent.trim();
   });
-  const prism = page.locator('article img[src*="macos-synth"]');
+  const prism = page.locator('article img[src*="prism-mix-bus"]');
   await expect(prism).toHaveCount(1);
   expect(await section(prism)).toBe("Build applications");
 });
