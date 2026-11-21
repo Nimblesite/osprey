@@ -297,7 +297,7 @@ Every event fits a 120 Hz frame, so nothing here is felt yet. The finding is the
 
 Targets: an event that changes nothing under 0.1 ms; a Timeline or Mix event under 0.7 ms; a resize under 2 ms.
 
-- [ ] `Header::placed` and `placedAreas` bind the shift once (before: Timeline 2.05 ms, Mix 1.55 ms per event).
+- [x] `Header::placed` and `placedAreas` bind the shift once. Same machine load, before and after: Timeline 2.52 ms to 1.71 ms per event, Mix 1.92 ms to 0.89 ms (the quiet-machine figures in the table above were 2.05 and 1.55).
 - [ ] Unchanged events answered without rebuilding the view.
 - [ ] `Streams` writes rows directly, with no intermediate list.
 - [ ] Knobs read by index or map, not by name search.

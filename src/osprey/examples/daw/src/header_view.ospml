@@ -146,10 +146,14 @@ module Header
         ui::Path steps outline paint x y scale depth => ui::Path(steps = steps, outline = outline, paint = paint, moveX = x + dx, moveY = y, scale = scale, depth = depth)
 
     (** A song page's shapes where the page sits in its region. *)
-    export placed (editor, shapes) = mapList (shapes, \shape => moved (shape, shift editor))
+    export placed (editor, shapes) =
+        dx = shift editor
+        mapList (shapes, \shape => moved (shape, dx))
 
     (** A song page's hit areas where the page sits in its region. *)
-    export placedAreas (editor, areas) = mapList (areas, \a => a(accessLeft = a.accessLeft + shift editor))
+    export placedAreas (editor, areas) =
+        dx = shift editor
+        mapList (areas, \a => a(accessLeft = a.accessLeft + dx))
 
     // What a song page shows before a song is open: what is missing and the one way forward.
     emptyArea () = TimelineView::area ("Open song", 640.0, 470.0, 160.0, 40.0, false)
