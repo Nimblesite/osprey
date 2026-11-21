@@ -1,37 +1,16 @@
-// The painting port's C boundary for any Osprey Native host ([NATIVE-SHM-BOUNDARY],
-// [NATIVE-SHM-EVENT]): `argument` gathers the launch arguments, `open` draws the first frame and
-// `event` delivers one typed host event and draws the next. Nothing is encoded in either
-// direction: the frame is view, scene and ask rows the host seals when each call returns, and the
-// sketch stays in this library.
 namespace app
 
 import ui::Runtime
 import ui::Views
-import ui::Surfaces
-import ui::Hosting
 import painting::App
 import painting::Drawing
 
-(** Hands the next surface to the cell below. *)
+(** Retains the application-specific surface between host calls. *)
 effect Keep
     keep : ui::Surface<painting::Store, painting::Act> => Unit
 
-mut held = Surfaces::idle (Drawing::initialStore ())
+initial () = Drawing::initialStore ()
+program () = App::program ()
 
-hosted work =
-    handle Keep
-        keep next => held := next
+platform work =
     Runtime::guarded (\() => Views::shared work)
-
-kept next =
-    perform Keep.keep next
-    Hosting::answer next
-
-(** Gathers one launch argument, in order, before `open`. *)
-argument text = hosted (\() => kept (Surfaces::argued (held, text)))
-
-(** Draws the first frame for the host's clock, zone offset, platform, home folder and appearance. *)
-open (now, offset, platform, home, dark) = hosted (\() => kept (Hosting::opened (held, App::program (), now, offset, platform, home, dark)))
-
-(** Delivers one host event and draws the next frame; nonzero when it was refused, which changes nothing. *)
-event (now, kind, ordinal, words, detail, x, y, down, shift) = hosted (\() => kept (Hosting::touched (held, App::program (), now, kind, ordinal, words, detail, x, y, down, shift)))
