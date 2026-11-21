@@ -381,3 +381,125 @@ fn a_project_imports_between_all_four_flavors() {
         assert_eq!(output.stdout, expected, "{memory}: {}", output.stderr);
     }
 }
+
+/// Runs the built daw renderer with `args`, from the repository root.
+fn daw(binary: &Path, args: &[&str]) -> Output {
+    let mut command = Command::new(binary);
+    let _ = command.current_dir(repo_root()).args(args);
+    finish(&mut command)
+}
+
+/// Asserts the renderer refused a request: a non-zero status and the reason on its output.
+fn refused(output: &Output, reason: &str) {
+    assert_eq!(
+        output.code,
+        Some(1),
+        "stdout={} stderr={}",
+        output.stdout,
+        output.stderr
+    );
+    assert!(output.stdout.contains(reason), "stdout={}", output.stdout);
+    assert!(
+        !output.stdout.contains("daw: wrote"),
+        "stdout={}",
+        output.stdout
+    );
+}
+
+/// [ENTRY-EXIT-STATUS] [SYNTH-ARRANGEMENT-PLAYER] A render that fails says why and exits 1, so a
+/// script or the app never mistakes a refused project for a written song; a written song exits 0.
+#[test]
+fn the_daw_renderer_exits_one_on_every_failure_and_zero_when_it_writes() -> TestResult {
+    let (root, _) = temp_project("daw_render");
+    std::fs::create_dir_all(&root)?;
+    let binary = root.join("daw");
+    let built = run(&[
+        "build".into(),
+        "src/osprey/examples/daw/render".into(),
+        "--memory=arc".into(),
+        "--no-warnings".into(),
+        "-o".into(),
+        arg(&binary),
+    ]);
+    assert_eq!(built.code, Some(0), "stderr={}", built.stderr);
+    let out = root.join("out");
+    let folder = arg(&out);
+
+    refused(&daw(&binary, &[]), "usage: daw");
+    refused(&daw(&binary, &["only-a-project.json"]), "usage: daw");
+    refused(
+        &daw(
+            &binary,
+            &[
+                "src/osprey/examples/daw/tracks/elise-motif.json",
+                &folder,
+                "x",
+                "4",
+            ],
+        ),
+        "usage: daw",
+    );
+    refused(
+        &daw(
+            &binary,
+            &[
+                "src/osprey/examples/daw/tracks/elise-motif.json",
+                &folder,
+                "0",
+                "-4",
+            ],
+        ),
+        "usage: daw",
+    );
+    refused(
+        &daw(&binary, &["/nonexistent/osprey-song.json", &folder]),
+        "daw: ",
+    );
+
+    let old = root.join("old.json");
+    std::fs::write(
+        &old,
+        r#"{"title":"Old","tempo":120,"sampleRate":48000,"tracks":[{"name":"glow","instrument":{"kind":"operator"},"gain":0.5,"pan":0,"reverb":0,"notes":[]}]}"#,
+    )?;
+    refused(&daw(&binary, &[&arg(&old), &folder]), "daw: ");
+    let broken = root.join("broken.json");
+    std::fs::write(&broken, "{ not json")?;
+    refused(&daw(&binary, &[&arg(&broken), &folder]), "daw: ");
+    assert!(
+        !out.join("song.wav").exists(),
+        "a refused render wrote a song"
+    );
+
+    let written = daw(
+        &binary,
+        &[
+            "src/osprey/examples/daw/tracks/elise-motif.json",
+            &folder,
+            "0",
+            "1",
+        ],
+    );
+    assert_eq!(
+        written.code,
+        Some(0),
+        "stdout={} stderr={}",
+        written.stdout,
+        written.stderr
+    );
+    assert!(
+        written.stdout.contains("daw: wrote"),
+        "stdout={}",
+        written.stdout
+    );
+    let path = written
+        .stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("daw: wrote "))
+        .expect("the renderer names what it wrote");
+    assert!(
+        std::fs::metadata(path.trim())?.len() > 44,
+        "the written song has audio: {path}"
+    );
+    std::fs::remove_dir_all(&root)?;
+    Ok(())
+}

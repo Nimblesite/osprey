@@ -14,22 +14,29 @@ windowed (request, arrangement) = match request.beats > 0.0
     true => daw::Projects::excerpt (arrangement, request.from, request.beats)
     false => arrangement
 
+// [ENTRY-EXIT-STATUS] Print one line, then exit with `status`: 1 for every refusal, 0 once the song is written.
+said (line, status) =
+    print line
+    status
+
+refused why = said ("daw: ${why}", 1)
+
 finished outcome = match outcome
-    Error why => print "daw: ${why}"
-    Success path => print "daw: wrote ${path}"
+    Error why => refused why
+    Success path => said ("daw: wrote ${path}", 0)
 
 performed (request, source) = match daw::SongFiles::decode source
-    Error why => print "daw: ${why}"
+    Error why => refused why
     Success arrangement => match makeDir request.folder
-        Error why => print "daw: ${why}"
+        Error why => refused why
         Success _ =>
             print "daw: ${arrangement.title}, ${arrangement.tempo} bpm, ${length arrangement.tracks} tracks"
             finished (daw::Player::rendered (request, windowed (request, arrangement)))
 
 started request = match request.project != "" && request.folder != "" && request.from >= 0.0 && request.beats >= 0.0 && daw::SongFiles::safe request.project && daw::SongFiles::safe request.folder
-    false => print usage
+    false => said (usage, 1)
     true => match readFile request.project
-        Error why => print "daw: ${why}"
+        Error why => refused why
         Success source => performed (request, source)
 
 main () =
