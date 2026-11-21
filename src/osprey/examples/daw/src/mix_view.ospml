@@ -41,11 +41,14 @@ module MixView
 
     border selected = ui::Pick::either (selected, 16745538, edge)
 
+    patchArea voice = TimelineView::area ("Open ${voice.name} patch", 963.0, 208.0, 222.0, 74.0, false)
+
     busAreas (editor, voice) =
         space = TimelineView::area ("Inspect Space return", 1127.0, forkY voice, 222.0, 74.0, spaceSelected (editor, voice))
+        base = [patchArea voice, space]
         match voice.bus == ""
-            true => [space]
-            false => listConcat [space, TimelineView::area ("Inspect ${voice.bus} group", 789.0, 430.0, 222.0, 74.0, !editor.inspectSpace)] (ui::Pick::either (editor.inspectSpace, [], [TimelineView::area ("Choose group output", 738.0, 853.0, 210.0, 44.0, false)]))
+            true => base
+            false => listConcat (listAppend base (TimelineView::area ("Inspect ${voice.bus} group", 789.0, 430.0, 222.0, 74.0, !editor.inspectSpace))) (ui::Pick::either (editor.inspectSpace, [], [TimelineView::area ("Choose group output", 738.0, 853.0, 210.0, 44.0, false)]))
 
     sendAreas voice = match voice.sends
         [] => []
@@ -60,9 +63,10 @@ module MixView
     graphAt (editor, x, y) = match listGet editor.song.tracks editor.track
         Error _ => Error(message = "Select a track first.")
         Success voice => match EditorView::areaAt (busAreas (editor, voice), x, y)
-            0 => Success(value = InspectBus(space = true))
-            1 => Success(value = InspectBus(space = false))
-            2 => Success(value = BrowseBuses)
+            0 => Success(value = OpenTrack(index = editor.track))
+            1 => Success(value = InspectBus(space = true))
+            2 => Success(value = InspectBus(space = false))
+            3 => Success(value = BrowseBuses)
             _ => sendAt (voice, x, y)
 
     onward bus = ui::Pick::either (bus.output == "", "Master", bus.output)
@@ -90,7 +94,8 @@ module MixView
         master = ui::Pick::either (grouped, 542.0, 490.0)
         base = ui::Pick::either (grouped, 504.0, fork + 74.0)
         joinY = master - 31.0
-        ui::Lists::flatten [sendPath (voice, master), card (963.0, 208.0, voice.name, "Patch output · ${TimelineView::hundredths voice.gain}× gain", edge),
+        patch = patchArea voice
+        ui::Lists::flatten [sendPath (voice, master), card (patch.accessLeft, patch.accessTop, voice.name, "Patch output · ${TimelineView::hundredths voice.gain}× gain", edge),
             card (789.0, fork, "Stereo pan", "${TimelineView::pan voice.pan} · Left / Right", edge), card (1127.0, fork, "Space", "Reverb · ${TimelineView::hundredths editor.song.space.decay} s decay", border (spaceSelected (editor, voice))),
             group (editor, voice), card (963.0, master, "Master", "Sum L/R · soft limiter", edge),
             [wire [1074.0, 282.0, 1074.0, fork - 25.0, 900.0, fork - 25.0, 900.0, fork], wire [1074.0, fork - 25.0, 1238.0, fork - 25.0, 1238.0, fork], label ("Dry output", 795.0, fork - 32.0, 11.0, TimelineView::dim (), 0), label ("Send · ${TimelineView::percent voice.reverb}", 1250.0, fork - 32.0, 11.0, TimelineView::dim (), 0)],
