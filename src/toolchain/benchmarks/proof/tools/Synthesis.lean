@@ -187,4 +187,92 @@ theorem hannEighthEnergy {α : Type} (add sub : α → α → α) (sq : α → �
   rw [hannQuarterEnergy add sub sq assoc comm squares r c s evenCircle,
       hannQuarterEnergy add sub sq assoc comm squares r c' s' oddCircle]
 
+/-- DFT polynomial at one bin, in increasing sample order. -/
+def bin {α β : Type} (add mul : α → α → α) (zero root : α) (sample : β → α) : List β → α
+  | [] => zero
+  | x :: xs => add (sample x) (mul root (bin add mul zero root sample xs))
+
+/-- The same polynomial on an even-length frame, consuming consecutive pairs. -/
+def pairedBin {α : Type} (add mul : α → α → α) (zero root : α) : List (α × α) → α
+  | [] => zero
+  | (e, o) :: xs => add e (mul root (add o (mul root (pairedBin add mul zero root xs))))
+
+/-- Smith (A.1). Splitting even and odd powers leaves two half-size transforms
+    at the squared root, with one extra root multiplying the odd transform. -/
+theorem radixTwoSplit {α : Type} (add mul : α → α → α) (zero z : α)
+    (plusZero : ∀ a, add a zero = a) (timesZero : ∀ a, mul a zero = zero)
+    (addAssoc : ∀ a b c, add (add a b) c = add a (add b c))
+    (comm : ∀ a b, add a b = add b a)
+    (mulAssoc : ∀ a b c, mul (mul a b) c = mul a (mul b c))
+    (dist : ∀ a b c, mul a (add b c) = add (mul a b) (mul a c))
+    (frame : List (α × α)) :
+    pairedBin add mul zero z frame =
+      add (bin add mul zero (mul z z) Prod.fst frame)
+        (mul z (bin add mul zero (mul z z) Prod.snd frame)) := by
+  induction frame with
+  | nil => exact ((congrArg (add zero) (timesZero z)).trans (plusZero zero)).symm
+  | cons pair rest ih =>
+    obtain ⟨e, o⟩ := pair
+    simp only [pairedBin, bin, ih, dist, mulAssoc, addAssoc]
+    rw [← addAssoc (mul z o), comm (mul z o), addAssoc]
+
+/-- Conjugating a bin of a real frame evaluates its polynomial at the
+    conjugate root. On the unit circle this is the negative-frequency bin. -/
+theorem realBinConjugate {α : Type} (add mul : α → α → α) (zero z : α) (conj : α → α)
+    (conjZero : conj zero = zero)
+    (conjAdd : ∀ a b, conj (add a b) = add (conj a) (conj b))
+    (conjMul : ∀ a b, conj (mul a b) = mul (conj a) (conj b))
+    (frame : List α) (realInput : ∀ x, x ∈ frame → conj x = x) :
+    conj (bin add mul zero z id frame) = bin add mul zero (conj z) id frame := by
+  induction frame with
+  | nil => exact conjZero
+  | cons x xs ih =>
+    change conj (add x (mul z _)) = add x (mul (conj z) _)
+    rw [conjAdd, conjMul, realInput x (.head xs), ih (fun y h => realInput y (.tail x h))]
+
+/-- Smith's upper butterfly. Advancing k by half a frame negates z and
+    preserves its square, so both bins share the same two subtransforms. -/
+theorem radixTwoUpper {α : Type} (add mul : α → α → α) (neg : α → α) (zero z : α)
+    (plusZero : ∀ a, add a zero = a) (timesZero : ∀ a, mul a zero = zero)
+    (addAssoc : ∀ a b c, add (add a b) c = add a (add b c))
+    (comm : ∀ a b, add a b = add b a)
+    (mulAssoc : ∀ a b c, mul (mul a b) c = mul a (mul b c))
+    (dist : ∀ a b c, mul a (add b c) = add (mul a b) (mul a c))
+    (negSquare : ∀ a, mul (neg a) (neg a) = mul a a)
+    (negMul : ∀ a b, mul (neg a) b = neg (mul a b)) (frame : List (α × α)) :
+    pairedBin add mul zero (neg z) frame =
+      add (bin add mul zero (mul z z) Prod.fst frame)
+        (neg (mul z (bin add mul zero (mul z z) Prod.snd frame))) := by
+  rw [radixTwoSplit add mul zero (neg z) plusZero timesZero addAssoc comm mulAssoc dist, negSquare, negMul]
+
+/-- DFT superposition, addition part. Distribute each twiddle over the two
+    contributions, then collect terms from the same input signal. -/
+theorem binAdditive {α ι : Type} (add mul : α → α → α) (zero z : α)
+    (plusZero : ∀ a, add a zero = a) (assoc : ∀ a b c, add (add a b) c = add a (add b c))
+    (comm : ∀ a b, add a b = add b a)
+    (dist : ∀ a b c, mul a (add b c) = add (mul a b) (mul a c))
+    (x y : ι → α) (indices : List ι) :
+    bin add mul zero z (fun i => add (x i) (y i)) indices =
+      add (bin add mul zero z x indices) (bin add mul zero z y indices) := by
+  induction indices with
+  | nil => exact (plusZero zero).symm
+  | cons i rest ih =>
+    simp only [bin, ih, dist, assoc]
+    rw [← assoc (y i), comm (y i), assoc]
+
+/-- DFT superposition, scaling part. The constant commutes with the twiddle
+    and factors out of the complete finite sum. -/
+theorem binHomogeneous {α ι : Type} (add mul : α → α → α) (zero z gain : α)
+    (timesZero : ∀ a, mul a zero = zero) (comm : ∀ a b, mul a b = mul b a)
+    (assoc : ∀ a b c, mul (mul a b) c = mul a (mul b c))
+    (dist : ∀ a b c, mul a (add b c) = add (mul a b) (mul a c))
+    (x : ι → α) (indices : List ι) :
+    bin add mul zero z (fun i => mul gain (x i)) indices =
+      mul gain (bin add mul zero z x indices) := by
+  induction indices with
+  | nil => exact (timesZero gain).symm
+  | cons i rest ih =>
+    simp only [bin, ih, dist]
+    rw [← assoc z gain, comm z gain, assoc]
+
 end Synthesis

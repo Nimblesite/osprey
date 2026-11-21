@@ -174,6 +174,7 @@ _test_proof_unicode:
 .PHONY: _test_synthesis_proofs
 SYNTHESIS_THEOREMS := weightedOverlapAdd travelingWavePropagation additivePeriod overlapNormalizationNecessary interpolatorFactor interpolatorEndpoints interpolatorConstant zeroPulseIndices hannEndpoints
 SYNTHESIS_THEOREMS += allpassMagnitude allpassRecurrence antiderivativeAverage antiderivativeOffset antiderivativeConstantCurve hannQuarterEnergy hannEighthEnergy
+SYNTHESIS_THEOREMS += radixTwoSplit radixTwoUpper realBinConjugate binAdditive binHomogeneous
 
 _test_synthesis_proofs: _test_proof_batch_arc
 	cd src/toolchain/benchmarks/proof/tools && lake build lean4export Synthesis
