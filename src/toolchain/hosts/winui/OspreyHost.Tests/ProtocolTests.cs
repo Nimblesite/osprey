@@ -346,8 +346,8 @@ public sealed class ProtocolTests
     public void ARegionThatDidNotChangeKeepsItsTreeAndItsRevision()
     {
         var store = new RegionStore();
-        Assert.Equal(["root", "listing"], store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("empty"))])));
-        Assert.Equal([], store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("empty"))])));
+        Assert.Equal(["root", "listing"], store.Apply(ListingFrame("empty")));
+        Assert.Equal([], store.Apply(ListingFrame("empty")));
         Assert.Equal(0, store.Find(RegionStore.Root)?.Revision);
         Assert.Equal(0, store.Find("listing")?.Revision);
     }
@@ -356,12 +356,12 @@ public sealed class ProtocolTests
     public void TheRegionStoreReplacesPatchedRegionsAndKeepsTheRest()
     {
         var store = new RegionStore();
-        store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("empty"))]));
-        var changed = store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("rows"))]));
+        store.Apply(ListingFrame("empty"));
+        var changed = store.Apply(ListingFrame("rows"));
         Assert.Equal(["listing"], changed);
         Assert.Equal(0, store.Find(RegionStore.Root)?.Revision);
         Assert.Equal(("rows", 1L), (store.Find("listing")!.Node.Text("kind"), store.Find("listing")!.Revision));
-        Assert.Equal(["listing"], store.Apply(new ToldFrame(null, [("root", Slot("listing"))])));
+        Assert.Equal(["listing"], store.Apply(ListingFrame()));
         Assert.Null(store.Find("listing"));
         Assert.Single(store.All);
         Assert.Equal(("root", 0L), (store.Find(RegionStore.Root)!.Key, store.Find(RegionStore.Root)!.Revision));
@@ -371,20 +371,22 @@ public sealed class ProtocolTests
     public void TheRegionStoreReplacesPatchedRegionsAndKeepsTheRestExtraADroppedRegionComesBack()
     {
         var store = new RegionStore();
-        store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("rows"))]));
-        Assert.Equal(["listing"], store.Apply(new ToldFrame(null, [("root", Slot("listing"))])));
-        var back = store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("rows"))]));
+        store.Apply(ListingFrame("rows"));
+        Assert.Equal(["listing"], store.Apply(ListingFrame()));
+        var back = store.Apply(ListingFrame("rows"));
         Assert.Equal(["listing"], back);
         Assert.Equal(("rows", 0L), (store.Find("listing")!.Node.Text("kind"), store.Find("listing")!.Revision));
-        Assert.Equal(["listing"], store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("stack"))])));
+        Assert.Equal(["listing"], store.Apply(ListingFrame("stack")));
         Assert.Equal(("stack", 1L), (store.Find("listing")!.Node.Text("kind"), store.Find("listing")!.Revision));
     }
 
-    /// <summary>A slot component naming another region.</summary>
-    static Node Slot(string key) => Node.Of(new Dictionary<string, Node> { ["kind"] = Node.Of("slot"), ["key"] = Node.Of(key) });
-
-    /// <summary>A component of one kind.</summary>
-    static Node Kind(string kind) => Node.Of(new Dictionary<string, Node> { ["kind"] = Node.Of(kind) });
+    static ToldFrame ListingFrame(string? kind = null)
+    {
+        var root = Node.Of(new Dictionary<string, Node> { ["kind"] = Node.Of("slot"), ["key"] = Node.Of("listing") });
+        return new ToldFrame(null, kind is null
+            ? [("root", root)]
+            : [("root", root), ("listing", Node.Of(new Dictionary<string, Node> { ["kind"] = Node.Of(kind) }))]);
+    }
 
     /// <summary>Rows laid out exactly as told.ospml writes them: every name and every value in one text run.</summary>
     sealed class ToldRows
