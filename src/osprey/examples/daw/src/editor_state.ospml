@@ -11,7 +11,7 @@ module EditorState
 
     (** [SYNTH-ADVANCED-PRISM] Advanced modules, offered in the native picker so the canvas palette keeps its
         original layout and artwork. *)
-    export advancedKinds = ["exciter", "waveguide", "bowed-string", "strike-comb", "resonator", "modal-bank", "fractional-delay", "loss-filter", "allpass", "wavetable", "additive", "spectral", "shaper", "reverb", "shifter", "phase-operator", "smoother"]
+    export advancedKinds = ["exciter", "waveguide", "bowed-string", "strike-comb", "resonator", "modal-bank", "fractional-delay", "loss-filter", "allpass", "wavetable", "additive", "spectral", "pitch-shifter", "shaper", "reverb", "shifter", "phase-operator", "smoother"]
 
     (** The browsing groups, in picker order. *)
     export categories = ["Sources", "Grains", "Physical", "Spectral", "Modulators", "Effects", "Utilities", "Output"]
@@ -31,6 +31,7 @@ module EditorState
         "resonator" => "Physical"
         "modal-bank" => "Physical"
         "spectral" => "Spectral"
+        "pitch-shifter" => "Effects"
         "lfo" => "Modulators"
         "modulated-gain" => "Modulators"
         "smoother" => "Modulators"
@@ -81,6 +82,7 @@ module EditorState
         "wavetable" => "Wavetable oscillator"
         "additive" => "Additive partials"
         "spectral" => "Spectral processor"
+        "pitch-shifter" => "FFT pitch shifter"
         "shaper" => "Waveshaper"
         "reverb" => "FDN reverb"
         "shifter" => "Frequency shifter"
@@ -125,6 +127,7 @@ module EditorState
         "wavetable" => wavetable identity
         "additive" => made (Components::additive (identity, 220.0))
         "spectral" => made (Components::spectral (identity, 1024, 256, 0.0))
+        "pitch-shifter" => made (Components::pitchShifter (identity, 1024, 1.5))
         "shaper" => made (Components::shaper (identity, 0.0, 2.0))
         "reverb" => made (Components::reverb (identity, 2.5))
         "shifter" => made (Components::shifter (identity, 5.0))
@@ -141,6 +144,7 @@ module EditorState
         IncompatiblePorts => "These ports have different rates, units or channels."
         MissingNode => "That component no longer exists."
         InvalidPort => "That port or cable no longer exists."
+        Capacity => "The patch has reached its component or cable capacity."
         _ => "The edit was rejected; the previous patch is unchanged."
 
     rejected (editor, fault) = editor(message = faultText fault)
