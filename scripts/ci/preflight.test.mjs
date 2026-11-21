@@ -2,8 +2,23 @@
 // whole with its directory, matrix values filled in, coverage gates last, on the host CI gives it.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { jobHost, matrixRows, plan, skipReason, steps, workflowFiles } from './preflight.mjs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { jobHost, matrixRows, plan, runCheck, skipReason, steps, workflowFiles } from './preflight.mjs'
+
+test('local preflight keeps failing commands and mixed output in chronological order', () => {
+  const output = mkdtempSync(join(tmpdir(), 'osprey-preflight-'))
+  try {
+    const host = { darwin: 'macos', win32: 'windows' }[process.platform] ?? 'linux'
+    const command = 'echo first; echo diagnostic >&2; echo last; exit 7'
+    const result = runCheck({ command, host, env: {}, directory: '.', job: 'fixture', name: 'mixed output' }, 0, output)
+    assert.equal(result.status, 'FAIL')
+    assert.equal(readFileSync(result.log, 'utf8'), `$ ${command}\nfirst\ndiagnostic\nlast\n`)
+  } finally {
+    rmSync(output, { recursive: true, force: true })
+  }
+})
 
 const checks = plan()
 const commands = checks.map((check) => check.command)
@@ -41,7 +56,9 @@ test('checks that are not make targets run too: static analysis, browsers, the e
 test('runner plumbing is left out and runner-only checks are named as skipped', () => {
   assert.ok(!commands.some((command) => /apt-get|GITHUB_ENV|^chmod \+x target\/|^tar -xf target\//m.test(command)), 'no installs, runner env or artifact restores')
   assert.ok(!commands.some((command) => /if: failure\(\)/.test(command)))
-  assert.equal(skipReason(find(/needs\.test-registry-gc\.result/)), 'reads values only a runner has')
+  const coveragePreflight = checks.find(({ job, name }) => job === 'ci.yml:coverage' && name.startsWith('Require successful coverage producers'))
+  assert.ok(coveragePreflight)
+  assert.equal(skipReason(coveragePreflight), 'reads values only a runner has')
   assert.equal(skipReason(find(/to_entries\[\]/)), 'reads values only a runner has', 'the required check reads the needs context')
   assert.equal(skipReason(find(/benchmarks\/instruction_gate\.py/), 'macos'), 'needs a linux host')
   assert.equal(skipReason(find(/benchmarks\/instruction_gate\.py/), 'linux'), undefined)

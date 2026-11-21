@@ -4,7 +4,7 @@
 // `script:`) is one check, run whole with its working directory and environment. Every check runs
 // even after one fails, so one red can never hide the next, and the coverage gates run last.
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { closeSync, mkdirSync, openSync, writeFileSync } from 'node:fs'
 import { workflowJobs, workflowText } from './ci-workflow-text.mjs'
 
 const CI = '.github/workflows/ci.yml'
@@ -160,17 +160,30 @@ export function skipReason(step, host = HOST) {
   return step.host === host || (step.host === 'linux' && host === 'macos') ? undefined : `needs a ${step.host} host`
 }
 
-function runCheck(step, index) {
+export function runCheck(step, index, output = OUT) {
   const reason = skipReason(step)
   if (reason) return { ...step, status: 'SKIP', log: reason }
-  const log = `${OUT}/${String(index).padStart(3, '0')}.log`
+  const log = `${output}/${String(index).padStart(3, '0')}.log`
   const started = Date.now()
   const env = { ...process.env, RUNNER_TEMP: `${process.cwd()}/${OUT}/runner-temp`, ...step.env }
-  const result = spawnSync('bash', ['-eo', 'pipefail', '-c', step.command], { cwd: step.directory, env, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1 << 30 })
-  writeFileSync(log, `$ ${step.command}\n${result.stdout ?? ''}${result.stderr ?? ''}`)
-  const status = result.status === 0 ? 'PASS' : 'FAIL'
+  const status = checkStatus(step, env, log)
   console.log(`${status} ${step.job} ${step.name} (${Math.round((Date.now() - started) / 1000)}s) ${log}`)
   return { ...step, status, log }
+}
+
+function checkStatus(step, env, log) {
+  const output = openSync(log, 'w')
+  try {
+    writeFileSync(output, `$ ${step.command}\n`)
+    const result = spawnSync('bash', ['-eo', 'pipefail', '-c', step.command], {
+      cwd: step.directory, env, stdio: ['ignore', output, output],
+    })
+    if (result.error) writeFileSync(output, `${result.error.message}\n`)
+    if (result.signal) writeFileSync(output, `Stopped by ${result.signal}\n`)
+    return result.status === 0 ? 'PASS' : 'FAIL'
+  } finally {
+    closeSync(output)
+  }
 }
 
 export const firstLine = (command) => command.split('\n').find((line) => line.trim() && !/^set -/.test(line))?.trim() ?? command
