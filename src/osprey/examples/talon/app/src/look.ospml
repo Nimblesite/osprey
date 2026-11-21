@@ -97,7 +97,7 @@ module Look
     // A button on a rounded frame: the frame draws the surface, the button only its label.
     pill (fill, ink, line) =
         style = Frames::plain
-        style(frameFill = fill, frameInk = ink, frameLine = line, frameRadius = 12, frameHug = true, frameQuietControls = true, frameControlHeight = 44, frameControlPadding = 16, frameFont = "Inter", frameTextSize = 14)
+        style(frameFill = fill, frameInk = ink, frameLine = line, frameRadius = 12, frameHug = true, frameQuietControls = true, frameControlHeight = 44, frameControlPadding = 12, frameFont = "Inter", frameTextSize = 14)
 
     (** The main action: a coral pill. *)
     export primary<A> : (string, string, bool, A) -> ui::Node<A>
@@ -126,7 +126,7 @@ module Look
     // One choice on a track, filling its share: `fill` and `ink` as chosen or not.
     choice (fill, ink, label, act) =
         style = pill (fill, ink, "")
-        Ui::framed (style(frameHug = false, frameGrow = true, frameCross = "center", frameControlHeight = 38, frameControlPadding = 6, frameRadius = 10, frameTextSize = 13), Ui::button (label, "", act))
+        Ui::framed (style(frameHug = false, frameGrow = true, frameCross = "center", frameControlHeight = 38, frameControlPadding = 2, frameRadius = 10, frameTextSize = 12), Ui::button (label, "", act))
 
     // A row of choices on a rounded track of `fill`.
     track (fill, items) =
