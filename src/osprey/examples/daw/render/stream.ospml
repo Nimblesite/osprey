@@ -41,22 +41,36 @@ module Streams
     // Notes due in the next block that a maker has kept are read, not made ([DAW-TRANSPORT-LIVE-SPEED]).
     seeded (dirs, playing, until) = playing(tracks = mapList (toList (range (0, length playing.tracks)), \index => warm (dirs, playing, index, until)))
 
-    // The interactive stream limits each device packet to 256 frames; offline streams retain their larger batch.
-    size path = ui::Pick::either (path == "", block, 256)
+    // Two 160-frame packets prime the device in 6.7 ms at 48 kHz.
+    size path = ui::Pick::either (path == "", block, 160)
 
-    changed (folder, stream, next) = match next.controlVersion == stream.controlVersion
-        true => Success(value = next)
-        false => synth::Outcomes::carried (NoteCache::found (next.controlScore, folder), \dirs => Success(value = next(noteFolders = dirs)))
+    // Makers belong to the patch that started playback. Discard its folder only for a changed voice.
+    retained (stream, next, index) = match listGet stream.controlScore.tracks index
+        Error _ => ""
+        Success prior => match listGet next.controlScore.tracks index
+            Error _ => ""
+            Success voice => ui::Pick::either (Arrangements::sameVoice (voice, prior), listGet stream.noteFolders index ?: "", "")
 
-    advanced (folder, path, count, stream) =
+    changed (stream, next) = match next.controlVersion == stream.controlVersion
+        true => next
+        false => next(noteFolders = mapList (toList (range (0, length stream.noteFolders)), \index => retained (stream, next, index)))
+
+    advanced (path, count, stream) =
         frames = least (size path, satSub count stream.playing.cursor)
         synth::Outcomes::carried (LiveControls::receive (path, stream), \received =>
-            synth::Outcomes::carried (changed (folder, stream, received), \next =>
-                synth::Outcomes::carried (Playback::next (next.controlScore, seeded (next.noteFolders, next.playing, satAdd next.playing.cursor frames), frames), \played =>
-                    synth::Outcomes::carried (sent (next.controlScore, played), \playing => Success(value = next(playing = playing))))))
+            next = changed (stream, received)
+            synth::Outcomes::carried (Playback::next (next.controlScore, seeded (next.noteFolders, next.playing, satAdd next.playing.cursor frames), frames), \played =>
+                synth::Outcomes::carried (sent (next.controlScore, played), \playing => acknowledged (path, next(playing = playing)))))
 
-    pass (folder, path, count, start) = foldList (toList (range (0, intDiv (satAdd count (satSub (size path) 1)) (size path))), start, \(outcome, _) =>
-        synth::Outcomes::carried (outcome, \stream => advanced (folder, path, count, stream)))
+    // input flushes the printed audio before waiting. Each device receipt permits one more packet.
+    acknowledged (path, next) = match path == ""
+        true => Success(value = next)
+        false => match input ()
+            "next" => Success(value = next)
+            _ => Error(message = "The audio device stopped accepting song blocks.")
+
+    pass (path, count, start) = foldList (toList (range (0, intDiv (satAdd count (satSub (size path) 1)) (size path))), start, \(outcome, _) =>
+        synth::Outcomes::carried (outcome, \stream => advanced (path, count, stream)))
 
     kept (fresh, last, index) =
         track = listGet fresh.tracks index ?: silent
@@ -67,19 +81,19 @@ module Streams
     // distinct note once, in its first pass.
     rewound (arrangement, last) = synth::Outcomes::carried (Playback::start arrangement, \fresh => Success(value = fresh(tracks = mapList (toList (range (0, length fresh.tracks)), \index => kept (fresh, last, index)))))
 
-    again (folder, path, count, outcome) = synth::Outcomes::carried (outcome, \last =>
-        pass (folder, path, count, synth::Outcomes::carried (rewound (last.controlScore, last.playing), \playing => Success(value = last(playing = playing)))))
+    again (path, count, outcome) = synth::Outcomes::carried (outcome, \last =>
+        pass (path, count, synth::Outcomes::carried (rewound (last.controlScore, last.playing), \playing => Success(value = last(playing = playing)))))
 
     // A loop is exactly its beats, pass after pass; one pass rings out to the piece's end.
     measured (request, arrangement, loop) = match loop
         true => Arrangements::frame (arrangement, request.beats)
         false => Arrangements::frames arrangement
 
-    ran (request, path, count, loop, initial) = match count >= size path
+    ran (path, count, loop, initial) = match count >= size path
         false => Error(message = "There is too little here to play.")
         true => match loop
-            true => foldList (toList (range (0, passes)), initial, \(outcome, _) => again (request.folder, path, count, outcome))
-            false => pass (request.folder, path, count, initial)
+            true => foldList (toList (range (0, passes)), initial, \(outcome, _) => again (path, count, outcome))
+            false => pass (path, count, initial)
 
     initial (arrangement, folder) = synth::Outcomes::carried (Playback::start arrangement, \playing =>
         synth::Outcomes::carried (NoteCache::found (arrangement, folder), \dirs =>
@@ -88,4 +102,4 @@ module Streams
     (** Play the requested window, reading live parameter revisions between device blocks. *)
     export played (request, arrangement, loop, path) = match arrangement.sampleRate == 48000
         false => Error(message = "Live play needs a 48 kHz project; this one is ${arrangement.sampleRate} Hz.")
-        true => synth::Outcomes::carried (measured (request, arrangement, loop), \count => ran (request, path, count, loop, initial (arrangement, request.folder)))
+        true => synth::Outcomes::carried (measured (request, arrangement, loop), \count => ran (path, count, loop, initial (arrangement, request.folder)))
