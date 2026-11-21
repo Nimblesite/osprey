@@ -44,7 +44,7 @@ module Renderer
             false => Error(message = IncompatibleLayout(detail = "Reference rendering requires mono audio, one output and supported bounded processors."))
             true => Success(value = RenderInputs::initial plan)
 
-    scheduledNodes plan = mapList (plan.order, \identity => RenderKernels::schedule (plan, identity))
+    scheduledNodes (plan, snapshot, fixed) = mapList (plan.order, \identity => RenderKernels::schedule (plan, identity, snapshot, fixed))
 
     nextNode (plan, rate, snapshot, outcome, component) = Outcomes::carried (outcome, \frame => RenderKernels::resolved (plan, rate, snapshot, frame, component))
 
@@ -104,7 +104,7 @@ module Renderer
     export capture (plan, rate, snapshot, progress, count, accept) = match validBlock (rate, progress.audio, count) && supported plan
         false => Error(message = InvalidConfiguration(detail = "Invalid render rate, block size, position or layout."))
         true =>
-            nodes = scheduledNodes plan
+            nodes = scheduledNodes (plan, snapshot, true)
             foldList (toList (range (0, count)), Success(value = progress), \(outcome, _) => Outcomes::carried (outcome, \current => captured (plan, nodes, rate, snapshot, current, accept)))
 
     nextSample (plan, nodes, rate, snapshot, outcome) = Outcomes::carried (outcome, \rendered => sample (plan, nodes, rate, snapshot, rendered))
@@ -115,7 +115,7 @@ module Renderer
     export block (plan, rate, snapshot, rendered, count) = match validBlock (rate, rendered, count) && supported plan
         false => Error(message = InvalidConfiguration(detail = "Invalid render rate, block size, position or layout."))
         true =>
-            nodes = scheduledNodes plan
+            nodes = scheduledNodes (plan, snapshot, true)
             foldList (toList (range (0, count)), Success(value = rendered(samples = [], meters = [])), \(outcome, _) => nextSample (plan, nodes, rate, snapshot, outcome))
 
     ordered (events, previous, stop) = match events
@@ -144,6 +144,6 @@ module Renderer
     export automated (plan, rate, snapshot, rendered, count, events) = match validBlock (rate, rendered, count) && supported plan && length events <= 1024 && ordered (events, rendered.position, satAdd rendered.position count)
         false => Error(message = InvalidConfiguration(detail = "Invalid automation block, ordering or event capacity."))
         true =>
-            nodes = scheduledNodes plan
+            nodes = scheduledNodes (plan, snapshot, false)
             initial = Timeline(audio = rendered(samples = [], meters = []), observation = snapshot)
             publish (foldList (toList (range (0, count)), Success(value = initial), \(outcome, _) => nextAutomated (plan, nodes, rate, events, outcome)))

@@ -115,26 +115,34 @@ module RenderKernels
         Success _ => true
 
     (** Resolve optional parameter declarations once for the scheduled node. *)
-    export schedule (plan, identity) = match Graphs::node (plan.graph, identity)
+    export schedule (plan, identity, snapshot, fixed) = match Graphs::node (plan.graph, identity)
         Invalid why => Invalid(fault = why)
-        Valid n => Valid(value = { node = n, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
+        Valid n =>
+            controls = match fixed
+                true => snapshot(parameters = filterList (snapshot.parameters, \p => p.node == identity))
+                false => snapshot
+            Valid(value = { node = n, controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
 
     (** Render one scheduled component or return its explicit fault. *)
-    export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity))
+    export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, snapshot, false))
 
     (** Run a scheduled component resolved for this block. *)
-    export resolved (plan, rate, snapshot, frame, component) = match component
+    export resolved (plan, rate, current, frame, component) = match component
         Invalid _ => Error(message = MissingResource(detail = "Render schedule names an absent component."))
-        Valid scheduled => match RenderInputs::held (frame, scheduled.node.identity)
-            Error why => Error(message = why)
-            Success held => match scheduled.switchable
-                false => selected (plan, rate, snapshot, frame, held, scheduled)
-                true => match RenderInputs::parameter (snapshot, held.identity, "enabled")
-                    Error why => Error(message = why)
-                    Success enabled => match enabled
-                        1.0 => selected (plan, rate, snapshot, frame, held, scheduled)
-                        0.0 => bypassed (plan, frame, held, scheduled.node)
-                        _ => Error(message = InvalidConfiguration(detail = "Enabled must be zero or one."))
+        Valid scheduled =>
+            snapshot = match scheduled.fixed
+                true => scheduled.controls
+                false => current
+            match RenderInputs::held (frame, scheduled.node.identity)
+                Error why => Error(message = why)
+                Success held => match scheduled.switchable
+                    false => selected (plan, rate, snapshot, frame, held, scheduled)
+                    true => match RenderInputs::parameter (snapshot, held.identity, "enabled")
+                        Error why => Error(message = why)
+                        Success enabled => match enabled
+                            1.0 => selected (plan, rate, snapshot, frame, held, scheduled)
+                            0.0 => bypassed (plan, frame, held, scheduled.node)
+                            _ => Error(message = InvalidConfiguration(detail = "Enabled must be zero or one."))
 
     waveform (snapshot, scheduled) = match scheduled.selectableWave
         false => Success(value = Sine)
