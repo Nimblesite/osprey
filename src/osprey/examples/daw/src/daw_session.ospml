@@ -252,17 +252,19 @@ module DawSession
 
     (** [DAW-TRANSPORT-RANGE] Put the end marker on bar line `bar` (from 0); a bar at or before the start marker,
         or past the song, means the song's end. *)
-    export ended (editor, bar) = match editor.songTicket == ""
-        false => Runtime::step (editor(message = "Stop first to move the end marker."))
-        true =>
-            next = editor(playEnd = bar)
-            Runtime::step (next(message = "Play runs ${span next}."))
+    export ended (editor, bar) = marked (editor, bar, false)
 
     (** [DAW-TRANSPORT-RANGE] Put the start marker on bar `bar` (from 0); the end marker stays where it is. *)
-    export started (editor, bar) = match editor.songTicket == ""
-        false => Runtime::step (editor(message = "Stop first to move the start marker."))
+    export started (editor, bar) = marked (editor, bar, true)
+
+    marked (editor, bar, start) = match editor.songTicket == ""
+        false =>
+            boundary = ui::Pick::either (start, "start", "end")
+            Runtime::step (editor(message = "Stop first to move the ${boundary} marker."))
         true =>
-            next = editor(rollBar = bar)
+            next = match start
+                true => editor(rollBar = bar)
+                false => editor(playEnd = bar)
             Runtime::step (next(message = "Play runs ${span next}."))
 
     exported (editor, place, outcome) = match completeWave (mastered place)
