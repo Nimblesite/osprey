@@ -118,17 +118,24 @@ module RenderKernels
         true => TableKernels::prepare (rate, controls, n.identity)
         false => DynamicPartials
 
+    // Kernel updates preserve the caller's state order throughout a block.
+    stateSlot (states, identity, index) = match listGet states index
+        Error _ => -1
+        Success held => match held.identity == identity
+            true => index
+            false => stateSlot (states, identity, satAdd index 1)
+
     (** Resolve optional parameter declarations once for the scheduled node. *)
-    export schedule (plan, identity, rate, snapshot, fixed) = match Graphs::node (plan.graph, identity)
+    export schedule (plan, identity, rate, snapshot, fixed, states) = match Graphs::node (plan.graph, identity)
         Invalid why => Invalid(fault = why)
         Valid n =>
             controls = match fixed
                 true => snapshot(parameters = filterList (snapshot.parameters, \p => p.node == identity))
                 false => snapshot
-            Valid(value = { node = n, guide = PhysicalKernels::prepare (rate, controls, identity, n.processor, fixed), spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
+            Valid(value = { node = n, slot = stateSlot (states, identity, 0), guide = PhysicalKernels::prepare (rate, controls, identity, n.processor, fixed), spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
 
     (** Render one scheduled component or return its explicit fault. *)
-    export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, rate, snapshot, false))
+    export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, rate, snapshot, false, frame.states))
 
     (** Run a scheduled component resolved for this block. *)
     export resolved (plan, rate, current, frame, component) = match component
@@ -137,8 +144,8 @@ module RenderKernels
             snapshot = match scheduled.fixed
                 true => scheduled.controls
                 false => current
-            match RenderInputs::held (frame, scheduled.node.identity)
-                Error why => Error(message = why)
+            match listGet frame.states scheduled.slot
+                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
                 Success held => match scheduled.switchable
                     false => selected (plan, rate, snapshot, frame, held, scheduled)
                     true => match RenderInputs::parameter (snapshot, held.identity, "enabled")

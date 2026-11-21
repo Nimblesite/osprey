@@ -448,6 +448,13 @@ registerHostedJourneys () =
         renderRefused (synth::ClipInputs::routed (graph, [clip], 99, 0))
         invalidBus = hostNode (synth::Hosted::component (4, hostDescriptor ()))
         forEachList ([invalidBus(inputs = [audio, audio]), invalidBus(outputs = [audio, audio])], \bad => renderRefused (synth::ClipInputs::layout bad))
+        initial = rendered (synth::Renderer::start graph)
+        snapshot = Parameters::initial graph
+        succeeds (synth::Renderer::block (plan, 48000.0, snapshot, initial, 17), \normal =>
+            succeeds (synth::Renderer::block (plan, 48000.0, snapshot, initial(states = listReverse initial.states), 17), \reordered =>
+                expect (structuralEquals (normal.samples, reordered.samples), true)
+                expect (structuralEquals (normal.states, listReverse reordered.states), true)))
+        renderRefused (synth::Renderer::block (plan, 48000.0, snapshot, initial(states = []), 1))
         frame = synth::SampleFrame(states = [], values = [])
         forEachList ([99, 1], \frames => renderRefused (synth::RenderKernels::step (plan, 48000.0, Parameters::initial graph, frame, frames)))
         renderRefused (synth::RenderInputs::sample (frame, 1))
