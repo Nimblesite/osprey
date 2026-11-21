@@ -34,17 +34,20 @@ module PartialBanks
         number = toFloat (satAdd index 1)
         TableMath::countGain (config.count, toFloat index) * TableMath::tilt (number, config.tilt) * TableMath::parity (number, config.parity) * TableMath::nyquistFade (frequency, config.sampleRate) * TableMath::partialDecay (age, config.decay, config.damping, number, config.sampleRate)
 
-    voiced (voice, phase, level, step) = PartialVoice(sample = voice.sample + level * TableMath::sinePhase phase, gain = voice.gain + TableMath::magnitude level, phases = listAppend voice.phases (Waves::wrap (phase + step)))
-
     partial (config, age, voice, index, phase) = match ratio (config, index)
         Error _ => voice(phases = listAppend voice.phases phase)
         Success r =>
             frequency = config.frequency * r
-            voiced (voice, phase, gain (config, index, frequency, age), frequency / config.sampleRate)
+            phases = listAppend voice.phases (Waves::wrap (phase + frequency / config.sampleRate))
+            match toFloat index >= config.count
+                true => voice(phases = phases)
+                false =>
+                    level = gain (config, index, frequency, age)
+                    PartialVoice(sample = voice.sample + level * TableMath::sinePhase phase, gain = voice.gain + TableMath::magnitude level, phases = phases)
 
-    stepped (config, age, phases, index, voice) = match phases
-        [] => voice
-        [phase, ...rest] => stepped (config, age, rest, satAdd index 1, partial (config, age, voice, index, phase))
+    stepped (config, age, phases, index, voice) = match listGet phases index
+        Error _ => voice
+        Success phase => stepped (config, age, phases, satAdd index 1, partial (config, age, voice, index, phase))
 
     (** One sample: peak-safe sum (divided by total gain when it exceeds one), scaled by amplitude. *)
     export next (config, held) = match length held.phases == capacity

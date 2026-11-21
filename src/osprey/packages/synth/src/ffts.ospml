@@ -11,6 +11,9 @@ module Ffts
     (** Multiply by the unit phasor at `angle`. *)
     export rotated (value, angle) = Complex(re = SpectralMath::productRe (value.re, value.im, cos angle, sin angle), im = SpectralMath::productIm (value.re, value.im, cos angle, sin angle))
 
+    added (e, t) = Complex(re = e.re + t.re, im = e.im + t.im)
+    subtracted (e, t) = Complex(re = e.re - t.re, im = e.im - t.im)
+
     combined (evens, odds, index, size, sign) = match evens
         [] => ComplexHalves(lower = [], upper = [])
         [e, ...moreEvens] => match odds
@@ -18,13 +21,19 @@ module Ffts
             [o, ...moreOdds] =>
                 t = rotated (o, SpectralMath::twiddle (sign, toFloat index, toFloat size))
                 rest = combined (moreEvens, moreOdds, satAdd index 1, size, sign)
-                ComplexHalves(lower = listPrepend rest.lower (Complex(re = e.re + t.re, im = e.im + t.im)), upper = listPrepend rest.upper (Complex(re = e.re - t.re, im = e.im - t.im)))
+                ComplexHalves(lower = listPrepend rest.lower (added (e, t)), upper = listPrepend rest.upper (subtracted (e, t)))
+
+    pair (values, first, stride, sign) = match listGet values first
+        Error _ => Error(message = InvalidConfiguration(detail = "FFT input frame is incomplete."))
+        Success e => match listGet values (satAdd first stride)
+            Error _ => Error(message = InvalidConfiguration(detail = "FFT input frame is incomplete."))
+            Success o =>
+                t = rotated (o, SpectralMath::twiddle (sign, 0.0, 2.0))
+                Success(value = [added (e, t), subtracted (e, t)])
 
     // The recursive halves borrow alternating bins of the same input frame.
-    transform (values, first, stride, size, sign) = match size == 1
-        true => match listGet values first
-            Error _ => Error(message = InvalidConfiguration(detail = "FFT input frame is incomplete."))
-            Success only => Success(value = [only])
+    transform (values, first, stride, size, sign) = match size == 2
+        true => pair (values, first, stride, sign)
         false =>
             half = intDiv size 2
             step = satAdd stride stride
