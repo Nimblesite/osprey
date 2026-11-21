@@ -495,8 +495,46 @@ fn the_daw_renderer_exits_one_on_every_failure_and_zero_when_it_writes() -> Test
         .ok_or("missing bell brightness")? = 0.5.into();
     std::fs::write(&bell, serde_json::to_vec(&playable)?)?;
     assert_repairs_truncated_note(&binary, &bell, &out)?;
+    assert_device_drain(&binary, &bell, &out)?;
     assert_late_note_pickup(&binary, &root.join("late-notes"))?;
     std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+
+/// Device playback ends with an acknowledged drain after its last nonempty WAV packet.
+fn assert_device_drain(binary: &Path, song: &Path, folder: &Path) -> TestResult {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+    let controls = folder.join("controls");
+    std::fs::write(&controls, "0")?;
+    let mut child = Command::new(binary)
+        .current_dir(repo_root())
+        .args([
+            &arg(song),
+            &arg(folder),
+            "0",
+            "0.125",
+            "live",
+            &arg(&controls),
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let mut receipt = child.stdin.take().ok_or("missing receipt pipe")?;
+    let mut packets = 0;
+    let mut drained = false;
+    for line in BufReader::new(child.stdout.take().ok_or("missing audio pipe")?).lines() {
+        let line = line?;
+        assert!(!drained, "data after the final drain");
+        drained = line == "!drain";
+        if !drained {
+            assert!(line.starts_with("52494646"), "expected a RIFF packet");
+            packets += 1;
+        }
+        writeln!(receipt, "next")?;
+    }
+    assert!(child.wait()?.success());
+    assert!(packets > 0 && drained, "playback ended without its drain");
     Ok(())
 }
 

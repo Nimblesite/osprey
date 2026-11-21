@@ -71,6 +71,13 @@ module Streams
             "next" => Success(value = next)
             _ => Error(message = "The audio device stopped accepting song blocks.")
 
+    // Complete the device handshake while the song state is still live.
+    drained (path, stream) = match path == ""
+        true => Success(value = stream)
+        false =>
+            print "!drain"
+            acknowledged (path, stream)
+
     pass (path, count, start, repeating) = foldList (toList (range (0, intDiv (satAdd count (satSub (size path) 1)) (size path))), start, \(outcome, _) =>
         synth::Outcomes::carried (outcome, \stream => advanced (path, count, stream, repeating)))
 
@@ -95,7 +102,7 @@ module Streams
         false => Error(message = "There is too little here to play.")
         true => match loop
             true => foldList (toList (range (0, passes)), initial, \(outcome, _) => again (path, count, outcome))
-            false => pass (path, count, initial, false)
+            false => synth::Outcomes::carried (pass (path, count, initial, false), \stream => drained (path, stream))
 
     initial (arrangement, folder, withMakers) = synth::Outcomes::carried (Playback::start arrangement, \playing =>
         synth::Outcomes::carried (NoteCache::found (arrangement, folder), \dirs =>
