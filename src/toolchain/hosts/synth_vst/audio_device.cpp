@@ -58,7 +58,8 @@ class Device {
     };
     AudioQueueRef queue = nullptr;
     static constexpr size_t MaxLivePackets = 9;
-    static constexpr uint32_t LiveQueueFrames = 1440; // 30 ms at 48 kHz.
+    static constexpr uint32_t LiveQueueFrames = 960; // 20 ms at 48 kHz.
+    static constexpr uint32_t RecoveryQueueFrames = 1440;
     std::array<Slot, MaxLivePackets> slots;
     std::atomic<uint64_t> returned{0}, accepted{0}, emptyCallbacks{0};
     std::atomic<bool> draining{false};
@@ -109,13 +110,14 @@ class Device {
     }
 
     Slot* available(uint32_t frames) {
-        // Short interactive packets need room for a hardware callback batch.
-        const auto count = std::clamp<size_t>((LiveQueueFrames + frames - 1) / frames, 4, slots.size());
+        // Keep live edits close to the device. Give a stream that ran empty another callback batch.
+        const auto budget = emptyCallbacks.load(std::memory_order_acquire) ? RecoveryQueueFrames : LiveQueueFrames;
+        const auto count = std::clamp<size_t>((budget + frames - 1) / frames, 4, slots.size());
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
         do {
             for (size_t i = 0; i < count; ++i)
                 if (slots[i].available.load(std::memory_order_acquire)) return &slots[i];
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(std::chrono::microseconds(250));
         } while (std::chrono::steady_clock::now() < deadline);
         error = "Audio output did not return a buffer within two seconds";
         return nullptr;
