@@ -316,7 +316,11 @@ fn acc_seed(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value, Callback)
 
 /// `fold(iterator, initial, fn)` — counted loop accumulating `fn(acc, elem)`.
 fn fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let range = gen_expr(cg, nth(args, 0)?)?;
+    fold_range(cg, nth(args, 0)?, args)
+}
+
+fn fold_range(cg: &mut Codegen, source: &Expr, args: &[Expr]) -> Result<Value> {
+    let range = gen_expr(cg, source)?;
     let (acc, tmpl, combine) = acc_seed(cg, args)?;
     each_range_elem(cg, &range, |cg, elem| {
         acc_step(cg, &acc, &tmpl, &combine, elem)
@@ -444,10 +448,38 @@ fn to_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 
 /// `foldList(list, initial, fn)` — reduce a list with `fn(acc, elem)`.
 fn fold_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    if let Some(range) = plain_range_list(cg, nth(args, 0)?) {
+        return fold_range(cg, range, args);
+    }
     let l = list_arg(cg, args, 0)?;
     let (acc, tmpl, combine) = acc_seed(cg, args)?;
     each_list_elem(cg, &l, |cg, _, elem| {
         acc_step(cg, &acc, &tmpl, &combine, elem)
     })?;
     Ok(acc_result(cg, &acc, &tmpl))
+}
+
+/// A bare range has no callbacks. Skipping its temporary list therefore
+/// preserves evaluation order, including evaluation of the fold seed.
+fn plain_range_list<'a>(cg: &Codegen, expr: &'a Expr) -> Option<&'a Expr> {
+    let builtin = |call, name| {
+        crate::expr::callee_name(call) == Some(name)
+            && cg.lookup(name).is_none()
+            && cg.lambda_def(name).is_none()
+            && !cg.extern_params.contains_key(name)
+            && !cg.call_aliases.contains_key(name)
+    };
+    let Expr::Call {
+        arguments,
+        named_arguments,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    let [range] = arguments.as_slice() else {
+        return None;
+    };
+    (named_arguments.is_empty() && builtin(expr, "toList") && builtin(range, "range"))
+        .then_some(range)
 }

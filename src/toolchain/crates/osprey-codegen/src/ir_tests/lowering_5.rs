@@ -14,6 +14,20 @@ fn assert_entry_allocas(ir: &str, what: &str) {
 }
 
 #[test]
+fn folding_a_materialized_plain_range_reads_no_list() {
+    let ir = module(
+        r"fn total(start, end) = foldList(toList(range(start, end)), 0, fn(sum, i) => satAdd(sum, i))
+        print(toString(total(-3, 6)))",
+    );
+    let body = function_body(&ir, "define internal i64 @total(");
+    testkit::contents(
+        &body,
+        &["icmp slt"],
+        &["@osprey_list_builder", "@osprey_list_get"],
+    );
+}
+
+#[test]
 fn ml_generic_slice_fold_specializes_its_callback() {
     let ir = ml_module(
         r#"kept<T> : (List<T>, List<T>, int) -> List<T>
