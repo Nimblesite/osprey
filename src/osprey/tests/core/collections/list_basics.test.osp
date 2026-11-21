@@ -84,6 +84,12 @@ fn allElementsAre(lists, wants, fallback) = everyRowOf(lists, fn(i) => elementsA
 /// each row through the Result path of [BUILTIN-LIST-GET].
 fn allRowsHold(lists, indices, wants, fallback) = everyRowOf(lists, fn(i) => rowsHold(elementOr(lists, i, []), elementOr(indices, i, []), elementOr(wants, i, []), fallback))
 
+/// intElementsHold is allElementsAre over int lists with the shared -999 sentinel.
+fn intElementsHold(lists, wants) = allElementsAre(lists, wants, (0 - 999))
+
+/// intRowsHold is allRowsHold over int lists with the shared -999 sentinel.
+fn intRowsHold(lists, indices, wants) = allRowsHold(lists, indices, wants, (0 - 999))
+
 /// The slot's three fields read back `label`, `weight` and `ready`, so a head
 /// bound to the wrong slot cannot pass by matching only one field.
 fn slotReads(slot, label, weight, ready) = slot.label == label && slot.weight == weight && slot.ready == ready
@@ -91,6 +97,9 @@ fn slotReads(slot, label, weight, ready) = slot.label == label && slot.weight ==
 /// Every `wanted` element is a member of `xs` and no `absent` one is
 /// ([BUILTIN-LIST-CONTAINS]), so one row answers both membership questions.
 fn membershipHolds(xs, wanted, absent) = allListed(xs, wanted) && noneListed(xs, absent)
+
+/// Every listed list answers its partner wanted and absent membership row.
+fn membershipRows(lists, wanteds, absents) = everyRowOf(lists, fn(i) => membershipHolds(elementOr(lists, i, []), elementOr(wanteds, i, []), elementOr(absents, i, [])))
 
 /// `s` starts with `prefix` and ends with `suffix`.
 fn spans(s, prefix, suffix) = startsWith(s, prefix) && endsWith(s, suffix)
@@ -169,11 +178,11 @@ fn constructionAndIdentityCase() = {
     checkAll("legacy construction and operation lengths", [answersHold(lengthOf, [empty, a, b, reversed, restored, concatenated, listConcat(empty, a), listConcat(a, empty), a + a, a + b + a, prepended, a], [0, 3, 2, 3, 3, 5, 3, 3, 6, 8, 4, 3])])
 
     // Constituent checks ensure the old length-only observations cannot hide corrupt contents.
-    checkAll("construction and reverse contents", [allElementsAre([a, b, reversed, restored, prepended], [[1, 2, 3], [10, 20], [3, 2, 1], [1, 2, 3], [0, 1, 2, 3]], (0 - 999))])
+    checkAll("construction and reverse contents", [intElementsHold([a, b, reversed, restored, prepended], [[1, 2, 3], [10, 20], [3, 2, 1], [1, 2, 3], [0, 1, 2, 3]])])
 
     // Concatenation identities and the operator alias are checked at their seams and endpoints.
     checkAll("concat identities and boundaries", [
-        allRowsHold([concatenated, abPlusA], [[0, 2, 3, 4], [5, 7]], [[1, 3, 10, 20], [1, 3]], (0 - 999)),
+        intRowsHold([concatenated, abPlusA], [[0, 2, 3, 4], [5, 7]], [[1, 3, 10, 20], [1, 3]]),
         intAt(emptyPlusA, 0) == 1,
         intAt(aPlusEmpty, 2) == 3,
         intAt(doubledA, 3) == 1
@@ -193,8 +202,7 @@ fn constructionAndIdentityCase() = {
 fn iterationAndPersistenceCase() = {
     let a = aListFixture()
     let reversed = listReverse(a)
-    let b = bListFixture()
-    let combined = a + b
+    let combined = a + bListFixture()
     let g0 = List()
     let g1 = listAppend(g0, 10)
     let g2 = listAppend(g1, 20)
@@ -213,21 +221,15 @@ fn iterationAndPersistenceCase() = {
     ])
 
     // One condition per formerly printed iteration value keeps the golden observations explicit.
-    checkAll("iteration constituent values", [allElementsAre([a, reversed, combined], [[1, 2, 3], [3, 2, 1], [1, 2, 3, 10, 20]], (0 - 999))])
+    checkAll("iteration constituent values", [intElementsHold([a, reversed, combined], [[1, 2, 3], [3, 2, 1], [1, 2, 3, 10, 20]])])
 
     // The six generation lengths, retained g2 length, and all branch lengths mirror the old golden.
     checkAll("persistent generation and branch lengths", [answersHold(lengthOf, [g0, g1, g2, g3, g4, g5, g2, x, y, y2, g3], [0, 1, 2, 3, 4, 5, 2, 4, 4, 5, 3])])
 
     // Added content checks prove later generations and sibling branches do not mutate their ancestors.
     checkAll("persistent generation and branch contents", [
-        membershipHolds(g0, [], [10]),
-        membershipHolds(g1, [10], [20]),
-        membershipHolds(g2, [10, 20], [30, 50]),
-        membershipHolds(g5, [10, 50], []),
-        membershipHolds(x, [999], [888]),
-        membershipHolds(y, [888], [999, 777]),
-        membershipHolds(y2, [777], []),
-        membershipHolds(g3, [], [999, 888, 777]),
+        membershipRows([g0, g1, g2, g5], [[], [10], [10, 20], [10, 50]], [[10], [20], [30, 50], []]),
+        membershipRows([x, y, y2, g3], [[999], [888], [777], []], [[888], [999, 777], [], [999, 888, 777]]),
         intAt(g5, 4) == 50,
         intAt(y2, 3) == 888,
         intAt(y2, 4) == 777
@@ -248,11 +250,11 @@ fn tailBoundaryCase() = {
 
     // Boundary indices assert actual content before, at, and after the 32-element trie tail split.
     checkAll("tail boundary contents", [
-        allRowsHold([t, t2, t4, reversed, doubled], [[0, 9], [10, 19], [30, 31, 32, 34], [0, 2, 3, 34], [34, 35, 69]], [[1, 10], [11, 20], [31, 32, 33, 35], [35, 33, 32, 1], [35, 1, 35]], (0 - 999)),
+        intRowsHold([t, t2, t4, reversed, doubled], [[0, 9], [10, 19], [30, 31, 32, 34], [0, 2, 3, 34], [34, 35, 69]], [[1, 10], [11, 20], [31, 32, 33, 35], [35, 33, 32, 1], [35, 1, 35]]),
         intAt(t3, 29) == 30,
         listLength(t3) == 30,
         noneListed(t3, [31]),
-        structuralEquals([sumList(t), sumList(t4)], [55, 630])
+        answersHold(sumList, [t, t4], [55, 630])
     ])
 }
 
@@ -276,12 +278,10 @@ fn indexingPatternsAndDispatchCase() = {
 
     // Successful and failing index paths retain all four legacy observations and exact failure reasons.
     checkAll("list index Result behavior", [
-        (commands[0] ?: "missing") == "echo hello",
-        (commands[2] ?: "missing") == "echo test",
+        answersHold(fn(i) => commands[i] ?: "missing", [0, 2, 1], ["echo hello", "echo test", "echo world"]),
         oobAt(commands, 5),
         oobAt(empty, 0),
-        (commands[1] ?: "missing") == "echo world",
-        structuralEquals([listLength(commands), listLength(empty)], [3, 0])
+        answersHold(lengthOf, [commands, empty], [3, 0])
     ])
 
     // Every legacy classify, recursive sum, and wildcard-rest result remains directly asserted.
@@ -323,7 +323,7 @@ fn indexingPatternsAndDispatchCase() = {
         answersHold(lengthOf, [a + [7, 8], [7, 8] + a], [5, 5]),
         listContains(commands + empty, "echo test"),
         !listContains(empty + commands, "echo missing"),
-        allRowsHold([[7, 8] + a, a + [7, 8]], [[0, 2], [3, 4]], [[7, 1], [7, 8]], (0 - 999)),
+        intRowsHold([[7, 8] + a, a + [7, 8]], [[0, 2], [3, 4]], [[7, 1], [7, 8]]),
         length([7, 8] + a) == 5
     ])
 }
@@ -351,25 +351,29 @@ exactTests([
 fn typedElementRetrievalCase() = {
     let words = wordTriple()
     let ratios = ratioTriple()
+    let wordAt = fn(i) => elementOr(words, i, "none")
+    let ratioAt = fn(i) => elementOr(ratios, i, 0.0)
     let flags = [true, false, true]
     let slots = leftRightSlots()
     let missingSlot = sentinelSlot()
     let firstSlot = elementOr(slots, 0, missingSlot)
     let secondSlot = elementOr(slots, 1, missingSlot)
     let pastEndSlot = elementOr(slots, 2, missingSlot)
+    let flippedSlot = fn(i) => elementOr(listReverse(slots), i, missingSlot)
+    let withDelta = listAppend(words, "delta")
 
     // A string element comes back as its own string, at every index, through
     // both spellings the spec calls equivalent [BUILTIN-LIST-GET].
     checkAll("string elements survive listGet", [
         elementsAre(words, ["alpha", "beta", "gamma"], "none"),
-        structuralEquals([words[0] ?: "none", words[1] ?: "none", words[2] ?: "none"], ["alpha", "beta", "gamma"]),
-        structuralEquals([listGet(words, 0) ?: "none", listGet(words, 1) ?: "none", listGet(words, 2) ?: "none"], [words[0] ?: "other", words[1] ?: "other", words[2] ?: "other"]),
-        structuralEquals([length(elementOr(words, 0, "")), length(elementOr(words, 1, "")), length(elementOr(words, 2, ""))], [5, 4, 5]),
-        "${elementOr(words, 0, "none")}-${elementOr(words, 2, "none")}" == "alpha-gamma",
-        contains(elementOr(words, 1, "none"), "et"),
-        !contains(elementOr(words, 1, "none"), "alpha"),
-        spans(elementOr(words, 2, "none"), "gam", "mma"),
-        toUpperCase(elementOr(words, 0, "none")) == "ALPHA",
+        answersHold(fn(i) => words[i] ?: "none", [0, 1, 2], ["alpha", "beta", "gamma"]),
+        answersHold(fn(i) => listGet(words, i) ?: "none", [0, 1, 2], [words[0] ?: "other", words[1] ?: "other", words[2] ?: "other"]),
+        answersHold(fn(i) => length(elementOr(words, i, "")), [0, 1, 2], [5, 4, 5]),
+        "${wordAt(0)}-${wordAt(2)}" == "alpha-gamma",
+        contains(wordAt(1), "et"),
+        !contains(wordAt(1), "alpha"),
+        spans(wordAt(2), "gam", "mma"),
+        toUpperCase(wordAt(0)) == "ALPHA",
         rowsHold(words, [3, 99], ["past end", "past end"], "past end"),
         (words[3] ?: "past end") == "past end"
     ])
@@ -379,10 +383,10 @@ fn typedElementRetrievalCase() = {
     // ([BUILTIN-LIST-REVERSE], [BUILTIN-LIST-PREPEND], [BUILTIN-LIST-APPEND],
     // [BUILTIN-LIST-CONCAT]).
     checkAll("string elements survive every list producer", [
-        allRowsHold([listReverse(words), listPrepend(words, "zero"), listAppend(words, "delta"), words + ["delta"], ["zero"] + words], [[0, 2], [0, 1], [3, 0], [3], [0, 1]], [["gamma", "alpha"], ["zero", "alpha"], ["delta", "alpha"], ["delta"], ["zero", "alpha"]], "none"),
-        structuralEquals([listLength(listAppend(words, "delta")), listLength(listPrepend(words, "zero"))], [4, 4]),
+        allRowsHold([listReverse(words), listPrepend(words, "zero"), withDelta, words + ["delta"], ["zero"] + words], [[0, 2], [0, 1], [3, 0], [3], [0, 1]], [["gamma", "alpha"], ["zero", "alpha"], ["delta", "alpha"], ["delta"], ["zero", "alpha"]], "none"),
+        answersHold(lengthOf, [withDelta, listPrepend(words, "zero")], [4, 4]),
         membershipHolds(words, ["beta"], ["delta"]),
-        listContains(listAppend(words, "delta"), "delta"),
+        listContains(withDelta, "delta"),
         elementOr(listReverse(listReverse(words)), 1, "none") == "beta"
     ])
 
@@ -390,9 +394,9 @@ fn typedElementRetrievalCase() = {
     checkAll("float and bool elements survive listGet", [
         elementsAre(ratios, [0.5, 1.25, 2.75], 0.0),
         (ratios[1] ?: 0.0) == 1.25,
-        elementOr(ratios, 0, 0.0) + elementOr(ratios, 1, 0.0) == 1.75,
-        elementOr(ratios, 2, 0.0) - elementOr(ratios, 0, 0.0) == 2.25,
-        elementOr(ratios, 1, 0.0) * 2.0 == 2.5,
+        ratioAt(0) + ratioAt(1) == 1.75,
+        ratioAt(2) - ratioAt(0) == 2.25,
+        ratioAt(1) * 2.0 == 2.5,
         rowsHold(ratios, [9], [9.5], 9.5),
         elementOr(listReverse(ratios), 0, 0.0) == 2.75,
         listLength(ratios) == 3,
@@ -417,7 +421,7 @@ fn typedElementRetrievalCase() = {
         structuralEquals([length(firstSlot.label), length(secondSlot.label)], [4, 5]),
         "${firstSlot.label}/${secondSlot.label}" == "left/right",
         slotReads(pastEndSlot, "missing", 0.0, false),
-        structuralEquals([elementOr(listReverse(slots), 0, missingSlot).label, elementOr(listReverse(slots), 1, missingSlot).label], ["right", "left"]),
+        answersHold(fn(i) => flippedSlot(i).label, [0, 1], ["right", "left"]),
         elementOr(listAppend(slots, missingSlot), 2, firstSlot).label == "missing",
         elementOr(listPrepend(slots, missingSlot), 0, firstSlot).weight == 0.0,
         listLength(slots) == 2
@@ -548,6 +552,9 @@ fn describeMatrix(xs) = match xs {
 /// as one integer ([BUILTIN-ITER-FOLD] "reduces an iterator to a single value").
 fn weave(acc, value) = acc * 10 + value
 
+/// plus adds two ints, the shared step of every fold that sums a range.
+fn plus(a, b) = a + b
+
 /// twice is the [BUILTIN-ITER-MAP] callback; isEvenValue the
 /// [BUILTIN-ITER-FILTER] predicate.
 fn twice(n) = n * 2
@@ -587,44 +594,48 @@ fn stringListPatternCase() = {
     let quad = ["a", "bb", "ccc", "dddd"]
     let odd = ["", " ", "a", "12", "a,b", "ab ab"]
     let dup = ["same", "same", "other", "same"]
+    let oddAt = fn(i) => elementOr(odd, i, "x")
+    let revWords = listReverse(words)
+    let zeroFirst = listPrepend(words, "zero")
+    let deltaLast = listAppend(words, "delta")
 
     // Arm selection depends on written length alone, so a string list picks the
     // same arms an int list of the same length picks.
     checkAll("string list patterns select the arm for the written length", [
-        answersHold(shapeOf, [noWords, solo, duo, words, quad, odd, dup, ["x"], ["x", "y"], ["x", "y", "z"], listReverse(words), listAppend(duo, "third"), listPrepend(solo, "first"), listConcat(noWords, solo), listConcat(duo, noWords), noWords + noWords], ["none", "single", "pair", "long+2", "long+3", "long+5", "long+3", "single", "pair", "long+2", "long+2", "long+2", "pair", "single", "pair", "none"]),
+        answersHold(shapeOf, [noWords, solo, duo, words, quad, odd, dup, ["x"], ["x", "y"], ["x", "y", "z"], revWords, listAppend(duo, "third"), listPrepend(solo, "first"), listConcat(noWords, solo), listConcat(duo, noWords), noWords + noWords], ["none", "single", "pair", "long+2", "long+3", "long+5", "long+3", "single", "pair", "long+2", "long+2", "long+2", "pair", "single", "pair", "none"]),
         answersHold(tailLength, [noWords, solo, duo, words, odd, dup], [(0 - 1), 0, 1, 2, 5, 3])
     ])
 
     // Each binder carries its OWN element: head, second and the fallback are
     // three distinct strings, so a binder reading the wrong slot is visible.
     checkAll("string binders carry their own element", [
-        answersHold(headOrWith("empty"), [noWords, solo, duo, words, odd, dup, listReverse(words), listPrepend(words, "zero"), listAppend(words, "delta"), noWords + words, words + noWords, ["only"]], ["empty", "solo", "left", "alpha", "", "same", "gamma", "zero", "alpha", "alpha", "alpha", "only"]),
-        answersHold(secondOrWith("none"), [noWords, solo, duo, words, odd, dup, listReverse(words), listReverse(quad), ["x", "y", "z"]], ["none", "none", "right", "beta", " ", "same", "beta", "ccc", "y"])
+        answersHold(headOrWith("empty"), [noWords, solo, duo, words, odd, dup, revWords, zeroFirst, deltaLast, noWords + words, words + noWords, ["only"]], ["empty", "solo", "left", "alpha", "", "same", "gamma", "zero", "alpha", "alpha", "alpha", "only"]),
+        answersHold(secondOrWith("none"), [noWords, solo, duo, words, odd, dup, revWords, listReverse(quad), ["x", "y", "z"]], ["none", "none", "right", "beta", " ", "same", "beta", "ccc", "y"])
     ])
 
     // Recursive head/tail traversal keeps every element, in index order, once.
     // "alpha|beta|gamma|" is 5+1+4+1+5+1 = 17 bytes; the six `odd` elements are
     // 0+1+1+2+3+5 = 12 bytes plus six separators = 18.
     checkAll("recursive rest-binder traversal keeps string order", [
-        answersHold(joinWords, [noWords, solo, duo, words, quad, odd, dup, listReverse(words), listReverse(dup), listAppend(words, "delta"), listPrepend(words, "zero"), duo + words, words + duo], ["", "solo|", "left|right|", "alpha|beta|gamma|", "a|bb|ccc|dddd|", "| |a|12|a,b|ab ab|", "same|same|other|same|", "gamma|beta|alpha|", "same|other|same|same|", "alpha|beta|gamma|delta|", "zero|alpha|beta|gamma|", "left|right|alpha|beta|gamma|", "alpha|beta|gamma|left|right|"]),
-        joinWords(listReverse(listReverse(words))) == joinWords(words),
+        answersHold(joinWords, [noWords, solo, duo, words, quad, odd, dup, revWords, listReverse(dup), deltaLast, zeroFirst, duo + words, words + duo], ["", "solo|", "left|right|", "alpha|beta|gamma|", "a|bb|ccc|dddd|", "| |a|12|a,b|ab ab|", "same|same|other|same|", "gamma|beta|alpha|", "same|other|same|same|", "alpha|beta|gamma|delta|", "zero|alpha|beta|gamma|", "left|right|alpha|beta|gamma|", "alpha|beta|gamma|left|right|"]),
+        joinWords(listReverse(revWords)) == joinWords(words),
         joinWords(noWords + words) == joinWords(words),
         joinWords(words + noWords) == joinWords(words),
-        structuralEquals([length(joinWords(words)), length(joinWords(odd)), length(joinWords(quad)), length(joinWords(dup))], [17, 18, 14, 21]),
-        answersHold(lastWord, [noWords, solo, words, listReverse(words), listAppend(words, "delta")], ["none", "solo", "gamma", "alpha", "delta"])
+        answersHold(fn(xs) => length(joinWords(xs)), [words, odd, quad, dup], [17, 18, 14, 21]),
+        answersHold(lastWord, [noWords, solo, words, revWords, deltaLast], ["none", "solo", "gamma", "alpha", "delta"])
     ])
 
     // String elements are compared by CONTENT for membership
     // ([BUILTIN-LIST-CONTAINS]), so the empty string is a findable element and a
     // case difference is not.
     checkAll("string element edge cases survive indexing and membership", [
-        isEmpty(elementOr(odd, 0, "x")),
-        structuralEquals([elementOr(odd, 0, "x"), elementOr(odd, 1, "x")], ["", " "]),
-        structuralEquals([length(elementOr(odd, 0, "x")), length(elementOr(odd, 1, "x"))], [0, 1]),
-        elementOr(odd, 3, "x") == "12",
-        containsAll(elementOr(odd, 4, "x"), [","]),
-        spans(elementOr(odd, 5, "x"), "ab", "ab"),
-        containsAll(elementOr(odd, 5, "x"), [" "]),
+        isEmpty(oddAt(0)),
+        answersHold(oddAt, [0, 1], ["", " "]),
+        answersHold(fn(i) => length(oddAt(i)), [0, 1], [0, 1]),
+        oddAt(3) == "12",
+        containsAll(oddAt(4), [","]),
+        spans(oddAt(5), "ab", "ab"),
+        containsAll(oddAt(5), [" "]),
         toUpperCase(elementOr(words, 1, "x")) == "BETA",
         toLowerCase(toUpperCase(elementOr(words, 2, "x"))) == "gamma",
         membershipHolds(odd, ["", " "], ["A"]),
@@ -686,8 +697,10 @@ fn floatAndBoolListPatternCase() = {
 
     // A bool element keeps its own value through every binder and producer.
     checkAll("bool elements keep their value through binders and producers", [
-        structuralEquals([headOr(noFlags, false), headOr(allOn, false), headOr(allOff, true), headOr(mixed, false), headOr(listReverse(pairOn), true)], [false, true, false, true, false]),
-        structuralEquals([secondOr(mixed, true), secondOr(pairOn, true), secondOr([false, true], false), secondOr(noFlags, true)], [false, false, true, true]),
+        answersHold(headOrWith(false), [noFlags, allOn, mixed], [false, true, true]),
+        answersHold(headOrWith(true), [allOff, listReverse(pairOn)], [false, false]),
+        answersHold(secondOrWith(true), [mixed, pairOn, noFlags], [false, false, true]),
+        secondOr([false, true], false) == true,
         allListed(mixed, [false, true]),
         noneListed(allOn, [false]),
         noneListed(allOff, [true]),
@@ -717,6 +730,10 @@ fn recordListPatternCase() = {
     let secondOf = secondOrWith(missingSlot)
     let heads = [noSlots, oneSlot, slots, listReverse(slots)]
     let seconds = [noSlots, oneSlot, slots, trio]
+    let labelAt = fn(xs, index) => elementOr(xs, index, missingSlot).label
+    let third = elementOr(trio, 2, missingSlot)
+    let soloFirst = listPrepend(slots, soloSlot)
+    let revTrio = listReverse(trio)
 
     // The bound head is a whole record: three fields of two different types are
     // readable off it, and the empty-list arm returns the caller's own record.
@@ -729,16 +746,16 @@ fn recordListPatternCase() = {
         secondOf(slots).weight == 2.5,
         !secondOf(slots).ready,
         headOf(slots).label != secondOf(slots).label,
-        structuralEquals([tailLength(slots), tailLength(trio)], [1, 2])
+        answersHold(tailLength, [slots, trio], [1, 2])
     ])
 
     // Recursion over the rest binder reaches every record, in order, once.
     // "left>right>extra>" is 5+6+6 = 17 bytes; weights 1.5+2.5+4.0 = 8.0.
     checkAll("record fields survive head-tail recursion", [
-        answersHold(slotLabels, [noSlots, oneSlot, slots, trio, listReverse(slots), listReverse(trio), listPrepend(slots, soloSlot), noSlots + slots], ["", "solo>", "left>right>", "left>right>extra>", "right>left>", "extra>right>left>", "solo>left>right>", "left>right>"]),
+        answersHold(slotLabels, [noSlots, oneSlot, slots, trio, listReverse(slots), revTrio, soloFirst, noSlots + slots], ["", "solo>", "left>right>", "left>right>extra>", "right>left>", "extra>right>left>", "solo>left>right>", "left>right>"]),
         length(slotLabels(trio)) == 17,
-        answersHold(readySlots, [noSlots, oneSlot, slots, trio, listReverse(trio), listPrepend(slots, missingSlot)], [0, 1, 1, 2, 2, 1]),
-        answersHold(totalWeight, [noSlots, oneSlot, slots, trio, listReverse(trio), slots + slots], [0.0, 3.0, 4.0, 8.0, 8.0, 8.0])
+        answersHold(readySlots, [noSlots, oneSlot, slots, trio, revTrio, listPrepend(slots, missingSlot)], [0, 1, 1, 2, 2, 1]),
+        answersHold(totalWeight, [noSlots, oneSlot, slots, trio, revTrio, slots + slots], [0.0, 3.0, 4.0, 8.0, 8.0, 8.0])
     ])
 
     // Building `trio` left `slots` untouched. A record has no decided `==`
@@ -749,16 +766,16 @@ fn recordListPatternCase() = {
         readySlots(slots) == 1,
         totalWeight(slots) == 4.0,
         containsAll(slotLabels(oneSlot), ["${soloSlot.label}>"]),
-        containsAll(slotLabels(listPrepend(slots, soloSlot)), ["${soloSlot.label}>"]),
+        containsAll(slotLabels(soloFirst), ["${soloSlot.label}>"]),
         containsAll(slotLabels(slots), ["left>"]),
         containsNone(slotLabels(slots), ["${soloSlot.label}>", "${missingSlot.label}>"]),
         containsNone(slotLabels(noSlots), ["${missingSlot.label}>"]),
-        elementOr(trio, 2, missingSlot).label == "extra",
-        elementOr(trio, 2, missingSlot).weight == 4.0,
-        elementOr(trio, 2, missingSlot).ready,
-        elementOr(trio, 3, missingSlot).label == "missing",
-        elementOr(slots, 2, missingSlot).label == "missing",
-        elementOr(noSlots, 0, missingSlot).label == "missing",
+        third.label == "extra",
+        third.weight == 4.0,
+        third.ready,
+        labelAt(trio, 3) == "missing",
+        labelAt(slots, 2) == "missing",
+        labelAt(noSlots, 0) == "missing",
         isEmpty(noSlots),
         !isEmpty(slots),
         length(slots) == 2,
@@ -783,6 +800,10 @@ fn nestedListCase() = {
     let firstRow = rowAt(rows, 0)
     let biggerFirstRow = listAppend(firstRow, 99)
     let sentinelProbe = rowAt(rows, 9)
+    let secondRow = rowAt(rows, 1)
+    let thirdRow = rowAt(rows, 2)
+    let reversedRows = listReverse(rows)
+    let doubledRows = rows + rows
 
     // Row sums: [1,2]=3, [3,4,5]=12, [6,7,8,9]=30, so sumInner(rows) = 45 and
     // sumInner(grown) = 45 + 21 = 66.
@@ -791,11 +812,11 @@ fn nestedListCase() = {
         listLength(firstRow) == 2,
         sumList(firstRow) == 3,
         elementsAre(firstRow, [1, 2], 0),
-        answersHold(lengthOf, [rowAt(rows, 1), rowAt(rows, 2)], [3, 4]),
-        structuralEquals([sumList(rowAt(rows, 1)), sumList(rowAt(rows, 2))], [12, 30]),
-        rowsHold(rowAt(rows, 1), [2], [5], 0),
-        intAt(rowAt(rows, 2), 3) == 9,
-        elementOr(rowAt(rows, 2), 4, 77) == 77,
+        answersHold(lengthOf, [secondRow, thirdRow], [3, 4]),
+        answersHold(sumList, [secondRow, thirdRow], [12, 30]),
+        rowsHold(secondRow, [2], [5], 0),
+        intAt(thirdRow, 3) == 9,
+        elementOr(thirdRow, 4, 77) == 77,
         structuralEquals([sumList(sentinelProbe), listLength(sentinelProbe)], [777, 1]),
         answersHold(sumInner, [rows, oneRow, twoRows, withEmptyRow, grown], [45, 27, 6, 45, 66]),
         listLength(withEmptyRow) == 4,
@@ -807,8 +828,8 @@ fn nestedListCase() = {
     // inner length, so mixing the two up is visible in every arm.
     checkAll("nested list patterns read outer arm and inner length", [
         answersHold(shapeOf, [oneRow, twoRows, rows, grown], ["single", "pair", "long+2", "long+3"]),
-        answersHold(describeMatrix, [oneRow, twoRows, rows, grown, withEmptyRow, listReverse(rows)], ["one row of 3", "rows 1+2", "head 2 then 2 more", "head 2 then 3 more", "head 2 then 3 more", "head 4 then 2 more"]),
-        answersHold(lengthOf, [headOr(rows, emptyRow), headOr(listReverse(rows), emptyRow), secondOr(twoRows, emptyRow)], [2, 4, 2]),
+        answersHold(describeMatrix, [oneRow, twoRows, rows, grown, withEmptyRow, reversedRows], ["one row of 3", "rows 1+2", "head 2 then 2 more", "head 2 then 3 more", "head 2 then 3 more", "head 4 then 2 more"]),
+        answersHold(lengthOf, [headOr(rows, emptyRow), headOr(reversedRows, emptyRow), secondOr(twoRows, emptyRow)], [2, 4, 2]),
         structuralEquals([sumList(headOr(rows, emptyRow)), sumList(secondOr(rows, emptyRow)), sumList(secondOr(oneRow, emptyRow))], [3, 12, 0]),
         tailLength(rows) == 2,
         tailLength(oneRow) == 0
@@ -818,16 +839,16 @@ fn nestedListCase() = {
     // the stored row keeps its own contents ([BOOL-EQUALITY] decides no `==`
     // for lists, so the rows are compared by their sums).
     checkAll("nested lists stay isolated when a retrieved row grows", [
-        answersHold(lengthOf, [rows, grown, listReverse(rows), rows + rows], [3, 4, 3, 6]),
+        answersHold(lengthOf, [rows, grown, reversedRows, doubledRows], [3, 4, 3, 6]),
         answersHold(lengthOf, [firstRow, biggerFirstRow], [2, 3]),
         sumInner(rows) == 45,
         sumList(biggerFirstRow) == 102,
         sumList(firstRow) == 3,
-        sumList(rowAt(rows, 0)) != sumList(biggerFirstRow),
-        sumList(rowAt(rows, 0)) == sumList([1, 2]),
-        sumInner(listReverse(rows)) == 45,
-        structuralEquals([sumList(rowAt(listReverse(rows), 0)), sumList(rowAt(listReverse(rows), 2)), sumList(rowAt(rows + rows, 3))], [30, 3, 3]),
-        sumInner(rows + rows) == 90,
+        sumList(firstRow) != sumList(biggerFirstRow),
+        sumList(firstRow) == sumList([1, 2]),
+        sumInner(reversedRows) == 45,
+        structuralEquals([sumList(rowAt(reversedRows, 0)), sumList(rowAt(reversedRows, 2)), sumList(rowAt(doubledRows, 3))], [30, 3, 3]),
+        sumInner(doubledRows) == 90,
         sumInner(rows) == 45
     ])
 }
@@ -848,7 +869,6 @@ fn typedIterationOrderCase() = {
     let flags = [true, false]
     let counts = [7, 8, 9]
     let ratios = ratioTriple()
-    let missingSlot = sentinelSlot()
     let slots = leftRightSlots()
     mut log = ""
 
@@ -862,6 +882,9 @@ fn typedIterationOrderCase() = {
         noteEach(xs, spell)
         sealedRow(log, title, expected, size, tail, reversed, seam)
     }
+    /// logHolds checks the transcript the last traversal left: exact text,
+    /// exact size, its span, and the seam where that traversal joined it.
+    let logHolds = fn(expected, size, prefix, suffix, seam) => log == expected && length(log) == size && spans(log, prefix, suffix) && containsAll(log, [seam])
     noteEach(noWords, fn(word) => word)
 
     // "Once per element" over zero elements is zero calls.
@@ -879,10 +902,7 @@ fn typedIterationOrderCase() = {
 
     // 5+1+4+1+5+1 = 17 bytes, and the reversed spelling must NOT appear.
     checkAll("forEachList visits string elements in index order", [
-        log == "alpha|beta|gamma|",
-        length(log) == 17,
-        spans(log, "alpha|", "gamma|"),
-        containsAll(log, ["|beta|"]),
+        logHolds("alpha|beta|gamma|", 17, "alpha|", "gamma|", "|beta|"),
         containsNone(log, ["gamma|beta|"]),
         log == joinWords(words)
     ])
@@ -900,10 +920,7 @@ fn typedIterationOrderCase() = {
 
     // 45 + 17 = 62; the derived list is traversed, the source is not.
     checkAll("forEachList follows the derived list, not its source", [
-        log == "alpha|beta|gamma|true|false|7|8|9|left|right|gamma|beta|alpha|",
-        length(log) == 62,
-        spans(log, "alpha|beta|gamma|", "gamma|beta|alpha|"),
-        containsAll(log, ["right|gamma|"]),
+        logHolds("alpha|beta|gamma|true|false|7|8|9|left|right|gamma|beta|alpha|", 62, "alpha|beta|gamma|", "gamma|beta|alpha|", "right|gamma|"),
         joinWords(words) == "alpha|beta|gamma|",
         joinWords(listReverse(words)) == "gamma|beta|alpha|"
     ])
@@ -920,8 +937,8 @@ fn typedIterationOrderCase() = {
         foldRow(0, 2, 0, fn(acc, i) => acc + boolWeight(elementOr(flags, i, false)), 1),
         sumEach(ratios, 0.0, 0, 2, 1.75),
         sumEach(ratios, 0.0, 0, 3, 4.5),
-        foldRow(0, 2, "", fn(acc, i) => "${acc}${elementOr(slots, i, missingSlot).label}>", "left>right>"),
-        foldRow(0, 5, 0, fn(acc, i) => acc + i, 10),
+        foldRow(0, 2, "", fn(acc, i) => "${acc}${elementOr(slots, i, sentinelSlot()).label}>", "left>right>"),
+        foldRow(0, 5, 0, plus, 10),
         weaveRange(5, 5, 99, 99),
         weaveRange(1, 6, 0, 12345),
         sepEach(0, 3, ";", "0;1;2;")
@@ -936,8 +953,8 @@ fn typedIterationOrderCase() = {
         (range(1, 6) |> filter(isEvenValue) |> fold(0, weave)) == 24,
         (range(1, 10) |> filter(isEvenValue) |> map(twice) |> fold(0, weave)) == 4936,
         (range(1, 6) |> map(twice) |> filter(isEvenValue) |> fold(0, weave)) == 24690,
-        (range(1, 6) |> map(twice) |> fold(0, fn(a, b) => a + b)) == 30,
-        (range(1, 6) |> filter(isEvenValue) |> fold(0, fn(a, b) => a + b)) == 6,
+        (range(1, 6) |> map(twice) |> fold(0, plus)) == 30,
+        (range(1, 6) |> filter(isEvenValue) |> fold(0, plus)) == 6,
         weaveMapped(0, 4, 0, 246),
         weaveMapped(0, 1, 7, 70),
         weaveMapped(2, 2, 5, 5),
@@ -968,13 +985,13 @@ fn boundaryIndexCase() = {
     let forty = twenty + twenty
     let noWords: List<string> = []
     let words = wordTriple()
-    let ratios = ratioTriple()
     let marks = [true, false]
     let missingSlot = sentinelSlot()
     let slots = leftRightSlots()
     let negIndex = (0 - 1)
     let farNegIndex = (0 - 1000)
     let lastIndex = (listLength(forty) - 1)
+    let slotLabel = fn(index) => elementOr(slots, index, missingSlot).label
 
     // `forty` repeats "s0".."s4", so the element at index i is "s${i % 5}":
     // index 30 -> "s0", 31 -> "s1", 32 -> "s2" (the tail split), 39 -> "s4".
@@ -983,8 +1000,7 @@ fn boundaryIndexCase() = {
         lastIndex == 39,
         allRowsHold([forty, listReverse(forty), listAppend(forty, "tail"), listPrepend(forty, "head")], [[0, 4, 5, 30, 31, 32, 33, lastIndex], [0, 7, 39], [40, 32], [0, 33]], [["s0", "s4", "s0", "s0", "s1", "s2", "s3", "s4"], ["s4", "s2", "s0"], ["tail", "s2"], ["head", "s2"]], "?"),
         rowsHold(forty, [40, 1000, negIndex, farNegIndex], ["past", "past", "past", "past"], "past"),
-        listLength(listAppend(forty, "tail")) == 41,
-        listLength(forty) == 40
+        answersHold(lengthOf, [listAppend(forty, "tail"), forty], [41, 40])
     ])
 
     // The Error branch is taken for every element type. Asserting BOTH fallbacks
@@ -994,14 +1010,11 @@ fn boundaryIndexCase() = {
         oobAt(forty, 1000),
         oobAt(noWords, 0),
         allRowsHold([words, noWords], [[3, negIndex, 2], [0, negIndex]], [["past", "past", "gamma"], ["past", "past"]], "past"),
-        rowsHold(ratios, [3, negIndex, 2], [9.5, 9.5, 2.75], 9.5),
-        elementOr(marks, 2, false) == false,
-        elementOr(marks, 2, true) == true,
-        elementOr(marks, negIndex, true) == true,
-        elementOr(marks, 1, true) == false,
-        elementOr(slots, 2, missingSlot).label == "missing",
-        elementOr(slots, negIndex, missingSlot).label == "missing",
-        elementOr(slots, 1, missingSlot).label == "right",
+        rowsHold(ratioTriple(), [3, negIndex, 2], [9.5, 9.5, 2.75], 9.5),
+        rowsHold(marks, [2, negIndex], [true, true], true),
+        rowsHold(marks, [2], [false], false),
+        rowsHold(marks, [1], [false], true),
+        answersHold(slotLabel, [2, negIndex, 1], ["missing", "missing", "right"]),
         isEmpty(noWords),
         listLength(noWords) == 0
     ])
@@ -1010,7 +1023,7 @@ fn boundaryIndexCase() = {
     // same way its source did. "s0|s1|s2|s3|s4|" is 5 * 3 = 15 bytes.
     checkAll("doubled and derived lists index consistently", [
         joinWords(five) == "s0|s1|s2|s3|s4|",
-        structuralEquals([length(joinWords(five)), length(joinWords(ten)), length(joinWords(twenty)), length(joinWords(forty))], [15, 30, 60, 120]),
+        answersHold(fn(xs) => length(joinWords(xs)), [five, ten, twenty, forty], [15, 30, 60, 120]),
         shapeOf(forty) == "long+39",
         tailLength(forty) == 39,
         headOr(forty, "?") == "s0",
