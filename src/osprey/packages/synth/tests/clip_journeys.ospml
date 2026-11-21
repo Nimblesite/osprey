@@ -19,7 +19,7 @@ keyed (kind, offset, pitch, identity, velocity) = synth::HostNote(kind = kind, o
 
 eventClip notes = synth::NodeClip(clipNode = 1, clipChannels = 0, clipSamples = [], clipNotes = notes)
 
-missingClip () = synth::NodeClip(clipNode = -1, clipChannels = 0, clipSamples = [], clipNotes = [])
+missingClip () = audioClipFixture (-1, 0, [])
 
 // The success value of a render step, or `fallback` after a failed expectation.
 renderedOr (outcome, fallback, use) = match outcome
@@ -128,7 +128,7 @@ budgetedHost (graph, hosted) =
                 expect (pending.pendingNode, 9)
                 expect (length block.samples, 1024)
                 expect (length (filterList (block.samples, \s => abs s > 0.000001)) > 0, true)
-                wet = synth::NodeClip(clipNode = 9, clipChannels = 1, clipSamples = block.samples, clipNotes = [])
+                wet = audioClipFixture (9, 1, block.samples)
                 match synth::GraphClips::replied (pending, wet)
                     Error why => expect (synth::Faults::detail why, "combined graph resumed")
                     Success done => match done
@@ -176,7 +176,7 @@ sineHeard (label, samples, frequency) =
 // [SYNTH-HOST-GRAPH] A send can tap either the stereo bus or one of its split outlets.
 stereoTapJourney () =
     graph = built ([Components::stereo 1, Components::split (2, 2)], [cable (1, 2)])
-    stereo = synth::NodeClip(clipNode = 1, clipChannels = 2, clipSamples = [0.25, -0.5, 0.75, -1.0], clipNotes = [])
+    stereo = audioClipFixture (1, 2, [0.25, -0.5, 0.75, -1.0])
     // Track playback folds each stereo frame to mono before the track panner.
     stereoOutput = stereo(clipSamples = [1.0, -1.0, 0.25, 0.75])
     forEachList ([{ output = stereoOutput, mono = [0.0, 0.5] }, { output = stereo(clipChannels = 1), mono = stereo.clipSamples }, { output = stereo(clipSamples = []), mono = [] }], \row =>
@@ -323,9 +323,9 @@ registerClipJourneys () =
         expect (synth::ClipLayouts::validClip (graph, 2, cached(clipNotes = [keyed (1, 0, 69, 1, 0.5)])), false)
         renderRefused (synth::ClipInputs::sourceChannel (graph, synth::Cable(source = 99, outlet = 0, destination = 2, inlet = 0), 0))
         renderRefused (synth::ClipInputs::routed (graph, [], 2, 0))
-        renderRefused (synth::GraphClips::advance (graph, [synth::NodeClip(clipNode = 99, clipChannels = 1, clipSamples = [0.0, 0.0], clipNotes = [])], 2))
+        renderRefused (synth::GraphClips::advance (graph, [audioClipFixture (99, 1, [0.0, 0.0])], 2))
         badPitch = built ([Components::midiNote (1, 60.5, 0.8, 128.0), midiOscillator (), Components::output 3], [cable (1, 2), cable (2, 3)])
-        forEachList ([[], [synth::NodeClip(clipNode = 1, clipChannels = 0, clipSamples = [], clipNotes = [])]], \clips => renderRefused (synth::GraphClips::advance (badPitch, clips, 2)))
+        forEachList ([[], [audioClipFixture (1, 0, [])]], \clips => renderRefused (synth::GraphClips::advance (badPitch, clips, 2)))
         streaming = hostDescriptor ()
         wired = hostNode (synth::Hosted::component (2, streaming(inputChannels = 1, notes = false)))
         audioGraph = built ([Components::sine (1, 440.0), wired, Components::stereoOutput 3], [cable (1, 2), cable (2, 3)])

@@ -32,7 +32,7 @@ partitionedKernel (component, channels) =
     plan = planFor graph
     initial = mapList (toList (range (0, channels)), \_ => synth::RenderInputs::initialState component)
     samples = mapList (toList (range (0, 256 * channels)), \i => (toFloat (i % channels) + 1.0) * 0.25)
-    source = synth::NodeClip(clipNode = 0, clipChannels = channels, clipSamples = samples, clipNotes = [])
+    source = audioClipFixture (0, channels, samples)
     match synth::ClipKernels::block (plan, [source], component, 256, initial)
         Error why => expect (synth::Faults::detail why, "whole kernel block")
         Success whole => match synth::ClipKernels::block (plan, [source], component, 31, initial)
@@ -78,9 +78,9 @@ hostDescriptor () = synth::HostDescriptor(latency = 0, identifier = "instrument"
 // The LFO-to-host-parameter modulation every hosted-graph test wires in.
 reconnected (graph) = accepted (synth::HostModulation::connect (graph, 3, 0, 2, "vst:100"))
 
-hostClip (samples) = synth::NodeClip(clipNode = 2, clipChannels = 2, clipSamples = samples, clipNotes = [])
+hostClip (samples) = audioClipFixture (2, 2, samples)
 
-nodeClipAt (identity, samples) = synth::NodeClip(clipNode = identity, clipChannels = 1, clipSamples = samples, clipNotes = [])
+nodeClipAt (identity, samples) = audioClipFixture (identity, 1, samples)
 
 steady (count, level) = mapList (toList (range (0, count)), \_ => level)
 
@@ -197,7 +197,7 @@ latencyPartitions (graph, held, history, sizes) = match sizes
                     _ => expect (length request.parameters, 0)
                 joined = listConcat history request.samples
                 expected = synth::Sequences::take (joined, size)
-                wet = synth::NodeClip(clipNode = 2, clipChannels = 1, clipSamples = expected, clipNotes = [])
+                wet = audioClipFixture (2, 1, expected)
                 hostBlock (synth::GraphClips::replied (pending, wet), "latency reply", \reply =>
                     readyBlock (reply, \(next, clips) =>
                             sameSamples ((clipFrom (clips, 5)).clipSamples, expected)
@@ -429,7 +429,7 @@ registerHostedJourneys () =
         renderRefused (synth::HostModulation::points (graph, [], hosted, 0))
         controlled = reconnected graph
         n = hostNode (Graphs::node (controlled, 2))
-        forEachList ([[], [synth::NodeClip(clipNode = 3, clipChannels = 2, clipSamples = [], clipNotes = [])], [synth::NodeClip(clipNode = 3, clipChannels = 1, clipSamples = [1.1], clipNotes = [])]], \clips => renderRefused (synth::HostModulation::points (controlled, clips, n, 256)))
+        forEachList ([[], [audioClipFixture (3, 2, [])], [audioClipFixture (3, 1, [1.1])]], \clips => renderRefused (synth::HostModulation::points (controlled, clips, n, 256)))
         duplicated = controlled(cables = listAppend controlled.cables (Components::route (3, 0, 2, 1)))
         renderRefused (synth::HostModulation::points (duplicated, [], n, 256))
         renderRefused (synth::ClipInputs::request (controlled, [], n, 256))
