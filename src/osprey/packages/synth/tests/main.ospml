@@ -428,3 +428,4 @@ test ("send taps retain frame position across blocks and report missing sources"
 test ("spectral inspection reports the channel, clock and complex phase of a centered impulse", \() => arithmetic inspectionJourney)
 
 test ("a slow knob subscriber sees the latest edit and missed count while linear slew follows reversals", \() => arithmetic knobSnapshotJourney)
+test ("the activity panel sees struck modes and silent frozen reverb feedback", \() => arithmetic physicalActivityJourney)

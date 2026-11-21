@@ -1,4 +1,5 @@
 import synth::StringVoices
+import synth::Activities
 
 // [SYNTH-ADVANCED-PHYSICAL-INSTRUMENTS] The string pool's public journey: preparation, plucking,
 // release tails, explicit stealing, typed refusals and preservation of untouched voices.
@@ -46,6 +47,10 @@ poolRejections () =
 poolRelease () =
     succeeds (StringVoices::prepare ((poolTemplate ()), (poolPluck ()), 1, 0.05), \pool =>
         expect (heldNotes pool, [])
+        idleActivity = Activities::strings pool
+        expect (idleActivity.active, 0)
+        expect (idleActivity.capacity, 1)
+        expect (idleActivity.energy, 0.0)
         idle = poolRendered (pool, 8)
         expect (structuralEquals (idle.samples, mapList (toList (range (0, 8)), \_ => 0.0)), true)
         succeeds (StringVoices::noteOn (pool, 60, 0.8, 220.0, 2147483646), \held =>
@@ -53,6 +58,10 @@ poolRelease () =
             expect (structuralEquals (pluckField (held, 60, \voice => voice.velocity), [0.8]), true)
             expect (structuralEquals (pluckField (held, 60, \voice => voice.config.frequency), [220.0]), true)
             ringing = poolRendered (held, 300)
+            activity = Activities::strings ringing.pool
+            expect (activity.active, 1)
+            expect (activity.stolen, 0)
+            expect (activity.energy > 0.0, true)
             expect (poolEnergy (synth::Sequences::drop (ringing.samples, 150)) > 0.001, true)
             expect (structuralEquals (StringVoices::noteOff (ringing.pool, 61), ringing.pool), true)
             tail = poolRendered (StringVoices::noteOff (ringing.pool, 60), 10)
@@ -60,6 +69,7 @@ poolRelease () =
             expect (releasingNotes tail.pool, [60])
             gone = poolRendered (tail.pool, 2500)
             expect (heldNotes gone.pool, [])
+            expect ((Activities::strings gone.pool).active, 0)
             expect ((poolStep { pool = gone.pool, samples = [] }).samples, [0.0])))
 
 // Stealing is explicit and ordered: a free voice first, then the voice released longest ago,

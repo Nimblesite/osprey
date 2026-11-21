@@ -1,5 +1,6 @@
 import synth::SpectralFrames
 import synth::SpectralStreams
+import synth::Activities
 
 // [SYNTH-ADVANCED-SPECTRAL-MODULES] A 64-point frame at 8 kHz has 125 Hz between bins.
 seriesBin (at, i) = match i == at
@@ -30,6 +31,17 @@ centerImpulse i = match i == 32
 inspectionJourney () =
     config = synth::SpectralConfig(sampleRate = 8000.0, size = 64, hop = 16, transform = synth::SpectralPass, mix = 1.0)
     blank = SpectralStreams::initial config
+    quiet = Activities::spectral blank
+    expect (quiet.active, 0)
+    expect (quiet.capacity, 33)
+    expect (quiet.held, false)
+    expect (quiet.energy, 0.0)
+    frozen = config(transform = synth::SpectralFreeze(held = true))
+    succeeds (spectralFor (frozen, { main = \_ => 0.0, side = \_ => 0.0 }, config.hop), \rendered =>
+        captured = Activities::spectral rendered.held
+        expect (captured.active, 1)
+        expect (captured.held, true)
+        expect (captured.energy, 0.0))
     input = mapList (toList (range (0, 64)), centerImpulse)
     succeeds (SpectralStreams::view (config, blank(input = input), 2, 1984), \view =>
         expect (view.channel, 2)
