@@ -51,8 +51,11 @@ module View
     // Ground, birds, hawks and the dog share one flat primitive list ordered by depth.
     sceneShapes world = listConcat (ground ()) (listConcat (mapList (world.birds, birdShape)) (listConcat (foldList (world.hawks, [], \(out, hawk) => listConcat out (hawkShapes hawk))) (dogShapes world.player)))
 
-    (** The 320 by 200 field, fitted to its region whole; every primitive is drawn, so no atlas is needed. *)
-    export field () = Ui::zoomed (0.0, 320.0, 200.0, [], sceneShapes (worldSlice ()), Play)
+    // Three window units per field unit: the app owns this scale, and a resize never changes it [WINUI-HOST-SCENE-SCALE].
+    fieldZoom = 3.0
+
+    (** The 320 by 200 field at the app's own scale; every primitive is drawn, so no atlas is needed. *)
+    export field () = Ui::zoomed (fieldZoom, 320.0, 200.0, [], sceneShapes (worldSlice ()), Play)
 
     pauseLabel paused = match paused
         true => "Resume"

@@ -68,24 +68,29 @@ public sealed record Accessible(string Role, string Label, double X, double Y, d
 
 /// <summary>
 /// One checked scene: its unit space (zero for window pixels), its zoom in pixels per unit, its atlas
-/// and its shapes. Zoom 0 fits the scene to its region, a positive zoom fits it up to that zoom, and a
-/// negative zoom is exactly its magnitude at every region size [DAW-LAYOUT-FIXED-SCALE].
+/// and its shapes. Scale is a property of the application, never of the host, and resizing never
+/// changes it [WINUI-HOST-SCENE-SCALE] [DAW-LAYOUT-FIXED-SCALE]: a zoom of 0 is one window unit per
+/// scene unit, and any other zoom is exactly its magnitude at every region size.
 /// </summary>
 public sealed record Scene(double Width, double Height, double Zoom, IReadOnlyList<string> Atlas, IReadOnlyList<Shape> Shapes, IReadOnlyList<Accessible> Access)
 {
+    /// <summary>Window units per scene unit, as the application set it.</summary>
+    double Units => Zoom == 0 ? 1 : Math.Abs(Zoom);
+
     /// <summary>
     /// The size, in window units, of the window an application that is this one scene opens at: its
-    /// units times its zoom's magnitude. A scene of window pixels or at zoom 0 fits whatever region
-    /// holds it, so it asks for no size.
+    /// units at its scale. A scene of window pixels or at zoom 0 asks for no size.
     /// </summary>
-    public (double Width, double Height)? Opening => Width > 0 && Height > 0 && Zoom != 0 ? (Width * Math.Abs(Zoom), Height * Math.Abs(Zoom)) : null;
+    public (double Width, double Height)? Opening => Width > 0 && Height > 0 && Zoom != 0 ? (Width * Units, Height * Units) : null;
 
-    /// <summary>Window units per scene unit in a region of this size; drawing and pointer input share it.</summary>
-    public double Scale(double regionWidth, double regionHeight)
-    {
-        var whole = Math.Min(regionWidth / Width, regionHeight / Height);
-        return Zoom switch { 0 => whole, < 0 => -Zoom, _ => Math.Min(Zoom, whole) };
-    }
+    /// <summary>
+    /// Window units per scene unit in a region of any size; drawing and pointer input share it. The
+    /// region is never an input [WINUI-HOST-SCENE-SCALE]: a smaller one clips the scene, a larger one
+    /// shows more of its canvas.
+    /// </summary>
+#pragma warning disable IDE0060 // The region is deliberately ignored: resizing never changes scale.
+    public double Scale(double regionWidth, double regionHeight) => Units;
+#pragma warning restore IDE0060
 }
 
 /// <summary>
