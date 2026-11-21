@@ -20,6 +20,11 @@ module Projects
             Error _ => Error(message = "There is no track ${satAdd index 1}.")
             Success voice => replaced (arrangement, index, voice(gain = gain, pan = pan))
 
+    (** Set the gain on an existing group bus. *)
+    export busGain (song, name, gain) = match gain >= 0.0 && gain <= 4.0
+        false => Error(message = "Group gain must be 0 to 4.")
+        true => synth::Outcomes::carried (BusMix::named (song, name), \_ => Success(value = song(buses = mapList (song.buses, \bus => ui::Pick::either (bus.name == name, bus(gain = gain), bus)))))
+
     (** Assign the dry output to Master (empty name) or one of the open project's buses. *)
     export routed (song, index, bus) = match listGet song.tracks index
         Error _ => Error(message = "There is no track ${satAdd index 1}.")

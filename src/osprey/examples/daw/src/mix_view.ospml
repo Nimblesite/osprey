@@ -41,9 +41,13 @@ module MixView
 
     patchArea voice = TimelineView::area ("Open ${voice.name} patch", 963.0, 208.0, 222.0, 74.0, false)
 
-    busAreas voice = match voice.bus == ""
-        true => [patchArea voice]
-        false => [patchArea voice, TimelineView::area ("Choose group output", 738.0, 853.0, 210.0, 44.0, false)]
+    gainArea bus =
+        area = TimelineView::area ("${bus.name} gain", 961.0, 813.0, 180.0, 40.0, false)
+        area(accessRole = ui::Slidable, accessValue = bus.gain, accessMax = 4.0)
+
+    busAreas (editor, voice) = match daw::BusMix::named (editor.song, voice.bus)
+        Error _ => [patchArea voice]
+        Success bus => [patchArea voice, TimelineView::area ("Choose group output", 738.0, 853.0, 210.0, 44.0, false), gainArea bus]
 
     sendAreas voice = match voice.sends
         [] => []
@@ -57,9 +61,12 @@ module MixView
 
     graphAt (editor, x, y) = match listGet editor.song.tracks editor.track
         Error _ => Error(message = "Select a track first.")
-        Success voice => match EditorView::areaAt (busAreas voice, x, y)
+        Success voice => match EditorView::areaAt (busAreas (editor, voice), x, y)
             0 => Success(value = OpenTrack(index = editor.track))
             1 => Success(value = BrowseBuses)
+            2 => synth::Outcomes::carried (daw::BusMix::named (editor.song, voice.bus), \bus =>
+                area = gainArea bus
+                Success(value = AdjustBusGain(name = bus.name, gain = TimelineGeometry::fader (x, area.accessLeft, area.accessWidth, area.accessMin, area.accessMax))))
             _ => sendAt (voice, x, y)
 
     onward bus = ui::Pick::either (bus.output == "", "Master", bus.output)
@@ -111,7 +118,8 @@ module MixView
             joined = join (listConcat inputs feeders) ", "
             shown = ui::Pick::either (length joined > 24, ui::Pick::either (length feeders == 0, "${length inputs} tracks", "${length inputs} tracks · ${length feeders} groups"), joined)
             detector = ui::Pick::either (bus.compressor.sidechain == "", "Self", bus.compressor.sidechain)
-            [label (bus.name, 738.0, 735.0, 23.0, TimelineView::ink (), 0), label ("Group bus", 1410.0, 740.0, 12.0, TimelineView::dim (), 2),
+            area = gainArea bus
+            listConcat (rail (area.accessLeft, area.accessTop + area.accessHeight - 7.0, area.accessWidth, bus.gain, area.accessMax, true)) [label (bus.name, 738.0, 735.0, 23.0, TimelineView::ink (), 0), label ("Group bus", 1410.0, 740.0, 12.0, TimelineView::dim (), 2),
                 label ("INPUTS", 738.0, 787.0, 11.0, TimelineView::dim (), 0), label ("BUS GAIN", 961.0, 787.0, 11.0, TimelineView::dim (), 0), label ("CHANNELS", 1191.0, 787.0, 11.0, TimelineView::dim (), 0),
                 label (shown, 738.0, 819.0, 16.0, TimelineView::ink (), 0), label ("${TimelineView::hundredths bus.gain}×", 961.0, 819.0, 16.0, TimelineView::ink (), 0), label ("Stereo", 1191.0, 819.0, 16.0, TimelineView::ink (), 0),
                 label ("Output     ${onward bus}   ›", 738.0, 871.0, 12.0, TimelineView::dim (), 0), label ("Detector   ${detector}     ·     ${TimelineView::hundredths bus.compressor.ratio}× compression", 961.0, 871.0, 12.0, TimelineView::dim (), 0)]
@@ -168,7 +176,7 @@ module MixView
 
     (** Accessible row bounds for the mixer. *)
     export access editor = match listGet editor.song.tracks editor.track
-        Success voice => ui::Lists::flatten [rows editor, busAreas voice, sendAreas voice]
+        Success voice => ui::Lists::flatten [rows editor, busAreas (editor, voice), sendAreas voice]
         Error _ => rows editor
 
     rows editor = mapList (toList (range (0, length editor.song.tracks)), \index => TimelineView::area ("Mix track ${satAdd index 1}", 0.0, TimelineGeometry::mixY (toFloat index, height editor), 710.0, height editor, index == editor.track))

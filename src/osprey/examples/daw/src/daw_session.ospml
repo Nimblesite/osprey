@@ -312,32 +312,33 @@ module DawSession
     (** Commit a mixer adjustment to the project after the fader is released. *)
     export adjusted (editor, index, gain, pan) = savedTrack (editor, index, daw::Projects::mixed (editor.song, index, gain, pan))
 
-    // [DAW-MIX-DRAG] The first move of a held fader keeps the project as it was, for the one undo step its release makes.
-    grasped (editor, index) = match editor.armedNote == index
-        true => editor
-        false => editor(armedNote = index, gesture = [EditorHistory::snapshot editor])
-
-    (** A held fader follows the pointer: the track changes in memory and is drawn at once; nothing is written
-        until the release ([DAW-MIX-DRAG]). A value out of range leaves the track where it was. *)
-    export slid (editor, index, gain, pan) =
-        held = grasped (editor, index)
-        match daw::Projects::mixed (held.song, index, gain, pan)
+    // [DAW-MIX-DRAG] Track and group faders share a single history snapshot throughout the drag.
+    preview (editor, target, result) =
+        held = match structuralEquals (editor.mixFader, target)
+            true => editor
+            false => editor(mixFader = target, gesture = [EditorHistory::snapshot editor])
+        match result
             Error _ => held
             Success song => held(song = song, revision = satAdd held.revision 1)
 
-    (** Whether a fader is held. *)
-    export holding editor = editor.armedNote >= 0 && editor.page != PatchPage && length editor.gesture > 0
+    (** A held track fader changes the mix on every move. *)
+    export slid (editor, index, gain, pan) = preview (editor, TrackFader(index = index), daw::Projects::mixed (editor.song, index, gain, pan))
 
-    eased (editor, start) = editor(song = start.savedSong, gesture = [], armedNote = -1)
+    (** A held group fader uses the same live controls and history as a track fader. *)
+    export busSlid (editor, name, gain) = preview (editor, GroupFader(name = name), daw::Projects::busGain (editor.song, name, gain))
 
-    settled (editor, start, index) = match listGet editor.song.tracks index
-        Error _ => Runtime::step (eased (editor, start))
-        Success voice => adjusted (eased (editor, start), index, voice.gain, voice.pan)
+    (** Whether the active gesture is a mixer drag. *)
+    export holding editor = editor.mixFader != FaderIdle && editor.page != PatchPage && length editor.gesture > 0
 
-    (** The held fader is released: its value is committed to the project as one edit, undone in one step. *)
+    (** Commit the fader as one project edit on release, preserving the track selected for a group edit. *)
     export dropped editor = match listGet editor.gesture 0
-        Error _ => Runtime::step (editor(armedNote = -1))
-        Success start => settled (editor, start, editor.armedNote)
+        Error _ => Runtime::step (editor(mixFader = FaderIdle))
+        Success start =>
+            index = match editor.mixFader
+                TrackFader at => at
+                _ => editor.track
+            original = editor(song = start.savedSong, gesture = [], mixFader = FaderIdle, revision = satAdd editor.revision 1)
+            savedTrack (original, index, Success(value = editor.song))
 
     (** Write the new dry destination into the selected track in this same project. *)
     export routed (editor, index, bus) = savedTrack (editor, index, daw::Projects::routed (editor.song, index, bus))

@@ -723,18 +723,21 @@ liveMixHistory (place, released, muted) =
             expect (loudest quiet.left, 0.0)
             expect (loudest quiet.right, 0.0)))
 
-liveMixJourney () =
-    place = "target/daw-tests/live-mixer"
+liveMixJourney group =
+    place = ui::Pick::either (group, "target/daw-tests/live-group", "target/daw-tests/live-mixer")
     _root = makeDir "target/daw-tests"
     _dir = makeDir place
     track = keysTrack ()
     first = daw::Note(pitch = 60, start = 0.0, length = 0.02, velocity = 1.0)
-    score = timeline [track(notes = [first, first(pitch = 67, start = 0.02)])]
+    arrangement = timeline [track(bus = ui::Pick::either (group, "pads", ""), notes = [first, first(pitch = 67, start = 0.02)])]
+    score = arrangement(buses = ui::Pick::either (group, [padsBus (1.0, "")], []))
     succeeds (daw::Projects::saved (score, "${place}/knobs.json"), \_ =>
         session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
-        started = Drive::press (prismTap (session, "Timeline"), "Play Song")
+        started = Drive::press (prismTap (session, ui::Pick::either (group, "Bus routing", "Timeline")), "Play Song")
         expect ((Drive::holding started).songTicket, "daw-song:live:${place}/knobs/live")
-        point = Semantics::point (Semantics::element (started.drivenSeen.renderedAccess, "Track gain"), 0.0)
+        label = ui::Pick::either (group, "pads gain", "Track gain")
+        offeredIn (started, label, true)
+        point = Semantics::point (Semantics::element (started.drivenSeen.renderedAccess, label), 0.0)
         down = Drive::pointer (started, point.pointX, point.pointY, true)
         expect (synth::DawSession::holding (Drive::holding down), true)
         succeeds (daw::Playback::start score, \initial =>

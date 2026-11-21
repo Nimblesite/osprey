@@ -54,6 +54,7 @@ module EditorApp
         SelectNote index => Runtime::step (editor(selectedNote = index))
         SetVelocity value => DawSession::velocity (editor, value)
         AdjustMix index gain pan => DawSession::adjusted (editor, index, gain, pan)
+        AdjustBusGain name gain => DawSession::savedTrack (editor, editor.track, daw::Projects::busGain (editor.song, name, gain))
         ScrollLanes top => Runtime::step (TimelineView::scrolled (editor, top))
         ZoomLanes factor => Runtime::step (TimelineView::zoomedBy (editor, factor))
         ChooseOutput index offset => RoutingPicker::open (editor, index, offset)
@@ -169,8 +170,11 @@ module EditorApp
 
     // [DAW-MIX-DRAG] The held fader takes the value under the pointer; off the fader it keeps its last value.
     faderAt (editor, x, y) = match DawSession::tappedAt (editor, x, y)
-        Success (AdjustMix index gain pan) => match index == editor.armedNote
+        Success (AdjustMix index gain pan) => match structuralEquals (editor.mixFader, TrackFader(index = index))
             true => DawSession::slid (editor, index, gain, pan)
+            false => editor
+        Success (AdjustBusGain name gain) => match structuralEquals (editor.mixFader, GroupFader(name = name))
+            true => DawSession::busSlid (editor, name, gain)
             false => editor
         _ => editor
 
@@ -210,6 +214,9 @@ module EditorApp
             false => Runtime::step editor
         AdjustMix index gain pan => match down
             true => Runtime::step (DawSession::slid (editor, index, gain, pan))
+            false => Runtime::step editor
+        AdjustBusGain name gain => match down
+            true => Runtime::step (DawSession::busSlid (editor, name, gain))
             false => Runtime::step editor
         SetVelocity _ => match down
             true => Runtime::step (editor(armedNote = editor.selectedNote))

@@ -126,6 +126,13 @@ type Keymap =
     name : string
     shortcuts : List<Shortcut>
 
+type MixFader =
+    FaderIdle
+    TrackFader
+        index : int
+    GroupFader
+        name : string
+
 type DialTurn =
     DialIdle
     DialButtonDown
@@ -228,6 +235,7 @@ type Editor G P S M =
     songTicket : string
     keymap : Keymap
     keysPath : string
+    mixFader : MixFader
     dial : DialTurn
     dialOffset : int
     dialEntry : string
@@ -289,6 +297,9 @@ type EditorAction =
         index : int
         gain : float
         pan : float
+    AdjustBusGain
+        name : string
+        gain : float
     ScrollLanes
         top : int
     ZoomLanes
