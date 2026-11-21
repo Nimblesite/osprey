@@ -285,6 +285,25 @@ sinkOf (identity, channels) =
 
 scaleOf index = (toFloat index + 1.0) * 0.05
 
+// [SYNTH-GRAPH-CHANNELS] The panner moves a mono note across the ordered outputs at constant power.
+pannerJourney (width, pan) =
+    nodes = [Components::sine (1, 440.0), Components::panner (2, width, pan), sinkOf (3, width)]
+    succeeds (clipsOf (built (nodes, [cable (1, 2), cable (2, 3)]), 12), \clips =>
+        dry = clipFrom (clips, 1)
+        out = clipFrom (clips, 3)
+        expect (out.clipChannels, width)
+        forEachList (toList (range (1, 12)), \frame =>
+            input = channelOf (dry, frame, 0)
+            energy = foldList (toList (range (0, width)), 0.0, \(total, channel) =>
+                sample = channelOf (out, frame, channel)
+                total + sample * sample)
+            near (energy, input * input, 0.000000000001)
+            forEachList (toList (range (0, width)), \channel =>
+                distance = abs (toFloat channel - (pan + 1.0) * 0.5 * toFloat (width - 1))
+                match distance >= 1.0
+                    true => near (channelOf (out, frame, channel), 0.0, 0.0)
+                    false => near (channelOf (out, frame, channel), input * cos (1.5707963267948966 * distance), 0.000000000001))))
+
 // A distinct-channel chain: `count`-channel source -> split -> one gain per channel -> join.
 channelChain (source, split, firstGain, join, count) =
     gains = mapList (toList (range (0, count)), \index => Components::gain (satAdd firstGain index, scaleOf index))

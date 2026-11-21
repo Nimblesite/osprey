@@ -10,6 +10,7 @@ module GraphClips
     (** Whether a component keeps DSP memory between blocks. *)
     export stateful n = match n.processor
         Stereo => false
+        Panner => false
         Split => false
         Join => false
         Route _ => false
@@ -160,8 +161,16 @@ module GraphClips
 
     copied (plan, clips, held, frames, n, channels, remaining, outcome) = Outcomes::carried (outcome, \samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining))
 
+    panned (graph, clips, n, channels) = Outcomes::carried (Seek::first (n.parameters, \p => p.key == "pan"), \pan =>
+        match pan.initial >= -1.0 && pan.initial <= 1.0
+            false => Error(message = InvalidConfiguration(detail = "Pan must be between -1 and 1."))
+            true =>
+                gains = mapList (toList (range (0, channels)), \lane => WaveMath::panGain (toFloat channels, toFloat lane, pan.initial))
+                Outcomes::carried (ClipInputs::routed (graph, clips, n.identity, 0), \input => Success(value = Sequences::flattened (mapList (input.clipSamples, \sample => mapList (gains, \gain => GrainMath::placed (sample, gain)))))))
+
     routed (plan, clips, held, frames, n, channels, remaining) = match n.processor
         Stereo => copied (plan, clips, held, frames, n, channels, remaining, routing (plan.graph, clips, n, [0, 0]))
+        Panner => copied (plan, clips, held, frames, n, channels, remaining, panned (plan.graph, clips, n, channels))
         Split => copied (plan, clips, held, frames, n, channels, remaining, splitClip (plan.graph, clips, n))
         Join => copied (plan, clips, held, frames, n, channels, remaining, joined (plan.graph, clips, n))
         Route entries => copied (plan, clips, held, frames, n, channels, remaining, routing (plan.graph, clips, n, entries))

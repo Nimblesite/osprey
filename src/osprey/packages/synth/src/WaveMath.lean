@@ -11,6 +11,10 @@ def pcm (word bits : Float) : Float :=
 def mono (left right : Float) : Float := (left + right) * 0.5
 /-- Per-channel sum with independent linear gains at the two mixer inlets. -/
 def mixed (first firstGain second secondGain : Float) : Float := first * firstGain + second * secondGain
+/-- Equal-power interpolation between adjacent lanes in an ordered output layout. -/
+def panGain (width lane pan : Float) : Float :=
+  let distance := Float.abs (lane - (pan + 1) * 0.5 * (width - 1))
+  if distance >= 1 then 0 else Float.cos (1.5707963267948966 * distance)
 /-- Source-sample advance per output sample, independent of recording duration. -/
 def playbackRate (sourceRate outputRate targetFrequency rootFrequency : Float) : Float :=
   (sourceRate / outputRate) * (targetFrequency / rootFrequency)

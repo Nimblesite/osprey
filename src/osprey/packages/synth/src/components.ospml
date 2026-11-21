@@ -56,6 +56,9 @@ module Components
     (** The mixer inserted from the palette sums both mono inputs at unity. *)
     export mixer identity = mix (identity, 1, 1.0, 1.0)
 
+    (** Place mono audio between adjacent output channels, from the first (-1) to the last (+1). *)
+    export panner (identity, channels, pan) = node (identity, Panner, [port "audio"], [audioPort ("audio", channels)], [parameter ("pan", "Pan", Ratio, -1.0, 1.0, pan)])
+
     (** A mono graph output. *)
     export output identity = node (identity, Sink, [port "audio"], [], [])
 

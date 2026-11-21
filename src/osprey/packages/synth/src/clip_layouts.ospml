@@ -11,9 +11,9 @@ module ClipLayouts
         Error _ => false
         Success first => length n.inputs == inputs && length n.outputs == outputs && audio (listConcat n.inputs n.outputs) && length (filterList (listConcat n.inputs n.outputs, \p => p.channels == first.channels)) == inputs + outputs
 
-    stereo n = match n.inputs
+    monoTo (n, acceptsWidth) = match n.inputs
         [input] => match n.outputs
-            [output] => input.channels == 1 && output.channels == 2 && audio [input, output]
+            [output] => input.channels == 1 && acceptsWidth output.channels && audio [input, output]
             _ => false
         _ => false
 
@@ -79,6 +79,7 @@ module ClipLayouts
         External _ => true
         MidiNotes => true
         Stereo => true
+        Panner => true
         _ => length (filterList (listConcat n.inputs n.outputs, \p => p.channels != 1)) > 0
 
     (** Processor layouts are exact: no ignored extra ports or implicit channel conversion. *)
@@ -94,7 +95,8 @@ module ClipLayouts
         ModulatedGain => modulated n
         Filter => uniform (n, 1, 1) || (modulated n && cutoffPort n)
         MidiNotes => length n.inputs == 0 && length n.outputs == 1 && notes n.outputs
-        Stereo => stereo n
+        Stereo => monoTo (n, \width => width == 2)
+        Panner => monoTo (n, Graphs::channelCount)
         Split => splitting n
         Join => joining n
         Route _ => routing n

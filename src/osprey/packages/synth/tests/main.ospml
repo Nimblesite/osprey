@@ -221,6 +221,7 @@ test ("performance timbres and metallic warp stay bounded across rates and contr
     near (Performance::wave (0, 0.25, 0.01, 0.0, 1.0), -1.0, 0.000000001)))
 
 test ("an 8-channel graph splits, joins and route-reorders every 7.1 channel sample-for-sample", \() => arithmetic (\() =>
+    forEachList ([1, 2, 6, 8, 12], \width => forEachList ([-1.0, -0.4, 0.0, 0.7, 1.0], \pan => pannerJourney (width, pan)))
     frames = toList (range (0, 64))
     channels = toList (range (0, 8))
     nodes = listConcat (channelChain (1, 2, 3, 11, 8)) [Components::routeChannels (12, 8, [7, 6, 5, 4, 3, 2, 1, 0]), Components::mix (13, 8, 0.25, 0.75), sinkOf (14, 8)]

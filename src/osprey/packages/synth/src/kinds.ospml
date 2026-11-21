@@ -42,6 +42,7 @@ module Kinds
         ModulatedGain => "synth.modulated-gain"
         MidiNotes => "synth.midi-notes"
         Stereo => "synth.stereo"
+        Panner => "synth.panner"
         Split => "synth.split"
         Join => "synth.join"
         Route _ => "synth.route"

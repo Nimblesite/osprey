@@ -83,6 +83,7 @@ type Processor =
     ModulatedGain
     MidiNotes
     Stereo
+    Panner
     Split
     Join
     Route
@@ -244,7 +245,6 @@ type NamedTable =
 type PatchResources =
     samples : List<NamedResource>
     tables : List<NamedTable>
-
 
 type ResourceIdentity =
     name : string

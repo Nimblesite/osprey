@@ -76,6 +76,7 @@ module RenderKernels
         Sink => passthrough (frame, held, input)
         Split => passthrough (frame, held, input)
         Join => passthrough (frame, held, input)
+        Panner => passthrough (frame, held, input)
         Route entries => monoRouted (entries, frame, held, input)
         Spectral size hop => SpectralKernels::process (plan, rate, snapshot, frame, held, size, hop, input)
         Shaper => EffectKernels::shaper (rate, snapshot, frame, held, input)
