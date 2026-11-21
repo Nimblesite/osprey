@@ -31,7 +31,7 @@ Collected 21 November 2026 to justify the three morphing modes planned for `Spec
 
 ## Built design
 
-Three modes on `SpectralMorph { amount mode }` (81552760a), all inside the existing STFT node, with formulas in `SpectralMath.lean`. Every mode keeps one contract: amount 0 is the main input and 1 is the side.
+Three modes on `SpectralMorph { amount mode }` (81552760a), all inside the existing STFT node, with formulas in `spectral_math.ospml`. Every mode keeps one contract: amount 0 is the main input and 1 is the side.
 
 **Blend** (`logBlend`). Per bin, magnitude is `exp ((1 − t) ln (a + ε) + t ln (b + ε)) − ε` with ε = 10⁻⁹, the geometric path. Phase comes from the dominant input. Partials stay at their own frequencies, so this is a morph in timbre, not pitch. A sine at 0.5 blended with one at 0.05 measures 0.158 halfway (a crossfade would give 0.275), and 0.281 and 0.089 at the quarters, all within 5%.
 

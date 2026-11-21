@@ -5,6 +5,7 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 out="$root/target/proof/production-fft"
 tools="$root/src/toolchain/benchmarks/proof/tools"
 source="$root/src/osprey/packages/synth/src/ffts.ospml"
+math="${source%/*}/spectral_math.ospml"
 frames="${source%/*}/spectral_frames.ospml"
 strike="${source%/*}/strike_combs.ospml"
 allpass="${source%/*}/allpasses.ospml"
@@ -18,7 +19,7 @@ mkdir -p "$out"
 reflect() {
     local file
     local bodies=()
-    for file in "$source" "$frames" "$strike" "$allpass" "$shaper" "$interpolation" "$phase" "$grain" "$streams"; do
+    for file in "$math" "$source" "$frames" "$strike" "$allpass" "$shaper" "$interpolation" "$phase" "$grain" "$streams"; do
         if [[ "$file" == "${1:-}" ]]; then file="$out/mutant.ospml"; fi
         bodies+=("$file")
     done
@@ -39,7 +40,7 @@ check_export() {
         printf '%s\t%s\n' "$out/$file" "$name" | "$checker.$backend"
     fi
 }
-for theorem in combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
+for theorem in rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
     name="ProductionFft.$theorem"
     LEAN_PATH="$out:$lean_path" "$exporter" ProductionFft -- "$name" > "$out/$theorem.ndjson"
     for backend in gc arc wasm; do
@@ -69,6 +70,9 @@ reject_edit() {
     awk -F: -v start="$start" -v end="$end" '/ProductionFft.lean:[0-9]+:[0-9]+: error:/ && $2 >= start && $2 < end { rejected=1 } END {exit !rejected}' "$out/rejected.log"
     echo "REJECT $theorem production mutation"
 }
+reject_edit rotationArithmetic 's/ar [*] br - ai [*] bi/ar * br + ai * bi/' "$math"
+reject_edit rotationArithmetic 's/ar [*] bi + ai [*] br/ar * br + ai * bi/' "$math"
+reject_edit rotationArithmetic 's/floatDiv (sign [*] 6.283185307179586 [*] index, size)/floatDiv (sign * 6.283185307179586 * size, index)/' "$math"
 reject_edit combinedCorrect 's/listPrepend rest.upper (subtracted (e, t))/listPrepend rest.upper (added (e, t))/'
 reject_edit quartetCorrect 's/added (upper, difference), subtracted (lower, sum)/subtracted (lower, sum), added (upper, difference)/'
 reject_edit conjugateComponents 's/im = 0.0 - value.im/im = value.im/'

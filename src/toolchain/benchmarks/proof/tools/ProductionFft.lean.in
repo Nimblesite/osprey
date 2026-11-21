@@ -76,6 +76,7 @@ structure Ops (α : Type) where
   hardIntegral : α → α
   cubicIntegral : α → α
   foldIntegral : α → α
+  ieeeDivide : α → α → α
   divide : α → α → α
   plus : α → α → α
   times : α → α → α
@@ -84,9 +85,6 @@ structure Ops (α : Type) where
   minus : α → α → α
   cos : α → α
   sin : α → α
-  twiddle : α → α → α → α
-  productRe : α → α → α → α → α
-  productIm : α → α → α → α → α
   literal : Nat → α
   toFloat : Nat → α
   satAdd : Nat → Nat → Nat
@@ -95,20 +93,27 @@ structure Ops (α : Type) where
 
 open Ffts SpectralFrames StrikeCombs
 
+/-- Complex multiplication and signed twiddle angle from the shipped spectral math module. -/
+theorem rotationArithmetic (ops : Ops α) (v : Bin α) (sign k size : α) :
+    let angle := ops.ieeeDivide (ops.times (ops.times sign ops.tau) k) size
+    rotated ops v (SpectralMath.twiddle ops sign k size) =
+      ⟨ops.minus (ops.times v.re (ops.cos angle)) (ops.times v.im (ops.sin angle)),
+       ops.plus (ops.times v.re (ops.sin angle)) (ops.times v.im (ops.cos angle))⟩ := rfl
+
 /-- Smith's radix-two butterfly in bin order. The reference accepts already
     paired bins, independently of how the implementation traverses its lists. -/
 def butterfly (ops : Ops α) (e o : Bin α) (angle : α) : Bin α × Bin α :=
   let c := ops.cos angle
   let s := ops.sin angle
-  let re := ops.productRe o.re o.im c s
-  let im := ops.productIm o.re o.im c s
+  let re := SpectralMath.productRe ops o.re o.im c s
+  let im := SpectralMath.productIm ops o.re o.im c s
   (⟨ops.plus e.re re, ops.plus e.im im⟩, ⟨ops.minus e.re re, ops.minus e.im im⟩)
 
 def butterflies (ops : Ops α) (size : Nat) (sign : α) (index : Nat) :
     List (Bin α × Bin α) → List (Bin α × Bin α)
   | [] => []
   | (e,o) :: rest =>
-    butterfly ops e o (ops.twiddle sign (ops.toFloat index) (ops.toFloat size)) ::
+    butterfly ops e o (SpectralMath.twiddle ops sign (ops.toFloat index) (ops.toFloat size)) ::
       butterflies ops size sign (ops.satAdd index 1) rest
 
 theorem combinedCorrect (ops : Ops α) (even odd : List (Bin α)) (index size : Nat) (sign : α) :
@@ -129,8 +134,8 @@ theorem combinedCorrect (ops : Ops α) (even odd : List (Bin α)) (index size : 
     the two radix-two stages, including their separate floating twiddles. -/
 theorem quartetCorrect (ops : Ops α) (a b c d : Bin α) (sign : α) :
     quartet ops a b c d sign =
-      let zero := ops.twiddle sign (ops.literal 0) (ops.literal 2)
-      let quarter := ops.twiddle sign (ops.literal 1) (ops.literal 4)
+      let zero := SpectralMath.twiddle ops sign (ops.literal 0) (ops.literal 2)
+      let quarter := SpectralMath.twiddle ops sign (ops.literal 1) (ops.literal 4)
       let even := butterfly ops a c zero
       let odd := butterfly ops b d zero
       let lo := butterfly ops even.1 odd.1 zero
@@ -161,7 +166,7 @@ theorem combinedDftBins (ops : Ops α) (mul : Bin α → Bin α → Bin α) (neg
     (negSquare : ∀ a, mul (neg a) (neg a) = mul a a)
     (negMul : ∀ a b, mul (neg a) b = neg (mul a b))
     (subtract : ∀ a b, subtracted ops a b = added ops a (neg b))
-    (rotation : ∀ x, rotated ops x (ops.twiddle sign (ops.toFloat index) (ops.toFloat size)) = mul z x) :
+    (rotation : ∀ x, rotated ops x (SpectralMath.twiddle ops sign (ops.toFloat index) (ops.toFloat size)) = mul z x) :
     let even := Synthesis.bin (added ops) mul zero (mul z z) Prod.fst frame
     let odd := Synthesis.bin (added ops) mul zero (mul z z) Prod.snd frame
     combined ops [even] [odd] index size sign =
@@ -186,10 +191,10 @@ theorem scaledDftBin (ops : Ops α) (zero gain : α) (root : Bin α)
     (samples : ι → Bin α) (xs : List ι) (timesZero : ops.times zero gain = zero)
     (dist : ∀ a b, ops.times (ops.plus a b) gain =
       ops.plus (ops.times a gain) (ops.times b gain))
-    (realProduct : ∀ a b c d, ops.times (ops.productRe a b c d) gain =
-      ops.productRe a b (ops.times c gain) (ops.times d gain))
-    (imagProduct : ∀ a b c d, ops.times (ops.productIm a b c d) gain =
-      ops.productIm a b (ops.times c gain) (ops.times d gain)) :
+    (realProduct : ∀ a b c d, ops.times (SpectralMath.productRe ops a b c d) gain =
+      SpectralMath.productRe ops a b (ops.times c gain) (ops.times d gain))
+    (imagProduct : ∀ a b c d, ops.times (SpectralMath.productIm ops a b c d) gain =
+      SpectralMath.productIm ops a b (ops.times c gain) (ops.times d gain)) :
     scaled ops (Synthesis.bin (added ops) (turned ops) ⟨zero, zero⟩ root samples xs) gain =
       Synthesis.bin (added ops) (turned ops) ⟨zero, zero⟩ root (fun i => scaled ops (samples i) gain) xs := by
   have distribute (a b : Bin α) :

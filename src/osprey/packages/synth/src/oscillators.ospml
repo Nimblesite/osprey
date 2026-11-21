@@ -1,4 +1,4 @@
-// [SYNTH-DSP] Stateful reference oscillators. Their waveforms are mathematics: Waves.lean.
+// [SYNTH-DSP] Stateful reference oscillators. Their waveforms are mathematics: waves.ospml.
 namespace synth
 
 (** Checked configuration and explicit phase continuity, independent of any audio device. *)

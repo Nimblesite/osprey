@@ -18,6 +18,7 @@ fn binder(name: &str) -> Result<String, String> {
             | "subtracted"
             | "rotated"
             | "combined"
+            | "floatDiv"
             | "satAdd"
             | "toFloat"
             | "sin"
@@ -143,9 +144,9 @@ fn callee(e: &Expr) -> Result<String, String> {
                 "PhaseMath::windowedPhase" => Ok("ops.windowedPhase".into()),
                 "DelayLines::push" => Ok("ops.push".into()),
                 "DelayLines::tap" => Ok("ops.tap".into()),
-                "SpectralMath::twiddle" => Ok("ops.twiddle".into()),
-                "SpectralMath::productRe" => Ok("ops.productRe".into()),
-                "SpectralMath::productIm" => Ok("ops.productIm".into()),
+                "SpectralMath::twiddle" => Ok("SpectralMath.twiddle ops".into()),
+                "SpectralMath::productRe" => Ok("SpectralMath.productRe ops".into()),
+                "SpectralMath::productIm" => Ok("SpectralMath.productIm ops".into()),
                 "SpectralMath::unitRe" => Ok("ops.unitRe".into()),
                 "SpectralMath::unitIm" => Ok("ops.unitIm".into()),
                 other => Err(format!("unsupported qualified call {other}")),
@@ -166,6 +167,7 @@ fn callee(e: &Expr) -> Result<String, String> {
         "curve" | "integral" => Ok(format!("Waveshapers.{} ops", ident(name)?)),
         "basePhase" | "pulse" => Ok(format!("PhaseOperators.{} ops", ident(name)?)),
         "hann" => Ok("GrainWindows.hann ops".into()),
+        "floatDiv" => Ok("ops.ieeeDivide".into()),
         "abs" => Ok("ops.abs".into()),
         "listPrepend" => Ok("(fun tail head => List.cons head tail)".into()),
         _ => Err(format!("unsupported callee {name}")),
@@ -295,27 +297,10 @@ fn term(e: &Expr) -> Result<String, String> {
     }
 }
 
-fn reflect(file: &str) -> Result<(), String> {
-    let source = fs::read_to_string(file).map_err(|e| e.to_string())?;
-    let parsed = parse_program_with_flavor(&source, Flavor::Ml);
-    if !parsed.errors.is_empty() {
-        return Err(format!("{:?}", parsed.errors));
-    }
-    let [Stmt::Namespace {
-        name: namespace,
-        body,
-        ..
-    }] = parsed.program.statements.as_slice()
-    else {
-        return Err("expected namespace".into());
-    };
-    let [Stmt::Module { path, body, .. }] = body.as_slice() else {
-        return Err("expected one module".into());
-    };
-    if namespace.label() != "synth" {
-        return Err("expected synth namespace".into());
-    }
-    let signatures: &[(&str, &[&str], &str)] = match path.to_string().as_str() {
+type Signature = (&'static str, &'static [&'static str], &'static str);
+
+fn signatures(module: &str) -> Result<&'static [Signature], String> {
+    Ok(match module {
         "PhaseOperators" => &[
             ("basePhase", &["α", "α"], "α"),
             ("pulse", &["α", "Pulse α"], "α"),
@@ -344,30 +329,58 @@ fn reflect(file: &str) -> Result<(), String> {
             ("overlapScale", &["α", "α"], "α"),
             ("overlapped", &["α", "α", "α"], "α"),
         ],
+        "SpectralMath" => &[
+            ("twiddle", &["α", "α", "α"], "α"),
+            ("productRe", &["α", "α", "α", "α"], "α"),
+            ("productIm", &["α", "α", "α", "α"], "α"),
+        ],
         "SpectralFrames" => &[
             ("scaled", &["Bin α", "α"], "Bin α"),
             ("turned", &["Bin α", "Bin α"], "Bin α"),
             ("rotation", &["Bin α", "Bin α"], "Bin α"),
         ],
         "Ffts" => &[
-            ("conjugate", &["Bin α"][..], "Bin α"),
-            ("added", &["Bin α", "Bin α"][..], "Bin α"),
-            ("subtracted", &["Bin α", "Bin α"][..], "Bin α"),
-            ("rotated", &["Bin α", "α"][..], "Bin α"),
+            ("conjugate", &["Bin α"], "Bin α"),
+            ("added", &["Bin α", "Bin α"], "Bin α"),
+            ("subtracted", &["Bin α", "Bin α"], "Bin α"),
+            ("rotated", &["Bin α", "α"], "Bin α"),
             (
                 "quartet",
-                &["Bin α", "Bin α", "Bin α", "Bin α", "α"][..],
+                &["Bin α", "Bin α", "Bin α", "Bin α", "α"],
                 "List (Bin α)",
             ),
             (
                 "combined",
-                &["List (Bin α)", "List (Bin α)", "Nat", "Nat", "α"][..],
+                &["List (Bin α)", "List (Bin α)", "Nat", "Nat", "α"],
                 "Halves α",
             ),
         ],
         other => return Err(format!("unsupported production module {other}")),
+    })
+}
+
+fn reflect(file: &str) -> Result<(), String> {
+    let source = fs::read_to_string(file).map_err(|e| e.to_string())?;
+    let parsed = parse_program_with_flavor(&source, Flavor::Ml);
+    if !parsed.errors.is_empty() {
+        return Err(format!("{:?}", parsed.errors));
+    }
+    let [Stmt::Namespace {
+        name: namespace,
+        body,
+        ..
+    }] = parsed.program.statements.as_slice()
+    else {
+        return Err("expected namespace".into());
     };
-    for &(name, types, result) in signatures {
+    let [Stmt::Module { path, body, .. }] = body.as_slice() else {
+        return Err("expected one module".into());
+    };
+    if namespace.label() != "synth" {
+        return Err("expected synth namespace".into());
+    }
+    let module = path.to_string();
+    for &(name, types, result) in signatures(&module)? {
         let mut functions = body
             .iter()
             .filter_map(|item| match item.declaration.as_ref() {
@@ -388,7 +401,6 @@ fn reflect(file: &str) -> Result<(), String> {
             .zip(types)
             .map(|(p, t)| Ok(format!("({} : {t})", binder(&p.name)?)))
             .collect::<Result<Vec<_>, String>>()?;
-        let module = path.to_string();
         println!(
             "def {module}.{name} {{α : Type}} (ops : Ops α) {} : {result} := {}",
             params.join(" "),

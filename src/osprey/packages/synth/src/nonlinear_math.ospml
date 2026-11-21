@@ -1,0 +1,90 @@
+// First-order antiderivative antialiasing follows Parker, Zavalishin and Le Bivic (DAFx 2016):
+// `y = (F(x[n]) - F(x[n-1])) / (x[n] - x[n-1])`, falling back to the curve at the midpoint when
+// the inputs are nearly equal. Every curve is bounded to `[-1, 1]`. The Hilbert pair uses Olli
+// Niemitalo's published polyphase IIR coefficients; the feedback network uses a 4×4 Householder
+// reflection, which is orthogonal (lossless).
+namespace synth
+
+(** Nonlinear, feedback and frequency-shifting mathematics [SYNTH-ADVANCED-NONLINEAR]. *)
+module NonlinearMath
+    (** Hyperbolic tangent, saturated beyond |x| = 20 where it equals ±1 in binary64. *)
+    export tanh x =
+        c = match x > 20.0
+            true => 20.0
+            false => match x < (-20.0)
+                true => -20.0
+                false => x
+        e = exp (2.0 * c)
+        floatDiv (e - 1.0, e + 1.0)
+
+    (** Antiderivative of tanh, `log cosh x`, in an overflow-free form. *)
+    export tanhIntegral x =
+        a = abs x
+        a + ln (1.0 + exp ((-2.0) * a)) - 0.6931471805599453
+
+    (** Clip the input to the interval from minus one to one. *)
+    export hard x = match x > 1.0
+        true => 1.0
+        false => match x < (-1.0)
+            true => -1.0
+            false => x
+
+    (** Continuous antiderivative of the hard clipper. *)
+    export hardIntegral x =
+        a = abs x
+        match a <= 1.0
+            true => x * x / 2.0
+            false => a - 0.5
+
+    (** Cubic soft clip `1.5 (x - x³/3)`, reaching ±1 at |x| = 1. *)
+    export cubic x = match x >= 1.0
+        true => 1.0
+        false => match x <= (-1.0)
+            true => -1.0
+            false => 1.5 * (x - x * x * x / 3.0)
+
+    (** Continuous antiderivative of the cubic saturator. *)
+    export cubicIntegral x =
+        a = abs x
+        match a <= 1.0
+            true => 1.5 * (x * x / 2.0 - x * x * x * x / 12.0)
+            false => a - 0.375
+
+    (** Sine wavefolder. *)
+    export fold x = sin (1.5707963267948966 * x)
+
+    (** Antiderivative of the folding transfer curve. *)
+    export foldIntegral x = (-0.6366197723675814) * cos (1.5707963267948966 * x)
+
+    (** One-pole DC blocker. *)
+    export dcBlock (input: float, previousInput, previousOutput, coefficient) = input - previousInput + coefficient * previousOutput
+
+    (** Pole coefficient of the DC blocking filter. *)
+    export dcCoefficient (cutoff, sampleRate) = exp (floatDiv ((-6.283185307179586) * cutoff, sampleRate))
+
+    (** Blackman-windowed half-band low-pass tap `index` of `taps` (odd), for 2× resampling. *)
+    export halfband (index, taps) =
+        centre = (taps - 1.0) / 2.0
+        t = index - centre
+        window = 0.42 - 0.5 * cos (floatDiv (6.283185307179586 * index, taps - 1.0)) + 0.08 * cos (floatDiv (12.566370614359172 * index, taps - 1.0))
+        match t == 0.0
+            true => 0.5 * window
+            false => floatDiv (window * sin (1.5707963267948966 * t), 3.141592653589793 * t)
+
+    (** Schroeder allpass: internal `v = x + g v[n-D]`, output `y = v[n-D] - g v`. *)
+    export schroederIn (input: float, delayed, gain) = input + gain * delayed
+
+    (** Read the delayed output of a Schroeder allpass section. *)
+    export schroederOut (internal: float, delayed, gain) = delayed - gain * internal
+
+    (** One-pole damping inside the feedback loop; gain never exceeds one. *)
+    export damp (input, previous, damping) = (1.0 - damping) * input + damping * previous
+
+    (** Householder reflection row `x_i − (2/N) Σ x`: the matrix is orthogonal, so it preserves energy. *)
+    export householder (value, sum, count) = value - floatDiv (2.0 * sum, count)
+
+    (** Second-order Hilbert allpass section `a²(x[n] + y[n-2]) - x[n-2]`. *)
+    export hilbert (coefficient: float, input, olderInput, olderOutput) = coefficient * coefficient * (input + olderOutput) - olderInput
+
+    (** Single-sideband shift from the Hilbert pair (the second path lags the delayed first by 90°), selecting the upper sideband for positive carrier frequency. *)
+    export shifted (inPhase, quadrature, phase) = inPhase * cos (6.283185307179586 * phase) + quadrature * sin (6.283185307179586 * phase)

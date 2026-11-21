@@ -1,0 +1,35 @@
+namespace synth
+
+(** Normalised PCM decoding [SYNTH-ADVANCED-GRAINS-IMPORT]. *)
+module WaveMath
+    (** Eight-bit PCM is offset binary; wider PCM is two's complement. *)
+    export pcm (word, bits) = match bits == 8.0
+        true => (word - 128.0) / 128.0
+        false =>
+            half = pow (2.0, bits - 1.0)
+            signed = match word >= half
+                true => word - half * 2.0
+                false => word
+            floatDiv (signed, half)
+
+    (** Explicit stereo-to-mono downmix, preserving bounded input headroom. *)
+    export mono (left, right) = (left + right) * 0.5
+
+    (** Per-channel sum with independent linear gains at the two mixer inlets. *)
+    export mixed (first: float, firstGain, second, secondGain) = first * firstGain + second * secondGain
+
+    (** Equal-power interpolation between adjacent lanes in an ordered output layout. *)
+    export panGain (width, lane, pan) =
+        distance = abs (lane - (pan + 1.0) * 0.5 * (width - 1.0))
+        match distance >= 1.0
+            true => 0.0
+            false => cos (1.5707963267948966 * distance)
+
+    (** Source-sample advance per output sample, independent of recording duration. *)
+    export playbackRate (sourceRate, outputRate, targetFrequency, rootFrequency) = floatDiv (sourceRate, outputRate) * floatDiv (targetFrequency, rootFrequency)
+
+    (** Duration of a complete decoded sample at its original sample rate. *)
+    export seconds (frames, rate) = floatDiv (frames, rate)
+
+    (** Whole frames at `rate` covering a tail declared in samples at the 48 kHz graph rate. *)
+    export tailFrames (samples, rate) = ceil (samples * rate / 48000.0)

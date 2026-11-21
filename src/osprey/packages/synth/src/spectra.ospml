@@ -3,7 +3,7 @@ namespace synth
 
 (** Ten octave bands centred 31.25 Hz to 16 kHz. A frame of `size` samples starts every `hop`; each band's
     level is its mean power over every frame and its peak the loudest frame, both in dB where a full-scale sine
-    reads 0. A signal shorter than one frame is read as one zero-padded frame. Formulas: SpectralMath.lean. *)
+    reads 0. A signal shorter than one frame is read as one zero-padded frame. Formulas: spectral_math.ospml. *)
 module Spectra
     (** The bands' centre frequencies in Hz, one octave apart. *)
     export centres = [31.25, 62.5, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0]

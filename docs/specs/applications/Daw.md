@@ -183,7 +183,7 @@ The Timeline zooms in time, and zooming is one gesture from wherever the hand al
 
 ## Dynamics [DAW-DYNAMICS]
 
-Master ends in a compressor and a limiter, and both are patch components any track can use. Their formulas are [DynamicsMath.lean](../../../src/osprey/packages/synth/src/DynamicsMath.lean) ([SYNTH-DYNAMICS]); the components hold only state.
+Master ends in a compressor and a limiter, and both are patch components any track can use. Their formulas are [dynamics_math.ospml](../../../src/osprey/packages/synth/src/dynamics_math.ospml) ([SYNTH-DYNAMICS]); the components hold only state.
 
 - **Compressor ([DAW-DYNAMICS-COMPRESSOR]).** Feed-forward in the log domain (Giannoulis, Massberg and Reiss, JAES 2012). Threshold, ratio and a soft knee with a continuous slope. A detector blended between peak and RMS. Attack and release smooth the gain reduction, not the signal. The release is program-dependent: a fast and a slow detector run together and the deeper wins, so a transient recovers fast and dense material does not pump. A sidechain input with its own high-pass, automatic make-up gain, and a dry/wet mix for parallel compression. Channels are linked: every channel takes the reduction of the loudest.
 - **Limiter ([DAW-DYNAMICS-LIMITER]).** A true-peak brickwall. The detector oversamples four times (ITU-R BS.1770-4) so peaks between samples count. The lowest required gain is held across the lookahead and averaged over the same window, so the gain has arrived when the peak leaves the delay: no overshoot and no clipping. The release is program-dependent like the compressor's. The output never exceeds the ceiling (default −1 dBTP).
@@ -199,7 +199,7 @@ A project declares buses next to its tracks ([daw.td](../../../src/osprey/exampl
 **Every path ends in Master ([DAW-MIX-MASTER]).** Every audio track outputs to Master, and Master is where all the signals are mixed. A track can reach Master directly, through any chain of groups ([DAW-MIX-BUS-OUTPUT]), through its Space send, or through the internal outlet sends of its patch ([DAW-MIX-BUS-TAP]). However ad hoc the project's routing is, every route resolves to Master, and Master sums them all. No route ends anywhere else, so nothing a track plays is lost or written out on the side. The render writes that Master ([DAW-RENDER-MASTER]).
 
 - **EQ ([DAW-MIX-BUS-EQ]).** Three bands from two one-pole splits at 250 Hz and 4 kHz, each with a gain from −24 to 24 dB. At 0 dB the bands add back up to the input.
-- **Compressor ([DAW-MIX-BUS-COMPRESSOR]).** Threshold, ratio 1–20, knee 0–24 dB, attack and release 0–2 s, using the [DynamicsMath.lean](../../../src/osprey/packages/synth/src/DynamicsMath.lean) curve and detector. Both sides take one gain.
+- **Compressor ([DAW-MIX-BUS-COMPRESSOR]).** Threshold, ratio 1–20, knee 0–24 dB, attack and release 0–2 s, using the [dynamics_math.ospml](../../../src/osprey/packages/synth/src/dynamics_math.ospml) curve and detector. Both sides take one gain.
 - **Sidechain ([DAW-MIX-BUS-SIDECHAIN]).** `sidechain` names a track. Its signal, at its gain, drives the detector, so a kick ducks a pad bus. Empty means the bus keys itself from its louder side. A sidechain that is not a track in the song is refused.
 - **Group output ([DAW-MIX-BUS-OUTPUT]).** After EQ, compression and gain, a stereo group feeds its named `output` group. An empty or omitted output feeds Master. All upstream groups mix into a destination before its processing runs. The group declaration order does not change the sound. Paths may span any number of declared groups. The editor refuses missing destinations and feedback cycles, including on silent groups, and preserves the previous route. A track’s Space send remains independent of its dry groups.
 - The codex project routes `glow` and `tablepad` to a `pads` bus keyed by `kick`.
@@ -222,7 +222,7 @@ The daw analyses each track, bus and Master and says whether the sound sits wher
 - **Instrument ranges ([DAW-ANALYSIS-RANGE]).** Each instrument kind declares where its fundamental and body energy should lie. The analysis reports energy outside those ranges, such as sub-bass rumble on a hat, or a bass with no fundamental.
 - **Advice ([DAW-ANALYSIS-ADVICE]).** It suggests concrete EQ moves: the band, a gain in dB and the reason (masking between two tracks in the same band, a resonance, mud at 200–500 Hz, harshness at 2–5 kHz, a low end that needs a cut). An accepted suggestion becomes a checked edit to the bus or track EQ in the project.
 - **Masking ([DAW-ANALYSIS-MASKING]).** Two tracks that crowd one band are named together, with which to cut and which to keep.
-- All formulas in Lean; the analysis is deterministic and tested against synthetic signals with known spectra.
+- Analysis formulas in native Osprey; the analysis is deterministic and tested against synthetic signals with known spectra.
 - **Mix checks fail the build ([DAW-ANALYSIS-GATE]).** Every example project has mix checks, the daw's unit tests. They render it and fail when a check is broken: tonal balance per band against the project's genre target, Master true peak and integrated loudness (LUFS) in range, no clipping, no track masked beyond a threshold, low end mono-compatible, and each pitched track within its range and in tune. `make` runs them for every project in `tracks/`, and a bad mix is red like a failing test.
 - **Where it slipped ([DAW-ANALYSIS-TIMELINE]).** Checks run per window along the song, not only on the whole mix. A failed check is shown at once as a loud alert and a red marker on the Timeline at the bars where it fails, naming the track or bus, the check, the measured value and the limit (for example "bars 17–18: kick and bass mask each other at 60–90 Hz, 9 dB over"). Tapping it moves the playhead there and opens the track. The same failures, with bar numbers, are what `make` reports.
 - **Genre targets ([DAW-ANALYSIS-GENRE]).** A project names its genre in daw.td. Each genre has a target tonal-balance curve with tolerance, a loudness range and a dynamic-range range, stored as data and versioned.
@@ -277,7 +277,7 @@ One window shows three views of one session. **Timeline** shows the tracks, the 
 
 ## Math [DAW-MATH]
 
-Every formula is written in Lean and its Osprey code is generated ([MATH-CODE](../tooling/MathToCode.md)). [ArrangeMath.lean](../../../src/osprey/examples/daw/src/ArrangeMath.lean) holds timing, envelopes, pan, the limiter, mix ranges and the excerpt window. [TimelineGeometry.lean](../../../src/osprey/examples/daw/src/TimelineGeometry.lean) holds bars and page geometry. Osprey code calls these functions and contains no hand-written formulas.
+The DAW arrangement and timeline modules are generated from Lean ([MATH-CODE](../tooling/MathToCode.md)). [ArrangeMath.lean](../../../src/osprey/examples/daw/src/ArrangeMath.lean) holds timing, envelopes, pan, the limiter, mix ranges and the excerpt window. [TimelineGeometry.lean](../../../src/osprey/examples/daw/src/TimelineGeometry.lean) holds bars and page geometry. Osprey code calls these functions and contains no hand-written formulas.
 
 ## Scope [DAW-SCOPE]
 

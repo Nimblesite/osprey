@@ -5,7 +5,7 @@ namespace synth
     along unchanged in shape (Laroche and Dolson, 1999), so a partial keeps its whole window lobe and its level.
     The peak's phase advances at its new frequency; the bins around it keep their analysed phase offset from it
     (identity phase locking), so overlapping frames add rather than cancel. The formant envelope then moves by
-    `formant` [SYNTH-ADVANCED-SPECTRAL-FORMANT]. Formulas: SpectralMath.lean. *)
+    `formant` [SYNTH-ADVANCED-SPECTRAL-FORMANT]. Formulas: spectral_math.ospml. *)
 module SpectralPeaks
     // Source bins carry (magnitude, true bin); analysed phases carry (phase, true bin); motion the last output phase.
     part (bins, k) = match listGet bins k

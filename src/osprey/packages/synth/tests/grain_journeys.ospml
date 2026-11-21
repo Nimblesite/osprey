@@ -17,7 +17,7 @@ import synth::SampleResources
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] [SYNTH-ADVANCED-GRAINS-INTEGRATION] Grain shapes, onset clocks,
 // variation streams and the graph module refuse every invalid control with its own message.
 // [SYNTH-ADVANCED-GRAINS-PLAYBACK] [SYNTH-ADVANCED-GRAINS-OVERLOAD] Every exact sample value below is derived
-// from the Lean oracle formulas in GrainMath.lean, not from recorded implementation output.
+// from the Lean oracle formulas in grain_math.ospml, not from recorded implementation output.
 
 grainControls window = synth::GrainControls(window = window, start = 1.0, rate = 1.0, duration = 8, amplitude = 0.5, pan = 0.0)
 

@@ -5,7 +5,7 @@ namespace synth
     frames is held (a running block minimum, linear in the length), taken at once downward and released upward,
     then averaged over the lookahead, so the gain reaches each peak's need exactly as the peak arrives and never
     overshoots. Peaks are true peaks: each side is also read four times oversampled (ITU-R BS.1770-4), so a
-    peak between samples counts. A last clamp keeps every sample inside the ceiling. Formulas: DynamicsMath.lean. *)
+    peak between samples counts. A last clamp keeps every sample inside the ceiling. Formulas: dynamics_math.ospml. *)
 module Limiters
     phases = 4
 

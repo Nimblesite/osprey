@@ -3,7 +3,7 @@ namespace daw
 
 (** The bus stage of the mix, between the tracks and Master. The compressor follows the sidechain track named in
     the bus, or the bus itself when none is named, so a kick can duck a pad bus. Formulas: ArrangeMath.lean and
-    synth's DynamicsMath.lean. *)
+    synth's dynamics_math.ospml. *)
 module BusMix
     lowCorner = 250.0
 
