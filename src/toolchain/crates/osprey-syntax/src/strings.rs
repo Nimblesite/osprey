@@ -69,6 +69,7 @@ fn line_start(text: &str, line: usize) -> Option<usize> {
 
 /// Convert a zero-based frontend column to a byte offset within one line.
 /// ML counts Unicode characters. Other flavors count bytes at character boundaries.
+#[must_use]
 pub fn column_byte(text: &str, column: usize, flavor: Flavor) -> Option<usize> {
     match flavor {
         Flavor::Default | Flavor::Python | Flavor::TypeScript => {

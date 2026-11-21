@@ -316,9 +316,28 @@ fn borrowed_structural_projection_clones_only_the_selected_subtree() {
             ..Value::default()
         };
         let projection = Projection::Field("selected".to_owned());
-        for value in [value.clone(), projection_metadata(value, 10)] {
+        for value in [value.clone(), projection_metadata(value.clone(), 10)] {
             assert_projection_budget(&analyzer, &value, projection.clone(), 1);
         }
+        let callable = Callable::Alternatives(vec![
+            super::model_values::returning_unknown(0),
+            Callable::Unknown,
+        ]);
+        let with_callable = Value {
+            callable: Some(callable),
+            ..value
+        };
+        let (projected, clones) = super::provenance::measured_clones(|| {
+            analyzer.project_borrowed_field(&with_callable, "selected")
+        });
+        assert_eq!(
+            projected,
+            analyzer.project_owned_field(with_callable, "selected")
+        );
+        assert_eq!(
+            clones, 1,
+            "known callable returns are irrelevant to field projection"
+        );
     });
 }
 
