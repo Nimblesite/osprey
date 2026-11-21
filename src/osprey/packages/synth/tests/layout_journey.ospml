@@ -9,6 +9,9 @@ layoutJourney () =
     joiner = Components::join (1, 2)
     route = Components::routeChannels (1, 2, [1, 0])
     sample = Components::samplePlayer (1, grainFlatSource ())
+    // Channel wiring carries samples without allocating a DSP state bank for the next block.
+    forEachList ([stereo, down, split, joiner, route, Components::panner (1, 2, 0.5), Components::output 1], \wiring => expect (synth::GraphClips::stateful wiring, false))
+    expect (synth::GraphClips::stateful sample, true)
     forEachList ([stereo, down, split, joiner, route, sample, Components::exciter (1, 7), Components::phaseOperator (1, 440.0, 1.0), Components::bowed (1, 220.0, 512)], \n => expect (ClipLayouts::supported n, true))
     forEachList ([down(inputs = []), down(outputs = []), split(inputs = []), joiner(outputs = []), route(inputs = []), route(outputs = [])], \invalid => expect (ClipLayouts::supported invalid, false))
     forEachList ([Components::lfo (1, 1.0), Components::modulatedGain (1, 1, 0.5), hostNode (synth::Hosted::component (1, hostDescriptor ())), Components::midiNote (1, 60.0, 0.5, 8.0), stereo, Components::panner (1, 2, 0.5), split], \n => expect (ClipLayouts::requiresClips n, true))
