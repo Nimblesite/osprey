@@ -51,7 +51,7 @@ module Grains
                     true => Success(value = pool(region = fullRegion (ready.source, pool.region.boundary), source = ready.source))
                     false => Success(value = pool(region = fullRegion (ready.source, pool.region.boundary), source = ready.source, retiredSource = pool.source, retiredBefore = pool.nextIdentity))
 
-    (** Start at the current sample position; zero rate holds the source position.
+    (** A new grain sounds from the pool's current sample and reads the source from `settings.start`; zero rate holds it there.
         [SYNTH-ADVANCED-GRAINS-OVERLOAD] Reject-new policy: a full pool returns accepted=false and counted state, preserving every active grain. *)
     export trigger (pool, settings) = match layout pool && inside (pool.region, settings.start) && controls (length pool.source, settings) && pool.revision < 9223372036854775807 && pool.nextIdentity < 9223372036854775807
         false => Error(message = "Invalid grain source, controls or revision.")

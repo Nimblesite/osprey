@@ -64,6 +64,18 @@ limitInterSample c = match Limiters::gains (mapList (toList (range (0, 4800)), l
     Success gains => forEachList ([1200, 2400, 3600], \i => limitHeldUnder (listGet gains i ?: 9.0, c.ceiling))
 
 // The held gain brings the true peak of 1 down to the ceiling within the oversampler's 1% accuracy.
+// An 8-sample quarter-rate burst from `start` in silence: its samples read 0.707 but it peaks at 1.0061 between them, so
+// every burst frame's gain holds that true peak within 0.17 dB of the ceiling, in the middle and at the very first sample.
+limitBurstSample (start, i) = match i >= start && i < satAdd start 8
+    true => limitBetween (satSub i start)
+    false => 0.0
+
+limitBurst (c, start) =
+    burst = mapList (toList (range (0, 2400)), \i => limitBurstSample (start, i))
+    match Limiters::gains (burst, burst, limitRate, c.ceiling, c.ms, c.release)
+        Error _ => unexpected ()
+        Success gains => forEachList (toList (range (start, satAdd start 8)), \i => expect ((listGet gains i ?: 9.0) * 1.0061 <= c.ceiling * 1.02, true))
+
 limitHeldUnder (g, ceiling) =
     expect (g <= ceiling * 1.01, true)
     expect (g >= ceiling * 0.97, true)
@@ -83,7 +95,9 @@ limitJourney () =
         limitCase (limitImpulse (4800, 2400, 3.0), limitSine (0.2, 4800), c)
         limitTransparent (c.ceiling * 0.99, c)
         limitOneImpulse (c, c.block)
-        limitInterSample c)
+        limitInterSample c
+        limitBurst (c, 1000)
+        limitBurst (c, 0))
     limitRefusals ()
 
 // [DAW-ANALYSIS-SPECTRUM] The octave-band analyser against sines of known level and frequency.

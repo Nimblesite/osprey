@@ -19,7 +19,7 @@ module Oversamplers
     (** The half-band FIR over a history (newest last); the filter is symmetric, so tap order does not matter. *)
     export filtered history = foldList (Sequences::combined (history, coefficients (), \(sample, tap) => sample * tap), 0.0, \(sum, value) => sum + value)
 
-    // Run the shaper at twice the rate (the shaper sees doubled time, so its DC blocker is twice as wide).
+    // Run the shaper at twice the rate, telling it so: its 5 Hz DC blocker keeps its corner in real time.
     shapedPair (config, held, input) =
         upFirst = Sequences::shifted (held.up, input)
         upSecond = Sequences::shifted (upFirst, 0.0)
