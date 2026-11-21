@@ -1,5 +1,48 @@
 namespace ProductionFft
 
+/-- A waveguide FIFO advances its stored samples by one site and places the
+    input at the newest end. Its allocated capacity is invariant. -/
+theorem delayPropagation (ops : Ops α) (oldest input : α) (rest : List α) :
+    (DelayLines.push ops ⟨oldest :: rest⟩ input).samples = rest ++ [input] ∧
+    (DelayLines.push ops ⟨oldest :: rest⟩ input).samples.length = (oldest :: rest).length := by
+  constructor
+  · rfl
+  · change (rest ++ [input]).length = rest.length + 1
+    induction rest with
+    | nil => rfl
+    | cons _ xs ih => exact congrArg Nat.succ ih
+
+/-- After a full traversal, the actual line holds the incoming waveform in
+    chronological order for every capacity, initial contents and input waveform. -/
+theorem delayFullTraversal (ops : Ops α) (old incoming : List α) (same : old.length = incoming.length) :
+    incoming.foldl (DelayLines.push ops) ⟨old⟩ = ⟨incoming⟩ := by
+  have appendAssoc (a b c : List α) : (a ++ b) ++ c = a ++ (b ++ c) := by
+    induction a with
+    | nil => rfl
+    | cons x xs ih => exact congrArg (List.cons x) ih
+  have appendNil (a : List α) : a ++ [] = a := by
+    induction a with
+    | nil => rfl
+    | cons x xs ih => exact congrArg (List.cons x) ih
+  have advance (xs ys carried : List α) (lengths : xs.length = ys.length) :
+      ys.foldl (DelayLines.push ops) ⟨xs ++ carried⟩ = ⟨carried ++ ys⟩ := by
+    induction xs generalizing ys carried with
+    | nil =>
+      cases ys with
+      | nil => exact congrArg DelayLine.mk (appendNil carried).symm
+      | cons _ _ => cases lengths
+    | cons x xs ih =>
+      cases ys with
+      | nil => cases lengths
+      | cons y ys =>
+        have tail := ih ys (carried ++ [y]) (Nat.succ.inj lengths)
+        change ys.foldl (DelayLines.push ops) ⟨(xs ++ carried) ++ [y]⟩ = _
+        rw [appendAssoc xs carried [y]]
+        exact tail.trans (congrArg DelayLine.mk (appendAssoc carried [y] ys))
+  have walked := advance old incoming [] same
+  rw [appendNil] at walked
+  exact walked
+
 /-- The playhead follows the extrapolated clock between the device's completed
     and accepted frame counts; outside that interval it uses the corresponding boundary. -/
 theorem heardTimeClamped (ops : Ops α) (clock elapsed returned accepted rate : α) :

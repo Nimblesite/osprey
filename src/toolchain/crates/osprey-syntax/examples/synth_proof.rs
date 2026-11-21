@@ -28,6 +28,7 @@ fn binder(name: &str) -> Result<String, String> {
             | "toFloat"
             | "sin"
             | "cos"
+            | "listAppend"
             | "listPrepend"
             | "curve"
             | "integral"
@@ -148,7 +149,7 @@ fn callee(e: &Expr) -> Result<String, String> {
                 "GrainMath::asr" => Ok("ops.asr".into()),
                 "PhaseMath::window" => Ok("ops.window".into()),
                 "PhaseMath::windowedPhase" => Ok("ops.windowedPhase".into()),
-                "DelayLines::push" => Ok("ops.push".into()),
+                "DelayLines::push" => Ok("DelayLines.push ops".into()),
                 "DelayLines::tap" => Ok("ops.tap".into()),
                 "TableMath::harmonic" => Ok("TableMath.harmonic ops".into()),
                 "SpectralMath::twiddle" => Ok("SpectralMath.twiddle ops".into()),
@@ -180,6 +181,7 @@ fn callee(e: &Expr) -> Result<String, String> {
         "foldList" => Ok("foldList".into()),
         "floatDiv" => Ok("ops.ieeeDivide".into()),
         "abs" => Ok("ops.abs".into()),
+        "listAppend" => Ok("(fun tail item => tail ++ [item])".into()),
         "listPrepend" => Ok("(fun tail head => List.cons head tail)".into()),
         _ => Err(format!("unsupported callee {name}")),
     }
@@ -216,6 +218,7 @@ fn constructor(name: &str, fields: &[osprey_ast::FieldAssignment]) -> Result<Str
         "AllpassSample" => "AllpassSample",
         "Complex" => "Bin",
         "ComplexHalves" => "Halves",
+        "DelayLine" => "DelayLine",
         _ => return Err(format!("unsupported constructor {name}")),
     };
     let assignments = fields
@@ -223,7 +226,7 @@ fn constructor(name: &str, fields: &[osprey_ast::FieldAssignment]) -> Result<Str
         .map(|f| Ok(format!("{} := {}", ident(&f.name)?, term(&f.value)?)))
         .collect::<Result<Vec<_>, String>>()?;
     let args = if record == "LineSample" {
-        "α ops.History"
+        "α (DelayLine α)"
     } else {
         "α"
     };
@@ -340,6 +343,7 @@ fn signatures(module: &str) -> Result<&'static [Signature], String> {
         "DialMath" => &[("moved", &["α", "α"], "α")],
         "FitMath" => &[("clip", &["α", "α", "α"], "α")],
         "TimelineGeometry" => &[("heardSeconds", &["α", "α", "α", "α", "α"], "α")],
+        "DelayLines" => &[("push", &["DelayLine α", "α"], "DelayLine α")],
         "ArrangeMath" => &[
             ("gated", &["α", "α", "α", "α"], "α"),
             ("enveloped", &["α", "α", "α", "α", "α", "α"], "α"),
@@ -364,8 +368,8 @@ fn signatures(module: &str) -> Result<&'static [Signature], String> {
             ("delay", &["Strike α"], "α"),
             (
                 "next",
-                &["Strike α", "ops.History", "α"],
-                "Except ops.Fault (LineSample α ops.History)",
+                &["Strike α", "DelayLine α", "α"],
+                "Except ops.Fault (LineSample α (DelayLine α))",
             ),
         ],
         "SpectralStreams" => &[
@@ -457,8 +461,13 @@ fn reflect(file: &str) -> Result<(), String> {
             .zip(types)
             .map(|(p, t)| Ok(format!("({} : {t})", binder(&p.name)?)))
             .collect::<Result<Vec<_>, String>>()?;
+        let ops_name = if module == "DelayLines" && name == "push" {
+            "_ops"
+        } else {
+            "ops"
+        };
         println!(
-            "def {module}.{name} {{α : Type}} (ops : Ops α) {} : {result} := {}",
+            "def {module}.{name} {{α : Type}} ({ops_name} : Ops α) {} : {result} := {}",
             params.join(" "),
             term(expr)?
         );
