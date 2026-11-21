@@ -23,13 +23,14 @@ inspectorJourney () =
     oscillator = Drive::choose (opened, "Add component", "sine")
     filter = Drive::choose (oscillator, "Add component", "filter")
     viewShows (filter, "Module", true)
-    viewShows (filter, "Cutoff", true)
-    viewShows (filter, "Frequency", false)
+    expect (Drive::letters (filter, "Cutoff"), true)
+    expect (Drive::letters (filter, "Frequency"), false)
     viewShows (filter, "Select 1", false)
     selected = Drive::choose (filter, "Module", "0")
     selectedIs (selected, 0)
-    viewShows (selected, "Frequency", true)
-    viewShows (selected, "Cutoff", false)
+    expect (Drive::letters (selected, "Frequency"), true)
+    expect (Drive::letters (selected, "Cutoff"), false)
+    panelDialJourney selected
     sourced = Drive::press (selected, "Use audio output")
     connected = Drive::press (Drive::choose (sourced, "Module", "1"), "Connect audio")
     cablesOf (connected, 1)
@@ -512,7 +513,102 @@ patched kinds =
     expect (length (Drive::holding wired).graph.cables, length kinds - 1)
     wired
 
-tuned (driven, node, label, words) = Drive::choose (inspectorSelected (driven, node), label, words)
+// One pointer event on the Patch Controls dials: the scene after the canvas.
+dialPointer (d, x, y, down, shift) = match listGet d.drivenSeen.renderedScenes 1
+    Error _ => d
+    Success scene => Drive::sent (d, ui::Touch(touchNow = d.drivenNow, touchKind = ui::Hosting::pointer, touchOrdinal = scene, touchWords = "", touchDetail = "", touchX = x, touchY = y, touchDown = down, touchShift = shift))
+
+// The Patch Controls dial of the parameter `label`, as the host sees it.
+dialOf (d, label) = listGet (filterList (d.drivenSeen.renderedAccess, \a => endsWith a.accessLabel " ${label}")) 0
+
+// [DAW-CONTROLS-DIAL] A press on a dial that never moves asks for the value in figures.
+dialTapped (d, label) = match dialOf (d, label)
+    Error _ =>
+        expect ("a dial for ${label}", "")
+        d
+    Success a =>
+        x = a.accessLeft + a.accessWidth / 2.0
+        y = a.accessTop + a.accessHeight / 2.0
+        asked = dialPointer (dialPointer (d, x, y, true, false), x, y, false, false)
+        expect ((Drive::holding asked).dialEntry != "", true)
+        asked
+
+tuned (driven, node, label, words) = Drive::choose (dialTapped (inspectorSelected (driven, node), label), label, words)
+
+// [DAW-CONTROLS-DIAL] The Patch Controls panel turns a module's numbers with dials: a held drag upward raises the
+// value, Shift turns a tenth as fast, sideways movement does nothing, the whole turn is one undo, and the value
+// can be typed after a press that never moved; a bad entry is refused and the field stays open.
+panelDialJourney selected =
+    expect (length selected.drivenSeen.renderedScenes, 2)
+    before = (Drive::holding selected).graph
+    frequency editor = match synth::Graphs::node (editor.graph, 0)
+        synth::Invalid _ => 0.0 - 1.0
+        synth::Valid n => match listGet (filterList (n.parameters, \p => p.key == "frequency")) 0
+            Error _ => 0.0 - 1.0
+            Success p => p.initial
+    expect (frequency (Drive::holding selected), 440.0)
+    expect (Drive::letters (selected, "440.00 Hz"), true)
+    valid (synth::Graphs::node (before, 0), \n => forEachList (filterList (n.parameters, \p => p.key == "frequency"), \p =>
+        expect (p.minimum > 0.0 && p.maximum / p.minimum > 100.0, true)
+        // The dial's geometry: a frequency turns on a logarithmic scale and comes back to the same value.
+        near (synth::DialMath::valueAt (synth::DialMath::turn (440.0, p.minimum, p.maximum), p.minimum, p.maximum), 440.0)
+        expect (synth::DialMath::turn (p.minimum, p.minimum, p.maximum), 0.0)
+        expect (synth::DialMath::turn (p.maximum, p.minimum, p.maximum), 1.0)
+        expect (synth::DialMath::turn (440.0, p.minimum, p.maximum) > 0.3 && synth::DialMath::turn (440.0, p.minimum, p.maximum) < 0.6, true)
+        expect (synth::DialMath::dragged (440.0, 0.0, p.minimum, p.maximum, 0.0), 440.0)
+        expect (synth::DialMath::dragged (440.0, 1000.0, p.minimum, p.maximum, 0.0), p.maximum)
+        expect (synth::DialMath::dragged (440.0, 0.0 - 1000.0, p.minimum, p.maximum, 0.0), p.minimum)
+        expect (synth::DialMath::dragged (440.0, 18.0, p.minimum, p.maximum, 1.0) < synth::DialMath::dragged (440.0, 18.0, p.minimum, p.maximum, 0.0), true)))
+    expect (synth::DialMath::turn (0.0, 0.0 - 1.0, 1.0), 0.5)
+    expect (synth::DialMath::valueAt (0.75, 0.0 - 1.0, 1.0), 0.5)
+    expect (synth::DialMath::moved (100.0, 101.0), 0.0)
+    expect (synth::DialMath::moved (100.0, 98.0), 1.0)
+    near (synth::DialMath::tipX (50.0, 10.0, 0.5), 50.0)
+    near (synth::DialMath::tipY (50.0, 10.0, 0.5), 40.0)
+    expect (synth::DialMath::tipX (50.0, 10.0, 0.0) < 50.0 && synth::DialMath::tipX (50.0, 10.0, 1.0) > 50.0, true)
+    expect (synth::DialMath::tipY (50.0, 10.0, 0.0) > 50.0 && synth::DialMath::tipY (50.0, 10.0, 1.0) > 50.0, true)
+    match dialOf (selected, "Frequency")
+        Error _ => expect ("a Frequency dial", "")
+        Success a =>
+            expect (a.accessValue, 440.0)
+            expect (a.accessMin < 440.0 && a.accessMax > 440.0, true)
+            x = a.accessLeft + a.accessWidth / 2.0
+            y = a.accessTop + a.accessHeight / 2.0
+            pressed = dialPointer (selected, x, y, true, false)
+            expect ((Drive::holding pressed).dial != synth::DialIdle, true)
+            expect (structuralEquals ((Drive::holding pressed).graph, before), true)
+            sideways = dialPointer (pressed, x + 80.0, y + 1.0, true, false)
+            expect (structuralEquals ((Drive::holding sideways).graph, before), true)
+            lifted = dialPointer (sideways, x + 80.0, y - 36.0, true, false)
+            coarse = frequency (Drive::holding lifted)
+            expect (coarse > 440.0, true)
+            expect ((Drive::holding lifted).dragging, 0)
+            fine = dialPointer (lifted, x, y - 36.0, true, true)
+            expect (frequency (Drive::holding fine) > 440.0 && frequency (Drive::holding fine) < coarse, true)
+            lowered = dialPointer (fine, x, y + 36.0, true, false)
+            expect (frequency (Drive::holding lowered) < 440.0, true)
+            back = dialPointer (lowered, x, y - 36.0, true, false)
+            expect (frequency (Drive::holding back), coarse)
+            released = dialPointer (back, x, y - 36.0, false, false)
+            expect ((Drive::holding released).dial, synth::DialIdle)
+            expect ((Drive::holding released).dragging, 0 - 1)
+            expect ((Drive::holding released).dialEntry, "")
+            expect (frequency (Drive::holding released), coarse)
+            undone = prismTap (released, "Undo")
+            expect (structuralEquals ((Drive::holding undone).graph, before), true)
+            redone = prismTap (undone, "Redo")
+            expect (frequency (Drive::holding redone), coarse)
+            asked = dialTapped (prismTap (redone, "Undo"), "Frequency")
+            expect ((Drive::holding asked).dialEntry, "frequency")
+            viewShows (asked, "Frequency", true)
+            refused = Drive::choose (asked, "Frequency", "loud")
+            expect ((Drive::holding refused).dialEntry, "frequency")
+            expect (structuralEquals ((Drive::holding refused).graph, before), true)
+            typed = Drive::choose (refused, "Frequency", "523.25")
+            expect (frequency (Drive::holding typed), 523.25)
+            expect ((Drive::holding typed).dialEntry, "")
+            viewShows (typed, "Frequency", false)
+            expect (Drive::letters (typed, "523.25 Hz"), true)
 
 // A pure tone reaches the device at its exact pitch and level with no click at any block boundary.
 toneJourney hz =

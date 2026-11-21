@@ -1,0 +1,109 @@
+// [DAW-CONTROLS-DIAL] The dial: every number a module has is a round dial with its value beside it. Press it,
+// hold, and move up or down to turn it; Shift turns it a tenth as fast; a press without a move asks to type the
+// value; Escape puts back the value the drag began with. One turn is one step of undo. The same rows are drawn
+// in the canvas inspector and in Patch Controls, so there is one set of controls ([DAW-CONTROLS]).
+namespace synth
+
+import ui::Scenes
+
+(** A module's parameters as rows of dials: drawing, hit areas and the drag. *)
+module Dials
+    (** Rows are this far apart. *)
+    export pitch () = 44.0
+
+    radius () = 13.0
+
+    (** As many parameters as a panel holds. *)
+    export shown n = ui::Lists::slice (n.parameters, 0, 10)
+
+    signed value = ui::Pick::either (value < 0.0, "−${TimelineView::hundredths (0.0 - value)}", TimelineView::hundredths value)
+
+    suffix unit = match unit
+        Hertz => " Hz"
+        Seconds => " s"
+        _ => ""
+
+    (** A parameter's value as its dial and its module's card write it. *)
+    export reading p = "${signed p.initial}${suffix p.unit}"
+
+    paint colour = ui::Solid(tint = Scenes::hex (shiftRight colour 8, 1.0))
+
+    stroke width = ui::Line(width = width, dashes = [], bevel = false)
+
+    // The arc from the minimum round to `turned`.
+    arc (cx, cy, turned, colour, depth) = Scenes::path ([ui::MoveTo(toX = DialMath::tipX (cx, radius (), 0.0), toY = DialMath::tipY (cy, radius (), 0.0)), ui::ArcTo(radiusX = radius (), radiusY = radius (), rotation = 0.0, large = turned > 0.6667, sweep = true, toX = DialMath::tipX (cx, radius (), turned), toY = DialMath::tipY (cy, radius (), turned))], stroke 3.0, paint colour, depth)
+
+    // The ring round the dial being turned.
+    ring (cx, cy, depth) =
+        r = radius () + 6.0
+        Scenes::path ([ui::MoveTo(toX = cx - r, toY = cy), ui::ArcTo(radiusX = r, radiusY = r, rotation = 0.0, large = false, sweep = true, toX = cx + r, toY = cy), ui::ArcTo(radiusX = r, radiusY = r, rotation = 0.0, large = false, sweep = true, toX = cx - r, toY = cy)], stroke 1.5, paint (Scenes::rgb (167, 139, 250)), depth)
+
+    dial (p, cx, cy, lit, depth) =
+        turned = DialMath::turn (p.initial, p.minimum, p.maximum)
+        body = [arc (cx, cy, 1.0, Scenes::rgb (74, 66, 110), depth), Scenes::disc (cx, cy, radius () - 4.0, Scenes::rgb (40, 35, 66), depth + 1), Scenes::strip ([DialMath::tipX (cx, 3.0, turned), DialMath::tipY (cy, 3.0, turned), DialMath::tipX (cx, radius () - 5.0, turned), DialMath::tipY (cy, radius () - 5.0, turned)], TimelineView::ink (), 2.0, depth + 2)]
+        value = match turned > 0.01
+            true => [arc (cx, cy, turned, TimelineView::accent (), depth + 1)]
+            false => []
+        halo = match lit
+            true => [ring (cx, cy, depth + 1)]
+            false => []
+        listConcat body (listConcat value halo)
+
+    // The dial of `p` on module `n` is the one being turned.
+    lit (editor, n, p) = match editor.dial
+        DialHeld identity key _ _ _ => identity == n.identity && key == p.key
+        DialIdle => false
+
+    row (editor, n, p, x, cy, width, depth) = listConcat [EditorView::text (p.label, x, cy - 8.0, 13.0, 225, depth), Scenes::lettering (reading p, x + width, cy - 8.0, 13.0, TimelineView::ink (), 2, 600.0, depth)] (dial (p, x + width - 78.0, cy, lit (editor, n, p), depth))
+
+    (** The dial rows of module `n`: labels from `x`, values ending at `x + width`, the first row centred on `top`. *)
+    export shapes (editor, n, x, top, width, depth) = foldList (toList (range (0, length (shown n))), [], \(all, index) =>
+        match listGet (shown n) index
+            Error _ => all
+            Success p => listConcat all (row (editor, n, p, x, top + toFloat index * pitch (), width, depth)))
+
+    area (editor, n, p, x, cy, width) =
+        plain = EditorView::accessible ("${EditorView::componentName (editor, n)} ${p.label}", x + width - 100.0, cy - 20.0, 104.0, 40.0, false)
+        plain(accessValue = p.initial, accessMin = p.minimum, accessMax = p.maximum)
+
+    (** Each dial with its number as one hit area, named after the module and the parameter and carrying its value and range. *)
+    export access (editor, n, x, top, width) = foldList (toList (range (0, length (shown n))), [], \(all, index) =>
+        match listGet (shown n) index
+            Error _ => all
+            Success p => listAppend all (area (editor, n, p, x, top + toFloat index * pitch (), width)))
+
+    parameterOf (editor, identity, key) = match Graphs::node (editor.graph, identity)
+        Invalid _ => Error(message = "")
+        Valid n => ui::Lists::find (n.parameters, \p => p.key == key)
+
+    fine editor = ui::Pick::either (editor.fineHeld, 1.0, 0.0)
+
+    turnedTo (editor, identity, key, startY, startValue, py) = match parameterOf (editor, identity, key)
+        Error _ => editor
+        Success p => EditorState::typed (editor, EditParameter(identity = identity, key = key), "${DialMath::dragged (startValue, startY - py, p.minimum, p.maximum, fine editor)}")
+
+    // A held dial: a move turns it, a release ends the turn, and a press that never moved asks to type the value.
+    held (editor, identity, key, startY, startValue, moved, py, down) = match down
+        true => match moved || DialMath::moved (startY, py) > 0.5
+            false => editor
+            true => turnedTo (editor(dial = DialHeld(identity = identity, key = key, startY = startY, startValue = startValue, moved = true), dragging = identity), identity, key, startY, startValue, py)
+        false => match moved
+            true => editor(dial = DialIdle, dragging = -1)
+            false => editor(dial = DialIdle, dialEntry = key)
+
+    pressed (editor, n, top, py) = match listGet (shown n) (floatToInt (DialMath::row (py, top, pitch ())) ?: -1)
+        Error _ => Error(message = "")
+        Success p => Success(value = editor(dial = DialHeld(identity = n.identity, key = p.key, startY = py, startValue = p.initial, moved = false), dialEntry = ""))
+
+    (** The pointer over module `n`'s dial rows laid out as `shapes` draws them. A held dial takes every event until
+        its release; otherwise only a press on a dial or its number is the dials', and anything else is an error. *)
+    export pointed (editor, n, x, top, width, px, py, down) = match editor.dial
+        DialHeld identity key startY startValue moved => Success(value = held (editor, identity, key, startY, startValue, moved, py, down))
+        DialIdle => match down && px >= x + width - 100.0 && px <= x + width + 4.0
+            false => Error(message = "")
+            true => pressed (editor, n, top, py)
+
+    (** Escape puts back the value a turn began with, and closes a typed entry. *)
+    export escaped editor = match editor.dial
+        DialHeld identity key _ startValue _ => EditorState::typed (editor(dial = DialIdle, dragging = -1), EditParameter(identity = identity, key = key), "${startValue}")
+        DialIdle => editor(dialEntry = "")

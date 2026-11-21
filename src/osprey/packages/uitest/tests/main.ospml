@@ -204,6 +204,7 @@ test ("native views are found by what they say, and every host event keeps its w
     asked = drawn (native, [Requests::ask ("run:1", ui::Run(executable = "/bin/ps", arguments = [], timeout = 10, outputLimit = 64, plist = false, runSlice = "")), Requests::ask ("clock:1", ui::Animate(animated = true))])
     forEachList ([{ kinds = ["run", "animate"], want = true }, { kinds = ["choose-file"], want = false }], \row => reading (row.kinds, \kind => Seen::requested (asked, kind), row.want))
     expect ((Read::blank ()).renderedOrdinal, 0 - 1)
+    expect (length (Read::blank ()).renderedScenes, 0)
     // A control's value crosses as its words through the binding the view issued ([UI-EVENTS]).
     forEachList (meaningCases (), \row => expect (meant (row.binding, row.words), row.want))
     // A scene's input crosses as typed numbers in scene units, never as text.
@@ -512,6 +513,7 @@ test ("a scene's glyphs, lettering and paths read back typed, and keys and asks 
     expect (Seen::lettered seen, "Glyph text|Letters")
     expect (join (mapList (seen.renderedCurves, \c => join (mapList (c, \v => "${v}")) ",")) "|", "1.0,2.0,9.0,8.0")
     expect (seen.renderedOrdinal, 0)
+    expect (listGet seen.renderedScenes 0 ?: 0 - 1, 0)
     keyed = probeSent (probeSent (opened, probeTouch (ui::Hosting::key, 0, "space", true)), probeTouch (ui::Hosting::key, 0, "space", false))
     expect (join keyed.surfaceSession.sessionStore "|", "key space true|key space false")
     ask = (Seen::control (probeSeen keyed, "Ask")).controlOrdinal

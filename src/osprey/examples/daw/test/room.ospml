@@ -444,7 +444,7 @@ linkedCables (from, arm, source, socket, inlet, count) =
 // A chooser of the identified module's inspector.
 choseAt (driven, identity, label, value) =
     selected = inspectorSelected (driven, identity)
-    Drive::choose (selected, label, value)
+    Drive::choose (dialTapped (selected, label), label, value)
 
 // A chooser the identified module's inspector refuses.
 unchosenAt (driven, identity, label, value) = sameGraph (choseAt (driven, identity, label, value), driven)

@@ -1,5 +1,5 @@
-// [DAW-INSPECTOR] A module the skin has no artwork for gets the inspector the others have: its name, a slider
-// for every parameter and its connections, drawn on the canvas in the skin's style. Nothing here points at
+// [DAW-INSPECTOR] A module the skin has no artwork for gets the inspector the others have: its name, a dial
+// for every parameter ([DAW-CONTROLS-DIAL]) and its connections, drawn on the canvas in the skin's style. Nothing here points at
 // another panel: what can be changed is changed where it is shown.
 namespace synth
 
@@ -15,27 +15,6 @@ module ModuleInspector
     custom editor = match Graphs::node (editor.graph, editor.selected)
         Invalid _ => []
         Valid n => ui::Pick::either (PrismArt::role n.processor == "custom", [n], [])
-
-    // As many parameters as the panel holds.
-    shown n = ui::Lists::slice (n.parameters, 0, 10)
-
-    rowY index = 226.0 + toFloat index * 46.0
-
-    signed value = ui::Pick::either (value < 0.0, "−${TimelineView::hundredths (0.0 - value)}", TimelineView::hundredths value)
-
-    suffix unit = match unit
-        Hertz => " Hz"
-        Seconds => " s"
-        _ => ""
-
-    (** A parameter's value as the inspector and the module's card write it. *)
-    export reading p = "${signed p.initial}${suffix p.unit}"
-
-    parameterRow (editor, p, index) =
-        x = left editor
-        y = rowY index
-        fill = TimelineGeometry::meter (p.initial - p.minimum, p.maximum - p.minimum, track ())
-        [EditorView::text (p.label, x, y, 14.0, 210, 9), Scenes::lettering (reading p, x + track (), y, 14.0, TimelineView::ink (), 2, 500.0, 9), TimelineView::box (x, y + 26.0, track (), 4.0, Scenes::rgb (44, 39, 76), 9), TimelineView::box (x, y + 26.0, fill, 4.0, TimelineView::accent (), 10), Scenes::disc (x + fill, y + 28.0, 7.0, TimelineView::accent (), 11)]
 
     cables editor = filterList (editor.graph.cables, \c => c.source == editor.selected || c.destination == editor.selected)
 
@@ -53,39 +32,28 @@ module ModuleInspector
             Error _ => all
             Success c => listConcat all (connectionRow (editor, c, index, top)))
 
+    dialTop () = 240.0
+
     customShapes (editor, n) =
         x = left editor
-        rows = shown n
-        under = ui::Pick::either (length rows == 0, 190.0, rowY (length rows) + 14.0)
-        heading = ui::Pick::either (length rows == 0, [], [EditorView::text ("Parameters", x, 190.0, 16.0, 210, 9)])
-        sliders = foldList (toList (range (0, length rows)), [], \(all, index) =>
-            match listGet rows index
-                Error _ => all
-                Success p => listConcat all (parameterRow (editor, p, index)))
-        listConcat (listConcat [Scenes::rect (EditorView::rightX (editor, 1374.0), 446.0, 304.0, 690.0, 0.0, Scenes::rgb (19, 17, 35), 7), EditorView::text (EditorView::componentName (editor, n), x, 128.0, 24.0, 240, 8)] (listConcat heading sliders)) (listConcat [EditorView::text ("Connections", x, under, 16.0, 210, 9)] (connections (editor, under + 46.0)))
+        rows = length (Dials::shown n)
+        under = ui::Pick::either (rows == 0, 190.0, 226.0 + toFloat rows * Dials::pitch ())
+        heading = ui::Pick::either (rows == 0, [], [EditorView::text ("Parameters", x, 190.0, 16.0, 210, 9)])
+        listConcat (listConcat [Scenes::rect (EditorView::rightX (editor, 1374.0), 446.0, 304.0, 690.0, 0.0, Scenes::rgb (19, 17, 35), 7), EditorView::text (EditorView::componentName (editor, n), x, 128.0, 24.0, 240, 8)] (listConcat heading (Dials::shapes (editor, n, x, dialTop (), track (), 9)))) (listConcat [EditorView::text ("Connections", x, under, 16.0, 210, 9)] (connections (editor, under + 46.0)))
 
     (** What the graph adds to the canvas inspector for the selected module. *)
     export shapes editor = match listGet (custom editor) 0
         Error _ => connections (editor, 497.0)
         Success n => customShapes (editor, n)
 
-    (** A custom module's parameter sliders as hit areas, named after the module and the parameter. *)
+    (** A custom module's dials as hit areas, named after the module and the parameter. *)
     export access editor = match listGet (custom editor) 0
         Error _ => []
-        Success n => foldList (toList (range (0, length (shown n))), [], \(all, index) =>
-            match listGet (shown n) index
-                Error _ => all
-                Success p => listAppend all (EditorView::accessible ("${EditorView::componentName (editor, n)} ${p.label}", left editor, rowY index + 16.0, track (), 24.0, false)))
+        Success n => Dials::access (editor, n, left editor, dialTop (), track ())
 
-    slid (editor, n, p, px) = EditorState::typed (editor, EditParameter(identity = n.identity, key = p.key), "${TimelineGeometry::fader (px, left editor, track (), p.minimum, p.maximum)}")
-
-    (** A press or a drag on one of those sliders sets its parameter; anywhere else is not the inspector's. *)
+    (** A press or a drag on one of those dials turns its parameter; anywhere else is not the inspector's. *)
     export pointed (editor, px, py, down) = match listGet (custom editor) 0
         Error _ => Error(message = "")
-        Success n =>
-            index = floatToInt (TimelineGeometry::rowAt (py - 21.0, 46.0)) ?: -1
-            match down && !editor.detailsShown && px >= left editor - 8.0 && px <= left editor + track () + 8.0 && py >= rowY index + 16.0 && py <= rowY index + 40.0
-                false => Error(message = "")
-                true => match listGet (shown n) index
-                    Error _ => Error(message = "")
-                    Success p => Success(value = slid (editor, n, p, px))
+        Success n => match editor.detailsShown
+            true => Error(message = "")
+            false => Dials::pointed (editor, n, left editor, dialTop (), track (), px, py, down)

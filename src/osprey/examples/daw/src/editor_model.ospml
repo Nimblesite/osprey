@@ -116,6 +116,15 @@ type Keymap =
     name : string
     shortcuts : List<Shortcut>
 
+type DialTurn =
+    DialIdle
+    DialHeld
+        identity : int
+        key : string
+        startY : float
+        startValue : float
+        moved : bool
+
 type Editor G P S M =
     skin : M
     graph : G
@@ -188,6 +197,9 @@ type Editor G P S M =
     songTicket : string
     keymap : Keymap
     keysPath : string
+    dial : DialTurn
+    dialEntry : string
+    fineHeld : bool
 
 type EditorAction =
     Undo
@@ -281,3 +293,4 @@ type EditorAction =
     UseKeymap
         name : string
     LoadKeymap
+    Controls
