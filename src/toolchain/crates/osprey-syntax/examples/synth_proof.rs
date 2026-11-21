@@ -42,6 +42,7 @@ fn binder(name: &str) -> Result<String, String> {
             | "integral"
             | "abs"
             | "hann"
+            | "window"
             | "basePhase"
             | "pulse"
             | "delay"
@@ -155,8 +156,8 @@ fn callee(e: &Expr) -> Result<String, String> {
             return match path.to_string().as_str() {
                 "FitMath::clip" => Ok("FitMath.clip ops".into()),
                 "GrainMath::asr" => Ok("ops.asr".into()),
-                "PhaseMath::window" => Ok("ops.window".into()),
-                "PhaseMath::windowedPhase" => Ok("ops.windowedPhase".into()),
+                "PhaseMath::window" => Ok("PhaseMath.window ops".into()),
+                "PhaseMath::windowedPhase" => Ok("PhaseMath.windowedPhase ops".into()),
                 "DelayLines::push" => Ok("DelayLines.push ops".into()),
                 "DelayLines::tap" => Ok("ops.tap".into()),
                 "TableMath::harmonic" => Ok("TableMath.harmonic ops".into()),
@@ -182,6 +183,7 @@ fn callee(e: &Expr) -> Result<String, String> {
         "satAdd" | "toFloat" | "sin" | "cos" => Ok(format!("ops.{name}")),
         "curve" | "integral" => Ok(format!("Waveshapers.{} ops", ident(name)?)),
         "basePhase" | "pulse" => Ok(format!("PhaseOperators.{} ops", ident(name)?)),
+        "window" => Ok("PhaseMath.window ops".into()),
         "hann" => Ok("GrainWindows.hann ops".into()),
         "gated" => Ok("ArrangeMath.gated ops".into()),
         "listGet" => Ok("readBin".into()),
@@ -268,6 +270,7 @@ fn term(e: &Expr) -> Result<String, String> {
     match e {
         Expr::Identifier(n) => ident(n),
         Expr::Integer(n) if *n >= 0 => Ok(n.to_string()),
+        Expr::Float(n) if n.to_bits() == std::f64::consts::PI.to_bits() => Ok("ops.pi".into()),
         Expr::Float(n) if n.to_bits() == std::f64::consts::TAU.to_bits() => Ok("ops.tau".into()),
         Expr::Float(n) if n.to_bits() == 0.5_f64.to_bits() => Ok("ops.half".into()),
         Expr::Float(n) if n.to_bits() == 0.00001_f64.to_bits() => Ok("ops.epsilon".into()),

@@ -11,6 +11,10 @@ pub(super) fn signatures(module: &str) -> Result<&'static [Signature], String> {
             ("gated", &["α", "α", "α", "α"], "α"),
             ("enveloped", &["α", "α", "α", "α", "α", "α"], "α"),
         ],
+        "PhaseMath" => &[
+            ("window", &["α"], "α"),
+            ("windowedPhase", &["α", "α", "α"], "α"),
+        ],
         "PhaseOperators" => &[
             ("basePhase", &["α", "α"], "α"),
             ("pulse", &["α", "Pulse α"], "α"),

@@ -77,8 +77,7 @@ structure Ops (α : Type) where
   incompleteFrame : Fault
   tap : DelayLine α → α → Except Fault α
   tau : α
-  window : α → α
-  windowedPhase : α → α → α → α
+  pi : α
   half : α
   epsilon : α
   abs : α → α
@@ -429,8 +428,22 @@ theorem wavePulseZeroIndices (ops : Ops α) (phase d r₁ r₂ p₁ p₂ : α)
 
 /-- Smart (8). A pulse uses the index, ratio and offset of its own controls. -/
 theorem phasePulse (ops : Ops α) (t : α) (p : Pulse α) :
-    PhaseOperators.pulse ops t p = ops.times (ops.times (ops.window t) p.index)
+    PhaseOperators.pulse ops t p = ops.times (ops.times (ops.sin (ops.times ops.pi t)) p.index)
       (ops.sin (ops.times ops.tau (ops.plus (ops.times p.ratio t) p.offset))) := rfl
+
+/-- Smart (5)–(6), including both sine arguments from the production phase helpers. -/
+theorem windowedModulation (ops : Ops α) (phase index ratio : α) :
+    PhaseOperators.shaped ops (.WindowedPhase index ratio) phase =
+      ops.plus phase (ops.times (ops.times (ops.sin (ops.times ops.pi phase)) index)
+        (ops.sin (ops.times (ops.times ops.tau ratio) phase))) := rfl
+
+/-- Zero modulation index recovers the incoming phase under the scalar zero laws. -/
+theorem windowedZeroIndex (ops : Ops α) (phase ratio : α)
+    (timesZero : ∀ x, ops.times x (ops.literal 0) = ops.literal 0)
+    (zeroTimes : ∀ x, ops.times (ops.literal 0) x = ops.literal 0)
+    (plusZero : ∀ x, ops.plus x (ops.literal 0) = x) :
+    PhaseOperators.shaped ops (.WindowedPhase (ops.literal 0) ratio) phase = phase := by
+  rw [windowedModulation, timesZero, zeroTimes, plusZero]
 
 /-- Smart (7) and (9). Each segment contributes its own pulse on a local ramp. -/
 theorem wavePulseSegments (ops : Ops α) (phase d : α) (first second : Pulse α) :

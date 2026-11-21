@@ -15,6 +15,7 @@ allpass="${source%/*}/allpasses.ospml"
 shaper="${source%/*}/waveshapers.ospml"
 interpolation="${source%/*}/interpolation.ospml"
 phase="${source%/*}/phase_operators.ospml"
+phase_math="${source%/*}/phase_math.ospml"
 grain="${source%/*}/grain_windows.ospml"
 streams="${source%/*}/spectral_streams.ospml"
 checker="$root/target/proof/openai/check-batch"
@@ -22,7 +23,7 @@ mkdir -p "$out"
 reflect() {
     local file
     local bodies=()
-    for file in "${source%/*}/delay_lines.ospml" "${source%/*}/fit_math.ospml" "${arrange%/*}/dial_math.ospml" "${arrange%/*}/canvas_geometry.ospml" "${arrange%/*}/timeline_geometry.ospml" "$arrange" "$table" "$waves" "$math" "$source" "$frames" "$strike" "$allpass" "$shaper" "$interpolation" "$phase" "$grain" "$streams"; do
+    for file in "${source%/*}/delay_lines.ospml" "${source%/*}/fit_math.ospml" "${arrange%/*}/dial_math.ospml" "${arrange%/*}/canvas_geometry.ospml" "${arrange%/*}/timeline_geometry.ospml" "$arrange" "$table" "$waves" "$math" "$source" "$frames" "$strike" "$allpass" "$shaper" "$interpolation" "$phase_math" "$phase" "$grain" "$streams"; do
         if [[ "$file" == "${1:-}" ]]; then file="$out/mutant.ospml"; fi
         bodies+=("$file")
     done
@@ -45,7 +46,7 @@ check_export() {
         printf '%s\t%s\n' "$out/$file" "$name" | "$checker.$backend"
     fi
 }
-for theorem in supportedTransformDepths transformSchedule overlapNecessary hannEnergyEighth hannEnergyQuarter delayPropagation delayFullTraversal heardTimeClamped dialMovement canvasGrabOffset envelopeSustain envelopeReleased stridedQuartet additiveSample additivePeriod rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
+for theorem in windowedModulation windowedZeroIndex supportedTransformDepths transformSchedule overlapNecessary hannEnergyEighth hannEnergyQuarter delayPropagation delayFullTraversal heardTimeClamped dialMovement canvasGrabOffset envelopeSustain envelopeReleased stridedQuartet additiveSample additivePeriod rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
     name="ProductionFft.$theorem"
     LEAN_PATH="$out:$lean_path" "$exporter" ProductionFft -- "$name" > "$out/$theorem.ndjson"
     for backend in gc arc wasm; do
@@ -75,6 +76,8 @@ reject_edit() {
     awk -F: -v start="$start" -v end="$end" '/ProductionFft.lean:[0-9]+:[0-9]+: error:/ && $2 >= start && $2 < end { rejected=1 } END {exit !rejected}' "$out/rejected.log"
     echo "REJECT $theorem production mutation"
 }
+reject_edit phasePulse 's/sin (3.141592653589793 \* t)/cos (3.141592653589793 * t)/' "$phase_math"
+reject_edit windowedModulation 's/6.283185307179586 \* ratio \* phase/6.283185307179586 * phase * ratio/' "$phase_math"
 reject_edit supportedTransformDepths 's/2048, 4096]/2048, 2048]/'
 reject_edit transformSchedule 's/step = satAdd stride stride/step = satAdd stride 1/'
 reject_edit transformSchedule 's/listConcat halves.lower halves.upper/listConcat halves.upper halves.lower/'
