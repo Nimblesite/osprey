@@ -184,3 +184,4 @@ _test_synthesis_proofs: _test_proof_batch_arc
 		printf '%s\t%s\n' "$$export_file" "$$theorem" | target/proof/openai/check-batch.arc > "$$export_file.result"; \
 		cat "$$export_file.result"; test "$$(cat "$$export_file.result")" = "PASS $$theorem | axioms: none"; \
 	done
+	@bash scripts/proof/production-fft.sh

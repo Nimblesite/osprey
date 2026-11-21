@@ -91,6 +91,18 @@ The same gate checks the following results in exact arithmetic.
 
 The FFT proofs use a finite polynomial for each frequency bin. `radixTwoSplit` separates even and odd samples at the squared root of unity; `radixTwoUpper` negates the odd contribution for the upper bin. `realBinConjugate` conjugates each term of a real-input transform, the identity underlying half-spectrum storage. `binAdditive` and `binHomogeneous` establish superposition by distributing bin weights over each input. These proofs cover exact arithmetic. [Smith, decimation in time (A.1)](https://www.dsprelated.com/freebooks/mdft/Decimation_Time.html) · [Radix 2 FFT](https://www.dsprelated.com/freebooks/mdft/Radix_2_FFT.html) · [Symmetry](https://www.dsprelated.com/freebooks/mdft/Symmetry.html) · [Linearity](https://www.dsprelated.com/freebooks/mdft/Linearity.html)
 
+#### Proofs of handwritten Osprey bodies [SYNTH-DSP-PROOFS-PRODUCTION]
+
+The synthesis CI gate parses the shipped `src/osprey/packages/synth/src/ffts.ospml` with the Osprey ML frontend. It translates the canonical syntax trees of `Ffts.added`, `subtracted`, `rotated`, `combined`, `quartet` and `conjugate` into definitions for the proof kernel. Unsupported syntax stops the gate. The translator and its mappings for list constructors, records and primitive calls are part of the trust boundary.
+
+| Production proof | Property checked for every input |
+| --- | --- |
+| `ProductionFft.combinedCorrect` | Each paired even/odd bin yields a lower sum and upper difference in input order, with the correct rotation arguments, sign, size and successive indices. Output stops at the shorter input. |
+| `ProductionFft.quartetCorrect` | The fused four-sample base case computes two consecutive radix-two stages, including the twiddle arguments and the order of all four outputs. |
+| `ProductionFft.conjugateComponents` and `conjugateTwice` | Conjugation preserves the real component and subtracts the imaginary component from zero. Double conjugation recovers the bin under the stated scalar involution law. |
+
+These proofs quantify over scalar operations, including the twiddle and complex-product primitives. They check the same sequence of calls even when those operations round. Their numerical accuracy, the recursion in `Ffts.transform`, and correctness of native code generation are separate obligations. CI independently regenerates the body after three production-source mutations and requires the corresponding theorem to fail. [Smith, radix-two butterfly](https://www.dsprelated.com/freebooks/mdft/Radix_2_FFT.html)
+
 Each checked proof must identify its source result, hypotheses, corresponding library operation and CI entry point. A real-arithmetic derivation establishes the ideal operation; claims about rendered samples also require a bound or equivalence for the implemented arithmetic.
 
 ## Spectral processing [SYNTH-SPECTRAL]
