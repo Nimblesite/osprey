@@ -194,7 +194,7 @@ pluginUiJourney () =
     armedModulator = prismTap (lfoPatch, "Canvas output 5:0")
     inspectorShows (armedModulator, 0, "Modulate Delay")
     controlled = inspectorAction (armedModulator, 0, "Modulate Delay")
-    projectPluginJourney (Drive::holding controlled)
+    projectPluginJourney (Drive::holding (choseAt (controlled, 1, "Delay", "0.25")))
     hostedModulationJourney (Drive::holding controlled).graph
     cablesOf (controlled, 5)
     unbound = cutCable (controlled, "Cable 5:0 to 0:1")
@@ -380,7 +380,11 @@ projectPluginJourney editor =
     succeeds (daw::PatchRecords::savedAt (song, 0, editor.graph, editor.positions), \saved => succeeds (reopened saved, \opened =>
         succeeds (daw::TrackPatches::picked (opened, 0), \graph =>
             expect (structuralEquals (graph, editor.graph), true)
-            bindings = synth::Plugins::projectBindings graph
+            first = synth::DawSession::opened (editor(song = opened, catalog = []), 0)
+            expect (structuralEquals (first.graph, graph), true)
+            missing = synth::GraphPreview::play (first, "macos")
+            expect (contains missing.stepStore.message "unavailable in the configured folder", true)
+            bindings = first.pluginBindings
             expect (length bindings, 2)
             forEachList (bindings, \binding =>
                 expect (binding.pluginModule, "")
@@ -639,21 +643,23 @@ playedSong ratio =
     bell = bellTrack ()
     keys = keysTrack ()
     tap = daw::AudioSend(sendId = 1, source = 1, outlet = 0, bus = "pads", level = 0.5, enabled = true)
-    tracks = [playedKick [playedNote (0.0, 0.05), playedNote (0.1, 0.05), playedNote (0.125, 0.05)], bell(bus = "pads", notes = [playedNote (0.05, 0.1), playedNote (0.2, 0.1)]), keys(pan = 0.3, sends = [tap], notes = [playedNote (0.0, 0.015), playedNote (0.2, 0.015)])]
+    pair = daw::OperatorInstrument(tone = daw::Tone(breakpoint = 0.4, feedback = 0.15, attack = 0.01, release = 0.015, bloom = 0.1, detune = -8.0))
+    op = bell(name = "pair", instrument = pair, sends = [tap], notes = [playedNote (0.01, 0.03), playedNote (0.02, 0.06), playedNote (0.12, 0.03)])
+    tracks = [op, playedKick [playedNote (0.0, 0.05), playedNote (0.1, 0.05), playedNote (0.125, 0.05)], bell(bus = "pads", notes = [playedNote (0.05, 0.1), playedNote (0.2, 0.1)]), keys(pan = 0.3, sends = [tap], notes = [playedNote (0.0, 0.015), playedNote (0.2, 0.015)])]
     routedTo (timeline tracks, [playedBus ratio])
 
 // Master's next block is exactly `size` frames on each side, and nothing else leaves it.
-playedBlock (song, outcome, size) = match outcome
+playedBlock (song, streaming, outcome, size) = match outcome
     Error why => Error(message = why)
-    Success take => match daw::Playback::next (song, take.playing, size)
+    Success take => match daw::Playback::step (song, take.playing, size, streaming)
         Error why => Error(message = why)
         Success played =>
             expect (length played.left, size)
             expect (length played.right, size)
             Success(value = daw::Take(playing = played.playing, lefts = listAppend take.lefts played.left, rights = listAppend take.rights played.right))
 
-playedIn (song, sizes, check) = succeeds (daw::Playback::start song, \playing =>
-    succeeds (foldList (sizes, Success(value = daw::Take(playing = playing, lefts = [], rights = [])), \(outcome, size) => playedBlock (song, outcome, size)), \take =>
+playedIn (song, streaming, sizes, check) = succeeds (daw::Playback::start song, \playing =>
+    succeeds (foldList (sizes, Success(value = daw::Take(playing = playing, lefts = [], rights = [])), \(outcome, size) => playedBlock (song, streaming, outcome, size)), \take =>
         expect (take.playing.cursor, 6000)
         check (daw::Take(playing = take.playing, lefts = [ui::Lists::flatten take.lefts], rights = [ui::Lists::flatten take.rights]))))
 
@@ -786,16 +792,16 @@ masterPlayJourney () =
     livePatchDialJourney ()
     liveKnobJourney ()
     song = playedSong 4.0
-    playedIn (song, [6000], \whole =>
+    playedIn (song, false, [6000], \whole =>
         expect (loudest (sideOf (whole, false)) > 0.01, true)
         expect (loudest (sideOf (whole, true)) > 0.01, true)
         // Any block size plays the same Master: every stage carries its state across the block edge.
         forEachList ([[1000, 1000, 1000, 1000, 1000, 1000], [4097, 1903], [3000, 3000], [1, 2499, 1, 3499], [2500, 2500, 1000]], \sizes =>
-            playedIn (song, sizes, \blocks => sameMaster (whole, blocks)))
+            forEachList ([false, true], \streaming => playedIn (song, streaming, sizes, \blocks => sameMaster (whole, blocks))))
         // Tracks play together, so their order in the project does not change Master.
-        playedIn (song(tracks = listReverse song.tracks), [2048, 2048, 1904], \reordered => sameMaster (whole, reordered))
+        playedIn (song(tracks = listReverse song.tracks), false, [2048, 2048, 1904], \reordered => sameMaster (whole, reordered))
         // The kick keys the pads bus inside the same block it sounds in.
-        playedIn (playedSong 1.0, [6000], \open => expect (sidesDiffer (sideOf (whole, false), sideOf (open, false)), true)))
+        playedIn (playedSong 1.0, false, [6000], \open => expect (sidesDiffer (sideOf (whole, false), sideOf (open, false)), true)))
     // A bad note or route fails before anything plays.
     failsWith (daw::Playback::start (timeline [playedKick [playedNote (sqrt (-1.0), 0.1)]]), "kick: a note start is not finite.")
     failsWith (daw::Playback::start (timeline [playedKick [playedNote (0.5, 0.1), playedNote (-0.25, 0.1)]]), "kick: a note starts before the piece.")
