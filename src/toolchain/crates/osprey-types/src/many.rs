@@ -38,6 +38,18 @@ pub(crate) fn applies(program: &Program) -> bool {
 ///
 /// # Errors
 /// Names each construct a continuation cannot cross.
+/// The effects whose handlers run as closures rather than on a suspended stack,
+/// so a target needs no continuation support of its own for them
+/// ([MULTI-WASM]).
+#[must_use]
+pub fn captured_effects(program: &Program) -> std::collections::BTreeSet<String> {
+    if !applies(program) {
+        return std::collections::BTreeSet::new();
+    }
+    let table = table::Table::collect(program);
+    escape::solve(&table, program).captured
+}
+
 pub(crate) fn lower(program: &Program) -> Result<Program, Vec<TypeError>> {
     let table = table::Table::collect(program);
     let facts = escape::solve(&table, program);
