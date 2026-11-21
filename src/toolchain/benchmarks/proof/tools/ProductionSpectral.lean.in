@@ -284,4 +284,60 @@ theorem additivePeriod (ops : Ops α) (partials : List (Harmonic α)) (position 
     simp only [Wavetables.value, foldList, List.foldl_cons, shifted]
     exact ih _
 
+open Ffts SpectralFrames
+
+/-- With exact scalar addition and multiplication, conjugating a finite bin
+    of real samples amounts to conjugating its root. The complex addition,
+    product and conjugation in the polynomial are production Osprey bodies. -/
+theorem realSamplesConjugate (ops : Ops α) (neg : α → α) (root : Bin α) (samples : List α)
+    (negate : ∀ a, ops.minus (ops.literal 0) a = neg a)
+    (negZero : neg (ops.literal 0) = ops.literal 0)
+    (involutive : ∀ a, neg (neg a) = a)
+    (negAdd : ∀ a b, neg (ops.plus a b) = ops.plus (neg a) (neg b))
+    (mulNeg : ∀ a b, ops.times a (neg b) = neg (ops.times a b))
+    (negMul : ∀ a b, ops.times (neg a) b = neg (ops.times a b)) :
+    let zero : Bin α := ⟨ops.literal 0, ops.literal 0⟩
+    let frame := samples.map (fun x => (⟨x, ops.literal 0⟩ : Bin α))
+    conjugate ops (Synthesis.bin (added ops) (turned ops) zero root id frame) =
+      Synthesis.bin (added ops) (turned ops) zero (conjugate ops root) id frame := by
+  have sum (a b : Bin α) : conjugate ops (added ops a b) =
+      added ops (conjugate ops a) (conjugate ops b) := by
+    unfold conjugate added; dsimp only; rw [negate, negate, negate, negAdd]
+  have product (a b : Bin α) : conjugate ops (turned ops a b) =
+      turned ops (conjugate ops a) (conjugate ops b) := by
+    unfold conjugate turned SpectralMath.productRe SpectralMath.productIm
+    dsimp only
+    rw [negate, negate, negate, mulNeg, negMul, involutive, mulNeg, negMul, negAdd]
+  have real (x : α) : conjugate ops ⟨x, ops.literal 0⟩ = ⟨x, ops.literal 0⟩ := by
+    unfold conjugate; dsimp only; rw [negate, negZero]
+  induction samples with
+  | nil => exact real _
+  | cons x xs ih =>
+    dsimp only [List.map, Synthesis.bin, id] at ih ⊢
+    rw [sum, product, real, ih]
+
+/-- DFT superposition for pointwise addition, with both complex operations
+    extracted from Osprey. The hypotheses describe exact scalar arithmetic. -/
+theorem addedDftBin (ops : Ops α) (zero : α) (root : Bin α) (x y : ι → Bin α) (indices : List ι)
+    (identity : ∀ a, ops.plus a zero = a)
+    (assoc : ∀ a b c, ops.plus (ops.plus a b) c = ops.plus a (ops.plus b c))
+    (comm : ∀ a b, ops.plus a b = ops.plus b a)
+    (dist : ∀ a b c, ops.times a (ops.plus b c) = ops.plus (ops.times a b) (ops.times a c))
+    (subSums : ∀ a b c d, ops.minus (ops.plus a b) (ops.plus c d) =
+      ops.plus (ops.minus a c) (ops.minus b d)) :
+    Synthesis.bin (added ops) (turned ops) ⟨zero, zero⟩ root (fun i => added ops (x i) (y i)) indices =
+      added ops (Synthesis.bin (added ops) (turned ops) ⟨zero, zero⟩ root x indices)
+        (Synthesis.bin (added ops) (turned ops) ⟨zero, zero⟩ root y indices) := by
+  have exchange (a b c d : α) : ops.plus (ops.plus a b) (ops.plus c d) =
+      ops.plus (ops.plus a c) (ops.plus b d) := by
+    rw [assoc a b, ← assoc b c, comm b c, assoc c b, assoc a c]
+  apply Synthesis.binAdditive
+  · intro a; cases a; unfold added; dsimp only; rw [identity, identity]
+  · intro a b c; unfold added; dsimp only; rw [assoc, assoc]
+  · intro a b; unfold added; rw [comm a.re, comm a.im]
+  · intro a b c
+    unfold added turned SpectralMath.productRe SpectralMath.productIm
+    dsimp only
+    rw [dist, dist, dist, dist, subSums, exchange]
+
 end ProductionFft
