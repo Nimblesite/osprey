@@ -155,9 +155,22 @@ module EditorApp
         true => DawSession::ended (editor, TimelineView::endAt (editor, x - Header::shift editor))
         false => Runtime::step (editor(armedNote = -1))
 
+    // [DAW-MIX-DRAG] The held fader takes the value under the pointer; off the fader it keeps its last value.
+    faderAt (editor, x, y) = match DawSession::tappedAt (editor, x, y)
+        Success (AdjustMix index gain pan) => match index == editor.armedNote
+            true => DawSession::slid (editor, index, gain, pan)
+            false => editor
+        _ => editor
+
+    faderDrag (editor, x, y, down) = match down
+        true => Runtime::step (faderAt (editor, x, y))
+        false => DawSession::dropped (faderAt (editor, x, y))
+
     songPointer (context, editor, x, y, down) = match editor.armedNote == endHeld
         true => endDrag (editor, x, down)
-        false => songTap (context, editor, x, y, down)
+        false => match DawSession::holding editor
+            true => faderDrag (editor, x, y, down)
+            false => songTap (context, editor, x, y, down)
 
     songTap (context, editor, x, y, down) = match DawSession::tappedAt (editor, x, y)
         Success (SelectNote index) => match down
@@ -170,11 +183,9 @@ module EditorApp
         MoveEnd bar => match down
             true => DawSession::ended (editor(armedNote = endHeld), bar)
             false => Runtime::step editor
-        AdjustMix index _ _ _ => match down
-            true => Runtime::step (editor(armedNote = index))
-            false => match editor.armedNote == index
-                true => tapped (context, editor(armedNote = -1), action)
-                false => Runtime::step editor
+        AdjustMix index gain pan => match down
+            true => Runtime::step (DawSession::slid (editor, index, gain, pan))
+            false => Runtime::step editor
         SetVelocity _ => match down
             true => Runtime::step (editor(armedNote = editor.selectedNote))
             false => match editor.selectedNote >= 0 && editor.armedNote == editor.selectedNote

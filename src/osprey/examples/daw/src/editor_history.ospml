@@ -3,7 +3,8 @@ namespace synth
 
 (** Bounded project history, independent of runtime session ownership. *)
 module EditorHistory
-    snapshot editor = GraphSnapshot(savedGraph = editor.graph, savedSong = editor.song, savedTrack = editor.track, savedPatchTrack = editor.patchTrack, savedTimelineNote = editor.selectedNote, savedNextIdentity = editor.nextIdentity, savedPositions = editor.positions, savedBindings = editor.pluginBindings, savedSelected = editor.selected, savedNote = editor.note)
+    (** The project and working patch as they stand, for history or to hold while a gesture is under way. *)
+    export snapshot editor = GraphSnapshot(savedGraph = editor.graph, savedSong = editor.song, savedTrack = editor.track, savedPatchTrack = editor.patchTrack, savedTimelineNote = editor.selectedNote, savedNextIdentity = editor.nextIdentity, savedPositions = editor.positions, savedBindings = editor.pluginBindings, savedSelected = editor.selected, savedNote = editor.note)
 
     same (a, b) = structuralEquals (a.savedGraph, b.savedGraph) && structuralEquals (a.savedPositions, b.savedPositions) && structuralEquals (a.savedBindings, b.savedBindings)
 
