@@ -311,11 +311,7 @@ prismControlJourney opened =
     offeredIn (faster, "LFO Rate: 1/8", true)
     cablesOf (faster, 4)
 
-prismAudio graph = match synth::GraphClips::advance (graph, [], 128)
-    Error why => Error(message = why)
-    Success action => match action
-        synth::ClipWaiting _ _ _ => Error(message = "Built-in graph unexpectedly requested a plug-in.")
-        synth::ClipReady clips => synth::ClipInputs::completed (clips, 3)
+prismAudio graph = clipReady (graph, 128, 3)
 
 prismAudioJourney (sine, triangle, muted) = match prismAudio sine
     Error _ => expect (false, true)
@@ -431,11 +427,7 @@ filterSocketJourney () =
 // [PRISM-ROUTING-CABLES] Normalized cutoff endpoints and invalid samples exercise real DSP.
 cutoffOutput (graph, value) =
     control = synth::NodeClip(clipNode = 4, clipChannels = 1, clipSamples = mapList (toList (range (0, 128)), \_ => value), clipNotes = [])
-    match synth::GraphClips::advance (graph, [control], 128)
-        Error why => Error(message = why)
-        Success action => match action
-            synth::ClipWaiting _ _ _ => Error(message = "A built-in filter requested a plug-in.")
-            synth::ClipReady clips => synth::ClipInputs::completed (clips, 3)
+    unhosted (synth::GraphClips::advance (graph, [control], 128), 3)
 
 cutoffAudioJourney () =
     base = synth::EditorState::preset ()
