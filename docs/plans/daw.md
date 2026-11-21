@@ -119,7 +119,7 @@ Reported by the user on 2026-11-21 with two screenshots of a tall, narrow window
 
 - [ ] **Hear each knob move while the song plays [DAW-TRANSPORT-LIVE-CONTROLS].** During a drag, the dial, its displayed value and the playing track must follow the same accepted parameter Signal. Verify the next audio block of a held note, subsequent notes, mixer and bus controls, Undo and a looping song. Measure the time to audible output while dragging on the codex song. The original held-note regression measured a peak of 0.353518 on both channels after gain was set to zero.
   - [x] A held note reaches exact silence in both channels on the next block and resumes when gain is raised. Retuning it preserves oscillator phase under GC and ARC.
-  - [x] On the 17-track codex project at beat 64, changing tablepad Gain from 0.8 to zero changed the next 160-frame packet against identical unedited playback. CoreAudio returned that packet 35.0 ms after publication. The device reported 17 empty callbacks during 10,240 frames.
+  - [x] On the 17-track codex project at beat 64, changing tablepad Gain from 0.8 to zero changed the next 160-frame packet against identical unedited playback. Reusing the active note’s wavetable reduced the time from publication to the changed packet from 27.7 ms to 3.6 ms. CoreAudio returned the packet after 10.8 ms (previously 35.0 ms). The device reported 17 empty callbacks during 10,240 frames.
 
 Reported by the user on 2026-11-21: dragging the Track Inspector's Gain and Pan sliders is very clunky, with a huge delay.
 

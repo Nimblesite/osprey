@@ -40,10 +40,10 @@ module PatchVoices
         true => told (synth::Wavetables::classic (size, count))
         false => Error(message = "The wavetable harmonic count is outside the table's bounds.")
 
+    tableSize item = ui::Pick::either (item.size == 0, 1024, item.size)
+
     tableNode item =
-        size = match item.size == 0
-            true => 1024
-            false => item.size
+        size = tableSize item
         chained (option (item, "harmonics", 128), \count => chained (classic (size, count), \table => ok (synth::Components::wavetable (item.identity, table, 220.0))))
 
     sources item = match item.component
@@ -164,7 +164,7 @@ module PatchVoices
         false => Error(message = "Module \"${component}\" has no such setting.")
         true => ok (synth::Patches::adjusted (n, mapList (settings, \setting => synth::ParameterValue(node = n.identity, key = setting.key, value = resolved (note, setting)))))
 
-    nodeAdded (note, outcome, item) = chained (outcome, \nodes => chained (made item, \n => chained (placed (note, item, n), \tuned => ok (listAppend nodes tuned))))
+    nodeAdded (note, outcome, item, make) = chained (outcome, \nodes => chained (make item, \n => chained (placed (note, item, n), \tuned => ok (listAppend nodes tuned))))
 
     cabled routing = mapList (routing.cables, \cable => synth::Components::route (cable.source, cable.outlet, cable.destination, cable.inlet))
 
@@ -195,8 +195,34 @@ module PatchVoices
         synth::Invalid fault => Error(message = "The routing is not a valid graph: ${fault}.")
         synth::Valid graph => ok graph
 
-    (** The routing as one graph, its settings resolved for `note`: what a note plays and Prism edits. *)
-    export patched (note, routing) = chained (foldList (routing.nodes, ok [], \(outcome, item) => nodeAdded (note, outcome, item)), \nodes => graphed (nodes, cabled routing))
+    assembled (note, routing, make) = chained (foldList (routing.nodes, ok [], \(outcome, item) => nodeAdded (note, outcome, item, make)), \nodes => graphed (nodes, cabled routing))
+
+    (** The routing as one graph, with its settings resolved for this note. *)
+    export patched (note, routing) = assembled (note, routing, made)
+
+    sameAsset (item, resource) = item.asset == resource.name || item.asset == "" && resource.name == builtinName
+
+    reused (item, previous) = match previous.processor
+        synth::TableOscillator table => match item.component == "wavetable" && tableSize item == table.size
+            true => chained (option (item, "harmonics", 128), \count =>
+                match count == table.harmonics
+                    true => ok (synth::Components::wavetable (item.identity, table, 220.0))
+                    false => made item)
+            false => made item
+        synth::SamplePlayer resource => match item.component == "sample" && sameAsset (item, resource)
+            true => ok (synth::Components::samplePlayer (item.identity, resource))
+            false => made item
+        synth::Granular resource _ _ => match item.component == "grainCloud" && sameAsset (item, resource)
+            true => ok (synth::Components::granular (item.identity, resource, room item.size, item.seed))
+            false => made item
+        _ => made item
+
+    restored (graph, item) = match synth::Graphs::node (graph, item.identity)
+        synth::Valid previous => reused (item, previous)
+        synth::Invalid _ => made item
+
+    (** Resolve new controls against the note while retaining its loaded samples and generated wavetables. *)
+    export repatched (note, routing, graph) = assembled (note, routing, \item => restored (graph, item))
 
     member (ids, identity) = length (filterList (ids, \known => known == identity)) > 0
 

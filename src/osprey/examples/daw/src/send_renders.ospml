@@ -115,8 +115,10 @@ module SendRenders
             ok (Sounding(cue = cue, at = cue.due, lanes = [], driver = PerformingNote(patch = ActivePatch(plan = plan, ports = ports, span = span, attack = routing.attack, release = routing.release, memory = held)))))
 
     (** Prepare a routed note for the blocks the playhead actually reaches. *)
-    export started (song, voice, sends, routing, cue) = Outcomes::carried (NoteRenders::checkedSpan (cue.note, song.tempo, toFloat song.sampleRate, voice.instrument), \span =>
-        Outcomes::carried (PatchVoices::patched (cue.note, routing), \graph => Outcomes::carried (outputs (graph, sends), \ports =>
+    export started (song, voice, sends, routing, cue) = starting (song, voice, sends, routing, cue, PatchVoices::patched (cue.note, routing))
+
+    starting (song, voice, sends, routing, cue, built) = Outcomes::carried (NoteRenders::checkedSpan (cue.note, song.tempo, toFloat song.sampleRate, voice.instrument), \span =>
+        Outcomes::carried (built, \graph => Outcomes::carried (outputs (graph, sends), \ports =>
             Outcomes::carried (PatchVoices::grounded graph, \whole => Outcomes::carried (PatchVoices::audible (whole, mapList (sends, \s => s.source)), \heard =>
                 preparedNote (heard, ports, span, routing, cue))))))
 
@@ -178,6 +180,10 @@ module SendRenders
             PatchInstrument routing => Outcomes::carried (started (song, prior, sends, routing, sound.cue), \fresh => window (fresh, fresh.cue.due, from, toFloat song.sampleRate))
             _ => ok sound
 
+    rebuilt (old, routing) = match old.driver
+        PerformingNote patch => PatchVoices::repatched (old.cue.note, routing, patch.plan.graph)
+        RecordedNote => PatchVoices::patched (old.cue.note, routing)
+
     (** Switch a sounding note to the accepted parameters without replaying its attack or losing its phase. *)
     export retuned (song, voice, prior, oldSends, sends, sound, from, routing) = Outcomes::carried (activeBefore (song, prior, oldSends, sound, from), \old =>
-        Outcomes::carried (started (song, voice, sends, routing, sound.cue), \fresh => transfer (fresh, old, from, toFloat song.sampleRate)))
+        Outcomes::carried (starting (song, voice, sends, routing, sound.cue, rebuilt (old, routing)), \fresh => transfer (fresh, old, from, toFloat song.sampleRate)))
