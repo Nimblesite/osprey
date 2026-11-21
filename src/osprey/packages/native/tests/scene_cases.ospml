@@ -177,8 +177,8 @@ sceneCaseAFrameEventDeliversItsElapsedSeconds () =
     expect (frameRefusal (0.0 - 1.0), "Invalid frame elapsed time")
     started = Probes::started ()
     after = Probes::framed (started, 0.016)
-    expect (Probes::problem after, "")
-    expect ((Probes::stored after).counter.tally, 0)
+    expectNoProblem after
+    surfaceTally (after, 0)
     expect (after.surfaceSession.sessionContext.now, 9)
 
 // [UI-SCENE]: the animate request turns the host's frame clock on or off.
@@ -312,10 +312,10 @@ sceneCaseShapeRowsReadBackEveryFieldA () =
 sceneCaseAnOpenSurfaceKeepsItsStoreIn () =
     first = Probes::started ()
     expect (first.surfaceSession.sessionContext.platform, "linux")
-    expect ((Probes::stored first).counter.tally, 0)
+    surfaceTally (first, 0)
     tapped = Probes::tapped (first, 0)
-    expect ((Probes::stored tapped).counter.tally, 1)
-    expect ((Probes::stored first).counter.tally, 0)
+    surfaceTally (tapped, 1)
+    surfaceTally (first, 0)
     expect (Probes::asked first, "")
 
 // [UI-EVENTS]: a refused event leaves the store whole and still answering its own controls.
@@ -326,12 +326,12 @@ sceneCaseARefusedEventLeavesTheSurfaceWhole () =
     refused = Probes::posted (moved, 9, "")
     expect (Probes::problem refused, "Unknown control 9")
     expect (Probes::asked refused, "")
-    expect ((Probes::stored refused).counter.tally, 1)
+    surfaceTally (refused, 1)
     unknown = Probes::sent (moved, Probes::touchAt (7, 42, 0, "", "", 0.0, 0.0, false))
     expect (Probes::problem unknown, "Unknown event kind 42")
-    expect ((Probes::stored unknown).counter.tally, 1)
+    surfaceTally (unknown, 1)
     delivered = Probes::tapped (moved, 0)
-    expect (Probes::problem delivered, "")
+    expectNoProblem delivered
     expect (Probes::tickets delivered, "load:1")
 
 // One scene holding a single disc at `layer`, so the drawing order names the container it was found in.
@@ -369,7 +369,7 @@ sceneCaseASurfaceDeliversCompletionsPhasesAnd () =
     done = Probes::finished (first, "load:1", true, "saved")
     expect ((Probes::stored done).note.memo, "saved")
     phased = Probes::phased (done, "active")
-    expect (Probes::problem phased, "")
+    expectNoProblem phased
     framed = Probes::framed (phased, 0.5)
     expect (framed.surfaceSession.sessionContext.now, 9)
     broken = Probes::sent (framed, Probes::touchAt (10, 99, 0, "", "", 0.0, 0.0, false))
