@@ -18,18 +18,18 @@ fn readPositive(label) !Prompt = {
     }
 }
 
+/// The progress line both Prompt handlers share: attempt `count` feeds `value`.
+fn feedsLine(count, value) = print("attempt ${toString(count)}: handler feeds ${toString(value)}")
+
 /// Resume with -3, 0, then 7.
 mut attempt = 0
 let accepted = exactArithmetic(fn() => {
     handle Prompt {
         ask _label => {
             attempt = attempt + 1 
-            let value = match attempt {
-                1 => (0 - 3) 
-                2 => 0
-                _ => 7
-            }
-            print("attempt ${toString(attempt)}: handler feeds ${toString(value)}")
+            let script = feed([(0 - 3), 0], 7)
+            let value = script(attempt)
+            feedsLine(attempt, value)
             resume(value)
         }
     }
@@ -51,7 +51,7 @@ let outcome = exactArithmetic(fn() => {
                 }
                 false => {
                     let value = (0 - tries) 
-                    print("attempt ${toString(tries)}: handler feeds ${toString(value)}")
+                    feedsLine(tries, value)
                     resume(value)
                 }
             }
@@ -87,14 +87,18 @@ effect Retry {
     control supply: fn(int) -> int
 }
 
-/// Silent twin of `readPositive`: each rejected candidate causes a fresh operation.
-fn acceptPositive(attempt) ![Retry, Arith] = {
-    let candidate = perform Retry.supply(attempt)
-    match candidate > 0 {
-        true => candidate
-        false => acceptPositive((attempt + 1) )
+/// Performs `ask(n)` again and again until `keep` accepts its answer.
+fn askUntil(n, ask, keep) = {
+    let answer = ask(n)
+    match keep(answer) {
+        true => answer
+        false => askUntil((n + 1), ask, keep)
     }
 }
+
+/// Silent twin of `readPositive`: each rejected candidate causes a fresh operation.
+fn acceptPositive(attempt) ![Retry, Arith] = askUntil(attempt,
+    fn(i) => perform Retry.supply(i), fn(candidate) => candidate > 0)
 
 /// One observed retry run: the accepted value, how many operations it cost,
 /// the trail of issued candidates, and the settlement every resumed frame saw.
@@ -126,6 +130,12 @@ fn tracedRun(candidate, format) = {
 /// The same run whose trail names the attempt and the candidate it drew.
 fn retryRun(candidate) = tracedRun(candidate, fn(n, value) => "${toString(n)}:${toString(value)}|")
 
+/// Candidate feed: the listed rejections in order, then `good` on every later attempt.
+fn feed(bads, good) = fn(n) => match n > listLength(bads) {
+    true => good
+    false => (listGet(bads, (n - 1)) ?: 0)
+}
+
 /// True when `haystack` contains every fragment in `wanted`.
 fn carriesAll(haystack, wanted) = foldList(wanted, true, fn(acc, head) => acc && contains(haystack, head))
 
@@ -144,15 +154,19 @@ fn valueTag(trail, letter, n, value) = "${trail}${letter}${toString(n)}:${toStri
 /// The two flags a bounded transcript must satisfy: `head` opens it, `tail` closes it.
 fn edges(text, head, tail) = [startsWith(text, head), endsWith(text, tail)]
 
+/// The flags three bounded transcripts must satisfy, in argument order.
+fn edges3(a, aHead, aTail, b, bHead, bTail, c, cHead, cTail) = allTrue(listConcat(listConcat(
+    edges(a, aHead, aTail), edges(b, bHead, bTail)), edges(c, cHead, cTail)))
+
 /// [EFFECTS-RESUME] The handler alone decides how many rejections precede
 /// success, so one body crosses the retry-count axis 0, 1, 2 and 8. Each run
 /// records what it issued before `resume` and what the resumed computation
 /// answered afterwards, which pins both the issue order and the LIFO unwind.
 fn retryAttemptMatrixCase() = {
     let r0 = retryRun(fn(n) => (n * 100) )
-    let r1 = retryRun(fn(n) => match n { 1 => 0  _ => 200 })
-    let r2 = retryRun(fn(n) => match n { 1 => 0  2 => (0 - 5)  _ => 300 })
-    let r8 = retryRun(fn(n) => match n > 8 { true => 900  false => (0 - n) })
+    let r1 = retryRun(feed([0], 200))
+    let r2 = retryRun(feed([0, (0 - 5)], 300))
+    let r8 = retryRun(feed([(0 - 1), (0 - 2), (0 - 3), (0 - 4), (0 - 5), (0 - 6), (0 - 7), (0 - 8)], 900))
 
     // Distinctive magnitudes: 100, 200, 300 and 900 cannot sum by coincidence.
     checkAll("each rejection count accepts its own magnitude", [
@@ -182,9 +196,7 @@ fn retryAttemptMatrixCase() = {
     checkAll("issue transcripts record every attempt in order", [
         structuralEquals([r0.issued, r1.issued, r2.issued, r8.issued],
             ["1:100|", "1:0|2:200|", "1:0|2:-5|3:300|", "1:-1|2:-2|3:-3|4:-4|5:-5|6:-6|7:-7|8:-8|9:900|"]),
-        allTrue(listConcat(listConcat(
-            edges(r1.issued, "1:0|", "2:200|"), edges(r2.issued, "1:0|2:-5|", "3:300|")),
-            edges(r8.issued, "1:-1|", "9:900|"))),
+        edges3(r1.issued, "1:0|", "2:200|", r2.issued, "1:0|2:-5|", "3:300|", r8.issued, "1:-1|", "9:900|"),
         contains(r8.issued, "5:-5|"),
         contains(r2.issued, "2:-5|"),
         structuralEquals([contains(r0.issued, "2:"), contains(r1.issued, "3:"),
@@ -199,9 +211,7 @@ fn retryAttemptMatrixCase() = {
              "9:900|8:900|7:900|6:900|5:900|4:900|3:900|2:900|1:900|"]),
         r0.settled == r0.issued,
         allTrue([r1.settled != r1.issued, r2.settled != r2.issued, r8.settled != r8.issued]),
-        allTrue(listConcat(listConcat(
-            edges(r1.settled, "2:200|", "1:200|"), edges(r2.settled, "3:300|", "1:300|")),
-            edges(r8.settled, "9:900|", "1:900|"))),
+        edges3(r1.settled, "2:200|", "1:200|", r2.settled, "3:300|", "1:300|", r8.settled, "9:900|", "1:900|"),
         structuralEquals([contains(r1.settled, "1:0|"), contains(r2.settled, "2:-5|")], [false, false])
     ])
 
@@ -360,13 +370,8 @@ effect Payload {
 }
 
 /// Text channel: the loop asks again until the candidate is long enough.
-fn takeText(n) ![Payload, Arith] = {
-    let word = perform Payload.text(n)
-    match length(word) > 3 {
-        true => word
-        false => takeText((n + 1) )
-    }
-}
+fn takeText(n) ![Payload, Arith] = askUntil(n,
+    fn(i) => perform Payload.text(i), fn(word) => length(word) > 3)
 
 /// Boolean channel: the accepted value is the attempt the handler approved.
 fn takeFlag(n) ![Payload, Arith] = {
@@ -378,13 +383,7 @@ fn takeFlag(n) ![Payload, Arith] = {
 }
 
 /// Float channel: a ratio at or below 1.0 asks again.
-fn takeRatio(n) ![Payload, Arith] = {
-    let r = perform Payload.ratio(n)
-    match r > 1.0 {
-        true => r
-        false => takeRatio((n + 1) )
-    }
-}
+fn takeRatio(n) ![Payload, Arith] = askUntil(n, fn(i) => perform Payload.ratio(i), fn(r) => r > 1.0)
 
 /// Result channel: the CALLER, not the handler, treats `Error` as "ask again".
 fn takeChecked(n) ![Payload, Arith] = match perform Payload.checked(n) {
@@ -393,13 +392,8 @@ fn takeChecked(n) ![Payload, Arith] = match perform Payload.checked(n) {
 }
 
 /// Three-argument channel: the retry arithmetic lives in the handler.
-fn takeScaled(n, base, step) ![Payload, Arith] = {
-    let v = perform Payload.scaled(n, base, step)
-    match v > 0 {
-        true => v
-        false => takeScaled((n + 1) , base, step)
-    }
-}
+fn takeScaled(n, base, step) ![Payload, Arith] = askUntil(n,
+    fn(i) => perform Payload.scaled(i, base, step), fn(v) => v > 0)
 
 /// Unit channel: nothing to validate, so `left` alone bounds the loop.
 fn markDown(left) ![Payload, Arith] = match left {
@@ -885,13 +879,8 @@ fn siteMid(a) !Arity = siteDeep(a)
 fn siteTop(a) !Arity = siteMid(a)
 
 /// Recursive perform site: the handler's own counter decides when to accept.
-fn retryZero(guard) ![Arity, Arith] = {
-    let candidate = perform Arity.zero()
-    match candidate > 0 {
-        true => candidate
-        false => retryZero((guard + 1) )
-    }
-}
+fn retryZero(guard) ![Arity, Arith] = askUntil(guard,
+    fn(_n) => perform Arity.zero(), fn(candidate) => candidate > 0)
 
 /// Every perform site in one body: recursion, one/two/three call levels, a
 /// lambda passed to a higher-order function, and a match arm.
