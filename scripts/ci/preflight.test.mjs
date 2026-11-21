@@ -88,8 +88,8 @@ test('every make check in the PR workflows is planned, inside the step that runs
     }
   }
   assert.ok(commands.every((command) => !command.includes('${{ matrix')), 'matrix values are filled in')
-  const contexts = checks.map(({ directory, command, host, env, ciOnly }) =>
-    JSON.stringify([directory, command, host, ciOnly, Object.entries(env).sort()]))
+  const contexts = checks.map(({ directory, command, host, shell, env, ciOnly }) =>
+    JSON.stringify([directory, command, host, shell, ciOnly, Object.entries(env).sort()]))
   assert.equal(new Set(contexts).size, checks.length, 'each check runs once in each context')
 })
 
@@ -133,6 +133,10 @@ test('each check keeps the host CI gives it', () => {
   const windows = checks.filter((check) => /^(ci-windows|winui)\.yml/.test(check.job))
   assert.ok(windows.length > 5 && windows.every((check) => skipReason(check, 'macos')), 'a Mac skips every Windows check, naming why')
   assert.equal(skipReason(windows.find((check) => /dotnet test/.test(check.command)), 'macos'), 'needs a windows host')
+  assert.equal(windows.find((check) => /dotnet test/.test(check.command))?.shell, 'pwsh')
+  assert.equal(checks.find((check) => check.host === 'windows' && /git lfs pull/.test(check.command))?.shell, 'pwsh')
+  assert.equal(windows.find((check) => /make _runtime CC=gcc AR=ar/.test(check.command))?.shell, 'msys2')
+  assert.equal(find(/^make _test_registry REGISTRY_MEMORY=arc$/)?.shell, 'bash')
 })
 
 test('matrix rows, steps and runners are read from the workflow text', () => {

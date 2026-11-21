@@ -83,6 +83,7 @@ export function steps(block) {
     condition: field(lines, 'if', 8) ?? '',
     directory: field(lines, 'working-directory', 8) ?? '.',
     env: envOf(lines, 8),
+    shell: field(lines, 'shell', 8)?.split(' ')[0],
   })).filter((step) => step.run)
 }
 
@@ -130,7 +131,8 @@ function check(origin, step, row, jobEnv) {
   const runnerOnly = values.filter(([key, value]) => value.includes('${{') && new RegExp(`\\$\\{?${key}\\b`).test(command))
   const env = Object.fromEntries(values.filter(([, value]) => !value.includes('${{')))
   const ciOnly = command.includes('${{') || runnerOnly.length > 0
-  return [{ ...origin, name: substitute(step.name, row, declaredEnv), command, directory: step.directory, env, ciOnly }]
+  const shell = step.shell ?? (origin.host === 'windows' ? 'pwsh' : 'bash')
+  return [{ ...origin, name: substitute(step.name, row, declaredEnv), command, directory: step.directory, shell, env, ciOnly }]
 }
 
 /** Each check of one job, expanded per matrix row. */
@@ -144,8 +146,8 @@ function jobChecks(file, block, workflowEnv) {
 /** The preflight: CI's checks in workflow order, each execution context once, coverage gates last. */
 export function plan(files = workflowFiles()) {
   const seen = new Set()
-  const key = ({ directory, command, host, env, ciOnly }) =>
-    JSON.stringify([directory, command, host, ciOnly, Object.entries(env).sort()])
+  const key = ({ directory, command, host, shell, env, ciOnly }) =>
+    JSON.stringify([directory, command, host, shell, ciOnly, Object.entries(env).sort()])
   const checks = files.flatMap((file) => {
     const workflowEnv = envOf(workflowText(file).split('\n'), 0)
     return workflowJobs(file).slice(1).flatMap((block) => jobChecks(file, block, workflowEnv))
@@ -160,7 +162,8 @@ const HOST = process.platform === 'darwin' ? 'macos' : process.platform === 'win
 export function skipReason(step, host = HOST) {
   if (step.ciOnly) return 'reads values only a runner has'
   if (LINUX_ONLY.test(step.command) && host !== 'linux') return 'needs a linux host'
-  return step.host === host || (step.host === 'linux' && host === 'macos') ? undefined : `needs a ${step.host} host`
+  if (step.host !== host && !(step.host === 'linux' && host === 'macos')) return `needs a ${step.host} host`
+  if (step.shell === 'msys2' && process.env.MSYSTEM !== 'UCRT64') return 'needs an MSYS2 UCRT64 terminal'
 }
 
 export function runCheck(step, index, output = OUT) {
@@ -178,7 +181,8 @@ function checkStatus(step, env, log) {
   const output = openSync(log, 'w')
   try {
     writeFileSync(output, `$ ${step.command}\n`)
-    const result = spawnSync('bash', ['-eo', 'pipefail', '-c', step.command], {
+    const [shell, args] = shellCommand(step)
+    const result = spawnSync(shell, args, {
       cwd: step.directory, env, stdio: ['ignore', output, output],
     })
     if (result.error) writeFileSync(output, `${result.error.message}\n`)
@@ -187,6 +191,14 @@ function checkStatus(step, env, log) {
   } finally {
     closeSync(output)
   }
+}
+
+function shellCommand({ shell, command }) {
+  if (shell === 'pwsh') {
+    const script = `$ErrorActionPreference = 'Stop'\n${command}\nif (Test-Path variable:LASTEXITCODE) { exit $LASTEXITCODE }`
+    return ['pwsh', ['-NoProfile', '-NonInteractive', '-Command', script]]
+  }
+  return ['bash', ['-eo', 'pipefail', '-c', command]]
 }
 
 export const firstLine = (command) => command.split('\n').find((line) => line.trim() && !/^set -/.test(line))?.trim() ?? command
