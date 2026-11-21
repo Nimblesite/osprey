@@ -517,9 +517,17 @@ patched kinds =
     expect (length (Drive::holding wired).graph.cables, length kinds - 1)
     wired
 
-// One pointer event on the Patch Controls dials: the scene after the canvas.
-dialPointer (d, x, y, down, shift) = match listGet d.drivenSeen.renderedScenes 1
-    Error _ => d
+// The host draws the timeline and the detached patch in separate regions.
+dialTarget (d, ordinal) = match listGet d.drivenSurface.surfaceBound ordinal
+    Error _ => false
+    Success binding => match binding
+        ui::SceneInput action => action == synth::Controls
+        _ => false
+
+dialPointer (d, x, y, down, shift) = match ui::Lists::find (d.drivenSeen.renderedScenes, \ordinal => dialTarget (d, ordinal))
+    Error _ =>
+        expect ("no Patch Controls scene", "a Patch Controls scene")
+        d
     Success scene => Drive::sent (d, ui::Touch(touchNow = d.drivenNow, touchKind = ui::Hosting::pointer, touchOrdinal = scene, touchWords = "", touchDetail = "", touchX = x, touchY = y, touchDown = down, touchShift = shift))
 
 // The Patch Controls dial of the parameter `label`, as the host sees it.
