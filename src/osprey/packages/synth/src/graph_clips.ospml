@@ -50,14 +50,20 @@ module GraphClips
         clip = NodeClip(clipNode = n.identity, clipChannels = channels, clipSamples = samples, clipNotes = notes)
         scheduled (plan, listAppend clips clip, held, frames, remaining)
 
-    kernels (held, n, channels) = match banksAt (held, n.identity)
-        [bank] => match bank.kernelMemory
-            ChannelMemory states => Success(value = states)
-            _ => Error(message = IncompatibleLayout(detail = "The component has incompatible DSP memory."))
+    resumeState (held, identity, read, prepare, missing, duplicate) = match banksAt (held, identity)
+        [bank] => read bank.kernelMemory
         [] => match held.graphPosition == 0
-            true => Success(value = mapList (toList (range (0, channels)), \_ => RenderInputs::initialState n))
-            false => Error(message = MissingResource(detail = "A continuing graph lost its component state."))
-        _ => Error(message = IncompatibleLayout(detail = "A component has duplicate kernel state."))
+            true => prepare ()
+            false => Error(message = MissingResource(detail = missing))
+        _ => Error(message = IncompatibleLayout(detail = duplicate))
+
+    channelMemory memory = match memory
+        ChannelMemory states => Success(value = states)
+        _ => Error(message = IncompatibleLayout(detail = "The component has incompatible DSP memory."))
+
+    kernels (held, n, channels) =
+        prepare = \() => Success(value = mapList (toList (range (0, channels)), \_ => RenderInputs::initialState n))
+        resumeState (held, n.identity, channelMemory, prepare, "A continuing graph lost its component state.", "A component has duplicate kernel state.")
 
     processed (plan, clips, held, frames, n, channels, remaining) = match kernels (held, n, channels)
         Error why => Error(message = why)
@@ -67,14 +73,12 @@ module GraphClips
                 nextHeld = stored (held, n, ChannelMemory(channels = rendered.heldKernel))
                 emitted (plan, clips, nextHeld, frames, n, channels, rendered.kernelSamples, [], remaining)
 
-    grainState (held, n) = match banksAt (held, n.identity)
-        [bank] => match bank.kernelMemory
-            GrainMemory cloud => Success(value = cloud)
-            _ => Error(message = IncompatibleLayout(detail = "The grain cloud has incompatible DSP memory."))
-        [] => match held.graphPosition == 0
-            true => GrainGraph::prepare n
-            false => Error(message = MissingResource(detail = "A continuing graph lost its grain-cloud state."))
-        _ => Error(message = IncompatibleLayout(detail = "A grain cloud has duplicate DSP memory."))
+    grainMemory memory = match memory
+        GrainMemory cloud => Success(value = cloud)
+        _ => Error(message = IncompatibleLayout(detail = "The grain cloud has incompatible DSP memory."))
+
+    grainState (held, n) =
+        resumeState (held, n.identity, grainMemory, \() => GrainGraph::prepare n, "A continuing graph lost its grain-cloud state.", "A grain cloud has duplicate DSP memory.")
 
     granular (plan, clips, held, frames, n, remaining) = match grainState (held, n)
         Error why => Error(message = why)
@@ -86,14 +90,12 @@ module GraphClips
                     nextHeld = stored (held, n, GrainMemory(cloud = rendered.next))
                     emitted (plan, clips, nextHeld, frames, n, 2, samples, [], remaining)
 
-    midiState (held, n) = match banksAt (held, n.identity)
-        [bank] => match bank.kernelMemory
-            MidiMemory voice => Success(value = voice)
-            _ => Error(message = IncompatibleLayout(detail = "The MIDI oscillator has incompatible DSP memory."))
-        [] => match held.graphPosition == 0
-            true => Success(value = MidiOscillators::initial n)
-            false => Error(message = MissingResource(detail = "A continuing MIDI oscillator lost its voice state."))
-        _ => Error(message = IncompatibleLayout(detail = "A MIDI oscillator has duplicate DSP memory."))
+    midiMemory memory = match memory
+        MidiMemory voice => Success(value = voice)
+        _ => Error(message = IncompatibleLayout(detail = "The MIDI oscillator has incompatible DSP memory."))
+
+    midiState (held, n) =
+        resumeState (held, n.identity, midiMemory, \() => Success(value = MidiOscillators::initial n), "A continuing MIDI oscillator lost its voice state.", "A MIDI oscillator has duplicate DSP memory.")
 
     midi (plan, clips, held, frames, n, remaining) = match midiState (held, n)
         Error why => Error(message = why)
