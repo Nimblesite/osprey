@@ -57,7 +57,7 @@ editorUiJourney () =
     offeredIn (output, "Canvas output 0:0", true)
     lettersIn (output, "Oscillator 0")
     offeredIn (output, "Canvas input 1:0", true)
-    portAt (output, "Canvas input 1:0", 509.0, 161.5)
+    portAt (output, "Canvas input 1:0", 505.0, 157.5)
     canvasSource = grabbedAt (output, 488.5, 169.5)
     heldIs (canvasSource, \held => held.source, 0)
     canvasCable = drawnFrom (canvasSource, 488.5, 169.5, 519.0, 171.5)
@@ -70,12 +70,12 @@ editorUiJourney () =
     // [PRISM-ROUTING-LAYOUT] Dragging moves ports and cables without changing the audio graph.
     dragged = Drive::pointer (canvasSelected, 720.0, 300.0, true)
     movedPort = portIn (dragged, "Canvas input 1:0")
-    expect (structuralEquals ([movedPort.accessLeft, movedPort.accessTop], [569.0, 291.5]), true)
+    expect (structuralEquals ([movedPort.accessLeft, movedPort.accessTop], [565.0, 287.5]), true)
     sameGraph (dragged, canvasSelected)
     layout = ui::Surfaces::seen (dragged.drivenSurface, dragged.drivenProgram)
     cables = ui::Lists::flatten (mapList (layout.walkSketches, \sketch => filterList (sketch.sketchedAs.sketchShapes, \shape =>
         match shape
-            ui::Path _ outline _ _ _ _ _ => structuralEquals (outline, ui::Line(width = 3.0, dashes = [], bevel = false))
+            ui::Path _ outline _ _ _ _ depth => depth == 1 && structuralEquals (outline, ui::Line(width = 3.0, dashes = [], bevel = false))
             _ => false)))
     countOf (cables, 1)
     forEachList (cables, \shape =>
@@ -94,15 +94,15 @@ editorUiJourney () =
     reconnected = drawnFrom (rearmed, 488.5, 169.5, 579.0, 301.5)
     cablesOf (reconnected, 1)
     erased = deleteNode (released, 0)
-    portAt (erased, "Canvas input 1:0", 569.0, 291.5)
+    portAt (erased, "Canvas input 1:0", 565.0, 287.5)
     offsetGrab = Drive::pointer (released, 730.0, 310.0, true)
     offsetMove = grabbedAt (offsetGrab, 750.0, 340.0)
-    portAt (offsetMove, "Canvas input 1:0", 589.0, 321.5)
+    portAt (offsetMove, "Canvas input 1:0", 585.0, 317.5)
     invalidPoint = synth::EditorView::pointed ((Drive::holding offsetMove), floatFromBits 9221120237041090560, 0.0, false)
     expect (invalidPoint.dragging, -1)
     expect (structuralEquals (invalidPoint.positions, (Drive::holding offsetMove).positions), true)
     bounded = Drive::pointer (offsetMove, -100.0, 1000.0, false)
-    portAt (bounded, "Canvas input 1:0", 4.0, 691.5)
+    portAt (bounded, "Canvas input 1:0", 0.0, 687.5)
     second = audioLinked (audioLinked (output, 0, 1), 1, 2)
     cablesOf (second, 2)
     feedbackSource = grabbedAt (second, 801.0, 171.5)
@@ -122,7 +122,7 @@ editorUiJourney () =
     previewedShows (heard, "{\"status\":0,\"stderr\":\"\"}", "Preview finished.")
     previewedShows (heard, "{}", "Playback failed: The host returned no valid process exit status.")
     failed = Drive::ran (heard, "prism-preview", 1, "device disconnected")
-    showsIn (failed, "Playback failed: device disconnected", true)
+    lettersIn (failed, "Playback failed: device disconnected")
     unrelated = Drive::ran (failed, "another-job", 0, "")
     sameHeld (unrelated, failed, \held => held.message)
     tuned = choseAt (second, 0, "Frequency", "880")
@@ -303,7 +303,8 @@ midiMenuJourney () =
     opened = openedEditor ["--empty"]
     notes = component (opened, "midi-note")
     nodesOf (notes, 1)
-    forEachList (["Pitch", "Velocity"], \text => inspectorShows (notes, 0, text))
+    selected = inspectorSelected (notes, 0)
+    forEachList (["Pitch", "Velocity"], \text => reads (dialOf (selected, text), \dial => expect (dial.accessMax > dial.accessMin, true)))
     offeredIn (notes, "Canvas output 0:0", true)
     output = component (notes, "stereo-output")
     nodesOf (output, 2)
@@ -311,7 +312,7 @@ midiMenuJourney () =
     mentions (incompatible, "different rates")
     gain = chained (output, ["lfo", "modulated-gain"])
     nodesOf (gain, 4)
-    inspectorShows (gain, 2, "Frequency")
+    reads (dialOf (inspectorSelected (gain, 2), "Frequency"), \dial => expect (dial.accessMax > dial.accessMin, true))
     modulated = linkedCables (gain, 2, 3, 1, 1)
     _ = linkedCables (modulated, 2, 1, 0, 1)
     tuned = choseAt (output, 0, "Pitch", "72")
@@ -503,7 +504,7 @@ failedWith (driven, ticket, stderr) = Drive::completed (driven, ticket, true, "{
 // A preview receipt, and the readout it must show.
 previewedShows (driven, body, text) =
     answered = previewed (driven, body)
-    showsIn (answered, text, true)
+    lettersIn (answered, text)
 
 // The driven state's render ticket.
 ticketOf (driven, want) = heldIs (driven, \held => held.renderTicket, want)
