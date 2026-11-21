@@ -14,7 +14,8 @@ module Parameters
             Error _ => Invalid(fault = MissingParameter)
             Success p => Valid(value = p)
 
-    validValue (p, value) = value >= p.minimum && value <= p.maximum
+    (** Whether a value is inside the parameter’s inclusive bounds. *)
+    export validValue (p, value) = value >= p.minimum && value <= p.maximum
 
     replaced (edit, p) = match p.node == edit.node && p.key == edit.key
         true => p(value = edit.value)

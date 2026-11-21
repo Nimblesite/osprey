@@ -1,0 +1,17 @@
+import synth::Graphs
+import synth::Macros
+
+// [SYNTH-ADVANCED-PRISM] A macro can lower one knob and raise another without changing the original patch.
+macroGainJourney () =
+    original = sineThrough 0.5
+    gain = synth::MacroTarget(node = 2, key = "gain", minimum = 2.0, maximum = 0.0, exponent = 2.0)
+    pitch = gain(node = 1, key = "frequency", minimum = 220.0, maximum = 440.0, exponent = 1.0)
+    macro = synth::Macro(name = "Colour", targets = [gain, pitch])
+    succeeds (Macros::apply (original, macro, 0.5), \edited =>
+        forEachList ([{ id = 1, key = "frequency", value = 330.0 }, { id = 2, key = "gain", value = 1.5 }], \row =>
+            expect ((grainParameterOf (hostNode (Graphs::node (edited, row.id)), row.key)).initial, row.value))
+        expect (structuralEquals (edited.cables, original.cables), true))
+    forEachList ([gain(minimum = 9.0), gain(maximum = -1.0), gain(node = 90), gain(key = "unknown"), gain(exponent = 4.1)], \bad =>
+        renderRefused (Macros::apply (original, macro(targets = [pitch, bad]), 0.5)))
+    forEachList ([-0.1, 1.1], \amount => renderRefused (Macros::apply (original, macro, amount)))
+    expect (structuralEquals (original, sineThrough 0.5), true)

@@ -76,5 +76,6 @@ ok 75 - component timing declares delay and decay in samples, tracks oversamplin
 ok 76 - a spectral band and bin shift preserve their declared order on both components of every bin
 ok 77 - a delay line retains wall-clock history across sample-rate changes and pads only expired samples
 ok 78 - compressor reduction crosses the soft knee continuously and recovers on its release coefficient
-1..78
-# tests=78 passed=78 failed=0 skipped=0
+ok 79 - one macro moves two knobs on opposite curves and refuses either endpoint outside the declared range
+1..79
+# tests=79 passed=79 failed=0 skipped=0

@@ -408,3 +408,5 @@ test ("a spectral band and bin shift preserve their declared order on both compo
 test ("a delay line retains wall-clock history across sample-rate changes and pads only expired samples", \() => arithmetic delayHistoryJourney)
 
 test ("compressor reduction crosses the soft knee continuously and recovers on its release coefficient", \() => arithmetic compressorJourney)
+
+test ("one macro moves two knobs on opposite curves and refuses either endpoint outside the declared range", \() => arithmetic macroGainJourney)

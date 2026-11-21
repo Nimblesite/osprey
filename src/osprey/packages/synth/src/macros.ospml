@@ -6,7 +6,7 @@ namespace synth
 module Macros
     target (graph, t) = match Graphs::node (graph, t.node)
         Invalid _ => false
-        Valid n => length (filterList (n.parameters, \p => p.key == t.key && p.automatable && t.minimum >= p.minimum && t.maximum <= p.maximum)) == 1 && t.exponent >= 0.25 && t.exponent <= 4.0
+        Valid n => length (filterList (n.parameters, \p => p.key == t.key && p.automatable && Parameters::validValue (p, t.minimum) && Parameters::validValue (p, t.maximum))) == 1 && t.exponent >= 0.25 && t.exponent <= 4.0
 
     (** A macro is valid when every target names an automatable parameter and stays inside its range. *)
     export valid (graph, macro) = macro.name != "" && length macro.targets >= 1 && length macro.targets <= 32 && length (filterList (macro.targets, \t => target (graph, t))) == length macro.targets
