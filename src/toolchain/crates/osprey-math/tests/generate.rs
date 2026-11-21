@@ -333,7 +333,7 @@ fn heads_annotate_only_what_inference_cannot_derive() {
 
 #[test]
 fn a_definition_called_before_pins_its_arguments_to_its_lean_types() {
-    let source = "def sq (x y : Float) : Float := x * y\ndef twice (x : Float) : Float := sq x x\ndef same (a b : Bool) : Bool := a == b\ndef both (p q : Bool) : Bool := same p q\n";
+    let source = "def sq (x y : Float) : Float := x * y\ndef twice (x : Float) : Float := sq x x\ndef same (a b : Bool) : Bool := a == b\ndef both (p q : Bool) : Bool := same p q\ndef g (w q : Float) : Float := w * w + w / q\ndef h (w q : Float) : Float := w / q * g w q\ndef low (w q : Float) : Float := 1 / Float.sqrt ((1 - w * w) * (1 - w * w) + w * w / (q * q))\ndef high (w q : Float) : Float := w * w * low w q\n";
     let heads: Vec<String> = body(source)
         .into_iter()
         .filter(|line| line.starts_with("export"))
@@ -343,6 +343,12 @@ fn a_definition_called_before_pins_its_arguments_to_its_lean_types() {
         "export twice x = sq (x, x)",
         "export same (a: bool, b) = a == b",
         "export both (p, q) = same (p, q)",
+        // Osprey defers `w * w` between open operands, so `w` and `q` stay generic in `g` and `low`, and a
+        // caller passing its own open values would get them defaulted to `int`.
+        "export g (w, q) = w * w + floatDiv (w, q)",
+        "export h (w: float, q) = floatDiv (w, q) * g (w, q)",
+        "export low (w, q) = floatDiv (1.0, sqrt ((1.0 - w * w) * (1.0 - w * w) + floatDiv (w * w, q * q)))",
+        "export high (w: float, q: float) = w * w * low (w, q)",
     ];
     assert_eq!(heads, want);
 }
