@@ -212,7 +212,7 @@ function pluginOutput(session) {
     return Buffer.concat(lines(session + '.out').map(line => pluginPcm(line)));
 }
 function verifyCable(instrument, effect) {
-    const input = Buffer.concat(lines(effect + '.in').map(effectInput));
+    const input = Buffer.concat(lines(effect + '.in').map(line => effectInput(line)));
     const dry = pluginOutput(instrument);
     assert(input.length > 0 && input.equals(dry.subarray(0, input.length)), 'Stereo instrument output must reach the effect unchanged');
     return dry;
@@ -253,12 +253,16 @@ function tailRms(data, channel) {
     for (let i = 96000; i < 120000; i++) sum += data.readFloatLE(i * 8 + channel * 4) ** 2;
     return Math.sqrt(sum / 24000);
 }
+function lastDeviceReceipt(device) {
+    const receipts = lines(device + '.out').map(JSON.parse);
+    assert(receipts.every(r => r.status === 0 && r.emptyCallbacks === 0));
+    return receipts.at(-1);
+}
 function captured(plugin, device) {
     const pcm = pluginOutput(plugin);
     assert(pcm.equals(deviceAudio(device, true)), 'Prism must deliver the plug-in output sample for sample');
-    const receipts = lines(device + '.out').map(JSON.parse);
-    assert(receipts.every(r => r.status === 0 && r.emptyCallbacks === 0));
-    assert.equal(receipts.at(-1).returnedFrames, 12288);
+    const receipt = lastDeviceReceipt(device);
+    assert.equal(receipt.returnedFrames, 12288);
     assert.equal(pcm.length, 12288 * 8);
     return pcm;
 }
@@ -286,7 +290,7 @@ if (scenario === 'latency') {
     assert.equal(plugins.length, 1);
     const lag = 39; // CHOW Tape Model 2.11.4 reports 39 frames at 48 kHz.
     const wet = Buffer.concat(lines(plugins[0] + '.out').map(line => pluginPcm(line, lag)));
-    const dry = Buffer.concat(lines(plugins[0] + '.in').map(effectInput));
+    const dry = Buffer.concat(lines(plugins[0] + '.in').map(line => effectInput(line)));
     const mix = deviceAudio(devices[0], true);
     assert.equal(mix.length, wet.length);
     assert.equal(dry.length, wet.length);
@@ -304,10 +308,9 @@ assert.equal(plugins.length, devices.length * (paired ? 2 : 1));
 if (scenario !== 'tal') {
     const device = devices.pop();
     const output = plugins.pop();
-    const receipts = lines(device + '.out').map(JSON.parse);
-    assert(receipts.every(r => r.status === 0 && r.emptyCallbacks === 0));
-    const frames = receipts.at(-1).acceptedFrames;
-    assert(receipts.at(-1).returnedFrames >= 48000);
+    const receipt = lastDeviceReceipt(device);
+    const frames = receipt.acceptedFrames;
+    assert(receipt.returnedFrames >= 48000);
     if (paired) {
         const dry = verifyCable(plugins.pop(), output);
         const pcm = deviceAudio(device, false);
