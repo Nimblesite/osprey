@@ -279,6 +279,16 @@ fn extent(value: f64) -> Result<f32, String> {
     }
 }
 
+/// Negative zoom fixes the scale. It crosses the scene boundary as an f32 of the same sign and magnitude range.
+fn scene_zoom(value: f64) -> Result<f32, String> {
+    let zoom = value as f32;
+    if zoom.is_finite() && (value == 0.0 || zoom != 0.0) {
+        Ok(zoom)
+    } else {
+        Err("an unrepresentable scene zoom".to_owned())
+    }
+}
+
 fn colour(value: i64) -> Result<u32, String> {
     u32::try_from(value).map_err(|_| "a colour outside 0xRRGGBBAA".to_owned())
 }
@@ -656,7 +666,7 @@ fn scenes(
                 Scene {
                     width,
                     height,
-                    zoom: extent(head.values[2])?,
+                    zoom: scene_zoom(head.values[2])?,
                     ..Scene::default()
                 },
             );
