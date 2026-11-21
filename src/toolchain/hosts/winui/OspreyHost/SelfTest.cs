@@ -37,6 +37,9 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         // The pictures are drawn at the display's scale, so their goldens are kept per scale [WINUI-HOST-GOLDENS].
         File.WriteAllText(Path.Combine(shots, "scale.txt"), $"{Math.Round(window.Scale * 100)}");
         string? failure;
+        var root = window.Content as FrameworkElement;
+        if (root is not null) root.LayoutUpdated += Laid;
+        CompositionTarget.Rendered += Drew;
         try
         {
             failure = await Perform(Steps(File.ReadAllText(script))) ?? Reported();
@@ -44,6 +47,11 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         catch (Exception problem) when (problem is IOException or JsonException or InvalidOperationException or KeyNotFoundException)
         {
             failure = problem.Message;
+        }
+        finally
+        {
+            if (root is not null) root.LayoutUpdated -= Laid;
+            CompositionTarget.Rendered -= Drew;
         }
         log.AppendLine(failure is null ? "PASS" : $"FAIL {failure}");
         File.WriteAllText(Path.Combine(shots, "self-test.txt"), log.ToString());
@@ -121,33 +129,25 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         {
             return late;
         }
-        var frame = Drawn();
-        if (await Task.WhenAny(frame, Task.Delay(patience)) != frame)
+        // The first frame of a large scene comes well after its layout, and until it is drawn Windows
+        // composes the window blank. A layout that changes nothing visible is never drawn, so the
+        // wait for it gives up after a moment instead of failing.
+        for (var waited = TimeSpan.Zero; owed && waited < Undrawn; waited += Poll)
         {
-            return "the window never drew a frame";
+            await Task.Delay(Poll);
         }
         await Shoot(name);
         return null;
     }
 
-    // A picture is of a frame drawn after the step: the first frame of a large scene comes well after
-    // the window shows, and until it does Windows composes the window blank. Asking for frames keeps
-    // the render loop running until one is drawn.
-    static Task Drawn()
-    {
-        var drawn = new TaskCompletionSource();
-        EventHandler<object> ticking = (_, _) => { };
-        EventHandler<RenderedEventArgs>? done = null;
-        done = (_, _) =>
-        {
-            CompositionTarget.Rendering -= ticking;
-            CompositionTarget.Rendered -= done;
-            drawn.TrySetResult();
-        };
-        CompositionTarget.Rendering += ticking;
-        CompositionTarget.Rendered += done;
-        return drawn.Task;
-    }
+    static readonly TimeSpan Undrawn = TimeSpan.FromSeconds(3);
+
+    // Whether a layout pass has happened that no drawn frame has shown yet.
+    bool owed;
+
+    void Laid(object? sender, object args) => owed = true;
+
+    void Drew(object? sender, RenderedEventArgs args) => owed = false;
 
     bool RowsDrawn() => window.Content is not { } root || Tree(root).OfType<ListView>().Where(Shown).All(list =>
         list.Items.Count == 0 || list.Items[0] is FrameworkElement { ActualHeight: > 0 } first && VisualTreeHelper.GetParent(first) is not null);
