@@ -54,6 +54,8 @@ Every issue the user raised while testing Prism by hand, with where it is tracke
 
 Found while fixing these:
 
+- [ ] Restore the integrated DAW build after the synth error-type changes. The macOS compile on 21 November stopped on `string` / `synth::Fault` mismatches across synth and DAW sources. The routing-card, dial-entry, viewport-drag and keymap changes passed both native event journeys against the preceding synth sources. Repeat both against the integrated build. The separate root `make test` run reached Rust coverage compilation before its four-minute timeout.
+
 - [ ] [DAW-TRANSPORT-REFUSAL] Exercise Play with no project, an open project and no renderer, and playback already in progress. Each refusal must identify the condition and preserve the current project.
 - [ ] The daw test suite cannot be run: type checking `src/osprey/examples/daw/test` did not finish in 55 minutes and held 5.6 GB (effect-row convergence, owner OspreyOpus1). The live transport and unplugged-input journeys were run alone in a scratch project with the same sources (both pass, and both fail when their expectations are changed).
 - [ ] Find how the sub patch lost its Mixer→Gain cable during the user's drag, and add the regression.
