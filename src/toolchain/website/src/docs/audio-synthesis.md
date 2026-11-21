@@ -27,21 +27,22 @@ The clicks are recorded by `make -C src/toolchain/targets/macos/tests daw-video`
 
 ## FX on Effects
 
-Every effect in Prism is built from raw formulas. You write the formula as a `def` in a Lean file, and Osprey generates the code from it, so you never hand-code the maths in two places. The bus compressor's soft-knee gain law (Giannoulis, Massberg and Reiss, JAES 2012) is [DynamicsMath.lean](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/synth/src/DynamicsMath.lean):
+The bus compressor computes its soft-knee gain using the Giannoulis, Massberg and Reiss curve (JAES 2012). Its native Osprey implementation lives in [dynamics_math.ospml](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/synth/src/dynamics_math.ospml).
 
-```text
-def curve (level threshold ratio knee : Float) : Float :=
-  let over := level - threshold
-  if 2 * over < -knee then level
-  else if 2 * over <= knee && knee > 0 then
-    level + (1 / ratio - 1) * (over + knee / 2) * (over + knee / 2) / (2 * knee)
-  else threshold + over / ratio
+```ospml
+export curve (level, threshold, ratio, knee) =
+    over = level - threshold
+    match 2.0 * over < (-1.0) * knee
+        true => level
+        false => match 2.0 * over <= knee && knee > 0.0
+            true => level + floatDiv ((floatDiv (1.0, ratio) - 1.0) * (over + knee / 2.0) * (over + knee / 2.0), 2.0 * knee)
+            false => threshold + floatDiv (over, ratio)
 
-def reduction (level threshold ratio knee : Float) : Float :=
-  curve level threshold ratio knee - level
+(** Gain reduction the curve asks for, in decibels (never positive). *)
+export reduction (level, threshold, ratio, knee) = curve (level, threshold, ratio, knee) - level
 ```
 
-On every build, the toolchain turns that file into the `synth::DynamicsMath` module, generated into the untracked `.osprey/math/` folder. The effect itself is a fold over samples that calls those functions ([bus_mix.ospml](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/daw/src/bus_mix.ospml)):
+The bus applies the curve and smooths the result for each sample. [Bus mixer](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/daw/src/bus_mix.ospml)
 
 ```ospml
 reduced (c, attack, release, run, key) =
@@ -49,17 +50,11 @@ reduced (c, attack, release, run, key) =
     level = synth::DynamicsMath::smoothed (run.held.level, target, attack, release)
 ```
 
-{{ capture("/assets/images/native/prism-mix-bus.webp", "Prism Mix page: glow routed to the pads group bus, whose EQ and compressor take their detector from the kick, beside the Space reverb send and Master with its soft limiter", "Prism Mix on macOS: the pads bus compressor is keyed from the kick, and its gain law is the Lean curve above.", 1400, 914) }}
+{{ capture("/assets/images/native/prism-mix-bus.webp", "Prism Mix page: glow routed to the pads group bus, whose EQ and compressor take their detector from the kick, beside the Space reverb send and Master with its soft limiter", "Prism Mix on macOS: the pads bus compressor is keyed from the kick, and its gain law is the Osprey curve above.", 1400, 914) }}
 
-To build your own FX:
+The waveshaper’s antiderivative antialiasing and the reverb’s damping and diffusion live in [nonlinear_math.ospml](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/synth/src/nonlinear_math.ospml). The synthesis proof suite reads the production Osprey functions named in the synthesis specification, and checks the resulting proofs on GC, ARC and WebAssembly. Run `make _test_synthesis_proofs` to check them locally.
 
-1. Write each formula as a `def` in a `.lean` file in your project's sources.
-2. Run `osprey math <file.lean>` to print the Osprey module it generates.
-3. Call the generated functions from your effect code, which keeps the state and wiring.
-
-The same pattern gives the waveshaper its antiderivative antialiasing (Parker, Zavalishin and Le Bivic, DAFx 2016), the reverb its damping and diffusion, and the limiter its four-times-oversampled true peak, in [NonlinearMath.lean](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/synth/src/NonlinearMath.lean) and DynamicsMath.lean. `make -C src/osprey/examples/proof math` checks that Lean and the generated Osprey compute the same bits.
-
-The formulas and the code around them divide by zero differently, and the difference is deliberate. Generated formulas keep Lean's IEEE division, so they compute exactly what Lean computes; a zero divisor there gives an infinity. In the effect code you write around them, `/` and integer overflow raise an `Arith` algebraic effect, and the compiler rejects the program unless a handler covers it. The renderer wraps an overflow and turns a division by zero into silence:
+Where a formula calls `floatDiv`, it uses IEEE floating-point division. The `/` operator raises an `Arith` effect on division by zero. The renderer wraps an overflow and turns a division by zero into silence:
 
 ```ospml
 main () =
@@ -76,7 +71,7 @@ The policy is one handler you can read and replace, not a crash buried in a plug
 
 - **No collector pauses.** Prism and its renderer build with `--memory=arc`, which uses reference counting, so memory is freed at known points rather than by a garbage collector that stops the program.
 - **Failures are values.** A malformed patch, an out-of-range parameter or an unreadable sample returns a typed error. Osprey code never panics or aborts.
-- **The oscillators are Lean too.** The polyBLEP and polyBLAMP band-limiting corrections are generated from Lean the same way as the FX.
+- **The oscillators share one implementation.** Native Osprey functions in `waves.ospml` supply the polyBLEP and polyBLAMP corrections.
 - **One project file.** Notes, patches, routing and mix live in one JSON file, defined by a typed model (`daw.td`). Every edit in the film was saved to it, so a song diffs and versions in git like code.
 
 ## Run it
