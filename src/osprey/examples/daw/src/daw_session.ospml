@@ -187,7 +187,9 @@ module DawSession
 
     clock on = Requests::ask (clockTicket, ui::Animate(animated = on))
 
-    streamed editor = match daw::LiveControls::reset "${live editor}/controls"
+    focus editor = ui::Pick::either (editor.page == PatchPage, editor.patchTrack, editor.track)
+
+    streamed editor = match daw::LiveControls::reset ("${live editor}/controls", focus editor)
         Error why => Runtime::step (editor(message = "Could not open live controls: ${why}"))
         Success _ => streaming editor
 
@@ -373,11 +375,11 @@ module DawSession
         false => Success(value = editor.song)
 
     (** Publish accepted drags, typed edits and history changes through the same song-control Signal. *)
-    export liveEdit (before, after) = match startsWith after.songTicket liveTicket && before.songTicket == after.songTicket && before.revision != after.revision
+    export liveEdit (before, after) = match startsWith after.songTicket liveTicket && before.songTicket == after.songTicket && (before.revision != after.revision || focus before != focus after)
         false => after
         true => match before.patchTrack == after.patchTrack && after.page == PatchPage && after.patchTrack >= 0 && !structuralEquals (before.graph, after.graph)
             true => publish (before, after, daw::PatchRecords::live (after.song, after.patchTrack, after.graph))
-            false => match structuralEquals (daw::LiveControls::settings before.song, daw::LiveControls::settings after.song)
+            false => match focus before == focus after && structuralEquals (daw::LiveControls::settings before.song, daw::LiveControls::settings after.song)
                 true => after
                 false => publish (before, after, Success(value = after.song))
 
@@ -388,7 +390,7 @@ module DawSession
     publishSong (before, after, song) =
         handle static Signal<daw::Arrangement>
             read => song
-        match daw::LiveControls::publish "${live after}/controls"
+        match daw::LiveControls::publish ("${live after}/controls", focus after)
             Error why => before(message = "Live controls: ${why}")
             Success _ => after
 

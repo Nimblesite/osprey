@@ -322,6 +322,7 @@ Reference: Smith's waveguide material and Bilbao's numerical synthesis reference
 - [ ] Make cable creation/removal, node movement/removal and Undo/Redo work for every advanced family.
 - [ ] Show resource-loading and failure states on the affected node; avoid treating unavailable samples/models/plugins as a silent working instrument.
 - [ ] Bind controls to applied parameter Signals and show pending/rejected changes distinctly.
+  - [x] Song playback reads accepted Prism patch edits between device blocks. A held note follows gain and pitch changes, and a 17-track codex song device run confirmed that tablepad gain changed the next audio packet. See [live song controls](daw.md#slider-drag-lag-daw-mix-drag).
 - [ ] Provide macro controls that map to ordinary typed parameters with declared ranges and smoothing. Library part done: `Macros` validates and writes normalised amounts onto declared parameters through per-target ranges and curves; hosts smooth amounts with `Smoothers`. Prism controls remain open.
 - [ ] Expose the same control commands to Light Orchestra/phone adapters without adding networking or session state to the synth library.
 - [ ] Save complete patches, resources, seeds, module versions, automation and controller mappings; load incompatible/missing resources explicitly.

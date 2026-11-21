@@ -660,6 +660,9 @@ loudest side = foldList (side, 0.0, \(high, value) => synth::TableMath::larger (
 
 sidesDiffer (one, other) = length (filterList (toList (range (0, length one)), \i => abs ((listGet one i ?: 0.0) - (listGet other i ?: 0.0)) > 0.000001)) > 0
 
+liveDialBlock (place, stream, check) = succeeds (daw::LiveControls::receive ("${place}/knobs/live/controls", stream), \applied =>
+    succeeds (daw::Playback::next (applied.controlScore, applied.playing, 64), \packet => check (packet, applied(playing = packet.playing))))
+
 // [DAW-TRANSPORT-LIVE-CONTROLS] Drive a real knob before release, then read the song producer's control channel.
 liveDialJourney () =
     place = "target/daw-tests/live-dial"
@@ -682,9 +685,23 @@ liveDialJourney () =
             succeeds (daw::Playback::start score, \initial =>
                 succeeds (daw::Playback::next (score, initial, 512), \first =>
                     stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score, noteFolders = [])
-                    succeeds (daw::LiveControls::receive ("${place}/knobs/live/controls", stream), \applied =>
-                        expect (applied.controlVersion > 0, true)
-                        succeeds (daw::Playback::next (applied.controlScore, first.playing, 64), \audio => expect (loudest audio.left, 0.0)))))))
+                    liveDialBlock (place, stream, \(quiet, muted) =>
+                        expect (loudest quiet.left, 0.0)
+                        expect (loudest quiet.right, 0.0)
+                        louder = dialPointer (moving, x, y - 60.0, true, false)
+                        expect ((Drive::holding louder).dial != synth::DialIdle, true)
+                        reads (dialOf (louder, "Gain"), \raised =>
+                            expect (raised.accessValue > dial.accessValue, true)
+                            liveDialBlock (place, muted, \(loud, applied) =>
+                                expect (applied.controlVersion > muted.controlVersion, true)
+                                expect (loudest loud.left > 0.01, true)
+                                released = dialPointer (louder, x, y - 60.0, false, false)
+                                expect ((Drive::holding released).dial, synth::DialIdle)
+                                reads (dialOf (released, "Gain"), \kept => expect (kept.accessValue, raised.accessValue))
+                                liveDialBlock (place, applied, \(after, settled) =>
+                                    expect (settled.playing.cursor, 704)
+                                    succeeds (daw::Playback::next (applied.controlScore, applied.playing, 64), \expected =>
+                                        expect (sidesDiffer (expected.left, after.left), false))))))))))
 
 // [DAW-TRANSPORT-LIVE-CONTROLS] A gain edit changes the sounding note on the next block.
 liveKnobJourney () =

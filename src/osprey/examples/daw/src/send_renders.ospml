@@ -171,7 +171,8 @@ module SendRenders
             RecordedNote => window (fresh, fresh.cue.due, from, rate)
         RecordedNote => Error(message = "The edited note has no prepared patch.")
 
-    activeBefore (song, prior, sends, sound, from) = match sound.driver
+    (** Carry an already running patch or recover the memory of a previously cached note. *)
+    export activeBefore (song, prior, sends, sound, from) = match sound.driver
         PerformingNote _ => ok sound
         RecordedNote => match prior.instrument
             PatchInstrument routing => Outcomes::carried (started (song, prior, sends, routing, sound.cue), \fresh => window (fresh, fresh.cue.due, from, toFloat song.sampleRate))

@@ -25,6 +25,7 @@ module Arrangements
     (** The beat the last note ends on. *)
     export beats arrangement = foldList (arrangement.tracks, 0.0, \(latest, voice) => foldList (voice.notes, latest, close))
 
+    (** Accepted time signatures use one to thirty-two beats and a power-of-two denominator. *)
     export validMeter (top, bottom) = top >= 1 && top <= 32 && (bottom == 1 || bottom == 2 || bottom == 4 || bottom == 8 || bottom == 16 || bottom == 32)
 
     valid arrangement = validMeter (arrangement.meterTop, arrangement.meterBottom) && arrangement.tempo >= 20.0 && arrangement.tempo <= 400.0 && arrangement.sampleRate >= 8000 && arrangement.sampleRate <= 192000 && length arrangement.tracks >= 1 && length arrangement.tracks <= 64
@@ -148,6 +149,14 @@ module Arrangements
 
     (** Only the instrument and its sends affect a cached note's dry and send lanes. *)
     export sameVoice (voice, prior) = structuralEquals (voice.instrument, prior.instrument) && structuralEquals (voice.sends, prior.sends)
+
+    (** Promote sounding patch notes when the track gains focus, before its first parameter changes. *)
+    export focused (song, voice, play, from) = match voice.instrument
+        PatchInstrument _ => match play.edited
+            true => ok play
+            false => Outcomes::carried (SendRenders::collect (play.sounding, \sound => SendRenders::activeBefore (song, voice, play.sends, sound, from)), \sounds =>
+                ok (play(edited = true, sounding = sounds, made = [])))
+        _ => ok play
 
     (** Rebuild sounding lanes at their original onset and discard cached notes when the instrument or sends change. *)
     export refreshed (song, voice, prior, play, from) = match sameVoice (voice, prior)

@@ -36,7 +36,9 @@ module Streams
         track = listGet playing.tracks index ?: silent
         match listGet dirs index
             Error _ => track
-            Success dir => NoteCache::seeded (dir, track, until)
+            Success dir => match dir == "" || track.edited
+                true => track
+                false => NoteCache::seeded (dir, track, until)
 
     // Notes due in the next block that a maker has kept are read, not made ([DAW-TRANSPORT-LIVE-SPEED]).
     seeded (dirs, playing, until) = playing(tracks = mapList (toList (range (0, length playing.tracks)), \index => warm (dirs, playing, index, until)))
