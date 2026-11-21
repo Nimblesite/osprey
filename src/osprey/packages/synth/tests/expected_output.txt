@@ -1,41 +1,72 @@
-ok 1 - route oscillator through gain to output, reject bad wiring and preserve the original patch
-ok 2 - feedback needs a delay; disconnected components and fan-out have deterministic scheduling
-ok 3 - Signals expose separate same-kind component instances without a UI framework
-ok 4 - oscillator state survives arbitrary block partitions at three rates and four waveforms
-ok 5 - ADSR reaches its stages, releases during attack, retriggers continuously and handles zero times
-ok 6 - state-variable filter preserves blocks, passes DC, rejects DC high-pass and decays after excitation
-ok 7 - parameter edits publish applied Signals, reject stale revisions, and preserve independent values
-ok 8 - graph validation covers corrupt persisted metadata, missing endpoints, fan-out and explicit channel adapters
-ok 9 - extracted Prism synthesis has no UI dependency and retains pitch, wave, silence and WAV behaviour
-ok 10 - module switches pick the waveform, bypass a module and modulate the filter cutoff
-ok 11 - a routed oscillator and gain render exact continuous PCM across unequal blocks
-ok 12 - mixing, filtering and explicit two-sample feedback execute the compiled graph
-ok 13 - sample-accurate automation applies before its frame, preserves ordering and rejects stale or out-of-block events
-ok 14 - performance timbres and metallic warp stay bounded across rates and control extremes
-ok 15 - edit routes and remove connected components without corrupting the previous playable graph
-ok 16 - replace a playing graph without resetting phase, lose deleted state and refuse incomplete audio routes
-ok 17 - float PCM export retains sample precision and rejects invalid rates and samples
-ok 18 - external descriptors preserve channel types, MIDI ports and independent parameter identities
-ok 19 - offline clips render filters, delays, mixing, stereo conversion and independent control signals
-ok 20 - MIDI and modulation become checked native packets, then real-shaped stereo responses resume the graph
-ok 21 - MIDI windows preserve note ownership and reject malformed control values
-ok 22 - worker transport rejects malformed headers, nonfinite PCM, bad events and excessive automation
-ok 23 - corrupt graph layouts, buffers and kernel states return explicit failures
-ok 24 - decoded WAV keeps every PCM width, channel layout and stereo downmix exact
-ok 25 - WAV import refuses corrupt sizes, headers, chunks, formats and out-of-range samples
-ok 26 - sample resources validate metadata, prepare grains and transpose by root pitch
-ok 27 - generated wave math: PCM words, downmix, tuning and polyBLEP shapes hit exact IEEE754 values
-ok 28 - MIDI oscillator state validation rejects forged voices, capacity and malformed events
-ok 29 - connected MIDI oscillators track pitch, velocity and the exact 240-frame release tail
-ok 30 - last-note priority ignores foreign note-offs, zero-velocity note-ons and re-attacks mid-release
-ok 31 - granular clouds retain deterministic stereo state across partitions and refuse forged memory
-ok 32 - graph layouts and cached clips revalidate channel contracts at every edge
-ok 33 - kernel and renderer faults stay explicit for bad modulation, ordering, snapshots and memory
-ok 34 - grain windows and timing selectors decode exactly and refuse unsupported modes
-ok 35 - generated grain math clips, caps and wraps at every boundary
-ok 36 - onset clocks follow the seeded exponential stream and refuse exhausted or invalid clocks
-ok 37 - variation streams, spreads and clouds refuse forged seeds, bounds and diverged clocks
-ok 38 - the grain graph module decodes whole controls and refuses fractional, unknown or foreign settings
-ok 39 - direct grain pools reject bad triggers, count a full pool and render ordered single-frame blocks
-1..39
-# tests=39 passed=39 failed=0 skipped=0
+ok 1 - edit routes and remove connected components without corrupting the previous playable graph
+ok 2 - replace a playing graph without resetting phase, lose deleted state and refuse incomplete audio routes
+ok 3 - float PCM export retains sample precision and rejects invalid rates and samples
+ok 4 - parallel hosted and dry paths arrive at the mixer on the same sample
+ok 5 - external descriptors preserve channel types, MIDI ports and independent parameter identities
+ok 6 - offline clips render filters, delays, mixing, stereo conversion and independent control signals
+ok 7 - MIDI and modulation become checked native packets, then real-shaped stereo responses resume the graph
+ok 8 - MIDI windows preserve note ownership and reject malformed control values
+ok 9 - worker transport rejects malformed headers, nonfinite PCM, bad events and excessive automation
+ok 10 - corrupt graph layouts, buffers and kernel states return explicit failures
+ok 11 - decoded WAV keeps every PCM width, channel layout and stereo downmix exact
+ok 12 - WAV import refuses corrupt sizes, headers, chunks, formats and out-of-range samples
+ok 13 - sample resources validate metadata, prepare grains and transpose by root pitch
+ok 14 - generated wave math: PCM words, downmix, tuning and polyBLEP shapes hit exact IEEE754 values
+ok 15 - formant pitch shifting moves pitch and formants independently and refuses out-of-range ratios
+ok 16 - the FFT pitch shifter moves a sine by 1, 5, 7 and 12 semitones and 1, 10 and 50 cents either way within 1 cent, 1 dB of level and 1 dB of ripple
+ok 17 - spectral morphing blends log magnitudes and cross-synthesises one sound's envelope onto another [SYNTH-SPECTRAL-MORPH]
+ok 18 - partial morphing glides every matched harmonic to the geometric pitch between two tones [SYNTH-SPECTRAL-MORPH]
+ok 19 - sample, impulse and table resources carry a content identity: name, 64-bit hash, channels, rate, frames and version, and a changed or renamed resource is refused [SYNTH-ADVANCED-CORE-RESOURCES]
+ok 20 - MIDI oscillator state validation rejects forged voices, capacity and malformed events
+ok 21 - connected MIDI oscillators track pitch, velocity and the exact 240-frame release tail
+ok 22 - last-note priority ignores foreign note-offs, zero-velocity note-ons and re-attacks mid-release
+ok 23 - granular clouds retain deterministic stereo state across partitions and refuse forged memory
+ok 24 - granular preset patches [SYNTH-ADVANCED-GRAINS-INTEGRATION] render finite, bounded, nonzero, deterministic and distinct audio
+ok 25 - graph layouts and cached clips revalidate channel contracts at every edge
+ok 26 - kernel and renderer faults stay explicit for bad modulation, ordering, snapshots and memory
+ok 27 - a graph instance prepares, activates, renders, releases exactly its tail, resets, re-prepares at a new rate and disposes [SYNTH-ADVANCED-CORE-MODELS] [SYNTH-TEST-SPECTRUM]
+ok 28 - grain windows and timing selectors decode exactly and refuse unsupported modes
+ok 29 - generated grain math clips, caps and wraps at every boundary
+ok 30 - onset clocks follow the seeded exponential stream and refuse exhausted or invalid clocks
+ok 31 - variation streams, spreads and clouds refuse forged seeds, bounds and diverged clocks
+ok 32 - the grain graph module decodes whole controls and refuses fractional, unknown or foreign settings
+ok 33 - direct grain pools reject bad triggers, count a full pool and render ordered single-frame blocks
+ok 34 - prepared grain samples keep their rate, channels and tuning through import and graph descriptors
+ok 35 - every oscillator shape's partials hold the Fourier series of its shape at three pitches, in tune to 0.05 cents, and its folded partials stay 34 dB down [SYNTH-TEST-SPECTRUM]
+ok 36 - the state-variable filter's low, band and high outputs follow the bilinear second-order response within 0.001 dB at four cutoffs, four Qs and six frequencies [SYNTH-TEST-SPECTRUM]
+ok 37 - frequency shifting moves a sine by its shift alone, ring modulation splits it in two, and the mix blends dry with wet [SYNTH-TEST-SPECTRUM]
+ok 38 - waveshaping curves make only the harmonics their symmetry allows, and every linear processor holds its transfer function at four frequencies [SYNTH-TEST-SPECTRUM]
+ok 39 - phase operators, additive partials, stiff strings, struck bodies, waveguides, bowed strings and wavetable frames sound their pitch and partials [SYNTH-TEST-SPECTRUM]
+ok 40 - every example patch sounds its documented pitch and timbre [SYNTH-TEST-SPECTRUM]
+ok 41 - overlapping grains crossing a loop's end, at 1.5x and reversed across its start, stay inside the region every frame and sum exactly [SYNTH-ADVANCED-GRAINS-BOUNDARY]
+ok 42 - periodic, jittered and censored exponential onset schedules keep every gap in bounds, match their mean, replay per seed and ignore block splits [SYNTH-ADVANCED-GRAINS-SCHEDULING]
+ok 43 - grain position, rate, duration, gain and pan distributions stay in their bounds, centre on their midpoints, reach both ends, replay per seed and ignore batch splits [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS]
+ok 44 - a two-voice grain pool rejects and counts simultaneous overload onsets, recovers when its grains end and never truncates the grains it accepted [SYNTH-ADVANCED-GRAINS-CAPACITY]
+ok 45 - route oscillator through gain to output, reject bad wiring and preserve the original patch
+ok 46 - feedback needs a delay; disconnected components and fan-out have deterministic scheduling
+ok 47 - Signals expose separate same-kind component instances without a UI framework
+ok 48 - oscillator state survives arbitrary block partitions at three rates and four waveforms
+ok 49 - ADSR reaches its stages, releases during attack, retriggers continuously and handles zero times
+ok 50 - state-variable filter preserves blocks, passes DC, rejects DC high-pass and decays after excitation
+ok 51 - parameter edits publish applied Signals, reject stale revisions, and preserve independent values
+ok 52 - graph validation covers corrupt persisted metadata, missing endpoints, fan-out and explicit channel adapters
+ok 53 - extracted Prism synthesis has no UI dependency and retains pitch, wave, silence and WAV behaviour
+ok 54 - module switches pick the waveform, bypass a module and modulate the filter cutoff
+ok 55 - a routed oscillator and gain render exact continuous PCM across unequal blocks
+ok 56 - mixing, filtering and explicit two-sample feedback execute the compiled graph
+ok 57 - sample-accurate automation applies before its frame, preserves ordering and rejects stale or out-of-block events
+ok 58 - same-frame automation applies in order and every block split renders the same samples
+ok 59 - performance timbres and metallic warp stay bounded across rates and control extremes
+ok 60 - an 8-channel graph splits, joins and route-reorders every 7.1 channel sample-for-sample
+ok 61 - a five-channel graph duplicates, silences and resizes channels through explicit route maps
+ok 62 - channel maps out of range and mismatched channel cables are refused with typed faults
+ok 63 - non-finite or runaway node output is refused, finite output up to the bound is published
+ok 64 - every component parameter maps a 0-1 control onto its range and back, logarithmic for frequencies and times
+ok 65 - every component declares coherent port rates, channels, units and unique names
+ok 66 - controller writes stay pending until resolved, then apply with a revision or reject with a typed fault
+ok 67 - a rendered grain shows its window: zero ends, Hann peak, ASR sustain, short grains and block-split and control-change invariance
+ok 68 - the FFT pitch shifter effect is set in semitones and cents within an octave, its formants moving with the pitch unless kept
+ok 69 - the true-peak brick-wall limiter holds every frame and inter-sample peak inside its ceiling by lookahead, passes quiet signals bit-exact and refuses bad settings
+ok 70 - the octave-band analyser reads sines of known level in their bands within 0.1 dB, silence at the floor, and refuses bad frames
+1..70
+# tests=70 passed=70 failed=0 skipped=0
