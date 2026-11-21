@@ -14,7 +14,8 @@ fn ident(name: &str) -> Result<String, String> {
 }
 
 fn binder(name: &str, module: &str) -> Result<String, String> {
-    if matches!(name, "ops" | "recur")
+    if (module == "Ffts" && name == "sizes")
+        || matches!(name, "ops" | "recur")
         || primitive(name).is_some()
         || signatures(module)?
             .iter()
@@ -165,6 +166,7 @@ fn primitive(name: &str) -> Option<&'static str> {
         "sin" => "ops.sin",
         "cos" => "ops.cos",
         "listGet" => "readBin",
+        "listContains" => "List.contains",
         "intDiv" => "Nat.div",
         "listConcat" => "List.append",
         "foldList" => "foldList",
@@ -296,6 +298,9 @@ fn float_literal(n: f64) -> String {
 
 fn term(e: &Expr, module: &str) -> Result<String, String> {
     match e {
+        Expr::Identifier(n) if module == "Ffts" && n == "sizes" => {
+            Ok("(Ffts.sizes.map Int.ofNat)".into())
+        }
         Expr::Identifier(n) => ident(n),
         Expr::Integer(n) if *n >= 0 => Ok(n.to_string()),
         Expr::Float(n) => Ok(float_literal(*n)),
@@ -464,7 +469,10 @@ fn reflect(file: &str) -> Result<(), String> {
             .zip(types)
             .map(|(p, t)| Ok(format!("({} : {t})", binder(&p.name, &module)?)))
             .collect::<Result<Vec<_>, String>>()?;
-        let ops_name = if module == "DelayLines" && name == "push" {
+        let ops_name = if matches!(
+            (module.as_str(), name),
+            ("DelayLines", "push") | ("Ffts", "valid")
+        ) {
             "_ops"
         } else {
             "ops"

@@ -97,4 +97,35 @@ theorem supportedTransformDepths : stageDepths Ffts.sizes 5 := by
   have s1024 : Stages 1024 9 := doubledStages s512 rfl
   have s2048 : Stages 2048 10 := doubledStages s1024 rfl
   exact ⟨s64, s128, s256, s512, s1024, s2048, doubledStages s2048 rfl, rfl⟩
+
+/-- The public signed-size validator rejects every negative integer. -/
+theorem negativeFrameRejected (ops : Ops α) (n : Nat) :
+    Ffts.valid ops (.negSucc n) = false := rfl
+
+private theorem acceptedStage {sizes : List Nat} {d n : Nat} (valid : stageDepths sizes d)
+    (accepted : (sizes.map Int.ofNat).contains (.ofNat n) = true) : ∃ depth, Stages n depth := by
+  induction sizes generalizing d with
+  | nil => cases accepted
+  | cons a rest ih =>
+    change Stages a d ∧ stageDepths rest (d+1) at valid
+    change (match (Int.ofNat n == Int.ofNat a) with | true => true | false => (rest.map Int.ofNat).contains (.ofNat n)) = true at accepted
+    cases h : Int.ofNat n == Int.ofNat a with
+    | false => rw [h] at accepted; exact ih valid.2 accepted
+    | true =>
+      have eq : n = a := congrArg Int.toNat (of_decide_eq_true h : Int.ofNat n = Int.ofNat a)
+      exact ⟨d, eq.symm ▸ valid.1⟩
+
+/-- Every nonnegative frame admitted by the native validator has a terminating
+    schedule, independent of the transform sign, input, or exhaustion handler. -/
+theorem validatedTransformSchedule (ops : Ops α) (size : Nat) (accepted : Ffts.valid ops (.ofNat size) = true) :
+    ∃ depth, ∀ (exhausted : Transform α ops.Fault) values first stride sign,
+      unfoldTransform ops exhausted depth values first stride size sign =
+      scheduled ops depth values first stride size sign := by
+  obtain ⟨d, valid⟩ := acceptedStage supportedTransformDepths accepted
+  exact ⟨d, fun exhausted values first stride sign => transformSchedule ops exhausted valid values first stride sign⟩
+
+/-- Every size in the native table passes the validator. -/
+theorem advertisedSizesAccepted (ops : Ops α) :
+    Ffts.sizes.all (fun n => Ffts.valid ops (.ofNat n)) = true := rfl
+
 end ProductionFft

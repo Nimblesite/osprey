@@ -6,7 +6,7 @@ module Ffts
     sizes = [64, 128, 256, 512, 1024, 2048, 4096]
 
     (** Whether a transform of this size is supported. *)
-    export valid size = length (filterList (sizes, \s => s == size)) == 1
+    export valid size = listContains sizes size
 
     (** Multiply by the unit phasor at `angle`. *)
     export rotated (value, angle) = Complex(re = SpectralMath::productRe (value.re, value.im, cos angle, sin angle), im = SpectralMath::productIm (value.re, value.im, cos angle, sin angle))

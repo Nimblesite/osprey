@@ -72,6 +72,7 @@ pub(super) fn signatures(module: &str) -> Result<&'static [Signature], String> {
             ("rotation", &["Bin α", "Bin α"], "Bin α"),
         ],
         "Ffts" => &[
+            ("valid", &["Int"], "Bool"),
             ("incomplete", &[], "Except ops.Fault (List (Bin α))"),
             ("conjugate", &["Bin α"], "Bin α"),
             ("added", &["Bin α", "Bin α"], "Bin α"),
