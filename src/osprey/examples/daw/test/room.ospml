@@ -572,16 +572,16 @@ unhosted (outcome, channels) = match outcome
     Error why => Error(message = why)
     Success action => match action
         synth::ClipReady clips => synth::ClipInputs::completed (clips, channels)
-        _ => Error(message = "Unexpected external processor")
+        _ => Error(message = synth::IncompatibleLayout(detail = "Unexpected external processor"))
 
 // The modulation patch's eight-frame stereo output.
 clipOutput graph = clipReady (graph, 8, 4)
 
 // The graph rendered by the built-in kernels alone, or why it cannot be.
 builtinRender (graph, frames) = match synth::Graphs::prepare graph
-    synth::Invalid _ => Error(message = "graph cannot be prepared")
+    synth::Invalid _ => Error(message = synth::InvalidConfiguration(detail = "graph cannot be prepared"))
     synth::Valid plan => match synth::Renderer::start graph
-        Error _ => Error(message = "renderer cannot start")
+        Error why => Error(message = why)
         Success held => synth::Renderer::block (plan, 48000.0, synth::Parameters::initial graph, held, frames)
 
 errs result = match result
