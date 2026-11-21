@@ -21,11 +21,11 @@ Deliver in this order, finishing a playable vertical slice before beginning the 
 - [ ] Deliver offline parameter fitting and learned-control adapters under [SYNTH-ADVANCED-LEARNED]. Done: `Fitting` works offline and `FitReports` records algorithm, licence and training/evaluation provenance (e971fb90f). Open: the preview/apply/reject controls in the app.
 - [ ] Finish cross-platform application integration, documentation and the deferred verification gates under [SYNTH-ADVANCED-DELIVERY]. Open: Windows/browser/mobile hosts, the module reference, realtime measurements and a green `make ci` push.
 
-A vertical slice includes the DSP module, its graph factory, live parameter mapping, Signal observation, a Prism module card/inspector and a playable patch. Verification remains outstanding while the testing pause is in force, even if the implementation can be auditioned manually.
+A vertical slice includes the DSP module, its graph factory, live parameter mapping, Signal observation, a Prism module card/inspector and a playable patch. Each acceptance gate records its own evidence.
 
 ## Execution milestones and completion rules [SYNTH-ADVANCED-MILESTONES]
 
-This is the implementation backlog, not a claim that the ecosystem is complete. Retain the existing checked reference-kernel work below; an implementation checkbox does not establish audio quality, realtime suitability or platform support. Mark acceptance items complete only with recorded evidence. Automated verification remains paused; do not start suites as a side effect of completing this plan.
+The backlog tracks implementation and acceptance separately. Keep the reference-kernel results below and record the relevant audio quality, timing or platform evidence when checking an acceptance item.
 
 | Milestone | Dependencies | Concrete deliverable | Completion evidence |
 | --- | --- | --- | --- |
@@ -152,7 +152,7 @@ Implementation: `grain_scheduler.ospml`, `grains.ospml` and the `GrainClouds` co
 - [x] Support overlapping grains across loop boundaries without reading outside prepared resources. The clip journey "overlapping grains crossing a loop's end…" (GC and ARC) plays four nine-frame grains in a [2, 6) loop of an eight-sample source, two forward across the end, one at 1.5x and one reversed across the start: every live cursor stays inside the region on all 12 frames, and the mix equals the sum of each grain alone to 1e-12.
 - [x] Add immutable resource replacement: existing grains finish against their owned resource while new grains adopt the new one. `Grains.replaceSource` keeps the old source as `retiredSource` until its last grain ends and refuses a second swap meanwhile; `overlapSources` in grain_journeys.ospml checks frames, counts, the refusal and release (synth 51/51 ARC).
 - [x] Add bounded live capture/freeze with an explicit read/write ownership strategy. `GrainCapture` writes into a bounded buffer, `freeze` makes it read-only (writes refused until resume) and `resource` prepares an immutable `SampleResource` from it; `captureJourney` and `grainCaptureBoundsJourney` check bounds, non-finite input, freeze and the resource.
-- [ ] Add optional pitch-synchronous scheduling as a separate mode with its own analysis/latency contract.
+- [x] Add optional pitch-synchronous scheduling as a separate mode with its own analysis and latency contract. `PitchMarks.block` accepts a bipolar reference with one rising crossing per period and needs zero lookahead. `pitchMarkJourney` verifies absolute marks at frames 29 and 33, a crossing across a block boundary, identical terminal state and invalid reference rejection under GC and ARC. [Scheduler contract](../../src/osprey/packages/synth/README.md) · [Journey](../../src/osprey/packages/synth/tests/grain_journeys.ospml)
 
 ### Real sample loading and ownership [SYNTH-ADVANCED-GRAINS-IMPORT]
 
@@ -349,14 +349,14 @@ Added on request after the families: a piano-roll project file rendered offline 
 
 ## Deferred acceptance checklist [SYNTH-ADVANCED-VERIFY]
 
-**Run these only after the current automated-testing pause is lifted.** Each family remains unverified until its evidence exists; do not check a family off solely because it compiles or produces one audible note.
+Testing resumed on 21 November 2026. Record results for the stated workload, backend and host before checking each gate.
 
 ### Correctness and stability [SYNTH-ADVANCED-VERIFY-CORRECTNESS]
 
 - [ ] Run loaded end-to-end patch journeys with repeated same-kind instances, fan-out, modulation, removal, undo, save/load and failures.
 - [ ] Compare arbitrary block partitions against continuous rendering while preserving event ownership at exact boundaries.
 - [ ] Exercise sample rates 44.1/48/96/192 kHz and supported block sizes, including unequal and one-sample partitions.
-- [ ] Verify grain windows, wrapping, reverse playback, deterministic schedules, pool exhaustion and resource replacement.
+- [x] Verify grain windows, wrapping, reverse playback, deterministic schedules, pool exhaustion and resource replacement. The GC and ARC suites exercised rendered Hann and ASR envelopes, reverse and fractional-rate loop crossings, seeded onset replay, rejection counts at capacity and immutable source replacement while an old grain finishes. [Window rendering](../../src/osprey/packages/synth/tests/main.ospml) · [Loop and capacity tests](../../src/osprey/packages/synth/tests/grain_limits.ospml) · [Source replacement](../../src/osprey/packages/synth/tests/grain_journeys.ospml)
 - [ ] Verify physical-model tuning, decay/energy bounds, rate changes and extreme stable parameter values.
 - [ ] Verify wavetable/additive spectral behaviour, phase continuity, modulation and partial/table replacement.
 - [ ] Verify spectral reconstruction, overlap/add normalisation, latency, freeze/release and transport discontinuities.
@@ -387,7 +387,7 @@ Added on request after the families: a piano-roll project file rendered offline 
 - [ ] Document each module's ports, units, scaling, defaults, state/reset semantics, latency, capacity and supported rates/channels.
 - [x] Record the source paper/reference and exact algorithm/version for each research-derived implementation.
 - [ ] Link code, specifications, patches and eventual test evidence through the section IDs in this plan.
-- [ ] Include reproducible example patches for every delivered family and at least one patch combining grains, physical modelling, spectral processing and modulation.
+- [x] Include reproducible example patches for every delivered DSP family and a combined patch. `Patches.combined()` routes seeded grains through a downmix, modal body, spectral processor, waveshaper, LFO-controlled gain and reverb. The GC and ARC journey checks the emitting grain, physical, spectral, modulated and output stages after a 1,024-frame render. [Patch factories](../../src/osprey/packages/synth/src/patches.ospml) · [Combined journey](../../src/osprey/packages/synth/tests/clip_journeys.ospml) · [Single-family journeys](../../src/osprey/packages/synth/tests/spectrum_sources.ospml)
 - [ ] Mark experimental/production status from measured evidence; record remaining limitations without weakening the contracts.
 - [ ] Reconcile this checklist with [Synthesis.md](../specs/runtime/Synthesis.md) and the [Prism routing plan](prism-synth-routing.md), preserving their unfinished requirements.
 - [ ] Commit work in reviewable module-sized steps, preserve unrelated unfinished work and remove only task-owned temporary processes/artifacts.

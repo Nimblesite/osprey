@@ -95,6 +95,18 @@ presetHeard outcome =
 
 granularSource () = synth::SampleResource(name = "grain", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5, 0.25, -0.25])
 
+// [SYNTH-ADVANCED-DELIVERY] A grain excites the physical body, then spectral processing and the LFO shape it.
+combinedGrainJourney () =
+    graph = accepted (Patches::combined ())
+    kinds = mapList (graph.nodes, \n => synth::Kinds::kind n.processor)
+    forEachList (["synth.grain-cloud", "synth.modal-bank", "synth.spectral", "synth.lfo"], \kind => expect (length (filterList (kinds, \k => k == kind)), 1))
+    // Check every audible stage and the final sink after the spectral window fills.
+    succeeds (clipsOf (graph, 1024), \clips =>
+        forEachList ([0, 1, 2, 5, 7], \node =>
+            samples = (clipFrom (clips, node)).clipSamples
+            expect (foldList (samples, 0.0, \(peak, sample) => synth::TableMath::larger (peak, abs sample)) > 0.000001, true)
+            expect (length (filterList (samples, \sample => sample >= -1.0 && sample <= 1.0)), length samples)))
+
 granularNode () = Components::granular (1, granularSource (), 4, 7)
 
 granularGraph () = built ([granularNode (), Components::stereoOutput 2], [cable (1, 2)])
@@ -223,7 +235,8 @@ registerClipJourneys () =
         frozen = presetHeard (Patches::frozenTexture ())
         expect (structuralEquals (cloud, rhythm), false)
         expect (structuralEquals (rhythm, frozen), false)
-        expect (structuralEquals (cloud, frozen), false)))
+        expect (structuralEquals (cloud, frozen), false)
+        combinedGrainJourney ()))
     test ("graph layouts and cached clips revalidate channel contracts at every edge", \() => arithmetic (\() =>
         graph = sineThrough (0.5)
         duplicated = Components::stereo 1

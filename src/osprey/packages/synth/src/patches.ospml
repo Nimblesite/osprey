@@ -90,9 +90,12 @@ module Patches
     (** WPPM carrier phase-modulated by a second operator, through a soft clipper. *)
     export phaseNetwork () = built ([Components::phaseOperator (0, 220.0, 0.0), Components::phaseOperator (1, 110.0, 3.0), Components::shaper (2, 2.0, 1.2), Components::output 3], chain [0, 1, 2, 3])
 
-    (** Physical, spectral, nonlinear and modulation families in one routed patch; the LFO route needs the
-        hosted GraphClips executor (the mono reference Renderer rejects control ports). *)
-    export combined () = built ([Components::exciter (0, 13), Components::modalBank (1, 220.0, 1.0), Components::spectral (2, 512, 128, 4.0), Components::shaper (3, 0.0, 2.0), Components::lfo (4, 0.3), Components::modulatedGain (5, 1, 0.5), Components::reverb (6, 4.0), Components::output 7], [Components::route (0, 0, 1, 0), Components::route (1, 0, 2, 0), Components::route (2, 0, 3, 0), Components::route (3, 0, 5, 0), Components::route (4, 0, 5, 1), Components::route (5, 0, 6, 0), Components::route (6, 0, 7, 0)])
+    (** Grain Cloud excites a modal body through an explicit downmix. Its spectrum feeds the waveshaper,
+        then the LFO controls the gain into the reverb. Render this graph with GraphClips. *)
+    export combined () =
+        cloud = set (Components::granular (0, sineSource (), 8, 13), [value ("period", 480.0), value ("jitter", 120.0), value ("duration", 960.0), value ("rate", 4.69), value ("gain", 0.12)])
+        nodes = [cloud, Components::downmix 8, Components::modalBank (1, 220.0, 1.0), Components::spectral (2, 512, 128, 4.0), Components::shaper (3, 0.0, 2.0), Components::lfo (4, 0.3), Components::modulatedGain (5, 1, 0.5), Components::reverb (6, 4.0), Components::output 7]
+        built (nodes, [Components::route (0, 0, 8, 0), Components::route (8, 0, 1, 0), Components::route (1, 0, 2, 0), Components::route (2, 0, 3, 0), Components::route (3, 0, 5, 0), Components::route (4, 0, 5, 1), Components::route (5, 0, 6, 0), Components::route (6, 0, 7, 0)])
 
     (** Macros for `phaseNetwork`: Brightness narrows the WPPM breakpoint and raises drive; Growl deepens the
         modulator's pulses; Motion raises phase-modulation depth from the first operator. *)
