@@ -202,6 +202,14 @@ test('the coverage gate only compares collected reports and never builds or test
   assert.match(coverageJob, /^    runs-on: ubuntu-latest$/m)
 })
 
+test('failed coverage producers stop report retrieval and comparison', () => {
+  assert.match(coverageJob, /name: Require successful coverage producers[^\n]*\n\s+id: producers/)
+  for (const gate of ['VS Code extension thresholds', 'Package thresholds', 'C runtime thresholds']) {
+    assert.ok(coverageJob.includes(`- name: ${gate}\n        if: \${{ !cancelled() && steps.producers.outcome == 'success' }}`))
+  }
+  assert.equal([...coverageJob.matchAll(/uses: actions\/download-artifact@v8\n\s+if: \$\{\{ !cancelled\(\) && steps\.producers\.outcome == 'success' \}\}/g)].length, 3)
+})
+
 test('GPUI smoke and self-tests reuse the app libraries already compiled by the job', () => {
   const workflow = '.github/workflows/gpui.yml'
   for (const [host, preparation] of [['macos', /make _gpui-apps\n/], ['ubuntu', /make _gpui-smoke\n/]]) {
@@ -361,6 +369,12 @@ test('the Rust shards run every test: each name the rest skips, another shard se
   assert.match(testsMk, /^RUST_SHARD_ARGS_packages := --test python_packages -- \$\(RUST_SHARD_PACKAGES\)$/m)
   assert.match(testsMk, /^RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result -- \$\(RUST_SHARD_WORKBENCH\)$/m)
   assert.match(testsMk, /^RUST_SHARD_ARGS_rest := -- \$\(addprefix --skip ,\$\(RUST_SHARD_PACKAGES\) \$\(RUST_SHARD_WORKBENCH\)\)$/m)
+})
+
+test('the Rust shard that renders a WAV installs its native tools before it runs', () => {
+  const dependency = rustJob.match(/- name: Install DAW render tools\n\s+if: \$\{\{ matrix\.shard == 'rest' \}\}\n\s+run: sudo apt-get install -y ffmpeg xxd/)
+  assert.ok(dependency)
+  assert.ok(dependency.index < rustJob.indexOf('run: make _test_rust_shard'))
 })
 
 test('the coverage gate reads the merge of every Rust shard', () => {

@@ -397,6 +397,10 @@ jobs:
         # no-op when the binary is present, so it needs no help succeeding.
         run: cargo install cargo-llvm-cov --locked
 
+      - name: Install DAW render tools
+        if: ${{ matrix.shard == 'rest' }}
+        run: sudo apt-get install -y ffmpeg xxd
+
       - name: Tests with coverage
         run: make _test_rust_shard RUST_SHARD=${{ matrix.shard }}
 
@@ -1425,6 +1429,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Require successful coverage producers and package manager suites
+        id: producers
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
@@ -1442,17 +1447,17 @@ jobs:
           python3 scripts/ci/merge_lcov.py target/coverage/rust/{coverage-rust-packages,coverage-rust-workbench,coverage-rust-rest}/lcov.info > target/coverage/lcov.info.tmp
           mv target/coverage/lcov.info.tmp target/coverage/lcov.info
       - uses: actions/download-artifact@v8
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.producers.outcome == 'success' }}
         with:
           name: coverage-extension
           path: src/toolchain/vscode-extension/coverage/
       - uses: actions/download-artifact@v8
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.producers.outcome == 'success' }}
         with:
           name: coverage-packages
           path: target/coverage/packages/
       - uses: actions/download-artifact@v8
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.producers.outcome == 'success' }}
         with:
           name: coverage-c-runtime
           path: src/toolchain/compiler/bin/cov/
@@ -1462,15 +1467,15 @@ jobs:
         run: make _coverage_check_rust
 
       - name: VS Code extension thresholds
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.producers.outcome == 'success' }}
         run: make _coverage_check_vscode_extension
 
       - name: Package thresholds
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.producers.outcome == 'success' }}
         run: make _coverage_check_packages
 
       - name: C runtime thresholds
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.producers.outcome == 'success' }}
         run: make _coverage_check_c_runtime
 
       - name: Upload combined coverage
