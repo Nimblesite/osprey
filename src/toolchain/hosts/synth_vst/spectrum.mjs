@@ -5,7 +5,10 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const [pluginFolder, scenario = 'dragonfly'] = process.argv.slice(2);
-assert(pluginFolder && ['dragonfly', 'tal'].includes(scenario), 'Pass the VST3 folder and dragonfly or tal');
+assert(pluginFolder && ['dragonfly', 'tal', 'patch'].includes(scenario), 'Pass the VST3 folder and dragonfly, tal or patch');
+const paired = scenario === 'patch';
+const reverbName = 'Dragonfly Room Reverb';
+const reverbId = '2046504473616C633272666400000000';
 const root = process.cwd();
 const output = join(root, 'target/pr-validation');
 mkdirSync(output, { recursive: true });
@@ -41,19 +44,26 @@ function edit(node, label, value) {
     press(node + ' ' + label);
     type(label, value);
 }
+function playAndStop(frames) {
+    press('Play Patch');
+    wait('Playing the started patch. Stop and play again to apply edits.');
+    steps.push({ frames: String(frames) });
+    press('Stop Patch');
+    wait('Playback stopped.');
+}
 function audition() {
     press('Audition Patch');
     wait('Preview finished.');
 }
-function insert(name, id) {
+function insert(name, id, node = 0) {
     wait(name);
     add('vst:' + id);
-    wait(name + ' 0');
+    wait(name + ' ' + node);
 }
 press('Patch Controls');
 if (scenario === 'dragonfly') {
-    const name = 'Dragonfly Room Reverb';
-    insert(name, '2046504473616C633272666400000000');
+    const name = reverbName;
+    insert(name, reverbId);
     ['sine', 'stereo', 'stereo-output'].forEach(add);
     connect(1, 2);
     connect(2, 0);
@@ -67,11 +77,7 @@ if (scenario === 'dragonfly') {
     audition();
     edit(name + ' 0', 'Late Level', 0.65);
     audition();
-    press('Play Patch');
-    wait('Playing the started patch. Stop and play again to apply edits.');
-    steps.push({ frames: '48' });
-    press('Stop Patch');
-    wait('Playback stopped.');
+    playAndStop(48);
 } else {
     insert('TAL-NoiseMaker', '5653546E63757474616C2D6E6F697365');
     type('Module', 0);
@@ -83,11 +89,34 @@ if (scenario === 'dragonfly') {
     connect(2, 3);
     connect(3, 0);
     connect(1, 0, 1);
-    connect(0, 4);
+    if (paired) {
+        insert(reverbName, reverbId, 5);
+        type('Module', 5);
+        edit(reverbName + ' 5', 'Dry Level', 0.55);
+        edit(reverbName + ' 5', 'Late Level', 0.65);
+        edit(reverbName + ' 5', 'Decay', 0.45);
+        connect(0, 5);
+        connect(5, 4);
+        wait('Cable 5:0 to 4:0');
+    } else {
+        connect(0, 4);
+    }
     audition();
     type('Module', 1);
     edit('MIDI notes 1', 'Pitch', 72);
     audition();
+    if (paired) {
+        steps.push({ context: 'Canvas ' + reverbName + ' 5' });
+        press('Delete node');
+        steps.push({ gone: 'Canvas ' + reverbName + ' 5' }, { gone: 'Cable 0:0 to 5:0' }, { gone: 'Cable 5:0 to 4:0' });
+        wait('Canvas TAL-NoiseMaker 0');
+        press('Undo');
+        wait('Cable 0:0 to 5:0');
+        wait('Cable 5:0 to 4:0');
+        type('Module', 1);
+        edit('MIDI notes 1', 'Gate (frames)', 48000);
+        playAndStop(85);
+    }
 }
 function replay(name, actions) {
     const journey = join(run, name + '.json');
@@ -99,7 +128,7 @@ function replay(name, actions) {
         VST_WORKER: join(root, 'target/vst-worker/osprey-vst-worker') } });
 }
 
-const pluginName = scenario === 'tal' ? 'TAL-NoiseMaker' : 'Dragonfly Room Reverb';
+const pluginName = scenario === 'dragonfly' ? reverbName : 'TAL-NoiseMaker';
 replay('settings', [
     { invoke: 'Patch Controls' }, { gone: pluginName },
     { invoke: 'Settings…' }, { type: ['VST3 folder', resolve(pluginFolder)] },
@@ -122,15 +151,69 @@ function pluginPcm(line) {
     }
     return Buffer.concat(blocks);
 }
-function captured(plugin, device) {
-    const pcm = Buffer.concat(lines(plugin + '.out').map(pluginPcm));
-    const deviceBlocks = lines(device + '.in');
-    assert.equal(deviceBlocks.pop(), '!drain');
-    const wave = deviceBlocks.map(hex => Buffer.from(hex, 'hex')).map(b => {
+function effectInput(line) {
+    const packet = Buffer.from(line, 'hex');
+    const blocks = [];
+    for (let offset = 0; offset < packet.length;) {
+        const frames = packet.readUInt32LE(offset);
+        const notes = packet.readUInt32LE(offset + 4);
+        const parameters = packet.readUInt32LE(offset + 8);
+        offset += 12 + notes * 24 + parameters * 16;
+        const bytes = frames * 8;
+        assert(frames > 0 && frames <= 256 && offset + bytes <= packet.length);
+        blocks.push(packet.subarray(offset, offset + bytes));
+        offset += bytes;
+    }
+    return Buffer.concat(blocks);
+}
+function pluginOutput(session) {
+    return Buffer.concat(lines(session + '.out').map(pluginPcm));
+}
+function verifyCable(instrument, effect) {
+    const input = Buffer.concat(lines(effect + '.in').map(effectInput));
+    const dry = pluginOutput(instrument);
+    assert(input.length > 0 && input.equals(dry.subarray(0, input.length)), 'Stereo instrument output must reach the effect unchanged');
+    return dry;
+}
+function deviceAudio(device, drain) {
+    const packets = lines(device + '.in');
+    if (drain) assert.equal(packets.pop(), '!drain');
+    return Buffer.concat(packets.map(hex => {
+        const b = Buffer.from(hex, 'hex');
         assert.equal(b.readUInt32LE(24), 48000);
-        return b.subarray(b.indexOf('data') + 8);
-    });
-    assert(pcm.equals(Buffer.concat(wave)), 'Prism must deliver the plug-in output sample for sample');
+        const header = b.indexOf('data');
+        assert(header > 0 && b.readUInt32LE(header + 4) === b.length - header - 8);
+        return b.subarray(header + 8);
+    }));
+}
+// Preserve the device's float WAV format while combining its blocks into one render.
+function renderWave(device, pcm) {
+    const first = Buffer.from(lines(device + '.in')[0], 'hex');
+    const data = first.indexOf('data');
+    const fact = first.indexOf('fact');
+    assert.equal(first.toString('ascii', 8, 12), 'WAVE');
+    assert.equal(first.readUInt16LE(20), 3);
+    assert.equal(first.readUInt16LE(22), 2);
+    assert(fact >= 12 && fact + 12 <= data);
+    const header = Buffer.from(first.subarray(0, data + 8));
+    header.writeUInt32LE(header.length + pcm.length - 8, 4);
+    header.writeUInt32LE(pcm.length / 8, fact + 8);
+    header.writeUInt32LE(pcm.length, data + 4);
+    const path = join(run, 'Prism-TAL-Dragonfly.wav');
+    writeFileSync(path, Buffer.concat([header, pcm]));
+    const rendered = readFileSync(path);
+    assert.equal(rendered.length - 8, rendered.readUInt32LE(4));
+    assert(rendered.subarray(header.length).equals(pcm));
+    return rendered.subarray(header.length);
+}
+function tailRms(data, channel) {
+    let sum = 0;
+    for (let i = 96000; i < 120000; i++) sum += data.readFloatLE(i * 8 + channel * 4) ** 2;
+    return Math.sqrt(sum / 24000);
+}
+function captured(plugin, device) {
+    const pcm = pluginOutput(plugin);
+    assert(pcm.equals(deviceAudio(device, true)), 'Prism must deliver the plug-in output sample for sample');
     const receipts = lines(device + '.out').map(JSON.parse);
     assert(receipts.every(r => r.status === 0 && r.emptyCallbacks === 0));
     assert.equal(receipts.at(-1).returnedFrames, 12288);
@@ -156,17 +239,36 @@ function spectrum(pcm, start, size, low, high) {
 }
 const plugins = lines(join(run, 'stream-session.order'));
 const devices = lines(join(run, 'audio-device.order'));
-assert.equal(plugins.length, scenario === 'tal' ? 2 : 4);
-assert.equal(devices.length, plugins.length);
-if (scenario === 'dragonfly') {
-    plugins.pop();
-    const receipts = lines(devices.pop() + '.out').map(JSON.parse);
+assert.equal(devices.length, paired ? 3 : scenario === 'tal' ? 2 : 4);
+assert.equal(plugins.length, devices.length * (paired ? 2 : 1));
+if (scenario !== 'tal') {
+    const device = devices.pop();
+    const output = plugins.pop();
+    const receipts = lines(device + '.out').map(JSON.parse);
     assert(receipts.every(r => r.status === 0 && r.emptyCallbacks === 0));
-    assert(receipts.at(-1).returnedFrames >= 48000, 'Continuous Play must reach the device for at least a second');
-    console.log('Live frames accepted without starvation:', receipts.at(-1).acceptedFrames);
+    const frames = receipts.at(-1).acceptedFrames;
+    assert(receipts.at(-1).returnedFrames >= 48000);
+    if (paired) {
+        const dry = verifyCable(plugins.pop(), output);
+        const pcm = deviceAudio(device, false);
+        assert.equal(pcm.length, frames * 8);
+        assert(pcm.equals(pluginOutput(output).subarray(0, pcm.length)));
+        const rendered = renderWave(device, pcm);
+        const held = spectrum(rendered, 8192, 8192, 40, 1000);
+        assert(Math.abs(held.peakHz - 131) <= 2 && held.amplitude > 0.01);
+        for (const channel of [0, 1]) {
+            const tail = tailRms(rendered, channel);
+            assert(tail > 0.00001 && tail > 2 * tailRms(dry, channel), 'Reverb tail must survive note-off');
+        }
+    }
+    console.log('Live frames accepted without starvation:', frames);
 }
-const pcm = plugins.map((plugin, i) => captured(plugin, devices[i]));
-const spectra = pcm.map(data => scenario === 'tal' ? spectrum(data, 800, 4096, 40, 1000)
+const pcm = devices.map((device, i) => {
+    const output = paired ? plugins[2 * i + 1] : plugins[i];
+    if (paired) verifyCable(plugins[2 * i], output);
+    return captured(output, device);
+});
+const spectra = pcm.map(data => scenario !== 'dragonfly' ? spectrum(data, 800, 4096, 40, 1000)
     : spectrum(data, 4096, 8192, 100, 1000));
 console.log(JSON.stringify({ run, scenario, spectra }, null, 2));
 if (scenario === 'dragonfly') {

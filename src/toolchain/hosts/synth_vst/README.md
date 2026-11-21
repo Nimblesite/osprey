@@ -45,6 +45,9 @@ With the Prism GPUI host built for the DAW and the VST worker built, run the fol
 ```sh
 make -C src/toolchain/targets/macos/tests synth-vst-spectrum VST3_FOLDER="/absolute/path/to/plug-ins"
 make -C src/toolchain/targets/macos/tests synth-vst-spectrum VST3_FOLDER="/Library/Audio/Plug-Ins/VST3" VST3_CASE=tal
+make -C src/toolchain/targets/macos/tests synth-vst-spectrum VST3_FOLDER="/folder/with/both/plug-ins" VST3_CASE=patch
 ```
 
 The first command uses Dragonfly Room Reverb 3.2.10. Its macOS universal disk image has SHA-256 `e0b854b92a4e51ce5851320fb1a9f91ab1a4309f997de070e175b3e5cab4adaf`. The test compares dry, muted and wet auditions and exercises continuous Play and Stop. The second command uses TAL-NoiseMaker and measures the change in fundamental frequency after raising the MIDI note by one octave. Both compare the stereo samples leaving the VST3 instance with the samples submitted to the device. [Dragonfly release](https://github.com/michaelwillis/dragonfly-reverb/releases/tag/3.2.10)
+
+The `patch` case connects TAL-NoiseMaker to Dragonfly Room Reverb and a stereo output. It checks both cables after deleting and undoing the reverb, renders the patch into `Prism-TAL-Dragonfly.wav` in the reported run directory, and verifies the pitch and reverb tail in that file.
