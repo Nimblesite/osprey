@@ -50,8 +50,23 @@ module SpectralKernels
         true => Success(value = 0.0)
         false => RenderInputs::input (plan, frame, identity, 1)
 
-    (** Process one main sample (and optional side sample) through the node's spectral stream. *)
-    export process (plan, rate, snapshot, frame, held, size, hop, input) = Outcomes::carried (side (plan, frame, held.identity), \other => RenderInputs::bound (snapshot, held, "transform", \selector => RenderInputs::bound (snapshot, held, "hold", \hold => RenderInputs::bound (snapshot, held, "low", \low => RenderInputs::bound (snapshot, held, "high", \high => RenderInputs::bound (snapshot, held, "shift", \shift => RenderInputs::bound (snapshot, held, "amount", \amount => RenderInputs::bound (snapshot, held, "morphMode", \morphMode => RenderInputs::bound (snapshot, held, "mix", \mix => RenderInputs::bound (snapshot, held, "semitones", \semitones => RenderInputs::bound (snapshot, held, "cents", \cents => RenderInputs::bound (snapshot, held, "keepFormants", \keep => streamed (frame, held, input, other, configured (rate, size, hop, transform (selector, hold, low, high, shift, amount, morphMode, { semitones = semitones, cents = cents, keep = keep }), mix))))))))))))))
+    settings (rate, snapshot, identity, size, hop) = RenderInputs::setting (snapshot, identity, "transform", \selector => RenderInputs::setting (snapshot, identity, "hold", \hold => RenderInputs::setting (snapshot, identity, "low", \low => RenderInputs::setting (snapshot, identity, "high", \high => RenderInputs::setting (snapshot, identity, "shift", \shift => RenderInputs::setting (snapshot, identity, "amount", \amount => RenderInputs::setting (snapshot, identity, "morphMode", \morphMode => RenderInputs::setting (snapshot, identity, "mix", \mix => RenderInputs::setting (snapshot, identity, "semitones", \semitones => RenderInputs::setting (snapshot, identity, "cents", \cents => RenderInputs::setting (snapshot, identity, "keepFormants", \keep => configured (rate, size, hop, transform (selector, hold, low, high, shift, amount, morphMode, { semitones = semitones, cents = cents, keep = keep }), mix))))))))))))
+
+    (** Resolve fixed FFT parameters once; automated blocks resolve them at each sample. *)
+    export prepare (rate, snapshot, identity, processor, fixed) = match processor
+        Spectral size hop => match fixed
+            true => match settings (rate, snapshot, identity, size, hop)
+                Success config => FixedSpectrum(config = config)
+                Error _ => LiveSpectrum
+            false => LiveSpectrum
+        _ => LiveSpectrum
+
+    (** Read live audio from both inlets with the configuration for this sample. *)
+    export process (plan, rate, snapshot, frame, held, size, hop, input, prepared) = Outcomes::carried (side (plan, frame, held.identity), \other =>
+        config = match prepared
+            LiveSpectrum => settings (rate, snapshot, held.identity, size, hop)
+            FixedSpectrum fixed => Success(value = fixed)
+        streamed (frame, held, input, other, config))
 
     stages size = match size <= 1
         true => 0

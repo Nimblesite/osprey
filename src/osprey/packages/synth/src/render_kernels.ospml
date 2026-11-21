@@ -68,7 +68,7 @@ module RenderKernels
             -1 => Success(value = RenderInputs::output (frame, held.identity, 0.0))
             _ => passthrough (frame, held, input)
 
-    processor (plan, rate, snapshot, frame, held, n, input) = match n.processor
+    processor (plan, rate, snapshot, frame, held, scheduled, input) = match scheduled.node.processor
         ModulatedGain => controlled (plan, snapshot, frame, held, input)
         Filter => lowpass (plan, rate, snapshot, frame, held, input)
         Amplifier => gain (snapshot, frame, held, input)
@@ -78,11 +78,11 @@ module RenderKernels
         Join => passthrough (frame, held, input)
         Panner => passthrough (frame, held, input)
         Route entries => monoRouted (entries, frame, held, input)
-        Spectral size hop => SpectralKernels::process (plan, rate, snapshot, frame, held, size, hop, input)
+        Spectral size hop => SpectralKernels::process (plan, rate, snapshot, frame, held, size, hop, input, scheduled.spectrum)
         Shaper => EffectKernels::shaper (rate, snapshot, frame, held, input)
         Reverb => EffectKernels::reverb (rate, snapshot, frame, held, input)
         Shifter => EffectKernels::shifter (rate, snapshot, frame, held, input)
-        _ => PhysicalKernels::process (rate, snapshot, frame, held, n, input)
+        _ => PhysicalKernels::process (rate, snapshot, frame, held, scheduled.node, input)
 
     playback (resource, rate, snapshot, frame, held) = match floatToInt (floor held.phase)
         Error _ => Error(message = InvalidConfiguration(detail = "Invalid sample cursor."))
@@ -108,7 +108,7 @@ module RenderKernels
             Delay _ => match listGet held.delay 0
                 Error _ => Error(message = MissingResource(detail = "index out of bounds"))
                 Success previous => Success(value = RenderInputs::output (frame, held.identity, previous))
-            _ => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \input => processor (plan, rate, snapshot, frame, held, n, input))
+            _ => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \input => processor (plan, rate, snapshot, frame, held, scheduled, input))
 
     declared (n, key) = match Seek::first (n.parameters, \p => p.key == key)
         Error _ => false
@@ -125,7 +125,7 @@ module RenderKernels
             controls = match fixed
                 true => snapshot(parameters = filterList (snapshot.parameters, \p => p.node == identity))
                 false => snapshot
-            Valid(value = { node = n, bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
+            Valid(value = { node = n, spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
 
     (** Render one scheduled component or return its explicit fault. *)
     export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, rate, snapshot, false))

@@ -87,3 +87,8 @@ type SpectrumBand =
     level : float
     peak : float
 
+type SpectrumSchedule =
+    LiveSpectrum
+    FixedSpectrum
+        config : SpectralConfig
+

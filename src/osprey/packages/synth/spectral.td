@@ -12,3 +12,4 @@ type SpectralBin { index: Int frequency: Float magnitude: Float re: Float im: Fl
 type SpectralView { channel: Int position: Int size: Int bins: List<SpectralBin> }
 type PeakScan { latest: Int owners: List<Int> }
 type SpectrumBand { centre: Float level: Float peak: Float }
+union SpectrumSchedule { LiveSpectrum {} FixedSpectrum { config: SpectralConfig } }
