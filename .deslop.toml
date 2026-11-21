@@ -20,6 +20,10 @@ exclude = [
   "src/osprey/packages/tokenizers/src/NfcData.py",
   "src/osprey/examples/talon/backend/web/bundle.ospml",
   "src/osprey/examples/gpui/painting/src/logo.ospml",
+  # Written by `make -C src/toolchain/targets/tests daw-models` (scripts/make/osprey-schema.mjs) from daw.td.
+  "src/osprey/examples/daw/src/daw_model.ospml",
+  "src/osprey/examples/daw/src/editor_model.ospml",
+  "src/osprey/examples/daw/src/project_codec.ospml",
   "src/toolchain/compiler/runtime/klee/hunt_format_cases.inc",
   "src/toolchain/website/src/_includes/benchmarks-tables.html",
   # Third-party: FerroUI's ferroui-osprey-native host (MIT, Wiesław Šoltés), carried byte for byte

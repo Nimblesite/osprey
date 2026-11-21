@@ -206,7 +206,6 @@ module Drive
         true => Success(value = act)
         false => Error(message = "another button")
 
-    buttonIn : (string, ui::Node<workbench::Act>) -> Result<workbench::Act, string>
     buttonIn (label, node) = match node
         ui::Button text _ _ _ act => labelledAct (text == label, act)
         _ => searchChildren (node, \child => buttonIn (label, child))
@@ -244,7 +243,6 @@ module Drive
 
     editorPlace (case, key) = at (case, key, \found => editorIn found.snapshotValue ?: workbench::Place, workbench::Place)
 
-    rowsIn : ui::Node<workbench::Act> -> Result<workbench::Act, string>
     rowsIn node = match node
         ui::Rows _ _ bind => Success(value = bind)
         _ => searchChildren (node, rowsIn)
@@ -342,9 +340,6 @@ module Drive
     (** A component of `kind`. *)
     export findNode (kindName, node) = matching (kindOf, kindName, node)
 
-    (** A component titled `title`. *)
-    export findTitle (title, node) = matching (titleOf, title, node)
-
     (** A control printed `label`. *)
     roleName role = match role
         ui::Prominent => "prominent"
@@ -372,8 +367,6 @@ module Drive
 
     frameName node = Doc::text (Doc::field (node, "style"), "name")
 
-    titleOf node = Doc::text (node, "title")
-
     labelOf node = Doc::text (node, "label")
 
     // A framed surface's own child is what it shows.
@@ -385,10 +378,7 @@ module Drive
             true => node
             false => foldList (children node, JsonNull, \(found, child) => first (found, field, value, child))
 
-    first (found, field, value, child) = match field found
-        _ => match found
-            JsonNull => matching (field, value, child)
-            _ => found
+    first (found, field, value, child) = orElse (found, \() => matching (field, value, child))
 
     children node = listConcat ([Doc::field (node, "body"), Doc::field (node, "pane"), Doc::field (node, "aside")], Doc::items (Doc::field (node, "children")))
 
