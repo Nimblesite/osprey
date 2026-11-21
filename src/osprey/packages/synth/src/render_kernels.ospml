@@ -13,16 +13,23 @@ module RenderKernels
                 sample = Oscillators::next (config, OscillatorState(phase = held.phase))
                 Success(value = RenderInputs::emitted (frame, held(phase = sample.next.phase), shape sample.sample))
 
-    filtered (frame, held, config, input) = match Filters::configure config
-        Error why => Error(message = why)
-        Success coefficients =>
-            sample = Filters::next (coefficients, FilterState(integratorOne = held.integratorOne, integratorTwo = held.integratorTwo), input)
-            next = held(integratorOne = sample.next.integratorOne, integratorTwo = sample.next.integratorTwo)
-            Success(value = RenderInputs::emitted (frame, next, sample.low))
+    filtered (frame, held, coefficients, input) =
+        sample = Filters::next (coefficients, FilterState(integratorOne = held.integratorOne, integratorTwo = held.integratorTwo), input)
+        next = held(integratorOne = sample.next.integratorOne, integratorTwo = sample.next.integratorTwo)
+        Success(value = RenderInputs::emitted (frame, next, sample.low))
 
-    lowpass (plan, rate, snapshot, frame, held, input) = match cutoff (plan, snapshot, frame, held.identity)
-        Error why => Error(message = why)
-        Success cutoff => Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "resonance"), \resonance => filtered (frame, held, FilterConfig(sampleRate = rate, cutoff = cutoff, resonance = resonance), input))
+    filterSettings (rate, snapshot, identity, cutoff) = RenderInputs::setting (snapshot, identity, "resonance", \resonance => Filters::configure (FilterConfig(sampleRate = rate, cutoff = cutoff, resonance = resonance)))
+
+    prepareFilter (rate, snapshot, identity, cables) = match Seek::first (cables, \c => c.destination == identity && c.inlet == 1)
+        Success _ => LiveFilter
+        Error _ => match RenderInputs::setting (snapshot, identity, "cutoff", \cutoff => filterSettings (rate, snapshot, identity, cutoff))
+            Error _ => LiveFilter
+            Success c => FixedFilter(coefficients = c)
+
+    lowpass (plan, rate, snapshot, frame, held, input, prepared) = match prepared
+        FixedFilter c => filtered (frame, held, c, input)
+        LiveFilter => Outcomes::carried (cutoff (plan, snapshot, frame, held.identity), \value =>
+            Outcomes::carried (filterSettings (rate, snapshot, held.identity, value), \c => filtered (frame, held, c, input)))
 
     cutoff (plan, snapshot, frame, identity) = match RenderInputs::parameter (snapshot, identity, "cutoff")
         Error why => Error(message = why)
@@ -70,7 +77,7 @@ module RenderKernels
 
     processor (plan, rate, snapshot, frame, held, scheduled, input) = match scheduled.node.processor
         ModulatedGain => controlled (plan, snapshot, frame, held, input)
-        Filter => lowpass (plan, rate, snapshot, frame, held, input)
+        Filter => lowpass (plan, rate, snapshot, frame, held, input, scheduled.filter)
         Amplifier => gain (snapshot, frame, held, input)
         Mixer => mixer (plan, snapshot, frame, held, input)
         Sink => passthrough (frame, held, input)
@@ -144,7 +151,10 @@ module RenderKernels
             phase = match fixed && (n.processor == PhaseOperator)
                 true => OperatorKernels::prepare (rate, controls, identity)
                 false => LiveOperator
-            Valid(value = { phase = phase, node = n, slot = stateSlot (states, identity, 0), physical = physical (rate, controls, n, fixed), spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
+            filter = match fixed && (n.processor == Filter)
+                true => prepareFilter (rate, controls, identity, plan.graph.cables)
+                false => LiveFilter
+            Valid(value = { filter = filter, phase = phase, node = n, slot = stateSlot (states, identity, 0), physical = physical (rate, controls, n, fixed), spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
 
     (** Render one scheduled component or return its explicit fault. *)
     export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, rate, snapshot, false, frame.states))

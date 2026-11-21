@@ -8,6 +8,7 @@ union EnvelopeStage { Idle {} Attack {} Decay {} Sustain {} Release {} }
 type EnvelopeState { stage: EnvelopeStage level: Float releaseStep: Float }
 type FilterConfig { sampleRate: Float cutoff: Float resonance: Float }
 type FilterCoefficients { a1: Float a2: Float a3: Float k: Float }
+union FilterSchedule { LiveFilter {} FixedFilter { coefficients: FilterCoefficients } }
 type FilterState { integratorOne: Float integratorTwo: Float }
 type FilterSample { low: Float band: Float high: Float next: FilterState }
 union Fault { InvalidConfiguration { detail: String } ExhaustedCapacity { detail: String } MissingResource { detail: String } IncompatibleLayout { detail: String } NumericalFailure { detail: String } }

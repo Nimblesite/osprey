@@ -50,6 +50,11 @@ type FilterCoefficients =
     a3 : float
     k : float
 
+type FilterSchedule =
+    LiveFilter
+    FixedFilter
+        coefficients : FilterCoefficients
+
 type FilterState =
     integratorOne : float
     integratorTwo : float
@@ -59,7 +64,6 @@ type FilterSample =
     band : float
     high : float
     next : FilterState
-
 
 type Fault =
     InvalidConfiguration
@@ -72,3 +76,4 @@ type Fault =
         detail : string
     NumericalFailure
         detail : string
+
