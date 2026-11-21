@@ -136,13 +136,15 @@ module DawSession
         true => substring ticket (length prefix) (length ticket)
         false => Error(message = "not a ${prefix} ticket")
 
+    renderLog = "prism-song-report"
+
     rendered editor =
         ticket = "${renderTicket}${excerpt editor}"
-        Runtime::asking (editor(songTicket = ticket, message = "Rendering ${window editor} of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = editor.renderer, arguments = [snapshot (excerpt editor), excerpt editor, "${TimelineGeometry::barStart (toFloat editor.rollBar)}", "${playedBeats}"], timeout = 900000, outputLimit = 65536, plist = false, runSlice = ""))])
+        Runtime::asking (editor(songTicket = ticket, message = "Rendering ${window editor} of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = editor.renderer, arguments = [snapshot (excerpt editor), excerpt editor, "${TimelineGeometry::barStart (toFloat editor.rollBar)}", "${playedBeats}"], timeout = 900000, outputLimit = 65536, plist = false, runSlice = renderLog))])
 
     bounced editor =
         ticket = "${bounceTicket}${whole editor}"
-        Runtime::asking (editor(songTicket = ticket, message = "Rendering all of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = editor.renderer, arguments = [snapshot (whole editor), whole editor], timeout = 7200000, outputLimit = 65536, plist = false, runSlice = ""))])
+        Runtime::asking (editor(songTicket = ticket, message = "Rendering all of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = editor.renderer, arguments = [snapshot (whole editor), whole editor], timeout = 7200000, outputLimit = 65536, plist = false, runSlice = renderLog))])
 
     sounded (editor, bar) =
         ticket = "${playTicket}${bar}"
@@ -169,7 +171,14 @@ module DawSession
 
     reported outcome = match outcome
         Error why => why
-        Success text => trim (ui::Doc::text (ui::Doc::parse text, "stdout"))
+        Success text =>
+            inline = trim (ui::Doc::text (ui::Doc::parse text, "stdout"))
+            report = match inline == ""
+                true => trim (perform ui::Slices.fetch renderLog)
+                false => inline
+            match report == ""
+                true => "The renderer produced no audio."
+                false => foldList (lines report, report, \(_, line) => line)
 
     (** Stop the render or the playback in flight. *)
     export stop editor = match editor.songTicket == ""
@@ -200,7 +209,9 @@ module DawSession
         Error why => Error(message = "Could not save ${editor.songPath}: ${why}")
         Success _ => Success(value = editor(song = song, message = "Saved ${stem editor.songPath}.json."))
 
-    committed (editor, song) = synth::Outcomes::carried (written (editor, song), \next => Success(value = EditorHistory::project (editor, next)))
+    committed (editor, song) = match written (editor, song)
+        Error why => Error(message = why)
+        Success next => Success(value = EditorHistory::project (editor, next))
 
     (** Commit a mixer adjustment to the project after the fader is released. *)
     export adjusted (editor, index, gain, pan, reverb) = savedTrack (editor, index, daw::Projects::mixed (editor.song, index, gain, pan, reverb))

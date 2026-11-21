@@ -862,6 +862,12 @@ remixed (ready, louder) =
 songFolder = "${transportRoot}/bin/song/song"
 
 // [DAW-RENDER] The whole project renders to its own folder: refused while busy, only real audio counts, unchanged audio is kept.
+// FerroUI publishes the renderer transcript in the requested slice and only status/stderr in the receipt.
+rendererTranscript (first, transcript, expected) =
+    handle ui::Slices
+        fetch key => ui::Pick::either (key == "prism-song-report", transcript, "")
+    said (synth::DawSession::completed (first.stepStore, "daw-song:bounce:${songFolder}", Success(value = "{\"status\":0,\"stderr\":\"\"}")), "", expected)
+
 bounceJourney ready =
     // A previous run's finished bounce would otherwise count as this project's audio.
     _made = makeDir songFolder
@@ -879,6 +885,8 @@ bounceJourney ready =
     said (synth::DawSession::bounce first.stepStore, "daw-song:bounce:${songFolder}", "The song is already playing; Stop first.")
     said (synth::DawSession::play first.stepStore, "daw-song:bounce:${songFolder}", "The song is already playing; Stop first.")
     said (synth::DawSession::completed (first.stepStore, "daw-song:bounce:${songFolder}", rendererSaid "daw: refused"), "", "Rendering failed: daw: refused")
+    rendererTranscript (first, "daw: Bridge\ndaw: unknown patch setting.\n", "Rendering failed: daw: unknown patch setting.")
+    rendererTranscript (first, "", "Rendering failed: The renderer produced no audio.")
     succeeds (writeFile "${songFolder}/song.wav" (join (mapList (toList (range (0, 64)), \_ => "RIFF")) ""), \_ => expect (true, true))
     done = synth::DawSession::completed (first.stepStore, "daw-song:bounce:${songFolder}", rendererSaid "daw: wrote it")
     said (done, "", "Rendered ${songFolder}/song.wav.")
@@ -958,7 +966,7 @@ transportJourney () =
     succeeds (daw::Projects::mixed (ready.song, 1, 2.0, 0.5, 0.25), \louder => remixed (ready, louder))
     bounceJourney ready
 
-test ("the transport renders two bars of the project as it stands, plays only real audio, replays unchanged bars, stops and renders the whole song", \() => Runtime::guarded transportJourney)
+test ("the transport renders two bars of the project as it stands, plays only real audio, replays unchanged bars, stops and renders the whole song", \() => Runtime::guarded (\() => hosted transportJourney))
 
 // [DAW-MIX-BUS] A bus EQ at 0 dB passes its tracks; its compressor ducks them by the sidechain track alone, or
 // by the bus itself; tracks route to a declared bus only, and the project file carries the buses.
