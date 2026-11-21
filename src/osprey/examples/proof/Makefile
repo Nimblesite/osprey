@@ -26,9 +26,9 @@ math: build
 ##        6 checks + 12 rejections. Every PASS row is followed by its rejected
 ##        corruption. Checked exports, not Mathlib or headline-theorem ports.
 proof: build
-	$(MAKE) _test_synthesis_proofs
 	for theorem in id_imp and_swap Nat.add_comm; do bash scripts/proof/proof-export.sh --check --theorem $$theorem || exit 1; done
 	node --test scripts/proof/test-proof-export.mjs
 	python3 scripts/proof/test-proof-openai.py
 	$(MAKE) -j3 _test_proof_ci
+	$(MAKE) _check_synthesis_proofs
 endif

@@ -740,9 +740,6 @@ jobs:
       - name: Recorded arithmetic export reproduces byte for byte
         run: bash scripts/proof/proof-export.sh --check --theorem Nat.add_comm
 
-      - name: Check synthesis proofs with the Osprey kernel
-        run: make _test_synthesis_proofs
-
       - name: Proof export recorder regressions
         run: node --test scripts/proof/test-proof-export.mjs
 
@@ -761,6 +758,9 @@ jobs:
 
       - name: Full proof acceptance and Lean speed gate
         run: make -j3 _test_proof_ci
+
+      - name: Verify synthesis properties against production Osprey
+        run: make _check_synthesis_proofs
 
   test-c-runtime:
     name: "Tests: C runtime (coverage)"
