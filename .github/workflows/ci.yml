@@ -302,15 +302,9 @@ jobs:
         run: npm run test:shipwright
         working-directory: ./src/toolchain/vscode-extension
 
-      # The local and hosted gates install the latest release and read the same
-      # committed threshold. A failed download or breached ceiling fails CI.
-      - name: Install the pinned Deslop
-        run: bash scripts/ci/install-deslop.sh
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
+      # The local and hosted gates use the same pinned scanner and threshold.
       - name: Deslop duplication gate
-        run: deslop . --nohtml --nojson --output "$RUNNER_TEMP/deslop-report" --log-to-console --log-level error --no-color
+        run: make _deslop
 
       # Dead-code gate: fail if any `pub` declaration is unreachable from the
       # osprey binary (hawk::dead_public). cargo-hawk's prebuilt driver runs

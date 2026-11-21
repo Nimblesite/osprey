@@ -8,9 +8,9 @@ export const workflowJobs = (file) => workflowText(file).split(/(?=^  [\w-]+:\s*
 export const job = (name, file = '.github/workflows/release.yml') => workflowJobs(file).find((block) => block.startsWith(`  ${name}:`)) ?? ''
 
 // The root Makefile and the fragments it includes, where private steps live.
-export const ROOT_MAKEFILES = ['Makefile', ...readdirSync('scripts/make').filter((f) => f.endsWith('.mk')).map((f) => `scripts/make/${f}`)]
+const rootMakefiles = () => ['Makefile', ...readdirSync('scripts/make').filter((f) => f.endsWith('.mk')).map((f) => `scripts/make/${f}`)]
 
-export const makeRecipe = (name, files = ROOT_MAKEFILES) => {
+export const makeRecipe = (name, files = rootMakefiles()) => {
   const commands = []
   let active = false
   for (const line of [files].flat().flatMap((file) => [...readFileSync(file, 'utf8').split('\n'), '.end-of-file:'])) {

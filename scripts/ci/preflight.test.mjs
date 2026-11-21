@@ -47,6 +47,29 @@ test('local preflight keeps failing commands and mixed output in chronological o
   }
 })
 
+test('preflight CLI writes every selected check, including checks after a failure', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'osprey-preflight-run-'))
+  try {
+    const workflow = join(directory, '.github/workflows')
+    mkdirSync(workflow, { recursive: true })
+    const host = { darwin: 'macos-15', win32: 'windows-latest' }[process.platform] ?? 'ubuntu-latest'
+    writeFileSync(join(workflow, 'ci.yml'), [
+      'jobs:', '  replay:', `    runs-on: ${host}`, '    steps:',
+      '      - name: Check first', '        shell: bash', '        run: false',
+      '      - name: Check second', '        shell: bash', '        run: printf second',
+    ].join('\n'))
+    const script = fileURLToPath(new URL('./preflight.mjs', import.meta.url))
+    const result = spawnSync(process.execPath, [script, '--only=Check'], { cwd: directory, encoding: 'utf8' })
+    const output = join(directory, 'target/preflight')
+    assert.equal(result.status, 1)
+    assert.equal(readFileSync(join(output, '000.log'), 'utf8'), '$ false\n')
+    assert.equal(readFileSync(join(output, '001.log'), 'utf8'), '$ printf second\nsecond')
+    assert.match(readFileSync(join(output, 'summary.md'), 'utf8'), /FAIL.*Check first[^\n]*\n.*PASS.*Check second/)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test('preflight keeps distinct environments and hosts for the same command', () => {
   const directory = mkdtempSync(join(tmpdir(), 'osprey-preflight-environment-'))
   try {
@@ -78,6 +101,8 @@ test('the preflight reads ci.yml and every workflow it calls', () => {
   assert.deepEqual(workflowFiles(), ['.github/workflows/ci.yml', '.github/workflows/ci-windows.yml',
     '.github/workflows/gpui.yml', '.github/workflows/winui.yml', '.github/workflows/ci-audit.yml'])
   assert.ok(commands.includes('make audit'), 'the PR preflight runs the release audit')
+  assert.equal(commands.filter((command) => command === 'make _deslop').length, 1,
+    'the hosted and local duplication check install and run the same pinned binary')
 })
 
 test('every make check in the PR workflows is planned, inside the step that runs it', () => {
@@ -95,7 +120,7 @@ test('every make check in the PR workflows is planned, inside the step that runs
 
 test('checks that are not make targets run too: static analysis, browsers, the emulator and the containers', () => {
   for (const [pattern, directory] of [[/^cargo fmt .* --check$/, '.'], [/^cargo clippy .*-D warnings$/, '.'], [/^npm run lint$/, './src/toolchain/vscode-extension'],
-    [/^npm test$/, './src/toolchain/website'], [/^npx playwright test$/, './src/osprey/examples/talon/playwright-e2e-tests'], [/^deslop \./, '.']]) {
+    [/^npm test$/, './src/toolchain/website'], [/^npx playwright test$/, './src/osprey/examples/talon/playwright-e2e-tests']]) {
     assert.equal(find(pattern)?.directory, directory, String(pattern))
   }
   const android = find(/targets\/android\/tests inbox/)

@@ -217,7 +217,7 @@ function main(args) {
     return 0
   }
   mkdirSync(`${OUT}/runner-temp`, { recursive: true })
-  const results = checks.map(runCheck)
+  const results = checks.map((step, index) => runCheck(step, index))
   const table = ['| Status | CI job | Step | Command | Log |', '| --- | --- | --- | --- | --- |', ...results.map(summaryLine)].join('\n')
   writeFileSync(`${OUT}/summary.md`, `${table}\n`)
   console.log(`\n${table}`)
