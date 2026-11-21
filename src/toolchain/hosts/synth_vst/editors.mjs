@@ -25,6 +25,18 @@ else
 fi
 `, { mode: 0o755 });
 
+// These vendor fixtures support opaque state. Dragonfly's dry mix also has a known audio response.
+function verifyVendorState(bundle, id, name, inputs, controls) {
+    const dragonfly = /^Dragonfly (Early Reflections|Hall Reverb|Plate Reverb|Room Reverb)$/.test(name);
+    const label = dragonfly ? 'Dry Level' : { 'TAL-NoiseMaker': 'Filter Cutoff', CHOWTapeModel: 'Input Gain' }[name];
+    if (typeof label !== 'string') return;
+    const parameter = controls.find(control => control.name === label);
+    assert(parameter, name + ' is missing its state test parameter ' + label);
+    const args = [resolve('src/toolchain/hosts/synth_vst/state-session.mjs'), worker, bundle, id, String(inputs), String(parameter.id)];
+    if (dragonfly) args.push(String(parameter.initial));
+    execFileSync(process.execPath, args, { stdio: 'inherit', timeout: 30000 });
+}
+
 function controller(bundle, id, controls) {
     // A program change may reset every other control. Read each write back before the next.
     const endpoints = controls.flatMap(p => [0, 1, p.initial].map(value => ({ id: p.id, value })));
@@ -117,8 +129,9 @@ for (const file of bundles) {
     const bundle = join(plugins, file);
     const scanned = execFileSync(worker, ['scan', bundle], { encoding: 'utf8', timeout: 15000 }).trimEnd().split('\n');
     for (const { id, name } of scanned.map(JSON.parse)) {
-        const { parameters } = JSON.parse(execFileSync(worker, ['describe', bundle, id], { timeout: 15000 }));
+        const { inputs, parameters } = JSON.parse(execFileSync(worker, ['describe', bundle, id], { timeout: 15000 }));
         const controls = parameters.filter(p => p.automatable);
+        verifyVendorState(bundle, id, name, inputs, controls);
         if (!unresponsive) controller(bundle, id, controls);
         inspector(name, id, parameters, unresponsive);
         if (unresponsive) {

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
-const [worker, bundle, id, inputs, parameter] = process.argv.slice(2);
+const [worker, bundle, id, inputs, parameter, initialDryLevel] = process.argv.slice(2);
 const save = Buffer.from('SAVE').toString('hex');
 function session(lines, success = true) {
     const run = spawnSync(worker, ['stream-session', bundle, id], {
@@ -28,3 +28,22 @@ const wrongClass = Buffer.from(changed, 'hex');
 wrongClass[4] ^= 1;
 session([wrongClass.toString('hex')], false);
 session([changed.slice(0, 48)], false);
+
+if (initialDryLevel !== undefined) {
+    // Dragonfly's wet signal is delayed. Its first stereo frame measures the restored dry mix.
+    assert.equal(Number(inputs), 2);
+    const impulse = Buffer.alloc(12 + frames * 8);
+    impulse.writeUInt32LE(frames);
+    impulse.writeFloatLE(0.25, 12);
+    impulse.writeFloatLE(-0.5, 16);
+    for (const [state, gain] of [[original, Number(initialDryLevel)], [changed, 0.375]]) {
+        const [ack, audio] = session([state, impulse.toString('hex')]);
+        assert.equal(ack, '4F4B');
+        const block = Buffer.from(audio, 'hex');
+        assert.equal(block.toString('ascii', 0, 4), 'OSV1');
+        assert.equal(block.readUInt32LE(8), 2);
+        assert.equal(block.readUInt32LE(16), frames);
+        assert.equal(block.readFloatLE(24), Math.fround(0.25 * gain));
+        assert.equal(block.readFloatLE(28), Math.fround(-0.5 * gain));
+    }
+}
