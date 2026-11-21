@@ -541,39 +541,33 @@ fn a_build_runs_the_redundant_annotation_analyser_only_when_asked() {
         "main.osp",
         "fn greet(unused) -> string = \"hi\"\nprint(greet(1))\n",
     );
-    let path = program.to_string_lossy().into_owned();
-    let (code, _, advice) = finished(osprey().args([&path, "--check"]));
-    assert_eq!(code, Some(0), "{advice}");
-    assert!(advice.contains("unused parameter `unused`"), "{advice}");
-    assert!(
-        !advice.contains("redundant"),
-        "a plain build ran the analyser:\n{advice}"
-    );
-    assert!(advice.contains("1 warning (unused-parameter)"), "{advice}");
-    let (code, _, analysed) = finished(osprey().args([&path, "--check", "--analyse"]));
-    assert_eq!(code, Some(0), "{analysed}");
-    assert!(
-        analysed.contains("redundant return type annotation on `greet`"),
-        "{analysed}"
-    );
-    assert!(analysed.contains("unused parameter `unused`"), "{analysed}");
-    assert!(
-        analysed.contains("2 warnings (redundant-annotation, unused-parameter)"),
-        "{analysed}"
-    );
-    let (code, _, denied) = finished(osprey().args([&path, "--check", "--warnings-as-errors"]));
-    assert_eq!(code, Some(1), "{denied}");
-    assert!(
-        denied.contains("redundant return type annotation on `greet`"),
-        "{denied}"
-    );
-    let (code, _, silent) = finished(osprey().args([&path, "--check", "--no-warnings"]));
-    assert_eq!(code, Some(0), "{silent}");
-    assert!(!silent.contains("warning"), "{silent}");
-    let (code, _, both) = finished(osprey().args([&path, "--check", "--no-warnings", "--analyse"]));
-    assert_eq!(code, Some(0), "{both}");
-    assert!(
-        both.contains("redundant return type annotation on `greet`"),
-        "{both}"
-    );
+    let unused = "unused parameter `unused`";
+    let redundant = "redundant return type annotation on `greet`";
+    let no_flags: &[&str] = &[];
+    let plain_advice: &[&str] = &[unused, "1 warning (unused-parameter)"];
+    for (flags, exit, present, absent) in [
+        (no_flags, 0, plain_advice, Some("redundant")),
+        (
+            &["--analyse"],
+            0,
+            &[
+                unused,
+                redundant,
+                "2 warnings (redundant-annotation, unused-parameter)",
+            ],
+            None,
+        ),
+        (&["--warnings-as-errors"], 1, &[redundant], None),
+        (&["--no-warnings"], 0, &[], Some("warning")),
+        (&["--no-warnings", "--analyse"], 0, &[redundant], None),
+    ] {
+        let (code, _, advice) = finished(osprey().arg(&program).arg("--check").args(flags));
+        assert_eq!(code, Some(exit), "{flags:?}: {advice}");
+        for &text in present {
+            assert!(advice.contains(text), "{flags:?} missing {text}: {advice}");
+        }
+        if let Some(text) = absent {
+            assert!(!advice.contains(text), "{flags:?} emitted {text}: {advice}");
+        }
+    }
 }
