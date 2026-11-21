@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { jobHost, matrixRows, plan, runCheck, skipReason, steps, workflowFiles } from './preflight.mjs'
 
-test('a preflight selector that matches nothing cannot report green', () => {
+test('a preflight selector must run a check to report green', () => {
   const directory = mkdtempSync(join(tmpdir(), 'osprey-preflight-selector-'))
   try {
     mkdirSync(join(directory, '.github/workflows'), { recursive: true })
@@ -20,6 +20,15 @@ test('a preflight selector that matches nothing cannot report green', () => {
     const result = spawnSync(process.execPath, [script, '--only=Missing check'], { cwd: directory, encoding: 'utf8' })
     assert.equal(result.status, 1)
     assert.match(result.stderr, /No CI checks match/)
+    const otherHost = process.platform === 'win32' ? 'macos-15' : 'windows-latest'
+    writeFileSync(join(directory, '.github/workflows/ci.yml'), [
+      'jobs:', '  foreign:', `    runs-on: ${otherHost}`, '    steps:',
+      '      - name: Native replay', '        run: ./check',
+    ].join('\n'))
+    const skipped = spawnSync(process.execPath, [script, '--only=Native replay'], { cwd: directory, encoding: 'utf8' })
+    assert.equal(skipped.status, 1)
+    assert.match(skipped.stdout, /SKIP.*Native replay/)
+    assert.match(skipped.stderr, /None of the selected CI checks ran/)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }

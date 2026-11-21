@@ -209,6 +209,10 @@ function main(args) {
   const table = ['| Status | CI job | Step | Command | Log |', '| --- | --- | --- | --- | --- |', ...results.map(summaryLine)].join('\n')
   writeFileSync(`${OUT}/summary.md`, `${table}\n`)
   console.log(`\n${table}`)
+  if (results.every((result) => result.status === 'SKIP')) {
+    console.error('None of the selected CI checks ran')
+    return 1
+  }
   return results.some((result) => result.status === 'FAIL') ? 1 : 0
 }
 
