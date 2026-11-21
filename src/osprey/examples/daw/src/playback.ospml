@@ -31,24 +31,29 @@ module Playback
     silence count = mapList (toList (range (0, count)), \_ => 0.0)
 
     // Master and every group start each block with `count` silent frames, so every processor runs every block.
-    seeded (song, count) = Buses(left = silence count, right = silence count, groups = mapList (song.buses, \bus => Stereo(name = bus.name, left = silence count, right = silence count)), keys = [])
+    seeded (song, count) =
+        quiet = silence count
+        Buses(left = quiet, right = quiet, groups = mapList (song.buses, \bus => Stereo(name = bus.name, left = quiet, right = quiet)), keys = [])
 
-    trackStep (song, playing, held, index, from, until) = match listGet song.tracks index
+    trackStep (song, playing, held, index, from, until, streaming) = match listGet song.tracks index
         Error _ => Error(message = "A track is missing.")
         Success voice => match listGet playing.tracks index
             Error _ => Error(message = "A track is missing.")
             Success play => match listGet playing.score.tracks index
                 Error _ => Error(message = "The playing track has no previous patch.")
                 Success prior => Outcomes::carried (Arrangements::refreshed (song, voice, prior, play, from), \ready =>
-                    Outcomes::carried (Arrangements::advanced (song, held.buses, voice, ready, from, until), \step => ok (Heard(plays = listAppend held.plays step.play, buses = step.buses))))
+                    Outcomes::carried (Arrangements::advanceWindow (song, held.buses, voice, ready, from, until, streaming), \step => ok (Heard(plays = listAppend held.plays step.play, buses = step.buses))))
 
     // Every track advances over the same frames into the same buses.
-    heard (song, playing, buses, from, until) = foldList (toList (range (0, length song.tracks)), ok (Heard(plays = [], buses = buses)), \(outcome, index) => Outcomes::carried (outcome, \held => trackStep (song, playing, held, index, from, until)))
+    heard (song, playing, buses, from, until, streaming) = foldList (toList (range (0, length song.tracks)), ok (Heard(plays = [], buses = buses)), \(outcome, index) => Outcomes::carried (outcome, \held => trackStep (song, playing, held, index, from, until, streaming)))
 
     (** Play the next `frames` frames: Master's left and right sides for them, and the project after them. *)
-    export next (song, playing, frames) =
+    export step (song, playing, frames, streaming) =
         from = playing.cursor
         until = satAdd from frames
-        Outcomes::carried (heard (song, playing, seeded (song, frames), from, until), \tracked =>
+        Outcomes::carried (heard (song, playing, seeded (song, frames), from, until, streaming), \tracked =>
             Outcomes::carried (BusMix::stepped (song, tracked.buses, playing.states), \master =>
                 ok (Played(playing = Playing(score = song, cursor = until, tracks = tracked.plays, states = master.states), left = master.buses.left, right = master.buses.right))))
+
+    (** Advance an offline render, retaining complete notes for reuse. *)
+    export next (song, playing, frames) = step (song, playing, frames, false)

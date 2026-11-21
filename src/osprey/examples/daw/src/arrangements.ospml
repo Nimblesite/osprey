@@ -136,16 +136,16 @@ module Arrangements
     export same (one, other) = one.pitch == other.pitch && one.length == other.length && one.velocity == other.velocity
 
     // A note starts sounding at its frame; a note this track has made before reuses its lanes.
-    struck (song, voice, play, due) = match play.edited
-        true => match voice.instrument
-            PatchInstrument routing => Outcomes::carried (SendRenders::started (song, voice, play.sends, routing, due, play.sounding), \sound => ok (play(sounding = listAppend play.sounding sound)))
-            _ => cached (song, voice, play, due)
-        false => cached (song, voice, play, due)
-
-    cached (song, voice, play, due) = match listGet (filterList (play.made, \m => same (m.struck, due.note))) 0
+    struck (song, voice, play, due, streaming) = match ui::Lists::find (play.made, \m => same (m.struck, due.note))
         Success made => ok (play(sounding = listAppend play.sounding (Sounding(cue = due, at = due.due, driver = RecordedNote, lanes = made.chord))))
-        Error _ => Outcomes::carried (lanesOf (song, voice, play.sends, due.note), \lanes =>
-            ok (play(sounding = listAppend play.sounding (Sounding(cue = due, at = due.due, driver = RecordedNote, lanes = lanes)), made = listAppend play.made (Made(struck = due.note, chord = lanes)))))
+        Error _ => match voice.instrument
+            PatchInstrument routing => match play.edited || streaming
+                true => Outcomes::carried (SendRenders::started (song, voice, play.sends, routing, due, play.sounding), \sound => ok (play(sounding = listAppend play.sounding sound)))
+                false => recorded (song, voice, play, due)
+            _ => recorded (song, voice, play, due)
+
+    recorded (song, voice, play, due) = Outcomes::carried (lanesOf (song, voice, play.sends, due.note), \lanes =>
+        ok (play(sounding = listAppend play.sounding (Sounding(cue = due, at = due.due, driver = RecordedNote, lanes = lanes)), made = listAppend play.made (Made(struck = due.note, chord = lanes)))))
 
     (** Only the instrument and its sends affect a cached note's dry and send lanes. *)
     export sameVoice (voice, prior) = structuralEquals (voice.instrument, prior.instrument) && structuralEquals (voice.sends, prior.sends)
@@ -170,7 +170,7 @@ module Arrangements
         _ => Outcomes::carried (lanesOf (song, voice, sends, sound.cue.note), \lanes => ok (sound(at = sound.cue.due, driver = RecordedNote, lanes = lanes)))
 
     // Notes due before `until` start sounding.
-    begun (song, voice, play, until) = Outcomes::carried (foldList (filterList (play.pending, \c => c.due < until), ok play, \(outcome, c) => Outcomes::carried (outcome, \held => struck (song, voice, held, c))), \next =>
+    begun (song, voice, play, until, streaming) = Outcomes::carried (foldList (filterList (play.pending, \c => c.due < until), ok play, \(outcome, c) => Outcomes::carried (outcome, \held => struck (song, voice, held, c, streaming))), \next =>
         ok (next(pending = filterList (play.pending, \c => c.due >= until))))
 
     // A sounding note's sample at song frame `at`, silent before it starts and after it ends.
@@ -198,10 +198,12 @@ module Arrangements
 
     (** Advance one track over song frames `from` up to `until` into `buses`: notes due start sounding, each
         lane is summed for the window and routed, and notes that have ended stop. *)
-    export advanced (song, buses, voice, play, from, until) = named (voice, Outcomes::carried (begun (song, voice, play, until), \began =>
-        Outcomes::carried (sounding (song, began, from, until), \next => mixedWindow (song, buses, voice, next, from, until))))
+    export advanceWindow (song, buses, voice, play, from, until, streaming) = named (voice, Outcomes::carried (begun (song, voice, play, until, streaming), \began =>
+        Outcomes::carried (sounding (song, began, from, until, streaming), \next => mixedWindow (song, buses, voice, next, from, until))))
 
-    sounding (song, play, from, until) = match play.edited
+    export advanced (song, buses, voice, play, from, until) = advanceWindow (song, buses, voice, play, from, until, false)
+
+    sounding (song, play, from, until, streaming) = match streaming || play.edited
         false => ok play
         true => Outcomes::carried (SendRenders::collect (play.sounding, \sound => SendRenders::window (sound, from, until, toFloat song.sampleRate)), \sounds => ok (play(sounding = sounds)))
 
@@ -210,7 +212,7 @@ module Arrangements
         Outcomes::carried (fed (song, buses, voice, next.sends, lanes), \into => ok (Advanced(play = next(sounding = filterList (next.sounding, \v => lasting (until, v))), buses = into)))
 
     (** One track alone, played from the start for `frames` frames as its dry mono output; later sound is cut. *)
-    export part (song, voice, frames) = Outcomes::carried (opened (song, voice), \play => named (voice, Outcomes::carried (begun (song, voice, play, frames), \next => ok (window (next.sounding, 0, 0, frames)))))
+    export part (song, voice, frames) = Outcomes::carried (opened (song, voice), \play => named (voice, Outcomes::carried (begun (song, voice, play, frames, false), \next => ok (window (next.sounding, 0, 0, frames)))))
 
     (** One track alone, played from the start for `count` frames into `buses`. *)
     export added (song, buses, voice, count) = Outcomes::carried (opened (song, voice), \play => Outcomes::carried (advanced (song, buses, voice, play, 0, count), \step => ok step.buses))
