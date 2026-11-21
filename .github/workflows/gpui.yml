@@ -77,7 +77,7 @@ jobs:
           key: ${{ steps.gpui-cache.outputs.cache-primary-key }}
 
       - name: Every desktop app's self-test in a real window
-        run: make _gpui-self-test GPUI_WINDOW=
+        run: make -o _gpui-apps _gpui-self-test GPUI_WINDOW=
 
       - name: Host clippy
         working-directory: src/toolchain/hosts/gpui
@@ -167,7 +167,7 @@ jobs:
           key: ${{ steps.gpui-cache.outputs.cache-primary-key }}
 
       - name: Every desktop app's headless self-test
-        run: make _gpui-self-test
+        run: make -o _gpui-apps _gpui-self-test
 
       - name: Host tests and clippy
         working-directory: src/toolchain/hosts/gpui

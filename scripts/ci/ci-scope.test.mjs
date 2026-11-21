@@ -198,6 +198,21 @@ test('the coverage gate only compares collected reports and never builds or test
   assert.match(coverage, /^    runs-on: ubuntu-latest$/m)
 })
 
+test('GPUI smoke and self-tests reuse the app libraries already compiled by the job', () => {
+  const workflow = '.github/workflows/gpui.yml'
+  for (const [host, preparation] of [['macos', /make _gpui-apps\n/], ['ubuntu', /make _gpui-smoke\n/]]) {
+    const hostJob = job(host, workflow)
+    assert.match(hostJob, preparation)
+    const ready = hostJob.search(preparation)
+    const selfTest = hostJob.indexOf('make -o _gpui-apps _gpui-self-test')
+    assert.ok(selfTest > ready, `${host} self-test must reuse the earlier build`)
+  }
+  const planned = spawnSync('make', ['-n', '-o', '_gpui-apps', '_gpui-self-test', 'UNAME_S=Linux'], { encoding: 'utf8' })
+  assert.equal(planned.status, 0, planned.stderr)
+  assert.match(planned.stdout, /--self-test/)
+  assert.doesNotMatch(planned.stdout, /--compile/)
+})
+
 test('coverage identifies failed or skipped report producers before downloading artifacts', () => {
   const coverage = job('coverage', '.github/workflows/ci.yml')
   const producers = coverage.match(/^    needs: \[changes, (.+)\]$/m)[1].split(', ')
