@@ -753,7 +753,29 @@ liveKnobJourney () =
                     expect (again.playing.cursor, 768)
                     expect (loudest again.left > 0.01, true)))))
 
+// [DAW-TRANSPORT-LIVE-SPEED] Overlapping identical attacks share one recording, including its send lanes.
+streamedRepeatJourney () =
+    first = playedNote (0.0, 0.01)
+    tap = daw::AudioSend(sendId = 1, source = 1, outlet = 0, bus = "pads", level = 0.5, enabled = true)
+    keys = keysTrack ()
+    voice = keys(sends = [tap], notes = [first, first, first(start = 0.25)])
+    song = routedTo (timeline [voice], [padsBus (1.0, "")])
+    succeeds (daw::Playback::start song, \playing =>
+        succeeds (daw::Playback::step (song, playing, 128, true), \attack =>
+            reads (listGet attack.playing.tracks 0, \track =>
+                expect (length track.made, 0)
+                expect (length track.recordings, 1)
+                succeeds (daw::Arrangements::focused (song, voice, track, 128), \edited => expect (length edited.recordings, 0)))
+            succeeds (daw::Playback::step (song, attack.playing, 5400, true), \release =>
+                reads (listGet release.playing.tracks 0, \track =>
+                    expect (length track.recordings, 0)
+                    expect (length track.made, 1)
+                    reads (listGet track.made 0, \take => succeeds (daw::Arrangements::lanesOf (song, voice, [tap], first), \expected => expect (structuralEquals (take.chord, expected), true))))
+                succeeds (daw::Playback::step (song, release.playing, 640, true), \again =>
+                    reads (listGet again.playing.tracks 0, \track => reads (listGet track.sounding 0, \sound => expect (sound.driver == daw::RecordedNote, true)))))))
+
 masterPlayJourney () =
+    streamedRepeatJourney ()
     livePatchDialJourney ()
     liveKnobJourney ()
     song = playedSong 4.0

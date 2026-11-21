@@ -30,7 +30,7 @@ module Streams
         true => one
         false => other
 
-    silent = TrackPlay(edited = false, pending = [], sounding = [], sends = [], made = [])
+    silent = TrackPlay(edited = false, pending = [], sounding = [], sends = [], made = [], recordings = [])
 
     warm (dirs, playing, index, until) =
         track = listGet playing.tracks index ?: silent

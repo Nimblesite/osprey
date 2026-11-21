@@ -125,7 +125,7 @@ module Arrangements
     (** A track before it plays: every note cued at its start frame in start order, with its live sends. A
         note start that is not finite or before the piece, or a bus the song lacks, fails here. *)
     export opened (song, voice) = Outcomes::carried (reachable (song, voice), \_ => Outcomes::carried (live (song, voice), \sends =>
-        Outcomes::carried (SendRenders::collect (listSortBy (voice.notes, ordered), \note => cue (song, voice, note)), \cues => ok (TrackPlay(edited = false, pending = cues, sounding = [], sends = sends, made = [])))))
+        Outcomes::carried (SendRenders::collect (listSortBy (voice.notes, ordered), \note => cue (song, voice, note)), \cues => ok (TrackPlay(edited = false, pending = cues, sounding = [], sends = sends, made = [], recordings = [])))))
 
     (** One note's lanes: the dry output alone, or with each send's two sides from the same evaluation. *)
     export lanesOf (song, voice, sends, note) = match sends
@@ -155,7 +155,7 @@ module Arrangements
         PatchInstrument _ => match play.edited
             true => ok play
             false => Outcomes::carried (SendRenders::collect (play.sounding, \sound => SendRenders::activeBefore (song, voice, play.sends, sound, from)), \sounds =>
-                ok (play(edited = true, sounding = sounds, made = [])))
+                ok (play(edited = true, sounding = sounds, made = [], recordings = [])))
         _ => ok play
 
     (** Rebuild sounding lanes at their original onset and discard cached notes when the instrument or sends change. *)
@@ -163,7 +163,7 @@ module Arrangements
         true => ok play
         false => Outcomes::carried (live (song, voice), \sends =>
             Outcomes::carried (SendRenders::collect (play.sounding, \sound => revised (song, voice, prior, play.sends, sends, sound, from)), \sounds =>
-                ok (play(edited = true, sounding = sounds, sends = sends, made = []))))
+                ok (play(edited = true, sounding = sounds, sends = sends, made = [], recordings = []))))
 
     revised (song, voice, prior, oldSends, sends, sound, from) = match voice.instrument
         PatchInstrument routing => SendRenders::retuned (song, voice, prior, oldSends, sends, sound, from, routing)
@@ -205,7 +205,34 @@ module Arrangements
 
     sounding (song, play, from, until, streaming) = match streaming || play.edited
         false => ok play
-        true => Outcomes::carried (SendRenders::collect (play.sounding, \sound => SendRenders::window (sound, from, until, toFloat song.sampleRate)), \sounds => ok (play(sounding = sounds)))
+        true => Outcomes::carried (SendRenders::collect (play.sounding, \sound => SendRenders::window (sound, from, until, toFloat song.sampleRate)), \sounds => ok (remember (play(sounding = sounds), until)))
+
+    // Reuse the exact dry and send lanes of an uninterrupted voice after it finishes.
+    remember (play, until) = match play.edited
+        true => play
+        false => foldList (play.sounding, play, \(current, sound) => rememberSound (current, until, sound))
+
+    sameTake (take, sound) = take.struck.start == sound.cue.note.start && same (take.struck, sound.cue.note)
+
+    rememberSound (play, until, sound) = match sound.driver
+        RecordedNote => match play.recordings
+            [] => play
+            _ => play(recordings = filterList (play.recordings, \take => !sameTake (take, sound)))
+        _ => match ui::Lists::find (play.recordings, \take => sameTake (take, sound))
+            Success take => match length (listGet take.chord 0 ?: []) == satSub sound.at sound.cue.due
+                true => storeTake (play, until, sound, Made(struck = take.struck, chord = extended (take.chord, sound.lanes)))
+                false => play
+            Error _ => match sound.at == sound.cue.due && !ui::Lists::any (play.made, \take => same (take.struck, sound.cue.note)) && ui::Lists::any (play.pending, \cue => same (sound.cue.note, cue.note)) && !ui::Lists::any (play.recordings, \take => same (take.struck, sound.cue.note))
+                true => storeTake (play, until, sound, Made(struck = sound.cue.note, chord = sound.lanes))
+                false => play
+
+    extended (prior, lanes) = synth::Sequences::mapIndexed (lanes, \(index, samples) => synth::Sequences::joined (listGet prior index ?: [], samples))
+
+    storeTake (play, until, sound, take) =
+        others = filterList (play.recordings, \item => !sameTake (item, sound))
+        match lasting (until, sound)
+            true => play(recordings = listPrepend others take)
+            false => play(recordings = others, made = listAppend play.made take)
 
     mixedWindow (song, buses, voice, next, from, until) =
         lanes = toList (map (range (0, satAdd 1 (satMul 2 (length next.sends))), \lane => activeLane (next.sounding, lane, from, until)))

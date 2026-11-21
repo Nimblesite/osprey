@@ -33,7 +33,7 @@ type Sounding { cue: Cue at: Int lanes: List<List<Float>> driver: NoteDriver }
 # A note's sound depends on its pitch, length and velocity alone, so each distinct note renders once.
 type Made { struck: Note chord: List<List<Float>> }
 type NoteJob { track: Int due: Int note: Note }
-type TrackPlay { edited: Bool pending: List<Cue> sounding: List<Sounding> sends: List<AudioSend> made: List<Made> }
+type TrackPlay { edited: Bool pending: List<Cue> sounding: List<Sounding> sends: List<AudioSend> made: List<Made> recordings: List<Made> }
 type Advanced { play: TrackPlay buses: Buses }
 type Heard { plays: List<TrackPlay> buses: Buses }
 type BusState { name: String leftBand: BandState rightBand: BandState level: Float }

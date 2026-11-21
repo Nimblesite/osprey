@@ -201,6 +201,7 @@ type TrackPlay =
     sounding : List<Sounding>
     sends : List<AudioSend>
     made : List<Made>
+    recordings : List<Made>
 
 type Advanced =
     play : TrackPlay
