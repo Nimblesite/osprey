@@ -12,6 +12,7 @@ int streamText(const std::string& path, const std::string& identifier, bool sess
 int describePlugin(const std::string& path, const std::string& identifier);
 int streamPlugin(const std::string& path, const std::string& identifier);
 int probe(const std::string& path, const std::string& identifier);
+int verifyRestart(const std::string& path, const std::string& identifier);
 int verifyState(const std::string& path, const std::string& identifier);
 
 // JSON escaping is confined to this process boundary; metadata is untrusted text.
@@ -78,11 +79,12 @@ int main(int argc, char** argv) {
         if (argc == 4 && std::string(argv[1]) == "stream-session") return streamText(argv[2], argv[3], true);
         if (argc == 4 && std::string(argv[1]) == "describe") return describePlugin(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "stream") return streamPlugin(argv[2], argv[3]);
+        if (argc == 4 && std::string(argv[1]) == "verify-restart") return verifyRestart(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "verify-state") return verifyState(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "probe") return probe(argv[2], argv[3]);
         if (argc == 3 && std::string(argv[1]) == "list") return discover(argv[2]);
         if (argc == 3 && std::string(argv[1]) == "scan") return scan(argv[2]);
-        return failed("Usage: osprey-vst-worker audio-device | list <folder> | scan <plugin.vst3> | describe|probe|verify-state|stream|stream-text|stream-session <plugin.vst3> <class-id>");
+        return failed("Usage: osprey-vst-worker audio-device | list <folder> | scan <plugin.vst3> | describe|probe|verify-state|verify-restart|stream|stream-text|stream-session <plugin.vst3> <class-id>");
     } catch (const std::exception& error) {
         return failed(error.what());
     } catch (...) {

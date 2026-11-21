@@ -50,6 +50,13 @@ add_test(NAME state_automation_effect COMMAND osprey-vst-worker verify-state "${
 add_test(NAME state_automation_instrument COMMAND osprey-vst-worker verify-state "${mda_bundle}" 5653544D44416A6D6461206A78313000)
 set_tests_properties(state_automation_effect state_automation_instrument PROPERTIES TIMEOUT 20)
 
+add_test(NAME controller_program_restart COMMAND osprey-vst-worker verify-restart "${mda_bundle}" 5653544D44416A6D6461206A78313000)
+set_tests_properties(controller_program_restart PROPERTIES PASS_REGULAR_EXPRESSION "Received program parameter restart" TIMEOUT 10)
+
+add_test(NAME effect_state_session COMMAND node "${CMAKE_CURRENT_SOURCE_DIR}/state-session.mjs" $<TARGET_FILE:osprey-vst-worker> "${delay_bundle}" 0CDBB66985D548A9BFD8371909D24BB3 2 100)
+add_test(NAME instrument_state_session COMMAND node "${CMAKE_CURRENT_SOURCE_DIR}/state-session.mjs" $<TARGET_FILE:osprey-vst-worker> "${mda_bundle}" 5653544D44416A6D6461206A78313000 0 0)
+set_tests_properties(effect_state_session instrument_state_session PROPERTIES TIMEOUT 20)
+
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME stream_journeys COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/build.py" --stream-test)
 set_tests_properties(stream_journeys PROPERTIES TIMEOUT 60)

@@ -14,9 +14,24 @@ bool Plugin::open(const std::string& path, const std::string& identifier) {
         component = provider->getComponentPtr();
         processor = FUnknownPtr<IAudioProcessor>(component);
         if (!component || !processor) { error = "No audio processor interface"; return false; }
+        const auto controller = provider->getControllerPtr();
+        if (controller && controller->setComponentHandler(restarts) != kResultOk) {
+            error = "The plug-in refused the host component handler";
+            return false;
+        }
         return synchronizeController() && setup();
     }
     error = "Requested class ID not found";
+    return false;
+}
+
+bool Plugin::checkRestart() {
+    const auto flags = restarts->take();
+    if (flags & kParamTitlesChanged) automatableIds.reset();
+    // Latency is queried for every response. Topology changes require a fresh descriptor.
+    if (!(flags & ~(kLatencyChanged | kParamTitlesChanged | kParamValuesChanged))) return true;
+    error = "Plug-in requested a configuration restart (flags " + std::to_string(flags) +
+            "); reopen the plug-in before rendering";
     return false;
 }
 
@@ -51,6 +66,7 @@ bool Plugin::setup() {
     data.numSamples = blockSize;
     data.inputEvents = &events;
     data.outputEvents = &outputEvents;
+    data.outputParameterChanges = &outputParameters;
     return true;
 }
 
@@ -116,7 +132,7 @@ bool Plugin::synchronizeController() {
 
 bool sameState(const MemoryStream& first, const MemoryStream& second) {
     return first.getSize() == second.getSize() &&
-           std::memcmp(first.getData(), second.getData(), static_cast<size_t>(first.getSize())) == 0;
+           (first.getSize() == 0 || std::memcmp(first.getData(), second.getData(), static_cast<size_t>(first.getSize())) == 0);
 }
 
 bool automatable(IEditController& controller, ParameterInfo& info) {
@@ -142,11 +158,12 @@ bool automated(Plugin& plugin, ParamID identifier, ParamValue value) {
     return result == kResultOk;
 }
 
-bool flushState(Plugin& plugin) {
-    plugin.events.clear();
-    plugin.data.numSamples = 0;
-    const auto result = plugin.processor->process(plugin.data);
-    plugin.data.numSamples = blockSize;
+bool Plugin::flush() {
+    events.clear();
+    outputParameters.clearQueue();
+    data.numSamples = 0;
+    const auto result = processor->process(data);
+    data.numSamples = blockSize;
     return result == kResultOk;
 }
 
@@ -154,7 +171,7 @@ bool restore(Plugin& plugin, IEditController& controller, MemoryStream& stream) 
     if (stream.seek(0, IBStream::kIBSeekSet, nullptr) != kResultOk) return false;
     if (plugin.component->setState(&stream) != kResultOk) return false;
     if (stream.seek(0, IBStream::kIBSeekSet, nullptr) != kResultOk) return false;
-    return notifyController(controller, stream) && flushState(plugin);
+    return notifyController(controller, stream) && plugin.flush();
 }
 
 bool Plugin::stateRoundTrip() {
@@ -163,6 +180,12 @@ bool Plugin::stateRoundTrip() {
     MemoryStream original, changed, restored;
     error = "No usable controller, automatable parameter or component state";
     if (!controller || !automatable(*controller, parameter) || !saved(*component, original)) return false;
+    MemoryStream privateState;
+    const auto hasState = controller->getState(&privateState);
+    if (hasState != kNotImplemented && (hasState != kResultOk || privateState.getSize() > 16 * 1024 * 1024)) {
+        error = "Invalid private controller state";
+        return false;
+    }
     const auto initial = controller->getParamNormalized(parameter.id);
     const auto edited = initial < 0.5 ? 0.75 : 0.25;
     error = "Controller rejected the parameter value";
@@ -173,6 +196,14 @@ bool Plugin::stateRoundTrip() {
     if (sameState(original, changed)) return false;
     error = "Processor or controller state restoration failed";
     if (!restore(*this, *controller, original)) return false;
+    if (hasState == kResultOk) {
+        MemoryStream comparison;
+        error = "Private controller state failed to round trip";
+        if (privateState.seek(0, IBStream::kIBSeekSet, nullptr) != kResultOk ||
+            controller->setState(&privateState) != kResultOk ||
+            controller->getState(&comparison) != kResultOk ||
+            !sameState(privateState, comparison)) return false;
+    }
     error = "Restored processor state differs from saved state";
     if (!saved(*component, restored) || !sameState(original, restored)) return false;
     error = "Restored controller value differs from initial value: " + std::to_string(initial) + " vs " + std::to_string(controller->getParamNormalized(parameter.id));
@@ -184,6 +215,7 @@ bool Plugin::run(double& peak) {
     for (int32 block = 0; block < 200; ++block) {
         events.clear();
         outputEvents.clear();
+        outputParameters.clearQueue();
         if (acceptsNotes && (block == 0 || block == 96) && !note(events, block == 0)) return false;
         clearAudio(data, block == 0);
         context.projectTimeSamples = static_cast<int64>(block) * blockSize;
@@ -201,6 +233,24 @@ int probe(const std::string& path, const std::string& identifier) {
     std::cout << "{\"event\":\"vst.probe\",\"frames\":51200,\"peak\":" << peak
               << ",\"latency\":" << plugin.processor->getLatencySamples() << "}\n";
     return peak > 0.000001 ? 0 : failed("The lifecycle probe produced no measurable audio.");
+}
+
+// JX10 changes its controller parameters when its program changes and calls the host back.
+int verifyRestart(const std::string& path, const std::string& identifier) {
+    osprey::vst::Plugin plugin;
+    if (!plugin.open(path, identifier)) return failed(plugin.error);
+    const auto controller = plugin.provider->getControllerPtr();
+    if (!controller) return failed("Missing edit controller");
+    for (int32 i = 0; i < controller->getParameterCount(); ++i) {
+        ParameterInfo info{};
+        if (controller->getParameterInfo(i, info) != kResultOk) return failed("Missing parameter");
+        if (!(info.flags & ParameterInfo::kIsProgramChange)) continue;
+        if (controller->setParamNormalized(info.id, 0.5) != kResultOk ||
+            !(plugin.restarts->take() & kParamValuesChanged) || plugin.restarts->take() != 0) return failed("Missing or repeated restart");
+        std::cout << "Received program parameter restart\n";
+        return 0;
+    }
+    return failed("Missing program selector");
 }
 
 int verifyState(const std::string& path, const std::string& identifier) {

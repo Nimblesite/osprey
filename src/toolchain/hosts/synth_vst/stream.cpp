@@ -67,6 +67,7 @@ bool readBlock(std::istream& input, Plugin& plugin, uint32_t frames, ParameterCh
     if (notes && plugin.component->getBusCount(kEvent, kInput) == 0) return false;
     plugin.events.clear();
     plugin.outputEvents.clear();
+    plugin.outputParameters.clearQueue();
     clearAudio(plugin.data, false);
     uint32_t noteOffset = 0, parameterOffset = 0;
     for (uint32_t i = 0; i < notes; ++i) if (!event(input, plugin.events, frames, noteOffset)) return false;
@@ -85,11 +86,12 @@ uint32_t channels(int32 count, AudioBusBuffers* buses) {
 bool processBlock(std::istream& input, std::ostream& output, Plugin& plugin, uint32_t frames) {
     ParameterChanges changes{1024};
     plugin.error = "Malformed, unsupported or truncated stream block";
-    if (!readBlock(input, plugin, frames, changes)) return false;
+    if (!plugin.checkRestart() || !readBlock(input, plugin, frames, changes)) return false;
     plugin.data.numSamples = static_cast<int32>(frames);
     plugin.data.inputParameterChanges = &changes;
     const auto result = plugin.processor->process(plugin.data);
     plugin.data.inputParameterChanges = nullptr;
+    if (!plugin.checkRestart()) return false;
     double peak = 0;
     plugin.error = "Plug-in rejected a block or produced invalid audio";
     if (result != kResultOk || !measured(plugin.data, peak)) return false;
