@@ -12,7 +12,10 @@ mkdirSync(output, { recursive: true });
 const run = mkdtempSync(join(output, 'vst-spectrum-'));
 const profile = join(run, 'profile');
 mkdirSync(join(profile, '.prism'), { recursive: true });
-writeFileSync(join(profile, '.prism/vst3-folder'), resolve(pluginFolder));
+const preference = join(profile, '.prism/vst3-folder');
+const emptyFolder = join(run, 'empty-plugins');
+mkdirSync(emptyFolder);
+writeFileSync(preference, emptyFolder);
 const worker = join(run, 'worker');
 writeFileSync(worker, `#!/bin/bash
 set -eo pipefail
@@ -86,13 +89,24 @@ if (scenario === 'dragonfly') {
     edit('MIDI notes 1', 'Pitch', 72);
     audition();
 }
-const journey = join(run, 'journey.json');
-writeFileSync(journey, JSON.stringify({ steps }));
-execFileSync('src/toolchain/hosts/gpui/target/release/osprey-gpui', [
-    '--self-test', journey, run, '--headless', '--defer-processes', '--live-processes',
-    '--machine', 'src/osprey/packages/signal_flow/signal_flow.machine.json', '--empty', '--vst-worker', worker,
-], { stdio: 'inherit', timeout: 120000, env: { ...process.env, HOME: profile, CAPTURE: run,
-    VST_WORKER: join(root, 'target/vst-worker/osprey-vst-worker') } });
+function replay(name, actions) {
+    const journey = join(run, name + '.json');
+    writeFileSync(journey, JSON.stringify({ steps: actions }));
+    execFileSync('src/toolchain/hosts/gpui/target/release/osprey-gpui', [
+        '--self-test', journey, run, '--headless', '--defer-processes', '--live-processes',
+        '--machine', 'src/osprey/packages/signal_flow/signal_flow.machine.json', '--empty', '--vst-worker', worker,
+    ], { stdio: 'inherit', timeout: 120000, env: { ...process.env, HOME: profile, CAPTURE: run,
+        VST_WORKER: join(root, 'target/vst-worker/osprey-vst-worker') } });
+}
+
+const pluginName = scenario === 'tal' ? 'TAL-NoiseMaker' : 'Dragonfly Room Reverb';
+replay('settings', [
+    { invoke: 'Patch Controls' }, { gone: pluginName },
+    { invoke: 'Settings…' }, { type: ['VST3 folder', resolve(pluginFolder)] },
+    { invoke: 'Save settings' }, { wait: pluginName },
+]);
+assert.equal(readFileSync(preference, 'utf8'), resolve(pluginFolder));
+replay('journey', steps);
 
 const lines = file => readFileSync(file, 'utf8').trim().split('\n');
 function pluginPcm(line) {
