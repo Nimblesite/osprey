@@ -425,6 +425,13 @@ grainSpreadJourney () =
         refusedWith (GrainSpreads::around (bad, 4, still), "Invalid grain variation center or spread."))
     refusedWith (GrainSpreads::around (controls, 1, still), "Invalid grain variation center or spread.")
 
+wideGrainDistribution () =
+    low = grainShaped (synth::HannWindow, 0.0, 0.0, 12, 0.0, -1.0)
+    high = grainShaped (synth::HannWindow, 3.0, 0.0, 16, 1.0, 1.0)
+    synth::GrainDistribution(minimum = low, maximum = high)
+
+variedCloud seed = GrainClouds::prepare ((grainFlatSource ()).samples, 4, synth::PeriodicTiming(period = 1, jitter = 0), 3, seed)
+
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] [SYNTH-ADVANCED-GRAINS-OVERLOAD] One immutable varied-block operation owns pool,
 // clock and seeds; rejected onsets are consumed, counted and never stolen.
 grainCloudCommitJourney () =
@@ -448,12 +455,9 @@ grainCloudCommitJourney () =
             refusedWith (GrainClouds::variedBlock (played.next, synth::GrainDistribution(minimum = controls(amplitude = 1.0), maximum = controls(amplitude = 0.0)), 4), "Invalid grain distribution bounds, sample positions or random seeds.")
             succeeds (GrainClouds::block (played.next, controls, 4), \again => expect (again.next.pool.position, 12))))
     // Rejected onsets consume their draws: eight onsets advance all five streams exactly eight times.
-    lowWide = grainShaped (synth::HannWindow, 0.0, 0.0, 12, 0.0, -1.0)
-    highWide = grainShaped (synth::HannWindow, 3.0, 0.0, 16, 1.0, 1.0)
-    wide = synth::GrainDistribution(minimum = lowWide, maximum = highWide)
     succeeds (GrainDistributions::seeded 7, \base =>
-        succeeds (GrainClouds::prepare (source, 4, synth::PeriodicTiming(period = 1, jitter = 0), 3, 7), \seeded =>
-            succeeds (GrainClouds::variedBlock (seeded, wide, 8), \drawn =>
+        succeeds (variedCloud 7, \seeded =>
+            succeeds (GrainClouds::variedBlock (seeded, wideGrainDistribution (), 8), \drawn =>
                 expect (structuralEquals (drawn.next.seeds, grainAdvancedTimes (base, 8)), true)
                 counted = GrainClouds::observation drawn.next
                 expect (counted.playback.requestedGrains == 8 && counted.playback.acceptedGrains == 4 && counted.playback.rejectedGrains == 4, true)
@@ -461,20 +465,18 @@ grainCloudCommitJourney () =
 
 // Identical seeds replay identical audio across irregular partitions; different seeds draw different grains.
 grainCloudReplayJourney () =
-    source = [1.0, 1.0, 1.0, 1.0]
-    lowWide = grainShaped (synth::HannWindow, 0.0, 0.0, 12, 0.0, -1.0)
-    highWide = grainShaped (synth::HannWindow, 3.0, 0.0, 16, 1.0, 1.0)
-    wide = synth::GrainDistribution(minimum = lowWide, maximum = highWide)
-    succeeds (GrainClouds::prepare (source, 4, synth::PeriodicTiming(period = 1, jitter = 0), 3, 21), \first =>
-        succeeds (GrainClouds::prepare (source, 4, synth::PeriodicTiming(period = 1, jitter = 0), 3, 21), \replay =>
-            run = grainCloudAudio (first, wide, [8, 31, 5])
-            again = grainCloudAudio (replay, wide, [8, 31, 5])
+    wide = wideGrainDistribution ()
+    blocks = [8, 31, 5]
+    succeeds (variedCloud 21, \first =>
+        succeeds (variedCloud 21, \replay =>
+            run = grainCloudAudio (first, wide, blocks)
+            again = grainCloudAudio (replay, wide, blocks)
             expect (length run.audio, 88)
             expect (structuralEquals (run.audio, again.audio), true)
             expect (structuralEquals (run.cloud.seeds, again.cloud.seeds), true)
             expect (run.cloud.pool.position == 44 && run.cloud.clock.position == 44, true)
-            succeeds (GrainClouds::prepare (source, 4, synth::PeriodicTiming(period = 1, jitter = 0), 3, 999999), \other =>
-                differed = grainCloudAudio (other, wide, [8, 31, 5])
+            succeeds (variedCloud 999999, \other =>
+                differed = grainCloudAudio (other, wide, blocks)
                 expect (structuralEquals (run.audio, differed.audio), false)
                 expect (structuralEquals (run.cloud.seeds, differed.cloud.seeds), false))))
 
