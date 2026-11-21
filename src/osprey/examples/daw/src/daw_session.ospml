@@ -375,13 +375,30 @@ module DawSession
         false => Success(value = editor.song)
 
     (** Publish accepted drags, typed edits and history changes through the same song-control Signal. *)
-    export liveEdit (before, after) = match startsWith after.songTicket liveTicket && before.songTicket == after.songTicket && (before.revision != after.revision || focus before != focus after)
+    export liveEdit (before, after) = match startsWith after.songTicket liveTicket && before.songTicket == after.songTicket
         false => after
-        true => match before.patchTrack == after.patchTrack && after.page == PatchPage && after.patchTrack >= 0 && !structuralEquals (before.graph, after.graph)
-            true => publish (before, after, daw::PatchRecords::live (after.song, after.patchTrack, after.graph))
-            false => match focus before == focus after && structuralEquals (daw::LiveControls::settings before.song, daw::LiveControls::settings after.song)
-                true => after
-                false => publish (before, after, Success(value = after.song))
+        true => match before.revision != after.revision || focus before != focus after
+            true => projectEdit (before, after)
+            false => match before.outputEdit
+                EditingSend prior => match prior.editingId >= 0
+                    true => sendEdit (before, after, prior)
+                    false => after
+                _ => after
+
+    // A valid draft on an existing route is audible immediately. Closing it restores the saved mix.
+    sendEdit (before, after, prior) = match after.outputEdit
+        EditingSend draft => match prior.sourceKey == draft.sourceKey && prior.targetBus == draft.targetBus && prior.levelText == draft.levelText && prior.sendActive == draft.sendActive
+            true => after
+            false => match SendEditor::candidate (after, draft)
+                Error why => after(message = why)
+                Success song => publishSong (before, after, song)
+        _ => publishSong (before, after, after.song)
+
+    projectEdit (before, after) = match before.patchTrack == after.patchTrack && after.page == PatchPage && after.patchTrack >= 0 && !structuralEquals (before.graph, after.graph)
+        true => publish (before, after, daw::PatchRecords::live (after.song, after.patchTrack, after.graph))
+        false => match focus before == focus after && structuralEquals (daw::LiveControls::settings before.song, daw::LiveControls::settings after.song)
+            true => after
+            false => publish (before, after, Success(value = after.song))
 
     publish (before, after, result) = match result
         Error why => before(message = why)

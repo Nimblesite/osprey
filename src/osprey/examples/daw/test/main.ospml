@@ -1443,3 +1443,5 @@ test ("Every grain control can be reached and edited in both inspectors", \() =>
 test ("A page name appears once and empty inspectors omit the parameter heading", \() => Runtime::guarded (\() => hosted pageHeadingsJourney))
 
 test ("A held mix fader, the following note, Undo and Redo affect the playing song", \() => Runtime::guarded (\() => hosted liveMixJourney))
+
+test ("Send level edits and cancellation reach a held note while the project stays saved", \() => Runtime::guarded (\() => hosted liveSendJourney))

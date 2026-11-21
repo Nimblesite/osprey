@@ -57,7 +57,7 @@ module SendEditor
         EditingSend draft => opened (editor, draft(routeOffset = offset))
         _ => Runtime::step editor
 
-    (** Update the open draft. The track and its audio remain live until the user connects the send. *)
+    (** Update the draft. Song transport previews valid changes to an existing send. *)
     export typed (editor, action, text) = match editor.outputEdit
         EditingSend draft => match action
             SendSource => opened (editor, draft(routeOffset = 0, sourceKey = text))
@@ -80,12 +80,13 @@ module SendEditor
     selectedPort : SendDraft -> Result<SendPort, string>
     selectedPort draft = ui::Lists::find (draft.options, \p => p.portKey == draft.sourceKey)
 
-    candidate (editor, draft) = match selectedPort draft
+    (** The mix shared by live preview and Save, checked against the available outlets and buses. *)
+    export candidate (editor, draft) = match selectedPort draft
         Error _ => Error(message = "Choose an audio outlet.")
         Success port => match parseFloat draft.levelText
             Error _ => Error(message = "Enter a send level from 0 to 100%.")
             Success value => match value >= 0.0 && value <= 100.0
-                true => edited (editor, draft, port, value)
+                true => Outcomes::carried (daw::BusMix::named (editor.song, draft.targetBus), \_ => edited (editor, draft, port, value))
                 false => Error(message = "Enter a send level from 0 to 100%.")
 
     (** Save the send and all existing patch cables in the one project file. *)

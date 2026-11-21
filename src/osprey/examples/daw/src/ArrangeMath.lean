@@ -98,8 +98,10 @@ def poleCoefficient (frequency sampleRate : Float) : Float := Float.exp (-6.2831
 /-- Three-band EQ from two low-pass splits: `low` below the low corner, `band - low` between the corners and
 `input - band` above, each at its gain in dB. At 0 dB the three bands add back up to the input. -/
 def banded (input low band lowGain midGain highGain : Float) : Float :=
-  Float.exp (lowGain * 0.1151292546497023) * low + Float.exp (midGain * 0.1151292546497023) * (band - low)
-    + Float.exp (highGain * 0.1151292546497023) * (input - band)
+  let bass := Float.exp (lowGain * 0.1151292546497023)
+  let mid := Float.exp (midGain * 0.1151292546497023)
+  let treble := Float.exp (highGain * 0.1151292546497023)
+  treble * input + (mid - treble) * band + (bass - mid) * low
 
 /-- A bus is playable: gain 0–4, EQ gains −24 to 24 dB, ratio 1–20, knee 0–24 dB, attack and release 0–2 s. -/
 def busValid (gain low mid high ratio knee attack release : Float) : Bool :=
