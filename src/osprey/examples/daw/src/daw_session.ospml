@@ -383,12 +383,14 @@ module DawSession
 
     publish (before, after, result) = match result
         Error why => before(message = why)
-        Success song =>
-            handle static Signal<daw::Arrangement>
-                read => song
-            match daw::LiveControls::publish "${live after}/controls"
-                Error why => before(message = "Live controls: ${why}")
-                Success _ => after
+        Success song => publishSong (before, after, song)
+
+    publishSong (before, after, song) =
+        handle static Signal<daw::Arrangement>
+            read => song
+        match daw::LiveControls::publish "${live after}/controls"
+            Error why => before(message = "Live controls: ${why}")
+            Success _ => after
 
     // Undo from Patch may target a lane that was edited before it had ever been opened as a patch.
     historyView (editor, song) =

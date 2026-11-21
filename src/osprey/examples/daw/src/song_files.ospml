@@ -134,10 +134,12 @@ module LiveControls
     write (path, revision, text) = synth::Outcomes::carried (writeFile (slot (path, revision)) "${revision}\n${text}", \_ => writeFile path "${revision}\n")
 
     (** The slot is complete before its revision is published. A fast drag coalesces to its latest value. *)
-    export publish path = synth::Outcomes::carried (readFile path, \head => synth::Outcomes::carried (version head, \prior =>
+    export publish path = publishSong (path, perform Signal<Arrangement>.read ())
+
+    publishSong (path, song) = synth::Outcomes::carried (readFile path, \head => synth::Outcomes::carried (version head, \prior =>
         match prior >= 0 && prior < 9223372036854775807
             false => Error(message = "Live control revisions are exhausted.")
-            true => synth::Outcomes::carried (SongFiles::encode (settings (perform Signal<Arrangement>.read ())), \text => write (path, satAdd prior 1, text))))
+            true => synth::Outcomes::carried (SongFiles::encode (settings song), \text => write (path, satAdd prior 1, text))))
 
     // The same track retains its excerpt notes when an instrument, fader, pan or send changes.
     overlay (score, controls) = synth::Outcomes::carried (SendRenders::collect (score.tracks, \prior =>
