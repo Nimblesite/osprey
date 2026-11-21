@@ -87,4 +87,7 @@ done
 nice -n 10 ffmpeg -v error -y -i "$out/journey.mov" -i "$bars" \
     -filter_complex "[0:v]fps=30,scale=1920:-2[v];[1:a]adelay=delays=$(( ($(stat -f %m "$bars") - recording) * 1000 )):all=1,apad[a]" \
     -map "[v]" -map "[a]" -t "${VIDEO_SECONDS:-150}" -c:v libx264 -threads 3 -pix_fmt yuv420p -c:a aac "$out/prism-journey.mp4"
+"$out/clicks" "$pid" Prism Quit
+wait "$launcher"
+trap - EXIT
 echo "$out/prism-journey.mp4 ($step steps checked)"

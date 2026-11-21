@@ -14,6 +14,7 @@ use ferroui_base::styling::ThemeVariant;
 use ferroui_base::Ref;
 use ferroui_base::input::KeyGesture;
 use ferroui_controls::{AppBuilder, Application, MenuItemToggleType, NativeMenu, NativeMenuItem, Window};
+use ferroui_controls::application_lifetimes::ClassicDesktopStyleApplicationLifetime;
 use ferroui_desktop::AppBuilderDesktopExtensions;
 use ferroui_themes_fluent::FluentTheme;
 use ferroui_view::prelude::*;
@@ -46,7 +47,7 @@ pub fn run(arguments: &[String]) -> i32 {
     let title = std::env::var("OSPREY_NATIVE_TITLE").unwrap_or_else(|_| "Osprey".to_owned());
     let made: Rc<RefCell<Option<Rc<Host>>>> = Rc::new(RefCell::new(None));
     let kept = made.clone();
-    launch(
+    let status = launch(
         title.clone(),
         move || {
             let host = Host::new();
@@ -77,34 +78,37 @@ pub fn run(arguments: &[String]) -> i32 {
         },
     );
     drop(crate::adapters::Cleanup);
-    0
+    status
 }
 
 /// Runs the application as `ferroui_view::launch_with` does (the operating system's platform, the
 /// Fluent theme, the main loop until the window closes), named `name` before the platform reads the
 /// name: the application menu is the application's, not the toolkit's.
-fn launch(name: String, view: impl FnOnce() -> Element + 'static, started: impl FnOnce(&Ref<Window>) + 'static) {
+fn launch(name: String, view: impl FnOnce() -> Element + 'static, started: impl FnOnce(&Ref<Window>) + 'static) -> i32 {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
-    AppBuilder::configure::<Application>()
+    let lifetime = ClassicDesktopStyleApplicationLifetime::new();
+    lifetime.set_args(Some(arguments.clone()));
+    let builder = AppBuilder::configure::<Application>()
         .after_setup(move |_| {
             if let Some(application) = Application::current() {
                 application.set_name(Some(name.clone()));
             }
         })
         .use_platform_detect()
-        .start(
-            move |application, _| {
-                own_application_menu(application);
-                if std::env::var("OSPREY_NATIVE_APPEARANCE").is_ok_and(|look| look == "dark") {
-                    application.set_requested_theme_variant(Some(ThemeVariant::dark()));
-                }
-                application.styles().add(FluentTheme::new().as_style());
-                let window = ferroui_view::mount_window(view);
-                started(&window);
-                application.run_window(window);
-            },
-            &arguments,
-        );
+        .setup_with_lifetime(lifetime.clone());
+    let Some(application) = builder.instance() else {
+        eprintln!("FerroUI did not initialize the desktop application");
+        return 1;
+    };
+    own_application_menu(&application);
+    if std::env::var("OSPREY_NATIVE_APPEARANCE").is_ok_and(|look| look == "dark") {
+        application.set_requested_theme_variant(Some(ThemeVariant::dark()));
+    }
+    application.styles().add(FluentTheme::new().as_style());
+    let window = ferroui_view::mount_window(view);
+    lifetime.set_main_window(Some(window.clone()));
+    started(&window);
+    lifetime.start_with_own_args()
 }
 
 /// Drops the toolkit's "About FerroUI" and the rule under it from the application menu: its panel

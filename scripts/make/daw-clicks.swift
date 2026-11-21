@@ -23,7 +23,6 @@ func titled(_ element: AXUIElement, _ title: String) -> Bool {
 guard (3...4).contains(args.count), let pid = Int32(args[1]) else {
     fail("usage: daw-clicks <pid> <x,y,wait> or daw-clicks <pid> <menu> <item>")
 }
-_ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
 if args.count == 4 {
     guard let bar = attribute(AXUIElementCreateApplication(pid), kAXMenuBarAttribute as CFString),
           let menu = children(bar as! AXUIElement).first(where: { titled($0, args[2]) }),
@@ -31,8 +30,14 @@ if args.count == 4 {
           AXUIElementPerformAction(item, kAXPressAction as CFString) == .success else {
         fail("could not select \(args[2]) > \(args[3])")
     }
+    if args[3] == "Quit" {
+        let deadline = ProcessInfo.processInfo.systemUptime + 5
+        while kill(pid, 0) == 0 && ProcessInfo.processInfo.systemUptime < deadline { usleep(50_000) }
+        guard kill(pid, 0) == -1 && errno == ESRCH else { fail("Quit left process \(pid) running") }
+    }
     exit(0)
 }
+_ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
 let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
 guard let window = windows.first(where: { ($0[kCGWindowOwnerPID as String] as? Int) == Int(pid) && ($0[kCGWindowLayer as String] as? Int) == 0 }),
       let bounds = window[kCGWindowBounds as String] as? [String: CGFloat],
