@@ -236,9 +236,7 @@ public sealed class ProtocolTests
         rows.Count(spacing, "", 8);
         rows.Count(theme, "feedback", 200);
         rows.Count(theme, "settle", 300);
-        var region = rows.Record(-1, "region");
-        rows.Field(region, "key", "root");
-        var node = rows.Record(region, "node");
+        var node = rows.Region("root");
         rows.Field(node, "kind", "text");
         rows.Field(node, "text", "Hi");
 
@@ -256,14 +254,10 @@ public sealed class ProtocolTests
     public void AToldFrameKeepsItsRegionsInOrderAndTheirWholeTrees()
     {
         var rows = new ToldRows();
-        var first = rows.Record(-1, "region");
-        rows.Field(first, "key", "root");
-        var slot = rows.Record(first, "node");
+        var slot = rows.Region("root");
         rows.Field(slot, "kind", "slot");
         rows.Field(slot, "key", "listing");
-        var second = rows.Record(-1, "region");
-        rows.Field(second, "key", "listing");
-        var stack = rows.Record(second, "node");
+        var stack = rows.Region("listing");
         rows.Field(stack, "kind", "stack");
         rows.Field(stack, "axis", "vertical");
         var children = rows.List(stack, "children");
@@ -297,9 +291,7 @@ public sealed class ProtocolTests
     public void ATreeDeeperThanTheBoundIsRefused()
     {
         var rows = new ToldRows();
-        var region = rows.Record(-1, "region");
-        rows.Field(region, "key", "root");
-        var nested = rows.Record(region, "node");
+        var nested = rows.Region("root");
         for (var level = 0; level <= Told.Depth; level++)
         {
             nested = rows.Record(nested, "body");
@@ -311,9 +303,7 @@ public sealed class ProtocolTests
     public void ATreeDeeperThanTheBoundIsRefusedExtraATreeAtTheBoundIsDrawn()
     {
         var rows = new ToldRows();
-        var region = rows.Record(-1, "region");
-        rows.Field(region, "key", "root");
-        var nested = rows.Record(region, "node");
+        var nested = rows.Region("root");
         for (var level = 0; level < Told.Depth - 1; level++)
         {
             nested = rows.Record(nested, "body");
@@ -341,9 +331,7 @@ public sealed class ProtocolTests
     public void AToldRecordWithAScenesRowsCarriesItsRow()
     {
         var rows = new ToldRows();
-        var region = rows.Record(-1, "region");
-        rows.Field(region, "key", "root");
-        var scene = rows.Record(region, "node");
+        var scene = rows.Region("root");
         rows.Field(scene, "kind", "scene");
         rows.Real(scene, "width", 320);
         rows.Count(scene, "event", 2);
@@ -415,6 +403,14 @@ public sealed class ProtocolTests
 
         /// <summary>A record, or a component when its kind member follows.</summary>
         public int Record(int parent, string hint) => Row(RowKind.Record, parent, hint, 0, 0, 0);
+
+        /// <summary>A named region and its root node.</summary>
+        public int Region(string key)
+        {
+            var region = Record(-1, "region");
+            Field(region, "key", key);
+            return Record(region, "node");
+        }
 
         /// <summary>A list of items.</summary>
         public int List(int parent, string hint) => Row(RowKind.List, parent, hint, 0, 0, 0);
