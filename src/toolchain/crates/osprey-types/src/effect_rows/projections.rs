@@ -67,10 +67,11 @@ impl Analyzer<'_> {
             Some((Projection::Field(field), remaining)) => self
                 .project_borrowed_field(value, field)
                 .and_then(|projected| self.project_path(projected, remaining)),
-            Some((Projection::Returned(_), _)) => value
+            Some((Projection::Returned(arguments), remaining)) => value
                 .callable
-                .clone()
-                .and_then(|callable| self.project_path(Value::from_callable(callable), path)),
+                .as_ref()
+                .and_then(|callable| self.project_borrowed_return(callable, arguments))
+                .and_then(|projected| self.project_path(projected, remaining)),
             _ => self.project_path(value.clone(), path),
         }
     }
@@ -153,7 +154,9 @@ impl Analyzer<'_> {
             Some(Callable::Alternatives(choices)) => {
                 self.project_return_choices(choices, &arguments)
             }
-            Some(Callable::Known(known)) => self.project_known_return(*known, &arguments),
+            Some(Callable::Known(known)) => {
+                self.project_known_return(&known.parameters, known.returned, &arguments)
+            }
             callable => Self::project_other_return(callable, arguments),
         }
     }
@@ -184,13 +187,29 @@ impl Analyzer<'_> {
         returned
     }
 
-    fn project_known_return(
+    fn project_borrowed_return(
         &self,
-        known: super::KnownCallable,
+        callable: &Callable,
         arguments: &CallArguments,
     ) -> Option<Value> {
-        let values = ordered_values(&known.parameters, &arguments.positional, &arguments.named);
-        self.project_bound_return(known.returned, &values)
+        match callable {
+            Callable::Known(known) => {
+                self.project_known_return(&known.parameters, known.returned.clone(), arguments)
+            }
+            callable => {
+                self.project_call_return(Value::from_callable(callable.clone()), arguments.clone())
+            }
+        }
+    }
+
+    fn project_known_return(
+        &self,
+        parameters: &[String],
+        returned: Option<Box<Value>>,
+        arguments: &CallArguments,
+    ) -> Option<Value> {
+        let values = ordered_values(parameters, &arguments.positional, &arguments.named);
+        self.project_bound_return(returned, &values)
     }
 
     pub(super) fn invoke_with_values(
@@ -301,6 +320,31 @@ fn owned_return_choices_do_not_clone_their_payloads() {
             super::provenance::measured_clones(|| analyzer.project_call_return(value, arguments));
         assert_eq!(actual, Some(Value::unknown_value()));
         assert_eq!(clones, 0, "owned choices clone");
+    });
+}
+
+#[cfg(test)]
+#[test]
+fn borrowed_known_return_does_not_clone_deferred_calls() {
+    super::identity_tests::with_empty_analyzer(|analyzer| {
+        let mut known = super::KnownCallable {
+            parameters: vec!["callback".to_owned()],
+            summary: Summary::default(),
+            returned: Some(Box::new(Value::unknown_value())),
+        };
+        assert!(known.summary.parameter_uses.insert(ParameterUse {
+            level: 0,
+            index: 0,
+            projection: Vec::new(),
+            arguments: CallArguments {
+                positional: vec![Some(Value::unknown_value()); 128],
+                named: Vec::new(),
+            },
+            scopes: Vec::new(),
+        }));
+        let value = Value::from_callable(Callable::Known(Box::new(known)));
+        let projection = Projection::Returned(Box::default());
+        assert_projection_budget(&analyzer, &value, projection, 1);
     });
 }
 
