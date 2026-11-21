@@ -77,6 +77,8 @@ def rollWidth (beat length first : Float) : Float :=
 /-- Pitch rows fill y 542 to 802, the highest pitch at the top. -/
 def pitchHeight (rows : Float) : Float := 260 / rows
 def pitchY (pitch high rows : Float) : Float := 542 + (high - pitch) * (260 / rows)
+/-- [DAW-ROLL-KEYS] The pitch of the key row under `y`: the inverse of `pitchY`. -/
+def keyPitch (y high rows : Float) : Float := high - Float.floor ((y - 542) / (260 / rows))
 /-- Reserve the native typeface's ascent and descent within the two inset note edges. -/
 def noteLabelSize (height : Float) : Float := bounded ((height - 2) / 1.32) 0 12
 def noteLabelY (top height size : Float) : Float := top + (height - size * 1.32) / 2 - 1
