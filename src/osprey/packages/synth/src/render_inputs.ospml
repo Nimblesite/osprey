@@ -25,22 +25,34 @@ module RenderInputs
     export setting<T> : (Observation, int, string, (float) -> Result<T, Fault>) -> Result<T, Fault>
     setting (snapshot, identity, key, continue) = Outcomes::carried (parameter (snapshot, identity, key), \value => continue value)
 
+    connection (plan, identity, inlet) = Seek::first (plan.graph.cables, \c => c.destination == identity && c.inlet == inlet)
+
+    fromCable (frame, cable) = match Seek::first (frame.values, \v => v.identity == cable.source)
+        Error _ => Error(message = MissingResource(detail = "An input was read before its source was rendered."))
+        Success value => Success(value = value.value)
+
     (** An optional normalised control inlet: unplugged keeps `base`; plugged values must lie in [0, 1] and are
-        combined with `base` by the caller's declared rule (replacement, multiplication, ...). *)
-    export controlled (plan, frame, identity, inlet, base, combine) = match length (filterList (plan.graph.cables, \c => c.destination == identity && c.inlet == inlet)) == 0
-        true => Success(value = base)
-        false => match input (plan, frame, identity, inlet)
+        combined with `base` by the caller's declared rule. *)
+    export controlled (plan, frame, identity, inlet, base, combine) = controlledWith (plan, frame, identity, inlet, base, combine, "Control inputs must stay between zero and one.")
+
+    (** Read an optional normalised control with the processor's error detail. *)
+    export controlledWith (plan, frame, identity, inlet, base, combine, detail) = match connection (plan, identity, inlet)
+        Error _ => Success(value = base)
+        Success cable => match fromCable (frame, cable)
             Error why => Error(message = why)
             Success control => match control >= 0.0 && control <= 1.0
-                false => Error(message = InvalidConfiguration(detail = "Control inputs must stay between zero and one."))
+                false => Error(message = InvalidConfiguration(detail = detail))
                 true => Success(value = combine (base, control))
 
+    (** An unplugged optional audio inlet is silent. A routed source must already be rendered. *)
+    export optional (plan, frame, identity, inlet) = match connection (plan, identity, inlet)
+        Error _ => Success(value = 0.0)
+        Success cable => fromCable (frame, cable)
+
     (** Resolve a routed mono input from an already rendered source. *)
-    export input (plan, frame, identity, inlet) = match Seek::first (plan.graph.cables, \c => c.destination == identity && c.inlet == inlet)
+    export input (plan, frame, identity, inlet) = match connection (plan, identity, inlet)
         Error _ => Error(message = MissingResource(detail = "An audio input is not connected."))
-        Success cable => match Seek::first (frame.values, \v => v.identity == cable.source)
-            Error _ => Error(message = MissingResource(detail = "An input was read before its source was rendered."))
-            Success value => Success(value = value.value)
+        Success cable => fromCable (frame, cable)
 
     (** Read one produced sample and reject invalid numeric output before publication. *)
     export sample (frame, identity) = match Seek::first (frame.values, \v => v.identity == identity)

@@ -33,13 +33,7 @@ module RenderKernels
 
     cutoff (plan, snapshot, frame, identity) = match RenderInputs::parameter (snapshot, identity, "cutoff")
         Error why => Error(message = why)
-        Success base => match length (filterList (plan.graph.cables, \c => c.destination == identity && c.inlet == 1)) == 0
-            true => Success(value = base)
-            false => match RenderInputs::input (plan, frame, identity, 1)
-                Error why => Error(message = why)
-                Success control => match control >= 0.0 && control <= 1.0
-                    false => Error(message = InvalidConfiguration(detail = "Cutoff modulation must stay between zero and one."))
-                    true => Success(value = Waves::controlledCutoff (base, control))
+        Success base => RenderInputs::controlledWith (plan, frame, identity, 1, base, \(value, control) => Waves::controlledCutoff (value, control), "Cutoff modulation must stay between zero and one.")
 
     gain (snapshot, frame, held, input) = match RenderInputs::parameter (snapshot, held.identity, "gain")
         Error why => Error(message = why)

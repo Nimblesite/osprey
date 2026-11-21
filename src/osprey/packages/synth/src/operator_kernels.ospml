@@ -5,11 +5,6 @@ import synth::RenderInputs
 
 (** Phase holds the ramp, integrators the feedback history; storage the last sync value and decimator. *)
 module OperatorKernels
-    // Unplugged optional inlets are silence, which leaves the operator unmodulated and unsynced.
-    optional (plan, frame, identity, inlet) = match length (filterList (plan.graph.cables, \c => c.destination == identity && c.inlet == inlet)) == 0
-        true => Success(value = 0.0)
-        false => RenderInputs::input (plan, frame, identity, inlet)
-
     pulse (index, ratio, offset) = PulseControls(index = index, ratio = ratio, offset = offset)
 
     shape (selector, breakpoint, first, second) = Outcomes::chosen (selector, [PlainPhase, DistortedPhase(breakpoint = breakpoint), WindowedPhase(index = first.index, ratio = first.ratio), WavePulsePhase(breakpoint = breakpoint, first = first, second = second)], "Shape must be 0 plain, 1 PD, 2 windowed PM or 3 WPPM.")
@@ -35,9 +30,9 @@ module OperatorKernels
             false => direct (frame, held, config, modulation, sync, previousSync)
 
     // The two optional inlets travel together as (modulation, sync).
-    inputs (plan, frame, identity) = match optional (plan, frame, identity, 0)
+    inputs (plan, frame, identity) = match RenderInputs::optional (plan, frame, identity, 0)
         Error why => Error(message = why)
-        Success modulation => Outcomes::carried (optional (plan, frame, identity, 1), \sync => Success(value = Complex(re = modulation, im = sync)))
+        Success modulation => Outcomes::carried (RenderInputs::optional (plan, frame, identity, 1), \sync => Success(value = Complex(re = modulation, im = sync)))
 
     settings (snapshot, identity) = RenderInputs::setting (snapshot, identity, "frequency", \frequency => RenderInputs::setting (snapshot, identity, "shape", \selector => RenderInputs::setting (snapshot, identity, "breakpoint", \breakpoint => RenderInputs::setting (snapshot, identity, "index", \index => RenderInputs::setting (snapshot, identity, "ratio", \ratio => RenderInputs::setting (snapshot, identity, "offset", \offset => RenderInputs::setting (snapshot, identity, "index2", \index2 => RenderInputs::setting (snapshot, identity, "ratio2", \ratio2 => RenderInputs::setting (snapshot, identity, "offset2", \offset2 => RenderInputs::setting (snapshot, identity, "depth", \depth => RenderInputs::setting (snapshot, identity, "spread", \spread => RenderInputs::setting (snapshot, identity, "feedback", \feedback => RenderInputs::setting (snapshot, identity, "amplitude", \amplitude => RenderInputs::setting (snapshot, identity, "oversample", \oversample => Success(value = OperatorControls(selector = selector, breakpoint = breakpoint, first = pulse (index, ratio, offset), second = pulse (index2, ratio2, offset2), frequency = frequency, depth = depth, spread = spread, feedback = feedback, amplitude = amplitude, oversample = oversample))))))))))))))))
 
