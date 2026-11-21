@@ -440,7 +440,7 @@
       },
       "synth": {
         "language": "osprey",
-        "threshold": 92.2
+        "threshold": 92.5
       },
       "express": {
         "threshold": 96.0,
