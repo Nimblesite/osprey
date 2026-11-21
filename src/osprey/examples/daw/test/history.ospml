@@ -6,16 +6,16 @@ graphHistoryJourney () =
     opened = editorLaunched ["--empty"]
     library = prismTap (opened, "Modules")
     added = prismTap (library, "Add Sine oscillator")
-    expect (length (Drive::holding added).graph.nodes, 1)
+    nodesOf (added, 1)
     undone = prismTap (added, "Undo")
-    expect (length (Drive::holding undone).graph.nodes, 0)
+    nodesOf (undone, 0)
     redone = prismTap (undone, "Redo")
-    expect (structuralEquals ((Drive::holding redone).graph, (Drive::holding added).graph), true)
+    sameGraph (redone, added)
     branched = prismTap (prismTap (prismTap (redone, "Undo"), "Modules"), "Add Low-pass filter")
-    expect (length (Drive::holding branched).graph.nodes, 1)
+    nodesOf (branched, 1)
     expect ((Drive::holding branched).selected > (Drive::holding added).selected, true)
     noRedo = prismTap (branched, "Redo")
-    expect (structuralEquals ((Drive::holding noRedo).graph, (Drive::holding branched).graph), true)
+    sameGraph (noRedo, branched)
     expect (length (Drive::holding noRedo).future, 0)
     sampleChoiceJourney ()
     historyRemovalJourney ()
@@ -38,7 +38,7 @@ channelUtilitiesJourney () =
                 "panner" => expect (mapList (n.outputs, \p => p.channels), [2])
                 _ => expect (mapList (n.parameters, \p => p.key), ["firstGain", "secondGain"]))
         undone = prismTap (selected, "Undo")
-        expect (length (Drive::holding undone).graph.nodes, 0)
+        nodesOf (undone, 0)
         expect (structuralEquals ((Drive::holding (prismTap (undone, "Redo"))).graph, graph), true))
 
 // [DAW-KEYS] Every shipped keymap passes its own checks and gives every command keys; a keymap file may change
@@ -92,12 +92,12 @@ wireDragJourney () =
         start = uitest::Semantics::point (from, part)
         end = uitest::Semantics::point (to, 1.0 - part)
         wired = dragged (opened, start.pointX, start.pointY, end.pointX, end.pointY, 30)
-        expect (length (Drive::holding wired).graph.cables, satAdd before 1)
+        cablesOf (wired, satAdd before 1)
         expect (uitest::Semantics::offered (wired.drivenSeen.renderedAccess, "Cable 4:0 to 1:1"), true)
         expect ((Drive::holding wired).wireDragging, false))
     start = uitest::Semantics::point (from, 0.5)
     missed = dragged (opened, start.pointX, start.pointY, start.pointX + 300.0, start.pointY + 40.0, 30)
-    expect (length (Drive::holding missed).graph.cables, before)
+    cablesOf (missed, before)
     expect ((Drive::holding missed).wireDragging, false)
 
 // [DAW-INSPECTOR] A module without skin art is edited where it is shown: every parameter is a slider on the canvas,
@@ -171,7 +171,7 @@ sampleChoiceJourney () =
     expect ((Drive::holding stale).sampleTicket, ticket)
     cancelled = Drive::completed (stale, ticket, true, "")
     expect ((Drive::holding cancelled).sampleTicket, "")
-    expect (structuralEquals ((Drive::holding opened).graph, (Drive::holding cancelled).graph), true)
+    sameGraph (opened, cancelled)
     expect (length (Drive::holding opened).past, length (Drive::holding cancelled).past)
     sampleFileJourney cancelled
     pitchRangeJourney ()
@@ -238,11 +238,11 @@ sampleFileJourney driven =
     asked = Drive::press (sampleRefusals driven, "Load WAV sample")
     failed = Drive::completed (asked, (Drive::holding asked).sampleTicket, false, "chooser unavailable")
     expect ((Drive::holding failed).message, "Grain cloud ${(Drive::holding failed).selected}: chooser unavailable")
-    expect (structuralEquals ((Drive::holding failed).graph, (Drive::holding driven).graph), true)
+    sameGraph (failed, driven)
     builtin = Drive::press (failed, "Use built-in harmonic sample")
     expect ((Drive::holding builtin).message, "Loaded ${daw::PatchVoices::builtinName}.")
     expect ((Drive::holding builtin).revision > (Drive::holding failed).revision, true)
-    expect (length (Drive::holding builtin).graph.nodes, length (Drive::holding driven).graph.nodes)
+    nodesOf (builtin, length (Drive::holding driven).graph.nodes)
     installedSampleJourney builtin
 
 // A real WAV replaces the source and Undo and Redo restore each sample with its metadata.
@@ -270,9 +270,9 @@ installedSampleJourney builtin =
     asked = Drive::press (again, "Load WAV sample")
     pending = (Drive::holding asked).sampleTicket
     gone = deleteNode (asked, (Drive::holding asked).selected)
-    expect (length (Drive::holding gone).graph.nodes, satSub (length (Drive::holding again).graph.nodes) 1)
+    nodesOf (gone, satSub (length (Drive::holding again).graph.nodes) 1)
     late = Drive::completed (gone, pending, true, "target/daw-tests/text.wav")
-    expect (structuralEquals ((Drive::holding late).graph, (Drive::holding gone).graph), true)
+    sameGraph (late, gone)
     expect ((Drive::holding late).sampleTicket, "")
 
 motifWav = "src/osprey/examples/daw/tracks/samples/elise-motif.wav"
@@ -305,12 +305,12 @@ historyRemovalJourney () =
     opened = Drive::press (editorLaunched [], "Patch Controls")
     changed = Drive::choose (dialTapped (opened, "Cutoff"), "Cutoff", "3200")
     removed = deleteNode (changed, (Drive::holding changed).selected)
-    expect (length (Drive::holding removed).graph.nodes, 4)
+    nodesOf (removed, 4)
     restored = prismTap (removed, "Undo")
-    expect (structuralEquals ((Drive::holding restored).graph, (Drive::holding changed).graph), true)
+    sameGraph (restored, changed)
     expect (structuralEquals ((Drive::holding restored).positions, (Drive::holding changed).positions), true)
     original = prismTap (restored, "Undo")
-    expect (structuralEquals ((Drive::holding original).graph, (Drive::holding opened).graph), true)
+    sameGraph (original, opened)
     historyDragJourney ()
 
 // Moving a module through several pointer positions creates exactly one reversible edit.
@@ -340,13 +340,13 @@ graphResizeJourney () =
     expect (wideUndo.accessTop, baseUndo.accessTop)
     expect (length (connectionLefts wider), 0)
     added = prismTap (prismTap (wider, "Modules"), "Add Sine oscillator")
-    expect (length (Drive::holding added).graph.nodes, 6)
+    nodesOf (added, 6)
     undone = prismTap (added, "Undo")
-    expect (length (Drive::holding undone).graph.nodes, 5)
+    nodesOf (undone, 5)
     smaller = Drive::viewed (undone, 1536.0, 828.0)
     expect ((portIn (smaller, "Undo")).accessLeft, baseUndo.accessLeft)
     redone = prismTap (smaller, "Redo")
-    expect (length (Drive::holding redone).graph.nodes, 6)
+    nodesOf (redone, 6)
 
 // Any connection row the inspector letters: there must be none.
 connectionLefts driven =
@@ -384,31 +384,32 @@ arrangedPitched (pitch, start) = daw::Note(pitch = pitch, start = start, length 
 
 arrangedAt (samples, index) = listGet samples index ?: 999.0
 
+arrangedReadings (samples, check, rows) = forEachList (rows, \row => check (arrangedAt (samples, row.frame), row.want))
+
+arrangedExact (got, want) = expect (got, want)
+
+arrangedBusFrames (buses, count) = forEachList ([buses.left, buses.right], \samples => expect (length samples, count))
+
 // Buses after layered (empty, [1.0, 0.5, -0.25], 0, 2.0, 0.0): equal-power pan.
 arrangedFirstBuses buses =
-    expect (length buses.left, 3)
-    expect (length buses.right, 3)
-    arrangedNear (arrangedAt (buses.left, 0), 1.4142135623730951)
-    arrangedNear (arrangedAt (buses.left, 1), 0.7071067811865476)
-    arrangedNear (arrangedAt (buses.left, 2), -0.3535533905932738)
-    arrangedNear (arrangedAt (buses.right, 0), 1.414213562373095)
-    arrangedNear (arrangedAt (buses.right, 1), 0.7071067811865475)
-    arrangedNear (arrangedAt (buses.right, 2), -0.35355339059327373)
+    arrangedBusFrames (buses, 3)
+    arrangedReadings (buses.left, arrangedNear, [
+        { frame = 0, want = 1.4142135623730951 }, { frame = 1, want = 0.7071067811865476 },
+        { frame = 2, want = -0.3535533905932738 }])
+    arrangedReadings (buses.right, arrangedNear, [
+        { frame = 0, want = 1.414213562373095 }, { frame = 1, want = 0.7071067811865475 },
+        { frame = 2, want = -0.35355339059327373 }])
 
 // After layered (first, [0.1, 0.2], 2, 1.0, -1.0): placed at frame 2, hard left.
 arrangedSecondBuses buses =
-    expect (length buses.left, 4)
-    expect (length buses.right, 4)
-    arrangedNear (arrangedAt (buses.left, 2), -0.25355339059327375)
-    arrangedNear (arrangedAt (buses.left, 3), 0.2)
+    arrangedBusFrames (buses, 4)
+    arrangedReadings (buses.left, arrangedNear, [{ frame = 2, want = -0.25355339059327375 }, { frame = 3, want = 0.2 }])
     expect (arrangedAt (buses.right, 3), 0.0)
 
 // After layered (second, [3.0], 1, 0.5, 1.0): one frame added over the middle, hard right.
 arrangedThirdBuses buses =
-    expect (length buses.left, 4)
-    expect (length buses.right, 4)
-    arrangedNear (arrangedAt (buses.left, 0), 1.4142135623730951)
-    arrangedNear (arrangedAt (buses.left, 1), 0.7071067811865477)
+    arrangedBusFrames (buses, 4)
+    arrangedReadings (buses.left, arrangedNear, [{ frame = 0, want = 1.4142135623730951 }, { frame = 1, want = 0.7071067811865477 }])
     arrangedNear (arrangedAt (buses.right, 1), 2.2071067811865475)
 
 arrangedLayeredSteps first =
@@ -423,10 +424,9 @@ arrangedSecondSteps second =
 arrangedKickHead samples =
     expect (length samples, 5)
     expect (arrangedAt (samples, 0), -0.5)
-    arrangedNear (arrangedAt (samples, 1), -0.4994192478404178)
-    arrangedNear (arrangedAt (samples, 2), -0.49825365548570233)
-    arrangedNear (arrangedAt (samples, 3), -0.49650526238606774)
-    arrangedNear (arrangedAt (samples, 4), -0.49417678890818284)
+    arrangedReadings (samples, arrangedNear, [
+        { frame = 1, want = -0.4994192478404178 }, { frame = 2, want = -0.49825365548570233 },
+        { frame = 3, want = -0.49650526238606774 }, { frame = 4, want = -0.49417678890818284 }])
 
 arrangedKickWhole samples =
     expect (length samples, 12000)
@@ -434,19 +434,16 @@ arrangedKickWhole samples =
 
 arrangedKickPadded samples =
     expect (length samples, 12003)
-    expect (arrangedAt (samples, 12000), 0.0)
-    expect (arrangedAt (samples, 12001), 0.0)
-    expect (arrangedAt (samples, 12002), 0.0)
+    forEachList ([12000, 12001, 12002], \frame => expect (arrangedAt (samples, frame), 0.0))
 
 // A second identical note from beat 0.25 (frame 6000) overlap-added onto the first.
 arrangedPairSamples samples =
     expect (length samples, 12002)
     expect (arrangedAt (samples, 0), -0.5)
-    arrangedNear (arrangedAt (samples, 5999), 0.005101474122257177)
-    arrangedNear (arrangedAt (samples, 6000), -0.4954169144577917)
-    arrangedNear (arrangedAt (samples, 6001), -0.49535932751606987)
-    arrangedNear (arrangedAt (samples, 12000), 0.0045830855422083275)
-    arrangedNear (arrangedAt (samples, 12001), 0.004059920324347923)
+    arrangedReadings (samples, arrangedNear, [
+        { frame = 5999, want = 0.005101474122257177 }, { frame = 6000, want = -0.4954169144577917 },
+        { frame = 6001, want = -0.49535932751606987 }, { frame = 12000, want = 0.0045830855422083275 },
+        { frame = 12001, want = 0.004059920324347923 }])
 
 // Two identical notes on one beat: the carry sums them from the first frame.
 arrangedTwinSamples samples =
@@ -457,25 +454,36 @@ arrangedTwinSamples samples =
 // A note from beat 0 and one from beat 1: frames 12000 to 23999 settle as silence between them.
 arrangedGapSamples samples =
     expect (length samples, 24001)
-    expect (arrangedAt (samples, 12000), 0.0)
-    expect (arrangedAt (samples, 23999), 0.0)
-    expect (arrangedAt (samples, 24000), -0.5)
+    arrangedReadings (samples, arrangedExact, [{ frame = 12000, want = 0.0 }, { frame = 23999, want = 0.0 }, { frame = 24000, want = -0.5 }])
 
 // A note wholly past the asked window: the settled gap is longer than the window asked for.
 arrangedLateSamples samples =
     expect (length samples, 24000)
-    expect (arrangedAt (samples, 0), 0.0)
-    expect (arrangedAt (samples, 23999), 0.0)
+    forEachList ([0, 23999], \frame => expect (arrangedAt (samples, frame), 0.0))
 
 // added: the kick at gain 2, pan 0, so the buses carry the part exactly.
 arrangedAddedBuses buses =
-    expect (length buses.left, 3)
-    expect (length buses.right, 3)
-    arrangedNear (arrangedAt (buses.left, 0), -0.7071067811865476)
-    arrangedNear (arrangedAt (buses.left, 1), -0.706285473606089)
-    arrangedNear (arrangedAt (buses.left, 2), -0.7046370770898519)
-    arrangedNear (arrangedAt (buses.right, 0), -0.7071067811865475)
-    arrangedNear (arrangedAt (buses.right, 1), -0.7062854736060888)
+    arrangedBusFrames (buses, 3)
+    arrangedReadings (buses.left, arrangedNear, [
+        { frame = 0, want = -0.7071067811865476 }, { frame = 1, want = -0.706285473606089 },
+        { frame = 2, want = -0.7046370770898519 }])
+    arrangedReadings (buses.right, arrangedNear, [{ frame = 0, want = -0.7071067811865475 }, { frame = 1, want = -0.7062854736060888 }])
+
+// [SYNTH-ARRANGEMENT] The same drum rendered into each window, including reversed overlap and a silent gap.
+arrangedDrumParts (song, kick) =
+    head = arrangedNote (0.0, 0.5)
+    overlap = arrangedNote (0.25, 0.5)
+    later = arrangedNote (1.0, 0.5)
+    cases = [
+        { notes = kick.notes, frames = 5, inspect = arrangedKickHead },
+        { notes = kick.notes, frames = 12000, inspect = arrangedKickWhole },
+        { notes = kick.notes, frames = 12003, inspect = arrangedKickPadded },
+        { notes = [head, overlap], frames = 12002, inspect = arrangedPairSamples },
+        { notes = [overlap, head], frames = 12002, inspect = arrangedPairSamples },
+        { notes = [head, head], frames = 12000, inspect = arrangedTwinSamples },
+        { notes = [head, later], frames = 24001, inspect = arrangedGapSamples },
+        { notes = [later], frames = 100, inspect = arrangedLateSamples }]
+    forEachList (cases, \row => succeeds (daw::Arrangements::part (song, kick(notes = row.notes), row.frames), row.inspect))
 
 // A fully noisy hit still passes through the same signed-zero sum at subnormal velocity.
 arrangedNoiseFloor () =
@@ -552,14 +560,7 @@ arrangementsJourney () =
         failsWith (daw::Arrangements::layered (silent, [1.0], row.offset, row.gain, row.pan), refusesMix))
     // part: one drum note's exact samples, overlap-add, the silence gap, the padding and every fault.
     kick = arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.0, 0.5)])
-    succeeds (daw::Arrangements::part (song120, kick, 5), \head => arrangedKickHead head)
-    succeeds (daw::Arrangements::part (song120, kick, 12000), \whole => arrangedKickWhole whole)
-    succeeds (daw::Arrangements::part (song120, kick, 12003), \padded => arrangedKickPadded padded)
-    succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.0, 0.5), arrangedNote (0.25, 0.5)]), 12002), \pair => arrangedPairSamples pair)
-    succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.25, 0.5), arrangedNote (0.0, 0.5)]), 12002), \pair => arrangedPairSamples pair)
-    succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.0, 0.5), arrangedNote (0.0, 0.5)]), 12000), \twin => arrangedTwinSamples twin)
-    succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.0, 0.5), arrangedNote (1.0, 0.5)]), 24001), \gap => arrangedGapSamples gap)
-    succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (1.0, 0.5)]), 100), \late => arrangedLateSamples late)
+    arrangedDrumParts (song120, kick)
     failsWith (daw::Arrangements::part (song120, arrangedBell ("far", 1.0, [arrangedNote (1201.0, 0.5)]), 100), "far: An arrangement must last 1 to 28800000 frames.")
     succeeds (daw::Arrangements::part (song120, arrangedBell ("rest", 1.0, []), 4), \hush => expect (hush, [0.0, 0.0, 0.0, 0.0]))
     succeeds (daw::Arrangements::part (song120, arrangedBell ("rest", 1.0, []), 0), \hush => expect (hush, []))
@@ -574,8 +575,8 @@ arrangementsJourney () =
     failsWith (daw::Arrangements::part (song120, arrangedBell ("ghost", 25.0, [arrangedNote (0.0, 0.5)]), 5), "ghost: A note must last 1 to 960000 frames including its ring.")
     // added: the rendered part placed on the buses at its own mix settings, faults prefixed by track.
     succeeds (daw::Arrangements::added (song120, silent, arrangedDrum ("kick", 2.0, 0.25, [arrangedNote (0.0, 0.5)]), 3), \mixed => arrangedAddedBuses mixed)
-    succeeds (daw::Arrangements::added (song120, silent, arrangedBell ("rest", 1.0, []), 5), \quiet => expect (quiet.left, [0.0, 0.0, 0.0, 0.0, 0.0]))
-    succeeds (daw::Arrangements::added (song120, silent, arrangedBell ("rest", 1.0, []), 5), \quiet => expect (quiet.right, [0.0, 0.0, 0.0, 0.0, 0.0]))
+    succeeds (daw::Arrangements::added (song120, silent, arrangedBell ("rest", 1.0, []), 5), \quiet =>
+        forEachList ([quiet.left, quiet.right], \samples => expect (samples, [0.0, 0.0, 0.0, 0.0, 0.0])))
     failsWith (daw::Arrangements::added (song120, silent, arrangedDrum ("kick", 4.5, 0.25, [arrangedNote (0.0, 0.5)]), 3), "kick: ${refusesMix}")
     failsWith (daw::Arrangements::added (song120, silent, arrangedDrum ("kick", 1.0, 0.25, [arrangedPitched (128, 0.0)]), 3), "kick: ${refusesNote}")
     // interleaved: left and right woven frame by frame, zero past the end, empty when from reaches until.

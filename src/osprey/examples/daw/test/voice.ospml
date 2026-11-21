@@ -40,7 +40,7 @@ inspectorJourney () =
     viewShows (disconnected, "Remove module", false)
     viewShows (disconnected, "Scan VST3", false)
     viewShows (disconnected, "VST3 bundle", false)
-    expect (length (Drive::holding disconnected).graph.nodes, 2)
+    nodesOf (disconnected, 2)
     cableGestureJourney ()
 
 patch (wave, process, depth, lfo, volume) = synth::Patch(pitch = 220.0, sounding = true, filtered = true, wave = wave, cutoff = 20.0 * pow (1000.0, process), depth = depth, lfo = lfo, audible = true, volume = volume)
@@ -241,7 +241,7 @@ windowsAudioJourney () =
 // [PRISM-ROUTING-PRESENTATION] Main's artwork controls edit the same live patch.
 prismIntegratedJourney () =
     opened = editorLaunched []
-    expect (length (Drive::holding opened).graph.nodes, 5)
+    nodesOf (opened, 5)
     cablesOf (opened, 4)
     offeredIn (opened, "Stop playback", false)
     forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Play patch", "Undo", "Redo", "Timeline", "Track patch", "Bus routing"], \label => offeredIn (opened, label, true))
@@ -256,7 +256,7 @@ prismIntegratedJourney () =
     library = prismTap (quieter, "Modules")
     expect ((Drive::holding library).paletteShown, true)
     added = Drive::pointer (Drive::pointer (library, 80.0, 130.0, true), 350.0, 230.0, false)
-    expect (length (Drive::holding added).graph.nodes, 6)
+    nodesOf (added, 6)
     cablesOf (added, 4)
     selectedIs (added, 5)
     expect ((Drive::holding added).paletteDrag, "")
@@ -412,7 +412,7 @@ cableGestureJourney () =
     offeredIn (selected, "Delete selected cable", true)
     removed = prismTap (selected, "Delete selected cable")
     cablesOf (removed, 0)
-    expect (length (Drive::holding removed).graph.nodes, 2)
+    nodesOf (removed, 2)
     clicked = prismTap (prismTap (removed, "Canvas output 0:0"), "Canvas input 1:0")
     cablesOf (clicked, 1)
     chosen = prismTap (clicked, "Cable 0:0 to 1:0")
@@ -518,7 +518,7 @@ patched kinds =
     opened = Drive::press (editorLaunched ["--empty", "--vst-worker", "/worker/osprey-vst-worker"], "Patch Controls")
     added = foldList (kinds, opened, \(d, kind) => Drive::choose (d, "Add component", kind))
     wired = foldList (toList (range (1, length kinds)), added, \(d, i) => prismTap (prismTap (d, "Canvas output ${i - 1}:0"), "Canvas input ${i}:0"))
-    expect (length (Drive::holding wired).graph.cables, length kinds - 1)
+    cablesOf (wired, length kinds - 1)
     wired
 
 // The host draws the timeline and the detached patch in separate regions.
