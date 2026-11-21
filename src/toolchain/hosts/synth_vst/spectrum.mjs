@@ -4,8 +4,9 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-const [pluginFolder, scenario = 'dragonfly'] = process.argv.slice(2);
+const [pluginFolder, scenario = 'dragonfly', mode = 'headless'] = process.argv.slice(2);
 assert(pluginFolder && ['dragonfly', 'tal', 'patch'].includes(scenario), 'Pass the VST3 folder and dragonfly, tal or patch');
+assert(['headless', 'window'].includes(mode), 'Choose headless or window');
 const paired = scenario === 'patch';
 const reverbName = 'Dragonfly Room Reverb';
 const reverbId = '2046504473616C633272666400000000';
@@ -115,14 +116,14 @@ if (scenario === 'dragonfly') {
         wait('Cable 5:0 to 4:0');
         type('Module', 1);
         edit('MIDI notes 1', 'Gate (frames)', 48000);
-        playAndStop(85);
+        playAndStop(mode === 'window' ? 240 : 85);
     }
 }
 function replay(name, actions) {
     const journey = join(run, name + '.json');
     writeFileSync(journey, JSON.stringify({ steps: actions }));
     execFileSync('src/toolchain/hosts/gpui/target/release/osprey-gpui', [
-        '--self-test', journey, run, '--headless', '--defer-processes', '--live-processes',
+        '--self-test', journey, run, ...(mode === 'headless' ? ['--headless'] : []), '--defer-processes', '--live-processes',
         '--machine', 'src/osprey/packages/signal_flow/signal_flow.machine.json', '--empty', '--vst-worker', worker,
     ], { stdio: 'inherit', timeout: 120000, env: { ...process.env, HOME: profile, CAPTURE: run,
         VST_WORKER: join(root, 'target/vst-worker/osprey-vst-worker') } });
