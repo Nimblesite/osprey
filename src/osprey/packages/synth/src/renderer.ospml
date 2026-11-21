@@ -44,7 +44,9 @@ module Renderer
             false => Error(message = IncompatibleLayout(detail = "Reference rendering requires mono audio, one output and supported bounded processors."))
             true => Success(value = RenderInputs::initial plan)
 
-    nextNode (plan, rate, snapshot, outcome, identity) = Outcomes::carried (outcome, \frame => RenderKernels::step (plan, rate, snapshot, frame, identity))
+    scheduledNodes plan = mapList (plan.order, \identity => Graphs::node (plan.graph, identity))
+
+    nextNode (plan, rate, snapshot, outcome, component) = Outcomes::carried (outcome, \frame => RenderKernels::resolved (plan, rate, snapshot, frame, component))
 
     (** Write a delay after its output has been read for the current sample. *)
     delayed (frame, held, input) = match held.delay
@@ -87,30 +89,34 @@ module Renderer
         Error _ => Error(message = MissingResource(detail = "index out of bounds"))
         Success sink => Outcomes::carried (RenderInputs::sample (frame, sink.identity), \output => Success(value = Rendered(states = frame.states, samples = listAppend rendered.samples output, position = satAdd rendered.position 1, meters = metered (rendered.meters, frame.values))))
 
-    evaluated (plan, rate, snapshot, rendered) =
+    evaluated (plan, nodes, rate, snapshot, rendered) =
         initial = SampleFrame(states = rendered.states, values = [])
-        scheduled = foldList (plan.order, Success(value = initial), \(outcome, identity) => nextNode (plan, rate, snapshot, outcome, identity))
+        scheduled = foldList (nodes, Success(value = initial), \(outcome, component) => nextNode (plan, rate, snapshot, outcome, component))
         foldList (plan.feedback, scheduled, \(outcome, cable) => nextDelay (plan, outcome, cable))
 
-    sample (plan, rate, snapshot, rendered) = Outcomes::carried (evaluated (plan, rate, snapshot, rendered), \frame => finished (plan, rendered, frame))
+    sample (plan, nodes, rate, snapshot, rendered) = Outcomes::carried (evaluated (plan, nodes, rate, snapshot, rendered), \frame => finished (plan, rendered, frame))
 
-    captured (plan, rate, snapshot, progress, accept) = Outcomes::carried (evaluated (plan, rate, snapshot, progress.audio), \frame =>
+    captured (plan, nodes, rate, snapshot, progress, accept) = Outcomes::carried (evaluated (plan, nodes, rate, snapshot, progress.audio), \frame =>
         audio = progress.audio
         Outcomes::carried (accept (progress.observation, frame), \seen => Success(value = progress(audio = audio(states = frame.states, position = satAdd progress.audio.position 1), observation = seen))))
 
     (** Fold selected node outputs from the same reference-rendered frames, including delayed feedback. *)
     export capture (plan, rate, snapshot, progress, count, accept) = match validBlock (rate, progress.audio, count) && supported plan
         false => Error(message = InvalidConfiguration(detail = "Invalid render rate, block size, position or layout."))
-        true => foldList (toList (range (0, count)), Success(value = progress), \(outcome, _) => Outcomes::carried (outcome, \current => captured (plan, rate, snapshot, current, accept)))
+        true =>
+            nodes = scheduledNodes plan
+            foldList (toList (range (0, count)), Success(value = progress), \(outcome, _) => Outcomes::carried (outcome, \current => captured (plan, nodes, rate, snapshot, current, accept)))
 
-    nextSample (plan, rate, snapshot, outcome) = Outcomes::carried (outcome, \rendered => sample (plan, rate, snapshot, rendered))
+    nextSample (plan, nodes, rate, snapshot, outcome) = Outcomes::carried (outcome, \rendered => sample (plan, nodes, rate, snapshot, rendered))
 
     validBlock (rate, rendered, count) = rate >= 8000.0 && rate <= 384000.0 && count >= 0 && count <= 8192 && rendered.position >= 0 && rendered.position <= satSub 9223372036854775807 count
 
     (** Render a bounded block; returns only this block's samples and the next persistent state. *)
     export block (plan, rate, snapshot, rendered, count) = match validBlock (rate, rendered, count) && supported plan
         false => Error(message = InvalidConfiguration(detail = "Invalid render rate, block size, position or layout."))
-        true => foldList (toList (range (0, count)), Success(value = rendered(samples = [], meters = [])), \(outcome, _) => nextSample (plan, rate, snapshot, outcome))
+        true =>
+            nodes = scheduledNodes plan
+            foldList (toList (range (0, count)), Success(value = rendered(samples = [], meters = [])), \(outcome, _) => nextSample (plan, nodes, rate, snapshot, outcome))
 
     ordered (events, previous, stop) = match events
         [] => true
@@ -122,15 +128,15 @@ module Renderer
             Invalid _ => Error(message = InvalidConfiguration(detail = "Automation parameter, revision or sample position was rejected."))
             Valid next => Success(value = next)
 
-    automatedSample (plan, rate, events, timeline) =
+    automatedSample (plan, nodes, rate, events, timeline) =
         current = timeline.observation
         now = current(samplePosition = timeline.audio.position)
         due = filterList (events, \event => event.samplePosition == timeline.audio.position)
         match foldList (due, Success(value = now), \(outcome, command) => edit (plan.graph, outcome, command))
             Error why => Error(message = why)
-            Success snapshot => Outcomes::carried (sample (plan, rate, snapshot, timeline.audio), \audio => Success(value = Timeline(audio = audio, observation = snapshot)))
+            Success snapshot => Outcomes::carried (sample (plan, nodes, rate, snapshot, timeline.audio), \audio => Success(value = Timeline(audio = audio, observation = snapshot)))
 
-    nextAutomated (plan, rate, events, outcome) = Outcomes::carried (outcome, \timeline => automatedSample (plan, rate, events, timeline))
+    nextAutomated (plan, nodes, rate, events, outcome) = Outcomes::carried (outcome, \timeline => automatedSample (plan, nodes, rate, events, timeline))
 
     publish outcome = Outcomes::carried (outcome, \timeline => Success(value = timeline(observation = observed (timeline.observation, timeline.audio))))
 
@@ -138,5 +144,6 @@ module Renderer
     export automated (plan, rate, snapshot, rendered, count, events) = match validBlock (rate, rendered, count) && supported plan && length events <= 1024 && ordered (events, rendered.position, satAdd rendered.position count)
         false => Error(message = InvalidConfiguration(detail = "Invalid automation block, ordering or event capacity."))
         true =>
+            nodes = scheduledNodes plan
             initial = Timeline(audio = rendered(samples = [], meters = []), observation = snapshot)
-            publish (foldList (toList (range (0, count)), Success(value = initial), \(outcome, _) => nextAutomated (plan, rate, events, outcome)))
+            publish (foldList (toList (range (0, count)), Success(value = initial), \(outcome, _) => nextAutomated (plan, nodes, rate, events, outcome)))

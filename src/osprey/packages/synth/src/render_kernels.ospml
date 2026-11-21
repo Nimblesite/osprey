@@ -109,13 +109,16 @@ module RenderKernels
         _ => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \input => processor (plan, rate, snapshot, frame, held, n, input))
 
     (** Render one scheduled component or return its explicit fault. *)
-    export step (plan, rate, snapshot, frame, identity) = match RenderInputs::component (plan, identity)
-        Error why => Error(message = why)
-        Success n => match RenderInputs::held (frame, identity)
+    export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, Graphs::node (plan.graph, identity))
+
+    (** Run a scheduled component resolved for this block. *)
+    export resolved (plan, rate, snapshot, frame, component) = match component
+        Invalid _ => Error(message = MissingResource(detail = "Render schedule names an absent component."))
+        Valid n => match RenderInputs::held (frame, n.identity)
             Error why => Error(message = why)
             Success held => match Seek::first (n.parameters, \p => p.key == "enabled")
                 Error _ => selected (plan, rate, snapshot, frame, held, n)
-                Success _ => match RenderInputs::parameter (snapshot, identity, "enabled")
+                Success _ => match RenderInputs::parameter (snapshot, n.identity, "enabled")
                     Error why => Error(message = why)
                     Success enabled => match enabled
                         1.0 => selected (plan, rate, snapshot, frame, held, n)
