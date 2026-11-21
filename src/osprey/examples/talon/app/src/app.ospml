@@ -61,7 +61,7 @@ module App
         true => [Look::words ("Contacting the ledger", 13, "ink500")]
         false => []
 
-    heading store = Look::stack (4, listConcat [Look::eyebrow ("Live operations · Osprey online", "ink500"), Look::heading (titled store.bankPage, 30)] (busy store))
+    heading store = Look::stack (4, listConcat [Look::eyebrow ("Live operations · Osprey online", "ink500"), Look::title (titled store.bankPage, 30)] (busy store))
 
     body store =
         page = Look::surface ("", "", 0, 20)

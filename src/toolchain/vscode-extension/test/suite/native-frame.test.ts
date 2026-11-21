@@ -405,6 +405,16 @@ suite("native shared frame", () => {
     assert.ok(html.includes("Kept"));
   });
 
+  test("plain and styled titles and headings keep their heading level in the browser", () => {
+    for (const [role, tag] of [["title", "h1"], ["heading", "h2"], ["body", "p"]]) {
+      for (const content of [{ kind: "text", text: "Overview" },
+        { kind: "rich-text", runs: [{ text: "Overview", ink: "", italic: false }] }]) {
+        const html = renderWorkspace({ regions: region({ ...content, role }) });
+        assert.ok(html.includes(`<${tag} class="osp-text`) && html.includes(`</${tag}>`), html);
+      }
+    }
+  });
+
   test("inline mathematical and source runs retain emphasis colours and escaped wording", () => {
     const render = (runs: unknown) => renderWorkspace({ regions: new Map([["root", { revision: 1, node: { kind: "rich-text", role: "mono", runs } }]]) });
     const html = render([{ text: "<p>", ink: "sourceType", italic: true }]);

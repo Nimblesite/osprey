@@ -94,14 +94,18 @@ function children(node: Record<string, unknown>, ctx: Context): string {
   return items(node, "children").map((item) => child(item, ctx)).join("");
 }
 
-function textNode(node: Record<string, unknown>): string {
+function textElement(node: Record<string, unknown>, content: string, tone: string, extraClass = ""): string {
   const role = oneOf(text(node, "role"), ROLES, "body");
+  const tag = role === "title" ? "h1" : role === "heading" ? "h2" : "p";
+  return `<${tag} class="osp-text${extraClass} osp-role-${role} osp-tone-${tone}">${content}</${tag}>`;
+}
+
+function textNode(node: Record<string, unknown>): string {
   const tone = oneOf(text(node, "tone"), TONES, "primary");
-  return `<p class="osp-text osp-role-${role} osp-tone-${tone}">${escapeHtml(text(node, "text"))}</p>`;
+  return textElement(node, escapeHtml(text(node, "text")), tone);
 }
 
 function richText(node: Record<string, unknown>): string {
-  const role = oneOf(text(node, "role"), ROLES, "body");
   if (!Array.isArray(node.runs) || node.runs.length > 100000) throw new Error("Rich text requires a bounded run list");
   const content = node.runs.map(run => {
     if (!record(run) || typeof run.text !== "string" || typeof run.italic !== "boolean" || typeof run.ink !== "string") throw new Error("Rich text run is malformed");
@@ -110,7 +114,7 @@ function richText(node: Record<string, unknown>): string {
     const emphasis = run.emphasis === "strong" ? "font-weight:600;" : run.emphasis === "code" ? "font-family:var(--osp-font-mono);" : "";
     return `<span style="${ink}${emphasis}font-style:${run.italic ? "italic" : "normal"}">${escapeHtml(run.text)}</span>`;
   }).join("");
-  return `<p class="osp-text osp-rich-text osp-role-${role} osp-tone-primary">${content}</p>`;
+  return textElement(node, content, "primary", " osp-rich-text");
 }
 
 function math(node: Record<string, unknown>, ctx: Context): string {

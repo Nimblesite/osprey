@@ -27,19 +27,21 @@ module Look
         style = Frames::text ("Inter", size, false)
         style(frameHug = false, frameLineHeight = toFloat size * 1.4, frameTracking = tracking)
 
-    said (words, size, tracking, ink, emphasis) = Ui::framed (face (size, tracking), Ui::rich ([Ui::emphasised (words, ink, emphasis)], ui::Body))
+    said (words, size, tracking, ink, emphasis, role) = Ui::framed (face (size, tracking), Ui::rich ([Ui::emphasised (words, ink, emphasis)], role))
 
     (** Body copy at `size` in the `ink` token. *)
-    export words (words, size, ink) = said (words, size, 0.0, ink, "")
+    export words (words, size, ink) = said (words, size, 0.0, ink, "", ui::Body)
 
     (** Bold copy at `size` in the `ink` token. *)
-    export strong (words, size, ink) = said (words, size, 0.0, ink, "strong")
+    export strong (words, size, ink) = said (words, size, 0.0, ink, "strong", ui::Body)
 
     (** A heading: bold, tight and in the deepest ink. *)
-    export heading (words, size) = said (words, size, toFloat size * -0.035, "ink950", "strong")
+    headingText (words, size, role) = said (words, size, toFloat size * -0.035, "ink950", "strong", role)
+    export heading (words, size) = headingText (words, size, ui::Heading)
+    export title (words, size) = headingText (words, size, ui::Title)
 
     (** A small spaced capital label above a heading. *)
-    export eyebrow (words, ink) = said (toUpperCase words, 11, 1.6, ink, "strong")
+    export eyebrow (words, ink) = said (toUpperCase words, 11, 1.6, ink, "strong", ui::Body)
 
     // ---- surfaces ----
 
@@ -159,7 +161,7 @@ module Look
     export choices<A> : (string, ui::Node<A>) -> ui::Node<A>
     choices (heading, content) =
         box = surface ("white", "ink200", 8, 0)
-        Ui::framed (Frames::plain, Ui::column [said (heading, 11, 0.0, "ink600", "strong"), Ui::framed (box(frameFont = "Inter", frameTextSize = 15, frameControlHeight = 44, frameQuietControls = true, frameInk = "ink900"), content)])
+        Ui::framed (Frames::plain, Ui::column [said (heading, 11, 0.0, "ink600", "strong", ui::Body), Ui::framed (box(frameFont = "Inter", frameTextSize = 15, frameControlHeight = 44, frameQuietControls = true, frameInk = "ink900"), content)])
 
     // ---- notices ----
 
