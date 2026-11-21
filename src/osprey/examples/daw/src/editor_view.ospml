@@ -378,7 +378,7 @@ module EditorView
 
     // A page fills its region and grows with the window (zoom 0 fits it whole). With the keyboard docked under
     // it the page keeps its scale and is cut off at the dock instead of shrinking.
-    pageZoom editor = ui::Pick::either (editor.keyboardShown, 0.75, 0.0)
+    pageZoom editor = ui::Pick::either (editor.keyboardShown && !editor.detailsShown, 0.75, 0.0)
 
     // The Timeline and Mix pages draw the song instead of the patch, on the same surface.
     songPage editor =
@@ -469,7 +469,7 @@ module EditorView
     workspace editor =
         pane = match editor.detailsShown && TimelineView::pageIndex editor.page == 0
             false => canvas editor
-            true => Ui::aside (canvas editor, ui::Trailing, inspector editor, 280, Surface)
+            true => Ui::aside (canvas editor, ui::Trailing, inspector editor, 320, Surface)
         grow = ui::Frames::plain
         page = Ui::framed (grow(frameGrow = true), pane)
         // The keyboard plays the patch, so it docks under the Patch page only.

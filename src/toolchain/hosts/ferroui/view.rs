@@ -1081,7 +1081,7 @@ fn aside(cx: &mut Cx, node: &Tree) -> Element {
                 .min_width(least)
                 .max_width(most)
                 .on_size_changed(sized)
-                .child(beside),
+                .child(scroll_viewer().child(beside)),
         )
         .into()
 }
