@@ -970,6 +970,24 @@ rangeJourney ready =
     said (synth::DawSession::ended (playing.stepStore, 3), "daw-song:live:${liveFolder}", "Stop first to move the end marker.")
     said (synth::DawSession::started (playing.stepStore, 0), "daw-song:live:${liveFolder}", "Stop first to move the start marker.")
 
+keyStruck action = match action
+    synth::Strike note => note
+    _ => -1
+
+// [DAW-ROLL-KEYS] A press on the keyboard beside the piano roll strikes the pitch of that row; the roll itself
+// still selects notes.
+rollKeysJourney opened =
+    ready = synth::DawSession::picked (opened, 0)
+    expect (ready.track, 0)
+    expect (synth::TimelineGeometry::keyPitch (542.0, 72.0, 12.0), 72.0)
+    expect (synth::TimelineGeometry::keyPitch (563.6, 72.0, 12.0), 72.0)
+    expect (synth::TimelineGeometry::keyPitch (564.0, 72.0, 12.0), 71.0)
+    expect (synth::TimelineGeometry::keyPitch (801.9, 72.0, 12.0), 61.0)
+    succeeds (synth::TimelineView::rollAt (ready, 30.0, 542.0), \top => succeeds (synth::TimelineView::rollAt (ready, 30.0, 801.0), \bottom => expect (keyStruck top >= keyStruck bottom && keyStruck bottom >= 0, true)))
+    succeeds (synth::TimelineView::rollAt (ready, 75.9, 600.0), \action => expect (keyStruck action >= 0, true))
+    succeeds (synth::TimelineView::rollAt (ready, 76.0, 600.0), \action => expect (keyStruck action, -1))
+    succeeds (synth::TimelineView::rollAt (ready, 30.0, 802.0), \action => expect (keyStruck action, -1))
+
 gainOf (editor, index) = match listGet editor.song.tracks index
     Error _ => -1.0
     Success voice => voice.gain
@@ -1195,6 +1213,7 @@ transportJourney () =
     failsWith (synth::TimelineView::laneAt (ready, 700.0, 192.0), "No lane here.")
     succeeds (daw::Projects::mixed (ready.song, 1, 2.0, 0.5), \louder => remixed (ready, louder))
     faderJourney ready
+    rollKeysJourney ready
     bounceJourney ready
 
 test ("Play streams the range in real time into the audio device, the playhead follows what it sounds, Loop and the end marker set the range, Stop cancels, and Render song writes the whole song", \() => Runtime::guarded (\() => hosted transportJourney))
