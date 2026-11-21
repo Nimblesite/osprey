@@ -38,6 +38,29 @@ test('local preflight keeps failing commands and mixed output in chronological o
   }
 })
 
+test('preflight keeps distinct environments and hosts for the same command', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'osprey-preflight-environment-'))
+  try {
+    const file = join(directory, 'ci.yml')
+    const job = (name, host, mode) => [
+      `  ${name}:`, `    runs-on: ${host}`, '    env:', `      MODE: ${mode}`,
+      '    steps:', '      - name: Compile', '        env:', '          FORMAT: json',
+      '        run: ./check', '',
+    ].join('\n')
+    writeFileSync(file, 'env:\n  FORMAT: text\n  COLOR: never\njobs:\n'
+      + job('gc', 'ubuntu-latest', 'gc') + job('arc', 'ubuntu-latest', 'arc')
+      + job('windows', 'windows-latest', 'gc') + job('repeat', 'ubuntu-latest', 'gc'))
+    const checks = plan([file])
+    assert.deepEqual(checks.map(({ host, env }) => [host, env]), [
+      ['linux', { MODE: 'gc', FORMAT: 'json', COLOR: 'never' }],
+      ['linux', { MODE: 'arc', FORMAT: 'json', COLOR: 'never' }],
+      ['windows', { MODE: 'gc', FORMAT: 'json', COLOR: 'never' }],
+    ])
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 const checks = plan()
 const commands = checks.map((check) => check.command)
 const find = (pattern) => checks.find((check) => pattern.test(check.command))
@@ -56,7 +79,9 @@ test('every make check in the PR workflows is planned, inside the step that runs
     }
   }
   assert.ok(commands.every((command) => !command.includes('${{ matrix')), 'matrix values are filled in')
-  assert.equal(new Set(checks.map((check) => `${check.directory}\n${check.command}`)).size, checks.length, 'each check runs once')
+  const contexts = checks.map(({ directory, command, host, env, ciOnly }) =>
+    JSON.stringify([directory, command, host, ciOnly, Object.entries(env).sort()]))
+  assert.equal(new Set(contexts).size, checks.length, 'each check runs once in each context')
 })
 
 test('checks that are not make targets run too: static analysis, browsers, the emulator and the containers', () => {

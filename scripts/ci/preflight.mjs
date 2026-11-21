@@ -122,27 +122,30 @@ const localCommand = (command) => LOCAL_EQUIVALENTS.reduce((text, [pattern, loca
   command.replace(/^xvfb-run -a /gm, '').trim())
 
 /** One planned check, or nothing for runner plumbing. */
-function check(origin, step, row, workflowEnv) {
-  const command = withoutPlumbing(localCommand(substitute(step.run, row, workflowEnv)))
+function check(origin, step, row, jobEnv) {
+  const declaredEnv = { ...jobEnv, ...step.env }
+  const command = withoutPlumbing(localCommand(substitute(step.run, row, declaredEnv)))
   if (!command || SETUP_STEP.test(step.name)) return []
-  const values = Object.entries(step.env).map(([key, value]) => [key, substitute(value, row, workflowEnv)])
+  const values = Object.entries(declaredEnv).map(([key, value]) => [key, substitute(value, row, declaredEnv)])
   const runnerOnly = values.filter(([key, value]) => value.includes('${{') && new RegExp(`\\$\\{?${key}\\b`).test(command))
   const env = Object.fromEntries(values.filter(([, value]) => !value.includes('${{')))
   const ciOnly = command.includes('${{') || runnerOnly.length > 0
-  return [{ ...origin, name: substitute(step.name, row, workflowEnv), command, directory: step.directory, env, ciOnly }]
+  return [{ ...origin, name: substitute(step.name, row, declaredEnv), command, directory: step.directory, env, ciOnly }]
 }
 
 /** Each check of one job, expanded per matrix row. */
 function jobChecks(file, block, workflowEnv) {
   const job = block.match(/^ {2}([\w-]+):/)?.[1] ?? '?'
+  const jobEnv = { ...workflowEnv, ...envOf(block.split('\n'), 4) }
   return matrixRows(block).flatMap((row) => steps(block).filter((step) => applies(step.condition, row))
-    .flatMap((step) => check({ job: `${file.replace('.github/workflows/', '')}:${job}`, host: jobHost(block, row) }, step, row, workflowEnv)))
+    .flatMap((step) => check({ job: `${file.replace('.github/workflows/', '')}:${job}`, host: jobHost(block, row) }, step, row, jobEnv)))
 }
 
-/** The preflight: CI's checks in workflow order, each command once, coverage gates last. */
+/** The preflight: CI's checks in workflow order, each execution context once, coverage gates last. */
 export function plan(files = workflowFiles()) {
   const seen = new Set()
-  const key = (step) => `${step.directory}\n${step.command}`
+  const key = ({ directory, command, host, env, ciOnly }) =>
+    JSON.stringify([directory, command, host, ciOnly, Object.entries(env).sort()])
   const checks = files.flatMap((file) => {
     const workflowEnv = envOf(workflowText(file).split('\n'), 0)
     return workflowJobs(file).slice(1).flatMap((block) => jobChecks(file, block, workflowEnv))
