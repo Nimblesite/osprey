@@ -94,40 +94,51 @@ module RenderKernels
                 sample = GrainMath::interpolated (left, right, GrainMath::fraction held.phase)
                 Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "gain"), \gain => Success(value = RenderInputs::emitted (frame, held(phase = GrainMath::summed (held.phase, step)), GrainMath::placed (sample, gain)))))
 
-    selected (plan, rate, snapshot, frame, held, n) = match n.processor
-        Oscillator => Outcomes::carried (waveform (snapshot, n), \wave => sine (rate, snapshot, frame, held, wave, \value => value))
-        Lfo => sine (rate, snapshot, frame, held, Sine, Waves::unipolar)
-        SamplePlayer resource => playback (resource, rate, snapshot, frame, held)
-        Exciter _ => PhysicalKernels::excite (snapshot, frame, held)
-        TableOscillator table => TableKernels::wavetable (rate, plan, snapshot, frame, held, table)
-        Additive => TableKernels::additive (rate, snapshot, frame, held)
-        PhaseOperator => OperatorKernels::process (plan, rate, snapshot, frame, held)
-        Bowed capacity => PhysicalKernels::bowed (rate, snapshot, frame, held, capacity)
-        Delay _ => match listGet held.delay 0
-            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
-            Success previous => Success(value = RenderInputs::output (frame, held.identity, previous))
-        _ => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \input => processor (plan, rate, snapshot, frame, held, n, input))
+    selected (plan, rate, snapshot, frame, held, scheduled) =
+        n = scheduled.node
+        match n.processor
+            Oscillator => Outcomes::carried (waveform (snapshot, scheduled), \wave => sine (rate, snapshot, frame, held, wave, \value => value))
+            Lfo => sine (rate, snapshot, frame, held, Sine, Waves::unipolar)
+            SamplePlayer resource => playback (resource, rate, snapshot, frame, held)
+            Exciter _ => PhysicalKernels::excite (snapshot, frame, held)
+            TableOscillator table => TableKernels::wavetable (rate, plan, snapshot, frame, held, table)
+            Additive => TableKernels::additive (rate, snapshot, frame, held)
+            PhaseOperator => OperatorKernels::process (plan, rate, snapshot, frame, held)
+            Bowed capacity => PhysicalKernels::bowed (rate, snapshot, frame, held, capacity)
+            Delay _ => match listGet held.delay 0
+                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+                Success previous => Success(value = RenderInputs::output (frame, held.identity, previous))
+            _ => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \input => processor (plan, rate, snapshot, frame, held, n, input))
+
+    declared (n, key) = match Seek::first (n.parameters, \p => p.key == key)
+        Error _ => false
+        Success _ => true
+
+    (** Resolve optional parameter declarations once for the scheduled node. *)
+    export schedule (plan, identity) = match Graphs::node (plan.graph, identity)
+        Invalid why => Invalid(fault = why)
+        Valid n => Valid(value = { node = n, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
 
     (** Render one scheduled component or return its explicit fault. *)
-    export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, Graphs::node (plan.graph, identity))
+    export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity))
 
     (** Run a scheduled component resolved for this block. *)
     export resolved (plan, rate, snapshot, frame, component) = match component
         Invalid _ => Error(message = MissingResource(detail = "Render schedule names an absent component."))
-        Valid n => match RenderInputs::held (frame, n.identity)
+        Valid scheduled => match RenderInputs::held (frame, scheduled.node.identity)
             Error why => Error(message = why)
-            Success held => match Seek::first (n.parameters, \p => p.key == "enabled")
-                Error _ => selected (plan, rate, snapshot, frame, held, n)
-                Success _ => match RenderInputs::parameter (snapshot, n.identity, "enabled")
+            Success held => match scheduled.switchable
+                false => selected (plan, rate, snapshot, frame, held, scheduled)
+                true => match RenderInputs::parameter (snapshot, held.identity, "enabled")
                     Error why => Error(message = why)
                     Success enabled => match enabled
-                        1.0 => selected (plan, rate, snapshot, frame, held, n)
-                        0.0 => bypassed (plan, frame, held, n)
+                        1.0 => selected (plan, rate, snapshot, frame, held, scheduled)
+                        0.0 => bypassed (plan, frame, held, scheduled.node)
                         _ => Error(message = InvalidConfiguration(detail = "Enabled must be zero or one."))
 
-    waveform (snapshot, n) = match Seek::first (n.parameters, \p => p.key == "waveform")
-        Error _ => Success(value = Sine)
-        Success _ => Outcomes::carried (RenderInputs::parameter (snapshot, n.identity, "waveform"), \value => Outcomes::chosen (value, [Sine, Triangle, Saw, Pulse], "Unknown oscillator waveform."))
+    waveform (snapshot, scheduled) = match scheduled.selectableWave
+        false => Success(value = Sine)
+        true => Outcomes::carried (RenderInputs::parameter (snapshot, scheduled.node.identity, "waveform"), \value => Outcomes::chosen (value, [Sine, Triangle, Saw, Pulse], "Unknown oscillator waveform."))
 
     bypassed (plan, frame, held, n) = match n.processor
         Filter => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \value => Success(value = RenderInputs::output (frame, held.identity, value)))

@@ -44,7 +44,7 @@ module Renderer
             false => Error(message = IncompatibleLayout(detail = "Reference rendering requires mono audio, one output and supported bounded processors."))
             true => Success(value = RenderInputs::initial plan)
 
-    scheduledNodes plan = mapList (plan.order, \identity => Graphs::node (plan.graph, identity))
+    scheduledNodes plan = mapList (plan.order, \identity => RenderKernels::schedule (plan, identity))
 
     nextNode (plan, rate, snapshot, outcome, component) = Outcomes::carried (outcome, \frame => RenderKernels::resolved (plan, rate, snapshot, frame, component))
 
