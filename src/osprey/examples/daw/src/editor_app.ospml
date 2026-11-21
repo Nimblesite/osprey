@@ -293,7 +293,10 @@ module EditorApp
     update (context, editor, message) =
         step = routed (context, editor, message)
         accepted = GraphPreview::liveEdit (editor, DawSession::liveEdit (editor, step.stepStore))
-        step(stepStore = CardArts::refreshed (editor, EditorHistory::record (editor, accepted)))
+        view = match accepted.selected == editor.selected && accepted.patchTrack == editor.patchTrack && accepted.songPath == editor.songPath
+            true => accepted
+            false => accepted(dialOffset = 0)
+        step(stepStore = CardArts::refreshed (editor, EditorHistory::record (editor, view)))
 
     (** Native controls and the canvas observe the same typed graph and applied edit revision. *)
     export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => EditorView::theme ())

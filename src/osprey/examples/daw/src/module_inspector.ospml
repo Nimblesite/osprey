@@ -14,13 +14,13 @@ module ModuleInspector
     // The selected module when the skin draws no inspector for it.
     custom editor = match Graphs::node (editor.graph, editor.selected)
         Invalid _ => []
-        Valid n => ui::Pick::either (PrismArt::role n.processor == "custom", [n], [])
+        Valid n => ui::Pick::either (!editor.detailsShown && PrismArt::role n.processor == "custom", [n], [])
 
     dialTop () = 240.0
 
     customShapes (editor, n) =
         x = left editor
-        rows = length (Dials::shown n)
+        rows = length n.parameters
         heading = ui::Pick::either (rows == 0, [], [EditorView::text ("Parameters", x, 190.0, 16.0, 210, 9)])
         listConcat [Scenes::rect (EditorView::rightX (editor, 1374.0), 446.0, 304.0, 690.0, 0.0, Scenes::rgb (19, 17, 35), 7), EditorView::text (EditorView::componentName (editor, n), x, 128.0, 24.0, 240, 8)] (listConcat heading (Dials::shapes (editor, n, x, dialTop (), track (), 9)))
 
@@ -37,6 +37,4 @@ module ModuleInspector
     (** A press or a drag on one of those dials turns its parameter; anywhere else is not the inspector's. *)
     export pointed (editor, px, py, down) = match listGet (custom editor) 0
         Error _ => Error(message = "")
-        Success n => match editor.detailsShown
-            true => Error(message = "")
-            false => Dials::pointed (editor, n, left editor, dialTop (), track (), px, py, down)
+        Success n => Dials::pointed (editor, n, left editor, dialTop (), track (), px, py, down)

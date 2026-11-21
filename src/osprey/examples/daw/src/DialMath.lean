@@ -24,7 +24,7 @@ def valueAt (turned low high : Float) : Float :=
 def dragged (start lift low high fine : Float) : Float :=
   let pace := if fine > 0.5 then 0.1 else 1
   let value := valueAt (turn start low high + lift / 180 * pace) low high
-  let grain := if high - low > 1000 then 1 else if high - low > 20 then 10 else if fine > 0.5 then 1000 else 100
+  let grain := if fine > 0.5 then 1000 else if high - low > 1000 then 1 else if high - low > 20 then 10 else 100
   bounded (Float.floor (value * grain + 0.5) / grain) low high
 
 /-- A press becomes a drag once the pointer has moved two units up or down; sideways movement never turns. -/

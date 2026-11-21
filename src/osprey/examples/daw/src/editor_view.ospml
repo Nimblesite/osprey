@@ -63,7 +63,7 @@ module EditorView
     dialTop () = 4.0 + Dials::pitch () / 2.0
 
     dialRows (editor, n) =
-        height = 8.0 + toFloat (length (Dials::shown n)) * Dials::pitch ()
+        height = 8.0 + toFloat (Dials::rowCount (editor, n)) * Dials::pitch ()
         plain = ui::Frames::plain
         scene = Ui::zoomed (1.0, 248.0, height, PrismArt::atlas editor.skin, Dials::shapes (editor, n, 0.0, dialTop (), 248.0, 2), Controls)
         Ui::framed (plain(frameHeight = floatToInt height ?: 0), Ui::described (scene, Dials::access (editor, n, 0.0, dialTop (), 248.0)))
@@ -429,9 +429,7 @@ module EditorView
         library = match editor.paletteShown || editor.paletteDrag != ""
             true => mapList (palette (), \primitive => Header::placedShape (primitive, 0.0, 0.0, satMul (satAdd (length ordered) 1) 100))
             false => []
-        details = match editor.detailsShown
-            true => []
-            false => ModuleInspector::shapes editor
+        details = ModuleInspector::shapes editor
         chrome = listConcat details (listAppend (toolbar editor) (text (editor.message, 32.0, 767.0, 12.0, 170, 12)))
         shapes = ui::Lists::flatten [(CardArts::scenery editor).artShapes, CableCanvas::shapes editor, nodes, mapList (chrome, \item => Header::placedShape (item, 0.0, 0.0, PrismArt::chromeLayer editor)), library, NodeContext::shapes editor]
         scene = Ui::zoomed (pageZoom, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
@@ -504,7 +502,7 @@ module EditorView
             false => page
             true => Ui::column [page, keyboardDock editor]
 
-    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.panX}:${editor.panY}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${RollEdits::stamp editor.rollDrag}:${editor.rollBar}:${editor.laneTop}:${editor.laneZoom}:${editor.laneStart}:${RoutingPicker::stamp editor}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.renderContinuous}:${editor.renderTicket}:${editor.keymap.name}:${editor.dial != DialIdle}:${editor.dialEntry}:${editor.songPath}:${length editor.song.tracks}"
+    stamp editor = JsonString "${editor.revision}:${editor.layoutRevision}:${editor.panX}:${editor.panY}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${RollEdits::stamp editor.rollDrag}:${editor.rollBar}:${editor.laneTop}:${editor.laneZoom}:${editor.laneStart}:${RoutingPicker::stamp editor}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.renderContinuous}:${editor.renderTicket}:${editor.keymap.name}:${editor.dial != DialIdle}:${editor.dialEntry}:${editor.dialOffset}:${editor.fineHeld}:${editor.songPath}:${length editor.song.tracks}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =
