@@ -201,6 +201,7 @@ fn term(e: &Expr) -> Result<String, String> {
                 "+" => "plus",
                 "*" => "times",
                 "<" => "less",
+                "==" => "equal",
                 "/" => "divide",
                 "-" => "minus",
                 _ => return Err(format!("unsupported operator {op}")),
@@ -272,6 +273,7 @@ fn reflect(file: &str) -> Result<(), String> {
         return Err("expected synth namespace".into());
     }
     let signatures: &[(&str, &[&str], &str)] = match path.to_string().as_str() {
+        "Interpolation" => &[("linear", &["α", "α", "α"], "α")],
         "Waveshapers" => &[
             ("curve", &["Curve", "α"], "α"),
             ("integral", &["Curve", "α"], "α"),

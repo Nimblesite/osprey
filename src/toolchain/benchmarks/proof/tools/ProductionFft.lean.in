@@ -46,6 +46,7 @@ structure Ops (α : Type) where
   epsilon : α
   abs : α → α
   less : α → α → Bool
+  equal : α → α → Bool
   tanh : α → α
   hard : α → α
   cubic : α → α
@@ -328,5 +329,42 @@ theorem shaperConstantSegment (ops : Ops α) (shape : Curve) (x prev gain c zero
     Waveshapers.shaped ops ⟨true, shape⟩ x prev = gain := by
   rw [shaperQuotient ops shape x prev separated, atX, atPrev]
   exact Synthesis.antiderivativeConstantCurve _ _ _ _ x prev gain c zero distinct shift dist cancel
+
+/-- The selected endpoint is returned without a floating multiply or add. -/
+theorem interpolationEndpoints (ops : Ops α) (a b : α)
+    (atZero : ops.equal (ops.literal 0) (ops.literal 0) = true)
+    (distinct : ops.equal (ops.literal 1) (ops.literal 0) = false)
+    (atOne : ops.equal (ops.literal 1) (ops.literal 1) = true) :
+    Interpolation.linear ops a b (ops.literal 0) = a ∧ Interpolation.linear ops a b (ops.literal 1) = b := by
+  constructor
+  · unfold Interpolation.linear
+    rw [atZero]
+  · unfold Interpolation.linear
+    rw [distinct, atOne]
+
+theorem interpolationInterior (ops : Ops α) (a b t : α)
+    (nonzero : ops.equal t (ops.literal 0) = false) (nonunit : ops.equal t (ops.literal 1) = false) :
+    Interpolation.linear ops a b t = ops.plus a (ops.times (ops.minus b a) t) := by
+  unfold Interpolation.linear
+  rw [nonzero, nonunit]
+
+theorem interpolationWeights (ops : Ops α) (a b t : α)
+    (nonzero : ops.equal t (ops.literal 0) = false) (nonunit : ops.equal t (ops.literal 1) = false)
+    (rightSub : ∀ x y z, ops.times (ops.minus x y) z = ops.minus (ops.times x z) (ops.times y z))
+    (unit : ∀ x, ops.times (ops.literal 1) x = x) (comm : ∀ x y, ops.times x y = ops.times y x)
+    (moveSub : ∀ x y z, ops.plus (ops.minus x y) z = ops.plus x (ops.minus z y)) :
+    Interpolation.linear ops a b t = ops.plus (ops.times (ops.minus (ops.literal 1) t) a) (ops.times t b) :=
+  (interpolationInterior ops a b t nonzero nonunit).trans
+    (Synthesis.interpolatorFactor _ _ _ _ a b t rightSub unit comm moveSub).symm
+
+theorem interpolationConstant (ops : Ops α) (a t : α)
+    (selfSub : ∀ x, ops.minus x x = ops.literal 0)
+    (zeroTimes : ∀ x, ops.times (ops.literal 0) x = ops.literal 0)
+    (plusZero : ∀ x, ops.plus x (ops.literal 0) = x) :
+    Interpolation.linear ops a a t = a := by
+  unfold Interpolation.linear
+  cases ops.equal t (ops.literal 0) <;> cases ops.equal t (ops.literal 1) <;> first
+    | rfl
+    | exact Synthesis.interpolatorConstant _ _ _ _ a t selfSub zeroTimes plusZero
 
 end ProductionFft

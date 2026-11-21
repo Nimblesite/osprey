@@ -75,7 +75,7 @@ module SpectralFrames
 
     // Temporal magnitude smoothing; memory holds the smoothed magnitude in each real part.
     smear (bins, memory, motion, amount) =
-        levels = Sequences::combined (bins, memory, \(value, held) => SpectralMath::blend (magnitude value, held.re, amount))
+        levels = Sequences::combined (bins, memory, \(value, held) => Interpolation::linear (magnitude value, held.re, amount))
         SpectralFrame(bins = Sequences::combined (bins, levels, \(value, level) => withMagnitude (value, level)), memory = mapList (levels, \level => Complex(re = level, im = 0.0)), motion = motion, captured = false)
 
     // [SYNTH-SPECTRAL-MORPH] Blend interpolates log magnitudes; phase comes from the dominant input

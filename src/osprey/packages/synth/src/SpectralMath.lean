@@ -46,8 +46,6 @@ def bandGain (frequency low high width : Float) : Float :=
   else if frequency > high then ((high + width) - frequency) / width
   else 1
 
-/-- Linear interpolation used for smear and morph. -/
-def blend (from to amount : Float) : Float := from + (to - from) * amount
 
 /-- Phase angle of a complex value. -/
 def angle (re im : Float) : Float := Float.atan2 im re

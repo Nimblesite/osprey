@@ -9,12 +9,13 @@ frames="${source%/*}/spectral_frames.ospml"
 strike="${source%/*}/strike_combs.ospml"
 allpass="${source%/*}/allpasses.ospml"
 shaper="${source%/*}/waveshapers.ospml"
+interpolation="${source%/*}/interpolation.ospml"
 checker="$root/target/proof/openai/check-batch"
 mkdir -p "$out"
 reflect() {
     local file
     local bodies=()
-    for file in "$source" "$frames" "$strike" "$allpass" "$shaper"; do
+    for file in "$source" "$frames" "$strike" "$allpass" "$shaper" "$interpolation"; do
         if [[ "$file" == "${1:-}" ]]; then file="$out/mutant.ospml"; fi
         bodies+=("$file")
     done
@@ -35,7 +36,7 @@ check_export() {
         printf '%s\t%s\n' "$out/$file" "$name" | "$checker.$backend"
     fi
 }
-for theorem in combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment; do
+for theorem in combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant; do
     name="ProductionFft.$theorem"
     LEAN_PATH="$out:$lean_path" "$exporter" ProductionFft -- "$name" > "$out/$theorem.ndjson"
     for backend in gc arc wasm; do
@@ -74,6 +75,7 @@ reject_edit allpassStateStep 's/held.input - coefficient/held.input + coefficien
 reject_edit allpassStateStep 's/input = input, output = value/input = held.input, output = value/' "$allpass"
 reject_edit shaperMidpoint 's/current + previous/current - previous/' "$shaper"
 reject_edit shaperCurvePair 's/HardCurve => NonlinearMath::hardIntegral/HardCurve => NonlinearMath::cubicIntegral/' "$shaper"
+reject_edit interpolationEndpoints 's/true => b$/true => a/' "$interpolation"
 reflect
 
 # Replay an unchanged proof certificate against a different, well-typed

@@ -76,7 +76,7 @@ module Grains
                 Error _ => Error(message = MissingResource(detail = "index out of bounds"))
                 Success b => match sourceSample a && sourceSample b
                     false => Error(message = NumericalFailure(detail = "A grain read a nonfinite or unnormalised source sample."))
-                    true => Success(value = GrainMath::interpolated (a, b, GrainMath::fraction cursor))
+                    true => Success(value = Interpolation::linear (a, b, GrainMath::fraction cursor))
 
     // Only reached from checked entry points; advancing preserves cursor/lifetime invariants.
     contribution (source, voice) = match interpolated (source, voice.cursor, voice.region)

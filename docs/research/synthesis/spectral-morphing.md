@@ -4,7 +4,7 @@ Collected 21 November 2026 to justify the three morphing modes planned for `Spec
 
 ## What morphs today
 
-`SpectralFrames.morph` blends magnitudes linearly (`SpectralMath.blend`) and keeps the phase of the dominant input (`morphBin`: below `amount` 0.5 the main input), inside the streaming STFT adapter whose latency is `size − 1` samples. Formant pitch shifting already estimates a spectral envelope (`envelope`: peak magnitude within ≈150 Hz) and rescales bins by an envelope ratio (`formantGain`); the phase-vocoder machinery — measured instantaneous frequency (`trueBin`), accumulated synthesis phase, identity phase locking after Laroche and Dolson (1999) — exists in `pitch` and `frozen`. All three modes reuse this analysis; none changes the adapter's latency or tail contracts.
+`SpectralFrames.morph` blends magnitudes linearly (`Interpolation.linear`) and keeps the phase of the dominant input (`morphBin`: below `amount` 0.5 the main input), inside the streaming STFT adapter whose latency is `size − 1` samples. Formant pitch shifting already estimates a spectral envelope (`envelope`: peak magnitude within ≈150 Hz) and rescales bins by an envelope ratio (`formantGain`); the phase-vocoder machinery — measured instantaneous frequency (`trueBin`), accumulated synthesis phase, identity phase locking after Laroche and Dolson (1999) — exists in `pitch` and `frozen`. All three modes reuse this analysis; none changes the adapter's latency or tail contracts.
 
 ## The literature
 

@@ -71,7 +71,7 @@ module Reverbs
         damped = Sequences::combined (values, held.damped, \(value, previous) => NonlinearMath::damp (value, previous, damping config))
         products = Sequences::combined (damped, lengths, \(value, length) => value * gain (config, length))
         written = Sequences::combined (held.lines, FeedbackMatrices::householder products, \(line, value) => DelayLines::push (line, PhysicalMath::flushed (injected (config, diffused.sample) + value)))
-        ReverbSample(sample = SpectralMath::blend (input, output values, config.mix), next = ReverbState(lines = written, damped = damped, diffusers = diffused.lines))
+        ReverbSample(sample = Interpolation::linear (input, output values, config.mix), next = ReverbState(lines = written, damped = damped, diffusers = diffused.lines))
 
     (** One sample with an accepted configuration and a state from `initial` at the same rate. *)
     export next (config, held, input) = match length held.lines == 4 && length held.damped == 4 && length held.diffusers == 2

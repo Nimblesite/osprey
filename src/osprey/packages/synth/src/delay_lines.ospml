@@ -17,7 +17,7 @@ module DelayLines
                 Error _ => Error(message = InvalidConfiguration(detail = "Delay read is outside the prepared line."))
                 Success older => match listGet line.samples older
                     Error _ => Error(message = InvalidConfiguration(detail = "Delay read is outside the prepared line."))
-                    Success a => Success(value = GrainMath::interpolated (a, listGet line.samples (satAdd older 1) ?: a, GrainMath::fraction position))
+                    Success a => Success(value = Interpolation::linear (a, listGet line.samples (satAdd older 1) ?: a, GrainMath::fraction position))
 
     (** Write the newest sample and discard the oldest, keeping capacity constant. *)
     export push (line, sample) = match line.samples

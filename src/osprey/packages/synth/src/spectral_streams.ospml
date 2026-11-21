@@ -75,7 +75,7 @@ module SpectralStreams
         [] => Error(message = MissingResource(detail = "Spectral output buffer is empty."))
         [wet, ...rest] => match held.input
             [] => Error(message = MissingResource(detail = "Spectral input buffer is empty."))
-            [dry, ..._older] => Success(value = SpectralSample(sample = SpectralMath::blend (dry, wet, config.mix), next = held(output = listAppend rest 0.0)))
+            [dry, ..._older] => Success(value = SpectralSample(sample = Interpolation::linear (dry, wet, config.mix), next = held(output = listAppend rest 0.0)))
 
     (** One sample of main and side input; a frame is analysed and overlap-added every hop. *)
     export next (config, held, input, side) = match valid (config, held)

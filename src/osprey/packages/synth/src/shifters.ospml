@@ -43,4 +43,4 @@ module Shifters
             wet = match config.ring
                 true => input * Waves::sine held.phase
                 false => NonlinearMath::shifted (held.delayed, quadrature, held.phase)
-            Success(value = ShifterSample(sample = SpectralMath::blend (input, wet, config.mix), next = ShifterState(first = first, second = second, delayed = last (first, 0.0), phase = Waves::wrap (held.phase + config.shift / config.sampleRate))))
+            Success(value = ShifterSample(sample = Interpolation::linear (input, wet, config.mix), next = ShifterState(first = first, second = second, delayed = last (first, 0.0), phase = Waves::wrap (held.phase + config.shift / config.sampleRate))))

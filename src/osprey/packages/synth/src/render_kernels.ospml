@@ -91,7 +91,7 @@ module RenderKernels
             Success left => Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "rate"), \speed =>
                 right = SampleResources::monoAt (resource, satAdd index 1) ?: 0.0
                 step = WaveMath::playbackRate (toFloat resource.sampleRate, rate, speed, 1.0)
-                sample = GrainMath::interpolated (left, right, GrainMath::fraction held.phase)
+                sample = Interpolation::linear (left, right, GrainMath::fraction held.phase)
                 Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "gain"), \gain => Success(value = RenderInputs::emitted (frame, held(phase = GrainMath::summed (held.phase, step)), GrainMath::placed (sample, gain)))))
 
     selected (plan, rate, snapshot, frame, held, scheduled) =

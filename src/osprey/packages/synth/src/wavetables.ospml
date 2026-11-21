@@ -77,7 +77,7 @@ module Wavetables
                     Error _ => Error(message = InvalidConfiguration(detail = "Wavetable phase is outside the table."))
                     Success a => match listGet chosen.samples ((satAdd index 1) % length chosen.samples)
                         Error _ => Error(message = InvalidConfiguration(detail = "Wavetable phase is outside the table."))
-                        Success b => Success(value = GrainMath::interpolated (a, b, GrainMath::fraction position))
+                        Success b => Success(value = Interpolation::linear (a, b, GrainMath::fraction position))
 
     frameAt (table, index) = match listGet table.frames index
         Error _ => Error(message = MissingResource(detail = "Wavetable frame is missing."))
@@ -99,7 +99,7 @@ module Wavetables
                     Error why => Error(message = why)
                     Success a => match read (other, limit, reading)
                         Error why => Error(message = why)
-                        Success b => Success(value = WavetableSample(sample = config.amplitude * GrainMath::interpolated (a, b, fraction), next = WavetableState(phase = Waves::wrap (held.phase + config.frequency / config.sampleRate))))
+                        Success b => Success(value = WavetableSample(sample = config.amplitude * Interpolation::linear (a, b, fraction), next = WavetableState(phase = Waves::wrap (held.phase + config.frequency / config.sampleRate))))
 
     (** One sample: linear interpolation within the table, linear crossfade between adjacent frames. *)
     export next (table, config, held) =
