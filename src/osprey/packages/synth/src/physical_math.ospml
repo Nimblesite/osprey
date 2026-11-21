@@ -42,56 +42,31 @@ module PhysicalMath
     (** Modal frequency ratios for the first eight modes of idealised bodies. *)
     export harmonicRatio index = index + 1.0
 
-    (** Relative frequency of a bar mode by index. *)
-    export barRatio index = match index < 1.0
-        true => 1.0
+    (** Select the ratio for one of the eight modal bands. *)
+    modalRatio (index, first, second, third, fourth, fifth, sixth, seventh, eighth) = match index < 1.0
+        true => first
         false => match index < 2.0
-            true => 2.756
+            true => second
             false => match index < 3.0
-                true => 5.404
+                true => third
                 false => match index < 4.0
-                    true => 8.933
+                    true => fourth
                     false => match index < 5.0
-                        true => 13.345
+                        true => fifth
                         false => match index < 6.0
-                            true => 18.638
+                            true => sixth
                             false => match index < 7.0
-                                true => 24.814
-                                false => 31.871
+                                true => seventh
+                                false => eighth
+
+    (** Relative frequency of a bar mode by index. *)
+    export barRatio index = modalRatio (index, 1.0, 2.756, 5.404, 8.933, 13.345, 18.638, 24.814, 31.871)
 
     (** Relative frequency of a membrane mode by index. *)
-    export membraneRatio index = match index < 1.0
-        true => 1.0
-        false => match index < 2.0
-            true => 1.594
-            false => match index < 3.0
-                true => 2.136
-                false => match index < 4.0
-                    true => 2.296
-                    false => match index < 5.0
-                        true => 2.653
-                        false => match index < 6.0
-                            true => 2.918
-                            false => match index < 7.0
-                                true => 3.156
-                                false => 3.501
+    export membraneRatio index = modalRatio (index, 1.0, 1.594, 2.136, 2.296, 2.653, 2.918, 3.156, 3.501)
 
     (** Relative frequency of a bell mode by index. *)
-    export bellRatio index = match index < 1.0
-        true => 0.5
-        false => match index < 2.0
-            true => 1.0
-            false => match index < 3.0
-                true => 1.183
-                false => match index < 4.0
-                    true => 1.506
-                    false => match index < 5.0
-                        true => 2.0
-                        false => match index < 6.0
-                            true => 2.514
-                            false => match index < 7.0
-                                true => 2.662
-                                false => 3.011
+    export bellRatio index = modalRatio (index, 0.5, 1.0, 1.183, 1.506, 2.0, 2.514, 2.662, 3.011)
 
     (** Ideal-string strike/pickup weighting of mode `index`; an approximation for other bodies. *)
     export positionWeight (index, position) = sin (3.141592653589793 * (index + 1.0) * position)
