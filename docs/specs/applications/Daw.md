@@ -76,6 +76,8 @@ Everything the daw can do is a **command**: a stable name, a title, its argument
 
 Where a project is kept is a pluggable layer behind one interface: open, save, list and history. The project model does not know which store is in use.
 
+**Persistence is an abstraction ([DAW-STORE-ABSTRACT]).** Projects will move off the local file: they can live in the cloud or on local disk, and they will most likely be kept in a database. So nothing outside the store may read or write a project directly. The editor, the renderer and the commands open and save through the store interface, and the store is an effect, so a test or the app can swap the store without changing the code that uses it. **Not built yet:** today the daw calls `SongFiles` and file reads and writes directly. Putting them behind the store interface comes before any second store is added.
+
 - **JSON file.** One project file on disk ([DAW-PROJECT]). This is what ships today.
 - **Database.** The project as rows, for large projects and shared libraries.
 - **Git.** Every save is a commit, so the project has versions, a history to browse and a way back to any of them.
@@ -89,7 +91,7 @@ A **keymap** assigns the shortcuts. The daw ships three: **Prism**, **Ableton st
 
 ## One project file [DAW-PROJECT]
 
-A song is one JSON file, and nothing about a song lives anywhere else. It contains the tempo, sample rate, master drive, Space settings, an optional intro recording, sustains, and every track. Each track stores its notes, gain, pan, Space send and the complete patch it plays.
+A song is one JSON file, and nothing about a song lives anywhere else. It contains the tempo, sample rate, master drive, Space settings, an optional intro recording, sustains, and every track. Each track stores its notes, gain, pan, Space send and the complete patch it plays. The JSON file is today's store only; the project reaches it through the persistence abstraction ([DAW-STORE-ABSTRACT]).
 
 - **One model ([DAW-PROJECT-MODEL]).** [daw.td](../../../src/osprey/examples/daw/daw.td) declares the project. The Osprey types are generated from it. The JSON keys are the typeDiagram field names. The editor and the file both follow this model; neither keeps a parallel format.
 - **Patches in the project ([DAW-PROJECT-PATCH]).** A built-in instrument opens in Prism as one voice node wired to the output. A routed patch opens as its own graph. A patch edited in Prism is written back into its track in the project file. Opening the file again restores the same graph, its pitch and velocity bindings, and its cables.
