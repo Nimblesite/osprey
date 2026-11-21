@@ -56,5 +56,6 @@ set_tests_properties(stream_journeys PROPERTIES TIMEOUT 60)
 
 if(APPLE)
     add_test(NAME audio_device_journeys COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/build.py" --device-test)
-    set_tests_properties(audio_device_journeys PROPERTIES TIMEOUT 20)
+    add_test(NAME audio_device_cadence COMMAND node "${CMAKE_CURRENT_SOURCE_DIR}/device-cadence.mjs" $<TARGET_FILE:osprey-vst-worker>)
+    set_tests_properties(audio_device_journeys audio_device_cadence PROPERTIES TIMEOUT 20 RESOURCE_LOCK audio_device)
 endif()
