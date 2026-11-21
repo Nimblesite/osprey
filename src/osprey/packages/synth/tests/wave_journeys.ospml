@@ -220,6 +220,16 @@ tableIdentity (name, size, count) = match synth::Wavetables::classic (size, coun
         synth::ResourceIdentity(name = "", hash = 0, channels = 0, sampleRate = 0, frames = 0, version = 0)
     Success t => synth::Resources::table (name, t)
 
+// Pin every sample word against direct harmonic synthesis on the current platform.
+phasedTableIdentity () =
+    indices = toList (range (0, 64))
+    fundamental = mapList (indices, \i => synth::TableMath::harmonic (1.0, 1.0, 0.0, toFloat i / 64.0))
+    full = mapList (indices, \i => (listGet fundamental i ?: 0.0) + synth::TableMath::harmonic (-0.25, 3.0, 0.125, toFloat i / 64.0))
+    scale = 1.0 / foldList (full, 1.0, \(highest, v) => synth::TableMath::larger (highest, abs v))
+    levels = [synth::TableLevel(harmonics = 3, samples = mapList (full, \v => v * scale)), synth::TableLevel(harmonics = 1, samples = mapList (fundamental, \v => v * scale))]
+    reference = synth::Wavetable(size = 64, harmonics = 3, frames = [synth::TableFrame(levels = levels)])
+    succeeds (synth::Wavetables::prepare (64, [synth::TableSpectrum(amplitudes = [1.0, 0.0, -0.25], phases = [0.0, 0.5, 0.125])]), \table => expect ((synth::Resources::table ("phased", table)).hash, (synth::Resources::table ("phased", reference)).hash))
+
 identityJourney () =
     base = resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5, 1.0])
     id = synth::Resources::sample base
@@ -235,6 +245,7 @@ identityJourney () =
     refusedAs (synth::Resources::matches (id, synth::Resources::sample (resourceOf ("kick", 96000, 1, 60.0, [0.0, 0.5, -0.5, 1.0]))), "resource", "The resource kick changed since the project saved it.")
     forEachList ([id(name = "snare"), id(version = 2), id(version = 0)], \saved => refusedAs (synth::Resources::matches (saved, id), "resource", "The saved resource ${saved.name} is missing or uses another identity version."))
     // Tables hash every frame and level; a table is one rate-independent channel of `size` samples.
+    phasedTableIdentity ()
     wide = tableIdentity ("classic", 256, 32)
     expect ("${wide.name} ${wide.channels} ${wide.sampleRate} ${wide.frames} ${wide.version}", "classic 1 0 256 1")
     expect ((tableIdentity ("classic", 256, 32)).hash, wide.hash)
