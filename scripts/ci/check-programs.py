@@ -81,7 +81,7 @@ def text(path):
 def project_job(index, directory):
     log = f"{WORK}/project-{index}.log"
     graph = f"{COMPILER} '{directory}' --source-graph > {WORK}/graph-{index}.json 2>> {log}"
-    return Job(path=directory, command=f"{graph}; {COMPILER} '{directory}' --llvm --quiet --no-warnings >> {log} 2>&1", log=log)
+    return Job(path=directory, command=f"{graph} && {COMPILER} '{directory}' --llvm --quiet --no-warnings >> {log} 2>&1", log=log)
 
 
 def file_job(index, path):
