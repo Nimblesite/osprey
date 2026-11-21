@@ -1,5 +1,32 @@
 namespace ProductionFft
 
+/-- The playhead follows the extrapolated clock between the device's completed
+    and accepted frame counts; outside that interval it uses the corresponding boundary. -/
+theorem heardTimeClamped (ops : Ops α) (clock elapsed returned accepted rate : α) :
+    let now := ops.plus clock elapsed
+    let low := ops.ieeeDivide returned rate
+    let high := ops.ieeeDivide accepted rate
+    TimelineGeometry.heardSeconds ops clock elapsed returned accepted rate =
+      match ops.less now low with
+      | true => low
+      | false => match ops.greater now high with
+        | true => high
+        | false => now := rfl
+
+/-- The dial starts a drag at a vertical distance of two, in either direction. -/
+theorem dialMovement (ops : Ops α) (start current : α) :
+    DialMath.moved ops start current =
+      match ops.atLeast (ops.abs (ops.minus current start)) (ops.literal 2) with
+      | true => ops.literal 1
+      | false => ops.literal 0 := rfl
+
+/-- Translating the card centre by the recorded grab offset recovers the
+    pointer coordinate under exact cancellation. -/
+theorem canvasGrabOffset (ops : Ops α) (pointer centre : α)
+    (cancel : ∀ x y, ops.plus y (ops.minus x y) = x) :
+    CanvasGeometry.shifted ops centre (CanvasGeometry.offset ops pointer centre) = pointer :=
+  cancel pointer centre
+
 /-- Once the sample-rate-scaled attack completes, a held note passes the input sample. -/
 theorem envelopeSustain (ops : Ops α) (sample frame gate attack release rate : α)
     (risen : ops.atLeast frame (ops.times attack rate) = true)

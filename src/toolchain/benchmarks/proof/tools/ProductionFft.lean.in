@@ -81,6 +81,7 @@ structure Ops (α : Type) where
   half : α
   epsilon : α
   abs : α → α
+  greater : α → α → Bool
   less : α → α → Bool
   atMost : α → α → Bool
   atLeast : α → α → Bool

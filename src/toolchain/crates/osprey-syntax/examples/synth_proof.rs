@@ -144,6 +144,7 @@ fn callee(e: &Expr) -> Result<String, String> {
                 }
             }
             return match path.to_string().as_str() {
+                "FitMath::clip" => Ok("FitMath.clip ops".into()),
                 "GrainMath::asr" => Ok("ops.asr".into()),
                 "PhaseMath::window" => Ok("ops.window".into()),
                 "PhaseMath::windowedPhase" => Ok("ops.windowedPhase".into()),
@@ -267,6 +268,7 @@ fn term(e: &Expr) -> Result<String, String> {
                 "+" => "plus",
                 "*" => "times",
                 "<" => "less",
+                ">" => "greater",
                 "==" => "equal",
                 "/" => "divide",
                 "-" => "minus",
@@ -334,6 +336,10 @@ type Signature = (&'static str, &'static [&'static str], &'static str);
 
 fn signatures(module: &str) -> Result<&'static [Signature], String> {
     Ok(match module {
+        "CanvasGeometry" => &[("offset", &["α", "α"], "α"), ("shifted", &["α", "α"], "α")],
+        "DialMath" => &[("moved", &["α", "α"], "α")],
+        "FitMath" => &[("clip", &["α", "α", "α"], "α")],
+        "TimelineGeometry" => &[("heardSeconds", &["α", "α", "α", "α", "α"], "α")],
         "ArrangeMath" => &[
             ("gated", &["α", "α", "α", "α"], "α"),
             ("enveloped", &["α", "α", "α", "α", "α", "α"], "α"),
