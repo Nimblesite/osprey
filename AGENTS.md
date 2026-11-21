@@ -9,6 +9,7 @@
 
 ## Workflow
 - ❌ subagents, linked worktrees, git hooks (delete them). Primary checkout only; git = commit/push
+- 🐍🚫 **Running Python (CPython, `python3`) is banned**, ad hoc scripts included (generators, analysis, one-liners). ✅ Write the script in **Python flavor Osprey** (a `.py` file starting with `# osprey: flavor=python`) and run it with **`osprey`**; its math goes in Lean ([MATH-CODE])
 - 🚫 **Coordinated pushes only ([CI-PUSH-LOCK], [docs/plans/coordinated-push.md](docs/plans/coordinated-push.md)).** ❌ raw `git push`. One agent holds the TMC lock `PUSH-<branch>`; the rest commit and message it. It runs `make ci` (stamps HEAD), then `make push`, which refuses unless that exact HEAD passed and no CI run on the branch is queued or running. It owns that run to green
 - **Offload legwork (repetitive, simple work) to pi agents**, model per [PiNotes model comparison](../PiNotes/MODEL-COMPARISON.md), always that family's newest id in `pi --list-models` (today: `zai/glm-5.3-flash` repetitive/fixtures/tests, `zai/glm-5.3` scoped code/reviews, `deepseek/deepseek-flash` code/oracles, `kimi-coding/k3.1-pro-highspeed` UI, `deepseek/deepseek-v4-pro` narrow audits only); `pi auth check --model <id>` first, out of credit → tell user, take the next; register each pi on TMC, delete its identity when it exits; you own their output: review and fix it
 - **Tokens:** check file size before reading, grep first, smallest diff
