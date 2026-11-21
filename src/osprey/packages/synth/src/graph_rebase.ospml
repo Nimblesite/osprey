@@ -1,0 +1,39 @@
+// [SYNTH-ADVANCED-CORE-PORTS] Live graph edits: keep surviving state, start new components fresh.
+namespace synth
+
+import synth::RenderInputs
+
+(** Preparing a replacement graph never touches the running state: `rebased` returns a new state for the
+    edited graph, or an error that leaves the caller on its previous graph and state. Surviving components
+    keep their memory when it still fits (same layout and storage); new or changed components start silent;
+    removed components' memory is dropped. A new grain cloud mid-stream needs a restart, by design, because
+    its scheduler clock must start at sample zero. *)
+module GraphRebase
+    // Storage must match the (possibly replaced) processor, not only the channel layout.
+    fits (n, bank) = match bank.kernelMemory
+        ChannelMemory states => length (filterList (states, \saved => length saved.delay == RenderInputs::storage n.processor)) == length states
+        _ => true
+
+    surviving (graph, held, bank) = match Graphs::node (graph, bank.kernelNode)
+        Invalid _ => false
+        Valid n => GraphClips::validBank (graph, bank, held.graphPosition) && fits (n, bank)
+
+    fresh (graph, n) = match n.processor
+        Granular _ _ _ => Error(message = InvalidConfiguration(detail = "A grain cloud added to a running graph needs a restart (its clock starts at zero)."))
+        Oscillator => match MidiOscillators::connected (graph, n)
+            true => Success(value = NodeKernels(kernelNode = n.identity, kernelMemory = MidiMemory(voice = MidiOscillators::initial n)))
+            false => Success(value = NodeKernels(kernelNode = n.identity, kernelMemory = ChannelMemory(channels = [RenderInputs::initialState n])))
+        _ => Outcomes::carried (ClipLayouts::channels n, \count => Success(value = NodeKernels(kernelNode = n.identity, kernelMemory = ChannelMemory(channels = mapList (toList (range (0, count)), \_ => RenderInputs::initialState n)))))
+
+    added (graph, kept, outcome, n) = match outcome
+        Error why => Error(message = why)
+        Success banks => match GraphClips::stateful n && length (filterList (kept, \bank => bank.kernelNode == n.identity)) == 0
+            false => Success(value = banks)
+            true => Outcomes::carried (fresh (graph, n), \bank => Success(value = listAppend banks bank))
+
+    (** The running state carried into an edited graph; the graph must already pass `Graphs.prepare`. *)
+    export rebased (graph, held) = match Graphs::prepare graph
+        Invalid _ => Error(message = InvalidConfiguration(detail = "The edited graph is invalid; keep the previous graph and state."))
+        Valid _ =>
+            kept = filterList (held.graphKernels, \bank => surviving (graph, held, bank))
+            Outcomes::carried (foldList (graph.nodes, Success(value = kept), \(outcome, n) => added (graph, kept, outcome, n)), \banks => Success(value = held(graphKernels = banks)))

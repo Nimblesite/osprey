@@ -126,14 +126,11 @@ So a row leaves its manifest only when the program works on that target, and the
 | `src/osprey/examples/graphics/kali` | `osp_gfx_open` is native code outside the module (not in the portable runtime) |
 | `src/osprey/examples/graphics/opal` | `osp_gfx_open` is native code outside the module (not in the portable runtime) |
 | `src/osprey/examples/ios/app.osp` | `ios_host_log` is native code outside the module (not in the portable runtime) |
-| `src/osprey/examples/projects/modules` | `osprey_ffi_cell` is native code outside the module (not in the portable runtime) |
-| `src/osprey/examples/projects/modules/client` | `osprey_web_render` is native code outside the module (not in the portable runtime) |
+| `src/osprey/examples/talon` | `osprey_ffi_cell` is native code outside the module (not in the portable runtime) |
 | `src/osprey/examples/python/interop.osp` | `osprey_python_call` is native code outside the module (not in the portable runtime) |
 | `src/osprey/examples/statefulhttp/tui.osp` | `term_raw_mode` is native code outside the module (not in the portable runtime) |
 | `src/osprey/tests/regressions/db/database_effect.test.osp` | `osprey_ffi_cell` is native code outside the module (not in the portable runtime) |
 | `src/osprey/tests/regressions/db/database_effect.test.ospml` | `osprey_ffi_cell` is native code outside the module (not in the portable runtime) |
-| `src/osprey/tests/regressions/db/sqlite_basics.test.osp` | `osprey_ffi_cell` is native code outside the module (not in the portable runtime) |
-| `src/osprey/tests/regressions/db/sqlite_basics.test.ospml` | `osprey_ffi_cell` is native code outside the module (not in the portable runtime) |
 
 - [ ] Fix #340 (bug): recursive function awaiting a Fiber parameter fails codegen. Acceptance is on the issue. (1 rows)
 
@@ -239,8 +236,6 @@ Continuation reasons below end with `(a suspended continuation cannot cross or o
 | --- | --- |
 | `src/osprey/tests/regressions/db/database_effect.test.osp` | link directive `// @link: sqlite3` |
 | `src/osprey/tests/regressions/db/database_effect.test.ospml` | link directive `// @link: sqlite3` |
-| `src/osprey/tests/regressions/db/sqlite_basics.test.osp` | link directive `// @link: sqlite3` |
-| `src/osprey/tests/regressions/db/sqlite_basics.test.ospml` | link directive `// @link: sqlite3` |
 | `src/osprey/tests/regressions/http/net_local_address.test.osp` | link directive `// @link: ssl` |
 | `src/osprey/tests/regressions/http/net_local_address.test.ospml` | link directive `// @link: ssl` |
 
@@ -350,8 +345,6 @@ Continuation reasons below end with `(wasm32 acquires one-shot continuations whe
 | --- | --- |
 | `src/osprey/tests/regressions/db/database_effect.test.osp` | foreign C import `sqlite3_open` |
 | `src/osprey/tests/regressions/db/database_effect.test.ospml` | foreign C import `sqlite3_open` |
-| `src/osprey/tests/regressions/db/sqlite_basics.test.osp` | foreign C import `sqlite3_open` |
-| `src/osprey/tests/regressions/db/sqlite_basics.test.ospml` | foreign C import `sqlite3_open` |
 | `src/osprey/tests/regressions/fiber/fiber_determinism.test.osp` | foreign C import `fiber_set_deterministic_mode` |
 | `src/osprey/tests/regressions/fiber/fiber_exact_replica.test.osp` | foreign C import `fiber_set_deterministic_mode` |
 | `src/osprey/tests/regressions/http/net_local_address.test.osp` | foreign C import `osprey_net_local_address` |

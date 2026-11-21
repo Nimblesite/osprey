@@ -22,8 +22,8 @@ updates:
       - "/src/toolchain/webcompiler"
       - "/src/toolchain/website"
       - "/src/toolchain/tree-sitter-osprey"
-      - "/src/osprey/examples/projects/modules/web"
-      - "/src/osprey/examples/projects/modules/e2e"
+      - "/src/toolchain/hosts/web"
+      - "/src/osprey/examples/talon/playwright-e2e-tests"
     target-branch: "dependabot-upgrades"
     schedule:
       interval: weekly
@@ -55,7 +55,7 @@ updates:
   - package-ecosystem: gradle
     directories:
       - "/src/osprey/examples/mobile/android"
-      - "/src/osprey/examples/projects/modules/mobile/android"
+      - "/src/toolchain/hosts/android"
     target-branch: "dependabot-upgrades"
     schedule:
       interval: weekly

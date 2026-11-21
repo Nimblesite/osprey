@@ -27,45 +27,25 @@ pub(super) fn project_field_value(
 }
 pub(super) fn project_element(mut value: Value) -> Option<Value> {
     let payload = value.element.take().map(|value| *value);
-    project_tail(
-        payload,
-        value.unknown_structure,
-        value.callable,
-        Projection::Element,
-    )
+    project_from(payload, value, Projection::Element)
 }
 pub(super) fn project_success_value(mut value: Value) -> Option<Value> {
     let mut payload = value.result_payload.take().map(|value| *value);
     if let Some(field) = value.fields.remove("value") {
         merge_optional_value(&mut payload, field);
     }
-    project_tail(
-        payload,
-        value.unknown_structure,
-        value.callable,
-        Projection::SuccessValue,
-    )
+    project_from(payload, value, Projection::SuccessValue)
 }
 pub(super) fn project_fiber_value(mut value: Value) -> Option<Value> {
     let payload = value.fiber_payload.take().map(|value| *value);
-    project_tail(
-        payload,
-        value.unknown_structure,
-        value.callable,
-        Projection::FiberValue,
-    )
+    project_from(payload, value, Projection::FiberValue)
 }
-/// Add what a value's own erased box or callable contributes to the payload
-/// `projected` it holds.
-fn project_tail(
-    mut projected: Option<Value>,
-    unknown: bool,
-    callable: Option<Callable>,
-    projection: Projection,
-) -> Option<Value> {
-    project_unknown_structure(unknown, &mut projected);
-    project_callable(callable, projection, &mut projected);
-    projected
+/// Projects `payload` out of `value`, adding what `value`'s own erased box or
+/// callable contributes.
+fn project_from(mut payload: Option<Value>, value: Value, projection: Projection) -> Option<Value> {
+    project_unknown_structure(value.unknown_structure, &mut payload);
+    project_callable(value.callable, projection, &mut payload);
+    payload
 }
 fn project_unknown_structure(unknown: bool, projected: &mut Option<Value>) {
     if unknown {

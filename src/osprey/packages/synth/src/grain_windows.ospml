@@ -8,9 +8,15 @@ module GrainWindows
         HannWindow => true
         AsrWindow attack release => attack > 0.0 && attack <= 1.0 && release > 0.0 && release <= 1.0 && GrainMath::summed (attack, release) <= 1.0
 
+    hann (age, duration) =
+        last = duration - 1.0
+        match age <= 0.0 || age >= last
+            true => 0.0
+            false => 0.5 - 0.5 * cos (6.283185307179586 * age / last)
+
     (** Evaluate only after controls validation; endpoint guards avoid division at the boundaries. *)
     export value (shape, age, duration) = match shape
-        HannWindow => GrainMath::window (toFloat age, toFloat duration)
+        HannWindow => hann (toFloat age, toFloat duration)
         AsrWindow attack release => GrainMath::asr (toFloat age, toFloat duration, attack, release)
 
     (** Decode the graph's discrete shape selector without rounding unsupported values. *)
@@ -20,5 +26,5 @@ module GrainWindows
             shape = AsrWindow(attack = attack, release = release)
             match valid shape
                 true => Success(value = shape)
-                false => Error(message = "Grain attack and release must be positive fractions whose sum is at most one.")
-        _ => Error(message = "Grain window must be 0 (Hann) or 1 (ASR).")
+                false => Error(message = InvalidConfiguration(detail = "Grain attack and release must be positive fractions whose sum is at most one."))
+        _ => Error(message = InvalidConfiguration(detail = "Grain window must be 0 (Hann) or 1 (ASR)."))

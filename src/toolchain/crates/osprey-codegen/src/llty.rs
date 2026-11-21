@@ -217,16 +217,20 @@ pub(crate) fn result_pointer() -> String {
 }
 
 /// Distinguish Result payload shapes inside otherwise identical pointer slots.
-pub(crate) fn record_slot_key(value: &Value) -> String {
-    match value.result_inner {
-        Some(inner) => {
+/// `record` names the record a pointer slot holds, so `Step<float, Four>` and
+/// `Step<float, Two>` get distinct layouts: their `held` slots are both `i8*`,
+/// and a shared owner made `four.held.step` read through `Two`'s layout.
+pub(crate) fn record_slot_key(value: &Value, record: Option<&str>) -> String {
+    match (value.result_inner, record) {
+        (Some(inner), _) => {
             let mut key = format!("Result.{inner}.");
             if let Some(owner) = &value.payload_owner {
                 key.push_str(owner);
             }
             key
         }
-        None => value.ty.as_str().to_string(),
+        (None, Some(owner)) => format!("{}.{owner}", value.ty.as_str()),
+        (None, None) => value.ty.as_str().to_string(),
     }
 }
 

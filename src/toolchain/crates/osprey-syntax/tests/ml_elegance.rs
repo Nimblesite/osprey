@@ -355,8 +355,9 @@ fn a_tuple_pattern_lowers_to_the_positional_row() {
             Pattern::Structural { fields, open: false }
                 if fields
                     .iter()
-                    .map(|(f, b)| (f.as_str(), b.as_str()))
+                    .map(|(f, slot)| (f.as_str(), slot.slot_binder()))
                     .eq([("0", "a"), ("1", "")])
+                && matches!(fields.get(1), Some((_, Pattern::Wildcard)))
         ),
         "expected the positional row, got {:?}",
         arms[0].pattern
@@ -403,7 +404,8 @@ fn clause_sets_merge_inside_a_module_body() {
 /// Every restriction the elegance surface imposes reports the diagnostic that
 /// names it: an uppercase variant head, a closed named payload list, no clause
 /// after an irrefutable arm, one selected column per clause set, no
-/// or-patterns, and no constructor in a tuple slot ([PATTERN-TUPLE]).
+/// or-patterns, and a labelled constructor pattern labels every slot
+/// ([PATTERN-NESTED]).
 #[test]
 fn rejected_surfaces_report_their_diagnostic() {
     for (src, expected) in [
@@ -425,11 +427,10 @@ fn rejected_surfaces_report_their_diagnostic() {
             "type Colour = Red | Green\nname c = match c\n    Red | Green => \"warm\"\n",
             "or-patterns are not supported",
         ),
-        // `( p )` groups exactly one pattern ([FLAVOR-ML-PATTERN-GROUP]); a comma
-        // list is a tuple pattern whose slots each bind a name or `_`.
+        // `Ctor(field = p)` names each slot it matches ([PATTERN-NESTED]).
         (
-            "type Pair = Both int int\nfst p = match p\n    (Both a, b) => a\n",
-            "a tuple pattern slot binds a name or `_`",
+            "type Pair = Both(left : int, right : int)\nfst p = match p\n    Both(left = a, b) => a\n",
+            "a labelled constructor pattern writes `field = pattern`",
         ),
     ] {
         assert_rejected(src, expected);

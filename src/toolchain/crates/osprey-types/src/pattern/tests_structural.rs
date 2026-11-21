@@ -12,11 +12,9 @@ fn structural_pattern_binds_record_fields() {
     // bound its fields as fresh variables, which let the body read each
     // field at whatever type it pleased — recovery through a pattern,
     // with no annotation to reject ([TYPE-ANY]).
-    let errs = check("fn f(v) = match v {\n  { a, b } => 0\n  _ => 1\n}\n");
-    assert!(
-        errs.iter()
-            .any(|e| e.message.contains("needs a record or `any` scrutinee")),
-        "an unresolved scrutinee must not bind structural fields: {errs:?}"
+    bad_with(
+        "fn f(v) = match v {\n  { a, b } => 0\n  _ => 1\n}\n",
+        "needs a record or `any` scrutinee",
     );
 }
 
@@ -56,13 +54,14 @@ fn structural_binder_names_skip_unbound_slots() {
     use osprey_ast::Pattern;
     let named = Pattern::Structural {
         fields: vec![
-            (String::from("x"), String::from("x")),
-            (String::from("y"), String::from("y")),
+            (String::from("x"), Pattern::Binding(String::from("x"))),
+            (String::from("y"), Pattern::Binding(String::from("y"))),
         ],
         open: false,
     };
     assert_eq!(super::pattern_binder_names(&named), vec!["x", "y"]);
-    let tuple = osprey_ast::tuple_pattern(vec![String::from("n"), String::new()]);
+    let tuple =
+        osprey_ast::tuple_pattern(vec![Pattern::Binding(String::from("n")), Pattern::Wildcard]);
     assert_eq!(super::pattern_binder_names(&tuple), vec!["n"]);
 }
 
@@ -71,61 +70,44 @@ fn structural_fields_of_an_erased_scrutinee_are_erased_themselves() {
     // Over `any` the row is unknown until run time, so a bound field is
     // itself `any` — reading it with an operator is the erasure read the
     // checker deletes everywhere else.
-    let errs = check(
+    bad_with(
         "fn f(v: any) -> int = match v {\n\
            { n } => n + 1\n\
            _ => 0\n\
          }\n",
-    );
-    assert!(
-        errs.iter()
-            .any(|e| e.message.contains("cannot apply `+` to an erased `any`")),
-        "a narrowed field must stay erased until matched further: {errs:?}"
+        "cannot apply `+` to an erased `any`",
     );
 }
 
 #[test]
 fn a_match_over_any_requires_a_catch_all() {
-    let errs = check(
+    bad_with(
         "fn f(v: any) -> int = match v {\n\
            { n } => 1\n\
          }\n",
-    );
-    assert!(
-        errs.iter()
-            .any(|e| e.message.contains("a match over `any` is never exhaustive")),
-        "{errs:?}"
+        "a match over `any` is never exhaustive",
     );
 }
 
 #[test]
 fn an_open_row_arm_shadows_every_extension_after_it() {
-    let errs = check(
+    bad_with(
         "fn f(v: any) -> int = match v {\n\
            { x, .. } => 1\n\
            { x, y } => 2\n\
            _ => 0\n\
          }\n",
-    );
-    assert!(
-        errs.iter().any(|e| e
-            .message
-            .contains("`{ x, .. }` arm already covers this row")),
-        "{errs:?}"
+        "`{ x, .. }` arm already covers this row",
     );
     // Closed rows shadow only their exact repetition; reordering the
     // spelling does not make it a different row.
-    let errs = check(
+    bad_with(
         "fn f(v: any) -> int = match v {\n\
            { x, y } => 1\n\
            { y, x } => 2\n\
            _ => 0\n\
          }\n",
-    );
-    assert!(
-        errs.iter()
-            .any(|e| e.message.contains("already matched by an earlier arm")),
-        "{errs:?}"
+        "already matched by an earlier arm",
     );
 }
 
@@ -187,17 +169,12 @@ fn shape_reading_patterns_are_rejected_over_an_erased_scrutinee() {
             "expected `{kind}` rejection for `{arm}`: {errs:?}"
         );
     }
-    let errs = check(
+    bad_with(
         "type Color = Red | Green\n\
          fn f(v: any) -> int = match v {\n\
            Red => 1\n\
            _ => 0\n\
          }\n",
-    );
-    assert!(
-        errs.iter().any(|e| e
-            .message
-            .contains("a variant pattern cannot read an erased `any`")),
-        "{errs:?}"
+        "a variant pattern cannot read an erased `any`",
     );
 }

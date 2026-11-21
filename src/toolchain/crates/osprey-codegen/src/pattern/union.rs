@@ -1,5 +1,5 @@
 //! Union pattern lowering.
-use super::{bind_value, close_chain, emit_arm, finish_phi, match_mark, open_guarded_arm};
+use super::{bind_value, close_chain, emit_arm, finish_phi, match_mark, nested, open_guarded_arm};
 use crate::builder::Codegen;
 use crate::builder::CtorView;
 use crate::error::Result;
@@ -26,9 +26,8 @@ pub(super) enum BindMode {
 fn pattern_ctor<'a>(cg: &Codegen, p: &'a Pattern) -> Option<(&'a str, Vec<String>, BindMode)> {
     match p {
         // `Ctor { a, b }` names its binders directly; `Ctor(a, b)` carries them
-        // as sub-patterns, which bind by slot ([TYPE-UNION-POSITIONAL]). A
-        // sub-pattern that is not a plain binder contributes no name — nested
-        // destructuring is not supported and is rejected upstream.
+        // as sub-patterns, which bind by slot ([TYPE-UNION-POSITIONAL]). An arm
+        // that tests below its top never reaches here: [`nested`] takes it.
         Pattern::Constructor {
             name,
             fields,
@@ -110,6 +109,10 @@ pub(super) fn gen_union_match(
     let variants = cg.union_variants(owner).unwrap_or(&[]).to_vec();
 
     for arm in arms {
+        if !nested::is_flat(&arm.pattern) {
+            nested::refutable_arm(cg, arm, disc, &mut phi_in)?;
+            continue;
+        }
         if let Some((name, fields, mode)) = pattern_ctor(cg, &arm.pattern) {
             let name = name.to_string();
             let vpos = variants.iter().position(|v| *v == name).unwrap_or(0);

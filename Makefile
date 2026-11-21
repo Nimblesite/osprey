@@ -133,7 +133,7 @@ ci: lint test build
 	$(MAKE) -C src/toolchain/targets/web/tests bank
 	$(MAKE) -C src/toolchain/website docs-html-test
 	$(MAKE) -C src/toolchain/targets/tests inbox
-	$(MAKE) -C src/toolchain/targets/tests bank-mobile
+	$(MAKE) -C src/toolchain/targets/tests bank-app
 	mkdir -p target && echo $(CI_HEAD) > target/ci-green
 
 ## push: The only way to push ([CI-PUSH-GREEN], docs/plans/coordinated-push.md). Hold the TMC lock PUSH-<branch> first. Refuses unless make ci passed on this exact HEAD and no CI run on the branch is queued or running; then pushes.

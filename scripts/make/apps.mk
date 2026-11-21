@@ -110,13 +110,15 @@ _graphics-smoke: build _runtime_macos _graphics-shader
 	done
 endif
 
-## _bank-web: Regenerate Talon Bank's embedded React host and Osprey WebAssembly client. Requires Node and
-##            a WASI sysroot; the generated Osprey Bundle is committed so native and CI builds need neither.
+## _bank-web: Build Talon Bank's Osprey Native app for the browser through the web host and embed the page in
+##            its server. Requires Node and a WASI sysroot; the generated Osprey Bundle is committed so native
+##            and CI builds need neither.
 .PHONY: _bank-web
 _bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
-_bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS)
-	@echo "==> Building Talon Bank browser application..."
-	cd src/osprey/examples/projects/modules/web && npm run build
+_bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS) $(EXT_NODE_DEPS)
+	@echo "==> Building Talon Bank for the web host..."
+	OSPREY_BIN="$(CURDIR)/$(BIN)" node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/talon/app --title "Talon Bank" \
+		--out src/toolchain/hosts/web/build/talon --module src/osprey/examples/talon/backend/web/bundle.ospml --namespace bank/web
 
 # GPT-2 settings and the one-time weight download behind gpt2 and gpt2-train.
 GPT2_DIR    := src/osprey/examples/llms/gpt2
@@ -236,7 +238,7 @@ _qwen-lanes:
 ## _ui-test: The UI test framework's own suite and the apps it drives by accessible
 ##           label alone, casting, signal flow and the synth, with no host or window. [UI-MACHINE-TEST]
 .PHONY: _ui-test
-UI_SUITES := src/osprey/packages/uitest/tests src/osprey/examples/casting/test src/osprey/packages/signal_flow/tests src/osprey/examples/synth/test
+UI_SUITES := src/osprey/packages/uitest/tests src/osprey/examples/casting/test src/osprey/packages/signal_flow/tests src/osprey/examples/daw/test
 _ui-test: _runtime
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	for suite in $(UI_SUITES); do $(BIN) test $$suite || exit 1; done
@@ -247,7 +249,7 @@ _gpui-test: _runtime_macos _runtime
 	python3 src/toolchain/hosts/gpui/dependencies.py
 	python3 src/toolchain/hosts/gpui/dependencies_test.py
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	for suite in src/osprey/packages/native/tests src/osprey/packages/signal_flow/tests src/osprey/examples/synth/test src/osprey/examples/gpui/flock/test src/osprey/examples/gpui/painting/test; do \
+	for suite in src/osprey/packages/native/tests src/osprey/packages/signal_flow/tests src/osprey/examples/daw/test src/osprey/examples/gpui/flock/test src/osprey/examples/gpui/painting/test; do \
 		$(BIN) test $$suite || exit 1; \
 	done
 	$(MAKE) _gpui-smoke _gpui-self-test
@@ -262,7 +264,7 @@ _gpui-apps:
 		OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --compile & \
 		pids="$$pids $$!"; \
 	done; \
-	OSPREY_GPUI_APP="$(CURDIR)/src/osprey/examples/synth" OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh --compile & \
+	OSPREY_GPUI_APP="$(CURDIR)/src/osprey/examples/daw" OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh --compile & \
 	pids="$$pids $$!"; \
 	status=0; \
 	for pid in $$pids; do wait $$pid || status=1; done; \
@@ -272,7 +274,7 @@ _gpui-apps:
 # Every desktop app started in the GPUI host without a window, its smoke.jsonl replayed through the
 # real C boundary; the probe's has no script and taps its Add button. [GPUI-HOST-VERIFICATION]
 _gpui-smoke: _gpui-apps
-	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/synth src/osprey/examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --smoke || exit 1; done
+	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/daw src/osprey/examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --smoke || exit 1; done
 
 ## _synth_vst_build: Build Prism's isolated VST3 worker from the pinned official SDK.
 .PHONY: _synth_vst_build _synth_vst_test
@@ -289,7 +291,7 @@ GPUI_HOST_BIN := src/toolchain/hosts/gpui/target/release/osprey-gpui
 # Prism's editable graph, module insertion and bottom dock in the real native host.
 .PHONY: _prism_ui_test
 _prism_ui_test: _runtime_macos_arc
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh --bundle
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/daw/run.sh --bundle
 	OSPREY_GPUI_APP_NAME=synth OSPREY_GPUI_TITLE="Prism Synth" OSPREY_GPUI_WINDOW=1152x756 OSPREY_GPUI_CHROME=bare python3 src/toolchain/hosts/synth_vst/build.py --design-test "$(CURDIR)/$(GPUI_HOST_BIN)" $(GPUI_WINDOW)
 
 ## _prism_vst_ui_test: Drive Prism's native VST menu against real SDK modules and worker processes.
@@ -297,5 +299,5 @@ _prism_ui_test: _runtime_macos_arc
 _prism_vst_ui_test: _runtime_macos_arc
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	python3 src/toolchain/hosts/synth_vst/build.py --test
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh --bundle
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/daw/run.sh --bundle
 	python3 src/toolchain/hosts/synth_vst/build.py --prism-test "$(CURDIR)/$(GPUI_HOST_BIN)" $(PRISM_TEST_MODE)

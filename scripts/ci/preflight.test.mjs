@@ -11,7 +11,8 @@ const find = (pattern) => checks.find((check) => pattern.test(check.command))
 
 test('the preflight reads ci.yml and every workflow it calls', () => {
   assert.deepEqual(workflowFiles(), ['.github/workflows/ci.yml', '.github/workflows/ci-windows.yml',
-    '.github/workflows/gpui.yml', '.github/workflows/winui.yml'])
+    '.github/workflows/gpui.yml', '.github/workflows/winui.yml', '.github/workflows/ci-audit.yml'])
+  assert.ok(commands.includes('make audit'), 'the PR preflight runs the release audit')
 })
 
 test('every make check in the PR workflows is planned, inside the step that runs it', () => {
@@ -27,7 +28,7 @@ test('every make check in the PR workflows is planned, inside the step that runs
 
 test('checks that are not make targets run too: static analysis, browsers, the emulator and the containers', () => {
   for (const [pattern, directory] of [[/^cargo fmt .* --check$/, '.'], [/^cargo clippy .*-D warnings$/, '.'], [/^npm run lint$/, './src/toolchain/vscode-extension'],
-    [/^npm test$/, './src/toolchain/website'], [/^npx playwright test$/, './src/osprey/examples/projects/modules/e2e'], [/^deslop \./, '.']]) {
+    [/^npm test$/, './src/toolchain/website'], [/^npx playwright test$/, './src/osprey/examples/talon/playwright-e2e-tests'], [/^deslop \./, '.']]) {
     assert.equal(find(pattern)?.directory, directory, String(pattern))
   }
   const android = find(/targets\/android\/tests inbox/)

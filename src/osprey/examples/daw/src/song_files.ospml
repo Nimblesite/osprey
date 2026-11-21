@@ -1,0 +1,186 @@
+// [SYNTH-ARRANGEMENT-FILE] The JSON boundary: a song project decoded into the typed arrangement.
+namespace daw
+
+(** A song project is one JSON object that mirrors `daw.td` exactly: every key is the field name of the type it
+    holds (an `Arrangement`, its `Track`s, each `Routing`'s `PatchNode`s and `PatchCable`s, `Note`s and
+    `NodePosition`s). A union value is an object whose `kind` is the variant's name, with that variant's fields
+    beside it; a variant with no fields (a setting's `follow`) is just its name. *)
+module SongFiles
+
+    follow name = match name
+        "Constant" => Success(value = Constant)
+        "Pitched" => Success(value = Pitched)
+        "Struck" => Success(value = Struck)
+        other => Error(message = "A setting's follow must be Constant, Pitched or Struck, not \"${other}\".")
+
+    setting doc = synth::Outcomes::carried (follow (ui::Doc::text (doc, "follow")), \how => Success(value = ProjectCodec::readSetting (doc, how)))
+
+    node doc = synth::Outcomes::carried (folded (doc, "settings", setting), \settings => Success(value = ProjectCodec::readPatchNode (doc, settings)))
+
+    each (doc, key, read) = mapList (ui::Doc::fieldItems (doc, key), read)
+
+    // A routing must carry a playable gate; a missing `routing`, `attack` or `release` reads as 0 and is refused here.
+    routing doc = synth::Outcomes::carried (folded (doc, "nodes", node), \nodes => PatchVoices::enveloped (ProjectCodec::readRouting (doc, nodes, each (doc, "cables", ProjectCodec::readPatchCable))))
+
+    instrument doc = match ui::Doc::text (doc, "kind")
+        "PluckInstrument" => Success(value = ProjectCodec::readPluckInstrument doc)
+        "BowInstrument" => Success(value = ProjectCodec::readBowInstrument doc)
+        "BellInstrument" => Success(value = ProjectCodec::readBellInstrument doc)
+        "MalletInstrument" => Success(value = ProjectCodec::readMalletInstrument doc)
+        "OperatorInstrument" => Success(value = ProjectCodec::readOperatorInstrument (ProjectCodec::readTone (ui::Doc::field (doc, "tone"))))
+        "DrumInstrument" => Success(value = ProjectCodec::readDrumInstrument (ProjectCodec::readHit (ui::Doc::field (doc, "hit"))))
+        "PatchInstrument" => synth::Outcomes::carried (routing (ui::Doc::field (doc, "routing")), \routed => Success(value = ProjectCodec::readPatchInstrument routed))
+        other => Error(message = "Unknown instrument kind \"${other}\".")
+
+    note doc = match jsonInt (ui::Doc::field (doc, "pitch"))
+        Error _ => Error(message = "A note's pitch must be a whole MIDI number.")
+        Success _ => Success(value = ProjectCodec::readNote doc)
+
+    appended (carry, decoded) = match carry
+        Error why => Error(message = why)
+        Success kept => synth::Outcomes::carried (decoded, \next => Success(value = listAppend kept next))
+
+    folded (doc, key, read) = foldList (ui::Doc::fieldItems (doc, key), Success(value = []), \(carry, item) => appended (carry, read item))
+
+    failed (doc, why) = Error(message = "${ui::Doc::text (doc, "name")}: ${why}")
+
+    position doc = match jsonInt (ui::Doc::field (doc, "layoutNode"))
+        Success id => match id >= 0 && ui::Doc::kind (ui::Doc::field (doc, "layoutX")) == "number" && ui::Doc::kind (ui::Doc::field (doc, "layoutY")) == "number"
+            true => Success(value = ProjectCodec::readNodePosition doc)
+            false => Error(message = "A node position needs a node identity and numeric layoutX and layoutY.")
+        Error _ => Error(message = "A node position needs a whole layoutNode identity.")
+
+    uniquePositions positions = match foldList (positions, true, \(ok, p) => ok && length (filterList (positions, \other => other.layoutNode == p.layoutNode)) == 1)
+        true => Success(value = positions)
+        false => Error(message = "A patch node has two layout positions.")
+
+    // [DAW-MIX-BUS] A bus with its EQ and compressor.
+    bus doc = match ui::Doc::has (doc, "output") && ui::Doc::kind (ui::Doc::field (doc, "output")) != "text"
+        true => Error(message = "A bus output must be a bus name or the empty Master output.")
+        false => Success(value = ProjectCodec::readBus (doc, ProjectCodec::readEqualiser (ui::Doc::field (doc, "equaliser")), ProjectCodec::readCompressor (ui::Doc::field (doc, "compressor"))))
+
+    routeSend doc = match jsonInt (ui::Doc::field (doc, "sendId"))
+        Success identity => match jsonInt (ui::Doc::field (doc, "source"))
+            Success source => match jsonInt (ui::Doc::field (doc, "outlet"))
+                Success outlet => match identity >= 0 && source >= 0 && outlet >= 0 && ui::Doc::kind (ui::Doc::field (doc, "bus")) == "text" && ui::Doc::kind (ui::Doc::field (doc, "level")) == "number" && ui::Doc::kind (ui::Doc::field (doc, "enabled")) == "bool"
+                    true => Success(value = ProjectCodec::readAudioSend doc)
+                    false => Error(message = "A send needs a bus, level and enabled flag.")
+                Error _ => Error(message = "The send outlet must be a whole number.")
+            Error _ => Error(message = "The send needs a source node identity.")
+        Error _ => Error(message = "The send needs an identity.")
+
+    sends doc = match ui::Doc::has (doc, "sends") && ui::Doc::kind (ui::Doc::field (doc, "sends")) != "list"
+        true => Error(message = "A track’s sends must be a list.")
+        false => folded (doc, "sends", routeSend)
+
+    track doc = match instrument (ui::Doc::field (doc, "instrument"))
+        Error why => failed (doc, why)
+        Success sound => match folded (doc, "notes", note)
+            Error why => failed (doc, why)
+            Success notes => synth::Outcomes::carried (synth::Outcomes::carried (folded (doc, "positions", position), uniquePositions), \positions => synth::Outcomes::carried (sends doc, \sends => Success(value = ProjectCodec::readTrack (doc, sound, sends, positions, notes))))
+
+    (** Whether `path` can be single-quoted on a command line. *)
+    export safe path = contains path "'" == false
+
+    arranged (doc, tracks, buses) =
+        song = ProjectCodec::readArrangement (doc, buses, tracks)
+        keys = ui::Doc::keys doc
+        match !ui::Lists::any (keys, \key => key == "meterTop" || key == "meterBottom")
+            true => song(meterTop = 4, meterBottom = 4)
+            false => song
+
+    // Every track name is unique (a sidechain keys on the name), so a bad project is refused on opening, not
+    // halfway through a render.
+    playable song = match listGet (filterList (song.tracks, \voice => length (filterList (song.tracks, \other => other.name == voice.name)) > 1)) 0
+        Success twin => Error(message = "Track names must be unique: \"${twin.name}\" names more than one track.")
+        Error _ => opened song
+
+    // A project with tracks must be one the renderer can play; a new, empty one still opens and saves.
+    opened song = match Arrangements::validMeter (song.meterTop, song.meterBottom)
+        false => Error(message = "The project time signature is invalid.")
+        true => sized song
+
+    sized song = match length song.tracks == 0
+        true => Success(value = song)
+        false => synth::Outcomes::carried (Arrangements::frames song, \_ => Success(value = song))
+
+    (** Decode a song project; malformed JSON, an unknown instrument, a malformed note, a routing without a playable
+        gate, a repeated track name, or a tempo, rate or track count the renderer cannot
+        play is an error. *)
+    export decode source = match jsonDecode source
+        Error _ => Error(message = "The song project is not valid JSON.")
+        Success doc => synth::Outcomes::carried (folded (doc, "tracks", track), \tracks => synth::Outcomes::carried (folded (doc, "buses", bus), \buses => synth::Outcomes::carried (BusPaths::order buses, \_ => synth::Outcomes::carried (SendRenders::project (arranged (doc, tracks, buses)), \song => playable song))))
+
+    encoded doc = match jsonEncode doc
+        Error why => Error(message = "The project could not be written as JSON: ${why}")
+        Success text => Success(value = text)
+
+    (** Write the complete project as JSON. *)
+    export encode arrangement = encoded (ProjectCodec::writeArrangement arrangement)
+
+    audibleField member = match member
+        JsonMember name _ => name != "meterTop" && name != "meterBottom"
+
+    (** Identify the dry and send samples of a note independently of its bar or the written meter. *)
+    export noteCacheKey (song, voice) =
+        source = song(title = "", buses = [], tracks = [voice(name = "", gain = 1.0, pan = 0.0, bus = "", positions = [], notes = [])])
+        match ProjectCodec::writeArrangement source
+            JsonObject members => encoded (JsonObject (filterList (members, audibleField)))
+            _ => Error(message = "A project note key requires an arrangement object.")
+
+(** [DAW-TRANSPORT-LIVE-CONTROLS] The editor publishes the current mix and instruments.
+    The producer reads a complete revision between audio blocks, outside the device callback. *)
+module LiveControls
+    (** Control snapshots omit the score and canvas positions; the playing window owns its cues. *)
+    export settings song = song(tracks = mapList (song.tracks, \track => track(notes = [], positions = [])))
+
+    (** Play opens an empty control channel before it starts the song producer. *)
+    export reset (path, focus) = write (path, 1, "${focus}\n")
+
+    version text = match endsWith text "\n"
+        false => Error(message = "Incomplete live control revision.")
+        true => parseInt (trim text)
+
+    slot (path, revision) = "${path}.${revision % 2}"
+
+    write (path, revision, text) = synth::Outcomes::carried (writeFile (slot (path, revision)) "${revision}\n${text}", \_ => writeFile path "${revision}\n")
+
+    (** The slot is complete before its revision is published. A fast drag coalesces to its latest value. *)
+    export publish (path, focus) = publishSong (path, focus, perform Signal<Arrangement>.read ())
+
+    publishSong (path, focus, song) = synth::Outcomes::carried (readFile path, \head => synth::Outcomes::carried (version head, \prior =>
+        match prior >= 0 && prior < 9223372036854775807
+            false => Error(message = "Live control revisions are exhausted.")
+            true => synth::Outcomes::carried (SongFiles::encode (settings song), \text => write (path, satAdd prior 1, "${focus}\n${text}"))))
+
+    // The same track retains its excerpt notes when an instrument, fader, pan or send changes.
+    overlay (score, controls) = synth::Outcomes::carried (SendRenders::collect (score.tracks, \prior =>
+        synth::Outcomes::carried (ui::Lists::find (controls.tracks, \t => t.name == prior.name), \track => Success(value = track(notes = prior.notes)))), \tracks => Success(value = score(tracks = tracks, buses = controls.buses)))
+
+    score (stream, body) = match body == ""
+        true => Success(value = stream.controlScore)
+        false => synth::Outcomes::carried (SongFiles::decode body, \controls => overlay (stream.playing.score, controls))
+
+    decoded (stream, revision, focus, body) = synth::Outcomes::carried (score (stream, body), \song =>
+        synth::Outcomes::carried (Playback::focused (stream.playing, focus), \playing =>
+            Success(value = stream(playing = playing, controlVersion = revision, controlScore = song))))
+
+    envelope (stream, revision, text) = synth::Outcomes::carried (indexOf text "\n", \at =>
+        synth::Outcomes::carried (substring text 0 at, \number => synth::Outcomes::carried (parseInt number, \focus =>
+            synth::Outcomes::carried (substring text (satAdd at 1) (length text), \body => decoded (stream, revision, focus, body)))))
+
+    payload (path, stream, revision, head) = synth::Outcomes::carried (readFile (slot (path, revision)), \body =>
+        synth::Outcomes::carried (readFile path, \latest =>
+            match head == latest && startsWith body head
+                false => Success(value = stream)
+                true => synth::Outcomes::carried (substring body (length head) (length body), \text => envelope (stream, revision, text))))
+
+    (** A torn or superseded publication waits for the following block; a complete invalid one is an error. *)
+    export receive (path, stream) = match path == ""
+        true => Success(value = stream)
+        false => synth::Outcomes::carried (readFile path, \head =>
+            match version head
+                Error _ => Success(value = stream)
+                Success revision => match revision > stream.controlVersion
+                    false => Success(value = stream)
+                    true => payload (path, stream, revision, head))

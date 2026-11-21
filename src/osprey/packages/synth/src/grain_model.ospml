@@ -15,14 +15,27 @@ type GrainControls =
     amplitude : float
     pan : float
 
+type GrainBoundary =
+    LoopSource
+    OneShotSource
+
+type GrainRegion =
+    first : int
+    limit : int
+    boundary : GrainBoundary
+
 type GrainVoice =
+    region : GrainRegion
     identity : int
     controls : GrainControls
     cursor : float
     age : int
 
 type GrainPool =
+    region : GrainRegion
     source : List<float>
+    retiredSource : List<float>
+    retiredBefore : int
     capacity : int
     voices : List<GrainVoice>
     revision : int
@@ -33,7 +46,20 @@ type GrainAdmission =
     pool : GrainPool
     accepted : bool
 
+type GrainVoiceObservation =
+    identity : int
+    cursor : float
+    age : int
+    duration : int
+    sourceFrames : int
+    fromPreviousSource : bool
+    region : GrainRegion
+
 type GrainObservation =
+    sourceFrames : int
+    retiredFrames : int
+    region : GrainRegion
+    voices : List<GrainVoiceObservation>
     revision : int
     samplePosition : int
     activeGrains : int
@@ -109,6 +135,7 @@ type GrainOnsets =
     next : GrainClock
 
 type GrainCloudState =
+    sourceSamples : List<float>
     pool : GrainPool
     clock : GrainClock
     seeds : GrainSeeds
@@ -144,3 +171,18 @@ type ProcessorMemory K =
         voice : MidiVoice<K>
     GrainMemory
         cloud : GrainCloudState
+
+type GrainCaptureState =
+    capacity : int
+    sampleRate : int
+    written : int
+    samples : List<float>
+    frozen : bool
+
+type PitchMarkClock =
+    position : int
+    belowZero : bool
+
+type PitchMarkBlock =
+    positions : List<int>
+    next : PitchMarkClock

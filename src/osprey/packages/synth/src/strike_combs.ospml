@@ -1,0 +1,24 @@
+// [SYNTH-ADVANCED-PHYSICAL-INSTRUMENTS] Strike position as a feed-forward comb on the excitation.
+namespace synth
+
+(** Exciting a string at fraction β of its length is equivalent to filtering the excitation with
+    `x[n] − x[n − βP]`, `P = fs / f` (Smith): harmonics that are multiples of 1/β vanish. Use it between an
+    exciter and a waveguide; the waveguide's own pickup comb models the listening position. *)
+module StrikeCombs
+    delay config = config.position * config.sampleRate / config.frequency
+
+    (** Position 0.01–0.5 of the string; the delayed tap must fit the capacity. *)
+    export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 20.0 && config.frequency < config.sampleRate * 0.45 && config.position >= 0.01 && config.position <= 0.5 && config.capacity >= 2 && config.capacity <= 96000 && delay config >= 1.0 && delay config + 1.0 <= toFloat config.capacity
+        true => Success(value = config)
+        false => Error(message = ExhaustedCapacity(detail = "Invalid strike rate, pitch or position, or the comb does not fit its capacity."))
+
+    (** Silent excitation history. *)
+    export initial config = DelayLines::prepare config.capacity
+
+    (** One sample of the strike-filtered excitation. *)
+    export next (config, held, input) =
+        // After the push, a one-sample tap is x[n], so x[n − d] is a (d + 1)-sample tap.
+        line = DelayLines::push (held, input)
+        match DelayLines::tap (line, delay config + 1.0)
+            Error why => Error(message = why)
+            Success earlier => Success(value = LineSample(sample = input - earlier, next = line))

@@ -29,7 +29,7 @@ module HostModulation
     export connect (graph, source, outlet, destination, key) = match Graphs::node (graph, destination)
         Invalid fault => Invalid(fault = fault)
         Valid n => match n.processor
-            External _ => match parameter (n, key)
+            External _ _ => match parameter (n, key)
                 Invalid fault => Invalid(fault = fault)
                 Valid _ => wired (graph, source, outlet, n, key)
             _ => Invalid(fault = InvalidNode)
@@ -41,17 +41,17 @@ module HostModulation
     value (clips, cable, offset) = match ClipInputs::completed (clips, cable.source)
         Error why => Error(message = why)
         Success clip => match clip.clipChannels == 1
-            false => Error(message = "A parameter modulator must have one control channel.")
+            false => Error(message = IncompatibleLayout(detail = "A parameter modulator must have one control channel."))
             true => match listGet clip.clipSamples offset
-                Error _ => Error(message = "index out of bounds")
+                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
                 Success sample => Success(value = sample)
 
     point (values, p, offset, number) = match startsWith p.key "vst:" && number >= 0.0 && number <= 1.0 && length values < 1024
-        false => Error(message = "Invalid or excessive VST parameter automation.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid or excessive VST parameter automation."))
         true => match parseInt (drop p.key 4)
-            Error why => Error(message = why)
+            Error _ => Error(message = InvalidConfiguration(detail = "A VST parameter key must end in a whole-number identity."))
             Success identity => match identity >= 0 && identity <= 4294967295
-                false => Error(message = "VST parameter identity is outside its native range.")
+                false => Error(message = InvalidConfiguration(detail = "VST parameter identity is outside its native range."))
                 true => Success(value = listAppend values (HostParameter(identity = identity, offset = offset, value = number)))
 
     sampled (graph, clips, n, first, offset, outcome, p) = match outcome
@@ -60,10 +60,8 @@ module HostModulation
             [] => match first == 0 && offset == 0
                 true => point (values, p, offset, p.initial)
                 false => Success(value = values)
-            [cable] => match value (clips, cable, offset)
-                Error why => Error(message = why)
-                Success number => point (values, p, offset, number)
-            _ => Error(message = "A parameter has more than one modulation source.")
+            [cable] => Outcomes::carried (value (clips, cable, offset), \number => point (values, p, offset, number))
+            _ => Error(message = IncompatibleLayout(detail = "A parameter has more than one modulation source."))
 
     frame (graph, clips, n, first, outcome, offset) = foldList (filterList (n.parameters, \p => p.automatable), outcome, \(values, p) => sampled (graph, clips, n, first, offset, values, p))
 
@@ -73,10 +71,47 @@ module HostModulation
 
     (** Anchor automation to the graph clock, even across unequal block partitions. *)
     export window (graph, clips, n, first, frames) = match first >= 0 && frames > 0 && frames <= 32768 && first <= satSub 9223372036854775807 frames
-        false => Error(message = "Invalid automation clip length or timeline.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid automation clip length or timeline."))
         true =>
             offsets = mapList (toList (range (0, intDiv (satAdd frames 127) 128)), \index => satAdd (aligned first) (satMul index 128))
             foldList (filterList (offsets, \offset => offset < frames), Success(value = []), \(outcome, offset) => frame (graph, clips, n, first, outcome, offset))
 
     (** Emit a stable 128-frame automation grid, with defaults once and exact event offsets. *)
     export points (graph, clips, n, frames) = window (graph, clips, n, 0, frames)
+
+    external n = match n.processor
+        External _ _ => true
+        _ => false
+
+    boundKey (n, keys, c) = match c.destination == n.identity
+        false => keys
+        true => match listGet n.inputs c.inlet
+            Success port => match (port.rate == Control)
+                true => listPrepend keys port.name
+                false => keys
+            Error _ => keys
+
+    (** Remember the dials without a connected modulator so unplugging one restores its stored value. *)
+    manual (graph, n) =
+        bound = foldList (graph.cables, [], \(keys, c) => boundKey (n, keys, c))
+        filterList (n.parameters, \p => p.automatable && !listContains (bound, p.key))
+
+    controls parameters = mapList (parameters, \p => ParameterStamp(stampKey = p.key, stampValue = p.initial))
+
+    export stamps graph = mapList (filterList (graph.nodes, external), \n => HostedStamp(stampNode = n.identity, stampControls = controls (manual (graph, n))))
+
+    // A changed dial on a retained worker takes effect on the next block, also off the modulation grid.
+    edit (prior, outcome, p) = match filterList (prior.stampControls, \old => old.stampKey == p.key && old.stampValue == p.initial)
+        [] => Outcomes::carried (outcome, \points => point (points, p, 0, p.initial))
+        _ => outcome
+
+    export edits (graph, previous, n, automation) = match filterList (previous, \old => old.stampNode == n.identity)
+        [prior] => changedPoints (prior, manual (graph, n), automation)
+        _ => Success(value = automation)
+
+    changedPoints (prior, parameters, automation) = match structuralEquals (prior.stampControls, controls parameters)
+        true => Success(value = automation)
+        false => Outcomes::carried (foldList (parameters, Success(value = []), \(outcome, p) => edit (prior, outcome, p)), \changed =>
+            match satAdd (length changed) (length automation) <= 1024
+                true => Success(value = listConcat changed automation)
+                false => Error(message = InvalidConfiguration(detail = "VST edits exceed the block automation budget.")))

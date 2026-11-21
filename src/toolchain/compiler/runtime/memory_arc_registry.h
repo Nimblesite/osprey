@@ -119,7 +119,22 @@ static int arc_grow(void) {
   return 1;
 }
 
+// Recently confirmed NON-members, the mirror of g_recent below
+// [MEM-ARC-RECENT]: a string literal lives in rodata, so every length, dup and
+// drop of one ran the whole probe to learn "not ours". Membership only begins
+// in arc_insert, which clears the entry, so a hit is as true as the miss.
+#define ARC_MISSED 4096
+static uintptr_t g_missed[ARC_MISSED];
+
+static uintptr_t *arc_missed(uintptr_t body) {
+  return &g_missed[(body ^ (body >> 12)) & (ARC_MISSED - 1)];
+}
+
 static void arc_insert(uintptr_t body) {
+  uintptr_t *missed = arc_missed(body);
+  if (*missed == body) {
+    *missed = 0;
+  }
   if (g_cap == 0 || (g_used + 1) * 4 >= g_cap * 3) {
     if (!arc_grow()) {
       // Broken-code quarantine: returning an untracked body would prevent
@@ -134,9 +149,47 @@ static void arc_insert(uintptr_t body) {
   arc_bitmap_update(body, 1);
 }
 
+// Recently confirmed members, direct-mapped by address [MEM-ARC-RECENT]. Every
+// dup and drop asks "is this a managed body?", and the hash probe behind that
+// answer was 28% of a song render: large blocks are not pooled, so each one
+// freed leaves a tombstone and the probe chains grow until the next rebuild.
+// A program retains and releases the same few hundred bodies over and over, so
+// one compare here answers nearly all of them. An entry is only ever a body
+// arc_find just found, and arc_remove (the one place membership ends) clears
+// it, so a hit is exactly as true as the probe it replaces.
+#define ARC_RECENT 4096
+static uintptr_t g_recent[ARC_RECENT];
+
+static uintptr_t *arc_recent(uintptr_t body) {
+  return &g_recent[(body >> 4) & (ARC_RECENT - 1)];
+}
+
 static void arc_remove(uintptr_t *slot) {
   uintptr_t body = *slot;
-  *slot = OSP_ARC_TOMB;
+  uintptr_t *recent = arc_recent(body);
+  if (*recent == body) {
+    *recent = 0;
+  }
+  // Backward-shift deletion: later members of this probe run move up into the
+  // hole, so no tombstone is left and probe chains stay as short as the load
+  // factor allows. (A song render frees one unpooled block per delay line per
+  // sample; their tombstones used to fill the table between rebuilds.)
+  size_t mask = g_cap - 1;
+  size_t hole = (size_t)(slot - g_tab);
+  for (size_t at = (hole + 1) & mask; g_tab[at] != 0; at = (at + 1) & mask) {
+    if (g_tab[at] == OSP_ARC_TOMB) {
+      continue;
+    }
+    size_t home = arc_hash(g_tab[at], g_cap);
+    int stays = hole <= at ? (hole < home && home <= at)
+                           : (hole < home || home <= at);
+    if (!stays) {
+      g_tab[hole] = g_tab[at];
+      hole = at;
+    }
+  }
+  g_tab[hole] = 0;
+  g_used--;
   g_present--;
   arc_bitmap_update(body, 0);
 }
@@ -146,8 +199,23 @@ static OspArcHdr *arc_lookup_body(uintptr_t body) {
   if (g_arc_bitmap_enabled)
     return arc_bitmap_contains(body) ? arc_hdr((void *)body) : NULL;
 #endif
-  uintptr_t *slot = arc_find(body);
-  return slot ? arc_hdr((void *)*slot) : NULL;
+  if (body <= OSP_ARC_TOMB) {
+    return NULL;
+  }
+  uintptr_t *recent = arc_recent(body);
+  if (*recent == body) {
+    return arc_hdr((void *)body);
+  }
+  uintptr_t *missed = arc_missed(body);
+  if (*missed == body) {
+    return NULL;
+  }
+  if (!arc_find(body)) {
+    *missed = body;
+    return NULL;
+  }
+  *recent = body;
+  return arc_hdr((void *)body);
 }
 
 #endif

@@ -73,7 +73,11 @@ typedef struct {
 #define GC_FINAL 2u
 #define GC_STRING 4u
 #define GC_PINNED 8u // osp_mem_immortal: a root of every collection, never swept
-#define GC_PERSISTENT (GC_FINAL | GC_STRING | GC_PINNED)
+// [GC-TRACE-LEAF] The body holds no managed pointer (a string, a scalar list leaf): it is
+// marked when reached but never scanned, so a heap of sample buffers costs a lookup per
+// block, not one per word.
+#define GC_LEAF 16u
+#define GC_PERSISTENT (GC_FINAL | GC_STRING | GC_PINNED | GC_LEAF)
 
 #include "heap_lock.h"
 
@@ -278,7 +282,7 @@ static void gc_collect_locked(void) {
   while (g_ms_top > 0) {
     uintptr_t w = g_ms[--g_ms_top];
     OspGcEnt *e = gc_lookup(w);
-    if (e) {
+    if (e && !(e->mark & GC_LEAF)) {
       gc_scan_range(w, w + e->size);
     }
   }
@@ -378,7 +382,7 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
   bool text = (meta & 0xFF) == OSP_MEM_STRING;
   if ((size > 0 && (uint64_t)size > SIZE_MAX) ||
       (text && (size < 1 || (uint64_t)size > UINT32_MAX))) return NULL;
-  uint32_t flags = text ? GC_STRING : ((meta & 0xFF) == OSP_MEM_LIST_HDR_EXTERN ? GC_FINAL : 0);
+  uint32_t flags = text ? (GC_STRING | GC_LEAF) : ((meta & 0xFF) == OSP_MEM_LIST_HDR_EXTERN ? GC_FINAL : 0);
   heap_lock();
   void *p = gc_managed_alloc(size > 0 ? (size_t)size : 0, flags);
   heap_unlock();
@@ -430,12 +434,22 @@ void osp_mem_notify_multithreaded(void) {
 }
 #include "memory_gc_batons.h"
 
-// Lifetime flags mirror the layout kinds without enlarging the GC entry.
+// Lifetime flags mirror the layout kinds without enlarging the GC entry. A layout set
+// to OSP_MEM_RAW declares opaque bytes with no children (a scalar list leaf), so the
+// block becomes a leaf the trace never scans [GC-TRACE-LEAF].
+static uint32_t gc_layout_flags(int64_t meta) {
+  switch (meta & 0xFF) {
+  case OSP_MEM_STRING: return GC_STRING | GC_LEAF;
+  case OSP_MEM_RAW: return GC_LEAF;
+  default: return 0;
+  }
+}
+
 void osp_mem_set_layout(void *p, int64_t meta) {
   heap_lock();
   OspGcEnt *e = gc_lookup((uintptr_t)p);
-  uint32_t flags = (meta & 0xFF) == OSP_MEM_STRING ? GC_STRING : 0;
-  if (e) e->mark = (e->mark & ~GC_STRING) | flags; // Existing finalizer ownership is unchanged.
+  // Existing finalizer ownership is unchanged.
+  if (e) e->mark = (e->mark & ~(GC_STRING | GC_LEAF)) | gc_layout_flags(meta);
   heap_unlock();
 }
 

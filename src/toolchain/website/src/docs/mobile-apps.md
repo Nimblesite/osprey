@@ -17,7 +17,7 @@ Captures: iPhone 17 Pro simulator and Pixel 7 emulator. The iOS build has also b
 
 The [complete source and launch scripts](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/mobile) are in `src/osprey/examples/mobile/`. Build this example from a repository checkout using the platform prerequisites below.
 
-For a banking example, [Talon Bank's native clients](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/projects/modules/mobile) share the web app's screens, state transitions, validation and API commands. SwiftUI and Android widgets use the same `Bridge::Render` effect through native C exports. The [web app guide](/docs/web-apps/#native-android-and-ios) explains the shared boundary; its source README includes build and device-test commands.
+For a banking example, [Talon Bank](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/talon/app) is one Osprey Native app that the browser, Android and SwiftUI hosts all run unchanged. The [web app guide](/docs/web-apps/) walks through it.
 
 ## What Issue Inbox does
 

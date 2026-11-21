@@ -14,7 +14,8 @@ module Parameters
             Error _ => Invalid(fault = MissingParameter)
             Success p => Valid(value = p)
 
-    validValue (p, value) = value >= p.minimum && value <= p.maximum
+    (** Whether a value is inside the parameter’s inclusive bounds. *)
+    export validValue (p, value) = value >= p.minimum && value <= p.maximum
 
     replaced (edit, p) = match p.node == edit.node && p.key == edit.key
         true => p(value = edit.value)
@@ -36,3 +37,22 @@ module Parameters
         false => match edit.samplePosition != snapshot.samplePosition || edit.samplePosition < 0
             true => Invalid(fault = InvalidFrame)
             false => change (graph, snapshot, edit)
+
+(** [SYNTH-ADVANCED-LEARNED] Reproducible training and independent evaluation with the production graph fitter. *)
+module FitReports
+    labelled source = length source.identifier >= 1 && length source.identifier <= 256 && length source.licence >= 1 && length source.licence <= 256 && source.sampleRate == 48000
+
+    valid reference = labelled reference.source && Ffts::valid (length reference.samples) && foldList (reference.samples, true, \(ok, sample) => ok && sample >= -1.0 && sample <= 1.0)
+
+    distinct (training, evaluation) = training.source.identifier != evaluation.source.identifier && structuralEquals (training.samples, evaluation.samples) == false
+
+    (** Fit on the training clip alone. Score the winning values on the separately labelled evaluation clip. *)
+    export fit (graph, config, training, evaluation) = match valid training && valid evaluation
+        false => Error(message = InvalidConfiguration(detail = "Fit references need labelled, licensed, finite mono clips at 48 kHz and a supported FFT length."))
+        true => match distinct (training, evaluation)
+            false => Error(message = InvalidConfiguration(detail = "Training and evaluation need distinct source identities and sample data."))
+            true => Outcomes::carried (Fitting::fit (graph, config, training.samples), \result => report (graph, config, training.source, evaluation, result))
+
+    report (graph, config, training, evaluation, result) = match Fitting::spectrum evaluation.samples
+        Error why => Error(message = why)
+        Success powers => Outcomes::carried (Fitting::evaluate (graph, config, powers, result.best.values), \heldOut => Success(value = FitReport(algorithm = "osprey-synth/log-spectrum-es-v1", algorithmLicence = "MIT", training = training, evaluation = evaluation.source, config = config, result = result, evaluationLoss = heldOut.loss)))

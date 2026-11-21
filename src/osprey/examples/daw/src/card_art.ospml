@@ -1,0 +1,73 @@
+// [PRISM-ROUTING-EDITOR] Each module's artwork is drawn once and kept until that module changes.
+namespace synth
+
+(** Keep card art in node-local coordinates. Moving a module translates its shapes and listeners;
+    changing a parameter, selection or skin rebuilds the affected artwork. *)
+module CardArts
+    settings n = join (mapList (n.parameters, \p => "${p.key}=${p.initial}")) ","
+
+    sample n = match n.processor
+        SamplePlayer resource => "${resource.name}:${length resource.samples}"
+        Granular resource _ _ => "${resource.name}:${length resource.samples}"
+        _ => ""
+
+    (** Everything a card's artwork and controls are drawn from, besides the skin. *)
+    export key (editor, n) = "${editor.selected == n.identity}:${editor.detailsShown}:${EditorView::componentName (editor, n)}:${settings n}:${sample n}"
+
+    // Keep module artwork and its listeners in node-local coordinates, including sampled waveforms.
+    drawn (editor, n, wanted) =
+        origin = daw::NodePosition(layoutNode = n.identity, layoutX = 0.0, layoutY = 0.0)
+        local = editor(positions = [origin], panX = 0.0, panY = 0.0)
+        CardArt(artNode = n.identity, artKey = wanted, artShapes = EditorView::nodeArtwork (local, n, origin), artControls = PrismArt::sliders (local, n))
+
+    (** Reuse the artwork across pointer moves; selection, skin and parameter changes redraw it. *)
+    export card (editor, n) =
+        wanted = key (editor, n)
+        fixed (editor, n.identity, wanted, \() => drawn (editor, n, wanted))
+
+    (** A card's listeners follow it; the skin also declares controls anchored to the inspector. *)
+    export controls (editor, n) =
+        at = EditorLayout::position (editor, n.identity)
+        mapList ((card (editor, n)).artControls, \a =>
+            match PrismArt::inspectorArea a
+                true => a
+                false => a(accessLeft = a.accessLeft + at.layoutX, accessTop = a.accessTop + at.layoutY))
+
+    // The skin's live state: its inputs, its layers' states and what the pointer holds.
+    same (one, other) = structuralEquals (one.knobs, other.knobs) && structuralEquals (one.currents, other.currents) && structuralEquals (one.machineGrip, other.machineGrip)
+
+    // Only the Patch page shows cards: on another page none is drawn, so a resize there redraws nothing
+    // and the Patch page draws them when it opens ([DAW-PERF-ROUND]).
+    cards editor = match TimelineView::pageIndex editor.page == 0
+        true => mapList (editor.graph.nodes, \n => card (editor, n))
+        false => []
+
+    (** The cards for `after`, reusing `before`'s where the skin's live state and the card's key are unchanged. *)
+    export refreshed (before, after) =
+        base = match same (before.skin, after.skin)
+            true => after
+            false => after(art = [])
+        base(art = listConcat [scenery base, dock base] (cards base))
+
+    // The art kept in `slot` while its `wanted` key is current, else drawn now.
+    fixed (editor, slot, wanted, draw) = match listGet (filterList (editor.art, \art => art.artNode == slot && art.artKey == wanted)) 0
+        Success art => art
+        Error _ => draw ()
+
+    chosen editor = match Graphs::node (editor.graph, editor.selected)
+        Invalid _ => ""
+        Valid n => "${EditorView::componentName (editor, n)}:${settings n}:${sample n}"
+
+    sceneryKey editor = "${length editor.graph.nodes}:${editor.selected}:${editor.detailsShown}:${editor.note}:${chosen editor}"
+
+    (** The header, inspector and legend: redrawn when the selection, its settings or the note change, not on a move. *)
+    export scenery editor = fixed (editor, -1, sceneryKey editor, \() => CardArt(artNode = -1, artKey = sceneryKey editor, artShapes = PrismArt::background editor, artControls = []))
+
+    dockKey editor = "${sceneryKey editor}:${editor.keyboardShown}:${editor.keyboardWidth}"
+
+    dockDrawn editor = match editor.keyboardShown
+        false => CardArt(artNode = -2, artKey = dockKey editor, artShapes = [], artControls = [])
+        true => CardArt(artNode = -2, artKey = dockKey editor, artShapes = PrismArt::deck (PrismArt::keyboardEditor editor), artControls = PrismArt::keyboardAccess (PrismArt::keyboardEditor editor))
+
+    (** The keyboard dock's artwork and keys, kept while the note and the dock's size stay. *)
+    export dock editor = fixed (editor, -2, dockKey editor, \() => dockDrawn editor)

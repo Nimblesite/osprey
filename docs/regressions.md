@@ -19,12 +19,21 @@ these fixes.
 
 | Regression | Where | Issue or status |
 | --- | --- | --- |
+| A generic top-level function passed as a value instantiates at its `int`-defaulted signature, not at the use's types: `flattened parts = foldList (parts, [], joined)`, with `joined (left, right) = foldList (right, left, \(all, value) => listAppend all value)`, turns `[[1.5, 2.0], [3.0]]` into `[1, 2, 3]` read back as float bits (`4.94e-324…`), under GC and ARC; a lambda `\(all, part) => joined (all, part)` is correct, and strings are unaffected | [function_types.rs](../src/toolchain/crates/osprey-codegen/src/builder/function_types.rs) `identifier_fn_type` reads `prog.functions`; [applications.rs](../src/toolchain/crates/osprey-types/src/applications.rs) elaborates generic calls only, never a generic name in value position | Open, found 2026-11-21 by spectral analysis of the synth's frequency shifter. Whether a release has it is unchecked. Needs a corpus regression and an elaborated instantiation for value-position names |
+| `args` and `env` became built-ins after v0.30.0 and built-ins cannot be redefined, so a program declaring its own top-level `fn env(...)` or `fn args(...)` no longer compiles ("cannot redefine built-in function `env`") | [builtins.rs](../src/toolchain/crates/osprey-types/src/builtins.rs) `SHADOWABLE_BUILTINS` | Open. Needs a decision: add both names to `SHADOWABLE_BUILTINS` or keep them reserved |
 | The WinUI host starts unbounded reads of both output streams and checks only stdout length after both reads complete. A child can exhaust host memory before the limit is applied | [Processes.cs](../src/toolchain/hosts/winui/OspreyHost.Core/Processes.cs) | Introduced with the host in `3329a783d`. Open. Verify bounded stdout and stderr with a Windows child-process test |
 | The duplication ceiling rose from 3.0% in v0.28.2 to 6.2% at HEAD. The intermediate ceiling was 2.962% before `dc879c7c7` expanded the scan to include Osprey sources and tests | [.deslop.toml](../.deslop.toml) | Open. The aggregate percentages use different file populations. Check equivalent Rust scope separately before drawing conclusions about Rust duplication |
 
 The release workflow guard passed with all 13 release jobs included in `release-complete`. The C runtime
 threshold moved to aggregate coverage, the Apple tests remain required through `test-apple`, and the
 WASM job restores the compiler from `osprey-build`. Those workflow moves preserve the respective checks.
+
+The 2026-11-20 review compared v0.30.0 with PR #417 (`bbfb80d92`) across codegen, the type checker,
+the parser and the C runtime. Fixed before the merge: printing a recursive type overflowed the
+compiler's stack (`11cc19017`), a union whose variant holds a function printed it as `<handle>`
+(`e778ecb4e`), and every list-read miss built its `IndexOutOfBounds` record even when no arm read it
+(`8620dca9a`). The one released bug found, the `structuralEquals` path order, is
+[#421](https://github.com/Nimblesite/osprey/issues/421).
 
 ## By user decision
 

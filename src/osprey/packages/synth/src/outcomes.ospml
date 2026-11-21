@@ -1,0 +1,27 @@
+namespace synth
+
+(** The one Result chain the synth modules share: errors pass through unchanged. *)
+module Outcomes
+    (** An Error passes through; a Success payload continues into `step`. *)
+    export carried (outcome, step) = match outcome
+        Error why => Error(message = why)
+        Success value => step value
+
+    picked (options, index, message) = match listGet options index
+        Error _ => Error(message = InvalidConfiguration(detail = message))
+        Success option => Success(value = option)
+
+    (** Decode a discrete graph control without truncating fractional settings. *)
+    export integer (selector, message) = match floatToInt selector
+        Error _ => Error(message = InvalidConfiguration(detail = message))
+        Success index => match toFloat index == selector
+            false => Error(message = InvalidConfiguration(detail = message))
+            true => Success(value = index)
+
+    (** The option a whole-number selector names, starting at zero. *)
+    export chosen (selector, options, message) = carried (integer (selector, message), \index => picked (options, index, message))
+
+    (** `value` as a whole number into `step`; a nonfinite or out-of-range value is a numerical fault. *)
+    export whole (value, step) = match floatToInt value
+        Error _ => Error(message = NumericalFailure(detail = "A whole-number value is not finite or is out of range."))
+        Success number => step number

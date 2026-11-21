@@ -1,0 +1,13 @@
+import synth::DelayLines
+
+// [SYNTH-ADVANCED-PHYSICAL-PRIMITIVES] Stored history follows elapsed time when the host clock changes.
+delayHistoryJourney () =
+    succeeds (DelayLines::prepare 4, \silent =>
+        sameSamples (silent.samples, [0.0, 0.0, 0.0, 0.0])
+        line = foldList ([1.0, 2.0, 3.0, 4.0], silent, \(held, sample) => DelayLines::push (held, sample))
+        succeeds (DelayLines::tap (line, 2.5), \value => expect (value, 2.5))
+        forEachList ([0.5, 4.5], \age => renderRefused (DelayLines::tap (line, age)))
+        forEachList ([{ rate = 96000.0, capacity = 9, want = [0.0, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0] }, { rate = 24000.0, capacity = 3, want = [0.0, 1.0, 3.0] }], \row =>
+            succeeds (DelayLines::resampled (line, 48000.0, row.rate, row.capacity), \updated => sameSamples (updated.samples, row.want)))
+        forEachList ([{ rate = 0.0, capacity = 4 }, { rate = 48000.0, capacity = 1 }], \bad => renderRefused (DelayLines::resampled (line, 48000.0, bad.rate, bad.capacity)))
+        sameSamples (line.samples, [1.0, 2.0, 3.0, 4.0]))

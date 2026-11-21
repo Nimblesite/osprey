@@ -196,6 +196,18 @@ impl CompilationInput {
         &self.debug_path
     }
 
+    pub(crate) fn debug_source(&self) -> osprey_codegen::DebugSource {
+        let mut source = osprey_codegen::DebugSource::from_path(self.debug_path());
+        if let Some(project) = self.project() {
+            source.ranges = project
+                .sources
+                .iter()
+                .map(|s| (s.global_line_start, s.global_line_end, s.path.clone()))
+                .collect();
+        }
+        source
+    }
+
     /// Resolve a flattened checker position to the physical file it was
     /// written in, with that file's own line number.
     pub(crate) fn location(&self, position: Position) -> (String, u32, u32) {

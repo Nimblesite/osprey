@@ -410,6 +410,43 @@ fn assert_debug_success(output: &std::process::Output) {
     );
 }
 
+#[test]
+fn debugger_keeps_project_module_files_and_local_lines() -> DebugTestResult {
+    let (main, binary) = debug_fixture(
+        "module-lines",
+        "ospml",
+        "namespace song\n\nprint (synth::Notes::pitch 3)\n",
+    )?;
+    let dir = main.parent().expect("fixture directory");
+    fs::write(
+        dir.join("voice.ospml"),
+        "namespace synth\n\nmodule Notes\n    export pitch n = satAdd n 7\n",
+    )?;
+    fs::write(dir.join("osprey.toml"), "[project]\nname = \"debug-lines\"\nsource_roots = [\"source.ospml\", \"voice.ospml\"]\nentry = \"source.ospml\"\n")?;
+    let result = compile_debug_artifact(dir, &binary, "dwarf")?;
+    assert_debug_success(&result);
+    assert!(!String::from_utf8_lossy(&result.stderr).contains("ignoring invalid debug info"));
+    let ir = fs::read_to_string(binary.with_extension("exe.ll"))?;
+    let (file, _) = ir
+        .lines()
+        .find(|l| l.contains("!DIFile(filename: \"voice.ospml\""))
+        .expect("imported module DIFile")
+        .split_once(" = ")
+        .expect("file identity");
+    assert!(
+        ir.lines().any(|l| l.contains("DISubprogram")
+            && l.contains("Notes::pitch")
+            && l.contains(&format!("file: {file}, line: 4,"))),
+        "pitch belongs to voice.ospml line 4"
+    );
+    assert_eq!(
+        std::process::Command::new(&binary).output()?.stdout,
+        b"10\n"
+    );
+    fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
 fn compile_debug_artifact(
     input: &Path,
     output: &Path,

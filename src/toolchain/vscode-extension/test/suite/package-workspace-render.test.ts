@@ -165,6 +165,9 @@ suite("package workspace component renderer", () => {
     const html = renderWorkspace({ regions: regions(screen, rows), assetUri: "vscode-resource://approved-logo.png" });
     assert.ok(html.includes('<div class="osp-brand-lockup"><img class="osp-brand" src="vscode-resource://approved-logo.png" alt="Osprey" />'), html);
     assert.ok(renderWorkspace({ regions: regions(screen, rows) }).includes('<span class="osp-brand osp-brand-word">Osprey</span>'));
+    const unbranded = renderWorkspace({ regions: regions(screen, rows), brand: false });
+    assert.ok(!unbranded.includes("osp-brand"), "a host drawing another application leaves the lockup off");
+    assert.ok(unbranded.includes('<header class="osp-screen-header"><div class="osp-screen-titles">'), unbranded);
     assert.throws(() => renderWorkspace({ regions: regions({ kind: "brand" }) }), /Unknown native component: brand/);
   });
 

@@ -1,0 +1,256 @@
+// Talon Bank driven through the typed host event boundary every host calls ([NATIVE-SHM-EVENT],
+// [NATIVE-SHM-BOUNDARY]), with no server and no window. The host the tests stand in for holds
+// each ledger reply in the slice its ticket names and completes the request with its status,
+// so the same app the browser, SwiftUI and Android hosts run is checked on every platform.
+namespace talontests
+
+import ui::Lists
+import ui::Requests
+import ui::Runtime
+import talon::Amounts
+import talon::App
+import talon::Update
+import uitest::Drive
+import uitest::Views
+
+accountsReply () = "[{\"id\":1,\"owner\":\"Amelia Chen\",\"cents\":246240,\"balance\":\"$2,462.40\"},{\"id\":2,\"owner\":\"Marcus Webb\",\"cents\":191785,\"balance\":\"$1,917.85\"},{\"id\":3,\"owner\":\"Priya Sharma\",\"cents\":360000,\"balance\":\"$3,600.00\"}]"
+
+activityReply () = "[{\"id\":3,\"account\":2,\"kind\":\"refused\",\"cents\":999900,\"note\":\"vintage synthesizer\",\"owner\":\"Marcus Webb\"},{\"id\":2,\"account\":1,\"kind\":\"debit\",\"cents\":185000,\"note\":\"rent — 12 Fern St\",\"owner\":\"Amelia Chen\"},{\"id\":1,\"account\":1,\"kind\":\"credit\",\"cents\":425000,\"note\":\"March salary\",\"owner\":\"Amelia Chen\"}]"
+
+// The surface the tests drive, and the replies the host holds by ticket.
+mut driven = Drive::idle (App::program (), Update::launched "")
+mut replies = [Held(heldTicket = "", heldText = "")]
+
+(** One reply the host holds under its ticket. *)
+type Held =
+    heldTicket : string
+    heldText : string
+
+effect Host
+    drive : uitest::Driven<talon::Bank, talon::BankAct> => Unit
+    hold : Held => Unit
+
+bench work =
+    handle Host
+        drive next => driven := next
+        hold held => replies := listPrepend replies held
+    Runtime::guarded work
+
+// The newest reply held under `ticket`, or nothing.
+heldUnder ticket = match Lists::find (replies, \held => held.heldTicket == ticket)
+    Success held => held.heldText
+    Error _ => ""
+
+hosted work =
+    handle ui::Slices
+        fetch key => heldUnder key
+    bench work
+
+launchWith arguments = hosted (\() => perform Host.drive (Drive::launched (Drive::idle (App::program (), Update::launched ""), "web", arguments)))
+
+press label = hosted (\() => perform Host.drive (Drive::press (driven, label)))
+
+typed (label, words) = hosted (\() => perform Host.drive (Drive::choose (driven, label, words)))
+
+// The one control of `kind`, such as the tabs or the account rows, given `words`.
+picked (kind, words) =
+    found = Lists::find (driven.drivenSeen.renderedControls, \c => c.controlKind == kind)
+    match found
+        Success c => hosted (\() => perform Host.drive (Drive::sent (driven, ui::Touch(touchNow = driven.drivenNow, touchKind = ui::Hosting::control, touchOrdinal = c.controlOrdinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false))))
+        Error _ => expect ("no ${kind} control", "")
+
+// The request `ticket` completed with HTTP `status`, its body held under the ticket.
+reply (ticket, status, body) =
+    perform Host.hold (Held(heldTicket = ticket, heldText = body))
+    hosted (\() => perform Host.drive (Drive::completed (driven, ticket, true, "{\"status\":${status},\"headers\":[]}")))
+
+refusedBy (ticket, why) = hosted (\() => perform Host.drive (Drive::completed (driven, ticket, false, why)))
+
+loaded () =
+    launchWith []
+    reply ("accounts", 200, accountsReply ())
+    reply ("activity", 200, activityReply ())
+
+store () = Drive::holding driven
+
+shows label = expect (Drive::shows (driven, label), true)
+
+wordsIn words = expect (contains (Views::texts driven.drivenSeen) words, true)
+
+// The requests the last step sent, as `METHOD url body`, in order.
+described request = match request.capability
+    ui::Http method url _ body _ _ slice => "${method} ${url} ${body} ${slice}"
+    _ => Requests::kind request.capability
+
+asked () = join (mapList (driven.drivenSurface.surfaceAsked, described)) ";"
+
+askedNothing () = expect (asked (), "")
+
+// The keys the picker `label` offers, comma-joined.
+// The choices of the picker labelled `label`; its heading above it shares the words.
+choices (label, expected) = match Lists::find (Views::labelled (driven.drivenSeen, label), \c => c.controlKind == "picker")
+    Success c => expect (join c.controlChoices ",", expected)
+    Error _ => expect ("no picker labelled ${label}", expected)
+
+test ("typed amounts read as whole cents, and anything else as zero", \() =>
+    expect (Amounts::cents "$1,980.25", 198025)
+    expect (Amounts::cents "1980.25", 198025)
+    expect (Amounts::cents "  7.07 ", 707)
+    expect (Amounts::cents "12", 1200)
+    expect (Amounts::cents "0.5", 50)
+    expect (Amounts::cents "1,000", 100000)
+    expect (Amounts::cents "1,000,000.01", 100000001)
+    expect (Amounts::cents "1,2", 0)
+    expect (Amounts::cents "12,34", 0)
+    expect (Amounts::cents "-5", 0)
+    expect (Amounts::cents "+5", 0)
+    expect (Amounts::cents "1.234", 0)
+    expect (Amounts::cents "1.", 0)
+    expect (Amounts::cents "abc", 0)
+    expect (Amounts::cents "", 0))
+test ("a launch asks for both listings from the demo server and shows progress", \() => bench (\() =>
+    launchWith []
+    expect (asked (), "GET http://127.0.0.1:18790/api/accounts  accounts;GET http://127.0.0.1:18790/api/activity  activity")
+    expect ((store ()).bankLoads, 2)
+    shows "Contacting the ledger"
+    shows "Overview"
+    expect (driven.drivenSurface.surfaceProblem, "")))
+test ("the first launch argument names the server", \() => bench (\() =>
+    launchWith ["https://bank.example"]
+    expect (asked (), "GET https://bank.example/api/accounts  accounts;GET https://bank.example/api/activity  activity")))
+test ("both listings fill the overview with the total, the accounts and the journal", \() => bench (\() =>
+    loaded ()
+    expect ((store ()).bankLoads, 0)
+    expect (length (store ()).bankAccounts, 3)
+    expect (length (store ()).bankJournal, 3)
+    shows "$7,980.25"
+    shows "Across 3 protected client accounts"
+    shows "vintage synthesizer"
+    shows "−$1,850.00"
+    shows "+$4,250.00"
+    shows "$9,999.00"
+    wordsIn "Marcus Webb · Account #2"
+    expect (Drive::shows (driven, "Contacting the ledger"), false)))
+test ("a failed listing says the bank data is unavailable", \() => bench (\() =>
+    launchWith []
+    reply ("accounts", 500, "")
+    shows "Bank data unavailable"
+    expect ((store ()).bankLoads, 1)
+    refusedBy ("activity", "offline")
+    expect ((store ()).bankLoads, 0)
+    press "Refresh"
+    expect ((store ()).bankLoads, 2)))
+test ("the pages move between the five pages and refuse an unknown one", \() => bench (\() =>
+    loaded ()
+    press "Activity"
+    expect ((store ()).bankPage, "activity")
+    press "Security"
+    expect ((store ()).bankPage, "security")
+    shows "Storage isolation"
+    expect ((Update::tapped (store (), talon::SeePage(seenPage = "vault"))).stepStore.bankPage, "security")
+    press "Overview"
+    expect ((store ()).bankPage, "overview")
+    press "Full history"
+    expect ((store ()).bankPage, "activity")))
+test ("choosing an account opens it in detail and every form starts from it", \() => bench (\() =>
+    loaded ()
+    picked ("rows", "3")
+    expect ((store ()).bankPage, "accounts")
+    expect ((store ()).bankChosen, "3")
+    expect ((store ()).bankDraft.draftAccount, "3")
+    expect ((store ()).bankDraft.draftFrom, "3")
+    shows "$3,600.00"
+    shows "Ready to move"))
+test ("activity filters by kind and searches notes and owners", \() => bench (\() =>
+    loaded ()
+    press "Activity"
+    shows "All 3"
+    shows "In 1"
+    shows "Out 1"
+    shows "Declined 1"
+    expect (talon::Parts::counted ((store ()).bankJournal, "refused"), 1)
+    press "Declined 1"
+    expect ((store ()).bankFilter, "refused")
+    expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", "vintage synthesizer")
+    press "Out 1"
+    expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", "rent — 12 Fern St")
+    press "All 3"
+    expect ((store ()).bankFilter, "all")
+    typed ("Search", "  AMELIA ")
+    expect (length (talon::Forms::shown (store ())), 2)
+    typed ("Search", "nobody")
+    shows "No matching activity"))
+test ("a deposit is validated before anything is sent, then sent once", \() => bench (\() =>
+    loaded ()
+    press "Deposit"
+    expect ((store ()).bankMode, "deposit")
+    expect ((store ()).bankPage, "move")
+    choices ("Deposit to", "1,2,3")
+    typed ("Amount", "-4")
+    press "Confirm deposit"
+    askedNothing ()
+    shows "Check the amount"
+    press "Dismiss"
+    expect ((store ()).bankNotice.noticeHeading, "")
+    typed ("Amount", "$1,250.50")
+    typed ("Description", " bonus ")
+    press "Confirm deposit"
+    expect (asked (), "POST http://127.0.0.1:18790/api/deposit {\"account\":1,\"cents\":125050,\"note\":\"bonus\"} deposit")
+    expect ((store ()).bankBusy, true)
+    press "Confirm deposit"
+    askedNothing ()
+    reply ("deposit", 200, "{}")
+    expect ((store ()).bankBusy, false)
+    shows "Deposit complete"
+    expect ((store ()).bankLoads, 2)))
+test ("a refused withdrawal reports the ledger's reason and reloads the journal", \() => bench (\() =>
+    loaded ()
+    press "Withdraw"
+    expect ((store ()).bankPage, "move")
+    expect ((store ()).bankMode, "withdraw")
+    typed ("Withdraw from", "2")
+    typed ("Amount", "99999")
+    press "Confirm withdrawal"
+    expect (asked (), "POST http://127.0.0.1:18790/api/withdraw {\"account\":2,\"cents\":9999900,\"note\":\"\"} withdraw")
+    reply ("withdraw", 422, "{\"error\":\"insufficient funds\"}")
+    shows "Operation refused"
+    expect ((store ()).bankNotice.noticeDetail, "insufficient funds")
+    expect ((store ()).bankLoads, 2)))
+test ("a transfer needs two different accounts and a positive amount", \() => bench (\() =>
+    loaded ()
+    press "Move"
+    press "Transfer"
+    expect ((store ()).bankMode, "transfer")
+    typed ("From account", "2")
+    typed ("To account", "2")
+    typed ("Amount", "10")
+    press "Confirm transfer"
+    askedNothing ()
+    shows "Choose two accounts"
+    typed ("To account", "3")
+    typed ("Amount", "0")
+    press "Confirm transfer"
+    shows "Check the transfer"
+    typed ("Amount", "62.4")
+    press "Confirm transfer"
+    expect (asked (), "POST http://127.0.0.1:18790/api/transfer {\"from\":2,\"to\":3,\"cents\":6240,\"note\":\"\"} transfer")
+    reply ("transfer", 0, "")
+    shows "Operation refused"
+    expect ((store ()).bankNotice.noticeDetail, "The app could not reach the ledger. Check your connection and try again.")))
+test ("the new-account dialog needs an owner, then opens the account and closes", \() => bench (\() =>
+    loaded ()
+    press "Open account"
+    expect ((store ()).bankOpening, true)
+    shows "Account owner"
+    press "Create account"
+    shows "Owner name required"
+    askedNothing ()
+    typed ("Account owner", "Ada Lovelace")
+    press "Create account"
+    expect (asked (), "POST http://127.0.0.1:18790/api/accounts {\"name\":\"Ada Lovelace\"} open")
+    reply ("open", 201, "{}")
+    expect ((store ()).bankOpening, false)
+    shows "Account opened"
+    press "Open account"
+    press "Cancel"
+    expect ((store ()).bankOpening, false)))

@@ -1,0 +1,73 @@
+// [SYNTH-ARRANGEMENT-PLAYER] [DAW-TRANSPORT-LIVE] daw <project.json> <output-folder> [<from-beat> <beats> [live|loop|warm <maker> <makers>]]
+
+usage = "usage: daw <project.json> <output-folder> [<from-beat> <beats> [live|loop|warm <maker> <makers>]]"
+
+// A number argument; absent reads 0 (the whole song), malformed reads -1 (refused).
+beatArgument (items, index) = match listGet items index
+    Error _ => 0.0
+    Success text => parseFloat text ?: -1.0
+
+request items = daw::Request(project = listGet items 0 ?: "", folder = listGet items 1 ?: "", from = beatArgument (items, 2), beats = beatArgument (items, 3))
+
+// The whole song, or only the window an excerpt request names.
+windowed (request, arrangement) = match request.beats > 0.0
+    true => daw::Projects::excerpt (arrangement, request.from, request.beats)
+    false => arrangement
+
+// [ENTRY-EXIT-STATUS] Print one line, then exit with `status`: 1 for every refusal, 0 once the song is written.
+said (line, status) =
+    print line
+    status
+
+refused why = said ("daw: ${why}", 1)
+
+finished outcome = match outcome
+    Error why => refused why
+    Success path => said ("daw: wrote ${path}", 0)
+
+performed (request, source) = match daw::SongFiles::decode source
+    Error why => refused why
+    Success arrangement => match makeDir request.folder
+        Error why => refused why
+        Success _ =>
+            print "daw: ${arrangement.title}, ${arrangement.tempo} bpm, ${length arrangement.tracks} tracks"
+            finished (daw::Player::rendered (request, windowed (request, arrangement)))
+
+// A live refusal goes to `fault.txt` in the folder: standard output carries only audio blocks.
+faulted (request, why) =
+    _told = writeFile "${request.folder}/fault.txt" why
+    1
+
+// [DAW-TRANSPORT-LIVE] Play the window to standard output, once or as a loop.
+live (request, loop, source) = match daw::SongFiles::decode source
+    Error why => faulted (request, why)
+    Success arrangement => match daw::Streams::played (request, windowed (request, arrangement), loop, listGet (args ()) 5 ?: "", (listGet (args ()) 6 ?: "") == "makers")
+        Error why => faulted (request, why)
+        Success _ => 0
+
+// [DAW-TRANSPORT-LIVE-SPEED] One maker: keep its share of the window's notes for live play to read.
+warm (request, source) = match daw::SongFiles::decode source
+    Error why => refused why
+    Success arrangement => match daw::NoteCache::warmed (windowed (request, arrangement), request.folder, parseInt (listGet (args ()) 5 ?: "") ?: -1, parseInt (listGet (args ()) 6 ?: "") ?: 0, listGet (args ()) 7 ?: "")
+        Error why => refused why
+        Success _ => 0
+
+routed (request, mode, source) = match mode
+    "" => performed (request, source)
+    "live" => live (request, false, source)
+    "loop" => live (request, true, source)
+    "warm" => warm (request, source)
+    _ => said (usage, 1)
+
+started (request, mode) = match request.project != "" && request.folder != "" && request.from >= 0.0 && request.beats >= 0.0 && daw::SongFiles::safe request.project && daw::SongFiles::safe request.folder
+    false => said (usage, 1)
+    true => match readFile request.project
+        Error why => refused why
+        Success source => routed (request, mode, source)
+
+main () =
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    started (request (args ()), listGet (args ()) 4 ?: "")

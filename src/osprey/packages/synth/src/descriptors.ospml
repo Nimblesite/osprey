@@ -1,0 +1,47 @@
+// [SYNTH-ADVANCED-CORE-PORTS] Declared parameter scaling and modulation semantics for every component.
+namespace synth
+
+(** Every parameter already declares key, label, unit, default, bounds and automation eligibility; this
+    module declares the remaining two contracts: how a 0–1 control maps onto it, and how a routed control
+    inlet combines with it. *)
+module Descriptors
+    (** Frequencies and times with a positive lower bound are logarithmic; everything else is linear. *)
+    export scale p = match (p.unit == Hertz || p.unit == Seconds) && p.minimum > 0.0
+        true => LogarithmicScale
+        false => LinearScale
+
+    (** A parameter value for a 0–1 control, following its declared scale. *)
+    export fromControl (p, control) = match scale p
+        LogarithmicScale => FitMath::logarithmic (control, p.minimum, p.maximum)
+        LinearScale => FitMath::macroValue (control, p.minimum, p.maximum, 1.0)
+
+    (** The 0–1 control that reproduces a parameter value. *)
+    export toControl (p, value) = match scale p
+        LogarithmicScale => FitMath::logarithmicControl (value, p.minimum, p.maximum)
+        LinearScale => FitMath::normalised (value, p.minimum, p.maximum)
+
+    inletIndex (ports, name, index) = match ports
+        [] => Error(message = MissingResource(detail = "No control inlet named ${name}."))
+        [candidate, ...rest] => match candidate.rate == Control && candidate.name == name
+            true => Success(value = index)
+            false => inletIndex (rest, name, satAdd index 1)
+
+    ruled (n, name, rule) = match inletIndex (n.inputs, name, 0)
+        Error _ => Unmodulated
+        Success inlet => rule inlet
+
+    (** How a routed control inlet combines with a parameter; unplugged inlets always leave it unchanged. *)
+    export modulation (n, key) = match n.processor
+        TableOscillator _ => match key
+            "position" => ruled (n, "position", \inlet => Replacing(inlet = inlet))
+            "amplitude" => ruled (n, "amplitude", \inlet => Multiplying(inlet = inlet))
+            "frequency" => ruled (n, "pitch", \inlet => Exponential(inlet = inlet, octaves = 2.0))
+            _ => Unmodulated
+        Filter => match key
+            "cutoff" => ruled (n, "cutoff", \inlet => Multiplying(inlet = inlet))
+            _ => Unmodulated
+        ModulatedGain => match key
+            "gain" => ruled (n, "control", \inlet => Multiplying(inlet = inlet))
+            _ => Unmodulated
+        External _ _ => ruled (n, key, \inlet => Replacing(inlet = inlet))
+        _ => Unmodulated

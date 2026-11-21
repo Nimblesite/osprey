@@ -3,18 +3,18 @@ mlTwins: manual
 layout: page
 video: native-bridge
 title: "The Osprey Native bridge: one frame in shared memory"
-description: How an Osprey Native app reaches SwiftUI, WinUI, GPUI, Android and the VS Code webview. Fixed rows in shared memory, leased and read in place, with no serialization step.
+description: "How an Osprey Native app reaches SwiftUI, WinUI, GPUI, Android and VS Code: fixed rows in shared memory, read in place, with no serialization."
 permalink: /docs/osprey-native/bridge/
 tags: [native, applications, ui, bridge, shared-memory, video, tutorials]
 ---
 
 {% from "native-capture.njk" import capture %}
 
-**Safe, elegant, fast:** every Osprey Native app reaches its host the same way. Each call writes one whole **frame** of fixed-width rows into memory. The host leases that memory, checks every row and draws it where it lies. The app never formats text for the host, and the host never parses any.
+Every Osprey Native app reaches its host the same way. Each call writes one whole **frame** of fixed-width rows into memory. The host leases that memory, checks every row and draws it where it lies. The app never formats text for the host, and the host never parses any.
 
 {% videoPlayer video %}
 
-New here? Start with [Build a counter](/docs/osprey-native/first-app/). This page explains how the bridge works, from the Osprey code that writes a control to the Swift, Rust, C#, Kotlin and TypeScript code that draws it. It also explains why shared rows beat a serialized format such as JSON. The normative contract is [spec 0047](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0047-OspreyNativeHosts.md). The end-to-end explanation is [spec 0053](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0053-NativeSharedViews.md).
+New here? Start with [Build a counter](/docs/osprey-native/first-app/). This page follows one control from the Osprey code that writes it to the Swift, Rust, C#, Kotlin and TypeScript code that draws it. The normative contract is [spec 0047](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0047-OspreyNativeHosts.md). The end-to-end explanation is [spec 0053](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0053-NativeSharedViews.md).
 
 ## The app is a library and the host calls it
 
@@ -258,16 +258,9 @@ Every frame would pay for that text twice, once to write it and once to read it.
 | A malformed message | Partly parsed, partly applied, or a guessed default | Refused whole; the last good frame stays |
 | State | Tempting to send the whole model across and back | The state never leaves the library |
 
-### Why shared memory is better than serialization
+### Shared memory, inside one process
 
-- **No formatting work.** Serialization converts values to text and back. For a UI that redraws on every event and every display frame, that conversion is pure overhead. Shared rows are already in the form the host reads.
-- **One copy of the text.** Each string is copied once into the text run. The host borrows it in place, or copies it once into its own toolkit.
-- **Constant-time access.** A host reaches row *n* at offset *n* × 152. A parser has to read everything before row *n* to find it.
-- **Checked types, not conventions.** The layout is generated from one schema and fingerprinted. A host built for a different layout cannot open the bridge at all.
-- **Bounded and fallible.** Budgets for bytes, chunks and owners are fixed when the bridge opens. A failed allocation refuses the frame; it never produces an empty successful frame.
-- **Safe sharing.** Frames are immutable once sealed and reference counted through leases, so a GPU painter can draw one frame while the app writes the next.
-
-"Shared memory" here means memory shared between the app and its host **inside one process**. It is ordinary heap memory that the bridge owns, outside the GC and ARC heaps. The bridge creates no operating-system shared-memory object, file mapping, socket or named handle, so no other process gets anything to attach to.
+The host reaches row *n* at offset *n* × 152, and each string is copied once into the text run, then borrowed in place. "Shared memory" here means memory shared between the app and its host **inside one process**. It is ordinary heap memory that the bridge owns, outside the GC and ARC heaps. The bridge creates no operating-system shared-memory object, file mapping, socket or named handle, so no other process gets anything to attach to.
 
 Speed follows from the design. Flock streams thousands of birds as scene rows: 5,000 sprites cost about 7 ms a frame, `update` included. The framework's per-frame cost is measured by `src/toolchain/hosts/gpui/bench` and recorded in [plan 0037](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0037-osprey-native.md).
 

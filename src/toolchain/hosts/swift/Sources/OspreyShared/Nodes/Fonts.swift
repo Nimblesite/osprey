@@ -34,15 +34,27 @@ public enum FontRegistration {
         }
     }
 
+    /// The typefaces an application bundles under its own names ([UI-COMPONENTS-FRAMED]): a frame's
+    /// `frameFont = "Inter"` names fonts/Inter.ttf, drawn by the PostScript name the file registers.
+    public internal(set) static var named: [String: String] = [:]
+
     /// Registers every bundled face that is present; an application that ships none is no error.
     public static func registerBundled() {
         guard let root = Bundle.main.resourceURL else { return }
-        faces.forEach { name in
-            let url = root.appendingPathComponent("fonts").appendingPathComponent(name)
-            guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let folder = root.appendingPathComponent("fonts")
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        files.filter { ["ttf", "otf"].contains(($0 as NSString).pathExtension) }.sorted().forEach { name in
+            let url = folder.appendingPathComponent(name)
             var error: Unmanaged<CFError>?
             _ = CTFontManagerRegisterFontsForURL(url as CFURL, .process, &error)
+            if !faces.contains(name), let face = postScriptName(url) { named[(name as NSString).deletingPathExtension] = face }
         }
+    }
+
+    /// The PostScript name of the first face in `url`.
+    private static func postScriptName(_ url: URL) -> String? {
+        guard let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor] else { return nil }
+        return descriptors.first.flatMap { CTFontDescriptorCopyAttribute($0, kCTFontNameAttribute) as? String }
     }
 
     /// Whether the application bundled any of the faces this host registers.

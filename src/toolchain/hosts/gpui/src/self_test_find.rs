@@ -16,6 +16,12 @@ pub(super) fn clicked(access: &Access, number: i64) -> Attempt {
     ])
 }
 
+/// A secondary click at the centre of an accessible canvas element.
+pub(super) fn contextual(access: &Access, number: i64) -> Attempt {
+    let (x, y) = middle(access);
+    Attempt::Sending(vec![Touch::secondary(number, x, y)])
+}
+
 /// The press and release that set a slider to `value`, clamped to its range.
 pub(super) fn valued(access: &Access, number: i64, value: f64) -> Result<Attempt, String> {
     if access.max <= access.min {

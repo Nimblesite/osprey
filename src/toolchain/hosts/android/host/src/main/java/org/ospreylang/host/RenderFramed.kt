@@ -34,10 +34,15 @@ object RenderFramed {
                 scroller.removeAllViews()
                 scroller.addView(body, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             }
-        } else if (box.getChildAt(0) !== body) {
-            box.removeAllViews()
-            box.addView(body, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, seat(style)))
+        } else {
+            if (box.getChildAt(0) !== body) {
+                box.removeAllViews()
+                (body.parent as? ViewGroup)?.removeView(body)
+                box.addView(body)
+            }
+            // A body a stack once held keeps that stack's params; the frame seats it with its own.
+            body.layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, seat(style))
         }
     }
 
@@ -64,7 +69,8 @@ object RenderFramed {
     /** The frame's insets, extents, fill and line, and its fill of its parent. */
     private fun inset(renderer: ToldRenderer, box: FrameLayout, style: Tree?) {
         style ?: return
-        box.setPadding(style.count("left"), style.count("top"), style.count("right"), style.count("bottom"))
+        val edge = { name: String -> dp(box.context, style.count(name).toDouble()) }
+        box.setPadding(edge("left"), edge("top"), edge("right"), edge("bottom"))
         sized(box, style)
         dress(renderer, box, style)
     }
@@ -76,7 +82,9 @@ object RenderFramed {
         val grows = style.flag("grow")
         val params = LinearLayout.LayoutParams(
             if (grows) ViewGroup.LayoutParams.MATCH_PARENT
-            else if (width > 0) dp(box.context, width.toDouble()) else ViewGroup.LayoutParams.WRAP_CONTENT,
+            else if (width > 0) dp(box.context, width.toDouble())
+            // [UI-COMPONENTS-FRAMED] A zero-width frame fills its proposal unless it hugs.
+            else if (style.flag("hug")) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
             if (grows) 0 else if (height > 0) dp(box.context, height.toDouble())
             else ViewGroup.LayoutParams.WRAP_CONTENT)
         if (grows) params.weight = 1f

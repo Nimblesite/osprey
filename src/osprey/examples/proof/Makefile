@@ -30,4 +30,5 @@ proof: build
 	node --test scripts/proof/test-proof-export.mjs
 	python3 scripts/proof/test-proof-openai.py
 	$(MAKE) -j3 _test_proof_ci
+	$(MAKE) _check_synthesis_proofs
 endif

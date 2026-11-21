@@ -30,7 +30,7 @@ module Semantics
     export value (elements, label) = (element (elements, label)).accessValue
 
     (** Whether an element labelled `label` is announced as the machine's current choice. *)
-    export selected (elements, label) = Lists::any (elements, \e => e.accessLabel == label && e.accessSelected)
+    export selected (elements, label) = Lists::any (elements, \(e : ui::Accessible) => e.accessLabel == label && e.accessSelected)
 
     (** The point `fraction` across an element's bounds and halfway down it. *)
     export point (e, fraction) = Point(pointX = e.accessLeft + e.accessWidth * fraction, pointY = e.accessTop + e.accessHeight / 2.0)
@@ -64,4 +64,4 @@ module Semantics
         named = mapList (elements, \e => e.accessLabel)
         blank = mapList (filterList (named, \l => l == "" || endsWith l ": "), \l => "unnamed: \"${l}\"")
         twice = filterList (named, \l => length (filterList (named, \m => m == l)) > 1)
-        join (listConcat blank (mapList (twice, \l => "twice: \"${l}\""))) "|"
+        join (listConcat blank (mapList (twice, \(l : string) => "twice: \"${l}\""))) "|"

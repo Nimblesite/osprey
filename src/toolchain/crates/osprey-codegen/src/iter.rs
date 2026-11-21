@@ -19,8 +19,8 @@ use osprey_ast::{Expr, NamedArgument, Parameter, Position};
 
 mod sort_by;
 mod stages;
-use stages::{branch_on_predicate, record};
-pub(crate) use stages::{reject_escape, replay, stage_aliases, stages_of};
+use stages::{branch_on_predicate, plain_range_list, record};
+pub(crate) use stages::{filtered_count, reject_escape, replay, stage_aliases, stages_of};
 
 const RANGE_TY: &str = "{ i64, i64 }";
 pub(crate) const RANGE_OWNER: &str = "Range";
@@ -277,9 +277,7 @@ pub(crate) fn acc_step(
     // borrowed incoming value before releasing the old accumulator. Returning
     // `acc` unchanged must keep it alive. [GC-ARC-PERCEUS]
     if new.ty.is_managed_ptr() {
-        if !crate::arc::consume_into_store(cg, &new.operand) {
-            crate::arc::escape_retain(cg, &new);
-        }
+        crate::arc::transfer_or_retain(cg, &new);
         let old = cg.emit_reg(format!("inttoptr i64 {a} to i8*"));
         crate::arc::release_operand(cg, &old);
     }
@@ -316,7 +314,11 @@ fn acc_seed(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value, Callback)
 
 /// `fold(iterator, initial, fn)` — counted loop accumulating `fn(acc, elem)`.
 fn fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let range = gen_expr(cg, nth(args, 0)?)?;
+    fold_range(cg, nth(args, 0)?, args)
+}
+
+fn fold_range(cg: &mut Codegen, source: &Expr, args: &[Expr]) -> Result<Value> {
+    let range = gen_expr(cg, source)?;
     let (acc, tmpl, combine) = acc_seed(cg, args)?;
     each_range_elem(cg, &range, |cg, elem| {
         acc_step(cg, &acc, &tmpl, &combine, elem)
@@ -367,6 +369,13 @@ fn for_each_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 
 /// `mapList`/`filterList` — build a new list via the runtime list builder.
 fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> {
+    if !filter {
+        if let Some(source) = plain_range_list(cg, nth(args, 0)?) {
+            let range = gen_expr(cg, source)?;
+            let mapper = callback_of(cg, nth(args, 1)?)?;
+            return build_range(cg, &range, Some(&mapper));
+        }
+    }
     let l = list_arg(cg, args, 0)?;
     let f = callback_of(cg, nth(args, 1)?)?;
     // `filterList` keeps the source's own elements, so its builder inherits the
@@ -420,10 +429,9 @@ pub(crate) fn push_built(
         )));
     }
     let spelling = crate::llty::elem_spelling(&elem);
-    // The built list stores the element: dup it before the per-iteration
-    // region drop, and tell the builder its kind [GC-ARC-PERCEUS].
+    // The builder owns its element after the iteration ends [GC-ARC-PERCEUS].
     let managed = crate::collections::managed_flag(&elem);
-    crate::arc::escape_retain(cg, &elem);
+    crate::arc::transfer_or_retain(cg, &elem);
     let boxed = box_to_i64(cg, elem);
     crate::collections::list_builder_push(cg, bld, &boxed.operand, managed);
     Ok(spelling)
@@ -433,10 +441,18 @@ pub(crate) fn push_built(
 /// element in a persistent list [BUILTIN-ITER-TOLIST].
 fn to_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let range = gen_expr(cg, nth(args, 0)?)?;
+    build_range(cg, &range, None)
+}
+
+fn build_range(cg: &mut Codegen, range: &Value, mapper: Option<&Callback>) -> Result<Value> {
     let bld = crate::collections::list_builder_new(cg);
     let mut out_elem = None;
-    each_range_elem(cg, &range, |cg, elem| {
-        out_elem = push_built(cg, &bld, elem, "toList")?;
+    each_range_elem(cg, range, |cg, elem| {
+        let (value, builtin) = match mapper {
+            Some(f) => (invoke(cg, f, vec![elem])?, "mapList"),
+            None => (elem, "toList"),
+        };
+        out_elem = push_built(cg, &bld, value, builtin)?;
         Ok(())
     })?;
     Ok(seal_built(cg, &bld, out_elem.as_deref()))
@@ -444,6 +460,9 @@ fn to_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 
 /// `foldList(list, initial, fn)` — reduce a list with `fn(acc, elem)`.
 fn fold_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    if let Some(range) = plain_range_list(cg, nth(args, 0)?) {
+        return fold_range(cg, range, args);
+    }
     let l = list_arg(cg, args, 0)?;
     let (acc, tmpl, combine) = acc_seed(cg, args)?;
     each_list_elem(cg, &l, |cg, _, elem| {

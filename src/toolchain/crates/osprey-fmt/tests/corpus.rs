@@ -61,7 +61,7 @@ fn collect(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
 /// The checked-in web bundle is generated JavaScript embedded in an Osprey
 /// string, explicitly excluded from Plan 0019's hand-written corpus baseline.
 fn is_generated(path: &Path) -> bool {
-    path.ends_with("src/osprey/examples/projects/modules/src/web/bundle.ospml")
+    path.ends_with("src/osprey/examples/talon/backend/web/bundle.ospml")
 }
 
 /// Format every corpus source of one extension, collecting **every** file that
@@ -104,7 +104,7 @@ fn ml_corpus_formats_idempotently() {
     let paths = sources("ospml");
     for required in [
         "src/toolchain/benchmarks/cases/binarytrees/binarytrees.ospml",
-        "src/osprey/examples/projects/modules/src/main.ospml",
+        "src/osprey/examples/talon/backend/main.ospml",
         "src/osprey/examples/wasm/studio.ospml",
         "src/osprey/tests/core/collections/list_basics.test.ospml",
         "src/osprey/tests/core/feature_composition/feature_omnibus.test.ospml",

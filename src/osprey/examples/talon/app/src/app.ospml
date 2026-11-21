@@ -1,0 +1,95 @@
+// Implements [UI-STORE], [UI-REGIONS] and [UI-THEME] for Talon Bank: the program every host runs.
+// A dark band carries the brand and the five pages; a notice and the new-account dialog sit over
+// the page while they apply. Every surface is a frame from talon::Look, drawn alike by every host.
+namespace talon
+
+import ui::Frames
+import ui::Keyed
+import ui::Messages
+import ui::Runtime
+import ui::Surfaces
+import ui::Symbols
+import ui::Ui
+import talon::Forms
+import talon::Look
+import talon::Replies
+import talon::Screens
+import talon::Update
+
+(** Talon Bank as the framework runs it. *)
+module App
+    // The API a launch talks to when no server is named: the demo service on this machine.
+    local () = "http://127.0.0.1:18790"
+
+    (** The store at launch, talking to the server named by the first launch argument, with both listings asked for. *)
+    export initial context = Update::hydrate (Update::launched (listGet context.arguments 0 ?: local ()))
+
+    (** Applies one message: a tap, an edit or choice, or a completed request. *)
+    export update (_, store, message) = Messages::route (message, \action => Update::tapped (store, action), \(action, words) => Update::typed (store, action, words), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(ticket, outcome) => Replies::completed (store, ticket, outcome), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
+
+    waiting store = store.bankLoads > 0 || store.bankBusy
+
+    titled page = match page
+        "accounts" => "Accounts"
+        "move" => "Move money"
+        "activity" => "Activity"
+        "security" => "Security"
+        _ => "Overview"
+
+    content store = match store.bankPage
+        "accounts" => Screens::accounts store
+        "move" => Forms::move store
+        "activity" => Forms::activity store
+        "security" => Screens::security ()
+        _ => Screens::overview store
+
+    // The brand: the coral mark, the name and what Talon is.
+    brand () = Look::cluster (10, [Look::chip (Symbols::name ui::Shield, "coral", "white", 40), Look::stack (0, [Look::strong ("Talon", 17, "white"), Look::eyebrow ("Private bank", "ink400")])])
+
+    tools () = Look::cluster (8, [Look::round ("Refresh", Symbols::name ui::Refresh, Refresh), Look::primary ("Open account", "", true, OpenDialog)])
+
+    tab (store, page, label) = Look::page (label, page == store.bankPage, SeePage(seenPage = page))
+
+    nav store = Look::pages [tab (store, "overview", "Overview"), tab (store, "accounts", "Accounts"), tab (store, "move", "Move"), tab (store, "activity", "Activity"), tab (store, "security", "Security")]
+
+    // The dark band every page shares: the brand, its two actions and the pages.
+    header store =
+        band = Look::surface ("ink900", "", 0, 18)
+        Ui::framed (band(frameGap = 16), Ui::column [Look::line (12, [brand (), ui::Spacer, tools ()]), nav store])
+
+    busy store = match waiting store
+        true => [Look::words ("Contacting the ledger", 13, "ink500")]
+        false => []
+
+    heading store = Look::stack (4, listConcat [Look::eyebrow ("Live operations · Osprey online", "ink500"), Look::title (titled store.bankPage, 30)] (busy store))
+
+    body store =
+        page = Look::surface ("", "", 0, 20)
+        Ui::framed (page(frameGap = 24, frameScrollY = true, frameGrow = true), Ui::column [heading store, content store])
+
+    shell store =
+        window = Frames::plain
+        Ui::framed (window(frameFill = "paper", frameViewportHeightInset = 0, frameGrow = true), Ui::column [header store, body store])
+
+    toned tone = match tone
+        "danger" => "toastBad"
+        _ => "toastGood"
+
+    notice store =
+        said = store.bankNotice
+        Look::toast (toned said.noticeTone, said.noticeHeading, said.noticeDetail, Dismiss)
+
+    opened store = match store.bankOpening
+        true => [shell store, Forms::opening store]
+        false => [shell store]
+
+    (** The whole window: the page, while it is open the new-account dialog, and over both the notice while it applies. *)
+    export root store = match store.bankNotice.noticeHeading
+        "" => Ui::layer (opened store)
+        _ => Ui::layer (listAppend (opened store) (notice store))
+
+    (** One region, rebuilt on every step. *)
+    export regions (_, store, frames, _) = [Keyed::region (frames, Surfaces::rootKey, [], \() => root store)]
+
+    (** Talon Bank as its boundary runs it. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => Look::theme ())

@@ -24,18 +24,18 @@ module HostPackets
 
     (** One packet follows the worker's exact little-endian wire layout. *)
     export packet (channels, block) = match block.frames <= 256 && valid (channels, block) && ordered (block.notes, 0) && ordered (block.parameters, 0)
-        false => Error(message = "Invalid VST audio, event or parameter packet.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid VST audio, event or parameter packet."))
         true => Success(value = "${PcmWords::le32 block.frames}${PcmWords::le32 (length block.notes)}${PcmWords::le32 (length block.parameters)}${join (mapList (block.notes, note)) ""}${join (mapList (block.parameters, parameter)) ""}${join (mapList (block.samples, PcmWords::float32)) ""}")
 
     collectSample (samples, outcome, index) = match outcome
         Error why => Error(message = why)
         Success values => match listGet samples index
-            Error _ => Error(message = "index out of bounds")
+            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
             Success value => Success(value = listAppend values value)
 
     (** Checked interleaved sample slice used by the graph and packet encoders. *)
     export slice (samples, first, count) = match first >= 0 && count >= 0 && first <= satSub (length samples) count
-        false => Error(message = "Audio slice is outside its buffer.")
+        false => Error(message = InvalidConfiguration(detail = "Audio slice is outside its buffer."))
         true => foldList (toList (range (first, satAdd first count)), Success(value = []), \(outcome, index) => collectSample (samples, outcome, index))
 
     chunk (channels, block, first) =
@@ -51,13 +51,17 @@ module HostPackets
 
     next (channels, block, outcome, index) = match outcome
         Error why => Error(message = why)
-        Success chunks => match chunk (channels, block, satMul index 256)
-            Error why => Error(message = why)
-            Success text => Success(value = listAppend chunks text)
+        Success chunks => Outcomes::carried (chunk (channels, block, satMul index 256), \text => Success(value = listAppend chunks text))
+
+    packetCount frames = intDiv (satAdd frames 255) 256
+
+    // Native readHex caps decoded requests at 1 MiB. Header, note and parameter widths follow packet above.
+    fitsTransport block =
+        headers = satMul (packetCount block.frames) 12
+        events = satAdd (satMul (length block.notes) 24) (satMul (length block.parameters) 16)
+        satAdd (satAdd headers events) (satMul (length block.samples) 4) <= 1048576
 
     (** A bounded clip becomes consecutive blocks while keeping event offsets sample-accurate. *)
-    export clip (layout, block) = match valid (layout.inputChannels, block) && ordered (block.notes, 0) && ordered (block.parameters, 0) && layout.outputChannels >= 1 && layout.outputChannels <= 64 && satMul block.frames layout.outputChannels <= 65536 && (layout.acceptsNotes || length block.notes == 0)
-        false => Error(message = "The VST clip exceeds its layout or capacity.")
-        true => match foldList (toList (range (0, intDiv (satAdd block.frames 255) 256)), Success(value = []), \(outcome, index) => next (layout.inputChannels, block, outcome, index))
-            Error why => Error(message = why)
-            Success chunks => Success(value = join chunks "")
+    export clip (layout, block) = match fitsTransport block && valid (layout.inputChannels, block) && ordered (block.notes, 0) && ordered (block.parameters, 0) && layout.outputChannels >= 1 && layout.outputChannels <= 64 && satMul block.frames layout.outputChannels <= 65536 && (layout.acceptsNotes || length block.notes == 0)
+        false => Error(message = ExhaustedCapacity(detail = "The VST clip exceeds its layout or capacity."))
+        true => Outcomes::carried (foldList (toList (range (0, packetCount block.frames)), Success(value = []), \(outcome, index) => next (layout.inputChannels, block, outcome, index)), \chunks => Success(value = join chunks ""))

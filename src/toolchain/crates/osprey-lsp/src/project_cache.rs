@@ -268,7 +268,7 @@ mod tests {
 
     /// Every open file of a project republishes on every keystroke, and each
     /// answer needs the whole project assembled, checked and proved. Measured
-    /// on `src/osprey/examples/projects/modules`, one such answer takes about 6 s, so the
+    /// on `src/osprey/examples/talon/backend`, one such answer takes about 6 s, so the
     /// tenth open file must not buy a tenth of those.
     #[test]
     fn open_siblings_of_one_project_share_a_single_analysis() {

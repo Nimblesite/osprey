@@ -1,0 +1,14 @@
+import synth::GrainGraph
+
+// [SYNTH-ADVANCED-GRAINS-INTEGRATION] Invalid edits do not advance the running grain clock.
+withoutGrainKey (n, key) = n(parameters = filterList (n.parameters, \p => p.key != key))
+
+grainFaultJourney (node, cloud) =
+    forEachList (["period", "jitter", "maximumGap", "regionStart", "regionEnd", "variationSeed"], \key =>
+        refusedWith (GrainGraph::prepare (grainSet (node, key, 2.5)), wholeCounts ()))
+    forEachList (["start", "variationSeed"], \key =>
+        refusedAs (GrainGraph::prepare (withoutGrainKey (node, key)), "resource", "index out of bounds"))
+    refusedAs (GrainGraph::block (withoutGrainKey (node, "rateSpread"), cloud, 4), "resource", "index out of bounds")
+    refusedAs (GrainGraph::prepare (synth::Components::sine (7, 440.0)), "resource", "The component is not a grain cloud.")
+    expect (cloud.clock.position, 0)
+    expect (cloud.pool.position, 0)

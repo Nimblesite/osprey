@@ -33,12 +33,12 @@ impl Drop for Scratch {
     }
 }
 
-fn osprey() -> Command {
-    in_repository(Command::new(env!("CARGO_BIN_EXE_osprey")))
-}
+#[path = "common/launcher.rs"]
+mod launcher;
+use launcher::osprey;
 
 fn in_repository(mut command: Command) -> Command {
-    let _ = command.current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../.."));
+    let _ = command.current_dir(launcher::repo_root());
     command
 }
 
@@ -527,5 +527,53 @@ fn programs_read_their_arguments_and_environment() {
         osprey().arg(&default).args(["--compile", "--", "x"]),
         2,
         "arguments after -- need --run",
+    );
+}
+
+/// [TYPE-ANNOTATION-REDUNDANT] The redundant-annotation analyser re-infers the whole program once per
+/// proof, so a build never pays for it: it is its own pass, run by `--analyse`, and by
+/// `--warnings-as-errors` so the gate that fails on a removable annotation still does. The cheap
+/// advice (an unused parameter) is given either way, and `--no-warnings` gives none.
+#[test]
+fn a_build_runs_the_redundant_annotation_analyser_only_when_asked() {
+    let scratch = Scratch::new("analyse");
+    let program = scratch.write(
+        "main.osp",
+        "fn greet(unused) -> string = \"hi\"\nprint(greet(1))\n",
+    );
+    let path = program.to_string_lossy().into_owned();
+    let (code, _, advice) = finished(osprey().args([&path, "--check"]));
+    assert_eq!(code, Some(0), "{advice}");
+    assert!(advice.contains("unused parameter `unused`"), "{advice}");
+    assert!(
+        !advice.contains("redundant"),
+        "a plain build ran the analyser:\n{advice}"
+    );
+    assert!(advice.contains("1 warning (unused-parameter)"), "{advice}");
+    let (code, _, analysed) = finished(osprey().args([&path, "--check", "--analyse"]));
+    assert_eq!(code, Some(0), "{analysed}");
+    assert!(
+        analysed.contains("redundant return type annotation on `greet`"),
+        "{analysed}"
+    );
+    assert!(analysed.contains("unused parameter `unused`"), "{analysed}");
+    assert!(
+        analysed.contains("2 warnings (redundant-annotation, unused-parameter)"),
+        "{analysed}"
+    );
+    let (code, _, denied) = finished(osprey().args([&path, "--check", "--warnings-as-errors"]));
+    assert_eq!(code, Some(1), "{denied}");
+    assert!(
+        denied.contains("redundant return type annotation on `greet`"),
+        "{denied}"
+    );
+    let (code, _, silent) = finished(osprey().args([&path, "--check", "--no-warnings"]));
+    assert_eq!(code, Some(0), "{silent}");
+    assert!(!silent.contains("warning"), "{silent}");
+    let (code, _, both) = finished(osprey().args([&path, "--check", "--no-warnings", "--analyse"]));
+    assert_eq!(code, Some(0), "{both}");
+    assert!(
+        both.contains("redundant return type annotation on `greet`"),
+        "{both}"
     );
 }

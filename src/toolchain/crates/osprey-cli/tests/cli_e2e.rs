@@ -7,9 +7,9 @@
 //! too, each child's coverage is merged back into the report — so these tests
 //! count toward the per-crate gate.
 
-#[path = "common/repo_root.rs"]
-mod repo_root;
-use repo_root::repo_root;
+#[path = "common/launcher.rs"]
+mod launcher;
+use launcher::{osprey, repo_root};
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -23,14 +23,6 @@ mod memory_backend;
 
 #[path = "cases/suite_scratch.rs"]
 mod suite_scratch;
-
-/// A `Command` for the built `osprey`, rooted at the repo so the runtime
-/// archives resolve.
-fn osprey() -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_osprey"));
-    let _ = cmd.current_dir(repo_root());
-    cmd
-}
 
 /// Write `body` to a uniquely-named temp `.osp` (the name doubles as the file
 /// stem, which `--compile` turns into the output executable's name).

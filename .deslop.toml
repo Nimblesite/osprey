@@ -18,8 +18,11 @@ exclude = [
   "src/osprey/packages/tiktoken/src/tables.py",
   "src/osprey/packages/tokenizers/src/Category.py",
   "src/osprey/packages/tokenizers/src/NfcData.py",
-  "src/osprey/examples/projects/modules/src/web/bundle.ospml",
+  "src/osprey/examples/talon/backend/web/bundle.ospml",
   "src/osprey/examples/gpui/painting/src/logo.ospml",
   "src/toolchain/compiler/runtime/klee/hunt_format_cases.inc",
   "src/toolchain/website/src/_includes/benchmarks-tables.html",
+  # Third-party: FerroUI's ferroui-osprey-native host (MIT, Wiesław Šoltés), carried byte for byte
+  # from upstream so it can be updated by copying; its duplication with hosts/gpui is upstream's.
+  "src/toolchain/hosts/ferroui/**",
 ]

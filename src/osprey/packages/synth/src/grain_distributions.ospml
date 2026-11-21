@@ -14,37 +14,31 @@ module GrainDistributions
 
     appendSeed (outcome, number) = match outcome
         Error why => Error(message = why)
-        Success values => match floatToInt number
-            Error why => Error(message = why)
-            Success value => Success(value = listAppend values value)
+        Success values => Outcomes::whole (number, \value => Success(value = listAppend values value))
 
     fromValues outcome = match outcome
         Error why => Error(message = why)
         Success values => match values
             [position, rate, duration, amplitude, pan] => Success(value = GrainSeeds(position = position, rate = rate, duration = duration, amplitude = amplitude, pan = pan))
-            _ => Error(message = "Incomplete grain random state.")
+            _ => Error(message = InvalidConfiguration(detail = "Incomplete grain random state."))
 
     advanced seeds = fromValues (foldList (seedValues seeds, Success(value = []), \(held, seed) => appendSeed (held, GrainMath::nextSeed (toFloat seed))))
 
     (** Deterministically initialise separately retained streams; offsets do not guarantee statistical independence. *)
     export seeded seed = match seed >= 1 && seed <= 2147483646
-        false => Error(message = "Invalid grain variation seed.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid grain variation seed."))
         true => fromValues (foldList ([0.0, 104729.0, 130363.0, 155921.0, 196613.0], Success(value = []), \(held, offset) => appendSeed (held, GrainMath::streamSeed (toFloat seed, offset))))
 
     sampled (ranges, seeds) =
         a = ranges.minimum
         b = ranges.maximum
-        match floatToInt (GrainMath::discrete (toFloat a.duration, toFloat b.duration, toFloat seeds.duration))
-            Error why => Error(message = why)
-            Success duration => Success(value = a(start = GrainMath::uniform (a.start, b.start, toFloat seeds.position), rate = GrainMath::uniform (a.rate, b.rate, toFloat seeds.rate), duration = duration, amplitude = GrainMath::uniform (a.amplitude, b.amplitude, toFloat seeds.amplitude), pan = GrainMath::uniform (a.pan, b.pan, toFloat seeds.pan)))
+        Outcomes::whole ((GrainMath::discrete (toFloat a.duration, toFloat b.duration, toFloat seeds.duration)), \duration => Success(value = a(start = GrainMath::uniform (a.start, b.start, toFloat seeds.position), rate = GrainMath::uniform (a.rate, b.rate, toFloat seeds.rate), duration = duration, amplitude = GrainMath::uniform (a.amplitude, b.amplitude, toFloat seeds.amplitude), pan = GrainMath::uniform (a.pan, b.pan, toFloat seeds.pan))))
 
     event (ranges, outcome, position) = match outcome
         Error why => Error(message = why)
         Success held => match advanced held.next
             Error why => Error(message = why)
-            Success seeds => match sampled (ranges, seeds)
-                Error why => Error(message = why)
-                Success controls => Success(value = GrainDistributedEvents(events = listPrepend held.events (GrainEvent(position = position, controls = controls)), next = seeds))
+            Success seeds => Outcomes::carried (sampled (ranges, seeds), \controls => Success(value = GrainDistributedEvents(events = listPrepend held.events (GrainEvent(position = position, controls = controls)), next = seeds)))
 
     ordered (previous, position) = match previous >= 0 && position >= previous
         true => position
@@ -52,7 +46,5 @@ module GrainDistributions
 
     (** Produce at most 2048 ordered events; retain seeds only when the subsequent render also succeeds. Empty batches consume no randomness. *)
     export events (positions, ranges, size, seeds) = match size >= 2 && size <= 1048576 && rangesValid (size, ranges) && seedsValid seeds && length positions <= 2048 && foldList (positions, 0, ordered) >= 0
-        false => Error(message = "Invalid grain distribution bounds, sample positions or random seeds.")
-        true => match foldList (positions, Success(value = GrainDistributedEvents(events = [], next = seeds)), \(held, position) => event (ranges, held, position))
-            Error why => Error(message = why)
-            Success held => Success(value = held(events = listReverse held.events))
+        false => Error(message = InvalidConfiguration(detail = "Invalid grain distribution bounds, sample positions or random seeds."))
+        true => Outcomes::carried (foldList (positions, Success(value = GrainDistributedEvents(events = [], next = seeds)), \(held, position) => event (ranges, held, position)), \held => Success(value = held(events = listReverse held.events)))

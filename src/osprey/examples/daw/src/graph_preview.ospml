@@ -1,0 +1,198 @@
+// [PRISM-ROUTING-VST] Frozen graph clips cross the native boundary only at external nodes.
+namespace synth
+
+import ui::Runtime
+import ui::Requests
+
+(** Execute actual routed VST audio through bounded worker stdin/stdout requests. *)
+module GraphPreview
+    frames = 2048
+
+    problem (editor, why) = GraphWorkers::release (Runtime::step (editor(message = "Graph playback failed: ${why}")))
+
+    encoded (editor, n, block, pending, binding) = match ClipInputs::layout n
+        Error why => problem (editor, why)
+        Success layout => match HostPackets::clip (layout, block)
+            Error why => problem (editor, why)
+            Success hex => GraphWorkers::request (editor, pending, binding, hex)
+
+    waiting (editor, block, pending) = match Graphs::node (pending.pendingGraph, pending.pendingNode)
+        Invalid _ => problem (editor, "The scheduled VST node is absent.")
+        Valid n => match filterList (editor.renderBindings, \binding => binding.pluginNode == pending.pendingNode)
+            [binding] => match n.processor
+                External identifier _ => match identifier == binding.pluginClass && editor.workerPath != ""
+                    true => match binding.pluginModule == ""
+                        true => problem (editor, "VST3 class ${identifier} is unavailable in the configured folder.")
+                        false => encoded (editor, n, block, pending, binding)
+                    false => problem (editor, "The VST binding differs from the graph node.")
+                _ => problem (editor, "Only VST nodes may request the native worker.")
+            _ => problem (editor, "The VST node has no unique module binding.")
+
+    finished (editor, graph, held, clips) = match filterList (graph.nodes, \n => n.processor == Sink)
+        [sink] => match ClipInputs::completed (clips, sink.identity)
+            Error why => problem (editor, why)
+            Success clip => match GraphDevice::request (editor, held, clip)
+                Error why => problem (editor, why)
+                Success step => step
+        _ => problem (editor, "The graph needs exactly one audio output.")
+
+    advance (editor, graph, outcome) = match outcome
+        Error why => problem (editor, why)
+        Success action => match action
+            BlockReady held clips => finished (editor, graph, held, clips)
+            BlockWaiting block pending => waiting (editor, block, pending)
+
+    (** Edits remain possible during rendering, but cannot mutate the captured graph or bindings. *)
+    begin (editor, platform, continuous) = match platform == "macos" || (platform == "windows" && editor.audioPath != "")
+        false => Runtime::step (editor(message = "Launch Prism with a supported audio device adapter."))
+        true => match editor.renderTicket != ""
+            true => Runtime::step (editor(message = "The current graph audition is still rendering."))
+            false => match platform == "macos" && continuous == false && editor.workerPath == "" && editor.audioPath == "" && length (filterList (editor.graph.nodes, ClipLayouts::requiresClips)) == 0
+                true => Preview::play (editor, platform)
+                false => match editor.renderSerial == 9223372036854775807
+                    true => problem (editor, "No more render identities are available.")
+                    false => match Hosted::compensated editor.graph
+                        Error why => problem (editor, why)
+                        Success graph => advance (editor(renderGraph = graph, renderTrack = editor.patchTrack, renderProject = editor.songPath, renderBindings = mapList (editor.pluginBindings, \binding => Plugins::resolved (editor.catalog, binding)), renderPending = [], renderSessions = [], renderDevicePending = [], renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = continuous, renderStopping = false, renderSerial = satAdd editor.renderSerial 1), graph, GraphClips::start (graph, frames))
+
+    (** Render a bounded audition through the same graph/device path as live playback. *)
+    export play (editor, platform) = begin (editor, platform, false)
+
+    (** Keep producing blocks until Stop; the running graph is captured at launch. *)
+    export live (editor, platform) = match editor.workerPath == "" && editor.audioPath == ""
+        true => problem (editor, "Launch Prism with its packaged audio worker to play continuously.")
+        false => begin (editor, platform, true)
+
+    export active editor = editor.renderDeviceKey != "" || editor.renderContinuous || editor.renderTicket != ""
+
+    (** An in-flight request must complete before its newly opened handle can be released. *)
+    export stop editor = match editor.renderTicket == ""
+        true => GraphWorkers::release (Runtime::step (editor(message = "Playback stopped.")))
+        false => Runtime::step (editor(renderStopping = true, message = "Stopping playback."))
+
+    stopOrContinue step =
+        editor = step.stepStore
+        match editor.renderStopping
+            true => GraphWorkers::release (Runtime::step (editor(message = "Playback stopped.")))
+            false => step
+
+    decoded (editor, pending, n, layout, text) = match HostResponses::clip (text, layout, pending.pendingFrames)
+        Error why => problem (editor, why)
+        Success rendered => match rendered.renderLatency == Hosted::latency n
+            false => problem (editor, "The plug-in latency changed during playback. Reload the plug-in to prepare its new delay.")
+            true =>
+                clip = NodeClip(clipNode = n.identity, clipChannels = rendered.renderChannels, clipSamples = rendered.renderSamples, clipNotes = [])
+                advance (editor(renderPending = [], renderTicket = ""), pending.pendingGraph, GraphClips::replied (pending, clip))
+
+    receivedPending (editor, pending, text) = match Graphs::node (pending.pendingGraph, pending.pendingNode)
+        Invalid _ => problem (editor, "The completed VST node is absent.")
+        Valid n => match ClipInputs::layout n
+            Error why => problem (editor, why)
+            Success layout => decoded (editor, pending, n, layout, text)
+
+    received (editor, text) = match editor.renderPending
+        [pending] => receivedPending (editor, pending, text)
+        _ => problem (editor, "The worker reply has no unique pending graph request.")
+
+    opened (editor, outcome) = match outcome
+        Error why => problem (editor, why)
+        Success text => match GraphWorkers::opened (editor, text)
+            Error why => problem (editor, why)
+            Success next => match GraphWorkers::sendOpened next
+                Error why => problem (next, why)
+                Success step => step
+
+    deviceMessage (editor, healthy) = match editor.renderEmptyCallbacks > 0
+        true => "${healthy} Audio queue ran empty ${editor.renderEmptyCallbacks} times. Reduce the patch workload."
+        false => healthy
+
+    // Preserve a struck note's tuning for every control the user has left alone.
+    value (original, sounding, authored) = match ui::Lists::find (original, \p => p.key == authored.key)
+        Success prior => match prior.initial == authored.initial
+            true => ui::Lists::find (sounding, \p => p.key == authored.key) ?: authored
+            false => authored
+        Error _ => authored
+
+    editedNode (before, after, sounding) = match Graphs::node (before, sounding.identity)
+        Invalid _ => sounding
+        Valid original => match Graphs::node (after, sounding.identity)
+            Invalid _ => sounding
+            Valid authored => match structuralEquals (original.processor, authored.processor) && structuralEquals (sounding.processor, authored.processor) && !structuralEquals (original.parameters, authored.parameters)
+                false => sounding
+                true => sounding(parameters = mapList (authored.parameters, \p => value (original.parameters, sounding.parameters, p)))
+
+    hasWire (graph, cable) = length (filterList (graph.cables, \wire => structuralEquals (wire, cable))) != 0
+
+    // A disconnected VST control returns to its dial on the next audio block.
+    retained (before, after, c) = match Graphs::node (before, c.destination)
+        Valid n => match n.processor
+            External _ _ => match listGet n.inputs c.inlet
+                Success port => port.rate != Control || !hasWire (before, c) || hasWire (after, c)
+                Error _ => true
+            _ => true
+        Invalid _ => true
+
+    // A worker can still be finishing an older block. Only the following block observes this graph.
+    applied (before, after) =
+        sounding = after.renderGraph
+        latest = perform Signal<Graph>.read ()
+        cables = match structuralEquals (before.graph.cables, latest.cables)
+            true => sounding.cables
+            false => filterList (sounding.cables, \c => retained (before.graph, latest, c))
+        sounding(cables = cables, nodes = mapList (after.renderGraph.nodes, \n => editedNode (before.graph, latest, n)))
+
+    observed (before, after, graph) =
+        handle static Signal<Graph>
+            read => graph
+        after(renderGraph = applied (before, after))
+
+    (** Keep accepted parameter movements on the auditioned project and track for the next device block. *)
+    export liveEdit (before, after) = match after.renderTicket != "" && before.renderSerial == after.renderSerial && before.revision != after.revision && after.patchTrack == after.renderTrack && before.patchTrack == after.patchTrack && before.songPath == after.songPath && after.songPath == after.renderProject
+        true => observed (before, after, after.graph)
+        false => after
+
+    deviceAdvanced editor = match editor.renderDevicePending
+        [pending] => match editor.renderInput == "!drain"
+            true => GraphWorkers::release (Runtime::step (editor(message = deviceMessage (editor, "Preview finished."))))
+            false => match editor.renderContinuous == false && pending.deviceState.graphPosition >= 12288
+                true => GraphDevice::drain (editor, pending.deviceState.graphPosition)
+                false => advance (editor(renderDevicePending = [], message = deviceMessage (editor, "Playing the patch.")), editor.renderGraph, GraphClips::next (editor.renderGraph, pending.deviceState, frames))
+        _ => problem (editor, "The device reply has no unique pending graph block.")
+
+    deviceCompleted (editor, outcome) = match editor.renderDeviceKey == ""
+        true => match outcome
+            Error why => problem (editor, why)
+            Success text => match GraphDevice::opened (editor, text)
+                Error why => problem (editor, why)
+                Success step => stopOrContinue step
+        false => match editor.renderStopping
+            true => stopOrContinue (Runtime::step editor)
+            false => match GraphDevice::checked (editor, deviceReply (editor, outcome))
+                Error why => problem (editor, why)
+                Success receipt => deviceAdvanced (editor(renderEmptyCallbacks = receipt.emptyCallbacks))
+
+    // WinUI returns the line inline so its C ABI slice storage need not retain a new audio block every frame.
+    deviceReply (editor, outcome) = match editor.audioPath != ""
+        true => ui::Doc::text (ui::Doc::parse (outcome ?: ""), "output")
+        false => perform ui::Slices.fetch (GraphWorkers::output -1)
+
+    closing (editor, outcome) = match ProcessResults::checked outcome
+        Error why => Runtime::step (editor(message = "${editor.message} Worker cleanup failed: ${why}"))
+        Success _ => Runtime::step editor
+
+    (** A stale or duplicate completion never advances the current graph. *)
+    export completed (editor, ticket, outcome) = match startsWith ticket "prism-audio:close:"
+        true => closing (editor, outcome)
+        false => match ticket == editor.renderTicket && ticket != ""
+            false => Runtime::step editor
+            true => match ProcessResults::checked outcome
+                Error why => problem (editor, why)
+                Success _ => match startsWith ticket "prism-audio:device:"
+                    true => deviceCompleted (editor, outcome)
+                    false => match editor.renderOpening
+                        true => stopOrContinue (opened (editor, outcome))
+                        false => match editor.renderStopping
+                            true => stopOrContinue (Runtime::step editor)
+                            false => match editor.renderPending
+                                [pending] => received (editor, perform ui::Slices.fetch (GraphWorkers::output pending.pendingNode))
+                                _ => problem (editor, "The worker reply has no unique pending graph request.")

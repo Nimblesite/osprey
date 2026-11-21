@@ -130,7 +130,8 @@ pub use check::{
 pub use effect_rows::LibraryExports;
 pub use error::TypeError;
 pub use info::{
-    CtorLayout, EffectRequirements, HandlerSite, OpType, PerformSite, ProgramTypes, SiteTable,
+    CtorLayout, EffectRequirements, HandlerSite, Named, OpType, PerformSite, ProgramTypes,
+    SiteTable, Typed,
 };
 pub use redundant::{
     redundant_annotation_sites, redundant_annotation_sites_for, redundant_annotation_sites_where,
@@ -138,7 +139,7 @@ pub use redundant::{
     TypeWarning, REDUNDANT_ANNOTATION,
 };
 pub use staging::{lower_static_checked, signal_dependencies};
-pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};
+pub use ty::{has_type_var, names, render_with_holes, with_constraints, Scheme, Type, VarId, HOLE};
 pub use undocumented::{undocumented_exports, UNDOCUMENTED_EXPORT};
 pub use unused::{checked_method_reads, unused_symbols, UnusedKind, UnusedSymbol};
 #[cfg(test)]

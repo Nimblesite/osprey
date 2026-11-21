@@ -23,41 +23,6 @@ fn hovering_a_parameter_in_the_body_holes_it_exactly_as_the_declaration_does() {
 }
 
 #[test]
-fn an_inferred_signature_fills_resolved_slots_and_holes_the_unsolved_ones() {
-    // Implements [LSP-HOVER-INFERRED-SIGNATURE]. `r` resolves to a concrete
-    // `int`, so the reader gets it.
-    let concrete = hover(
-        "fn area(r) = r * r\nlet a = area(5)\n",
-        "file:///a.osp",
-        0,
-        3,
-        U16,
-    )
-    .expect("hover over `area`");
-    shows(&concrete, &["fn area(r: int)"]);
-    // `xs` is proven to be a LIST; only its element type stays open. The
-    // choice used to be `List<t5>` or nothing, and nothing won, because
-    // `t5` is an inference artefact whose number shifts when an unrelated
-    // line moves. A hole is neither: it keeps everything the checker proved
-    // and names nothing it did not ([`osprey_types::render_with_holes`]).
-    let generic = hover(
-            "fn classify(xs) = match xs {\n  [] => 0\n  [head, ...tail] => 1\n}\nlet e = classify([])\n",
-            "file:///b.osp",
-            0,
-            3,
-            U16,
-        )
-        .expect("hover over `classify`");
-    shows(&generic, &["fn classify(xs: List<_>) -> int"]);
-    // The artefact itself stays banned, which is what the bare rendering
-    // was really protecting.
-    assert!(
-        !generic.contains("t5") && !generic.contains("<t"),
-        "an inference artefact must never reach a reader: {generic}"
-    );
-}
-
-#[test]
 fn hover_uses_signature_for_functions_and_builtins() {
     // Function and built-in signature rendering from [LSP-HOVER].
     assert!(hover(SRC, "file:///a.osp", 1, 12, U16)

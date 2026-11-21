@@ -39,7 +39,7 @@
       ]
     },
     "synth": {
-      "source": "src/osprey/examples/synth",
+      "source": "src/osprey/examples/daw",
       "name": "Prism Synth",
       "description": "Play a patch from the keyboard under the signal-flow editor.",
       "capabilities": [],
@@ -75,6 +75,18 @@
       ],
       "arguments": [],
       "fixture": "fixture.ps1"
+    },
+    "talon": {
+      "source": "src/osprey/examples/talon/app",
+      "name": "Talon Bank",
+      "description": "Open accounts, move money and audit the journal of a demo bank.",
+      "capabilities": [
+        "internetClient",
+        "privateNetworkClientServer"
+      ],
+      "loopback": true,
+      "files": [],
+      "arguments": []
     },
     "tally": {
       "source": "src/osprey/examples/tally",

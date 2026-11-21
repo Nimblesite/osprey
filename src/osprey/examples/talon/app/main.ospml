@@ -1,0 +1,11 @@
+namespace app
+
+import talon::App
+import talon::Update
+
+(** Retains the application-specific surface between host calls. *)
+effect Keep
+    keep : ui::Surface<talon::Bank, talon::BankAct> => Unit
+
+initial () = Update::launched ""
+program () = App::program ()

@@ -20,13 +20,13 @@ public enum HostLaunch {
         return arguments(from: given)
     }
 
-    /// The application's own arguments: `--resources` and the folder it names are not among them.
+    /// The application's own arguments: `--resources`, `--self-test` and what each names are not among them.
     public static func arguments(from given: [String]) -> [String] {
         var stripped: [String] = []
         var skip = false
         given.forEach { argument in
             if skip { skip = false; return }
-            if argument == "--resources" { skip = true; return }
+            if argument == "--resources" || argument == "--self-test" { skip = true; return }
             stripped.append(argument)
         }
         return stripped

@@ -81,27 +81,42 @@ struct OspreyListBuilder {
   int32_t elem_managed;
 };
 
-static inline OspreyListNode *alloc_node(int64_t layout) {
-  OspreyListNode *n = (OspreyListNode *)calloc(1, sizeof(OspreyListNode));
-  osp_mem_set_layout(n, layout);
-  return n;
+/* ARC can publish the layout at allocation. Fresh nodes need empty slots;
+ * a copied node and a list header are initialized in full by their caller. */
+static inline void *alloc_trie_storage(size_t size, int64_t layout, int clear) {
+#ifdef OSP_ARC_SHIM_H
+  void *body = osp_alloc_tagged_noinit((int64_t)size, layout);
+  if (body != NULL && clear) memset(body, 0, size);
+#else
+  (void)clear;
+  void *body = calloc(1, size);
+  osp_mem_set_layout(body, layout);
+#endif
+  return body;
 }
 
-/* Copy a node. The copy shares every slot `src` pointed at, so each managed
+static inline OspreyListNode *alloc_node(int64_t layout) {
+  return alloc_trie_storage(sizeof(OspreyListNode), layout, 1);
+}
+
+/* Copy a node. Only the first `used` slots can contain references, so each managed
  * slot gains a reference — children for an internal node, elements for a
  * managed leaf; a scalar leaf none. NULL slots probe-miss. */
-static inline OspreyListNode *clone_node(OspreyListNode *src, int64_t layout) {
-  OspreyListNode *n = alloc_node(layout);
-  if (src == NULL) {
-    return n;
-  }
+static inline OspreyListNode *clone_slots(OspreyListNode *src, int64_t layout,
+                                         int32_t used) {
+  if (src == NULL) return alloc_node(layout);
+  OspreyListNode *n = alloc_trie_storage(sizeof(*n), layout, 0);
   memcpy(n->slots, src->slots, sizeof(src->slots));
   if (layout == NODE_PTRS_LAYOUT) {
-    for (int32_t i = 0; i < OSPREY_LIST_BRANCH; i++) {
+    for (int32_t i = 0; i < used; i++) {
       osp_retain(as_node_ptr(n->slots[i]));
     }
   }
   return n;
+}
+
+static inline OspreyListNode *clone_node(OspreyListNode *src, int64_t layout) {
+  return clone_slots(src, layout, OSPREY_LIST_BRANCH);
 }
 
 /* Wrap `node` in fresh internal nodes down to the leaf level, moving the
@@ -121,8 +136,7 @@ static inline OspreyList *alloc_list(int64_t length, int32_t shift, int32_t tail
                               OspreyListNode *root, OspreyListNode *tail,
                               int64_t offset, int elem_managed,
                               OspreyListNode *front) {
-  OspreyList *l = (OspreyList *)calloc(1, sizeof(OspreyList));
-  osp_mem_set_layout(l, LIST_HDR_LAYOUT);
+  OspreyList *l = alloc_trie_storage(sizeof(*l), LIST_HDR_LAYOUT, 0);
   l->length = length;
   l->shift = shift;
   l->tail_count = tail_count;

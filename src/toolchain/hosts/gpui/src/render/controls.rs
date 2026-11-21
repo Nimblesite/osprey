@@ -5,7 +5,7 @@ use crate::events::Touch;
 use gpui_kit::component::{
     button::ButtonCustomVariant,
     input::{Input, InputEvent, InputState},
-    menu::{DropdownMenu, PopupMenu, PopupMenuItem},
+    menu::{ContextMenuExt as _, DropdownMenu, PopupMenu, PopupMenuItem},
     switch::Switch,
     Disableable as _,
 };
@@ -242,6 +242,55 @@ fn picker_menu(
         );
     }
     menu
+}
+
+/// Build the native secondary-click menu from the same actions exposed to accessibility.
+pub(super) fn context_menu(ctx: &mut Ctx, tree: &Tree) -> AnyElement {
+    let Some(body) = tree.get("body") else {
+        return broken(ctx.view, "context menu without a body".to_owned());
+    };
+    let items = list(tree, "items").to_vec();
+    let handle = ctx.cx.entity();
+    div()
+        .id(format!(
+            "{}:menu:{:?}",
+            ctx.key,
+            items.first().and_then(ordinal)
+        ))
+        .child(super::node(ctx, body))
+        .context_menu(move |menu, window, cx| {
+            items.iter().fold(menu, |menu, item| {
+                if string(item, "kind") == "section" {
+                    let actions = list(item, "children").to_vec();
+                    let handle = handle.clone();
+                    menu.submenu(
+                        string(item, "title").to_owned(),
+                        window,
+                        cx,
+                        move |menu, _, _| {
+                            actions
+                                .iter()
+                                .fold(menu, |menu, item| menu_action(menu, item, &handle))
+                        },
+                    )
+                } else {
+                    menu_action(menu, item, &handle)
+                }
+            })
+        })
+        .into_any_element()
+}
+
+fn menu_action(menu: PopupMenu, item: &Tree, handle: &Entity<HostView>) -> PopupMenu {
+    let Some(event) = ordinal(item) else {
+        return menu;
+    };
+    let handle = handle.clone();
+    menu.item(
+        PopupMenuItem::new(string(item, "label").to_owned())
+            .disabled(!flag(item, "enabled"))
+            .on_click(move |_, window, cx| send(&handle, &binding(event), Tree::Null, window, cx)),
+    )
 }
 
 /// Applies one validated ordinal to a control renderer or rejects the node.

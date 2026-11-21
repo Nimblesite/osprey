@@ -1,0 +1,25 @@
+// [SYNTH-ADVANCED-PRISM] Macro controls: one normalised amount mapped onto ordinary typed parameters.
+namespace synth
+
+(** A macro writes declared parameters only, inside their declared ranges, through a per-target curve.
+    It is pure: hosts smooth the amount (for example with `Smoothers`) and publish the returned graph. *)
+module Macros
+    target (graph, t) = match Graphs::node (graph, t.node)
+        Invalid _ => false
+        Valid n => length (filterList (n.parameters, \p => p.key == t.key && p.automatable && Parameters::validValue (p, t.minimum) && Parameters::validValue (p, t.maximum))) == 1 && t.exponent >= 0.25 && t.exponent <= 4.0
+
+    (** A macro is valid when every target names an automatable parameter and stays inside its range. *)
+    export valid (graph, macro) = macro.name != "" && length macro.targets >= 1 && length macro.targets <= 32 && length (filterList (macro.targets, \t => target (graph, t))) == length macro.targets
+
+    retargeted (n, t, amount) = match n.identity == t.node
+        false => n
+        true => n(parameters = mapList (n.parameters, \p => valued (p, t, amount)))
+
+    valued (p, t, amount) = match p.key == t.key
+        true => p(initial = FitMath::macroValue (amount, t.minimum, t.maximum, t.exponent))
+        false => p
+
+    (** Write the amount (0–1) into every target; an invalid macro or amount leaves the graph unchanged. *)
+    export apply (graph, macro, amount) = match valid (graph, macro) && amount >= 0.0 && amount <= 1.0
+        false => Error(message = InvalidConfiguration(detail = "The macro has an invalid target or amount; the patch is unchanged."))
+        true => Success(value = foldList (macro.targets, graph, \(g, t) => g(nodes = mapList (g.nodes, \n => retargeted (n, t, amount)))))

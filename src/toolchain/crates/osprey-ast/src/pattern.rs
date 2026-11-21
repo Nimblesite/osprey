@@ -31,10 +31,11 @@ pub enum Pattern {
     /// `"0"`, `"1"`, … ([`positional_field_name`]) with the written binders.
     /// Implements [PATTERN-STRUCTURAL], [PATTERN-TUPLE].
     Structural {
-        /// `(field name, binder name)` pairs in written order. A brace pattern
-        /// binds each field under its own name; an empty binder (`_` in a tuple
-        /// slot) matches the field without binding it.
-        fields: Vec<(String, String)>,
+        /// `(field name, slot pattern)` pairs in written order. A bare field
+        /// binds under its own name (a [`Pattern::Binding`]); `_` matches the
+        /// field without binding it; any other pattern tests the field's value
+        /// as its own `match` would ([PATTERN-NESTED]).
+        fields: Vec<(String, Pattern)>,
         /// Whether a trailing `..` opens the row to any value carrying at
         /// least the named fields; a closed pattern selects the exact row.
         open: bool,
@@ -51,4 +52,37 @@ pub enum Pattern {
     },
     /// A bare identifier capture.
     Binding(String),
+}
+
+impl Pattern {
+    /// The name a slot binds directly: a binding's name, or `""` for `_` or a
+    /// pattern that tests its value ([PATTERN-NESTED]). A capitalised bare
+    /// name is a payload-free variant, so it tests rather than binds.
+    #[must_use]
+    pub fn slot_binder(&self) -> &str {
+        match self {
+            Self::Binding(name) if !names_variant(name) => name,
+            Self::TypeAnnotated { name, .. } => name,
+            _ => "",
+        }
+    }
+
+    /// Whether the pattern matches every value: a binding or `_`.
+    #[must_use]
+    pub fn is_irrefutable(&self) -> bool {
+        matches!(self, Self::Wildcard) || !self.slot_binder().is_empty()
+    }
+}
+
+fn names_variant(name: &str) -> bool {
+    name.chars().next().is_some_and(char::is_uppercase)
+}
+
+/// A row's `(field, binder)` pairs, each slot's direct binder or `""`.
+#[must_use]
+pub fn row_binders(fields: &[(String, Pattern)]) -> Vec<(String, String)> {
+    fields
+        .iter()
+        .map(|(field, slot)| (field.clone(), slot.slot_binder().to_owned()))
+        .collect()
 }

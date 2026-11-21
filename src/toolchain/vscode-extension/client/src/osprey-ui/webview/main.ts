@@ -5,30 +5,12 @@
 import { applyRender, clientDiagnostics, clientNotice, installClient, ordinalOf, type Client } from "./client.js";
 import { installEditors, refreshEditors, type Caret } from "./editor-client.js";
 import { refreshBoards } from "./board-client.js";
-import { keyEvent, pointerEvent, scenePoint, sceneTransform, viewedEvent } from "./events.js";
+import { keyEvent, pointerEvent, scenePoint, sceneTransform, viewedEvent, type HostMessage, type FrameMessage, type RenderMessage } from "./events.js";
 import { readFrame, type Scene, type Shown } from "./rows.js";
 import { renderShown } from "./render.js";
 import { accessBounds, paintScene } from "./scene.js";
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
-
-interface FrameMessage {
-  readonly type: "frame";
-  readonly shapes: ArrayBuffer;
-  readonly views: ArrayBuffer;
-  readonly text: ArrayBuffer;
-  readonly assets: Readonly<Record<string, string>>;
-  readonly diagnostics: readonly string[];
-}
-
-interface RenderMessage extends Omit<FrameMessage, "type"> {
-  readonly type: "render";
-  readonly html: string;
-}
-
-interface BusyMessage { readonly type: "busy"; readonly active: boolean }
-interface FatalMessage { readonly type: "fatal"; readonly message: string }
-type HostMessage = RenderMessage | FrameMessage | BusyMessage | FatalMessage;
 
 const vscode = acquireVsCodeApi();
 const client: Client = {

@@ -23,9 +23,9 @@ bank: _bank-web
 	    done; \
 	    open http://127.0.0.1:18790; \
 	  fi) & \
-	  ./$(BIN) src/osprey/examples/projects/modules --run
+	  ./$(BIN) src/osprey/examples/talon/backend --run
 
-## bank-build: Regenerate Talon Bank's embedded React host and Osprey WebAssembly client.
+## bank-build: Rebuild Talon Bank's Osprey Native app for the browser and embed it in its server.
 ##             Requires Node and a WASI sysroot; the generated Osprey Bundle is
 ##             committed so ordinary native/CI builds do not need either tool.
 bank-build: _bank-web

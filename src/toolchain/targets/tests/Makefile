@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent bank bank-mobile casting flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth tally workbench workbench-proof-assets
+.PHONY: agent bank bank-app casting flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth tally workbench workbench-proof-assets
 
 ## agent: Osprey Agent's turn logic and its real update path, with scripted completions.
 agent: _runtime
@@ -18,10 +18,10 @@ agent: _runtime
 bank: build
 	$(MAKE) _bank_test
 
-## bank-mobile: The Talon Bank mobile app's shared domain.
-bank-mobile: _runtime
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	$(BIN) src/osprey/examples/projects/modules/mobile/app/test --run
+## bank-app: Talon Bank's one Osprey Native app, driven through the host boundary with no host: loading,
+##           tabs, filters, validation and every ledger request.
+bank-app:
+	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/talon/app/test
 
 ## casting: The casting player, driven by accessible label. [UI-MACHINE-TEST]
 casting:
@@ -93,7 +93,7 @@ pocket-orchestra:
 
 ## synth: The Prism synth, driven by accessible label. [UI-MACHINE-TEST]
 synth:
-	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/synth/test
+	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/daw/test
 
 ## workbench: The Proof Workbench's imported-mathematics cases under GC and ARC.
 workbench: build
@@ -107,6 +107,13 @@ workbench: build
 workbench-proof-assets:
 	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets
 	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets --check
+## daw-models: Generate the project and editor types and project JSON field codec from daw.td using TYPEDIAGRAM_DIST.
+.PHONY: daw-models
+daw-models:
+	node scripts/make/osprey-schema.mjs "$(TYPEDIAGRAM_DIST)" src/osprey/examples/daw/daw.td src/osprey/examples/daw/src/daw_model.ospml daw
+	node scripts/make/osprey-schema.mjs "$(TYPEDIAGRAM_DIST)" src/osprey/examples/daw/daw.td src/osprey/examples/daw/src/editor_model.ospml synth
+	node scripts/make/osprey-schema.mjs "$(TYPEDIAGRAM_DIST)" src/osprey/examples/daw/daw.td src/osprey/examples/daw/src/project_codec.ospml daw Arrangement
+
 ## synth-vst: Verify isolated VST3 scanning and real instrument/effect processing headlessly.
 .PHONY: synth-vst
 synth-vst: _synth_vst_test

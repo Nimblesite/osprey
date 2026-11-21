@@ -112,7 +112,7 @@ sceneHeld binding =
 sceneSaid : (ui::Binding<Act>, ui::Input) -> string
 sceneSaid (binding, input) = match Surfaces::scene (sceneHeld (binding), 0, input)
     Error problem => problem
-    Success message => Messages::route (message, \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \(_, _) => "stroke", \(_, _) => "lasso", \_ => "frame", \(_, theInput) => Inputs::route (theInput, \(name, down) => "key ${name} ${down}", \(x, y, down, shift) => "pointer ${x} ${y} ${down} ${shift}", \(w, h) => "viewed ${w} ${h}"))
+    Success message => Messages::route (message, \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \(_, _) => "stroke", \(_, _) => "lasso", \_ => "frame", \(_, theInput) => Inputs::route (theInput, \(name, down) => "key ${name} ${down}", \(x, y, down, shift) => "pointer ${x} ${y} ${down} ${shift}", \(w, h) => "viewed ${w} ${h}", \(_, _) => "secondary"))
 
 // `binding`, which owns no scene, refuses `value` as the wrong kind.
 notScene (binding, value) = expect (sceneSaid (binding, value), "A non-scene control was sent a value of the wrong kind")
@@ -145,10 +145,8 @@ sceneCaseASceneBindingDeliversKeysAndPointer () =
     notScene (ui::TextInput(action = Load), ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = false, pointerShift = false))
     notScene (ui::FlagInput(action = Load), ui::Viewed(viewWidth = 4.0, viewHeight = 2.0))
     notScene (ui::ChoiceInput(action = Load), ui::Key(keyName = "a", keyDown = false))
-    notScene (ui::SizeInput(action = Load), ui::Key(keyName = "a", keyDown = true))
-    notScene (ui::PlaceInput(action = Load), ui::Key(keyName = "a", keyDown = true))
-    notScene (ui::StrokeInput(action = Load), ui::Key(keyName = "a", keyDown = true))
-    notScene (ui::LassoInput(action = Load), ui::Key(keyName = "a", keyDown = true))
+    // Every remaining control that takes another value kind refuses the same key value.
+    forEachList ([ui::SizeInput(action = Load), ui::PlaceInput(action = Load), ui::StrokeInput(action = Load), ui::LassoInput(action = Load)], \binding => notScene (binding, ui::Key(keyName = "a", keyDown = true)))
     // A surface that drew no scene at that control number refuses too.
     bare = Surfaces::idle 0
     bareScene = match Surfaces::scene (bare, 0, ui::Key(keyName = "a", keyDown = true))
@@ -215,9 +213,7 @@ sceneCaseLabelsIconsBadgesEmptyStatesButtonsTabs () =
     // The plain row carries no symbol or group; the led row's icon and group lead its cell.
     expect (spelled (childTold (toldOf held, 6)), "{kind=\"rows\",selected=\"plain\",rows=[{key=\"plain\",symbol=\"\",group=\"\",child={kind=\"text\",text=\"p\",role=\"body\",tone=\"primary\"}},{key=\"led\",symbol=\"person\",group=\"G\",child={kind=\"text\",text=\"q\",role=\"body\",tone=\"primary\"}}],event=#2}")
     expect (tabSymbol (ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load)), "clock")
-    expect (deliversBinding (held, 0, ui::Tap(action = Increment)), true)
-    expect (deliversBinding (held, 1, ui::ChoiceInput(action = Load)), true)
-    expect (deliversBinding (held, 2, ui::ChoiceInput(action = Load)), true)
+    delivers (held, [ui::Tap(action = Increment), ui::ChoiceInput(action = Load), ui::ChoiceInput(action = Load)])
 
 // [UI-COMPONENTS]: a pair sends its label and value and takes no ordinal.
 (** a pair sends its label and value without a binding. *)
@@ -226,7 +222,7 @@ sceneCaseAPairEncodesItsLabelAndValue () =
     binds (drawnOf held, 1)
     expect (spelled (childTold (toldOf held, 0)), "{kind=\"pair\",label=\"Digest\",value=\"sha256:ab\"}")
     expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0 - 1)
-    expect (deliversBinding (held, 0, ui::Tap(action = Increment)), true)
+    delivers (held, [ui::Tap(action = Increment)])
 
 isLinux platform = match platform
     ui::Linux => true
@@ -324,7 +320,7 @@ sceneCaseARefusedEventLeavesTheSurfaceWhole () =
     expect (Probes::problem refused, "Unknown control 9")
     expect (Probes::asked refused, "")
     expect ((Probes::stored refused).counter.tally, 1)
-    unknown = Probes::sent (moved, ui::Touch(touchNow = 7, touchKind = 42, touchOrdinal = 0, touchWords = "", touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false))
+    unknown = Probes::sent (moved, Probes::touchAt (7, 42, 0, "", "", 0.0, 0.0, false))
     expect (Probes::problem unknown, "Unknown event kind 42")
     expect ((Probes::stored unknown).counter.tally, 1)
     delivered = Probes::tapped (moved, 0)
@@ -369,7 +365,7 @@ sceneCaseASurfaceDeliversCompletionsPhasesAnd () =
     expect (Probes::problem phased, "")
     framed = Probes::framed (phased, 0.5)
     expect (framed.surfaceSession.sessionContext.now, 9)
-    broken = Probes::sent (framed, ui::Touch(touchNow = 10, touchKind = 99, touchOrdinal = 0, touchWords = "", touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false))
+    broken = Probes::sent (framed, Probes::touchAt (10, 99, 0, "", "", 0.0, 0.0, false))
     expect (Probes::problem broken, "Unknown event kind 99")
     expect ((Probes::stored broken).note.memo, "saved")
 
@@ -402,9 +398,7 @@ sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading () =
     expect (spelled (childTold (toldOf held, 3)), "{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"prominent\",enabled=?true,event=#1}")
     // A leading aside tells its side, its pane and its column, 300 points wide, with the splitter's binding after them.
     expect (spelled (childTold (toldOf held, 4)), "{kind=\"aside\",side=\"leading\",pane={kind=\"text\",text=\"p\",role=\"body\",tone=\"primary\"},aside={kind=\"text\",text=\"c\",role=\"body\",tone=\"primary\"},width=#300,least=#260,most=#640,keep=#340,event=#2}")
-    expect (deliversBinding (held, 0, ui::Tap(action = Load)), true)
-    expect (deliversBinding (held, 1, ui::Tap(action = Increment)), true)
-    expect (deliversBinding (held, 2, ui::SizeInput(action = Typed)), true)
+    delivers (held, [ui::Tap(action = Load), ui::Tap(action = Increment), ui::SizeInput(action = Typed)])
 
 // A drawn meter's clamped amount and total, checked against what its amount clamps to.
 meterTold probe =

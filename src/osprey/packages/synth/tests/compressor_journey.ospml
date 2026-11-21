@@ -1,0 +1,22 @@
+import synth::DynamicsMath
+
+// [SYNTH-DYNAMICS] With a -20 dB threshold and 4:1 slope, a 0 dB tone leaves at -15 dB.
+compressorJourney () =
+    forEachList ([{ input = -40.0, output = -40.0 }, { input = -24.0, output = -24.0 }, { input = -20.0, output = -20.75 }, { input = -16.0, output = -19.0 }, { input = 0.0, output = -15.0 }], \row =>
+        near (DynamicsMath::curve (row.input, -20.0, 4.0, 8.0), row.output, 0.000000001)
+        near (DynamicsMath::reduction (row.input, -20.0, 4.0, 8.0), row.output - row.input, 0.000000001))
+    near (DynamicsMath::curve (-20.0, -20.0, 4.0, 0.0), -20.0, 0.0)
+    near (DynamicsMath::makeup (-20.0, 4.0, 8.0, 0.5), 7.5, 0.000000001)
+    hot = DynamicsMath::smoothed (0.0, -6.0, 0.5, 0.25)
+    near (hot, -3.0, 0.0)
+    near (DynamicsMath::smoothed (hot, 0.0, 0.5, 0.25), -0.75, 0.0)
+    near (DynamicsMath::programmed (hot, -0.75), -3.0, 0.0)
+    near (DynamicsMath::coefficient (0.0, 48000.0), 0.0, 0.0)
+    near (DynamicsMath::coefficient (0.01, 48000.0), 0.9979188352992993, 0.000000001)
+    near (DynamicsMath::meanSquare (4.0, 1.0, 0.5), 2.5, 0.0)
+    near (DynamicsMath::linear (DynamicsMath::decibels 0.5), 0.5, 0.000000001)
+    near (DynamicsMath::rmsLevel 4.0, 6.020599913279624, 0.000000001)
+    near (DynamicsMath::linked (-6.0, -3.0), -3.0, 0.0)
+    near (DynamicsMath::detected (-3.0, -6.0, 0.5), -4.5, 0.0)
+    near (DynamicsMath::expansion (-25.0, -20.0, 3.0), -10.0, 0.0)
+    near (DynamicsMath::expansion (-20.0, -20.0, 3.0), 0.0, 0.0)

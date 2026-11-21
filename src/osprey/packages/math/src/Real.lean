@@ -9,7 +9,7 @@ carries no proof.
 Mathlib is Apache-2.0 licensed; `../NOTICE.md` names the files and their authors. The Osprey
 module is generated from this file ([MATH-CODE]).
 -/
-open Float (exp log sqrt)
+open Float (exp log sqrt sin)
 
 namespace math.Real
 
@@ -45,5 +45,13 @@ def binEntropy (p : Float) : Float := p * log (1 / p) + (1 - p) * log (1 / (1 - 
 `ProbabilityTheory.gaussianPDFReal`: `(√(2 * π * v))⁻¹ * rexp (-(x - μ) ^ 2 / (2 * v))`. -/
 def gaussianPDFReal (mu v x : Float) : Float :=
   1 / sqrt (2 * pi * v) * exp (-(x - mu) ^ 2 / (2 * v))
+
+/-- The unnormalised sinc function, the kernel of band-limited interpolation and resampling.
+Mathlib `Real.sinc`: `sinc x = if x = 0 then 1 else sin x / x`. -/
+def sinc (x : Float) : Float := if x == 0 then 1 else sin x / x
+
+/-- `x` to the real power `y`, for `x > 0`: a pitch ratio `2 ^ (cents / 1200)` or a gain
+`10 ^ (dB / 20)`. Mathlib `Real.rpow_def_of_pos`: `x ^ y = exp (log x * y)`. -/
+def rpow (x y : Float) : Float := exp (log x * y)
 
 end math.Real

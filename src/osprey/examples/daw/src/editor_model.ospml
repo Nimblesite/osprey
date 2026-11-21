@@ -1,0 +1,365 @@
+namespace synth
+
+// Generated from typeDiagram [CONV-OSPREY].
+type PluginClass =
+    classId : string
+    className : string
+    bundle : string
+
+type PluginWindow =
+    windowNode : int
+    windowClass : string
+    windowTrack : int
+    windowProject : string
+    windowSerial : int
+    windowCycle : int
+    windowFocus : bool
+    windowClosing : bool
+    windowHandle : string
+    windowSent : List<float>
+
+type PluginBinding =
+    pluginNode : int
+    pluginModule : string
+    pluginClass : string
+    pluginName : string
+
+type RenderSession =
+    sessionNode : int
+    sessionKey : string
+
+type DevicePending S =
+    deviceState : S
+    deviceChannels : int
+
+type DeviceReceipt =
+    acceptedFrames : int
+    returnedFrames : int
+    queuedFrames : int
+    deviceChannels : int
+    emptyCallbacks : int
+    deviceRunning : bool
+
+type CablePoint =
+    x : float
+    y : float
+
+type CableCurve =
+    sx : float
+    sy : float
+    dx : float
+    dy : float
+
+type GraphSnapshot G =
+    savedGraph : G
+    savedSong : daw::Arrangement
+    savedTrack : int
+    savedPatchTrack : int
+    savedTimelineNote : int
+    savedNextIdentity : int
+    savedPositions : List<daw::NodePosition>
+    savedFlow : List<daw::NodePosition>
+    savedBindings : List<PluginBinding>
+    savedSelected : int
+    savedNote : int
+
+type CardMarks =
+    cardRole : string
+    cardMarks : List<ui::Stamp>
+
+type CardArt =
+    artNode : int
+    artKey : string
+    artShapes : List<ui::Primitive>
+    artControls : List<ui::Accessible>
+
+type Page =
+    PatchPage
+    TimelinePage
+    MixPage
+
+type SendPort =
+    portKey : string
+    portCaption : string
+    portNode : int
+    portOutlet : int
+    portChannels : int
+    connections : List<string>
+
+type SendDraft =
+    routeOffset : int
+    editingId : int
+    sourceKey : string
+    targetBus : string
+    levelText : string
+    sendActive : bool
+    options : List<SendPort>
+
+type OutputEdit =
+    SongTiming
+        bpm : string
+        meter : string
+    PluginSettings
+        folder : string
+    NodeMenu
+        nodeId : int
+        left : float
+        top : float
+    BrowsingSends
+        offset : int
+    EditingBus
+        busName : string
+    EditingSend
+        draft : SendDraft
+    OutputClosed
+    ChoosingOutput
+        focus : int
+    NamingGroup
+        proposed : string
+
+type RollMotion =
+    anchorX : float
+    anchorY : float
+    rowSize : float
+    stem : bool
+    original : daw::Note
+    preview : daw::Note
+
+type RollDrag =
+    RollIdle
+    RollHeld
+        motion : RollMotion
+
+type Shortcut =
+    command : string
+    keys : string
+
+type Keymap =
+    name : string
+    shortcuts : List<Shortcut>
+
+type MixFader =
+    FaderIdle
+    TrackFader
+        index : int
+    GroupFader
+        name : string
+
+type DialTurn =
+    DialIdle
+    DialButtonDown
+    DialHeld
+        identity : int
+        key : string
+        startY : float
+        startValue : float
+        moved : bool
+
+type PatchPan =
+    PanIdle
+    PanHeld
+        lastX : float
+        lastY : float
+
+type Editor G P S M =
+    skin : M
+    graph : G
+    past : List<GraphSnapshot<G>>
+    future : List<GraphSnapshot<G>>
+    gesture : List<GraphSnapshot<G>>
+    assetFolder : string
+    paletteShown : bool
+    detailsShown : bool
+    keyboardShown : bool
+    keyboardWidth : float
+    paletteDrag : string
+    note : int
+    armedNote : int
+    scopeSamples : List<float>
+    positions : List<daw::NodePosition>
+    flowPositions : List<daw::NodePosition>
+    panX : float
+    panY : float
+    panning : PatchPan
+    dragging : int
+    grabX : float
+    grabY : float
+    layoutRevision : int
+    selected : int
+    nextIdentity : int
+    source : int
+    outlet : int
+    wireDragging : bool
+    wireMonitor : bool
+    wireX : float
+    wireY : float
+    selectedCable : int
+    revision : int
+    message : string
+    workerPath : string
+    audioPath : string
+    pluginPath : string
+    scanQueue : List<string>
+    scanWarning : string
+    catalog : List<PluginClass>
+    pluginBindings : List<PluginBinding>
+    sampleSerial : int
+    sampleTicket : string
+    pluginSerial : int
+    patchWindowSerial : int
+    editorWindows : List<PluginWindow>
+    pluginTicket : string
+    pluginClassId : string
+    renderPending : List<P>
+    renderBindings : List<PluginBinding>
+    renderSerial : int
+    renderTicket : string
+    renderSessions : List<RenderSession>
+    renderOpening : bool
+    renderInput : string
+    renderDevicePending : List<DevicePending<S>>
+    renderGraph : G
+    renderProject : string
+    renderTrack : int
+    renderDeviceKey : string
+    renderEmptyCallbacks : int
+    renderContinuous : bool
+    renderStopping : bool
+    cards : List<CardMarks>
+    art : List<CardArt>
+    page : Page
+    outputEdit : OutputEdit
+    laneTop : int
+    laneZoom : float
+    laneStart : float
+    laneTraces : List<List<ui::PathStep>>
+    overview : List<ui::PathStep>
+    song : daw::Arrangement
+    songPath : string
+    renderer : string
+    track : int
+    patchTrack : int
+    selectedNote : int
+    rollDrag : RollDrag
+    rollBar : int
+    playEnd : int
+    playBeat : float
+    playClock : float
+    looping : bool
+    songTicket : string
+    keymap : Keymap
+    keysPath : string
+    mixFader : MixFader
+    dial : DialTurn
+    dialOffset : int
+    dialEntry : string
+    fineHeld : bool
+
+type EditorAction =
+    PatchSurface
+    ClosePluginWindow
+        identity : int
+    OpenPluginWindow
+        identity : int
+    Undo
+    Redo
+    Add
+        kind : string
+    Select
+        identity : int
+    Source
+        identity : int
+        outlet : int
+    Connect
+        identity : int
+        inlet : int
+    Disconnect
+        identity : int
+        inlet : int
+    RemoveCable
+    Remove
+    EditParameter
+        identity : int
+        key : string
+    Modulate
+        identity : int
+        key : string
+    Audition
+    PlayGraph
+    StopGraph
+    Surface
+    Keyboard
+    ShowModules
+    ShowDetails
+    ShowKeyboard
+    Strike
+        note : int
+    PluginPath
+    LoadSample
+    BuiltinSample
+    EditTiming
+    TempoText
+    PickMeter
+    ApplyTiming
+    ShowSettings
+    SaveSettings
+    ShowPage
+        page : Page
+    PickTrack
+        index : int
+        bar : int
+    SelectNote
+        index : int
+    SetVelocity
+        value : float
+    AdjustMix
+        index : int
+        gain : float
+        pan : float
+    AdjustBusGain
+        name : string
+        gain : float
+    ScrollLanes
+        top : int
+    ZoomLanes
+        factor : float
+    ChooseOutput
+        index : int
+        offset : int
+    NewGroup
+    BrowseBuses
+    BrowseSends
+        offset : int
+    PickBus
+    RouteBus
+    BeginSend
+        identity : int
+    PagePortRoutes
+        offset : int
+    SendSource
+    SendDestination
+    SendLevel
+    FlipSend
+    CommitSend
+    DeleteSend
+    GroupName
+    CommitGroup
+    CloseOutput
+    AssignBus
+        index : int
+        bus : string
+    OpenTrack
+        index : int
+    PlaySong
+    RenderSong
+    StopSong
+    ToggleLoop
+    MoveEnd
+        bar : int
+    MoveStart
+        bar : int
+    SaveProject
+    UseKeymap
+        name : string
+    LoadKeymap
+    Controls

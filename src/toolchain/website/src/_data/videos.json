@@ -510,5 +510,49 @@
       "benchmark"
     ],
     "durationSeconds": 427.418
+  },
+  "prism-daw": {
+    "name": "Prism: a daw whose every voice is Osprey synthesis",
+    "description": "Prism opens a 17-track song on macOS. Each voice type's patch is opened and auditioned in turn: additive partials, an FM phase operator, a modal bank bell, a bowed string waveguide and a struck exciter drum. Then the Mix page, and Play bars renders two bars with @osprey/synth and plays them. Recorded by the daw's native video journey, which clicks like a user and fails if any click leaves the screen unchanged.",
+    "kind": "intro",
+    "content": "/assets/videos/osprey-prism-daw.mp4",
+    "poster": "/assets/videos/osprey-prism-daw-poster.jpg",
+    "posterAlt": "Prism's Timeline page with seventeen tracks of the Broken Circuitry project",
+    "captions": "/assets/videos/osprey-prism-daw.en.vtt",
+    "chapters": "/assets/videos/osprey-prism-daw.chapters.vtt",
+    "width": 1920,
+    "height": 1114,
+    "uploadDate": "2026-11-21T01:10:00+11:00",
+    "tags": [
+      "Osprey",
+      "Osprey Native",
+      "synthesis",
+      "audio",
+      "daw",
+      "FerroUI"
+    ],
+    "durationSeconds": 150.0
+  },
+  "prism-daw-editing": {
+    "name": "Prism: edit a patch, a note and the mix, then hear it",
+    "description": "Prism, a DAW written in Osprey, edits a 17-track song on macOS: a note's velocity and a reverb send on the Timeline, a Delay dragged into the glass voice's patch and wired in, a send on Mix that reveals a group bus with a compressor keyed from the kick, and the shared reverb. Play then renders the edited bars with @osprey/synth. Recorded by the daw's native video journey, which clicks like a user and fails if any click leaves the screen unchanged; the render wait is cut.",
+    "kind": "intro",
+    "content": "/assets/videos/osprey-prism-daw-editing.mp4",
+    "poster": "/assets/videos/osprey-prism-daw-editing-poster.jpg",
+    "posterAlt": "Prism's Patch page: additive partials and a smoother wired through a newly added Delay to the output",
+    "captions": "/assets/videos/osprey-prism-daw-editing.en.vtt",
+    "chapters": "/assets/videos/osprey-prism-daw-editing.chapters.vtt",
+    "width": 1920,
+    "height": 1312,
+    "uploadDate": "2026-11-21T09:15:00+11:00",
+    "tags": [
+      "Osprey",
+      "synthesis",
+      "audio",
+      "daw",
+      "modular",
+      "sound design"
+    ],
+    "durationSeconds": 59.0
   }
 }

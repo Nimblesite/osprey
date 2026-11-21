@@ -7,3 +7,22 @@ fn name(c: Color) -> string = match c {
     Green => "g"
 }
 print(name(Blue))
+
+// [PATTERN-NESTED] An arm the earlier nested arms already cover is
+// unreachable, whatever its spelling.
+type Tree = Leaf | Node(Tree, Tree)
+fn depth(tree) = match tree {
+    Node(_, Leaf) => 1
+    Node(_, Node(_, _)) => 2
+    Node(Leaf, Leaf) => 3
+    Leaf => 0
+}
+
+fn layered(r) = match r {
+    Error { message: Error { message } } => "inner ${message}"
+    Error { message: Success { value } } => "ok ${value}"
+    Error { message: Success { value: 7 } } => "seven"
+    Success { value } => "plain ${value}"
+}
+print("${depth(Leaf)} ${layered(Success { value: 1 })}")
+

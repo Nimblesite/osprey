@@ -128,8 +128,8 @@ jobs:
             src/toolchain/vscode-extension/package-lock.json
             src/toolchain/webcompiler/package-lock.json
             src/toolchain/website/package-lock.json
-            src/osprey/examples/projects/modules/e2e/package-lock.json
-            src/osprey/examples/projects/modules/web/package-lock.json
+            src/osprey/examples/talon/playwright-e2e-tests/package-lock.json
+            src/toolchain/hosts/web/package-lock.json
 
       # Rust toolchain + clang/LLVM + lldb-dap + the C runtime archives + the
       # release binary.
@@ -156,10 +156,11 @@ jobs:
       - name: Build the wasm runtime archive
         run: make _runtime_wasm
 
-      - name: Build the shared Talon browser client
+      - name: Build Talon Bank for the web host
         run: |
-          npm ci --prefix src/osprey/examples/projects/modules/web
-          npm --prefix src/osprey/examples/projects/modules/web run build
+          npm ci --prefix src/toolchain/hosts/web
+          node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/talon/app --title "Talon Bank" --out src/toolchain/hosts/web/build/talon \
+            --module src/osprey/examples/talon/backend/web/bundle.ospml --namespace bank/web
 
       - name: Build the extension bundle
         run: make _vsix_bundle
@@ -200,7 +201,7 @@ jobs:
             src/toolchain/compiler/lib/
             src/toolchain/compiler/bin/*.a
             target/wasm32-wasip2/debug/osprey_zed.wasm
-            src/osprey/examples/projects/modules/src/web/bundle.ospml
+            src/osprey/examples/talon/backend/web/bundle.ospml
           retention-days: 7
           if-no-files-found: error
 
@@ -758,6 +759,9 @@ jobs:
       - name: Full proof acceptance and Lean speed gate
         run: make -j3 _test_proof_ci
 
+      - name: Verify synthesis properties against production Osprey
+        run: make _check_synthesis_proofs
+
   test-c-runtime:
     name: "Tests: C runtime (coverage)"
     needs: [changes, build]
@@ -1094,14 +1098,14 @@ jobs:
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v7
-      # scripts/mobile/test-mobile-tools.py decodes the LFS-stored phone golden; a pointer is not a picture.
+      # scripts/mobile/goldens.test.mjs decodes the LFS-stored phone golden; a pointer is not a picture.
       - name: Fetch the Android phone goldens
         run: git lfs install --local && git lfs pull --include="src/osprey/examples/tally/goldens/android/**"
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: src/osprey/examples/projects/modules/e2e/package-lock.json
+          cache-dependency-path: src/osprey/examples/talon/playwright-e2e-tests/package-lock.json
 
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
@@ -1130,21 +1134,25 @@ jobs:
       - name: Shared mobile domain and build-tool regressions
         run: |
           python3 scripts/mobile/test-mobile-tools.py
+          node --test scripts/mobile/goldens.test.mjs
           target/release/osprey src/osprey/examples/mobile/inbox/test --run
-          target/release/osprey src/osprey/examples/projects/modules/mobile/app/test --run
+          target/release/osprey test src/osprey/examples/talon/app/test
 
       - name: Osprey Agent suites
         run: make _test_agent
 
       - name: Install bank e2e dependencies
         run: npm ci
-        working-directory: ./src/osprey/examples/projects/modules/e2e
+        working-directory: ./src/osprey/examples/talon/playwright-e2e-tests
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
-        working-directory: ./src/osprey/examples/projects/modules/e2e
+        working-directory: ./src/osprey/examples/talon/playwright-e2e-tests
       - name: Bank e2e (Playwright)
         run: npx playwright test
-        working-directory: ./src/osprey/examples/projects/modules/e2e
+        working-directory: ./src/osprey/examples/talon/playwright-e2e-tests
+      - name: Bank journey and goldens (Playwright)
+        run: npx playwright test -c journey.config.js
+        working-directory: ./src/osprey/examples/talon/playwright-e2e-tests
 
       # The HTML documentation export is a shipped artifact with navigation,
       # search, themes and a mobile layout. Its unit tests assert what the
@@ -1159,7 +1167,7 @@ jobs:
         if: failure()
         with:
           name: bank-e2e-results
-          path: src/osprey/examples/projects/modules/e2e/test-results/
+          path: src/osprey/examples/talon/playwright-e2e-tests/test-results/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -1191,7 +1199,7 @@ jobs:
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v7
-      # The phone goldens are LFS-stored; a pointer would reach scripts/mobile/goldens.py as a picture.
+      # The phone goldens are LFS-stored; a pointer would reach scripts/mobile/goldens.mjs as a picture.
       - name: Fetch the Android phone goldens
         run: git lfs install --local && git lfs pull --include="src/osprey/examples/tally/goldens/android/**"
 
@@ -1260,10 +1268,9 @@ jobs:
           script: |
             make -C src/toolchain/targets/android/tests inbox
             make -C src/toolchain/targets/android/tests tally-headless
-            mkdir -p src/osprey/examples/projects/modules/mobile/android/build
-            adb logcat -v threadtime > src/osprey/examples/projects/modules/mobile/android/build/logcat.txt &
+            mkdir -p src/toolchain/hosts/android/build
+            adb logcat -v threadtime > src/toolchain/hosts/android/build/logcat.txt &
             make -C src/toolchain/targets/android/tests bank
-            scripts/mobile/gradlew -p src/osprey/examples/projects/modules/mobile/android --console=plain :app:lintDebug
             scripts/mobile/gradlew -p src/osprey/examples/mobile/android --console=plain :app:lintDebug
 
       - name: Native bank Android results
@@ -1272,11 +1279,8 @@ jobs:
         with:
           name: bank-android-results
           path: |
-            src/osprey/examples/projects/modules/mobile/android/build/instrumentation.txt
-            src/osprey/examples/projects/modules/mobile/android/build/logcat.txt
-            src/osprey/examples/projects/modules/mobile/android/build/screenshots/
+            src/toolchain/hosts/android/build/logcat.txt
             src/toolchain/hosts/android/build/*.png
-            src/osprey/examples/projects/modules/mobile/android/app/build/reports/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -1290,7 +1294,7 @@ jobs:
           df -h /
           find /tmp/android-*/emu-crash-* -type f -printf '%p %s\n'
           pgrep -a qemu || echo "No qemu process is running"
-          tail -80 src/osprey/examples/projects/modules/mobile/android/build/logcat.txt || echo "No logcat was captured"
+          tail -80 src/toolchain/hosts/android/build/logcat.txt || echo "No logcat was captured"
 
   # iOS/macOS device and simulator builds, simulator tests and the native
   # Workbench host. The iOS parts run on macos-26. Both images are ARM64,
@@ -1415,14 +1419,6 @@ jobs:
             target/orchestra/diagnostics/*.jsonl
           if-no-files-found: error
           retention-days: 7
-
-      - name: Native bank simulator results
-        if: ${{ always() && matrix.part == 'Talon Bank' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: bank-ios-results
-          path: src/osprey/examples/projects/modules/mobile/ios/build/**/*.xcresult
-          if-no-files-found: ignore
 
   # ═══ STAGE 4 ════════════════════════════════════════════════════════════════
   # Thresholds are enforced HERE, against reports the test jobs produced. This
@@ -1577,6 +1573,11 @@ jobs:
     name: WinUI host
     uses: ./.github/workflows/winui.yml
 
+  # The release gate's own audit, so a PR cannot merge what `make audit` will refuse to release.
+  audit:
+    name: Dependency audit
+    uses: ./.github/workflows/ci-audit.yml
+
   # ═══ THE REQUIRED CHECK ═════════════════════════════════════════════════════
   # The only check the `main` ruleset requires: the root job every other job
   # sits under. `always()` makes it run when a job it needs fails, which would
@@ -1612,6 +1613,7 @@ jobs:
       - windows
       - gpui
       - winui
+      - audit
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

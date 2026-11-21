@@ -1,0 +1,40 @@
+// [SYNTH-ADVANCED-NONLINEAR] Bounded waveshapers with drive, bias, DC blocking and optional ADAA.
+namespace synth
+
+(** Curves are bounded to ±1. ADAA adds half a sample of delay and is exact only for its first-order model. *)
+module Waveshapers
+    (** Silent history. *)
+    export initial = ShaperState(previous = 0.0, blockerInput = 0.0, blockerOutput = 0.0)
+
+    (** Drive 0.1–50 (linear input gain), bias −1–1 (asymmetry, removed again by a 5 Hz DC blocker), level 0–1. *)
+    export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.drive >= 0.1 && config.drive <= 50.0 && config.bias >= -1.0 && config.bias <= 1.0 && config.level >= 0.0 && config.level <= 1.0
+        true => Success(value = config)
+        false => Error(message = InvalidConfiguration(detail = "Invalid shaper rate, drive, bias or level."))
+
+    (** The memoryless curve. *)
+    export curve (shape, x) = match shape
+        TanhCurve => NonlinearMath::tanh x
+        HardCurve => NonlinearMath::hard x
+        CubicCurve => NonlinearMath::cubic x
+        FoldCurve => NonlinearMath::fold x
+
+    integral (shape, x) = match shape
+        TanhCurve => NonlinearMath::tanhIntegral x
+        HardCurve => NonlinearMath::hardIntegral x
+        CubicCurve => NonlinearMath::cubicIntegral x
+        FoldCurve => NonlinearMath::foldIntegral x
+
+    shaped (config, current, previous) = match config.antialias
+        false => curve (config.curve, current)
+        true =>
+            difference = current - previous
+            match abs difference < 0.00001
+                true => curve (config.curve, 0.5 * (current + previous))
+                false => (integral (config.curve, current) - integral (config.curve, previous)) / difference
+
+    (** One sample with an accepted configuration. *)
+    export next (config, held, input) =
+        driven = config.drive * input + config.bias
+        value = shaped (config, driven, held.previous)
+        blocked = NonlinearMath::dcBlock (value, held.blockerInput, held.blockerOutput, NonlinearMath::dcCoefficient (5.0, config.sampleRate))
+        ShaperSample(sample = config.level * blocked, next = ShaperState(previous = driven, blockerInput = value, blockerOutput = blocked))

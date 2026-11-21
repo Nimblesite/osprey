@@ -1,0 +1,24 @@
+import synth::Parameters
+import synth::SnapshotSlots
+import synth::Smoothers
+
+// [SYNTH-ADVANCED-CORE-SIGNALS] A slow panel receives one coherent slider snapshot and a missed-update count.
+knobSnapshotJourney () =
+    graph = sineThrough 0.5
+    initial = Parameters::initial graph
+    slot = SnapshotSlots::initial initial
+    edit = synth::ParameterChange(node = 2, key = "gain", value = 0.75, revision = 0, samplePosition = 0)
+    valid (Parameters::apply (graph, initial, edit), \first =>
+        valid (Parameters::apply (graph, first, edit(revision = 1, value = 0.25)), \second =>
+            latest = SnapshotSlots::read (SnapshotSlots::publish (SnapshotSlots::publish (slot, first), second))
+            expect (structuralEquals (latest.observation, second), true)
+            expect (latest.coalesced, 1)
+            expect ((SnapshotSlots::read latest.next).coalesced, 0)
+            expect ((SnapshotSlots::read slot).observation.revision, 0)))
+    config = synth::SmootherConfig(sampleRate = 8000.0, time = 0.001, linear = true)
+    succeeds (Smoothers::configure config, \accepted =>
+        up = Smoothers::next (accepted, Smoothers::initial 0.25, 1.0)
+        expect (up.sample, 0.375)
+        down = Smoothers::next (accepted, up.next, 0.0)
+        expect (down.sample, 0.25)
+        expect ((Smoothers::next (accepted, down.next, 0.3125)).sample, 0.3125))

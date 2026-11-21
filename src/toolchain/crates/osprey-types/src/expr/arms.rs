@@ -305,7 +305,8 @@ impl Checker {
             // against the types this call actually supplies
             // ([`crate::ty::Scheme::obligations`]). A key with no location of
             // its own is located HERE, so its diagnostic names this use.
-            let obligations = self.located_obligations(applied.obligations, self.expr_position);
+            let obligations =
+                self.located_obligations(applied.obligations, self.expr_position, name);
             self.builtin_uses.extend(obligations);
             if let Some(site) = site {
                 let _ = self

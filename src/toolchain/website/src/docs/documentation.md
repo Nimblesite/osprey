@@ -1,8 +1,8 @@
 ---
 layout: page.njk
 mlTwins: false
-title: Documenting your modules
-description: Generate HTML API documentation, add Markdown guides and custom CSS, and run executable examples.
+title: "Document Osprey modules: API reference and guides"
+description: "Generate an HTML API reference from your Osprey modules, add Markdown guides and custom CSS, and test every code example in the docs."
 ---
 
 {% from "native-capture.njk" import capture %}

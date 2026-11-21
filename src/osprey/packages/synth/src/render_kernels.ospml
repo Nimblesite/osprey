@@ -13,18 +13,23 @@ module RenderKernels
                 sample = Oscillators::next (config, OscillatorState(phase = held.phase))
                 Success(value = RenderInputs::emitted (frame, held(phase = sample.next.phase), shape sample.sample))
 
-    filtered (frame, held, config, input) = match Filters::configure config
-        Error why => Error(message = why)
-        Success coefficients =>
-            sample = Filters::next (coefficients, FilterState(integratorOne = held.integratorOne, integratorTwo = held.integratorTwo), input)
-            next = held(integratorOne = sample.next.integratorOne, integratorTwo = sample.next.integratorTwo)
-            Success(value = RenderInputs::emitted (frame, next, sample.low))
+    filtered (frame, held, coefficients, input) =
+        sample = Filters::next (coefficients, FilterState(integratorOne = held.integratorOne, integratorTwo = held.integratorTwo), input)
+        next = held(integratorOne = sample.next.integratorOne, integratorTwo = sample.next.integratorTwo)
+        Success(value = RenderInputs::emitted (frame, next, sample.low))
 
-    lowpass (plan, rate, snapshot, frame, held, input) = match cutoff (plan, snapshot, frame, held.identity)
-        Error why => Error(message = why)
-        Success cutoff => match RenderInputs::parameter (snapshot, held.identity, "resonance")
-            Error why => Error(message = why)
-            Success resonance => filtered (frame, held, FilterConfig(sampleRate = rate, cutoff = cutoff, resonance = resonance), input)
+    filterSettings (rate, snapshot, identity, cutoff) = RenderInputs::setting (snapshot, identity, "resonance", \resonance => Filters::configure (FilterConfig(sampleRate = rate, cutoff = cutoff, resonance = resonance)))
+
+    prepareFilter (rate, snapshot, identity, cables) = match Seek::first (cables, \c => c.destination == identity && c.inlet == 1)
+        Success _ => LiveFilter
+        Error _ => match RenderInputs::setting (snapshot, identity, "cutoff", \cutoff => filterSettings (rate, snapshot, identity, cutoff))
+            Error _ => LiveFilter
+            Success c => FixedFilter(coefficients = c)
+
+    lowpass (plan, rate, snapshot, frame, held, input, prepared) = match prepared
+        FixedFilter c => filtered (frame, held, c, input)
+        LiveFilter => Outcomes::carried (cutoff (plan, snapshot, frame, held.identity), \value =>
+            Outcomes::carried (filterSettings (rate, snapshot, held.identity, value), \c => filtered (frame, held, c, input)))
 
     cutoff (plan, snapshot, frame, identity) = match RenderInputs::parameter (snapshot, identity, "cutoff")
         Error why => Error(message = why)
@@ -33,77 +38,150 @@ module RenderKernels
             false => match RenderInputs::input (plan, frame, identity, 1)
                 Error why => Error(message = why)
                 Success control => match control >= 0.0 && control <= 1.0
-                    false => Error(message = "Cutoff modulation must stay between zero and one.")
+                    false => Error(message = InvalidConfiguration(detail = "Cutoff modulation must stay between zero and one."))
                     true => Success(value = Waves::controlledCutoff (base, control))
 
     gain (snapshot, frame, held, input) = match RenderInputs::parameter (snapshot, held.identity, "gain")
         Error why => Error(message = why)
         Success level => match level >= 0.0 && level <= 8.0
-            false => Error(message = "Invalid gain.")
-            true => Success(value = RenderInputs::emitted (frame, held, input * level))
+            false => Error(message = InvalidConfiguration(detail = "Invalid gain."))
+            true => Success(value = RenderInputs::output (frame, held.identity, input * level))
 
-    mixer (plan, frame, held, first) = match RenderInputs::input (plan, frame, held.identity, 1)
+    mixer (plan, snapshot, frame, held, first) = match RenderInputs::input (plan, frame, held.identity, 1)
         Error why => Error(message = why)
-        Success second => Success(value = RenderInputs::emitted (frame, held, first + second))
+        Success second => RenderInputs::bound (snapshot, held, "firstGain", \a =>
+            RenderInputs::bound (snapshot, held, "secondGain", \b =>
+                match a >= 0.0 && a <= 1.0 && b >= 0.0 && b <= 1.0
+                    false => Error(message = InvalidConfiguration(detail = "Mixer input gains must be between zero and one."))
+                    true => Success(value = RenderInputs::output (frame, held.identity, WaveMath::mixed (first, a, second, b)))))
 
     controlled (plan, snapshot, frame, held, input) = match RenderInputs::input (plan, frame, held.identity, 1)
         Error why => Error(message = why)
         Success control => match control >= 0.0 && control <= 1.0
-            false => Error(message = "Gain modulation must stay between zero and one.")
+            false => Error(message = InvalidConfiguration(detail = "Gain modulation must stay between zero and one."))
             true => match RenderInputs::parameter (snapshot, held.identity, "gain")
                 Error why => Error(message = why)
                 Success level => match level >= 0.0 && level <= 8.0
-                    false => Error(message = "Invalid gain.")
-                    true => Success(value = RenderInputs::emitted (frame, held, Waves::controlledGain (input, level, control)))
+                    false => Error(message = InvalidConfiguration(detail = "Invalid gain."))
+                    true => Success(value = RenderInputs::output (frame, held.identity, Waves::controlledGain (input, level, control)))
 
-    processor (plan, rate, snapshot, frame, held, n, input) = match n.processor
+    passthrough (frame, held, input) = Success(value = RenderInputs::output (frame, held.identity, input))
+
+    // [SYNTH-GRAPH-CHANNELS] Mono split, join and route are identity (or mapped silence); wider layouts
+    // never reach this mono renderer because their ports fail its layout checks.
+    monoRouted (entries, frame, held, input) = match listGet entries 0
+        Error _ => Error(message = IncompatibleLayout(detail = "A channel route needs at least one output channel."))
+        Success entry => match entry
+            -1 => Success(value = RenderInputs::output (frame, held.identity, 0.0))
+            _ => passthrough (frame, held, input)
+
+    processor (plan, rate, snapshot, frame, held, scheduled, input) = match scheduled.node.processor
         ModulatedGain => controlled (plan, snapshot, frame, held, input)
-        Filter => lowpass (plan, rate, snapshot, frame, held, input)
+        Filter => lowpass (plan, rate, snapshot, frame, held, input, scheduled.filter)
         Amplifier => gain (snapshot, frame, held, input)
-        Mixer => mixer (plan, frame, held, input)
-        Sink => Success(value = RenderInputs::emitted (frame, held, input))
-        _ => Error(message = "Unsupported processor in the reference audio renderer.")
+        Mixer => mixer (plan, snapshot, frame, held, input)
+        Sink => passthrough (frame, held, input)
+        Split => passthrough (frame, held, input)
+        Join => passthrough (frame, held, input)
+        Panner => passthrough (frame, held, input)
+        Route entries => monoRouted (entries, frame, held, input)
+        Spectral size hop => SpectralKernels::process (plan, rate, snapshot, frame, held, size, hop, input, scheduled.spectrum)
+        Shaper => EffectKernels::shaper (rate, snapshot, frame, held, input, scheduled.physical)
+        Reverb => EffectKernels::reverb (rate, snapshot, frame, held, input)
+        Shifter => EffectKernels::shifter (rate, snapshot, frame, held, input)
+        _ => PhysicalKernels::process (rate, snapshot, frame, held, scheduled.node, input, scheduled.physical)
 
-    selected (plan, rate, snapshot, frame, held, n) = match n.processor
-        Oscillator => match waveform (snapshot, n)
-            Error why => Error(message = why)
-            Success wave => sine (rate, snapshot, frame, held, wave, \value => value)
-        Lfo => sine (rate, snapshot, frame, held, Sine, Waves::unipolar)
-        Delay _ => match listGet held.delay 0
-            Error _ => Error(message = "index out of bounds")
-            Success previous => Success(value = RenderInputs::emitted (frame, held, previous))
-        _ => match RenderInputs::input (plan, frame, held.identity, 0)
-            Error why => Error(message = why)
-            Success input => processor (plan, rate, snapshot, frame, held, n, input)
+    playback (resource, rate, snapshot, frame, held) = match floatToInt (floor held.phase)
+        Error _ => Error(message = InvalidConfiguration(detail = "Invalid sample cursor."))
+        Success index => match SampleResources::monoAt (resource, index)
+            Error _ => Success(value = RenderInputs::output (frame, held.identity, 0.0))
+            Success left => Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "rate"), \speed =>
+                right = SampleResources::monoAt (resource, satAdd index 1) ?: 0.0
+                step = WaveMath::playbackRate (toFloat resource.sampleRate, rate, speed, 1.0)
+                sample = Interpolation::linear (left, right, GrainMath::fraction held.phase)
+                Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "gain"), \gain => Success(value = RenderInputs::emitted (frame, held(phase = GrainMath::summed (held.phase, step)), GrainMath::placed (sample, gain)))))
+
+    selected (plan, rate, snapshot, frame, held, scheduled) =
+        n = scheduled.node
+        match n.processor
+            Oscillator => Outcomes::carried (waveform (snapshot, scheduled), \wave => sine (rate, snapshot, frame, held, wave, \value => value))
+            Lfo => sine (rate, snapshot, frame, held, Sine, Waves::unipolar)
+            SamplePlayer resource => playback (resource, rate, snapshot, frame, held)
+            Exciter _ => PhysicalKernels::excite (snapshot, frame, held, scheduled.physical)
+            TableOscillator table => TableKernels::wavetable (rate, plan, snapshot, frame, held, table)
+            Additive => TableKernels::scheduled (rate, snapshot, frame, held, scheduled.bank)
+            PhaseOperator => OperatorKernels::process (plan, rate, snapshot, frame, held, scheduled.phase)
+            Bowed capacity => PhysicalKernels::bowed (rate, snapshot, frame, held, capacity)
+            Delay _ => match listGet held.delay 0
+                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+                Success previous => Success(value = RenderInputs::output (frame, held.identity, previous))
+            _ => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \input => processor (plan, rate, snapshot, frame, held, scheduled, input))
+
+    declared (n, key) = match Seek::first (n.parameters, \p => p.key == key)
+        Error _ => false
+        Success _ => true
+
+    physical (rate, snapshot, n, fixed) = match fixed
+        false => LivePhysical
+        true => match n.processor
+            Modal => PhysicalKernels::prepareModal (rate, snapshot, n.identity)
+            Exciter _ => PhysicalKernels::prepareExciter (snapshot, n.identity)
+            Waveguide capacity => PhysicalKernels::prepare (rate, snapshot, n.identity, capacity)
+            Shaper => EffectKernels::prepare (rate, snapshot, n.identity)
+            _ => LivePhysical
+
+    bankFor (n, rate, controls, fixed) = match fixed && (n.processor == Additive)
+        true => TableKernels::prepare (rate, controls, n.identity)
+        false => DynamicPartials
+
+    // Kernel updates preserve the caller's state order throughout a block.
+    stateSlot (states, identity, index) = match listGet states index
+        Error _ => -1
+        Success held => match held.identity == identity
+            true => index
+            false => stateSlot (states, identity, satAdd index 1)
+
+    (** Resolve optional parameter declarations once for the scheduled node. *)
+    export schedule (plan, identity, rate, snapshot, fixed, states) = match Graphs::node (plan.graph, identity)
+        Invalid why => Invalid(fault = why)
+        Valid n =>
+            controls = match fixed
+                true => snapshot(parameters = filterList (snapshot.parameters, \p => p.node == identity))
+                false => snapshot
+            phase = match fixed && (n.processor == PhaseOperator)
+                true => OperatorKernels::prepare (rate, controls, identity)
+                false => LiveOperator
+            filter = match fixed && (n.processor == Filter)
+                true => prepareFilter (rate, controls, identity, plan.graph.cables)
+                false => LiveFilter
+            Valid(value = { filter = filter, phase = phase, node = n, slot = stateSlot (states, identity, 0), physical = physical (rate, controls, n, fixed), spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
 
     (** Render one scheduled component or return its explicit fault. *)
-    export step (plan, rate, snapshot, frame, identity) = match RenderInputs::component (plan, identity)
-        Error why => Error(message = why)
-        Success n => match RenderInputs::held (frame, identity)
-            Error why => Error(message = why)
-            Success held => match listGet (filterList (n.parameters, \p => p.key == "enabled")) 0
-                Error _ => selected (plan, rate, snapshot, frame, held, n)
-                Success _ => match RenderInputs::parameter (snapshot, identity, "enabled")
-                    Error why => Error(message = why)
-                    Success enabled => match enabled
-                        1.0 => selected (plan, rate, snapshot, frame, held, n)
-                        0.0 => bypassed (plan, frame, held, n)
-                        _ => Error(message = "Enabled must be zero or one.")
+    export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, rate, snapshot, false, frame.states))
 
-    waveform (snapshot, n) = match listGet (filterList (n.parameters, \p => p.key == "waveform")) 0
-        Error _ => Success(value = Sine)
-        Success _ => match RenderInputs::parameter (snapshot, n.identity, "waveform")
-            Error why => Error(message = why)
-            Success value => match value
-                0.0 => Success(value = Sine)
-                1.0 => Success(value = Triangle)
-                2.0 => Success(value = Saw)
-                3.0 => Success(value = Pulse)
-                _ => Error(message = "Unknown oscillator waveform.")
+    (** Run a scheduled component resolved for this block. *)
+    export resolved (plan, rate, current, frame, component) = match component
+        Invalid _ => Error(message = MissingResource(detail = "Render schedule names an absent component."))
+        Valid scheduled =>
+            snapshot = match scheduled.fixed
+                true => scheduled.controls
+                false => current
+            match listGet frame.states scheduled.slot
+                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+                Success held => match scheduled.switchable
+                    false => selected (plan, rate, snapshot, frame, held, scheduled)
+                    true => match RenderInputs::parameter (snapshot, held.identity, "enabled")
+                        Error why => Error(message = why)
+                        Success enabled => match enabled
+                            1.0 => selected (plan, rate, snapshot, frame, held, scheduled)
+                            0.0 => bypassed (plan, frame, held, scheduled.node)
+                            _ => Error(message = InvalidConfiguration(detail = "Enabled must be zero or one."))
+
+    waveform (snapshot, scheduled) = match scheduled.selectableWave
+        false => Success(value = Sine)
+        true => Outcomes::carried (RenderInputs::parameter (snapshot, scheduled.node.identity, "waveform"), \value => Outcomes::chosen (value, [Sine, Triangle, Saw, Pulse], "Unknown oscillator waveform."))
 
     bypassed (plan, frame, held, n) = match n.processor
-        Filter => match RenderInputs::input (plan, frame, held.identity, 0)
-            Error why => Error(message = why)
-            Success value => Success(value = RenderInputs::emitted (frame, held, value))
-        Lfo => Success(value = RenderInputs::emitted (frame, held, 1.0))
-        _ => Success(value = RenderInputs::emitted (frame, held, 0.0))
+        Filter => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \value => Success(value = RenderInputs::output (frame, held.identity, value)))
+        Lfo => Success(value = RenderInputs::output (frame, held.identity, 1.0))
+        _ => Success(value = RenderInputs::output (frame, held.identity, 0.0))

@@ -1,0 +1,84 @@
+// [SYNTH-ADVANCED-SPECTRAL-MODULES] Keep the spectral stream in the graph between samples.
+namespace synth
+
+import synth::RenderInputs
+
+(** The graph adapter retains each channel’s FFT state across render blocks. *)
+module SpectralKernels
+    (** Kernel storage for a stream of `size`: three sample buffers and two complex bin buffers. *)
+    export storage size = satAdd (satMul size 5) 4
+
+    // A pitch shift in semitones and cents; its formants stay put only when `keep` is on.
+    pitched pitch =
+        ratio = SpectralMath::semitoneRatio (pitch.semitones, pitch.cents)
+        SpectralPitch(ratio = ratio, formant = SpectralMath::formantRatio (pitch.keep, ratio))
+
+    transform (selector, hold, low, high, shift, amount, morphMode, pitch) = match selector
+        0.0 => Success(value = SpectralPass)
+        1.0 => Success(value = SpectralFreeze(held = hold >= 0.5))
+        2.0 => Success(value = SpectralBand(low = low, high = high))
+        3.0 => Outcomes::carried (Outcomes::integer (shift, "Spectral shift must be a whole number of bins."), \bins => Success(value = SpectralShift(bins = bins)))
+        4.0 => Success(value = SpectralSmear(amount = amount))
+        5.0 => match morphMode
+            0.0 => Success(value = SpectralMorph(amount = amount, mode = Blend))
+            1.0 => Success(value = SpectralMorph(amount = amount, mode = Envelope))
+            2.0 => Success(value = SpectralMorph(amount = amount, mode = Partial))
+            _ => Error(message = InvalidConfiguration(detail = "Morph mode must be 0 blend, 1 envelope or 2 partial."))
+        6.0 => Success(value = pitched pitch)
+        _ => Error(message = InvalidConfiguration(detail = "Transform must be 0 pass, 1 freeze, 2 band, 3 shift, 4 smear, 5 morph or 6 pitch."))
+
+    streamed (frame, held, input, side, configured) = match configured
+        Error why => Error(message = why)
+        Success config =>
+            current = match held.memory
+                KernelIdle => Success(value = SpectralStreams::initial config)
+                SpectralRunning stream => Success(value = stream)
+                _ => Error(message = IncompatibleLayout(detail = "Spectral processor requires its FFT stream."))
+            Outcomes::carried (current, \stream => Outcomes::carried (SpectralStreams::next (config, stream, input, side), \step => Success(value = RenderInputs::emitted (frame, held(memory = SpectralRunning(stream = step.next)), step.sample))))
+
+    configured (rate, size, hop, chosen, mix) = Outcomes::carried (chosen, \kind => SpectralStreams::configure (SpectralConfig(sampleRate = rate, size = size, hop = hop, transform = kind, mix = mix)))
+
+    // An unplugged side input is silence, not an error: only morphing listens to it.
+    side (plan, frame, identity) = match length (filterList (plan.graph.cables, \c => c.destination == identity && c.inlet == 1)) == 0
+        true => Success(value = 0.0)
+        false => RenderInputs::input (plan, frame, identity, 1)
+
+    settings (rate, snapshot, identity, size, hop) = RenderInputs::setting (snapshot, identity, "transform", \selector => RenderInputs::setting (snapshot, identity, "hold", \hold => RenderInputs::setting (snapshot, identity, "low", \low => RenderInputs::setting (snapshot, identity, "high", \high => RenderInputs::setting (snapshot, identity, "shift", \shift => RenderInputs::setting (snapshot, identity, "amount", \amount => RenderInputs::setting (snapshot, identity, "morphMode", \morphMode => RenderInputs::setting (snapshot, identity, "mix", \mix => RenderInputs::setting (snapshot, identity, "semitones", \semitones => RenderInputs::setting (snapshot, identity, "cents", \cents => RenderInputs::setting (snapshot, identity, "keepFormants", \keep => configured (rate, size, hop, transform (selector, hold, low, high, shift, amount, morphMode, { semitones = semitones, cents = cents, keep = keep }), mix))))))))))))
+
+    (** Resolve fixed FFT parameters once; automated blocks resolve them at each sample. *)
+    export prepare (rate, snapshot, identity, processor, fixed) = match processor
+        Spectral size hop => match fixed
+            true => match settings (rate, snapshot, identity, size, hop)
+                Success config => FixedSpectrum(config = config)
+                Error _ => LiveSpectrum
+            false => LiveSpectrum
+        _ => LiveSpectrum
+
+    (** Read live audio from both inlets with the configuration for this sample. *)
+    export process (plan, rate, snapshot, frame, held, size, hop, input, prepared) = Outcomes::carried (side (plan, frame, held.identity), \other =>
+        config = match prepared
+            LiveSpectrum => settings (rate, snapshot, held.identity, size, hop)
+            FixedSpectrum fixed => Success(value = fixed)
+        streamed (frame, held, input, other, config))
+
+    stages size = match size <= 1
+        true => 0
+        false => satAdd 1 (stages (intDiv size 2))
+
+    (** A conservative cost per output sample for one node: three transforms (main, side, inverse), each billed
+        `size · log2 size` operations (one complex multiply and add per point per stage, twice the radix-2 butterfly
+        count of `size / 2 · log2 size`), every `hop` samples. The side transform is billed even when no morph reads it. *)
+    export cost (size, hop) = match hop >= 1
+        true => intDiv (satMul 3 (satMul size (stages size))) hop
+        false => 2147483647
+
+    (** The whole graph's spectral budget: 1,024 butterflies per sample — e.g. seven 4,096/1,024 nodes
+        (144 each) or nine 512/128 nodes (108 each). *)
+    export budget = 1024
+
+    nodeCost n = match n.processor
+        Spectral size hop => cost (size, hop)
+        _ => 0
+
+    (** Whether a graph's spectral nodes fit the budget; checked before any buffer is allocated. *)
+    export affordable graph = foldList (graph.nodes, 0, \(total, n) => satAdd total (nodeCost n)) <= budget

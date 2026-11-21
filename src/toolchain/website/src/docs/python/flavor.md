@@ -1,17 +1,15 @@
 ---
 mlTwins: manual
 layout: page
-title: Python flavor
-description: The Python flavor is Osprey source that looks like typed Python. The Osprey compiler lowers it into the same AST as every other flavor and compiles it to a native binary; CPython never runs it. Ports of NumPy, PyTorch, Transformers and more are already written in it, and a Qwen3.8-27B model is being built on them.
+title: "Python flavor: static types, compiled to native code"
+description: "Write Osprey in Python syntax: static types without hints, checked effects, and native binaries. CPython never runs it, so NumPy-style ports compile too."
 permalink: /docs/python/flavor/
 tags: [flavors, python, algebraic-effects, gpu]
 ---
 
 {% from "native-capture.njk" import capture %}
 
-Osprey's flavors share type inference, effect checking, modules, memory management and native code generation. Each parses its own syntax into the same canonical abstract syntax tree (AST).
-
-The Python flavor is Osprey that looks like typed Python. You write `def`, `lambda`, `match`, f-strings and PEP 484/695 annotations, and declare effects and handlers with decorated classes. But the program is Osprey: the `osprey` compiler parses it, checks it with Osprey's types and effects, and produces a native binary.
+The Python flavor is Osprey that looks like typed Python. You write `def`, `lambda`, `match`, f-strings and PEP 484/695 annotations, and declare effects and handlers with decorated classes. But the program is Osprey: the `osprey` compiler parses it, checks it with Osprey's types and effects, and produces a native binary. Every flavor parses to the same syntax tree, so types, effects, modules and memory management work the same in all of them.
 
 Much of Python's ML and data stack is [already ported](#python-packages-already-ported) to it: NumPy, SciPy, PyTorch, scikit-learn, Transformers, tokenizers and more. The [local LLM work](#local-llms-in-python-flavor), a Qwen3.8-27B model and an Ollama-compatible server, is written in it too.
 

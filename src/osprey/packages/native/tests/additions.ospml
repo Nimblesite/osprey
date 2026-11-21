@@ -36,6 +36,15 @@ module AdditionCases
 
     sampleStroke () = ui::Stroke(strokePoints = samplePoints (), strokeWidth = 2, strokeAt = 9)
 
+    // A control drawn after a plain button, so its bindings start at ordinal 1.
+    afterButton node = Ui::column [Ui::button ("Before", "", Increment), node]
+
+    // The bindings an editor control delivers: its text, then its cursor.
+    editorEvents () = [ui::TextInput(action = Typed), ui::PlaceInput(action = Load)]
+
+    // The bindings a panning board control delivers: stroke, lasso, then camera.
+    cameraEvents () = [ui::StrokeInput(action = Increment), ui::LassoInput(action = Typed), ui::TextInput(action = Load)]
+
     // The editor node of the sample, read as the typed record it is.
     editorSample () = Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)
 
@@ -58,21 +67,18 @@ module AdditionCases
     export editorEncoding () =
         focusedEditorEncoding ()
         sample = editorSample ()
-        column = Ui::column [Ui::button ("Before", "", Increment), sample]
+        column = afterButton sample
         expect (editorSpelled sample, "Proof|one\ntwo|false|3|0|2|true|danger|E|Expected a premise")
         binds (drawnOf column, 3)
         expect (spelled (toldOf sample), "{kind=\"editor\",label=\"Proof\",value=\"one\ntwo\",inline=?false,cursor=#3,focusEpoch=#0,marks=[{line=#2,underlined=?true,tone=\"danger\",badge=\"E\",note=\"Expected a premise\"}],event=#0,placeEvent=#1}")
-        expect (deliversBinding (column, 0, ui::Tap(action = Increment)), true)
-        expect (deliversBinding (column, 1, ui::TextInput(action = Typed)), true)
-        expect (deliversBinding (column, 2, ui::PlaceInput(action = Load)), true)
+        delivers (column, listPrepend (editorEvents ()) (ui::Tap(action = Increment)))
 
     // `node` spells `nodeSpelled` as an editor, and its told record spells `toldSpelled` with the text binding before the cursor's.
     editorDrawn (node, nodeSpelled, toldSpelled) =
         expect (editorSpelled node, nodeSpelled)
         expect (spelled (toldOf node), toldSpelled)
         binds (drawnOf node, 2)
-        expect (deliversBinding (node, 0, ui::TextInput(action = Typed)), true)
-        expect (deliversBinding (node, 1, ui::PlaceInput(action = Load)), true)
+        delivers (node, editorEvents ())
 
     focusedEditorEncoding () =
         node = Editors::focused ("Formula", "p\u2192q", length "p\u2192", 3, Typed, Load)
@@ -100,12 +106,10 @@ module AdditionCases
     (** [UI-COMPONENTS-BOARD]: the board names its host slice and binds strokes before the lasso. *)
     export boardEncoding () =
         board = Boards::illustrated ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)
-        column = Ui::column [Ui::button ("Before", "", Increment), board]
+        column = afterButton board
         boardDrawn (board, "proof/strokes|2|true|chalk-study.png|false|false", "{kind=\"board\",slice=\"proof/strokes\",count=#2,lasso=?true,backdrop=\"chalk-study.png\",panning=?false,event=#0,lassoEvent=#1}")
         binds (drawnOf column, 3)
-        expect (deliversBinding (column, 0, ui::Tap(action = Increment)), true)
-        expect (deliversBinding (column, 1, ui::StrokeInput(action = Typed)), true)
-        expect (deliversBinding (column, 2, ui::LassoInput(action = Load)), true)
+        delivers (column, [ui::Tap(action = Increment), ui::StrokeInput(action = Typed), ui::LassoInput(action = Load)])
         boardCamera ()
 
     (** [UI-COMPONENTS-BOARD]: a valid stroke retains both ordered points, its width and its completion time. *)
@@ -249,9 +253,7 @@ module AdditionCases
         board = Boards::interactive ("board", 0, true, "chalk-study.png", true, Increment, Typed, Load)
         boardDrawn (board, "board|0|true|chalk-study.png|true|true", "{kind=\"board\",slice=\"board\",count=#0,lasso=?true,backdrop=\"chalk-study.png\",panning=?true,event=#0,lassoEvent=#1,panEvent=#2}")
         binds (drawnOf board, 3)
-        expect (deliversBinding (board, 0, ui::StrokeInput(action = Increment)), true)
-        expect (deliversBinding (board, 1, ui::LassoInput(action = Typed)), true)
-        expect (deliversBinding (board, 2, ui::TextInput(action = Load)), true)
+        delivers (board, cameraEvents ())
         expect (delivered (Surfaces::told (ui::TextInput(action = Load), "{x:12}")), "text load:{x:12}")
         narrowMargin ()
 
@@ -336,7 +338,7 @@ module AdditionCases
         expect (spelled (toldOf section), "{kind=\"section\",title=\"Sides\",footer=\"Feeds four\",children=[{kind=\"text\",text=\"Batter\",role=\"body\",tone=\"primary\"}]}")
         screen = Ui::screen ("Kitchen", "Spring", [Ui::button ("Bake", "", Increment)], [Ui::text "Steps"])
         expect (spelled (toldOf screen), "{kind=\"screen\",title=\"Kitchen\",subtitle=\"Spring\",toolbar=[{kind=\"button\",label=\"Bake\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}],children=[{kind=\"text\",text=\"Steps\",role=\"body\",tone=\"primary\"}]}")
-        expect (deliversBinding (screen, 0, ui::Tap(action = Increment)), true)
+        delivers (screen, [ui::Tap(action = Increment)])
 
     (** [NATIVE-SHM-NODES] Frames tell their whole style record; a scoped theme tells its own tokens with the subtree it inks. *)
     export toldFramesCase () =
@@ -352,12 +354,11 @@ module AdditionCases
     export toldOverlaysCase () =
         dialog = Ui::dialog ("Review", Ui::button ("Insert", "", Increment), Load)
         expect (spelled (toldOf dialog), "{kind=\"dialog\",title=\"Review\",event=#0,body={kind=\"button\",label=\"Insert\",symbol=\"\",role=\"plain\",enabled=?true,event=#1}}")
-        expect (deliversBinding (dialog, 0, ui::Tap(action = Load)), true)
-        expect (deliversBinding (dialog, 1, ui::Tap(action = Increment)), true)
+        delivers (dialog, [ui::Tap(action = Load), ui::Tap(action = Increment)])
         forEachList ([{ on = true }, { on = false }], \alert =>
             shown = ui::Alert(title = "Empty", message = "Nothing left", visible = alert.on, dismiss = Typed)
             expect (spelled (toldOf shown), "{kind=\"alert\",title=\"Empty\",message=\"Nothing left\",visible=?${alert.on},event=#0}")
-            expect (deliversBinding (shown, 0, ui::Tap(action = Typed)), true))
+            delivers (shown, [ui::Tap(action = Typed)]))
         menu = Ui::contextMenu (Ui::text "Body", [Ui::button ("Copy", "", Increment)])
         expect (spelled (toldOf menu), "{kind=\"context-menu\",body={kind=\"text\",text=\"Body\",role=\"body\",tone=\"primary\"},items=[{kind=\"button\",label=\"Copy\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}]}")
 
@@ -365,13 +366,13 @@ module AdditionCases
     export toldAsideCase () =
         trailing = Ui::aside (Ui::text "Pane", ui::Trailing, Ui::text "Column", 420, Typed)
         expect (spelled (toldOf trailing), "{kind=\"aside\",side=\"trailing\",pane={kind=\"text\",text=\"Pane\",role=\"body\",tone=\"primary\"},aside={kind=\"text\",text=\"Column\",role=\"body\",tone=\"primary\"},width=#420,least=#260,most=#640,keep=#340,event=#0}")
-        expect (deliversBinding (trailing, 0, ui::SizeInput(action = Typed)), true)
+        delivers (trailing, [ui::SizeInput(action = Typed)])
         leading = Ui::aside (Ui::text "Pane", ui::Leading, Ui::text "Column", 300, Typed)
         members = insideTold (toldOf leading)
         expect (memberText (members, "side"), "leading")
         expect (memberCount (members, "width", 0), 300)
         expect (memberCount (members, "least", 0), Splitters::least)
-        expect (deliversBinding (leading, 0, ui::SizeInput(action = Typed)), true)
+        delivers (leading, [ui::SizeInput(action = Typed)])
 
     (** [NATIVE-SHM-NODES] Tabs tell every page with its key; the chosen key names the page the host shows, and the choice binds after every page's controls. *)
     tabsSample () = [Ui::tab ("one", "First", "star", Ui::text "Page one"), Ui::tab ("two", "Second", "", Ui::button ("Go", "", Increment))]
@@ -380,8 +381,7 @@ module AdditionCases
     export toldTabsCase () =
         tabs = ui::Tabs(tabs = tabsSample (), selected = "two", bind = Typed)
         expect (spelled (toldOf tabs), "{kind=\"tabs\",selected=\"two\",tabs=[{key=\"one\",label=\"First\",symbol=\"star\",child={kind=\"text\",text=\"Page one\",role=\"body\",tone=\"primary\"}},{key=\"two\",label=\"Second\",symbol=\"\",child={kind=\"button\",label=\"Go\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}}],event=#1}")
-        expect (deliversBinding (tabs, 0, ui::Tap(action = Increment)), true)
-        expect (deliversBinding (tabs, 1, ui::ChoiceInput(action = Typed)), true)
+        delivers (tabs, [ui::Tap(action = Increment), ui::ChoiceInput(action = Typed)])
         unknown = ui::Tabs(tabs = tabsSample (), selected = "nine", bind = Typed)
         expect (memberText (insideTold (toldOf unknown), "selected"), "nine")
         // Every page is told with its own controls, so the choice binds after them all.
@@ -394,7 +394,7 @@ module AdditionCases
     export toldRowsCase () =
         listed = ui::Rows(rows = rowsSample (), selected = "b", bind = Load)
         expect (spelled (toldOf listed), "{kind=\"rows\",selected=\"b\",rows=[{key=\"a\",symbol=\"star\",group=\"Recent\",child={kind=\"text\",text=\"Alpha\",role=\"body\",tone=\"primary\"}},{key=\"b\",symbol=\"\",group=\"Recent\",child={kind=\"text\",text=\"Beta\",role=\"body\",tone=\"primary\"}},{key=\"c\",symbol=\"\",group=\"\",child={kind=\"text\",text=\"Gamma\",role=\"body\",tone=\"primary\"}}],event=#0}")
-        expect (deliversBinding (listed, 0, ui::ChoiceInput(action = Load)), true)
+        delivers (listed, [ui::ChoiceInput(action = Load)])
 
     (** [NATIVE-SHM-NODES] A slot tells the key of the region it names; the regions themselves tell under their keys. *)
     // The slot region's own view: naming the action union keeps the keyed snapshot's type concrete.
@@ -415,12 +415,12 @@ module AdditionCases
     export toldButtonsCase () =
         bake = Ui::action ("Bake", "play", ui::Prominent, true, Increment)
         expect (spelled (toldOf bake), "{kind=\"button\",label=\"Bake\",symbol=\"play\",role=\"prominent\",enabled=?true,event=#0}")
-        expect (deliversBinding (bake, 0, ui::Tap(action = Increment)), true)
+        delivers (bake, [ui::Tap(action = Increment)])
         plain = Ui::button ("Keep", "", Increment)
         expect (spelled (toldOf plain), "{kind=\"button\",label=\"Keep\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}")
         destructive = Ui::action ("Remove", "", ui::Destructive, true, Load)
         expect (spelled (toldOf destructive), "{kind=\"button\",label=\"Remove\",symbol=\"\",role=\"destructive\",enabled=?true,event=#0}")
-        expect (deliversBinding (destructive, 0, ui::Tap(action = Load)), true)
+        delivers (destructive, [ui::Tap(action = Load)])
         disabled = Ui::action ("Stop", "", ui::Plain, false, Load)
         expect (spelled (toldOf disabled), "{kind=\"button\",label=\"Stop\",symbol=\"\",role=\"plain\",enabled=?false,event=#0}")
 
@@ -428,23 +428,23 @@ module AdditionCases
     export toldFieldsCase () =
         field = ui::Field(label = "Name", value = "Ada", prompt = "Your name", secure = true, multiline = false, commit = ui::OnSubmit, bind = Typed)
         expect (spelled (toldOf field), "{kind=\"field\",label=\"Name\",value=\"Ada\",prompt=\"Your name\",secure=?true,multiline=?false,commit=\"submit\",event=#0}")
-        expect (deliversBinding (field, 0, ui::TextInput(action = Typed)), true)
+        delivers (field, [ui::TextInput(action = Typed)])
         notes = Ui::multiline ("Notes", "Two lines", "Add", Typed)
         expect (spelled (toldOf notes), "{kind=\"field\",label=\"Notes\",value=\"Two lines\",prompt=\"Add\",secure=?false,multiline=?true,commit=\"edit\",event=#0}")
-        expect (deliversBinding (notes, 0, ui::TextInput(action = Typed)), true)
+        delivers (notes, [ui::TextInput(action = Typed)])
         toggle = Ui::toggle ("Nightly", true, Load)
         expect (spelled (toldOf toggle), "{kind=\"toggle\",label=\"Nightly\",on=?true,event=#0}")
-        expect (deliversBinding (toggle, 0, ui::FlagInput(action = Load)), true)
+        delivers (toggle, [ui::FlagInput(action = Load)])
 
     (** [NATIVE-SHM-NODES] Pickers tell every option with its key and the selected one; disclosures tell their flag and their children whether open or closed. *)
     export toldPickersCase () =
         choices = [Ui::choice ("a", "Alpha"), Ui::choice ("b", "Beta")]
         picker = ui::Picker(label = "Sort", choices = choices, selected = "b", bind = Load)
         expect (spelled (toldOf picker), "{kind=\"picker\",label=\"Sort\",choices=[{key=\"a\",label=\"Alpha\"},{key=\"b\",label=\"Beta\"}],selected=\"b\",event=#0}")
-        expect (deliversBinding (picker, 0, ui::ChoiceInput(action = Load)), true)
+        delivers (picker, [ui::ChoiceInput(action = Load)])
         closed = Ui::disclosure ("Limits", false, Load, [Ui::text "Scope"])
         expect (spelled (toldOf closed), "{kind=\"disclosure\",title=\"Limits\",expanded=?false,event=#0,children=[{kind=\"text\",text=\"Scope\",role=\"body\",tone=\"primary\"}]}")
-        expect (deliversBinding (closed, 0, ui::FlagInput(action = Load)), true)
+        delivers (closed, [ui::FlagInput(action = Load)])
         open = Ui::disclosure ("Limits", true, Load, [Ui::text "Scope"])
         expect (memberFlag (insideTold (toldOf open), "expanded", false), true)
         expect (length (memberItems (insideTold (toldOf open), "children")), 1)
@@ -487,18 +487,15 @@ module AdditionCases
         expect (spelled (toldOf spoken), "{kind=\"math\",math={kind=\"sym\",text=\"x\"},spoken=\"x equals two\"}")
         editor = Editors::editor ("Proof", "one", 3, [], Typed, Load)
         expect (spelled (toldOf editor), "{kind=\"editor\",label=\"Proof\",value=\"one\",inline=?false,cursor=#3,focusEpoch=#0,marks=[],event=#0,placeEvent=#1}")
-        expect (deliversBinding (editor, 0, ui::TextInput(action = Typed)), true)
-        expect (deliversBinding (editor, 1, ui::PlaceInput(action = Load)), true)
+        delivers (editor, editorEvents ())
         board = Boards::interactive ("board", 2, true, "background", true, Increment, Typed, Load)
         expect (spelled (toldOf board), "{kind=\"board\",slice=\"board\",count=#2,lasso=?true,backdrop=\"background\",panning=?true,event=#0,lassoEvent=#1,panEvent=#2}")
-        expect (deliversBinding (board, 0, ui::StrokeInput(action = Increment)), true)
-        expect (deliversBinding (board, 1, ui::LassoInput(action = Typed)), true)
-        expect (deliversBinding (board, 2, ui::TextInput(action = Load)), true)
+        delivers (board, cameraEvents ())
         still = Boards::board ("board", 2, true, Increment, Typed)
         expect (spelled (toldOf still), "{kind=\"board\",slice=\"board\",count=#2,lasso=?true,backdrop=\"\",panning=?false,event=#0,lassoEvent=#1}")
         binds (drawnOf still, 2)
         zoomed = Ui::zoomed (2.0, 100.0, 50.0, [], [], Typed)
         expect (spelled (toldOf zoomed), "{scene 100.0x50.0x2.0,kind=\"scene\",width=~100.0,height=~50.0,zoom=~2.0,event=#0}")
-        expect (deliversBinding (zoomed, 0, ui::SceneInput(action = Typed)), true)
+        delivers (zoomed, [ui::SceneInput(action = Typed)])
         fitted = Ui::zoomed (0.0, 100.0, 50.0, [], [], Typed)
         expect (memberReal (insideTold (toldOf fitted), "zoom", 1.0), 0.0)

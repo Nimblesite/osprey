@@ -382,7 +382,7 @@ const INVALID_DEBUG_OPTIONS: &[(&[&str], &str)] = &[
 #[test]
 fn parse_args_source_graph_mode() {
     let cli = parse_args(&args(&[
-        "src/osprey/examples/projects/modules",
+        "src/osprey/examples/talon/backend",
         "--source-graph",
     ]))
     .expect("source graph mode parses");

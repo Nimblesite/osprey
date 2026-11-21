@@ -1,0 +1,11 @@
+// [SYNTH-DSP-PROOFS-PRODUCTION] Shared by grain, delay, wavetable and spectral readers.
+namespace synth
+
+(** Linear sample interpolation and crossfade. *)
+module Interpolation
+    (** Return an endpoint directly to preserve it even when the difference loses precision. *)
+    export linear (a, b, fraction) = match fraction == 0.0
+        true => a
+        false => match fraction == 1.0
+            true => b
+            false => a + (b - a) * fraction

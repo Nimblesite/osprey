@@ -1,0 +1,67 @@
+// [SYNTH-ADVANCED-TABLES] Graph adapters for wavetable and additive sources over the shared kernel state.
+namespace synth
+
+import synth::RenderInputs
+
+(** Sources read declared parameters each sample; state lives in the kernel's phase and storage. *)
+module TableKernels
+    tabled (table, frame, held, configured) = match configured
+        Error why => Error(message = why)
+        Success config => Outcomes::carried (Wavetables::next (table, config, WavetableState(phase = held.phase)), \step => Success(value = RenderInputs::emitted (frame, held(phase = step.next.phase), step.sample)))
+
+    replaced (_base, control) = control
+
+    scaled (base, control) = base * control
+
+    pitched (base, control) = base * TableMath::octaveScale (control, 2.0)
+
+    modulatedTable (rate, plan, frame, held, table, frequency, position, amplitude) = match RenderInputs::controlled (plan, frame, held.identity, 0, position, \(base, control) => replaced (base, control))
+        Error why => Error(message = why)
+        Success place => match RenderInputs::controlled (plan, frame, held.identity, 1, amplitude, \(base, control) => scaled (base, control))
+            Error why => Error(message = why)
+            Success level => match RenderInputs::controlled (plan, frame, held.identity, 2, frequency, \(base, control) => pitched (base, control))
+                Error why => Error(message = why)
+                Success pitch => Outcomes::carried (RenderInputs::controlled (plan, frame, held.identity, 3, 0.0, \(base, control) => replaced (base, control)), \offset => tabled (table, frame, held, Wavetables::configure (WavetableConfig(sampleRate = rate, frequency = pitch, position = place, amplitude = level, phase = offset))))
+
+    (** A wavetable source: phase is the cycle position. Optional inlets: `position` replaces the position,
+        `amplitude` multiplies the level, `pitch` scales frequency by ±2 octaves (0.5 unchanged) and
+        `phase` offsets the read point by 0–1 cycles. *)
+    export wavetable (rate, plan, snapshot, frame, held, table) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "position", \position => RenderInputs::bound (snapshot, held, "amplitude", \amplitude => modulatedTable (rate, plan, frame, held, table, frequency, position, amplitude))))
+
+    // A positive interval restarts every partial envelope at that exact sample period.
+    restarted (held, interval) = match interval > 0.0 && held.integratorOne + 1.0 >= interval
+        true => 0.0
+        false => held.integratorOne + 1.0
+
+    played (frame, held, bank, coefficients) = match PartialBanks::withCoefficients (bank.config, coefficients, PartialState(phases = held.delay, age = held.phase))
+        Error why => Error(message = why)
+        Success step =>
+            interval = bank.interval
+            cycle = restarted (held, interval)
+            age = match cycle == 0.0 && interval > 0.0
+                true => 0.0
+                false => step.next.age
+            Success(value = RenderInputs::emitted (frame, held(delay = step.next.phases, phase = age, integratorOne = cycle), step.sample))
+
+    shaped (rate, frequency, count, tilt, parity, decay, damping, amplitude, inharmonicity, stretch) = PartialBanks::configure (PartialConfig(sampleRate = rate, frequency = frequency, count = count, tilt = tilt, parity = parity, decay = decay, damping = damping, amplitude = amplitude, layout = StiffLayout(inharmonicity = inharmonicity, stretch = stretch)))
+
+    bank (interval, configured) = match interval >= 0.0 && interval <= 1048576.0
+        false => Error(message = InvalidConfiguration(detail = "Retrigger interval must be 0 to 1048576 samples."))
+        true => Outcomes::carried (configured, \config => Success(value = PartialSettings(interval = interval, config = config)))
+
+    settings (rate, snapshot, identity) = RenderInputs::setting (snapshot, identity, "frequency", \frequency => RenderInputs::setting (snapshot, identity, "partials", \count => RenderInputs::setting (snapshot, identity, "tilt", \tilt => RenderInputs::setting (snapshot, identity, "parity", \parity => RenderInputs::setting (snapshot, identity, "decay", \decay => RenderInputs::setting (snapshot, identity, "damping", \damping => RenderInputs::setting (snapshot, identity, "amplitude", \amplitude => RenderInputs::setting (snapshot, identity, "inharmonicity", \inharmonicity => RenderInputs::setting (snapshot, identity, "stretch", \stretch => RenderInputs::setting (snapshot, identity, "interval", \interval => bank (interval, shaped (rate, frequency, count, tilt, parity, decay, damping, amplitude, inharmonicity, stretch))))))))))))
+
+    (** Prepare the additive bank when the block uses a fixed control snapshot. *)
+    export prepare (rate, snapshot, identity) = match settings (rate, snapshot, identity)
+        Error _ => DynamicPartials
+        Success bank => match bank.config.layout
+            StiffLayout stiffness stretch => FixedPartials(settings = bank, coefficients = PartialBanks::stiffCoefficients (bank.config, stiffness, stretch))
+            _ => DynamicPartials
+
+    (** An additive source: storage holds partial phases, phase the envelope age, integratorOne the retrigger clock. *)
+    export additive (rate, snapshot, frame, held) = Outcomes::carried (settings (rate, snapshot, held.identity), \bank => played (frame, held, bank, []))
+
+    (** Fixed snapshots reuse the prepared bank; automation resolves settings at its exact sample. *)
+    export scheduled (rate, snapshot, frame, held, prepared) = match prepared
+        DynamicPartials => additive (rate, snapshot, frame, held)
+        FixedPartials settings coefficients => played (frame, held, settings, coefficients)

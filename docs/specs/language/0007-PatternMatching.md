@@ -150,18 +150,16 @@ match pair {
 `(x)` is grouping, not a one-element tuple. A tuple pattern is closed: its
 length must match, and `..` does not apply.
 
-> **Status: implemented** for flat rows in both flavors: closed `{ f }` and
-> open `{ f, .. }` arms select concrete records statically and erased values
-> by runtime shape descriptor, and the tuple spelling `(a, b)` works the same
-> way over positional rows. A match over `any` requires its catch-all, and the
-> `..`-shadowing rule above is enforced. Nested rows
-> (`{ origin: { x, y }, .. }`) and `field: binder` renames do not parse yet —
-> a binder always takes its field's own name, and a tuple slot is a binder or
-> `_`.
+Closed `{ f }` and open `{ f, .. }` arms select concrete records statically
+and erased values by runtime shape descriptor, and the tuple spelling `(a, b)`
+works the same way over positional rows. A match over `any` requires its
+catch-all, and the `..`-shadowing rule above is enforced. A row slot is a
+pattern ([PATTERN-NESTED](#nested-patterns--pattern-nested)): `{ origin: { x, y }, .. }`
+tests a nested row, `{ name: who }` renames, and `(0, label)` tests a tuple
+slot. A field of an erased `any` row is itself `any`, so its slot binds or
+ignores; matching it takes its own structural match.
 
 ## Nested patterns — [PATTERN-NESTED]
-
-**Implementation status:** not implemented. Today each slot of a constructor, tuple or list pattern is a binding, `_` or (for a row) a field name, so matching two levels takes two `match` expressions. Plan: [generic error payloads, top priority](../../plans/generic-error-payload.md#-top-priority-gaps-that-block-top-tier).
 
 A pattern may appear wherever a pattern slot takes a binding: a positional or named constructor argument, a `Success`/`Error` payload, a tuple component, a list element and a structural row field. Patterns nest to any depth, and every form composes with every other: literal, binding, `_`, constructor, list, tuple and row.
 
@@ -184,20 +182,22 @@ fn explain(result) = match result {
 ```
 
 ```osprey-ml
-type Tree = Leaf | Node(Tree, Tree)
-type MathError = DivZero | Overflow { by : int }
+type Tree = Leaf | Node Tree Tree
+type MathError = DivZero | Overflow(by : int)
 
 leftDepth tree = match tree
-    Node(Node(inner, _), _) => 2 + leftDepth inner
-    Node(Leaf, _)           => 1
-    Leaf                    => 0
+    Node (Node inner _) _ => 2 + leftDepth inner
+    Node Leaf _           => 1
+    Leaf                  => 0
 
 explain result = match result
-    Success(value = 0)               => "zero"
-    Success(value)                   => "got ${value}"
-    Error(message = Overflow(by))    => "over by ${by}"
-    Error(message = DivZero)         => "divided by zero"
+    Success(value = 0)              => "zero"
+    Success value                   => "got ${value}"
+    Error(message = Overflow by)    => "over by ${by}"
+    Error(message = DivZero)        => "divided by zero"
 ```
+
+ML writes a pattern as it builds the value: positional slots by juxtaposition, each a binder, `_`, a payload-free variant, a literal or a parenthesised pattern, and named fields as `Ctor(field = pattern)`, which names every slot it lists. A Default brace slot is `field` or `field: pattern`.
 
 A nested pattern tests and binds exactly as it would as the pattern of its own `match` on that slot's value: the slot's static type is the nested scrutinee's type, a binding in it follows [PATTERN-BINDING-SCOPE](#binding-scope--pattern-binding-scope), and a name may be bound once per arm. Arms are tried in order; an arm is selected when its whole pattern matches, and no binding of a failed arm is visible.
 

@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Proofs and mathematics in Osprey
-description: Twelve short films introduce dependent types, the Proof Workbench, checked Lean exports and the Mathlib port, with separate paths for programmers and mathematicians.
+description: "Twelve short films on dependent types, the Proof Workbench, checked Lean exports and the Mathlib port, for programmers and for mathematicians."
 permalink: /docs/proofs/
 ---
 

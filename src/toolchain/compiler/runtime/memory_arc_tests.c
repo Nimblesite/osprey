@@ -133,9 +133,32 @@ static void t_allocator_refusal(void) {
   aborts_naming(exhaust_registry, "ARC allocation registry exhausted");
   CHECK(g_wl_top <= g_wl_cap && g_used < g_cap); // the children changed only themselves
 }
+// [GC-ARC-PERCEUS] A cluster whose home is the last bucket wraps through zero.
+// Use registry keys directly to make the collision independent of malloc and ASLR.
+static void t_wrapped_cluster(void) {
+  uintptr_t keys[3];
+  CHECK(arc_find(8) == NULL);
+  CHECK(arc_grow());
+  uintptr_t key = 8;
+  for (size_t i = 0; i < 3; ++i) {
+    while (arc_hash(key, g_cap) != g_cap - 1) key += 8;
+    keys[i] = key;
+    CHECK(arc_lookup_body(key) == NULL);
+    arc_insert(key);
+    CHECK(*arc_missed(key) != key);
+    key += 8;
+  }
+  for (size_t i = 0; i < 3; ++i) {
+    CHECK(arc_find(keys[i]) == &g_tab[g_cap - 1]);
+    arc_remove(arc_find(keys[i]));
+    CHECK(arc_find(keys[i]) == NULL && g_present == 2 - i);
+  }
+}
+
 int main(void) {
   // Precedes the first allocation: arc_arm_debug() latches once, forever.
   (void)setenv("OSPREY_ARC_DEBUG", "2", 1);
+  t_wrapped_cluster();
   t_alloc_and_tags(); t_alloc_sizes_oom();
   t_retain_release(); t_release_unique_collect(); t_reclaim_reuse();
   t_foreign_stack_static(); t_foreign_heap_null();

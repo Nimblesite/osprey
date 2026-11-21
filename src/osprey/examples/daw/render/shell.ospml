@@ -1,0 +1,22 @@
+// [SYNTH-ARRANGEMENT-PLAYER] Host tools the player runs: every command is bounded by `timeout`.
+namespace daw
+
+(** Runs one host command to completion. Paths are single-quoted; callers refuse a path `SongFiles::safe` rejects. *)
+module Shell
+    reported (_process, kind, text) = match kind == 2 && text != ""
+        true => print text
+        false => print ""
+
+    ended (command, process, code) =
+        _released = cleanupProcess process
+        match code == 0
+            true => Success(value = code)
+            false => Error(message = "Exit ${code}: ${command}")
+
+    (** Run `command` under `timeout seconds`; a non-zero exit is an error naming the command. *)
+    export ran (seconds, command) = match spawnProcess "timeout ${seconds} ${command}" reported
+        Error _ => Error(message = "Could not start: ${command}")
+        Success process => ended (command, process, awaitProcess process)
+
+    (** A safe path in single quotes. *)
+    export quoted path = "'${path}'"

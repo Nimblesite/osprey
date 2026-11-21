@@ -1,0 +1,58 @@
+// What a person types into an amount field, read as whole cents. `$1,980.25`, `1980.25`, `12` and
+// `0.5` are accepted; signs, stray characters, misplaced commas and a third decimal are not, and
+// read as zero, which every form refuses. The ledger keeps whole cents from the form onwards.
+namespace talon
+
+(** Amounts typed into a form. *)
+module Amounts
+    digitAt (source, index) = match byteAt source index
+        Success code => code >= 48 && code <= 57
+        Error _ => false
+
+    digitsFrom (source, index) = match index >= byteLength source
+        true => true
+        false => digitAt (source, index) && digitsFrom (source, satAdd index 1)
+
+    digits source = length source > 0 && digitsFrom (source, 0)
+
+    // The leading group of a grouped number has one to three digits; every later group has three.
+    group (part, leading) = match leading
+        true => length part > 0 && length part <= 3 && digits part
+        false => length part == 3 && digits part
+
+    grouped (source, leading) = match indexOf source ","
+        Error _ => match leading
+            true => digits source
+            false => group (source, false)
+        Success at => group (take source at, leading) && grouped (drop source (satAdd at 1), false)
+
+    fraction source = match length source == 1
+        true => satMul (parseInt source ?: 0) 10
+        false => parseInt source ?: 0
+
+    combined (whole, part) = match parseInt (replace whole "," "" ?: whole)
+        Error _ => 0
+        Success dollars => checkedAdd (checkedMul dollars 100 ?: 0) (fraction part) ?: 0
+
+    decimal (source, at) =
+        whole = take source at
+        part = drop source (satAdd at 1)
+        match grouped (whole, true) && length part > 0 && length part <= 2 && digits part
+            true => combined (whole, part)
+            false => 0
+
+    unsigned source = match indexOf source "."
+        Success at => decimal (source, at)
+        Error _ => match grouped (source, true)
+            true => combined (source, "0")
+            false => 0
+
+    (** The whole cents `typed` names, or zero when it is not a plain positive amount. *)
+    export cents typed =
+        trimmed = trim typed
+        bare = match startsWith trimmed "$"
+            true => drop trimmed 1
+            false => trimmed
+        match startsWith bare "-" || startsWith bare "+"
+            true => 0
+            false => unsigned bare

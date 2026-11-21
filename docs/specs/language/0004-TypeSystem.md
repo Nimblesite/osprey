@@ -335,32 +335,35 @@ parameters and covariant in returns.
 
 ### Built-in constraints — [TYPE-CONSTRAINTS]
 
-**Implementation status:** not implemented. Today each obligation below is checked only where a concrete type reaches the built-in, so `fn show(x) = toString(x)` is accepted with no obligation on `x`, and a call that passes a function is rejected at the built-in's use inside `show`, not at the call. Plan: [generic error payloads, top priority](../../plans/generic-error-payload.md#-top-priority-gaps-that-block-top-tier).
-
 A type variable may carry a built-in constraint. The constraint is part of the function's type scheme: generalization keeps it, instantiation copies it to the fresh variable, and it is discharged where a concrete type is supplied. So an obligation a built-in places on its argument travels through every generic function to the call that decides the type, and the error is reported there.
 
 | Constraint | Types that satisfy it | Placed by |
 | --- | --- | --- |
-| `printable` | every type made of data ([BUILTIN-PRINT](../runtime/0012-Built-InFunctions.md#printvalue-printable---unit--builtin-print)) | `print`, `toString`, interpolation |
-| `comparable` | numbers, `string`, `bool`, and lists, records and unions of comparable parts | `==`, `!=`, `<`, `>`, `<=`, `>=`, `listSort`, assertion operands |
-| `number` | every numeric type ([TYPE-NUMERIC-SIZED](#sized-numeric-types--type-numeric-sized)) | arithmetic operators and numeric built-ins |
+| `printable` | every type made of data ([BUILTIN-PRINT](../runtime/0012-Built-InFunctions.md#printvalue-printable---unit--builtin-print)) | `print`, `toString`, interpolation, assertion operands |
+| `comparable` | `int`, `float`, `string`, `bool`; for `==` and `!=` also a payload-free union variant | `==`, `!=`, `<`, `>`, `<=`, `>=`, `listContains` |
+| `sortable` | `int`, `string` as a list element ([BUILTIN-LIST-SORT](../runtime/0012-Built-InFunctions.md#listsortlist-listt---listt--builtin-list-sort)) | `listSort` |
 | `sized` | `string`, `List<T>`, `Map<string, V>` | `length`, `isEmpty` |
+| `number` | every numeric type ([TYPE-NUMERIC-SIZED](#sized-numeric-types--type-numeric-sized)) | arithmetic operators and numeric built-ins |
 
 ```osprey
-fn show(x) = "<${toString(x)}>"     // show : (printable a) -> string
+fn show(x) = "<${toString(x)}>"     // show : (printable) -> string
 print(show(Overflow { by: 3 }))     // <Overflow { by: 3 }>
 print(show(|n| => n + 1))           // rejected here: a function is not printable
 ```
 
+The rejection names the value, the function the obligation came through and the constraint: `cannot convert value to string: (int) -> int; `show` needs a printable argument`, at the line of the call, however many generic functions lie between that call and the built-in.
+
 ```osprey-ml
-show x = "<${toString x}>"          // show : printable a -> string
+show x = "<${toString x}>"          // show : printable -> string
 print (show (Overflow(by = 3)))     // <Overflow { by: 3 }>
 print (show (\n => n + 1))          // rejected here: a function is not printable
 ```
 
 The set of constraints is closed and each is derived structurally by the compiler: a program cannot declare a constraint or an instance, and no value's meaning depends on which instance is in scope. Osprey has no type classes. Behaviour a program chooses is not a constraint: it is an effect whose handler supplies it ([Algebraic Effects](0017-AlgebraicEffects.md)), a module signature ([Modules and Namespaces](0025-ModulesAndNamespaces.md)), or a record of functions passed as a value. An effect selects an implementation by where the code runs; a constraint selects one by the type of the value, which a handler cannot do.
 
-A constraint is inferred and never written in an annotation. Inferred signatures, hover and error messages show it before the variable it constrains.
+`number` is the one constraint that does not travel. A definition whose operands carry a pending arithmetic overload is not generalized over them: its uses choose ONE numeric type for it, so `fn plus(a, b) = a + b` folded over a float buffer is float addition, and calling it at both `int` and `float` in one program is a type mismatch at the second call rather than two silent instantiations (`Checker::generalize_with_obligations`). A non-numeric operand is reported at the operator.
+
+A constraint is inferred and never written in an annotation. Hover and inferred signatures show it in place of the variable it constrains (`show : (printable) -> string`, `sort : (List<sortable>) -> List<sortable>`); error messages name it.
 
 ## Built-in Types
 
@@ -1059,6 +1062,14 @@ information. It cannot change what the program means — by construction the
 solver reaches the same type without it — so it can only go stale, disagree
 with the body a later edit produces, and cost a reader a second reading to
 confirm it says nothing. Osprey reports every one of them.
+
+**A separate pass.** The check is an analyser of its own, never part of a plain
+build, test or run: it re-infers the whole program once per proof, and a build
+must not wait for advice. `--analyse` runs it and prints its findings with the
+other warnings. `--warnings-as-errors` runs it too and fails on any finding, so
+a gate on removable annotations holds. The editor runs it in the background.
+Without either flag only the cheap warnings (unused bindings, undocumented
+exports) are computed, and `--no-warnings` computes none.
 
 **The rule.** A written type is *redundant* when erasing it leaves the solved
 type unchanged. Redundancy is not a syntactic property and cannot be decided by

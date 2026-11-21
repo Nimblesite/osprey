@@ -1,0 +1,8 @@
+[project]
+name = "talon-bank-tests"
+source_roots = [".", "../src", "../../../../packages/native/src", "../../../../packages/graphics/src", "../../../../packages/json/src", "../../../../packages/uitest/src", "../../backend/domain/money.ospml"]
+default_namespace = "talontests"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

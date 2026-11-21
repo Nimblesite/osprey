@@ -4,12 +4,10 @@ namespace synth
 (** Mathematics generated from Kernels.lean. *)
 module Kernels
     (** Fractional part. *)
-    export wrap : float -> float
-    wrap phase = phase - floor phase
+    export wrap phase = phase - floor phase
 
     (** Polynomial band-limited step correction, one sample either side. *)
-    export blep : (float, float) -> float
-    blep (phase, step) = match step <= 0.0
+    export blep (phase, step) = match step <= 0.0
         true => 0.0
         false => match phase < step
             true =>
@@ -24,28 +22,23 @@ module Kernels
     tau = 6.283185307179586
 
     (** One cycle of a sine per unit phase. *)
-    export sine : float -> float
-    sine phase = sin (tau * phase)
+    export sine phase = sin (tau * phase)
 
     (** `sq`, generated from Kernels.lean. *)
-    export sq : float -> float
-    sq x = pow (x, 2.0)
+    export sq x = pow (x, 2.0)
 
     (** `inside`, generated from Kernels.lean. *)
-    export inside : (float, float, bool) -> bool
-    inside (x, y, strict) = x < y && y < 1.0 || x == y && !strict
+    export inside (x, y, strict) = x < y && y < 1.0 || x == y && !strict
 
     (** `shifted`, generated from Kernels.lean. *)
-    export shifted : float -> float
-    shifted x = (-1.0) * x + 0.001 + 250.0 - (-1.0) * pow (x, 2.0)
+    export shifted x = (-1.0) * x + 0.001 + 250.0 - (-1.0) * pow (x, 2.0)
 
     half x =
         y = x / 2.0
         sqrt y + abs (x * 2.0)
 
     (** `pick`, generated from Kernels.lean. *)
-    export pick : float -> float
-    pick x =
+    export pick x =
         big = match x >= 1.0
             true => ln x
             false => atan2 (x, 2.0)

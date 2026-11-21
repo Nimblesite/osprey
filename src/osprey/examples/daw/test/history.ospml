@@ -1,0 +1,654 @@
+import uitest::Drive
+
+// [PRISM-ROUTING-EDITOR] History must edit the live graph, not only the retained skin.
+graphHistoryJourney () =
+    channelUtilitiesJourney ()
+    opened = editorLaunched ["--empty"]
+    library = prismTap (opened, "Modules")
+    added = prismTap (library, "Add Sine oscillator")
+    expect (length (Drive::holding added).graph.nodes, 1)
+    undone = prismTap (added, "Undo")
+    expect (length (Drive::holding undone).graph.nodes, 0)
+    redone = prismTap (undone, "Redo")
+    expect (structuralEquals ((Drive::holding redone).graph, (Drive::holding added).graph), true)
+    branched = prismTap (prismTap (prismTap (redone, "Undo"), "Modules"), "Add Low-pass filter")
+    expect (length (Drive::holding branched).graph.nodes, 1)
+    expect ((Drive::holding branched).selected > (Drive::holding added).selected, true)
+    noRedo = prismTap (branched, "Redo")
+    expect (structuralEquals ((Drive::holding noRedo).graph, (Drive::holding branched).graph), true)
+    expect (length (Drive::holding noRedo).future, 0)
+    sampleChoiceJourney ()
+    historyRemovalJourney ()
+    wireDragJourney ()
+    keymapJourney ()
+
+// [SYNTH-GRAPH-CHANNELS] A picker selection creates a real routing module on the canvas, with undoable ports.
+channelUtilitiesJourney () =
+    opened = openedEditor ["--empty"]
+    forEachList (["split", "join", "route", "mixer", "panner"], \kind =>
+        expect (length (filterList (synth::EditorState::pickerKinds (), \offered => offered == kind)), 1)
+        selected = component (opened, kind)
+        graph = (Drive::holding selected).graph
+        valid (synth::Graphs::node (graph, 0), \n =>
+            expect (synth::EditorView::processorTitle n.processor, synth::EditorState::title kind)
+            match kind
+                "split" => expect (mapList (n.outputs, \p => p.channels), [1, 1])
+                "join" => expect (mapList (n.inputs, \p => p.channels), [1, 1])
+                "route" => expect (structuralEquals (n.processor, synth::Route(channelMap = [1, 0])), true)
+                "panner" => expect (mapList (n.outputs, \p => p.channels), [2])
+                _ => expect (mapList (n.parameters, \p => p.key), ["firstGain", "secondGain"]))
+        undone = prismTap (selected, "Undo")
+        expect (length (Drive::holding undone).graph.nodes, 0)
+        expect (structuralEquals ((Drive::holding (prismTap (undone, "Redo"))).graph, graph), true))
+
+// [DAW-KEYS] Every shipped keymap passes its own checks and gives every command keys; a keymap file may change
+// some commands and leave the rest on their Prism keys; an unknown command, a clash or a missing name is refused
+// and the keymap in use stays; the choice is written where the next launch reads it.
+keymapJourney () =
+    forEachList (synth::Keymaps::names, \name =>
+        keymap = synth::Keymaps::preset name
+        succeeds (synth::Keymaps::checked keymap, \checked => expect (checked.name, name))
+        forEachList (synth::Keymaps::commands (), \command => expect (synth::Keymaps::keys (keymap, command) != "", true))
+        succeeds (synth::Keymaps::decode (synth::Keymaps::encode keymap), \again =>
+            forEachList (synth::Keymaps::commands (), \command => expect (synth::Keymaps::keys (again, command), synth::Keymaps::keys (keymap, command)))))
+    expect (length (synth::Keymaps::commands ()), 26)
+    expect (synth::Keymaps::keys (synth::Keymaps::preset "Logic Style", "routing"), "X")
+    expect (synth::Keymaps::keys (synth::Keymaps::preset "Logic Style", "save"), "Cmd+S")
+    expect (synth::Keymaps::keys (synth::Keymaps::preset "Ableton Style", "timeline"), "Tab")
+    expect (synth::Keymaps::keys (synth::Keymaps::preset "Prism", "playSong"), synth::Keymaps::keys (synth::Keymaps::preset "Prism", "stopSong"))
+    succeeds (synth::Keymaps::decode "{\"name\": \"Mine\", \"shortcuts\": {\"save\": \"Cmd+Alt+S\", \"playSong\": \"F5\", \"stopSong\": \"F5\"}}", \mine =>
+        expect (synth::Keymaps::keys (mine, "save"), "Cmd+Alt+S")
+        expect (synth::Keymaps::keys (mine, "open"), "Cmd+O")
+        expect (synth::Keymaps::keys (mine, "stopSong"), "F5"))
+    forEachList (["{\"name\": \"Typo\", \"shortcuts\": {\"sav\": \"Cmd+S\"}}", "{\"name\": \"Clash\", \"shortcuts\": {\"save\": \"Cmd+O\"}}", "{\"shortcuts\": {\"save\": \"Cmd+S\"}}", "not json"], \text => errs (synth::Keymaps::decode text))
+    succeeds (makeDir "target/daw-tests", \_ => expect (true, true))
+    blank = synth::EditorState::initial ()
+    chosen = synth::Keymaps::chosen (blank(keysPath = "target/daw-tests/shortcuts.json"), synth::Keymaps::preset "Logic Style")
+    expect (chosen.keymap.name, "Logic Style")
+    expect ((synth::Keymaps::stored "target/daw-tests/shortcuts.json").name, "Logic Style")
+    expect ((synth::Keymaps::stored "target/daw-tests/no-such-file.json").name, "Prism")
+    succeeds (writeFile "target/daw-tests/bad-shortcuts.json" "{\"name\": \"Bad\", \"shortcuts\": {\"save\": \"Cmd+O\"}}", \_ => expect (true, true))
+    kept = synth::Keymaps::loaded (chosen, Success(value = "target/daw-tests/bad-shortcuts.json"))
+    expect (kept.keymap.name, "Logic Style")
+    expect (startsWith kept.message "Shortcuts not changed.", true)
+    cancelled = synth::Keymaps::loaded (chosen, Success(value = ""))
+    expect (cancelled.keymap.name, "Logic Style")
+
+// One drag as a hand makes it: the pointer arrives, presses, moves in `steps` and lets go.
+dragged (driven, fromX, fromY, toX, toY, steps) =
+    arrived = Drive::pointer (driven, fromX, fromY, false)
+    pressed = Drive::pointer (arrived, fromX, fromY, true)
+    moved = foldList (toList (range (1, satAdd steps 1)), pressed, \(at, step) => Drive::pointer (at, fromX + (toX - fromX) * toFloat step / toFloat steps, fromY + (toY - fromY) * toFloat step / toFloat steps, true))
+    Drive::pointer (moved, toX, toY, false)
+
+// [PRISM-ROUTING-CABLES] Dragging from an output socket to an input socket wires them, from any point of either
+// socket a hand can land on, and a drag that ends on no socket wires nothing.
+wireDragJourney () =
+    opened = editorLaunched []
+    before = length (Drive::holding opened).graph.cables
+    from = portIn (opened, "Canvas output 4:0")
+    to = portIn (opened, "Canvas input 1:1")
+    forEachList ([0.5, 0.1, 0.9], \part =>
+        start = uitest::Semantics::point (from, part)
+        end = uitest::Semantics::point (to, 1.0 - part)
+        wired = dragged (opened, start.pointX, start.pointY, end.pointX, end.pointY, 30)
+        expect (length (Drive::holding wired).graph.cables, satAdd before 1)
+        expect (uitest::Semantics::offered (wired.drivenSeen.renderedAccess, "Cable 4:0 to 1:1"), true)
+        expect ((Drive::holding wired).wireDragging, false))
+    start = uitest::Semantics::point (from, 0.5)
+    missed = dragged (opened, start.pointX, start.pointY, start.pointX + 300.0, start.pointY + 40.0, 30)
+    expect (length (Drive::holding missed).graph.cables, before)
+    expect ((Drive::holding missed).wireDragging, false)
+
+// [DAW-INSPECTOR] A module without skin art is edited where it is shown: every parameter is a slider on the canvas,
+// a press sets it as one undoable edit, and no caption sends the user to another panel.
+canvasInspectorJourney added =
+    expect (uitest::Views::letters (added.drivenSeen, "Edit in Patch controls"), false)
+    forEachList (["Grain cloud 0", "Parameters", "Playback rate", "Grain gain", "Pan"], \text => lettersIn (added, text))
+    expect (uitest::Views::letters (added.drivenSeen, "Connections"), false)
+    forEachList (["Playback rate", "Grain gain", "Pan"], \name => expect (uitest::Semantics::offered (added.drivenSeen.renderedAccess, "Grain cloud 0 ${name}"), true))
+    // Every control is bounded, starts inside its range and names its unit where it has one.
+    valid (synth::Graphs::node ((Drive::holding added).graph, 0), \n =>
+        expect (length n.parameters, 21)
+        forEachList (n.parameters, \p => expect (p.minimum < p.maximum && p.initial >= p.minimum && p.initial <= p.maximum, true))
+        forEachList (["Source position (samples)", "Grain length (frames)", "Onset interval / mean (frames)", "Timing jitter (frames)", "Region end frame (exclusive)", "Boundary (0 loop, 1 one-shot)", "Window (0 Hann, 1 ASR)"], \label => expect (length (filterList (n.parameters, \p => p.label == label)), 1)))
+    // [DAW-CONTROLS-DIAL] Pan is a dial: press it, hold, lift 45 units for a quarter of its range; sideways
+    // movement does nothing; the turn is one undo; Escape puts back the value the turn began with.
+    before = (Drive::holding added).graph
+    pan d = match synth::Graphs::node ((Drive::holding d).graph, 0)
+        synth::Invalid _ => 0.0 - 9.0
+        synth::Valid n => match listGet (filterList (n.parameters, \p => p.label == "Pan")) 0
+            Error _ => 0.0 - 9.0
+            Success p => p.initial
+    start = pan added
+    area = portIn (added, "Grain cloud 0 Pan")
+    expect (area.accessValue, start)
+    expect (area.accessMin < area.accessMax, true)
+    at = uitest::Semantics::point (area, 0.5)
+    pressed = Drive::pointer (added, at.pointX, at.pointY, true)
+    expect ((Drive::holding pressed).dial != synth::DialIdle, true)
+    expect (structuralEquals ((Drive::holding pressed).graph, before), true)
+    sideways = Drive::pointer (pressed, at.pointX - 90.0, at.pointY, true)
+    expect (structuralEquals ((Drive::holding sideways).graph, before), true)
+    lifted = Drive::pointer (sideways, at.pointX - 90.0, at.pointY - 45.0, true)
+    expect (pan lifted, synth::DialMath::dragged (start, 45.0, area.accessMin, area.accessMax, 0.0))
+    expect (pan lifted > start, true)
+    top = Drive::pointer (lifted, at.pointX, at.pointY - 400.0, true)
+    expect (pan top, area.accessMax)
+    bottom = Drive::pointer (top, at.pointX, at.pointY + 400.0, true)
+    expect (pan bottom, area.accessMin)
+    back = Drive::pointer (bottom, at.pointX, at.pointY - 45.0, true)
+    expect (pan back, pan lifted)
+    released = Drive::pointer (back, at.pointX, at.pointY - 45.0, false)
+    expect ((Drive::holding released).dial, synth::DialIdle)
+    expect (pan released, pan lifted)
+    undone = prismTap (released, "Undo")
+    expect (structuralEquals ((Drive::holding undone).graph, before), true)
+    again = Drive::pointer (Drive::pointer (undone, at.pointX, at.pointY, true), at.pointX, at.pointY - 90.0, true)
+    expect (pan again > pan lifted, true)
+    escaped = Drive::key (again, "escape", true)
+    expect (pan escaped, start)
+    expect ((Drive::holding escaped).dial, synth::DialIdle)
+    idle = Drive::pointer (escaped, at.pointX, at.pointY - 90.0, false)
+    expect (pan idle, start)
+
+// [SYNTH-ADVANCED-GRAINS-IMPORT] Only the latest request may change the selected grain source.
+sampleChoiceJourney () =
+    added = prismTap (prismTap (editorLaunched ["--empty"], "Modules"), "Add Grain cloud")
+    canvasInspectorJourney added
+    opened = Drive::press (added, "Patch Controls")
+    first = Drive::press (opened, "Load WAV sample")
+    // A high note exceeds the built-in source's 16x rate and must preserve the editable graph.
+    errs (synth::EditorState::tune (Drive::holding first, 100))
+    second = Drive::press (first, "Load WAV sample")
+    ticket = (Drive::holding second).sampleTicket
+    expect (ticket != "", true)
+    expect (ticket != (Drive::holding first).sampleTicket, true)
+    stale = Drive::completed (second, (Drive::holding first).sampleTicket, false, "old selection")
+    expect ((Drive::holding stale).sampleTicket, ticket)
+    cancelled = Drive::completed (stale, ticket, true, "")
+    expect ((Drive::holding cancelled).sampleTicket, "")
+    expect (structuralEquals ((Drive::holding opened).graph, (Drive::holding cancelled).graph), true)
+    expect (length (Drive::holding opened).past, length (Drive::holding cancelled).past)
+    sampleFileJourney cancelled
+    pitchRangeJourney ()
+    projectRefusalJourney ()
+
+// A key a module cannot reach refuses the whole strike and names it; the patch keeps its last tuning.
+pitchRangeJourney () =
+    strings = prismTap (prismTap (prismTap (prismTap (editorLaunched ["--empty"], "Modules"), "Add Waveguide string"), "Modules"), "Add Bowed string")
+    held = Drive::holding strings
+    expect (length held.graph.nodes, 2)
+    forEachList ([48, 60, 71, 100, 126], \note => succeeds (synth::EditorState::tune (held, note), \tuned => expect (tuned.note, note)))
+    // 19.45 Hz is under both strings' 20 Hz; 12.5 kHz is over the bow's 12 kHz.
+    forEachList ([0, 15], \note => failsWith (synth::EditorState::tune (held, note), "Module 0 cannot play MIDI note ${note}: ${synth::Waves::midiFrequency (toFloat note)} Hz is outside its pitch range."))
+    failsWith (synth::EditorState::tune (held, 127), "Module 1 cannot play MIDI note 127: ${synth::Waves::midiFrequency 127.0} Hz is outside its pitch range.")
+
+// [DAW-PROJECT] A project the renderer could not play is refused when it opens and says why: a zero or 500 bpm tempo,
+// or a routing whose gate is zero or missing. A new, empty project still opens.
+projectRefusalJourney () = succeeds (daw::SongFiles::encode (timeline [keysTrack ()]), \text =>
+    succeeds (daw::SongFiles::decode text, \song => expect (length song.tracks, 1))
+    arranged = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks."
+    gated = "A routing's attack and release must be 0.001 to 10 s."
+    forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":0.0", why = arranged }, { from = "\"tempo\":120.0", to = "\"tempo\":500.0", why = arranged }, { from = "\"attack\":0.01", to = "\"attack\":0.0", why = gated }, { from = "\"attack\":0.01,", to = "", why = gated }, { from = "\"release\":0.1", to = "\"release\":11.0", why = gated }], \c =>
+        expect (contains text c.from, true)
+        failsWith (daw::SongFiles::decode (replace text c.from c.to ?: text), c.why))
+    // Just past each edge is refused; each edge itself opens.
+    forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":19.9", why = arranged }, { from = "\"tempo\":120.0", to = "\"tempo\":400.5", why = arranged }, { from = "\"attack\":0.01", to = "\"attack\":10.5", why = gated }, { from = "\"release\":0.1", to = "\"release\":0.0005", why = gated }, { from = "\"release\":0.1", to = "\"release\":0.0", why = gated }], \c => failsWith (daw::SongFiles::decode (replace text c.from c.to ?: text), c.why))
+    forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":20.0" }, { from = "\"tempo\":120.0", to = "\"tempo\":400.0" }, { from = "\"attack\":0.01", to = "\"attack\":0.001" }, { from = "\"attack\":0.01", to = "\"attack\":10.0" }, { from = "\"release\":0.1", to = "\"release\":0.001" }, { from = "\"release\":0.1", to = "\"release\":10.0" }], \c => succeeds (daw::SongFiles::decode (replace text c.from c.to ?: text), \song => expect (length song.tracks, 1)))
+    namesRefusalJourney ()
+    succeeds (daw::SongFiles::encode (timeline []), \empty => succeeds (daw::SongFiles::decode empty, \song => expect (length song.tracks, 0))))
+
+// [DAW-PROJECT] A project whose tracks share a name is refused on opening.
+reopened song = synth::Outcomes::carried (daw::SongFiles::encode song, daw::SongFiles::decode)
+
+namesRefusalJourney () =
+    failsWith (reopened (timeline [keysTrack (), keysTrack ()]), "Track names must be unique: \"keys\" names more than one track.")
+
+// One chosen file through the picker: the graph and history stay as they were and the node says why.
+refusedFile (driven, path, check) =
+    asked = Drive::press (driven, "Load WAV sample")
+    ticket = (Drive::holding asked).sampleTicket
+    expect (ticket != "", true)
+    done = Drive::completed (asked, ticket, true, path)
+    held = Drive::holding done
+    expect (held.sampleTicket, "")
+    expect (startsWith held.message "Grain cloud ${held.selected}: ", true)
+    check held.message
+    expect (structuralEquals (held.graph, (Drive::holding driven).graph), true)
+    expect (length held.past, length (Drive::holding driven).past)
+    done
+
+// [SYNTH-ADVANCED-GRAINS-IMPORT] A missing, tiny, oversized-by-name or non-WAV file never replaces the source;
+// the built-in sample is an explicit choice that does; a chooser failure is reported on the node.
+sampleFileJourney driven =
+    _folder = makeDir "target/daw-tests"
+    _tiny = writeFile "target/daw-tests/tiny.wav" "RIFF"
+    _text = writeFile "target/daw-tests/text.wav" (join (mapList (toList (range (0, 16)), \_ => "not a wave file ")) "")
+    missing = refusedFile (driven, "target/daw-tests/absent-sample.wav", \message => expect (message != "", true))
+    tiny = refusedFile (missing, "target/daw-tests/tiny.wav", \message => expect (endsWith message "Choose a WAV file between 12 bytes and 8 MiB.", true))
+    texted = refusedFile (tiny, "target/daw-tests/text.wav", \message => expect (contains message "WAV", true))
+    failed = Drive::completed (Drive::press (texted, "Load WAV sample"), (Drive::holding (Drive::press (texted, "Load WAV sample"))).sampleTicket, false, "chooser unavailable")
+    expect ((Drive::holding failed).message, "Grain cloud ${(Drive::holding failed).selected}: chooser unavailable")
+    expect (structuralEquals ((Drive::holding failed).graph, (Drive::holding driven).graph), true)
+    builtin = Drive::press (failed, "Use built-in harmonic sample")
+    expect ((Drive::holding builtin).message, "Loaded ${daw::PatchVoices::builtinName}.")
+    expect ((Drive::holding builtin).revision > (Drive::holding failed).revision, true)
+    expect (length (Drive::holding builtin).graph.nodes, length (Drive::holding driven).graph.nodes)
+    // A real WAV replaces the source and the inspector names it with its rate, channels, frames and length; Undo
+    // brings the built-in source back and Redo the WAV, each kept whole by history.
+    asking = Drive::press (builtin, "Load WAV sample")
+    loaded = Drive::chosen (asking, (Drive::holding asking).sampleTicket, motifWav)
+    expect ((Drive::holding loaded).message, "Loaded elise-motif.wav.")
+    expect (Drive::shows (loaded, "elise-motif.wav · 48000 Hz · 1 source channels · 172800 frames · 3.6 s"), true)
+    expect (length (Drive::holding loaded).past, length (Drive::holding builtin).past + 1)
+    grainSource (loaded, motifWav, 172800)
+    // Keys set the rate from the source rate and its C4 root, never its length, and leave the scan position alone.
+    forEachList ([{ note = 72, rate = 2.0 }, { note = 60, rate = 1.0 }, { note = 48, rate = 0.5 }, { note = 67, rate = 1.4983070768766815 }], \key => keyedRate (loaded, key.note, key.rate))
+    back = prismTap (loaded, "Undo")
+    grainSource (back, daw::PatchVoices::builtinName, 1024)
+    keyedRate (back, 57, 4.693333333333333)
+    again = prismTap (back, "Redo")
+    grainSource (again, motifWav, 172800)
+    // While a patch plays, no sample is swapped: neither a WAV choice nor the built-in source.
+    stopped = Drive::holding again
+    playing = stopped(renderTicket = "playing")
+    expect ((synth::SamplePicker::choose playing).stepStore.message, "Grain cloud ${playing.selected}: Sample selection is unavailable while playing or when request IDs run out.")
+    expect ((synth::SamplePicker::builtin playing).stepStore.message, "Grain cloud ${playing.selected}: Stop playback before replacing the sample.")
+    expect (structuralEquals ((synth::SamplePicker::builtin playing).stepStore.graph, playing.graph), true)
+    // A choice still open when its node is removed completes into nothing: the node is not resurrected.
+    asked = Drive::press (again, "Load WAV sample")
+    pending = (Drive::holding asked).sampleTicket
+    gone = deleteNode (asked, (Drive::holding asked).selected)
+    expect (length (Drive::holding gone).graph.nodes, satSub (length (Drive::holding again).graph.nodes) 1)
+    late = Drive::completed (gone, pending, true, "target/daw-tests/text.wav")
+    expect (structuralEquals ((Drive::holding late).graph, (Drive::holding gone).graph), true)
+    expect ((Drive::holding late).sampleTicket, "")
+
+motifWav = "src/osprey/examples/daw/tracks/samples/elise-motif.wav"
+
+// [SYNTH-ADVANCED-GRAINS-IMPORT] Striking `note` sets the selected cloud's playback rate to `want`; where it scans stays put.
+keyedRate (driven, note, want) =
+    before = Drive::holding driven
+    succeeds (synth::EditorState::tune (before, note), \tuned =>
+        forEachList (["start", "regionStart", "regionEnd", "positionSpread"], \key => expect (initialOf (tuned.graph, tuned.selected, key), initialOf (before.graph, before.selected, key)))
+        expect (initialOf (tuned.graph, tuned.selected, "regionEnd") > 1.0, true)
+        near (initialOf (tuned.graph, tuned.selected, "rate"), want))
+
+initialOf (graph, identity, key) = match synth::Graphs::node (graph, identity)
+    synth::Invalid _ => -1.0
+    synth::Valid n => match listGet (filterList (n.parameters, \p => p.key == key)) 0
+        Error _ => -1.0
+        Success p => p.initial
+
+// The selected grain cloud plays the resource called `name` of `frames` frames.
+grainSource (driven, name, frames) = valid (synth::Graphs::node ((Drive::holding driven).graph, (Drive::holding driven).selected), \n => sourceOf (n, name, frames))
+
+sourceOf (n, name, frames) = match n.processor
+    synth::Granular resource _ _ =>
+        expect (resource.name, name)
+        expect (synth::SampleResources::frames resource, frames)
+    _ => expect ("another module", name)
+
+// Deleting a routed module restores its parameters, position and cables as one operation.
+historyRemovalJourney () =
+    opened = Drive::press (editorLaunched [], "Patch Controls")
+    changed = Drive::choose (dialTapped (opened, "Cutoff"), "Cutoff", "3200")
+    removed = deleteNode (changed, (Drive::holding changed).selected)
+    expect (length (Drive::holding removed).graph.nodes, 4)
+    restored = prismTap (removed, "Undo")
+    expect (structuralEquals ((Drive::holding restored).graph, (Drive::holding changed).graph), true)
+    expect (structuralEquals ((Drive::holding restored).positions, (Drive::holding changed).positions), true)
+    original = prismTap (restored, "Undo")
+    expect (structuralEquals ((Drive::holding original).graph, (Drive::holding opened).graph), true)
+    historyDragJourney ()
+
+// Moving a module through several pointer positions creates exactly one reversible edit.
+historyDragJourney () =
+    opened = editorLaunched []
+    before = Drive::holding opened
+    grabbed = Drive::pointer (opened, 560.0, 370.0, true)
+    moved = Drive::pointer (Drive::pointer (grabbed, 580.0, 380.0, true), 600.0, 390.0, true)
+    released = Drive::pointer (moved, 620.0, 400.0, false)
+    after = Drive::holding released
+    expect (structuralEquals (after.positions, before.positions), false)
+    expect (length after.past, length before.past + 1)
+    undone = prismTap (released, "Undo")
+    expect (structuralEquals ((Drive::holding undone).positions, before.positions), true)
+    redone = prismTap (undone, "Redo")
+    expect (structuralEquals ((Drive::holding redone).positions, after.positions), true)
+
+// [PRISM-ROUTING-LAYOUT] Original header artwork and its live hit targets move together.
+graphResizeJourney () =
+    opened = editorLaunched []
+    baseUndo = portIn (opened, "Undo")
+    // The inspector never lists cables: they are read on the canvas.
+    expect ("connection rows: ${length (connectionLefts opened)}", "connection rows: 0")
+    wider = Drive::viewed (opened, 1836.0, 1078.0)
+    wideUndo = portIn (wider, "Undo")
+    expect (wideUndo.accessLeft, baseUndo.accessLeft + 300.0)
+    expect (wideUndo.accessTop, baseUndo.accessTop)
+    expect (length (connectionLefts wider), 0)
+    added = prismTap (prismTap (wider, "Modules"), "Add Sine oscillator")
+    expect (length (Drive::holding added).graph.nodes, 6)
+    undone = prismTap (added, "Undo")
+    expect (length (Drive::holding undone).graph.nodes, 5)
+    smaller = Drive::viewed (undone, 1536.0, 828.0)
+    expect ((portIn (smaller, "Undo")).accessLeft, baseUndo.accessLeft)
+    redone = prismTap (smaller, "Redo")
+    expect (length (Drive::holding redone).graph.nodes, 6)
+
+// Any connection row the inspector letters: there must be none.
+connectionLefts driven =
+    drawn = ui::Surfaces::seen (driven.drivenSurface, driven.drivenProgram)
+    foldList (drawn.walkSketches, [], \(all, sketch) =>
+        foldList (sketch.sketchedAs.sketchShapes, all, \(found, shape) =>
+            match shape
+                ui::Lettering words left _ _ _ _ _ _ => match startsWith words "Out  →"
+                    true => listAppend found left
+                    false => found
+                _ => found))
+
+// [SYNTH-ARRANGEMENT] daw::Arrangements checked directly on small hand-built songs: the bus math and
+// beat arithmetic from ArrangeMath, one drum note's exact samples from PhaseMath, and every refusal.
+arrangedNear (got, want) = expect (abs (got - want) <= 0.000000001, true)
+
+// A song from its tempo, rate and tracks; the beat frame is 60/tempo*rate rounded.
+arrangedSong (tempo, rate, tracks) = daw::Arrangement(title = "Bridge", tempo = tempo, meterTop = 4, meterBottom = 4, sampleRate = rate, buses = [], tracks = tracks)
+
+arrangedBell (name, decay, notes) = daw::Track(name = name, instrument = daw::BellInstrument(decay = decay, brightness = 0.5), gain = 1.0, pan = 0.0, bus = "", sends = [], positions = [], notes = notes)
+
+// A pure drum body: no noise, no sweep, so each sample is velocity * ringing * -cos of the phase.
+arrangedDrum (name, gain, decay, notes) = daw::Track(name = name, instrument = daw::DrumInstrument(hit = daw::Hit(sweep = 0.0, noise = 0.0, colour = 0.0, decay = decay)), gain = gain, pan = 0.0, bus = "", sends = [], positions = [], notes = notes)
+
+// One bell note at beat 0 on an otherwise plain song.
+oneBell (tempo, rate) = arrangedSong (tempo, rate, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])
+
+lasts (tempo, rate, frames) = succeeds (daw::Arrangements::frames (oneBell (tempo, rate)), \total => expect (total, frames))
+
+refusedBell (tempo, rate) = failsWith (daw::Arrangements::frames (oneBell (tempo, rate)), "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks.")
+
+arrangedNote (start, length) = daw::Note(pitch = 60, start = start, length = length, velocity = 0.5)
+
+arrangedPitched (pitch, start) = daw::Note(pitch = pitch, start = start, length = 0.5, velocity = 0.5)
+
+arrangedAt (samples, index) = listGet samples index ?: 999.0
+
+// Buses after layered (empty, [1.0, 0.5, -0.25], 0, 2.0, 0.0): equal-power pan.
+arrangedFirstBuses buses =
+    expect (length buses.left, 3)
+    expect (length buses.right, 3)
+    arrangedNear (arrangedAt (buses.left, 0), 1.4142135623730951)
+    arrangedNear (arrangedAt (buses.left, 1), 0.7071067811865476)
+    arrangedNear (arrangedAt (buses.left, 2), -0.3535533905932738)
+    arrangedNear (arrangedAt (buses.right, 0), 1.414213562373095)
+    arrangedNear (arrangedAt (buses.right, 1), 0.7071067811865475)
+    arrangedNear (arrangedAt (buses.right, 2), -0.35355339059327373)
+
+// After layered (first, [0.1, 0.2], 2, 1.0, -1.0): placed at frame 2, hard left.
+arrangedSecondBuses buses =
+    expect (length buses.left, 4)
+    expect (length buses.right, 4)
+    arrangedNear (arrangedAt (buses.left, 2), -0.25355339059327375)
+    arrangedNear (arrangedAt (buses.left, 3), 0.2)
+    expect (arrangedAt (buses.right, 3), 0.0)
+
+// After layered (second, [3.0], 1, 0.5, 1.0): one frame added over the middle, hard right.
+arrangedThirdBuses buses =
+    expect (length buses.left, 4)
+    expect (length buses.right, 4)
+    arrangedNear (arrangedAt (buses.left, 0), 1.4142135623730951)
+    arrangedNear (arrangedAt (buses.left, 1), 0.7071067811865477)
+    arrangedNear (arrangedAt (buses.right, 1), 2.2071067811865475)
+
+arrangedLayeredSteps first =
+    arrangedFirstBuses first
+    succeeds (daw::Arrangements::layered (first, [0.1, 0.2], 2, 1.0, -1.0), \second => arrangedSecondSteps second)
+
+arrangedSecondSteps second =
+    arrangedSecondBuses second
+    succeeds (daw::Arrangements::layered (second, [3.0], 1, 0.5, 1.0), \third => arrangedThirdBuses third)
+
+// One drum note from beat 0: -cos carrier on a wrapped phase, ringing at -6.9078/decay/rate per frame.
+arrangedKickHead samples =
+    expect (length samples, 5)
+    expect (arrangedAt (samples, 0), -0.5)
+    arrangedNear (arrangedAt (samples, 1), -0.4994192478404178)
+    arrangedNear (arrangedAt (samples, 2), -0.49825365548570233)
+    arrangedNear (arrangedAt (samples, 3), -0.49650526238606774)
+    arrangedNear (arrangedAt (samples, 4), -0.49417678890818284)
+
+arrangedKickWhole samples =
+    expect (length samples, 12000)
+    arrangedNear (arrangedAt (samples, 11999), 0.0004064725874341686)
+
+arrangedKickPadded samples =
+    expect (length samples, 12003)
+    expect (arrangedAt (samples, 12000), 0.0)
+    expect (arrangedAt (samples, 12001), 0.0)
+    expect (arrangedAt (samples, 12002), 0.0)
+
+// A second identical note from beat 0.25 (frame 6000) overlap-added onto the first.
+arrangedPairSamples samples =
+    expect (length samples, 12002)
+    expect (arrangedAt (samples, 0), -0.5)
+    arrangedNear (arrangedAt (samples, 5999), 0.005101474122257177)
+    arrangedNear (arrangedAt (samples, 6000), -0.4954169144577917)
+    arrangedNear (arrangedAt (samples, 6001), -0.49535932751606987)
+    arrangedNear (arrangedAt (samples, 12000), 0.0045830855422083275)
+    arrangedNear (arrangedAt (samples, 12001), 0.004059920324347923)
+
+// Two identical notes on one beat: the carry sums them from the first frame.
+arrangedTwinSamples samples =
+    expect (length samples, 12000)
+    expect (arrangedAt (samples, 0), -1.0)
+    arrangedNear (arrangedAt (samples, 1), -0.9988384956808356)
+
+// A note from beat 0 and one from beat 1: frames 12000 to 23999 settle as silence between them.
+arrangedGapSamples samples =
+    expect (length samples, 24001)
+    expect (arrangedAt (samples, 12000), 0.0)
+    expect (arrangedAt (samples, 23999), 0.0)
+    expect (arrangedAt (samples, 24000), -0.5)
+
+// A note wholly past the asked window: the settled gap is longer than the window asked for.
+arrangedLateSamples samples =
+    expect (length samples, 24000)
+    expect (arrangedAt (samples, 0), 0.0)
+    expect (arrangedAt (samples, 23999), 0.0)
+
+// added: the kick at gain 2, pan 0, so the buses carry the part exactly.
+arrangedAddedBuses buses =
+    expect (length buses.left, 3)
+    expect (length buses.right, 3)
+    arrangedNear (arrangedAt (buses.left, 0), -0.7071067811865476)
+    arrangedNear (arrangedAt (buses.left, 1), -0.706285473606089)
+    arrangedNear (arrangedAt (buses.left, 2), -0.7046370770898519)
+    arrangedNear (arrangedAt (buses.right, 0), -0.7071067811865475)
+    arrangedNear (arrangedAt (buses.right, 1), -0.7062854736060888)
+
+// A fully noisy hit still passes through the same signed-zero sum at subnormal velocity.
+arrangedNoiseFloor () =
+    note = daw::Note(pitch = 90, start = 0.0, length = 0.25, velocity = floatFromBits 1)
+    hit = daw::DrumInstrument(hit = daw::Hit(sweep = 0.7, noise = 1.0, colour = 0.3, decay = 0.5))
+    succeeds (daw::NoteRenders::render (note, 120.0, 48000.0, hit), \samples =>
+        expect (length samples, 24000)
+        expect (floatBits (arrangedAt (samples, 99)), 1)
+        expect (floatBits (arrangedAt (samples, 23999)), floatBits (-0.0)))
+
+arrangementsJourney () =
+    arrangedNoiseFloor ()
+    silent = daw::Arrangements::empty
+    expect (silent.left, [])
+    expect (silent.right, [])
+    song120 = arrangedSong (120.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])
+    song200 = arrangedSong (200.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])
+    song20 = arrangedSong (20.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])])
+    // beats: the last note end over every track, and a note that ends before the piece changes nothing.
+    expect (daw::Arrangements::beats (arrangedSong (120.0, 48000, [])), 0.0)
+    expect (daw::Arrangements::beats (arrangedSong (120.0, 48000, [arrangedBell ("rest", 1.0, [])])), 0.0)
+    expect (daw::Arrangements::beats (arrangedSong (120.0, 48000, [arrangedBell ("one", 1.0, [arrangedNote (0.0, 1.0), arrangedNote (4.0, 2.5), arrangedNote (8.5, 0.25)])])), 8.75)
+    expect (daw::Arrangements::beats (arrangedSong (120.0, 48000, [arrangedBell ("one", 1.0, [arrangedNote (0.0, 1.0), arrangedNote (4.0, 2.5)]), arrangedBell ("two", 1.0, [arrangedNote (12.0, 1.0)])])), 13.0)
+    expect (daw::Arrangements::beats (arrangedSong (120.0, 48000, [arrangedBell ("one", 1.0, [arrangedNote (-1.0, 0.5)])])), 0.0)
+    // frame: floor (beat * 60 / tempo * rate + 0.5), halves rounding down, negatives away from zero.
+    succeeds (daw::Arrangements::frame (song120, 0.0), \at => expect (at, 0))
+    succeeds (daw::Arrangements::frame (song120, 0.5), \at => expect (at, 12000))
+    succeeds (daw::Arrangements::frame (song120, 1.0), \at => expect (at, 24000))
+    succeeds (daw::Arrangements::frame (song120, 1.25), \at => expect (at, 30000))
+    succeeds (daw::Arrangements::frame (song120, -0.5), \at => expect (at, -12000))
+    succeeds (daw::Arrangements::frame (song200, 0.5), \at => expect (at, 7200))
+    succeeds (daw::Arrangements::frame (song200, 1.5), \at => expect (at, 21600))
+    succeeds (daw::Arrangements::frame (song20, 2.0), \at => expect (at, 288000))
+    failsWith (daw::Arrangements::frame (song120, sqrt (-1.0)), "A start beat is not finite.")
+    failsWith (daw::Arrangements::frame (song120, pow (10.0, 400.0)), "A start beat is not finite.")
+    // frames: the last note end plus two seconds, each guard at its boundary.
+    // TODO-MODEL: expected value depended on Space/drive; re-measure
+    succeeds (daw::Arrangements::frames song120, \total => expect (total, 216000))
+    // TODO-MODEL: expected value depended on Space/drive; re-measure
+    succeeds (daw::Arrangements::frames song20, \total => expect (total, 336000))
+    // TODO-MODEL: expected value depended on Space/drive; re-measure
+    lasts (400.0, 48000, 199200)
+    // TODO-MODEL: expected value depended on Space/drive; re-measure
+    lasts (120.0, 8000, 36000)
+    // TODO-MODEL: expected value depended on Space/drive; re-measure
+    lasts (120.0, 192000, 864000)
+    // TODO-MODEL: expected value depended on Space/drive; re-measure
+    succeeds (daw::Arrangements::frames (arrangedSong (120.0, 48000, mapList (toList (range (0, 64)), \_ => arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])))), \total => expect (total, 216000))
+    // TODO-MODEL: expected value depended on Space/drive; re-measure
+    succeeds (daw::Arrangements::frames (arrangedSong (20.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 198.5)])])), \total => expect (total, 28776000))
+    refusesSong = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks."
+    refusedBell (19.99, 48000)
+    refusedBell (400.01, 48000)
+    refusedBell (120.0, 7999)
+    refusedBell (120.0, 192001)
+    failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, [])), refusesSong)
+    failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, mapList (toList (range (0, 65)), \_ => arrangedBell ("bell", 1.0, [arrangedNote (0.0, 1.0)])))), refusesSong)
+    // TODO-MODEL: expected value depended on Space/drive; re-measure
+    failsWith (daw::Arrangements::frames (arrangedSong (20.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (0.0, 199.0)])])), "An arrangement must last 1 to 28800000 frames.")
+    failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (sqrt (-1.0), 1.0)])])), "The arrangement length is not finite.")
+    failsWith (daw::Arrangements::frames (arrangedSong (120.0, 48000, [arrangedBell ("bell", 1.0, [arrangedNote (pow (10.0, 400.0), 1.0)])])), "The arrangement length is not finite.")
+    // layered: three steps of overlap-add on the buses, every pan and gain guard, and the offset rule.
+    succeeds (daw::Arrangements::layered (silent, [1.0, 0.5, -0.25], 0, 2.0, 0.0), \first => arrangedLayeredSteps first)
+    succeeds (daw::Arrangements::layered (silent, [5.0], 0, 2.0, -1.0), \hard => expect (hard.left, [10.0]))
+    succeeds (daw::Arrangements::layered (silent, [5.0], 0, 2.0, -1.0), \hard => expect (hard.right, [0.0]))
+    succeeds (daw::Arrangements::layered (silent, [5.0], 0, 2.0, 1.0), \wide => arrangedNear (arrangedAt (wide.left, 0), 0.0000000000000006123233995736766))
+    succeeds (daw::Arrangements::layered (silent, [5.0], 0, 2.0, 1.0), \wide => expect (wide.right, [10.0]))
+    succeeds (daw::Arrangements::layered (silent, [0.25], 0, 4.0, 0.0), \loud => arrangedNear (arrangedAt (loud.left, 0), 0.7071067811865476))
+    succeeds (daw::Arrangements::layered (silent, [0.25], 0, 4.0, 0.0), \loud => arrangedNear (arrangedAt (loud.right, 0), 0.7071067811865475))
+    succeeds (daw::Arrangements::layered (silent, [5.0], 0, 0.0, 0.5), \mute => expect (mute.left, [0.0]))
+    succeeds (daw::Arrangements::layered (silent, [7.0, 8.0], 3, 1.0, -1.0), \placed => expect (placed.left, [0.0, 0.0, 0.0, 7.0, 8.0]))
+    refusesMix = "Gain must be 0 to 4, pan -1 to 1 and the offset not negative."
+    failsWith (daw::Arrangements::layered (silent, [1.0], -1, 1.0, 0.0), refusesMix)
+    failsWith (daw::Arrangements::layered (silent, [1.0], 0, -0.001, 0.0), refusesMix)
+    failsWith (daw::Arrangements::layered (silent, [1.0], 0, 4.001, 0.0), refusesMix)
+    failsWith (daw::Arrangements::layered (silent, [1.0], 0, 1.0, -1.001), refusesMix)
+    failsWith (daw::Arrangements::layered (silent, [1.0], 0, 1.0, 1.001), refusesMix)
+    // part: one drum note's exact samples, overlap-add, the silence gap, the padding and every fault.
+    kick = arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.0, 0.5)])
+    succeeds (daw::Arrangements::part (song120, kick, 5), \head => arrangedKickHead head)
+    succeeds (daw::Arrangements::part (song120, kick, 12000), \whole => arrangedKickWhole whole)
+    succeeds (daw::Arrangements::part (song120, kick, 12003), \padded => arrangedKickPadded padded)
+    succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.0, 0.5), arrangedNote (0.25, 0.5)]), 12002), \pair => arrangedPairSamples pair)
+    succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.25, 0.5), arrangedNote (0.0, 0.5)]), 12002), \pair => arrangedPairSamples pair)
+    succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.0, 0.5), arrangedNote (0.0, 0.5)]), 12000), \twin => arrangedTwinSamples twin)
+    succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.0, 0.5), arrangedNote (1.0, 0.5)]), 24001), \gap => arrangedGapSamples gap)
+    succeeds (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (1.0, 0.5)]), 100), \late => arrangedLateSamples late)
+    succeeds (daw::Arrangements::part (song120, arrangedBell ("rest", 1.0, []), 4), \hush => expect (hush, [0.0, 0.0, 0.0, 0.0]))
+    succeeds (daw::Arrangements::part (song120, arrangedBell ("rest", 1.0, []), 0), \hush => expect (hush, []))
+    refusesNote = "A note needs pitch 0 to 127, velocity 0 to 1, a positive length and a tempo of 20 to 400."
+    failsWith (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedPitched (128, 0.0)]), 5), "kick: ${refusesNote}")
+    failsWith (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedPitched (-1, 0.0)]), 5), "kick: ${refusesNote}")
+    failsWith (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [daw::Note(pitch = 60, start = 0.0, length = 0.5, velocity = 1.5)]), 5), "kick: ${refusesNote}")
+    failsWith (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (0.0, 0.0)]), 5), "kick: ${refusesNote}")
+    failsWith (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (-0.5, 0.5)]), 5), "kick: a note starts before the piece.")
+    failsWith (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 0.25, [arrangedNote (sqrt (-1.0), 0.5)]), 5), "kick: a note start is not finite.")
+    failsWith (daw::Arrangements::part (song120, arrangedDrum ("kick", 1.0, 1.5, [arrangedNote (0.0, 0.5)]), 5), "kick: Drum noise must be 0 to 1, sweep 0 to 8 and decay 0.01 to 1 s.")
+    failsWith (daw::Arrangements::part (song120, arrangedBell ("ghost", 0.00001, [arrangedNote (0.0, 0.5)]), 5), "ghost: A note must last 1 to 960000 frames including its ring.")
+    failsWith (daw::Arrangements::part (song120, arrangedBell ("ghost", 25.0, [arrangedNote (0.0, 0.5)]), 5), "ghost: A note must last 1 to 960000 frames including its ring.")
+    // added: the rendered part placed on the buses at its own mix settings, faults prefixed by track.
+    succeeds (daw::Arrangements::added (song120, silent, arrangedDrum ("kick", 2.0, 0.25, [arrangedNote (0.0, 0.5)]), 3), \mixed => arrangedAddedBuses mixed)
+    succeeds (daw::Arrangements::added (song120, silent, arrangedBell ("rest", 1.0, []), 5), \quiet => expect (quiet.left, [0.0, 0.0, 0.0, 0.0, 0.0]))
+    succeeds (daw::Arrangements::added (song120, silent, arrangedBell ("rest", 1.0, []), 5), \quiet => expect (quiet.right, [0.0, 0.0, 0.0, 0.0, 0.0]))
+    failsWith (daw::Arrangements::added (song120, silent, arrangedDrum ("kick", 4.5, 0.25, [arrangedNote (0.0, 0.5)]), 3), "kick: ${refusesMix}")
+    failsWith (daw::Arrangements::added (song120, silent, arrangedDrum ("kick", 1.0, 0.25, [arrangedPitched (128, 0.0)]), 3), "kick: ${refusesNote}")
+    // interleaved: left and right woven frame by frame, zero past the end, empty when from reaches until.
+    stereo = daw::Mixdown(left = [1.0, 2.0], right = [3.0, 4.0], peak = 9.9)
+    expect (daw::Arrangements::interleaved (stereo, 0, 2), [1.0, 3.0, 2.0, 4.0])
+    expect (daw::Arrangements::interleaved (stereo, 1, 2), [2.0, 4.0])
+    expect (daw::Arrangements::interleaved (stereo, 1, 1), [])
+    expect (daw::Arrangements::interleaved (stereo, 2, 1), [])
+    expect (daw::Arrangements::interleaved (stereo, 2, 2), [])
+    expect (daw::Arrangements::interleaved (stereo, 0, 4), [1.0, 3.0, 2.0, 4.0, 0.0, 0.0, 0.0, 0.0])
+// Registered through the journey chain above (historyDragJourney), this file's path in from main.ospml's tests.
+
+// [SYNTH-ADVANCED-ORDER] Every family plays a real note through the song renderer: a chain of nodes, each cabled
+// to the next and the last to the output, at middle C for a quarter of a second.
+chainNode (index, part) = daw::PatchNode(identity = index, component = part.component, size = part.size, seed = 1, asset = "", settings = part.settings)
+
+chainCable index = daw::PatchCable(source = index, outlet = 0, destination = satAdd index 1, inlet = 0)
+
+chainOf parts =
+    nodes = mapList (toList (range (0, length parts)), \index => chainNode (index, listGet parts index ?: daw::PatchNode(identity = 0, component = "output", size = 0, seed = 0, asset = "", settings = [])))
+    daw::PatchInstrument(routing = daw::Routing(nodes = listAppend nodes (daw::PatchNode(identity = length parts, component = "output", size = 0, seed = 0, asset = "", settings = [])), cables = mapList (toList (range (0, length parts)), chainCable), attack = 0.005, release = 0.05))
+
+part (component, size, settings) = daw::PatchNode(identity = 0, component = component, size = size, seed = 1, asset = "", settings = settings)
+
+pitched key = daw::Setting(key = key, value = 1.0, follow = daw::Pitched)
+
+fixed (key, value) = daw::Setting(key = key, value = value, follow = daw::Constant)
+
+middleC () = daw::Note(pitch = 60, start = 0.0, length = 0.5, velocity = 0.8)
+
+peakOf samples = foldList (samples, 0.0, \(high, value) => synth::TableMath::larger (high, synth::TableMath::magnitude value))
+
+finite samples = length (filterList (samples, \value => value == value && synth::TableMath::magnitude value < 1000.0)) == length samples
+
+// Middle C repeats every 183.5 frames at 48 kHz: in the held middle of the note a pitched voice correlates with
+// itself one period later far more than half a period later (which an octave error would favour).
+lagged (samples, lag) = foldList (toList (range (2400, 12000)), 0.0, \(sum, index) => sum + (listGet samples index ?: 0.0) * (listGet samples (satAdd index lag) ?: 0.0))
+
+inTune samples = periodic (samples, 183, 92, 160)
+
+// A voice repeating every `period` frames: strong self-similarity there, weaker at half a period and nearby.
+periodic (samples, period, half, near) =
+    energy = lagged (samples, 0)
+    expect (energy > 0.0, true)
+    expect (lagged (samples, period) > 0.6 * energy, true)
+    expect (lagged (samples, period) > lagged (samples, half), true)
+    expect (lagged (samples, period) > lagged (samples, near), true)
+
+// [SYNTH-SPECTRAL-PITCH-EFFECT] The FFT pitch shifter moves middle C up a fifth (7 semitones, G4 at 122 frames) and an
+// octave (12 semitones, C5 at 92 frames), anti-correlated at its half period, with the shifted level kept.
+shifted (semitones, period, half, near) = succeeds (daw::NoteRenders::render (middleC (), 120.0, 48000.0, chainOf [part ("sine", 0, [pitched "frequency"]), part ("pitchShifter", 1024, [fixed ("semitones", semitones)])]), \samples =>
+    expect (length samples, 14400)
+    expect (finite samples, true)
+    expect (peakOf samples > 0.05, true)
+    periodic (samples, period, half, near)
+    expect (lagged (samples, half) < 0.0 - 0.5 * lagged (samples, 0), true)
+    // A unit sine carries 4800 over the 9600 measured frames; the shifted note keeps more than half of it.
+    expect (lagged (samples, 0) > 0.55 * 4800.0, true))
+
+heardFamily (name, instrument, pitch) = succeeds (daw::NoteRenders::render (middleC (), 120.0, 48000.0, instrument), \samples => familyHeard (name, instrument, pitch, samples))
+
+familyHeard (name, instrument, pitch, samples) =
+    // A quarter-second note plus its 50 ms release.
+    expect (length samples, 14400)
+    expect (finite samples, true)
+    expect (peakOf samples > 0.01, true)
+    expect (peakOf samples <= 4.0, true)
+    succeeds (daw::NoteRenders::render (middleC (), 120.0, 48000.0, instrument), \again => expect (structuralEquals (again, samples), true))
+    match pitch
+        true => inTune samples
+        false => expect (name != "", true)
+
+familiesJourney () =
+    heardFamily ("granular", chainOf [part ("grainCloud", 16, []), part ("downmix", 0, [])], false)
+    heardFamily ("physical", chainOf [part ("exciter", 0, []), part ("waveguide", 2400, [pitched "frequency"])], true)
+    heardFamily ("wavetable", chainOf [part ("wavetable", 0, [pitched "frequency", fixed ("position", 0.5)])], true)
+    heardFamily ("additive", chainOf [part ("additive", 0, [pitched "frequency"])], true)
+    heardFamily ("spectral", chainOf [part ("sine", 0, [pitched "frequency"]), part ("spectral", 1024, [])], true)
+    heardFamily ("nonlinear", chainOf [part ("sine", 0, [pitched "frequency"]), part ("shaper", 0, [fixed ("drive", 3.0)])], true)
+    heardFamily ("phase", chainOf [part ("operator", 0, [pitched "frequency"])], true)
+    shifted (7.0, 122, 61, 140)
+    shifted (12.0, 92, 46, 110)
+    failsWith (daw::NoteRenders::render (middleC (), 120.0, 48000.0, chainOf [part ("noSuchModule", 0, [])]), "Unknown module \"noSuchModule\".")

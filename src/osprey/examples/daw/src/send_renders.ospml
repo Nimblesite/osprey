@@ -1,0 +1,195 @@
+// Implements [DAW-MIX-BUS-TAP]. Capture the dry signal and the named stereo sends in one voice pass.
+namespace daw
+
+import synth::Outcomes
+
+(** Prepare the ports feeding a track's buses, then collect them from each evaluated DSP block. *)
+module SendRenders
+    ok value = Success(value = value)
+
+    (** Collect checked values in their original order. *)
+    export collect (items, read) = foldList (items, ok [], \(held, item) => Outcomes::carried (held, \values => Outcomes::carried (read item, \value => ok (listAppend values value))))
+
+    lane (node, outlet, channel, gain) = TapLane(tapNode = node, tapOutlet = outlet, tapChannel = channel, tapGain = gain)
+
+    lanes (graph, routeSend) = Outcomes::carried (PatchVoices::told (synth::ClipInputs::audioPort (graph, routeSend.source, routeSend.outlet)), \port =>
+        match port.channels
+            1 => ok [lane (routeSend.source, routeSend.outlet, 0, ArrangeMath::scaled (routeSend.level, ArrangeMath::panLeft 0.0)), lane (routeSend.source, routeSend.outlet, 0, ArrangeMath::scaled (routeSend.level, ArrangeMath::panRight 0.0))]
+            2 => ok [lane (routeSend.source, routeSend.outlet, 0, routeSend.level), lane (routeSend.source, routeSend.outlet, 1, routeSend.level)]
+            _ => Error(message = "Split the multichannel outlet before sending to a stereo bus."))
+
+    (** One dry lane, then a left and a right lane per enabled send. *)
+    export outputs (graph, sends) = match filterList (graph.nodes, \n => n.processor == synth::Sink)
+        [sink] => Outcomes::carried (collect (sends, \routeSend => lanes (graph, routeSend)), \pairs => ok (listPrepend (ui::Lists::flatten pairs) (lane (sink.identity, -1, 0, 1.0))))
+        _ => Error(message = "The patch needs one main audio output.")
+
+    // The mono scheduler has already resolved each selected audio port to one sample.
+    monoFrame (ports, buffers, frame) = collect (toList (range (0, length ports)), \index =>
+        match listGet ports index
+            Success port => Outcomes::carried (synth::RenderInputs::sample (frame, port.tapNode), \value =>
+                match listGet buffers index
+                    Success samples => ok (listPrepend samples value)
+                    Error _ => Error(message = synth::MissingResource(detail = "A send lane is missing.")))
+            _ => Error(message = synth::MissingResource(detail = "A send port is missing.")))
+
+    mono (graph, plan, rate, count, ports, empty) = Outcomes::carried (PatchVoices::told (synth::Renderer::start graph), \audio =>
+        Outcomes::carried (foldList (PatchVoices::counts (count, 8192), ok (synth::Timeline(audio = audio, observation = empty)), \(held, size) => Outcomes::carried (held, \progress => PatchVoices::told (synth::Renderer::capture (plan, rate, synth::Parameters::initial graph, progress, size, \(buffers, frame) => monoFrame (ports, buffers, frame))))), \result => ok (mapList (result.observation, listReverse))))
+
+    fromClip (graph, clips, port) = match port.tapOutlet < 0
+        true => PatchVoices::told (Outcomes::carried (synth::ClipInputs::completed (clips, port.tapNode), synth::GraphClips::trackSamples))
+        false => PatchVoices::told (synth::ClipInputs::tapped (graph, clips, port.tapNode, port.tapOutlet, port.tapChannel))
+
+    extend (graph, clips, ports, buffers, index) = match listGet ports index
+        Error _ => Error(message = "A send port is missing.")
+        Success port => Outcomes::carried (fromClip (graph, clips, port), \samples =>
+            match listGet buffers index
+                Success prior => ok (listConcat prior samples)
+                Error _ => Error(message = "A send lane is missing."))
+
+    block (graph, ports, progress, count) = match count > 0
+        false => ok progress
+        true => Outcomes::carried (PatchVoices::told (synth::GraphClips::next (graph, progress.captureState, count)), \step =>
+            match step
+                synth::BlockWaiting _ _ => Error(message = "An external plug-in needs its audio worker.")
+                synth::BlockReady held clips => Outcomes::carried (collect (toList (range (0, length ports)), \i => extend (graph, clips, ports, progress.captureLanes, i)), \buffers => ok (Capture(captureState = held, captureLanes = buffers))))
+
+    clips (graph, rate, count, ports, empty) = match rate == 48000.0
+        false => Error(message = "MIDI, control and multichannel patch voices require a 48000 Hz project.")
+        true =>
+            initial = Capture(captureState = synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), captureLanes = empty)
+            Outcomes::carried (foldList (PatchVoices::counts (count, 1024), ok initial, \(result, size) => Outcomes::carried (result, \progress => block (graph, ports, progress, size))), \done => ok done.captureLanes)
+
+    captured (graph, rate, span, ports) = match synth::Graphs::prepare graph
+        synth::Invalid why => Error(message = "The send graph cannot be scheduled: ${why}.")
+        synth::Valid plan =>
+            empty = mapList (ports, \_ => [])
+            match ui::Lists::any (graph.nodes, synth::ClipLayouts::requiresClips)
+                true => clips (graph, rate, span.total, ports, empty)
+                false => mono (graph, plan, rate, span.total, ports, empty)
+
+    scale (ports, buffers, span, routing, rate, index) = match listGet ports index
+        Error _ => Error(message = "A send port is missing.")
+        Success port => match listGet buffers index
+            Error _ => Error(message = "A send lane is missing.")
+            Success samples => ok (mapList (PatchVoices::shaped (samples, span, routing, rate), \v => ArrangeMath::scaled (v, port.tapGain)))
+
+    prepared (graph, sends, rate, span, routing) = Outcomes::carried (outputs (graph, sends), \ports =>
+        Outcomes::carried (Outcomes::carried (PatchVoices::grounded graph, \whole => PatchVoices::audible (whole, mapList (sends, \s => s.source))), \heard => Outcomes::carried (captured (heard, rate, span, ports), \buffers => collect (toList (range (0, length ports)), \i => scale (ports, buffers, span, routing, rate, i)))))
+
+    builtIn (samples, sends) = listPrepend (ui::Lists::flatten (mapList (sends, \routeSend =>
+        [mapList (samples, \v => ArrangeMath::scaled (v, ArrangeMath::scaled (routeSend.level, ArrangeMath::panLeft 0.0))), mapList (samples, \v => ArrangeMath::scaled (v, ArrangeMath::scaled (routeSend.level, ArrangeMath::panRight 0.0)))]))) samples
+
+    (** Render the main output and all requested sends for one note, including its shared gate envelope. *)
+    export note (voice, sends, note, tempo, rate) = match voice.instrument
+        PatchInstrument routing => Outcomes::carried (NoteRenders::checkedSpan (note, tempo, rate, voice.instrument), \span => Outcomes::carried (PatchVoices::patched (note, routing), \graph => prepared (graph, sends, rate, span, routing)))
+        _ => Outcomes::carried (NoteRenders::render (note, tempo, rate, voice.instrument), \audio => ok (builtIn (audio, sends)))
+
+    usable (song, voice, routeSend) =
+        unique = length (filterList (voice.sends, \s => s.sendId == routeSend.sendId)) == 1
+        match unique && routeSend.sendId >= 0 && routeSend.source >= 0 && routeSend.outlet >= 0 && ArrangeMath::audible routeSend.level
+            false => Error(message = "Each send needs a unique identity, a source outlet and a level from zero to one.")
+            true => Outcomes::carried (BusMix::named (song, routeSend.bus), \_ => ok routeSend)
+
+    sourcePorts (voice, sends) = match voice.instrument
+        PatchInstrument routing => Outcomes::carried (PatchVoices::enveloped routing, \_ => Outcomes::carried (PatchVoices::patched (Note(pitch = 60, start = 0.0, length = 1.0, velocity = 1.0), routing), \graph => Outcomes::carried (outputs (graph, sends), \_ => ok voice)))
+        _ => match ui::Lists::all (sends, \s => s.source == 1 && s.outlet == 0)
+            true => ok voice
+            false => Error(message = "A built-in voice has one audio outlet on node 1.")
+
+    (** Validate even muted sends and tracks without notes before the project or mix is published. *)
+    export checked (song, voice) = match voice.sends
+        [] => ok voice
+        sends => Outcomes::carried (collect (sends, \s => usable (song, voice, s)), \accepted => sourcePorts (voice, accepted))
+
+    (** Validate the project boundaries that join track graphs to their destination buses. *)
+    export project song = Outcomes::carried (collect (song.tracks, \voice => checked (song, voice)), \_ => ok song)
+
+    // [DAW-TRANSPORT-LIVE-CONTROLS] Edited notes retain oscillator phase, filter memory and their original gate.
+    memory graph = match ui::Lists::any (graph.nodes, synth::ClipLayouts::requiresClips)
+        true => ok (MultichannelNote(clock = synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = [])))
+        false => Outcomes::carried (PatchVoices::told (synth::Renderer::start graph), \audio => ok (ScalarNote(audio = audio)))
+
+    preparedNote (graph, ports, span, routing, cue) = match synth::Graphs::prepare graph
+        synth::Invalid why => Error(message = "The live patch cannot be scheduled: ${why}.")
+        synth::Valid plan => Outcomes::carried (memory graph, \held =>
+            ok (Sounding(cue = cue, at = cue.due, lanes = [], driver = PerformingNote(patch = ActivePatch(plan = plan, ports = ports, span = span, attack = routing.attack, release = routing.release, memory = held)))))
+
+    (** Prepare a routed note for the blocks the playhead actually reaches. *)
+    export started (song, voice, sends, routing, cue, sounding) = match ui::Lists::find (sounding, \sound => performing sound)
+        Success sound => starting (song, voice, sends, routing, cue, rebuilt (sound, cue.note, routing))
+        Error _ => starting (song, voice, sends, routing, cue, PatchVoices::patched (cue.note, routing))
+
+    performing sound = match sound.driver
+        PerformingNote _ => true
+        _ => false
+
+    starting (song, voice, sends, routing, cue, built) = Outcomes::carried (NoteRenders::checkedSpan (cue.note, song.tempo, toFloat song.sampleRate, voice.instrument), \span =>
+        Outcomes::carried (built, \graph => Outcomes::carried (outputs (graph, sends), \ports =>
+            Outcomes::carried (PatchVoices::grounded graph, \whole => Outcomes::carried (PatchVoices::audible (whole, mapList (sends, \s => s.source)), \heard =>
+                preparedNote (heard, ports, span, routing, cue))))))
+
+    capturedBlock (patch, held, size, rate) =
+        empty = mapList (patch.ports, \_ => [])
+        match held
+            ScalarNote audio => Outcomes::carried (PatchVoices::told (synth::Renderer::capture (patch.plan, rate, synth::Parameters::initial patch.plan.graph, synth::Timeline(audio = audio, observation = empty), size, \(buffers, frame) => monoFrame (patch.ports, buffers, frame))), \next =>
+                ok (Capture(captureState = ScalarNote(audio = next.audio), captureLanes = mapList (next.observation, listReverse))))
+            MultichannelNote clock => Outcomes::carried (block (patch.plan.graph, patch.ports, Capture(captureState = clock, captureLanes = empty), size), \next =>
+                ok (Capture(captureState = MultichannelNote(clock = next.captureState), captureLanes = next.captureLanes)))
+
+    // Append one checked block per lane; large offline windows still use bounded graph blocks.
+    accumulated (patch, rate, prior, size) = match size > 0
+        false => ok prior
+        true => Outcomes::carried (capturedBlock (patch, prior.captureState, size, rate), \next =>
+            Outcomes::carried (collect (toList (range (0, length patch.ports)), \i =>
+                match listGet prior.captureLanes i
+                    Error _ => Error(message = "The sounding note lost an output lane.")
+                    Success samples => match listGet next.captureLanes i
+                        Error _ => Error(message = "The rendered note lost an output lane.")
+                        Success block => ok (listConcat samples block)), \lanes => ok (next(captureLanes = lanes))))
+
+    shapedLane (patch, lanes, offset, rate, index) = match listGet patch.ports index
+        Error _ => Error(message = "The sounding note lost an output port.")
+        Success port => match listGet lanes index
+            Error _ => Error(message = "The sounding note lost its audio lane.")
+            Success samples => ok (mapList (toList (range (0, length samples)), \i => ArrangeMath::scaled (ArrangeMath::enveloped (listGet samples i ?: 0.0, toFloat (satAdd offset i), patch.span.gate, patch.attack, patch.release, rate), port.tapGain)))
+
+    portion (sound, patch, first, count, rate) =
+        initial = Capture(captureState = patch.memory, captureLanes = mapList (patch.ports, \_ => []))
+        Outcomes::carried (foldList (PatchVoices::counts (count, 1024), ok initial, \(result, size) => Outcomes::carried (result, \prior => accumulated (patch, rate, prior, size))), \played =>
+            Outcomes::carried (collect (toList (range (0, length patch.ports)), \i => shapedLane (patch, played.captureLanes, satSub first sound.cue.due, rate, i)), \lanes =>
+                ok (sound(at = first, lanes = lanes, driver = PerformingNote(patch = patch(memory = played.captureState))))))
+
+    (** Render the overlap with this device block, continuing the same note at its exact sample age. *)
+    export window (sound, from, until, rate) = match sound.driver
+        RecordedNote => ok sound
+        PerformingNote patch =>
+            first = ui::Pick::either (from > sound.cue.due, from, sound.cue.due)
+            end = satAdd sound.cue.due patch.span.total
+            stop = ui::Pick::either (until < end, until, end)
+            portion (sound, patch, first, ui::Pick::either (stop > first, satSub stop first, 0), rate)
+
+    // Parameter-only changes keep memory. A changed layout is prepared at the same position in its note.
+    structure graph = mapList (graph.nodes, \n => n(parameters = []))
+
+    transfer (fresh, old, from, rate) = match fresh.driver
+        PerformingNote patch => match old.driver
+            PerformingNote last => match structuralEquals (structure last.plan.graph, structure patch.plan.graph) && structuralEquals (last.plan.graph.cables, patch.plan.graph.cables)
+                true => ok (fresh(driver = PerformingNote(patch = patch(memory = last.memory))))
+                false => window (fresh, fresh.cue.due, from, rate)
+            RecordedNote => window (fresh, fresh.cue.due, from, rate)
+        RecordedNote => Error(message = "The edited note has no prepared patch.")
+
+    (** Carry an already running patch or recover the memory of a previously cached note. *)
+    export activeBefore (song, prior, sends, sound, from) = match sound.driver
+        PerformingNote _ => ok sound
+        RecordedNote => match prior.instrument
+            PatchInstrument routing => Outcomes::carried (started (song, prior, sends, routing, sound.cue, []), \fresh => window (fresh, fresh.cue.due, from, toFloat song.sampleRate))
+            _ => ok sound
+
+    rebuilt (old, note, routing) = match old.driver
+        PerformingNote patch => PatchVoices::repatched (note, routing, patch.plan.graph)
+        RecordedNote => PatchVoices::patched (note, routing)
+
+    (** Switch a sounding note to the accepted parameters without replaying its attack or losing its phase. *)
+    export retuned (song, voice, prior, oldSends, sends, sound, from, routing) = Outcomes::carried (activeBefore (song, prior, oldSends, sound, from), \old =>
+        Outcomes::carried (starting (song, voice, sends, routing, sound.cue, rebuilt (old, old.cue.note, routing)), \fresh => transfer (fresh, old, from, toFloat song.sampleRate)))

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prism · Patch controls</title>
+<style>
+:root{color-scheme:dark;--bg:#100e20;--panel:#161326;--raised:#211c35;--line:#3b3452;--ink:#f1eefb;--muted:#aaa0c4;--orange:#ff883e;--violet:#b296dd;--aqua:#58e0d0}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font:14px -apple-system,BlinkMacSystemFont,"Inter",sans-serif;color:var(--ink)}button,input,select{font:inherit;color:inherit}button,select{cursor:pointer}
+header,footer,.strip,.crumb,.head,.stat,.pair,.socket,.switch,.row{display:flex;align-items:center}
+header{height:62px;border-bottom:1px solid var(--line);gap:26px;padding:0 24px;background:#121021}.dots{display:flex;gap:6px}.dots i{width:12px;height:12px;border-radius:100%;background:#fe605c}.dots i:nth-child(2){background:#f9bf41}.dots i:nth-child(3){background:#36c653}
+.brand{display:flex;gap:9px;align-items:center;padding-right:26px;border-right:1px solid var(--line);font-size:20px;font-weight:650;letter-spacing:-.6px}.brand img{width:32px;height:32px;object-fit:contain}.tab{color:var(--muted);font-weight:550}.tab b{color:var(--orange);margin-right:9px}.tab.on{background:#29223c;border:1px solid #514464;color:var(--ink);border-radius:7px;padding:8px 14px}
+.strip{height:77px;justify-content:space-between;padding:0 26px;border-bottom:1px solid var(--line);background:#151223}.over{font-size:10px;letter-spacing:1.15px;font-weight:700;text-transform:uppercase;color:var(--muted)}h1{font-size:23px;letter-spacing:-.6px;margin:7px 0 0}.meters{display:flex;gap:38px}.stat{flex-direction:column;align-items:flex-start;gap:6px}.stat span:last-child{font-variant-numeric:tabular-nums;font-size:16px}.strip .arr{flex:1}.bars{width:210px;height:32px;margin-right:5vw;align-self:end;margin-bottom:18px}
+main{height:calc(100vh - 171px);min-height:680px;display:grid;grid-template-columns:minmax(560px,1fr) 354px}.work{display:grid;grid-template-rows:51px 1fr;min-width:0}.crumb{border-bottom:1px solid var(--line);gap:11px;padding:0 25px;color:var(--muted)}.crumb strong{color:var(--ink)}.graph{position:relative;overflow:hidden;background-color:var(--bg);background-image:linear-gradient(#221d32 1px,transparent 1px),linear-gradient(90deg,#221d32 1px,transparent 1px);background-size:22px 22px}.graph canvas{width:100%;height:100%;position:absolute;inset:0}.node{position:absolute;width:24%;height:102px;transform:translate(-50%,-50%);background:#201a32;border:1px solid #55466e;border-radius:8px;box-shadow:0 3px 12px #05041033}.node.selected{border:2px solid var(--orange);box-shadow:0 0 0 3px #ff883e16}.head{padding:12px 11px;gap:7px;border-bottom:1px solid #3a304c;font-weight:650}.head img{width:18px;height:18px;object-fit:contain}.num{font-size:11px;font-variant-numeric:tabular-nums;color:var(--muted);margin-left:auto}.node .port{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;padding:13px 13px}.node:before,.node:after{content:"";position:absolute;top:calc(50% - 5px);width:7px;height:7px;border-radius:100%;background:#141020;border:2px solid var(--orange)}.node:before{left:-7px}.node:after{right:-7px}.node.source:before,.node.sink:after{display:none}
+aside{border-left:1px solid var(--line);padding:25px 23px;background:var(--panel);overflow:auto}aside h2{font-size:26px;letter-spacing:-.85px;margin:11px 0 6px}.sub{font-size:13px;color:var(--muted)}.block{border-top:1px solid var(--line);margin-top:22px;padding-top:17px}.row,.switch{min-height:43px;justify-content:space-between;gap:12px}.row select{background:var(--raised);border:1px solid #524766;border-radius:6px;padding:6px 9px;min-width:105px}.parameter{min-height:58px}.pair{gap:9px}.dial{--size:39px;--sweep:0deg;cursor:ns-resize;touch-action:none;width:var(--size);height:var(--size);position:relative;border:0;padding:0;border-radius:50%;background:conic-gradient(from 225deg,var(--orange) 0 var(--sweep),#5a4d6e var(--sweep) 270deg,transparent 270deg);outline-offset:5px}.dial:before{content:"";position:absolute;inset:4px;border-radius:50%;background:linear-gradient(140deg,#433950,#211c2e);box-shadow:inset 0 0 0 2px #161221}.dial:after{content:"";position:absolute;left:calc(50% - 1.5px);top:7px;width:3px;height:10px;border-radius:3px;background:#fff0df;transform-origin:1.5px calc(var(--size)/2 - 7px);transform:rotate(calc(var(--sweep) - 135deg))}.dial:focus-visible,input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid #c2a4fa}.grab:before{box-shadow:inset 0 0 0 2px var(--orange)}.value{width:67px;padding:6px 3px;background:transparent;border:1px solid transparent;text-align:right;border-radius:4px;font-variant-numeric:tabular-nums;font-weight:600;cursor:ns-resize}.value:hover,.value:focus{background:#241d32;border-color:#554666}.compact{justify-content:space-between;padding:7px 12px;font-size:12px}.compact .dial{--size:28px}.compact .dial:after{top:5px;height:7px;transform-origin:1.5px calc(var(--size)/2 - 5px)}.compact .pair{gap:2px}.compact .value{width:52px}
+.switch{position:relative;cursor:pointer}.switch input{position:absolute;right:0;opacity:0}.pill{width:31px;height:17px;background:#393146;border:1px solid #635572;border-radius:15px;position:relative}.pill:after{content:"";width:11px;height:11px;position:absolute;left:2px;top:2px;background:#c1b8cc;border-radius:50%}.switch input:checked+.pill{background:var(--orange);border-color:var(--orange)}.switch input:checked+.pill:after{left:15px;background:white}.switch input:focus-visible+.pill{outline:2px solid var(--violet);outline-offset:3px}.socket{gap:9px;font-size:13px;padding-top:13px}.socket i{width:9px;height:9px;border:2px solid var(--orange);border-radius:50%}.socket small{color:var(--muted);width:22px}
+.legend{position:absolute;left:24px;bottom:19px;color:var(--muted);font-size:11px}.legend b{display:inline-block;width:22px;height:2px;background:var(--orange);vertical-align:middle;margin-right:9px}footer{height:32px;gap:18px;padding:0 22px;border-top:1px solid var(--line);color:var(--muted);font-size:11px}footer span:last-child{margin-left:auto}.guide{color:var(--muted);font-size:12px;line-height:1.55;margin:16px 0 0}.guide kbd{font:inherit;color:#dfd3ed}
+@media(max-width:880px){.bars{display:none}main{grid-template-columns:minmax(365px,1fr) 295px}.meters{gap:16px}.node{width:27%;height:116px}.head{font-size:12px;padding:10px 7px;gap:4px}.compact{flex-direction:column;align-items:flex-start;gap:2px;padding:5px 9px}.compact .pair{width:100%;justify-content:space-between;gap:0}}
+@media(max-width:740px){.work,.bars,.dots,.meters .stat:first-child,.tab:not(.on){display:none}main{display:block;min-height:0;height:auto}aside{border:0;min-height:calc(100vh - 171px)}.strip{gap:12px}h1{font-size:18px}.stat span:last-child{font-size:13px}footer{font-size:10px}.guide{max-width:320px}}
+</style>
+<header><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand"><img src="../../../src/osprey/packages/signal_flow/skins/prism/logo.png" alt="">Prism</span><span class="tab">Timeline</span><span class="tab on"><b>⌁</b>Track patch</span><span class="tab">Bus routing</span></header>
+<div class="strip"><div class="arr"><div class="over">Arrangement</div><h1>Broken Circuitry: Reassembly</h1></div><canvas class="bars" width="420" height="64" aria-label="Song overview"></canvas><div class="meters"><div class="stat"><span class="over">BPM</span><span>97.5</span></div><div class="stat"><span class="over">Meter</span><span>4/4</span></div><div class="stat"><span class="over">Position</span><span>009.02.01</span></div></div></div>
+<main><div class="work"><div class="crumb">Tracks <span>›</span> 06 keysL <span>›</span> <strong>Track patch</strong></div><div class="graph"><canvas id="cables" aria-hidden="true"></canvas><div class="legend"><b></b>Audio / Signal</div></div></div>
+<aside><div class="over">Patch controls</div><h2>Waveshaper 4</h2><div class="sub">keysL / Track patch</div>
+<section class="block"><div class="over">Parameters</div><label class="row">Curve<select id="curve" data-setting="curve"><option>Tanh</option><option>Hard clip</option><option>Cubic</option><option>Fold</option></select></label><div id="knobs"></div>
+<label class="switch">Antialiasing<input type="checkbox" data-setting="antialias" checked><i class="pill"></i></label><label class="switch">2× oversampling<input type="checkbox" data-setting="oversample"><i class="pill"></i></label></section>
+<section class="block"><div class="over">Connections</div><div class="socket"><i></i><small>In</small> Loss filter 3 · audio</div><div class="socket"><i></i><small>Out</small> Output 5 · audio</div></section>
+<p class="guide" id="guidance">Drag vertically to adjust. Hold <kbd>Shift</kbd> for fine control.<br>Double-click to reset. Select a value to type.</p></aside></main>
+<footer><span>▪ &nbsp; Stopped</span><span>48 kHz</span><span>Stereo</span><span>keysL / Waveshaper 4</span></footer>
+<script>
+const parameters = {
+  strength: {label:"Strength", low:0, high:1, value:0.9, initial:0.8, unit:"", step:0.01},
+  position: {label:"Strike position", low:0.01, high:0.5, value:0.14, initial:0.13, unit:"", step:0.01},
+  decay: {label:"Decay", low:0.01, high:60, value:2.2, initial:3, unit:" s", log:true, step:0.01},
+  gain: {label:"Loss gain", low:0, high:1, value:0.95, initial:0.99, unit:"", step:0.01},
+  drive: {label:"Drive", low:0.1, high:50, value:1.4, initial:1.5, unit:"×", log:true, step:0.01},
+  bias: {label:"Bias", low:-1, high:1, value:0, initial:0, unit:"", step:0.01},
+  level: {label:"Output level", low:0, high:1, value:0.6, initial:0.5, unit:"", step:0.01}
+};
+const graph = document.querySelector(".graph");
+const nodes = [
+  ["Exciter","source",0,17,27], ["Strike comb","process",1,50,27], ["Waveguide string","process",2,83,27],
+  ["Loss filter","process",3,17,65], ["Waveshaper","process",4,50,65], ["Output","output",5,83,65]
+];
+for (const [name,icon,id,x,y] of nodes) {
+  const node = document.createElement("section");
+  node.className = "node "+(id===0?"source":id===5?"sink":id===4?"selected":"");
+  node.style.left = x+"%"; node.style.top = y+"%";
+  node.innerHTML = '<div class="head"><img alt="" src="../../../src/osprey/packages/signal_flow/skins/prism/icon-'+icon+'.png">'+name+'<span class="num">'+id+'</span></div>';
+  const primary=["strength","position","decay","gain","drive"][id];
+  if (primary) node.innerHTML += '<div class="compact row">'+parameters[primary].label+'<span class="pair" data-key="'+primary+'"></span></div>';
+  else node.innerHTML += '<div class="port"><span>Mono audio</span><span>To keysL</span></div>';
+  graph.append(node);
+}
+function drawCables() {
+  const canvas=document.querySelector("#cables"), box=graph.getBoundingClientRect(), scale=devicePixelRatio;
+  if (!box.width) return;
+  canvas.width=box.width*scale;canvas.height=box.height*scale;
+  const ctx=canvas.getContext("2d");ctx.scale(scale,scale);
+  const ports=Array.from(graph.querySelectorAll(".node"), n=> {
+    const r=n.getBoundingClientRect();
+    return {left:r.left-box.left-3,right:r.right-box.left+3,y:r.top-box.top+r.height/2};
+  });
+  ctx.strokeStyle="#ff883e";ctx.lineWidth=2;ctx.lineCap="round";ctx.lineJoin="round";
+  for (let i=0;i<ports.length-1;i++) {
+    const a=ports[i],b=ports[i+1];ctx.beginPath();ctx.moveTo(a.right,a.y);
+    if (a.y===b.y) ctx.lineTo(b.left,b.y);
+    else {
+      const half=(a.y+b.y)/2;
+      ctx.bezierCurveTo(a.right+42,a.y,a.right+42,half,a.right+12,half);
+      ctx.lineTo(b.left-12,half);ctx.bezierCurveTo(b.left-42,half,b.left-42,b.y,b.left,b.y);
+    }
+    ctx.stroke();
+  }
+}
+new ResizeObserver(drawCables).observe(graph);
+for(const key of ["drive","bias","level"]) {
+  const p=parameters[key];
+  const row=document.createElement("div");row.className="row parameter";
+  row.innerHTML='<span>'+p.label+'</span><span class="pair" data-key="'+key+'"></span>';
+  document.querySelector("#knobs").append(row);
+}
+const history=[], redo=[];
+const controls = Object.fromEntries(Array.from(document.querySelectorAll("[data-setting]"),control=>[control.dataset.setting,control]));
+const choiceValues = {curve:"Tanh", antialias:true, oversample:false};
+function valueOf(key) {return parameters[key]?.value ?? choiceValues[key];}
+function restore(key,value) {
+  if(parameters[key]) {display(key,value);return;}
+  choiceValues[key]=value;
+  if(controls[key].type==="checkbox") controls[key].checked=value;
+  else controls[key].value=value;
+}
+function storeEdit(key,previous) {
+  if (valueOf(key)!==previous) {history.push([key,previous]);redo.length=0;}
+}
+for(const [key,control] of Object.entries(controls)){
+  control.addEventListener("change",()=>{
+    const before=valueOf(key);
+    restore(key,control.type==="checkbox"?control.checked:control.value);
+    storeEdit(key,before);
+  });
+}
+function undo(from,to) {
+  const edit=from.pop();if (!edit) return;
+  const [key,previous]=edit;to.push([key,valueOf(key)]);restore(key,previous);
+}
+function norm(p,v) {return p.log?Math.log(v/p.low)/Math.log(p.high/p.low):(v-p.low)/(p.high-p.low);}
+function fromNorm(p,t) {return p.log?p.low*Math.pow(p.high/p.low,t):p.low+t*(p.high-p.low);}
+function display(key,number) {
+  const p=parameters[key];p.value=Math.max(p.low,Math.min(p.high,Number(number.toFixed(5))));
+  for(const group of document.querySelectorAll('[data-key="'+key+'"]')) {
+    const knob=group.querySelector(".dial"), field=group.querySelector(".value");
+    if(!knob) continue;
+    knob.style.setProperty("--sweep",270*norm(p,p.value)+"deg");
+    const precision=Math.abs(p.value-Math.round(p.value*100)/100)>0.0001?3:2;
+    const text=p.value.toFixed(precision)+p.unit;
+    knob.setAttribute("aria-valuenow",p.value);knob.setAttribute("aria-valuetext",text);
+    field.value=text;
+  }
+}
+const guide=document.querySelector("#guidance"), help=guide.innerHTML;
+function guideDrag(key,fine) {
+  guide.textContent=(fine?"Fine adjustment":"Adjusting")+" · "+parameters[key].label+" · Esc to cancel";
+  guide.style.color="var(--orange)";
+}
+function guideIdle() {guide.innerHTML=help;guide.style.color="";}
+let gesture;
+function attach(group) {
+  const key=group.dataset.key,p=parameters[key];
+  group.innerHTML='<button class="dial" type="button" role="slider"></button><input class="value" type="text" inputmode="decimal" spellcheck="false">';
+  const knob=group.firstChild,field=group.lastChild;
+  knob.setAttribute("aria-label",p.label);knob.setAttribute("aria-valuemin",p.low);knob.setAttribute("aria-valuemax",p.high);
+  knob.setAttribute("aria-describedby","guidance");field.setAttribute("aria-label","Type "+p.label);
+  for(const control of [knob,field]) {
+    control.addEventListener("pointerdown",e=>{
+      if(e.button!==0) return;
+      control.setPointerCapture(e.pointerId);gesture={control,key,y:e.clientY,startY:e.clientY,previous:p.value,moved:false};
+      if(control===knob){e.preventDefault();knob.focus();}
+    });
+    control.addEventListener("pointermove",e=>{
+      if(gesture?.control!==control) return;
+      if(!gesture.moved && Math.abs(e.clientY-gesture.startY)<3) return;
+      gesture.moved=true;guideDrag(key,e.shiftKey);knob.classList.add("grab");field.readOnly=true;
+      const t=norm(p,p.value)+(gesture.y-e.clientY)/(e.shiftKey?1800:180);
+      display(key,fromNorm(p,Math.max(0,Math.min(1,t))));gesture.y=e.clientY;
+    });
+    control.addEventListener("pointerup",()=>{
+      if(gesture?.control!==control)return;
+      if(gesture.moved)storeEdit(key,gesture.previous);
+      else if(control===field){field.focus();field.select();}
+      gesture=undefined;guideIdle();knob.classList.remove("grab");field.readOnly=false;
+    });
+    control.addEventListener("pointercancel",()=>{if(gesture?.control===control){display(key,gesture.previous);gesture=undefined;guideIdle();knob.classList.remove("grab");field.readOnly=false;}});
+    control.addEventListener("dblclick",e=>{e.preventDefault();const before=p.value;display(key,p.initial);storeEdit(key,before);knob.focus();});
+  }
+  knob.addEventListener("keydown",e=>{
+    const sign={ArrowUp:1,ArrowRight:1,ArrowDown:-1,ArrowLeft:-1}[e.key];
+    if(e.key==="Enter"){field.focus();field.select();return;}
+    if(!sign)return;e.preventDefault();const before=p.value;display(key,p.value+sign*p.step*(e.shiftKey?0.1:1));storeEdit(key,before);
+  });
+  function commitValue(){if(field.value===knob.getAttribute("aria-valuetext"))return;const value=field.value.replace(p.unit,"").trim(), number=Number(value), before=p.value;
+    display(key,value!==""&&Number.isFinite(number)?number:p.value);storeEdit(key,before);}
+  field.addEventListener("blur",commitValue);
+  field.addEventListener("keydown",e=>{if(e.key==="Enter"){commitValue();knob.focus();}if(e.key==="Escape"){display(key,p.value);knob.focus();}});
+  display(key,p.value);
+}
+document.querySelectorAll(".pair").forEach(attach);
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Escape"||!gesture)return;
+  const {control,key,previous}=gesture;gesture=undefined;guideIdle();
+  display(key,previous);control.closest(".pair").querySelector(".dial").classList.remove("grab");
+  control.closest(".pair").querySelector(".value").readOnly=false;e.preventDefault();e.stopImmediatePropagation();
+},true);
+document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="z"&&!(e.target.tagName==="INPUT"&&e.target.type==="text")){
+  e.preventDefault();e.shiftKey?undo(redo,history):undo(history,redo);
+}});
+const bars=[8, 23, 15, 9, 27, 27, 15, 67, 82, 79, 79, 64, 86, 72, 79, 77, 124, 97, 91, 136, 106, 78, 104, 107, 91, 94, 92, 111, 93, 111, 92, 89, 113, 111, 124, 81, 24, 23, 6, 6];
+const strip=document.querySelector(".bars"),ctx=strip.getContext("2d"),w=strip.width/bars.length;
+bars.forEach((count,i)=>{const height=4+count/Math.max(...bars)*40;ctx.fillStyle="#615578";ctx.fillRect(i*w,55-height,w-2,height);});
+ctx.strokeStyle="#ff883e";ctx.strokeRect(8*w-2,10,2*w+2,48);
+</script></html>

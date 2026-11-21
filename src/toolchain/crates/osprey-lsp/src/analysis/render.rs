@@ -236,18 +236,13 @@ pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &crate::inferred::Infer
     {
         return;
     }
-    let inferred = types.param_types(sym).unwrap_or_default().to_vec();
-    for (slot, (_, written)) in sym.parameters.iter_mut().enumerate() {
-        if let (true, Some(found)) = (written.is_empty(), inferred.get(slot)) {
-            if let Some(rendered) = types.shown(found) {
-                *written = rendered;
-            }
-        }
-    }
-    sym.return_type = sym
-        .return_type
-        .take()
-        .or_else(|| types.return_type(sym).and_then(|ty| types.shown(ty)));
+    let constraints = types.constraints(sym);
+    fill_params(sym, types, &constraints);
+    sym.return_type = sym.return_type.take().or_else(|| {
+        types
+            .return_type(sym)
+            .and_then(|ty| types.shown(&osprey_types::with_constraints(ty, &constraints)))
+    });
     let signature = render_signature(
         &sym.name,
         &sym.binder,
@@ -257,6 +252,24 @@ pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &crate::inferred::Infer
     );
     sym.ty.clone_from(&signature);
     sym.signature = Some(signature);
+}
+
+/// Each unwritten parameter type, as the checker inferred it, with every
+/// constrained variable shown as its constraint [TYPE-CONSTRAINTS].
+fn fill_params(
+    sym: &mut SymbolInfo,
+    types: &crate::inferred::Inferred,
+    constraints: &std::collections::HashMap<osprey_types::VarId, &'static str>,
+) {
+    let inferred = types.param_types(sym).unwrap_or_default().to_vec();
+    for (slot, (_, written)) in sym.parameters.iter_mut().enumerate() {
+        if let (true, Some(found)) = (written.is_empty(), inferred.get(slot)) {
+            let found = osprey_types::with_constraints(found, constraints);
+            if let Some(rendered) = types.shown(&found) {
+                *written = rendered;
+            }
+        }
+    }
 }
 
 pub(crate) fn render_param((n, t): &(String, String)) -> String {

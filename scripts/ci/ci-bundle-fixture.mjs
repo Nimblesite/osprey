@@ -15,15 +15,11 @@ export const proofAssets = Object.keys(proofPayloads).map(name => `workbench/${n
 // This fixture isolates Make's staged-payload contract. The real proof stager
 // has its own corruption, inventory, license and symlink regressions.
 const proofStager = [
-  'from pathlib import Path', 'import sys',
-  'assert sys.argv[2:] == ["--check"]',
-  'source = Path(__file__).resolve().parents[2] / "src/osprey/workbench/assets"',
-  'destination = Path(sys.argv[1])',
-  `files = ${JSON.stringify(Object.keys(proofPayloads))}`,
-  'for name in files:',
-  '    assert (destination / name).read_bytes() == (source / name).read_bytes(), name',
-  'actual = {path.relative_to(destination).as_posix() for path in (destination / "proof-libraries").rglob("*") if path.is_file()}',
-  'assert actual == {name for name in files if name.startswith("proof-libraries/")}',
+  '#!/bin/sh', 'set -eu',
+  'test "$#" -eq 2 && test "$2" = --check || exit 1',
+  'source="$(dirname "$0")/../../src/osprey/workbench/assets"',
+  ...Object.keys(proofPayloads).map(name => `cmp "$source/${name}" "$1/${name}"`),
+  `test "$(find "$1/proof-libraries" -type f | wc -l)" -eq ${Object.keys(proofPayloads).filter(name => name.startsWith('proof-libraries/')).length}`,
 ].join('\n') + '\n'
 
 function writeProofAssets(root, platform) {
@@ -35,7 +31,7 @@ function writeProofAssets(root, platform) {
     }
   }
   mkdirSync(join(root, 'scripts/proof'), { recursive: true })
-  writeFileSync(join(root, 'scripts/proof/workbench-proof-assets.py'), proofStager)
+  writeFileSync(join(root, 'scripts/proof/workbench-proof-assets.py'), proofStager, { mode: 0o755 })
 }
 
 function restoreStagedBundle(root, restoreJob) {

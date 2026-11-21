@@ -4,7 +4,13 @@ namespace synth
 (** RIFF/WAVE encoding for reference previews and high-resolution rendered audio. *)
 module WaveFiles
     (** The 8-bit reference preview shares byte/header primitives with float output. *)
-    export mono8 (rate, values) = "52494646${PcmWords::le32 (satAdd (length values) 36)}57415645666D7420${PcmWords::le32 16}${PcmWords::le16 1}${PcmWords::le16 1}${PcmWords::le32 rate}${PcmWords::le32 rate}${PcmWords::le16 1}${PcmWords::le16 8}64617461${PcmWords::le32 (length values)}${join (mapList (values, PcmWords::byte)) ""}"
+    export mono8 (rate, values) =
+        count = length values
+        odd = bitAnd count 1
+        pad = match odd == 1
+            true => "00"
+            false => ""
+        "52494646${PcmWords::le32 (satAdd (satAdd count odd) 36)}57415645666D7420${PcmWords::le32 16}${PcmWords::le16 1}${PcmWords::le16 1}${PcmWords::le32 rate}${PcmWords::le32 rate}${PcmWords::le16 1}${PcmWords::le16 8}64617461${PcmWords::le32 count}${join (mapList (values, PcmWords::byte)) ""}${pad}"
 
     finite value = value == value && abs value <= 1000000.0
 
@@ -13,9 +19,9 @@ module WaveFiles
 
     (** Interleaved IEEE float32 WAV; channel alignment and all sample values are checked. *)
     export interleaved (rate, channels, samples) = match rate >= 8000 && rate <= 384000 && channels >= 1 && channels <= 64 && length samples <= 1920000
-        false => Error(message = "Invalid WAV rate, channel count or sample count.")
+        false => Error(message = MissingResource(detail = "Invalid WAV rate, channel count or sample count."))
         true => match satMul (intDiv (length samples) channels) channels == length samples && length (filterList (samples, finite)) == length samples
-            false => Error(message = "Invalid WAV channel alignment or non-finite/excessive sample.")
+            false => Error(message = MissingResource(detail = "Invalid WAV channel alignment or non-finite/excessive sample."))
             true => Success(value = "${floatHeader (rate, channels, length samples)}${join (mapList (samples, PcmWords::float32)) ""}")
 
     (** Mono IEEE float32 WAV in hex, using the same interleaved encoder. *)

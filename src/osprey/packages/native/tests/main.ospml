@@ -57,6 +57,11 @@ tree () = Ui::column [
 // `walked` binds exactly `count` controls.
 binds (walked, count) = expect (length walked.walkBound, count)
 
+// Every binding in `inputs` reaches `node`'s controls in the walk's order, ordinal by ordinal.
+delivers (node, inputs) = expect (foldList (inputs, 0, \(at, input) =>
+    expect (deliversBinding (node, at, input), true)
+    at + 1), length inputs)
+
 // What `words` mean to `binding`, spelt as the message kind and its value, or the refusal.
 said (binding, words) = match Surfaces::told (binding, words)
     Error problem => problem
@@ -111,16 +116,14 @@ test ("a disclosure takes its ordinal before the controls it reveals", \() => ui
     walked = drawnOf (revealed ())
     binds (walked, 2)
     expect (spelled (childTold (toldOf (revealed ()), 0)), "{kind=\"disclosure\",title=\"Limits\",expanded=?true,event=#0,children=[{kind=\"label\",label=\"Scope\",symbol=\"info\"},{kind=\"spacer\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]}")
-    expect (deliversBinding (revealed (), 0, ui::FlagInput(action = Load)), true)
-    expect (deliversBinding (revealed (), 1, ui::Tap(action = Increment)), true)))
+    delivers (revealed (), [ui::FlagInput(action = Load), ui::Tap(action = Increment)])))
 test ("a screen's toolbar controls take ordinals before its children", \() => ui::Runtime::guarded (\() =>
     page = Ui::screen ("T", "", [Ui::field ("F", "", "p", Typed)], [Ui::button ("Go", "play", Increment)])
     walked = drawnOf page
     binds (walked, 2)
     // The toolbar's field binds first; the child's button second.
     expect (spelled (toldOf page), "{kind=\"screen\",title=\"T\",subtitle=\"\",toolbar=[{kind=\"field\",label=\"F\",value=\"\",prompt=\"p\",secure=?false,multiline=?false,commit=\"edit\",event=#0}],children=[{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]}")
-    expect (deliversBinding (page, 0, ui::TextInput(action = Typed)), true)
-    expect (deliversBinding (page, 1, ui::Tap(action = Increment)), true)))
+    delivers (page, [ui::TextInput(action = Typed), ui::Tap(action = Increment)])))
 // [UI-COMPONENTS]: an aside's pane takes ordinals before its column; rows carry their symbol and group.
 inspected () = Ui::aside (Ui::rows ([Ui::entry ("a", "star", "Recent", Ui::text "A")], "a", Load), ui::Trailing, Ui::column [Ui::icon "info", ui::Divider, Ui::button ("Go", "play", Increment)], 420, Typed)
 
@@ -132,9 +135,7 @@ test ("an aside's pane takes ordinals before its column and rows keep their symb
     binds (walked, 3)
     expect (spelled (toldOf (inspected ())), "{kind=\"aside\",side=\"trailing\",pane={kind=\"rows\",selected=\"a\",rows=[{key=\"a\",symbol=\"star\",group=\"Recent\",child={kind=\"text\",text=\"A\",role=\"body\",tone=\"primary\"}}],event=#0},aside={kind=\"stack\",axis=\"vertical\",children=[{kind=\"icon\",symbol=\"info\"},{kind=\"divider\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]},width=#420,least=#260,most=#640,keep=#340,event=#2}")
     // The row's selection binds first and the column's button second; the splitter binds after both columns.
-    expect (deliversBinding (inspected (), 0, ui::ChoiceInput(action = Load)), true)
-    expect (deliversBinding (inspected (), 1, ui::Tap(action = Increment)), true)
-    expect (deliversBinding (inspected (), 2, ui::SizeInput(action = Typed)), true)))
+    delivers (inspected (), [ui::ChoiceInput(action = Load), ui::Tap(action = Increment), ui::SizeInput(action = Typed)])))
 // [UI-COMPONENTS-SPLITTER]: the splitter between an aside's pane and its column carries the
 // column's width and limits, and binds in walking order: after the pane's controls, before the column's.
 test ("an aside's splitter carries the column width and its limits and binds after both columns", \() => ui::Runtime::guarded (\() =>
@@ -172,7 +173,7 @@ test ("a link carries its label and web address and takes no ordinal", \() => ui
     walked = drawnOf paged
     expect (spelled (childTold (toldOf paged, 0)), "{kind=\"link\",label=\"Osprey guide\",url=\"https://example.test/guide\"}")
     binds (walked, 1)
-    expect (deliversBinding (paged, 0, ui::Tap(action = Increment)), true)))
+    delivers (paged, [ui::Tap(action = Increment)])))
 test ("controls take depth-first ordinals in drawing order", \() => ui::Runtime::guarded (\() =>
     expect (length (drawnOf (tree ())).walkBound, 3)))
 // How many rows of `held`'s frame carry the words `key`: the frame's own count of a region's records.
@@ -190,9 +191,7 @@ test ("a control carries the ordinal of its binding", \() => ui::Runtime::guarde
     sectionField = childTold (toldAt (children, 2), 0)
     expect (memberCount (insideTold sectionField, "event", 0 - 1), 1)
     expect (memberCount (insideTold (toldAt (children, 3)), "event", 0 - 1), 2)
-    expect (deliversBinding (walked, 0, ui::Tap(action = Increment)), true)
-    expect (deliversBinding (walked, 1, ui::TextInput(action = Typed)), true)
-    expect (deliversBinding (walked, 2, ui::ChoiceInput(action = Load)), true)))
+    delivers (walked, [ui::Tap(action = Increment), ui::TextInput(action = Typed), ui::ChoiceInput(action = Load)])))
 test ("start sends every region once with the theme", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
     surfaceBinds (first, 5)
@@ -247,12 +246,10 @@ refusalCases () = [
     { touch = touchOf (99, 0, "", false), reason = "Unknown event kind 99" },
     { touch = framedAfter (0.0 - 0.5), reason = "Invalid frame elapsed time" },
 ]
-// The `kind` event for control `ordinal` carrying `words`, at clock `now`, `detail` and the pointer at (`x`, `y`).
-touchAt (now, kind, ordinal, words, detail, x, y, down) = ui::Touch(touchNow = now, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = false)
 // A display frame `elapsed` seconds after the last, at clock 5.
-framedAfter elapsed = touchAt (5, Hosting::frame, 0, "", "", elapsed, 0.0, false)
+framedAfter elapsed = Probes::touchAt (5, Hosting::frame, 0, "", "", elapsed, 0.0, false)
 // A host event of `kind` for control `ordinal` carrying `words`, at clock 5.
-touchOf (kind, ordinal, words, down) = touchAt (5, kind, ordinal, words, "", 0.0, 0.0, down)
+touchOf (kind, ordinal, words, down) = Probes::touchAt (5, kind, ordinal, words, "", 0.0, 0.0, down)
 // [UI-EVENTS]: unknown and mismatched events change no store and leave no request behind.
 // A refused event: it names its reason, asks nothing and changes no store.
 refusedJust (refused, reason) =
@@ -356,8 +353,7 @@ test ("tabs carry their pages and bind after the pages' controls, and segments c
     binds (walked, 2)
     // The chosen tab's page control binds first; the tabs' choice binds after every page's controls.
     expect (spelled (childTold (toldOf (tabbed ()), 0)), "{kind=\"tabs\",selected=\"two\",tabs=[{key=\"one\",label=\"One\",symbol=\"1.circle\",child={kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#0}},{key=\"two\",label=\"Two\",symbol=\"2.circle\",child={kind=\"text\",text=\"Second\",role=\"caption\",tone=\"secondary\"}}],event=#1}")
-    expect (deliversBinding (tabbed (), 0, ui::Tap(action = Increment)), true)
-    expect (deliversBinding (tabbed (), 1, ui::ChoiceInput(action = Load)), true)
+    delivers (tabbed (), [ui::Tap(action = Increment), ui::ChoiceInput(action = Load)])
     expect (spelled (childTold (toldOf (tabbed ()), 1)), "{kind=\"segments\",tones=[\"good\",\"danger\"],label=\"2 states\"}")))
 // [UI-COMPONENTS]: every constructor tells as the component it names, with its role, tone, axis and enabled state.
 built () = Ui::split [Ui::row [Ui::styled ("H", ui::Heading, ui::Accent), Ui::pair ("Label", "Value"), Ui::badge ("Partial", "info", ui::Caution), Ui::empty ("inbox", "Nothing", "Why"), Ui::action ("Stop", "stop", ui::Destructive, false, Load), Ui::toggle ("AI", true, Typed), Ui::picker ("Model", [Ui::choice ("a", "A")], "a", Load), Ui::rows ([Ui::item ("k", Ui::text "cell")], "k", Load)]]
@@ -378,10 +374,7 @@ test ("every constructor encodes as the component it names", \() => ui::Runtime:
     expect (spelled (toldAt (parts, 5)), "{kind=\"toggle\",label=\"AI\",on=?true,event=#1}")
     expect (spelled (toldAt (parts, 6)), "{kind=\"picker\",label=\"Model\",choices=[{key=\"a\",label=\"A\"}],selected=\"a\",event=#2}")
     expect (spelled (toldAt (parts, 7)), "{kind=\"rows\",selected=\"k\",rows=[{key=\"k\",symbol=\"\",group=\"\",child={kind=\"text\",text=\"cell\",role=\"body\",tone=\"primary\"}}],event=#3}")
-    expect (deliversBinding (builtTree, 0, ui::Tap(action = Load)), true)
-    expect (deliversBinding (builtTree, 1, ui::FlagInput(action = Typed)), true)
-    expect (deliversBinding (builtTree, 2, ui::ChoiceInput(action = Load)), true)
-    expect (deliversBinding (builtTree, 3, ui::ChoiceInput(action = Load)), true)))
+    delivers (builtTree, [ui::Tap(action = Load), ui::FlagInput(action = Typed), ui::ChoiceInput(action = Load), ui::ChoiceInput(action = Load)])))
 
 // [UI-EFFECTS]: a run and an HTTP request send their bounds, headers and the slices their output lands in.
 runRequest plist = Requests::ask ("ps", ui::Run(executable = "/bin/ps", arguments = ["-axo", "pid="], timeout = 10000, outputLimit = 8000000, plist = plist, runSlice = "work/run"))
@@ -473,8 +466,7 @@ test ("context menus bind actions after their content controls", \() => ui::Runt
     menu = Ui::contextMenu (Ui::button ("Select", "package", Increment), [Ui::button ("Remove", "delete", Load)])
     binds (drawnOf menu, 2)
     expect (spelled (toldOf menu), "{kind=\"context-menu\",body={kind=\"button\",label=\"Select\",symbol=\"package\",role=\"plain\",enabled=?true,event=#0},items=[{kind=\"button\",label=\"Remove\",symbol=\"delete\",role=\"plain\",enabled=?true,event=#1}]}")
-    expect (deliversBinding (menu, 0, ui::Tap(action = Increment)), true)
-    expect (deliversBinding (menu, 1, ui::Tap(action = Load)), true)))
+    delivers (menu, [ui::Tap(action = Increment), ui::Tap(action = Load)])))
 
 // Runs a registered case's body with integer faults resolved, so arithmetic in a view or a package helper never escapes it.
 protected work = \() => ui::Runtime::guarded work
@@ -548,7 +540,7 @@ test ("presentation frames preserve exact dimensions and inner control provenanc
     binds (walked, 1)
     // The frame's only control keeps its provenance: the button inside binds first.
     expect (memberCount (insideTold (memberTold (insideTold (toldOf framed), "body")), "event", 0 - 1), 0)
-    expect (deliversBinding (framed, 0, ui::Tap(action = Increment)), true)))
+    delivers (framed, [ui::Tap(action = Increment)])))
 
 // A theme scoped to the single token `name`, its spacing and timing the probe's.
 scopedTheme name = ui::Theme(tokens = [ui::Token(tokenName = name, tokenLight = "#202723", tokenDark = "#202723")], spacing = [8], feedback = 140, settle = 240)
@@ -559,8 +551,7 @@ test ("scoped themes and dialogs retain their inner controls and dismissal prove
     binds (drawnOf review, 2)
     expect (spelled (toldOf review), "{kind=\"themed\",theme={tokens=[{name=\"canvas\",light=\"#202723\",dark=\"#202723\"}],spacing=[#8],feedback=#140,settle=#240},body={kind=\"dialog\",title=\"Review transcription\",event=#0,body={kind=\"button\",label=\"Insert\",symbol=\"\",role=\"plain\",enabled=?true,event=#1}}}")
     // The dismissal binds before the body the dialog shows.
-    expect (deliversBinding (review, 0, ui::Tap(action = Load)), true)
-    expect (deliversBinding (review, 1, ui::Tap(action = Increment)), true)
+    delivers (review, [ui::Tap(action = Load), ui::Tap(action = Increment)])
     // A scoped theme's own tokens cross with the subtree it inks.
     inked = scopedTheme "text"
     expect (spelled (memberTold (insideTold (toldOf (Ui::themed (inked, Ui::text "Scoped"))), "theme")), "theme={tokens=[{name=\"text\",light=\"#202723\",dark=\"#202723\"}],spacing=[#8],feedback=#140,settle=#240}")))
@@ -721,7 +712,7 @@ taps binding = match binding
 numbered (held, pick) = Lists::position (held.surfaceBound, pick)
 
 // One host event of `kind`, sent through the real shared-frame writer.
-journeyTouch (kind, ordinal, words, detail, x, y, down) = ui::Touch(touchNow = 9, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = false)
+journeyTouch (kind, ordinal, words, detail, x, y, down) = Probes::touchAt (9, kind, ordinal, words, detail, x, y, down)
 
 // One host event of `kind` for control `ordinal` carrying `words` at the origin, with the pointer `down`.
 journeyAt (kind, ordinal, words, down) = journeyTouch (kind, ordinal, words, "", 0.0, 0.0, down)
@@ -798,7 +789,7 @@ journeyCase () =
     // A scene in window pixels has no unit space: it tells a zero size at a zoom of one.
     pixels = Ui::canvas ([Scenes::disc (1.0, 1.0, 1.0, 0, 0)], Load)
     expect (spelled (toldOf pixels), "{scene 0.0x0.0x1.0,kind=\"scene\",width=~0.0,height=~0.0,zoom=~1.0,event=#0}")
-    expect (deliversBinding (pixels, 0, ui::SceneInput(action = Load)), true)
+    delivers (pixels, [ui::SceneInput(action = Load)])
     // Every symbol has its own name.
     expect (join (mapList ([ui::Clock, ui::Person, ui::Cursor, ui::Chevron, ui::Send, ui::Terminal, ui::Edit, ui::Panel, ui::Sparkle], \symbol => Symbols::name symbol)) ",", "clock,person,cursor,chevron,send,terminal,edit,panel,sparkle")
 

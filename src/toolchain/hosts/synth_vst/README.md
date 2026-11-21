@@ -37,3 +37,29 @@ The session test reads each reply before closing stdin, checks exact ADelay stat
 On macOS, `osprey-vst-worker audio-device` accepts newline-framed hex blocks containing the synth package's canonical mono/stereo 48 kHz IEEE float32 WAV. Blocks contain 1–8192 frames and samples within -1..1. It preallocates four AudioQueue buffers, prefills two, and acknowledges each accepted block with bounded queue counters. `!drain` waits for every queued frame to be returned by the device before acknowledging; closing/killing the session cancels ownership. JSON diagnostics report device start, drain and failures. Other platforms explicitly report the adapter as unavailable.
 
 `python3 src/toolchain/hosts/synth_vst/build.py --device-test` verifies real queue operation, drain and malformed PCM rejection; it is included in the macOS worker CTest suite. A returned buffer proves device-queue consumption, not an independent acoustic recording. Prism now uses this queue for bounded auditions and continuous Play/Stop. Its loaded native journey captures actual queue receipts and verifies that all instrument, effect and device workers are gone after Stop.
+
+## Third-party spectrum test on macOS
+
+With the Prism GPUI host built for the DAW and the VST worker built, run the following from the repository root. Point `VST3_FOLDER` at a folder containing the extracted VST3 bundle. The test runs Prism with a temporary preferences folder and the real audio device. It keeps the plug-in output, the PCM submitted to the device and the device receipts under `target/pr-validation/vst-spectrum-*`.
+
+```sh
+make -C src/toolchain/targets/macos/tests synth-vst-spectrum VST3_FOLDER="/absolute/path/to/plug-ins"
+make -C src/toolchain/targets/macos/tests synth-vst-spectrum VST3_FOLDER="/Library/Audio/Plug-Ins/VST3" VST3_CASE=tal
+make -C src/toolchain/targets/macos/tests synth-vst-spectrum VST3_FOLDER="/folder/with/both/plug-ins" VST3_CASE=patch
+```
+
+The first command uses Dragonfly Room Reverb 3.2.10. Its macOS universal disk image has SHA-256 `e0b854b92a4e51ce5851320fb1a9f91ab1a4309f997de070e175b3e5cab4adaf`. The test compares dry, muted and wet auditions and exercises continuous Play and Stop. The second command uses TAL-NoiseMaker and measures the change in fundamental frequency after raising the MIDI note by one octave. Both compare the stereo samples leaving the VST3 instance with the samples submitted to the device. [Dragonfly release](https://github.com/michaelwillis/dragonfly-reverb/releases/tag/3.2.10)
+
+The `patch` case connects TAL-NoiseMaker to Dragonfly Room Reverb and a stereo output. It checks both cables after deleting and undoing the reverb, renders the patch into `Prism-TAL-Dragonfly.wav` in the reported run directory, and verifies the pitch and reverb tail in that file.
+
+## VST3 project and worker state
+
+Prism stores each node’s class ID, graph-facing ports, normalized controls and modulation routes in the song. It resolves bundle paths from the configured library on this machine. A persistent worker accepts a hexadecimal `SAVE` line and returns an opaque, class-bound `OPS1` state frame. Sending that frame to a fresh session restores the processor and optional private controller state and returns hexadecimal `OK`. The session tests exercise two SDK classes, changed parameters, multiple restores and class mismatch rejection.
+
+The spectrum target accepts `VST3_CASE=latency` with CHOW Tape Model 2.11.4. At 48 kHz the plug-in reports 39 frames of latency. The test checks each stereo output sample against parallel dry and processed paths. Set `VST3_UI=window` to run the spectrum journeys in a native window.
+
+### Native editor windows on macOS
+
+Choose a track’s patch, select a VST3 node in Patch Controls, and choose **Open plug-in window**. The track patch stays in its own window alongside the arrangement. Each vendor editor runs in a separate worker for its node. Prism and the vendor controller exchange normalized control values in both directions. Processor-private state and live meters belong to the processing instance.
+
+Run `make -C src/toolchain/targets/macos/tests synth-vst-editors VST3_FOLDER=/path/to/plugins` after building the worker and Prism GPUI test host. The journey edits every automatable parameter in the inspector, compares the values sent to the actual vendor controller, checks its endpoint readbacks, and exercises closing and reopening both windows. For a known unresponsive editor, `node src/toolchain/hosts/synth_vst/editors.mjs /path/to/plugins --unresponsive-editor DragonflyEarlyReflections.vst3` verifies recovery and continued editing through the inspector.

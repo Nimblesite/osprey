@@ -6,10 +6,8 @@
 
 use std::collections::HashMap;
 
-use gpui_kit::accesskit::Role;
-
 use crate::frame::{AskRow, Frame, Streamed, ViewRow};
-use crate::scene::{access::Access, Outline, Paint, Shape, Step, Tint};
+use crate::scene::{Access, Outline, Paint, Role, Shape, Step, Tint};
 
 /// What a row draws, by its `kind` ([NATIVE-SHM-VIEW]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -278,6 +276,16 @@ fn extent(value: f64) -> Result<f32, String> {
     match value.is_finite() && value >= 0. {
         true => Ok(value as f32),
         false => Err("an extent that is negative or not finite".to_owned()),
+    }
+}
+
+/// Negative zoom fixes the scale. It crosses the scene boundary as an f32 of the same sign and magnitude range.
+fn scene_zoom(value: f64) -> Result<f32, String> {
+    let zoom = value as f32;
+    if zoom.is_finite() && (value == 0.0 || zoom != 0.0) {
+        Ok(zoom)
+    } else {
+        Err("an unrepresentable scene zoom".to_owned())
     }
 }
 
@@ -619,8 +627,7 @@ fn element(rows: &mut Rows, head: &Streamed) -> Result<Option<Access>, String> {
         value: head.values[4],
         min: range.values[0],
         max: range.values[1],
-        // Only a menu item is announced as the current choice ([UI-MACHINE-A11Y]).
-        selected: role == Role::MenuItem && head.colour & 1 != 0,
+        selected: head.colour & 1 != 0,
     }))
 }
 
@@ -658,7 +665,7 @@ fn scenes(
                 Scene {
                     width,
                     height,
-                    zoom: extent(head.values[2])?,
+                    zoom: scene_zoom(head.values[2])?,
                     ..Scene::default()
                 },
             );

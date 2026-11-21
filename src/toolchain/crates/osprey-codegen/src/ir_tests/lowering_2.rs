@@ -237,6 +237,14 @@ fn list_builders_map_filter_fold_and_foreach() {
             "osprey_list_builder_seal",
         ],
     );
+    let counts = module(
+        "fn main() -> Unit = {\n\
+            let xs = listAppend(List(), 2.5)\n\
+            print(length(filterList(xs, |x| => x > 0.0)))\n\
+            print(isEmpty(filterList(xs, |x| => x < 0.0)))\n\
+         }\n",
+    );
+    assert!(!counts.contains("call i8* @osprey_list_builder_new_of"));
 }
 
 #[test]
@@ -471,6 +479,11 @@ fn list_pattern_match_binds_head_tail_and_fixed_lengths() {
             "icmp sge i64",
         ],
     );
+    let first = module(
+        "fn first(xs) = match xs { [head, ...rest] => head\n _ => 0 }\n\
+         fn main() -> Unit = print(first([1, 2]))\n",
+    );
+    assert!(!first.contains("call i8* @osprey_list_drop"));
     let corpus = module(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../osprey/tests/regressions/basics/pattern_matching/pattern_matching_complete.test.osp"

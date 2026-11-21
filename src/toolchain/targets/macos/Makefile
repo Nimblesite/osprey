@@ -9,7 +9,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow synth storage tally probe
+.PHONY: agent bank casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow daw daw-gpui daw-render daw-play storage tally probe
 
 .PHONY: pocket-orchestra _pocket-orchestra-models
 ## pocket-orchestra: Open Light Orchestra: this Mac plays audio, phones join by QR and WebSocket.
@@ -34,6 +34,11 @@ PROJECT ?= $(CURDIR)
 agent:
 	$(MAKE) -C $(ROOT) build _runtime_macos
 	bash $(ROOT)/src/osprey/examples/agent/run.sh "$(PROJECT)"
+
+## bank: Open Talon Bank, the same Osprey Native app as the web, Android and iPhone, in a SwiftUI window.
+##       Start its API first (`make -C src/toolchain/targets/web bank`).
+bank:
+	OSPREY_SWIFT_APP=$(BANK_APP) bash src/toolchain/hosts/swift/view.sh
 
 ## tally: Open Tally, the counter whose whole interface crosses the bridge as shared memory, in a
 ##        SwiftUI window. Its look is decided in Osprey; the host holds no style. [NATIVE-SHM-VIEW]
@@ -92,17 +97,44 @@ signal-flow: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/packages/signal_flow/app/run.sh
 
-## synth: Open Prism's signal-flow studio, inspector and playable keyboard.
+## daw-gpui: Open the daw's Prism patch studio on the GPUI host instead of FerroUI.
 ##        [PRISM-ROUTING-EDITOR] [PRISM-ROUTING-AUDIO]
-synth: _runtime_macos
+daw-gpui: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/daw/run.sh
+
+## daw: Open SONG in the FerroUI timeline, mixer and Prism studio. Defaults to Broken Circuitry: Reassembly.
+##      [DAW-PROJECT] [PRISM-ROUTING-TIMELINE]
+daw: SONG = src/osprey/examples/daw/tracks/codex-version.json
+daw: _runtime_macos _daw-renderer
+	PRISM_PROJECT="$(SONG)" OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/ferroui/scripts/prism.sh
 
 ## storage: Rebuild the compiler, the Mac runtime and the Osprey Storage app,
 ##          then open it: where your disk space goes, folder by folder.
 storage: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh
+
+## daw-render: Render a song project with the daw (a JSON piano roll, its intro recording named inside) with
+##               @osprey/synth to target/daw/<project>/song.wav. SONG picks the project. Needs ffmpeg
+##               and xxd; rendering is offline and slow. [SYNTH-ARRANGEMENT-PLAYER]
+SONG ?= src/osprey/examples/daw/tracks/phosphor-drift.json
+SONG_DIR = target/daw/$(basename $(notdir $(SONG)))
+SONG_WAV = $(SONG_DIR)/song.wav
+daw-render: _daw-renderer
+	target/daw/daw "$(SONG)" "$(SONG_DIR)"
+
+# Shared song renderer for the interactive DAW and the offline bounce; ARC, as GC scans of the held mix tripled render time.
+.PHONY: _daw-renderer
+_daw-renderer:
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	mkdir -p target/daw
+	$(BIN) build src/osprey/examples/daw/render --memory=arc -o target/daw/daw
+
+## daw-play: Play SONG's rendered WAV with afplay; it never renders (run daw-render first).
+daw-play:
+	@test -f "$(SONG_WAV)" || { echo "daw-play: $(SONG_WAV) is missing; run make -C src/toolchain/targets/macos daw-render"; exit 1; }
+	timeout 3600 afplay "$(SONG_WAV)"
 
 ## probe: Open the GPUI host's probe application (counter, note, load).
 probe: _runtime_macos

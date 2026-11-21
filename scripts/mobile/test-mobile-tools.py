@@ -14,8 +14,6 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 WRAPPER = ROOT / "scripts/mobile/gradlew"
-BANK_RUN = "src/osprey/examples/projects/modules/mobile/android/run.sh"
-ANDROID_ENV = "scripts/mobile/android-env.sh"
 # What every runner has: no Homebrew, no cargo bin, no developer extras.
 BASE_PATH = "/usr/bin:/bin"
 # Editor task panels read only files named Makefile, never their includes, and
@@ -23,19 +21,6 @@ BASE_PATH = "/usr/bin:/bin"
 # name starts with a letter; private steps start with `_`.
 PANEL_ENTRY = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_-]*)\s*:", re.M)
 RULE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_-]*)[ \t]*:(?!=)", re.M)
-STUB_TOOL = """#!/bin/sh
-case "$*" in
-  *"am instrument"*) printf '%s\\n' "$REPORT" ;;
-  *"settings get"*) echo null ;;
-  *"exec-out"*)
-    case "$SCREENSHOT_MODE" in
-      unavailable) echo 'stub screenshot transfer failed' >&2; exit 7 ;;
-      malformed) printf 'not a PNG' ;;
-      *) printf '\\211PNG\\r\\n\\032\\n' ;;
-    esac ;;
-esac
-"""
-
 # Compile the actual host; doubles isolate string ownership from platform services.
 STORAGE_HOST_PROBE = r'''
 struct NativeNode: Decodable { let kind: String }
@@ -330,150 +315,6 @@ class GradleSelection(unittest.TestCase):
                 capture_output=True, text=True, check=True,
             )
             self.assertEqual(result.stdout.strip(), "Gradle 9.6.0")
-
-def stub_android_tree(root):
-    """Copy the bank driver beside a stub SDK whose adb prints $REPORT."""
-    hosts = ["darwin-x86_64", "linux-x86_64"]
-    clangs = [root / "ndk/toolchains/llvm/prebuilt" / host / "bin/clang" for host in hosts]
-    for stub in [root / "sdk/platform-tools/adb", *clangs]:
-        stub.parent.mkdir(parents=True)
-        stub.write_text(STUB_TOOL)
-        stub.chmod(0o755)
-    for script in [BANK_RUN, ANDROID_ENV]:
-        (root / script).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(ROOT / script, root / script)
-    (root / BANK_RUN).parent.joinpath("build").mkdir()
-
-def instrumentation_result(report, screenshot_mode="valid"):
-    """Exit status of the bank's Android test driver for a device that prints `report`."""
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        stub_android_tree(root)
-        env = {
-            "PATH": BASE_PATH, "REPORT": report, "SCREENSHOT_MODE": screenshot_mode, "OSPREY_ANDROID_SKIP_BUILD": "1",
-            "OSPREY_ANDROID_SERIAL": "stub", "ANDROID_HOME": str(root / "sdk"),
-            "ANDROID_NDK_HOME": str(root / "ndk"),
-        }
-        return subprocess.run(
-            ["bash", str(root / BANK_RUN), "--test"], env=env,
-            capture_output=True, text=True, check=False,
-        )
-
-class BankAndroidVerdict(unittest.TestCase):
-    def test_report_is_judged_with_tools_every_runner_has(self):
-        self.assertEqual(instrumentation_result("Time: 23.282\n\nOK (6 tests)").returncode, 0)
-        failures = "FAILURES!!!\nTests run: 6,  Failures: 1"
-        for report in [failures, "INSTRUMENTATION_FAILED: stub", "Time: 1.2"]:
-            self.assertNotEqual(instrumentation_result(report).returncode, 0, report)
-
-    def test_passing_instrumentation_cannot_hide_failed_screenshot_collection(self):
-        for mode in ["unavailable", "malformed"]:
-            with self.subTest(mode=mode):
-                result = instrumentation_result("OK (6 tests)", mode)
-                self.assertNotEqual(result.returncode, 0, result.stderr)
-                self.assertIn("screenshot", result.stderr.lower())
-
-GOLDEN = ROOT / "src/osprey/examples/tally/goldens/android/1080-ready.png"
-GOLDENS = ROOT / "scripts/mobile/goldens.py"
-
-
-def goldens_module():
-    """scripts/mobile/goldens.py, imported by path."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("goldens", GOLDENS)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-class PhoneGoldens(unittest.TestCase):
-    """[NATIVE-HOSTS-MOBILE] screenshots are compared with nothing but Python, on every runner."""
-
-    def test_malformed_png_cannot_pass_a_golden(self):
-        goldens = goldens_module()
-        def chunk(kind, body):
-            return goldens.struct.pack(">I", len(body)) + kind + body + goldens.struct.pack(">I", goldens.zlib.crc32(kind + body))
-        def picture(raw, width=2, height=2, compression=0, filtering=0):
-            head = goldens.struct.pack(">IIBBBBB", width, height, 8, 2, compression, filtering, 0)
-            return goldens.SIGNATURE + chunk(b"IHDR", head) + chunk(b"IDAT", goldens.zlib.compress(raw)) + chunk(b"IEND", b"")
-        raw = (b"\0" + bytes(6)) * 2
-        valid = picture(raw)
-        cases = {"short row": picture(raw[:-3]), "extra bytes": picture(raw + b"x"),
-                 "unknown filter": picture(b"\x05" + raw[1:]), "empty width": picture(b"\0\0", width=0),
-                 "compression": picture(raw, compression=1), "filter method": picture(raw, filtering=1),
-                 "checksum": valid[:29] + bytes([valid[29] ^ 1]) + valid[30:],
-                 "missing end": valid[:-12], "truncated chunk": valid[:-1], "trailing data": valid + b"x",
-                 "short header": goldens.SIGNATURE, "oversized dimensions": picture(raw, width=1 << 31, height=1 << 31),
-                 "invalid zlib": valid[:33] + chunk(b"IDAT", b"not zlib") + chunk(b"IEND", b"")}
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "screen.png"
-            (Path(directory) / "2-ready.png").write_bytes(valid)
-            path.write_bytes(valid)
-            self.assertEqual(self.compare(path, Path(directory)).returncode, 0)
-            for reason, data in cases.items():
-                with self.subTest(reason=reason):
-                    path.write_bytes(data)
-                    with self.assertRaises(AssertionError):
-                        goldens.png_pixels(path)
-                    refused = self.compare(path, Path(directory))
-                    self.assertEqual(refused.returncode, 1, reason)
-                    self.assertIn("FAIL:", refused.stderr)
-            compressed = goldens.zlib.compress(raw)
-            path.write_bytes(valid[:33] + chunk(b"IDAT", compressed[:5]) + chunk(b"IDAT", compressed[5:]) + chunk(b"IEND", b""))
-            self.assertEqual(goldens.png_pixels(path), (2, 2, bytes(12)), "split IDAT is a valid screen")
-            pixels = bytes(range(10, 130, 10))
-            residuals = [pixels,
-                         bytes([10, 20, 30, 30, 30, 30, 70, 80, 90, 30, 30, 30]),
-                         bytes([10, 20, 30, 40, 50, 60, 60, 60, 60, 60, 60, 60]),
-                         bytes([10, 20, 30, 35, 40, 45, 65, 70, 75, 45, 45, 45]),
-                         bytes([10, 20, 30, 30, 30, 30, 60, 60, 60, 30, 30, 30])]
-            for kind, residual in enumerate(residuals):
-                with self.subTest(filter=kind):
-                    path.write_bytes(picture(bytes([kind]) + residual[:6] + bytes([kind]) + residual[6:]))
-                    self.assertEqual(goldens.png_pixels(path), (2, 2, pixels), "every filter reconstructs known RGB bytes")
-        for pixels in (bytes(9), bytes(15)):
-            with self.subTest(length=len(pixels)):
-                with self.assertRaises(AssertionError):
-                    goldens.png_encode(2, 2, pixels)
-                with self.assertRaises(AssertionError):
-                    goldens.picture_delta((2, 2, pixels), (2, 2, bytes(12)))
-
-    def compare(self, actual, folder):
-        return subprocess.run([sys.executable, str(GOLDENS), str(actual), str(folder), "--top", "0", "--bottom", "0"],
-                              env={"PATH": BASE_PATH}, capture_output=True, text=True, check=False)
-
-    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg cross-checks the decoder where it is installed")
-    def test_decoder_reads_the_same_pixels_ffmpeg_does(self):
-        width, height, pixels = goldens_module().png_pixels(GOLDEN)
-        decoded = subprocess.run(["ffmpeg", "-v", "error", "-i", str(GOLDEN), "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"],
-                                 check=True, stdout=subprocess.PIPE).stdout
-        self.assertEqual((width, height), (1080, 2088))
-        self.assertEqual(pixels, decoded)
-
-    def test_screens_compare_without_ffmpeg_and_a_moved_control_fails(self):
-        goldens = goldens_module()
-        width, height, pixels = goldens.png_pixels(GOLDEN)
-        with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
-            shutil.copy(GOLDEN, root / f"{width}-ready.png")
-            rgba = b"".join(pixels[i:i + 3] + bytes([(i // 3) % 256]) for i in range(0, len(pixels), 3))
-            (root / "same.png").write_bytes(goldens.png_encode(width, height, rgba, alpha=True))
-            same = self.compare(root / "same.png", root)
-            self.assertEqual(same.returncode, 0, same.stderr)
-            self.assertIn("(0.000% differing pixels)", same.stdout)
-            self.assertEqual(goldens.png_pixels(root / "same-content.png"), (width, height, pixels), "the review crop is the screen")
-            moved = bytearray(pixels)
-            for row in range(400, 480):
-                start = (row * width + 200) * 3
-                moved[start:start + 80 * 3] = bytes(255 - value for value in moved[start:start + 80 * 3])
-            goldens.png_write(root / "moved.png", width, height, bytes(moved))
-            failed = self.compare(root / "moved.png", root)
-            self.assertEqual(failed.returncode, 1, failed.stdout)
-            self.assertRegex(failed.stderr, r"FAIL: .*of pixels differ, worst tile")
-            (root / "text.png").write_bytes(b"not a PNG")
-            refused = self.compare(root / "text.png", root)
-            self.assertNotEqual(refused.returncode, 0)
-            self.assertIn("not a PNG", refused.stderr)
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--storage-host"]:

@@ -1,0 +1,55 @@
+// Filter reference: Zavalishin, "The Art of VA Filter Design", trapezoidal SVF.
+namespace synth
+
+(** Reference voice and state-variable filter mathematics [SYNTH-VOICE] [SYNTH-DSP]. *)
+module VoiceMath
+    (** Half a turn in radians. *)
+    export pi = 3.141592653589793
+
+    (** One turn in radians. *)
+    export tau = 6.283185307179586
+
+    (** Prewarped integrator gain `tan (π fc / fs)`. *)
+    export warped (cutoff, sampleRate) = floatDiv (sin (floatDiv (pi * cutoff, sampleRate)), cos (floatDiv (pi * cutoff, sampleRate)))
+
+    (** Damping `k = 1 / Q`. *)
+    export damping resonance = floatDiv (1.0, resonance)
+
+    (** First state-variable filter coefficient. *)
+    export gainOne (g, k) = floatDiv (1.0, 1.0 + g * (g + k))
+
+    (** Second state-variable filter coefficient. *)
+    export gainTwo (g, k: float) = g * gainOne (g, k)
+
+    (** Third state-variable filter coefficient. *)
+    export gainThree (g: float, k: float) = g * g * gainOne (g, k)
+
+    (** Compute the band-pass response of the filter. *)
+    export bandpass (a1: float, a2, one, two, input) = a1 * one + a2 * (input - two)
+
+    (** Compute the low-pass response of the filter. *)
+    export lowpass (a2: float, a3, one, two, input) = two + a2 * one + a3 * (input - two)
+
+    (** Compute the high-pass response of the filter. *)
+    export highpass (k: float, input, b, l) = input - k * b - l
+
+    (** Trapezoidal integrator update `2 v − s`. *)
+    export integrated (out, held) = 2.0 * out - held
+
+    (** MIDI key number from octave, semitone and sharp offset. *)
+    export midiKey (octave, semitone, sharp) = 12.0 * (octave + 1.0) + semitone + sharp
+
+    (** LFO-swept cutoff at sample `n`. *)
+    export swept (cutoff, depth, octaves, lfo, n, rate) = cutoff * pow (2.0, depth * octaves * sin (floatDiv (tau * lfo * n, rate)))
+
+    (** Two-pole Butterworth low-pass magnitude at `pitch`. *)
+    export butterworth (pitch, cutoff) = floatDiv (1.0, sqrt (1.0 + pow (floatDiv (pitch, cutoff), 4.0)))
+
+    (** Naive (aliasing) triangle and saw, as the reference voice draws them; `Waves` has the band-limited ones. *)
+    export triangle t = 1.0 - 4.0 * abs (t - 0.5)
+
+    (** Evaluate the normalized sawtooth waveform. *)
+    export saw t = 2.0 * t - 1.0
+
+    (** A 0–1 cutoff knob swept exponentially from 20 Hz to 20 kHz. *)
+    export knobCutoff amount = 20.0 * pow (1000.0, amount)

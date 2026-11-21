@@ -50,7 +50,8 @@ export function publish(root: string, packages: readonly DemoPackage[]): void {
   }
 }
 
-function freePort(): Promise<number> {
+/** A loopback port no server holds, released before it is returned. */
+export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const probe = http.createServer();
     probe.once("error", reject);

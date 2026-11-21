@@ -28,9 +28,9 @@ fn term(result: &str, lean: &str) -> String {
     assert_eq!(lines.len(), 1, "{lean}: {lines:?}");
     lines
         .concat()
-        .strip_prefix("f (x, y, b) = ")
-        .unwrap_or_else(|| panic!("{lines:?}"))
-        .to_owned()
+        .split_once(") = ")
+        .filter(|(head, _)| head.starts_with("f ("))
+        .map_or_else(|| panic!("{lines:?}"), |(_, right)| right.to_owned())
 }
 
 /// Every `Lean term => Osprey term` case, as a definition body of type `result`.
@@ -222,23 +222,19 @@ fn definitions_carry_their_types_documentation_and_visibility() {
     let source = "/-- Twice\n   `x`, closed *) early. -/\ndef twice (x : Float) : Float := 2 * x\n\n/-- Hidden. -/\nprivate def k : Float := 3\ndef limit : Float := k\ndef near (x y : Float) : Bool := twice x < limit\n/-- -/\ndef same (b : Bool) : Bool := b\n";
     let lines = [
         "(** Twice `x`, closed * ) early. *)",
-        "export twice : float -> float",
-        "twice x = 2.0 * x",
+        "export twice x = 2.0 * x",
         "",
         "(** Hidden. *)",
         "k = 3.0",
         "",
         "(** `limit`, generated from Case.lean. *)",
-        "export limit : float",
-        "limit = k",
+        "export limit = k",
         "",
         "(** `near`, generated from Case.lean. *)",
-        "export near : (float, float) -> bool",
-        "near (x, y) = twice x < limit",
+        "export near (x, y: float) = twice x < limit",
         "",
         "(** `same`, generated from Case.lean. *)",
-        "export same : bool -> bool",
-        "same b = b",
+        "export same (b: bool) = b",
     ];
     assert_eq!(body(source), lines);
 }
@@ -291,4 +287,68 @@ fn a_source_may_define_a_builtins_name_when_it_never_calls_that_builtin() {
 fn what_only_lean_checks_generates_nothing() {
     let source = "/-! Module docs with a `def` inside. -/\n-- a comment with def and /- no opening\n/- block /- nested -/ still a comment def -/\n#eval \"a string -- not a comment \\\" def\"\n#check @Float.sqrt\n  -- an indented continuation\n  |>.toString\n#print Float\n/-- A doc before a check is dropped. -/\n#guard 'x' == 'x' ∧ [1, 2].length == 2\nprivate def k : Float := 1 -- trailing\n#eval k\n";
     assert_eq!(body(source), ["k = 1.0"]);
+}
+
+/// Each case is `Lean definition => its generated definition line`: the body fixes every
+/// type it can, one inline annotation per still-open group fixes the rest, and no
+/// `name : type` header repeats what inference derives [MATH-CODE-EMIT-ELEGANT].
+const HEADS_ANNOTATE_ONLY_WHAT_INFERENCE_CANNOT_DERIVE: &[&str] = &[
+    "def f (x : Float) : Float := x * 2 => export f x = x * 2.0",
+    "def f (x : Float) : Float := Float.sqrt x => export f x = sqrt x",
+    "def f (x y : Float) : Float := x / y => export f (x, y) = floatDiv (x, y)",
+    "def f (x y : Float) : Float := x * y => export f (x: float, y) = x * y",
+    "def f (x y : Float) : Float := x * y + 1 => export f (x, y) = x * y + 1.0",
+    "def f (x y : Float) : Bool := x < y => export f (x: float, y) = x < y",
+    "def f (x y : Float) : Bool := x < y && y > 0 => export f (x, y) = x < y && y > 0.0",
+    "def f (x y z : Float) : Float := x * y + z * z => export f (x: float, y, z) = x * y + z * z",
+    "def f (x y z : Float) : Bool := x * y < 1 && z == z => export f (x, y, z: float) = x * y < 1.0 && z == z",
+    "def f (a b : Bool) : Bool := a && b => export f (a, b) = a && b",
+    "def f (a b : Bool) : Bool := a == b => export f (a: bool, b) = a == b",
+    "def f (a : Bool) : Bool := !a => export f a = !a",
+    "def f (x : Float) : Float := Float.abs x => export f (x: float) = abs x",
+    "def f (x : Float) : Float := Float.abs (x + 1) => export f x = abs (x + 1.0)",
+    "def f (x y z : Float) : Float := if x < y then z else x => export f (x: float, y, z) = match x < y",
+    "def f (x y : Float) : Float := let s := x + y\n  Float.cos s => export f (x, y) =",
+    "def f (x y : Float) : Float := let s := x * y\n  s => export f (x: float, y) =",
+    "def f (x y : Float) : Float := x => export f (x: float, y: float) = x",
+    "def f : Float := 2 => export f = 2.0",
+];
+
+#[test]
+fn heads_annotate_only_what_inference_cannot_derive() {
+    for case in HEADS_ANNOTATE_ONLY_WHAT_INFERENCE_CANNOT_DERIVE {
+        let (lean, line) = case.split_once(" => ").unwrap_or_else(|| panic!("{case}"));
+        let lines = body(&format!("{lean}\n"));
+        assert_eq!(
+            lines.get(1).map(String::as_str),
+            Some(line),
+            "{case}: {lines:?}"
+        );
+        assert!(
+            !lines.iter().any(|text| text.contains(" : ")),
+            "{case}: {lines:?}"
+        );
+    }
+}
+
+#[test]
+fn a_definition_called_before_pins_its_arguments_to_its_lean_types() {
+    let source = "def sq (x y : Float) : Float := x * y\ndef twice (x : Float) : Float := sq x x\ndef same (a b : Bool) : Bool := a == b\ndef both (p q : Bool) : Bool := same p q\ndef g (w q : Float) : Float := w * w + w / q\ndef h (w q : Float) : Float := w / q * g w q\ndef low (w q : Float) : Float := 1 / Float.sqrt ((1 - w * w) * (1 - w * w) + w * w / (q * q))\ndef high (w q : Float) : Float := w * w * low w q\n";
+    let heads: Vec<String> = body(source)
+        .into_iter()
+        .filter(|line| line.starts_with("export"))
+        .collect();
+    let want = [
+        "export sq (x: float, y) = x * y",
+        "export twice x = sq (x, x)",
+        "export same (a: bool, b) = a == b",
+        "export both (p, q) = same (p, q)",
+        // Osprey defers `w * w` between open operands, so `w` and `q` stay generic in `g` and `low`, and a
+        // caller passing its own open values would get them defaulted to `int`.
+        "export g (w, q) = w * w + floatDiv (w, q)",
+        "export h (w: float, q) = floatDiv (w, q) * g (w, q)",
+        "export low (w, q) = floatDiv (1.0, sqrt ((1.0 - w * w) * (1.0 - w * w) + floatDiv (w * w, q * q)))",
+        "export high (w: float, q: float) = w * w * low (w, q)",
+    ];
+    assert_eq!(heads, want);
 }

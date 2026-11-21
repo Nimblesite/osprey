@@ -2,26 +2,44 @@
 
 use crate::testutil::{bad_with, check, ok};
 
+/// The destructure fixture's shared head: a one-field record constructor.
+const WRAP_HEAD: &str = "type Wrap = Wrap { value: int }\n";
+
 #[test]
 fn positional_constructor_destructures_fields() {
-    ok("type Wrap = Wrap { value: int }\n\
-        fn unwrap(w: Wrap) -> int = match w {\n\
+    // A slot holds a pattern typed at the slot's type, nested to any depth
+    // ([PATTERN-NESTED]).
+    ok(&format!(
+        "{WRAP_HEAD}fn unwrap(w: Wrap) -> int = match w {{\n\
           Wrap(v) => v\n\
-        }\n");
-    // A payload slot binds one level deep. A constructor nested inside it
-    // has no fall-through spelling, so the Default flavor refuses it here
-    // exactly as the ML parser refuses it ([FLAVOR-ML-PATTERN-GROUP]).
-    let errs = check(
-        "type Wrap = Wrap { value: int }\n\
-        type Box = Box { item: Wrap }\n\
-        fn deep(b: Box) -> int = match b {\n\
-          Box(Wrap(v)) => v\n\
-        }\n",
-    );
+        }}\n"
+    ));
+    ok(&format!(
+        "{WRAP_HEAD}type Box = Box {{ item: Wrap }}\n\
+          fn deep(b: Box) -> int = match b {{\n\
+            Box(Wrap(v)) => v\n\
+          }}\n"
+    ));
+    let tree = "type Tree = Leaf | Node(Tree, Tree)\nfn f(t) = match t {\n";
+    for (arms, expected) in [
+        // A value no arm reaches is shown as a pattern.
+        (
+            "  Node(Leaf, _) => 1\n  Node(Node(_, _), Leaf) => 2\n  Leaf => 0\n",
+            "non-exhaustive match: no arm matches `Node(Node(_, _), Node(_, _))`",
+        ),
+        // An arm the earlier arms already cover is unreachable.
+        (
+            "  Node(_, _) => 1\n  Node(Leaf, Leaf) => 2\n  Leaf => 0\n",
+            "unreachable match arm: earlier arms cover every value `Node(Leaf, Leaf)` matches",
+        ),
+    ] {
+        let errs = check(&format!("{tree}{arms}}}\n"));
+        assert!(errs.iter().any(|e| e.message == expected), "{errs:?}");
+    }
+    // A nested slot is typed at its own type.
     assert!(
-        errs.iter()
-            .any(|e| e.message.contains("nested constructor patterns")),
-        "{errs:?}"
+        !check(&format!("{tree}  Node(1, _) => 1\n  _ => 0\n}}\n")).is_empty(),
+        "an int pattern in a Tree slot must be rejected"
     );
 }
 

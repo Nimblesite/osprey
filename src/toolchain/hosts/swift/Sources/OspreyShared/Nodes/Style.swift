@@ -48,6 +48,8 @@ public struct Inherited: Equatable {
     var controlHeight: CGFloat = 0
     var controlPadding: CGFloat = -1
     var symbolSize: CGFloat = 0
+    /// The ink token of the nearest frame that names one; a plain button's label takes it.
+    var ink = ""
     var quiet = false
     var iconOnly = false
     var trailingSymbols = false
@@ -73,6 +75,7 @@ public struct Inherited: Equatable {
         if let value = style["controlHeight"]?.int, value > 0 { next.controlHeight = CGFloat(value) }
         if let value = style["controlPadding"]?.int, value >= 0 { next.controlPadding = CGFloat(value) }
         if let value = style["symbolSize"]?.int, value > 0 { next.symbolSize = CGFloat(value) }
+        if let value = style["ink"]?.string, !value.isEmpty { next.ink = value }
         if style["quietControls"]?.bool == true { next.quiet = true }
         if style["iconOnly"]?.bool == true { next.iconOnly = true }
         if style["trailingSymbols"]?.bool == true { next.trailingSymbols = true }
@@ -135,14 +138,17 @@ enum Type {
         switch inherited.family {
         case "serif": return inherited.italic ? FontRegistration.serifItalicName : FontRegistration.serifName
         case "sans": return "Geist"
-        default: return nil
+        default: return FontRegistration.named[inherited.family]
         }
     }
 
     /// A role's face at the size and family a frame chose, else the platform's type scale. An
     /// authored size draws the bundled face at exactly that size, regular as authored.
     static func font(_ role: String, _ inherited: Inherited) -> Font {
-        if inherited.size > 0, let name = authored(inherited) { return .custom(name, size: inherited.size) }
+        if inherited.size > 0, let name = authored(inherited) {
+            // A face an application bundles under its own name draws at its regular weight, as the browser's does.
+            return FontRegistration.named[inherited.family] == nil ? .custom(name, size: inherited.size) : .custom(name, size: inherited.size).weight(.regular)
+        }
         let face = self.face(role, inherited)
         let base = Font.system(size: face.size, weight: face.bold ? .semibold : .regular, design: face.mono ? .monospaced : face.serif ? .serif : .default)
         return inherited.italic ? base.italic() : base

@@ -1,8 +1,8 @@
 [project]
 name = "signal_flow"
-source_roots = ["main.ospml", "../src", "../../native/src", "../../graphics/src", "../../json/src"]
+source_roots = ["../../native/host", "main.ospml", "../src", "../../native/src", "../../graphics/src", "../../json/src"]
 default_namespace = "app"
-entry = "main.ospml"
+entry = "../../native/host/entry.ospml"
 
 [modules]
 allow_wildcard_imports = false

@@ -63,6 +63,11 @@ int64_t osp_strlen(const char *s) {
 int32_t osp_string_compare(const char *left, const char *right) {
     if (left == right) return 0;
     if (!left || !right) return left ? 1 : -1;
+    // [DAW-PERF-ROUND] Every string ends in a NUL after its bytes, so the first unequal byte decides
+    // the order without either length: only a NUL in both needs the lengths, to tell an end from a byte.
+    const unsigned char *a = (const unsigned char *)left, *b = (const unsigned char *)right;
+    while (*a == *b && *a) { ++a; ++b; }
+    if (*a != *b) return (int32_t)*a - (int32_t)*b;
     size_t n = (size_t)osp_strlen(left), m = (size_t)osp_strlen(right);
     int prefix = memcmp(left, right, n < m ? n : m);
     return prefix != 0 ? prefix : (n > m) - (n < m);

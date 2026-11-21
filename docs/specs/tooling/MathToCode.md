@@ -4,26 +4,13 @@
 
 ## Aim [MATH-CODE-AIM]
 
-Mathematics is written as mathematics, in a `.lean` file. The toolchain generates the Osprey module that computes it. Nobody writes or maintains mathematical code in Osprey: the Lean definition is the source, and the Osprey module is build output.
+Implement production formulas in versioned native Osprey modules. The proof tooling now makes it straightforward to prove properties of supported Osprey code with Lean. It reads the production function and presents that definition to the theorem. Keeping the algorithm in Osprey gives developers one implementation to maintain and makes changes to that implementation visible to the proof. For a theorem about a production function, the proof build must derive its executable definition from that function’s parsed Osprey body, including the callees on which the claim depends. State the domain, primitive semantics and arithmetic assumptions. Check the certificate with the Osprey kernel and exercise the proof with a source edit that violates its conclusion. The [synthesis specification](../runtime/Synthesis.md) identifies the verified functions and the outstanding obligations.
 
-```lean
-namespace physics.Motion
+Record a less readable Osprey expression in the [ML notation specification](../language/0024-MLFlavorSyntax.md#mathematical-notation-flavor-ml-math-notation) and [implementation plan](../../plans/math-to-code.md#native-osprey-formulas-math-code-native-notation) with the two source forms, the semantic difference if any, and a check for the proposed improvement.
 
-/-- Seconds for a body to fall `h` metres from rest. -/
-def fallTime (h : Float) : Float := Float.sqrt (2 * h / 9.80665)
+## Lean proof sources and import tooling [MATH-CODE-LEAN]
 
-end physics.Motion
-```
-
-An Osprey program calls `Motion::fallTime 19.6133` with no further step: no generator to run, no file to commit, no annotation to keep in step.
-
-## Lean is the format [MATH-CODE-LEAN]
-
-The source format is Lean 4, exactly as the pinned toolchain reads it (`leanprover/lean4:v4.25.0`, the pin of [PROOF-SOURCE](../language/0049-DependentTypesAndProofs.md)). Every math source MUST be accepted by that Lean with no error. The generator reads a fragment of Lean; it never reads anything Lean would reject, and it gives every construct the meaning Lean gives it.
-
-**Osprey-specific formats for mathematics are prohibited.** No notation, sentence format, definition document, keyword, marker, header, dialect or extension of Lean may be designed, specified, implemented or extended. The single exception: functionality Lean's format cannot express. An exception needs an entry in this specification that names the missing Lean capability and cites a Lean source showing the gap, and it ends the day Lean gains the capability. "Lean is verbose", "the reader does not support it yet" and "a custom notation is nicer" are not gaps: the remedy for an unread Lean construct is to extend the reader ([MATH-CODE-FRAGMENT]).
-
-Reasons: proofs are already `.lean` and nothing else ([PROOF-SOURCE-DELETED](../language/0049-DependentTypesAndProofs.md)), so one format serves statements, proofs and programs; a theorem about a definition imports the very file the program is generated from; Lean's own checker, editor support and libraries apply to every source with no work here.
+Theorem statements and proofs use the pinned Lean 4 format specified by [PROOF-SOURCE](../language/0049-DependentTypesAndProofs.md). Osprey parses production algorithms using its ordinary language frontend. The remaining sections describe the existing Lean import facility used by packages with Lean inputs and by the Proof Workbench. An imported definition must be accepted by the pinned Lean, and the importer must reject unsupported constructs explicitly.
 
 ### Deleted format [MATH-CODE-DELETED]
 
@@ -101,7 +88,7 @@ A literal is emitted as the same decimal: digit for digit, with `.0` appended to
 One math source generates one ML-flavor module.
 
 - `namespace a.M` generates `namespace a` and `module M`; `namespace M` generates `module M` in the project's default namespace; a source with no namespace generates `module <file stem>`.
-- A `def` is `export`ed with a signature carrying its declared types, so the API is the one Lean checked and never an inferred generalisation. A `private def` has no `export` and no signature.
+- A `def` is `export`ed; a `private def` is not. The generated Osprey is as tight as the Lean source [MATH-CODE-EMIT-ELEGANT]: no `name : type` header is written, because every value of the fragment is `Float` or `Bool` and the body fixes almost every type: a literal, a boolean operator, a float builtin or `floatDiv` (which unify their operands and result), or a concrete parameter of an earlier definition. Arithmetic between two open operands only defers, as in `re * re + im * im`, so the first open parameter is annotated inline (`power (re: float, im) = re * re + im * im`), and so on until the parameters and result all carry Lean's declared types. A deferred value is generic in its definition's scheme, and Osprey defaults a caller's own open value passed into it to `int`, so such a caller annotates it: `h (w: float, q) = floatDiv (w, q) * g (w, q)` for `g (w, q) = w * w + floatDiv (w, q)`. The API is therefore always the one Lean checked, never an inferred generalisation, and nothing is stated twice. `floatDiv` stays wherever the divisor is not a nonzero literal, because Osprey's `/` asks `Arith.divideByZero` where Lean gives IEEE infinity.
 - Documentation is the Lean docstring; a public definition without one is documented by its name and source file.
 - The bytes are a function of the source text and file name alone. Generation reads no clock, locale, environment or other file.
 - Every definition of the source appears in source order, or nothing is generated.

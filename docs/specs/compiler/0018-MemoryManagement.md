@@ -160,6 +160,20 @@ Collection is restricted to the initial allocator thread. The first allocation
 from another thread permanently disables collection, while allocation-table
 access remains synchronized.
 
+#### Leaf blocks are marked, never scanned [GC-TRACE-LEAF]
+
+A block whose body holds no managed pointer is a leaf: it is marked when a scan
+reaches it, but its own words are never scanned. Strings are leaves, and so is
+any block whose layout is set to `OSP_MEM_RAW` through `osp_mem_set_layout`,
+which is how the list runtime declares a scalar-element leaf (the element kind
+comes from the codegen's one `is_managed_ptr` predicate, the same flag ARC
+depends on). A word in a leaf that happens to equal a block's address therefore
+retains nothing. Without this, a heap of float sample buffers cost one table
+lookup per word on every collection: the DAW's song renderer spent about 60% of
+its time in `gc_scan_range`, which this rule cuts to under 5%. A block
+allocated through plain `osp_alloc` keeps being scanned, because its contents
+are not declared.
+
 ### Perceus ARC [GC-ARC-PERCEUS]
 
 The ownership and `dup`/`drop` discipline follows Perceus (Reinking, Xie, de Moura, Leijen), implemented from the extended technical report [MSR-TR-2020-42](https://www.microsoft.com/en-us/research/wp-content/uploads/2020/11/perceus-tr-v1.pdf) rather than the PLDI 2021 paper, because the report carries the full `λ₁` calculus and insertion algorithm.

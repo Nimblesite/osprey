@@ -1,0 +1,115 @@
+// [PRISM-ROUTING-VST-WINDOW] Each vendor editor owns a native window and a bounded worker session.
+namespace synth
+
+import ui::Runtime
+import ui::Requests
+import ui::Doc
+
+module PluginWindows
+    base w = "prism-editor:${w.windowSerial}"
+    ticket w = "${base w}:${w.windowCycle}"
+    active (editor, w) = editor.patchTrack == w.windowTrack && editor.songPath == w.windowProject && ui::Lists::any (editor.pluginBindings, \b => b.pluginNode == w.windowNode && b.pluginClass == w.windowClass)
+    replaced (editor, w) = editor(editorWindows = mapList (editor.editorWindows, \old => ui::Pick::either (old.windowSerial == w.windowSerial, w, old)))
+    problem (editor, why) = Runtime::step (editor(message = why))
+
+    (** Open or focus the vendor editor for this node. *)
+    export open (editor, node, platform) = match platform == "macos" && editor.workerPath != ""
+        false => problem (editor, "The native plug-in editor requires the macOS VST3 worker.")
+        true => match ui::Lists::find (editor.editorWindows, \w => w.windowNode == node && active (editor, w))
+            Success w => Runtime::step (replaced (editor, w(windowFocus = true)))
+            Error _ => match ui::Lists::find (editor.pluginBindings, \b => b.pluginNode == node)
+                Error _ => problem (editor, "This node has no plug-in binding.")
+                Success b => launch (editor, Plugins::resolved (editor.catalog, b))
+
+    (** Close the native editor bound to this node. *)
+    export close (editor, node) = match ui::Lists::find (editor.editorWindows, \w => w.windowNode == node && active (editor, w))
+        Error _ => Runtime::step editor
+        Success w => Runtime::step (replaced (editor, w(windowClosing = true)))
+
+    launch (editor, b) = match b.pluginModule == ""
+        true => problem (editor, "This plug-in is unavailable in the configured VST3 folder.")
+        false =>
+            serial = satAdd editor.pluginSerial 1
+            w = PluginWindow(windowNode = b.pluginNode, windowClass = b.pluginClass, windowProject = editor.songPath, windowTrack = editor.patchTrack, windowSerial = serial, windowCycle = 0, windowHandle = "", windowFocus = false, windowClosing = false, windowSent = [])
+            args = [GraphWorkers::header ("executable", editor.workerPath), GraphWorkers::header ("argv", "editor-session"), GraphWorkers::header ("argv", b.pluginModule), GraphWorkers::header ("argv", b.pluginClass)]
+            Runtime::asking (editor(pluginSerial = serial, editorWindows = listAppend editor.editorWindows w, message = "Opening ${b.pluginName}."), [GraphWorkers::call (ticket w, "session-open", args, base w)])
+
+    finish (editor, w, message) =
+        next = editor(editorWindows = filterList (editor.editorWindows, \other => other.windowSerial != w.windowSerial), message = message)
+        match w.windowHandle == ""
+            true => Runtime::step next
+            false => Runtime::asking (next, [GraphWorkers::call ("${base w}:close", "session-close", [GraphWorkers::header ("session", w.windowHandle)], base w)])
+
+    poll (editor, w) = match Graphs::node (editor.graph, w.windowNode)
+        Invalid _ => finish (editor, w, "The plug-in node was removed.")
+        Valid n =>
+            next = w(windowCycle = satAdd w.windowCycle 1, windowFocus = false, windowSent = mapList (n.parameters, \p => p.initial))
+            word = ui::Pick::either (w.windowClosing, "close", ui::Pick::either (w.windowFocus, "focus", "watch"))
+            values = mapList (filterList (n.parameters, \p => p.automatable), \p => "${drop p.key 4}=${p.initial}")
+            input = "${base w}:input"
+            ask = GraphWorkers::call (ticket next, "session-exchange", [GraphWorkers::header ("session", w.windowHandle), GraphWorkers::header ("stdinSlice", input)], base w)
+            ui::Step(stepStore = replaced (editor, next), requests = [ask], writes = [Requests::write (input, join (listPrepend values word) " ")])
+
+    linked (editor, w, doc) =
+        key = Doc::text (doc, "session")
+        match key == ""
+            true => finish (editor, w, "The plug-in editor worker did not return a session.")
+            false =>
+                opened = w(windowHandle = key)
+                match active (editor, w)
+                    true => poll (editor, opened)
+                    false => finish (editor, opened, "The patch changed while the plug-in editor was opening.")
+
+    setting (n, carry, doc) = Outcomes::carried (carry, \values =>
+        key = "vst:${Doc::number (doc, "id")}"
+        value = Doc::decimal (doc, "value")
+        match Doc::kind (Doc::field (doc, "id")) == "number" && Doc::number (doc, "id") >= 0 && Doc::kind (Doc::field (doc, "value")) == "number" && value >= 0.0 && value <= 1.0 && ui::Lists::any (n.parameters, \p => p.key == key && p.automatable) && !ui::Lists::any (values, \change => change.key == key)
+            false => Error(message = "The plug-in editor returned an invalid parameter.")
+            true => Success(value = listAppend values (ParameterValue(node = n.identity, key = key, value = value))))
+
+    // A host edit made while the native reply was in flight owns that parameter.
+    current (n, w, change) =
+        index = ui::Lists::position (n.parameters, \p => p.key == change.key)
+        match listGet n.parameters index
+            Error _ => false
+            Success p => match listGet w.windowSent index
+                Error _ => false
+                Success sent => p.initial == sent
+
+    edited (editor, w, doc, n) = match Doc::kind (Doc::field (doc, "values")) == "list" && Doc::kind (Doc::field (doc, "closed")) == "bool" && length (Doc::fieldItems (doc, "values")) <= 1024
+        false => finish (editor, w, "The plug-in editor returned an invalid response.")
+        true => match foldList (Doc::fieldItems (doc, "values"), Success(value = []), \(carry, item) => setting (n, carry, item))
+            Error why => finish (editor, w, why)
+            Success values =>
+                adjusted = Patches::adjusted (n, filterList (values, \v => current (n, w, v)))
+                graph = editor.graph
+                ready = match w.windowCycle == 1
+                    true => editor(message = "Plug-in window open.")
+                    false => editor
+                next = match structuralEquals (n.parameters, adjusted.parameters)
+                    true => ready
+                    false => ready(graph = graph(nodes = mapList (graph.nodes, \old => ui::Pick::either (old.identity == n.identity, adjusted, old))), revision = satAdd editor.revision 1)
+                match Doc::flag (doc, "closed")
+                    true => finish (next, w, "Plug-in window closed.")
+                    false => poll (next, w)
+
+    received (editor, w, text) = match w.windowHandle == ""
+        true => match jsonDecode text
+            Error why => finish (editor, w, why)
+            Success doc => linked (editor, w, doc)
+        false => match active (editor, w)
+            false => finish (editor, w, "The plug-in editor’s patch was closed.")
+            true => match Graphs::node (editor.graph, w.windowNode)
+                Invalid _ => finish (editor, w, "The plug-in node was removed.")
+                Valid n => match jsonDecode (perform ui::Slices.fetch (base w))
+                    Error why => finish (editor, w, why)
+                    Success doc => edited (editor, w, doc, n)
+
+    (** Consume a reply from the worker that owns the window. *)
+    export completed (editor, key, outcome) = match ui::Lists::find (editor.editorWindows, \w => ticket w == key)
+        Error _ => Runtime::step editor
+        Success w => match ProcessResults::checked outcome
+            Error why => finish (editor, w, "Plug-in window failed: ${why}")
+            Success _ => match outcome
+                Error why => finish (editor, w, why)
+                Success text => received (editor, w, text)

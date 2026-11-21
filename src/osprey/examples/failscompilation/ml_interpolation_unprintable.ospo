@@ -1,8 +1,27 @@
 // osprey: flavor=ml
 // A Map has no rendering, so a list of them is not printable [BUILTIN-PRINT]. Interpolating one silently produced
 // an empty string, so the ML path is pinned alongside the Default twin in
-// debug_interpolation.ospo.
-xs = [mapSet (Map ()) "k" 1]
+// debug_interpolation.ospo. Each built-in constraint travels through every
+// generic function to the call that decides the type [TYPE-CONSTRAINTS].
+xs = [mapSet (mapSet (Map ()) "k" 1) "k" 1]
 listLine = "[${xs}]"
 expect xs xs
 expectError (Error(message = \n => n + 1)) (\n => n + 1)
+show1 x = toString x
+show2 x = show1 x
+show3 x = show2 x
+size1 x = length x
+size2 x = size1 x
+size3 x = size2 x
+sort1 x = listSort x
+sort2 x = sort1 x
+sort3 x = sort2 x
+less1 a b = a < b
+less2 a b = less1 a b
+less3 a b = less2 a b
+shown = [show1 (\n => n + 1), show2 xs, show3 (mapSet (Map ()) "k" 1)]
+sizes = [size1 5, size2 true, size3 (\n => n + 1)]
+bools = sort1 [true]
+floats = sort2 [1.5]
+maps = sort3 xs
+orders = [less1 (\n => n + 1) (\n => n + 1), less2 xs xs, less3 (mapSet (Map ()) "k" 1) (mapSet (Map ()) "k" 1)]

@@ -408,6 +408,8 @@ mod types;
 pub(super) use types::*;
 mod expressions;
 pub(super) use expressions::*;
+mod patterns;
+pub(super) use patterns::*;
 #[cfg(test)]
 mod binding_tests;
 #[cfg(test)]

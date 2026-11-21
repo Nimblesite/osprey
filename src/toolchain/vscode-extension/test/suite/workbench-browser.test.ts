@@ -274,7 +274,7 @@ suite("workbench VSIX browser", () => {
     }, "failure-real-wasm-reopen");
   });
 
-  test("carrying a lesson reveals its appended proof at the authored editor caret", async () => {
+  test("carrying a lesson reveals its appended proof at the authored editor caret, below the earlier proof", async () => {
     await withWorkbench(async ({ frame }) => {
       await mathematics(frame);
       await press(frame, "Examples");
@@ -284,25 +284,15 @@ suite("workbench VSIX browser", () => {
       await frame.getByRole("textbox", { name: "Your steps", exact: true }).fill(challenge.solution.join("\n"));
       await frame.getByRole("button", { name: "Open in the workbench", exact: true }).first().click();
       const editor = frame.getByRole("textbox", { name: "Argument & calculations", exact: true });
+      // The workbench view replaces the lesson view first; its editor gets the
+      // poll's own budget to appear, not the 3 s a single read waits.
+      await editor.waitFor({ timeout: 5000 });
       await pollUntilResult({ fn: () => editor.inputValue(), until: (value) => value.includes("Theorem remaining_outcome."), timeoutMs: 5000, description: "the lesson proof is appended to the existing document" });
       const shown = await editor.evaluate((node: HTMLTextAreaElement) => ({ cursor: node.selectionStart, end: node.value.length, scroll: node.scrollTop, overflow: node.scrollHeight - node.clientHeight }));
       assert.strictEqual(shown.cursor, shown.end, "the shared byte caret must select the end of the appended proof");
       assert.ok(shown.scroll > 0 && shown.overflow - shown.scroll <= 2, `the appended proof must be visible: ${JSON.stringify(shown)}`);
-    }, "failure-lesson-caret");
-  });
-
-  test("carrying a lesson reveals its appended proof at the authored editor caret (extra: the earlier proof is kept above it)", async () => {
-    await withWorkbench(async ({ frame }) => {
-      await mathematics(frame);
-      await press(frame, "Examples");
-      await frame.locator(".osp-section").filter({ hasText: "Navier–Stokes: equations and evidence" }).getByRole("button", { name: "Open", exact: true }).click();
-      const lessonFile = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../../../osprey/workbench/lessons/navier-stokes.json"), "utf8"));
-      const challenge = lessonFile.blocks.find((entry: { challenge?: { id: string } }) => entry.challenge?.id === "prove-remaining-outcome").challenge;
-      await frame.getByRole("textbox", { name: "Your steps", exact: true }).fill(challenge.solution.join("\n"));
-      await frame.getByRole("button", { name: "Open in the workbench", exact: true }).first().click();
-      const editor = frame.getByRole("textbox", { name: "Argument & calculations", exact: true });
-      const value = await pollUntilResult({ fn: () => editor.inputValue(), until: (text) => text.includes("Theorem remaining_outcome."), timeoutMs: 5000, description: "appended" });
+      const value = await editor.inputValue();
       assert.ok(value.indexOf("Theorem and_swap.") < value.indexOf("Theorem remaining_outcome."), "the earlier proof stays first");
-    }, "failure-lesson-keeps");
+    }, "failure-lesson-caret");
   });
 });

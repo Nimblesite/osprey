@@ -199,8 +199,18 @@ fn compile_ir_and_debug_helpers_switch_on_the_build_kind() {
     let program = osprey_syntax::parse_program("let n = 1\nprint(\"${n}\")\n").program;
     // Debug and Profile both take the debug-info codegen path; the opt
     // flag differs (Profile keeps the release optimizer [PROF-BUILD-MODE]).
-    assert!(compile_ir("p.osp", &program, BuildKind::Debug).is_ok());
-    assert!(compile_ir("p.osp", &program, BuildKind::Profile).is_ok());
+    assert!(compile_ir(
+        || osprey_codegen::DebugSource::from_path("p.osp"),
+        &program,
+        BuildKind::Debug
+    )
+    .is_ok());
+    assert!(compile_ir(
+        || osprey_codegen::DebugSource::from_path("p.osp"),
+        &program,
+        BuildKind::Profile
+    )
+    .is_ok());
     assert_eq!(opt_flag(BuildKind::Debug), "-O0");
     assert_ne!(opt_flag(BuildKind::Release), "");
     assert_eq!(
@@ -216,7 +226,12 @@ fn compile_ir_and_debug_helpers_switch_on_the_build_kind() {
 fn optimised_ir(src: &str) -> String {
     use std::io::Write;
     let program = osprey_syntax::parse_program(src).program;
-    let ir = compile_ir("oracle.osp", &program, osprey_debug::BuildKind::Release).expect("codegen");
+    let ir = compile_ir(
+        || osprey_codegen::DebugSource::from_path("oracle.osp"),
+        &program,
+        osprey_debug::BuildKind::Release,
+    )
+    .expect("codegen");
     let mut child = std::process::Command::new(c_compiler())
         .args([
             "-x",

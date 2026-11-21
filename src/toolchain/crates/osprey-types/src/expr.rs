@@ -174,7 +174,7 @@ impl Checker {
             if let InterpolatedPart::Expr(inner) = part {
                 // Preserve complete Results and validate the runtime representation.
                 let ty = self.infer_expr(inner, env);
-                let name = self.sited_use("interpolation");
+                let name = self.here_use("interpolation");
                 self.builtin_uses.push((name, ty));
             }
         }
@@ -323,7 +323,7 @@ fn both_vars(l: &Type, r: &Type) -> bool {
 /// must see: their scheme says `any`, so each call site is checked against
 /// the concrete type it supplies ([BUILTIN-PRINT], [BUILTIN-TOSTRING],
 /// [BUILTIN-COLLECTION-LENGTH], [BUILTIN-COLLECTION-ISEMPTY]).
-fn constrained_builtin(name: &str) -> bool {
+pub(crate) fn constrained_builtin(name: &str) -> bool {
     matches!(
         name,
         "length" | "isEmpty" | "print" | "toString" | "toGpu" | "listSort"
@@ -365,6 +365,7 @@ fn locatable_obligation(name: &str) -> bool {
         || name.starts_with(crate::comparison::COMPARED_OPERAND_PREFIX)
         || name == "interpolation"
         || name == "structuralEquals"
+        || name == crate::builtin_constraints::ASSERTION
         || constrained_builtin(name)
 }
 

@@ -8,7 +8,7 @@ tags: [testing, hunt, symbolic-execution, fuzzing, klee]
 
 {% from "native-capture.njk" import capture %}
 
-`osprey hunt` searches for failing inputs using [KLEE symbolic execution](https://klee-se.org/). It solves path constraints within a time budget; fuzzers explore concrete inputs. Both approaches complement tests and static analysis.
+`osprey hunt` finds inputs that crash your program. It runs [KLEE symbolic execution](https://klee-se.org/), which solves for an input that reaches each path within a time budget, then replays each crash in a normal native run to confirm it. A fuzzer tries concrete inputs instead; hunt works alongside tests and fuzzing, not in place of them.
 
 Inspect each finding's verdict: a **reproduced crash** failed in a native replay; an **unmodelled operation** records an engine limitation. An empty report is not a correctness proof.
 

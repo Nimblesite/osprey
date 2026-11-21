@@ -1,0 +1,54 @@
+// The objective is the mean squared difference of log power spectra, which is multimodal in
+// pitch. The first quarter of the budget therefore samples uniformly (global exploration); the
+// rest is a (1+1) evolution strategy with Rechenberg's one-fifth success rule (expand by 1.5 on success,
+// contract by 0.82 on failure), on parameters normalised to `[0, 1]`.
+namespace synth
+
+(** Offline parameter-fitting mathematics [SYNTH-ADVANCED-LEARNED]. *)
+module FitMath
+    (** Log power with a −90 dB floor, so silent bins stay finite. *)
+    export logPower power = ln (power + 0.000000001)
+
+    (** Squared log-spectral difference of one bin. *)
+    export binLoss (candidate, target) =
+        d = logPower candidate - logPower target
+        d * d
+
+    (** A normalised value moved by a symmetric uniform step and clipped to `[0, 1]`. *)
+    export perturbed (value, step, seed) =
+        moved = value + step * (2.0 * ((seed - 1.0) / 2147483646.0) - 1.0)
+        match moved < 0.0
+            true => 0.0
+            false => match moved > 1.0
+                true => 1.0
+                false => moved
+
+    (** A uniform draw in `[0, 1]` from a Park–Miller state, for the global exploration phase. *)
+    export explored seed = (seed - 1.0) / 2147483646.0
+
+    (** Map between a parameter's range and `[0, 1]`. *)
+    export normalised (value, low, high) = floatDiv (value - low, high - low)
+
+    (** Map a normalized value back to its physical range. *)
+    export denormalised (value: float, low, high) = low + value * (high - low)
+
+    (** Clip a value into `[low, high]`. *)
+    export clip (value: float, low, high) = match value < low
+        true => low
+        false => match value > high
+            true => high
+            false => value
+
+    (** One-fifth-rule step adaptation. *)
+    export adapted (step, improved) = match improved > 0.0
+        true => step * 1.5
+        false => step * 0.82
+
+    (** A macro amount in [0, 1] shaped by `exponent` and mapped onto `[low, high]`. *)
+    export macroValue (amount, low, high, exponent) = low + (high - low) * pow (amount, exponent)
+
+    (** Logarithmic control mapping between positive bounds: equal control steps are equal ratios. *)
+    export logarithmic (control, low, high) = low * pow (floatDiv (high, low), control)
+
+    (** Map a positive value to its logarithmic control position. *)
+    export logarithmicControl (value, low, high) = floatDiv (ln (floatDiv (value, low)), ln (floatDiv (high, low)))

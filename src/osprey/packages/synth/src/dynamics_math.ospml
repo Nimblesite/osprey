@@ -1,0 +1,117 @@
+// The compressor is the feed-forward, log-domain design of Giannoulis, Massberg and Reiss ("Digital Dynamic
+// Range Compressor Design", JAES 2012): a soft-knee static curve, then a smooth decoupled detector on the
+// gain reduction, with a program-dependent release. The limiter measures true peak by four-times
+// oversampling (ITU-R BS.1770-4 Annex 2), holds the lowest required gain across its lookahead and averages
+// it over the same window, so the gain has fully arrived when the peak leaves the delay.
+namespace synth
+
+(** Compressor and limiter gain laws [SYNTH-DYNAMICS]. *)
+module DynamicsMath
+    lower (one: float, other) = match one < other
+        true => one
+        false => other
+
+    higher (one: float, other) = match one > other
+        true => one
+        false => other
+
+    (** Level in decibels of a linear amplitude: `20 log10 |x|`, floored at −180 dB. *)
+    export decibels amplitude = 8.685889638065035 * ln (higher (abs amplitude, 0.000000001))
+
+    (** Linear gain of a decibel value: `10 ^ (dB / 20)`. *)
+    export linear level = exp (level * 0.1151292546497023)
+
+    (** One-pole coefficient that covers 63% of a step in `seconds` at `rate`; zero time is instant. *)
+    export coefficient (seconds, rate) = match seconds <= 0.0
+        true => 0.0
+        false => exp (floatDiv (-1.0, seconds * rate))
+
+    (** Mean square of the signal for an RMS detector. *)
+    export meanSquare (previous, sample, alpha) = alpha * previous + (1.0 - alpha) * sample * sample
+
+    (** RMS level in decibels from a mean square: `10 log10`. *)
+    export rmsLevel square = 4.342944819032518 * ln (higher (square, 0.000000000000000001))
+
+    (** Linked detection: every channel is reduced by the loudest channel's amount, so the image holds. *)
+    export linked (one, other) = higher (one, other)
+
+    (** Detector level between peak (`blend` 0) and RMS (`blend` 1), in decibels. *)
+    export detected (peak: float, rms, blend) = peak + (rms - peak) * blend
+
+    (** Static curve: output level for input `level`, with `threshold` (dB), `ratio` (≥ 1) and `knee` width (dB). Below the knee the level is unchanged, above it the slope is `1 / ratio`, and inside it a quadratic joins the two with a continuous slope. *)
+    export curve (level, threshold, ratio, knee) =
+        over = level - threshold
+        match 2.0 * over < (-1.0) * knee
+            true => level
+            false => match 2.0 * over <= knee && knee > 0.0
+                true => level + floatDiv ((floatDiv (1.0, ratio) - 1.0) * (over + knee / 2.0) * (over + knee / 2.0), 2.0 * knee)
+                false => threshold + floatDiv (over, ratio)
+
+    (** Gain reduction the curve asks for, in decibels (never positive). *)
+    export reduction (level, threshold, ratio, knee) = curve (level, threshold, ratio, knee) - level
+
+    (** Downward expansion below `threshold` for a gate: slope `ratio` under the threshold, hard knee. *)
+    export expansion (level, threshold, ratio) = match level >= threshold
+        true => 0.0
+        false => (level - threshold) * (ratio - 1.0)
+
+    (** Smooth decoupled detector on the reduction (dB): more reduction moves at the attack coefficient, less at the release coefficient. *)
+    export smoothed (previous, target, attack, release) = match target < previous
+        true => attack * previous + (1.0 - attack) * target
+        false => release * previous + (1.0 - release) * target
+
+    (** Program-dependent release: a fast and a slow detector run together and the deeper one wins, so a single transient recovers fast while dense material recovers slowly and does not pump. *)
+    export programmed (fast, slow) = lower (fast, slow)
+
+    (** Make-up gain (dB) that restores the level a 0 dB signal lost, scaled by `amount` in [0, 1]. *)
+    export makeup (threshold, ratio, knee, amount) = (-1.0) * reduction (0.0, threshold, ratio, knee) * amount
+
+    (** Parallel compression: `mix` 0 is the dry signal, 1 the compressed one. *)
+    export blended (dry: float, wet, mix) = dry + (wet - dry) * mix
+
+    (** Prototype tap `position` (from 0) of the `phases`-times oversampling filter with `taps` taps per phase: a Hann-windowed sinc with its cutoff at the original Nyquist frequency. *)
+    export oversampleTap (position, taps, phases) =
+        last = taps * phases - 1.0
+        x = floatDiv (position - last / 2.0, phases)
+        window = 0.5 - 0.5 * cos (floatDiv (6.283185307179586 * position, last))
+        match x == 0.0
+            true => window
+            false => floatDiv (window * sin (3.141592653589793 * x), 3.141592653589793 * x)
+
+    (** The position in the prototype of tap `index` of `phase`. *)
+    export tapPosition (index: float, phase, phases) = index * phases + phase
+
+    (** True peak so far: the largest magnitude among the oversampled values. *)
+    export truePeak (peak, value) = higher (peak, abs value)
+
+    (** Lookahead in whole samples for `milliseconds` at `rate`, at least one. *)
+    export lookahead (milliseconds, rate) = higher (1.0, ceil (milliseconds * rate / 1000.0))
+
+    (** Gain (≤ 1) that brings `peak` to `ceiling` (linear); a peak under the ceiling needs none. *)
+    export required (peak, ceiling) = match peak <= ceiling
+        true => 1.0
+        false => floatDiv (ceiling, peak)
+
+    (** Hold: the lowest required gain across the lookahead window. *)
+    export held (lowest, gain) = lower (lowest, gain)
+
+    (** Moving average over `window` samples, updated from the value entering and the one leaving. Averaging the held gain over the lookahead reaches the held value exactly when the peak arrives: no overshoot. *)
+    export averaged (previous, entering, leaving, window) = previous + floatDiv (entering - leaving, window)
+
+    (** Release of the held gain: a drop is taken at once (the lookahead already shaped it), a rise follows the release coefficient. *)
+    export released (previous, target, release) = match target <= previous
+        true => target
+        false => release * previous + (1.0 - release) * target
+
+    (** The last guard: nothing leaves above the ceiling, whatever the arithmetic before it did. *)
+    export ceilinged (sample, ceiling) = match sample > ceiling
+        true => ceiling
+        false => match sample < (-1.0) * ceiling
+            true => (-1.0) * ceiling
+            false => sample
+
+    (** Multiply-accumulate: one filter tap applied to one sample, added to the running sum. *)
+    export accumulated (sum: float, tap, sample) = sum + tap * sample
+
+    (** One limited output sample: the input at its gain, clamped to the ceiling. *)
+    export limitedSample (sample, gain, ceiling) = ceilinged (sample * gain, ceiling)

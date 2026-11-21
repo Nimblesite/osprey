@@ -1,6 +1,6 @@
 [project]
 name = "osprey-inbox"
-source_roots = ["src", "../../projects/modules/src/domain/json.ospml"]
+source_roots = ["src", "../../talon/backend/domain/json.ospml"]
 default_namespace = "mobile"
 entry = "src/main.osp"
 

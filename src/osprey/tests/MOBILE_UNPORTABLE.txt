@@ -55,8 +55,6 @@ src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.osp proc
 src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.ospml process spawning builtin `spawnProcess`
 src/osprey/tests/regressions/db/database_effect.test.osp link directive `// @link: sqlite3`
 src/osprey/tests/regressions/db/database_effect.test.ospml link directive `// @link: sqlite3`
-src/osprey/tests/regressions/db/sqlite_basics.test.osp link directive `// @link: sqlite3`
-src/osprey/tests/regressions/db/sqlite_basics.test.ospml link directive `// @link: sqlite3`
 src/osprey/tests/regressions/effects/abort_vs_resume.test.osp a continuation for `Step.run` (a suspended continuation cannot cross or outlive a synchronous host call)
 src/osprey/tests/regressions/effects/abort_vs_resume.test.ospml a continuation for `Step.run` (a suspended continuation cannot cross or outlive a synchronous host call)
 src/osprey/tests/regressions/effects/fiber_effects.test.osp a continuation for `Gift.get` (a suspended continuation cannot cross or outlive a synchronous host call)

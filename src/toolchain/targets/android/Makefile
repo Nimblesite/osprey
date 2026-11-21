@@ -9,8 +9,11 @@ include Makefile
 
 .PHONY: bank casting casting-build inbox tally
 
-## bank: Build Talon Bank for Android.
-bank: _android-bank
+## bank: Build Talon Bank, the same Osprey Native app as the web and iOS, and open it on the Android device
+##       named by OSPREY_ANDROID_SERIAL. Start its API first (`make -C src/toolchain/targets/web bank`); the
+##       device reaches it on this machine through `adb reverse`.
+bank:
+	$(BANK_ANDROID) bash src/toolchain/hosts/android/run.sh
 
 ## casting: Build and open casting on the Android device named by OSPREY_ANDROID_SERIAL.
 casting:

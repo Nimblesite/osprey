@@ -60,6 +60,12 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .osp-themed { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
 .osp-dialog { position: absolute; inset: 0; z-index: 20; display: flex; justify-content: flex-end; align-items: flex-start; outline: none; }
 .osp-dialog > .osp-framed { max-width: 100%; }
+/* A dialog whose body the application did not frame is a centred card over a backdrop; a notice over a page is an opaque card the person presses to dismiss. */
+.osp-layer > .osp-dialog:not(:has(> .osp-framed)) { position: fixed; z-index: 40; justify-content: center; align-items: center; padding: 16px; background: rgb(0 0 0 / 35%); }
+.osp-layer > .osp-dialog:not(:has(> .osp-framed)) > * { width: min(480px, 100%); padding: 20px; border-radius: 12px; background: var(--osp-raised); box-shadow: 0 12px 32px rgb(0 0 0 / 25%); }
+/* [UI-COMPONENTS] A layer draws its children in order: whatever follows a dialog sits above its backdrop. */
+.osp-layer > .osp-dialog ~ :not(.osp-dialog) { z-index: 45; }
+.osp-layer > .osp-alert { position: fixed; inset: auto 16px 16px auto; z-index: 50; max-width: min(420px, calc(100% - 32px)); background: var(--osp-raised); box-shadow: 0 8px 24px rgb(0 0 0 / 18%); cursor: pointer; }
 .osp-framed[style*="--osp-frame-icon-label:"] .osp-button > span:not(.codicon):not(.osp-symbol) { display: var(--osp-frame-icon-label); }
 .osp-symbol { display: inline-block; flex: 0 0 auto; width: 1em; height: 1em; vertical-align: middle; background: currentColor; mask-image: var(--osp-symbol-image); mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
 .osp-framed[style*="--osp-frame-symbol-size:"] :is(.osp-symbol, .codicon):not(.osp-icon *) { font-size: var(--osp-frame-symbol-size) !important; }
@@ -82,7 +88,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .osp-framed[style*="--osp-frame-text-size:"] .osp-text { font-size: var(--osp-frame-text-size) !important; }
 .osp-framed[style*="--osp-frame-font-style:"] .osp-text { font-style: var(--osp-frame-font-style) !important; }
 .osp-framed[style*="--osp-frame-control-height:"] .osp-button { min-height: var(--osp-frame-control-height); }
-.osp-framed[style*="--osp-frame-control-fill:"] .osp-button-plain { background: var(--osp-frame-control-fill); }
+.osp-framed[style*="--osp-frame-control-fill:"] .osp-button-plain { background: var(--osp-frame-control-fill); border-color: transparent; }
+.osp-framed[style*="--osp-frame-ink:"] .osp-button-plain { color: var(--osp-frame-ink); }
+.osp-framed[style*="--osp-frame-control-fill:"] .osp-button-plain:hover:not(:disabled) { background: var(--osp-frame-control-fill); border-color: transparent; }
+.osp-framed[style*="--osp-frame-icon-label:"] .osp-button { min-width: var(--osp-frame-control-height, 32px); }
 .osp-framed[style*="--osp-frame-font:"] .osp-button { font-family: var(--osp-frame-font); }
 .osp-framed[style*="--osp-frame-text-size:"] .osp-button { font-size: var(--osp-frame-text-size); }
 .osp-framed[style*="--osp-frame-text-size:"] .osp-math { font-size: calc(var(--osp-frame-text-size) * var(--osp-frame-math-scale, 1)) !important; }
@@ -182,7 +191,7 @@ button:disabled { cursor: default; opacity: .48; }
 .osp-badge { display: inline-flex; align-items: center; gap: 6px; width: fit-content; padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); background: color-mix(in srgb, currentColor 10%, transparent); }
 .osp-badge .codicon { font-size: 13px; }
 .osp-badge.osp-tone-primary { color: var(--osp-text); }
-.osp-button { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--osp-border); background: var(--osp-raised); color: var(--osp-text); border-radius: 8px; padding: 7px 12px; min-height: 32px; transition: background var(--osp-motion), border-color var(--osp-motion); }
+.osp-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--osp-border); background: var(--osp-raised); color: var(--osp-text); border-radius: 8px; padding: 7px 12px; min-height: 32px; transition: background var(--osp-motion), border-color var(--osp-motion); }
 .osp-button:hover:not(:disabled) { border-color: var(--osp-accent); background: color-mix(in srgb, var(--osp-accent) 8%, var(--osp-raised)); }
 .osp-button-prominent { background: var(--osp-accent-strong); border-color: transparent; color: light-dark(#ffffff, #06111f); font-weight: 650; }
 .osp-button-prominent:hover:not(:disabled) { background: color-mix(in srgb, var(--osp-brand-accent, #22b8cf) 82%, white); }
@@ -196,6 +205,12 @@ button:disabled { cursor: default; opacity: .48; }
   background: var(--osp-brand-surface, var(--vscode-input-background, var(--osp-raised))); color: var(--osp-brand-primary, var(--vscode-input-foreground, var(--osp-text)));
   border-radius: 8px; padding: 8px 10px; outline: none; transition: border-color var(--osp-motion), box-shadow var(--osp-motion);
 }
+.osp-picker { position: relative; display: flex; align-items: center; min-width: 0; color: var(--osp-muted); }
+.osp-picker select { appearance: none; width: 100%; min-height: var(--osp-frame-control-height, 32px); padding: 0 28px 0 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.osp-picker > :last-child { position: absolute; right: 10px; pointer-events: none; font-size: 9px; }
+.osp-framed[style*="--osp-frame-font:"] :is(.osp-picker select, .osp-field input, .osp-field textarea, .osp-field > span) { font-family: var(--osp-frame-font); }
+.osp-framed[style*="--osp-frame-text-size:"] :is(.osp-picker select, .osp-field input, .osp-field textarea) { font-size: var(--osp-frame-text-size); }
+.osp-framed[style*="--osp-frame-control-height:"] .osp-field input { min-height: var(--osp-frame-control-height); }
 .osp-field input:focus, .osp-field textarea:focus, .osp-field select:focus { border-color: var(--osp-accent); box-shadow: 0 0 0 1px var(--osp-accent); }
 .osp-field textarea { resize: vertical; min-height: 72px; }
 .osp-toggle { display: inline-flex; align-items: center; gap: 10px; border: 0; background: transparent; padding: 5px 0; }

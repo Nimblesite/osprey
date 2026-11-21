@@ -1,6 +1,7 @@
 //! Structural pattern lowering.
 use super::{
-    bind_value, close_chain, emit_arm, finish_phi, match_state, open_guarded_arm, take_catch_all,
+    bind_value, close_chain, emit_arm, finish_phi, match_state, nested, open_guarded_arm,
+    take_catch_all,
 };
 use crate::builder::Codegen;
 use crate::error::Result;
@@ -30,22 +31,33 @@ pub(super) fn gen_structural_match(
         .filter(|_| disc.ty == LType::Ptr)
         .and_then(|o| cg.record_layout(o).map(|(ty, fs)| (o.to_string(), ty, fs)));
     let (end, mut phi_in, _, mark) = match_state(cg, arms);
+    let mut closed = false;
     for arm in arms {
         match (&arm.pattern, &record) {
+            (Pattern::Structural { .. }, Some(_)) if !nested::is_flat(&arm.pattern) => {
+                // A slot that tests its field can fail: the next arm runs
+                // ([PATTERN-NESTED]).
+                nested::refutable_arm(cg, arm, disc, &mut phi_in)?;
+            }
             (Pattern::Structural { fields, open }, Some((owner, struct_ty, layout)))
-                if row_selects(fields, *open, layout) =>
+                if row_selects(&osprey_ast::row_binders(fields), *open, layout) =>
             {
                 emit_arm(cg, arm, &mut phi_in, |cg| {
                     bind_row_statically(cg, disc, owner, struct_ty, layout, fields);
                 })?;
+                closed = true;
                 break;
             }
             (Pattern::Structural { .. }, _) => {} // can never select — skip
             _ => {
                 take_catch_all(cg, arm, disc, &mut phi_in)?;
+                closed = true;
                 break;
             }
         }
+    }
+    if !closed {
+        cg.emit("unreachable");
     }
     finish_phi(cg, &phi_in, &end, mark)
 }
@@ -69,31 +81,56 @@ pub(super) fn bind_row_statically(
     owner: &str,
     struct_ty: &str,
     layout: &[(String, LType)],
-    fields: &[(String, String)],
+    fields: &[(String, Pattern)],
 ) {
-    let src = cg.emit_reg(format!("bitcast i8* {} to {struct_ty}*", disc.operand));
-    for (fname, binder) in fields {
+    let record = Record {
+        disc,
+        owner,
+        struct_ty,
+        layout,
+    };
+    for (fname, slot) in fields {
+        let binder = slot.slot_binder();
         if binder.is_empty() {
             continue;
         }
-        let Some((idx, fty)) = layout
-            .iter()
-            .enumerate()
-            .find_map(|(i, (n, t))| (n == fname).then_some((i, *t)))
-        else {
-            continue;
-        };
-        let loaded = crate::aggregate::load_record_field(cg, owner, struct_ty, &src, idx, fty);
-        let inferred = crate::aggregate::field_type(cg, disc, owner, fname);
-        let value = crate::aggregate::restore_field(
-            cg,
-            Value::new(loaded, fty),
-            owner,
-            fname,
-            inferred.as_ref(),
-        );
-        bind_value(cg, binder.clone(), value);
+        if let Some(value) = row_field(cg, record, fname) {
+            bind_value(cg, binder.to_owned(), value);
+        }
     }
+}
+
+/// A concrete record scrutinee and its layout.
+#[derive(Clone, Copy)]
+pub(super) struct Record<'a> {
+    pub(super) disc: &'a Value,
+    pub(super) owner: &'a str,
+    pub(super) struct_ty: &'a str,
+    pub(super) layout: &'a [(String, LType)],
+}
+
+/// One field of a concrete record, at the type the checker gave it; `None`
+/// when the layout has no such field.
+pub(super) fn row_field(cg: &mut Codegen, record: Record<'_>, fname: &str) -> Option<Value> {
+    let (idx, fty) = record
+        .layout
+        .iter()
+        .enumerate()
+        .find_map(|(i, (n, t))| (n == fname).then_some((i, *t)))?;
+    let src = cg.emit_reg(format!(
+        "bitcast i8* {} to {}*",
+        record.disc.operand, record.struct_ty
+    ));
+    let loaded =
+        crate::aggregate::load_record_field(cg, record.owner, record.struct_ty, &src, idx, fty);
+    let inferred = crate::aggregate::field_type(cg, record.disc, record.owner, fname);
+    Some(crate::aggregate::restore_field(
+        cg,
+        Value::new(loaded, fty),
+        record.owner,
+        fname,
+        inferred.as_ref(),
+    ))
 }
 
 /// Narrow an erased box: load its descriptor once, then test each structural
@@ -139,10 +176,16 @@ fn gen_any_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Va
 /// Bind each named field of a matched candidate row: slot index comes from
 /// THAT row's layout order, and the loaded child box is bound as `any`,
 /// borrowing the scrutinee's storage exactly as a variant bind does.
-fn bind_row_children(cg: &mut Codegen, payload: &str, row: &[String], fields: &[(String, String)]) {
+fn bind_row_children(
+    cg: &mut Codegen,
+    payload: &str,
+    row: &[String],
+    fields: &[(String, Pattern)],
+) {
     let row_ty = crate::anybox::row_block_ty(row.len());
     let block = cg.emit_reg(format!("inttoptr i64 {payload} to {row_ty}*"));
-    for (fname, binder) in fields {
+    for (fname, slot) in fields {
+        let binder = slot.slot_binder();
         if binder.is_empty() {
             continue;
         }
@@ -150,6 +193,6 @@ fn bind_row_children(cg: &mut Codegen, payload: &str, row: &[String], fields: &[
             continue;
         };
         let child = crate::aggregate::load_field(cg, &row_ty, &block, idx, LType::Any);
-        bind_value(cg, binder.clone(), Value::new(child, LType::Any));
+        bind_value(cg, binder.to_owned(), Value::new(child, LType::Any));
     }
 }

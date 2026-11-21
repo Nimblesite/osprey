@@ -8,22 +8,23 @@ These come before every other open item in `docs/plans/`. Each is a defect again
 
 ### Language
 
-- [ ] **Built-in constraints carried in the type scheme ([TYPE-CONSTRAINTS](../specs/language/0004-TypeSystem.md#built-in-constraints--type-constraints)).** A generic function like `fn show(x) = toString(x)` loses the "x must be printable" obligation, so it is only checked where a concrete type happens to reach it. The fix is Elm-style built-in constraints carried in the function's type (`printable`, `comparable`, `number`, `sized`), with effects, module signatures and records of functions covering everything user-extensible. No type classes: effects pick an implementation by where the code runs, constraints by the type of the value, and Osprey derives the latter structurally.
-  - [x] Spec: [TYPE-CONSTRAINTS] written, marked not implemented
-  - [ ] Spec: remove the "not implemented" status when the rest lands
-  - [ ] Checker: a constrained type variable in `Type::Var`'s scheme; generalization keeps it, instantiation copies it, unification with a concrete type discharges it
-  - [ ] Move `is_printable`, `is_sortable_list`, `is_sized` and the numeric operand checks in `builtin_constraints.rs` onto it; delete the post-hoc `validate_builtin_uses` pass for them
-  - [ ] Error at the call that decides the type, naming the constraint: "`show` needs a printable argument; a function is not printable"
-  - [ ] Hover, inferred signatures and `--docs` show the constraint
-  - [ ] Corpus regression (both flavors) and `failscompilation/` rejections for each constraint through one, two and three levels of generic call
-- [ ] **Nested patterns ([PATTERN-NESTED](../specs/language/0007-PatternMatching.md#nested-patterns--pattern-nested)).** `Node(Node(l, _), r)` and `Error { message: Overflow { by } }` are rejected today; each slot is a binding or `_`, forcing a `match` per level.
-  - [x] Spec: [PATTERN-NESTED] written, marked not implemented
-  - [ ] Grammar and both parsers accept a pattern in every slot (`tree-sitter-osprey`, Default and ML lowering to one AST)
-  - [ ] Checker: type each nested pattern at its slot's type; one binding per name per arm
-  - [ ] Exhaustiveness and reachability over the whole nested pattern, with a witness value in the diagnostic
-  - [ ] Backend: decision tree for nested tests on GC, ARC and wasm32; no binding leaks from a failed arm; ARC releases balanced
-  - [ ] Corpus regression (both flavors) mixing constructors, `Result`, tuples, lists and rows three levels deep; `failscompilation/` rejections for a non-exhaustive nest, an unreachable arm and a name bound twice
-  - [ ] Spec: remove the "not implemented" status and the note in [TYPE-UNION-POSITIONAL]
+- [x] **Built-in constraints carried in the type scheme ([TYPE-CONSTRAINTS](../specs/language/0004-TypeSystem.md#built-in-constraints--type-constraints)).** A generic function like `fn show(x) = toString(x)` lost the "x must be printable" obligation, so it was only checked where a concrete type happened to reach it. Elm-style built-in constraints (`printable`, `comparable`, `sortable`, `sized`, `number`) now travel in the function's scheme; effects, module signatures and records of functions cover everything user-extensible. No type classes.
+  - [x] Spec: [TYPE-CONSTRAINTS] written
+  - [x] Spec: "not implemented" status removed; table matches the checker (`comparable` is scalars plus payload-free variants, `sortable` is `listSort`'s own)
+  - [x] Checker: the constraint is an obligation in `Scheme.obligations`; generalization keeps it, instantiation re-locates it at each call (`located_obligations`), and validation after unification discharges it. No separate `Type::Var` field: the obligation already names the variable, so one mechanism serves every constraint
+  - [x] `is_printable`, `is_sortable_list`, `is_sized` and the order checks run on those carried obligations; `validate_builtin_uses` is the discharge step, not a post-hoc patch
+  - [x] Error at the call that decides the type, naming the function and constraint: "cannot convert value to string: (int) -> int; `show` needs a printable argument"; a direct built-in use names its own line
+  - [x] Hover, inferred signatures and `--docs` show the constraint: `fn show(x: printable) -> string`, `sorted : List<sortable> -> List<sortable>`
+  - [x] `failscompilation/` rejections for each constraint through one, two and three levels (`print_record_unsupported`, `ml_interpolation_unprintable`), hover and `--docs` tests in both flavors
+  - [x] `number` does not travel, by design: a numeric definition takes ONE overload chosen by its uses (GPU kernels rely on it); stated in [TYPE-CONSTRAINTS]
+- [x] **Nested patterns ([PATTERN-NESTED](../specs/language/0007-PatternMatching.md#nested-patterns--pattern-nested)).** `Node(Node(l, _), r)` and `Error { message: Overflow { by } }` were rejected; each slot was a binding or `_`, forcing a `match` per level.
+  - [x] Spec: [PATTERN-NESTED] written
+  - [x] Grammar and both parsers accept a pattern in every slot: Default `field: pattern` brace slots, tuple and row slots (`slot_pattern`); ML `Ctor p q` by juxtaposition as ML builds the value, `Ctor(field = p)` by label, tuple and `{ f = p }` row slots. Both lower through `desugar::{positional,labelled}_ctor_pattern`, and `Pattern::Structural` slots are patterns
+  - [x] Checker: each nested pattern is typed at its slot's type (`Result` payloads at `T`/`E`, rows at the field's type); a name bound twice in one arm is rejected; a slot testing an `any` row's field is rejected
+  - [x] Exhaustiveness and reachability over the whole nested pattern by usefulness (`pattern/usefulness.rs`), with a witness: "no arm matches `Node(Node(_, _), Node(_, _))`"
+  - [x] Backend: an arm that tests below its top runs `nested::capture` and falls through to the next arm on any failed test, on union, row and `Result` matches; bindings install only once the whole pattern matched. GC, ARC and wasm32 corpus green
+  - [x] Corpus regression (both flavors, `core/foundations/checks`) mixing trees, `Result` in `Result`, union payloads, literals and lists three levels deep; `failscompilation/` rejections for a non-exhaustive nest, unreachable nested arms and a name bound twice (`match_not_exhaustive`, `match_unreachable_after_catch_all`)
+  - [x] Spec: "not implemented" status and the [TYPE-UNION-POSITIONAL] note removed; ML spelling specified in [PATTERN-NESTED] and [FLAVOR-ML-MATCH]
 
 ### Error system
 

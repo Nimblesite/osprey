@@ -1,0 +1,78 @@
+// [SYNTH-ADVANCED-SPECTRAL-CORE] Radix-2 Cooley–Tukey transforms for real audio frames.
+namespace synth
+
+(** Sizes are powers of two from 64 to 4,096. Allocating reference code; bins are 0 to size/2 inclusive. *)
+module Ffts
+    sizes = [64, 128, 256, 512, 1024, 2048, 4096]
+
+    (** Whether a transform of this size is supported. *)
+    export valid size = listContains sizes size
+
+    (** Multiply by the unit phasor at `angle`. *)
+    export rotated (value, angle) = Complex(re = SpectralMath::productRe (value.re, value.im, cos angle, sin angle), im = SpectralMath::productIm (value.re, value.im, cos angle, sin angle))
+
+    added (e, t) = Complex(re = e.re + t.re, im = e.im + t.im)
+    subtracted (e, t) = Complex(re = e.re - t.re, im = e.im - t.im)
+
+    combined (evens, odds, index, size, sign) = match evens
+        [] => ComplexHalves(lower = [], upper = [])
+        [e, ...moreEvens] => match odds
+            [] => ComplexHalves(lower = [], upper = [])
+            [o, ...moreOdds] =>
+                t = rotated (o, SpectralMath::twiddle (sign, toFloat index, toFloat size))
+                rest = combined (moreEvens, moreOdds, satAdd index 1, size, sign)
+                ComplexHalves(lower = listPrepend rest.lower (added (e, t)), upper = listPrepend rest.upper (subtracted (e, t)))
+
+    // Fuse the first two radix-2 stages before allocating a result list.
+    quartet (a, b, c, d, sign) =
+        zero = SpectralMath::twiddle (sign, 0.0, 2.0)
+        even = rotated (c, zero)
+        odd = rotated (d, zero)
+        lower = added (a, even)
+        upper = subtracted (a, even)
+        sum = rotated (added (b, odd), zero)
+        difference = rotated (subtracted (b, odd), SpectralMath::twiddle (sign, 1.0, 4.0))
+        [added (lower, sum), added (upper, difference), subtracted (lower, sum), subtracted (upper, difference)]
+
+    incomplete () = Error(message = InvalidConfiguration(detail = "FFT input frame is incomplete."))
+
+    four (values, first, stride, sign) =
+        second = satAdd first stride
+        third = satAdd second stride
+        match listGet values first
+            Error _ => incomplete ()
+            Success a => match listGet values second
+                Error _ => incomplete ()
+                Success b => match listGet values third
+                    Error _ => incomplete ()
+                    Success c => match listGet values (satAdd third stride)
+                        Error _ => incomplete ()
+                        Success d => Success(value = quartet (a, b, c, d, sign))
+
+    // The recursive halves borrow alternating bins of the same input frame.
+    transform (values, first, stride, size, sign) = match size == 4
+        true => four (values, first, stride, sign)
+        false =>
+            half = intDiv size 2
+            step = satAdd stride stride
+            match transform (values, first, step, half, sign)
+                Error why => Error(message = why)
+                Success evens => match transform (values, satAdd first stride, step, half, sign)
+                    Error why => Error(message = why)
+                    Success odds =>
+                        halves = combined (evens, odds, 0, size, sign)
+                        Success(value = listConcat halves.lower halves.upper)
+
+    (** Real frame to bins 0..size/2. *)
+    export forward samples = match valid (length samples)
+        false => Error(message = InvalidConfiguration(detail = "FFT size must be a power of two from 64 to 4096."))
+        true => Outcomes::carried (transform (mapList (samples, \x => Complex(re = x, im = 0.0)), 0, 1, length samples, -1.0), \bins => Success(value = Sequences::take (bins, satAdd (intDiv (length samples) 2) 1)))
+
+    conjugate value = Complex(re = value.re, im = 0.0 - value.im)
+
+    (** Bins 0..size/2 back to a real frame, rebuilding the conjugate-symmetric upper half. *)
+    export inverse (bins, size) = match valid size && length bins == satAdd (intDiv size 2) 1
+        false => Error(message = InvalidConfiguration(detail = "Inverse FFT needs size/2 + 1 bins of a supported size."))
+        true =>
+            mirrored = listReverse (mapList (Sequences::drop (Sequences::take (bins, intDiv size 2), 1), conjugate))
+            Outcomes::carried (transform (listConcat bins mirrored, 0, 1, size, 1.0), \values => Success(value = mapList (values, \value => value.re / toFloat size)))

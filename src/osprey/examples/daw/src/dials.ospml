@@ -1,0 +1,225 @@
+// [DAW-CONTROLS-DIAL] The dial: every number a module has is a round dial with its value beside it. Press it,
+// hold, and move up or down to turn it; Shift turns it a tenth as fast; a press without a move asks to type the
+// value; Escape puts back the value the drag began with. One turn is one step of undo. The same rows are drawn
+// in the canvas inspector and in Patch Controls, so there is one set of controls ([DAW-CONTROLS]).
+namespace synth
+
+import ui::Scenes
+
+(** Numbered alternatives in component metadata are discrete choices. Other qualifiers describe a continuous control. *)
+module ParameterModes
+    (** Binary switches declared by the built-in processors. Plug-ins own their parameter semantics. *)
+    export binary (n, p) = match n.processor
+        Shaper => p.key == "oversample" || p.key == "antialias"
+        PhaseOperator => p.key == "oversample"
+        Reverb => p.key == "freeze"
+        _ => false
+
+    numbered (parts, index, choices) = match listGet parts index
+        Error _ => choices
+        Success part =>
+            prefix = "${index} "
+            match startsWith part prefix && length part > length prefix
+                false => choices
+                true => match substring part (length prefix) (length part)
+                    Error _ => choices
+                    Success name => listAppend choices (ui::Ui::choice (toString index, name))
+
+    (** Only a complete, consecutive list matching the parameter range becomes a named choice. *)
+    export describe p =
+        plain = { title = p.label, options = [] }
+        match split p.label " (" ?: [p.label]
+            [title, detail] => match startsWith detail "0 " && endsWith detail ")" && p.minimum == 0.0
+                false => plain
+                true =>
+                    parts = split (substring detail 0 (satSub (length detail) 1) ?: "") ", " ?: []
+                    options = foldList (toList (range (0, length parts)), [], \(choices, i) => numbered (parts, i, choices))
+                    match length options > 1 && length options == length parts && p.maximum == toFloat (satSub (length options) 1)
+                        true => { title = title, options = options }
+                        false => plain
+            _ => plain
+
+    (** Match the exact saved value so a fractional value from an older project stays visible. *)
+    export selected (p, options) = ui::Lists::find (options, \option => (parseFloat option.choiceKey ?: -1.0) == p.initial)
+
+    (** Both panels bind edits to the same graph parameter, by a numeric field or a keyed picker. *)
+    export entry (n, p) =
+        mode = describe p
+        action = EditParameter(identity = n.identity, key = p.key)
+        match mode.options
+            [] => ui::Field(label = p.label, value = "${p.initial}", prompt = "${p.minimum} to ${p.maximum}", secure = false, multiline = false, commit = ui::OnSubmit, bind = action)
+            _ =>
+                key = match selected (p, mode.options)
+                    Success choice => choice.choiceKey
+                    Error _ => ""
+                ui::Ui::picker (mode.title, mode.options, key, action)
+
+(** A module's parameters as rows of dials: drawing, hit areas and the drag. *)
+module Dials
+    (** Rows are this far apart. *)
+    export pitch () = 52.0
+
+    radius () = 16.0
+
+    pageSize () = 10
+
+    offset (editor, n) = ui::Pick::either (editor.dialOffset < length n.parameters, editor.dialOffset, 0)
+
+    shown (editor, n) =
+        start = offset (editor, n)
+        ui::Lists::slice (n.parameters, start, satAdd start (pageSize ()))
+
+    (** Include the navigation row whenever a module spans multiple pages. *)
+    export rowCount (editor, n) = satAdd (length (shown (editor, n))) (ui::Pick::either (length n.parameters > pageSize (), 1, 0))
+
+    previous () = "Previous parameters"
+
+    pageButton (label, left, y, width) = EditorView::accessible (label, left, y, width / 2.0 - 4.0, 32.0, false)
+
+    pages (editor, n, x, top, width) =
+        start = offset (editor, n)
+        y = top + toFloat (length (shown (editor, n))) * pitch () - 16.0
+        back = ui::Pick::either (start > 0, [pageButton (previous (), x, y, width)], [])
+        more = ui::Pick::either (satAdd start (pageSize ()) < length n.parameters, [pageButton ("Next parameters", x + width / 2.0, y, width)], [])
+        listConcat back more
+
+    pageShape (a, depth) = [EditorView::panel (a.accessLeft, a.accessTop, a.accessWidth, a.accessHeight, 2626370, depth), EditorView::text (a.accessLabel, a.accessLeft + 6.0, a.accessTop + 7.0, 12.0, 235, depth + 1)]
+
+    magnitude value = match split "${value}" "." ?: []
+        [_, fraction] => ui::Pick::either (length fraction >= 3 && length fraction <= 5 || value > 0.0 && value < 0.01, "${value}", TimelineView::hundredths value)
+        _ => ui::Pick::either (value > 0.0 && value < 0.01, "${value}", TimelineView::hundredths value)
+
+    signed value = ui::Pick::either (value < 0.0, "−${magnitude (abs value)}", magnitude (abs value))
+
+    suffix p = match p.unit
+        Hertz => " Hz"
+        Seconds => " s"
+        _ => ui::Pick::either (p.key == "drive", "×", "")
+
+    (** A parameter's value as its dial and its module's card write it. *)
+    export reading p = "${signed p.initial}${suffix p}"
+
+    current (p, mode) = match ParameterModes::selected (p, mode.options)
+        Success option => option.choiceLabel
+        Error _ => reading p
+
+    (** The same short label and current value fit on the module card. *)
+    export summary p =
+        mode = ParameterModes::describe p
+        "${mode.title}  ${current (p, mode)}"
+
+    paint colour = ui::Solid(tint = Scenes::hex (shiftRight colour 8, 1.0))
+
+    stroke width = ui::Line(width = width, dashes = [], bevel = false)
+
+    // The arc from the minimum round to `turned`.
+    arc (cx, cy, turned, colour, depth) = Scenes::path ([ui::MoveTo(toX = DialMath::tipX (cx, radius (), 0.0), toY = DialMath::tipY (cy, radius (), 0.0)), ui::ArcTo(radiusX = radius (), radiusY = radius (), rotation = 0.0, large = turned > 0.6667, sweep = true, toX = DialMath::tipX (cx, radius (), turned), toY = DialMath::tipY (cy, radius (), turned))], stroke 3.0, paint colour, depth)
+
+    // The ring round the dial being turned.
+    ring (cx, cy, depth) =
+        r = radius () + 6.0
+        Scenes::path ([ui::MoveTo(toX = cx - r, toY = cy), ui::ArcTo(radiusX = r, radiusY = r, rotation = 0.0, large = false, sweep = true, toX = cx + r, toY = cy), ui::ArcTo(radiusX = r, radiusY = r, rotation = 0.0, large = false, sweep = true, toX = cx - r, toY = cy)], stroke 1.5, paint (Scenes::rgb (167, 139, 250)), depth)
+
+    dial (p, cx, cy, lit, depth) =
+        turned = DialMath::turn (p.initial, p.minimum, p.maximum)
+        body = [arc (cx, cy, 1.0, Scenes::rgb (74, 66, 110), depth), Scenes::disc (cx, cy, radius () - 4.0, Scenes::rgb (40, 35, 66), depth + 1), Scenes::strip ([DialMath::tipX (cx, 3.0, turned), DialMath::tipY (cy, 3.0, turned), DialMath::tipX (cx, radius () - 5.0, turned), DialMath::tipY (cy, radius () - 5.0, turned)], TimelineView::ink (), 2.0, depth + 2)]
+        value = match turned > 0.01
+            true => [arc (cx, cy, turned, TimelineView::accent (), depth + 1)]
+            false => []
+        halo = match lit
+            true => [ring (cx, cy, depth + 1)]
+            false => []
+        listConcat body (listConcat value halo)
+
+    // The dial of `p` on module `n` is the one being turned.
+    lit (editor, n, p) = match editor.dial
+        DialHeld identity key _ _ _ => identity == n.identity && key == p.key
+        _ => false
+
+    // Keep the parameter name and its qualifier in the label column, clear of the dial.
+    caption (label, x, cy, depth) = match split label " (" ?: [label]
+        [name, detail] => [EditorView::text (name, x, cy - 15.0, 13.0, 225, depth), EditorView::text ("(${detail}", x, cy + 2.0, 10.0, 190, depth)]
+        _ => [EditorView::text (label, x, cy - 8.0, 13.0, 225, depth)]
+
+    fineCue (editor, n, p, x, cy, depth) = match editor.fineHeld && lit (editor, n, p)
+        false => []
+        true => [EditorView::text ("Fine adjustment", x, cy + 10.0, 10.0, 220, depth)]
+
+    row (editor, n, p, x, cy, width, depth) = match ParameterModes::binary (n, p)
+        true =>
+            on = p.initial >= 0.5
+            right = x + width - 2.0
+            colour = ui::Pick::either (on, TimelineView::accent (), TimelineView::dim ())
+            listConcat (caption (p.label, x, cy, depth)) [Scenes::rect (right - 21.0, cy, 42.0, 22.0, 11.0, colour, depth), Scenes::disc (ui::Pick::either (on, right - 11.0, right - 31.0), cy, 8.0, TimelineView::ink (), depth + 1)]
+        false => parameterRow (editor, n, p, x, cy, width, depth)
+
+    parameterRow (editor, n, p, x, cy, width, depth) =
+        mode = ParameterModes::describe p
+        match mode.options
+            [] => ui::Lists::flatten [caption (p.label, x, cy, depth), dial (p, x + width - 78.0, cy, lit (editor, n, p), depth), [Scenes::lettering (reading p, x + width, cy - 8.0, 13.0, TimelineView::ink (), 2, 600.0, depth)], fineCue (editor, n, p, x + width - 60.0, cy, depth)]
+            _ =>
+                [EditorView::text (mode.title, x, cy - 8.0, 13.0, 225, depth), EditorView::panel (x + width - 100.0, cy - 16.0, 104.0, 32.0, shiftRight (Scenes::rgb (40, 35, 66)) 8, depth), EditorView::text (current (p, mode), x + width - 92.0, cy - 8.0, 12.0, 235, depth + 1), Scenes::lettering ("⌄", x + width - 3.0, cy - 8.0, 13.0, TimelineView::dim (), 2, 500.0, depth + 1)]
+
+    (** The dial rows of module `n`: labels from `x`, values ending at `x + width`, the first row centred on `top`. *)
+    export shapes (editor, n, x, top, width, depth) =
+        rows = Sequences::mapIndexed (shown (editor, n), \(index, p) => row (editor, n, p, x, top + toFloat index * pitch (), width, depth))
+        ui::Lists::flatten (listConcat rows (mapList (pages (editor, n, x, top, width), \a => pageShape (a, depth))))
+
+    area (editor, n, p, x, cy, width) =
+        plain = EditorView::accessible ("${EditorView::componentName (editor, n)} ${(ParameterModes::describe p).title}", x + width - 100.0, cy - pitch () / 2.0, 104.0, pitch (), ParameterModes::binary (n, p) && p.initial >= 0.5)
+        plain(accessValue = p.initial, accessMin = p.minimum, accessMax = p.maximum)
+
+    (** Each dial with its number as one hit area, named after the module and the parameter and carrying its value and range. *)
+    export access (editor, n, x, top, width) =
+        rows = Sequences::mapIndexed (shown (editor, n), \(index, p) => area (editor, n, p, x, top + toFloat index * pitch (), width))
+        listConcat rows (pages (editor, n, x, top, width))
+
+    parameterOf (editor, identity, key) = match Graphs::node (editor.graph, identity)
+        Invalid _ => Error(message = "")
+        Valid n => ui::Lists::find (n.parameters, \p => p.key == key)
+
+    fine editor = ui::Pick::either (editor.fineHeld, 1.0, 0.0)
+
+    turnedTo (editor, identity, key, startY, startValue, py) = match parameterOf (editor, identity, key)
+        Error _ => editor
+        Success p => EditorState::typed (editor, EditParameter(identity = identity, key = key), "${DialMath::dragged (startValue, startY - py, p.minimum, p.maximum, fine editor)}")
+
+    // A held dial: a move turns it, a release ends the turn, and a press that never moved asks to type the value.
+    held (editor, identity, key, startY, startValue, moved, py, down) = match down
+        true => match moved || DialMath::moved (startY, py) > 0.5
+            false => editor
+            true => turnedTo (editor(dial = DialHeld(identity = identity, key = key, startY = startY, startValue = startValue, moved = true), dragging = identity), identity, key, startY, startValue, py)
+        false => match moved
+            true => editor(dial = DialIdle, dragging = -1)
+            false => editor(dial = DialIdle, dialEntry = key, detailsShown = true)
+
+    pressed (editor, n, top, py) = match listGet (shown (editor, n)) (floatToInt (DialMath::row (py, top, pitch ())) ?: -1)
+        Error _ => Error(message = "")
+        Success p => match ParameterModes::binary (n, p)
+            true => Success(value = EditorState::typed (editor(dial = DialButtonDown), EditParameter(identity = n.identity, key = p.key), ui::Pick::either (p.initial >= 0.5, "0", "1")))
+            false => match (ParameterModes::describe p).options
+                [] => Success(value = editor(dial = DialHeld(identity = n.identity, key = p.key, startY = py, startValue = p.initial, moved = false), dialEntry = ""))
+                _ => Success(value = editor(dialEntry = p.key, detailsShown = true))
+
+    (** The pointer over module `n`'s dial rows laid out as `shapes` draws them. A held dial takes every event until
+        its release; otherwise only a press on a dial or its number is the dials', and anything else is an error. *)
+    export pointed (editor, n, x, top, width, px, py, down) = match editor.dial
+        DialButtonDown => Success(value = editor(dial = ui::Pick::either (down, DialButtonDown, DialIdle)))
+        DialHeld identity key startY startValue moved => Success(value = held (editor, identity, key, startY, startValue, moved, py, down))
+        DialIdle => match down
+            false => Error(message = "")
+            true =>
+                nav = pages (editor, n, x, top, width)
+                match listGet nav (EditorView::areaAt (nav, px, py))
+                    Success a =>
+                        start = offset (editor, n)
+                        next = ui::Pick::either (a.accessLabel == previous (), satSub start (pageSize ()), satAdd start (pageSize ()))
+                        Success(value = editor(dialOffset = next, dialEntry = "", dial = DialButtonDown))
+                    Error _ => match px >= x + width - 100.0 && px <= x + width + 4.0
+                        true => pressed (editor, n, top, py)
+                        false => Error(message = "")
+
+    (** Escape puts back the value a turn began with, and closes a typed entry. *)
+    export escaped editor = match editor.dial
+        DialHeld identity key _ startValue _ => EditorState::typed (editor(dial = DialIdle, dragging = -1), EditParameter(identity = identity, key = key), "${startValue}")
+        _ => editor(dial = DialIdle, dialEntry = "")

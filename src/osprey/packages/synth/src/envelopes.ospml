@@ -11,7 +11,7 @@ module Envelopes
     (** Validate seconds, normalised sustain and the rendering rate before activation. *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && duration config.attack && duration config.decay && duration config.release && config.sustain >= 0.0 && config.sustain <= 1.0
         true => Success(value = config)
-        false => Error(message = "Invalid envelope rate, duration or sustain.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid envelope rate, duration or sustain."))
 
     (** Legato retrigger preserves the current level. *)
     export noteOn held = held(stage = Attack)

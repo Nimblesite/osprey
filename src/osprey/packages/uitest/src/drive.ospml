@@ -28,9 +28,12 @@ module Drive
     export idle (program, store) = Driven(drivenSurface = Surfaces::idle store, drivenProgram = program, drivenSeen = Read::blank (), drivenNow = 1)
 
     (** `d` opened on `platform` with the launch `arguments`, its home `/home/tester` and its appearance light. *)
-    export launched (d, platform, arguments) =
+    export launched (d, platform, arguments) = launchedAt (d, platform, arguments, "/home/tester")
+
+    (** Launch with an isolated home for tests that persist app preferences. *)
+    export launchedAt (d, platform, arguments, home) =
         given = foldList (arguments, d.drivenSurface, \(held, text) => Surfaces::argued (held, text))
-        looked (d, ui::Views::quiet (\() => Hosting::opened (given, d.drivenProgram, d.drivenNow, 0, platform, "/home/tester", false)))
+        looked (d, ui::Views::quiet (\() => Hosting::opened (given, d.drivenProgram, d.drivenNow, 0, platform, home, false)))
 
     touch (d, kind, ordinal, words, detail, x, y, down, shift) = ui::Touch(touchNow = d.drivenNow, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = shift)
 

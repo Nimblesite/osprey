@@ -163,6 +163,17 @@ fn a_whole_frame_reads_back_as_a_tree_with_its_scene_and_asks() {
     );
     let scene = &shown.scenes[&6];
     assert_eq!((scene.width, scene.height, scene.zoom), (200., 100., 0.5));
+    // [DAW-LAYOUT-FIXED-SCALE] The signed scale reaches placement intact on the very first frame.
+    for zoom in [-0.75, -1.0, -2.0, 0.0, 0.5] {
+        let mut frame = sample();
+        frame.shapes[0].values[2] = zoom;
+        assert_eq!(frame.read().expect("valid scene zoom").scenes[&6].zoom, zoom as f32);
+    }
+    for zoom in [f64::NAN, f64::INFINITY, -f64::MAX, f64::MAX, -f64::MIN_POSITIVE] {
+        let mut frame = sample();
+        frame.shapes[0].values[2] = zoom;
+        assert!(frame.read().is_err(), "unrepresentable scene scale {zoom}");
+    }
     assert_eq!(scene.atlas, vec!["bird.png".to_owned()]);
     assert_eq!(scene.shapes.len(), 3);
     assert_eq!(

@@ -149,10 +149,10 @@ fn print_ir(cli: &Cli, input: &CompilationInput) -> ExitCode {
 /// opted in with `--warnings-as-errors` ([TYPE-ANNOTATION-REDUNDANT]).
 ///
 /// `--quiet` never reaches here: it silences progress, and a warning is a
-/// diagnostic, not progress. Only `--no-warnings` ([`Warnings::Skip`]) skips
-/// the warning pass, and it skips the computation too:
-/// the redundant-annotation oracle re-infers the whole program once per
-/// proof, which a packaging build must not pay for advice nobody reads.
+/// diagnostic, not progress. `--no-warnings` ([`Warnings::Skip`]) computes none.
+/// The redundant-annotation analyser re-infers the whole program once per
+/// proof, so it is its own pass: only `--analyse` and `--warnings-as-errors`
+/// run it, and a plain build never pays for it.
 /// Errors are reported either way.
 pub(crate) fn report_type_errors(input: &CompilationInput, warnings: Warnings) -> usize {
     let errors = osprey_types::check_program(input.program());
@@ -188,11 +188,11 @@ fn report_errors(errors: &[osprey_types::TypeError], input: &CompilationInput) -
 fn report_warnings(input: &CompilationInput, warnings: Warnings) -> usize {
     match warnings {
         Warnings::Skip => 0,
-        Warnings::Report => {
-            let _ = warnings::report(input, &warnings::collect(input));
+        Warnings::Report | Warnings::Analyse => {
+            let _ = warnings::report(input, &warnings::collect(input, warnings.analyses()));
             0
         }
-        Warnings::Deny => warnings::report(input, &warnings::collect(input)),
+        Warnings::Deny => warnings::report(input, &warnings::collect(input, true)),
     }
 }
 
@@ -317,7 +317,7 @@ pub(super) fn target_ir(cli: &Cli, input: &CompilationInput) -> Result<String, S
     if cli.target == "wasm32" {
         return wasm::program_ir(program).map_err(|error| error.to_string());
     }
-    compile_ir(path, program, build_kind(cli)).map_err(|error| error.to_string())
+    compile_ir(|| input.debug_source(), program, build_kind(cli)).map_err(|error| error.to_string())
 }
 
 pub(super) fn reject_debug_cross_target(cli: &Cli) -> Option<ExitCode> {

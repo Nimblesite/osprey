@@ -7,6 +7,11 @@ use crate::ty::{names, Type, VarId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+mod constraints;
+mod shared;
+
+pub use shared::{Named, Typed};
+
 /// Closed-program requirements on full application, separate from written row bounds.
 /// Unknown callback effects are never represented as an empty proven row.
 /// Implements [LSP-EFFECT-REQUIREMENTS].
@@ -85,17 +90,17 @@ pub struct OpType {
 #[derive(Debug, Clone, Default)]
 pub struct ProgramTypes {
     /// Checked signal metadata at source callee identities, before discharge.
-    pub(crate) signal_queries: HashMap<usize, EffectRequirements>,
+    pub(crate) signal_queries: Arc<HashMap<usize, EffectRequirements>>,
     /// Function/extern name → (resolved parameter types, resolved return type).
-    pub functions: HashMap<String, (Vec<Type>, Type)>,
+    pub functions: Named<(Vec<Type>, Type)>,
     /// Qualified function name → the same requirements used by entry checking.
-    pub function_effects: HashMap<String, EffectRequirements>,
+    pub function_effects: Arc<HashMap<String, EffectRequirements>>,
     /// Constructor name → its record/variant layout.
-    pub ctors: HashMap<String, CtorLayout>,
+    pub ctors: Arc<HashMap<String, CtorLayout>>,
     /// Union type name → ordered variant constructor names (tag order).
-    pub unions: HashMap<String, Vec<String>>,
+    pub unions: Arc<HashMap<String, Vec<String>>>,
     /// Effect name → operation name → resolved signature.
-    pub effects: HashMap<String, HashMap<String, OpType>>,
+    pub effects: Arc<HashMap<String, HashMap<String, OpType>>>,
     /// Lambda source position → its resolved function type, so the backend
     /// lowers every lambda from inferred types, not guesses.
     pub(crate) lambdas: SiteTable,
@@ -114,22 +119,22 @@ pub struct ProgramTypes {
     /// box/unbox erased generic operation slots against the site's concrete
     /// types and key the runtime handler lookup by instantiation. Implements
     /// [EFFECTS-GENERIC-INSTANTIATION].
-    pub performs: HashMap<(u32, u32), PerformSite>,
+    pub performs: Arc<HashMap<(u32, u32), PerformSite>>,
     /// `handle` site position `(line, column)` → the effect type arguments
     /// and each operation's signature instantiated at that site (the
     /// handler-arm view of the same instantiation data). Implements
     /// [EFFECTS-GENERIC-INSTANTIATION].
-    pub handler_ops: HashMap<(u32, u32), HandlerSite>,
+    pub handler_ops: Arc<HashMap<(u32, u32), HandlerSite>>,
     /// `perform`/`handler`/`mask` sites naming a capability: position → the
     /// capability's effect. The capability's runtime identity is the value
     /// bound to the written name. Implements [EFFECTS-INSTANCE].
-    pub capabilities: HashMap<(u32, u32), String>,
+    pub capabilities: Arc<HashMap<(u32, u32), String>>,
     /// Explicit call substitutions, applied while specializing generic bodies.
     pub applications: crate::SiteApplications,
     /// Binder identity is part of the contract even when its spelling is omitted.
-    pub(crate) declared_params: HashMap<String, HashMap<String, Type>>,
+    pub(crate) declared_params: Named<HashMap<String, Type>>,
     pub(crate) call_bindings: Arc<HashMap<usize, HashMap<VarId, Type>>>,
-    pub(crate) methods: crate::methods::Targets,
+    pub(crate) methods: Arc<crate::methods::Targets>,
     /// Generalized source-binding constraints compared by annotation diagnostics.
     pub(crate) obligations: Arc<HashMap<String, Vec<(String, Type)>>>,
 }
@@ -250,44 +255,15 @@ impl ProgramTypes {
     pub fn specialized(&self, bindings: &HashMap<VarId, Type>, function: Option<&str>) -> Self {
         let mut result = self.clone();
         let substitute = |ty: &mut Type| *ty = crate::env::subst_vars(ty, bindings);
-        result.specialize_body(function, &substitute);
-        result.specialize_operations(&substitute);
+        result.functions.specialize(function, bindings);
+        for table in [&mut result.lambdas, &mut result.lets, &mut result.lists] {
+            table.specialize(function, &substitute);
+        }
+        shared::specialize_sites(&mut result.performs, bindings);
+        shared::specialize_sites(&mut result.handler_ops, bindings);
         result.applications = self.applications.specialized(bindings);
+        result.declared_params.specialize(None, bindings);
         result
-            .declared_params
-            .values_mut()
-            .flat_map(HashMap::values_mut)
-            .for_each(substitute);
-        result
-    }
-
-    fn specialize_body(&mut self, function: Option<&str>, substitute: &impl Fn(&mut Type)) {
-        for (_, (params, ret)) in self
-            .functions
-            .iter_mut()
-            .filter(|(name, _)| function.is_none_or(|f| f == name.as_str()))
-        {
-            params.iter_mut().for_each(substitute);
-            substitute(ret);
-        }
-        for table in [&mut self.lambdas, &mut self.lets, &mut self.lists] {
-            table.specialize(function, substitute);
-        }
-    }
-
-    fn specialize_operations(&mut self, substitute: &impl Fn(&mut Type)) {
-        for site in self.performs.values_mut() {
-            site.effect_args.iter_mut().for_each(substitute);
-            site.op.params.iter_mut().for_each(substitute);
-            substitute(&mut site.op.ret);
-        }
-        for site in self.handler_ops.values_mut() {
-            site.effect_args.iter_mut().for_each(substitute);
-            for op in site.ops.values_mut() {
-                op.params.iter_mut().for_each(substitute);
-                substitute(&mut op.ret);
-            }
-        }
     }
 
     /// The resolved return type of a named function, if known.

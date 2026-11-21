@@ -4,9 +4,9 @@
     reason = "subprocess and fixture setup failures must fail these end-to-end tests immediately"
 )]
 
-#[path = "common/repo_root.rs"]
-mod repo_root;
-use repo_root::repo_root;
+#[path = "common/launcher.rs"]
+mod launcher;
+use launcher::{osprey, repo_root};
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -18,13 +18,7 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 type Rewritten = (PathBuf, String, String);
 
 fn fixture() -> PathBuf {
-    repo_root().join("src/osprey/examples/projects/modules")
-}
-
-fn osprey() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
-    let _ = command.current_dir(repo_root());
-    command
+    repo_root().join("src/osprey/examples/talon/backend")
 }
 
 struct Output {
@@ -94,16 +88,16 @@ fn temp_project(name: &str) -> (PathBuf, String) {
 
 const FIXTURE_SOURCES: [&str; 11] = [
     "osprey.toml",
-    "src/main.ospml",
-    "src/lib/sqlite.ospml",
-    "src/domain/money.ospml",
-    "src/domain/accounts.ospml",
-    "src/domain/json.ospml",
-    "src/store/ledger.ospml",
-    "src/store/metrics.ospml",
-    "src/api/routes.ospml",
-    "src/web/bundle.ospml",
-    "src/web/pages.ospml",
+    "main.ospml",
+    "lib/sqlite.ospml",
+    "domain/money.ospml",
+    "domain/accounts.ospml",
+    "domain/json.ospml",
+    "store/ledger.ospml",
+    "store/metrics.ospml",
+    "api/routes.ospml",
+    "web/bundle.ospml",
+    "web/pages.ospml",
 ];
 
 /// The module the project-layout tests import their `answer` from.
@@ -204,7 +198,7 @@ fn flat_project_pipeline_covers_scripts_directories_and_manifests() {
         &["bank/web::Pages::render"],
         &["__osp_"],
     );
-    assert_project_main_symbol_is_local(&symbols, &project.join("src/main.ospml"));
+    assert_project_main_symbol_is_local(&symbols, &project.join("main.ospml"));
 
     // An ordinary script keeps its own names: no project name mangling.
     let source = temp_project("plain_script").0.with_extension("osp");
@@ -263,8 +257,14 @@ fn bank_project_runs_and_builds_byte_exact_against_expectedoutput() {
 #[test]
 fn bank_money_signature_is_opaque_from_both_flavors() -> TestResult {
     for (extension, source) in [
-        ("osp", "fn main() = { let amount = Money::fromCents(420005)\n print(\"${Money::show(amount)}|${wrapAdd(Money::toCents(amount), 1)}|${Money::positive(amount)}|${Money::show(Money::fromCents(-9223372036854775808))}\") }\n"),
-        ("ospml", "main () =\n    amount = Money::fromCents 420005\n    print \"${Money::show amount}|${wrapAdd (Money::toCents amount) 1}|${Money::positive amount}|${Money::show (Money::fromCents (-9223372036854775808))}\"\n"),
+        (
+            "osp",
+            "fn main() = { let amount = Money::fromCents(420005)\n print(\"${Money::show(amount)}|${wrapAdd(Money::toCents(amount), 1)}|${Money::positive(amount)}|${Money::show(Money::fromCents(-9223372036854775808))}\") }\n",
+        ),
+        (
+            "ospml",
+            "main () =\n    amount = Money::fromCents 420005\n    print \"${Money::show amount}|${wrapAdd (Money::toCents amount) 1}|${Money::positive amount}|${Money::show (Money::fromCents (-9223372036854775808))}\"\n",
+        ),
     ] {
         let project = money_client_fixture(extension, source)?;
         let expected = "$4,200.05|420006|true|-$92,233,720,368,547,758.08\n";
@@ -315,13 +315,15 @@ fn money_client_fixture(
     let project = temp_project(&format!("money_signature_{extension}_{}", source.len())).0;
     std::fs::create_dir_all(project.join("src"))?;
     let _ = std::fs::copy(
-        fixture().join("src/domain/money.ospml"),
+        fixture().join("domain/money.ospml"),
         project.join("src/money.ospml"),
     )?;
     std::fs::write(project.join(format!("src/main.{extension}")), source)?;
     std::fs::write(
         project.join("osprey.toml"),
-        format!("[project]\nname = \"money-contract\"\nsource_roots = [\"src\"]\ndefault_namespace = \"bank\"\nentry = \"src/main.{extension}\"\n"),
+        format!(
+            "[project]\nname = \"money-contract\"\nsource_roots = [\"src\"]\ndefault_namespace = \"bank\"\nentry = \"src/main.{extension}\"\n"
+        ),
     )?;
     Ok(project)
 }
@@ -380,4 +382,295 @@ fn a_project_imports_between_all_four_flavors() {
         ]));
         assert_eq!(output.stdout, expected, "{memory}: {}", output.stderr);
     }
+}
+
+/// Runs the built daw renderer with `args`, from the repository root.
+fn daw(binary: &Path, args: &[&str]) -> Output {
+    let mut command = Command::new(binary);
+    let _ = command.current_dir(repo_root()).args(args);
+    finish(&mut command)
+}
+
+/// Asserts the renderer refused a request: a non-zero status and the reason on its output.
+fn refused(output: &Output, reason: &str) {
+    assert_eq!(
+        output.code,
+        Some(1),
+        "stdout={} stderr={}",
+        output.stdout,
+        output.stderr
+    );
+    assert!(output.stdout.contains(reason), "stdout={}", output.stdout);
+    assert!(
+        !output.stdout.contains("daw: wrote"),
+        "stdout={}",
+        output.stdout
+    );
+}
+
+/// [ENTRY-EXIT-STATUS] [SYNTH-ARRANGEMENT-PLAYER] A render that fails says why and exits 1, so a
+/// script or the app never mistakes a refused project for a written song; a written song exits 0.
+#[test]
+fn the_daw_renderer_exits_one_on_every_failure_and_zero_when_it_writes() -> TestResult {
+    let (root, _) = temp_project("daw_render");
+    std::fs::create_dir_all(&root)?;
+    let binary = root.join("daw");
+    let built = run(&[
+        "build".into(),
+        "src/osprey/examples/daw/render".into(),
+        "--memory=arc".into(),
+        "--no-warnings".into(),
+        "-o".into(),
+        arg(&binary),
+    ]);
+    assert_eq!(built.code, Some(0), "stderr={}", built.stderr);
+    let out = root.join("out");
+    let folder = arg(&out);
+
+    refused(&daw(&binary, &[]), "usage: daw");
+    refused(&daw(&binary, &["only-a-project.json"]), "usage: daw");
+    refused(
+        &daw(
+            &binary,
+            &[
+                "src/osprey/examples/daw/tracks/elise-motif.json",
+                &folder,
+                "x",
+                "4",
+            ],
+        ),
+        "usage: daw",
+    );
+    refused(
+        &daw(
+            &binary,
+            &[
+                "src/osprey/examples/daw/tracks/elise-motif.json",
+                &folder,
+                "0",
+                "-4",
+            ],
+        ),
+        "usage: daw",
+    );
+    refused(
+        &daw(&binary, &["/nonexistent/osprey-song.json", &folder]),
+        "daw: ",
+    );
+
+    let old = root.join("old.json");
+    std::fs::write(
+        &old,
+        r#"{"title":"Old","tempo":120,"sampleRate":48000,"tracks":[{"name":"glow","instrument":{"kind":"operator"},"gain":0.5,"pan":0,"reverb":0,"notes":[]}]}"#,
+    )?;
+    refused(&daw(&binary, &[&arg(&old), &folder]), "daw: ");
+    let broken = root.join("broken.json");
+    std::fs::write(&broken, "{ not json")?;
+    refused(&daw(&binary, &[&arg(&broken), &folder]), "daw: ");
+    // A valid project reaches the synth before its out-of-range brightness is refused.
+    let bell = root.join("bell.json");
+    let project = serde_json::json!({
+        "title": "Bell", "tempo": 120, "sampleRate": 48000, "buses": [],
+        "tracks": [{"name": "bell", "gain": 1, "pan": 0, "bus": "", "sends": [], "positions": [],
+            "instrument": {"kind": "BellInstrument", "decay": 0.05, "brightness": 2},
+            "notes": [{"pitch": 60, "start": 0, "length": 0.125, "velocity": 0.8}]}]
+    });
+    std::fs::write(&bell, serde_json::to_vec(&project)?)?;
+    let detail = "bell: Invalid modal rate, frequency, decay, brightness, strike or mode count.";
+    refused(&daw(&binary, &[&arg(&bell), &folder]), detail);
+    let live = daw(&binary, &[&arg(&bell), &folder, "0", "0.125", "live"]);
+    assert_eq!(live.code, Some(1), "stderr={}", live.stderr);
+    assert!(
+        live.stdout.is_empty(),
+        "a refused first block emitted audio"
+    );
+    assert_eq!(std::fs::read_to_string(out.join("fault.txt"))?, detail);
+    assert!(
+        !out.join("song.wav").exists(),
+        "a refused render wrote a song"
+    );
+
+    assert_rendered_excerpt(&binary, &folder)?;
+    let mut playable = project;
+    *playable
+        .pointer_mut("/tracks/0/instrument/brightness")
+        .ok_or("missing bell brightness")? = 0.5.into();
+    std::fs::write(&bell, serde_json::to_vec(&playable)?)?;
+    assert_repairs_truncated_note(&binary, &bell, &out)?;
+    assert_device_drain(&binary, &bell, &out)?;
+    assert_late_note_pickup(&binary, &root.join("late-notes"))?;
+    std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+
+/// Device playback ends with an acknowledged drain after its last nonempty WAV packet.
+fn assert_device_drain(binary: &Path, song: &Path, folder: &Path) -> TestResult {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+    let controls = folder.join("controls");
+    std::fs::write(&controls, "0")?;
+    let mut child = Command::new(binary)
+        .current_dir(repo_root())
+        .args([
+            &arg(song),
+            &arg(folder),
+            "0",
+            "0.125",
+            "live",
+            &arg(&controls),
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let mut receipt = child.stdin.take().ok_or("missing receipt pipe")?;
+    let mut packets = 0;
+    let mut drained = false;
+    for line in BufReader::new(child.stdout.take().ok_or("missing audio pipe")?).lines() {
+        let line = line?;
+        assert!(!drained, "data after the final drain");
+        drained = line == "!drain";
+        if !drained {
+            assert!(line.starts_with("52494646"), "expected a RIFF packet");
+            packets += 1;
+        }
+        writeln!(receipt, "next")?;
+    }
+    assert!(child.wait()?.success());
+    assert!(packets > 0 && drained, "playback ended without its drain");
+    Ok(())
+}
+
+const CODEX_SCORE: &str = "src/osprey/examples/daw/tracks/codex-version.json";
+
+/// Hold the actual 160-frame producer at each device receipt so cache publication is deterministic.
+fn opening_packets(
+    binary: &Path,
+    folder: &Path,
+    publish: bool,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+    let clock = folder.join("controls");
+    std::fs::write(&clock, "0")?;
+    let mut child = Command::new(binary)
+        .current_dir(repo_root())
+        .args([CODEX_SCORE, &arg(folder), "0", "2", "live", &arg(&clock)])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let result = (|| {
+        let mut lines = BufReader::new(child.stdout.take().ok_or("missing audio pipe")?).lines();
+        let mut receipt = child.stdin.take().ok_or("missing receipt pipe")?;
+        let mut packets = Vec::new();
+        for number in 1..=64 {
+            packets.push(lines.next().ok_or("audio ended early")??);
+            if publish && number == 8 {
+                std::fs::rename(folder.join("staged"), folder.join("notes"))?;
+            }
+            writeln!(receipt, "next")?;
+        }
+        Ok(packets)
+    })();
+    let _ = child.kill();
+    let _status = child.wait()?;
+    result
+}
+
+/// [DAW-TRANSPORT-LIVE-SPEED] Prepared audio joins a sounding note at its current sample.
+fn assert_late_note_pickup(binary: &Path, folder: &Path) -> TestResult {
+    std::fs::create_dir_all(folder)?;
+    let made = daw(
+        binary,
+        &[CODEX_SCORE, &arg(folder), "0", "2", "warm", "0", "1"],
+    );
+    assert_eq!(made.code, Some(0), "{}", made.stderr);
+    let warm = opening_packets(binary, folder, false)?;
+    std::fs::rename(folder.join("notes"), folder.join("staged"))?;
+    let cold = opening_packets(binary, folder, false)?;
+    let joined = opening_packets(binary, folder, true)?;
+    assert_eq!(
+        cold.get(..8).ok_or("missing cold audio packets")?,
+        joined.get(..8).ok_or("missing joined audio packets")?,
+        "publishing later changed the attack"
+    );
+    assert_ne!(
+        cold.get(27..).ok_or("missing cold audio packets")?,
+        warm.get(27..).ok_or("missing warm audio packets")?,
+        "the fixture must distinguish live doubles from cached F32"
+    );
+    assert_eq!(
+        joined.get(27..).ok_or("missing joined audio packets")?,
+        warm.get(27..).ok_or("missing warm audio packets")?,
+        "the prepared note restarted or missed its handoff"
+    );
+    Ok(())
+}
+
+fn assert_rendered_excerpt(binary: &Path, folder: &str) -> TestResult {
+    let written = daw(
+        binary,
+        &[
+            "src/osprey/examples/daw/tracks/elise-motif.json",
+            folder,
+            "0",
+            "1",
+        ],
+    );
+    assert_eq!(
+        written.code,
+        Some(0),
+        "stdout={} stderr={}",
+        written.stdout,
+        written.stderr
+    );
+    assert!(
+        written.stdout.contains("daw: wrote"),
+        "stdout={}",
+        written.stdout
+    );
+    let path = written
+        .stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("daw: wrote "))
+        .expect("the renderer names what it wrote");
+    assert!(
+        std::fs::metadata(path.trim())?.len() > 44,
+        "the written song has audio: {path}"
+    );
+    Ok(())
+}
+
+// [DAW-TRANSPORT-LIVE-SPEED] An interrupted writer must not force synthesis at every subsequent Play.
+fn assert_repairs_truncated_note(binary: &Path, song: &Path, out: &Path) -> TestResult {
+    let song = arg(song);
+    let folder = arg(out);
+    let warm = || daw(binary, &[&song, &folder, "0", "1", "warm", "0", "1"]);
+    let made = warm();
+    assert_eq!(made.code, Some(0), "{}", made.stderr);
+    let dir = std::fs::read_dir(out.join("notes"))?
+        .next()
+        .ok_or("no note directory")??
+        .path();
+    let note = std::fs::read_dir(&dir)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "st"))
+        .ok_or("no rendered note")?;
+    let original = std::fs::read(&note)?;
+    assert!(original.len() > 128);
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&note)?
+        .set_len(128)?;
+    let repaired = warm();
+    assert_eq!(repaired.code, Some(0), "{}", repaired.stderr);
+    let restored = std::fs::read(&note)?;
+    assert_eq!(restored.len(), original.len(), "a truncated note was kept");
+    assert_eq!(restored, original);
+    let label = dir.join("key.txt");
+    std::fs::remove_file(&label)?;
+    std::fs::create_dir(&label)?;
+    refused(&warm(), "key.txt");
+    assert_eq!(std::fs::read(note)?, original);
+    Ok(())
 }

@@ -225,23 +225,26 @@ module Probes
     (** The probe application's first surface, opened on a Linux host at clock 1. *)
     export started () = Views::quiet (\() => Surfaces::open (Surfaces::idle (probe (0, "")), program (), Runtime::host (1, 0, "linux", "", []), false))
 
+    (** Build a host event with the supplied clock, payload and pointer state. *)
+    export touchAt (now, kind, ordinal, words, detail, x, y, down) = ui::Touch(touchNow = now, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = false)
+
     (** The surface after the typed host event `touch`. *)
     export sent (held, touch) = Views::quiet (\() => Hosting::event (held, program (), touch))
 
     (** The surface after the control numbered `ordinal` delivers `words` at clock 5. *)
-    export posted (held, ordinal, words) = sent (held, ui::Touch(touchNow = 5, touchKind = Hosting::control, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false))
+    export posted (held, ordinal, words) = sent (held, touchAt (5, Hosting::control, ordinal, words, "", 0.0, 0.0, false))
 
     (** The surface after a tap of the control numbered `ordinal`. *)
     export tapped (held, ordinal) = posted (held, ordinal, "")
 
     (** The surface after the capability of `ticket` completes: `ok` with `text`, or `text` as its reason. *)
-    export finished (held, ticket, ok, text) = sent (held, ui::Touch(touchNow = 9, touchKind = Hosting::completed, touchOrdinal = 0, touchWords = ticket, touchDetail = text, touchX = 0.0, touchY = 0.0, touchDown = ok, touchShift = false))
+    export finished (held, ticket, ok, text) = sent (held, touchAt (9, Hosting::completed, 0, ticket, text, 0.0, 0.0, ok))
 
     (** The surface after the host reaches the lifecycle `phase`. *)
-    export phased (held, phase) = sent (held, ui::Touch(touchNow = 8, touchKind = Hosting::phase, touchOrdinal = 0, touchWords = phase, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false))
+    export phased (held, phase) = sent (held, touchAt (8, Hosting::phase, 0, phase, "", 0.0, 0.0, false))
 
     (** The surface after a display frame `elapsed` seconds after the last. *)
-    export framed (held, elapsed) = sent (held, ui::Touch(touchNow = 9, touchKind = Hosting::frame, touchOrdinal = 0, touchWords = "", touchDetail = "", touchX = elapsed, touchY = 0.0, touchDown = false, touchShift = false))
+    export framed (held, elapsed) = sent (held, touchAt (9, Hosting::frame, 0, "", "", elapsed, 0.0, false))
 
     (** The kinds of the requests the last step sent, in order, `;`-separated. *)
     export asked held = join (mapList (held.surfaceAsked, \r => Requests::kind r.capability)) ";"

@@ -1,0 +1,61 @@
+// [SYNTH-HOST-STREAM-SESSION-DESKTOP] Session handles belong to one frozen graph run.
+namespace synth
+
+import ui::Requests
+import ui::Doc
+
+(** Open each real plug-in once, exchange blocks, and close every owned instance. *)
+module GraphWorkers
+    (** One process argument pair at the native boundary. *)
+    export header (key, value) = ui::Header(headerName = key, headerValue = value)
+
+    (** One bounded native session operation and its reusable output slice. *)
+    export call (ticket, operation, arguments, slice) = Requests::ask (ticket, ui::HostCall(hostNamespace = "process", hostOperation = operation, hostArguments = arguments, hostTimeout = 10000, hostLimit = 4194304, hostSlice = slice))
+
+    (** Release all handles while preserving the caller's requests and message. *)
+    export release step =
+        editor = step.stepStore
+        closes = mapList (editor.renderSessions, \held => call ("prism-audio:close:${editor.renderSerial}:${held.sessionNode}", "session-close", [header ("session", held.sessionKey)], "prism-cleanup"))
+        clears = foldList (editor.renderSessions, [], \(writes, held) => listConcat writes [Requests::write ("prism-worker:${held.sessionNode}:input", ""), Requests::write (output held.sessionNode, "")])
+        step(stepStore = editor(renderTicket = "", renderPending = [], renderSessions = [], renderOpening = false, renderInput = "", renderDevicePending = [], renderGraph = Graphs::empty, renderProject = "", renderTrack = -1, renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = false, renderStopping = false), requests = listConcat step.requests closes, writes = listConcat step.writes clears)
+
+    (** Reuse a node's slice across blocks, keeping host-held audio memory bounded. *)
+    export output identity = "prism-worker:${identity}:output"
+
+    exchange (editor, pending, key, hex) =
+        ticket = "prism-audio:${editor.renderSerial}:${pending.pendingNode}:${pending.pendingState.graphPosition}:block"
+        input = "prism-worker:${pending.pendingNode}:input"
+        arguments = [header ("session", key), header ("stdinSlice", input)]
+        next = editor(renderTicket = ticket, renderPending = [pending], renderOpening = false, renderInput = "")
+        ui::Step(stepStore = next, requests = [call (ticket, "session-exchange", arguments, output pending.pendingNode)], writes = [Requests::write (input, hex)])
+
+    (** Reuse the pending node's worker, or open exactly one before its first block. *)
+    export request (editor, pending, binding, hex) = match filterList (editor.renderSessions, \held => held.sessionNode == pending.pendingNode)
+        [held] => exchange (editor, pending, held.sessionKey, hex)
+        [] =>
+            ticket = "prism-audio:${editor.renderSerial}:${pending.pendingNode}:open"
+            arguments = [header ("executable", editor.workerPath), header ("argv", "stream-session"), header ("argv", binding.pluginModule), header ("argv", binding.pluginClass)]
+            next = editor(renderTicket = ticket, renderPending = [pending], renderOpening = true, renderInput = hex, message = "Rendering ${binding.pluginName}. Playback uses the patch captured at start.")
+            ui::Step(stepStore = next, requests = [call (ticket, "session-open", arguments, ticket)], writes = [])
+        _ => release (ui::Runtime::step (editor(message = "Graph playback failed: duplicate worker session.")))
+
+    (** Decode a host handle only at this boundary; arbitrary JSON never enters graph logic. *)
+    export opened (editor, text) = match jsonDecode text
+        Error _ => Error(message = "The host returned an invalid session receipt.")
+        Success doc => match jsonText (Doc::field (doc, "session"))
+            Error _ => Error(message = "The host returned no worker session handle.")
+            Success key => match key == "" || length (filterList (editor.renderSessions, \held => held.sessionKey == key)) > 0
+                true => Error(message = "The host returned an empty or reused worker handle.")
+                false =>
+                    identity = match editor.renderPending
+                        [pending] => pending.pendingNode
+                        _ => -1
+                    held = RenderSession(sessionNode = identity, sessionKey = key)
+                    Success(value = editor(renderSessions = listAppend editor.renderSessions held, renderOpening = false))
+
+    (** Deliver the held packet only after a matching worker handle was received. *)
+    export sendOpened editor = match editor.renderPending
+        [pending] => match filterList (editor.renderSessions, \held => held.sessionNode == pending.pendingNode)
+            [held] => Success(value = exchange (editor, pending, held.sessionKey, editor.renderInput))
+            _ => Error(message = "The opened worker has no unique graph binding.")
+        _ => Error(message = "The worker reply has no unique pending graph request.")

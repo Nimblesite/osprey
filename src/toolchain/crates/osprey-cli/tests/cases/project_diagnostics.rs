@@ -17,7 +17,7 @@ use super::{checked, finish, osprey};
 fn project_type_diagnostics_map_back_to_physical_source_lines() {
     let (project, _, _) = rewritten_fixture(
         "diagnostic_names",
-        "src/main.ospml",
+        "main.ospml",
         "serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx, Api::Audit]",
         "serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx]",
     );
@@ -31,7 +31,7 @@ fn project_type_diagnostics_map_back_to_physical_source_lines() {
 
     let (project, original, broken) = rewritten_fixture(
         "diagnostic",
-        "src/domain/money.ospml",
+        "domain/money.ospml",
         "show : Amount -> string",
         "show : Amount -> int",
     );
@@ -43,7 +43,7 @@ fn project_type_diagnostics_map_back_to_physical_source_lines() {
         .lines()
         .position(|line| line.contains("show amount ="))
         .map_or(0, |line| line.saturating_add(1));
-    let money = project.join("src/domain/money.ospml");
+    let money = project.join("domain/money.ospml");
     let output = run(&[arg(&project), "--check".to_string()]);
     assert_ne!(output.code, Some(0));
     let expected = format!("{}:{line}:", money.display());
@@ -57,7 +57,7 @@ fn link_directives_from_a_non_entry_source_reach_the_native_driver() {
     use std::os::unix::fs::PermissionsExt;
 
     let project = copy_fixture("link_directives");
-    let module = project.join("src/store/ledger.ospml");
+    let module = project.join("store/ledger.ospml");
     let source = std::fs::read_to_string(&module).expect("read non-entry source");
     std::fs::write(
         &module,
@@ -107,7 +107,7 @@ fn numeric_operator_errors_map_back_to_the_declaring_module() {
             12,
         ),
     ] {
-        let file = project.join(format!("src/numeric.{extension}"));
+        let file = project.join(format!("domain/numeric.{extension}"));
         std::fs::write(&file, source).expect("write numeric source");
         let output = run(&[arg(&project), "--check".to_string(), "--quiet".to_string()]);
         assert_eq!(output.code, Some(1), "{}", output.stderr);

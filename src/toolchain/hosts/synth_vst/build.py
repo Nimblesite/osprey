@@ -153,8 +153,16 @@ def stream_tests():
 def recording_worker(destination):
     """Capture the actual worker boundary for independent PCM and MIDI assertions."""
     script = destination / "record-worker.py"
+    fixture_folder = destination / "plugins"
+    fixture_folder.mkdir(exist_ok=True)
+    for name in ("adelay.vst3", "mda-vst3.vst3"):
+        link = fixture_folder / name
+        if not link.exists():
+            link.symlink_to(BUILD / "VST3/Release" / name, target_is_directory=True)
     source = """import json, os, pathlib, subprocess, sys, threading, time
 root = pathlib.Path(__file__).parent
+if sys.argv[1] == 'list':
+    sys.argv[2] = str(root / 'plugins')
 if sys.argv[1] in ('stream-session', 'audio-device'):
     child = subprocess.Popen([WORKER, *sys.argv[1:]], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     def diagnostics():
@@ -275,28 +283,26 @@ def prism_test(host, headless):
     destination = ROOT / "target/pr-validation" / ("prism-vst-ui-headless" if headless else "prism-vst-ui-windowed")
     destination.mkdir(parents=True, exist_ok=True)
     class_id = "0CDBB66985D548A9BFD8371909D24BB3"
-    steps = [{"wait": "Scan VST3"}, {"type": ["VST3 bundle", str(BUILD / "VST3/Release/adelay.vst3")]},
-             {"invoke": "Scan VST3"}, {"wait": "Choose a VST3 instrument or effect to add."},
-             {"type": ["Add VST3", class_id]}, {"wait": "ADelay 0"}, {"type": ["Module", "0"]}, {"type": ["Delay", "0.5"]},
-             {"type": ["Add VST3", class_id]}, {"wait": "ADelay 1"}, {"type": ["Module", "0"]}, {"invoke": "Use audio output"},
-             {"type": ["Module", "1"]}, {"invoke": "Connect audio"}, {"wait": "Patch updated."}, {"drag": ["Canvas ADelay 0", "20", "130"]}, {"shot": "vst-routed"},
-             {"invoke": "Remove module"}, {"gone": "ADelay 1"}, {"wait": "ADelay 0"}, {"shot": "vst-removed"}]
-    audition = [{"type": ["Module", "0"]}, {"type": ["Delay", "0"]}, {"type": ["Module", "1"]}, {"type": ["Delay", "0"]},
-                {"type": ["VST3 bundle", str(BUILD / "VST3/Release/mda-vst3.vst3")]},
-                {"invoke": "Scan VST3"}, {"wait": "Choose a VST3 instrument or effect to add."},
-                {"type": ["Add VST3", "5653544D44416A6D6461206A78313000"]}, {"wait": "mda JX10 2"},
+    steps = [{"wait": "ADelay"}, {"type": ["Add component", "vst:" + class_id]}, {"wait": "ADelay 0"},
+             {"type": ["Module", "0"]}, {"invoke": "ADelay 0 Delay"}, {"type": ["Delay", "0.5"]},
+             {"type": ["Add component", "vst:" + class_id]}, {"wait": "ADelay 1"},
+             {"invoke": "Canvas output 0:0"}, {"invoke": "Canvas input 1:0"}, {"wait": "Cable 0:0 to 1:0"},
+             {"drag": ["Canvas ADelay 0", "20", "130"]}, {"shot": "vst-routed"},
+             {"context": "Canvas ADelay 1"}, {"invoke": "Delete node"}, {"gone": "ADelay 1"}, {"wait": "ADelay 0"}, {"shot": "vst-removed"}]
+    audition = [{"type": ["Module", "0"]}, {"invoke": "ADelay 0 Delay"}, {"type": ["Delay", "0"]}, {"type": ["Module", "1"]}, {"invoke": "ADelay 1 Delay"}, {"type": ["Delay", "0"]},
+                {"type": ["Add component", "vst:5653544D44416A6D6461206A78313000"]}, {"wait": "mda JX10 2"},
                 {"type": ["Add component", "midi-note"]}, {"type": ["Add component", "stereo-output"]},
-                {"type": ["Module", "3"]}, {"invoke": "Use notes output"}, {"type": ["Module", "2"]}, {"invoke": "Connect MIDI"},
-                {"type": ["Module", "2"]}, {"invoke": "Use audio output"}, {"type": ["Module", "0"]}, {"invoke": "Connect audio"},
+                {"invoke": "Canvas output 3:0"}, {"invoke": "Canvas input 2:0"},
+                {"invoke": "Canvas output 2:0"}, {"invoke": "Canvas input 0:0"},
                 {"type": ["Add component", "lfo"]}, {"type": ["Add component", "modulated-gain"]},
-                {"type": ["Module", "1"]}, {"invoke": "Use audio output"}, {"type": ["Module", "6"]}, {"invoke": "Connect audio"},
-                {"type": ["Module", "5"]}, {"invoke": "Use control output"}, {"type": ["Module", "6"]}, {"invoke": "Connect control"},
+                {"invoke": "Canvas output 1:0"}, {"invoke": "Canvas input 6:0"},
+                {"invoke": "Canvas output 5:0"}, {"invoke": "Canvas input 6:1"},
                 {"type": ["Module", "2"]}, {"invoke": "Modulate VCF Freq"},
-                {"type": ["Module", "6"]}, {"invoke": "Use audio output"}, {"type": ["Module", "4"]}, {"invoke": "Connect audio"},
-                {"invoke": "Audition"}, {"wait": "Preview finished."}, {"shot": "vst-audition"},
+                {"invoke": "Canvas output 6:0"}, {"invoke": "Canvas input 4:0"},
+                {"invoke": "Audition Patch"}, {"wait": "Preview finished."}, {"shot": "vst-audition"},
                 {"type": ["Module", "1"]}]
-    steps.insert(0, {"invoke": "Patch controls"})
-    before_remove = steps.index({"invoke": "Remove module"})
+    steps.insert(0, {"invoke": "Patch Controls"})
+    before_remove = steps.index({"context": "Canvas ADelay 1"})
     steps[before_remove:before_remove] = audition
     worker = recording_worker(destination)
     script = destination / "journey.json"
@@ -310,9 +316,9 @@ def prism_test(host, headless):
     live = destination / "live"
     live.mkdir(exist_ok=True)
     live_worker = recording_worker(live)
-    live_steps = steps[:steps.index({"invoke": "Audition"})] + [
-        {"invoke": "Play"}, {"wait": "Playing the started patch. Stop and play again to apply edits."}, {"frames": "480"},
-        {"invoke": "Stop"}, {"wait": "Playback stopped."}, {"frames": "8"}, {"shot": "live-stopped"}]
+    live_steps = steps[:steps.index({"invoke": "Audition Patch"})] + [
+        {"invoke": "Play Patch"}, {"wait": "Playing the patch."}, {"frames": "480"},
+        {"invoke": "Stop Patch"}, {"wait": "Playback stopped."}, {"frames": "8"}, {"shot": "live-stopped"}]
     script = live / "journey.json"
     script.write_text(json.dumps({"steps": live_steps}))
     arguments[arguments.index("--self-test") + 1:arguments.index("--self-test") + 3] = [str(script), str(live)]
@@ -385,7 +391,7 @@ def prism_design(host, headless):
     """[PRISM-ROUTING-PRESENTATION] Real module insertion, cables and independently docked keys."""
     folder = ROOT / "target/pr-validation" / ("prism-design-headless" if headless else "prism-design-window")
     folder.mkdir(parents=True, exist_ok=True)
-    script = ROOT / "src/osprey/examples/synth/self-test.json"
+    script = ROOT / "src/osprey/examples/daw/self-test.json"
     run(str(host), "--machine", str(ROOT / "src/osprey/packages/signal_flow/signal_flow.machine.json"),
         "--self-test", str(script), str(folder), *(["--headless"] if headless else []))
 

@@ -1,13 +1,13 @@
 ---
 layout: page
 title: "Python interop: call Python from Osprey, and Osprey from Python"
-description: "Python interopmaxxing in Osprey: call NumPy, PyTorch or any Python library from a compiled, statically typed language, call fast native Osprey code from Python, and reuse ordinary Python code as Osprey."
+description: "Call NumPy, PyTorch or any Python library from statically typed, compiled Osprey, call native Osprey code from Python, and test both sides."
 permalink: /docs/python/interop/
 tags: [python, interop, python-interop, python-ffi, embed-python, numpy, pytorch, data-science, machine-learning, algebraic-effects]
 ---
 {% from "native-capture.njk" import capture %}
 
-Osprey goes all in on Python. Call it **Python interopmaxxing**: keep your Python libraries and habits, and add a compiled, statically typed language whose algebraic effects make it easy to test. If your work runs on NumPy, pandas, PyTorch, scikit-learn or SciPy, you keep them.
+Keep your Python libraries and habits, and add a compiled, statically typed language whose effects make the code easy to test. If your work runs on NumPy, pandas, PyTorch, scikit-learn or SciPy, you keep them.
 
 There are three ways in:
 

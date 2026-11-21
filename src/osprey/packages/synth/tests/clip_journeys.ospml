@@ -1,6 +1,8 @@
 import synth::Components
 import synth::Graphs
+import synth::Lifecycles
 import synth::Parameters
+import synth::Patches
 import synth::Renderer
 
 // [SYNTH-HOST-MIDI-OSCILLATOR] Journey tests for connected MIDI oscillators, granular clips and layout validation.
@@ -22,7 +24,7 @@ missingClip () = synth::NodeClip(clipNode = -1, clipChannels = 0, clipSamples = 
 // The success value of a render step, or `fallback` after a failed expectation.
 renderedOr (outcome, fallback, use) = match outcome
     Error why =>
-        expect (why, "a rendered block")
+        expect (synth::Faults::detail why, "a rendered block")
         fallback
     Success value => use value
 
@@ -61,7 +63,7 @@ without (plan, identity) = plan(order = filterList (plan.order, \scheduled => sc
 played (plan, fresh, notes, frames, check) = succeeds (synth::MidiOscillators::block (plan, [eventClip notes], midiOscillator (), fresh, frames), check)
 
 // [SYNTH-RENDER-BLOCKS] Drive one graph through arbitrary block partitions, collecting the output clip.
-failedJourney () = { runHeld = synth::GraphState(graphPosition = 0, graphKernels = []), runAudio = [] }
+failedJourney () = { runHeld = synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), runAudio = [] }
 
 continuedBlock (output, journey, action) = match action
     synth::BlockWaiting _ _ =>
@@ -75,13 +77,120 @@ graphRun (graph, output, sizes, check) =
     journey = foldList (sizes, failedJourney (), \(prior, span) => continuedJourney (graph, output, prior, span))
     check journey.runHeld journey.runAudio
 
+// [SYNTH-ADVANCED-GRAINS-INTEGRATION] One playable preset graph through the hosted GraphClips executor: finite,
+// bounded, nonzero audio that survives 512-frame partitioning and repeats its exact state and samples.
+presetHeard outcome =
+    graph = accepted outcome
+    output = 5
+    expect (length (filterList (graph.cables, \wire => wire.source == 3 && wire.destination == 2 && wire.inlet == 1)), 1)
+    whole = outputClip (output, synth::GraphClips::advance (graph, [], 1024))
+    expect (whole.clipChannels == 1 && length whole.clipSamples == 1024, true)
+    forEachList (whole.clipSamples, \sample => expect (sample == sample && abs sample <= 1.0, true))
+    expect (foldList (whole.clipSamples, 0.0, \(energy, sample) => energy + abs sample) > 0.0, true)
+    graphRun (graph, output, [512, 512], \clock audio =>
+        sameSamples (audio, whole.clipSamples)
+        graphRun (graph, output, [512, 512], \againClock againAudio =>
+            expect (structuralEquals (againClock, clock) && structuralEquals (againAudio, audio), true)))
+    whole.clipSamples
+
 granularSource () = synth::SampleResource(name = "grain", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5, 0.25, -0.25])
+
+// [SYNTH-ADVANCED-DELIVERY] A grain excites the physical body, then spectral processing and the LFO shape it.
+combinedGrainJourney () =
+    graph = accepted (Patches::combined ())
+    kinds = mapList (graph.nodes, \n => synth::Kinds::kind n.processor)
+    forEachList (["synth.grain-cloud", "synth.modal-bank", "synth.spectral", "synth.lfo"], \kind => expect (length (filterList (kinds, \k => k == kind)), 1))
+    combinedHostBudget graph
+    // Check every audible stage and the final sink after the spectral window fills.
+    succeeds (clipsOf (graph, 1024), \clips =>
+        forEachList ([0, 1, 2, 5, 7], \node =>
+            samples = (clipFrom (clips, node)).clipSamples
+            expect (foldList (samples, 0.0, \(peak, sample) => synth::TableMath::larger (peak, abs sample)) > 0.000001, true)
+            expect (length (filterList (samples, \sample => sample >= -1.0 && sample <= 1.0)), length samples)))
+
+// [SYNTH-ADVANCED-DELIVERY] The reverb's feedback network feeds the external processor.
+combinedHostBudget graph =
+    original = hostDescriptor ()
+    descriptor = original(inputChannels = 1, outputChannels = 1, notes = false)
+    valid (synth::Hosted::component (9, descriptor), \hosted => budgetedHost (graph, hosted))
+
+budgetedHost (graph, hosted) =
+    routed = built (listAppend graph.nodes hosted, listConcat (filterList (graph.cables, \c => c.destination != 7)) [cable (6, 9), cable (9, 7)])
+    forEachList ([0, 32769], \frames => renderRefused (synth::GraphClips::start (routed, frames)))
+    heavy = routed(nodes = listAppend routed.nodes (Components::delay (10, 1920000)))
+    expect (synth::ClipLayouts::bounded (heavy, 1024), false)
+    renderRefused (synth::GraphClips::start (heavy, 1024))
+    match synth::GraphClips::start (routed, 1024)
+        Error why => expect (synth::Faults::detail why, "combined graph reaches hosted effect")
+        Success action => match action
+            synth::BlockReady _ _ => unexpected ()
+            synth::BlockWaiting block pending =>
+                expect (pending.pendingNode, 9)
+                expect (length block.samples, 1024)
+                expect (length (filterList (block.samples, \s => abs s > 0.000001)) > 0, true)
+                wet = synth::NodeClip(clipNode = 9, clipChannels = 1, clipSamples = block.samples, clipNotes = [])
+                match synth::GraphClips::replied (pending, wet)
+                    Error why => expect (synth::Faults::detail why, "combined graph resumed")
+                    Success done => match done
+                        synth::BlockWaiting _ _ => unexpected ()
+                        synth::BlockReady held clips =>
+                            expect (held.graphPosition, 1024)
+                            // A running graph can resume only with exactly one state bank per DSP node.
+                            forEachList ([[], listConcat held.graphKernels held.graphKernels], \banks =>
+                                refusedWith (synth::GraphClips::next (routed, held(graphKernels = banks), 16), "The block needs one output, connected inputs and valid bounded buffers and state."))
+                            sameSamples ((clipFrom (clips, 7)).clipSamples, wet.clipSamples)
 
 granularNode () = Components::granular (1, granularSource (), 4, 7)
 
 granularGraph () = built ([granularNode (), Components::stereoOutput 2], [cable (1, 2)])
 
 // Register the clip scheduler, MIDI oscillator and granular journeys from the suite entry point.
+// [SYNTH-ADVANCED-CORE-MODELS] A 440 Hz sine through a 0.25 gain and a 100-sample delay: a 200-frame tail at 48 kHz.
+delayedSine () = built ([Components::sine (1, 440.0), Components::gain (2, 0.25), Components::delay (3, 100), Components::output 4], [cable (1, 2), cable (2, 3), cable (3, 4)])
+
+// The instance a lifecycle step produced, or a disposed stand-in after a failed expectation.
+lived outcome = renderedOr (outcome, synth::Instance(stage = synth::Disposed, rate = 48000.0, block = 1, plan = synth::Prepared(graph = Graphs::empty, order = [], feedback = []), audio = synth::Rendered(states = [], samples = [], position = 0, meters = [])), \one => one)
+
+lifeMoved (one, transition) = lived (Lifecycles::next (one, transition))
+
+lifePlayed (one, knobs, frames) = lived (Lifecycles::block (one, knobs, frames))
+
+// Every transition and a render, refused with its exact message, leaving the instance as it was.
+allRefused (one, knobs, stage) =
+    forEachList ([{ t = synth::Activate, verb = "activate" }, { t = synth::Reset, verb = "reset" }, { t = synth::ReleaseTail, verb = "release" }, { t = synth::Dispose, verb = "dispose" }, { t = synth::Prepare(rate = 44100.0, block = 32), verb = "re-prepare" }], \c => refusedWith (Lifecycles::next (one, c.t), "Cannot ${c.verb} a ${stage} instance."))
+    refusedWith (Lifecycles::block (one, knobs, 1), "Cannot render a ${stage} instance.")
+
+// A releasing instance renders 64-frame blocks until its tail is spent: each block's frames and stage.
+releaseBlocks (one, knobs) = foldList ([{ frames = 64, left = 136 }, { frames = 64, left = 72 }, { frames = 64, left = 8 }], { now = one, samples = [] }, \(run, c) =>
+    next = lifePlayed (run.now, knobs, 64)
+    expect (length next.audio.samples, c.frames)
+    expect (next.stage, synth::Releasing(remaining = c.left))
+    { now = next, samples = listConcat run.samples next.audio.samples })
+
+// Lifecycle audio after the delay's onset reads as a pure sine: pitch at the probe's 48 kHz and level −12.04 dB.
+sineHeard (label, samples, frequency) =
+    steady = synth::Sequences::drop (samples, 128)
+    inTune (label, steady, frequency, 0.5)
+    within ("${label} level (dB)", decibelsAt (steady, frequency), -12.0412, 0.1)
+
+// [SYNTH-HOST-GRAPH] A send can tap either the stereo bus or one of its split outlets.
+stereoTapJourney () =
+    graph = built ([Components::stereo 1, Components::split (2, 2)], [cable (1, 2)])
+    stereo = synth::NodeClip(clipNode = 1, clipChannels = 2, clipSamples = [0.25, -0.5, 0.75, -1.0], clipNotes = [])
+    // Track playback folds each stereo frame to mono before the track panner.
+    stereoOutput = stereo(clipSamples = [1.0, -1.0, 0.25, 0.75])
+    forEachList ([{ output = stereoOutput, mono = [0.0, 0.5] }, { output = stereo(clipChannels = 1), mono = stereo.clipSamples }, { output = stereo(clipSamples = []), mono = [] }], \row =>
+        succeeds (synth::GraphClips::trackSamples row.output, \samples => sameSamples (samples, row.mono)))
+    forEachList ([stereo(clipSamples = [0.25]), stereo(clipChannels = 3), stereo(clipChannels = 0)], \invalid => renderRefused (synth::GraphClips::trackSamples invalid))
+    split = stereo(clipNode = 2)
+    clips = [stereo, split]
+    forEachList ([{ channel = 0, samples = [0.25, 0.75] }, { channel = 1, samples = [-0.5, -1.0] }], \side =>
+        succeeds (synth::ClipInputs::tapped (graph, clips, 1, 0, side.channel), \got => sameSamples (got, side.samples))
+        succeeds (synth::ClipInputs::tapped (graph, clips, 2, side.channel, 0), \got => sameSamples (got, side.samples)))
+    forEachList ([{ source = 9, outlet = 0, channel = 0 }, { source = 2, outlet = 2, channel = 0 }, { source = 2, outlet = 0, channel = 1 }], \bad =>
+        renderRefused (synth::ClipInputs::tapped (graph, clips, bad.source, bad.outlet, bad.channel)))
+    forEachList ([[split, split], [], [split(clipSamples = [0.25])]], \invalid => renderRefused (synth::ClipInputs::tapped (graph, invalid, 2, 0, 0)))
+
 registerClipJourneys () =
     audio = monoPort ("audio", synth::Audio, synth::Amplitude)
     test ("MIDI oscillator state validation rejects forged voices, capacity and malformed events", \() => arithmetic (\() =>
@@ -154,7 +263,7 @@ registerClipJourneys () =
             graphRun (granularGraph (), 2, [256, 256], \againClock againAudio =>
                 expect (structuralEquals (againClock, clock) && structuralEquals (againAudio, audio), true)))
         match synth::GraphClips::start (granularGraph (), 256)
-            Error why => expect (why, "a first granular block")
+            Error why => expect (synth::Faults::detail why, "a first granular block")
             Success first => match first
                 synth::BlockWaiting _ _ => unexpected ()
                 synth::BlockReady held clips =>
@@ -168,9 +277,17 @@ registerClipJourneys () =
                     succeeds (synth::GraphClips::advance (granularGraph (), [], 256), \again => expect (structuralEquals (again, synth::ClipReady(clips = clips)), true))
         renderRefused (synth::GraphClips::advance (granularGraph (), [], 2049))
         channelForged = synth::NodeKernels(kernelNode = 1, kernelMemory = synth::ChannelMemory(channels = [synth::RenderInputs::initialState (granularNode ())]))
-        renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphPosition = 0, graphKernels = [channelForged]), 64))
+        renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = [channelForged]), 64))
         absentForged = synth::NodeKernels(kernelNode = 99, kernelMemory = synth::MidiMemory(voice = synth::MidiOscillators::initial (granularNode ())))
-        renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphPosition = 0, graphKernels = [absentForged]), 64))))
+        renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = [absentForged]), 64))))
+    test ("granular preset patches [SYNTH-ADVANCED-GRAINS-INTEGRATION] render finite, bounded, nonzero, deterministic and distinct audio", \() => arithmetic (\() =>
+        cloud = presetHeard (Patches::grainCloud ())
+        rhythm = presetHeard (Patches::rhythmicGrains ())
+        frozen = presetHeard (Patches::frozenTexture ())
+        expect (structuralEquals (cloud, rhythm), false)
+        expect (structuralEquals (rhythm, frozen), false)
+        expect (structuralEquals (cloud, frozen), false)
+        combinedGrainJourney ()))
     test ("graph layouts and cached clips revalidate channel contracts at every edge", \() => arithmetic (\() =>
         graph = sineThrough (0.5)
         duplicated = Components::stereo 1
@@ -186,6 +303,8 @@ registerClipJourneys () =
         headless = Components::gain (1, 1.0)
         renderRefused (synth::ClipLayouts::channels (headless(outputs = [])))
         expect (synth::ClipLayouts::connected (midiInstrument (69.0, 0.5, 8.0), midiOscillator ()), true)
+        layoutJourney ()
+        stereoTapJourney ()
         cached = nodeClipAt (1, [0.25, 0.25])
         expect (synth::ClipLayouts::validClip (graph, 2, cached), true)
         expect (synth::ClipLayouts::validClip (graph, 2, cached(clipNotes = [keyed (1, 0, 69, 1, 0.5)])), false)
@@ -234,3 +353,70 @@ registerClipJourneys () =
             plan = planFor switchedGraph
             snapshot = Parameters::initial switchedGraph
             renderRefused (Renderer::block (plan(order = [2, 1, 3]), 48000.0, snapshot(parameters = []), rendered (Renderer::start switchedGraph), 1)))))
+    test ("a graph instance prepares, activates, renders, releases exactly its tail, resets, re-prepares at a new rate and disposes [SYNTH-ADVANCED-CORE-MODELS] [SYNTH-TEST-SPECTRUM]", \() => arithmetic (\() =>
+        graph = delayedSine ()
+        snapshot = Parameters::initial graph
+        forEachList ([{ rate = 0.0, block = 64 }, { rate = 7999.0, block = 64 }, { rate = 384001.0, block = 64 }, { rate = 48000.0, block = 0 }, { rate = 48000.0, block = 8193 }, { rate = -48000.0, block = -1 }], \c => refusedAs (Lifecycles::prepared (graph, c.rate, c.block), "configuration", "A lifecycle needs a sample rate of 8,000 to 384,000 Hz and a block of 1 to 8,192 frames."))
+        renderRefused (Lifecycles::prepared (Graphs::empty, 48000.0, 64))
+        refusedAs (Lifecycles::prepared (built ([Components::sine (1, 440.0), Components::output 2, Components::output 3], [cable (1, 2), cable (1, 3)]), 48000.0, 64), "layout", "Reference rendering requires mono audio, one output and supported bounded processors.")
+        ready = lived (Lifecycles::prepared (graph, 48000.0, 64))
+        expect (ready.stage, synth::Ready)
+        expect (ready.rate, 48000.0)
+        expect (ready.block, 64)
+        expect (ready.audio.position, 0)
+        expect (Lifecycles::tail ready ?: -1, 200)
+        refusedWith (Lifecycles::next (ready, synth::ReleaseTail), "Cannot release a ready instance.")
+        refusedWith (Lifecycles::block (ready, snapshot, 1), "Cannot render a ready instance.")
+        running = lifeMoved (ready, synth::Activate)
+        expect (running.stage, synth::Running)
+        refusedWith (Lifecycles::next (running, synth::Activate), "Cannot activate a running instance.")
+        refusedWith (Lifecycles::next (running, synth::Prepare(rate = 96000.0, block = 64)), "Cannot re-prepare a running instance.")
+        forEachList ([0, -1, 65, 8192, 9000], \frames => refusedWith (Lifecycles::block (running, snapshot, frames), "A block is 1 to the prepared 64 frames; a larger one needs re-preparation."))
+        first = lifePlayed (running, snapshot, 64)
+        second = lifePlayed (first, snapshot, 64)
+        expect (second.stage, synth::Running)
+        expect (second.audio.position, 128)
+        releasing = lifeMoved (second, synth::ReleaseTail)
+        expect (releasing.stage, synth::Releasing(remaining = 200))
+        refusedWith (Lifecycles::next (releasing, synth::ReleaseTail), "Cannot release a releasing instance.")
+        refusedWith (Lifecycles::next (releasing, synth::Activate), "Cannot activate a releasing instance.")
+        refusedWith (Lifecycles::next (releasing, synth::Prepare(rate = 48000.0, block = 64)), "Cannot re-prepare a releasing instance.")
+        tail = releaseBlocks (releasing, snapshot)
+        last = lifePlayed (tail.now, snapshot, 64)
+        expect (length last.audio.samples, 8)
+        expect (last.stage, synth::Ready)
+        expect (last.audio.position, 328)
+        refusedWith (Lifecycles::block (last, snapshot, 1), "Cannot render a ready instance.")
+        // Running, releasing and the tail together are exactly one uninterrupted 328-frame render.
+        sameSamples (listConcat (listConcat (listConcat first.audio.samples second.audio.samples) tail.samples) last.audio.samples, (blockOf (graph, 328)).samples)
+        again = lifePlayed (lifeMoved (last, synth::Activate), snapshot, 64)
+        sameSamples (again.audio.samples, synth::Sequences::drop ((blockOf (graph, 392)).samples, 328))
+        expect (again.audio.position, 392)
+        // Reset from running, releasing or ready restarts silent at frame 0 and renders the opening again.
+        forEachList ([again, lifeMoved (again, synth::ReleaseTail), last, ready], \live =>
+            restarted = lifeMoved (live, synth::Reset)
+            expect (restarted.stage, synth::Ready)
+            expect (structuralEquals (restarted.audio, ready.audio), true)
+            sameSamples ((lifePlayed (lifeMoved (restarted, synth::Activate), snapshot, 64)).audio.samples, first.audio.samples))
+        // Re-preparing at a new rate starts silent and steps every phase at that rate.
+        long = lived (Lifecycles::prepared (graph, 48000.0, 2048))
+        heard48 = lifePlayed (lifeMoved (long, synth::Activate), snapshot, 2048)
+        doubled = lifeMoved (lifeMoved (heard48, synth::Reset), synth::Prepare(rate = 96000.0, block = 2048))
+        expect (doubled.rate, 96000.0)
+        expect (doubled.stage, synth::Ready)
+        expect (doubled.audio.position, 0)
+        expect (Lifecycles::tail doubled ?: -1, 400)
+        expect (Lifecycles::tail (lived (Lifecycles::prepared (graph, 44100.0, 64))) ?: -1, 184)
+        heard96 = lifePlayed (lifeMoved (doubled, synth::Activate), snapshot, 2048)
+        sameSamples (heard96.audio.samples, (rendered (Renderer::block (planFor graph, 96000.0, snapshot, rendered (Renderer::start graph), 2048))).samples)
+        sineHeard ("48 kHz lifecycle", heard48.audio.samples, 440.0)
+        // Twice the rate halves the phase step, so read at the 48 kHz probe rate the note sounds an octave down.
+        sineHeard ("96 kHz lifecycle read at 48 kHz", heard96.audio.samples, 220.0)
+        below ("96 kHz lifecycle at 440 Hz (dB)", decibelsAt (synth::Sequences::drop (heard96.audio.samples, 128), 440.0), -40.0)
+        // Dispose from every live stage drops the state; nothing else is allowed afterwards.
+        forEachList ([ready, running, releasing, tail.now], \live =>
+            gone = lifeMoved (live, synth::Dispose)
+            expect (gone.stage, synth::Disposed)
+            expect (length gone.audio.states, 0)
+            expect (length gone.audio.samples, 0)
+            allRefused (gone, snapshot, "disposed"))))

@@ -54,8 +54,6 @@ src/osprey/tests/regressions/basics/website/website_examples.test.osp fiber conc
 src/osprey/tests/regressions/basics/website/website_examples.test.ospml fiber concurrency
 src/osprey/tests/regressions/db/database_effect.test.osp foreign C import `sqlite3_open`
 src/osprey/tests/regressions/db/database_effect.test.ospml foreign C import `sqlite3_open`
-src/osprey/tests/regressions/db/sqlite_basics.test.osp foreign C import `sqlite3_open`
-src/osprey/tests/regressions/db/sqlite_basics.test.ospml foreign C import `sqlite3_open`
 src/osprey/tests/regressions/effects/abort_vs_resume.test.osp a continuation for `Step.run` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 src/osprey/tests/regressions/effects/abort_vs_resume.test.ospml a continuation for `Step.run` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 src/osprey/tests/regressions/effects/algebraic_effects_comprehensive.test.osp fiber concurrency

@@ -1,0 +1,128 @@
+// Periodic Hann analysis and synthesis windows with hop `size / 4` or `size / 8` sum to the
+// constant `3 size / (8 hop)`, so overlap-add reconstruction scales by its reciprocal
+// (Allen and Rabiner; Smith, *Spectral Audio Signal Processing*).
+namespace synth
+
+(** Short-time Fourier analysis and resynthesis mathematics [SYNTH-ADVANCED-SPECTRAL]. *)
+module SpectralMath
+    (** Periodic Hann window value at `index` of `size`. *)
+    export hann (index, size) = 0.5 - 0.5 * cos (floatDiv (6.283185307179586 * index, size))
+
+    (** FFT twiddle angle for bin `index` of a transform of `size`; `sign` is -1 forward, +1 inverse. *)
+    export twiddle (sign, index, size) = floatDiv (sign * 6.283185307179586 * index, size)
+
+    (** Complex product components. *)
+    export productRe (ar: float, ai, br, bi) = ar * br - ai * bi
+
+    (** Imaginary component of a complex product. *)
+    export productIm (ar: float, ai, br, bi) = ar * bi + ai * br
+
+    (** Squared modulus of a complex value. *)
+    export power (re: float, im) = re * re + im * im
+
+    (** Magnitude of a complex value. *)
+    export magnitude (re, im: float) = pow (power (re, im), 0.5)
+
+    (** Unit-vector components; silence maps to phase zero. *)
+    export unitRe (re, im) =
+        m = magnitude (re, im)
+        match m <= 0.0
+            true => 1.0
+            false => floatDiv (re, m)
+
+    (** Imaginary component of the unit phase vector. *)
+    export unitIm (re, im) =
+        m = magnitude (re, im)
+        match m <= 0.0
+            true => 0.0
+            false => floatDiv (im, m)
+
+    (** Centre frequency of bin `index`. *)
+    export binFrequency (index, size, sampleRate) = floatDiv (index * sampleRate, size)
+
+    (** Expected phase advance of a bin-centred sinusoid over one hop. *)
+    export hopAdvance (index, hop, size) = floatDiv (6.283185307179586 * index * hop, size)
+
+    (** Band-pass gain with linear one-bin-wide edges around `low` and `high` hertz. *)
+    export bandGain (frequency, low, high, width) = match frequency < low - width || frequency > high + width
+        true => 0.0
+        false => match frequency < low
+            true => floatDiv (frequency - (low - width), width)
+            false => match frequency > high
+                true => floatDiv (high + width - frequency, width)
+                false => 1.0
+
+    (** Phase angle of a complex value. *)
+    export angle (re, im) = atan2 (im, re)
+
+    (** Wrap an angle into [−π, π). *)
+    export principal value = value - 6.283185307179586 * floor ((value + 3.141592653589793) / 6.283185307179586)
+
+    (** Phase-vocoder instantaneous frequency of bin `index`, in bins, from its phase advance over one hop. *)
+    export trueBin (index, phase, previous, hop, size) = index + floatDiv (principal (phase - previous - floatDiv (6.283185307179586 * index * hop, size)) * size, 6.283185307179586 * hop)
+
+    (** Synthesis phase advance for a component at `bin` (fractional) over one hop. *)
+    export binAdvance (bin, hop, size) = floatDiv (6.283185307179586 * bin * hop, size)
+
+    (** Rectangular components of `level · e ^ (i·phase)`: resynthesis from magnitude and phase. *)
+    export polarRe (level, phase) = level * cos phase
+
+    (** Imaginary component reconstructed from magnitude and phase. *)
+    export polarIm (level, phase) = level * sin phase
+
+    (** Nearest integer with ties rounded up: the output bin of the pitch map `round (k · ratio)`. *)
+    export nearest value = floor (value + 0.5)
+
+    (** Spectral-envelope radius in bins: about 150 Hz. *)
+    export envelopeRadius (size, sampleRate) = ceil (floatDiv (150.0 * size, sampleRate))
+
+    (** Formant gain: wanted over current envelope, 1 where the envelope is silent, at most 16 (+24 dB). *)
+    export formantGain (wanted, current) = match current <= 0.000000001
+        true => 1.0
+        false => match floatDiv (wanted, current) > 16.0
+            true => 16.0
+            false => floatDiv (wanted, current)
+
+    (** Log-magnitude interpolation: the geometric path between two levels, so halfway sounds halfway. *)
+    export logBlend (a, b, amount) = exp ((1.0 - amount) * ln (a + 0.000000001) + amount * ln (b + 0.000000001)) - 0.000000001
+
+    (** Cross-synthesis gain `(wanted / own) ^ amount`, 1 where the own envelope is silent, at most 16. *)
+    export envelopeMorph (wanted, own, amount) = pow (formantGain (wanted, own), amount)
+
+    (** Natural-log level of a magnitude, floored at 1e-9. *)
+    export logLevel m = ln (m + 0.000000001)
+
+    (** Parabolic peak offset in bins from three neighbouring log levels (Smith and Serra, 1987). *)
+    export peakOffset (a, b, c) = match a - 2.0 * b + c == 0.0
+        true => 0.0
+        false => floatDiv (0.5 * (a - c), a - 2.0 * b + c)
+
+    (** A Hann lobe bin's phase: the centre's phase plus π per bin of offset. *)
+    export lobePhase (centre, offset) = principal (centre + 3.141592653589793 * offset)
+
+    (** Whole bins a peak region moves so its lobe lands nearest the peak's true `frequency` (in bins) times `ratio`. *)
+    export peakShift (frequency, ratio) = nearest (frequency * ratio - frequency)
+
+    (** Pitch ratio of a shift by `semitones` plus `cents` hundredths of a semitone: 2 ^ ((semitones + cents / 100) / 12). *)
+    export semitoneRatio (semitones, cents) = pow (2.0, (semitones + cents / 100.0) / 12.0)
+
+    (** Formant ratio of a pitch shift by `ratio`: 1 with `keep` on holds the formants still, otherwise they move with it. *)
+    export formantRatio (keep, ratio) = match keep >= 0.5
+        true => 1.0
+        false => ratio
+
+    (** Identity phase locking: a bin near a moved peak keeps its analysed phase offset from that peak. *)
+    export lockedPhase (peakPhase, phase, peakAnalysis) = principal (peakPhase + phase - peakAnalysis)
+
+    (** One analysis sample: the input under a Hann window of `size`. *)
+    export windowedSample (sample, index, size) = sample * hann (index, size)
+
+    (** Whether `frequency` falls in the octave band around `centre`: from centre / √2 up to centre · √2. *)
+    export inOctave (frequency, centre) = frequency >= centre * 0.7071067811865476 && frequency < centre * 1.4142135623730951
+
+    (** Band level in dB of one-sided Hann power `energy` summed over `frames` frames of `size` points, where a full-scale sine reads 0 dB (its one-sided power per frame is 3 · size² / 32); floored at −120 dB. *)
+    export bandLevel (energy, frames, size) =
+        ratio = floatDiv (energy * 32.0, 3.0 * size * size * frames)
+        match ratio < 0.000000000001
+            true => -120.0
+            false => 4.342944819032518 * ln ratio

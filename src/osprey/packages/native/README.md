@@ -184,7 +184,7 @@ A `Button` may carry a typed `Chord`. `Primary` is Command on Apple systems and 
 
 ### Context menus [UI-COMPONENTS-CONTEXT-MENU]
 
-`Ui::contextMenu(content, actions)` attaches secondary actions to content. The host exposes them through its pointer and keyboard context-menu gestures, and each action fires through the same issued binding IDs as a button.
+`Ui::contextMenu(content, actions)` attaches secondary actions to content. The host exposes them through its pointer and keyboard context-menu gestures, and each action fires through the same issued binding IDs as a button. A `Ui::section` among the actions is one menu of the window's menu bar on a host that has one (FerroUI on macOS): the section's title names the menu, its buttons are the commands, and a button's symbol spells its shortcut (`Cmd+S`).
 
 ### Rich paragraphs [UI-COMPONENTS-RICH]
 

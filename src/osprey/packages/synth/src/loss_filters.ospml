@@ -1,0 +1,15 @@
+// [SYNTH-ADVANCED-PHYSICAL-PRIMITIVES] Frequency-dependent loop loss, independent of any delay line.
+namespace synth
+
+(** `gain * ((1 - s) x[n] + s x[n-1])` with `s = (1 - brightness) / 2`; its magnitude never exceeds `gain`. *)
+module LossFilters
+    (** Silent history. *)
+    export initial = LossState(previous = 0.0)
+
+    (** Gain is linear 0–1 so a feedback loop cannot gain energy; brightness is 0 (darkest) to 1 (flat). *)
+    export configure config = match config.gain >= 0.0 && config.gain <= 1.0 && config.brightness >= 0.0 && config.brightness <= 1.0
+        true => Success(value = config)
+        false => Error(message = InvalidConfiguration(detail = "Loss gain and brightness must be between zero and one."))
+
+    (** One step with an accepted configuration. *)
+    export next (config, held, input) = LossSample(sample = PhysicalMath::loss (input, held.previous, config.gain, PhysicalMath::smoothing config.brightness), next = LossState(previous = input))

@@ -1,0 +1,71 @@
+// Implements [UI-STORE] for Talon Bank: the whole client state is one typed store. The ledger's
+// accounts and journal are decoded once, at the HTTP edge, into the records below.
+namespace talon
+
+(** One client account as the ledger lists it, its balance in whole cents. *)
+type Account =
+    accountId : int
+    accountOwner : string
+    accountCents : int
+
+(** One journal line: a `credit`, a `debit` or a `refused` withdrawal. *)
+type Movement =
+    movementAccount : int
+    movementKind : string
+    movementCents : int
+    movementNote : string
+    movementOwner : string
+
+(** The movement and new-account forms as a person is typing them. *)
+type Draft =
+    draftAccount : string
+    draftFrom : string
+    draftTo : string
+    draftAmount : string
+    draftNote : string
+    draftOwner : string
+
+(** The last operation's outcome: tone `good` or `danger`; an empty heading shows nothing. *)
+type Notice =
+    noticeTone : string
+    noticeHeading : string
+    noticeDetail : string
+
+(** Everything Talon Bank knows: the API it talks to, the page and form a person is on, the loads still outstanding and the ledger as last fetched. *)
+type Bank =
+    bankServer : string
+    bankPage : string
+    bankMode : string
+    bankChosen : string
+    bankFilter : string
+    bankSearch : string
+    bankOpening : bool
+    bankLoads : int
+    bankBusy : bool
+    bankAccounts : List<Account>
+    bankJournal : List<Movement>
+    bankDraft : Draft
+    bankNotice : Notice
+
+(** What a control delivers ([UI-EVENTS]). Taps carry what they mean; edits and choices arrive with the words or key the person gave. *)
+type BankAct =
+    Refresh
+    OpenDialog
+    CloseDialog
+    SubmitOpen
+    SubmitMove
+    Dismiss
+    QuickMove
+        quickMode : string
+    SeePage
+        seenPage : string
+    ShowKind
+        shownKind : string
+    EditAmount
+    EditNote
+    EditOwner
+    EditSearch
+    PickAccount
+    PickFrom
+    PickTo
+    PickRow

@@ -1,8 +1,8 @@
 ---
 mlTwins: manual
 layout: page
-title: Algebraic effects
-description: Effects abstract side effects. Functions say what they need; the caller picks the handler that does it, so tests swap the disk, network or database for a test double.
+title: "Algebraic effects and handlers in Osprey"
+description: "Functions declare the effects they need and the caller picks the handler, so a test swaps the disk, network or database for a test double."
 permalink: /docs/effects/
 tags: [algebraic-effects, handlers, applications, testing]
 ---
@@ -126,7 +126,7 @@ ok 4 - dispatch: doctor on a broken host
 # tests=98 passed=98 failed=0 skipped=0
 ```
 
-For an ML-flavor spy, see [`accounts.test.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/test/accounts.test.ospml). Its `guardCase` handler sets `touched` if storage is called, and the test asserts it stays `false` for an invalid payment.
+For an ML-flavor spy, see [`accounts.test.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/backend/test/accounts.test.ospml). Its `guardCase` handler sets `touched` if storage is called, and the test asserts it stays `false` for an invalid payment.
 
 ## Python flavor
 
@@ -452,7 +452,7 @@ Write the lock after the search finishes, or mark an operation `replayable` when
 
 ## Where effects are used
 
-- [Talon Bank](/docs/web-apps/#algebraic-effects-what-runs-where) uses handlers for server storage and auditing, and for its browser boundary.
+- [Talon Bank](/docs/web-apps/#requests-are-capabilities) uses handlers for server storage and auditing; its one Native app asks its host for HTTP as a typed capability.
 - [Issue Inbox](/docs/mobile-apps/#application-effects) turns application requests into commands for its Swift and Android hosts.
 - [Runnable handler examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/handlers) cover factories, control flow, return clauses and static selection.
 

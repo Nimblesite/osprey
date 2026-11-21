@@ -1,4 +1,6 @@
 // #273: Two generic records sharing a field name both read it through a known receiver.
+// A generic record holding different records in one generic field keeps each field's own layout:
+// Step<float, Four> and Step<float, Two> both hold a pointer, yet `held.step` reads its own record.
 
 type Node A =
     Leaf
@@ -34,5 +36,31 @@ rowAt (out, rows, index) = match listGet rows index
 
 type Act = Go
 
+type Four B =
+    a : List<B>
+    b : List<B>
+    c : List<B>
+    step : int
+
+type Two B =
+    sum : List<B>
+    step : int
+
+type Step B S =
+    params : List<B>
+    held : S
+
+wrapped (params, held) = Step(params = params, held = held)
+
+held () =
+    empty = Step(params = [1.5], held = Four(a = [], b = [], c = [], step = 2))
+    filled = Step(params = [1.5], held = Four(a = [], b = [0.5], c = [0.5, 0.25], step = 4))
+    two = Step(params = [1.5, 2.5], held = Two(sum = [], step = 3))
+    names = Step(params = ["w"], held = Four(a = ["x"], b = [], c = [], step = 7))
+    kept = Two(sum = [0.5], step = 5)
+    bound = Step(params = [0.5], held = kept)
+    passed = wrapped ([0.25], Four(a = [], b = [], c = [1.0, 2.0, 3.0], step = 6))
+    "${empty.held.step} ${length empty.held.c} ${filled.held.step} ${length filled.held.c} ${two.held.step} ${length two.params} ${names.held.step} ${length names.held.a} ${bound.held.step} ${length bound.held.sum} ${passed.held.step} ${length passed.held.c}"
+
 tree = Tabs<Act>(tabs = [Tab<Act>(name = "t", child = Leaf<Act>(label = "a"))])
-print (labelOf tree)
+print "${labelOf tree} ${held ()}"

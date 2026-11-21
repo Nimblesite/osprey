@@ -4,9 +4,12 @@ use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use gpui_kit::component::{input::InputState, ActiveTheme as _, Theme};
+use gpui_kit::component::{ActiveTheme as _, Theme, input::InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+
+#[path = "host_windows.rs"]
+mod windows;
 
 use crate::events::{self, Touch};
 use crate::ffi::{self, Library};
@@ -45,6 +48,9 @@ pub struct HostView {
     pub(crate) collapsed: bool,
     seen: BTreeSet<String>,
     pending: Vec<Ask>,
+    primary: Option<AnyWindowHandle>,
+    detached: Option<String>,
+    pub(crate) detached_handle: Option<AnyWindowHandle>,
 }
 
 impl HostView {
@@ -72,11 +78,15 @@ impl HostView {
             collapsed: false,
             seen: BTreeSet::new(),
             pending: Vec::new(),
+            primary: None,
+            detached: None,
+            detached_handle: None,
         }
     }
 
     /// Draws the first frame for this window's appearance.
     pub fn open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.primary = Some(window.window_handle());
         let first = local_offset()
             .and_then(|offset| crate::home().map(|home| (offset, home)))
             .and_then(|(offset, home)| {
@@ -115,6 +125,7 @@ impl HostView {
                     self.pending.extend(shown.requests().cloned());
                     self.shown = Arc::new(shown);
                     self.retain_inputs();
+                    self.sync_detached(cx);
                 }
             }
             Err(problem) => self.diagnose(problem),
@@ -165,9 +176,12 @@ impl HostView {
         let task = cx
             .background_executor()
             .spawn(async move { adapters::completion(&ask) });
-        cx.spawn_in(window, async move |view, cx| {
+        let primary = self.primary.unwrap_or_else(|| window.window_handle());
+        cx.spawn(async move |host, cx| {
             let completion = task.await;
-            let _ = view.update_in(cx, |view, window, cx| view.send(completion, window, cx));
+            let _ = primary.update(cx, |_, window, cx| {
+                let _ = host.update(cx, |view, cx| view.send(completion, window, cx));
+            });
         })
         .detach();
     }
@@ -309,6 +323,14 @@ fn new_view(
     window: &mut Window,
     cx: &mut Context<HostView>,
 ) -> HostView {
+    cx.on_release(|view, cx| {
+        if let Some(child) = view.detached_handle.take() {
+            cx.defer(move |cx| {
+                let _ = child.update(cx, |_, window, _| window.remove_window());
+            });
+        }
+    })
+    .detach();
     cx.observe_window_appearance(window, |view, window, cx| {
         Theme::sync_system_appearance(Some(window), cx);
         view.send(Touch::appearance(render::is_dark(window)), window, cx);

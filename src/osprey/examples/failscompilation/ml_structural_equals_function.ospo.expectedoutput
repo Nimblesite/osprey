@@ -1,4 +1,4 @@
-cannot compare `{ onClick: (int) -> int, tab: string }` with `structuralEquals`: field `onClick` is a function, whose equality is not decided
-cannot compare `List<(int) -> int>` with `structuralEquals`: list element is a function, whose equality is not decided
-cannot compare `Map<string, (int) -> int>` with `structuralEquals`: map value is a function, whose equality is not decided
-cannot compare `{ onClick: (int) -> int, tab: string }` with `structuralEquals`: field `onClick` is a function, whose equality is not decided
+13:0: cannot compare `{ onClick: (int) -> int, tab: string }` with `structuralEquals`: field `onClick` is a function, whose equality is not decided
+14:0: cannot compare `List<(int) -> int>` with `structuralEquals`: list element is a function, whose equality is not decided
+15:0: cannot compare `Map<string, (int) -> int>` with `structuralEquals`: map value is a function, whose equality is not decided
+9:0: cannot compare `{ onClick: (int) -> int, tab: string }` with `structuralEquals`: field `onClick` is a function, whose equality is not decided

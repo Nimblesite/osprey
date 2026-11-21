@@ -7,35 +7,22 @@ use super::{
 
 impl Analyzer<'_> {
     pub(super) fn projection_absent(&self, value: &Value, path: &[Projection]) -> bool {
-        match path.split_first() {
-            Some((projection, remaining)) if !value.unknown_structure => {
-                value.proves_projection_absent(projection)
-                    || match borrowed_structural_child(value, projection) {
-                        ProjectionChild::Borrowed(child) => {
-                            self.projection_absent(child, remaining)
-                        }
-                        ProjectionChild::Missing => false,
-                        ProjectionChild::Owned => self.owned_projection_absent(value.clone(), path),
-                    }
-            }
-            _ => false,
+        let Some((projection, remaining)) = path.split_first() else {
+            return false;
+        };
+        if value.proves_projection_absent(projection) {
+            return true;
         }
-    }
-
-    fn owned_projection_absent(&self, mut value: Value, path: &[Projection]) -> bool {
-        for projection in path {
-            if value.unknown_structure {
-                return false;
-            }
-            if value.proves_projection_absent(projection) {
-                return true;
-            }
-            let Some(next) = self.project_path(value, std::slice::from_ref(projection)) else {
-                return false;
-            };
-            value = next;
+        if remaining.is_empty() || value.unknown_structure {
+            return false;
         }
-        false
+        match borrowed_structural_child(value, projection) {
+            ProjectionChild::Borrowed(child) => self.projection_absent(child, remaining),
+            ProjectionChild::Missing => false,
+            ProjectionChild::Owned => self
+                .project_borrowed_fallback(value, std::slice::from_ref(projection))
+                .is_some_and(|child| self.projection_absent(&child, remaining)),
+        }
     }
 
     pub(super) fn project_borrowed_path(
@@ -219,7 +206,7 @@ impl Analyzer<'_> {
             Callable::Known(known) => {
                 let values =
                     ordered_values(&known.parameters, &arguments.positional, &arguments.named);
-                self.substitute_summary_at(known.summary.clone(), 0, &values)
+                self.substitute_summary_at(known.summary, 0, &values)
             }
             Callable::Unknown => Summary {
                 unresolved_dynamic_call: true,
@@ -396,6 +383,22 @@ fn borrowed_projection_matches_owned_projection_for_mixed_paths_and_metadata() {
                 let leaf = projection_metadata(Value::default(), mode);
                 let value =
                     projection_metadata(projection_container(&projection_container(&leaf)), mode);
+                let mut current = Some(value.clone());
+                let absent = path.iter().any(|step| {
+                    let Some(parent) = current.take() else {
+                        return false;
+                    };
+                    if parent.unknown_structure || parent.proves_projection_absent(step) {
+                        return !parent.unknown_structure;
+                    }
+                    current = analyzer.project_path(parent, std::slice::from_ref(step));
+                    false
+                });
+                assert_eq!(
+                    analyzer.projection_absent(&value, &path),
+                    absent,
+                    "{mode}: {path:?}"
+                );
                 assert_eq!(
                     analyzer.project_borrowed_path(&value, &path),
                     analyzer.project_path(value.clone(), &path),
@@ -433,6 +436,13 @@ fn borrowed_payload_and_missing_projection_clone_budgets() {
             assert_projection_budget(&analyzer, &value, step, 1);
         }
         assert_missing_projection_budgets(&analyzer);
+        for projection in projection_steps() {
+            let (absent, clones) = super::provenance::measured_clones(|| {
+                analyzer.projection_absent(&value, std::slice::from_ref(&projection))
+            });
+            assert_eq!(absent, value.proves_projection_absent(&projection));
+            assert_eq!(clones, 0, "terminal absence check cloned {projection:?}");
+        }
         value.result_payload = None;
         let _ = value
             .fields
