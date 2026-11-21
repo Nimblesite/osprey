@@ -5,6 +5,7 @@ export function projectCodec(model, root) {
   const emitted = new Set()
   const scalars = { String: 'JsonString', Int: 'JsonInt', Float: 'JsonFloat', Bool: 'JsonBool' }
   const readers = { String: 'text', Int: 'number', Float: 'decimal', Bool: 'flag' }
+  const usedMembers = new Set()
   function reader(name, fields) {
     const args = []
     const values = fields.map(field => {
@@ -22,8 +23,13 @@ export function projectCodec(model, root) {
     emit(ref.name)
     return 'write' + ref.name
   }
+  function scalarMember(type, name, value) {
+    usedMembers.add(type)
+    return `${readers[type]}Member ("${name}", ${value})`
+  }
   function member(field, variable) {
     const ref = field.type
+    if (scalars[ref.name]) return scalarMember(ref.name, field.name, variable)
     const val = ref.name === 'List'
       ? `JsonArray (mapList (${variable}, ${writer(ref.args[0])}))`
       : `${writer(ref)} ${variable}`
@@ -32,9 +38,10 @@ export function projectCodec(model, root) {
   function variantLine(variant, enumeration) {
     const vars = variant.fields.map(field => field.name)
     const pattern = [variant.name, ...vars].join(' ')
-    const tag = `JsonString "${variant.name}"`
+    const tag = `"${variant.name}"`
+    if (enumeration) return `        ${pattern} => JsonString ${tag}`
     const fields = variant.fields.map((field, i) => member(field, vars[i]))
-    return `        ${pattern} => ${enumeration ? tag : 'JsonObject [' + [`JsonMember "kind" (${tag})`, ...fields].join(', ') + ']'}`
+    return `        ${pattern} => JsonObject [${[scalarMember('String', 'kind', tag), ...fields].join(', ')}]`
   }
   function emit(name) {
     if (emitted.has(name)) return
@@ -54,5 +61,7 @@ export function projectCodec(model, root) {
     }
   }
   emit(root)
-  return '(** Generated project field readers and writers from daw.td [DAW-PROJECT-MODEL]. *)\nmodule ProjectCodec\n' + output.join('\n\n') + '\n'
+  const helpers = [...usedMembers].map(type => `    ${readers[type]}Member (name, value) = JsonMember name (${scalars[type]} value)`)
+  return '(** Generated project field readers and writers from daw.td [DAW-PROJECT-MODEL]. *)\nmodule ProjectCodec\n' +
+    [...helpers, ...output].join('\n\n') + '\n'
 }
