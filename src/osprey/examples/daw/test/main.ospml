@@ -970,6 +970,39 @@ rangeJourney ready =
     said (synth::DawSession::ended (playing.stepStore, 3), "daw-song:live:${liveFolder}", "Stop first to move the end marker.")
     said (synth::DawSession::started (playing.stepStore, 0), "daw-song:live:${liveFolder}", "Stop first to move the start marker.")
 
+gainOf (editor, index) = match listGet editor.song.tracks index
+    Error _ => -1.0
+    Success voice => voice.gain
+
+// [DAW-MIX-DRAG] A held fader moves the track in memory on every pointer move and writes the project once, on
+// release, as one undo step.
+faderJourney opened =
+    ready = opened(page = synth::TimelinePage)
+    expect (synth::DawSession::holding ready, false)
+    // On the patch page a gesture is a card drag, never a held fader.
+    expect (synth::DawSession::holding (synth::DawSession::slid (opened(page = synth::PatchPage), 1, 2.0, 0.5)), false)
+    before = gainOf (ready, 1)
+    held = synth::DawSession::slid (ready, 1, 2.0, 0.5)
+    expect (synth::DawSession::holding held, true)
+    expect (gainOf (held, 1), 2.0)
+    expect (length held.past, length ready.past)
+    expect (held.revision, satAdd ready.revision 1)
+    moved = synth::DawSession::slid (held, 1, 3.0, 0.5)
+    expect (gainOf (moved, 1), 3.0)
+    expect (length moved.gesture, 1)
+    // A value out of range leaves the fader where it was, still held.
+    wild = synth::DawSession::slid (moved, 1, 9.0, 0.5)
+    expect (gainOf (wild, 1), 3.0)
+    expect (synth::DawSession::holding wild, true)
+    released = synth::DawSession::dropped moved
+    settled = released.stepStore
+    expect (synth::DawSession::holding settled, false)
+    expect (gainOf (settled, 1), 3.0)
+    expect (length settled.past, satAdd (length ready.past) 1)
+    expect (contains (readFile settled.songPath ?: "") "\"gain\":3.0", true)
+    undone = synth::EditorHistory::undo settled
+    expect (gainOf (undone, 1), before)
+
 // After a mix edit Play streams the edited snapshot.
 remixed (ready, louder) =
     edited = ready(song = louder)
@@ -1161,6 +1194,7 @@ transportJourney () =
     barLineJourney ready
     failsWith (synth::TimelineView::laneAt (ready, 700.0, 192.0), "No lane here.")
     succeeds (daw::Projects::mixed (ready.song, 1, 2.0, 0.5), \louder => remixed (ready, louder))
+    faderJourney ready
     bounceJourney ready
 
 test ("Play streams the range in real time into the audio device, the playhead follows what it sounds, Loop and the end marker set the range, Stop cancels, and Render song writes the whole song", \() => Runtime::guarded (\() => hosted transportJourney))
