@@ -196,7 +196,7 @@ Profiled 21 Nov with `sample` at 1 ms. Each fix is owned, and is done only when 
 
 **Engine.** `target/daw/daw tracks/codex-version.json <out> 32 8` (bars 9 and 10, ARC): 42.2 s of CPU for 27.5 s of audio, so 0.65× real time. Target: under 14 s (2× real time).
 
-- [ ] [DAW-PERF-RENDER] Every project in `tracks/` renders in at most half its length (render seconds ÷ song seconds ≤ 0.5). Phosphor Drift on 21 Nov: 1229 s for 226.9 s, so 5.4, about 11× too slow. The pi bench (pi-render-bench-1..3) is measuring the other projects.
+- [ ] [DAW-PERF-RENDER] A song with basic tracks and routing renders in at most a fifth of its length (5 minutes in about 1 minute), and no project in `tracks/` takes more than half its length. Phosphor Drift on 21 Nov: 1229 s for 226.9 s, so 5.4× its length, about 27× too slow. The pi bench (pi-render-bench-1..3) is measuring the other projects.
 
 | Where the time goes | Share | Fix | Owner |
 |---|---|---|---|
