@@ -103,7 +103,9 @@ pub(crate) fn arm_errors(
         Multiplicity::Once => Vec::new(),
         Multiplicity::Abort if resumes > 0 => at(abort_message(effect, operation)),
         Multiplicity::Abort => at(unimplemented_abort(effect, operation)),
-        Multiplicity::Many => many_message(axis, effect, arm, handled_row, fibered).map_or_else(Vec::new, at),
+        Multiplicity::Many => {
+            many_message(axis, effect, arm, handled_row, fibered).map_or_else(Vec::new, at)
+        }
     }
 }
 

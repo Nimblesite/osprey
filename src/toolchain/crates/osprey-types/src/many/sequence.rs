@@ -364,4 +364,3 @@ fn set_value(binding: &mut Stmt, replacement: Expr) {
 fn is_lazy(op: &str) -> bool {
     matches!(op, "&&" | "||" | "?:")
 }
-

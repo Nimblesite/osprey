@@ -81,8 +81,7 @@ cannot cross that call; call the function directly or pass it to a function para
 
 impl Rewriter<'_> {
     pub(super) fn reject(&mut self, message: String) {
-        self.errors
-            .push(TypeError::new(message).with_pos(self.at));
+        self.errors.push(TypeError::new(message).with_pos(self.at));
     }
 
     fn reject_crossing(&mut self, what: &str) {
@@ -111,11 +110,12 @@ impl Rewriter<'_> {
             (Stmt::Function { .. }, Stmt::Function { .. }) => {
                 self.function(&mut out, statement, namespace);
             }
+            (Stmt::Let { value: slot, .. }, Stmt::Let { value, .. }) => {
+                *slot = self.bound_value(value, &Scope::top(namespace));
+            }
             (
-                Stmt::Let { value: slot, .. }
-                | Stmt::Assignment { value: slot, .. }
-                | Stmt::Expr { value: slot, .. },
-                Stmt::Let { value, .. } | Stmt::Assignment { value, .. } | Stmt::Expr { value, .. },
+                Stmt::Assignment { value: slot, .. } | Stmt::Expr { value: slot, .. },
+                Stmt::Assignment { value, .. } | Stmt::Expr { value, .. },
             ) => *slot = self.direct(value, &Scope::top(namespace)),
             _ => {}
         }
@@ -293,10 +293,43 @@ instantiated: its requests carry their continuation as a value"
     /// The value of a `let`: a lambda whose calls capture becomes a closure
     /// that returns a step.
     pub(super) fn bound_value(&mut self, value: &Expr, scope: &Scope) -> Expr {
-        match self.analyzer.lambda_alias(value, scope) {
-            Some(alias) if !alias.latent.is_empty() => self.lambda(value, scope, true),
-            _ => self.direct(value, scope),
+        match self.analyzer.table.lambda(value) {
+            Some(id) => self.bound_lambda(id, value, scope),
+            None => self.direct(value, scope),
         }
+    }
+
+    /// A `let`-bound lambda, rewritten as the function it is: a step-returning
+    /// body when its calls capture, untyped parameters where it takes a
+    /// capturing callback.
+    fn bound_lambda(&mut self, id: usize, lambda: &Expr, scope: &Scope) -> Expr {
+        let mut out = lambda.clone();
+        let (
+            Expr::Lambda {
+                parameters: slots,
+                return_type,
+                body: slot,
+                ..
+            },
+            Expr::Lambda {
+                parameters, body, ..
+            },
+        ) = (&mut out, lambda)
+        else {
+            return out;
+        };
+        let names: Vec<String> = parameters.iter().map(|p| p.name.clone()).collect();
+        let steps = self.analyzer.facts.returns_step(id);
+        **slot = self.either(body, &scope.entering(id, &names), steps);
+        if steps {
+            *return_type = None;
+        }
+        for (index, parameter) in slots.iter_mut().enumerate() {
+            if self.analyzer.facts.takes_step(id, index) {
+                parameter.ty = None;
+            }
+        }
+        out
     }
 
     /// A step-returning callable used as a plain value escapes this pass.

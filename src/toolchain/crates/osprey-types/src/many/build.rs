@@ -39,11 +39,11 @@ impl Fresh {
         self.next
     }
 
-    pub(super) fn position(&mut self) -> Option<Position> {
-        Some(Position {
+    pub(super) fn position(&mut self) -> Position {
+        Position {
             line: NODE_LINE_BASE.saturating_add(self.bump()),
             column: 0,
-        })
+        }
     }
 
     pub(super) fn name(&mut self, stem: &str) -> String {
@@ -55,7 +55,7 @@ impl Fresh {
             parameters: params.into_iter().map(parameter).collect(),
             return_type: None,
             body: Box::new(body),
-            position: self.position(),
+            position: Some(self.position()),
         }
     }
 
@@ -73,7 +73,7 @@ impl Fresh {
             ty: None,
             value,
             doc: None,
-            position: self.position(),
+            position: Some(self.position()),
         };
         block(vec![binding], rest)
     }

@@ -6,13 +6,12 @@
 // handed to a spawned fiber, so it runs after the arm has already returned and
 // its continuation is dead.
 //
-// TODAY the program is rejected twice: by the blanket [EFFECTS-RESUME] rule,
-// and because `many` has no re-entrant continuation to offer any arm. The
-// arm-naming wording [MULTI-HANDLE-MANY-LEXICAL] specifies arrives with step 6
-// of docs/plans/0016-algebraic-effects-and-handlers.md, the reusable
-// continuations; until then the blanket rule is not misleading, because
-// no `many` arm compiles at all. This golden records what the compiler says,
-// so the wording cannot change silently when that phase lands.
+// A `many` arm compiles and runs ([MULTI-HANDLE-MANY]), so the blanket
+// [EFFECTS-RESUME] rule is now the one rejection: a `resume` written in a
+// lambda body has no live continuation where the lambda runs. The arm-naming
+// wording [MULTI-HANDLE-MANY-LEXICAL] specifies arrives with owned
+// continuation values (plan 0016 phase 2). This golden records what the
+// compiler says, so the wording cannot change silently when that lands.
 effect Choice {
     control many pick: fn(int) -> int
 }

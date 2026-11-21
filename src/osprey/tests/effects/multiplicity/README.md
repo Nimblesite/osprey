@@ -2,7 +2,7 @@
 
 Control operations declare how often their continuation may be resumed: `control abort`, `control once` (the default for `control`), or `control many`. `replayable` is a separate promise about repeating an operation. Retrying a payment request inside an arm is different from resuming twice and repeating the email in the remaining computation.
 
-The [effects specification](../../../../../docs/specs/language/0017-AlgebraicEffects.md) defines multiplicity and replay. [Plan 0016](../../../../../docs/plans/0016-algebraic-effects-and-handlers.md) tracks delivery; reusable `many` continuations remain unsupported. This directory holds accepted cases; rejection fixtures live in [`src/osprey/examples/failscompilation`](../../../examples/failscompilation).
+The [effects specification](../../../../../docs/specs/language/0017-AlgebraicEffects.md) defines multiplicity and replay. [Plan 0016](../../../../../docs/plans/0016-algebraic-effects-and-handlers.md) tracks delivery. Reusable `many` continuations run on every target, wasm32 included ([MULTI-WASM-MANY]); their corpus program is `src/osprey/tests/regressions/effects/multishot_many.test.{osp,ospml}`. This directory holds accepted cases; rejection fixtures live in [`src/osprey/examples/failscompilation`](../../../examples/failscompilation).
 
 ## What the paired suite pins
 
@@ -38,15 +38,14 @@ Two further cases cover the rest of the surface:
 |---|---|---|
 | 1. Single-op retry | Accepted; one email | **Accepted.** This suite, green in both flavors and byte-exact under the default, `gc` and `arc` backends, with zero live objects at ARC exit |
 | 2. Backtracking over impure code | Rejected, naming the non-replayable operation | **Rejected** at the handle site by `[MULTI-REPLAY-CHECK]`, in both flavors — `src/osprey/examples/failscompilation/multi_many_over_nonreplayable.ospo` |
-| 3. Backtracking over pure code | Accepted; every alternative produced | **Unsupported.** The native runtime can resume a captured continuation once and return its answer, but cannot clone or reuse it for another branch. Blocked on [plan 0016](../../../../../docs/plans/0016-algebraic-effects-and-handlers.md) |
-| 4. Shared `map` under both multiplicities | Compiles with no annotation on the helper | **Partial evidence only.** The shared helper accepts a replayable `once` control operation and a value operation. Its `many` case remains blocked with case 3 |
+| 3. Backtracking over pure code | Accepted; every alternative produced | **Accepted.** `regressions/effects/multishot_many.test.{osp,ospml}` resumes one continuation for every alternative and collects each branch, byte-exact under `gc`, `arc` and wasm32. The compiler writes the captured remainder as a closure, so a second resumption is a second call |
+| 4. Shared `map` under both multiplicities | Compiles with no annotation on the helper | **Accepted.** The shared helper here accepts a replayable `once` control operation and a value operation; `src/toolchain/crates/osprey-cli/tests/staged_many.rs` passes callbacks that make a `many` request to an unannotated helper and pins every branch |
 
 Every row was measured in both flavors. `replayable` is read rather than
 ignored: a `many` handler whose body performs only a `replayable` operation
-passes the replay check and is then stopped by the missing representation, not
-by the row.
+passes the replay check and runs.
 
-Cases 3 and the `many` half of case 4 remain unmet acceptance requirements. Rejecting unsupported programs prevents an incorrect one-shot implementation from being presented as reusable continuations.
+A `many` continuation cannot cross a call the compiler cannot split: a builtin's callback, a function stored in a value, or a `finally` clause. Each is rejected by name rather than answered with a continuation that would run once.
 
 ## Run them
 

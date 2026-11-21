@@ -146,9 +146,14 @@ pub(super) fn source(table: &Table<'_>, facts: &Facts) -> String {
     let all = requests(table, facts);
     let mut out = String::from(FIXED);
     step_type(&mut out, table, facts);
-    forwarding(&mut out, "__manyBind(step, next)", "step", "next(value)", &all, |request| {
-        request.rebuilt("fn(x) => __manyBind(k(x), next)", "drop")
-    });
+    forwarding(
+        &mut out,
+        "__manyBind(step, next)",
+        "step",
+        "next(value)",
+        &all,
+        |request| request.rebuilt("fn(x) => __manyBind(k(x), next)", "drop"),
+    );
     forwarding(
         &mut out,
         "__manyFinally(step, fin)",
@@ -227,10 +232,18 @@ fn requesters(out: &mut String, name: &str, effect: &Effect) {
 }
 
 fn answerer(out: &mut String, name: &str, effect: &Effect, all: &[(String, Request)]) {
-    let arms: Vec<String> = effect.ops.iter().map(|op| format!("arm_{}", op.name)).collect();
+    let arms: Vec<String> = effect
+        .ops
+        .iter()
+        .map(|op| format!("arm_{}", op.name))
+        .collect();
     let handle = handle_name(name);
     let again = format!("{handle}(k(x), ret, {})", arms.join(", "));
-    let _ = writeln!(out, "\nfn {handle}(step, ret, {}) = match step {{", arms.join(", "));
+    let _ = writeln!(
+        out,
+        "\nfn {handle}(step, ret, {}) = match step {{",
+        arms.join(", ")
+    );
     out.push_str("    Many__Done { value } => ret(value)\n");
     for (owner, request) in all {
         let own = effect

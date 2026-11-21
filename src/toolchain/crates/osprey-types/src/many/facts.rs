@@ -58,9 +58,11 @@ impl Esc {
     }
 }
 
-/// A `let`-bound lambda: what calling it leaves unanswered, and its arity.
+/// A lambda value: what calling it leaves unanswered and its arity, plus its
+/// function id when a `let` binds it.
 #[derive(Clone, Debug)]
 pub(super) struct Alias {
+    pub(super) id: Option<usize>,
     pub(super) latent: Esc,
     pub(super) arity: usize,
 }
@@ -119,6 +121,19 @@ impl Scope {
         inner
     }
 
+    /// The scope of the body of `let`-bound lambda `id`: its parameters are
+    /// that function's parameters, and the enclosing function's are plain names.
+    pub(super) fn entering(&self, id: usize, params: &[String]) -> Self {
+        let mut inner = self.binding(self.params.keys().cloned().collect::<Vec<_>>());
+        inner.func = Some(id);
+        inner.params = params.iter().cloned().zip(0..).collect();
+        for name in params {
+            let _ = inner.aliases.remove(name);
+            let _ = inner.hidden.remove(name);
+        }
+        inner
+    }
+
     /// The scope of one handler arm's body.
     pub(super) fn in_arm(&self, arm: &HandlerArm, resume: Esc, captured: bool) -> Self {
         let mut inner = self.binding(arm.params.iter().cloned());
@@ -167,4 +182,3 @@ impl Facts {
         self.stepping.contains(&(id, index))
     }
 }
-

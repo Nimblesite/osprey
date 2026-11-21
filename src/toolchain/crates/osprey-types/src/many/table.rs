@@ -2,7 +2,9 @@
 //! function, with the call resolution the effect proof uses.
 
 use crate::effect_rows::Callables;
-use osprey_ast::{effect_name, Expr, Multiplicity, OperationMode, Position, Program, Stmt};
+use osprey_ast::{
+    effect_name, AstNode, Expr, Multiplicity, OperationMode, Position, Program, Stmt,
+};
 use std::collections::{BTreeMap, HashMap};
 
 /// One declared operation, with its parameter and result types as source text.
@@ -22,11 +24,14 @@ pub(super) struct Effect {
     pub(super) position: Option<Position>,
 }
 
-/// One declared function.
+/// One declared function, or one `let`-bound lambda: both are called by name,
+/// so both carry a summary and both may take capturing callbacks.
 pub(super) struct Func<'a> {
     pub(super) scope: Vec<String>,
     pub(super) params: Vec<String>,
     pub(super) body: &'a Expr,
+    /// A `let`-bound lambda is summarized where it is bound, in its scope.
+    pub(super) bound: bool,
 }
 
 /// Every effect and function of one program.
@@ -34,6 +39,10 @@ pub(super) struct Table<'a> {
     pub(super) effects: BTreeMap<String, Effect>,
     pub(super) funcs: Vec<Func<'a>>,
     ids: HashMap<String, usize>,
+    /// `let`-bound lambdas, by the lambda's own position.
+    lambdas: HashMap<(u32, u32), usize>,
+    /// Lambdas bound at the top of a file, namespace or module, by qualified name.
+    globals: HashMap<String, usize>,
     callables: Callables<'a>,
 }
 
@@ -43,6 +52,8 @@ impl<'a> Table<'a> {
             effects: BTreeMap::new(),
             funcs: Vec::new(),
             ids: HashMap::new(),
+            lambdas: HashMap::new(),
+            globals: HashMap::new(),
             callables: Callables::collect(program),
         };
         table.statements(&program.statements, &[]);
@@ -57,6 +68,54 @@ impl<'a> Table<'a> {
 
     pub(super) fn func(&self, id: usize) -> Option<&Func<'a>> {
         self.funcs.get(id)
+    }
+
+    /// The function id of a `let`-bound lambda.
+    pub(super) fn lambda(&self, value: &Expr) -> Option<usize> {
+        let Expr::Lambda {
+            position: Some(at), ..
+        } = value
+        else {
+            return None;
+        };
+        self.lambdas.get(&(at.line, at.column)).copied()
+    }
+
+    /// The top-level `let`-bound lambda `name` reaches from `scope`.
+    pub(super) fn global(&self, scope: &[String], name: &str) -> Option<usize> {
+        (0..=scope.len()).rev().find_map(|depth| {
+            let prefix = scope.get(..depth)?;
+            self.globals.get(&qualify(prefix, name)).copied()
+        })
+    }
+
+    /// Register every `let`-bound lambda under `statement`.
+    fn bind_lambdas(&mut self, statement: &'a Stmt, scope: &[String]) {
+        let mut found = Vec::new();
+        bound_lambdas(AstNode::Statement(statement), &mut found);
+        for lambda in found {
+            let Expr::Lambda {
+                parameters,
+                body,
+                position: Some(at),
+                ..
+            } = lambda
+            else {
+                continue;
+            };
+            let _ = self.lambdas.insert((at.line, at.column), self.funcs.len());
+            self.funcs.push(Func {
+                scope: scope.to_vec(),
+                params: parameters.iter().map(|p| p.name.clone()).collect(),
+                body,
+                bound: true,
+            });
+        }
+        if let Stmt::Let { name, value, .. } = statement {
+            if let Some(id) = self.lambda(value) {
+                let _ = self.globals.insert(qualify(scope, name), id);
+            }
+        }
     }
 
     pub(super) fn effect(&self, mention: &str) -> Option<&Effect> {
@@ -82,8 +141,11 @@ impl<'a> Table<'a> {
                     scope: scope.to_vec(),
                     params: parameters.iter().map(|p| p.name.clone()).collect(),
                     body,
+                    bound: false,
                 });
+                self.bind_lambdas(statement, scope);
             }
+            Stmt::Let { .. } | Stmt::Expr { .. } => self.bind_lambdas(statement, scope),
             Stmt::Effect { .. } => {
                 if let Some((name, effect)) = declared_effect(statement) {
                     let _ = self.effects.insert(name, effect);
@@ -101,6 +163,16 @@ impl<'a> Table<'a> {
             _ => {}
         }
     }
+}
+
+/// Every lambda a `let` binds under `node`, at any depth.
+fn bound_lambdas<'a>(node: AstNode<'a>, out: &mut Vec<&'a Expr>) {
+    if let AstNode::Statement(Stmt::Let { value, .. }) = node {
+        if matches!(value, Expr::Lambda { .. }) {
+            out.push(value);
+        }
+    }
+    node.for_each_child(|child| bound_lambdas(child, out));
 }
 
 /// `scope` extended by `more`, the way a namespace or module nests names.

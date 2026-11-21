@@ -272,11 +272,15 @@ print("${shown(inline(3))} ${shown(inline(4))} ${shown(named(3))} ${shown(named(
 
 #[test]
 fn a_generic_call_nested_in_its_own_argument_keeps_its_own_instantiation() {
-    run_project("nested_generic", "yes no yes no yes no none yes no\n", |root| {
-        write(
+    run_project(
+        "nested_generic",
+        "yes no yes no yes no none yes no\n",
+        |root| {
+            write(
             &root.join("osprey.toml"),
             "[project]\nname = \"nested\"\nsource_roots = [\"src\"]\ndefault_namespace = \"demo\"\nentry = \"src/main.osp\"\n",
         );
-        write(&root.join("src").join("main.osp"), NESTED_SAME_GENERIC);
-    });
+            write(&root.join("src").join("main.osp"), NESTED_SAME_GENERIC);
+        },
+    );
 }

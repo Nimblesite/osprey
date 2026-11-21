@@ -60,8 +60,14 @@ impl<'a> Analyzer<'a> {
 
     fn summarize(&mut self, id: usize) {
         let table = self.table;
-        let Some(func) = table.func(id) else { return };
+        let Some(func) = table.func(id).filter(|func| !func.bound) else {
+            return;
+        };
         let esc = self.esc(func.body, &Scope::of_function(table, id));
+        self.record(id, esc);
+    }
+
+    fn record(&mut self, id: usize, esc: Esc) {
         if let Some(slot) = self.facts.summaries.get_mut(id) {
             if *slot != esc {
                 *slot = esc;
@@ -82,7 +88,12 @@ impl<'a> Analyzer<'a> {
                         self.top_level(std::slice::from_ref(item.declaration.as_ref()), &inner);
                     }
                 }
-                Stmt::Let { value, .. } | Stmt::Expr { value, .. } => {
+                Stmt::Let { name, value, .. } => {
+                    let scope = Scope::top(namespace);
+                    let _ = self.esc(value, &scope);
+                    let _ = self.bound(&scope, name, value);
+                }
+                Stmt::Expr { value, .. } => {
                     let _ = self.esc(value, &Scope::top(namespace));
                 }
                 _ => {}
@@ -186,9 +197,19 @@ impl<'a> Analyzer<'a> {
         else {
             return None;
         };
-        let inner = scope.binding(parameters.iter().map(|p| p.name.clone()));
+        let names: Vec<String> = parameters.iter().map(|p| p.name.clone()).collect();
+        let id = self.table.lambda(value);
+        let inner = match id {
+            Some(id) => scope.entering(id, &names),
+            None => scope.binding(names),
+        };
+        let latent = self.esc(body, &inner);
+        if let Some(id) = id {
+            self.record(id, latent.clone());
+        }
         Some(Alias {
-            latent: self.esc(body, &inner),
+            id,
+            latent,
             arity: parameters.len(),
         })
     }
@@ -202,7 +223,9 @@ impl<'a> Analyzer<'a> {
             _ => return Callee::Other,
         };
         if let Some(alias) = scope.aliases.get(&name) {
-            return Callee::Alias(alias.clone());
+            return alias
+                .id
+                .map_or_else(|| Callee::Alias(alias.clone()), Callee::Function);
         }
         if let Some(index) = scope.params.get(&name) {
             return Callee::Param(*index);
@@ -212,6 +235,7 @@ impl<'a> Analyzer<'a> {
         }
         self.table
             .resolve(&scope.namespace, &name)
+            .or_else(|| self.table.global(&scope.namespace, &name))
             .map_or(Callee::Other, Callee::Function)
     }
 
@@ -362,7 +386,10 @@ impl<'a> Analyzer<'a> {
         match clause {
             Expr::Lambda {
                 parameters, body, ..
-            } => self.esc(body, &scope.binding(parameters.iter().map(|p| p.name.clone()))),
+            } => self.esc(
+                body,
+                &scope.binding(parameters.iter().map(|p| p.name.clone())),
+            ),
             other => self.esc(other, scope),
         }
     }

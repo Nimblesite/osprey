@@ -89,8 +89,7 @@ fn application_types(
     let mut layer = Some((function, position));
     while let Some((callee, position)) = layer {
         let current = types.as_ref().unwrap_or(&cg.prog);
-        let bindings =
-            position.and_then(|at| current.applications.get(&(at.line, at.column)));
+        let bindings = position.and_then(|at| current.applications.get(&(at.line, at.column)));
         if let Some(bindings) = bindings {
             types = Some(current.specialized(&bindings, application_scope(cg, callee)));
         }

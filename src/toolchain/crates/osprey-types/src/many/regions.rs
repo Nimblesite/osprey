@@ -7,7 +7,9 @@
 //! re-entered around every stretch of that body, so a resumed branch finds the
 //! same handler it was captured under ([MULTI-HANDLE-MANY-LEXICAL]).
 
-use super::build::{self, block, done, handle_name, ident, request_name, BIND, FINALLY, REINSTALL, RUN};
+use super::build::{
+    self, block, done, handle_name, ident, request_name, BIND, FINALLY, REINSTALL, RUN,
+};
 use super::facts::{Esc, Scope};
 use super::rewrite::Rewriter;
 use osprey_ast::{effect_name, Expr, HandlerArm, Stmt};
@@ -75,7 +77,9 @@ impl Rewriter<'_> {
         let base = effect_name::base(effect).to_owned();
         let through = self.analyzer.through(handler, scope);
         let table = self.analyzer.table;
-        let ops = table.effect(&base).map_or(&[][..], |declared| &declared.ops);
+        let ops = table
+            .effect(&base)
+            .map_or(&[][..], |declared| &declared.ops);
         let mut arguments = vec![
             self.step(body, scope),
             self.returning(return_clause.as_deref(), scope),
@@ -120,11 +124,7 @@ impl Rewriter<'_> {
             let continued = build::apply(ident(&resume), vec![ident(&result)]);
             body = self.fresh.bind(body, result, continued);
         }
-        let mut params: Vec<String> = arm
-            .params
-            .iter()
-            .map(|name| self.binder(name))
-            .collect();
+        let mut params: Vec<String> = arm.params.iter().map(|name| self.binder(name)).collect();
         params.push(resume);
         self.fresh.lambda(params, body)
     }
@@ -165,9 +165,11 @@ when a branch ends or is abandoned, where no continuation exists to capture"
         let statement = Stmt::Expr {
             value: self.direct(cleanup, scope),
             doc: None,
-            position: self.fresh.position(),
+            position: Some(self.fresh.position()),
         };
-        let run = self.fresh.lambda(Vec::new(), block(vec![statement], Expr::Integer(0)));
+        let run = self
+            .fresh
+            .lambda(Vec::new(), block(vec![statement], Expr::Integer(0)));
         build::call(FINALLY, vec![core, run])
     }
 

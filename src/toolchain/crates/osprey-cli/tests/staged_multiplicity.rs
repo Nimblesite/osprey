@@ -214,63 +214,6 @@ fn every_multiplicity_violation_is_rejected_naming_its_operation() {
     }
 }
 
-/// The positive `many` shape: one continuation, resumed for every alternative,
-/// each resume an independent branch from the choice point
-/// ([MULTI-HANDLE-MANY], plan 0016 phase 3). A `many` handler compiles and
-/// runs with real multi-shot resumptions — this replaces the old rejection
-/// assertion for plain `many`.
-const MANY_POSITIVE: &str = r#"
-effect Choice { control many pick: fn(int) -> int }
-fn answer(seed) = {
-    let chosen = perform Choice.pick(seed)
-    "a${chosen}"
-}
-fn main() = {
-    let collected = {
-        handle Choice {
-            pick bound => {
-                let low = resume(bound)
-                let high = resume(9)
-                "${low}&${high}"
-            }
-        }
-        answer(4)
-    }
-    print("collected=${collected}")
-}
-"#;
-
-#[test]
-fn a_many_handler_compiles_and_runs_independent_branches() {
-    // [MULTI-FALSIFY] gate 3: a pure search must produce all alternatives.
-    // Compilation proves the re-entrant rejection is lifted; the run proves
-    // the second resume re-enters the SAME captured remainder rather than
-    // consuming a dead stack — the branch answers "a4" and "a9" both.
-    let ir = compile_staged(MANY_POSITIVE);
-    assert!(
-        ir.contains("__osprey_coro_suspend_many"),
-        "a many perform must suspend through the reusable-continuation path"
-    );
-    let dir = std::env::temp_dir().join(format!("osprey_many_positive_{}", std::process::id()));
-    let Ok(()) = std::fs::create_dir_all(&dir) else {
-        panic!("could not create temp dir");
-    };
-    let input = dir.join("many_positive.osp");
-    std::fs::write(&input, MANY_POSITIVE).expect("write program");
-    let ran = std::process::Command::new(env!("CARGO_BIN_EXE_osprey"))
-        .arg(input.as_os_str())
-        .arg("--run")
-        .output()
-        .expect("run osprey");
-    let _ = std::fs::remove_dir_all(&dir);
-    let stdout = String::from_utf8_lossy(&ran.stdout);
-    assert!(ran.status.success(), "many program failed: {stdout}");
-    assert!(
-        stdout.contains("collected=a4&a9"),
-        "both branch answers must be collected, got: {stdout}"
-    );
-}
-
 const ONCE_ON_WASM: &str = r#"
 effect Async { control once await: fn(int) -> int }
 fn pipeline() = satAdd(perform Async.await(1), 1)
@@ -285,39 +228,16 @@ fn main() = {
 }
 "#;
 
-const MANY_ON_WASM: &str = r#"
-effect Choice { control many pick: fn(int) -> int }
-fn search(bound) = perform Choice.pick(bound)
-fn main() = {
-    let best = {
-        handle Choice {
-            pick bound => resume(bound)
-        }
-        search(3)
-    }
-    print("best=${best}")
-}
-"#;
-
 #[test]
-fn wasm32_names_the_continuation_operation_it_cannot_yet_run() {
+fn wasm32_names_the_once_continuation_it_cannot_yet_run() {
     // [MULTI-WASM] The stack-switching proposal specifies ONE-SHOT
-    // continuations, so `once` is the multiplicity `wasm32` acquires when that
-    // proposal lands — with no change to user code. Until then the rejection
-    // must name the operation, replacing the undifferentiated
-    // "resumable algebraic effects (`resume`)" the target checker emits today.
-    // A row that cannot say which effects will start working is a row that
-    // cannot be planned against.
-    //
-    // The current frontend rejects `many` before any target gate. This is a
-    // representation limitation, not a permanent wasm ban: portable reusable
-    // frames or CPS may satisfy the same source contract.
-    for (source, operation) in [(ONCE_ON_WASM, "Async.await"), (MANY_ON_WASM, "Choice.pick")] {
-        let (ok, err) = compile_for_target(source, "wasm32");
-        assert!(!ok, "wasm32 cannot run {operation}'s continuation yet");
-        assert!(
-            err.contains(operation),
-            "the rejection must name {operation}, got: {err}"
-        );
-    }
+    // continuations, so a `once` continuation outside every `many` region is
+    // what wasm32 acquires when that proposal lands. Until then the rejection
+    // names the operation. `many` is never part of that limit.
+    let (ok, err) = compile_for_target(ONCE_ON_WASM, "wasm32");
+    assert!(!ok, "wasm32 cannot run Async.await's continuation yet");
+    assert!(
+        err.contains("Async.await"),
+        "the rejection must name Async.await, got: {err}"
+    );
 }
