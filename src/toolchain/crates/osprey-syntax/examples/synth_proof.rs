@@ -53,6 +53,8 @@ fn callee(e: &Expr) -> Result<String, String> {
                 "SpectralMath::twiddle" => Ok("ops.twiddle".into()),
                 "SpectralMath::productRe" => Ok("ops.productRe".into()),
                 "SpectralMath::productIm" => Ok("ops.productIm".into()),
+                "SpectralMath::unitRe" => Ok("ops.unitRe".into()),
+                "SpectralMath::unitIm" => Ok("ops.unitIm".into()),
                 other => Err(format!("unsupported qualified call {other}")),
             };
         }
@@ -91,6 +93,7 @@ fn term(e: &Expr) -> Result<String, String> {
         } => {
             let name = match op.as_str() {
                 "+" => "plus",
+                "*" => "times",
                 "-" => "minus",
                 _ => return Err(format!("unsupported operator {op}")),
             };
@@ -151,10 +154,7 @@ fn term(e: &Expr) -> Result<String, String> {
     }
 }
 
-fn main() -> Result<(), String> {
-    let file = env::args()
-        .nth(1)
-        .ok_or("expected a production ML source path")?;
+fn reflect(file: &str) -> Result<(), String> {
     let source = fs::read_to_string(file).map_err(|e| e.to_string())?;
     let parsed = parse_program_with_flavor(&source, Flavor::Ml);
     if !parsed.errors.is_empty() {
@@ -171,25 +171,34 @@ fn main() -> Result<(), String> {
     let [Stmt::Module { path, body, .. }] = body.as_slice() else {
         return Err("expected one module".into());
     };
-    if namespace.label() != "synth" || path.to_string() != "Ffts" {
-        return Err("expected Ffts".into());
+    if namespace.label() != "synth" {
+        return Err("expected synth namespace".into());
     }
-    for (name, types, result) in [
-        ("conjugate", &["Bin α"][..], "Bin α"),
-        ("added", &["Bin α", "Bin α"][..], "Bin α"),
-        ("subtracted", &["Bin α", "Bin α"][..], "Bin α"),
-        ("rotated", &["Bin α", "α"][..], "Bin α"),
-        (
-            "quartet",
-            &["Bin α", "Bin α", "Bin α", "Bin α", "α"][..],
-            "List (Bin α)",
-        ),
-        (
-            "combined",
-            &["List (Bin α)", "List (Bin α)", "Nat", "Nat", "α"][..],
-            "Halves α",
-        ),
-    ] {
+    let signatures: &[(&str, &[&str], &str)] = match path.to_string().as_str() {
+        "SpectralFrames" => &[
+            ("scaled", &["Bin α", "α"], "Bin α"),
+            ("turned", &["Bin α", "Bin α"], "Bin α"),
+            ("rotation", &["Bin α", "Bin α"], "Bin α"),
+        ],
+        "Ffts" => &[
+            ("conjugate", &["Bin α"][..], "Bin α"),
+            ("added", &["Bin α", "Bin α"][..], "Bin α"),
+            ("subtracted", &["Bin α", "Bin α"][..], "Bin α"),
+            ("rotated", &["Bin α", "α"][..], "Bin α"),
+            (
+                "quartet",
+                &["Bin α", "Bin α", "Bin α", "Bin α", "α"][..],
+                "List (Bin α)",
+            ),
+            (
+                "combined",
+                &["List (Bin α)", "List (Bin α)", "Nat", "Nat", "α"][..],
+                "Halves α",
+            ),
+        ],
+        other => return Err(format!("unsupported production module {other}")),
+    };
+    for &(name, types, result) in signatures {
         let mut functions = body
             .iter()
             .filter_map(|item| match item.declaration.as_ref() {
@@ -215,6 +224,13 @@ fn main() -> Result<(), String> {
             params.join(" "),
             term(expr)?
         );
+    }
+    Ok(())
+}
+
+fn main() -> Result<(), String> {
+    for file in env::args().skip(1) {
+        reflect(&file)?;
     }
     Ok(())
 }

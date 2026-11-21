@@ -93,7 +93,7 @@ The FFT proofs use a finite polynomial for each frequency bin. `radixTwoSplit` s
 
 #### Proofs of handwritten Osprey bodies [SYNTH-DSP-PROOFS-PRODUCTION]
 
-The synthesis CI gate parses the shipped `src/osprey/packages/synth/src/ffts.ospml` with the Osprey ML frontend. It translates the canonical syntax trees of `Ffts.added`, `subtracted`, `rotated`, `combined`, `quartet` and `conjugate` into definitions for the proof kernel. Unsupported syntax stops the gate. The translator and its mappings for list constructors, records and primitive calls are part of the trust boundary.
+The synthesis CI gate parses the shipped `ffts.ospml` and `spectral_frames.ospml` from the synth package with the Osprey ML frontend. It translates the canonical syntax trees of `Ffts.added`, `subtracted`, `rotated`, `combined`, `quartet` and `conjugate`, plus `SpectralFrames.scaled`, `turned` and `rotation`, into definitions for the proof kernel. Unsupported syntax stops the gate. The translator and its mappings for list constructors, records and primitive calls are part of the trust boundary.
 
 | Production proof | Property checked for every input |
 | --- | --- |
@@ -101,8 +101,10 @@ The synthesis CI gate parses the shipped `src/osprey/packages/synth/src/ffts.osp
 | `ProductionFft.combinedDftBins` | Given the two half-transform bin values, the production combine emits the full-transform bins at roots z and −z. This applies Smith (A.1) to the parsed body under exact scalar algebra and the hypothesis that rotation implements multiplication by z. |
 | `ProductionFft.quartetCorrect` | The fused four-sample base case computes two consecutive radix-two stages, including the twiddle arguments and the order of all four outputs. |
 | `ProductionFft.conjugateComponents` and `conjugateTwice` | Conjugation preserves the real component and subtracts the imaginary component from zero. Double conjugation recovers the bin under the stated scalar involution law. |
+| `ProductionFft.scaledComponents` and `scaledDftBin` | The frame gain multiplies both components by the same gain. Under distributivity and complex-product homogeneity, applying that production gain before or after a DFT gives the same bin. The proof uses the production complex sum and product bodies. [Smith, Linearity](https://www.dsprelated.com/freebooks/mdft/Linearity.html) |
+| `ProductionFft.rotationConjugate` | The production inter-frame rotation equals the normalized complex product of the current bin and the conjugate previous bin, with the real and imaginary components in their specified order. |
 
-These proofs quantify over scalar operations, including the twiddle and complex-product primitives. They check the same sequence of calls even when those operations round. Their numerical accuracy, the recursion in `Ffts.transform`, and correctness of native code generation are separate obligations. CI independently regenerates the body after three production-source mutations and requires the corresponding theorem to fail. [Smith, radix-two butterfly](https://www.dsprelated.com/freebooks/mdft/Radix_2_FFT.html)
+These proofs quantify over scalar operations, including the twiddle and complex-product primitives. They check the same sequence of calls even when those operations round. Their numerical accuracy, the recursion in `Ffts.transform`, and correctness of native code generation are separate obligations. CI independently regenerates the body after four production-source mutations and requires the corresponding theorem to fail. [Smith, radix-two butterfly](https://www.dsprelated.com/freebooks/mdft/Radix_2_FFT.html)
 
 Each checked proof must identify its source result, hypotheses, corresponding library operation and CI entry point. A real-arithmetic derivation establishes the ideal operation; claims about rendered samples also require a bound or equivalence for the implemented arithmetic.
 

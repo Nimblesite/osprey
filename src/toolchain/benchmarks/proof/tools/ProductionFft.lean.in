@@ -15,6 +15,9 @@ structure Halves (α : Type) where
 
 structure Ops (α : Type) where
   plus : α → α → α
+  times : α → α → α
+  unitRe : α → α → α
+  unitIm : α → α → α
   minus : α → α → α
   cos : α → α
   sin : α → α
@@ -107,5 +110,43 @@ theorem combinedDftBins (ops : Ops α) (mul : Bin α → Bin α → Bin α) (neg
     rw [← rotation o, ← subtract]
     rfl
   exact step _ _
+
+/-- Component order and multiplication in the production gain stage. -/
+theorem scaledComponents (ops : Ops α) (x : Bin α) (gain : α) :
+    scaled ops x gain = ⟨ops.times x.re gain, ops.times x.im gain⟩ := rfl
+
+/-- DFT homogeneity for the production complex sum, product and gain.
+    Distribute gain over the sum and move it through each twiddle product. -/
+theorem scaledDftBin (ops : Ops α) (zero gain : α) (root : Bin α)
+    (samples : ι → Bin α) (xs : List ι) (timesZero : ops.times zero gain = zero)
+    (dist : ∀ a b, ops.times (ops.plus a b) gain =
+      ops.plus (ops.times a gain) (ops.times b gain))
+    (realProduct : ∀ a b c d, ops.times (ops.productRe a b c d) gain =
+      ops.productRe a b (ops.times c gain) (ops.times d gain))
+    (imagProduct : ∀ a b c d, ops.times (ops.productIm a b c d) gain =
+      ops.productIm a b (ops.times c gain) (ops.times d gain)) :
+    scaled ops (Synthesis.bin (added ops) (turned ops) ⟨zero, zero⟩ root samples xs) gain =
+      Synthesis.bin (added ops) (turned ops) ⟨zero, zero⟩ root (fun i => scaled ops (samples i) gain) xs := by
+  have distribute (a b : Bin α) :
+      scaled ops (added ops a b) gain = added ops (scaled ops a gain) (scaled ops b gain) := by
+    unfold scaled added
+    rw [dist, dist]
+  have rotateScale (x : Bin α) : scaled ops (turned ops root x) gain = turned ops root (scaled ops x gain) := by
+    unfold scaled turned
+    rw [realProduct, imagProduct]
+  induction xs with
+  | nil => change Bin.mk (ops.times zero gain) (ops.times zero gain) = _
+           rw [timesZero]
+           rfl
+  | cons i rest ih =>
+    change scaled ops (added ops (samples i) (turned ops root _)) gain = added ops _ (turned ops root _)
+    rw [distribute, rotateScale, ih]
+
+/-- The frame's measured rotation is the normalized product of the current bin
+    with the conjugate of its predecessor. -/
+theorem rotationConjugate (ops : Ops α) (current previous : Bin α) :
+    rotation ops current previous =
+      let delta := turned ops current (conjugate ops previous)
+      ⟨ops.unitRe delta.re delta.im, ops.unitIm delta.re delta.im⟩ := rfl
 
 end ProductionFft
