@@ -377,7 +377,7 @@ object RenderPages {
             row.addView(ImageView(row.context), LinearLayout.LayoutParams(
                 if (symbol > 12) dp(row.context, 30.0) else ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT))
-            row.addView(cell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            row.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
         mark(row, entry, theme, symbol)
         row.setOnClickListener { renderer.send(tree.count("event"), Tree.Str(entry.text("key"))) }
