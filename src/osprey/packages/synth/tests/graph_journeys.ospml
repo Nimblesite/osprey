@@ -245,6 +245,7 @@ fitGainJourney (graph, samples) =
     succeeds (synth::FitReports::fit (graph, config, training, evaluation), \report =>
         expect (report.result.evaluations == 1 && report.evaluationLoss > report.result.best.loss, true)
         expect (structuralEquals (report.training, training.source) && structuralEquals (report.evaluation, evaluation.source), true)
+        expect ("${report.algorithm} ${report.algorithmLicence}", "osprey-synth/log-spectrum-es-v1 MIT")
         expect (structuralEquals (report.config, config), true))
 
 feedbackExpected (samples, i) =
