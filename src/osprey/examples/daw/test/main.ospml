@@ -734,10 +734,47 @@ projectGrainJourney () =
         Error _ => expect (true, true)
         Success _ => expect ("an error", "a missing sample")
 
+// [SYNTH-GRAPH-CHANNELS] A mixer saved on a track keeps its channel width and both input gains through the
+// project codec and reopens patched at them; an older project's size-less mixer reopens mono at unity.
+projectMixJourney () =
+    wide = synth::Components::mix (1, 8, 0.25, 0.75)
+    nodes = [synth::Components::sine (3, 440.0), synth::Components::routeChannels (4, 1, [0, 0, 0, 0, 0, 0, 0, 0]), wide, synth::Components::routeChannels (5, 8, [0]), synth::Components::output 2]
+    wires = [synth::Components::route (3, 0, 4, 0), synth::Components::route (4, 0, 1, 0), synth::Components::route (4, 0, 1, 1), synth::Components::route (1, 0, 5, 0), synth::Components::route (5, 0, 2, 0)]
+    valid (synth::Patches::built (nodes, wires), \graph =>
+        succeeds (daw::PatchRecords::saved (timeline [keysTrack ()], 0, graph), \changed =>
+            mixerReopened (changed, 8, 0.25, 0.75)))
+    legacy = daw::PatchNode(identity = 1, component = "mixer", size = 0, seed = 0, asset = "", settings = [])
+    track = keysTrack ()
+    prior = daw::TrackPatches::routing track.instrument
+    older = track(instrument = daw::PatchInstrument(routing = prior(nodes = [legacy], cables = [])))
+    mixerReopened (timeline [older], 0, 1.0, 1.0)
+
+mixerReopened (project, storedWidth, first, second) =
+    succeeds (daw::SongFiles::encode project, \source =>
+        expect (contains source "\"component\":\"mixer\"", true)
+        succeeds (daw::SongFiles::decode source, \opened => trackAt (opened, 0, \track =>
+            routing = daw::TrackPatches::routing track.instrument
+            reads (listGet (filterList (routing.nodes, \n => n.component == "mixer")) 0, \saved =>
+                expect (saved.size, storedWidth)
+                match storedWidth == 0
+                    true => expect (length saved.settings, 0)
+                    false =>
+                        expect (mapList (saved.settings, \s => s.key), ["firstGain", "secondGain"])
+                        expect (mapList (saved.settings, \s => s.value), [first, second])
+                        forEachList (saved.settings, \s => expect (s.follow, daw::Constant)))
+            succeeds (daw::TrackPatches::patch track, \heard =>
+                settled (heard, 1, "firstGain", first)
+                settled (heard, 1, "secondGain", second)
+                valid (synth::Graphs::node (heard, 1), \n =>
+                    expect (length n.inputs, 2)
+                    expect (length n.outputs, 1)
+                    forEachList (listConcat n.inputs n.outputs, \p => expect (p.channels, ui::Pick::either (storedWidth == 0, 1, storedWidth))))))))
+
 test ("the project JSON reopens the edited patch, its note bindings, track mix and timeline together", \() => Runtime::guarded (\() =>
     projectPatchJourney ()
     projectPortsJourney ()
-    projectGrainJourney ()))
+    projectGrainJourney ()
+    projectMixJourney ()))
 
 // [DAW-PROJECT] One project file holds the timeline, each track's mix and each track's patch: a saved project
 // reads back to the same notes, routing and patch; mix edits are checked; the transport plays an excerpt.

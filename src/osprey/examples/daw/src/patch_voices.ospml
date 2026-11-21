@@ -110,7 +110,9 @@ module PatchVoices
         "grainCloud" => grained item
         "gain" => ok (synth::Components::gain (item.identity, 1.0))
         "modulatedGain" => ok (synth::Components::modulatedGain (item.identity, 1, 1.0))
-        "mixer" => ok (synth::Components::mixer item.identity)
+        "mixer" => match item.size == 0
+            true => ok (synth::Components::mixer item.identity)
+            false => ok (synth::Components::mix (item.identity, item.size, 1.0, 1.0))
         "delay" => ok (synth::Components::delay (item.identity, item.size))
         "output" => ok (synth::Components::output item.identity)
         _ => effects item

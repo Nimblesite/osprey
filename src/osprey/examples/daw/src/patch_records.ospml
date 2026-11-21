@@ -35,7 +35,7 @@ module PatchRecords
         synth::Smoother => plain "smoother"
         synth::Amplifier => plain "gain"
         synth::ModulatedGain => plain (ui::Pick::either (stereo n.inputs, "stereoModulatedGain", "modulatedGain"))
-        synth::Mixer => plain "mixer"
+        synth::Mixer => synth::Outcomes::carried (PatchVoices::told (synth::ClipLayouts::channels n), \width => sized ("mixer", width))
         synth::Delay samples => sized ("delay", samples)
         synth::MidiNotes => plain "midiNote"
         synth::Split => sized ("split", length n.outputs)
