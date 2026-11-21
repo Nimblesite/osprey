@@ -89,7 +89,7 @@ module Dials
             true => turnedTo (editor(dial = DialHeld(identity = identity, key = key, startY = startY, startValue = startValue, moved = true), dragging = identity), identity, key, startY, startValue, py)
         false => match moved
             true => editor(dial = DialIdle, dragging = -1)
-            false => editor(dial = DialIdle, dialEntry = key)
+            false => editor(dial = DialIdle, dialEntry = key, detailsShown = true)
 
     pressed (editor, n, top, py) = match listGet (shown n) (floatToInt (DialMath::row (py, top, pitch ())) ?: -1)
         Error _ => Error(message = "")
