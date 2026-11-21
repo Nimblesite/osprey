@@ -17,7 +17,7 @@ pub(super) struct FieldRows<'a> {
     parameters: HashMap<String, Vec<String>>,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(super) struct FieldInstance {
     pub(super) name: String,
     pub(super) arguments: Vec<String>,

@@ -100,7 +100,7 @@ type RecomputedPart = (bool, u64);
 fn recomputed_part(row: &Summary) -> RecomputedPart {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    format!("{:?}", row.parameter_uses).hash(&mut hasher);
+    row.parameter_uses.hash(&mut hasher);
     (row.unresolved_dynamic_call, hasher.finish())
 }
 

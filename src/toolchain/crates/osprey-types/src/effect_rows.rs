@@ -121,7 +121,7 @@ pub(crate) struct Instances {
     pub(crate) field_row_violations: RefCell<field_rows::FieldRowViolations>,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct Requirement {
     effect: String,
     operation: String,
@@ -150,7 +150,7 @@ const MAX_PROVENANCE_NODES: usize = 256;
 /// handlers. Keeping the exclusion set symbolic lets `apply(callback)` carry
 /// the callback's effects to each call site without making ordinary value HM
 /// inference effect-aware.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct ParameterUse {
     /// Zero is the callable being invoked; larger values are successively
     /// enclosing callable scopes captured by a returned closure.
@@ -165,7 +165,7 @@ struct ParameterUse {
 }
 
 /// One layer a callback invocation sits under.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum Scope {
     /// Handlers answering these requirements: how many answering activations
     /// each passes, saturating at [`MASK_LIMIT`].
@@ -180,7 +180,7 @@ enum Scope {
 /// A callable can be stored below a record field or collection element. Keep
 /// that access path symbolic while the aggregate itself is a function
 /// parameter, then resolve it against the concrete argument at the call site.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum Projection {
     Field(String),
     Method(Box<MethodProjection>),
@@ -220,7 +220,7 @@ impl Projection {
 /// A method on a symbolic receiver cannot select its UFCS fallback until the
 /// receiver is substituted. The fallback is a zero-argument closure so its
 /// effects and returned value keep the same lexical scope as the field call.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct MethodProjection {
     field: String,
     arguments: Vec<Option<Value>>,
@@ -231,13 +231,13 @@ struct MethodProjection {
 /// Arguments belong to the caller until a symbolic callee is substituted.
 /// Keep their provenance so a callback returning an argument or captured value
 /// resolves to that value, rather than to the callback itself.
-#[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct CallArguments {
     positional: Vec<Option<Value>>,
     named: Vec<(String, Option<Value>)>,
 }
 
-#[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct Summary {
     required: Requirements,
     runtime_builtins: BTreeSet<String>,
@@ -289,14 +289,14 @@ enum IndexedCallable {
     },
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct KnownCallable {
     parameters: Vec<String>,
     summary: Summary,
     returned: Option<Box<Value>>,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum Callable {
     Known(Box<KnownCallable>),
     Alternatives(Vec<Callable>),
@@ -312,7 +312,7 @@ enum Callable {
 /// lattice instead of an enum: a control-flow join may produce a callable in
 /// one arm and a record/list in another, and discarding either provenance
 /// would make an effect escape possible.
-#[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct Value {
     #[cfg(test)]
     clone_probe: provenance::CloneProbe,
@@ -348,7 +348,7 @@ impl Value {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum EmptyCase {
     Nullary,
     Error,
