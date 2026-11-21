@@ -97,7 +97,7 @@ fn menu_bar(regions: &mut Regions) {
     let titles: Vec<&str> = menus.iter().map(|menu| menu.title.as_str()).collect();
     assert_eq!(titles, ["File", "Edit", "View", "Transport", "Shortcuts"], "the window's menus");
     let sizes: Vec<usize> = menus.iter().map(|menu| menu.commands.len()).collect();
-    assert_eq!(sizes, [3, 2, 9, 10, 4], "the commands of each menu");
+    assert_eq!(sizes, [3, 2, 9, 11, 4], "the commands of each menu");
     for (keymap, routing, play, zoom) in [("Logic Style", "X", "Space", ["Cmd+Right", "Cmd+Left", "Z"]), ("Ableton Style", "Cmd+Alt+M", "Space", ["OemPlus", "OemMinus", "Cmd+D0"]), ("Prism", "Cmd+D3", "Space", ["Cmd+OemPlus", "Cmd+OemMinus", "Cmd+D0"])] {
         let choice = menus_of(regions)[4].commands.iter().find(|command| command.label == keymap).map(|command| command.event);
         let Some(choice) = choice else {
@@ -108,6 +108,7 @@ fn menu_bar(regions: &mut Regions) {
         regions.adopt(&changed).expect("the menus after choosing a keymap");
         let menus = menus_of(regions);
         shortcuts(&menus, keymap);
+        assert_eq!(keys_of(&menus, "Loop"), "L", "{keymap}: Loop");
         assert_eq!(keys_of(&menus, "Bus Routing"), routing, "{keymap}: Bus Routing");
         assert_eq!(keys_of(&menus, "Play Song"), play, "{keymap}: Play Song");
         assert_eq!(keys_of(&menus, "Stop Song"), play, "{keymap}: Stop Song");
@@ -450,7 +451,7 @@ fn drag_piano_note(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
 }
 
 // [PRISM-ROUTING-LAYOUT] A card move survives reopening the project before another action can save it.
-fn tablepad_card(regions: &mut Regions) -> (i64, f64, f64) {
+fn tablepad_card(regions: &mut Regions) -> (i64, (f64, f64), (f64, f64)) {
     choose_menu(regions, "View", "Bus Routing");
     let canvas = regions.get("root").and_then(|root| scene(&root.node)).expect("Bus Routing canvas");
     let row = (80.0, 235.0 + 1.5 * 37.0);
@@ -460,12 +461,13 @@ fn tablepad_card(regions: &mut Regions) -> (i64, f64, f64) {
     let patch_canvas = regions.get("root").and_then(|r| scene(&r.node)).expect("track patch canvas");
     patch.scenes.values().find_map(|scene| {
         let card = scene.access.iter().find(|a| a.label.starts_with("Canvas ") && a.label.ends_with(" 0"))?;
-        Some((patch_canvas, card.x + card.w / 2.0, card.y + card.h / 2.0))
+        let outlet = scene.access.iter().find(|a| a.label == "Canvas output 0:0")?;
+        Some((patch_canvas, (card.x + card.w / 2.0, card.y + card.h / 2.0), (outlet.x + outlet.w / 2.0, outlet.y + outlet.h / 2.0)))
     }).expect("the patch exposes node zero through its native canvas")
 }
 
 fn position_on_release(regions: &mut Regions, song: &std::path::Path) {
-    let (canvas, x, y) = tablepad_card(regions);
+    let (canvas, (x, y), outlet) = tablepad_card(regions);
     choose_menu(regions, "File", "Save");
     let read = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(song).expect("saved project")).expect("valid project");
     let original = read();
@@ -492,9 +494,11 @@ fn position_on_release(regions: &mut Regions, song: &std::path::Path) {
     choose_menu(regions, "File", "Open Song…");
     let loaded = Library::event(0, &Touch::completed("daw-open", Ok(reopened.display().to_string()))).expect("load the saved file");
     regions.adopt(&loaded).expect("fresh project");
-    let (_, restored_x, restored_y) = tablepad_card(regions);
+    let (_, (restored_x, restored_y), restored_outlet) = tablepad_card(regions);
     std::fs::remove_file(reopened).expect("remove the reopened project copy");
     assert!((restored_x - (end.0-off.0)).abs() < 0.001 && (restored_y - (end.1-off.1)).abs() < 0.001);
+    assert!((restored_outlet.0 - outlet.0 - (end.0 - start.0)).abs() < 0.001);
+    assert!((restored_outlet.1 - outlet.1 - (end.1 - start.1)).abs() < 0.001);
 }
 #[test]
 fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
