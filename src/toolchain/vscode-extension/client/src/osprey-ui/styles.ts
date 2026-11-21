@@ -60,6 +60,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .osp-themed { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
 .osp-dialog { position: absolute; inset: 0; z-index: 20; display: flex; justify-content: flex-end; align-items: flex-start; outline: none; }
 .osp-dialog > .osp-framed { max-width: 100%; }
+/* A dialog whose body the application did not frame is a centred card over a backdrop; a notice over a page is an opaque card the person presses to dismiss. */
+.osp-layer > .osp-dialog:not(:has(> .osp-framed)) { position: fixed; z-index: 40; justify-content: center; align-items: center; padding: 16px; background: rgb(0 0 0 / 35%); }
+.osp-layer > .osp-dialog:not(:has(> .osp-framed)) > * { width: min(480px, 100%); padding: 20px; border-radius: 12px; background: var(--osp-raised); box-shadow: 0 12px 32px rgb(0 0 0 / 25%); }
+.osp-layer > .osp-alert { position: fixed; inset: auto 16px 16px auto; z-index: 50; max-width: min(420px, calc(100% - 32px)); background: var(--osp-raised); box-shadow: 0 8px 24px rgb(0 0 0 / 18%); cursor: pointer; }
 .osp-framed[style*="--osp-frame-icon-label:"] .osp-button > span:not(.codicon):not(.osp-symbol) { display: var(--osp-frame-icon-label); }
 .osp-symbol { display: inline-block; flex: 0 0 auto; width: 1em; height: 1em; vertical-align: middle; background: currentColor; mask-image: var(--osp-symbol-image); mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
 .osp-framed[style*="--osp-frame-symbol-size:"] :is(.osp-symbol, .codicon):not(.osp-icon *) { font-size: var(--osp-frame-symbol-size) !important; }

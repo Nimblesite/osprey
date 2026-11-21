@@ -28,12 +28,7 @@ _test_android_goldens:
 	@OSPREY_TARGET=$(ANDROID_GOLDEN_TARGET) zsh src/toolchain/crates/run_test_corpus.sh
 
 ## _android-inbox: The inbox app for Android.
-## _android-bank: Talon Bank for Android.
-.PHONY: _android-inbox _android-bank
+.PHONY: _android-inbox
 _android-inbox: _runtime_android
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/mobile/android/build.sh
-
-_android-bank: _runtime_android
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_ANDROID_SKIP_RUNTIME=1 bash src/osprey/examples/projects/modules/mobile/android/build.sh

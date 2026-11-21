@@ -110,13 +110,15 @@ _graphics-smoke: build _runtime_macos _graphics-shader
 	done
 endif
 
-## _bank-web: Regenerate Talon Bank's embedded React host and Osprey WebAssembly client. Requires Node and
-##            a WASI sysroot; the generated Osprey Bundle is committed so native and CI builds need neither.
+## _bank-web: Build Talon Bank's Osprey Native app for the browser through the web host and embed the page in
+##            its server. Requires Node and a WASI sysroot; the generated Osprey Bundle is committed so native
+##            and CI builds need neither.
 .PHONY: _bank-web
 _bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
-_bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS)
-	@echo "==> Building Talon Bank browser application..."
-	cd src/osprey/examples/projects/modules/web && npm run build
+_bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS) $(EXT_NODE_DEPS)
+	@echo "==> Building Talon Bank for the web host..."
+	OSPREY_BIN="$(CURDIR)/$(BIN)" node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/projects/modules/app --title "Talon Bank" \
+		--out src/toolchain/hosts/web/build/talon --module src/osprey/examples/projects/modules/src/web/bundle.ospml --namespace bank/web
 
 # GPT-2 settings and the one-time weight download behind gpt2 and gpt2-train.
 GPT2_DIR    := src/osprey/examples/llms/gpt2

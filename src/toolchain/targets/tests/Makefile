@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent bank bank-mobile casting flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth tally workbench workbench-proof-assets
+.PHONY: agent bank bank-app casting flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth tally workbench workbench-proof-assets
 
 ## agent: Osprey Agent's turn logic and its real update path, with scripted completions.
 agent: _runtime
@@ -18,10 +18,10 @@ agent: _runtime
 bank: build
 	$(MAKE) _bank_test
 
-## bank-mobile: The Talon Bank mobile app's shared domain.
-bank-mobile: _runtime
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	$(BIN) src/osprey/examples/projects/modules/mobile/app/test --run
+## bank-app: Talon Bank's one Osprey Native app, driven through the host boundary with no host: loading,
+##           tabs, filters, validation and every ledger request.
+bank-app:
+	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/projects/modules/app/test
 
 ## casting: The casting player, driven by accessible label. [UI-MACHINE-TEST]
 casting:

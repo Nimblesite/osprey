@@ -21,6 +21,8 @@ app=${OSPREY_ANDROID_APP:-"$repo/src/osprey/examples/tally"}
 case "$app" in /*) ;; *) app="$repo/$app" ;; esac
 apk="$here/host/build/outputs/apk/debug/host-debug.apk"
 "$adb" -s "$serial" install -r "$apk"
+# A development server on this machine, such as a demo API, is reached on the device through these ports.
+for port in ${OSPREY_ANDROID_REVERSE:-}; do "$adb" -s "$serial" reverse "tcp:$port" "tcp:$port" >/dev/null; done
 activity="$id/org.ospreylang.host.HostActivity"
 "$adb" -s "$serial" shell am force-stop "$id"
 if [[ ${1:-} == --view-check ]]; then

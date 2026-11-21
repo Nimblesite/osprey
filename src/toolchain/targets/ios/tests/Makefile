@@ -9,9 +9,9 @@ include Makefile
 
 .PHONY: bank casting casting-headless casting-update examples inbox tally tally-headless
 
-## bank: Talon Bank against its live API on iOS.
-bank: _ios-bank _runtime
-	OSPREY_IOS_SKIP_BUILD=1 python3 scripts/mobile/bank-mobile-test.py -- bash src/osprey/examples/projects/modules/mobile/ios/test.sh
+## bank: Talon Bank in the iPhone simulator with no person present: a first frame and its first control pressed.
+bank:
+	$(BANK_IOS) bash src/toolchain/hosts/swift/ios.sh ios-sim --view-check
 
 ## casting: Run the casting player's native UI journey with the simulator visible.
 casting:

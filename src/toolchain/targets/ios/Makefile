@@ -9,8 +9,10 @@ include Makefile
 
 .PHONY: bank casting casting-build examples inbox tally
 
-## bank: Build Talon Bank for iOS devices and the simulator.
-bank: _ios-bank
+## bank: Build Talon Bank, the same Osprey Native app as the web and Android, and open it in the iPhone
+##       simulator. Start its API first (`make -C src/toolchain/targets/web bank`).
+bank:
+	$(BANK_IOS) bash src/toolchain/hosts/swift/ios.sh ios-sim --launch
 
 ## casting: Build and open the casting player in an iPhone simulator.
 casting:

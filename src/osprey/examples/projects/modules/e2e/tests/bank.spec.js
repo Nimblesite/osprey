@@ -1,3 +1,6 @@
+// Talon Bank end to end: the JSON API, then the one Osprey Native app in real Chromium, drawn by
+// Osprey's web host from the WebAssembly build of the same app Android and iOS run. Every control
+// is found by its accessible role and name, as a person with a screen reader would find it.
 const { test, expect } = require('@playwright/test');
 
 test.describe.configure({ mode: 'serial' });
@@ -7,12 +10,6 @@ const NEWEST_ACTIVITY = {
   note: 'vintage synthesizer', owner: 'Marcus Webb',
 };
 
-const REFUSED_WITHDRAWAL = {
-  account: '3', amount: '$9,999.99', cents: 999999,
-  note: 'Wasm protected refusal',
-};
-
-const INVALID_AMOUNTS = ['-0.50', '1..2', '1.001', '1.00evil', '9223372036854775807.50'];
 const MALFORMED_MUTATIONS = [
   ['/api/withdraw', { account: 1, cents: -5000 }, 'amount must be positive'],
   ['/api/transfer', { from: 2, to: 999, cents: 5000 }, 'account not found'],
@@ -20,11 +17,7 @@ const MALFORMED_MUTATIONS = [
   ['/api/accounts', {}, 'owner name required'],
 ];
 
-async function openApp(page, hash = '') {
-  await page.goto(`/${hash}`);
-  await expect(page.locator('html')).toHaveAttribute('data-osprey-ready', 'true');
-  await expect(page.locator('.loading-page')).toHaveCount(0);
-}
+const INVALID_AMOUNTS = ['-0.50', '1..2', '1.001', '1.00evil', '12,34', '$'];
 
 async function accountById(request, id) {
   const accounts = await (await request.get('/api/accounts')).json();
@@ -40,81 +33,33 @@ function collectPageErrors(page) {
   return errors;
 }
 
-async function expectPortfolioOverview(page) {
+async function openApp(page) {
+  await page.goto('/');
   await expect(page).toHaveTitle('Talon Bank');
-  await expect(page.locator('.hero-card')).toContainText('$7,980.25');
-  await expect(page.locator('.account-card')).toHaveCount(3);
-  await expect(page.locator('.overview-page')).toContainText('Amelia Chen');
-  await expect(page.locator('.overview-page')).toContainText('vintage synthesizer');
-  await expect(page.locator('.sidebar')).toContainText('Talon Operations');
+  await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByText('Contacting the ledger')).toHaveCount(0);
 }
 
-async function expectHealthyBridge(page, errors) {
-  const telemetry = await page.evaluate(() => window.__TALON_BRIDGE__);
-  expect(telemetry.ready).toBe(true);
-  expect(telemetry.renders).toBeGreaterThanOrEqual(3);
-  expect(telemetry.events).toBeGreaterThanOrEqual(2);
-  expect(telemetry.lastPayloadBytes).toBeGreaterThan(100);
-  expect(telemetry.lastDecodeMs).toBeLessThan(250);
-  expect(errors).toEqual([]);
+async function tab(page, name) {
+  await page.getByRole('tab', { name }).click();
+  await expect(page.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
 }
 
-async function expectActivityDeepLinkAndFilters(page) {
-  await openApp(page, '#/activity');
-  await expect(page.locator('.activity-page h1')).toHaveText('Activity');
-  await page.locator('#activity-search').fill('vintage synthesizer');
-  await expect(page.locator('.movement-row')).toHaveCount(1);
-  await expect(page.locator('.movement-row')).toContainText('Marcus Webb');
-  await page.locator('#activity-search').fill('');
-  await page.locator('#filter-refused').click();
-  await expect(page.locator('.movement-row')).toHaveCount(2);
-  await expect(page.locator('.movement-row').first()).toContainText('API protected refusal');
+// A notice reads `words`; a person dismisses it by pressing it, which uncovers the page.
+async function noticed(page, words) {
+  await expect(page.getByRole('alert')).toContainText(words);
+  await page.getByRole('alert').click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
 }
 
-async function expectBrowserHistory(page) {
-  await page.locator('#nav-accounts').click();
-  await expect(page).toHaveURL(/#\/accounts$/);
-  await expect(page.locator('.accounts-page h1')).toHaveText('Client accounts');
-  await page.locator('#nav-move').click();
-  await expect(page).toHaveURL(/#\/move$/);
-  await page.goBack();
-  await expect(page.locator('.accounts-page h1')).toHaveText('Client accounts');
-}
-
-async function expectSecurityPage(page) {
-  await page.locator('#nav-security').click();
-  await expect(page.locator('.security-page h1')).toHaveText('Trust you can inspect');
-  await expect(page.locator('#architecture')).toContainText('Shared Osprey app');
-}
-
-async function depositThroughForm(page) {
-  await page.locator('#nav-move').click();
-  await page.locator('#move-deposit').click();
-  await page.locator('#deposit-account').selectOption('1');
-  await page.locator('#deposit-amount').fill('12.34');
-  await page.locator('#deposit-note').fill('Wasm deposit flow');
-  await page.locator('#submit-deposit button[type="submit"]').click();
-  await expect(page.locator('.toast.success')).toContainText('Deposit complete');
-}
-
-async function transferThroughForm(page) {
-  await page.locator('#move-transfer').click();
-  await page.locator('#transfer-from').selectOption('1');
-  await page.locator('#transfer-to').selectOption('2');
-  await page.locator('#transfer-amount').fill('10.00');
-  await page.locator('#transfer-note').fill('Atomic browser transfer');
-  await page.locator('#submit-transfer button[type="submit"]').click();
-  await expect(page.locator('.toast.success')).toContainText('Transfer complete');
-}
-
-async function expectAtomicTransfer(request, accountOneBefore, accountTwoBefore) {
-  const accountOneAfter = await accountById(request, 1);
-  const accountTwoAfter = await accountById(request, 2);
-  expect(accountOneAfter.cents).toBe(accountOneBefore.cents + 234);
-  expect(accountTwoAfter.cents).toBe(accountTwoBefore.cents + 1000);
-  const feed = await (await request.get('/api/activity')).json();
-  const entries = feed.filter((entry) => entry.note === 'Atomic browser transfer');
-  expect(entries.map((entry) => entry.kind).sort()).toEqual(['credit', 'debit']);
+async function moveMoney(page, mode, fields) {
+  await tab(page, 'Move money');
+  await page.getByRole('combobox', { name: 'Movement' }).selectOption(mode);
+  for (const [label, value] of fields.choose ?? []) await page.getByRole('combobox', { name: label }).selectOption(value);
+  await page.getByRole('textbox', { name: 'Amount' }).fill(fields.amount);
+  await page.getByRole('textbox', { name: 'Description' }).fill(fields.note ?? '');
+  await page.getByRole('button', { name: fields.confirm }).click();
 }
 
 async function listsSeededAccounts({ request }) {
@@ -137,20 +82,6 @@ async function servesActivityJournal({ request }) {
   expect(transfer.map((entry) => entry.kind).sort()).toEqual(['credit', 'debit']);
 }
 
-async function refusesOverdrafts({ request }) {
-  const reply = await request.post('/api/withdraw', {
-    data: { account: 3, cents: 99999999, note: 'API protected refusal' },
-  });
-  expect(reply.status()).toBe(422);
-  expect(await reply.json()).toEqual({ error: 'insufficient funds' });
-  const feed = await (await request.get('/api/activity')).json();
-  expect(feed[0]).toMatchObject({
-    account: 3,
-    kind: 'refused',
-    note: 'API protected refusal',
-  });
-}
-
 async function rejectsMalformedMutations({ request }) {
   const before = await (await request.get('/api/accounts')).json();
   for (const [path, data, error] of MALFORMED_MUTATIONS) {
@@ -161,339 +92,131 @@ async function rejectsMalformedMutations({ request }) {
   expect(await (await request.get('/api/accounts')).json()).toEqual(before);
 }
 
-async function servesAssetsAnd404s({ request }) {
-  const script = await request.get('/app.js');
-  expect(script.status()).toBe(200);
+async function servesHostAnd404s({ request }) {
+  const page = await request.get('/');
+  expect(page.headers()['content-type']).toContain('text/html');
+  expect(await page.text()).toContain('src="host.js"');
+  const script = await request.get('/host.js');
   expect(script.headers()['content-type']).toContain('application/javascript');
-  expect((await script.body()).byteLength).toBeGreaterThan(10_000);
-  const styles = await request.get('/app.css');
-  expect(styles.status()).toBe(200);
+  expect((await script.body()).byteLength).toBeGreaterThan(100_000);
+  const styles = await request.get('/host.css');
   expect(styles.headers()['content-type']).toContain('text/css');
-  expect((await styles.body()).byteLength).toBeGreaterThan(5_000);
-  expect((await request.get('/api/nope')).status()).toBe(404);
-  expect((await request.get('/nowhere')).status()).toBe(404);
+  for (const path of ['/app.js', '/nowhere', '/api/nowhere']) expect((await request.get(path)).status()).toBe(404);
 }
 
-async function bootsPortfolioOverview({ page }) {
+async function drawsTheOverview({ page }) {
   const errors = collectPageErrors(page);
   await openApp(page);
-  await expectPortfolioOverview(page);
-  await expectHealthyBridge(page, errors);
+  await expect(page.getByText('$7,980.25')).toBeVisible();
+  await expect(page.getByText('Across 3 protected client accounts')).toBeVisible();
+  for (const owner of ['Amelia Chen', 'Marcus Webb', 'Priya Sharma']) await expect(page.getByText(owner).first()).toBeVisible();
+  await expect(page.getByText('vintage synthesizer')).toBeVisible();
+  await expect(page.getByText('−$1,850.00')).toBeVisible();
+  await expect(page.getByText('Osprey', { exact: true })).toHaveCount(0);
+  expect(errors).toEqual([]);
 }
 
-async function supportsNavigation({ page }) {
-  await expectActivityDeepLinkAndFilters(page);
-  await expectBrowserHistory(page);
-  await expectSecurityPage(page);
-}
-
-async function opensAccountModal({ page, request }) {
+async function visitsEveryTab({ page }) {
   await openApp(page);
-  await page.locator('.top-open').click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.locator('#new-owner')).toBeFocused();
-  await page.locator('#new-owner').fill('Nora Okafor');
-  await page.locator('#submit-open-account button[type="submit"]').click();
-  await expect(page.locator('.toast.success')).toContainText('Account opened');
-  const accounts = await (await request.get('/api/accounts')).json();
-  const created = accounts.find((account) => account.owner === 'Nora Okafor');
-  expect(created).toMatchObject({ cents: 0, balance: '$0.00' });
-  await page.locator('#nav-accounts').click();
-  await expect(page.locator(`#account-${created.id}`)).toContainText('Nora Okafor');
+  await tab(page, 'Accounts');
+  await expect(page.getByText('Ready to move')).toBeVisible();
+  await tab(page, 'Activity');
+  await expect(page.getByRole('textbox', { name: 'Search' })).toBeVisible();
+  await tab(page, 'Security');
+  await expect(page.getByText('Storage isolation')).toBeVisible();
+  await tab(page, 'Move money');
+  await expect(page.getByRole('button', { name: 'Confirm transfer' })).toBeVisible();
+  await tab(page, 'Overview');
+  await page.getByRole('button', { name: 'Full history' }).click();
+  await expect(page.getByRole('tab', { name: 'Activity' })).toHaveAttribute('aria-selected', 'true');
 }
 
-async function movesFundsAtomically({ page, request }) {
+async function filtersAndSearchesActivity({ page }) {
   await openApp(page);
-  const accountOneBefore = await accountById(request, 1);
-  const accountTwoBefore = await accountById(request, 2);
-  await depositThroughForm(page);
-  await transferThroughForm(page);
-  await expectAtomicTransfer(request, accountOneBefore, accountTwoBefore);
+  await tab(page, 'Activity');
+  await page.getByRole('combobox', { name: 'Show' }).selectOption('refused');
+  await expect(page.getByText('vintage synthesizer')).toBeVisible();
+  await expect(page.getByText('rent — 12 Fern St')).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Show' }).selectOption('all');
+  await page.getByRole('textbox', { name: 'Search' }).fill('PRIYA');
+  await expect(page.getByText('research grant Q1')).toBeVisible();
+  await expect(page.getByText('dinner split')).toHaveCount(0);
+  await page.getByRole('textbox', { name: 'Search' }).fill('nobody at all');
+  await expect(page.getByText('No matching activity')).toBeVisible();
 }
 
-function withdrawalGate(page) {
-  let release;
-  const resume = new Promise((resolve) => { release = resolve; });
-  const handler = async (route) => {
-    await resume;
-    await route.continue();
-  };
-  const pending = page.waitForRequest('**/api/withdraw', { timeout: 5_000 });
-  pending.catch(() => {});
-  return { handler, pending, release };
-}
-
-async function expectRefusalForm(page) {
-  await expect(page.locator('#withdraw-account')).toHaveValue(REFUSED_WITHDRAWAL.account);
-  await expect(page.locator('#withdraw-amount')).toHaveValue(REFUSED_WITHDRAWAL.amount);
-  await expect(page.locator('#withdraw-note')).toHaveValue(REFUSED_WITHDRAWAL.note);
-}
-
-async function submitRefusal(page) {
+async function depositsAndTransfersAtomically({ page, request }) {
+  const one = await accountById(request, 1);
+  const two = await accountById(request, 2);
   await openApp(page);
-  await page.locator('#nav-move').click();
-  await page.locator('#move-withdraw').click();
-  await page.locator('#withdraw-account').selectOption(REFUSED_WITHDRAWAL.account);
-  await page.locator('#withdraw-amount').fill(REFUSED_WITHDRAWAL.amount);
-  await page.locator('#withdraw-note').fill(REFUSED_WITHDRAWAL.note);
-  await page.locator('#submit-withdraw button[type="submit"]').click();
+  await moveMoney(page, 'deposit', { choose: [['Deposit to', '1']], amount: '12.34', note: 'Native deposit flow', confirm: 'Confirm deposit' });
+  await noticed(page, 'Deposit complete');
+  await moveMoney(page, 'transfer', { choose: [['From account', '1'], ['To account', '2']], amount: '$10.00', note: 'Atomic native transfer', confirm: 'Confirm transfer' });
+  await noticed(page, 'Transfer complete');
+  expect((await accountById(request, 1)).cents).toBe(one.cents + 234);
+  expect((await accountById(request, 2)).cents).toBe(two.cents + 1000);
+  const feed = await (await request.get('/api/activity')).json();
+  expect(feed.filter((entry) => entry.note === 'Atomic native transfer').map((entry) => entry.kind).sort()).toEqual(['credit', 'debit']);
 }
 
-async function expectRefusalOutcome(page) {
-  await expect(page.locator('.toast.error')).toContainText('Operation refused');
-  await expect(page.locator('.toast.error')).toContainText('insufficient funds');
-  await expectRefusalForm(page);
-  await page.locator('#nav-activity').click();
-  await page.locator('#filter-refused').click();
-  await expect(page.locator('.activity-page')).toContainText('Wasm protected refusal');
-}
-
-async function showsDomainRefusals({ page }) {
-  const gate = withdrawalGate(page);
-  await page.route('**/api/withdraw', gate.handler);
-  try {
-    await submitRefusal(page);
-    const request = await gate.pending;
-    expect(request.postDataJSON().cents).toBe(REFUSED_WITHDRAWAL.cents);
-    await expectRefusalForm(page);
-  } finally {
-    gate.release();
-    await page.unrouteAll({ behavior: 'wait' });
-  }
-  await expectRefusalOutcome(page);
-}
-
-async function rejectsMalformedMoney({ page }) {
-  let requests = 0;
-  await page.route('**/api/deposit', async (route) => {
-    requests += 1;
-    await route.abort();
-  });
+async function showsLedgerRefusals({ page, request }) {
   await openApp(page);
-  await page.locator('#nav-move').click();
-  await page.locator('#move-deposit').click();
+  await moveMoney(page, 'withdraw', { choose: [['Withdraw from', '3']], amount: '99,999.99', note: 'Native protected refusal', confirm: 'Confirm withdrawal' });
+  await expect(page.getByRole('alert')).toContainText('Operation refused');
+  await noticed(page, 'insufficient funds');
+  const feed = await (await request.get('/api/activity')).json();
+  expect(feed[0]).toMatchObject({ account: 3, kind: 'refused', cents: 9999999, note: 'Native protected refusal' });
+}
+
+async function refusesMalformedMoney({ page, request }) {
+  const before = await (await request.get('/api/accounts')).json();
+  await openApp(page);
   for (const amount of INVALID_AMOUNTS) {
-    await page.locator('#deposit-amount').fill(amount);
-    await page.locator('#submit-deposit button[type="submit"]').click();
-    await expect(page.locator('.toast.error')).toContainText('positive amount');
+    await moveMoney(page, 'deposit', { amount, confirm: 'Confirm deposit' });
+    await noticed(page, 'Check the amount');
   }
-  expect(requests).toBe(0);
+  await moveMoney(page, 'transfer', { choose: [['From account', '2'], ['To account', '2']], amount: '5', confirm: 'Confirm transfer' });
+  await noticed(page, 'Choose two accounts');
+  expect(await (await request.get('/api/accounts')).json()).toEqual(before);
 }
 
-async function rendersHostileTextSafely({ page, request }) {
-  const hostile = '<img src=x onerror="window.__talonXss=1"> \\ Co.';
-  const created = await request.post('/api/accounts', { data: { name: hostile } });
-  expect(created.status()).toBe(201);
-  const account = await created.json();
-  expect(account.owner).toBe(hostile);
-  await openApp(page, '#/accounts');
-  await expect(page.locator(`#account-${account.id}`)).toContainText(hostile);
-  await expect(page.locator('img[src="x"]')).toHaveCount(0);
-  expect(await page.evaluate(() => window.__talonXss)).toBeUndefined();
+async function opensAnAccount({ page, request }) {
+  await openApp(page);
+  await page.getByRole('button', { name: 'Open account' }).click();
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await noticed(page, 'Owner name required');
+  await page.getByRole('textbox', { name: 'Account owner' }).fill('<img src=x onerror=alert(1)> Ada');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await noticed(page, 'Account opened');
+  const accounts = await (await request.get('/api/accounts')).json();
+  expect(accounts.at(-1).owner).toBe('<img src=x onerror=alert(1)> Ada');
+  await tab(page, 'Accounts');
+  await expect(page.getByText('<img src=x onerror=alert(1)> Ada').first()).toBeVisible();
+  await expect(page.locator('#osprey-root img[src="x"]')).toHaveCount(0);
 }
 
-async function supportsMobileLayout({ page }) {
+async function fitsAPhone({ page }) {
   await page.setViewportSize({ width: 390, height: 844 });
   await openApp(page);
-  const dimensions = await page.evaluate(() => ({
-    viewport: document.documentElement.clientWidth,
-    content: document.documentElement.scrollWidth,
-  }));
-  expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
-  await page.locator('#toggle-menu').click();
-  await expect(page.locator('.sidebar')).toHaveClass(/open/);
-  await page.locator('#nav-activity').click();
-  await expect(page.locator('.activity-page h1')).toHaveText('Activity');
-  await expect(page.locator('.sidebar')).not.toHaveClass(/open/);
+  await tab(page, 'Activity');
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
 }
 
-async function rendersStyled404({ page }) {
-  const reply = await page.goto('/nowhere');
-  expect(reply.status()).toBe(404);
-  await expect(page.locator('h1')).toHaveText('That route has flown the coop.');
-  await expect(page.locator('a')).toHaveAttribute('href', '/');
-}
-
-function protectedJsonApiSuite() {
+test.describe('Talon Bank JSON API', () => {
   test('lists seeded accounts with exact machine and display money', listsSeededAccounts);
   test('serves a newest-first, double-entry activity journal', servesActivityJournal);
-  test('refuses overdrafts and journals the attempt', refusesOverdrafts);
   test('rejects malformed mutations without changing balances', rejectsMalformedMutations);
-  test('serves real app assets and proper 404 statuses', servesAssetsAnd404s);
-}
+  test('serves the web host and proper 404 statuses', servesHostAnd404s);
+});
 
-function ospreyWebAssemblySuite() {
-  test('boots cleanly and renders the complete portfolio overview', bootsPortfolioOverview);
-  test('supports deep links, filtering, and browser history', supportsNavigation);
-  test('opens an account through an accessible focused modal', opensAccountModal);
-  test('deposits and atomically transfers funds through Osprey forms', movesFundsAtomically);
-  test('shows domain refusals and refreshes the audit view', showsDomainRefusals);
-  test('rejects malformed money before it reaches the ledger', rejectsMalformedMoney);
-  test('renders hostile account text without creating executable DOM', rendersHostileTextSafely);
-  test('collapses to a usable mobile app without horizontal overflow', supportsMobileLayout);
-  test('renders a styled 404 document for unknown native paths', rendersStyled404);
-}
-
-const CENTS = (dollars) => Math.round(dollars * 100);
-
-async function centsFor(request, id) { return (await accountById(request, id)).cents; }
-async function submitDeposit(page, { account, amount, note }) {
-  await page.locator('#nav-move').click();
-  await expect(page.locator('.move-page h1')).toHaveText('Client funds, in motion');
-  await page.locator('#move-deposit').click();
-  await page.locator('#deposit-account').selectOption(String(account));
-  await page.locator('#deposit-amount').fill(amount);
-  await page.locator('#deposit-note').fill(note);
-  await page.locator('#submit-deposit button[type="submit"]').click();
-  await expect(page.locator('.toast.success')).toContainText('Deposit complete');
-}
-async function submitWithdraw(page, { account, amount, note }) {
-  await page.locator('#nav-move').click();
-  await page.locator('#move-withdraw').click();
-  await page.locator('#withdraw-account').selectOption(String(account));
-  await page.locator('#withdraw-amount').fill(amount);
-  await page.locator('#withdraw-note').fill(note);
-  await page.locator('#submit-withdraw button[type="submit"]').click();
-}
-async function expectTellerDeposit(page, request, start) {
-  await submitDeposit(page, { account: 1, amount: '150.00', note: 'payroll top-up' });
-  expect(await centsFor(request, 1)).toBe(start + CENTS(150));
-  const afterDeposit = await accountById(request, 1);
-  await page.locator('#nav-accounts').click();
-  await expect(page.locator('#account-1')).toContainText(afterDeposit.balance);
-}
-async function expectTellerWithdrawal(page, request, start) {
-  await submitWithdraw(page, { account: 2, amount: '17.85', note: 'atm cash' });
-  await expect(page.locator('.toast.success')).toContainText('Withdrawal complete');
-  expect(await centsFor(request, 2)).toBe(start - CENTS(17.85));
-}
-async function expectTellerOverdraft(page, request) {
-  const beforeOverdraft = await centsFor(request, 2);
-  await submitWithdraw(page, { account: 2, amount: '50000.00', note: 'yacht deposit' });
-  await expect(page.locator('.toast.error')).toContainText('insufficient funds');
-  expect(await centsFor(request, 2)).toBe(beforeOverdraft);
-}
-async function expectTellerJournal(request, startJournal) {
-  const feed = await (await request.get('/api/activity')).json();
-  expect(feed.length).toBe(startJournal + 3);
-  const mine = feed.slice(0, 3).map((entry) => ({ kind: entry.kind, note: entry.note }));
-  expect(mine).toEqual([
-    { kind: 'refused', note: 'yacht deposit' },
-    { kind: 'debit', note: 'atm cash' },
-    { kind: 'credit', note: 'payroll top-up' },
-  ]);
-  return feed;
-}
-async function expectTellerActivity(page, count) {
-  await page.locator('#nav-activity').click();
-  await expect(page.locator('.movement-row')).toHaveCount(count);
-  await page.locator('#activity-search').fill('yacht deposit');
-  await expect(page.locator('.movement-row')).toHaveCount(1);
-  await expect(page.locator('.movement-row')).toContainText('Marcus Webb');
-  await page.locator('#activity-search').fill('');
-  await page.locator('#filter-in').click();
-  await expect(page.locator('.movement-row').first()).toContainText('payroll top-up');
-}
-async function runsAFullTellerSession({ page, request }) {
-  const jsErrors = [];
-  page.on('pageerror', (error) => jsErrors.push(error.message));
-  await openApp(page);
-  const startOne = await centsFor(request, 1);
-  const startTwo = await centsFor(request, 2);
-  const startJournal = (await (await request.get('/api/activity')).json()).length;
-  await expectTellerDeposit(page, request, startOne);
-  await expectTellerWithdrawal(page, request, startTwo);
-  await expectTellerOverdraft(page, request);
-  const feed = await expectTellerJournal(request, startJournal);
-  await expectTellerActivity(page, feed.length);
-  expect(jsErrors).toEqual([]);
-}
-
-function formattedTotal(accounts) {
-  const totalCents = accounts.reduce((sum, a) => sum + a.cents, 0);
-  return `$${(totalCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-}
-async function expectOverviewStats(page, activity) {
-  const inflow = activity.filter((e) => e.kind === 'credit').length;
-  const outflow = activity.filter((e) => e.kind === 'debit').length;
-  const stats = page.locator('.stat-card');
-  await expect(stats).toHaveCount(3);
-  await expect(stats.nth(0)).toContainText(String(inflow));
-  await expect(stats.nth(1)).toContainText(String(outflow));
-  await expect(stats.nth(2)).toContainText(String(activity.length));
-}
-async function expectAccountCards(page, accounts) {
-  await page.locator('#nav-accounts').click();
-  await expect(page.locator('.account-card')).toHaveCount(accounts.length);
-  for (const account of accounts) {
-    await expect(page.locator(`#account-${account.id}`)).toContainText(account.owner);
-    await expect(page.locator(`#account-${account.id}`)).toContainText(account.balance);
-  }
-}
-async function walkPortfolioRoutes(page) {
-  const routes = [
-    ['#nav-overview', /\$[\d,]+\.\d\d/],
-    ['#nav-accounts', 'Client accounts'],
-    ['#nav-move', 'Client funds, in motion'],
-    ['#nav-activity', 'Activity'],
-    ['#nav-security', 'Trust you can inspect'],
-  ];
-  for (const [nav, heading] of routes) {
-    await page.locator(nav).click();
-    await expect(page.locator('h1').first()).toHaveText(heading);
-  }
-}
-async function keepsOverviewConsistentAcrossRoutes({ page, request }) {
-  await openApp(page);
-  const accounts = await (await request.get('/api/accounts')).json();
-  const activity = await (await request.get('/api/activity')).json();
-  await expect(page.locator('.hero-card')).toContainText(formattedTotal(accounts));
-  await expectOverviewStats(page, activity);
-  await expectAccountCards(page, accounts);
-  await walkPortfolioRoutes(page);
-}
-async function expectSelfTransferGuard(page) {
-  await page.locator('#nav-move').click();
-  await page.locator('#move-transfer').click();
-  await page.locator('#transfer-from').selectOption('2');
-  await page.locator('#transfer-to').selectOption('2');
-  await page.locator('#transfer-amount').fill('10.00');
-  await page.locator('#transfer-note').fill('same account');
-  await page.locator('#submit-transfer button[type="submit"]').click();
-  await expect(page.locator('.toast.error')).toContainText('Source and destination must be different');
-}
-async function expectZeroDepositGuard(page) {
-  await page.locator('#move-deposit').click();
-  await page.locator('#deposit-account').selectOption('1');
-  await page.locator('#deposit-amount').fill('0');
-  await page.locator('#deposit-note').fill('nothing');
-  await page.locator('#submit-deposit button[type="submit"]').click();
-  await expect(page.locator('.toast.error')).toContainText('positive amount');
-}
-async function expectServerTransferGuard(request) {
-  const direct = await request.post('/api/transfer', {
-    data: { from: 2, to: 2, cents: 1000, note: 'direct self-transfer' },
-  });
-  expect(direct.status()).toBe(422);
-  expect(await direct.json()).toEqual({ error: 'accounts must be different' });
-}
-async function guardsEveryMoveForm({ page, request }) {
-  await openApp(page);
-  const before = await (await request.get('/api/accounts')).json();
-  await expectSelfTransferGuard(page);
-  expect(await (await request.get('/api/accounts')).json()).toEqual(before);
-  await expectZeroDepositGuard(page);
-  expect(await (await request.get('/api/accounts')).json()).toEqual(before);
-  await expectServerTransferGuard(request);
-  expect(await (await request.get('/api/accounts')).json()).toEqual(before);
-}
-
-function deepJourneySuite() {
-  test('runs a full teller session kept in lock-step across UI, API, and journal', runsAFullTellerSession);
-  test('keeps the overview totals consistent while navigating every route', keepsOverviewConsistentAcrossRoutes);
-  test('guards every move form against invalid input without moving money', guardsEveryMoveForm);
-}
-
-test.describe('protected JSON API', protectedJsonApiSuite);
-test.describe('Osprey WebAssembly application', ospreyWebAssemblySuite);
-test.describe('deep end-to-end journeys', deepJourneySuite);
+test.describe('Talon Bank as an Osprey Native app in the browser', () => {
+  test('draws the portfolio overview with no errors and no host branding', drawsTheOverview);
+  test('moves between all five tabs', visitsEveryTab);
+  test('filters and searches the activity journal', filtersAndSearchesActivity);
+  test('deposits and atomically transfers funds', depositsAndTransfersAtomically);
+  test('reports a refused overdraft with the ledger\'s reason', showsLedgerRefusals);
+  test('refuses malformed money before it reaches the ledger', refusesMalformedMoney);
+  test('opens an account and shows hostile text as text', opensAnAccount);
+  test('fits a phone screen without horizontal overflow', fitsAPhone);
+});

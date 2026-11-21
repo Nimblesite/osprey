@@ -9,7 +9,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow daw daw-gpui daw-render daw-play storage tally probe
+.PHONY: agent bank casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow daw daw-gpui daw-render daw-play storage tally probe
 
 .PHONY: pocket-orchestra _pocket-orchestra-models
 ## pocket-orchestra: Open Light Orchestra: this Mac plays audio, phones join by QR and WebSocket.
@@ -34,6 +34,11 @@ PROJECT ?= $(CURDIR)
 agent:
 	$(MAKE) -C $(ROOT) build _runtime_macos
 	bash $(ROOT)/src/osprey/examples/agent/run.sh "$(PROJECT)"
+
+## bank: Open Talon Bank, the same Osprey Native app as the web, Android and iPhone, in a SwiftUI window.
+##       Start its API first (`make -C src/toolchain/targets/web bank`).
+bank:
+	OSPREY_SWIFT_APP=$(BANK_APP) bash src/toolchain/hosts/swift/view.sh
 
 ## tally: Open Tally, the counter whose whole interface crosses the bridge as shared memory, in a
 ##        SwiftUI window. Its look is decided in Osprey; the host holds no style. [NATIVE-SHM-VIEW]

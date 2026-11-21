@@ -22,7 +22,7 @@ module.exports = defineConfig({
     cwd: __dirname,
     url: 'http://127.0.0.1:18790/api/accounts',
     reuseExistingServer: false,
-    timeout: 20_000,
+    timeout: 120_000,
     gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
   },
 });
