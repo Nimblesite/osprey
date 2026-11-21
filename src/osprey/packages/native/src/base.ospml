@@ -20,28 +20,21 @@ module Lists
 
     (** The first item that `matches`, or an error when none does. *)
     export find<T> : (List<T>, (T) -> bool) -> Result<T, string>
-    find (items, matches) = sought (items, matches, 0)
+    find (items, matches) = match listGet items (position (items, matches))
+        Error _ => Error(message = "index out of bounds")
+        Success item => Success(value = item)
 
     // Stops at the first match: no list of the matches is built ([DAW-PERF-ROUND]).
-    sought<T> : (List<T>, (T) -> bool, int) -> Result<T, string>
+    sought<T> : (List<T>, (T) -> bool, int) -> int
     sought (items, matches, index) = match listGet items index
-        Error _ => Error(message = "index out of bounds")
+        Error _ => 0 - 1
         Success item => match matches item
-            true => Success(value = item)
+            true => index
             false => sought (items, matches, satAdd index 1)
-
-    locate<T> : (int, List<T>, (T) -> bool, int) -> int
-    locate (found, items, matches, index) = match found >= 0
-        true => found
-        false => match listGet items index
-            Success item => match matches item
-                true => index
-                false => found
-            Error _ => found
 
     (** The index of the first item that matches, or -1. *)
     export position<T> : (List<T>, (T) -> bool) -> int
-    position (items, matches) = range (0, length items) |> fold (0 - 1) (\(found, index) => locate (found, items, matches, index))
+    position (items, matches) = sought (items, matches, 0)
 
     (** The launch argument after `flag`, or `otherwise` when `flag` is absent or last. *)
     export after (arguments, flag, otherwise) =
