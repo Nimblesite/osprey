@@ -99,6 +99,54 @@ requested (request, kind, offset, value) =
 
 hostGraph () = built ([Components::midiNote (1, 60.0, 0.8, 128.0), hostNode (synth::Hosted::component (2, hostDescriptor ())), Components::lfo (3, 2.0), Components::stereoOutput 4], [cable (1, 2), cable (2, 4)])
 
+stereoMarker frame = match frame
+    0 => [0.75, -0.5]
+    255 => [-0.5, 0.75]
+    _ => [0.25, -0.25]
+
+// [SYNTH-HOST-GRAPH] A real host resumes each suspended node separately.
+twoPluginBlock frames =
+    instrument = hostDescriptor ()
+    reverb = instrument(identifier = "reverb", inputChannels = 2, notes = false, controls = mapList (instrument.controls, \p => p(initial = 0.75)))
+    graph = built ([Components::midiNote (1, 72.0, 0.75, 1.0), hostNode (synth::Hosted::component (2, instrument)), hostNode (synth::Hosted::component (3, reverb)), Components::stereoOutput 4], [cable (1, 2), cable (2, 3), cable (3, 4)])
+    dry = hostClip (foldList (toList (range (0, frames)), [], \(samples, frame) => listConcat samples (stereoMarker frame)))
+    match synth::GraphClips::start (graph, frames)
+        Error _ => unexpected ()
+        Success action => match action
+            synth::BlockReady _ _ => unexpected ()
+            synth::BlockWaiting request pending =>
+                expect (pending.pendingNode, 2)
+                expect (request.frames, frames)
+                pointValue (request, 0.25)
+                expect (length request.parameters, 1)
+                reads (listGet request.notes 0, \note => expect (note.pitch == 72 && note.kind == 1 && note.offset == 0, true))
+                match frames > 1
+                    true =>
+                        expect (length request.notes, 2)
+                        reads (listGet request.notes 1, \note => expect (note.kind == 2 && note.offset == 1, true))
+                    false => expect (length request.notes, 1)
+                renderRefused (synth::GraphClips::replied (pending, dry(clipNode = 3)))
+                succeeds (synth::GraphClips::replied (pending, dry), \next => twoPluginEffect (next, dry, frames))
+
+twoPluginEffect (action, dry, frames) = match action
+    synth::BlockReady _ _ => unexpected ()
+    synth::BlockWaiting request pending =>
+        expect (pending.pendingNode, 3)
+        expect (length request.notes, 0)
+        expect (request.frames, frames)
+        pointValue (request, 0.75)
+        expect (length request.parameters, 1)
+        sameSamples (request.samples, dry.clipSamples)
+        wet = dry(clipNode = 3, clipSamples = mapList (dry.clipSamples, \value => value * -0.5))
+        forEachList ([dry, wet(clipChannels = 1), wet(clipSamples = listAppend wet.clipSamples 0.0)], \bad => renderRefused (synth::GraphClips::replied (pending, bad)))
+        match synth::GraphClips::replied (pending, wet)
+            Error _ => unexpected ()
+            Success next => match next
+                synth::BlockWaiting _ _ => unexpected ()
+                synth::BlockReady held clips =>
+                    expect (held.graphPosition, frames)
+                    succeeds (synth::ClipInputs::completed (clips, 4), \output => sameSamples (output.clipSamples, wet.clipSamples))
+
 hostReply () = "4F5356310000000002000000010000000001000000000000" + join (mapList (toList (range (0, 256)), \_ => "0000803E000000BF")) ""
 
 streamedHost graph =
@@ -265,6 +313,7 @@ registerHostedJourneys () =
         graph = reconnected original
         expect (length graph.cables, 3)
         streamedHost graph
+        forEachList ([1, 2, 255, 256, 257], twoPluginBlock)
         match synth::GraphClips::advance (graph, [], 256)
             Error why => expect (synth::Faults::detail why, "hosted clip")
             Success action => match action
