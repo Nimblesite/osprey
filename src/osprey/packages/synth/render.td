@@ -1,5 +1,8 @@
 typeDiagram
-type KernelState { identity: Int phase: Float integratorOne: Float integratorTwo: Float delay: List<Float> }
+# osprey namespace synth
+# osprey import synth::SpectralState synth::BowState synth::ReverbState
+union KernelMemory { KernelIdle {} SpectralRunning { stream: SpectralState } BowRunning { bow: BowState } ReverbRunning { reverb: ReverbState } }
+type KernelState { identity: Int phase: Float integratorOne: Float integratorTwo: Float delay: List<Float> memory: KernelMemory }
 type NodeSample { identity: Int value: Float }
 type SampleFrame { states: List<KernelState> values: List<NodeSample> }
 type Meter { identity: Int peak: Float energy: Float count: Int }

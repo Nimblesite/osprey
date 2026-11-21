@@ -101,14 +101,17 @@ module PhysicalKernels
 
     smoother (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "time", \time => RenderInputs::bound (snapshot, held, "linear", \mode => smoothed (rate, frame, held, input, time, mode)))
 
-    bowSegments (held, capacity) = BowState(neck = DelayLine(samples = Sequences::take (held.delay, capacity)), bridge = DelayLine(samples = Sequences::drop (held.delay, capacity)), loss = LossState(previous = held.integratorOne))
+    bowMemory (held, config) = match held.memory
+        KernelIdle => BowedStrings::initial config
+        BowRunning bow => Success(value = bow)
+        _ => Error(message = IncompatibleLayout(detail = "Bowed string requires its two delay lines."))
 
-    bowedStep (frame, held, capacity, configured) = match configured
+    bowedStep (frame, held, configured) = match configured
         Error why => Error(message = why)
-        Success config => Outcomes::carried (BowedStrings::next (config, bowSegments (held, capacity)), \step => published (frame, held(delay = listConcat step.next.neck.samples step.next.bridge.samples, integratorOne = step.next.loss.previous), step.sample))
+        Success config => Outcomes::carried (bowMemory (held, config), \bow => Outcomes::carried (BowedStrings::next (config, bow), \step => published (frame, held(memory = BowRunning(bow = step.next)), step.sample)))
 
-    (** Bowed-string source: storage holds the neck then bridge segments; integratorOne the loss filter. *)
-    export bowed (rate, snapshot, frame, held, capacity) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "brightness", \brightness => RenderInputs::bound (snapshot, held, "position", \position => RenderInputs::bound (snapshot, held, "pressure", \pressure => RenderInputs::bound (snapshot, held, "velocity", \velocity => bowedStep (frame, held, capacity, BowedStrings::configure (BowConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, position = position, pressure = pressure, velocity = velocity, capacity = capacity)))))))))
+    (** The neck and bridge keep their independent delay lines across samples. *)
+    export bowed (rate, snapshot, frame, held, capacity) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "brightness", \brightness => RenderInputs::bound (snapshot, held, "position", \position => RenderInputs::bound (snapshot, held, "pressure", \pressure => RenderInputs::bound (snapshot, held, "velocity", \velocity => bowedStep (frame, held, BowedStrings::configure (BowConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, position = position, pressure = pressure, velocity = velocity, capacity = capacity)))))))))
 
     struck (frame, held, input, configured) = match configured
         Error why => Error(message = why)

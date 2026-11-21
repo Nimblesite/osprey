@@ -34,15 +34,14 @@ module EffectKernels
     (** Waveshaper: curve, drive, bias, level, ADAA and 2× oversampling switches. *)
     export shaper (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "curve", \selector => RenderInputs::bound (snapshot, held, "drive", \drive => RenderInputs::bound (snapshot, held, "bias", \bias => RenderInputs::bound (snapshot, held, "level", \level => RenderInputs::bound (snapshot, held, "antialias", \antialias => RenderInputs::bound (snapshot, held, "oversample", \oversample => shape (rate, frame, held, input, curve selector, drive, bias, level, antialias, oversample)))))))
 
-    reverbState (held: KernelState, sizes) =
-        parts = Sequences::chunks (held.delay, sizes)
-        ReverbState(lines = mapList (Sequences::take (parts, 4), \samples => DelayLine(samples = samples)), damped = Sequences::drop (held.delay, foldList (sizes, 0, \(total, size) => satAdd total size)), diffusers = mapList (Sequences::drop (parts, 4), \samples => DelayLine(samples = samples)))
+    reverbState (held, config) = match held.memory
+        KernelIdle => Reverbs::initial config
+        ReverbRunning reverb => Success(value = reverb)
+        _ => Error(message = IncompatibleLayout(detail = "Reverb requires its feedback and diffusion lines."))
 
-    reverbHeld (held: KernelState, next) = held(delay = listConcat (Sequences::flattened (mapList (listConcat next.lines next.diffusers, \line => line.samples))) next.damped)
-
-    reverberated (frame, held, config, input) = match Reverbs::capacities config
+    reverberated (frame, held, config, input) = match reverbState (held, config)
         Error why => Error(message = why)
-        Success sizes => Outcomes::carried (Reverbs::next (config, reverbState (held, sizes), input), \step => Success(value = RenderInputs::emitted (frame, reverbHeld (held, step.next), step.sample)))
+        Success reverb => Outcomes::carried (Reverbs::next (config, reverb, input), \step => Success(value = RenderInputs::emitted (frame, held(memory = ReverbRunning(reverb = step.next)), step.sample)))
 
     verb (rate, frame, held, input, size, decay, damping, diffusion, mix, freeze) = Outcomes::carried (Reverbs::configure (ReverbConfig(sampleRate = rate, size = size, decay = decay, damping = damping, diffusion = diffusion, mix = mix, freeze = freeze >= 0.5)), \config => reverberated (frame, held, config, input))
 

@@ -1,38 +1,12 @@
-// [SYNTH-ADVANCED-SPECTRAL-MODULES] Graph adapter: one spectral stream packed into the shared kernel state.
+// [SYNTH-ADVANCED-SPECTRAL-MODULES] Keep the spectral stream in the graph between samples.
 namespace synth
 
 import synth::RenderInputs
 
-(** Storage holds input, side, output, memory and motion buffers; phase, integrators hold the clock and flags. *)
+(** The graph adapter retains each channel’s FFT state across render blocks. *)
 module SpectralKernels
     (** Kernel storage for a stream of `size`: three sample buffers and two complex bin buffers. *)
     export storage size = satAdd (satMul size 5) 4
-
-    flattened values = foldList (values, [], \(all, value) => listAppend (listAppend all value.re) value.im)
-
-    complexes samples = match samples
-        [] => []
-        [re, ...rest] => match rest
-            [] => []
-            [im, ...others] => listPrepend (complexes others) (Complex(re = re, im = im))
-
-    stream (size, held: KernelState, countdown, frames) =
-        bins = satAdd (intDiv size 2) 1
-        after = Sequences::drop (held.delay, satMul size 3)
-        SpectralState(input = Sequences::take (held.delay, size), side = Sequences::take (Sequences::drop (held.delay, size), size), output = Sequences::take (Sequences::drop (held.delay, satMul size 2), size), memory = complexes (Sequences::take (after, satMul bins 2)), motion = complexes (Sequences::drop (after, satMul bins 2)), countdown = countdown, frames = frames, captured = held.integratorTwo == 1.0)
-
-    // Shapes are checked by SpectralStreams.next; only the integer clocks can fail here.
-    unpacked (size, held) = match floatToInt held.phase
-        Error _ => Error(message = NumericalFailure(detail = "Spectral countdown is not a whole number."))
-        Success countdown => match floatToInt held.integratorOne
-            Error _ => Error(message = NumericalFailure(detail = "Spectral frame count is not a whole number."))
-            Success frames => Success(value = stream (size, held, countdown, frames))
-
-    flag value = match value
-        true => 1.0
-        false => 0.0
-
-    packed (held, current) = held(delay = listConcat (listConcat (listConcat current.input current.side) current.output) (listConcat (flattened current.memory) (flattened current.motion)), phase = toFloat current.countdown, integratorOne = toFloat current.frames, integratorTwo = flag current.captured)
 
     // A spectral shift moves whole bins; a fraction is refused, never truncated.
     fractional = Error(message = InvalidConfiguration(detail = "Spectral shift must be a whole number of bins."))
@@ -60,11 +34,14 @@ module SpectralKernels
         6.0 => Success(value = pitched pitch)
         _ => Error(message = InvalidConfiguration(detail = "Transform must be 0 pass, 1 freeze, 2 band, 3 shift, 4 smear, 5 morph or 6 pitch."))
 
-    streamed (frame, held, input, side, configured, size) = match configured
+    streamed (frame, held, input, side, configured) = match configured
         Error why => Error(message = why)
-        Success config => match unpacked (size, held)
-            Error why => Error(message = why)
-            Success current => Outcomes::carried (SpectralStreams::next (config, current, input, side), \step => Success(value = RenderInputs::emitted (frame, packed (held, step.next), step.sample)))
+        Success config =>
+            current = match held.memory
+                KernelIdle => Success(value = SpectralStreams::initial config)
+                SpectralRunning stream => Success(value = stream)
+                _ => Error(message = IncompatibleLayout(detail = "Spectral processor requires its FFT stream."))
+            Outcomes::carried (current, \stream => Outcomes::carried (SpectralStreams::next (config, stream, input, side), \step => Success(value = RenderInputs::emitted (frame, held(memory = SpectralRunning(stream = step.next)), step.sample))))
 
     configured (rate, size, hop, chosen, mix) = Outcomes::carried (chosen, \kind => SpectralStreams::configure (SpectralConfig(sampleRate = rate, size = size, hop = hop, transform = kind, mix = mix)))
 
@@ -74,7 +51,7 @@ module SpectralKernels
         false => RenderInputs::input (plan, frame, identity, 1)
 
     (** Process one main sample (and optional side sample) through the node's spectral stream. *)
-    export process (plan, rate, snapshot, frame, held, size, hop, input) = Outcomes::carried (side (plan, frame, held.identity), \other => RenderInputs::bound (snapshot, held, "transform", \selector => RenderInputs::bound (snapshot, held, "hold", \hold => RenderInputs::bound (snapshot, held, "low", \low => RenderInputs::bound (snapshot, held, "high", \high => RenderInputs::bound (snapshot, held, "shift", \shift => RenderInputs::bound (snapshot, held, "amount", \amount => RenderInputs::bound (snapshot, held, "morphMode", \morphMode => RenderInputs::bound (snapshot, held, "mix", \mix => RenderInputs::bound (snapshot, held, "semitones", \semitones => RenderInputs::bound (snapshot, held, "cents", \cents => RenderInputs::bound (snapshot, held, "keepFormants", \keep => streamed (frame, held, input, other, configured (rate, size, hop, transform (selector, hold, low, high, shift, amount, morphMode, { semitones = semitones, cents = cents, keep = keep }), mix), size)))))))))))))
+    export process (plan, rate, snapshot, frame, held, size, hop, input) = Outcomes::carried (side (plan, frame, held.identity), \other => RenderInputs::bound (snapshot, held, "transform", \selector => RenderInputs::bound (snapshot, held, "hold", \hold => RenderInputs::bound (snapshot, held, "low", \low => RenderInputs::bound (snapshot, held, "high", \high => RenderInputs::bound (snapshot, held, "shift", \shift => RenderInputs::bound (snapshot, held, "amount", \amount => RenderInputs::bound (snapshot, held, "morphMode", \morphMode => RenderInputs::bound (snapshot, held, "mix", \mix => RenderInputs::bound (snapshot, held, "semitones", \semitones => RenderInputs::bound (snapshot, held, "cents", \cents => RenderInputs::bound (snapshot, held, "keepFormants", \keep => streamed (frame, held, input, other, configured (rate, size, hop, transform (selector, hold, low, high, shift, amount, morphMode, { semitones = semitones, cents = cents, keep = keep }), mix))))))))))))))
 
     stages size = match size <= 1
         true => 0
