@@ -246,12 +246,10 @@ refusalCases () = [
     { touch = touchOf (99, 0, "", false), reason = "Unknown event kind 99" },
     { touch = framedAfter (0.0 - 0.5), reason = "Invalid frame elapsed time" },
 ]
-// The `kind` event for control `ordinal` carrying `words`, at clock `now`, `detail` and the pointer at (`x`, `y`).
-touchAt (now, kind, ordinal, words, detail, x, y, down) = ui::Touch(touchNow = now, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = false)
 // A display frame `elapsed` seconds after the last, at clock 5.
-framedAfter elapsed = touchAt (5, Hosting::frame, 0, "", "", elapsed, 0.0, false)
+framedAfter elapsed = Probes::touchAt (5, Hosting::frame, 0, "", "", elapsed, 0.0, false)
 // A host event of `kind` for control `ordinal` carrying `words`, at clock 5.
-touchOf (kind, ordinal, words, down) = touchAt (5, kind, ordinal, words, "", 0.0, 0.0, down)
+touchOf (kind, ordinal, words, down) = Probes::touchAt (5, kind, ordinal, words, "", 0.0, 0.0, down)
 // [UI-EVENTS]: unknown and mismatched events change no store and leave no request behind.
 // A refused event: it names its reason, asks nothing and changes no store.
 refusedJust (refused, reason) =
@@ -714,7 +712,7 @@ taps binding = match binding
 numbered (held, pick) = Lists::position (held.surfaceBound, pick)
 
 // One host event of `kind`, sent through the real shared-frame writer.
-journeyTouch (kind, ordinal, words, detail, x, y, down) = ui::Touch(touchNow = 9, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = false)
+journeyTouch (kind, ordinal, words, detail, x, y, down) = Probes::touchAt (9, kind, ordinal, words, detail, x, y, down)
 
 // One host event of `kind` for control `ordinal` carrying `words` at the origin, with the pointer `down`.
 journeyAt (kind, ordinal, words, down) = journeyTouch (kind, ordinal, words, "", 0.0, 0.0, down)

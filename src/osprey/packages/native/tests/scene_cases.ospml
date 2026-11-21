@@ -145,10 +145,8 @@ sceneCaseASceneBindingDeliversKeysAndPointer () =
     notScene (ui::TextInput(action = Load), ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = false, pointerShift = false))
     notScene (ui::FlagInput(action = Load), ui::Viewed(viewWidth = 4.0, viewHeight = 2.0))
     notScene (ui::ChoiceInput(action = Load), ui::Key(keyName = "a", keyDown = false))
-    notScene (ui::SizeInput(action = Load), ui::Key(keyName = "a", keyDown = true))
-    notScene (ui::PlaceInput(action = Load), ui::Key(keyName = "a", keyDown = true))
-    notScene (ui::StrokeInput(action = Load), ui::Key(keyName = "a", keyDown = true))
-    notScene (ui::LassoInput(action = Load), ui::Key(keyName = "a", keyDown = true))
+    // Every remaining control that takes another value kind refuses the same key value.
+    forEachList ([ui::SizeInput(action = Load), ui::PlaceInput(action = Load), ui::StrokeInput(action = Load), ui::LassoInput(action = Load)], \binding => notScene (binding, ui::Key(keyName = "a", keyDown = true)))
     // A surface that drew no scene at that control number refuses too.
     bare = Surfaces::idle 0
     bareScene = match Surfaces::scene (bare, 0, ui::Key(keyName = "a", keyDown = true))
@@ -322,7 +320,7 @@ sceneCaseARefusedEventLeavesTheSurfaceWhole () =
     expect (Probes::problem refused, "Unknown control 9")
     expect (Probes::asked refused, "")
     expect ((Probes::stored refused).counter.tally, 1)
-    unknown = Probes::sent (moved, ui::Touch(touchNow = 7, touchKind = 42, touchOrdinal = 0, touchWords = "", touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false))
+    unknown = Probes::sent (moved, Probes::touchAt (7, 42, 0, "", "", 0.0, 0.0, false))
     expect (Probes::problem unknown, "Unknown event kind 42")
     expect ((Probes::stored unknown).counter.tally, 1)
     delivered = Probes::tapped (moved, 0)
@@ -367,7 +365,7 @@ sceneCaseASurfaceDeliversCompletionsPhasesAnd () =
     expect (Probes::problem phased, "")
     framed = Probes::framed (phased, 0.5)
     expect (framed.surfaceSession.sessionContext.now, 9)
-    broken = Probes::sent (framed, ui::Touch(touchNow = 10, touchKind = 99, touchOrdinal = 0, touchWords = "", touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false))
+    broken = Probes::sent (framed, Probes::touchAt (10, 99, 0, "", "", 0.0, 0.0, false))
     expect (Probes::problem broken, "Unknown event kind 99")
     expect ((Probes::stored broken).note.memo, "saved")
 
