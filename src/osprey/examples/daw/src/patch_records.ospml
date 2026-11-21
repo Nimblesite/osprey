@@ -35,7 +35,8 @@ module PatchRecords
         synth::Smoother => plain "smoother"
         synth::Amplifier => plain "gain"
         synth::ModulatedGain => plain (ui::Pick::either (stereo n.inputs, "stereoModulatedGain", "modulatedGain"))
-        synth::Mixer => synth::Outcomes::carried (PatchVoices::told (synth::ClipLayouts::channels n), \width => sized ("mixer", width))
+        synth::Mixer => outputWidth ("mixer", n)
+        synth::Panner => outputWidth ("panner", n)
         synth::Delay samples => sized ("delay", samples)
         synth::MidiNotes => plain "midiNote"
         synth::Split => sized ("split", length n.outputs)
@@ -62,6 +63,8 @@ module PatchRecords
     configured (component, size, key, amount) = synth::Outcomes::carried (sized (component, size), \item => Success(value = item(settings = [Setting(key = key, value = toFloat amount, follow = Constant)])))
 
     plain component = sized (component, 0)
+
+    outputWidth (component, n) = synth::Outcomes::carried (PatchVoices::told (synth::ClipLayouts::channels n), \width => sized (component, width))
 
     sized (component, size) = Success(value = PatchNode(identity = 0, component = component, size = size, seed = 0, asset = "", settings = []))
 

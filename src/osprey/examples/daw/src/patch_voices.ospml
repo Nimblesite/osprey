@@ -100,6 +100,7 @@ module PatchVoices
     made item = match item.component
         "split" => channels item
         "join" => channels item
+        "panner" => ok (synth::Components::panner (item.identity, item.size, 0.0))
         "route" => channels item
         "midiOscillator" => midiOscillator item.identity
         "midiNote" => ok (synth::Components::midiNote (item.identity, 60.0, 0.8, 6000.0))
@@ -221,7 +222,7 @@ module PatchVoices
         Error _ => false
         Success port => port.rate == synth::Audio && port.channels == 1 && synth::ClipLayouts::optional (n, port) == false && length (filterList (graph.cables, \c => c.destination == n.identity && c.inlet == index)) == 0
 
-    grounds (graph : synth::Graph, quiet, n) = mapList (filterList (toList (range (0, length n.inputs)), \index => unplugged (graph, n, index)), \index => synth::Components::route (quiet, 0, n.identity, index))
+    grounds (graph, quiet, n) = mapList (filterList (toList (range (0, length n.inputs)), \index => unplugged (graph, n, index)), \index => synth::Components::route (quiet, 0, n.identity, index))
 
     above (top, n) = match n.identity > top
         true => n.identity

@@ -738,7 +738,7 @@ projectGrainJourney () =
 // project codec and reopens patched at them; an older project's size-less mixer reopens mono at unity.
 projectMixJourney () =
     wide = synth::Components::mix (1, 8, 0.25, 0.75)
-    nodes = [synth::Components::sine (3, 440.0), synth::Components::routeChannels (4, 1, [0, 0, 0, 0, 0, 0, 0, 0]), wide, synth::Components::routeChannels (5, 8, [0]), synth::Components::output 2]
+    nodes = [synth::Components::sine (3, 440.0), synth::Components::panner (4, 8, -0.4), wide, synth::Components::routeChannels (5, 8, [0]), synth::Components::output 2]
     wires = [synth::Components::route (3, 0, 4, 0), synth::Components::route (4, 0, 1, 0), synth::Components::route (4, 0, 1, 1), synth::Components::route (1, 0, 5, 0), synth::Components::route (5, 0, 2, 0)]
     valid (synth::Patches::built (nodes, wires), \graph =>
         succeeds (daw::PatchRecords::saved (timeline [keysTrack ()], 0, graph), \changed =>
@@ -763,6 +763,11 @@ mixerReopened (project, storedWidth, first, second) =
                         expect (mapList (saved.settings, \s => s.value), [first, second])
                         forEachList (saved.settings, \s => expect (s.follow, daw::Constant)))
             succeeds (daw::TrackPatches::patch track, \heard =>
+                match storedWidth > 0
+                    true =>
+                        settled (heard, 4, "pan", -0.4)
+                        valid (synth::Graphs::node (heard, 4), \panner => expect (mapList (panner.outputs, \p => p.channels), [storedWidth]))
+                    false => expect (length (filterList (routing.nodes, \n => n.component == "panner")), 0)
                 settled (heard, 1, "firstGain", first)
                 settled (heard, 1, "secondGain", second)
                 valid (synth::Graphs::node (heard, 1), \n =>
