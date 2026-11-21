@@ -131,3 +131,6 @@ class JourneyRegions(regions: Map<String, Tree>) {
         }
     }
 }
+
+/** The record without its member `name`; anything else unchanged. */
+fun Tree.without(name: String): Tree = (this as? Tree.Obj)?.let { Tree.Obj(it.members - name) } ?: this

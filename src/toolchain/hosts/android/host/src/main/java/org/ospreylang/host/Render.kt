@@ -72,7 +72,12 @@ class ToldRenderer(val context: Context, val store: Store) {
     private fun seatView(parent: ViewGroup, view: View, tree: Tree, place: Int, gap: Int,
                          across: Boolean, fromTop: Boolean) {
         val kind = tree.text("kind")
-        if (kind == "framed") return
+        if (kind == "framed") {
+            // A frame seats itself for a stack; over a layer it fills the width, and the height when it grows.
+            if (parent !is LinearLayout) view.layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                if (tree["style"]?.flag("grow") == true) ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT)
+            return
+        }
         if (parent !is LinearLayout) {
             // A layer overlaps its children from the top leading corner, as a ZStack does.
             val loose = FrameLayout.LayoutParams(

@@ -34,10 +34,15 @@ object RenderFramed {
                 scroller.removeAllViews()
                 scroller.addView(body, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             }
-        } else if (box.getChildAt(0) !== body) {
-            box.removeAllViews()
-            box.addView(body, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, seat(style)))
+        } else {
+            if (box.getChildAt(0) !== body) {
+                box.removeAllViews()
+                (body.parent as? ViewGroup)?.removeView(body)
+                box.addView(body)
+            }
+            // A body a stack once held keeps that stack's params; the frame seats it with its own.
+            body.layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, seat(style))
         }
     }
 
