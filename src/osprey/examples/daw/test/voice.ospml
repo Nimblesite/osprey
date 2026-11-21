@@ -524,14 +524,26 @@ dialTarget (d, ordinal) = match listGet d.drivenSurface.surfaceBound ordinal
         ui::SceneInput action => action == synth::Controls
         _ => false
 
-dialPointer (d, x, y, down, shift) = match ui::Lists::find (d.drivenSeen.renderedScenes, \ordinal => dialTarget (d, ordinal))
+dialPointer (d, x, y, down, shift) = match listGet (filterList (d.drivenSeen.renderedScenes, \ordinal => dialTarget (d, ordinal))) 0
     Error _ =>
         expect ("no Patch Controls scene", "a Patch Controls scene")
         d
     Success scene => Drive::sent (d, ui::Touch(touchNow = d.drivenNow, touchKind = ui::Hosting::pointer, touchOrdinal = scene, touchWords = "", touchDetail = "", touchX = x, touchY = y, touchDown = down, touchShift = shift))
 
+// The controls drawn by the Patch Controls scene at this scene index.
+dialAccess (d, index) = match listGet d.drivenSeen.renderedScenes index
+    Error _ => []
+    Success ordinal => match dialTarget (d, ordinal)
+        false => []
+        true => match listGet (ui::Surfaces::seen (d.drivenSurface, d.drivenProgram)).walkSketches index
+            Error _ => []
+            Success drawing => drawing.sketchedAs.sketchAccess
+
 // The Patch Controls dial of the parameter `label`, as the host sees it.
-dialOf (d, label) = listGet (filterList (d.drivenSeen.renderedAccess, \a => endsWith a.accessLabel " ${label}")) 0
+dialOf (d, label) =
+    scenes = toList (range (0, length d.drivenSeen.renderedScenes))
+    accessible = ui::Lists::flatten (mapList (scenes, \index => dialAccess (d, index)))
+    listGet (filterList (accessible, \a => endsWith a.accessLabel " ${label}")) 0
 
 // [DAW-CONTROLS-DIAL] A press on a dial that never moves asks for the value in figures.
 dialTapped (d, label) = match dialOf (d, label)
