@@ -73,15 +73,25 @@ module NoteCache
         true => play
         false => seedDue (dir, play, until, 0)
 
-    (** Give the concurrent makers a bounded head start only while the opening second is missing. *)
-    export opening (playing, dirs, attempts) =
-        tracks = synth::Sequences::mapIndexed (playing.tracks, \(i, track) => seeded (listGet dirs i ?: "", track, 48000))
+    spectral voice = match voice.instrument
+        PatchInstrument routing => ui::Lists::any (routing.nodes, \n => n.component == "spectral" || n.component == "pitchShifter")
+        _ => false
+
+    // A Fourier patch may need several seconds of preparation for simultaneous cold notes.
+    readyOpening : (Playing, List<string>, int, int) -> Playing
+    readyOpening (playing, dirs, horizon, attempts) =
+        tracks = synth::Sequences::mapIndexed (playing.tracks, \(i, track) => seeded (listGet dirs i ?: "", track, horizon))
         ready = playing(tracks = tracks)
-        match attempts == 0 || ui::Lists::all (tracks, \track => openingReady (track, 48000, 0))
+        match attempts == 0 || ui::Lists::all (tracks, \track => openingReady (track, horizon, 0))
             true => ready
             false =>
                 sleep 25
-                opening (ready, dirs, satSub attempts 1)
+                readyOpening (ready, dirs, horizon, satSub attempts 1)
+
+    (** Read prepared opening notes immediately, with a bounded head start for cold makers. *)
+    export opening (song, playing, dirs) = match ui::Lists::any (song.tracks, \voice => spectral voice)
+        true => readyOpening (playing, dirs, 192000, 160)
+        false => readyOpening (playing, dirs, 48000, 96)
 
     performing sound = match sound.driver
         RecordedNote => false

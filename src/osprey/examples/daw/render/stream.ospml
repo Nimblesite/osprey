@@ -100,7 +100,7 @@ module Streams
     initial (arrangement, folder, withMakers) = synth::Outcomes::carried (Playback::start arrangement, \playing =>
         synth::Outcomes::carried (NoteCache::found (arrangement, folder), \dirs =>
             ready = match withMakers
-                true => NoteCache::opening (playing, dirs, 96)
+                true => NoteCache::opening (arrangement, playing, dirs)
                 false => playing
             Success(value = LiveStream(playing = ready, controlVersion = 0, controlScore = arrangement, noteFolders = dirs))))
 
