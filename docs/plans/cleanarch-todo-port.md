@@ -35,6 +35,21 @@ At least four real uses each resume the **same** captured request continuation m
 
 Multiplicity is declared ([MULTI-DECL]) and handler obligations are explicit ([MULTI-HANDLE]). Replay is safe ([MULTI-REPLAY]): effects from an abandoned branch never leak. A port that uses only one-shot handlers fails this invariant.
 
+### [EXAMPLE-CLEANARCH-INV-NO-SKIP] Multi-shot is never skipped
+
+No agent may skip, stub, defer, simulate or downgrade any multi-shot use in [EXAMPLE-CLEANARCH-INV-MULTISHOT], **even if the compiler does not support it yet**. That rules out:
+
+- one-shot handlers standing in for multi-shot ones;
+- loops or re-dispatching that imitate a resume;
+- commented-out code, "TODO" markers or feature flags;
+- removing or weakening the uses.
+
+Skipping is an egregious violation.
+
+- The tests **assert multi-shot behaviour** directly: resume counts, each branch's distinct result, rolled-back writes and unpublished events from abandoned branches.
+- A test that fails because the compiler's multi-shot support is unfinished is **correct**. It stays red ([COMPILER-RED-FAILS], "a red test is correct"). It is never weakened, skipped or deleted to make the suite pass.
+- Each such failure is a compiler gap. It is reported with the exact compiler or runtime message, and fixing the compiler is the follow-up, never changing the example.
+
 ### [EXAMPLE-CLEANARCH-INV-ELEGANT] More elegant than the original
 
 Each Osprey behaviour is shorter than its C# behaviour class plus its registration. The port has no marker interfaces, generic pipeline ceremony, `next` delegate, reflection or registration order to get wrong. Each handler is a small pure function. The README backs this with a line-count table and short side-by-side excerpts.
