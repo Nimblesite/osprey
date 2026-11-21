@@ -172,7 +172,7 @@ module DawSession
 
     // `$0` is the audio worker, then the renderer and its arguments. The makers start first, run beside the
     // stream and end with it, so makers never pile up. Each receipt the device answers replaces `played.json`; the host cancels the whole process group.
-    pipeline = "d=$(mktemp -d \"$3/device.XXXXXX\") || exit 1; mkfifo \"$d/next\" || { rmdir \"$d\"; exit 1; }; trap 'rm -f \"$d/next\"; rmdir \"$d\"' EXIT; ${makers}; \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" \"$3/controls\" < \"$d/next\" | \"$0\" audio-device | while read -r line; do printf '%s\\n' \"$line\" > \"$3/played.json\"; printf 'next\\n'; done > \"$d/next\"; kill $m 2>/dev/null"
+    pipeline = "d=$(mktemp -d \"$3/device.XXXXXX\") || exit 1; mkfifo \"$d/next\" || { rmdir \"$d\"; exit 1; }; trap 'rm -f \"$d/next\" \"$d/render-status\" \"$d/device-status\"; rmdir \"$d\"' EXIT; ${makers}; { \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" \"$3/controls\"; echo $? > \"$d/render-status\"; } < \"$d/next\" | { \"$0\" audio-device; echo $? > \"$d/device-status\"; } | { trap '' PIPE; while read -r line; do printf '%s\\n' \"$line\" > \"$3/played.json\" || exit 1; printf 'next\\n' 2>/dev/null || { exec >/dev/null; echo; }; done; } > \"$d/next\"; relay=$?; kill $m 2>/dev/null || :; wait; [ \"$relay\" -eq 0 ] && read -r rendered < \"$d/render-status\" && [ \"$rendered\" -eq 0 ] && read -r played < \"$d/device-status\" && [ \"$played\" -eq 0 ]"
 
     // One set of makers per song: its ticket names the song, so opening another song or playing ends them.
     warmTicket editor = "daw-notes:${editor.songPath}"
