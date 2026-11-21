@@ -160,7 +160,7 @@ public sealed class ProtocolTests
     {
         foreach (var code in new[] { 27L, 28L, 32L, 99L, 102L, long.MaxValue })
         {
-            Assert.Throws<HostException>(() => RowReaderTests.Read([], [], [new NativeAsk(0, code, 0, 0)], []));
+            RefusedBy([], [new NativeAsk(0, code, 0, 0)]);
         }
     }
 

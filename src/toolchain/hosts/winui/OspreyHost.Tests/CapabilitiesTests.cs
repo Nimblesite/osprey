@@ -272,11 +272,14 @@ public sealed class CapabilitiesTests
     public async Task AProcessSessionExchangesBoundedLinesAndClosesItsWorker()
     {
         var host = Host();
-        var shell = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
+        var windows = OperatingSystem.IsWindows();
+        var executable = windows ? Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe") : "/bin/cat";
         const string echo = "while ($null -ne ($line = [Console]::ReadLine())) { [Console]::WriteLine($line) }";
-        var opened = await host.Answer(Process(11, "open", Text(1, "process"), Text(2, "session-open"),
-            Text(3, "executable"), Text(3, shell), Text(3, "argv"), Text(3, "-NoProfile"),
-            Text(3, "argv"), Text(3, "-NonInteractive"), Text(3, "argv"), Text(3, "-Command"), Text(3, "argv"), Text(3, echo)));
+        AskField[] arguments = windows
+            ? [Text(3, "argv"), Text(3, "-NoProfile"), Text(3, "argv"), Text(3, "-NonInteractive"), Text(3, "argv"), Text(3, "-Command"), Text(3, "argv"), Text(3, echo)]
+            : [];
+        var opened = await host.Answer(Process(11, "open",
+            [Text(1, "process"), Text(2, "session-open"), Text(3, "executable"), Text(3, executable), .. arguments]));
         Assert.True(opened.Ok, opened.Error);
         var key = Docs.Text(Receipt(opened), "session");
         Assert.NotEmpty(key);
@@ -358,7 +361,14 @@ public sealed class CapabilitiesTests
         Assert.Equal((1, 3, 1), (Child.Whole(accented, 2, false), Child.Whole(accented, 3, false), Child.Whole(accented, 2, true)));
         Assert.Equal((0, 4, 3), (Child.Whole(smile, 3, false), Child.Whole(smile, 9, false), Child.Whole(smile[..3], 3, true)));
         Assert.Equal(0, Child.Whole([], 8, false));
-        Assert.EndsWith("cmd.exe", Child.Resolve("cmd", Environment.SystemDirectory), StringComparison.OrdinalIgnoreCase);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.EndsWith("cmd.exe", Child.Resolve("cmd", Environment.SystemDirectory), StringComparison.OrdinalIgnoreCase);
+        }
+        else
+        {
+            Assert.EndsWith("sh", Child.Resolve("sh", Environment.GetEnvironmentVariable("PATH") ?? ""), StringComparison.Ordinal);
+        }
     }
 
     // ---- the model double a self-test answers http with [WINUI-HOST-SELF-TEST] ----
