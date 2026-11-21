@@ -576,12 +576,15 @@ panelDialJourney selected =
     expect (frequency (Drive::holding selected), 440.0)
     expect (Drive::letters (selected, "440.00 Hz"), true)
     valid (synth::Graphs::node (before, 0), \n => forEachList (filterList (n.parameters, \p => p.key == "frequency"), \p =>
-        expect (p.minimum > 0.0 && p.maximum / p.minimum > 100.0, true)
-        // The dial's geometry: a frequency turns on a logarithmic scale and comes back to the same value.
+        expect ([p.minimum, p.maximum], [0.0, 19000.0])
+        // The oscillator includes DC. A strictly positive frequency range turns logarithmically.
         near (synth::DialMath::valueAt (synth::DialMath::turn (440.0, p.minimum, p.maximum), p.minimum, p.maximum), 440.0)
         expect (synth::DialMath::turn (p.minimum, p.minimum, p.maximum), 0.0)
         expect (synth::DialMath::turn (p.maximum, p.minimum, p.maximum), 1.0)
-        expect (synth::DialMath::turn (440.0, p.minimum, p.maximum) > 0.3 && synth::DialMath::turn (440.0, p.minimum, p.maximum) < 0.6, true)
+        near (synth::DialMath::turn (440.0, p.minimum, p.maximum), 440.0 / 19000.0)
+        logTurn = synth::DialMath::turn (440.0, 20.0, 20000.0)
+        expect (logTurn > 0.3 && logTurn < 0.6, true)
+        near (synth::DialMath::valueAt (logTurn, 20.0, 20000.0), 440.0)
         expect (synth::DialMath::dragged (440.0, 0.0, p.minimum, p.maximum, 0.0), 440.0)
         expect (synth::DialMath::dragged (440.0, 1000.0, p.minimum, p.maximum, 0.0), p.maximum)
         expect (synth::DialMath::dragged (440.0, 0.0 - 1000.0, p.minimum, p.maximum, 0.0), p.minimum)
