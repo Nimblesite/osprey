@@ -20,6 +20,26 @@ The [daw specification](../specs/applications/Daw.md) defines the requirements. 
 - [x] Reduce ARC list allocation in the playback path. In `3b69dd0e8`, a live render of the committed 17-track codex project from beat 0 for two beats, including its tail, produced 851,077 stereo frames at 48 kHz. Across three alternating runs per build, median wall time fell from 19.49 s to 18.20 s. All 208 output blocks were byte-identical. This excerpt reached 0.97× real time. The 1.5× live target above and the whole-project offline targets under [DAW-PERF-RENDER] remain open.
 - [ ] Project edits must remain playable when a patch branch is disconnected [DAW-PATCH-HEARD]. The edited codex `sub` track with its mixer-to-gain cable removed refused playback before the first block and reported an unsupported graph. Reproduce in a disposable project, verify silence on the disconnected path and continued audio from the other tracks, then reconnect and verify the bass returns.
 
+## Where the work stands at the 15:30 shutdown, 2026-11-21
+
+Everything below is committed on `feat/consolidated`; nothing is pushed. `make -C src/toolchain/targets/macos daw` builds the renderer and the app from this tree (both checked at `2119e1f09`).
+
+In the code, not yet seen working by the user (rebuild with `make daw` first):
+
+- Play reads notes made ahead and kept on disk (`render/note_cache.ospml`); the makers are limited, low priority and end with their Play (`122da5982`).
+- The start and end markers drag independently (`1ab47ad22`); a held Gain or Pan fader follows the pointer (`a7ad62cae`); the piano roll's keys sound through the track's patch (`5a9f73628`).
+- Resizing the window no longer resizes controls (`209fb9aef`): pages draw at one point per unit. The pages do not yet fill a larger window, and a window smaller than the page cuts it off without scrolling.
+- The song root is title, tempo, sampleRate, buses and tracks; the Connections list is gone from the patch inspector.
+
+Do first next session, in this order:
+
+1. Hear a cold Play of each song with the user. Makers started by the old build may still be running after a restart: `pkill -f "daw .* warm"` ends them. If a cold song still starts rough, make the stream wait for the first second of notes instead of making them itself, and warm after each edit.
+2. [DAW-LAYOUT-FILL]: pages lay out to the window (lanes and roll stretch, inspector pinned right), lists scroll row by row (issue 33), the patch canvas pans and zooms (issue 35).
+3. Track scope and frequency verdict on the Timeline (issue 25).
+4. The daw test suite still cannot be type checked in one piece; the tests were edited by hand and by a pi agent for the deleted root properties and have **not been run**. `test/history.ospml` holds eight `TODO-MODEL` lines whose expected numbers depended on the Space or drive and must be measured again. Journey tests are owed for the marker drags, the fader drag, the roll keys and the note makers.
+5. Song files still carry `drive`, `space`, `intro`, `sustains` and track `reverb` keys (ignored on load); their authors remove them. Screenshot goldens need refreshing after the Mix page and scale changes.
+6. `make ci` failed on duplication (4.1% against 4.0%) at `bc19a47f5`; `timeline_view.ospml` is the largest offender.
+
 ## Issues from the user's hands-on test, 2026-11-21 [DAW-TEST-2026-11-21]
 
 Every issue the user raised while testing Prism by hand, with where it is tracked and where it stands. Nothing here is closed until the user has seen it work in the app.
