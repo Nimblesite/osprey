@@ -331,6 +331,7 @@ test ("every component parameter maps a 0-1 control onto its range and back, log
 test ("every component declares coherent port rates, channels, units and unique names", \() => arithmetic (\() =>
     nodes = listConcat (adapted ()) [Components::mixer 30, Components::output 31, Components::stereo 32, Components::downmix 33, Components::stereoOutput 34, Components::split (35, 6), Components::join (36, 4), Components::routeChannels (37, 2, [1, 0, -1])]
     expect (length nodes, 32)
+    storedProcessors nodes
     forEachList (nodes, declared)
     expect (length (filterList (nodes, \n => length (filterList (n.inputs, \p => p.rate == synth::Control)) > 0)), 2)
     expect (length (filterList (nodes, \n => length (filterList (n.outputs, \p => p.rate == synth::Events)) > 0)), 1)
@@ -399,3 +400,4 @@ test ("FFT bins match the direct three-impulse spectrum and recover every sample
 
 registerMeshJourney ()
 registerStringJourney ()
+registerFitJourney ()

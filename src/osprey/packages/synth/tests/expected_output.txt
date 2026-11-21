@@ -71,5 +71,6 @@ ok 70 - the octave-band analyser reads sines of known level in their bands withi
 ok 71 - FFT bins match the direct three-impulse spectrum and recover every sample at all seven frame sizes
 ok 72 - a corner impulse reaches adjacent membrane pickups before the diagonal and invalid grids are refused
 ok 73 - a string pool prepares and plucks voices, frees released tails, steals explicitly, refuses invalid control and preserves untouched voices
-1..73
-# tests=73 passed=73 failed=0 skipped=0
+ok 74 - offline fitting retains an exact gain match through seeded trials, applies it and refuses invalid jobs
+1..74
+# tests=74 passed=74 failed=0 skipped=0

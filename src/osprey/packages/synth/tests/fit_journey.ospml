@@ -1,0 +1,20 @@
+import synth::Fitting
+
+// [SYNTH-ADVANCED-LEARNED] The starting patch already renders the target, so its exact loss is zero.
+fitConfig seed = synth::FitConfig(parameters = [synth::FitParameter(node = 2, key = "gain", minimum = 0.0, maximum = 1.0)], seed = seed, evaluations = 6, tolerance = 0.0001)
+
+registerFitJourney () = test ("offline fitting retains an exact gain match through seeded trials, applies it and refuses invalid jobs", \() => arithmetic (\() =>
+    graph = sineThrough 0.5
+    config = fitConfig 42
+    target = (blockOf (graph, 64)).samples
+    succeeds (Fitting::fit (graph, config, target), \result =>
+        near (result.best.loss, 0.0, 0.000000000001)
+        expect (result.evaluations, 6)
+        expect (length result.history, 6)
+        forEachList (result.history, \loss => near (loss, 0.0, 0.000000000001))
+        near (listGet result.best.values 0 ?: -1.0, 0.5, 0.000000000001)
+        succeeds (Fitting::fit (graph, config, target), \again => expect (structuralEquals (again, result), true))
+        succeeds (Fitting::apply (sineThrough 0.25, config, result), \fitted =>
+            expect (structuralEquals ((blockOf (fitted, 64)).samples, target), true)))
+    forEachList ([0, 2147483647], \seed => renderRefused (Fitting::start (graph, fitConfig seed, target)))
+    renderRefused (Fitting::fit (graph, config, [0.0, 1.0]))))
