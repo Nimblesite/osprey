@@ -1009,18 +1009,15 @@ rangeJourney ready =
     said (shorter, "", "Play runs bars 2–3.")
     expect (synth::DawSession::rangeEnd shorter.stepStore, 12.0)
     streams (synth::DawSession::play shorter.stepStore, "Playing bars 2–3 of Bridge.", "4.0", "8.0", "live")
-    expect (synth::DawSession::rangeEnd (synth::DawSession::ended (ready, 1)).stepStore, 13.0)
-    expect (synth::DawSession::rangeEnd (synth::DawSession::ended (ready, 0)).stepStore, 13.0)
-    expect (synth::DawSession::rangeEnd (synth::DawSession::ended (ready, 9)).stepStore, 13.0)
+    forEachList ([1, 0, 9], \bar => expect (synth::DawSession::rangeEnd (synth::DawSession::ended (ready, bar)).stepStore, 13.0))
     short = shorter.stepStore
     expect (synth::DawSession::rangeEnd (short(rollBar = 2)), 12.0)
     expect (synth::DawSession::rangeEnd (short(rollBar = 3)), 13.0)
-    succeeds (synth::TimelineView::laneAt (ready, 1092.0, 212.0), \action => endMoved (ready, action, 3))
     // Either marker is taken anywhere down its line, in the ruler or the lanes, and moves alone.
-    succeeds (synth::TimelineView::laneAt (ready, 1092.0, 200.0), \action => endMoved (ready, action, 3))
-    succeeds (synth::TimelineView::laneAt (ready, 1090.0, 400.0), \action => endMoved (ready, action, 3))
-    succeeds (synth::TimelineView::laneAt (ready, 473.0, 200.0), \action => startMoved (action, 1))
-    succeeds (synth::TimelineView::laneAt (ready, 475.0, 400.0), \action => startMoved (action, 1))
+    forEachList ([{ x = 1092.0, y = 212.0 }, { x = 1092.0, y = 200.0 }, { x = 1090.0, y = 400.0 }], \point =>
+        succeeds (synth::TimelineView::laneAt (ready, point.x, point.y), \action => endMoved (ready, action, 3)))
+    forEachList ([{ x = 473.0, y = 200.0 }, { x = 475.0, y = 400.0 }], \point =>
+        succeeds (synth::TimelineView::laneAt (ready, point.x, point.y), \action => startMoved (action, 1)))
     succeeds (synth::TimelineView::laneAt (ready, 600.0, 200.0), \action => playheadSet (ready, action, 1))
     expect (synth::TimelineView::startAt (ready, 198.0), 0)
     expect (synth::TimelineView::startAt (ready, 1092.0), 3)
@@ -1171,9 +1168,8 @@ zoomJourney lined =
     expect (daw::Arrangements::beats closer.song, 16.0)
     // Beats 2 to 10 are in view: both notes lie outside, so the lane draws no trace, and a tap reads the new scale.
     expect (firstTrace closer, 0)
-    succeeds (synth::TimelineView::laneAt (closer, 205.0, 200.0), \action => playheadSet (closer, action, 0))
-    succeeds (synth::TimelineView::laneAt (closer, 645.0, 200.0), \action => playheadSet (closer, action, 1))
-    succeeds (synth::TimelineView::laneAt (closer, 1085.0, 200.0), \action => playheadSet (closer, action, 2))
+    forEachList ([{ x = 205.0, bar = 0 }, { x = 645.0, bar = 1 }, { x = 1085.0, bar = 2 }], \point =>
+        succeeds (synth::TimelineView::laneAt (closer, point.x, 200.0), \action => playheadSet (closer, action, point.bar)))
     succeeds (synth::TimelineView::laneAt (closer, 1085.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 2)))
     // The closest zoom is one beat across the lanes, still about the playhead; the widest is the whole song.
     closest = synth::TimelineView::zoomedBy (closer, 100.0)
@@ -1190,8 +1186,9 @@ zoomJourney lined =
     expect (fitted.laneStart, 0.0)
     expect (fitted.rollBar, 1)
     // The last note starts at beat 12: once the lanes reach it, its trace is drawn, cut at the right edge.
-    expect ((synth::TimelineView::following (closer(rollBar = 3))).laneStart, 8.0)
-    expect (firstTrace (synth::TimelineView::following (closer(rollBar = 3))), 2)
+    withLastNote = synth::TimelineView::following (closer(rollBar = 3))
+    expect (withLastNote.laneStart, 8.0)
+    expect (firstTrace withLastNote, 2)
     expect ((synth::TimelineView::following (closer(rollBar = 0))).laneStart, 0.0)
     expect ((synth::TimelineView::following (closer(rollBar = 1))).laneStart, 4.0)
     expect ((synth::TimelineView::following at).laneStart, 0.0)
