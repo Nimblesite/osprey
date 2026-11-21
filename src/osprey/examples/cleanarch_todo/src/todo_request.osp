@@ -1,0 +1,82 @@
+// Ported from jasontaylordev/CleanArchitecture (MIT), the IRequest records, AuthorizeAttribute.cs and
+// Common/Exceptions/*: plain immutable data, with no DTO copies or mapping ([EXAMPLE-CLEANARCH-BOOK-DATA]).
+
+namespace todo;
+
+/// The properties of CreateTodoListCommand, UpdateTodoListCommand, CreateTodoItemCommand,
+/// UpdateTodoItemCommand, UpdateTodoItemDetailCommand and GetTodoItemsWithPaginationQuery.
+type NewList = { title: string, colour: string }
+type ListEdit = { id: int, title: string, colour: string }
+type NewItem = { listId: int, title: string }
+type ItemEdit = { id: int, title: string, done: bool }
+type ItemDetail = { id: int, listId: int, priority: int, note: string }
+type ItemQuery = { listId: int, pageNumber: int, pageSize: int }
+
+/// Every request the pipeline accepts: one union in place of an IRequest subtype each.
+type Request =
+    CreateList { list: NewList }
+    | UpdateList { edit: ListEdit }
+    | DeleteList { id: int }
+    | GetTodos
+    | CreateItem { item: NewItem }
+    | UpdateItem { edit: ItemEdit }
+    | UpdateItemDetail { detail: ItemDetail }
+    | DeleteItem { id: int }
+    | ItemsWithPagination { query: ItemQuery }
+    | PurgeTodoLists
+
+/// What queries report: a list with its items, an item, a PriorityLevels entry and a ColourDto.
+type ListView = { id: int, title: string, colour: string, items: List<ItemView> }
+type ItemView = { id: int, title: string, done: bool, priority: string, note: string }
+type Lookup = { id: int, name: string }
+type ColourChoice = { code: string, name: string }
+
+/// What a use case answers: one type per IRequest<TResponse> shape.
+type Reply =
+    CreatedId { value: int }
+    | Updated
+    | TodosView { priorities: List<Lookup>, colours: List<ColourChoice>, lists: List<ListView> }
+    | ItemsPageView { rows: List<ItemView>, totalCount: int, hasPrevious: bool, hasNext: bool }
+    | Purged { count: int }
+
+/// The C#'s four exceptions and a store conflict as one typed error ([FAILURE-EXPLICIT]).
+type Fault =
+    ValidationFault { problems: List<string> }
+    | Unauthorized
+    | Forbidden { why: string }
+    | NotFound { kind: string, id: int }
+    | Conflict { why: string }
+
+/// The [Authorize] metadata the C# reads by reflection, as data.
+type AccessRule =
+    MustSignIn
+    | InRole { names: List<string> }
+    | HoldsPolicy { name: string }
+
+/// The request catalogue: Authorize rules and request names as data.
+module TodoRequest {
+    /// Each request's rules: `[Authorize]`, and `[Authorize(Roles = "Administrator", Policy = "CanPurge")]`.
+    export fn accessRules(request) = match request {
+        GetTodos => [MustSignIn]
+        PurgeTodoLists => [
+            MustSignIn,
+            InRole { names: ["Administrator"] },
+            HoldsPolicy { name: "CanPurge" }
+        ]
+        _ => []
+    }
+
+    /// The request name LoggingBehaviour prints: typeof(TRequest).Name.
+    export fn requestName(request) = match request {
+        CreateList _ => "CreateTodoListCommand"
+        UpdateList _ => "UpdateTodoListCommand"
+        DeleteList _ => "DeleteTodoListCommand"
+        GetTodos => "GetTodosQuery"
+        CreateItem _ => "CreateTodoItemCommand"
+        UpdateItem _ => "UpdateTodoItemCommand"
+        UpdateItemDetail _ => "UpdateTodoItemDetailCommand"
+        DeleteItem _ => "DeleteTodoItemCommand"
+        ItemsWithPagination _ => "GetTodoItemsWithPaginationQuery"
+        PurgeTodoLists => "PurgeTodoListsCommand"
+    }
+}
