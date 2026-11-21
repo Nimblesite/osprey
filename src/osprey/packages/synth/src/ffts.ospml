@@ -23,17 +23,35 @@ module Ffts
                 rest = combined (moreEvens, moreOdds, satAdd index 1, size, sign)
                 ComplexHalves(lower = listPrepend rest.lower (added (e, t)), upper = listPrepend rest.upper (subtracted (e, t)))
 
-    pair (values, first, stride, sign) = match listGet values first
-        Error _ => Error(message = InvalidConfiguration(detail = "FFT input frame is incomplete."))
-        Success e => match listGet values (satAdd first stride)
-            Error _ => Error(message = InvalidConfiguration(detail = "FFT input frame is incomplete."))
-            Success o =>
-                t = rotated (o, SpectralMath::twiddle (sign, 0.0, 2.0))
-                Success(value = [added (e, t), subtracted (e, t)])
+    // Fuse the first two radix-2 stages before allocating a result list.
+    quartet (a, b, c, d, sign) =
+        zero = SpectralMath::twiddle (sign, 0.0, 2.0)
+        even = rotated (c, zero)
+        odd = rotated (d, zero)
+        lower = added (a, even)
+        upper = subtracted (a, even)
+        sum = rotated (added (b, odd), zero)
+        difference = rotated (subtracted (b, odd), SpectralMath::twiddle (sign, 1.0, 4.0))
+        [added (lower, sum), added (upper, difference), subtracted (lower, sum), subtracted (upper, difference)]
+
+    incomplete () = Error(message = InvalidConfiguration(detail = "FFT input frame is incomplete."))
+
+    four (values, first, stride, sign) =
+        second = satAdd first stride
+        third = satAdd second stride
+        match listGet values first
+            Error _ => incomplete ()
+            Success a => match listGet values second
+                Error _ => incomplete ()
+                Success b => match listGet values third
+                    Error _ => incomplete ()
+                    Success c => match listGet values (satAdd third stride)
+                        Error _ => incomplete ()
+                        Success d => Success(value = quartet (a, b, c, d, sign))
 
     // The recursive halves borrow alternating bins of the same input frame.
-    transform (values, first, stride, size, sign) = match size == 2
-        true => pair (values, first, stride, sign)
+    transform (values, first, stride, size, sign) = match size == 4
+        true => four (values, first, stride, sign)
         false =>
             half = intDiv size 2
             step = satAdd stride stride
