@@ -22,4 +22,15 @@ registerFitJourney () = test ("offline fitting retains an exact gain match throu
         succeeds (Fitting::apply (sineThrough 0.25, config, result), \fitted =>
             expect (structuralEquals ((blockOf (fitted, 64)).samples, target), true)))
     forEachList ([0, 2147483647], \seed => renderRefused (Fitting::start (graph, fitConfig seed, target)))
-    renderRefused (Fitting::fit (graph, config, [0.0, 1.0]))))
+    renderRefused (Fitting::fit (graph, config, [0.0, 1.0]))
+    silent = sineThrough 0.0
+    searchConfig = config(evaluations = 16)
+    succeeds (Fitting::start (silent, searchConfig, target), \initial =>
+        renderRefused (Fitting::advance (silent, searchConfig, [0.0, 1.0], initial))
+        succeeds (Fitting::advance (silent, searchConfig, target, initial), \first =>
+            expect (first.evaluations, 2)
+            expect (first.best.loss < initial.best.loss, true)
+            expect (first.step, initial.step))
+        succeeds (Fitting::fit (silent, searchConfig, target), \result =>
+            expect (result.best.loss < initial.best.loss, true)
+            expect (length result.history, result.evaluations)))))
