@@ -26,6 +26,8 @@ fn binder(name: &str) -> Result<String, String> {
             | "curve"
             | "integral"
             | "abs"
+            | "basePhase"
+            | "pulse"
             | "delay"
     ) {
         return Err(format!("binding shadows a reflected operation: {name}"));
@@ -58,6 +60,25 @@ fn pattern(p: &Pattern) -> Result<String, String> {
             [Pattern::Binding(head)] => Ok(format!("{} :: {}", binder(head)?, binder(tail)?)),
             _ => Err("unsupported list head".into()),
         },
+        Pattern::Constructor {
+            name,
+            fields,
+            sub_patterns,
+        } if fields.is_empty()
+            && matches!(
+                name.as_str(),
+                "PlainPhase" | "WindowedPhase" | "DistortedPhase" | "WavePulsePhase"
+            ) =>
+        {
+            let args = sub_patterns
+                .iter()
+                .map(|p| match p {
+                    Pattern::Binding(n) => binder(n),
+                    _ => Err("expected phase field binder".into()),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(format!("PhaseShape.{name} {}", args.join(" ")))
+        }
         Pattern::Constructor {
             name,
             fields,
@@ -106,6 +127,8 @@ fn callee(e: &Expr) -> Result<String, String> {
                 }
             }
             return match path.to_string().as_str() {
+                "PhaseMath::window" => Ok("ops.window".into()),
+                "PhaseMath::windowedPhase" => Ok("ops.windowedPhase".into()),
                 "DelayLines::push" => Ok("ops.push".into()),
                 "DelayLines::tap" => Ok("ops.tap".into()),
                 "SpectralMath::twiddle" => Ok("ops.twiddle".into()),
@@ -129,6 +152,7 @@ fn callee(e: &Expr) -> Result<String, String> {
         }
         "satAdd" | "toFloat" | "sin" | "cos" => Ok(format!("ops.{name}")),
         "curve" | "integral" => Ok(format!("Waveshapers.{} ops", ident(name)?)),
+        "basePhase" | "pulse" => Ok(format!("PhaseOperators.{} ops", ident(name)?)),
         "abs" => Ok("ops.abs".into()),
         "listPrepend" => Ok("(fun tail head => List.cons head tail)".into()),
         _ => Err(format!("unsupported callee {name}")),
@@ -176,6 +200,7 @@ fn term(e: &Expr) -> Result<String, String> {
     match e {
         Expr::Identifier(n) => ident(n),
         Expr::Integer(n) if *n >= 0 => Ok(n.to_string()),
+        Expr::Float(n) if n.to_bits() == std::f64::consts::TAU.to_bits() => Ok("ops.tau".into()),
         Expr::Float(n) if n.to_bits() == 0.5_f64.to_bits() => Ok("ops.half".into()),
         Expr::Float(n) if n.to_bits() == 0.00001_f64.to_bits() => Ok("ops.epsilon".into()),
         Expr::Float(n)
@@ -273,6 +298,11 @@ fn reflect(file: &str) -> Result<(), String> {
         return Err("expected synth namespace".into());
     }
     let signatures: &[(&str, &[&str], &str)] = match path.to_string().as_str() {
+        "PhaseOperators" => &[
+            ("basePhase", &["α", "α"], "α"),
+            ("pulse", &["α", "Pulse α"], "α"),
+            ("shaped", &["PhaseShape α", "α"], "α"),
+        ],
         "Interpolation" => &[("linear", &["α", "α", "α"], "α")],
         "Waveshapers" => &[
             ("curve", &["Curve", "α"], "α"),

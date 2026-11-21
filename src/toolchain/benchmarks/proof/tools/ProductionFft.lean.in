@@ -37,11 +37,25 @@ structure Shaper where
   antialias : Bool
   curve : Curve
 
+structure Pulse (α : Type) where
+  index : α
+  ratio : α
+  offset : α
+
+inductive PhaseShape (α : Type) where
+  | PlainPhase
+  | WindowedPhase (index ratio : α)
+  | DistortedPhase (d : α)
+  | WavePulsePhase (d : α) (first second : Pulse α)
+
 structure Ops (α : Type) where
   History : Type
   Fault : Type
   push : History → α → History
   tap : History → α → Except Fault α
+  tau : α
+  window : α → α
+  windowedPhase : α → α → α → α
   half : α
   epsilon : α
   abs : α → α
@@ -366,5 +380,37 @@ theorem interpolationConstant (ops : Ops α) (a t : α)
   cases ops.equal t (ops.literal 0) <;> cases ops.equal t (ops.literal 1) <;> first
     | rfl
     | exact Synthesis.interpolatorConstant _ _ _ _ a t selfSub zeroTimes plusZero
+
+/-- Smart (7)–(9). With both indices zero, the production oscillator takes
+    exactly the phase-distortion path at every position, including the breakpoint. -/
+theorem wavePulseZeroIndices (ops : Ops α) (phase d r₁ r₂ p₁ p₂ : α)
+    (timesZero : ∀ x, ops.times x (ops.literal 0) = ops.literal 0)
+    (zeroTimes : ∀ x, ops.times (ops.literal 0) x = ops.literal 0)
+    (plusZero : ∀ x, ops.plus x (ops.literal 0) = x) :
+    PhaseOperators.shaped ops (.WavePulsePhase d ⟨ops.literal 0, r₁, p₁⟩ ⟨ops.literal 0, r₂, p₂⟩) phase =
+    PhaseOperators.shaped ops (.DistortedPhase d) phase := by
+  unfold PhaseOperators.shaped PhaseOperators.pulse
+  dsimp only
+  cases ops.less phase d <;> dsimp only <;> rw [timesZero, zeroTimes, plusZero]
+
+/-- Smart (8). A pulse uses the index, ratio and offset of its own controls. -/
+theorem phasePulse (ops : Ops α) (t : α) (p : Pulse α) :
+    PhaseOperators.pulse ops t p = ops.times (ops.times (ops.window t) p.index)
+      (ops.sin (ops.times ops.tau (ops.plus (ops.times p.ratio t) p.offset))) := rfl
+
+/-- Smart (7) and (9). Each segment contributes its own pulse on a local ramp. -/
+theorem wavePulseSegments (ops : Ops α) (phase d : α) (first second : Pulse α) :
+    PhaseOperators.shaped ops (.WavePulsePhase d first second) phase =
+      match ops.less phase d with
+      | true => ops.plus (ops.divide phase (ops.times (ops.literal 2) d))
+                         (PhaseOperators.pulse ops (ops.divide phase d) first)
+      | false =>
+        let remaining := ops.minus (ops.literal 1) d
+        let elapsed := ops.minus phase d
+        ops.plus (ops.plus ops.half (ops.divide elapsed (ops.times (ops.literal 2) remaining)))
+                 (PhaseOperators.pulse ops (ops.divide elapsed remaining) second) := by
+  unfold PhaseOperators.shaped PhaseOperators.basePhase
+  dsimp only
+  cases ops.less phase d <;> rfl
 
 end ProductionFft
