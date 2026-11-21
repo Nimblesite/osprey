@@ -183,3 +183,19 @@ pub(super) fn qualify(scope: &[String], name: &str) -> String {
         format!("{}::{name}", scope.join("::"))
     }
 }
+
+/// Call resolution exactly as the effect proof performs it, for a pass that
+/// must agree with that proof about which declaration a name reaches.
+pub(crate) struct Callables<'a>(Index<'a>);
+
+impl<'a> Callables<'a> {
+    pub(crate) fn collect(program: &'a Program) -> Self {
+        Self(Index::collect(program))
+    }
+
+    /// The qualified name of the function `name` reaches from `scope`.
+    pub(crate) fn resolve(&self, scope: &[String], name: &str) -> Option<&str> {
+        let id = self.0.resolve(scope, name)?;
+        self.0.functions.get(id).map(|f| f.qualified.as_str())
+    }
+}

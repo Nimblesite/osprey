@@ -77,6 +77,7 @@ mod generics_variance_shape_tests;
 mod generics_variance_tests;
 mod handler_scope;
 mod info;
+mod many;
 mod init_order;
 mod methods;
 mod multiplicity;
