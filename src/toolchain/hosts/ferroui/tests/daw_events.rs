@@ -233,14 +233,16 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     regions.adopt(&point(canvas, (665.0, 251.0), false).0).expect("select glow");
     let mut expected = read();
     assert_eq!(expected["tracks"][0]["bus"], "pads");
-    for (point_at, title, field) in [
-        ((1238.0, 356.0), "Shared reverb", "DECAY"),
-        ((900.0, 466.0), "Group bus", "Detector   kick     ·     4.00× compression"),
-    ] {
-        let (shown, _) = point(canvas, point_at, true);
-        assert!(shows_label(&shown, title) && shows_label(&shown, field), "select {title} reveals {field}");
-        point(canvas, point_at, false);
-        assert_eq!(read(), expected, "inspecting the parallel path preserves every project field");
+    for at in [(900.0, 466.0), (1238.0, 356.0)] {
+        let (shown, _) = point(canvas, at, true);
+        for label in ["Group bus", "Detector   kick     ·     4.00× compression", "Output     Master   ›", "Stereo out"] {
+            assert!(shows_label(&shown, label), "glow's group route shows {label}");
+        }
+        for label in ["Space", "Shared reverb", "DECAY"] {
+            assert!(!shows_label(&shown, label), "the project has no global {label}");
+        }
+        point(canvas, at, false);
+        assert_eq!(read(), expected, "inspecting the group and empty canvas preserves every project field");
     }
     choose_control(regions, "button", "Add send…", "");
     choose_control(regions, "button", "Cancel", "");
@@ -268,7 +270,7 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     expected["tracks"][5]["sends"] = serde_json::json!([
         {"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabled":true}
     ]);
-    assert_eq!(read(), expected, "keysL keeps its dry group, Space send, notes and patch cables");
+    assert_eq!(read(), expected, "keysL keeps its dry group, notes and patch cables");
     choose_menu(regions, "Edit", "Undo");
     let mut dry = expected.clone();
     dry["tracks"][5]["sends"] = serde_json::json!([]);
@@ -490,7 +492,13 @@ fn position_on_release(regions: &mut Regions, song: &std::path::Path) {
     let mut expected = original;
     let positions = expected["tracks"][1]["positions"].as_array_mut().expect("positions");
     positions.retain(|p| p["layoutNode"] != 0);
-    positions.push(serde_json::json!({"layoutNode":0, "layoutX":end.0-off.0, "layoutY":end.1-off.1}));
+    let moved = saved["tracks"][1]["positions"].as_array().expect("saved positions")
+        .iter().find(|at| at["layoutNode"] == 0).expect("released node");
+    for (axis, target) in [("layoutX", end.0 - off.0), ("layoutY", end.1 - off.1)] {
+        let actual = moved[axis].as_f64().expect("numeric canvas coordinate");
+        assert!(actual.to_bits().abs_diff(target.to_bits()) <= 1, "{axis}: {actual} versus {target}");
+    }
+    positions.push(serde_json::json!({"layoutNode":0, "layoutX":moved["layoutX"], "layoutY":moved["layoutY"]}));
     let normalized = |mut project: serde_json::Value| {
         project["tracks"][1]["positions"].as_array_mut().expect("positions").sort_by_key(|p| p["layoutNode"].as_i64());
         project
