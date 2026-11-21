@@ -1043,7 +1043,7 @@ bounceJourney ready =
     expect (synth::Header::songAction (ready, 0), synth::ShowPage(page = synth::TimelinePage))
     expect (synth::Header::songAction (ready, 1), synth::ShowPage(page = synth::PatchPage))
     expect (synth::Header::songAction (ready, 2), synth::ShowPage(page = synth::MixPage))
-    said (synth::DawSession::bounce (ready(renderer = "")), "", "Open a song and launch with the daw renderer to play it.")
+    said (synth::DawSession::bounce (ready(renderer = "")), "", "Prism was launched without its song renderer, so it cannot play or render this song.")
     first = synth::DawSession::bounce ready
     said (first, "daw-song:bounce:${songFolder}", "Rendering all of Bridge.")
     ranWith (first, "${transportRoot}/bin/daw", ["${songFolder}/project.json", songFolder])
@@ -1164,7 +1164,10 @@ transportJourney () =
     editor = synth::EditorState::initial ()
     ready = editor(song = song (), songPath = "${transportRoot}/song.json", renderer = "${transportRoot}/bin/daw", workerPath = "${transportRoot}/bin/worker", rollBar = 1)
     expect (ready.playBeat, -1.0)
-    said (synth::DawSession::play (ready(renderer = "")), "", "Open a song and launch with the daw renderer to play it.")
+    // [DAW-TRANSPORT-REFUSAL] Each refusal names its own cause and keeps the project.
+    said (synth::DawSession::play (ready(renderer = "")), "", "Prism was launched without its song renderer, so it cannot play or render this song.")
+    said (synth::DawSession::play (ready(songPath = "")), "", "Open a song to play it.")
+    expect ((synth::DawSession::play (ready(renderer = ""))).stepStore.song.title, "Bridge")
     said (synth::DawSession::play (ready(workerPath = "")), "", "Launch Prism with its audio worker to play the song.")
     idle = synth::DawSession::framed (ready, 1.0)
     expect (idle.stepStore.playBeat, -1.0)

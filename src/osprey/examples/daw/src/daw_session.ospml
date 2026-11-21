@@ -105,7 +105,14 @@ module DawSession
                     Error why => Runtime::step (editor(message = why))
                     Success text => prepared (editor, text, live editor, receipt (live editor), streamed)
 
-    refused editor = Runtime::step (editor(message = ui::Pick::either (editor.songTicket != "", "The song is already playing; Stop first.", "Open a song and launch with the daw renderer to play it.")))
+    // [DAW-TRANSPORT-REFUSAL] Each refusal names its own cause: already playing, no song open, or no renderer.
+    reason editor = match editor.songTicket != ""
+        true => "The song is already playing; Stop first."
+        false => match editor.songPath == ""
+            true => "Open a song to play it."
+            false => "Prism was launched without its song renderer, so it cannot play or render this song."
+
+    refused editor = Runtime::step (editor(message = reason editor))
 
     (** Render the whole song, as the project stands now, to `<song>/song/song.wav` beside the renderer; an
         unchanged project keeps the audio it already rendered. *)
