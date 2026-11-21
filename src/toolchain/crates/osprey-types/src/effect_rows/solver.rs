@@ -113,13 +113,12 @@ struct Recomputed {
     joined: bool,
 }
 
-/// One function's returns so far, whether they have cycled, the joined
-/// returns since, and whether those cycled too.
+/// One function's returns for the current phase. Once a cycle advances the
+/// phase, the earlier provenance can no longer affect convergence.
 #[derive(Default)]
 struct Returns {
     seen: BTreeSet<Value>,
     joined: bool,
-    joined_seen: BTreeSet<Value>,
     terminal: bool,
 }
 
@@ -158,14 +157,17 @@ impl ReturnHistory {
     fn settle(&mut self, id: usize, before: Option<&Value>, computed: Value) -> Value {
         let recursive = self.recursive.contains(&id);
         let returns = self.returns.entry(id).or_default();
-        let revisited = returns.seen.contains(&computed);
-        returns.joined |= before != Some(&computed) && revisited;
-        returns.joined |= recursive && before.is_some();
         if !returns.joined {
-            if !revisited {
-                let _ = returns.seen.insert(computed.clone());
+            let revisited = returns.seen.contains(&computed);
+            returns.joined =
+                before.is_some() && recursive || before != Some(&computed) && revisited;
+            if !returns.joined {
+                if !revisited {
+                    let _ = returns.seen.insert(computed.clone());
+                }
+                return computed;
             }
-            return computed;
+            returns.seen.clear();
         }
         returns.join(before, computed)
     }
@@ -177,10 +179,11 @@ impl Returns {
         joined.union(computed);
         if !self.terminal {
             let widened = joined.clone().widened().widened();
-            self.terminal = before != Some(&widened) && !self.joined_seen.insert(widened.clone());
+            self.terminal = before != Some(&widened) && !self.seen.insert(widened.clone());
             if !self.terminal {
                 return widened;
             }
+            self.seen.clear();
         }
         super::provenance::terminal_value(joined)
     }

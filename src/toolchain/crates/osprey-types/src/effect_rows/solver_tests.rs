@@ -102,6 +102,13 @@ fn non_last_revisits_keep_joining_later_provenance() {
     let mut expected = first;
     expected.union(third);
     assert_eq!(before, Some(expected.clone()));
+    assert_eq!(
+        history
+            .returns
+            .get(&FUNCTION)
+            .map(|returns| returns.seen.len()),
+        Some(1)
+    );
     let joined = history.settle(FUNCTION, before.as_ref(), second.clone());
     expected.union(second);
     assert_eq!(joined, expected);
