@@ -21,6 +21,15 @@
 // Failure payloads are threaded through Result<T, E> per [ERR-PAYLOAD].
 
 (** A user-declared fallible function: its Error message must reach the arm. *)
+// Shared constants: negative values and the 64-bit minimum spelled as checked
+// subtractions, so every case reads the same number it asserts. Functions, not
+// file-scope values, because their bodies run at call sites inside handled
+// regions rather than as effect-carrying file-scope initializers.
+negOne () = (0 - 1)
+negFive () = (0 - 5)
+negSeven () = (0 - 7)
+intMin () = ((0 - 9223372036854775807) - 1)
+
 failWith : string -> Result int string
 failWith reason = Error(message = reason)
 (** Prints `label` and `value` joined by `=` on one line. *)
@@ -32,21 +41,18 @@ printQuoted (label, value) = print "${label}=\"${value}\"\n"
 (** Prints `label FAILED: message`. *)
 printFailed (label, message) = print "${label} FAILED: ${message}\n"
 
-(** Prints `outcome`'s `Success` value quoted when `quoted`, bare otherwise,
-    or FAILED with its message. *)
-printOutcomeLike (label, outcome, quoted) =
+(** Prints the `Success` value of `outcome` through `printer`, or FAILED with
+    its message. *)
+printSuccessAs (printer, label, outcome) =
     match outcome
-        Success value =>
-            match quoted
-                true => printQuoted (label, value)
-                false => printValue (label, value)
+        Success value => printer (label, value)
         Error message => printFailed (label, message)
 
 (** Prints the `Success` value of `outcome` bare, or FAILED with its message. *)
-printOutcome (label, outcome) = printOutcomeLike (label, outcome, false)
+printOutcome (label, outcome) = printSuccessAs (printValue, label, outcome)
 
 (** Prints the `Success` value of `outcome` quoted, or FAILED with its message. *)
-printOutcomeQuoted (label, outcome) = printOutcomeLike (label, outcome, true)
+printOutcomeQuoted (label, outcome) = printSuccessAs (printQuoted, label, outcome)
 
 (** Prints that `outcome` succeeding was unexpected. *)
 printUnexpected label = print "${label} unexpected\n"
@@ -63,6 +69,25 @@ printRejected (label, outcome) =
         Success _value => printUnexpected label
         Error _message => print "${label} rejected\n"
 
+(** Renders `label` and `outcome` with `whenOk` when `ok` holds and with
+    `whenRejected` otherwise: the ok/reject dispatch every reading row shares. *)
+printByOk (ok, whenOk, whenRejected, label, outcome) =
+    match ok
+        true => whenOk (label, outcome)
+        false => whenRejected (label, outcome)
+
+(** A labelled take/drop clamp row for "hi". *)
+clampRow (label, at, front) = { label = label, at = at, front = front }
+
+(** A labelled substring boundary row for "hi". *)
+boundaryRow (label, from, to, ok) = { label = label, from = from, to = to, ok = ok }
+
+(** A labelled junk input row for parseFloat rejection. *)
+junkRow (label, junk) = { label = label, junk = junk }
+
+(** A labelled cursor probe row for "héllo". *)
+probeRow (label, probe, i, ok) = { label = label, probe = probe, i = i, ok = ok }
+
 (** Prints one labelled clamping cut of "hi": `take` keeps the front bytes,
     `drop` skips them. *)
 printClamp c =
@@ -73,10 +98,7 @@ printClamp c =
 (** Prints one labelled `substring ("hi", c.from, c.to)` boundary: the quoted
     success when `c.ok` holds, its rejection otherwise. *)
 printBoundary c =
-    edge = substring ("hi", c.from, c.to)
-    match c.ok
-        true => printOutcomeQuoted (c.label, edge)
-        false => printRejected (c.label, edge)
+    printByOk (c.ok, printOutcomeQuoted, printRejected, c.label, (substring ("hi", c.from, c.to)))
 
 (** The cursor reading `row` names: its probe builtin applied to "héllo" at
     `i` (the width probe takes the code point alone). *)
@@ -89,10 +111,7 @@ cursorReading row =
 (** Prints one labelled cursor reading: the value when `ok` holds, the
     rejection message otherwise. *)
 printCursorReading row =
-    reading = cursorReading row
-    match row.ok
-        true => printOutcome (row.label, reading)
-        false => printRejection (row.label, reading)
+    printByOk (row.ok, printOutcome, printRejection, row.label, (cursorReading row))
 
 (** True when every condition listed in `wanted` holds. *)
 allHold wanted =
@@ -114,7 +133,7 @@ singleByte (s, byte) =
     structuralEquals [length s == 1, (byteAt s 0 ?: 0) == byte] [true, true]
 
 (** `indexOf(s, needle)` succeeds with byte index `wanted` ([BUILTIN-STRING-INDEXOF]). *)
-indexOfIs (s, needle, wanted) = (indexOf s needle ?: (0 - 1)) == wanted
+indexOfIs (s, needle, wanted) = (indexOf s needle ?: (negOne())) == wanted
 
 (** `outcome` succeeds with exactly `wanted` ([BUILTIN-STRING-SUBSTRING],
     [BUILTIN-STRING-REPLACE], [BUILTIN-STRING-REPEAT], [BUILTIN-STRING-PADSTART],
@@ -145,7 +164,7 @@ foldsTo (s, upper, lower) = allHold [toUpperCase s == upper, toLowerCase s == lo
 bytesAreFrom (s, first, wanted) =
     match wanted
         [] => true
-        [head, ...tail] => (byteAt s first ?: (0 - 1)) == head && bytesAreFrom (s, (first + 1), tail)
+        [head, ...tail] => (byteAt s first ?: (negOne())) == head && bytesAreFrom (s, (first + 1), tail)
 
 (** The bytes of `s` from byte 0 onwards are exactly `wanted`. *)
 bytesAre (s, wanted) = bytesAreFrom (s, 0, wanted)
@@ -166,10 +185,9 @@ printValue ("ends-long", ("hi" |> endsWith("hello")))
 
 // ---- take / drop clamping ----
 
-negFive = (0 - 5)
 forEachList (
-    [ { label = "take-neg", at = negFive, front = true }, { label = "take-big", at = 99, front = true },
-      { label = "drop-neg", at = negFive, front = false }, { label = "drop-big", at = 99, front = false } ],
+    [ clampRow ("take-neg", (negFive()), true), clampRow ("take-big", 99, true),
+      clampRow ("drop-neg", (negFive()), false), clampRow ("drop-big", 99, false) ],
     printClamp)
 
 // ---- trim on all-whitespace ----
@@ -178,11 +196,11 @@ printQuoted ("trim-empty", ("" |> trim))
 
 // ---- substring boundaries ----
 forEachList (
-    [ { label = "sub-empty", from = 0, to = 0, ok = true },
-      { label = "sub-full", from = 0, to = 2, ok = true },
-      { label = "sub-neg", from = (0 - 1), to = 2, ok = false },
-      { label = "sub-over", from = 0, to = 99, ok = false },
-      { label = "sub-inverted", from = 2, to = 0, ok = false } ],
+    [ boundaryRow ("sub-empty", 0, 0, true),
+      boundaryRow ("sub-full", 0, 2, true),
+      boundaryRow ("sub-neg", (negOne()), 2, false),
+      boundaryRow ("sub-over", 0, 99, false),
+      boundaryRow ("sub-inverted", 2, 0, false) ],
     printBoundary)
 
 // ---- indexOf empty needle and not-found ----
@@ -196,7 +214,7 @@ printOutcomeQuoted ("rep-shrink", (replace "hello" "l" ""))
 
 // ---- repeat n=0 and n<0 ----
 printOutcomeQuoted ("rep0", (repeat "ab" 0))
-printRejected ("rep-neg", (repeat "ab" ((0 - 1) )))
+printRejected ("rep-neg", (repeat "ab" (negOne())))
 
 // ---- padStart / padEnd empty fill rejected ----
 printRejected ("padS-empty", (padStart "hi" 5 ""))
@@ -208,8 +226,8 @@ printOutcomeQuoted ("padS-multi", (padStart "42" 5 "ab"))
 
 // ---- parseFloat rejects junk ----
 forEachList (
-    [ { label = "pf-empty", junk = "" }, { label = "pf-trailing", junk = "3.14x" }, { label = "pf-space", junk = " 3.14" },
-      { label = "pf-nan", junk = "nan" }, { label = "pf-hex", junk = "0x1p2" }, { label = "pf-infinite", junk = "1e9999" } ],
+    [ junkRow ("pf-empty", ""), junkRow ("pf-trailing", "3.14x"), junkRow ("pf-space", " 3.14"),
+      junkRow ("pf-nan", "nan"), junkRow ("pf-hex", "0x1p2"), junkRow ("pf-infinite", "1e9999") ],
     \j => printRejected (j.label, parseFloat j.junk))
 
 // ---- parseInt overflow ----
@@ -221,12 +239,12 @@ printRejected ("pi-leading-space", (parseInt " 42"))
 // "héllo": é is U+00E9 (bytes 0xC3 0xA9), so byteLength is 6, not 5.
 printValue ("byteLen", (byteLength "héllo"))
 forEachList (
-    [ { label = "byteAt1", probe = "byteAt", i = 1, ok = true },
-      { label = "byteAt-oob", probe = "byteAt", i = 99, ok = false },
-      { label = "cpAt1", probe = "codePointAt", i = 1, ok = true },
-      { label = "cpAt-mid", probe = "codePointAt", i = 2, ok = false },
-      { label = "cpWidth", probe = "codePointWidth", i = 128512, ok = true },
-      { label = "cpWidth-surrogate", probe = "codePointWidth", i = 55296, ok = false } ],
+    [ probeRow ("byteAt1", "byteAt", 1, true),
+      probeRow ("byteAt-oob", "byteAt", 99, false),
+      probeRow ("cpAt1", "codePointAt", 1, true),
+      probeRow ("cpAt-mid", "codePointAt", 2, false),
+      probeRow ("cpWidth", "codePointWidth", 128512, true),
+      probeRow ("cpWidth-surrogate", "codePointWidth", 55296, false) ],
     printCursorReading)
 printOutcome ("fromCp", (fromCodePoint 128512))
 printRejection ("fromCp-bad", (fromCodePoint 2000000))
@@ -247,7 +265,6 @@ print "=== Edge Cases Complete ===\n"
 
 (** Re-evaluate successful boundaries, rejected inputs, cursor values, and payloads. *)
 stringEdgeCase () =
-    negativeOne = (0 - 1) 
     roundTrip = match fromCodePoint 233
         Success value => (codePointAt value 0 ?: 0) == 233
         Error _message => false
@@ -260,9 +277,9 @@ stringEdgeCase () =
         endsWith "abc" "",
         !(startsWith "hi" "hello"),
         !(endsWith "hi" "hello"),
-        take "hi" ((0 - 5) ) == "",
+        take "hi" (negFive()) == "",
         take "hi" 99 == "hi",
-        drop "hi" ((0 - 5) ) == "hi",
+        drop "hi" (negFive()) == "hi",
         drop "hi" 99 == "",
         trim "   " == "",
         trim "" == "",
@@ -275,13 +292,13 @@ stringEdgeCase () =
         succeedsWith (padStart "42" 5 "ab", "aba42")
     ]
     checkAll "rejected string inputs" [
-        rejectedNonEmpty (substring "hi" negativeOne 2),
+        rejectedNonEmpty (substring "hi" (negOne()) 2),
         rejectedNonEmpty (substring "hi" 0 99),
         rejectedNonEmpty (substring "hi" 2 0),
         rejectedNonEmpty (indexOf "hello" "xyz"),
         rejectedNonEmpty (parseInt " 42"),
         rejectedNonEmpty (replace "hello" "" "x"),
-        rejectedNonEmpty (repeat "ab" negativeOne),
+        rejectedNonEmpty (repeat "ab" (negOne())),
         rejectedNonEmpty (padStart "hi" 5 ""),
         rejectedNonEmpty (padEnd "hi" 5 ""),
         allHold (mapList ["", "3.14x", " 3.14", "nan", "0x1p2", "1e9999"] (\junk => rejectedNonEmpty (parseFloat junk))),
@@ -299,7 +316,7 @@ stringEdgeCase () =
         rejectedNonEmpty (fromCodePoint 2000000),
         rejectedNonEmpty (fromCodePoint 0),
         roundTrip,
-        (parseInt "-9223372036854775808" ?: 0) == (((0 - 9223372036854775807) - 1) ),
+        (parseInt "-9223372036854775808" ?: 0) == (intMin()),
         customPayload,
         rejectedNonEmpty (divideResult (10, 0))
     ]
@@ -312,9 +329,7 @@ test "string edge cases preserve values and error payloads" (exactly stringEdgeC
     exact text the spec pins AND to `toString` of the same value, so the two
     lowerings cannot silently drift apart. *)
 interpolationScalarCase () =
-    negativeSeven = (0 - 7) 
     intMax = 9223372036854775807
-    intMin = ((0 - 9223372036854775807) - 1) 
     emptyText = ""
     spaceText = " "
 
@@ -324,12 +339,12 @@ interpolationScalarCase () =
         holeRenders 0 "0",
         "${1}" == "1",
         holeRenders 42 "42",
-        holeRenders negativeSeven "-7",
+        holeRenders (negSeven()) "-7",
         length "${0}" == 1,
         holeRenders intMax "9223372036854775807",
-        length "${negativeSeven}" == 2,
-        holeRenders intMin "-9223372036854775808",
-        length "${intMin}" == 20,
+        length "${(negSeven())}" == 2,
+        holeRenders (intMin()) "-9223372036854775808",
+        length "${(intMin())}" == 20,
         "${0}" != "0.0",
         "${1}" != "true"
     ]
@@ -349,7 +364,7 @@ interpolationScalarCase () =
         "${2.0}" == toString 2.0,
         "${toFloat 7}" == "7.0",
         "${toFloat 0}" == "0.0",
-        "${toFloat negativeSeven}" == "-7.0",
+        "${toFloat (negSeven())}" == "-7.0",
         holeRenders true "true",
         holeRenders false "false",
         "${1 == 1}" == "true",
@@ -387,13 +402,10 @@ interpolationScalarCase () =
     accepts `Result<T, E>` only "when both payloads are printable", so every
     Result below carries an int, float or string payload. *)
 interpolationResultCase () =
-    negativeOne = (0 - 1) 
-    negativeFive = (0 - 5) 
-
     checkAll "Results retain their wrapper and arithmetic stays plain" [
         allHold ["${parseInt "42"}" == "Success(42)", "${parseInt "0"}" == "Success(0)", "${parseInt "-9223372036854775808"}" == "Success(-9223372036854775808)"],
         allHold ["${parseFloat "3.5"}" == "Success(3.5)", "${parseFloat "2"}" == "Success(2.0)", "${parseFloat "1e3"}" == "Success(1000.0)", "${parseFloat "-0.5"}" == "Success(-0.5)"],
-        allHold ["${intDiv (7, 2)}" == "3", "${intDiv (255643, 10)}" == "25564", "${10 / 4}" == "2.5", "${abs negativeFive}" == "5"],
+        allHold ["${intDiv (7, 2)}" == "3", "${intDiv (255643, 10)}" == "25564", "${10 / 4}" == "2.5", "${abs (negFive())}" == "5"],
         allHold ["${fromCodePoint 65}" == "Success(A)", "${indexOf "banana" "na"}" == "Success(2)", "${substring "banana" 1 4}" == "Success(ana)", "${repeat "ab" 2}" == "Success(abab)", "${padStart "7" 3 "0"}" == "Success(007)", "${byteAt "A" 0}" == "Success(65)", "${codePointWidth 233}" == "Success(2)"]
     ]
 
@@ -402,7 +414,7 @@ interpolationResultCase () =
     checkAll "a failed Result renders as Error(message) and keeps its reason" [
         allHold ["${parseInt "oops"}" == "Error(parseInt: invalid integer)", "${parseInt " 42"}" == "Error(parseInt: invalid integer)"],
         allHold ["${parseFloat "nan"}" == "Error(parseFloat: invalid number)", "${parseFloat ""}" == "Error(parseFloat: invalid number)"],
-        allHold ["${divideResult (5, 0)}" == "Error(division by zero)", "${divideResult (10, 0)}" == "Error(division by zero)", "${indexOf "hello" "zz"}" == "Error(indexOf: substring not found)", "${replace "h" "" ""}" == "Error(replace: needle must not be empty)", "${repeat "a" negativeOne}" == "Error(repeat: count must not be negative)", "${padStart "x" 5 ""}" == "Error(padStart: fill must not be empty)", "${padEnd "x" 5 ""}" == "Error(padEnd: fill must not be empty)"],
+        allHold ["${divideResult (5, 0)}" == "Error(division by zero)", "${divideResult (10, 0)}" == "Error(division by zero)", "${indexOf "hello" "zz"}" == "Error(indexOf: substring not found)", "${replace "h" "" ""}" == "Error(replace: needle must not be empty)", "${repeat "a" (negOne())}" == "Error(repeat: count must not be negative)", "${padStart "x" 5 ""}" == "Error(padStart: fill must not be empty)", "${padEnd "x" 5 ""}" == "Error(padEnd: fill must not be empty)"],
         allHold ["${substring "hi" 0 99}" == "Error(substring: index out of range)", "${byteAt "a" 9}" == "Error(byteAt: index out of range)", "${codePointAt "é" 1}" == "Error(codePointAt: invalid UTF-8 lead byte)", "${codePointWidth 55296}" == "Error(codePointWidth: surrogate is not a scalar)", "${codePointWidth 1114112}" == "Error(codePointWidth: code point out of range)", "${fromCodePoint 0}" == "Error(fromCodePoint: invalid code point)", "${failWith "custom boom"}" == "Error(custom boom)"]
     ]
 
@@ -420,8 +432,8 @@ interpolationResultCase () =
         startsWith "${parseInt "oops"}" "Error(",
         contains "${parseInt "oops"}" "invalid integer",
         !(contains "${parseInt "oops"}" "Success"),
-        (indexOf "${parseInt "oops"}" "(" ?: negativeOne) == 5,
-        (indexOf "${intDiv (10, 5)}" "(" ?: negativeOne) == negativeOne
+        (indexOf "${parseInt "oops"}" "(" ?: (negOne())) == 5,
+        (indexOf "${intDiv (10, 5)}" "(" ?: (negOne())) == (negOne())
     ]
 
 (** [LEX-STRING-LITERAL] literals: "Shared unescaping recognizes `\n`, `\r`, `\t`,
@@ -501,7 +513,6 @@ escapeSequenceCase () =
     reports the last match instead of the first cannot pass. *)
 substringPositionCase () =
     subject = "banana"
-    missing = (0 - 1) 
     indexAbsent = rejectsWith (indexOf subject "xyz", "indexOf: substring not found")
     indexEmptySubject = rejectedNonEmpty (indexOf "" "a")
 
@@ -531,15 +542,15 @@ substringPositionCase () =
 
     // The reported index must reconstruct the needle through substring/take/drop.
     checkAll "indexOf returns the first occurrence as a byte index" [
-        answersHold (\needle => indexOf subject needle ?: (0 - 1),
+        answersHold (\needle => indexOf subject needle ?: (negOne()),
             ["b", "a", "n", "na", "ana", "banana", ""], [0, 1, 2, 2, 1, 0, 0]),
         indexOfIs ("", "", 0),
         indexOfIs ("a", "a", 0),
         indexAbsent,
         indexEmptySubject,
         structuralEquals [(substring subject 1 4 ?: "missing"), (substring subject 2 4 ?: "missing"), (substring subject 0 6 ?: "missing"), (substring subject 6 6 ?: "missing"), (substring subject 3 3 ?: "missing")] ["ana", "na", subject, "", ""],
-        answersHold (\cut => cut (subject, indexOf subject "na" ?: missing), [\(s, n) => take s n, \(s, n) => drop s n], ["ba", "nana"]),
-        startsWith (drop subject (indexOf subject "ana" ?: missing)) "ana",
+        answersHold (\cut => cut (subject, indexOf subject "na" ?: (negOne())), [\(s, n) => take s n, \(s, n) => drop s n], ["ba", "nana"]),
+        startsWith (drop subject (indexOf subject "ana" ?: (negOne()))) "ana",
         indexOfIs (toUpperCase subject, "NA", 2)
     ]
 
@@ -625,7 +636,6 @@ concatLengthCase () =
     middle = "cde"
     right = "f"
     joined = left + middle + right
-    negativeFive = (0 - 5) 
     noParts : List<string>
     noParts = []
 
@@ -656,8 +666,8 @@ concatLengthCase () =
 
     // take s n + drop s n == s must hold at, inside and outside both ends.
     checkAll "take and drop partition a string at every boundary" [
-        answersHold (\n => partitionsAt (joined, n), [0, 1, 3, 6, 7, negativeFive], [true, true, true, true, true, true]),
-        structuralEquals (mapList [0, 6, 99, negativeFive] (\n => [take joined n, drop joined n])) [["", joined], [joined, ""], [joined, ""], ["", joined]],
+        answersHold (\n => partitionsAt (joined, n), [0, 1, 3, 6, 7, (negFive())], [true, true, true, true, true, true]),
+        structuralEquals (mapList [0, 6, 99, (negFive())] (\n => [take joined n, drop joined n])) [["", joined], [joined, ""], [joined, ""], ["", joined]],
         length (take joined 3) == 3,
         length (drop joined 3) == 3,
         ((length (take joined 2) + length (drop joined 2)) ) == length joined,
