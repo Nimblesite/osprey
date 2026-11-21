@@ -900,8 +900,75 @@ barLined track = track(notes = [daw::Note(pitch = 60, start = 0.0, length = 1.0,
 
 labelled (editor, label) = filterList (synth::TimelineView::headerAreas editor, \a => a.accessLabel == label)
 
+firstTrace editor = length (listGet editor.laneTraces 0 ?: [])
+
+// [DAW-TIMELINE-ZOOM] Zoom changes which beats the lanes show, about the playhead, and nothing else: taps, traces
+// and the ruler follow it; the song, the playhead, the track and the undo history stay. Moving the playhead out
+// of view brings the lanes with it.
+zoomJourney lined =
+    at = lined(rollBar = 1, laneTraces = synth::TimelineView::traces (lined.song, 1.0, 0.0))
+    expect (synth::TimelineView::shownBeats at, 16.0)
+    expect (synth::TimelineView::shownFrom at, 0.0)
+    expect (firstTrace at, 4)
+    closer = synth::TimelineView::zoomedBy (at, 2.0)
+    expect (closer.laneZoom, 2.0)
+    expect (synth::TimelineView::shownBeats closer, 8.0)
+    expect (closer.laneStart, 2.0)
+    expect (synth::TimelineView::shownFrom closer, 2.0)
+    expect (closer.rollBar, 1)
+    expect (closer.track, at.track)
+    expect (length closer.past, length at.past)
+    expect (daw::Arrangements::beats closer.song, 16.0)
+    // Beats 2 to 10 are in view: both notes lie outside, so the lane draws no trace, and a tap reads the new scale.
+    expect (firstTrace closer, 0)
+    succeeds (synth::TimelineView::laneAt (closer, 198.0, 200.0), \action => playheadSet (closer, action, 0))
+    succeeds (synth::TimelineView::laneAt (closer, 645.0, 200.0), \action => playheadSet (closer, action, 1))
+    succeeds (synth::TimelineView::laneAt (closer, 1092.0, 200.0), \action => playheadSet (closer, action, 2))
+    succeeds (synth::TimelineView::laneAt (closer, 1092.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 2)))
+    // The closest zoom is one beat across the lanes, still about the playhead; the widest is the whole song.
+    closest = synth::TimelineView::zoomedBy (closer, 100.0)
+    expect (closest.laneZoom, 16.0)
+    expect (synth::TimelineView::shownBeats closest, 1.0)
+    expect (closest.laneStart, 3.75)
+    wider = synth::TimelineView::zoomedBy (closer, 0.5)
+    expect (wider.laneZoom, 1.0)
+    expect (wider.laneStart, 0.0)
+    expect (firstTrace wider, 4)
+    expect ((synth::TimelineView::zoomedBy (wider, 0.5)).laneZoom, 1.0)
+    fitted = synth::TimelineView::zoomedBy (closest, 0.0)
+    expect (fitted.laneZoom, 1.0)
+    expect (fitted.laneStart, 0.0)
+    expect (fitted.rollBar, 1)
+    // The last note starts at beat 12: once the lanes reach it, its trace is drawn, cut at the right edge.
+    expect ((synth::TimelineView::following (closer(rollBar = 3))).laneStart, 8.0)
+    expect (firstTrace (synth::TimelineView::following (closer(rollBar = 3))), 2)
+    expect ((synth::TimelineView::following (closer(rollBar = 0))).laneStart, 0.0)
+    expect ((synth::TimelineView::following (closer(rollBar = 1))).laneStart, 4.0)
+    expect ((synth::TimelineView::following at).laneStart, 0.0)
+    expect (synth::TimelineGeometry::laneX (6.0, 2.0, 8.0), 645.0)
+    expect (synth::TimelineGeometry::laneEdge 100.0, 198.0)
+    expect (synth::TimelineGeometry::laneEdge 2000.0, 1092.0)
+    expect (synth::TimelineGeometry::zoomed (1.0, 0.5, 16.0), 1.0)
+    expect (synth::TimelineGeometry::zoomed (4.0, 1.25, 0.0), 1.0)
+    expect (synth::TimelineGeometry::zoomed (4.0, 1.25, 16.0), 5.0)
+    // The ruler: bars with every fourth numbered, then every bar, then beats, then sixteenths.
+    forEachList ([[65.0, 4.0, 16.0], [64.0, 4.0, 4.0], [17.0, 4.0, 4.0], [16.0, 1.0, 4.0], [5.0, 1.0, 4.0], [4.0, 0.25, 1.0], [1.0, 0.25, 1.0]], \row =>
+        expect (synth::TimelineGeometry::rulerStep (listGet row 0 ?: 0.0), listGet row 1 ?: 0.0)
+        expect (synth::TimelineGeometry::rulerMajor (listGet row 0 ?: 0.0), listGet row 2 ?: 0.0))
+    expect (synth::TimelineGeometry::onDivision (8.0, 4.0), 1.0)
+    expect (synth::TimelineGeometry::onDivision (9.0, 4.0), 0.0)
+    expect (synth::TimelineGeometry::beatInBar 6.0, 3.0)
+    expect (synth::TimelineGeometry::rulerBeat (2.0, 1.0, 3.0), 5.0)
+    expect (synth::TimelineGeometry::rulerCount (8.0, 1.0), 10.0)
+    // Every keymap gives the three zoom commands keys.
+    forEachList (synth::Keymaps::names, \name => forEachList (["zoomIn", "zoomOut", "zoomFit"], \command => expect (synth::Keymaps::keys (synth::Keymaps::preset name, command) != "", true)))
+    expect (synth::Keymaps::keys (synth::Keymaps::preset "Prism", "zoomIn"), "Cmd+OemPlus")
+    expect (synth::Keymaps::keys (synth::Keymaps::preset "Ableton Style", "zoomFit"), "Cmd+D0")
+    expect (synth::Keymaps::keys (synth::Keymaps::preset "Logic Style", "zoomOut"), "Cmd+Left")
+
 barLineJourney ready =
     lined = ready(song = timeline [barLined (pluckTrack ())], track = 0)
+    zoomJourney lined
     expect (daw::Arrangements::beats lined.song, 16.0)
     succeeds (synth::TimelineView::laneAt (lined, 1092.0, 200.0), \action => playheadSet (lined, action, 3))
     succeeds (synth::TimelineView::laneAt (lined, 1091.0, 200.0), \action => playheadSet (lined, action, 3))

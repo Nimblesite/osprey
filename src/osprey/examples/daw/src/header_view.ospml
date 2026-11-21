@@ -116,10 +116,17 @@ module Header
         most = foldList (counts, 0, \(best, count) => ui::Pick::either (count > best, count, best))
         mapList (toList (range (0, bars)), \bar => column (toFloat bar, toFloat bars, toFloat (listGet counts bar ?: 0), toFloat most))
 
+    // [DAW-TIMELINE-ZOOM] Once the lanes are zoomed, a line under the overview marks the part of the song they show.
+    inView editor = match editor.laneZoom > 1.0
+        false => []
+        true =>
+            left = TimelineGeometry::overviewX (TimelineView::shownFrom editor, TimelineView::beats editor)
+            [TimelineView::box (left, 127.0, TimelineGeometry::overviewX (TimelineView::shownFrom editor + TimelineView::shownBeats editor, TimelineView::beats editor) - left, 2.0, TimelineView::accent (), 4)]
+
     // The overview with the piano roll's two bars framed; nothing until a song is open.
     overviewShapes editor = match length editor.overview
         0 => []
-        bars => [caps ("SONG OVERVIEW", 468.0, 77.0), Scenes::path (editor.overview, ui::Fill, paint (Scenes::rgb (96, 86, 150)), 3), EditorView::rounded (TimelineGeometry::overviewX (toFloat editor.rollBar, toFloat bars) - 2.0, 95.0, 2.0 * (TimelineGeometry::overviewWidth (toFloat bars) + 2.0) + 2.0, 30.0, 2.0, ui::Line(width = 1.2, dashes = [], bevel = false), paint (TimelineView::accent ()), 4)]
+        bars => listConcat (inView editor) [caps ("SONG OVERVIEW", 468.0, 77.0), Scenes::path (editor.overview, ui::Fill, paint (Scenes::rgb (96, 86, 150)), 3), EditorView::rounded (TimelineGeometry::overviewX (toFloat editor.rollBar, toFloat bars) - 2.0, 95.0, 2.0 * (TimelineGeometry::overviewWidth (toFloat bars) + 2.0) + 2.0, 30.0, 2.0, ui::Line(width = 1.2, dashes = [], bevel = false), paint (TimelineView::accent ()), 4)]
 
     // The skin's logo when its atlas carries one (entry 15), then the name and the open page.
     brand editor = listConcat (ui::Pick::either (length (PrismArt::atlas editor.skin) > 15, [Scenes::sprite (15, 123.0, 29.5, 46.0, 46.0, 0.0, Scenes::rgb (255, 255, 255), 2)], [])) [TimelineView::label ("Prism", 151.0, 11.0, 20.0, TimelineView::ink (), 0, 3), TimelineView::label (listGet pages (slot editor.page) ?: "", 151.0, 36.0, 11.0, TimelineView::dim (), 0, 3)]

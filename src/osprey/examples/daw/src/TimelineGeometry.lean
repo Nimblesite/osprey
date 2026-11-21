@@ -25,9 +25,41 @@ its height (the region is 940 units tall) and sits in the middle: this is how fa
 def centred (viewWidth viewHeight : Float) : Float :=
   if viewHeight > 939 && viewHeight < 941 && viewWidth > 1440 then (viewWidth - 1440) / 2 else 0
 
-/-- Arrangement lanes span x 198 to 1092 across the whole song. -/
-def laneX (beat beats : Float) : Float := 198 + beat / beats * 894
-def laneBeat (x beats : Float) : Float := bounded ((x - 198) / 894 * beats) 0 beats
+/-- Arrangement lanes span x 198 to 1092. They show `span` beats from beat `first`: the whole song until it is
+zoomed [DAW-TIMELINE-ZOOM]. -/
+def laneX (beat first span : Float) : Float := 198 + (beat - first) / span * 894
+def laneBeat (x first span beats : Float) : Float := bounded (first + (x - 198) / 894 * span) 0 beats
+/-- A lane position kept between the lanes' two edges. -/
+def laneEdge (x : Float) : Float := bounded x 198 1092
+/-- Zoom 1 fits the whole song; the closest zoom shows one beat across the lanes. -/
+def zoomed (zoom factor beats : Float) : Float :=
+  let most := if beats < 1 then 1 else beats
+  bounded (zoom * factor) 1 most
+def laneSpan (beats zoom : Float) : Float := beats / zoom
+/-- The first beat shown: never before the song, nor so late that the view runs past its end. -/
+def laneFirst (start span beats : Float) : Float := bounded start 0 (beats - span)
+/-- The first beat shown after a zoom to `next` beats that keeps `anchor` where it was; an anchor outside the
+view comes to its nearer edge. -/
+def zoomFirst (anchor first span next beats : Float) : Float :=
+  laneFirst (anchor - bounded ((anchor - first) / span) 0 1 * next) next beats
+/-- The first beat shown once the playhead moved: unchanged while the playhead and the two bars after it are in
+view, else the playhead comes to the nearer edge. -/
+def followFirst (playhead first span beats : Float) : Float :=
+  let reach := if span < 8 then span else 8
+  if playhead < first then laneFirst playhead span beats
+  else if playhead + reach > first + span then laneFirst (playhead + reach - span) span beats
+  else first
+/-- Ruler divisions in beats: a line every `rulerStep`, a number every `rulerMajor`. Bars with every fourth
+numbered, then every bar, then beats, then sixteenths, so labels never crowd or thin out. -/
+def rulerStep (span : Float) : Float := if span > 16 then 4 else if span > 4 then 1 else 0.25
+def rulerMajor (span : Float) : Float := if span > 64 then 16 else if span > 4 then 4 else 1
+def rulerBeat (first step index : Float) : Float := (Float.floor (first / step) + index) * step
+def rulerCount (span step : Float) : Float := Float.ceil (span / step) + 2
+/-- 1 when `beat` falls on a multiple of `major`, else 0. -/
+def onDivision (beat major : Float) : Float :=
+  if beat - Float.floor (beat / major) * major < 0.001 then 1 else 0
+/-- The beat within its bar, from 1. -/
+def beatInBar (beat : Float) : Float := Float.floor (beat - Float.floor (beat / 4) * 4) + 1
 
 /-- The arrangement shows seven 31-unit rows above the roll. -/
 def scrollPage (y pages : Float) : Float := bounded (Float.floor ((y - 221) / 217 * pages)) 0 (pages - 1)

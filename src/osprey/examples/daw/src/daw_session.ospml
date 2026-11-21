@@ -49,7 +49,7 @@ module DawSession
         Error why => editor(message = "Could not read ${path}: ${why}")
         Success source => match daw::SongFiles::decode source
             Error why => editor(message = "${path}: ${why}")
-            Success song => picked (editor(song = song, past = [], future = [], gesture = [], laneTraces = TimelineView::traces song, overview = Header::overview song, songPath = path, keyboardShown = false, track = 0, patchTrack = -1, rollBar = 0, page = TimelinePage), 0)
+            Success song => picked (editor(song = song, past = [], future = [], gesture = [], laneZoom = 1.0, laneStart = 0.0, laneTraces = TimelineView::traces (song, 1.0, 0.0), overview = Header::overview song, songPath = path, keyboardShown = false, track = 0, patchTrack = -1, rollBar = 0, page = TimelinePage), 0)
 
     stem path =
         parts = split (replace path "\\" "/" ?: path) "/" ?: [path]
@@ -245,7 +245,7 @@ module DawSession
             Error why => ui::Runtime::step (editor(message = why))
             Success song => match committed (editor, song)
                 Error why => ui::Runtime::step (editor(message = why))
-                Success next => ui::Runtime::step (next(laneTraces = TimelineView::traces song, overview = Header::overview song, revision = satAdd next.revision 1))
+                Success next => ui::Runtime::step (next(laneTraces = TimelineView::traces (song, next.laneZoom, next.laneStart), overview = Header::overview song, revision = satAdd next.revision 1))
 
     draft editor = match editor.patchTrack >= 0 && editor.songPath != ""
         true => daw::PatchRecords::savedAt (editor.song, editor.patchTrack, editor.graph, editor.positions)
@@ -253,7 +253,7 @@ module DawSession
 
     // Undo from Patch may target a lane that was edited before it had ever been opened as a patch.
     historyView (editor, song) =
-        ready = editor(song = song, laneTraces = TimelineView::traces song, overview = Header::overview song)
+        ready = editor(song = song, laneTraces = TimelineView::traces (song, editor.laneZoom, editor.laneStart), overview = Header::overview song)
         match ready.page == PatchPage && ready.patchTrack != ready.track
             false => Success(value = ready)
             true =>

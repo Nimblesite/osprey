@@ -46,11 +46,12 @@ module EditorApp
         PlayGraph => GraphPreview::live (editor, context.platform)
         StopGraph => GraphPreview::stop editor
         ShowPage page => DawSession::shown (editor(outputEdit = OutputClosed), page)
-        PickTrack index bar => Runtime::step (DawSession::pickedAt (editor, index, bar))
+        PickTrack index bar => Runtime::step (TimelineView::following (DawSession::pickedAt (editor, index, bar)))
         SelectNote index => Runtime::step (editor(selectedNote = index))
         SetVelocity value => DawSession::velocity (editor, value)
         AdjustMix index gain pan reverb => DawSession::adjusted (editor, index, gain, pan, reverb)
         ScrollLanes page => Runtime::step (editor(lanePage = page))
+        ZoomLanes factor => Runtime::step (TimelineView::zoomedBy (editor, factor))
         ChooseOutput index offset => RoutingPicker::open (editor, index, offset)
         InspectBus space => Runtime::step (editor(inspectSpace = space))
         CloseOutput => Runtime::step (editor(outputEdit = OutputClosed))

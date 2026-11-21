@@ -97,8 +97,8 @@ fn menu_bar(regions: &mut Regions) {
     let titles: Vec<&str> = menus.iter().map(|menu| menu.title.as_str()).collect();
     assert_eq!(titles, ["File", "Edit", "View", "Transport", "Shortcuts"], "the window's menus");
     let sizes: Vec<usize> = menus.iter().map(|menu| menu.commands.len()).collect();
-    assert_eq!(sizes, [3, 2, 6, 10, 4], "the commands of each menu");
-    for (keymap, routing, play) in [("Logic Style", "X", "Space"), ("Ableton Style", "Cmd+Alt+M", "Space"), ("Prism", "Cmd+D3", "Space")] {
+    assert_eq!(sizes, [3, 2, 9, 10, 4], "the commands of each menu");
+    for (keymap, routing, play, zoom) in [("Logic Style", "X", "Space", ["Cmd+Right", "Cmd+Left", "Z"]), ("Ableton Style", "Cmd+Alt+M", "Space", ["OemPlus", "OemMinus", "Cmd+D0"]), ("Prism", "Cmd+D3", "Space", ["Cmd+OemPlus", "Cmd+OemMinus", "Cmd+D0"])] {
         let choice = menus_of(regions)[4].commands.iter().find(|command| command.label == keymap).map(|command| command.event);
         let Some(choice) = choice else {
             panic!("Shortcuts offers {keymap}");
@@ -111,6 +111,10 @@ fn menu_bar(regions: &mut Regions) {
         assert_eq!(keys_of(&menus, "Bus Routing"), routing, "{keymap}: Bus Routing");
         assert_eq!(keys_of(&menus, "Play Song"), play, "{keymap}: Play Song");
         assert_eq!(keys_of(&menus, "Stop Song"), play, "{keymap}: Stop Song");
+        // [DAW-TIMELINE-ZOOM] Zoom In, Zoom Out and Zoom to Fit are View commands with keys in every keymap.
+        for (label, keys) in ["Zoom In", "Zoom Out", "Zoom to Fit"].into_iter().zip(zoom) {
+            assert_eq!(keys_of(&menus, label), keys, "{keymap}: {label}");
+        }
         let checked: Vec<&str> = menus[4].commands.iter().filter(|command| command.checked).map(|command| command.label.as_str()).collect();
         assert_eq!(checked, [keymap], "only the keymap in use is checked");
     }

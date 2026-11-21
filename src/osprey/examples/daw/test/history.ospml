@@ -31,7 +31,7 @@ keymapJourney () =
         forEachList (synth::Keymaps::commands (), \command => expect (synth::Keymaps::keys (keymap, command) != "", true))
         succeeds (synth::Keymaps::decode (synth::Keymaps::encode keymap), \again =>
             forEachList (synth::Keymaps::commands (), \command => expect (synth::Keymaps::keys (again, command), synth::Keymaps::keys (keymap, command)))))
-    expect (length (synth::Keymaps::commands ()), 21)
+    expect (length (synth::Keymaps::commands ()), 24)
     expect (synth::Keymaps::keys (synth::Keymaps::preset "Logic Style", "routing"), "X")
     expect (synth::Keymaps::keys (synth::Keymaps::preset "Logic Style", "save"), "Cmd+S")
     expect (synth::Keymaps::keys (synth::Keymaps::preset "Ableton Style", "timeline"), "Tab")

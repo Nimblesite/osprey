@@ -184,6 +184,8 @@ type Editor G P S M =
     outputEdit : OutputEdit
     inspectSpace : bool
     lanePage : int
+    laneZoom : float
+    laneStart : float
     laneTraces : List<List<ui::PathStep>>
     overview : List<ui::PathStep>
     song : daw::Arrangement
@@ -257,6 +259,8 @@ type EditorAction =
         reverb : float
     ScrollLanes
         page : int
+    ZoomLanes
+        factor : float
     ChooseOutput
         index : int
         offset : int
