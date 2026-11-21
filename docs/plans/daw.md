@@ -44,12 +44,12 @@ Every issue the user raised while testing Prism by hand, with where it is tracke
 | 16 | In a tall window the pages do not fill it: the song pages sit in the top third with empty space below, and nothing scrolls or pans to use the room | [DAW-LAYOUT-FILL] | Open |
 | 17 | On the patch page a module cannot be dragged lower than about the first quarter of the canvas | [DAW-LAYOUT-FILL] | Open |
 | 18 | Stretching the window sideways changes the zoom: everything grows or shrinks with the window's width | [DAW-LAYOUT-FILL] | Open |
-| 18 | Open track patches in a separate window and close them while the song keeps playing | [DAW-PAGES-PATCH-WINDOW] | Open. Verify both window close and the focused Close command from Timeline and Bus Routing |
-| 19 | Quit in the application menu leaves Prism running | [DAW-PAGES-PATCH-WINDOW] | Fixed on macOS in `0af119f64`. The native Quit command exited a disposable instance with status zero |
-| 20 | Play asks for a song even though a project is already open | [DAW-TRANSPORT-REFUSAL] | Open. With an open project and no renderer, `DawSession::refused` gives the same instruction as an empty session. [Issue 425](https://github.com/Nimblesite/osprey/issues/425) |
-| 21 | Stop appears active when the transport is idle | [DAW-TRANSPORT-STOP-IDLE] | Open. Verify the drawn control, its hit target and the menu across play, end and cancellation |
-| 22 | A track needs as many internal routes and sends as the project requires | [DAW-GRAPH-SUBGRAPH] | Open. Exercise branching, merging and routing into several buses using the shared node editor. Save and reopen the full graph and timeline from one project JSON file |
-| 23 | The example music sounds too simple | [DAW-DEMO-SOUND] | Open. Hand-author the Silt Relay arrangement and patches, exercise the synth module palette, render the master and listen through its section changes. The team is revisiting the other demo songs too |
+| 19 | Open track patches in a separate window and close them while the song keeps playing | [DAW-PAGES-PATCH-WINDOW] | Open. Verify both window close and the focused Close command from Timeline and Bus Routing |
+| 20 | Quit in the application menu leaves Prism running | [DAW-PAGES-PATCH-WINDOW] | Fixed on macOS in `0af119f64`. The native Quit command exited a disposable instance with status zero |
+| 21 | Play asks for a song even though a project is already open | [DAW-TRANSPORT-REFUSAL] | Open. With an open project and no renderer, `DawSession::refused` gives the same instruction as an empty session. [Issue 425](https://github.com/Nimblesite/osprey/issues/425) |
+| 22 | Stop appears active when the transport is idle | [DAW-TRANSPORT-STOP-IDLE] | Open. Verify the drawn control, its hit target and the menu across play, end and cancellation |
+| 23 | A track needs as many internal routes and sends as the project requires | [DAW-GRAPH-SUBGRAPH] | Open. Exercise branching, merging and routing into several buses using the shared node editor. Save and reopen the full graph and timeline from one project JSON file |
+| 24 | The example music sounds too simple | [DAW-DEMO-SOUND] | Open. Hand-author the Silt Relay arrangement and patches, exercise the synth module palette, render the master and listen through its section changes. The team is revisiting the other demo songs too |
 
 Found while fixing these:
 
