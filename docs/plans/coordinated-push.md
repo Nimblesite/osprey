@@ -18,7 +18,7 @@ That commit was pushed without a local `make ci` pass on the commit itself.
 ## Rules
 
 - [x] **[CI-PUSH-LOCK]** Only the agent holding the TMC lock `PUSH-<branch>` pushes. Every other agent commits locally and tells the holder on TMC which commits to include.
-- [x] **[CI-PUSH-GREEN]** A push follows a `make ci` pass on the exact HEAD being pushed. A commit added after that pass needs a new pass.
+- [x] **[CI-PUSH-GREEN]** A push follows a `make ci` pass on the exact commit being pushed. CI checks for a clean checkout at both ends of the run and verifies that HEAD still names the starting commit before writing approval.
 - [x] **[CI-PUSH-ONE-RUN]** There is no push while a CI run on the branch is in progress. The only exception is the fix for that run's red, pushed after it finishes.
 - [x] **[CI-PUSH-RED-OWNER]** The lock holder owns the run until it finishes. If it is red, they fix it locally, run `make ci` again and push once.
 

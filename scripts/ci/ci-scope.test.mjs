@@ -397,9 +397,23 @@ test('every release publishes only after an unconditional dependency audit', () 
   }
 })
 
+function fixtureGit(directory, ...args) {
+  const result = spawnSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd: directory, encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  return result.stdout.trim()
+}
+
+function commitFixture(directory, subject) {
+  fixtureGit(directory, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', subject, '--allow-empty')
+}
+
 test('a failed local dependency audit invalidates a previous green push stamp', () => {
   const dir = mkdtempSync(join(tmpdir(), 'osprey-push-gate-'))
   try {
+    fixtureGit(dir, 'init', '-q')
+    writeFileSync(join(dir, '.gitignore'), 'target/\naudit.mk\n')
+    fixtureGit(dir, 'add', '.gitignore')
+    commitFixture(dir, 'initial')
     mkdirSync(join(dir, 'target'))
     const stamp = join(dir, 'target/ci-green')
     writeFileSync(stamp, 'previously tested commit')
@@ -413,20 +427,50 @@ test('a failed local dependency audit invalidates a previous green push stamp', 
   }
 })
 
+test('local CI stamps a clean commit and rejects changes before or during its run', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'osprey-ci-source-'))
+  const stamp = join(directory, 'target/ci-green')
+  try {
+    fixtureGit(directory, 'init', '-q')
+    writeFileSync(join(directory, '.gitignore'), 'target/\naudit.mk\n')
+    const source = join(directory, 'source.osp')
+    writeFileSync(source, 'fn main() = 0\n')
+    fixtureGit(directory, 'add', '.')
+    commitFixture(directory, 'initial')
+    const run = (audit) => {
+      writeFileSync(join(directory, 'audit.mk'), `audit:\n\t@${audit}\n`)
+      return spawnSync('make', ['-I', resolve('.'), '-f', resolve('Makefile'), '-f', 'audit.mk',
+        '-o', 'lint', '-o', 'test', '-o', 'build', 'MAKE=true', 'ci'], { cwd: directory, encoding: 'utf8' })
+    }
+    const clean = run('true')
+    assert.equal(clean.status, 0, clean.stderr)
+    assert.equal(readFileSync(stamp, 'utf8').trim(), fixtureGit(directory, 'rev-parse', 'HEAD'))
+    writeFileSync(source, 'fn main() = 1\n')
+    const dirty = run('echo audit-ran')
+    assert.notEqual(dirty.status, 0)
+    assert.doesNotMatch(dirty.stdout, /audit-ran/)
+    assert.throws(() => readFileSync(stamp), { code: 'ENOENT' })
+    fixtureGit(directory, 'restore', 'source.osp')
+    assert.notEqual(run('touch untracked.osp').status, 0)
+    assert.throws(() => readFileSync(stamp), { code: 'ENOENT' })
+    rmSync(join(directory, 'untracked.osp'))
+    assert.notEqual(run('git -c user.name=Fixture -c user.email=fixture@example.invalid commit -qm later --allow-empty').status, 0)
+    assert.throws(() => readFileSync(stamp), { code: 'ENOENT' })
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test('the push gate sends the tested commit if a teammate advances the branch during the CI check', () => {
   const directory = mkdtempSync(join(tmpdir(), 'osprey-push-race-'))
   const push = resolve('scripts/ci/push.sh')
-  const git = (...args) => {
-    const result = spawnSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd: directory, encoding: 'utf8' })
-    assert.equal(result.status, 0, result.stderr)
-    return result.stdout.trim()
-  }
+  const git = (...args) => fixtureGit(directory, ...args)
   try {
     git('init', '-q', '-b', 'feature')
     git('init', '-q', '--bare', 'remote')
     git('remote', 'add', 'origin', './remote')
     for (const subject of ['tested', 'untested']) {
-      git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', subject, '--allow-empty')
+      commitFixture(directory, subject)
     }
     const tested = git('rev-parse', 'HEAD^')
     const untested = git('rev-parse', 'HEAD')

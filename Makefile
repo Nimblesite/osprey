@@ -126,6 +126,13 @@ clean:
 # The commit make ci started on: a commit landing mid-run is not stamped as tested.
 override CI_HEAD := $(shell git rev-parse HEAD)
 
+# A green stamp belongs to the starting commit in a clean checkout.
+define check_ci_source
+	@head=$$(git rev-parse --verify HEAD) && test "$$head" = "$(CI_HEAD)" && \
+		changes=$$(git status --porcelain --untracked-files=normal) && test -z "$$changes" || { \
+		echo 'CI approval requires a clean checkout of the starting commit' >&2; exit 1; }
+endef
+
 ## ci: dependency audit + lint + test + build + hawk + the bank, docs and inbox suites (full CI simulation)
 ci: _invalidate_ci_stamp audit lint test build
 	$(MAKE) -C src/toolchain hawk
@@ -134,12 +141,14 @@ ci: _invalidate_ci_stamp audit lint test build
 	$(MAKE) -C src/toolchain/website docs-html-test
 	$(MAKE) -C src/toolchain/targets/tests inbox
 	$(MAKE) -C src/toolchain/targets/tests bank-app
+	$(check_ci_source)
 	mkdir -p target && echo $(CI_HEAD) > target/ci-green
 
 # External advisories can turn the same commit red on a later run.
 .PHONY: _invalidate_ci_stamp
 _invalidate_ci_stamp:
 	$(RM) target/ci-green
+	$(check_ci_source)
 
 ## push: The only way to push ([CI-PUSH-GREEN], docs/plans/coordinated-push.md). Hold the TMC lock PUSH-<branch> first. Refuses unless make ci passed on this exact HEAD and no CI run on the branch is queued or running; then pushes.
 .PHONY: push
