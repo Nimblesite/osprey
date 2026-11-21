@@ -789,7 +789,7 @@ streamedRepeatJourney () =
 
 masterPlayJourney () =
     streamedRepeatJourney ()
-    livePatchDialJourney ()
+    hosted livePatchDialJourney
     liveKnobJourney ()
     song = playedSong 4.0
     playedIn (song, false, [6000], \whole =>
