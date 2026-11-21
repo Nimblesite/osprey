@@ -17,6 +17,7 @@ effect Bench
     drive : uitest::Driven<signalflow::Store, ui::Lever> => Unit
 
 // A driving host's starting state: the program over a refused, empty store.
+freshDrive : Unit -> uitest::Driven<signalflow::Store, ui::Lever>
 freshDrive () = Drive::idle (App::program (), signalflow::Flow::store (MachineDocs::faulty ""))
 
 mut driven = freshDrive ()
