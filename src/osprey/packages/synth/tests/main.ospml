@@ -401,3 +401,4 @@ test ("FFT bins match the direct three-impulse spectrum and recover every sample
 registerMeshJourney ()
 registerStringJourney ()
 registerFitJourney ()
+registerTimingJourney ()

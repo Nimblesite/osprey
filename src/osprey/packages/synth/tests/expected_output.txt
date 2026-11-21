@@ -72,5 +72,6 @@ ok 71 - FFT bins match the direct three-impulse spectrum and recover every sampl
 ok 72 - a corner impulse reaches adjacent membrane pickups before the diagonal and invalid grids are refused
 ok 73 - a string pool prepares and plucks voices, frees released tails, steals explicitly, refuses invalid control and preserves untouched voices
 ok 74 - offline fitting retains an exact gain match through seeded trials, applies it and refuses invalid jobs
-1..74
-# tests=74 passed=74 failed=0 skipped=0
+ok 75 - component timing declares delay and decay in samples, tracks oversampling switches and rejects missing controls
+1..75
+# tests=75 passed=75 failed=0 skipped=0
