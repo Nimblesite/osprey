@@ -1458,6 +1458,14 @@ test ("two internal audio sends survive a project round trip and sum before the 
 
 test ("the project plays as one loop over time: every track, bus and send advance together into Master, at any block size", \() => ui::Runtime::guarded masterPlayJourney)
 
+// [DAW-PROJECT-MODEL] Every shipped score must open through the production project reader.
+test ("every example song opens with playable tracks", \() => Runtime::guarded (\() =>
+    succeeds (listDir "src/osprey/examples/daw/tracks", \entries =>
+        scores = filterList (entries, \path => endsWith path ".json")
+        expect (ui::Lists::any (scores, \path => endsWith path "/codex-version2.json"), true)
+        forEachList (scores, \path => succeeds (readFile path, \source =>
+            succeeds (daw::SongFiles::decode source, \song => expect (length song.tracks > 0, true)))))))
+
 test ("Violet Static opens the kick as a wired WAV sample", \() => ui::Runtime::guarded (\() =>
     succeeds (readFile "src/osprey/examples/daw/tracks/violet-static.json", \source =>
         succeeds (daw::SongFiles::decode source, \song =>
