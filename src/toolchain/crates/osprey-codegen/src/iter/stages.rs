@@ -115,3 +115,28 @@ pub(crate) fn replay(cg: &mut Codegen, stages: &[IterOp], v: Value, skip: &str) 
     }
     Ok(cur)
 }
+
+/// A bare range has no callbacks. Skipping its temporary list therefore
+/// preserves evaluation order, including evaluation of the fold seed.
+pub(super) fn plain_range_list<'a>(cg: &Codegen, expr: &'a Expr) -> Option<&'a Expr> {
+    let builtin = |call, name| {
+        crate::expr::callee_name(call) == Some(name)
+            && cg.lookup(name).is_none()
+            && cg.lambda_def(name).is_none()
+            && !cg.extern_params.contains_key(name)
+            && !cg.call_aliases.contains_key(name)
+    };
+    let Expr::Call {
+        arguments,
+        named_arguments,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    let [range] = arguments.as_slice() else {
+        return None;
+    };
+    (named_arguments.is_empty() && builtin(expr, "toList") && builtin(range, "range"))
+        .then_some(range)
+}

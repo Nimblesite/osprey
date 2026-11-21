@@ -19,7 +19,7 @@ use osprey_ast::{Expr, NamedArgument, Parameter, Position};
 
 mod sort_by;
 mod stages;
-use stages::{branch_on_predicate, record};
+use stages::{branch_on_predicate, plain_range_list, record};
 pub(crate) use stages::{reject_escape, replay, stage_aliases, stages_of};
 
 const RANGE_TY: &str = "{ i64, i64 }";
@@ -369,6 +369,13 @@ fn for_each_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 
 /// `mapList`/`filterList` — build a new list via the runtime list builder.
 fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> {
+    if !filter {
+        if let Some(source) = plain_range_list(cg, nth(args, 0)?) {
+            let range = gen_expr(cg, source)?;
+            let mapper = callback_of(cg, nth(args, 1)?)?;
+            return build_range(cg, &range, Some(&mapper));
+        }
+    }
     let l = list_arg(cg, args, 0)?;
     let f = callback_of(cg, nth(args, 1)?)?;
     // `filterList` keeps the source's own elements, so its builder inherits the
@@ -434,10 +441,18 @@ pub(crate) fn push_built(
 /// element in a persistent list [BUILTIN-ITER-TOLIST].
 fn to_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let range = gen_expr(cg, nth(args, 0)?)?;
+    build_range(cg, &range, None)
+}
+
+fn build_range(cg: &mut Codegen, range: &Value, mapper: Option<&Callback>) -> Result<Value> {
     let bld = crate::collections::list_builder_new(cg);
     let mut out_elem = None;
-    each_range_elem(cg, &range, |cg, elem| {
-        out_elem = push_built(cg, &bld, elem, "toList")?;
+    each_range_elem(cg, range, |cg, elem| {
+        let (value, builtin) = match mapper {
+            Some(f) => (invoke(cg, f, vec![elem])?, "mapList"),
+            None => (elem, "toList"),
+        };
+        out_elem = push_built(cg, &bld, value, builtin)?;
         Ok(())
     })?;
     Ok(seal_built(cg, &bld, out_elem.as_deref()))
@@ -454,29 +469,4 @@ fn fold_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         acc_step(cg, &acc, &tmpl, &combine, elem)
     })?;
     Ok(acc_result(cg, &acc, &tmpl))
-}
-
-/// A bare range has no callbacks. Skipping its temporary list therefore
-/// preserves evaluation order, including evaluation of the fold seed.
-fn plain_range_list<'a>(cg: &Codegen, expr: &'a Expr) -> Option<&'a Expr> {
-    let builtin = |call, name| {
-        crate::expr::callee_name(call) == Some(name)
-            && cg.lookup(name).is_none()
-            && cg.lambda_def(name).is_none()
-            && !cg.extern_params.contains_key(name)
-            && !cg.call_aliases.contains_key(name)
-    };
-    let Expr::Call {
-        arguments,
-        named_arguments,
-        ..
-    } = expr
-    else {
-        return None;
-    };
-    let [range] = arguments.as_slice() else {
-        return None;
-    };
-    (named_arguments.is_empty() && builtin(expr, "toList") && builtin(range, "range"))
-        .then_some(range)
 }
