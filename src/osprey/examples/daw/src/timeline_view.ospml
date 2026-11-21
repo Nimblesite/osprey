@@ -81,13 +81,15 @@ module TimelineView
 
     originFor (editor, duration, span) = TimelineGeometry::laneFirst (editor.laneStart, span, duration)
 
+    laneWindow (editor, duration) =
+        span = spanFor (editor, duration)
+        { span = span, origin = originFor (editor, duration, span) }
+
     (** [DAW-TIMELINE-ZOOM] How many beats the lanes show. *)
     export shownBeats editor = spanFor (editor, beats editor)
 
     (** The first beat the lanes show. *)
-    export shownFrom editor =
-        duration = beats editor
-        originFor (editor, duration, spanFor (editor, duration))
+    export shownFrom editor = (laneWindow (editor, beats editor)).origin
 
     viewed (editor, zoom, start) = editor(laneZoom = zoom, laneStart = start, laneTraces = traces (editor.song, zoom, start, editor.laneTop))
 
@@ -95,18 +97,16 @@ module TimelineView
         the view changes: not the song, the playhead, the selection or the undo history. *)
     export zoomedBy (editor, factor) =
         duration = beats editor
-        span = spanFor (editor, duration)
-        origin = originFor (editor, duration, span)
+        window = laneWindow (editor, duration)
         zoom = ui::Pick::either (factor <= 0.0, 1.0, TimelineGeometry::zoomed (editor.laneZoom, factor, duration))
-        viewed (editor, zoom, TimelineGeometry::zoomFirst (cursor editor, origin, span, TimelineGeometry::laneSpan (duration, zoom), duration))
+        viewed (editor, zoom, TimelineGeometry::zoomFirst (cursor editor, window.origin, window.span, TimelineGeometry::laneSpan (duration, zoom), duration))
 
     (** The lanes moved, when they must, so the playhead and the piano roll's two bars stay in view. *)
     export following editor =
         duration = beats editor
-        span = spanFor (editor, duration)
-        origin = originFor (editor, duration, span)
-        start = TimelineGeometry::followFirst (cursor editor, origin, span, duration)
-        match start == origin
+        window = laneWindow (editor, duration)
+        start = TimelineGeometry::followFirst (cursor editor, window.origin, window.span, duration)
+        match start == window.origin
             true => editor
             false => viewed (editor, editor.laneZoom, start)
 
@@ -221,14 +221,13 @@ module TimelineView
         ui::Lists::flatten [finish, start, sounding, scroll editor]
 
     arrangement (editor, duration) =
-        span = spanFor (editor, duration)
-        origin = originFor (editor, duration, span)
+        window = laneWindow (editor, duration)
         heading = [label ("Arrangement", 24.0, 160.0, 18.0, ink (), 0, 4), label ("${length editor.song.tracks} tracks", 154.0, 163.0, 13.0, dim (), 0, 4), label ("Bars 1–${satAdd (DawSession::bar (editor.song, duration)) 1}", 1108.0, 163.0, 13.0, dim (), 2, 4), label ("TRACKS", 24.0, 200.0, 12.0, dim (), 0, 3)]
         rows = foldList (visible editor, [], \(all, index) =>
             match listGet editor.song.tracks index
                 Error _ => all
                 Success voice => listConcat all (lane (editor, index, voice)))
-        ui::Lists::flatten [heading, ruler (editor, duration, origin, span), rows, markers (editor, origin, span)]
+        ui::Lists::flatten [heading, ruler (editor, duration, window.origin, window.span), rows, markers (editor, window.origin, window.span)]
 
     scroll editor = match scrolls editor
         false => []
@@ -241,12 +240,10 @@ module TimelineView
     grabbed (editor, x, y) = match y >= 193.0 && y < 438.0 && x >= 198.0 && x <= 1098.0
         false => Error(message = "No marker here.")
         true =>
-            duration = beats editor
-            span = spanFor (editor, duration)
-            origin = originFor (editor, duration, span)
-            match TimelineGeometry::grabs (x, TimelineGeometry::laneX (DawSession::rangeStart editor, origin, span))
+            window = laneWindow (editor, beats editor)
+            match TimelineGeometry::grabs (x, TimelineGeometry::laneX (DawSession::rangeStart editor, window.origin, window.span))
                 true => Success(value = MoveStart(bar = editor.rollBar))
-                false => match TimelineGeometry::grabs (x, TimelineGeometry::laneX (DawSession::rangeEnd editor, origin, span))
+                false => match TimelineGeometry::grabs (x, TimelineGeometry::laneX (DawSession::rangeEnd editor, window.origin, window.span))
                     true => Success(value = MoveEnd(bar = endAt (editor, x)))
                     false => Error(message = "No marker here.")
 
@@ -269,14 +266,22 @@ module TimelineView
                 true => Success(value = OpenTrack(index = row))
                 false => Success(value = PickTrack(index = row, bar = barAt (editor, x)))
 
+    beatAt (editor, x, duration) =
+        window = laneWindow (editor, duration)
+        TimelineGeometry::laneBeat (x, window.origin, window.span, duration)
+
     // The bar under `x`, kept inside the song so Play always has music under it.
-    barAt (editor, x) = floatToInt (TimelineGeometry::playableBar (TimelineGeometry::laneBeat (x, shownFrom editor, shownBeats editor, beats editor), beats editor, DawSession::measure editor.song)) ?: 0
+    barAt (editor, x) =
+        duration = beats editor
+        floatToInt (TimelineGeometry::playableBar (beatAt (editor, x, duration), duration, DawSession::measure editor.song)) ?: 0
 
     (** [DAW-TRANSPORT-RANGE] The end marker's bar line under `x`: the nearest one, after the start marker. *)
-    export endAt (editor, x) = floatToInt (TimelineGeometry::endBar (TimelineGeometry::laneBeat (x, shownFrom editor, shownBeats editor, beats editor), toFloat editor.rollBar, DawSession::measure editor.song)) ?: 0
+    export endAt (editor, x) = floatToInt (TimelineGeometry::endBar (beatAt (editor, x, beats editor), toFloat editor.rollBar, DawSession::measure editor.song)) ?: 0
 
     (** [DAW-TRANSPORT-RANGE] The start marker's bar line under `x`: the nearest one, before the end marker. *)
-    export startAt (editor, x) = floatToInt (TimelineGeometry::startBar (TimelineGeometry::laneBeat (x, shownFrom editor, shownBeats editor, beats editor), toFloat editor.playEnd, beats editor, DawSession::measure editor.song)) ?: 0
+    export startAt (editor, x) =
+        duration = beats editor
+        floatToInt (TimelineGeometry::startBar (beatAt (editor, x, duration), toFloat editor.playEnd, duration, DawSession::measure editor.song)) ?: 0
 
     // [DAW-TRANSPORT-PLAYHEAD] A press on the ruler away from the markers moves the start marker to that bar and keeps the track.
     rulerAt (editor, x, y) = match y >= 193.0 && y < 221.0 && x >= 198.0 && x <= 1098.0
