@@ -120,6 +120,9 @@ grainBadSource () = "Grains require 2–1048576 finite normalised mono samples a
 
 grainBadControls () = "Invalid grain source, controls or revision."
 
+grainBlockAfterTrigger (pool, controls, size, inspect) =
+    succeeds (Grains::trigger (pool, controls), \born => succeeds (Grains::block (born.pool, size), inspect))
+
 // [SYNTH-ADVANCED-GRAINS-PLAYBACK] Opposite-polarity samples reveal a tail reading the wrong buffer.
 overlapSources pool =
     controls = grainControls synth::HannWindow
@@ -194,12 +197,11 @@ sourceJourneys () =
 grainInterpolationJourney () =
     controls = grainAsr (0.0, 0.5, 5, 1.0, -1.0)
     succeeds (Grains::prepare ([0.0, 1.0], 1), \pool =>
-        succeeds (Grains::trigger (pool, controls), \born =>
-            succeeds (Grains::block (born.pool, 5), \rendered =>
-                sameSamples (rendered.left, [0.0, 0.25, 1.0, 0.25, 0.0])
-                sameSamples (rendered.right, [0.0, 0.0, 0.0, 0.0, 0.0])
-                expect (length rendered.next.voices, 0)
-                expect (rendered.next.position, 5))))
+        grainBlockAfterTrigger (pool, controls, 5, \rendered =>
+            sameSamples (rendered.left, [0.0, 0.25, 1.0, 0.25, 0.0])
+            sameSamples (rendered.right, [0.0, 0.0, 0.0, 0.0, 0.0])
+            expect (length rendered.next.voices, 0)
+            expect (rendered.next.position, 5)))
 
 // Wrap is the default policy; a one-shot grain stops the moment its cursor leaves the region.
 grainBoundaryJourney () =
@@ -221,10 +223,9 @@ grainBoundaryJourney () =
         reverse = grainAsr (1.0, -1.0, 5, 1.0, -1.0)
         region = synth::GrainRegion(first = 1, limit = 4, boundary = synth::LoopSource)
         succeeds (Grains::withRegion (pool, region), \narrow =>
-            succeeds (Grains::trigger (narrow, reverse), \backward =>
-                succeeds (Grains::block (backward.pool, 5), \rendered =>
-                    sameSamples (rendered.left, [0.0, 0.375, 0.5, 0.125, 0.0])
-                    expect (length rendered.next.voices, 0)))))
+            grainBlockAfterTrigger (narrow, reverse, 5, \rendered =>
+                sameSamples (rendered.left, [0.0, 0.375, 0.5, 0.125, 0.0])
+                expect (length rendered.next.voices, 0))))
 
 // [SYNTH-ADVANCED-GRAINS-PLAYBACK] Equal-power placement and stereo summing without implicit clipping.
 grainPlacementJourney () =
@@ -232,10 +233,9 @@ grainPlacementJourney () =
     sustained = grainShaped (window, 0.0, 0.0, 11, 1.0, 0.0)
     succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 2), \pool =>
         // A centred grain reaches both channels at cos(pi/4) = sin(pi/4) with unity sum of squared gains.
-        succeeds (Grains::trigger (pool, sustained), \centre =>
-            succeeds (Grains::block (centre.pool, 6), \middle =>
-                near (listGet middle.left 5 ?: 9.0, 0.7071067811865476, 0.000000000000001)
-                near (listGet middle.right 5 ?: 9.0, 0.7071067811865476, 0.000000000000001)))
+        grainBlockAfterTrigger (pool, sustained, 6, \middle =>
+            near (listGet middle.left 5 ?: 9.0, 0.7071067811865476, 0.000000000000001)
+            near (listGet middle.right 5 ?: 9.0, 0.7071067811865476, 0.000000000000001))
         // Hard-left and hard-right grains keep their own channel and sum into both at unity sustain.
         succeeds (Grains::trigger (pool, sustained(pan = -1.0)), \left =>
             succeeds (Grains::trigger (left.pool, sustained(pan = 1.0)), \both =>
@@ -247,10 +247,9 @@ grainPlacementJourney () =
                     expect (listGet spread.right 0 ?: 9.0, 0.0))))
         // Summed peaks may exceed unity: gain staging belongs to the caller.
         succeeds (Grains::trigger (pool, sustained(pan = 0.0)), \first =>
-            succeeds (Grains::trigger (first.pool, sustained(pan = 0.0)), \second =>
-                succeeds (Grains::block (second.pool, 6), \loud =>
-                    near (listGet loud.left 5 ?: 9.0, 1.4142135623730951, 0.000000000000001)
-                    expect ((listGet loud.left 5 ?: 0.0) > 1.0, true)))))
+            grainBlockAfterTrigger (first.pool, sustained(pan = 0.0), 6, \loud =>
+                near (listGet loud.left 5 ?: 9.0, 1.4142135623730951, 0.000000000000001)
+                expect ((listGet loud.left 5 ?: 0.0) > 1.0, true))))
 
 // Independent lifetime and rate: one grain expires while the other keeps its own cursor and age.
 grainLifetimeJourney () =
@@ -258,13 +257,12 @@ grainLifetimeJourney () =
     long = grainAsr (2.0, 1.0, 11, 1.0, 1.0)
     succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 2), \pool =>
         succeeds (Grains::trigger (pool, short), \first =>
-            succeeds (Grains::trigger (first.pool, long), \second =>
-                succeeds (Grains::block (second.pool, 5), \rendered =>
-                    watched = Grains::observation rendered.next
-                    expect (watched.activeGrains, 1)
-                    survivor = grainVoiceAt (watched.voices, 0)
-                    expect (survivor.identity == 1 && survivor.age == 5 && survivor.duration == 11, true)
-                    expect (survivor.cursor, 3.0)))))
+            grainBlockAfterTrigger (first.pool, long, 5, \rendered =>
+                watched = Grains::observation rendered.next
+                expect (watched.activeGrains, 1)
+                survivor = grainVoiceAt (watched.voices, 0)
+                expect (survivor.identity == 1 && survivor.age == 5 && survivor.duration == 11, true)
+                expect (survivor.cursor, 3.0))))
 
 // [SYNTH-ADVANCED-GRAINS-OVERLOAD] Reject-new admission: counted, never stolen, audio untouched.
 grainOverloadJourney () =
