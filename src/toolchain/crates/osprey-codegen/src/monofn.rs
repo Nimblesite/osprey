@@ -65,10 +65,13 @@ pub(crate) fn specialize(
             args.len()
         )));
     }
-    let values = args
-        .iter()
-        .map(|a| gen_expr(cg, a))
-        .collect::<Result<Vec<_>>>()?;
+    // Caller expressions keep the caller's types: an argument that is itself a
+    // call of `name` selects its own instantiation ([TYPE-GENERICS-APPLY]).
+    let values = cg.with_caller_types(|cg| {
+        args.iter()
+            .map(|a| gen_expr(cg, a))
+            .collect::<Result<Vec<_>>>()
+    })?;
     specialize_values(cg, name, parameters, body, values)
 }
 
