@@ -70,10 +70,6 @@ def polarIm (level phase : Float) : Float := level * Float.sin phase
 /-- Nearest integer with ties rounded up: the output bin of the pitch map `round (k · ratio)`. -/
 def nearest (value : Float) : Float := Float.floor (value + 0.5)
 
-/-- Inclusive source-bin bounds that can land on output bin `target` under `ratio`. -/
-def sourceLow (target ratio : Float) : Float := Float.floor ((target - 0.5) / ratio) - 1
-def sourceHigh (target ratio : Float) : Float := Float.ceil ((target + 0.5) / ratio) + 1
-
 /-- Spectral-envelope radius in bins: about 150 Hz. -/
 def envelopeRadius (size sampleRate : Float) : Float := Float.ceil (150 * size / sampleRate)
 

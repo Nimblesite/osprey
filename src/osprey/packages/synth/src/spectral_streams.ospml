@@ -18,12 +18,13 @@ module SpectralStreams
         true => Success(value = config)
         false => Error(message = "Invalid spectral rate, size, hop, mix or transformation range.")
 
-    (** Algorithmic latency in samples, for aligning parallel routes. *)
-    export latency config = satSub config.size 1
+    (** Algorithmic latency in samples of a transform of `size`, for aligning parallel routes. *)
+    export latency size = satSub size 1
 
-    (** Tail in samples: after input stops, feeding this many zeros emits every overlapping frame,
-        including the partial final windows. Freeze keeps sounding until released. *)
-    export tail config = satAdd (satSub config.size 1) config.hop
+    (** Tail in samples after input stops: the last frame holding the final input sample ends up to `size − 1`
+        samples later and resynthesises a whole window, emitted over `size − 1` more; past `2 · (size − 1)` the
+        output is exactly silent. Freeze keeps sounding until released. *)
+    export tail size = satMul 2 (satSub size 1)
 
     zeros count = mapList (toList (range (0, count)), \_ => 0.0)
 

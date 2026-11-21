@@ -34,6 +34,9 @@ module SpectralKernels
 
     packed (held, current) = held(delay = listConcat (listConcat (listConcat current.input current.side) current.output) (listConcat (flattened current.memory) (flattened current.motion)), phase = toFloat current.countdown, integratorOne = toFloat current.frames, integratorTwo = flag current.captured)
 
+    // A spectral shift moves whole bins; a fraction is refused, never truncated.
+    fractional = Error(message = "Spectral shift must be a whole number of bins.")
+
     // A pitch shift in semitones and cents; its formants stay put only when `keep` is on.
     pitched pitch =
         ratio = SpectralMath::semitoneRatio (pitch.semitones, pitch.cents)
@@ -44,8 +47,10 @@ module SpectralKernels
         1.0 => Success(value = SpectralFreeze(held = hold >= 0.5))
         2.0 => Success(value = SpectralBand(low = low, high = high))
         3.0 => match floatToInt shift
-            Error _ => Error(message = "Spectral shift must be a whole number of bins.")
-            Success bins => Success(value = SpectralShift(bins = bins))
+            Success bins => match toFloat bins == shift
+                true => Success(value = SpectralShift(bins = bins))
+                false => fractional
+            Error _ => fractional
         4.0 => Success(value = SpectralSmear(amount = amount))
         5.0 => match morphMode
             0.0 => Success(value = SpectralMorph(amount = amount, mode = Blend))
@@ -75,8 +80,9 @@ module SpectralKernels
         true => 0
         false => satAdd 1 (stages (intDiv size 2))
 
-    (** Butterfly operations per output sample for one node: three transforms (main, side, inverse) of
-        `size · log2 size` butterflies every `hop` samples. *)
+    (** A conservative cost per output sample for one node: three transforms (main, side, inverse), each billed
+        `size · log2 size` operations (one complex multiply and add per point per stage, twice the radix-2 butterfly
+        count of `size / 2 · log2 size`), every `hop` samples. The side transform is billed even when no morph reads it. *)
     export cost (size, hop) = match hop >= 1
         true => intDiv (satMul 3 (satMul size (stages size))) hop
         false => 2147483647

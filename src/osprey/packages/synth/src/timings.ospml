@@ -28,7 +28,7 @@ module Timings
 
     (** Fixed input-to-output delay in samples. *)
     export latency n = match n.processor
-        Spectral size _ => Success(value = toFloat (satSub size 1))
+        Spectral size _ => Success(value = toFloat (SpectralStreams::latency size))
         Shaper => shaperLatency n
         PhaseOperator => switched (n, "oversample", 7.5)
         Delay count => Success(value = toFloat count)
@@ -44,7 +44,7 @@ module Timings
         Reverb => scaled (n, "decay", 2.0 * rate)
         Additive => scaled (n, "decay", rate)
         Smoother => scaled (n, "time", 7.0 * rate)
-        Spectral size hop => Success(value = toFloat (satAdd (satSub size 1) hop))
+        Spectral size _ => Success(value = toFloat (SpectralStreams::tail size))
         Delay count => Success(value = toFloat count)
         FractionalDelay _ => value (n, "delay")
         _ => Success(value = 0.0)
