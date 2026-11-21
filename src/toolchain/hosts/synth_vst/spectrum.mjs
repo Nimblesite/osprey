@@ -93,13 +93,21 @@ if (scenario === 'latency') {
     edit(name + ' 0', 'Late Level', 0.65);
     audition();
     edit(name + ' 0', 'Late Level', 0);
-    edit(name + ' 0', 'Dry Level', 1);
+    edit(name + ' 0', 'Dry Level', 0.375);
+    add('lfo');
+    press('Canvas output 4:0');
+    type('Module', 0);
+    press('Modulate Dry Level');
+    wait('Cable 4:0 to 0:1');
     press('Play Patch');
     wait('Playing the patch.');
     steps.push({ frames: '24' });
     press('Open plug-in window');
     wait('Focus plug-in window');
     press('Focus plug-in window');
+    press('Cable 4:0 to 0:1');
+    press('Delete selected cable');
+    steps.push({ gone: 'Cable 4:0 to 0:1' }, { frames: '36' });
     edit(name + ' 0', 'Dry Level', 0);
     steps.push({ frames: '48' });
     edit(name + ' 0', 'Dry Level', 1);
@@ -182,14 +190,17 @@ function pluginPcm(line, latency) {
     }
     return Buffer.concat(blocks);
 }
-function effectInput(line) {
+function effectInput(line, onParameter) {
     const packet = Buffer.from(line, 'hex');
     const blocks = [];
     for (let offset = 0; offset < packet.length;) {
         const frames = packet.readUInt32LE(offset);
         const notes = packet.readUInt32LE(offset + 4);
         const parameters = packet.readUInt32LE(offset + 8);
-        offset += 12 + notes * 24 + parameters * 16;
+        offset += 12 + notes * 24;
+        for (let i = 0; i < parameters; i++, offset += 16) {
+            if (onParameter) onParameter(packet.readUInt32LE(offset), packet.readUInt32LE(offset + 4), packet.readDoubleLE(offset + 8));
+        }
         const bytes = frames * 8;
         assert(frames > 0 && frames <= 256 && offset + bytes <= packet.length);
         blocks.push(packet.subarray(offset, offset + bytes));
@@ -311,6 +322,14 @@ if (scenario !== 'tal') {
         }
     }
     if (scenario === 'dragonfly') {
+        const dryPoints = [];
+        for (const line of lines(output + '.in')) {
+            effectInput(line, (id, offset, value) => {
+                if (id === 2) dryPoints.push([offset, value]);
+            });
+        }
+        assert(dryPoints.slice(0, -3).some(([offset, value]) => offset === 128 && value > 0 && value < 1), 'The LFO must drive Dry Level');
+        assert.deepEqual(dryPoints.slice(-3), [[0, 0.375], [0, 0], [0, 1]], 'Unplug restores the stored dial and releases it for live editing');
         // Device receipts prove the same process stayed alive across both edits.
         const pcm = deviceAudio(device, false);
         let heard = false, quiet = 0, muted = false, recovered = false;

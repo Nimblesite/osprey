@@ -121,11 +121,25 @@ module GraphPreview
                 false => sounding
                 true => sounding(parameters = mapList (authored.parameters, \p => value (original.parameters, sounding.parameters, p)))
 
+    hasWire (graph, cable) = length (filterList (graph.cables, \wire => structuralEquals (wire, cable))) != 0
+
+    // A disconnected VST control returns to its dial on the next audio block.
+    retained (before, after, c) = match Graphs::node (before, c.destination)
+        Valid n => match n.processor
+            External _ _ => match listGet n.inputs c.inlet
+                Success port => port.rate != Control || !hasWire (before, c) || hasWire (after, c)
+                Error _ => true
+            _ => true
+        Invalid _ => true
+
     // A worker can still be finishing an older block. Only the following block observes this graph.
     applied (before, after) =
         sounding = after.renderGraph
         latest = perform Signal<Graph>.read ()
-        sounding(nodes = mapList (after.renderGraph.nodes, \n => editedNode (before.graph, latest, n)))
+        cables = match structuralEquals (before.graph.cables, latest.cables)
+            true => sounding.cables
+            false => filterList (sounding.cables, \c => retained (before.graph, latest, c))
+        sounding(cables = cables, nodes = mapList (after.renderGraph.nodes, \n => editedNode (before.graph, latest, n)))
 
     observed (before, after, graph) =
         handle static Signal<Graph>
