@@ -37,7 +37,15 @@ public sealed class SceneTests
         Assert.Null(Decode([Row(20, x: 1728, y: 893)]).Opening);
         Assert.Null(Decode([Row(20)]).Opening);
         Assert.Null(Decode([Row(20, x: 0, y: 0, width: 5)]).Opening);
-        Assert.Throws<HostException>(() => Decode([Row(20, x: 10, y: 10, width: -1)]));
+        var fixedScale = Decode([Row(20, x: 434, y: 557, width: -1)]);
+        Assert.Equal(-1, fixedScale.Zoom);
+        Assert.Equal((434.0, 557.0), fixedScale.Opening);
+        Assert.Equal(1, fixedScale.ScaleIn(320, 240));
+        Assert.Equal(1, fixedScale.ScaleIn(1600, 1200));
+        foreach (var invalid in new[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity })
+        {
+            Assert.Throws<HostException>(() => Decode([Row(20, x: 434, y: 557, width: invalid)]));
+        }
     }
 
     [Fact]

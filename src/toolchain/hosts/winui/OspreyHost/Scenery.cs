@@ -181,8 +181,7 @@ sealed class SceneView
             Viewed((holder.ActualWidth, holder.ActualHeight));
             return;
         }
-        var whole = Math.Min(holder.ActualWidth / scene.Width, holder.ActualHeight / scene.Height);
-        var scale = scene.Zoom > 0 ? Math.Min(scene.Zoom, whole) : whole;
+        var scale = scene.ScaleIn(holder.ActualWidth, holder.ActualHeight);
         if (scale <= 0) return;
         var viewport = (Width: holder.ActualWidth / scale, Height: holder.ActualHeight / scale);
         canvas.Clip = new RectangleGeometry { Rect = new Rect(0, 0, viewport.Width, viewport.Height) };
