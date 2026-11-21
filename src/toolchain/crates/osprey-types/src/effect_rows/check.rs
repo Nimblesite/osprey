@@ -88,26 +88,6 @@ fn check_resolved(program: &Program, instances: &Instances) -> CheckedEffects {
             report_row_error(&mut errors, function, &unknown, "declares unknown effects");
         }
     }
-    // Without declarations or written row contracts, there is no algebraic
-    // row to solve. A written `![]` still needs analysis: runtime builtins and
-    // opaque callbacks cannot be certified pure by this fast path.
-    if index.effects.is_empty()
-        && index
-            .functions
-            .iter()
-            .all(|function| !function.effect_row_present)
-    {
-        return CheckedEffects {
-            errors,
-            library_exports: LibraryExports::proven(
-                index
-                    .functions
-                    .iter()
-                    .map(|function| (function.qualified.clone(), Vec::new())),
-            ),
-            ..CheckedEffects::default()
-        };
-    }
     let mut rows = vec![Summary::default(); index.functions.len()];
     let mut returns = vec![None; index.functions.len()];
 
