@@ -26,6 +26,14 @@ The [hosted run for `d4341c9ac`](https://github.com/Nimblesite/osprey/actions/ru
 - [ ] **Build and coverage.** Local workspace Clippy passes after `a1183e8ed`. A clean Talon web build passes with ABI generation from `5ec9e5172`, and the exact synth coverage gate passes. Verify the hosted build and artifact producers on the replacement commit. [Clippy](https://github.com/Nimblesite/osprey/actions/runs/44901015355/job/136837186112) [Build](https://github.com/Nimblesite/osprey/actions/runs/44901015355/job/136837186146) [Coverage](https://github.com/Nimblesite/osprey/actions/runs/44901015355/job/136838272142)
 - [ ] **Duplication.** Pinned Deslop 0.41.0 reports 22,853 duplicated lines out of 551,704 in the local checkout, above the 4% limit. Rerun on the intended push commit after removing the remaining duplication.
 
+### Local replay before the full build
+
+- [x] Preflight preserves workflow, job and step environment variables, and runs each distinct execution context once. A selection that skips every check exits with a failure status. The regression tests cover an identical command with different GC and ARC settings, a Windows host, and an exact duplicate.
+- Run `make _deslop` and the release audit first. They catch dependency and duplication failures before the app builds. The Make target installs the same Deslop version as CI.
+- Build the release CLI once. Replay the DAW compiler failure directly with `./target/release/osprey test src/osprey/examples/daw/test` and record elapsed time and peak resident memory. A successful replay must reach TAP and finish all assertions.
+- Use `node scripts/ci/preflight.mjs --list --only='gpui\.yml:|winui\.yml:'` to locate the desktop replay commands. Run macOS checks on macOS and verify Linux resource use and WinUI goldens on their native runners. Preflight lists checks that require another host or GitHub runner data as skipped.
+- The push lock holder runs `make ci` once the targeted checks are green and the branch is clean. `make push` validates that exact commit.
+
 ## Rules
 
 - [x] **[CI-PUSH-LOCK]** Only the agent holding the TMC lock `PUSH-<branch>` pushes. Every other agent commits locally and tells the holder on TMC which commits to include.
