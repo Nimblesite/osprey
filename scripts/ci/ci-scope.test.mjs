@@ -198,6 +198,24 @@ test('the coverage gate only compares collected reports and never builds or test
   assert.match(coverage, /^    runs-on: ubuntu-latest$/m)
 })
 
+test('coverage identifies failed or skipped report producers before downloading artifacts', () => {
+  const coverage = job('coverage', '.github/workflows/ci.yml')
+  const producers = coverage.match(/^    needs: \[changes, (.+)\]$/m)[1].split(', ')
+  const preflight = coverage.split('      - uses: actions/checkout@v7')[0]
+  const command = preflight.match(/^        run: \|\n([\s\S]+)$/m)[1]
+  const results = Object.fromEntries(producers.map((producer) => [producer, { result: 'success' }]))
+  const run = (overrides) => spawnSync('bash', ['-e', '-c', command], {
+    env: { ...process.env, NEEDS: JSON.stringify({ ...results, ...overrides }) }, encoding: 'utf8',
+  })
+  assert.equal(run({}).status, 0)
+  const failed = run({ 'test-c-runtime': { result: 'skipped' }, 'test-rust': { result: 'failure' },
+    'test-registry-arc': { result: 'cancelled' } })
+  assert.equal(failed.status, 1)
+  assert.match(failed.stdout, /test-c-runtime: skipped/)
+  assert.match(failed.stdout, /test-rust: failure/)
+  assert.match(failed.stdout, /test-registry-arc: cancelled/)
+})
+
 const stagedBundleFixture = (change) => runStagedBundleFixture(job('test-extension', '.github/workflows/ci.yml'), change)
 
 test('staged bundle verification fails closed without recompiling a payload', () => {

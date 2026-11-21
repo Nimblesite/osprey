@@ -1430,10 +1430,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Package manager suites passed
+      - name: Require successful coverage producers and package manager suites
+        env:
+          NEEDS: ${{ toJSON(needs) }}
         run: |
-          test "${{ needs.test-registry-gc.result }}" = "success"
-          test "${{ needs.test-registry-arc.result }}" = "success"
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key): \(.value.result)"' <<< "$NEEDS")
+          if [ -n "$failed" ]; then echo "$failed"; exit 1; fi
       - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
