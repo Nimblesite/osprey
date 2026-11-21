@@ -32,7 +32,7 @@ inspectorJourney () =
     expect (Drive::letters (selected, "Cutoff"), false)
     panelDialJourney selected
     viewShows (selected, "Connections", false)
-    sourced = prismTap (selected, "Canvas output 0:0")
+    sourced = prismTap (spacedFilter selected, "Canvas output 0:0")
     connected = prismTap (sourced, "Canvas input 1:0")
     cablesOf (connected, 1)
     disconnected = cutCable (connected, "Cable 0:0 to 1:0")
@@ -378,11 +378,19 @@ dockTap (driven, label) =
             down = Drive::sent (driven, pressed)
             Drive::sent (down, pressed(touchNow = down.drivenNow, touchDown = false))
 
+// Leave an exposed cable span between the two cards.
+spacedFilter driven =
+    at = controlPoint (driven, "Canvas Filter 1", 0.5)
+    held = grabbedAt (driven, at.pointX, at.pointY - 60.0)
+    moved = Drive::pointer (held, at.pointX + 200.0, at.pointY - 60.0, false)
+    expect ((controlPoint (moved, "Canvas Filter 1", 0.5)).pointX, at.pointX + 200.0)
+    moved
+
 // [PRISM-ROUTING-CABLES] Physical press/move/release, cancellation and direct removal.
 cableGestureJourney () =
     launched = editorLaunched ["--empty"]
     opened = Drive::press (launched, "Patch Controls")
-    disconnected = Drive::choose (Drive::choose (opened, "Add component", "sine"), "Add component", "filter")
+    disconnected = spacedFilter (Drive::choose (Drive::choose (opened, "Add component", "sine"), "Add component", "filter"))
     oscillator = controlPoint (disconnected, "Canvas output 0:0", 0.5)
     filter = controlPoint (disconnected, "Canvas input 1:0", 0.5)
     armed = grabbedAt (disconnected, oscillator.pointX, oscillator.pointY)
@@ -557,7 +565,8 @@ tuned (driven, node, label, words) = Drive::choose (dialTapped (inspectorSelecte
 // value, Shift turns a tenth as fast, sideways movement does nothing, the whole turn is one undo, and the value
 // can be typed after a press that never moved; a bad entry is refused and the field stays open.
 panelDialJourney selected =
-    expect (length selected.drivenSeen.renderedScenes, 2)
+    expect (length selected.drivenSeen.renderedScenes, 3)
+    expect (length (filterList (selected.drivenSeen.renderedScenes, \ordinal => dialTarget (selected, ordinal))), 1)
     before = (Drive::holding selected).graph
     frequency editor = match synth::Graphs::node (editor.graph, 0)
         synth::Invalid _ => 0.0 - 1.0
