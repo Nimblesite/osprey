@@ -168,9 +168,8 @@ sealed class SceneView
     // After this event, since the frame it draws can rebuild the control that raised it.
     void Later(Action act) => holder.DispatcherQueue.TryEnqueue(() => act());
 
-    // A scene with a size is drawn at its fixed zoom from the region's top left and clipped to itself,
-    // so a larger window shows more canvas and resizes nothing, and never magnified past what the
-    // region fits whole; one without a size is in window pixels.
+    // A scene with a size is drawn at its scale from the region's top left and clipped to itself, so a
+    // larger window shows more canvas and resizes nothing; one without a size is in window pixels.
     void Fitted(Scene scene)
     {
         shown = scene;
@@ -181,8 +180,7 @@ sealed class SceneView
             Viewed((holder.ActualWidth, holder.ActualHeight));
             return;
         }
-        var whole = Math.Min(holder.ActualWidth / scene.Width, holder.ActualHeight / scene.Height);
-        var scale = scene.Zoom > 0 ? Math.Min(scene.Zoom, whole) : whole;
+        var scale = scene.Scale(holder.ActualWidth, holder.ActualHeight);
         if (scale <= 0) return;
         var viewport = (Width: holder.ActualWidth / scale, Height: holder.ActualHeight / scale);
         canvas.Clip = new RectangleGeometry { Rect = new Rect(0, 0, viewport.Width, viewport.Height) };

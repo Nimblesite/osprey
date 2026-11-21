@@ -14,7 +14,7 @@ namespace Osprey.Host.WinUI;
 /// <c>--self-test</c> [WINUI-HOST-SELF-TEST]: drives the real window from a script that lives beside
 /// the application, through the controls' own automation peers, and saves what the window shows.
 /// A script names only what a person sees: words on screen, a button's label, a row's text. Steps:
-/// <c>wait</c> and <c>gone</c> for words, <c>invoke</c> a button, <c>toggle</c> a switch,
+/// <c>wait</c> and <c>gone</c> for words, <c>invoke</c> a button or a context-menu command, <c>toggle</c> a switch,
 /// <c>choose</c> a row, <c>type</c> into a field, <c>set</c> a slider to a value, <c>drag</c> a scene
 /// element by a distance in its units, <c>key</c> to press a key in a scene,
 /// <c>frames</c> to let the steady clock run that many 1/60 s frames, <c>sleep</c> for seconds,
@@ -121,8 +121,32 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         {
             return late;
         }
+        var frame = Drawn();
+        if (await Task.WhenAny(frame, Task.Delay(patience)) != frame)
+        {
+            return "the window never drew a frame";
+        }
         await Shoot(name);
         return null;
+    }
+
+    // A picture is of a frame drawn after the step: the first frame of a large scene comes well after
+    // the window shows, and until it does Windows composes the window blank. Asking for frames keeps
+    // the render loop running until one is drawn.
+    static Task Drawn()
+    {
+        var drawn = new TaskCompletionSource();
+        EventHandler<object> ticking = (_, _) => { };
+        EventHandler<RenderedEventArgs>? done = null;
+        done = (_, _) =>
+        {
+            CompositionTarget.Rendering -= ticking;
+            CompositionTarget.Rendered -= done;
+            drawn.TrySetResult();
+        };
+        CompositionTarget.Rendering += ticking;
+        CompositionTarget.Rendered += done;
+        return drawn.Task;
     }
 
     bool RowsDrawn() => window.Content is not { } root || Tree(root).OfType<ListView>().Where(Shown).All(list =>
@@ -169,12 +193,29 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         if (Find(words) is { } named && Up<ButtonBase>(named) is { IsEnabled: true } exact) return exact;
         var buttons = Tree(root).OfType<ButtonBase>().Where(button => Shown(button) && button.IsEnabled).ToArray();
         return buttons.FirstOrDefault(button => Says(button, words) || Named(button) == words)
-            ?? buttons.FirstOrDefault(button => Named(button).Contains(words, StringComparison.Ordinal));
+            ?? buttons.FirstOrDefault(button => Named(button).Contains(words, StringComparison.Ordinal))
+            ?? Commanded(words);
     }
+
+    // An enabled command of that name in a shown element's context menu, in any of its submenus, as a
+    // right-click and then a click reach it.
+    FrameworkElement? Commanded(string words) => window.Content is { } root
+        ? Tree(root).OfType<FrameworkElement>().Where(Shown).Select(element => element.ContextFlyout).OfType<MenuFlyout>()
+            .SelectMany(menu => Commands(menu.Items)).FirstOrDefault(entry => entry.IsEnabled && entry.Text == words)
+        : null;
+
+    static IEnumerable<MenuFlyoutItem> Commands(IEnumerable<MenuFlyoutItemBase> items) => items.SelectMany(item => item switch
+    {
+        MenuFlyoutSubItem group => Commands(group.Items),
+        MenuFlyoutItem entry => new[] { entry },
+        _ => Array.Empty<MenuFlyoutItem>(),
+    });
 
     static string Named(ButtonBase button) => AutomationProperties.GetName(button) is { Length: > 0 } name ? name : button.Content as string ?? "";
 
-    static string? Invoke(FrameworkElement element) => Up<ButtonBase>(element) switch
+    static string? Invoke(FrameworkElement element) => element is MenuFlyoutItem entry
+        ? Invoked(() => new MenuFlyoutItemAutomationPeer(entry).Invoke())
+        : Up<ButtonBase>(element) switch
     {
         ToggleButton header when Up<Expander>(header) is { } disclosure => Invoked(() => Flipped(new ExpanderAutomationPeer(disclosure))),
         AppBarButton bar => Invoked(() => new AppBarButtonAutomationPeer(bar).Invoke()),

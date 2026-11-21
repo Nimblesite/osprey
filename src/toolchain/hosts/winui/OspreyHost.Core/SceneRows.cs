@@ -66,15 +66,26 @@ public sealed record LinearPaint(double Angle, Tint From, double FromAt, Tint To
 /// <summary>One element of a scene's accessibility tree [UI-MACHINE-A11Y]: bounds in scene units and, for a slider, its value and range.</summary>
 public sealed record Accessible(string Role, string Label, double X, double Y, double W, double H, double Value, double Min, double Max, bool Selected);
 
-/// <summary>One checked scene: its unit space (zero for window pixels), its zoom in pixels per unit (0 fits it to its region), its atlas and its shapes.</summary>
+/// <summary>
+/// One checked scene: its unit space (zero for window pixels), its zoom in pixels per unit, its atlas
+/// and its shapes. Zoom 0 fits the scene to its region, a positive zoom fits it up to that zoom, and a
+/// negative zoom is exactly its magnitude at every region size [DAW-LAYOUT-FIXED-SCALE].
+/// </summary>
 public sealed record Scene(double Width, double Height, double Zoom, IReadOnlyList<string> Atlas, IReadOnlyList<Shape> Shapes, IReadOnlyList<Accessible> Access)
 {
     /// <summary>
     /// The size, in window units, of the window an application that is this one scene opens at: its
-    /// units times its zoom. A scene of window pixels or at zoom 0 fits whatever region holds it, so it
-    /// asks for no size.
+    /// units times its zoom's magnitude. A scene of window pixels or at zoom 0 fits whatever region
+    /// holds it, so it asks for no size.
     /// </summary>
-    public (double Width, double Height)? Opening => Width > 0 && Height > 0 && Zoom > 0 ? (Width * Zoom, Height * Zoom) : null;
+    public (double Width, double Height)? Opening => Width > 0 && Height > 0 && Zoom != 0 ? (Width * Math.Abs(Zoom), Height * Math.Abs(Zoom)) : null;
+
+    /// <summary>Window units per scene unit in a region of this size; drawing and pointer input share it.</summary>
+    public double Scale(double regionWidth, double regionHeight)
+    {
+        var whole = Math.Min(regionWidth / Width, regionHeight / Height);
+        return Zoom switch { 0 => whole, < 0 => -Zoom, _ => Math.Min(Zoom, whole) };
+    }
 }
 
 /// <summary>
@@ -105,7 +116,8 @@ public static class SceneReader
                     throw new HostException("A scene names no canvas row, or one twice");
                 }
                 var row = (int)head.Index;
-                current = new Growing(FrameReader.Extent(head.X, row), FrameReader.Extent(head.Y, row), FrameReader.Extent(head.Width, row));
+                // The row is already finite, and a zoom of either sign is a scale, so only the extent is checked.
+                current = new Growing(FrameReader.Extent(head.X, row), FrameReader.Extent(head.Y, row), head.Width);
                 all[row] = current;
                 continue;
             }
