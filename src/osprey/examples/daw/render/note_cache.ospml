@@ -48,12 +48,18 @@ module NoteCache
             Error _ => play
             Success _ => taken (dir, play, cue.note)
 
-    (** `play` with every kept note that is due before frame `until` read from `dir`, so playing it makes nothing. *)
+    seedDue (dir, play, until, index) = match listGet play.pending index
+        Error _ => play
+        Success cue => match cue.due < until
+            false => play
+            true => seedDue (dir, seed (dir, play, cue), until, satAdd index 1)
+
+    (** Pending cues are ordered by onset. Read cached notes through the current block. *)
     export seeded (dir, play, until) = match dir == ""
         true => play
-        false => foldList (filterList (play.pending, \cue => cue.due < until), play, \(held, cue) => seed (dir, held, cue))
+        false => seedDue (dir, play, until, 0)
 
-    first (jobs, track, cue) = match length (filterList (jobs, \job => job.track == track && Arrangements::same (job.note, cue.note))) > 0
+    first (jobs, track, cue) = match ui::Lists::any (jobs, \job => job.track == track && Arrangements::same (job.note, cue.note))
         true => jobs
         false => listAppend jobs (NoteJob(track = track, due = cue.due, note = cue.note))
 
