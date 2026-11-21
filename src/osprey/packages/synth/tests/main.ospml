@@ -19,6 +19,7 @@ registerWaveJourneys ()
 registerClipJourneys ()
 registerGrainJourneys ()
 registerSpectrumJourneys ()
+registerGrainLimitJourneys ()
 
 test ("route oscillator through gain to output, reject bad wiring and preserve the original patch", \() => arithmetic (\() =>
     source = node (1, synth::Oscillator, [control], [audio])

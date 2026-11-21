@@ -1,0 +1,195 @@
+// [SYNTH-ADVANCED-GRAINS] Journeys for grain limits: loop boundaries, onset timing, parameter distributions and pool saturation.
+
+// [SYNTH-ADVANCED-GRAINS-BOUNDARY] One grain admitted to `pool`, full level, hard left, nine frames long.
+loopAdmitted (pool, s) =
+    plain = grainControls synth::HannWindow
+    loopTriggered (pool, synth::Grains::trigger (pool, plain(start = s.start, rate = s.rate, pan = -1.0, amplitude = 1.0, duration = 9)))
+
+loopTriggered (pool, outcome) = match outcome
+    Error why =>
+        expect (synth::Faults::detail why, "an admitted grain")
+        pool
+    Success admission =>
+        expect (admission.accepted, true)
+        admission.pool
+
+// Frame-by-frame left output, and whether every live grain's cursor stayed inside the region [2, 6).
+loopFrames (pool, count) = foldList (toList (range (0, count)), { pool = pool, left = [], inside = true, voices = 0 }, loopFrame)
+
+loopFrame (run, _) = match synth::Grains::block (run.pool, 1)
+    Error why =>
+        expect (synth::Faults::detail why, "a grain frame")
+        run
+    Success b =>
+        seen = (synth::Grains::observation b.next).voices
+        { pool = b.next, left = listConcat run.left b.left, inside = run.inside && length (filterList (seen, \v => v.cursor < 2.0 || v.cursor >= 6.0)) == 0, voices = satAdd run.voices (length seen) }
+
+// Overlapping grains crossing the loop's end (and, reversed, its start) wrap inside the region on every frame,
+// and together they sound exactly the sum of each alone.
+loopOverlaps pool =
+    region = synth::GrainRegion(first = 2, limit = 6, boundary = synth::LoopSource)
+    starts = [{ start = 4.5, rate = 1.0 }, { start = 5.0, rate = 1.0 }, { start = 5.75, rate = 1.5 }, { start = 2.25, rate = -1.0 }]
+    succeeds (synth::Grains::withRegion (pool, region), \looped =>
+        mixed = loopFrames (foldList (starts, looped, loopAdmitted), 12)
+        alone = mapList (starts, \s => loopFrames (loopAdmitted (looped, s), 12))
+        expect (length mixed.left, 12)
+        expect (mixed.inside, true)
+        forEachList (alone, \single => expect (single.inside, true))
+        expect (mixed.voices, foldList (alone, 0, \(sum, single) => satAdd sum single.voices))
+        forEachList (toList (range (0, 12)), \i => near (listGet mixed.left i ?: 99.0, foldList (alone, 0.0, \(sum, single) => sum + (listGet single.left i ?: 99.0)), 0.000000000001))
+        expect (foldList (mixed.left, 0.0, loopPeak) > 0.5, true))
+
+loopPeak (top, x) = match x > top
+    true => x
+    false => top
+
+// [SYNTH-ADVANCED-GRAINS-SCHEDULING] Onsets of one scheduler clock over consecutive blocks of `sizes` frames.
+onsetsOver (timing, seed, sizes) = match synth::GrainScheduler::prepare (0, timing, seed)
+    Error why =>
+        expect (synth::Faults::detail why, "a scheduler clock")
+        { positions = [], clock = synth::GrainClock(position = 0, nextOnset = 0, timing = timing, seed = seed) }
+    Success clock => foldList (sizes, { positions = [], clock = clock }, onsetBlock)
+
+onsetBlock (run, frames) = match synth::GrainScheduler::block (run.clock, frames)
+    Error why =>
+        expect (synth::Faults::detail why, "an onset block")
+        run
+    Success b => { positions = listConcat run.positions b.positions, clock = b.next }
+
+onsetGaps positions = mapList (toList (range (1, length positions)), \i => satSub (listGet positions i ?: 0) (listGet positions (satSub i 1) ?: 0))
+
+gapLow (low, g) = match g < low
+    true => g
+    false => low
+
+gapHigh (high, g) = match g > high
+    true => g
+    false => high
+
+// Every gap inside [low, high], the mean within `slack` of `mean`, and at least `spread` between the extremes;
+// one block of 8,192 frames, four of 2,048 and an irregular split give the same onsets and clock.
+timingHeld (c, seed) =
+    whole = onsetsOver (c.timing, seed, [2048, 2048, 2048, 2048])
+    gaps = onsetGaps whole.positions
+    expect (length gaps >= c.least, true)
+    expect (foldList (gaps, 2147483647, gapLow) >= c.low, true)
+    expect (foldList (gaps, 0, gapHigh) <= c.high, true)
+    expect (foldList (gaps, 0, gapHigh) - foldList (gaps, 2147483647, gapLow) >= c.spread, true)
+    within ("mean gap", toFloat (foldList (gaps, 0, \(sum, g) => satAdd sum g)) / toFloat (length gaps), c.mean, c.slack)
+    forEachList ([[1, 2047, 1000, 1048, 2048, 2048], [3, 5, 2040, 2048, 2048, 2048], [2048, 1, 1, 2046, 2048, 2048]], \sizes =>
+        split = onsetsOver (c.timing, seed, sizes)
+        expect (structuralEquals (split.positions, whole.positions), true)
+        expect (structuralEquals (split.clock, whole.clock), true))
+    expect (structuralEquals ((onsetsOver (c.timing, seed, [2048, 2048, 2048, 2048])).positions, whole.positions), true)
+    whole.positions
+
+timingJourney () =
+    cases = [{ timing = synth::PeriodicTiming(period = 100, jitter = 0), low = 100, high = 100, spread = 0, mean = 100.0, slack = 0.0, least = 80, varies = false }, { timing = synth::PeriodicTiming(period = 100, jitter = 40), low = 60, high = 140, spread = 40, mean = 100.0, slack = 10.0, least = 70, varies = true }, { timing = synth::PeriodicTiming(period = 7, jitter = 6), low = 1, high = 13, spread = 8, mean = 7.0, slack = 0.5, least = 1000, varies = true }, { timing = synth::ExponentialTiming(mean = 50.0, maximum = 400), low = 1, high = 400, spread = 100, mean = 50.5, slack = 12.0, least = 120, varies = true }, { timing = synth::ExponentialTiming(mean = 20.0, maximum = 30), low = 1, high = 30, spread = 20, mean = 15.93, slack = 3.0, least = 300, varies = true }]
+    forEachList (cases, \c =>
+        heard = mapList ([1, 12345, 2147483646], \seed => timingHeld (c, seed))
+        // Seeded replay is exact; a different seed moves a jittered or exponential schedule.
+        expect (structuralEquals (listGet heard 0 ?: [], listGet heard 1 ?: []), c.varies == false)
+        expect (structuralEquals (listGet heard 1 ?: [], listGet heard 2 ?: []), c.varies == false))
+
+// [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Distributed events at `positions` from `seeds`, or none after a failed expectation.
+spreadEvents (positions, ranges, seeds) = match synth::GrainDistributions::events (positions, ranges, 1024, seeds)
+    Error why =>
+        expect (synth::Faults::detail why, "distributed events")
+        synth::GrainDistributedEvents(events = [], next = seeds)
+    Success held => held
+
+spreadSeeds seed = match synth::GrainDistributions::seeded seed
+    Error why =>
+        expect (synth::Faults::detail why, "seeds")
+        synth::GrainSeeds(position = 1, rate = 1, duration = 1, amplitude = 1, pan = 1)
+    Success seeds => seeds
+
+spreadLow (low, x) = match x < low
+    true => x
+    false => low
+
+spreadHigh (high, x) = match x > high
+    true => x
+    false => high
+
+// One field of every event: inside [low, high], its mean within 4% of the range of the midpoint, and both ends approached.
+spreadField (label, values, low, high) =
+    expect ("${label} low ${foldList (values, high, spreadLow) >= low}", "${label} low true")
+    expect ("${label} high ${foldList (values, low, spreadHigh) <= high}", "${label} high true")
+    within ("${label} mean", foldList (values, 0.0, \(sum, x) => sum + x) / toFloat (length values), (low + high) / 2.0, 0.04 * (high - low))
+    below ("${label} nearest the floor", foldList (values, high, spreadLow) - low, 0.01 * (high - low))
+    below ("${label} nearest the ceiling", high - foldList (values, low, spreadHigh), 0.01 * (high - low))
+
+spreadJourney () =
+    plain = grainControls synth::HannWindow
+    ranges = synth::GrainDistribution(minimum = plain(start = 100.0, rate = 0.5, duration = 10, amplitude = 0.1, pan = -0.8), maximum = plain(start = 900.0, rate = 2.0, duration = 50, amplitude = 0.9, pan = 0.6))
+    positions = toList (range (0, 2000))
+    heard = mapList ([1, 777, 2147483646], \seed =>
+        seeds = spreadSeeds seed
+        whole = spreadEvents (positions, ranges, seeds)
+        expect (length whole.events, 2000)
+        expect (structuralEquals (mapList (whole.events, \e => e.position), positions), true)
+        controls = mapList (whole.events, \e => e.controls)
+        spreadField ("start", mapList (controls, \c => c.start), 100.0, 900.0)
+        spreadField ("rate", mapList (controls, \c => c.rate), 0.5, 2.0)
+        spreadField ("duration", mapList (controls, \c => toFloat c.duration), 10.0, 50.0)
+        spreadField ("amplitude", mapList (controls, \c => c.amplitude), 0.1, 0.9)
+        spreadField ("pan", mapList (controls, \c => c.pan), -0.8, 0.6)
+        // Splitting the batch at any event and carrying the seeds reproduces it; an empty batch consumes nothing.
+        forEachList ([1, 700, 1999], \cut =>
+            head = spreadEvents (synth::Sequences::take (positions, cut), ranges, seeds)
+            tail = spreadEvents (synth::Sequences::drop (positions, cut), ranges, head.next)
+            expect (structuralEquals (listConcat head.events tail.events, whole.events), true)
+            expect (structuralEquals (tail.next, whole.next), true))
+        expect (structuralEquals ((spreadEvents ([], ranges, seeds)).next, seeds), true)
+        expect (structuralEquals (spreadEvents (positions, ranges, seeds), whole), true)
+        whole.events)
+    expect (structuralEquals (listGet heard 0 ?: [], listGet heard 1 ?: []), false)
+    expect (structuralEquals (listGet heard 1 ?: [], listGet heard 2 ?: []), false)
+    // A collapsed range plays exactly its one setting.
+    fixed = spreadEvents ([0, 5, 5, 9], synth::GrainDistribution(minimum = ranges.minimum, maximum = ranges.minimum), spreadSeeds 42)
+    forEachList (fixed.events, \e => expect (structuralEquals (e.controls, ranges.minimum), true))
+    renderRefused (synth::GrainDistributions::events ([5, 4], ranges, 1024, spreadSeeds 1))
+    renderRefused (synth::GrainDistributions::events (positions, synth::GrainDistribution(minimum = ranges.maximum, maximum = ranges.minimum), 1024, spreadSeeds 1))
+
+// [SYNTH-ADVANCED-GRAINS-CAPACITY] A grain block from scheduled events, or silence after a failed expectation.
+fullBlock (pool, frames, positions) =
+    plain = grainControls synth::HannWindow
+    tone = plain(start = 0.0, rate = 1.0, duration = 8, amplitude = 0.5, pan = -1.0)
+    match synth::Grains::scheduled (pool, frames, mapList (positions, \p => synth::GrainEvent(position = p, controls = tone)))
+        Error why =>
+            expect (synth::Faults::detail why, "a scheduled grain block")
+            synth::GrainBlock(left = [], right = [], next = pool)
+        Success b => b
+
+fullCounts pool =
+    seen = synth::Grains::observation pool
+    "requested ${seen.requestedGrains} accepted ${seen.acceptedGrains} rejected ${seen.rejectedGrains} stolen ${seen.stolenGrains} active ${seen.activeGrains}"
+
+// Two voices hear eight simultaneous and overlapping onsets: the first two play, five are rejected and counted,
+// and once both end the pool recovers to admit the next. Accepted grains play whole, exactly as if alone.
+saturationJourney pool =
+    crowded = fullBlock (pool, 16, [0, 0, 0, 0, 0, 3, 3, 12])
+    alone = fullBlock (pool, 16, [0, 0, 12])
+    expect (fullCounts crowded.next, "requested 8 accepted 3 rejected 5 stolen 0 active 1")
+    expect (fullCounts alone.next, "requested 3 accepted 3 rejected 0 stolen 0 active 1")
+    sameSamples (crowded.left, alone.left)
+    sameSamples (crowded.right, alone.right)
+    // The grain admitted at 12 keeps sounding across the block boundary, uncut by the earlier overload.
+    later = fullBlock (crowded.next, 8, [])
+    sameSamples (later.left, (fullBlock (alone.next, 8, [])).left)
+    expect (foldList (later.left, 0.0, \(sum, x) => sum + abs x) > 0.1, true)
+    expect (fullCounts later.next, "requested 8 accepted 3 rejected 5 stolen 0 active 0")
+    // Two onsets on the same frame play exactly twice as loud as one.
+    both = fullBlock (pool, 12, [2, 2])
+    one = fullBlock (pool, 12, [2])
+    forEachList (toList (range (0, 12)), \i => near (listGet both.left i ?: 9.0, 2.0 * (listGet one.left i ?: 9.0), 0.000000000001))
+    expect (foldList (one.left, 0.0, \(sum, x) => sum + x) > 0.5, true)
+
+registerGrainLimitJourneys () =
+    test ("overlapping grains crossing a loop's end, at 1.5x and reversed across its start, stay inside the region every frame and sum exactly [SYNTH-ADVANCED-GRAINS-BOUNDARY]", \() => arithmetic (\() =>
+        succeeds (synth::Grains::prepare (mapList (toList (range (0, 8)), \i => toFloat i * 0.1), 4), loopOverlaps)))
+    test ("periodic, jittered and censored exponential onset schedules keep every gap in bounds, match their mean, replay per seed and ignore block splits [SYNTH-ADVANCED-GRAINS-SCHEDULING]", \() => arithmetic timingJourney)
+    test ("grain position, rate, duration, gain and pan distributions stay in their bounds, centre on their midpoints, reach both ends, replay per seed and ignore batch splits [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS]", \() => arithmetic spreadJourney)
+    test ("a two-voice grain pool rejects and counts simultaneous overload onsets, recovers when its grains end and never truncates the grains it accepted [SYNTH-ADVANCED-GRAINS-CAPACITY]", \() => arithmetic (\() =>
+        succeeds (synth::Grains::prepare (mapList (toList (range (0, 64)), \_ => 1.0), 2), saturationJourney)))
