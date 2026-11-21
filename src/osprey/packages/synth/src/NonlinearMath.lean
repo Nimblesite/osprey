@@ -35,11 +35,6 @@ def cubicIntegral (x : Float) : Float :=
 def fold (x : Float) : Float := Float.sin (1.5707963267948966 * x)
 def foldIntegral (x : Float) : Float := -0.6366197723675814 * Float.cos (1.5707963267948966 * x)
 
-/-- First-order ADAA quotient with an ill-conditioning fallback. -/
-def antialiased (current previous integralCurrent integralPrevious midpoint : Float) : Float :=
-  if Float.abs (current - previous) < 0.00001 then midpoint
-  else (integralCurrent - integralPrevious) / (current - previous)
-
 /-- One-pole DC blocker. -/
 def dcBlock (input previousInput previousOutput coefficient : Float) : Float :=
   input - previousInput + coefficient * previousOutput

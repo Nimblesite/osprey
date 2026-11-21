@@ -23,6 +23,9 @@ fn binder(name: &str) -> Result<String, String> {
             | "sin"
             | "cos"
             | "listPrepend"
+            | "curve"
+            | "integral"
+            | "abs"
             | "delay"
     ) {
         return Err(format!("binding shadows a reflected operation: {name}"));
@@ -32,6 +35,18 @@ fn binder(name: &str) -> Result<String, String> {
 
 fn pattern(p: &Pattern) -> Result<String, String> {
     match p {
+        Pattern::Literal(v) => match v.as_ref() {
+            Expr::Bool(b) => Ok(b.to_string()),
+            _ => Err("unsupported literal pattern".into()),
+        },
+        Pattern::Binding(name)
+            if matches!(
+                name.as_str(),
+                "TanhCurve" | "HardCurve" | "CubicCurve" | "FoldCurve"
+            ) =>
+        {
+            Ok(format!("Curve.{name}"))
+        }
         Pattern::List {
             elements,
             rest: None,
@@ -48,6 +63,14 @@ fn pattern(p: &Pattern) -> Result<String, String> {
             fields,
             sub_patterns,
         } if sub_patterns.is_empty() => {
+            if fields.is_empty()
+                && matches!(
+                    name.as_str(),
+                    "TanhCurve" | "HardCurve" | "CubicCurve" | "FoldCurve"
+                )
+            {
+                return Ok(format!("Curve.{name}"));
+            }
             let ctor = match name.as_str() {
                 "Error" => "Except.error",
                 "Success" => "Except.ok",
@@ -65,6 +88,23 @@ fn pattern(p: &Pattern) -> Result<String, String> {
 fn callee(e: &Expr) -> Result<String, String> {
     let Expr::Identifier(name) = e else {
         if let Expr::Path(path) = e {
+            if let [module, op] = path.segments.as_slice() {
+                if module == "NonlinearMath"
+                    && matches!(
+                        op.as_str(),
+                        "tanh"
+                            | "hard"
+                            | "cubic"
+                            | "fold"
+                            | "tanhIntegral"
+                            | "hardIntegral"
+                            | "cubicIntegral"
+                            | "foldIntegral"
+                    )
+                {
+                    return Ok(format!("ops.{op}"));
+                }
+            }
             return match path.to_string().as_str() {
                 "DelayLines::push" => Ok("ops.push".into()),
                 "DelayLines::tap" => Ok("ops.tap".into()),
@@ -88,6 +128,8 @@ fn callee(e: &Expr) -> Result<String, String> {
             Ok(format!("{module}.{} ops", ident(name)?))
         }
         "satAdd" | "toFloat" | "sin" | "cos" => Ok(format!("ops.{name}")),
+        "curve" | "integral" => Ok(format!("Waveshapers.{} ops", ident(name)?)),
+        "abs" => Ok("ops.abs".into()),
         "listPrepend" => Ok("(fun tail head => List.cons head tail)".into()),
         _ => Err(format!("unsupported callee {name}")),
     }
@@ -134,6 +176,8 @@ fn term(e: &Expr) -> Result<String, String> {
     match e {
         Expr::Identifier(n) => ident(n),
         Expr::Integer(n) if *n >= 0 => Ok(n.to_string()),
+        Expr::Float(n) if n.to_bits() == 0.5_f64.to_bits() => Ok("ops.half".into()),
+        Expr::Float(n) if n.to_bits() == 0.00001_f64.to_bits() => Ok("ops.epsilon".into()),
         Expr::Float(n)
             if [0.0_f64, 1.0, 2.0, 4.0]
                 .iter()
@@ -156,6 +200,7 @@ fn term(e: &Expr) -> Result<String, String> {
             let name = match op.as_str() {
                 "+" => "plus",
                 "*" => "times",
+                "<" => "less",
                 "/" => "divide",
                 "-" => "minus",
                 _ => return Err(format!("unsupported operator {op}")),
@@ -227,6 +272,11 @@ fn reflect(file: &str) -> Result<(), String> {
         return Err("expected synth namespace".into());
     }
     let signatures: &[(&str, &[&str], &str)] = match path.to_string().as_str() {
+        "Waveshapers" => &[
+            ("curve", &["Curve", "α"], "α"),
+            ("integral", &["Curve", "α"], "α"),
+            ("shaped", &["Shaper", "α", "α"], "α"),
+        ],
         "Allpasses" => &[("next", &["α", "AllpassState α", "α"], "AllpassSample α")],
         "StrikeCombs" => &[
             ("delay", &["Strike α"], "α"),

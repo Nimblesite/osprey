@@ -30,11 +30,30 @@ structure AllpassSample (α : Type) where
   sample : α
   next : AllpassState α
 
+inductive Curve where
+  | TanhCurve | HardCurve | CubicCurve | FoldCurve
+
+structure Shaper where
+  antialias : Bool
+  curve : Curve
+
 structure Ops (α : Type) where
   History : Type
   Fault : Type
   push : History → α → History
   tap : History → α → Except Fault α
+  half : α
+  epsilon : α
+  abs : α → α
+  less : α → α → Bool
+  tanh : α → α
+  hard : α → α
+  cubic : α → α
+  fold : α → α
+  tanhIntegral : α → α
+  hardIntegral : α → α
+  cubicIntegral : α → α
+  foldIntegral : α → α
   divide : α → α → α
   plus : α → α → α
   times : α → α → α
@@ -249,5 +268,65 @@ theorem allpassSteadyMagnitude {β : Type} (ops : Ops α) (conj : α → α) (no
   have transfer := congrArg norm (allpassTransfer ops one a q x y response unitL assoc dist restore)
   rw [normMul, normMul, magnitude] at transfer
   exact cancel _ _ _ denom transfer
+
+/-- Disabled ADAA applies the selected transfer curve to the current sample. -/
+theorem shaperBypass (ops : Ops α) (shape : Curve) (x previous : α) :
+    Waveshapers.shaped ops ⟨false, shape⟩ x previous = Waveshapers.curve ops shape x := rfl
+
+/-- In the cancellation region the selected transfer curve is evaluated at the midpoint. -/
+theorem shaperMidpoint (ops : Ops α) (shape : Curve) (x previous : α)
+    (nearby : ops.less (ops.abs (ops.minus x previous)) ops.epsilon = true) :
+    Waveshapers.shaped ops ⟨true, shape⟩ x previous =
+      Waveshapers.curve ops shape (ops.times ops.half (ops.plus x previous)) := by
+  unfold Waveshapers.shaped
+  dsimp only
+  rw [nearby]
+
+theorem shaperQuotient (ops : Ops α) (shape : Curve) (x previous : α)
+    (separated : ops.less (ops.abs (ops.minus x previous)) ops.epsilon = false) :
+    Waveshapers.shaped ops ⟨true, shape⟩ x previous =
+      ops.divide (ops.minus (Waveshapers.integral ops shape x) (Waveshapers.integral ops shape previous)) (ops.minus x previous) := by
+  unfold Waveshapers.shaped
+  dsimp only
+  rw [separated]
+
+/-- Apply Parker et al. (8)–(9) to the production quotient branch. -/
+theorem shaperIntervalAverage (ops : Ops α) (shape : Curve) (x previous zero : α)
+    (area : α → α → α) (distinct : ops.minus x previous ≠ zero)
+    (separated : ops.less (ops.abs (ops.minus x previous)) ops.epsilon = false)
+    (fundamental : ∀ a b, area a b = ops.minus (Waveshapers.integral ops shape b) (Waveshapers.integral ops shape a))
+    (reverse : ∀ a b u v, ops.minus u v ≠ zero → ops.divide (ops.minus b a) (ops.minus v u) = ops.divide (ops.minus a b) (ops.minus u v)) :
+    Waveshapers.shaped ops ⟨true, shape⟩ x previous = ops.divide (area x previous) (ops.minus previous x) :=
+  (shaperQuotient ops shape x previous separated).trans
+    (Synthesis.antiderivativeAverage _ _ area _ x previous zero distinct fundamental reverse).symm
+
+/-- Curve and primitive dispatch remain paired for each supported shape. -/
+theorem shaperCurvePair (ops : Ops α) (shape : Curve) (x : α) :
+    (Waveshapers.curve ops shape x, Waveshapers.integral ops shape x) = (match shape with
+      | .TanhCurve => (ops.tanh x, ops.tanhIntegral x)
+      | .HardCurve => (ops.hard x, ops.hardIntegral x)
+      | .CubicCurve => (ops.cubic x, ops.cubicIntegral x)
+      | .FoldCurve => (ops.fold x, ops.foldIntegral x)) := by cases shape <;> rfl
+
+theorem shaperPrimitiveOffset (ops : Ops α) (shape : Curve) (x prev c : α)
+    (separated : ops.less (ops.abs (ops.minus x prev)) ops.epsilon = false)
+    (cancel : ∀ a b k, ops.minus (ops.plus a k) (ops.plus b k) = ops.minus a b) :
+    ops.divide (ops.minus (ops.plus (Waveshapers.integral ops shape x) c)
+                          (ops.plus (Waveshapers.integral ops shape prev) c)) (ops.minus x prev) =
+      Waveshapers.shaped ops ⟨true, shape⟩ x prev :=
+  (Synthesis.antiderivativeOffset _ _ _ _ x prev c cancel).trans
+    (shaperQuotient ops shape x prev separated).symm
+
+theorem shaperConstantSegment (ops : Ops α) (shape : Curve) (x prev gain c zero : α)
+    (separated : ops.less (ops.abs (ops.minus x prev)) ops.epsilon = false)
+    (distinct : ops.minus x prev ≠ zero)
+    (atX : Waveshapers.integral ops shape x = ops.plus (ops.times gain x) c)
+    (atPrev : Waveshapers.integral ops shape prev = ops.plus (ops.times gain prev) c)
+    (shift : ∀ a b k, ops.minus (ops.plus a k) (ops.plus b k) = ops.minus a b)
+    (dist : ∀ a b k, ops.minus (ops.times k a) (ops.times k b) = ops.times k (ops.minus a b))
+    (cancel : ∀ k a, a ≠ zero → ops.divide (ops.times k a) a = k) :
+    Waveshapers.shaped ops ⟨true, shape⟩ x prev = gain := by
+  rw [shaperQuotient ops shape x prev separated, atX, atPrev]
+  exact Synthesis.antiderivativeConstantCurve _ _ _ _ x prev gain c zero distinct shift dist cancel
 
 end ProductionFft

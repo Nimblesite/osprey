@@ -26,7 +26,11 @@ module Waveshapers
 
     shaped (config, current, previous) = match config.antialias
         false => curve (config.curve, current)
-        true => NonlinearMath::antialiased (current, previous, integral (config.curve, current), integral (config.curve, previous), curve (config.curve, 0.5 * (current + previous)))
+        true =>
+            difference = current - previous
+            match abs difference < 0.00001
+                true => curve (config.curve, 0.5 * (current + previous))
+                false => (integral (config.curve, current) - integral (config.curve, previous)) / difference
 
     (** One sample with an accepted configuration. *)
     export next (config, held, input) =
