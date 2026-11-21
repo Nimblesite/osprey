@@ -16,7 +16,7 @@ make -C src/toolchain/targets/tests synth          # the app's tests, with no ho
 | --- | --- |
 | ![Timeline](screens/timeline.png) | **Timeline.** One lane per track across the song, and a two-bar piano roll of the selected track. Tap a lane to select the track at that bar. Use the rail at the right of the lanes to reach the next seven tracks. Tap a track name or the Patch tab to edit its sound. View → Keyboard opens the playable keys. |
 | ![A track's patch](screens/track-patch.png) | **Patch.** The selected track's patch in Prism: modules, cables and the selected module’s connections. Leaving the page saves the patch into the project file. A built-in instrument opens as one voice module. |
-| ![Mix](screens/mix.png) | **Mix.** The selected track’s dry path passes through its assigned bus or goes directly to Master. Its Space send returns to Master independently. Click the Space card for reverb size, decay and damping, or the group card for its inputs and compressor detector. Click its output or use the **Routing** menu to choose Master, assign a project bus or create a named stereo group. |
+| ![Mix](screens/mix.png) | **Mix.** The selected track’s dry path passes through its assigned bus or goes directly to Master. The group card shows its inputs and compressor detector. Click its output or use the **Routing** menu to choose Master, assign a project bus or create a named stereo group. |
 
 File → Save writes the open song, its patches and their layouts. Play renders two bars from the playhead. Stop cancels playback. File → Open Song opens another project in the same window.
 
@@ -78,7 +78,7 @@ For example, `{"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabl
 
 ## How it renders [SYNTH-ARRANGEMENT]
 
-A piano roll rendered offline, outside the graph: [daw.td](daw.td) declares the `Arrangement` (tempo, sample rate, master `drive`, reverb `Space`, the `Intro` recording it continues (path, held tail, crossfade), sustain appearances, tracks of `[pitch, start, length, velocity]` notes) and six instruments built from `@osprey/synth` modules. `NoteRenders.render` turns one note into a mono buffer; `Arrangements` renders a track in start order with an overlap-add carry, adds tracks to left, right and reverb buses (`layered`, `added`), and `mixed` runs two feedback-delay reverbs of different size (one per side) and a tanh soft limiter that puts the peak at 0.89. `Sustains.frozen` analyses a recording to its end and holds its last spectrum with the phase-locked freeze; `Sustains.voiced` reads that hold at a speed ratio with its own rise, hold and fade, so written music can continue a recording and bring its last sound back at other pitches (linear interpolation, not bandlimited). Formulas are in [ArrangeMath.lean](src/ArrangeMath.lean).
+A piano roll rendered offline, outside the graph: [daw.td](daw.td) declares the `Arrangement` (title, tempo, sample rate, buses, tracks of `[pitch, start, length, velocity]` notes) and six instruments built from `@osprey/synth` modules. `NoteRenders.render` turns one note into a mono buffer; `Arrangements` renders a track in start order with an overlap-add carry, adds tracks to left, right and reverb buses (`layered`, `added`), and `mixed` runs two feedback-delay reverbs of different size (one per side) and a tanh soft limiter that puts the peak at 0.89. `Sustains.frozen` analyses a recording to its end and holds its last spectrum with the phase-locked freeze; `Sustains.voiced` reads that hold at a speed ratio with its own rise, hold and fade, so written music can continue a recording and bring its last sound back at other pitches (linear interpolation, not bandlimited). Formulas are in [ArrangeMath.lean](src/ArrangeMath.lean).
 
 | Instrument | Built from | Notes |
 | --- | --- | --- |
@@ -94,23 +94,12 @@ Limits: rendering is not realtime and allocates per sample; a note lasts at most
 ## What the host tools do
 
 Osprey writes text files, so each rendered part is written as hexadecimal and `xxd` turns it into a WAV.
-`ffmpeg` cuts the intro's last `tail` seconds for the engine to analyse, joins the parts, and crossfades
-the piece in over the intro's final `crossfade` seconds. `daw-play` plays the result with `afplay`. Every command runs under
-`timeout`. Nothing else touches the audio: every note, the mix, the reverb, the limiter and the held intro
-pad come from the engine.
+`ffmpeg` joins the parts. Every command runs under `timeout`. Nothing else touches the audio: every note, the mix
+and the limiter come from the engine.
 
 ## Limits
 
 - macOS only: playback uses `afplay`. Rendering needs `ffmpeg`, `xxd` and `timeout` on the path.
 - The limiter is a plain tanh curve without oversampling, and the piece is rendered in mono per track
   before panning, so detuned operators do not spread across the stereo field.
-- The intro's tempo and key are not detected. `phosphor-drift.json` was written for the Broken Circuitry recording by
-  measuring it first: a pulse of about 97.5 beats per minute and an ending on a C drone in the D♭ major
-  scale. The piece is in F Phrygian, so the drone is its dominant, and the held drone returns a fourth up
-  and a fifth down (both F) in the breakdown and the ending.
 - Spectral processing and patch reverb can take minutes to render offline. *Silt Relay* combines them on **Throat / metal** and uses granular synthesis and MIDI routing on two other tracks. The 34.49-second stereo master with the pitch-shifted Glass pins and parallel Rivet pulse send took about fourteen minutes to render on the development Mac.
-- The recording itself is not in the repository; `phosphor-drift.json` expects it at
-  `~/Documents/Audio/Broken Circuitry.wav`.
-- The two sides use reverbs of different size, so a steady low tone sent to the reverb adds in phase on
-  one side and out of phase on the other. At a send of 0.3 the held drone measured 0.47 RMS on the right
-  against 0.29 on the left; the song keeps its sustains dry for that reason.
