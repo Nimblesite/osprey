@@ -65,17 +65,20 @@ const SMALL_PROGRAM: usize = 1000;
 const LOWERING_RUNS: usize = 2;
 
 /// `functions` functions that each call one generic helper.
-fn generic_callers(functions: usize) -> String {
-    let callers: String = (0..functions)
-        .map(|i| format!("fn f{i}() = same({i})\n"))
-        .collect();
-    format!("fn same(x) = x\n{callers}print(\"${{f0()}}\")\n")
+fn generic_callers(functions: usize) -> std::io::Result<Vec<u8>> {
+    use std::io::Write;
+    let mut source = b"fn same(x) = x\n".to_vec();
+    for i in 0..functions {
+        writeln!(source, "fn f{i}() = same({i})")?;
+    }
+    source.extend_from_slice(b"print(\"${f0()}\")\n");
+    Ok(source)
 }
 
 /// The fastest of several runs that lower a program of `functions` generic callers to LLVM IR.
 fn lowering_time(functions: usize) -> std::io::Result<Duration> {
     let source = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("callers{functions}.osp"));
-    std::fs::write(&source, generic_callers(functions))?;
+    std::fs::write(&source, generic_callers(functions)?)?;
     let mut fastest = Duration::MAX;
     for _ in 0..LOWERING_RUNS {
         let started = Instant::now();

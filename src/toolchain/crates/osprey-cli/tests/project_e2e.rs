@@ -263,8 +263,14 @@ fn bank_project_runs_and_builds_byte_exact_against_expectedoutput() {
 #[test]
 fn bank_money_signature_is_opaque_from_both_flavors() -> TestResult {
     for (extension, source) in [
-        ("osp", "fn main() = { let amount = Money::fromCents(420005)\n print(\"${Money::show(amount)}|${wrapAdd(Money::toCents(amount), 1)}|${Money::positive(amount)}|${Money::show(Money::fromCents(-9223372036854775808))}\") }\n"),
-        ("ospml", "main () =\n    amount = Money::fromCents 420005\n    print \"${Money::show amount}|${wrapAdd (Money::toCents amount) 1}|${Money::positive amount}|${Money::show (Money::fromCents (-9223372036854775808))}\"\n"),
+        (
+            "osp",
+            "fn main() = { let amount = Money::fromCents(420005)\n print(\"${Money::show(amount)}|${wrapAdd(Money::toCents(amount), 1)}|${Money::positive(amount)}|${Money::show(Money::fromCents(-9223372036854775808))}\") }\n",
+        ),
+        (
+            "ospml",
+            "main () =\n    amount = Money::fromCents 420005\n    print \"${Money::show amount}|${wrapAdd (Money::toCents amount) 1}|${Money::positive amount}|${Money::show (Money::fromCents (-9223372036854775808))}\"\n",
+        ),
     ] {
         let project = money_client_fixture(extension, source)?;
         let expected = "$4,200.05|420006|true|-$92,233,720,368,547,758.08\n";
@@ -321,7 +327,9 @@ fn money_client_fixture(
     std::fs::write(project.join(format!("src/main.{extension}")), source)?;
     std::fs::write(
         project.join("osprey.toml"),
-        format!("[project]\nname = \"money-contract\"\nsource_roots = [\"src\"]\ndefault_namespace = \"bank\"\nentry = \"src/main.{extension}\"\n"),
+        format!(
+            "[project]\nname = \"money-contract\"\nsource_roots = [\"src\"]\ndefault_namespace = \"bank\"\nentry = \"src/main.{extension}\"\n"
+        ),
     )?;
     Ok(project)
 }
@@ -587,18 +595,18 @@ fn assert_late_note_pickup(binary: &Path, folder: &Path) -> TestResult {
     let cold = opening_packets(binary, folder, false)?;
     let joined = opening_packets(binary, folder, true)?;
     assert_eq!(
-        cold[..8],
-        joined[..8],
+        cold.get(..8).ok_or("missing cold audio packets")?,
+        joined.get(..8).ok_or("missing joined audio packets")?,
         "publishing later changed the attack"
     );
     assert_ne!(
-        cold[27..],
-        warm[27..],
+        cold.get(27..).ok_or("missing cold audio packets")?,
+        warm.get(27..).ok_or("missing warm audio packets")?,
         "the fixture must distinguish live doubles from cached F32"
     );
     assert_eq!(
-        joined[27..],
-        warm[27..],
+        joined.get(27..).ok_or("missing joined audio packets")?,
+        warm.get(27..).ok_or("missing warm audio packets")?,
         "the prepared note restarted or missed its handoff"
     );
     Ok(())
