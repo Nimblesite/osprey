@@ -36,7 +36,9 @@ module NoteCache
         entries = listDir "${folder}/notes" ?: []
         SendRenders::collect (song.tracks, \voice => playableHome (song, voice, folder, entries))
 
-    path (dir, note) = "${dir}/${note.pitch}_${note.length}_${note.velocity}.st"
+    noteName note = "${note.pitch}_${note.length}_${note.velocity}.st"
+
+    path (dir, note) = "${dir}/${noteName note}"
 
     lane (file, index) = match loadTensor file "${index}"
         Error why => Error(message = why)
@@ -114,15 +116,17 @@ module NoteCache
             false => play
             true => play(sounding = mapList (play.sounding, \sound => recorded (dir, sound)))
 
-    first (jobs, track, cue) = match ui::Lists::any (jobs, \job => job.track == track && Arrangements::same (job.note, cue.note))
-        true => jobs
-        false => listAppend jobs (NoteJob(track = track, due = cue.due, note = cue.note))
+    first (batch, track, cue) =
+        key = noteName cue.note
+        match mapContains batch.seen key
+            true => batch
+            false => { seen = mapSet batch.seen key true, jobs = listAppend batch.jobs (NoteJob(track = track, due = cue.due, note = cue.note)) }
 
     listed (song, jobs, track) = match listGet song.tracks track
         Error _ => jobs
         Success voice => match Arrangements::opened (song, voice)
             Error _ => jobs
-            Success play => foldList (play.pending, jobs, \(held, cue) => first (held, track, cue))
+            Success play => (foldList (play.pending, { seen = Map(), jobs = jobs }, \(batch, cue) => first (batch, track, cue))).jobs
 
     sooner (one, other) = match one.due < other.due
         true => -1
