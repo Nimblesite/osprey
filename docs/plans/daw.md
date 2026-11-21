@@ -238,12 +238,12 @@ Keep the production formulas in native Osprey and derive the definitions checked
 
 ## Dynamics [DAW-DYNAMICS]
 
-- [x] Compressor and limiter formulas in [DynamicsMath.lean](../../src/osprey/packages/synth/src/DynamicsMath.lean); the Osprey module generates.
+- [x] Compressor and limiter formulas in [dynamics_math.ospml](../../src/osprey/packages/synth/src/dynamics_math.ospml).
 - [ ] `Compressor` and `Limiter` components in `@osprey/synth`, any channel count, linked (synth-advanced). Partial: `synth::Limiters` (4e212e09f) limits a linked stereo buffer: the lowest true-peak need (4× oversampled, ITU-R BS.1770-4) is held across the lookahead with a linear-time block minimum, released upward and averaged over the window, so no frame or inter-sample peak passes the ceiling before the final clamp; quiet signals pass bit-exact. The synth test covers 4 settings × 6 signals, impulses, a quarter-rate 45° sine (samples at 0.707, true peak 1) and 9 refusals. Not yet a graph node or any channel count; no compressor component.
 - [ ] Tests: sine against the curve within 0.01 dB; inter-sample peaks under the ceiling (synth-advanced).
 - [ ] Master ends in the compressor and limiter, replacing the `ArrangeMath` limiter; settings in daw.td. Partial: Master ends in the true-peak brick-wall limiter at −1 dBTP (1.5 ms lookahead, 80 ms release) and `drive` pushes the peak-normalised mix into it; the tanh limiter is deleted (1b45a3ba0). The compressor stage and limiter settings in daw.td remain.
 - [ ] Gain reduction and true-peak meters on the Mix page.
-- [ ] Multiband compressor and multiband limiter ([DAW-DYNAMICS-MULTIBAND]): Linkwitz–Riley crossovers (3–5 bands) that sum flat, per-band dynamics; Master chain is EQ → multiband compressor → multiband limiter → true-peak brickwall; also patch and bus effects; settings in daw.td; Lean formulas; flat-sum and per-band tests.
+- [ ] Multiband compressor and multiband limiter ([DAW-DYNAMICS-MULTIBAND]): Linkwitz–Riley crossovers (3–5 bands) that sum flat, per-band dynamics; Master chain is EQ → multiband compressor → multiband limiter → true-peak brickwall; also patch and bus effects; settings in daw.td; native Osprey formulas and Lean proofs; flat-sum and per-band tests.
 - [ ] Pitch effects on tracks and buses ([DAW-PITCH-EFFECTS]): the FFT pitch shifter in semitones and cents, and autotune following key/scale or the timeline's notes, each with latency compensation in the renderer.
 
 ## Buses and sidechain [DAW-MIX-BUS]
@@ -259,7 +259,7 @@ Keep the production formulas in native Osprey and derive the definitions checked
 
 The three-band split is a start, not the EQ. Target: a parametric EQ as good as the best commercial ones, on every track, bus and Master.
 
-- [ ] Up to 8 bands: bell, low and high shelf, notch, band-pass, tilt, and high- and low-pass at 6–48 dB/oct. Biquads from the RBJ cookbook, written in Lean; each band has frequency, gain and Q.
+- [ ] Up to 8 bands: bell, low and high shelf, notch, band-pass, tilt, and high- and low-pass at 6–48 dB/oct. Biquads from the RBJ cookbook, implemented in native Osprey; each band has frequency, gain and Q.
 - [ ] Analog-matched response near Nyquist (no cramping): oversampled or matched-z design. A linear-phase mode for mastering, with its latency reported.
 - [ ] Mid/side and left/right per band. Dynamic EQ: a band's gain follows a threshold and can be keyed by a sidechain.
 - [ ] Smooth parameter changes without zipper noise or filter blow-up under automation.
@@ -285,7 +285,7 @@ The three-band split is a start, not the EQ. Target: a parametric EQ as good as 
 - [ ] Per-instrument expected ranges in daw.td; energy outside them reported.
 - [ ] EQ advice (band, dB, reason: masking, resonance, mud, harshness, low end), applied as a checked project edit.
 - [ ] Masking report between tracks in the same band.
-- [ ] Lean formulas and tests on synthetic signals with known spectra.
+- [ ] Native Osprey formulas, proofs of their production bodies, and tests on synthetic signals with known spectra.
 - [ ] Mix checks per example project, run by `make` and red on failure: tonal balance against the genre curve, LUFS and true peak, clipping, masking, mono low end, pitch fit ([DAW-ANALYSIS-GATE]).
 - [ ] Every project in `tracks/` passes its mix checks; fix the mixes that fail.
 - [ ] Checks per window along the song; a failure alerts at once and marks the bars on the Timeline with track, check, value and limit; tapping it seeks there ([DAW-ANALYSIS-TIMELINE]).

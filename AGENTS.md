@@ -67,7 +67,7 @@ Three phases, each once — ❌ mixing them:
     escape s = escapeControls (replace s "\"" "\\\"" ?: "") 1
 ```
 
-- **Math is written in Lean, never in Osprey ([MATH-CODE](docs/specs/tooling/MathToCode.md)).** A formula is a `def` in a `.lean` file under a source root; the toolchain generates its Osprey module into `.osprey/math/` (untracked, never edited). ❌ hand-written math in `.osp*`, ❌ committing a generated module. 🚫 Designing or extending an Osprey-specific math format is prohibited unless Lean's format cannot express the functionality, proven in the spec ([MATH-CODE-LEAN]); an unread Lean construct means extend the reader. Well-known formulas live in [`@osprey/math`](src/osprey/packages/math/README.md), each the formula Mathlib states, quoted from the pinned Mathlib commit
+- **Write production formulas in native Osprey (`.ospml`).** Keep Lean theorem statements and proofs alongside the proof tooling. Derive their executable definitions from the shipped Osprey source, state the assumptions, and require the proof to fail on a relevant source mutation. Record any notation that reads worse than the equivalent Lean in the language spec and implementation plan. Cite the original formula and pinned Mathlib declaration where applicable. [Formula and proof contract](docs/specs/tooling/MathToCode.md)
 - **Osprey: JSON and database access stay at the edges** — decode into typed records in one boundary module (via `@osprey/json`'s `Doc`) or behind an effect; ❌ `Json` values, `JsonInt`/`jsonIndex` matching or SQL in business logic
 - **Website:** CSS ≤ 1.8k LOC, `prose`-prefixed classes, ❌ Tailwind; every site-local CSS/JS URL carries a content hash ([WEBSITE-ASSET-VERSIONS])
 

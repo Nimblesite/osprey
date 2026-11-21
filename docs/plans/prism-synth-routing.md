@@ -107,7 +107,7 @@ The macOS windowed and headless patch journeys route a note generator through TA
 ### Routed LFO modulation [PRISM-ROUTING-MODULATION]
 
 - [x] Add an independent normalized sine LFO and stereo controlled-gain component to the native menu and canvas graph.
-- [x] Share oscillator kernels, author transfer formulas in Lean, and broadcast control samples without implicitly changing audio channel widths.
+- [x] Share oscillator kernels, implement transfer formulas in native Osprey, and broadcast control samples without implicitly changing audio channel widths.
 - [x] Verify exact stereo PCM for constant control, changing PCM for moving control, missing-input rejection and invalid-control rejection.
 - [x] Extend the real native VST journey to 42 steps including an LFO-controlled stereo gain before playback; retain exact upstream VST PCM checks.
 - [x] Route normalized modulators into automatable hosted parameters.
@@ -146,7 +146,7 @@ The full CI, Windows, GPUI, WinUI, release, release-scope and Dependabot workflo
 - [x] Store typed per-node positions separately from the audio graph, preserving grab offsets and moving cards, cables and accessible port bounds together.
 - [x] Keep layout-only edits out of the audio revision; clamp dragged cards and port targets to the canvas, reject nonfinite coordinates and release pointer capture.
 - [x] Verify all twelve app journeys under GC and ARC, and the rebuilt native host's 44-step real VST/audio journey including a card drag.
-- [x] Author placement mathematics in Lean and compare 544 values against generated Osprey under both memory backends.
+- [x] Retain the placement reference coverage (544 values compared under both memory backends at the original implementation). Maintain placement formulas in the native Osprey geometry modules.
 - [ ] Verify actual window screenshots; the previously confirmed locked desktop still leaves this unproved.
 
 The UI model is generated from `editor.td`; the synth library remains UI-free. Evidence is in `target/pr-validation/prism-drag-*`. Continuous device rendering, persistent hosted instances, saved patches, full CI and the repository duplication gate remain unfinished.
@@ -350,7 +350,7 @@ The proposal started from the package's `graph.td`, `render.td`, `src/clip_kerne
 | Layer | Integration and evidence |
 | --- | --- |
 | Schemas | Extend typeDiagram sources and regenerate. Round-trip old graphs and exercise missing and unknown fields. |
-| DSP mathematics | Use the existing Lean reader and generation path for windows, interpolation, modal transitions, waveguide tuning, energy accounting and controller mappings. Check reference parity. |
+| DSP mathematics | Implement native Osprey formulas and prove properties of their parsed bodies for windows, interpolation, modal transitions, waveguide tuning, energy accounting and controller mappings. Check reference parity. |
 | Package processing | Carry grain scheduling, body state and neural request descriptors through public preparation/block interfaces, validation and observations. |
 | Host adapters | Bound asset decoding, model execution and generated-asset jobs. Reuse worker ownership/cancellation with a dedicated typed model protocol. |
 | Prism | Extend existing editor state, palette, cards, inspector and keyboard gestures within the single accessible routing workspace. |
