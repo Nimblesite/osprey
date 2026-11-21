@@ -343,6 +343,11 @@ keyboardDockJourney opened =
     expect ((Drive::holding reopened).armedNote, -1)
     menuJourney reopened
 
+menuPage (driven, label, index) =
+    opened = Drive::press (driven, label)
+    expect (synth::TimelineView::pageIndex (Drive::holding opened).page, index)
+    opened
+
 // [DAW-MENU] The window's menu bar names every command once, each with its shortcut, and a menu command runs
 // the same action as the header's.
 menuJourney driven =
@@ -351,13 +356,10 @@ menuJourney driven =
     logic = Drive::press (driven, "Logic Style")
     expect ((Drive::holding logic).keymap.name, "Logic Style")
     expect ((Views::control (logic.drivenSeen, "Bus Routing")).controlKind, "button")
-    timeline = Drive::press (logic, "Timeline")
-    expect (synth::TimelineView::pageIndex (Drive::holding timeline).page, 1)
+    timeline = menuPage (logic, "Timeline", 1)
     viewShows (timeline, "Save", true)
-    mix = Drive::press (timeline, "Bus Routing")
-    expect (synth::TimelineView::pageIndex (Drive::holding mix).page, 2)
-    patch = Drive::press (mix, "Track Patch")
-    expect (synth::TimelineView::pageIndex (Drive::holding patch).page, 0)
+    mix = menuPage (timeline, "Bus Routing", 2)
+    patch = menuPage (mix, "Track Patch", 0)
     hidden = Drive::press (patch, "Keyboard")
     expect ((Drive::holding hidden).keyboardShown, false)
     library = Drive::press (hidden, "Modules")
