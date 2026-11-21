@@ -1,5 +1,26 @@
 namespace ProductionFft
 
+/-- Once the sample-rate-scaled attack completes, a held note passes the input sample. -/
+theorem envelopeSustain (ops : Ops α) (sample frame gate attack release rate : α)
+    (risen : ops.atLeast frame (ops.times attack rate) = true)
+    (held : ops.less frame gate = true)
+    (unit : ops.times sample (ops.literal 1) = sample) :
+    ArrangeMath.enveloped ops sample frame gate attack release rate = sample := by
+  unfold ArrangeMath.enveloped ArrangeMath.gated
+  rw [risen, held]
+  exact unit
+
+/-- After the gate and the sample-rate-scaled release, a finite sample is silent
+    under the stated zero multiplication law, independently of attack progress. -/
+theorem envelopeReleased (ops : Ops α) (sample frame gate attack release rate : α)
+    (pastGate : ops.less frame gate = false)
+    (ended : ops.atLeast frame (ops.plus gate (ops.times release rate)) = true)
+    (zero : ops.times sample (ops.literal 0) = ops.literal 0) :
+    ArrangeMath.enveloped ops sample frame gate attack release rate = ops.literal 0 := by
+  unfold ArrangeMath.enveloped ArrangeMath.gated
+  rw [pastGate, ended]
+  exact zero
+
 /-- At unsaturated addresses the base stage consumes exactly four successive strided
     bins, or reports an incomplete frame if any required position is absent. -/
 theorem stridedQuartet (ops : Ops α) (values : List (Bin α)) (first stride : Nat) (sign : α)

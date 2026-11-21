@@ -335,7 +335,7 @@ Reference: Smith's waveguide material and Bilbao's numerical synthesis reference
 
 Added on request after the families: a piano-roll project file rendered offline by the advanced modules, and a command-line player that continues an existing recording. Nothing here is covered by an automated test yet; the evidence below is from rendering the included song.
 
-- [x] Declare the arrangement (tempo, rate, master drive, reverb space, sustain appearances, tracks, notes, six instruments) in `src/osprey/examples/daw/daw.td`; formulas in its `ArrangeMath.lean`.
+- [x] Declare the arrangement (tempo, rate, master drive, reverb space, sustain appearances, tracks, notes, six instruments) in `src/osprey/examples/daw/daw.td`; formulas in its `arrange_math.ospml`.
 - [x] Render one note per instrument from the existing modules (`NoteRenders`): plucked and bowed strings, bell and bar modal banks, a detuned phase-distortion operator pair and a drum; each module validates its own controls.
 - [x] Render tracks in start order with an overlap-add carry, mix to left, right and reverb buses, run one feedback-delay reverb per side and a tanh soft limiter (`Arrangements`).
 - [x] Hold the end of a recording with the spectral freeze and replay the hold at a pitch ratio with its own rise, hold and fade (`Sustains`) [SYNTH-ARRANGEMENT-SUSTAIN]. The freeze gained identity phase locking: every bin turns with its nearest magnitude peak.

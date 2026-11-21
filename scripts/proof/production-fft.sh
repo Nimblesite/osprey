@@ -6,6 +6,7 @@ out="$root/target/proof/production-fft"
 tools="$root/src/toolchain/benchmarks/proof/tools"
 source="$root/src/osprey/packages/synth/src/ffts.ospml"
 math="${source%/*}/spectral_math.ospml"
+arrange="$root/src/osprey/examples/daw/src/arrange_math.ospml"
 table="${source%/*}/table_math.ospml"
 waves="${source%/*}/wavetables.ospml"
 frames="${source%/*}/spectral_frames.ospml"
@@ -21,7 +22,7 @@ mkdir -p "$out"
 reflect() {
     local file
     local bodies=()
-    for file in "$table" "$waves" "$math" "$source" "$frames" "$strike" "$allpass" "$shaper" "$interpolation" "$phase" "$grain" "$streams"; do
+    for file in "$arrange" "$table" "$waves" "$math" "$source" "$frames" "$strike" "$allpass" "$shaper" "$interpolation" "$phase" "$grain" "$streams"; do
         if [[ "$file" == "${1:-}" ]]; then file="$out/mutant.ospml"; fi
         bodies+=("$file")
     done
@@ -43,7 +44,7 @@ check_export() {
         printf '%s\t%s\n' "$out/$file" "$name" | "$checker.$backend"
     fi
 }
-for theorem in stridedQuartet additiveSample additivePeriod rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
+for theorem in envelopeSustain envelopeReleased stridedQuartet additiveSample additivePeriod rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
     name="ProductionFft.$theorem"
     LEAN_PATH="$out:$lean_path" "$exporter" ProductionFft -- "$name" > "$out/$theorem.ndjson"
     for backend in gc arc wasm; do
@@ -73,6 +74,8 @@ reject_edit() {
     awk -F: -v start="$start" -v end="$end" '/ProductionFft.lean:[0-9]+:[0-9]+: error:/ && $2 >= start && $2 < end { rejected=1 } END {exit !rejected}' "$out/rejected.log"
     echo "REJECT $theorem production mutation"
 }
+reject_edit envelopeReleased 's/frame >= gate + release/frame >= gate + attack/' "$arrange"
+reject_edit envelopeSustain 's/attack [*] sampleRate, release [*] sampleRate/release * sampleRate, attack * sampleRate/' "$arrange"
 reject_edit stridedQuartet 's/third = satAdd second stride/third = satAdd first stride/'
 reject_edit stridedQuartet 's/quartet (a, b, c, d, sign))/quartet (a, c, b, d, sign))/'
 reject_edit additiveSample 's/number [*] position + phase/number * phase + position/' "$table"

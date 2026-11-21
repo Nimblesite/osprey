@@ -21,6 +21,7 @@ fn binder(name: &str) -> Result<String, String> {
             | "listGet"
             | "incomplete"
             | "quartet"
+            | "gated"
             | "foldList"
             | "floatDiv"
             | "satAdd"
@@ -172,6 +173,7 @@ fn callee(e: &Expr) -> Result<String, String> {
         "curve" | "integral" => Ok(format!("Waveshapers.{} ops", ident(name)?)),
         "basePhase" | "pulse" => Ok(format!("PhaseOperators.{} ops", ident(name)?)),
         "hann" => Ok("GrainWindows.hann ops".into()),
+        "gated" => Ok("ArrangeMath.gated ops".into()),
         "listGet" => Ok("readBin".into()),
         "incomplete" | "quartet" => Ok(format!("Ffts.{} ops", ident(name)?)),
         "foldList" => Ok("foldList".into()),
@@ -332,6 +334,10 @@ type Signature = (&'static str, &'static [&'static str], &'static str);
 
 fn signatures(module: &str) -> Result<&'static [Signature], String> {
     Ok(match module {
+        "ArrangeMath" => &[
+            ("gated", &["α", "α", "α", "α"], "α"),
+            ("enveloped", &["α", "α", "α", "α", "α", "α"], "α"),
+        ],
         "PhaseOperators" => &[
             ("basePhase", &["α", "α"], "α"),
             ("pulse", &["α", "Pulse α"], "α"),
@@ -415,10 +421,15 @@ fn reflect(file: &str) -> Result<(), String> {
     let [Stmt::Module { path, body, .. }] = body.as_slice() else {
         return Err("expected one module".into());
     };
-    if namespace.label() != "synth" {
-        return Err("expected synth namespace".into());
-    }
     let module = path.to_string();
+    let owner = if module == "ArrangeMath" {
+        "daw"
+    } else {
+        "synth"
+    };
+    if namespace.label() != owner {
+        return Err(format!("expected {owner} namespace for {module}"));
+    }
     for &(name, types, result) in signatures(&module)? {
         let mut functions = body
             .iter()
