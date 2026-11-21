@@ -14,4 +14,6 @@ def playbackRate (sourceRate outputRate targetFrequency rootFrequency : Float) :
   (sourceRate / outputRate) * (targetFrequency / rootFrequency)
 /-- Duration of a complete decoded sample at its original sample rate. -/
 def seconds (frames rate : Float) : Float := frames / rate
+/-- Whole frames at `rate` covering a tail declared in samples at the 48 kHz graph rate. -/
+def tailFrames (samples rate : Float) : Float := Float.ceil (samples * rate / 48000)
 end synth.WaveMath

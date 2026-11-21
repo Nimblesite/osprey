@@ -49,7 +49,8 @@ module Sequences
         `left` too and turns block-by-block accumulation quadratic. *)
     export joined (left, right) = foldList (right, left, \(all, value) => listAppend all value)
 
-    (** Join chunks back into one flat list. *)
+    (** Join chunks back into one flat list. The lambda is load-bearing: passing `joined` by name instantiates it
+        at an int-defaulted signature and puns float chunks (docs/regressions.md). *)
     export flattened<T> : List<List<T>> -> List<T>
-    flattened parts = foldList (parts, [], joined)
+    flattened parts = foldList (parts, [], \(all, part) => joined (all, part))
 

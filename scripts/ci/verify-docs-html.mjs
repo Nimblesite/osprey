@@ -75,11 +75,11 @@ for (const theme of THEMES) {
     '--docs-page', path.join(WORK, 'guides'),
     '--docs-css', path.join(WORK, 'brand.css'),
     '--docs-css', path.join(WORK, 'override.css'),
-    path.join(REPO, 'src/osprey/examples/talon'),
+    path.join(REPO, 'src/osprey/examples/talon/backend'),
   ]);
   // …and without, so the themes can be compared as themselves rather than as
   // the override that was deliberately forced on all three above.
-  generate(`plain-${theme}`, ['--docs-theme', theme, path.join(REPO, 'src/osprey/examples/talon')]);
+  generate(`plain-${theme}`, ['--docs-theme', theme, path.join(REPO, 'src/osprey/examples/talon/backend')]);
 }
 generate('site-symbols', [path.join(WORK, 'symbols')]);
 

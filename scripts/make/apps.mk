@@ -118,7 +118,7 @@ _bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 _bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS) $(EXT_NODE_DEPS)
 	@echo "==> Building Talon Bank for the web host..."
 	OSPREY_BIN="$(CURDIR)/$(BIN)" node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/talon/app --title "Talon Bank" \
-		--out src/toolchain/hosts/web/build/talon --module src/osprey/examples/talon/src/web/bundle.ospml --namespace bank/web
+		--out src/toolchain/hosts/web/build/talon --module src/osprey/examples/talon/backend/web/bundle.ospml --namespace bank/web
 
 # GPT-2 settings and the one-time weight download behind gpt2 and gpt2-train.
 GPT2_DIR    := src/osprey/examples/llms/gpt2

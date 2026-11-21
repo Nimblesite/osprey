@@ -23,7 +23,7 @@ bank: _bank-web
 	    done; \
 	    open http://127.0.0.1:18790; \
 	  fi) & \
-	  ./$(BIN) src/osprey/examples/talon --run
+	  ./$(BIN) src/osprey/examples/talon/backend --run
 
 ## bank-build: Rebuild Talon Bank's Osprey Native app for the browser and embed it in its server.
 ##             Requires Node and a WASI sysroot; the generated Osprey Bundle is

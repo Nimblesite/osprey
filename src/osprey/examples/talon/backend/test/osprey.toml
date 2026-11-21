@@ -1,6 +1,6 @@
 [project]
 name = "talon-bank-tests"
-source_roots = [".", "../src/domain"]
+source_roots = [".", "../domain"]
 default_namespace = "bank"
 entry = "main.ospml"
 

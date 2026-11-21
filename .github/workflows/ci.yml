@@ -160,7 +160,7 @@ jobs:
         run: |
           npm ci --prefix src/toolchain/hosts/web
           node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/talon/app --title "Talon Bank" --out src/toolchain/hosts/web/build/talon \
-            --module src/osprey/examples/talon/src/web/bundle.ospml --namespace bank/web
+            --module src/osprey/examples/talon/backend/web/bundle.ospml --namespace bank/web
 
       - name: Build the extension bundle
         run: make _vsix_bundle
@@ -201,7 +201,7 @@ jobs:
             src/toolchain/compiler/lib/
             src/toolchain/compiler/bin/*.a
             target/wasm32-wasip2/debug/osprey_zed.wasm
-            src/osprey/examples/talon/src/web/bundle.ospml
+            src/osprey/examples/talon/backend/web/bundle.ospml
           retention-days: 7
           if-no-files-found: error
 

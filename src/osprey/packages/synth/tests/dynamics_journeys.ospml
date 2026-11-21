@@ -96,8 +96,7 @@ limitJourney () =
         limitTransparent (c.ceiling * 0.99, c)
         limitOneImpulse (c, c.block)
         limitInterSample c
-        limitBurst (c, 1000)
-        limitBurst (c, 0))
+        forEachList ([0, 1, 7, 500, 1000, 2391], \start => limitBurst (c, start)))
     limitRefusals ()
 
 // [DAW-ANALYSIS-SPECTRUM] The octave-band analyser against sines of known level and frequency.

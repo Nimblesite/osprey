@@ -1,0 +1,395 @@
+{
+  "title": "Elise motif (grain source)",
+  "tempo": 76,
+  "sampleRate": 48000,
+  "drive": 1.0,
+  "space": {
+    "size": 0.35,
+    "decay": 0.8,
+    "damping": 0.6
+  },
+  "intro": {
+    "recording": "",
+    "tail": 0,
+    "crossfade": 0
+  },
+  "sustains": [],
+  "buses": [],
+  "tracks": [
+    {
+      "name": "Wire",
+      "instrument": {
+        "kind": "PatchInstrument",
+        "routing": {
+          "nodes": [
+            {
+              "identity": 0,
+              "component": "exciter",
+              "size": 0,
+              "seed": 7,
+              "asset": "",
+              "settings": [
+                {
+                  "key": "strength",
+                  "value": 0.9,
+                  "follow": "Struck"
+                },
+                {
+                  "key": "duration",
+                  "value": 64,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "interval",
+                  "value": 0,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "excitation",
+                  "value": 1,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "colour",
+                  "value": 0.45,
+                  "follow": "Constant"
+                }
+              ]
+            },
+            {
+              "identity": 1,
+              "component": "strikeComb",
+              "size": 2400,
+              "seed": 0,
+              "asset": "",
+              "settings": [
+                {
+                  "key": "frequency",
+                  "value": 1,
+                  "follow": "Pitched"
+                },
+                {
+                  "key": "position",
+                  "value": 0.14,
+                  "follow": "Constant"
+                }
+              ]
+            },
+            {
+              "identity": 2,
+              "component": "waveguide",
+              "size": 2400,
+              "seed": 0,
+              "asset": "",
+              "settings": [
+                {
+                  "key": "frequency",
+                  "value": 1,
+                  "follow": "Pitched"
+                },
+                {
+                  "key": "decay",
+                  "value": 2.2,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "brightness",
+                  "value": 0.62,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "dispersion",
+                  "value": 0.25,
+                  "follow": "Constant"
+                }
+              ]
+            },
+            {
+              "identity": 3,
+              "component": "lossFilter",
+              "size": 0,
+              "seed": 0,
+              "asset": "",
+              "settings": [
+                {
+                  "key": "gain",
+                  "value": 0.95,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "brightness",
+                  "value": 0.75,
+                  "follow": "Constant"
+                }
+              ]
+            },
+            {
+              "identity": 4,
+              "component": "shaper",
+              "size": 0,
+              "seed": 0,
+              "asset": "",
+              "settings": [
+                {
+                  "key": "curve",
+                  "value": 0,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "drive",
+                  "value": 1.4,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "level",
+                  "value": 0.6,
+                  "follow": "Constant"
+                }
+              ]
+            },
+            {
+              "identity": 5,
+              "component": "output",
+              "size": 0,
+              "seed": 0,
+              "asset": "",
+              "settings": []
+            }
+          ],
+          "cables": [
+            {
+              "source": 0,
+              "outlet": 0,
+              "destination": 1,
+              "inlet": 0
+            },
+            {
+              "source": 1,
+              "outlet": 0,
+              "destination": 2,
+              "inlet": 0
+            },
+            {
+              "source": 2,
+              "outlet": 0,
+              "destination": 3,
+              "inlet": 0
+            },
+            {
+              "source": 3,
+              "outlet": 0,
+              "destination": 4,
+              "inlet": 0
+            },
+            {
+              "source": 4,
+              "outlet": 0,
+              "destination": 5,
+              "inlet": 0
+            }
+          ],
+          "attack": 0.001,
+          "release": 0.34
+        }
+      },
+      "gain": 0.8,
+      "pan": 0,
+      "reverb": 0.1,
+      "bus": "",
+      "sends": [],
+      "positions": [],
+      "notes": [
+        {
+          "pitch": 76,
+          "start": 0,
+          "length": 0.25,
+          "velocity": 0.697
+        },
+        {
+          "pitch": 75,
+          "start": 0.25,
+          "length": 0.25,
+          "velocity": 0.697
+        },
+        {
+          "pitch": 76,
+          "start": 0.5,
+          "length": 0.25,
+          "velocity": 0.85
+        },
+        {
+          "pitch": 75,
+          "start": 0.75,
+          "length": 0.25,
+          "velocity": 0.697
+        },
+        {
+          "pitch": 76,
+          "start": 1,
+          "length": 0.25,
+          "velocity": 0.697
+        },
+        {
+          "pitch": 71,
+          "start": 1.25,
+          "length": 0.25,
+          "velocity": 0.697
+        },
+        {
+          "pitch": 74,
+          "start": 1.5,
+          "length": 0.25,
+          "velocity": 0.697
+        },
+        {
+          "pitch": 72,
+          "start": 1.75,
+          "length": 0.25,
+          "velocity": 0.697
+        },
+        {
+          "pitch": 69,
+          "start": 2,
+          "length": 0.5,
+          "velocity": 0.85
+        },
+        {
+          "pitch": 60,
+          "start": 2.75,
+          "length": 0.25,
+          "velocity": 0.697
+        },
+        {
+          "pitch": 64,
+          "start": 3,
+          "length": 0.25,
+          "velocity": 0.697
+        },
+        {
+          "pitch": 69,
+          "start": 3.25,
+          "length": 0.25,
+          "velocity": 0.697
+        }
+      ]
+    },
+    {
+      "name": "Glass",
+      "instrument": {
+        "kind": "PatchInstrument",
+        "routing": {
+          "nodes": [
+            {
+              "identity": 0,
+              "component": "additive",
+              "size": 0,
+              "seed": 0,
+              "asset": "",
+              "settings": [
+                {
+                  "key": "frequency",
+                  "value": 1,
+                  "follow": "Pitched"
+                },
+                {
+                  "key": "partials",
+                  "value": 20,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "tilt",
+                  "value": 1.4,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "inharmonicity",
+                  "value": 0.0003,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "decay",
+                  "value": 5,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "damping",
+                  "value": 1.2,
+                  "follow": "Constant"
+                },
+                {
+                  "key": "amplitude",
+                  "value": 0.5,
+                  "follow": "Struck"
+                }
+              ]
+            },
+            {
+              "identity": 1,
+              "component": "smoother",
+              "size": 0,
+              "seed": 0,
+              "asset": "",
+              "settings": [
+                {
+                  "key": "time",
+                  "value": 0.0002,
+                  "follow": "Constant"
+                }
+              ]
+            },
+            {
+              "identity": 2,
+              "component": "output",
+              "size": 0,
+              "seed": 0,
+              "asset": "",
+              "settings": []
+            }
+          ],
+          "cables": [
+            {
+              "source": 0,
+              "outlet": 0,
+              "destination": 1,
+              "inlet": 0
+            },
+            {
+              "source": 1,
+              "outlet": 0,
+              "destination": 2,
+              "inlet": 0
+            }
+          ],
+          "attack": 0.02,
+          "release": 0.23
+        }
+      },
+      "gain": 0.5,
+      "pan": 0,
+      "reverb": 0.1,
+      "bus": "",
+      "sends": [],
+      "positions": [],
+      "notes": [
+        {
+          "pitch": 45,
+          "start": 2,
+          "length": 0.75,
+          "velocity": 0.7
+        },
+        {
+          "pitch": 52,
+          "start": 2.25,
+          "length": 0.5,
+          "velocity": 0.574
+        },
+        {
+          "pitch": 57,
+          "start": 2.5,
+          "length": 0.25,
+          "velocity": 0.574
+        }
+      ]
+    }
+  ]
+}

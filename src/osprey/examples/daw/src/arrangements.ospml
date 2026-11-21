@@ -124,11 +124,11 @@ module Arrangements
         Outcomes::carried (SendRenders::collect (listSortBy (voice.notes, ordered), \note => cue (song, voice, note)), \cues => ok (TrackPlay(pending = cues, sounding = [], sends = sends, made = [])))))
 
     // One note's lanes: the dry output alone, or with each send's two sides from the same evaluation.
-    lanesOf (song, voice, sends, note) = match sends
+    export lanesOf (song, voice, sends, note) = match sends
         [] => Outcomes::carried (NoteRenders::render (note, song.tempo, toFloat song.sampleRate, voice.instrument), \samples => ok [samples])
         _ => SendRenders::note (voice, sends, note, song.tempo, toFloat song.sampleRate)
 
-    same (one, other) = one.pitch == other.pitch && one.length == other.length && one.velocity == other.velocity
+    export same (one, other) = one.pitch == other.pitch && one.length == other.length && one.velocity == other.velocity
 
     // A note starts sounding at its frame; a note this track has made before reuses its lanes.
     struck (song, voice, play, due) = match listGet (filterList (play.made, \m => same (m.struck, due.note))) 0

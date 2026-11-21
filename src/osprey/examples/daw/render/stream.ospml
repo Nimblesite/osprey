@@ -30,17 +30,30 @@ module Streams
         true => one
         false => other
 
-    advanced (arrangement, count, playing) = match playing.cursor >= count
-        true => Success(value = playing)
-        false => synth::Outcomes::carried (Playback::next (arrangement, playing, least (block, satSub count playing.cursor)), \played => sent (arrangement, played))
+    silent = TrackPlay(pending = [], sounding = [], sends = [], made = [])
 
-    stepped (arrangement, count, outcome) = synth::Outcomes::carried (outcome, \playing => advanced (arrangement, count, playing))
+    warm (dirs, playing, index, until) =
+        track = listGet playing.tracks index ?: silent
+        match listGet dirs index
+            Error _ => track
+            Success dir => NoteCache::seeded (dir, track, until)
+
+    // Notes due in the next block that a maker has kept are read, not made ([DAW-TRANSPORT-LIVE-SPEED]).
+    seeded (dirs, playing, until) = playing(tracks = mapList (toList (range (0, length playing.tracks)), \index => warm (dirs, playing, index, until)))
+
+    stride (count, playing) = least (block, satSub count playing.cursor)
+
+    advanced (arrangement, dirs, count, playing) = match playing.cursor >= count
+        true => Success(value = playing)
+        false => synth::Outcomes::carried (Playback::next (arrangement, seeded (dirs, playing, satAdd playing.cursor (stride (count, playing))), stride (count, playing)), \played => sent (arrangement, played))
+
+    stepped (arrangement, dirs, count, outcome) = synth::Outcomes::carried (outcome, \playing => advanced (arrangement, dirs, count, playing))
 
     // One pass over the first `count` frames, from `start`.
-    pass (arrangement, count, start) = foldList (toList (range (0, intDiv (satAdd count (satSub block 1)) block)), start, \(outcome, _) => stepped (arrangement, count, outcome))
+    pass (arrangement, dirs, count, start) = foldList (toList (range (0, intDiv (satAdd count (satSub block 1)) block)), start, \(outcome, _) => stepped (arrangement, dirs, count, outcome))
 
     kept (fresh, last, index) =
-        track = listGet fresh.tracks index ?: TrackPlay(pending = [], sounding = [], sends = [], made = [])
+        track = listGet fresh.tracks index ?: silent
         prior = listGet last.tracks index ?: track
         track(made = prior.made)
 
@@ -48,20 +61,20 @@ module Streams
     // distinct note once, in its first pass.
     rewound (arrangement, last) = synth::Outcomes::carried (Playback::start (arrangement, []), \fresh => Success(value = fresh(tracks = mapList (toList (range (0, length fresh.tracks)), \index => kept (fresh, last, index)))))
 
-    again (arrangement, count, outcome) = synth::Outcomes::carried (outcome, \last => pass (arrangement, count, rewound (arrangement, last)))
+    again (arrangement, dirs, count, outcome) = synth::Outcomes::carried (outcome, \last => pass (arrangement, dirs, count, rewound (arrangement, last)))
 
     // A loop is exactly its beats, pass after pass; one pass rings out to the piece's end.
     measured (request, arrangement, loop) = match loop
         true => Arrangements::frame (arrangement, request.beats)
         false => Arrangements::frames arrangement
 
-    ran (arrangement, count, loop) = match count >= block
+    ran (arrangement, dirs, count, loop) = match count >= block
         false => Error(message = "There is too little here to play.")
         true => match loop
-            true => foldList (toList (range (0, passes)), Playback::start (arrangement, []), \(outcome, _) => again (arrangement, count, outcome))
-            false => pass (arrangement, count, Playback::start (arrangement, []))
+            true => foldList (toList (range (0, passes)), Playback::start (arrangement, []), \(outcome, _) => again (arrangement, dirs, count, outcome))
+            false => pass (arrangement, dirs, count, Playback::start (arrangement, []))
 
     (** Play `arrangement` to standard output: once to its end, or its `request.beats` again and again. *)
     export played (request, arrangement, loop) = match arrangement.sampleRate == 48000
         false => Error(message = "Live play needs a 48 kHz project; this one is ${arrangement.sampleRate} Hz.")
-        true => synth::Outcomes::carried (measured (request, arrangement, loop), \count => ran (arrangement, count, loop))
+        true => synth::Outcomes::carried (measured (request, arrangement, loop), \count => ran (arrangement, NoteCache::folders (arrangement, request.folder, "live") ?: [], count, loop))

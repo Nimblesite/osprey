@@ -181,7 +181,7 @@ make -C src/toolchain/targets/ios/tests bank
 | HTTP edge | [`app/src/ledger.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/app/src/ledger.ospml), [`app/src/replies.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/app/src/replies.ospml) |
 | Screens | [`app/src/screens.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/app/src/screens.ospml), [`app/src/forms.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/app/src/forms.ospml) |
 | App tests | [`app/test/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/app/test/main.ospml) |
-| Server and storage | [`src/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/src/main.ospml), [`src/store/ledger.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/src/store/ledger.ospml) |
+| Server and storage | [`src/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/backend/main.ospml), [`src/store/ledger.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/backend/store/ledger.ospml) |
 | Browser host | [`src/toolchain/hosts/web`](https://github.com/Nimblesite/osprey/tree/main/src/toolchain/hosts/web) |
 
 See also [Osprey Native](/docs/osprey-native/), [Build an iOS and Android app](/docs/mobile-apps/) and [algebraic effects](/docs/algebraic-effects/).

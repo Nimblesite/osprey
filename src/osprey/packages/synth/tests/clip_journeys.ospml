@@ -1,5 +1,6 @@
 import synth::Components
 import synth::Graphs
+import synth::Lifecycles
 import synth::Parameters
 import synth::Renderer
 
@@ -82,6 +83,34 @@ granularNode () = Components::granular (1, granularSource (), 4, 7)
 granularGraph () = built ([granularNode (), Components::stereoOutput 2], [cable (1, 2)])
 
 // Register the clip scheduler, MIDI oscillator and granular journeys from the suite entry point.
+// [SYNTH-ADVANCED-CORE-MODELS] A 440 Hz sine through a 0.25 gain and a 100-sample delay: a 200-frame tail at 48 kHz.
+delayedSine () = built ([Components::sine (1, 440.0), Components::gain (2, 0.25), Components::delay (3, 100), Components::output 4], [cable (1, 2), cable (2, 3), cable (3, 4)])
+
+// The instance a lifecycle step produced, or a disposed stand-in after a failed expectation.
+lived outcome = renderedOr (outcome, synth::Instance(stage = synth::Disposed, rate = 48000.0, block = 1, plan = synth::Prepared(graph = Graphs::empty, order = [], feedback = []), audio = synth::Rendered(states = [], samples = [], position = 0, meters = [])), \one => one)
+
+lifeMoved (one, transition) = lived (Lifecycles::next (one, transition))
+
+lifePlayed (one, knobs, frames) = lived (Lifecycles::block (one, knobs, frames))
+
+// Every transition and a render, refused with its exact message, leaving the instance as it was.
+allRefused (one, knobs, stage) =
+    forEachList ([{ t = synth::Activate, verb = "activate" }, { t = synth::Reset, verb = "reset" }, { t = synth::ReleaseTail, verb = "release" }, { t = synth::Dispose, verb = "dispose" }, { t = synth::Prepare(rate = 44100.0, block = 32), verb = "re-prepare" }], \c => refusedWith (Lifecycles::next (one, c.t), "Cannot ${c.verb} a ${stage} instance."))
+    refusedWith (Lifecycles::block (one, knobs, 1), "Cannot render a ${stage} instance.")
+
+// A releasing instance renders 64-frame blocks until its tail is spent: each block's frames and stage.
+releaseBlocks (one, knobs) = foldList ([{ frames = 64, left = 136 }, { frames = 64, left = 72 }, { frames = 64, left = 8 }], { now = one, samples = [] }, \(run, c) =>
+    next = lifePlayed (run.now, knobs, 64)
+    expect (length next.audio.samples, c.frames)
+    expect (next.stage, synth::Releasing(remaining = c.left))
+    { now = next, samples = listConcat run.samples next.audio.samples })
+
+// Lifecycle audio after the delay's onset reads as a pure sine: pitch at the probe's 48 kHz and level −12.04 dB.
+sineHeard (label, samples, frequency) =
+    steady = synth::Sequences::drop (samples, 128)
+    inTune (label, steady, frequency, 0.5)
+    within ("${label} level (dB)", decibelsAt (steady, frequency), -12.0412, 0.1)
+
 registerClipJourneys () =
     audio = monoPort ("audio", synth::Audio, synth::Amplitude)
     test ("MIDI oscillator state validation rejects forged voices, capacity and malformed events", \() => arithmetic (\() =>
@@ -234,3 +263,69 @@ registerClipJourneys () =
             plan = planFor switchedGraph
             snapshot = Parameters::initial switchedGraph
             renderRefused (Renderer::block (plan(order = [2, 1, 3]), 48000.0, snapshot(parameters = []), rendered (Renderer::start switchedGraph), 1)))))
+    test ("a graph instance prepares, activates, renders, releases exactly its tail, resets, re-prepares at a new rate and disposes [SYNTH-ADVANCED-CORE-MODELS] [SYNTH-TEST-SPECTRUM]", \() => arithmetic (\() =>
+        graph = delayedSine ()
+        snapshot = Parameters::initial graph
+        forEachList ([{ rate = 0.0, block = 64 }, { rate = 7999.0, block = 64 }, { rate = 384001.0, block = 64 }, { rate = 48000.0, block = 0 }, { rate = 48000.0, block = 8193 }, { rate = -48000.0, block = -1 }], \c => refusedWith (Lifecycles::prepared (graph, c.rate, c.block), "A lifecycle needs a sample rate of 8,000 to 384,000 Hz and a block of 1 to 8,192 frames."))
+        renderRefused (Lifecycles::prepared (Graphs::empty, 48000.0, 64))
+        ready = lived (Lifecycles::prepared (graph, 48000.0, 64))
+        expect (ready.stage, synth::Ready)
+        expect (ready.rate, 48000.0)
+        expect (ready.block, 64)
+        expect (ready.audio.position, 0)
+        expect (Lifecycles::tail ready ?: -1, 200)
+        refusedWith (Lifecycles::next (ready, synth::ReleaseTail), "Cannot release a ready instance.")
+        refusedWith (Lifecycles::block (ready, snapshot, 1), "Cannot render a ready instance.")
+        running = lifeMoved (ready, synth::Activate)
+        expect (running.stage, synth::Running)
+        refusedWith (Lifecycles::next (running, synth::Activate), "Cannot activate a running instance.")
+        refusedWith (Lifecycles::next (running, synth::Prepare(rate = 96000.0, block = 64)), "Cannot re-prepare a running instance.")
+        forEachList ([0, -1, 65, 8192, 9000], \frames => refusedWith (Lifecycles::block (running, snapshot, frames), "A block is 1 to the prepared 64 frames; a larger one needs re-preparation."))
+        first = lifePlayed (running, snapshot, 64)
+        second = lifePlayed (first, snapshot, 64)
+        expect (second.stage, synth::Running)
+        expect (second.audio.position, 128)
+        releasing = lifeMoved (second, synth::ReleaseTail)
+        expect (releasing.stage, synth::Releasing(remaining = 200))
+        refusedWith (Lifecycles::next (releasing, synth::ReleaseTail), "Cannot release a releasing instance.")
+        refusedWith (Lifecycles::next (releasing, synth::Activate), "Cannot activate a releasing instance.")
+        refusedWith (Lifecycles::next (releasing, synth::Prepare(rate = 48000.0, block = 64)), "Cannot re-prepare a releasing instance.")
+        tail = releaseBlocks (releasing, snapshot)
+        last = lifePlayed (tail.now, snapshot, 64)
+        expect (length last.audio.samples, 8)
+        expect (last.stage, synth::Ready)
+        expect (last.audio.position, 328)
+        refusedWith (Lifecycles::block (last, snapshot, 1), "Cannot render a ready instance.")
+        // Running, releasing and the tail together are exactly one uninterrupted 328-frame render.
+        sameSamples (listConcat (listConcat (listConcat first.audio.samples second.audio.samples) tail.samples) last.audio.samples, (blockOf (graph, 328)).samples)
+        again = lifePlayed (lifeMoved (last, synth::Activate), snapshot, 64)
+        sameSamples (again.audio.samples, synth::Sequences::drop ((blockOf (graph, 392)).samples, 328))
+        expect (again.audio.position, 392)
+        // Reset from running, releasing or ready restarts silent at frame 0 and renders the opening again.
+        forEachList ([again, lifeMoved (again, synth::ReleaseTail), last, ready], \live =>
+            restarted = lifeMoved (live, synth::Reset)
+            expect (restarted.stage, synth::Ready)
+            expect (structuralEquals (restarted.audio, ready.audio), true)
+            sameSamples ((lifePlayed (lifeMoved (restarted, synth::Activate), snapshot, 64)).audio.samples, first.audio.samples))
+        // Re-preparing at a new rate starts silent and steps every phase at that rate.
+        long = lived (Lifecycles::prepared (graph, 48000.0, 2048))
+        heard48 = lifePlayed (lifeMoved (long, synth::Activate), snapshot, 2048)
+        doubled = lifeMoved (lifeMoved (heard48, synth::Reset), synth::Prepare(rate = 96000.0, block = 2048))
+        expect (doubled.rate, 96000.0)
+        expect (doubled.stage, synth::Ready)
+        expect (doubled.audio.position, 0)
+        expect (Lifecycles::tail doubled ?: -1, 400)
+        expect (Lifecycles::tail (lived (Lifecycles::prepared (graph, 44100.0, 64))) ?: -1, 184)
+        heard96 = lifePlayed (lifeMoved (doubled, synth::Activate), snapshot, 2048)
+        sameSamples (heard96.audio.samples, (rendered (Renderer::block (planFor graph, 96000.0, snapshot, rendered (Renderer::start graph), 2048))).samples)
+        sineHeard ("48 kHz lifecycle", heard48.audio.samples, 440.0)
+        // Twice the rate halves the phase step, so read at the 48 kHz probe rate the note sounds an octave down.
+        sineHeard ("96 kHz lifecycle read at 48 kHz", heard96.audio.samples, 220.0)
+        below ("96 kHz lifecycle at 440 Hz (dB)", decibelsAt (synth::Sequences::drop (heard96.audio.samples, 128), 440.0), -40.0)
+        // Dispose from every live stage drops the state; nothing else is allowed afterwards.
+        forEachList ([ready, running, releasing, tail.now], \live =>
+            gone = lifeMoved (live, synth::Dispose)
+            expect (gone.stage, synth::Disposed)
+            expect (length gone.audio.states, 0)
+            expect (length gone.audio.samples, 0)
+            allRefused (gone, snapshot, "disposed"))))

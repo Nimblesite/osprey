@@ -126,7 +126,7 @@ ok 4 - dispatch: doctor on a broken host
 # tests=98 passed=98 failed=0 skipped=0
 ```
 
-For an ML-flavor spy, see [`accounts.test.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/test/accounts.test.ospml). Its `guardCase` handler sets `touched` if storage is called, and the test asserts it stays `false` for an invalid payment.
+For an ML-flavor spy, see [`accounts.test.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/backend/test/accounts.test.ospml). Its `guardCase` handler sets `touched` if storage is called, and the test asserts it stays `false` for an invalid payment.
 
 ## Python flavor
 

@@ -191,6 +191,11 @@ type Made =
     struck : Note
     chord : List<List<float>>
 
+type NoteJob =
+    track : int
+    due : int
+    note : Note
+
 type TrackPlay =
     pending : List<Cue>
     sounding : List<Sounding>

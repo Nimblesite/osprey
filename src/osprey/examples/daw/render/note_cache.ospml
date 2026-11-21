@@ -1,0 +1,158 @@
+// [DAW-TRANSPORT-LIVE-SPEED] Notes made ahead of the playhead, kept on disk between plays.
+namespace daw
+
+import synth::Outcomes
+
+(** A note's sound depends on its track's instrument and sends, the tempo, the rate and the note's pitch,
+    length and velocity, never on where it starts. Each such sound is made once and kept as one safetensors
+    file of float32 lanes under `<folder>/notes/<track key>/`. Live play reads a kept note in place of making
+    it; `warmed` is the maker: several run side by side, each taking its share of the song's distinct notes in
+    the order the song reaches them. A track whose instrument or sends change gets a new key, and the folders
+    of keys no track has any more are removed. *)
+module NoteCache
+    ok value = Success(value = value)
+
+    still = Space(size = 0.0, decay = 0.0, damping = 0.0)
+
+    bare = Intro(recording = "", tail = 0.0, crossfade = 0.0)
+
+    // Everything a note's lanes depend on besides the note itself, as text.
+    keyText (song, voice) = SongFiles::encode (song(title = "", drive = 1.0, space = still, intro = bare, sustains = [], buses = [], tracks = [voice(name = "", gain = 1.0, pan = 0.0, reverb = 0.0, bus = "", positions = [], notes = [])]))
+
+    keyPath (folder, tag, index) = "${folder}/key.${tag}.${index}.txt"
+
+    noted (file, text) = match writeFile file text
+        Error why => Error(message = why)
+        Success _ => ok (Shell::quoted file)
+
+    keyed (song, folder, tag, index) = match listGet song.tracks index
+        Error _ => Error(message = "A track is missing.")
+        Success voice => Outcomes::carried (keyText (song, voice), \text => noted (keyPath (folder, tag, index), text))
+
+    digest line = take line 16
+
+    named (folder, text) = mapList (filterList (lines text, \line => length line >= 16), \line => "${folder}/notes/${digest line}")
+
+    summed (folder, sums) = match readFile sums
+        Error why => Error(message = why)
+        Success text => ok (named (folder, text))
+
+    hashed (folder, tag, paths) =
+        sums = "${folder}/sums.${tag}.txt"
+        Outcomes::carried (Shell::ran (20, "shasum ${join paths " "} > ${Shell::quoted sums} && rm ${join paths " "}"), \_ => summed (folder, sums))
+
+    (** Each track's note folder, in track order. `tag` keeps this process's working files apart from the
+        other makers'. *)
+    export folders (song, folder, tag) = Outcomes::carried (SendRenders::collect (toList (range (0, length song.tracks)), \index => keyed (song, folder, tag, index)), \paths => hashed (folder, tag, paths))
+
+    path (dir, note) = "${dir}/${note.pitch}_${note.length}_${note.velocity}.st"
+
+    lane (file, index) = match loadTensor file "${index}"
+        Error why => Error(message = why)
+        Success samples => ok samples
+
+    read (file, lanes) = SendRenders::collect (toList (range (0, lanes)), \index => lane (file, index))
+
+    known (play, note) = length (filterList (play.made, \m => Arrangements::same (m.struck, note))) > 0
+
+    taken (dir, play, note) = match read (path (dir, note), satAdd 1 (satMul 2 (length play.sends)))
+        Error _ => play
+        Success chord => play(made = listAppend play.made (Made(struck = note, chord = chord)))
+
+    seed (dir, play, cue) = match known (play, cue.note)
+        true => play
+        false => match fileSize (path (dir, cue.note))
+            Error _ => play
+            Success _ => taken (dir, play, cue.note)
+
+    (** `play` with every kept note that is due before frame `until` read from `dir`, so playing it makes nothing. *)
+    export seeded (dir, play, until) = foldList (filterList (play.pending, \cue => cue.due < until), play, \(held, cue) => seed (dir, held, cue))
+
+    first (jobs, track, cue) = match length (filterList (jobs, \job => job.track == track && Arrangements::same (job.note, cue.note))) > 0
+        true => jobs
+        false => listAppend jobs (NoteJob(track = track, due = cue.due, note = cue.note))
+
+    listed (song, jobs, track) = match listGet song.tracks track
+        Error _ => jobs
+        Success voice => match Arrangements::opened (song, voice)
+            Error _ => jobs
+            Success play => foldList (play.pending, jobs, \(held, cue) => first (held, track, cue))
+
+    sooner (one, other) = match one.due < other.due
+        true => -1
+        false => match one.due > other.due
+            true => 1
+            false => 0
+
+    // Every distinct note of the song, in the order the song first reaches it.
+    jobs song = listSortBy (foldList (toList (range (0, length song.tracks)), [], \(held, track) => listed (song, held, track)), sooner)
+
+    character (text, index) = synth::PcmWords::byte (byteAt text index ?: 32)
+
+    hex text = join (mapList (toList (range (0, length text)), \index => character (text, index))) ""
+
+    entry (lanes, index) =
+        before = foldList (toList (range (0, index)), 0, \(sum, lane) => satAdd sum (satMul 4 (length (listGet lanes lane ?: []))))
+        count = length (listGet lanes index ?: [])
+        "\"${index}\":{\"dtype\":\"F32\",\"shape\":[${count}],\"data_offsets\":[${before},${satAdd before (satMul 4 count)}]}"
+
+    header lanes = "{${join (mapList (toList (range (0, length lanes)), \index => entry (lanes, index))) ","}}"
+
+    body lanes = join (mapList (lanes, \samples => join (mapList (samples, synth::PcmWords::float32)) "")) ""
+
+    // A safetensors file in hex: the header's length, the header, then each lane's float32 samples.
+    packed lanes =
+        top = header lanes
+        "${synth::PcmWords::le32 (length top)}00000000${hex top}${body lanes}"
+
+    // Written beside the file and moved into place, so a reader never sees half a note.
+    kept (file, tag, lanes) = match writeFile "${file}.${tag}.hex" (packed lanes)
+        Error why => Error(message = why)
+        Success _ => Shell::ran (60, "xxd -r -p ${Shell::quoted "${file}.${tag}.hex"} ${Shell::quoted "${file}.${tag}"} && mv ${Shell::quoted "${file}.${tag}"} ${Shell::quoted file} && rm ${Shell::quoted "${file}.${tag}.hex"}")
+
+    struck (song, voice, dir, tag, note) = match Arrangements::opened (song, voice)
+        Error why => Error(message = why)
+        Success play => Outcomes::carried (Arrangements::lanesOf (song, voice, play.sends, note), \lanes => kept (path (dir, note), tag, lanes))
+
+    made (song, dirs, tag, job) = match listGet dirs job.track
+        Error _ => 0
+        Success dir => match fileSize (path (dir, job.note))
+            Success _ => 0
+            Error _ => match listGet song.tracks job.track
+                Error _ => 0
+                Success voice => match struck (song, voice, dir, tag, job.note)
+                    Error _ => 0
+                    Success _ => 1
+
+    share (all, worker, workers) = filterList (toList (range (0, length all)), \index => index % workers == worker)
+
+    turn (song, dirs, tag, all, index) = match listGet all index
+        Error _ => 0
+        Success job => made (song, dirs, tag, job)
+
+    worked (song, dirs, tag, all, indexes) = foldList (indexes, 0, \(count, index) => satAdd count (turn (song, dirs, tag, all, index)))
+
+    stale (dirs, entry) = endsWith entry "/" && length (filterList (dirs, \dir => "${dir}/" == entry)) == 0
+
+    // Folders of keys no track has any more: an edited instrument's old notes.
+    swept (folder, dirs) = match listDir "${folder}/notes"
+        Error _ => 0
+        Success entries => match filterList (entries, \entry => stale (dirs, entry) && SongFiles::safe entry)
+            [] => 0
+            old => match Shell::ran (60, "rm -r ${join (mapList (old, Shell::quoted)) " "}")
+                Error _ => 0
+                Success _ => length old
+
+    prepared (folder, dirs, worker) = match Shell::ran (20, "mkdir -p ${join (mapList (dirs, Shell::quoted)) " "}")
+        Error why => Error(message = why)
+        Success _ => match worker == 0
+            true => ok (swept (folder, dirs))
+            false => ok 0
+
+    (** Maker `worker` of `workers`: makes and keeps its share of the song's distinct notes that are not kept
+        yet, in song order. Maker 0 first removes the note folders no track uses. Yields how many it made. *)
+    export warmed (song, folder, worker, workers) = match worker >= 0 && worker < workers && workers <= 64
+        false => Error(message = "A maker needs its number, from 0, and the count of makers, at most 64.")
+        true => Outcomes::carried (folders (song, folder, "w${worker}"), \dirs => Outcomes::carried (prepared (folder, dirs, worker), \_ =>
+            all = jobs song
+            ok (worked (song, dirs, "w${worker}", all, share (all, worker, workers)))))

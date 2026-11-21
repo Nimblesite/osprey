@@ -1,5 +1,5 @@
 // The bank's native suites ([TESTING-BUILTINS]) run against the real domain
-// modules in ../src/domain; this file is the entry the manifest names, because
+// modules in ../domain; this file is the entry the manifest names, because
 // a test statement is only legal in the entry source.
 namespace bank
 

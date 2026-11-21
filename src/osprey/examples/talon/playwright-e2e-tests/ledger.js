@@ -8,8 +8,8 @@ const { spawn, spawnSync } = require('node:child_process');
 const { rmSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 
-const TALON = path.join(__dirname, '..');
-const OSPREY = path.join(TALON, '..', '..', '..', '..', 'target', 'release', 'osprey');
+const BACKEND = path.join(__dirname, '..', 'backend');
+const OSPREY = path.join(BACKEND, '..', '..', '..', '..', '..', 'target', 'release', 'osprey');
 const HOLD = '/tmp/talon_bank.hold';
 const READY = 'http://127.0.0.1:18790/api/accounts';
 const PATIENCE_MS = 120_000;
@@ -26,7 +26,7 @@ async function answering() {
 async function start() {
   if (await answering()) throw new Error('A Talon server already answers on 18790; stop it so the journey starts fresh');
   writeFileSync(HOLD, '');
-  const server = spawn(OSPREY, [TALON, '--run'], { stdio: 'ignore' });
+  const server = spawn(OSPREY, [BACKEND, '--run'], { stdio: 'ignore' });
   const exited = new Promise((resolve) => server.once('exit', resolve));
   const stop = async () => {
     rmSync(HOLD, { force: true });

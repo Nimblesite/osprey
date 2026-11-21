@@ -29,7 +29,7 @@ module Patches
     (** Mid-morph classic wavetable with 2,048-sample levels and 256 harmonics. *)
     export morphingTable () = match Wavetables::classic (2048, 256)
         Error _ => Invalid(fault = InvalidNode)
-        Success table => built ([Components::wavetable (0, table, 110.0), Components::output 1], chain [0, 1])
+        Success table => built ([set (Components::wavetable (0, table, 110.0), [value ("position", 0.5)]), Components::output 1], chain [0, 1])
 
     (** Stiff-string additive tone with decaying upper partials, retriggered every second. *)
     export inharmonicAdditive () = built ([set (Components::additive (0, 130.81), [value ("inharmonicity", 0.0004), value ("damping", 2.0), value ("decay", 3.0), value ("partials", 32.0), value ("interval", 48000.0)]), Components::output 1], chain [0, 1])
