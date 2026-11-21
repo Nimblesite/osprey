@@ -350,6 +350,22 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     choose_control(regions, "button", "Close", "");
 }
 
+// The selected key's scene text needs space for the system typeface below its em height.
+fn pitch_label_fits(shown: &Shown) {
+    use ferroui_osprey_native::scene::Shape;
+    let shapes = shown.scenes.values().flat_map(|scene| &scene.shapes);
+    let (left, top, size) = shapes.clone().find_map(|shape| match shape {
+        Shape::Lettering { text, x, y, size, .. } if text == "G♯5" && (*x - 209.25).abs() < 1.0
+            => Some((*x, *y, *size)),
+        _ => None,
+    }).expect("the selected G-sharp has a pitch label");
+    assert!(shapes.clone().any(|shape| matches!(shape,
+        Shape::Rect { x, y, w, h, depth, .. } if *depth == 7.0 && *w > 15.0 &&
+            left > x - w / 2.0 && left < x + w / 2.0 && top + size / 2.0 > y - h / 2.0 &&
+            top + size * 1.15 < y + h / 2.0
+    )), "the complete pitch label fits in its note");
+}
+
 /// [DAW-PIANO-DRAG] Drag the stem and note on the canvas, preserving the rest of the project.
 fn drag_piano_note(canvas: i64, song: &std::path::Path) {
     let read = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(song).expect("read project")).expect("project JSON");
@@ -361,6 +377,7 @@ fn drag_piano_note(canvas: i64, song: &std::path::Path) {
     point(canvas, (206.0, 862.0), true);
     point(canvas, (242.0, 870.0), true);
     let (stem, _) = point(canvas, (255.0, 883.25), true);
+    pitch_label_fits(&stem);
     assert!(shows_label(&stem, "25%"), "the inspector previews the stem during the drag");
     assert!(read() == expected, "drag previews never save the project mid-gesture");
     point(canvas, (255.0, 883.25), false);
