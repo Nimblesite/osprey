@@ -53,6 +53,8 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [ ] Tests: sine against the curve within 0.01 dB; inter-sample peaks under the ceiling (synth-advanced).
 - [ ] Master ends in the compressor and limiter, replacing the `ArrangeMath` limiter; settings in daw.td. Partial: Master ends in the true-peak brick-wall limiter at −1 dBTP (1.5 ms lookahead, 80 ms release) and `drive` pushes the peak-normalised mix into it; the tanh limiter is deleted (1b45a3ba0). The compressor stage and limiter settings in daw.td remain.
 - [ ] Gain reduction and true-peak meters on the Mix page.
+- [ ] Multiband compressor and multiband limiter ([DAW-DYNAMICS-MULTIBAND]): Linkwitz–Riley crossovers (3–5 bands) that sum flat, per-band dynamics; Master chain is EQ → multiband compressor → multiband limiter → true-peak brickwall; also patch and bus effects; settings in daw.td; Lean formulas; flat-sum and per-band tests.
+- [ ] Pitch effects on tracks and buses ([DAW-PITCH-EFFECTS]): the FFT pitch shifter in semitones and cents, and autotune following key/scale or the timeline's notes, each with latency compensation in the renderer.
 
 ## Buses and sidechain [DAW-MIX-BUS]
 
