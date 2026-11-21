@@ -17,14 +17,17 @@ import synth::Studio
 import synth::Synth
 import synth::Voice
 
-(** The bench's only write: the driven surface. *)
+(** The driven surface owned by one bench journey. *)
 effect Bench
+    current : Unit => uitest::Driven<signalflow::Store, ui::Lever>
     drive : uitest::Driven<signalflow::Store, ui::Lever> => Unit
 
 // The bench starts from one freshly documented studio, neither launched nor driven.
 blank () = Drive::idle (Studio::program (), signalflow::Flow::store (MachineDocs::faulty ""))
 
-mut driven = blank ()
+driven () =
+    held = perform Bench.current ()
+    uitest::Driven(drivenSurface = held.drivenSurface, drivenProgram = Studio::program (), drivenSeen = held.drivenSeen, drivenNow = held.drivenNow)
 
 kept next = perform Bench.drive next
 
@@ -34,13 +37,15 @@ hosted work =
     ui::Views::quiet work
 
 bench work =
+    mut held = blank ()
     handle Bench
-        drive d => driven := d
+        current => held
+        drive d => held := d
     Runtime::guarded work
 
 begun () =
     perform Bench.drive (blank ())
-    hosted (\() => kept (Drive::launched (driven, "macos", [])))
+    hosted (\() => kept (Drive::launched (driven (), "macos", [])))
 
 // Where the Windows package keeps the player it launches the synth with.
 player = "C:\\Program Files\\WindowsApps\\Osprey.synth\\app\\play-wav.exe"
@@ -48,10 +53,10 @@ player = "C:\\Program Files\\WindowsApps\\Osprey.synth\\app\\play-wav.exe"
 // Launched as the Windows package launches it: each struck key hands its clip to `--play`'s player.
 begunWithPlayer () =
     perform Bench.drive (blank ())
-    hosted (\() => kept (Drive::launched (driven, "windows", ["--play", player])))
+    hosted (\() => kept (Drive::launched (driven (), "windows", ["--play", player])))
 
 // One typed host event, sent the way a host sends it.
-post step = hosted (\() => kept (step driven))
+post step = hosted (\() => kept (step (driven ())))
 
 pointer (x, y, down) = post (\d => Drive::pointer (d, x, y, down))
 
@@ -62,7 +67,7 @@ tapAt (label, fraction) =
 
 tap label = tapAt (label, 0.5)
 
-machine () = (Drive::holding driven).screen.screenMachine
+machine () = (Drive::holding (driven ())).screen.screenMachine
 
 currentPatch () = Synth::patch (machine ())
 
@@ -91,7 +96,9 @@ offers label = reports (Semantics::offered (elements (), label), "not offered: $
 
 offered label = expect (offers label, true)
 
-letters text = reports (Views::letters (driven.drivenSeen, text), "not lettered: ${text}; the artboard letters ${Views::lettered driven.drivenSeen}")
+letters text =
+    seen = (driven ()).drivenSeen
+    reports (Views::letters (seen, text), "not lettered: ${text}; the artboard letters ${Views::lettered seen}")
 
 // The console's readout `name`, read by `read`, against what it must show.
 shows (read, name, expected) = expect (read (machine (), name), expected)
@@ -108,7 +115,7 @@ layer (name, expected) = shows (Machines::current, name, expected)
 
 // ---- the host requests of the last step, read as the typed asks they are ----
 
-runRequests () = filterList (driven.drivenSurface.surfaceAsked, \r => Requests::kind r.capability == "run")
+runRequests () = filterList ((driven ()).drivenSurface.surfaceAsked, \r => Requests::kind r.capability == "run")
 
 runCount () = length (runRequests ())
 
