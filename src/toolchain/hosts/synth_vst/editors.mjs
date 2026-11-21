@@ -9,7 +9,9 @@ assert(folder, 'Supply the configured VST3 folder');
 const worker = resolve('target/vst-worker/osprey-vst-worker');
 const host = resolve('src/toolchain/hosts/gpui/target/release/osprey-gpui');
 const plugins = resolve(folder);
-const run = mkdtempSync(resolve('target/pr-validation/vendor-ui-'));
+const output = resolve('target/pr-validation');
+mkdirSync(output, { recursive: true });
+const run = mkdtempSync(join(output, 'vendor-ui-'));
 mkdirSync(join(run, '.prism'));
 writeFileSync(join(run, '.prism/vst3-folder'), plugins);
 
@@ -59,12 +61,13 @@ function inspector(name, id, parameters, unresponsive) {
     const lastPage = parameters.slice(Math.floor((parameters.length - 1) / 10) * 10);
     const live = lastPage.find(p => p.automatable);
     for (let attempt = 0; attempt < 2; attempt++) {
-        steps.push({ invoke: 'Open plug-in window' }, { wait: 'Plug-in window open.' }, { invoke: 'Focus plug-in window' });
+        steps.push({ invoke: 'Open plug-in window' }, { wait: 'Plug-in window open.' }, { invoke: 'Focus plug-in window' }, { frames: '12' });
         if (!attempt && live) steps.push({ invoke: name + ' 0 ' + live.name },
             { type: [live.name, live.initial > 0.5 ? '1' : '0'] }, { frames: '8' });
         steps.push({ invoke: 'Close plug-in window' }, { wait: 'Plug-in window closed.' });
     }
     const commands = replay(id, steps, ['--empty']);
+    assertWindowCycles(commands, 2);
     const first = commands.find(line => line.startsWith('watch '));
     assert(first, 'Prism must send the edited patch to its native window');
     const settings = line => new Map(line.split(' ').slice(1).map(pair => pair.split('=').map(Number)));
@@ -74,6 +77,11 @@ function inspector(name, id, parameters, unresponsive) {
     for (const p of parameters.filter(p => p.automatable)) {
         assert.equal(submitted.get(p.id), p.initial > 0.5 ? 0 : 1, 'Inspector value for ' + p.name);
     }
+}
+
+function assertWindowCycles(commands, count) {
+    const actions = commands.map(line => line.split(' ')[0]).filter(action => action !== 'watch');
+    assert.deepEqual(actions, Array.from({ length: count }, () => ['focus', 'close']).flat());
 }
 
 function replay(id, steps, launch) {
@@ -89,14 +97,15 @@ function replay(id, steps, launch) {
 function trackPatch(name, id) {
     const song = join(run, 'arrangement.json');
     copyFileSync('src/osprey/examples/daw/tracks/elise-motif.json', song);
-    replay('track-window', [
+    const commands = replay('track-window', [
         { windows: '1' }, { invoke: 'Track Patch' }, { windows: '2' },
         { invoke: 'Patch Controls' }, { wait: name }, { type: ['Add component', 'vst:' + id] },
         { invoke: 'Open plug-in window' }, { wait: 'Plug-in window open.' },
-        { invoke: 'Focus plug-in window' }, { invoke: 'Close plug-in window' }, { wait: 'Plug-in window closed.' },
+        { invoke: 'Focus plug-in window' }, { frames: '12' }, { invoke: 'Close plug-in window' }, { wait: 'Plug-in window closed.' },
         { invoke: 'Timeline' }, { windows: '2' }, { 'close-child-window': '' }, { windows: '1' }, { gone: 'Canvas ' + name + ' 6' },
         { invoke: 'Track Patch' }, { windows: '2' }, { wait: name + ' 6' },
     ], ['--song', song]);
+    assertWindowCycles(commands, 1);
 }
 
 const unresponsive = selected[0] === '--unresponsive-editor';
