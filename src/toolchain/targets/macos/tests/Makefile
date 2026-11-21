@@ -82,10 +82,15 @@ qwen-headless: _runtime
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(MAKE) -C $(ROOT) _qwen-suite MEMORY=arc QWEN_GPU=metal
 
+## daw-icon: Verify the macOS DAW launches from a bundle with the original Prism Dock icon.
+.PHONY: daw-icon
+daw-icon:
+	bash src/toolchain/targets/macos/tests/prism-icon.sh
+
 ## daw-events-headless: The daw's event budget on the FerroUI host, with no window: dragging a Prism module
 ##                      and tapping Timeline lanes each answer within one 60 Hz display frame.
 .PHONY: daw-events-headless
-daw-events-headless: _runtime_macos
+daw-events-headless: daw-icon _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	mkdir -p target/prism-app
 	nice -n 10 $(BIN) src/osprey/examples/daw --compile --target=macos -o target/prism-app/libOspreyApp.a

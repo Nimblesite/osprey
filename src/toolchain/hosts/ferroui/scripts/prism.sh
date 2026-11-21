@@ -2,6 +2,7 @@
 # Builds Osprey's Prism synth as a C library, links it into the FerroUI host over the shared-memory
 # boundary and opens it. Every step is bounded: nothing here can run unattended forever.
 #   prism.sh                  build and open; it stays open until you close it (PRISM_SECONDS=<n> closes it after n seconds, for scripts)
+#   prism.sh --bundle         build the macOS application without opening a window
 #   prism.sh --shot <png>     build, open, wait PRISM_SETTLE seconds (default 6), capture the window, close
 #                             (PRISM_TAP="x,y;x,y" clicks those points in scene units before the capture)
 #   prism.sh --repaint <secs> build, open, rebuild and repaint the whole view every frame, print timings
@@ -24,6 +25,32 @@ export OSPREY_NATIVE_TITLE="Prism" OSPREY_NATIVE_WINDOW="$window_size" OSPREY_NA
     OSPREY_NATIVE_TITLE_BAR=50 OSPREY_NATIVE_APPEARANCE=dark
 machine="$repo/src/osprey/packages/signal_flow/signal_flow.machine.json"
 binary="${PRISM_BINARY:-$repo/target/release/ferroui-osprey-native}"
+# Launch the host inside its bundle so AppKit uses the Prism artwork for the Dock.
+if [[ ${1:-} == --finder ]]; then
+    binary=$2
+    shift 2
+else
+    bundle="${PRISM_BUNDLE_DIR:-$app}/Prism.app"
+    contents="$bundle/Contents"
+    mkdir -p "$contents/MacOS" "$contents/Resources"
+    /usr/bin/install -SC -m 755 "$binary" "$contents/MacOS/ferroui-osprey-native"
+    /usr/bin/install -SC -m 644 "$here/scripts/Prism.plist" "$contents/Info.plist"
+    binary="$contents/MacOS/ferroui-osprey-native"
+    icon="$contents/Resources/AppIcon.icns"
+    logo="$repo/src/osprey/packages/signal_flow/skins/prism/logo.png"
+    if [[ ! -s $icon || $logo -nt $icon ]]; then
+        bash "$here/../swift/app-icon.sh" "$logo" "$icon"
+    fi
+    # Finder supplies no song or machine arguments. Reuse the normal launch path and its defaults.
+    entry=$(mktemp "$contents/MacOS/.Prism.XXXXXX")
+    printf '#!/bin/bash\ncd %q\nexport PRISM_PREBUILT=1 PRISM_PROJECT=%q\nexec /bin/bash %q --finder "$(dirname "$0")/ferroui-osprey-native"\n' \
+        "$repo" "$repo/src/osprey/examples/daw/tracks/codex-version.json" "$here/scripts/prism.sh" > "$entry"
+    chmod 755 "$entry" && mv -f "$entry" "$contents/MacOS/Prism"
+    if [[ ${1:-} == --bundle ]]; then
+        echo "$bundle"
+        exit 0
+    fi
+fi
 worker="$repo/target/vst-worker/osprey-vst-worker"
 launch=(--machine "$machine")
 [ -x "$worker" ] && launch+=(--vst-worker "$worker")
