@@ -412,7 +412,12 @@ module CableCanvas
 
     (** Only exposed cable curves receive selection; cards retain their controls. *)
     export selected (editor, px, py) =
-        selected = ui::Lists::position (editor.graph.cables, \cable => hit (editor, cable, px, py))
+        centred = ui::Lists::position (editor.graph.cables, \cable =>
+            at = midpoint (editor, cable)
+            EditorView::inside (px, py, at.x, at.y, 1.0, 1.0))
+        selected = match centred >= 0
+            true => centred
+            false => ui::Lists::position (editor.graph.cables, \cable => hit (editor, cable, px, py))
         editor(selectedCable = selected, source = -1, message = ui::Pick::either (selected >= 0, "Delete the selected cable with × or Backspace.", "Drag from an output socket to an input socket."))
 
     (** The contextual close control uses the painted cable midpoint. *)

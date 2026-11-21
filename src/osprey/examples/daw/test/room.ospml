@@ -170,7 +170,7 @@ pluginUiJourney () =
     loading = vstAdded scanned
     countOf (loading.drivenSurface.surfaceAsked, 1)
     added = receipt (loading, "prism-vst:describe:3")
-    inspectorShows (added, 0, "Delay")
+    offeredIn (added, "ADelay 0 Delay", true)
     nodesOf (added, 1)
     lettersIn (added, "ADelay 0")
     current = Drive::holding added
@@ -194,10 +194,12 @@ pluginUiJourney () =
     armedModulator = prismTap (lfoPatch, "Canvas output 5:0")
     inspectorShows (armedModulator, 0, "Modulate Delay")
     controlled = inspectorAction (armedModulator, 0, "Modulate Delay")
+    projectPluginJourney (Drive::holding controlled)
     hostedModulationJourney (Drive::holding controlled).graph
     cablesOf (controlled, 5)
     unbound = cutCable (controlled, "Cable 5:0 to 0:1")
     cablesOf (unbound, 4)
+    expect (structuralEquals ((Drive::holding unbound).graph.cables, (Drive::holding finished).graph.cables), true)
     restoresParameter ((Drive::holding unbound).graph)
     wrongSource = prismTap (controlled, "Canvas output 2:0")
     refusedModulation = inspectorAction (wrongSource, 0, "Modulate Delay")
@@ -244,20 +246,20 @@ pluginUiJourney () =
         match (Drive::holding previous).renderTicket == ""
             true => previous
             false => audioDone previous)
-    showsIn (played, "Preview finished.", true)
+    lettersIn (played, "Preview finished.")
     askedOf (played, 3)
     drainedOf played
     forEachList ([firstPair, deviceOpened, secondPair], \running =>
         stopped = stoppedFrom running
-        showsIn (stopped, "Playback stopped.", true)
+        lettersIn (stopped, "Playback stopped.")
         drainedOf stopped)
     live = Drive::press (finished, "Play Patch")
     continuing = foldList (toList (range (0, 40)), live, \(previous, _) => audioDone previous)
     expect ((Drive::holding continuing).renderContinuous, true)
     expect ((Drive::holding continuing).renderTicket != "", true)
-    expect (Drive::shows (stoppedFrom continuing, "Playback stopped."), true)
+    lettersIn (stoppedFrom continuing, "Playback stopped.")
     crashed = failedWith (audition, "prism-audio:1:0:open", "plug-in failed")
-    showsIn (crashed, "Graph playback failed: plug-in failed", true)
+    lettersIn (crashed, "Graph playback failed: plug-in failed")
     countOf ((Drive::holding crashed).renderPending, 0)
     malformed = receipt (vstAdded twice, "prism-vst:describe:5")
     sameGraph (malformed, twice)
@@ -373,6 +375,17 @@ modulationJourney () =
     refuses (editor.graph, [deadClip (2, 8, -0.1)], 8)
 
 // [SYNTH-HOST-MODULATION] Graph cables become exact normalized native automation points.
+projectPluginJourney editor =
+    song = arrangedSong (120.0, 48000, [arrangedBell ("Hosted pair", 1.0, [arrangedNote (0.0, 1.0)])])
+    succeeds (daw::PatchRecords::savedAt (song, 0, editor.graph, editor.positions), \saved => succeeds (reopened saved, \opened =>
+        succeeds (daw::TrackPatches::picked (opened, 0), \graph =>
+            expect (structuralEquals (graph, editor.graph), true)
+            bindings = synth::Plugins::projectBindings graph
+            expect (length bindings, 2)
+            forEachList (bindings, \binding =>
+                expect (binding.pluginModule, "")
+                expect ((synth::Plugins::resolved (editor.catalog, binding)).pluginModule, "/plugins/adelay.vst3")))))
+
 hostedModulationJourney graph =
     waiting (graph, 256, \identity => \block =>
         expect (identity, 0)

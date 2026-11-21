@@ -58,3 +58,25 @@ module PluginDocuments
 
     (** Decode required fields; graph validation then checks ranges and unique IDs. *)
     export describe text = synth::Outcomes::carried (jsonDecode text, \doc => metadata doc)
+
+    // A project stores the graph-facing interface. Bundle paths come only from local discovery.
+    controlDoc (outcome, p: Parameter) = Outcomes::carried (outcome, \docs =>
+        match parseInt (drop p.key 4)
+            Error _ => Error(message = "Invalid hosted parameter key.")
+            Success id => Success(value = listAppend docs (JsonObject [JsonMember "id" (JsonInt id), JsonMember "name" (JsonString p.label), JsonMember "initial" (JsonFloat p.initial), JsonMember "automatable" (JsonBool p.automatable)])))
+
+    export stored (n, identifier) = match ClipInputs::layout n
+        Error _ => Error(message = "The VST3 node has an invalid layout.")
+        Success layout => Outcomes::carried (foldList (n.parameters, Success(value = []), controlDoc), \controls =>
+            modulation = mapList (filterList (n.inputs, \p => p.rate == Control), \p => JsonString p.name)
+            jsonEncode (JsonObject [JsonMember "id" (JsonString identifier), JsonMember "name" (JsonString identifier), JsonMember "inputs" (JsonInt layout.inputChannels), JsonMember "outputs" (JsonInt layout.outputChannels), JsonMember "notes" (JsonBool layout.acceptsNotes), JsonMember "parameters" (JsonArray controls), JsonMember "modulation" (JsonArray modulation)]))
+
+    restoredPort (outcome, key) = Outcomes::carried (outcome, \n =>
+        match ui::Lists::any (n.parameters, \p => p.key == key && p.automatable) && !ui::Lists::any (n.inputs, \p => p.name == key)
+            false => Error(message = "The project contains an invalid VST3 modulation port.")
+            true => Success(value = n(inputs = listAppend n.inputs (Port(name = key, rate = Control, channels = 1, unit = Normalised)))))
+
+    export restored (identity, text) = Outcomes::carried (jsonDecode text, \doc => Outcomes::carried (metadata doc, \descriptor =>
+        match Hosted::component (identity, descriptor)
+            Invalid _ => Error(message = "The saved VST3 descriptor is invalid.")
+            Valid n => foldList (Doc::texts (doc, "modulation"), Success(value = n), restoredPort)))

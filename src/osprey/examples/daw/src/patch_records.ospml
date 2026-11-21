@@ -29,6 +29,7 @@ module PatchRecords
         _ => processing (prior, n)
 
     processing (prior, n) = match n.processor
+        synth::External identifier => synth::Outcomes::carried (synth::PluginDocuments::stored (n, identifier), \descriptor => Success(value = PatchNode(identity = n.identity, component = "vst3", size = 0, seed = 0, asset = descriptor, settings = [])))
         synth::Shaper => plain "shaper"
         synth::Shifter => plain "shifter"
         synth::Spectral size hop => spectral (prior, n, size, hop)

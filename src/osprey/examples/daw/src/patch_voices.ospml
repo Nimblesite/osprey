@@ -98,6 +98,7 @@ module PatchVoices
         ok (oscillator(inputs = [synth::Port(name = "notes", rate = synth::Events, channels = 1, unit = synth::Notes)]))
 
     made item = match item.component
+        "vst3" => synth::PluginDocuments::restored (item.identity, item.asset)
         "split" => channels item
         "join" => channels item
         "panner" => ok (synth::Components::panner (item.identity, item.size, 0.0))

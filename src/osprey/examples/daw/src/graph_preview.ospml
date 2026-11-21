@@ -21,7 +21,9 @@ module GraphPreview
         Valid n => match filterList (editor.renderBindings, \binding => binding.pluginNode == pending.pendingNode)
             [binding] => match n.processor
                 External identifier => match identifier == binding.pluginClass && editor.workerPath != ""
-                    true => encoded (editor, n, block, pending, binding)
+                    true => match binding.pluginModule == ""
+                        true => problem (editor, "VST3 class ${identifier} is unavailable in the configured folder.")
+                        false => encoded (editor, n, block, pending, binding)
                     false => problem (editor, "The VST binding differs from the graph node.")
                 _ => problem (editor, "Only VST nodes may request the native worker.")
             _ => problem (editor, "The VST node has no unique module binding.")
@@ -49,7 +51,7 @@ module GraphPreview
                 true => Preview::play (editor, platform)
                 false => match editor.renderSerial == 9223372036854775807
                     true => problem (editor, "No more render identities are available.")
-                    false => advance (editor(renderGraph = editor.graph, renderTrack = editor.patchTrack, renderProject = editor.songPath, renderBindings = editor.pluginBindings, renderPending = [], renderSessions = [], renderDevicePending = [], renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = continuous, renderStopping = false, renderSerial = satAdd editor.renderSerial 1), editor.graph, GraphClips::start (editor.graph, frames))
+                    false => advance (editor(renderGraph = editor.graph, renderTrack = editor.patchTrack, renderProject = editor.songPath, renderBindings = mapList (editor.pluginBindings, \binding => Plugins::resolved (editor.catalog, binding)), renderPending = [], renderSessions = [], renderDevicePending = [], renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = continuous, renderStopping = false, renderSerial = satAdd editor.renderSerial 1), editor.graph, GraphClips::start (editor.graph, frames))
 
     (** Render a bounded audition through the same graph/device path as live playback. *)
     export play (editor, platform) = begin (editor, platform, false)
