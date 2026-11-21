@@ -54,6 +54,8 @@ Hand-written mathematics moves to `.lean`; the package's recorded outputs stay b
 
 Each is a specification change first: meaning table, refusals, oracle.
 
+- [ ] [MATH-CODE-EMIT-ELEGANT] The generated Osprey reads as cleanly as the Lean source: emit no `name : type` header when inference derives the same type (today every export gets one, e.g. `export twiddle : (float, float, float) -> float` above a body that `floatDiv` already pins to float), and write float division as `/` rather than `floatDiv (a, b)`. Acceptance: `osprey --check` with exported members treated as non-contract reports no redundant annotation on any generated module, and the [`osprey-math` fixtures](../../src/toolchain/crates/osprey-math/tests/fixtures/Kernels.ospml) show it.
+- [ ] [MATH-CODE-EMIT-ELEGANT] The analyser misses redundant signatures in modules: a script module with `export twiddle : (float, float, float) -> float` over a `floatDiv` body draws no `redundant-annotation` warning, while the same pair at top level does for `power`. Add the failing case to `redundant_tests.rs`, then fix.
 - [ ] Integer types: `Int64` with Lean's wrapping semantics, then `Nat` and `Int` under a stated bound.
 - [ ] `structure` values against typeDiagram-declared records.
 - [ ] `match`, structural recursion and `where`.
