@@ -61,6 +61,8 @@ Every issue the user raised while testing Prism by hand, with where it is tracke
 | 33 | The lanes' scrollbar has no fine control: it is either at the top or at the bottom. It must scroll smoothly, row by row, up and down | [DAW-LAYOUT-FILL] | Open. Cause: the lanes scroll a whole page of seven tracks at a time (`lanePage`), so eight tracks have two positions |
 | 34 | **Hard rule:** resizing the window must never resize the controls. Resizing only frees up canvas space or reduces it | [DAW-LAYOUT-FIXED-SCALE] | Open, being fixed now. Cause: each page is one fixed scene scaled to fit the window |
 | 35 | The patch screens need zoom and pan | [DAW-LAYOUT-FILL] | Open. Zoom is the user's own setting, never the window's size |
+| 36 | Play takes too long to start, then plays a few bars and stops | [DAW-TRANSPORT-LIVE-SPEED] | Cause found in the running system: every song opened and every Play started twelve note makers that were never ended, so 30 and more of them ran at once (load average 258) and starved the stream. Fixed in the app code: one maker for every three cores at the lowest priority, the makers of a Play end with it, and opening another song or pressing Play ends the song's earlier makers. Open: a song whose notes are not made yet still starts rough; not yet heard by the user |
+| 37 | Parameter names overlap the dial and the value in the patch inspector ("Transform (0 pass, 1 freeze, …") | [DAW-INSPECTOR] | Open. Owner: prism-routing-design (long captions) |
 
 Found while fixing these:
 
