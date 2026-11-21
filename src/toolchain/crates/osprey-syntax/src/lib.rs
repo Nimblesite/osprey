@@ -42,6 +42,7 @@ mod ml;
 mod positional;
 mod python;
 mod strings;
+pub use strings::column_byte;
 #[cfg(test)]
 mod test_support;
 mod typescript;

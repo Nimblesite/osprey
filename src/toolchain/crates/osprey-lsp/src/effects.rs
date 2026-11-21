@@ -222,20 +222,8 @@ fn encoded_column(
     Some(measure(prefix, encoding))
 }
 
-/// The byte offset of an AST column: Default and Python count bytes, ML
-/// characters.
 fn byte_column(text: &str, column: u32, flavor: Flavor) -> Option<usize> {
-    let column = usize::try_from(column).ok()?;
-    match flavor {
-        Flavor::Default | Flavor::Python | Flavor::TypeScript => {
-            text.is_char_boundary(column).then_some(column)
-        }
-        Flavor::Ml => text
-            .char_indices()
-            .map(|(offset, _)| offset)
-            .chain(std::iter::once(text.len()))
-            .nth(column),
-    }
+    osprey_syntax::column_byte(text, usize::try_from(column).ok()?, flavor)
 }
 
 fn effect_index(program: &Program) -> EffectIndex {
