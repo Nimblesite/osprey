@@ -3,6 +3,10 @@
 //! finalization, re-entry of direct handlers, and one answering function per
 //! captured effect.
 //!
+//! The list walks (`__manyFoldList` and the three built on it) are the step
+//! forms of the list builtins, so a callback handed to `foldList`, `mapList`,
+//! `filterList` or `forEachList` may make a captured request.
+//!
 //! A continuation is the `k` field of a request: an ordinary closure. `drop`
 //! runs the finalizers of a continuation nobody resumes
 //! ([EFFECTS-FINALIZATION], [MULTI-COST-ABORT]).
@@ -62,6 +66,23 @@ fn __manyAnswer(arm, again, drop) = {
         __manyReinstall(install, fn() => arm(fn(x) => __manySettling(again, x))),
         fn() => install(fn() => __manyDropUnsettled(drop)))
 }
+
+fn __manyFoldList(items, seed, step) = match items {
+    [] => Many__Done { value: seed }
+    [head, ...tail] => __manyBind(step(seed, head), fn(next) => __manyFoldList(tail, next, step))
+}
+
+fn __manyMapList(items, step) = __manyFoldList(items, [], fn(mapped, item) =>
+    __manyBind(step(item), fn(value) => Many__Done { value: listAppend(mapped, value) }))
+
+fn __manyFilterList(items, keep) = __manyFoldList(items, [], fn(kept, item) =>
+    __manyBind(keep(item), fn(wanted) => Many__Done { value: match wanted {
+        true => listAppend(kept, item)
+        false => kept
+    } }))
+
+fn __manyForEachList(items, step) = __manyFoldList(items, __manyUnit(), fn(done, item) =>
+    __manyBind(step(item), fn(ignored) => Many__Done { value: done }))
 
 fn __manyRun(step) = match step {
     Many__Done { value } => value

@@ -227,7 +227,7 @@ with `let` before `{op}`"
             Callee::Function(id) => return self.step_function_call(id, call, scope),
             Callee::Alias(alias) => !alias.latent.is_empty(),
             Callee::Param(index) => self.param_steps(index, scope),
-            Callee::Other => return self.step_operands(call, scope),
+            Callee::Other => return self.step_builtin(call, scope),
         };
         let items = arguments
             .iter()
@@ -242,6 +242,39 @@ with `let` before `{op}`"
                 done(rebuilt)
             }
         })
+    }
+
+    /// A call that names no function this pass follows. A list builtin whose
+    /// callback captures becomes its step form; anything else evaluates its
+    /// operands in order.
+    fn step_builtin(&mut self, call: &Expr, scope: &Scope) -> Expr {
+        let Expr::Call {
+            function,
+            arguments,
+            ..
+        } = call
+        else {
+            return call.clone();
+        };
+        let Some((helper, callback)) = self.analyzer.list_walk(function, arguments, scope) else {
+            return self.step_operands(call, scope);
+        };
+        let captures = self
+            .analyzer
+            .latent(callback, scope)
+            .is_some_and(|latent| !latent.is_empty());
+        if !captures {
+            return self.step_operands(call, scope);
+        }
+        let mut items = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            items.push(if std::ptr::eq(argument, callback) {
+                Item::Ready(self.stepping(argument, scope))
+            } else {
+                Item::Raw(argument)
+            });
+        }
+        self.sequence(items, scope, |_, values| build::call(helper, values))
     }
 
     fn step_function_call(&mut self, id: usize, call: &Expr, scope: &Scope) -> Expr {

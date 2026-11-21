@@ -17,6 +17,18 @@ pub(super) const REINSTALL: &str = "__manyReinstall";
 pub(super) const RUN: &str = "__manyRun";
 pub(super) const UNIT: &str = "__manyUnit";
 
+/// The list builtins that have a step form: the helper, and which argument is
+/// the callback.
+pub(super) fn list_walk(builtin: &str) -> Option<(&'static str, usize)> {
+    match builtin {
+        "foldList" => Some(("__manyFoldList", 2)),
+        "mapList" => Some(("__manyMapList", 1)),
+        "filterList" => Some(("__manyFilterList", 1)),
+        "forEachList" => Some(("__manyForEachList", 1)),
+        _ => None,
+    }
+}
+
 /// The helper that makes `effect.operation`'s request.
 pub(super) fn request_name(effect: &str, operation: &str) -> String {
     format!("__manyPerform_{effect}_{operation}")

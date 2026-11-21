@@ -271,9 +271,32 @@ impl<'a> Analyzer<'a> {
             }
             Callee::Alias(alias) => out.absorb(alias.latent),
             Callee::Param(index) => out.absorb(self.param_call(index, scope)),
-            Callee::Other => out.absorb(self.esc(function, scope)),
+            Callee::Other => {
+                out.absorb(self.esc(function, scope));
+                if let Some((_, callback)) = self.list_walk(function, arguments, scope) {
+                    out.absorb(self.latent(callback, scope).unwrap_or_default());
+                }
+            }
         }
         out
+    }
+
+    /// The step form of a list builtin call, with its callback argument, when
+    /// `function` names the builtin itself rather than a local or a function.
+    pub(super) fn list_walk<'e>(
+        &self,
+        function: &Expr,
+        arguments: &'e [Expr],
+        scope: &Scope,
+    ) -> Option<(&'static str, &'e Expr)> {
+        let Expr::Identifier(name) = function else {
+            return None;
+        };
+        if !matches!(self.callee(function, scope), Callee::Other) || scope.hidden.contains(name) {
+            return None;
+        }
+        let (helper, index) = super::build::list_walk(name)?;
+        arguments.get(index).map(|callback| (helper, callback))
     }
 
     fn param_call(&self, index: usize, scope: &Scope) -> Esc {
