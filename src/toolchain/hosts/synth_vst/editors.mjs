@@ -1,7 +1,7 @@
 // [PRISM-ROUTING-VST-WINDOW] Exercise the actual plug-in controller and Prism window actions.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const [folder, ...selected] = process.argv.slice(2);
@@ -12,6 +12,16 @@ const plugins = resolve(folder);
 const run = mkdtempSync(resolve('target/pr-validation/vendor-ui-'));
 mkdirSync(join(run, '.prism'));
 writeFileSync(join(run, '.prism/vst3-folder'), plugins);
+
+const loggedWorker = join(run, 'worker');
+writeFileSync(loggedWorker, `#!/bin/bash
+set -eo pipefail
+if [[ "$1" == editor-session ]]; then
+    exec "$VST_WORKER" "$@" < <(tee -a "$PRISM_WINDOW_COMMANDS")
+else
+    exec "$VST_WORKER" "$@"
+fi
+`, { mode: 0o755 });
 
 function controller(bundle, id, controls) {
     // A program change may reset every other control. Read each write back before the next.
@@ -33,25 +43,47 @@ function controller(bundle, id, controls) {
     assert(rows.at(-1).closed);
 }
 
-function inspector(name, id, parameters) {
+function inspector(name, id, parameters, unresponsive) {
     const steps = [{ invoke: 'Patch Controls' }, { wait: name }, { type: ['Add component', 'vst:' + id] },
         { wait: name + ' 0' }, { type: ['Module', '0'] }];
+    if (unresponsive) steps.push({ invoke: 'Open plug-in window' }, { wait: 'Opening plug-in window…' },
+        { gone: 'Opening plug-in window…' }, { wait: 'Open plug-in window' });
     for (const [index, p] of parameters.entries()) {
         if (index && index % 10 === 0) steps.push({ invoke: 'Next parameters' });
         if (p.automatable) steps.push({ invoke: name + ' 0 ' + p.name }, { type: [p.name, p.initial > 0.5 ? '0' : '1'] });
     }
-    for (let attempt = 0; attempt < 2; attempt++) steps.push({ invoke: 'Open plug-in window' },
-        { wait: 'Plug-in window open.' }, { invoke: 'Focus plug-in window' },
-        { invoke: 'Close plug-in window' }, { wait: 'Plug-in window closed.' });
-    replay(id, steps, ['--empty']);
+    if (unresponsive) {
+        replay(id, steps, ['--empty']);
+        return;
+    }
+    const lastPage = parameters.slice(Math.floor((parameters.length - 1) / 10) * 10);
+    const live = lastPage.find(p => p.automatable);
+    for (let attempt = 0; attempt < 2; attempt++) {
+        steps.push({ invoke: 'Open plug-in window' }, { wait: 'Plug-in window open.' }, { invoke: 'Focus plug-in window' });
+        if (!attempt && live) steps.push({ invoke: name + ' 0 ' + live.name },
+            { type: [live.name, live.initial > 0.5 ? '1' : '0'] }, { frames: '8' });
+        steps.push({ invoke: 'Close plug-in window' }, { wait: 'Plug-in window closed.' });
+    }
+    const commands = replay(id, steps, ['--empty']);
+    const first = commands.find(line => line.startsWith('watch '));
+    assert(first, 'Prism must send the edited patch to its native window');
+    const settings = line => new Map(line.split(' ').slice(1).map(pair => pair.split('=').map(Number)));
+    const submitted = settings(first);
+    if (live) assert(commands.slice(1).some(line => settings(line).get(live.id) === (live.initial > 0.5 ? 1 : 0)),
+        'The open editor must receive a subsequent change to ' + live.name);
+    for (const p of parameters.filter(p => p.automatable)) {
+        assert.equal(submitted.get(p.id), p.initial > 0.5 ? 0 : 1, 'Inspector value for ' + p.name);
+    }
 }
 
 function replay(id, steps, launch) {
     const journey = join(run, id + '.json');
     writeFileSync(journey, JSON.stringify({ steps }));
+    const commandLog = join(run, id + '.commands');
     execFileSync(host, ['--self-test', journey, run, '--defer-processes', '--live-processes',
-        '--machine', 'src/osprey/packages/signal_flow/signal_flow.machine.json', ...launch, '--vst-worker', worker],
-    { timeout: 150000, stdio: 'inherit', env: { ...process.env, HOME: run } });
+        '--machine', 'src/osprey/packages/signal_flow/signal_flow.machine.json', ...launch, '--vst-worker', loggedWorker],
+    { timeout: 150000, stdio: 'inherit', env: { ...process.env, HOME: run, VST_WORKER: worker, PRISM_WINDOW_COMMANDS: commandLog } });
+    return readFileSync(commandLog, 'utf8').trimEnd().split('\n');
 }
 
 function trackPatch(name, id) {
@@ -62,21 +94,28 @@ function trackPatch(name, id) {
         { invoke: 'Patch Controls' }, { wait: name }, { type: ['Add component', 'vst:' + id] },
         { invoke: 'Open plug-in window' }, { wait: 'Plug-in window open.' },
         { invoke: 'Focus plug-in window' }, { invoke: 'Close plug-in window' }, { wait: 'Plug-in window closed.' },
-        { invoke: 'Timeline' }, { windows: '2' }, { 'close-child-window': '' }, { windows: '1' },
+        { invoke: 'Timeline' }, { windows: '2' }, { 'close-child-window': '' }, { windows: '1' }, { gone: 'Canvas ' + name + ' 6' },
         { invoke: 'Track Patch' }, { windows: '2' }, { wait: name + ' 6' },
     ], ['--song', song]);
 }
 
+const unresponsive = selected[0] === '--unresponsive-editor';
+if (unresponsive) selected.shift();
+assert(!unresponsive || selected.length === 1, 'Specify exactly one unresponsive VST3 bundle');
 const bundles = selected.length ? selected : readdirSync(plugins).filter(file => file.endsWith('.vst3'));
 assert(bundles.length, 'No VST3 bundles found');
 for (const file of bundles) {
     const bundle = join(plugins, file);
-    const scanned = execFileSync(worker, ['scan', bundle], { encoding: 'utf8' }).trimEnd().split('\n');
+    const scanned = execFileSync(worker, ['scan', bundle], { encoding: 'utf8', timeout: 15000 }).trimEnd().split('\n');
     for (const { id, name } of scanned.map(JSON.parse)) {
-        const { parameters } = JSON.parse(execFileSync(worker, ['describe', bundle, id]));
+        const { parameters } = JSON.parse(execFileSync(worker, ['describe', bundle, id], { timeout: 15000 }));
         const controls = parameters.filter(p => p.automatable);
-        controller(bundle, id, controls);
-        inspector(name, id, parameters);
+        if (!unresponsive) controller(bundle, id, controls);
+        inspector(name, id, parameters, unresponsive);
+        if (unresponsive) {
+            console.log(name + ': Prism recovered from the unresponsive editor and accepted edits to ' + controls.length + ' parameters');
+            continue;
+        }
         if (file === bundles[0] && id === JSON.parse(scanned[0]).id) trackPatch(name, id);
         console.log(name + ': verified ' + controls.length + ' parameters and two editor window lifecycles');
     }

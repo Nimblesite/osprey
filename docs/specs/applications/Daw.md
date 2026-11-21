@@ -250,6 +250,10 @@ The daw answers Open Sound Control over UDP, so a control surface, a lighting de
 
 **A render takes at most a fifth of the song's length ([DAW-PERF-RENDER]).** Offline rendering compresses time: a render that runs at real time, or slower, has failed. A 5 minute song with basic tracks and routing renders, through the whole graph into Master and onto disk, in about one minute or less. No project in `tracks/`, however dense its patches, takes more than half its length. Anything slower is a defect that needs optimising. Every pointer event must answer within one display frame. The [plan](../../plans/daw.md) holds the profile, the owners and the targets: two bars of the codex project in under 14 s, and a Prism drag move under 5 ms mean.
 
+**Track patch windows [DAW-PAGES-PATCH-WINDOW].** Opening a track patch keeps its arrangement window open. Patch controls edit the same song. Closing the patch window leaves the arrangement available, and reopening the track restores its saved nodes, cables and control values.
+
+**VST3 editor windows [PRISM-ROUTING-VST-WINDOW].** On macOS, select a hosted node in Patch Controls and choose Open plug-in window. Prism opens the vendor’s native editor for that node, exchanges normalized parameter changes with the patch, and lets the user focus or close the editor. An unresponsive editor times out independently and the patch controls remain available.
+
 **Song timing [DAW-HEADER-TIMING].** Click BPM or Meter in the header to edit the tempo and time signature. Apply saves both to the song and updates the bar grid. Undo restores the previous timing.
 
 ## The inspector [DAW-INSPECTOR]

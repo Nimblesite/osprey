@@ -94,9 +94,13 @@ module EditorView
             Granular resource _ _ => [Ui::section ("Sample", "", [Ui::caption ("${daw::PatchVoices::fileName resource.name} · ${resource.sampleRate} Hz · ${resource.sourceChannels} source channels · ${SampleResources::frames resource} frames · ${WaveMath::seconds (toFloat (SampleResources::frames resource), toFloat resource.sampleRate)} s"), Ui::button ("Load WAV sample", "", LoadSample), Ui::button ("Use built-in harmonic sample", "", BuiltinSample)])]
             _ => []
         native = match n.processor
-            External _ _ => match ui::Lists::any (editor.editorWindows, \w => w.windowNode == n.identity && w.windowTrack == editor.patchTrack && w.windowProject == editor.songPath)
-                true => [Ui::button ("Focus plug-in window", "", OpenPluginWindow(identity = n.identity)), Ui::button ("Close plug-in window", "", ClosePluginWindow(identity = n.identity))]
-                false => [Ui::button ("Open plug-in window", "", OpenPluginWindow(identity = n.identity))]
+            External _ _ => match ui::Lists::find (editor.editorWindows, \w => w.windowNode == n.identity && w.windowTrack == editor.patchTrack && w.windowProject == editor.songPath)
+                Error _ => [Ui::button ("Open plug-in window", "", OpenPluginWindow(identity = n.identity))]
+                Success w =>
+                    focus = match w.windowCycle > 1
+                        true => Ui::button ("Focus plug-in window", "", OpenPluginWindow(identity = n.identity))
+                        false => Ui::caption "Opening plug-in window…"
+                    [focus, Ui::button ("Close plug-in window", "", ClosePluginWindow(identity = n.identity))]
             _ => []
         Ui::column (listConcat native (listConcat sample parameters))
 
@@ -514,7 +518,9 @@ module EditorView
             false => page
             true => Ui::column [page, keyboardDock editor]
 
-    stamp editor = JsonString "${length editor.editorWindows}:${editor.patchWindowSerial}:${editor.revision}:${editor.layoutRevision}:${editor.panX}:${editor.panY}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${RollEdits::stamp editor.rollDrag}:${editor.rollBar}:${editor.laneTop}:${editor.laneZoom}:${editor.laneStart}:${RoutingPicker::stamp editor}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.renderContinuous}:${editor.renderTicket}:${editor.keymap.name}:${editor.dial != DialIdle}:${editor.dialEntry}:${editor.dialOffset}:${editor.fineHeld}:${editor.songPath}:${length editor.song.tracks}"
+    readyWindows editor = length (filterList (editor.editorWindows, \w => w.windowCycle > 1))
+
+    stamp editor = JsonString "${readyWindows editor}:${length editor.editorWindows}:${editor.patchWindowSerial}:${editor.revision}:${editor.layoutRevision}:${editor.panX}:${editor.panY}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${RollEdits::stamp editor.rollDrag}:${editor.rollBar}:${editor.laneTop}:${editor.laneZoom}:${editor.laneStart}:${RoutingPicker::stamp editor}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.renderContinuous}:${editor.renderTicket}:${editor.keymap.name}:${editor.dial != DialIdle}:${editor.dialEntry}:${editor.dialOffset}:${editor.fineHeld}:${editor.songPath}:${length editor.song.tracks}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =

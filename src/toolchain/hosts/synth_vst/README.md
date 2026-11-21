@@ -57,3 +57,9 @@ The `patch` case connects TAL-NoiseMaker to Dragonfly Room Reverb and a stereo o
 Prism stores each node’s class ID, graph-facing ports, normalized controls and modulation routes in the song. It resolves bundle paths from the configured library on this machine. A persistent worker accepts a hexadecimal `SAVE` line and returns an opaque, class-bound `OPS1` state frame. Sending that frame to a fresh session restores the processor and optional private controller state and returns hexadecimal `OK`. The session tests exercise two SDK classes, changed parameters, multiple restores and class mismatch rejection.
 
 The spectrum target accepts `VST3_CASE=latency` with CHOW Tape Model 2.11.4. At 48 kHz the plug-in reports 39 frames of latency. The test checks each stereo output sample against parallel dry and processed paths. Set `VST3_UI=window` to run the spectrum journeys in a native window.
+
+### Native editor windows on macOS
+
+Choose a track’s patch, select a VST3 node in Patch Controls, and choose **Open plug-in window**. The track patch stays in its own window alongside the arrangement. Each vendor editor runs in a separate worker for its node. Prism and the vendor controller exchange normalized control values in both directions. Processor-private state and live meters belong to the processing instance.
+
+Run `make -C src/toolchain/targets/macos/tests synth-vst-editors VST3_FOLDER=/path/to/plugins` after building the worker and Prism GPUI test host. The journey edits every automatable parameter in the inspector, compares the values sent to the actual vendor controller, checks its endpoint readbacks, and exercises closing and reopening both windows. For a known unresponsive editor, `node src/toolchain/hosts/synth_vst/editors.mjs /path/to/plugins --unresponsive-editor DragonflyEarlyReflections.vst3` verifies recovery and continued editing through the inspector.

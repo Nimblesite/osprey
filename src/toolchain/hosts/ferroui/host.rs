@@ -379,8 +379,9 @@ impl Host {
 
     #[cfg(feature = "desktop")]
     pub fn detached_element(self: &Rc<Self>, key: String) -> Element {
-        let host = self.clone();
+        let owner = Rc::downgrade(self);
         border().child(rerender(move || {
+            let Some(host) = owner.upgrade() else { return border().into() };
             host.version.get();
             let dark = host.dark.get();
             let theme = host.regions().theme().cloned().map(Rc::new);

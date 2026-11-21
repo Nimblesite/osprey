@@ -97,9 +97,14 @@ if (scenario === 'latency') {
     press('Play Patch');
     wait('Playing the patch.');
     steps.push({ frames: '24' });
+    press('Open plug-in window');
+    wait('Focus plug-in window');
+    press('Focus plug-in window');
     edit(name + ' 0', 'Dry Level', 0);
     steps.push({ frames: '48' });
     edit(name + ' 0', 'Dry Level', 1);
+    press('Close plug-in window');
+    wait('Open plug-in window');
     steps.push({ frames: '48' });
     press('Stop Patch');
     wait('Playback stopped.');

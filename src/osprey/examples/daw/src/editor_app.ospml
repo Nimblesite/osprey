@@ -312,7 +312,11 @@ module EditorApp
 
     dialInput (editor, input) = ui::Inputs::route (input, \(key, down) => Runtime::step (ui::Pick::either (down && key == "escape", Dials::escaped editor, editor)), \(x, y, down, shift) => Runtime::step (EditorView::dialled (editor(fineHeld = shift), x, y, down)), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor)
 
-    routed (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \_ => Runtime::step editor, \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \elapsed => DawSession::framed (editor, elapsed), \(action, input) => controlled (context, editor, action, input))
+    phased (editor, phase) = match editor.patchTrack >= 0 && startsWith phase "closed:window:${editor.patchWindowSerial}:"
+        true => Runtime::step (editor(patchTrack = -1))
+        false => Runtime::step editor
+
+    routed (context, editor, message) = Messages::route (message, \action => tapped (context, editor, action), \(action, value) => typed (editor, action, value), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \(ticket, outcome) => completed (editor, ticket, outcome), \phase => phased (editor, phase), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor, \elapsed => DawSession::framed (editor, elapsed), \(action, input) => controlled (context, editor, action, input))
 
     update (context, editor, message) =
         step = routed (context, editor, message)

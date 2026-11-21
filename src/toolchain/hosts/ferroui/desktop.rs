@@ -90,11 +90,22 @@ fn watch_detached(host: &Rc<Host>, owner: Ref<Window>) {
         let Some(owner) = owner.upgrade() else { return };
         let key = host.regions().detached();
         if active.borrow().as_ref().map(|(old, _)| old) == key.as_ref() { return; }
-        if let Some((_, old)) = active.borrow_mut().take() { old.close(); }
+        let previous = active.borrow_mut().take();
+        if let Some((_, old)) = previous { if old.is_visible() { old.close(); } }
         if let Some(key) = key {
             let title = key.splitn(3, ':').nth(2).unwrap_or("Patch").to_owned();
             let content = host.detached_element(key.clone());
             let panel = ferroui_view::mount_window(|| window().title(title).width(1200.).height(800.).child(content).into());
+            let weak = Rc::downgrade(host);
+            let closed = key.clone();
+            let subscription = panel.closed(move || {
+                if let Some(host) = weak.upgrade() {
+                    if host.regions().detached().as_ref() == Some(&closed) {
+                        host.send(Touch::phase(&format!("closed:{closed}")));
+                    }
+                }
+            });
+            subscription.detach();
             panel.show_with_owner(&owner);
             *active.borrow_mut() = Some((key, panel));
         }

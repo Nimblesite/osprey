@@ -4,8 +4,8 @@
 //! tree, and every `shot` keeps it beside the run, so an agent reads what it may act on.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
@@ -303,8 +303,9 @@ fn clean(mut reported: Vec<String>) -> Result<(), String> {
 
 /// Drives the real window from the script, then ends the process with the verdict.
 pub fn in_window(run: Run, window: &mut Window, cx: &mut Context<HostView>) {
+    let main_window = window.window_handle();
     cx.spawn_in(window, async move |view, cx| {
-        let verdict = drive(&run, &view, cx).await;
+        let verdict = drive(&run, main_window, &view, cx).await;
         if let Err(problem) = &verdict {
             eprintln!("self-test failed: {problem}");
         }
@@ -324,6 +325,7 @@ fn gone(problem: impl std::fmt::Display) -> String {
 
 async fn drive(
     run: &Run,
+    main_window: gpui_kit::AnyWindowHandle,
     view: &WeakEntity<HostView>,
     cx: &mut AsyncWindowContext,
 ) -> Result<(), String> {
@@ -333,10 +335,13 @@ async fn drive(
         }
         let began = Instant::now();
         loop {
-            let done = view
-                .update_in(cx, |view, window, cx| {
-                    step(run, view, (index, verb, words), began, window, cx)
+            let done = main_window
+                .update(cx, |_, window, app| {
+                    view.update(app, |view, cx| {
+                        step(run, view, (index, verb, words), began, window, cx)
+                    })
                 })
+                .map_err(gone)?
                 .map_err(gone)??;
             match done {
                 Some(wait) if wait.is_zero() => break,
@@ -348,7 +353,7 @@ async fn drive(
             }
         }
     }
-    view.update_in(cx, |view, _, _| clean(view.messages.clone()))
+    view.update(cx, |view, _| clean(view.messages.clone()))
         .map_err(gone)?
 }
 
@@ -382,6 +387,29 @@ fn step(
     cx: &mut Context<HostView>,
 ) -> Result<Option<Duration>, String> {
     let fail = |why: &str, view: &HostView| failed(index, verb, words, why, view.shown.as_ref());
+    if verb == "close-child-window" {
+        let child = view
+            .detached_handle
+            .take()
+            .ok_or("no secondary window to close")?;
+        child
+            .update(cx, |_, child, _| child.remove_window())
+            .map_err(gone)?;
+        return Ok(Some(Duration::ZERO));
+    }
+    if verb == "windows" {
+        let expected: usize = words
+            .first()
+            .and_then(|n| n.parse().ok())
+            .ok_or("windows requires a count")?;
+        return if cx.windows().len() == expected {
+            Ok(Some(Duration::ZERO))
+        } else if began.elapsed() > PATIENCE {
+            Err(fail("native window count differed", view))
+        } else {
+            Ok(None)
+        };
+    }
     match attempt(view.shown.as_ref(), verb, words).map_err(|why| fail(&why, view))? {
         Attempt::Waiting(why) if began.elapsed() > PATIENCE => Err(fail(&why, view)),
         Attempt::Waiting(_) => Ok(None),
