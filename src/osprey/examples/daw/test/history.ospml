@@ -102,6 +102,12 @@ wireDragJourney () =
 
 // [DAW-INSPECTOR] A module without skin art is edited where it is shown: every parameter is a slider on the canvas,
 // a press sets it as one undoable edit, and no caption sends the user to another panel.
+grainPan d = match synth::Graphs::node ((Drive::holding d).graph, 0)
+    synth::Invalid _ => 0.0 - 9.0
+    synth::Valid n => match listGet (filterList (n.parameters, \p => p.label == "Pan")) 0
+        Error _ => 0.0 - 9.0
+        Success p => p.initial
+
 canvasInspectorJourney added =
     expect (uitest::Views::letters (added.drivenSeen, "Edit in Patch controls"), false)
     forEachList (["Grain cloud 0", "Parameters", "Playback rate", "Grain gain", "Pan"], \text => lettersIn (added, text))
@@ -115,12 +121,7 @@ canvasInspectorJourney added =
     // [DAW-CONTROLS-DIAL] Pan is a dial: press it, hold, lift 45 units for a quarter of its range; sideways
     // movement does nothing; the turn is one undo; Escape puts back the value the turn began with.
     before = (Drive::holding added).graph
-    pan d = match synth::Graphs::node ((Drive::holding d).graph, 0)
-        synth::Invalid _ => 0.0 - 9.0
-        synth::Valid n => match listGet (filterList (n.parameters, \p => p.label == "Pan")) 0
-            Error _ => 0.0 - 9.0
-            Success p => p.initial
-    start = pan added
+    start = grainPan added
     area = portIn (added, "Grain cloud 0 Pan")
     expect (area.accessValue, start)
     expect (area.accessMin < area.accessMax, true)
@@ -131,26 +132,28 @@ canvasInspectorJourney added =
     sideways = Drive::pointer (pressed, at.pointX - 90.0, at.pointY, true)
     expect (structuralEquals ((Drive::holding sideways).graph, before), true)
     lifted = Drive::pointer (sideways, at.pointX - 90.0, at.pointY - 45.0, true)
-    expect (pan lifted, synth::DialMath::dragged (start, 45.0, area.accessMin, area.accessMax, 0.0))
-    expect (pan lifted > start, true)
-    top = Drive::pointer (lifted, at.pointX, at.pointY - 400.0, true)
-    expect (pan top, area.accessMax)
-    bottom = Drive::pointer (top, at.pointX, at.pointY + 400.0, true)
-    expect (pan bottom, area.accessMin)
-    back = Drive::pointer (bottom, at.pointX, at.pointY - 45.0, true)
-    expect (pan back, pan lifted)
+    expect (grainPan lifted, synth::DialMath::dragged (start, 45.0, area.accessMin, area.accessMax, 0.0))
+    expect (grainPan lifted > start, true)
+    turns = [{ offset = 0.0 - 400.0, value = area.accessMax }, { offset = 400.0, value = area.accessMin }, { offset = 0.0 - 45.0, value = grainPan lifted }]
+    back = foldList (turns, lifted, \(d, turn) =>
+        next = Drive::pointer (d, at.pointX, at.pointY + turn.offset, true)
+        expect (grainPan next, turn.value)
+        next)
     released = Drive::pointer (back, at.pointX, at.pointY - 45.0, false)
     expect ((Drive::holding released).dial, synth::DialIdle)
-    expect (pan released, pan lifted)
+    expect (grainPan released, grainPan lifted)
+    canvasDialUndo (released, before, at, start, grainPan lifted)
+
+canvasDialUndo (released, before, at, start, liftedValue) =
     undone = prismTap (released, "Undo")
     expect (structuralEquals ((Drive::holding undone).graph, before), true)
     again = Drive::pointer (Drive::pointer (undone, at.pointX, at.pointY, true), at.pointX, at.pointY - 90.0, true)
-    expect (pan again > pan lifted, true)
+    expect (grainPan again > liftedValue, true)
     escaped = Drive::key (again, "escape", true)
-    expect (pan escaped, start)
+    expect (grainPan escaped, start)
     expect ((Drive::holding escaped).dial, synth::DialIdle)
     idle = Drive::pointer (escaped, at.pointX, at.pointY - 90.0, false)
-    expect (pan idle, start)
+    expect (grainPan idle, start)
 
 // [SYNTH-ADVANCED-GRAINS-IMPORT] Only the latest request may change the selected grain source.
 sampleChoiceJourney () =
@@ -176,7 +179,7 @@ sampleChoiceJourney () =
 
 // A key a module cannot reach refuses the whole strike and names it; the patch keeps its last tuning.
 pitchRangeJourney () =
-    strings = prismTap (prismTap (prismTap (prismTap (editorLaunched ["--empty"], "Modules"), "Add Waveguide string"), "Modules"), "Add Bowed string")
+    strings = chained (openedEditor ["--empty"], ["waveguide", "bowed-string"])
     held = Drive::holding strings
     expect (length held.graph.nodes, 2)
     forEachList ([48, 60, 71, 100, 126], \note => succeeds (synth::EditorState::tune (held, note), \tuned => expect (tuned.note, note)))
@@ -189,7 +192,7 @@ pitchRangeJourney () =
 projectRefusalJourney () = succeeds (daw::SongFiles::encode (timeline [keysTrack ()]), \text =>
     succeeds (daw::SongFiles::decode text, \song => expect (length song.tracks, 1))
     arranged = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks."
-    gated = "A routing's attack and release must be 0.001 to 10 s."
+    gated = "keys: A routing's attack and release must be 0.001 to 10 s."
     forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":0.0", why = arranged }, { from = "\"tempo\":120.0", to = "\"tempo\":500.0", why = arranged }, { from = "\"attack\":0.01", to = "\"attack\":0.0", why = gated }, { from = "\"attack\":0.01,", to = "", why = gated }, { from = "\"release\":0.1", to = "\"release\":11.0", why = gated }], \c =>
         expect (contains text c.from, true)
         failsWith (daw::SongFiles::decode (replace text c.from c.to ?: text), c.why))
@@ -219,24 +222,31 @@ refusedFile (driven, path, check) =
     expect (length held.past, length (Drive::holding driven).past)
     done
 
-// [SYNTH-ADVANCED-GRAINS-IMPORT] A missing, tiny, oversized-by-name or non-WAV file never replaces the source;
-// the built-in sample is an explicit choice that does; a chooser failure is reported on the node.
-sampleFileJourney driven =
+// [SYNTH-ADVANCED-GRAINS-IMPORT] A refused file leaves the current sample and history intact.
+sampleRefusals driven =
     _folder = makeDir "target/daw-tests"
     _tiny = writeFile "target/daw-tests/tiny.wav" "RIFF"
     _text = writeFile "target/daw-tests/text.wav" (join (mapList (toList (range (0, 16)), \_ => "not a wave file ")) "")
-    missing = refusedFile (driven, "target/daw-tests/absent-sample.wav", \message => expect (message != "", true))
-    tiny = refusedFile (missing, "target/daw-tests/tiny.wav", \message => expect (endsWith message "Choose a WAV file between 12 bytes and 8 MiB.", true))
-    texted = refusedFile (tiny, "target/daw-tests/text.wav", \message => expect (contains message "WAV", true))
-    failed = Drive::completed (Drive::press (texted, "Load WAV sample"), (Drive::holding (Drive::press (texted, "Load WAV sample"))).sampleTicket, false, "chooser unavailable")
+    cases = [
+        { path = "target/daw-tests/absent-sample.wav", check = \message => expect (message != "", true) },
+        { path = "target/daw-tests/tiny.wav", check = \message => expect (endsWith message "Choose a WAV file between 12 bytes and 8 MiB.", true) },
+        { path = "target/daw-tests/text.wav", check = \message => expect (contains message "WAV", true) }]
+    foldList (cases, driven, \(held, row) => refusedFile (held, row.path, row.check))
+
+// A chooser failure is reported on the node. The built-in sample is an explicit edit.
+sampleFileJourney driven =
+    asked = Drive::press (sampleRefusals driven, "Load WAV sample")
+    failed = Drive::completed (asked, (Drive::holding asked).sampleTicket, false, "chooser unavailable")
     expect ((Drive::holding failed).message, "Grain cloud ${(Drive::holding failed).selected}: chooser unavailable")
     expect (structuralEquals ((Drive::holding failed).graph, (Drive::holding driven).graph), true)
     builtin = Drive::press (failed, "Use built-in harmonic sample")
     expect ((Drive::holding builtin).message, "Loaded ${daw::PatchVoices::builtinName}.")
     expect ((Drive::holding builtin).revision > (Drive::holding failed).revision, true)
     expect (length (Drive::holding builtin).graph.nodes, length (Drive::holding driven).graph.nodes)
-    // A real WAV replaces the source and the inspector names it with its rate, channels, frames and length; Undo
-    // brings the built-in source back and Redo the WAV, each kept whole by history.
+    installedSampleJourney builtin
+
+// A real WAV replaces the source and Undo and Redo restore each sample with its metadata.
+installedSampleJourney builtin =
     asking = Drive::press (builtin, "Load WAV sample")
     loaded = Drive::chosen (asking, (Drive::holding asking).sampleTicket, motifWav)
     expect ((Drive::holding loaded).message, "Loaded elise-motif.wav.")
