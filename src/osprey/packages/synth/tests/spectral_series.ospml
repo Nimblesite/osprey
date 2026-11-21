@@ -43,9 +43,9 @@ inspectionJourney () =
     expect (quiet.held, false)
     expect (quiet.energy, 0.0)
     frozen = config(transform = synth::SpectralFreeze(held = true))
-    succeeds (spectralFor (frozen, { main = \_ => 0.0, side = \_ => 0.0 }, config.hop), \rendered =>
+    succeeds (spectralFor (frozen, { main = \_ => 0.0, side = \_ => 0.0 }, 2 * config.hop), \rendered =>
         captured = Activities::spectral rendered.held
-        expect (captured.active, 1)
+        expect (captured.active, 2)
         expect (captured.held, true)
         expect (captured.energy, 0.0))
     succeeds (spectralFor (frozen, { main = \_ => 1.0, side = \_ => 0.5 }, 17), \before =>

@@ -429,3 +429,12 @@ test ("spectral inspection reports the channel, clock and complex phase of a cen
 
 test ("a slow knob subscriber sees the latest edit and missed count while linear slew follows reversals", \() => arithmetic knobSnapshotJourney)
 test ("the activity panel sees struck modes and silent frozen reverb feedback", \() => arithmetic physicalActivityJourney)
+test ("overdriven nonlinear processors saturate in either direction and cubic antialiasing integrates the first transition", \() => arithmetic (\() =>
+    config = synth::ShaperConfig(sampleRate = 48000.0, curve = synth::CubicCurve, drive = 32.0, bias = 0.0, level = 0.5, antialias = false)
+    forEachList ([synth::TanhCurve, synth::HardCurve, synth::CubicCurve], \curve =>
+        succeeds (synth::Waveshapers::configure (config(curve = curve)), \shaper =>
+            forEachList ([-1.0, 1.0], \sample =>
+                near ((synth::Waveshapers::next (shaper, synth::Waveshapers::initial, sample)).sample, sample * 0.5, 0.000000000001))))
+    succeeds (synth::Waveshapers::configure (config(antialias = true)), \shaper =>
+        first = synth::Waveshapers::next (shaper, synth::Waveshapers::initial, 1.0)
+        near (first.sample, 0.5 * (32.0 - 0.375) / 32.0, 0.000000000001))))
