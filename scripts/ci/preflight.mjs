@@ -191,7 +191,12 @@ const summaryLine = (result) => `| ${result.status} | ${result.job} | ${result.n
 
 function main(args) {
   const only = args.find((arg) => arg.startsWith('--only='))?.slice(7)
-  const checks = plan().filter((step) => !only || new RegExp(only).test(`${step.job} ${step.name} ${step.command}`))
+  const select = only ? new RegExp(only) : undefined
+  const checks = plan().filter((step) => !select || select.test(`${step.job} ${step.name} ${step.command}`))
+  if (checks.length === 0) {
+    console.error(only ? `No CI checks match ${JSON.stringify(only)}` : 'No CI checks found')
+    return 1
+  }
   if (args.includes('--list')) {
     for (const step of checks) console.log(`${skipReason(step) ? 'SKIP' : 'RUN '}\t${step.job}\t${step.name}\t${firstLine(step.command)}`)
     return 0

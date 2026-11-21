@@ -2,10 +2,28 @@
 // whole with its directory, matrix values filled in, coverage gates last, on the host CI gives it.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { jobHost, matrixRows, plan, runCheck, skipReason, steps, workflowFiles } from './preflight.mjs'
+
+test('a preflight selector that matches nothing cannot report green', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'osprey-preflight-selector-'))
+  try {
+    mkdirSync(join(directory, '.github/workflows'), { recursive: true })
+    writeFileSync(join(directory, '.github/workflows/ci.yml'), 'jobs:\n')
+    mkdirSync(join(directory, 'scripts/make'), { recursive: true })
+    writeFileSync(join(directory, 'Makefile'), '')
+    const script = fileURLToPath(new URL('./preflight.mjs', import.meta.url))
+    const result = spawnSync(process.execPath, [script, '--only=Missing check'], { cwd: directory, encoding: 'utf8' })
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /No CI checks match/)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
 
 test('local preflight keeps failing commands and mixed output in chronological order', () => {
   const output = mkdtempSync(join(tmpdir(), 'osprey-preflight-'))
