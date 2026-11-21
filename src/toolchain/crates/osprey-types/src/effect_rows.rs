@@ -355,7 +355,7 @@ enum EmptyCase {
     Collection,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Eq, PartialEq)]
 struct CallableEnv {
     values: HashMap<String, Value>,
     shadowed: HashSet<String>,

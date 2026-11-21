@@ -235,8 +235,15 @@ pub(super) fn converge(
     let mut history = ReturnHistory::new(super::recursion::recursive_functions(index));
     let mut reads = vec![BTreeSet::new(); index.functions.len()];
     let mut dirty: BTreeSet<usize> = (0..index.functions.len()).collect();
+    let mut previous_scope = None;
     while !dirty.is_empty() {
-        dirty = solve.sweep(&dirty, (rows, returns), &mut history, &mut reads);
+        dirty = solve.sweep(
+            dirty,
+            (rows, returns),
+            &mut history,
+            &mut reads,
+            &mut previous_scope,
+        );
     }
 }
 
@@ -252,15 +259,20 @@ impl Solve<'_> {
     /// back and return the functions the next sweep must re-analyse.
     fn sweep(
         &self,
-        dirty: &BTreeSet<usize>,
+        mut dirty: BTreeSet<usize>,
         (rows, returns): (&mut Vec<Summary>, &mut Vec<Option<Value>>),
         history: &mut ReturnHistory,
         reads: &mut [BTreeSet<usize>],
+        previous_scope: &mut Option<CallableEnv>,
     ) -> BTreeSet<usize> {
         let (index, instances) = (self.index, self.instances);
-        let (file_scope, file_reads) = super::worklist::recording(|| {
-            file_scope_env(index, instances, self.statements, rows, returns)
-        });
+        let file_scope = file_scope_env(index, instances, self.statements, rows, returns);
+        super::worklist::invalidate_scope(
+            previous_scope.as_ref(),
+            &file_scope,
+            &mut dirty,
+            reads.len(),
+        );
         let analyzer = Analyzer {
             index,
             rows,
@@ -271,7 +283,7 @@ impl Solve<'_> {
         // All functions read the same pre-sweep state. Hold only changed slots until
         // that borrow ends, leaving every clean function's provenance in place.
         let mut updates = Vec::new();
-        for &id in dirty {
+        for id in dirty {
             let Some(function) = index.functions.get(id) else {
                 continue;
             };
@@ -294,6 +306,7 @@ impl Solve<'_> {
                 updates.push((id, row, returned));
             }
         }
+        *previous_scope = Some(analyzer.file_scope);
         let mut moved = BTreeSet::new();
         for (id, row, returned) in updates {
             if let (Some(slot), Some(row)) = (rows.get_mut(id), row) {
@@ -304,7 +317,7 @@ impl Solve<'_> {
             }
             let _ = moved.insert(id);
         }
-        super::worklist::affected(&moved, &file_reads, reads)
+        super::worklist::affected(&moved, reads)
     }
 }
 
@@ -460,10 +473,11 @@ fn sparse_sweep_leaves_unread_return_trees_in_place() {
         let mut reads = vec![BTreeSet::new(); 2];
         super::provenance::measured_clones(|| {
             solve.sweep(
-                &BTreeSet::from([0]),
+                BTreeSet::from([0]),
                 (&mut rows, &mut returns),
                 &mut ReturnHistory::default(),
                 &mut reads,
+                &mut None,
             )
         })
     };
