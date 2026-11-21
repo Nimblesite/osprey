@@ -20,6 +20,7 @@ Every formula in the daw is a `def` in a `.lean` file, and Osprey code for it is
 - [x] Generate the project and editor types and the project JSON field readers and writer from one `daw.td` with `make -C src/toolchain/targets/tests daw-models TYPEDIAGRAM_DIST=<dist>`.
 - [ ] Node positions, grain sample assets and VST bindings are stored in the project.
 - [ ] Track and Master channel layouts (stereo default, any count) are stored in the project; tracks render per channel ([SYNTH-GRAPH-CHANNELS]).
+- [ ] Built-in instruments become patches ([DAW-PROJECT-PATCH], adversarial review 21 Nov). A built-in track (Pluck, Bow, Bell, Mallet, Operator, Drum) renders through its own DSP, while Prism shows the nearest single node with a fixed 5 ms / 0.2 s gate. The first edit saves that approximation as a `PatchInstrument` with no warning, dropping the instrument's envelope and the settings no node holds (Drum `sweep`, `noise`, `decay`; Bow `vibrato`; Operator `attack`, `release`, `bloom`, `detune`). Fix: express every built-in as a patch of synth modules that renders the same samples (a test compares the two renders), migrate `tracks/*.json`, then delete the built-in instrument variants and their renderers.
 
 ## Transport [DAW-TRANSPORT]
 
@@ -359,6 +360,26 @@ Order by what it buys across all four profiles: 11 (drops), 1 (string equality),
 - [ ] 9. No retain or release on string literals.
 - [ ] 10. Concat, flatten and map fused onto one builder.
 - [ ] Each of these lands with a regression program in `src/osprey/tests/regressions/` and the before and after of `make daw-profile`.
+
+### Build time, 21 Nov 12:40 [DAW-PERF-BUILD]
+
+Building the daw must take seconds. Measured with `osprey src/osprey/examples/daw --compile --memory=arc --target=macos` and a 1 ms `sample` of the compiler.
+
+- [x] The redundant-annotation analyser ran in every build and re-inferred the whole program once per proof: `--check` took 4 min 30 s. It is now its own pass (`--analyse`, and `--warnings-as-errors`), never part of a plain build (cb7515505): `--check` 21 s, full compile 50 s.
+
+Where the 50 s go now (36,400 samples, then `clang`):
+
+| Phase (function) | Time | Cause | Fix |
+|---|---|---|---|
+| Code generation: `osprey_codegen::lower::compile_module` | 18.6 s | 7.2 s of it is `aggregate::gen_generic_record` → `closure::specialized_named_cell` → `closure::source::emit_closure_keyed`, and 3.9 s is `genfn::try_inline` → `monofn::specialize_values` → `closure::lower_fn_body`: a function or closure is lowered again for each place that names it with the same types | Keep one lowered body per (function, type arguments) and reuse it |
+| `clang` on the emitted IR | about 14 s | One translation unit, optimised whole | Emit per module and compile in parallel; cache objects by IR hash |
+| Type check: `osprey_types::check::driver::check_and_publish` | 8.4 s | `osprey_ast::lower_static::hygiene::resolve` 2.0 s, `check_data_contracts` 2.3 s, `effect_rows::solver::converge` 1.0 s | Profile each on its own; none is a single loop |
+| Unused-binding warnings: `osprey_types::unused::unused_symbols` | 4.7 s | Calls `infer_checked`: a second whole-program inference, only to learn method targets and constructors the gate's solve already had | Keep the source solve from `staging::lower_proved` in `CheckedProgram` and read it here |
+
+- [ ] One lowered body per function and type arguments in code generation.
+- [ ] `unused_symbols` reuses the gate's solve.
+- [ ] Objects compiled per module, in parallel, cached by hash.
+- [ ] Target: a full daw build under 10 s, an unchanged rebuild under 2 s.
 
 ## Verification
 
