@@ -18,6 +18,9 @@ fn binder(name: &str) -> Result<String, String> {
             | "subtracted"
             | "rotated"
             | "combined"
+            | "listGet"
+            | "incomplete"
+            | "quartet"
             | "foldList"
             | "floatDiv"
             | "satAdd"
@@ -169,6 +172,8 @@ fn callee(e: &Expr) -> Result<String, String> {
         "curve" | "integral" => Ok(format!("Waveshapers.{} ops", ident(name)?)),
         "basePhase" | "pulse" => Ok(format!("PhaseOperators.{} ops", ident(name)?)),
         "hann" => Ok("GrainWindows.hann ops".into()),
+        "listGet" => Ok("readBin".into()),
+        "incomplete" | "quartet" => Ok(format!("Ffts.{} ops", ident(name)?)),
         "foldList" => Ok("foldList".into()),
         "floatDiv" => Ok("ops.ieeeDivide".into()),
         "abs" => Ok("ops.abs".into()),
@@ -190,6 +195,17 @@ fn constructor(name: &str, fields: &[osprey_ast::FieldAssignment]) -> Result<Str
             return Err(format!("invalid {name} field {}", payload.name));
         }
         return Ok(format!("({ctor} {})", term(&payload.value)?));
+    }
+    if name == "InvalidConfiguration" {
+        let [field] = fields else {
+            return Err("expected one configuration detail".into());
+        };
+        if field.name == "detail"
+            && field.value == Expr::Str("FFT input frame is incomplete.".into())
+        {
+            return Ok("ops.incompleteFrame".into());
+        }
+        return Err("unknown configuration error".into());
     }
     let record = match name {
         "LineSample" => "LineSample",
@@ -357,6 +373,7 @@ fn signatures(module: &str) -> Result<&'static [Signature], String> {
             ("rotation", &["Bin α", "Bin α"], "Bin α"),
         ],
         "Ffts" => &[
+            ("incomplete", &[], "Except ops.Fault (List (Bin α))"),
             ("conjugate", &["Bin α"], "Bin α"),
             ("added", &["Bin α", "Bin α"], "Bin α"),
             ("subtracted", &["Bin α", "Bin α"], "Bin α"),
@@ -365,6 +382,11 @@ fn signatures(module: &str) -> Result<&'static [Signature], String> {
                 "quartet",
                 &["Bin α", "Bin α", "Bin α", "Bin α", "α"],
                 "List (Bin α)",
+            ),
+            (
+                "four",
+                &["List (Bin α)", "Nat", "Nat", "α"],
+                "Except ops.Fault (List (Bin α))",
             ),
             (
                 "combined",

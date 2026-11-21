@@ -1,5 +1,33 @@
 namespace ProductionFft
 
+/-- At unsaturated addresses the base stage consumes exactly four successive strided
+    bins, or reports an incomplete frame if any required position is absent. -/
+theorem stridedQuartet (ops : Ops α) (values : List (Bin α)) (first stride : Nat) (sign : α)
+    (second : ops.satAdd first stride = first + stride)
+    (third : ops.satAdd (first + stride) stride = first + stride + stride)
+    (fourth : ops.satAdd (first + stride + stride) stride = first + stride + stride + stride) :
+    Ffts.four ops values first stride sign =
+      match (binAt values (first)), (binAt values (first + stride)), (binAt values (first + stride + stride)),
+          (binAt values (first + stride + stride + stride)) with
+      | some a, some b, some c, some d => .ok (Ffts.quartet ops a b c d sign)
+      | _, _, _, _ => .error ops.incompleteFrame := by
+  let reads (i j k : Nat) :=
+    match readBin values first with
+    | .error _ => Ffts.incomplete ops
+    | .ok a => match readBin values i with
+      | .error _ => Ffts.incomplete ops
+      | .ok b => match readBin values j with
+        | .error _ => Ffts.incomplete ops
+        | .ok c => match readBin values k with
+          | .error _ => Ffts.incomplete ops
+          | .ok d => Except.ok (Ffts.quartet ops a b c d sign)
+  change reads (ops.satAdd first stride) (ops.satAdd (ops.satAdd first stride) stride)
+    (ops.satAdd (ops.satAdd (ops.satAdd first stride) stride) stride) = _
+  rw [second, third, fourth]
+  dsimp only [reads, readBin, Ffts.incomplete]
+  cases binAt values first <;> cases binAt values (first + stride) <;>
+    cases binAt values (first + stride + stride) <;> cases binAt values (first + stride + stride + stride) <;> rfl
+
 /-- Reciprocal of the squared-Hann overlap gain, in the production evaluation order. -/
 theorem overlapNormalization (ops : Ops α) (size hop : α) :
     SpectralStreams.overlapScale ops size hop =

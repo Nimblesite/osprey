@@ -16,6 +16,16 @@ structure Bin (α : Type) where
   re : α
   im : α
 
+def binAt : List (Bin α) → Nat → Option (Bin α)
+  | [], _ => none
+  | b :: _, 0 => some b
+  | _ :: rest, n+1 => binAt rest n
+
+def readBin (values : List (Bin α)) (index : Nat) : Except Unit (Bin α) :=
+  match binAt values index with
+  | some b => .ok b
+  | none => .error ()
+
 structure Halves (α : Type) where
   lower : List (Bin α)
   upper : List (Bin α)
@@ -62,6 +72,7 @@ inductive Envelope (α : Type) where
 structure Ops (α : Type) where
   History : Type
   Fault : Type
+  incompleteFrame : Fault
   push : History → α → History
   tap : History → α → Except Fault α
   tau : α
