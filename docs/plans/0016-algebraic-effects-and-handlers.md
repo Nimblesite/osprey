@@ -18,6 +18,10 @@ Multi-shot continuations are a compiler feature, not a platform trick. The compi
 
 A design that needs any of these is rejected, however well it works on one machine. A target never gets a weaker `many`: it runs the portable representation ([MULTI-WASM]).
 
+## Invariant — [EFFECTS-INV-MULTISHOT-GENERAL]
+
+The compiler has one mechanism for multi-shot continuations, and it reads one fact: an operation is declared `many`. It never names, counts or special-cases an effect, an operation, a handler shape, an example or a use case. Retry, backtracking search, what-if authorization, validation fixes and pagination plans are handlers written in ordinary Osprey source; the compiler does not know them. A change that adds a named case for any of them to the compiler or runtime is rejected.
+
 ## Invariant — [EFFECTS-INV-MULTISHOT-WASM]
 
 wasm32 fully supports multi-shot continuations ([MULTI-WASM-MANY], [WASM-TARGET-EFFECTS-MANY]). Every `many` program that runs natively compiles and runs on wasm32 and prints the same bytes. No agent may reject, skip, stub, feature-flag or downgrade `many` on wasm32, give it a separate golden, or move its tests out of the required `CI` job ([CI-MULTISHOT-WASM]). A change that makes a `many` program fail or differ on wasm32 is a defect in that change, and fixing the compiler is the only remedy.

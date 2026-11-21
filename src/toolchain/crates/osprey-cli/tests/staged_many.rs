@@ -341,3 +341,45 @@ fn every_cross_target_accepts_every_many_region() {
         }
     }
 }
+
+#[test]
+fn the_compiler_special_cases_no_effect_operation_or_use_case() {
+    // [EFFECTS-INV-MULTISHOT-GENERAL] One mechanism, keyed on the declared
+    // multiplicity alone. The lowering's source may spell no effect or
+    // operation name: every name in its output comes from the program.
+    let lowering = concat!(env!("CARGO_MANIFEST_DIR"), "/../osprey-types/src/many");
+    let Ok(entries) = std::fs::read_dir(lowering) else {
+        panic!("the lowering lives in {lowering}");
+    };
+    let named: Vec<&str> = MANY_RUNS
+        .iter()
+        .flat_map(|(_, source, _)| source.lines())
+        .filter_map(|line| line.trim().strip_prefix("effect "))
+        .filter_map(|rest| rest.split([' ', '{']).next())
+        .collect();
+    assert!(
+        named.len() >= 6,
+        "the cases declare several unrelated effects"
+    );
+    for entry in entries.flatten() {
+        let text = std::fs::read_to_string(entry.path()).unwrap_or_default();
+        let identifiers: Vec<&str> = text
+            .split(|c: char| !c.is_alphanumeric() && c != '_')
+            .collect();
+        for name in &named {
+            assert!(
+                !identifiers.contains(name),
+                "{:?} names the effect `{name}`: the compiler may know no effect",
+                entry.path()
+            );
+        }
+        let lowered = text.to_lowercase();
+        for use_case in ["retry", "backtrack", "paginat", "authoriz"] {
+            assert!(
+                !lowered.contains(use_case),
+                "{:?} mentions `{use_case}`: the compiler may know no use case",
+                entry.path()
+            );
+        }
+    }
+}
