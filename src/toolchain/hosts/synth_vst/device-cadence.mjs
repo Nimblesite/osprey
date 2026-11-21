@@ -39,14 +39,27 @@ try {
     receipt = await exchange(line);
     assert.equal(receipt.acceptedFrames, i * frames);
     assert.equal(receipt.running, i >= 2);
-    assert.ok(receipt.queuedFrames <= 1440, 'live controls must stay within 30 ms');
+    assert.ok(receipt.queuedFrames <= 960, 'steady playback must accept at most 20 ms ahead of a live edit');
   }
   assert.equal(receipt.emptyCallbacks, 0, 'the device ran empty with prepared audio available');
   await delay(100);
   receipt = await exchange(line);
   assert.ok(receipt.emptyCallbacks > 0, 'a deliberately late producer must register a queue drain');
+  let recoveredDepth = 0;
+  for (let i = 0; i < 120; ++i) {
+    receipt = await exchange(line);
+    recoveredDepth = Math.max(recoveredDepth, receipt.queuedFrames);
+    assert.ok(receipt.queuedFrames <= 1440);
+  }
+  assert.ok(recoveredDepth > 960, 'a starved producer gets additional queue headroom');
+  const recoveredEmpty = receipt.emptyCallbacks;
+  for (let i = 0; i < 40; ++i) {
+    receipt = await exchange(line);
+    assert.ok(receipt.queuedFrames <= 960, 'recovered playback returns to the 20 ms limit');
+    assert.equal(receipt.emptyCallbacks, recoveredEmpty, 'reducing queue depth must preserve stable playback');
+  }
   receipt = await exchange('!drain\n');
-  assert.equal(receipt.returnedFrames, 901 * frames);
+  assert.equal(receipt.returnedFrames, 1061 * frames);
   assert.equal(receipt.queuedFrames, 0);
   assert.equal(receipt.running, false);
   worker.stdin.end();

@@ -74,6 +74,7 @@ const app = path.resolve(option("--app"));
 const out = path.resolve(option("--out"));
 const title = option("--title", "Osprey");
 mkdirSync(out, { recursive: true });
+execFileSync(process.execPath, [path.join(extension, "scripts/generate-native-abi.mjs")], { stdio: "inherit" });
 const files = { page: page(title), script: await script(compiled(app, out)), style: faces(app) + await styles(out) };
 writeFileSync(path.join(out, "index.html"), files.page);
 writeFileSync(path.join(out, "host.js"), files.script);

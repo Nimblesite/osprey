@@ -61,28 +61,6 @@ sealed partial class SharedViewPage
             ? scene.Opening
             : null;
 
-    /// <summary>Presses and releases a key in the first scene on screen; false when no scene is drawn.</summary>
-    public bool Press(string key)
-    {
-        if (FirstScene() is not { } scene)
-        {
-            return false;
-        }
-        scene.Press(key);
-        return true;
-    }
-
-    /// <summary>Drags the scene element announced as <paramref name="label"/> by a distance in scene units; false when no scene is drawn.</summary>
-    public bool Drag(string label, double dx, double dy)
-    {
-        if (FirstScene() is not { } scene)
-        {
-            return false;
-        }
-        scene.Drag(label, dx, dy);
-        return true;
-    }
-
     /// <summary>The first scene drawn, or null when none is.</summary>
     public SceneView? FirstScene()
     {
@@ -237,7 +215,13 @@ sealed partial class SharedViewPage
         /// <summary>A canvas's scene, kept between frames and given the row's binding.</summary>
         public SceneView? Scene { get; init; }
 
-        public Restyling? Restyle { get; set; }
+        public Restyling? Restyle { get; private set; }
+
+        public void Style(Shown shown, int index, Restyling apply)
+        {
+            Restyle = apply;
+            apply(shown, index);
+        }
 
         public long Action { get; set; }
 

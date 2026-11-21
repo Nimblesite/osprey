@@ -447,3 +447,29 @@ fn summary_widen_shares_one_budget_across_every_use() {
     assert!(kept.iter().sum::<usize>() <= MAX_PROVENANCE_NODES + uses * (width + 1));
     assert!(!actual.unresolved_dynamic_call);
 }
+
+#[cfg(test)]
+#[test]
+fn fold_stabilization_moves_its_owned_container_children() {
+    use super::{stabilize_merged_callables, Callable, KnownCallable, Value};
+    let wrap = |value: Value| Value {
+        fields: BTreeMap::from([("field".to_owned(), value.clone())]),
+        element: Some(Box::new(value.clone())),
+        result_payload: Some(Box::new(value.clone())),
+        fiber_payload: Some(Box::new(value)),
+        ..Value::channel(3)
+    };
+    let merged = Callable::Known(Box::new(KnownCallable {
+        parameters: Vec::new(),
+        summary: super::model_values::snapshot_row(),
+        returned: None,
+    }));
+    let mut leaf = Value::from_callable(merged);
+    let mut input = wrap(wrap(leaf.clone()));
+    leaf.callable = Some(Callable::Unknown);
+    let expected = wrap(wrap(leaf));
+    let ((), clones) =
+        super::provenance::measured_clones(|| stabilize_merged_callables(&mut input));
+    assert_eq!(input, expected);
+    assert_eq!(clones, 0, "fold stabilization copied owned values");
+}

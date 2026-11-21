@@ -3,6 +3,21 @@
 **Contract:** [Algebraic Effects](../specs/language/0017-AlgebraicEffects.md). Tooling tasks also touch [Language Server](../specs/tooling/0020-LanguageServerAndEditors.md), [Debugger](../specs/tooling/0021-Debugger.md), [WebAssembly target](../specs/compiler/0022-WebAssemblyTarget.md).
 **Depends on:** [Plan 0026 — Structured Concurrency](0026-structured-concurrency.md) (region unwinding and cancellation-time finalization for `control abort`).
 
+## Invariant — [EFFECTS-INV-MULTISHOT-REAL]
+
+Multi-shot (`many`) continuations are built for real: resumed any number of times, with independent branches. No agent may refuse, defer, scope down, stub, simulate (re-dispatch or loops), feature-flag or downgrade them to `once`, even while the compiler support is unfinished. Tests always assert multi-shot behaviour. A test that is red because the support is missing stays red; it is never weakened, skipped or deleted ([COMPILER-RED-FAILS]). Violating this is an egregious defect. See also [EXAMPLE-CLEANARCH-INV-NO-SKIP] in [the Clean Architecture port plan](cleanarch-todo-port.md).
+
+## Invariant — [EFFECTS-INV-MULTISHOT-PORTABLE]
+
+Multi-shot continuations are a compiler feature, not a platform trick. The compiler lowers the captured remainder to an ordinary heap value (continuation-passing frames or closures) that any backend can call again, so the same program gives the same answers on every target: native, wasm32, Windows and mobile. The implementation contains **no platform-specific code**:
+
+- no copying, saving or switching of machine stacks;
+- no `ucontext`, `setjmp`/`longjmp`, assembly or register names;
+- no `#if` on architecture or operating system;
+- no dependence on threads to represent a continuation.
+
+A design that needs any of these is rejected, however well it works on one machine. A target never gets a weaker `many`: it runs the portable representation ([MULTI-WASM]).
+
 ## Prerequisites in place
 
 Callable handler values, block-scoped `handle`, declared value/control modes, return transformations, static handler selection, `finally`/`mask`/`instance`, transport fixes, reactive signals, checker-backed LSP effect-requirement and implementation views, and the closed-program open-row prototype are implemented; see audit for evidence. The compile-time rejections for `many` replay safety and for `abort`/`once` misuse already exist and stay.

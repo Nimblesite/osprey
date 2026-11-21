@@ -18,6 +18,43 @@ fn structural_pattern_binds_record_fields() {
     );
 }
 
+#[test]
+fn nested_patterns_report_witnesses_in_source_syntax() {
+    let errors = check(
+        "type Point = { x: bool, y: string }
+         fn closed(p: Point) = match p { { x: true, y } => 1 }
+         fn open(p: Point) = match p {
+           { x: true, .. } => 1
+           _ => 0
+         }
+         type Flag = None | Sat { text: string, flag: bool }
+         fn labelled(f: Flag) = match f {
+           Sat { text, flag: true } => 1
+           None => 0
+         }
+         fn result(r: Result<int, string>) = match r {
+           Success { value: 0 } => 2
+           Error => 0
+         }
+         type Measure = Bare | Measured(float, string)
+         fn literal(m: Measure) = match m {
+           Measured(1.25, \"a\") => 1
+           Measured(1.25, \"a\") => 2
+           _ => 0
+         }",
+    );
+    let messages: Vec<_> = errors.iter().map(|error| error.message.as_str()).collect();
+    assert_eq!(
+        messages,
+        [
+            "non-exhaustive match: no arm matches `{ x: false, y: _ }`",
+            "non-exhaustive match: no arm matches `Sat { text: _, flag: false }`",
+            "non-exhaustive match: no arm matches `Success { value: _ }`",
+            "unreachable match arm: earlier arms cover every value `Measured(1.25, \"a\")` matches",
+        ]
+    );
+}
+
 /// The refusal names the type it FOUND when there is one to name. An
 /// unresolved scrutinee has no user-facing spelling and gets the annotation
 /// hint instead, but a concrete non-row scrutinee must say what it is —

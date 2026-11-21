@@ -13,40 +13,36 @@ let reputation = 0
 let planetsVisited = 0
 
 /// Market prices and trading system
-fn getResourcePrice(resourceType) = match resourceType {
-    1 => 50   // Quantum Crystals
-    2 => 25   // Space Metal
-    3 => 75   // Exotic Spices
-    4 => 100  // Rare Artifacts
-    5 => 30   // Energy Cells
-    _ => 10   // Common Minerals
+/// One catalog row per resource: display name and unit price.
+fn resource(id) = match id {
+    1 => { name: "Quantum Crystals", price: 50 }
+    2 => { name: "Space Metal", price: 25 }
+    3 => { name: "Exotic Spices", price: 75 }
+    4 => { name: "Rare Artifacts", price: 100 }
+    5 => { name: "Energy Cells", price: 30 }
+    _ => { name: "Common Minerals", price: 10 }
 }
 
-fn getResourceName(resourceType) = match resourceType {
-    1 => "Quantum Crystals"
-    2 => "Space Metal"
-    3 => "Exotic Spices"
-    4 => "Rare Artifacts"
-    5 => "Energy Cells"
-    _ => "Common Minerals"
+fn getResourcePrice(resourceType) = resource(resourceType).price
+fn getResourceName(resourceType) = resource(resourceType).name
+
+/// One catalog row per planet: its name and specialty resource id.
+fn planet(id) = match id {
+    1 => { name: "Nebula Prime", specialty: 1 }
+    2 => { name: "Crystal Moon", specialty: 2 }
+    3 => { name: "Trade Station Alpha", specialty: 3 }
+    4 => { name: "Asteroid Mining Base", specialty: 4 }
+    5 => { name: "Galactic Hub", specialty: 5 }
+    _ => { name: "Unknown Sector", specialty: 6 }
 }
 
-fn getPlanetName(planetId) = match planetId {
-    1 => "Nebula Prime"
-    2 => "Crystal Moon"
-    3 => "Trade Station Alpha"
-    4 => "Asteroid Mining Base"
-    5 => "Galactic Hub"
-    _ => "Unknown Sector"
-}
+fn getPlanetName(planetId) = planet(planetId).name
+fn getPlanetSpecialty(planetId) = planet(planetId).specialty
 
-fn getPlanetSpecialty(planetId) = match planetId {
-    1 => 1  // Quantum Crystals
-    2 => 2  // Space Metal
-    3 => 3  // Exotic Spices
-    4 => 4  // Rare Artifacts
-    5 => 5  // Energy Cells
-    _ => 6  // Common Minerals
+/// Market snapshot at a planet: its name, specialty resource and unit price.
+fn planetMarket(planetId) = {
+    let specialty = getPlanetSpecialty(planetId)
+    { name: getPlanetName(planetId), resourceName: getResourceName(specialty), resourcePrice: getResourcePrice(specialty) }
 }
 
 fn calculateTravelCost(distance) = match distance {
@@ -55,6 +51,12 @@ fn calculateTravelCost(distance) = match distance {
     3 => 30  // Far
     4 => 40  // Very far
     _ => 50  // Deep space
+}
+
+/// One hyperspace jump: the fuel burned and what remains in the tank.
+fn jump(fromFuel, distance) = {
+    let cost = calculateTravelCost(distance)
+    { cost: cost, fuel: safeSub(fromFuel, cost) }
 }
 
 fn getReputationTitle(rep) = match rep {
@@ -67,7 +69,13 @@ fn getReputationTitle(rep) = match rep {
 }
 
 /// Ship and crew management
-// Cargo valuation has an explicit ceiling at the maximum representable credit value.
+/// Safe binary arithmetic: one exact-value wrapper per operator.
+fn safeAdd(a, b) = exactArithmetic(fn() => a + b)
+fn safeSub(a, b) = exactArithmetic(fn() => a - b)
+fn safeMul(a, b) = exactArithmetic(fn() => a * b)
+fn safeDiv(a, b) = exactArithmetic(fn() => a / b)
+
+/// Cargo valuation has an explicit ceiling at the maximum representable credit value.
 fn calculateCargoValue(amount, price) = satMul(amount, price)
 
 fn getShipStatus(fuel) = match fuel {
@@ -78,18 +86,21 @@ fn getShipStatus(fuel) = match fuel {
     _ => "Critical"
 }
 
+/// Whether a ledger leg shows the expected cost, credits and cargo.
+fn ledgerHolds(leg, wantCost, wantCredits, wantCargo) = leg.cost == wantCost && leg.credits == wantCredits && leg.cargo == wantCargo
+
 /// One ledger leg: the unit price, the credits that moved and the cargo left.
-fn tradeTotal(amount, price) = exactArithmetic(fn() => calculateCargoValue(amount: amount, price: price))
+fn tradeTotal(amount, price) = exactArithmetic(fn() => calculateCargoValue(amount, price))
 
 fn buyLeg(amount, price, balance, cargo) = {
     let cost = tradeTotal(amount, price)
-    { cost: cost, price: price, credits: exactArithmetic(fn() => balance - cost), cargo: exactArithmetic(fn() => cargo + amount) }
+    { cost: cost, price: price, credits: safeSub(balance, cost), cargo: safeAdd(cargo, amount) }
 }
 
 fn sellLeg(amount, price, markup, balance, cargo) = {
-    let ask = exactArithmetic(fn() => price + markup)
+    let ask = safeAdd(price, markup)
     let revenue = tradeTotal(amount, ask)
-    { cost: revenue, price: ask, credits: exactArithmetic(fn() => balance + revenue), cargo: exactArithmetic(fn() => cargo - amount) }
+    { cost: revenue, price: ask, credits: safeAdd(balance, revenue), cargo: safeSub(cargo, amount) }
 }
 
 // Mission briefing and setup
@@ -99,122 +110,94 @@ print("🛸 MISSION BRIEFING 🛸\nShip: Osprey-7 Starfreighter\nFuel: ${shipFue
 print("🌍 GALACTIC TRADING SIMULATION 🌍\n")
 
 /// Planet 1: Nebula Prime
-let planet1 = 1
-let planet1Name = getPlanetName(planet1)
-let specialty1 = getPlanetSpecialty(planet1)
-let resource1Name = getResourceName(specialty1)
-let resource1Price = getResourcePrice(specialty1)
+let market1 = planetMarket(1)
 
-print("📍 Arriving at ${planet1Name}\nThis planet specializes in: ${resource1Name}\nMarket price: ${resource1Price} credits per unit")
+print("📍 Arriving at ${market1.name}\nThis planet specializes in: ${market1.resourceName}\nMarket price: ${market1.resourcePrice} credits per unit")
 
 let purchaseAmount1 = 10
-let buy1 = buyLeg(purchaseAmount1, resource1Price, credits, cargoUsed)
-let travelCost1 = calculateTravelCost(2)
-let newFuel1 = exactArithmetic(fn() => shipFuel - travelCost1)
+let buy1 = buyLeg(purchaseAmount1, market1.resourcePrice, credits, cargoUsed)
+let jump1 = jump(shipFuel, 2)
 
-print("Purchasing ${purchaseAmount1} units of ${resource1Name}\nTotal cost: ${buy1.cost} credits\nRemaining credits: ${buy1.credits} 💰\nCargo: ${buy1.cargo}/${cargoSpace} 📦\n")
+print("Purchasing ${purchaseAmount1} units of ${market1.resourceName}\nTotal cost: ${buy1.cost} credits\nRemaining credits: ${buy1.credits} 💰\nCargo: ${buy1.cargo}/${cargoSpace} 📦\n")
 
 /// Planet 2: Crystal Moon
-let planet2 = 2
-let planet2Name = getPlanetName(planet2)
-print("🚀 Traveling to ${planet2Name}...\nFuel consumed: ${travelCost1}%\nCurrent fuel: ${newFuel1}% ⛽\n")
+let market2 = planetMarket(2)
+print("🚀 Traveling to ${market2.name}...\nFuel consumed: ${jump1.cost}%\nCurrent fuel: ${jump1.fuel}% ⛽\n")
 
-let specialty2 = getPlanetSpecialty(planet2)
-let resource2Name = getResourceName(specialty2)
-let resource2Price = getResourcePrice(specialty2)
-
-print("📍 Arrived at ${planet2Name}\nLocal specialty: ${resource2Name}\nMarket price: ${resource2Price} credits per unit")
+print("📍 Arrived at ${market2.name}\nLocal specialty: ${market2.resourceName}\nMarket price: ${market2.resourcePrice} credits per unit")
 
 /// Sell previous cargo at premium
-let sale1 = sellLeg(purchaseAmount1, resource1Price, 25, buy1.credits, buy1.cargo)
+let sale1 = sellLeg(purchaseAmount1, market1.resourcePrice, 25, buy1.credits, buy1.cargo)
 
-print("Selling ${purchaseAmount1} units of ${resource1Name}\nSale price: ${sale1.price} credits per unit\nRevenue: ${sale1.cost} credits 💰\nNew balance: ${sale1.credits} credits\nCargo space freed: ${sale1.cargo}/${cargoSpace} 📦\n")
+print("Selling ${purchaseAmount1} units of ${market1.resourceName}\nSale price: ${sale1.price} credits per unit\nRevenue: ${sale1.cost} credits 💰\nNew balance: ${sale1.credits} credits\nCargo space freed: ${sale1.cargo}/${cargoSpace} 📦\n")
 
 /// Buy local specialty
 let purchaseAmount2 = 15
-let buy2 = buyLeg(purchaseAmount2, resource2Price, sale1.credits, sale1.cargo)
+let buy2 = buyLeg(purchaseAmount2, market2.resourcePrice, sale1.credits, sale1.cargo)
 
-print("Purchasing ${purchaseAmount2} units of ${resource2Name}\nCost: ${buy2.cost} credits\nRemaining credits: ${buy2.credits} 💰\n")
+print("Purchasing ${purchaseAmount2} units of ${market2.resourceName}\nCost: ${buy2.cost} credits\nRemaining credits: ${buy2.credits} 💰\n")
 
 /// Planet 3: Trade Station Alpha (Major Hub)
-let planet3 = 3
-let planet3Name = getPlanetName(planet3)
-let travelCost2 = calculateTravelCost(3)
-let newFuel2 = exactArithmetic(fn() => newFuel1 - travelCost2)
+let jump2 = jump(jump1.fuel, 3)
 
-print("🚀 Long-range jump to ${planet3Name}\nFuel consumed: ${travelCost2}%\nCurrent fuel: ${newFuel2}% ⛽\n")
+print("🚀 Long-range jump to ${getPlanetName(3)}\nFuel consumed: ${jump2.cost}%\nCurrent fuel: ${jump2.fuel}% ⛽\n")
 
-print("📍 Docking at ${planet3Name}\nThis is the galaxy's premier trading hub!")
+print("📍 Docking at ${getPlanetName(3)}\nThis is the galaxy's premier trading hub!")
 
 /// Major trade at hub
-let sale2 = sellLeg(purchaseAmount2, resource2Price, 30, buy2.credits, buy2.cargo)
+let sale2 = sellLeg(purchaseAmount2, market2.resourcePrice, 30, buy2.credits, buy2.cargo)
 
-print("Selling ${purchaseAmount2} units of ${resource2Name}\nHub premium price: ${sale2.price} credits per unit\nMajor revenue: ${sale2.cost} credits! 💰\nNew balance: ${sale2.credits} credits\n")
+print("Selling ${purchaseAmount2} units of ${market2.resourceName}\nHub premium price: ${sale2.price} credits per unit\nMajor revenue: ${sale2.cost} credits! 💰\nNew balance: ${sale2.credits} credits\n")
 
 /// Calculate profit and reputation
-let totalProfit = exactArithmetic(fn() => sale2.credits - credits)
-let newReputation = exactArithmetic(fn() => reputation + 1)
-let newPlanetsVisited = exactArithmetic(fn() => planetsVisited + 3)
+let totalProfit = safeSub(sale2.credits, credits)
+let newReputation = safeAdd(reputation, 1)
+let newPlanetsVisited = safeAdd(planetsVisited, 3)
 let newReputationTitle = getReputationTitle(newReputation)
 
 print("📈 TRADING RESULTS 📈\nStarting credits: ${credits}\nFinal credits: ${sale2.credits}\nTotal profit: ${totalProfit} credits! 💰\nPlanets visited: ${newPlanetsVisited}\nNew reputation: ${newReputationTitle}\n")
 
 /// Ship status report
-let finalShipStatus = getShipStatus(newFuel2)
-print("🛸 SHIP STATUS REPORT 🛸\nFuel level: ${newFuel2}% (${finalShipStatus})\nCargo bay: ${sale2.cargo}/${cargoSpace} units\nShip condition: Operational\n")
+let finalShipStatus = getShipStatus(jump2.fuel)
+print("🛸 SHIP STATUS REPORT 🛸\nFuel level: ${jump2.fuel}% (${finalShipStatus})\nCargo bay: ${sale2.cargo}/${cargoSpace} units\nShip condition: Operational\n")
 
 /// Advanced calculations and projections
-let fuelEfficiency = exactArithmetic(fn() => newFuel2 / newPlanetsVisited)
-let profitPerPlanet = exactArithmetic(fn() => totalProfit / newPlanetsVisited)
-let projectedWealth = exactArithmetic(fn() => sale2.credits * 2)
+let fuelEfficiency = safeDiv(jump2.fuel, newPlanetsVisited)
+let profitPerPlanet = safeDiv(totalProfit, newPlanetsVisited)
+let projectedWealth = safeMul(sale2.credits, 2)
 
 print("📊 ADVANCED ANALYTICS 📊\nFuel efficiency: ${fuelEfficiency}% per planet\nProfit per planet: ${profitPerPlanet} credits\nProjected wealth (if doubled): ${projectedWealth} credits\n")
 
 // Mission completion and next steps
 print("🏆 MISSION COMPLETE! 🏆\nCongratulations, Captain ${newReputationTitle}!\nYou have successfully established trade routes across the galaxy!\n\nNext objectives:\n  ⭐ Explore more distant sectors\n  ⭐ Upgrade ship cargo capacity\n  ⭐ Establish permanent trade agreements\n  ⭐ Recruit specialized crew members\n\n🌟 Your trading empire awaits! 🌟\nEnd of Galactic Trade Simulation\nThank you for playing Osprey Space Trader!")
 
-/// Replays the trading ledger and validates every market and status branch.
+/// Validates the ledger the narrative computed and every market and status branch.
 fn spaceTraderCase() = {
-    let buyOne = buyLeg(10, getResourcePrice(1), 1000, 0)
-    let fuelOne = (100 - calculateTravelCost(2)) 
-    let saleOne = sellLeg(10, getResourcePrice(1), 25, buyOne.credits, buyOne.cargo)
-    let buyTwo = buyLeg(15, getResourcePrice(2), saleOne.credits, saleOne.cargo)
-    let fuelTwo = (fuelOne - calculateTravelCost(3)) 
-    let saleTwo = sellLeg(15, getResourcePrice(2), 30, buyTwo.credits, buyTwo.cargo)
-    let profit = (saleTwo.credits - 1000) 
-    let projected = (saleTwo.credits * 2) 
+    let catalogIds = [1, 2, 3, 4, 5, 9]
 
     checkAll("space trader branch tables", [
-        answersHold(getResourcePrice, [1, 2, 3, 4, 5, 9], [50, 25, 75, 100, 30, 10]),
-        answersHold(getResourceName, [1, 2, 3, 4, 5, 9], ["Quantum Crystals", "Space Metal", "Exotic Spices", "Rare Artifacts", "Energy Cells", "Common Minerals"]),
-        answersHold(getPlanetName, [1, 2, 3, 4, 5, 9], ["Nebula Prime", "Crystal Moon", "Trade Station Alpha", "Asteroid Mining Base", "Galactic Hub", "Unknown Sector"]),
-        answersHold(getPlanetSpecialty, [1, 2, 3, 4, 5, 9], [1, 2, 3, 4, 5, 6]),
+        answersHold(getResourcePrice, catalogIds, [50, 25, 75, 100, 30, 10]),
+        answersHold(getResourceName, catalogIds, ["Quantum Crystals", "Space Metal", "Exotic Spices", "Rare Artifacts", "Energy Cells", "Common Minerals"]),
+        answersHold(getPlanetName, catalogIds, ["Nebula Prime", "Crystal Moon", "Trade Station Alpha", "Asteroid Mining Base", "Galactic Hub", "Unknown Sector"]),
+        answersHold(getPlanetSpecialty, catalogIds, [1, 2, 3, 4, 5, 6]),
         answersHold(calculateTravelCost, [1, 2, 3, 4, 9], [10, 20, 30, 40, 50])
     ])
     checkAll("space trader ledger and ship state", [
         answersHold(getReputationTitle, [0, 1, 2, 3, 4, 9], ["Unknown Trader", "Novice Merchant", "Skilled Trader", "Master Merchant", "Trade Baron", "Galactic Legend"]),
         answersHold(getShipStatus, [100, 75, 50, 25, 10], ["Excellent", "Good", "Fair", "Low", "Critical"]),
-        calculateCargoValue(amount: 10, price: 50) == 500,
-        calculateCargoValue(amount: 9223372036854775807, price: 2) == 9223372036854775807,
-        buyOne.cost == 500,
-        buyOne.credits == 500,
-        buyOne.cargo == 10,
-        fuelOne == 80,
-        saleOne.price == 75,
-        saleOne.cost == 750,
-        saleOne.credits == 1250,
-        saleOne.cargo == 0,
-        buyTwo.cost == 375,
-        buyTwo.credits == 875,
-        buyTwo.cargo == 15,
-        fuelTwo == 50,
-        saleTwo.price == 55,
-        saleTwo.cost == 825,
-        saleTwo.credits == 1700,
-        saleTwo.cargo == 0,
-        profit == 700,
-        getShipStatus(fuelTwo) == "Fair",
-        projected == 3400
+        calculateCargoValue(10, 50) == 500,
+        calculateCargoValue(9223372036854775807, 2) == 9223372036854775807,
+        ledgerHolds(buy1, 500, 500, 10),
+        jump1.fuel == 80,
+        sale1.price == 75,
+        ledgerHolds(sale1, 750, 1250, 0),
+        ledgerHolds(buy2, 375, 875, 15),
+        jump2.fuel == 50,
+        sale2.price == 55,
+        ledgerHolds(sale2, 825, 1700, 0),
+        totalProfit == 700,
+        getShipStatus(jump2.fuel) == "Fair",
+        projectedWealth == 3400
     ])
 }
 

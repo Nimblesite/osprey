@@ -18,6 +18,7 @@ try {
     player.once('close', (code, signal) => resolve(signal ?? code));
   });
   let frames = 0, firstMs = 0, worstGapMs = 0, last = start;
+  let worstUnderrunMs = 0;
   const hash = createHash('sha256');
   for await (const line of createInterface({ input: player.stdout })) {
     const now = performance.now();
@@ -31,8 +32,14 @@ try {
     if (data < 0 || wav.readUInt32LE(data + 4) !== wav.length - data - 8 || (wav.length - data - 8) % 8) {
       throw Error('Incomplete PCM block.');
     }
-    if (frames) worstGapMs = Math.max(worstGapMs, now - last);
-    else firstMs = now - start;
+    if (frames) {
+      worstGapMs = Math.max(worstGapMs, now - last);
+      // The device can consume every frame delivered since the first block arrived.
+      const bufferedUntil = start + firstMs + frames / 48;
+      worstUnderrunMs = Math.max(worstUnderrunMs, now - bufferedUntil);
+    } else {
+      firstMs = now - start;
+    }
     last = now;
     frames += (wav.length - data - 8) / 8;
     hash.update(wav.subarray(data + 8));
@@ -44,7 +51,8 @@ try {
   }
   const elapsedMs = performance.now() - start;
   const speed = frames / 48 / elapsedMs;
-  console.log(JSON.stringify({ song, from, beats, frames, elapsedMs, firstMs, worstGapMs, speed, pcmSHA256: hash.digest('hex') }));
+  console.log(JSON.stringify({ song, from, beats, frames, elapsedMs, firstMs, worstGapMs, worstUnderrunMs, speed, pcmSHA256: hash.digest('hex') }));
+  if (worstUnderrunMs > 0) throw Error('Live renderer missed a playback deadline.');
   if (speed < 1.5) throw Error('Live throughput is below 1.5× real time.');
 } finally {
   await rm(folder, { recursive: true, force: true });

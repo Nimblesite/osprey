@@ -467,7 +467,8 @@ function scenes(run: ArrayBuffer, textRun: Uint8Array, canvases: readonly number
       const width = extent(head.view, head.at + SCENE_SHAPE.x);
       const height = extent(head.view, head.at + SCENE_SHAPE.y);
       if ((width === 0) !== (height === 0)) throw new Error("a window-pixel scene has zero width and zero height");
-      current = { width, height, zoom: extent(head.view, head.at + SCENE_SHAPE.width), atlas: [], shapes: [], access: [] };
+      const zoom = head.view.getFloat64(head.at + SCENE_SHAPE.width, true);
+      current = { width, height, zoom, atlas: [], shapes: [], access: [] };
       all.set(row, current);
       continue;
     }

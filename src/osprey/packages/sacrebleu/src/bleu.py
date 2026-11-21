@@ -13,7 +13,7 @@ floats because `add-k` makes them fractional.
 """
 
 from sacrebleu.Ngrams import word_ngrams, word_ngrams_from_tokens, counter_total, counter_matched, counter_merge_max
-from sacrebleu.Text import map_indexed
+from sacrebleu.Text import map_indexed, segment_references
 from sacrebleu.Tokenizer import tokenize
 
 __all__ = ["BLEUScore", "BLEU", "compute_bleu", "score_sentence", "score_corpus", "sentence_bleu", "corpus_bleu", "raw_corpus_bleu"]
@@ -228,20 +228,9 @@ def score_sentence(bleu, hypothesis, references):
                         bleu.smooth_method, bleu.smooth_value, bleu.effective_order, bleu.max_ngram_order)
 
 
-def transpose_row(docs, i):
-    """Reference segment `i` of every document."""
-    return map_indexed(docs, lambda d: unwrap_or(listGet(unwrap_or(listGet(docs, d), []), i), ""))
-
-
-def transpose(docs):
-    """Documents (each a list of segments) as per-segment reference lists."""
-    n = foldList(docs, 0, lambda m, doc: len(doc) if len(doc) > m else m)
-    return toList(map(range(n), lambda i: transpose_row(docs, i)))
-
-
 def score_corpus(bleu, hypotheses, references):
     """BLEU over a corpus; `references` is a list of reference documents."""
-    seg_refs = transpose(references)
+    seg_refs = segment_references(references)
     seed = SegmentStats(sys_len=0, ref_len=0, correct=zeros_float(bleu.max_ngram_order), totals=zeros_float(bleu.max_ngram_order))
     stats = fold(range(len(hypotheses)), seed, lambda acc, i: sum_stats(acc, segment_stats(
         bleu, preprocess(bleu, unwrap_or(listGet(hypotheses, i), "")),

@@ -68,29 +68,22 @@ public sealed record Accessible(string Role, string Label, double X, double Y, d
 
 /// <summary>
 /// One checked scene: its unit space (zero for window pixels), its zoom in pixels per unit, its atlas
-/// and its shapes. Scale is a property of the application, never of the host, and resizing never
-/// changes it [WINUI-HOST-SCENE-SCALE] [DAW-LAYOUT-FIXED-SCALE]: a zoom of 0 is one window unit per
-/// scene unit, and any other zoom is exactly its magnitude at every region size.
+/// and its shapes. The scene draws at the magnitude of its zoom, with 0 meaning one window unit per
+/// scene unit [WINUI-HOST-SCENE-SCALE].
 /// </summary>
 public sealed record Scene(double Width, double Height, double Zoom, IReadOnlyList<string> Atlas, IReadOnlyList<Shape> Shapes, IReadOnlyList<Accessible> Access)
 {
-    /// <summary>Window units per scene unit, as the application set it.</summary>
-    double Units => Zoom == 0 ? 1 : Math.Abs(Zoom);
-
     /// <summary>
     /// The size, in window units, of the window an application that is this one scene opens at: its
-    /// units at its scale. A scene of window pixels or at zoom 0 asks for no size.
+    /// units times its scale. A scene in window pixels takes the region provided by its container.
     /// </summary>
-    public (double Width, double Height)? Opening => Width > 0 && Height > 0 && Zoom != 0 ? (Width * Units, Height * Units) : null;
+    public (double Width, double Height)? Opening => Width > 0 && Height > 0 ? (Width * Scale, Height * Scale) : null;
 
-    /// <summary>
-    /// Window units per scene unit in a region of any size; drawing and pointer input share it. The
-    /// region is never an input [WINUI-HOST-SCENE-SCALE]: a smaller one clips the scene, a larger one
-    /// shows more of its canvas.
-    /// </summary>
-#pragma warning disable IDE0060 // The region is deliberately ignored: resizing never changes scale.
-    public double Scale(double regionWidth, double regionHeight) => Units;
-#pragma warning restore IDE0060
+    /// <summary>Window units per scene unit.</summary>
+    public double Scale => Width <= 0 || Height <= 0 || Zoom == 0 ? 1 : Math.Abs(Zoom);
+
+    /// <summary>The visible region in scene units.</summary>
+    public (double Width, double Height) Viewport(double width, double height) => (width / Scale, height / Scale);
 }
 
 /// <summary>

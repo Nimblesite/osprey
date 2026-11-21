@@ -1,5 +1,6 @@
 import AppKit
 import CoreText
+import OspreyViewApp
 import SwiftUI
 import XCTest
 
@@ -10,6 +11,24 @@ import XCTest
 // that keep a sheet's editors the only ones on the keyboard.
 
 final class FrameInheritanceTests: RenderingTestCase {
+    func testFixedSceneScaleSurvivesResizeAndMapsPointerCoordinates() throws {
+        let wire = FrameWire()
+        wire.row(13)
+        var marker = OspNativeShape()
+        marker.code = 20
+        marker.values = (200, 100, -2, 0, 0)
+        let scene = try XCTUnwrap(wire.read(shapes: [marker]).scenes[0])
+        XCTAssertEqual(scene.zoom, -2)
+        for size in [CGSize(width: 50, height: 25), CGSize(width: 800, height: 400)] {
+            let transform = SharedTransform(size: size, scene: scene)
+            XCTAssertEqual(transform.scale, 2)
+            XCTAssertEqual(transform.viewed.width, size.width / 2)
+            XCTAssertEqual(transform.scene(CGPoint(x: 28, y: 12)).x, 14)
+        }
+        marker.values.2 = -.infinity
+        XCTAssertThrowsError(try wire.read(shapes: [marker]))
+    }
+
     override func setUpWithError() throws {
         try Repo.registerFonts(["STIXTwoText.ttf", "STIXTwoText-Italic.ttf", "STIXTwoMath-Regular.ttf", "Geist.ttf"])
     }

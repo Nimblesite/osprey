@@ -19,6 +19,24 @@ module Graphs
     (** A graph with no components or routes. *)
     export empty = Graph(nodes = [], cables = [])
 
+    (** Index each destination's upstream node IDs once for graph traversal. *)
+    export inputSources cables = foldList (cables, Map(), \(index, cable) =>
+        key = toString cable.destination
+        mapSet index key (listPrepend (mapGet index key ?: []) cable.source))
+
+    visitInputs (inputs, pending, visited) = match pending
+        [] => visited
+        [identity, ...rest] =>
+            key = toString identity
+            match mapContains visited key
+                true => visitInputs (inputs, rest, visited)
+                false =>
+                    next = foldList (mapGet inputs key ?: [], rest, \(held, source) => listPrepend held source)
+                    visitInputs (inputs, next, mapSet visited key true)
+
+    (** The given roots and every upstream node, including through delayed feedback. *)
+    export inputAncestors (cables, roots) = visitInputs (inputSources cables, roots, Map())
+
     (** Locate one component by stable identity. *)
     export node (graph, identity) = match listGet (filterList (graph.nodes, \n => n.identity == identity)) 0
         Success found => Valid(value = found)

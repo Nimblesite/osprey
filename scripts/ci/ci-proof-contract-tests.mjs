@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
+import { steps } from './preflight.mjs'
 
 export function registerProofContracts(proof) {
   test('the proof kernel and the Lean speed gate run on the staged build', () => {
@@ -31,13 +32,12 @@ function assertProofWorkflow(proof) {
 }
 
 function assertProofCommands(proof) {
-  // The recorded export is re-derived from the pinned exporter in CI.
-  assert.match(proof, /run: bash scripts\/proof\/proof-export\.sh --check/)
-  assert.match(proof, /run: bash scripts\/proof\/proof-export\.sh --check --theorem and_swap/)
-  assert.match(proof, /run: bash scripts\/proof\/proof-export\.sh --check --theorem Nat\.add_comm/)
-  assert.match(proof, /run: node --test scripts\/proof\/test-proof-export\.mjs/)
-  assert.match(proof, /run: python3 scripts\/proof\/test-proof-openai\.py/)
-  assert.match(proof, /run: node --test scripts\/ci\/ci-proof-schedule\.test\.mjs/)
+  const commands = steps(proof).map(({ run }) => run)
+  const exportCheck = 'bash scripts/proof/proof-export.sh --check'
+  const required = [exportCheck, `${exportCheck} --theorem and_swap`, `${exportCheck} --theorem Nat.add_comm`,
+    'node --test scripts/proof/test-proof-export.mjs', 'python3 scripts/proof/test-proof-openai.py',
+    'node --test scripts/ci/ci-proof-schedule.test.mjs']
+  for (const command of required) assert.ok(commands.includes(command), `Missing proof check: ${command}`)
 }
 
 function assertProofGraph() {

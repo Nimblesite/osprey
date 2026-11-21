@@ -528,7 +528,7 @@ _lint: $(EXT_NODE_DEPS)
 # _deslop: Code-duplication gate. Fails the build when measured
 # duplication exceeds the ceiling in .deslop.toml (exit 3). The ceiling (no exclusions: every file counts)
 # lives in that committed config — the single source of truth.
-# The installer resolves the latest release for both local and hosted CI.
+# The installer pins the scanner for both local and hosted CI.
 
 DESLOP_BIN_DIR := $(CURDIR)/target/ci-tools
 _deslop:

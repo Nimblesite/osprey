@@ -6,7 +6,7 @@ import synth::SpectralKernels
 spectralControl (n, fixed) = SpectralKernels::prepare (48000.0, Parameters::initial (serial ([Components::sine (1, 440.0), n, Components::output 3])), n.identity, n.processor, fixed)
 
 spectralTransform (n, wanted) = match spectralControl (n, true)
-    synth::FixedSpectrum config => expect (structuralEquals (config.transform, wanted), true)
+    synth::FixedSpectrum config => sameStructure (config.transform, wanted)
     _ => unexpected ()
 
 spectralControlJourney () =
@@ -16,8 +16,8 @@ spectralControlJourney () =
     pitch = grainSet (Components::spectral (2, 64, 16, 6.0), "semitones", 12.0)
     spectralTransform (pitch, synth::SpectralPitch(ratio = 2.0, formant = 2.0))
     spectralTransform (grainSet (pitch, "keepFormants", 1.0), synth::SpectralPitch(ratio = 2.0, formant = 1.0))
-    expect (structuralEquals (spectralControl (pitch, false), synth::LiveSpectrum), true)
+    sameStructure (spectralControl (pitch, false), synth::LiveSpectrum)
     forEachList ([grainSet (morph, "morphMode", 1.5), grainSet (morph, "transform", 0.5)], \bad =>
-        expect (structuralEquals (spectralControl (bad, true), synth::LiveSpectrum), true)
+        sameStructure (spectralControl (bad, true), synth::LiveSpectrum)
         graph = serial ([Components::sine (1, 440.0), bad, Components::output 3])
         renderRefused (synth::Renderer::block (planFor graph, 48000.0, Parameters::initial graph, rendered (synth::Renderer::start graph), 16)))

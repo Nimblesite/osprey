@@ -1,4 +1,5 @@
 import synth::StringVoices
+import synth::Activities
 
 // [SYNTH-ADVANCED-PHYSICAL-INSTRUMENTS] The string pool's public journey: preparation, plucking,
 // release tails, explicit stealing, typed refusals and preservation of untouched voices.
@@ -46,20 +47,29 @@ poolRejections () =
 poolRelease () =
     succeeds (StringVoices::prepare ((poolTemplate ()), (poolPluck ()), 1, 0.05), \pool =>
         expect (heldNotes pool, [])
+        idleActivity = Activities::strings pool
+        expect (idleActivity.active, 0)
+        expect (idleActivity.capacity, 1)
+        expect (idleActivity.energy, 0.0)
         idle = poolRendered (pool, 8)
-        expect (structuralEquals (idle.samples, mapList (toList (range (0, 8)), \_ => 0.0)), true)
+        sameStructure (idle.samples, mapList (toList (range (0, 8)), \_ => 0.0))
         succeeds (StringVoices::noteOn (pool, 60, 0.8, 220.0, 2147483646), \held =>
             expect (heldNotes held, [60])
-            expect (structuralEquals (pluckField (held, 60, \voice => voice.velocity), [0.8]), true)
-            expect (structuralEquals (pluckField (held, 60, \voice => voice.config.frequency), [220.0]), true)
+            sameStructure (pluckField (held, 60, \voice => voice.velocity), [0.8])
+            sameStructure (pluckField (held, 60, \voice => voice.config.frequency), [220.0])
             ringing = poolRendered (held, 300)
+            activity = Activities::strings ringing.pool
+            expect (activity.active, 1)
+            expect (activity.stolen, 0)
+            expect (activity.energy > 0.0, true)
             expect (poolEnergy (synth::Sequences::drop (ringing.samples, 150)) > 0.001, true)
-            expect (structuralEquals (StringVoices::noteOff (ringing.pool, 61), ringing.pool), true)
+            sameStructure (StringVoices::noteOff (ringing.pool, 61), ringing.pool)
             tail = poolRendered (StringVoices::noteOff (ringing.pool, 60), 10)
             expect (heldNotes tail.pool, [60])
             expect (releasingNotes tail.pool, [60])
             gone = poolRendered (tail.pool, 2500)
             expect (heldNotes gone.pool, [])
+            expect ((Activities::strings gone.pool).active, 0)
             expect ((poolStep { pool = gone.pool, samples = [] }).samples, [0.0])))
 
 // Stealing is explicit and ordered: a free voice first, then the voice released longest ago,
@@ -68,15 +78,15 @@ poolStealing () =
     succeeds (StringVoices::prepare ((poolTemplate ()), (poolPluck ()), 2, 0.05), \pool =>
         succeeds (StringVoices::noteOn (pool, 60, 0.8, 220.0, 7), \first =>
             aged = poolRendered (first, 10)
-            expect (structuralEquals (pluckField (aged.pool, 60, \voice => voice.age), [10]), true)
+            sameStructure (pluckField (aged.pool, 60, \voice => voice.age), [10])
             succeeds (StringVoices::noteOn (aged.pool, 62, 0.5, 246.9417, 11), \second =>
                 expect (heldNotes second, [60, 62])
                 expect (second.stolen, 0)
                 succeeds (StringVoices::noteOn (second, 64, 0.9, 293.6648, 13), \stolen =>
                     expect (heldNotes stolen, [64, 62])
                     expect (stolen.stolen, 1)
-                    expect (structuralEquals (pluckField (stolen, 62, \voice => voice.velocity), [0.5]), true)
-                    expect (structuralEquals (pluckField (stolen, 62, \voice => voice.age), [0]), true)
+                    sameStructure (pluckField (stolen, 62, \voice => voice.velocity), [0.5])
+                    sameStructure (pluckField (stolen, 62, \voice => voice.age), [0])
                     // The released voice (62) is stolen before the held one (64).
                     succeeds (StringVoices::noteOn (StringVoices::noteOff (stolen, 62), 65, 0.7, 349.2282, 17), \again =>
                         expect (heldNotes again, [64, 65])
@@ -96,7 +106,7 @@ poolSeeded () =
     succeeds (StringVoices::prepare ((poolTemplate ()), (poolBrush ()), 1, 0.05), \pool =>
         succeeds (StringVoices::noteOn (pool, 60, 0.8, 220.0, 991), \held =>
             succeeds (StringVoices::noteOn (pool, 60, 0.8, 220.0, 991), \again =>
-                expect (structuralEquals ((poolRendered (held, 400)).samples, (poolRendered (again, 400)).samples), true))
+                sameStructure ((poolRendered (held, 400)).samples, (poolRendered (again, 400)).samples))
             succeeds (StringVoices::noteOn (pool, 60, 0.8, 220.0, 992), \other =>
                 expect (structuralEquals ((poolRendered (held, 400)).samples, (poolRendered (other, 400)).samples), false))))
 

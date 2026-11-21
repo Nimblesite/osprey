@@ -148,16 +148,7 @@ impl Lowerer<'_> {
             let parameters = lowerer.parameters(&arrow.params)?;
             let return_type = lowerer.annotation(arrow.return_type.as_deref())?;
             let returns = lowerer.expected(arrow.return_type.as_deref());
-            let body = match &arrow.body {
-                ArrowFunctionBody::FunctionBody(body) => {
-                    Body::Statements(&body.statements, body.span)
-                }
-                other => match other.as_expression() {
-                    Some(expression) => Body::Expression(expression),
-                    None => return lowerer.unsupported(arrow.span, "arrow function body"),
-                },
-            };
-            let body = lowerer.function_body(&arrow.params, returns, &body)?;
+            let body = lowerer.arrow_body(arrow, returns)?;
             Ok(Expr::Lambda {
                 parameters,
                 return_type,
@@ -165,6 +156,21 @@ impl Lowerer<'_> {
                 position,
             })
         })
+    }
+
+    pub(super) fn arrow_body(
+        &mut self,
+        arrow: &ArrowFunctionExpression<'_>,
+        returns: Option<Expected>,
+    ) -> Result<Expr> {
+        let body = match &arrow.body {
+            ArrowFunctionBody::FunctionBody(body) => Body::Statements(&body.statements, body.span),
+            other => match other.as_expression() {
+                Some(expression) => Body::Expression(expression),
+                None => return self.unsupported(arrow.span, "arrow function body"),
+            },
+        };
+        self.function_body(&arrow.params, returns, &body)
     }
 
     pub(super) fn parameters(

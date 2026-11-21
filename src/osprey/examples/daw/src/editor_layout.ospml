@@ -20,9 +20,7 @@ module EditorLayout
 
     (** Compute default positions once on open, in the graph scheduler's dependency order. *)
     export flow (plan, saved) =
-        inputs = foldList (plan.graph.cables, Map(), \(index, wire) =>
-            key = toString wire.destination
-            mapSet index key (listPrepend (mapGet index key ?: []) wire.source))
+        inputs = Graphs::inputSources plan.graph.cables
         (foldList (plan.order, { depths = Map(), rows = Map(), placed = [] }, \(held, id) => place (inputs, saved, held, id))).placed
 
     stored (editor, identity) = match ui::Lists::find (editor.positions, \p => p.layoutNode == identity)

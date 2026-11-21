@@ -108,6 +108,7 @@ module NoteCache
     recorded (dir, sound) = match sound.driver
         RecordedNote => sound
         PerformingNote patch => adopted (dir, sound, length patch.ports, patch.span.total)
+        PerformingOperator pair => adopted (dir, sound, satAdd 1 (satMul 2 (length pair.sends)), pair.span.total)
 
     (** A note maker may finish after the attack. Resume its PCM at the next block's exact note age. *)
     export sounding (dir, play, from, until) = match intDiv from 4096 == intDiv until 4096

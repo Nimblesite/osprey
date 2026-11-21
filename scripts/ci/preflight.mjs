@@ -4,7 +4,7 @@
 // `script:`) is one check, run whole with its working directory and environment. Every check runs
 // even after one fails, so one red can never hide the next, and the coverage gates run last.
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { closeSync, mkdirSync, openSync, writeFileSync } from 'node:fs'
 import { workflowJobs, workflowText } from './ci-workflow-text.mjs'
 
 const CI = '.github/workflows/ci.yml'
@@ -83,6 +83,7 @@ export function steps(block) {
     condition: field(lines, 'if', 8) ?? '',
     directory: field(lines, 'working-directory', 8) ?? '.',
     env: envOf(lines, 8),
+    shell: field(lines, 'shell', 8)?.split(' ')[0],
   })).filter((step) => step.run)
 }
 
@@ -122,27 +123,31 @@ const localCommand = (command) => LOCAL_EQUIVALENTS.reduce((text, [pattern, loca
   command.replace(/^xvfb-run -a /gm, '').trim())
 
 /** One planned check, or nothing for runner plumbing. */
-function check(origin, step, row, workflowEnv) {
-  const command = withoutPlumbing(localCommand(substitute(step.run, row, workflowEnv)))
+function check(origin, step, row, jobEnv) {
+  const declaredEnv = { ...jobEnv, ...step.env }
+  const command = withoutPlumbing(localCommand(substitute(step.run, row, declaredEnv)))
   if (!command || SETUP_STEP.test(step.name)) return []
-  const values = Object.entries(step.env).map(([key, value]) => [key, substitute(value, row, workflowEnv)])
+  const values = Object.entries(declaredEnv).map(([key, value]) => [key, substitute(value, row, declaredEnv)])
   const runnerOnly = values.filter(([key, value]) => value.includes('${{') && new RegExp(`\\$\\{?${key}\\b`).test(command))
   const env = Object.fromEntries(values.filter(([, value]) => !value.includes('${{')))
   const ciOnly = command.includes('${{') || runnerOnly.length > 0
-  return [{ ...origin, name: substitute(step.name, row, workflowEnv), command, directory: step.directory, env, ciOnly }]
+  const shell = step.shell ?? (origin.host === 'windows' ? 'pwsh' : 'bash')
+  return [{ ...origin, name: substitute(step.name, row, declaredEnv), command, directory: step.directory, shell, env, ciOnly }]
 }
 
 /** Each check of one job, expanded per matrix row. */
 function jobChecks(file, block, workflowEnv) {
   const job = block.match(/^ {2}([\w-]+):/)?.[1] ?? '?'
+  const jobEnv = { ...workflowEnv, ...envOf(block.split('\n'), 4) }
   return matrixRows(block).flatMap((row) => steps(block).filter((step) => applies(step.condition, row))
-    .flatMap((step) => check({ job: `${file.replace('.github/workflows/', '')}:${job}`, host: jobHost(block, row) }, step, row, workflowEnv)))
+    .flatMap((step) => check({ job: `${file.replace('.github/workflows/', '')}:${job}`, host: jobHost(block, row) }, step, row, jobEnv)))
 }
 
-/** The preflight: CI's checks in workflow order, each command once, coverage gates last. */
+/** The preflight: CI's checks in workflow order, each execution context once, coverage gates last. */
 export function plan(files = workflowFiles()) {
   const seen = new Set()
-  const key = (step) => `${step.directory}\n${step.command}`
+  const key = ({ directory, command, host, shell, env, ciOnly }) =>
+    JSON.stringify([directory, command, host, shell, ciOnly, Object.entries(env).sort()])
   const checks = files.flatMap((file) => {
     const workflowEnv = envOf(workflowText(file).split('\n'), 0)
     return workflowJobs(file).slice(1).flatMap((block) => jobChecks(file, block, workflowEnv))
@@ -157,20 +162,43 @@ const HOST = process.platform === 'darwin' ? 'macos' : process.platform === 'win
 export function skipReason(step, host = HOST) {
   if (step.ciOnly) return 'reads values only a runner has'
   if (LINUX_ONLY.test(step.command) && host !== 'linux') return 'needs a linux host'
-  return step.host === host || (step.host === 'linux' && host === 'macos') ? undefined : `needs a ${step.host} host`
+  if (step.host !== host && !(step.host === 'linux' && host === 'macos')) return `needs a ${step.host} host`
+  if (step.shell === 'msys2' && process.env.MSYSTEM !== 'UCRT64') return 'needs an MSYS2 UCRT64 terminal'
 }
 
-function runCheck(step, index) {
+export function runCheck(step, index, output = OUT) {
   const reason = skipReason(step)
   if (reason) return { ...step, status: 'SKIP', log: reason }
-  const log = `${OUT}/${String(index).padStart(3, '0')}.log`
+  const log = `${output}/${String(index).padStart(3, '0')}.log`
   const started = Date.now()
   const env = { ...process.env, RUNNER_TEMP: `${process.cwd()}/${OUT}/runner-temp`, ...step.env }
-  const result = spawnSync('bash', ['-eo', 'pipefail', '-c', step.command], { cwd: step.directory, env, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1 << 30 })
-  writeFileSync(log, `$ ${step.command}\n${result.stdout ?? ''}${result.stderr ?? ''}`)
-  const status = result.status === 0 ? 'PASS' : 'FAIL'
+  const status = checkStatus(step, env, log)
   console.log(`${status} ${step.job} ${step.name} (${Math.round((Date.now() - started) / 1000)}s) ${log}`)
   return { ...step, status, log }
+}
+
+function checkStatus(step, env, log) {
+  const output = openSync(log, 'w')
+  try {
+    writeFileSync(output, `$ ${step.command}\n`)
+    const [shell, args] = shellCommand(step)
+    const result = spawnSync(shell, args, {
+      cwd: step.directory, env, stdio: ['ignore', output, output],
+    })
+    if (result.error) writeFileSync(output, `${result.error.message}\n`)
+    if (result.signal) writeFileSync(output, `Stopped by ${result.signal}\n`)
+    return result.status === 0 ? 'PASS' : 'FAIL'
+  } finally {
+    closeSync(output)
+  }
+}
+
+function shellCommand({ shell, command }) {
+  if (shell === 'pwsh') {
+    const script = `$ErrorActionPreference = 'Stop'\n${command}\nif (Test-Path variable:LASTEXITCODE) { exit $LASTEXITCODE }`
+    return ['pwsh', ['-NoProfile', '-NonInteractive', '-Command', script]]
+  }
+  return ['bash', ['-eo', 'pipefail', '-c', command]]
 }
 
 export const firstLine = (command) => command.split('\n').find((line) => line.trim() && !/^set -/.test(line))?.trim() ?? command
@@ -178,16 +206,25 @@ const summaryLine = (result) => `| ${result.status} | ${result.job} | ${result.n
 
 function main(args) {
   const only = args.find((arg) => arg.startsWith('--only='))?.slice(7)
-  const checks = plan().filter((step) => !only || new RegExp(only).test(`${step.job} ${step.name} ${step.command}`))
+  const select = only ? new RegExp(only) : undefined
+  const checks = plan().filter((step) => !select || select.test(`${step.job} ${step.name} ${step.command}`))
+  if (checks.length === 0) {
+    console.error(only ? `No CI checks match ${JSON.stringify(only)}` : 'No CI checks found')
+    return 1
+  }
   if (args.includes('--list')) {
     for (const step of checks) console.log(`${skipReason(step) ? 'SKIP' : 'RUN '}\t${step.job}\t${step.name}\t${firstLine(step.command)}`)
     return 0
   }
   mkdirSync(`${OUT}/runner-temp`, { recursive: true })
-  const results = checks.map(runCheck)
+  const results = checks.map((step, index) => runCheck(step, index))
   const table = ['| Status | CI job | Step | Command | Log |', '| --- | --- | --- | --- | --- |', ...results.map(summaryLine)].join('\n')
   writeFileSync(`${OUT}/summary.md`, `${table}\n`)
   console.log(`\n${table}`)
+  if (results.every((result) => result.status === 'SKIP')) {
+    console.error('None of the selected CI checks ran')
+    return 1
+  }
   return results.some((result) => result.status === 'FAIL') ? 1 : 0
 }
 

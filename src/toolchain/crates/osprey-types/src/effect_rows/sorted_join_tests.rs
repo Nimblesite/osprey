@@ -43,6 +43,10 @@ impl PartialOrd for CloneProbe {
     }
 }
 
+impl std::hash::Hash for CloneProbe {
+    fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
+}
+
 impl CloneProbe {
     pub(crate) fn measured_value_comparisons<T>(run: impl FnOnce() -> T) -> (T, usize) {
         measured(&VALUE_COMPARISONS, run)

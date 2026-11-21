@@ -313,7 +313,7 @@ public enum SharedRows {
                     throw SharedRefusal("a scene that names no canvas, or one twice")
                 }
                 all[row] = SceneBuilder(width: try extent(head.values.0), height: try extent(head.values.1),
-                                        zoom: try extent(head.values.2))
+                                        zoom: head.values.2)
                 at.current = row
                 continue
             }

@@ -240,6 +240,27 @@ fn definitions_carry_their_types_documentation_and_visibility() {
 }
 
 #[test]
+fn open_results_use_headers_at_every_arity() {
+    let source = "private def root (x : Float) : Float := Float.sqrt x\ndef fixed : Float := root 9\ndef unary (x : Float) : Float := root x\ndef both (x y : Float) : Float := root x\n";
+    let lines = [
+        "root x = sqrt x",
+        "",
+        "(** `fixed`, generated from Case.lean. *)",
+        "export fixed : float",
+        "fixed = root 9.0",
+        "",
+        "(** `unary`, generated from Case.lean. *)",
+        "export unary : float -> float",
+        "unary x = root x",
+        "",
+        "(** `both`, generated from Case.lean. *)",
+        "export both : (float, float) -> float",
+        "both (x, y) = root x",
+    ];
+    assert_eq!(body(source), lines);
+}
+
+#[test]
 fn a_namespace_names_the_module_and_qualifies_its_definitions() {
     let header = "// Generated from Case.lean by `osprey math` [MATH-CODE-EMIT]. Do not edit: change the Lean source.\n";
     let doc = "(** Mathematics generated from Case.lean. *)\n";

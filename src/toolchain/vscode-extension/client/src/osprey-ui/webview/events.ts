@@ -111,7 +111,7 @@ export interface SceneTransform {
 export function sceneTransform(scene: SceneExtent, regionWidth: number, regionHeight: number): SceneTransform {
   if (scene.width === 0) return { scale: 1, viewedWidth: regionWidth, viewedHeight: regionHeight };
   const whole = Math.min(regionWidth / scene.width, regionHeight / scene.height);
-  const scale = scene.zoom === 0 ? whole : Math.min(scene.zoom, whole);
+  const scale = scene.zoom < 0 ? -scene.zoom : scene.zoom === 0 ? whole : Math.min(scene.zoom, whole);
   if (!(scale > 0) || !Number.isFinite(scale)) return { scale: 1, viewedWidth: regionWidth, viewedHeight: regionHeight };
   return { scale, viewedWidth: regionWidth / scale, viewedHeight: regionHeight / scale };
 }

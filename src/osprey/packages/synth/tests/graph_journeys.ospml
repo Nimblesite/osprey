@@ -48,6 +48,8 @@ refused (outcome, expected) = match outcome
 
 monoPort (name, rate, unit) = synth::Port(name = name, rate = rate, channels = 1, unit = unit)
 
+audioClipFixture (identity, channels, samples) = synth::NodeClip(clipNode = identity, clipChannels = channels, clipSamples = samples, clipNotes = [])
+
 missingPort () = synth::Port(name = "missing", rate = synth::Audio, channels = 0, unit = synth::Amplitude)
 
 node (identity, processor, inputs, outputs) = synth::Node(identity = identity, processor = processor, inputs = inputs, outputs = outputs, parameters = [])
@@ -75,6 +77,8 @@ observed snapshot =
 // [SYNTH-DSP] Numerical isolation is required: these paths must not need a host, UI or device.
 
 near (actual, expected, tolerance) = expect (abs (actual - expected) <= tolerance, true)
+
+sameStructure (actual, expected) = expect (structuralEquals (actual, expected), true)
 
 unexpected () = expect (false, true)
 
@@ -245,7 +249,7 @@ fitGainJourney (graph, samples) =
         expect (report.result.evaluations == 1 && report.evaluationLoss > report.result.best.loss, true)
         expect (structuralEquals (report.training, training.source) && structuralEquals (report.evaluation, evaluation.source), true)
         expect ("${report.algorithm} ${report.algorithmLicence}", "osprey-synth/log-spectrum-es-v1 MIT")
-        expect (structuralEquals (report.config, config), true))
+        sameStructure (report.config, config))
 
 feedbackExpected (samples, i) =
     previous = match i >= 2
@@ -323,7 +327,7 @@ clipFrom (clips, identity) = match synth::ClipInputs::completed (clips, identity
     Success clip => clip
     Error why =>
         expect (synth::Faults::detail why, "a rendered node clip")
-        synth::NodeClip(clipNode = identity, clipChannels = 0, clipSamples = [], clipNotes = [])
+        audioClipFixture (identity, 0, [])
 
 channelOf (clip, frame, channel) = listGet clip.clipSamples (satAdd (satMul frame clip.clipChannels) channel) ?: 999.0
 
@@ -452,13 +456,13 @@ stepped (outcome, _) = match outcome
 
 partitioned (controls, whole) = succeeds (Grains::prepare (flat (), 4), \pool => succeeds (Grains::trigger (pool, controls), \admitted =>
     succeeds (foldList (toList (range (0, 16)), Success(value = { pool = admitted.pool, left = [], right = [] }), stepped), \run =>
-        expect (structuralEquals (run.left, whole.left), true)
-        expect (structuralEquals (run.right, whole.right), true))))
+        sameStructure (run.left, whole.left)
+        sameStructure (run.right, whole.right))))
 
 // A later trigger with other controls (here silent, ASR, hard right) leaves a sounding grain's own settings alone.
 retained whole = succeeds (Grains::prepare (flat (), 4), \pool => succeeds (Grains::trigger (pool, held (synth::HannWindow, 9, 0.0)), \first =>
     succeeds (Grains::block (first.pool, 4), \head => succeeds (Grains::trigger (head.next, synth::GrainControls(window = synth::AsrWindow(attack = 0.5, release = 0.5), start = 20.0, rate = 2.0, duration = 5, amplitude = 0.0, pan = 1.0)), \second =>
-        succeeds (Grains::block (second.pool, 12), \tail => expect (structuralEquals (listConcat head.left tail.left, whole.left), true))))))
+        succeeds (Grains::block (second.pool, 12), \tail => sameStructure (listConcat head.left tail.left, whole.left))))))
 
 // [SYNTH-ADVANCED-SPECTRAL-PITCH] The pitch shifter is the phase-vocoder spectral node, preset and bounded.
 shifterKeyed (found, p, key) = match p.key == key

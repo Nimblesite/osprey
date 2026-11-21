@@ -255,10 +255,15 @@ mod tests {
     #[test]
     fn every_row_round_trips_through_its_name_and_has_a_distinct_tag() {
         let mut tags = std::collections::BTreeSet::new();
-        for n in Numeric::ALL {
+        let c_types = [
+            "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", "uint16_t", "uint32_t",
+            "uint16_t", "float", "double",
+        ];
+        for (n, c_type) in Numeric::ALL.into_iter().zip(c_types) {
             assert_eq!(Numeric::of_name(n.name()), Some(n));
             assert!(tags.insert(n.tag()), "{} shares a tag", n.name());
             assert_eq!(Numeric::of_type(&Type::prim(n.name())), Some(n));
+            assert_eq!(n.c(), c_type, "{} C ABI spelling", n.name());
         }
         assert_eq!(Numeric::of_name("Int"), None);
         assert_eq!(Numeric::of_type(&Type::list(Type::int())), None);

@@ -57,6 +57,15 @@ module Drive
     (** A pointer at `x`, `y` on the scene, pressed or released. *)
     export pointer (d, x, y, down) = sent (d, touch (d, Hosting::pointer, d.drivenSeen.renderedOrdinal, "", "", x, y, down, false))
 
+    (** Press and release at the given fraction of an accessible canvas element. *)
+    export tapAt (pointerStep, element, fraction) =
+        at = Semantics::point (element, fraction)
+        pointerStep (at.pointX, at.pointY, true)
+        pointerStep (at.pointX, at.pointY, false)
+
+    (** Whether the named machine input is within one millionth of the expected value. *)
+    export numberNear (machine, name, expected) = abs (ui::Machines::number (machine, name) - expected) < 0.000001
+
     (** A key going down or up over the scene. *)
     export key (d, name, down) = sent (d, touch (d, Hosting::key, d.drivenSeen.renderedOrdinal, name, "", 0.0, 0.0, down, false))
 

@@ -11,10 +11,10 @@ partialJourney () =
             expect (listGet first.next.phases 0 ?: -1.0, 0.25)
             succeeds (PartialBanks::next (config, first.next), \live =>
                 near (live.sample, pow (10.0, -3.0 / 48000.0), 0.000000001)
-                succeeds (PartialBanks::withCoefficients (config, fixed, first.next), \prepared => expect (structuralEquals (live, prepared), true))
+                succeeds (PartialBanks::withCoefficients (config, fixed, first.next), \prepared => sameStructure (live, prepared))
                 reset = PartialBanks::retrigger live.next
                 expect (reset.age, 0.0)
-                expect (structuralEquals (reset.phases, live.next.phases), true))))
+                sameStructure (reset.phases, live.next.phases))))
     ratios = bank(layout = synth::RatioLayout(ratios = [2.0]))
     succeeds (PartialBanks::next (ratios, initial), \first =>
         sameSamples (synth::Sequences::take (first.next.phases, 2), [0.5, 0.0]))

@@ -109,15 +109,22 @@ function replay(id, steps, launch) {
 function trackPatch(name, id) {
     const song = join(run, 'arrangement.json');
     copyFileSync('src/osprey/examples/daw/tracks/elise-motif.json', song);
+    const track = () => JSON.parse(readFileSync(song, 'utf8')).tracks[0];
+    const originalCables = track().instrument.routing.cables;
     const commands = replay('track-window', [
         { windows: '1' }, { invoke: 'Track Patch' }, { windows: '2' },
         { invoke: 'Patch Controls' }, { wait: name }, { type: ['Add component', 'vst:' + id] },
+        { drag: ['Canvas Waveshaper 4', '48', '37'] }, { type: ['Module', '6'] },
         { invoke: 'Open plug-in window' }, { wait: 'Plug-in window open.' },
         { invoke: 'Focus plug-in window' }, { frames: '12' }, { invoke: 'Close plug-in window' }, { wait: 'Plug-in window closed.' },
         { invoke: 'Timeline' }, { windows: '2' }, { 'close-child-window': '' }, { windows: '1' }, { gone: 'Canvas ' + name + ' 6' },
-        { invoke: 'Track Patch' }, { windows: '2' }, { wait: name + ' 6' },
+        { invoke: 'Track Patch' }, { windows: '2' }, { wait: 'Canvas ' + name + ' 6' },
+        { wait: 'Canvas output 4:0' }, { wait: 'Canvas input 5:0' }, { wait: 'Cable 4:0 to 5:0' },
     ], ['--song', song]);
     assertWindowCycles(commands, 1);
+    const { positions, instrument } = track();
+    assert(positions.some(p => p.layoutNode === 4 && Number.isFinite(p.layoutX) && Number.isFinite(p.layoutY)), 'Dragged node position must be saved');
+    assert.deepEqual(instrument.routing.cables, originalCables);
 }
 
 const unresponsive = selected[0] === '--unresponsive-editor';

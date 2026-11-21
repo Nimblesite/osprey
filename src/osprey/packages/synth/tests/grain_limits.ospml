@@ -58,29 +58,29 @@ onsetBlock (run, frames) = match synth::GrainScheduler::block (run.clock, frames
 
 onsetGaps positions = mapList (toList (range (1, length positions)), \i => satSub (listGet positions i ?: 0) (listGet positions (satSub i 1) ?: 0))
 
-gapLow (low, g) = match g < low
-    true => g
-    false => low
+prefer (beats, best, value) = match beats (value, best)
+    true => value
+    false => best
 
-gapHigh (high, g) = match g > high
-    true => g
-    false => high
+extreme (values, initial, beats) = foldList (values, initial, \(best, value) => prefer (beats, best, value))
 
 // Every gap inside [low, high], the mean within `slack` of `mean`, and at least `spread` between the extremes;
 // one block of 8,192 frames, four of 2,048 and an irregular split give the same onsets and clock.
 timingHeld (c, seed) =
     whole = onsetsOver (c.timing, seed, [2048, 2048, 2048, 2048])
     gaps = onsetGaps whole.positions
+    shortest = extreme (gaps, 2147483647, \(a, b) => a < b)
+    longest = extreme (gaps, 0, \(a, b) => a > b)
     expect (length gaps >= c.least, true)
-    expect (foldList (gaps, 2147483647, gapLow) >= c.low, true)
-    expect (foldList (gaps, 0, gapHigh) <= c.high, true)
-    expect (foldList (gaps, 0, gapHigh) - foldList (gaps, 2147483647, gapLow) >= c.spread, true)
+    expect (shortest >= c.low, true)
+    expect (longest <= c.high, true)
+    expect (longest - shortest >= c.spread, true)
     within ("mean gap", toFloat (foldList (gaps, 0, \(sum, g) => satAdd sum g)) / toFloat (length gaps), c.mean, c.slack)
     forEachList ([[1, 2047, 1000, 1048, 2048, 2048], [3, 5, 2040, 2048, 2048, 2048], [2048, 1, 1, 2046, 2048, 2048]], \sizes =>
         split = onsetsOver (c.timing, seed, sizes)
-        expect (structuralEquals (split.positions, whole.positions), true)
-        expect (structuralEquals (split.clock, whole.clock), true))
-    expect (structuralEquals ((onsetsOver (c.timing, seed, [2048, 2048, 2048, 2048])).positions, whole.positions), true)
+        sameStructure (split.positions, whole.positions)
+        sameStructure (split.clock, whole.clock))
+    sameStructure ((onsetsOver (c.timing, seed, [2048, 2048, 2048, 2048])).positions, whole.positions)
     whole.positions
 
 timingJourney () =
@@ -104,21 +104,15 @@ spreadSeeds seed = match synth::GrainDistributions::seeded seed
         synth::GrainSeeds(position = 1, rate = 1, duration = 1, amplitude = 1, pan = 1)
     Success seeds => seeds
 
-spreadLow (low, x) = match x < low
-    true => x
-    false => low
-
-spreadHigh (high, x) = match x > high
-    true => x
-    false => high
-
 // One field of every event: inside [low, high], its mean within 4% of the range of the midpoint, and both ends approached.
 spreadField (label, values, low, high) =
-    expect ("${label} low ${foldList (values, high, spreadLow) >= low}", "${label} low true")
-    expect ("${label} high ${foldList (values, low, spreadHigh) <= high}", "${label} high true")
+    smallest = extreme (values, high, \(a, b) => a < b)
+    largest = extreme (values, low, \(a, b) => a > b)
+    expect ("${label} low ${smallest >= low}", "${label} low true")
+    expect ("${label} high ${largest <= high}", "${label} high true")
     within ("${label} mean", foldList (values, 0.0, \(sum, x) => sum + x) / toFloat (length values), (low + high) / 2.0, 0.04 * (high - low))
-    below ("${label} nearest the floor", foldList (values, high, spreadLow) - low, 0.01 * (high - low))
-    below ("${label} nearest the ceiling", high - foldList (values, low, spreadHigh), 0.01 * (high - low))
+    below ("${label} nearest the floor", smallest - low, 0.01 * (high - low))
+    below ("${label} nearest the ceiling", high - largest, 0.01 * (high - low))
 
 spreadJourney () =
     plain = grainControls synth::HannWindow
@@ -128,7 +122,7 @@ spreadJourney () =
         seeds = spreadSeeds seed
         whole = spreadEvents (positions, ranges, seeds)
         expect (length whole.events, 2000)
-        expect (structuralEquals (mapList (whole.events, \e => e.position), positions), true)
+        sameStructure (mapList (whole.events, \e => e.position), positions)
         controls = mapList (whole.events, \e => e.controls)
         spreadField ("start", mapList (controls, \c => c.start), 100.0, 900.0)
         spreadField ("rate", mapList (controls, \c => c.rate), 0.5, 2.0)
@@ -139,16 +133,16 @@ spreadJourney () =
         forEachList ([1, 700, 1999], \cut =>
             head = spreadEvents (synth::Sequences::take (positions, cut), ranges, seeds)
             tail = spreadEvents (synth::Sequences::drop (positions, cut), ranges, head.next)
-            expect (structuralEquals (listConcat head.events tail.events, whole.events), true)
-            expect (structuralEquals (tail.next, whole.next), true))
-        expect (structuralEquals ((spreadEvents ([], ranges, seeds)).next, seeds), true)
-        expect (structuralEquals (spreadEvents (positions, ranges, seeds), whole), true)
+            sameStructure (listConcat head.events tail.events, whole.events)
+            sameStructure (tail.next, whole.next))
+        sameStructure ((spreadEvents ([], ranges, seeds)).next, seeds)
+        sameStructure (spreadEvents (positions, ranges, seeds), whole)
         whole.events)
     expect (structuralEquals (listGet heard 0 ?: [], listGet heard 1 ?: []), false)
     expect (structuralEquals (listGet heard 1 ?: [], listGet heard 2 ?: []), false)
     // A collapsed range plays exactly its one setting.
     fixed = spreadEvents ([0, 5, 5, 9], synth::GrainDistribution(minimum = ranges.minimum, maximum = ranges.minimum), spreadSeeds 42)
-    forEachList (fixed.events, \e => expect (structuralEquals (e.controls, ranges.minimum), true))
+    forEachList (fixed.events, \e => sameStructure (e.controls, ranges.minimum))
     renderRefused (synth::GrainDistributions::events ([5, 4], ranges, 1024, spreadSeeds 1))
     renderRefused (synth::GrainDistributions::events (positions, synth::GrainDistribution(minimum = ranges.maximum, maximum = ranges.minimum), 1024, spreadSeeds 1))
 

@@ -42,18 +42,11 @@ class SceneView(context: Context, private val store: Store, private val row: Int
 
     override fun onDraw(canvas: Canvas) {
         val scene = store.scene(row) ?: return
-        scale = zoomOf(scene, width, height)
+        scale = scene.scaleIn(width, height)
         canvas.save()
         canvas.scale(scale, scale)
         scene.shapes.forEach { draw(canvas, it, scene) }
         canvas.restore()
-    }
-
-    /** Window pixels per scene unit; 0 fits the scene whole. */
-    private fun zoomOf(scene: Scene, width: Int, height: Int): Float {
-        if (scene.zoom > 0) return scene.zoom.toFloat()
-        if (scene.width <= 0 || scene.height <= 0 || width == 0 || height == 0) return 1f
-        return minOf(width / scene.width, height / scene.height).toFloat()
     }
 
     private fun draw(canvas: Canvas, shape: Shape, scene: Scene) {

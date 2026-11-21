@@ -12,12 +12,13 @@ import registry_tests::Fixture
 module AdminTests {
     fn key(scope, name) = Names::Key { scope: scope, name: name }
 
-    fn createFinch(world, k, id, admin, adminPrincipal, custodianProof, acceptance) = {
-        let statement = Governance::creationStatement(id, k, admin)
+    /// The reason code of one live authorization decision, or "" when granted.
+    fn authorizeCode(world, id, member, permission, at) =
+        Fixture::code(GovernanceTransitions::authorize(world, id, member, permission, at))
+
+    fn createFinch(world, k, id, admin, custodianProof, acceptance) =
         GovernanceTransitions::createPackage(world, "o-finch", k, id, admin,
-            Maybe::orElse(custodianProof, Fixture::verified("p-alice", "m-alice", statement)),
-            acceptance)
-    }
+            Maybe::orElse(custodianProof, Fixture::verified("p-alice", "m-alice", Governance::creationStatement(id, k, admin))), acceptance)
 
     /// Creation needs the nominee's own fresh credential-backed acceptance
     /// plus a custodian creator; nobody installs an admin unilaterally.
@@ -25,26 +26,19 @@ module AdminTests {
         let world = Fixture::world()
         let k = key("finch", "toolkit")
         let statement = Governance::creationStatement("pkg-f2", k, "m-bob")
+        let botStatement = Governance::creationStatement("pkg-f2", k, "m-bot")
         checkAll("creation binds the admin to the nominee's fresh acceptance", [
-            Fixture::code(createFinch(world, k, "pkg-f2", "m-bob", "p-bob", Maybe::none(),
-                Fixture::verified("p-bob", "m-bob", statement))) == "",
-            Fixture::code(createFinch(world, k, "pkg-f2", "m-bob", "p-erin", Maybe::none(),
-                Fixture::verified("p-erin", "m-bob", statement))) == "governance.proof.wrong-actor",
-            Fixture::code(createFinch(world, k, "pkg-f2", "m-bob", "p-bob", Maybe::none(),
-                Fixture::verified("p-bob", "m-erin", statement))) == "governance.proof.wrong-membership",
-            Fixture::code(createFinch(world, k, "pkg-f2", "m-bob", "p-bob", Maybe::none(),
-                Fixture::refused("p-bob", "m-bob", statement))) == "governance.proof.rejected:ceremony-failed",
-            Fixture::code(createFinch(world, k, "pkg-f2", "m-bob", "p-bob", Maybe::none(),
-                Fixture::verified("p-bob", "m-bob", "another-statement"))) == "governance.proof.statement-mismatch",
-            Fixture::code(createFinch(world, k, "pkg-f2", "m-bob", "p-bob",
-                Maybe::some(Fixture::verified("p-bob", "m-bob", statement)),
-                Fixture::verified("p-bob", "m-bob", statement))) == "governance.custodian.required",
+            Fixture::code(createFinch(world, k, "pkg-f2", "m-bob", Maybe::none(), Fixture::verified("p-bob", "m-bob", statement))) == "",
+            Fixture::code(createFinch(world, k, "pkg-f2", "m-bob", Maybe::none(), Fixture::verified("p-erin", "m-bob", statement))) == "governance.proof.wrong-actor",
+            Fixture::code(createFinch(world, k, "pkg-f2", "m-bob", Maybe::none(), Fixture::verified("p-bob", "m-erin", statement))) == "governance.proof.wrong-membership",
+            Fixture::code(createFinch(world, k, "pkg-f2", "m-bob", Maybe::none(), Fixture::refused("p-bob", "m-bob", statement))) == "governance.proof.rejected:ceremony-failed",
+            Fixture::code(createFinch(world, k, "pkg-f2", "m-bob", Maybe::none(), Fixture::verified("p-bob", "m-bob", "another-statement"))) == "governance.proof.statement-mismatch",
+            Fixture::code(createFinch(world, k, "pkg-f2", "m-bob",
+                Maybe::some(Fixture::verified("p-bob", "m-bob", statement)), Fixture::verified("p-bob", "m-bob", statement))) == "governance.custodian.required",
             Fixture::code(GovernanceTransitions::createPackage(world, "o-finch", k, "pkg-f2", "m-dave",
-                Fixture::verified("p-alice", "m-alice", statement),
-                Fixture::verified("p-dave", "m-dave", statement))) == "governance.membership.other-org",
+                Fixture::verified("p-alice", "m-alice", statement), Fixture::verified("p-dave", "m-dave", statement))) == "governance.membership.other-org",
             Fixture::code(GovernanceTransitions::createPackage(world, "o-finch", k, "pkg-f2", "m-bot",
-                Fixture::verified("p-alice", "m-alice", Governance::creationStatement("pkg-f2", k, "m-bot")),
-                Fixture::verified("p-bot", "m-bot", Governance::creationStatement("pkg-f2", k, "m-bot")))) == "governance.principal.workflow"
+                Fixture::verified("p-alice", "m-alice", botStatement), Fixture::verified("p-bot", "m-bot", botStatement))) == "governance.principal.workflow"
         ])
     }
 
@@ -54,18 +48,17 @@ module AdminTests {
         let world = Fixture::world()
         let k = key("finch", "toolkit")
         let statement = Governance::creationStatement("pkg-f2", k, "m-bob")
-        let draft = Fixture::orKeep(world, fn(w) =>
-            createFinch(w, k, "pkg-f2", "m-bob", "p-bob", Maybe::none(), Fixture::verified("p-bob", "m-bob", statement)))
+        let draft = Fixture::orKeep(world, fn(w) => createFinch(w, k, "pkg-f2", "m-bob", Maybe::none(), Fixture::verified("p-bob", "m-bob", statement)))
         let active = Fixture::orKeep(draft, fn(w) => GovernanceTransitions::activatePackage(w, "pkg-f2"))
         checkAll("creation records one administrator and no operational state", [
             match Governance::packageOf(draft, "pkg-f2") {
                 Success { value } => value.admin == "m-bob" && value.authorityEpoch == 1
                 Error => false
             },
-            Fixture::code(GovernanceTransitions::authorize(draft, "pkg-f2", "m-bob", Governance::PublishRelease, 100)) == "governance.package.draft",
+            authorizeCode(draft, "pkg-f2", "m-bob", Governance::PublishRelease, 100) == "governance.package.draft",
             Fixture::code(GovernanceTransitions::activatePackage(draft, "pkg-f2")) == "",
             Fixture::code(GovernanceTransitions::activatePackage(active, "pkg-f2")) == "governance.package.not-draft",
-            Fixture::code(GovernanceTransitions::authorize(active, "pkg-f2", "m-bob", Governance::PublishRelease, 100)) == "governance.permission.missing"
+            authorizeCode(active, "pkg-f2", "m-bob", Governance::PublishRelease, 100) == "governance.permission.missing"
         ])
     }
 
@@ -76,28 +69,24 @@ module AdminTests {
         let world = Fixture::world()
         let withSelfGrant = Fixture::grantOn(world, "pkg-f1", "g-alice", "m-alice", Governance::PublishRelease, Maybe::none(), 100)
         checkAll("the administrator has no implicit operational capability", [
-            Fixture::code(GovernanceTransitions::authorize(world, "pkg-f1", "m-alice", Governance::PublishRelease, 100)) == "governance.permission.missing",
-            Fixture::code(GovernanceTransitions::authorize(world, "pkg-f1", "m-alice", Governance::YankRelease, 100)) == "governance.permission.missing",
-            Fixture::code(GovernanceTransitions::authorize(world, "pkg-f1", "m-alice", Governance::ManageSecurity, 100)) == "governance.permission.missing",
-            Fixture::code(GovernanceTransitions::authorize(withSelfGrant, "pkg-f1", "m-alice", Governance::PublishRelease, 100)) == "",
-            join(mapList([
-                Governance::PublishRelease,
-                Governance::YankRelease,
-                Governance::EditMetadata,
-                Governance::ManageMaintenance,
-                Governance::ManageSecurity
-            ], Governance::permissionName), ",") == "publish-release,yank-release,edit-metadata,manage-maintenance,manage-security"
+            authorizeCode(world, "pkg-f1", "m-alice", Governance::PublishRelease, 100) == "governance.permission.missing",
+            authorizeCode(world, "pkg-f1", "m-alice", Governance::YankRelease, 100) == "governance.permission.missing",
+            authorizeCode(world, "pkg-f1", "m-alice", Governance::ManageSecurity, 100) == "governance.permission.missing",
+            authorizeCode(withSelfGrant, "pkg-f1", "m-alice", Governance::PublishRelease, 100) == "",
+            join(mapList([Governance::PublishRelease, Governance::YankRelease, Governance::EditMetadata,
+                Governance::ManageMaintenance, Governance::ManageSecurity], Governance::permissionName), ",") == "publish-release,yank-release,edit-metadata,manage-maintenance,manage-security"
         ])
     }
 
-    fn grantBy(world, proverPrincipal, proverMembership, to, permission) = {
-        let statement = match Governance::packageOf(world, "pkg-f1") {
-            Success { value } => Governance::grantStatement(value.key, value.authorityEpoch, to, permission, Maybe::none())
-            Error => ""
-        }
-        GovernanceTransitions::grantPermission(world, "pkg-f1", "g-x",
-            Fixture::verified(proverPrincipal, proverMembership, statement), to, permission, Maybe::none(), 100)
+    /// The statement the current `pkg-f1` authority signs for one grant.
+    fn grantStatementFor(world, to, permission) = match Governance::packageOf(world, "pkg-f1") {
+        Success { value } => Governance::grantStatement(value.key, value.authorityEpoch, to, permission, Maybe::none())
+        Error => ""
     }
+
+    fn grantBy(world, proverPrincipal, proverMembership, to, permission) =
+        GovernanceTransitions::grantPermission(world, "pkg-f1", "g-x",
+            Fixture::verified(proverPrincipal, proverMembership, grantStatementFor(world, to, permission)), to, permission, Maybe::none(), 100)
 
     /// Only the exact current administrator manages grants; custodians,
     /// members, other organizations' custodians and workflows cannot.
@@ -110,10 +99,8 @@ module AdminTests {
             Fixture::code(grantBy(world, "p-dave", "m-dave", "m-carol", Governance::EditMetadata)) == "governance.admin.not-current",
             Fixture::code(grantBy(world, "p-bot", "m-bot", "m-carol", Governance::EditMetadata)) == "governance.admin.not-current",
             Fixture::code(GovernanceTransitions::grantPermission(world, "pkg-f1", "g-y",
-                Fixture::workflow("p-alice", "m-alice", match Governance::packageOf(world, "pkg-f1") {
-                    Success { value } => Governance::grantStatement(value.key, value.authorityEpoch, "m-carol", Governance::EditMetadata, Maybe::none())
-                    Error => ""
-                }), "m-carol", Governance::EditMetadata, Maybe::none(), 100)) == "governance.proof.ceremony"
+                Fixture::workflow("p-alice", "m-alice", grantStatementFor(world, "m-carol", Governance::EditMetadata)),
+                "m-carol", Governance::EditMetadata, Maybe::none(), 100)) == "governance.proof.ceremony"
         ])
     }
 
@@ -121,18 +108,16 @@ module AdminTests {
     fn lifecycleDecisions() = {
         let world = Fixture::world()
         let k = key("finch", "ledger")
-        let deprecateAs = fn(principal, membership) => GovernanceTransitions::deprecate(world, "pkg-f1",
-            Fixture::verified(principal, membership, Governance::deprecateStatement(k, 1)))
+        let deprecateAs = fn(principal, membership, epoch) => GovernanceTransitions::deprecate(world, "pkg-f1",
+            Fixture::verified(principal, membership, Governance::deprecateStatement(k, epoch)))
         let deprecated = Fixture::orKeep(world, fn(w) => GovernanceTransitions::deprecate(w, "pkg-f1",
             Fixture::verified("p-alice", "m-alice", Governance::deprecateStatement(k, 1))))
         checkAll("lifecycle decisions need the administrator's exact proof", [
-            Fixture::code(deprecateAs("p-alice", "m-alice")) == "",
-            Fixture::code(deprecateAs("p-erin", "m-erin")) == "governance.admin.not-current",
-            Fixture::code(GovernanceTransitions::deprecate(world, "pkg-f1",
-                Fixture::verified("p-alice", "m-alice", Governance::deprecateStatement(k, 2)))) == "governance.proof.statement-mismatch",
-            Fixture::code(GovernanceTransitions::tombstone(deprecated, "pkg-f1",
-                Fixture::verified("p-alice", "m-alice", Governance::tombstoneStatement(k, 1)))) == "governance.package.deprecated",
-            Fixture::code(GovernanceTransitions::authorize(deprecated, "pkg-f1", "m-alice", Governance::PublishRelease, 100)) == "governance.package.deprecated"
+            Fixture::code(deprecateAs("p-alice", "m-alice", 1)) == "",
+            Fixture::code(deprecateAs("p-erin", "m-erin", 1)) == "governance.admin.not-current",
+            Fixture::code(deprecateAs("p-alice", "m-alice", 2)) == "governance.proof.statement-mismatch",
+            Fixture::code(GovernanceTransitions::tombstone(deprecated, "pkg-f1", Fixture::verified("p-alice", "m-alice", Governance::tombstoneStatement(k, 1)))) == "governance.package.deprecated",
+            authorizeCode(deprecated, "pkg-f1", "m-alice", Governance::PublishRelease, 100) == "governance.package.deprecated"
         ])
     }
 

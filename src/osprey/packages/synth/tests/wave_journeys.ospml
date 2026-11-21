@@ -21,7 +21,7 @@ wavText text = mapList (toList (range (0, length text)), \at => wavCharacter (te
 
 wavWord16 value = [bitAnd value 255, bitAnd (shiftRight value 8) 255]
 
-wavWord32 value = [bitAnd value 255, bitAnd (shiftRight value 8) 255, bitAnd (shiftRight value 16) 255, bitAnd (shiftRight value 24) 255]
+wavWord32 value = listConcat (wavWord16 value) [bitAnd (shiftRight value 16) 255, bitAnd (shiftRight value 24) 255]
 
 wavHeader size = wavJoin [wavText "RIFF", wavWord32 size, wavText "WAVE"]
 
@@ -66,7 +66,9 @@ exactRows rows = forEachList (rows, \c => expect (c.got, c.want))
 
 nearRows rows = forEachList (rows, \c => near (c.got, c.want, c.within))
 
-wavMonoFmt () = wavChunk ("fmt ", wavFormatBody (1, 1, 48000, 2, 96000, 16))
+wavStdBody () = wavFormatBody (1, 1, 48000, 2, 96000, 16)
+
+wavMonoFmt () = wavChunk ("fmt ", wavStdBody ())
 
 wavMonoData () = wavChunk ("data", [0, 64, 0, 128])
 
@@ -79,7 +81,10 @@ formantVoice n = formantVoiceAt (1000.0, n)
 
 formantTone (level, n) = level * sin (6.283185307179586 * 500.0 * toFloat n / formantRate)
 
-formantConfig (ratio, formant) = synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = synth::SpectralPitch(ratio = ratio, formant = formant), mix = 1.0)
+// Every spectral journey below shares one 16 kHz rate, 1,024-sample window and 256-sample hop.
+spectralConfig transform = synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = transform, mix = 1.0)
+
+formantConfig (ratio, formant) = spectralConfig (synth::SpectralPitch(ratio = ratio, formant = formant))
 
 formantStep (config, voices, carry, n) = match carry
     Error why => Error(message = why)
@@ -93,6 +98,11 @@ spectralRendered (config, voices) = spectralFor (config, voices, 4096)
 spectralFor (config, voices, count) = foldList (toList (range (0, count)), Success(value = { held = SpectralStreams::initial config, samples = [] }), \(carry, n) => formantStep (config, voices, carry, n))
 
 formantRendered config = spectralRendered (config, { main = formantVoice, side = \_ => 0.0 })
+
+// One shared runner for every journey result: the rendered samples go to `use`, a refusal is asserted exactly.
+renderedHeld (rendered, use) = match rendered
+    Error why => expect (synth::Faults::detail why, "")
+    Success run => use run.samples
 
 formantWindowed (samples, n) = (listGet samples n ?: 0.0) * (0.5 - 0.5 * cos (6.283185307179586 * toFloat (n - 3072) / 1024.0))
 
@@ -110,7 +120,7 @@ formantLevels config = match formantRendered config
 // [SYNTH-SPECTRAL-PITCH-EFFECT] A full-scale 500 Hz sine moved `semitones` and `cents` by the FFT shifter, 8,192 samples.
 shiftedSine (semitones, cents) =
     ratio = SpectralMath::semitoneRatio (semitones, cents)
-    config = synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = synth::SpectralPitch(ratio = ratio, formant = ratio), mix = 1.0)
+    config = spectralConfig (synth::SpectralPitch(ratio = ratio, formant = ratio))
     spectralFor (config, { main = \n => formantTone (1.0, n), side = \_ => 0.0 }, 8192)
 
 // Upward zero crossings from frame 2,048 (past the 1,023-frame latency), each placed between frames by interpolation.
@@ -128,7 +138,7 @@ measured times = match listGet times 0
         Success last => toFloat (satSub (length times) 1) * formantRate / (last - first)
 
 // The loudest sample of each 256-frame block from frame 2,048.
-blockPeaks samples = mapList (toList (range (8, intDiv (length samples) 256)), \block => foldList (toList (range (satMul block 256, satMul (satAdd block 1) 256)), 0.0, \(peak, n) => larger (peak, abs (listGet samples n ?: 0.0))))
+blockPeaks samples = mapList (toList (range (8, intDiv (length samples) 256)), \block => loudestIn (samples, satMul block 256, satMul (satAdd block 1) 256))
 
 larger (a, b) = match a > b
     true => a
@@ -141,15 +151,13 @@ smaller (a, b) = match a < b
 decibels ratio = 20.0 * ln ratio / ln 10.0
 
 // Within 1 cent of 500 Hz times the ratio, the level within 1 dB of full scale and at most 1 dB of ripple.
-shiftHeld (c) = match shiftedSine (c.semitones, c.cents)
-    Error why => expect (synth::Faults::detail why, "")
-    Success run =>
-        want = 500.0 * SpectralMath::semitoneRatio (c.semitones, c.cents)
-        cents = 1200.0 * ln (measured (crossings run.samples) / want) / ln 2.0
-        peaks = blockPeaks run.samples
-        loudest = foldList (peaks, 0.0, larger)
-        quietest = foldList (peaks, 1000.0, smaller)
-        expect ("${c.semitones} st ${c.cents} c: ${abs cents < 1.0} ${abs (decibels loudest) <= 1.0} ${decibels (loudest / quietest) <= 1.0}", "${c.semitones} st ${c.cents} c: true true true")
+shiftHeld (c) = renderedHeld (shiftedSine (c.semitones, c.cents), \samples =>
+    want = 500.0 * SpectralMath::semitoneRatio (c.semitones, c.cents)
+    cents = 1200.0 * ln (measured (crossings samples) / want) / ln 2.0
+    peaks = blockPeaks samples
+    loudest = foldList (peaks, 0.0, larger)
+    quietest = foldList (peaks, 1000.0, smaller)
+    expect ("${c.semitones} st ${c.cents} c: ${abs cents < 1.0} ${abs (decibels loudest) <= 1.0} ${decibels (loudest / quietest) <= 1.0}", "${c.semitones} st ${c.cents} c: true true true"))
 
 // [SYNTH-ADVANCED-CORE-RESOURCES] A 512-sample burst shifted an octave keeps sounding past size − 1 + hop after its last
 // input and is exactly silent after 2 · (size − 1): the declared tail.
@@ -159,15 +167,18 @@ burst n = match n < 512
 
 loudestIn (samples, first, limit) = foldList (toList (range (first, limit)), 0.0, \(peak, n) => larger (peak, abs (listGet samples n ?: 0.0)))
 
-tailHeld () = match spectralFor (formantConfig (2.0, 2.0), { main = burst, side = \_ => 0.0 }, 4096)
-    Error why => expect (synth::Faults::detail why, "")
-    Success run =>
-        expect (SpectralStreams::tail 1024, 2046)
-        expect (loudestIn (run.samples, 1791, 2558) > 0.001, true)
-        expect (loudestIn (run.samples, 2558, 4096) == 0.0, true)
-        succeeds (Timings::tail (Components::spectral (7, 1024, 256, 6.0)), \held => expect (held, 2046.0))
+tailHeld () = renderedHeld (spectralRendered (formantConfig (2.0, 2.0), { main = burst, side = \_ => 0.0 }), \samples =>
+    expect (SpectralStreams::tail 1024, 2046)
+    expect (loudestIn (samples, 1791, 2558) > 0.001, true)
+    expect (loudestIn (samples, 2558, 4096) == 0.0, true)
+    succeeds (Timings::tail (Components::spectral (7, 1024, 256, 6.0)), \held => expect (held, 2046.0)))
 
-morphConfig (amount, mode) = synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = synth::SpectralMorph(amount = amount, mode = mode), mix = 1.0)
+morphConfig (amount, mode) = spectralConfig (synth::SpectralMorph(amount = amount, mode = mode))
+
+// The geometric path a morph walks between two pitches or levels; a glided morph's harmonics 1-3 land at level 1/k.
+geometric (a, low, high) = exp ((1.0 - a) * ln low + a * ln high)
+
+glided (samples, glide) = forEachList ([1.0, 2.0, 3.0], \k => near (formantLevel (samples, glide * k) / 256.0 * k, 1.0, 0.2))
 
 // Output level at one frequency once the morph has settled, as a sine amplitude (Hann window gain 1/2, DFT N/2).
 morphLevel (config, voices, frequency) = match spectralRendered (config, voices)
@@ -180,29 +191,28 @@ partialsTone (fundamental, count, n) = foldList (toList (range (1, satAdd count 
 harmonicTone (fundamental, n) = partialsTone (fundamental, 6, n)
 
 // Blend of two 500 Hz sines at levels m and s lands on the geometric path exp((1 - a) ln m + a ln s), within 5%.
-blendLanded (c) = near (morphLevel (morphConfig (c.a, synth::Blend), { main = \n => formantTone (c.m, n), side = \n => formantTone (c.s, n) }, 500.0) / exp ((1.0 - c.a) * ln c.m + c.a * ln c.s), 1.0, 0.05)
+blendLanded (c) = near (morphLevel (morphConfig (c.a, synth::Blend), { main = \n => formantTone (c.m, n), side = \n => formantTone (c.s, n) }, 500.0) / geometric (c.a, c.m, c.s), 1.0, 0.05)
 
-// The 1.875 kHz : 937.5 Hz level ratio of the main vowel under the side vowel's envelope at amount a.
-envelopeTilt a = match spectralRendered (morphConfig (a, synth::Envelope), { main = formantVoice, side = \n => formantVoiceAt (1875.0, n) })
-    Error _ => -1.0
-    Success run => formantLevel (run.samples, 1875.0) / formantLevel (run.samples, 937.5)
+// Measure both resonances and the gap between harmonics from the same rendered vowel.
+envelopeLevels a = match spectralRendered (morphConfig (a, synth::Envelope), { main = formantVoice, side = \n => formantVoiceAt (1875.0, n) })
+    Error why =>
+        expect (synth::Faults::detail why, "a rendered vowel")
+        { low = 1.0, high = 1.0 }
+    Success run =>
+        expect (formantLevel (run.samples, 1015.625) / 256.0 < 0.000001, true)
+        { low = formantLevel (run.samples, 937.5), high = formantLevel (run.samples, 1875.0) }
 
 // Six main harmonics against three side harmonics: three pairs glide, the main's harmonics 4-6 fade by 1 - a where they stand.
-orphansLanded (c) = match spectralRendered (morphConfig (c.a, synth::Partial), { main = \n => partialsTone (220.0, 6, n), side = \n => partialsTone (330.0, 3, n) })
-    Error why => expect (synth::Faults::detail why, "")
-    Success run =>
-        glide = exp ((1.0 - c.a) * ln 220.0 + c.a * ln 330.0)
-        forEachList ([1.0, 2.0, 3.0], \k => near (formantLevel (run.samples, glide * k) / 256.0 * k, 1.0, 0.2))
-        forEachList ([4.0, 5.0, 6.0], \k => near (formantLevel (run.samples, 220.0 * k) / 256.0 * k / (1.0 - c.a), 1.0, 0.2))
+orphansLanded (c) = renderedHeld (spectralRendered (morphConfig (c.a, synth::Partial), { main = \n => partialsTone (220.0, 6, n), side = \n => partialsTone (330.0, 3, n) }), \samples =>
+    glided (samples, geometric (c.a, 220.0, 330.0))
+    forEachList ([4.0, 5.0, 6.0], \k => near (formantLevel (samples, 220.0 * k) / 256.0 * k / (1.0 - c.a), 1.0, 0.2)))
 
 // One rendered Partial morph from a harmonic tone at `low` to one at `high`: harmonic k must land at k x the
 // geometric glide with level 1/k (within 20%), and each source's own harmonics must sit 30 dB below it.
-partialLanded (c) = match spectralRendered (morphConfig (c.a, synth::Partial), { main = \n => harmonicTone (c.low, n), side = \n => harmonicTone (c.high, n) })
-    Error why => expect (synth::Faults::detail why, "")
-    Success run =>
-        glide = exp ((1.0 - c.a) * ln c.low + c.a * ln c.high)
-        forEachList ([1.0, 2.0, 3.0], \k => near (formantLevel (run.samples, glide * k) / 256.0 * k, 1.0, 0.2))
-        forEachList (filterList ([c.low, c.high], \f => abs (f - glide) > 25.0), \f => expect (formantLevel (run.samples, f) / 256.0 < 0.032, true))
+partialLanded (c) = renderedHeld (spectralRendered (morphConfig (c.a, synth::Partial), { main = \n => harmonicTone (c.low, n), side = \n => harmonicTone (c.high, n) }), \samples =>
+    glide = geometric (c.a, c.low, c.high)
+    glided (samples, glide)
+    forEachList (filterList ([c.low, c.high], \f => abs (f - glide) > 25.0), \f => expect (formantLevel (samples, f) / 256.0 < 0.032, true)))
 
 configured config = match SpectralStreams::configure config
     Error _ => false
@@ -214,27 +224,43 @@ resourceOf (name, rate, channels, root, samples) = synth::SampleResource(name = 
 // No two of `hashes` collide.
 allDistinct hashes = forEachList (toList (range (0, length hashes)), \i => forEachList (toList (range (satAdd i 1, length hashes)), \j => expect ((listGet hashes i ?: 0) == (listGet hashes j ?: 1), false)))
 
+// [SYNTH-ADVANCED-CORE-RESOURCES] The kick every identity variant below edits, and its content hash.
+kickSample () = resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5, 1.0])
+
+sampleHash r = (synth::Resources::sample r).hash
+
 tableIdentity (name, size, count) = match synth::Wavetables::classic (size, count)
     Error why =>
         expect (synth::Faults::detail why, "a table")
         synth::ResourceIdentity(name = "", hash = 0, channels = 0, sampleRate = 0, frames = 0, version = 0)
     Success t => synth::Resources::table (name, t)
 
+// Pin every sample word against direct harmonic synthesis on the current platform.
+phasedTableIdentity () =
+    indices = toList (range (0, 64))
+    fundamental = mapList (indices, \i => synth::TableMath::harmonic (1.0, 1.0, 0.0, toFloat i / 64.0))
+    full = mapList (indices, \i => (listGet fundamental i ?: 0.0) + synth::TableMath::harmonic (-0.25, 3.0, 0.125, toFloat i / 64.0))
+    scale = 1.0 / foldList (full, 1.0, \(highest, v) => synth::TableMath::larger (highest, abs v))
+    levels = [synth::TableLevel(harmonics = 3, samples = mapList (full, \v => v * scale)), synth::TableLevel(harmonics = 1, samples = mapList (fundamental, \v => v * scale))]
+    reference = synth::Wavetable(size = 64, harmonics = 3, frames = [synth::TableFrame(levels = levels)])
+    succeeds (synth::Wavetables::prepare (64, [synth::TableSpectrum(amplitudes = [1.0, 0.0, -0.25], phases = [0.0, 0.5, 0.125])]), \table => expect ((synth::Resources::table ("phased", table)).hash, (synth::Resources::table ("phased", reference)).hash))
+
 identityJourney () =
-    base = resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5, 1.0])
-    id = synth::Resources::sample base
+    kick = kickSample ()
+    id = synth::Resources::sample kick
     expect ("${id.name} ${id.channels} ${id.sampleRate} ${id.frames} ${id.version}", "kick 1 48000 4 1")
-    expect ((synth::Resources::sample (resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5, 1.0]))).hash, id.hash)
+    expect (sampleHash kick, id.hash)
     // The name labels; it does not hash. Every word and every field of metadata does.
-    expect ((synth::Resources::sample (resourceOf ("renamed", 48000, 1, 60.0, [0.0, 0.5, -0.5, 1.0]))).hash, id.hash)
-    variants = [base, resourceOf ("kick", 48000, 1, 60.0, [-1.0 * 0.0, 0.5, -0.5, 1.0]), resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5, 0.9999999999999999]), resourceOf ("kick", 44100, 1, 60.0, [0.0, 0.5, -0.5, 1.0]), resourceOf ("kick", 48000, 2, 60.0, [0.0, 0.5, -0.5, 1.0]), resourceOf ("kick", 48000, 1, 60.000000000001, [0.0, 0.5, -0.5, 1.0]), resourceOf ("kick", 48000, 1, 60.0, [0.5, 0.0, -0.5, 1.0]), resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5]), resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5, 1.0, 0.0]), resourceOf ("kick", 48000, 1, 60.0, [])]
-    allDistinct (mapList (variants, \r => (synth::Resources::sample r).hash))
+    expect (sampleHash (kick(name = "renamed")), id.hash)
+    variants = [kick, kick(samples = [-1.0 * 0.0, 0.5, -0.5, 1.0]), kick(samples = [0.0, 0.5, -0.5, 0.9999999999999999]), kick(sampleRate = 44100), kick(sourceChannels = 2), kick(rootFrequency = 60.000000000001), kick(samples = [0.5, 0.0, -0.5, 1.0]), kick(samples = [0.0, 0.5, -0.5]), kick(samples = [0.0, 0.5, -0.5, 1.0, 0.0]), kick(samples = [])]
+    allDistinct (mapList (variants, sampleHash))
     forEachList ([{ channels = 1, count = 6, frames = 6 }, { channels = 2, count = 6, frames = 3 }, { channels = 2, count = 7, frames = 3 }, { channels = 8, count = 64, frames = 8 }, { channels = 0, count = 5, frames = 5 }], \c => expect ((synth::Resources::sample (resourceOf ("pad", 48000, c.channels, 60.0, mapList (toList (range (0, c.count)), toFloat)))).frames, c.frames))
     expect ((synth::Resources::matches (id, id)) ?: id(hash = 0), id)
-    refusedAs (synth::Resources::matches (id, synth::Resources::sample (resourceOf ("kick", 48000, 1, 60.0, [0.0, 0.5, -0.5, 0.75]))), "resource", "The resource kick changed since the project saved it.")
-    refusedAs (synth::Resources::matches (id, synth::Resources::sample (resourceOf ("kick", 96000, 1, 60.0, [0.0, 0.5, -0.5, 1.0]))), "resource", "The resource kick changed since the project saved it.")
+    refusedAs (synth::Resources::matches (id, synth::Resources::sample (kick(samples = [0.0, 0.5, -0.5, 0.75]))), "resource", "The resource kick changed since the project saved it.")
+    refusedAs (synth::Resources::matches (id, synth::Resources::sample (kick(sampleRate = 96000))), "resource", "The resource kick changed since the project saved it.")
     forEachList ([id(name = "snare"), id(version = 2), id(version = 0)], \saved => refusedAs (synth::Resources::matches (saved, id), "resource", "The saved resource ${saved.name} is missing or uses another identity version."))
     // Tables hash every frame and level; a table is one rate-independent channel of `size` samples.
+    phasedTableIdentity ()
     wide = tableIdentity ("classic", 256, 32)
     expect ("${wide.name} ${wide.channels} ${wide.sampleRate} ${wide.frames} ${wide.version}", "classic 1 0 256 1")
     expect ((tableIdentity ("classic", 256, 32)).hash, wide.hash)
@@ -247,11 +273,8 @@ registerWaveJourneys () =
             expect (wave.sampleRate, 48000)
             expect (wave.channels, 1)
             expect (wave.frames, 2))
-        forEachList ([
-            { bytes = wavFile (1, 1, 44100, 8, [0, 128, 255]), want = [-1.0, 0.0, 0.9921875], channels = 1, frames = 3 },
-            { bytes = wavFile (1, 1, 8000, 24, [0, 0, 128, 0, 0, 64, 255, 255, 127]), want = [-1.0, 0.5, 0.9999998807907104], channels = 1, frames = 3 },
-            { bytes = wavFile (1, 1, 192000, 32, [0, 0, 0, 128, 255, 255, 255, 127]), want = [-1.0, 0.9999999995343387], channels = 1, frames = 2 },
-            { bytes = wavFile (3, 2, 48000, 32, [0, 0, 128, 63, 0, 0, 0, 191, 0, 0, 128, 191, 0, 0, 128, 63]), want = [0.25, 0.0], channels = 2, frames = 2 },
+        forEachList ([{ bytes = wavFile (1, 1, 44100, 8, [0, 128, 255]), want = [-1.0, 0.0, 0.9921875], channels = 1, frames = 3 }, { bytes = wavFile (1, 1, 8000, 24, [0, 0, 128, 0, 0, 64, 255, 255, 127]), want = [-1.0, 0.5, 0.9999998807907104], channels = 1, frames = 3 },
+            { bytes = wavFile (1, 1, 192000, 32, [0, 0, 0, 128, 255, 255, 255, 127]), want = [-1.0, 0.9999999995343387], channels = 1, frames = 2 }, { bytes = wavFile (3, 2, 48000, 32, [0, 0, 128, 63, 0, 0, 0, 191, 0, 0, 128, 191, 0, 0, 128, 63]), want = [0.25, 0.0], channels = 2, frames = 2 },
             { bytes = wavFile (1, 2, 48000, 16, [0, 64, 0, 192, 255, 127, 0, 128]), want = [0.0, -0.0000152587890625], channels = 2, frames = 2 }],
             \held => succeeds (WaveImport::decode held.bytes, \wave =>
                 succeeds (SampleResources::fromWave ("decoded", 60.0, wave), \resource => succeeds (SampleResources::mono resource, \mono => sameSamples (mono, held.want)))
@@ -260,20 +283,15 @@ registerWaveJourneys () =
                 expect (wave.sampleRate > 0, true)
                 expect (length wave.samples == satMul wave.frames wave.channels, true)))
         // An 18-byte format extension, a metadata chunk and odd-body padding all survive.
-        succeeds (WaveImport::decode (wavPack [wavChunk ("fmt ", listConcat (wavFormatBody (1, 1, 48000, 2, 96000, 16)) (wavWord16 0)), wavChunk ("LIST", [9, 8, 7]), wavMonoData ()]), \wave => sameSamples (wave.samples, [0.5, -1.0]))))
+        succeeds (WaveImport::decode (wavPack [wavChunk ("fmt ", listConcat (wavStdBody ()) (wavWord16 0)), wavChunk ("LIST", [9, 8, 7]), wavMonoData ()]), \wave => sameSamples (wave.samples, [0.5, -1.0]))))
     test ("WAV import refuses corrupt sizes, headers, chunks, formats and out-of-range samples", \() => arithmetic (\() =>
         fmt = wavMonoFmt ()
         data = wavMonoData ()
-        standard = wavFormatBody (1, 1, 48000, 2, 96000, 16)
-        forEachList ([
-            { why = "WAV file size must be between 12 bytes and 8 MiB.", bad = [[], wavText "RIFF"] },
-            { why = "Expected a complete little-endian RIFF/WAVE file.", bad = [wavJoin [wavText "RIFX", wavWord32 4, wavText "WAVE"], wavJoin [wavText "RIFF", wavWord32 4, wavText "WAVX"], wavJoin [wavText "RIFF", wavWord32 99, wavText "WAVE"]] },
+        standard = wavStdBody ()
+        forEachList ([{ why = "WAV file size must be between 12 bytes and 8 MiB.", bad = [[], wavText "RIFF"] }, { why = "Expected a complete little-endian RIFF/WAVE file.", bad = [wavJoin [wavText "RIFX", wavWord32 4, wavText "WAVE"], wavJoin [wavText "RIFF", wavWord32 4, wavText "WAVX"], wavJoin [wavText "RIFF", wavWord32 99, wavText "WAVE"]] },
             { why = "WAV input contains a value outside the byte range.", bad = [wavJoin [[999, 73, 70, 70], wavWord32 4, wavText "WAVE"], wavJoin [[-1, 73, 70, 70], wavWord32 4, wavText "WAVE"], listConcat (wavHeader 12) [999, 85, 78, 75, 4, 0, 0, 0]] },
-            { why = "Truncated WAV chunk header or too many chunks (limit 1024).", bad = [listConcat (wavHeader 10) [74, 85, 78, 75, 0, 0], wavPack (mapList (toList (range (0, 1025)), \_ => wavChunk ("LIST", [])))] },
-            { why = "Truncated WAV chunk body or padding.", bad = [wavPack [fmt, wavJoin [wavText "data", wavWord32 100]], wavPack [fmt, wavUnpadded ("LIST", [1, 2, 3])]] },
-            { why = "Duplicate or short WAV format chunk.", bad = [wavPack [fmt, fmt, data], wavPack [wavChunk ("fmt ", wavJoin [wavWord16 1, wavWord16 1, wavWord32 48000, wavWord32 96000, wavWord16 2, [16]]), data]] },
-            { why = "Duplicate WAV data chunk.", bad = [wavPack [fmt, data, data]] },
-            { why = "WAV requires one format chunk and one data chunk.", bad = [wavPack [fmt], wavPack [data]] },
+            { why = "Truncated WAV chunk header or too many chunks (limit 1024).", bad = [listConcat (wavHeader 10) [74, 85, 78, 75, 0, 0], wavPack (mapList (toList (range (0, 1025)), \_ => wavChunk ("LIST", [])))] }, { why = "Truncated WAV chunk body or padding.", bad = [wavPack [fmt, wavJoin [wavText "data", wavWord32 100]], wavPack [fmt, wavUnpadded ("LIST", [1, 2, 3])]] },
+            { why = "Duplicate or short WAV format chunk.", bad = [wavPack [fmt, fmt, data], wavPack [wavChunk ("fmt ", wavJoin [wavWord16 1, wavWord16 1, wavWord32 48000, wavWord32 96000, wavWord16 2, [16]]), data]] }, { why = "Duplicate WAV data chunk.", bad = [wavPack [fmt, data, data]] }, { why = "WAV requires one format chunk and one data chunk.", bad = [wavPack [fmt], wavPack [data]] },
             { why = "Truncated WAV format extension.", bad = [wavPack [wavChunk ("fmt ", listAppend (standard, 0)), data]] },
             { why = "Extended WAV formats are not supported by this importer.", bad = [wavPack [wavChunk ("fmt ", listConcat (standard, wavWord16 2)), data], wavPack [wavChunk ("fmt ", listConcat (standard, listAppend (wavWord16 0, 0))), data], wavPack [wavChunk ("fmt ", listConcat (standard, listAppend (wavWord16 2, 0))), data]] },
             { why = "WAV requires 2–1048576 complete sample frames.", bad = [wavFile (1, 1, 48000, 16, [0, 64]), wavFile (1, 1, 48000, 16, [0, 64, 0, 128, 0])] },
@@ -285,23 +303,10 @@ registerWaveJourneys () =
     test ("sample resources validate metadata, prepare grains and transpose by root pitch", \() => arithmetic (\() =>
         kit = synth::SampleResource(name = "loop", sampleRate = 48000, sourceChannels = 2, rootFrequency = 261.6255653005986, samples = [0.5, -0.5, 0.25, -0.25])
         longName = join (mapList (toList (range (0, 256)), \_ => "x")) ""
-        forEachList ([
-            { r = kit, want = true },
-            { r = kit(name = "x"), want = true },
-            { r = kit(name = longName), want = true },
-            { r = kit(sampleRate = 8000), want = true },
-            { r = kit(sampleRate = 192000), want = true },
-            { r = kit(sourceChannels = 1), want = true },
-            { r = kit(rootFrequency = 1.0), want = true },
-            { r = kit(rootFrequency = 20000.0), want = true },
-            { r = kit(name = ""), want = false },
-            { r = kit(name = join (mapList (toList (range (0, 257)), \_ => "x")) ""), want = false },
-            { r = kit(sampleRate = 7999), want = false },
-            { r = kit(sampleRate = 192001), want = false },
-            { r = kit(sourceChannels = 0), want = false },
-            { r = kit(sourceChannels = 3), want = false },
-            { r = kit(rootFrequency = 0.99), want = false },
-            { r = kit(rootFrequency = 20000.1), want = false }],
+        forEachList ([{ r = kit, want = true }, { r = kit(name = "x"), want = true }, { r = kit(name = longName), want = true }, { r = kit(sampleRate = 8000), want = true }, { r = kit(sampleRate = 192000), want = true },
+            { r = kit(sourceChannels = 1), want = true }, { r = kit(rootFrequency = 1.0), want = true }, { r = kit(rootFrequency = 20000.0), want = true }, { r = kit(name = ""), want = false },
+            { r = kit(name = join (mapList (toList (range (0, 257)), \_ => "x")) ""), want = false }, { r = kit(sampleRate = 7999), want = false }, { r = kit(sampleRate = 192001), want = false },
+            { r = kit(sourceChannels = 0), want = false }, { r = kit(sourceChannels = 3), want = false }, { r = kit(rootFrequency = 0.99), want = false }, { r = kit(rootFrequency = 20000.1), want = false }],
             \held => expect (SampleResources::metadata held.r, held.want))
         succeeds (SampleResources::prepare kit, \prepared => expect (structuralEquals prepared kit, true))
         // kit(samples=...) variants fail inside grain preparation; the last fails metadata first.
@@ -331,11 +336,8 @@ registerWaveJourneys () =
     test ("generated wave math: PCM words, downmix, tuning and polyBLEP shapes hit exact IEEE754 values", \() => arithmetic (\() =>
         exactRows ([{ got = WaveMath::pcm (0.0, 8.0), want = -1.0 }, { got = WaveMath::pcm (128.0, 8.0), want = 0.0 }, { got = WaveMath::pcm (255.0, 8.0), want = 0.9921875 }, { got = WaveMath::pcm (0.0, 16.0), want = 0.0 }, { got = WaveMath::pcm (16384.0, 16.0), want = 0.5 }, { got = WaveMath::pcm (32767.0, 16.0), want = 0.999969482421875 }, { got = WaveMath::pcm (32768.0, 16.0), want = -1.0 }, { got = WaveMath::pcm (65535.0, 16.0), want = -0.000030517578125 }, { got = WaveMath::pcm (4194304.0, 24.0), want = 0.5 }, { got = WaveMath::pcm (8388608.0, 24.0), want = -1.0 }, { got = WaveMath::pcm (16777215.0, 24.0), want = -0.00000011920928955078125 }, { got = WaveMath::pcm (0.0, 32.0), want = 0.0 }, { got = WaveMath::pcm (2147483648.0, 32.0), want = -1.0 }, { got = WaveMath::pcm (4294967295.0, 32.0), want = -0.00000000046566128730773926 }])
         exactRows ([{ got = WaveMath::mono (0.25, -0.5), want = -0.125 }, { got = WaveMath::mono (-1.0, 1.0), want = 0.0 }, { got = WaveMath::mono (0.5, 0.5), want = 0.5 }, { got = WaveMath::mono (0.75, 0.25), want = 0.5 }])
-        nearRows ([
-            { got = WaveMath::playbackRate (48000.0, 48000.0, 440.0, 220.0), want = 2.0, within = 0.000000001 },
-            { got = WaveMath::playbackRate (48000.0, 96000.0, 880.0, 880.0), want = 0.5, within = 0.000000001 },
-            { got = WaveMath::playbackRate (44100.0, 48000.0, 440.0, 440.0), want = 0.91875, within = 0.000000001 },
-            { got = WaveMath::playbackRate (24000.0, 48000.0, 440.0, 220.0), want = 1.0, within = 0.000000001 }])
+        nearRows ([{ got = WaveMath::playbackRate (48000.0, 48000.0, 440.0, 220.0), want = 2.0, within = 0.000000001 }, { got = WaveMath::playbackRate (48000.0, 96000.0, 880.0, 880.0), want = 0.5, within = 0.000000001 },
+            { got = WaveMath::playbackRate (44100.0, 48000.0, 440.0, 440.0), want = 0.91875, within = 0.000000001 }, { got = WaveMath::playbackRate (24000.0, 48000.0, 440.0, 220.0), want = 1.0, within = 0.000000001 }])
         nearRows ([{ got = Waves::midiFrequency 69.0, want = 440.0, within = 0.0 }, { got = Waves::midiFrequency 81.0, want = 880.0, within = 0.0 }, { got = Waves::midiFrequency 57.0, want = 220.0, within = 0.0 }, { got = Waves::midiFrequency 60.0, want = 261.6255653005986, within = 0.000000001 }, { got = Waves::midiFrequency 0.0, want = 8.175798915643707, within = 0.000000001 }])
         exactRows ([{ got = Waves::velocitySample (0.5, 0.8), want = 0.4 }, { got = Waves::velocitySample (-1.0, 0.25), want = -0.25 }, { got = Waves::velocitySample (0.25, 0.0), want = 0.0 }])
         exactRows ([{ got = Waves::wrap 0.25, want = 0.25 }, { got = Waves::wrap 1.25, want = 0.25 }, { got = Waves::wrap (-0.25), want = 0.75 }, { got = Waves::wrap 3.0, want = 0.0 }])
@@ -384,19 +386,17 @@ registerWaveJourneys () =
         // Blend walks the geometric path: 0.5 at 0, sqrt(0.5 x 0.05) = 0.158 halfway (a crossfade would give 0.275), 0.05 at 1.
         forEachList ([{ m = 1.0, s = 0.01, a = 0.5 }, { m = 0.2, s = 0.8, a = 0.5 }, { m = 0.4, s = 0.4, a = 0.3 }, { m = 0.9, s = 0.1, a = 0.1 }, { m = 0.05, s = 0.6, a = 0.8 }, { m = 0.3, s = 0.03, a = 0.66 }], blendLanded)
         // Envelope tilt rises monotonically with the amount, from the main vowel's own shape to the side's.
-        tilts = mapList ([0.0, 0.25, 0.5, 0.75, 1.0], envelopeTilt)
+        levels = mapList ([0.0, 0.25, 0.5, 0.75, 1.0], envelopeLevels)
+        tilts = mapList (levels, \level => level.high / level.low)
         forEachList ([0, 1, 2, 3], \i => expect ((listGet tilts (satAdd i 1) ?: 0.0) > (listGet tilts i ?: 0.0) * 1.2, true))
         expect ((listGet tilts 0 ?: 9.0) < 0.2 && (listGet tilts 4 ?: 0.0) > 5.0, true)
         forEachList ([{ a = 0.0, want = 0.5 }, { a = 0.25, want = 0.2812 }, { a = 0.5, want = 0.1581 }, { a = 0.75, want = 0.0889 }, { a = 1.0, want = 0.05 }],
             \c => near (morphLevel (morphConfig (c.a, synth::Blend), tones, 500.0) / c.want, 1.0, 0.05))
         // Envelope: the main voice's harmonics (resonance 1 kHz) take on the side voice's resonance at 1.875 kHz.
-        vowels = { main = formantVoice, side = \n => formantVoiceAt (1875.0, n) }
-        own = { low = morphLevel (morphConfig (0.0, synth::Envelope), vowels, 937.5), high = morphLevel (morphConfig (0.0, synth::Envelope), vowels, 1875.0) }
-        crossed = { low = morphLevel (morphConfig (1.0, synth::Envelope), vowels, 937.5), high = morphLevel (morphConfig (1.0, synth::Envelope), vowels, 1875.0) }
+        own = listGet levels 0 ?: { low = 0.0, high = 0.0 }
+        crossed = listGet levels 4 ?: own
         expect (own.low > own.high * 5.0, true)
         expect (crossed.high > crossed.low * 5.0, true)
-        // The harmonics stay the main voice's: no energy appears between them.
-        forEachList ([0.0, 0.5, 1.0], \a => expect (morphLevel (morphConfig (a, synth::Envelope), vowels, 1015.625) < 0.000001, true))
         forEachList ([{ a = -0.1, ok = false }, { a = 1.1, ok = false }, { a = 0.0, ok = true }, { a = 1.0, ok = true }], \c => expect (configured (morphConfig (c.a, synth::Blend)), c.ok))
         forEachList ([{ a = 0.0, b = 0.0, t = 0.5, want = 0.0 }, { a = 0.5, b = 0.05, t = 0.0, want = 0.5 }, { a = 1.0, b = 4.0, t = 0.5, want = 2.0 }], \c => near (SpectralMath::logBlend (c.a, c.b, c.t), c.want, 0.0000001))
         forEachList ([{ w = 4.0, o = 1.0, t = 0.5, want = 2.0 }, { w = 4.0, o = 1.0, t = 0.0, want = 1.0 }, { w = 1.0, o = 0.0, t = 1.0, want = 1.0 }, { w = 1000.0, o = 1.0, t = 1.0, want = 16.0 }], \c => near (SpectralMath::envelopeMorph (c.w, c.o, c.t), c.want, 0.0000001))))
@@ -407,8 +407,8 @@ registerWaveJourneys () =
         // Unequal partial counts: orphans fade by 1 - amount at their own pitch while the pairs glide.
         forEachList ([{ a = 0.0 }, { a = 0.25 }, { a = 0.4 }, { a = 0.5 }], orphansLanded)
         // Partial morphing is stateful: it cannot share a series analysis.
-        expect (configured (synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = synth::SpectralSeries(steps = [synth::SpectralMorph(amount = 0.5, mode = synth::Partial)]), mix = 1.0)), false)
-        expect (configured (synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = synth::SpectralSeries(steps = [synth::SpectralMorph(amount = 0.5, mode = synth::Blend)]), mix = 1.0)), true)
+        expect (configured (spectralConfig (synth::SpectralSeries(steps = [synth::SpectralMorph(amount = 0.5, mode = synth::Partial)]))), false)
+        expect (configured (spectralConfig (synth::SpectralSeries(steps = [synth::SpectralMorph(amount = 0.5, mode = synth::Blend)]))), true)
         forEachList ([{ a = 1.0, b = 2.0, c = 1.0, want = 0.0 }, { a = 0.0, b = 0.0, c = 0.0, want = 0.0 }, { a = 0.0, b = 1.0, c = 0.5, want = 0.1666666667 }, { a = 0.5, b = 1.0, c = 0.0, want = -0.1666666667 }, { a = 0.0, b = 1.0, c = 1.0, want = 0.5 }, { a = 1.0, b = 1.0, c = 0.0, want = -0.5 }, { a = -2.0, b = 0.0, c = -2.0, want = 0.0 }], \p => near (SpectralMath::peakOffset (p.a, p.b, p.c), p.want, 0.0000001))
         near (SpectralMath::logLevel 1.0, 0.000000001, 0.0000000001)))
     test ("sample, impulse and table resources carry a content identity: name, 64-bit hash, channels, rate, frames and version, and a changed or renamed resource is refused [SYNTH-ADVANCED-CORE-RESOURCES]", \() => arithmetic identityJourney)

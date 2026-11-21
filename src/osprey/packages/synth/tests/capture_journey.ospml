@@ -19,5 +19,5 @@ sendCaptureJourney () =
                 expect (done.audio.position, 4)
                 sameSamples (done.observation, row.want))))
     renderRefused (Renderer::capture (plan, 48000.0, controls, start, 1, \(seen, frame) => captureNode (99, seen, frame)))
-    succeeds (Renderer::capture (plan, 48000.0, controls, start, 0, \(seen, frame) => captureNode (1, seen, frame)), \unchanged => expect (structuralEquals (unchanged, start), true))
+    succeeds (Renderer::capture (plan, 48000.0, controls, start, 0, \(seen, frame) => captureNode (1, seen, frame)), \unchanged => sameStructure (unchanged, start))
     renderRefused (Renderer::capture (plan, 48000.0, controls, start, -1, \(seen, frame) => captureNode (1, seen, frame)))

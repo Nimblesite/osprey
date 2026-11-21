@@ -455,7 +455,14 @@ pub(super) fn measure_snapshot_step(
 ) -> (bool, usize) {
     let function = snapshot_function(body);
     super::provenance::measured_clones(|| {
-        super::solver::advance_function(analyzer, 0, &function, &mut state.0, &mut state.1, history)
+        super::solver::advance_function(
+            analyzer,
+            0,
+            &function,
+            state.0.get_mut(0),
+            state.1.get_mut(0),
+            history,
+        )
     })
 }
 

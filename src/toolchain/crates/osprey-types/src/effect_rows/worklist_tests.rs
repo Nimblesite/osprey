@@ -1,5 +1,5 @@
 //! A sweep re-analyses exactly the functions whose inputs moved.
-use super::{affected, record_read, recording};
+use super::{affected, invalidate_scope, record_read, recording};
 use crate::effect_rows::expr_args::{assert_metadata_written, assert_model_metadata_matches};
 use crate::effect_rows::field_rows::tests::analyzer as empty_analyzer;
 use crate::effect_rows::recursion::recursive_functions;
@@ -31,16 +31,9 @@ fn recording_collects_reads_and_restores_the_enclosing_recording() {
 #[test]
 fn only_moved_functions_and_their_readers_are_reanalysed() {
     let reads = [set(&[1]), set(&[]), set(&[2]), set(&[0, 1])];
-    assert_eq!(affected(&set(&[1]), &set(&[]), &reads), set(&[0, 1, 3]));
-    assert_eq!(affected(&set(&[2]), &set(&[]), &reads), set(&[2]));
-    assert_eq!(affected(&set(&[]), &set(&[]), &reads), set(&[]));
-}
-
-#[test]
-fn a_moved_function_the_file_scope_read_reanalyses_everything() {
-    let reads = [set(&[]), set(&[]), set(&[])];
-    assert_eq!(affected(&set(&[1]), &set(&[1]), &reads), set(&[0, 1, 2]));
-    assert_eq!(affected(&set(&[1]), &set(&[2]), &reads), set(&[1]));
+    assert_eq!(affected(&set(&[1]), &reads), set(&[0, 1, 3]));
+    assert_eq!(affected(&set(&[2]), &reads), set(&[2]));
+    assert_eq!(affected(&set(&[]), &reads), set(&[]));
 }
 
 #[test]
@@ -105,8 +98,8 @@ fn acyclic_rows_replace_superseded_callback_arguments() {
             &analyzer,
             id,
             function,
-            &mut state.0,
-            &mut state.1,
+            state.0.get_mut(id),
+            state.1.get_mut(id),
             &mut history,
         );
         assert_eq!(
@@ -213,7 +206,14 @@ fn advance_all(
 ) -> bool {
     let mut moved = false;
     for (id, function) in analyzer.index.functions.iter().enumerate() {
-        moved |= advance_function(analyzer, id, function, &mut next.0, &mut next.1, history);
+        moved |= advance_function(
+            analyzer,
+            id,
+            function,
+            next.0.get_mut(id),
+            next.1.get_mut(id),
+            history,
+        );
     }
     moved
 }
@@ -356,8 +356,8 @@ fn advanced_function_model(
         analyzer,
         id,
         function,
-        &mut next.0,
-        &mut next.1,
+        next.0.get_mut(id),
+        next.1.get_mut(id),
         &mut history,
     );
     (
@@ -453,18 +453,31 @@ fn assert_alias_route(
     let reads = function_reads(&analyzer);
     assert_eq!(file_reads, set(&[leaf]));
     assert_eq!(reads, vec![BTreeSet::new(); index.functions.len()]);
-    assert_invalidation(leaf, &file_reads, &reads);
+    let count = reads.len();
+    let initial = file_scope_env(
+        index,
+        instances,
+        statements,
+        &vec![Summary::default(); count],
+        &vec![None; count],
+    );
+    assert_scope_invalidation(leaf, count, &initial, &analyzer.file_scope);
 }
 
-fn assert_invalidation(leaf: usize, file_reads: &BTreeSet<usize>, reads: &[BTreeSet<usize>]) {
-    assert_eq!(
-        affected(&set(&[leaf]), file_reads, reads),
-        (0..reads.len()).collect()
-    );
-    assert_eq!(
-        affected(&set(&[leaf]), &BTreeSet::new(), reads),
-        set(&[leaf])
-    );
+fn assert_scope_invalidation(
+    leaf: usize,
+    count: usize,
+    initial: &CallableEnv,
+    converged: &CallableEnv,
+) {
+    for previous in [None, Some(converged)] {
+        let mut dirty = set(&[leaf]);
+        invalidate_scope(previous, converged, &mut dirty, count);
+        assert_eq!(dirty, set(&[leaf]));
+    }
+    let mut dirty = set(&[leaf]);
+    invalidate_scope(Some(initial), converged, &mut dirty, count);
+    assert_eq!(dirty, (0..count).collect());
 }
 
 #[test]

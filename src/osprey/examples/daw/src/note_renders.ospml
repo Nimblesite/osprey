@@ -98,18 +98,30 @@ module NoteRenders
 
     modal (note, noteSpan, rate, decay, brightness, modes) = synth::Outcomes::carried (PatchVoices::told (synth::ModalBanks::configure (synth::ModalConfig(sampleRate = rate, frequency = hertz note, decay = decay, brightness = brightness, strike = 0.37, count = 8, modes = modes))), \bank => folded (noteSpan, synth::ModalBanks::initial bank, \(run, frame) => stepped (run, PatchVoices::told (synth::ModalBanks::next (bank, run.held, impulse (note.velocity, frame))))))
 
-    voice (note, noteSpan, rate, tone, cents, age) = synth::OperatorConfig(sampleRate = rate, frequency = ArrangeMath::detuned (hertz note, cents), shape = synth::DistortedPhase(breakpoint = ArrangeMath::bloomed (tone.breakpoint, age, tone.bloom, rate)), depth = 0.0, spread = 0.0, feedback = tone.feedback, amplitude = ArrangeMath::operatorLevel (note.velocity, age, noteSpan.gate, tone.attack, tone.release, rate))
+    voice (note, noteSpan, rate, tone, frequency, age) = synth::OperatorConfig(sampleRate = rate, frequency = frequency, shape = synth::DistortedPhase(breakpoint = ArrangeMath::bloomed (tone.breakpoint, age, tone.bloom, rate)), depth = 0.0, spread = 0.0, feedback = tone.feedback, amplitude = ArrangeMath::operatorLevel (note.velocity, age, noteSpan.gate, tone.attack, tone.release, rate))
 
-    operatorStep (note, noteSpan, rate, tone, run, frame) =
-        one = synth::PhaseOperators::next (voice (note, noteSpan, rate, tone, tone.detune, toFloat frame), run.held.one, 0.0, 0.0)
-        other = synth::PhaseOperators::next (voice (note, noteSpan, rate, tone, 0.0 - tone.detune, toFloat frame), run.held.other, 0.0, 0.0)
+    operatorStep (note, noteSpan, rate, tone, upper, lower, run, frame) =
+        config = voice (note, noteSpan, rate, tone, upper, toFloat frame)
+        one = synth::PhaseOperators::next (config, run.held.one, 0.0, 0.0)
+        other = synth::PhaseOperators::next (config(frequency = lower), run.held.other, 0.0, 0.0)
         ran (run, VoicePair(one = one.next, other = other.next), one.sample + other.sample)
 
     toneValid tone = tone.attack >= 0.001 && tone.attack <= 10.0 && tone.release >= 0.001 && tone.release <= 10.0 && tone.bloom >= 0.001 && tone.bloom <= 10.0 && abs tone.detune <= 100.0
 
-    operated (note, noteSpan, rate, tone) = match toneValid tone
+    (** Validate both detuned voices once and keep their phase and feedback between blocks. *)
+    export operatorPair (note, noteSpan, rate, tone, sends) = match toneValid tone
         false => Error(message = "Operator attack, release and bloom must be 0.001 to 10 s and detune within 100 cents.")
-        true => synth::Outcomes::carried (PatchVoices::told (synth::PhaseOperators::configure (voice (note, noteSpan, rate, tone, abs tone.detune, 0.0))), \_ => folded (noteSpan, VoicePair(one = synth::PhaseOperators::initial, other = synth::PhaseOperators::initial), \(run, frame) => operatorStep (note, noteSpan, rate, tone, run, frame)))
+        true =>
+            pitch = hertz note
+            first = ArrangeMath::detuned (pitch, tone.detune)
+            second = ArrangeMath::detuned (pitch, 0.0 - tone.detune)
+            synth::Outcomes::carried (PatchVoices::told (synth::PhaseOperators::configure (voice (note, noteSpan, rate, tone, synth::TableMath::larger (first, second), 0.0))), \_ =>
+                Success(value = ActiveOperator(span = noteSpan, tone = tone, firstHz = first, secondHz = second, phases = VoicePair(one = synth::PhaseOperators::initial, other = synth::PhaseOperators::initial), sends = sends)))
+
+    (** Render the requested note ages from the pair's current state. *)
+    export operatorFrames (note, pair, rate, first, stop) = foldList (toList (range (first, stop)), NoteRun(held = pair.phases, samples = [], fault = ""), \(run, frame) => operatorStep (note, pair.span, rate, pair.tone, pair.firstHz, pair.secondHz, run, frame))
+
+    operated (note, noteSpan, rate, tone) = synth::Outcomes::carried (operatorPair (note, noteSpan, rate, tone, []), \pair => finished (operatorFrames (note, pair, rate, 0, noteSpan.total)))
 
     body (note, rate, hit, age) = synth::OperatorConfig(sampleRate = rate, frequency = ArrangeMath::swept (hertz note, hit.sweep, age, rate), shape = synth::PlainPhase, depth = 0.0, spread = 0.0, feedback = 0.0, amplitude = ArrangeMath::drumBody (note.velocity, hit.noise, age, hit.decay, rate))
 

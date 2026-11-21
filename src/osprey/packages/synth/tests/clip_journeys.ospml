@@ -19,7 +19,7 @@ keyed (kind, offset, pitch, identity, velocity) = synth::HostNote(kind = kind, o
 
 eventClip notes = synth::NodeClip(clipNode = 1, clipChannels = 0, clipSamples = [], clipNotes = notes)
 
-missingClip () = synth::NodeClip(clipNode = -1, clipChannels = 0, clipSamples = [], clipNotes = [])
+missingClip () = audioClipFixture (-1, 0, [])
 
 // The success value of a render step, or `fallback` after a failed expectation.
 renderedOr (outcome, fallback, use) = match outcome
@@ -128,7 +128,7 @@ budgetedHost (graph, hosted) =
                 expect (pending.pendingNode, 9)
                 expect (length block.samples, 1024)
                 expect (length (filterList (block.samples, \s => abs s > 0.000001)) > 0, true)
-                wet = synth::NodeClip(clipNode = 9, clipChannels = 1, clipSamples = block.samples, clipNotes = [])
+                wet = audioClipFixture (9, 1, block.samples)
                 match synth::GraphClips::replied (pending, wet)
                     Error why => expect (synth::Faults::detail why, "combined graph resumed")
                     Success done => match done
@@ -176,7 +176,7 @@ sineHeard (label, samples, frequency) =
 // [SYNTH-HOST-GRAPH] A send can tap either the stereo bus or one of its split outlets.
 stereoTapJourney () =
     graph = built ([Components::stereo 1, Components::split (2, 2)], [cable (1, 2)])
-    stereo = synth::NodeClip(clipNode = 1, clipChannels = 2, clipSamples = [0.25, -0.5, 0.75, -1.0], clipNotes = [])
+    stereo = audioClipFixture (1, 2, [0.25, -0.5, 0.75, -1.0])
     // Track playback folds each stereo frame to mono before the track panner.
     stereoOutput = stereo(clipSamples = [1.0, -1.0, 0.25, 0.75])
     forEachList ([{ output = stereoOutput, mono = [0.0, 0.5] }, { output = stereo(clipChannels = 1), mono = stereo.clipSamples }, { output = stereo(clipSamples = []), mono = [] }], \row =>
@@ -193,6 +193,19 @@ stereoTapJourney () =
 
 registerClipJourneys () =
     audio = monoPort ("audio", synth::Audio, synth::Amplitude)
+    test ("a wavetable clip carries oscillator phase across offline render blocks", \() => arithmetic (\() =>
+        succeeds (synth::Wavetables::prepare (64, [synth::TableSpectrum(amplitudes = [1.0], phases = [0.0])]), \table =>
+            oscillator = Components::wavetable (1, table, 440.0)
+            graph = built ([oscillator, Components::output 2], [cable (1, 2)])
+            whole = outputClip (2, synth::GraphClips::advance (graph, [], 128))
+            expect (whole.clipChannels, 1)
+            expect (length whole.clipSamples, 128)
+            expect (foldList (whole.clipSamples, 0.0, \(total, sample) => total + sample * sample) > 0.0, true)
+            graphRun (graph, 2, [17, 63, 48], \clock samples =>
+                expect (clock.graphPosition, 128)
+                sameSamples (samples, whole.clipSamples))
+            invalid = graph(nodes = [oscillator(inputs = []), Components::output 2])
+            renderRefused (synth::GraphClips::start (invalid, 128)))))
     test ("MIDI oscillator state validation rejects forged voices, capacity and malformed events", \() => arithmetic (\() =>
         graph = midiInstrument (69.0, 0.5, 8.0)
         expect (synth::MidiOscillators::connected (graph, midiOscillator ()), true)
@@ -274,7 +287,7 @@ registerClipJourneys () =
                             synth::GrainMemory _ => expect (bank.kernelNode, 1)
                             _ => unexpected ()
                         _ => unexpected ()
-                    succeeds (synth::GraphClips::advance (granularGraph (), [], 256), \again => expect (structuralEquals (again, synth::ClipReady(clips = clips)), true))
+                    succeeds (synth::GraphClips::advance (granularGraph (), [], 256), \again => sameStructure (again, synth::ClipReady(clips = clips)))
         renderRefused (synth::GraphClips::advance (granularGraph (), [], 2049))
         channelForged = synth::NodeKernels(kernelNode = 1, kernelMemory = synth::ChannelMemory(channels = [synth::RenderInputs::initialState (granularNode ())]))
         renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = [channelForged]), 64))
@@ -310,9 +323,9 @@ registerClipJourneys () =
         expect (synth::ClipLayouts::validClip (graph, 2, cached(clipNotes = [keyed (1, 0, 69, 1, 0.5)])), false)
         renderRefused (synth::ClipInputs::sourceChannel (graph, synth::Cable(source = 99, outlet = 0, destination = 2, inlet = 0), 0))
         renderRefused (synth::ClipInputs::routed (graph, [], 2, 0))
-        renderRefused (synth::GraphClips::advance (graph, [synth::NodeClip(clipNode = 99, clipChannels = 1, clipSamples = [0.0, 0.0], clipNotes = [])], 2))
+        renderRefused (synth::GraphClips::advance (graph, [audioClipFixture (99, 1, [0.0, 0.0])], 2))
         badPitch = built ([Components::midiNote (1, 60.5, 0.8, 128.0), midiOscillator (), Components::output 3], [cable (1, 2), cable (2, 3)])
-        forEachList ([[], [synth::NodeClip(clipNode = 1, clipChannels = 0, clipSamples = [], clipNotes = [])]], \clips => renderRefused (synth::GraphClips::advance (badPitch, clips, 2)))
+        forEachList ([[], [audioClipFixture (1, 0, [])]], \clips => renderRefused (synth::GraphClips::advance (badPitch, clips, 2)))
         streaming = hostDescriptor ()
         wired = hostNode (synth::Hosted::component (2, streaming(inputChannels = 1, notes = false)))
         audioGraph = built ([Components::sine (1, 440.0), wired, Components::stereoOutput 3], [cable (1, 2), cable (2, 3)])
@@ -396,7 +409,7 @@ registerClipJourneys () =
         forEachList ([again, lifeMoved (again, synth::ReleaseTail), last, ready], \live =>
             restarted = lifeMoved (live, synth::Reset)
             expect (restarted.stage, synth::Ready)
-            expect (structuralEquals (restarted.audio, ready.audio), true)
+            sameStructure (restarted.audio, ready.audio)
             sameSamples ((lifePlayed (lifeMoved (restarted, synth::Activate), snapshot, 64)).audio.samples, first.audio.samples))
         // Re-preparing at a new rate starts silent and steps every phase at that rate.
         long = lived (Lifecycles::prepared (graph, 48000.0, 2048))

@@ -18,8 +18,7 @@ inspectorAction (session, identity, label) = Drive::press (inspectorSelected (se
 
 // [PRISM-ROUTING-EDITOR] One selected module, compact controls, unchanged graph actions.
 inspectorJourney () =
-    launched = editorLaunched ["--empty"]
-    opened = Drive::press (launched, "Patch Controls")
+    opened = openedEditor ["--empty"]
     oscillator = Drive::choose (opened, "Add component", "sine")
     filter = Drive::choose (oscillator, "Add component", "filter")
     viewShows (filter, "Module", true)
@@ -32,7 +31,7 @@ inspectorJourney () =
     expect (Drive::letters (selected, "Cutoff"), false)
     panelDialJourney selected
     viewShows (selected, "Connections", false)
-    sourced = prismTap (selected, "Canvas output 0:0")
+    sourced = prismTap (spacedFilter selected, "Canvas output 0:0")
     connected = prismTap (sourced, "Canvas input 1:0")
     cablesOf (connected, 1)
     disconnected = cutCable (connected, "Cable 0:0 to 1:0")
@@ -40,7 +39,7 @@ inspectorJourney () =
     viewShows (disconnected, "Remove module", false)
     viewShows (disconnected, "Scan VST3", false)
     viewShows (disconnected, "VST3 bundle", false)
-    expect (length (Drive::holding disconnected).graph.nodes, 2)
+    nodesOf (disconnected, 2)
     cableGestureJourney ()
 
 patch (wave, process, depth, lfo, volume) = synth::Patch(pitch = 220.0, sounding = true, filtered = true, wave = wave, cutoff = 20.0 * pow (1000.0, process), depth = depth, lfo = lfo, audible = true, volume = volume)
@@ -156,9 +155,7 @@ zeroStereoResponse () = "4F535631020000000200000000000000" + join (mapList (toLi
 // [SYNTH-DEVICE-QUEUE] The application harness supplies typed counter receipts;
 // the native worker journey separately consumes real AudioQueue buffers.
 // Reconstruct the concrete program so the compiler can prove callable effect provenance.
-deviceDone given =
-    driven = uitest::Driven(drivenSurface = given.drivenSurface, drivenProgram = synth::EditorApp::program (), drivenSeen = given.drivenSeen, drivenNow = given.drivenNow)
-    held = uitest::Drive::holding driven
+deviceDone (driven, held) =
     match held.renderDevicePending
         [pending] =>
             draining = held.renderInput == "!drain"
@@ -178,7 +175,7 @@ audioDone given =
     match startsWith held.renderTicket "prism-audio:device:"
         true => match held.renderDeviceKey == ""
             true => uitest::Drive::completed (driven, held.renderTicket, true, "{\"status\":0,\"session\":\"device\"}")
-            false => deviceDone driven
+            false => deviceDone (driven, held)
         false => match held.renderOpening
             true => uitest::Drive::completed (driven, held.renderTicket, true, "{\"status\":0,\"session\":\"${held.renderTicket}\"}")
             false =>
@@ -241,7 +238,7 @@ windowsAudioJourney () =
 // [PRISM-ROUTING-PRESENTATION] Main's artwork controls edit the same live patch.
 prismIntegratedJourney () =
     opened = editorLaunched []
-    expect (length (Drive::holding opened).graph.nodes, 5)
+    nodesOf (opened, 5)
     cablesOf (opened, 4)
     offeredIn (opened, "Stop playback", false)
     forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Play patch", "Undo", "Redo", "Timeline", "Track patch", "Bus routing"], \label => offeredIn (opened, label, true))
@@ -256,7 +253,7 @@ prismIntegratedJourney () =
     library = prismTap (quieter, "Modules")
     expect ((Drive::holding library).paletteShown, true)
     added = Drive::pointer (Drive::pointer (library, 80.0, 130.0, true), 350.0, 230.0, false)
-    expect (length (Drive::holding added).graph.nodes, 6)
+    nodesOf (added, 6)
     cablesOf (added, 4)
     selectedIs (added, 5)
     expect ((Drive::holding added).paletteDrag, "")
@@ -311,11 +308,7 @@ prismControlJourney opened =
     offeredIn (faster, "LFO Rate: 1/8", true)
     cablesOf (faster, 4)
 
-prismAudio graph = match synth::GraphClips::advance (graph, [], 128)
-    Error why => Error(message = why)
-    Success action => match action
-        synth::ClipWaiting _ _ _ => Error(message = "Built-in graph unexpectedly requested a plug-in.")
-        synth::ClipReady clips => synth::ClipInputs::completed (clips, 3)
+prismAudio graph = clipReady (graph, 128, 3)
 
 prismAudioJourney (sine, triangle, muted) = match prismAudio sine
     Error _ => expect (false, true)
@@ -347,6 +340,11 @@ keyboardDockJourney opened =
     expect ((Drive::holding reopened).armedNote, -1)
     menuJourney reopened
 
+menuPage (driven, label, index) =
+    opened = Drive::press (driven, label)
+    expect (synth::TimelineView::pageIndex (Drive::holding opened).page, index)
+    opened
+
 // [DAW-MENU] The window's menu bar names every command once, each with its shortcut, and a menu command runs
 // the same action as the header's.
 menuJourney driven =
@@ -355,13 +353,10 @@ menuJourney driven =
     logic = Drive::press (driven, "Logic Style")
     expect ((Drive::holding logic).keymap.name, "Logic Style")
     expect ((Views::control (logic.drivenSeen, "Bus Routing")).controlKind, "button")
-    timeline = Drive::press (logic, "Timeline")
-    expect (synth::TimelineView::pageIndex (Drive::holding timeline).page, 1)
+    timeline = menuPage (logic, "Timeline", 1)
     viewShows (timeline, "Save", true)
-    mix = Drive::press (timeline, "Bus Routing")
-    expect (synth::TimelineView::pageIndex (Drive::holding mix).page, 2)
-    patch = Drive::press (mix, "Track Patch")
-    expect (synth::TimelineView::pageIndex (Drive::holding patch).page, 0)
+    mix = menuPage (timeline, "Bus Routing", 2)
+    patch = menuPage (mix, "Track Patch", 0)
     hidden = Drive::press (patch, "Keyboard")
     expect ((Drive::holding hidden).keyboardShown, false)
     library = Drive::press (hidden, "Modules")
@@ -382,12 +377,21 @@ dockTap (driven, label) =
             down = Drive::sent (driven, pressed)
             Drive::sent (down, pressed(touchNow = down.drivenNow, touchDown = false))
 
+// Leave an exposed cable span between the two cards.
+spacedFilter driven =
+    at = controlPoint (driven, "Canvas Filter 1", 0.5)
+    held = grabbedAt (driven, at.pointX, at.pointY - 60.0)
+    moved = Drive::pointer (held, at.pointX + 200.0, at.pointY - 60.0, false)
+    expect ((controlPoint (moved, "Canvas Filter 1", 0.5)).pointX, at.pointX + 200.0)
+    moved
+
 // [PRISM-ROUTING-CABLES] Physical press/move/release, cancellation and direct removal.
 cableGestureJourney () =
-    launched = editorLaunched ["--empty"]
-    opened = Drive::press (launched, "Patch Controls")
-    disconnected = Drive::choose (Drive::choose (opened, "Add component", "sine"), "Add component", "filter")
-    armed = Drive::pointer (disconnected, 488.5, 169.5, true)
+    opened = openedEditor ["--empty"]
+    disconnected = spacedFilter (Drive::choose (Drive::choose (opened, "Add component", "sine"), "Add component", "filter"))
+    oscillator = controlPoint (disconnected, "Canvas output 0:0", 0.5)
+    filter = controlPoint (disconnected, "Canvas input 1:0", 0.5)
+    armed = grabbedAt (disconnected, oscillator.pointX, oscillator.pointY)
     expect ((Drive::holding armed).wireDragging, true)
     preview = Drive::pointer (armed, 450.0, 300.0, true)
     cablesOf (preview, 0)
@@ -395,16 +399,16 @@ cableGestureJourney () =
     cancelled = Drive::pointer (preview, 450.0, 300.0, false)
     expect ((Drive::holding cancelled).wireDragging, false)
     cablesOf (cancelled, 0)
-    source = Drive::pointer (cancelled, 488.5, 169.5, true)
-    connected = clickAt (source, 514.0, 176.0)
+    source = grabbedAt (cancelled, oscillator.pointX, oscillator.pointY)
+    connected = clickAt (source, filter.pointX, filter.pointY)
     cablesOf (connected, 1)
     expect ((Drive::holding connected).wireDragging, false)
-    selected = clickAt (connected, 501.25, 172.75)
+    selected = prismTap (connected, "Cable 0:0 to 1:0")
     expect ((Drive::holding selected).selectedCable, 0)
     offeredIn (selected, "Delete selected cable", true)
     removed = prismTap (selected, "Delete selected cable")
     cablesOf (removed, 0)
-    expect (length (Drive::holding removed).graph.nodes, 2)
+    nodesOf (removed, 2)
     clicked = prismTap (prismTap (removed, "Canvas output 0:0"), "Canvas input 1:0")
     cablesOf (clicked, 1)
     chosen = prismTap (clicked, "Cable 0:0 to 1:0")
@@ -429,11 +433,7 @@ filterSocketJourney () =
 // [PRISM-ROUTING-CABLES] Normalized cutoff endpoints and invalid samples exercise real DSP.
 cutoffOutput (graph, value) =
     control = synth::NodeClip(clipNode = 4, clipChannels = 1, clipSamples = mapList (toList (range (0, 128)), \_ => value), clipNotes = [])
-    match synth::GraphClips::advance (graph, [control], 128)
-        Error why => Error(message = why)
-        Success action => match action
-            synth::ClipWaiting _ _ _ => Error(message = "A built-in filter requested a plug-in.")
-            synth::ClipReady clips => synth::ClipInputs::completed (clips, 3)
+    unhosted (synth::GraphClips::advance (graph, [control], 128), 3)
 
 cutoffAudioJourney () =
     base = synth::EditorState::preset ()
@@ -468,7 +468,7 @@ auditioned driven =
         match (Drive::holding previous).renderTicket == ""
             true => previous
             false => spoken previous)
-    showsIn (finished, "Preview finished.", true)
+    lettersIn (finished, "Preview finished.")
     expect (length speaker.blocks, 6)
     foldList (speaker.blocks, [], \(all, hex) => listConcat all (pcm hex))
 
@@ -511,19 +511,39 @@ rms m = sqrt (m.energy / toFloat (ui::Pick::either (m.index == 0, 1, m.index)))
 within (actual, expected, tolerance) = expect (abs (actual - expected) <= tolerance, true)
 
 patched kinds =
-    opened = Drive::press (editorLaunched ["--empty", "--vst-worker", "/worker/osprey-vst-worker"], "Patch Controls")
+    opened = openedEditor ["--empty", "--vst-worker", "/worker/osprey-vst-worker"]
     added = foldList (kinds, opened, \(d, kind) => Drive::choose (d, "Add component", kind))
     wired = foldList (toList (range (1, length kinds)), added, \(d, i) => prismTap (prismTap (d, "Canvas output ${i - 1}:0"), "Canvas input ${i}:0"))
-    expect (length (Drive::holding wired).graph.cables, length kinds - 1)
+    cablesOf (wired, length kinds - 1)
     wired
 
-// One pointer event on the Patch Controls dials: the scene after the canvas.
-dialPointer (d, x, y, down, shift) = match listGet d.drivenSeen.renderedScenes 1
-    Error _ => d
+// The host draws the timeline and the detached patch in separate regions.
+dialTarget (d, ordinal) = match listGet d.drivenSurface.surfaceBound ordinal
+    Error _ => false
+    Success binding => match binding
+        ui::SceneInput action => action == synth::Controls
+        _ => false
+
+dialPointer (d, x, y, down, shift) = match listGet (filterList (d.drivenSeen.renderedScenes, \ordinal => dialTarget (d, ordinal))) 0
+    Error _ =>
+        expect ("no Patch Controls scene", "a Patch Controls scene")
+        d
     Success scene => Drive::sent (d, ui::Touch(touchNow = d.drivenNow, touchKind = ui::Hosting::pointer, touchOrdinal = scene, touchWords = "", touchDetail = "", touchX = x, touchY = y, touchDown = down, touchShift = shift))
 
+// The controls drawn by the Patch Controls scene at this scene index.
+dialAccess (d, index) = match listGet d.drivenSeen.renderedScenes index
+    Error _ => []
+    Success ordinal => match dialTarget (d, ordinal)
+        false => []
+        true => match listGet (ui::Surfaces::seen (d.drivenSurface, d.drivenProgram)).walkSketches index
+            Error _ => []
+            Success drawing => drawing.sketchedAs.sketchAccess
+
 // The Patch Controls dial of the parameter `label`, as the host sees it.
-dialOf (d, label) = listGet (filterList (d.drivenSeen.renderedAccess, \a => endsWith a.accessLabel " ${label}")) 0
+dialOf (d, label) =
+    scenes = toList (range (0, length d.drivenSeen.renderedScenes))
+    accessible = ui::Lists::flatten (mapList (scenes, \index => dialAccess (d, index)))
+    listGet (filterList (accessible, \a => endsWith a.accessLabel " ${label}")) 0
 
 // [DAW-CONTROLS-DIAL] A press on a dial that never moves asks for the value in figures.
 dialTapped (d, label) = match dialOf (d, label)
@@ -539,26 +559,44 @@ dialTapped (d, label) = match dialOf (d, label)
 
 tuned (driven, node, label, words) = Drive::choose (dialTapped (inspectorSelected (driven, node), label), label, words)
 
+panelFrequency driven = initialOf ((Drive::holding driven).graph, 0, "frequency")
+
+panelDialHistory (selected, released, coarse) =
+    undone = prismTap (released, "Undo")
+    sameGraph (undone, selected)
+    redone = prismTap (undone, "Redo")
+    expect (panelFrequency redone, coarse)
+    asked = dialTapped (prismTap (redone, "Undo"), "Frequency")
+    expect ((Drive::holding asked).dialEntry, "frequency")
+    viewShows (asked, "Frequency", true)
+    refused = Drive::choose (asked, "Frequency", "loud")
+    expect ((Drive::holding refused).dialEntry, "frequency")
+    sameGraph (refused, selected)
+    typed = Drive::choose (refused, "Frequency", "523.25")
+    expect (panelFrequency typed, 523.25)
+    expect ((Drive::holding typed).dialEntry, "")
+    viewShows (typed, "Frequency", false)
+    expect (Drive::letters (typed, "523.25 Hz"), true)
+
 // [DAW-CONTROLS-DIAL] The Patch Controls panel turns a module's numbers with dials: a held drag upward raises the
 // value, Shift turns a tenth as fast, sideways movement does nothing, the whole turn is one undo, and the value
 // can be typed after a press that never moved; a bad entry is refused and the field stays open.
 panelDialJourney selected =
-    expect (length selected.drivenSeen.renderedScenes, 2)
+    expect (length selected.drivenSeen.renderedScenes, 3)
+    expect (length (filterList (selected.drivenSeen.renderedScenes, \ordinal => dialTarget (selected, ordinal))), 1)
     before = (Drive::holding selected).graph
-    frequency editor = match synth::Graphs::node (editor.graph, 0)
-        synth::Invalid _ => 0.0 - 1.0
-        synth::Valid n => match listGet (filterList (n.parameters, \p => p.key == "frequency")) 0
-            Error _ => 0.0 - 1.0
-            Success p => p.initial
-    expect (frequency (Drive::holding selected), 440.0)
+    expect (panelFrequency selected, 440.0)
     expect (Drive::letters (selected, "440.00 Hz"), true)
     valid (synth::Graphs::node (before, 0), \n => forEachList (filterList (n.parameters, \p => p.key == "frequency"), \p =>
-        expect (p.minimum > 0.0 && p.maximum / p.minimum > 100.0, true)
-        // The dial's geometry: a frequency turns on a logarithmic scale and comes back to the same value.
+        expect ([p.minimum, p.maximum], [0.0, 19000.0])
+        // The oscillator includes DC. A strictly positive frequency range turns logarithmically.
         near (synth::DialMath::valueAt (synth::DialMath::turn (440.0, p.minimum, p.maximum), p.minimum, p.maximum), 440.0)
         expect (synth::DialMath::turn (p.minimum, p.minimum, p.maximum), 0.0)
         expect (synth::DialMath::turn (p.maximum, p.minimum, p.maximum), 1.0)
-        expect (synth::DialMath::turn (440.0, p.minimum, p.maximum) > 0.3 && synth::DialMath::turn (440.0, p.minimum, p.maximum) < 0.6, true)
+        near (synth::DialMath::turn (440.0, p.minimum, p.maximum), 440.0 / 19000.0)
+        logTurn = synth::DialMath::turn (440.0, 20.0, 20000.0)
+        expect (logTurn > 0.3 && logTurn < 0.6, true)
+        near (synth::DialMath::valueAt (logTurn, 20.0, 20000.0), 440.0)
         expect (synth::DialMath::dragged (440.0, 0.0, p.minimum, p.maximum, 0.0), 440.0)
         expect (synth::DialMath::dragged (440.0, 1000.0, p.minimum, p.maximum, 0.0), p.maximum)
         expect (synth::DialMath::dragged (440.0, 0.0 - 1000.0, p.minimum, p.maximum, 0.0), p.minimum)
@@ -584,35 +622,21 @@ panelDialJourney selected =
             sideways = dialPointer (pressed, x + 80.0, y + 1.0, true, false)
             sameGraph (sideways, selected)
             lifted = dialPointer (sideways, x + 80.0, y - 36.0, true, false)
-            coarse = frequency (Drive::holding lifted)
+            coarse = panelFrequency lifted
             expect (coarse > 440.0, true)
             expect ((Drive::holding lifted).dragging, 0)
             fine = dialPointer (lifted, x, y - 36.0, true, true)
-            expect (frequency (Drive::holding fine) > 440.0 && frequency (Drive::holding fine) < coarse, true)
+            expect (panelFrequency fine > 440.0 && panelFrequency fine < coarse, true)
             lowered = dialPointer (fine, x, y + 36.0, true, false)
-            expect (frequency (Drive::holding lowered) < 440.0, true)
+            expect (panelFrequency lowered < 440.0, true)
             back = dialPointer (lowered, x, y - 36.0, true, false)
-            expect (frequency (Drive::holding back), coarse)
+            expect (panelFrequency back, coarse)
             released = dialPointer (back, x, y - 36.0, false, false)
             expect ((Drive::holding released).dial, synth::DialIdle)
             expect ((Drive::holding released).dragging, 0 - 1)
             expect ((Drive::holding released).dialEntry, "")
-            expect (frequency (Drive::holding released), coarse)
-            undone = prismTap (released, "Undo")
-            sameGraph (undone, selected)
-            redone = prismTap (undone, "Redo")
-            expect (frequency (Drive::holding redone), coarse)
-            asked = dialTapped (prismTap (redone, "Undo"), "Frequency")
-            expect ((Drive::holding asked).dialEntry, "frequency")
-            viewShows (asked, "Frequency", true)
-            refused = Drive::choose (asked, "Frequency", "loud")
-            expect ((Drive::holding refused).dialEntry, "frequency")
-            sameGraph (refused, selected)
-            typed = Drive::choose (refused, "Frequency", "523.25")
-            expect (frequency (Drive::holding typed), 523.25)
-            expect ((Drive::holding typed).dialEntry, "")
-            viewShows (typed, "Frequency", false)
-            expect (Drive::letters (typed, "523.25 Hz"), true)
+            expect (panelFrequency released, coarse)
+            panelDialHistory (selected, released, coarse)
 
 // A pure tone reaches the device at its exact pitch and level with no click at any block boundary.
 toneJourney hz =
@@ -709,6 +733,22 @@ pageHeadingsJourney () =
     hidden = Drive::press (selected, "Patch Controls")
     expect (Views::letters (hidden.drivenSeen, "Parameters"), false)
 
+// [DAW-TRANSPORT-LIVE-CONTROLS] Every live journey's opening: the folder, the saved song, its launched editor and Play.
+liveLaunched (place, tab, score, check) =
+    _root = makeDir "target/daw-tests"
+    _dir = makeDir place
+    succeeds (daw::Projects::saved (score, "${place}/knobs.json"), \source =>
+        session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
+        started = Drive::press (prismTap (session, tab), "Play Song")
+        expect ((Drive::holding started).songTicket, "daw-song:live:${place}/knobs/live")
+        check (source, started))
+
+// The song proven audible after `frames`, handed to `check` as a live stream.
+heardStream (score, frames, check) = succeeds (daw::Playback::start score, \initial =>
+    succeeds (daw::Playback::next (score, initial, frames), \before =>
+        expect (loudest before.left > 0.01, true)
+        check (daw::LiveStream(playing = before.playing, controlVersion = 0, controlScore = score, noteFolders = []))))
+
 // [DAW-TRANSPORT-LIVE-CONTROLS] Read the same controls and audio block as the renderer between UI events.
 liveMixHistory (place, released, muted) =
     undone = Drive::press (released, "Undo")
@@ -726,68 +766,50 @@ liveMixHistory (place, released, muted) =
 
 liveMixJourney group =
     place = ui::Pick::either (group, "target/daw-tests/live-group", "target/daw-tests/live-mixer")
-    _root = makeDir "target/daw-tests"
-    _dir = makeDir place
     track = keysTrack ()
     first = daw::Note(pitch = 60, start = 0.0, length = 0.02, velocity = 1.0)
     arrangement = timeline [track(bus = ui::Pick::either (group, "pads", ""), notes = [first, first(pitch = 67, start = 0.02)])]
     score = arrangement(buses = ui::Pick::either (group, [padsBus (1.0, "")], []))
-    succeeds (daw::Projects::saved (score, "${place}/knobs.json"), \_ =>
-        session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
-        started = Drive::press (prismTap (session, ui::Pick::either (group, "Bus routing", "Timeline")), "Play Song")
-        expect ((Drive::holding started).songTicket, "daw-song:live:${place}/knobs/live")
+    liveLaunched (place, ui::Pick::either (group, "Bus routing", "Timeline"), score, \(_, started) =>
         label = ui::Pick::either (group, "pads gain", "Track gain")
         offeredIn (started, label, true)
         point = controlPoint (started, label, 0.0)
         down = Drive::pointer (started, point.pointX, point.pointY, true)
         expect (synth::DawSession::holding (Drive::holding down), true)
-        succeeds (daw::Playback::start score, \initial =>
-            succeeds (daw::Playback::next (score, initial, 448), \before =>
-                expect (loudest before.left > 0.01, true)
-                stream = daw::LiveStream(playing = before.playing, controlVersion = 0, controlScore = score, noteFolders = [])
-                liveDialBlock (place, stream, \(quiet, muted) =>
-                    // The held note crosses into the second note at frame 480 while the fader is still down.
-                    expect (loudest quiet.left, 0.0)
-                    expect (loudest quiet.right, 0.0)
-                    up = Drive::pointer (down, point.pointX, point.pointY, false)
-                    expect (synth::DawSession::holding (Drive::holding up), false)
-                    liveMixHistory (place, up, muted)))))
+        heardStream (score, 448, \stream => liveDialBlock (place, stream, \(quiet, muted) =>
+            // The held note crosses into the second note at frame 480 while the fader is still down.
+            expect (loudest quiet.left, 0.0)
+            expect (loudest quiet.right, 0.0)
+            up = Drive::pointer (down, point.pointX, point.pointY, false)
+            expect (synth::DawSession::holding (Drive::holding up), false)
+            liveMixHistory (place, up, muted))))
 
 // [DAW-MIX-BUS-TAP] The send is the only audible route, so its edit is verified at the output.
 liveSendJourney () =
     place = "target/daw-tests/live-send"
-    _root = makeDir "target/daw-tests"
-    _dir = makeDir place
     keys = keysTrack ()
     tap = daw::AudioSend(sendId = 1, source = 1, outlet = 0, bus = "pads", level = 0.5, enabled = true)
     track = keys(gain = 0.0, sends = [tap], notes = [daw::Note(pitch = 60, start = 0.0, length = 0.125, velocity = 1.0)])
     base = timeline [track]
     score = base(buses = [padsBus (1.0, "")])
-    succeeds (daw::Projects::saved (score, "${place}/knobs.json"), \source =>
-        session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
-        started = Drive::press (prismTap (session, "Bus routing"), "Play Song")
-        expect ((Drive::holding started).songTicket, "daw-song:live:${place}/knobs/live")
+    liveLaunched (place, "Bus routing", score, \(source, started) =>
         viewShows (started, "Patch sends…", true)
         list = Drive::press (started, "Patch sends…")
         viewShows (list, "Edit send 1 · pads…", true)
         panel = Drive::press (list, "Edit send 1 · pads…")
         viewShows (panel, "Send level (%)", true)
         muted = Drive::choose (panel, "Send level (%)", "0")
-        succeeds (daw::Playback::start score, \initial =>
-            succeeds (daw::Playback::next (score, initial, 512), \before =>
-                expect (loudest before.left > 0.01, true)
-                stream = daw::LiveStream(playing = before.playing, controlVersion = 0, controlScore = score, noteFolders = [])
-                liveDialBlock (place, stream, \(quiet, applied) =>
-                    expect (loudest quiet.left, 0.0)
-                    expect (loudest quiet.right, 0.0)
-                    invalid = Drive::choose (muted, "Send level (%)", "101")
-                    liveDialBlock (place, applied, \(still, retained) =>
-                        expect (retained.controlVersion, applied.controlVersion)
-                        expect (loudest still.left, 0.0)
-                        cancelled = Drive::press (invalid, "Cancel")
-                        liveDialBlock (place, retained, \(restored, last) =>
-                            expect (last.controlVersion > retained.controlVersion, true)
-                            expect (loudest restored.left > 0.01, true)
-                            expect (loudest restored.right > 0.01, true)
-                            expect ((Drive::holding cancelled).songTicket, (Drive::holding started).songTicket)
-                            succeeds (readFile source, \saved => succeeds (daw::SongFiles::decode saved, \disk => expect (structuralEquals (disk, score), true)))))))))
+        heardStream (score, 512, \stream => liveDialBlock (place, stream, \(quiet, applied) =>
+            expect (loudest quiet.left, 0.0)
+            expect (loudest quiet.right, 0.0)
+            invalid = Drive::choose (muted, "Send level (%)", "101")
+            liveDialBlock (place, applied, \(still, retained) =>
+                expect (retained.controlVersion, applied.controlVersion)
+                expect (loudest still.left, 0.0)
+                cancelled = Drive::press (invalid, "Cancel")
+                liveDialBlock (place, retained, \(restored, last) =>
+                    expect (last.controlVersion > retained.controlVersion, true)
+                    expect (loudest restored.left > 0.01, true)
+                    expect (loudest restored.right > 0.01, true)
+                    expect ((Drive::holding cancelled).songTicket, (Drive::holding started).songTicket)
+                    succeeds (readFile source, \saved => succeeds (daw::SongFiles::decode saved, \disk => expect (structuralEquals (disk, score), true))))))))

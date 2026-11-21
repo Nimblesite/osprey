@@ -31,6 +31,13 @@ type PairAnswers = { first: int, second: int }
 /// Three positional answers harvested from one handler region.
 type TripleAnswers = { first: int, second: int, third: int }
 
+/// One Gift region's order-blind tally of the tags it served, plus its answer.
+type GiftTally<A> = { answer: A, turns: int, tagSum: int, tagProduct: int }
+
+/// One Tally region's ledger: the work's answer, running total, perform count,
+/// last amount and concatenated marks.
+type TallyLog<A> = { answer: A, total: int, runs: int, last: int, marks: string }
+
 /// Union with int payloads; both variants exercised + matched.
 type Outcome =
     Done     { score: int }
@@ -109,6 +116,14 @@ fn loudRegion(label, work) = {
     work()
 }
 
+/// A Logger region that swallows every message, then runs `work`.
+fn silenceLogger(work) = {
+    handle Logger {
+        log _msg => 0
+    }
+    work()
+}
+
 fn mixupDemo() = loudRegion("LOG", fn() => {
     /// priorities -> effectful fibers
     let sHigh = spawnedScore(High)
@@ -126,7 +141,7 @@ fn mixupDemo() = loudRegion("LOG", fn() => {
     showOutcome(classify(0))
 
     /// results into a persistent list, walked with functional builtins
-    let scores = listAppend(listAppend(listAppend(List(), sHigh), sMed), sLow)
+    let scores = [sHigh, sMed, sLow]
     print("list len " + toString(listLength(scores)))
     print("has 81 " + toString(listContains(scores, 81)))
     forEachList(scores, show)
@@ -145,13 +160,10 @@ let prodR = loudRegion("PROD", fn() => {
     perform Logger.log("prod path")
     10
 })
-let silentR = {
-    handle Logger {
-        log _msg => 0
-    }
+let silentR = silenceLogger(fn() => {
     perform Logger.log("silenced")
     0
-}
+})
 print("regions prod=" + toString(prodR) + " silent=" + toString(silentR))
 
 /// (3) Two fibers perform concurrently into ONE resuming handler: each perform
@@ -170,25 +182,32 @@ fn pairSum(a, b) ![Gift, Arith] = {
     await(f1) + await(f2) 
 }
 
-/// The two-fiber resuming interaction under a Gift region answering `tag * 10`.
-fn giftPairSum() = {
+/// Install a Gift region answering `tag * 10` that tallies every tag it serves
+/// — turn count, sum and product are order-blind — then run `work` under it.
+fn giftTally(work) = {
+    mut turns = 0
+    mut tagSum = 0
+    mut tagProduct = 1
     handle Gift {
-        get tag => resume((tag * 10) )
+        get tag => {
+            turns = turns + 1
+            tagSum = tagSum + tag
+            tagProduct = tagProduct * tag
+            resume((tag * 10))
+        }
     }
-    pairSum(1, 2)
+    GiftTally { answer: work(), turns: turns, tagSum: tagSum, tagProduct: tagProduct }
 }
+
+/// The two-fiber resuming interaction under a Gift region answering `tag * 10`.
+fn giftPairSum() = giftTally(fn() => pairSum(1, 2)).answer
 
 let raceSum = exactArithmetic(fn() => giftPairSum())
 print("race-free sum " + toString(raceSum))
 print("=== done ===")
 
 /// Runs one logged job under a silent handler for assertion use.
-fn highScoreForTest() = {
-    handle Logger {
-        log _msg => 0
-    }
-    spawnedScore(High)
-}
+fn highScoreForTest() = silenceLogger(fn() => spawnedScore(High))
 
 // Re-executes effectful fiber work and checks deterministic results on the main fiber.
 
@@ -253,17 +272,31 @@ fn sumBy(xs, step) = match xs {
 /// Sum one spawned `tallyJob` per amount, awaiting each in list order.
 fn sumFibers(amounts) ![Tally, Arith] = sumBy(amounts, runOnce)
 
+/// Install a Tally region whose arm folds each amount into a running total,
+/// appends `mark(amount, total, runs)` to a transcript and answers
+/// `answer(amount, total)`, then run `work` under it.
+fn tallyLedger(mark, answer, work) = {
+    mut total = 0
+    mut runs = 0
+    mut last = 0
+    mut marks = ""
+    handle Tally {
+        add amount => {
+            runs = runs + 1
+            total = total + amount
+            last = amount
+            marks = "${marks}" + mark(amount, total, runs)
+            answer(amount, total)
+        }
+    }
+    TallyLog { answer: work(), total: total, runs: runs, last: last, marks: marks }
+}
+
 /// Sum `amounts`' spawned jobs under a Tally region, answering the summed holds
 /// and the handler's final running total.
 fn tallySums(amounts) = {
-    mut total = 0
-    handle Tally {
-        add amount => {
-            total = total + amount 
-            total
-        }
-    }
-    PairAnswers { first: sumFibers(amounts), second: total }
+    let log = tallyLedger(fn(_amount, _total, _runs) => "", fn(_amount, total) => total, fn() => sumFibers(amounts))
+    PairAnswers { first: log.answer, second: log.total }
 }
 
 /// A spawned fiber that itself spawns: the innermost performs sit two fiber hops
@@ -422,53 +455,34 @@ test("awaiting a finished effectful fiber replays one cached run", exactly(await
 /// counters are asserted as order-blind totals (sum, product, turn count) while
 /// each fiber's private answer is asserted through a positional weight.
 fn concurrentPerformsKeepTheirOwnAnswersCase() = {
-    mut turns = 0
-    mut tagSum = 0
-    mut tagProduct = 1
-    mut edgeTurns = 0
-    mut edgeSum = 0
 
     /// Four DISTINCT tags in flight at once; answers 10, 20, 30, 40. DUPLICATE
     /// tags follow: four performers ask the same question and each still gets its
     /// own round trip, so the turn count sees all four.
-    let tagged = {
-        handle Gift {
-            get tag => {
-                turns = turns + 1 
-                tagSum = tagSum + tag 
-                tagProduct = tagProduct * tag 
-                resume((tag * 10) )
-            }
-        }
-        PairAnswers {
-            first: quadWeighted(1, 2, 3, 4),
-            second: quadWeighted(2, 2, 2, 2)
-        }
-    }
-    let weighted = tagged.first
-    let duplicated = tagged.second
+    let tagged = giftTally(fn() => PairAnswers {
+        first: quadWeighted(1, 2, 3, 4),
+        second: quadWeighted(2, 2, 2, 2)
+    })
+    let weighted = tagged.answer.first
+    let duplicated = tagged.answer.second
+    let turns = tagged.turns
+    let tagSum = tagged.tagSum
+    let tagProduct = tagged.tagProduct
 
     /// Zero and a negative operand: identity and sign cross the mailbox unchanged.
     /// 0*1 + (-10)*100 + 50*10000 + 0*1000000 = 500000 - 1000 = 499000. Then two
     /// performers with the identity tag (70 + 0), then a fiber that spawns fibers:
     /// (30 + 40) from the inner pair, 70 from the side fiber whose tag is 3 + 4.
-    let edges = {
-        handle Gift {
-            get tag => {
-                edgeTurns = edgeTurns + 1 
-                edgeSum = edgeSum + tag 
-                resume((tag * 10) )
-            }
-        }
-        TripleAnswers {
-            first: quadWeighted(0, 0 - 1 , 5, 0),
-            second: pairSum(7, 0),
-            third: nestedFan(3, 4)
-        }
-    }
-    let signed = edges.first
-    let pairEdge = edges.second
-    let deepFan = edges.third
+    let edges = giftTally(fn() => TripleAnswers {
+        first: quadWeighted(0, 0 - 1, 5, 0),
+        second: pairSum(7, 0),
+        third: nestedFan(3, 4)
+    })
+    let signed = edges.answer.first
+    let pairEdge = edges.answer.second
+    let deepFan = edges.answer.third
+    let edgeTurns = edges.turns
+    let edgeSum = edges.tagSum
 
     // Each positional field holds the answer to that fiber's OWN tag. 40301020
     // is what a swap between the first two performers would print, 40302040 what
@@ -556,8 +570,6 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
     mut cell = 0
     mut trail = ""
     mut hops = 0
-    mut turns = 0
-    mut answered = 0
 
     /// Both arms are this region: `trace` 1 records the transcript, `trace` 0
     /// leaves it alone; either way it counts the hop, folds the amount in and
@@ -597,16 +609,10 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
 
     /// Four fibers in flight into ONE resuming region: a turn is atomic end to
     /// end, so four increments of one cannot collapse into fewer.
-    let raced = {
-        handle Gift {
-            get tag => {
-                turns = turns + 1 
-                answered = answered + tag 
-                resume((tag * 10) )
-            }
-        }
-        quadWeighted(2, 3, 5, 0)
-    }
+    let racedLog = giftTally(fn() => quadWeighted(2, 3, 5, 0))
+    let raced = racedLog.answer
+    let turns = racedLog.turns
+    let answered = racedLog.tagSum
 
     /// A third region reads the cell back through the identity amount and never
     /// touches the trail: "code after the region observes the same location".
@@ -684,37 +690,25 @@ fn drainWeights(ch, weights) = sumBy(weights, fn(w) => recv(ch) * w)
 /// inside its own fiber still reaches the region installed outside
 /// ([EFFECTS-HANDLER-STATE]).
 fn channelHandoffKeepsFibersIsolatedCase() = {
-    mut sent = 0
-    mut trail = ""
 
     /// The producer performs for every value it sends, so the identity arm hands
     /// back exactly what goes into the buffer: 11, 22, 33, 44 in that order.
-    let drained = {
-        handle Tally {
-            add amount => {
-                sent = sent + amount 
-                trail = "${trail}${amount},"
-                amount
-            }
-        }
+    let drained = tallyLedger(fn(amount, _total, _runs) => "${amount},", fn(amount, _total) => amount, fn() => {
         let ch = Channel(4)
         let producer = spawn {
-            send(ch, tallyJob(11))
-            send(ch, tallyJob(22))
-            send(ch, tallyJob(33))
-            send(ch, tallyJob(44))
+            forEachList([11, 22, 33, 44], fn(v) => send(ch, tallyJob(v)))
         }
         await(producer)
         drainWeights(ch, [1000000, 10000, 100, 1])
-    }
+    })
+    let sent = drained.total
+    let trail = drained.marks
 
     /// Two fibers, no shared memory: every digit the consumer answers arrived
     /// through the buffer.
     let ch2 = Channel(3)
     let prod2 = spawn {
-        send(ch2, 5)
-        send(ch2, 7)
-        send(ch2, 9)
+        forEachList([5, 7, 9], fn(v) => send(ch2, v))
     }
     let cons2 = spawn {
         drainWeights(ch2, [100, 10, 1])
@@ -730,10 +724,10 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
 
     // 44332211 is what a last-in-first-out buffer would print.
     checkAll("a channel hands values over oldest first", [
-        drained == 11223344,
-        readsAs(drained, [44, 33, 22], 11),
-        drained != 44332211,
-        drained != 0,
+        drained.answer == 11223344,
+        readsAs(drained.answer, [44, 33, 22], 11),
+        drained.answer != 44332211,
+        drained.answer != 0,
         sent == 110,
         sent == (11 + 22 + 33 + 44 ),
         trail == "11,22,33,44,",
@@ -752,7 +746,7 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
         consumed != 975,
         consumed != 0,
         consumed == (500 + 70 + 9 ),
-        drained != consumed,
+        drained.answer != consumed,
         consumed > 0,
         p1 == 1,
         p2 == 2,
@@ -774,7 +768,7 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
         length(trail) != 0,
         (intDiv(sent, 11) ) == 10,
         (sent % 11 ) == 0,
-        drained != sent,
+        drained.answer != sent,
         sent > p1
     ])
 }
@@ -930,40 +924,32 @@ test("nested regions pick the innermost arm for a spawned fiber", exactly(nested
 /// yielded stage additionally pins [CONCURRENCY-YIELD] — `yield` "returns the same
 /// value with the same type" — and `fiberDone` "returns `1` after completion".
 fn fiberPipelineTranscriptIsDeterministicCase() = {
-    mut running = 0
-    mut steps = 0
-    mut script = ""
 
     /// Each stage's amount is the previous stage's answer plus one, so the cell
     /// walks 1, 3, 7, 15 — the 2^n - 1 sequence, and any reordering breaks it. A
     /// yield BETWEEN two performs follows (the parked value is handed straight
     /// back, so the second perform adds 20 to the 20 the first answered), then the
     /// completion probe, which must read 1 once the await returned.
-    let staged = {
-        handle Tally {
-            add amount => {
-                steps = steps + 1 
-                running = running + amount 
-                script = "${script}s${steps}=${running};"
-                running
-            }
-        }
+    let staged = tallyLedger(fn(_amount, total, runs) => "s${runs}=${total};", fn(_amount, total) => total, fn() => {
         let a = runOnce(1)
-        let b = runOnce(a + 1 )
-        let c = runOnce(b + 1 )
-        let d = runOnce(c + 1 )
+        let b = runOnce(a + 1)
+        let c = runOnce(b + 1)
+        let d = runOnce(c + 1)
         let y = runFiber(yieldedJob, 5)
-        let f = spawn tallyJob(0 - 35 )
+        let f = spawn tallyJob(0 - 35)
         let v = await(f)
         TripleAnswers {
             first: a * 1000000 + b * 10000 + c * 100 + d,
             second: y,
-            third: v * 10 + fiberDone(f) 
+            third: v * 10 + fiberDone(f)
         }
-    }
-    let piped = staged.first
-    let yielded = staged.second
-    let probe = staged.third
+    })
+    let piped = staged.answer.first
+    let yielded = staged.answer.second
+    let probe = staged.answer.third
+    let steps = staged.runs
+    let running = staged.total
+    let script = staged.marks
 
     /// The same three amounts forwards: prefix sums 2, 6, 12 => 20.
     let forwards = tallySums([2, 4, 6])

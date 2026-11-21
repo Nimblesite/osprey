@@ -1,5 +1,6 @@
 import synth::SpectralFrames
 import synth::SpectralStreams
+import synth::Activities
 
 // [SYNTH-ADVANCED-SPECTRAL-MODULES] A 64-point frame at 8 kHz has 125 Hz between bins.
 seriesBin (at, i) = match i == at
@@ -17,10 +18,16 @@ seriesOrderJourney () =
     held = SpectralStreams::initial config
     forEachList ([{ steps = [band, shift], at = 5 }, { steps = [shift, band], at = -1 }, { steps = [band, synth::SpectralShift(bins = -1)], at = 1 }], \row =>
         succeeds (SpectralFrames::apply (config(transform = synth::SpectralSeries(steps = row.steps)), bins, bins, held), \frame =>
-            expect (structuralEquals (frame.bins, seriesImpulse (row.at, indices)), true)
-            expect (structuralEquals (frame.memory, held.memory), true)))
+            sameStructure (frame.bins, seriesImpulse (row.at, indices))
+            sameStructure (frame.memory, held.memory)))
     forEachList ([[], [synth::SpectralFreeze(held = true)], mapList (toList (range (0, 9)), \_ => band)], \steps =>
         refusedAs (SpectralFrames::apply (config(transform = synth::SpectralSeries(steps = steps)), bins, bins, held), "configuration", "A spectral series accepts 1-8 band, shift or morph steps only."))
+    voices = { main = centerImpulse, side = \_ => 0.0 }
+    morph = synth::SpectralMorph(amount = 1.0, mode = synth::Blend)
+    forEachList ([band, morph], \step =>
+        succeeds (spectralFor (config(transform = step), voices, 128), \direct =>
+            succeeds (spectralFor (config(transform = synth::SpectralSeries(steps = [step])), voices, 128), \series =>
+                sameStructure (direct.samples, series.samples))))
 
 // A centered impulse has unit Hann weight and alternating real Fourier coefficients.
 centerImpulse i = match i == 32
@@ -30,6 +37,26 @@ centerImpulse i = match i == 32
 inspectionJourney () =
     config = synth::SpectralConfig(sampleRate = 8000.0, size = 64, hop = 16, transform = synth::SpectralPass, mix = 1.0)
     blank = SpectralStreams::initial config
+    quiet = Activities::spectral blank
+    expect (quiet.active, 0)
+    expect (quiet.capacity, 33)
+    expect (quiet.held, false)
+    expect (quiet.energy, 0.0)
+    frozen = config(transform = synth::SpectralFreeze(held = true))
+    succeeds (spectralFor (frozen, { main = \_ => 0.0, side = \_ => 0.0 }, 2 * config.hop), \rendered =>
+        captured = Activities::spectral rendered.held
+        expect (captured.active, 2)
+        expect (captured.held, true)
+        expect (captured.energy, 0.0))
+    succeeds (spectralFor (frozen, { main = \_ => 1.0, side = \_ => 0.5 }, 17), \before =>
+        jumped = SpectralStreams::relocated (frozen, before.held)
+        sameStructure (jumped.input, blank.input)
+        sameStructure (jumped.side, blank.side)
+        sameStructure (jumped.output, before.held.output)
+        sameStructure (jumped.memory, before.held.memory)
+        sameStructure (jumped.motion, before.held.motion)
+        expect (jumped.countdown, config.hop)
+        expect (jumped.captured, true))
     input = mapList (toList (range (0, 64)), centerImpulse)
     succeeds (SpectralStreams::view (config, blank(input = input), 2, 1984), \view =>
         expect (view.channel, 2)

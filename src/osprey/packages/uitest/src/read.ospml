@@ -96,21 +96,10 @@ module Read
     trees walk = (gathered (walk, names walk, Views::none, 0, [])).rebuilt
 
     (** Everything a record, list or scene holds, or none. *)
-    export inside told = match told
-        ui::ToldRecord _ members => members
-        ui::ToldScene _ members _ => members
-        ui::ToldList _ items => items
-        _ => []
+    export inside told = ui::Tell::childrenOf told
 
     (** A told value's member name, or "" when it carries none. *)
-    export name told = match told
-        ui::ToldText key _ => key
-        ui::ToldCount key _ => key
-        ui::ToldReal key _ => key
-        ui::ToldFlag key _ => key
-        ui::ToldRecord key _ => key
-        ui::ToldList key _ => key
-        ui::ToldScene key _ _ => key
+    export name told = ui::Tell::nameOf told
 
     textNamed (name, found, member) = match member
         ui::ToldText key text => Pick::either (key == name && found == "", text, found)

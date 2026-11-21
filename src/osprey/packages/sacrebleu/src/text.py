@@ -10,7 +10,7 @@ sacrebleu (not duplicated) because @osprey/rouge_score depends on
 @osprey/sacrebleu.
 """
 
-__all__ = ["codepoints", "from_codepoints", "map_codepoints", "is_ascii_digit", "is_ascii_lower_alnum", "collapse_whitespace", "map_indexed"]
+__all__ = ["codepoints", "from_codepoints", "map_codepoints", "is_ascii_digit", "is_ascii_lower_alnum", "collapse_whitespace", "map_indexed", "segment_references"]
 
 
 def map_indexed(xs, read):
@@ -55,3 +55,9 @@ def is_ascii_lower_alnum(cp):
 def collapse_whitespace(s):
     """`s` with runs of ASCII whitespace folded to one space, edges trimmed."""
     return join(words(s), " ")
+
+
+def segment_references(documents):
+    """Transpose reference documents to per-segment lists, filling missing segments with empty text."""
+    segments = foldList(documents, 0, lambda count, doc: len(doc) if len(doc) > count else count)
+    return toList(map(range(segments), lambda i: mapList(documents, lambda doc: unwrap_or(listGet(doc, i), ""))))

@@ -117,17 +117,21 @@ function writeBundlePayloads(root, platform) {
   writeSymbolAssets(root, platform)
 }
 
+export function withTempDir(slug, body) {
+  const directory = mkdtempSync(join(tmpdir(), `osprey-${slug}-`))
+  try { return body(directory) } finally { rmSync(directory, { recursive: true, force: true }) }
+}
+
 export function runStagedBundleFixture(restoreJob, change = () => {}) {
-  const root = mkdtempSync(join(tmpdir(), 'osprey-staged-bundle-'))
   const host = `${process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux'}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
   const platform = `src/toolchain/vscode-extension/bin/${host}`
-  try {
+  return withTempDir('staged-bundle', (root) => {
     writeBundlePayloads(root, platform)
     restoreStagedBundle(root, restoreJob)
     change(root, platform)
     return spawnSync('make', ['-f', resolve('scripts/make/extension.mk'), '_vsix_verify',
       'BIN=target/release/osprey', 'EXT_DIR=src/toolchain/vscode-extension', `EXT_PLATFORM=${host}`, 'RTB=src/toolchain/compiler/bin',
       `NATIVE_RUNTIME_ARCHIVES=${nativeArchives.map(name => `src/toolchain/compiler/bin/${name}`).join(' ')}`], { cwd: root, encoding: 'utf8' })
-  } finally { rmSync(root, { recursive: true, force: true }) }
+  })
 }
 

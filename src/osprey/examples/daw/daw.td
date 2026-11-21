@@ -1,6 +1,6 @@
 typeDiagram
 # osprey namespace daw
-# osprey import synth::Prepared synth::Rendered synth::GraphState synth::ProcessorMemory synth::KernelState
+# osprey import synth::Prepared synth::Rendered synth::OperatorState synth::GraphState synth::ProcessorMemory synth::KernelState
 type Request { project: String folder: String from: Float beats: Float }
 type Written { parts: List<String> fault: String }
 type Tone { breakpoint: Float feedback: Float attack: Float release: Float bloom: Float detune: Float }
@@ -28,7 +28,8 @@ type VoicePair<A, B> { one: A other: B }
 type Cue { due: Int note: Note }
 union NoteMemory { ScalarNote { audio: Rendered } MultichannelNote { clock: GraphState<ProcessorMemory<KernelState>> } }
 type ActivePatch { plan: Prepared ports: List<TapLane> span: NoteSpan attack: Float release: Float memory: NoteMemory }
-union NoteDriver { RecordedNote {} PerformingNote { patch: ActivePatch } }
+type ActiveOperator { span: NoteSpan tone: Tone firstHz: Float secondHz: Float phases: VoicePair<OperatorState, OperatorState> sends: List<AudioSend> }
+union NoteDriver { RecordedNote {} PerformingNote { patch: ActivePatch } PerformingOperator { pair: ActiveOperator } }
 type Sounding { cue: Cue at: Int lanes: List<List<Float>> driver: NoteDriver }
 # A note's sound depends on its pitch, length and velocity alone, so each distinct note renders once.
 type Made { struck: Note chord: List<List<Float>> }

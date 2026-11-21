@@ -28,14 +28,8 @@ impl Analyzer<'_> {
                 // parameter to its maker's caller, so `one(f) = fn(w) => f(w)`
                 // left `w` undischargeable at the entry. [EFFECTS-PROVENANCE]
                 let callback = argument.and_then(|value| {
-                    if target_level == 0 {
-                        return self
-                            .project_borrowed_path(value, &use_.projection)?
-                            .callable;
-                    }
-                    let mut lifted = value.clone();
-                    shift_value_levels(&mut lifted, target_level, 0);
-                    self.project_path(lifted, &use_.projection)?.callable
+                    self.project_lifted_path(value, &use_.projection, target_level)?
+                        .callable
                 });
                 if let Some(callback) = callback {
                     summary.union(
@@ -81,12 +75,9 @@ impl Analyzer<'_> {
         // A replacement already belongs to the caller: walking it again can
         // replace its parameter with itself indefinitely for nested records,
         // and can also attribute a callback to the wrong lexical binder.
-        for nested in value.fields.values_mut() {
+        for nested in value.container_children_mut() {
             *nested = self.substitute_value_at(std::mem::take(nested), target_level, arguments);
         }
-        self.substitute_payload_at(&mut value.element, target_level, arguments);
-        self.substitute_payload_at(&mut value.result_payload, target_level, arguments);
-        self.substitute_payload_at(&mut value.fiber_payload, target_level, arguments);
         value.deferred = self.substitute_summary_at(value.deferred, target_level, arguments);
         if let Some(Callable::Parameter { projection, .. }) = &mut value.callable {
             map_projection_values(projection, |value| {
@@ -158,9 +149,13 @@ impl Analyzer<'_> {
                 Callable::Known(mut known) => {
                     known.summary =
                         self.substitute_summary_at(known.summary, target_level + 1, arguments);
-                    known.returned = known.returned.map(|returned| {
-                        Box::new(self.substitute_value_at(*returned, target_level + 1, arguments))
-                    });
+                    if let Some(returned) = known.returned.as_deref_mut() {
+                        *returned = self.substitute_value_at(
+                            std::mem::take(returned),
+                            target_level + 1,
+                            arguments,
+                        );
+                    }
                     value.callable = Some(Callable::Known(known));
                 }
                 Callable::Unknown => value.callable = Some(Callable::Unknown),
@@ -168,28 +163,10 @@ impl Analyzer<'_> {
         }
         value
     }
-
-    /// Substitute through one optional boxed payload slot. The element, result
-    /// and fiber payloads are all single nested values, so each descends the
-    /// same way — an absent payload stays absent.
-    pub(super) fn substitute_payload_at(
-        &self,
-        slot: &mut Option<Box<Value>>,
-        target_level: usize,
-        arguments: &[Option<Value>],
-    ) {
-        if let Some(payload) = slot.take() {
-            *slot = Some(Box::new(self.substitute_value_at(
-                *payload,
-                target_level,
-                arguments,
-            )));
-        }
-    }
 }
 
 #[test]
-fn direct_callback_substitution_only_copies_the_selected_field() {
+fn callback_substitution_only_copies_the_selected_field() {
     use super::{CallArguments, ParameterUse, Projection};
     super::identity_tests::with_empty_analyzer(|analyzer| {
         let receiver = Value {
@@ -210,11 +187,25 @@ fn direct_callback_substitution_only_copies_the_selected_field() {
             .collect(),
             ..Summary::default()
         };
-        let (result, clones) = super::provenance::measured_clones(|| {
-            analyzer.substitute_summary_at(summary, 0, &[Some(receiver)])
-        });
-        assert!(result.unresolved_dynamic_call);
-        assert!(clones <= 1, "copied {clones} values to select one callback");
+        for level in [0, 1, 3] {
+            let mut case = summary.clone();
+            case.parameter_uses = std::mem::take(&mut case.parameter_uses)
+                .into_iter()
+                .map(|mut requirement| {
+                    requirement.level = level;
+                    requirement
+                })
+                .collect();
+            let arguments = [Some(receiver.clone())];
+            let (result, clones) = super::provenance::measured_clones(|| {
+                analyzer.substitute_summary_at(case, level, &arguments)
+            });
+            assert!(result.unresolved_dynamic_call);
+            assert!(
+                clones <= 1,
+                "copied {clones} values to select one callback at level {level}"
+            );
+        }
     });
 }
 

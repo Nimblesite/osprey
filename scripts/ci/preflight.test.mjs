@@ -2,8 +2,76 @@
 // whole with its directory, matrix values filled in, coverage gates last, on the host CI gives it.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { jobHost, matrixRows, plan, skipReason, steps, workflowFiles } from './preflight.mjs'
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { withTempDir } from './ci-bundle-fixture.mjs'
+import { jobHost, matrixRows, plan, runCheck, skipReason, steps, workflowFiles } from './preflight.mjs'
+
+test('a preflight selector must run a check to report green', () => withTempDir('preflight-selector', (directory) => {
+  mkdirSync(join(directory, '.github/workflows'), { recursive: true })
+  writeFileSync(join(directory, '.github/workflows/ci.yml'), 'jobs:\n')
+  mkdirSync(join(directory, 'scripts/make'), { recursive: true })
+  writeFileSync(join(directory, 'Makefile'), '')
+  const script = fileURLToPath(new URL('./preflight.mjs', import.meta.url))
+  const result = spawnSync(process.execPath, [script, '--only=Missing check'], { cwd: directory, encoding: 'utf8' })
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /No CI checks match/)
+  const otherHost = process.platform === 'win32' ? 'macos-15' : 'windows-latest'
+  writeFileSync(join(directory, '.github/workflows/ci.yml'), [
+    'jobs:', '  foreign:', `    runs-on: ${otherHost}`, '    steps:',
+    '      - name: Native replay', '        run: ./check',
+  ].join('\n'))
+  const skipped = spawnSync(process.execPath, [script, '--only=Native replay'], { cwd: directory, encoding: 'utf8' })
+  assert.equal(skipped.status, 1)
+  assert.match(skipped.stdout, /SKIP.*Native replay/)
+  assert.match(skipped.stderr, /None of the selected CI checks ran/)
+}))
+
+test('local preflight keeps failing commands and mixed output in chronological order', () => withTempDir('preflight', (output) => {
+  const host = { darwin: 'macos', win32: 'windows' }[process.platform] ?? 'linux'
+  const command = 'echo first; echo diagnostic >&2; echo last; exit 7'
+  const result = runCheck({ command, host, env: {}, directory: '.', job: 'fixture', name: 'mixed output' }, 0, output)
+  assert.equal(result.status, 'FAIL')
+  assert.equal(readFileSync(result.log, 'utf8'), `$ ${command}\nfirst\ndiagnostic\nlast\n`)
+}))
+
+test('preflight CLI writes every selected check, including checks after a failure', () => withTempDir('preflight-run', (directory) => {
+  const workflow = join(directory, '.github/workflows')
+  mkdirSync(workflow, { recursive: true })
+  const host = { darwin: 'macos-15', win32: 'windows-latest' }[process.platform] ?? 'ubuntu-latest'
+  writeFileSync(join(workflow, 'ci.yml'), [
+    'jobs:', '  replay:', `    runs-on: ${host}`, '    steps:',
+    '      - name: Check first', '        shell: bash', '        run: false',
+    '      - name: Check second', '        shell: bash', '        run: printf second',
+  ].join('\n'))
+  const script = fileURLToPath(new URL('./preflight.mjs', import.meta.url))
+  const result = spawnSync(process.execPath, [script, '--only=Check'], { cwd: directory, encoding: 'utf8' })
+  const output = join(directory, 'target/preflight')
+  assert.equal(result.status, 1)
+  assert.equal(readFileSync(join(output, '000.log'), 'utf8'), '$ false\n')
+  assert.equal(readFileSync(join(output, '001.log'), 'utf8'), '$ printf second\nsecond')
+  assert.match(readFileSync(join(output, 'summary.md'), 'utf8'), /FAIL.*Check first[^\n]*\n.*PASS.*Check second/)
+}))
+
+test('preflight keeps distinct environments and hosts for the same command', () => withTempDir('preflight-environment', (directory) => {
+  const file = join(directory, 'ci.yml')
+  const job = (name, host, mode) => [
+    `  ${name}:`, `    runs-on: ${host}`, '    env:', `      MODE: ${mode}`,
+    '    steps:', '      - name: Compile', '        env:', '          FORMAT: json',
+    '        run: ./check', '',
+  ].join('\n')
+  writeFileSync(file, 'env:\n  FORMAT: text\n  COLOR: never\njobs:\n'
+    + job('gc', 'ubuntu-latest', 'gc') + job('arc', 'ubuntu-latest', 'arc')
+    + job('windows', 'windows-latest', 'gc') + job('repeat', 'ubuntu-latest', 'gc'))
+  const checks = plan([file])
+  assert.deepEqual(checks.map(({ host, env }) => [host, env]), [
+    ['linux', { MODE: 'gc', FORMAT: 'json', COLOR: 'never' }],
+    ['linux', { MODE: 'arc', FORMAT: 'json', COLOR: 'never' }],
+    ['windows', { MODE: 'gc', FORMAT: 'json', COLOR: 'never' }],
+  ])
+}))
 
 const checks = plan()
 const commands = checks.map((check) => check.command)
@@ -13,6 +81,8 @@ test('the preflight reads ci.yml and every workflow it calls', () => {
   assert.deepEqual(workflowFiles(), ['.github/workflows/ci.yml', '.github/workflows/ci-windows.yml',
     '.github/workflows/gpui.yml', '.github/workflows/winui.yml', '.github/workflows/ci-audit.yml'])
   assert.ok(commands.includes('make audit'), 'the PR preflight runs the release audit')
+  assert.equal(commands.filter((command) => command === 'make _deslop').length, 1,
+    'the hosted and local duplication check install and run the same pinned binary')
 })
 
 test('every make check in the PR workflows is planned, inside the step that runs it', () => {
@@ -23,12 +93,14 @@ test('every make check in the PR workflows is planned, inside the step that runs
     }
   }
   assert.ok(commands.every((command) => !command.includes('${{ matrix')), 'matrix values are filled in')
-  assert.equal(new Set(checks.map((check) => `${check.directory}\n${check.command}`)).size, checks.length, 'each check runs once')
+  const contexts = checks.map(({ directory, command, host, shell, env, ciOnly }) =>
+    JSON.stringify([directory, command, host, shell, ciOnly, Object.entries(env).sort()]))
+  assert.equal(new Set(contexts).size, checks.length, 'each check runs once in each context')
 })
 
 test('checks that are not make targets run too: static analysis, browsers, the emulator and the containers', () => {
   for (const [pattern, directory] of [[/^cargo fmt .* --check$/, '.'], [/^cargo clippy .*-D warnings$/, '.'], [/^npm run lint$/, './src/toolchain/vscode-extension'],
-    [/^npm test$/, './src/toolchain/website'], [/^npx playwright test$/, './src/osprey/examples/talon/playwright-e2e-tests'], [/^deslop \./, '.']]) {
+    [/^npm test$/, './src/toolchain/website'], [/^npx playwright test$/, './src/osprey/examples/talon/playwright-e2e-tests']]) {
     assert.equal(find(pattern)?.directory, directory, String(pattern))
   }
   const android = find(/targets\/android\/tests inbox/)
@@ -41,7 +113,9 @@ test('checks that are not make targets run too: static analysis, browsers, the e
 test('runner plumbing is left out and runner-only checks are named as skipped', () => {
   assert.ok(!commands.some((command) => /apt-get|GITHUB_ENV|^chmod \+x target\/|^tar -xf target\//m.test(command)), 'no installs, runner env or artifact restores')
   assert.ok(!commands.some((command) => /if: failure\(\)/.test(command)))
-  assert.equal(skipReason(find(/needs\.test-registry-gc\.result/)), 'reads values only a runner has')
+  const coveragePreflight = checks.find(({ job, name }) => job === 'ci.yml:coverage' && name.startsWith('Require successful coverage producers'))
+  assert.ok(coveragePreflight)
+  assert.equal(skipReason(coveragePreflight), 'reads values only a runner has')
   assert.equal(skipReason(find(/to_entries\[\]/)), 'reads values only a runner has', 'the required check reads the needs context')
   assert.equal(skipReason(find(/benchmarks\/instruction_gate\.py/), 'macos'), 'needs a linux host')
   assert.equal(skipReason(find(/benchmarks\/instruction_gate\.py/), 'linux'), undefined)
@@ -64,6 +138,10 @@ test('each check keeps the host CI gives it', () => {
   const windows = checks.filter((check) => /^(ci-windows|winui)\.yml/.test(check.job))
   assert.ok(windows.length > 5 && windows.every((check) => skipReason(check, 'macos')), 'a Mac skips every Windows check, naming why')
   assert.equal(skipReason(windows.find((check) => /dotnet test/.test(check.command)), 'macos'), 'needs a windows host')
+  assert.equal(windows.find((check) => /dotnet test/.test(check.command))?.shell, 'pwsh')
+  assert.equal(checks.find((check) => check.host === 'windows' && /git lfs pull/.test(check.command))?.shell, 'pwsh')
+  assert.equal(windows.find((check) => /make _runtime CC=gcc AR=ar/.test(check.command))?.shell, 'msys2')
+  assert.equal(find(/^make _test_registry REGISTRY_MEMORY=arc$/)?.shell, 'bash')
 })
 
 test('matrix rows, steps and runners are read from the workflow text', () => {

@@ -175,10 +175,20 @@ type ActivePatch =
     release : float
     memory : NoteMemory
 
+type ActiveOperator =
+    span : NoteSpan
+    tone : Tone
+    firstHz : float
+    secondHz : float
+    phases : VoicePair<synth::OperatorState, synth::OperatorState>
+    sends : List<AudioSend>
+
 type NoteDriver =
     RecordedNote
     PerformingNote
         patch : ActivePatch
+    PerformingOperator
+        pair : ActiveOperator
 
 type Sounding =
     cue : Cue

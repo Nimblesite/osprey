@@ -42,6 +42,9 @@ def text_cases():
         Check.truth("text.digit", Text.is_ascii_digit(57) and not Text.is_ascii_digit(58), "digit"),
         Check.truth("text.alnum", Text.is_ascii_lower_alnum(122) and not Text.is_ascii_lower_alnum(91), "alnum"),
         Check.equal("text.collapse", Text.collapse_whitespace("  a\t b\n "), "a b"),
+        Check.truth("text.segments.empty", structuralEquals(Text.segment_references([[], []]), []), "empty reference documents"),
+        Check.truth("text.segments.aligned", structuralEquals(Text.segment_references([["a", "b"], ["A", "B"]]), [["a", "A"], ["b", "B"]]), "segment order"),
+        Check.truth("text.segments.ragged", structuralEquals(Text.segment_references([["a"], [], ["A", "B"]]), [["a", "", "A"], ["", "", "B"]]), "missing segments are empty text"),
     ]
 
 

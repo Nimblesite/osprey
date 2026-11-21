@@ -173,6 +173,9 @@ module PatchVoices
         Error why => Error(message = why)
         Success value => Success(value = listAppend samples value)
 
+    (** Capture one mono output directly, keeping oscillator and feedback state between blocks. *)
+    export dryBlock (plan, rate, controls, current, count, sink) = told (synth::Renderer::capture (plan, rate, controls, current, count, \(samples, frame) => dry (sink, samples, frame)))
+
     // The scheduler carries state across every block, including the final partial block.
     (** Partition a note into bounded DSP blocks. *)
     export counts (total, limit) = listAppend (mapList (toList (range (0, intDiv total limit)), \_ => limit)) (total % limit)
@@ -192,7 +195,7 @@ module PatchVoices
         [sink] => chained (told (synth::Renderer::start graph), \audio =>
             controls = synth::Parameters::initial graph
             initial = synth::Timeline(audio = audio, observation = [])
-            run = foldList (counts (noteSpan.total, 8192), ok initial, \(held, count) => chained (held, \current => told (synth::Renderer::capture (plan, rate, controls, current, count, \(samples, frame) => dry (sink.identity, samples, frame)))))
+            run = foldList (counts (noteSpan.total, 8192), ok initial, \(held, count) => chained (held, \current => dryBlock (plan, rate, controls, current, count, sink.identity)))
             chained (run, \done => ok (shaped (done.observation, noteSpan, routing, rate))))
         _ => Error(message = "The patch needs one audio output.")
 
@@ -229,25 +232,16 @@ module PatchVoices
     (** Resolve new controls against the note while retaining its loaded samples and generated wavetables. *)
     export repatched (note, routing, graph) = assembled (note, routing, \item => restored (graph, item))
 
-    member (ids, identity) = length (filterList (ids, \known => known == identity)) > 0
-
-    // One pass adds every source cabled into a node already heard; as many passes as nodes reach them all.
-    reached (heard, c) = match member (heard, c.destination) && !member (heard, c.source)
-        true => listAppend heard c.source
-        false => heard
-
-    widened (graph : synth::Graph, ids) = foldList (graph.cables, ids, reached)
-
     // [DAW-PATCH-HEARD] Only what reaches the output plays: a module left unwired in Prism stays in the
     // patch, silent, instead of refusing every note.
     (** Keep exactly the ancestors of the main output and the active send roots. *)
     export audible (graph, taps) =
         roots = listConcat (mapList (filterList (graph.nodes, \n => n.processor == synth::Sink), \n => n.identity)) taps
-        ids = foldList (graph.nodes, roots, \(heard, _) => widened (graph, heard))
-        cables = filterList (graph.cables, \c => member (ids, c.source) && member (ids, c.destination))
+        ids = synth::Graphs::inputAncestors (graph.cables, roots)
+        cables = filterList (graph.cables, \c => mapContains ids (toString c.source) && mapContains ids (toString c.destination))
         match length cables == 0
             true => Error(message = "The routing has nothing wired to its output.")
-            false => graphed (filterList (graph.nodes, \n => member (ids, n.identity)), cables)
+            false => graphed (filterList (graph.nodes, \n => mapContains ids (toString n.identity)), cables)
 
     // A mono audio input the renderer needs wired, with no cable in it.
     unplugged (graph : synth::Graph, n, index) = match listGet n.inputs index

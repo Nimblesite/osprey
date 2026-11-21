@@ -267,10 +267,11 @@ impl Analyzer<'_> {
             return;
         };
         let callback_arguments = self.fold_callback_arguments(acc, arguments, scope, env);
-        if let Some(returned) =
+        if let Some(mut returned) =
             self.project_call_return(Value::from_callable(callback), callback_arguments)
         {
-            acc.union(stabilize_merged_callables(&returned));
+            stabilize_merged_callables(&mut returned);
+            acc.union(returned);
         }
     }
 

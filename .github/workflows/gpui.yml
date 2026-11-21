@@ -77,7 +77,7 @@ jobs:
           key: ${{ steps.gpui-cache.outputs.cache-primary-key }}
 
       - name: Every desktop app's self-test in a real window
-        run: make _gpui-self-test GPUI_WINDOW=
+        run: make -o _gpui-apps _gpui-self-test GPUI_WINDOW=
 
       - name: Host clippy
         working-directory: src/toolchain/hosts/gpui
@@ -114,7 +114,9 @@ jobs:
           ./target/release/osprey test src/osprey/packages/uitest/tests
           ./target/release/osprey test src/osprey/examples/casting/test
           ./target/release/osprey test src/osprey/packages/signal_flow/tests
-          ./target/release/osprey test src/osprey/examples/daw/test
+
+      - name: DAW suite
+        run: make -C src/toolchain/targets/tests synth APP_SUITE_PREBUILT=1
 
       - name: Example suites
         run: |
@@ -167,7 +169,7 @@ jobs:
           key: ${{ steps.gpui-cache.outputs.cache-primary-key }}
 
       - name: Every desktop app's headless self-test
-        run: make _gpui-self-test
+        run: make -o _gpui-apps _gpui-self-test
 
       - name: Host tests and clippy
         working-directory: src/toolchain/hosts/gpui

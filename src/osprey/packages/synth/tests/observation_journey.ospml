@@ -1,6 +1,9 @@
 import synth::Parameters
 import synth::SnapshotSlots
 import synth::Smoothers
+import synth::Activities
+import synth::ModalBanks
+import synth::Reverbs
 
 // [SYNTH-ADVANCED-CORE-SIGNALS] A slow panel receives one coherent slider snapshot and a missed-update count.
 knobSnapshotJourney () =
@@ -11,7 +14,7 @@ knobSnapshotJourney () =
     valid (Parameters::apply (graph, initial, edit), \first =>
         valid (Parameters::apply (graph, first, edit(revision = 1, value = 0.25)), \second =>
             latest = SnapshotSlots::read (SnapshotSlots::publish (SnapshotSlots::publish (slot, first), second))
-            expect (structuralEquals (latest.observation, second), true)
+            sameStructure (latest.observation, second)
             expect (latest.coalesced, 1)
             expect ((SnapshotSlots::read latest.next).coalesced, 0)
             expect ((SnapshotSlots::read slot).observation.revision, 0)))
@@ -22,3 +25,27 @@ knobSnapshotJourney () =
         down = Smoothers::next (accepted, up.next, 0.0)
         expect (down.sample, 0.25)
         expect ((Smoothers::next (accepted, down.next, 0.3125)).sample, 0.3125))
+
+// [SYNTH-ADVANCED-CORE-SIGNALS] The activity panel distinguishes stored feedback from an input impulse.
+physicalActivityJourney () =
+    resonator = synth::ModalConfig(sampleRate = 8000.0, frequency = 125.0, decay = 0.5, brightness = 0.5, strike = 0.25, count = 2, modes = synth::HarmonicModes)
+    succeeds (ModalBanks::configure resonator, \bank =>
+        initial = ModalBanks::initial bank
+        idle = Activities::modes initial
+        expect (idle.active, 0)
+        expect (idle.capacity, 8)
+        expect (idle.energy, 0.0)
+        succeeds (ModalBanks::next (bank, initial, 1.0), \step =>
+            struck = Activities::modes step.next
+            expect (struck.active, 2)
+            expect (struck.energy > 0.0, true)))
+    reverb = synth::ReverbConfig(sampleRate = 8000.0, size = 0.5, decay = 1.0, damping = 0.0, diffusion = 0.0, mix = 1.0, freeze = false)
+    refusedAs (Reverbs::configure (reverb(size = 0.125)), "configuration", "Invalid reverb rate, size, decay, damping, diffusion or mix.")
+    succeeds (Reverbs::initial reverb, \initial =>
+        idle = Activities::reverb initial
+        expect (idle.capacity, 4)
+        expect (idle.energy, 0.0)
+        refusedAs (Reverbs::next (reverb, initial(lines = []), 1.0), "layout", "Reverb state does not have four lines and two diffusers.")
+        succeeds (Reverbs::next (reverb(freeze = true), initial, 1.0), \blocked =>
+            expect ((Activities::reverb blocked.next).energy, 0.0)
+            expect (blocked.sample, 0.0)))

@@ -1,16 +1,25 @@
 // [NATIVE-SHM-PUBLISH] Root acquisition and ownership use the same mutex.
 #include "native_bridge_internal.h"
 
+// On success the caller owns the lock and may use the returned slot indices.
+static int native_lock_lease(OspNativeBridge *b, const td_OwnedLease *lease,
+                             size_t *owner, size_t *chunk) {
+  int status = native_lock(b);
+  if (status)
+    return status;
+  status = native_lookup_locked(b, lease, owner, chunk);
+  return status ? native_unlock(b, status) : 0;
+}
+
 int osp_native_retain(OspNativeBridge *b, const td_OwnedLease *lease,
                       td_OwnedLease *out) {
   if (!out)
     return OSP_NATIVE_ERROR(InvalidOwner);
-  int status = native_lock(b);
+  size_t owner, chunk;
+  int status = native_lock_lease(b, lease, &owner, &chunk);
   if (status)
     return status;
-  size_t owner, chunk;
-  status = native_lookup_locked(b, lease, &owner, &chunk);
-  if (!status && b->closing)
+  if (b->closing)
     status = OSP_NATIVE_ERROR(BridgeClosing);
   if (!status && b->chunks[chunk].refs == UINT64_MAX)
     status = OSP_NATIVE_ERROR(CounterExhausted);
@@ -22,18 +31,14 @@ int osp_native_retain(OspNativeBridge *b, const td_OwnedLease *lease,
 }
 
 int osp_native_release(OspNativeBridge *b, const td_OwnedLease *lease) {
-  int status = native_lock(b);
+  size_t owner, chunk;
+  int status = native_lock_lease(b, lease, &owner, &chunk);
   if (status)
     return status;
-  size_t owner, chunk, dead = NATIVE_NO_SLOT;
-  status = native_lookup_locked(b, lease, &owner, &chunk);
-  if (!status) {
-    native_owner_remove(b, owner);
-    if (--b->chunks[chunk].refs == 0)
-      dead = chunk;
-  }
-  status = native_unlock(b, status);
-  return status || dead == NATIVE_NO_SLOT ? status : native_reclaim(b, dead);
+  native_owner_remove(b, owner);
+  bool reclaim = --b->chunks[chunk].refs == 0;
+  status = native_unlock(b, 0);
+  return status || !reclaim ? status : native_reclaim(b, chunk);
 }
 
 int osp_native_view(OspNativeBridge *b, const td_OwnedLease *lease,
@@ -42,21 +47,18 @@ int osp_native_view(OspNativeBridge *b, const td_OwnedLease *lease,
   if (!out || offset < 0 || length < 0 || (uint64_t)offset > SIZE_MAX ||
       (uint64_t)length > SIZE_MAX)
     return OSP_NATIVE_ERROR(InvalidRange);
-  int status = native_lock(b);
+  size_t owner, chunk;
+  int status = native_lock_lease(b, lease, &owner, &chunk);
   if (status)
     return status;
-  size_t owner, chunk;
-  status = native_lookup_locked(b, lease, &owner, &chunk);
-  if (!status) {
-    NativeChunk *c = &b->chunks[chunk];
-    if (c->type != type)
-      status = OSP_NATIVE_ERROR(InvalidLayout);
-    else if ((!c->leaf && (offset & 7)) || (size_t)offset > c->length ||
-             (size_t)length > c->length - (size_t)offset)
-      status = OSP_NATIVE_ERROR(InvalidRange);
-    else
-      *out = c->data + (size_t)offset;
-  }
+  NativeChunk *c = &b->chunks[chunk];
+  if (c->type != type)
+    status = OSP_NATIVE_ERROR(InvalidLayout);
+  else if ((!c->leaf && (offset & 7)) || (size_t)offset > c->length ||
+           (size_t)length > c->length - (size_t)offset)
+    status = OSP_NATIVE_ERROR(InvalidRange);
+  else
+    *out = c->data + (size_t)offset;
   return native_unlock(b, status);
 }
 
@@ -64,12 +66,11 @@ int osp_native_publish(OspNativeBridge *b, const td_OwnedLease *candidate,
                        int64_t *revision) {
   if (!revision)
     return OSP_NATIVE_ERROR(InvalidRange);
-  int status = native_lock(b);
+  size_t owner, chunk, dead = NATIVE_NO_SLOT;
+  int status = native_lock_lease(b, candidate, &owner, &chunk);
   if (status)
     return status;
-  size_t owner, chunk, dead = NATIVE_NO_SLOT;
-  status = native_lookup_locked(b, candidate, &owner, &chunk);
-  if (!status && b->closing)
+  if (b->closing)
     status = OSP_NATIVE_ERROR(BridgeClosing);
   if (!status && b->revision == INT64_MAX)
     status = OSP_NATIVE_ERROR(CounterExhausted);
@@ -112,14 +113,12 @@ int osp_native_length(OspNativeBridge *b, const td_OwnedLease *lease,
                       int64_t *length) {
   if (!length)
     return OSP_NATIVE_ERROR(InvalidRange);
-  int status = native_lock(b);
+  size_t owner, chunk;
+  int status = native_lock_lease(b, lease, &owner, &chunk);
   if (status)
     return status;
-  size_t owner, chunk;
-  status = native_lookup_locked(b, lease, &owner, &chunk);
-  if (!status)
-    *length = (int64_t)b->chunks[chunk].length;
-  return native_unlock(b, status);
+  *length = (int64_t)b->chunks[chunk].length;
+  return native_unlock(b, 0);
 }
 
 // Seals one taken run as a leaf chunk, in place. The storage is always

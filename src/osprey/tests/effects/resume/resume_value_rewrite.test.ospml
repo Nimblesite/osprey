@@ -18,6 +18,9 @@ noted (transcript, entry) = "${transcript}${entry}|"
 (** `transcript` with `line` and a newline after it. *)
 lined (transcript, line) = "${transcript}${line}\n"
 
+(** `table`'s entry at `index`, or `fallback` when `index` is out of range. *)
+at (table, index, fallback) = (listGet table index ?: fallback)
+
 (** Supply lets a handler choose each integer observed by the performer. *)
 effect Supply
     (** Request the next scripted value for `label`. *)
@@ -52,6 +55,12 @@ runChecked () = perform Checked.half 10 ?: 0
 (** This helper receives an integer from Relay<int>. *)
 echoNum : Unit -> int ! Relay<int>
 echoNum () = perform Relay.ask ()
+
+(** The nine newline-terminated lines the legacy transcript must hold. *)
+legacyLines () = ["supply first=105\n", "supply second=110\n", "supply third=115\n", "seen after third: 330\n", "seen after second: 330\n", "seen after first: 330\n", "result=330\n", "relay answered: carried\n", "word=carried\n"]
+
+(** The complete ten-line transcript: those lines plus the closing pair. *)
+legacyExpected () = join (legacyLines ()) "" + "checked=10 num=41\n"
 
 (** This case verifies rewritten values, unwind answers, Results, and generics. *)
 resumeValueRewriteCase () =
@@ -106,8 +115,8 @@ resumeValueRewriteCase () =
 
     (* Preserve the complete ten-line golden transcript and every output phase. *)
     checkAll "value-rewrite legacy observations" [
-        legacyTranscript == "supply first=105\nsupply second=110\nsupply third=115\nseen after third: 330\nseen after second: 330\nseen after first: 330\nresult=330\nrelay answered: carried\nword=carried\nchecked=10 num=41\n",
-        containsAll (legacyTranscript, ["supply first=105\n", "supply second=110\n", "supply third=115\n", "seen after third: 330\n", "seen after second: 330\n", "seen after first: 330\n", "result=330\n", "relay answered: carried\n", "word=carried\n"]),
+        legacyTranscript == legacyExpected (),
+        containsAll (legacyTranscript, legacyLines ()),
         endsWith legacyTranscript "checked=10 num=41\n"
     ]
 
@@ -148,6 +157,15 @@ weightedReads () =
     weighted = ((a * 1000) ) + ((b * 100) ) + ((c * 10) ) 
     (weighted + d) 
 
+(** The supply scripted for `slot`: zero, a positive, a negative, its duplicate. *)
+scriptFor slot = at ([0, 7, -4, 7], slot - 1, 7)
+
+(** The slot numbers in the order the body performs them. *)
+slotOrder () = "1|2|3|4|"
+
+(** The supplies `gave` records, in slot order. *)
+scriptMarks () = "0|7|-4|7|"
+
 (** One body run under a script that answers the same value at every slot. *)
 type ScriptedRun =
     answer : int
@@ -181,11 +199,7 @@ resumeSubstitutesSuppliedValueCase () =
         handle Script
             read slot =>
                 reads := reads + 1 
-                value = match slot
-                    1 => 0
-                    2 => 7
-                    3 => (0 - 4) 
-                    _ => 7
+                value = scriptFor slot
                 asked := noted (asked, toString slot)
                 gave := noted (gave, toString value)
                 answer = resume value
@@ -194,12 +208,7 @@ resumeSubstitutesSuppliedValueCase () =
         weightedReads ()
 
     steadyRun = constantScript 1
-    steady = steadyRun.answer
-    steadyReads = steadyRun.calls
-
     zeroRun = constantScript 0
-    zeroed = zeroRun.answer
-    zeroReads = zeroRun.calls
 
     (* 660 is the weighted head (0 + 700 - 40); the unit slot adds the final 7.
         The rejected values are the answers a broken delivery would produce: 10 is
@@ -207,7 +216,7 @@ resumeSubstitutesSuppliedValueCase () =
         reversed, and 1234 the slot numbers arriving instead of the script. *)
     checkAll "resume substitutes the scripted value at each perform site" [
         picked == 667, picked == ((660 + 7) ), reads == 4,
-        gave == "0|7|-4|7|", asked == "1|2|3|4|",
+        gave == scriptMarks (), asked == slotOrder (),
         picked != 10, picked != 7777, picked != 6670, picked != 1234,
         picked != 0, picked > 660, picked < 700,
         length gave == 9, length asked == 8
@@ -216,7 +225,7 @@ resumeSubstitutesSuppliedValueCase () =
     (* Operations enter in the order the body performs them and their arms
         settle in the reverse order, so `asked` and `seen` must disagree. *)
     checkAll "reads enter in slot order and settle in reverse" [
-        asked == "1|2|3|4|", seen == "4:667|3:667|2:667|1:667|",
+        asked == slotOrder (), seen == "4:667|3:667|2:667|1:667|",
         bounded (seen, "4:667|", "1:667|"),
         containsAll (seen, ["3:667|", "2:667|"]),
         !(startsWith seen "1:"), asked != seen,
@@ -238,11 +247,12 @@ resumeSubstitutesSuppliedValueCase () =
         and under an all-zero script answers 0 — the body is fixed, the supplies
         are what move. Neither later region disturbs the first region's state. *)
     checkAll "the same body answers differently under a different script" [
-        steady == 1111, steadyReads == 4, steady != picked, picked != 1111,
-        ((steady - picked) ) == 444,
-        steady == (((1000 + 100) ) + ((10 + 1) ) ),
-        zeroed == 0, zeroReads == 4, zeroed != picked,
-        asked == "1|2|3|4|", gave == "0|7|-4|7|", reads == steadyReads
+        steadyRun.answer == 1111, steadyRun.calls == 4, steadyRun.answer != picked,
+        picked != 1111,
+        ((steadyRun.answer - picked) ) == 444,
+        steadyRun.answer == (((1000 + 100) ) + ((10 + 1) ) ),
+        zeroRun.answer == 0, zeroRun.calls == 4, zeroRun.answer != picked,
+        asked == slotOrder (), gave == scriptMarks (), reads == steadyRun.calls
     ]
 
 (* Register value substitution at the perform site. *)
@@ -262,6 +272,9 @@ layered () =
 
 (** One perform, so the arm's own value is unmistakably the region's answer. *)
 soloLayer () = (perform Layer.fetch 4 + 1) 
+
+(** The fetch order the layered body performs. *)
+fetchOrder () = "1|2|3|"
 
 (** [EFFECTS-RESUME] resume "evaluates to that computation's answer, so the arm
     may execute code after the resumed computation returns", and handlers "are
@@ -310,7 +323,7 @@ resumeAnswerComposesLifoCase () =
         next-inner arm's value; 126 is the answer if only the innermost
         adjustment survived; 123 is the answer if all three were discarded. *)
     checkAll "post-resume adjustments compose out of the region" [
-        layeredResult == 129, entered == "1|2|3|",
+        layeredResult == 129, entered == fetchOrder (),
         observed == "3:123|2:126|1:128|", returned == "3:126|2:128|1:129|",
         layeredResult != 123, layeredResult != 126, layeredResult != 124,
         layeredResult == ((123 + 6) ),
@@ -338,7 +351,7 @@ resumeAnswerComposesLifoCase () =
         plain != layeredResult, ((layeredResult - plain) ) == 6,
         layeredResult == ((plain + 6) ),
         plain > 100, plain < 129, plainCalls == 3,
-        !(contains observed "3:129|"), entered == "1|2|3|"
+        !(contains observed "3:129|"), entered == fetchOrder ()
     ]
 
     (* With one perform the arm's own value is unmistakably the region answer:
@@ -384,6 +397,12 @@ ratioBody () =
     scaled = (quarter * 4.0) + (zero * 100.0)
     scaled + (neg * 2.0)
 
+(** The integer scripted for `step`: zero, a negative, a large value, a duplicate. *)
+countFor step = at ([0, -9, 1000000, -9], step - 1, (0 - 9))
+
+(** The float scripted for `step`: a fraction, zero, a negative. *)
+ratioFor step = at ([1.25, 0.0, -0.75], step - 1, (0.0 - 0.75))
+
 (** [EFFECTS-RESUME] [EFFECTS-OP-TYPING] "performed values must also match its
     types", so each arm resumes with its own operation's declared scalar type.
     Integers cover zero, a negative, a large value and a duplicate; floats cover
@@ -397,11 +416,7 @@ resumeScalarPayloadsCase () =
         handle Scalar
             count step =>
                 countCalls := countCalls + 1 
-                value = match step
-                    1 => 0
-                    2 => (0 - 9) 
-                    3 => 1000000
-                    _ => (0 - 9) 
+                value = countFor step
                 countGave := noted (countGave, toString value)
                 resume value
         countBody ()
@@ -423,10 +438,7 @@ resumeScalarPayloadsCase () =
             ratio step =>
                 ratioCalls := ratioCalls + 1 
                 ratioSlots := noted (ratioSlots, toString step)
-                value = match step
-                    1 => 1.25
-                    2 => 0.0
-                    _ => (0.0 - 0.75)
+                value = ratioFor step
                 answer = resume value
                 ratioSettled := noted (ratioSettled, toString step)
                 lastRatioAnswer := answer
@@ -496,6 +508,9 @@ beatBody () =
     perform Scalar.beat 3
     "steady"
 
+(** The boolean scripted for `step`: true, false only at step 2, true again. *)
+flagFor step = at ([true, false, true], step - 1, true)
+
 type Flagged =
     text : string
     calls : int
@@ -510,9 +525,7 @@ flagged body =
         handle Scalar
             flag step =>
                 calls := calls + 1 
-                value = match step
-                    2 => false
-                    _ => true
+                value = flagFor step
                 mark = match value
                     true => "T"
                     false => "F"
@@ -685,10 +698,10 @@ resumeManagedPayloadsCase () =
                 parseCalls := parseCalls + 1 
                 match key
                     "ok" =>
-                        parseGave := "${parseGave}ok=Success|"
+                        parseGave := noted (parseGave, "ok=Success")
                         resume (Success(value = 12))
                     _ =>
-                        parseGave := "${parseGave}bad=Error|"
+                        parseGave := noted (parseGave, "bad=Error")
                         resume (Error(message = "nope!"))
         parsedPair ()
 
@@ -853,7 +866,13 @@ effect Ticker
 scriptValues () = [0, 7, -4, 7, 100, 0, -1, 12, 12, 3, 0, 25]
 
 (** The scripted value at `index`, falling back when the index is out of range. *)
-scriptAt index = (listGet (scriptValues ()) index ?: 99)
+scriptAt index = at (scriptValues (), index, 99)
+
+(** The sum of the twelve scripted values: 10 + 111 + 40. *)
+tickSum () = 161
+
+(** How many scripted ticks the walk performs. *)
+tickCount () = 12
 
 (** Twelve sequential performs in one region, folded on the way back out. *)
 drain i = match i < 12
@@ -875,7 +894,7 @@ manyPerformsOneRegionCase () =
         handle Ticker
             tick i =>
                 tickEntered := (tickEntered + 1) 
-                value = listGet (scriptValues ()) i ?: 0
+                value = at (scriptValues (), i, 0)
                 tickGave := noted (tickGave, toString value)
                 answer = resume value
                 tickSettled := (tickSettled + 1) 
@@ -887,8 +906,8 @@ manyPerformsOneRegionCase () =
     (* The script is exactly twelve entries long, so the sum below is exhaustive
         and every out-of-range read falls back instead of contributing. *)
     checkAll "twelve sequential suspensions each settle exactly once" [
-        drained == 161, tickEntered == 12, tickSettled == 12,
-        tickEntered == tickSettled, listLength (scriptValues ()) == 12,
+        drained == tickSum (), tickEntered == tickCount (), tickSettled == tickCount (),
+        tickEntered == tickSettled, listLength (scriptValues ()) == tickCount (),
         scriptAt (0) == 0,
         scriptAt (11) == 25,
         scriptAt (12) == 99,
@@ -903,7 +922,7 @@ manyPerformsOneRegionCase () =
         framed (tickGave, 31, "0|7|-4|", "|25|"),
         containsAll (tickGave, ["|100|", "|-1|", "|12|12|"]),
         !(contains tickGave "|13|"),
-        drained == 161, (((10 + 111) ) + 40 ) == 161,
+        drained == tickSum (), (((10 + 111) ) + 40 ) == tickSum (),
         drained != 10, drained != 40, drained != 111
     ]
 
@@ -912,9 +931,9 @@ manyPerformsOneRegionCase () =
         tickOrder == "11|10|9|8|7|6|5|4|3|2|1|0|",
         framed (tickOrder, 26, "11|10|", "|1|0|"),
         !(startsWith tickOrder "0|"), contains tickOrder "|5|4|",
-        tickOrder != tickGave, tickSettled == 12, tickEntered == 12,
-        seenSum == 1932, seenSum == ((161 * 12) ),
-        seenSum != 161, seenSum != 0
+        tickOrder != tickGave, tickSettled == tickCount (), tickEntered == tickCount (),
+        seenSum == 1932, seenSum == ((tickSum () * 12) ),
+        seenSum != tickSum (), seenSum != 0
     ]
 
 (* Register twelve performs settling through one region. *)

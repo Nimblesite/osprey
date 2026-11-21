@@ -38,11 +38,6 @@ module SpectralKernels
 
     configured (rate, size, hop, chosen, mix) = Outcomes::carried (chosen, \kind => SpectralStreams::configure (SpectralConfig(sampleRate = rate, size = size, hop = hop, transform = kind, mix = mix)))
 
-    // An unplugged side input is silence, not an error: only morphing listens to it.
-    side (plan, frame, identity) = match length (filterList (plan.graph.cables, \c => c.destination == identity && c.inlet == 1)) == 0
-        true => Success(value = 0.0)
-        false => RenderInputs::input (plan, frame, identity, 1)
-
     settings (rate, snapshot, identity, size, hop) = RenderInputs::setting (snapshot, identity, "transform", \selector => RenderInputs::setting (snapshot, identity, "hold", \hold => RenderInputs::setting (snapshot, identity, "low", \low => RenderInputs::setting (snapshot, identity, "high", \high => RenderInputs::setting (snapshot, identity, "shift", \shift => RenderInputs::setting (snapshot, identity, "amount", \amount => RenderInputs::setting (snapshot, identity, "morphMode", \morphMode => RenderInputs::setting (snapshot, identity, "mix", \mix => RenderInputs::setting (snapshot, identity, "semitones", \semitones => RenderInputs::setting (snapshot, identity, "cents", \cents => RenderInputs::setting (snapshot, identity, "keepFormants", \keep => configured (rate, size, hop, transform (selector, hold, low, high, shift, amount, morphMode, { semitones = semitones, cents = cents, keep = keep }), mix))))))))))))
 
     (** Resolve fixed FFT parameters once; automated blocks resolve them at each sample. *)
@@ -55,7 +50,7 @@ module SpectralKernels
         _ => LiveSpectrum
 
     (** Read live audio from both inlets with the configuration for this sample. *)
-    export process (plan, rate, snapshot, frame, held, size, hop, input, prepared) = Outcomes::carried (side (plan, frame, held.identity), \other =>
+    export process (plan, rate, snapshot, frame, held, size, hop, input, prepared) = Outcomes::carried (RenderInputs::optional (plan, frame, held.identity, 1), \other =>
         config = match prepared
             LiveSpectrum => settings (rate, snapshot, held.identity, size, hop)
             FixedSpectrum fixed => Success(value = fixed)

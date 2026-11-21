@@ -1,16 +1,29 @@
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync, mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, readFileSync, readdirSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { test } from 'node:test'
 import { classify } from './ci-scope.mjs'
-import { runStagedBundleFixture, nativeArchives, proofAssets } from './ci-bundle-fixture.mjs'
+import { runStagedBundleFixture, nativeArchives, proofAssets, withTempDir } from './ci-bundle-fixture.mjs'
 import { targetsMainPullRequests } from './workflow-pr-target.mjs'
 import { registerLintContracts } from './ci-lint-contract-tests.mjs'
 import { registerProofContracts } from './ci-proof-contract-tests.mjs'
 import { registerRegistryContracts } from './ci-registry-contract-tests.mjs'
 import { job, makeRecipe } from './ci-workflow-text.mjs'
+
+// The workflow nearly every contract here is written against: its text, and
+// single jobs of it, named once so the workflow path never drifts between tests.
+const CI = '.github/workflows/ci.yml'
+const ciText = readFileSync(CI, 'utf8')
+const ciJob = (name) => job(name, CI)
+// The jobs more than one test asserts against, read once.
+const buildJob = job('build', CI)
+const extensionJob = job('test-extension', CI)
+const coverageJob = job('coverage', CI)
+const rustJob = job('test-rust', CI)
+// The test suite's own definition, and the recipe every gate contract walks over.
+const testsMk = readFileSync('scripts/make/tests.mk', 'utf8')
+const testRecipe = makeRecipe('test')
 
 const cases = [
   ['book chapter and runnable example', ['docs/book/manuscript/04.md', 'docs/book/examples/chapter-04/main.osp'], false, true, false, true],
@@ -55,54 +68,46 @@ test('mixed content and compiler changes retain every applicable check', () => {
 })
 
 test('all workflows use the shared classifier and content checks remain required', () => {
-  const linux = readFileSync('.github/workflows/ci.yml', 'utf8')
   const windows = readFileSync('.github/workflows/ci-windows.yml', 'utf8')
-  assert.equal(linux.split('uses: ./.github/actions/detect-ci-scope').length - 1, 2)
+  assert.equal(ciText.split('uses: ./.github/actions/detect-ci-scope').length - 1, 2)
   assert.match(windows, /uses: \.\/\.github\/actions\/detect-ci-scope/)
-  assert.match(linux, /python3 src\/toolchain\/benchmarks\/test_merge_results.py --tooling-only/)
-  assert.match(linux, /make -C docs\/book check-examples/)
-  assert.match(linux, /make -C docs\/book check\n/)
+  assert.match(ciText, /python3 src\/toolchain\/benchmarks\/test_merge_results.py --tooling-only/)
+  assert.match(ciText, /make -C docs\/book check-examples/)
+  assert.match(ciText, /make -C docs\/book check\n/)
 })
 
 // [CI-PROGRAMS-COMPILE] A PR changing only Osprey programs (book examples,
 // benchmark cases) is not a code change, yet the compile-everything gate must
 // still compile it: both gating jobs read the programs output.
 test('build and check-programs gate on the programs output too', () => {
-  const linux = readFileSync('.github/workflows/ci.yml', 'utf8')
   for (const name of ['build', 'check-programs']) {
-    const conditional = job(name, '.github/workflows/ci.yml').match(/^    if: (.+)$/m)[1]
+    const conditional = ciJob(name).match(/^    if: (.+)$/m)[1]
     assert.match(conditional, /needs\.changes\.outputs\.programs/, name)
     assert.match(conditional, /needs\.changes\.outputs\.code == 'true'/, name)
   }
-  assert.match(linux, /^      programs: \$\{\{ steps\.filter\.outputs\.programs \}\}$/m)
+  assert.match(ciText, /^      programs: \$\{\{ steps\.filter\.outputs\.programs \}\}$/m)
 })
 
 test('extension tests receive and reuse the build job\'s complete bundle', () => {
-  const build = job('build', '.github/workflows/ci.yml')
   for (const payload of ['target/osprey-pkg', 'target/package-workspace.wasm', 'target/workbench.wasm']) {
-    assert.match(build, new RegExp(`^ +${payload.replaceAll('.', '\\.')}\\s*$`, 'm'), payload)
+    assert.match(buildJob, new RegExp(`^ +${payload.replaceAll('.', '\\.')}\\s*$`, 'm'), payload)
   }
-  const tests = readFileSync('scripts/make/tests.mk', 'utf8')
-  const prerequisites = tests.match(/^_test_vscode_extension:(.*)$/m)?.[1] ?? ''
+  const prerequisites = testsMk.match(/^_test_vscode_extension:(.*)$/m)?.[1] ?? ''
   assert.match(prerequisites, /\b_vsix_verify\b/)
   assert.doesNotMatch(prerequisites, /\b_vsix_bundle\b/)
-  const commands = makeRecipe('test')
-  assert.ok(commands.indexOf('$(MAKE) _vsix_bundle') >= 0)
-  assert.ok(commands.indexOf('$(MAKE) _vsix_bundle') < commands.indexOf('$(MAKE) _test_vscode_extension'))
-  const extension = job('test-extension', '.github/workflows/ci.yml')
+  assert.ok(testRecipe.indexOf('$(MAKE) _vsix_bundle') >= 0)
+  assert.ok(testRecipe.indexOf('$(MAKE) _vsix_bundle') < testRecipe.indexOf('$(MAKE) _test_vscode_extension'))
   for (const required of [/name: Restore bundled extension assets/, /chmod \+x[^\n]*target\/osprey-pkg/,
-    /chmod \+x[^\n]*src\/toolchain\/vscode-extension\/bin\/linux-x64\/osprey-pkg/]) assert.match(extension, required)
+    /chmod \+x[^\n]*src\/toolchain\/vscode-extension\/bin\/linux-x64\/osprey-pkg/]) assert.match(extensionJob, required)
 })
 
 test('extension source fixtures have the WASI linker and sysroot before coverage', () => {
-  const extension = job('test-extension', '.github/workflows/ci.yml')
-  const beforeCoverage = extension.split('- name: Extension suite with V8 coverage')[0]
+  const beforeCoverage = extensionJob.split('- name: Extension suite with V8 coverage')[0]
   assert.match(beforeCoverage, /apt-get install[^\n]*\blld\b/)
   assert.match(beforeCoverage, /wasi-sysroot-\$\{WASI_SDK_VERSION\}/)
   assert.match(beforeCoverage, /test -d .*lib\/wasm32-wasip1/)
   assert.match(beforeCoverage, /OSPREY_WASI_SYSROOT=.*>> "\$GITHUB_ENV"/)
-  const build = job('build', '.github/workflows/ci.yml')
-  assert.match(build, /compiler\/bin\/\*\.a/)
+  assert.match(buildJob, /compiler\/bin\/\*\.a/)
 })
 
 // The bundle stages src/osprey/workbench/assets/. and src/osprey/workbench/lessons/media/.
@@ -113,14 +118,14 @@ test('extension source fixtures have the WASI linker and sysroot before coverage
 test('LFS fetches cover every workbench source asset the bundle stages', () => {
   const required = ['src/toolchain/website/src/assets/images/logo.png', 'src/toolchain/vscode-extension/media/**',
     'src/osprey/workbench/assets/**', 'src/osprey/workbench/lessons/media/**']
-  for (const [name, file] of [['test-extension', '.github/workflows/ci.yml'], ['vsix', '.github/workflows/release.yml']]) {
+  for (const [name, file] of [['test-extension', CI], ['vsix', '.github/workflows/release.yml']]) {
     const include = job(name, file).match(/git lfs pull --include="([^"]+)"/)?.[1] ?? ''
     for (const path of required) assert.ok(include.split(',').includes(path), `${name}: LFS fetch omits ${path}`)
   }
 })
 
 test('the required macOS gate runs every Apple part, the native Workbench host among them', () => {
-  const apple = job('test-apple', '.github/workflows/ci.yml')
+  const apple = ciJob('test-apple')
   for (const command of ['make -C src/toolchain/targets/ios/tests examples\n', 'make -C src/toolchain/targets/ios/tests inbox\n', 'make -C src/toolchain/targets/ios/tests tally-headless\n', 'make -C src/toolchain/targets/macos/tests examples tally-headless tally', 'make -C src/toolchain/targets/ios/tests bank',
     'make -C src/toolchain/targets/macos/tests _workbench_interactions', 'make -C src/toolchain/targets/macos/tests _workbench_memory']) {
     assert.ok(apple.includes(command), command)
@@ -138,7 +143,7 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   assert.match(apple, /^ {10}- part: iOS Tally\n {12}runner: macos-26\n {12}minutes: 22\n {12}run: make -C src\/toolchain\/targets\/ios\/tests tally-headless$/m)
   assert.equal(apple.match(/^ {12}runner: /gm).length, 3, 'only the iOS parts leave macos-15')
   assert.match(apple, /^ {10}lfs: true$/m)
-  assert.match(job('ci', '.github/workflows/ci.yml'), /^ {6}- test-apple$/m)
+  assert.match(ciJob('ci'), /^ {6}- test-apple$/m)
 })
 
 test('the required macOS gate runs every Apple part, the native Workbench host among them (extra: the Workbench check drives the real SwiftUI host with no window)', () => {
@@ -161,16 +166,15 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   assert.match(recipe, /^\tswift test --package-path src\/toolchain\/hosts\/swift --filter '\$\(WORKBENCH_SOAK\)'$/m)
   assert.match(recipe, /^\tswift test --package-path src\/toolchain\/hosts\/swift --skip WorkbenchLayout$/m)
   // The gate's Workbench parts are the only places those recipes run, so a windowed host can never slip into CI.
-  const ci = readFileSync('.github/workflows/ci.yml', 'utf8')
-  assert.match(ci, /^ {14}make -C src\/toolchain\/targets\/macos\/tests _workbench_interactions$/m)
-  assert.match(ci, /^ {14}make -C src\/toolchain\/targets\/macos\/tests _workbench_memory$/m)
-  assert.match(ci, /- part: Workbench memory\n {12}minutes: 15\n/)
-  assert.match(ci, /^ {12}target\/orchestra\/diagnostics\/\*\.jsonl$/m)
-  assert.doesNotMatch(ci, /view\.sh(?!.*--open-check)/)
+  assert.match(ciText, /^ {14}make -C src\/toolchain\/targets\/macos\/tests _workbench_interactions$/m)
+  assert.match(ciText, /^ {14}make -C src\/toolchain\/targets\/macos\/tests _workbench_memory$/m)
+  assert.match(ciText, /- part: Workbench memory\n {12}minutes: 15\n/)
+  assert.match(ciText, /^ {12}target\/orchestra\/diagnostics\/\*\.jsonl$/m)
+  assert.doesNotMatch(ciText, /view\.sh(?!.*--open-check)/)
 })
 
 test('the Android emulator is the Pixel 7 the phone goldens were taken on', () => {
-  const android = job('test-android', '.github/workflows/ci.yml')
+  const android = ciJob('test-android')
   assert.match(android, /^ {10}profile: pixel_7$/m)
   assert.ok(android.includes('make -C src/toolchain/targets/android/tests tally-headless'))
   // Goldens are named by width: a golden for any other phone width would mean CI runs another device.
@@ -185,20 +189,67 @@ test('unfinished mobile casting stays out of every CI path', () => {
     assert.doesNotMatch(readFileSync(join('.github/workflows', name), 'utf8'), unfinished, name)
   }
   assert.doesNotMatch(readFileSync('scripts/mobile/test-mobile-tools.py', 'utf8'), /src\/osprey\/examples\/casting|src\/toolchain\/targets\/ios\/tests/)
-  assert.match(readFileSync('src/toolchain/hosts/gpui/src/adapters.rs', 'utf8'), /feature = "mobile-bridge-tests"/)
-  assert.doesNotMatch(readFileSync('src/toolchain/hosts/gpui/src/adapters.rs', 'utf8'), /target_os = "android", test\)/)
+  const adapters = readFileSync('src/toolchain/hosts/gpui/src/adapters.rs', 'utf8')
+  assert.match(adapters, /feature = "mobile-bridge-tests"/)
+  assert.doesNotMatch(adapters, /target_os = "android", test\)/)
 })
 
 test('the coverage gate only compares collected reports and never builds or tests', () => {
-  const coverage = job('coverage', '.github/workflows/ci.yml')
-  const runs = [...coverage.matchAll(/^ {8}run: (.+)$/gm)].map((m) => m[1]).filter((r) => r !== '|')
+  const runs = [...coverageJob.matchAll(/^ {8}run: (.+)$/gm)].map((m) => m[1]).filter((r) => r !== '|')
   assert.deepEqual(runs.filter((r) => r.startsWith('make ')),
     ['make _coverage_check_rust', 'make _coverage_check_vscode_extension', 'make _coverage_check_packages', 'make _coverage_check_c_runtime'])
-  assert.doesNotMatch(coverage, /cargo |swift |xcodebuild|rust-toolchain|typediagram|ios-test|run\.sh/)
-  assert.match(coverage, /^    runs-on: ubuntu-latest$/m)
+  assert.doesNotMatch(coverageJob, /cargo |swift |xcodebuild|rust-toolchain|typediagram|ios-test|run\.sh/)
+  assert.match(coverageJob, /^    runs-on: ubuntu-latest$/m)
 })
 
-const stagedBundleFixture = (change) => runStagedBundleFixture(job('test-extension', '.github/workflows/ci.yml'), change)
+test('GPUI smoke and self-tests reuse the app libraries already compiled by the job', () => {
+  const workflow = '.github/workflows/gpui.yml'
+  for (const [host, preparation] of [['macos', /make _gpui-apps\n/], ['ubuntu', /make _gpui-smoke\n/]]) {
+    const hostJob = job(host, workflow)
+    assert.match(hostJob, preparation)
+    const ready = hostJob.search(preparation)
+    const selfTest = hostJob.indexOf('make -o _gpui-apps _gpui-self-test')
+    assert.ok(selfTest > ready, `${host} self-test must reuse the earlier build`)
+  }
+  const planned = spawnSync('make', ['-n', '-o', '_gpui-apps', '_gpui-self-test', 'UNAME_S=Linux'], { encoding: 'utf8' })
+  assert.equal(planned.status, 0, planned.stderr)
+  assert.match(planned.stdout, /--self-test/)
+  assert.doesNotMatch(planned.stdout, /--compile/)
+})
+
+test('local CI and hosted GPUI run the same DAW suite once with their built compiler', () => {
+  const command = 'make -C src/toolchain/targets/tests synth APP_SUITE_PREBUILT=1'
+  assert.equal(makeRecipe('ci').filter((line) => line === '$(MAKE) test').length, 1)
+  assert.equal(testRecipe.filter((line) => line === command.replace(/^make/, '$(MAKE)')).length, 1)
+  const hosted = job('ubuntu-suites', '.github/workflows/gpui.yml')
+  const setup = hosted.indexOf('uses: ./.github/actions/setup-osprey-compiler')
+  assert.ok(setup >= 0 && hosted.indexOf(command) > setup)
+  assert.doesNotMatch(hosted, /osprey test src\/osprey\/examples\/daw\/test/)
+  const planned = spawnSync('make', ['-n', ...command.split(' ').slice(1)], { encoding: 'utf8' })
+  assert.equal(planned.status, 0, planned.stderr)
+  assert.match(planned.stdout, /SUITES=src\/osprey\/examples\/daw\/test/)
+  assert.match(planned.stdout, /target\/release\/osprey test \$suite \|\| exit 1/)
+  assert.doesNotMatch(planned.stdout, /cargo build|clang |gcc /)
+})
+
+test('coverage identifies failed or skipped report producers before downloading artifacts', () => {
+  const producers = coverageJob.match(/^    needs: \[changes, (.+)\]$/m)[1].split(', ')
+  const preflight = coverageJob.split('      - uses: actions/checkout@v7')[0]
+  const command = preflight.match(/^        run: \|\n([\s\S]+)$/m)[1]
+  const results = Object.fromEntries(producers.map((producer) => [producer, { result: 'success' }]))
+  const run = (overrides) => spawnSync('bash', ['-e', '-c', command], {
+    env: { ...process.env, NEEDS: JSON.stringify({ ...results, ...overrides }) }, encoding: 'utf8',
+  })
+  assert.equal(run({}).status, 0)
+  const failed = run({ 'test-c-runtime': { result: 'skipped' }, 'test-rust': { result: 'failure' },
+    'test-registry-arc': { result: 'cancelled' } })
+  assert.equal(failed.status, 1)
+  assert.match(failed.stdout, /test-c-runtime: skipped/)
+  assert.match(failed.stdout, /test-rust: failure/)
+  assert.match(failed.stdout, /test-registry-arc: cancelled/)
+})
+
+const stagedBundleFixture = (change) => runStagedBundleFixture(extensionJob, change)
 
 test('staged bundle verification fails closed without recompiling a payload', () => {
   const complete = stagedBundleFixture()
@@ -230,21 +281,17 @@ test('staged bundle verification fails closed without recompiling a payload', ()
   assert.notEqual(shadowed.status, 0, 'a same-named file must not bypass bundle verification')
 })
 
-test('malformed detection input fails the gate instead of skipping required jobs', () => {
-  const temporary = mkdtempSync(join(tmpdir(), 'osprey-ci-scope-'))
-  try {
-    const env = { ...process.env, GITHUB_OUTPUT: join(temporary, 'output') }
-    const run = (input) => spawnSync(process.execPath, ['scripts/ci/ci-scope.mjs'], { env, input })
-    assert.notEqual(run('docs/book/book.json').status, 0)
-    const paths = Array.from({ length: 8000 }, (_, index) => `docs/book/manuscript/chapter ${index}.md`)
-    assert.equal(run(`${paths.join('\0')}\0`).status, 0)
-    assert.match(readFileSync(env.GITHUB_OUTPUT, 'utf8'), /^code=false\nwebsite=false\nbook=true\nbenchmarks=false\nprograms=false\n$/)
-  } finally { rmSync(temporary, { recursive: true }) }
-})
+test('malformed detection input fails the gate instead of skipping required jobs', () => withTempDir('ci-scope', (temporary) => {
+  const env = { ...process.env, GITHUB_OUTPUT: join(temporary, 'output') }
+  const run = (input) => spawnSync(process.execPath, ['scripts/ci/ci-scope.mjs'], { env, input })
+  assert.notEqual(run('docs/book/book.json').status, 0)
+  const paths = Array.from({ length: 8000 }, (_, index) => `docs/book/manuscript/chapter ${index}.md`)
+  assert.equal(run(`${paths.join('\0')}\0`).status, 0)
+  assert.match(readFileSync(env.GITHUB_OUTPUT, 'utf8'), /^code=false\nwebsite=false\nbook=true\nbenchmarks=false\nprograms=false\n$/)
+}))
 
 function rustCoverageFixture(entries, covered = 100) {
-  const root = mkdtempSync(join(tmpdir(), 'osprey-rust-coverage-'))
-  try {
+  return withTempDir('rust-coverage', (root) => {
     for (const name of ['one', 'two']) {
       mkdirSync(join(root, 'src', 'toolchain', 'crates', name), { recursive: true })
       writeFileSync(join(root, 'src', 'toolchain', 'crates', name, 'Cargo.toml'), `[package]\nname = "${name}"\n`)
@@ -254,7 +301,7 @@ function rustCoverageFixture(entries, covered = 100) {
       `SF:${root}/crates/${name}/src/lib.rs\nLF:100\nLH:${covered}\nend_of_record\n`).join(''))
     return spawnSync('make', ['-f', resolve('scripts/make/tests.mk'), '_coverage_check_rust',
       'COVERAGE_THRESHOLDS_FILE=thresholds.json', 'RUST_LCOV=lcov.info'], { cwd: root, encoding: 'utf8' })
-  } finally { rmSync(root, { recursive: true, force: true }) }
+  })
 }
 
 test('Rust coverage gate rejects unlisted crates and invalid thresholds', () => {
@@ -274,10 +321,9 @@ test('Rust coverage gate rejects unlisted crates and invalid thresholds', () => 
 })
 
 test('package coverage preserves the complete test recipe and checks without rerunning suites', () => {
-  const commands = makeRecipe('test')
   for (const target of ['_test_packages', '_coverage_check_packages', '_test_python_app_ports', '_conformance-gc',
     '_conformance-arc', '_test_profiler', '_test_vscode_extension', '_coverage_check_vscode_extension', '_test_bench_tools']) {
-    assert.equal(commands.filter((line) => line === `$(MAKE) ${target}`).length, 1, target)
+    assert.equal(testRecipe.filter((line) => line === `$(MAKE) ${target}`).length, 1, target)
   }
   const check = makeRecipe('_coverage_check_packages')
   assert.equal(check.length, 1, 'checking collected coverage must not run unrelated suites')
@@ -291,18 +337,15 @@ test('the KLEE engine gates stay out of CI and make ci; the mock oracle and know
   // pinned budget), so CI runs none of them, and neither does `make ci`.
   // Verification is by hand:
   // make _test_hunt / make _test_hunt_clean / make _test_hunt_crashes.
-  const local = makeRecipe('test')
-  assert.ok(local.includes('$(MAKE) _test_hunt_mock'))
-  assert.deepEqual(local.filter((command) => /_test_hunt(?!_mock)/.test(command)), [])
+  assert.ok(testRecipe.includes('$(MAKE) _test_hunt_mock'))
+  assert.deepEqual(testRecipe.filter((command) => /_test_hunt(?!_mock)/.test(command)), [])
   assert.doesNotMatch(readFileSync('Makefile', 'utf8').match(/^ci:.*$/m)[0], /hunt/)
-  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
-  assert.doesNotMatch(workflow, /brew install klee/)
-  assert.doesNotMatch(workflow, /make _test_hunt(?!_mock)/)
-  assert.doesNotMatch(workflow, /make _runtime_klee/)
-  assert.doesNotMatch(workflow, /_test_hunt_crashes/)
-  assert.match(job('test-c-runtime', '.github/workflows/ci.yml'), /make _test_hunt_mock/)
-  const expectations = readFileSync('scripts/make/tests.mk', 'utf8')
-  assert.match(expectations, /^_test_hunt_clean:/m)
+  assert.doesNotMatch(ciText, /brew install klee/)
+  assert.doesNotMatch(ciText, /make _test_hunt(?!_mock)/)
+  assert.doesNotMatch(ciText, /make _runtime_klee/)
+  assert.doesNotMatch(ciText, /_test_hunt_crashes/)
+  assert.match(ciJob('test-c-runtime'), /make _test_hunt_mock/)
+  assert.match(testsMk, /^_test_hunt_clean:/m)
   const engine = readFileSync('src/toolchain/crates/osprey-cli/tests/hunt_engine.rs', 'utf8')
   assert.match(engine, /const KNOWN_BUGS: \[&str; 1\] = \["clean"\];/)
   for (const control of ['clean.osp', 'clean.expected']) assert.ok(readFileSync(`src/osprey/tests/hunt/${control}`).length > 0)
@@ -311,62 +354,57 @@ test('the KLEE engine gates stay out of CI and make ci; the mock oracle and know
 })
 
 test('the Rust shards run every test: each name the rest skips, another shard selects', () => {
-  assert.match(job('test-rust', '.github/workflows/ci.yml'), /run: make _test_rust_shard RUST_SHARD=\$\{\{ matrix\.shard \}\}/)
-  assert.match(job('test-rust', '.github/workflows/ci.yml'), /shard: \[packages, workbench, rest\]/)
-  const make = readFileSync('scripts/make/tests.mk', 'utf8')
-  assert.match(make, /cargo llvm-cov --manifest-path src\/toolchain\/Cargo\.toml --workspace --profile ci --lcov/)
-  assert.doesNotMatch(make, /cargo llvm-cov[^\n]*(?:--exclude|--skip)/)
-  assert.match(make, /^RUST_SHARD_ARGS_packages := --test python_packages -- \$\(RUST_SHARD_PACKAGES\)$/m)
-  assert.match(make, /^RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result -- \$\(RUST_SHARD_WORKBENCH\)$/m)
-  assert.match(make, /^RUST_SHARD_ARGS_rest := -- \$\(addprefix --skip ,\$\(RUST_SHARD_PACKAGES\) \$\(RUST_SHARD_WORKBENCH\)\)$/m)
+  assert.match(rustJob, /run: make _test_rust_shard RUST_SHARD=\$\{\{ matrix\.shard \}\}/)
+  assert.match(rustJob, /shard: \[packages, workbench, rest\]/)
+  assert.match(testsMk, /cargo llvm-cov --manifest-path src\/toolchain\/Cargo\.toml --workspace --profile ci --lcov/)
+  assert.doesNotMatch(testsMk, /cargo llvm-cov[^\n]*(?:--exclude|--skip)/)
+  assert.match(testsMk, /^RUST_SHARD_ARGS_packages := --test python_packages -- \$\(RUST_SHARD_PACKAGES\)$/m)
+  assert.match(testsMk, /^RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result -- \$\(RUST_SHARD_WORKBENCH\)$/m)
+  assert.match(testsMk, /^RUST_SHARD_ARGS_rest := -- \$\(addprefix --skip ,\$\(RUST_SHARD_PACKAGES\) \$\(RUST_SHARD_WORKBENCH\)\)$/m)
 })
 
 test('the coverage gate reads the merge of every Rust shard', () => {
-  const coverage = job('coverage', '.github/workflows/ci.yml')
-  const matrix = job('test-rust', '.github/workflows/ci.yml')
-  const shards = matrix.match(/shard: \[([^\]]+)\]/)[1].split(', ')
-  assert.match(coverage, /pattern: coverage-rust-\*/)
-  const merge = coverage.match(/python3 scripts\/ci\/merge_lcov\.py target\/coverage\/rust\/\{([^}]+)\}\/lcov\.info > target\/coverage\/lcov\.info/)
+  const shards = rustJob.match(/shard: \[([^\]]+)\]/)[1].split(', ')
+  assert.match(coverageJob, /pattern: coverage-rust-\*/)
+  const merge = coverageJob.match(/python3 scripts\/ci\/merge_lcov\.py target\/coverage\/rust\/\{([^}]+)\}\/lcov\.info > target\/coverage\/lcov\.info/)
   assert.ok(merge, 'the merge must name every shard explicitly')
   assert.deepEqual(merge[1].split(','), shards.map(shard => `coverage-rust-${shard}`))
 })
 
-registerLintContracts(job('analyse', '.github/workflows/ci.yml'))
+registerLintContracts(ciJob('analyse'))
 
 test('package source coverage runs independently and blocks the required coverage gate', () => {
-  const packages = job('test-packages', '.github/workflows/ci.yml')
+  const packages = ciJob('test-packages')
   assert.match(packages, /needs: \[changes, build\]/)
   assert.match(packages, /if:.*needs\.changes\.outputs\.code/)
   assert.match(packages, /run: make _test_packages/)
   assert.match(packages, /name: Upload package coverage\n\s+if: always\(\)/)
   assert.match(packages, /name: coverage-packages/)
   assert.match(packages, /if-no-files-found: error/)
-  assert.match(job('coverage', '.github/workflows/ci.yml'), /needs:.*\btest-packages\b/)
+  assert.match(coverageJob, /needs:.*\btest-packages\b/)
 })
 
 test('C runtime coverage consumes reports from a single instrumented test run', () => {
-  const build = job('build', '.github/workflows/ci.yml')
-  const runtime = job('test-c-runtime', '.github/workflows/ci.yml')
-  const coverage = job('coverage', '.github/workflows/ci.yml')
-  assert.match(build, /make -j2 _build_c_runtime_tests/)
-  assert.match(build, /name: c-runtime-tests/)
+  const runtime = ciJob('test-c-runtime')
+  assert.match(buildJob, /make -j2 _build_c_runtime_tests/)
+  assert.match(buildJob, /name: c-runtime-tests/)
   assert.match(runtime, /name: c-runtime-tests/)
   assert.match(runtime, /make -j2 _test_c_runtime/)
   assert.doesNotMatch(runtime, /_build_c_runtime_tests|_coverage_check_c_runtime/)
   assert.match(runtime, /name: coverage-c-runtime/)
-  assert.match(coverage, /needs:.*\btest-c-runtime\b/)
-  assert.match(coverage, /name: coverage-c-runtime/)
-  assert.match(coverage, /run: make _coverage_check_c_runtime/)
+  assert.match(coverageJob, /needs:.*\btest-c-runtime\b/)
+  assert.match(coverageJob, /name: coverage-c-runtime/)
+  assert.match(coverageJob, /run: make _coverage_check_c_runtime/)
 })
 
 test('application ports have an independent complete backend gate', () => {
-  const apps = job('test-python-app-ports', '.github/workflows/ci.yml')
+  const apps = ciJob('test-python-app-ports')
   assert.match(apps, /needs: \[changes, build\]/)
   assert.match(apps, /if:.*needs\.changes\.outputs\.code/)
   assert.match(apps, /run: make _test_python_app_ports/)
 })
 
-registerProofContracts(job('test-proof', '.github/workflows/ci.yml'))
+registerProofContracts(ciJob('test-proof'))
 
 registerRegistryContracts()
 
@@ -377,6 +415,72 @@ test('every release publishes only after an unconditional dependency audit', () 
     'publish-openvsx', 'deploy-site', 'deploy-webcompiler']) {
     assert.match(job(name), /needs:.*\baudit\b/, `${name} must wait for the audit`)
   }
+})
+
+function fixtureGit(directory, ...args) {
+  const result = spawnSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd: directory, encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  return result.stdout.trim()
+}
+
+function commitFixture(directory, subject) {
+  fixtureGit(directory, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', subject, '--allow-empty')
+}
+
+// A fresh repository with the CI-local files ignored and one initial commit of the given paths.
+function initFixtureRepo(directory, ...paths) {
+  fixtureGit(directory, 'init', '-q')
+  writeFileSync(join(directory, '.gitignore'), 'target/\nci-step.sh\n')
+  fixtureGit(directory, 'add', ...paths)
+  commitFixture(directory, 'initial')
+}
+
+function runLocalCi(directory, audit) {
+  writeFileSync(join(directory, 'ci-step.sh'), [
+    'case "$1" in', `  audit) ${audit} ;;`, '  lint|test) printf "ran %s\\n" "$1" ;;', 'esac',
+  ].join('\n'))
+  return spawnSync('make', ['-j4', '-I', resolve('.'), '-f', resolve('Makefile'), 'MAKE=sh ./ci-step.sh', 'ci'],
+    { cwd: directory, encoding: 'utf8' })
+}
+
+test('a failed local dependency audit invalidates a previous green push stamp', () => withTempDir('push-gate', (dir) => {
+  initFixtureRepo(dir, '.gitignore')
+  mkdirSync(join(dir, 'target'))
+  const stamp = join(dir, 'target/ci-green')
+  writeFileSync(stamp, 'previously tested commit')
+  const result = runLocalCi(dir, 'echo fixture-audit-failure >&2; false')
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /fixture-audit-failure/)
+  assert.doesNotMatch(result.stdout, /ran (lint|test)/)
+  assert.throws(() => readFileSync(stamp), { code: 'ENOENT' })
+}))
+
+test('local CI stamps a clean commit and rejects changes before or during its run', () => withTempDir('ci-source', (directory) => {
+  const stamp = join(directory, 'target/ci-green')
+  const source = join(directory, 'source.osp')
+  writeFileSync(source, 'fn main() = 0\n')
+  initFixtureRepo(directory, '.')
+  const run = (audit) => runLocalCi(directory, audit)
+  const clean = run('echo ran audit')
+  assert.equal(clean.status, 0, clean.stderr)
+  assert.deepEqual(clean.stdout.match(/^ran \w+$/gm), ['ran audit', 'ran lint', 'ran test'])
+  assert.equal(readFileSync(stamp, 'utf8').trim(), fixtureGit(directory, 'rev-parse', 'HEAD'))
+  writeFileSync(source, 'fn main() = 1\n')
+  const dirty = run('echo audit-ran')
+  assert.notEqual(dirty.status, 0)
+  assert.doesNotMatch(dirty.stdout, /audit-ran/)
+  assert.throws(() => readFileSync(stamp), { code: 'ENOENT' })
+  fixtureGit(directory, 'restore', 'source.osp')
+  assert.notEqual(run('touch untracked.osp').status, 0)
+  assert.throws(() => readFileSync(stamp), { code: 'ENOENT' })
+  rmSync(join(directory, 'untracked.osp'))
+  assert.notEqual(run('git -c user.name=Fixture -c user.email=fixture@example.invalid commit -qm later --allow-empty').status, 0)
+  assert.throws(() => readFileSync(stamp), { code: 'ENOENT' })
+}))
+
+test('pushing needs no Make target or wrapper script', () => {
+  assert.doesNotMatch(readFileSync('Makefile', 'utf8'), /^(?:##\s+)?push\s*:/m)
+  assert.equal(existsSync('scripts/ci/push.sh'), false)
 })
 
 test('standalone deployment dispatch runs the mandatory dependency audit first', () => {
@@ -402,16 +506,15 @@ test('Dependabot stages updates and keeps a consolidation PR flowing to main', (
 })
 
 test('main requires one root job that needs every job, so the ruleset lists none', () => {
-  const ci = '.github/workflows/ci.yml'
-  const gate = job('ci', ci)
+  const gate = ciJob('ci')
   assert.match(gate, /^ {4}name: CI\s*$/m)
   assert.match(gate, /if: \$\{\{ always\(\) \}\}/)
   const needs = [...gate.matchAll(/^ {6}- ([\w-]+)\s*$/gm)].map((m) => m[1])
-  const jobs = readFileSync(ci, 'utf8').split(/^jobs:\s*$/m)[1]
+  const jobs = ciText.split(/^jobs:\s*$/m)[1]
   const others = [...jobs.matchAll(/^ {2}([\w-]+):\s*$/gm)].map((m) => m[1]).filter((key) => key !== 'ci')
   assert.deepEqual([...needs].sort(), [...others].sort())
   for (const called of ['ci-windows.yml', 'gpui.yml', 'winui.yml']) {
-    assert.ok(readFileSync(ci, 'utf8').includes(`uses: ./.github/workflows/${called}`), called)
+    assert.ok(ciText.includes(`uses: ./.github/workflows/${called}`), called)
   }
   const beside = readdirSync('.github/workflows').filter((f) => f !== 'ci.yml' && /\.ya?ml$/.test(f))
     .filter((f) => targetsMainPullRequests(readFileSync(`.github/workflows/${f}`, 'utf8')))

@@ -2,17 +2,25 @@ namespace daw
 
 (** Generated project field readers and writers from daw.td [DAW-PROJECT-MODEL]. *)
 module ProjectCodec
-    writeEqualiser item = JsonObject [JsonMember "low" (JsonFloat item.low), JsonMember "mid" (JsonFloat item.mid), JsonMember "high" (JsonFloat item.high)]
+    textMember (name, value) = JsonMember name (JsonString value)
+
+    decimalMember (name, value) = JsonMember name (JsonFloat value)
+
+    numberMember (name, value) = JsonMember name (JsonInt value)
+
+    flagMember (name, value) = JsonMember name (JsonBool value)
+
+    writeEqualiser item = JsonObject [decimalMember ("low", item.low), decimalMember ("mid", item.mid), decimalMember ("high", item.high)]
 
     (** Read the fields of Equaliser after its nested values are decoded. *)
     export readEqualiser doc = Equaliser(low = ui::Doc::decimal (doc, "low"), mid = ui::Doc::decimal (doc, "mid"), high = ui::Doc::decimal (doc, "high"))
 
-    writeCompressor item = JsonObject [JsonMember "threshold" (JsonFloat item.threshold), JsonMember "ratio" (JsonFloat item.ratio), JsonMember "knee" (JsonFloat item.knee), JsonMember "attack" (JsonFloat item.attack), JsonMember "release" (JsonFloat item.release), JsonMember "sidechain" (JsonString item.sidechain)]
+    writeCompressor item = JsonObject [decimalMember ("threshold", item.threshold), decimalMember ("ratio", item.ratio), decimalMember ("knee", item.knee), decimalMember ("attack", item.attack), decimalMember ("release", item.release), textMember ("sidechain", item.sidechain)]
 
     (** Read the fields of Compressor after its nested values are decoded. *)
     export readCompressor doc = Compressor(threshold = ui::Doc::decimal (doc, "threshold"), ratio = ui::Doc::decimal (doc, "ratio"), knee = ui::Doc::decimal (doc, "knee"), attack = ui::Doc::decimal (doc, "attack"), release = ui::Doc::decimal (doc, "release"), sidechain = ui::Doc::text (doc, "sidechain"))
 
-    writeBus item = JsonObject [JsonMember "name" (JsonString item.name), JsonMember "output" (JsonString item.output), JsonMember "gain" (JsonFloat item.gain), JsonMember "equaliser" (writeEqualiser item.equaliser), JsonMember "compressor" (writeCompressor item.compressor)]
+    writeBus item = JsonObject [textMember ("name", item.name), textMember ("output", item.output), decimalMember ("gain", item.gain), JsonMember "equaliser" (writeEqualiser item.equaliser), JsonMember "compressor" (writeCompressor item.compressor)]
 
     (** Read the fields of Bus after its nested values are decoded. *)
     export readBus (doc, equaliser, compressor) = Bus(name = ui::Doc::text (doc, "name"), output = ui::Doc::text (doc, "output"), gain = ui::Doc::decimal (doc, "gain"), equaliser = equaliser, compressor = compressor)
@@ -22,44 +30,44 @@ module ProjectCodec
         Pitched => JsonString "Pitched"
         Struck => JsonString "Struck"
 
-    writeSetting item = JsonObject [JsonMember "key" (JsonString item.key), JsonMember "value" (JsonFloat item.value), JsonMember "follow" (writeFollow item.follow)]
+    writeSetting item = JsonObject [textMember ("key", item.key), decimalMember ("value", item.value), JsonMember "follow" (writeFollow item.follow)]
 
     (** Read the fields of Setting after its nested values are decoded. *)
     export readSetting (doc, follow) = Setting(key = ui::Doc::text (doc, "key"), value = ui::Doc::decimal (doc, "value"), follow = follow)
 
-    writePatchNode item = JsonObject [JsonMember "identity" (JsonInt item.identity), JsonMember "component" (JsonString item.component), JsonMember "size" (JsonInt item.size), JsonMember "seed" (JsonInt item.seed), JsonMember "asset" (JsonString item.asset), JsonMember "settings" (JsonArray (mapList (item.settings, writeSetting)))]
+    writePatchNode item = JsonObject [numberMember ("identity", item.identity), textMember ("component", item.component), numberMember ("size", item.size), numberMember ("seed", item.seed), textMember ("asset", item.asset), JsonMember "settings" (JsonArray (mapList (item.settings, writeSetting)))]
 
     (** Read the fields of PatchNode after its nested values are decoded. *)
     export readPatchNode (doc, settings) = PatchNode(identity = ui::Doc::number (doc, "identity"), component = ui::Doc::text (doc, "component"), size = ui::Doc::number (doc, "size"), seed = ui::Doc::number (doc, "seed"), asset = ui::Doc::text (doc, "asset"), settings = settings)
 
-    writePatchCable item = JsonObject [JsonMember "source" (JsonInt item.source), JsonMember "outlet" (JsonInt item.outlet), JsonMember "destination" (JsonInt item.destination), JsonMember "inlet" (JsonInt item.inlet)]
+    writePatchCable item = JsonObject [numberMember ("source", item.source), numberMember ("outlet", item.outlet), numberMember ("destination", item.destination), numberMember ("inlet", item.inlet)]
 
     (** Read the fields of PatchCable after its nested values are decoded. *)
     export readPatchCable doc = PatchCable(source = ui::Doc::number (doc, "source"), outlet = ui::Doc::number (doc, "outlet"), destination = ui::Doc::number (doc, "destination"), inlet = ui::Doc::number (doc, "inlet"))
 
-    writeRouting item = JsonObject [JsonMember "nodes" (JsonArray (mapList (item.nodes, writePatchNode))), JsonMember "cables" (JsonArray (mapList (item.cables, writePatchCable))), JsonMember "attack" (JsonFloat item.attack), JsonMember "release" (JsonFloat item.release)]
+    writeRouting item = JsonObject [JsonMember "nodes" (JsonArray (mapList (item.nodes, writePatchNode))), JsonMember "cables" (JsonArray (mapList (item.cables, writePatchCable))), decimalMember ("attack", item.attack), decimalMember ("release", item.release)]
 
     (** Read the fields of Routing after its nested values are decoded. *)
     export readRouting (doc, nodes, cables) = Routing(nodes = nodes, cables = cables, attack = ui::Doc::decimal (doc, "attack"), release = ui::Doc::decimal (doc, "release"))
 
-    writeTone item = JsonObject [JsonMember "breakpoint" (JsonFloat item.breakpoint), JsonMember "feedback" (JsonFloat item.feedback), JsonMember "attack" (JsonFloat item.attack), JsonMember "release" (JsonFloat item.release), JsonMember "bloom" (JsonFloat item.bloom), JsonMember "detune" (JsonFloat item.detune)]
+    writeTone item = JsonObject [decimalMember ("breakpoint", item.breakpoint), decimalMember ("feedback", item.feedback), decimalMember ("attack", item.attack), decimalMember ("release", item.release), decimalMember ("bloom", item.bloom), decimalMember ("detune", item.detune)]
 
     (** Read the fields of Tone after its nested values are decoded. *)
     export readTone doc = Tone(breakpoint = ui::Doc::decimal (doc, "breakpoint"), feedback = ui::Doc::decimal (doc, "feedback"), attack = ui::Doc::decimal (doc, "attack"), release = ui::Doc::decimal (doc, "release"), bloom = ui::Doc::decimal (doc, "bloom"), detune = ui::Doc::decimal (doc, "detune"))
 
-    writeHit item = JsonObject [JsonMember "sweep" (JsonFloat item.sweep), JsonMember "noise" (JsonFloat item.noise), JsonMember "colour" (JsonFloat item.colour), JsonMember "decay" (JsonFloat item.decay)]
+    writeHit item = JsonObject [decimalMember ("sweep", item.sweep), decimalMember ("noise", item.noise), decimalMember ("colour", item.colour), decimalMember ("decay", item.decay)]
 
     (** Read the fields of Hit after its nested values are decoded. *)
     export readHit doc = Hit(sweep = ui::Doc::decimal (doc, "sweep"), noise = ui::Doc::decimal (doc, "noise"), colour = ui::Doc::decimal (doc, "colour"), decay = ui::Doc::decimal (doc, "decay"))
 
     writeInstrument item = match item
-        PatchInstrument routing => JsonObject [JsonMember "kind" (JsonString "PatchInstrument"), JsonMember "routing" (writeRouting routing)]
-        PluckInstrument brightness decay => JsonObject [JsonMember "kind" (JsonString "PluckInstrument"), JsonMember "brightness" (JsonFloat brightness), JsonMember "decay" (JsonFloat decay)]
-        BowInstrument pressure brightness vibrato => JsonObject [JsonMember "kind" (JsonString "BowInstrument"), JsonMember "pressure" (JsonFloat pressure), JsonMember "brightness" (JsonFloat brightness), JsonMember "vibrato" (JsonFloat vibrato)]
-        BellInstrument decay brightness => JsonObject [JsonMember "kind" (JsonString "BellInstrument"), JsonMember "decay" (JsonFloat decay), JsonMember "brightness" (JsonFloat brightness)]
-        MalletInstrument decay brightness => JsonObject [JsonMember "kind" (JsonString "MalletInstrument"), JsonMember "decay" (JsonFloat decay), JsonMember "brightness" (JsonFloat brightness)]
-        OperatorInstrument tone => JsonObject [JsonMember "kind" (JsonString "OperatorInstrument"), JsonMember "tone" (writeTone tone)]
-        DrumInstrument hit => JsonObject [JsonMember "kind" (JsonString "DrumInstrument"), JsonMember "hit" (writeHit hit)]
+        PatchInstrument routing => JsonObject [textMember ("kind", "PatchInstrument"), JsonMember "routing" (writeRouting routing)]
+        PluckInstrument brightness decay => JsonObject [textMember ("kind", "PluckInstrument"), decimalMember ("brightness", brightness), decimalMember ("decay", decay)]
+        BowInstrument pressure brightness vibrato => JsonObject [textMember ("kind", "BowInstrument"), decimalMember ("pressure", pressure), decimalMember ("brightness", brightness), decimalMember ("vibrato", vibrato)]
+        BellInstrument decay brightness => JsonObject [textMember ("kind", "BellInstrument"), decimalMember ("decay", decay), decimalMember ("brightness", brightness)]
+        MalletInstrument decay brightness => JsonObject [textMember ("kind", "MalletInstrument"), decimalMember ("decay", decay), decimalMember ("brightness", brightness)]
+        OperatorInstrument tone => JsonObject [textMember ("kind", "OperatorInstrument"), JsonMember "tone" (writeTone tone)]
+        DrumInstrument hit => JsonObject [textMember ("kind", "DrumInstrument"), JsonMember "hit" (writeHit hit)]
 
     (** Read the fields of PatchInstrument after its nested values are decoded. *)
     export readPatchInstrument routing = PatchInstrument(routing = routing)
@@ -82,28 +90,28 @@ module ProjectCodec
     (** Read the fields of DrumInstrument after its nested values are decoded. *)
     export readDrumInstrument hit = DrumInstrument(hit = hit)
 
-    writeAudioSend item = JsonObject [JsonMember "sendId" (JsonInt item.sendId), JsonMember "source" (JsonInt item.source), JsonMember "outlet" (JsonInt item.outlet), JsonMember "bus" (JsonString item.bus), JsonMember "level" (JsonFloat item.level), JsonMember "enabled" (JsonBool item.enabled)]
+    writeAudioSend item = JsonObject [numberMember ("sendId", item.sendId), numberMember ("source", item.source), numberMember ("outlet", item.outlet), textMember ("bus", item.bus), decimalMember ("level", item.level), flagMember ("enabled", item.enabled)]
 
     (** Read the fields of AudioSend after its nested values are decoded. *)
     export readAudioSend doc = AudioSend(sendId = ui::Doc::number (doc, "sendId"), source = ui::Doc::number (doc, "source"), outlet = ui::Doc::number (doc, "outlet"), bus = ui::Doc::text (doc, "bus"), level = ui::Doc::decimal (doc, "level"), enabled = ui::Doc::flag (doc, "enabled"))
 
-    writeNodePosition item = JsonObject [JsonMember "layoutNode" (JsonInt item.layoutNode), JsonMember "layoutX" (JsonFloat item.layoutX), JsonMember "layoutY" (JsonFloat item.layoutY)]
+    writeNodePosition item = JsonObject [numberMember ("layoutNode", item.layoutNode), decimalMember ("layoutX", item.layoutX), decimalMember ("layoutY", item.layoutY)]
 
     (** Read the fields of NodePosition after its nested values are decoded. *)
     export readNodePosition doc = NodePosition(layoutNode = ui::Doc::number (doc, "layoutNode"), layoutX = ui::Doc::decimal (doc, "layoutX"), layoutY = ui::Doc::decimal (doc, "layoutY"))
 
-    writeNote item = JsonObject [JsonMember "pitch" (JsonInt item.pitch), JsonMember "start" (JsonFloat item.start), JsonMember "length" (JsonFloat item.length), JsonMember "velocity" (JsonFloat item.velocity)]
+    writeNote item = JsonObject [numberMember ("pitch", item.pitch), decimalMember ("start", item.start), decimalMember ("length", item.length), decimalMember ("velocity", item.velocity)]
 
     (** Read the fields of Note after its nested values are decoded. *)
     export readNote doc = Note(pitch = ui::Doc::number (doc, "pitch"), start = ui::Doc::decimal (doc, "start"), length = ui::Doc::decimal (doc, "length"), velocity = ui::Doc::decimal (doc, "velocity"))
 
-    writeTrack item = JsonObject [JsonMember "name" (JsonString item.name), JsonMember "instrument" (writeInstrument item.instrument), JsonMember "gain" (JsonFloat item.gain), JsonMember "pan" (JsonFloat item.pan), JsonMember "bus" (JsonString item.bus), JsonMember "sends" (JsonArray (mapList (item.sends, writeAudioSend))), JsonMember "positions" (JsonArray (mapList (item.positions, writeNodePosition))), JsonMember "notes" (JsonArray (mapList (item.notes, writeNote)))]
+    writeTrack item = JsonObject [textMember ("name", item.name), JsonMember "instrument" (writeInstrument item.instrument), decimalMember ("gain", item.gain), decimalMember ("pan", item.pan), textMember ("bus", item.bus), JsonMember "sends" (JsonArray (mapList (item.sends, writeAudioSend))), JsonMember "positions" (JsonArray (mapList (item.positions, writeNodePosition))), JsonMember "notes" (JsonArray (mapList (item.notes, writeNote)))]
 
     (** Read the fields of Track after its nested values are decoded. *)
     export readTrack (doc, instrument, sends, positions, notes) = Track(name = ui::Doc::text (doc, "name"), instrument = instrument, gain = ui::Doc::decimal (doc, "gain"), pan = ui::Doc::decimal (doc, "pan"), bus = ui::Doc::text (doc, "bus"), sends = sends, positions = positions, notes = notes)
 
     (** Encode the complete project document. *)
-    export writeArrangement item = JsonObject [JsonMember "title" (JsonString item.title), JsonMember "tempo" (JsonFloat item.tempo), JsonMember "meterTop" (JsonInt item.meterTop), JsonMember "meterBottom" (JsonInt item.meterBottom), JsonMember "sampleRate" (JsonInt item.sampleRate), JsonMember "buses" (JsonArray (mapList (item.buses, writeBus))), JsonMember "tracks" (JsonArray (mapList (item.tracks, writeTrack)))]
+    export writeArrangement item = JsonObject [textMember ("title", item.title), decimalMember ("tempo", item.tempo), numberMember ("meterTop", item.meterTop), numberMember ("meterBottom", item.meterBottom), numberMember ("sampleRate", item.sampleRate), JsonMember "buses" (JsonArray (mapList (item.buses, writeBus))), JsonMember "tracks" (JsonArray (mapList (item.tracks, writeTrack)))]
 
     (** Read the fields of Arrangement after its nested values are decoded. *)
     export readArrangement (doc, buses, tracks) = Arrangement(title = ui::Doc::text (doc, "title"), tempo = ui::Doc::decimal (doc, "tempo"), meterTop = ui::Doc::number (doc, "meterTop"), meterBottom = ui::Doc::number (doc, "meterBottom"), sampleRate = ui::Doc::number (doc, "sampleRate"), buses = buses, tracks = tracks)
