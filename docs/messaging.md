@@ -4,17 +4,17 @@ This brief governs every word about Osprey: the homepage, README, videos, docs, 
 
 ## The answer
 
-> **Osprey is a platform for building software of any kind, in one safe, elegant, fast language. It already runs real apps on Mac, Windows, iPhone and Android, web servers, and AI models on the GPU.**
+> **Osprey is uncompromising: safe, elegant and fast, with no trade between them. It already runs real apps on Mac, Windows, iPhone and Android, web servers, and AI models on the GPU.**
 
 Second sentence, when there is room:
 
 > **Write the logic once and the compiler checks all of it. Handlers decide where it runs: SwiftUI or WinUI, CPU or GPU, the real disk or a test.**
 
-Every longer pitch expands these two sentences and never replaces them. The products are proof, not a boundary: never present them as the full list of what Osprey is for, and name only products that run today. Lead with things everyone knows (apps, websites, AI) in everyday words. Specialist work (music software, proofs) comes later and in plain words: "music studio app", never "DAW" or "audio synthesis" in an opening. Osprey is a language, but say "platform" first: a language with effects is a feature list, and a platform that builds the whole product is a reason to switch.
+Every longer pitch expands these two sentences and never replaces them. The products are proof, not a boundary: never present them as the full list of what Osprey is for, and name only products that run today. Lead with things everyone knows (apps, websites, AI) in everyday words. Specialist work (music software, proofs) comes later and in plain words: "music studio app", never "DAW" or "audio synthesis" in an opening. Push **uncompromising**, not breadth. "General purpose", "build anything" and "one language for everything" sound watered down; never lead with them. The breadth is evidence that nothing was traded away, not the pitch.
 
-## Nothing watered down
+## Uncompromising
 
-One language usually means a lowest common denominator. Osprey aims to be the best tool for each domain on its own merits. These are the domains proven so far, each by a product that runs today; add a row when a new one ships:
+Osprey never trades one pillar for another: no safety bought with speed, no speed bought with boilerplate. Each domain gets a tool that competes with the best on its own terms. These are the domains proven so far, each by a product that runs today; add a row when a new one ships:
 
 | You build | With Osprey | Show |
 | --- | --- | --- |
