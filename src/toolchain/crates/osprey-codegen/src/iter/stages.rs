@@ -119,13 +119,6 @@ pub(crate) fn replay(cg: &mut Codegen, stages: &[IterOp], v: Value, skip: &str) 
 /// A bare range has no callbacks. Skipping its temporary list therefore
 /// preserves evaluation order, including evaluation of the fold seed.
 pub(super) fn plain_range_list<'a>(cg: &Codegen, expr: &'a Expr) -> Option<&'a Expr> {
-    let builtin = |call, name| {
-        crate::expr::callee_name(call) == Some(name)
-            && cg.lookup(name).is_none()
-            && cg.lambda_def(name).is_none()
-            && !cg.extern_params.contains_key(name)
-            && !cg.call_aliases.contains_key(name)
-    };
     let Expr::Call {
         arguments,
         named_arguments,
@@ -137,6 +130,58 @@ pub(super) fn plain_range_list<'a>(cg: &Codegen, expr: &'a Expr) -> Option<&'a E
     let [range] = arguments.as_slice() else {
         return None;
     };
-    (named_arguments.is_empty() && builtin(expr, "toList") && builtin(range, "range"))
+    (named_arguments.is_empty() && builtin(cg, expr, "toList") && builtin(cg, range, "range"))
         .then_some(range)
+}
+
+fn builtin(cg: &Codegen, call: &Expr, name: &str) -> bool {
+    crate::expr::callee_name(call) == Some(name)
+        && cg.lookup(name).is_none()
+        && cg.lambda_def(name).is_none()
+        && !cg.extern_params.contains_key(name)
+        && !cg.call_aliases.contains_key(name)
+}
+
+/// Count all matches in order, including when isEmpty consumes the result.
+/// An effectful predicate must still observe the entire input.
+pub(crate) fn filtered_count(cg: &mut Codegen, expr: &Expr) -> Result<Option<Value>> {
+    let Expr::Call {
+        function,
+        arguments,
+        named_arguments,
+        ..
+    } = expr
+    else {
+        return Ok(None);
+    };
+    if arguments.len() != 2 || !named_arguments.is_empty() || !builtin(cg, expr, "filterList") {
+        return Ok(None);
+    }
+    count_application(cg, function, arguments).map(Some)
+}
+
+fn count_application(cg: &mut Codegen, function: &Expr, arguments: &[Expr]) -> Result<Value> {
+    if let Expr::TypeApply {
+        function, position, ..
+    } = function
+    {
+        return crate::expr::with_application(cg, function, *position, |cg| {
+            count_application(cg, function, arguments)
+        });
+    }
+    let source = super::list_arg(cg, arguments, 0)?;
+    let predicate = callback_of(cg, &arguments[1])?;
+    let count = cg.hoist_slot("i64");
+    cg.emit(format!("store i64 0, i64* {count}"));
+    super::each_list_elem(cg, &source, |cg, _, elem| {
+        let pred = invoke(cg, &predicate, vec![elem])?;
+        let bit = crate::cast::coerce_to(cg, pred, LType::I1)?;
+        let addend = as_i64(cg, bit)?;
+        let old = cg.emit_reg(format!("load i64, i64* {count}"));
+        let new = cg.emit_reg(format!("add i64 {old}, {}", addend.operand));
+        cg.emit(format!("store i64 {new}, i64* {count}"));
+        Ok(())
+    })?;
+    let total = cg.emit_reg(format!("load i64, i64* {count}"));
+    Ok(Value::new(total, LType::I64))
 }

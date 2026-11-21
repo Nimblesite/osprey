@@ -237,6 +237,14 @@ fn list_builders_map_filter_fold_and_foreach() {
             "osprey_list_builder_seal",
         ],
     );
+    let counts = module(
+        "fn main() -> Unit = {\n\
+            let xs = listAppend(List(), 2.5)\n\
+            print(length(filterList(xs, |x| => x > 0.0)))\n\
+            print(isEmpty(filterList(xs, |x| => x < 0.0)))\n\
+         }\n",
+    );
+    assert!(!counts.contains("call i8* @osprey_list_builder_new_of"));
 }
 
 #[test]

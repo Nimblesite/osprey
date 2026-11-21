@@ -20,7 +20,7 @@ use osprey_ast::{Expr, NamedArgument, Parameter, Position};
 mod sort_by;
 mod stages;
 use stages::{branch_on_predicate, plain_range_list, record};
-pub(crate) use stages::{reject_escape, replay, stage_aliases, stages_of};
+pub(crate) use stages::{filtered_count, reject_escape, replay, stage_aliases, stages_of};
 
 const RANGE_TY: &str = "{ i64, i64 }";
 pub(crate) const RANGE_OWNER: &str = "Range";
