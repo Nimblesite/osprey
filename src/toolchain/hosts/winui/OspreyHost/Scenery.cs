@@ -21,9 +21,9 @@ namespace Osprey.Host.WinUI;
 /// live between frames and are reused, so a frame that moves a thousand discs only moves them. Keys
 /// and the pointer reach the canvas's binding in scene units.
 /// </summary>
-sealed class SceneView
+sealed partial class SceneView
 {
-    readonly ContentControl holder = new()
+    readonly Holder holder = new()
     {
         IsTabStop = true,
         UseSystemFocusVisuals = false,
@@ -72,6 +72,33 @@ sealed class SceneView
     void Refreshed(object? sender, object args) => hovered = false;
 
     Scene? shown;
+
+    /// <summary>The window-unit size the shown scene opens at, or null when it fits its region.</summary>
+    public (double Width, double Height)? Opening => shown?.Opening;
+
+    // A scene that opens at a size asks for it, up to what it is offered: laid out in a window it
+    // takes its region as before, and measured without a limit it reports its whole artboard.
+    sealed partial class Holder : ContentControl
+    {
+        Size wanted;
+
+        public Size Wanted
+        {
+            get => wanted;
+            set
+            {
+                if (value == wanted) return;
+                wanted = value;
+                InvalidateMeasure();
+            }
+        }
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            var inner = base.MeasureOverride(availableSize);
+            return new Size(Math.Max(inner.Width, Math.Min(wanted.Width, availableSize.Width)), Math.Max(inner.Height, Math.Min(wanted.Height, availableSize.Height)));
+        }
+    }
 
     /// <summary>The element that holds the scene in the page.</summary>
     public FrameworkElement Element => holder;
@@ -173,6 +200,7 @@ sealed class SceneView
     void Fitted(Scene scene)
     {
         shown = scene;
+        holder.Wanted = scene.Opening is { } opening ? new Size(opening.Width, opening.Height) : default;
         if (scene.Width <= 0 || scene.Height <= 0)
         {
             canvas.Clip = null;

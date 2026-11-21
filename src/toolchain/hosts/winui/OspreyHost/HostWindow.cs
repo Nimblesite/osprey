@@ -36,7 +36,7 @@ sealed partial class HostWindow : Window
         Content = Layout(root);
         Progress.Note("content set");
         session = Started(launch, root, steady);
-        if (session?.CanvasSize() is { } canvas)
+        if ((session?.CanvasSize() ?? session?.NaturalSize(root)) is { } canvas)
         {
             Fit(canvas.Width, canvas.Height);
         }
@@ -89,11 +89,13 @@ sealed partial class HostWindow : Window
     }
 
     // An application that is one sized scene opens with exactly that scene in its client area, in
-    // window units scaled to the display, as the GPUI host opens a bare canvas, centred again.
+    // window units scaled to the display, as the GPUI host opens a bare canvas; one whose sized scene
+    // sits in a larger layout opens at that layout's own size. Either is no larger than the screen
+    // holds, and is centred again.
     void Fit(double width, double height)
     {
-        AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(width * Scale), (int)Math.Ceiling(height * Scale)));
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        AppWindow.ResizeClient(new SizeInt32(Math.Min((int)Math.Ceiling(width * Scale), area.Width), Math.Min((int)Math.Ceiling(height * Scale), area.Height)));
         AppWindow.Move(new PointInt32(area.X + (area.Width - AppWindow.Size.Width) / 2, area.Y + (area.Height - AppWindow.Size.Height) / 2));
     }
 
