@@ -465,6 +465,24 @@ fn the_daw_renderer_exits_one_on_every_failure_and_zero_when_it_writes() -> Test
     let broken = root.join("broken.json");
     std::fs::write(&broken, "{ not json")?;
     refused(&daw(&binary, &[&arg(&broken), &folder]), "daw: ");
+    // A valid project reaches the synth before its out-of-range brightness is refused.
+    let bell = root.join("bell.json");
+    let project = serde_json::json!({
+        "title": "Bell", "tempo": 120, "sampleRate": 48000, "buses": [],
+        "tracks": [{"name": "bell", "gain": 1, "pan": 0, "bus": "", "sends": [], "positions": [],
+            "instrument": {"kind": "BellInstrument", "decay": 0.05, "brightness": 2},
+            "notes": [{"pitch": 60, "start": 0, "length": 0.125, "velocity": 0.8}]}]
+    });
+    std::fs::write(&bell, serde_json::to_vec(&project)?)?;
+    let detail = "bell: Invalid modal rate, frequency, decay, brightness, strike or mode count.";
+    refused(&daw(&binary, &[&arg(&bell), &folder]), detail);
+    let live = daw(&binary, &[&arg(&bell), &folder, "0", "0.125", "live"]);
+    assert_eq!(live.code, Some(1), "stderr={}", live.stderr);
+    assert!(
+        live.stdout.is_empty(),
+        "a refused first block emitted audio"
+    );
+    assert_eq!(std::fs::read_to_string(out.join("fault.txt"))?, detail);
     assert!(
         !out.join("song.wav").exists(),
         "a refused render wrote a song"
