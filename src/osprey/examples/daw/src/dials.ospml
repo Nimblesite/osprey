@@ -6,6 +6,47 @@ namespace synth
 
 import ui::Scenes
 
+(** Numbered alternatives in component metadata are discrete choices. Other qualifiers describe a continuous control. *)
+module ParameterModes
+    numbered (parts, index, choices) = match listGet parts index
+        Error _ => choices
+        Success part =>
+            prefix = "${index} "
+            match startsWith part prefix && length part > length prefix
+                false => choices
+                true => match substring part (length prefix) (length part)
+                    Error _ => choices
+                    Success name => listAppend choices (ui::Ui::choice (toString index, name))
+
+    (** Only a complete, consecutive list matching the parameter range becomes a named choice. *)
+    export describe p =
+        plain = { title = p.label, options = [] }
+        match split p.label " (" ?: [p.label]
+            [title, detail] => match startsWith detail "0 " && endsWith detail ")" && p.minimum == 0.0
+                false => plain
+                true =>
+                    parts = split (substring detail 0 (satSub (length detail) 1) ?: "") ", " ?: []
+                    options = foldList (toList (range (0, length parts)), [], \(choices, i) => numbered (parts, i, choices))
+                    match length options > 1 && length options == length parts && p.maximum == toFloat (satSub (length options) 1)
+                        true => { title = title, options = options }
+                        false => plain
+            _ => plain
+
+    (** Match the exact saved value so a fractional value from an older project stays visible. *)
+    export selected (p, options) = ui::Lists::find (options, \option => (parseFloat option.choiceKey ?: -1.0) == p.initial)
+
+    (** Both panels bind edits to the same graph parameter, by a numeric field or a keyed picker. *)
+    export entry (n, p) =
+        mode = describe p
+        action = EditParameter(identity = n.identity, key = p.key)
+        match mode.options
+            [] => ui::Field(label = p.label, value = "${p.initial}", prompt = "${p.minimum} to ${p.maximum}", secure = false, multiline = false, commit = ui::OnSubmit, bind = action)
+            _ =>
+                key = match selected (p, mode.options)
+                    Success choice => choice.choiceKey
+                    Error _ => ""
+                ui::Ui::picker (mode.title, mode.options, key, action)
+
 (** A module's parameters as rows of dials: drawing, hit areas and the drag. *)
 module Dials
     (** Rows are this far apart. *)
@@ -25,6 +66,15 @@ module Dials
 
     (** A parameter's value as its dial and its module's card write it. *)
     export reading p = "${signed p.initial}${suffix p.unit}"
+
+    current (p, mode) = match ParameterModes::selected (p, mode.options)
+        Success option => option.choiceLabel
+        Error _ => reading p
+
+    (** The same short label and current value fit on the module card. *)
+    export summary p =
+        mode = ParameterModes::describe p
+        "${mode.title}  ${current (p, mode)}"
 
     paint colour = ui::Solid(tint = Scenes::hex (shiftRight colour 8, 1.0))
 
@@ -59,7 +109,12 @@ module Dials
         [name, detail] => [EditorView::text (name, x, cy - 15.0, 13.0, 225, depth), EditorView::text ("(${detail}", x, cy + 2.0, 10.0, 190, depth)]
         _ => [EditorView::text (label, x, cy - 8.0, 13.0, 225, depth)]
 
-    row (editor, n, p, x, cy, width, depth) = ui::Lists::flatten [caption (p.label, x, cy, depth), dial (p, x + width - 78.0, cy, lit (editor, n, p), depth), [Scenes::lettering (reading p, x + width, cy - 8.0, 13.0, TimelineView::ink (), 2, 600.0, depth)]]
+    row (editor, n, p, x, cy, width, depth) =
+        mode = ParameterModes::describe p
+        match mode.options
+            [] => ui::Lists::flatten [caption (p.label, x, cy, depth), dial (p, x + width - 78.0, cy, lit (editor, n, p), depth), [Scenes::lettering (reading p, x + width, cy - 8.0, 13.0, TimelineView::ink (), 2, 600.0, depth)]]
+            _ =>
+                [EditorView::text (mode.title, x, cy - 8.0, 13.0, 225, depth), EditorView::panel (x + width - 100.0, cy - 16.0, 104.0, 32.0, shiftRight (Scenes::rgb (40, 35, 66)) 8, depth), EditorView::text (current (p, mode), x + width - 92.0, cy - 8.0, 12.0, 235, depth + 1), Scenes::lettering ("⌄", x + width - 3.0, cy - 8.0, 13.0, TimelineView::dim (), 2, 500.0, depth + 1)]
 
     (** The dial rows of module `n`: labels from `x`, values ending at `x + width`, the first row centred on `top`. *)
     export shapes (editor, n, x, top, width, depth) = foldList (toList (range (0, length (shown n))), [], \(all, index) =>
@@ -68,7 +123,7 @@ module Dials
             Success p => listConcat all (row (editor, n, p, x, top + toFloat index * pitch (), width, depth)))
 
     area (editor, n, p, x, cy, width) =
-        plain = EditorView::accessible ("${EditorView::componentName (editor, n)} ${p.label}", x + width - 100.0, cy - pitch () / 2.0, 104.0, pitch (), false)
+        plain = EditorView::accessible ("${EditorView::componentName (editor, n)} ${(ParameterModes::describe p).title}", x + width - 100.0, cy - pitch () / 2.0, 104.0, pitch (), false)
         plain(accessValue = p.initial, accessMin = p.minimum, accessMax = p.maximum)
 
     (** Each dial with its number as one hit area, named after the module and the parameter and carrying its value and range. *)
@@ -98,7 +153,9 @@ module Dials
 
     pressed (editor, n, top, py) = match listGet (shown n) (floatToInt (DialMath::row (py, top, pitch ())) ?: -1)
         Error _ => Error(message = "")
-        Success p => Success(value = editor(dial = DialHeld(identity = n.identity, key = p.key, startY = py, startValue = p.initial, moved = false), dialEntry = ""))
+        Success p => match (ParameterModes::describe p).options
+            [] => Success(value = editor(dial = DialHeld(identity = n.identity, key = p.key, startY = py, startValue = p.initial, moved = false), dialEntry = ""))
+            _ => Success(value = editor(dialEntry = p.key, detailsShown = true))
 
     (** The pointer over module `n`'s dial rows laid out as `shapes` draws them. A held dial takes every event until
         its release; otherwise only a press on a dial or its number is the dials', and anything else is an error. *)

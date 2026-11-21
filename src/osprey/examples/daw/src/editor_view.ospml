@@ -87,7 +87,7 @@ module EditorView
     // A press on a dial that never moved asks for its value in figures: one field, sent on Return.
     entry (editor, n) = match ui::Lists::find (n.parameters, \p => p.key == editor.dialEntry)
         Error _ => []
-        Success p => [ui::Field(label = p.label, value = "${p.initial}", prompt = "${p.minimum} to ${p.maximum}", secure = false, multiline = false, commit = ui::OnSubmit, bind = EditParameter(identity = n.identity, key = p.key))]
+        Success p => [ParameterModes::entry (n, p)]
 
     // A plug-in's parameters can be driven by a control cable.
     modulations n = match n.processor
@@ -333,7 +333,7 @@ module EditorView
             Granular _ _ _ => ""
             _ => match listGet n.parameters 0
                 Error _ => ""
-                Success p => "${p.label}  ${Dials::reading p}"
+                Success p => Dials::summary p
         returnShapes = [panel (x at - 146.0, y at - 87.0, 292.0, 174.0, border, 2), rounded (x at - 144.0, y at - 85.0, 288.0, 170.0, 10.0, ui::Fill, paint, 3), text (componentName (editor, n), x at - 124.0, y at - 67.0, 18.0, 238, 5), panel (x at - 124.0, y at - 27.0, 248.0, 64.0, 986652, 4), text (caption, x at - 108.0, y at - 3.0, 14.0, 190, 5)]
         returnShapes
 

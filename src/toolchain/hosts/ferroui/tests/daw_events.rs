@@ -128,22 +128,23 @@ fn menu_bar(regions: &mut Regions) {
     }
 }
 
-fn choose_menu(regions: &mut Regions, title: &str, label: &str) {
+fn choose_menu(regions: &mut Regions, title: &str, label: &str) -> Shown {
     let menus = menus_of(regions);
     let event = menus.iter().find(|menu| menu.title == title)
         .and_then(|menu| menu.commands.iter().find(|item| item.label == label && item.enabled))
         .unwrap_or_else(|| panic!("missing enabled {title} > {label}")).event;
     let shown = Library::event(0, &Touch::control(event, "")).expect("dispatch menu command");
     regions.adopt(&shown).expect("adopt the command's workspace");
+    shown
 }
 
-fn named_control(node: &Tree, kind: &str, label: &str) -> Option<i64> {
+fn named_control<'a>(node: &'a Tree, kind: &str, label: &str) -> Option<&'a std::collections::BTreeMap<String, Tree>> {
     match node {
         Tree::Record(fields) => {
             if matches!(fields.get("kind"), Some(Tree::Text(value)) if value == kind)
                 && matches!(fields.get("label"), Some(Tree::Text(value)) if value == label)
             {
-                if let Some(Tree::Whole(event)) = fields.get("event") { return Some(*event); }
+                return Some(fields);
             }
             fields.values().find_map(|child| named_control(child, kind, label))
         }
@@ -154,8 +155,9 @@ fn named_control(node: &Tree, kind: &str, label: &str) -> Option<i64> {
 
 fn choose_control(regions: &mut Regions, kind: &str, label: &str, text: &str) {
     let root = &regions.get("root").expect("workspace").node;
-    let event = named_control(root, kind, label).unwrap_or_else(|| panic!("missing {kind} {label}"));
-    let changed = Library::event(0, &Touch::control(event, text)).expect("dispatch routing control");
+    let fields = named_control(root, kind, label).unwrap_or_else(|| panic!("missing {kind} {label}"));
+    let Some(Tree::Whole(event)) = fields.get("event") else { panic!("missing event for {label}"); };
+    let changed = Library::event(0, &Touch::control(*event, text)).expect("dispatch routing control");
     regions.adopt(&changed).expect("updated workspace");
 }
 
@@ -455,6 +457,53 @@ fn drag_piano_note(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
 }
 
 // [PRISM-ROUTING-LAYOUT] A card move survives reopening the project before another action can save it.
+/// [DAW-INSPECTOR] Read and change a spectral mode by name in the track patch.
+fn spectral_picker(regions: &mut Regions, song: &std::path::Path) {
+    let copy = song.with_file_name("spectral.json");
+    std::fs::copy(repo("osprey/examples/daw/tracks/silt-relay.json"), &copy).expect("copy the spectral project");
+    choose_menu(regions, "File", "Open Song…");
+    let loaded = Library::event(0, &Touch::completed("daw-open", Ok(copy.display().to_string()))).expect("open the spectral project");
+    regions.adopt(&loaded).expect("load timeline");
+    let mix = choose_menu(regions, "View", "Bus Routing");
+    let read = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(&copy).expect("project")).expect("JSON");
+    let project = read();
+    let tracks = project["tracks"].as_array().expect("tracks");
+    let index = tracks.iter().position(|t| t["name"] == "Throat / metal").expect("spectral track");
+    let canvas = regions.get("root").and_then(|r| scene(&r.node)).expect("mix canvas");
+    let target = format!("Mix track {}", index + 1);
+    let lane = mix.scenes.values().flat_map(|s| &s.access).find(|a| a.label == target).expect("routed track");
+    let row = lane.y + lane.h / 2.0;
+    point(canvas, (80.0, row), true);
+    let patch = point(canvas, (80.0, row), false).0;
+    let card = patch.scenes.values().flat_map(|s| &s.access).find(|a| a.label == "Canvas Spectral processor 2").expect("spectral card");
+    let title = (card.x + 55.0, card.y + 28.0);
+    point(canvas, title, true);
+    let inspector = point(canvas, title, false).0;
+    assert!(shows_label(&inspector, "Transform") && shows_label(&inspector, "morph"), "the inspector shows the active transform by name");
+    let mode = inspector.scenes.values().flat_map(|s| &s.access)
+        .find(|a| a.label == "Spectral processor 2 Transform").expect("transform selector");
+    let at = (mode.x + mode.w / 2.0, mode.y + mode.h / 2.0);
+    point(canvas, at, true);
+    regions.adopt(&point(canvas, at, false).0).expect("open the named modes");
+    let picker = named_control(&regions.get("root").expect("controls").node, "picker", "Transform").expect("mode picker");
+    assert_eq!(picker.get("selected"), Some(&Tree::Text("5".into())));
+    let Some(Tree::Items(choices)) = picker.get("choices") else { panic!("missing choices"); };
+    let expected = ["pass", "freeze", "band", "shift", "smear", "morph", "pitch"];
+    assert_eq!(choices.len(), expected.len());
+    for (index, (choice, label)) in choices.iter().zip(expected).enumerate() {
+        let Tree::Record(fields) = choice else { panic!("missing choice fields"); };
+        assert_eq!(fields.get("label"), Some(&Tree::Text(label.into())));
+        assert_eq!(fields.get("key"), Some(&Tree::Text(index.to_string())));
+    }
+    choose_control(regions, "picker", "Transform", "1");
+    choose_menu(regions, "File", "Save");
+    let saved = read();
+    let settings = saved["tracks"][index]["instrument"]["routing"]["nodes"][2]["settings"].as_array().expect("settings");
+    assert_eq!(settings.iter().find(|p| p["key"] == "transform").expect("transform")["value"], 1.0);
+    choose_menu(regions, "View", "Patch Controls");
+    std::fs::remove_file(copy).expect("remove test project");
+}
+
 fn tablepad_card(regions: &mut Regions, from_signal_flow: bool) -> (i64, (f64, f64), (f64, f64)) {
     choose_menu(regions, "View", "Bus Routing");
     let canvas = regions.get("root").and_then(|root| scene(&root.node)).expect("Bus Routing canvas");
@@ -580,6 +629,7 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     };
 
     position_on_release(&mut regions, &song);
+    spectral_picker(&mut regions, &song);
     choose_menu(&mut regions, "File", "Open Song…");
     let reset = Library::event(0, &Touch::completed("daw-open", Ok(song.display().to_string()))).expect("return to the test project");
     regions.adopt(&reset).expect("restore the timeline");
