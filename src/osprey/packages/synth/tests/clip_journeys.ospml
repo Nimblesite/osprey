@@ -170,6 +170,19 @@ sineHeard (label, samples, frequency) =
     inTune (label, steady, frequency, 0.5)
     within ("${label} level (dB)", decibelsAt (steady, frequency), -12.0412, 0.1)
 
+// [SYNTH-HOST-GRAPH] A send can tap either the stereo bus or one of its split outlets.
+stereoTapJourney () =
+    graph = built ([Components::stereo 1, Components::split (2, 2)], [cable (1, 2)])
+    stereo = synth::NodeClip(clipNode = 1, clipChannels = 2, clipSamples = [0.25, -0.5, 0.75, -1.0], clipNotes = [])
+    split = stereo(clipNode = 2)
+    clips = [stereo, split]
+    forEachList ([{ channel = 0, samples = [0.25, 0.75] }, { channel = 1, samples = [-0.5, -1.0] }], \side =>
+        succeeds (synth::ClipInputs::tapped (graph, clips, 1, 0, side.channel), \got => sameSamples (got, side.samples))
+        succeeds (synth::ClipInputs::tapped (graph, clips, 2, side.channel, 0), \got => sameSamples (got, side.samples)))
+    forEachList ([{ source = 9, outlet = 0, channel = 0 }, { source = 2, outlet = 2, channel = 0 }, { source = 2, outlet = 0, channel = 1 }], \bad =>
+        renderRefused (synth::ClipInputs::tapped (graph, clips, bad.source, bad.outlet, bad.channel)))
+    forEachList ([[split, split], [], [split(clipSamples = [0.25])]], \invalid => renderRefused (synth::ClipInputs::tapped (graph, invalid, 2, 0, 0)))
+
 registerClipJourneys () =
     audio = monoPort ("audio", synth::Audio, synth::Amplitude)
     test ("MIDI oscillator state validation rejects forged voices, capacity and malformed events", \() => arithmetic (\() =>
@@ -282,6 +295,7 @@ registerClipJourneys () =
         headless = Components::gain (1, 1.0)
         renderRefused (synth::ClipLayouts::channels (headless(outputs = [])))
         expect (synth::ClipLayouts::connected (midiInstrument (69.0, 0.5, 8.0), midiOscillator ()), true)
+        stereoTapJourney ()
         cached = nodeClipAt (1, [0.25, 0.25])
         expect (synth::ClipLayouts::validClip (graph, 2, cached), true)
         expect (synth::ClipLayouts::validClip (graph, 2, cached(clipNotes = [keyed (1, 0, 69, 1, 0.5)])), false)
