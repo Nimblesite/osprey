@@ -13,46 +13,19 @@ fn ident(name: &str) -> Result<String, String> {
     Ok(format!("«{name}»"))
 }
 
-fn binder(name: &str) -> Result<String, String> {
-    if matches!(
-        name,
-        "ops"
-            | "added"
-            | "subtracted"
-            | "rotated"
-            | "combined"
-            | "listGet"
-            | "incomplete"
-            | "quartet"
-            | "four"
-            | "transform"
-            | "recur"
-            | "listConcat"
-            | "intDiv"
-            | "gated"
-            | "foldList"
-            | "floatDiv"
-            | "satAdd"
-            | "toFloat"
-            | "sin"
-            | "cos"
-            | "listAppend"
-            | "listPrepend"
-            | "curve"
-            | "integral"
-            | "abs"
-            | "hann"
-            | "window"
-            | "basePhase"
-            | "pulse"
-            | "delay"
-    ) {
+fn binder(name: &str, module: &str) -> Result<String, String> {
+    if matches!(name, "ops" | "recur")
+        || primitive(name).is_some()
+        || signatures(module)?
+            .iter()
+            .any(|(member, _, _)| *member == name)
+    {
         return Err(format!("binding shadows a reflected operation: {name}"));
     }
     ident(name)
 }
 
-fn pattern(p: &Pattern) -> Result<String, String> {
+fn pattern(p: &Pattern, module: &str) -> Result<String, String> {
     match p {
         Pattern::Literal(v) => match v.as_ref() {
             Expr::Bool(b) => Ok(b.to_string()),
@@ -74,7 +47,11 @@ fn pattern(p: &Pattern) -> Result<String, String> {
             elements,
             rest: Some(tail),
         } => match elements.as_slice() {
-            [Pattern::Binding(head)] => Ok(format!("{} :: {}", binder(head)?, binder(tail)?)),
+            [Pattern::Binding(head)] => Ok(format!(
+                "{} :: {}",
+                binder(head, module)?,
+                binder(tail, module)?
+            )),
             _ => Err("unsupported list head".into()),
         },
         Pattern::Constructor {
@@ -95,7 +72,7 @@ fn pattern(p: &Pattern) -> Result<String, String> {
             let args = sub_patterns
                 .iter()
                 .map(|p| match p {
-                    Pattern::Binding(n) => binder(n),
+                    Pattern::Binding(n) => binder(n, module),
                     _ => Err("expected phase field binder".into()),
                 })
                 .collect::<Result<Vec<_>, _>>()?;
@@ -127,13 +104,13 @@ fn pattern(p: &Pattern) -> Result<String, String> {
             let [n] = fields.as_slice() else {
                 return Err("expected unary constructor pattern".into());
             };
-            Ok(format!("{ctor} {}", binder(n)?))
+            Ok(format!("{ctor} {}", binder(n, module)?))
         }
         _ => Err(format!("unsupported pattern {p:?}")),
     }
 }
 
-fn callee(e: &Expr) -> Result<String, String> {
+fn callee(e: &Expr, module: &str) -> Result<String, String> {
     let Expr::Identifier(name) = e else {
         if let Expr::Path(path) = e {
             if let [module, op] = path.segments.as_slice() {
@@ -171,36 +148,44 @@ fn callee(e: &Expr) -> Result<String, String> {
         }
         return Err("unsupported callee".into());
     };
-    match name.as_str() {
-        "added" | "subtracted" | "rotated" | "combined" | "delay" => {
-            let module = if name == "delay" {
-                "StrikeCombs"
-            } else {
-                "Ffts"
-            };
-            Ok(format!("{module}.{} ops", ident(name)?))
-        }
-        "satAdd" | "toFloat" | "sin" | "cos" => Ok(format!("ops.{name}")),
-        "curve" | "integral" => Ok(format!("Waveshapers.{} ops", ident(name)?)),
-        "basePhase" | "pulse" => Ok(format!("PhaseOperators.{} ops", ident(name)?)),
-        "window" => Ok("PhaseMath.window ops".into()),
-        "hann" => Ok("GrainWindows.hann ops".into()),
-        "gated" => Ok("ArrangeMath.gated ops".into()),
-        "listGet" => Ok("readBin".into()),
-        "transform" => Ok("recur".into()),
-        "intDiv" => Ok("Nat.div".into()),
-        "listConcat" => Ok("List.append".into()),
-        "incomplete" | "quartet" | "four" => Ok(format!("Ffts.{} ops", ident(name)?)),
-        "foldList" => Ok("foldList".into()),
-        "floatDiv" => Ok("ops.ieeeDivide".into()),
-        "abs" => Ok("ops.abs".into()),
-        "listAppend" => Ok("(fun tail item => tail ++ [item])".into()),
-        "listPrepend" => Ok("(fun tail head => List.cons head tail)".into()),
-        _ => Err(format!("unsupported callee {name}")),
+    if let Some(builtin) = primitive(name) {
+        return Ok(builtin.into());
     }
+    if !signatures(module)?
+        .iter()
+        .any(|(member, _, _)| member == name)
+    {
+        return Err(format!("unreflected local call {module}.{name}"));
+    }
+    if module == "Ffts" && name == "transform" {
+        return Ok("recur".into());
+    }
+    Ok(format!("{module}.{} ops", ident(name)?))
 }
 
-fn constructor(name: &str, fields: &[osprey_ast::FieldAssignment]) -> Result<String, String> {
+fn primitive(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "satAdd" => "ops.satAdd",
+        "toFloat" => "ops.toFloat",
+        "sin" => "ops.sin",
+        "cos" => "ops.cos",
+        "listGet" => "readBin",
+        "intDiv" => "Nat.div",
+        "listConcat" => "List.append",
+        "foldList" => "foldList",
+        "floatDiv" => "ops.ieeeDivide",
+        "abs" => "ops.abs",
+        "listAppend" => "(fun tail item => tail ++ [item])",
+        "listPrepend" => "(fun tail head => List.cons head tail)",
+        _ => return None,
+    })
+}
+
+fn constructor(
+    module: &str,
+    name: &str,
+    fields: &[osprey_ast::FieldAssignment],
+) -> Result<String, String> {
     if let Some((ctor, field)) = match name {
         "Error" => Some(("Except.error", "message")),
         "Success" => Some(("Except.ok", "value")),
@@ -212,7 +197,7 @@ fn constructor(name: &str, fields: &[osprey_ast::FieldAssignment]) -> Result<Str
         if payload.name != field {
             return Err(format!("invalid {name} field {}", payload.name));
         }
-        return Ok(format!("({ctor} {})", term(&payload.value)?));
+        return Ok(format!("({ctor} {})", term(&payload.value, module)?));
     }
     if name == "InvalidConfiguration" {
         let [field] = fields else {
@@ -236,7 +221,13 @@ fn constructor(name: &str, fields: &[osprey_ast::FieldAssignment]) -> Result<Str
     };
     let assignments = fields
         .iter()
-        .map(|f| Ok(format!("{} := {}", ident(&f.name)?, term(&f.value)?)))
+        .map(|f| {
+            Ok(format!(
+                "{} := {}",
+                ident(&f.name)?,
+                term(&f.value, module)?
+            ))
+        })
         .collect::<Result<Vec<_>, String>>()?;
     let args = if record == "LineSample" {
         "α (DelayLine α)"
@@ -266,7 +257,28 @@ fn binary_operator(op: &str, right: &Expr) -> Result<&'static str, String> {
     }
 }
 
-fn term(e: &Expr) -> Result<String, String> {
+fn block(statements: &[Stmt], value: &Expr, module: &str) -> Result<String, String> {
+    let mut body = term(value, module)?;
+    for stmt in statements.iter().rev() {
+        let Stmt::Let {
+            name,
+            mutable: false,
+            value,
+            ..
+        } = stmt
+        else {
+            return Err("unsupported block statement".into());
+        };
+        body = format!(
+            "(let {} := {}; {body})",
+            binder(name, module)?,
+            term(value, module)?
+        );
+    }
+    Ok(body)
+}
+
+fn term(e: &Expr, module: &str) -> Result<String, String> {
     match e {
         Expr::Identifier(n) => ident(n),
         Expr::Integer(n) if *n >= 0 => Ok(n.to_string()),
@@ -285,16 +297,22 @@ fn term(e: &Expr) -> Result<String, String> {
             "[{}]",
             items
                 .iter()
-                .map(term)
+                .map(|item| term(item, module))
                 .collect::<Result<Vec<_>, _>>()?
                 .join(", ")
         )),
-        Expr::FieldAccess { target, field } => Ok(format!("({}).{}", term(target)?, ident(field)?)),
+        Expr::FieldAccess { target, field } => {
+            Ok(format!("({}).{}", term(target, module)?, ident(field)?))
+        }
         Expr::Binary {
             op, left, right, ..
         } => {
             let operator = binary_operator(op, right)?;
-            Ok(format!("({operator} {} {})", term(left)?, term(right)?))
+            Ok(format!(
+                "({operator} {} {})",
+                term(left, module)?,
+                term(right, module)?
+            ))
         }
         Expr::Call {
             function,
@@ -306,8 +324,15 @@ fn term(e: &Expr) -> Result<String, String> {
             {
                 return Err("only nonnegative frame-size halving is supported".into());
             }
-            let args = arguments.iter().map(term).collect::<Result<Vec<_>, _>>()?;
-            Ok(format!("({} {})", callee(function)?, args.join(" ")))
+            let args = arguments
+                .iter()
+                .map(|item| term(item, module))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(format!(
+                "({} {})",
+                callee(function, module)?,
+                args.join(" ")
+            ))
         }
         Expr::Lambda {
             parameters,
@@ -317,41 +342,40 @@ fn term(e: &Expr) -> Result<String, String> {
         } => {
             let params = parameters
                 .iter()
-                .map(|p| binder(&p.name))
+                .map(|p| binder(&p.name, module))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(format!("(fun {} => {})", params.join(" "), term(body)?))
+            Ok(format!(
+                "(fun {} => {})",
+                params.join(" "),
+                term(body, module)?
+            ))
         }
         Expr::TypeConstructor {
             name,
             type_args,
             fields,
-        } if type_args.is_empty() => constructor(name, fields),
+        } if type_args.is_empty() => constructor(module, name, fields),
         Expr::Block {
             statements,
             value: Some(value),
             ..
-        } => {
-            let mut body = term(value)?;
-            for stmt in statements.iter().rev() {
-                let Stmt::Let {
-                    name,
-                    mutable: false,
-                    value,
-                    ..
-                } = stmt
-                else {
-                    return Err("unsupported block statement".into());
-                };
-                body = format!("(let {} := {}; {body})", binder(name)?, term(value)?);
-            }
-            Ok(body)
-        }
+        } => block(statements, value, module),
         Expr::Match { value, arms } => {
             let cases = arms
                 .iter()
-                .map(|a| Ok(format!("| {} => {}", pattern(&a.pattern)?, term(&a.body)?)))
+                .map(|a| {
+                    Ok(format!(
+                        "| {} => {}",
+                        pattern(&a.pattern, module)?,
+                        term(&a.body, module)?
+                    ))
+                })
                 .collect::<Result<Vec<_>, String>>()?;
-            Ok(format!("(match {} with {})", term(value)?, cases.join(" ")))
+            Ok(format!(
+                "(match {} with {})",
+                term(value, module)?,
+                cases.join(" ")
+            ))
         }
         _ => Err(format!("unsupported expression {e:?}")),
     }
@@ -383,6 +407,18 @@ fn reflect(file: &str) -> Result<(), String> {
     if namespace.label() != owner {
         return Err(format!("expected {owner} namespace for {module}"));
     }
+    for item in body {
+        match item.declaration.as_ref() {
+            Stmt::Function { name, .. } | Stmt::Let { name, .. } | Stmt::Extern { name, .. }
+                if primitive(name).is_some() =>
+            {
+                return Err(format!(
+                    "module declaration shadows a reflected primitive: {module}.{name}"
+                ));
+            }
+            _ => {}
+        }
+    }
     if module == "Ffts" {
         let mut sizes = body
             .iter()
@@ -399,7 +435,7 @@ fn reflect(file: &str) -> Result<(), String> {
         if sizes.next().is_some() {
             return Err("ambiguous Ffts.sizes".into());
         }
-        println!("def Ffts.sizes : List Nat := {}", term(value)?);
+        println!("def Ffts.sizes : List Nat := {}", term(value, &module)?);
     }
     for &(name, types, result) in signatures(&module)? {
         let mut functions = body
@@ -420,7 +456,7 @@ fn reflect(file: &str) -> Result<(), String> {
         let params = parameters
             .iter()
             .zip(types)
-            .map(|(p, t)| Ok(format!("({} : {t})", binder(&p.name)?)))
+            .map(|(p, t)| Ok(format!("({} : {t})", binder(&p.name, &module)?)))
             .collect::<Result<Vec<_>, String>>()?;
         let ops_name = if module == "DelayLines" && name == "push" {
             "_ops"
@@ -437,7 +473,7 @@ fn reflect(file: &str) -> Result<(), String> {
         println!(
             "def {module}.{definition} {{α : Type}} ({ops_name} : Ops α) {recursion} {} : {result} := {}",
             params.join(" "),
-            term(expr)?
+            term(expr, &module)?
         );
     }
     Ok(())

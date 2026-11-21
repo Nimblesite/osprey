@@ -113,6 +113,21 @@ reject_edit wavePulseSegments 's/breakpoint), second/breakpoint), first/' "$phas
 reject_edit grainHannInterior 's/last = duration - 1.0/last = duration/' "$grain"
 reject_edit overlapNormalization 's/8.0 [*] hop/4.0 * hop/' "$streams"
 reject_edit overlapReconstructs 's/sum + value [*] scale/sum - value * scale/' "$streams"
+# A source helper must never be silently interpreted as a primitive or as a
+# similarly named function from another module.
+reject_binding() {
+    local expected=$1
+    if cargo run --quiet --manifest-path "$root/src/toolchain/Cargo.toml" -p osprey-syntax --example synth_proof -- "$out/mutant.ospml" >"$out/scope.log" 2>&1; then
+        echo "accepted invalid proof mapping: $expected" >&2
+        return 1
+    fi
+    grep -Fqx "Error: \"$expected\"" "$out/scope.log"
+    echo "REJECT $expected"
+}
+awk '{print} /^module PhaseMath$/ {print "    sin t = cos t"}' "$phase_math" > "$out/mutant.ospml"
+reject_binding "module declaration shadows a reflected primitive: PhaseMath.sin"
+awk '{sub(/cos \(/, "window ("); print} /^module GrainWindows$/ {print "    window t = sin t"}' "$grain" > "$out/mutant.ospml"
+reject_binding "unreflected local call GrainWindows.window"
 reflect
 
 # Replay an unchanged proof certificate against a different, well-typed
