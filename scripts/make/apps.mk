@@ -180,9 +180,12 @@ _gpui-app-self-test: _runtime_macos
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash $(APP_DIR)/run.sh --self-test "$(CURDIR)/$(SCRIPT_DIR)/self-test.json" "$(CURDIR)/target/gpui-self-test/$(notdir $(SCRIPT_DIR))" $(GPUI_WINDOW)
 
 ## _app-suite: One app's host-free suites, named by SUITES.
+##             APP_SUITE_PREBUILT=1 reuses the release compiler and runtime.
 .PHONY: _app-suite
-_app-suite: _runtime
+_app-suite: $(if $(filter 1,$(APP_SUITE_PREBUILT)),,_runtime)
+ifneq ($(APP_SUITE_PREBUILT),1)
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+endif
 	for suite in $(SUITES); do $(BIN) test $$suite || exit 1; done
 
 ## _tally-reference: Compile Tally to the Mac's C ABI archive, link it under its reference host and

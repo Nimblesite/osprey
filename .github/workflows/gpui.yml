@@ -114,7 +114,9 @@ jobs:
           ./target/release/osprey test src/osprey/packages/uitest/tests
           ./target/release/osprey test src/osprey/examples/casting/test
           ./target/release/osprey test src/osprey/packages/signal_flow/tests
-          ./target/release/osprey test src/osprey/examples/daw/test
+
+      - name: DAW suite
+        run: make -C src/toolchain/targets/tests synth APP_SUITE_PREBUILT=1
 
       - name: Example suites
         run: |

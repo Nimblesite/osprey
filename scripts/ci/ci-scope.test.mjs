@@ -213,6 +213,20 @@ test('GPUI smoke and self-tests reuse the app libraries already compiled by the 
   assert.doesNotMatch(planned.stdout, /--compile/)
 })
 
+test('local CI and hosted GPUI run the same DAW suite once with their built compiler', () => {
+  const recipe = makeRecipe('test')
+  const command = 'make -C src/toolchain/targets/tests synth APP_SUITE_PREBUILT=1'
+  assert.equal(makeRecipe('ci').filter((line) => line === '$(MAKE) test').length, 1)
+  assert.equal(recipe.filter((line) => line === command.replace(/^make/, '$(MAKE)')).length, 1)
+  const hosted = job('ubuntu-suites', '.github/workflows/gpui.yml')
+  assert.ok(hosted.indexOf(command) > hosted.indexOf('setup-osprey-compiler'))
+  assert.doesNotMatch(hosted, /osprey test src\/osprey\/examples\/daw\/test/)
+  const planned = spawnSync('make', ['-n', ...command.split(' ').slice(1)], { encoding: 'utf8' })
+  assert.equal(planned.status, 0, planned.stderr)
+  assert.match(planned.stdout, /SUITES=src\/osprey\/examples\/daw\/test/)
+  assert.doesNotMatch(planned.stdout, /cargo build|clang |gcc /)
+})
+
 test('coverage identifies failed or skipped report producers before downloading artifacts', () => {
   const coverage = job('coverage', '.github/workflows/ci.yml')
   const producers = coverage.match(/^    needs: \[changes, (.+)\]$/m)[1].split(', ')

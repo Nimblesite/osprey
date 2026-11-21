@@ -39,6 +39,7 @@ audit:
 ##       Projects listed in coverage-thresholds.json are each tested + checked.
 test: build _build_c_runtime_tests
 	@echo "==> Testing (fail-fast + coverage + per-project thresholds)..."
+	$(MAKE) -C src/toolchain/targets/tests synth APP_SUITE_PREBUILT=1
 	$(MAKE) _test_runtime_incremental
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
