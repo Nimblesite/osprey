@@ -1,5 +1,5 @@
-// [TYPE-GENERICS-FN] [BUILTIN-LIST-FOLD] A generic callback passed by name must
-// preserve floating-point values through the same instantiation as its lambda wrapper.
+/// [TYPE-GENERICS-FN] [BUILTIN-LIST-FOLD] A generic callback passed by name must
+/// preserve floating-point values through the same instantiation as its lambda wrapper.
 fn joined(left, right) = foldList(right, left, fn(all, value) => listAppend(all, value))
 fn flattened(parts) = foldList(parts, [], joined)
 fn wrapped(parts) = foldList(parts, [], fn(all, part) => joined(all, part))

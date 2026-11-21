@@ -297,7 +297,7 @@ test ("non-finite or runaway node output is refused, finite output up to the bou
     forEachList ([0.0, -0.0, 0.5, -1.0, 1000000.0, -1000000.0, 0.000000000001], \value => succeeds (synth::RenderInputs::sample (framed value, 4), \got => expect (got == value, true)))
     renderRefused (synth::RenderInputs::sample (framed 0.5, 5))))
 
-// [SYNTH-ADVANCED-CORE-PORTS] Inspect the actual inlet selected by each parameter.
+(** [SYNTH-ADVANCED-CORE-PORTS] Inspect the actual inlet selected by each parameter. *)
 checkRule (n, key, wanted) = expect (structuralEquals (Descriptors::modulation (n, key), wanted), true)
 
 descriptorRoutes () =
