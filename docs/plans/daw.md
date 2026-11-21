@@ -114,10 +114,10 @@ Reported by the user on 2026-11-21 with two screenshots of a tall, narrow window
 
 Reported by the user on 2026-11-21: dragging the Track Inspector's Gain and Pan sliders is very clunky, with a huge delay.
 
-- [ ] **A dragged slider follows the pointer on every pointer event.** Cause, in `editor_app.ospml` (`pagePointer`): a press on a mix slider only arms it (`AdjustMix` → `armedNote`); the value is applied on release, so the thumb and the readout do not move during the drag. The fix keeps a draft value in the editor while the slider is held, draws the thumb and readout from it, and commits once on release.
-- [ ] **A commit does not stall the interface.** Each commit encodes the whole project, decodes it again to check it, writes the file, and rebuilds the lane traces and overview. Measure the release-to-repaint time on the codex song; target under 16 ms, with the file write off the interface thread or deferred.
+- [x] The Timeline inspector and Mix table preview gain during each pointer move. Release writes the project and creates one undo step. The native journey checks all 17 Mix gain faders, Undo, Redo and a Timeline drag with 16,384 offscreen notes (c0e67f73d, 9c33cf379).
+- [ ] **A commit does not stall the interface.** Each commit encodes the whole project, decodes it again to check it, writes the file, and rebuilds the lane traces and overview. Measure the release-to-repaint time on the codex song; target under 16 ms, with the file write off the interface thread or deferred. On the 128-bar fixture, a move took 0.83 ms on average and release with project serialization and saving took 50.27 ms.
 - [ ] The same check for every other slider and dial: Space send, bus faders, the Space decay, patch dials.
-- [ ] A loaded journey test drags a slider through many pointer positions and asserts the shown value after each one, before release.
+- [x] The native journey checks the displayed gain at 24 consecutive pointer positions on a 128-bar arrangement, then reads the released value from the project (9c33cf379).
 
 ## Patch layout [PRISM-PATCH-LAYOUT]
 
@@ -418,7 +418,8 @@ Rule from tonight: a commit to `packages/synth` is tested against `examples/daw`
 | `PrismArt::backgroundPart` re-emits the scenery | 13% | Keep the built scenery in the editor | ferroui-prism-lead |
 
 - [x] Keyboard dock cached.
-- [ ] Dragged card moved, not redrawn (the largest part of what remains; not needed for the target).
+- [x] Dragging reuses the module artwork. The native journey checks the painted sprite, socket and switch track the pointer while the inspector stays fixed in three viewport shapes (077da2b1e). Mean patch move time fell from 3.22 ms to 0.74 ms. A separate five-second window benchmark on the Violet Static grain patch measured 1.80 ms per event before and 1.09 ms after, with 307 shapes in both runs.
+- [x] Each Timeline redraw computes the visible ruler interval once (9c33cf379). Dragging the Timeline gain control in a 128-bar project with eight offscreen sixteenth-note parts fell from 30.12 ms to 0.83 ms per move. Both figures measure the native application event handler.
 - [x] Scenery kept. With the dock: 4.8 ms mean, 5.1 ms worst (was 10.6 and 18.2); 22/22 journeys pass. The interface target is met.
 - [x] `daw_events` also taps the ruler and drags every Mix gain fader: 1.8 ms mean, 10.7 ms worst (the release saves the project).
 - [x] `prism_events` holds a drag move to one 120 Hz frame on average (8.3 ms), two at worst.
