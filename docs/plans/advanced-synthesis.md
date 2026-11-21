@@ -134,7 +134,7 @@ Checked items here record reference implementation, reviewed in `src/osprey/pack
 - [x] Implement a bounded voice pool with stable identities and an explicit full-pool response.
 - [x] Define reject-new overload behaviour: retain all active envelopes, count rejected onsets, and continue rendering without stealing voices.
 - [x] Expose active count, lifetime requested/applied density, rejected/stolen counts and capacity through the existing grain observation Signals.
-- [ ] Verify saturation recovery, simultaneous onsets, counter accuracy and absence of overload-induced truncation in rendered audio.
+- [x] Verify saturation recovery, simultaneous onsets, counter accuracy and absence of overload-induced truncation in rendered audio. The clip journey "a two-voice grain pool rejects and counts simultaneous overload onsets…" (GC and ARC): eight onsets (five on one frame, two overlapping) into two voices count requested 8, accepted 3, rejected 5, stolen 0; the audio equals the three accepted grains alone sample for sample, the late grain carries across the block boundary uncut, the pool recovers to admit it once both voices end, and two same-frame onsets play exactly twice one.
 - [x] Document summing/headroom policy, distinguishing peak control from density-dependent loudness compensation.
 
 ### Schedulers and sample resources [SYNTH-ADVANCED-GRAINS-SCHEDULING]

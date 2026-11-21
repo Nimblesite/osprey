@@ -263,6 +263,40 @@ spreadJourney () =
     renderRefused (synth::GrainDistributions::events ([5, 4], ranges, 1024, spreadSeeds 1))
     renderRefused (synth::GrainDistributions::events (positions, synth::GrainDistribution(minimum = ranges.maximum, maximum = ranges.minimum), 1024, spreadSeeds 1))
 
+// [SYNTH-ADVANCED-GRAINS-CAPACITY] A grain block from scheduled events, or silence after a failed expectation.
+fullBlock (pool, frames, positions) =
+    plain = grainControls synth::HannWindow
+    tone = plain(start = 0.0, rate = 1.0, duration = 8, amplitude = 0.5, pan = -1.0)
+    match synth::Grains::scheduled (pool, frames, mapList (positions, \p => synth::GrainEvent(position = p, controls = tone)))
+        Error why =>
+            expect (synth::Faults::detail why, "a scheduled grain block")
+            synth::GrainBlock(left = [], right = [], next = pool)
+        Success b => b
+
+fullCounts pool =
+    seen = synth::Grains::observation pool
+    "requested ${seen.requestedGrains} accepted ${seen.acceptedGrains} rejected ${seen.rejectedGrains} stolen ${seen.stolenGrains} active ${seen.activeGrains}"
+
+// Two voices hear eight simultaneous and overlapping onsets: the first two play, five are rejected and counted,
+// and once both end the pool recovers to admit the next. Accepted grains play whole, exactly as if alone.
+saturationJourney pool =
+    crowded = fullBlock (pool, 16, [0, 0, 0, 0, 0, 3, 3, 12])
+    alone = fullBlock (pool, 16, [0, 0, 12])
+    expect (fullCounts crowded.next, "requested 8 accepted 3 rejected 5 stolen 0 active 1")
+    expect (fullCounts alone.next, "requested 3 accepted 3 rejected 0 stolen 0 active 1")
+    sameSamples (crowded.left, alone.left)
+    sameSamples (crowded.right, alone.right)
+    // The grain admitted at 12 keeps sounding across the block boundary, uncut by the earlier overload.
+    later = fullBlock (crowded.next, 8, [])
+    sameSamples (later.left, (fullBlock (alone.next, 8, [])).left)
+    expect (foldList (later.left, 0.0, \(sum, x) => sum + abs x) > 0.1, true)
+    expect (fullCounts later.next, "requested 8 accepted 3 rejected 5 stolen 0 active 0")
+    // Two onsets on the same frame play exactly twice as loud as one.
+    both = fullBlock (pool, 12, [2, 2])
+    one = fullBlock (pool, 12, [2])
+    forEachList (toList (range (0, 12)), \i => near (listGet both.left i ?: 9.0, 2.0 * (listGet one.left i ?: 9.0), 0.000000000001))
+    expect (foldList (one.left, 0.0, \(sum, x) => sum + x) > 0.5, true)
+
 registerClipJourneys () =
     audio = monoPort ("audio", synth::Audio, synth::Amplitude)
     test ("MIDI oscillator state validation rejects forged voices, capacity and malformed events", \() => arithmetic (\() =>
@@ -486,3 +520,5 @@ registerClipJourneys () =
         succeeds (synth::Grains::prepare (mapList (toList (range (0, 8)), \i => toFloat i * 0.1), 4), loopOverlaps)))
     test ("periodic, jittered and censored exponential onset schedules keep every gap in bounds, match their mean, replay per seed and ignore block splits [SYNTH-ADVANCED-GRAINS-SCHEDULING]", \() => arithmetic timingJourney)
     test ("grain position, rate, duration, gain and pan distributions stay in their bounds, centre on their midpoints, reach both ends, replay per seed and ignore batch splits [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS]", \() => arithmetic spreadJourney)
+    test ("a two-voice grain pool rejects and counts simultaneous overload onsets, recovers when its grains end and never truncates the grains it accepted [SYNTH-ADVANCED-GRAINS-CAPACITY]", \() => arithmetic (\() =>
+        succeeds (synth::Grains::prepare (mapList (toList (range (0, 64)), \_ => 1.0), 2), saturationJourney)))
