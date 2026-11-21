@@ -52,6 +52,10 @@ isqrtIter (n, guess) =
 isqrt n = match n <= 0
     true => 0
     false => isqrtIter (n, n)
+(** isqrtRun asserts the square root per entry of a flat (n, want) table, so a run of roots is data. *)
+isqrtRun v = match v
+    [] => true
+    [n, want, ...rest] => isqrt n == want && isqrtRun rest
 escape (zr, zi, cr, ci, i) = match i >= 24
     true => 24
     false =>
@@ -94,6 +98,10 @@ edgeFn (ax, ay, bx, by, px, py) =
     (((px - ax) ) * ((by - ay) ) ) - (((py - ay) ) * ((bx - ax) ) )
 insideTri (ax, ay, bx, by, cx, cy, px, py) =
     (edgeFn(ax, ay, bx, by, px, py) <= 0 && edgeFn(bx, by, cx, cy, px, py) <= 0 && edgeFn(cx, cy, ax, ay, px, py) <= 0)
+(** edgeRun asserts the edge function per entry of a flat (ax, ay, bx, by, px, py, want) table — the zero, sign and winding cases as data. *)
+edgeRun v = match v
+    [] => true
+    [ax, ay, bx, by, px, py, want, ...rest] => edgeFn (ax, ay, bx, by, px, py) == want && edgeRun rest
 coverBuf (ax, ay, bx, by, cx, cy, indices64) = gpuMap (indices64, \idx => bit (insideTri (ax, ay, bx, by, cx, cy, colOf (idx, tileEdge ()), rowOf (idx, tileEdge ()))))
 (** spanBit lights a pixel on scanline `sy` between columns x0 and x1 inclusive — a scanline filler's innermost test — spanBuf fills one such span across a tile, and
     clampedSpan clips the endpoints first so an off-image span draws its visible part rather than nothing. An inverted range fills nothing either way. spanStart is the
@@ -121,6 +129,10 @@ spanStartIs (pixels, w, y, want) = spanStart (pixels, w, y, 0) == want
 spanStartRun (pixels, w, v) = match v
     [] => true
     [y, want, ...rest] => spanStartIs (pixels, w, y, want) && spanStartRun (pixels, w, rest)
+(** pairRun asserts a two-argument operation per entry of a flat (a, b, want) table, so a scalar arithmetic family is data rather than near-identical lines. *)
+pairRun (op, v) = match v
+    [] => true
+    [a, b, want, ...rest] => op (a, b) == want && pairRun (op, rest)
 (** sampleClamped is edge-clamp texture addressing: a coordinate off the image reads the nearest border texel instead of failing the gather. upscale2 is nearest-
     neighbour magnification — each source texel becomes a 2x2 block — and transposeOf swaps rows and columns; both address purely by decomposing the destination index
     and recomposing it against the source. The sat* trio is 8-bit channel arithmetic: results saturate into [0, 255] instead of wrapping. *)
@@ -164,6 +176,10 @@ texelsAt (pixels, w, v) = match v
 texelsAre (pixels, v) = match v
     [] => true
     [index, want, ...rest] => texel (pixels, index) == want && texelsAre (pixels, rest)
+(** coverRun asserts a triangle's lit total per entry of a flat (ax, ay, bx, by, cx, cy, want) table — the degenerate windings as data. *)
+coverRun (indices64, v) = match v
+    [] => true
+    [ax, ay, bx, by, cx, cy, want, ...rest] => grandIs (coverBuf (ax, ay, bx, by, cx, cy, indices64), want) && coverRun (indices64, rest)
 overLayer (bg, fg) = match fg > 0
     true => fg
     false => bg
@@ -187,6 +203,9 @@ sphereFrame (indices1536) = gpuMap (indices1536, spherePixel)
     [FAILURE-EXPLICIT] A failed dispatch fails its case. *)
 withScene (frame, indices24, work) =
     withBuffer(frame, \pixels => withBuffer(rowSums (pixels, frameWidth (), indices24), \sums => withBuffer(gpuFilter (pixels, interiorPixel), \interior => work (pixels, sums, interior))))
+(** withComposite brackets both rendered layers and their elementwise composite — the bracket the gallery and the composite case share. [FAILURE-EXPLICIT] A failed layer render fails its consumer. *)
+withComposite (indices1536, work) =
+    withBuffer(mandelFrame(indices1536), \mandel => withBuffer(sphereFrame(indices1536), \sphere => withBuffer(gpuZipWith(mandel, sphere, overLayer), \composite => work (mandel, sphere, composite))))
 triCover (indices64) = coverBuf(1, 1, 6, 1, 1, 6, indices64)
 (** gradientPixel is the quad's background — brightness rises with the column — wedgePixel covers its upper-left triangle at full brightness, and quadFrame is the whole
     small pipeline: two dispatches over one index grid composited by one elementwise pass, every pixel of it pinned below. rowText renders one scanline of any raster at
@@ -220,10 +239,8 @@ brightRowIs (result, y, want) =
     primitives at a size every pixel can be read at: both windings of a triangle, spans clipped and unclipped, a magnified texel block, and the quad whose every pixel
     is asserted below. *)
 gallery (indices1536, indices64, indices16, texels) =
-    withBuffer(mandelFrame(indices1536),
-        \mandel => withBuffer(sphereFrame(indices1536),
-        \sphere => withBuffer(gpuZipWith(mandel, sphere, overLayer),
-        \composite => withBuffer(gpuFilter(mandel, interiorPixel),
+    withComposite(indices1536,
+        \(mandel, sphere, composite) => withBuffer(gpuFilter(mandel, interiorPixel),
         \inside => withBuffer(gpuFilter(sphere, litPixel),
         \sphereLit => withBuffer(gpuFold(sphere, 0, addLevels),
         \light => withBrightText(triCover(indices64),
@@ -243,7 +260,7 @@ gallery (indices1536, indices64, indices16, texels) =
             "== span y=3 x=2..5 ==\n${spanText}" +
             "== span clipped from -4..2 ==\n${clippedText}" +
             "== upscaled 2x2 ==\n${frameText(upscaled, 4, 4)}" +
-            "== quad ==\n${frameText(quad, quadEdge(), quadEdge())}") ))))))))))))
+            "== quad ==\n${frameText(quad, quadEdge(), quadEdge())}") ))))))))))
 (** dispatchCase pins the grid one dispatch covers at every raster size here, plus the empty dispatch every combinator survives and three gathers that leave the buffer
     entirely. *)
 dispatchCase () = withIndices (0, \indices0 => withIndices (8, \indices8 => withIndices (16, \indices16 => withIndices (64, \indices64 => withIndices (1536, \indices1536 => dispatchWith (indices0, indices8, indices16, indices64, indices1536))))))
@@ -262,8 +279,8 @@ paletteCase () = checkAll "palette" [
     glyph 0 == " ", glyph 1 == ".", glyph 2 == ":", glyph 3 == "-", glyph 4 == "=",
     glyph 5 == "+", glyph 6 == "*", glyph 7 == "#", glyph 8 == "%", glyph 9 == "@",
     length (ramp ()) == 10, glyph (clampLevel (99, 0)) == "@",
-    glyph (clampLevel ((0 - 4) , 0)) == " ", clampLevel (0, 1) == 1,
-    clampLevel (9, 0) == 9, clampLevel (10, 0) == 9, clampRange (5, 5, 5) == 5,
+    glyph (clampLevel ((0 - 4) , 0)) == " ", pairRun (clampLevel, [0, 1, 1, 9, 0, 9, 10, 0, 9]),
+    clampRange (5, 5, 5) == 5,
     clampRange (4, 5, 5) == 5, clampRange (6, 5, 5) == 5,
     clampRange ((0 - 7) , (0 - 9) , 0) == ((0 - 7) ),
     absOf ((0 - 12) ) == 12, absOf 0 == 0, bit true == 1, bit false == 0,
@@ -280,19 +297,14 @@ decomposeWith (indices1536) =
         gpuLengthIs(gpuFilter(cols, lastColumn), 24), litIs (cols, 1512), litIs (rows, 1472),
         texelsAre (cols, [0, 0, 63, 63, 64, 0, 1535, 63]), texelsAre (rows, [0, 0, 63, 0, 64, 1, 1535, 23]),
         flatIndex(0, 0, frameWidth()) == 0, flatIndex(63, 23, frameWidth()) == 1535,
-        flatIndex(0, 1, frameWidth()) == 64, flatIndex(3, 2, tileEdge()) == 19,
-        colOf(19, tileEdge()) == 3, rowOf(19, tileEdge()) == 2,
-        flatIndex(0, 0, 1) == 0, colOf(7, 1) == 0, rowOf(7, 1) == 7
+        flatIndex(0, 1, frameWidth()) == 64, flatIndex(3, 2, tileEdge()) == 19, flatIndex(0, 0, 1) == 0,
+        pairRun (colOf, [19, tileEdge(), 3, 7, 1, 0]), pairRun (rowOf, [19, tileEdge(), 2, 7, 1, 7])
     ])))
 (** edgeCase pins the edge function itself: zero along its own edge, twice the signed area at the opposite vertex, and a sign that flips with winding. *)
 edgeCase () = checkAll "edge function" [
-    edgeFn (1, 1, 6, 1, 1, 1) == 0, edgeFn (1, 1, 6, 1, 6, 1) == 0,
-    edgeFn (1, 1, 6, 1, 3, 1) == 0, edgeFn (1, 1, 6, 1, 1, 6) == ((0 - 25) ),
-    edgeFn (1, 1, 1, 6, 6, 1) == 25, edgeFn (6, 1, 1, 1, 1, 6) == 25,
-    edgeFn (1, 1, 6, 1, 1, 2) == ((0 - 5) ), edgeFn (1, 1, 6, 1, 1, 0) == 5,
-    edgeFn (0, 0, 3, 0, 3, 3) == ((0 - 9) ), edgeFn (0, 0, 0, 0, 5, 5) == 0,
-    edgeFn (0, 0, 4, 0, 2, 0) == 0, edgeFn (0, 0, 4, 4, 2, 2) == 0,
-    edgeFn (0, 0, 4, 4, 0, 4) == ((0 - 16) ), edgeFn (0, 0, 4, 4, 4, 0) == 16,
+    edgeRun ([1, 1, 6, 1, 1, 1, 0, 1, 1, 6, 1, 6, 1, 0, 1, 1, 6, 1, 3, 1, 0, 1, 1, 6, 1, 1, 6, (0 - 25), 1, 1, 1, 6, 6, 1, 25,
+              6, 1, 1, 1, 1, 6, 25, 1, 1, 6, 1, 1, 2, (0 - 5), 1, 1, 6, 1, 1, 0, 5, 0, 0, 3, 0, 3, 3, (0 - 9), 0, 0, 0, 0, 5, 5, 0,
+              0, 0, 4, 0, 2, 0, 0, 0, 0, 4, 4, 2, 2, 0, 0, 0, 4, 4, 0, 4, (0 - 16), 0, 0, 4, 4, 4, 0, 16]),
     insideTri (1, 1, 6, 1, 1, 6, 2, 2) == true, insideTri (1, 1, 6, 1, 1, 6, 0, 0) == false,
     insideTri (1, 6, 6, 1, 1, 1, 2, 2) == false
 ]
@@ -306,12 +318,7 @@ triangleWith (indices8, indices64) =
         grandIs (cover, 21), litIs (cover, 21), texelRun (sums, 0, [0, 6, 5, 4, 3, 2, 1, 0]),
         grandIs (sums, 21), spanStartRun (cover, tileEdge (), [0, 8, 1, 1, 6, 1]),
         texelsAt (cover, tileEdge (), [6, 1, 1, 7, 1, 0, 1, 6, 1, 0, 1, 0, 4, 4, 0, 3, 3, 1]),
-        grandIs(coverBuf(1, 6, 6, 1, 1, 1, indices64), 0),
-        grandIs(coverBuf(2, 2, 2, 2, 2, 2, indices64), 64),
-        grandIs(coverBuf(0, 0, 3, 0, 6, 0, indices64), 8),
-        grandIs(coverBuf(20, 20, 26, 20, 20, 26, indices64), 0),
-        grandIs(coverBuf(0, 0, 7, 0, 0, 7, indices64), 36),
-        grandIs(coverBuf((0 - 9), (0 - 9), 40, (0 - 9), (0 - 9), 40, indices64), 64)
+        coverRun (indices64, [1, 6, 6, 1, 1, 1, 0, 2, 2, 2, 2, 2, 2, 64, 0, 0, 3, 0, 6, 0, 8, 20, 20, 26, 20, 20, 26, 0, 0, 0, 7, 0, 0, 7, 36, (0 - 9), (0 - 9), 40, (0 - 9), (0 - 9), 40, 64])
     ])))
 (** spanCase pins scanline filling and every degenerate span: a normal run, a single pixel, a whole row, an inverted range, a row off the tile, and one off-image span
     that draws nothing until clipped. *)
@@ -325,18 +332,16 @@ spanWith (indices64) =
         grandIs (clipped, 1),
         spanTotalRun (\(sy, x0, x1) => clampedSpan (sy, x0, x1, indices64), [5, (0 - 4) , 2, 3, 5, 6, 99, 2]),
         texelsAre (clipped, [flatIndex (0, 2, tileEdge ()), 1]),
-        brightRowIs (spanBuf(3, 2, 5, indices64), 3, "  @@@@  "),
-        brightRowIs (spanBuf(3, 2, 5, indices64), 2, "        ")
+        brightRowIs (mid, 3, "  @@@@  "),
+        brightRowIs (mid, 2, "        ")
     ])))
 (** saturateCase pins channel arithmetic at both rails: nothing wraps, nothing leaves [0, 255], and the same clamps hold elementwise over buffers. *)
 saturateCase () = withBuffer(toGpu ([200, 0, 128, 255, 40]), \base => withBuffer(toGpu ([100, 0, 200, 1, 10]), \addend => saturateCaseUploaded(base, addend)))
 saturateCaseUploaded (base, addend) =
     withBuffer(gpuZipWith (base, addend, channelAdd), \added => withBuffer(gpuZipWith (base, addend, channelSub), \subtracted => withBuffer(gpuZipWith (base, addend, channelMul), \multiplied => checkAll "saturation" [
-        channelAdd (1, 1) == 2, channelAdd (0, 0) == 0, channelAdd (255, 0) == 255,
-        channelAdd (254, 1) == 255, channelAdd (255, 1) == 255, channelAdd (255, 255) == 255,
-        channelAdd ((0 - 50) , 10) == 0, channelSub (255, 255) == 0, channelSub (0, 1) == 0,
-        channelSub (255, 1) == 254, channelSub (10, 40) == 0, channelMul (255, 255) == 255,
-        channelMul (0, 255) == 0, channelMul (255, 0) == 0, channelMul (128, 200) == 100, channelMul (255, 1) == 1,
+        pairRun (channelAdd, [1, 1, 2, 0, 0, 0, 255, 0, 255, 254, 1, 255, 255, 1, 255, 255, 255, 255, (0 - 50), 10, 0]),
+        pairRun (channelSub, [255, 255, 0, 0, 1, 0, 255, 1, 254, 10, 40, 0]),
+        pairRun (channelMul, [255, 255, 255, 0, 255, 0, 255, 0, 0, 128, 200, 100, 255, 1, 1]),
         texelsAre (added, [0, 255, 1, 0, 4, 50]),
         grandIs (added, 815), grandIs (subtracted, 384), grandIs (multiplied, 180),
         litIs (added, 4)
@@ -404,22 +409,21 @@ shadingWith (indices24, indices1536) =
         gpuLength(interior) == 1, grandIs (sphere, 2928),
         texelsAre (sums, [0, 0, 23, 0]),
         spanStartRun (sphere, frameWidth (), [0, 64, 12, 10]),
-        isqrt(0) == 0, isqrt(1) == 1, isqrt(16) == 4, isqrt(17) == 4,
-        isqrt(4096) == 64, isqrt((0 - 9) ) == 0
+        isqrtRun ([0, 0, 1, 1, 16, 4, 17, 4, 4096, 64, (0 - 9), 0])
     ]))
 (** compositeCase pins that one elementwise pass layers sphere over fractal. The silhouette falls entirely inside what the fractal drew, so the composite lights exactly
     the fractal's cells while its brightness total drops — the foreground is darker than what it hides. *)
 compositeCase () = withIndices (0, \indices0 => withIndices (16, \indices16 => withIndices (1536, \indices1536 => compositeWith (indices0, indices16, indices1536))))
 compositeWith (indices0, indices16, indices1536) =
-    withBuffer(mandelFrame(indices1536), \mandel => withBuffer(sphereFrame(indices1536), \sphere => withBuffer(gpuZipWith(mandel, sphere, overLayer), \composite => checkAll("composite", [
+    withComposite(indices1536, \(mandel, sphere, composite) => checkAll("composite", [
         gpuLength(composite) == 1536, texel(composite, 0) == texel(mandel, 0),
         texelsAt (composite, frameWidth (), [19, 5, 9]), litIs (composite, 1212),
         gpuSatisfies(gpuFilter(composite, litPixel), \compositeLit => litCountOf(mandel, \mandelLit => gpuLength(compositeLit) == mandelLit)),
         grandIs (composite, 3860),
-        overLayer(3, 0) == 3, overLayer(0, 7) == 7, overLayer(0, 0) == 0, overLayer(4, 4) == 4,
+        pairRun (overLayer, [3, 0, 3, 0, 7, 7, 0, 0, 0, 4, 4, 4]),
         gpuLengthIs(gpuZipWith(mandel, indices0, overLayer), 0),
         gpuLengthIs(gpuZipWith(indices16, sphere, overLayer), 16)
-    ]))))
+    ]))
 exactArithmetic (\() => withBuffer (toGpu ([1, 4, 7, 9]), \texels => withIndices (1536, \indices1536 => withIndices (64, \indices64 => withIndices (16, \indices16 => gallery (indices1536, indices64, indices16, texels))))))
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 exactTests [
