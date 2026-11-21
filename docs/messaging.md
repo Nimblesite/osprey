@@ -10,9 +10,15 @@ Second sentence, when there is room:
 
 > **Write the logic once and the compiler checks all of it. Handlers decide where it runs: SwiftUI or WinUI, CPU or GPU, the real disk or a test.**
 
-Every longer pitch expands these two sentences and never replaces them. The products are proof, not a boundary: never present them as the full list of what Osprey is for, and name only products that run today. Lead with things everyone knows (apps, websites, AI) in everyday words. Specialist work (music software, proofs) comes later and in plain words: "music studio app", never "DAW" or "audio synthesis" in an opening. Push **uncompromising**, not breadth. "General purpose", "build anything" and "one language for everything" sound watered down; never lead with them. The breadth is evidence that nothing was traded away, not the pitch.
+Every longer pitch expands these two sentences and never replaces them. The products are proof, not a boundary: never present them as the full list of what Osprey is for, and name only products that run today. Lead with things everyone knows (apps, websites, AI) in everyday words; specialist work such as the DAW, audio synthesis and proofs follows, never first. Push **uncompromising**, not breadth. "General purpose", "build anything" and "one language for everything" sound watered down; never lead with them. The breadth is evidence that nothing was traded away, not the pitch.
 
 ## Uncompromising
+
+Osprey's design defers trade-offs to you instead of making them for you. Each choice has an option that goes all the way, and you can pick another:
+
+- **Elegance:** the ML flavor is uncompromising on elegance. Prefer braces? Choose the Default flavor; it is the same language.
+- **Deterministic performance:** ARC frees memory at known points, with no collector pauses. Prefer throughput? Choose tracing GC.
+- **Interop:** always uncompromising. C, Swift, Python and the platform UI toolkits are called directly, with no choice to make.
 
 Osprey never trades one pillar for another: no safety bought with speed, no speed bought with boilerplate. Each domain gets a tool that competes with the best on its own terms. These are the domains proven so far, each by a product that runs today; add a row when a new one ships:
 
