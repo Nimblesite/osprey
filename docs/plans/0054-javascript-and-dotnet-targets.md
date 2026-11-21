@@ -17,7 +17,7 @@ Declared control operations, explicit `resume` and direct-style fibers are the h
 | Generators (JS) | Simplest prototype, but every effectful call chain needs `yield*`, a second calling convention the effect rows can drive |
 | Thread as continuation | Matches native. Impossible in a browser agent, and spends real threads on .NET: a prototype at most |
 
-Mapping `resume` directly onto promises, `Task` or plain calls is the one approach that is too lossy. Multi-shot stays out of scope unless continuations become cloneable heap data; host stacks, generators and `Task` can't be cloned.
+Mapping `resume` directly onto promises, `Task` or plain calls is the one approach that is too lossy. Multi-shot is in scope on these targets: the compiler already writes a `many` continuation as an ordinary heap closure before any backend runs ([EFFECTS-INV-MULTISHOT-PORTABLE](0016-algebraic-effects-and-handlers.md)), so JavaScript and .NET run it as they run any closure, as wasm32 does ([MULTI-WASM-MANY]); host stacks, generators and `Task` can't be cloned.
 
 ## Per target
 

@@ -18,6 +18,10 @@ Multi-shot continuations are a compiler feature, not a platform trick. The compi
 
 A design that needs any of these is rejected, however well it works on one machine. A target never gets a weaker `many`: it runs the portable representation ([MULTI-WASM]).
 
+## Invariant — [EFFECTS-INV-MULTISHOT-WASM]
+
+wasm32 fully supports multi-shot continuations ([MULTI-WASM-MANY], [WASM-TARGET-EFFECTS-MANY]). Every `many` program that runs natively compiles and runs on wasm32 and prints the same bytes. No agent may reject, skip, stub, feature-flag or downgrade `many` on wasm32, give it a separate golden, or move its tests out of the required `CI` job ([CI-MULTISHOT-WASM]). A change that makes a `many` program fail or differ on wasm32 is a defect in that change, and fixing the compiler is the only remedy.
+
 ## Prerequisites in place
 
 Callable handler values, block-scoped `handle`, declared value/control modes, return transformations, static handler selection, `finally`/`mask`/`instance`, transport fixes, reactive signals, checker-backed LSP effect-requirement and implementation views, and the closed-program open-row prototype are implemented; see audit for evidence. The compile-time rejections for `many` replay safety and for `abort`/`once` misuse already exist and stay.
@@ -44,7 +48,7 @@ Callable handler values, block-scoped `handle`, declared value/control modes, re
 
 - [ ] Reproduce or close the review lead (2026-11-06, unconfirmed): static-handler monotonicity is not transitive, and invalid unused arms are erased before they are checked (`osprey-ast/src/stage.rs`, `lower_static.rs`). A confirmed case becomes a GitHub bug.
 - [ ] Run the 63 resumable-effect corpus programs on the macOS host target. They are skipped there with "a suspended continuation cannot cross or outlive a synchronous host call" (`tests/effects/{multiplicity,resume,scope}`, `tests/modules/{ml_layout_depth,module_effects_rows,signature_ascription}`).
-- [ ] Run continuation programs on native and wasm32 with identical answers; support `once` on wasm32 when the stack-switching backend provides it and keep `many` portable (no permanent ban); keep rejecting missing capabilities before linking, naming the operation ([MULTI-WASM], [STAGE-WASM]). Files: `src/toolchain/crates/osprey-cli/src/target_capabilities.rs`, `src/toolchain/crates/osprey-cli/tests/target_capabilities.rs`, `src/toolchain/crates/osprey-cli/tests/staged_multiplicity.rs`. Acceptance: `ONCE_ON_WASM` compiles and runs; `MANY_ON_WASM` runs once a portable representation exists; capability rejections still name the operation.
+- [ ] Run `once` continuation programs on wasm32 when the stack-switching backend provides them, with answers identical to native; keep rejecting that missing capability before linking, naming the operation ([MULTI-WASM], [STAGE-WASM]). `many` is not part of this task: it already runs on wasm32 and must keep doing so ([EFFECTS-INV-MULTISHOT-WASM]). Files: `src/toolchain/crates/osprey-cli/src/target_capabilities.rs`, `src/toolchain/crates/osprey-cli/tests/target_capabilities.rs`, `src/toolchain/crates/osprey-cli/tests/staged_multiplicity.rs`. Acceptance: `ONCE_ON_WASM` compiles and runs; `MANY_ON_WASM` keeps compiling and running; capability rejections still name the operation.
 
 - [ ] Ship the effect trace: a debug build and DAP view record the resolved perform site, actual runtime handler instance and resumption branch, innermost first; static-discharged sites are excluded ([MULTI-TRACE], [DEBUGGER-EFFECT-TRACE]). Files: `src/toolchain/crates/osprey-debug`, debug codegen, VS Code extension DAP view. Acceptance: a paused session shows the trace and selecting an entry navigates to the perform or arm.
 

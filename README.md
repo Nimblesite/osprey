@@ -118,6 +118,6 @@ GC is the native default to avoid ARC's per-ownership-change reference-count wor
 
 [Talon Bank](src/osprey/examples/talon/README.md) shares web and mobile application logic; [Issue Inbox](src/osprey/examples/mobile/README.md) shares iOS and Android state, UI descriptions and platform commands. Native hosts execute mobile SQL and HTTP commands and return completion events. [GPT-2](src/osprey/examples/llms/gpt2/README.md) uses two static tensor handlers for host lists and the GPU surface.
 
-Dynamic control effects require native execution. WebAssembly and mobile support value handlers and static discharge; unsupported capabilities are rejected. Full scoped effect rows and reusable continuations remain unfinished. See [feature status](src/toolchain/website/src/status.md), [specifications](docs/specs/README.md) and [active plans](docs/plans/) for the precise limits.
+Multi-shot (`many`) continuations run on every target, WebAssembly included, with identical output. A `once` control continuation outside a `many` region requires native execution; WebAssembly and mobile reject that capability by name, and support value handlers, static discharge and `many` regions. Full scoped effect rows and owned escaping continuations remain unfinished. See [feature status](src/toolchain/website/src/status.md), [specifications](docs/specs/README.md) and [active plans](docs/plans/) for the precise limits.
 
 MIT licensed. See [LICENSE](LICENSE) and the [release process](docs/RELEASING.md).
