@@ -59,6 +59,7 @@ modesHeld body =
 
 stringsHeld () =
     scheduleEdit (accepted (Patches::spectralFreeze ()), 1, "frequency", 329.63, 401)
+    scheduleEdit (serial ([Components::sine (1, 440.0), Components::shaper (2, 0.0, 2.0), Components::output 3]), 2, "oversample", 1.0, 41)
     forEachList ([110.0, 220.0, 440.0], \f => inTune ("plucked waveguide ${f} Hz", renderedFrom ([Components::exciter (0, 7), Components::waveguide (1, f, 2400), Components::output 2], 3392), f, 0.5))
     forEachList ([196.0, 330.0], \f => inTune ("bowed string ${f} Hz", renderedFrom ([Components::bowed (0, f, 2400), Components::output 1], 3392), f, 5.0))
 

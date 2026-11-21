@@ -79,10 +79,10 @@ module RenderKernels
         Panner => passthrough (frame, held, input)
         Route entries => monoRouted (entries, frame, held, input)
         Spectral size hop => SpectralKernels::process (plan, rate, snapshot, frame, held, size, hop, input, scheduled.spectrum)
-        Shaper => EffectKernels::shaper (rate, snapshot, frame, held, input)
+        Shaper => EffectKernels::shaper (rate, snapshot, frame, held, input, scheduled.physical)
         Reverb => EffectKernels::reverb (rate, snapshot, frame, held, input)
         Shifter => EffectKernels::shifter (rate, snapshot, frame, held, input)
-        _ => PhysicalKernels::process (rate, snapshot, frame, held, scheduled.node, input, scheduled.guide)
+        _ => PhysicalKernels::process (rate, snapshot, frame, held, scheduled.node, input, scheduled.physical)
 
     playback (resource, rate, snapshot, frame, held) = match floatToInt (floor held.phase)
         Error _ => Error(message = InvalidConfiguration(detail = "Invalid sample cursor."))
@@ -114,6 +114,13 @@ module RenderKernels
         Error _ => false
         Success _ => true
 
+    physical (rate, snapshot, n, fixed) = match fixed
+        false => LivePhysical
+        true => match n.processor
+            Waveguide capacity => PhysicalKernels::prepare (rate, snapshot, n.identity, capacity)
+            Shaper => EffectKernels::prepare (rate, snapshot, n.identity)
+            _ => LivePhysical
+
     bankFor (n, rate, controls, fixed) = match fixed && (n.processor == Additive)
         true => TableKernels::prepare (rate, controls, n.identity)
         false => DynamicPartials
@@ -132,7 +139,7 @@ module RenderKernels
             controls = match fixed
                 true => snapshot(parameters = filterList (snapshot.parameters, \p => p.node == identity))
                 false => snapshot
-            Valid(value = { node = n, slot = stateSlot (states, identity, 0), guide = PhysicalKernels::prepare (rate, controls, identity, n.processor, fixed), spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
+            Valid(value = { node = n, slot = stateSlot (states, identity, 0), physical = physical (rate, controls, n, fixed), spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
 
     (** Render one scheduled component or return its explicit fault. *)
     export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, rate, snapshot, false, frame.states))

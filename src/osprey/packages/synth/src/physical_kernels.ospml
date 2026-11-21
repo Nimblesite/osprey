@@ -60,19 +60,15 @@ module PhysicalKernels
     guideSettings (rate, snapshot, identity, capacity) = RenderInputs::setting (snapshot, identity, "frequency", \frequency => RenderInputs::setting (snapshot, identity, "decay", \decay => RenderInputs::setting (snapshot, identity, "brightness", \brightness => RenderInputs::setting (snapshot, identity, "dispersion", \dispersion => RenderInputs::setting (snapshot, identity, "pickup", \pickup => Waveguides::configure (WaveguideConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, dispersion = dispersion, pickup = pickup, capacity = capacity)))))))
 
     (** Prepare physical string tuning for a fixed snapshot. *)
-    export prepare (rate, snapshot, identity, processor, fixed) = match processor
-        Waveguide capacity => match fixed
-            false => LiveGuide
-            true => match guideSettings (rate, snapshot, identity, capacity)
-                Success config => FixedGuide(coefficients = Waveguides::coefficients config)
-                Error _ => LiveGuide
-        _ => LiveGuide
+    export prepare (rate, snapshot, identity, capacity) = match guideSettings (rate, snapshot, identity, capacity)
+        Success config => FixedGuide(coefficients = Waveguides::coefficients config)
+        Error _ => LivePhysical
 
     waveguide (rate, snapshot, frame, held, input, capacity, prepared) =
         voice = WaveguideState(line = DelayLine(samples = held.delay), loss = LossState(previous = held.integratorOne), dispersion = AllpassState(input = held.integratorTwo, output = held.phase))
         result = match prepared
             FixedGuide c => Waveguides::advance (c.tuning, c.pickup, c.attenuation, c.dispersion, voice, input)
-            LiveGuide => Outcomes::carried (guideSettings (rate, snapshot, held.identity, capacity), \config => Waveguides::next (config, voice, input))
+            _ => Outcomes::carried (guideSettings (rate, snapshot, held.identity, capacity), \config => Waveguides::next (config, voice, input))
         Outcomes::carried (result, \step => published (frame, held(delay = step.next.line.samples, integratorOne = step.next.loss.previous, integratorTwo = step.next.dispersion.input, phase = step.next.dispersion.output), step.sample))
 
     delayed (frame, held, input, delay) = Outcomes::carried (DelayLines::tap (DelayLine(samples = held.delay), delay), \read => published (frame, held(delay = (DelayLines::push (DelayLine(samples = held.delay), input)).samples), read))

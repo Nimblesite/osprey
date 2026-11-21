@@ -21,18 +21,30 @@ module EffectKernels
         step = Waveshapers::next (config, shaperState held, input)
         Success(value = RenderInputs::emitted (frame, shaperHeld (held, step.next), step.sample))
 
-    oversampled (frame, held, config, input) = Outcomes::carried (Oversamplers::next (config, OversampledState(shaper = shaperState held, up = Sequences::take (held.delay, Oversamplers::taps), down = Sequences::drop (held.delay, Oversamplers::taps)), input), \step => Success(value = RenderInputs::emitted (frame, shaperHeld (held(delay = listConcat step.next.up step.next.down), step.next.shaper), step.sample)))
+    oversampled (frame, held, config, input, weights) = Outcomes::carried (Oversamplers::prepared (config, OversampledState(shaper = shaperState held, up = Sequences::take (held.delay, Oversamplers::taps), down = Sequences::drop (held.delay, Oversamplers::taps)), input, weights), \step => Success(value = RenderInputs::emitted (frame, shaperHeld (held(delay = listConcat step.next.up step.next.down), step.next.shaper), step.sample)))
 
-    shape (rate, frame, held, input, chosen, drive, bias, level, antialias, oversample) = match chosen
-        Error why => Error(message = why)
-        Success kind => match Waveshapers::configure (ShaperConfig(sampleRate = rate, curve = kind, drive = drive, bias = bias, level = level, antialias = antialias >= 0.5))
-            Error why => Error(message = why)
-            Success config => match oversample >= 0.5
-                true => oversampled (frame, held, config, input)
-                false => direct (frame, held, config, input)
+    shape (rate, chosen, drive, bias, level, antialias, oversample) = Outcomes::carried (chosen, \kind =>
+        Outcomes::carried (Waveshapers::configure (ShaperConfig(sampleRate = rate, curve = kind, drive = drive, bias = bias, level = level, antialias = antialias >= 0.5)), \config =>
+            weights = match oversample >= 0.5
+                true => Oversamplers::coefficients ()
+                false => []
+            Success(value = FixedShaper(config = config, weights = weights))))
 
-    (** Waveshaper: curve, drive, bias, level, ADAA and 2× oversampling switches. *)
-    export shaper (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "curve", \selector => RenderInputs::bound (snapshot, held, "drive", \drive => RenderInputs::bound (snapshot, held, "bias", \bias => RenderInputs::bound (snapshot, held, "level", \level => RenderInputs::bound (snapshot, held, "antialias", \antialias => RenderInputs::bound (snapshot, held, "oversample", \oversample => shape (rate, frame, held, input, curve selector, drive, bias, level, antialias, oversample)))))))
+    settings (rate, snapshot, identity) = RenderInputs::setting (snapshot, identity, "curve", \selector => RenderInputs::setting (snapshot, identity, "drive", \drive => RenderInputs::setting (snapshot, identity, "bias", \bias => RenderInputs::setting (snapshot, identity, "level", \level => RenderInputs::setting (snapshot, identity, "antialias", \antialias => RenderInputs::setting (snapshot, identity, "oversample", \oversample => shape (rate, curve selector, drive, bias, level, antialias, oversample)))))))
+
+    (** Resolve fixed drive, transfer curve and optional FIR weights once per block. *)
+    export prepare (rate, snapshot, identity) = settings (rate, snapshot, identity) ?: LivePhysical
+
+    played (frame, held, input, prepared) = match prepared
+        FixedShaper config weights => match length weights == 0
+            true => direct (frame, held, config, input)
+            false => oversampled (frame, held, config, input, weights)
+        _ => Error(message = IncompatibleLayout(detail = "Waveshaper settings are missing."))
+
+    (** Render a waveshaper with fixed controls or sample-accurate automation. *)
+    export shaper (rate, snapshot, frame, held, input, prepared) = match prepared
+        LivePhysical => Outcomes::carried (settings (rate, snapshot, held.identity), \current => played (frame, held, input, current))
+        _ => played (frame, held, input, prepared)
 
     reverbState (held, config) = match held.memory
         KernelIdle => Reverbs::initial config

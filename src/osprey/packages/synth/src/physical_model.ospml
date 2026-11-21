@@ -273,8 +273,11 @@ type GuideCoefficients =
     attenuation : LossConfig
     dispersion : float
 
-type GuideSchedule =
-    LiveGuide
+type PhysicalSchedule =
+    LivePhysical
     FixedGuide
         coefficients : GuideCoefficients
+    FixedShaper
+        config : ShaperConfig
+        weights : List<float>
 
