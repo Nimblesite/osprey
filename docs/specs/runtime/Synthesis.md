@@ -255,6 +255,8 @@ Coupled bodies exchange energy bidirectionally with a common clock and joint sta
 
 ### Neural processors and generated assets [SYNTH-ADVANCED-NEURAL]
 
+A neural waveform generator is optional and later: no instrument, patch or test depends on one, and none ships until it declares its own latency, memory budget and degradation behaviour (what plays when the model is missing, late or fails) as a separate contract.
+
 Define separate lifecycles for RAVE-style audio-to-latent timbre transfer, DDSP harmonic/noise voices driven by pitch/loudness or MIDI, neural codec encoding/decoding of typed assets, and text-to-sound jobs producing immutable samples. Each capability needs a real supported model path.
 
 A model manifest carries content hash, format/runtime versions, family, input/output channels, sample rate, input normalization, frame/hop sizes, lookahead, receptive history, latent/codebook dimensions, parameter names/ranges, reset behavior, maximum output frames, memory budget, license and available training-data provenance. Show missing provenance. Reject incompatible model/codec pairs. Distinguish discrete codebook indices from latent tensors and allow interpolation only where the model defines it.

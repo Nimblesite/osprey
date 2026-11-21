@@ -311,7 +311,7 @@ Reference: Smith's waveguide material and Bilbao's numerical synthesis reference
 - [x] Keep learned results editable as ordinary parameters, tables or automation curves.
 - [x] Run training, patch search and expensive inference off the audio callback and outside the library's mandatory runtime dependencies.
 - [x] Define cancellation, progress, resource limits and explicit failure results for long offline jobs.
-- [ ] Treat a neural waveform generator as an optional later component requiring its own latency, memory and degradation contract.
+- [x] Treat a neural waveform generator as an optional later component requiring its own latency, memory and degradation contract. Stated in [Synthesis.md](../specs/runtime/Synthesis.md) [SYNTH-ADVANCED-NEURAL]: no instrument, patch or test depends on one, and none ships before its own latency, memory and degradation contract.
 - [ ] Add application controls to preview/apply/reject fitted parameters without overwriting a working patch silently.
 
 ## Prism and external-controller experience [SYNTH-ADVANCED-PRISM]
