@@ -136,6 +136,18 @@ The Timeline carries the transport, and its state is in the project model ([daw.
 - **Loop ([DAW-TRANSPORT-LOOP]).** A start and a length in beats on the ruler. With the loop on, Start plays that span and repeats it.
 - **Following ([DAW-TRANSPORT-FOLLOW]).** While audio plays, the line moves with it, from the time playback started and the tempo ([ArrangeMath.lean](../../../src/osprey/examples/daw/src/ArrangeMath.lean)).
 
+## Timeline zoom [DAW-TIMELINE-ZOOM]
+
+The Timeline zooms in time, and zooming is one gesture from wherever the hand already is. The same rules hold for the lanes and for the piano roll.
+
+- **Range.** From the whole song in the window down to one beat across it. The song strip always shows the whole song with the visible part framed, so the person never loses their place.
+- **Pinch and scroll.** A trackpad pinch zooms. Cmd with the scroll wheel zooms. Both zoom about the pointer: the bar under the pointer stays under it. A plain horizontal scroll, or Shift with the wheel, moves along the song.
+- **Keys.** Zoom In and Zoom Out are commands with shortcuts in every keymap ([DAW-KEYS]), in the View menu and in the palette ([DAW-COMMANDS]). So are Zoom to Fit (the whole song) and Zoom to Selection (the selected bars, notes or track's clips). From the keyboard, zoom is about the playhead.
+- **Strip.** Dragging the frame in the song strip moves the view; dragging an edge of the frame zooms it. Double-pressing the strip zooms to fit.
+- **Height.** Track rows grow and shrink the same way with Alt held (Alt with pinch or wheel, and their own two commands), so a dense arrangement or one detailed track both fit.
+- **What stays.** The ruler changes its divisions with the zoom (bars, then beats, then sixteenths) so labels never crowd or thin out. Zoom changes only the view: it is not an edit, it is not in the undo history, and it never moves the playhead or the selection. Each project remembers its zoom and position.
+- **Feel.** Zoom is continuous, not stepped: one notch of the wheel is a small, even change, and the view answers within one display frame ([DAW-PERF]).
+
 ## Dynamics [DAW-DYNAMICS]
 
 Master ends in a compressor and a limiter, and both are patch components any track can use. Their formulas are [DynamicsMath.lean](../../../src/osprey/packages/synth/src/DynamicsMath.lean) ([SYNTH-DYNAMICS]); the components hold only state.
