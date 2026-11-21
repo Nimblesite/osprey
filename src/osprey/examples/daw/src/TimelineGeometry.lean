@@ -126,5 +126,11 @@ def rangeEnd (start finish beats : Float) : Float :=
 def endBar (beat start : Float) : Float :=
   let nearest := Float.floor (beat / 4 + 0.5)
   if nearest <= start then start + 1 else nearest
+/-- The start marker's bar under beat `beat`: the nearest bar line, from the first bar to the bar before the end
+marker (`finish` bar lines from 0, or 0 for the song's end) [DAW-TRANSPORT-RANGE]. -/
+def startBar (beat finish beats : Float) : Float :=
+  let whole := if beats <= 0 then 0 else Float.ceil (beats / 4) - 1
+  let last := if finish > 0 && finish * 4 < beats then finish - 1 else whole
+  bounded (Float.floor (beat / 4 + 0.5)) 0 last
 /-- A marker's handle at `at` is grabbed by a press at `x`: within six units either side. -/
 def grabs (x at : Float) : Bool := x >= at - 6 && x <= at + 6

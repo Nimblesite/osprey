@@ -181,7 +181,7 @@ module TimelineView
 
     endX editor = TimelineGeometry::laneX (DawSession::rangeEnd editor, shownFrom editor, shownBeats editor)
 
-    // [DAW-TRANSPORT-RANGE] Where Play ends: the end marker, dragged by its handle on the ruler.
+    // [DAW-TRANSPORT-RANGE] Where Play ends: the end marker, dragged by its handle or its line.
     finish editor = marker (endX editor, ink ())
 
     // [DAW-TRANSPORT-FOLLOW] The beat sounding now, while the song plays.
@@ -201,12 +201,29 @@ module TimelineView
             [box (1119.0, 221.0, 5.0, 217.0, panelInk (), 6), box (1119.0, 221.0 + toFloat editor.lanePage * height, 5.0, height, dim (), 7)]
 
     // [DAW-TRANSPORT-PLAYHEAD] Where Play starts: the start marker, a line down the lanes with its handle on the ruler.
-    playhead editor = marker (TimelineGeometry::laneX (DawSession::rangeStart editor, shownFrom editor, shownBeats editor), accent ())
+    playhead editor = marker (startX editor, accent ())
 
-    (** Every lane's hit area: a tap picks the track at that bar; its name opens the patch. *)
+    startX editor = TimelineGeometry::laneX (DawSession::rangeStart editor, shownFrom editor, shownBeats editor)
+
+    // [DAW-TRANSPORT-RANGE] A press on a marker's handle or anywhere down its line takes hold of that marker alone:
+    // the start and the end move independently.
+    grabbed (editor, x, y) = match y >= 193.0 && y < 438.0 && x >= 198.0 && x <= 1098.0
+        false => Error(message = "No marker here.")
+        true => match TimelineGeometry::grabs (x, startX editor)
+            true => Success(value = MoveStart(bar = editor.rollBar))
+            false => match TimelineGeometry::grabs (x, endX editor)
+                true => Success(value = MoveEnd(bar = endAt (editor, x)))
+                false => Error(message = "No marker here.")
+
+    marked (editor, x, y) = match grabbed (editor, x, y)
+        Success action => Success(value = action)
+        Error _ => lanePick (editor, x, y)
+
+    (** Every lane's hit area: a press on a marker takes hold of it; elsewhere a tap picks the track at that bar,
+        and its name opens the patch. *)
     export laneAt (editor, x, y) = match x >= 1113.0 && x < 1132.0 && y >= 221.0 && y < 438.0 && pages editor > 1
         true => Success(value = ScrollLanes(page = floatToInt (TimelineGeometry::scrollPage (y, toFloat (pages editor))) ?: 0))
-        false => lanePick (editor, x, y)
+        false => marked (editor, x, y)
 
     lanePick (editor, x, y) =
         within = floatToInt (TimelineGeometry::rowAt (y, rowHeight)) ?: -1
@@ -223,12 +240,12 @@ module TimelineView
     (** [DAW-TRANSPORT-RANGE] The end marker's bar line under `x`: the nearest one, after the start marker. *)
     export endAt (editor, x) = floatToInt (TimelineGeometry::endBar (TimelineGeometry::laneBeat (x, shownFrom editor, shownBeats editor, beats editor), toFloat editor.rollBar)) ?: 0
 
-    // [DAW-TRANSPORT-PLAYHEAD] A press on the end marker's handle, in the ruler's lower band, takes hold of it; anywhere else on the ruler
-    // moves the start marker to that bar and keeps the track.
+    (** [DAW-TRANSPORT-RANGE] The start marker's bar line under `x`: the nearest one, before the end marker. *)
+    export startAt (editor, x) = floatToInt (TimelineGeometry::startBar (TimelineGeometry::laneBeat (x, shownFrom editor, shownBeats editor, beats editor), toFloat editor.playEnd, beats editor)) ?: 0
+
+    // [DAW-TRANSPORT-PLAYHEAD] A press on the ruler away from the markers moves the start marker to that bar and keeps the track.
     rulerAt (editor, x, y) = match y >= 193.0 && y < 221.0 && x >= 198.0 && x <= 1098.0
-        true => match y >= 207.0 && TimelineGeometry::grabs (x, endX editor)
-            true => Success(value = MoveEnd(bar = endAt (editor, x)))
-            false => Success(value = PickTrack(index = editor.track, bar = barAt (editor, x)))
+        true => Success(value = PickTrack(index = editor.track, bar = barAt (editor, x)))
         false => Error(message = "No lane here.")
 
     (** Accessibility regions for the arrangement track rows. *)

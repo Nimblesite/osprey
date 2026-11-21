@@ -217,6 +217,13 @@ module DawSession
             next = editor(playEnd = bar)
             Runtime::step (next(message = "Play runs ${span next}."))
 
+    (** [DAW-TRANSPORT-RANGE] Put the start marker on bar `bar` (from 0); the end marker stays where it is. *)
+    export started (editor, bar) = match editor.songTicket == ""
+        false => Runtime::step (editor(message = "Stop first to move the start marker."))
+        true =>
+            next = editor(rollBar = bar)
+            Runtime::step (next(message = "Play runs ${span next}."))
+
     exported (editor, place, outcome) = match (fileSize (mastered place) ?: 0) > 44
         true => Runtime::step (editor(songTicket = "", message = "Rendered ${mastered place}."))
         false => failed (editor, outcome)

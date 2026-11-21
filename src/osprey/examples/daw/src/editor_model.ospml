@@ -296,6 +296,8 @@ type EditorAction =
     ToggleLoop
     MoveEnd
         bar : int
+    MoveStart
+        bar : int
     SaveProject
     UseKeymap
         name : string

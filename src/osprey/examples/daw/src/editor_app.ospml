@@ -75,6 +75,7 @@ module EditorApp
         StopSong => DawSession::stop editor
         ToggleLoop => DawSession::looped editor
         MoveEnd bar => DawSession::ended (editor, bar)
+        MoveStart bar => DawSession::started (editor, bar)
         _ => Runtime::step (EditorState::tapped (editor, action))
 
     // Preview captures the pitched voice. The project keeps its authored parameters, even after many key presses.
@@ -166,11 +167,21 @@ module EditorApp
         true => Runtime::step (faderAt (editor, x, y))
         false => DawSession::dropped (faderAt (editor, x, y))
 
+    // [DAW-TRANSPORT-RANGE] `armedNote` while the start marker is held.
+    startHeld = -4
+
+    // The held start marker follows the pointer to the nearest bar line before the end marker; release lets go.
+    startDrag (editor, x, down) = match down
+        true => DawSession::started (editor, TimelineView::startAt (editor, x - Header::shift editor))
+        false => Runtime::step (editor(armedNote = -1))
+
     songPointer (context, editor, x, y, down) = match editor.armedNote == endHeld
         true => endDrag (editor, x, down)
-        false => match DawSession::holding editor
-            true => faderDrag (editor, x, y, down)
-            false => songTap (context, editor, x, y, down)
+        false => match editor.armedNote == startHeld
+            true => startDrag (editor, x, down)
+            false => match DawSession::holding editor
+                true => faderDrag (editor, x, y, down)
+                false => songTap (context, editor, x, y, down)
 
     songTap (context, editor, x, y, down) = match DawSession::tappedAt (editor, x, y)
         Success (SelectNote index) => match down
@@ -182,6 +193,9 @@ module EditorApp
     pagePointer (context, editor, action, down) = match action
         MoveEnd bar => match down
             true => DawSession::ended (editor(armedNote = endHeld), bar)
+            false => Runtime::step editor
+        MoveStart _ => match down
+            true => Runtime::step (editor(armedNote = startHeld))
             false => Runtime::step editor
         AdjustMix index gain pan => match down
             true => Runtime::step (DawSession::slid (editor, index, gain, pan))
