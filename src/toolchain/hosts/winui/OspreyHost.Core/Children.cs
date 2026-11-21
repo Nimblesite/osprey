@@ -85,7 +85,7 @@ public sealed class Child
 
     /// <summary>
     /// <paramref name="command"/> as a file that exists: an absolute path as it is, or a name looked up
-    /// in each folder of <paramref name="path"/>, as given and with each executable extension.
+    /// in each folder of <paramref name="path"/>: as given, or on Windows with each executable extension.
     /// </summary>
     public static string Resolve(string command, string path)
     {
@@ -93,7 +93,8 @@ public sealed class Child
         {
             return File.Exists(command) ? command : throw new HostException($"Command not found: {command}");
         }
-        string[] extensions = Path.HasExtension(command) ? [""] : ["", ".exe", ".cmd", ".bat", ".com"];
+        // Windows never runs a file without an executable extension, such as MSYS2's bash script `cmd`.
+        string[] extensions = Path.HasExtension(command) || !OperatingSystem.IsWindows() ? [""] : [".exe", ".cmd", ".bat", ".com"];
         var found = path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
             .SelectMany(folder => extensions.Select(extension => Path.Combine(folder.Trim('"'), command + extension)))
             .FirstOrDefault(candidate => Path.IsPathFullyQualified(candidate) && File.Exists(candidate));

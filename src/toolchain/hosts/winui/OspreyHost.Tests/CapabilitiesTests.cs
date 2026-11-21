@@ -364,6 +364,20 @@ public sealed class CapabilitiesTests
         if (OperatingSystem.IsWindows())
         {
             Assert.EndsWith("cmd.exe", Child.Resolve("cmd", Environment.SystemDirectory), StringComparison.OrdinalIgnoreCase);
+            // MSYS2's usr\bin holds an extensionless bash script named cmd. Windows never runs a file
+            // without an executable extension, so a lookup passes over it to the real cmd.exe.
+            var msys = Directory.CreateTempSubdirectory("osprey-msys-");
+            try
+            {
+                File.WriteAllText(Path.Combine(msys.FullName, "cmd"), "#!/usr/bin/env bash\n\"$COMSPEC\" \"$@\"\n");
+                var path = msys.FullName + Path.PathSeparator + Environment.SystemDirectory;
+                Assert.Equal(Path.Combine(Environment.SystemDirectory, "cmd.exe"), Child.Resolve("cmd", path), ignoreCase: true);
+                Assert.Throws<HostException>(() => Child.Resolve("cmd", msys.FullName));
+            }
+            finally
+            {
+                msys.Delete(true);
+            }
         }
         else
         {
