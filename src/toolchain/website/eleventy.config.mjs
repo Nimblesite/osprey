@@ -214,7 +214,7 @@ export default function (eleventyConfig) {
       name: "Osprey",
       url: SITE_URL,
       description:
-        "A platform for building native apps, backends, AI, synths and verified maths in one safe, elegant, fast language.",
+        "A platform for building software of any kind in one safe, elegant, fast language. Already built with it: a DAW, native apps, GPT-2 on the GPU, a proof checker.",
     },
     // Keep the existing blog index + docs pages; only adopt the theme's shell,
     // SEO and generated sitemap/robots/feed/llms.txt. (New designs land later.)

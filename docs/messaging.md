@@ -4,17 +4,17 @@ This brief governs every word about Osprey: the homepage, README, videos, docs, 
 
 ## The answer
 
-> **Osprey is a platform for building: apps, backends, AI, synths and verified maths, in one safe, elegant, fast language.**
+> **Osprey is a platform for building software of any kind, in one safe, elegant, fast language. It has already built a DAW, native apps on five platforms, GPT-2 on the GPU and a proof checker.**
 
 Second sentence, when there is room:
 
 > **Write the logic once and the compiler checks all of it. Handlers decide where it runs: SwiftUI or WinUI, CPU or GPU, the real disk or a test.**
 
-Every longer pitch expands these two sentences and never replaces them. Osprey is a language, but say "platform" first: a language with effects is a feature list, and a platform that builds the whole product is a reason to switch.
+Every longer pitch expands these two sentences and never replaces them. The products are proof, not a boundary: never present them as the full list of what Osprey is for, and name only products that run today. Osprey is a language, but say "platform" first: a language with effects is a feature list, and a platform that builds the whole product is a reason to switch.
 
 ## Nothing watered down
 
-One language usually means a lowest common denominator. Osprey aims to be the best tool for each domain on its own merits. Back every claim with a real product, never an adjective:
+One language usually means a lowest common denominator. Osprey aims to be the best tool for each domain on its own merits. These are the domains proven so far, each by a product that runs today; add a row when a new one ships:
 
 | You build | With Osprey | Show |
 | --- | --- | --- |

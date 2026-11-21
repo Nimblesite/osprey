@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Osprey documentation
-description: "Build native apps, backends, AI models, synths and verified maths with Osprey: install it, follow a guide, or watch real apps being built."
+description: "Install Osprey, follow a guide, or watch real apps built with it: a DAW, native apps on five platforms, GPT-2 on the GPU and a proof checker."
 ---
 
 {% from "native-capture.njk" import capture %}
