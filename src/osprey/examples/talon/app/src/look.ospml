@@ -37,7 +37,11 @@ module Look
 
     (** A heading: bold, tight and in the deepest ink. *)
     headingText (words, size, role) = said (words, size, toFloat size * -0.035, "ink950", "strong", role)
+
+    (** A section heading for the page's accessibility outline. *)
     export heading (words, size) = headingText (words, size, ui::Heading)
+
+    (** The top-level heading of the current page. *)
     export title (words, size) = headingText (words, size, ui::Title)
 
     (** A small spaced capital label above a heading. *)
