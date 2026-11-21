@@ -35,7 +35,7 @@ Every issue the user raised while testing Prism by hand, with where it is tracke
 | 7 | Real-time play needs only 5 to 10 ms of buffering before it starts | [DAW-TRANSPORT-LIVE-LATENCY] | Open: today 171 ms of blocks plus one buffered block |
 | 8 | Playing must sync with the MIDI clock | [DAW-TRANSPORT-MIDI-CLOCK] | Open: nothing built |
 | 9 | A patch must render nicely by default, like the design, not as a grid of oversized cards with cables over them | [PRISM-PATCH-LAYOUT] | Open. Owner: prism-routing-design |
-| 10 | Rearranged patch nodes must be saved to the project and reload as arranged | [PRISM-PATCH-LAYOUT] | Open. Positions reach the file on Save or a page switch; a regression for save-on-release is drafted. Owner: prism-routing-design |
+| 10 | Rearranged patch nodes must be saved to the project and reload as arranged | [PRISM-PATCH-LAYOUT] | Fixed in `fddb86f2d`. A native drag wrote the new card position on release and a fresh load restored it. Detached-window coverage remains open |
 | 11 | Dragging the sliders is very clunky, with a huge delay | [DAW-MIX-DRAG] | Open: the value applies only on release, and each commit re-encodes and writes the project |
 | 12 | Play failed: "sub: Reference rendering requires mono audio, one output and supported bounded processors." | [DAW-PATCH-HEARD] | Fixed (633e10d21): the Gain module's input in the sub patch had no cable; an unplugged input now hears silence and the song plays. Open: why the Mixer→Gain cable was lost while the user arranged the patch |
 | 13 | Editing a built-in instrument silently swaps its sound and drops settings | "Built-in instruments become patches" | Open |
@@ -44,9 +44,16 @@ Every issue the user raised while testing Prism by hand, with where it is tracke
 | 16 | In a tall window the pages do not fill it: the song pages sit in the top third with empty space below, and nothing scrolls or pans to use the room | [DAW-LAYOUT-FILL] | Open |
 | 17 | On the patch page a module cannot be dragged lower than about the first quarter of the canvas | [DAW-LAYOUT-FILL] | Open |
 | 18 | Stretching the window sideways changes the zoom: everything grows or shrinks with the window's width | [DAW-LAYOUT-FILL] | Open |
+| 18 | Open track patches in a separate window and close them while the song keeps playing | [DAW-PAGES-PATCH-WINDOW] | Open. Verify both window close and the focused Close command from Timeline and Bus Routing |
+| 19 | Quit in the application menu leaves Prism running | [DAW-PAGES-PATCH-WINDOW] | Fixed on macOS in `0af119f64`. The native Quit command exited a disposable instance with status zero |
+| 20 | Play asks for a song even though a project is already open | [DAW-TRANSPORT-REFUSAL] | Open. With an open project and no renderer, `DawSession::refused` gives the same instruction as an empty session. [Issue 425](https://github.com/Nimblesite/osprey/issues/425) |
+| 21 | Stop appears active when the transport is idle | [DAW-TRANSPORT-STOP-IDLE] | Open. Verify the drawn control, its hit target and the menu across play, end and cancellation |
+| 22 | A track needs as many internal routes and sends as the project requires | [DAW-GRAPH-SUBGRAPH] | Open. Exercise branching, merging and routing into several buses using the shared node editor. Save and reopen the full graph and timeline from one project JSON file |
+| 23 | The example music sounds too simple | [DAW-DEMO-SOUND] | Open. Hand-author the Silt Relay arrangement and patches, exercise the synth module palette, render the master and listen through its section changes. The team is revisiting the other demo songs too |
 
 Found while fixing these:
 
+- [ ] [DAW-TRANSPORT-REFUSAL] Exercise Play with no project, an open project and no renderer, and playback already in progress. Each refusal must identify the condition and preserve the current project.
 - [ ] The daw test suite cannot be run: type checking `src/osprey/examples/daw/test` did not finish in 55 minutes and held 5.6 GB (effect-row convergence, owner OspreyOpus1). The live transport and unplugged-input journeys were run alone in a scratch project with the same sources (both pass, and both fail when their expectations are changed).
 - [ ] Find how the sub patch lost its Mixer→Gain cable during the user's drag, and add the regression.
 - [ ] Toggle Loop and move the end marker while the song plays (today both say "Stop first").
@@ -78,7 +85,8 @@ Reported by the user on 2026-11-21 with two screenshots: a track's patch opened 
 
 - [ ] A patch with no saved positions is laid out along its signal flow: sources on the left, the Output on the right, one column per step, branches stacked, no card over another and no cable through a card. Owner: prism-routing-design.
 - [ ] Cards keep their designed size in a patch opened from a track (the generic cards in the report are larger than the designed Oscillator, Master and Scope cards).
-- [ ] Releasing a dragged node saves its position in the unified project JSON. Check the file immediately after release, reopen it in a fresh patch window and verify the card and sockets are at the saved coordinates. A close or page switch must not be required to trigger the save [DAW-PROJECT].
+- [x] Releasing a dragged node saves its position in the unified project JSON [DAW-PROJECT]. The native test in `fddb86f2d` checks the file during the drag, immediately on release and after a fresh load. Only the dragged card’s coordinates change.
+- [ ] Repeat the card and socket restoration check in an independently closable patch window under [DAW-PAGES-PATCH-WINDOW].
 
 ## Patch windows and routing interactions [DAW-PAGES-PATCH-WINDOW]
 
