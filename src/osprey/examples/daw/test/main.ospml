@@ -686,11 +686,14 @@ projectPatchJourney () =
 projectPortsJourney () =
     first = synth::Components::withOption (synth::Components::sine (11, 261.0), "waveform", "Waveform", 3.0, 2.0)
     output = synth::Components::stereoOutput 16
-    nodes = [first, synth::Components::modulatedLowpass (12, 1800.0, 0.707), synth::Components::lfo (13, 1.7), synth::Components::stereo 14, synth::Components::modulatedGain (15, 2, 0.37), output, synth::Components::midiNote (17, 68.0, 0.6, 256.0), synth::Components::spectral (18, 128, 16, 2.0), synth::Components::downmix 19]
+    nodes = [first, synth::Components::modulatedLowpass (12, 1800.0, 0.707), synth::Components::lfo (13, 1.7), synth::Components::stereo 14, synth::Components::modulatedGain (15, 2, 0.37), output, synth::Components::midiNote (17, 68.0, 0.6, 256.0), synth::Components::spectral (18, 128, 16, 2.0), synth::Components::downmix 19, synth::Components::pitchShifter (20, 128, 1.5), synth::Components::spectral (21, 128, 16, 6.0)]
     routes = [synth::Components::route (11, 0, 12, 0), synth::Components::route (13, 0, 12, 1), synth::Components::route (12, 0, 14, 0), synth::Components::route (14, 0, 15, 0), synth::Components::route (13, 0, 15, 1), synth::Components::route (15, 0, 16, 0)]
     valid (synth::Patches::built (nodes, routes), \graph =>
         succeeds (daw::PatchRecords::saved (timeline [keysTrack ()], 0, graph), \changed =>
             succeeds (synth::Outcomes::carried (daw::SongFiles::encode changed, daw::SongFiles::decode), \opened =>
+                trackAt (opened, 0, \track =>
+                    routing = daw::TrackPatches::routing track.instrument
+                    expect (mapList (filterList (routing.nodes, \n => n.identity >= 20), \n => n.component), ["pitchShifter", "spectral"]))
                 succeeds (daw::TrackPatches::picked (opened, 0), \again => expect (structuralEquals (again, graph), true))
                 trackAt (opened, 0, \track => succeeds (daw::PatchRecords::audition (track, graph, 72), \higher =>
                     settled (higher, 11, "frequency", 522.0)
@@ -1074,7 +1077,7 @@ showcaseVoice voice = match voice.instrument
 
 showcaseProject project =
     kinds = ui::Lists::flatten (mapList (project.tracks, showcaseKinds))
-    forEachList (["sine", "operator", "additive", "wavetable", "exciter", "bowed", "resonator", "modal", "waveguide", "strikeComb", "fractionalDelay", "lossFilter", "allpass", "lowpass", "modulatedLowpass", "shaper", "shifter", "spectral", "smoother", "reverb", "grainCloud", "lfo", "gain", "modulatedGain", "stereoModulatedGain", "mixer", "delay", "midiNote", "midiOscillator", "stereo", "split", "join", "route", "downmix", "stereoOutput", "output"], \kind => expect (ui::Lists::any (kinds, \name => name == kind), true))
+    forEachList (["sine", "operator", "additive", "wavetable", "exciter", "bowed", "resonator", "modal", "waveguide", "strikeComb", "fractionalDelay", "lossFilter", "allpass", "lowpass", "modulatedLowpass", "shaper", "shifter", "spectral", "pitchShifter", "smoother", "reverb", "grainCloud", "lfo", "gain", "modulatedGain", "stereoModulatedGain", "mixer", "delay", "midiNote", "midiOscillator", "stereo", "split", "join", "route", "downmix", "stereoOutput", "output"], \kind => expect (ui::Lists::any (kinds, \name => name == kind), true))
     succeeds (ui::Lists::find (project.tracks, \t => t.name == "Rivet pulse"), \t =>
         expect (t.bus, "Objects")
         expect (structuralEquals (t.sends, [daw::AudioSend(sendId = 1, source = 6, outlet = 0, bus = "Undertow", level = 0.06, enabled = true)]), true))

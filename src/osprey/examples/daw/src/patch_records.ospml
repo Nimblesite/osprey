@@ -8,7 +8,7 @@ module PatchRecords
     middle () = synth::Waves::midiFrequency 60.0
 
     // The routing name of each module a project can hold; the rest exist only inside Prism.
-    named n = match n.processor
+    named (prior, n) = match n.processor
         synth::Exciter seed => Success(value = PatchNode(identity = 0, component = "exciter", size = 0, seed = seed, asset = "", settings = []))
         synth::Granular resource capacity seed => Success(value = PatchNode(identity = 0, component = "grainCloud", size = capacity, seed = seed, asset = ui::Pick::either (resource.name == PatchVoices::builtinName, "", resource.name), settings = []))
         synth::Oscillator => plain (ui::Pick::either (length n.inputs == 0, "sine", "midiOscillator"))
@@ -25,12 +25,12 @@ module PatchRecords
         synth::LossFilter => plain "lossFilter"
         synth::Allpass => plain "allpass"
         synth::Filter => plain (ui::Pick::either (length n.inputs == 2, "modulatedLowpass", "lowpass"))
-        _ => processing n
+        _ => processing (prior, n)
 
-    processing n = match n.processor
+    processing (prior, n) = match n.processor
         synth::Shaper => plain "shaper"
         synth::Shifter => plain "shifter"
-        synth::Spectral size hop => configured ("spectral", size, "hop", hop)
+        synth::Spectral size hop => spectral (prior, n, size, hop)
         synth::Reverb => plain "reverb"
         synth::Smoother => plain "smoother"
         synth::Amplifier => plain "gain"
@@ -45,6 +45,11 @@ module PatchRecords
         synth::Downmix => plain "downmix"
         synth::Sink => plain (ui::Pick::either (stereo n.inputs, "stereoOutput", "output"))
         _ => Error(message = "${synth::Kinds::kind n.processor} modules can't be saved in a song project yet.")
+
+    // A full spectral module keeps its authored name and hop. The pitch preset has a fixed quarter-window hop.
+    spectral (prior, n, size, hop) = match hop == intDiv size 4 && ui::Lists::any (n.parameters, \p => p.key == "transform" && p.initial == 6.0) && !ui::Lists::any (prior, \item => item.component == "spectral")
+        true => sized ("pitchShifter", size)
+        false => configured ("spectral", size, "hop", hop)
 
     savedMap (n, entries) = match listGet n.inputs 0
         Error _ => Error(message = "The channel route needs an input port.")
@@ -83,7 +88,7 @@ module PatchRecords
 
     record (routing, n) =
         prior = filterList (routing.nodes, \item => item.identity == n.identity)
-        synth::Outcomes::carried (named n, \item => Success(value = item(identity = n.identity, settings = listConcat item.settings (mapList (n.parameters, \p => setting (prior, n, p))))))
+        synth::Outcomes::carried (named (prior, n), \item => Success(value = item(identity = n.identity, settings = listConcat item.settings (mapList (n.parameters, \p => setting (prior, n, p))))))
 
     appended (carry, n, routing) = match carry
         Error why => Error(message = why)
