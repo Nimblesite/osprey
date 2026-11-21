@@ -169,3 +169,12 @@ _test_proof_unicode:
 	python3 scripts/proof/test-proof-literals.py
 
 .PHONY: _test_proof_ci $(PROOF_BATCH_TARGETS) $(PROOF_CORPUS_TARGETS)
+
+# [SYNTH-DSP-PROOFS] Check the current source export with the Osprey kernel.
+.PHONY: _test_synthesis_proofs
+_test_synthesis_proofs:
+	@$(MKDIR) target/proof
+	cd src/toolchain/benchmarks/proof/tools && lake build lean4export Synthesis
+	cd src/toolchain/benchmarks/proof/tools && lake exe lean4export Synthesis -- Synthesis.weightedOverlapAdd > "$(abspath target/proof/synthesis.ndjson)"
+	printf '%s\t%s\n' target/proof/synthesis.ndjson Synthesis.weightedOverlapAdd | ./$(BIN) src/osprey/examples/proof/batch --run --memory=arc > target/proof/synthesis.result
+	grep -Fx 'PASS Synthesis.weightedOverlapAdd | axioms: none' target/proof/synthesis.result
