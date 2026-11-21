@@ -77,4 +77,4 @@ module Streams
     (** Play `arrangement` to standard output: once to its end, or its `request.beats` again and again. *)
     export played (request, arrangement, loop) = match arrangement.sampleRate == 48000
         false => Error(message = "Live play needs a 48 kHz project; this one is ${arrangement.sampleRate} Hz.")
-        true => synth::Outcomes::carried (measured (request, arrangement, loop), \count => ran (arrangement, NoteCache::folders (arrangement, request.folder, "live") ?: [], count, loop))
+        true => synth::Outcomes::carried (measured (request, arrangement, loop), \count => ran (arrangement, NoteCache::found (arrangement, request.folder) ?: [], count, loop))

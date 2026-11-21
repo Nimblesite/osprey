@@ -123,11 +123,12 @@ module Arrangements
     export opened (song, voice) = Outcomes::carried (reachable (song, voice), \_ => Outcomes::carried (live (song, voice), \sends =>
         Outcomes::carried (SendRenders::collect (listSortBy (voice.notes, ordered), \note => cue (song, voice, note)), \cues => ok (TrackPlay(pending = cues, sounding = [], sends = sends, made = [])))))
 
-    // One note's lanes: the dry output alone, or with each send's two sides from the same evaluation.
+    (** One note's lanes: the dry output alone, or with each send's two sides from the same evaluation. *)
     export lanesOf (song, voice, sends, note) = match sends
         [] => Outcomes::carried (NoteRenders::render (note, song.tempo, toFloat song.sampleRate, voice.instrument), \samples => ok [samples])
         _ => SendRenders::note (voice, sends, note, song.tempo, toFloat song.sampleRate)
 
+    (** Whether two notes sound the same wherever they start: the same pitch, length and velocity. *)
     export same (one, other) = one.pitch == other.pitch && one.length == other.length && one.velocity == other.velocity
 
     // A note starts sounding at its frame; a note this track has made before reuses its lanes.

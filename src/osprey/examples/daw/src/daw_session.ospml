@@ -140,9 +140,31 @@ module DawSession
 
     renderLog = "prism-song-report"
 
-    // `$0` is the audio worker, then the renderer and its arguments. Each receipt the device answers replaces
-    // `played.json`; the host cancels the whole process group.
-    pipeline = "\"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" | \"$0\" audio-device | while read -r line; do printf '%s\\n' \"$line\" > \"$3/played.json\"; done"
+    // [DAW-TRANSPORT-LIVE-SPEED] Note makers, two fewer than the processor's cores, at low priority: each keeps its
+    // share of the window's notes (`$1` renderer, `$2` project, `$3` folder, `$4` from, `$5` beats) for play to read.
+    makers = "w=$(($(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4) - 2)); [ \"$w\" -ge 1 ] || w=1; i=0; while [ \"$i\" -lt \"$w\" ]; do nice -n 5 \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" warm \"$i\" \"$w\" >/dev/null 2>&1 & i=$((i+1)); done"
+
+    // `$0` is the audio worker, then the renderer and its arguments. The makers start first and run beside the
+    // stream. Each receipt the device answers replaces `played.json`; the host cancels the whole process group.
+    pipeline = "${makers}; \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" | \"$0\" audio-device | while read -r line; do printf '%s\\n' \"$line\" > \"$3/played.json\"; done"
+
+    warmTicket = "daw-notes"
+
+    // The makers alone, over the whole song as saved.
+    warming editor = Requests::ask (warmTicket, ui::Run(executable = "/bin/sh", arguments = ["-c", "${makers}; wait", "sh", editor.renderer, editor.songPath, live editor, "0", "0"], timeout = 1800000, outputLimit = 4096, plist = false, runSlice = ""))
+
+    readied editor =
+        _made = makeDir (folder editor)
+        _place = makeDir (live editor)
+        Runtime::asking (editor, [warming editor])
+
+    (** Open a song project. With a renderer its notes start being made at once, so the first Play reads them
+        instead of making them ([DAW-TRANSPORT-LIVE-SPEED]). A refused project changes nothing else. *)
+    export opening (editor, path) =
+        next = loaded (editor, path)
+        match next.songPath == path && next.renderer != ""
+            true => readied next
+            false => Runtime::step next
 
     clock on = Requests::ask (clockTicket, ui::Animate(animated = on))
 
@@ -231,7 +253,9 @@ module DawSession
     (** A render finishing starts playback; playback or a stop finishing frees the transport. *)
     export completed (editor, ticket, outcome) = match ticket == "daw-open"
         true => match outcome
-            Success path => Runtime::step (ui::Pick::either (path == "", editor, loaded (editor, path)))
+            Success path => match path == ""
+                true => Runtime::step editor
+                false => opening (editor, path)
             Error why => Runtime::step (editor(message = why))
         false => transport (editor, ticket, outcome)
 

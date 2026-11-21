@@ -41,9 +41,27 @@ module NoteCache
         sums = "${folder}/sums.${tag}.txt"
         Outcomes::carried (Shell::ran (20, "shasum ${join paths " "} > ${Shell::quoted sums} && rm ${join paths " "}"), \_ => summed (folder, sums))
 
-    (** Each track's note folder, in track order. `tag` keeps this process's working files apart from the
-        other makers'. *)
-    export folders (song, folder, tag) = Outcomes::carried (SendRenders::collect (toList (range (0, length song.tracks)), \index => keyed (song, folder, tag, index)), \paths => hashed (folder, tag, paths))
+    // Each track's note folder, in track order; `tag` keeps this maker's working files apart from the others'.
+    folders (song, folder, tag) = Outcomes::carried (SendRenders::collect (toList (range (0, length song.tracks)), \index => keyed (song, folder, tag, index)), \paths => hashed (folder, tag, paths))
+
+    texts song = SendRenders::collect (song.tracks, \voice => keyText (song, voice))
+
+    labelled (dir, text) = match readFile "${dir}key.txt"
+        Error _ => false
+        Success label => label == text
+
+    // The note folder whose label is this track's key; none reads as a folder that holds nothing.
+    home (entries, text) = match listGet (filterList (entries, \dir => endsWith dir "/" && labelled (dir, text))) 0
+        Error _ => ""
+        Success dir => take dir (satSub (length dir) 1)
+
+    listing (folder, keys) = match listDir "${folder}/notes"
+        Error _ => []
+        Success entries => mapList (keys, \text => home (entries, text))
+
+    (** Each track's note folder as the makers labelled it, in track order, found without starting a process:
+        live play stays single-threaded, where the heap needs no lock. *)
+    export found (song, folder) = Outcomes::carried (texts song, \keys => ok (listing (folder, keys)))
 
     path (dir, note) = "${dir}/${note.pitch}_${note.length}_${note.velocity}.st"
 
@@ -143,16 +161,22 @@ module NoteCache
                 Error _ => 0
                 Success _ => length old
 
-    prepared (folder, dirs, worker) = match Shell::ran (20, "mkdir -p ${join (mapList (dirs, Shell::quoted)) " "}")
+    label (dirs, keys, index) = match writeFile "${listGet dirs index ?: ""}/key.txt" (listGet keys index ?: "")
+        Error _ => 0
+        Success _ => 1
+
+    labels (dirs, keys) = foldList (toList (range (0, length dirs)), 0, \(count, index) => satAdd count (label (dirs, keys, index)))
+
+    prepared (song, folder, dirs, worker) = match Shell::ran (20, "mkdir -p ${join (mapList (dirs, Shell::quoted)) " "}")
         Error why => Error(message = why)
         Success _ => match worker == 0
-            true => ok (swept (folder, dirs))
             false => ok 0
+            true => Outcomes::carried (texts song, \keys => ok (satAdd (labels (dirs, keys)) (swept (folder, dirs))))
 
     (** Maker `worker` of `workers`: makes and keeps its share of the song's distinct notes that are not kept
         yet, in song order. Maker 0 first removes the note folders no track uses. Yields how many it made. *)
     export warmed (song, folder, worker, workers) = match worker >= 0 && worker < workers && workers <= 64
         false => Error(message = "A maker needs its number, from 0, and the count of makers, at most 64.")
-        true => Outcomes::carried (folders (song, folder, "w${worker}"), \dirs => Outcomes::carried (prepared (folder, dirs, worker), \_ =>
+        true => Outcomes::carried (folders (song, folder, "w${worker}"), \dirs => Outcomes::carried (prepared (song, folder, dirs, worker), \_ =>
             all = jobs song
             ok (worked (song, dirs, "w${worker}", all, share (all, worker, workers)))))

@@ -23,7 +23,7 @@ module EditorApp
         opened = editor(keysPath = keys, keymap = Keymaps::stored keys, skin = PrismArt::sized (art, 1536.0, 828.0), cards = PrismArt::classified art, workerPath = worker, audioPath = audio, assetFolder = "${ui::MachineDocs::folder (signalflow::App::documentPath context.arguments)}/skins/prism", renderer = ui::Lists::after (context.arguments, "--renderer", ""))
         match song == ""
             true => Runtime::step opened
-            false => Runtime::step (DawSession::loaded (opened, song))
+            false => DawSession::opening (opened, song)
 
     // View commands open the selected track's patch from any page and toggle the tool once there.
     patchTool (editor, next) = match editor.page
