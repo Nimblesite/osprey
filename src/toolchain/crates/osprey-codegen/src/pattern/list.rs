@@ -5,7 +5,7 @@ use super::{
 use crate::builder::Codegen;
 use crate::error::Result;
 use crate::llty::{LType, Value};
-use osprey_ast::{MatchArm, Pattern};
+use osprey_ast::{Expr, MatchArm, Pattern};
 
 /// List-pattern match: each arm is length-guarded — `== n` for a fixed-length
 /// `[a, b]`, `>= n` for a `[a, ...rest]` — then its prefix elements and tail are
@@ -49,11 +49,29 @@ pub(super) fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) 
         let captured = super::nested::elements(cg, &list_val, elements, &next_lbl)?;
         finish_checked_arm(cg, arm, &mut phi_in, &next_lbl, i == last, |cg| {
             super::nested::bind(cg, captured)?;
-            bind_list_arm(cg, &list_val, &[], rest.as_deref(), n);
+            let tail = rest
+                .as_deref()
+                .filter(|name| !returns_prefix(&arm.body, elements, name));
+            bind_list_arm(cg, &list_val, &[], tail, n);
             Ok(())
         })?;
     }
     finish_phi(cg, &phi_in, &end, mark)
+}
+
+/// A prefix projection only borrows its chosen element. No tail view escapes.
+fn returns_prefix(body: &Expr, elements: &[Pattern], tail: &str) -> bool {
+    match body {
+        Expr::Block {
+            statements,
+            value: Some(value),
+            ..
+        } if statements.is_empty() => returns_prefix(value, elements, tail),
+        Expr::Identifier(id) if id != tail => elements
+            .iter()
+            .any(|p| matches!(p, Pattern::Binding(name) if name == id)),
+        _ => false,
+    }
 }
 
 /// Bind a matched list arm's prefix elements (`osprey_list_get(l, i)`) and its

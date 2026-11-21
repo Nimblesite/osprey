@@ -471,6 +471,11 @@ fn list_pattern_match_binds_head_tail_and_fixed_lengths() {
             "icmp sge i64",
         ],
     );
+    let first = module(
+        "fn first(xs) = match xs { [head, ...rest] => head\n _ => 0 }\n\
+         fn main() -> Unit = print(first([1, 2]))\n",
+    );
+    assert!(!first.contains("call i8* @osprey_list_drop"));
     let corpus = module(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../osprey/tests/regressions/basics/pattern_matching/pattern_matching_complete.test.osp"
