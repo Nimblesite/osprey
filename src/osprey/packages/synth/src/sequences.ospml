@@ -45,7 +45,11 @@ module Sequences
         [] => []
         [size, ...rest] => listPrepend (chunks (drop (items, size), rest)) (take (items, size))
 
+    (** `left` then `right`, appending `right` element by element: linear in `right`, where `listConcat` copies
+        `left` too and turns block-by-block accumulation quadratic. *)
+    export joined (left, right) = foldList (right, left, \(all, value) => listAppend all value)
+
     (** Join chunks back into one flat list. *)
     export flattened<T> : List<List<T>> -> List<T>
-    flattened parts = foldList (parts, [], \(all, part) => listConcat all part)
+    flattened parts = foldList (parts, [], joined)
 

@@ -47,7 +47,7 @@ module PhysicalKernels
             [] => []
             [imag, ...others] => listConcat [ResonatorState(real = real, imag = imag)] (pairs others)
 
-    flattened modal = foldList (modal.modes, [], \(all, m) => listConcat all [m.real, m.imag])
+    flattened modal = foldList (modal.modes, [], \(all, m) => listAppend (listAppend all m.real) m.imag)
 
     modal (frame, held, input, config) = match ModalBanks::configure config
         Error why => Error(message = why)

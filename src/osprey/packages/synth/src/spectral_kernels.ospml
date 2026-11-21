@@ -8,7 +8,7 @@ module SpectralKernels
     (** Kernel storage for a stream of `size`: three sample buffers and two complex bin buffers. *)
     export storage size = satAdd (satMul size 5) 4
 
-    flattened values = foldList (values, [], \(all, value) => listConcat all [value.re, value.im])
+    flattened values = foldList (values, [], \(all, value) => listAppend (listAppend all value.re) value.im)
 
     complexes samples = match samples
         [] => []
