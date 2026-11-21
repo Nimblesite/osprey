@@ -17,6 +17,15 @@ The [daw specification](../specs/applications/Daw.md) defines the requirements. 
 - [ ] The hex text between the renderer and the device costs encoding time on every block; a binary block needs a byte-writing output in the language or the runtime.
 - [ ] The interactive launch never closes by itself. Fixed in 5c0357a74: `prism.sh` wrapped the app in a ten-minute `gtimeout`, which closed it during the user's test.
 
+## Slider drag lag [DAW-MIX-DRAG]
+
+Reported by the user on 2026-11-21: dragging the Track Inspector's Gain and Pan sliders is very clunky, with a huge delay.
+
+- [ ] **A dragged slider follows the pointer on every pointer event.** Cause, in `editor_app.ospml` (`pagePointer`): a press on a mix slider only arms it (`AdjustMix` → `armedNote`); the value is applied on release, so the thumb and the readout do not move during the drag. The fix keeps a draft value in the editor while the slider is held, draws the thumb and readout from it, and commits once on release.
+- [ ] **A commit does not stall the interface.** Each commit encodes the whole project, decodes it again to check it, writes the file, and rebuilds the lane traces and overview. Measure the release-to-repaint time on the codex song; target under 16 ms, with the file write off the interface thread or deferred.
+- [ ] The same check for every other slider and dial: Space send, bus faders, the Space decay, patch dials.
+- [ ] A loaded journey test drags a slider through many pointer positions and asserts the shown value after each one, before release.
+
 ## Patch layout [PRISM-PATCH-LAYOUT]
 
 Reported by the user on 2026-11-21 with two screenshots: a track's patch opened as a tight grid of oversized cards with cables crossing over the cards, where the design shows cards at their natural size, spaced along the signal path from left to right with cables between them.
