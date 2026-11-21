@@ -1,6 +1,6 @@
 //! Source identities and lexical scope owned exclusively by the Python frontend.
 use crate::{BindingKind, BindingRange, SyntaxError};
-use osprey_ast::{Expr, Position, Stmt, TypeExpr};
+use osprey_ast::{Expr, Parameter, Position, Stmt, TypeExpr};
 use std::collections::{BTreeMap, BTreeSet};
 use tree_sitter::Node;
 
@@ -47,6 +47,23 @@ pub(super) fn children(node: Node<'_>) -> Vec<Node<'_>> {
 
 pub(super) fn position(node: Node<'_>) -> Position {
     crate::default::position_from_point(node.start_position())
+}
+
+/// Build the unannotated callback used by iterator-based lowering.
+pub(super) fn callback(names: &[&str], body: Expr, node: Node<'_>) -> Expr {
+    Expr::Lambda {
+        parameters: names
+            .iter()
+            .map(|name| Parameter {
+                name: (*name).to_owned(),
+                ty: None,
+                inline_constraint: false,
+            })
+            .collect(),
+        return_type: None,
+        body: Box::new(body),
+        position: Some(position(node)),
+    }
 }
 
 pub(super) fn unit() -> Expr {

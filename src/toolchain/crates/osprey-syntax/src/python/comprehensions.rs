@@ -1,8 +1,8 @@
 //! List comprehensions lower to the existing iterator pipeline; nested `for`
 //! clauses lower to nested folds preserving evaluation order.
 //! Implements [FLAVOR-PYTHON-EXPRESSIONS].
-use super::context::{apply, children, position, Lowerer, Result};
-use osprey_ast::{Expr, Parameter};
+use super::context::{apply, callback, children, position, Lowerer, Result};
+use osprey_ast::Expr;
 use tree_sitter::Node;
 
 impl Lowerer<'_> {
@@ -46,12 +46,12 @@ impl Lowerer<'_> {
             let condition = self.expr(Self::first(*filter)?)?;
             source = apply(
                 Expr::Identifier("filter".into()),
-                vec![source, callback(&name, condition, *filter)],
+                vec![source, callback(&[&name], condition, *filter)],
             );
         }
         let mapped = apply(
             Expr::Identifier("map".into()),
-            vec![source, callback(&name, self.expr(body)?, first)],
+            vec![source, callback(&[&name], self.expr(body)?, first)],
         );
         Ok(apply(Expr::Identifier("toList".into()), vec![mapped]))
     }
@@ -122,7 +122,7 @@ impl Lowerer<'_> {
             )?;
             Ok(apply(
                 Expr::Identifier("fold".into()),
-                vec![iter, seed, callback_two(&acc, &name, inner, clause)],
+                vec![iter, seed, callback(&[&acc, &name], inner, clause)],
             ))
         })
     }
@@ -164,38 +164,5 @@ impl Lowerer<'_> {
             ));
         }
         Ok(self.text(node).to_owned())
-    }
-}
-
-fn callback(name: &str, body: Expr, owner: Node<'_>) -> Expr {
-    Expr::Lambda {
-        parameters: vec![Parameter {
-            name: name.into(),
-            ty: None,
-            inline_constraint: false,
-        }],
-        return_type: None,
-        body: Box::new(body),
-        position: Some(position(owner)),
-    }
-}
-
-fn callback_two(first: &str, second: &str, body: Expr, owner: Node<'_>) -> Expr {
-    Expr::Lambda {
-        parameters: vec![
-            Parameter {
-                name: first.into(),
-                ty: None,
-                inline_constraint: false,
-            },
-            Parameter {
-                name: second.into(),
-                ty: None,
-                inline_constraint: false,
-            },
-        ],
-        return_type: None,
-        body: Box::new(body),
-        position: Some(position(owner)),
     }
 }
