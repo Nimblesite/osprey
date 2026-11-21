@@ -17,4 +17,5 @@ if [ "$busy" != "0" ]; then
     echo "push refused: $busy CI run(s) on $branch still queued or running; wait for them" >&2
     exit 1
 fi
-git push origin "$branch"
+# The branch can advance while GitHub reports the run status.
+git push origin "$head:refs/heads/$branch"

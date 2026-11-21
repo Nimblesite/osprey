@@ -413,6 +413,38 @@ test('a failed local dependency audit invalidates a previous green push stamp', 
   }
 })
 
+test('the push gate sends the tested commit if a teammate advances the branch during the CI check', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'osprey-push-race-'))
+  const push = resolve('scripts/ci/push.sh')
+  const git = (...args) => {
+    const result = spawnSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd: directory, encoding: 'utf8' })
+    assert.equal(result.status, 0, result.stderr)
+    return result.stdout.trim()
+  }
+  try {
+    git('init', '-q', '-b', 'feature')
+    git('init', '-q', '--bare', 'remote')
+    git('remote', 'add', 'origin', './remote')
+    for (const subject of ['tested', 'untested']) {
+      git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', subject, '--allow-empty')
+    }
+    const tested = git('rev-parse', 'HEAD^')
+    const untested = git('rev-parse', 'HEAD')
+    git('update-ref', 'refs/heads/feature', tested)
+    mkdirSync(join(directory, 'target'))
+    writeFileSync(join(directory, 'target/ci-green'), `${tested}\n`)
+    writeFileSync(join(directory, 'gh'), `#!/bin/sh\ngit update-ref refs/heads/feature ${untested} && echo 0\n`, { mode: 0o755 })
+    const result = spawnSync('sh', [push], {
+      cwd: directory, env: { ...process.env, PATH: `${directory}:${process.env.PATH}` }, encoding: 'utf8',
+    })
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(git('--git-dir=remote', 'rev-parse', 'refs/heads/feature'), tested)
+    assert.equal(git('rev-parse', 'HEAD'), untested)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test('standalone deployment dispatch runs the mandatory dependency audit first', () => {
   for (const file of ['.github/workflows/deploy-pages.yml', '.github/workflows/deploy-webcompiler.yml']) {
     const audit = job('audit', file)
