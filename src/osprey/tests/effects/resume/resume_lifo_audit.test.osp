@@ -23,18 +23,20 @@ type Ledger = { entered: string, supplies: string, settled: string, answers: str
 fn blankLedger() = Ledger { entered: "", supplies: "", settled: "", answers: "" }
 
 /// Record an arm's entry; its supply label is the label it displays.
-fn enter(log, key, label, supplied) = noteEnter(log, key, label, label, supplied)
+fn enter(log, key, label, supplied) =
+    log { entered: tag(log.entered, key, label), supplies: supply(log.supplies, label, supplied) }
 
 /// Record an arm's settle; the label it saw is the label it displays.
-fn leave(log, key, label, answer) = noteExit(log, key, label, label, answer)
+fn leave(log, key, label, answer) =
+    log { settled: tag(log.settled, key, label), answers: saw(log.answers, label, answer) }
 
-/// Record one operation's entry and the value its region supplied.
-fn noteEnter(log, key, supplyLabel, label, supplied) =
-    log { entered: tag(log.entered, key, label), supplies: supply(log.supplies, supplyLabel, supplied) }
+/// Record a Twin entry: label the mark of `amount`, supply `prefix`+mark and `amount` scaled `scale`-fold.
+fn taggedEnter(log, key, prefix, amount, scale) =
+    log { entered: tag(log.entered, key, toString(amount)), supplies: supply(log.supplies, "${prefix}${toString(amount)}", amount * scale) }
 
-/// Record one operation's settle and the answer its arm saw.
-fn noteExit(log, key, label, sawLabel, answer) =
-    log { settled: tag(log.settled, key, label), answers: saw(log.answers, sawLabel, answer) }
+/// Record a Twin settle: keyed `key`, displaying the mark of `amount`, seeing `answer`.
+fn taggedExit(log, key, amount, answer) =
+    log { settled: tag(log.settled, key, toString(amount)), answers: saw(log.answers, key, answer) }
 
 /// This case proves operations enter FIFO and post-resume code exits LIFO.
 fn resumeLifoAuditCase() = {
@@ -347,25 +349,25 @@ fn nestedPartialInnerResumeCase() = {
         handle Twin {
             near amount => {
                 outerNear = outerNear + 1 
-                log = noteEnter(log, "OUTERnear", "N${toString(amount)}", toString(amount), amount * 1000000)
+                log = taggedEnter(log, "OUTERnear", "N", amount, 1000000)
                 let answer = resume(amount * 1000000)
-                log = noteExit(log, "OUTERnear", toString(amount), "OUTERnear", answer)
+                log = taggedExit(log, "OUTERnear", amount, answer)
                 answer
             }
             far amount => {
                 outerFar = outerFar + 1 
-                log = noteEnter(log, "far", "f${toString(amount)}", toString(amount), amount * 1000)
+                log = taggedEnter(log, "far", "f", amount, 1000)
                 let answer = resume(amount * 1000)
-                log = noteExit(log, "far", toString(amount), "far", answer)
+                log = taggedExit(log, "far", amount, answer)
                 answer * 2 
             }
         }
         handle Twin {
             near amount => {
                 innerNear = innerNear + 1 
-                log = noteEnter(log, "near", "n${toString(amount)}", toString(amount), amount * 10)
+                log = taggedEnter(log, "near", "n", amount, 10)
                 let answer = resume(amount * 10)
-                log = noteExit(log, "near", toString(amount), "near", answer)
+                log = taggedExit(log, "near", amount, answer)
                 answer + 5 
             }
         }
