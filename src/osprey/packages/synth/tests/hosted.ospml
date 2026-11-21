@@ -99,6 +99,23 @@ requested (request, kind, offset, value) =
 
 hostGraph () = built ([Components::midiNote (1, 60.0, 0.8, 128.0), hostNode (synth::Hosted::component (2, hostDescriptor ())), Components::lfo (3, 2.0), Components::stereoOutput 4], [cable (1, 2), cable (2, 4)])
 
+retainedDialEdits () =
+    descriptor = hostDescriptor ()
+    tone = synth::HostControl(identity = 100, name = "Tone", initial = 0.25, automatable = true)
+    mix = tone(identity = 101, name = "Mix", initial = 0.5)
+    original = hostNode (synth::Hosted::component (2, descriptor(controls = [tone, mix])))
+    previous = synth::HostModulation::stamps (built ([original], []))
+    updated = hostNode (synth::Hosted::component (2, descriptor(controls = [tone(initial = 0.75), mix])))
+    graph = built ([updated], [])
+    scheduled = mapList (toList (range (1, 1024)), \offset => synth::HostParameter(identity = 101, offset = offset, value = 0.25))
+    edited = synth::HostParameter(identity = 100, offset = 0, value = 0.75)
+    succeeds (synth::HostModulation::edits (graph, previous, updated, scheduled), \points => sameStructure (points, listPrepend scheduled edited))
+    full = listAppend scheduled (synth::HostParameter(identity = 101, offset = 1024, value = 0.5))
+    succeeds (synth::HostModulation::edits (graph, synth::HostModulation::stamps graph, updated, full), \points => sameStructure (points, full))
+    match synth::HostModulation::edits (graph, previous, updated, full)
+        Error why => expect (synth::Faults::detail why, "VST edits exceed the block automation budget.")
+        Success _ => unexpected ()
+
 stereoMarker frame = match frame
     0 => [0.75, -0.5]
     255 => [-0.5, 0.75]
@@ -409,6 +426,7 @@ registerHostedJourneys () =
         forEachList ([Components::midiNote (5, -1.0, 0.75, 256.0), Components::midiNote (5, 60.5, 0.75, 256.0), Components::midiNote (5, 60.0, 1.1, 256.0), Components::midiNote (5, 60.0, 0.75, 1.5), note(parameters = []), Components::sine (5, 440.0)], \bad => renderRefused (synth::MidiClips::window (bad, 0, 512)))
         renderRefused (synth::MidiClips::window (note, 65535, 2))
         forEachList ([{ start = 65535, span = 2, admitted = true }, { start = 9223372036854775806, span = 1, admitted = true }, { start = 9223372036854775807, span = 1, admitted = false }, { start = 0, span = 65537, admitted = false }], \r => timelineAt (note, r.start, r.span, r.admitted))))
+    test ("retained VST dial edits preserve scheduled points and enforce the automation budget", \() => arithmetic retainedDialEdits)
     test ("worker transport rejects malformed headers, nonfinite PCM, bad events and excessive automation", \() => arithmetic (\() =>
         layout = synth::HostLayout(inputChannels = 2, outputChannels = 2, acceptsNotes = false)
         block = synth::HostBlock(frames = 257, notes = [], parameters = [], samples = steady (514, 0.25))
