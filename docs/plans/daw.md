@@ -154,7 +154,7 @@ Spec: [Daw.md](../specs/applications/Daw.md) sections [DAW-HUMAN], [DAW-MODULAR]
 - [x] Patch Controls panel is dark in the Prism palette, without a second transport row (3cd896ee6).
 - [ ] **Dials ([DAW-CONTROLS-DIAL]).** Every numeric field is a round dial with its number: press, hold, move up or down; Shift for fine steps; double-press for the default; typing and arrow keys. Slider (horizontal or vertical) where a length reads better. Design worked out with prism-routing-design. Owner: ferroui-prism-lead.
 - [ ] **Patch Controls uses the design's controls.** The text boxes, "Connect/Disconnect" buttons and platform-styled menu in that panel are replaced by the toggle, dial, slider, menu and button of [DAW-CONTROLS]; the number box that reformats while typing (392 became 923.0) goes with them.
-- [ ] **Keymaps ([DAW-KEYS]).** Prism, Ableton style and Logic style from a Shortcuts menu, a custom keymap file, the choice kept between launches, and a shortcut on every command. In progress: model, presets, file checks and menus are written and not yet committed.
+- [x] **Keymaps ([DAW-KEYS]).** Prism, Ableton style and Logic style from a Shortcuts menu with the one in use ticked, a custom keymap file checked before it replaces the one in use, the choice kept between launches, and a shortcut on every command (486b165cf). Not yet: arguments and stacks on a keymap line ([DAW-COMMANDS]).
 - [ ] **Command palette ([DAW-COMMANDS]).** One command list feeding menus, shortcuts and a VS Code style palette.
 - [ ] **Stacked commands ([DAW-COMMANDS]).** A stack is a named list of commands with its own parameters (a macro), one undo step, all or nothing, in an editable file. A shortcut runs a command or a stack, with arguments if the keymap line gives them. Needs the one command list first.
 - [ ] **Design screenshots are gorgeous (user order).** Every PNG in `docs/designs/prism-timeline` is finished art at 2×: one type scale, one spacing grid, the Prism palette only, real project content (no placeholder names), no clipped or overlapping text. prism-routing-design draws; the lead signs each off before code follows it.
@@ -261,6 +261,91 @@ Rule from tonight: a commit to `packages/synth` is tested against `examples/daw`
 - [x] Scenery kept. With the dock: 4.8 ms mean, 5.1 ms worst (was 10.6 and 18.2); 22/22 journeys pass. The interface target is met.
 - [x] `daw_events` also taps the ruler and drags every Mix gain fader: 1.8 ms mean, 10.7 ms worst (the release saves the project).
 - [x] `prism_events` holds a drag move to one 120 Hz frame on average (8.3 ms), two at worst.
+
+### Profile round, 21 Nov 10:30 [DAW-PERF-ROUND]
+
+Measured at 486b165cf with `make -C src/toolchain/targets/macos/tests daw-profile` (new: `scripts/make/daw-profile.sh`, the ignored host test `tests/daw_profile.rs`, and `scripts/make/sample-attribution.py`, which names the Osprey function behind each runtime call in a 1 ms `sample`). Project: `tracks/codex-version.json`, ARC. A row below is done only when its owner runs the same target again and writes the new number beside the old one.
+
+**What a user action costs** (milliseconds in the app's `event` export, mean of 117 or more events; the host adds 0.05):
+
+| Action | Timeline | Mix | Patch (64 shapes) |
+|---|---|---|---|
+| Any pointer event, key or frame tick, **including one that changes nothing** | 2.0 to 2.1 | 1.5 to 1.6 | 0.47 to 0.50 |
+| Window resize | 12.4 | not measured | 3.2 |
+| Open the page | 2.3 | 1.7 | 3.3 |
+| Show or hide Patch Controls, Keyboard | 5.0, 5.3 | | |
+| Launch with the song | 50 | | |
+
+Every event fits a 120 Hz frame, so nothing here is felt yet. The finding is the shape: the cost does not depend on what happened. A frame tick that changes nothing costs the same as a tap, because the whole page is rebuilt and rewritten on every event, and a resize costs six times that.
+
+**Interface: where the time goes.** Share of app samples; "tick" is the Timeline frame tick (3,843 samples), "resize" the Timeline resize (3,870), "mix" the Mix tick (3,923), "patch" the Patch tick (3,842).
+
+| Function (file:line) | Share | Cause | Fix | Owner |
+|---|---|---|---|---|
+| `synth::Header::placed`, `placedAreas` ([header_view.ospml:149](../../src/osprey/examples/daw/src/header_view.ospml), :152), through `Header::shift` and `ui::Machines::number` | tick 34.5%, mix 50.3%, tap 26.7% | The lambda calls `shift editor` once per shape (about 400). Each call reads two knobs by name | Bind the shift once, outside the lambda | ferroui-prism-lead |
+| `ui::Machines::knob` ([machine.ospml:112](../../src/osprey/packages/native/src/machine.ospml)) and its predicate `k.knobName == name` (`__closure_fn_12`) | tick 35.9%, resize 42.1%, mix 51.8% | A knob is found by comparing its name with every knob's name, for every read, through `ui::Lists::find` ([base.ospml:23](../../src/osprey/packages/native/src/base.ospml)): a whole-list filter, a list and a boxed result per read | Keep knobs in a map by name, or resolve a name to its index once per frame | ferroui-prism-lead |
+| `ui::Streams::write`, `etches`, `path`, `step` ([stream.ospml:55-62, 76-78, 106, 116](../../src/osprey/packages/native/src/stream.ospml)) | tick 41.5%, tap 44.4%, patch 21.6% | Every path step is built as a record inside a one-element list; `Lists::flatten` joins them; only then are the rows written. One step costs a record, a list, a builder and a join | Write each row to the bridge as it is produced, folding the refused count; no `List<Etch>` in between | ferroui-prism-lead |
+| `ui::Lists::spanned` ([base.ospml](../../src/osprey/packages/native/src/base.ospml), called by `flatten`) | tick 16.9%, tap 17.6% | Joining by halves still copies every element log n times and retains and drops each one | Goes away with the row above; elsewhere, one builder that every group is pushed into | ferroui-prism-lead |
+| `ui::Surfaces::shown` and `ui::Tellings::render` (the whole telling) | 97.5% of every event | No event is ever answered with "nothing changed": the view is rebuilt, told and written even when the stamp is the same | Compare the root stamp first and answer an unchanged event without building the view; tell only regions whose stamp changed | ferroui-prism-lead |
+| `synth::CardArts::refreshed` ([card_art.ospml:28](../../src/osprey/examples/daw/src/card_art.ospml), from [editor_app.ospml:213](../../src/osprey/examples/daw/src/editor_app.ospml)), `CardArts::card`, `PrismArt::drawn`, `ui::Canvases::artboard`, `ui::Templates::measure` and `fill` | resize 78.9% (card 64.8%, artboard 58.1%, measure 43.1%, fill 41.6%) | A resize redraws the art of every Patch card, whichever page is showing, and each template piece reads its knobs by name | Refresh card art only on the Patch page and only when the card scale changed; give a card its knob values once, as a record | ferroui-prism-lead |
+| `synth::PrismArt::atlas` | patch 14.4%, mix 5.4%, tick 3.7% | The atlas list is rebuilt for every event | Build it once at launch and keep it in the editor | ferroui-prism-lead |
+| `synth::Header::patchSubtitle`, `EditorView::toolbar` | patch 7.7%, 8.8% | Rebuilt per event although they change only with the page and the track | Cache with the header, keyed by page and track | ferroui-prism-lead |
+| `synth::Graphs::node` | patch 4.4% | Finds a node by filtering the whole node list | Same search fix as `Lists::find` (code generation row 2) | synth-advanced |
+
+Targets: an event that changes nothing under 0.1 ms; a Timeline or Mix event under 0.7 ms; a resize under 2 ms.
+
+- [ ] `Header::placed` and `placedAreas` bind the shift once (before: Timeline 2.05 ms, Mix 1.55 ms per event).
+- [ ] Unchanged events answered without rebuilding the view.
+- [ ] `Streams` writes rows directly, with no intermediate list.
+- [ ] Knobs read by index or map, not by name search.
+- [ ] Card art refreshed only on the Patch page and only when its scale changes (before: resize 12.4 ms).
+- [ ] Atlas, toolbar and patch subtitle cached.
+
+**Engine.** Bars 9 and 10 again: 36.0 s (35.4 s of CPU, with the sampler attached). Nothing has moved since 35.0 s, and none of the block-rendering items above has landed. The same functions hold the time (12,808 samples, own code plus the runtime each calls directly):
+
+| Function (file:line) | Share | Cause |
+|---|---|---|
+| `synth::RenderInputs::parameter` ([render_inputs.ospml:17](../../src/osprey/packages/synth/src/render_inputs.ospml)) | 23.2% | `listGet (filterList (snapshot.parameters, \p => p.node == identity && p.key == key)) 0` per parameter per node per sample: a string compare per parameter, a list and a boxed result per read |
+| The per-sample closures of `synth::Renderer` ([renderer.ospml:46, 87, 91, 94](../../src/osprey/packages/synth/src/renderer.ospml)): `sample`, `evaluated` (the fold over `plan.order` calling `nextNode`) and `finished` | 9.4% + 5.8% + 3.0% own, 92% inclusive | Four closures deep per sample, each a heap environment and a boxed `Result` through `Outcomes::carried`. `finished` searches `outputs plan.graph` again, appends one sample with `listAppend` and rebuilds every meter with `metered`, per sample |
+| `RenderInputs::input` 6.4%, `emitted` 5.5%, `held` 4.3%, `Graphs::node` 4.2%, `RenderKernels::step` 4.2%, `RenderKernels::selected` 2.3% | 27% | State and node found by filtering lists, per node per sample |
+| `daw::Arrangements::bused` | 3.6% | A list built per sample per side |
+| `PartialBanks::partial`, `stepped` | 4.0% | One record per partial per sample |
+
+Leaf time is the runtime, not arithmetic: `arc_drop_child` 18.2%, `arc_release_zero_locked` 18.1%, `osp_retain` 7.8%, `arc_alloc_locked` 6.9%, `osprey_list_get` 6.6%, `osp_release` 6.5%, `memset` 5.1%, `osp_mem_string_length` 3.0%.
+
+- [ ] `RenderInputs::parameter`, `input`, `held` and `Graphs::node` resolved once per block into the plan (the existing block-rendering items; owner still OspreyOpus1 and synth-advanced, nothing delivered).
+- [ ] `Renderer::finished` finds the sink once per render, collects a block's samples in one builder and meters once per block, not per sample.
+
+**Code generation and runtime: what the generated code does that it need not.** Each row was read from the LLVM IR of the daw (`osprey src/osprey/examples/daw --llvm --memory=arc --target=macos`) and matched to the samples. These cost every Osprey program, not only the daw.
+
+| # | What is generated | Evidence | Cost measured | Fix |
+|---|---|---|---|---|
+| 1 | **String `==` is an ordering compare with two locked length lookups.** `a == b` emits `call i32 @osp_string_compare` then `icmp eq 0`. `osp_string_compare` ([string_runtime.c:63](../../src/toolchain/compiler/runtime/string_runtime.c)) takes both lengths through `osp_strlen`, which calls `osp_mem_string_length` ([memory_arc.c:234](../../src/toolchain/compiler/runtime/memory_arc.c)): the heap lock and a registry lookup each, a `strlen` when the string is a literal, then `memcmp` | IR of `__closure_fn_12`; `osp_mem_string_length` + `memcmp` + `strlen` + `osp_string_compare` | tick 23%, resize 31%, render 7% | Emit `osp_string_equal` for `==` and `!=`: equal pointers are equal; otherwise one pass over the bytes with no length lookup. Against a literal, pass the literal's length, known at compile time |
+| 2 | **`listGet (filterList (xs, p)) 0` scans the whole list and builds a list.** Emitted as: closure environment `osp_alloc_tagged`, `osprey_list_builder_new_of`, a loop over every element (`osprey_list_get`, indirect call, `osprey_list_builder_push_borrowed`), `osprey_list_builder_seal`, `osprey_list_in_bounds`, `osprey_list_get` | IR of `ui::Machines::knob` (143 lines for a one-line function) | `ui::Lists::find`, `RenderInputs::parameter`, `Graphs::node`: tick 36%, render 23% + 4% | Recognise the shape, or add a `listFind` built-in: a loop that returns at the first match, with no list and no builder. (Stopping early while still building the one-element list was tried and rejected above; the list is the cost) |
+| 3 | **A lambda written at a `mapList`, `filterList` or `foldList` call is still a heap closure called through a pointer.** `osp_alloc_tagged(16, 513)`, `osp_retain` of each capture, then per element `load` of the function pointer and `call i1 %r21(...)`, so `-O2` cannot inline the body | IR of `ui::Machines::knob`, lines 20 to 46 | One allocation and one release per call site per call, and an indirect call per element everywhere | When the argument is a literal lambda, emit its body in the loop (or a direct call with the captures on the stack); no heap environment |
+| 4 | **Every element read in a generated loop is an out-of-line `osprey_list_get`**, which checks the bounds the loop has already established; a checked `listGet` is two calls (`osprey_list_in_bounds`, `osprey_list_get`) | IR of every `mapList`/`filterList`/`foldList` loop | 6.2% to 6.6% of leaf time in all four profiles | Read the element inline when the loop bound proves the index; or ship the runtime's fast paths (`osprey_list_get`, `osp_retain`, `osp_release`) as bitcode so `-O2` inlines them |
+| 5 | **A list literal goes through a builder.** `[x]` is `osprey_list_builder_new_of`, `osprey_list_builder_push_borrowed`, `osprey_list_builder_seal`, with `osp_alloc` and `osp_alloc_tagged` | IR of `ui::Streams::step`: five builders for five one- or two-element literals | Part of `Streams::step` and `path` (tick 20%) | A literal of known length is one allocation with its elements stored directly |
+| 6 | **A new list is tagged by a second locked call.** `osp_mem_set_layout` ([memory_arc.c:323](../../src/toolchain/compiler/runtime/memory_arc.c)) takes the heap lock and looks the block up again, straight after the allocation, for every list header and node ([list_trie.h:86, 125](../../src/toolchain/compiler/runtime/list_trie.h)) | Leaf samples | tick 4.9%, resize 2.0%, render 1.8% | Pass the layout to the allocation |
+| 7 | **Every `Result` is a heap object**, and turning one error into another allocates a second. `listGet` allocates `osp_alloc_tagged(24, 1281)` for its answer; `match … Error _ => Error(…)` allocates another and retains the message literal | IR of `ui::Machines::knob`: three `osp_alloc_tagged(…, 1281)` for one lookup; function type `{ i64, i8, i8* }*` | Part of `arc_alloc_locked` + `arc_release_zero_locked`: tick 11%, render 25% | Return a `Result` by value (two registers or `sret`) when it is matched at once and never stored |
+| 8 | **A pure call that does not depend on the lambda's argument is evaluated for every element.** `mapList (shapes, \shape => moved (shape, shift editor))` calls `shift editor` 400 times | `Header::placed`, tick 34.5% | See the first interface row | Hoist a call to an effect-free function out of the loop when none of its arguments mentions the lambda's parameters |
+| 9 | **Retain and release are emitted for string literals.** `call void @osp_retain(i8* %r40)` where `%r40` is `@.str.174` in read-only data; the runtime probes to find it is not its own | IR of `ui::Machines::knob` | Part of `osp_retain` (tick 11.1%) | The compiler knows a literal: emit no retain or release for it |
+| 10 | **`listConcat`, `flatten` and `mapList` are never fused.** `listConcat [head] (listConcat (Lists::flatten (mapList (steps, step))) …)` allocates each intermediate list | `ui::Streams::path` (stream.ospml:76-78) | tick 10% own plus `Lists::spanned` 17% | Lower nested concat, flatten and map into pushes on one builder |
+| 11 | Dropping a list of records drops each element through the registry (`arc_drop_child`) | Leaf samples | tick 16.8%, resize 11.1%, render 18.2%: the largest single leaf in three of four profiles | Already open above ("Direct element drops for proved lists"); this round says it is the first runtime fix to make |
+| 12 | A record update allocates and copies | Already open above | | In-place reuse of a unique record |
+
+Order by what it buys across all four profiles: 11 (drops), 1 (string equality), 2 (find), 7 (`Result` by value), 3 (inline lambdas), 4 (inline element reads), then 5, 6, 9, 10, 8.
+
+- [ ] 1. `osp_string_equal` for `==` and `!=`, with the literal's length when one side is a literal.
+- [ ] 2. First-match search with no list for `listGet (filterList …) 0`.
+- [ ] 3. Literal lambdas at built-in loop sites emitted inline, no heap environment.
+- [ ] 4. Inline element reads in proved loops, or runtime fast paths as bitcode.
+- [ ] 5. List literals as one allocation.
+- [ ] 6. List layout passed to the allocation; `osp_mem_set_layout` off the allocation path.
+- [ ] 7. `Result` returned by value when matched at once.
+- [ ] 8. Loop-invariant effect-free calls hoisted out of lambdas.
+- [ ] 9. No retain or release on string literals.
+- [ ] 10. Concat, flatten and map fused onto one builder.
+- [ ] Each of these lands with a regression program in `src/osprey/tests/regressions/` and the before and after of `make daw-profile`.
 
 ## Verification
 

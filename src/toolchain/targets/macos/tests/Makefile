@@ -94,6 +94,14 @@ daw-events-headless: _runtime_macos
 	nice -n 10 cargo test --manifest-path src/toolchain/hosts/ferroui/Cargo.toml --release --features desktop \
 	    --test prism_events --test daw_events -- --nocapture
 
+## daw-profile: Measure the daw and say where the time goes ([DAW-PERF]): milliseconds per kind of user action on
+##              every page, then a 1 ms sample of the Timeline, Mix and Patch pages and of the song renderer, each
+##              attributed to Osprey functions and the runtime calls they make. Reports in target/daw-profile.
+.PHONY: daw-profile
+daw-profile: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	bash scripts/make/daw-profile.sh
+
 ## daw-video: The daw in a real window, clicked and dragged like a user: a note's velocity and a Space send on the
 ##            Timeline, a Delay added and wired into a patch and auditioned, a send, bus and reverb on Mix, then
 ##            Play renders the edited bars. Each step must change the screen and Play must render audio. Writes target/daw-video/prism-journey.mp4 (with the bars as
