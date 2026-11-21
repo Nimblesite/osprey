@@ -168,7 +168,7 @@ Reported by the user on 2026-11-21 with two screenshots: a track's patch opened 
 - [ ] A patch with no saved positions is laid out along its signal flow: sources on the left, the Output on the right, one column per step, branches stacked, no card over another and no cable through a card. Owner: prism-routing-design.
 - [ ] Cards keep their designed size in a patch opened from a track (the generic cards in the report are larger than the designed Oscillator, Master and Scope cards).
 - [x] Releasing a dragged node saves its position in the unified project JSON [DAW-PROJECT]. The native test in `fddb86f2d` checks the file during the drag, immediately on release and after a fresh load. Only the dragged card’s coordinates change.
-- [ ] Repeat the card and socket restoration check in an independently closable patch window under [DAW-PAGES-PATCH-WINDOW].
+- [x] Repeat the card and socket restoration check in an independently closable patch window under [DAW-PAGES-PATCH-WINDOW]. The macOS GPUI replay moves the wired Waveshaper, saves its new position, closes the patch and verifies that both sockets and their cable return when it reopens. The saved routing is unchanged and the CHOW Tape editor opens separately (611602f5a).
 
 ## Patch windows and routing interactions [DAW-PAGES-PATCH-WINDOW]
 
