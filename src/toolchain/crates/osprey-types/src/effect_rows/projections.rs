@@ -1,8 +1,8 @@
 //! Effect row projections.
 use super::{
     ordered_values, project_callable, project_deep, project_element, project_fiber_value,
-    project_success_value, Analyzer, BTreeMap, BTreeSet, CallArguments, Callable, ParameterUse,
-    Projection, Requirement, Requirements, Summary, Value,
+    project_success_value, shift_value_levels, Analyzer, BTreeMap, BTreeSet, CallArguments,
+    Callable, ParameterUse, Projection, Requirement, Requirements, Summary, Value,
 };
 
 impl Analyzer<'_> {
@@ -30,19 +30,36 @@ impl Analyzer<'_> {
         value: &Value,
         path: &[Projection],
     ) -> Option<Value> {
+        self.project_lifted_path(value, path, 0)
+    }
+
+    pub(super) fn project_lifted_path(
+        &self,
+        value: &Value,
+        path: &[Projection],
+        levels: usize,
+    ) -> Option<Value> {
         let mut selected = value;
         let mut remaining = path;
         while let Some((projection, rest)) = remaining.split_first() {
             match borrowed_structural_child(selected, projection) {
                 ProjectionChild::Borrowed(child) => selected = child,
                 ProjectionChild::Missing => return None,
-                ProjectionChild::Owned => {
+                ProjectionChild::Owned if levels == 0 => {
                     return self.project_borrowed_fallback(selected, remaining);
+                }
+                ProjectionChild::Owned => {
+                    // Invoking an opaque projection must see the lifted caller provenance.
+                    let mut lifted = value.clone();
+                    shift_value_levels(&mut lifted, levels, 0);
+                    return self.project_path(lifted, path);
                 }
             }
             remaining = rest;
         }
-        Some(selected.clone())
+        let mut lifted = selected.clone();
+        shift_value_levels(&mut lifted, levels, 0);
+        Some(lifted)
     }
 
     fn project_borrowed_fallback(&self, value: &Value, path: &[Projection]) -> Option<Value> {
@@ -399,11 +416,15 @@ fn borrowed_projection_matches_owned_projection_for_mixed_paths_and_metadata() {
                     absent,
                     "{mode}: {path:?}"
                 );
-                assert_eq!(
-                    analyzer.project_borrowed_path(&value, &path),
-                    analyzer.project_path(value.clone(), &path),
-                    "{mode}: {path:?}"
-                );
+                for levels in [0, 1, 3] {
+                    let mut lifted = value.clone();
+                    shift_value_levels(&mut lifted, levels, 0);
+                    assert_eq!(
+                        analyzer.project_lifted_path(&value, &path, levels),
+                        analyzer.project_path(lifted, &path),
+                        "{mode}, {levels}: {path:?}"
+                    );
+                }
             }
         }
     });

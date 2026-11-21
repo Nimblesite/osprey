@@ -28,14 +28,8 @@ impl Analyzer<'_> {
                 // parameter to its maker's caller, so `one(f) = fn(w) => f(w)`
                 // left `w` undischargeable at the entry. [EFFECTS-PROVENANCE]
                 let callback = argument.and_then(|value| {
-                    if target_level == 0 {
-                        return self
-                            .project_borrowed_path(value, &use_.projection)?
-                            .callable;
-                    }
-                    let mut lifted = value.clone();
-                    shift_value_levels(&mut lifted, target_level, 0);
-                    self.project_path(lifted, &use_.projection)?.callable
+                    self.project_lifted_path(value, &use_.projection, target_level)?
+                        .callable
                 });
                 if let Some(callback) = callback {
                     summary.union(
@@ -189,7 +183,7 @@ impl Analyzer<'_> {
 }
 
 #[test]
-fn direct_callback_substitution_only_copies_the_selected_field() {
+fn callback_substitution_only_copies_the_selected_field() {
     use super::{CallArguments, ParameterUse, Projection};
     super::identity_tests::with_empty_analyzer(|analyzer| {
         let receiver = Value {
@@ -210,11 +204,25 @@ fn direct_callback_substitution_only_copies_the_selected_field() {
             .collect(),
             ..Summary::default()
         };
-        let (result, clones) = super::provenance::measured_clones(|| {
-            analyzer.substitute_summary_at(summary, 0, &[Some(receiver)])
-        });
-        assert!(result.unresolved_dynamic_call);
-        assert!(clones <= 1, "copied {clones} values to select one callback");
+        for level in [0, 1, 3] {
+            let mut case = summary.clone();
+            case.parameter_uses = std::mem::take(&mut case.parameter_uses)
+                .into_iter()
+                .map(|mut requirement| {
+                    requirement.level = level;
+                    requirement
+                })
+                .collect();
+            let arguments = [Some(receiver.clone())];
+            let (result, clones) = super::provenance::measured_clones(|| {
+                analyzer.substitute_summary_at(case, level, &arguments)
+            });
+            assert!(result.unresolved_dynamic_call);
+            assert!(
+                clones <= 1,
+                "copied {clones} values to select one callback at level {level}"
+            );
+        }
     });
 }
 
