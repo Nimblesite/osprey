@@ -123,6 +123,8 @@ Reported by the user on 2026-11-21: dragging the Track Inspector's Gain and Pan 
 
 ## Patch layout [PRISM-PATCH-LAYOUT]
 
+- [ ] **Grain cloud sample path overflows its card** [PRISM-PATCH-LAYOUT-SAMPLE-LABEL]. In the reported screenshot, Grain cloud 0 displays `src/osprey/examples/daw/tracks/samples/elise-motif.wav` across the orange card border. Display the filename inside the waveform panel, truncate long filenames to its available width, and expose the complete path in the inspector or an accessible description. Verify with a narrow window and a long filename, keeping the output socket clear.
+
 Reported by the user on 2026-11-21 with two screenshots: a track's patch opened as a tight grid of oversized cards with cables crossing over the cards, where the design shows cards at their natural size, spaced along the signal path from left to right with cables between them.
 
 - [ ] A patch with no saved positions is laid out along its signal flow: sources on the left, the Output on the right, one column per step, branches stacked, no card over another and no cable through a card. Owner: prism-routing-design.
