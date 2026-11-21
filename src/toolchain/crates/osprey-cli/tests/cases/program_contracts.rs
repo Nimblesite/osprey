@@ -369,14 +369,22 @@ fn bare_result_variants_compile_and_select_the_correct_arm() {
 fn quiet_silences_progress_and_keeps_warnings() {
     // `--quiet` is progress-only. A warning is a diagnostic: it names a defect
     // in the program, so it prints under `--quiet` exactly as it does without.
-    let prog = temp_osp("quiet_warn", "let n: int = 42\nprint(\"v=${n}\")\n");
-    let loud = run_file(&prog, &["--check"]);
-    assert_eq!(loud.code, Some(0), "stderr={}", loud.stderr);
-    assert!(loud.stderr.contains("redundant"), "{}", loud.stderr);
-    assert!(loud.stdout.contains(": ok ("), "{}", loud.stdout);
-    let o = run_file(&prog, &["--check", "--quiet"]);
-    assert_quiet_accept(&o);
-    assert_eq!(o.stderr, loud.stderr, "--quiet changed the diagnostics");
+    let prog = temp_osp(
+        "quiet_warn",
+        "fn answer(spare) = 42\nlet n: int = answer(0)\nprint(\"v=${n}\")\n",
+    );
+    for (args, quiet_args, warning) in [
+        (vec!["--check"], vec!["--check", "--quiet"], "unused"),
+        (vec!["--analyse"], vec!["--analyse", "--quiet"], "redundant"),
+    ] {
+        let loud = run_file(&prog, &args);
+        assert_eq!(loud.code, Some(0), "stderr={}", loud.stderr);
+        assert!(loud.stderr.contains(warning), "{}", loud.stderr);
+        assert!(loud.stdout.contains(": ok ("), "{}", loud.stdout);
+        let o = run_file(&prog, &quiet_args);
+        assert_quiet_accept(&o);
+        assert_eq!(o.stderr, loud.stderr, "--quiet changed the diagnostics");
+    }
 }
 
 #[test]
