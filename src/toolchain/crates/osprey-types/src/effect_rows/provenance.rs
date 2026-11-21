@@ -64,11 +64,14 @@ pub(super) fn map_parameter_use_values(use_: &mut ParameterUse, mut visit: impl 
     }
 }
 
-pub(super) fn ordered_values(
+pub(super) fn ordered_values<'a>(
     parameters: &[String],
-    positional: &[Option<Value>],
+    positional: &'a [Option<Value>],
     named: &[(String, Option<Value>)],
-) -> Vec<Option<Value>> {
+) -> std::borrow::Cow<'a, [Option<Value>]> {
+    if named.is_empty() && positional.len() >= parameters.len() {
+        return std::borrow::Cow::Borrowed(positional);
+    }
     let mut values = positional.to_vec();
     values.resize(values.len().max(parameters.len()), None);
     for (name, value) in named {
@@ -78,7 +81,7 @@ pub(super) fn ordered_values(
             }
         }
     }
-    values
+    std::borrow::Cow::Owned(values)
 }
 
 pub(super) fn merge_value(slot: &mut Value, incoming: Value) {
@@ -410,4 +413,25 @@ fn compare_choices(left: &Callable, right: &Callable) -> std::cmp::Ordering {
     #[cfg(test)]
     sorted_join_tests::record_comparison();
     left.cmp(right)
+}
+
+#[test]
+fn ordered_calls_borrow_full_positional_inputs_and_preserve_named_overrides() {
+    let parameters = ["a".to_owned(), "b".to_owned()];
+    let positional = [Some(Value::unknown_value()), None];
+    let (ordered, clones) = measured_clones(|| ordered_values(&parameters, &positional, &[]));
+    assert_eq!(&ordered[..], &positional);
+    assert_eq!(clones, 0);
+    assert_eq!(
+        &ordered_values(&parameters, &positional[..1], &[])[..],
+        &positional
+    );
+    let overrides = [
+        ("a".to_owned(), None),
+        ("b".to_owned(), positional[0].clone()),
+    ];
+    assert_eq!(
+        &ordered_values(&parameters, &positional, &overrides)[..],
+        &[None, positional[0].clone()]
+    );
 }
