@@ -126,7 +126,7 @@ So a row leaves its manifest only when the program works on that target, and the
 | `src/osprey/examples/graphics/kali` | `osp_gfx_open` is native code outside the module (not in the portable runtime) |
 | `src/osprey/examples/graphics/opal` | `osp_gfx_open` is native code outside the module (not in the portable runtime) |
 | `src/osprey/examples/ios/app.osp` | `ios_host_log` is native code outside the module (not in the portable runtime) |
-| `src/osprey/examples/projects/modules` | `osprey_ffi_cell` is native code outside the module (not in the portable runtime) |
+| `src/osprey/examples/talon` | `osprey_ffi_cell` is native code outside the module (not in the portable runtime) |
 | `src/osprey/examples/python/interop.osp` | `osprey_python_call` is native code outside the module (not in the portable runtime) |
 | `src/osprey/examples/statefulhttp/tui.osp` | `term_raw_mode` is native code outside the module (not in the portable runtime) |
 | `src/osprey/tests/regressions/db/database_effect.test.osp` | `osprey_ffi_cell` is native code outside the module (not in the portable runtime) |

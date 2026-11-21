@@ -155,7 +155,7 @@ file does not parse, since an unparsable buffer reports its syntax error alone.
 
 ### One analysis per edit `[LSP-PROJECT-BATCH]`
 
-Editing one file of a project republishes every open file of that project, and each of those answers needs the project assembled, type-checked and its warnings proved. That work is done **once per edit** and shared by the files answering it, rather than once per open file: on `src/osprey/examples/projects/modules` a single answer takes about six seconds, so repeating it per open buffer made the editor unusable with more than one file open.
+Editing one file of a project republishes every open file of that project, and each of those answers needs the project assembled, type-checked and its warnings proved. That work is done **once per edit** and shared by the files answering it, rather than once per open file: on `src/osprey/examples/talon` a single answer takes about six seconds, so repeating it per open buffer made the editor unusable with more than one file open.
 
 Each language-server engine owns the latest analysis for each manifest root, including nested projects. Its inputs include the complete project configuration and each source's path, syntax flavor and text, compared exactly. Siblings answering the same edit share that result, and later requests with identical inputs may reuse it. Separate projects and server instances cannot evict each other's analysis; syntax is retained while any loaded project includes its file. Code actions use the same analysis as diagnostics; requesting a quick fix does not repeat an unchanged project proof.
 

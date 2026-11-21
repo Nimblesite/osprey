@@ -5,7 +5,7 @@ Start with algebraic effects: declare an operation, request it with `perform`, a
 | Example | What to try |
 | --- | --- |
 | [Handlers](handlers/README.md) | Reusable policies, return transformations, static selection, and comparisons with Koka and OCaml |
-| [Talon Bank](projects/modules/README.md) | Shared web/iOS/Android application, SQLite and mock storage, auditing, metrics, and platform rendering |
+| [Talon Bank](talon/README.md) | Shared web/iOS/Android application, SQLite and mock storage, auditing, metrics, and platform rendering |
 | [Issue Inbox](mobile/README.md) | Shared iOS/Android state and UI, with SQL/HTTP requests interpreted by a platform-command handler |
 | [iPhone counter](ios/README.md) | A native logging callback behind a value effect |
 | [Storage browser](macos/README.md) | One SwiftUI app for the Mac and iPhone: Osprey owns every screen of a folder-by-folder storage browser, with hidden files on or off |

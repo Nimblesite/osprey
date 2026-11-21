@@ -1,14 +1,14 @@
 # Talon Bank: one Osprey Native app on the web, Android and iOS
 
-Talon Bank is a small bank with accounts, deposits, withdrawals, transfers and an audit journal. The client is one [Osprey Native](../../../packages/native/README.md) app in [`app/`](app). The browser, Android and SwiftUI hosts run that same source with no per-platform code. A native Osprey server in [`src/`](src) keeps the ledger in SQLite behind effect handlers and serves the browser build.
+Talon Bank is a small bank with accounts, deposits, withdrawals, transfers and an audit journal. The client is one [Osprey Native](../../packages/native/README.md) app in [`app/`](app). The browser, Android and SwiftUI hosts run that same source with no per-platform code. A native Osprey server in [`src/`](src) keeps the ledger in SQLite behind effect handlers and serves the browser build.
 
 | Platform | Host | Command |
 | --- | --- | --- |
-| Web | [browser host](../../../../toolchain/hosts/web) (WebAssembly) | `make -C src/toolchain/targets/web bank` |
-| Android | [Android view host](../../../../toolchain/hosts/android) | `make -C src/toolchain/targets/android bank` |
-| iPhone | [SwiftUI host](../../../../toolchain/hosts/swift) (iOS) | `make -C src/toolchain/targets/ios bank` |
-| Mac | [SwiftUI host](../../../../toolchain/hosts/swift) | `make -C src/toolchain/targets/macos bank` |
-| Windows | [WinUI host](../../../../toolchain/hosts/winui), in its AppContainer | `make -C src/toolchain/targets/windows bank` (on Windows; no headless suite or goldens yet) |
+| Web | [browser host](../../../toolchain/hosts/web) (WebAssembly) | `make -C src/toolchain/targets/web bank` |
+| Android | [Android view host](../../../toolchain/hosts/android) | `make -C src/toolchain/targets/android bank` |
+| iPhone | [SwiftUI host](../../../toolchain/hosts/swift) (iOS) | `make -C src/toolchain/targets/ios bank` |
+| Mac | [SwiftUI host](../../../toolchain/hosts/swift) | `make -C src/toolchain/targets/macos bank` |
+| Windows | [WinUI host](../../../toolchain/hosts/winui), in its AppContainer | `make -C src/toolchain/targets/windows bank` (on Windows; no headless suite or goldens yet) |
 
 Start the server first with `make -C src/toolchain/targets/web bank`. It serves the API and the web app at <http://127.0.0.1:18790>, and resets the demo database at `/tmp/talon_bank.db` on each run. The Android target forwards that port to the device with `adb reverse`, and the iPhone simulator reaches it directly. An app launched with a server URL as its first argument talks to that server instead.
 
@@ -73,4 +73,4 @@ Transfers commit the debit, the credit and both journal entries in one SQLite tr
 
 The server's deterministic tour is byte-compared with [`expectedoutput`](expectedoutput) by `src/toolchain/crates/osprey-cli/tests/project_e2e.rs`.
 
-See the [Osprey Native framework](../../../packages/native/README.md), the [effects guide](../../handlers/README.md) and the [module specification](../../../../../docs/specs/language/0025-ModulesAndNamespaces.md).
+See the [Osprey Native framework](../../packages/native/README.md), the [effects guide](../handlers/README.md) and the [module specification](../../../../docs/specs/language/0025-ModulesAndNamespaces.md).

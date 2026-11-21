@@ -21,7 +21,7 @@ bank: build
 ## bank-app: Talon Bank's one Osprey Native app, driven through the host boundary with no host: loading,
 ##           tabs, filters, validation and every ledger request.
 bank-app:
-	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/projects/modules/app/test
+	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/talon/app/test
 
 ## casting: The casting player, driven by accessible label. [UI-MACHINE-TEST]
 casting:

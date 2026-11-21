@@ -7,7 +7,7 @@ node src/toolchain/hosts/web/scripts/build.mjs --app <application folder> --titl
     [--module <file.ospml> --namespace <namespace>]
 ```
 
-The build compiles the application with `--target=wasm32` and writes `index.html`, `host.js` (the host with the application inlined) and `host.css` to `--out`. Serve that folder from any web server. `--module` also writes the three files as an Osprey module whose `page`, `script` and `style` functions a server written in Osprey can return, as [Talon Bank](../../../osprey/examples/projects/modules/README.md) does.
+The build compiles the application with `--target=wasm32` and writes `index.html`, `host.js` (the host with the application inlined) and `host.css` to `--out`. Serve that folder from any web server. `--module` also writes the three files as an Osprey module whose `page`, `script` and `style` functions a server written in Osprey can return, as [Talon Bank](../../../osprey/examples/talon/README.md) does.
 
 ## How it works
 

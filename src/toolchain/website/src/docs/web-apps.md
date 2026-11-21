@@ -15,7 +15,7 @@ title: Build a web app with WebAssembly and Osprey Native
 
 {% from "native-capture.njk" import capture %}
 
-An Osprey web app is an [Osprey Native](/docs/osprey-native/) app compiled to WebAssembly. Its state, its rules and its screens are Osprey. The browser host draws the screens as HTML and performs the app's HTTP requests. The same source, with no per-platform code, runs on Android and the iPhone through their own hosts. [Talon Bank](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/projects/modules) is the working example, with a native Osprey server and SQLite behind it.
+An Osprey web app is an [Osprey Native](/docs/osprey-native/) app compiled to WebAssembly. Its state, its rules and its screens are Osprey. The browser host draws the screens as HTML and performs the app's HTTP requests. The same source, with no per-platform code, runs on Android and the iPhone through their own hosts. [Talon Bank](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/talon) is the working example, with a native Osprey server and SQLite behind it.
 
 {{ capture("/assets/images/native/web-bank.png", "Talon Bank overview in Chromium: the portfolio total, the client accounts and recent activity", "Talon Bank in Chromium, drawn by the web host from the app's WebAssembly build.", 1440, 960) }}
 
@@ -37,7 +37,7 @@ make -C src/toolchain/targets/macos bank     # a Mac window
 
 ## One source, every platform
 
-The app lives in one folder, [`app/`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/projects/modules/app). Each host loads the same compiled app and draws it with its own controls: HTML in the browser, Android views on Android and SwiftUI on Apple platforms.
+The app lives in one folder, [`app/`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/talon/app). Each host loads the same compiled app and draws it with its own controls: HTML in the browser, Android views on Android and SwiftUI on Apple platforms.
 
 | Platform | Host | The app is compiled as |
 | --- | --- | --- |
@@ -176,12 +176,12 @@ make -C src/toolchain/targets/ios/tests bank
 
 | Part | Source |
 | --- | --- |
-| Store and actions | [`app/src/store.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/src/store.ospml) |
-| Update and validation | [`app/src/update.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/src/update.ospml) |
-| HTTP edge | [`app/src/ledger.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/src/ledger.ospml), [`app/src/replies.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/src/replies.ospml) |
-| Screens | [`app/src/screens.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/src/screens.ospml), [`app/src/forms.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/src/forms.ospml) |
-| App tests | [`app/test/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/test/main.ospml) |
-| Server and storage | [`src/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/src/main.ospml), [`src/store/ledger.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/src/store/ledger.ospml) |
+| Store and actions | [`app/src/store.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/app/src/store.ospml) |
+| Update and validation | [`app/src/update.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/app/src/update.ospml) |
+| HTTP edge | [`app/src/ledger.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/app/src/ledger.ospml), [`app/src/replies.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/app/src/replies.ospml) |
+| Screens | [`app/src/screens.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/app/src/screens.ospml), [`app/src/forms.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/app/src/forms.ospml) |
+| App tests | [`app/test/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/app/test/main.ospml) |
+| Server and storage | [`src/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/src/main.ospml), [`src/store/ledger.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/talon/src/store/ledger.ospml) |
 | Browser host | [`src/toolchain/hosts/web`](https://github.com/Nimblesite/osprey/tree/main/src/toolchain/hosts/web) |
 
 See also [Osprey Native](/docs/osprey-native/), [Build an iOS and Android app](/docs/mobile-apps/) and [algebraic effects](/docs/algebraic-effects/).

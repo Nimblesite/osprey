@@ -45,8 +45,8 @@ const COPIES: [string, string][] = [
   ["llms/gpt2/model", "gpt2/model"],
   ["llms/gpt2/generate", "gpt2/generate"],
   ["llms/gpt2/train", "gpt2/train"],
-  ["projects/modules/osprey.toml", "modules/osprey.toml"],
-  ["projects/modules/src", "modules/src"],
+  ["talon/osprey.toml", "modules/osprey.toml"],
+  ["talon/src", "modules/src"],
 ];
 
 const site = (

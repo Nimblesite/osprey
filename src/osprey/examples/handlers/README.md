@@ -1,6 +1,6 @@
 # Algebraic effects: choose and reuse handlers
 
-Start with callable `handler` values, then explore control operations, return transformations, and static selection. The [bank](../projects/modules/README.md) and [mobile apps](../mobile/README.md) apply the same forms to storage, auditing, rendering, and platform requests. The [effects guide](../../../toolchain/website/src/docs/algebraic-effects.md) explains each step.
+Start with callable `handler` values, then explore control operations, return transformations, and static selection. The [bank](../talon/README.md) and [mobile apps](../mobile/README.md) apply the same forms to storage, auditing, rendering, and platform requests. The [effects guide](../../../toolchain/website/src/docs/algebraic-effects.md) explains each step.
 
 
 Run from the repository root:

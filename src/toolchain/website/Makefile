@@ -92,6 +92,6 @@ wasm-serve: wasm
 ##                 e2e project's Playwright install rather than adding another.
 docs-html-test: build $(BANK_E2E_NODE_DEPS)
 	@echo "==> Documentation HTML browser acceptance..."
-	cd src/osprey/examples/projects/modules/e2e && npx playwright install chromium
+	cd src/osprey/examples/talon/playwright-e2e-tests && npx playwright install chromium
 	node scripts/ci/verify-docs-html.mjs $(BIN)
 endif

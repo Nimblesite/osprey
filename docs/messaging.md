@@ -84,7 +84,7 @@ A short intro needs point 1, proof and one next step: the playground, an example
 - Value operations return to their callers. Declared `control` operations may resume or answer directly; resumption restores the handled scope.
 - Static handler selection removes runtime effect dispatch, not every call or allocation. Never say "zero-cost".
 - Compare other languages through specific semantics and executed examples. No claims of completeness, unmeasured speed, or replacing Swift, Python or Rust: Osprey hosts and interoperates with platform code.
-- A specification is not proof of implementation. The [effects spec](specs/language/0017-AlgebraicEffects.md) defines semantics, [plan 0016](plans/0016-algebraic-effects-and-handlers.md) records limits, and the [handler examples](../src/osprey/examples/handlers/README.md), [bank](../src/osprey/examples/projects/modules/README.md) and [mobile apps](../src/osprey/examples/mobile/README.md) demonstrate them.
+- A specification is not proof of implementation. The [effects spec](specs/language/0017-AlgebraicEffects.md) defines semantics, [plan 0016](plans/0016-algebraic-effects-and-handlers.md) records limits, and the [handler examples](../src/osprey/examples/handlers/README.md), [bank](../src/osprey/examples/talon/README.md) and [mobile apps](../src/osprey/examples/mobile/README.md) demonstrate them.
 
 ## Banned
 

@@ -18,7 +18,7 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 type Rewritten = (PathBuf, String, String);
 
 fn fixture() -> PathBuf {
-    repo_root().join("src/osprey/examples/projects/modules")
+    repo_root().join("src/osprey/examples/talon")
 }
 
 fn osprey() -> Command {

@@ -28,7 +28,7 @@ test('every make check in the PR workflows is planned, inside the step that runs
 
 test('checks that are not make targets run too: static analysis, browsers, the emulator and the containers', () => {
   for (const [pattern, directory] of [[/^cargo fmt .* --check$/, '.'], [/^cargo clippy .*-D warnings$/, '.'], [/^npm run lint$/, './src/toolchain/vscode-extension'],
-    [/^npm test$/, './src/toolchain/website'], [/^npx playwright test$/, './src/osprey/examples/projects/modules/e2e'], [/^deslop \./, '.']]) {
+    [/^npm test$/, './src/toolchain/website'], [/^npx playwright test$/, './src/osprey/examples/talon/playwright-e2e-tests'], [/^deslop \./, '.']]) {
     assert.equal(find(pattern)?.directory, directory, String(pattern))
   }
   const android = find(/targets\/android\/tests inbox/)

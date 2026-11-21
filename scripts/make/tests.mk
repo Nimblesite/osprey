@@ -457,7 +457,7 @@ _gpu-demo: build
 # TS2688 errors and a dead stage, for work the build job had already done.
 _bank_test:
 	@echo "==> Bank native tests (osprey test)..."
-	./$(BIN) test src/osprey/examples/projects/modules/test
+	./$(BIN) test src/osprey/examples/talon/test
 
 # Osprey package system (src/osprey/packages/manager/): one process runs every suite from the
 # src/osprey/packages/manager/tests project with core, host and CLI sources assembled together,

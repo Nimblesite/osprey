@@ -23,7 +23,7 @@ updates:
       - "/src/toolchain/website"
       - "/src/toolchain/tree-sitter-osprey"
       - "/src/toolchain/hosts/web"
-      - "/src/osprey/examples/projects/modules/e2e"
+      - "/src/osprey/examples/talon/playwright-e2e-tests"
     target-branch: "dependabot-upgrades"
     schedule:
       interval: weekly

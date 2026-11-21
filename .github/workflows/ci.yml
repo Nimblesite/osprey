@@ -128,7 +128,7 @@ jobs:
             src/toolchain/vscode-extension/package-lock.json
             src/toolchain/webcompiler/package-lock.json
             src/toolchain/website/package-lock.json
-            src/osprey/examples/projects/modules/e2e/package-lock.json
+            src/osprey/examples/talon/playwright-e2e-tests/package-lock.json
             src/toolchain/hosts/web/package-lock.json
 
       # Rust toolchain + clang/LLVM + lldb-dap + the C runtime archives + the
@@ -159,8 +159,8 @@ jobs:
       - name: Build Talon Bank for the web host
         run: |
           npm ci --prefix src/toolchain/hosts/web
-          node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/projects/modules/app --title "Talon Bank" --out src/toolchain/hosts/web/build/talon \
-            --module src/osprey/examples/projects/modules/src/web/bundle.ospml --namespace bank/web
+          node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/talon/app --title "Talon Bank" --out src/toolchain/hosts/web/build/talon \
+            --module src/osprey/examples/talon/src/web/bundle.ospml --namespace bank/web
 
       - name: Build the extension bundle
         run: make _vsix_bundle
@@ -201,7 +201,7 @@ jobs:
             src/toolchain/compiler/lib/
             src/toolchain/compiler/bin/*.a
             target/wasm32-wasip2/debug/osprey_zed.wasm
-            src/osprey/examples/projects/modules/src/web/bundle.ospml
+            src/osprey/examples/talon/src/web/bundle.ospml
           retention-days: 7
           if-no-files-found: error
 
@@ -1102,7 +1102,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: src/osprey/examples/projects/modules/e2e/package-lock.json
+          cache-dependency-path: src/osprey/examples/talon/playwright-e2e-tests/package-lock.json
 
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
@@ -1133,23 +1133,23 @@ jobs:
           python3 scripts/mobile/test-mobile-tools.py
           node --test scripts/mobile/goldens.test.mjs
           target/release/osprey src/osprey/examples/mobile/inbox/test --run
-          target/release/osprey test src/osprey/examples/projects/modules/app/test
+          target/release/osprey test src/osprey/examples/talon/app/test
 
       - name: Osprey Agent suites
         run: make _test_agent
 
       - name: Install bank e2e dependencies
         run: npm ci
-        working-directory: ./src/osprey/examples/projects/modules/e2e
+        working-directory: ./src/osprey/examples/talon/playwright-e2e-tests
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
-        working-directory: ./src/osprey/examples/projects/modules/e2e
+        working-directory: ./src/osprey/examples/talon/playwright-e2e-tests
       - name: Bank e2e (Playwright)
         run: npx playwright test
-        working-directory: ./src/osprey/examples/projects/modules/e2e
+        working-directory: ./src/osprey/examples/talon/playwright-e2e-tests
       - name: Bank journey and goldens (Playwright)
         run: npx playwright test -c journey.config.js
-        working-directory: ./src/osprey/examples/projects/modules/e2e
+        working-directory: ./src/osprey/examples/talon/playwright-e2e-tests
 
       # The HTML documentation export is a shipped artifact with navigation,
       # search, themes and a mobile layout. Its unit tests assert what the
@@ -1164,7 +1164,7 @@ jobs:
         if: failure()
         with:
           name: bank-e2e-results
-          path: src/osprey/examples/projects/modules/e2e/test-results/
+          path: src/osprey/examples/talon/playwright-e2e-tests/test-results/
           if-no-files-found: ignore
           retention-days: 7
 
