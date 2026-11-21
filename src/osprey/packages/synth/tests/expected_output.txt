@@ -73,5 +73,8 @@ ok 72 - a corner impulse reaches adjacent membrane pickups before the diagonal a
 ok 73 - a string pool prepares and plucks voices, frees released tails, steals explicitly, refuses invalid control and preserves untouched voices
 ok 74 - offline fitting retains an exact gain match through seeded trials, applies it and refuses invalid jobs
 ok 75 - component timing declares delay and decay in samples, tracks oversampling switches and rejects missing controls
-1..75
-# tests=75 passed=75 failed=0 skipped=0
+ok 76 - a spectral band and bin shift preserve their declared order on both components of every bin
+ok 77 - a delay line retains wall-clock history across sample-rate changes and pads only expired samples
+ok 78 - compressor reduction crosses the soft knee continuously and recovers on its release coefficient
+1..78
+# tests=78 passed=78 failed=0 skipped=0
