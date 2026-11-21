@@ -1,0 +1,65 @@
+namespace ProductionFft
+
+/-- Reciprocal of the squared-Hann overlap gain, in the production evaluation order. -/
+theorem overlapNormalization (ops : Ops α) (size hop : α) :
+    SpectralStreams.overlapScale ops size hop =
+      ops.divide (ops.times (ops.literal 8) hop) (ops.times (ops.literal 3) size) := rfl
+
+/-- Smith (9.44). For unchanged frames and normalized effective window products,
+    accumulating contributions in playback order reconstructs the sample. -/
+theorem overlapReconstructs (ops : Ops α) (size hop sample : α) (products : List α)
+    (assoc : ∀ a b c, ops.times (ops.times a b) c = ops.times a (ops.times b c))
+    (dist : ∀ a b, ops.plus (ops.times sample a) (ops.times sample b) =
+      ops.times sample (ops.plus a b))
+    (zero : ops.times sample (ops.literal 0) = ops.literal 0)
+    (one : ops.times sample (ops.literal 1) = sample)
+    (normalized : products.foldl (fun acc w => ops.plus acc
+      (ops.times w (SpectralStreams.overlapScale ops size hop))) (ops.literal 0) = ops.literal 1) :
+    products.foldl (fun acc w => SpectralStreams.overlapped ops acc (ops.times sample w)
+      (SpectralStreams.overlapScale ops size hop)) (ops.literal 0) = sample := by
+  let scale := SpectralStreams.overlapScale ops size hop
+  have factor (xs : List α) (a : α) :
+      xs.foldl (fun acc w => SpectralStreams.overlapped ops acc (ops.times sample w) scale)
+        (ops.times sample a) =
+      ops.times sample (xs.foldl (fun acc w => ops.plus acc (ops.times w scale)) a) := by
+    induction xs generalizing a with
+    | nil => rfl
+    | cons w ws ih =>
+      have step : SpectralStreams.overlapped ops (ops.times sample a) (ops.times sample w) scale =
+          ops.times sample (ops.plus a (ops.times w scale)) := by
+        unfold SpectralStreams.overlapped
+        rw [assoc, dist]
+      simp only [List.foldl_cons, step]
+      exact ih _
+  have h := factor products (ops.literal 0)
+  rw [zero] at h
+  exact h.trans ((congrArg (ops.times sample) normalized).trans one)
+
+/-- Puckette's finite additive sum, including DC and the source order of accumulation. -/
+theorem additiveSample (ops : Ops α) (partials : List (Harmonic α)) (position base : α) :
+    Wavetables.value ops partials position base =
+      partials.foldl (fun sum h => ops.plus sum (ops.times h.amplitude
+        (ops.sin (ops.times ops.tau (ops.plus (ops.times (ops.toFloat h.number) position) h.phase)))) ) base := rfl
+
+/-- Each integer harmonic advances by a whole number of turns. Induction over the actual
+    fold preserves the sample for arbitrary amplitudes, phases and initial DC offset. -/
+theorem additivePeriod (ops : Ops α) (partials : List (Harmonic α)) (position base : α)
+    (advance : ∀ n x, ops.times (ops.toFloat n) (ops.plus x (ops.literal 1)) =
+      ops.plus (ops.times (ops.toFloat n) x) (ops.toFloat n))
+    (reorder : ∀ a b c, ops.plus (ops.plus a b) c = ops.plus (ops.plus a c) b)
+    (period : ∀ x n, ops.sin (ops.times ops.tau (ops.plus x (ops.toFloat n))) =
+      ops.sin (ops.times ops.tau x)) :
+    Wavetables.value ops partials (ops.plus position (ops.literal 1)) base =
+      Wavetables.value ops partials position base := by
+  induction partials generalizing base with
+  | nil => rfl
+  | cons h hs ih =>
+    have shifted : TableMath.harmonic ops h.amplitude (ops.toFloat h.number) h.phase
+        (ops.plus position (ops.literal 1)) =
+        TableMath.harmonic ops h.amplitude (ops.toFloat h.number) h.phase position := by
+      unfold TableMath.harmonic
+      rw [advance, reorder, period]
+    simp only [Wavetables.value, foldList, List.foldl_cons, shifted]
+    exact ih _
+
+end ProductionFft

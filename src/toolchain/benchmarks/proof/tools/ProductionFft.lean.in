@@ -5,6 +5,13 @@ import Synthesis
 
 namespace ProductionFft
 
+structure Harmonic (α : Type) where
+  amplitude : α
+  number : Nat
+  phase : α
+
+def foldList (xs : List α) (initial : β) (step : β → α → β) := xs.foldl step initial
+
 structure Bin (α : Type) where
   re : α
   im : α
@@ -460,40 +467,5 @@ theorem grainHannBoundarySamples (ops : Ops α) (n : Nat)
   apply grainHannEndpoints
   · rw [zeroCast, leRefl]
   · rw [exactLast, geRefl]
-
-/-- Reciprocal of the squared-Hann overlap gain, in the production evaluation order. -/
-theorem overlapNormalization (ops : Ops α) (size hop : α) :
-    SpectralStreams.overlapScale ops size hop =
-      ops.divide (ops.times (ops.literal 8) hop) (ops.times (ops.literal 3) size) := rfl
-
-/-- Smith (9.44). For unchanged frames and normalized effective window products,
-    accumulating contributions in playback order reconstructs the sample. -/
-theorem overlapReconstructs (ops : Ops α) (size hop sample : α) (products : List α)
-    (assoc : ∀ a b c, ops.times (ops.times a b) c = ops.times a (ops.times b c))
-    (dist : ∀ a b, ops.plus (ops.times sample a) (ops.times sample b) =
-      ops.times sample (ops.plus a b))
-    (zero : ops.times sample (ops.literal 0) = ops.literal 0)
-    (one : ops.times sample (ops.literal 1) = sample)
-    (normalized : products.foldl (fun acc w => ops.plus acc
-      (ops.times w (SpectralStreams.overlapScale ops size hop))) (ops.literal 0) = ops.literal 1) :
-    products.foldl (fun acc w => SpectralStreams.overlapped ops acc (ops.times sample w)
-      (SpectralStreams.overlapScale ops size hop)) (ops.literal 0) = sample := by
-  let scale := SpectralStreams.overlapScale ops size hop
-  have factor (xs : List α) (a : α) :
-      xs.foldl (fun acc w => SpectralStreams.overlapped ops acc (ops.times sample w) scale)
-        (ops.times sample a) =
-      ops.times sample (xs.foldl (fun acc w => ops.plus acc (ops.times w scale)) a) := by
-    induction xs generalizing a with
-    | nil => rfl
-    | cons w ws ih =>
-      have step : SpectralStreams.overlapped ops (ops.times sample a) (ops.times sample w) scale =
-          ops.times sample (ops.plus a (ops.times w scale)) := by
-        unfold SpectralStreams.overlapped
-        rw [assoc, dist]
-      simp only [List.foldl_cons, step]
-      exact ih _
-  have h := factor products (ops.literal 0)
-  rw [zero] at h
-  exact h.trans ((congrArg (ops.times sample) normalized).trans one)
 
 end ProductionFft

@@ -18,6 +18,7 @@ fn binder(name: &str) -> Result<String, String> {
             | "subtracted"
             | "rotated"
             | "combined"
+            | "foldList"
             | "floatDiv"
             | "satAdd"
             | "toFloat"
@@ -144,6 +145,7 @@ fn callee(e: &Expr) -> Result<String, String> {
                 "PhaseMath::windowedPhase" => Ok("ops.windowedPhase".into()),
                 "DelayLines::push" => Ok("ops.push".into()),
                 "DelayLines::tap" => Ok("ops.tap".into()),
+                "TableMath::harmonic" => Ok("TableMath.harmonic ops".into()),
                 "SpectralMath::twiddle" => Ok("SpectralMath.twiddle ops".into()),
                 "SpectralMath::productRe" => Ok("SpectralMath.productRe ops".into()),
                 "SpectralMath::productIm" => Ok("SpectralMath.productIm ops".into()),
@@ -167,6 +169,7 @@ fn callee(e: &Expr) -> Result<String, String> {
         "curve" | "integral" => Ok(format!("Waveshapers.{} ops", ident(name)?)),
         "basePhase" | "pulse" => Ok(format!("PhaseOperators.{} ops", ident(name)?)),
         "hann" => Ok("GrainWindows.hann ops".into()),
+        "foldList" => Ok("foldList".into()),
         "floatDiv" => Ok("ops.ieeeDivide".into()),
         "abs" => Ok("ops.abs".into()),
         "listPrepend" => Ok("(fun tail head => List.cons head tail)".into()),
@@ -261,6 +264,18 @@ fn term(e: &Expr) -> Result<String, String> {
             let args = arguments.iter().map(term).collect::<Result<Vec<_>, _>>()?;
             Ok(format!("({} {})", callee(function)?, args.join(" ")))
         }
+        Expr::Lambda {
+            parameters,
+            return_type: None,
+            body,
+            ..
+        } => {
+            let params = parameters
+                .iter()
+                .map(|p| binder(&p.name))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(format!("(fun {} => {})", params.join(" "), term(body)?))
+        }
         Expr::TypeConstructor {
             name,
             type_args,
@@ -329,6 +344,8 @@ fn signatures(module: &str) -> Result<&'static [Signature], String> {
             ("overlapScale", &["α", "α"], "α"),
             ("overlapped", &["α", "α", "α"], "α"),
         ],
+        "TableMath" => &[("harmonic", &["α", "α", "α", "α"], "α")],
+        "Wavetables" => &[("value", &["List (Harmonic α)", "α", "α"], "α")],
         "SpectralMath" => &[
             ("twiddle", &["α", "α", "α"], "α"),
             ("productRe", &["α", "α", "α", "α"], "α"),
