@@ -243,14 +243,14 @@ prismIntegratedJourney () =
     opened = editorLaunched []
     expect (length (Drive::holding opened).graph.nodes, 5)
     cablesOf (opened, 4)
-    expect (Semantics::offered (opened.drivenSeen.renderedAccess, "Stop playback"), false)
-    forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Play patch", "Undo", "Redo", "Timeline", "Track patch", "Bus routing"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), true))
-    forEachList (["Patch controls", "Audition patch", "Keyboard", "Save project"], \label => expect (Semantics::offered (opened.drivenSeen.renderedAccess, label), false))
-    cutoff = Semantics::point (Semantics::element (opened.drivenSeen.renderedAccess, "Filter Cutoff"), 0.5)
+    offeredIn (opened, "Stop playback", false)
+    forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Play patch", "Undo", "Redo", "Timeline", "Track patch", "Bus routing"], \label => offeredIn (opened, label, true))
+    forEachList (["Patch controls", "Audition patch", "Keyboard", "Save project"], \label => offeredIn (opened, label, false))
+    cutoff = controlPoint (opened, "Filter Cutoff", 0.5)
     changed = clickAt (opened, cutoff.pointX, cutoff.pointY)
     parameterAt ((Drive::holding changed).graph, 1, 0, \p => near (p.initial, synth::CanvasGeometry::cutoffFrequency 0.5))
     cablesOf (changed, 4)
-    level = Semantics::point (Semantics::element (changed.drivenSeen.renderedAccess, "Master Level"), 0.25)
+    level = controlPoint (changed, "Master Level", 0.25)
     quieter = clickAt (changed, level.pointX, level.pointY)
     parameterAt ((Drive::holding quieter).graph, 2, 0, \p => near (p.initial, 0.25))
     library = prismTap (quieter, "Modules")
@@ -283,15 +283,16 @@ paletteClickJourney opened = forEachList (synth::EditorState::kinds, \kind =>
         false => expect (true, true))
 
 overlappingModuleJourney added =
-    at = Semantics::point (Semantics::element (added.drivenSeen.renderedAccess, "Canvas Mixer 5"), 0.5)
+    at = controlPoint (added, "Canvas Mixer 5", 0.5)
     moved = Drive::pointer (Drive::pointer (added, at.pointX, at.pointY, true), 607.0, 432.0, false)
-    before = (Drive::holding moved).graph
     covered = prismTap (moved, "Bypass Filter")
     selectedIs (covered, 5)
-    expect (structuralEquals ((Drive::holding covered).graph, before), true)
+    sameGraph (covered, moved)
+
+controlPoint (driven, label, fraction) = Semantics::point (Semantics::element (driven.drivenSeen.renderedAccess, label), fraction)
 
 prismTap (driven, label) =
-    point = Semantics::point (Semantics::element (driven.drivenSeen.renderedAccess, label), 0.5)
+    point = controlPoint (driven, label, 0.5)
     clickAt (driven, point.pointX, point.pointY)
 
 prismControlJourney opened =
@@ -334,16 +335,15 @@ keyboardDockJourney opened =
     taller = Drive::viewed (opened, 1836.0, 1258.0)
     near (ui::Machines::number ((Drive::holding taller).skin, "spareHeight"), 430.0)
     near ((Semantics::element (taller.drivenSeen.renderedAccess, "Play C4")).accessTop, 38.0)
-    before = (Drive::holding taller).graph
     closed = dockTap (taller, "Close keyboard")
     expect ((Drive::holding closed).keyboardShown, false)
     offeredIn (closed, "Play C4", false)
     expect (length (filterList (closed.drivenSeen.renderedControls, \control => control.controlKind == "scene")), 1)
-    expect (structuralEquals ((Drive::holding closed).graph, before), true)
+    sameGraph (closed, taller)
     reopened = Drive::press (closed, "Keyboard")
     expect ((Drive::holding reopened).keyboardShown, true)
     offeredIn (reopened, "Play C4", true)
-    expect (structuralEquals ((Drive::holding reopened).graph, before), true)
+    sameGraph (reopened, taller)
     expect ((Drive::holding reopened).armedNote, -1)
     menuJourney reopened
 
@@ -357,7 +357,7 @@ menuJourney driven =
     expect ((Views::control (logic.drivenSeen, "Bus Routing")).controlKind, "button")
     timeline = Drive::press (logic, "Timeline")
     expect (synth::TimelineView::pageIndex (Drive::holding timeline).page, 1)
-    expect (Views::shows (timeline.drivenSeen, "Save"), true)
+    viewShows (timeline, "Save", true)
     mix = Drive::press (timeline, "Bus Routing")
     expect (synth::TimelineView::pageIndex (Drive::holding mix).page, 2)
     patch = Drive::press (mix, "Track Patch")
@@ -368,10 +368,10 @@ menuJourney driven =
     expect ((Drive::holding library).paletteShown, true)
     details = Drive::press (library, "Patch Controls")
     expect ((Drive::holding details).detailsShown, (Drive::holding library).detailsShown == false)
-    expect (structuralEquals ((Drive::holding details).graph, (Drive::holding driven).graph), true)
+    sameGraph (details, driven)
 
 dockTap (driven, label) =
-    point = Semantics::point (Semantics::element (driven.drivenSeen.renderedAccess, label), 0.5)
+    point = controlPoint (driven, label, 0.5)
     scenes = filterList (driven.drivenSeen.renderedControls, \control => control.controlKind == "scene")
     match listGet scenes 1
         Error _ =>
@@ -580,9 +580,9 @@ panelDialJourney selected =
             y = a.accessTop + a.accessHeight / 2.0
             pressed = dialPointer (selected, x, y, true, false)
             expect ((Drive::holding pressed).dial != synth::DialIdle, true)
-            expect (structuralEquals ((Drive::holding pressed).graph, before), true)
+            sameGraph (pressed, selected)
             sideways = dialPointer (pressed, x + 80.0, y + 1.0, true, false)
-            expect (structuralEquals ((Drive::holding sideways).graph, before), true)
+            sameGraph (sideways, selected)
             lifted = dialPointer (sideways, x + 80.0, y - 36.0, true, false)
             coarse = frequency (Drive::holding lifted)
             expect (coarse > 440.0, true)
@@ -599,7 +599,7 @@ panelDialJourney selected =
             expect ((Drive::holding released).dialEntry, "")
             expect (frequency (Drive::holding released), coarse)
             undone = prismTap (released, "Undo")
-            expect (structuralEquals ((Drive::holding undone).graph, before), true)
+            sameGraph (undone, selected)
             redone = prismTap (undone, "Redo")
             expect (frequency (Drive::holding redone), coarse)
             asked = dialTapped (prismTap (redone, "Undo"), "Frequency")
@@ -607,7 +607,7 @@ panelDialJourney selected =
             viewShows (asked, "Frequency", true)
             refused = Drive::choose (asked, "Frequency", "loud")
             expect ((Drive::holding refused).dialEntry, "frequency")
-            expect (structuralEquals ((Drive::holding refused).graph, before), true)
+            sameGraph (refused, selected)
             typed = Drive::choose (refused, "Frequency", "523.25")
             expect (frequency (Drive::holding typed), 523.25)
             expect ((Drive::holding typed).dialEntry, "")
@@ -659,7 +659,7 @@ dialPagesJourney () =
     offeredIn (last, "Grain cloud 0 Boundary", true)
     offeredIn (last, "Next parameters", false)
     opened = Drive::press (last, "Patch Controls")
-    previous = Semantics::point (Semantics::element (opened.drivenSeen.renderedAccess, "Previous parameters"), 0.5)
+    previous = controlPoint (opened, "Previous parameters", 0.5)
     back = dialPointer (dialPointer (opened, previous.pointX, previous.pointY, true, false), previous.pointX, previous.pointY, false, false)
     spread = dialTapped (back, "Pan spread")
     changed = Drive::choose (spread, "Pan spread", "0.5")
@@ -705,7 +705,7 @@ pageHeadingsJourney () =
     patch = prismTap (routing, "Track patch")
     selected = Drive::choose (Drive::press (patch, "Patch Controls"), "Add component", "stereo-output")
     expect (Views::letters (selected.drivenSeen, "Parameters"), false)
-    expect (Views::shows (selected.drivenSeen, "Parameters"), false)
+    viewShows (selected, "Parameters", false)
     hidden = Drive::press (selected, "Patch Controls")
     expect (Views::letters (hidden.drivenSeen, "Parameters"), false)
 
@@ -738,7 +738,7 @@ liveMixJourney group =
         expect ((Drive::holding started).songTicket, "daw-song:live:${place}/knobs/live")
         label = ui::Pick::either (group, "pads gain", "Track gain")
         offeredIn (started, label, true)
-        point = Semantics::point (Semantics::element (started.drivenSeen.renderedAccess, label), 0.0)
+        point = controlPoint (started, label, 0.0)
         down = Drive::pointer (started, point.pointX, point.pointY, true)
         expect (synth::DawSession::holding (Drive::holding down), true)
         succeeds (daw::Playback::start score, \initial =>
@@ -767,11 +767,11 @@ liveSendJourney () =
         session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
         started = Drive::press (prismTap (session, "Bus routing"), "Play Song")
         expect ((Drive::holding started).songTicket, "daw-song:live:${place}/knobs/live")
-        expect (Views::shows (started.drivenSeen, "Patch sends…"), true)
+        viewShows (started, "Patch sends…", true)
         list = Drive::press (started, "Patch sends…")
-        expect (Views::shows (list.drivenSeen, "Edit send 1 · pads…"), true)
+        viewShows (list, "Edit send 1 · pads…", true)
         panel = Drive::press (list, "Edit send 1 · pads…")
-        expect (Views::shows (panel.drivenSeen, "Send level (%)"), true)
+        viewShows (panel, "Send level (%)", true)
         muted = Drive::choose (panel, "Send level (%)", "0")
         succeeds (daw::Playback::start score, \initial =>
             succeeds (daw::Playback::next (score, initial, 512), \before =>
