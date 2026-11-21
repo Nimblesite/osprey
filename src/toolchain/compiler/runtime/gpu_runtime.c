@@ -135,6 +135,20 @@ static int settled(int status, void *out) {
   return status;
 }
 
+// The shared argument setup of the float and packed matrix products: two input
+// buffers, the output buffer, then the [rows, inner, cols] shape scalars.
+static int product_dispatch(const char *kernel, void *left, void *right, void *out, int64_t rows, int64_t inner,
+                            int64_t cols, uint64_t threads) {
+  OspreyGpuDispatch product = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, threads};
+  buffer_argument(&product, OSPREY_GPU_INPUT, left);
+  buffer_argument(&product, OSPREY_GPU_INPUT, right);
+  buffer_argument(&product, OSPREY_GPU_OUTPUT, out);
+  scalar_argument(&product, rows);
+  scalar_argument(&product, inner);
+  scalar_argument(&product, cols);
+  return settled(osprey_gpu_device_dispatch(&product), out);
+}
+
 // The builtin product as a library-kernel dispatch [GPU-MATMUL].
 int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, int64_t inner, int64_t cols) {
   int64_t width = osprey_gpu_elem_bytes(out);
@@ -143,14 +157,7 @@ int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, i
     return -1;
   }
   const char *kernel = width == 4 ? "osprey_matmul32" : "osprey_matmul64";
-  OspreyGpuDispatch dispatch = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)(rows * cols)};
-  buffer_argument(&dispatch, OSPREY_GPU_INPUT, left);
-  buffer_argument(&dispatch, OSPREY_GPU_INPUT, right);
-  buffer_argument(&dispatch, OSPREY_GPU_OUTPUT, out);
-  scalar_argument(&dispatch, rows);
-  scalar_argument(&dispatch, inner);
-  scalar_argument(&dispatch, cols);
-  return settled(osprey_gpu_device_dispatch(&dispatch), out);
+  return product_dispatch(kernel, left, right, out, rows, inner, cols, (uint64_t)(rows * cols));
 }
 
 // [LLM-SIGMOID] The elementwise logistic function as one library-kernel dispatch.
@@ -185,14 +192,7 @@ int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *o
   char tiled[64];
   bool many = selected == 2 && rows >= QUANT_MM_ROWS;
   (void)snprintf(tiled, sizeof tiled, "%s_mm", kernel);
-  OspreyGpuDispatch product = {many ? tiled : kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, threads[many]};
-  buffer_argument(&product, OSPREY_GPU_INPUT, x);
-  buffer_argument(&product, OSPREY_GPU_INPUT, w);
-  buffer_argument(&product, OSPREY_GPU_OUTPUT, out);
-  scalar_argument(&product, rows);
-  scalar_argument(&product, inner);
-  scalar_argument(&product, cols);
-  return settled(osprey_gpu_device_dispatch(&product), out);
+  return product_dispatch(many ? tiled : kernel, x, w, out, rows, inner, cols, threads[many]);
 }
 
 // One uniform of a compiled kernel: `s` a scalar word, `b` a buffer handle
