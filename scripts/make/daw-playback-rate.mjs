@@ -1,7 +1,7 @@
 // [DAW-TRANSPORT-LIVE-SPEED] Measure the production live encoder with an empty note cache.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -38,7 +38,10 @@ try {
     hash.update(wav.subarray(data + 8));
   }
   const result = await exited;
-  if (result !== 0 || !frames) throw Error('Renderer failed or produced no audio: ' + result);
+  if (result !== 0 || !frames) {
+    const fault = await readFile(join(folder, 'fault.txt'), 'utf8').catch(() => '');
+    throw Error('Renderer stopped after ' + frames + ' frames (' + result + '): ' + fault);
+  }
   const elapsedMs = performance.now() - start;
   const speed = frames / 48 / elapsedMs;
   console.log(JSON.stringify({ song, from, beats, frames, elapsedMs, firstMs, worstGapMs, speed, pcmSHA256: hash.digest('hex') }));
