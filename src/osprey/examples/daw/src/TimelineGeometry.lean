@@ -45,6 +45,9 @@ def rollWidth (beat length first : Float) : Float :=
 /-- Pitch rows fill y 542 to 802, the highest pitch at the top. -/
 def pitchHeight (rows : Float) : Float := 260 / rows
 def pitchY (pitch high rows : Float) : Float := 542 + (high - pitch) * (260 / rows)
+/-- Reserve the native typeface's ascent and descent within the two inset note edges. -/
+def noteLabelSize (height : Float) : Float := bounded ((height - 2) / 1.32) 0 12
+def noteLabelY (top height size : Float) : Float := top + (height - size * 1.32) / 2 - 1
 
 /-- Velocity stems share the same note start coordinate as the piano roll. -/
 def velocityHeight (value : Float) : Float := bounded value 0 1 * 43
