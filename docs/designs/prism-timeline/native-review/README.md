@@ -36,7 +36,7 @@ The send list identifies the source outlet and destination. The editor shows the
 
 ## 6. Open a project, play, stop and recover from a rejected render
 
-File → Open Song opened a separate kick audition. Transport → Play Song rendered the opening two bars of the full Silt Relay project as 320,056 stereo frames at 48 kHz, including the effects tail. Stop cancelled an in-progress render. A deliberately invalid patch produced a readable footer naming the track and failed module. These checks used disposable project copies.
+File → Open Song opened a separate kick audition. Transport → Play Song rendered the opening two bars of the full Silt Relay project as 320,056 stereo frames at 48 kHz, including the effects tail. Stop cancelled an in-progress render. A deliberately invalid patch produced a readable footer naming the track and failed module. The transport regression also passed with an inline error, a multiline host transcript and an empty transcript. These checks used disposable project copies.
 
 [Renderer diagnostic from the native window](render-diagnostic.webp)
 
@@ -48,8 +48,8 @@ The SDK’s ADelay plug-in scanned, opened as a patch module and exposed Bypass,
 
 ## Input timings
 
-The native event tests measured 119 timeline taps, 136 mixer fader events and 55 patch drag events on this Mac. Mean app processing time was 1.66 ms, 2.28 ms and 3.78 ms respectively. The slowest event in the three groups took 14.08 ms. Display presentation and audio output latency are separate measurements.
+The native event tests measured 119 timeline taps, 136 mixer fader events and 55 patch drag events on this Mac. On the build opened by the macOS DAW Make target, mean app processing time was 1.42 ms, 1.97 ms and 3.23 ms respectively. The slowest event in the three groups took 12.37 ms. Both native test suites passed. Display presentation and audio output latency are separate measurements.
 
 ## Verification limits
 
-The desktop session exercised pointer input, the menu bar, shortcut presets, keyboard audition, and scrolling at 1152 × 752 window points. Screen-reader announcement order, Windows rendering and third-party plug-in audio were outside this run. The separate host-free suite had four open cases covering cable hit areas, module inspection, plug-in discovery and device status reporting. The Prism lead received the failing case names and output on TMC.
+The desktop session exercised pointer input, the menu bar, shortcut presets, keyboard audition, and scrolling at 1152 × 752 window points. Screen-reader announcement order, Windows rendering and third-party plug-in audio were outside this run. Four cases failed again in the separate host-free suite covering cable hit areas, module inspection, plug-in discovery and device status reporting. The Prism lead received the failing case names and output on TMC.
