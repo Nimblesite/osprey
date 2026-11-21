@@ -142,6 +142,9 @@ module Arrangements
             PatchInstrument routing => match play.edited || streaming
                 true => Outcomes::carried (SendRenders::started (song, voice, play.sends, routing, due, play.sounding), \sound => ok (play(sounding = listAppend play.sounding sound)))
                 false => recorded (song, voice, play, due)
+            OperatorInstrument tone => match streaming
+                true => Outcomes::carried (SendRenders::operatorStarted (song, voice, play.sends, tone, due), \sound => ok (play(sounding = listAppend play.sounding sound)))
+                false => recorded (song, voice, play, due)
             _ => recorded (song, voice, play, due)
 
     recorded (song, voice, play, due) = Outcomes::carried (lanesOf (song, voice, play.sends, due.note), \lanes =>
@@ -169,9 +172,16 @@ module Arrangements
         PatchInstrument routing => SendRenders::retuned (song, voice, prior, oldSends, sends, sound, from, routing)
         _ => Outcomes::carried (lanesOf (song, voice, sends, sound.cue.note), \lanes => ok (sound(at = sound.cue.due, driver = RecordedNote, lanes = lanes)))
 
+    (** Cues are sorted by onset. Only inspect the rest of the queue once its first note is due. *)
+    export dueBefore (play, until) = match listGet play.pending 0
+        Success cue => cue.due < until
+        Error _ => false
+
     // Notes due before `until` start sounding.
-    begun (song, voice, play, until, streaming) = Outcomes::carried (foldList (filterList (play.pending, \c => c.due < until), ok play, \(outcome, c) => Outcomes::carried (outcome, \held => struck (song, voice, held, c, streaming))), \next =>
-        ok (next(pending = filterList (play.pending, \c => c.due >= until))))
+    begun (song, voice, play, until, streaming) = match dueBefore (play, until)
+        false => ok play
+        true => Outcomes::carried (foldList (filterList (play.pending, \c => c.due < until), ok play, \(outcome, c) => Outcomes::carried (outcome, \held => struck (song, voice, held, c, streaming))), \next =>
+            ok (next(pending = filterList (play.pending, \c => c.due >= until))))
 
     // A sounding note's sample at song frame `at`, silent before it starts and after it ends.
     heard (samples, start, at) = match at >= start
@@ -190,17 +200,19 @@ module Arrangements
     (** Whether a sounding note still has sound after frame `until`. *)
     export lasting (until, voice) = match voice.driver
         PerformingNote patch => satAdd voice.cue.due patch.span.total > until
+        PerformingOperator pair => satAdd voice.cue.due pair.span.total > until
         RecordedNote => satAdd voice.at (length (listGet voice.lanes 0 ?: [])) > until
 
-    activeLane (voices, lane, from, until) = match voices
-        [] => []
-        _ => window (voices, lane, from, until)
+    activeLane (voices, lane, from, until, filled) = match filled && length voices == 0
+        true => []
+        false => window (voices, lane, from, until)
 
     (** Advance one track over song frames `from` up to `until` into `buses`: notes due start sounding, each
         lane is summed for the window and routed, and notes that have ended stop. *)
     export advanceWindow (song, buses, voice, play, from, until, streaming) = named (voice, Outcomes::carried (begun (song, voice, play, until, streaming), \began =>
         Outcomes::carried (sounding (song, began, from, until, streaming), \next => mixedWindow (song, buses, voice, next, from, until))))
 
+    (** Advance an offline track, caching each distinct note across windows. *)
     export advanced (song, buses, voice, play, from, until) = advanceWindow (song, buses, voice, play, from, until, false)
 
     sounding (song, play, from, until, streaming) = match streaming || play.edited
@@ -237,11 +249,19 @@ module Arrangements
                 false => play(recordings = others, made = listAppend play.made take)
 
     mixedWindow (song, buses, voice, next, from, until) =
-        lanes = toList (map (range (0, satAdd 1 (satMul 2 (length next.sends))), \lane => activeLane (next.sounding, lane, from, until)))
+        filled = length buses.left >= satSub until from && length buses.right >= satSub until from
+        lanes = toList (map (range (0, satAdd 1 (satMul 2 (length next.sends))), \lane => activeLane (next.sounding, lane, from, until, filled)))
         Outcomes::carried (fed (song, buses, voice, next.sends, lanes), \into => ok (Advanced(play = next(sounding = filterList (next.sounding, \v => lasting (until, v))), buses = into)))
 
-    (** One track alone, played from the start for `frames` frames as its dry mono output; later sound is cut. *)
-    export part (song, voice, frames) = Outcomes::carried (opened (song, voice), \play => named (voice, Outcomes::carried (begun (song, voice, play, frames, false), \next => ok (window (next.sounding, 0, 0, frames)))))
+    // A standalone part settles the timeline up to the last onset, including an opening rest.
+    settledPart (song, voice, play, frames) =
+        until = foldList (play.pending, frames, \(end, cue) => longer (end, cue.due))
+        match until <= 28800000
+            false => Error(message = "An arrangement must last 1 to 28800000 frames.")
+            true => Outcomes::carried (begun (song, voice, play, until, false), \next => ok (window (next.sounding, 0, 0, until)))
+
+    (** Render the standalone mono part through the requested frame or its last onset, whichever is later. *)
+    export part (song, voice, frames) = Outcomes::carried (opened (song, voice), \play => named (voice, settledPart (song, voice, play, frames)))
 
     (** One track alone, played from the start for `count` frames into `buses`. *)
     export added (song, buses, voice, count) = Outcomes::carried (opened (song, voice), \play => Outcomes::carried (advanced (song, buses, voice, play, 0, count), \step => ok step.buses))

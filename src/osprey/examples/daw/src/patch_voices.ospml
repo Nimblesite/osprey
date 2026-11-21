@@ -173,6 +173,9 @@ module PatchVoices
         Error why => Error(message = why)
         Success value => Success(value = listAppend samples value)
 
+    (** Capture one mono output directly, keeping oscillator and feedback state between blocks. *)
+    export dryBlock (plan, rate, controls, current, count, sink) = told (synth::Renderer::capture (plan, rate, controls, current, count, \(samples, frame) => dry (sink, samples, frame)))
+
     // The scheduler carries state across every block, including the final partial block.
     (** Partition a note into bounded DSP blocks. *)
     export counts (total, limit) = listAppend (mapList (toList (range (0, intDiv total limit)), \_ => limit)) (total % limit)
@@ -192,7 +195,7 @@ module PatchVoices
         [sink] => chained (told (synth::Renderer::start graph), \audio =>
             controls = synth::Parameters::initial graph
             initial = synth::Timeline(audio = audio, observation = [])
-            run = foldList (counts (noteSpan.total, 8192), ok initial, \(held, count) => chained (held, \current => told (synth::Renderer::capture (plan, rate, controls, current, count, \(samples, frame) => dry (sink.identity, samples, frame)))))
+            run = foldList (counts (noteSpan.total, 8192), ok initial, \(held, count) => chained (held, \current => dryBlock (plan, rate, controls, current, count, sink.identity)))
             chained (run, \done => ok (shaped (done.observation, noteSpan, routing, rate))))
         _ => Error(message = "The patch needs one audio output.")
 

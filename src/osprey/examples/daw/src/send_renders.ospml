@@ -128,11 +128,18 @@ module SendRenders
             Outcomes::carried (PatchVoices::grounded graph, \whole => Outcomes::carried (PatchVoices::audible (whole, mapList (sends, \s => s.source)), \heard =>
                 preparedNote (heard, ports, span, routing, cue))))))
 
+    scalarBlock (patch, audio, size, rate, empty) =
+        controls = synth::Parameters::initial patch.plan.graph
+        match patch.ports
+            [dry] => Outcomes::carried (PatchVoices::dryBlock (patch.plan, rate, controls, synth::Timeline(audio = audio, observation = []), size, dry.tapNode), \next =>
+                ok (Capture(captureState = ScalarNote(audio = next.audio), captureLanes = [next.observation])))
+            _ => Outcomes::carried (PatchVoices::told (synth::Renderer::capture (patch.plan, rate, controls, synth::Timeline(audio = audio, observation = empty), size, \(buffers, frame) => monoFrame (patch.ports, buffers, frame))), \next =>
+                ok (Capture(captureState = ScalarNote(audio = next.audio), captureLanes = mapList (next.observation, listReverse))))
+
     capturedBlock (patch, held, size, rate) =
         empty = mapList (patch.ports, \_ => [])
         match held
-            ScalarNote audio => Outcomes::carried (PatchVoices::told (synth::Renderer::capture (patch.plan, rate, synth::Parameters::initial patch.plan.graph, synth::Timeline(audio = audio, observation = empty), size, \(buffers, frame) => monoFrame (patch.ports, buffers, frame))), \next =>
-                ok (Capture(captureState = ScalarNote(audio = next.audio), captureLanes = mapList (next.observation, listReverse))))
+            ScalarNote audio => scalarBlock (patch, audio, size, rate, empty)
             MultichannelNote clock => Outcomes::carried (block (patch.plan.graph, patch.ports, Capture(captureState = clock, captureLanes = empty), size), \next =>
                 ok (Capture(captureState = MultichannelNote(clock = next.captureState), captureLanes = next.captureLanes)))
 
@@ -159,14 +166,29 @@ module SendRenders
             Outcomes::carried (collect (toList (range (0, length patch.ports)), \i => shapedLane (patch, played.captureLanes, satSub first sound.cue.due, rate, i)), \lanes =>
                 ok (sound(at = first, lanes = lanes, driver = PerformingNote(patch = patch(memory = played.captureState))))))
 
+    (** Start the built-in operator pair without rendering its release ahead of the device. *)
+    export operatorStarted (song, voice, sends, tone, cue) =
+        rate = toFloat song.sampleRate
+        Outcomes::carried (NoteRenders::checkedSpan (cue.note, song.tempo, rate, voice.instrument), \span =>
+            Outcomes::carried (NoteRenders::operatorPair (cue.note, span, rate, tone, sends), \pair => ok (Sounding(cue = cue, at = cue.due, lanes = [], driver = PerformingOperator(pair = pair)))))
+
+    operatorPortion (sound, pair, first, stop, rate) =
+        run = NoteRenders::operatorFrames (sound.cue.note, pair, rate, satSub first sound.cue.due, satSub stop sound.cue.due)
+        ok (sound(at = first, lanes = builtIn (run.samples, pair.sends), driver = PerformingOperator(pair = pair(phases = run.held))))
+
     (** Render the overlap with this device block, continuing the same note at its exact sample age. *)
-    export window (sound, from, until, rate) = match sound.driver
-        RecordedNote => ok sound
-        PerformingNote patch =>
-            first = ui::Pick::either (from > sound.cue.due, from, sound.cue.due)
-            end = satAdd sound.cue.due patch.span.total
-            stop = ui::Pick::either (until < end, until, end)
-            portion (sound, patch, first, ui::Pick::either (stop > first, satSub stop first, 0), rate)
+    export window (sound, from, until, rate) =
+        first = ui::Pick::either (from > sound.cue.due, from, sound.cue.due)
+        match sound.driver
+            RecordedNote => ok sound
+            PerformingOperator pair => operatorPortion (sound, pair, first, stopAt (sound.cue.due, pair.span.total, until), rate)
+            PerformingNote patch =>
+                stop = stopAt (sound.cue.due, patch.span.total, until)
+                portion (sound, patch, first, ui::Pick::either (stop > first, satSub stop first, 0), rate)
+
+    stopAt (onset, span, until) =
+        end = satAdd onset span
+        ui::Pick::either (until < end, until, end)
 
     // Parameter-only changes keep memory. A changed layout is prepared at the same position in its note.
     structure graph = mapList (graph.nodes, \n => n(parameters = []))
@@ -176,19 +198,19 @@ module SendRenders
             PerformingNote last => match structuralEquals (structure last.plan.graph, structure patch.plan.graph) && structuralEquals (last.plan.graph.cables, patch.plan.graph.cables)
                 true => ok (fresh(driver = PerformingNote(patch = patch(memory = last.memory))))
                 false => window (fresh, fresh.cue.due, from, rate)
-            RecordedNote => window (fresh, fresh.cue.due, from, rate)
-        RecordedNote => Error(message = "The edited note has no prepared patch.")
+            _ => window (fresh, fresh.cue.due, from, rate)
+        _ => Error(message = "The edited note has no prepared patch.")
 
     (** Carry an already running patch or recover the memory of a previously cached note. *)
     export activeBefore (song, prior, sends, sound, from) = match sound.driver
         PerformingNote _ => ok sound
-        RecordedNote => match prior.instrument
+        _ => match prior.instrument
             PatchInstrument routing => Outcomes::carried (started (song, prior, sends, routing, sound.cue, []), \fresh => window (fresh, fresh.cue.due, from, toFloat song.sampleRate))
             _ => ok sound
 
     rebuilt (old, note, routing) = match old.driver
         PerformingNote patch => PatchVoices::repatched (note, routing, patch.plan.graph)
-        RecordedNote => PatchVoices::patched (note, routing)
+        _ => PatchVoices::patched (note, routing)
 
     (** Switch a sounding note to the accepted parameters without replaying its attack or losing its phase. *)
     export retuned (song, voice, prior, oldSends, sends, sound, from, routing) = Outcomes::carried (activeBefore (song, prior, oldSends, sound, from), \old =>
