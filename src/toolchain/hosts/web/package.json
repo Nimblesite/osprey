@@ -1,0 +1,16 @@
+{
+  "name": "@osprey/web-host",
+  "version": "0.0.0-dev",
+  "private": true,
+  "type": "module",
+  "description": "The browser host for Osprey Native applications",
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

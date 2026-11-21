@@ -24,6 +24,8 @@ export interface RenderOptions {
   readonly slices?: ReadonlyMap<string, string>;
   readonly resolveAsset?: (source: string) => string;
   readonly loadingText?: string;
+  /** Whether each screen carries the Osprey lockup, as the VS Code panel does; a host drawing someone else's application leaves it off. */
+  readonly brand?: boolean;
 }
 
 interface Context extends RenderOptions {
@@ -193,6 +195,10 @@ function swatch(node: Record<string, unknown>): string {
   return `<span class="osp-swatch" style="--osp-swatch-light:${light};--osp-swatch-dark:${dark}"><span></span><span>${escapeHtml(text(node, "name"))}</span></span>`;
 }
 
+function lockup(ctx: Context): string {
+  return ctx.brand === false ? "" : `<div class="osp-brand-lockup">${brand(ctx)}<span class="osp-brand-name">Osprey</span></div>`;
+}
+
 function brand(ctx: Context): string {
   return ctx.assetUri
     ? `<img class="osp-brand" src="${escapeHtml(ctx.assetUri)}" alt="Osprey" />`
@@ -226,7 +232,7 @@ function screen(node: Record<string, unknown>, ctx: Context): string {
   const title = text(node, "title");
   const subtitle = text(node, "subtitle");
   const toolbar = items(node, "toolbar").map((item) => child(item, ctx)).join("");
-  return `<div class="osp-screen"><header class="osp-screen-header"><div class="osp-brand-lockup">${brand(ctx)}<span class="osp-brand-name">Osprey</span></div><div class="osp-screen-titles"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div><div class="osp-toolbar">${toolbar}</div></header><div class="osp-screen-body">${children(node, ctx)}</div></div>`;
+  return `<div class="osp-screen"><header class="osp-screen-header">${lockup(ctx)}<div class="osp-screen-titles"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div><div class="osp-toolbar">${toolbar}</div></header><div class="osp-screen-body">${children(node, ctx)}</div></div>`;
 }
 
 function split(node: Record<string, unknown>, ctx: Context): string {

@@ -11,7 +11,7 @@ import "bank/web" as web
 
 // One deterministic tour of the whole stack, driven over REAL HTTP by the
 // in-process client: JSON mutations, a refused overdraft, the JSON listing,
-// and the Osprey-WASM application shell.
+// and the Osprey Native web page.
 fetch client path =
     reply = httpGetResponse client path ""
     match reply
@@ -37,9 +37,9 @@ drive client =
     print "--- GET /api/accounts ---\n${fetch client "/api/accounts"}"
     print "--- GET /api/activity ---\n${fetch client "/api/activity"}"
     page = fetch client "/"
-    hasRoot = contains page "id=\"app\""
-    hasClient = contains page "src=\"/app.js\""
-    print "--- GET / (Osprey wasm + React app) ---\nhtml=${startsWith page "<!doctype html>"} title=${contains page "<title>Talon Bank</title>"} appRoot=${hasRoot} client=${hasClient}"
+    hasRoot = contains page "id=\"osprey-root\""
+    hasClient = contains page "src=\"host.js\""
+    print "--- GET / (Osprey Native app, web host) ---\nhtml=${startsWith page "<!doctype html>"} title=${contains page "<title>Talon Bank</title>"} appRoot=${hasRoot} client=${hasClient}"
 
 // Playwright hold: while /tmp/talon_bank.hold exists the server keeps serving
 // and the demo pauses right here — remove the file (or never create it) and
