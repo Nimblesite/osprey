@@ -87,8 +87,8 @@ sceneCaseASceneEncodesItsPrimitivesAsFlat () =
     expect ((etchAt (shapes, 5)).etchIndex, 1)
     expect ((etchAt (shapes, 6)).etchText, "Score 3")
     // The button binds control 0 and the scene control 1, as their told event members say.
-    expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0)
-    expect (memberCount (insideTold (childTold (toldOf held, 1)), "event", 0 - 1), 1)
+    expect (childEvent (held, 0), 0)
+    expect (childEvent (held, 1), 1)
     binds (walked, 2)
     zoomed = Ui::zoomed (0.75, 1536.0, 828.0, [], drawn, Typed)
     expect (etchedAt (firstRows (drawnOf zoomed), 0), "20 2 1536.0 828.0 0.75 0.0 0.0 0 0 ")
@@ -222,7 +222,7 @@ sceneCaseAPairEncodesItsLabelAndValue () =
     held = Ui::column [Ui::pair ("Digest", "sha256:ab"), Ui::button ("Go", "play", Increment)]
     binds (drawnOf held, 1)
     expect (spelled (childTold (toldOf held, 0)), "{kind=\"pair\",label=\"Digest\",value=\"sha256:ab\"}")
-    expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0 - 1)
+    expect (childEvent (held, 0), 0 - 1)
     delivers (held, [ui::Tap(action = Increment)])
 
 isLinux platform = match platform
@@ -274,8 +274,8 @@ sceneCaseASceneRowsCarryEveryShapeInDrawingOrder () =
     expect (length rows, 9)
     expect (join (mapList (rows, \row => "${row.etchCode}")) ",", "20,21,0,2,7,7,1,4,3")
     // The button binds control 0 and the scene control 1, as their told event members say.
-    expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0)
-    expect (memberCount (insideTold (childTold (toldOf held, 1)), "event", 0 - 1), 1)
+    expect (childEvent (held, 0), 0)
+    expect (childEvent (held, 1), 1)
     binds (walked, 2)
 
 // [NATIVE-SHM-NODES]: a region's node is told under its key; a slot names that key, and a key no region holds tells no scene.

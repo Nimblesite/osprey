@@ -122,21 +122,10 @@ wordsAt (walked, index) = (rowAt (walked, index)).placedWords
 blankTold () = ui::ToldRecord(recordName = "", members = [])
 
 // The member name of one told value.
-nameOfTold told = match told
-    ui::ToldText name _ => name
-    ui::ToldCount name _ => name
-    ui::ToldReal name _ => name
-    ui::ToldFlag name _ => name
-    ui::ToldRecord name _ => name
-    ui::ToldList name _ => name
-    ui::ToldScene name _ _ => name
+nameOfTold told = Tell::nameOf told
 
 // The members of a told record or scene, or a list's items; none for a plain value.
-insideTold told = match told
-    ui::ToldRecord _ members => members
-    ui::ToldScene _ members _ => members
-    ui::ToldList _ items => items
-    _ => []
+insideTold told = Tell::childrenOf told
 
 // `name`'s member of `members`, or the member before it.
 memberStep (name, found, item) = match nameOfTold item == name
@@ -176,6 +165,8 @@ toldAt (items, index) = listGet items index ?: blankTold ()
 
 // The `index`th child of the record `told`, or the empty record.
 childTold (told, index) = toldAt (memberItems (insideTold told, "children"), index)
+
+childEvent (node, index) = memberCount (insideTold (childTold (toldOf node, index)), "event", 0 - 1)
 
 // `part` under the member name `name`, or alone when the name is empty.
 spelledName (name, part) = match name
