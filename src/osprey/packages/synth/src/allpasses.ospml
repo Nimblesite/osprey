@@ -13,5 +13,5 @@ module Allpasses
 
     (** One step with an accepted coefficient. *)
     export next (coefficient, held, input) =
-        value = PhysicalMath::allpass (input, held.input, held.output, coefficient)
+        value = coefficient * input + held.input - coefficient * held.output
         AllpassSample(sample = value, next = AllpassState(input = input, output = value))

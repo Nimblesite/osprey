@@ -7,10 +7,11 @@ tools="$root/src/toolchain/benchmarks/proof/tools"
 source="$root/src/osprey/packages/synth/src/ffts.ospml"
 frames="${source%/*}/spectral_frames.ospml"
 strike="${source%/*}/strike_combs.ospml"
+allpass="${source%/*}/allpasses.ospml"
 checker="$root/target/proof/openai/check-batch"
 mkdir -p "$out"
 reflect() {
-    cargo run --quiet --manifest-path "$root/src/toolchain/Cargo.toml" -p osprey-syntax --example synth_proof -- "$1" "$2" "${3:-$strike}" > "$out/bodies"
+    cargo run --quiet --manifest-path "$root/src/toolchain/Cargo.toml" -p osprey-syntax --example synth_proof -- "$1" "$2" "${3:-$strike}" "${4:-$allpass}" > "$out/bodies"
     awk -v body="$out/bodies" '/^-- INSERT PRODUCTION BODIES$/ {while ((getline line < body) > 0) print line; next} {print}' \
         "$tools/ProductionFft.lean.in" > "$out/ProductionFft.lean"
 }
@@ -27,7 +28,7 @@ check_export() {
         printf '%s\t%s\n' "$out/$file" "$name" | "$checker.$backend"
     fi
 }
-for theorem in combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull; do
+for theorem in combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude; do
     name="ProductionFft.$theorem"
     LEAN_PATH="$out:$lean_path" "$exporter" ProductionFft -- "$name" > "$out/$theorem.ndjson"
     for backend in gc arc wasm; do
@@ -50,6 +51,7 @@ reject_edit() {
         "$source") reflect "$out/mutant.ospml" "$frames" ;;
         "$frames") reflect "$source" "$out/mutant.ospml" ;;
         "$strike") reflect "$source" "$frames" "$out/mutant.ospml" ;;
+        "$allpass") reflect "$source" "$frames" "$strike" "$out/mutant.ospml" ;;
         *) return 1 ;;
     esac
     if lake env lean --root="$out" "$out/ProductionFft.lean" > "$out/rejected.log" 2>&1; then
@@ -67,6 +69,7 @@ reject_edit quartetCorrect 's/added (upper, difference), subtracted (lower, sum)
 reject_edit conjugateComponents 's/im = 0.0 - value.im/im = value.im/'
 reject_edit scaledComponents 's/im = value.im [*] gain/im = value.re * gain/' "$frames"
 reject_edit strikeDifference 's/delay config + 1.0/delay config + 0.0/' "$strike"
+reject_edit allpassStateStep 's/input = input, output = value/input = held.input, output = value/' "$allpass"
 reflect "$source" "$frames"
 
 # Replay an unchanged proof certificate against a different, well-typed
@@ -75,7 +78,8 @@ node --input-type=module - "$out" <<'JS'
 import fs from "node:fs";
 const dir = process.argv[2];
 const rows = fs.readFileSync(dir + "/combinedCorrect.ndjson", "utf8").trimEnd().split("\n").map(JSON.parse);
-const prefix = rows.find(r => r.str?.pre === 0 && r.str.str === "ProductionFft").in;
+const namespace = rows.find(r => r.str?.pre === 0 && r.str.str === "ProductionFft").in;
+const prefix = rows.find(r => r.str?.pre === namespace && r.str.str === "Ffts").in;
 function definition(name) {
     const id = rows.find(r => r.str?.pre === prefix && r.str.str === name).in;
     return rows.find(r => r.def?.name === id).def;

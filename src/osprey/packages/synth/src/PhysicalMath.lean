@@ -34,10 +34,6 @@ def loss (current previous gain s : Float) : Float := gain * ((1 - s) * current 
 /-- Low-frequency phase delay of the first-order allpass `(a + z⁻¹) / (1 + a z⁻¹)`. -/
 def allpassDelay (a : Float) : Float := (1 - a) / (1 + a)
 
-/-- One first-order allpass step; |a| < 1 keeps it stable. -/
-def allpass (input previousInput previousOutput a : Float) : Float :=
-  a * input + previousInput - a * previousOutput
-
 /-- Delay-line read length that tunes the loop, after subtracting the loss and allpass delay. -/
 def loopDelay (frequency sampleRate s a : Float) : Float :=
   sampleRate / frequency - s - allpassDelay a

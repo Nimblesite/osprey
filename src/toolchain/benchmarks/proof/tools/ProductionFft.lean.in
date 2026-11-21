@@ -22,6 +22,14 @@ structure LineSample (α history : Type) where
   sample : α
   next : history
 
+structure AllpassState (α : Type) where
+  input : α
+  output : α
+
+structure AllpassSample (α : Type) where
+  sample : α
+  next : AllpassState α
+
 structure Ops (α : Type) where
   History : Type
   Fault : Type
@@ -43,6 +51,8 @@ structure Ops (α : Type) where
   satAdd : Nat → Nat → Nat
 
 -- INSERT PRODUCTION BODIES
+
+open Ffts SpectralFrames StrikeCombs
 
 /-- Smith's radix-two butterfly in bin order. The reference accepts already
     paired bins, independently of how the implementation traverses its lists. -/
@@ -185,5 +195,59 @@ theorem strikePeriodicNull (ops : Ops α) (cfg : Strike α) (held : ops.History)
   dsimp only
   rw [repeats]
   exact congrArg (fun x => Except.ok (LineSample.mk x (ops.push held input))) selfSub
+
+/-- The handwritten sample update computes Smith's first-order difference
+    equation and carries precisely the current input and output to the next step. -/
+theorem allpassStateStep (ops : Ops α) (a input : α) (held : AllpassState α) :
+    Allpasses.next ops a held input =
+      let y := ops.minus (ops.plus (ops.times a input) held.input) (ops.times a held.output)
+      ⟨y, ⟨input, y⟩⟩ := rfl
+
+theorem allpassFactoredStep (ops : Ops α) (a x : α) (held : AllpassState α)
+    (dist : ∀ u v w, ops.times u (ops.minus v w) = ops.minus (ops.times u v) (ops.times u w))
+    (moveSub : ∀ u v w, ops.minus (ops.plus u v) w = ops.plus (ops.minus u w) v) :
+    (Allpasses.next ops a held x).sample =
+      ops.plus (ops.times a (ops.minus x held.output)) held.input :=
+  Synthesis.allpassRecurrence _ _ _ a x held.input held.output dist moveSub
+
+/-- Substitute one-sample delayed phasors q*x and q*y into the production
+    recurrence, then collect output terms to derive Smith (5.2). -/
+theorem allpassTransfer (ops : Ops α) (one a q x y : α)
+    (response : (Allpasses.next ops a ⟨ops.times q x, ops.times q y⟩ x).sample = y)
+    (unit : ∀ v, ops.times one v = v)
+    (assoc : ∀ u v w, ops.times (ops.times u v) w = ops.times u (ops.times v w))
+    (dist : ∀ u v w, ops.times (ops.plus u v) w = ops.plus (ops.times u w) (ops.times v w))
+    (cancel : ∀ u v, ops.plus (ops.minus u v) v = u) :
+    ops.times (ops.plus one (ops.times a q)) y = ops.times (ops.plus a q) x := by
+  calc
+    _ = ops.plus y (ops.times a (ops.times q y)) := by rw [dist, unit, assoc]
+    _ = ops.plus (ops.times a x) (ops.times q x) :=
+      (congrArg (fun v => ops.plus v (ops.times a (ops.times q y))) response.symm).trans (cancel _ _)
+    _ = _ := (dist _ _ _).symm
+
+/-- At a unit-circle frequency, (5.2) and the conjugate symmetry of its
+    numerator and denominator give equal input and output magnitudes. -/
+theorem allpassSteadyMagnitude {β : Type} (ops : Ops α) (conj : α → α) (norm : α → β)
+    (multiply : β → β → β) (zero : β) (one a q x y : α)
+    (response : (Allpasses.next ops a ⟨ops.times q x, ops.times q y⟩ x).sample = y)
+    (realCoeff : conj a = a) (conjOne : conj one = one)
+    (conjAdd : ∀ u v, conj (ops.plus u v) = ops.plus (conj u) (conj v))
+    (conjMul : ∀ u v, conj (ops.times u v) = ops.times (conj u) (conj v))
+    (normConj : ∀ v, norm (conj v) = norm v)
+    (unitRotation : ∀ v, norm (ops.times v q) = norm v) (circle : ops.times (conj q) q = one)
+    (unitL : ∀ v, ops.times one v = v) (unitR : ∀ v, ops.times v one = v)
+    (assoc : ∀ u v w, ops.times (ops.times u v) w = ops.times u (ops.times v w))
+    (dist : ∀ u v w, ops.times (ops.plus u v) w = ops.plus (ops.times u w) (ops.times v w))
+    (swap : ∀ u v, ops.plus u v = ops.plus v u)
+    (restore : ∀ u v, ops.plus (ops.minus u v) v = u)
+    (normMul : ∀ u v, norm (ops.times u v) = multiply (norm u) (norm v))
+    (denom : norm (ops.plus one (ops.times a q)) ≠ zero)
+    (cancel : ∀ k u v, k ≠ zero → multiply k u = multiply k v → u = v) :
+    norm y = norm x := by
+  have magnitude := Synthesis.allpassMagnitude ops.plus ops.times conj norm one a q realCoeff
+    conjOne conjAdd conjMul normConj unitRotation circle unitL unitR assoc dist swap
+  have transfer := congrArg norm (allpassTransfer ops one a q x y response unitL assoc dist restore)
+  rw [normMul, normMul, magnitude] at transfer
+  exact cancel _ _ _ denom transfer
 
 end ProductionFft

@@ -80,7 +80,12 @@ fn callee(e: &Expr) -> Result<String, String> {
     };
     match name.as_str() {
         "added" | "subtracted" | "rotated" | "combined" | "delay" => {
-            Ok(format!("{} ops", ident(name)?))
+            let module = if name == "delay" {
+                "StrikeCombs"
+            } else {
+                "Ffts"
+            };
+            Ok(format!("{module}.{} ops", ident(name)?))
         }
         "satAdd" | "toFloat" | "sin" | "cos" => Ok(format!("ops.{name}")),
         "listPrepend" => Ok("(fun tail head => List.cons head tail)".into()),
@@ -104,6 +109,8 @@ fn constructor(name: &str, fields: &[osprey_ast::FieldAssignment]) -> Result<Str
     }
     let record = match name {
         "LineSample" => "LineSample",
+        "AllpassState" => "AllpassState",
+        "AllpassSample" => "AllpassSample",
         "Complex" => "Bin",
         "ComplexHalves" => "Halves",
         _ => return Err(format!("unsupported constructor {name}")),
@@ -220,6 +227,7 @@ fn reflect(file: &str) -> Result<(), String> {
         return Err("expected synth namespace".into());
     }
     let signatures: &[(&str, &[&str], &str)] = match path.to_string().as_str() {
+        "Allpasses" => &[("next", &["α", "AllpassState α", "α"], "AllpassSample α")],
         "StrikeCombs" => &[
             ("delay", &["Strike α"], "α"),
             (
@@ -272,8 +280,9 @@ fn reflect(file: &str) -> Result<(), String> {
             .zip(types)
             .map(|(p, t)| Ok(format!("({} : {t})", binder(&p.name)?)))
             .collect::<Result<Vec<_>, String>>()?;
+        let module = path.to_string();
         println!(
-            "def {name} {{α : Type}} (ops : Ops α) {} : {result} := {}",
+            "def {module}.{name} {{α : Type}} (ops : Ops α) {} : {result} := {}",
             params.join(" "),
             term(expr)?
         );
