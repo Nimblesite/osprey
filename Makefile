@@ -134,7 +134,10 @@ define check_ci_source
 endef
 
 ## ci: dependency audit + lint + test + build + hawk + the bank, docs and inbox suites (full CI simulation)
-ci: _invalidate_ci_stamp audit lint test build
+ci: _invalidate_ci_stamp
+	$(MAKE) audit
+	$(MAKE) lint
+	$(MAKE) test
 	$(MAKE) -C src/toolchain hawk
 	$(MAKE) -C src/toolchain/targets/tests bank
 	$(MAKE) -C src/toolchain/targets/web/tests bank

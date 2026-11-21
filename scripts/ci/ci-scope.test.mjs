@@ -422,20 +422,28 @@ function commitFixture(directory, subject) {
   fixtureGit(directory, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', subject, '--allow-empty')
 }
 
+function runLocalCi(directory, audit) {
+  writeFileSync(join(directory, 'ci-step.sh'), [
+    'case "$1" in', `  audit) ${audit} ;;`, '  lint|test) printf "ran %s\\n" "$1" ;;', 'esac',
+  ].join('\n'))
+  return spawnSync('make', ['-j4', '-I', resolve('.'), '-f', resolve('Makefile'), 'MAKE=sh ./ci-step.sh', 'ci'],
+    { cwd: directory, encoding: 'utf8' })
+}
+
 test('a failed local dependency audit invalidates a previous green push stamp', () => {
   const dir = mkdtempSync(join(tmpdir(), 'osprey-push-gate-'))
   try {
     fixtureGit(dir, 'init', '-q')
-    writeFileSync(join(dir, '.gitignore'), 'target/\naudit.mk\n')
+    writeFileSync(join(dir, '.gitignore'), 'target/\nci-step.sh\n')
     fixtureGit(dir, 'add', '.gitignore')
     commitFixture(dir, 'initial')
     mkdirSync(join(dir, 'target'))
     const stamp = join(dir, 'target/ci-green')
     writeFileSync(stamp, 'previously tested commit')
-    writeFileSync(join(dir, 'audit.mk'), 'audit:\n\t@echo fixture-audit-failure >&2\n\t@false\n')
-    const result = spawnSync('make', ['-I', resolve('.'), '-f', resolve('Makefile'), '-f', 'audit.mk', 'ci'], { cwd: dir, encoding: 'utf8' })
+    const result = runLocalCi(dir, 'echo fixture-audit-failure >&2; false')
     assert.notEqual(result.status, 0)
     assert.match(result.stderr, /fixture-audit-failure/)
+    assert.doesNotMatch(result.stdout, /ran (lint|test)/)
     assert.throws(() => readFileSync(stamp), { code: 'ENOENT' })
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -447,18 +455,15 @@ test('local CI stamps a clean commit and rejects changes before or during its ru
   const stamp = join(directory, 'target/ci-green')
   try {
     fixtureGit(directory, 'init', '-q')
-    writeFileSync(join(directory, '.gitignore'), 'target/\naudit.mk\n')
+    writeFileSync(join(directory, '.gitignore'), 'target/\nci-step.sh\n')
     const source = join(directory, 'source.osp')
     writeFileSync(source, 'fn main() = 0\n')
     fixtureGit(directory, 'add', '.')
     commitFixture(directory, 'initial')
-    const run = (audit) => {
-      writeFileSync(join(directory, 'audit.mk'), `audit:\n\t@${audit}\n`)
-      return spawnSync('make', ['-I', resolve('.'), '-f', resolve('Makefile'), '-f', 'audit.mk',
-        '-o', 'lint', '-o', 'test', '-o', 'build', 'MAKE=true', 'ci'], { cwd: directory, encoding: 'utf8' })
-    }
-    const clean = run('true')
+    const run = (audit) => runLocalCi(directory, audit)
+    const clean = run('echo ran audit')
     assert.equal(clean.status, 0, clean.stderr)
+    assert.deepEqual(clean.stdout.match(/^ran \w+$/gm), ['ran audit', 'ran lint', 'ran test'])
     assert.equal(readFileSync(stamp, 'utf8').trim(), fixtureGit(directory, 'rev-parse', 'HEAD'))
     writeFileSync(source, 'fn main() = 1\n')
     const dirty = run('echo audit-ran')
