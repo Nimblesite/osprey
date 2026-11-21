@@ -174,39 +174,6 @@ fn main() = {
         &["Job.quit", "unwind"],
         "expected a truthful `abort`-not-yet-unwound rejection",
     ),
-    // a many arm is rejected because no re entrant continuation exists.
-    // [MULTI-HANDLE-MANY] [MULTI-COST] Native resume is ONE suspended stack,
-    // switched to and never switched back; a live pthread stack cannot be
-    // cloned, so `many` has no representation until plan 0016 builds one.
-    //
-    // Accepting the declaration anyway would answer a re-entrant request with a
-    // continuation that cannot be re-entered — a silently wrong answer, which
-    // the broken-code process forbids. So the rejection IS the contract, and it
-    // must name the operation and the plan that lifts it.
-    //
-    // The [MULTI-HANDLE-MANY-LEXICAL] relaxation this program needs (a lambda
-    // the arm CONSUMES before returning does have a live continuation) is
-    // phase 5, and lands with the runtime that makes the program runnable.
-    (
-        r#"
-effect Choice { control many pick: fn(int) -> int }
-fn search(bound) = perform Choice.pick(bound)
-fn main() = {
-    let best = {
-        handle Choice {
-            pick bound => range(0, bound) |> fold(0, |carried, option| => {
-                let answered = resume(option)
-                match answered > carried { true => answered false => carried }
-            })
-        }
-        search(3)
-    }
-    print("best=${best}")
-}
-"#,
-        &["Choice.pick", "re-entrant continuation"],
-        "expected a truthful `many`-has-no-representation rejection",
-    ),
     // a many handler over a non replayable body is rejected at the handle site.
     // [MULTI-REPLAY-CHECK] [MULTI-FALSIFY] gate 2. Resuming twice re-runs the
     // remainder of the handled computation, so every non-`E` entry of that
@@ -245,6 +212,63 @@ fn every_multiplicity_violation_is_rejected_naming_its_operation() {
     for (source, needles, why) in REJECTED {
         assert_rejected(source, Flavor::Default, needles, why);
     }
+}
+
+/// The positive `many` shape: one continuation, resumed for every alternative,
+/// each resume an independent branch from the choice point
+/// ([MULTI-HANDLE-MANY], plan 0016 phase 3). A `many` handler compiles and
+/// runs with real multi-shot resumptions — this replaces the old rejection
+/// assertion for plain `many`.
+const MANY_POSITIVE: &str = r#"
+effect Choice { control many pick: fn(int) -> int }
+fn answer(seed) = {
+    let chosen = perform Choice.pick(seed)
+    "a${chosen}"
+}
+fn main() = {
+    let collected = {
+        handle Choice {
+            pick bound => {
+                let low = resume(bound)
+                let high = resume(9)
+                "${low}&${high}"
+            }
+        }
+        answer(4)
+    }
+    print("collected=${collected}")
+}
+"#;
+
+#[test]
+fn a_many_handler_compiles_and_runs_independent_branches() {
+    // [MULTI-FALSIFY] gate 3: a pure search must produce all alternatives.
+    // Compilation proves the re-entrant rejection is lifted; the run proves
+    // the second resume re-enters the SAME captured remainder rather than
+    // consuming a dead stack — the branch answers "a4" and "a9" both.
+    let ir = compile_staged(MANY_POSITIVE);
+    assert!(
+        ir.contains("__osprey_coro_suspend_many"),
+        "a many perform must suspend through the reusable-continuation path"
+    );
+    let dir = std::env::temp_dir().join(format!("osprey_many_positive_{}", std::process::id()));
+    let Ok(()) = std::fs::create_dir_all(&dir) else {
+        panic!("could not create temp dir");
+    };
+    let input = dir.join("many_positive.osp");
+    std::fs::write(&input, MANY_POSITIVE).expect("write program");
+    let ran = std::process::Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .arg(input.as_os_str())
+        .arg("--run")
+        .output()
+        .expect("run osprey");
+    let _ = std::fs::remove_dir_all(&dir);
+    let stdout = String::from_utf8_lossy(&ran.stdout);
+    assert!(ran.status.success(), "many program failed: {stdout}");
+    assert!(
+        stdout.contains("collected=a4&a9"),
+        "both branch answers must be collected, got: {stdout}"
+    );
 }
 
 const ONCE_ON_WASM: &str = r#"

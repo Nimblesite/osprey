@@ -1,0 +1,40 @@
+=== multi-shot many continuations ===
+answers=b4,b5,b6
+log=[enter
+branch 4
+branch 5
+branch 6
+]
+staged=r0-0|r0-1|r1-0|r1-1
+log=[before
+mid
+after
+after
+mid
+after
+after
+]
+zero=none
+zero log=[enter
+]
+single=b5
+single log=[enter
+branch 5
+]
+branches=v5&v6
+branch log=[close
+close
+]
+abandoned=dropped
+abandoned log=[close
+]
+layered=L1002~L1003
+layered log=[inner 1002
+]
+ok 1 - a many continuation resumed for every alternative collects each branch answer
+ok 2 - a retried decision replays neither earlier nor later work
+ok 3 - zero answers abandon the remainder and a single answer runs it
+ok 4 - branch finalizers run exactly per branch and per abandonment
+ok 5 - a nested region is not replayed across outer resumptions
+1..5
+# tests=5 passed=5 failed=0 skipped=0
