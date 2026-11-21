@@ -311,9 +311,11 @@ module EditorView
     (** Shared canvas text styling for nodes and cable actions. *)
     export text (words, left, top, size, colour, depth) = Scenes::lettering (words, left, top, size, Scenes::rgb (colour, colour, 255), 0, 500.0, depth)
 
-    shape (editor, n) =
+    shape (editor, n, layer) =
         at = EditorLayout::position (editor, n.identity)
-        listConcat (listConcat (listConcat ((CardArts::card (editor, n)).artShapes) (cardTitle (editor, n, at))) (monitorTrace (editor, n, at))) (listConcat (portShapes (editor, at, n.inputs, false)) (portShapes (editor, at, n.outputs, true)))
+        artwork = mapList ((CardArts::card (editor, n)).artShapes, \item => Header::placedShape (item, at.layoutX, at.layoutY, layer))
+        details = listConcat (listConcat (cardTitle (editor, n, at)) (monitorTrace (editor, n, at))) (listConcat (portShapes (editor, at, n.inputs, false)) (portShapes (editor, at, n.outputs, true)))
+        listConcat artwork (mapList (details, \item => Header::placedShape (item, 0.0, 0.0, layer)))
 
     (** A module's card, drawn from the skin: the costly part `CardArts` keeps. *)
     export nodeArtwork (editor, n, at) = match n.processor
@@ -385,15 +387,6 @@ module EditorView
             Error _ => false
             Success a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0
 
-    raised (primitive, offset) = match primitive
-        ui::Rect x y w h angle colour depth => ui::Rect(x = x, y = y, w = w, h = h, angle = angle, color = colour, depth = satAdd depth offset)
-        ui::Disc x y radius colour depth => ui::Disc(x = x, y = y, radius = radius, color = colour, depth = satAdd depth offset)
-        ui::Strip points colour stroke depth => ui::Strip(points = points, color = colour, stroke = stroke, depth = satAdd depth offset)
-        ui::Sprite sprite x y w h angle colour depth => ui::Sprite(sprite = sprite, x = x, y = y, w = w, h = h, angle = angle, color = colour, depth = satAdd depth offset)
-        ui::Glyphs words x y size colour depth => ui::Glyphs(glyphs = words, x = x, y = y, size = size, color = colour, depth = satAdd depth offset)
-        ui::Lettering words x y size colour depth anchor weight => ui::Lettering(letters = words, x = x, y = y, size = size, color = colour, depth = satAdd depth offset, anchor = anchor, weight = weight)
-        ui::Path steps outline paint x y scale depth => ui::Path(steps = steps, outline = outline, paint = paint, moveX = x, moveY = y, scale = scale, depth = satAdd depth offset)
-
     // [DAW-LAYOUT-FIXED-SCALE] One scene unit is one point at every window size (a negative zoom is that scale
     // exactly): resizing the window shows more or less of the page and never resizes a control.
     pageZoom = -1.0
@@ -419,16 +412,16 @@ module EditorView
         nodes = foldList (toList (range (0, length ordered)), [], \(all, i) =>
             match listGet ordered i
                 Error _ => all
-                Success n => listConcat all (mapList (shape (editor, n), \primitive => raised (primitive, satMul (satAdd i 1) 100))))
+                Success n => listConcat all (shape (editor, n, satMul (satAdd i 1) 100)))
         library = match editor.paletteShown || editor.paletteDrag != ""
-            true => mapList (palette (), \primitive => raised (primitive, satMul (satAdd (length ordered) 1) 100))
+            true => mapList (palette (), \primitive => Header::placedShape (primitive, 0.0, 0.0, satMul (satAdd (length ordered) 1) 100))
             false => []
         details = match editor.detailsShown
             true => []
             false => ModuleInspector::shapes editor
         shapes = listConcat (listConcat ((CardArts::scenery editor).artShapes) details) (listConcat (CableCanvas::shapes editor) (listConcat nodes (listConcat (listAppend (toolbar editor) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))) library)))
         scene = Ui::zoomed (pageZoom, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, Surface)
-        access = listConcat (toolbarItems editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) ((CardArts::card (editor, n)).artControls))))
+        access = listConcat (toolbarItems editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) (CardArts::controls (editor, n)))))
         extra = match editor.paletteShown
             true => paletteAccess ()
             false => []

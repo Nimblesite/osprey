@@ -1,9 +1,8 @@
 // [PRISM-ROUTING-EDITOR] Each module's artwork is drawn once and kept until that module changes.
 namespace synth
 
-(** Drawing a card expands its skin templates, the costliest part of an event. A drag moves one module, so
-    every other card's shapes and controls are kept from the event before; a card is redrawn only when
-    its own inputs (`key`) or the skin's live state change. *)
+(** Keep card art in node-local coordinates. Moving a module translates its shapes and listeners;
+    changing a parameter, selection or skin rebuilds the affected artwork. *)
 module CardArts
     settings n = join (mapList (n.parameters, \p => "${p.key}=${p.initial}")) ","
 
@@ -12,14 +11,26 @@ module CardArts
         _ => ""
 
     (** Everything a card's artwork and controls are drawn from, besides the skin. *)
-    export key (editor, n) =
+    export key (editor, n) = "${editor.selected == n.identity}:${editor.detailsShown}:${EditorView::componentName (editor, n)}:${settings n}:${sample n}"
+
+    // Keep module artwork and its listeners in node-local coordinates, including sampled waveforms.
+    drawn (editor, n, wanted) =
+        origin = daw::NodePosition(layoutNode = n.identity, layoutX = 0.0, layoutY = 0.0)
+        local = editor(positions = [origin])
+        CardArt(artNode = n.identity, artKey = wanted, artShapes = EditorView::nodeArtwork (local, n, origin), artControls = PrismArt::sliders (local, n))
+
+    (** Reuse the artwork across pointer moves; selection, skin and parameter changes redraw it. *)
+    export card (editor, n) =
+        wanted = key (editor, n)
+        fixed (editor, n.identity, wanted, \() => drawn (editor, n, wanted))
+
+    (** A card's listeners follow it; the skin also declares controls anchored to the inspector. *)
+    export controls (editor, n) =
         at = EditorLayout::position (editor, n.identity)
-        "${at.layoutX}:${at.layoutY}:${editor.selected == n.identity}:${editor.detailsShown}:${EditorView::componentName (editor, n)}:${settings n}:${sample n}"
-
-    drawn (editor, n) = CardArt(artNode = n.identity, artKey = key (editor, n), artShapes = EditorView::nodeArtwork (editor, n, EditorLayout::position (editor, n.identity)), artControls = PrismArt::sliders (editor, n))
-
-    (** The card for `n`: the kept one when it is still current, else drawn now. *)
-    export card (editor, n) = fixed (editor, n.identity, key (editor, n), \() => drawn (editor, n))
+        mapList ((card (editor, n)).artControls, \a =>
+            match PrismArt::inspectorArea a
+                true => a
+                false => a(accessLeft = a.accessLeft + at.layoutX, accessTop = a.accessTop + at.layoutY))
 
     // The skin's live state: its inputs, its layers' states and what the pointer holds.
     same (one, other) = structuralEquals (one.knobs, other.knobs) && structuralEquals (one.currents, other.currents) && structuralEquals (one.machineGrip, other.machineGrip)

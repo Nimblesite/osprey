@@ -13,6 +13,7 @@ use ferroui_osprey_native::events::Touch;
 use ferroui_osprey_native::ffi::{self, Library};
 use ferroui_osprey_native::regions::Regions;
 use ferroui_osprey_native::rows::Shown;
+use ferroui_osprey_native::scene::Shape;
 use ferroui_osprey_native::tree::Tree;
 
 /// One display frame at 120 Hz, in milliseconds.
@@ -69,8 +70,14 @@ fn along(index: usize) -> (f64, f64) {
 fn drag_across_resized_canvas(canvas: i64) {
     let center = |frame: &Shown, label: &str| {
         let area = frame.scenes.values().flat_map(|scene| &scene.access)
-            .find(|area| area.label == label).expect("the oscillator and its outlet are visible");
+            .find(|area| area.label == label).unwrap_or_else(|| panic!("missing canvas control: {label}"));
         (area.x + area.w / 2.0, area.y + area.h / 2.0)
+    };
+    let sprite = |frame: &Shown| {
+        frame.scenes.values().find_map(|scene| scene.shapes.iter().find_map(|shape| match shape {
+            Shape::Sprite { atlas, x, y, .. } if scene.atlas.get(*atlas).is_some_and(|s| s.ends_with("/node-source.png")) => Some((f64::from(*x), f64::from(*y))),
+            _ => None,
+        })).expect("oscillator artwork")
     };
     for (width, height, dx, dy) in [
         (1536.0, 828.0, 450.0, 150.0),
@@ -82,9 +89,18 @@ fn drag_across_resized_canvas(canvas: i64) {
         let end = (OSCILLATOR.0 + dx, OSCILLATOR.1 + dy);
         point(canvas, end, true);
         let release = point(canvas, end, false).0;
-        for label in ["Canvas Oscillator 0", "Canvas output 0:0"] {
+        let (sx, sy) = sprite(&start);
+        assert_eq!(sprite(&release), (sx + dx, sy + dy), "painted card follows its sockets");
+        assert_eq!(center(&release, "Inspector: Bypass Oscillator"), center(&start, "Inspector: Bypass Oscillator"));
+        for label in ["Canvas Oscillator 0", "Canvas output 0:0", "Bypass Oscillator"] {
             let (x, y) = center(&start, label);
             assert_eq!(center(&release, label), (x + dx, y + dy), "{label} after drag in {width} × {height}");
+        }
+        if width > 2000.0 {
+            let other = center(&release, "Canvas Filter 1");
+            point(canvas, other, true);
+            let deselected = point(canvas, other, false).0;
+            assert_eq!(center(&deselected, "Bypass Oscillator"), center(&release, "Bypass Oscillator"), "the far-right card retains its controls after deselection");
         }
         point(canvas, end, true);
         point(canvas, OSCILLATOR, false);

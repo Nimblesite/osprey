@@ -153,19 +153,26 @@ module Header
     (** How far right a song page starts in a region wider than the page ([DAW-HEADER]). *)
     export shift editor = TimelineGeometry::centred (ui::Machines::number (editor.skin, "viewWidth"), ui::Machines::number (editor.skin, "viewHeight"))
 
-    moved (primitive, dx) = match primitive
-        ui::Rect x y w h angle colour depth => ui::Rect(x = x + dx, y = y, w = w, h = h, angle = angle, color = colour, depth = depth)
-        ui::Disc x y radius colour depth => ui::Disc(x = x + dx, y = y, radius = radius, color = colour, depth = depth)
-        ui::Strip points colour stroke depth => ui::Strip(points = mapList (toList (range (0, length points)), \i => (listGet points i ?: 0.0) + ui::Pick::either (i % 2 == 0, dx, 0.0)), color = colour, stroke = stroke, depth = depth)
-        ui::Sprite sprite x y w h angle colour depth => ui::Sprite(sprite = sprite, x = x + dx, y = y, w = w, h = h, angle = angle, color = colour, depth = depth)
-        ui::Glyphs words x y size colour depth => ui::Glyphs(glyphs = words, x = x + dx, y = y, size = size, color = colour, depth = depth)
-        ui::Lettering words x y size colour depth anchor weight => ui::Lettering(letters = words, x = x + dx, y = y, size = size, color = colour, depth = depth, anchor = anchor, weight = weight)
-        ui::Path steps outline paint x y scale depth => ui::Path(steps = steps, outline = outline, paint = paint, moveX = x + dx, moveY = y, scale = scale, depth = depth)
+    (** Translate a primitive and place it on the requested drawing layer. *)
+    export placedShape (primitive, dx, dy, layer) = match primitive
+        ui::Rect x y w h angle colour depth => ui::Rect(x = x + dx, y = y + dy, w = w, h = h, angle = angle, color = colour, depth = satAdd depth layer)
+        ui::Disc x y radius colour depth => ui::Disc(x = x + dx, y = y + dy, radius = radius, color = colour, depth = satAdd depth layer)
+        ui::Strip points colour stroke depth =>
+            shifted = match dx == 0.0 && dy == 0.0
+                true => points
+                false => mapList (toList (range (0, length points)), \i => (listGet points i ?: 0.0) + ui::Pick::either (i % 2 == 0, dx, dy))
+            ui::Strip(points = shifted, color = colour, stroke = stroke, depth = satAdd depth layer)
+        ui::Sprite sprite x y w h angle colour depth => ui::Sprite(sprite = sprite, x = x + dx, y = y + dy, w = w, h = h, angle = angle, color = colour, depth = satAdd depth layer)
+        ui::Glyphs words x y size colour depth => ui::Glyphs(glyphs = words, x = x + dx, y = y + dy, size = size, color = colour, depth = satAdd depth layer)
+        ui::Lettering words x y size colour depth anchor weight => ui::Lettering(letters = words, x = x + dx, y = y + dy, size = size, color = colour, depth = satAdd depth layer, anchor = anchor, weight = weight)
+        ui::Path steps outline paint x y scale depth => ui::Path(steps = steps, outline = outline, paint = paint, moveX = x + dx, moveY = y + dy, scale = scale, depth = satAdd depth layer)
 
     (** A song page's shapes where the page sits in its region. *)
     export placed (editor, shapes) =
         dx = shift editor
-        mapList (shapes, \shape => moved (shape, dx))
+        match dx == 0.0
+            true => shapes
+            false => mapList (shapes, \shape => placedShape (shape, dx, 0.0, 0))
 
     (** A song page's hit areas where the page sits in its region. *)
     export placedAreas (editor, areas) =

@@ -202,10 +202,15 @@ module PrismArt
         menu = (n.processor == Oscillator && (startsWith label "Oscillator Wave" || length (filterList (["Sine", "Triangle", "Saw", "Square"], \wave => wave == label)) > 0)) || (n.processor == Lfo && (startsWith label "LFO Rate" || startsWith label "1/"))
         toggle || slider || menu
 
-    (** Original controls are scoped to an independently positioned graph node. *)
-    export sliders (editor, n) = filterList (ui::Canvases::semantics (prepared (editor, n)), \a => (a.accessLeft < 1200.0 || (!editor.detailsShown && editor.selected == n.identity)) && supports (n, a))
+    (** Inspector controls stay pinned when their module moves. *)
+    export inspectorArea a = startsWith a.accessLabel "Inspector"
 
-    sliderAt (editor, n, px, py) = length (filterList (sliders (editor, n), \a => px >= a.accessLeft && px <= a.accessLeft + a.accessWidth && py >= a.accessTop && py <= a.accessTop + a.accessHeight)) > 0
+    (** Original controls are scoped to an independently positioned graph node. *)
+    export sliders (editor, n) = match role n.processor
+        "custom" => []
+        _ => filterList (ui::Canvases::semantics (prepared (editor, n)), \a => (!inspectorArea a || (!editor.detailsShown && editor.selected == n.identity)) && supports (n, a))
+
+    sliderAt (editor, n, px, py) = length (filterList (CardArts::controls (editor, n), \a => px >= a.accessLeft && px <= a.accessLeft + a.accessWidth && py >= a.accessTop && py <= a.accessTop + a.accessHeight)) > 0
 
     numberChange (editor, n, before, after, input, key, convert) = match ui::Machines::number (before, input) == ui::Machines::number (after, input)
         true => editor
