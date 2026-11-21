@@ -486,6 +486,7 @@ test('local CI stamps a clean commit and rejects changes before or during its ru
 }))
 
 test('the push gate sends the tested commit if a teammate advances the branch during the CI check', () => withTempDir('push-race', (directory) => {
+  assert.doesNotMatch(readFileSync('Makefile', 'utf8'), /^(?:##\s+)?push\s*:/m)
   const push = resolve('scripts/ci/push.sh')
   const git = (...args) => fixtureGit(directory, ...args)
   git('init', '-q', '-b', 'feature')

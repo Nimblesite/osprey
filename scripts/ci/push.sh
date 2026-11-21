@@ -8,7 +8,7 @@ stamp=target/ci-green
 head=$(git rev-parse HEAD)
 branch=$(git rev-parse --abbrev-ref HEAD)
 if [ "$(cat "$stamp" 2>/dev/null)" != "$head" ]; then
-    echo "push refused: make ci has not passed on $head (run make ci, then make push)" >&2
+    echo "push refused: make ci has not passed on $head (run make ci, then scripts/ci/push.sh)" >&2
     exit 1
 fi
 busy=$(gh run list --branch "$branch" --limit 20 --json status \
