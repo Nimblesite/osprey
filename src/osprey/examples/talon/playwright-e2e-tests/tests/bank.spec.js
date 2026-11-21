@@ -128,6 +128,7 @@ async function drawsTheOverview({ page }) {
 
 async function visitsEveryPage({ page }) {
   await openApp(page);
+  await expect(page.getByRole('button', { name: /^(Overview|Accounts|Move|Activity|Security)$/ })).toHaveCount(5);
   await goToPage(page, 'Accounts');
   await expect(page.getByText('Ready to move')).toBeVisible();
   await goToPage(page, 'Activity');
