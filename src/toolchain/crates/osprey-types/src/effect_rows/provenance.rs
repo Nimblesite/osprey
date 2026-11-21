@@ -237,10 +237,8 @@ pub(super) fn terminal_callable(callable: Callable, deferred: &mut Summary) -> C
 }
 
 pub(super) fn shift_summary_from(summary: &mut Summary, amount: usize, minimum_level: usize) {
-    summary.parameter_uses = summary
-        .parameter_uses
-        .iter()
-        .cloned()
+    summary.parameter_uses = std::mem::take(&mut summary.parameter_uses)
+        .into_iter()
         .map(|mut use_| {
             if use_.level >= minimum_level {
                 use_.level = use_.level.saturating_add(amount);
@@ -258,6 +256,9 @@ pub(super) fn shift_summary_levels(summary: &mut Summary, amount: usize) {
 }
 
 pub(super) fn shift_value_levels(value: &mut Value, amount: usize, minimum_level: usize) {
+    if amount == 0 {
+        return;
+    }
     if let Some(callable) = &mut value.callable {
         match callable {
             Callable::Alternatives(choices) => {

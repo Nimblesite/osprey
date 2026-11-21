@@ -482,3 +482,28 @@ fn joined_projection_value(left: Callable, right: Callable) -> Value {
         ..Value::default()
     }
 }
+
+#[test]
+fn shifting_parameter_uses_moves_the_nested_values() {
+    use super::super::CallArguments;
+    let input = |level| ParameterUse {
+        level,
+        index: 0,
+        projection: vec![],
+        arguments: CallArguments {
+            positional: vec![Some(Value::parameter(level, 1))],
+            named: vec![],
+        },
+        scopes: vec![],
+    };
+    for (amount, minimum, expected) in [(0, 0, 2), (1, 3, 2), (3, 2, 5)] {
+        let mut value = Value::default();
+        assert!(value.deferred.parameter_uses.insert(input(2)));
+        let ((), clones) = measured_clones(|| shift_value_levels(&mut value, amount, minimum));
+        assert_eq!(
+            value.deferred.parameter_uses,
+            BTreeSet::from([input(expected)])
+        );
+        assert_eq!(clones, 0);
+    }
+}
