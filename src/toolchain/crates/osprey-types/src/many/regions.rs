@@ -8,7 +8,7 @@
 //! same handler it was captured under ([MULTI-HANDLE-MANY-LEXICAL]).
 
 use super::build::{self, block, done, handle_name, ident, request_name, BIND, FINALLY, REINSTALL, RUN};
-use super::escape::{Esc, Scope};
+use super::facts::{Esc, Scope};
 use super::rewrite::Rewriter;
 use osprey_ast::{effect_name, Expr, HandlerArm, Stmt};
 

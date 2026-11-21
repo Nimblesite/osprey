@@ -19,6 +19,7 @@
 
 mod build;
 mod escape;
+mod facts;
 mod helpers;
 mod regions;
 mod rewrite;

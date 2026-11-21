@@ -8,14 +8,21 @@
 //! ([EFFECTS-FINALIZATION], [MULTI-COST-ABORT]).
 
 use super::build::{handle_name, request_name, HELPER_LINE_BASE};
-use super::escape::Facts;
+use super::facts::Facts;
 use super::table::{Effect, Op, Table};
 use crate::TypeError;
 use osprey_ast::Program;
 use std::fmt::Write as _;
 
-/// Declarations every lowered program shares.
-const FIXED: &str = "effect Many__Mark {
+/// Declarations every lowered program shares. `__manyRun` reads the value of
+/// a step the source proof shows is finished; were a request ever left in one,
+/// `Many__Open.request` has no handler, so it stops at the backend's own
+/// unhandled-request guard instead of inventing a value.
+const FIXED: &str = "effect Many__Open<a> {
+    request: fn() -> a
+}
+
+effect Many__Mark {
     replayable settle: fn() -> Unit
     replayable settled: fn() -> bool
 }
@@ -58,7 +65,7 @@ fn __manyAnswer(arm, again, drop) = {
 
 fn __manyRun(step) = match step {
     Many__Done { value } => value
-    _ => __manyRun(step)
+    _ => perform Many__Open.request()
 }
 ";
 

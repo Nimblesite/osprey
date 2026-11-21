@@ -7,7 +7,7 @@
 //! ([MULTI-HANDLE-MANY]).
 
 use super::build::{self, block, done, ident, RUN, UNIT};
-use super::escape::{Callee, Scope};
+use super::facts::{Callee, Scope};
 use super::rewrite::{rebuild_call, Rewriter};
 use osprey_ast::{effect_name, mutate, Expr, MatchArm, Pattern, Stmt};
 
@@ -25,9 +25,10 @@ enum Hoisted {
     Value(String, Expr),
 }
 
-const STATE: &str = "mutable state inside a region whose continuation a `many` handler captures: \
-every resumption runs its own branch, so a branch cannot share a `mut` binding. Bind each new \
-value with `let`";
+const STATE: &str = "an assignment inside a region whose continuation a `many` handler captures: \
+every resumption runs its own branch, so a branch cannot write a shared `mut` binding. Bind each \
+new value with `let`, or keep the state in a handler: an arm may write its handler's own `mut` \
+state ([MULTI-REPLAY-STATE])";
 
 impl Rewriter<'_> {
     /// Rewrite `expression` where it yields a step.
@@ -303,18 +304,8 @@ with `let` before `{op}`"
         };
         match first {
             Stmt::Let {
-                name,
-                value: bound,
-                mutable,
-                position,
-                ..
-            } => {
-                if *mutable {
-                    self.at = position.or(self.at);
-                    self.reject(STATE.to_owned());
-                }
-                self.step_let(first, name, bound, rest, value, scope)
-            }
+                name, value: bound, ..
+            } => self.step_let(first, name, bound, rest, value, scope),
             Stmt::Assignment { position, .. } => {
                 self.at = position.or(self.at);
                 self.reject(STATE.to_owned());
@@ -373,3 +364,4 @@ fn set_value(binding: &mut Stmt, replacement: Expr) {
 fn is_lazy(op: &str) -> bool {
     matches!(op, "&&" | "||" | "?:")
 }
+

@@ -7,7 +7,8 @@
 //! request it could make is answered, run it to its value.
 
 use super::build::{self, done, ident, Fresh, RUN};
-use super::escape::{Analyzer, Callee, Facts, Scope};
+use super::escape::Analyzer;
+use super::facts::{Callee, Facts, Scope};
 use super::table::{nested, Table};
 use crate::TypeError;
 use osprey_ast::{
