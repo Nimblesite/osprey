@@ -6,11 +6,11 @@
 // so this file needs no workflow parser of its own.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { readFileSync, readdirSync, mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { job, workflowText } from './ci-workflow-text.mjs'
+import { withTempDir } from './ci-bundle-fixture.mjs'
 
 const ciFile = '.github/workflows/ci.yml'
 const workflow = workflowText(ciFile)
@@ -132,15 +132,14 @@ export const registerLintContracts = (build) => {
 }
 
 function deadCodeFixture(product, tests) {
-  const root = mkdtempSync(join(tmpdir(), 'osprey-dead-code-'))
-  try {
+  return withTempDir('dead-code', (root) => {
     mkdirSync(join(root, 'scripts/ci'), { recursive: true })
     mkdirSync(join(root, 'crates/fixture/src'), { recursive: true })
     writeFileSync(join(root, 'scripts/ci/check.mjs'), readFileSync('scripts/ci/verify-no-dead-code.mjs'))
     writeFileSync(join(root, 'crates/fixture/src/main.rs'), product)
     writeFileSync(join(root, 'crates/fixture/src/tests.rs'), tests)
     return spawnSync(process.execPath, [join(root, 'scripts/ci/check.mjs')], { encoding: 'utf8' })
-  } finally { rmSync(root, { recursive: true, force: true }) }
+  })
 }
 
 test('dead-code gate distinguishes test module helpers from unused product code', () => {

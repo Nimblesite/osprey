@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync, mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, readdirSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { test } from 'node:test'
 import { classify } from './ci-scope.mjs'
-import { runStagedBundleFixture, nativeArchives, proofAssets } from './ci-bundle-fixture.mjs'
+import { runStagedBundleFixture, nativeArchives, proofAssets, withTempDir } from './ci-bundle-fixture.mjs'
 import { targetsMainPullRequests } from './workflow-pr-target.mjs'
 import { registerLintContracts } from './ci-lint-contract-tests.mjs'
 import { registerProofContracts } from './ci-proof-contract-tests.mjs'
@@ -426,12 +425,6 @@ function fixtureGit(directory, ...args) {
 
 function commitFixture(directory, subject) {
   fixtureGit(directory, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', subject, '--allow-empty')
-}
-
-// A disposable directory per test: the body runs, then the directory is removed however it ends.
-const withTempDir = (slug, body) => {
-  const directory = mkdtempSync(join(tmpdir(), `osprey-${slug}-`))
-  try { return body(directory) } finally { rmSync(directory, { recursive: true, force: true }) }
 }
 
 // A fresh repository with the CI-local files ignored and one initial commit of the given paths.
