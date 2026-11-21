@@ -14,8 +14,6 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 WRAPPER = ROOT / "scripts/mobile/gradlew"
-BANK_RUN = "src/osprey/examples/projects/modules/mobile/android/run.sh"
-ANDROID_ENV = "scripts/mobile/android-env.sh"
 # What every runner has: no Homebrew, no cargo bin, no developer extras.
 BASE_PATH = "/usr/bin:/bin"
 # Editor task panels read only files named Makefile, never their includes, and
@@ -23,19 +21,6 @@ BASE_PATH = "/usr/bin:/bin"
 # name starts with a letter; private steps start with `_`.
 PANEL_ENTRY = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_-]*)\s*:", re.M)
 RULE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_-]*)[ \t]*:(?!=)", re.M)
-STUB_TOOL = """#!/bin/sh
-case "$*" in
-  *"am instrument"*) printf '%s\\n' "$REPORT" ;;
-  *"settings get"*) echo null ;;
-  *"exec-out"*)
-    case "$SCREENSHOT_MODE" in
-      unavailable) echo 'stub screenshot transfer failed' >&2; exit 7 ;;
-      malformed) printf 'not a PNG' ;;
-      *) printf '\\211PNG\\r\\n\\032\\n' ;;
-    esac ;;
-esac
-"""
-
 # Compile the actual host; doubles isolate string ownership from platform services.
 STORAGE_HOST_PROBE = r'''
 struct NativeNode: Decodable { let kind: String }
@@ -330,48 +315,6 @@ class GradleSelection(unittest.TestCase):
                 capture_output=True, text=True, check=True,
             )
             self.assertEqual(result.stdout.strip(), "Gradle 9.6.0")
-
-def stub_android_tree(root):
-    """Copy the bank driver beside a stub SDK whose adb prints $REPORT."""
-    hosts = ["darwin-x86_64", "linux-x86_64"]
-    clangs = [root / "ndk/toolchains/llvm/prebuilt" / host / "bin/clang" for host in hosts]
-    for stub in [root / "sdk/platform-tools/adb", *clangs]:
-        stub.parent.mkdir(parents=True)
-        stub.write_text(STUB_TOOL)
-        stub.chmod(0o755)
-    for script in [BANK_RUN, ANDROID_ENV]:
-        (root / script).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(ROOT / script, root / script)
-    (root / BANK_RUN).parent.joinpath("build").mkdir()
-
-def instrumentation_result(report, screenshot_mode="valid"):
-    """Exit status of the bank's Android test driver for a device that prints `report`."""
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        stub_android_tree(root)
-        env = {
-            "PATH": BASE_PATH, "REPORT": report, "SCREENSHOT_MODE": screenshot_mode, "OSPREY_ANDROID_SKIP_BUILD": "1",
-            "OSPREY_ANDROID_SERIAL": "stub", "ANDROID_HOME": str(root / "sdk"),
-            "ANDROID_NDK_HOME": str(root / "ndk"),
-        }
-        return subprocess.run(
-            ["bash", str(root / BANK_RUN), "--test"], env=env,
-            capture_output=True, text=True, check=False,
-        )
-
-class BankAndroidVerdict(unittest.TestCase):
-    def test_report_is_judged_with_tools_every_runner_has(self):
-        self.assertEqual(instrumentation_result("Time: 23.282\n\nOK (6 tests)").returncode, 0)
-        failures = "FAILURES!!!\nTests run: 6,  Failures: 1"
-        for report in [failures, "INSTRUMENTATION_FAILED: stub", "Time: 1.2"]:
-            self.assertNotEqual(instrumentation_result(report).returncode, 0, report)
-
-    def test_passing_instrumentation_cannot_hide_failed_screenshot_collection(self):
-        for mode in ["unavailable", "malformed"]:
-            with self.subTest(mode=mode):
-                result = instrumentation_result("OK (6 tests)", mode)
-                self.assertNotEqual(result.returncode, 0, result.stderr)
-                self.assertIn("screenshot", result.stderr.lower())
 
 GOLDEN = ROOT / "src/osprey/examples/tally/goldens/android/1080-ready.png"
 GOLDENS = ROOT / "scripts/mobile/goldens.py"

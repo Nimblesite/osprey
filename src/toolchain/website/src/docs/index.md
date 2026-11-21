@@ -41,7 +41,7 @@ Osprey checks proofs with its own kernel and uses [Lean as an oracle](/docs/proo
 - **[Osprey Native](/docs/osprey-native/)** — the app framework: one store, signals and typed screens, drawn by SwiftUI, VS Code or GPU hosts.
 - **[Build a Mac and iPhone app](/docs/mac-and-iphone-apps/)** — Storage, with its logic in Osprey and its screens in SwiftUI.
 - **[Build an iOS and Android app](/docs/mobile-apps/)** — native commands for SQLite, GitHub and reactive controls.
-- **[Build a web app](/docs/web-apps/)** — Talon Bank: storage and audit handlers behind web, Android and iOS clients.
+- **[Build a web app](/docs/web-apps/)** — Talon Bank: one Osprey Native app compiled to WebAssembly, the same source on Android and iOS.
 - **[WebAssembly studio](/wasm/)** — the Default and ML flavors side by side in the browser.
 - **[Examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/)** — native, HTTP, WebSocket, terminal, graphics and WebAssembly programs.
 - **[Document your modules](/docs/documentation/)** — HTML API references, Markdown guides and tested examples.

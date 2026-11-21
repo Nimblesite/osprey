@@ -201,7 +201,7 @@ An Osprey update computes a new model and describes an HTTP or storage command. 
 
 This is the practical connection to our title loader: keep validation and model decisions in Osprey, and choose outside implementations at a narrow boundary. It does not mean this chapter's synchronous `Store.read` can simply wait inside every mobile host. The mobile operation may return a command description; completion belongs to a later event.
 
-Start with the bank's `src/osprey/examples/projects/modules/mobile/README.md` and the smaller `src/osprey/examples/mobile/README.md` when exploring that architecture. They document the actual host protocol. Do not infer support for mobile control continuations or a future reactive runtime from the presence of value-effect handlers.
+Start with the bank's `src/osprey/examples/projects/modules/README.md`, whose requests are `Http` capabilities the host completes as later events, and the smaller `src/osprey/examples/mobile/README.md` when exploring that architecture. They document the actual host protocol. Do not infer support for mobile control continuations or a future reactive runtime from the presence of value-effect handlers.
 
 When adding diagnostics, record the operation and outcome you need to understand the failure. Avoid printing entire HTTP headers, credentials, or private bodies as a debugging shortcut. Our local title is deliberately harmless; a banking payload needs a different presentation policy. Preserve useful failure information inside the program and decide deliberately what belongs on screen or in a log.
 

@@ -1,10 +1,45 @@
-# Talon Bank: algebraic effects across an application
+# Talon Bank: one Osprey Native app on the web, Android and iOS
 
-Talon Bank uses callable handlers to choose storage, audit and rendering policies across web, Android and iOS. The native service keeps account data in SQLite; the Osprey WebAssembly client owns routing, validation, state updates and view data. React renders that data and executes HTTP, navigation and focus commands.
+Talon Bank is a small bank with accounts, deposits, withdrawals, transfers and an audit journal. The client is one [Osprey Native](../../../packages/native/README.md) app in [`app/`](app). The browser, Android and SwiftUI hosts run that same source with no per-platform code. A native Osprey server in [`src/`](src) keeps the ledger in SQLite behind effect handlers and serves the browser build.
 
-## Choose handlers where the app runs
+| Platform | Host | Command |
+| --- | --- | --- |
+| Web | [browser host](../../../../toolchain/hosts/web) (WebAssembly) | `make -C src/toolchain/targets/web bank` |
+| Android | [Android view host](../../../../toolchain/hosts/android) | `make -C src/toolchain/targets/android bank` |
+| iPhone | [SwiftUI host](../../../../toolchain/hosts/swift) (iOS) | `make -C src/toolchain/targets/ios bank` |
+| Mac | [SwiftUI host](../../../../toolchain/hosts/swift) | `make -C src/toolchain/targets/macos bank` |
 
-API routes request typed operations such as `perform Ledger::Store.balance id`. They do not receive a database connection. [`Ledger::sqlite`](src/store/ledger.ospml) creates a handler that captures the connection; [`boot`](src/main.ospml) composes it with an audit handler:
+Start the server first with `make -C src/toolchain/targets/web bank`. It serves the API and the web app at <http://127.0.0.1:18790>, and resets the demo database at `/tmp/talon_bank.db` on each run. The Android target forwards that port to the device with `adb reverse`, and the iPhone simulator reaches it directly. An app launched with a server URL as its first argument talks to that server instead.
+
+## One app
+
+The app is a typed store, a pure update and five tab pages built from Native nodes:
+
+| File | Contents |
+| --- | --- |
+| [`app/src/store.ospml`](app/src/store.ospml) | The `Bank` store, the `Account` and `Movement` records and the `BankAct` actions every control delivers |
+| [`app/src/update.ospml`](app/src/update.ospml) | Every tap, edit and choice as one pure step, with validation before any request |
+| [`app/src/ledger.ospml`](app/src/ledger.ospml) | The HTTP edge: requests as `Http` capabilities, and replies decoded once into records |
+| [`app/src/replies.ospml`](app/src/replies.ospml) | Completed requests: listings replace the store's copy, and mutations report their outcome and reload |
+| [`app/src/amounts.ospml`](app/src/amounts.ospml) | Typed amounts read as whole cents |
+| [`app/src/screens.ospml`](app/src/screens.ospml), [`app/src/forms.ospml`](app/src/forms.ospml), [`app/src/parts.ospml`](app/src/parts.ospml) | Overview, Accounts, Move money, Activity, Security and the new-account dialog |
+| [`app/src/app.ospml`](app/src/app.ospml) | The program the hosts run: launch, update, the tabbed root and Talon's theme |
+| [`app/main.ospml`](app/main.ospml) | The three boundary exports every Native app has: `argument`, `open` and `event` |
+
+The app never talks to a database or a socket. It asks the host for an `Http` request, the host performs it with its own networking, and the reply returns as a completion event whose body the app reads from a host-held slice:
+
+```mermaid
+flowchart LR
+    host[Host: browser, Android or SwiftUI] -->|typed event| app[Talon app: update]
+    app -->|frame rows and Http asks| host
+    host -->|GET / POST| api[Talon server]
+    api -->|Ledger::Store| db[(SQLite)]
+    host -->|completion| app
+```
+
+## The server
+
+API routes request typed operations such as `perform Ledger::Store.balance id`; they never receive a database connection. [`Ledger::sqlite`](src/store/ledger.ospml) creates a handler that captures the connection, and [`boot`](src/main.ospml) composes it with an audit handler:
 
 ```ospml
 storage = Ledger::sqlite db
@@ -13,79 +48,28 @@ consoleAudit = handler Api::Audit
 consoleAudit (\() => storage (\() => serve db))
 ```
 
-Constructing a handler installs nothing. Calling it with a callback runs that work under the selected policy. Here, the callback delays `serve db` until both handlers are active. The compiler checks that the called work has handlers for every required operation.
-
-[`Metrics::track`](src/store/metrics.ospml) wraps the same work in a rest-of-block `handle`. Its state module owns the request counter. These two forms share the effects system: use a callable `handler` when a policy should be a value, and `handle` when it should cover the rest of the current block.
-
-Every client uses the value effect, [`Bridge::Render`](client/src/bridge.ospml):
-
-```ospml
-export effect Render
-    present : string => string
-
-```
-
-`App::start` and `App::receive` accept a render handler, produce an envelope and perform `Render.present` under that handler. The [browser entry points](client/src/main.ospml) select the browser handler for startup and every event. The operation returns the envelope normally to its caller. The browser handler also sends it to JavaScript; the mobile handler returns it through the C ABI to a native renderer. A test can install a recording handler instead of calling the browser import.
-
-[The test project](test/osprey.toml) runs every suite against the real domain modules in `src/domain`, so no suite carries a copy of the code it checks. [The account tests](test/accounts.test.ospml) exercise a stateful `vault` handler factory: reusing a handler preserves its balance, separate factory calls own separate balances, and a `return` clause converts the workflow's `Outcome` into a testable string. Another handler records whether invalid payments request any storage operation.
-
-## Run
-
-```sh
-make -C src/toolchain/targets/web bank
-```
-
-Open <http://127.0.0.1:18790>. The demo supports accounts, deposits, withdrawals, transfers, a filterable activity ledger and browser navigation. Each run resets the demo SQLite database at `/tmp/talon_bank.db`.
-
-`make -C src/toolchain/targets/web bank` rebuilds the browser bundle before serving it. Use `make -C src/toolchain/targets/web bank-build` to rebuild only that bundle after changing the client or browser host.
-
-## Native Android and iOS
-
-[The mobile bank](mobile/README.md) uses the same Osprey screens, state transitions, validation, and API as the web client. Android widgets and SwiftUI render the shared view tree with the web palette and a shared Inter font. Both include all five screens, account creation, money movement, journal filtering, notices, and server connection settings.
-
-```sh
-make -C src/toolchain/targets/android bank       # ARM64/x86-64 APK
-make -C src/toolchain/targets/ios bank           # device and simulator apps; requires Xcode
-make -C src/toolchain/targets/tests bank-mobile
-make -C src/toolchain/targets/android/tests bank  # live API + native UI tests on a connected device/emulator
-make -C src/toolchain/targets/ios/tests bank      # live API + iOS simulator tests
-```
-
-The API stays on the server. Start it with `make -C src/toolchain/targets/web bank`, then follow the [native launch instructions](mobile/README.md). The test targets start and stop their own seeded server.
-
-## Boundaries
-
-```mermaid
-flowchart TD
-    event[Browser event or HTTP response] --> app[Osprey Wasm: model, update and view]
-    app -->|Bridge::Render| host[React renderer and command host]
-    host -->|HTTP| api[Osprey API]
-    api -->|Ledger::Store| storage[SQLite handler]
-    api -->|Api::Audit| audit[Console handler]
-```
+Constructing a handler installs nothing. Calling it with a callback runs that work under the selected policy, and the compiler checks that the work has a handler for every operation it performs. [`Metrics::track`](src/store/metrics.ospml) wraps the same work in a rest-of-block `handle`.
 
 | Concern | Implementation |
 | --- | --- |
 | Storage policy | `src/store/ledger.ospml`: the `Store` contract, SQLite handler factory and SQL operations |
 | Audit policy | `src/api/routes.ospml`: mutation events; `src/main.ospml`: console handler |
 | Request counts | `src/store/metrics.ospml`: private state and a scoped handler |
-| Domain rules | `src/domain/`: whole-cent money behind the `MoneyApi` signature (`Cents` alias, abstract `Amount`), account outcomes and JSON encoding |
-| Browser application | `client/src/`: model, update, views and command descriptions |
-| Browser output | `client/src/bridge.ospml`: `Render` operation; `client/src/main.ospml`: browser handler |
-| Host and build | `web/`: generic React renderer, WASI host and bundle generator |
+| Domain rules | `src/domain/`: whole-cent money behind the `MoneyApi` signature, account outcomes and JSON encoding |
+| Web page | `src/web/pages.ospml` serves the page; `src/web/bundle.ospml` is generated by `make -C src/toolchain/targets/web bank-build` |
 
-Transfers commit debit, credit and both journal entries in one SQLite transaction. Refused withdrawals return HTTP 422 and remain in the activity ledger. SQL values use bound parameters; JSON strings are encoded centrally. The browser contains no SQLite implementation: it reaches the ledger through `/api/*`.
-
-Osprey sends one `{model, view, commands}` envelope per render. The host returns the opaque model and a flat event to `osprey_web_dispatch`; see the [host protocol](web/README.md). HTTP diagnostics record request IDs, byte counts and status without financial payloads.
+Transfers commit the debit, the credit and both journal entries in one SQLite transaction. A refused withdrawal returns HTTP 422 and stays in the journal. SQL values use bound parameters.
 
 ## Checks
 
 | Command | Coverage |
 | --- | --- |
-| `make -C src/toolchain/targets/tests bank` | Native domain assertions, handler state, return clauses and storage guards |
-| `cd src/osprey/examples/projects/modules/web && npm test` | Browser host, protocol, WASI and embedding tests |
-| `make -C src/toolchain/targets/web/tests bank` | Real browser, compiled Wasm and native API: accounts, movements, refusals, navigation and rendering |
+| `make -C src/toolchain/targets/tests bank-app` | The app with no host: loading, tabs, filters, validation and every ledger request |
+| `make -C src/toolchain/targets/tests bank` | The server's domain: money, accounts, handler state and storage guards |
+| `make -C src/toolchain/targets/web/tests bank` | Real Chromium against the real server: the API, then the app found by accessible role |
+| `make -C src/toolchain/targets/android/tests bank` | The Android host opens the app with no person present and presses its first control |
+| `make -C src/toolchain/targets/ios/tests bank` | The same in the iPhone simulator |
 
-The deterministic native tour is byte-compared with [`expectedoutput`](expectedoutput) by `src/toolchain/crates/osprey-cli/tests/project_e2e.rs`. Browser builds regenerate `src/web/bundle.ospml`; edit its inputs rather than the generated module.
+The server's deterministic tour is byte-compared with [`expectedoutput`](expectedoutput) by `src/toolchain/crates/osprey-cli/tests/project_e2e.rs`.
 
-See the [effects guide](../../handlers/README.md), [effects specification](../../../../../docs/specs/language/0017-AlgebraicEffects.md), [WebAssembly target](../../../../../docs/specs/compiler/0022-WebAssemblyTarget.md) and [module specification](../../../../../docs/specs/language/0025-ModulesAndNamespaces.md).
+See the [Osprey Native framework](../../../packages/native/README.md), the [effects guide](../../handlers/README.md) and the [module specification](../../../../../docs/specs/language/0025-ModulesAndNamespaces.md).

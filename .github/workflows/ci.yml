@@ -129,7 +129,7 @@ jobs:
             src/toolchain/webcompiler/package-lock.json
             src/toolchain/website/package-lock.json
             src/osprey/examples/projects/modules/e2e/package-lock.json
-            src/osprey/examples/projects/modules/web/package-lock.json
+            src/toolchain/hosts/web/package-lock.json
 
       # Rust toolchain + clang/LLVM + lldb-dap + the C runtime archives + the
       # release binary.
@@ -156,10 +156,11 @@ jobs:
       - name: Build the wasm runtime archive
         run: make _runtime_wasm
 
-      - name: Build the shared Talon browser client
+      - name: Build Talon Bank for the web host
         run: |
-          npm ci --prefix src/osprey/examples/projects/modules/web
-          npm --prefix src/osprey/examples/projects/modules/web run build
+          npm ci --prefix src/toolchain/hosts/web
+          node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/projects/modules/app --title "Talon Bank" --out src/toolchain/hosts/web/build/talon \
+            --module src/osprey/examples/projects/modules/src/web/bundle.ospml --namespace bank/web
 
       - name: Build the extension bundle
         run: make _vsix_bundle
@@ -1131,7 +1132,7 @@ jobs:
         run: |
           python3 scripts/mobile/test-mobile-tools.py
           target/release/osprey src/osprey/examples/mobile/inbox/test --run
-          target/release/osprey src/osprey/examples/projects/modules/mobile/app/test --run
+          target/release/osprey test src/osprey/examples/projects/modules/app/test
 
       - name: Osprey Agent suites
         run: make _test_agent
@@ -1260,10 +1261,9 @@ jobs:
           script: |
             make -C src/toolchain/targets/android/tests inbox
             make -C src/toolchain/targets/android/tests tally-headless
-            mkdir -p src/osprey/examples/projects/modules/mobile/android/build
-            adb logcat -v threadtime > src/osprey/examples/projects/modules/mobile/android/build/logcat.txt &
+            mkdir -p src/toolchain/hosts/android/build
+            adb logcat -v threadtime > src/toolchain/hosts/android/build/logcat.txt &
             make -C src/toolchain/targets/android/tests bank
-            scripts/mobile/gradlew -p src/osprey/examples/projects/modules/mobile/android --console=plain :app:lintDebug
             scripts/mobile/gradlew -p src/osprey/examples/mobile/android --console=plain :app:lintDebug
 
       - name: Native bank Android results
@@ -1272,11 +1272,8 @@ jobs:
         with:
           name: bank-android-results
           path: |
-            src/osprey/examples/projects/modules/mobile/android/build/instrumentation.txt
-            src/osprey/examples/projects/modules/mobile/android/build/logcat.txt
-            src/osprey/examples/projects/modules/mobile/android/build/screenshots/
+            src/toolchain/hosts/android/build/logcat.txt
             src/toolchain/hosts/android/build/*.png
-            src/osprey/examples/projects/modules/mobile/android/app/build/reports/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -1290,7 +1287,7 @@ jobs:
           df -h /
           find /tmp/android-*/emu-crash-* -type f -printf '%p %s\n'
           pgrep -a qemu || echo "No qemu process is running"
-          tail -80 src/osprey/examples/projects/modules/mobile/android/build/logcat.txt || echo "No logcat was captured"
+          tail -80 src/toolchain/hosts/android/build/logcat.txt || echo "No logcat was captured"
 
   # iOS/macOS device and simulator builds, simulator tests and the native
   # Workbench host. The iOS parts run on macos-26. Both images are ARM64,
@@ -1415,14 +1412,6 @@ jobs:
             target/orchestra/diagnostics/*.jsonl
           if-no-files-found: error
           retention-days: 7
-
-      - name: Native bank simulator results
-        if: ${{ always() && matrix.part == 'Talon Bank' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: bank-ios-results
-          path: src/osprey/examples/projects/modules/mobile/ios/build/**/*.xcresult
-          if-no-files-found: ignore
 
   # ═══ STAGE 4 ════════════════════════════════════════════════════════════════
   # Thresholds are enforced HERE, against reports the test jobs produced. This

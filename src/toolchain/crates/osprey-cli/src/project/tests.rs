@@ -125,11 +125,11 @@ fn only_module_aware_programs_request_single_source_assembly() {
 }
 
 #[test]
-fn assembled_client_preserves_string_results_for_length() {
+fn assembled_talon_app_type_checks() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../osprey/examples/projects/modules/client");
+        .join("../../../osprey/examples/projects/modules/app");
     let input = CompilationInput::load_project(root.to_string_lossy().as_ref())
-        .expect("client project assembles");
+        .expect("the Talon Native app project assembles");
     let errors = osprey_types::check_program(input.program());
     assert!(errors.is_empty(), "unexpected type errors: {errors:?}");
 }

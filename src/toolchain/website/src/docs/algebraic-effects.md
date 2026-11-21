@@ -452,7 +452,7 @@ Write the lock after the search finishes, or mark an operation `replayable` when
 
 ## Where effects are used
 
-- [Talon Bank](/docs/web-apps/#effects-choose-where-the-code-runs) uses handlers for server storage and auditing, and for its browser boundary.
+- [Talon Bank](/docs/web-apps/#requests-are-capabilities) uses handlers for server storage and auditing; its one Native app asks its host for HTTP as a typed capability.
 - [Issue Inbox](/docs/mobile-apps/#application-effects) turns application requests into commands for its Swift and Android hosts.
 - [Runnable handler examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/handlers) cover factories, control flow, return clauses and static selection.
 

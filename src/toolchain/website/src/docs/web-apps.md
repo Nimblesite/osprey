@@ -1,296 +1,187 @@
 ---
 mlTwins: manual
 author: Christian Findlay
-description: "Build a web app in Osprey: state, routes and validation compile to WebAssembly, React draws the view, and a native Osprey server runs SQLite."
+description: "Build a web app in Osprey: one Osprey Native app compiles to WebAssembly for the browser and runs unchanged on Android and iOS, with a native Osprey server."
 layout: page
 permalink: /docs/web-apps/
 tags:
 - web-apps
 - webassembly
-- react
+- osprey-native
 - state-management
 - algebraic-effects
-title: Build a web app with WebAssembly and React
+title: Build a web app with WebAssembly and Osprey Native
 ---
 
 {% from "native-capture.njk" import capture %}
 
-An Osprey web app keeps all of its logic in Osprey: the model, the routes, validation and a description of the view. That code compiles to WebAssembly. A small JavaScript host passes browser events in, and React draws the view Osprey returns. [Talon Bank](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/projects/modules) is the working example, with a native Osprey server behind it.
+An Osprey web app is an [Osprey Native](/docs/osprey-native/) app compiled to WebAssembly. Its state, its rules and its screens are Osprey. The browser host draws the screens as HTML and performs the app's HTTP requests. The same source, with no per-platform code, runs on Android and the iPhone through their own hosts. [Talon Bank](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/projects/modules) is the working example, with a native Osprey server and SQLite behind it.
 
-{{ capture("/assets/images/native/web-bank.png", "Talon Bank dashboard in Chromium after the Osprey WebAssembly client starts", "Talon Bank in Chromium: the dashboard after the Osprey WebAssembly client starts.", 1440, 960) }}
+{{ capture("/assets/images/native/web-bank.png", "Talon Bank overview in Chromium: the portfolio total, the client accounts and recent activity", "Talon Bank in Chromium, drawn by the web host from the app's WebAssembly build.", 1440, 960) }}
 
 ## Run Talon Bank
 
-You need Node.js 20 or later, the Osprey toolchain, `clang` with the Wasm backend, `wasm-ld` and a WASI sysroot. On macOS:
+From a checkout of the repository, start the server. It builds the app for the browser, serves the API and the page, and seeds a fresh demo database:
 
-```bash
-brew install lld wasi-libc
-make -C src/toolchain/targets/web bank-build   # compile the client, bundle React and embed the Wasm
-make -C src/toolchain/targets/web bank         # run the native server and open the app
+```sh
+make -C src/toolchain/targets/web bank
 ```
 
-The app is served at `http://127.0.0.1:18790`. The build bundles React, the host and the CSS with esbuild, compiles the client with `osprey … --target=wasm32 --memory=arc --compile`, and embeds the Wasm bytes in a generated `bundle.ospml` that the server returns as `/app.js` and `/app.css`. That file is generated: edit the client, host or styles and rebuild. Embedding is a choice; a static host can serve the `.wasm` file separately.
+Open <http://127.0.0.1:18790>. With the server running, open the same app on another platform:
 
-{{ capture("/assets/images/native/web-bank-accounts.png", "Talon Bank Accounts route rendered by React from an Osprey view document", "Accounts: Osprey picks the page; React draws its view.", 1440, 960) }}
+```sh
+make -C src/toolchain/targets/android bank   # the Android device or emulator named by OSPREY_ANDROID_SERIAL
+make -C src/toolchain/targets/ios bank       # the iPhone simulator
+make -C src/toolchain/targets/macos bank     # a Mac window
+```
 
-## One event, start to finish
+## One source, every platform
 
-Every click, keystroke, URL change and HTTP response takes the same path:
+The app lives in one folder, [`app/`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/projects/modules/app). Each host loads the same compiled app and draws it with its own controls: HTML in the browser, Android views on Android and SwiftUI on Apple platforms.
+
+| Platform | Host | The app is compiled as |
+| --- | --- | --- |
+| Web | Browser host | WebAssembly, inlined in the page's script |
+| Android | Android view host | A shared library beside the host |
+| iPhone and Mac | SwiftUI host | A static library linked into the app |
+
+{{ capture("/assets/images/native/web-bank-phone.png", "Talon Bank on a 390 point wide phone screen in Chromium, with the tab bar above the portfolio", "The same page on a phone-sized screen.", 390, 844) }}
+
+{{ capture("/assets/images/native/talon-mac.webp", "Talon Bank in a macOS SwiftUI window in dark appearance, with the same five tabs, accounts and activity", "The same app on the Mac, drawn by SwiftUI.", 1400, 937) }}
+
+## The store and the update
+
+All client state is one record, the store. Every control delivers a typed action, and `update` turns the store and the action into the next store:
+
+```ospml
+type Bank =
+    bankServer : string
+    bankPage : string
+    bankMode : string
+    bankBusy : bool
+    bankAccounts : List<Account>
+    bankJournal : List<Movement>
+    bankDraft : Draft
+    bankNotice : Notice
+```
+
+Validation runs in `update`, before any request is made, so every platform refuses the same input in the same words:
+
+```ospml
+transfer store =
+    draft = store.bankDraft
+    cents = Amounts::cents draft.draftAmount
+    match draft.draftFrom == draft.draftTo
+        true => refused (store, "Choose two accounts", "Source and destination must be different.")
+        false => match number draft.draftFrom > 0 && number draft.draftTo > 0 && cents > 0
+            false => refused (store, "Check the transfer", "Choose both accounts and enter a positive amount.")
+            true => sending (store, "transfer", "/api/transfer", Ledger::paired (number draft.draftFrom, number draft.draftTo, cents, trim draft.draftNote))
+```
+
+Amounts are read as whole cents. `$1,980.25` becomes `198025`, and anything that is not a plain positive amount becomes zero, which every form refuses.
+
+## Screens are typed nodes
+
+A screen is a function from the store to Native nodes: pages, sections, fields, pickers and buttons. Each control names the action it delivers. The host decides how a picker or a button looks on its platform.
+
+```ospml
+export move store = Ui::screen ("Move money", "Client funds, in motion", Screens::tools (),
+    [Ui::picker ("Movement", modes (), store.bankMode, PickMode), form store, guidance ()])
+```
+
+The five pages are tabs. The new-account dialog and the notice sit over them while they apply.
+
+{{ capture("/assets/images/native/web-bank-move.png", "Move money page with Movement, From account, To account, Amount and Description fields and a Confirm transfer button", "Move money: every field and picker is a node in the app.", 1440, 960) }}
+
+## Requests are capabilities
+
+The app never opens a socket. It asks the host for an `Http` request, the host performs it with the platform's own networking, and the reply comes back as a later event. The reply's body waits in a host-held slice named by the request:
+
+```ospml
+export call (server, ticket, method, path, body) = Requests::ask (ticket, ui::Http(method = method,
+    url = server + path, headers = [jsonHeader ()], body = body, responseLimit = replyLimit (),
+    deadline = replyDeadline (), httpSlice = ticket))
+```
+
+The reply is decoded once, at this edge, into `Account` and `Movement` records. No JSON reaches the screens.
+
+```mermaid
+flowchart LR
+    host[Host: browser, Android or SwiftUI] -->|typed event| app[Talon app: update]
+    app -->|frame rows and Http asks| host
+    host -->|GET / POST| api[Talon server]
+    api -->|Ledger::Store effect| db[(SQLite)]
+    host -->|completion event| app
+```
+
+On the server, routes perform typed operations such as `perform Ledger::Store.balance id`. A SQLite handler answers them, so no route holds a database connection. A transfer commits the debit, the credit and both journal entries in one transaction.
+
+{{ capture("/assets/images/native/web-bank-activity.png", "Activity page listing credits, debits and a declined withdrawal with a search field and a Show picker", "Activity: the journal as the last reply listed it.", 1440, 960) }}
+
+## How the browser runs it
+
+The build compiles the app with `--target=wasm32` and inlines it in one script beside the host. The page runs the app directly, one call at a time:
 
 ```mermaid
 flowchart TD
-    event["click / input / submit / location / HTTP response"]
-    wasm["osprey_web_dispatch(pointer)<br/>Osprey WebAssembly<br/>decode → update → present"]
-    adapter["osprey_web.render(pointer)<br/>JavaScript adapter"]
-    react["React root.render(element)"]
-    dom["DOM"]
-
-    event -->|"JSON event + current model"| wasm
-    wasm -->|"{ model, view, commands }"| adapter
-    adapter -->|"React elements"| react
-    react --> dom
-    wasm -->|"http"| fetchCmd["fetch"]
-    fetchCmd -->|"response event"| event
-    wasm -->|"focus"| focusCmd["element focus"]
-    wasm -->|"navigate"| navCmd["history API"]
+    wasm[App compiled to WebAssembly] -->|open and event exports| frame[Shared frame: view, scene and ask rows]
+    frame --> render[Renderer: rows to HTML]
+    render --> page[Page in the browser]
+    page -->|control number and words| wasm
+    frame -->|http ask| fetch[fetch]
+    fetch -->|completion| wasm
 ```
 
-The [client entry point](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/main.ospml) is the whole browser boundary:
+The renderer and the event client are the ones the VS Code extension uses for its Native panels. Build any Native app for the browser the same way:
 
-```osprey-ml
-// Browser composition root. The compiler exposes osprey_web_dispatch as a
-// callable wasm export; _start invokes main for the initial render.
-namespace talon
-
-import talon::App
-import talon::Bridge
-
-extern osprey_web_render (payload : string) -> int
-
-browser () = handler Bridge::Render
-    present envelope =>
-        _rendered = osprey_web_render envelope
-        envelope
-
-osprey_web_dispatch payload =
-    _envelope = App::receive (browser ()) payload
-    0
-
-main () =
-    _envelope = App::start (browser ())
-    0
+```sh
+node src/toolchain/hosts/web/scripts/build.mjs --app path/to/app --title "My app" --out build/web
 ```
-
-1. JavaScript instantiates the `.wasm` with WASI and the `osprey_web` imports, then calls `_start`, which runs `main`.
-2. `App::start` builds the first model and asks for accounts and activity.
-3. `Bridge::present` hands `{model, view, commands}` to the render import. JavaScript keeps the model as an opaque string and renders the view.
-4. Commands run after React commits, so a new element can take focus.
-5. Each later event carries the latest model into `osprey_web_dispatch`, which presents the next envelope.
-
-Deep links and back/forward send `{kind:"location",value:window.location.hash}` through the same loop, and Osprey validates the route.
-
-## Osprey describes the view; React draws it
-
-The view is JSON. The adapter maps each node to [`createElement`](https://react.dev/reference/react/createElement) and calls `root.render` once per update, so React's normal [render and commit](https://react.dev/learn/render-and-commit) updates the DOM. There is no generated JSX and no bank-specific component tree.
-
-```json
-{
-  "tag": "button",
-  "props": { "id": "refresh-data", "className": "button primary", "event": "click", "type": "button" },
-  "children": [{ "tag": "span", "props": { "className": "button-label" }, "text": "Refresh" }]
-}
-```
-
-Keys come from `node.key`, `props.key`, `props.id`, then the node's position. Stable ids keep DOM state such as focus, as React's [key rules](https://react.dev/learn/preserving-and-resetting-state) describe.
-
-Events are data too. `props.event` names the event, and the adapter sends a small message back instead of running logic in JavaScript:
-
-| Browser interaction | Message to Osprey |
-|----|----|
-| Click | `{kind:"click", id}` |
-| Input or change | `{kind:"input", id, name?, value?}` |
-| Submit | `{kind:"submit", id, data}`, with `data` as JSON-encoded `FormData` |
-| Key | Event kind, element id and key |
-| Back, forward or deep link | `{kind:"location", value}` |
-
-The adapter rejects `dangerouslySetInnerHTML` and `onX` props, and text stays React text, so React escapes it. An input that changes the app before submit is [controlled](https://react.dev/reference/react-dom/components/input#controlling-an-input-with-a-state-variable): handle its event and return the value in the next view. Otherwise leave it uncontrolled and read the form on submit.
-
-{{ capture("/assets/images/native/web-bank-activity.png", "Talon Bank Activity route before a search", "Activity before filtering.", 1440, 960) }}
-
-{{ capture("/assets/images/native/web-bank-filter.png", "Talon Bank Activity filtered by typing vintage into the search box", "Typing vintage: the list follows the updated Osprey model.", 1440, 960) }}
-
-## State is one Osprey record
-
-Talon's [`AppModel`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/model.ospml) holds the route, loading flags, notices, open menus, filters, the selected account and the API documents. Each event produces the next record and a list of commands:
-
-```mermaid
-flowchart TD
-    input["Event + serialized AppModel"] --> dispatch["Update.dispatch : string -> UpdateResult"]
-    dispatch --> model["model: next AppModel"]
-    dispatch --> commands["commands: browser work as data"]
-```
-
-The host attaches the latest model to every event, so the second HTTP response sees the first one's update. React owns only what the browser owns: input values, focus, selection, history and requests in flight. Snapshots are not saved or shared between tabs; version and validate them before you persist them.
-
-{{ capture("/assets/images/native/web-bank-move.png", "Talon Bank Move money form described by the Osprey application", "Move money: the form controls are described by Osprey.", 1440, 960) }}
-
-## Browser work is returned as commands
-
-An update never calls the browser. It returns the work as data, and JavaScript does it:
-
-```osprey-ml
-module Commands
-    export hydrate : Unit -> string
-    hydrate () = Json::arr (
-        http "accounts" "GET" "/api/accounts" "" + "," +
-        http "activity" "GET" "/api/activity" "")
-```
-
-| Command | Host action | Result |
-|----|----|----|
-| `http` | Same-origin `fetch` with an `X-Osprey-Request-Id` header | Dispatches `{kind:"http",id,status,data}` |
-| `focus` | Focuses an element on the next frame | None |
-| `navigate` | `history.pushState` or `replaceState` | Later back/forward sends `location` |
-
-An update is deterministic for a given event and model. Add a capability as a command, its host code and, if needed, a completion event, and test both directions.
-
-## Effects choose where the code runs
-
-The server declares `Ledger::Store` for storage and `Api::Audit` for logging. At startup it installs SQLite and console handlers:
-
-```osprey-ml
-storage = Ledger::sqlite db
-consoleAudit = handler Api::Audit
-    log line => print "[audit] ${line}"
-consoleAudit (\() => storage (\() => serve db))
-```
-
-Tests install an in-memory store around the same code. The client does the same with rendering: `Bridge::Render` is an effect, the browser handler above sends the envelope to JavaScript, and tests swap in a handler that inspects the output with no JavaScript at all.
-
-The server and the client share the bank's `Money` module. Its signature exposes `Cents` and an abstract `Amount`, so callers go through `Money::fromCents`, `Money::show` and `Money::toCents`, and the compiler rejects a raw integer where an amount is required.
-
-Value handlers, `handle` and `handle static` work on WebAssembly. Dynamic `control` operations need native continuations and are rejected before linking; see [feature status](/status/#algebraic-effects).
-
-## What each layer owns
-
-| Layer | Owns | Does not own |
-|----|----|----|
-| Osprey client (`.osp` or `.ospml`) | Model, transitions, routes, validation, view, commands | DOM, React hooks, `fetch`, history |
-| Wasm ABI | String transfer, allocation, the dispatch export, render and command imports | Components or networking |
-| JavaScript host | Wasm lifecycle, the opaque model, event messages, running commands | Domain rules |
-| React | Creating and reconciling elements in one root | The application model |
-| Osprey server | HTTP routes, SQLite, storage and audit handlers, embedded assets | Browser rendering |
-
-## The Wasm boundary
-
-The compiler and runtime only move strings and expose an entry point. The JSON schema belongs to the app.
-
-| Export | Purpose |
-|----|----|
-| `memory` | WebAssembly linear memory |
-| `_start` | WASI startup |
-| `osp_alloc(length: i64)` | Reserve bytes for a message from JavaScript |
-| `osprey_web_dispatch(pointer)` | Deliver one event; exported when the function exists |
-
-`osp_alloc` takes a `BigInt` from JavaScript and may grow memory, so take a fresh `memory.buffer` view after calling it.
-
-| Import | Purpose |
-|----|----|
-| `osprey_web.render(pointer)` | Receive a render envelope |
-| `osprey_web.command(pointer)` | Receive commands outside an envelope |
-
-In Osprey these are ordinary externs:
-
-```osprey
-extern fn osprey_web_render(payload: string) -> int
-extern fn osprey_web_command(payload: string) -> int
-```
-
-Every crossing is a NUL-terminated UTF-8 string. A render envelope looks like this:
-
-```json
-{
-  "model": "{\"route\":\"overview\",\"loading\":\"true\"}",
-  "view": { "tag": "main", "props": {}, "children": [] },
-  "commands": [{ "kind": "http", "id": "accounts", "method": "GET", "url": "/api/accounts", "body": "" }]
-}
-```
-
-The output is a WASI Preview 1 command module. Talon's host supplies a small browser WASI for arguments, clocks, random bytes, stdout and the scheduler; other calls return `ENOSYS`. HTTP goes through `fetch`, not WASI sockets.
-
-Wasm builds default to ARC (`libosprey_runtime_wasm_arc.a`), which frees memory in linear memory without the WebAssembly GC proposal. Tracing GC is not available on this target.
-
-## Build your own app
-
-Copy the reference host and replace its Talon-specific names; it is not published to npm.
-
-```text
-my-app/
-  client/
-    osprey.toml
-    src/
-      main.ospml       # main + osprey_web_dispatch
-      model.ospml      # serializable state
-      update.ospml     # Event × Model -> Model × Commands
-      view.ospml       # view document constructors
-      commands.ospml   # browser work as data
-      bridge.ospml     # envelope + osprey_web_render extern
-  web/
-    src/
-      host.js          # Wasm lifecycle and commands
-      protocol.js      # JSON node -> React element
-      wasi.js          # minimal WASI Preview 1
-      index.jsx
-```
-
-```bash
-osprey path/to/my-app/client --target=wasm32 --memory=arc --compile -o path/to/app.wasm
-```
-
-Serve it over HTTP, not from a file, because module loading and `fetch` need an origin. Keep one serializable model, keep browser calls out of `update`, give stateful nodes stable ids, add commands and completion events in pairs, validate messages on both sides, and keep large binary data out of the envelope.
 
 ## Test it
 
-```bash
-cd src/osprey/examples/projects/modules/web && npm test        # protocol, host, embedding, WASI
-make -C src/toolchain/targets/web/tests bank                    # real client and server in Chromium
-cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli wasm::tests
+The app's own tests drive it through the boundary every host calls, with no host and no server. A test finds controls by their labels and answers each request itself. A shortened deposit test:
+
+```ospml
+test ("a deposit is validated before anything is sent, then sent once", \() => bench (\() =>
+    loaded ()
+    press "Deposit"
+    typed ("Amount", "-4")
+    press "Confirm deposit"
+    askedNothing ()
+    typed ("Amount", "$1,250.50")
+    press "Confirm deposit"
+    expect (asked (), "POST http://127.0.0.1:18790/api/deposit {\"account\":1,\"cents\":125050,\"note\":\"\"} deposit")))
 ```
 
-The Chromium suite covers startup, routes, HTTP round trips, forms, responsive navigation and injection-safe text.
+The browser suite runs real Chromium against the real server and finds every control by its accessible role and name.
 
-## Native Android and iOS
+```sh
+make -C src/toolchain/targets/tests bank-app   # the app, no host
+make -C src/toolchain/targets/web/tests bank   # Chromium against the server
+make -C src/toolchain/targets/android/tests bank
+make -C src/toolchain/targets/ios/tests bank
+```
 
-The [native Talon Bank apps](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/projects/modules/mobile) reuse these screens, validation, transitions and commands. SwiftUI and Android widgets draw the same view tree, and a mobile handler returns the envelope through the C ABI to the same bank API.
-
-{{ capture("/assets/images/native/web-bank-security.png", "Talon Bank security page, an application demo rather than proof of runtime confinement", "Security page: an application demo, not proof of runtime confinement.", 1440, 960) }}
+{{ capture("/assets/images/native/web-bank-security.png", "Security page listing storage isolation, atomic transfers, the audit trail and whole-cent arithmetic", "Security: a page of the demo app, not proof of runtime confinement.", 1440, 960) }}
 
 ## Current limits
 
-- The host is a reference implementation, not a versioned package, and there is no `osprey new web` scaffold.
-- View, event, command and model schemas are app conventions, not compiler-checked types, with no protocol versioning.
-- Every event sends the full view and serializes the model; there is no incremental protocol.
-- Rendering is client-only (`createRoot`), so there is no server-rendered HTML.
-- WebAssembly rejects fibers, socket HTTP and WebSocket, processes, the terminal and arbitrary C imports before code generation.
-- Routing is hash-based only: no path deep links, route parameters or React Router.
-- HTTP commands have no cancellation, timeout or stale-response check.
-- The host blocks raw HTML and callback props but trusts tags, URLs and most DOM properties. Treat view documents as trusted app output.
+- The browser host answers `http` requests only. A request for files, processes or other capabilities completes with an error.
+- The page needs JavaScript and WebAssembly; there is no server-rendered fallback.
+- The browser host allows HTTPS anywhere, and HTTP only to the page's own origin or this machine.
+- The demo server listens on `127.0.0.1` with no authentication. It is a teaching example, not a deployable bank.
 
 ## Source tour
 
-| Concern | File |
-|----|----|
-| Composition and pages | [`client/src/app.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/app.ospml) |
-| Model | [`client/src/model.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/model.ospml) |
-| Transitions | [`client/src/update.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/update.ospml) |
-| View | [`client/src/ui.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/ui.ospml) |
-| Commands | [`client/src/commands.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/commands.ospml) |
-| Render boundary | [`client/src/bridge.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/bridge.ospml) |
-| Wasm and React lifecycle | [`web/src/host.js`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/web/src/host.js) |
-| Element and event protocol | [`web/src/protocol.js`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/web/src/protocol.js) |
-| Browser WASI | [`web/src/wasi.js`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/web/src/wasi.js) |
-| Build pipeline | [`web/scripts/build.mjs`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/web/scripts/build.mjs) |
-| Wasm runtime | [`web_runtime.c`](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/compiler/runtime/web_runtime.c) |
-| Wasm linker | [`wasm.rs`](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/crates/osprey-cli/src/wasm.rs) |
+| Part | Source |
+| --- | --- |
+| Store and actions | [`app/src/store.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/src/store.ospml) |
+| Update and validation | [`app/src/update.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/src/update.ospml) |
+| HTTP edge | [`app/src/ledger.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/src/ledger.ospml), [`app/src/replies.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/src/replies.ospml) |
+| Screens | [`app/src/screens.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/src/screens.ospml), [`app/src/forms.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/src/forms.ospml) |
+| App tests | [`app/test/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/app/test/main.ospml) |
+| Server and storage | [`src/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/src/main.ospml), [`src/store/ledger.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/src/store/ledger.ospml) |
+| Browser host | [`src/toolchain/hosts/web`](https://github.com/Nimblesite/osprey/tree/main/src/toolchain/hosts/web) |
 
-See also the [WebAssembly target spec](/spec/0022-webassemblytarget/), the [effects guide](/docs/effects/), [modules and namespaces](/spec/0025-modulesandnamespaces/) and [memory management](/spec/0018-memorymanagement/).
+See also [Osprey Native](/docs/osprey-native/), [Build an iOS and Android app](/docs/mobile-apps/) and [algebraic effects](/docs/algebraic-effects/).

@@ -68,9 +68,9 @@ Prism, a music studio (DAW), is built the same way: every voice in its songs is 
 
 {% videoPlayer "rust-ui-framework-without-rust", true %}
 
-### Web: WebAssembly logic, real browser UI
+### Web: the same app, compiled to WebAssembly
 
-{{ capture("/assets/images/native/web-bank.png", "Talon Bank browser dashboard showing balances, accounts and activity", "Talon Bank · Chromium · Osprey WebAssembly owns the state and rules; React renders the browser UI.", 1440, 960) }}
+{{ capture("/assets/images/native/web-bank.png", "Talon Bank browser dashboard showing balances, accounts and activity", "Talon Bank · Chromium · one Osprey Native app, the same source Android and iOS run, drawn by the web host.", 1440, 960) }}
 
 [Run the bank →](/docs/web-apps/) · [Explore Proof Workbench →](/docs/proof-workbench/)
 
