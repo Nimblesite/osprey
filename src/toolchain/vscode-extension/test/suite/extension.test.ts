@@ -1815,10 +1815,10 @@ suite("Osprey Language Features Tests", () => {
       return new vscode.Position(line, col);
     };
 
-    // Hover `listLength` where the registered indexing scenario asserts the
-    // constructed command list's exact size. This probe is both executed by the
-    // corpus and tied to observable list behavior rather than legacy stdout.
-    const lenAt = at("listLength(commands), listLength(empty)", "listLength");
+    // Hover `listLength` where the corpus names it as the length every
+    // registered scenario folds over its lists. This probe is both executed by
+    // the corpus and tied to observable list behavior rather than legacy stdout.
+    const lenAt = at("fn lengthOf(xs) = listLength(xs)", "listLength");
     const lenHover = await hoverPoll(
       doc.uri,
       lenAt.line,
