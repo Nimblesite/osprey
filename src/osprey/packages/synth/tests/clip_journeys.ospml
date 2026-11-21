@@ -295,6 +295,7 @@ registerClipJourneys () =
         headless = Components::gain (1, 1.0)
         renderRefused (synth::ClipLayouts::channels (headless(outputs = [])))
         expect (synth::ClipLayouts::connected (midiInstrument (69.0, 0.5, 8.0), midiOscillator ()), true)
+        layoutJourney ()
         stereoTapJourney ()
         cached = nodeClipAt (1, [0.25, 0.25])
         expect (synth::ClipLayouts::validClip (graph, 2, cached), true)

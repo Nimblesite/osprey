@@ -1,0 +1,24 @@
+import synth::PartialBanks
+
+// [SYNTH-ADVANCED-TABLES] One oscillator advances a quarter-cycle per sample. Its gain falls 60 dB in one second.
+partialJourney () =
+    bank = synth::PartialConfig(sampleRate = 48000.0, frequency = 12000.0, count = 1.0, tilt = 0.0, parity = 0.0, decay = 1.0, damping = 0.0, amplitude = 1.0, layout = synth::HarmonicLayout)
+    initial = PartialBanks::initial ()
+    fixed = PartialBanks::stiffCoefficients (bank, 0.0, 1.0)
+    succeeds (PartialBanks::configure bank, \config =>
+        succeeds (PartialBanks::next (config, initial), \first =>
+            near (first.sample, 0.0, 0.0)
+            expect (listGet first.next.phases 0 ?: -1.0, 0.25)
+            succeeds (PartialBanks::next (config, first.next), \live =>
+                near (live.sample, pow (10.0, -3.0 / 48000.0), 0.000000001)
+                succeeds (PartialBanks::withCoefficients (config, fixed, first.next), \prepared => expect (structuralEquals (live, prepared), true))
+                reset = PartialBanks::retrigger live.next
+                expect (reset.age, 0.0)
+                expect (structuralEquals (reset.phases, live.next.phases), true))))
+    ratios = bank(layout = synth::RatioLayout(ratios = [2.0]))
+    succeeds (PartialBanks::next (ratios, initial), \first =>
+        sameSamples (synth::Sequences::take (first.next.phases, 2), [0.5, 0.0]))
+    malformed = initial(phases = [])
+    renderRefused (PartialBanks::next (bank, malformed))
+    renderRefused (PartialBanks::withCoefficients (bank, fixed, malformed))
+    renderRefused (PartialBanks::configure (bank(layout = synth::RatioLayout(ratios = [-1.0]))))

@@ -410,3 +410,5 @@ test ("a delay line retains wall-clock history across sample-rate changes and pa
 test ("compressor reduction crosses the soft knee continuously and recovers on its release coefficient", \() => arithmetic compressorJourney)
 
 test ("one macro moves two knobs on opposite curves and refuses either endpoint outside the declared range", \() => arithmetic macroGainJourney)
+
+test ("quarter-cycle partials retain phase on retrigger and agree with prepared coefficients", \() => arithmetic partialJourney)
