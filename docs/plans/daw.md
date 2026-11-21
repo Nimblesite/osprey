@@ -426,7 +426,7 @@ Rule from tonight: a commit to `packages/synth` is tested against `examples/daw`
 
 **Open defects reported by OspreyOpus1 from the native journey (not yet reproduced by a test).**
 
-- [ ] A render killed part-way leaves `piece.wav` that the next Play accepts or replays as silence. `fresh` already refuses a file of 44 bytes or less, so the suspect is a partly written file; the renderer should write to a temporary name and rename. Failing test first.
+- [x] Interrupted renders preserve the previous complete WAV. The renderer publishes the temporary WAV after successful encoding, and playback rejects truncated cached files. The interrupted-cache regression passes under GC and ARC.
 - [ ] A tap on Timeline right after Audition is ignored about one run in three. Failing test first.
 
 **Interface.** `tests/prism_events.rs` drag: 10.6 ms mean, 18.2 ms worst per pointer move. Timeline taps: 0.57 ms mean. Target: drag under 5 ms mean, under 8.3 ms worst (one 120 Hz frame).

@@ -86,7 +86,17 @@ module DawSession
     mastered place = "${place}/song.wav"
 
     // The cached audio is current when it was rendered from exactly this project text.
-    fresh (place, audio, text) = (readFile (snapshot place) ?: "") == text && (fileSize audio ?: 0) > 44
+    fresh (place, audio, text) = (readFile (snapshot place) ?: "") == text && completeWave audio
+
+    completeWave audio = match fileSize audio
+        Error _ => false
+        Success total => match total > 44
+            false => false
+            true => match readFileBytes (audio, 0, 12)
+                Error _ => false
+                Success bytes => match WaveImport::header (bytes, total)
+                    Error _ => false
+                    Success _ => true
 
     (** [DAW-TRANSPORT-RANGE] The beat Play starts on: the start marker's bar line. *)
     export rangeStart editor = TimelineGeometry::barStart (toFloat editor.rollBar, measure editor.song)
@@ -249,7 +259,7 @@ module DawSession
             next = editor(rollBar = bar)
             Runtime::step (next(message = "Play runs ${span next}."))
 
-    exported (editor, place, outcome) = match (fileSize (mastered place) ?: 0) > 44
+    exported (editor, place, outcome) = match completeWave (mastered place)
         true => Runtime::step (editor(songTicket = "", message = "Rendered ${mastered place}."))
         false => failed (editor, outcome)
 

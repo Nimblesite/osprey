@@ -32,17 +32,21 @@ module Player
             true => Success(value = held.parts)
             false => Error(message = held.fault)
 
-    joined request = synth::Outcomes::carried (Shell::ran (60, "mv ${Shell::quoted (piecePath request)} ${Shell::quoted (songPath request)}"), \_ => Success(value = songPath request))
-
     // The concat list names parts relative to itself.
-    assembled (request, files) = match writeFile "${request.folder}/parts.txt" (join (mapList (files, \path => "file ${Shell::quoted path}")) "\n")
+    assembled (stage, files, destination) = match writeFile "${stage.folder}/parts.txt" (join (mapList (files, \path => "file ${Shell::quoted path}")) "\n")
         Error why => Error(message = why)
-        Success _ => synth::Outcomes::carried (Shell::ran (300, "ffmpeg -v error -y -f concat -safe 0 -i ${Shell::quoted "${request.folder}/parts.txt"} -c copy ${Shell::quoted (piecePath request)}"), \_ => delivered request)
+        Success _ =>
+            wav = Shell::quoted (piecePath stage)
+            command = "ffmpeg -v error -y -f concat -safe 0 -i ${Shell::quoted "${stage.folder}/parts.txt"} -c copy ${wav} && mv -f ${wav} ${Shell::quoted destination}"
+            synth::Outcomes::carried (Shell::ran (300, command), \_ => Success(value = destination))
 
-    // An excerpt stays `piece.wav`; the whole song is `song.wav`.
-    delivered request = match request.beats > 0.0
-        true => Success(value = piecePath request)
-        false => joined request
+    // Parts and the unfinished join are private to this render. Only a successful join replaces the last WAV.
+    staged (request, arrangement, mix) =
+        destination = ui::Pick::either (request.beats > 0.0, piecePath request, songPath request)
+        stage = request(folder = "${request.folder}/.bounce-${random ()}")
+        synth::Outcomes::carried (Shell::ran (10, "mkdir -m 700 ${Shell::quoted stage.folder}"), \_ =>
+            result = synth::Outcomes::carried (parts (stage, arrangement, mix), \files => assembled (stage, files, destination))
+            synth::Outcomes::carried (Shell::ran (10, "rm -rf ${Shell::quoted stage.folder}"), \_ => result))
 
     // [DAW-ANALYSIS-SPECTRUM] Master's octave bands in whole dB, where a full-scale sine reads 0.
     decibel level = toString (floatToInt (synth::SpectralMath::nearest level) ?: -120)
@@ -79,7 +83,7 @@ module Player
         Success mix =>
             print "  mixed ${length mix.left} frames, peak ${mix.peak} before the true-peak limiter at -1 dBTP"
             analysed (arrangement, mix)
-            synth::Outcomes::carried (parts (request, arrangement, mix), \files => assembled (request, files))
+            staged (request, arrangement, mix)
 
     (** Render the song into the request's folder; the result is the finished WAV's path. *)
     export rendered (request, arrangement) = match Arrangements::frames arrangement

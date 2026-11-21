@@ -1094,6 +1094,9 @@ rendererTranscript (first, transcript, expected) =
         fetch key => ui::Pick::either (key == "prism-song-report", transcript, "")
     said (synth::DawSession::completed (first.stepStore, "daw-song:bounce:${songFolder}", Success(value = "{\"status\":0,\"stderr\":\"\"}")), "", expected)
 
+// The copy runs through the native process callback.
+fixtureCopyEvent (_pid, _kind, _text) = print ""
+
 bounceJourney ready =
     // A previous run's finished bounce would otherwise count as this project's audio.
     _made = makeDir songFolder
@@ -1114,6 +1117,12 @@ bounceJourney ready =
     rendererTranscript (first, "daw: Bridge\ndaw: unknown patch setting.\n", "Rendering failed: daw: unknown patch setting.")
     rendererTranscript (first, "", "Rendering failed: The renderer produced no audio.")
     succeeds (writeFile "${songFolder}/song.wav" (join (mapList (toList (range (0, 64)), \_ => "RIFF")) ""), \_ => expect (true, true))
+    rendererTranscript (first, "daw: interrupted", "Rendering failed: daw: interrupted")
+    said (synth::DawSession::bounce ready, "daw-song:bounce:${songFolder}", "Rendering all of Bridge.")
+    succeeds (spawnProcess "cp src/osprey/examples/daw/tracks/samples/808-hat.wav '${songFolder}/song.wav'" fixtureCopyEvent, \process =>
+        expect (awaitProcess process, 0)
+        _closed = cleanupProcess process
+        expect ((fileSize "${songFolder}/song.wav" ?: 0) > 44, true))
     done = synth::DawSession::completed (first.stepStore, "daw-song:bounce:${songFolder}", rendererSaid "daw: wrote it")
     said (done, "", "Rendered ${songFolder}/song.wav.")
     expect (length done.requests, 0)

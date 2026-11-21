@@ -98,13 +98,18 @@ module WaveImport
         Error why => Error(message = why)
         Success held => Outcomes::carried (format (bytes, held), \fmt => decoded (bytes, fmt))
 
+    (** Check the RIFF/WAVE header against the file length, including for large exports read in parts. *)
+    export header (bytes, total) = match fields (bytes, 0, [WaveField(offset = 0, width = 4), WaveField(offset = 4, width = 4), WaveField(offset = 8, width = 4)])
+        Error why => Error(message = why)
+        Success values => match values
+            [riff, size, wave] => match riff == 1179011410 && wave == 1163280727 && size == satSub total 8
+                false => Error(message = MissingResource(detail = "Expected a complete little-endian RIFF/WAVE file."))
+                true => Success(value = size)
+            _ => Error(message = MissingResource(detail = "Invalid WAV header."))
+
     (** Decode at most 8 MiB; preserve every source channel and the frame count. No resampling. *)
     export decode bytes = match length bytes >= 12 && length bytes <= 8388608
         false => Error(message = MissingResource(detail = "WAV file size must be between 12 bytes and 8 MiB."))
-        true => match fields (bytes, 0, [WaveField(offset = 0, width = 4), WaveField(offset = 4, width = 4), WaveField(offset = 8, width = 4)])
+        true => match header (bytes, length bytes)
             Error why => Error(message = why)
-            Success values => match values
-                [riff, size, wave] => match riff == 1179011410 && wave == 1163280727 && size == satSub (length bytes) 8
-                    false => Error(message = MissingResource(detail = "Expected a complete little-endian RIFF/WAVE file."))
-                    true => body bytes
-                _ => Error(message = MissingResource(detail = "Invalid WAV header."))
+            Success _ => body bytes
