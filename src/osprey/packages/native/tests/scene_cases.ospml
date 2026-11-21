@@ -204,14 +204,15 @@ tabSymbol node = match node
 sceneCaseLabelsIconsBadgesEmptyStatesButtonsTabs () =
     held = Ui::column [Ui::label ("L", "folder"), Ui::icon "globe", Ui::badge ("B", "shield", ui::Good), Ui::empty ("search", "E", "D"), Ui::button ("Go", "refresh", Increment), ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load), Ui::rows ([Ui::item ("plain", Ui::text "p"), Ui::entry ("led", "person", "G", Ui::text "q")], "plain", Load)]
     binds (drawnOf held, 3)
-    expect (spelled (childTold (toldOf held, 0)), "{kind=\"label\",label=\"L\",symbol=\"folder\"}")
-    expect (spelled (childTold (toldOf held, 1)), "{kind=\"icon\",symbol=\"globe\"}")
-    expect (spelled (childTold (toldOf held, 2)), "{kind=\"badge\",label=\"B\",symbol=\"shield\",tone=\"good\"}")
-    expect (spelled (childTold (toldOf held, 3)), "{kind=\"empty\",symbol=\"search\",title=\"E\",detail=\"D\"}")
-    expect (spelled (childTold (toldOf held, 4)), "{kind=\"button\",label=\"Go\",symbol=\"refresh\",role=\"plain\",enabled=?true,event=#0}")
-    expect (spelled (childTold (toldOf held, 5)), "{kind=\"tabs\",selected=\"t\",tabs=[{key=\"t\",label=\"T\",symbol=\"clock\",child={kind=\"text\",text=\"page\",role=\"body\",tone=\"primary\"}}],event=#1}")
-    // The plain row carries no symbol or group; the led row's icon and group lead its cell.
-    expect (spelled (childTold (toldOf held, 6)), "{kind=\"rows\",selected=\"plain\",rows=[{key=\"plain\",symbol=\"\",group=\"\",child={kind=\"text\",text=\"p\",role=\"body\",tone=\"primary\"}},{key=\"led\",symbol=\"person\",group=\"G\",child={kind=\"text\",text=\"q\",role=\"body\",tone=\"primary\"}}],event=#2}")
+    expectToldChildren (held, [
+        { index = 0, wanted = "{kind=\"label\",label=\"L\",symbol=\"folder\"}" },
+        { index = 1, wanted = "{kind=\"icon\",symbol=\"globe\"}" },
+        { index = 2, wanted = "{kind=\"badge\",label=\"B\",symbol=\"shield\",tone=\"good\"}" },
+        { index = 3, wanted = "{kind=\"empty\",symbol=\"search\",title=\"E\",detail=\"D\"}" },
+        { index = 4, wanted = "{kind=\"button\",label=\"Go\",symbol=\"refresh\",role=\"plain\",enabled=?true,event=#0}" },
+        { index = 5, wanted = "{kind=\"tabs\",selected=\"t\",tabs=[{key=\"t\",label=\"T\",symbol=\"clock\",child={kind=\"text\",text=\"page\",role=\"body\",tone=\"primary\"}}],event=#1}" },
+        // The plain row carries no symbol or group; the led row's icon and group lead its cell.
+        { index = 6, wanted = "{kind=\"rows\",selected=\"plain\",rows=[{key=\"plain\",symbol=\"\",group=\"\",child={kind=\"text\",text=\"p\",role=\"body\",tone=\"primary\"}},{key=\"led\",symbol=\"person\",group=\"G\",child={kind=\"text\",text=\"q\",role=\"body\",tone=\"primary\"}}],event=#2}" } ])
     expect (tabSymbol (ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load)), "clock")
     delivers (held, [ui::Tap(action = Increment), ui::ChoiceInput(action = Load), ui::ChoiceInput(action = Load)])
 
@@ -390,14 +391,15 @@ sceneCaseTogglesAndPickersDeliverTheirOwnValue () =
 sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading () =
     held = Ui::column [ui::Progress(label = "P", detail = "d"), ui::Swatch(name = "S", light = "#fff", dark = "#000"), ui::Alert(title = "A", message = "m", visible = true, dismiss = Load), Ui::action ("Go", "play", ui::Prominent, true, Increment), Ui::aside (Ui::text "p", ui::Leading, Ui::text "c", 300, Typed)]
     binds (drawnOf held, 3)
-    expect (spelled (childTold (toldOf held, 0)), "{kind=\"progress\",label=\"P\",detail=\"d\"}")
-    // A swatch tells both of its colours, one for each appearance.
-    expect (spelled (childTold (toldOf held, 1)), "{kind=\"swatch\",name=\"S\",light=\"#fff\",dark=\"#000\"}")
-    // A visible alert keeps its dismissal binding.
-    expect (spelled (childTold (toldOf held, 2)), "{kind=\"alert\",title=\"A\",message=\"m\",visible=?true,event=#0}")
-    expect (spelled (childTold (toldOf held, 3)), "{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"prominent\",enabled=?true,event=#1}")
-    // A leading aside tells its side, its pane and its column, 300 points wide, with the splitter's binding after them.
-    expect (spelled (childTold (toldOf held, 4)), "{kind=\"aside\",side=\"leading\",pane={kind=\"text\",text=\"p\",role=\"body\",tone=\"primary\"},aside={kind=\"text\",text=\"c\",role=\"body\",tone=\"primary\"},width=#300,least=#260,most=#640,keep=#340,event=#2}")
+    expectToldChildren (held, [
+        { index = 0, wanted = "{kind=\"progress\",label=\"P\",detail=\"d\"}" },
+        // A swatch tells both of its colours, one for each appearance.
+        { index = 1, wanted = "{kind=\"swatch\",name=\"S\",light=\"#fff\",dark=\"#000\"}" },
+        // A visible alert keeps its dismissal binding.
+        { index = 2, wanted = "{kind=\"alert\",title=\"A\",message=\"m\",visible=?true,event=#0}" },
+        { index = 3, wanted = "{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"prominent\",enabled=?true,event=#1}" },
+        // A leading aside tells its side, its pane and its column, 300 points wide, with the splitter's binding after them.
+        { index = 4, wanted = "{kind=\"aside\",side=\"leading\",pane={kind=\"text\",text=\"p\",role=\"body\",tone=\"primary\"},aside={kind=\"text\",text=\"c\",role=\"body\",tone=\"primary\"},width=#300,least=#260,most=#640,keep=#340,event=#2}" } ])
     delivers (held, [ui::Tap(action = Load), ui::Tap(action = Increment), ui::SizeInput(action = Typed)])
 
 // A drawn meter's clamped amount and total, checked against what its amount clamps to.

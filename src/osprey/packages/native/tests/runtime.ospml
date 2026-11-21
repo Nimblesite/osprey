@@ -199,6 +199,10 @@ toldOf node = Tell::first (Tell::walk ([], node))
 // Compare the whole component record sent to the host, with the wire fields in order.
 expectTold (node, wanted) = expect (spelled (toldOf node), wanted)
 
+expectToldChildren (node, rows) =
+    told = toldOf node
+    forEachList (rows, \row => expect (spelled (childTold (told, row.index)), row.wanted))
+
 // A component record's own members, or none when they name no kind.
 ownControls members = match memberText (members, "kind") == ""
     true => []

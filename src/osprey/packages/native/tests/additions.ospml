@@ -208,8 +208,9 @@ module AdditionCases
     export mediaEncoding () =
         media = Ui::column [Ui::button ("Before", "", Increment), Media::image ("media/a.jpg", "A chain", 1920, 1080), Media::video ("media/a.mp4", "media/a.jpg", "media/a.vtt", "A film", 40)]
         binds (drawnOf media, 1)
-        expect (spelled (childTold (toldOf media, 1)), "{kind=\"image\",source=\"media/a.jpg\",alt=\"A chain\",width=#1920,height=#1080}")
-        expect (spelled (childTold (toldOf media, 2)), "{kind=\"video\",source=\"media/a.mp4\",poster=\"media/a.jpg\",captions=\"media/a.vtt\",alt=\"A film\",seconds=#40}")
+        expectToldChildren (media, [
+            { index = 1, wanted = "{kind=\"image\",source=\"media/a.jpg\",alt=\"A chain\",width=#1920,height=#1080}" },
+            { index = 2, wanted = "{kind=\"video\",source=\"media/a.mp4\",poster=\"media/a.jpg\",captions=\"media/a.vtt\",alt=\"A film\",seconds=#40}" }])
         // Neither leaf binds a control, so both spell no event member.
         expect (memberCount (insideTold (childTold (toldOf media, 1)), "event", 0 - 1), 0 - 1)
         expect (memberCount (insideTold (childTold (toldOf media, 2)), "event", 0 - 1), 0 - 1)
