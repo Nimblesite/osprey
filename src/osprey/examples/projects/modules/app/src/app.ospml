@@ -1,0 +1,53 @@
+// Implements [UI-STORE], [UI-REGIONS] and [UI-THEME] for Talon Bank: the program every host runs.
+// The five pages are tabs; a notice and the new-account dialog sit over them while they apply.
+namespace talon
+
+import ui::Keyed
+import ui::Messages
+import ui::Runtime
+import ui::Surfaces
+import ui::Symbols
+import ui::Ui
+import talon::Forms
+import talon::Replies
+import talon::Screens
+import talon::Update
+
+(** Talon Bank as the framework runs it. *)
+module App
+    // The API a launch talks to when no server is named: the demo service on this machine.
+    local () = "http://127.0.0.1:18790"
+
+    (** The store at launch, talking to the server named by the first launch argument, with both listings asked for. *)
+    export initial context = Update::hydrate (Update::launched (listGet context.arguments 0 ?: local ()))
+
+    (** Applies one message: a tap, an edit or choice, or a completed request. *)
+    export update (_, store, message) = Messages::route (message, \action => Update::tapped (store, action), \(action, words) => Update::typed (store, action, words), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(ticket, outcome) => Replies::completed (store, ticket, outcome), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
+
+    waiting store = store.bankLoads > 0 || store.bankBusy
+
+    page (store, page) = match waiting store
+        true => Ui::column [ui::Progress(label = "Contacting the ledger", detail = ""), page]
+        false => page
+
+    tabs store = ui::Tabs(tabs = [Ui::tab ("overview", "Overview", Symbols::name ui::Globe, page (store, Screens::overview store)), Ui::tab ("accounts", "Accounts", Symbols::name ui::Person, page (store, Screens::accounts store)), Ui::tab ("move", "Move money", Symbols::name ui::Send, page (store, Forms::move store)), Ui::tab ("activity", "Activity", Symbols::name ui::Clock, page (store, Forms::activity store)), Ui::tab ("security", "Security", Symbols::name ui::Shield, Screens::security ())], selected = store.bankPage, bind = PickPage)
+
+    notice store =
+        said = store.bankNotice
+        ui::Alert(title = said.noticeHeading, message = said.noticeDetail, visible = said.noticeHeading != "", dismiss = Dismiss)
+
+    (** The whole window: the tabs, the notice and, while it is open, the new-account dialog. *)
+    export root store = match store.bankOpening
+        true => Ui::layer [tabs store, notice store, Forms::opening store]
+        false => Ui::layer [tabs store, notice store]
+
+    (** One region, rebuilt on every step. *)
+    export regions (_, store, frames, _) = [Keyed::region (frames, Surfaces::rootKey, [], \() => root store)]
+
+    token (name, light, dark) = ui::Token(tokenName = name, tokenLight = light, tokenDark = dark)
+
+    (** Talon's colours in light and dark appearance, its spacing scale and its motion durations. *)
+    export theme () = ui::Theme(tokens = [token ("accent", "#1F6B52", "#B9EE72"), token ("good", "#1F7A3A", "#7BD88F"), token ("caution", "#9D5D00", "#F2C14E"), token ("danger", "#B42318", "#FF8A80"), token ("canvas", "#F5F6F2", "#0E1A16"), token ("inset", "#FFFFFF", "#16261F"), token ("text", "#14231D", "#EEF3EC")], spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 220)
+
+    (** Talon Bank as its boundary runs it. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme ())

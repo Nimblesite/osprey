@@ -1,0 +1,55 @@
+// The pieces every Talon Bank screen shares: money as text, an account's row and a journal line.
+// Each is typed nodes ([UI-COMPONENTS]); the host decides how a row, a badge or a caption looks.
+namespace talon
+
+import ui::Ui
+import ui::Symbols
+import bank::Money
+
+(** Shared parts of the screens. *)
+module Parts
+    (** `cents` as the ledger prints money, such as `$4,250.05`. *)
+    export money cents = Money::show (Money::fromCents cents)
+
+    (** The sum of every balance. *)
+    export total accounts = foldList (accounts, 0, \(sum, account) => satAdd sum account.accountCents)
+
+    (** How many journal lines are of `kind`. *)
+    export counted (journal, kind) = length (filterList (journal, \line => line.movementKind == kind))
+
+    (** An account as a selectable row keyed by its id. *)
+    export accountRow account = Ui::entry (toString account.accountId, Symbols::name ui::Person, "", Ui::pair (account.accountOwner, money account.accountCents))
+
+    (** The account rows, with the chosen one selected; choosing one opens it. *)
+    export accountRows (accounts, chosen) = Ui::rows (mapList (accounts, accountRow), chosen, PickRow)
+
+    tone kind = match kind
+        "credit" => ui::Good
+        "debit" => ui::Primary
+        _ => ui::Danger
+
+    said kind = match kind
+        "credit" => "Money in"
+        "debit" => "Money out"
+        _ => "Declined"
+
+    mark kind = match kind
+        "credit" => Symbols::name ui::Add
+        "debit" => Symbols::name ui::Send
+        _ => Symbols::name ui::Warning
+
+    signed line = match line.movementKind
+        "credit" => "+${money line.movementCents}"
+        "debit" => "−${money line.movementCents}"
+        _ => money line.movementCents
+
+    (** One journal line: what kind it is, its note, whose account and the amount. *)
+    export movement line = Ui::row [Ui::badge (said line.movementKind, mark line.movementKind, tone line.movementKind), Ui::column [Ui::text line.movementNote, Ui::caption "${line.movementOwner} · Account #${line.movementAccount}"], Ui::styled (signed line, ui::Headline, tone line.movementKind)]
+
+    (** The first `limit` journal lines, or an empty state saying why there are none. *)
+    export journal (lines, limit, symbol, heading, detail) = match lines
+        [] => [Ui::empty (symbol, heading, detail)]
+        _ => mapList (ui::Lists::slice (lines, 0, limit), movement)
+
+    (** An account picker for a form, labelled `heading`. *)
+    export picker (heading, accounts, chosen, bind) = Ui::picker (heading, mapList (accounts, \account => Ui::choice (toString account.accountId, "#${account.accountId} · ${account.accountOwner}")), chosen, bind)

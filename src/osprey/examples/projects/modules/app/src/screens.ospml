@@ -1,0 +1,61 @@
+// Implements [UI-COMPONENTS] for Talon Bank: the five pages as typed nodes. The same nodes are
+// drawn by the browser, SwiftUI and Android hosts; none of them holds a word of Talon's copy.
+namespace talon
+
+import ui::Ui
+import ui::Symbols
+import talon::Parts
+
+(** Overview, Accounts and Security. *)
+module Screens
+    refresh () = Ui::button ("Refresh", Symbols::name ui::Refresh, Refresh)
+
+    opener () = Ui::action ("Open account", Symbols::name ui::Add, ui::Prominent, true, OpenDialog)
+
+    (** The toolbar every page shares. *)
+    export tools () = [refresh (), opener ()]
+
+    // The movement buttons an account offers, each opening the form in its mode.
+    moves () = Ui::row [Ui::action ("Deposit", Symbols::name ui::Add, ui::Prominent, true, QuickMove(quickMode = "deposit")), Ui::button ("Withdraw", Symbols::name ui::Send, QuickMove(quickMode = "withdraw")), Ui::button ("Transfer", Symbols::name ui::Branch, QuickMove(quickMode = "transfer"))]
+
+    see (words, page) = Ui::action (words, Symbols::name ui::Chevron, ui::Plain, true, SeePage(seenPage = page))
+
+    glance store = Ui::section ("At a glance", "", [Ui::pair ("Money in", toString (Parts::counted (store.bankJournal, "credit"))), Ui::pair ("Money out", toString (Parts::counted (store.bankJournal, "debit"))), Ui::pair ("Journal entries", toString (length store.bankJournal))])
+
+    portfolio store = Ui::section ("Managed portfolio", "", [Ui::styled (Parts::money (Parts::total store.bankAccounts), ui::Display, ui::Primary), Ui::caption "Across ${length store.bankAccounts} protected client accounts", moves ()])
+
+    clients store = Ui::section ("Client accounts", "", [Parts::accountRows (store.bankAccounts, store.bankChosen), see ("View all", "accounts")])
+
+    recent store = Ui::section ("Recent activity", "", listAppend (Parts::journal (store.bankJournal, 5, Symbols::name ui::Inbox, "Nothing to report", "New movements will appear here.")) (see ("Full history", "activity")))
+
+    (** The portfolio at a glance: the total, the accounts and the latest movements. *)
+    export overview store = Ui::screen ("Overview", "Live operations", tools (), [portfolio store, glance store, clients store, recent store])
+
+    chosen store = match ui::Lists::find (store.bankAccounts, \account => toString account.accountId == store.bankChosen)
+        Success account => account
+        Error _ => Account(accountId = 0, accountOwner = "No account selected", accountCents = 0)
+
+    ready account = match account.accountCents > 0
+        true => "Ready to move"
+        false => "Waiting for first deposit"
+
+    detail account = Ui::section (account.accountOwner, "Talon account #${account.accountId}", [Ui::styled (Parts::money account.accountCents, ui::Display, ui::Primary), Ui::caption (ready account), moves (), Ui::pair ("Account ID", "#${account.accountId}"), Ui::pair ("Ledger", "Journaled"), Ui::pair ("Overdrafts", "Refused")])
+
+    own store = filterList (store.bankJournal, \line => toString line.movementAccount == store.bankChosen)
+
+    latest store = Ui::section ("Latest movements", "", listAppend (Parts::journal (own store, 4, Symbols::name ui::Inbox, "No movements", "Activity for this account will show here.")) (see ("See all", "activity")))
+
+    (** Every client account, and the chosen one in detail. *)
+    export accounts store = match store.bankAccounts
+        [] => Ui::screen ("Accounts", "Client accounts", tools (), [Ui::empty (Symbols::name ui::Person, "No accounts yet", "Open an account in seconds.")])
+        _ => Ui::screen ("Accounts", "Client accounts", tools (), [Parts::accountRows (store.bankAccounts, store.bankChosen), detail (chosen store), latest store])
+
+    control (heading, detail, status) = Ui::row [Ui::label (heading, Symbols::name ui::Shield), Ui::caption detail, Ui::badge (status, Symbols::name ui::Check, ui::Good)]
+
+    layer (heading, detail) = Ui::column [Ui::styled (heading, ui::Headline, ui::Primary), Ui::caption detail]
+
+    (** What protects the ledger, and how this one app runs on every platform. *)
+    export security () = Ui::screen ("Security", "Trust you can inspect", [], [
+        Ui::section ("Protection status", "The app can request bank operations, but it never holds storage authority.", [control ("Storage isolation", "The app has no Ledger or SQLite capability.", "Enforced"), control ("Atomic transfers", "Debit and credit commit as one transaction.", "Enforced"), control ("Audit trail", "Refused overdrafts are journalled too.", "Live"), control ("Whole-cent arithmetic", "Money stays in whole cents from form to ledger.", "Verified")]),
+        Ui::section ("How this app runs", "One Osprey Native app, drawn by the browser, SwiftUI and Android hosts.", [layer ("Platform host", "Draws the nodes with its own controls and performs HTTP requests. It holds no bank logic."), layer ("Osprey app", "Owns the store, every update, validation and these screens."), layer ("HTTP capability", "Typed requests to the public bank endpoints, answered by the host."), layer ("Ledger service", "Domain rules and SQLite stay on the server, behind effect handlers.")]),
+    ])
