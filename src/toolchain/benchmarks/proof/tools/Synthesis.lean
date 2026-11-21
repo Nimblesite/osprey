@@ -151,4 +151,40 @@ theorem antiderivativeConstantCurve {α : Type} (add sub mul div : α → α →
   rw [shift, dist]
   exact cancel _ _ distinct
 
+def quarterSquares {α : Type} (add sub : α → α → α) (sq : α → α) (r c s : α) :=
+  add (add (sq (sub r c)) (sq (add r s))) (add (sq (add r c)) (sq (sub r s)))
+
+def sixSquares {α : Type} (add : α → α → α) (sq : α → α) (r : α) :=
+  add (add (sq r) (sq r)) (add (add (sq r) (sq r)) (add (sq r) (sq r)))
+
+/-- Four quarter-turn shifts of a Hann window. Multiply each amplitude by two:
+    (1-c), (1+s), (1+c), (1-s). The sum of their squares is six, independently
+    of the phase. Keep the scalar unit r symbolic for a homogeneous identity. -/
+theorem hannQuarterEnergy {α : Type} (add sub : α → α → α) (sq : α → α)
+    (assoc : ∀ a b c, add (add a b) c = add a (add b c))
+    (comm : ∀ a b, add a b = add b a)
+    (squares : ∀ a b, add (sq (sub a b)) (sq (add a b)) =
+      add (add (sq a) (sq a)) (add (sq b) (sq b)))
+    (r c s : α) (circle : add (sq c) (sq s) = sq r) :
+    quarterSquares add sub sq r c s = sixSquares add sq r := by
+  unfold quarterSquares sixSquares
+  have regroup (a b c d : α) : add (add a b) (add c d) = add (add a c) (add b d) := by
+    rw [assoc a b, ← assoc b c, comm b c, assoc c b, ← assoc a c]
+  rw [regroup, comm (sq (add r s)) (sq (sub r s)), squares, squares,
+      regroup, regroup (sq c) (sq c) (sq s) (sq s), circle, assoc]
+
+/-- For hop N/8, even-indexed shifts and odd-indexed shifts each form a
+    quarter-turn quartet. They contribute equal energy at every phase. -/
+theorem hannEighthEnergy {α : Type} (add sub : α → α → α) (sq : α → α)
+    (assoc : ∀ a b c, add (add a b) c = add a (add b c))
+    (comm : ∀ a b, add a b = add b a)
+    (squares : ∀ a b, add (sq (sub a b)) (sq (add a b)) =
+      add (add (sq a) (sq a)) (add (sq b) (sq b)))
+    (r c s c' s' : α) (evenCircle : add (sq c) (sq s) = sq r)
+    (oddCircle : add (sq c') (sq s') = sq r) :
+    add (quarterSquares add sub sq r c s) (quarterSquares add sub sq r c' s') =
+    add (sixSquares add sq r) (sixSquares add sq r) := by
+  rw [hannQuarterEnergy add sub sq assoc comm squares r c s evenCircle,
+      hannQuarterEnergy add sub sq assoc comm squares r c' s' oddCircle]
+
 end Synthesis
