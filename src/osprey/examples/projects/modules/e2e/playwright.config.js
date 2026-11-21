@@ -8,6 +8,8 @@ const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './tests',
+  // The journey starts its own fresh server for each run: journey.config.js.
+  testIgnore: 'journey.spec.js',
   timeout: 30_000,
   fullyParallel: false,
   workers: 1,

@@ -253,6 +253,35 @@ final class SelfTestTests: RenderingTestCase {
         XCTAssertEqual(try regions.attempt(step("choose", "Max")), composerSend(21, .string("max")))
     }
 
+    /// A tab bar shows every tab's name but only the chosen tab's page, and `choose` picks a tab
+    /// by its name; a picker named first narrows a choice two pickers both offer.
+    func testTabsShowOnlyTheChosenPageAndNamedPickersNarrowAChoice() throws {
+        func owners(_ label: String, _ event: Int) -> Tree {
+            control("picker", label, event, ["choices": .array([
+                .object(["key": .string("1"), "label": .string("#1 · Amelia Chen")]),
+                .object(["key": .string("2"), "label": .string("#2 · Marcus Webb")]),
+            ])])
+        }
+        let page = Tree.object(["kind": .string("column"), "children": .array([owners("From account", 30), owners("To account", 31)])])
+        let tab = { (key: String, label: String, child: Tree) in Tree.object(["key": .string(key), "label": .string(label), "child": child]) }
+        let tabs = Tree.object(["kind": .string("tabs"), "selected": .string("move"), "event": .number(32), "tabs": .array([
+            tab("overview", "Overview", .object(["kind": .string("text"), "text": .string("Managed portfolio")])),
+            tab("move", "Move money", page),
+        ])])
+        let regions = SelfTestRegions(nodes: [("root", tabs)])
+        let sent = { (ordinal: Int, value: String) in SelfTestAttempt.sending(SelfTestSend(region: "root", ordinal: ordinal, value: .string(value))) }
+        XCTAssertTrue(regions.shows("Overview"), "every tab's name is on show")
+        XCTAssertFalse(regions.shows("Managed portfolio"), "a page behind another tab is not")
+        XCTAssertTrue(regions.shows("Marcus Webb"))
+        XCTAssertEqual(try regions.attempt(step("gone", "Managed portfolio")), .sending(nil))
+        XCTAssertEqual(try regions.attempt(step("choose", "Overview")), sent(32, "overview"))
+        XCTAssertEqual(try regions.attempt(step("choose", "Marcus Webb")), sent(30, "2"))
+        XCTAssertEqual(try regions.attempt(step("choose", "To account", "Marcus Webb")), sent(31, "2"))
+        XCTAssertEqual(try regions.attempt(step("choose", "From account", "1")), sent(30, "1"))
+        XCTAssertEqual(try regions.attempt(step("choose", "To account", "Nobody")), .waiting("nothing named \"To account\" offers \"Nobody\""))
+        XCTAssertFalse(regions.outline.contains("Managed portfolio"))
+    }
+
     func testOutlineListsControlsAndVisibleText() {
         let outline = regions().outline
         XCTAssertTrue(outline.contains("button \"Save\"\n"))

@@ -1147,6 +1147,9 @@ jobs:
       - name: Bank e2e (Playwright)
         run: npx playwright test
         working-directory: ./src/osprey/examples/projects/modules/e2e
+      - name: Bank journey and goldens (Playwright)
+        run: npx playwright test -c journey.config.js
+        working-directory: ./src/osprey/examples/projects/modules/e2e
 
       # The HTML documentation export is a shipped artifact with navigation,
       # search, themes and a mobile layout. Its unit tests assert what the
