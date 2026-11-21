@@ -38,6 +38,10 @@ Say all three together, in this order, on first mention. Dropping them from the 
 - **Elegant: more program, less text.** Inferred types, effects instead of plumbing, concurrency without a separate async form. Less text is cheaper for AI agents and easier for people.
 - **Fast: native from the start.** LLVM native code with no VM or JIT warm-up, static handler selection, lightweight fibers, GPU kernels when a handler asks for them. Every relative figure links a published benchmark.
 
+## Osprey Native
+
+**Osprey Native (`@osprey/native`) is a headline feature.** One Osprey app (state, logic and UI) compiles ahead of time to native code. Each host draws it with the platform's own widgets (SwiftUI, WinUI, Android) or on a GPU canvas (GPUI). Say the difference concretely: Flutter and Compose Multiplatform draw their own copies of the widgets; React Native runs JavaScript in an engine. Show the real apps, and name which hosts run which app.
+
 ## Show one move: same logic, different handler
 
 - **Apps:** Issue Inbox's state and screens run on iOS and Android; only the host differs.
@@ -49,7 +53,7 @@ Short on space? Keep the one example that fits the audience.
 
 ## By audience
 
-- **App developers:** "Write your app once and ship it with each platform's own widgets. No JavaScript engine, no toolkit drawing copies of the widgets." (Flutter and Compose Multiplatform draw their own widgets; React Native runs JavaScript in an engine.)
+- **App developers:** "Write your app once and ship it with each platform's own widgets. No JavaScript engine, no toolkit drawing copies of the widgets."
 - **Python and ML:** "Keep `def`, `lambda` and f-strings; gain static types and native GPU kernels. GPT-2 runs from the published weights."
 - **Backend:** "No panics, no hidden I/O. Every failure is a `Result`; every outside call is an effect you swap in tests."
 - **Audio:** "Patch, mix and render in one language, with the DSP maths written as formulas. No collector pauses under ARC."

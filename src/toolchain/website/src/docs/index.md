@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Osprey documentation
-description: Start with algebraic effects and reusable handlers, then build native, web and mobile applications with Osprey.
+description: "Build native apps, backends, AI models, synths and verified maths with Osprey: install it, follow a guide, or watch real apps being built."
 ---
 
 {% from "native-capture.njk" import capture %}

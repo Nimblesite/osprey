@@ -3,7 +3,7 @@ mlTwins: manual
 layout: page
 video: native-bridge
 title: "The Osprey Native bridge: one frame in shared memory"
-description: How an Osprey Native app reaches SwiftUI, WinUI, GPUI, Android and the VS Code webview. Fixed rows in shared memory, leased and read in place, with no serialization step.
+description: "How an Osprey Native app reaches SwiftUI, WinUI, GPUI, Android and VS Code: fixed rows in shared memory, read in place, with no serialization."
 permalink: /docs/osprey-native/bridge/
 tags: [native, applications, ui, bridge, shared-memory, video, tutorials]
 ---

@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Bringing Lean's proof checking to Osprey
-description: "Osprey is building a Lean-compatible proof kernel, written in Osprey, so Lean proofs and Mathlib can be checked inside Osprey. 194 selected Lean statements check today; the first full Mathlib theorem does not yet."
+description: "Osprey is building a Lean-compatible proof kernel so Lean proofs and Mathlib check inside Osprey. See which statements check today and what is left."
 permalink: /docs/mathlib-port/
 ---
 

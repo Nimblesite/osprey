@@ -2,7 +2,7 @@
 mlTwins: manual
 layout: page
 title: Run the same model on CPU or GPU
-description: Write a model's maths once. A handler decides whether it runs on the CPU or the GPU, and the compiler builds a separate fast version for each. GPT-2 is the worked example.
+description: "Write a model's maths once; a handler picks CPU or GPU and the compiler builds a fast version for each. GPT-2 runs from its published weights."
 permalink: /docs/cpu-or-gpu/
 tags: [algebraic-effects, handlers, gpu, static-effects]
 ---

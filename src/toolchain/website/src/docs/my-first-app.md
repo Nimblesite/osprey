@@ -1,8 +1,8 @@
 ---
 layout: page
 permalink: /docs/my-first-app/
-title: My First App
-description: Build a small native Osprey CLI that models JSON as a recursive algebraic data type, reads a JSON file, validates it, updates it, and writes it back.
+title: "My first Osprey app: a native JSON command-line tool"
+description: "Build a native Osprey command-line tool that reads a JSON file into typed data, validates it, updates it and writes it back."
 mlTwins: false
 tags:
 - getting-started

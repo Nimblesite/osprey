@@ -67,8 +67,8 @@ fi
 cat > "$DOCS_DIR/stdlib.md" << 'EOF'
 ---
 layout: page
-title: "API Reference - Osprey Programming Language"
-description: "Complete API reference for built-in functions, types, operators, and language constructs"
+title: "Osprey standard library API reference"
+description: "Reference for Osprey's built-in functions, types, operators and keywords, with signatures and runnable examples."
 ---
 
 # Osprey API Reference

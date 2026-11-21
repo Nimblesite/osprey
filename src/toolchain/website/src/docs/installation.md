@@ -1,8 +1,8 @@
 ---
 layout: page
 permalink: /docs/installation/
-title: Installing Osprey
-description: Install the Osprey compiler and its required LLVM/clang toolchain on macOS, Linux, and Windows. Step-by-step prerequisites, verification, and troubleshooting.
+title: "Install Osprey on macOS, Linux and Windows"
+description: "Install the Osprey compiler and the LLVM/clang toolchain on macOS, Linux and Windows, check the install, and fix common setup problems."
 tags:
 - installation
 - llvm

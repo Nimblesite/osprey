@@ -1,8 +1,8 @@
 ---
 mlTwins: manual
 layout: page
-title: Algebraic effects
-description: Effects abstract side effects. Functions say what they need; the caller picks the handler that does it, so tests swap the disk, network or database for a test double.
+title: "Algebraic effects and handlers in Osprey"
+description: "Functions declare the effects they need and the caller picks the handler, so a test swaps the disk, network or database for a test double."
 permalink: /docs/effects/
 tags: [algebraic-effects, handlers, applications, testing]
 ---

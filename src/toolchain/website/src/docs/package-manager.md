@@ -1,7 +1,7 @@
 ---
 layout: page
-title: Package manager
-description: Resolve, verify and build Osprey source packages from a folder registry, with exact release locks, local overrides and Python dependencies through uv.
+title: "Osprey package manager: locked, verified source packages"
+description: "Add Osprey packages from VS Code or the command line. Every release is locked by digest, verified byte for byte and built offline."
 permalink: /docs/package-manager/
 tags: [packages, registry, resolution]
 ---

@@ -1,7 +1,7 @@
 ---
 layout: page
-title: Audio synthesis with Osprey
-description: Prism is a DAW written in Osprey. Patch modular voices, edit notes, mix through buses with side-chain compression, and render the song to WAV.
+title: "Audio synthesis: write a DAW and synths in Osprey"
+description: "Prism is a DAW written in Osprey. Patch synth voices, build FX from raw maths formulas, mix through side-chained buses and render the song to WAV."
 permalink: /docs/audio-synthesis/
 ---
 

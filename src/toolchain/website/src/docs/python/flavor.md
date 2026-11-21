@@ -1,8 +1,8 @@
 ---
 mlTwins: manual
 layout: page
-title: Python flavor
-description: The Python flavor is Osprey source that looks like typed Python. The Osprey compiler lowers it into the same AST as every other flavor and compiles it to a native binary; CPython never runs it. Ports of NumPy, PyTorch, Transformers and more are already written in it, and a Qwen3.8-27B model is being built on them.
+title: "Python flavor: static types, compiled to native code"
+description: "Write Osprey in Python syntax: static types without hints, checked effects, and native binaries. CPython never runs it, so NumPy-style ports compile too."
 permalink: /docs/python/flavor/
 tags: [flavors, python, algebraic-effects, gpu]
 ---

@@ -1,7 +1,7 @@
 ---
 layout: page
 title: "Python interop: call Python from Osprey, and Osprey from Python"
-description: "Python interopmaxxing in Osprey: call NumPy, PyTorch or any Python library from a compiled, statically typed language, call fast native Osprey code from Python, and reuse ordinary Python code as Osprey."
+description: "Call NumPy, PyTorch or any Python library from statically typed, compiled Osprey, call native Osprey code from Python, and test both sides."
 permalink: /docs/python/interop/
 tags: [python, interop, python-interop, python-ffi, embed-python, numpy, pytorch, data-science, machine-learning, algebraic-effects]
 ---

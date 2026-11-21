@@ -4,7 +4,7 @@ layout: page
 video: express-typescript
 eleventyComputed:
   title: "{{ (video | video).name }}"
-description: The TypeScript flavor is Osprey source written in TypeScript syntax. The Osprey compiler checks it and compiles it to a native binary with no Node.js and no JavaScript engine. Its first port is Express, measured here against Express on Node.js.
+description: "Write Osprey in TypeScript syntax and compile it to a native binary with no Node.js. Its first port is Express, benchmarked against Express on Node.js."
 permalink: /docs/typescript/flavor/
 tags: [flavors, typescript, express, http, video, tutorials]
 ---

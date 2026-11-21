@@ -1,8 +1,8 @@
 ---
 mlTwins: manual
 layout: page
-title: Reactive signals
-description: Derive signal dependencies, cache immutable results, and rebuild affected computations.
+title: "Reactive signals: cached, dependency-tracked state"
+description: "Osprey signals record what each value depends on, cache immutable results and rebuild only what a change affects, in apps and in tests."
 permalink: /docs/reactive-signals/
 ---
 

@@ -214,7 +214,7 @@ export default function (eleventyConfig) {
       name: "Osprey",
       url: SITE_URL,
       description:
-        "A modern functional language with typed algebraic effects, lightweight fiber concurrency, and immutable persistent collections.",
+        "A platform for building native apps, backends, AI, synths and verified maths in one safe, elegant, fast language.",
     },
     // Keep the existing blog index + docs pages; only adopt the theme's shell,
     // SEO and generated sitemap/robots/feed/llms.txt. (New designs land later.)

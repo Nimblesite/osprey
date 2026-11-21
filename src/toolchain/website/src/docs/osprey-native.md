@@ -1,8 +1,8 @@
 ---
 mlTwins: manual
 layout: page
-title: "Osprey Native: shared logic, native apps"
-description: Share Osprey logic across macOS, Windows, iOS, Android and web apps. See native controls, AOT compilation and typed effects in running applications.
+title: "Osprey Native: cross-platform apps with native UI"
+description: "One Osprey app drawn with SwiftUI, WinUI, Android widgets or a GPU canvas: a cross-platform framework with native controls, compiled ahead of time."
 permalink: /docs/osprey-native/
 tags: [native, applications, ui, gpui, vscode]
 ---
