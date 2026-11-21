@@ -575,13 +575,13 @@ test ("resizing the graph keeps original header controls aligned and usable", \(
 
 // [DAW-TRACK-PATCH] The timeline's tracks against Prism: a patch track opens as its graph, a built-in one as a
 // single voice node wired to the output, and a missing row says why nothing opens.
-keysTrack () = daw::Track(name = "keys", instrument = daw::PatchInstrument(routing = daw::Routing(nodes = [daw::PatchNode(identity = 1, component = "sine", size = 0, seed = 0, asset = "", settings = [daw::Setting(key = "frequency", value = 2.0, follow = daw::Pitched)]), daw::PatchNode(identity = 2, component = "gain", size = 0, seed = 0, asset = "", settings = [daw::Setting(key = "gain", value = 0.5, follow = daw::Struck)]), daw::PatchNode(identity = 3, component = "output", size = 0, seed = 0, asset = "", settings = [])], cables = [daw::PatchCable(source = 1, outlet = 0, destination = 2, inlet = 0), daw::PatchCable(source = 2, outlet = 0, destination = 3, inlet = 0)], attack = 0.01, release = 0.1)), gain = 1.0, pan = 0.0, reverb = 0.0, bus = "", sends = [], positions = [], notes = [])
+keysTrack () = daw::Track(name = "keys", instrument = daw::PatchInstrument(routing = daw::Routing(nodes = [daw::PatchNode(identity = 1, component = "sine", size = 0, seed = 0, asset = "", settings = [daw::Setting(key = "frequency", value = 2.0, follow = daw::Pitched)]), daw::PatchNode(identity = 2, component = "gain", size = 0, seed = 0, asset = "", settings = [daw::Setting(key = "gain", value = 0.5, follow = daw::Struck)]), daw::PatchNode(identity = 3, component = "output", size = 0, seed = 0, asset = "", settings = [])], cables = [daw::PatchCable(source = 1, outlet = 0, destination = 2, inlet = 0), daw::PatchCable(source = 2, outlet = 0, destination = 3, inlet = 0)], attack = 0.01, release = 0.1)), gain = 1.0, pan = 0.0, bus = "", sends = [], positions = [], notes = [])
 
-bellTrack () = daw::Track(name = "bell", instrument = daw::BellInstrument(decay = 2.0, brightness = 0.5), gain = 1.0, pan = 0.0, reverb = 0.0, bus = "", sends = [], positions = [], notes = [])
+bellTrack () = daw::Track(name = "bell", instrument = daw::BellInstrument(decay = 2.0, brightness = 0.5), gain = 1.0, pan = 0.0, bus = "", sends = [], positions = [], notes = [])
 
-timeline tracks = daw::Arrangement(title = "Bridge", tempo = 120.0, sampleRate = 48000, drive = 1.0, space = daw::Space(size = 1.0, decay = 2.0, damping = 0.5), intro = daw::Intro(recording = "intro.wav", tail = 1.0, crossfade = 0.5), sustains = [], buses = [], tracks = tracks)
+timeline tracks = daw::Arrangement(title = "Bridge", tempo = 120.0, sampleRate = 48000, buses = [], tracks = tracks)
 
-pluckTrack () = daw::Track(name = "pluck", instrument = daw::PluckInstrument(brightness = 0.7, decay = 0.9), gain = 1.0, pan = 0.0, reverb = 0.0, bus = "", sends = [], positions = [], notes = [])
+pluckTrack () = daw::Track(name = "pluck", instrument = daw::PluckInstrument(brightness = 0.7, decay = 0.9), gain = 1.0, pan = 0.0, bus = "", sends = [], positions = [], notes = [])
 
 settled (graph, identity, key, value) = valid (synth::Graphs::node (graph, identity), \n => reads (listGet (filterList (n.parameters, \p => p.key == key)) 0, \p => expect (toString p.initial, toString value)))
 
@@ -665,7 +665,7 @@ test ("a module left unwired in the patch is silent, an unplugged input hears si
 projectPatchJourney () =
     note = daw::Note(pitch = 72, start = 32.0, length = 0.5, velocity = 0.25)
     original = keysTrack ()
-    track = original(notes = [note], pan = -0.25, reverb = 0.4)
+    track = original(notes = [note], pan = -0.25)
     song = timeline [bellTrack (), track]
     succeeds (daw::TrackPatches::patch track, \graph =>
         succeeds (daw::PatchRecords::audition (track, graph, 72), \heard => settled (heard, 1, "frequency", synth::Waves::midiFrequency 72.0 * 2.0))
@@ -681,7 +681,6 @@ projectPatchJourney () =
                         reads (listGet opened.tracks 1, \voice =>
                             expect (structuralEquals (voice.notes, [note]), true)
                             expect (voice.pan, -0.25)
-                            expect (voice.reverb, 0.4)
                             match voice.instrument
                                 daw::PatchInstrument route =>
                                     expect (route.attack, 0.01)
@@ -729,7 +728,7 @@ projectGrainJourney () =
             succeeds (daw::SongFiles::decode source, \opened =>
                 succeeds (daw::TrackPatches::picked (opened, 0), \again => expect (structuralEquals (again, graph), true))))))
     lost = daw::PatchNode(identity = 1, component = "grainCloud", size = 0, seed = 1, asset = "/nonexistent/osprey-grain.wav", settings = [])
-    lostTrack = daw::Track(name = "lost", instrument = daw::PatchInstrument(routing = daw::Routing(nodes = [lost], cables = [], attack = 0.01, release = 0.1)), gain = 1.0, pan = 0.0, reverb = 0.0, bus = "", sends = [], positions = [], notes = [])
+    lostTrack = daw::Track(name = "lost", instrument = daw::PatchInstrument(routing = daw::Routing(nodes = [lost], cables = [], attack = 0.01, release = 0.1)), gain = 1.0, pan = 0.0, bus = "", sends = [], positions = [], notes = [])
     succeeds (daw::SongFiles::encode (timeline [lostTrack]), \source => expect (contains source "\"asset\":\"/nonexistent/osprey-grain.wav\"", true))
     match daw::TrackPatches::patch lostTrack
         Error _ => expect (true, true)
@@ -750,10 +749,9 @@ trackAt (arrangement, index, check) = reads (listGet arrangement.tracks index, c
 
 starts voice = mapList (voice.notes, \note => note.start)
 
-mixedTo (voice, gain, pan, reverb) =
+mixedTo (voice, gain, pan) =
     expect (voice.gain, gain)
     expect (voice.pan, pan)
-    expect (voice.reverb, reverb)
 
 encoded (arrangement, check) = succeeds (daw::SongFiles::encode arrangement, check)
 
@@ -768,19 +766,17 @@ roundTrip arrangement = encoded (arrangement, \text => succeeds (daw::SongFiles:
         settled (graph, 2, "gain", 0.5))))
 
 mixJourney arrangement =
-    succeeds (daw::Projects::mixed (arrangement, 1, 1.5, -0.6, 0.35), \edited =>
-        trackAt (edited, 1, \voice => mixedTo (voice, 1.5, -0.6, 0.35))
-        trackAt (edited, 0, \voice => mixedTo (voice, 1.0, 0.0, 0.0))
-        trackAt (edited, 2, \voice => mixedTo (voice, 1.0, 0.0, 0.0))
+    succeeds (daw::Projects::mixed (arrangement, 1, 1.5, -0.6), \edited =>
+        trackAt (edited, 1, \voice => mixedTo (voice, 1.5, -0.6))
+        trackAt (edited, 0, \voice => mixedTo (voice, 1.0, 0.0))
+        trackAt (edited, 2, \voice => mixedTo (voice, 1.0, 0.0))
         roundTrip edited)
-    failsWith (daw::Projects::mixed (arrangement, 1, 4.5, 0.0, 0.0), "Gain must be 0 to 4, pan -1 to 1 and the Space send 0 to 1.")
-    failsWith (daw::Projects::mixed (arrangement, 1, 1.0, -1.5, 0.0), "Gain must be 0 to 4, pan -1 to 1 and the Space send 0 to 1.")
-    failsWith (daw::Projects::mixed (arrangement, 1, 1.0, 0.0, 1.5), "Gain must be 0 to 4, pan -1 to 1 and the Space send 0 to 1.")
-    failsWith (daw::Projects::mixed (arrangement, 3, 1.0, 0.0, 0.0), "There is no track 4.")
+    failsWith (daw::Projects::mixed (arrangement, 1, 4.5, 0.0), "Gain must be 0 to 4 and pan -1 to 1.")
+    failsWith (daw::Projects::mixed (arrangement, 1, 1.0, -1.5), "Gain must be 0 to 4 and pan -1 to 1.")
+    failsWith (daw::Projects::mixed (arrangement, 3, 1.0, 0.0), "There is no track 4.")
 
 excerptJourney arrangement =
-    cut = daw::Projects::excerpt (arrangement(sustains = [daw::Afterglow(start = 0.0, ratio = 1.0, rise = 1.0, hold = 1.0, fade = 1.0, gain = 1.0, reverb = 0.0)]), 4.0, 8.0)
-    expect (length cut.sustains, 0)
+    cut = daw::Projects::excerpt (arrangement, 4.0, 8.0)
     trackAt (cut, 1, \voice => expect (starts voice, [0.0, 4.5]))
     trackAt (cut, 2, \voice => expect (length voice.notes, 0))
     expect (length (daw::Projects::excerpt (arrangement, 13.0, 4.0)).tracks, 3)
@@ -794,19 +790,18 @@ playheadSet (editor, action, bar) = match action
     _ => expect ("another action", "PickTrack")
 
 mixFromRow (editor, action, path) = match action
-    synth::AdjustMix index gain pan reverb =>
+    synth::AdjustMix index gain pan =>
         expect (index, 1)
-        expect (reverb, 0.5)
-        changed = (synth::DawSession::adjusted (editor, index, gain, pan, reverb)).stepStore
+        changed = (synth::DawSession::adjusted (editor, index, gain, pan)).stepStore
         expect (changed.track, 1)
         fresh = synth::DawSession::loaded (editor, path)
-        trackAt (fresh.song, index, \voice => mixedTo (voice, gain, pan, 0.5))
+        trackAt (fresh.song, index, \voice => mixedTo (voice, gain, pan))
         before = synth::DawSession::picked (fresh, index)
         note = before(selectedNote = 1)
         after = (synth::DawSession::velocity (note, 0.35)).stepStore
         readBack = synth::DawSession::loaded (after, path)
         trackAt (readBack.song, index, \voice =>
-            mixedTo (voice, gain, pan, 0.5)
+            mixedTo (voice, gain, pan)
             expect (mapList (voice.notes, \n => n.velocity), [0.5, 0.35, 1.0, 0.25])
             expect (starts voice, [0.0, 4.0, 8.5, 12.0]))
         failsWith (daw::Projects::velocity (readBack.song, index, 1, 1.01), "Velocity must be between 0 and 1.")
@@ -1144,7 +1139,7 @@ transportJourney () =
     failsWith (synth::TimelineView::laneAt (ready, 197.0, 205.0), "No lane here.")
     barLineJourney ready
     failsWith (synth::TimelineView::laneAt (ready, 700.0, 192.0), "No lane here.")
-    succeeds (daw::Projects::mixed (ready.song, 1, 2.0, 0.5, 0.25), \louder => remixed (ready, louder))
+    succeeds (daw::Projects::mixed (ready.song, 1, 2.0, 0.5), \louder => remixed (ready, louder))
     bounceJourney ready
 
 test ("Play streams the range in real time into the audio device, the playhead follows what it sounds, Loop and the end marker set the range, Stop cancels, and Render song writes the whole song", \() => Runtime::guarded (\() => hosted transportJourney))
@@ -1155,7 +1150,7 @@ padsBus (ratio, sidechain) = daw::Bus(name = "pads", output = "", gain = 1.0, eq
 
 steady (value, count) = mapList (toList (range (0, count)), \_ => value)
 
-grouped () = daw::Buses(left = [], right = [], wet = [], groups = [daw::Stereo(name = "pads", left = steady (0.5, 200), right = steady (0.25, 200))], keys = [daw::Keyed(name = "kick", samples = listConcat (steady (0.0, 100)) (steady (1.0, 100)))])
+grouped () = daw::Buses(left = [], right = [], groups = [daw::Stereo(name = "pads", left = steady (0.5, 200), right = steady (0.25, 200))], keys = [daw::Keyed(name = "kick", samples = listConcat (steady (0.0, 100)) (steady (1.0, 100)))])
 
 // −15 dB: a 0 dB key is 20 dB over the −20 dB threshold, and ratio 4 lets 5 dB of it through.
 ducked = 0.1778279410038923
@@ -1177,7 +1172,6 @@ ducking master =
     forEachList ([0, 1, 50, 99], \i => sampleAt (master.right, i, 0.25))
     forEachList ([100, 101, 150, 199], \i => sampleAt (master.left, i, 0.5 * ducked))
     forEachList ([100, 101, 150, 199], \i => sampleAt (master.right, i, 0.25 * ducked))
-    expect (master.wet, [])
 
 selfKeyed master =
     expect ((listGet master.left 150 ?: 0.0) > 0.149 && (listGet master.left 150 ?: 0.0) < 0.150, true)
@@ -1279,4 +1273,4 @@ test ("every synthesis family plays a real, finite, repeatable note through the 
 
 test ("two internal audio sends survive a project round trip and sum before the track fader", \() => ui::Runtime::guarded tapJourney)
 
-test ("the project plays as one loop over time: every track, bus, send, pad and the Space advance together into Master, at any block size", \() => ui::Runtime::guarded masterPlayJourney)
+test ("the project plays as one loop over time: every track, bus and send advance together into Master, at any block size", \() => ui::Runtime::guarded masterPlayJourney)

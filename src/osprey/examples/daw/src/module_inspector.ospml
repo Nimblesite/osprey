@@ -1,11 +1,11 @@
 // [DAW-INSPECTOR] A module the skin has no artwork for gets the inspector the others have: its name, a dial
-// for every parameter ([DAW-CONTROLS-DIAL]) and its connections, drawn on the canvas in the skin's style. Nothing here points at
+// for every parameter ([DAW-CONTROLS-DIAL]), drawn on the canvas in the skin's style. Nothing here points at
 // another panel: what can be changed is changed where it is shown.
 namespace synth
 
 import ui::Scenes
 
-(** The canvas inspector's parts that come from the graph: connections, and a custom module's parameters. *)
+(** The canvas inspector's parts that come from the graph: a custom module's parameters. Cables are read on the canvas, never listed here. *)
 module ModuleInspector
     track () = 276.0
 
@@ -16,34 +16,17 @@ module ModuleInspector
         Invalid _ => []
         Valid n => ui::Pick::either (PrismArt::role n.processor == "custom", [n], [])
 
-    cables editor = filterList (editor.graph.cables, \c => c.source == editor.selected || c.destination == editor.selected)
-
-    connectionRow (editor, c, index, top) =
-        incoming = c.destination == editor.selected
-        other = ui::Pick::either (incoming, c.source, c.destination)
-        name = match Graphs::node (editor.graph, other)
-            Invalid _ => "Missing module"
-            Valid n => EditorView::componentName (editor, n)
-        [Scenes::disc (EditorView::rightX (editor, 1243.0), top + toFloat index * 36.0, 8.0, TimelineView::accent (), 9), EditorView::text ("${ui::Pick::either (incoming, "In   ←", "Out  →")}  ${name}", EditorView::rightX (editor, 1264.0), top - 8.4 + toFloat index * 36.0, 14.0, 230, 9)]
-
-    // The selected module's cables, one row each from `top` down.
-    connections (editor, top) = foldList (toList (range (0, length (cables editor))), [], \(all, index) =>
-        match listGet (cables editor) index
-            Error _ => all
-            Success c => listConcat all (connectionRow (editor, c, index, top)))
-
     dialTop () = 240.0
 
     customShapes (editor, n) =
         x = left editor
         rows = length (Dials::shown n)
-        under = ui::Pick::either (rows == 0, 190.0, 226.0 + toFloat rows * Dials::pitch ())
         heading = ui::Pick::either (rows == 0, [], [EditorView::text ("Parameters", x, 190.0, 16.0, 210, 9)])
-        listConcat (listConcat [Scenes::rect (EditorView::rightX (editor, 1374.0), 446.0, 304.0, 690.0, 0.0, Scenes::rgb (19, 17, 35), 7), EditorView::text (EditorView::componentName (editor, n), x, 128.0, 24.0, 240, 8)] (listConcat heading (Dials::shapes (editor, n, x, dialTop (), track (), 9)))) (listConcat [EditorView::text ("Connections", x, under, 16.0, 210, 9)] (connections (editor, under + 46.0)))
+        listConcat [Scenes::rect (EditorView::rightX (editor, 1374.0), 446.0, 304.0, 690.0, 0.0, Scenes::rgb (19, 17, 35), 7), EditorView::text (EditorView::componentName (editor, n), x, 128.0, 24.0, 240, 8)] (listConcat heading (Dials::shapes (editor, n, x, dialTop (), track (), 9)))
 
     (** What the graph adds to the canvas inspector for the selected module. *)
     export shapes editor = match listGet (custom editor) 0
-        Error _ => connections (editor, 497.0)
+        Error _ => []
         Success n => customShapes (editor, n)
 
     (** A custom module's dials as hit areas, named after the module and the parameter. *)

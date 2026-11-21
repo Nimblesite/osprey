@@ -597,10 +597,10 @@ tapJourney () =
                 encoded (opened, \saved => expect (contains saved "\"sendId\":2", true))))))
 
 // [DAW-RENDER-PLAY] The project plays as one loop over time: each block advances every track, its bus
-// (EQ and kick-keyed compressor), its send, the held pad and the Space together into Master.
+// (EQ and kick-keyed compressor) and its send together into Master.
 playedNote (start, length) = daw::Note(pitch = 60, start = start, length = length, velocity = 0.9)
 
-playedKick notes = daw::Track(name = "kick", instrument = daw::DrumInstrument(hit = daw::Hit(sweep = 2.0, noise = 0.3, colour = 0.5, decay = 0.05)), gain = 1.0, pan = -0.4, reverb = 0.3, bus = "", sends = [], positions = [], notes = notes)
+playedKick notes = daw::Track(name = "kick", instrument = daw::DrumInstrument(hit = daw::Hit(sweep = 2.0, noise = 0.3, colour = 0.5, decay = 0.05)), gain = 1.0, pan = -0.4, bus = "", sends = [], positions = [], notes = notes)
 
 playedBus ratio =
     bus = shaped (padsBus (ratio, "kick"))
@@ -610,10 +610,8 @@ playedSong ratio =
     bell = bellTrack ()
     keys = keysTrack ()
     tap = daw::AudioSend(sendId = 1, source = 1, outlet = 0, bus = "pads", level = 0.5, enabled = true)
-    tracks = [playedKick [playedNote (0.0, 0.05), playedNote (0.1, 0.05), playedNote (0.125, 0.05)], bell(bus = "pads", reverb = 0.5, notes = [playedNote (0.05, 0.1), playedNote (0.2, 0.1)]), keys(pan = 0.3, reverb = 0.2, sends = [tap], notes = [playedNote (0.0, 0.015), playedNote (0.2, 0.015)])]
+    tracks = [playedKick [playedNote (0.0, 0.05), playedNote (0.1, 0.05), playedNote (0.125, 0.05)], bell(bus = "pads", notes = [playedNote (0.05, 0.1), playedNote (0.2, 0.1)]), keys(pan = 0.3, sends = [tap], notes = [playedNote (0.0, 0.015), playedNote (0.2, 0.015)])]
     routedTo (timeline tracks, [playedBus ratio])
-
-playedPads () = [daw::Pad(glow = daw::Afterglow(start = 0.0, ratio = 1.0, rise = 0.01, hold = 0.0, fade = 0.01, gain = 0.5, reverb = 0.2), sound = daw::Sounding(at = 2500, lanes = [steady (0.1, 2000)]))]
 
 // Master's next block is exactly `size` frames on each side, and nothing else leaves it.
 playedBlock (song, outcome, size) = match outcome
@@ -625,7 +623,7 @@ playedBlock (song, outcome, size) = match outcome
             expect (length played.right, size)
             Success(value = daw::Take(playing = played.playing, lefts = listAppend take.lefts played.left, rights = listAppend take.rights played.right))
 
-playedIn (song, sizes, check) = succeeds (daw::Playback::start (song, playedPads ()), \playing =>
+playedIn (song, sizes, check) = succeeds (daw::Playback::start song, \playing =>
     succeeds (foldList (sizes, Success(value = daw::Take(playing = playing, lefts = [], rights = [])), \(outcome, size) => playedBlock (song, outcome, size)), \take =>
         expect (take.playing.cursor, 6000)
         check (daw::Take(playing = take.playing, lefts = [ui::Lists::flatten take.lefts], rights = [ui::Lists::flatten take.rights]))))
@@ -659,7 +657,7 @@ masterPlayJourney () =
         // The kick keys the pads bus inside the same block it sounds in.
         playedIn (playedSong 1.0, [6000], \open => expect (sidesDiffer (sideOf (whole, false), sideOf (open, false)), true)))
     // A bad note or route fails before anything plays.
-    failsWith (daw::Playback::start (timeline [playedKick [playedNote (sqrt (-1.0), 0.1)]], []), "kick: a note start is not finite.")
-    failsWith (daw::Playback::start (timeline [playedKick [playedNote (0.5, 0.1), playedNote (-0.25, 0.1)]], []), "kick: a note starts before the piece.")
+    failsWith (daw::Playback::start (timeline [playedKick [playedNote (sqrt (-1.0), 0.1)]]), "kick: a note start is not finite.")
+    failsWith (daw::Playback::start (timeline [playedKick [playedNote (0.5, 0.1), playedNote (-0.25, 0.1)]]), "kick: a note starts before the piece.")
     bell = bellTrack ()
-    failsWith (daw::Playback::start (timeline [bell(bus = "pads")], []), "bell: Bus pads is not in the song.")
+    failsWith (daw::Playback::start (timeline [bell(bus = "pads")]), "bell: Bus pads is not in the song.")
