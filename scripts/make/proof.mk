@@ -172,7 +172,7 @@ _test_proof_unicode:
 
 # [SYNTH-DSP-PROOFS] Check the current source export with the Osprey kernel.
 .PHONY: _test_synthesis_proofs
-SYNTHESIS_THEOREMS := weightedOverlapAdd travelingWavePropagation additivePeriod
+SYNTHESIS_THEOREMS := weightedOverlapAdd travelingWavePropagation additivePeriod overlapNormalizationNecessary interpolatorFactor interpolatorEndpoints interpolatorConstant zeroPulseIndices hannEndpoints
 
 _test_synthesis_proofs: _test_proof_batch_arc
 	cd src/toolchain/benchmarks/proof/tools && lake build lean4export Synthesis

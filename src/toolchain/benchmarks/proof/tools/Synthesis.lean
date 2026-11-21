@@ -43,4 +43,61 @@ theorem additivePeriod {ι α : Type} (add : α → α → α) (dc : α)
     change add (p (advance t)) _ = add (p t) _
     rw [periodic p (.head ps), ih (fun q h => periodic q (.tail p h))]
 
+/-- Smith (9.44), necessity. Reconstruct the constant unit signal to recover
+    the sum of the overlapping window products. -/
+theorem overlapNormalizationNecessary {α : Type} (add mul : α → α → α) (zero one : α)
+    (unit : ∀ x, mul one x = x) (gains : List α)
+    (reconstruct : ∀ x, total add zero (mul x) gains = x) :
+    total add zero id gains = one := by
+  have unchanged (xs : List α) : total add zero (mul one) xs = total add zero id xs := by
+    induction xs with
+    | nil => rfl
+    | cons g gs ih =>
+      change add (mul one g) _ = add g _
+      rw [unit, ih]
+  exact (unchanged gains).symm.trans (reconstruct one)
+
+/-- Smith (5.1) factored into the multiply used by GrainMath.interpolated.
+    Move the common product to the right by distributivity and commutativity. -/
+theorem interpolatorFactor {α : Type} (add sub mul : α → α → α) (one a b t : α)
+    (rightSub : ∀ x y z, mul (sub x y) z = sub (mul x z) (mul y z))
+    (unit : ∀ x, mul one x = x) (comm : ∀ x y, mul x y = mul y x)
+    (moveSub : ∀ x y z, add (sub x y) z = add x (sub z y)) :
+    add (mul (sub one t) a) (mul t b) = add a (mul (sub b a) t) := by
+  rw [rightSub, unit, moveSub, comm t b, comm t a, rightSub]
+
+/-- The one-multiply sample reader returns each neighbour at its own endpoint. -/
+theorem interpolatorEndpoints {α : Type} (add sub mul : α → α → α) (zero one a b : α)
+    (timesZero : ∀ x, mul x zero = zero) (timesOne : ∀ x, mul x one = x)
+    (plusZero : ∀ x, add x zero = x) (cancel : ∀ x y, add x (sub y x) = y) :
+    add a (mul (sub b a) zero) = a ∧ add a (mul (sub b a) one) = b := by
+  rw [timesZero, plusZero, timesOne, cancel]
+  exact ⟨rfl, rfl⟩
+
+/-- Constant input is the zero-slope case of Smith's exactness on a line. -/
+theorem interpolatorConstant {α : Type} (add sub mul : α → α → α) (zero a t : α)
+    (selfSub : ∀ x, sub x x = zero) (zeroTimes : ∀ x, mul zero x = zero)
+    (plusZero : ∀ x, add x zero = x) :
+    add a (mul (sub a a) t) = a := by rw [selfSub, zeroTimes, plusZero]
+
+/-- Smart (8)–(9). In either branch the modulation pulse consists of a
+    window times the index times the sinusoid evaluated at that branch's phase. -/
+theorem zeroPulseIndices {α : Type} (add mul : α → α → α) (zero : α)
+    (rightZero : ∀ x, mul x zero = zero) (leftZero : ∀ x, mul zero x = zero)
+    (addZero : ∀ x, add x zero = x) (first : Bool)
+    (base₁ base₂ window₁ window₂ sine₁ sine₂ : α) :
+    (if first then add base₁ (mul (mul window₁ zero) sine₁)
+     else add base₂ (mul (mul window₂ zero) sine₂)) =
+    (if first then base₁ else base₂) := by
+  rw [rightZero, rightZero, leftZero, leftZero, addZero, addZero]
+
+/-- The endpoint phases of the symmetric grain window are zero and one full
+    turn. Substitute cos(0) = cos(2π) = 1 in the uncentred raised cosine. -/
+theorem hannEndpoints {α : Type} (sub mul : α → α → α) (cos : α → α)
+    (zero one half turn : α) (cosZero : cos zero = one) (cosTurn : cos turn = one)
+    (timesOne : ∀ x, mul x one = x) (selfSub : ∀ x, sub x x = zero) :
+    sub half (mul half (cos zero)) = zero ∧ sub half (mul half (cos turn)) = zero := by
+  rw [cosZero, cosTurn, timesOne, selfSub]
+  exact ⟨rfl, rfl⟩
+
 end Synthesis
