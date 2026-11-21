@@ -33,20 +33,24 @@ module GraphClips
                     Error _ => false
                     Success count => stateful n && length states == count && length (filterList (states, \saved => saved.identity == n.identity)) == count
 
+    clipsAt (clips, identity) = length (filterList (clips, \clip => clip.clipNode == identity))
+
+    banksAt (held, identity) = filterList (held.graphKernels, \bank => bank.kernelNode == identity)
+
     // Suspended graphs retain already-rendered grain memory at the end of this block.
-    bankPosition (held, frames, clips, identity) = match length (filterList (clips, \clip => clip.clipNode == identity)) == 1
+    bankPosition (held, frames, clips, identity) = match clipsAt (clips, identity) == 1
         true => satAdd held.graphPosition frames
         false => held.graphPosition
 
     stored (held, n, memory) = held(graphKernels = listAppend (filterList (held.graphKernels, \old => old.kernelNode != n.identity)) (NodeKernels(kernelNode = n.identity, kernelMemory = memory)))
 
-    validState (graph, held, frames, clips) = held.graphPosition >= 0 && held.graphPosition <= satSub 9223372036854775807 frames && length (filterList (held.graphKernels, \bank => validBank (graph, bank, bankPosition (held, frames, clips, bank.kernelNode)) && length (filterList (held.graphKernels, \other => other.kernelNode == bank.kernelNode)) == 1)) == length held.graphKernels && (held.graphPosition == 0 || length held.graphKernels == length (filterList (graph.nodes, stateful)))
+    validState (graph, held, frames, clips) = held.graphPosition >= 0 && held.graphPosition <= satSub 9223372036854775807 frames && length (filterList (held.graphKernels, \bank => validBank (graph, bank, bankPosition (held, frames, clips, bank.kernelNode)) && length (banksAt (held, bank.kernelNode)) == 1)) == length held.graphKernels && (held.graphPosition == 0 || length held.graphKernels == length (filterList (graph.nodes, stateful)))
 
     emitted (plan, clips, held, frames, n, channels, samples, notes, remaining) =
         clip = NodeClip(clipNode = n.identity, clipChannels = channels, clipSamples = samples, clipNotes = notes)
         scheduled (plan, listAppend clips clip, held, frames, remaining)
 
-    kernels (held, n, channels) = match filterList (held.graphKernels, \bank => bank.kernelNode == n.identity)
+    kernels (held, n, channels) = match banksAt (held, n.identity)
         [bank] => match bank.kernelMemory
             ChannelMemory states => Success(value = states)
             _ => Error(message = IncompatibleLayout(detail = "The component has incompatible DSP memory."))
@@ -63,7 +67,7 @@ module GraphClips
                 nextHeld = stored (held, n, ChannelMemory(channels = rendered.heldKernel))
                 emitted (plan, clips, nextHeld, frames, n, channels, rendered.kernelSamples, [], remaining)
 
-    grainState (held, n) = match filterList (held.graphKernels, \bank => bank.kernelNode == n.identity)
+    grainState (held, n) = match banksAt (held, n.identity)
         [bank] => match bank.kernelMemory
             GrainMemory cloud => Success(value = cloud)
             _ => Error(message = IncompatibleLayout(detail = "The grain cloud has incompatible DSP memory."))
@@ -82,7 +86,7 @@ module GraphClips
                     nextHeld = stored (held, n, GrainMemory(cloud = rendered.next))
                     emitted (plan, clips, nextHeld, frames, n, 2, samples, [], remaining)
 
-    midiState (held, n) = match filterList (held.graphKernels, \bank => bank.kernelNode == n.identity)
+    midiState (held, n) = match banksAt (held, n.identity)
         [bank] => match bank.kernelMemory
             MidiMemory voice => Success(value = voice)
             _ => Error(message = IncompatibleLayout(detail = "The MIDI oscillator has incompatible DSP memory."))
@@ -174,7 +178,7 @@ module GraphClips
         Split => copied (plan, clips, held, frames, n, channels, remaining, splitClip (plan.graph, clips, n))
         Join => copied (plan, clips, held, frames, n, channels, remaining, joined (plan.graph, clips, n))
         Route entries => copied (plan, clips, held, frames, n, channels, remaining, routing (plan.graph, clips, n, entries))
-        Downmix => Outcomes::carried (downmixed (plan.graph, clips, n), \samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining))
+        Downmix => copied (plan, clips, held, frames, n, channels, remaining, downmixed (plan.graph, clips, n))
         Sink => Outcomes::carried (ClipInputs::routed (plan.graph, clips, n.identity, 0), \clip => emitted (plan, clips, held, frames, n, channels, clip.clipSamples, [], remaining))
         _ => processed (plan, clips, held, frames, n, channels, remaining)
 
@@ -192,7 +196,7 @@ module GraphClips
 
     scheduled (plan, clips, held, frames, identities) = match identities
         [] => Success(value = BlockReady(held = held(graphPosition = satAdd held.graphPosition frames, graphHosted = HostModulation::stamps plan.graph), clips = clips))
-        [identity, ...remaining] => match length (filterList (clips, \clip => clip.clipNode == identity)) == 1
+        [identity, ...remaining] => match clipsAt (clips, identity) == 1
             true => scheduled (plan, clips, held, frames, remaining)
             false => Outcomes::carried (RenderInputs::component (plan, identity), \n => node (plan, clips, held, frames, n, remaining))
 
@@ -204,18 +208,20 @@ module GraphClips
             Invalid _ => Error(message = InvalidConfiguration(detail = "Hosted graph rendering requires an acyclic graph."))
             Valid plan => scheduled (plan(graph = graph), clips, held, frames, plan.order)
 
-    checked (graph, clips, held, frames) = match ClipLayouts::bounded (graph, frames) && validState (graph, held, frames, clips) && length (filterList (graph.nodes, \n => n.processor == Sink)) == 1 && length (filterList (graph.nodes, \n => ClipLayouts::connected (graph, n))) == length graph.nodes && length (filterList (clips, \clip => ClipLayouts::validClipAt (graph, held.graphPosition, frames, clip) && length (filterList (clips, \other => other.clipNode == clip.clipNode)) == 1)) == length clips
+    checked (graph, clips, held, frames) = match ClipLayouts::bounded (graph, frames) && validState (graph, held, frames, clips) && length (filterList (graph.nodes, \n => n.processor == Sink)) == 1 && length (filterList (graph.nodes, \n => ClipLayouts::connected (graph, n))) == length graph.nodes && length (filterList (clips, \clip => ClipLayouts::validClipAt (graph, held.graphPosition, frames, clip) && clipsAt (clips, clip.clipNode) == 1)) == length clips
         false => Error(message = IncompatibleLayout(detail = "The block needs one output, connected inputs and valid bounded buffers and state."))
         true => prepared (graph, clips, held, frames)
 
     (** Continue a graph clock and its independent channel states into a fresh block. *)
     export next (graph, held, frames) = checked (graph, [], held, frames)
 
+    origin () = GraphState(graphHosted = [], graphPosition = 0, graphKernels = [])
+
     (** Start an acyclic graph at sample zero; hosted instances belong to the caller. *)
-    export start (graph, frames) = next (graph, GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), frames)
+    export start (graph, frames) = next (graph, origin (), frames)
 
     (** Resume only the pending external node, using its frozen graph and exact response shape. *)
-    export replied (pending, clip) = match clip.clipNode == pending.pendingNode && length (filterList (pending.pendingClips, \old => old.clipNode == clip.clipNode)) == 0
+    export replied (pending, clip) = match clip.clipNode == pending.pendingNode && clipsAt (pending.pendingClips, clip.clipNode) == 0
         false => Error(message = InvalidConfiguration(detail = "The worker response does not belong to the pending node."))
         true => match Graphs::node (pending.pendingGraph, pending.pendingNode)
             Invalid _ => Error(message = MissingResource(detail = "The pending component is absent."))
@@ -224,7 +230,7 @@ module GraphClips
                 _ => Error(message = InvalidConfiguration(detail = "Only an external component can resume a worker response."))
 
     (** Whole-clip execution uses the same scheduler, with a zero-origin clock. *)
-    export advance (graph, clips, frames) = match checked (graph, clips, GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), frames)
+    export advance (graph, clips, frames) = match checked (graph, clips, origin (), frames)
         Error why => Error(message = why)
         Success action => match action
             BlockReady _ rendered => Success(value = ClipReady(clips = rendered))
