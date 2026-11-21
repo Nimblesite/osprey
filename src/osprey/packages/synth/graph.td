@@ -12,7 +12,11 @@ type Node { identity: Int processor: Processor inputs: List<Port> outputs: List<
 type Cable { source: Int outlet: Int destination: Int inlet: Int }
 type Graph { nodes: List<Node> cables: List<Cable> }
 type Prepared { graph: Graph order: List<Int> feedback: List<Cable> }
-union GraphFault { DuplicateNode {} MissingNode {} InvalidNode {} InvalidPort {} IncompatiblePorts {} OccupiedInput {} DuplicateParameter {} InvalidParameter {} Cycle {} Capacity {} MissingParameter {} StaleRevision {} InvalidFrame {} }
+type RankedNode { component: Node ordinal: Int }
+type RouteIndex<Inlets, Fanout, Counts> { occupiedInlets: Inlets destinations: Fanout dependencies: Counts delayedInputs: List<Cable> }
+union ReadyNodes { NoReadyNode {} ReadyNode { ordinal: Int depth: Int left: ReadyNodes right: ReadyNodes } }
+type ReadyQueue<Counts> { readyNodes: ReadyNodes remainingInputs: Counts }
+union GraphFault { DuplicateNode {} MissingNode {} InvalidNode {} InvalidPort {} IncompatiblePorts {} OccupiedInput {} DuplicateParameter {} InvalidParameter {} Cycle {} MissingParameter {} StaleRevision {} InvalidFrame {} }
 union Checked<T> { Valid { value: T } Invalid { fault: GraphFault } }
 type ParameterValue { node: Int key: String value: Float }
 type ComponentState { node: Int activeVoices: Int peak: Float rms: Float }

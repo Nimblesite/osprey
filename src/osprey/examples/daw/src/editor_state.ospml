@@ -141,7 +141,6 @@ module EditorState
         IncompatiblePorts => "These ports have different rates, units or channels."
         MissingNode => "That component no longer exists."
         InvalidPort => "That port or cable no longer exists."
-        Capacity => "The patch has reached its component or cable capacity."
         _ => "The edit was rejected; the previous patch is unchanged."
 
     rejected (editor, fault) = editor(message = faultText fault)

@@ -143,8 +143,13 @@ module ClipLayouts
             Error _ => 1920001
             Success width => satMul (RenderInputs::storage n.processor) width
 
+    // The executor holds one clip per node until the block completes (16M float64 samples = 128 MiB).
+    cacheWidth (total, n) = match channels n
+        Error _ => 16777217
+        Success width => satAdd total width
+
     (** Bound all per-channel delay state before any buffer is allocated. *)
-    export bounded (graph, frames) = SpectralKernels::affordable graph && frames > 0 && frames <= 32768 && foldList (graph.nodes, 0, \(total, n) => satAdd total (delay n)) <= 1920000 && length (filterList (graph.nodes, \n => supported n)) == length graph.nodes
+    export bounded (graph, frames) = frames > 0 && frames <= 32768 && satMul frames (foldList (graph.nodes, 0, cacheWidth)) <= 16777216 && SpectralKernels::affordable graph && foldList (graph.nodes, 0, \(total, n) => satAdd total (delay n)) <= 1920000 && length (filterList (graph.nodes, \n => supported n)) == length graph.nodes
 
     noteClip (n, first, frames, clip) = match n.processor
         MidiNotes => match MidiClips::timeline (n, first, frames)

@@ -14,6 +14,8 @@ Ports distinguish audio, control and timestamped events. Audio ports declare cha
 
 Graph preparation validates missing/duplicate identities, endpoint existence, port direction, rate/channel compatibility, resource budgets and cycles. Feedback requires an explicit delay with a documented minimum; algebraic loops are rejected unless a dedicated bounded solver component owns them. Preparation determines scheduling, buffer reuse and latency compensation before rendering. Rejected edits preserve the running graph. Graph replacement occurs at a documented boundary with an explicit state-transfer/crossfade policy.
 
+A track patch can hold any number of components and cables that fit in memory. Both the editor and project loader validate endpoint identities, port compatibility and exclusive inlet ownership. Among components ready to run, the scheduler chooses the earliest in project declaration order. A delay publishes its previous sample before consuming its input. The offline clip executor checks the sum of retained output channel widths multiplied by block length against its 16,777,216-sample budget before allocating audio buffers. The same patch can therefore admit a short block when a longer block exceeds available clip storage.
+
 ### Channels [SYNTH-GRAPH-CHANNELS]
 
 The channel count is unlimited. A layout is an ordered list of named channels; stereo (left, right) is the default, and 5.1, 7.1, 7.1.4 and any wider layout are equally valid. Every instrument and processor renders whatever layout its output port is prepared with: oscillators, samplers, grains, physical models and effects are written per channel over the layout, never as fixed mono or stereo code paths. Mono is the one-channel layout, not a special case.

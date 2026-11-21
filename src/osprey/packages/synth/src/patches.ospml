@@ -3,16 +3,8 @@ namespace synth
 
 (** Each patch is an ordinary validated graph with visible routing and safe initial output levels. *)
 module Patches
-    added (outcome, n) = match outcome
-        Valid graph => Graphs::add (graph, n)
-        Invalid fault => Invalid(fault = fault)
-
-    connected (outcome, cable) = match outcome
-        Valid graph => Graphs::connect (graph, cable)
-        Invalid fault => Invalid(fault = fault)
-
     (** Build a graph from nodes and routes, stopping at the first typed fault. *)
-    export built (nodes, cables) = foldList (cables, foldList (nodes, Valid(value = Graphs::empty), added), connected)
+    export built (nodes, cables) = Graphs::checked (Graph(nodes = nodes, cables = cables))
 
     // Override declared initial values; unknown keys leave the node unchanged.
     set (n, values) = n(parameters = mapList (n.parameters, \p => foldList (values, p, \(current, pair) => valued (current, pair))))

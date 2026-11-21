@@ -79,7 +79,10 @@ test ("feedback needs a delay; disconnected components and fan-out have determin
         expect (listGet plan.order 0 ?: -1, 2)
         expect (listGet plan.order 1 ?: -1, 1)
         expect (length plan.feedback, 1))
-    prepared (graph, 2)))
+    prepared (graph, 2)
+    // Node 30 becomes ready after 10 and must run before the already-ready 20.
+    ordered = graph(nodes = [a(identity = 30), a(identity = 10), a(identity = 20)], cables = [cable (10, 30)])
+    valid (Graphs::prepare ordered, \plan => expect (structuralEquals (plan.order, [10, 30, 20]), true))))
 
 observed snapshot =
     handle static Signal<synth::Observation>
@@ -227,10 +230,21 @@ test ("graph validation covers corrupt persisted metadata, missing endpoints, fa
     forEachList ([{ bad = source(identity = -1), why = synth::InvalidNode }, { bad = source(outputs = [audio(channels = 0)]), why = synth::InvalidNode }, { bad = source(processor = synth::External(identifier = "")), why = synth::InvalidNode }, { bad = source(parameters = [parameter "cutoff", parameter "cutoff"]), why = synth::DuplicateParameter }, { bad = source(parameters = [invalidParameter(initial = -1.0)]), why = synth::InvalidParameter }], \r => refused (Graphs::add (Graphs::empty, r.bad), r.why))
     stereo = graph(nodes = [source, output(inputs = [audio(channels = 2)])])
     refused (Graphs::connect (stereo, cable (1, 2)), synth::IncompatiblePorts)
-    tooMany = graph(nodes = mapList (toList (range (0, 256)), \identity => source(identity = identity)))
-    refused (Graphs::add (tooMany, source(identity = 300)), synth::Capacity)
-    crowded = graph(cables = mapList (toList (range (0, 2048)), \_ => cable (1, 2)))
-    refused (Graphs::connect (crowded, cable (1, 2)), synth::Capacity)))
+    outlets = toList (range (2, 2052))
+    sinks = mapList (outlets, \identity => output(identity = identity))
+    bank = accepted (Graphs::add (graph(nodes = sinks), source))
+    routes = mapList (outlets, \identity => cable (1, identity))
+    crowded = bank(cables = routes)
+    expect (synth::ClipLayouts::bounded (bank, 1024), true)
+    expect (synth::ClipLayouts::bounded (bank, 32768), false)
+    refused (Graphs::connect (crowded, cable (1, 2)), synth::OccupiedInput)
+    extended = accepted (Graphs::add (crowded, output(identity = 2052)))
+    connected = accepted (Graphs::connect (extended, cable (1, 2052)))
+    valid (Graphs::prepare connected, \plan =>
+        expect (length plan.order, 2052)
+        expect (listGet plan.order 0 ?: -1, 1)
+        expect (listGet plan.order 2051 ?: -1, 2052))
+    refused (Graphs::prepare (crowded(cables = listAppend routes (cable (1, 3)))), synth::OccupiedInput)))
 
 // The extracted reference voice is also exercised independently of Prism's UI dependencies.
 referencePatch wave = synth::Patch(pitch = 220.0, sounding = true, filtered = true, wave = wave, cutoff = 1000.0, depth = 0.5, lfo = 2.0, audible = true, volume = 0.75)

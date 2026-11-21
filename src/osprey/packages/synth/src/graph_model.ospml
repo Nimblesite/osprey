@@ -119,6 +119,28 @@ type Prepared =
     order : List<int>
     feedback : List<Cable>
 
+type RankedNode =
+    component : Node
+    ordinal : int
+
+type RouteIndex Inlets Fanout Counts =
+    occupiedInlets : Inlets
+    destinations : Fanout
+    dependencies : Counts
+    delayedInputs : List<Cable>
+
+type ReadyNodes =
+    NoReadyNode
+    ReadyNode
+        ordinal : int
+        depth : int
+        left : ReadyNodes
+        right : ReadyNodes
+
+type ReadyQueue Counts =
+    readyNodes : ReadyNodes
+    remainingInputs : Counts
+
 type GraphFault =
     DuplicateNode
     MissingNode
@@ -129,7 +151,6 @@ type GraphFault =
     DuplicateParameter
     InvalidParameter
     Cycle
-    Capacity
     MissingParameter
     StaleRevision
     InvalidFrame
