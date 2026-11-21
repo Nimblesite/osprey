@@ -9,15 +9,45 @@ The [daw specification](../specs/applications/Daw.md) defines the requirements. 
 - [ ] **Engine at 1.5× real time or better on the codex song ([DAW-TRANSPORT-LIVE-SPEED]).** Measured 2026-11-21: the live stream makes 0.37 s of audio per second (17.1 s in 45.8 s, one core, machine under load); the offline two-bar render makes 0.56. A 12 s profile of the live stream is mostly reference counting and allocation (`arc_drop_child`, `arc_release_zero_locked`, `osp_retain`, `osp_release`, `arc_alloc_locked`), then `osprey_list_get`. Owners: OspreyOpus1 (synth kernels, delay lines, effect state), ferroui-prism-lead (stream encoding, block loop, code generation). Until this is met the device runs empty and live sound breaks up.
 - [ ] **Start latency of 5 to 10 ms ([DAW-TRANSPORT-LIVE-LATENCY]).** The device starts after 240 to 480 buffered frames. Today it waits for two 4,096-frame blocks (171 ms) and the renderer's output is buffered by a further block. Needs: small device blocks, an unbuffered or flushed renderer output, and the engine speed above.
 - [ ] **MIDI clock sync ([DAW-TRANSPORT-MIDI-CLOCK]).** Send timing clock, Start, Continue, Stop and Song Position Pointer from the audio sample clock; follow an external clock when external sync is on. Needs: MIDI port access in the host (CoreMIDI on macOS, Windows MIDI Services), the clock source and ports in `daw.td`, and scheduling against the device's played frames. Nothing is built.
-- [ ] The renderer's live mode: `daw <project.json> <folder> <from-beat> <beats> live|loop` prints each block as one hex line for the audio device (`render/stream.ospml`, `ArrangeMath.live`). Built and compiling; not yet committed.
-- [ ] Play streams the range into the audio device through one process group; Stop cancels it; a refusal shows as "Playback failed: …".
-- [ ] Range ([DAW-TRANSPORT-RANGE]): Play runs from the start marker (the playhead's bar) to the end marker (the song's end by default); both markers are drawn on the lanes and dragged on the ruler; the end is always after the start.
-- [ ] Loop toggle ([DAW-TRANSPORT-LOOP]) in the transport: the range repeats until Stop.
-- [ ] Following ([DAW-TRANSPORT-FOLLOW]): the playhead, the lanes, the piano roll page and the position readout follow the frames the device has played.
+- [x] The renderer's live mode: `daw <project.json> <folder> <from-beat> <beats> live|loop` prints each block as one hex line for the audio device (`render/stream.ospml`, `ArrangeMath.live`). A loop keeps each track's made notes across passes, so later passes run at about 1.6× real time (633e10d21).
+- [x] Play streams the range into the audio device through one process group; Stop cancels it; a refusal shows as "Playback failed: …" (633e10d21). Verified outside the app: the codex range played through the device, 659,863 frames, with 49 empty-queue callbacks in the note-dense first 4.4 s.
+- [x] Range ([DAW-TRANSPORT-RANGE]): Play runs from the start marker (the playhead's bar) to the end marker (the song's end by default); both markers are drawn on the lanes and dragged on the ruler; the end is always after the start. Built (633e10d21); the drag is not yet verified in a window.
+- [x] Loop toggle ([DAW-TRANSPORT-LOOP]) in the transport: the range repeats until Stop (633e10d21).
+- [x] Following ([DAW-TRANSPORT-FOLLOW]): the playhead, the lanes, the piano roll page and the position readout follow the frames the device has played. Built (633e10d21).
+- [ ] **Make notes ahead of the playhead.** 86% of live time is making whole notes when they start (`Arrangements::advanced` → `NoteRenders::render`); mixing, buses and the Space are fast enough. Make notes before they are due, in parallel worker processes, and keep them in a note cache on disk that Play reads, so a first pass is as fast as a looped one. Needs a cheap sample file reader (the WAV import decodes byte by byte through `Result` folds).
 - [ ] The hex text between the renderer and the device costs encoding time on every block; a binary block needs a byte-writing output in the language or the runtime.
 - [x] Interactive launch stays open until the user closes it. Commit `5c0357a74` removed the default ten-minute timeout.
 - [x] Reduce ARC list allocation in the playback path. In `3b69dd0e8`, a live render of the committed 17-track codex project from beat 0 for two beats, including its tail, produced 851,077 stereo frames at 48 kHz. Across three alternating runs per build, median wall time fell from 19.49 s to 18.20 s. All 208 output blocks were byte-identical. This excerpt reached 0.97× real time. The 1.5× live target above and the whole-project offline targets under [DAW-PERF-RENDER] remain open.
 - [ ] Project edits must remain playable when a patch branch is disconnected [DAW-PATCH-HEARD]. The edited codex `sub` track with its mixer-to-gain cable removed refused playback before the first block and reported an unsupported graph. Reproduce in a disposable project, verify silence on the disconnected path and continued audio from the other tracks, then reconnect and verify the bass returns.
+
+## Issues from the user's hands-on test, 2026-11-21 [DAW-TEST-2026-11-21]
+
+Every issue the user raised while testing Prism by hand, with where it is tracked and where it stands. Nothing here is closed until the user has seen it work in the app.
+
+| # | Issue, as reported | Tracked under | State |
+| --- | --- | --- | --- |
+| 1 | Play says "Rendering…" and then plays rendered audio. Play must be real time | [DAW-TRANSPORT-LIVE] | Live stream built (633e10d21). **Not met:** the engine makes 0.37 s of audio per second on a first pass, so the sound breaks up |
+| 2 | The timeline must follow along with what is playing | [DAW-TRANSPORT-FOLLOW] | Built (633e10d21): playhead, lanes, piano roll page, position readout. Not yet seen by the user with steady audio |
+| 3 | Play only plays one short section. It must start at the cursor and play to the end | [DAW-TRANSPORT-RANGE] | Built (633e10d21) |
+| 4 | Start and end markers the user drags left and right; the end is never before the start | [DAW-TRANSPORT-RANGE] | Built (633e10d21): the end marker drags by its handle on the ruler; a press elsewhere on the ruler moves the start. Not yet verified in a window |
+| 5 | A Loop toggle: loop the start-to-end range for ever | [DAW-TRANSPORT-LOOP] | Built (633e10d21); passes after the first reuse the notes already made and run at about 1.6× real time |
+| 6 | The app shut down during the test | [DAW-TRANSPORT-LIVE] | Fixed (5c0357a74): the launcher's ten-minute limit is gone |
+| 7 | Real-time play needs only 5 to 10 ms of buffering before it starts | [DAW-TRANSPORT-LIVE-LATENCY] | Open: today 171 ms of blocks plus one buffered block |
+| 8 | Playing must sync with the MIDI clock | [DAW-TRANSPORT-MIDI-CLOCK] | Open: nothing built |
+| 9 | A patch must render nicely by default, like the design, not as a grid of oversized cards with cables over them | [PRISM-PATCH-LAYOUT] | Open. Owner: prism-routing-design |
+| 10 | Rearranged patch nodes must be saved to the project and reload as arranged | [PRISM-PATCH-LAYOUT] | Open. Positions reach the file on Save or a page switch; a regression for save-on-release is drafted. Owner: prism-routing-design |
+| 11 | Dragging the sliders is very clunky, with a huge delay | [DAW-MIX-DRAG] | Open: the value applies only on release, and each commit re-encodes and writes the project |
+| 12 | Play failed: "sub: Reference rendering requires mono audio, one output and supported bounded processors." | [DAW-PATCH-HEARD] | Fixed (633e10d21): the Gain module's input in the sub patch had no cable; an unplugged input now hears silence and the song plays. Open: why the Mixer→Gain cable was lost while the user arranged the patch |
+| 13 | Editing a built-in instrument silently swaps its sound and drops settings | "Built-in instruments become patches" | Open |
+| 14 | The routing page must use the real patch nodes and cables, not its own drawn cards | [PRISM-ROUTING-EDITOR] | Open. Owner: prism-routing-design |
+| 15 | Dials against the design: parameters after the tenth are dropped, readings are always hundredths, fine drag has no Shift cue, no arrow keys or focus, no double-press to default | Patch Controls | Open |
+
+Found while fixing these:
+
+- [ ] The daw test suite cannot be run: type checking `src/osprey/examples/daw/test` did not finish in 55 minutes and held 5.6 GB (effect-row convergence, owner OspreyOpus1). The live transport and unplugged-input journeys were run alone in a scratch project with the same sources (both pass, and both fail when their expectations are changed).
+- [ ] Find how the sub patch lost its Mixer→Gain cable during the user's drag, and add the regression.
+- [ ] Toggle Loop and move the end marker while the song plays (today both say "Stop first").
+- [ ] A play that hits a track which cannot render names the track and module in plain words.
 
 ## Slider drag lag [DAW-MIX-DRAG]
 
