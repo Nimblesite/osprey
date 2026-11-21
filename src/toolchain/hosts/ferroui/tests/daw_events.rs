@@ -505,7 +505,7 @@ fn spectral_picker(regions: &mut Regions, song: &std::path::Path) {
     std::fs::remove_file(copy).expect("remove test project");
 }
 
-fn tablepad_card(regions: &mut Regions, from_signal_flow: bool) -> (i64, (f64, f64), (f64, f64)) {
+fn tablepad_patch(regions: &mut Regions, from_signal_flow: bool) -> (i64, Shown) {
     choose_menu(regions, "View", "Bus Routing");
     let canvas = regions.get("root").and_then(|root| scene(&root.node)).expect("Bus Routing canvas");
     let row_y = 235.0 + 1.5 * 37.0;
@@ -520,11 +520,67 @@ fn tablepad_card(regions: &mut Regions, from_signal_flow: bool) -> (i64, (f64, f
     let patch = point(canvas, open, false).0;
     regions.adopt(&patch).expect("open tablepad's track patch");
     let patch_canvas = regions.get("root").and_then(|r| scene(&r.node)).expect("track patch canvas");
+    (patch_canvas, patch)
+}
+
+fn tablepad_card(regions: &mut Regions, from_signal_flow: bool) -> (i64, (f64, f64), (f64, f64)) {
+    let (patch_canvas, patch) = tablepad_patch(regions, from_signal_flow);
     patch.scenes.values().find_map(|scene| {
         let card = scene.access.iter().find(|a| a.label.starts_with("Canvas ") && a.label.ends_with(" 0"))?;
         let outlet = scene.access.iter().find(|a| a.label == "Canvas output 0:0")?;
         Some((patch_canvas, (card.x + card.w / 2.0, card.y + card.h / 2.0), (outlet.x + outlet.w / 2.0, outlet.y + outlet.h / 2.0)))
     }).expect("the patch exposes node zero through its native canvas")
+}
+
+/// [PRISM-ROUTING-CABLES] A single LFO fans out to all four distinct wavetable inputs.
+fn modulation_sockets(regions: &mut Regions, song: &std::path::Path) {
+    let copy = song.with_file_name("modulation.json");
+    let mut project: serde_json::Value = serde_json::from_slice(&std::fs::read(song).expect("project")).expect("JSON");
+    let track = &mut project["tracks"][1];
+    let nodes = track["instrument"]["routing"]["nodes"].as_array_mut().expect("nodes");
+    let mut lfo = nodes[1].clone();
+    lfo["identity"] = 4.into();
+    lfo["component"] = "lfo".into();
+    lfo["settings"] = serde_json::json!([]);
+    nodes.push(lfo);
+    track["positions"].as_array_mut().expect("layout").push(serde_json::json!({"layoutNode":4,"layoutX":610,"layoutY":530}));
+    std::fs::write(&copy, serde_json::to_vec(&project).expect("encoded project")).expect("test copy");
+    let open = |regions: &mut Regions| {
+        choose_menu(regions, "File", "Open Song…");
+        let timeline = Library::event(0, &Touch::completed("daw-open", Ok(copy.display().to_string()))).expect("reopen project");
+        regions.adopt(&timeline).expect("timeline");
+        tablepad_patch(regions, false)
+    };
+    let (canvas, patch) = open(regions);
+    let center = |view: &Shown, label: &str| {
+        let a = view.scenes.values().flat_map(|s| &s.access).find(|a| a.label == label).unwrap_or_else(|| panic!("missing {label}"));
+        (a.x + a.w / 2.0, a.y + a.h / 2.0)
+    };
+    let source = center(&patch, "Canvas output 4:0");
+    for inlet in 0..4 {
+        let destination = center(&patch, &format!("Canvas input 0:{inlet}"));
+        point(canvas, source, true);
+        point(canvas, destination, true);
+        regions.adopt(&point(canvas, destination, false).0).expect("drop cable");
+    }
+    choose_menu(regions, "File", "Save");
+    let (canvas, wired) = open(regions);
+    let (_, (x, y), _) = tablepad_card(regions, false);
+    point(canvas, (x - 80.0, y - 50.0), true);
+    point(canvas, (x - 60.0, y - 40.0), false);
+    let (_, moved) = open(regions);
+    for inlet in 0..4 {
+        let label = format!("Canvas input 0:{inlet}");
+        let (x, y) = center(&wired, &label);
+        let (mx, my) = center(&moved, &label);
+        assert!((mx - x - 20.0).abs() < 0.001 && (my - y - 10.0).abs() < 0.001, "{label} tracks the moved card");
+    }
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&copy).expect("saved patch")).expect("project");
+    let wires = saved["tracks"][1]["instrument"]["routing"]["cables"].as_array().expect("connections");
+    for inlet in 0..4 {
+        assert!(wires.contains(&serde_json::json!({"source":4,"outlet":0,"destination":0,"inlet":inlet})), "missing modulation cable to inlet {inlet}");
+    }
+    std::fs::remove_file(copy).expect("remove test project");
 }
 
 fn position_on_release(regions: &mut Regions, song: &std::path::Path) {
@@ -667,6 +723,7 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     };
 
     position_on_release(&mut regions, &song);
+    modulation_sockets(&mut regions, &song);
     spectral_picker(&mut regions, &song);
     choose_menu(&mut regions, "File", "Open Song…");
     let reset = Library::event(0, &Touch::completed("daw-open", Ok(song.display().to_string()))).expect("return to the test project");

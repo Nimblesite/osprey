@@ -140,10 +140,23 @@ module EditorView
         false => ordinaryPortX (editor, index, output, port)
 
     ordinaryPortX (editor, index, output, port) = match (portRate (editor, index, output, port) == Control)
-        true => x index + ui::Pick::either (isFilter (editor, index), -1.0, 1.0)
+        true => controlX (editor, index, output, port)
         false => match output
             true => x index + halfWidth (editor, index)
             false => x index - halfWidth (editor, index)
+
+    // [PRISM-ROUTING-CABLES] Each control socket has a distinct slot along this edge.
+    controlX (editor, index, output, port) =
+        centre = x index + ui::Pick::either (isFilter (editor, index), -1.0, 1.0)
+        match Graphs::node (editor.graph, index.layoutNode)
+            Invalid _ => centre
+            Valid n =>
+                ports = ui::Pick::either (output, n.outputs, n.inputs)
+                slots = filterList (indices ports, \i =>
+                    match listGet ports i
+                        Success p => p.rate == Control
+                        Error _ => false)
+                CanvasGeometry::controlSocketX (centre, toFloat (ui::Lists::position (slots, \i => i == port)), toFloat (length slots))
 
     (** Vertical position of a real graph socket. *)
     export portY (editor, index, output, port) = match sink (editor, index)

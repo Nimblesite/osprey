@@ -4,6 +4,8 @@ namespace synth.CanvasGeometry
 /-- Node centres leave a dedicated palette at the left of the canvas. -/
 def gridX (column : Float) : Float := 350 + column * 310
 def gridY (row : Float) : Float := 170 + row * 235
+/-- Centre a row of control sockets with a gap between their 28-point hit targets. -/
+def controlSocketX (centre rank count : Float) : Float := centre + (rank - (count - 1) / 2) * 34
 def offset (pointer centre : Float) : Float := pointer - centre
 /-- Right-anchored artwork and its hit areas share the viewport expansion. -/
 def shifted (base extra : Float) : Float := base + extra
