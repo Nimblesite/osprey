@@ -208,7 +208,12 @@ module NoteCache
                 Error why => Error(message = "Cannot write ${dir}/key.txt: ${why}")
                 Success _ => ok 1
 
-    prepared (keys, folder, dirs, worker) = match Shell::ran (20, "mkdir -p ${join (mapList (dirs, Shell::quoted)) " "}")
+    // Ordinary cache setup stays on the maker thread. The CLI also accepts a missing parent path.
+    cacheRoot folder = match makeDir "${folder}/notes"
+        Success made => ok made
+        Error _ => Shell::ran (20, "mkdir -p ${Shell::quoted folder}/notes")
+
+    prepared (keys, folder, dirs, worker) = match Outcomes::carried (cacheRoot folder, \_ => SendRenders::collect (dirs, \dir => makeDir dir))
         Error why => Error(message = why)
         Success _ => match worker == 0
             false => ok 0
