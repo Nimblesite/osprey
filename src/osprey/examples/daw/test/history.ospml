@@ -189,8 +189,8 @@ pitchRangeJourney () =
 
 // [DAW-PROJECT] A project the renderer could not play is refused when it opens and says why: a zero or 500 bpm tempo,
 // or a routing whose gate is zero or missing. A new, empty project still opens.
-projectRefusalJourney () = succeeds (daw::SongFiles::encode (timeline [keysTrack ()]), \text =>
-    succeeds (daw::SongFiles::decode text, \song => expect (length song.tracks, 1))
+projectRefusalJourney () = encoded ((timeline [keysTrack ()]), \text =>
+    decoded (text, \song => expect (length song.tracks, 1))
     arranged = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks."
     gated = "keys: A routing's attack and release must be 0.001 to 10 s."
     forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":0.0", why = arranged }, { from = "\"tempo\":120.0", to = "\"tempo\":500.0", why = arranged }, { from = "\"attack\":0.01", to = "\"attack\":0.0", why = gated }, { from = "\"attack\":0.01,", to = "", why = gated }, { from = "\"release\":0.1", to = "\"release\":11.0", why = gated }], \c =>
@@ -198,9 +198,9 @@ projectRefusalJourney () = succeeds (daw::SongFiles::encode (timeline [keysTrack
         failsWith (daw::SongFiles::decode (replace text c.from c.to ?: text), c.why))
     // Just past each edge is refused; each edge itself opens.
     forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":19.9", why = arranged }, { from = "\"tempo\":120.0", to = "\"tempo\":400.5", why = arranged }, { from = "\"attack\":0.01", to = "\"attack\":10.5", why = gated }, { from = "\"release\":0.1", to = "\"release\":0.0005", why = gated }, { from = "\"release\":0.1", to = "\"release\":0.0", why = gated }], \c => failsWith (daw::SongFiles::decode (replace text c.from c.to ?: text), c.why))
-    forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":20.0" }, { from = "\"tempo\":120.0", to = "\"tempo\":400.0" }, { from = "\"attack\":0.01", to = "\"attack\":0.001" }, { from = "\"attack\":0.01", to = "\"attack\":10.0" }, { from = "\"release\":0.1", to = "\"release\":0.001" }, { from = "\"release\":0.1", to = "\"release\":10.0" }], \c => succeeds (daw::SongFiles::decode (replace text c.from c.to ?: text), \song => expect (length song.tracks, 1)))
+    forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":20.0" }, { from = "\"tempo\":120.0", to = "\"tempo\":400.0" }, { from = "\"attack\":0.01", to = "\"attack\":0.001" }, { from = "\"attack\":0.01", to = "\"attack\":10.0" }, { from = "\"release\":0.1", to = "\"release\":0.001" }, { from = "\"release\":0.1", to = "\"release\":10.0" }], \c => decoded ((replace text c.from c.to ?: text), \song => expect (length song.tracks, 1)))
     namesRefusalJourney ()
-    succeeds (daw::SongFiles::encode (timeline []), \empty => succeeds (daw::SongFiles::decode empty, \song => expect (length song.tracks, 0))))
+    encoded ((timeline []), \empty => decoded (empty, \song => expect (length song.tracks, 0))))
 
 // [DAW-PROJECT] A project whose tracks share a name is refused on opening.
 reopened song = synth::Outcomes::carried (daw::SongFiles::encode song, daw::SongFiles::decode)
@@ -489,7 +489,7 @@ arrangedDrumParts (song, kick) =
 arrangedNoiseFloor () =
     note = daw::Note(pitch = 90, start = 0.0, length = 0.25, velocity = floatFromBits 1)
     hit = daw::DrumInstrument(hit = daw::Hit(sweep = 0.7, noise = 1.0, colour = 0.3, decay = 0.5))
-    succeeds (daw::NoteRenders::render (note, 120.0, 48000.0, hit), \samples =>
+    succeeds (sampledNote (note, hit), \samples =>
         expect (length samples, 24000)
         expect (floatBits (arrangedAt (samples, 99)), 1)
         expect (floatBits (arrangedAt (samples, 23999)), floatBits (-0.0)))
@@ -627,7 +627,7 @@ periodic (samples, period, half, near) =
 
 // [SYNTH-SPECTRAL-PITCH-EFFECT] The FFT pitch shifter moves middle C up a fifth (7 semitones, G4 at 122 frames) and an
 // octave (12 semitones, C5 at 92 frames), anti-correlated at its half period, with the shifted level kept.
-shifted (semitones, period, half, near) = succeeds (daw::NoteRenders::render (middleC (), 120.0, 48000.0, chainOf [part ("sine", 0, [pitched "frequency"]), part ("pitchShifter", 1024, [fixed ("semitones", semitones)])]), \samples =>
+shifted (semitones, period, half, near) = succeeds (sampledNote (middleC (), chainOf [part ("sine", 0, [pitched "frequency"]), part ("pitchShifter", 1024, [fixed ("semitones", semitones)])]), \samples =>
     expect (length samples, 14400)
     expect (finite samples, true)
     expect (peakOf samples > 0.05, true)
@@ -636,7 +636,7 @@ shifted (semitones, period, half, near) = succeeds (daw::NoteRenders::render (mi
     // A unit sine carries 4800 over the 9600 measured frames; the shifted note keeps more than half of it.
     expect (lagged (samples, 0) > 0.55 * 4800.0, true))
 
-heardFamily (name, instrument, pitch) = succeeds (daw::NoteRenders::render (middleC (), 120.0, 48000.0, instrument), \samples => familyHeard (name, instrument, pitch, samples))
+heardFamily (name, instrument, pitch) = succeeds (sampledNote (middleC (), instrument), \samples => familyHeard (name, instrument, pitch, samples))
 
 familyHeard (name, instrument, pitch, samples) =
     // A quarter-second note plus its 50 ms release.
@@ -644,7 +644,7 @@ familyHeard (name, instrument, pitch, samples) =
     expect (finite samples, true)
     expect (peakOf samples > 0.01, true)
     expect (peakOf samples <= 4.0, true)
-    succeeds (daw::NoteRenders::render (middleC (), 120.0, 48000.0, instrument), \again => expect (structuralEquals (again, samples), true))
+    succeeds (sampledNote (middleC (), instrument), \again => expect (structuralEquals (again, samples), true))
     match pitch
         true => inTune samples
         false => expect (name != "", true)
@@ -659,4 +659,4 @@ familiesJourney () =
     heardFamily ("phase", chainOf [part ("operator", 0, [pitched "frequency"])], true)
     shifted (7.0, 122, 61, 140)
     shifted (12.0, 92, 46, 110)
-    failsWith (daw::NoteRenders::render (middleC (), 120.0, 48000.0, chainOf [part ("noSuchModule", 0, [])]), "Unknown module \"noSuchModule\".")
+    failsWith (sampledNote (middleC (), chainOf [part ("noSuchModule", 0, [])]), "Unknown module \"noSuchModule\".")

@@ -614,17 +614,21 @@ test ("tapping a timeline track opens its own patch in Prism; built-in tracks op
 // saved patch and in Prism but is silent: each note renders exactly as it does without it.
 strayed route = route(nodes = listConcat route.nodes [daw::PatchNode(identity = 9, component = "mixer", size = 0, seed = 0, asset = "", settings = []), daw::PatchNode(identity = 8, component = "gain", size = 0, seed = 0, asset = "", settings = [daw::Setting(key = "gain", value = 0.9, follow = daw::Constant)])], cables = listAppend route.cables (daw::PatchCable(source = 1, outlet = 0, destination = 8, inlet = 0)))
 
-heardAlike (note, plain, stray) = succeeds (daw::NoteRenders::render (note, 120.0, 48000.0, plain), \expected =>
-    succeeds (daw::NoteRenders::render (note, 120.0, 48000.0, stray), \heard =>
+sampledNote (note, instrument) = daw::NoteRenders::render (note, 120.0, 48000.0, instrument)
+
+comparedNote (note, plain, patch, inspect) = succeeds (sampledNote (note, plain), \expected =>
+    succeeds (sampledNote (note, patch), \heard =>
         expect (length heard, length expected)
-        expect (length (filterList (heard, \sample => sample != 0.0)) > 0, true)
-        expect (structuralEquals (heard, expected), true)))
+        inspect (heard, expected)))
+
+noteSounds (heard, expected) = expect (length (filterList (heard, \sample => sample != 0.0)) > 0, expected)
+
+heardAlike (note, plain, stray) = comparedNote (note, plain, stray, \(heard, expected) =>
+    noteSounds (heard, true)
+    expect (structuralEquals (heard, expected), true))
 
 // A patch with an input left unplugged renders the whole note; `sounding` says whether anything is heard.
-rendersWhole (note, plain, patch, sounding) = succeeds (daw::NoteRenders::render (note, 120.0, 48000.0, plain), \expected =>
-    succeeds (daw::NoteRenders::render (note, 120.0, 48000.0, patch), \heard =>
-        expect (length heard, length expected)
-        expect (length (filterList (heard, \sample => sample != 0.0)) > 0, sounding)))
+rendersWhole (note, plain, patch, sounding) = comparedNote (note, plain, patch, \(heard, _) => noteSounds (heard, sounding))
 
 // [DAW-PATCH-HEARD] A cable pulled out while rewiring leaves that input hearing silence. The note still renders
 // at its full length, a mixer with one input unplugged still passes the other, and a patch with nothing
@@ -699,7 +703,7 @@ projectPortsJourney () =
     nodes = [first, synth::Components::modulatedLowpass (12, 1800.0, 0.707), synth::Components::lfo (13, 1.7), synth::Components::stereo 14, synth::Components::modulatedGain (15, 2, 0.37), output, synth::Components::midiNote (17, 68.0, 0.6, 256.0), synth::Components::spectral (18, 128, 16, 2.0), synth::Components::downmix 19, synth::Components::pitchShifter (20, 128, 7.0, 25.0), synth::Components::spectral (21, 128, 16, 6.0)]
     routes = [synth::Components::route (11, 0, 12, 0), synth::Components::route (13, 0, 12, 1), synth::Components::route (12, 0, 14, 0), synth::Components::route (14, 0, 15, 0), synth::Components::route (13, 0, 15, 1), synth::Components::route (15, 0, 16, 0)]
     valid (synth::Patches::built (nodes, routes), \graph =>
-        succeeds (daw::PatchRecords::saved (timeline [keysTrack ()], 0, graph), \changed =>
+        withSavedPatch (graph, \changed =>
             succeeds (synth::Outcomes::carried (daw::SongFiles::encode changed, daw::SongFiles::decode), \opened =>
                 trackAt (opened, 0, \track =>
                     routing = daw::TrackPatches::routing track.instrument
@@ -714,15 +718,15 @@ projectPortsJourney () =
 projectGrainJourney () =
     cloud = synth::Components::granular (21, daw::PatchVoices::builtinSample (), 24, 3)
     valid (synth::Patches::built ([cloud, synth::Components::stereoOutput 22], [synth::Components::route (21, 0, 22, 0)]), \graph =>
-        succeeds (daw::PatchRecords::saved (timeline [keysTrack ()], 0, graph), \changed => succeeds (daw::SongFiles::encode changed, \source =>
+        withSavedPatch (graph, \changed => encoded (changed, \source =>
             expect (contains source "\"component\":\"grainCloud\"", true)
             expect (contains source "\"asset\":\"\"", true)
             expect (contains source "\"module\"", false)
-            succeeds (daw::SongFiles::decode source, \opened =>
+            decoded (source, \opened =>
                 succeeds (daw::TrackPatches::picked (opened, 0), \again => expect (structuralEquals (again, graph), true))))))
     lost = daw::PatchNode(identity = 1, component = "grainCloud", size = 0, seed = 1, asset = "/nonexistent/osprey-grain.wav", settings = [])
     lostTrack = daw::Track(name = "lost", instrument = daw::PatchInstrument(routing = daw::Routing(nodes = [lost], cables = [], attack = 0.01, release = 0.1)), gain = 1.0, pan = 0.0, bus = "", sends = [], positions = [], notes = [])
-    succeeds (daw::SongFiles::encode (timeline [lostTrack]), \source => expect (contains source "\"asset\":\"/nonexistent/osprey-grain.wav\"", true))
+    encoded ((timeline [lostTrack]), \source => expect (contains source "\"asset\":\"/nonexistent/osprey-grain.wav\"", true))
     match daw::TrackPatches::patch lostTrack
         Error _ => expect (true, true)
         Success _ => expect ("an error", "a missing sample")
@@ -734,7 +738,7 @@ projectMixJourney () =
     nodes = [synth::Components::sine (3, 440.0), synth::Components::panner (4, 8, -0.4), wide, synth::Components::routeChannels (5, 8, [0]), synth::Components::output 2]
     wires = [synth::Components::route (3, 0, 4, 0), synth::Components::route (4, 0, 1, 0), synth::Components::route (4, 0, 1, 1), synth::Components::route (1, 0, 5, 0), synth::Components::route (5, 0, 2, 0)]
     valid (synth::Patches::built (nodes, wires), \graph =>
-        succeeds (daw::PatchRecords::saved (timeline [keysTrack ()], 0, graph), \changed =>
+        withSavedPatch (graph, \changed =>
             mixerReopened (changed, 8, 0.25, 0.75)))
     legacy = daw::PatchNode(identity = 1, component = "mixer", size = 0, seed = 0, asset = "", settings = [])
     track = keysTrack ()
@@ -743,9 +747,9 @@ projectMixJourney () =
     mixerReopened (timeline [older], 0, 1.0, 1.0)
 
 mixerReopened (project, storedWidth, first, second) =
-    succeeds (daw::SongFiles::encode project, \source =>
+    encoded (project, \source =>
         expect (contains source "\"component\":\"mixer\"", true)
-        succeeds (daw::SongFiles::decode source, \opened => trackAt (opened, 0, \track =>
+        decoded (source, \opened => trackAt (opened, 0, \track =>
             routing = daw::TrackPatches::routing track.instrument
             reads (listGet (filterList (routing.nodes, \n => n.component == "mixer")) 0, \saved =>
                 expect (saved.size, storedWidth)
@@ -790,7 +794,11 @@ mixedTo (voice, gain, pan) =
 
 encoded (arrangement, check) = succeeds (daw::SongFiles::encode arrangement, check)
 
-roundTrip arrangement = encoded (arrangement, \text => succeeds (daw::SongFiles::decode text, \back =>
+decoded (text, check) = succeeds (daw::SongFiles::decode text, check)
+
+withSavedPatch (graph, check) = succeeds (daw::PatchRecords::saved (timeline [keysTrack ()], 0, graph), check)
+
+roundTrip arrangement = encoded (arrangement, \text => decoded (text, \back =>
     encoded (back, \again => expect (again, text))
     expect (back.title, "Bridge")
     expect (length back.tracks, 3)
@@ -848,7 +856,7 @@ mixFromRow (editor, action, path) = match action
 saveJourney arrangement =
     path = "target/daw-tests/project.json"
     succeeds (makeDir "target/daw-tests", \_ => expect (true, true))
-    succeeds (daw::Projects::saved (arrangement, path), \written => succeeds (readFile written, \source => succeeds (daw::SongFiles::decode source, \back => encoded (back, \again => encoded (arrangement, \text => expect (again, text))))))
+    succeeds (daw::Projects::saved (arrangement, path), \written => succeeds (readFile written, \source => decoded (source, \back => encoded (back, \again => encoded (arrangement, \text => expect (again, text))))))
     failsWith (daw::Projects::saved (arrangement, "target/it's.json"), "A project path cannot contain a quote.")
     old = synth::EditorState::initial ()
     reopened = synth::DawSession::loaded (old(patchTrack = 1), path)
@@ -1361,7 +1369,7 @@ projectBuses song =
     expect (daw::BusMix::keys (song, "kick"), true)
     expect (daw::BusMix::keys (song, "glow"), false)
     failsWith (daw::BusMix::named (song, "drums"), "Bus drums is not in the song.")
-    succeeds (daw::SongFiles::encode song, \text => succeeds (daw::SongFiles::decode text, \again => expect (structuralEquals (again.buses, song.buses), true)))
+    encoded (song, \text => decoded (text, \again => expect (structuralEquals (again.buses, song.buses), true)))
 
 // [DAW-MIX-BUS-OUTPUT] Run every processor once, even with the downstream bus declared first.
 busChain song =
@@ -1392,7 +1400,7 @@ busJourney () =
     routed = timeline [onPads (bellTrack ())]
     failsWith (daw::Arrangements::added (routed, daw::Arrangements::empty, onPads (bellTrack ()), 10), "bell: Bus pads is not in the song.")
     succeeds (daw::Arrangements::added (routedTo (routed, [padsBus (4.0, "bell")]), daw::Arrangements::empty, onPads (bellTrack ()), 10), keyedRoute)
-    succeeds (readFile "src/osprey/examples/daw/tracks/codex-version.json", \text => succeeds (daw::SongFiles::decode text, projectBuses))
+    succeeds (readFile "src/osprey/examples/daw/tracks/codex-version.json", \text => decoded (text, projectBuses))
 
 test ("bus EQ passes at 0 dB, the sidechain ducks a bus by exactly its curve, routing and project buses are checked", \() => Runtime::guarded busJourney)
 
@@ -1430,7 +1438,7 @@ showcaseProject project =
     succeeds (daw::BusPaths::path (project.buses, "Pin bed"), \path => expect (path, ["Pin bed", "Objects", "Master"]))
     forEachList (project.tracks, showcaseVoice)
 
-test ("Silt Relay opens its wired synth families and sounds its granular and MIDI channel paths", \() => ui::Runtime::guarded (\() => succeeds (readFile "src/osprey/examples/daw/tracks/silt-relay.json", \source => succeeds (daw::SongFiles::decode source, showcaseProject))))
+test ("Silt Relay opens its wired synth families and sounds its granular and MIDI channel paths", \() => ui::Runtime::guarded (\() => succeeds (readFile "src/osprey/examples/daw/tracks/silt-relay.json", \source => decoded (source, showcaseProject))))
 
 test ("every synthesis family plays a real, finite, repeatable note through the song renderer, pitched ones in tune", \() => Runtime::guarded familiesJourney)
 
@@ -1457,11 +1465,11 @@ test ("every example song opens with playable tracks", \() => Runtime::guarded (
         scores = filterList (entries, \path => endsWith path ".json")
         expect (ui::Lists::any (scores, \path => endsWith path "/codex-version2.json"), true)
         forEachList (scores, \path => succeeds (readFile path, \source =>
-            succeeds (daw::SongFiles::decode source, \song => expect (length song.tracks > 0, true)))))))
+            decoded (source, \song => expect (length song.tracks > 0, true)))))))
 
 test ("Violet Static opens the kick as a wired WAV sample", \() => ui::Runtime::guarded (\() =>
     succeeds (readFile "src/osprey/examples/daw/tracks/violet-static.json", \source =>
-        succeeds (daw::SongFiles::decode source, \song =>
+        decoded (source, \song =>
             succeeds (ui::Lists::find (song.tracks, \t => t.name == "Kick"), \kick =>
                 routing = daw::TrackPatches::routing kick.instrument
                 expect (structuralEquals (mapList (routing.nodes, \n => n.component), ["sample", "output"]), true)
