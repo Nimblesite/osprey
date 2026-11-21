@@ -49,11 +49,10 @@ module EditorApp
         PickTrack index bar => Runtime::step (TimelineView::following (DawSession::pickedAt (editor, index, bar)))
         SelectNote index => Runtime::step (editor(selectedNote = index))
         SetVelocity value => DawSession::velocity (editor, value)
-        AdjustMix index gain pan reverb => DawSession::adjusted (editor, index, gain, pan, reverb)
+        AdjustMix index gain pan => DawSession::adjusted (editor, index, gain, pan)
         ScrollLanes page => Runtime::step (editor(lanePage = page))
         ZoomLanes factor => Runtime::step (TimelineView::zoomedBy (editor, factor))
         ChooseOutput index offset => RoutingPicker::open (editor, index, offset)
-        InspectBus space => Runtime::step (editor(inspectSpace = space))
         CloseOutput => Runtime::step (editor(outputEdit = OutputClosed))
         BrowseSends offset => DawSession::saving (editor, \ready => Runtime::step (ready(outputEdit = BrowsingSends(offset = offset), message = "")))
         BrowseBuses => BusOutputs::open editor

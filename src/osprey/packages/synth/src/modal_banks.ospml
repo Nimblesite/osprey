@@ -25,7 +25,7 @@ module ModalBanks
     (** Fundamental below 0.45 of the rate, decay 1 ms–60 s, brightness 0–1, strike 0.01–0.99 and 1–8 modes. *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency > 0.0 && config.frequency < config.sampleRate * 0.45 && config.decay >= 0.001 && config.decay <= 60.0 && config.brightness >= 0.0 && config.brightness <= 1.0 && config.strike >= 0.01 && config.strike <= 0.99 && config.count >= 1 && config.count <= 8
         true => Success(value = ModalBank(modes = mapList (toList (range (0, 8)), \index => mode (config, index))))
-        false => Error(message = "Invalid modal rate, frequency, decay, brightness, strike or mode count.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid modal rate, frequency, decay, brightness, strike or mode count."))
 
     (** Zero stored energy in every mode. *)
     export initial bank = ModalState(modes = mapList (bank.modes, \_ => Resonators::initial))
@@ -33,9 +33,9 @@ module ModalBanks
     stepped (modes, states, input, total, next) = match modes
         [] => match states
             [] => Success(value = ModalSample(sample = total, next = ModalState(modes = next)))
-            _ => Error(message = "Modal state does not match its bank.")
+            _ => Error(message = IncompatibleLayout(detail = "Modal state does not match its bank."))
         [c, ...rest] => match states
-            [] => Error(message = "Modal state does not match its bank.")
+            [] => Error(message = IncompatibleLayout(detail = "Modal state does not match its bank."))
             [held, ...others] =>
                 step = Resonators::next (c, held, input)
                 stepped (rest, others, input, total + step.sample, listAppend next step.next)

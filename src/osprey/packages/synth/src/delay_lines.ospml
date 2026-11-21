@@ -6,17 +6,17 @@ module DelayLines
     (** Allocate silent storage outside rendering; capacity is 2–1,920,000 samples. *)
     export prepare capacity = match capacity >= 2 && capacity <= 1920000
         true => Success(value = DelayLine(samples = mapList (toList (range (0, capacity)), \_ => 0.0)))
-        false => Error(message = "Delay capacity must be 2 to 1920000 samples.")
+        false => Error(message = InvalidConfiguration(detail = "Delay capacity must be 2 to 1920000 samples."))
 
     (** Linear-interpolated read `delay` samples ago, 1 to capacity. Not bandlimited: modulated reads can alias. *)
     export tap (line, delay) =
         position = toFloat (length line.samples) - delay
         match delay >= 1.0 && delay <= toFloat (length line.samples) && position == position
-            false => Error(message = "Delay read is outside the prepared line.")
+            false => Error(message = InvalidConfiguration(detail = "Delay read is outside the prepared line."))
             true => match floatToInt (floor position)
-                Error _ => Error(message = "Delay read is outside the prepared line.")
+                Error _ => Error(message = InvalidConfiguration(detail = "Delay read is outside the prepared line."))
                 Success older => match listGet line.samples older
-                    Error _ => Error(message = "Delay read is outside the prepared line.")
+                    Error _ => Error(message = InvalidConfiguration(detail = "Delay read is outside the prepared line."))
                     Success a => Success(value = GrainMath::interpolated (a, listGet line.samples (satAdd older 1) ?: a, GrainMath::fraction position))
 
     (** Write the newest sample and discard the oldest, keeping capacity constant. *)
@@ -36,5 +36,5 @@ module DelayLines
     (** Transfer stored audio to a new rate and capacity: each new slot holds the old line read at the same
         time ago (linear interpolation); history older than the old line is silence, by definition. *)
     export resampled (line, oldRate, newRate, capacity) = match oldRate > 0.0 && newRate > 0.0 && capacity >= 2 && capacity <= 1920000
-        false => Error(message = "Resampling needs positive rates and a capacity of 2 to 1920000.")
+        false => Error(message = InvalidConfiguration(detail = "Resampling needs positive rates and a capacity of 2 to 1920000."))
         true => Outcomes::carried (copied (line, oldRate / newRate, 1, capacity, []), \samples => Success(value = DelayLine(samples = samples)))

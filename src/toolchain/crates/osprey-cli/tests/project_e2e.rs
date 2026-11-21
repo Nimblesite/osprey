@@ -94,16 +94,16 @@ fn temp_project(name: &str) -> (PathBuf, String) {
 
 const FIXTURE_SOURCES: [&str; 11] = [
     "osprey.toml",
-    "src/main.ospml",
-    "src/lib/sqlite.ospml",
-    "src/domain/money.ospml",
-    "src/domain/accounts.ospml",
-    "src/domain/json.ospml",
-    "src/store/ledger.ospml",
-    "src/store/metrics.ospml",
-    "src/api/routes.ospml",
-    "src/web/bundle.ospml",
-    "src/web/pages.ospml",
+    "main.ospml",
+    "lib/sqlite.ospml",
+    "domain/money.ospml",
+    "domain/accounts.ospml",
+    "domain/json.ospml",
+    "store/ledger.ospml",
+    "store/metrics.ospml",
+    "api/routes.ospml",
+    "web/bundle.ospml",
+    "web/pages.ospml",
 ];
 
 /// The module the project-layout tests import their `answer` from.
@@ -204,7 +204,7 @@ fn flat_project_pipeline_covers_scripts_directories_and_manifests() {
         &["bank/web::Pages::render"],
         &["__osp_"],
     );
-    assert_project_main_symbol_is_local(&symbols, &project.join("src/main.ospml"));
+    assert_project_main_symbol_is_local(&symbols, &project.join("main.ospml"));
 
     // An ordinary script keeps its own names: no project name mangling.
     let source = temp_project("plain_script").0.with_extension("osp");
@@ -315,7 +315,7 @@ fn money_client_fixture(
     let project = temp_project(&format!("money_signature_{extension}_{}", source.len())).0;
     std::fs::create_dir_all(project.join("src"))?;
     let _ = std::fs::copy(
-        fixture().join("src/domain/money.ospml"),
+        fixture().join("domain/money.ospml"),
         project.join("src/money.ospml"),
     )?;
     std::fs::write(project.join(format!("src/main.{extension}")), source)?;

@@ -93,7 +93,7 @@ grainStrictlyRising positions = foldList (positions, -1, grainRising) >= 0
 // One varied-block run over arbitrary partitions, accumulating interleaved-by-block audio for comparison.
 grainCloudStep (held, size) = match GrainClouds::variedBlock (held.cloud, held.ranges, size)
     Error why =>
-        expect (why, "a varied cloud block")
+        expect (synth::Faults::detail why, "a varied cloud block")
         held
     Success block => { cloud = block.next, ranges = held.ranges, audio = listConcat held.audio (listConcat block.left block.right) }
 

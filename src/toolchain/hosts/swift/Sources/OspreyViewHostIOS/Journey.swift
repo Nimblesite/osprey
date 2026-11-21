@@ -23,7 +23,7 @@ final class IOSJourney {
     }
 
     /// The script a launch names after `--self-test`, a path inside the app's Documents.
-    static func named(in launch: [String]) -> String? {
+    nonisolated static func named(in launch: [String]) -> String? {
         guard let at = launch.firstIndex(of: "--self-test"), at + 1 < launch.count else { return nil }
         return launch[at + 1]
     }
@@ -87,7 +87,10 @@ final class IOSJourney {
         try await Task.sleep(for: Self.settle)
         let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
         guard let window = windows.first(where: \.isKeyWindow) ?? windows.first else { throw SelfTestProblem("The app has no window to draw") }
-        let picture = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+        // 8-bit sRGB, the PNG every host's goldens compare; the display's wide range would write 16 bits.
+        let format = UIGraphicsImageRendererFormat(for: window.traitCollection)
+        format.preferredRange = .standard
+        let picture = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         guard let data = picture.pngData() else { throw SelfTestProblem("\(name) cannot be written") }

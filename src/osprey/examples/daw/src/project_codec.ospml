@@ -2,21 +2,6 @@ namespace daw
 
 (** Generated project field readers and writers from daw.td [DAW-PROJECT-MODEL]. *)
 module ProjectCodec
-    writeSpace item = JsonObject [JsonMember "size" (JsonFloat item.size), JsonMember "decay" (JsonFloat item.decay), JsonMember "damping" (JsonFloat item.damping)]
-
-    (** Read the fields of Space after its nested values are decoded. *)
-    export readSpace doc = Space(size = ui::Doc::decimal (doc, "size"), decay = ui::Doc::decimal (doc, "decay"), damping = ui::Doc::decimal (doc, "damping"))
-
-    writeIntro item = JsonObject [JsonMember "recording" (JsonString item.recording), JsonMember "tail" (JsonFloat item.tail), JsonMember "crossfade" (JsonFloat item.crossfade)]
-
-    (** Read the fields of Intro after its nested values are decoded. *)
-    export readIntro doc = Intro(recording = ui::Doc::text (doc, "recording"), tail = ui::Doc::decimal (doc, "tail"), crossfade = ui::Doc::decimal (doc, "crossfade"))
-
-    writeAfterglow item = JsonObject [JsonMember "start" (JsonFloat item.start), JsonMember "ratio" (JsonFloat item.ratio), JsonMember "rise" (JsonFloat item.rise), JsonMember "hold" (JsonFloat item.hold), JsonMember "fade" (JsonFloat item.fade), JsonMember "gain" (JsonFloat item.gain), JsonMember "reverb" (JsonFloat item.reverb)]
-
-    (** Read the fields of Afterglow after its nested values are decoded. *)
-    export readAfterglow doc = Afterglow(start = ui::Doc::decimal (doc, "start"), ratio = ui::Doc::decimal (doc, "ratio"), rise = ui::Doc::decimal (doc, "rise"), hold = ui::Doc::decimal (doc, "hold"), fade = ui::Doc::decimal (doc, "fade"), gain = ui::Doc::decimal (doc, "gain"), reverb = ui::Doc::decimal (doc, "reverb"))
-
     writeEqualiser item = JsonObject [JsonMember "low" (JsonFloat item.low), JsonMember "mid" (JsonFloat item.mid), JsonMember "high" (JsonFloat item.high)]
 
     (** Read the fields of Equaliser after its nested values are decoded. *)
@@ -112,13 +97,13 @@ module ProjectCodec
     (** Read the fields of Note after its nested values are decoded. *)
     export readNote doc = Note(pitch = ui::Doc::number (doc, "pitch"), start = ui::Doc::decimal (doc, "start"), length = ui::Doc::decimal (doc, "length"), velocity = ui::Doc::decimal (doc, "velocity"))
 
-    writeTrack item = JsonObject [JsonMember "name" (JsonString item.name), JsonMember "instrument" (writeInstrument item.instrument), JsonMember "gain" (JsonFloat item.gain), JsonMember "pan" (JsonFloat item.pan), JsonMember "reverb" (JsonFloat item.reverb), JsonMember "bus" (JsonString item.bus), JsonMember "sends" (JsonArray (mapList (item.sends, writeAudioSend))), JsonMember "positions" (JsonArray (mapList (item.positions, writeNodePosition))), JsonMember "notes" (JsonArray (mapList (item.notes, writeNote)))]
+    writeTrack item = JsonObject [JsonMember "name" (JsonString item.name), JsonMember "instrument" (writeInstrument item.instrument), JsonMember "gain" (JsonFloat item.gain), JsonMember "pan" (JsonFloat item.pan), JsonMember "bus" (JsonString item.bus), JsonMember "sends" (JsonArray (mapList (item.sends, writeAudioSend))), JsonMember "positions" (JsonArray (mapList (item.positions, writeNodePosition))), JsonMember "notes" (JsonArray (mapList (item.notes, writeNote)))]
 
     (** Read the fields of Track after its nested values are decoded. *)
-    export readTrack (doc, instrument, sends, positions, notes) = Track(name = ui::Doc::text (doc, "name"), instrument = instrument, gain = ui::Doc::decimal (doc, "gain"), pan = ui::Doc::decimal (doc, "pan"), reverb = ui::Doc::decimal (doc, "reverb"), bus = ui::Doc::text (doc, "bus"), sends = sends, positions = positions, notes = notes)
+    export readTrack (doc, instrument, sends, positions, notes) = Track(name = ui::Doc::text (doc, "name"), instrument = instrument, gain = ui::Doc::decimal (doc, "gain"), pan = ui::Doc::decimal (doc, "pan"), bus = ui::Doc::text (doc, "bus"), sends = sends, positions = positions, notes = notes)
 
     (** Encode the complete project document. *)
-    export writeArrangement item = JsonObject [JsonMember "title" (JsonString item.title), JsonMember "tempo" (JsonFloat item.tempo), JsonMember "sampleRate" (JsonInt item.sampleRate), JsonMember "drive" (JsonFloat item.drive), JsonMember "space" (writeSpace item.space), JsonMember "intro" (writeIntro item.intro), JsonMember "sustains" (JsonArray (mapList (item.sustains, writeAfterglow))), JsonMember "buses" (JsonArray (mapList (item.buses, writeBus))), JsonMember "tracks" (JsonArray (mapList (item.tracks, writeTrack)))]
+    export writeArrangement item = JsonObject [JsonMember "title" (JsonString item.title), JsonMember "tempo" (JsonFloat item.tempo), JsonMember "sampleRate" (JsonInt item.sampleRate), JsonMember "buses" (JsonArray (mapList (item.buses, writeBus))), JsonMember "tracks" (JsonArray (mapList (item.tracks, writeTrack)))]
 
     (** Read the fields of Arrangement after its nested values are decoded. *)
-    export readArrangement (doc, space, intro, sustains, buses, tracks) = Arrangement(title = ui::Doc::text (doc, "title"), tempo = ui::Doc::decimal (doc, "tempo"), sampleRate = ui::Doc::number (doc, "sampleRate"), drive = ui::Doc::decimal (doc, "drive"), space = space, intro = intro, sustains = sustains, buses = buses, tracks = tracks)
+    export readArrangement (doc, buses, tracks) = Arrangement(title = ui::Doc::text (doc, "title"), tempo = ui::Doc::decimal (doc, "tempo"), sampleRate = ui::Doc::number (doc, "sampleRate"), buses = buses, tracks = tracks)

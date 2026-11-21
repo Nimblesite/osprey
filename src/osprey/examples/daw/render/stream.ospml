@@ -11,20 +11,20 @@ module Streams
     // The most passes a loop makes before it ends by itself.
     passes = 100000
 
-    side (samples, drive, index) = ArrangeMath::live (listGet samples index ?: 0.0, drive)
+    side (samples, index) = ArrangeMath::live (listGet samples index ?: 0.0)
 
-    weave (played, drive, index) = match index % 2 == 0
-        true => side (played.left, drive, intDiv index 2)
-        false => side (played.right, drive, intDiv index 2)
+    weave (played, index) = match index % 2 == 0
+        true => side (played.left, intDiv index 2)
+        false => side (played.right, intDiv index 2)
 
     // Left and right interleaved, each sample through the live soft clip.
-    woven (played, drive) = mapList (toList (range (0, satMul (length played.left) 2)), \index => weave (played, drive, index))
+    woven played = mapList (toList (range (0, satMul (length played.left) 2)), \index => weave (played, index))
 
     printed (hex, playing) =
         print hex
         Success(value = playing)
 
-    sent (arrangement, played) = synth::Outcomes::carried (synth::WaveFiles::interleaved (arrangement.sampleRate, 2, woven (played, arrangement.drive)), \hex => printed (hex, played.playing))
+    sent (arrangement, played) = synth::Outcomes::carried (PatchVoices::told (synth::WaveFiles::interleaved (arrangement.sampleRate, 2, woven played)), \hex => printed (hex, played.playing))
 
     least (one, other) = match one < other
         true => one
@@ -59,7 +59,7 @@ module Streams
 
     // The project back at its first frame, every track keeping the notes it has already made: a loop makes each
     // distinct note once, in its first pass.
-    rewound (arrangement, last) = synth::Outcomes::carried (Playback::start (arrangement, []), \fresh => Success(value = fresh(tracks = mapList (toList (range (0, length fresh.tracks)), \index => kept (fresh, last, index)))))
+    rewound (arrangement, last) = synth::Outcomes::carried (Playback::start arrangement, \fresh => Success(value = fresh(tracks = mapList (toList (range (0, length fresh.tracks)), \index => kept (fresh, last, index)))))
 
     again (arrangement, dirs, count, outcome) = synth::Outcomes::carried (outcome, \last => pass (arrangement, dirs, count, rewound (arrangement, last)))
 
@@ -71,8 +71,8 @@ module Streams
     ran (arrangement, dirs, count, loop) = match count >= block
         false => Error(message = "There is too little here to play.")
         true => match loop
-            true => foldList (toList (range (0, passes)), Playback::start (arrangement, []), \(outcome, _) => again (arrangement, dirs, count, outcome))
-            false => pass (arrangement, dirs, count, Playback::start (arrangement, []))
+            true => foldList (toList (range (0, passes)), Playback::start arrangement, \(outcome, _) => again (arrangement, dirs, count, outcome))
+            false => pass (arrangement, dirs, count, Playback::start arrangement)
 
     (** Play `arrangement` to standard output: once to its end, or its `request.beats` again and again. *)
     export played (request, arrangement, loop) = match arrangement.sampleRate == 48000

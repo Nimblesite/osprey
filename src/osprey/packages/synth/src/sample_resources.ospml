@@ -8,12 +8,12 @@ module SampleResources
 
     (** Validate a finite normalised mono resource before sharing it with grain instances. *)
     export prepare resource = match metadata resource
-        false => Error(message = "Invalid sample resource name, sample rate, source channels or root frequency.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid sample resource name, sample rate, source channels or root frequency."))
         true => Outcomes::carried (Grains::prepare (resource.samples, 1), \_ => Success(value = resource))
 
     (** Tag decoded/downmixed WAV samples with the original channel count and an explicit MIDI root pitch. *)
     export fromWave (name, rootNote, wave) = match rootNote >= 0.0 && rootNote <= 127.0 && wave.frames == length wave.samples
-        false => Error(message = "Invalid sample root pitch or decoded frame count.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid sample root pitch or decoded frame count."))
         true => prepare (SampleResource(name = name, sampleRate = wave.sampleRate, sourceChannels = wave.channels, rootFrequency = Waves::midiFrequency rootNote, samples = wave.samples))
 
     (** File bytes become a prepared sample resource; callers own file selection, reading and cancellation. *)
@@ -21,9 +21,9 @@ module SampleResources
 
     (** Calculate grain playback rate from root tuning and source/output rates, never buffer duration. *)
     export playbackRate (resource, note, outputRate) = match metadata resource && note >= 0.0 && note <= 127.0 && outputRate >= 8000.0 && outputRate <= 384000.0
-        false => Error(message = "Invalid sample pitch or output rate.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid sample pitch or output rate."))
         true =>
             rate = WaveMath::playbackRate (toFloat resource.sampleRate, outputRate, Waves::midiFrequency note, resource.rootFrequency)
             match rate >= 0.0 && rate <= 16.0
                 true => Success(value = rate)
-                false => Error(message = "The requested sample transposition exceeds the grain rate limit.")
+                false => Error(message = ExhaustedCapacity(detail = "The requested sample transposition exceeds the grain rate limit."))

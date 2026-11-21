@@ -14,7 +14,7 @@ module Repatch
     migrated (previous, next, states, initial) = match retained (previous, next, initial.identity)
         false => Success(value = initial)
         true => match listGet (filterList (states, \s => s.identity == initial.identity)) 0
-            Error _ => Error(message = "A surviving component has no DSP state.")
+            Error _ => Error(message = MissingResource(detail = "A surviving component has no DSP state."))
             Success held => Success(value = held)
 
     appendState (previous, next, states, result, initial) = match result
@@ -38,12 +38,12 @@ module Repatch
     finish (previous, next, snapshot, audio, initial) =
         observation = values (previous, next, snapshot)
         match length (filterList (observation.parameters, \p => validParameter (next, observation, p))) == length observation.parameters
-            false => Error(message = "A retained parameter is incompatible with its replacement descriptor.")
+            false => Error(message = IncompatibleLayout(detail = "A retained parameter is incompatible with its replacement descriptor."))
             true => Outcomes::carried (foldList (initial.states, Success(value = []), \(result, held) => appendState (previous, next, audio.states, result, held)), \states => Success(value = Timeline(audio = initial(states = states, position = audio.position), observation = observation)))
 
     (** Keep compatible components' phase/filter/delay state and parameter values; reset changed processors. No partial result escapes on rejection. *)
     export apply (previous, next, snapshot, audio) = match snapshot.samplePosition == audio.position && audio.position >= 0 && snapshot.revision >= 0 && snapshot.revision < 9223372036854775806
-        false => Error(message = "Graph replacement requires a current block-boundary snapshot and an available revision.")
+        false => Error(message = InvalidConfiguration(detail = "Graph replacement requires a current block-boundary snapshot and an available revision."))
         true => match Graphs::prepare previous
-            Invalid _ => Error(message = "The previous graph is invalid.")
+            Invalid _ => Error(message = InvalidConfiguration(detail = "The previous graph is invalid."))
             Valid _ => Outcomes::carried (Renderer::start next, \initial => finish (previous, next, snapshot, audio, initial))

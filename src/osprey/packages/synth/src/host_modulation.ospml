@@ -41,17 +41,17 @@ module HostModulation
     value (clips, cable, offset) = match ClipInputs::completed (clips, cable.source)
         Error why => Error(message = why)
         Success clip => match clip.clipChannels == 1
-            false => Error(message = "A parameter modulator must have one control channel.")
+            false => Error(message = IncompatibleLayout(detail = "A parameter modulator must have one control channel."))
             true => match listGet clip.clipSamples offset
-                Error _ => Error(message = "index out of bounds")
+                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
                 Success sample => Success(value = sample)
 
     point (values, p, offset, number) = match startsWith p.key "vst:" && number >= 0.0 && number <= 1.0 && length values < 1024
-        false => Error(message = "Invalid or excessive VST parameter automation.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid or excessive VST parameter automation."))
         true => match parseInt (drop p.key 4)
-            Error why => Error(message = why)
+            Error _ => Error(message = InvalidConfiguration(detail = "A VST parameter key must end in a whole-number identity."))
             Success identity => match identity >= 0 && identity <= 4294967295
-                false => Error(message = "VST parameter identity is outside its native range.")
+                false => Error(message = InvalidConfiguration(detail = "VST parameter identity is outside its native range."))
                 true => Success(value = listAppend values (HostParameter(identity = identity, offset = offset, value = number)))
 
     sampled (graph, clips, n, first, offset, outcome, p) = match outcome
@@ -61,7 +61,7 @@ module HostModulation
                 true => point (values, p, offset, p.initial)
                 false => Success(value = values)
             [cable] => Outcomes::carried (value (clips, cable, offset), \number => point (values, p, offset, number))
-            _ => Error(message = "A parameter has more than one modulation source.")
+            _ => Error(message = IncompatibleLayout(detail = "A parameter has more than one modulation source."))
 
     frame (graph, clips, n, first, outcome, offset) = foldList (filterList (n.parameters, \p => p.automatable), outcome, \(values, p) => sampled (graph, clips, n, first, offset, values, p))
 
@@ -71,7 +71,7 @@ module HostModulation
 
     (** Anchor automation to the graph clock, even across unequal block partitions. *)
     export window (graph, clips, n, first, frames) = match first >= 0 && frames > 0 && frames <= 32768 && first <= satSub 9223372036854775807 frames
-        false => Error(message = "Invalid automation clip length or timeline.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid automation clip length or timeline."))
         true =>
             offsets = mapList (toList (range (0, intDiv (satAdd frames 127) 128)), \index => satAdd (aligned first) (satMul index 128))
             foldList (filterList (offsets, \offset => offset < frames), Success(value = []), \(outcome, offset) => frame (graph, clips, n, first, outcome, offset))

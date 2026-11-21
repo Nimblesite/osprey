@@ -23,9 +23,9 @@ module SpectralKernels
 
     // Shapes are checked by SpectralStreams.next; only the integer clocks can fail here.
     unpacked (size, held) = match floatToInt held.phase
-        Error _ => Error(message = "Spectral countdown is not a whole number.")
+        Error _ => Error(message = NumericalFailure(detail = "Spectral countdown is not a whole number."))
         Success countdown => match floatToInt held.integratorOne
-            Error _ => Error(message = "Spectral frame count is not a whole number.")
+            Error _ => Error(message = NumericalFailure(detail = "Spectral frame count is not a whole number."))
             Success frames => Success(value = stream (size, held, countdown, frames))
 
     flag value = match value
@@ -35,7 +35,7 @@ module SpectralKernels
     packed (held, current) = held(delay = listConcat (listConcat (listConcat current.input current.side) current.output) (listConcat (flattened current.memory) (flattened current.motion)), phase = toFloat current.countdown, integratorOne = toFloat current.frames, integratorTwo = flag current.captured)
 
     // A spectral shift moves whole bins; a fraction is refused, never truncated.
-    fractional = Error(message = "Spectral shift must be a whole number of bins.")
+    fractional = Error(message = InvalidConfiguration(detail = "Spectral shift must be a whole number of bins."))
 
     // A pitch shift in semitones and cents; its formants stay put only when `keep` is on.
     pitched pitch =
@@ -56,9 +56,9 @@ module SpectralKernels
             0.0 => Success(value = SpectralMorph(amount = amount, mode = Blend))
             1.0 => Success(value = SpectralMorph(amount = amount, mode = Envelope))
             2.0 => Success(value = SpectralMorph(amount = amount, mode = Partial))
-            _ => Error(message = "Morph mode must be 0 blend, 1 envelope or 2 partial.")
+            _ => Error(message = InvalidConfiguration(detail = "Morph mode must be 0 blend, 1 envelope or 2 partial."))
         6.0 => Success(value = pitched pitch)
-        _ => Error(message = "Transform must be 0 pass, 1 freeze, 2 band, 3 shift, 4 smear, 5 morph or 6 pitch.")
+        _ => Error(message = InvalidConfiguration(detail = "Transform must be 0 pass, 1 freeze, 2 band, 3 shift, 4 smear, 5 morph or 6 pitch."))
 
     streamed (frame, held, input, side, configured, size) = match configured
         Error why => Error(message = why)

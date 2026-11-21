@@ -9,7 +9,7 @@ module Waveshapers
     (** Drive 0.1–50 (linear input gain), bias −1–1 (asymmetry, removed again by a 5 Hz DC blocker), level 0–1. *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.drive >= 0.1 && config.drive <= 50.0 && config.bias >= -1.0 && config.bias <= 1.0 && config.level >= 0.0 && config.level <= 1.0
         true => Success(value = config)
-        false => Error(message = "Invalid shaper rate, drive, bias or level.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid shaper rate, drive, bias or level."))
 
     (** The memoryless curve. *)
     export curve (shape, x) = match shape

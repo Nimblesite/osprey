@@ -9,7 +9,7 @@ module Smoothers
     (** Time 0.1 ms–10 s at 8–384 kHz. *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.time >= 0.0001 && config.time <= 10.0
         true => Success(value = config)
-        false => Error(message = "Smoothing time must be 0.1 ms to 10 s at a valid rate.")
+        false => Error(message = InvalidConfiguration(detail = "Smoothing time must be 0.1 ms to 10 s at a valid rate."))
 
     moved (config, held, target) = match config.linear
         true => PhysicalMath::slewed (held.value, target, config.time, config.sampleRate)

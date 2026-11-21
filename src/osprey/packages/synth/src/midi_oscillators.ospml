@@ -62,9 +62,9 @@ module MidiOscillators
 
     (** Retain note ownership and oscillator phase across blocks; events at a boundary belong to the next block. *)
     export block (plan, clips, n, voice, frames) = match valid (n, voice) && frames >= 1 && frames <= 32768
-        false => Error(message = "Invalid MIDI oscillator state or frame capacity.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid MIDI oscillator state or frame capacity."))
         true => match ClipInputs::routed (plan.graph, clips, n.identity, 0)
             Error why => Error(message = why)
             Success clip => match length clip.clipNotes <= 1024 && ordered (clip.clipNotes, 0) && length (filterList (clip.clipNotes, \note => HostPackets::validNote (frames, note))) == length clip.clipNotes
-                false => Error(message = "Invalid or unordered MIDI oscillator events.")
+                false => Error(message = InvalidConfiguration(detail = "Invalid or unordered MIDI oscillator events."))
                 true => Outcomes::carried (foldList (toList (range (0, frames)), Success(value = ClipKernel(heldKernel = voice, kernelSamples = [])), \(held, index) => sample (plan, n, clip.clipNotes, release, held, index)), \rendered => Success(value = rendered(kernelSamples = listReverse rendered.kernelSamples)))

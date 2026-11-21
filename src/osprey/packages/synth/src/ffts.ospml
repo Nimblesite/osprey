@@ -39,14 +39,14 @@ module Ffts
 
     (** Real frame to bins 0..size/2. *)
     export forward samples = match valid (length samples)
-        false => Error(message = "FFT size must be a power of two from 64 to 4096.")
+        false => Error(message = InvalidConfiguration(detail = "FFT size must be a power of two from 64 to 4096."))
         true => Success(value = Sequences::take (transform (mapList (samples, \x => Complex(re = x, im = 0.0)), -1.0), satAdd (intDiv (length samples) 2) 1))
 
     conjugate value = Complex(re = value.re, im = 0.0 - value.im)
 
     (** Bins 0..size/2 back to a real frame, rebuilding the conjugate-symmetric upper half. *)
     export inverse (bins, size) = match valid size && length bins == satAdd (intDiv size 2) 1
-        false => Error(message = "Inverse FFT needs size/2 + 1 bins of a supported size.")
+        false => Error(message = InvalidConfiguration(detail = "Inverse FFT needs size/2 + 1 bins of a supported size."))
         true =>
             mirrored = listReverse (mapList (Sequences::drop (Sequences::take (bins, intDiv size 2), 1), conjugate))
             Success(value = mapList (transform (listConcat bins mirrored, 1.0), \value => value.re / toFloat size))

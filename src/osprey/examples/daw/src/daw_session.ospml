@@ -7,7 +7,7 @@ import ui::Requests
 (** Loading a song, picking a track, opening its patch in Prism and playing the whole song. *)
 module DawSession
     (** No song loaded: the timeline asks for one. *)
-    export blank () = daw::Arrangement(title = "", tempo = 120.0, sampleRate = 48000, drive = 1.0, space = daw::Space(size = 1.0, decay = 1.0, damping = 0.5), intro = daw::Intro(recording = "", tail = 0.0, crossfade = 0.0), sustains = [], buses = [], tracks = [])
+    export blank () = daw::Arrangement(title = "", tempo = 120.0, sampleRate = 48000, buses = [], tracks = [])
 
     (** The bar (from 0, four beats each) a beat falls in. *)
     export bar beat = floatToInt (TimelineGeometry::bar beat) ?: 0
@@ -19,7 +19,7 @@ module DawSession
     (** Select a track and show the two bars where it first plays. *)
     export picked (editor, index) = match listGet editor.song.tracks index
         Error _ => editor
-        Success track => editor(track = index, rollDrag = RollIdle, outputEdit = OutputClosed, inspectSpace = false, lanePage = intDiv index 7, selectedNote = -1, rollBar = firstBar track, message = "${track.name}: ${length track.notes} notes.")
+        Success track => editor(track = index, rollDrag = RollIdle, outputEdit = OutputClosed, lanePage = intDiv index 7, selectedNote = -1, rollBar = firstBar track, message = "${track.name}: ${length track.notes} notes.")
 
     (** Select a track and keep the piano roll on `at`. *)
     export pickedAt (editor, index, at) =
@@ -74,7 +74,7 @@ module DawSession
 
     fault place = "${place}/fault.txt"
 
-    // The whole song, with its intro, is `song.wav`.
+    // The whole song is `song.wav`.
     mastered place = "${place}/song.wav"
 
     // The cached audio is current when it was rendered from exactly this project text.
@@ -278,7 +278,7 @@ module DawSession
         Success next => Success(value = EditorHistory::project (editor, next))
 
     (** Commit a mixer adjustment to the project after the fader is released. *)
-    export adjusted (editor, index, gain, pan, reverb) = savedTrack (editor, index, daw::Projects::mixed (editor.song, index, gain, pan, reverb))
+    export adjusted (editor, index, gain, pan) = savedTrack (editor, index, daw::Projects::mixed (editor.song, index, gain, pan))
 
     (** Write the new dry destination into the selected track in this same project. *)
     export routed (editor, index, bus) = savedTrack (editor, index, daw::Projects::routed (editor.song, index, bus))

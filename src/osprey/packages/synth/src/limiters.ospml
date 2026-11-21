@@ -74,8 +74,8 @@ module Limiters
     (** One linked gain per frame for `left` and `right` at `rate`: `ceiling` 0–1 linear, lookahead 0.1–20 ms,
         release 1 ms–2 s. *)
     export gains (left, right, rate, ceiling, milliseconds, release) = match valid (left, right, rate, ceiling, milliseconds, release)
-        false => Error(message = "A limiter needs equal sides, a rate of 8 to 384 kHz, a ceiling above 0 up to 1, a lookahead of 0.1 to 20 ms and a release of 1 ms to 2 s.")
-        true => Outcomes::carried (floatToInt (DynamicsMath::lookahead (milliseconds, rate)), \block => Success(value = shaped (left, right, ceiling, block, DynamicsMath::coefficient (release, rate))))
+        false => Error(message = InvalidConfiguration(detail = "A limiter needs equal sides, a rate of 8 to 384 kHz, a ceiling above 0 up to 1, a lookahead of 0.1 to 20 ms and a release of 1 ms to 2 s."))
+        true => Outcomes::whole ((DynamicsMath::lookahead (milliseconds, rate)), \block => Success(value = shaped (left, right, ceiling, block, DynamicsMath::coefficient (release, rate))))
 
     (** One side through the gains, clamped to `ceiling`. *)
     export applied (side, gains, ceiling) = mapList (toList (range (0, length side)), \index => DynamicsMath::limitedSample (listGet side index ?: 0.0, listGet gains index ?: 1.0, ceiling))

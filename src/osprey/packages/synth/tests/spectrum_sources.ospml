@@ -74,6 +74,6 @@ registerSpectrumSources () =
         forEachList ([0, 1, 2, 3], modesHeld)
         stringsHeld ()
         match Wavetables::classic (2048, 256)
-            Error why => expect (why, "")
+            Error why => expect (synth::Faults::detail why, "")
             Success table => tableHeld table))
     test ("every example patch sounds its documented pitch and timbre [SYNTH-TEST-SPECTRUM]", \() => arithmetic patchesHeld)

@@ -369,8 +369,7 @@ module TimelineView
         [label (voice.name, 1154.0, 196.0, 26.0, ink (), 0, 9), label ("Track ${satAdd editor.track 1}    ·    ${instrumentName voice.instrument} instrument", 1154.0, 236.0, 13.0, dim (), 0, 9)],
         section ("MIX", 270.0), fader ("Gain", "${hundredths voice.gain}×", voice.gain, 4.0, 322.0),
         fader ("Pan", pan voice.pan, voice.pan + 1.0, 2.0, 381.0), section ("BUS ROUTING", 440.0),
-        [label ("Output", 1154.0, 491.0, 14.0, dim (), 0, 9), box (1154.0, 518.0, 262.0, 36.0, Scenes::rgb (46, 39, 66), 9), Scenes::disc (1173.0, 536.0, 4.0, accent (), 10), label (destination voice, 1188.0, 529.0, 14.0, ink (), 0, 10), label ("›", 1400.0, 526.0, 18.0, dim (), 2, 10)], fader ("Space send", percent voice.reverb, voice.reverb, 1.0, 579.0),
-        [label ("Post-gain · pre-pan", 1154.0, 630.0, 11.0, dim (), 0, 9)]]
+        [label ("Output", 1154.0, 491.0, 14.0, dim (), 0, 9), box (1154.0, 518.0, 262.0, 36.0, Scenes::rgb (46, 39, 66), 9), Scenes::disc (1173.0, 536.0, 4.0, accent (), 10), label (destination voice, 1188.0, 529.0, 14.0, ink (), 0, 10), label ("›", 1400.0, 526.0, 18.0, dim (), 2, 10)]]
 
     (** The track inspector writes its controls through the same checked mixer action as the routing table. *)
     export inspectorAt (editor, x, y) = match track editor
@@ -378,14 +377,12 @@ module TimelineView
         Success voice => match x >= 1154.0 && x <= 1416.0
             false => Error(message = "No control here.")
             true => match y >= 338.0 && y <= 358.0
-                true => Success(value = AdjustMix(index = editor.track, gain = TimelineGeometry::fader (x, 1154.0, 262.0, 0.0, 4.0), pan = voice.pan, reverb = voice.reverb))
+                true => Success(value = AdjustMix(index = editor.track, gain = TimelineGeometry::fader (x, 1154.0, 262.0, 0.0, 4.0), pan = voice.pan))
                 false => match y >= 397.0 && y <= 417.0
-                    true => Success(value = AdjustMix(index = editor.track, gain = voice.gain, pan = TimelineGeometry::fader (x, 1154.0, 262.0, -1.0, 1.0), reverb = voice.reverb))
-                    false => match y >= 595.0 && y <= 615.0
-                        true => Success(value = AdjustMix(index = editor.track, gain = voice.gain, pan = voice.pan, reverb = TimelineGeometry::fader (x, 1154.0, 262.0, 0.0, 1.0)))
-                        false => match y >= 518.0 && y <= 554.0
-                            true => Success(value = ChooseOutput(index = editor.track, offset = -1))
-                            false => Error(message = "No control here.")
+                    true => Success(value = AdjustMix(index = editor.track, gain = voice.gain, pan = TimelineGeometry::fader (x, 1154.0, 262.0, -1.0, 1.0)))
+                    false => match y >= 518.0 && y <= 554.0
+                        true => Success(value = ChooseOutput(index = editor.track, offset = -1))
+                        false => Error(message = "No control here.")
 
     noteDetails (editor, voice) = match listGet voice.notes editor.selectedNote
         Error _ => []
@@ -418,7 +415,7 @@ module TimelineView
     export inspector editor = listConcat [box (1132.0, 142.0, 308.0, 767.0, panelInk (), 8), label ("TRACK INSPECTOR", 1154.0, 164.0, 12.0, dim (), 0, 9)] (chosen editor)
 
     (** Focus and accessibility bounds for the inspector faders. *)
-    export inspectorAreas () = [area ("Track gain", 1154.0, 338.0, 262.0, 20.0, false), area ("Track pan", 1154.0, 397.0, 262.0, 20.0, false), area ("Show output routing", 1154.0, 518.0, 262.0, 36.0, false), area ("Track Space send", 1154.0, 595.0, 262.0, 20.0, false)]
+    export inspectorAreas () = [area ("Track gain", 1154.0, 338.0, 262.0, 20.0, false), area ("Track pan", 1154.0, 397.0, 262.0, 20.0, false), area ("Show output routing", 1154.0, 518.0, 262.0, 36.0, false)]
 
     (** The whole Timeline page. *)
     export shapes editor = listConcat (arrangement (editor, beats editor)) (ui::Lists::flatten [roll editor, inspector editor, RoutingPicker::shapes editor])

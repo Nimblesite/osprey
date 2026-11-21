@@ -47,9 +47,9 @@ module FitReports
 
     (** Fit on the training clip alone. Score the winning values on the separately labelled evaluation clip. *)
     export fit (graph, config, training, evaluation) = match valid training && valid evaluation
-        false => Error(message = "Fit references need labelled, licensed, finite mono clips at 48 kHz and a supported FFT length.")
+        false => Error(message = InvalidConfiguration(detail = "Fit references need labelled, licensed, finite mono clips at 48 kHz and a supported FFT length."))
         true => match distinct (training, evaluation)
-            false => Error(message = "Training and evaluation need distinct source identities and sample data.")
+            false => Error(message = InvalidConfiguration(detail = "Training and evaluation need distinct source identities and sample data."))
             true => Outcomes::carried (Fitting::fit (graph, config, training.samples), \result => report (graph, config, training.source, evaluation, result))
 
     report (graph, config, training, evaluation, result) = match Fitting::spectrum evaluation.samples

@@ -12,12 +12,8 @@ import synth::Outcomes
 module NoteCache
     ok value = Success(value = value)
 
-    still = Space(size = 0.0, decay = 0.0, damping = 0.0)
-
-    bare = Intro(recording = "", tail = 0.0, crossfade = 0.0)
-
     // Everything a note's lanes depend on besides the note itself, as text.
-    keyText (song, voice) = SongFiles::encode (song(title = "", drive = 1.0, space = still, intro = bare, sustains = [], buses = [], tracks = [voice(name = "", gain = 1.0, pan = 0.0, reverb = 0.0, bus = "", positions = [], notes = [])]))
+    keyText (song, voice) = SongFiles::encode (song(title = "", buses = [], tracks = [voice(name = "", gain = 1.0, pan = 0.0, bus = "", positions = [], notes = [])]))
 
     keyPath (folder, tag, index) = "${folder}/key.${tag}.${index}.txt"
 

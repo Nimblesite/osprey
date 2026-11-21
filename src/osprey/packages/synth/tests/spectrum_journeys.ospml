@@ -101,7 +101,7 @@ filterStep (c, run, frequency, n) =
 
 // A sine through the state-variable filter settles for 4,800 frames; its last 4,800 hold the bilinear response.
 responseHeld r = match Filters::configure (synth::FilterConfig(sampleRate = probeRate, cutoff = r.cutoff, resonance = r.q))
-    Error why => expect (why, "")
+    Error why => expect (synth::Faults::detail why, "")
     Success c =>
         run = foldList (toList (range (0, 9600)), { held = Filters::initial, low = [], band = [], high = [] }, \(held, n) => filterStep (c, held, r.frequency, n))
         w = ProbeMath::warpedRatio (r.frequency, r.cutoff, probeRate)

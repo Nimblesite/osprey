@@ -60,3 +60,15 @@ type FilterSample =
     high : float
     next : FilterState
 
+
+type Fault =
+    InvalidConfiguration
+        detail : string
+    ExhaustedCapacity
+        detail : string
+    MissingResource
+        detail : string
+    IncompatibleLayout
+        detail : string
+    NumericalFailure
+        detail : string

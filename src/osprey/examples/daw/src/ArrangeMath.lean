@@ -39,20 +39,16 @@ def detuned (frequency cents : Float) : Float := frequency * Float.pow 2 (cents 
 def panLeft (pan : Float) : Float := Float.cos (0.7853981633974483 * (pan + 1))
 def panRight (pan : Float) : Float := Float.sin (0.7853981633974483 * (pan + 1))
 
-/-- Master lift: the gain that puts the mix's peak on `ceiling`, times `drive`, so a drive above 1 pushes the
-mix into the brick-wall limiter. A silent mix stays silent. -/
-def lifted (peak drive ceiling : Float) : Float :=
-  if peak <= 0 then 0 else drive * ceiling / peak
-
-/-- Read position in a held recording played `ratio` times faster, after `skip` frames. -/
-def readAt (frame ratio skip : Float) : Float := skip + frame * ratio
+/-- Master lift: the gain that puts the mix's peak on `ceiling`. A silent mix stays silent. -/
+def lifted (peak ceiling : Float) : Float :=
+  if peak <= 0 then 0 else ceiling / peak
 
 /-- A deterministic, normalised single-cycle harmonic sample for the initial grain-cloud patch. -/
 def grainSample (index : Float) : Float :=
   0.5 * Float.sin (6.283185307179586 * index / 1024) + 0.25 * Float.sin (18.84955592153876 * index / 1024) + 0.125 * Float.sin (43.982297150257104 * index / 1024)
-/-- A track's mix is playable: gain 0–4, pan −1 (left) to 1 (right), Space send 0–1. -/
-def mixable (gain pan reverb : Float) : Bool :=
-  gain >= 0 && gain <= 4 && pan >= -1 && pan <= 1 && reverb >= 0 && reverb <= 1
+/-- A track's mix is playable: gain 0–4, pan −1 (left) to 1 (right). -/
+def mixable (gain pan : Float) : Bool :=
+  gain >= 0 && gain <= 4 && pan >= -1 && pan <= 1
 
 /-- A note velocity is 0 (silent) to 1 (full). -/
 def audible (velocity : Float) : Bool := velocity >= 0 && velocity <= 1
@@ -72,16 +68,6 @@ def bused (existing gain sample : Float) : Float := existing + gain * sample
 def enveloped (sample frame gate attack release sampleRate : Float) : Float :=
   sample * gated frame gate (attack * sampleRate) (release * sampleRate)
 
-/-- A held sound's level: rising over `rise` s, holding `hold` s, then fading over `fade` s. -/
-def glowLevel (frame rise hold fade sampleRate : Float) : Float :=
-  gated frame (secondFrames (rise + hold) sampleRate) (rise * sampleRate) (fade * sampleRate)
-
-/-- Seconds of held sound read: the longest appearance plus the skipped start and two frames of slack. -/
-def neededSeconds (longest skipped sampleRate : Float) : Float := longest + (skipped + 2) / sampleRate
-
-/-- Whether `frames` of held sound cover `needed` seconds, within one frame of rounding. -/
-def holds (frames needed sampleRate : Float) : Bool := frames + 1 >= needed * sampleRate
-
 /-- Loop storage for one period of `frequency`, with eight frames of headroom. -/
 def loopRoom (sampleRate frequency : Float) : Float := Float.ceil (sampleRate / frequency) + 8
 
@@ -100,8 +86,8 @@ def operatorLevel (velocity frame gate attack release sampleRate : Float) : Floa
 def drumBody (velocity noise frame decay sampleRate : Float) : Float :=
   velocity * (1 - noise) * ringing frame decay sampleRate
 
-/-- The piece's frames: the last note end plus the reverb decay and two seconds. -/
-def pieceFrames (beats tempo sampleRate decay : Float) : Float := beatFrames beats tempo sampleRate + secondFrames (decay + 2) sampleRate
+/-- The piece's frames: the last note end plus two seconds for its sound to ring out. -/
+def pieceFrames (beats tempo sampleRate : Float) : Float := beatFrames beats tempo sampleRate + secondFrames 2 sampleRate
 
 /-- One step of a one-pole low-pass toward `input`; `coefficient` comes from `poleCoefficient`. -/
 def onePole (previous input coefficient : Float) : Float := input + coefficient * (previous - input)
@@ -120,10 +106,10 @@ def busValid (gain low mid high ratio knee attack release : Float) : Bool :=
   gain >= 0 && gain <= 4 && low >= -24 && low <= 24 && mid >= -24 && mid <= 24 && high >= -24 && high <= 24
     && ratio >= 1 && ratio <= 20 && knee >= 0 && knee <= 24 && attack >= 0 && attack <= 2 && release >= 0 && release <= 2
 
-/-- [DAW-TRANSPORT-LIVE] A live sample: Master times `drive`, three quarters up, through a cubic soft clip that
+/-- [DAW-TRANSPORT-LIVE] A live sample: Master three quarters up, through a cubic soft clip that
 never leaves -1 to 1, since live play cannot know the song's peak before it sounds. -/
-def live (sample drive : Float) : Float :=
-  let raw := sample * drive * 0.75
+def live (sample : Float) : Float :=
+  let raw := sample * 0.75
   let held := if raw < -1 then -1 else if raw > 1 then 1 else raw
   1.5 * held - 0.5 * held * held * held
 

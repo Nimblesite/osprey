@@ -21,7 +21,7 @@ module Resonators
     (** Frequency is below 0.45 of the rate; decay is 1 ms–60 s, so the pole radius stays below one. *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency > 0.0 && config.frequency < config.sampleRate * 0.45 && config.decay >= 0.001 && config.decay <= 60.0 && config.gain >= -8.0 && config.gain <= 8.0
         true => Success(value = coefficients config)
-        false => Error(message = "Invalid resonator rate, frequency, decay or gain (|gain| <= 8).")
+        false => Error(message = InvalidConfiguration(detail = "Invalid resonator rate, frequency, decay or gain (|gain| <= 8)."))
 
     (** One step with accepted coefficients. *)
     export next (c, held, input) =

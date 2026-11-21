@@ -33,18 +33,18 @@ module Grains
         pool = GrainPool(region = fullRegion (source, LoopSource), source = source, retiredSource = [], retiredBefore = 0, capacity = capacity, voices = [], revision = 0, position = 0, nextIdentity = 0)
         match layout pool && length (filterList (source, sourceSample)) == length source
             true => Success(value = pool)
-            false => Error(message = "Grains require 2–1048576 finite normalised mono samples and capacity 1–256.")
+            false => Error(message = InvalidConfiguration(detail = "Grains require 2–1048576 finite normalised mono samples and capacity 1–256."))
 
     (** Select an absolute, half-open source region for future triggers. Existing voices retain theirs. *)
     export withRegion (pool, region) = match layout pool && regionValid (length pool.source, region)
         true => Success(value = pool(region = region))
-        false => Error(message = "Invalid grain pool or source region.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid grain pool or source region."))
 
     (** Prepare a new mono source off the audio thread. At most one retired buffer may drain. *)
     export replaceSource (pool, source) = match layout pool
-        false => Error(message = "Invalid grain pool.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid grain pool."))
         true => match length pool.retiredSource > 0
-            true => Error(message = "The previous sample still has active grains.")
+            true => Error(message = InvalidConfiguration(detail = "The previous sample still has active grains."))
             false => match prepare (source, pool.capacity)
                 Error why => Error(message = why)
                 Success ready => match length pool.voices == 0
@@ -54,15 +54,15 @@ module Grains
     (** A new grain sounds from the pool's current sample and reads the source from `settings.start`; zero rate holds it there.
         [SYNTH-ADVANCED-GRAINS-OVERLOAD] Reject-new policy: a full pool returns accepted=false and counted state, preserving every active grain. *)
     export trigger (pool, settings) = match layout pool && inside (pool.region, settings.start) && controls (length pool.source, settings) && pool.revision < 9223372036854775807 && pool.nextIdentity < 9223372036854775807
-        false => Error(message = "Invalid grain source, controls or revision.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid grain source, controls or revision."))
         true => match length pool.voices < pool.capacity
             false => Success(value = GrainAdmission(pool = pool(revision = satAdd pool.revision 1), accepted = false))
             true => Success(value = GrainAdmission(pool = pool(voices = listAppend pool.voices (GrainVoice(region = pool.region, identity = pool.nextIdentity, controls = settings, cursor = settings.start, age = 0)), revision = satAdd pool.revision 1, nextIdentity = satAdd pool.nextIdentity 1), accepted = true))
 
     interpolated (source, cursor, region) = match floatToInt (floor cursor)
-        Error why => Error(message = why)
+        Error _ => Error(message = NumericalFailure(detail = "A whole-number value is not finite or is out of range."))
         Success index => match listGet source index
-            Error _ => Error(message = "index out of bounds")
+            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
             Success a =>
                 following = match index == satSub region.limit 1
                     true => match region.boundary
@@ -70,9 +70,9 @@ module Grains
                         OneShotSource => index
                     false => satAdd index 1
                 match listGet source following
-                    Error _ => Error(message = "index out of bounds")
+                    Error _ => Error(message = MissingResource(detail = "index out of bounds"))
                     Success b => match sourceSample a && sourceSample b
-                        false => Error(message = "A grain read a nonfinite or unnormalised source sample.")
+                        false => Error(message = NumericalFailure(detail = "A grain read a nonfinite or unnormalised source sample."))
                         true => Success(value = GrainMath::interpolated (a, b, GrainMath::fraction cursor))
 
     // Only reached from checked entry points; advancing preserves cursor/lifetime invariants.
@@ -114,7 +114,7 @@ module Grains
 
     (** Render one sample with a periodic source and its latched window. Summed peaks can exceed unity; gain staging belongs to the caller. *)
     export next pool = match layout pool && pool.position < 9223372036854775807
-        false => Error(message = "Invalid grain pool or exhausted sample clock.")
+        false => Error(message = ExhaustedCapacity(detail = "Invalid grain pool or exhausted sample clock."))
         true => advanced pool
 
     (** Render 1–2048 frames without changing grain scheduling at the block boundary. *)
@@ -154,9 +154,9 @@ module Grains
 
     (** Events must be sorted, within [pool.position, pool.position + frames), and at most 2048. Equal positions preserve caller order. *)
     export scheduled (pool, frames, events) = match layout pool && frames >= 1 && frames <= 2048 && pool.position >= 0 && pool.position <= satSub 9223372036854775807 frames && length events <= 2048
-        false => Error(message = "Invalid grain block size, clock or event capacity.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid grain block size, clock or event capacity."))
         true => match foldList (events, pool.position, \(previous, event) => orderedEvent (pool.position, satAdd pool.position frames, previous, event)) >= 0
-            false => Error(message = "Grain events must be ordered and belong to this block's half-open sample interval.")
+            false => Error(message = InvalidConfiguration(detail = "Grain events must be ordered and belong to this block's half-open sample interval."))
             true =>
                 initial = GrainTimelineState(audio = GrainBlock(left = [], right = [], next = pool), events = events)
                 match foldList (toList (range (0, frames)), Success(value = initial), \(held, _) => sample held)

@@ -7,17 +7,17 @@ import SwiftUI
 // OspreyShared library the macOS host runs. It opens the application's archive over the shared
 // frame — platform "ios", home the app's Documents folder, dark from the system — and shows its
 // root region with this device's native components. No application state, screen or policy
-// lives here. `--view-check` runs Tally's SelfCheck journey and `--open-check` checks that any
-// application opens to a checked frame with controls; either runs with no person present, reports
-// the verdict on stdout and in the app's Documents, and exits. macOS's entry is Sources/OspreyViewHost.
+// lives here. `--view-check` runs Tally's SelfCheck journey with no person present, reports the
+// verdict on stdout and in the app's Documents, and exits; `--self-test <script>` plays an app's
+// self-test.json in the open app (Journey.swift). macOS's entry is Sources/OspreyViewHost.
 
 let launch = HostLaunch.ready(from: Array(CommandLine.arguments.dropFirst()))
-let opening = launch.contains("--open-check")
-guard opening || launch.contains("--view-check") else {
+let journey = IOSJourney.named(in: Array(CommandLine.arguments.dropFirst()))
+guard launch.contains("--view-check") else {
     IOSHostApp.main()
     exit(0)
 }
-exit(MainActor.assumeIsolated { IOSCheck.run(opening ? SelfCheck.opened() : SelfCheck.run()) })
+exit(MainActor.assumeIsolated { IOSCheck.run(SelfCheck.run()) })
 
 struct IOSHostApp: App {
     @StateObject private var store = makeStore(arguments: HostLaunch.arguments(from: Array(CommandLine.arguments.dropFirst())),
@@ -26,6 +26,7 @@ struct IOSHostApp: App {
     var body: some Scene {
         WindowGroup(Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Osprey") {
             RootView(store: store)
+                .task { if let journey { await IOSJourney(store: store, script: journey).run() } }
         }
     }
 }

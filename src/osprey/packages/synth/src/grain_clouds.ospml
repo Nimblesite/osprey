@@ -11,7 +11,7 @@ module GrainClouds
             Success clock => Outcomes::carried (GrainDistributions::seeded variationSeed, \seeds => Success(value = GrainCloudState(pool = pool, clock = clock, seeds = seeds)))
 
     schedule (held, frames) = match held.pool.position == held.clock.position
-        false => Error(message = "The grain player and scheduler clocks have diverged.")
+        false => Error(message = InvalidConfiguration(detail = "The grain player and scheduler clocks have diverged."))
         true => GrainScheduler::block (held.clock, frames)
 
     rendered (held, clock, events, frames) = Outcomes::carried (Grains::scheduled (held.pool, frames, events), \audio => Success(value = GrainCloudBlock(left = audio.left, right = audio.right, next = held(pool = audio.next, clock = clock))))
@@ -49,7 +49,7 @@ module GrainCapture
     (** Allocate an empty capture with a limit in source frames. *)
     export prepare (capacity, sampleRate) = match config (capacity, sampleRate)
         true => Success(value = GrainCaptureState(capacity = capacity, sampleRate = sampleRate, written = 0, samples = [], frozen = false))
-        false => Error(message = "Capture requires 2–1048576 mono frames at 8–192 kHz.")
+        false => Error(message = InvalidConfiguration(detail = "Capture requires 2–1048576 mono frames at 8–192 kHz."))
 
     retained (held, block) = match length block >= held.capacity
         true => Sequences::drop (block, satSub (length block) held.capacity)
@@ -59,24 +59,24 @@ module GrainCapture
 
     (** Append a finite, normalised mono block. Only the most recent capacity frames survive. *)
     export write (held, block) = match valid held && length block >= 1 && length block <= 2048 && held.written <= satSub 9223372036854775807 (length block)
-        false => Error(message = "Invalid capture state, block size or sample clock.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid capture state, block size or sample clock."))
         true => match held.frozen
-            true => Error(message = "Resume capture before writing.")
+            true => Error(message = InvalidConfiguration(detail = "Resume capture before writing."))
             false => match foldList (block, true, \(ok, sample) => ok && sample >= -1.0 && sample <= 1.0)
-                false => Error(message = "Capture samples must be finite and within [-1, 1].")
+                false => Error(message = NumericalFailure(detail = "Capture samples must be finite and within [-1, 1]."))
                 true => Success(value = held(samples = retained (held, block), written = satAdd held.written (length block)))
 
     (** Seal the current samples at their source clock. Readers retain this immutable snapshot. *)
     export freeze held = match valid held && length held.samples >= 2
         true => Success(value = held(frozen = true))
-        false => Error(message = "Freeze requires at least two captured frames.")
+        false => Error(message = InvalidConfiguration(detail = "Freeze requires at least two captured frames."))
 
     (** Continue writing from the same position without altering earlier snapshots. *)
     export thaw held = match valid held
         true => Success(value = held(frozen = false))
-        false => Error(message = "Invalid capture state.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid capture state."))
 
     (** Convert frozen samples into the same tuned mono resource used by file import. *)
     export resource (held, name, rootNote) = match valid held && held.frozen
-        false => Error(message = "Freeze a valid capture before preparing a sample resource.")
+        false => Error(message = MissingResource(detail = "Freeze a valid capture before preparing a sample resource."))
         true => SampleResources::fromWave (name, rootNote, WaveSamples(sampleRate = held.sampleRate, channels = 1, frames = length held.samples, samples = held.samples))

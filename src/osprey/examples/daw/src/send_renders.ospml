@@ -12,7 +12,7 @@ module SendRenders
 
     lane (node, outlet, channel, gain) = TapLane(tapNode = node, tapOutlet = outlet, tapChannel = channel, tapGain = gain)
 
-    lanes (graph, routeSend) = Outcomes::carried (synth::ClipInputs::audioPort (graph, routeSend.source, routeSend.outlet), \port =>
+    lanes (graph, routeSend) = Outcomes::carried (PatchVoices::told (synth::ClipInputs::audioPort (graph, routeSend.source, routeSend.outlet)), \port =>
         match port.channels
             1 => ok [lane (routeSend.source, routeSend.outlet, 0, ArrangeMath::scaled (routeSend.level, ArrangeMath::panLeft 0.0)), lane (routeSend.source, routeSend.outlet, 0, ArrangeMath::scaled (routeSend.level, ArrangeMath::panRight 0.0))]
             2 => ok [lane (routeSend.source, routeSend.outlet, 0, routeSend.level), lane (routeSend.source, routeSend.outlet, 1, routeSend.level)]
@@ -26,29 +26,29 @@ module SendRenders
     // The mono scheduler has already resolved each selected audio port to one sample.
     monoFrame (ports, buffers, frame) = collect (toList (range (0, length ports)), \index =>
         match listGet ports index
-            Success port => Outcomes::carried (synth::RenderInputs::sample (frame, port.tapNode), \value =>
+            Success port => Outcomes::carried (PatchVoices::told (synth::RenderInputs::sample (frame, port.tapNode)), \value =>
                 match listGet buffers index
                     Success samples => ok (listPrepend samples value)
-                    Error _ => Error(message = "A send lane is missing."))
-            _ => Error(message = "A send port is missing."))
+                    Error _ => Error(message = synth::MissingResource(detail = "A send lane is missing.")))
+            _ => Error(message = synth::MissingResource(detail = "A send port is missing.")))
 
-    mono (graph, plan, rate, count, ports, empty) = Outcomes::carried (synth::Renderer::start graph, \audio =>
-        Outcomes::carried (foldList (PatchVoices::counts (count, 8192), ok (synth::Timeline(audio = audio, observation = empty)), \(held, size) => Outcomes::carried (held, \progress => synth::Renderer::capture (plan, rate, synth::Parameters::initial graph, progress, size, \(buffers, frame) => monoFrame (ports, buffers, frame)))), \result => ok (mapList (result.observation, listReverse))))
+    mono (graph, plan, rate, count, ports, empty) = PatchVoices::told (Outcomes::carried (PatchVoices::told (synth::Renderer::start graph), \audio =>
+        Outcomes::carried (foldList (PatchVoices::counts (count, 8192), ok (synth::Timeline(audio = audio, observation = empty)), \(held, size) => Outcomes::carried (held, \progress => PatchVoices::told (synth::Renderer::capture (plan, rate, synth::Parameters::initial graph, progress, size, \(buffers, frame) => monoFrame (ports, buffers, frame))))), \result => ok (mapList (result.observation, listReverse)))))
 
     fromClip (graph, clips, port) = match port.tapOutlet < 0
-        true => Outcomes::carried (synth::ClipInputs::completed (clips, port.tapNode), synth::GraphClips::trackSamples)
-        false => synth::ClipInputs::tapped (graph, clips, port.tapNode, port.tapOutlet, port.tapChannel)
+        true => Outcomes::carried (PatchVoices::told (synth::ClipInputs::completed (clips, port.tapNode)), synth::GraphClips::trackSamples)
+        false => PatchVoices::told (synth::ClipInputs::tapped (graph, clips, port.tapNode, port.tapOutlet, port.tapChannel))
 
     extend (graph, clips, ports, buffers, index) = match listGet ports index
         Error _ => Error(message = "A send port is missing.")
-        Success port => Outcomes::carried (fromClip (graph, clips, port), \samples =>
+        Success port => Outcomes::carried (PatchVoices::told (fromClip (graph, clips, port)), \samples =>
             match listGet buffers index
                 Success prior => ok (listConcat prior samples)
                 Error _ => Error(message = "A send lane is missing."))
 
     block (graph, ports, progress, count) = match count > 0
         false => ok progress
-        true => Outcomes::carried (synth::GraphClips::next (graph, progress.captureState, count), \step =>
+        true => Outcomes::carried (PatchVoices::told (synth::GraphClips::next (graph, progress.captureState, count)), \step =>
             match step
                 synth::BlockWaiting _ _ => Error(message = "An external plug-in needs its audio worker.")
                 synth::BlockReady held clips => Outcomes::carried (collect (toList (range (0, length ports)), \i => extend (graph, clips, ports, progress.captureLanes, i)), \buffers => ok (Capture(captureState = held, captureLanes = buffers))))

@@ -4,15 +4,15 @@ namespace synth
 (** Parameter decoding and persistent stereo graph execution for sampled grain clouds. *)
 module GrainGraph
     integer value = match floatToInt value
-        Error why => Error(message = why)
+        Error _ => Error(message = NumericalFailure(detail = "A whole-number value is not finite or is out of range."))
         Success count => match toFloat count == value
             true => Success(value = count)
-            false => Error(message = "Grain timing requires whole output-sample counts.")
+            false => Error(message = InvalidConfiguration(detail = "Grain timing requires whole output-sample counts."))
 
     parameter (n, outcome, key) = match outcome
         Error why => Error(message = why)
         Success values => match listGet (filterList (n.parameters, \p => p.key == key)) 0
-            Error _ => Error(message = "index out of bounds")
+            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
             Success p => Success(value = listAppend values p.initial)
 
     timed (playback, period, jitter, mode, maximum) = match integer period
@@ -29,19 +29,19 @@ module GrainGraph
             [start, rate, duration, gain, pan, period, jitter, mode, attack, release, timing, maximum] => match integer duration
                 Error why => Error(message = why)
                 Success lifetime => Outcomes::carried (GrainWindows::decode (mode, attack, release), \shape => timed (GrainControls(window = shape, start = start, rate = rate, duration = lifetime, amplitude = gain, pan = pan), period, jitter, timing, maximum))
-            _ => Error(message = "Incomplete grain module controls.")
+            _ => Error(message = InvalidConfiguration(detail = "Incomplete grain module controls."))
 
     variationSeed n = match parameter (n, Success(value = []), "variationSeed")
         Error why => Error(message = why)
         Success values => match values
             [seed] => integer seed
-            _ => Error(message = "Missing grain variation seed.")
+            _ => Error(message = MissingResource(detail = "Missing grain variation seed."))
 
     distribution (n, controls, size) = match foldList (["positionSpread", "rateSpread", "durationSpread", "gainSpread", "panSpread"], Success(value = []), \(held, key) => parameter (n, held, key))
         Error why => Error(message = why)
         Success values => match values
             [position, rate, duration, amplitude, pan] => Outcomes::carried (integer duration, \frames => GrainSpreads::around (controls, size, GrainSpread(position = position, rate = rate, duration = frames, amplitude = amplitude, pan = pan)))
-            _ => Error(message = "Incomplete grain spread controls.")
+            _ => Error(message = InvalidConfiguration(detail = "Incomplete grain spread controls."))
 
     bounds (first, limit, boundary) = match integer first
         Error why => Error(message = why)
@@ -55,8 +55,8 @@ module GrainGraph
             Error why => Error(message = why)
             Success values => match values
                 [first, limit, boundary] => bounds (first, limit, boundary)
-                _ => Error(message = "Incomplete grain source region.")
-        _ => Error(message = "Incomplete grain source region.")
+                _ => Error(message = InvalidConfiguration(detail = "Incomplete grain source region."))
+        _ => Error(message = InvalidConfiguration(detail = "Incomplete grain source region."))
 
     withRegion (n, cloud) = match region (n, length cloud.pool.source)
         Error why => Error(message = why)
@@ -69,11 +69,11 @@ module GrainGraph
         Granular resource capacity seed => match configuration n
             Error why => Error(message = why)
             Success controls => match SampleResources::metadata resource
-                false => Error(message = "Invalid grain sample metadata.")
+                false => Error(message = InvalidConfiguration(detail = "Invalid grain sample metadata."))
                 true => match variationSeed n
                     Error why => Error(message = why)
                     Success randomSeed => Outcomes::carried (GrainClouds::prepare (resource.samples, capacity, controls.timing, seed, randomSeed), \cloud => withRegion (n, cloud))
-        _ => Error(message = "The component is not a grain cloud.")
+        _ => Error(message = MissingResource(detail = "The component is not a grain cloud."))
 
     (** Reject memory from a different resource, pool capacity or graph sample position. *)
     export compatible (n, cloud, position) = match n.processor
@@ -88,7 +88,7 @@ module GrainGraph
         Success controls => match distribution (n, controls.playback, length cloud.pool.source)
             Error why => Error(message = why)
             Success ranges => match ranges.minimum.start >= toFloat cloud.pool.region.first && ranges.maximum.start < toFloat cloud.pool.region.limit
-                false => Error(message = "Grain start positions and spread must stay inside the selected region.")
+                false => Error(message = InvalidConfiguration(detail = "Grain start positions and spread must stay inside the selected region."))
                 true =>
                     clock = cloud.clock
                     GrainClouds::variedBlock (cloud(clock = clock(timing = controls.timing)), ranges, frames)
@@ -96,12 +96,12 @@ module GrainGraph
     interleave (block, outcome, index) = match outcome
         Error why => Error(message = why)
         Success samples => match listGet block.left index
-            Error _ => Error(message = "index out of bounds")
+            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
             Success left => match listGet block.right index
-                Error _ => Error(message = "index out of bounds")
+                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
                 Success right => Success(value = listPrepend (listPrepend samples left) right)
 
     (** Interleave actual left/right output for the common graph/device transport. *)
     export interleaved block = match length block.left == length block.right && length block.left >= 1 && length block.left <= 2048
-        false => Error(message = "Grain output channels have invalid lengths.")
+        false => Error(message = IncompatibleLayout(detail = "Grain output channels have invalid lengths."))
         true => Outcomes::carried (foldList (toList (range (0, length block.left)), Success(value = []), \(outcome, index) => interleave (block, outcome, index)), \samples => Success(value = listReverse samples))

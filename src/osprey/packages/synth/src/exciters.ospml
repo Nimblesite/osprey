@@ -13,7 +13,7 @@ module Exciters
     (** Strength is linear 0–1; duration 1–48,000 samples; interval 0 fires once, otherwise 1–1,048,576. *)
     export configure config = match config.strength >= 0.0 && config.strength <= 1.0 && config.duration >= 1 && config.duration <= 48000 && config.interval >= 0 && config.interval <= 1048576 && colour config.excitation
         true => Success(value = config)
-        false => Error(message = "Invalid exciter strength, duration, interval or colour.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid exciter strength, duration, interval or colour."))
 
     (** A one-shot holds its age at the burst end; a repeating burst restarts at its interval. *)
     aged (config, age) = match config.interval == 0

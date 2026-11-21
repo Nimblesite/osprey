@@ -21,7 +21,7 @@ module Descriptors
         LinearScale => FitMath::normalised (value, p.minimum, p.maximum)
 
     inletIndex (ports, name, index) = match ports
-        [] => Error(message = "No control inlet named ${name}.")
+        [] => Error(message = MissingResource(detail = "No control inlet named ${name}."))
         [candidate, ...rest] => match candidate.rate == Control && candidate.name == name
             true => Success(value = index)
             false => inletIndex (rest, name, satAdd index 1)

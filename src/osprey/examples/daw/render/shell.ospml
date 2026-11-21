@@ -20,8 +20,3 @@ module Shell
 
     (** A safe path in single quotes. *)
     export quoted path = "'${path}'"
-
-    (** A safe path as one shell word, with a leading `~/` standing for the home folder. *)
-    export located path = match startsWith path "~/"
-        true => "\"$HOME\"/${quoted (drop path 2)}"
-        false => quoted path

@@ -15,9 +15,9 @@ module Lifecycles
 
     (** Prepare `graph` at a sample rate and largest block, Ready with silent state at position 0. *)
     export prepared (graph, rate, block) = match settled (rate, block)
-        false => Error(message = "A lifecycle needs a sample rate of 8,000 to 384,000 Hz and a block of 1 to 8,192 frames.")
+        false => Error(message = InvalidConfiguration(detail = "A lifecycle needs a sample rate of 8,000 to 384,000 Hz and a block of 1 to 8,192 frames."))
         true => match Graphs::prepare graph
-            Invalid _ => Error(message = "The graph is invalid; inspect Graphs.prepare for the typed fault.")
+            Invalid _ => Error(message = InvalidConfiguration(detail = "The graph is invalid; inspect Graphs.prepare for the typed fault."))
             Valid plan => Outcomes::carried (Renderer::start graph, \audio => Success(value = Instance(stage = Ready, rate = rate, block = block, plan = plan, audio = audio)))
 
     named stage = match stage
@@ -26,7 +26,7 @@ module Lifecycles
         Releasing _ => "releasing"
         Disposed => "disposed"
 
-    refused (run, action) = Error(message = "Cannot ${action} a ${named run.stage} instance.")
+    refused (run, action) = Error(message = InvalidConfiguration(detail = "Cannot ${action} a ${named run.stage} instance."))
 
     (** Apply one transition; anything the current stage does not allow is refused. *)
     export next (run, transition) = match transition
@@ -59,7 +59,7 @@ module Lifecycles
     sounding (total, n) = Outcomes::carried (total, \sum => Outcomes::carried (Timings::tail n, \t => Outcomes::carried (Timings::latency n, \l => Success(value = sum + t + l))))
 
     (** Frames the release renders: every node's tail and latency summed, which bounds any route through it. *)
-    export tail run = Outcomes::carried (foldList (run.plan.graph.nodes, Success(value = 0.0), sounding), \samples => floatToInt (WaveMath::tailFrames (samples, run.rate)))
+    export tail run = Outcomes::carried (foldList (run.plan.graph.nodes, Success(value = 0.0), sounding), \samples => Outcomes::whole (WaveMath::tailFrames (samples, run.rate), \frames => Success(value = frames)))
 
     played (run, after, snapshot, frames) = Outcomes::carried (Renderer::block (run.plan, run.rate, snapshot, run.audio, frames), \audio => Success(value = run(stage = after, audio = audio)))
 
@@ -75,7 +75,7 @@ module Lifecycles
 
     (** Render 1 to the prepared block of frames; zero-length blocks are refused. A releasing instance renders at most its remaining tail, then is Ready. *)
     export block (run, snapshot, count) = match count < 1 || count > run.block
-        true => Error(message = "A block is 1 to the prepared ${run.block} frames; a larger one needs re-preparation.")
+        true => Error(message = InvalidConfiguration(detail = "A block is 1 to the prepared ${run.block} frames; a larger one needs re-preparation."))
         false => match run.stage
             Running => played (run, Running, snapshot, count)
             Releasing remaining => releasing (run, snapshot, count, remaining)

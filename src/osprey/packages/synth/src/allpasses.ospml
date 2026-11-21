@@ -9,7 +9,7 @@ module Allpasses
     (** Accept a coefficient with a stability margin. *)
     export configure coefficient = match coefficient >= -0.95 && coefficient <= 0.95
         true => Success(value = coefficient)
-        false => Error(message = "Allpass coefficient must be between -0.95 and 0.95.")
+        false => Error(message = InvalidConfiguration(detail = "Allpass coefficient must be between -0.95 and 0.95."))
 
     (** One step with an accepted coefficient. *)
     export next (coefficient, held, input) =

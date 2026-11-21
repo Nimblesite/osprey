@@ -19,7 +19,7 @@ module GraphRebase
         Valid n => GraphClips::validBank (graph, bank, held.graphPosition) && fits (n, bank)
 
     fresh (graph, n) = match n.processor
-        Granular _ _ _ => Error(message = "A grain cloud added to a running graph needs a restart (its clock starts at zero).")
+        Granular _ _ _ => Error(message = InvalidConfiguration(detail = "A grain cloud added to a running graph needs a restart (its clock starts at zero)."))
         Oscillator => match MidiOscillators::connected (graph, n)
             true => Success(value = NodeKernels(kernelNode = n.identity, kernelMemory = MidiMemory(voice = MidiOscillators::initial n)))
             false => Success(value = NodeKernels(kernelNode = n.identity, kernelMemory = ChannelMemory(channels = [RenderInputs::initialState n])))
@@ -33,7 +33,7 @@ module GraphRebase
 
     (** The running state carried into an edited graph; the graph must already pass `Graphs.prepare`. *)
     export rebased (graph, held) = match Graphs::prepare graph
-        Invalid _ => Error(message = "The edited graph is invalid; keep the previous graph and state.")
+        Invalid _ => Error(message = InvalidConfiguration(detail = "The edited graph is invalid; keep the previous graph and state."))
         Valid _ =>
             kept = filterList (held.graphKernels, \bank => surviving (graph, held, bank))
             Outcomes::carried (foldList (graph.nodes, Success(value = kept), \(outcome, n) => added (graph, kept, outcome, n)), \banks => Success(value = held(graphKernels = banks)))

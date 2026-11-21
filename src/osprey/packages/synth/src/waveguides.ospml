@@ -13,7 +13,7 @@ module Waveguides
     (** The tuned loop must fit the prepared line; re-prepare after a sample-rate change. *)
     export configure config = match valid config && delay config >= 2.0 && delay config <= toFloat (config.capacity - 1)
         true => Success(value = config)
-        false => Error(message = "Invalid waveguide controls, or the tuned loop does not fit its capacity.")
+        false => Error(message = ExhaustedCapacity(detail = "Invalid waveguide controls, or the tuned loop does not fit its capacity."))
 
     (** Allocate the loop outside rendering. *)
     export initial config = Outcomes::carried (DelayLines::prepare config.capacity, \line => Success(value = WaveguideState(line = line, loss = LossFilters::initial, dispersion = Allpasses::initial)))

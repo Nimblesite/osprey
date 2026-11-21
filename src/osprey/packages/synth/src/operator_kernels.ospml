@@ -26,7 +26,7 @@ module OperatorKernels
     doubled (frame, held, config, modulation, sync, previousSync, down) = Outcomes::carried (PhaseOperators::oversampled (config, OversampledOperator(operator = operator (held, previousSync), down = down), modulation, sync), \step => Success(value = RenderInputs::emitted (frame, kept (held, step.next.operator, step.next.down), step.sample)))
 
     stepped (frame, held, config, modulation, sync, oversample) = match held.delay
-        [] => Error(message = "Operator state is empty.")
+        [] => Error(message = MissingResource(detail = "Operator state is empty."))
         [previousSync, ...down] => match oversample >= 0.5
             true => doubled (frame, held, config, modulation, sync, previousSync, down)
             false => direct (frame, held, config, modulation, sync, previousSync, down)

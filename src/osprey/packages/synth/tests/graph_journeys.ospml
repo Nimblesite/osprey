@@ -168,7 +168,7 @@ planFor graph = match Graphs::prepare graph
 rendered result = match result
     Success block => block
     Error why =>
-        print why
+        print (synth::Faults::detail why)
         expect (false, true)
         synth::Rendered(states = [], samples = [], position = 0, meters = [])
 
@@ -187,7 +187,7 @@ clipOf graph = match synth::GraphClips::advance (graph, [], 64)
     Error why => Error(message = why)
 
 clipReady3 action = match action
-    synth::ClipWaiting _ _ _ => Error(message = "A built-in graph asked for a plug-in.")
+    synth::ClipWaiting _ _ _ => Error(message = synth::InvalidConfiguration(detail = "A built-in graph asked for a plug-in."))
     synth::ClipReady clips => synth::ClipInputs::completed (clips, 3)
 
 // A sine through a low-pass whose cutoff inlet an LFO drives.
@@ -196,7 +196,7 @@ switchedRender (oscillator, filter, lfo) = clipOf (built ([oscillator, filter, l
 clipSamples outcome = match outcome
     Success clip => clip.clipSamples
     Error why =>
-        expect (why, "a rendered clip")
+        expect (synth::Faults::detail why, "a rendered clip")
         []
 
 switchedSamples (oscillator, filter, lfo) = clipSamples (switchedRender (oscillator, filter, lfo))
@@ -296,20 +296,20 @@ channelCables (source, split, firstGain, join, count) =
 clipsOf (graph, frames) = match synth::GraphClips::advance (graph, [], frames)
     Success action => match action
         synth::ClipReady clips => Success(value = clips)
-        synth::ClipWaiting _ _ => Error(message = "A built-in graph asked for a plug-in.")
+        synth::ClipWaiting _ _ => Error(message = synth::InvalidConfiguration(detail = "A built-in graph asked for a plug-in."))
     Error why => Error(message = why)
 
 clipFrom (clips, identity) = match synth::ClipInputs::completed (clips, identity)
     Success clip => clip
     Error why =>
-        expect (why, "a rendered node clip")
+        expect (synth::Faults::detail why, "a rendered node clip")
         synth::NodeClip(clipNode = identity, clipChannels = 0, clipSamples = [], clipNotes = [])
 
 channelOf (clip, frame, channel) = listGet clip.clipSamples (satAdd (satMul frame clip.clipChannels) channel) ?: 999.0
 
 // [SYNTH-ADVANCED-CORE-MODELS] A graph output that is NaN, infinite or past 10^6 is an error, never published audio.
 refusedOutput value = match synth::RenderInputs::sample (framed value, 4)
-    Error why => expect (why, "Non-finite or excessive graph output.")
+    Error why => expect (synth::Faults::detail why, "Non-finite or excessive graph output.")
     Success _ => expect ("published ${value}", "refused")
 
 framed value = synth::SampleFrame(states = [], values = [synth::NodeSample(identity = 4, value = value)])
@@ -436,7 +436,7 @@ shiftSet (p, bins) = match p.key == "shift"
 renders outcome = match outcome
     Success _ => true
     Error why =>
-        print "# ${why}"
+        print "# ${synth::Faults::detail why}"
         false
 
 // Adversarial review 2026-11-21 [SYNTH-ADVANCED-CORE-RESOURCES]: the spectral tail undercounted its decay, a fractional
@@ -467,7 +467,7 @@ shiftAdded bins =
 
 playedBy outcome = match outcome
     Success _ => "plays"
-    Error why => why
+    Error why => synth::Faults::detail why
 
 // Flattening `blocks` blocks of `size` keeps every value in order; 2000 × 256 would take minutes if joining copied.
 joinedHolds (blocks, size) =

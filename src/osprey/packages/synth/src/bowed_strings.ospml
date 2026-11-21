@@ -14,7 +14,7 @@ module BowedStrings
     (** Pressure 0–1, bow velocity 0–1, position 0.05–0.5 of the string from the bridge. *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 20.0 && config.frequency < config.sampleRate * 0.25 && config.decay >= 0.01 && config.decay <= 60.0 && config.brightness >= 0.0 && config.brightness <= 1.0 && config.position >= 0.05 && config.position <= 0.5 && config.pressure >= 0.0 && config.pressure <= 1.0 && config.velocity >= 0.0 && config.velocity <= 1.0 && config.capacity >= 4 && config.capacity <= 96000 && bridgeDelay config >= 1.0 && neckDelay config <= toFloat (config.capacity - 1)
         true => Success(value = config)
-        false => Error(message = "Invalid bowed-string controls, or the tuned segments do not fit their capacity.")
+        false => Error(message = ExhaustedCapacity(detail = "Invalid bowed-string controls, or the tuned segments do not fit their capacity."))
 
     (** Allocate both segments outside rendering. *)
     export initial config = Outcomes::carried (DelayLines::prepare config.capacity, \line => Success(value = BowState(neck = line, bridge = line, loss = LossFilters::initial)))

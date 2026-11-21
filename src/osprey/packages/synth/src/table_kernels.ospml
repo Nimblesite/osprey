@@ -34,7 +34,7 @@ module TableKernels
         false => held.integratorOne + 1.0
 
     voiced (frame, held, interval, configured) = match interval >= 0.0 && interval <= 1048576.0
-        false => Error(message = "Retrigger interval must be 0 to 1048576 samples.")
+        false => Error(message = InvalidConfiguration(detail = "Retrigger interval must be 0 to 1048576 samples."))
         true => partials (frame, held, interval, configured)
 
     partials (frame, held, interval, configured) = match configured

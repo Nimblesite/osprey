@@ -9,7 +9,7 @@ module Timings
     export rate = 48000.0
 
     value (n, key) = match listGet (filterList (n.parameters, \p => p.key == key)) 0
-        Error _ => Error(message = "The node lacks a timing parameter: ${key}.")
+        Error _ => Error(message = InvalidConfiguration(detail = "The node lacks a timing parameter: ${key}."))
         Success p => Success(value = p.initial)
 
     scaled (n, key, factor) = match value (n, key)

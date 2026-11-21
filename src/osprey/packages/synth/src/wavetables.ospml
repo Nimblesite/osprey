@@ -39,11 +39,11 @@ module Wavetables
 
     (** Size is a power of two 64–4,096; 1–64 frames share 1 to size/4 (at most 256) harmonics, amplitudes within ±4. *)
     export prepare (size, spectra) = match spectra
-        [] => Error(message = "A wavetable needs at least one spectrum.")
+        [] => Error(message = InvalidConfiguration(detail = "A wavetable needs at least one spectrum."))
         [first, ..._rest] =>
             count = length first.amplitudes
             match length (filterList (sizes, \s => s == size)) == 1 && length spectra <= 64 && count >= 1 && count <= intDiv size 4 && count <= 256 && length (filterList (spectra, \s => validSpectrum (count, s))) == length spectra
-                false => Error(message = "Invalid wavetable size, frame count or spectrum.")
+                false => Error(message = InvalidConfiguration(detail = "Invalid wavetable size, frame count or spectrum."))
                 true => Success(value = Wavetable(size = size, harmonics = count, frames = mapList (spectra, \s => frame (size, count, s))))
 
     zeros count = mapList (toList (range (0, count)), \_ => 0.0)
@@ -57,7 +57,7 @@ module Wavetables
         phase 0–1 offsets the read point (phase modulation) without changing the running phase. *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && TableMath::magnitude config.frequency < config.sampleRate * 0.45 && config.position >= 0.0 && config.position <= 1.0 && config.amplitude >= 0.0 && config.amplitude <= 1.0 && config.phase >= 0.0 && config.phase <= 1.0
         true => Success(value = config)
-        false => Error(message = "Invalid wavetable rate, frequency, position or amplitude.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid wavetable rate, frequency, position or amplitude."))
 
     (** Zero phase. Hard sync is `reset`, which returns this state. *)
     export initial = WavetableState(phase = 0.0)
@@ -72,15 +72,15 @@ module Wavetables
         Success chosen =>
             position = phase * toFloat (length chosen.samples)
             match floatToInt (floor position)
-                Error _ => Error(message = "Wavetable phase is not finite.")
+                Error _ => Error(message = NumericalFailure(detail = "Wavetable phase is not finite."))
                 Success index => match listGet chosen.samples index
-                    Error _ => Error(message = "Wavetable phase is outside the table.")
+                    Error _ => Error(message = InvalidConfiguration(detail = "Wavetable phase is outside the table."))
                     Success a => match listGet chosen.samples ((satAdd index 1) % length chosen.samples)
-                        Error _ => Error(message = "Wavetable phase is outside the table.")
+                        Error _ => Error(message = InvalidConfiguration(detail = "Wavetable phase is outside the table."))
                         Success b => Success(value = GrainMath::interpolated (a, b, GrainMath::fraction position))
 
     frameAt (table, index) = match listGet table.frames index
-        Error _ => Error(message = "Wavetable frame is missing.")
+        Error _ => Error(message = MissingResource(detail = "Wavetable frame is missing."))
         Success found => Success(value = found)
 
     upper (lower, fraction) = match fraction > 0.0
@@ -105,5 +105,5 @@ module Wavetables
     export next (table, config, held) =
         place = config.position * toFloat (satSub (length table.frames) 1)
         match floatToInt (floor place)
-            Error _ => Error(message = "Wavetable position is not finite.")
+            Error _ => Error(message = NumericalFailure(detail = "Wavetable position is not finite."))
             Success lower => blended (table, config, held, lower, GrainMath::fraction place)

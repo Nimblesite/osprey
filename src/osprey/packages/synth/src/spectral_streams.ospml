@@ -16,7 +16,7 @@ module SpectralStreams
     (** Size 64–4,096 (power of two), hop size/4 or size/8, mix 0 (dry) to 1 (processed). *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && Ffts::valid config.size && (config.hop == intDiv config.size 4 || config.hop == intDiv config.size 8) && config.mix >= 0.0 && config.mix <= 1.0 && transformValid config
         true => Success(value = config)
-        false => Error(message = "Invalid spectral rate, size, hop, mix or transformation range.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid spectral rate, size, hop, mix or transformation range."))
 
     (** Algorithmic latency in samples of a transform of `size`, for aligning parallel routes. *)
     export latency size = satSub size 1
@@ -72,14 +72,14 @@ module SpectralStreams
     valid (config, held) = length held.input == config.size && length held.side == config.size && length held.output == config.size && length held.memory == satAdd (intDiv config.size 2) 1 && length held.motion == length held.memory && held.countdown >= 1 && held.countdown <= config.hop
 
     emitted (config, held) = match held.output
-        [] => Error(message = "Spectral output buffer is empty.")
+        [] => Error(message = MissingResource(detail = "Spectral output buffer is empty."))
         [wet, ...rest] => match held.input
-            [] => Error(message = "Spectral input buffer is empty.")
+            [] => Error(message = MissingResource(detail = "Spectral input buffer is empty."))
             [dry, ..._older] => Success(value = SpectralSample(sample = SpectralMath::blend (dry, wet, config.mix), next = held(output = listAppend rest 0.0)))
 
     (** One sample of main and side input; a frame is analysed and overlap-added every hop. *)
     export next (config, held, input, side) = match valid (config, held)
-        false => Error(message = "Spectral state does not match its configuration.")
+        false => Error(message = IncompatibleLayout(detail = "Spectral state does not match its configuration."))
         true => Outcomes::carried (framed (config, held(input = Sequences::shifted (held.input, input), side = Sequences::shifted (held.side, side), countdown = satSub held.countdown 1)), \advanced => emitted (config, advanced))
 
     bin (config, index, value) = SpectralBin(index = index, frequency = SpectralMath::binFrequency (toFloat index, toFloat config.size, config.sampleRate), magnitude = SpectralMath::magnitude (value.re, value.im), re = SpectralMath::unitRe (value.re, value.im), im = SpectralMath::unitIm (value.re, value.im))

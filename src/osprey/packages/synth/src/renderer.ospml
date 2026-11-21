@@ -38,16 +38,16 @@ module Renderer
 
     (** Prepare and allocate reference state. Unknown layouts and external plug-ins are explicit errors. *)
     export start graph = match Graphs::prepare graph
-        Invalid _ => Error(message = "The graph is invalid; inspect Graphs.prepare for the typed fault.")
+        Invalid _ => Error(message = InvalidConfiguration(detail = "The graph is invalid; inspect Graphs.prepare for the typed fault."))
         Valid plan => match supported plan
-            false => Error(message = "Reference rendering requires mono audio, one output and supported bounded processors.")
+            false => Error(message = IncompatibleLayout(detail = "Reference rendering requires mono audio, one output and supported bounded processors."))
             true => Success(value = RenderInputs::initial plan)
 
     nextNode (plan, rate, snapshot, outcome, identity) = Outcomes::carried (outcome, \frame => RenderKernels::step (plan, rate, snapshot, frame, identity))
 
     (** Write a delay after its output has been read for the current sample. *)
     delayed (frame, held, input) = match held.delay
-        [] => Error(message = "Delay state is empty.")
+        [] => Error(message = MissingResource(detail = "Delay state is empty."))
         [_head, ...tail] =>
             next = held(delay = listAppend tail input)
             Success(value = frame(states = mapList (frame.states, \s => replace (next, s))))
@@ -83,7 +83,7 @@ module Renderer
     export observed (snapshot, rendered) = snapshot(samplePosition = rendered.position, components = mapList (rendered.meters, \m => ComponentState(node = m.identity, activeVoices = 0, peak = m.peak, rms = sqrt (m.energy / toFloat m.count))))
 
     finished (plan, rendered, frame) = match listGet (outputs plan.graph) 0
-        Error _ => Error(message = "index out of bounds")
+        Error _ => Error(message = MissingResource(detail = "index out of bounds"))
         Success sink => Outcomes::carried (RenderInputs::sample (frame, sink.identity), \output => Success(value = Rendered(states = frame.states, samples = listAppend rendered.samples output, position = satAdd rendered.position 1, meters = metered (rendered.meters, frame.values))))
 
     evaluated (plan, rate, snapshot, rendered) =
@@ -99,7 +99,7 @@ module Renderer
 
     (** Fold selected node outputs from the same reference-rendered frames, including delayed feedback. *)
     export capture (plan, rate, snapshot, progress, count, accept) = match validBlock (rate, progress.audio, count) && supported plan
-        false => Error(message = "Invalid render rate, block size, position or layout.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid render rate, block size, position or layout."))
         true => foldList (toList (range (0, count)), Success(value = progress), \(outcome, _) => Outcomes::carried (outcome, \current => captured (plan, rate, snapshot, current, accept)))
 
     nextSample (plan, rate, snapshot, outcome) = Outcomes::carried (outcome, \rendered => sample (plan, rate, snapshot, rendered))
@@ -108,7 +108,7 @@ module Renderer
 
     (** Render a bounded block; returns only this block's samples and the next persistent state. *)
     export block (plan, rate, snapshot, rendered, count) = match validBlock (rate, rendered, count) && supported plan
-        false => Error(message = "Invalid render rate, block size, position or layout.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid render rate, block size, position or layout."))
         true => foldList (toList (range (0, count)), Success(value = rendered(samples = [], meters = [])), \(outcome, _) => nextSample (plan, rate, snapshot, outcome))
 
     ordered (events, previous, stop) = match events
@@ -118,7 +118,7 @@ module Renderer
     edit (graph, outcome, command) = match outcome
         Error why => Error(message = why)
         Success snapshot => match Parameters::apply (graph, snapshot, command)
-            Invalid _ => Error(message = "Automation parameter, revision or sample position was rejected.")
+            Invalid _ => Error(message = InvalidConfiguration(detail = "Automation parameter, revision or sample position was rejected."))
             Valid next => Success(value = next)
 
     automatedSample (plan, rate, events, timeline) =
@@ -135,7 +135,7 @@ module Renderer
 
     (** Apply ordered absolute-frame parameter events before their exact sample, preserving same-frame order. *)
     export automated (plan, rate, snapshot, rendered, count, events) = match validBlock (rate, rendered, count) && supported plan && length events <= 1024 && ordered (events, rendered.position, satAdd rendered.position count)
-        false => Error(message = "Invalid automation block, ordering or event capacity.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid automation block, ordering or event capacity."))
         true =>
             initial = Timeline(audio = rendered(samples = [], meters = []), observation = snapshot)
             publish (foldList (toList (range (0, count)), Success(value = initial), \(outcome, _) => nextAutomated (plan, rate, events, outcome)))

@@ -10,7 +10,7 @@ module StrikeCombs
     (** Position 0.01–0.5 of the string; the delayed tap must fit the capacity. *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 20.0 && config.frequency < config.sampleRate * 0.45 && config.position >= 0.01 && config.position <= 0.5 && config.capacity >= 2 && config.capacity <= 96000 && delay config >= 1.0 && delay config + 1.0 <= toFloat config.capacity
         true => Success(value = config)
-        false => Error(message = "Invalid strike rate, pitch or position, or the comb does not fit its capacity.")
+        false => Error(message = ExhaustedCapacity(detail = "Invalid strike rate, pitch or position, or the comb does not fit its capacity."))
 
     (** Silent excitation history. *)
     export initial config = DelayLines::prepare config.capacity

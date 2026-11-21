@@ -109,6 +109,8 @@ BANK_E2E_NODE_DEPS    = src/osprey/examples/talon/playwright-e2e-tests/node_modu
 BANK_APP     = src/osprey/examples/talon/app
 BANK_ANDROID = OSPREY_ANDROID_APP=$(BANK_APP) OSPREY_ANDROID_ID=org.ospreylang.talon OSPREY_ANDROID_NAME="Talon Bank" OSPREY_ANDROID_REVERSE=18790
 BANK_IOS     = OSPREY_SWIFT_APP=$(BANK_APP) OSPREY_IOS_NAME="Talon Bank" OSPREY_IOS_ID=org.ospreylang.talon
+# Runs a command while a fresh Talon backend answers, so every host's journey sees the same ledger.
+BANK_LEDGER  = node src/osprey/examples/talon/playwright-e2e-tests/ledger.js
 
 # Build logs and coverage reports live under target/, never in the repo root.
 LOG_DIR      = target/logs

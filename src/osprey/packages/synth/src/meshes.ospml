@@ -8,7 +8,7 @@ module Meshes
     (** λ in (0, 0.7071], decay 0.01–60 s, excitation and pickup points inside the grid. *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.width >= 2 && config.width <= 32 && config.height >= 2 && config.height <= 32 && config.courant > 0.0 && config.courant <= 0.7071 && config.decay >= 0.01 && config.decay <= 60.0 && config.exciteX >= 0 && config.exciteX < config.width && config.exciteY >= 0 && config.exciteY < config.height && config.pickX >= 0 && config.pickX < config.width && config.pickY >= 0 && config.pickY < config.height
         true => Success(value = config)
-        false => Error(message = "Invalid mesh size, Courant number (must be <= 1/sqrt 2), decay or point.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid mesh size, Courant number (must be <= 1/sqrt 2), decay or point."))
 
     zeros (width, height) = mapList (toList (range (0, height)), \_ => mapList (toList (range (0, width)), \_ => 0.0))
 
@@ -70,9 +70,9 @@ module Meshes
 
     (** One sample: `input` is added at the excitation point; the output is the pickup point's displacement. *)
     export next (config, held, input) = match length held.current == config.height && length held.previous == config.height
-        false => Error(message = "Mesh state does not match its configuration.")
+        false => Error(message = IncompatibleLayout(detail = "Mesh state does not match its configuration."))
         true => match held.current
-            [] => Error(message = "Mesh state is empty.")
+            [] => Error(message = MissingResource(detail = "Mesh state is empty."))
             [first, ..._rows] =>
                 next = stepped (config, held.current, held.previous, silentRow first, 0, input, [])
                 Success(value = MeshSample(sample = picked (config, next), next = MeshState(current = next, previous = held.current)))

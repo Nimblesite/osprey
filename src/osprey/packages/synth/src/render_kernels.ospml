@@ -31,13 +31,13 @@ module RenderKernels
             false => match RenderInputs::input (plan, frame, identity, 1)
                 Error why => Error(message = why)
                 Success control => match control >= 0.0 && control <= 1.0
-                    false => Error(message = "Cutoff modulation must stay between zero and one.")
+                    false => Error(message = InvalidConfiguration(detail = "Cutoff modulation must stay between zero and one."))
                     true => Success(value = Waves::controlledCutoff (base, control))
 
     gain (snapshot, frame, held, input) = match RenderInputs::parameter (snapshot, held.identity, "gain")
         Error why => Error(message = why)
         Success level => match level >= 0.0 && level <= 8.0
-            false => Error(message = "Invalid gain.")
+            false => Error(message = InvalidConfiguration(detail = "Invalid gain."))
             true => Success(value = RenderInputs::emitted (frame, held, input * level))
 
     mixer (plan, frame, held, first) = match RenderInputs::input (plan, frame, held.identity, 1)
@@ -47,11 +47,11 @@ module RenderKernels
     controlled (plan, snapshot, frame, held, input) = match RenderInputs::input (plan, frame, held.identity, 1)
         Error why => Error(message = why)
         Success control => match control >= 0.0 && control <= 1.0
-            false => Error(message = "Gain modulation must stay between zero and one.")
+            false => Error(message = InvalidConfiguration(detail = "Gain modulation must stay between zero and one."))
             true => match RenderInputs::parameter (snapshot, held.identity, "gain")
                 Error why => Error(message = why)
                 Success level => match level >= 0.0 && level <= 8.0
-                    false => Error(message = "Invalid gain.")
+                    false => Error(message = InvalidConfiguration(detail = "Invalid gain."))
                     true => Success(value = RenderInputs::emitted (frame, held, Waves::controlledGain (input, level, control)))
 
     passthrough (frame, held, input) = Success(value = RenderInputs::emitted (frame, held, input))
@@ -59,7 +59,7 @@ module RenderKernels
     // [SYNTH-GRAPH-CHANNELS] Mono split, join and route are identity (or mapped silence); wider layouts
     // never reach this mono renderer because their ports fail its layout checks.
     monoRouted (entries, frame, held, input) = match listGet entries 0
-        Error _ => Error(message = "A channel route needs at least one output channel.")
+        Error _ => Error(message = IncompatibleLayout(detail = "A channel route needs at least one output channel."))
         Success entry => match entry
             -1 => Success(value = RenderInputs::emitted (frame, held, 0.0))
             _ => passthrough (frame, held, input)
@@ -88,7 +88,7 @@ module RenderKernels
         PhaseOperator => OperatorKernels::process (plan, rate, snapshot, frame, held)
         Bowed capacity => PhysicalKernels::bowed (rate, snapshot, frame, held, capacity)
         Delay _ => match listGet held.delay 0
-            Error _ => Error(message = "index out of bounds")
+            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
             Success previous => Success(value = RenderInputs::emitted (frame, held, previous))
         _ => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \input => processor (plan, rate, snapshot, frame, held, n, input))
 
@@ -104,7 +104,7 @@ module RenderKernels
                     Success enabled => match enabled
                         1.0 => selected (plan, rate, snapshot, frame, held, n)
                         0.0 => bypassed (plan, frame, held, n)
-                        _ => Error(message = "Enabled must be zero or one.")
+                        _ => Error(message = InvalidConfiguration(detail = "Enabled must be zero or one."))
 
     waveform (snapshot, n) = match Seek::first (n.parameters, \p => p.key == "waveform")
         Error _ => Success(value = Sine)

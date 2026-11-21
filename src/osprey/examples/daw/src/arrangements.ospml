@@ -25,12 +25,12 @@ module Arrangements
     (** The beat the last note ends on. *)
     export beats arrangement = foldList (arrangement.tracks, 0.0, \(latest, voice) => foldList (voice.notes, latest, close))
 
-    valid arrangement = arrangement.drive >= 0.1 && arrangement.drive <= 4.0 && arrangement.tempo >= 20.0 && arrangement.tempo <= 400.0 && arrangement.sampleRate >= 8000 && arrangement.sampleRate <= 192000 && length arrangement.tracks >= 1 && length arrangement.tracks <= 64
+    valid arrangement = arrangement.tempo >= 20.0 && arrangement.tempo <= 400.0 && arrangement.sampleRate >= 8000 && arrangement.sampleRate <= 192000 && length arrangement.tracks >= 1 && length arrangement.tracks <= 64
 
-    (** Frames in the piece: its last note end plus the reverb decay and two seconds; at most 28,800,000. *)
+    (** Frames in the piece: its last note end plus two seconds; at most 28,800,000. *)
     export frames arrangement = match valid arrangement
-        false => Error(message = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000, a drive of 0.1 to 4 and 1 to 64 tracks.")
-        true => match floatToInt (ArrangeMath::pieceFrames (beats arrangement, arrangement.tempo, toFloat arrangement.sampleRate, arrangement.space.decay))
+        false => Error(message = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks.")
+        true => match floatToInt (ArrangeMath::pieceFrames (beats arrangement, arrangement.tempo, toFloat arrangement.sampleRate))
             Error _ => Error(message = "The arrangement length is not finite.")
             Success count => match count >= 1 && count <= 28800000
                 false => Error(message = "An arrangement must last 1 to 28800000 frames.")
@@ -43,13 +43,12 @@ module Arrangements
     sent (bus, samples, offset, gain, shade) = bused (bus, samples, offset, ArrangeMath::scaled (gain, shade))
 
     (** Silent buses. *)
-    export empty = Buses(left = [], right = [], wet = [], groups = [], keys = [])
+    export empty = Buses(left = [], right = [], groups = [], keys = [])
 
-    (** Add a mono buffer to the buses from frame `offset` (0 or later): gain 0–4, pan −1 (left) to 1
-        (right), reverb send 0–1. *)
-    export layered (buses, samples, offset, gain, pan, reverb) = match offset >= 0 && ArrangeMath::mixable (gain, pan, reverb)
-        false => Error(message = "Gain must be 0 to 4, pan -1 to 1, reverb 0 to 1 and the offset not negative.")
-        true => Success(value = buses(left = sent (buses.left, samples, offset, gain, ArrangeMath::panLeft pan), right = sent (buses.right, samples, offset, gain, ArrangeMath::panRight pan), wet = sent (buses.wet, samples, offset, gain, reverb)))
+    (** Add a mono buffer to the buses from frame `offset` (0 or later): gain 0–4, pan −1 (left) to 1 (right). *)
+    export layered (buses, samples, offset, gain, pan) = match offset >= 0 && ArrangeMath::mixable (gain, pan)
+        false => Error(message = "Gain must be 0 to 4, pan -1 to 1 and the offset not negative.")
+        true => Success(value = buses(left = sent (buses.left, samples, offset, gain, ArrangeMath::panLeft pan), right = sent (buses.right, samples, offset, gain, ArrangeMath::panRight pan)))
 
     (** The frame at which `beat` starts. *)
     export frame (arrangement, beat) = match floatToInt (ArrangeMath::beatFrames (beat, arrangement.tempo, toFloat arrangement.sampleRate))
@@ -65,16 +64,16 @@ module Arrangements
 
     others (buses, name) = filterList (buses.groups, \g => g.name != name)
 
-    joined (buses, name, fed) = Buses(left = buses.left, right = buses.right, wet = fed.wet, groups = listAppend (others (buses, name)) (Stereo(name = name, left = fed.left, right = fed.right)), keys = buses.keys)
+    joined (buses, name, fed) = Buses(left = buses.left, right = buses.right, groups = listAppend (others (buses, name)) (Stereo(name = name, left = fed.left, right = fed.right)), keys = buses.keys)
 
-    // The track's dry sides sum into its bus; its Space send still goes straight to the shared reverb.
+    // The track's two sides sum into its bus.
     grouped (buses, voice, samples) =
         inner = group (buses, voice.bus)
-        sides = Buses(left = inner.left, right = inner.right, wet = buses.wet, groups = [], keys = [])
-        Outcomes::carried (layered (sides, samples, 0, voice.gain, voice.pan, voice.reverb), \fed => Success(value = joined (buses, voice.bus, fed)))
+        sides = Buses(left = inner.left, right = inner.right, groups = [], keys = [])
+        Outcomes::carried (layered (sides, samples, 0, voice.gain, voice.pan), \fed => Success(value = joined (buses, voice.bus, fed)))
 
     routed (buses, voice, samples) = match voice.bus == ""
-        true => layered (buses, samples, 0, voice.gain, voice.pan, voice.reverb)
+        true => layered (buses, samples, 0, voice.gain, voice.pan)
         false => grouped (buses, voice, samples)
 
     (** Sum a stereo signal into a named group without a second pan stage. *)
@@ -184,14 +183,14 @@ module Arrangements
     limited (left, right, top, gains) = Mixdown(left = synth::Limiters::applied (left, gains, ceiling), right = synth::Limiters::applied (right, gains, ceiling), peak = top)
 
     (** Master's last stage [DAW-DYNAMICS-LIMITER], over the whole played Master: it is scaled so its peak meets the
-        ceiling (0.89, about −1 dBTP), `drive` (0.1–4) times louder, then both sides pass the linked true-peak
-        brick-wall limiter, so a drive above 1 is louder without clipping; `peak` is the level before it. *)
-    export levelled (rate, left, right, drive) =
+        ceiling (0.89, about −1 dBTP), then both sides pass the linked true-peak brick-wall limiter; `peak` is the
+        level before it. *)
+    export levelled (rate, left, right) =
         top = foldList (right, foldList (left, 0.0, peak), peak)
-        gain = ArrangeMath::lifted (top, drive, ceiling)
+        gain = ArrangeMath::lifted (top, ceiling)
         near = lift (left, gain)
         far = lift (right, gain)
-        synth::Outcomes::carried (synth::Limiters::gains (near, far, rate, ceiling, lookahead, release), \gains => Success(value = limited (near, far, top, gains)))
+        synth::Outcomes::carried (PatchVoices::told (synth::Limiters::gains (near, far, rate, ceiling, lookahead, release)), \gains => Success(value = limited (near, far, top, gains)))
 
     interleave (mix, done, index) = listAppend (listAppend done (listGet mix.left index ?: 0.0)) (listGet mix.right index ?: 0.0)
 

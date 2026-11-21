@@ -16,7 +16,7 @@ hostNode outcome = match outcome
 // [SYNTH-HOST-DESCRIPTOR] Real worker layouts become checked graph ports and normalized controls.
 succeeds (outcome, check) = match outcome
     Success value => check value
-    Error why => expect (why, "successful operation")
+    Error why => expect (synth::Faults::detail why, "successful operation")
 
 reads (outcome, check) = match outcome
     Success value => check value
@@ -34,9 +34,9 @@ partitionedKernel (component, channels) =
     samples = mapList (toList (range (0, 256 * channels)), \i => (toFloat (i % channels) + 1.0) * 0.25)
     source = synth::NodeClip(clipNode = 0, clipChannels = channels, clipSamples = samples, clipNotes = [])
     match synth::ClipKernels::block (plan, [source], component, 256, initial)
-        Error why => expect (why, "whole kernel block")
+        Error why => expect (synth::Faults::detail why, "whole kernel block")
         Success whole => match synth::ClipKernels::block (plan, [source], component, 31, initial)
-            Error why => expect (why, "first kernel block")
+            Error why => expect (synth::Faults::detail why, "first kernel block")
             Success first => succeeds (synth::ClipKernels::block (plan, [source], component, 225, first.heldKernel), \last =>
                 sameSamples (whole.kernelSamples, listConcat first.kernelSamples last.kernelSamples)
                 expect (structuralEquals (whole.heldKernel, last.heldKernel), true)
@@ -51,23 +51,23 @@ partitionedKernel (component, channels) =
 // [SYNTH-RENDER-BLOCKS] The complete graph advances one clock across block partitions.
 partitionedGraph (graph, output) =
     match synth::GraphClips::start (graph, 31)
-        Error why => expect (why, "first graph block")
+        Error why => expect (synth::Faults::detail why, "first graph block")
         Success first => match first
             synth::BlockWaiting _ _ => unexpected ()
             synth::BlockReady held clips =>
                 expect (held.graphPosition, 31)
                 match synth::GraphClips::next (graph, held, 225)
-                    Error why => expect (why, "continued graph block")
+                    Error why => expect (synth::Faults::detail why, "continued graph block")
                     Success last => match last
                         synth::BlockWaiting _ _ => unexpected ()
                         synth::BlockReady finished buffers =>
                             expect (finished.graphPosition, 256)
                             match synth::ClipInputs::completed (clips, output)
-                                Error why => expect (why, "first output")
+                                Error why => expect (synth::Faults::detail why, "first output")
                                 Success a => match synth::ClipInputs::completed (buffers, output)
-                                    Error why => expect (why, "last output")
+                                    Error why => expect (synth::Faults::detail why, "last output")
                                     Success b => match synth::GraphClips::advance (graph, [], 256)
-                                        Error why => expect (why, "reference graph clip")
+                                        Error why => expect (synth::Faults::detail why, "reference graph clip")
                                         Success reference => match reference
                                             synth::ClipWaiting _ _ _ => unexpected ()
                                             synth::ClipReady all => succeeds (synth::ClipInputs::completed (all, output), \whole => sameSamples (whole.clipSamples, listConcat a.clipSamples b.clipSamples))
@@ -103,7 +103,7 @@ hostReply () = "4F5356310000000002000000010000000001000000000000" + join (mapLis
 
 streamedHost graph =
     match synth::GraphClips::start (graph, 64)
-        Error why => expect (why, "first hosted block")
+        Error why => expect (synth::Faults::detail why, "first hosted block")
         Success first => match first
             synth::BlockReady _ _ => unexpected ()
             synth::BlockWaiting request pending =>
@@ -112,7 +112,7 @@ streamedHost graph =
                 reply = hostClip (steady (128, 0.25))
                 forEachList ([{ pend = pending, back = reply(clipNode = 99) }, { pend = pending, back = reply(clipSamples = []) }, { pend = pending(pendingNode = 4), back = reply(clipNode = 4) }, { pend = pending(pendingNode = 99), back = reply(clipNode = 99) }, { pend = pending(pendingClips = listAppend pending.pendingClips reply), back = reply }], \r => renderRefused (synth::GraphClips::replied (r.pend, r.back)))
                 match synth::GraphClips::replied (pending, reply)
-                    Error why => expect (why, "completed first hosted block")
+                    Error why => expect (synth::Faults::detail why, "completed first hosted block")
                     Success completed => match completed
                         synth::BlockWaiting _ _ => unexpected ()
                         synth::BlockReady held _ =>
@@ -121,14 +121,14 @@ streamedHost graph =
                             streamedHostTail (graph, held)
 
 streamedHostTail (graph, held) = match synth::GraphClips::next (graph, held, 192)
-    Error why => expect (why, "continued hosted block")
+    Error why => expect (synth::Faults::detail why, "continued hosted block")
     Success action => match action
         synth::BlockReady _ _ => unexpected ()
         synth::BlockWaiting request pending =>
             requested (request, 2, 64, \level => level > 0.5)
             reply = hostClip (steady (384, -0.25))
             match synth::GraphClips::replied (pending, reply)
-                Error why => expect (why, "completed second hosted block")
+                Error why => expect (synth::Faults::detail why, "completed second hosted block")
                 Success completed => match completed
                     synth::BlockWaiting _ _ => unexpected ()
                     synth::BlockReady finished clips =>
@@ -245,7 +245,7 @@ registerHostedJourneys () =
         graph = built (nodes, routes)
         partitionedGraph (graph, 9)
         match synth::GraphClips::advance (graph, [], 256)
-            Error why => expect (why, "rendered clip")
+            Error why => expect (synth::Faults::detail why, "rendered clip")
             Success action => match action
                 synth::ClipWaiting _ _ _ => unexpected ()
                 synth::ClipReady clips =>
@@ -266,7 +266,7 @@ registerHostedJourneys () =
         expect (length graph.cables, 3)
         streamedHost graph
         match synth::GraphClips::advance (graph, [], 256)
-            Error why => expect (why, "hosted clip")
+            Error why => expect (synth::Faults::detail why, "hosted clip")
             Success action => match action
                 synth::ClipReady _ => unexpected ()
                 synth::ClipWaiting identity request clips =>
@@ -282,7 +282,7 @@ registerHostedJourneys () =
                         expect (reply.renderLatency, 0)
                         result = hostClip (reply.renderSamples)
                         match synth::GraphClips::advance (graph, listAppend clips result, 256)
-                            Error why => expect (why, "resumed graph")
+                            Error why => expect (synth::Faults::detail why, "resumed graph")
                             Success finished => match finished
                                 synth::ClipWaiting _ _ _ => unexpected ()
                                 synth::ClipReady completed => succeeds (synth::ClipInputs::completed (completed, 4), \output => sameSamples (output.clipSamples, reply.renderSamples)))

@@ -6,17 +6,17 @@ module RenderInputs
     (** Resolve a scheduled component, refusing unknown identities. *)
     export component (plan, identity) = match Graphs::node (plan.graph, identity)
         Valid n => Success(value = n)
-        Invalid _ => Error(message = "Render schedule names an absent component.")
+        Invalid _ => Error(message = MissingResource(detail = "Render schedule names an absent component."))
 
     (** Find persistent kernel state by identity. *)
     export held (frame, identity) = match Seek::first (frame.states, \s => s.identity == identity)
-        Error _ => Error(message = "index out of bounds")
+        Error _ => Error(message = MissingResource(detail = "index out of bounds"))
         Success found => Success(value = found)
 
     (** Read a required parameter without substituting a fake value. *)
     export parameter (snapshot, identity, key) = match Seek::first (snapshot.parameters, \p => p.node == identity && p.key == key)
         Success p => Success(value = p.value)
-        Error _ => Error(message = "Required render parameter is missing.")
+        Error _ => Error(message = MissingResource(detail = "Required render parameter is missing."))
 
     (** Read one declared parameter, then continue; a missing parameter stops with its error. *)
     export bound (snapshot, held, key, continue) = Outcomes::carried (parameter (snapshot, held.identity, key), \value => continue value)
@@ -28,21 +28,21 @@ module RenderInputs
         false => match input (plan, frame, identity, inlet)
             Error why => Error(message = why)
             Success control => match control >= 0.0 && control <= 1.0
-                false => Error(message = "Control inputs must stay between zero and one.")
+                false => Error(message = InvalidConfiguration(detail = "Control inputs must stay between zero and one."))
                 true => Success(value = combine (base, control))
 
     (** Resolve a routed mono input from an already rendered source. *)
     export input (plan, frame, identity, inlet) = match Seek::first (plan.graph.cables, \c => c.destination == identity && c.inlet == inlet)
-        Error _ => Error(message = "An audio input is not connected.")
+        Error _ => Error(message = MissingResource(detail = "An audio input is not connected."))
         Success cable => match Seek::first (frame.values, \v => v.identity == cable.source)
-            Error _ => Error(message = "An input was read before its source was rendered.")
+            Error _ => Error(message = MissingResource(detail = "An input was read before its source was rendered."))
             Success value => Success(value = value.value)
 
     (** Read one produced sample and reject invalid numeric output before publication. *)
     export sample (frame, identity) = match Seek::first (frame.values, \v => v.identity == identity)
-        Error _ => Error(message = "index out of bounds")
+        Error _ => Error(message = MissingResource(detail = "index out of bounds"))
         Success output => match output.value == output.value && abs output.value <= 1000000.0
-            false => Error(message = "Non-finite or excessive graph output.")
+            false => Error(message = NumericalFailure(detail = "Non-finite or excessive graph output."))
             true => Success(value = output.value)
 
     replaced (next, held) = match held.identity == next.identity

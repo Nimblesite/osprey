@@ -20,5 +20,5 @@ module GrainWindows
             shape = AsrWindow(attack = attack, release = release)
             match valid shape
                 true => Success(value = shape)
-                false => Error(message = "Grain attack and release must be positive fractions whose sum is at most one.")
-        _ => Error(message = "Grain window must be 0 (Hann) or 1 (ASR).")
+                false => Error(message = InvalidConfiguration(detail = "Grain attack and release must be positive fractions whose sum is at most one."))
+        _ => Error(message = InvalidConfiguration(detail = "Grain window must be 0 (Hann) or 1 (ASR)."))

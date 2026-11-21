@@ -19,9 +19,9 @@ module WaveFiles
 
     (** Interleaved IEEE float32 WAV; channel alignment and all sample values are checked. *)
     export interleaved (rate, channels, samples) = match rate >= 8000 && rate <= 384000 && channels >= 1 && channels <= 64 && length samples <= 1920000
-        false => Error(message = "Invalid WAV rate, channel count or sample count.")
+        false => Error(message = MissingResource(detail = "Invalid WAV rate, channel count or sample count."))
         true => match satMul (intDiv (length samples) channels) channels == length samples && length (filterList (samples, finite)) == length samples
-            false => Error(message = "Invalid WAV channel alignment or non-finite/excessive sample.")
+            false => Error(message = MissingResource(detail = "Invalid WAV channel alignment or non-finite/excessive sample."))
             true => Success(value = "${floatHeader (rate, channels, length samples)}${join (mapList (samples, PcmWords::float32)) ""}")
 
     (** Mono IEEE float32 WAV in hex, using the same interleaved encoder. *)

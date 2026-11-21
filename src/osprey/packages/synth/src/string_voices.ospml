@@ -9,7 +9,7 @@ module StringVoices
 
     (** Allocate every voice's line outside rendering, using one template for capacity and timbre. *)
     export prepare (template, excitation, count, release) = match count >= 1 && count <= 16 && release >= 0.01 && release <= 10.0
-        false => Error(message = "A string pool needs 1-16 voices and a release of 0.01-10 s.")
+        false => Error(message = InvalidConfiguration(detail = "A string pool needs 1-16 voices and a release of 0.01-10 s."))
         true => match Waveguides::configure template
             Error why => Error(message = why)
             Success accepted => match Exciters::configure excitation
@@ -42,11 +42,11 @@ module StringVoices
 
     (** Start `note` (MIDI pitch) at `frequency` Hz; the noise seed makes each pluck reproducible. *)
     export noteOn (pool, note, velocity, frequency, seed) = match velocity >= 0.0 && velocity <= 1.0 && seed >= 1 && seed <= 2147483646 && note >= 0 && note <= 127
-        false => Error(message = "Note, velocity (0-1) or seed is out of range.")
+        false => Error(message = InvalidConfiguration(detail = "Note, velocity (0-1) or seed is out of range."))
         true => match floatToInt (victim pool)
-            Error _ => Error(message = "The string pool is empty.")
+            Error _ => Error(message = MissingResource(detail = "The string pool is empty."))
             Success index => match listGet pool.voices index
-                Error _ => Error(message = "The string pool is empty.")
+                Error _ => Error(message = MissingResource(detail = "The string pool is empty."))
                 Success voice => replace (pool, index, voice, note, velocity, frequency, seed)
 
     replacedAt (slot, index, voice, note, velocity, frequency, seed) = match slot == index

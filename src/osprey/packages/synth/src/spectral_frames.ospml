@@ -144,7 +144,7 @@ module SpectralFrames
     export compatible steps = length steps >= 1 && length steps <= 8 && length (filterList (steps, stateless)) == length steps
 
     series (config, bins, sides, held, steps) = match compatible steps
-        false => Error(message = "A spectral series accepts 1-8 band, shift or morph steps only.")
+        false => Error(message = InvalidConfiguration(detail = "A spectral series accepts 1-8 band, shift or morph steps only."))
         true => Success(value = unchanged (foldList (steps, bins, \(current, step) => seriesStep (config, sides, held, current, step)), held.memory, held.motion, false))
 
     (** Apply the configured transformation to one analysed frame; pitch and series can fail. *)

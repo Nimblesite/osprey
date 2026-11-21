@@ -21,5 +21,5 @@ module Macros
 
     (** Write the amount (0–1) into every target; an invalid macro or amount leaves the graph unchanged. *)
     export apply (graph, macro, amount) = match valid (graph, macro) && amount >= 0.0 && amount <= 1.0
-        false => Error(message = "The macro has an invalid target or amount; the patch is unchanged.")
+        false => Error(message = InvalidConfiguration(detail = "The macro has an invalid target or amount; the patch is unchanged."))
         true => Success(value = foldList (macro.targets, graph, \(g, t) => g(nodes = mapList (g.nodes, \n => retargeted (n, t, amount)))))

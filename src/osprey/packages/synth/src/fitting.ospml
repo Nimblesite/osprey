@@ -6,11 +6,11 @@ namespace synth
     for a seed; `start`/`advance` run one evaluation at a time so a host can show progress or cancel. *)
 module Fitting
     descriptor (graph, parameter) = match Graphs::node (graph, parameter.node)
-        Invalid _ => Error(message = "A fitted parameter names an absent node.")
+        Invalid _ => Error(message = MissingResource(detail = "A fitted parameter names an absent node."))
         Valid n => match listGet (filterList (n.parameters, \p => p.key == parameter.key && p.automatable)) 0
-            Error _ => Error(message = "A fitted parameter is not an automatable parameter of its node.")
+            Error _ => Error(message = InvalidConfiguration(detail = "A fitted parameter is not an automatable parameter of its node."))
             Success found => match parameter.minimum < parameter.maximum && parameter.minimum >= found.minimum && parameter.maximum <= found.maximum
-                false => Error(message = "A fitted range must be non-empty and inside the parameter's declared range.")
+                false => Error(message = InvalidConfiguration(detail = "A fitted range must be non-empty and inside the parameter's declared range."))
                 true => Success(value = found.initial)
 
     starting (graph, outcome, parameter) = match outcome
@@ -34,7 +34,7 @@ module Fitting
 
     (** The graph with normalised values written into the fitted parameters; a length mismatch is an error. *)
     export applied (graph, parameters, values) = match length parameters == length values && length (filterList (values, \v => v >= 0.0 && v <= 1.0)) == length values
-        false => Error(message = "Fitted values must match the parameters one-to-one and lie in [0, 1].")
+        false => Error(message = InvalidConfiguration(detail = "Fitted values must match the parameters one-to-one and lie in [0, 1]."))
         true => Success(value = written (graph, parameters, values))
 
     windowed samples = Sequences::mapIndexed (samples, \(index, value) => value * SpectralMath::hann (toFloat index, toFloat (length samples)))
@@ -45,7 +45,7 @@ module Fitting
         Success bins => Success(value = mapList (bins, \b => SpectralMath::power (b.re, b.im)))
 
     rendered (graph, frames) = match Graphs::prepare graph
-        Invalid _ => Error(message = "A candidate graph is invalid.")
+        Invalid _ => Error(message = InvalidConfiguration(detail = "A candidate graph is invalid."))
         Valid plan => match Renderer::start graph
             Error why => Error(message = why)
             Success initial => Outcomes::carried (Renderer::block (plan, 48000.0, Parameters::initial graph, initial, frames), \block => spectrum block.samples)
@@ -58,14 +58,14 @@ module Fitting
         Success candidate => match rendered (candidate, satMul (satSub (length target) 1) 2)
             Error why => Error(message = why)
             Success powers => match length powers == length target
-                false => Error(message = "Candidate and target spectra differ in size.")
+                false => Error(message = IncompatibleLayout(detail = "Candidate and target spectra differ in size."))
                 true => Success(value = FitCandidate(values = values, loss = loss (powers, target)))
 
     valid (config, target) = length config.parameters >= 1 && length config.parameters <= 16 && config.seed >= 1 && config.seed <= 2147483646 && config.evaluations >= 1 && config.evaluations <= 10000 && config.tolerance > 0.0 && config.tolerance < 1.0 && Ffts::valid (length target)
 
     (** Validate the job and score the graph's current values; the target is a power-of-two block at 48 kHz. *)
     export start (graph, config, target) = match valid (config, target)
-        false => Error(message = "A fit needs 1-16 parameters, a seed, 1-10000 evaluations, a tolerance in (0, 1) and a 64-4096 sample target.")
+        false => Error(message = InvalidConfiguration(detail = "A fit needs 1-16 parameters, a seed, 1-10000 evaluations, a tolerance in (0, 1) and a 64-4096 sample target."))
         true => match spectrum target
             Error why => Error(message = why)
             Success powers => match foldList (config.parameters, Success(value = []), \(outcome, parameter) => starting (graph, outcome, parameter))
@@ -121,5 +121,5 @@ module Fitting
     export apply (graph, config, result) = match applied (graph, config.parameters, result.best.values)
         Error why => Error(message = why)
         Success candidate => match Graphs::prepare candidate
-            Invalid _ => Error(message = "The fitted graph failed validation; keep the original.")
+            Invalid _ => Error(message = InvalidConfiguration(detail = "The fitted graph failed validation; keep the original."))
             Valid plan => Success(value = plan.graph)

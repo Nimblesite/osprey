@@ -13,9 +13,9 @@ module PhysicalKernels
     exciterConfig (strength, duration, interval, kind, colour) = match excitation (kind, colour)
         Error why => Error(message = why)
         Success shape => match floatToInt duration
-            Error _ => Error(message = "Exciter duration must be a whole number of samples.")
+            Error _ => Error(message = InvalidConfiguration(detail = "Exciter duration must be a whole number of samples."))
             Success frames => match floatToInt interval
-                Error _ => Error(message = "Exciter interval must be a whole number of samples.")
+                Error _ => Error(message = InvalidConfiguration(detail = "Exciter interval must be a whole number of samples."))
                 Success every => Exciters::configure (ExciterConfig(strength = strength, duration = frames, interval = every, excitation = shape))
 
     excited (frame, held, configured) = match configured
@@ -56,7 +56,7 @@ module PhysicalKernels
     bodied (frame, held, input, selector, count, shape) = match body selector
         Error why => Error(message = why)
         Success modes => match floatToInt count
-            Error _ => Error(message = "Mode count must be a whole number.")
+            Error _ => Error(message = InvalidConfiguration(detail = "Mode count must be a whole number."))
             Success whole => modal (frame, held, input, shape (modes, whole))
 
     modalBank (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "body", \selector => RenderInputs::bound (snapshot, held, "modes", \count => RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "brightness", \brightness => RenderInputs::bound (snapshot, held, "strike", \strike => bodied (frame, held, input, selector, count, \(modes, whole) => ModalConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, strike = strike, count = whole, modes = modes))))))))
@@ -93,7 +93,7 @@ module PhysicalKernels
         Allpass => allpass (snapshot, frame, held, input)
         Smoother => smoother (rate, snapshot, frame, held, input)
         StrikeComb capacity => strike (rate, snapshot, frame, held, input, capacity)
-        _ => Error(message = "Unsupported processor in the reference audio renderer.")
+        _ => Error(message = InvalidConfiguration(detail = "Unsupported processor in the reference audio renderer."))
 
     eased (frame, held, step) = published (frame, held(integratorOne = step.next.value), step.sample)
 

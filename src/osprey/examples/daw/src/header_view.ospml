@@ -100,7 +100,7 @@ module Header
     // The selected track and where its sound goes.
     route editor = match listGet editor.song.tracks editor.track
         Error _ => ""
-        Success voice => "${voice.name}  /  ${TimelineView::destination voice}${ui::Pick::either (voice.reverb > 0.0, " + Space", "")}"
+        Success voice => "${voice.name}  /  ${TimelineView::destination voice}"
 
     threeDigits bar = "${ui::Pick::either (bar < 100, "0", "")}${ui::Pick::either (bar < 10, "0", "")}${bar}"
 

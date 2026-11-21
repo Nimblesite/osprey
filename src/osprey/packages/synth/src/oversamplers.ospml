@@ -31,5 +31,5 @@ module Oversamplers
 
     (** One base-rate sample; histories of the wrong length are an error rather than a guessed filter. *)
     export next (config, held, input) = match length held.up == taps && length held.down == taps
-        false => Error(message = "Oversampler history does not match its filter.")
+        false => Error(message = IncompatibleLayout(detail = "Oversampler history does not match its filter."))
         true => Success(value = shapedPair (config, held, input))

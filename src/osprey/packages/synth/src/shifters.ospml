@@ -16,7 +16,7 @@ module Shifters
     (** Shift −5,000–5,000 Hz (negative shifts down), ring selects plain multiplication, mix 0–1. *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.shift >= -5000.0 && config.shift <= 5000.0 && config.mix >= 0.0 && config.mix <= 1.0
         true => Success(value = config)
-        false => Error(message = "Invalid shifter rate, shift or mix.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid shifter rate, shift or mix."))
 
     // Section memory: input = x[n-1], older = x[n-2], output = y[n-1], oldest = y[n-2].
     section (coefficient, held, input) =
@@ -35,7 +35,7 @@ module Shifters
 
     (** One sample: the in-phase path is delayed one sample to align with the quadrature path. *)
     export next (config, held, input) = match length held.first == 4 && length held.second == 4
-        false => Error(message = "Shifter state does not have two four-section chains.")
+        false => Error(message = IncompatibleLayout(detail = "Shifter state does not have two four-section chains."))
         true =>
             first = run (held.first, firstCoefficients, input, [])
             second = run (held.second, secondCoefficients, input, [])

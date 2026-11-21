@@ -19,7 +19,7 @@ module PhaseOperators
         feedback 0–1 (cycles, averaged over two samples for stability) and amplitude 0–1. *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && abs config.frequency < config.sampleRate * 0.45 && abs config.depth <= 16.0 && abs config.spread <= config.sampleRate * 0.45 && config.feedback >= 0.0 && config.feedback <= 1.0 && config.amplitude >= 0.0 && config.amplitude <= 1.0 && shapeValid config.shape
         true => Success(value = config)
-        false => Error(message = "Invalid operator rate, frequency, modulation, feedback, amplitude or phase shape.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid operator rate, frequency, modulation, feedback, amplitude or phase shape."))
 
     (** The shaped phase for one ramp value, independent of the carrier. *)
     export shaped (shape, phase) = match shape
@@ -46,7 +46,7 @@ module PhaseOperators
     (** One base-rate sample from two operator samples at twice the rate, decimated by the 31-tap half-band
         filter (7.5 base-rate samples of latency). Modulation and sync are held across both sub-samples. *)
     export oversampled (config, held, modulation, sync) = match length held.down == Oversamplers::taps
-        false => Error(message = "Oversampled operator history does not match its filter.")
+        false => Error(message = IncompatibleLayout(detail = "Oversampled operator history does not match its filter."))
         true =>
             doubled = config(sampleRate = config.sampleRate * 2.0)
             first = next (doubled, held.operator, modulation, sync)

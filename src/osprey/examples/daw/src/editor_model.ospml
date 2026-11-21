@@ -182,7 +182,6 @@ type Editor G P S M =
     art : List<CardArt>
     page : Page
     outputEdit : OutputEdit
-    inspectSpace : bool
     lanePage : int
     laneZoom : float
     laneStart : float
@@ -260,7 +259,6 @@ type EditorAction =
         index : int
         gain : float
         pan : float
-        reverb : float
     ScrollLanes
         page : int
     ZoomLanes
@@ -287,8 +285,6 @@ type EditorAction =
     GroupName
     CommitGroup
     CloseOutput
-    InspectBus
-        space : bool
     AssignBus
         index : int
         bus : string

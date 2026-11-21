@@ -46,7 +46,7 @@ wavFile (encoding, channels, rate, bits, data) = wavPack [wavChunk ("fmt ", wavF
 
 // The refusals below assert the exact user-facing message, not merely failure.
 refusedWith (outcome, why) = match outcome
-    Error actual => expect (actual, why)
+    Error actual => expect (synth::Faults::detail actual, why)
     Success _ => unexpected ()
 
 // One shared runner per assertion shape: rows carry the inputs and the expected value.
@@ -92,7 +92,7 @@ formantLevel (samples, frequency) =
     sqrt (re * re + im * im)
 
 formantLevels config = match formantRendered config
-    Error why => { fault = why, kept = 0.0, raised = 0.0, between = 0.0, old = 0.0, root = 0.0 }
+    Error why => { fault = synth::Faults::detail why, kept = 0.0, raised = 0.0, between = 0.0, old = 0.0, root = 0.0 }
     Success run => { fault = "", kept = formantLevel (run.samples, 937.5), raised = formantLevel (run.samples, 1406.25), between = formantLevel (run.samples, 1093.75), old = formantLevel (run.samples, 156.25), root = formantLevel (run.samples, 234.375) }
 
 // [SYNTH-SPECTRAL-PITCH-EFFECT] A full-scale 500 Hz sine moved `semitones` and `cents` by the FFT shifter, 8,192 samples.
@@ -130,7 +130,7 @@ decibels ratio = 20.0 * ln ratio / ln 10.0
 
 // Within 1 cent of 500 Hz times the ratio, the level within 1 dB of full scale and at most 1 dB of ripple.
 shiftHeld (c) = match shiftedSine (c.semitones, c.cents)
-    Error why => expect (why, "")
+    Error why => expect (synth::Faults::detail why, "")
     Success run =>
         want = 500.0 * SpectralMath::semitoneRatio (c.semitones, c.cents)
         cents = 1200.0 * ln (measured (crossings run.samples) / want) / ln 2.0
@@ -148,7 +148,7 @@ burst n = match n < 512
 loudestIn (samples, first, limit) = foldList (toList (range (first, limit)), 0.0, \(peak, n) => larger (peak, abs (listGet samples n ?: 0.0)))
 
 tailHeld () = match spectralFor (formantConfig (2.0, 2.0), { main = burst, side = \_ => 0.0 }, 4096)
-    Error why => expect (why, "")
+    Error why => expect (synth::Faults::detail why, "")
     Success run =>
         expect (SpectralStreams::tail 1024, 2046)
         expect (loudestIn (run.samples, 1791, 2558) > 0.001, true)
@@ -177,7 +177,7 @@ envelopeTilt a = match spectralRendered (morphConfig (a, synth::Envelope), { mai
 
 // Six main harmonics against three side harmonics: three pairs glide, the main's harmonics 4-6 fade by 1 - a where they stand.
 orphansLanded (c) = match spectralRendered (morphConfig (c.a, synth::Partial), { main = \n => partialsTone (220.0, 6, n), side = \n => partialsTone (330.0, 3, n) })
-    Error why => expect (why, "")
+    Error why => expect (synth::Faults::detail why, "")
     Success run =>
         glide = exp ((1.0 - c.a) * ln 220.0 + c.a * ln 330.0)
         forEachList ([1.0, 2.0, 3.0], \k => near (formantLevel (run.samples, glide * k) / 256.0 * k, 1.0, 0.2))
@@ -186,7 +186,7 @@ orphansLanded (c) = match spectralRendered (morphConfig (c.a, synth::Partial), {
 // One rendered Partial morph from a harmonic tone at `low` to one at `high`: harmonic k must land at k x the
 // geometric glide with level 1/k (within 20%), and each source's own harmonics must sit 30 dB below it.
 partialLanded (c) = match spectralRendered (morphConfig (c.a, synth::Partial), { main = \n => harmonicTone (c.low, n), side = \n => harmonicTone (c.high, n) })
-    Error why => expect (why, "")
+    Error why => expect (synth::Faults::detail why, "")
     Success run =>
         glide = exp ((1.0 - c.a) * ln c.low + c.a * ln c.high)
         forEachList ([1.0, 2.0, 3.0], \k => near (formantLevel (run.samples, glide * k) / 256.0 * k, 1.0, 0.2))

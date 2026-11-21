@@ -1,41 +1,14 @@
-// [SYNTH-ARRANGEMENT-PLAYER] [DAW-RENDER-MASTER] [DAW-RENDER-PLAY] Play a song project's graph into Master and write Master to one WAV, after the recording it continues.
+// [SYNTH-ARRANGEMENT-PLAYER] [DAW-RENDER-MASTER] [DAW-RENDER-PLAY] Play a song project's graph into Master and write Master to one WAV.
 namespace daw
 
-(** The engine plays the project's graph once into Master, with the held end of the intro; `ffmpeg` only cuts the intro's last
-    seconds, joins the rendered parts and crossfades them after the intro. *)
+(** The engine plays the project's graph once into Master; `ffmpeg` only joins the rendered parts. *)
 module Player
     // Frames per WAV part: 960,000 interleaved samples, half the encoder's limit.
     chunk = 480000
 
-    tailPath request = "${request.folder}/tail.wav"
-
     piecePath request = "${request.folder}/piece.wav"
 
     songPath request = "${request.folder}/song.wav"
-
-    decoded (request, size) = match readFileBytes (tailPath request) 0 size
-        Error why => Error(message = why)
-        Success bytes => synth::Outcomes::carried (synth::WaveImport::decode bytes, \wave => Success(value = wave.samples))
-
-    // The intro's last `tail` seconds as mono at the song's rate.
-    tail (request, arrangement) = match Shell::ran (120, "ffmpeg -v error -y -sseof -${arrangement.intro.tail} -i ${Shell::located arrangement.intro.recording} -ac 1 -ar ${arrangement.sampleRate} -c:a pcm_s16le ${Shell::quoted (tailPath request)}")
-        Error why => Error(message = why)
-        Success _ => synth::Outcomes::carried (fileSize (tailPath request), \size => decoded (request, size))
-
-    glowed (arrangement, raw, outcome, glow) = synth::Outcomes::carried (outcome, \pads =>
-        synth::Outcomes::carried (Sustains::voiced (toFloat arrangement.sampleRate, raw, glow), \pad =>
-            synth::Outcomes::carried (Arrangements::frame (arrangement, glow.start), \start => Success(value = listAppend pads (Pad(glow = glow, sound = Sounding(at = start, lanes = [pad])))))))
-
-    held (arrangement, source) = synth::Outcomes::carried (Sustains::frozen (toFloat arrangement.sampleRate, source, Sustains::needed (toFloat arrangement.sampleRate, arrangement.sustains)), \raw => foldList (arrangement.sustains, Success(value = []), \(outcome, glow) => glowed (arrangement, raw, outcome, glow)))
-
-    // The intro's held end, as sounds waiting at their start frames; without a recording there is none.
-    bridged (request, arrangement) = match length arrangement.sustains == 0 || arrangement.intro.recording == ""
-        true => Success(value = [])
-        false => match tail (request, arrangement)
-            Error why => Error(message = why)
-            Success source =>
-                print "  holding the intro's last moment (${length arrangement.sustains} appearances)"
-                held (arrangement, source)
 
     least (one, other) = match one < other
         true => one
@@ -49,7 +22,7 @@ module Player
 
     written (request, arrangement, mix, held, index) = match held.fault == ""
         false => held
-        true => match synth::WaveFiles::interleaved (arrangement.sampleRate, 2, Arrangements::interleaved (mix, satMul index chunk, least (satMul (satAdd index 1) chunk, length mix.left)))
+        true => match PatchVoices::told (synth::WaveFiles::interleaved (arrangement.sampleRate, 2, Arrangements::interleaved (mix, satMul index chunk, least (satMul (satAdd index 1) chunk, length mix.left))))
             Error why => held(fault = why)
             Success hex => stored (held, "part-${index}", "${request.folder}/part-${index}", hex)
 
@@ -59,24 +32,17 @@ module Player
             true => Success(value = held.parts)
             false => Error(message = held.fault)
 
-    // The intro at the piece's rate, then an equal-gain crossfade of `crossfade` seconds into the piece.
-    crossfade arrangement = "[0:a]aresample=${arrangement.sampleRate},aformat=sample_fmts=flt:channel_layouts=stereo[intro];[intro][1:a]acrossfade=d=${arrangement.intro.crossfade}:c1=tri:c2=tri"
-
-    joined (request, arrangement) = match arrangement.intro.recording == ""
-        true => synth::Outcomes::carried (Shell::ran (60, "mv ${Shell::quoted (piecePath request)} ${Shell::quoted (songPath request)}"), \_ => Success(value = songPath request))
-        false => introduced (request, arrangement)
-
-    introduced (request, arrangement) = synth::Outcomes::carried (Shell::ran (300, "ffmpeg -v error -y -i ${Shell::located arrangement.intro.recording} -i ${Shell::quoted (piecePath request)} -filter_complex \"${crossfade arrangement}\" -c:a pcm_s24le ${Shell::quoted (songPath request)}"), \_ => Success(value = songPath request))
+    joined request = synth::Outcomes::carried (Shell::ran (60, "mv ${Shell::quoted (piecePath request)} ${Shell::quoted (songPath request)}"), \_ => Success(value = songPath request))
 
     // The concat list names parts relative to itself.
-    assembled (request, arrangement, files) = match writeFile "${request.folder}/parts.txt" (join (mapList (files, \path => "file ${Shell::quoted path}")) "\n")
+    assembled (request, files) = match writeFile "${request.folder}/parts.txt" (join (mapList (files, \path => "file ${Shell::quoted path}")) "\n")
         Error why => Error(message = why)
-        Success _ => synth::Outcomes::carried (Shell::ran (300, "ffmpeg -v error -y -f concat -safe 0 -i ${Shell::quoted "${request.folder}/parts.txt"} -c copy ${Shell::quoted (piecePath request)}"), \_ => delivered (request, arrangement))
+        Success _ => synth::Outcomes::carried (Shell::ran (300, "ffmpeg -v error -y -f concat -safe 0 -i ${Shell::quoted "${request.folder}/parts.txt"} -c copy ${Shell::quoted (piecePath request)}"), \_ => delivered request)
 
-    // An excerpt is the piece alone; the whole song follows its intro.
-    delivered (request, arrangement) = match request.beats > 0.0
+    // An excerpt stays `piece.wav`; the whole song is `song.wav`.
+    delivered request = match request.beats > 0.0
         true => Success(value = piecePath request)
-        false => joined (request, arrangement)
+        false => joined request
 
     // [DAW-ANALYSIS-SPECTRUM] Master's octave bands in whole dB, where a full-scale sine reads 0.
     decibel level = toString (floatToInt (synth::SpectralMath::nearest level) ?: -120)
@@ -88,7 +54,7 @@ module Player
     // The mid channel: the average of both sides.
     middle mix = mapList (toList (range (0, length mix.left)), \index => ArrangeMath::bused (ArrangeMath::scaled (listGet mix.left index ?: 0.0, 0.5), 0.5, listGet mix.right index ?: 0.0))
 
-    analysed (arrangement, mix) = match synth::Spectra::bands (middle mix, toFloat arrangement.sampleRate, 4096, 4096)
+    analysed (arrangement, mix) = match PatchVoices::told (synth::Spectra::bands (middle mix, toFloat arrangement.sampleRate, 4096, 4096))
         Error why => print "  Master spectrum: ${why}"
         Success bands => print "  Master spectrum (mean / loudest dB): ${join (mapList (bands, \band => "${hertz band.centre} ${decibel band.level}/${decibel band.peak}")) " · "}"
 
@@ -105,19 +71,17 @@ module Player
         synth::Outcomes::carried (Playback::next (arrangement, take.playing, least (Playback::block, satSub count take.playing.cursor)), \played => Success(value = kept (take, reported (arrangement, count, played)))))
 
     // [DAW-RENDER-PLAY] The whole graph played once, block by block, keeping only Master.
-    played (arrangement, count, pads) = synth::Outcomes::carried (Playback::start (arrangement, pads), \playing =>
+    played (arrangement, count) = synth::Outcomes::carried (Playback::start arrangement, \playing =>
         foldList (toList (range (0, intDiv (satAdd count (satSub Playback::block 1)) Playback::block)), Success(value = Take(playing = playing, lefts = [], rights = [])), \(outcome, _) => taken (arrangement, count, outcome)))
 
-    mixed (request, arrangement, take) = match Arrangements::levelled (toFloat arrangement.sampleRate, ui::Lists::flatten (listReverse take.lefts), ui::Lists::flatten (listReverse take.rights), arrangement.drive)
+    mixed (request, arrangement, take) = match Arrangements::levelled (toFloat arrangement.sampleRate, ui::Lists::flatten (listReverse take.lefts), ui::Lists::flatten (listReverse take.rights))
         Error why => Error(message = why)
         Success mix =>
             print "  mixed ${length mix.left} frames, peak ${mix.peak} before the true-peak limiter at -1 dBTP"
             analysed (arrangement, mix)
-            synth::Outcomes::carried (parts (request, arrangement, mix), \files => assembled (request, arrangement, files))
+            synth::Outcomes::carried (parts (request, arrangement, mix), \files => assembled (request, files))
 
     (** Render the song into the request's folder; the result is the finished WAV's path. *)
     export rendered (request, arrangement) = match Arrangements::frames arrangement
         Error why => Error(message = why)
-        // The held intro comes first, so a bad sustain fails before the long play.
-        Success count => synth::Outcomes::carried (bridged (request, arrangement), \pads =>
-            synth::Outcomes::carried (played (arrangement, count, pads), \take => mixed (request, arrangement, take)))
+        Success count => synth::Outcomes::carried (played (arrangement, count), \take => mixed (request, arrangement, take))

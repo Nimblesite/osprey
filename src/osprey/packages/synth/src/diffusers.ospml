@@ -10,7 +10,7 @@ module Diffusers
     stage (remaining, delays, gain, input, done) = match remaining
         [] => Success(value = DiffuserSample(sample = input, lines = done))
         [line, ...rest] => match delays
-            [] => Error(message = "Diffuser delays do not match its lines.")
+            [] => Error(message = IncompatibleLayout(detail = "Diffuser delays do not match its lines."))
             [delay, ...others] => match DelayLines::tap (line, delay)
                 Error why => Error(message = why)
                 Success delayed =>
@@ -19,5 +19,5 @@ module Diffusers
 
     (** One sample through every stage in order, returning the output and every stage's next line. *)
     export next (lines, delays, gain, input) = match valid (delays, gain) && length lines == length delays
-        false => Error(message = "Diffusers need one fractional delay >= 1 per line and |gain| <= 0.9.")
+        false => Error(message = InvalidConfiguration(detail = "Diffusers need one fractional delay >= 1 per line and |gain| <= 0.9."))
         true => stage (lines, delays, gain, input, [])

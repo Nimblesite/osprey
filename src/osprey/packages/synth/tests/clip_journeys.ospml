@@ -23,7 +23,7 @@ missingClip () = synth::NodeClip(clipNode = -1, clipChannels = 0, clipSamples = 
 // The success value of a render step, or `fallback` after a failed expectation.
 renderedOr (outcome, fallback, use) = match outcome
     Error why =>
-        expect (why, "a rendered block")
+        expect (synth::Faults::detail why, "a rendered block")
         fallback
     Success value => use value
 
@@ -183,7 +183,7 @@ registerClipJourneys () =
             graphRun (granularGraph (), 2, [256, 256], \againClock againAudio =>
                 expect (structuralEquals (againClock, clock) && structuralEquals (againAudio, audio), true)))
         match synth::GraphClips::start (granularGraph (), 256)
-            Error why => expect (why, "a first granular block")
+            Error why => expect (synth::Faults::detail why, "a first granular block")
             Success first => match first
                 synth::BlockWaiting _ _ => unexpected ()
                 synth::BlockReady held clips =>
