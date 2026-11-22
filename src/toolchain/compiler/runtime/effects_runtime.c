@@ -149,8 +149,9 @@ static int reserve_entries(HandlerStack *stack, int needed) {
     return 0;
 }
 
-// A push that takes no slot is counted, so the pop the caller still issues
-// consumes the refusal instead of unlinking a live entry.
+// A well-formed push the stack cannot hold is counted, so the pop codegen still
+// issues consumes the refusal instead of unlinking a live entry. A bad id or
+// depth is a compiler defect, refused without a pairing pop.
 static int refuse_push(void) {
     g_handler_stack->refused++;
     return 1;
@@ -159,11 +160,11 @@ static int refuse_push(void) {
 static int push_rejected(int operation_id, int base) {
     if (operation_id < 0 || operation_id >= OSP_MAX_OPERATION_IDS) {
         fprintf(stderr, "FATAL: Invalid operation id %d\n", operation_id);
-        return refuse_push();
+        return 1;
     }
     if (base < 0 || base > g_handler_stack->top + 1) {
         fprintf(stderr, "FATAL: Invalid handler activation depth %d\n", base);
-        return refuse_push();
+        return 1;
     }
     if (g_handler_stack->refused > 0 ||
         reserve_entries(g_handler_stack, g_handler_stack->top + 2)) {
