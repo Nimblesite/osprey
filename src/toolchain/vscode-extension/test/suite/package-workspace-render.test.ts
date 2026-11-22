@@ -130,6 +130,24 @@ suite("package workspace component renderer", () => {
     assert.strictEqual((html.match(/class="osp-pane"/g) ?? []).length, 2);
   });
 
+  test("a secret field hides its words, a long field wraps, and each field commits as told", () => {
+    const fieldOf = (shape: Record<string, unknown>) => ({
+      kind: "section", title: "Keys", footer: "",
+      children: [{ kind: "field", label: "API key", value: "sk-<1>", prompt: "Paste a key", secure: false, multiline: false, commit: "edit", event: 0, ...shape }],
+    });
+    const drawn = (shape: Record<string, unknown>) => renderWorkspace({ regions: regions(screen, fieldOf(shape)) });
+    const secret = drawn({ secure: true, commit: "submit" });
+    assert.ok(secret.includes('type="password"'), `a secure field never shows its key: ${secret}`);
+    assert.ok(secret.includes('data-commit="submit"'), secret);
+    assert.ok(secret.includes('value="sk-&lt;1&gt;"') && !secret.includes("sk-<1>"), secret);
+    const plain = drawn({});
+    assert.ok(plain.includes('type="text"') && plain.includes('data-commit="edit"'), plain);
+    const long = drawn({ multiline: true, value: "line one\n<b>two</b>" });
+    assert.ok(long.includes('<textarea aria-label="API key" rows="4" placeholder="Paste a key"'), long);
+    assert.ok(long.includes("&lt;b&gt;two&lt;/b&gt;</textarea>") && !long.includes("<b>two"), long);
+    assert.ok(!long.includes("<input"), "a multiline field is a text area, not an input");
+  });
+
   test("untrusted text and placeholders are escaped while slots render their region", () => {
     const html = renderWorkspace({ regions: regions(screen, rows), assetUri: "vscode-resource://icon.png" });
     assert.ok(!html.includes("<img src=x"), html);
