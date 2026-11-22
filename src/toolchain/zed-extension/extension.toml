@@ -17,5 +17,5 @@ languages = ["Osprey", "Osprey ML", "Osprey Python"]
 
 [grammars.osprey]
 repository = "https://github.com/Nimblesite/osprey"
-rev = "823b85b0c13af6efca747113981d8d402e210500"
+rev = "53e3c4119c707793a902674fc4b733dfdc9a3e32"
 path = "src/toolchain/tree-sitter-osprey"
