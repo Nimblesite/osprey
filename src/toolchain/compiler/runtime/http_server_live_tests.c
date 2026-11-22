@@ -5,6 +5,7 @@
 #include "http_runtime_tests.h"
 #include "http_server_internal.h"
 #include "http_shared.h"
+#include "effects_runtime.h"
 
 #include <assert.h>
 #include <pthread.h>
@@ -301,6 +302,40 @@ static size_t fiber_record_bytes(void) {
   }
   assert(false && "a spawn must allocate a record");
   return 0;
+}
+
+static int64_t handler_seeing_fiber(void *ignored) {
+  (void)ignored;
+  return __osprey_handler_lookup_in(41, 0) == (void *)handler_seeing_fiber ? 7 : 0;
+}
+
+// With handlers installed, every allocation a spawn makes may fail, the parent's
+// handler copy included: each size refuses the spawn (-2) or runs a fiber that
+// sees the parent's handler, and neither leaks a byte. Implements [MULTI-HANDLE-MANY].
+void test_spawn_with_handlers_survives_every_failed_allocation(void) {
+  for (int handlers = 1; handlers <= 3; handlers++) {
+    for (int i = 0; i < handlers; i++) {
+      assert(__osprey_handler_push_scoped(41, (void *)handler_seeing_fiber, NULL,
+                                          __osprey_handler_depth()) == 0);
+    }
+    int refused = 0;
+    for (size_t bytes = 8; bytes <= 1024; bytes += 8) {
+      long live = test_alloc_live();
+      test_alloc_fail_size(bytes);
+      int64_t fiber = fiber_spawn_env(handler_seeing_fiber, NULL);
+      test_alloc_fail_off();
+      if (fiber == -2) {
+        refused++;
+        assert(test_alloc_live() == live && "a refused spawn must free what it took");
+      } else {
+        assert(fiber > 0 && fiber_await(fiber) == 7 &&
+               "a fiber must run with its parent's handlers");
+      }
+    }
+    assert(refused >= 2 && "the record and the handler copy can each refuse a spawn");
+    assert(__osprey_handler_depth() == handlers);
+    __osprey_handler_stack_cleanup();
+  }
 }
 
 void test_listener_spawn_failure_is_reported(void) {

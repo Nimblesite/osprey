@@ -125,6 +125,7 @@ void test_server_labels_an_unparseable_request(void);
 void test_closure_listener_serves_requests(void);
 void test_closure_listen_rejections(void);
 void test_stop_server_with_client_connected(void);
+void test_spawn_with_handlers_survives_every_failed_allocation(void);
 void test_listener_spawn_failure_is_reported(void);
 void test_client_gone_follows_the_served_client(void);
 void test_keep_alive_waits_for_its_listeners(void);

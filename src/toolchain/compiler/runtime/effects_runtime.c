@@ -475,19 +475,32 @@ struct HandlerSnapshot {
     HandlerEntry entries[];
 };
 
-// Snapshot the current thread's handler stack (called in parent before fiber_spawn)
-// Returns a heap-allocated snapshot that the caller must pass to __osprey_handler_restore
-HandlerSnapshot *__osprey_handler_snapshot(void) {
+// Copy the current thread's handler stack into *out (called in the parent before
+// a spawn). An empty stack needs no copy: *out is NULL and restoring NULL keeps a
+// fresh thread's empty stack. Returns -1, with *out NULL, when the copy cannot be
+// allocated, so a spawn is refused instead of starting without its handlers.
+int __osprey_handler_try_snapshot(HandlerSnapshot **out) {
     ensure_handler_stack_initialized();
     int depth = g_handler_stack->top + 1;
+    *out = NULL;
+    if (depth == 0) return 0;
     HandlerSnapshot *snap = (HandlerSnapshot *)malloc(sizeof(HandlerSnapshot) +
                                                      (size_t)depth * sizeof(HandlerEntry));
-    if (snap == NULL) {
+    if (snap == NULL) return -1;
+    snap->count = depth;
+    memcpy(snap->entries, g_handler_stack->stack, (size_t)depth * sizeof(HandlerEntry));
+    *out = snap;
+    return 0;
+}
+
+// The snapshot a compiled continuation owns. Quarantine: generated code has no
+// refusal path here, so a failed copy stops the process like the coroutine start.
+HandlerSnapshot *__osprey_handler_snapshot(void) {
+    HandlerSnapshot *snap = NULL;
+    if (__osprey_handler_try_snapshot(&snap) != 0) {
         fprintf(stderr, "FATAL: Failed to allocate handler snapshot\n");
         abort();
     }
-    snap->count = depth;
-    memcpy(snap->entries, g_handler_stack->stack, (size_t)depth * sizeof(HandlerEntry));
     return snap;
 }
 

@@ -379,6 +379,7 @@ void run_all_http_tests(void) {
   test_closure_listen_rejections();        // and its documented refusals
   test_stop_server_with_client_connected(); // foreign stop tears the client down
   // The three below burn finite id spaces and are permanent for the process.
+  test_spawn_with_handlers_survives_every_failed_allocation();
   test_listener_spawn_failure_is_reported(); // burns the FIBER id space
   test_client_handle_exhaustion();           // burns the shared HTTP id space
   test_server_handle_exhaustion();           // observes that same exhaustion
