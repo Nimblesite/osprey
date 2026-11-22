@@ -567,16 +567,6 @@ testing ("a Windows launch names its folder by the folder's own name, as the Mac
     composerShows (macStore, "project")
     expectFalse (mentions (composerWalk macStore, "/work")))
 
-testing ("a Windows launch names its folder by the folder's own name, as the Mac does", \() =>
-    store = (App::initial (ui::Context(now = 100, offset = 0, platform = "windows", home = "C:\\Users\\ada", arguments = ["C:\\work\\calc-project"], hostDark = false))).stepStore
-    expect ((Model::active store).chatFolder, "C:\\work\\calc-project")
-    composerShows (store, "calc-project")
-    expectFalse (mentions (composerWalk store, "C:\\work"))
-    expectFalse (mentions (Drive::walked (store, View::sidebar), "C:\\work"))
-    macStore = launchedStore ()
-    composerShows (macStore, "project")
-    expectFalse (mentions (composerWalk macStore, "/work")))
-
 testing ("typing keeps the draft and sends nothing", \() =>
     step = typingAtLaunch "half a thou"
     expect (step.stepStore.draft.draftText, "half a thou")

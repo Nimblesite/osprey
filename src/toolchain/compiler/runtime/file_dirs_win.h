@@ -114,13 +114,7 @@ OspreyList *osprey_list_dir(const char *path) {
   OspreyListBuilder *builder = osprey_list_builder_new_of(1);
   failure = builder == NULL ? ENOMEM : win_push_entries(search, &found, path, builder);
   (void)FindClose(search);
-  OspreyList *list = builder == NULL ? NULL : osprey_list_builder_seal(builder);
-  if (failure != 0) {
-    osp_release(list);
-    osp_io_error_set(OP_LIST_DIR, path, failure);
-    return NULL;
-  }
-  return list;
+  return list_dir_sealed(builder, failure, path);
 }
 
 char *osprey_kind_of(const char *path) {

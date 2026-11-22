@@ -241,6 +241,20 @@ static const char OP_LIST_DIR[] = "listDir";
 static const char OP_KIND_OF[] = "kindOf";
 static const char OP_MAKE_DIR[] = "makeDir";
 
+#if !defined(__wasm__) && !defined(OSP_SYMBOLIC)
+// The listing a platform's entry walk filled: sealed when every entry was
+// pushed, otherwise NULL with the reason recorded, never a partial list.
+static OspreyList *list_dir_sealed(OspreyListBuilder *builder, int failure, const char *path) {
+  OspreyList *list = builder == NULL ? NULL : osprey_list_builder_seal(builder);
+  if (failure != 0) {
+    osp_release(list);
+    osp_io_error_set(OP_LIST_DIR, path, failure);
+    return NULL;
+  }
+  return list;
+}
+#endif
+
 #if !defined(__wasm__) && !defined(OSP_SYMBOLIC) && !defined(_WIN32)
 // One directory entry's full path, with OSP_PATH_SEP appended when the entry
 // is a directory. A symlink is never a directory here (lstat, not stat), so a
@@ -311,13 +325,7 @@ OspreyList *osprey_list_dir(const char *path) {
   OspreyListBuilder *builder = osprey_list_builder_new_of(1);
   int failure = builder == NULL ? ENOMEM : push_entries(dir, path, builder);
   (void)closedir(dir);
-  OspreyList *list = builder == NULL ? NULL : osprey_list_builder_seal(builder);
-  if (failure != 0) {
-    osp_release(list);
-    osp_io_error_set(OP_LIST_DIR, path, failure);
-    return NULL;
-  }
-  return list;
+  return list_dir_sealed(builder, failure, path);
 }
 
 // [BUILTIN-FILE-KIND] "dir", "file" or "other" for one path, from stat — the
