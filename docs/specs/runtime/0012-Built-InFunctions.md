@@ -152,6 +152,45 @@ half n = intDiv (n, 2)
 ratio (a, b) = intDiv (a, b)
 ```
 
+### `min(a: T, b: T) -> T` / `max(a: T, b: T) -> T`, where `T` is any numeric type — [BUILTIN-MIN-MAX]
+
+**Status: not implemented.** [The or-patterns and min/max plan](../../plans/or-patterns-and-min-max.md) owns delivery. Until it lands, write `if a < b { a } else { b }`.
+
+`min` returns the smaller of two values of one numeric type and `max` the larger. Both are total: no input traps, wraps or performs an `Arith` operation, so neither needs a handler ([ARITH-TOTAL](../language/0037-ArithmeticEffects.md#the-guarantee--arith-total)).
+
+```osprey
+min(3, 7)                      // 3
+max(3, 7)                      // 7
+fn clamp(x, low, high) = max(low, min(x, high))
+let longest = foldList(lengths, 0, max)
+```
+
+```osprey-ml
+min (3, 7)                     // 3
+max (3, 7)                     // 7
+clamp (x, low, high) = max (low, min (x, high))
+longest = foldList (lengths, 0, max)
+```
+
+**[BUILTIN-MIN-MAX-INT]** For an integer type the comparison is the type's own order: signed for `int`, `int8`, `int16` and `int32`, unsigned for `uint8`, `uint16` and `uint32` ([TYPE-NUMERIC-SIZED](../language/0004-TypeSystem.md#sized-numeric-types--type-numeric-sized)). The result is one of the two arguments, at their type. When the arguments are equal, the result is that value.
+
+**[BUILTIN-MIN-MAX-FLOAT]** For a float type the functions are IEEE 754-2019 `minimum` and `maximum`:
+
+| Input | `min` | `max` |
+| --- | --- | --- |
+| Either argument is NaN | NaN | NaN |
+| `-0.0` and `0.0`, in either order | `-0.0` | `0.0` |
+| `-inf` and any other number | `-inf` | the other number |
+| `inf` and any other number | the other number | `inf` |
+
+A NaN is never dropped, so a NaN anywhere in a fold of `min` or `max` reaches the result. This is the rule WebAssembly's `f64.min` and `f64.max` already follow, so native and wasm32 results are bit-identical. See [FLOAT-IEEE-RESULTS](../language/0037-ArithmeticEffects.md#floating-point-results--float-ieee-results).
+
+**[BUILTIN-MIN-MAX-TYPE]** Both arguments have the same numeric type and the result has that type. Mixing `int` and `float`, or two integer widths, is a compile error that names both types; convert one argument first ([BUILTIN-CONVERT-INT], [BUILTIN-CONVERT-FLOAT]). Non-numeric arguments and `Result` wrappers are rejected. Overload inference follows `abs` ([BUILTIN-ABS]): a helper or alias with an unresolved numeric type keeps one overload chosen by its uses.
+
+**[BUILTIN-MIN-MAX-VALUE]** Each is a function value: it may be aliased, stored, returned and passed as a callback, as in `foldList(xs, first, max)`. Both are pure, so a GPU kernel may call or name them, and the device result equals the host result for every input, NaN and signed zeros included.
+
+**[BUILTIN-MIN-MAX-SHADOWING]** `min` and `max` are common identifiers and are not reserved. A user function, `extern` or module member with the same name shadows the builtin in the type environment and in codegen dispatch, as the testing names do ([TESTING-SHADOWING](../language/0027-TestingFramework.md)). `np.max(array)` in the NumPy port is such a member.
+
 ### `wrapAdd` / `wrapSub` / `wrapMul` / `satAdd` / `satSub` / `satMul` — [BUILTIN-TOTAL-ARITH]
 Each has signature `(a: T, b: T) -> T` for any integer type `T` and never performs an `Arith` operation. The `wrap` helpers return the result modulo 2 to the type's width; the `sat` helpers clamp to the type's range ([TYPE-NUMERIC-ARITH-WIDTH](../language/0004-TypeSystem.md#arithmetic-at-width--type-numeric-arith-width)). They are the sanctioned spelling for code where wraparound or clamping is the definition rather than a fault — hashes, checksums, PRNGs — and for `Arith` arms that must not require an outer policy ([ARITH-EFFECT-TOTAL-HELPERS](../language/0037-ArithmeticEffects.md#total-helpers--arith-effect-total-helpers)).
 

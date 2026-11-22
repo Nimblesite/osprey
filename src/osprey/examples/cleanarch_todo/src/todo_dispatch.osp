@@ -12,7 +12,7 @@ import todo::TodoValidation
 /// ISender and the five MediatR behaviours.
 module TodoDispatch {
     /// ISender.Send: one line per behaviour, in order. The rest of the function is `next()`.
-    export fn send(request) = {
+    export fn dispatch(request) = {
         let principal = perform Auth.who()
         perform Log.info("CleanArchitecture Request: ${TodoRequest::requestName(request)} by ${principal.name}")
         let startedAt = perform Clock.nowMs()

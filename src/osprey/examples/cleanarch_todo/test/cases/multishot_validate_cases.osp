@@ -1,0 +1,473 @@
+// Validation exploration ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE]): every case
+// sends ONE captured request through `WhichFixesWork`, which resumes it once
+// per candidate fix in `TodoProbe::fixes()` order ([MULTI-DECL],
+// [MULTI-HANDLE-MANY]). Each branch still collects every validation failure
+// ([EXAMPLE-CLEANARCH-INV-FAITHFUL]), and each branch's writes and events are
+// undone before the next branch ([MULTI-REPLAY], [MULTI-REPLAY-STATE]).
+//
+// Derivations the cases below rely on. The fixture clock advances one per
+// reading; `WhichFixesWork` captures at `Rules.candidate`, one reading after
+// the request starts, so a probe reads the clock exactly six times: one start,
+// one settle reading per fix, one final reading for the report
+// ([MULTI-HANDLE-MANY]: the captured start never re-runs). Each probe branch
+// reopens the store snapshot taken at the capture, so a passing CreateList
+// branch answers the id `length(seedLists) + 1` and a passing CreateItem
+// branch answers `length(seedItems) + 1`, the same in every branch, and no
+// branch's row or event survives ([MULTI-REPLAY]).
+
+namespace todo;
+
+import todo::TodoHarness
+import todo::TodoProbe
+
+/// Two seeded lists: Shopping in grey and Banking in purple.
+fn fixLists() = [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, "Banking", "#AB47BC")]
+
+/// Three seeded items: Milk and Bread in list 1, Tax in list 2.
+fn fixItems() = [
+    TodoHarness::seedItem(1, 1, "Milk", false),
+    TodoHarness::seedItem(2, 1, "Bread", false),
+    TodoHarness::seedItem(3, 2, "Tax", false)
+]
+
+/// Three seeded lists, list 2 titled with 250 x characters.
+fn fixLongSeeds() = [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, fixWide(250), "#D98B2B"), TodoHarness::seedList(3, "Banking", "#AB47BC")]
+
+/// Two seeded lists, list 2 titled with the 200-character prefix "Shopping" + 192 x.
+fn fixPrefixSeeds() = [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, "Shopping" + fixWide(192), "#AB47BC")]
+
+/// Three one-letter lists, so a fresh list's id is 4.
+fn fixAbcSeeds() = [TodoHarness::seedList(1, "A", "#78909C"), TodoHarness::seedList(2, "B", "#D98B2B"), TodoHarness::seedList(3, "C", "#4CAF50")]
+
+/// A title of `size` x characters.
+fn fixWide(size) = foldList(range(0, size) |> toList, "", fn(built, _i) => built + "x")
+
+/// The four answers of four branches that all answer `answer`: the list length
+/// is the resume count ([MULTI-HANDLE-MANY]).
+fn fixAll(answer) = [answer, answer, answer, answer]
+
+/// A created-id success.
+fn fixCreated(id) = Success { value: CreatedId { value: id } }
+
+/// An Updated success.
+fn fixUpdated() = Success { value: Updated }
+
+/// A collected validation fault.
+fn fixFault(problems) = Error { message: ValidationFault { problems: problems } }
+
+/// A typed NotFound fault.
+fn fixMissing(kind, id) = Error { message: NotFound { kind: kind, id: id } }
+
+/// The colour fault for one unsupported code: the message embeds the code as sent.
+fn fixColourFault(code) = fixFault(["UnsupportedColour: '${code}' is not a supported colour"])
+
+/// What every WhichFixesWork probe proves about its surroundings ([MULTI-REPLAY],
+/// [MULTI-HANDLE-MANY], [MULTI-REPLAY-STATE]): six clock readings, and every
+/// branch's writes and events undone, so the rows are exactly the seeds.
+fn fixUndone(probe, lists, items) = [
+    probe.readings == 6,
+    structuralEquals(probe.lists, lists),
+    structuralEquals(probe.items, items),
+    length(probe.events) == 0
+]
+
+/// Branch 4 answers as branch 1 for item requests: `recoloured` is the identity
+/// there, so the default-colour fix cannot change the candidate ([MULTI-HANDLE-MANY]).
+fn fixEndsAgree(probe) = match probe.answers {
+    [first, _second, _third, fourth] => toString(first) == toString(fourth)
+    _ => false
+}
+
+module MultishotValidateCases {
+    /// Title length edges over CreateList ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): the empty rule fires at
+    /// length 0 in all four fixes; the 200 rule fires only above 200, so 199 and
+    /// 200 pass, and only the cut-to-200 fix rescues 201, 250 and 400.
+    export fn titleLengthsCase() = {
+        forEachList([1, 199, 200], fn(size) => {
+            let probe = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+                request: CreateList { list: NewList { title: fixWide(size), colour: "#AB47BC" } }
+            })
+            expect(probe.answers, fixAll(fixCreated(3)))
+            expect(TodoHarness::failures("a fitting title passes in every branch; six readings, nothing kept", fixUndone(probe, fixLists(), fixItems())), [])
+        })
+        let empty = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: "", colour: "#AB47BC" } }
+        })
+        expect(empty.answers, fixAll(fixFault(["'Title' must not be empty."])))
+        expect(TodoHarness::failures("an empty title stays empty through every fix; uniqueness skips the blank title", fixUndone(empty, fixLists(), fixItems())), [])
+        forEachList([201, 250, 400], fn(size) => {
+            let probe = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+                request: CreateList { list: NewList { title: fixWide(size), colour: "#AB47BC" } }
+            })
+            expect(probe.answers, [fixFault(["'Title' must be at most 200 characters."]), fixFault(["'Title' must be at most 200 characters."]), fixCreated(3), fixFault(["'Title' must be at most 200 characters."])])
+            expect(TodoHarness::failures("only the cut-to-200 fix rescues an over-long title", fixUndone(probe, fixLists(), fixItems())), [])
+        })
+    }
+
+    /// Padded, tabbed and whitespace-only titles over CreateList
+    /// ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE], [EXAMPLE-CLEANARCH-INV-FAITHFUL],
+    /// [MULTI-REPLAY]): trimming exposes a duplicate or an empty only in the trim
+    /// branch; a 202-character padded title fails as sent and both title fixes
+    /// rescue it; the empty check reads raw length, so three spaces pass as sent.
+    export fn paddedTitleCase() = {
+        let paddedDup = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: "  Shopping  ", colour: "#4CAF50" } }
+        })
+        expect(paddedDup.answers, [fixCreated(3), fixFault(["'Title' must be unique."]), fixCreated(3), fixCreated(3)])
+        expect(TodoHarness::failures("only the trim branch turns padded Shopping into the seeded duplicate", fixUndone(paddedDup, fixLists(), fixItems())), [])
+        let paddedTab = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: "\tBanking\n", colour: "#26A69A" } }
+        })
+        expect(paddedTab.answers, [fixCreated(3), fixFault(["'Title' must be unique."]), fixCreated(3), fixCreated(3)])
+        expect(TodoHarness::failures("tab and newline padding trims to the seeded Banking title", fixUndone(paddedTab, fixLists(), fixItems())), [])
+        let spaces = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: "   ", colour: "" } }
+        })
+        expect(spaces.answers, [fixCreated(3), fixFault(["'Title' must not be empty."]), fixCreated(3), fixCreated(3)])
+        expect(TodoHarness::failures("three spaces are not empty as sent but trim to empty; uniqueness skips blanks", fixUndone(spaces, fixLists(), fixItems())), [])
+        let paddedLong = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: " " + fixWide(200) + " ", colour: "#AB47BC" } }
+        })
+        expect(paddedLong.answers, [fixFault(["'Title' must be at most 200 characters."]), fixCreated(3), fixCreated(3), fixFault(["'Title' must be at most 200 characters."])])
+        expect(TodoHarness::failures("a 202-character padded title trims to 200 and cuts to 200", fixUndone(paddedLong, fixLists(), fixItems())), [])
+    }
+
+    /// UpdateList uniqueness excludes the edited id ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): keeping a list's own
+    /// title is legal in all four fixes, another list's short title faults in all
+    /// four, and padding exposes the collision only in the trim branch.
+    export fn trimmedDuplicateListCase() = {
+        let own = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateList { edit: ListEdit { id: 1, title: "Shopping", colour: "#AB47BC" } }
+        })
+        expect(own.answers, fixAll(fixUpdated()))
+        expect(TodoHarness::failures("a list's own title never collides: the edited id is excluded", fixUndone(own, fixLists(), fixItems())), [])
+        let other = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateList { edit: ListEdit { id: 1, title: "Banking", colour: "#AB47BC" } }
+        })
+        expect(other.answers, fixAll(fixFault(["'Title' must be unique."])))
+        expect(TodoHarness::failures("no fix changes a short title, so all four branches hit list 2's title", fixUndone(other, fixLists(), fixItems())), [])
+        let padded = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateList { edit: ListEdit { id: 1, title: "  Banking  ", colour: "#AB47BC" } }
+        })
+        expect(padded.answers, [fixUpdated(), fixFault(["'Title' must be unique."]), fixUpdated(), fixUpdated()])
+        expect(TodoHarness::failures("only the trim branch turns padded Banking into list 2's title", fixUndone(padded, fixLists(), fixItems())), [])
+        let ownPadded = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateList { edit: ListEdit { id: 1, title: "  Shopping  ", colour: "#AB47BC" } }
+        })
+        expect(ownPadded.answers, fixAll(fixUpdated()))
+        expect(TodoHarness::failures("trim lands on the list's own title, which the edit itself excludes", fixUndone(ownPadded, fixLists(), fixItems())), [])
+    }
+
+    /// UpdateList of a missing id ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): every branch whose
+    /// candidate passes validation reaches the store and answers the typed
+    /// NotFound; a branch whose candidate fails validation answers its collected
+    /// problems instead, with the colour fault collected beside the title fault.
+    export fn missingListEveryBranchCase() = {
+        let valid = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateList { edit: ListEdit { id: 99, title: "Travel", colour: "#5C6BC0" } }
+        })
+        expect(valid.answers, fixAll(fixMissing("TodoList", 99)))
+        expect(TodoHarness::failures("a valid candidate for a missing list is NotFound in all four branches", fixUndone(valid, fixLists(), fixItems())), [])
+        let zero = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateList { edit: ListEdit { id: 0, title: "Travel", colour: "#5C6BC0" } }
+        })
+        expect(zero.answers, fixAll(fixMissing("TodoList", 0)))
+        expect(TodoHarness::failures("id 0 has no row either, so every branch misses", fixUndone(zero, fixLists(), fixItems())), [])
+        let long = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateList { edit: ListEdit { id: 99, title: fixWide(250), colour: "" } }
+        })
+        expect(long.answers, [fixFault(["'Title' must be at most 200 characters."]), fixFault(["'Title' must be at most 200 characters."]), fixMissing("TodoList", 99), fixFault(["'Title' must be at most 200 characters."])])
+        expect(TodoHarness::failures("only the cut fix validates, so only it reaches the missing id", fixUndone(long, fixLists(), fixItems())), [])
+        let broken = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateList { edit: ListEdit { id: 99, title: "", colour: "#ffee00" } }
+        })
+        expect(broken.answers, fixAll(fixFault(["'Title' must not be empty.", "UnsupportedColour: '#ffee00' is not a supported colour"])))
+        expect(TodoHarness::failures("empty and colour collect together in all four branches; uniqueness skips the blank title", fixUndone(broken, fixLists(), fixItems())), [])
+    }
+
+    /// Every supported colour ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): Colour.From accepts each
+    /// declared code, so all four branches of all seven probes create list 3.
+    export fn everySupportedColourCase() = {
+        forEachList(TodoDomain::supportedColours(), fn(code) => {
+            let probe = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+                request: CreateList { list: NewList { title: "Travel", colour: code } }
+            })
+            expect(probe.answers, fixAll(fixCreated(3)))
+            expect(TodoHarness::failures("${code} passes in every branch; six readings, nothing kept", fixUndone(probe, fixLists(), fixItems())), [])
+        })
+        checkAll("the catalogue holds exactly the seven declared codes", [
+            length(TodoDomain::supportedColours()) == 7,
+            TodoDomain::grey() == "#78909C",
+            listContains(TodoDomain::supportedColours(), TodoDomain::grey())
+        ])
+    }
+
+    /// Unsupported colours ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): the fault embeds the
+    /// code exactly as sent — case, spelling and padding all matter — and only
+    /// the default-colour fix rescues the branch, since neither title fix
+    /// touches the colour.
+    export fn unsupportedColourCase() = {
+        forEachList(["#e05c4d", "#12345", "Red", "#HotPink", " #AB47BC "], fn(code) => {
+            let probe = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+                request: CreateList { list: NewList { title: "Travel", colour: code } }
+            })
+            expect(probe.answers, listConcat([fixColourFault(code), fixColourFault(code), fixColourFault(code)], [fixCreated(3)]))
+            expect(TodoHarness::failures("${code} faults as sent, trimmed and cut; the default colour fixes it", fixUndone(probe, fixLists(), fixItems())), [])
+        })
+    }
+
+    /// Blank and whitespace colours mean grey ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [MULTI-REPLAY]): `Colour.From(colour ?? Colour.Grey)` reads every blank
+    /// spelling as the supported grey, so all four branches of each probe pass.
+    export fn blankColourGreyCase() = {
+        forEachList(["", "   ", "\t\n", " \t "], fn(colour) => {
+            let probe = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+                request: CreateList { list: NewList { title: "Travel", colour: colour } }
+            })
+            expect(probe.answers, fixAll(fixCreated(3)))
+            expect(TodoHarness::failures("a blank colour reads as grey in all four branches", fixUndone(probe, fixLists(), fixItems())), [])
+        })
+    }
+
+    /// CreateItem titles ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): items collect only the
+    /// two title rules — no uniqueness against seeded item titles, no colour rule
+    /// — and the default-colour fix leaves item requests untouched, so branch 4
+    /// answers exactly as branch 1 ([MULTI-HANDLE-MANY]).
+    export fn createItemTitleRulesCase() = {
+        let empty = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateItem { item: NewItem { listId: 1, title: "" } }
+        })
+        expect(empty.answers, fixAll(fixFault(["'Title' must not be empty."])))
+        expect(TodoHarness::failures("an empty item title faults in all four branches; three seeds mean the next id is 4", fixUndone(empty, fixLists(), fixItems())), [])
+        let duplicate = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateItem { item: NewItem { listId: 2, title: "Milk" } }
+        })
+        expect(duplicate.answers, fixAll(fixCreated(4)))
+        expect(TodoHarness::failures("a duplicate seeded item title is legal: items have no unique rule", fixUndone(duplicate, fixLists(), fixItems())), [])
+        let long = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateItem { item: NewItem { listId: 1, title: fixWide(201) } }
+        })
+        expect(long.answers, [fixFault(["'Title' must be at most 200 characters."]), fixFault(["'Title' must be at most 200 characters."]), fixCreated(4), fixFault(["'Title' must be at most 200 characters."])])
+        expect(TodoHarness::failures("only the cut fix rescues a 201-character item title", fixUndone(long, fixLists(), fixItems())), [])
+        let spaces = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateItem { item: NewItem { listId: 1, title: "   " } }
+        })
+        expect(spaces.answers, [fixCreated(4), fixFault(["'Title' must not be empty."]), fixCreated(4), fixCreated(4)])
+        expect(TodoHarness::failures("spaces pass as sent, trim to empty, and survive the cut", fixUndone(spaces, fixLists(), fixItems())), [])
+        let padded = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateItem { item: NewItem { listId: 1, title: "  Milk  " } }
+        })
+        expect(padded.answers, fixAll(fixCreated(4)))
+        expect(TodoHarness::failures("padded Milk passes everywhere; no item uniqueness and no colour rule", fixUndone(padded, fixLists(), fixItems())), [])
+    }
+
+    /// UpdateItem fixes ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE], [MULTI-REPLAY],
+    /// [MULTI-HANDLE-MANY]): the default-colour fix is the identity for items, so
+    /// branch 4's answer equals branch 1's in every probe; a valid candidate for a
+    /// missing id answers the typed NotFound wherever validation passes.
+    export fn updateItemFixesCase() = {
+        let fine = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: true } }
+        })
+        expect(fine.answers, fixAll(fixUpdated()))
+        expect(TodoHarness::failures("a fitting edit updates in all four branches", listConcat(fixUndone(fine, fixLists(), fixItems()), [fixEndsAgree(fine)])), [])
+        let missing = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateItem { edit: ItemEdit { id: 99, title: "Milk", done: false } }
+        })
+        expect(missing.answers, fixAll(fixMissing("TodoItem", 99)))
+        expect(TodoHarness::failures("a valid edit for a missing item is NotFound everywhere", listConcat(fixUndone(missing, fixLists(), fixItems()), [fixEndsAgree(missing)])), [])
+        let long = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateItem { edit: ItemEdit { id: 1, title: fixWide(201), done: false } }
+        })
+        expect(long.answers, [fixFault(["'Title' must be at most 200 characters."]), fixFault(["'Title' must be at most 200 characters."]), fixUpdated(), fixFault(["'Title' must be at most 200 characters."])])
+        expect(TodoHarness::failures("only the cut fix validates, and it updates the found item", listConcat(fixUndone(long, fixLists(), fixItems()), [fixEndsAgree(long)])), [])
+        let empty = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateItem { edit: ItemEdit { id: 1, title: "", done: false } }
+        })
+        expect(empty.answers, fixAll(fixFault(["'Title' must not be empty."])))
+        expect(TodoHarness::failures("an empty title faults in all four branches", listConcat(fixUndone(empty, fixLists(), fixItems()), [fixEndsAgree(empty)])), [])
+    }
+
+    /// Every problem collects, in rule order ([EXAMPLE-CLEANARCH-INV-FAITHFUL],
+    /// [EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE], [MULTI-REPLAY]): title length,
+    /// then uniqueness, then colour — per branch, never just the first fault.
+    /// Uniqueness reads the store, so a seeded 250-x list makes the long title
+    /// collide, and the edited id excludes its own row from the match.
+    export fn collectsAllProblemsInOrderCase() = {
+        let allThree = TodoHarness::probed(TodoHarness::admin(), fixLongSeeds(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: fixWide(250), colour: "#Bad" } }
+        })
+        expect(allThree.answers, [
+            fixFault(["'Title' must be at most 200 characters.", "'Title' must be unique.", "UnsupportedColour: '#Bad' is not a supported colour"]),
+            fixFault(["'Title' must be at most 200 characters.", "'Title' must be unique.", "UnsupportedColour: '#Bad' is not a supported colour"]),
+            fixFault(["UnsupportedColour: '#Bad' is not a supported colour"]),
+            fixFault(["'Title' must be at most 200 characters.", "'Title' must be unique."])
+        ])
+        expect(TodoHarness::failures("as sent and trimmed collect length, uniqueness and colour in order; cut drops two; recolour drops one", fixUndone(allThree, fixLongSeeds(), fixItems())), [])
+        let uniqueThenColour = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: "Shopping", colour: "#Bad" } }
+        })
+        expect(uniqueThenColour.answers, [
+            fixFault(["'Title' must be unique.", "UnsupportedColour: '#Bad' is not a supported colour"]),
+            fixFault(["'Title' must be unique.", "UnsupportedColour: '#Bad' is not a supported colour"]),
+            fixFault(["'Title' must be unique.", "UnsupportedColour: '#Bad' is not a supported colour"]),
+            fixFault(["'Title' must be unique."])
+        ])
+        expect(TodoHarness::failures("uniqueness collects before colour; the recolour branch keeps the duplicate", fixUndone(uniqueThenColour, fixLists(), fixItems())), [])
+        let blankSkipsUnique = TodoHarness::probed(TodoHarness::admin(), fixLongSeeds(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: "", colour: "#Bad" } }
+        })
+        expect(blankSkipsUnique.answers, fixAll(fixFault(["'Title' must not be empty.", "UnsupportedColour: '#Bad' is not a supported colour"])))
+        expect(TodoHarness::failures("an empty title skips uniqueness even while colour collects", fixUndone(blankSkipsUnique, fixLongSeeds(), fixItems())), [])
+        let ownExcluded = TodoHarness::probed(TodoHarness::admin(), fixLongSeeds(), fixItems(), WhichFixesWork {
+            request: UpdateList { edit: ListEdit { id: 2, title: fixWide(250), colour: "#Bad" } }
+        })
+        expect(ownExcluded.answers, [
+            fixFault(["'Title' must be at most 200 characters.", "UnsupportedColour: '#Bad' is not a supported colour"]),
+            fixFault(["'Title' must be at most 200 characters.", "UnsupportedColour: '#Bad' is not a supported colour"]),
+            fixFault(["UnsupportedColour: '#Bad' is not a supported colour"]),
+            fixFault(["'Title' must be at most 200 characters."])
+        ])
+        expect(TodoHarness::failures("list 2's own 250-x title excludes itself, so uniqueness never collects", fixUndone(ownExcluded, fixLongSeeds(), fixItems())), [])
+    }
+
+    /// The cut fix keeps the FIRST 200 characters ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): cut a 204-character
+    /// title whose first 200 are a seeded row and that branch faults with
+    /// uniqueness, not length — the fault names the collision the cut created.
+    /// With a leading space the slice keeps the space, so the cut title is fresh.
+    export fn cutKeepsFirst200Case() = {
+        let collides = TodoHarness::probed(TodoHarness::admin(), fixPrefixSeeds(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: "Shopping" + fixWide(192) + "tail", colour: "#5C6BC0" } }
+        })
+        expect(collides.answers, [fixFault(["'Title' must be at most 200 characters."]), fixFault(["'Title' must be at most 200 characters."]), fixFault(["'Title' must be unique."]), fixFault(["'Title' must be at most 200 characters."])])
+        expect(TodoHarness::failures("cutting to 200 lands exactly on list 2's seeded 200-character title", fixUndone(collides, fixPrefixSeeds(), fixItems())), [])
+        let rescues = TodoHarness::probed(TodoHarness::admin(), fixPrefixSeeds(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: "Brand" + fixWide(196) + "tail", colour: "#5C6BC0" } }
+        })
+        expect(rescues.answers, [fixFault(["'Title' must be at most 200 characters."]), fixFault(["'Title' must be at most 200 characters."]), fixCreated(3), fixFault(["'Title' must be at most 200 characters."])])
+        expect(TodoHarness::failures("the cut of a fresh 205-character title collides with nothing", fixUndone(rescues, fixPrefixSeeds(), fixItems())), [])
+        let renameCollides = TodoHarness::probed(TodoHarness::admin(), fixPrefixSeeds(), fixItems(), WhichFixesWork {
+            request: UpdateList { edit: ListEdit { id: 1, title: "Shopping" + fixWide(192) + "tail", colour: "#5C6BC0" } }
+        })
+        expect(renameCollides.answers, [fixFault(["'Title' must be at most 200 characters."]), fixFault(["'Title' must be at most 200 characters."]), fixFault(["'Title' must be unique."]), fixFault(["'Title' must be at most 200 characters."])])
+        expect(TodoHarness::failures("the cut rename collides with list 2 while the edit excludes only list 1", fixUndone(renameCollides, fixPrefixSeeds(), fixItems())), [])
+        let paddedCollides = TodoHarness::probed(TodoHarness::admin(), fixPrefixSeeds(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: " " + "Shopping" + fixWide(192) + "tail ", colour: "#5C6BC0" } }
+        })
+        expect(paddedCollides.answers, [fixFault(["'Title' must be at most 200 characters."]), fixFault(["'Title' must be at most 200 characters."]), fixCreated(3), fixFault(["'Title' must be at most 200 characters."])])
+        expect(TodoHarness::failures("the cut slice keeps the leading space, so it misses every seeded title", fixUndone(paddedCollides, fixPrefixSeeds(), fixItems())), [])
+    }
+
+    /// The fixes answer for every principal alike ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [MULTI-REPLAY], [MULTI-HANDLE-MANY]): none of these requests carries an
+    /// access rule, so anonymous, user and administrator collect the same four
+    /// branch answers from the same six clock readings.
+    export fn fixesArePrincipalFreeCase() = {
+        let request = CreateList { list: NewList { title: fixWide(201), colour: "#HotPink" } }
+        let asAdmin = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork { request: request })
+        expect(asAdmin.answers, [
+            fixFault(["'Title' must be at most 200 characters.", "UnsupportedColour: '#HotPink' is not a supported colour"]),
+            fixFault(["'Title' must be at most 200 characters.", "UnsupportedColour: '#HotPink' is not a supported colour"]),
+            fixFault(["UnsupportedColour: '#HotPink' is not a supported colour"]),
+            fixFault(["'Title' must be at most 200 characters."])
+        ])
+        let asUser = TodoHarness::probed(TodoHarness::user(), fixLists(), fixItems(), WhichFixesWork { request: request })
+        expect(asUser.answers, asAdmin.answers)
+        let asAnonymous = TodoHarness::probed(TodoHarness::anonymous(), fixLists(), fixItems(), WhichFixesWork { request: request })
+        expect(asAnonymous.answers, asAdmin.answers)
+        expect(TodoHarness::failures("all three principals collect the same four answers; nothing kept", listConcat(
+            fixUndone(asAdmin, fixLists(), fixItems()),
+            listConcat(
+                [asUser.readings == 6, structuralEquals(asUser.lists, fixLists()), structuralEquals(asUser.items, fixItems()), length(asUser.events) == 0],
+                [asAnonymous.readings == 6, structuralEquals(asAnonymous.lists, fixLists()), structuralEquals(asAnonymous.items, fixItems()), length(asAnonymous.events) == 0]))), [])
+        let hiddenItem = TodoHarness::probed(TodoHarness::anonymous(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateItem { edit: ItemEdit { id: 99, title: "", done: false } }
+        })
+        expect(hiddenItem.answers, fixAll(fixFault(["'Title' must not be empty."])))
+        expect(TodoHarness::failures("anonymous still gets full validation: UpdateItem carries no sign-in rule", fixUndone(hiddenItem, fixLists(), fixItems())), [])
+    }
+
+    /// The fresh id comes from the seed count ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [MULTI-REPLAY], [MULTI-REPLAY-STATE]): `withStore` answers
+    /// `length(seedLists) + 1` and every branch reopens the same snapshot, so all
+    /// four branches answer the same id whatever the seeds, and none of them keeps it.
+    export fn seedCountSetsNewIdCase() = {
+        let none = TodoHarness::probed(TodoHarness::admin(), [], [], WhichFixesWork {
+            request: CreateList { list: NewList { title: "Travel", colour: "#D98B2B" } }
+        })
+        expect(none.answers, fixAll(fixCreated(1)))
+        expect(TodoHarness::failures("no seeds: the first list id is 1 in all four branches", listConcat(fixUndone(none, [], []), [length(none.answers) == 4])), [])
+        let two = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: "Travel", colour: "#D98B2B" } }
+        })
+        expect(two.answers, fixAll(fixCreated(3)))
+        expect(TodoHarness::failures("two seeds: every branch answers 3", listConcat(fixUndone(two, fixLists(), fixItems()), [length(two.answers) == 4])), [])
+        let three = TodoHarness::probed(TodoHarness::admin(), fixAbcSeeds(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: "Travel", colour: "#D98B2B" } }
+        })
+        expect(three.answers, fixAll(fixCreated(4)))
+        expect(TodoHarness::failures("three seeds: every branch answers 4 and the rows stay the seeds", listConcat(fixUndone(three, fixAbcSeeds(), fixItems()), [length(three.answers) == 4])), [])
+    }
+
+    /// The resume count IS the fixes list ([MULTI-HANDLE-MANY], [MULTI-DECL],
+    /// [EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE], [MULTI-REPLAY]): four answers for
+    /// every request kind, six clock readings each — one start, never re-run —
+    /// and `fixes()` spells the exact branch order.
+    export fn resumeCountIsFixesCase() = {
+        expect(TodoProbe::fixes(), ["as sent", "title trimmed", "title cut to 200 characters", "default colour"])
+        let made = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateList { list: NewList { title: "Travel", colour: "" } }
+        })
+        expect(made.answers, fixAll(fixCreated(3)))
+        expect(TodoHarness::failures("CreateList resumes four times", listConcat(fixUndone(made, fixLists(), fixItems()), [length(made.answers) == 4])), [])
+        let renamed = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateList { edit: ListEdit { id: 1, title: "Renamed", colour: "#26A69A" } }
+        })
+        expect(renamed.answers, fixAll(fixUpdated()))
+        expect(TodoHarness::failures("UpdateList resumes four times", listConcat(fixUndone(renamed, fixLists(), fixItems()), [length(renamed.answers) == 4])), [])
+        let item = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: CreateItem { item: NewItem { listId: 2, title: "Fresh" } }
+        })
+        expect(item.answers, fixAll(fixCreated(4)))
+        expect(TodoHarness::failures("CreateItem resumes four times", listConcat(fixUndone(item, fixLists(), fixItems()), [length(item.answers) == 4])), [])
+        let edited = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateItem { edit: ItemEdit { id: 3, title: "Tax", done: true } }
+        })
+        expect(edited.answers, fixAll(fixUpdated()))
+        expect(TodoHarness::failures("UpdateItem resumes four times", listConcat(fixUndone(edited, fixLists(), fixItems()), [length(edited.answers) == 4, fixEndsAgree(edited)])), [])
+    }
+
+    /// A branch's completion event never leaks ([MULTI-REPLAY],
+    /// [MULTI-REPLAY-STATE], [EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE]): every resume
+    /// that flips Done raises TodoItemCompleted inside its own branch, and the
+    /// probe rewinds it, so the report stays empty and the rows stay the seeds.
+    export fn abandonedBranchEventsCase() = {
+        let flip = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: true } }
+        })
+        expect(flip.answers, fixAll(fixUpdated()))
+        expect(TodoHarness::failures("all four branches complete item 1 and none publishes", fixUndone(flip, fixLists(), fixItems())), [])
+        let rescued = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateItem { edit: ItemEdit { id: 1, title: fixWide(201), done: true } }
+        })
+        expect(rescued.answers, [fixFault(["'Title' must be at most 200 characters."]), fixFault(["'Title' must be at most 200 characters."]), fixUpdated(), fixFault(["'Title' must be at most 200 characters."])])
+        expect(TodoHarness::failures("the cut branch completes and rolls back; the others never reach the item", fixUndone(rescued, fixLists(), fixItems())), [])
+        let second = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateItem { edit: ItemEdit { id: 2, title: "Bread", done: true } }
+        })
+        expect(second.answers, fixAll(fixUpdated()))
+        expect(TodoHarness::failures("item 2's completion is rewound in every branch too", fixUndone(second, fixLists(), fixItems())), [])
+        let noFlip = TodoHarness::probed(TodoHarness::admin(), fixLists(), fixItems(), WhichFixesWork {
+            request: UpdateItem { edit: ItemEdit { id: 3, title: "Tax", done: false } }
+        })
+        expect(noFlip.answers, fixAll(fixUpdated()))
+        expect(TodoHarness::failures("done false raises nothing and keeps every row byte-for-byte", fixUndone(noFlip, fixLists(), fixItems())), [])
+    }
+}

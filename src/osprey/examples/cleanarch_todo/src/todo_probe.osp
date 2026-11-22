@@ -76,7 +76,7 @@ module TodoProbe {
             warn _line => {}
             error _line => {}
         }
-        [TodoDispatch::send(request)]
+        [TodoDispatch::dispatch(request)]
     }
 
     /// A branch's answers, once its writes and events are rolled back.
