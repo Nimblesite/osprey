@@ -19,7 +19,7 @@ Run: OSPREY_BIN=<compiler> osprey scripts/ci/check-programs.py --run
 
 WORK = "target/check-programs"
 COMPILER = "\"${OSPREY_BIN:-target/release/osprey}\""
-BATCH = 16
+POOL = 16
 NEWLINE = "\n"
 EXCLUDED = ["/failscompilation/", "/sample-registry/", "/e2e/consumer/", "/fixtures/manifests/", "/osprey-types/src/prelude/errors.osp"]
 MARKERS = ["# osprey: flavor=", "#osprey: flavor=", "// osprey: flavor=", "//osprey: flavor="]
@@ -111,17 +111,26 @@ def job_at(jobs, i):
     return unwrap_or(listGet(jobs, i), Job(path="?", command="false", log=""))
 
 
-def batch(jobs, start):
-    handles = toList(map(range(start, min_int(start + BATCH, len(jobs))), lambda i: launch(job_at(jobs, i).command)))
-    return mapList(handles, settle)
+def job_script(kind, i, job):
+    """0 once the job's script is written; a script that could not be written leaves no exit code, so its job fails."""
+    match writeFile(f"{WORK}/{kind}-{i}.sh", f"{job.command}\necho $? > {WORK}/{kind}-{i}.code\n"):
+        case Success():
+            return 0
+        case Error():
+            return 1
 
 
-def min_int(a, b):
-    return a if a < b else b
+def job_code(kind, i):
+    return unwrap_or(parseInt(trim(text(f"{WORK}/{kind}-{i}.code"))), -1)
 
 
-def run_all(jobs):
-    return fold(range(0, intDiv(len(jobs) + BATCH - 1, BATCH)), [], lambda codes, k: listConcat(codes, batch(jobs, k * BATCH)))
+def run_all(kind, jobs):
+    """Every job runs as soon as one of POOL slots frees, never waiting on a batch's slowest
+    member; each writes its own exit code, and a job that left none failed."""
+    indices = toList(map(range(0, len(jobs)), lambda i: i))
+    _scripts = mapList(indices, lambda i: job_script(kind, i, job_at(jobs, i)))
+    _pool = run(f"find {WORK} -name '{kind}-*.sh' | xargs -P {POOL} -n 1 sh")
+    return mapList(indices, lambda i: job_code(kind, i))
 
 
 def keep(kept, segment):
@@ -216,13 +225,13 @@ def check_all():
     manifests = filterList(lines(text(f"{WORK}/manifests.txt")), lambda m: not excluded(m))
     projects = mapList(manifests, lambda m: take(m, len(m) - len("/osprey.toml")))
     project_jobs = toList(map(range(0, len(projects)), lambda i: project_job(i, unwrap_or(listGet(projects, i), ""))))
-    project_codes = run_all(project_jobs)
+    project_codes = run_all("project", project_jobs)
     indices = toList(map(range(0, len(projects)), lambda i: i))
     members = foldList(indices, [], lambda acc, i: listConcat(acc, graph_members(root, i)))
     failed = mapList(filterList(indices, lambda i: unwrap_or(listGet(project_codes, i), -1) != 0), lambda i: unwrap_or(listGet(projects, i), ""))
     files = filterList(lines(text(f"{WORK}/sources.txt")), lambda f: is_program(f) and not listContains(members, f) and not under_any(failed, f))
     file_jobs = toList(map(range(0, len(files)), lambda i: file_job(i, unwrap_or(listGet(files, i), ""))))
-    return report(listConcat(project_jobs, file_jobs), listConcat(project_codes, run_all(file_jobs)))
+    return report(listConcat(project_jobs, file_jobs), listConcat(project_codes, run_all("file", file_jobs)))
 
 
 def checked():

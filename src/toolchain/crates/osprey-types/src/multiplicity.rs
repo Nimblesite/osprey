@@ -37,16 +37,18 @@ pub(crate) struct OperationAxis {
 impl OperationAxis {
     /// Index every effect declaration and each arm's scope-resolved state.
     pub(crate) fn collect(program: &Program) -> Self {
-        let mut arm_state = BTreeMap::new();
-        for (at, cells) in state::State::collect(program).reachability() {
-            let mut reached: Vec<String> = cells.into_iter().collect();
-            reached.sort_unstable();
-            let _ = arm_state.insert(at, reached);
-        }
-        Self {
-            table: OperationTable::collect(program),
-            arm_state,
-        }
+        let table = OperationTable::collect(program);
+        let arm_state = if table.has_many() {
+            // Only many arms owe the captured-state proof [MULTI-REPLAY-STATE].
+            state::State::collect(program)
+                .reachability()
+                .into_iter()
+                .map(|(at, cells)| (at, cells.into_iter().collect()))
+                .collect()
+        } else {
+            BTreeMap::new()
+        };
+        Self { table, arm_state }
     }
 
     /// How many times `effect.operation` may be answered ([MULTI-COMPAT]).
