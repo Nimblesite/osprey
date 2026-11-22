@@ -159,6 +159,12 @@ fn authzSameAnswers(reports) = match reports {
 /// `holds` true of every report.
 fn authzEvery(reports, holds) = foldList(reports, true, fn(ok, report) => ok && holds(report))
 
+/// All three principals must produce the same expected reply.
+fn authzAllBranches(answer) = [answer, answer, answer]
+
+/// Each probe charges two clock readings per branch and one for the report.
+fn authzReadsEveryBranch(reports) = authzEvery(reports, fn(report) => report.readings == 7)
+
 module MultishotAuthzCases {
     /// [EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ], [MULTI-REPLAY]: CreateList has no
     /// access rule, so all three branches succeed; each branch reopens the
@@ -169,12 +175,12 @@ module MultishotAuthzCases {
         let solo = authzAsUser(authzOneList(), [], authzNewList("Travel", "#5C6BC0"))
         let pair = authzAsAdmin(authzTwoLists(), [], authzNewList("Travel", "#5C6BC0"))
         // nextListId = length(seedLists)+1 in every branch: the id follows the seeds, never a branch counter.
-        expect(bare.answers, [authzCreated(1), authzCreated(1), authzCreated(1)])
-        expect(solo.answers, [authzCreated(2), authzCreated(2), authzCreated(2)])
-        expect(pair.answers, [authzCreated(3), authzCreated(3), authzCreated(3)])
+        expect(bare.answers, authzAllBranches(authzCreated(1)))
+        expect(solo.answers, authzAllBranches(authzCreated(2)))
+        expect(pair.answers, authzAllBranches(authzCreated(3)))
         // Auth.who is dispatch's first perform: 3 branches x 2 readings + the report's own = 7 [MULTI-HANDLE-MANY].
         checkAll("three resumes per store shape; no branch's list survives [MULTI-REPLAY]", [
-            bare.readings == 7, solo.readings == 7, pair.readings == 7,
+            authzReadsEveryBranch([bare, solo, pair]),
             structuralEquals(bare.lists, []),
             structuralEquals(authzTitlesOf(solo.lists), ["Solo"]),
             structuralEquals(authzTitlesOf(pair.lists), ["Shopping", "Banking"]),
@@ -182,7 +188,7 @@ module MultishotAuthzCases {
         ])
         let blank = authzAsAdmin(authzOneList(), [], authzNewList("Travel", ""))
         // A blank colour is no access concern: the branch still answers the same new id.
-        expect(blank.answers, [authzCreated(2), authzCreated(2), authzCreated(2)])
+        expect(blank.answers, authzAllBranches(authzCreated(2)))
         checkAll("the blank-colour branch is undone like the rest", [
             blank.readings == 7, length(blank.events) == 0,
             structuralEquals(authzTitlesOf(blank.lists), ["Solo"])
@@ -191,7 +197,7 @@ module MultishotAuthzCases {
         // The start principal never reaches the branches: whoMayRun answers Auth itself.
         checkAll("the start principal changes no answer, no reading, no row", [
             length(starts) == 3, authzSameAnswers(starts),
-            authzEvery(starts, fn(report) => report.readings == 7),
+            authzReadsEveryBranch(starts),
             authzEvery(starts, fn(report) => length(report.events) == 0),
             authzEvery(starts, fn(report) => structuralEquals(report.lists, [])),
             authzEvery(starts, fn(report) => structuralEquals(report.items, []))
@@ -213,13 +219,13 @@ module MultishotAuthzCases {
         let emptyTitle = authzFaults(["'Title' must not be empty."])
         // rename: fresh title, supported colour; blank: the list's own colour stays; dup: list 1 already holds
         // "Shopping"; missing: valid data, absent id; invalid: empty title collected before the lookup.
-        expect(rename.answers, [Success { value: Updated }, Success { value: Updated }, Success { value: Updated }])
-        expect(blank.answers, [Success { value: Updated }, Success { value: Updated }, Success { value: Updated }])
-        expect(dup.answers, [dupFault, dupFault, dupFault])
-        expect(missing.answers, [noList, noList, noList])
-        expect(invalid.answers, [emptyTitle, emptyTitle, emptyTitle])
+        expect(rename.answers, authzAllBranches(Success { value: Updated }))
+        expect(blank.answers, authzAllBranches(Success { value: Updated }))
+        expect(dup.answers, authzAllBranches(dupFault))
+        expect(missing.answers, authzAllBranches(noList))
+        expect(invalid.answers, authzAllBranches(emptyTitle))
         checkAll("five shapes x three branches: full re-run, no write and no event survives [MULTI-REPLAY]", [
-            rename.readings == 7, blank.readings == 7, dup.readings == 7, missing.readings == 7, invalid.readings == 7,
+            authzReadsEveryBranch([rename, blank, dup, missing, invalid]),
             length(missing.answers) == 3,
             structuralEquals(rename.lists, authzTwoLists()), structuralEquals(blank.lists, authzTwoLists()),
             structuralEquals(dup.lists, authzTwoLists()), structuralEquals(missing.lists, authzTwoLists()),
@@ -238,12 +244,12 @@ module MultishotAuthzCases {
         let bare = authzAsAnonymous([], [], authzDropList(1))
         let noList = authzMissing("TodoList", 99)
         // Existing ids answer Updated in all branches; id 99 and an empty store answer NotFound with kind and id asked.
-        expect(drop.answers, [Success { value: Updated }, Success { value: Updated }, Success { value: Updated }])
-        expect(keep.answers, [Success { value: Updated }, Success { value: Updated }, Success { value: Updated }])
-        expect(missing.answers, [noList, noList, noList])
-        expect(bare.answers, [authzMissing("TodoList", 1), authzMissing("TodoList", 1), authzMissing("TodoList", 1)])
+        expect(drop.answers, authzAllBranches(Success { value: Updated }))
+        expect(keep.answers, authzAllBranches(Success { value: Updated }))
+        expect(missing.answers, authzAllBranches(noList))
+        expect(bare.answers, authzAllBranches(authzMissing("TodoList", 1)))
         checkAll("four shapes x three branches: rows equal the seeds, events empty [MULTI-REPLAY]", [
-            drop.readings == 7, keep.readings == 7, missing.readings == 7, bare.readings == 7,
+            authzReadsEveryBranch([drop, keep, missing, bare]),
             length(keep.answers) == 3, length(bare.answers) == 3,
             structuralEquals(drop.lists, authzTwoLists()), structuralEquals(keep.lists, authzTwoLists()),
             structuralEquals(drop.items, authzThreeItems()), structuralEquals(keep.items, authzThreeItems()),
@@ -267,7 +273,7 @@ module MultishotAuthzCases {
         // An empty store answers the same lookups with no lists.
         expect(bare.answers, [authzUnauthorized(), Success { value: bareView }, Success { value: bareView }])
         checkAll("two shapes x three branches; the view is title-sorted with nested items", [
-            reads.readings == 7, bare.readings == 7,
+            authzReadsEveryBranch([reads, bare]),
             length(reads.answers) == 3, length(reads.items) == 3, length(bare.answers) == 3,
             structuralEquals(reads.lists, authzTwoLists()),
             structuralEquals(authzTitlesOf(reads.lists), ["Shopping", "Banking"]),
@@ -284,7 +290,7 @@ module MultishotAuthzCases {
         let starts = authzFromEachStart(authzTwoLists(), authzThreeItems(), GetTodos)
         checkAll("the start principal changes nothing", [
             authzSameAnswers(starts),
-            authzEvery(starts, fn(report) => report.readings == 7),
+            authzReadsEveryBranch(starts),
             authzEvery(starts, fn(report) => structuralEquals(report.items, authzThreeItems())),
             authzEvery(starts, fn(report) => structuralEquals(authzBranchTexts(report), ["unauthorized", "todos view", "todos view"]))
         ])
@@ -302,12 +308,12 @@ module MultishotAuthzCases {
         let noTitle = authzFaults(["'Title' must not be empty."])
         // nextItemId = length(seedItems)+1 per branch (4 with three items, 1 bare); the parent listId is never
         // checked; an empty title collects exactly the empty-title problem.
-        expect(fresh.answers, [authzCreated(4), authzCreated(4), authzCreated(4)])
-        expect(bare.answers, [authzCreated(1), authzCreated(1), authzCreated(1)])
-        expect(orphan.answers, [authzCreated(4), authzCreated(4), authzCreated(4)])
-        expect(empty.answers, [noTitle, noTitle, noTitle])
+        expect(fresh.answers, authzAllBranches(authzCreated(4)))
+        expect(bare.answers, authzAllBranches(authzCreated(1)))
+        expect(orphan.answers, authzAllBranches(authzCreated(4)))
+        expect(empty.answers, authzAllBranches(noTitle))
         checkAll("four shapes x three branches: same id per branch, no row kept [MULTI-REPLAY]", [
-            fresh.readings == 7, bare.readings == 7, orphan.readings == 7, empty.readings == 7,
+            authzReadsEveryBranch([fresh, bare, orphan, empty]),
             length(bare.answers) == 3, length(empty.answers) == 3,
             structuralEquals(fresh.items, authzThreeItems()), structuralEquals(orphan.items, authzThreeItems()),
             structuralEquals(empty.items, authzThreeItems()), structuralEquals(bare.items, []),
@@ -317,7 +323,7 @@ module MultishotAuthzCases {
         checkAll("the start principal changes nothing", [
             length(starts) == 3, authzSameAnswers(starts),
             authzEvery(starts, fn(report) => structuralEquals(authzBranchTexts(report), ["created 4", "created 4", "created 4"])),
-            authzEvery(starts, fn(report) => report.readings == 7)
+            authzReadsEveryBranch(starts)
         ])
     }
 
@@ -336,13 +342,13 @@ module MultishotAuthzCases {
         let noItem = authzMissing("TodoItem", 99)
         // false->true, true->true and true->false all answer Updated (only the flip up raises, and it is
         // rewound); false on an already-open item answers Updated; a missing id answers NotFound TodoItem 99.
-        expect(flip.answers, [Success { value: Updated }, Success { value: Updated }, Success { value: Updated }])
-        expect(again.answers, [Success { value: Updated }, Success { value: Updated }, Success { value: Updated }])
-        expect(down.answers, [Success { value: Updated }, Success { value: Updated }, Success { value: Updated }])
-        expect(idle.answers, [Success { value: Updated }, Success { value: Updated }, Success { value: Updated }])
-        expect(missing.answers, [noItem, noItem, noItem])
+        expect(flip.answers, authzAllBranches(Success { value: Updated }))
+        expect(again.answers, authzAllBranches(Success { value: Updated }))
+        expect(down.answers, authzAllBranches(Success { value: Updated }))
+        expect(idle.answers, authzAllBranches(Success { value: Updated }))
+        expect(missing.answers, authzAllBranches(noItem))
         checkAll("six shapes x three branches: events empty and rows restored every time [MULTI-REPLAY]", [
-            flip.readings == 7, again.readings == 7, down.readings == 7, idle.readings == 7, missing.readings == 7,
+            authzReadsEveryBranch([flip, again, down, idle, missing]),
             length(missing.answers) == 3,
             structuralEquals(flip.items, authzThreeItems()), structuralEquals(again.items, doneSeeds),
             structuralEquals(down.items, doneSeeds), structuralEquals(idle.items, authzThreeItems()),
@@ -360,7 +366,7 @@ module MultishotAuthzCases {
         forEachList([0, 1, 2, 3, 4, -1], fn(level) => {
             let probe = authzAsAnonymous(authzTwoLists(), authzThreeItems(), authzDetail(1, level))
             // No rule and no validator on detail: all three branches answer Updated whatever the wire number.
-            expect(probe.answers, [Success { value: Updated }, Success { value: Updated }, Success { value: Updated }])
+            expect(probe.answers, authzAllBranches(Success { value: Updated }))
             checkAll("priority ${toString(level)}: full re-run per branch, row and event undone [MULTI-REPLAY]", [
                 length(probe.answers) == 3,
                 probe.readings == 7,
@@ -371,7 +377,7 @@ module MultishotAuthzCases {
         })
         let missing = authzAsAdmin(authzTwoLists(), authzThreeItems(), authzDetail(99, 2))
         // authorize and validate both pass for detail, so the lookup runs and NotFound names kind and id.
-        expect(missing.answers, [authzMissing("TodoItem", 99), authzMissing("TodoItem", 99), authzMissing("TodoItem", 99)])
+        expect(missing.answers, authzAllBranches(authzMissing("TodoItem", 99)))
         checkAll("the missing item refuses in all three branches [MULTI-HANDLE-MANY]", [
             missing.readings == 7, length(missing.answers) == 3,
             structuralEquals(missing.items, authzThreeItems()),
@@ -388,11 +394,11 @@ module MultishotAuthzCases {
         let bare = authzAsAdmin([], [], authzDropItem(1))
         let noItem = authzMissing("TodoItem", 99)
         // Item 2 exists, id 99 and an empty store do not: Updated or NotFound { kind: "TodoItem", id } per branch.
-        expect(drop.answers, [Success { value: Updated }, Success { value: Updated }, Success { value: Updated }])
-        expect(missing.answers, [noItem, noItem, noItem])
-        expect(bare.answers, [authzMissing("TodoItem", 1), authzMissing("TodoItem", 1), authzMissing("TodoItem", 1)])
+        expect(drop.answers, authzAllBranches(Success { value: Updated }))
+        expect(missing.answers, authzAllBranches(noItem))
+        expect(bare.answers, authzAllBranches(authzMissing("TodoItem", 1)))
         checkAll("three shapes x three branches: rows equal the seeds, events empty [MULTI-REPLAY]", [
-            drop.readings == 7, missing.readings == 7, bare.readings == 7,
+            authzReadsEveryBranch([drop, missing, bare]),
             length(drop.answers) == 3, length(bare.answers) == 3, length(missing.answers) == 3,
             structuralEquals(drop.items, authzThreeItems()), structuralEquals(missing.items, authzThreeItems()),
             structuralEquals(drop.lists, authzTwoLists()), structuralEquals(missing.lists, authzTwoLists()),
@@ -402,7 +408,7 @@ module MultishotAuthzCases {
         let starts = authzFromEachStart(authzTwoLists(), authzThreeItems(), authzDropItem(3))
         checkAll("the start principal changes nothing", [
             length(starts) == 3, authzSameAnswers(starts),
-            authzEvery(starts, fn(report) => report.readings == 7),
+            authzReadsEveryBranch(starts),
             authzEvery(starts, fn(report) => length(report.events) == 0),
             authzEvery(starts, fn(report) => structuralEquals(report.items, authzThreeItems()))
         ])
