@@ -16,6 +16,7 @@
 - **Tokens:** check file size before reading, grep first, smallest diff
 - **Put strict timeouts on heavy CPU runs like KLEE or LLMs** run with lower CPU priority if possible
 - **Entry points = commented make targets.** Answer usage questions from `make help`. Demo findings with a verified finding first; label clean controls and engine limitations
+- 🚫📦 **Compiled artifacts in git are BANNED ([REPO-NO-ARTIFACTS]).** Never commit build output: binaries, `.wasm`, archives, bundles, minified or inlined scripts, base64-embedded builds, `build/`/`dist/` folders. Generate it at build time, gitignore it, ship it between CI jobs as an artifact. Found one → delete it now
 - **Root is locked ([REPO-ROOT-LAYOUT]):** `src/osprey/` = Osprey code; `src/toolchain/` = Rust, C, TypeScript and everything that builds it. No logs or new files in the root Cargo workspace = `src/toolchain/Cargo.toml`: run `cd src/toolchain && cargo ...` or pass `--manifest-path`; artifacts stay in root `target/`
 
 ## Correctness
