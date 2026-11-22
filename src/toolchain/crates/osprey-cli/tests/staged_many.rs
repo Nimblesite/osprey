@@ -10,14 +10,22 @@
 //! The declaration rules of the multiplicity axis live in
 //! `staged_multiplicity.rs`; the two share `common::staging`.
 
+#[path = "common/many_permutations.rs"]
+mod many_permutations;
 #[path = "common/many_programs.rs"]
 mod many_programs;
 #[path = "common/staging.rs"]
 mod staging;
 
+use many_permutations::MANY_PERMUTATIONS;
 use many_programs::MANY_RUNS;
 use osprey_syntax::Flavor;
 use staging::{assert_rejected, compile_for_target, compile_staged};
+
+/// Every multi-shot program: the base runs, then their permutations.
+fn every_run() -> impl Iterator<Item = &'static (&'static str, &'static str, &'static str)> {
+    MANY_RUNS.iter().chain(MANY_PERMUTATIONS)
+}
 
 /// Run `source` under `memory` through the real CLI and return its stdout.
 fn run_under(source: &str, memory: &str, name: &str) -> String {
@@ -46,7 +54,7 @@ fn run_under(source: &str, memory: &str, name: &str) -> String {
 
 #[test]
 fn many_regions_run_every_branch_under_gc_and_arc() {
-    for (name, source, expected) in MANY_RUNS {
+    for (name, source, expected) in every_run() {
         for memory in ["gc", "arc"] {
             assert_eq!(
                 run_under(source, memory, name),
@@ -62,7 +70,7 @@ fn a_many_region_is_closures_with_no_suspended_stack_or_thread() {
     // [EFFECTS-INV-MULTISHOT-PORTABLE] [CI-MULTISHOT-WASM] A continuation the
     // backend could resume only once is a suspended stack: the coroutine
     // runtime. A `many` region must not reach it at all, on any target.
-    for (name, source, _) in MANY_RUNS {
+    for (name, source, _) in every_run() {
         let ir = compile_staged(source);
         assert!(
             ir.contains("__manyBind"),
@@ -170,7 +178,7 @@ fn every_cross_target_accepts_every_many_region() {
     // gate must accept each program above. This test is the hard requirement;
     // a rejection here is a compiler defect, never a reason to skip.
     for target in ["wasm32", "macos", "ios-sim", "android-arm64"] {
-        for (name, source, _) in MANY_RUNS {
+        for (name, source, _) in every_run() {
             let (ok, err) = compile_for_target(source, target);
             assert!(ok, "{target} must build `{name}`, got: {err}");
         }
@@ -186,8 +194,7 @@ fn the_compiler_special_cases_no_effect_operation_or_use_case() {
     let Ok(entries) = std::fs::read_dir(lowering) else {
         panic!("the lowering lives in {lowering}");
     };
-    let named: Vec<&str> = MANY_RUNS
-        .iter()
+    let named: Vec<&str> = every_run()
         .flat_map(|(_, source, _)| source.lines())
         .filter_map(|line| line.trim().strip_prefix("effect "))
         .filter_map(|rest| rest.split([' ', '{']).next())

@@ -32,7 +32,7 @@ osprey test src/osprey/examples/cleanarch_todo/test --memory=gc
 osprey test src/osprey/examples/cleanarch_todo/test --memory=arc
 ```
 
-Expected from each: `# tests=34 passed=34 failed=0 skipped=0`.
+Expected from each: `# tests=100 passed=100 failed=0 skipped=0`.
 
 The same suite builds for WebAssembly and runs under Node's WASI. Every multi-shot resumption
 gives the same answer there as it does natively ([MULTI-WASM-MANY]):
@@ -45,7 +45,7 @@ osprey src/osprey/examples/cleanarch_todo/test --target=wasm32 --compile -o todo
 node scripts/wasm/wasm-smoke.mjs todo-tests.wasm
 ```
 
-Expected: the same 34 `ok` lines, then `# tests=34 passed=34 failed=0 skipped=0`. Only
+Expected: the same 100 `ok` lines, then `# tests=100 passed=100 failed=0 skipped=0`. Only
 `edge_server.osp` opens a socket, and the tests do not compile it, so nothing they build needs
 a capability WASI lacks.
 
