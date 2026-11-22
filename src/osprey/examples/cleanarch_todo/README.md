@@ -57,15 +57,15 @@ Every MediatR concept has an Osprey construct that replaces it. None of them is 
 | --- | --- | --- |
 | `IRequest<T>`, one class per request | One `Request` union | [todo_request.osp](src/todo_request.osp) |
 | `IRequestHandler<,>`, found by reflection | One `match` over the union | `run` in [todo_dispatch.osp](src/todo_dispatch.osp) |
-| `IPipelineBehavior<,>` and `next()` | A line of `send`; the lines after it are `next()` | `send` in [todo_dispatch.osp](src/todo_dispatch.osp) |
+| `IPipelineBehavior<,>` and `next()` | A line of `dispatch`; the lines after it are `next()` | `dispatch` in [todo_dispatch.osp](src/todo_dispatch.osp) |
 | `INotification`, `INotificationHandler<>` | The `Events` effect and its handler | [todo_host.osp](src/todo_host.osp) |
-| `AddMediatR`, assembly scanning, registration order | Nothing: the order is the order of the lines | `send` |
+| `AddMediatR`, assembly scanning, registration order | Nothing: the order is the order of the lines | `dispatch` |
 | `IApplicationDbContext`, `IUser`, `ILogger<T>`, `TimeProvider` | The `Store`, `Auth`, `Log` and `Clock` effects | [todo_effects.osp](src/todo_effects.osp) |
 
 The whole pipeline is one function. Each behaviour is a line, in the order it runs:
 
 ```osprey
-export fn send(request) = {
+export fn dispatch(request) = {
     let principal = perform Auth.who()
     perform Log.info("CleanArchitecture Request: ${TodoRequest::requestName(request)} by ${principal.name}")
     let startedAt = perform Clock.nowMs()
@@ -140,7 +140,7 @@ For the purge request the three answers are unauthorized, forbidden and "purged 
 Each claim below is true of this code.
 
 - **A missing handler is a compile error.** Remove `TodoHost::withStore` from [main.osp](src/main.osp) and the build stops with an unhandled `Store` operation. In C#, a missing registration fails when the request arrives.
-- **Handler order is the order of the lines.** `send` runs its behaviours top to bottom. In C#, the order is the order of `AddOpenBehavior` calls in another file.
+- **Handler order is the order of the lines.** `dispatch` runs its behaviours top to bottom. In C#, the order is the order of `AddOpenBehavior` calls in another file.
 - **A request can be resumed more than once.** The four uses above need it. A `next()` delegate cannot do it.
 - **Failures are values.** Every failure is a `Fault` in a `Result`; the `Fail` handler in `attempt` is the only place a request ends early. Nothing throws.
 - **Nothing uses reflection.** The request catalogue, the authorization rules and the handler binding are plain data and one `match`.
@@ -172,12 +172,12 @@ The pipeline itself shrinks the most:
 
 | C# file | C# lines | Osprey lines | Osprey |
 | --- | --- | --- | --- |
-| LoggingBehaviour.cs | 35 | 1 | One line of `send` |
+| LoggingBehaviour.cs | 35 | 1 | One line of `dispatch` |
 | UnhandledExceptionBehaviour.cs | 30 | 11 | The `Fail` handler and `logUnhandled` |
 | AuthorizationBehaviour.cs | 80 | 17 | `authorize`, `allows`, `denial`, `inAnyRole` |
 | ValidationBehaviour.cs | 34 | 8 | `validated` |
-| PerformanceBehaviour.cs | 54 | 9 | Two lines of `send` and `warnWhenSlow` |
-| DependencyInjection.cs | 25 | 0 | The order of the lines in `send` |
+| PerformanceBehaviour.cs | 54 | 9 | Two lines of `dispatch` and `warnWhenSlow` |
+| DependencyInjection.cs | 25 | 0 | The order of the lines in `dispatch` |
 
 ## Compiler gaps
 

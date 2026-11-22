@@ -17,7 +17,7 @@ module EdgeTodo {
         let parts = split(path, "?") ?: [path]
         let route = split(drop(listGet(parts, 0) ?: path, 1), "/") ?: []
         match routed(listConcat([method], route), listGet(parts, 1) ?: "", Doc::parse(body)) {
-            Ask { request, status, location } => match TodoDispatch::send(request) {
+            Ask { request, status, location } => match TodoDispatch::dispatch(request) {
                 Success { value: reply } => respond(status, "application/json", created(location, reply), encoded(reply))
                 Error { message } => refused(message)
             }

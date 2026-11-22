@@ -4,7 +4,7 @@
 // ([MULTI-HANDLE-MANY]). Each branch's writes and events are undone before the
 // next branch ([MULTI-REPLAY]), so after any probe the rows equal the seeds,
 // `events` is empty, and every branch saw the same store version and ids.
-// `Auth.who` is `send`'s first perform, so each branch re-runs the whole
+// `Auth.who` is `dispatch`'s first perform, so each branch re-runs the whole
 // request: 2 clock readings per branch, 3 branches, + the report's own = 7.
 
 namespace todo;
@@ -172,7 +172,7 @@ module MultishotAuthzCases {
         expect(bare.answers, [authzCreated(1), authzCreated(1), authzCreated(1)])
         expect(solo.answers, [authzCreated(2), authzCreated(2), authzCreated(2)])
         expect(pair.answers, [authzCreated(3), authzCreated(3), authzCreated(3)])
-        // Auth.who is send's first perform: 3 branches x 2 readings + the report's own = 7 [MULTI-HANDLE-MANY].
+        // Auth.who is dispatch's first perform: 3 branches x 2 readings + the report's own = 7 [MULTI-HANDLE-MANY].
         checkAll("three resumes per store shape; no branch's list survives [MULTI-REPLAY]", [
             bare.readings == 7, solo.readings == 7, pair.readings == 7,
             structuralEquals(bare.lists, []),

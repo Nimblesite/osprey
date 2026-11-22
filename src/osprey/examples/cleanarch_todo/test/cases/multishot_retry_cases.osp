@@ -9,7 +9,7 @@
 // rival list under the next list id, bumps the store version and fails with
 // "attempt N: store changed under transaction at V, now V+1"; the transaction
 // handler then resumes the SAME request from Tx.begin, at most three attempts.
-// `send` reads the clock once before and once after the whole transaction
+// `dispatch` reads the clock once before and once after the whole transaction
 // whatever the attempt count, and the report's own reading is the third, so
 // readings == 3 for every run here ([MULTI-HANDLE-MANY]).
 

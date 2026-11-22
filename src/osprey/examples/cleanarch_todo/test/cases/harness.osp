@@ -65,7 +65,7 @@ module TodoHarness {
         TodoHost::withAuth(principal, fn() =>
             TodoHost::withClock(0, clockStep, fn() =>
                 TodoReplay::asSent(fn() => stored(seedLists, seedItems, fn() =>
-                    TodoHost::withEventReport(fn() => TodoDispatch::send(ask))))))
+                    TodoHost::withEventReport(fn() => TodoDispatch::dispatch(ask))))))
 
     /// `staged` with the log silenced.
     export fn request(principal, clockStep, seedLists, seedItems, ask) =
@@ -127,7 +127,7 @@ module TodoHarness {
             stored(seedLists, seedItems, fn() => {
                 forEachList(rivals, fn(title) => perform Rollback.rival(title))
                 let report = TodoHost::withAuth(admin(), fn() =>
-                    TodoReplay::asSent(fn() => TodoHost::withEventReport(fn() => TodoDispatch::send(ask))))
+                    TodoReplay::asSent(fn() => TodoHost::withEventReport(fn() => TodoDispatch::dispatch(ask))))
                 {
                     settled: report.settled,
                     events: report.events,
@@ -143,7 +143,7 @@ module TodoHarness {
         quiet(fn() => TodoHost::withAuth(principal, fn() =>
             TodoHost::withClock(0, clockStep, fn() =>
                 TodoReplay::asSent(fn() => stored(seedLists, seedItems, fn() => {
-                    let report = TodoHost::withEventReport(fn() => TodoDispatch::send(ask))
+                    let report = TodoHost::withEventReport(fn() => TodoDispatch::dispatch(ask))
                     {
                         settled: report.settled,
                         events: report.events,
