@@ -442,7 +442,7 @@ module EditorView
         style = ui::Frames::inset (16, 12, 16, 12)
         selected = filterList (editor.graph.nodes, \n => n.identity == editor.selected)
         chooser = Ui::picker ("Module", mapList (editor.graph.nodes, \n => Ui::choice ("${n.identity}", componentName (editor, n))), "${editor.selected}", Select(identity = -1))
-        heading = Ui::row [Ui::styled ("Patch", ui::Heading, ui::Primary), ui::Spacer, Ui::button ("Close", "dismiss", CloseDetails)]
+        heading = Ui::row [Ui::styled ("Patch", ui::Heading, ui::Primary), ui::Spacer, Ui::button ("Close", "dismiss", ShowDetails)]
         local = theme ()
         Ui::themed (local(spacing = [4, 8, 8, 16, 24, 32]), Ui::framed (style(frameTextSize = 12, frameControlHeight = 28), Ui::column (listConcat [heading, menu editor, chooser] (mapList (selected, \n => component (editor, n))))))
 
