@@ -32582,7 +32582,7 @@
                     "sweep": 0,
                     "noise": 1,
                     "colour": 1,
-                    "decay": 0.004
+                    "decay": 0.01
                 }
             },
             "gain": 0.32,
@@ -47323,7 +47323,7 @@
                     "sweep": 0,
                     "noise": 1,
                     "colour": 0.4,
-                    "decay": 1.6
+                    "decay": 1
                 }
             },
             "gain": 0.28,
