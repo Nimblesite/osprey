@@ -6,6 +6,10 @@ Prism is the modular instrument editor for `@osprey/synth`. Its native component
 
 The menu offers grain clouds, sine oscillators, low-pass filters, gains, mixers, delays, MIDI note generators, normalized LFOs, stereo conversion, modulated stereo gain and mono/stereo outputs. Scan a VST3 bundle to add independent instrument or effect instances. Drag nodes, connect canvas ports or native port controls, and route LFOs to compatible effect parameters. The graph library validates port rates, units, channel counts and feedback cycles; parameter edits are checked against each component's descriptor.
 
+## Rendering is the graph into Master [DAW-RENDER-MASTER]
+
+Rendering means running the entire graph and exporting the Master channel. Nothing else is rendered. **Rendering anything other than Master is banned.** That covers a note, a track, a bus, a send, a patch, a module or the Space, whether whole, ahead of the playhead, into a cache, as a stem or to a file. Every node only produces the current block inside the running graph, and Play and Render song both export what reaches Master. Stems do not exist. The rule is in [the daw spec](../../../../docs/specs/applications/Daw.md#rendering-the-song-daw-render).
+
 ## Grain cloud [SYNTH-ADVANCED-GRAINS-INTEGRATION]
 
 Open **Modules → Grain cloud** to add an independent granular instrument. Its card displays the actual source waveform using Prism's existing card styling. Prism starts with a 1,024-frame harmonic sample. Stop playback, select the Grain cloud, open **Patch controls**, and choose **Load WAV sample**. Use **Use built-in harmonic sample** to restore the original source. Undo and Redo retain the samples in patch history.
