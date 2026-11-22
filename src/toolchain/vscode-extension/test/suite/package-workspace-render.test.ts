@@ -10,7 +10,7 @@ import { RENDERED_KINDS, renderWorkspace, type RenderOptions } from "../../clien
 import { renderShown } from "../../client/src/osprey-ui/webview/render";
 import { readFrame } from "../../client/src/osprey-ui/webview/rows";
 import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
-import { frame, type ControlSpec } from "./native-rows-kit";
+import { frame, unionKinds, type ControlSpec } from "./native-rows-kit";
 
 // The compiled test lives at <ext>/out/test/suite, so the extension root is three levels up.
 const extensionRoot = path.resolve(__dirname, "..", "..", "..");
@@ -234,11 +234,7 @@ suite("package workspace component renderer", () => {
     // Every `Node` constructor in src/osprey/packages/native/src/node.ospml, as the walk names it
     // ([NATIVE-HOSTS-COVERAGE]), so a component added to the framework fails here until the
     // webview draws it or refuses it by name.
-    const source = fs.readFileSync(path.join(extensionRoot, "..", "..", "osprey", "packages", "native", "src", "node.ospml"), "utf8").replace(/\r/g, "");
-    const block = source.slice(source.indexOf("type Node A ="));
-    const body = block.slice(0, block.search(/\n\S/));
-    const kinds = [...body.matchAll(/^ {4}([A-Z]\w*)$/gm)].map((match) =>
-      match[1] === "Typeset" ? "math" : match[1].replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase());
+    const kinds = unionKinds("node.ospml", "type Node A =", { Typeset: "math" });
     assert.ok(kinds.includes("meter") && kinds.includes("context-menu") && kinds.includes("scene"), kinds.join(","));
     assert.deepStrictEqual([...RENDERED_KINDS].sort(), [...kinds].sort());
     const scene = renderWorkspace({ regions: regions({ kind: "scene", width: 400, height: 300, zoom: 0, event: 7 }) });

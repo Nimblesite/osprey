@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 // Shared fixture builders for the shared-memory frame tests: they write the generated wasm32
 // layouts the same way the application runtime does, so a test's bytes are the host's bytes.
 
@@ -152,4 +154,16 @@ export function frame(options: {
   const shapes = sceneRows(options.scenes ?? [], run);
   const asks = askRows(options.asks ?? [], run);
   return { shapes, views, text: run.buffer(), asks };
+}
+
+/** The constructors of the union headed `header` in the native package's `file`, named as the
+ * encoder names them: kebab case, or the name `renamed` gives one ([NATIVE-HOSTS-COVERAGE]). */
+export function unionKinds(file: string, header: string, renamed: Record<string, string>): string[] {
+  const native = path.resolve(__dirname, "..", "..", "..", "..", "..", "osprey", "packages", "native", "src", file);
+  const source = fs.readFileSync(native, "utf8").replace(/\r/g, "");
+  const block = source.slice(source.indexOf(header));
+  const body = block.slice(0, block.search(/\n\S/));
+  return [...body.matchAll(/^ {4}([A-Z]\w*)$/gm)].map(
+    (match) => renamed[match[1]] ?? match[1].replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase(),
+  );
 }
