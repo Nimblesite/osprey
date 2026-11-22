@@ -624,4 +624,4 @@ familiesJourney () =
     heardFamily ("phase", chainOf [part ("operator", 0, [pitched "frequency"])], true)
     shifted (7.0, 122, 61, 140)
     shifted (12.0, 92, 46, 110)
-    failsWith (sampledNote (middleC (), chainOf [part ("noSuchModule", 0, [])]), "Unknown module \"noSuchModule\".")
+    failsWith (sampledNote (middleC (), chainOf [part ("noSuchModule", 0, [])]), "note: Unknown module \"noSuchModule\".")
