@@ -136,12 +136,14 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   assert.match(apple, /^ {8}run: \$\{\{ matrix\.run \}\}$/m)
   assert.match(apple, /^ {10}OSPREY_BIN: \$\{\{ github\.workspace \}\}\/target\/release\/osprey$/m)
   assert.doesNotMatch(apple, /continue-on-error/)
-  // The three iOS parts use macos-26 and its iOS SDK; Inbox and Tally each build their own host.
+  // The three iOS parts and the Talon Bank journey use macos-26: its iOS SDK, and the Swift the shared host's
+  // isolated conformances need. Inbox and Tally each build their own host.
   assert.match(apple, /^    runs-on: \$\{\{ matrix\.runner \|\| 'macos-15' \}\}$/m)
   assert.match(apple, /^ {10}- part: iOS\n {12}runner: macos-26$/m)
   assert.match(apple, /^ {10}- part: iOS Inbox\n {12}runner: macos-26\n {12}minutes: 22\n {12}run: make -C src\/toolchain\/targets\/ios\/tests inbox$/m)
   assert.match(apple, /^ {10}- part: iOS Tally\n {12}runner: macos-26\n {12}minutes: 22\n {12}run: make -C src\/toolchain\/targets\/ios\/tests tally-headless$/m)
-  assert.equal(apple.match(/^ {12}runner: /gm).length, 3, 'only the iOS parts leave macos-15')
+  assert.match(apple, /^ {10}- part: Talon Bank\n {12}runner: macos-26\n {12}minutes: 22\n {12}run: make -C src\/toolchain\/targets\/ios\/tests bank$/m)
+  assert.equal(apple.match(/^ {12}runner: /gm).length, 4, 'only the iOS parts and Talon Bank leave macos-15')
   assert.match(apple, /^ {10}lfs: true$/m)
   assert.match(ciJob('ci'), /^ {6}- test-apple$/m)
 })
