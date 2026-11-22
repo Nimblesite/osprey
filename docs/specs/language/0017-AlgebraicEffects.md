@@ -512,8 +512,6 @@ A value arm returns the operation result and implicitly continues on normal retu
 
 `[MULTI-HANDLE-MANY-LEXICAL]` Resumptions may be passed to callbacks or stored in an explicitly owned continuation value whose lifetime keeps the required frames and handler environment alive. Escape is governed by ownership and resource lifetime, not a blanket ban based on lambda syntax. Borrowed resumptions cannot escape their owner. The continuation-value surface is [EFFECTS-CONTINUATION-OWNERSHIP]; finalization is [EFFECTS-FINALIZATION].
 
-`[MULTI-HANDLE-MANY-VALUE]` A handler value is a first-class callable: it may be passed to a function parameter and applied there, and the effect it answers is decided by the handler value itself, not by the parameter's name. The action such an application passes is supplied in the step form the handler region consumes, and a `resume` result carries the handled body's own value provenance, so combining or forwarding resumed answers stays provable at the entry.
-
 ## Replayability — [MULTI-REPLAY]
 
 `[MULTI-REPLAY]` `replayable` promises that repeated execution with the same arguments and handler context is acceptable. It is a semantic promise about the operation, not a conclusion from its name or body size.

@@ -373,10 +373,6 @@ struct CallableEnv {
     /// kernel through one is judged on the residual program rather than
     /// failing closed here ([STAGE-LOWER-ORDER-PHASE], [GPU-KERNEL-PURE]).
     deferred_arm_parameters: HashSet<String>,
-    /// The value the innermost enclosing arm's `resume` produces: the handled
-    /// body's own value with that handler's answers left unknown
-    /// ([MULTI-HANDLE-MANY]).
-    resume_result: Option<Value>,
 }
 
 struct Analyzer<'a> {

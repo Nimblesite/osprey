@@ -234,15 +234,11 @@ with `let` before `{op}`"
             Callee::Param(index) => self.param_steps(index, scope),
             Callee::Other => return self.step_builtin(call, scope),
         };
-        let mut items = Vec::with_capacity(arguments.len() + named_arguments.len());
-        for (position, argument) in arguments.iter().enumerate() {
-            items.push(self.action_item(argument, position, function, scope));
-        }
-        items.extend(
-            named_arguments
-                .iter()
-                .map(|argument| Item::Raw(&argument.value)),
-        );
+        let items = arguments
+            .iter()
+            .chain(named_arguments.iter().map(|argument| &argument.value))
+            .map(Item::Raw)
+            .collect();
         self.sequence(items, scope, |_, values| {
             let rebuilt = rebuild_call(function, named_arguments, values);
             if steps {
@@ -251,26 +247,6 @@ with `let` before `{op}`"
                 done(rebuilt)
             }
         })
-    }
-
-    /// A handler value's action arrives in step form: the callable's
-    /// rewritten body calls it as the step its handler region answers
-    /// ([MULTI-HANDLE-MANY-VALUE]).
-    fn action_item<'e>(
-        &mut self,
-        argument: &'e Expr,
-        position: usize,
-        function: &Expr,
-        scope: &Scope,
-    ) -> Item<'e> {
-        let binds = position == 0
-            && matches!(self.analyzer.callee(function, scope), Callee::Param(index)
-                if scope.func.is_some_and(|func| self.analyzer.facts.binds_handler(func, index)));
-        if binds {
-            Item::Ready(self.stepping(argument, scope))
-        } else {
-            Item::Raw(argument)
-        }
     }
 
     /// A call that names no function this pass follows. A list builtin whose

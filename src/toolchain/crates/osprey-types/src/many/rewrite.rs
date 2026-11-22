@@ -446,11 +446,7 @@ instantiated: its requests carry their continuation as a value"
             Callee::Alias(_) => argument.clone(),
             Callee::Param(index) if self.param_steps(index, scope) => argument.clone(),
             Callee::Function(id) if self.analyzer.facts.returns_step(id) => {
-                // A handler value's action is the one callback it may take:
-                // the applications this pass rewrites supply it in step form
-                // ([MULTI-HANDLE-MANY-VALUE]).
-                let handler = self.analyzer.table.handler_action(id).is_some();
-                if !handler && !self.analyzer.facts.summary(id).params.is_empty() {
+                if !self.analyzer.facts.summary(id).params.is_empty() {
                     self.reject_crossing("a function that itself takes a capturing callback");
                 }
                 argument.clone()

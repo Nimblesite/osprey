@@ -160,10 +160,6 @@ pub(super) struct Facts {
     pub(super) captured: BTreeSet<String>,
     /// `(function, parameter)` pairs that receive continuation-capturing callables.
     pub(super) stepping: BTreeSet<(usize, usize)>,
-    /// `(function, parameter)` pairs applied to handler values, so the
-    /// argument each such application passes is a step-form action
-    /// ([MULTI-HANDLE-MANY-VALUE]).
-    pub(super) handling: BTreeSet<(usize, usize)>,
     pub(super) summaries: Vec<Esc>,
 }
 
@@ -184,11 +180,5 @@ impl Facts {
     /// Whether parameter `index` of function `id` holds a step-returning callable.
     pub(super) fn takes_step(&self, id: usize, index: usize) -> bool {
         self.stepping.contains(&(id, index))
-    }
-
-    /// Whether parameter `index` of function `id` is applied to handler
-    /// values, whose actions arrive in step form.
-    pub(super) fn binds_handler(&self, id: usize, index: usize) -> bool {
-        self.handling.contains(&(id, index))
     }
 }

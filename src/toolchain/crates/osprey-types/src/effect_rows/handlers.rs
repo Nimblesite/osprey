@@ -65,27 +65,7 @@ impl Analyzer<'_> {
                 }
             }
         }
-        local.resume_result = self.continuation_result(body, effect, scope, env);
         local
-    }
-
-    /// The value resuming this arm's continuation produces: the handled
-    /// body's own value, with this handler's answers left unknown so an arm
-    /// that returns its own answer stays the conservative branch
-    /// ([MULTI-HANDLE-MANY]).
-    fn continuation_result(
-        &self,
-        body: &Expr,
-        effect: &str,
-        scope: &[String],
-        env: &CallableEnv,
-    ) -> Option<Value> {
-        let base = osprey_ast::effect_name::base(effect).to_owned();
-        let mut outer = env.clone();
-        outer
-            .handler_returns
-            .retain(|requirement, _| osprey_ast::effect_name::base(&requirement.effect) != base);
-        self.value(body, scope, &outer)
     }
 
     pub(super) fn handler_body_env(

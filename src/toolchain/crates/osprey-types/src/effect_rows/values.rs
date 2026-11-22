@@ -460,21 +460,7 @@ impl Analyzer<'_> {
             }
             // A mask changes which activation answers, not the value.
             Expr::Mask { body, .. } => self.value(body, scope, env),
-            // Resuming runs the handled body's remainder, so the result's
-            // provenance is that body's value model; the answer the arm hands
-            // over is merged in as the branch a body that is the request
-            // itself takes ([MULTI-HANDLE-MANY]).
-            Expr::Resume(value) => {
-                let mut resumed = env.resume_result.clone();
-                if let Some(passed) = value
-                    .as_deref()
-                    .and_then(|answer| self.value(answer, scope, env))
-                {
-                    merge_optional_value(&mut resumed, passed);
-                }
-                resumed
-            }
-            Expr::Yield(value) => value
+            Expr::Resume(value) | Expr::Yield(value) => value
                 .as_deref()
                 .and_then(|value| self.value(value, scope, env)),
             Expr::Binary {

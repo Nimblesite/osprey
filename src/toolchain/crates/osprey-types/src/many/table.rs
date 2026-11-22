@@ -117,20 +117,6 @@ impl<'a> Table<'a> {
         self.effects.get(effect_name::base(mention))
     }
 
-    /// The action parameter and handled effect of function `id` when it is a
-    /// handler value: the lone parameter its body handles the invocation of
-    /// ([EFFECTS-HANDLER-VALUE]).
-    pub(super) fn handler_action(&self, id: usize) -> Option<(usize, String)> {
-        let func = self.funcs.get(id)?;
-        let [action, extras @ ..] = func.params.as_slice() else {
-            return None;
-        };
-        if !extras.is_empty() {
-            return None;
-        }
-        invokes_action(action, func.body).map(|effect| (0, effect.to_owned()))
-    }
-
     /// Append one function summary — declared or `let`-bound — and return its
     /// id, which the caller registers under whatever name it is called by.
     fn push_func(
@@ -186,43 +172,6 @@ impl<'a> Table<'a> {
             _ => {}
         }
     }
-}
-
-/// Whether `body` is a handler region over the invocation of `name`, and
-/// the effect it answers: the shape a reusable handler value's body takes
-/// ([EFFECTS-HANDLER-VALUE]).
-fn invokes_action<'b>(name: &str, body: &'b Expr) -> Option<&'b str> {
-    let Expr::Handler {
-        effect,
-        body: handled,
-        ..
-    } = body
-    else {
-        return None;
-    };
-    matches!(handled.as_ref(), Expr::Call { function, arguments, named_arguments }
-        if matches!(function.as_ref(), Expr::Identifier(called) if called == name)
-            && arguments.is_empty()
-            && named_arguments.is_empty())
-    .then(|| effect.as_str())
-}
-
-/// The handled effect of a handler value written inline rather than bound to
-/// a name the table knows ([EFFECTS-HANDLER-VALUE]).
-pub(super) fn handler_value(expression: &Expr) -> Option<String> {
-    let Expr::Lambda {
-        parameters, body, ..
-    } = expression
-    else {
-        return None;
-    };
-    let [action, extras @ ..] = parameters.as_slice() else {
-        return None;
-    };
-    if !extras.is_empty() {
-        return None;
-    }
-    invokes_action(&action.name, body).map(str::to_owned)
 }
 
 /// Every lambda a `let` binds under `node`, at any depth.

@@ -34,22 +34,11 @@ pub(super) fn solve(table: &Table<'_>, program: &Program) -> Facts {
     let facts = Facts {
         captured,
         stepping: BTreeSet::new(),
-        handling: BTreeSet::new(),
         summaries: vec![Esc::default(); table.funcs.len()],
     };
     let mut analyzer = Analyzer::new(table, facts);
     loop {
         analyzer.changed = false;
-        // A handler value of a captured effect receives a computation as its
-        // action whatever the call site passes, so that parameter is
-        // stepping from the first sweep ([MULTI-HANDLE-MANY-VALUE]).
-        for id in 0..table.funcs.len() {
-            if let Some((action, effect)) = table.handler_action(id) {
-                if analyzer.facts.is_captured(&effect) {
-                    analyzer.step_param(id, action);
-                }
-            }
-        }
         for id in 0..table.funcs.len() {
             analyzer.summarize(id);
         }
@@ -118,12 +107,6 @@ impl<'a> Analyzer<'a> {
 
     fn step_param(&mut self, func: usize, index: usize) {
         self.changed |= self.facts.stepping.insert((func, index));
-    }
-
-    /// Parameter `index` of `func` is applied to handler values, so the
-    /// argument each application passes arrives in step form.
-    fn handler_param(&mut self, func: usize, index: usize) {
-        self.changed |= self.facts.handling.insert((func, index));
     }
 
     /// What evaluating `expression` can leave unanswered.
@@ -343,25 +326,14 @@ impl<'a> Analyzer<'a> {
             if !latent.is_empty() {
                 self.step_param(id, index);
             }
-            self.bound_handler(id, index, argument, scope);
             if self.facts.takes_step(id, index) {
                 self.forward(argument, scope);
             }
             if let Some(hidden) = summary.params.get(&index) {
-                out.absorb(self.applied_latent(id, argument, latent, hidden, scope));
+                out.absorb(latent.behind(hidden));
             }
         }
         out
-    }
-
-    /// Record that parameter `index` of `id` receives a handler value of a
-    /// captured effect: its applications then pass a step-form action
-    /// ([MULTI-HANDLE-MANY-VALUE]).
-    fn bound_handler(&mut self, id: usize, index: usize, argument: &Expr, scope: &Scope) {
-        if self.handler_effect(argument, scope).is_some() {
-            self.handler_param(id, index);
-            self.step_param(id, index);
-        }
     }
 
     /// A parameter handed on to a stepping parameter is itself stepping.

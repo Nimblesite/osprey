@@ -17,7 +17,6 @@
 //! effect rule of its own: it only rejects the few shapes a closure cannot
 //! express, naming each one.
 
-mod applied;
 mod build;
 mod escape;
 mod facts;
