@@ -81,9 +81,9 @@ module TodoReplay {
                 opened = perform Store.dump()
                 version
             }
-            commitAt expected => match listGet(rivals, 0) {
-                Error _ => Success { value: {} }
-                Success { value: title } => {
+            commitAt expected => match rivals {
+                [] => Success { value: {} }
+                [title, ...queued] => {
                     perform Store.load(opened)
                     perform Store.saveList(TodoList {
                         id: perform Store.nextListId(),
@@ -91,7 +91,7 @@ module TodoReplay {
                         colour: TodoDomain::grey()
                     })
                     version = satAdd(version, 1)
-                    rivals = filterList(rivals, fn(queued) => queued != title)
+                    rivals = queued
                     Error { message: "store changed under transaction at ${toString(expected)}, now ${toString(version)}" }
                 }
             }

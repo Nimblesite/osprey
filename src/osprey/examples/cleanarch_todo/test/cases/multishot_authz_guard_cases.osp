@@ -224,7 +224,7 @@ module MultishotAuthzGuardCases {
             authzEvery(creates, fn(report) => structuralEquals(authzBranchTexts(report), ["created 3", "created 3", "created 3"])),
             authzReadsEveryBranch(creates),
             authzEvery(creates, fn(report) => length(report.events) == 0),
-            authzEvery(creates, fn(report) => structuralEquals(report.items, []))
+            authzEvery(creates, fn(report) => structuralEquals(report.items, authzThreeItems()))
         ])
         checkAll("PurgeTodoLists: the same unauthorized, forbidden, purge-2 triple from every start", [
             length(purges) == 3, authzSameAnswers(purges),

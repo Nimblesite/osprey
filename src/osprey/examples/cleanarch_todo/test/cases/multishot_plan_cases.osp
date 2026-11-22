@@ -95,7 +95,7 @@ fn planStoredDones(items) = mapList(items, fn(item) => item.done)
 module MultishotPlanCases {
     /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN] the four shapes in shapes() order over six
     /// unsorted rows: title order d,n,o,p,s,t comes from seeds [t,o,d,s,p,n] (ids 1..6,
-    /// "p" done), so sorted ids are [3,2,6,5,4,1] — by title, not id or seed order.
+    /// "p" done), so sorted ids are [3,6,2,5,4,1].
     /// [MULTI-HANDLE-MANY] one start + one settle reading per branch + the harness
     /// reading = readings 6; [MULTI-REPLAY] a page query writes nothing.
     export fn planShapesOrderCase() = {
@@ -111,7 +111,7 @@ module MultishotPlanCases {
             planCalm(plan), length(plan.items) == 6,
             structuralEquals(planTitles(plan.answers, 0), ["d", "n", "o", "p", "s"]), structuralEquals(planTitles(plan.answers, 1), ["t"]),
             structuralEquals(planTitles(plan.answers, 2), ["d", "n", "o", "p", "s", "t"]), structuralEquals(planTitles(plan.answers, 3), ["d", "n", "o", "p", "s", "t"]),
-            structuralEquals(planIds(plan.answers, 0), [3, 2, 6, 5, 4]), structuralEquals(planIds(plan.answers, 1), [1]),
+            structuralEquals(planIds(plan.answers, 0), [3, 6, 2, 5, 4]), structuralEquals(planIds(plan.answers, 1), [1]),
             planShaped(plan.answers, 6, [5, 1, 6, 6], [true, false, false, false]),
             planRowIs(plan.answers, 0, 0, planSpec(3, "d", false)), planRowIs(plan.answers, 0, 3, planSpec(5, "p", true)),
             planRowIs(plan.answers, 1, 0, planSpec(1, "t", false)),
@@ -150,7 +150,7 @@ module MultishotPlanCases {
         let gone = TodoHarness::probed(TodoHarness::admin(), lists, [], PagePlan { listId: 99 })
         let bare = TodoHarness::probed(TodoHarness::admin(), lists, [], PagePlan { listId: 1 })
         // no items anywhere: both asks plan four empty pages; hasPrevious follows pageNumber alone
-        let empty = [planPage([], 0, false, false), planPage([], 0, true, false), planPage([], 0, false, false), planPage([], 0, false, false)]
+        let empty: List<Result<Reply, Fault>> = [planPage([], 0, false, false), planPage([], 0, true, false), planPage([], 0, false, false), planPage([], 0, false, false)]
         expect(gone.answers, empty)
         expect(bare.answers, empty)
         checkAll("a missing listId and a bare list row both plan four empty pages", [
@@ -209,7 +209,7 @@ module MultishotPlanCases {
             planShaped(plan.answers, 4, [4, 0, 4, 4], [false, false, false, false]),
             planRowIs(plan.answers, 0, 2, planSpec(2, "2", true)), planRowIs(plan.answers, 3, 0, planSpec(3, "1", false)),
             structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["10", "2", "1", "20"]),
-            structuralEquals(planStoredIds(plan.items), [1, 2, 3, 4]), structuralEquals(planStoredDones(plan.items), [false, false, true, false])
+            structuralEquals(planStoredIds(plan.items), [1, 2, 3, 4]), structuralEquals(planStoredDones(plan.items), [false, true, false, false])
         ])
     }
 

@@ -138,7 +138,7 @@ module MultishotPlanListsCases {
             planShaped(plan.answers, 4, [4, 0, 4, 4], [false, false, false, false]),
             planRowIs(plan.answers, 0, 1, planSpec(4, "p2", true)), planRowIs(plan.answers, 3, 3, planSpec(1, "p4", false)),
             structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["p4", "p1", "p3", "p2"]),
-            structuralEquals(planStoredDones(plan.items), [false, false, true, false]),
+            structuralEquals(planStoredDones(plan.items), [false, false, false, true]),
             structuralEquals(plan.lists, [TodoHarness::seedList(1, "Open", "#5C6BC0")])
         ])
     }

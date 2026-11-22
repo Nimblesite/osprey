@@ -59,8 +59,11 @@ fn fixOnlyTrim(same, differs) = [same, differs, same, same]
 /// Only the cut branch answers `rescued`; the others fault the length.
 fn fixOnlyCut(rescued) = [fixFault([fixTooLong()]), fixFault([fixTooLong()]), rescued, fixFault([fixTooLong()])]
 
+/// Only the default-colour branch changes the answer.
+fn fixRecoloured(original, recoloured) = [original, original, original, recoloured]
+
 /// Only the default-colour branch answers `rescued`; the others fault `code`.
-fn fixOnlyRecolour(code, rescued) = [fixColourFault(code), fixColourFault(code), fixColourFault(code), rescued]
+fn fixOnlyRecolour(code, rescued) = fixRecoloured(fixColourFault(code), rescued)
 
 /// Branches 1-2 answer `both`; the cut branch answers `cut`; the recolour
 /// branch keeps only the colour fault for '#Bad'.
@@ -192,9 +195,10 @@ module MultishotValidateCases {
         fixChecked("only the cut fix validates, so only it reaches the missing id",
             UpdateList { edit: ListEdit { id: 99, title: retryWide(250), colour: "" } },
             fixOnlyCut(fixMissing("TodoList", 99)))
-        fixChecked("empty and colour collect together in all four branches; uniqueness skips the blank title",
+        fixChecked("empty and colour collect together until recolour; uniqueness skips the blank title",
             UpdateList { edit: ListEdit { id: 99, title: "", colour: "#ffee00" } },
-            fixAll(fixFault([fixEmptyTitle(), "UnsupportedColour: '#ffee00' is not a supported colour"])))
+            fixRecoloured(fixFault([fixEmptyTitle(), "UnsupportedColour: '#ffee00' is not a supported colour"]),
+                fixFault([fixEmptyTitle()])))
     }
 
     /// Every supported colour ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
@@ -294,10 +298,12 @@ module MultishotValidateCases {
              fixFault([fixUniqueTitle(), "UnsupportedColour: '#Bad' is not a supported colour"]),
              fixFault([fixUniqueTitle(), "UnsupportedColour: '#Bad' is not a supported colour"]),
              fixFault([fixUniqueTitle()])], fixNothing)
-        fixCase("an empty title skips uniqueness even while colour collects",
+        let missingTitle = fixFault([fixEmptyTitle()])
+        let missingTitleAndColour = fixFault([fixEmptyTitle(), "UnsupportedColour: '#Bad' is not a supported colour"])
+        fixCase("an empty title skips uniqueness and remains after recolour",
             fixLongSeeds(), retryItems(),
             CreateList { list: NewList { title: "", colour: "#Bad" } },
-            fixAll(fixFault([fixEmptyTitle(), "UnsupportedColour: '#Bad' is not a supported colour"])), fixNothing)
+            fixRecoloured(missingTitleAndColour, missingTitle), fixNothing)
         fixCase("list 2's own 250-x title excludes itself, so uniqueness never collects",
             fixLongSeeds(), retryItems(),
             UpdateList { edit: ListEdit { id: 2, title: retryWide(250), colour: "#Bad" } },
