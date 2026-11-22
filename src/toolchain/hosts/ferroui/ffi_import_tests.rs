@@ -3,7 +3,7 @@
 //! slice replacements, a faulting or nested call releases its scope, and nothing a failed call saw
 //! leaks into the next one.
 
-use super::test_support::isolated_test;
+use super::test_support::{isolated_test, slice};
 use super::*;
 use crate::frame;
 
@@ -191,7 +191,7 @@ fn an_import_outside_a_call_is_reported_before_any_export_runs() {
     let _serial = serial();
     reset(1);
     let key = held("outside-call").expect("valid key");
-    assert_eq!(import_text(native_slice(key.as_ptr())), Ok(String::new()));
+    assert_eq!(import_text(slice(key.as_ptr())), Ok(String::new()));
     assert!(
         Library::open(0, 0, "test", "/home", false).is_err(),
         "the callback fault became a successful view"
