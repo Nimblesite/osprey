@@ -300,15 +300,23 @@ module EditorApp
     controlled (context, editor, action, input) = match action
         Keyboard => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => dockPointer (context, editor, x, y, down), \(w, _) => Runtime::step (editor(keyboardWidth = w)), \(_, _) => Runtime::step editor)
         PatchSurface =>
-            patch = editor(page = PatchPage)
-            moved = surface (context, patch, input)
+            patch = EditorView::patchWindow editor
+            moved = surfaced (context, patch, input, \(w, h) => viewed (patch, w, h))
             next = moved.stepStore
-            moved(stepStore = next(page = editor.page))
-        Surface => surface (context, editor, input)
+            moved(stepStore = next(page = editor.page, detailsShown = editor.detailsShown))
+        Surface => match patchApart editor
+            true => surfaced (context, editor, input, \(w, h) => Runtime::step (editor(songWidth = w, songHeight = h)))
+            false => surface (context, editor, input)
         Controls => dialInput (editor, input)
         _ => Runtime::step editor
 
-    surface (context, editor, input) = ui::Inputs::route (input, \(key, down) => surfaceKey (editor, key, down), \(x, y, down, shift) => surfacePointer (context, editor(fineHeld = shift), x, y, down), \(w, h) => viewed (editor, w, h), \(x, y) => NodeContext::open (editor, x, y))
+    // The patch is drawn in its own window, not on the song window's page.
+    patchApart editor = editor.patchWindowSerial > 0 && editor.patchTrack >= 0 && editor.page != PatchPage
+
+    // [DAW-PAGES-PATCH-WINDOW] The patch's room follows the window drawing the patch; the song page keeps its own window's size.
+    surface (context, editor, input) = surfaced (context, editor, input, \(w, h) => viewed (editor(songWidth = w, songHeight = h), w, h))
+
+    surfaced (context, editor, input, sized) = ui::Inputs::route (input, \(key, down) => surfaceKey (editor, key, down), \(x, y, down, shift) => surfacePointer (context, editor(fineHeld = shift), x, y, down), sized, \(x, y) => NodeContext::open (editor, x, y))
 
     dialInput (editor, input) = ui::Inputs::route (input, \(key, down) => Runtime::step (ui::Pick::either (down && key == "escape", Dials::escaped editor, editor)), \(x, y, down, shift) => Runtime::step (EditorView::dialled (editor(fineHeld = shift), x, y, down)), \(_, _) => Runtime::step editor, \(_, _) => Runtime::step editor)
 

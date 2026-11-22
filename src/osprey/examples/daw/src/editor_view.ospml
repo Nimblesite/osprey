@@ -493,9 +493,10 @@ module EditorView
 
     root () = content (editorSlice ())
 
-    detached () =
-        editor = editorSlice ()
-        content (editor(page = PatchPage))
+    detached () = content (patchWindow (editorSlice ()))
+
+    (** [DAW-PAGES-PATCH-WINDOW] The patch window's view: its Patch page, with the chosen module's properties in the patch panel docked beside the canvas. *)
+    export patchWindow editor = editor(page = PatchPage, detailsShown = editor.detailsShown || editor.selected >= 0)
 
     content editor =
         match editor.outputEdit

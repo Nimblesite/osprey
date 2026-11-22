@@ -6,7 +6,7 @@ is saved in the one project file. [Specification](../../../../docs/specs/applica
 [Designs](../../../../docs/designs/prism-timeline/README.md) · [Patch editor guide](PRISM.md)
 
 ```sh
-make -C src/toolchain/targets/macos daw            # opens tracks/codex-version.json; SONG=<project.json> picks another
+make -C src/toolchain/targets/macos prism          # installs /Applications/Prism.app for Spotlight
 make -C src/toolchain/targets/macos daw-render     # renders the whole SONG to target/daw/<project>/song.wav
 make -C src/toolchain/targets/macos daw-play       # plays that WAV; never renders
 make -C src/toolchain/targets/tests synth          # the app's tests, with no host
@@ -29,7 +29,7 @@ Every song in [tracks/](tracks/) is composed by hand: each note, pattern, patch 
 [Silt Relay](tracks/silt-relay.json) is an original 18-bar arrangement at 138 BPM. The pressure kick ducks the sub. Struck wire answers the bass on the offbeats, and the bowed breakdown gives way to a five-hit hi-hat roll. Open **Throat / metal** for a two-source spectral morph, **Spore wheel** for a seeded granular patch, or **Rivet pulse** to follow a MIDI note through the split, delay, join and channel swap. On **Glass pins**, the FFT pitch shifter mixes a perfect fifth into the metallic strike at 22% wet and keeps the original formants. Glass pins, Glass filament and Porcelain bell share a gentle high lift and compression in Pin bed before they meet the struck wire on Objects. **Rivet pulse** sends 6% of its stereo channel-swap outlet straight to the kick-keyed Undertow bus. Its dry signal still goes through Objects, and its 19% Space send stays audible between hits. [Follow Glass pins through both buses](screens/silt-pin-bed.png) · [Inspect Undertow](screens/silt-relay.png) · [Trace the three Rivet pulse routes](screens/silt-rivet.png)
 
 ```sh
-make -C src/toolchain/targets/macos daw SONG=src/osprey/examples/daw/tracks/silt-relay.json
+make -C src/toolchain/targets/macos prism SONG=src/osprey/examples/daw/tracks/silt-relay.json
 ```
 
 In **Bus routing**, choose **Routing → Bus outputs…** to feed a group into another group. Pick the source and stereo output to see its whole path to Master. A cycle displays the names of the groups involved and keeps the last saved route. [Group outputs](screens/bus-outputs.png)

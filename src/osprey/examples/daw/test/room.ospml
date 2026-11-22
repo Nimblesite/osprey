@@ -808,3 +808,96 @@ masterPlayJourney () =
     failsWith (daw::Playback::start (timeline [playedKick [playedNote (0.5, 0.1), playedNote (-0.25, 0.1)]]), "kick: a note starts before the piece.")
     bell = bellTrack ()
     failsWith (daw::Playback::start (timeline [bell(bus = "pads")]), "bell: Bus pads is not in the song.")
+
+// The rendered scene the host binds to the editor input `wanted`: the song window's `Surface` or the patch window's `PatchSurface`.
+sceneBound (d, wanted) = ui::Lists::find (d.drivenSeen.renderedScenes, \ordinal => boundTo (d, ordinal, wanted))
+
+boundTo (d, ordinal, wanted) = match listGet d.drivenSurface.surfaceBound ordinal
+    Error _ => false
+    Success binding => match binding
+        ui::SceneInput action => structuralEquals (action, wanted)
+        _ => false
+
+// The host event `kind` at `x`, `y` on the scene bound to `wanted`, pressed or not.
+sceneEvent (d, wanted, kind, x, y, down) = match sceneBound (d, wanted)
+    Error _ =>
+        expect ("no scene bound to that input", "a bound scene")
+        d
+    Success ordinal => Drive::sent (d, ui::Touch(touchNow = d.drivenNow, touchKind = kind, touchOrdinal = ordinal, touchWords = "", touchDetail = "", touchX = x, touchY = y, touchDown = down, touchShift = false))
+
+// The host measuring the region drawn by the `wanted` scene at `width` by `height` scene units.
+regionViewed (d, wanted, width, height) = sceneEvent (d, wanted, ui::Hosting::viewed, width, height, false)
+
+// The patch's room as each window holds it: the patch window's spare width and height, and how far right the song page starts in the main window.
+patchRoom (d, spareWidth, spareHeight, songShift) =
+    editor = Drive::holding d
+    expect (ui::Machines::number (editor.skin, "spareWidth"), spareWidth)
+    expect (ui::Machines::number (editor.skin, "spareHeight"), spareHeight)
+    expect (synth::EditorView::rightX (editor, 1234.0), 1234.0 + spareWidth)
+    expect (synth::Header::shift editor, songShift)
+
+// [DAW-PAGES-PATCH-WINDOW] A track's patch opened in its own window keeps that window's room: the main window
+// growing or shrinking around the song page never moves the patch's module inspector or toolbar off the patch
+// window, the patch window's own resizes still move them, and the song page stays centred in its own window.
+detachedRoomJourney () =
+    place = "target/daw-tests/detached-room"
+    _root = makeDir "target/daw-tests"
+    _dir = makeDir place
+    succeeds (daw::Projects::saved (timeline [bellTrack (), keysTrack ()], "${place}/song.json"), \_ =>
+        session = editorLaunched ["--song", "${place}/song.json"]
+        lane = uitest::Semantics::element (session.drivenSeen.renderedAccess, "Track 2")
+        opened = clickAt (session, 100.0, lane.accessTop + lane.accessHeight / 2.0)
+        expect ((Drive::holding opened).patchWindowSerial, 1)
+        expect ((Drive::holding opened).patchTrack, 1)
+        expect ((Drive::holding opened).page, synth::TimelinePage)
+        patchScene = sceneBound (opened, synth::PatchSurface) ?: -1
+        songScene = sceneBound (opened, synth::Surface) ?: -1
+        expect (patchScene >= 0 && songScene >= 0 && patchScene != songScene, true)
+        patch = regionViewed (opened, synth::PatchSurface, 1536.0, 1008.0)
+        patchRoom (patch, 0.0, 180.0, 0.0)
+        song = regionViewed (patch, synth::Surface, 2600.0, 940.0)
+        patchRoom (song, 0.0, 180.0, 580.0)
+        wider = regionViewed (song, synth::PatchSurface, 1836.0, 1258.0)
+        patchRoom (wider, 300.0, 430.0, 580.0)
+        narrow = regionViewed (wider, synth::Surface, 1440.0, 940.0)
+        patchRoom (narrow, 300.0, 430.0, 0.0)
+        tall = regionViewed (narrow, synth::Surface, 3000.0, 2000.0)
+        patchRoom (tall, 300.0, 430.0, 0.0)
+        back = regionViewed (tall, synth::PatchSurface, 1536.0, 828.0)
+        patchRoom (back, 0.0, 0.0, 0.0)
+        panelShowsChosen back)
+
+// The access tree of the scene bound to `wanted`, in that scene's units.
+sceneAccess (d, wanted) = match listGet (filterList (toList (range (0, length d.drivenSeen.renderedScenes)), \index => boundTo (d, listGet d.drivenSeen.renderedScenes index ?: -1, wanted))) 0
+    Error _ => []
+    Success index => match listGet (ui::Surfaces::seen (d.drivenSurface, d.drivenProgram)).walkSketches index
+        Error _ => []
+        Success drawing => drawing.sketchedAs.sketchAccess
+
+// How many rendered scenes the host binds to `wanted`.
+sceneCount (d, wanted) = length (filterList (d.drivenSeen.renderedScenes, \ordinal => boundTo (d, ordinal, wanted)))
+
+// A press and release on the patch window's canvas.
+patchClick (d, x, y) = sceneEvent (sceneEvent (d, synth::PatchSurface, ui::Hosting::pointer, x, y, true), synth::PatchSurface, ui::Hosting::pointer, x, y, false)
+
+// A label the chosen Gain module's properties or the canvas would carry.
+moduleProperty label = startsWith label "Inspector" || startsWith label "Gain 2 " || startsWith label "Canvas "
+
+// [DAW-PAGES-PATCH-WINDOW] A module chosen on the patch window's canvas shows its properties in the patch panel
+// docked in that window, never on the song window, and choosing the canvas's empty space puts the panel away.
+panelShowsChosen d =
+    expect (sceneCount (d, synth::Controls), 0)
+    viewShows (d, "Parameters", false)
+    cards = filterList (sceneAccess (d, synth::PatchSurface), \a => startsWith a.accessLabel "Canvas " && !contains a.accessLabel ":")
+    expect (length cards, 3)
+    reads (listGet (filterList (cards, \a => startsWith a.accessLabel "Canvas Gain")) 0, \card =>
+        chosen = patchClick (d, card.accessLeft + card.accessWidth / 2.0, card.accessTop + 16.0)
+        expect ((Drive::holding chosen).selected, 2)
+        expect ((Drive::holding chosen).detailsShown, false)
+        expect (sceneCount (chosen, synth::Controls), 1)
+        viewShows (chosen, "Parameters", true)
+        reads (dialOf (chosen, "Gain"), \dial => expect (dial.accessWidth > 0.0, true))
+        expect ((Drive::holding chosen).page, synth::TimelinePage)
+        song = sceneAccess (chosen, synth::Surface)
+        expect (length (filterList (song, \a => startsWith a.accessLabel "Track ")) > 0, true)
+        expect (mapList (filterList (song, \a => moduleProperty a.accessLabel), \a => a.accessLabel), []))

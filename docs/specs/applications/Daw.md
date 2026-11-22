@@ -4,6 +4,10 @@ Status: in progress. The daw runs on the FerroUI host. It opens a project, shows
 
 The daw is the [Prism](../../../src/osprey/examples/daw/PRISM.md) patch studio with a song around it. A project is **one big graph of cables** ([DAW-GRAPH]): tracks, buses, the Space reverb and Master are its nodes, and every route ends at Master. **A patch is a subgraph**: the same kind of graph, nested inside a track. The app opens a project, shows its tracks on a timeline and lets you edit a track's notes, mix and patch. It plays the song as it currently stands and saves everything back to the same file.
 
+## Install on macOS [DAW-MACOS-INSTALL]
+
+Run `make -C src/toolchain/targets/macos prism` to install **Prism** in Applications. Open it from Spotlight. The first launch copies the example project into Application Support so reinstalling Prism preserves edits to it. Set `SONG=<project.json>` to open another project after installation.
+
 ## Built around the person using it [DAW-HUMAN]
 
 The daw is designed from the work of the person using it: writing a part, hearing it, mixing it and routing it. Each change to a screen starts from one of those tasks, is tried in the running app by someone doing that task, and is revised from what they found, the process ISO 9241-210 describes for human-centred design. The rules below are what that process has settled so far, and each one is checked in the app.
@@ -250,7 +254,7 @@ The daw answers Open Sound Control over UDP, so a control surface, a lighting de
 
 **A render takes at most a fifth of the song's length ([DAW-PERF-RENDER]).** Offline rendering compresses time: a render that runs at real time, or slower, has failed. A 5 minute song with basic tracks and routing renders, through the whole graph into Master and onto disk, in about one minute or less. No project in `tracks/`, however dense its patches, takes more than half its length. Anything slower is a defect that needs optimising. Every pointer event must answer within one display frame. The [plan](../../plans/daw.md) holds the profile, the owners and the targets: two bars of the codex project in under 14 s, and a Prism drag move under 5 ms mean.
 
-**Track patch windows [DAW-PAGES-PATCH-WINDOW].** Opening a track patch keeps its arrangement window open. Patch controls edit the same song. Closing the patch window leaves the arrangement available, and reopening the track restores its saved nodes, cables and control values.
+**Track patch windows [DAW-PAGES-PATCH-WINDOW].** Opening a track patch keeps its arrangement window open. Patch controls edit the same song. Closing the patch window leaves the arrangement available, and reopening the track restores its saved nodes, cables and control values. Choosing a module on the patch window's canvas shows its properties in the patch panel docked in that window, never on the arrangement window. Each window keeps its own size: the patch window's panel and toolbar sit inside the patch window however the arrangement window is sized, and the song page stays centred in its own window.
 
 **VST3 editor windows [PRISM-ROUTING-VST-WINDOW].** On macOS, select a hosted node in Patch Controls and choose Open plug-in window. Prism opens the vendor’s native editor for that node, exchanges normalized parameter changes with the patch, and lets the user focus or close the editor. An unresponsive editor times out independently and the patch controls remain available.
 

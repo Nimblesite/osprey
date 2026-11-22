@@ -381,4 +381,107 @@ theorem rotationUnitPower (ops : Ops α) (current previous : Bin α) :
   rw [ratio, ratio, square, join]
   exact unit
 
+/-! Mixing [SYNTH-DSP-PROOFS-MIXING]. Puckette, Theory and Technique of Electronic Music,
+    §1.6 "Superposing Signals": P{x[n] + y[n]} = P{x[n]} + P{y[n]} + 2·COV{x[n], y[n]},
+    and a signal scaled by k has k² times its power. MIDI Manufacturers Association,
+    RP-036 "Default Pan Formula": left gain cos(π/2·p), right gain sin(π/2·p). -/
+
+/-- A silent bus mixed with x at gain g and y at gain h holds g·x + h·y, whichever
+    signal arrives first: the production send is Puckette's superposition. -/
+theorem mixSuperposition (ops : Ops α) (g h x y : α)
+    (zeroPlus : ∀ a, ops.plus (ops.literal 0) a = a)
+    (plusComm : ∀ a b, ops.plus a b = ops.plus b a) :
+    ArrangeMath.bused ops (ArrangeMath.bused ops (ops.literal 0) g x) h y =
+        ops.plus (ops.times g x) (ops.times h y) ∧
+      ArrangeMath.bused ops (ArrangeMath.bused ops (ops.literal 0) h y) g x =
+        ops.plus (ops.times g x) (ops.times h y) := by
+  unfold ArrangeMath.bused
+  rw [zeroPlus, zeroPlus]
+  exact ⟨rfl, plusComm _ _⟩
+
+/-- Summed squares of a window: N times Puckette's mean power P. -/
+def energy (ops : Ops α) : List α → α
+  | [] => ops.literal 0
+  | x :: xs => ops.plus (ops.times x x) (energy ops xs)
+
+/-- Summed products of two windows: N times Puckette's covariance COV. -/
+def crossed (ops : Ops α) : List α → List α → α
+  | x :: xs, y :: ys => ops.plus (ops.times x y) (crossed ops xs ys)
+  | _, _ => ops.literal 0
+
+/-- Two windows sent sample by sample onto a silent bus through the production kernel. -/
+def mixed (ops : Ops α) (g h : α) : List α → List α → List α
+  | x :: xs, y :: ys => ArrangeMath.bused ops (ArrangeMath.bused ops (ops.literal 0) g x) h y :: mixed ops g h xs ys
+  | _, _ => []
+
+/-- Puckette's power of a sum, derived as he derives it by expanding each squared
+    sample: the mix's power is g²·P{x} + h²·P{y} + 2·gh·COV{x, y}, scaled by the
+    common window length. Uncorrelated signals (COV = 0) add their powers. -/
+theorem mixPower (ops : Ops α) (g h : α) (xs ys : List α) (same : xs.length = ys.length)
+    (zeroPlus : ∀ a, ops.plus (ops.literal 0) a = a)
+    (timesZero : ∀ a, ops.times a (ops.literal 0) = ops.literal 0)
+    (plusComm : ∀ a b, ops.plus a b = ops.plus b a)
+    (plusAssoc : ∀ a b c, ops.plus (ops.plus a b) c = ops.plus a (ops.plus b c))
+    (timesComm : ∀ a b, ops.times a b = ops.times b a)
+    (timesAssoc : ∀ a b c, ops.times (ops.times a b) c = ops.times a (ops.times b c))
+    (distrib : ∀ a b c, ops.times a (ops.plus b c) = ops.plus (ops.times a b) (ops.times a c)) :
+    energy ops (mixed ops g h xs ys) =
+      ops.plus (ops.plus (ops.times (ops.times g g) (energy ops xs)) (ops.times (ops.times h h) (energy ops ys)))
+        (ops.plus (ops.times (ops.times g h) (crossed ops xs ys)) (ops.times (ops.times g h) (crossed ops xs ys))) := by
+  have swap (a b c d : α) : ops.plus (ops.plus a b) (ops.plus c d) = ops.plus (ops.plus a c) (ops.plus b d) := by
+    rw [plusAssoc a b, ← plusAssoc b c d, plusComm b c, plusAssoc c b d, ← plusAssoc a c]
+  have pair (a b c d : α) : ops.times (ops.times a b) (ops.times c d) = ops.times (ops.times a c) (ops.times b d) := by
+    rw [timesAssoc a b, ← timesAssoc b c d, timesComm b c, timesAssoc c b d, ← timesAssoc a c]
+  have distribRight (a b c : α) : ops.times (ops.plus a b) c = ops.plus (ops.times a c) (ops.times b c) := by
+    rw [timesComm, distrib, timesComm c a, timesComm c b]
+  -- Puckette's expansion of one squared sample: (gx + hy)² = g²x² + h²y² + 2·gh·xy.
+  have square (x y : α) : ops.times (ops.plus (ops.times g x) (ops.times h y)) (ops.plus (ops.times g x) (ops.times h y)) =
+      ops.plus (ops.plus (ops.times (ops.times g g) (ops.times x x)) (ops.times (ops.times h h) (ops.times y y)))
+        (ops.plus (ops.times (ops.times g h) (ops.times x y)) (ops.times (ops.times g h) (ops.times x y))) := by
+    rw [distribRight, distrib, distrib, timesComm (ops.times h y) (ops.times g x), pair g x g x, pair h y h y, pair g x h y,
+      plusComm (ops.times (ops.times g h) (ops.times x y)) (ops.times (ops.times h h) (ops.times y y)), swap]
+  induction xs generalizing ys with
+  | nil =>
+    cases ys with
+    | nil =>
+      show ops.literal 0 = ops.plus (ops.plus (ops.times (ops.times g g) (ops.literal 0)) (ops.times (ops.times h h) (ops.literal 0)))
+        (ops.plus (ops.times (ops.times g h) (ops.literal 0)) (ops.times (ops.times g h) (ops.literal 0)))
+      rw [timesZero, timesZero, timesZero, zeroPlus, zeroPlus]
+    | cons _ _ => cases same
+  | cons x xs ih =>
+    cases ys with
+    | nil => cases same
+    | cons y ys =>
+      show ops.plus (ops.times (ops.plus (ops.plus (ops.literal 0) (ops.times g x)) (ops.times h y))
+          (ops.plus (ops.plus (ops.literal 0) (ops.times g x)) (ops.times h y))) (energy ops (mixed ops g h xs ys)) =
+        ops.plus (ops.plus (ops.times (ops.times g g) (ops.plus (ops.times x x) (energy ops xs)))
+          (ops.times (ops.times h h) (ops.plus (ops.times y y) (energy ops ys))))
+          (ops.plus (ops.times (ops.times g h) (ops.plus (ops.times x y) (crossed ops xs ys)))
+            (ops.times (ops.times g h) (ops.plus (ops.times x y) (crossed ops xs ys))))
+      rw [zeroPlus, square, ih ys (Nat.succ.inj same), swap, distrib (ops.times g g), distrib (ops.times h h),
+        distrib (ops.times g h), swap (ops.times (ops.times g g) (ops.times x x)), swap (ops.times (ops.times g h) (ops.times x y))]
+
+/-- RP-036's equal-power law in the production pan: both gains read one angle,
+    θ = π/4·(pan + 1), which is RP-036's π/2·p at p = (pan + 1)/2;
+    0x3fe921fb54442d18 is the binary64 π/4 read from the Osprey source. With the
+    Pythagorean identity cos²θ + sin²θ = 1 the two channel powers sum to one at every pan. -/
+theorem panEqualPower (ops : Ops α) (pan : α)
+    (pythagoras : ∀ θ, ops.plus (ops.times (ops.cos θ) (ops.cos θ)) (ops.times (ops.sin θ) (ops.sin θ)) = ops.literal 1) :
+    let θ := ops.times (ops.binary64 0x3fe921fb54442d18) (ops.plus pan (ops.literal 1))
+    ArrangeMath.panLeft ops pan = ops.cos θ ∧ ArrangeMath.panRight ops pan = ops.sin θ ∧
+      ops.plus (ops.times (ArrangeMath.panLeft ops pan) (ArrangeMath.panLeft ops pan))
+        (ops.times (ArrangeMath.panRight ops pan) (ArrangeMath.panRight ops pan)) = ops.literal 1 :=
+  ⟨rfl, rfl, pythagoras _⟩
+
+/-- RP-036's hard left: at pan −1 the angle is zero, so the left channel takes the
+    whole signal and the right is silent. -/
+theorem panHardLeft (ops : Ops α) (pan : α)
+    (edge : ops.plus pan (ops.literal 1) = ops.literal 0)
+    (timesZero : ∀ a, ops.times a (ops.literal 0) = ops.literal 0)
+    (cosZero : ops.cos (ops.literal 0) = ops.literal 1) (sinZero : ops.sin (ops.literal 0) = ops.literal 0) :
+    ArrangeMath.panLeft ops pan = ops.literal 1 ∧ ArrangeMath.panRight ops pan = ops.literal 0 := by
+  unfold ArrangeMath.panLeft ArrangeMath.panRight
+  rw [edge, timesZero]
+  exact ⟨cosZero, sinZero⟩
+
 end ProductionFft

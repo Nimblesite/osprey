@@ -3,6 +3,7 @@
 # boundary and opens it. Every step is bounded: nothing here can run unattended forever.
 #   prism.sh                  build and open; it stays open until you close it (PRISM_SECONDS=<n> closes it after n seconds, for scripts)
 #   prism.sh --bundle         build the macOS application without opening a window
+#   prism.sh --install        install Prism.app in Applications and register it with Launch Services
 #   prism.sh --shot <png>     build, open, wait PRISM_SETTLE seconds (default 6), capture the window, close
 #                             (PRISM_TAP="x,y;x,y" clicks those points in scene units before the capture)
 #   prism.sh --repaint <secs> build, open, rebuild and repaint the whole view every frame, print timings
@@ -25,6 +26,46 @@ export OSPREY_NATIVE_TITLE="Prism" OSPREY_NATIVE_WINDOW="$window_size" OSPREY_NA
     OSPREY_NATIVE_TITLE_BAR=50 OSPREY_NATIVE_APPEARANCE=dark
 machine="$repo/src/osprey/packages/signal_flow/signal_flow.machine.json"
 binary="${PRISM_BINARY:-$repo/target/release/ferroui-osprey-native}"
+worker="$repo/target/vst-worker/osprey-vst-worker"
+
+install_prism() (
+    applications=${PRISM_APPLICATIONS_DIR:-/Applications}
+    mkdir -p "$applications"
+    destination="$applications/Prism.app"
+    if [[ -e $destination || -L $destination ]]; then
+        [[ ! -L $destination && $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$destination/Contents/Info.plist" 2>/dev/null) == dev.ospreylang.prism ]] || {
+            echo "Cannot replace a different app at $destination" >&2
+            exit 1
+        }
+    fi
+    stage=$(mktemp -d "$applications/.prism-install.XXXXXX")
+    trap 'if [[ -d $stage/previous.app && ! -e $destination ]]; then mv "$stage/previous.app" "$destination"; fi; rm -rf "$stage"' EXIT
+    /usr/bin/ditto "$bundle" "$stage/Prism.app"
+    packed="$stage/Prism.app/Contents"
+    /usr/libexec/PlistBuddy -c 'Add :CFBundleVersion string 1' "$packed/Info.plist"
+    /usr/bin/install -m 755 "${PRISM_RENDERER:-$repo/target/daw/daw}" "$packed/MacOS/daw"
+    [[ ! -x $worker ]] || /usr/bin/install -m 755 "$worker" "$packed/MacOS/osprey-vst-worker"
+    /usr/bin/install -m 644 "$machine" "$packed/Resources/signal_flow.machine.json"
+    /usr/bin/ditto "$(dirname "$machine")/skins/prism" "$packed/Resources/skins/prism"
+    /usr/bin/install -m 644 "$repo/src/osprey/examples/daw/tracks/codex-version.json" "$packed/Resources/codex-version.json"
+    sample=src/osprey/examples/daw/tracks/samples/808-kick.wav
+    mkdir -p "$packed/Resources/$(dirname "$sample")"
+    /usr/bin/install -m 644 "$repo/$sample" "$packed/Resources/$sample"
+    /usr/bin/install -m 755 "$here/scripts/Prism-launch.sh" "$packed/MacOS/Prism"
+    [[ ! -d $destination ]] || mv "$destination" "$stage/previous.app"
+    mv "$stage/Prism.app" "$destination"
+    if [[ $applications == /Applications ]]; then
+        /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$destination"
+    fi
+    echo "Installed $destination"
+    if [[ -n ${PRISM_PROJECT:-} ]]; then
+        project=$PRISM_PROJECT
+        [[ $project = /* ]] || project="$PWD/$project"
+        [[ -r $project ]] || { echo "Cannot open project: $project" >&2; exit 1; }
+        open -n "$destination" --args --project "$project"
+    fi
+)
+
 # Launch the host inside its bundle so AppKit uses the Prism artwork for the Dock.
 if [[ ${1:-} == --finder ]]; then
     binary=$2
@@ -50,8 +91,11 @@ else
         echo "$bundle"
         exit 0
     fi
+    if [[ ${1:-} == --install ]]; then
+        install_prism
+        exit 0
+    fi
 fi
-worker="$repo/target/vst-worker/osprey-vst-worker"
 launch=(--machine "$machine")
 [ -x "$worker" ] && launch+=(--vst-worker "$worker")
 if [ -n "${PRISM_PROJECT:-}" ]; then

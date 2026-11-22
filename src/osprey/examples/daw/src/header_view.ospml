@@ -149,7 +149,7 @@ module Header
         [TimelineView::box (0.0, 909.0, 1440.0, 1.0, rule (), 3), TimelineView::box (22.0, 921.0, 8.0, 8.0, ui::Pick::either (live, sounding (), TimelineView::dim ()), 3), TimelineView::label (phase, 37.0, 918.0, 11.0, ui::Pick::either (live, sounding (), quiet ()), 0, 3), TimelineView::label ("${intDiv editor.song.sampleRate 1000} kHz", 119.0, 918.0, 11.0, quiet (), 0, 3), TimelineView::label ("Stereo", 184.0, 918.0, 11.0, quiet (), 0, 3), TimelineView::label (editor.message, 260.0, 918.0, 11.0, TimelineView::accent (), 0, 3), TimelineView::label (route editor, 1416.0, 918.0, 11.0, quiet (), 2, 3)]
 
     (** How far right a song page starts in a region wider than the page ([DAW-HEADER]). *)
-    export shift editor = TimelineGeometry::centred (ui::Machines::number (editor.skin, "viewWidth"), ui::Machines::number (editor.skin, "viewHeight"))
+    export shift editor = TimelineGeometry::centred (editor.songWidth, editor.songHeight)
 
     (** Translate a primitive and place it on the requested drawing layer. *)
     export placedShape (primitive, dx, dy, layer) = match primitive

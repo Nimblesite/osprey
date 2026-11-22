@@ -53,9 +53,9 @@ The [daw specification](../specs/applications/Daw.md) defines the requirements. 
 
 ## Where the work stands at the 15:30 shutdown, 2026-11-21
 
-Everything below is committed on `feat/consolidated`; nothing is pushed. `make -C src/toolchain/targets/macos daw` builds the renderer and the app from this tree (both checked at `2119e1f09`).
+Everything below is committed on `feat/consolidated`; nothing is pushed. `make -C src/toolchain/targets/macos prism` builds the renderer and app and installs Prism in Applications.
 
-In the code, not yet seen working by the user (rebuild with `make daw` first):
+In the code, not yet seen working by the user (rebuild with `make -C src/toolchain/targets/macos prism` first):
 
 - Play reads notes made ahead and kept on disk (`render/note_cache.ospml`); the makers are limited, low priority and end with their Play (`122da5982`).
 - The start and end markers drag independently (`1ab47ad22`); a held Gain or Pan fader follows the pointer (`a7ad62cae`); the piano roll's keys sound through the track's patch (`5a9f73628`).
@@ -121,6 +121,7 @@ Every issue the user raised while testing Prism by hand, with where it is tracke
 Found while fixing these:
 
 - [x] Restore the integrated DAW build after the synth error-type changes [DAW-TESTS]. On 21 November the reported ARC renderer command and the full macOS DAW archive both built. The renderer wrote 16,500 stereo frames for a project with a pre-fader send. A missing source failed without writing a WAV. The CLI regression in `cbefa7764` also checks the exact instrument error on both offline and live playback.
+- [x] Install Prism with `make -C src/toolchain/targets/macos prism` [DAW-MACOS-INSTALL]. Spotlight indexes `/Applications/Prism.app` as Prism. Opening by name launches the installed host with its bundled renderer. The packaging test checks the example project, the user's render cache, an explicit project and preservation of an edited example on reinstall.
 - [x] Both native event journeys passed against the integrated macOS DAW archive on 21 November (9c33cf379). The separate root `make test` run reached Rust coverage compilation before its four-minute timeout.
 
 - [x] [DAW-TRANSPORT-REFUSAL] Exercise Play with no project, an open project and no renderer, and playback already in progress. Each refusal must identify the condition and preserve the current project.

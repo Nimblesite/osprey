@@ -254,6 +254,8 @@ type Editor G P S M =
     dialOffset : int
     dialEntry : string
     fineHeld : bool
+    songWidth : float
+    songHeight : float
 
 type EditorAction =
     PatchSurface
