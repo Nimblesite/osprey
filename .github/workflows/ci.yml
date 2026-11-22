@@ -1336,6 +1336,7 @@ jobs:
             minutes: 5
             run: make -C src/toolchain/targets/tests qwen-pull-headless
           - part: Talon Bank
+            runner: macos-26
             minutes: 22
             run: make -C src/toolchain/targets/ios/tests bank
           - part: Workbench
