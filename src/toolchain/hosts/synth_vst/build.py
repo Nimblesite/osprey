@@ -358,21 +358,25 @@ def device_tests():
                 b"fact" + struct.pack("<II", 4, frames) + b"data" + struct.pack("<I", len(audio)) + audio)
     with subprocess.Popen([str(BUILD / "osprey-vst-worker"), "audio-device"], stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE) as child, ThreadPoolExecutor(max_workers=1) as reader:
+        def exchange(command):
+            child.stdin.write(command + b"\n")
+            child.stdin.flush()
+            return json.loads(reader.submit(child.stdout.readline, 4096).result(timeout=5))
+
         try:
             for index, payload in enumerate([wave(2048), wave(2048), wave(2048)]):
-                child.stdin.write(payload.hex().encode() + b"\n")
-                child.stdin.flush()
-                receipt = json.loads(reader.submit(child.stdout.readline, 4096).result(timeout=5))
+                receipt = exchange(payload.hex().encode())
                 assert receipt["status"] == 0 and receipt["acceptedFrames"] == (index + 1) * 2048, receipt
                 assert receipt["queuedFrames"] <= 6144 and receipt["channels"] == 2, receipt
-            time.sleep(.25)
-            child.stdin.write(wave(256).hex().encode() + b"\n")
-            child.stdin.flush()
-            receipt = json.loads(reader.submit(child.stdout.readline, 4096).result(timeout=5))
-            assert receipt["emptyCallbacks"] > 0 and receipt["acceptedFrames"] == 6400, receipt
-            child.stdin.write(b"!drain\n")
-            child.stdin.flush()
-            receipt = json.loads(reader.submit(child.stdout.readline, 4096).result(timeout=5))
+            deadline = time.monotonic() + 3
+            receipt = exchange(b"!status")
+            while receipt["emptyCallbacks"] == 0 and time.monotonic() < deadline:
+                time.sleep(.01)
+                receipt = exchange(b"!status")
+            assert receipt["emptyCallbacks"] > 0 and receipt["queuedFrames"] == 0, receipt
+            receipt = exchange(wave(256).hex().encode())
+            assert receipt["acceptedFrames"] == 6400, receipt
+            receipt = exchange(b"!drain")
             assert receipt["returnedFrames"] == 6400 and receipt["queuedFrames"] == 0, receipt
             assert receipt["running"] is False, receipt
         finally:

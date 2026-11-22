@@ -192,8 +192,11 @@ int audioDevice() {
     while (std::cin.peek() != std::char_traits<char>::eof()) {
         if (std::cin.peek() == '!') {
             std::array<char, 16> command{};
-            if (!std::cin.getline(command.data(), command.size()) || std::string(command.data()) != "!drain") return failure("Unknown audio command");
-            if (!device.drain()) return failure(device.problem());
+            if (!std::cin.getline(command.data(), command.size())) return failure("Unknown audio command");
+            const std::string request(command.data());
+            if (request == "!drain") {
+                if (!device.drain()) return failure(device.problem());
+            } else if (request != "!status") return failure("Unknown audio command");
         } else {
             std::string bytes; Wave block;
             if (!readHex(std::cin, bytes, true) || !wave(bytes, block)) return failure("Invalid bounded 48 kHz float32 WAV block; output must be within -1..1");
