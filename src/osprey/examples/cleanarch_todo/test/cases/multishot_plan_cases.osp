@@ -35,12 +35,19 @@ fn planSeeds(listId, titles, flipped) = foldList(titles, { next: 1, rows: [] }, 
     rows: listAppend(walk.rows, TodoHarness::seedItem(walk.next, listId, title, listContains(flipped, title)))
 }).rows
 
+/// A seeded row exactly as every query reports it: priority "None", no note.
+fn planSpec(id, title, done) = ItemView { id: id, title: title, done: done, priority: "None", note: "" }
+
 /// The branch answer for rows `specs` (a seeded row exactly as every query reports it), the stored count and the flags.
-fn planPage(specs, total, hasPrevious, hasNext) = Success { value: ItemsPageView { rows: mapList(specs, fn(spec) => ItemView { id: spec.id, title: spec.title, done: spec.done, priority: "None", note: "" }), totalCount: total, hasPrevious: hasPrevious, hasNext: hasNext } }
+fn planPage(specs, total, hasPrevious, hasNext) = Success { value: ItemsPageView { rows: specs, totalCount: total, hasPrevious: hasPrevious, hasNext: hasNext } }
 
 /// The rows the `at`th branch answered ([] when the branch is missing or misshaped).
-fn planRows(answers, at) = match listGet(answers, at) {
-    Success { value: Success { value: ItemsPageView { rows } } } => rows
+/// What branch `at` answered. A nested `Success { value: Success { .. } }` pattern
+/// does not compile yet, so the cases read one level at a time.
+fn planAnswer(answers, at) = listGet(answers, at) ?: Error { message: NotFound { kind: "branch", id: at } }
+
+fn planRows(answers, at) = match planAnswer(answers, at) {
+    Success { value: ItemsPageView { rows } } => rows
     _ => []
 }
 
@@ -52,20 +59,20 @@ fn planIds(answers, at) = mapList(planRows(answers, at), fn(row) => row.id)
 fn planCount(answers, at) = length(planRows(answers, at))
 
 /// The totalCount the `at`th branch answered (0 - 1 when misshaped: every real total is >= 0).
-fn planTotal(answers, at) = match listGet(answers, at) {
-    Success { value: Success { value: ItemsPageView { totalCount } } } => totalCount
-    _ => 0 - 1
+fn planTotal(answers, at) = match planAnswer(answers, at) {
+    Success { value: ItemsPageView { totalCount } } => totalCount
+    _ => satSub(0, 1)
 }
 
 /// Both flags the `at`th branch answered: hasPrevious is `pageNumber > 1`, hasNext `page*size < total`.
-fn planFlags(answers, at, hasPrevious, hasNext) = match listGet(answers, at) {
-    Success { value: Success { value: page } } => page.hasPrevious == hasPrevious && page.hasNext == hasNext
+fn planFlags(answers, at, hasPrevious, hasNext) = match planAnswer(answers, at) {
+    Success { value: ItemsPageView { hasPrevious: before, hasNext: after } } => before == hasPrevious && after == hasNext
     _ => false
 }
 
 /// The `row`th row answered exactly as `spec`, with the seeded priority "None" and note "".
 fn planRowIs(answers, at, row, spec) = match listGet(planRows(answers, at), row) {
-    Success { value: answer } => answer.id == spec.id && answer.title == spec.title && answer.done == spec.done && answer.priority == "None" && answer.note == ""
+    Success { value: answer } => toString(answer) == toString(spec)
     _ => false
 }
 
@@ -85,10 +92,10 @@ module MultishotPlanCases {
     export fn planShapesOrderCase() = {
         let seeds = planSeeds(1, ["t", "o", "d", "s", "p", "n"], ["p"])
         let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Work", "#78909C")], seeds, PagePlan { listId: 1 })
-        let first5 = [{ id: 3, title: "d", done: false }, { id: 6, title: "n", done: false }, { id: 2, title: "o", done: false }, { id: 5, title: "p", done: true }, { id: 4, title: "s", done: false }]
-        let all6 = listAppend(first5, { id: 1, title: "t", done: false })
+        let first5 = [planSpec(3, "d", false), planSpec(6, "n", false), planSpec(2, "o", false), planSpec(5, "p", true), planSpec(4, "s", false)]
+        let all6 = listAppend(first5, planSpec(1, "t", false))
         // N=6: (1,5) five rows, hasNext 5 < 6 true; (2,5) the sixth alone; (1,10) and (1,50) all six
-        expect(plan.answers, [planPage(first5, 6, false, true), planPage([{ id: 1, title: "t", done: false }], 6, true, false), planPage(all6, 6, false, false), planPage(all6, 6, false, false)])
+        expect(plan.answers, [planPage(first5, 6, false, true), planPage([planSpec(1, "t", false)], 6, true, false), planPage(all6, 6, false, false), planPage(all6, 6, false, false)])
         checkAll("four resumptions in shapes() order; sorting is by title, not id or seed order", [
             structuralEquals(TodoProbe::shapes(), ["page 1 of 5", "page 2 of 5", "page 1 of 10", "page 1 of 50"]),
             length(TodoProbe::shapes()) == 4,
@@ -100,8 +107,8 @@ module MultishotPlanCases {
             planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 1, planCount(plan.answers, 2) == 6, planCount(plan.answers, 3) == 6,
             planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, false),
             planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
-            planRowIs(plan.answers, 0, 0, { id: 3, title: "d", done: false }), planRowIs(plan.answers, 0, 3, { id: 5, title: "p", done: true }),
-            planRowIs(plan.answers, 1, 0, { id: 1, title: "t", done: false }),
+            planRowIs(plan.answers, 0, 0, planSpec(3, "d", false)), planRowIs(plan.answers, 0, 3, planSpec(5, "p", true)),
+            planRowIs(plan.answers, 1, 0, planSpec(1, "t", false)),
             structuralEquals(plan.items, seeds),
             structuralEquals(plan.lists, [TodoHarness::seedList(1, "Work", "#78909C")])
         ])
@@ -165,7 +172,7 @@ module MultishotPlanCases {
     export fn planOneItemCase() = {
         let seeds = planSeeds(1, ["Q"], ["Q"])
         let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Solo", "#D98B2B")], seeds, PagePlan { listId: 1 })
-        let done = [{ id: 1, title: "Q", done: true }]
+        let done = [planSpec(1, "Q", true)]
         // totalCount 1: page 2 is empty; hasNext 5 < 1, 10 < 1 and 50 < 1 are all false
         expect(plan.answers, [planPage(done, 1, false, false), planPage([], 1, true, false), planPage(done, 1, false, false), planPage(done, 1, false, false)])
         checkAll("the single done row repeats on pages 1 of 5/10/50 and never on page 2", [
@@ -177,7 +184,7 @@ module MultishotPlanCases {
             planCount(plan.answers, 0) == 1, planCount(plan.answers, 1) == 0, planCount(plan.answers, 2) == 1, planCount(plan.answers, 3) == 1,
             planFlags(plan.answers, 0, false, false), planFlags(plan.answers, 1, true, false),
             planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
-            planRowIs(plan.answers, 0, 0, { id: 1, title: "Q", done: true }), planRowIs(plan.answers, 3, 0, { id: 1, title: "Q", done: true }),
+            planRowIs(plan.answers, 0, 0, planSpec(1, "Q", true)), planRowIs(plan.answers, 3, 0, planSpec(1, "Q", true)),
             structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["Q"]),
             structuralEquals(planStoredDones(plan.items), [true]),
             structuralEquals(plan.lists, [TodoHarness::seedList(1, "Solo", "#D98B2B")])
@@ -191,7 +198,7 @@ module MultishotPlanCases {
     export fn planFourItemsCase() = {
         let seeds = planSeeds(1, ["10", "2", "1", "20"], ["2"])
         let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Digits", "#4CAF50")], seeds, PagePlan { listId: 1 })
-        let rows = [{ id: 3, title: "1", done: false }, { id: 1, title: "10", done: false }, { id: 2, title: "2", done: true }, { id: 4, title: "20", done: false }]
+        let rows = [planSpec(3, "1", false), planSpec(1, "10", false), planSpec(2, "2", true), planSpec(4, "20", false)]
         // sorted 1(id3), 10(id1), 2(id2, done), 20(id4); N=4: (2,5) empty, all hasNext false
         expect(plan.answers, [planPage(rows, 4, false, false), planPage([], 4, true, false), planPage(rows, 4, false, false), planPage(rows, 4, false, false)])
         checkAll("title order 1,10,2,20 on pages 1 of 5/10/50; page 2 of 5 plans nothing", [
@@ -203,7 +210,7 @@ module MultishotPlanCases {
             planCount(plan.answers, 0) == 4, planCount(plan.answers, 1) == 0, planCount(plan.answers, 2) == 4, planCount(plan.answers, 3) == 4,
             planFlags(plan.answers, 0, false, false), planFlags(plan.answers, 1, true, false),
             planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
-            planRowIs(plan.answers, 0, 2, { id: 2, title: "2", done: true }), planRowIs(plan.answers, 3, 0, { id: 3, title: "1", done: false }),
+            planRowIs(plan.answers, 0, 2, planSpec(2, "2", true)), planRowIs(plan.answers, 3, 0, planSpec(3, "1", false)),
             structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["10", "2", "1", "20"]),
             structuralEquals(planStoredIds(plan.items), [1, 2, 3, 4]), structuralEquals(planStoredDones(plan.items), [false, false, true, false])
         ])
@@ -216,7 +223,7 @@ module MultishotPlanCases {
     export fn planExactlyFiveCase() = {
         let seeds = planSeeds(1, ["m", "k", "i", "g", "e"], [])
         let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Five", "#E05C4D")], seeds, PagePlan { listId: 1 })
-        let rows = [{ id: 5, title: "e", done: false }, { id: 4, title: "g", done: false }, { id: 3, title: "i", done: false }, { id: 2, title: "k", done: false }, { id: 1, title: "m", done: false }]
+        let rows = [planSpec(5, "e", false), planSpec(4, "g", false), planSpec(3, "i", false), planSpec(2, "k", false), planSpec(1, "m", false)]
         // sorted e(id5), g(id4), i(id3), k(id2), m(id1); N=5: (1,5) full with hasNext 5 < 5 false
         expect(plan.answers, [planPage(rows, 5, false, false), planPage([], 5, true, false), planPage(rows, 5, false, false), planPage(rows, 5, false, false)])
         checkAll("five rows on pages 1 of 5/10/50 and an empty page 2; the page boundary holds", [
@@ -229,7 +236,7 @@ module MultishotPlanCases {
             planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 0,
             planFlags(plan.answers, 0, false, false), planFlags(plan.answers, 1, true, false),
             planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
-            planRowIs(plan.answers, 0, 0, { id: 5, title: "e", done: false }), planRowIs(plan.answers, 0, 4, { id: 1, title: "m", done: false }),
+            planRowIs(plan.answers, 0, 0, planSpec(5, "e", false)), planRowIs(plan.answers, 0, 4, planSpec(1, "m", false)),
             structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["m", "k", "i", "g", "e"])
         ])
     }
@@ -241,8 +248,8 @@ module MultishotPlanCases {
     export fn planNineItemsCase() = {
         let seeds = planSeeds(1, ["j", "h", "f", "b", "d", "i", "g", "c", "e"], ["f"])
         let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Nine", "#AB47BC")], seeds, PagePlan { listId: 1 })
-        let first5 = [{ id: 4, title: "b", done: false }, { id: 8, title: "c", done: false }, { id: 5, title: "d", done: false }, { id: 9, title: "e", done: false }, { id: 3, title: "f", done: true }]
-        let last4 = [{ id: 7, title: "g", done: false }, { id: 2, title: "h", done: false }, { id: 6, title: "i", done: false }, { id: 1, title: "j", done: false }]
+        let first5 = [planSpec(4, "b", false), planSpec(8, "c", false), planSpec(5, "d", false), planSpec(9, "e", false), planSpec(3, "f", true)]
+        let last4 = [planSpec(7, "g", false), planSpec(2, "h", false), planSpec(6, "i", false), planSpec(1, "j", false)]
         let all9 = listConcat(first5, last4)
         // sorted b(4),c(8),d(5),e(9),f(3 done),g(7),h(2),i(6),j(1); N=9: 5 + 4 across the (1,5)/(2,5) seam
         expect(plan.answers, [planPage(first5, 9, false, true), planPage(last4, 9, true, false), planPage(all9, 9, false, false), planPage(all9, 9, false, false)])
@@ -256,7 +263,7 @@ module MultishotPlanCases {
             planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 4, planCount(plan.answers, 2) == 9, planCount(plan.answers, 3) == 9,
             planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, false),
             planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
-            planRowIs(plan.answers, 0, 4, { id: 3, title: "f", done: true }), planRowIs(plan.answers, 1, 0, { id: 7, title: "g", done: false }),
+            planRowIs(plan.answers, 0, 4, planSpec(3, "f", true)), planRowIs(plan.answers, 1, 0, planSpec(7, "g", false)),
             structuralEquals(plan.items, seeds),
             structuralEquals(planStoredTitles(plan.items), ["j", "h", "f", "b", "d", "i", "g", "c", "e"]),
             structuralEquals(planStoredDones(plan.items), [false, false, true, false, false, false, false, false, false])
@@ -270,8 +277,8 @@ module MultishotPlanCases {
     export fn planExactlyTenCase() = {
         let seeds = planSeeds(1, ["r", "p", "n", "l", "t", "j", "h", "f", "v", "x"], ["l"])
         let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Ten", "#78909C")], seeds, PagePlan { listId: 1 })
-        let first5 = [{ id: 8, title: "f", done: false }, { id: 7, title: "h", done: false }, { id: 6, title: "j", done: false }, { id: 4, title: "l", done: true }, { id: 3, title: "n", done: false }]
-        let last5 = [{ id: 2, title: "p", done: false }, { id: 1, title: "r", done: false }, { id: 5, title: "t", done: false }, { id: 9, title: "v", done: false }, { id: 10, title: "x", done: false }]
+        let first5 = [planSpec(8, "f", false), planSpec(7, "h", false), planSpec(6, "j", false), planSpec(4, "l", true), planSpec(3, "n", false)]
+        let last5 = [planSpec(2, "p", false), planSpec(1, "r", false), planSpec(5, "t", false), planSpec(9, "v", false), planSpec(10, "x", false)]
         let all10 = listConcat(first5, last5)
         // sorted f(8),h(7),j(6),l(4 done),n(3),p(2),r(1),t(5),v(9),x(10); N=10: page 2 of 5 is rows 6..10
         expect(plan.answers, [planPage(first5, 10, false, true), planPage(last5, 10, true, false), planPage(all10, 10, false, false), planPage(all10, 10, false, false)])
@@ -285,8 +292,8 @@ module MultishotPlanCases {
             planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 5, planCount(plan.answers, 2) == 10, planCount(plan.answers, 3) == 10,
             planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, false),
             planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
-            planRowIs(plan.answers, 0, 3, { id: 4, title: "l", done: true }), planRowIs(plan.answers, 1, 4, { id: 10, title: "x", done: false }),
-            planRowIs(plan.answers, 2, 9, { id: 10, title: "x", done: false }),
+            planRowIs(plan.answers, 0, 3, planSpec(4, "l", true)), planRowIs(plan.answers, 1, 4, planSpec(10, "x", false)),
+            planRowIs(plan.answers, 2, 9, planSpec(10, "x", false)),
             structuralEquals(plan.items, seeds),
             structuralEquals(planStoredTitles(plan.items), ["r", "p", "n", "l", "t", "j", "h", "f", "v", "x"])
         ])
@@ -299,9 +306,9 @@ module MultishotPlanCases {
     export fn planElevenItemsCase() = {
         let seeds = planSeeds(1, ["z1", "z9", "z3", "z7", "z5", "z2", "z8", "z4", "z6", "z0", "z5x"], ["z5x"])
         let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Eleven", "#26A69A")], seeds, PagePlan { listId: 1 })
-        let z04 = [{ id: 10, title: "z0", done: false }, { id: 1, title: "z1", done: false }, { id: 6, title: "z2", done: false }, { id: 3, title: "z3", done: false }, { id: 8, title: "z4", done: false }]
-        let z58 = [{ id: 5, title: "z5", done: false }, { id: 11, title: "z5x", done: true }, { id: 9, title: "z6", done: false }, { id: 4, title: "z7", done: false }, { id: 7, title: "z8", done: false }]
-        let all11 = listAppend(listConcat(z04, z58), { id: 2, title: "z9", done: false })
+        let z04 = [planSpec(10, "z0", false), planSpec(1, "z1", false), planSpec(6, "z2", false), planSpec(3, "z3", false), planSpec(8, "z4", false)]
+        let z58 = [planSpec(5, "z5", false), planSpec(11, "z5x", true), planSpec(9, "z6", false), planSpec(4, "z7", false), planSpec(7, "z8", false)]
+        let all11 = listAppend(listConcat(z04, z58), planSpec(2, "z9", false))
         // sorted z0(10),z1(1),z2(6),z3(3),z4(8),z5(5),z5x(11 done),z6(9),z7(4),z8(7),z9(2)
         expect(plan.answers, [planPage(z04, 11, false, true), planPage(z58, 11, true, true), planPage(listConcat(z04, z58), 11, false, true), planPage(all11, 11, false, false)])
         checkAll("5 + 5 + 10 + 11 rows; z5x sorts between z5 and z6 by characters alone", [
@@ -314,8 +321,8 @@ module MultishotPlanCases {
             planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 5, planCount(plan.answers, 2) == 10, planCount(plan.answers, 3) == 11,
             planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, true),
             planFlags(plan.answers, 2, false, true), planFlags(plan.answers, 3, false, false),
-            planRowIs(plan.answers, 1, 1, { id: 11, title: "z5x", done: true }), planRowIs(plan.answers, 3, 10, { id: 2, title: "z9", done: false }),
-            planRowIs(plan.answers, 0, 0, { id: 10, title: "z0", done: false }),
+            planRowIs(plan.answers, 1, 1, planSpec(11, "z5x", true)), planRowIs(plan.answers, 3, 10, planSpec(2, "z9", false)),
+            planRowIs(plan.answers, 0, 0, planSpec(10, "z0", false)),
             structuralEquals(plan.items, seeds),
             structuralEquals(planStoredTitles(plan.items), ["z1", "z9", "z3", "z7", "z5", "z2", "z8", "z4", "z6", "z0", "z5x"])
         ])
@@ -328,8 +335,8 @@ module MultishotPlanCases {
     export fn planSortStressCase() = {
         let seeds = planSeeds(1, ["b", "A", "10", "2", "aa", "B", "1", "20", "c"], ["A"])
         let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Mixed", "#D98B2B")], seeds, PagePlan { listId: 1 })
-        let first5 = [{ id: 7, title: "1", done: false }, { id: 3, title: "10", done: false }, { id: 4, title: "2", done: false }, { id: 8, title: "20", done: false }, { id: 2, title: "A", done: true }]
-        let last4 = [{ id: 6, title: "B", done: false }, { id: 5, title: "aa", done: false }, { id: 1, title: "b", done: false }, { id: 9, title: "c", done: false }]
+        let first5 = [planSpec(7, "1", false), planSpec(3, "10", false), planSpec(4, "2", false), planSpec(8, "20", false), planSpec(2, "A", true)]
+        let last4 = [planSpec(6, "B", false), planSpec(5, "aa", false), planSpec(1, "b", false), planSpec(9, "c", false)]
         let all9 = listConcat(first5, last4)
         // sorted 1(7),10(3),2(4),20(8),A(2 done),B(6),aa(5),b(1),c(9) from seeds [b,A,10,2,aa,B,1,20,c]
         expect(plan.answers, [planPage(first5, 9, false, true), planPage(last4, 9, true, false), planPage(all9, 9, false, false), planPage(all9, 9, false, false)])
@@ -343,8 +350,8 @@ module MultishotPlanCases {
             planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 4, planCount(plan.answers, 2) == 9, planCount(plan.answers, 3) == 9,
             planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, false),
             planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
-            planRowIs(plan.answers, 0, 4, { id: 2, title: "A", done: true }), planRowIs(plan.answers, 1, 0, { id: 6, title: "B", done: false }),
-            planRowIs(plan.answers, 1, 3, { id: 9, title: "c", done: false }),
+            planRowIs(plan.answers, 0, 4, planSpec(2, "A", true)), planRowIs(plan.answers, 1, 0, planSpec(6, "B", false)),
+            planRowIs(plan.answers, 1, 3, planSpec(9, "c", false)),
             structuralEquals(plan.items, seeds),
             structuralEquals(planStoredTitles(plan.items), ["b", "A", "10", "2", "aa", "B", "1", "20", "c"]),
             structuralEquals(planStoredIds(plan.items), [1, 2, 3, 4, 5, 6, 7, 8, 9])
@@ -364,13 +371,13 @@ module MultishotPlanCases {
         let three = TodoHarness::probed(TodoHarness::admin(), lists, seeds, PagePlan { listId: 3 })
         // list 1 sorted a1(1),a2(3),a3(2 done),a4(4), N=4; list 2 sorted b1(2),b2(1),b3(4),b4(3 done),b5(5), N=5;
         // list 3 sorted c1(2),c2(3),c3(1),c4(5),c5(6),c6(4 done), N=6: (1,5) five rows hasNext true, (2,5) the sixth
-        let a = [{ id: 1, title: "a1", done: false }, { id: 3, title: "a2", done: false }, { id: 2, title: "a3", done: true }, { id: 4, title: "a4", done: false }]
-        let b = [{ id: 2, title: "b1", done: false }, { id: 1, title: "b2", done: false }, { id: 4, title: "b3", done: false }, { id: 3, title: "b4", done: true }, { id: 5, title: "b5", done: false }]
-        let c5 = [{ id: 2, title: "c1", done: false }, { id: 3, title: "c2", done: false }, { id: 1, title: "c3", done: false }, { id: 5, title: "c4", done: false }, { id: 6, title: "c5", done: false }]
-        let c = listAppend(c5, { id: 4, title: "c6", done: true })
+        let a = [planSpec(1, "a1", false), planSpec(3, "a2", false), planSpec(2, "a3", true), planSpec(4, "a4", false)]
+        let b = [planSpec(2, "b1", false), planSpec(1, "b2", false), planSpec(4, "b3", false), planSpec(3, "b4", true), planSpec(5, "b5", false)]
+        let c5 = [planSpec(2, "c1", false), planSpec(3, "c2", false), planSpec(1, "c3", false), planSpec(5, "c4", false), planSpec(6, "c5", false)]
+        let c = listAppend(c5, planSpec(4, "c6", true))
         expect(one.answers, [planPage(a, 4, false, false), planPage([], 4, true, false), planPage(a, 4, false, false), planPage(a, 4, false, false)])
         expect(two.answers, [planPage(b, 5, false, false), planPage([], 5, true, false), planPage(b, 5, false, false), planPage(b, 5, false, false)])
-        expect(three.answers, [planPage(c5, 6, false, true), planPage([{ id: 4, title: "c6", done: true }], 6, true, false), planPage(c, 6, false, false), planPage(c, 6, false, false)])
+        expect(three.answers, [planPage(c5, 6, false, true), planPage([planSpec(4, "c6", true)], 6, true, false), planPage(c, 6, false, false), planPage(c, 6, false, false)])
         checkAll("three asks, one list each; every ask sees the same untouched store", [
             one.readings == 6, two.readings == 6, three.readings == 6,
             length(one.answers) == 4, length(two.answers) == 4, length(three.answers) == 4,
@@ -384,8 +391,8 @@ module MultishotPlanCases {
             structuralEquals(planTitles(one.answers, 0), ["a1", "a2", "a3", "a4"]),
             structuralEquals(planTitles(two.answers, 0), ["b1", "b2", "b3", "b4", "b5"]),
             structuralEquals(planTitles(three.answers, 1), ["c6"]),
-            planRowIs(one.answers, 0, 2, { id: 2, title: "a3", done: true }), planRowIs(two.answers, 0, 3, { id: 3, title: "b4", done: true }),
-            planRowIs(three.answers, 1, 0, { id: 4, title: "c6", done: true }),
+            planRowIs(one.answers, 0, 2, planSpec(2, "a3", true)), planRowIs(two.answers, 0, 3, planSpec(3, "b4", true)),
+            planRowIs(three.answers, 1, 0, planSpec(4, "c6", true)),
             structuralEquals(one.items, seeds), structuralEquals(two.items, seeds), structuralEquals(three.items, seeds),
             structuralEquals(one.lists, lists), structuralEquals(three.lists, lists)
         ])
@@ -412,8 +419,8 @@ module MultishotPlanCases {
             planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 5, planCount(plan.answers, 2) == 10, planCount(plan.answers, 3) == 49,
             planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, true),
             planFlags(plan.answers, 2, false, true), planFlags(plan.answers, 3, false, false),
-            planRowIs(plan.answers, 0, 0, { id: 49, title: planWide(1), done: false }), planRowIs(plan.answers, 1, 4, { id: 40, title: planWide(10), done: false }),
-            planRowIs(plan.answers, 3, 48, { id: 1, title: planWide(49), done: false }),
+            planRowIs(plan.answers, 0, 0, planSpec(49, planWide(1), false)), planRowIs(plan.answers, 1, 4, planSpec(40, planWide(10), false)),
+            planRowIs(plan.answers, 3, 48, planSpec(1, planWide(49), false)),
             structuralEquals(planStoredDones(plan.items), mapList(planWidths(1, 49), fn(_w) => false))
         ])
     }
@@ -439,7 +446,7 @@ module MultishotPlanCases {
             planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 5, planCount(plan.answers, 2) == 10, planCount(plan.answers, 3) == 50,
             planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, true),
             planFlags(plan.answers, 2, false, true), planFlags(plan.answers, 3, false, false),
-            planRowIs(plan.answers, 0, 0, { id: 50, title: planWide(1), done: false }), planRowIs(plan.answers, 3, 49, { id: 1, title: planWide(50), done: false }),
+            planRowIs(plan.answers, 0, 0, planSpec(50, planWide(1), false)), planRowIs(plan.answers, 3, 49, planSpec(1, planWide(50), false)),
             structuralEquals(planStoredTitles(plan.items), mapList(planDescWidths(50), fn(w) => planWide(w)))
         ])
     }
@@ -466,8 +473,8 @@ module MultishotPlanCases {
             planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 5, planCount(plan.answers, 2) == 10, planCount(plan.answers, 3) == 50,
             planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, true),
             planFlags(plan.answers, 2, false, true), planFlags(plan.answers, 3, false, true),
-            planRowIs(plan.answers, 0, 0, { id: 51, title: planWide(1), done: false }), planRowIs(plan.answers, 3, 49, { id: 2, title: planWide(50), done: false }),
-            planRowIs(plan.answers, 2, 9, { id: 42, title: planWide(10), done: false }),
+            planRowIs(plan.answers, 0, 0, planSpec(51, planWide(1), false)), planRowIs(plan.answers, 3, 49, planSpec(2, planWide(50), false)),
+            planRowIs(plan.answers, 2, 9, planSpec(42, planWide(10), false)),
             structuralEquals(planStoredDones(plan.items), mapList(planWidths(1, 51), fn(_w) => false))
         ])
     }
@@ -479,7 +486,7 @@ module MultishotPlanCases {
     export fn planAnonymousPlanCase() = {
         let seeds = planSeeds(1, ["p4", "p1", "p3", "p2"], ["p2"])
         let plan = TodoHarness::probed(TodoHarness::anonymous(), [TodoHarness::seedList(1, "Open", "#5C6BC0")], seeds, PagePlan { listId: 1 })
-        let rows = [{ id: 2, title: "p1", done: false }, { id: 4, title: "p2", done: true }, { id: 3, title: "p3", done: false }, { id: 1, title: "p4", done: false }]
+        let rows = [planSpec(2, "p1", false), planSpec(4, "p2", true), planSpec(3, "p3", false), planSpec(1, "p4", false)]
         // sorted p1(2),p2(4 done),p3(3),p4(1); N=4: (2,5) empty with hasPrevious true, all hasNext false
         expect(plan.answers, [planPage(rows, 4, false, false), planPage([], 4, true, false), planPage(rows, 4, false, false), planPage(rows, 4, false, false)])
         checkAll("no sign-in needed to plan pages; four answers, store untouched", [
@@ -491,7 +498,7 @@ module MultishotPlanCases {
             planCount(plan.answers, 0) == 4, planCount(plan.answers, 1) == 0, planCount(plan.answers, 2) == 4, planCount(plan.answers, 3) == 4,
             planFlags(plan.answers, 0, false, false), planFlags(plan.answers, 1, true, false),
             planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
-            planRowIs(plan.answers, 0, 1, { id: 4, title: "p2", done: true }), planRowIs(plan.answers, 3, 3, { id: 1, title: "p4", done: false }),
+            planRowIs(plan.answers, 0, 1, planSpec(4, "p2", true)), planRowIs(plan.answers, 3, 3, planSpec(1, "p4", false)),
             structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["p4", "p1", "p3", "p2"]),
             structuralEquals(planStoredDones(plan.items), [false, false, true, false]),
             structuralEquals(plan.lists, [TodoHarness::seedList(1, "Open", "#5C6BC0")])

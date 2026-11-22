@@ -151,4 +151,12 @@ module TodoHarness {
                         items: perform Store.items()
                     }
                 })))))
+
+    /// The checks that failed, each as `label #position`: empty when every one
+    /// holds. `checkAll` takes only a list literal, so a computed list of checks
+    /// is asserted as `expect(TodoHarness::failures(label, checks), [])`.
+    export fn failures(label, checks) = foldList(checks, { at: 0, failed: [] }, fn(walk, holds) => match holds {
+        true => { at: satAdd(walk.at, 1), failed: walk.failed }
+        false => { at: satAdd(walk.at, 1), failed: listAppend(walk.failed, "${label} #${toString(walk.at)}") }
+    }).failed
 }

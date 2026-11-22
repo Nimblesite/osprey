@@ -425,16 +425,16 @@ module MultishotRetryCases {
         expect(orphan.settled, Success { value: CreatedId { value: 4 } })
         expect(bare.settled, Success { value: CreatedId { value: 1 } })
         checkAll("item ids follow the seed count; lost rows are restored; refusals burn no rival", [
-            structuralEquals(calm.items, listAppend(retryItems(), [
-                TodoItem { id: 4, listId: 1, title: "Nails", note: "", priority: LevelNone, done: false }])),
+            structuralEquals(calm.items, listAppend(retryItems(),
+                TodoItem { id: 4, listId: 1, title: "Nails", note: "", priority: LevelNone, done: false })),
             structuralEquals(retryTitles(calm.lists), ["Shopping", "Banking"]),
             structuralEquals(retryItemIds(twice.items), [1, 2, 3, 4]),
             structuralEquals(retryTitles(twice.lists), ["Shopping", "Banking", "X", "Y"]),
             structuralEquals(retryIds(twice.lists), [1, 2, 3, 4]),
             structuralEquals(lost.items, retryItems()), structuralEquals(retryIds(lost.lists), [1, 2, 3, 4, 5]),
             structuralEquals(empty.items, retryItems()), structuralEquals(retryIds(empty.lists), [1, 2]),
-            structuralEquals(orphan.items, listAppend(retryItems(), [
-                TodoItem { id: 4, listId: 42, title: "Nails", note: "", priority: LevelNone, done: false }])),
+            structuralEquals(orphan.items, listAppend(retryItems(),
+                TodoItem { id: 4, listId: 42, title: "Nails", note: "", priority: LevelNone, done: false })),
             structuralEquals(retryItemIds(bare.items), [1]), structuralEquals(retryIds(bare.lists), [1, 2, 3, 4]),
             calm.readings == 3, twice.readings == 3, lost.readings == 3,
             empty.readings == 3, orphan.readings == 3, bare.readings == 3,
