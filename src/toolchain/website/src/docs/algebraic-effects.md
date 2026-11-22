@@ -382,15 +382,15 @@ stopped: another install holds osprey.toml
 
 ### How many times a handler may resume
 
-A control operation also declares how many times its handler may call `resume`. The compiler checks every handler against it.
+A control operation also declares how many times its handler may call `resume`; the compiler checks each handler.
 
 | Declaration | The handler may resume | Status |
 |---|---|---|
 | `control acquire` (same as `control once acquire`) | At most once | Works on native targets |
 | `control many pick` | Any number of times | Works on every target, WebAssembly included |
-| `control abort quit` | Never | Planned; rejected at compile time today |
+| `control abort quit` | Never | Planned ([plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md)); rejected today |
 
-A `once` handler may resume zero times, as `busy` does. It may also try something twice before resuming, for example retrying a payment, as long as each path through it resumes at most once. In Python flavor, mark the operation `@control`, then `@once`, `@many` or `@replayable`.
+A `once` handler may resume zero times, as `busy` does. It may also retry, say a payment, as long as each path through it resumes at most once. In Python flavor, mark the operation `@control`, then `@once`, `@many` or `@replayable`.
 
 ### Resuming more than once: backtracking
 
@@ -422,9 +422,9 @@ serde 2, toml 1
 
 The first attempt conflicts, so the handler resumes the `toml` request again with `"1"`. Each resumption starts from the same point and runs its own branch; nothing before the request runs twice.
 
-The compiler turns the code after each request into an ordinary function value, so resuming twice is calling it twice. Nothing depends on the machine's stack, which is why the same program prints the same answer on WebAssembly and on every other target.
+The compiler turns the code after each request into an ordinary function value, so resuming twice is calling it twice. It needs no machine stack, so WebAssembly prints the same answer as every other target.
 
-Backtracking has safety rules. Going back reruns everything after the request, so a `many` handler rejects code that does something unsafe to repeat. Writing the lock file inside the search would write it once per attempt:
+Going back reruns everything after the request, so a `many` handler rejects code that is unsafe to repeat. Writing the lock file inside the search would write it once per attempt:
 
 ```osprey
 effect Versions { control many pick: fn(string) -> string }
@@ -450,7 +450,7 @@ print(locked)
 14:22: handler for `Versions.pick` may resume more than once, but the handled expression requires non-replayable effect `Files.write`; the whole handled expression's row is read, so move the non-replayable work outside the region
 ```
 
-Write the lock after the search finishes, or mark an operation `replayable` when repeating it is harmless. A `many` handler also cannot change a `mut` variable, and a search cannot span a spawned fiber or run inside a builtin's callback such as `mapList`'s; the compiler names the request it cannot capture. [Plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) tracks the work.
+Write the lock after the search finishes, or mark an operation `replayable` when repeating it is harmless. A `many` handler also cannot change a `mut` variable, and a search cannot span a spawned fiber or run inside a builtin's callback such as `mapList`'s; the compiler names the request it cannot capture.
 
 ## Where effects are used
 

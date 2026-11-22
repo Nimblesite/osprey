@@ -743,19 +743,25 @@ detachedRoomJourney () =
         patchScene = sceneBound (opened, synth::PatchSurface) ?: -1
         songScene = sceneBound (opened, synth::Surface) ?: -1
         expect (patchScene >= 0 && songScene >= 0 && patchScene != songScene, true)
-        patch = regionViewed (opened, synth::PatchSurface, 1536.0, 1008.0)
-        patchRoom (patch, 0.0, 180.0, 0.0)
-        song = regionViewed (patch, synth::Surface, 2600.0, 940.0)
-        patchRoom (song, 0.0, 180.0, 580.0)
-        wider = regionViewed (song, synth::PatchSurface, 1836.0, 1258.0)
-        patchRoom (wider, 300.0, 430.0, 580.0)
-        narrow = regionViewed (wider, synth::Surface, 1440.0, 940.0)
-        patchRoom (narrow, 300.0, 430.0, 0.0)
-        tall = regionViewed (narrow, synth::Surface, 3000.0, 2000.0)
-        patchRoom (tall, 300.0, 430.0, 0.0)
-        back = regionViewed (tall, synth::PatchSurface, 1536.0, 828.0)
-        patchRoom (back, 0.0, 0.0, 0.0)
-        panelShowsChosen back)
+        // Each resize: the window it measures, its width and height, then the room it leaves.
+        scenes = [synth::PatchSurface, synth::Surface, synth::PatchSurface, synth::Surface, synth::Surface, synth::PatchSurface]
+        rooms = [
+            [1536.0, 1008.0, 0.0, 180.0, 0.0],
+            [2600.0, 940.0, 0.0, 180.0, 580.0],
+            [1836.0, 1258.0, 300.0, 430.0, 580.0],
+            [1440.0, 940.0, 300.0, 430.0, 0.0],
+            [3000.0, 2000.0, 300.0, 430.0, 0.0],
+            [1536.0, 828.0, 0.0, 0.0, 0.0]
+        ]
+        expect (length scenes, length rooms)
+        panelShowsChosen (foldList (toList (range (0, length rooms)), opened, \(d, i) => resized (d, listGet scenes i ?: synth::Surface, listGet rooms i ?: []))))
+
+// The `wanted` window measured at the `room` row's width and height, checked against the patch room that row expects.
+resized (d, wanted, room) =
+    at = \index => listGet room index ?: -1.0
+    viewed = regionViewed (d, wanted, at 0, at 1)
+    patchRoom (viewed, at 2, at 3, at 4)
+    viewed
 
 // The access tree of the scene bound to `wanted`, in that scene's units.
 sceneAccess (d, wanted) = match listGet (filterList (toList (range (0, length d.drivenSeen.renderedScenes)), \index => boundTo (d, listGet d.drivenSeen.renderedScenes index ?: -1, wanted))) 0
@@ -766,9 +772,6 @@ sceneAccess (d, wanted) = match listGet (filterList (toList (range (0, length d.
 
 // How many rendered scenes the host binds to `wanted`.
 sceneCount (d, wanted) = length (filterList (d.drivenSeen.renderedScenes, \ordinal => boundTo (d, ordinal, wanted)))
-
-// A press and release on the patch window's canvas.
-patchClick (d, x, y) = sceneEvent (sceneEvent (d, synth::PatchSurface, ui::Hosting::pointer, x, y, true), synth::PatchSurface, ui::Hosting::pointer, x, y, false)
 
 // A label only the properties of the Gain module `identity` carry: the skin's canvas inspector or a dial named after the module.
 moduleProperty (label, identity) = startsWith label "Inspector" || startsWith label "Gain ${identity} "
@@ -806,12 +809,14 @@ mainPanelJourney () =
     built = patched ["sine", "gain", "output"]
     expect ((Drive::holding built).page, synth::PatchPage)
     expect ((Drive::holding built).patchWindowSerial, 0)
-    closed = Drive::press (built, "Close")
-    expect ((Drive::holding closed).selected, -1)
-    expect ((Drive::holding closed).detailsShown, false)
-    chooseGain (closed, synth::Surface, 1, \chosen =>
-        again = Drive::press (chosen, "Close")
-        expect ((Drive::holding again).selected, -1)
-        expect ((Drive::holding again).detailsShown, false)
+    chooseGain (closedPanel built, synth::Surface, 1, \chosen =>
+        again = closedPanel chosen
         expect (sceneCount (again, synth::Controls), 0)
         viewShows (again, "Parameters", false))
+
+// The panel's Close pressed: no module is chosen and no details are shown.
+closedPanel d =
+    closed = Drive::press (d, "Close")
+    expect ((Drive::holding closed).selected, -1)
+    expect ((Drive::holding closed).detailsShown, false)
+    closed
