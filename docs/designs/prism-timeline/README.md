@@ -22,6 +22,8 @@ On keysL, the Patch sends inspector shows four sends from the loss filter. Three
 
 ## Patch controls [DAW-CONTROLS-DIAL]
 
+Use the Instrument dial across Prism. Its recessed violet face sits inside a 270° track with a warm orange fill and a pale radial indicator. Compact module cards, Patch Controls and the Instrument face keep the same proportions at their control sizes. The focus ring sits outside the track, so the fill and indicator stay visible when the dial takes focus. [Instrument reference](instrument-play.png)
+
 The panel and module card share the same Drive value on keysL’s Waveshaper 4. The example opens at 1.40×, with zero bias and an output level of 0.60. Curve selects a named shape. Antialiasing and oversampling are switches. The ports show the actual connection from Loss filter 3 through Waveshaper 4 to Output 5. [Design screenshot](patch-controls.png) · [Fine adjustment in the inspector](dial-detail.png) · [Interactive dial prototype](patch-controls.html)
 
 Press the dial or its number and drag vertically. A 180-pixel upward drag traverses the range, and Shift reduces sensitivity tenfold. Sideways movement leaves the value in place. The orange arc starts at the minimum. Drive and decay use a logarithmic scale to give small values usable travel. On the keyboard, arrows step the value and Enter opens the numeric field. Double-press restores the module default, Escape cancels a drag, and one completed drag is one undo step. The prototype keeps edits in memory. The native implementation shares each parameter value with the project.
