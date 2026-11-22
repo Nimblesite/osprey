@@ -168,7 +168,7 @@ fn render_variant(
         .filter(|v| !v.fields.is_empty())
         .zip(cg.ctor_struct_ty(variant))
     else {
-        return Ok(cg.string_constant(variant));
+        return Ok(cg.string_constant(&written(variant)));
     };
     let src = cg.emit_reg(format!("inttoptr i64 %payload to {struct_ty}*"));
     let positional = view
@@ -176,16 +176,26 @@ fn render_variant(
         .first()
         .is_some_and(|(f, _)| osprey_ast::is_positional_field(f));
     let args = variant_arguments(cg, variant, &struct_ty, &src, &view.fields, inferred)?;
+    let name = written(variant);
     let fmt = if positional {
-        format!("{variant}({})", comma_join(&args, |_| "%s".into()))
+        format!("{name}({})", comma_join(&args, |_| "%s".into()))
     } else {
         let holes: Vec<&String> = view.fields.iter().map(|(f, _)| f).collect();
         format!(
-            "{variant} {{ {} }}",
+            "{name} {{ {} }}",
             comma_join(&holes, |f| format!("{f}: %s"))
         )
     };
     Ok(crate::runtime::format_sized(cg, &fmt, &args))
+}
+
+/// A variant as its source spells it in a pattern: `InvalidParameter`, never
+/// the namespace-encoded symbol `__osp_5x…` a namespaced union stores.
+fn written(variant: &str) -> String {
+    osprey_ast::symbol::demangle(variant).map_or_else(
+        || variant.to_owned(),
+        |source| source.rsplit("::").next().unwrap_or(&source).to_owned(),
+    )
 }
 
 fn variant_arguments(
