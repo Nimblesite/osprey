@@ -19,11 +19,11 @@
 
 Status: in progress. The daw runs on the FerroUI host. It opens a project, shows the Timeline, Mix and patch pages, saves edits into the project file, and plays bars through the engine. The [delivery plan](../../plans/daw.md) records what is verified.
 
-The daw is the [Prism](../../../src/osprey/examples/daw/PRISM.md) patch studio with a song around it. A project is **one big graph of cables** ([DAW-GRAPH]): tracks, buses, the Space reverb and Master are its nodes, and every route ends at Master. **A patch is a subgraph**: the same kind of graph, nested inside a track. The app opens a project, shows its tracks on a timeline and lets you edit a track's notes, mix and patch. It plays the song as it currently stands and saves everything back to the same file.
+The daw is the [Prism](../../../src/osprey/examples/daw/PRISM.md) patch studio with a song around it. It opens a project, lets you edit each track's notes, mix and patch, plays it and saves it back to the same file.
 
 ## Built around the person using it [DAW-HUMAN]
 
-The daw is designed from the work of the person using it: writing a part, hearing it, mixing it and routing it. Each change to a screen starts from one of those tasks, is tried in the running app by someone doing that task, and is revised from what they found, the process ISO 9241-210 describes for human-centred design. The rules below are what that process has settled so far, and each one is checked in the app.
+Each screen serves one task: writing a part, hearing it, mixing it or routing it. Each rule below is checked in the app.
 
 - **A screen holds what its task needs.** Timeline is for notes, Bus routing for the mix and where sound goes, Track patch for the sound itself. An element stays only if it does something or tells the user something they act on. Captions that repeat a title, controls that do nothing yet and pointers to another panel are removed.
 - **A value is changed where it is shown.** A slider, a note or a cable is edited in place. No screen asks the user to go somewhere else to change what it displays ([DAW-INSPECTOR]).
@@ -31,24 +31,22 @@ The daw is designed from the work of the person using it: writing a part, hearin
 - **The user's habits come first.** Shortcuts follow a keymap the user chooses or writes, so hands trained on another studio keep working ([DAW-KEYS]).
 - **Targets fit a hand.** A socket, a fader or a key is large enough to hit without aiming, and a control under the pointer wins over artwork that overlaps it.
 - **The app says what it is doing.** The footer names what is sounding and the last thing that happened. A failure says what failed in the user's terms and leaves the work as it was.
-- **Nothing is lost by exploring.** Edits undo in one step each, a page with nothing to show says so and offers the way forward, and leaving a page saves what was changed or keeps it open with the reason.
+- **Nothing is lost by exploring.** A page with nothing to show says so. Leaving a page saves what changed, or keeps the page open and says why.
 - **One look, one set of controls.** Every control is drawn in the Prism skin on a dark canvas, whatever the system's appearance, and every panel uses the controls of [DAW-CONTROLS]. A control that looks like it came from another app is a defect.
 - **Everything undoes.** Undo and Redo are standard editor commands and reach every edit on every page: notes, mix, routing, patch modules, cables and parameters. One user action is one undo step.
 
 ## Infinitely modular [DAW-MODULAR]
 
-Modularity is the principle the daw is built on. A patch holds any number of modules and cables, a track any patch, a project any number of tracks, buses and sends, and a bus can feed another bus.
+A patch holds any number of modules and cables, a track any patch, and a project any number of tracks, buses and sends. A bus can feed another bus.
 
 - **A module has fixed ports ([DAW-MODULAR-PORTS]).** Each module has a fixed set of inputs (audio, MIDI, control) and a single audio output, plus MIDI or OSC outputs where it makes them. The number of modules and cables is unbounded; a module's ports are not.
 - **An output fans out by itself ([DAW-MODULAR-FANOUT]).** A single output can feed any number of inputs. The user drags cables from the same output to each input they want, and every one receives the same signal. Splitting a signal needs no Split module, no extra step and no loss of level.
 - **Only what reaches the Output sounds ([DAW-PATCH-HEARD]).** A patch can hold any number of modules, but none of them does anything until its audio is cabled, directly or through other modules, to the patch's Output. Unwired modules are silent and cost nothing.
-- **Every channel has the project's layout ([DAW-MODULAR-LAYOUT]).** Every audio channel (track, bus, Space and Master) carries as many physical audio channels as the project's layout sets: mono, stereo (the default), 5.1, 7.1 or any other. Changing the layout changes it everywhere. A feature is added as a module, a command or a store that plugs into what exists, never as a special case in one screen.
+- **Every channel has the project's layout ([DAW-MODULAR-LAYOUT]).** Every audio channel (track, bus, Space and Master) carries as many physical audio channels as the project's layout sets: mono, stereo (the default), 5.1, 7.1 or any other. Changing the layout changes it everywhere. A feature is a module, a command or a store, never a special case in one screen.
 
 ### The project is a graph [DAW-GRAPH]
 
-**The project is one big graph of cables. A patch is a subgraph.** There is no other structure: no fixed mixer strip, no separate per-track pipeline, no second path for rendering. Everything the daw does with sound follows from these two sentences.
-
-A project is one graph. Its nodes are tracks, buses, the Space, the Master channel and the modules inside every patch. Its cables carry audio, MIDI and OSC between them. A patch is a subgraph: a graph of the same kind, nested inside a track node, whose inputs are the track's inputs and whose one Output is the track's output. Opening a track's patch is looking inside that node; the cables inside it and the cables between tracks, buses and Master are the same kind of cable in the same graph.
+**The project is one graph of cables. A patch is a subgraph.** Its nodes are tracks, buses, the Space, Master and the modules inside every patch. Its cables carry audio, MIDI and OSC. A patch is a graph of the same kind nested inside a track node: its inputs are the track's inputs, and its one Output is the track's output. There is no fixed mixer strip and no per-track pipeline.
 
 ```mermaid
 flowchart LR
@@ -71,15 +69,12 @@ flowchart LR
 
 - **Tracks are where sound starts.** A track originates audio from its patch. It can also take inputs: MIDI (its own notes, another track's MIDI, a live keyboard or OSC control) and audio (another track's output, a sidechain, a live instrument).
 - **Every track can go anywhere.** Audio and MIDI tracks alike can be cabled to any other node that accepts them: a bus, another track's input, a sidechain, the Space or Master. A track is not tied to a fixed strip.
-- **Master is the main output.** The Master channel is the graph's one output, and every route ends there, directly or through other nodes ([DAW-MIX-MASTER]). Master carries the project's channel layout: stereo by default, or mono, 5.1, 7.1 or any other layout.
-- **Playing and rendering are two different things, and both only ever take Master.** Both run the whole graph at once, every node together, block by block ([DAW-RENDER-PLAY]). **Playing** sends Master's output to the speakers and writes no file ([DAW-TRANSPORT-LIVE]). **Rendering** writes Master's output to the export file and plays nothing ([DAW-RENDER-MASTER]). No track is ever played or exported on its own.
-- **A patch is a subgraph ([DAW-GRAPH-SUBGRAPH]).** A track's patch is part of the project graph, nested inside the track node: any number of modules and cables, audio and MIDI inputs, and exactly one audio Output, which is the track's output into the rest of the graph. Play and render run the patch's modules in the same block loop as every bus and Master; a patch is never rendered on its own and then mixed in.
-
-The system's power is that routing is free. Any output can be cabled to any input that fits, so the ways to route a project are without limit.
+- **Master is the graph's one output ([DAW-GRAPH-OUTPUT], [DAW-MIX-MASTER]).** Every route ends there. Master carries the project's channel layout (stereo by default) and processes nothing unless the user adds modules to it ([DAW-TRANSPARENCY]).
+- **A patch is a subgraph ([DAW-GRAPH-SUBGRAPH]).** Its modules run in the same block loop as every bus and Master. A patch is never run on its own and mixed in later.
 
 - **A patch has an Output, not a master.** A patch ends in an **Output** module. There is no "Master" module inside a patch. A track's Output is routed to the project's main channel (Master) by default, and the user can route it to any bus instead ([DAW-MIX-BUS]).
 - **A patch has inputs.** A patch can declare audio inputs and MIDI inputs as modules of its own. What arrives on them (the track's notes, another track's audio, a sidechain, a live instrument) is whatever is routed to them, and the patch decides what to do with it by its cables. A patch that ignores an input simply leaves it unwired.
-- **Routing is cables.** Inside a patch and between tracks and buses, sound and control go where a cable or a route sends them and nowhere else. Nothing is connected implicitly except a track's Output to Master.
+- **Routing is cables.** Sound and control go only where a cable or a route sends them. The only implicit connection is a track's Output to Master.
 
 ## Controls [DAW-CONTROLS]
 
@@ -93,7 +88,7 @@ A text box that reformats while the user types, a control that only points at an
 
 ## Accessibility [DAW-ACCESS]
 
-Accessibility is taken as far as it goes, not to a minimum. Every command and every control can be used without a pointer, without sight and without sound.
+Every command and every control can be used without a pointer, without sight and without sound.
 
 - **Keyboard.** Every control takes focus, shows that it has it, and is operated by the keyboard. Tab order follows reading order. Every command has a shortcut and is in the command palette ([DAW-COMMANDS]).
 - **Assistive technology.** Every control reports its role, its name, its value with its unit, and its state to the platform's accessibility interface, and every change is announced. A control drawn on the canvas reports the same as a platform control would.
@@ -114,7 +109,7 @@ Everything the daw can do is a **command**: a stable name, a title, its argument
 
 Where a project is kept is a pluggable layer behind one interface: open, save, list and history. The project model does not know which store is in use.
 
-**Persistence is an abstraction ([DAW-STORE-ABSTRACT]).** Projects will move off the local file: they can live in the cloud or on local disk, and they will most likely be kept in a database. So nothing outside the store may read or write a project directly. The editor, the renderer and the commands open and save through the store interface, and the store is an effect, so a test or the app can swap the store without changing the code that uses it. **Not built yet:** today the daw calls `SongFiles` and file reads and writes directly. Putting them behind the store interface comes before any second store is added.
+**Persistence is an abstraction ([DAW-STORE-ABSTRACT]).** Nothing outside the store reads or writes a project directly. The editor, the engine and the commands open and save through the store interface. The store is an effect, so a test or the app can swap it. **Not built yet:** today the daw calls `SongFiles` and file reads and writes directly. Putting them behind the store interface comes before any second store is added.
 
 - **JSON file.** One project file on disk ([DAW-PROJECT]). This is what ships today.
 - **Database.** The project as rows, for large projects and shared libraries.
@@ -168,7 +163,7 @@ Not built: the daw has no MIDI port access yet.
 **Render song** runs the whole project graph, as it currently stands, and writes Master's output to the export file `<song>/song/song.wav`. That is all rendering is: Master, dumped to the export file. Rendering is not playing. A render sends nothing to the speakers, and Play writes no file. Both run the same engine on the same project snapshot ([DAW-RENDER-PLAY]).
 
 1. The app encodes the current project to `<song>/song/project.json` and empties the old `song.wav`, then runs `daw <project.json> <folder>` (no beats: the whole song, intro and sustains included) with a two-hour limit.
-2. Only a WAV longer than its header counts. A refusal shows the renderer's message: "Rendering failed: …". A finished render says "Rendered <path>." and plays nothing.
+2. Only a WAV longer than its header counts. A refusal shows the engine's message: "Rendering failed: …". A finished render says "Rendered <path>." and plays nothing.
 3. An unchanged project keeps its audio and says it "is already this project" without rendering.
 4. Play and Render song share one transport: while either is in flight, both refuse with "The song is already playing; Stop first." Stop cancels either one.
 
@@ -202,10 +197,10 @@ The Timeline zooms in time, and zooming is one gesture from wherever the hand al
 
 The compressor and the limiter are modules the user adds to a track's patch, a bus or Master, where the UI shows them like any other module. Nothing adds them by default, and Master has neither unless the user puts it there ([DAW-TRANSPARENCY]). Their formulas are [dynamics_math.ospml](../../../src/osprey/packages/synth/src/dynamics_math.ospml) ([SYNTH-DYNAMICS]). The components hold only state.
 
-- **Compressor ([DAW-DYNAMICS-COMPRESSOR]).** Feed-forward in the log domain (Giannoulis, Massberg and Reiss, JAES 2012). Threshold, ratio and a soft knee with a continuous slope. A detector blended between peak and RMS. Attack and release smooth the gain reduction, not the signal. The release is program-dependent: a fast and a slow detector run together and the deeper wins, so a transient recovers fast and dense material does not pump. A sidechain input with its own high-pass, automatic make-up gain, and a dry/wet mix for parallel compression. Channels are linked: every channel takes the reduction of the loudest.
+- **Compressor ([DAW-DYNAMICS-COMPRESSOR]).** Feed-forward in the log domain (Giannoulis, Massberg and Reiss, JAES 2012). Threshold, ratio and a soft knee with a continuous slope. A detector blended between peak and RMS. Attack and release smooth the gain reduction, not the signal. The release is program-dependent: a fast and a slow detector run together and the deeper wins. A sidechain input with its own high-pass, a make-up gain control and a dry/wet mix. Channels are linked: every channel takes the reduction of the loudest.
 - **Limiter ([DAW-DYNAMICS-LIMITER]).** A true-peak brickwall. The detector oversamples four times (ITU-R BS.1770-4) so peaks between samples count. The lowest required gain is held across the lookahead and averaged over the same window, so the gain has arrived when the peak leaves the delay: no overshoot and no clipping. The release is program-dependent like the compressor's. The output never exceeds the ceiling (default −1 dBTP).
 - **Multiband dynamics and EQ ([DAW-DYNAMICS-MULTIBAND]).** A multiband compressor and a multiband limiter split the signal with Linkwitz–Riley crossovers (3 to 5 bands, movable crossover points), which sum back flat when every band is left alone. Each band has its own threshold, ratio, knee, attack, release, make-up and solo/bypass. The multiband limiter holds each band under its own ceiling before the full-band true-peak limiter. They are modules the user adds to a patch, a bus or Master. There is no built-in Master chain. The EQ is the daw's parametric EQ ([DAW-EQ]). The synth package owns the native Osprey crossover and gain formulas. Acceptance: the crossovers sum flat within 0.01 dB, each band compresses only its own range, and a band limiter keeps its band under its own ceiling.
-- **Pitch effects ([DAW-PITCH-EFFECTS]).** The FFT pitch shifter ([SYNTH-SPECTRAL-PITCH-EFFECT], semitones ±12 and cents ±100) and autotune ([SYNTH-SPECTRAL-AUTOTUNE]) are effects on a track's audio, in its patch or on a bus. Autotune can follow the key and scale or the timeline's notes. The renderer compensates each one's declared latency, so a shifted or corrected track stays in time with the rest of the song.
+- **Pitch effects ([DAW-PITCH-EFFECTS]).** The FFT pitch shifter ([SYNTH-SPECTRAL-PITCH-EFFECT], semitones ±12 and cents ±100) and autotune ([SYNTH-SPECTRAL-AUTOTUNE]) are effects on a track's audio, in its patch or on a bus. Autotune can follow the key and scale or the timeline's notes. The engine compensates each one's declared latency, so a shifted or corrected track stays in time with the rest of the song.
 - **Meters ([DAW-DYNAMICS-METER]).** Both report gain reduction in dB, and the limiter reports true peak, in the Mix page.
 - **Proof ([DAW-DYNAMICS-PROOF]).** Tests hold a sine above the threshold to the curve within 0.01 dB, and hold full-scale inter-sample peaks under the ceiling.
 
@@ -213,7 +208,7 @@ The compressor and the limiter are modules the user adds to a track's patch, a b
 
 A project declares buses next to its tracks ([daw.td](../../../src/osprey/examples/daw/daw.td): `Bus`, `Equaliser`, `Compressor`). A track with `bus` set sums into that bus instead of Master; an empty `bus` goes straight to Master. A track may only name a bus the song declares. The Output chooser in Timeline and Mix lists Master and every declared group. Creating a stereo group and assigning the track writes a single project edit. Empty names, Master and case-insensitive duplicates are refused.
 
-**Every path ends in Master ([DAW-MIX-MASTER]).** Every audio track outputs to Master, and Master is where all the signals are mixed. A track can reach Master directly, through any chain of groups ([DAW-MIX-BUS-OUTPUT]), through its Space send, or through the internal outlet sends of its patch ([DAW-MIX-BUS-TAP]). However ad hoc the project's routing is, every route resolves to Master, and Master sums them all. No route ends anywhere else, so nothing a track plays is lost or written out on the side. The render writes that Master ([DAW-RENDER-MASTER]).
+**Every path ends in Master ([DAW-MIX-MASTER]).** A track reaches Master directly, through any chain of groups ([DAW-MIX-BUS-OUTPUT]), through its Space send or through its patch's outlet sends ([DAW-MIX-BUS-TAP]). Master sums them all. No route ends anywhere else.
 
 - **EQ ([DAW-MIX-BUS-EQ]).** Three bands from two one-pole splits at 250 Hz and 4 kHz, each with a gain from −24 to 24 dB. At 0 dB the bands add back up to the input.
 - **Compressor ([DAW-MIX-BUS-COMPRESSOR]).** Threshold, ratio 1–20, knee 0–24 dB, attack and release 0–2 s, using the [dynamics_math.ospml](../../../src/osprey/packages/synth/src/dynamics_math.ospml) curve and detector. Both sides take one gain.
@@ -265,7 +260,7 @@ The daw answers Open Sound Control over UDP, so a control surface, a lighting de
 
 ## Performance [DAW-PERF]
 
-**A render takes at most a fifth of the song's length ([DAW-PERF-RENDER]).** Offline rendering compresses time: a render that runs at real time, or slower, has failed. A 5 minute song with basic tracks and routing renders, through the whole graph into Master and onto disk, in about one minute or less. No project in `tracks/`, however dense its patches, takes more than half its length. Anything slower is a defect that needs optimising. Every pointer event must answer within one display frame. The [plan](../../plans/daw.md) holds the profile, the owners and the targets: two bars of the codex project in under 14 s, and a Prism drag move under 5 ms mean.
+**A render takes at most a fifth of the song's length ([DAW-PERF-RENDER]).** A render that runs at real time, or slower, has failed. A 5 minute song with basic tracks and routing renders, through the whole graph into Master and onto disk, in about one minute or less. No project in `tracks/`, however dense its patches, takes more than half its length. Anything slower is a defect. Every pointer event must answer within one display frame. The [plan](../../plans/daw.md) holds the profile, the owners and the targets: two bars of the codex project in under 14 s, and a Prism drag move under 5 ms mean.
 
 **Track patch windows [DAW-PAGES-PATCH-WINDOW].** Opening a track patch keeps its arrangement window open. Patch controls edit the same song. Closing the patch window leaves the arrangement available, and reopening the track restores its saved nodes, cables and control values.
 
@@ -290,21 +285,21 @@ One window shows three views of one session. **Timeline** shows the tracks, the 
 | --- | --- | --- |
 | Tracks, song overview, piano roll and track inspector | The selected track's patch in Prism | Gain, pan and Space send per track, saved on release |
 
-**Play** plays in real time from the start marker to the end marker ([DAW-TRANSPORT-LIVE]). **Save project** writes the current track patch and its layout alongside the timeline and mix without changing the view. Render a full song with `make -C src/toolchain/targets/macos daw-render`.
+**Save project** writes the current track patch and its layout alongside the timeline and mix without changing the view. Render a full song with `make -C src/toolchain/targets/macos daw-render`.
 
 ### Video journey [DAW-VIDEO]
 
-`make -C src/toolchain/targets/macos/tests daw-video` opens the codex project in a real window and clicks and drags it the way a user does. On the Timeline it selects glass at bar 19, drags a note's velocity and the track's Space send. On the Patch page it drags a Delay in from the module list, wires it between the smoother and the output, inspects the partials and auditions the patch. On Mix it pulls a send, which shows the side-chained group bus, then opens the Space reverb. Back on the Timeline it presses **Play**, which renders the edited bars. `PRISM_BINARY` pins the host, so a concurrent rebuild cannot move the controls during a take. After every step a window screenshot must differ from the one before, and Play must write readable audio, or the journey fails. It records the window to `target/daw-video/prism-journey.mp4`, with the rendered bars as the soundtrack at the moment they play, and keeps the step screenshots beside it. Live auditions are not in the soundtrack, because the host plays them without writing a file.
+`make -C src/toolchain/targets/macos/tests daw-video` opens the codex project in a real window and clicks and drags it the way a user does. On the Timeline it selects glass at bar 19, drags a note's velocity and the track's Space send. On the Patch page it drags a Delay in from the module list, wires it between the smoother and the output, inspects the partials and auditions the patch. On Mix it pulls a send, which shows the side-chained group bus, then opens the Space reverb. Back on the Timeline it presses **Play**. `PRISM_BINARY` pins the host, so a concurrent rebuild cannot move the controls during a take. After every step a window screenshot must differ from the one before, and Play must reach the audio device, or the journey fails. It records the window to `target/daw-video/prism-journey.mp4`, with the Master blocks Play sent to the device as the soundtrack, and keeps the step screenshots beside it.
 
 ## Math [DAW-MATH]
 
-[arrange_math.ospml](../../../src/osprey/examples/daw/src/arrange_math.ospml) holds timing, envelopes, pan, mix ranges and the excerpt window. [timeline_geometry.ospml](../../../src/osprey/examples/daw/src/timeline_geometry.ospml) holds bars and page geometry. The renderer calls the native arrangement functions. The synthesis proof suite checks sustain and release against `ArrangeMath.enveloped`, the device-clock bounds against `TimelineGeometry.heardSeconds`, the drag threshold against `DialMath.moved`, and the pointer offset against the canvas geometry.
+[arrange_math.ospml](../../../src/osprey/examples/daw/src/arrange_math.ospml) holds timing, envelopes, pan, mix ranges and the excerpt window. [timeline_geometry.ospml](../../../src/osprey/examples/daw/src/timeline_geometry.ospml) holds bars and page geometry. The engine calls the native arrangement functions. The synthesis proof suite checks sustain and release against `ArrangeMath.enveloped`, the device-clock bounds against `TimelineGeometry.heardSeconds`, the drag threshold against `DialMath.moved`, and the pointer offset against the canvas geometry.
 
 ## Scope [DAW-SCOPE]
 
 The [Timeline designs](../../designs/prism-timeline/README.md) propose more than this application ships. Only the parts with a clear use are in scope:
 
 - The current app includes the timeline and piano roll, one patch per track, main outputs, stereo groups, group sidechains and the independent Space send. Transport and project commands are available from the menu bar.
-- Nested racks and routing one bus into another still require renderer and editor support. A detached Timeline requires a second FerroUI window sharing the project session.
-- **Channels ([SYNTH-GRAPH-CHANNELS]):** stereo by default with unlimited channels; each track and Master declare their layout in the project file, in the proposed model. Split, Join and Route already carry multichannel audio inside saved patches. At the track boundary, the offline renderer folds a stereo sink to mono before panning.
+- Nested racks still require engine and editor support. A detached Timeline requires a second FerroUI window sharing the project session.
+- **Channels ([SYNTH-GRAPH-CHANNELS]):** stereo by default with unlimited channels; each track and Master declare their layout in the project file, in the proposed model. Split, Join and Route already carry multichannel audio inside saved patches. At the track boundary, the engine folds a stereo sink to mono before panning.
 - **Engine limits:** the engine is mono per track before panning and allows at most 64 tracks. Its limits are documented in the [daw README](../../../src/osprey/examples/daw/README.md).
