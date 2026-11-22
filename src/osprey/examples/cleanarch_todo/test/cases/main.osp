@@ -8,10 +8,13 @@ import todo::EdgeCases
 import todo::ItemsCases
 import todo::ListsCases
 import todo::MultishotAuthzCases
+import todo::MultishotAuthzGuardCases
 import todo::MultishotCases
 import todo::MultishotMatrixCases
 import todo::MultishotPlanCases
+import todo::MultishotPlanListsCases
 import todo::MultishotRetryCases
+import todo::MultishotRetryItemsCases
 import todo::MultishotValidateCases
 import todo::PipelineCases
 
@@ -57,13 +60,13 @@ test("who may create an item: three branches share one item id", MultishotAuthzC
 test("who may complete an item: no branch's completion event survives", MultishotAuthzCases::whoMayCompleteItemCase)
 test("who may update item detail: every priority, no write kept", MultishotAuthzCases::whoMayUpdateItemDetailCase)
 test("who may delete an item: the row is back after every branch", MultishotAuthzCases::whoMayDeleteItemCase)
-test("who may paginate: three branches answer the same page", MultishotAuthzCases::whoMayPaginateCase)
-test("who may paginate the edges: past-end, oversize and empty pages", MultishotAuthzCases::whoMayPaginateEdgesCase)
-test("who may purge: the administrator's count follows the seeds", MultishotAuthzCases::whoMayPurgeCountsCase)
-test("who may purge: the first broken rule answers each branch", MultishotAuthzCases::whoMayPurgeRuleLadderCase)
-test("unguarded requests answer alike for all three principals", MultishotAuthzCases::whoMayUnguardedRequestsCase)
-test("only GetTodos and purge distinguish the principals", MultishotAuthzCases::whoMayGuardedRequestsCase)
-test("the starting principal never changes a what-if answer", MultishotAuthzCases::whoMayStartPrincipalCase)
+test("who may paginate: three branches answer the same page", MultishotAuthzGuardCases::whoMayPaginateCase)
+test("who may paginate the edges: past-end, oversize and empty pages", MultishotAuthzGuardCases::whoMayPaginateEdgesCase)
+test("who may purge: the administrator's count follows the seeds", MultishotAuthzGuardCases::whoMayPurgeCountsCase)
+test("who may purge: the first broken rule answers each branch", MultishotAuthzGuardCases::whoMayPurgeRuleLadderCase)
+test("unguarded requests answer alike for all three principals", MultishotAuthzGuardCases::whoMayUnguardedRequestsCase)
+test("only GetTodos and purge distinguish the principals", MultishotAuthzGuardCases::whoMayGuardedRequestsCase)
+test("the starting principal never changes a what-if answer", MultishotAuthzGuardCases::whoMayStartPrincipalCase)
 test("each candidate fix answers every title length edge", MultishotValidateCases::titleLengthsCase)
 test("padded, tabbed and blank titles: which fix repairs which", MultishotValidateCases::paddedTitleCase)
 test("a trimmed duplicate title is still a duplicate, except its own", MultishotValidateCases::trimmedDuplicateListCase)
@@ -88,8 +91,8 @@ test("nine rows split five and four", MultishotPlanCases::planNineItemsCase)
 test("exactly ten rows fill the ten-row page with no next", MultishotPlanCases::planExactlyTenCase)
 test("eleven rows leave a next page behind every small shape", MultishotPlanCases::planElevenItemsCase)
 test("the plan sorts digits, upper case and lower case by title", MultishotPlanCases::planSortStressCase)
-test("the plan pages only the asked list's rows", MultishotPlanCases::planMultiListCase)
-test("the anonymous party plans the same pages", MultishotPlanCases::planAnonymousPlanCase)
+test("the plan pages only the asked list's rows", MultishotPlanListsCases::planMultiListCase)
+test("the anonymous party plans the same pages", MultishotPlanListsCases::planAnonymousPlanCase)
 test("zero to five rivals: the request lands after each lost commit", MultishotRetryCases::retryRivalCountsCase)
 test("duplicate rival titles each win exactly one commit", MultishotRetryCases::retryDuplicateRivalsCase)
 test("validation re-runs against every retried snapshot", MultishotRetryCases::retryCreateListValidationCase)
@@ -98,13 +101,13 @@ test("a retried list delete restores the cascade until it commits", MultishotRet
 test("a retried purge counts the rivals that landed", MultishotRetryCases::retryPurgeCase)
 test("a retried completion publishes once and never when all attempts lose", MultishotRetryCases::retryCompleteItemCase)
 test("retried updates that do not flip publish nothing", MultishotRetryCases::retryUpdateItemWithoutFlipCase)
-test("a retried item create keeps the seed-count id", MultishotRetryCases::retryCreateItemCase)
-test("a retried item detail re-lands once", MultishotRetryCases::retryItemDetailCase)
-test("a retried item delete removes the row once", MultishotRetryCases::retryDeleteItemCase)
-test("a retried GetTodos reads the rivals that landed", MultishotRetryCases::retryGetTodosCase)
-test("seed sizes shift every id a retry hands out", MultishotRetryCases::retrySeedSizesCase)
-test("every request kind gives up with the same attempt-3 conflict", MultishotRetryCases::retryConflictTextCase)
-test("a retried page query answers the same page", MultishotRetryCases::retryPaginationCase)
+test("a retried item create keeps the seed-count id", MultishotRetryItemsCases::retryCreateItemCase)
+test("a retried item detail re-lands once", MultishotRetryItemsCases::retryItemDetailCase)
+test("a retried item delete removes the row once", MultishotRetryItemsCases::retryDeleteItemCase)
+test("a retried GetTodos reads the rivals that landed", MultishotRetryItemsCases::retryGetTodosCase)
+test("seed sizes shift every id a retry hands out", MultishotRetryItemsCases::retrySeedSizesCase)
+test("every request kind gives up with the same attempt-3 conflict", MultishotRetryItemsCases::retryConflictTextCase)
+test("a retried page query answers the same page", MultishotRetryItemsCases::retryPaginationCase)
 test("matrix: every retried request is an independent run after its rivals", MultishotMatrixCases::retriesMatchIndependentRunsCase)
 test("matrix: an exhausted retry keeps only the rivals", MultishotMatrixCases::exhaustedRetriesKeepNothingCase)
 test("matrix: each authorization branch equals an independent run", MultishotMatrixCases::authzBranchesMatchIndependentRunsCase)
