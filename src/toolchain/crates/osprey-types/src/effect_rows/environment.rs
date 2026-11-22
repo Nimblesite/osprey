@@ -44,6 +44,9 @@ impl CallableEnv {
     pub(super) fn enter_lambda(&self, parameters: &[String]) -> Self {
         let mut env = self.clone();
         env.handler_returns.clear();
+        // `resume` is illegal in a lambda body, and the body's value model
+        // belongs to the enclosing level, so none survives the boundary.
+        env.resume_result = None;
         for value in env.values.values_mut() {
             shift_value_levels(value, 1, 0);
         }
