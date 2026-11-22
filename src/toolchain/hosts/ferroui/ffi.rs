@@ -131,12 +131,8 @@ pub fn get_slice(key: &str) -> Option<String> {
 /// A borrowed string from this export's snapshot; ABI 1 copies it synchronously.
 /// Missing, null and invalid UTF-8 keys return empty. The pointer stays pinned
 /// until the enclosing export returns, even while background writers publish.
-///
-/// # Safety
-///
-/// `key` is null or points to a NUL-terminated string that stays valid for the call.
 #[no_mangle]
-pub unsafe extern "C" fn native_slice(key: *const c_char) -> *const c_char {
+pub extern "C" fn native_slice(key: *const c_char) -> *const c_char {
     if key.is_null() {
         return absent().as_ptr();
     }
