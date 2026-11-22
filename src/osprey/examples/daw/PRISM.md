@@ -6,9 +6,13 @@ Prism is the modular instrument editor for `@osprey/synth`. Its native component
 
 The menu offers grain clouds, sine oscillators, low-pass filters, gains, mixers, delays, MIDI note generators, normalized LFOs, stereo conversion, modulated stereo gain and mono/stereo outputs. Scan a VST3 bundle to add independent instrument or effect instances. Drag nodes, connect canvas ports or native port controls, and route LFOs to compatible effect parameters. The graph library validates port rates, units, channel counts and feedback cycles; parameter edits are checked against each component's descriptor.
 
-## Rendering is the graph into Master [DAW-RENDER-MASTER]
+## 🚨 CRITICAL: SYNTH TRANSPARENCY [DAW-TRANSPARENCY]
 
-Rendering means running the entire graph and exporting the Master channel. Nothing else is rendered. **Rendering anything other than Master is banned.** That covers a note, a track, a bus, a send, a patch, a module or the Space, whether whole, ahead of the playhead, into a cache, as a stem or to a file. Every node only produces the current block inside the running graph, and Play and Render song both export what reaches Master. Stems do not exist. The rule is in [the daw spec](../../../../docs/specs/applications/Daw.md#rendering-the-song-daw-render).
+The user can see absolutely everything that manipulates a signal, in the UI. This is an absolute invariant. Every module, cable, gain, EQ, compressor, limiter and effect is a visible node or control. There is no hidden limiter, clipper, normaliser or automatic gain anywhere, Master included. A user who wants a limiter on Master adds one there.
+
+## Playing and rendering take Master only [DAW-RENDER-MASTER]
+
+Playing and rendering are two different things. Both run the entire graph, and both take only the Master channel's output. **Playing** sends Master to the speakers and writes no file. **Rendering** writes Master to the export file and plays nothing. **Exporting anything other than Master is banned.** That covers a note, a track, a bus, a send, a patch, a module or the Space, whether whole, ahead of the playhead, into a cache, as a stem or to a file. Every node only produces the current block inside the running graph. Stems do not exist. The rule is in [the daw spec](../../../../docs/specs/applications/Daw.md#rendering-the-song-daw-render).
 
 ## Grain cloud [SYNTH-ADVANCED-GRAINS-INTEGRATION]
 
