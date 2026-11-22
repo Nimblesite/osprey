@@ -334,9 +334,11 @@ graphResizeJourney () =
     baseUndo = portIn (opened, "Undo")
     // The inspector never lists cables: they are read on the canvas.
     expect ("connection rows: ${length (connectionLefts opened)}", "connection rows: 0")
+    // [DAW-INSPECTOR] The launch selection docks the patch panel, so the canvas board is 1212 wide and
+    // every pixel the surface gains past it shifts the header right.
     wider = Drive::viewed (opened, 1836.0, 1078.0)
     wideUndo = portIn (wider, "Undo")
-    expect (wideUndo.accessLeft, baseUndo.accessLeft + 300.0)
+    expect (wideUndo.accessLeft, baseUndo.accessLeft + 1836.0 - 1212.0)
     expect (wideUndo.accessTop, baseUndo.accessTop)
     expect (length (connectionLefts wider), 0)
     added = prismTap (prismTap (wider, "Modules"), "Add Sine oscillator")
@@ -344,9 +346,13 @@ graphResizeJourney () =
     undone = prismTap (added, "Undo")
     nodesOf (undone, 5)
     smaller = Drive::viewed (undone, 1536.0, 828.0)
-    expect ((portIn (smaller, "Undo")).accessLeft, baseUndo.accessLeft)
+    expect ((portIn (smaller, "Undo")).accessLeft, baseUndo.accessLeft + 1536.0 - 1212.0)
     redone = prismTap (smaller, "Redo")
     nodesOf (redone, 6)
+    // Patch Controls puts the panel away: the board is the full 1536 again.
+    closed = Drive::viewed (Drive::press (redone, "Patch Controls"), 1836.0, 1078.0)
+    expect ((portIn (closed, "Undo")).accessLeft, baseUndo.accessLeft + 300.0)
+    nodesOf (closed, 6)
 
 // Any connection row the inspector letters: there must be none.
 connectionLefts driven =
