@@ -45,9 +45,7 @@ impl Rewriter<'_> {
             ..
         } = &mut out
         {
-            for (target, arm) in slots.iter_mut().zip(arms) {
-                target.body = self.direct(&arm.body, &scope.in_arm(arm, Esc::default(), false));
-            }
+            self.direct_arms(slots, arms, scope);
             **slot = self.direct(body, scope);
             *returned = return_clause
                 .as_deref()
@@ -57,6 +55,14 @@ impl Rewriter<'_> {
                 .map(|clause| Box::new(self.direct(clause, scope)));
         }
         out
+    }
+
+    /// Rewrite each arm's body where it yields a plain value: no arm's region
+    /// is captured, so every arm keeps its direct form.
+    fn direct_arms(&mut self, slots: &mut [HandlerArm], arms: &[HandlerArm], scope: &Scope) {
+        for (target, arm) in slots.iter_mut().zip(arms) {
+            target.body = self.direct(&arm.body, &scope.in_arm(arm, Esc::default(), false));
+        }
     }
 
     /// A handler of a captured effect, as a step.
@@ -197,9 +203,7 @@ when a branch ends or is abandoned, where no continuation exists to capture"
             ..
         } = &mut installed
         {
-            for (target, arm) in slots.iter_mut().zip(arms) {
-                target.body = self.direct(&arm.body, &scope.in_arm(arm, Esc::default(), false));
-            }
+            self.direct_arms(slots, arms, scope);
             *returned = None;
             *cleanup = None;
             **slot = build::apply(ident(&thunk), Vec::new());

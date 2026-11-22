@@ -35,11 +35,9 @@ pub(crate) struct OperationAxis {
 impl OperationAxis {
     /// Index every effect declaration and `mut` binding in `program`.
     pub(crate) fn collect(program: &Program) -> Self {
-        let mut mutables = MutableBindings::default();
-        walk_program(program, &mut mutables);
         Self {
             table: OperationTable::collect(program),
-            mutable_bindings: mutables.0,
+            mutable_bindings: mutable_bindings(program),
         }
     }
 
@@ -62,7 +60,14 @@ impl OperationAxis {
     }
 }
 
-/// Every name bound with `mut`, at any nesting depth.
+/// Every name bound with `mut` in `program`, at any nesting depth.
+pub(crate) fn mutable_bindings(program: &Program) -> BTreeSet<String> {
+    let mut found = MutableBindings::default();
+    walk_program(program, &mut found);
+    found.0
+}
+
+/// The visitor behind [`mutable_bindings`].
 #[derive(Default)]
 struct MutableBindings(BTreeSet<String>);
 

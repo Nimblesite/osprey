@@ -56,13 +56,7 @@ pub(crate) fn lower_proved(
     // enclosing `handle static Echo<int>`. Use the already checked site
     // instantiations for this backend copy before matching regions; otherwise
     // the rewrite silently leaves a request that the checker proved handled.
-    let mut resolved = materialize_signal_queries(checked, &solved.types);
-    for statement in &mut resolved.statements {
-        mutate::statement_children_mut(statement, &mut |expression| {
-            resolve_effect_mentions(expression, &solved.types);
-        });
-    }
-    forwarders::drop_witnesses(&mut resolved);
+    let resolved = resolved_signals(checked, &solved);
     let lowered = osprey_ast::stage::lower(&resolved).map_err(stage_errors)?;
     // A source proof that deferred a static arm's GPU callback cannot certify
     // the concrete callback substituted by discharge. [STAGE-GPU-LEGAL]
@@ -82,13 +76,7 @@ pub(crate) fn lower_proved(
 fn lower_captured(program: &Program) -> Result<(Program, Option<LibraryExports>), Vec<TypeError>> {
     let solved = solved_source(program)?;
     let checked = solved.copy.as_ref().unwrap_or(program);
-    let mut resolved = materialize_signal_queries(checked, &solved.types);
-    for statement in &mut resolved.statements {
-        mutate::statement_children_mut(statement, &mut |expression| {
-            resolve_effect_mentions(expression, &solved.types);
-        });
-    }
-    forwarders::drop_witnesses(&mut resolved);
+    let resolved = resolved_signals(checked, &solved);
     let discharged = osprey_ast::stage::lower(&resolved).map_err(stage_errors)?;
     let lowered = crate::many::lower(&discharged)?;
     Ok((lowered, Some(solved.exports)))
@@ -128,6 +116,20 @@ struct SolvedSource {
     types: crate::ProgramTypes,
     exports: LibraryExports,
     deferred_gpu_kernel: bool,
+}
+
+/// The backend copy static lowering consumes: the checked program with its
+/// signal queries materialized, its effect mentions resolved to the solved
+/// site instantiations, and its forwarder witnesses dropped.
+fn resolved_signals(checked: &Program, solved: &SolvedSource) -> Program {
+    let mut resolved = materialize_signal_queries(checked, &solved.types);
+    for statement in &mut resolved.statements {
+        mutate::statement_children_mut(statement, &mut |expression| {
+            resolve_effect_mentions(expression, &solved.types);
+        });
+    }
+    forwarders::drop_witnesses(&mut resolved);
+    resolved
 }
 
 fn solved_source(program: &Program) -> Result<SolvedSource, Vec<TypeError>> {

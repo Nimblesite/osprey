@@ -456,10 +456,5 @@ fn mentions_resume(expression: &Expr) -> bool {
 }
 
 fn statement_resumes(statement: &Stmt) -> bool {
-    match statement {
-        Stmt::Let { value, .. } | Stmt::Assignment { value, .. } | Stmt::Expr { value, .. } => {
-            mentions_resume(value)
-        }
-        _ => false,
-    }
+    osprey_ast::statement_value(statement, mentions_resume).unwrap_or(false)
 }

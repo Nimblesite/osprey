@@ -54,11 +54,18 @@ fn sequential_children(body: &Expr) -> u32 {
     total
 }
 
-fn statement_resumes(stmt: &Stmt) -> u32 {
+/// The value a value-bearing statement (`let`, assignment or expression
+/// statement) evaluates, visited. `None` when the statement evaluates nothing.
+#[must_use]
+pub fn statement_value<T>(stmt: &Stmt, visit: impl FnOnce(&Expr) -> T) -> Option<T> {
     match stmt {
         Stmt::Let { value, .. } | Stmt::Assignment { value, .. } | Stmt::Expr { value, .. } => {
-            resumes_on_one_path(value)
+            Some(visit(value))
         }
-        _ => 0,
+        _ => None,
     }
+}
+
+fn statement_resumes(stmt: &Stmt) -> u32 {
+    statement_value(stmt, resumes_on_one_path).unwrap_or(0)
 }

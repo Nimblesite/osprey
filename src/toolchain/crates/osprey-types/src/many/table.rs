@@ -3,7 +3,7 @@
 
 use crate::effect_rows::Callables;
 use osprey_ast::{
-    effect_name, AstNode, Expr, Multiplicity, OperationMode, Position, Program, Stmt,
+    effect_name, AstNode, Expr, Multiplicity, OperationMode, Parameter, Position, Program, Stmt,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -103,13 +103,8 @@ impl<'a> Table<'a> {
             else {
                 continue;
             };
-            let _ = self.lambdas.insert((at.line, at.column), self.funcs.len());
-            self.funcs.push(Func {
-                scope: scope.to_vec(),
-                params: parameters.iter().map(|p| p.name.clone()).collect(),
-                body,
-                bound: true,
-            });
+            let id = self.push_func(scope, parameters, body, true);
+            let _ = self.lambdas.insert((at.line, at.column), id);
         }
         if let Stmt::Let { name, value, .. } = statement {
             if let Some(id) = self.lambda(value) {
@@ -120,6 +115,25 @@ impl<'a> Table<'a> {
 
     pub(super) fn effect(&self, mention: &str) -> Option<&Effect> {
         self.effects.get(effect_name::base(mention))
+    }
+
+    /// Append one function summary — declared or `let`-bound — and return its
+    /// id, which the caller registers under whatever name it is called by.
+    fn push_func(
+        &mut self,
+        scope: &[String],
+        parameters: &[Parameter],
+        body: &'a Expr,
+        bound: bool,
+    ) -> usize {
+        let id = self.funcs.len();
+        self.funcs.push(Func {
+            scope: scope.to_vec(),
+            params: parameters.iter().map(|p| p.name.clone()).collect(),
+            body,
+            bound,
+        });
+        id
     }
 
     fn statements(&mut self, statements: &'a [Stmt], scope: &[String]) {
@@ -136,13 +150,8 @@ impl<'a> Table<'a> {
                 body,
                 ..
             } => {
-                let _ = self.ids.insert(qualify(scope, name), self.funcs.len());
-                self.funcs.push(Func {
-                    scope: scope.to_vec(),
-                    params: parameters.iter().map(|p| p.name.clone()).collect(),
-                    body,
-                    bound: false,
-                });
+                let id = self.push_func(scope, parameters, body, false);
+                let _ = self.ids.insert(qualify(scope, name), id);
                 self.bind_lambdas(statement, scope);
             }
             Stmt::Let { .. } | Stmt::Expr { .. } => self.bind_lambdas(statement, scope),

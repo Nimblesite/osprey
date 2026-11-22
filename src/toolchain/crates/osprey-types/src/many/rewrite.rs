@@ -12,8 +12,8 @@ use super::facts::{Callee, Facts, Scope};
 use super::table::{nested, Table};
 use crate::TypeError;
 use osprey_ast::{
-    freevars::pattern_bindings, mutate, walk_program, AstVisitor, Expr, MatchArm, NamedArgument,
-    Position, Program, Stmt,
+    freevars::pattern_bindings, mutate, Expr, MatchArm, NamedArgument, Parameter, Position,
+    Program, Stmt,
 };
 use std::collections::BTreeSet;
 
@@ -28,34 +28,16 @@ pub(super) struct Rewriter<'a> {
     pub(super) at: Option<Position>,
 }
 
-#[derive(Default)]
-struct Mutables(BTreeSet<String>);
-
-impl AstVisitor for Mutables {
-    fn statement(&mut self, statement: &Stmt) {
-        if let Stmt::Let {
-            name,
-            mutable: true,
-            ..
-        } = statement
-        {
-            let _ = self.0.insert(name.clone());
-        }
-    }
-}
-
 /// Rewrite `program` under the solved `facts`.
 pub(super) fn program(
     table: &Table<'_>,
     facts: Facts,
     program: &Program,
 ) -> Result<Program, Vec<TypeError>> {
-    let mut mutables = Mutables::default();
-    walk_program(program, &mut mutables);
     let mut rewriter = Rewriter {
         analyzer: Analyzer::new(table, facts),
         fresh: Fresh::default(),
-        mutables: mutables.0,
+        mutables: crate::multiplicity::mutable_bindings(program),
         errors: Vec::new(),
         at: None,
     };
@@ -153,11 +135,7 @@ impl Rewriter<'_> {
         } else {
             *slot = self.direct(body, &scope);
         }
-        for (index, parameter) in parameters.iter_mut().enumerate() {
-            if self.analyzer.facts.takes_step(id, index) {
-                parameter.ty = None;
-            }
-        }
+        self.untype_step_parameters(id, parameters);
     }
 
     /// Rewrite `expression` where it yields a plain value.
@@ -324,12 +302,18 @@ instantiated: its requests carry their continuation as a value"
         if steps {
             *return_type = None;
         }
-        for (index, parameter) in slots.iter_mut().enumerate() {
+        self.untype_step_parameters(id, slots);
+        out
+    }
+
+    /// Drop the annotation of every parameter that takes a capturing callback,
+    /// so inference re-derives the step type the rewrite supplies.
+    fn untype_step_parameters(&mut self, id: usize, parameters: &mut [Parameter]) {
+        for (index, parameter) in parameters.iter_mut().enumerate() {
             if self.analyzer.facts.takes_step(id, index) {
                 parameter.ty = None;
             }
         }
-        out
     }
 
     /// A step-returning callable used as a plain value escapes this pass.
