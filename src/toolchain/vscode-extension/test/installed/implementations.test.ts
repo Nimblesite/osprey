@@ -46,7 +46,7 @@ const COPIES: [string, string][] = [
   ["llms/gpt2/generate", "gpt2/generate"],
   ["llms/gpt2/train", "gpt2/train"],
   ["talon/backend/osprey.toml", "talon/backend/osprey.toml"],
-  ...["main.ospml", "api", "domain", "lib", "store", "web"].map((part): [string, string] => [`talon/backend/${part}`, `talon/backend/${part}`]),
+  ...["main.ospml", "api", "domain", "lib", "store"].map((part): [string, string] => [`talon/backend/${part}`, `talon/backend/${part}`]),
 ];
 
 const site = (
