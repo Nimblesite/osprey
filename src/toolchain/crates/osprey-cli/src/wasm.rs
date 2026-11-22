@@ -298,6 +298,10 @@ fn link_argv(
     argv
 }
 
+/// The wasm shadow stack: wasm-ld's 64 KiB default overflowed on a few hundred
+/// nested many requests ([MULTI-WASM-MANY]); this matches a native main thread.
+const WASM_STACK_BYTES: u32 = 8 * 1024 * 1024;
+
 fn base_link_argv(obj: &Path, archive: &str, libdir: &Path, out: &Path) -> Vec<String> {
     vec![
         libdir.join("crt1-command.o").display().to_string(),
@@ -305,6 +309,11 @@ fn base_link_argv(obj: &Path, archive: &str, libdir: &Path, out: &Path) -> Vec<S
         archive.to_string(),
         format!("-L{}", libdir.display()),
         "-lc".to_string(),
+        // The stack sits below the data, so an overflow traps at address 0
+        // instead of silently overwriting static data.
+        "--stack-first".to_string(),
+        "-z".to_string(),
+        format!("stack-size={WASM_STACK_BYTES}"),
         "--export=osp_alloc".to_string(),
         "-o".to_string(),
         out.display().to_string(),
