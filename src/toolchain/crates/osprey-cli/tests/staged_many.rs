@@ -162,6 +162,33 @@ fn main() = {
         &["Pick", "type parameters"],
         "a captured effect needs one request layout",
     ),
+    (
+        // [MULTI-REPLAY-CHECK] [MULTI-REPLAY-COARSE] A channel operation that
+        // sits in the captured remainder after a request is replayed by every
+        // resumption: the message is duplicated (or the second branch waits on
+        // a channel whose one message the first took). The channel use AFTER
+        // the region stays legal — only the replayed remainder is rejected.
+        r#"
+effect Choice { control many pick: fn(int) -> string }
+fn main() = {
+    let box = Channel(4)
+    let out = {
+        handle Choice {
+            pick _b => "${resume("1")}|${resume("2")}"
+        }
+        {
+            let c = perform Choice.pick(0)
+            let _sent = send(box, c)
+            c
+        }
+    }
+    let drained = select { v = recv(box) => v timeout(50) => "empty" }
+    print("out=${out} drained=${drained}")
+}
+"#,
+        &["`send`", "replays"],
+        "a channel operation inside the captured remainder is replayed per branch and must be rejected",
+    ),
 ];
 
 #[test]

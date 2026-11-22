@@ -1,0 +1,41 @@
+// [MULTI-REPLAY-STATE] Handler-owned state is a single shared heap cell, so
+// a second resumption would observe the writes of the first — through a
+// called lambda just as directly as through a write spelled in the arm. The
+// `note` lambda is bound OUTSIDE the arm (so its free variables are not free
+// in the arm body), and the arm calls it: the reachability must follow the
+// called callable to the `log` cell it assigns, not stop at the arm's own
+// free variables.
+//
+// The program is otherwise well formed: the only thing wrong with it is the
+// rule this fixture pins.
+effect Choice {
+    control many pick: fn(int) -> string
+}
+
+effect Journal {
+    replayable note: fn(string) -> Unit
+}
+
+fn main() = {
+    mut log = ""
+    let note = fn(t) => {
+        handle Journal {
+            note _t => { log = "${log}${t}" }
+        }
+        perform Journal.note(t)
+    }
+    let out = {
+        handle Choice {
+            pick _b => {
+                note("arm")
+                let a = resume("1")
+                note("|mid${a}")
+                let b = resume("2")
+                "(${a},${b})"
+            }
+        }
+        perform Choice.pick(0)
+    }
+    print(out)
+    print("log=[${log}]")
+}

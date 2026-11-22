@@ -23,6 +23,11 @@ pub(super) struct Rewriter<'a> {
     pub(super) fresh: Fresh,
     /// Every `mut` name: a read of one is snapshotted before a capture.
     pub(super) mutables: BTreeSet<String>,
+    /// Whether the code being rewritten is the remainder a resumption
+    /// replays: work there repeats per branch, so a channel, fiber or mask
+    /// operation is rejected rather than duplicated. Implements
+    /// [MULTI-REPLAY-CHECK].
+    pub(super) replaying: bool,
     errors: Vec<TypeError>,
     /// The nearest source position, for a rejection.
     pub(super) at: Option<Position>,
@@ -38,6 +43,7 @@ pub(super) fn program(
         analyzer: Analyzer::new(table, facts),
         fresh: Fresh::default(),
         mutables: crate::multiplicity::mutable_bindings(program),
+        replaying: false,
         errors: Vec::new(),
         at: None,
     };
@@ -61,6 +67,27 @@ cannot cross that call; call the function directly or pass it to a function para
     )
 }
 
+/// The operation a replayed channel, fiber or mask expression spells.
+fn replayed_op(expression: &Expr) -> &'static str {
+    match expression {
+        Expr::Send { .. } => "send",
+        Expr::Recv(_) => "recv",
+        Expr::Select { .. } => "select",
+        Expr::Spawn(_) => "spawn",
+        Expr::Await(_) => "await",
+        Expr::Yield(_) => "yield",
+        _ => "mask",
+    }
+}
+
+/// Why an operation cannot sit in the remainder a resumption replays.
+fn replayed_message(op: &str) -> String {
+    format!(
+        "`{op}` runs inside the remainder a `many` handler replays, so every resumption repeats \
+it; make the request before the `{op}` and pass its answer in"
+    )
+}
+
 impl Rewriter<'_> {
     pub(super) fn reject(&mut self, message: String) {
         self.errors.push(TypeError::new(message).with_pos(self.at));
@@ -68,6 +95,17 @@ impl Rewriter<'_> {
 
     fn reject_crossing(&mut self, what: &str) {
         self.reject(crossing(what));
+    }
+
+    /// Rewrite `f`'s result as the remainder every resumption replays: the
+    /// channel, fiber and mask operations that would repeat per branch are
+    /// rejected there by name ([MULTI-REPLAY-CHECK]).
+    pub(super) fn replayed(&mut self, f: impl FnOnce(&mut Self) -> Expr) -> Expr {
+        let was = self.replaying;
+        self.replaying = true;
+        let out = f(self);
+        self.replaying = was;
+        out
     }
 
     fn statements(&mut self, statements: &[Stmt], namespace: &[String]) -> Vec<Stmt> {
@@ -174,6 +212,21 @@ impl Rewriter<'_> {
                     "`{effect}` is captured by a `many` region, so it cannot be masked or \
 instantiated: its requests carry their continuation as a value"
                 ));
+                expression.clone()
+            }
+            // [MULTI-REPLAY-CHECK] Every resumption replays this code, so a
+            // channel, fiber or mask operation here would repeat per branch:
+            // a duplicated message, a deadlocked recv, a second fiber.
+            Expr::Spawn(_)
+            | Expr::Await(_)
+            | Expr::Yield(_)
+            | Expr::Send { .. }
+            | Expr::Recv(_)
+            | Expr::Select { .. }
+            | Expr::Mask { .. }
+                if self.replaying =>
+            {
+                self.reject(replayed_message(replayed_op(expression)));
                 expression.clone()
             }
             _ => self.direct_children(expression, scope),

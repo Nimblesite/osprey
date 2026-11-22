@@ -92,7 +92,10 @@ make the request before it and pass the answer in"
         let mut values = Vec::with_capacity(items.len());
         for (index, (item, capture)) in items.into_iter().zip(captures).enumerate() {
             let early = last.is_some_and(|last| index < last);
-            values.push(self.operand(item, capture, early, scope, &mut hoisted));
+            // An operand after the last capture is evaluated inside the
+            // replayed remainder, however pure the sequence's context was.
+            let replayed = self.replaying || last.is_some_and(|last| index > last);
+            values.push(self.operand(item, capture, early, replayed, scope, &mut hoisted));
         }
         let inner = build(self, values);
         hoisted
@@ -109,6 +112,7 @@ make the request before it and pass the answer in"
         item: Item<'_>,
         capture: bool,
         early: bool,
+        replayed: bool,
         scope: &Scope,
         hoisted: &mut Vec<Hoisted>,
     ) -> Expr {
@@ -124,6 +128,7 @@ make the request before it and pass the answer in"
                 hoisted.push(Hoisted::Value(name.clone(), self.direct(raw, scope)));
                 ident(&name)
             }
+            Item::Raw(raw) if replayed => self.replayed(|this| this.direct(raw, scope)),
             Item::Raw(raw) => self.direct(raw, scope),
         }
     }
@@ -347,7 +352,7 @@ with `let` before `{op}`"
             Stmt::Expr { value: effect, .. } if self.analyzer.open(effect, scope) => {
                 let produced = self.step(effect, scope);
                 let ignored = self.fresh.name("u");
-                let tail = self.step_block(rest, value, scope);
+                let tail = self.replayed(|this| this.step_block(rest, value, scope));
                 self.fresh.bind(produced, ignored, tail)
             }
             other => {
@@ -382,7 +387,9 @@ with `let` before `{op}`"
         let produced = self.step(bound, scope);
         let temp = self.fresh.name("v");
         set_value(&mut kept, ident(&temp));
-        let tail = self.step_block(rest, value, &after);
+        // Everything after the capture lives in the closure a resumption
+        // replays, so its channel operations are rejected, not duplicated.
+        let tail = self.replayed(|this| this.step_block(rest, value, &after));
         self.fresh.bind(produced, temp, block(vec![kept], tail))
     }
 }

@@ -1,0 +1,28 @@
+// [MULTI-REPLAY-CHECK] [MULTI-REPLAY-COARSE] A channel operation that sits
+// in the captured remainder AFTER a request is replayed by every resumption:
+// the message is sent once per branch (or the second branch waits on a
+// channel whose one message the first took). The channel use after the
+// region stays legal — only the replayed remainder is rejected, naming the
+// operation.
+//
+// The channel plumbing is correct on purpose: the only thing wrong here is
+// where the `send` stands.
+effect Choice {
+    control many pick: fn(int) -> string
+}
+
+fn main() = {
+    let box = Channel(4)
+    let out = {
+        handle Choice {
+            pick _b => "${resume("1")}|${resume("2")}"
+        }
+        {
+            let c = perform Choice.pick(0)
+            let _sent = send(box, c)
+            c
+        }
+    }
+    let drained = select { v = recv(box) => v timeout(50) => "empty" }
+    print("out=${out} drained=${drained}")
+}

@@ -272,6 +272,38 @@ fn main() = {
         "fine=9223372036854775807 fallback=33\n",
     ),
     (
+        // [MULTI-REPLAY-STATE] resolved by scope: `mut hits` belongs to
+        // `other`, while the `hits` the arm reads is `main`'s immutable
+        // `let`. A checker that collects `mut` names program-wide would
+        // collide the two and reject this program; only a `mut` binding
+        // actually visible at the arm counts.
+        "an immutable name that shares its spelling with another function's mut",
+        r#"
+effect Choice { control many pick: fn(int) -> string }
+effect Journal { replayable note: fn(string) -> Unit }
+fn other() = {
+    mut hits = ""
+    handle Journal {
+        note t => { hits = "${hits}${t}" }
+    }
+    perform Journal.note("x")
+    hits
+}
+fn main() = {
+    let hits = "reads="
+    let out = {
+        handle Choice {
+            pick _b => "${hits}${resume("1")}|${resume("2")}"
+        }
+        perform Choice.pick(0)
+    }
+    print(out)
+    print(other())
+}
+"#,
+        "reads=1|2\nx\n",
+    ),
+    (
         // The four list builtins with a callback that makes a captured request:
         // each element's request is its own choice point, so a fold over two
         // elements resumed twice each runs four branches.

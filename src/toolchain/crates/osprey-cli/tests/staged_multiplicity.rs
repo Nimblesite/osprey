@@ -205,6 +205,71 @@ fn main() = {
         &["Email.send", "replayable"],
         "expected the replayability rejection naming the offending effect",
     ),
+    // a many arm that mutates a captured cell INDIRECTLY, through a lambda
+    // bound outside the arm whose body assigns it. [MULTI-REPLAY-STATE]
+    // Branches share the one cell, and hiding the write behind a called
+    // local function is exactly the helper the rule must see through — the
+    // direct form below is the control that proves the assertion can fire.
+    (
+        r#"
+effect Choice { control many pick: fn(int) -> string }
+effect Journal { replayable note: fn(string) -> Unit }
+fn main() = {
+    mut log = ""
+    let note = fn(t) => {
+        handle Journal {
+            note _t => { log = "${log}${t}" }
+        }
+        perform Journal.note(t)
+    }
+    let out = {
+        handle Choice {
+            pick _b => {
+                note("arm")
+                let a = resume("1")
+                note("|mid${a}")
+                let b = resume("2")
+                "(${a},${b})"
+            }
+        }
+        perform Choice.pick(0)
+    }
+    print(out)
+    print("log=[${log}]")
+}
+"#,
+        &["Choice.pick", "captures mutable binding `log`"],
+        "expected the indirect mutation through a called lambda to be rejected",
+    ),
+    // the control: the same mutation written directly in the many arm.
+    // [MULTI-REPLAY-STATE] A write the arm performs on a visible cell is the
+    // plain form of the rule; it stays rejected when the scope resolution is
+    // fixed so only genuinely visible cells count.
+    (
+        r#"
+effect Choice { control many pick: fn(int) -> string }
+effect Journal { replayable note: fn(string) -> Unit }
+fn main() = {
+    mut log = ""
+    let out = {
+        handle Choice {
+            pick _b => {
+                handle Journal {
+                    note _t => { log = "${log}x" }
+                }
+                perform Journal.note("y")
+                "${resume(1)},${resume(2)}"
+            }
+        }
+        perform Choice.pick(0)
+    }
+    print(out)
+    print("log=[${log}]")
+}
+"#,
+        &["Choice.pick", "captures mutable binding `log`"],
+        "expected the direct mutation in the arm to keep its rejection",
+    ),
 ];
 
 #[test]
