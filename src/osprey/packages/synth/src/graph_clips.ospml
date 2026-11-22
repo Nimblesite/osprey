@@ -112,14 +112,6 @@ module GraphClips
             false => Error(message = IncompatibleLayout(detail = "Stereo-to-mono requires two audio channels."))
             true => Success(value = pairs clip.clipSamples)
 
-    (** The mono track panner accepts a mono sink or the mean of its stereo sink's left and right. *)
-    export trackSamples clip = match clip.clipChannels
-        1 => Success(value = clip.clipSamples)
-        2 => match length clip.clipSamples % 2 == 0
-            true => Success(value = pairs clip.clipSamples)
-            false => Error(message = IncompatibleLayout(detail = "The stereo output ended on an incomplete frame."))
-        _ => Error(message = IncompatibleLayout(detail = "Choose a mono or stereo track output."))
-
     pairs samples = match samples
         [] => []
         [left, ...rest] => match rest

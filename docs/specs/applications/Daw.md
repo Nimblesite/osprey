@@ -118,7 +118,7 @@ Where a project is kept is a pluggable layer behind one interface: open, save, l
 
 ## Keyboard [DAW-KEYS]
 
-Every command has a name, a place in the menu bar and a shortcut. The menus are File (open, save, render), Edit (undo, redo), View (the three pages, Modules, Patch Controls, Keyboard) and Transport (return to start, play and stop the song, play, audition and stop the patch). A menu shows each command's shortcut beside it, so the menu bar is also the list of shortcuts.
+Every command has a name, a place in the menu bar and a shortcut. The menus are File (open, save, render), Edit (undo, redo), View (the three pages, Modules, Patch Controls) and Transport (return to start, play and stop the song, loop, previous and next track and bar). There is no command that plays a patch, a track or a note on its own: everything heard is Master ([DAW-GRAPH-OUTPUT]). A menu shows each command's shortcut beside it, so the menu bar is also the list of shortcuts.
 
 A **keymap** assigns the shortcuts. The daw ships three: **Prism**, **Ableton style** and **Logic style**, the last two following those studios' habits where the daw has the same command (Space plays and stops, Tab or a single letter changes view). The user picks one from the menu, and the choice is kept for the next launch. A keymap is also a file the user can edit: a name and one line per command with its keys. Loading a file checks it first: an unknown command or two commands on one shortcut is refused with the reason, and the keymap in use stays. A command the file leaves out keeps its Prism shortcut, so no command is ever without one. A line may name a stack as well as a plain command, and may give arguments after the name, so the same command can sit on several keys with a different argument on each ([DAW-COMMANDS]).
 
@@ -242,10 +242,10 @@ The daw analyses each track, bus and Master and says whether the sound sits wher
 
 ## MIDI keyboard [DAW-MIDI]
 
-A connected MIDI keyboard plays the selected track's patch and records into its timeline.
+A connected MIDI keyboard is a live MIDI input to the selected track. Its notes play through that track's patch inside the running project graph and are heard from Master, never from the patch alone ([DAW-GRAPH-OUTPUT]). It also records into the track's timeline.
 
 - **Input ([DAW-MIDI-INPUT]).** The host lists MIDI sources (CoreMIDI on the Mac, WinRT MIDI on Windows) and delivers note on, note off, velocity, pitch bend, sustain and controllers to the app as events through the native boundary, each with its time.
-- **Play ([DAW-MIDI-PLAY]).** Notes sound through the selected track's patch at their velocity. This needs the realtime audio path ([DAW-PERF]).
+- **Play ([DAW-MIDI-PLAY]).** Notes enter the selected track at their velocity, run through the whole graph and are heard from Master. This needs the realtime audio path ([DAW-PERF]).
 - **Record ([DAW-MIDI-RECORD]).** With record armed, played notes are written into the track at the playhead, with their length and velocity, quantised only if asked.
 - **Learn ([DAW-MIDI-LEARN]).** A controller is bound to a patch setting by moving it; the binding is stored in the project.
 
@@ -289,7 +289,7 @@ One window shows three views of one session. **Timeline** shows the tracks, the 
 
 ### Video journey [DAW-VIDEO]
 
-`make -C src/toolchain/targets/macos/tests daw-video` opens the codex project in a real window and clicks and drags it the way a user does. On the Timeline it selects glass at bar 19, drags a note's velocity and the track's Space send. On the Patch page it drags a Delay in from the module list, wires it between the smoother and the output, inspects the partials and auditions the patch. On Mix it pulls a send, which shows the side-chained group bus, then opens the Space reverb. Back on the Timeline it presses **Play**. `PRISM_BINARY` pins the host, so a concurrent rebuild cannot move the controls during a take. After every step a window screenshot must differ from the one before, and Play must reach the audio device, or the journey fails. It records the window to `target/daw-video/prism-journey.mp4`, with the Master blocks Play sent to the device as the soundtrack, and keeps the step screenshots beside it.
+`make -C src/toolchain/targets/macos/tests daw-video` opens the codex project in a real window and clicks and drags it the way a user does. On the Timeline it selects glass at bar 19, drags a note's velocity and the track's Space send. On the Patch page it drags a Delay in from the module list, wires it between the smoother and the output and inspects the partials. On Mix it pulls a send, which shows the side-chained group bus, then opens the Space reverb. Back on the Timeline it presses **Play**. `PRISM_BINARY` pins the host, so a concurrent rebuild cannot move the controls during a take. After every step a window screenshot must differ from the one before, and Play must reach the audio device, or the journey fails. It records the window to `target/daw-video/prism-journey.mp4`, with the Master blocks Play sent to the device as the soundtrack, and keeps the step screenshots beside it.
 
 ## Math [DAW-MATH]
 

@@ -326,8 +326,6 @@ The three-band split is a start, not the EQ. Target: a parametric EQ as good as 
 - [ ] Screenshot goldens compared automatically in the app test targets.
 - [x] Native video journey ([DAW-VIDEO]): 23 clicks across five voice types, Mix and Play bars; each click changes the screen; Play rendered 6.8 MB of bars audio in 26 s.
 - [ ] Fix: a render cancelled mid-way leaves a 0-byte `piece.wav` that the next Play replays as unchanged (found by [DAW-VIDEO]).
-- [ ] Fix: Patch → Timeline after Audition ignored the click in 1 of 3 native runs (found by [DAW-VIDEO]).
-- [ ] Audition audio in the video soundtrack (the host writes what it plays).
 - [x] Piano-roll note selection and velocity edits are saved into the project.
 - [x] Native bar-9 journey on a copy of the codex project. Selected keysL, changed gain, pan and Space, inserted a delay, saved, reopened and played 13.75 seconds of stereo at 48 kHz.
 
@@ -372,6 +370,7 @@ Spec: [Daw.md](../specs/applications/Daw.md) sections [DAW-HUMAN], [DAW-MODULAR]
 - [ ] **Accessibility ([DAW-ACCESS]).** Focus and keyboard operation for every canvas control, role/name/value/state reported for each, contrast and colour-independence checked, reduced motion and larger text followed.
 - [ ] **Pluggable storage ([DAW-STORE]).** One store interface with JSON (today), database and git (a commit per save, history, restore) behind it.
 - [x] **Rendering exports Master and nothing else ([DAW-RENDER-MASTER]).** Rendering writes Master's output to the export file. Playing sends Master's output to the speakers and is not rendering. Every built-in voice (pluck, bow, bell, mallet, drum), operator and patch note now runs as a driver that makes only the current block. Whole-note rendering (`NoteRenders::render`, `PatchVoices::render`, `Arrangements::lanesOf`), made and recorded notes, and the one-track `Arrangements::part` and `added` are deleted.
+- [x] **Removed the patch audition ([DAW-GRAPH-OUTPUT]).** Play patch, Stop patch, Audition, the on-screen keyboard and the piano roll's key column all sounded a patch on its own, straight to the device. `GraphPreview`, `Preview`, `GraphDevice`, the editor's render fields and the scope are deleted. A patch is heard only through Master when the song plays.
 - [ ] **Patch Output and inputs ([DAW-MODULAR]).** A patch ends in an Output routed to Master by default; the skin's "Master" card is renamed and no module is called master. Patches declare audio and MIDI inputs as modules and route them with cables.
 - [ ] Windows goldens under `examples/daw/goldens/windows` predate the new header and inspector and must be rewritten on Windows (`make -C src/toolchain/targets/windows/tests synth-update`); `routed-delay.png` is the one reported.
 - [ ] Real mouse drag on sockets and the menu bar need rechecking in the live app once the desktop is unlocked (the screen was locked during this work).
@@ -457,7 +456,6 @@ Rule from tonight: a commit to `packages/synth` is tested against `examples/daw`
 **Open defects reported by OspreyOpus1 from the native journey (not yet reproduced by a test).**
 
 - [x] Interrupted renders preserve the previous complete WAV. The renderer publishes the temporary WAV after successful encoding, and playback rejects truncated cached files. The interrupted-cache regression passes under GC and ARC.
-- [ ] A tap on Timeline right after Audition is ignored about one run in three. Failing test first.
 
 **Interface.** `tests/prism_events.rs` drag: 10.6 ms mean, 18.2 ms worst per pointer move. Timeline taps: 0.57 ms mean. Target: drag under 5 ms mean, under 8.3 ms worst (one 120 Hz frame).
 

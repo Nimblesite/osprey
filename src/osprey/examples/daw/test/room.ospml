@@ -111,13 +111,6 @@ editorUiJourney () =
     feedback = Drive::pointer (feedbackMoved, 519.0, 171.5, false)
     sameGraph (feedback, second)
     mentions (feedback, "loop")
-    heard = pressedFor (second, "Audition Patch", 1)
-    firstAsk (heard, \request =>
-        match request.capability
-            ui::Run executable arguments _ _ _ _ =>
-                expect (executable, "/usr/bin/perl")
-                expect (startsWith (listGet arguments 2 ?: "") "52494646" && contains (listGet arguments 2 ?: "") "0300010080BB0000", true)
-            _ => expect (false, true))
     previewedShows (heard, "{\"status\":1,\"stderr\":\"device disconnected\"}", "Playback failed: device disconnected")
     previewedShows (heard, "{\"status\":0,\"stderr\":\"\"}", "Preview finished.")
     previewedShows (heard, "{}", "Playback failed: The host returned no valid process exit status.")
@@ -204,63 +197,6 @@ pluginUiJourney () =
     wrongSource = prismTap (controlled, "Canvas output 2:0")
     refusedModulation = inspectorAction (wrongSource, 0, "Modulate Delay")
     sameGraph (refusedModulation, controlled)
-    audition = pressedFor (finished, "Audition Patch", 1)
-    firstAsk (audition, \request =>
-        match request.capability
-            ui::HostCall host operation arguments timeout limit slice =>
-                expect (host, "process")
-                expect (operation, "session-open")
-                expect (timeout, 10000)
-                expect (limit, 4194304)
-                expect (startsWith slice "prism-audio:", true)
-                expect (length arguments > 3, true)
-            _ => expect (false, true))
-    _ = pressedFor (audition, "Audition Patch", 0)
-    heldAudition = Drive::holding audition
-    forEachList ([[], listConcat heldAudition.renderPending heldAudition.renderPending], \pending =>
-        lost = synth::GraphPreview::completed (heldAudition(renderPending = pending), heldAudition.renderTicket, Success(value = "{\"status\":0,\"session\":\"orphan\"}"))
-        expect (contains lost.stepStore.message "no unique pending graph request", true)
-        expect (length lost.stepStore.renderPending, 0)
-        expect (lost.stepStore.renderTicket, ""))
-    changed = deleteNode (audition, 1)
-    openedAudio = sessioned (changed, "prism-audio:1:0:open", "effect-zero")
-    heldIs (changed, \held => length held.pluginBindings, 1)
-    sessionsOf (openedAudio, 1)
-    nextEffect = receipt (openedAudio, "prism-audio:1:0:0:block")
-    match (Drive::holding nextEffect).renderPending
-        [pending] =>
-            expect (pending.pendingNode, 1)
-            countOf (pending.pendingGraph.nodes, length (Drive::holding audition).graph.nodes)
-        _ => expect (false, true)
-    askedOf (nextEffect, 1)
-    ticketOf (receipt (nextEffect, "prism-audio:1:0:0:block"), "prism-audio:1:1:open")
-    openedSecond = sessioned (nextEffect, "prism-audio:1:1:open", "effect-one")
-    firstPair = receipt (openedSecond, "prism-audio:1:1:0:block")
-    ticketOf (firstPair, "prism-audio:device:1:open")
-    deviceOpened = audioDone firstPair
-    deviceCounterJourney (Drive::holding deviceOpened)
-    sessionsOf (deviceOpened, 3)
-    secondPair = audioDone deviceOpened
-    ticketOf (secondPair, "prism-audio:1:0:2048:block")
-    played = foldList (toList (range (0, 30)), secondPair, \(previous, _) =>
-        match (Drive::holding previous).renderTicket == ""
-            true => previous
-            false => audioDone previous)
-    lettersIn (played, "Preview finished.")
-    askedOf (played, 3)
-    drainedOf played
-    forEachList ([firstPair, deviceOpened, secondPair], \running =>
-        stopped = stoppedFrom running
-        lettersIn (stopped, "Playback stopped.")
-        drainedOf stopped)
-    live = Drive::press (finished, "Play Patch")
-    continuing = foldList (toList (range (0, 40)), live, \(previous, _) => audioDone previous)
-    expect ((Drive::holding continuing).renderContinuous, true)
-    expect ((Drive::holding continuing).renderTicket != "", true)
-    lettersIn (stoppedFrom continuing, "Playback stopped.")
-    crashed = failedWith (audition, "prism-audio:1:0:open", "plug-in failed")
-    lettersIn (crashed, "Graph playback failed: plug-in failed")
-    countOf ((Drive::holding crashed).renderPending, 0)
     malformed = receipt (vstAdded twice, "prism-vst:describe:5")
     sameGraph (malformed, twice)
     failed = failedWith (scanning, "prism-vst:scan:2", "module unavailable")
@@ -383,8 +319,6 @@ projectPluginJourney editor =
             expect (structuralEquals (graph, editor.graph), true)
             first = synth::DawSession::opened (editor(song = opened, catalog = []), 0)
             expect (structuralEquals (first.graph, graph), true)
-            missing = synth::GraphPreview::play (first, "macos")
-            expect (contains missing.stepStore.message "unavailable in the configured folder", true)
             bindings = first.pluginBindings
             expect (length bindings, 2)
             forEachList (bindings, \binding =>
@@ -506,27 +440,11 @@ previewedShows (driven, body, text) =
     answered = previewed (driven, body)
     lettersIn (answered, text)
 
-// The driven state's render ticket.
-ticketOf (driven, want) = heldIs (driven, \held => held.renderTicket, want)
-
-// The driven state's open render sessions.
-sessionsOf (driven, count) = countOf ((Drive::holding driven).renderSessions, count)
-
-// The driven state's graph modules.
 nodesOf (driven, count) = countOf ((Drive::holding driven).graph.nodes, count)
 
 // Any counted thing.
 countOf (counted, want) = expect (length counted, want)
 
-// The driven state left with no render session and no ticket.
-drainedOf driven =
-    ticketOf (driven, "")
-    countOf ((Drive::holding driven).renderSessions, 0)
-
-// Playback stopped from `driven`.
-stoppedFrom driven = audioDone (Drive::press (driven(drivenProgram = synth::EditorApp::program ()), "Stop Patch"))
-
-// A note-on at `offset` for this `identity`.
 noteOn (identity, offset, velocity) = synth::HostNote(kind = 1, offset = offset, pitch = 60, channel = 0, identity = identity, velocity = velocity)
 
 // The source's notes of one window, which must be exactly `want`.
@@ -683,20 +601,6 @@ sidesDiffer (one, other) = length (filterList (toList (range (0, length one)), \
 liveDialBlock (place, stream, check) = succeeds (daw::LiveControls::receive ("${place}/knobs/live/controls", stream), \applied =>
     succeeds (daw::Playback::step (applied.controlScore, applied.playing, 64), \packet => check (packet, applied(playing = packet.playing))))
 
-// [DAW-TRANSPORT-LIVE-CONTROLS] A running patch applies inspector values after the current device block.
-livePatchDialJourney () =
-    graph = patched ["sine", "gain", "output"]
-    playing = audioDone (Drive::press (graph, "Play Patch"))
-    expect (loudest (Drive::holding playing).scopeSamples > 0.01, true)
-    changed = tuned (playing, 1, "Gain", "0")
-    expect ((Drive::holding changed).renderTicket, (Drive::holding playing).renderTicket)
-    quiet = audioDone changed
-    expect (loudest (Drive::holding quiet).scopeSamples, 0.0)
-    restored = audioDone (tuned (quiet, 1, "Gain", "0.5"))
-    expect (loudest (Drive::holding restored).scopeSamples > 0.01, true)
-    expect ((Drive::holding restored).renderContinuous, true)
-
-// [DAW-TRANSPORT-LIVE-CONTROLS] Drive a real knob before release, then read the song producer's control channel.
 liveDialJourney () =
     place = "target/daw-tests/live-dial"
     _root = makeDir "target/daw-tests"
@@ -788,7 +692,6 @@ stereoTrackJourney () =
             expect (loudest played.right, 0.0)))
 
 masterPlayJourney () =
-    hosted livePatchDialJourney
     liveKnobJourney ()
     song = playedSong 4.0
     playedIn (song, [6000], \whole =>

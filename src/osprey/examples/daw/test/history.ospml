@@ -260,12 +260,6 @@ installedSampleJourney builtin =
     keyedRate (back, 57, 4.693333333333333)
     again = prismTap (back, "Redo")
     grainSource (again, motifWav, 172800)
-    // While a patch plays, no sample is swapped: neither a WAV choice nor the built-in source.
-    stopped = Drive::holding again
-    playing = stopped(renderTicket = "playing")
-    expect ((synth::SamplePicker::choose playing).stepStore.message, "Grain cloud ${playing.selected}: Sample selection is unavailable while playing or when request IDs run out.")
-    expect ((synth::SamplePicker::builtin playing).stepStore.message, "Grain cloud ${playing.selected}: Stop playback before replacing the sample.")
-    expect (structuralEquals ((synth::SamplePicker::builtin playing).stepStore.graph, playing.graph), true)
     // A choice still open when its node is removed completes into nothing: the node is not resurrected.
     asked = Drive::press (again, "Load WAV sample")
     pending = (Drive::holding asked).sampleTicket

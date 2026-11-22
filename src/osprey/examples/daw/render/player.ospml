@@ -44,7 +44,7 @@ module Player
     // A umask, not `mkdir -m`: MSYS2 mounts NTFS `noacl`, so its mkdir cannot set a mode and fails after creating.
     staged (request, arrangement, mix) =
         destination = ui::Pick::either (request.beats > 0.0, piecePath request, songPath request)
-        stage = request(folder = "${request.folder}/.bounce-${random ()}")
+        stage = request(folder = "${request.folder}/.render-${random ()}")
         synth::Outcomes::carried (Shell::ran (10, "sh -c 'umask 077 && mkdir \"$1\"' sh ${Shell::quoted stage.folder}"), \_ =>
             result = synth::Outcomes::carried (parts (stage, arrangement, mix), \files => assembled (stage, files, destination))
             synth::Outcomes::carried (Shell::ran (10, "rm -rf ${Shell::quoted stage.folder}"), \_ => result))
