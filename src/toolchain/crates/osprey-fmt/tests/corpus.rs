@@ -58,7 +58,7 @@ fn collect(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The checked-in web bundle is generated JavaScript embedded in an Osprey
+/// The generated web bundle (build output, never committed) is JavaScript in an Osprey
 /// string, explicitly excluded from Plan 0019's hand-written corpus baseline.
 fn is_generated(path: &Path) -> bool {
     path.ends_with("src/osprey/examples/talon/backend/web/bundle.ospml")

@@ -26,7 +26,7 @@ bank: _bank-web
 	  ./$(BIN) src/osprey/examples/talon/backend --run
 
 ## bank-build: Rebuild Talon Bank's Osprey Native app for the browser and embed it in its server.
-##             Requires Node and a WASI sysroot; the generated Osprey Bundle is
-##             committed so ordinary native/CI builds do not need either tool.
+##             Requires Node and a WASI sysroot; the generated bundle
+##             is build output, never committed.
 bank-build: _bank-web
 endif

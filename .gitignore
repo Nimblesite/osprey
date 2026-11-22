@@ -77,3 +77,6 @@ src/osprey/examples/llms/gpt2/weights/
 /core.*
 
 /src/toolchain/hosts/ferroui/docs
+
+# Talon Bank's generated web client module (make _bank-web); build output, never committed.
+src/osprey/examples/talon/backend/web/bundle.ospml

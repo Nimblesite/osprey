@@ -1391,6 +1391,17 @@ jobs:
             target/
           key: ${{ steps.cargo.outputs.cache-primary-key }}
 
+      # Talon Bank's server embeds the web client the build job generated; it is build output, never
+      # committed. Only that file is taken: the artifact's Linux compiler must not replace this one.
+      - uses: actions/download-artifact@v8
+        if: matrix.part == 'Talon Bank'
+        with:
+          name: osprey-build
+          path: ${{ runner.temp }}/osprey-build
+      - name: Take the generated Talon Bank web bundle
+        if: matrix.part == 'Talon Bank'
+        run: cp "$RUNNER_TEMP/osprey-build/src/osprey/examples/talon/backend/web/bundle.ospml" src/osprey/examples/talon/backend/web/bundle.ospml
+
       - uses: actions/setup-node@v7
         if: matrix.part == 'Light Orchestra'
         with:
