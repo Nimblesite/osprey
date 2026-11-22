@@ -1,0 +1,74 @@
+// Ported from jasontaylordev/CleanArchitecture (MIT), src/Application/TodoLists: each use case is a straight
+// line over the Store boundary, with no IRequestHandler, IMapper or CancellationToken ([EXAMPLE-CLEANARCH-BOOK-BOUNDARY]).
+
+namespace todo;
+
+import todo::TodoDomain
+import todo::TodoItems
+import todo::TodoRequest
+
+/// The todo-list use cases.
+module TodoLists {
+    /// CreateTodoListCommand: answers the new id.
+    export fn create(list) = {
+        let fresh = TodoList {
+            id: perform Store.nextListId(),
+            title: list.title,
+            colour: TodoDomain::colourOr(list.colour, TodoDomain::grey())
+        }
+        perform Store.saveList(fresh)
+        CreatedId { value: fresh.id }
+    }
+
+    /// UpdateTodoListCommand: a blank colour keeps the list's own.
+    export fn update(edit) = {
+        let list = found(edit.id)
+        perform Store.saveList(TodoList {
+            id: list.id,
+            title: edit.title,
+            colour: TodoDomain::colourOr(edit.colour, list.colour)
+        })
+        Updated
+    }
+
+    /// DeleteTodoListCommand: the list and its items.
+    export fn delete(id) = {
+        perform Store.dropList(found(id).id)
+        Updated
+    }
+
+    /// PurgeTodoListsCommand: answers how many lists went.
+    export fn purge() = {
+        let count = length(perform Store.lists())
+        perform Store.dropAllLists()
+        Purged { count: count }
+    }
+
+    /// GetTodosQuery: the lookups plus every list by title with its items.
+    export fn getTodos() = TodosView {
+        priorities: mapList([LevelNone, LevelLow, LevelMedium, LevelHigh], fn(level) => Lookup {
+            id: TodoDomain::priorityLevel(level),
+            name: TodoDomain::priorityName(level)
+        }),
+        colours: mapList(TodoDomain::supportedColours(), fn(code) => ColourChoice {
+            code: code,
+            name: TodoDomain::colourName(code)
+        }),
+        lists: listViews(
+            listSortBy(perform Store.lists(), TodoDomain::byListTitle),
+            listSortBy(perform Store.items(), TodoDomain::byItemTitle))
+    }
+
+    /// The list, or the NotFound fault: the request ends there.
+    fn found(id) = match filterList(perform Store.lists(), fn(list) => list.id == id) {
+        [list] => list
+        _ => perform Fail.noList(id)
+    }
+
+    fn listViews(lists, items) = mapList(lists, fn(list) => ListView {
+        id: list.id,
+        title: list.title,
+        colour: list.colour,
+        items: mapList(filterList(items, fn(item) => item.listId == list.id), TodoItems::itemView)
+    })
+}

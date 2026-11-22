@@ -1,0 +1,46 @@
+// Every case, registered in one run: the behaviour of the ported app, then the four
+// multi-shot uses asserted directly ([EXAMPLE-CLEANARCH-INV-TESTS], [EXAMPLE-CLEANARCH-INV-NO-SKIP]).
+
+namespace todo;
+
+import todo::AccessCases
+import todo::EdgeCases
+import todo::ItemsCases
+import todo::ListsCases
+import todo::MultishotCases
+import todo::PipelineCases
+
+test("create answers the id and GetTodos shows the list", ListsCases::createRoundTripCase)
+test("every supported colour round-trips; unsupported colours are typed faults", ListsCases::colourPermutationsCase)
+test("create collects every title and colour problem", ListsCases::collectsEveryListProblemCase)
+test("update renames, keeps colour and enforces uniqueness", ListsCases::updateAndRenameCase)
+test("missing lists answer the typed NotFound fault", ListsCases::missingListAnswersNotFoundCase)
+test("delete cascades the list's items away", ListsCases::deleteCascadesCase)
+test("GetTodos orders by title and nests items", ListsCases::getTodosOrdersByTitleCase)
+test("purge clears everything and answers the count", ListsCases::purgeClearsEverythingCase)
+test("create item answers the id and validates the title", ItemsCases::createItemCase)
+test("completion publishes the domain event exactly once per flip", ItemsCases::completionEventCase)
+test("update detail moves lists and sets priority and note", ItemsCases::detailCase)
+test("missing items answer the typed NotFound fault", ItemsCases::missingItemCase)
+test("delete item removes the row", ItemsCases::deleteItemCase)
+test("pagination covers first, middle, last, past-end, oversize and empty", ItemsCases::paginationEdgesCase)
+test("pagination reports only the asked list's items", ItemsCases::paginationIsPerListCase)
+test("the sign-in rule rejects anonymous and admits users", AccessCases::signInRuleCase)
+test("purge demands the Administrator role and the CanPurge policy", AccessCases::purgeGuardsCase)
+test("the policy rule is separate from the role rule", AccessCases::policyRuleCase)
+test("logging writes one structured line per request", PipelineCases::loggingCase)
+test("the rescue arm passes expected faults through quietly", PipelineCases::rescueCase)
+test("the 500ms warning fires only when the clock says so", PipelineCases::performanceCase)
+test("domain events publish once, after the request settles", PipelineCases::eventPublicationCase)
+test("POST /api/TodoLists answers 201 with location", EdgeCases::createListRouteCase)
+test("GET /api/TodoLists answers the view or 401", EdgeCases::getListsRouteCase)
+test("invalid POST answers 400 problem details", EdgeCases::invalidListRouteCase)
+test("PUT and DELETE /api/TodoLists/{id} match the C# statuses", EdgeCases::updateAndDeleteListRouteCase)
+test("the item routes match the C# statuses", EdgeCases::itemRoutesCase)
+test("one request resumes as three principals and the purge is undone", MultishotCases::whoMayPurgeCase)
+test("authorization branches share one store state and publish nothing", MultishotCases::whoMayRunCommandsCase)
+test("each candidate fix resumes validation and collects every failure", MultishotCases::whichFixesWorkCase)
+test("one query resumes with four page shapes", MultishotCases::pagePlanCase)
+test("a lost commit resumes the request and the write lands once", MultishotCases::retryAfterConflictCase)
+test("three lost commits give up with the third attempt's conflict", MultishotCases::retryGivesUpCase)
+test("a retried completion publishes its event once", MultishotCases::retryPublishesOnceCase)

@@ -1,0 +1,52 @@
+// The AuthorizationBehaviour cases: every rule outcome, from the anonymous
+// 401 through the role and policy 403s to the administrator's success
+// ([EXAMPLE-CLEANARCH-INV-FAITHFUL]).
+
+namespace todo;
+
+import todo::TodoHarness
+
+module AccessCases {
+    /// GetTodos demands a signed-in user: anonymous is Unauthorized, any
+    /// signed-in principal passes.
+    export fn signInRuleCase() = {
+        let anon = TodoHarness::request(TodoHarness::anonymous(), 0, [], [], GetTodos)
+        expect(anon.settled, Error { message: Unauthorized })
+        let user = TodoHarness::request(TodoHarness::user(), 0, [], [], GetTodos)
+        checkAll("signed-in principals read todos", [match user.settled {
+            Success { value: TodosView { lists } } => isEmpty(lists)
+            _ => false
+        }])
+    }
+
+    /// PurgeTodoLists demands the Administrator role AND the CanPurge
+    /// policy, like `[Authorize(Roles = "Administrator", Policy = "CanPurge")]`.
+    export fn purgeGuardsCase() = {
+        let anon = TodoHarness::request(TodoHarness::anonymous(), 0, [
+            TodoHarness::seedList(1, "Shopping", "#78909C")
+        ], [], PurgeTodoLists)
+        expect(anon.settled, Error { message: Unauthorized })
+        let user = TodoHarness::request(TodoHarness::user(), 0, [
+            TodoHarness::seedList(1, "Shopping", "#78909C")
+        ], [], PurgeTodoLists)
+        expect(user.settled, Error { message: Forbidden { why: "not in role" } })
+        let admin = TodoHarness::request(TodoHarness::admin(), 0, [
+            TodoHarness::seedList(1, "Shopping", "#78909C")
+        ], [], PurgeTodoLists)
+        expect(admin.settled, Success { value: Purged { count: 1 } })
+    }
+
+    /// A principal with the role but not the policy still fails the policy
+    /// rule: the policy check is separate from the role check, as in the C#.
+    export fn policyRuleCase() = {
+        let roleOnly = Principal {
+            name: "role-only@example.com",
+            roles: ["Administrator"],
+            policies: []
+        }
+        let denied = TodoHarness::witnessed(roleOnly, 0, [
+            TodoHarness::seedList(1, "Shopping", "#78909C")
+        ], [], PurgeTodoLists)
+        expect(denied.settled, Error { message: Forbidden { why: "policy CanPurge not held" } })
+    }
+}

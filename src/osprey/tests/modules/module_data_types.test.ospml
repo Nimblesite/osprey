@@ -44,6 +44,12 @@ module Geo
 
     export perimeterOf extent = ((((extent.width + extent.height) ) * 2) )
 
+    export type Fault = Missing | InvalidParameter
+
+    export missing () = Missing
+
+    export invalid () = InvalidParameter
+
 module Boxes
     export type Box T =
         held : T
@@ -152,6 +158,13 @@ unionPayloadCase () = checkAll ("module union payloads survive the boundary", [
     structuralEquals [Geo::name (Geo::circle 3), Geo::name (Geo::square 4)] ["circle", "square"]
 ])
 
+(** A union constructor of a namespaced module prints its own name, never its mangled symbol. *)
+faultNameCase () = checkAll ("namespaced union constructors print their names", [
+    "${Geo::missing ()}" == "Missing",
+    "fault: ${Geo::invalid ()}." == "fault: InvalidParameter.",
+    structuralEquals (mapList ([Geo::missing (), Geo::invalid ()], \fault => "${fault}")) ["Missing", "InvalidParameter"]
+])
+
 (** A record declared in a module crosses the boundary with its fields intact. *)
 recordFieldCase () = checkAll ("module record fields cross the boundary", [
     structuralEquals [(Geo::extent (Geo::circle 3)).width, (Geo::extent (Geo::circle 3)).height] [6, 6],
@@ -200,5 +213,6 @@ exactTests [
     { name = "module records keep their fields", work = recordFieldCase },
     { name = "module generics specialise per call site", work = genericModuleCase },
     { name = "module opaque records stay abstract", work = opaqueCase },
-    { name = "module opaque aliases stay abstract", work = opaqueAliasCase }
+    { name = "module opaque aliases stay abstract", work = opaqueAliasCase },
+    { name = "namespaced union constructors print their names", work = faultNameCase }
 ]

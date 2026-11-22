@@ -65,10 +65,13 @@ pub(crate) fn specialize(
             args.len()
         )));
     }
-    let values = args
-        .iter()
-        .map(|a| gen_expr(cg, a))
-        .collect::<Result<Vec<_>>>()?;
+    // Caller expressions keep the caller's types: an argument that is itself a
+    // call of `name` selects its own instantiation ([TYPE-GENERICS-APPLY]).
+    let values = cg.with_caller_types(|cg| {
+        args.iter()
+            .map(|a| gen_expr(cg, a))
+            .collect::<Result<Vec<_>>>()
+    })?;
     specialize_values(cg, name, parameters, body, values)
 }
 
@@ -188,6 +191,10 @@ fn emit_at(
     let _ = cg.monofns.insert(key, target.clone());
     let saved = cg.enter_nested_fn();
     let position = cg.fn_defs.get(name).and_then(|(_, _, position)| *position);
+    // The body is its own caller: a call written inside it, the self-call
+    // included, takes its argument types from this instantiation, not from
+    // the call that selected it.
+    let selecting_caller = cg.application_caller.take();
     let (plist, emitted) = cg.within_source_function(name, |cg| {
         crate::closure::begin_source(cg, name, position);
         let plist = crate::cast::bind_params(cg, parameters, params, owners.iter().cloned(), 0);
@@ -199,6 +206,7 @@ fn emit_at(
         cg.cov_hit_inline_fn(name);
         (plist, lower_body(cg, body, &target.sig))
     });
+    cg.application_caller = selecting_caller;
     let spelling = crate::llty::ret_spelling(ret.0, ret.1);
     // Restore the enclosing function BEFORE propagating, so a failed body never
     // leaves the host's emission state clobbered ([`crate::gpu_kernel`] does

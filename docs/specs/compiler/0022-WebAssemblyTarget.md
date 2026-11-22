@@ -106,7 +106,7 @@ Modules with a browser dispatcher retain their initialized globals after the WAS
 
 Before LLVM emission, the compiler checks the complete program for unsupported target constructs, including inside otherwise unused helper functions. `--check`, `--compile`, `--run`, and `--llvm` enforce the same rules. Diagnostics name `wasm32`, the offending operation or construct, and the unavailable capability. Native debugger and profiler flags are rejected for this target, including with `--check` and `--llvm`.
 
-Fibers/channels and their scheduling operations, process APIs, built-in HTTP/WebSocket operations, terminal APIs, and arbitrary host FFI are rejected at compile time. Effect constructs require the capabilities specified by [MULTI-WASM](../language/0017-AlgebraicEffects.md). Runtime-provided browser bridge imports remain supported. File, random, and input operations use their portable runtime implementations; access still depends on the WASI host. An unavailable capability must produce a compile error, never a link-time surprise. Removing a rejection requires a working runtime implementation and target tests.
+Fibers/channels and their scheduling operations, process APIs, built-in HTTP/WebSocket operations, terminal APIs, and arbitrary host FFI are rejected at compile time. Multi-shot (`many`) continuations are always available and are never rejected ([WASM-TARGET-EFFECTS-MANY](#multi-shot-continuations-wasm-target-effects-many)); other effect constructs require the capabilities specified by [MULTI-WASM](../language/0017-AlgebraicEffects.md). Runtime-provided browser bridge imports remain supported. File, random, and input operations use their portable runtime implementations; access still depends on the WASI host. An unavailable capability must produce a compile error, never a link-time surprise. Removing a rejection requires a working runtime implementation and target tests.
 
 ## Fatal Diagnostics [WASI-LIBC-ABI]
 
@@ -116,9 +116,19 @@ This is a closed set of libc imports. Other libc symbols remain compile errors u
 
 ## Effect Support [WASM-TARGET-EFFECTS]
 
-Effect meaning is target-independent. Validated static discharge, value dispatch and control continuations obey [STAGE-WASM and MULTI-WASM](../language/0017-AlgebraicEffects.md). The compiler checks the residual program against available backend capabilities. An unsupported continuation reports the operation and missing capability before linking; it does not acquire a different meaning on wasm32.
+Effect meaning is target-independent. Validated static discharge, value dispatch and control continuations obey [STAGE-WASM and MULTI-WASM](../language/0017-AlgebraicEffects.md). The compiler checks the residual program against available backend capabilities. Multi-shot continuations are supported in full. A `once` continuation outside every `many` region reports the operation and missing capability before linking; no effect acquires a different meaning on wasm32.
 
-[Plan 0016](../../plans/0016-algebraic-effects-and-handlers.md) records current continuation support and its conformance gates. A platform's one-shot stack primitive does not impose a permanent language ban on reusable continuations; another sound representation may implement them.
+### Multi-shot continuations [WASM-TARGET-EFFECTS-MANY]
+
+wasm32 fully supports multi-shot (`many`) continuations ([MULTI-WASM-MANY](../language/0017-AlgebraicEffects.md#multiplicity-on-wasm32--multi-wasm)). The compiler rewrites every region whose continuation a `many` handler captures into ordinary closures before any target is chosen, so the wasm32 module contains no stack switching and no thread for it. The capability check therefore MUST accept every `many` operation and every effect a `many` region captures, and the module MUST print the same bytes as the native build.
+
+`[CI-MULTISHOT-WASM]` This is enforced, not assumed. Three checks are part of the required `CI` job and none may be skipped, filtered or made optional:
+
+- The corpus run under `OSPREY_TARGET=wasm32` executes every program that declares a `many` operation and compares it with the same golden as GC and ARC. A `many` program in a wasm32 skip list fails the build.
+- `src/toolchain/crates/osprey-cli/tests/staged_multiplicity.rs` builds a `many` program for wasm32 and fails if the capability check rejects it.
+- The emitted LLVM for a `many` region contains no coroutine or thread runtime call.
+
+[Plan 0016](../../plans/0016-algebraic-effects-and-handlers.md) records the remaining continuation work. A `once` continuation outside every `many` region still waits for the target's one-shot stack primitive and is rejected by name until then.
 
 ## Memory Backend [WASM-TARGET-MEMORY]
 

@@ -27,7 +27,7 @@ Four graph components handle channels, and nothing else changes channel count:
 - **Route** is a channel matrix: each output channel takes any input channel, or silence. It reorders, duplicates and drops channels explicitly.
 - **Mix** sums several ports of one layout into one, with per-input gain. A panner places a mono source across any layout with equal-power gains whose squares sum to 1.
 
-A cable connects ports of identical layout only. Converting stereo to 5.1, downmixing a WAV or upmixing a voice is a visible Route or Mix node in the graph, so no channel is silently dropped. A project track declares its output layout, and Master's layout is the project's. Current limits that this replaces are named where they occur: the daw renderer is mono per track before panning, the imported WAV bank retains mono or stereo source PCM and the device queue accepts mono or stereo.
+A cable connects ports of identical layout only. Converting stereo to 5.1, downmixing a WAV or upmixing a voice is a visible Route or Mix node in the graph, so no channel is silently dropped. A project track declares its output layout, and Master's layout is the project's. Every node carries the project's layout, stereo by default, from source to Master.
 
 All canonical public data models are declared in typeDiagram and generated into Osprey/host representations. Stored patches include schema and component versions; unsupported versions return an explicit error. No silently substituted component or zero-valued parameter hides a failed load.
 

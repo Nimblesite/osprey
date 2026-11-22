@@ -201,8 +201,8 @@ At runtime, the compiler gives each effect operation a dense number, so finding 
 
 ## What isn't finished
 
-- Continuations are deep and single-shot, and only the native target resumes them. WebAssembly, iOS and Android support value handlers and `handle static`, and reject dynamic `control` operations before linking.
+- A `once` continuation is deep and single-shot, and only the native target resumes it. WebAssembly, iOS and Android support value handlers, `handle static` and multi-shot `control many` regions, and reject a `once` `control` operation outside such a region before linking.
 - Effect rows are not yet part of function types. The `!e` annotation is a closed-program prototype.
-- Multi-shot continuations, named handler instances, masking and finalizers are planned.
+- Multi-shot continuations have shipped since this post: `control many` runs on native and WebAssembly with identical output. Named handler instances, masking and finalizers followed.
 
 [Plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) tracks the evidence and the remaining work. To try handlers, start with the [effects guide](/docs/effects/) or the [playground](/playground/).

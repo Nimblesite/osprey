@@ -118,16 +118,6 @@ module SongFiles
     (** Write the complete project as JSON. *)
     export encode arrangement = encoded (ProjectCodec::writeArrangement arrangement)
 
-    audibleField member = match member
-        JsonMember name _ => name != "meterTop" && name != "meterBottom"
-
-    (** Identify the dry and send samples of a note independently of its bar or the written meter. *)
-    export noteCacheKey (song, voice) =
-        source = song(title = "", buses = [], tracks = [voice(name = "", gain = 1.0, pan = 0.0, bus = "", positions = [], notes = [])])
-        match ProjectCodec::writeArrangement source
-            JsonObject members => encoded (JsonObject (filterList (members, audibleField)))
-            _ => Error(message = "A project note key requires an arrangement object.")
-
 (** [DAW-TRANSPORT-LIVE-CONTROLS] The editor publishes the current mix and instruments.
     The producer reads a complete revision between audio blocks, outside the device callback. *)
 module LiveControls
@@ -161,13 +151,12 @@ module LiveControls
         true => Success(value = stream.controlScore)
         false => synth::Outcomes::carried (SongFiles::decode body, \controls => overlay (stream.playing.score, controls))
 
-    decoded (stream, revision, focus, body) = synth::Outcomes::carried (score (stream, body), \song =>
-        synth::Outcomes::carried (Playback::focused (stream.playing, focus), \playing =>
-            Success(value = stream(playing = playing, controlVersion = revision, controlScore = song))))
+    decoded (stream, revision, body) = synth::Outcomes::carried (score (stream, body), \song =>
+        Success(value = stream(controlVersion = revision, controlScore = song)))
 
     envelope (stream, revision, text) = synth::Outcomes::carried (indexOf text "\n", \at =>
-        synth::Outcomes::carried (substring text 0 at, \number => synth::Outcomes::carried (parseInt number, \focus =>
-            synth::Outcomes::carried (substring text (satAdd at 1) (length text), \body => decoded (stream, revision, focus, body)))))
+        synth::Outcomes::carried (substring text 0 at, \number => synth::Outcomes::carried (parseInt number, \_ =>
+            synth::Outcomes::carried (substring text (satAdd at 1) (length text), \body => decoded (stream, revision, body)))))
 
     payload (path, stream, revision, head) = synth::Outcomes::carried (readFile (slot (path, revision)), \body =>
         synth::Outcomes::carried (readFile path, \latest =>

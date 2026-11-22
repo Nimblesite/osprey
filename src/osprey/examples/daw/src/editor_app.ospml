@@ -36,12 +36,8 @@ module EditorApp
     tapped (context, editor, action) = match action
         ShowModules => patchTool (editor, editor(paletteShown = !(patchVisible editor) || !editor.paletteShown))
         ShowDetails => patchTool (editor, ui::Pick::either (patchVisible editor && (EditorView::paneled editor).detailsShown, editor(detailsShown = false, selected = -1), editor(detailsShown = true)))
-        ShowKeyboard => patchTool (editor, editor(keyboardShown = !(patchVisible editor) || !editor.keyboardShown, armedNote = -1))
         Undo => DawSession::restored (editor, EditorHistory::undo editor)
         Redo => DawSession::restored (editor, EditorHistory::redo editor)
-        Strike note => match editor.renderContinuous || editor.renderTicket != ""
-            true => Runtime::step (editor(armedNote = -1, message = "Stop playback before playing a new note."))
-            false => strike (editor, note, context.platform)
         LoadSample => SamplePicker::choose editor
         BuiltinSample => SamplePicker::builtin editor
         EditTiming => SongTimingEditor::open editor
@@ -50,9 +46,6 @@ module EditorApp
         ClosePluginWindow identity => PluginWindows::close (editor, identity)
         OpenPluginWindow identity => PluginWindows::open (editor, identity, context.platform)
         SaveSettings => Plugins::save editor
-        Audition => GraphPreview::play (editor, context.platform)
-        PlayGraph => GraphPreview::live (editor, context.platform)
-        StopGraph => GraphPreview::stop editor
         ShowPage page => DawSession::shown (editor(outputEdit = OutputClosed), page)
         PickTrack index bar => Runtime::step (TimelineView::following (DawSession::pickedAt (editor, index, bar)))
         SelectNote index => Runtime::step (editor(selectedNote = index))
@@ -80,32 +73,12 @@ module EditorApp
         UseKeymap name => Runtime::step (Keymaps::chosen (editor, Keymaps::preset name))
         LoadKeymap => Runtime::asking (editor, [ui::Requests::ask ("prism-keys", ui::ChooseFile(types = ["json"], chosenLimit = 0, chosenSlice = ""))])
         PlaySong => DawSession::saving (editor, DawSession::play)
-        RenderSong => DawSession::saving (editor, DawSession::bounce)
+        RenderSong => DawSession::saving (editor, DawSession::renderSong)
         StopSong => DawSession::stop editor
         ToggleLoop => DawSession::looped editor
         MoveEnd bar => DawSession::ended (editor, bar)
         MoveStart bar => DawSession::started (editor, bar)
         _ => Runtime::step (EditorState::tapped (editor, action))
-
-    // Preview captures the pitched voice. The project keeps its authored parameters, even after many key presses.
-    strike (editor, note, platform) = match editor.songPath == ""
-        true => match EditorState::tune (editor, note)
-            Error why => Runtime::step (editor(armedNote = -1, message = why))
-            Success tuned => GraphPreview::play (tuned, platform)
-        false => match listGet editor.song.tracks editor.track
-            Error _ => Runtime::step (editor(armedNote = -1, message = "Select a track to play its patch."))
-            Success track => soundTrack (editor, track, note, platform)
-
-    soundTrack (editor, track, note, platform) =
-        voice = match editor.track == editor.patchTrack
-            true => daw::PatchRecords::audition (track, editor.graph, note)
-            false => daw::PatchVoices::patched (daw::Note(pitch = note, start = 0.0, length = 1.0, velocity = 1.0), daw::TrackPatches::routing track.instrument)
-        match voice
-            Error why => Runtime::step (editor(armedNote = -1, message = why))
-            Success graph =>
-                sounded = GraphPreview::play (editor(graph = graph, note = note, armedNote = -1), platform)
-                played = sounded.stepStore
-                sounded(stepStore = played(graph = editor.graph))
 
     typed (editor, action, value) = match action
         PickBus => BusOutputs::picked (editor, value)
@@ -138,19 +111,7 @@ module EditorApp
 
     workerCompletion (editor, ticket, outcome) = match startsWith ticket "prism-vst:"
         true => Plugins::completed (editor, ticket, outcome)
-        false => match startsWith ticket "prism-audio:"
-            true => GraphPreview::completed (editor, ticket, outcome)
-            false => Preview::completed (editor, ticket, outcome)
-
-    keyPointer (context, editor, x, y, down) =
-        note = PrismArt::keyAt (editor, x, y)
-        match down
-            true => Runtime::step (editor(armedNote = note ?: -1))
-            false => match note
-                Success value => match editor.armedNote == value
-                    true => tapped (context, editor, Strike(note = value))
-                    false => Runtime::step (editor(armedNote = -1))
-                Error _ => Runtime::step (editor(armedNote = -1))
+        false => Runtime::step editor
 
     surfacePointer (context, editor, x, y, down) = match editor.outputEdit
         SongTiming _ _ => Runtime::step editor
@@ -277,17 +238,6 @@ module EditorApp
             true => Runtime::step editor
             false => Runtime::step (editor(skin = skin, layoutRevision = satAdd editor.layoutRevision 1))
 
-    dockPointer (context, editor, x, y, down) = match x >= editor.keyboardWidth - 156.0 && y <= 32.0
-        true => match down
-            true => Runtime::step (editor(armedNote = -30))
-            false => match editor.armedNote == -30
-                true => tapped (context, editor, ShowKeyboard)
-                false => Runtime::step (editor(armedNote = -1))
-        false =>
-            step = keyPointer (context, PrismArt::keyboardEditor editor, x, y + 828.0, down)
-            next = step.stepStore
-            step(stepStore = next(skin = editor.skin))
-
     surfaceKey (editor, key, down) = match editor.outputEdit
         ChoosingOutput focus => RoutingPicker::key (editor, focus, key, down)
         OutputClosed => match (key == "escape" && down && editor.rollDrag != RollIdle)
@@ -298,7 +248,6 @@ module EditorApp
         _ => Runtime::step (ui::Pick::either (down && key == "escape", editor(outputEdit = OutputClosed), editor))
 
     controlled (context, editor, action, input) = match action
-        Keyboard => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => dockPointer (context, editor, x, y, down), \(w, _) => Runtime::step (editor(keyboardWidth = w)), \(_, _) => Runtime::step editor)
         PatchSurface =>
             patch = EditorView::paneled (editor(page = PatchPage))
             moved = surfaced (context, patch, input, \(w, h) => viewed (patch, w, h))
@@ -330,7 +279,7 @@ module EditorApp
 
     update (context, editor, message) =
         step = routed (context, editor, message)
-        accepted = GraphPreview::liveEdit (editor, DawSession::liveEdit (editor, step.stepStore))
+        accepted = DawSession::liveEdit (editor, step.stepStore)
         view = match accepted.selected == editor.selected && accepted.patchTrack == editor.patchTrack && accepted.songPath == editor.songPath
             true => accepted
             false => accepted(dialOffset = 0)
@@ -341,8 +290,7 @@ module EditorApp
 
 (** [SYNTH-ADVANCED-GRAINS-IMPORT] Prepare a selected WAV outside rendering, with playback stopped. *)
 module SamplePicker
-    idle editor = editor.renderTicket == "" && editor.renderDeviceKey == "" && editor.renderContinuous == false && editor.renderStopping == false
-    ticket (editor, serial) = "prism-sample:${serial}:${editor.selected}:${editor.revision}:${editor.renderSerial}"
+    ticket (editor, serial) = "prism-sample:${serial}:${editor.selected}:${editor.revision}"
     problem (editor, text) =
         title = match Graphs::node (editor.graph, editor.selected)
             Valid n => EditorView::processorTitle n.processor
@@ -350,8 +298,8 @@ module SamplePicker
         Runtime::step (editor(sampleTicket = "", message = "${title} ${editor.selected}: ${text}"))
 
     (** Open the native WAV chooser for the selected grain cloud. *)
-    export choose editor = match idle editor && editor.sampleSerial < 9223372036854775807
-        false => problem (editor, "Sample selection is unavailable while playing or when request IDs run out.")
+    export choose editor = match editor.sampleSerial < 9223372036854775807
+        false => problem (editor, "Sample selection is unavailable when request IDs run out.")
         true => match Graphs::node (editor.graph, editor.selected)
             Valid n => match n.processor
                 Granular _ _ _ => request editor
@@ -398,14 +346,12 @@ module SamplePicker
             _ => problem (editor, "Select a Sample or Grain cloud.")
 
     (** Restore the original harmonic resource through the same graph edit. *)
-    export builtin editor = match idle editor
-        false => problem (editor, "Stop playback before replacing the sample.")
-        true => apply (editor, daw::PatchVoices::builtinSample ())
+    export builtin editor = apply (editor, daw::PatchVoices::builtinSample ())
 
-    (** Handle only the current selection, patch revision and playback generation. *)
+    (** Handle only the current selection and patch revision. *)
     export completed (editor, key, outcome) = match key == editor.sampleTicket
         false => Runtime::step editor
-        true => match key == ticket (editor, editor.sampleSerial) && idle editor
+        true => match key == ticket (editor, editor.sampleSerial)
             false => Runtime::step (editor(sampleTicket = ""))
             true => match outcome
                 Error why => problem (editor, why)

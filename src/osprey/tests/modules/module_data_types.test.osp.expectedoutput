@@ -4,5 +4,6 @@ ok 2 - module records keep their fields
 ok 3 - module generics specialise per call site
 ok 4 - module opaque records stay abstract
 ok 5 - module opaque aliases stay abstract
-1..5
-# tests=5 passed=5 failed=0 skipped=0
+ok 6 - namespaced union constructors print their names
+1..6
+# tests=6 passed=6 failed=0 skipped=0

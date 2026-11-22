@@ -3,10 +3,11 @@ namespace daw
 
 import synth::Outcomes
 
-(** A track plays as cued notes: each note starts sounding when the window reaching its start frame plays,
-    every lane (the dry output and each send's two sides) is summed over the window from the notes then
-    sounding, and the window is routed into the shared buses: its group or Master, its sidechain key and its
-    sends. A note stops once it has ended. `Playback` advances every track over the same window together. *)
+(** A track plays as cued notes: each note starts its own driver when the window reaching its start frame
+    plays and makes only that window, every lane (the dry left and right and each send's two sides) is summed
+    over the window from the notes then sounding, and the window is routed into the shared buses: its group or
+    Master, its sidechain key and its sends. A note stops once it has ended. `Playback` advances every track over
+    the same window together. *)
 module Arrangements
     ok value = Success(value = value)
 
@@ -44,25 +45,26 @@ module Arrangements
         true => existing
         false => toList (map (range (0, longer (length existing, satAdd offset (length samples))), \index => ArrangeMath::bused (listGet existing index ?: 0.0, gain, listGet samples (satSub index offset) ?: 0.0)))
 
-    // One bus takes the mono buffer from frame `offset`, scaled by `gain * shade`.
-    sent (bus, samples, offset, gain, shade) = bused (bus, samples, offset, ArrangeMath::scaled (gain, shade))
-
     (** Silent buses. *)
     export empty = Buses(left = [], right = [], groups = [], keys = [])
 
-    (** Add a mono buffer to the buses from frame `offset` (0 or later): gain 0–4, pan −1 (left) to 1 (right). *)
-    export layered (buses, samples, offset, gain, pan) = match offset >= 0 && ArrangeMath::mixable (gain, pan)
+    (** [DAW-MODULAR-LAYOUT] Add a track's two channels to the buses from frame `offset` (0 or later): gain 0–4 and
+        balance −1 (left) to 1 (right), unity on both sides at the centre. *)
+    export layered (buses, left, right, offset, gain, pan) = match offset >= 0 && ArrangeMath::mixable (gain, pan)
         false => Error(message = "Gain must be 0 to 4, pan -1 to 1 and the offset not negative.")
-        true => Success(value = buses(left = sent (buses.left, samples, offset, gain, ArrangeMath::panLeft pan), right = sent (buses.right, samples, offset, gain, ArrangeMath::panRight pan)))
+        true => Success(value = buses(left = bused (buses.left, left, offset, ArrangeMath::scaled (gain, ArrangeMath::balanceLeft pan)), right = bused (buses.right, right, offset, ArrangeMath::scaled (gain, ArrangeMath::balanceRight pan))))
 
     (** The frame at which `beat` starts. *)
     export frame (arrangement, beat) = match floatToInt (ArrangeMath::beatFrames (beat, arrangement.tempo, toFloat arrangement.sampleRate))
         Error _ => Error(message = "A start beat is not finite.")
         Success start => Success(value = start)
 
-    // A track that keys a bus compressor is kept, at its gain, for the bus stage ([DAW-MIX-BUS]).
-    kept (arrangement, buses, voice, samples) = match BusMix::keys (arrangement, voice.name)
-        true => buses(keys = listAppend buses.keys (Keyed(name = voice.name, samples = mapList (samples, \s => ArrangeMath::scaled (s, voice.gain)))))
+    // A track that keys a bus compressor is kept, at its gain, for the bus stage ([DAW-MIX-BUS]): both channels
+    // summed at equal power, so a centred mono voice keys at its own level.
+    keyed (voice, left, right) = synth::Sequences::mapIndexed (left, \(index, value) => ArrangeMath::scaled (value + (listGet right index ?: 0.0), ArrangeMath::scaled (voice.gain, ArrangeMath::panLeft 0.0)))
+
+    kept (arrangement, buses, voice, left, right) = match BusMix::keys (arrangement, voice.name)
+        true => buses(keys = listAppend buses.keys (Keyed(name = voice.name, samples = keyed (voice, left, right))))
         false => buses
 
     group (buses, name) = listGet (filterList (buses.groups, \g => g.name == name)) 0 ?: Stereo(name = name, left = [], right = [])
@@ -71,15 +73,15 @@ module Arrangements
 
     joined (buses, name, fed) = Buses(left = buses.left, right = buses.right, groups = listAppend (others (buses, name)) (Stereo(name = name, left = fed.left, right = fed.right)), keys = buses.keys)
 
-    // The track's two sides sum into its bus.
-    grouped (buses, voice, samples) =
+    // The track's two channels sum into its bus.
+    grouped (buses, voice, left, right) =
         inner = group (buses, voice.bus)
         sides = Buses(left = inner.left, right = inner.right, groups = [], keys = [])
-        Outcomes::carried (layered (sides, samples, 0, voice.gain, voice.pan), \fed => Success(value = joined (buses, voice.bus, fed)))
+        Outcomes::carried (layered (sides, left, right, 0, voice.gain, voice.pan), \fed => Success(value = joined (buses, voice.bus, fed)))
 
-    routed (buses, voice, samples) = match voice.bus == ""
-        true => layered (buses, samples, 0, voice.gain, voice.pan)
-        false => grouped (buses, voice, samples)
+    routed (buses, voice, left, right) = match voice.bus == ""
+        true => layered (buses, left, right, 0, voice.gain, voice.pan)
+        false => grouped (buses, voice, left, right)
 
     (** Sum a stereo signal into a named group without a second pan stage. *)
     export feedGroup (buses, name, left, right, gain) =
@@ -88,20 +90,22 @@ module Arrangements
         buses(groups = listAppend (others (buses, name)) next)
 
     // Overlay the send's two channels without panning the stereo signal a second time.
-    sentGroup (buses, routeSend, lanes, index) = match listGet lanes (satAdd 1 (satMul 2 index))
+    sentGroup (buses, routeSend, lanes, index) = match listGet lanes (satAdd 2 (satMul 2 index))
         Error _ => Error(message = "The send has no left channel.")
-        Success left => match listGet lanes (satAdd 2 (satMul 2 index))
+        Success left => match listGet lanes (satAdd 3 (satMul 2 index))
             Error _ => Error(message = "The send has no right channel.")
             Success right => Success(value = feedGroup (buses, routeSend.bus, left, right, 1.0))
 
-    // The dry lane to its bus (and key), then each send's two lanes to its group.
+    // The dry pair to its bus (and key), then each send's pair to its group.
     fed (song, buses, voice, sends, lanes) = match listGet lanes 0
-        Error _ => Error(message = "The track has no main output.")
-        Success dry => Outcomes::carried (routed (kept (song, buses, voice, dry), voice, dry), \main =>
-            foldList (toList (range (0, length sends)), Success(value = main), \(held, i) => Outcomes::carried (held, \prior =>
-                match listGet sends i
-                    Error _ => Error(message = "Missing track send.")
-                    Success routeSend => sentGroup (prior, routeSend, lanes, i))))
+        Error _ => Error(message = "The track has no left output.")
+        Success left => match listGet lanes 1
+            Error _ => Error(message = "The track has no right output.")
+            Success right => Outcomes::carried (routed (kept (song, buses, voice, left, right), voice, left, right), \main =>
+                foldList (toList (range (0, length sends)), Success(value = main), \(held, i) => Outcomes::carried (held, \prior =>
+                    match listGet sends i
+                        Error _ => Error(message = "Missing track send.")
+                        Success routeSend => sentGroup (prior, routeSend, lanes, i))))
 
     named (voice, outcome) = match outcome
         Error why => Error(message = "${voice.name}: ${why}")
@@ -125,52 +129,29 @@ module Arrangements
     (** A track before it plays: every note cued at its start frame in start order, with its live sends. A
         note start that is not finite or before the piece, or a bus the song lacks, fails here. *)
     export opened (song, voice) = Outcomes::carried (reachable (song, voice), \_ => Outcomes::carried (live (song, voice), \sends =>
-        Outcomes::carried (SendRenders::collect (listSortBy (voice.notes, ordered), \note => cue (song, voice, note)), \cues => ok (TrackPlay(edited = false, pending = cues, sounding = [], sends = sends, made = [], recordings = [])))))
+        Outcomes::carried (SendRenders::collect (listSortBy (voice.notes, ordered), \note => cue (song, voice, note)), \cues => ok (TrackPlay(pending = cues, sounding = [], sends = sends)))))
 
-    (** One note's lanes: the dry output alone, or with each send's two sides from the same evaluation. *)
-    export lanesOf (song, voice, sends, note) = match sends
-        [] => Outcomes::carried (NoteRenders::render (note, song.tempo, toFloat song.sampleRate, voice.instrument), \samples => ok [samples])
-        _ => SendRenders::note (voice, sends, note, song.tempo, toFloat song.sampleRate)
+    // [DAW-RENDER-PLAY] A note starts its own driver, which makes only the blocks the graph asks for.
+    started (song, voice, sends, due, sounding) = match voice.instrument
+        PatchInstrument routing => SendRenders::started (song, voice, sends, routing, due, sounding)
+        OperatorInstrument tone => SendRenders::operatorStarted (song, voice, sends, tone, due)
+        _ => SendRenders::voiceStarted (song, voice, sends, due)
 
-    (** Whether two notes sound the same wherever they start: the same pitch, length and velocity. *)
-    export same (one, other) = one.pitch == other.pitch && one.length == other.length && one.velocity == other.velocity
+    struck (song, voice, play, due) = Outcomes::carried (started (song, voice, play.sends, due, play.sounding), \sound => ok (play(sounding = listAppend play.sounding sound)))
 
-    // A note starts sounding at its frame; a note this track has made before reuses its lanes.
-    struck (song, voice, play, due, streaming) = match ui::Lists::find (play.made, \m => same (m.struck, due.note))
-        Success made => ok (play(sounding = listAppend play.sounding (Sounding(cue = due, at = due.due, driver = RecordedNote, lanes = made.chord))))
-        Error _ => match voice.instrument
-            PatchInstrument routing => match play.edited || streaming
-                true => Outcomes::carried (SendRenders::started (song, voice, play.sends, routing, due, play.sounding), \sound => ok (play(sounding = listAppend play.sounding sound)))
-                false => recorded (song, voice, play, due)
-            OperatorInstrument tone => match streaming
-                true => Outcomes::carried (SendRenders::operatorStarted (song, voice, play.sends, tone, due), \sound => ok (play(sounding = listAppend play.sounding sound)))
-                false => recorded (song, voice, play, due)
-            _ => recorded (song, voice, play, due)
-
-    recorded (song, voice, play, due) = Outcomes::carried (lanesOf (song, voice, play.sends, due.note), \lanes =>
-        ok (play(sounding = listAppend play.sounding (Sounding(cue = due, at = due.due, driver = RecordedNote, lanes = lanes)), made = listAppend play.made (Made(struck = due.note, chord = lanes)))))
-
-    (** Only the instrument and its sends affect a cached note's dry and send lanes. *)
+    (** Only the instrument and its sends decide how a sounding note continues. *)
     export sameVoice (voice, prior) = structuralEquals (voice.instrument, prior.instrument) && structuralEquals (voice.sends, prior.sends)
 
-    (** Promote sounding patch notes when the track gains focus, before its first parameter changes. *)
-    export focused (song, voice, play, from) = match voice.instrument
-        PatchInstrument _ => match play.edited
-            true => ok play
-            false => Outcomes::carried (SendRenders::collect (play.sounding, \sound => SendRenders::activeBefore (song, voice, play.sends, sound, from)), \sounds =>
-                ok (play(edited = true, sounding = sounds, made = [], recordings = [])))
-        _ => ok play
-
-    (** Rebuild sounding lanes at their original onset and discard cached notes when the instrument or sends change. *)
+    (** When the instrument or sends change, every sounding note continues at its own age under the new voice. *)
     export refreshed (song, voice, prior, play, from) = match sameVoice (voice, prior)
         true => ok play
         false => Outcomes::carried (live (song, voice), \sends =>
-            Outcomes::carried (SendRenders::collect (play.sounding, \sound => revised (song, voice, prior, play.sends, sends, sound, from)), \sounds =>
-                ok (play(edited = true, sounding = sounds, sends = sends, made = [], recordings = []))))
+            Outcomes::carried (SendRenders::collect (play.sounding, \sound => revised (song, voice, sends, sound, from)), \sounds =>
+                ok (play(sounding = sounds, sends = sends))))
 
-    revised (song, voice, prior, oldSends, sends, sound, from) = match voice.instrument
-        PatchInstrument routing => SendRenders::retuned (song, voice, prior, oldSends, sends, sound, from, routing)
-        _ => Outcomes::carried (lanesOf (song, voice, sends, sound.cue.note), \lanes => ok (sound(at = sound.cue.due, driver = RecordedNote, lanes = lanes)))
+    revised (song, voice, sends, sound, from) = match voice.instrument
+        PatchInstrument routing => SendRenders::retuned (song, voice, sends, sound, from, routing)
+        _ => Outcomes::carried (started (song, voice, sends, sound.cue, []), \fresh => SendRenders::window (fresh, fresh.cue.due, from, toFloat song.sampleRate))
 
     (** Cues are sorted by onset. Only inspect the rest of the queue once its first note is due. *)
     export dueBefore (play, until) = match listGet play.pending 0
@@ -178,12 +159,12 @@ module Arrangements
         Error _ => false
 
     // Notes due before `until` start sounding.
-    begun (song, voice, play, until, streaming) = match dueBefore (play, until)
+    begun (song, voice, play, until) = match dueBefore (play, until)
         false => ok play
-        true => Outcomes::carried (foldList (filterList (play.pending, \c => c.due < until), ok play, \(outcome, c) => Outcomes::carried (outcome, \held => struck (song, voice, held, c, streaming))), \next =>
+        true => Outcomes::carried (foldList (filterList (play.pending, \c => c.due < until), ok play, \(outcome, c) => Outcomes::carried (outcome, \held => struck (song, voice, held, c))), \next =>
             ok (next(pending = filterList (play.pending, \c => c.due >= until))))
 
-    // A sounding note's sample at song frame `at`, silent before it starts and after it ends.
+    // A sounding note's sample at song frame `at`, silent before its block starts.
     heard (samples, start, at) = match at >= start
         true => listGet samples (satSub at start) ?: 0.0
         false => 0.0
@@ -201,93 +182,24 @@ module Arrangements
     export lasting (until, voice) = match voice.driver
         PerformingNote patch => satAdd voice.cue.due patch.span.total > until
         PerformingOperator pair => satAdd voice.cue.due pair.span.total > until
-        RecordedNote => satAdd voice.at (length (listGet voice.lanes 0 ?: [])) > until
+        PerformingVoice built => satAdd voice.cue.due built.span.total > until
 
     activeLane (voices, lane, from, until, filled) = match filled && length voices == 0
         true => []
         false => window (voices, lane, from, until)
 
+    // Every sounding note makes exactly this block.
+    sounding (song, play, from, until) = Outcomes::carried (SendRenders::collect (play.sounding, \sound => SendRenders::window (sound, from, until, toFloat song.sampleRate)), \sounds => ok (play(sounding = sounds)))
+
     (** Advance one track over song frames `from` up to `until` into `buses`: notes due start sounding, each
-        lane is summed for the window and routed, and notes that have ended stop. *)
-    export advanceWindow (song, buses, voice, play, from, until, streaming) = named (voice, Outcomes::carried (begun (song, voice, play, until, streaming), \began =>
-        Outcomes::carried (sounding (song, began, from, until, streaming), \next => mixedWindow (song, buses, voice, next, from, until))))
-
-    (** Advance an offline track, caching each distinct note across windows. *)
-    export advanced (song, buses, voice, play, from, until) = advanceWindow (song, buses, voice, play, from, until, false)
-
-    sounding (song, play, from, until, streaming) = match streaming || play.edited
-        false => ok play
-        true => Outcomes::carried (SendRenders::collect (play.sounding, \sound => SendRenders::window (sound, from, until, toFloat song.sampleRate)), \sounds => ok (remember (play(sounding = sounds), until)))
-
-    // Reuse the exact dry and send lanes of an uninterrupted voice after it finishes.
-    remember (play, until) = match play.edited
-        true => play
-        false => foldList (play.sounding, play, \(current, sound) => rememberSound (current, until, sound))
-
-    sameTake (take, sound) = take.struck.start == sound.cue.note.start && same (take.struck, sound.cue.note)
-
-    rememberSound (play, until, sound) = match sound.driver
-        RecordedNote => match play.recordings
-            [] => play
-            _ => play(recordings = filterList (play.recordings, \take => !sameTake (take, sound)))
-        _ => match ui::Lists::find (play.recordings, \take => sameTake (take, sound))
-            Success take => match length (listGet take.chord 0 ?: []) == satSub sound.at sound.cue.due
-                true => storeTake (play, until, sound, Made(struck = take.struck, chord = extended (take.chord, sound.lanes)))
-                false => play
-            Error _ => match sound.at == sound.cue.due && !ui::Lists::any (play.made, \take => same (take.struck, sound.cue.note)) && ui::Lists::any (play.pending, \cue => same (sound.cue.note, cue.note)) && !ui::Lists::any (play.recordings, \take => same (take.struck, sound.cue.note))
-                true => storeTake (play, until, sound, Made(struck = sound.cue.note, chord = sound.lanes))
-                false => play
-
-    extended (prior, lanes) = synth::Sequences::mapIndexed (lanes, \(index, samples) => synth::Sequences::joined (listGet prior index ?: [], samples))
-
-    storeTake (play, until, sound, take) =
-        others = filterList (play.recordings, \item => !sameTake (item, sound))
-        match lasting (until, sound)
-            true => play(recordings = listPrepend others take)
-            false => match ui::Lists::any (play.made, \item => same (item.struck, take.struck))
-                true => play(recordings = others)
-                false => play(recordings = others, made = listAppend play.made take)
+        sounding note makes this block, each lane is summed and routed, and notes that have ended stop. *)
+    export advanceWindow (song, buses, voice, play, from, until) = named (voice, Outcomes::carried (begun (song, voice, play, until), \began =>
+        Outcomes::carried (sounding (song, began, from, until), \next => mixedWindow (song, buses, voice, next, from, until))))
 
     mixedWindow (song, buses, voice, next, from, until) =
         filled = length buses.left >= satSub until from && length buses.right >= satSub until from
-        lanes = toList (map (range (0, satAdd 1 (satMul 2 (length next.sends))), \lane => activeLane (next.sounding, lane, from, until, filled)))
+        lanes = toList (map (range (0, satAdd 2 (satMul 2 (length next.sends))), \lane => activeLane (next.sounding, lane, from, until, filled)))
         Outcomes::carried (fed (song, buses, voice, next.sends, lanes), \into => ok (Advanced(play = next(sounding = filterList (next.sounding, \v => lasting (until, v))), buses = into)))
-
-    // A standalone part settles the timeline up to the last onset, including an opening rest.
-    settledPart (song, voice, play, frames) =
-        until = foldList (play.pending, frames, \(end, cue) => longer (end, cue.due))
-        match until <= 28800000
-            false => Error(message = "An arrangement must last 1 to 28800000 frames.")
-            true => Outcomes::carried (begun (song, voice, play, until, false), \next => ok (window (next.sounding, 0, 0, until)))
-
-    (** Render the standalone mono part through the requested frame or its last onset, whichever is later. *)
-    export part (song, voice, frames) = Outcomes::carried (opened (song, voice), \play => named (voice, settledPart (song, voice, play, frames)))
-
-    (** One track alone, played from the start for `count` frames into `buses`. *)
-    export added (song, buses, voice, count) = Outcomes::carried (opened (song, voice), \play => Outcomes::carried (advanced (song, buses, voice, play, 0, count), \step => ok step.buses))
-
-    peak (high, value) = synth::TableMath::larger (high, synth::TableMath::magnitude value)
-
-    // Master's ceiling, about −1 dBTP, and its limiter's lookahead and release.
-    ceiling = 0.89
-
-    lookahead = 1.5
-
-    release = 0.08
-
-    lift (side, gain) = mapList (side, \value => ArrangeMath::scaled (value, gain))
-
-    limited (left, right, top, gains) = Mixdown(left = synth::Limiters::applied (left, gains, ceiling), right = synth::Limiters::applied (right, gains, ceiling), peak = top)
-
-    (** Master's last stage [DAW-DYNAMICS-LIMITER], over the whole played Master: it is scaled so its peak meets the
-        ceiling (0.89, about −1 dBTP), then both sides pass the linked true-peak brick-wall limiter; `peak` is the
-        level before it. *)
-    export levelled (rate, left, right) =
-        top = foldList (right, foldList (left, 0.0, peak), peak)
-        gain = ArrangeMath::lifted (top, ceiling)
-        near = lift (left, gain)
-        far = lift (right, gain)
-        synth::Outcomes::carried (PatchVoices::told (synth::Limiters::gains (near, far, rate, ceiling, lookahead, release)), \gains => Success(value = limited (near, far, top, gains)))
 
     interleave (mix, done, index) = listAppend (listAppend done (listGet mix.left index ?: 0.0)) (listGet mix.right index ?: 0.0)
 

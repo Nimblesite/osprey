@@ -42,10 +42,11 @@ module ArrangeMath
     (** Right-channel equal-power pan gain. *)
     export panRight pan = sin (0.7853981633974483 * (pan + 1.0))
 
-    (** Master lift: the gain that puts the mix's peak on `ceiling`. A silent mix stays silent. *)
-    export lifted (peak, ceiling) = match peak <= 0.0
-        true => 0.0
-        false => floatDiv (ceiling, peak)
+    (** [DAW-MODULAR-LAYOUT] Left balance gain for a two-channel track: unity at the centre, equal power around it. *)
+    export balanceLeft pan = panLeft pan / panLeft 0.0
+
+    (** Right balance gain for a two-channel track: unity at the centre, equal power around it. *)
+    export balanceRight pan = panRight pan / panRight 0.0
 
     (** A deterministic, normalised single-cycle harmonic sample for the initial grain-cloud patch. *)
     export grainSample index = 0.5 * sin (6.283185307179586 * index / 1024.0) + 0.25 * sin (18.84955592153876 * index / 1024.0) + 0.125 * sin (43.982297150257104 * index / 1024.0)
@@ -104,13 +105,3 @@ module ArrangeMath
 
     (** A bus is playable: gain 0–4, EQ gains −24 to 24 dB, ratio 1–20, knee 0–24 dB, attack and release 0–2 s. *)
     export busValid (gain, low, mid, high, ratio, knee, attack, release) = gain >= 0.0 && gain <= 4.0 && low >= (-24.0) && low <= 24.0 && mid >= (-24.0) && mid <= 24.0 && high >= (-24.0) && high <= 24.0 && ratio >= 1.0 && ratio <= 20.0 && knee >= 0.0 && knee <= 24.0 && attack >= 0.0 && attack <= 2.0 && release >= 0.0 && release <= 2.0
-
-    (** [DAW-TRANSPORT-LIVE] A live sample: Master three quarters up, through a cubic soft clip that never leaves -1 to 1, since live play cannot know the song's peak before it sounds. *)
-    export live sample =
-        raw = sample * 0.75
-        held = match raw < (-1.0)
-            true => -1.0
-            false => match raw > 1.0
-                true => 1.0
-                false => raw
-        1.5 * held - 0.5 * held * held * held

@@ -5,6 +5,7 @@
 // even after one fails, so one red can never hide the next, and the coverage gates run last.
 import { spawnSync } from 'node:child_process'
 import { closeSync, mkdirSync, openSync, writeFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 import { workflowJobs, workflowText } from './ci-workflow-text.mjs'
 
 const CI = '.github/workflows/ci.yml'
@@ -228,4 +229,4 @@ function main(args) {
   return results.some((result) => result.status === 'FAIL') ? 1 : 0
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) process.exit(main(process.argv.slice(2)))
+if (import.meta.url === pathToFileURL(process.argv[1]).href) process.exit(main(process.argv.slice(2)))

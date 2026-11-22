@@ -1,0 +1,159 @@
+// Ported from jasontaylordev/CleanArchitecture (MIT), src/Web/Endpoints/TodoLists.cs, TodoItems.cs and
+// Program.cs. The one place JSON and the HTTP shapes appear; edge_server.osp opens the socket ([EXAMPLE-CLEANARCH-BOOK-DATA]).
+
+namespace todo;
+
+import todo::TodoDispatch
+import todo::TodoRequest
+import ui::Doc
+
+/// What a route asks for: a request and the status its success answers, or a refusal.
+type Routed = Ask { request: Request, status: int, location: string } | Refuse { status: int, why: string }
+
+/// The edge of the application: the only module that knows JSON and HTTP routes.
+module EdgeTodo {
+    /// One request: route, decode, send through the pipeline, encode.
+    export fn answer(method, path, body) = {
+        let parts = split(path, "?") ?: [path]
+        let route = split(drop(listGet(parts, 0) ?: path, 1), "/") ?: []
+        match routed(listConcat([method], route), listGet(parts, 1) ?: "", Doc::parse(body)) {
+            Ask { request, status, location } => match TodoDispatch::send(request) {
+                Success { value: reply } => respond(status, "application/json", created(location, reply), encoded(reply))
+                Error { message } => refused(message)
+            }
+            Refuse { status, why } => text(status, why)
+        }
+    }
+
+    /// The route table of both endpoint groups. A PUT or PATCH by id is a 400
+    /// unless the url id is the payload id: `if (id != command.Id) return BadRequest()`.
+    fn routed(route, query, doc) = match route {
+        ["GET", "api", "TodoLists"] => Ask { request: GetTodos, status: 200, location: "" }
+        ["POST", "api", "TodoLists"] => Ask {
+            request: CreateList { list: NewList { title: Doc::text(doc, "title"), colour: Doc::text(doc, "colour") } },
+            status: 201,
+            location: "/api/TodoLists"
+        }
+        [_, "api", "TodoLists", "purge"] => Ask { request: PurgeTodoLists, status: 200, location: "" }
+        ["PUT", "api", "TodoLists", id] => byId(id, Doc::number(doc, "id"), UpdateList { edit: ListEdit {
+            id: Doc::number(doc, "id"),
+            title: Doc::text(doc, "title"),
+            colour: Doc::text(doc, "colour")
+        } })
+        ["DELETE", "api", "TodoLists", id] => byId(id, parseInt(id) ?: 0, DeleteList { id: parseInt(id) ?: 0 })
+        ["GET", "api", "TodoItems"] => Ask {
+            request: ItemsWithPagination { query: ItemQuery {
+                listId: asked(query, "listId", 0),
+                pageNumber: asked(query, "pageNumber", 1),
+                pageSize: asked(query, "pageSize", 10)
+            } },
+            status: 200,
+            location: ""
+        }
+        ["POST", "api", "TodoItems"] => Ask {
+            request: CreateItem { item: NewItem { listId: Doc::number(doc, "listId"), title: Doc::text(doc, "title") } },
+            status: 201,
+            location: "/api/TodoItems"
+        }
+        ["PUT", "api", "TodoItems", id] => byId(id, Doc::number(doc, "id"), UpdateItem { edit: ItemEdit {
+            id: Doc::number(doc, "id"),
+            title: Doc::text(doc, "title"),
+            done: Doc::flag(doc, "done")
+        } })
+        ["PATCH", "api", "TodoItems", "UpdateDetail", id] => byId(id, Doc::number(doc, "id"), UpdateItemDetail {
+            detail: ItemDetail {
+                id: Doc::number(doc, "id"),
+                listId: Doc::number(doc, "listId"),
+                priority: Doc::number(doc, "priority"),
+                note: Doc::text(doc, "note")
+            }
+        })
+        ["DELETE", "api", "TodoItems", id] => byId(id, parseInt(id) ?: 0, DeleteItem { id: parseInt(id) ?: 0 })
+        [_, "api", "TodoLists"] => Refuse { status: 405, why: "method not allowed" }
+        [_, "api", "TodoItems"] => Refuse { status: 405, why: "method not allowed" }
+        _ => Refuse { status: 404, why: "no such route" }
+    }
+
+    /// `request` with a 204, when url segment `id` is the number `expected`.
+    fn byId(id, expected, request) = match parseInt(id) {
+        Error { message } => Refuse { status: 400, why: message }
+        Success { value: found } => match found == expected {
+            true => Ask { request: request, status: 204, location: "" }
+            false => Refuse { status: 400, why: "the id in the url must match the id in the payload" }
+        }
+    }
+
+    /// The Location header a created resource reports.
+    fn created(prefix, reply) = match reply {
+        CreatedId { value } => "Location: ${prefix}/${toString(value)}\r\n"
+        _ => ""
+    }
+
+    /// Success replies as JSON: a bare int for Created<int>, nothing for NoContent.
+    fn encoded(reply) = match reply {
+        CreatedId { value } => toString(value)
+        Updated => ""
+        Purged { count } => "{\"purged\":${toString(count)}}"
+        TodosView { priorities, colours, lists } => Doc::write(JsonObject([
+            JsonMember("priorities", JsonArray(mapList(priorities, fn(entry) =>
+                JsonObject([Doc::num("id", entry.id), Doc::str("name", entry.name)])))),
+            JsonMember("colours", JsonArray(mapList(colours, fn(choice) =>
+                JsonObject([Doc::str("code", choice.code), Doc::str("name", choice.name)])))),
+            JsonMember("lists", JsonArray(mapList(lists, fn(list) => JsonObject([
+                Doc::num("id", list.id),
+                Doc::str("title", list.title),
+                Doc::str("colour", list.colour),
+                JsonMember("items", JsonArray(mapList(list.items, itemJson)))
+            ]))))
+        ]))
+        ItemsPageView { rows, totalCount, hasPrevious, hasNext } => Doc::write(JsonObject([
+            JsonMember("items", JsonArray(mapList(rows, itemJson))),
+            Doc::num("totalCount", totalCount),
+            Doc::bit("hasPreviousPage", hasPrevious),
+            Doc::bit("hasNextPage", hasNext)
+        ]))
+    }
+
+    /// One TodoItemDto.
+    fn itemJson(item) = JsonObject([
+        Doc::num("id", item.id),
+        Doc::str("title", item.title),
+        Doc::bit("done", item.done),
+        Doc::str("priority", item.priority),
+        Doc::str("note", item.note)
+    ])
+
+    /// The exception-to-status mapping: 400 with problem details, 401, 403, 404, 409.
+    fn refused(fault) = match fault {
+        ValidationFault { problems } => respond(400, "application/json", "", Doc::write(JsonObject([
+            Doc::str("title", "One or more validation errors occurred."),
+            Doc::num("status", 400),
+            JsonMember("errors", JsonArray(mapList(problems, fn(problem) => JsonString(problem))))
+        ])))
+        Unauthorized => text(401, "unauthorized")
+        Forbidden { why } => text(403, "forbidden: ${why}")
+        NotFound { kind, id } => text(404, "${kind} ${toString(id)} was not found")
+        Conflict { why } => text(409, "conflict: ${why}")
+    }
+
+    fn text(status, body) = respond(status, "text/plain", "", "${body}\n")
+
+    fn respond(status, contentType, location, body) = HttpResponse {
+        status: status,
+        headers: "Content-Type: ${contentType}\r\n${location}",
+        contentType: contentType,
+        streamFd: -1,
+        isComplete: true,
+        partialBody: body
+    }
+
+    /// Query parameter `key` of "a=1&b=2" as a number, or the binder default.
+    fn asked(query, key, whenMissing) = foldList(split(query, "&") ?: [], whenMissing, fn(found, pair) =>
+        match split(pair, "=") ?: [] {
+            [name, value] => match name == key {
+                true => parseInt(value) ?: whenMissing
+                false => found
+            }
+            _ => found
+        })
+}

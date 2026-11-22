@@ -116,11 +116,6 @@ module PatchRecords
         Error _ => Error(message = "The selected track is missing.")
         Success track => synth::Outcomes::carried (edited (track, graph), \next => Projects::replaced (song, index, next))
 
-    (** Resolve the working patch for a keyboard strike without transposing the project itself. *)
-    export audition (track, graph, pitch) = match pitch >= 0 && pitch <= 127
-        false => Error(message = "Choose a MIDI note from 0 to 127.")
-        true => synth::Outcomes::carried (routed (TrackPatches::routing track.instrument, graph), \draft => PatchVoices::patched (Note(pitch = pitch, start = 0.0, length = 1.0, velocity = 1.0), draft))
-
     (** The arrangement with track `index` storing `graph`. *)
     export saved (arrangement, index, graph) = match listGet arrangement.tracks index
         Error _ => Error(message = "The arrangement has no track ${satAdd index 1}.")

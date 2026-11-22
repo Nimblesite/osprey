@@ -77,7 +77,7 @@ Deliver the first milestone before expanding to another synthesis family. Shared
 
 - [x] Declare audio, control and timestamped-event ports, channel layouts and physical units for every new component. `Port` (graph.td) carries rate, channels and unit; the synth test "every component declares coherent port rates…" checks 32 components: audio is amplitude on 1+ channels, control is one normalised channel, events are one channel of notes, names unique per side (50/50 ARC).
 - [ ] Unlimited channels [SYNTH-GRAPH-CHANNELS]: declare `ChannelLayout` (ordered named channels, stereo default, 5.1/7.1/7.1.4/any N) in `graph.td`; every port carries one.
-- [ ] Render every instrument and processor per channel over its prepared layout; delete the fixed mono/stereo code paths (`Grains` stereo summing, renderer mono tracks, `GraphClips` mono-to-stereo component).
+- [ ] **[DAW-MODULAR-LAYOUT]: every track carries two channels.** Done: a patch's stereo output keeps its left and right to Master, a mono output and every built-in voice sit in the centre at equal power, and track pan is a balance with unity at the centre. Open: layouts other than stereo, `Grains` stereo summing and the `GraphClips` mono-to-stereo component.
 - [x] Add Split, Join, Route (channel matrix) and Mix (per-input gain) graph components and Prism cards; an any-layout equal-power panner whose gain formula lives in native Osprey. Prism’s picker inserts all five cards and preserves their ports through Undo/Redo. The panner and mixer retain their width and settings through project save/reopen. The prepared graph currently accepts 1–64 channels.
 - [ ] Track and Master output layouts in the project file (`daw.td`); sample import keeps every source channel; the macOS device queue plays any layout CoreAudio offers.
   - [x] WAV import preserves each PCM word in channel order for the supported mono and stereo layouts. Swapping the left and right channels changes the resource hash. The mono grain consumer averages each pair once at preparation.
@@ -337,7 +337,6 @@ Added on request after the families: a piano-roll project file rendered offline 
 
 - [x] Declare the arrangement (tempo, rate, master drive, reverb space, sustain appearances, tracks, notes, six instruments) in `src/osprey/examples/daw/daw.td`; formulas in its `arrange_math.ospml`.
 - [x] Render one note per instrument from the existing modules (`NoteRenders`): plucked and bowed strings, bell and bar modal banks, a detuned phase-distortion operator pair and a drum; each module validates its own controls.
-- [x] Render tracks in start order with an overlap-add carry, mix to left, right and reverb buses, run one feedback-delay reverb per side and a tanh soft limiter (`Arrangements`).
 - [x] Hold the end of a recording with the spectral freeze and replay the hold at a pitch ratio with its own rise, hold and fade (`Sustains`) [SYNTH-ARRANGEMENT-SUSTAIN]. The freeze gained identity phase locking: every bin turns with its nearest magnitude peak.
 - [x] Decode the JSON project in one boundary module (`SongFiles`) into the typed arrangement [SYNTH-ARRANGEMENT-FILE]; malformed JSON, unknown instruments and malformed notes are errors.
 - [x] Command-line player `src/osprey/examples/daw` and `make -C src/toolchain/targets/macos daw-render` and `daw-play` [SYNTH-ARRANGEMENT-PLAYER]: renders, writes WAV parts through `xxd` and joins them after the intro with `ffmpeg`; `daw-play` plays with `afplay`; every host command runs under `timeout`.
@@ -347,7 +346,7 @@ Added on request after the families: a piano-roll project file rendered offline 
 - [x] The project file names its own intro (`Intro`: recording, tail, crossfade) in `daw.td`; the player only renders, and `daw-render` / `daw-play` render and play [SYNTH-ARRANGEMENT-PLAYER].
 - [x] The daw (`src/osprey/examples/daw`, formerly `songs`) owns the project model, `daw.td`, and the arrangement modules; `@osprey/synth` keeps only the synthesis modules.
 - [ ] Automated tests for `NoteRenders`, `Arrangements`, `Sustains`, `SongFiles` and the player (paused with the other suites).
-- [ ] Bandlimited sustain transposition, an oversampled or look-ahead limiter and stereo instruments. Partial: the limiter is done. Master ends in `synth::Limiters`, a linked true-peak (four-times oversampled) lookahead brick-wall, replacing the tanh soft limiter (1b45a3ba0). Bandlimited sustain transposition and stereo instruments remain.
+- [ ] Bandlimited sustain transposition, an oversampled or look-ahead limiter and stereo instruments. Partial: `synth::Limiters`, a linked true-peak (four-times oversampled) lookahead brick-wall, is done as a module. It belongs only where the user places it. The engine must never put it on Master by itself ([DAW-TRANSPARENCY]). Bandlimited sustain transposition and stereo instruments remain.
 - [ ] Playback on Windows and Linux; `afplay` is macOS only.
 - [ ] Detect an intro's tempo and key instead of measuring them by hand.
 

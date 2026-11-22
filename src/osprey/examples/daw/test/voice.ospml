@@ -152,97 +152,12 @@ wavCase () =
 
 zeroStereoResponse () = "4F535631020000000200000000000000" + join (mapList (toList (range (0, 8)), \_ => "0001000000000000" + join (mapList (toList (range (0, 512)), \_ => "00000000")) "")) ""
 
-// [SYNTH-DEVICE-QUEUE] The application harness supplies typed counter receipts;
-// the native worker journey separately consumes real AudioQueue buffers.
-// Reconstruct the concrete program so the compiler can prove callable effect provenance.
-deviceDone (driven, held) =
-    match held.renderDevicePending
-        [pending] =>
-            draining = held.renderInput == "!drain"
-            running = match draining
-                true => "false"
-                false => "true"
-            handle ui::Slices
-                fetch _ => "{\"status\":0,\"acceptedFrames\":${pending.deviceState.graphPosition},\"returnedFrames\":${pending.deviceState.graphPosition},\"queuedFrames\":0,\"channels\":${pending.deviceChannels},\"emptyCallbacks\":0,\"running\":${running}}"
-            uitest::Drive::completed (driven, held.renderTicket, true, "{\"status\":0,\"stderr\":\"\"}")
-        _ =>
-            expect (false, true)
-            driven
-
-audioDone given =
-    driven = uitest::Driven(drivenSurface = given.drivenSurface, drivenProgram = synth::EditorApp::program (), drivenSeen = given.drivenSeen, drivenNow = given.drivenNow)
-    held = uitest::Drive::holding driven
-    match startsWith held.renderTicket "prism-audio:device:"
-        true => match held.renderDeviceKey == ""
-            true => uitest::Drive::completed (driven, held.renderTicket, true, "{\"status\":0,\"session\":\"device\"}")
-            false => deviceDone (driven, held)
-        false => match held.renderOpening
-            true => uitest::Drive::completed (driven, held.renderTicket, true, "{\"status\":0,\"session\":\"${held.renderTicket}\"}")
-            false =>
-                handle ui::Slices
-                    fetch _ => zeroStereoResponse ()
-                uitest::Drive::completed (driven, held.renderTicket, true, "{\"status\":0,\"stderr\":\"\"}")
-
-// [SYNTH-DEVICE-QUEUE] Reject inconsistent device receipts without advancing graph state.
-deviceCounterJourney editor =
-    deviceWarningJourney editor
-    valid = "{\"status\":0,\"acceptedFrames\":2048,\"returnedFrames\":0,\"queuedFrames\":2048,\"channels\":2,\"emptyCallbacks\":0,\"running\":false}"
-    succeeds (synth::GraphDevice::checked (editor, valid), \receipt => expect (receipt.acceptedFrames, 2048))
-    forEachList (["{}", "invalid", replace valid "\"status\":0" "\"status\":1" ?: "invalid", replace valid "\"acceptedFrames\":2048" "\"acceptedFrames\":2049" ?: "invalid", replace valid "\"returnedFrames\":0" "\"returnedFrames\":-1" ?: "invalid", replace valid "\"queuedFrames\":2048" "\"queuedFrames\":0" ?: "invalid", replace valid "\"channels\":2" "\"channels\":1" ?: "invalid", replace valid "\"emptyCallbacks\":0" "\"emptyCallbacks\":-1" ?: "invalid", replace valid "false" "\"false\"" ?: "invalid"], \text =>
-        errs (synth::GraphDevice::checked (editor, text)))
-    forEachList ([[], listConcat editor.renderDevicePending editor.renderDevicePending], \pending =>
-        errs (synth::GraphDevice::checked (editor(renderDevicePending = pending), valid)))
-    errs (synth::GraphDevice::checked (editor(renderInput = "!drain"), valid))
-    lost = synth::GraphPreview::completed (editor, editor.renderTicket, Error(message = "output disconnected"))
-    expect (contains lost.stepStore.message "output disconnected", true)
-    expect (length lost.stepStore.renderSessions, 0)
-    expect (length lost.requests, 3)
-    expect (length lost.writes, 6)
-    cleanup = synth::GraphPreview::completed (lost.stepStore, "prism-audio:close:1:-1", Error(message = "already closed"))
-    expect (contains cleanup.stepStore.message "output disconnected", true)
-    expect (contains cleanup.stepStore.message "already closed", true)
-
-// [SYNTH-DEVICE-QUEUE] Queue starvation must be visible at the controller boundary.
-deviceWarningJourney editor =
-    handle ui::Slices
-        fetch _ => "{\"status\":0,\"acceptedFrames\":2048,\"returnedFrames\":2048,\"queuedFrames\":0,\"channels\":2,\"emptyCallbacks\":1,\"running\":true}"
-    warned = synth::GraphPreview::completed (editor, editor.renderTicket, Success(value = "{\"status\":0,\"stderr\":\"\"}"))
-    expect (contains warned.stepStore.message "Audio queue ran empty", true)
-    expect (warned.stepStore.renderEmptyCallbacks, 1)
-    stale = "{\"status\":0,\"acceptedFrames\":2048,\"returnedFrames\":2048,\"queuedFrames\":0,\"channels\":2,\"emptyCallbacks\":0,\"running\":true}"
-    errs (synth::GraphDevice::checked (editor(renderEmptyCallbacks = 1), stale))
-
-// [SYNTH-DEVICE-QUEUE] Windows hands the edited graph's audio to its packaged worker.
-windowsAudioJourney () =
-    worker = "C:\\Prism\\play-wav.exe"
-    opened = Drive::launched (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "windows", ["--audio-worker", worker])
-    playing = synth::GraphPreview::play (Drive::holding opened, "windows")
-    reads (listGet playing.requests 0, \request =>
-        match request.capability
-            ui::HostCall space operation args _ _ _ =>
-                expect (space, "process")
-                expect (operation, "session-open")
-                expect (structuralEquals (mapList (args, \arg => arg.headerValue), [worker, "audio-device"]), true)
-            _ => expect (false, true))
-    exchanged = synth::GraphPreview::completed (playing.stepStore, playing.stepStore.renderTicket, Success(value = "{\"status\":0,\"session\":\"windows-device\"}"))
-    reads (listGet exchanged.requests 0, \request =>
-        match request.capability
-            ui::HostCall _ operation args _ _ slice =>
-                expect (operation, "session-exchange")
-                expect (slice, "")
-                expect (structuralEquals (mapList (args, \arg => arg.headerName), ["session", "stdinText"]), true)
-                expect (startsWith exchanged.stepStore.renderInput "52494646", true)
-            _ => expect (false, true))
-    expect (length exchanged.writes, 0)
-
-// [PRISM-ROUTING-PRESENTATION] Main's artwork controls edit the same live patch.
 prismIntegratedJourney () =
     opened = editorLaunched []
     nodesOf (opened, 5)
     cablesOf (opened, 4)
-    offeredIn (opened, "Stop playback", false)
-    forEachList (["Filter Cutoff", "Master Level", "Play C#3", "Modules", "Play patch", "Undo", "Redo", "Timeline", "Track patch", "Bus routing"], \label => offeredIn (opened, label, true))
-    forEachList (["Patch controls", "Audition patch", "Keyboard", "Save project"], \label => offeredIn (opened, label, false))
+    forEachList (["Filter Cutoff", "Master Level", "Modules", "Undo", "Redo", "Timeline", "Track patch", "Bus routing"], \label => offeredIn (opened, label, true))
+    forEachList (["Patch controls", "Save project"], \label => offeredIn (opened, label, false))
     cutoff = controlPoint (opened, "Filter Cutoff", 0.5)
     changed = clickAt (opened, cutoff.pointX, cutoff.pointY)
     parameterAt ((Drive::holding changed).graph, 1, 0, \p => near (p.initial, synth::CanvasGeometry::cutoffFrequency 0.5))
@@ -258,7 +173,6 @@ prismIntegratedJourney () =
     selectedIs (added, 5)
     expect ((Drive::holding added).paletteDrag, "")
     prismControlJourney quieter
-    keyboardDockJourney quieter
     paletteClickJourney quieter
     filterSocketJourney ()
     cutoffAudioJourney ()
@@ -320,26 +234,6 @@ prismAudioJourney (sine, triangle, muted) = match prismAudio sine
             expect (structuralEquals (first.clipSamples, second.clipSamples), false)
             expect (length (filterList (silent.clipSamples, \value => value != 0.0)), 0))
 
-// [PRISM-ROUTING-PRESENTATION] The dock owns a separate native scene and can be closed/reopened.
-keyboardDockJourney opened =
-    scenes = filterList (opened.drivenSeen.renderedControls, \control => control.controlKind == "scene")
-    expect (length scenes, 2)
-    near ((Semantics::element (opened.drivenSeen.renderedAccess, "Play C4")).accessTop, 38.0)
-    taller = Drive::viewed (opened, 1836.0, 1258.0)
-    near (ui::Machines::number ((Drive::holding taller).skin, "spareHeight"), 430.0)
-    near ((Semantics::element (taller.drivenSeen.renderedAccess, "Play C4")).accessTop, 38.0)
-    closed = dockTap (taller, "Close keyboard")
-    expect ((Drive::holding closed).keyboardShown, false)
-    offeredIn (closed, "Play C4", false)
-    expect (length (filterList (closed.drivenSeen.renderedControls, \control => control.controlKind == "scene")), 1)
-    sameGraph (closed, taller)
-    reopened = Drive::press (closed, "Keyboard")
-    expect ((Drive::holding reopened).keyboardShown, true)
-    offeredIn (reopened, "Play C4", true)
-    sameGraph (reopened, taller)
-    expect ((Drive::holding reopened).armedNote, -1)
-    menuJourney reopened
-
 menuPage (driven, label, index) =
     opened = Drive::press (driven, label)
     expect (synth::TimelineView::pageIndex (Drive::holding opened).page, index)
@@ -348,7 +242,7 @@ menuPage (driven, label, index) =
 // [DAW-MENU] The window's menu bar names every command once, each with its shortcut, and a menu command runs
 // the same action as the header's.
 menuJourney driven =
-    forEachList (["Open Song…", "Save", "Render Song", "Undo", "Redo", "Timeline", "Track Patch", "Bus Routing", "Modules", "Patch Controls", "Keyboard", "Play Song", "Stop Song", "Play Patch", "Audition Patch", "Stop Patch", "Return to Start", "Previous Track", "Next Track", "Previous Bar", "Next Bar", "Ableton Style", "Logic Style", "Load From File…"], \label => expect (length (Views::labelled (driven.drivenSeen, label)), 1))
+    forEachList (["Open Song…", "Save", "Render Song", "Undo", "Redo", "Timeline", "Track Patch", "Bus Routing", "Modules", "Patch Controls", "Play Song", "Stop Song", "Return to Start", "Previous Track", "Next Track", "Previous Bar", "Next Bar", "Ableton Style", "Logic Style", "Load From File…"], \label => expect (length (Views::labelled (driven.drivenSeen, label)), 1))
     expect ((Views::control (driven.drivenSeen, "Save")).controlKind, "button")
     logic = Drive::press (driven, "Logic Style")
     expect ((Drive::holding logic).keymap.name, "Logic Style")
@@ -357,9 +251,7 @@ menuJourney driven =
     viewShows (timeline, "Save", true)
     mix = menuPage (timeline, "Bus Routing", 2)
     patch = menuPage (mix, "Track Patch", 0)
-    hidden = Drive::press (patch, "Keyboard")
-    expect ((Drive::holding hidden).keyboardShown, false)
-    library = Drive::press (hidden, "Modules")
+    library = Drive::press (patch, "Modules")
     expect ((Drive::holding library).paletteShown, true)
     details = Drive::press (library, "Patch Controls")
     expect ((Drive::holding details).detailsShown, (Drive::holding library).detailsShown == false)
@@ -447,41 +339,6 @@ cutoffAudioJourney () =
                 expect (structuralEquals (rendered.clipSamples, original.clipSamples), value == 1.0)))
     forEachList ([-0.1, 1.1, floatFromBits 9221120237041090560], \value => errs (cutoffOutput (connected.graph, value)))
 
-// [SYNTH-DEVICE-QUEUE] The audio device is an effect: every float32 WAV block the app writes to it is heard here.
-effect Speaker
-    heard : string => Unit
-
-type Heard =
-    blocks : List<string>
-
-spoken given =
-    held = Drive::holding given
-    perform Speaker.heard (ui::Pick::either (startsWith held.renderTicket "prism-audio:device:" && contains held.renderTicket ":block", held.renderInput, ""))
-    audioDone given
-
-// Audition through the real worker/device path; returns the decoded samples the device received.
-auditioned driven =
-    mut speaker = Heard(blocks = [])
-    handle Speaker
-        heard hex => speaker := speaker(blocks = listConcat speaker.blocks (filterList ([hex], \h => h != "")))
-    finished = foldList (toList (range (0, 40)), Drive::press (driven, "Audition Patch"), \(previous, _) =>
-        match (Drive::holding previous).renderTicket == ""
-            true => previous
-            false => spoken previous)
-    lettersIn (finished, "Preview finished.")
-    expect (length speaker.blocks, 6)
-    foldList (speaker.blocks, [], \(all, hex) => listConcat all (pcm hex))
-
-// The exact mono 48 kHz IEEE float32 WAV GraphDevice writes, header field by field.
-pcm hex =
-    count = intDiv (satSub (length hex) 116) 8
-    expect (take hex 8, "52494646")
-    expect (take (drop hex 40) 32, "0300010080BB000000EE020004002000")
-    expect (take (drop hex 100) 16, "6461746100200000")
-    expect (count, 2048)
-    mapList (toList (range (0, count)), \i => synth::PcmWords::sample (hex, satAdd 116 (satMul i 8)) ?: 99.0)
-
-// Running measurements of the heard signal: crossings, energy, peak and steepest step.
 type Meter =
     previous : float
     index : int
@@ -638,31 +495,6 @@ panelDialJourney selected =
             expect (panelFrequency released, coarse)
             panelDialHistory (selected, released, coarse)
 
-// A pure tone reaches the device at its exact pitch and level with no click at any block boundary.
-toneJourney hz =
-    m = meter (auditioned (tuned (patched ["sine", "output"], 0, "Frequency", "${hz}")))
-    expect (m.index, 12288)
-    within (hertz m, hz, 0.05)
-    within (rms m, 0.70711, 0.002)
-    within (m.peak, 1.0, 0.01)
-    expect (m.steepest <= 6.2832 * hz / 48000.0 + 0.000001, true)
-
-// [PRISM-ROUTING-CABLES] Gain scales, and the low-pass attenuates by cutoff, on the heard output.
-deviceAudioJourney () =
-    forEachList ([110.0, 440.0, 1000.0, 2500.0, 7000.0], toneJourney)
-    halved = meter (auditioned (tuned (tuned (patched ["sine", "gain", "output"], 0, "Frequency", "440"), 1, "Gain", "0.5")))
-    within (hertz halved, 440.0, 0.05)
-    within (rms halved, 0.35355, 0.002)
-    filtered = tuned (patched ["sine", "filter", "output"], 0, "Frequency", "4000")
-    cutoffHeard (filtered, "400", 0.0, 0.02)
-    cutoffHeard (filtered, "19000", 0.70711, 0.03)
-
-cutoffHeard (filtered, cutoff, level, tolerance) =
-    m = meter (auditioned (tuned (filtered, 1, "Cutoff", cutoff)))
-    within (hertz m, 4000.0, 1.0)
-    within (rms m, level, tolerance)
-
-// [DAW-CONTROLS-DIAL] Navigate all 21 grain controls on the canvas and in Patch Controls.
 dialPagesJourney () =
     grain = prismTap (prismTap (editorLaunched ["--empty"], "Modules"), "Add Grain cloud")
     editor = Drive::holding grain
@@ -745,9 +577,9 @@ liveLaunched (place, tab, score, check) =
 
 // The song proven audible after `frames`, handed to `check` as a live stream.
 heardStream (score, frames, check) = succeeds (daw::Playback::start score, \initial =>
-    succeeds (daw::Playback::next (score, initial, frames), \before =>
+    succeeds (daw::Playback::step (score, initial, frames), \before =>
         expect (loudest before.left > 0.01, true)
-        check (daw::LiveStream(playing = before.playing, controlVersion = 0, controlScore = score, noteFolders = []))))
+        check (daw::LiveStream(playing = before.playing, controlVersion = 0, controlScore = score))))
 
 // [DAW-TRANSPORT-LIVE-CONTROLS] Read the same controls and audio block as the renderer between UI events.
 liveMixHistory (place, released, muted) =

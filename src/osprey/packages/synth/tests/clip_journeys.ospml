@@ -177,11 +177,6 @@ sineHeard (label, samples, frequency) =
 stereoTapJourney () =
     graph = built ([Components::stereo 1, Components::split (2, 2)], [cable (1, 2)])
     stereo = audioClipFixture (1, 2, [0.25, -0.5, 0.75, -1.0])
-    // Track playback folds each stereo frame to mono before the track panner.
-    stereoOutput = stereo(clipSamples = [1.0, -1.0, 0.25, 0.75])
-    forEachList ([{ output = stereoOutput, mono = [0.0, 0.5] }, { output = stereo(clipChannels = 1), mono = stereo.clipSamples }, { output = stereo(clipSamples = []), mono = [] }], \row =>
-        succeeds (synth::GraphClips::trackSamples row.output, \samples => sameSamples (samples, row.mono)))
-    forEachList ([stereo(clipSamples = [0.25]), stereo(clipChannels = 3), stereo(clipChannels = 0)], \invalid => renderRefused (synth::GraphClips::trackSamples invalid))
     split = stereo(clipNode = 2)
     clips = [stereo, split]
     forEachList ([{ channel = 0, samples = [0.25, 0.75] }, { channel = 1, samples = [-0.5, -1.0] }], \side =>

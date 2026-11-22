@@ -78,7 +78,7 @@ For example, `{"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabl
 
 ## How it renders [SYNTH-ARRANGEMENT]
 
-A piano roll rendered offline, outside the graph: [daw.td](daw.td) declares the `Arrangement` (title, tempo, sample rate, buses, tracks of `[pitch, start, length, velocity]` notes) and six instruments built from `@osprey/synth` modules. `NoteRenders.render` turns one note into a mono buffer; `Arrangements` renders a track in start order with an overlap-add carry, adds tracks to left, right and reverb buses (`layered`, `added`), and `mixed` runs two feedback-delay reverbs of different size (one per side) and a tanh soft limiter that puts the peak at 0.89. `Sustains.frozen` analyses a recording to its end and holds its last spectrum with the phase-locked freeze; `Sustains.voiced` reads that hold at a speed ratio with its own rise, hold and fade, so written music can continue a recording and bring its last sound back at other pitches (linear interpolation, not bandlimited). Formulas are in [arrange_math.ospml](src/arrange_math.ospml).
+**Playing and rendering both take Master only, and they are different things.** `Playback` runs the project graph forward one block at a time: every track, send, bus, the Space and Master advance together, and only Master's frames leave the block ([DAW-RENDER-PLAY]). **Playing** (`daw … live|loop`) streams those Master blocks to the audio device and writes no file. **Rendering** (`daw <project.json> <folder>`, `Player`) writes Master's output, untouched, to the export file `song.wav` ([DAW-RENDER-MASTER]). Exporting anything other than Master is banned. No note, track or bus is rendered on its own, ahead of time, into a cache or as a stem. Code that still makes notes outside the block graph breaks this rule and is listed as open in the [plan](../../../../docs/plans/daw.md). [daw.td](daw.td) declares the `Arrangement` (title, tempo, sample rate, buses, tracks of `[pitch, start, length, velocity]` notes) and six instruments built from `@osprey/synth` modules. `Sustains.frozen` analyses a recording to its end and holds its last spectrum with the phase-locked freeze. `Sustains.voiced` reads that hold at a speed ratio with its own rise, hold and fade, so written music can continue a recording and bring its last sound back at other pitches (linear interpolation, not bandlimited). Formulas are in [arrange_math.ospml](src/arrange_math.ospml).
 
 | Instrument | Built from | Notes |
 | --- | --- | --- |
@@ -87,19 +87,17 @@ A piano roll rendered offline, outside the graph: [daw.td](daw.td) declares the 
 | `BellInstrument`, `MalletInstrument` | `ModalBanks` with bell or bar ratios, one impulse | ring for `decay` whatever the note length |
 | `OperatorInstrument` | two `PhaseOperators` detuned up and down by `detune` cents | the phase-distortion breakpoint eases toward a sine over `bloom` |
 | `DrumInstrument` | sine `PhaseOperators` body with a pitch drop plus an `Exciters` noise burst | lasts `decay` (at most 1 s) whatever the note length |
-| `PatchInstrument` | `PatchVoices` builds a graph per note. The mono scheduler uses 8,192-frame blocks. Graphs with MIDI, control signals or multichannel ports run through `GraphClips` in blocks of up to 1,024 frames at 48 kHz | settings can follow note pitch or velocity. A stereo sink is averaged before the track panner |
+| `PatchInstrument` | `PatchVoices` builds a graph per note. The scheduler uses 8,192-frame blocks. Graphs with MIDI, control signals or multichannel ports run through `GraphClips` in blocks of up to 1,024 frames at 48 kHz | settings can follow note pitch or velocity |
 
-Limits: rendering is not realtime and allocates per sample; a note lasts at most 960,000 frames and a piece 28,800,000; tracks are mono before panning; the limiter is not oversampled.
+Limits: rendering is not realtime and allocates per sample; a note lasts at most 960,000 frames and a piece 28,800,000. Every track carries the project's channel layout, stereo by default ([DAW-MODULAR-LAYOUT]): a patch's stereo output keeps both channels, and a mono output or built-in voice sits in the centre.
 
 ## What the host tools do
 
 Osprey writes text files, so each rendered part is written as hexadecimal and `xxd` turns it into a WAV.
-`ffmpeg` joins the parts. Every command runs under `timeout`. Nothing else touches the audio: every note, the mix
-and the limiter come from the engine.
+`ffmpeg` joins the parts. Every command runs under `timeout`. Nothing else touches the audio: every sound comes from the graph.
+No processing is hidden. There is no built-in limiter or clip, and everything that changes the signal is visible in the UI ([DAW-TRANSPARENCY]).
 
 ## Limits
 
 - macOS only: playback uses `afplay`. Rendering needs `ffmpeg`, `xxd` and `timeout` on the path.
-- The limiter is a plain tanh curve without oversampling, and the piece is rendered in mono per track
-  before panning, so detuned operators do not spread across the stereo field.
 - Spectral processing and patch reverb can take minutes to render offline. *Silt Relay* combines them on **Throat / metal** and uses granular synthesis and MIDI routing on two other tracks. The 34.49-second stereo master with the pitch-shifted Glass pins and parallel Rivet pulse send took about fourteen minutes to render on the development Mac.

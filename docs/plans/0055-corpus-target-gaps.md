@@ -243,7 +243,7 @@ Continuation reasons below end with `(a suspended continuation cannot cross or o
 
 File operations, stdin, random numbers and substituting effects are supported and are not listed. Each row names a feature with no wasm implementation. [WASM-TARGET-CAPABILITIES] Tracking issue: #30.
 
-Continuation reasons below end with `(wasm32 acquires one-shot continuations when the stack-switching proposal lands)` in the manifest.
+Continuation reasons below end with `(wasm32 acquires one-shot continuations when the stack-switching proposal lands)` in the manifest. Every one is a `once` continuation outside a `many` region. A program that declares a `many` operation MUST NOT appear in this manifest: wasm32 fully supports multi-shot continuations ([EFFECTS-INV-MULTISHOT-WASM](0016-algebraic-effects-and-handlers.md), [CI-MULTISHOT-WASM]), and the corpus run fails on such a row.
 
 - [ ] Implement one-shot continuations on wasm32 when the stack-switching proposal lands. Tracked by [plan 0016](0016-algebraic-effects-and-handlers.md) Phase 4. Acceptance: these programs match the native goldens and their rows are deleted. (34 rows)
 

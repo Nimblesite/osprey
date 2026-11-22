@@ -74,7 +74,7 @@ fn touches(name: &str, canvas: i64, i: usize) -> Vec<Touch> {
         "mix fader move" => { let y = 235.0 + ((i / 8 % 17) as f64 + 0.5) * 37.0; vec![p(216.0 + (i % 8) as f64 * 6.0, y, true)] }
         "patch hover" => vec![p(60.0 + (k * 13.0) % 1300.0, 120.0 + (k * 7.0) % 600.0, false)],
         "patch module drag" => { let s = i % 40; if s == 0 { vec![p(131.0, 376.0, true)] } else if s == 39 { vec![p(131.0, 376.0, true), p(131.0, 376.0, false)] } else { vec![p(131.0 + (s as f64) * 3.0, 376.0 + (s as f64), true)] } }
-        "patch key" => vec![Touch::key(canvas, "a", i % 2 == 0)],
+        "patch key" => vec![Touch::key(canvas, "a", i.is_multiple_of(2))],
         _ => panic!("no scenario {name}"),
     }
 }

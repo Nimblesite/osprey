@@ -26,7 +26,7 @@ pub const PRELUDE_LINE_BASE: u32 = 1 << 24;
 
 /// Each unit's rebased lines start one stride apart, so no unit shares a
 /// line with another and every prelude line stays past every source line.
-const PRELUDE_UNIT_STRIDE: u32 = 1 << 20;
+pub(crate) const PRELUDE_UNIT_STRIDE: u32 = 1 << 20;
 
 /// Whether a source line belongs to the prelude rather than the program.
 #[must_use]

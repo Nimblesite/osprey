@@ -64,7 +64,7 @@ module DawSession
         Error why => editor(message = "Could not read ${path}: ${why}")
         Success source => match daw::SongFiles::decode source
             Error why => editor(message = "${path}: ${why}")
-            Success song => picked (editor(song = song, past = [], future = [], gesture = [], laneZoom = 1.0, laneStart = 0.0, laneTop = 0, laneTraces = TimelineView::traces (song, 1.0, 0.0, 0), overview = Header::overview song, songPath = path, keyboardShown = false, track = 0, patchTrack = -1, rollBar = 0, page = TimelinePage), 0)
+            Success song => picked (editor(song = song, past = [], future = [], gesture = [], laneZoom = 1.0, laneStart = 0.0, laneTop = 0, laneTraces = TimelineView::traces (song, 1.0, 0.0, 0), overview = Header::overview song, songPath = path, track = 0, patchTrack = -1, rollBar = 0, page = TimelinePage), 0)
 
     stem path =
         parts = split (replace path "\\" "/" ?: path) "/" ?: [path]
@@ -139,13 +139,13 @@ module DawSession
 
     (** Render the whole song, as the project stands now, to `<song>/song/song.wav` beside the renderer; an
         unchanged project keeps the audio it already rendered. *)
-    export bounce editor = match busy editor
+    export renderSong editor = match busy editor
         true => refused editor
         false => match daw::SongFiles::encode editor.song
             Error why => Runtime::step (editor(message = why))
             Success text => match fresh (whole editor, mastered (whole editor), text)
                 true => Runtime::step (editor(message = "${mastered (whole editor)} is already this project."))
-                false => prepared (editor, text, whole editor, mastered (whole editor), bounced)
+                false => prepared (editor, text, whole editor, mastered (whole editor), rendering)
 
     // The old audio is emptied before the new snapshot is written, so it can never pass for this one.
     prepared (editor, text, place, audio, launch) =
@@ -161,7 +161,7 @@ module DawSession
     // Each ticket carries the folder it was launched for, so a completion acts on that launch alone.
     liveTicket = "daw-song:live:"
 
-    bounceTicket = "daw-song:bounce:"
+    renderTicket = "daw-song:render:"
 
     // The frame clock's own ticket; its completion changes nothing.
     clockTicket = "daw-clock"
@@ -172,33 +172,15 @@ module DawSession
 
     renderLog = "prism-song-report"
 
-    // [DAW-TRANSPORT-LIVE-SPEED] Keep a third of the cores available for the interface and the audio device.
-    // Each low-priority maker prepares its share of the notes. The stream owns the process IDs in $m.
-    makers = "w=$(($(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2) * 2 / 3)); [ \"$w\" -ge 1 ] || w=1; [ \"$w\" -le 9 ] || w=9; i=0; m=; while [ \"$i\" -lt \"$w\" ]; do nice -n 15 \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" warm \"$i\" \"$w\" \"$note_clock\" >/dev/null 2>&1 & m=\"$m $!\"; i=$((i+1)); done"
-
-    // `$0` is the audio worker, then the renderer and its arguments. The makers start first, run beside the
-    // stream and end with it. Acknowledge every packet and publish the display clock on the first, every fourth, and final receipt.
-    pipeline = "d=$(mktemp -d \"$3/device.XXXXXX\") || exit 1; mkfifo \"$d/next\" || { rmdir \"$d\"; exit 1; }; trap 'rm -f \"$d/next\" \"$d/render-status\" \"$d/device-status\"; rmdir \"$d\"' EXIT; note_clock=\"$3/played.json\"; ${makers}; { \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" \"$3/controls\" makers; echo $? > \"$d/render-status\"; } < \"$d/next\" | { \"$0\" audio-device; echo $? > \"$d/device-status\"; } | { trap '' PIPE; clock_tick=0; last=; while read -r line; do if [ \"$clock_tick\" -eq 0 ]; then printf '%s\\n' \"$line\" > \"$3/played.json\"; fi; clock_tick=$(((clock_tick+1)%4)); last=$line; printf 'next\\n' 2>/dev/null || { exec >/dev/null; echo; }; done; [ -z \"$last\" ] || printf '%s\\n' \"$last\" > \"$3/played.json\"; } > \"$d/next\"; relay=$?; kill $m 2>/dev/null || :; wait; [ \"$relay\" -eq 0 ] && read -r rendered < \"$d/render-status\" && [ \"$rendered\" -eq 0 ] && read -r played < \"$d/device-status\" && [ \"$played\" -eq 0 ]"
-
-    // One set of makers per song: its ticket names the song, so opening another song or playing ends them.
-    warmTicket editor = "daw-notes:${editor.songPath}"
-
-    calmed editor = Requests::ask ("daw-notes-end", ui::Cancel(cancelled = warmTicket editor))
-
-    // The makers alone, over the whole song as saved.
-    warming editor = Requests::ask (warmTicket editor, ui::Run(executable = "/bin/sh", arguments = ["-c", "note_clock=; ${makers}; wait", "sh", editor.renderer, editor.songPath, live editor, "0", "0"], timeout = 1800000, outputLimit = 4096, plist = false, runSlice = ""))
-
-    readied (before, editor) =
-        _made = makeDir (folder editor)
-        _place = makeDir (live editor)
-        Runtime::asking (editor, [calmed before, warming editor])
+    // `$0` is the audio worker, then the engine and its arguments. Acknowledge every packet and publish the display clock on the first, every fourth, and final receipt.
+    pipeline = "d=$(mktemp -d \"$3/device.XXXXXX\") || exit 1; mkfifo \"$d/next\" || { rmdir \"$d\"; exit 1; }; trap 'rm -f \"$d/next\" \"$d/render-status\" \"$d/device-status\"; rmdir \"$d\"' EXIT; { \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" \"$3/controls\"; echo $? > \"$d/render-status\"; } < \"$d/next\" | { \"$0\" audio-device; echo $? > \"$d/device-status\"; } | { trap '' PIPE; clock_tick=0; last=; while read -r line; do if [ \"$clock_tick\" -eq 0 ]; then printf '%s\\n' \"$line\" > \"$3/played.json\"; fi; clock_tick=$(((clock_tick+1)%4)); last=$line; printf 'next\\n' 2>/dev/null || { exec >/dev/null; echo; }; done; [ -z \"$last\" ] || printf '%s\\n' \"$last\" > \"$3/played.json\"; } > \"$d/next\"; relay=$?; wait; [ \"$relay\" -eq 0 ] && read -r rendered < \"$d/render-status\" && [ \"$rendered\" -eq 0 ] && read -r played < \"$d/device-status\" && [ \"$played\" -eq 0 ]"
 
     (** Open a song project. With a renderer its notes start being made at once, so the first Play reads them
         instead of making them ([DAW-TRANSPORT-LIVE-SPEED]). A refused project changes nothing else. *)
     export opening (editor, path) =
         next = loaded (editor, path)
         match next.songPath == path && next.renderer != ""
-            true => readied (editor, next)
+            true => Runtime::step next
             false => Runtime::step next
 
     clock on = Requests::ask (clockTicket, ui::Animate(animated = on))
@@ -213,19 +195,18 @@ module DawSession
         place = live editor
         ticket = "${liveTicket}${place}"
         _cleared = writeFile (fault place) ""
-        Runtime::asking (editor(songTicket = ticket, playBeat = rangeStart editor, playClock = 0.0, message = "${ui::Pick::either (editor.looping, "Looping", "Playing")} ${span editor} of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = "/bin/sh", arguments = ["-c", pipeline, editor.workerPath, editor.renderer, snapshot place, place, "${rangeStart editor}", "${rangeEnd editor - rangeStart editor}", ui::Pick::either (editor.looping, "loop", "live")], timeout = 7200000, outputLimit = 4096, plist = false, runSlice = "")), calmed editor, clock true])
+        Runtime::asking (editor(songTicket = ticket, playBeat = rangeStart editor, playClock = 0.0, message = "${ui::Pick::either (editor.looping, "Looping", "Playing")} ${span editor} of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = "/bin/sh", arguments = ["-c", pipeline, editor.workerPath, editor.renderer, snapshot place, place, "${rangeStart editor}", "${rangeEnd editor - rangeStart editor}", ui::Pick::either (editor.looping, "loop", "live")], timeout = 7200000, outputLimit = 4096, plist = false, runSlice = "")), clock true])
 
-    bounced editor =
-        ticket = "${bounceTicket}${whole editor}"
+    rendering editor =
+        ticket = "${renderTicket}${whole editor}"
         Runtime::asking (editor(songTicket = ticket, message = "Rendering all of ${editor.song.title}."), [Requests::ask (ticket, ui::Run(executable = editor.renderer, arguments = [snapshot (whole editor), whole editor], timeout = 7200000, outputLimit = 65536, plist = false, runSlice = renderLog))])
 
-    (** What is sounding: "Rendering…" (Render song), "Playing" (the song, live), "Auditioning" (the patch on the
-        audio device) or "Stopped". The header never says Stopped while anything plays. *)
-    export phase editor = match startsWith editor.songTicket bounceTicket
+    (** What is sounding: "Rendering…" (Render song), "Playing" (the song, live) or "Stopped". The header never says Stopped while anything plays. *)
+    export phase editor = match startsWith editor.songTicket renderTicket
         true => "Rendering…"
         false => match startsWith editor.songTicket liveTicket
             true => "Playing"
-            false => ui::Pick::either (editor.renderDeviceKey == "", "Stopped", "Auditioning")
+            false => "Stopped"
 
     // The beat sounding `seconds` into the play: a loop wraps to the start marker, one pass stops at the end.
     sounding (editor, seconds) = match editor.looping
@@ -315,7 +296,7 @@ module DawSession
             Error why => rested (editor, "Song playback failed: ${why}")
             Success _ => match launched (ticket, liveTicket)
                 Success place => finished (editor, place)
-                Error _ => match launched (ticket, bounceTicket)
+                Error _ => match launched (ticket, renderTicket)
                     Success place => exported (editor, place, outcome)
                     Error _ => rested (editor, "${editor.song.title} finished.")
 

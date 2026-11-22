@@ -1,0 +1,8 @@
+[project]
+name = "cleanarch-todo"
+source_roots = ["src", "../../packages/json/src"]
+default_namespace = "todo"
+entry = "src/main.osp"
+
+[modules]
+allow_wildcard_imports = false

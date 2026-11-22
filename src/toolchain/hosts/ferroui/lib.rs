@@ -17,6 +17,7 @@
 //! - [`surface`]: a scene's shapes drawn with FerroUI's drawing context, its input sent back.
 
 pub mod adapters;
+mod app;
 pub mod events;
 pub mod ffi;
 mod frame;
@@ -65,8 +66,52 @@ pub fn local_offset() -> i64 {
     unsafe { local.assume_init() }.tm_gmtoff
 }
 
-/// The local UTC offset; Windows is not a target of this port yet.
-#[cfg(not(unix))]
+/// The local UTC offset in seconds, daylight saving included, 0 when the system cannot tell.
+/// The C runtime's local wall-clock time for now, read back as if it were UTC, is ahead of now by
+/// exactly the offset.
+#[cfg(windows)]
 pub fn local_offset() -> i64 {
-    0
+    extern "C" {
+        /// The UCRT's inverse of `gmtime`: a broken-down UTC time to seconds since the epoch.
+        fn _mkgmtime64(time: *mut libc::tm) -> i64;
+    }
+    let timestamp: libc::time_t = now();
+    let mut local = std::mem::MaybeUninit::<libc::tm>::uninit();
+    // SAFETY: both pointers are live, aligned and owned for the call.
+    if unsafe { libc::localtime_s(local.as_mut_ptr(), &timestamp) } != 0 {
+        return 0;
+    }
+    // SAFETY: localtime_s initialised the structure when it returned 0.
+    let mut wall = unsafe { local.assume_init() };
+    // SAFETY: a fully initialised structure the call may normalise in place.
+    let as_utc = unsafe { _mkgmtime64(&mut wall) };
+    if as_utc == -1 {
+        0
+    } else {
+        as_utc - timestamp
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    /// The application's clock is local time on Windows, not UTC: the offset handed to it at
+    /// launch is the one Windows itself reports for now, daylight saving included.
+    #[test]
+    fn local_offset_matches_the_windows_time_zone() {
+        let reported = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "[int][TimeZoneInfo]::Local.GetUtcOffset([DateTime]::UtcNow).TotalSeconds",
+            ])
+            .output()
+            .ok()
+            .and_then(|out| {
+                String::from_utf8_lossy(&out.stdout)
+                    .trim()
+                    .parse::<i64>()
+                    .ok()
+            });
+        assert_eq!(Some(super::local_offset()), reported);
+    }
 }

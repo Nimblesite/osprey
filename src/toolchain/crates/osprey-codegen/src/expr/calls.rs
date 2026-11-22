@@ -74,17 +74,33 @@ pub(crate) fn with_application<R>(
     result
 }
 
+/// The types in force inside the call `function` heads: every application
+/// written on the way to the callee specializes that one call, outermost
+/// first. They are folded here so the caller recorded for the call's
+/// arguments is the real caller, never an outer layer's substitution: a
+/// generic call nested in its own argument (`then(then(a, f), g)`) was
+/// otherwise lowered under the outer call's types ([TYPE-GENERICS-APPLY]).
 fn application_types(
     cg: &Codegen,
     function: &Expr,
     position: Option<Position>,
 ) -> Option<osprey_types::ProgramTypes> {
-    position
-        .and_then(|position| cg.prog.applications.get(&(position.line, position.column)))
-        .map(|bindings| {
-            cg.prog
-                .specialized(&bindings, application_scope(cg, function))
-        })
+    let mut types = None;
+    let mut layer = Some((function, position));
+    while let Some((callee, position)) = layer {
+        let current = types.as_ref().unwrap_or(&cg.prog);
+        let bindings = position.and_then(|at| current.applications.get(&(at.line, at.column)));
+        if let Some(bindings) = bindings {
+            types = Some(current.specialized(&bindings, application_scope(cg, callee)));
+        }
+        layer = match callee {
+            Expr::TypeApply {
+                function, position, ..
+            } => Some((function.as_ref(), *position)),
+            _ => None,
+        };
+    }
+    types
 }
 
 /// A call specializes its own body; expanded bindings may also mention other
@@ -162,7 +178,7 @@ pub(super) fn gen_call(
     } = function
     {
         return with_application(cg, function, *position, |cg| {
-            gen_call(cg, function, arguments, named)
+            gen_call(cg, unapplied(function), arguments, named)
         });
     }
     // A directly-applied lambda (`x |> fn(y) => …`, `(fn(y) => …)(x)`) is

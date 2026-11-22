@@ -97,7 +97,7 @@ module MixView
         patch = patchArea voice
         ui::Lists::flatten [sendPath (voice, master), card (patch.accessLeft, patch.accessTop, voice.name, "Patch output · ${TimelineView::hundredths voice.gain}× gain", edge),
             card (789.0, fork, "Stereo pan", "${TimelineView::pan voice.pan} · Left / Right", edge),
-            group (editor, voice), card (963.0, master, "Master", "Sum L/R · soft limiter", edge),
+            group (editor, voice), card (963.0, master, "Master", "Sum L/R", edge),
             [wire [1074.0, 282.0, 1074.0, fork - 25.0, 900.0, fork - 25.0, 900.0, fork]],
             ui::Pick::either (grouped, [wire [900.0, fork + 74.0, 900.0, 430.0]], []),
             [wire [900.0, base, 900.0, joinY, 1023.0, joinY, 1023.0, master], wire [1074.0, master + 74.0, 1074.0, master + 102.0], label ("Stereo out", 1074.0, master + 108.0, 13.0, TimelineView::ink (), 1)],

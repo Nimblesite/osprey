@@ -358,10 +358,12 @@ int64_t osprey_make_dir(const char *path) {
   osp_io_error_set(OP_MAKE_DIR, path, failure == EEXIST ? ENOTDIR : failure);
   return -1;
 }
+#elif defined(_WIN32) && !defined(OSP_SYMBOLIC)
+#include "file_dirs_win.h"
 #else
-// wasm32 (no directory syscalls in this WASI profile), KLEE's bitcode libc
-// (no dirent or mkdir: an unmodelled call) and Windows (no POSIX dirent yet)
-// refuse every directory operation with the reason, never a fake answer.
+// wasm32 (no directory syscalls in this WASI profile) and KLEE's bitcode libc
+// (no dirent or mkdir: an unmodelled call) refuse every directory operation
+// with the reason, never a fake answer.
 static const char NO_DIRECTORIES[] = "no directory operations on this target";
 
 OspreyList *osprey_list_dir(const char *path) {

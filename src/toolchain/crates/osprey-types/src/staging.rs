@@ -42,6 +42,9 @@ pub(crate) fn lower_proved(
     if !structural.is_empty() {
         return Err(stage_errors(structural));
     }
+    if crate::many::applies(program) {
+        return lower_captured(program);
+    }
     if !has_staging(program) {
         let lowered = osprey_ast::stage::lower(program).map_err(stage_errors)?;
         return Ok((lowered, None));
@@ -69,6 +72,26 @@ pub(crate) fn lower_proved(
     }
     let discharged = !retains_static_operation(checked, &lowered);
     Ok((lowered, discharged.then_some(solved.exports)))
+}
+
+/// A program with a `many` operation: its source is proved as written, static
+/// handlers are discharged, and every region whose continuation a handler
+/// captures is rewritten into closures. The rewrite proves nothing new, so the
+/// source proof answers for it. Implements [MULTI-HANDLE-MANY],
+/// [TYPE-EFFECT-PROOF-COUNT].
+fn lower_captured(program: &Program) -> Result<(Program, Option<LibraryExports>), Vec<TypeError>> {
+    let solved = solved_source(program)?;
+    let checked = solved.copy.as_ref().unwrap_or(program);
+    let mut resolved = materialize_signal_queries(checked, &solved.types);
+    for statement in &mut resolved.statements {
+        mutate::statement_children_mut(statement, &mut |expression| {
+            resolve_effect_mentions(expression, &solved.types);
+        });
+    }
+    forwarders::drop_witnesses(&mut resolved);
+    let discharged = osprey_ast::stage::lower(&resolved).map_err(stage_errors)?;
+    let lowered = crate::many::lower(&discharged)?;
+    Ok((lowered, Some(solved.exports)))
 }
 
 /// Whether discharge left a static operation behind: one reached only through

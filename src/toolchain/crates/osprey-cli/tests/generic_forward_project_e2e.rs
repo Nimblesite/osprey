@@ -218,3 +218,69 @@ fn a_staged_sidebar_closure_keeps_its_pinned_instantiation_across_namespaces() {
         |root| write_sidebar_project(root, UI_BASE, VIGIL_NAV, MAIN),
     );
 }
+
+/// A generic helper applied inside its own argument. Each `then` call fixes
+/// its own instantiation — `int -> bool` inside, `bool -> string` outside —
+/// so the inner call must not be lowered under the outer call's types. It
+/// was: the outer substitution stayed in force while the argument was
+/// lowered, the inner payload was read as the outer's `string`, and the build
+/// stopped with "expected a bool" ([TYPE-GENERICS-FN], [TYPE-GENERICS-APPLY]).
+/// `retry` is the same shape through a recursive helper, which is emitted as
+/// one function per instantiation rather than inlined.
+const NESTED_SAME_GENERIC: &str = r#"type Boxed<a> = Full { value: a } | Empty { why: string }
+
+fn then(box, next) = match box {
+    Full { value } => next(value)
+    Empty { why } => Empty { why: why }
+}
+
+fn shown(box) = match box {
+    Full { value } => value
+    Empty { why } => why
+}
+
+fn verdict(flag) = match flag {
+    true => Full { value: "yes" }
+    false => Full { value: "no" }
+}
+
+fn inline(seed) = then(then(Full { value: seed }, fn(v) => Full { value: v == 3 }), fn(flag) => match flag {
+    true => Full { value: "yes" }
+    false => Full { value: "no" }
+})
+
+fn named(seed) = then(then(Full { value: seed }, fn(v) => Full { value: v == 3 }), verdict)
+
+fn three(seed) = then(
+    then(then(Full { value: seed }, fn(n) => Full { value: "n${n}" }), fn(text) => Full { value: text == "n2" }),
+    verdict)
+
+fn missing() = then(then(Empty { why: "none" }, fn(v) => Full { value: v == 3 }), verdict)
+
+fn retry(box, next, tries) = match box {
+    Full { value } => next(value)
+    Empty { why } => match tries > 0 {
+        true => retry(box, next, satSub(tries, 1))
+        false => Empty { why: why }
+    }
+}
+
+fn recursive(seed) = retry(retry(Full { value: seed }, fn(v) => Full { value: v == 3 }, 1), verdict, 1)
+
+print("${shown(inline(3))} ${shown(inline(4))} ${shown(named(3))} ${shown(named(5))} ${shown(three(2))} ${shown(three(7))} ${shown(missing())} ${shown(recursive(3))} ${shown(recursive(8))}")
+"#;
+
+#[test]
+fn a_generic_call_nested_in_its_own_argument_keeps_its_own_instantiation() {
+    run_project(
+        "nested_generic",
+        "yes no yes no yes no none yes no\n",
+        |root| {
+            write(
+            &root.join("osprey.toml"),
+            "[project]\nname = \"nested\"\nsource_roots = [\"src\"]\ndefault_namespace = \"demo\"\nentry = \"src/main.osp\"\n",
+        );
+            write(&root.join("src").join("main.osp"), NESTED_SAME_GENERIC);
+        },
+    );
+}

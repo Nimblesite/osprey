@@ -24,14 +24,6 @@ type PluginBinding =
     pluginClass : string
     pluginName : string
 
-type RenderSession =
-    sessionNode : int
-    sessionKey : string
-
-type DevicePending S =
-    deviceState : S
-    deviceChannels : int
-
 type DeviceReceipt =
     acceptedFrames : int
     returnedFrames : int
@@ -161,7 +153,7 @@ type PatchPan =
         lastX : float
         lastY : float
 
-type Editor G P S M =
+type Editor G M =
     skin : M
     graph : G
     past : List<GraphSnapshot<G>>
@@ -170,12 +162,9 @@ type Editor G P S M =
     assetFolder : string
     paletteShown : bool
     detailsShown : bool
-    keyboardShown : bool
-    keyboardWidth : float
     paletteDrag : string
     note : int
     armedNote : int
-    scopeSamples : List<float>
     positions : List<daw::NodePosition>
     flowPositions : List<daw::NodePosition>
     panX : float
@@ -210,21 +199,6 @@ type Editor G P S M =
     editorWindows : List<PluginWindow>
     pluginTicket : string
     pluginClassId : string
-    renderPending : List<P>
-    renderBindings : List<PluginBinding>
-    renderSerial : int
-    renderTicket : string
-    renderSessions : List<RenderSession>
-    renderOpening : bool
-    renderInput : string
-    renderDevicePending : List<DevicePending<S>>
-    renderGraph : G
-    renderProject : string
-    renderTrack : int
-    renderDeviceKey : string
-    renderEmptyCallbacks : int
-    renderContinuous : bool
-    renderStopping : bool
     cards : List<CardMarks>
     art : List<CardArt>
     page : Page
@@ -286,16 +260,9 @@ type EditorAction =
     Modulate
         identity : int
         key : string
-    Audition
-    PlayGraph
-    StopGraph
     Surface
-    Keyboard
     ShowModules
     ShowDetails
-    ShowKeyboard
-    Strike
-        note : int
     PluginPath
     LoadSample
     BuiltinSample
