@@ -5,7 +5,6 @@ namespace todo;
 
 import todo::TodoHarness
 
-/// The retry transaction over items, queries, seed sizes and the conflict text ([EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY]).
 module MultishotRetryItemsCases {
     /// CreateItem: rivals only burn list ids, so the item id is the seed
     /// count plus one whatever the rival count, and a lost attempt's row is
@@ -14,37 +13,33 @@ module MultishotRetryItemsCases {
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY].
     export fn retryCreateItemCase() = {
         let ask = CreateItem { item: NewItem { listId: 1, title: "Nails" } }
-        let calm = TodoHarness::contested([], retryLists(), retryItems(), ask)
-        let twice = TodoHarness::contested(["X", "Y"], retryLists(), retryItems(), ask)
-        let lost = TodoHarness::contested(["X", "Y", "Z"], retryLists(), retryItems(), ask)
-        let empty = TodoHarness::contested(["Rival"], retryLists(), retryItems(), CreateItem {
+        let calm = retryAsked([], retryItems(), ask)
+        let twice = retryAsked(["X", "Y"], retryItems(), ask)
+        let lost = retryAsked(["X", "Y", "Z"], retryItems(), ask)
+        let empty = retryAsked(["Rival"], retryItems(), CreateItem {
             item: NewItem { listId: 1, title: "" } })
-        let orphan = TodoHarness::contested(["Rival"], retryLists(), retryItems(), CreateItem {
+        let orphan = retryAsked(["Rival"], retryItems(), CreateItem {
             item: NewItem { listId: 42, title: "Nails" } })
-        let bare = TodoHarness::contested(["X", "Y"], retryLists(), [], ask)
+        let bare = retryAsked(["X", "Y"], [], ask)
         expect(calm.settled, Success { value: CreatedId { value: 4 } })
         expect(twice.settled, Success { value: CreatedId { value: 4 } })
-        expect(retryWhy(lost.settled), "attempt 3: store changed under transaction at 3, now 4")
-        expect(empty.settled, Error { message: ValidationFault { problems: ["'Title' must not be empty."] } })
+        retryExpectGaveUp(lost)
+        retryExpectEmptyTitle(empty)
         expect(orphan.settled, Success { value: CreatedId { value: 4 } })
         expect(bare.settled, Success { value: CreatedId { value: 1 } })
-        checkAll("item ids follow the seed count; lost rows are restored; refusals burn no rival", [
-            structuralEquals(calm.items, listAppend(retryItems(),
-                TodoItem { id: 4, listId: 1, title: "Nails", note: "", priority: LevelNone, done: false })),
-            structuralEquals(retryTitles(calm.lists), ["Shopping", "Banking"]),
-            structuralEquals(retryItemIds(twice.items), [1, 2, 3, 4]),
-            structuralEquals(retryTitles(twice.lists), ["Shopping", "Banking", "X", "Y"]),
-            structuralEquals(retryIds(twice.lists), [1, 2, 3, 4]),
-            structuralEquals(lost.items, retryItems()), structuralEquals(retryIds(lost.lists), [1, 2, 3, 4, 5]),
-            structuralEquals(empty.items, retryItems()), structuralEquals(retryIds(empty.lists), [1, 2]),
+        let landed = listAppend(retryItems(),
+            TodoItem { id: 4, listId: 1, title: "Nails", note: "", priority: LevelNone, done: false })
+        expect(TodoHarness::failures("item ids follow the seed count; lost rows are restored; refusals burn no rival", listConcat([
+            structuralEquals(calm.items, landed),
+            retryTitlesAre(calm, ["Shopping", "Banking"]),
+            retryItemIdsAre(twice, [1, 2, 3, 4]),
+            retryStoredAs(twice, ["Shopping", "Banking", "X", "Y"], [1, 2, 3, 4]),
+            structuralEquals(lost.items, retryItems()), retryIdsAre(lost, [1, 2, 3, 4, 5]),
+            structuralEquals(empty.items, retryItems()), retryIdsAre(empty, [1, 2]),
             structuralEquals(orphan.items, listAppend(retryItems(),
                 TodoItem { id: 4, listId: 42, title: "Nails", note: "", priority: LevelNone, done: false })),
-            structuralEquals(retryItemIds(bare.items), [1]), structuralEquals(retryIds(bare.lists), [1, 2, 3, 4]),
-            calm.readings == 3, twice.readings == 3, lost.readings == 3,
-            empty.readings == 3, orphan.readings == 3, bare.readings == 3,
-            length(calm.events) == 0, length(twice.events) == 0, length(lost.events) == 0,
-            length(empty.events) == 0, length(orphan.events) == 0, length(bare.events) == 0
-        ])
+            retryItemIdsAre(bare, [1]), retryIdsAre(bare, [1, 2, 3, 4])
+        ], retryCalm([calm, twice, lost, empty, orphan, bare]))), [])
     }
 
     /// UpdateItemDetail: the detail re-lands after every lost commit, moving
@@ -53,75 +48,66 @@ module MultishotRetryItemsCases {
     /// any commit. [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY].
     export fn retryItemDetailCase() = {
         let detail = ItemDetail { id: 1, listId: 2, priority: 3, note: "weekly" }
-        let calm = TodoHarness::contested([], retryLists(), retryItems(), UpdateItemDetail { detail: detail })
-        let twice = TodoHarness::contested(["X", "Y"], retryLists(), retryItems(), UpdateItemDetail { detail: detail })
-        let lost = TodoHarness::contested(["X", "Y", "Z"], retryLists(), retryItems(), UpdateItemDetail { detail: detail })
-        let missing = TodoHarness::contested(["X", "Y"], retryLists(), retryItems(), UpdateItemDetail {
+        let calm = retryAsked([], retryItems(), UpdateItemDetail { detail: detail })
+        let twice = retryAsked(["X", "Y"], retryItems(), UpdateItemDetail { detail: detail })
+        let lost = retryAsked(["X", "Y", "Z"], retryItems(), UpdateItemDetail { detail: detail })
+        let missing = retryAsked(["X", "Y"], retryItems(), UpdateItemDetail {
             detail: ItemDetail { id: 9, listId: 2, priority: 1, note: "no" } })
-        let unknown = TodoHarness::contested(["X", "Y"], retryLists(), retryItems(), UpdateItemDetail {
+        let unknown = retryAsked(["X", "Y"], retryItems(), UpdateItemDetail {
             detail: ItemDetail { id: 3, listId: 1, priority: 9, note: "" } })
         let moved = [
             TodoHarness::seedItem(2, 1, "Bread", false),
             TodoHarness::seedItem(3, 2, "Tax", false),
             TodoItem { id: 1, listId: 2, title: "Milk", note: "weekly", priority: LevelHigh, done: false }
         ]
-        expect(calm.settled, Success { value: Updated })
-        expect(twice.settled, Success { value: Updated })
-        expect(retryWhy(lost.settled), "attempt 3: store changed under transaction at 3, now 4")
-        expect(missing.settled, Error { message: NotFound { kind: "TodoItem", id: 9 } })
-        expect(unknown.settled, Success { value: Updated })
-        checkAll("the detail re-lands once; refusals burn no rival and keep the seeds", [
+        retryExpectUpdated(calm)
+        retryExpectUpdated(twice)
+        retryExpectGaveUp(lost)
+        retryExpectMissing(missing, "TodoItem", 9)
+        retryExpectUpdated(unknown)
+        expect(TodoHarness::failures("the detail re-lands once; refusals burn no rival and keep the seeds", listConcat([
             structuralEquals(calm.items, moved), structuralEquals(twice.items, moved),
-            structuralEquals(retryIds(twice.lists), [1, 2, 3, 4]),
-            structuralEquals(retryTitles(twice.lists), ["Shopping", "Banking", "X", "Y"]),
-            structuralEquals(lost.items, retryItems()), structuralEquals(retryIds(lost.lists), [1, 2, 3, 4, 5]),
+            retryIdsAre(twice, [1, 2, 3, 4]),
+            retryTitlesAre(twice, ["Shopping", "Banking", "X", "Y"]),
+            structuralEquals(lost.items, retryItems()), retryIdsAre(lost, [1, 2, 3, 4, 5]),
             length(lost.lists) == 5,
-            structuralEquals(missing.items, retryItems()), structuralEquals(retryIds(missing.lists), [1, 2]),
+            structuralEquals(missing.items, retryItems()), retryIdsAre(missing, [1, 2]),
             structuralEquals(unknown.items, [
                 TodoHarness::seedItem(1, 1, "Milk", false),
                 TodoHarness::seedItem(2, 1, "Bread", false),
                 TodoHarness::seedItem(3, 1, "Tax", false)
             ]),
-            structuralEquals(retryItemIds(calm.items), [2, 3, 1]),
+            retryItemIdsAre(calm, [2, 3, 1]),
             length(calm.items) == 3, length(unknown.items) == 3,
-            !retryDoneOf(calm.items, 1), !retryDoneOf(unknown.items, 3),
-            calm.readings == 3, twice.readings == 3, lost.readings == 3,
-            missing.readings == 3, unknown.readings == 3,
-            length(calm.events) == 0, length(twice.events) == 0, length(lost.events) == 0,
-            length(missing.events) == 0, length(unknown.events) == 0
-        ])
+            !retryDoneOf(calm.items, 1), !retryDoneOf(unknown.items, 3)
+        ], retryCalm([calm, twice, lost, missing, unknown]))), [])
     }
 
     /// DeleteItem: the row is restored by every lost commit and only the
     /// committing attempt removes it; a missing item answers NotFound
     /// before any commit. [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY].
     export fn retryDeleteItemCase() = {
-        let calm = TodoHarness::contested([], retryLists(), retryItems(), DeleteItem { id: 2 })
-        let one = TodoHarness::contested(["Rival"], retryLists(), retryItems(), DeleteItem { id: 2 })
-        let twice = TodoHarness::contested(["X", "Y"], retryLists(), retryItems(), DeleteItem { id: 2 })
-        let lost = TodoHarness::contested(["X", "Y", "Z"], retryLists(), retryItems(), DeleteItem { id: 2 })
-        let missing = TodoHarness::contested(["X", "Y", "Z"], retryLists(), retryItems(), DeleteItem { id: 9 })
-        expect(calm.settled, Success { value: Updated })
-        expect(one.settled, Success { value: Updated })
-        expect(twice.settled, Success { value: Updated })
-        expect(retryWhy(lost.settled), "attempt 3: store changed under transaction at 3, now 4")
-        expect(missing.settled, Error { message: NotFound { kind: "TodoItem", id: 9 } })
-        checkAll("each lost commit restores the row; only the committing attempt deletes", [
-            structuralEquals(retryItemIds(calm.items), [1, 3]),
-            structuralEquals(retryTitles(calm.lists), ["Shopping", "Banking"]), length(calm.items) == 2,
-            structuralEquals(retryItemIds(one.items), [1, 3]),
-            structuralEquals(retryTitles(one.lists), ["Shopping", "Banking", "Rival"]),
-            structuralEquals(retryIds(one.lists), [1, 2, 3]),
-            structuralEquals(retryItemIds(twice.items), [1, 3]), structuralEquals(retryIds(twice.lists), [1, 2, 3, 4]),
-            structuralEquals(lost.items, retryItems()), structuralEquals(retryItemIds(lost.items), [1, 2, 3]),
-            structuralEquals(retryIds(lost.lists), [1, 2, 3, 4, 5]), length(lost.lists) == 5,
+        let calm = retryAsked([], retryItems(), DeleteItem { id: 2 })
+        let one = retryAsked(["Rival"], retryItems(), DeleteItem { id: 2 })
+        let twice = retryAsked(["X", "Y"], retryItems(), DeleteItem { id: 2 })
+        let lost = retryAsked(["X", "Y", "Z"], retryItems(), DeleteItem { id: 2 })
+        let missing = retryAsked(["X", "Y", "Z"], retryItems(), DeleteItem { id: 9 })
+        retryExpectUpdated(calm)
+        retryExpectUpdated(one)
+        retryExpectUpdated(twice)
+        retryExpectGaveUp(lost)
+        retryExpectMissing(missing, "TodoItem", 9)
+        expect(TodoHarness::failures("each lost commit restores the row; only the committing attempt deletes", listConcat([
+            retryItemIdsAre(calm, [1, 3]),
+            retryTitlesAre(calm, ["Shopping", "Banking"]), length(calm.items) == 2,
+            retryItemIdsAre(one, [1, 3]),
+            retryStoredAs(one, ["Shopping", "Banking", "Rival"], [1, 2, 3]),
+            retryItemIdsAre(twice, [1, 3]), retryIdsAre(twice, [1, 2, 3, 4]),
+            structuralEquals(lost.items, retryItems()), retryItemIdsAre(lost, [1, 2, 3]),
+            retryIdsAre(lost, [1, 2, 3, 4, 5]), length(lost.lists) == 5,
             structuralEquals(missing.items, retryItems()), length(missing.items) == 3,
-            structuralEquals(retryIds(missing.lists), [1, 2]),
-            calm.readings == 3, one.readings == 3, twice.readings == 3,
-            lost.readings == 3, missing.readings == 3,
-            length(calm.events) == 0, length(one.events) == 0, length(twice.events) == 0,
-            length(lost.events) == 0, length(missing.events) == 0
-        ])
+            retryIdsAre(missing, [1, 2])
+        ], retryCalm([calm, one, twice, lost, missing]))), [])
     }
 
     /// GetTodos under conflict: the committing attempt reads the seeds plus
@@ -130,9 +116,9 @@ module MultishotRetryItemsCases {
     /// attempt 3's conflict with the seeds intact.
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY].
     export fn retryGetTodosCase() = {
-        let calm = TodoHarness::contested([], retryLists(), retryItems(), GetTodos)
-        let busy = TodoHarness::contested(["Zulu", "Alpha"], retryLists(), retryItems(), GetTodos)
-        let lost = TodoHarness::contested(["X", "Y", "Z"], retryLists(), retryItems(), GetTodos)
+        let calm = retryAsked([], retryItems(), GetTodos)
+        let busy = retryAsked(["Zulu", "Alpha"], retryItems(), GetTodos)
+        let lost = retryAsked(["X", "Y", "Z"], retryItems(), GetTodos)
         expect(calm.settled, Success { value: retryTodosView([
             ListView { id: 2, title: "Banking", colour: "#AB47BC", items: [retryRow(3, "Tax")] },
             ListView { id: 1, title: "Shopping", colour: "#78909C",
@@ -145,24 +131,22 @@ module MultishotRetryItemsCases {
                 items: [retryRow(2, "Bread"), retryRow(1, "Milk")] },
             ListView { id: 3, title: "Zulu", colour: "#78909C", items: [] }
         ]) })
-        expect(retryWhy(lost.settled), "attempt 3: store changed under transaction at 3, now 4")
-        checkAll("the view nests landed rivals in title order with their queue-order ids", [
-            structuralEquals(retryTitles(busy.lists), ["Shopping", "Banking", "Zulu", "Alpha"]),
-            structuralEquals(retryIds(busy.lists), [1, 2, 3, 4]),
-            structuralEquals(retryColours(busy.lists), ["#78909C", "#AB47BC", "#78909C", "#78909C"]),
+        retryExpectGaveUp(lost)
+        expect(TodoHarness::failures("the view nests landed rivals in title order with their queue-order ids", listConcat([
+            retryTitlesAre(busy, ["Shopping", "Banking", "Zulu", "Alpha"]),
+            retryIdsAre(busy, [1, 2, 3, 4]),
+            retryColoursAre(busy, ["#78909C", "#AB47BC", "#78909C", "#78909C"]),
             length(busy.lists) == 4, length(busy.items) == 3,
-            retryCount(retryTitles(busy.lists), "Alpha") == 1, retryCount(retryTitles(busy.lists), "Zulu") == 1,
-            structuralEquals(retryItemIds(busy.items), [1, 2, 3]), !retryDoneOf(busy.items, 2),
-            structuralEquals(retryTitles(calm.lists), ["Shopping", "Banking"]),
-            structuralEquals(retryIds(calm.lists), [1, 2]), length(calm.lists) == 2, length(calm.items) == 3,
-            structuralEquals(retryTitles(lost.lists), ["Shopping", "Banking", "X", "Y", "Z"]),
-            structuralEquals(retryIds(lost.lists), [1, 2, 3, 4, 5]),
-            structuralEquals(retryColours(lost.lists), ["#78909C", "#AB47BC", "#78909C", "#78909C", "#78909C"]),
-            length(lost.lists) == 5, structuralEquals(retryItemIds(lost.items), [1, 2, 3]),
-            length(lost.items) == 3, retryCount(retryTitles(lost.lists), "Z") == 1,
-            calm.readings == 3, busy.readings == 3, lost.readings == 3,
-            length(calm.events) == 0, length(busy.events) == 0, length(lost.events) == 0
-        ])
+            retryHasTitles(busy, "Alpha", 1), retryHasTitles(busy, "Zulu", 1),
+            retryItemIdsAre(busy, [1, 2, 3]), !retryDoneOf(busy.items, 2),
+            retryTitlesAre(calm, ["Shopping", "Banking"]),
+            retryIdsAre(calm, [1, 2]), length(calm.lists) == 2, length(calm.items) == 3,
+            retryTitlesAre(lost, ["Shopping", "Banking", "X", "Y", "Z"]),
+            retryIdsAre(lost, [1, 2, 3, 4, 5]),
+            retryColoursAre(lost, ["#78909C", "#AB47BC", "#78909C", "#78909C", "#78909C"]),
+            length(lost.lists) == 5, retryItemIdsAre(lost, [1, 2, 3]),
+            length(lost.items) == 3, retryHasTitles(lost, "Z", 1)
+        ], retryCalm([calm, busy, lost]))), [])
     }
 
     /// Seeds of several sizes shift every new id: five lists push the rivals
@@ -171,38 +155,35 @@ module MultishotRetryItemsCases {
     /// request id 4. [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY].
     export fn retrySeedSizesCase() = {
         let ask = CreateList { list: NewList { title: "Mine", colour: "" } }
-        let big = TodoHarness::contested(["X", "Y"], retryFiveLists(), [], ask)
-        let bigger = TodoHarness::contested(["X", "Y", "Z"], retryFiveLists(), [], ask)
+        let five = retryFiveLists()
+        let big = TodoHarness::contested(["X", "Y"], five, [], ask)
+        let bigger = TodoHarness::contested(["X", "Y", "Z"], five, [], ask)
         let gapped = TodoHarness::contested(["Rival"], [
             TodoHarness::seedList(5, "Echo", "#78909C"),
             TodoHarness::seedList(7, "Delta", "#AB47BC")
         ], [], ask)
-        let items = TodoHarness::contested(["Rival"], retryFiveLists(), retryFourItems(), CreateItem {
+        let items = TodoHarness::contested(["Rival"], five, retryFourItems(), CreateItem {
             item: NewItem { listId: 1, title: "Nails" } })
-        let bare = TodoHarness::contested(["X", "Y"], retryLists(), [], CreateItem {
+        let bare = retryAsked(["X", "Y"], [], CreateItem {
             item: NewItem { listId: 1, title: "Nails" } })
         expect(big.settled, Success { value: CreatedId { value: 8 } })
-        expect(retryWhy(bigger.settled), "attempt 3: store changed under transaction at 3, now 4")
+        retryExpectGaveUp(bigger)
         expect(gapped.settled, Success { value: CreatedId { value: 4 } })
         expect(items.settled, Success { value: CreatedId { value: 5 } })
         expect(bare.settled, Success { value: CreatedId { value: 1 } })
-        checkAll("new ids follow the seed counts, not the seed ids", [
-            structuralEquals(retryTitles(big.lists), ["L1", "L2", "L3", "L4", "L5", "X", "Y", "Mine"]),
-            structuralEquals(retryIds(big.lists), [1, 2, 3, 4, 5, 6, 7, 8]), length(big.lists) == 8,
-            structuralEquals(retryTitles(bigger.lists), ["L1", "L2", "L3", "L4", "L5", "X", "Y", "Z"]),
-            structuralEquals(retryIds(bigger.lists), [1, 2, 3, 4, 5, 6, 7, 8]), length(bigger.lists) == 8,
-            structuralEquals(retryTitles(gapped.lists), ["Echo", "Delta", "Rival", "Mine"]),
-            structuralEquals(retryIds(gapped.lists), [5, 7, 3, 4]),
-            structuralEquals(retryItemIds(items.items), [1, 2, 3, 4, 5]), length(items.items) == 5,
-            structuralEquals(retryTitles(items.lists), ["L1", "L2", "L3", "L4", "L5", "Rival"]),
-            structuralEquals(retryIds(items.lists), [1, 2, 3, 4, 5, 6]),
-            structuralEquals(retryItemIds(bare.items), [1]), structuralEquals(retryIds(bare.lists), [1, 2, 3, 4]),
-            length(bare.items) == 1,
-            big.readings == 3, bigger.readings == 3, gapped.readings == 3,
-            items.readings == 3, bare.readings == 3,
-            length(big.events) == 0, length(bigger.events) == 0, length(gapped.events) == 0,
-            length(items.events) == 0, length(bare.events) == 0
-        ])
+        expect(TodoHarness::failures("new ids follow the seed counts, not the seed ids", listConcat([
+            retryTitlesAre(big, ["L1", "L2", "L3", "L4", "L5", "X", "Y", "Mine"]),
+            retryIdsAre(big, [1, 2, 3, 4, 5, 6, 7, 8]), length(big.lists) == 8,
+            retryTitlesAre(bigger, ["L1", "L2", "L3", "L4", "L5", "X", "Y", "Z"]),
+            retryIdsAre(bigger, [1, 2, 3, 4, 5, 6, 7, 8]), length(bigger.lists) == 8,
+            retryTitlesAre(gapped, ["Echo", "Delta", "Rival", "Mine"]),
+            retryIdsAre(gapped, [5, 7, 3, 4]),
+            retryItemIdsAre(items, [1, 2, 3, 4, 5]), length(items.items) == 5,
+            retryTitlesAre(items, ["L1", "L2", "L3", "L4", "L5", "Rival"]),
+            retryIdsAre(items, [1, 2, 3, 4, 5, 6]),
+            retryItemIdsAre(bare, [1]), retryIdsAre(bare, [1, 2, 3, 4]),
+            length(bare.items) == 1
+        ], retryCalm([big, bigger, gapped, items, bare]))), [])
     }
 
     /// Every request kind answers the same attempt-3 conflict with its exact
@@ -211,45 +192,31 @@ module MultishotRetryItemsCases {
     /// version is one more; neither attempt 1 nor 2 is ever the answer.
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY], [FAILURE-EXPLICIT].
     export fn retryConflictTextCase() = {
-        let third = "attempt 3: store changed under transaction at 3, now 4"
-        let create = TodoHarness::contested(["X", "Y", "Z"], retryLists(), [], CreateList {
+        let create = retryAsked(["X", "Y", "Z"], [], CreateList {
             list: NewList { title: "Mine", colour: "" } })
-        let rename = TodoHarness::contested(["X", "Y", "Z"], retryLists(), [], UpdateList {
+        let rename = retryAsked(["X", "Y", "Z"], [], UpdateList {
             edit: ListEdit { id: 1, title: "Chores", colour: "" } })
-        let remove = TodoHarness::contested(["X", "Y", "Z"], retryLists(), retryItems(), DeleteList { id: 1 })
-        let read = TodoHarness::contested(["X", "Y", "Z"], retryLists(), retryItems(), GetTodos)
-        let addItem = TodoHarness::contested(["X", "Y", "Z"], retryLists(), retryItems(), CreateItem {
+        let remove = retryAsked(["X", "Y", "Z"], retryItems(), DeleteList { id: 1 })
+        let read = retryAsked(["X", "Y", "Z"], retryItems(), GetTodos)
+        let addItem = retryAsked(["X", "Y", "Z"], retryItems(), CreateItem {
             item: NewItem { listId: 1, title: "Nails" } })
-        let finish = TodoHarness::contested(["X", "Y", "Z"], retryLists(), retryItems(), UpdateItem {
+        let finish = retryAsked(["X", "Y", "Z"], retryItems(), UpdateItem {
             edit: ItemEdit { id: 1, title: "Milk", done: true } })
-        let detail = TodoHarness::contested(["X", "Y", "Z"], retryLists(), retryItems(), UpdateItemDetail {
+        let detail = retryAsked(["X", "Y", "Z"], retryItems(), UpdateItemDetail {
             detail: ItemDetail { id: 1, listId: 2, priority: 3, note: "weekly" } })
-        let dropItem = TodoHarness::contested(["X", "Y", "Z"], retryLists(), retryItems(), DeleteItem { id: 2 })
-        let purge = TodoHarness::contested(["X", "Y", "Z"], retryLists(), retryItems(), PurgeTodoLists)
-        expect(retryWhy(create.settled), third)
-        expect(retryWhy(rename.settled), third)
-        expect(retryWhy(remove.settled), third)
-        expect(retryWhy(read.settled), third)
-        expect(retryWhy(addItem.settled), third)
-        expect(retryWhy(finish.settled), third)
-        expect(retryWhy(detail.settled), third)
-        expect(retryWhy(dropItem.settled), third)
-        expect(retryWhy(purge.settled), third)
-        checkAll("one conflict shape for every kind; earlier attempts never answer", [
+        let dropItem = retryAsked(["X", "Y", "Z"], retryItems(), DeleteItem { id: 2 })
+        let purge = retryAsked(["X", "Y", "Z"], retryItems(), PurgeTodoLists)
+        let kinds = [create, rename, remove, read, addItem, finish, detail, dropItem, purge]
+        forEachList(kinds, fn(run) => retryExpectGaveUp(run))
+        expect(TodoHarness::failures("one conflict shape for every kind; earlier attempts never answer", listConcat([
             !contains(retryWhy(create.settled), "attempt 1:"),
             !contains(retryWhy(remove.settled), "attempt 1:"),
             !contains(retryWhy(purge.settled), "attempt 1:"),
             !contains(retryWhy(rename.settled), "attempt 2:"),
             !contains(retryWhy(read.settled), "attempt 2:"),
             !contains(retryWhy(finish.settled), "attempt 2:"),
-            create.readings == 3, rename.readings == 3, remove.readings == 3,
-            read.readings == 3, addItem.readings == 3, finish.readings == 3,
-            detail.readings == 3, dropItem.readings == 3, purge.readings == 3,
-            length(create.events) == 0, length(rename.events) == 0, length(remove.events) == 0,
-            length(read.events) == 0, length(addItem.events) == 0, length(finish.events) == 0,
-            length(detail.events) == 0, length(dropItem.events) == 0, length(purge.events) == 0,
             length(remove.items) == 3, length(purge.lists) == 5
-        ])
+        ], retryCalm(kinds))), [])
     }
 
     /// ItemsWithPagination under conflict: rivals only add lists, so the
@@ -265,19 +232,20 @@ module MultishotRetryItemsCases {
             hasPrevious: false,
             hasNext: true
         }
-        let calm = TodoHarness::contested([], seeds, retrySevenItems(), ask)
-        let twice = TodoHarness::contested(["X", "Y"], seeds, retrySevenItems(), ask)
-        let lost = TodoHarness::contested(["X", "Y", "Z"], seeds, retrySevenItems(), ask)
+        let seven = retrySevenItems()
+        let calm = TodoHarness::contested([], seeds, seven, ask)
+        let twice = TodoHarness::contested(["X", "Y"], seeds, seven, ask)
+        let lost = TodoHarness::contested(["X", "Y", "Z"], seeds, seven, ask)
         expect(calm.settled, Success { value: page })
         expect(twice.settled, Success { value: page })
-        expect(retryWhy(lost.settled), "attempt 3: store changed under transaction at 3, now 4")
-        checkAll("rivals add no items, so the committing attempt pages the seeds", [
-            structuralEquals(retryTitles(calm.lists), ["Shopping"]), length(calm.lists) == 1,
-            length(calm.items) == 7, structuralEquals(retryItemIds(calm.items), [1, 2, 3, 4, 5, 6, 7]),
+        retryExpectGaveUp(lost)
+        expect(TodoHarness::failures("rivals add no items, so the committing attempt pages the seeds", listConcat([
+            retryTitlesAre(calm, ["Shopping"]), length(calm.lists) == 1,
+            length(calm.items) == 7, retryItemIdsAre(calm, [1, 2, 3, 4, 5, 6, 7]),
             !retryDoneOf(calm.items, 1),
-            structuralEquals(retryTitles(twice.lists), ["Shopping", "X", "Y"]),
-            structuralEquals(retryIds(twice.lists), [1, 2, 3]), length(twice.items) == 7,
-            structuralEquals(retryItemIds(twice.items), [1, 2, 3, 4, 5, 6, 7]), !retryDoneOf(twice.items, 7),
+            retryTitlesAre(twice, ["Shopping", "X", "Y"]),
+            retryIdsAre(twice, [1, 2, 3]), length(twice.items) == 7,
+            retryItemIdsAre(twice, [1, 2, 3, 4, 5, 6, 7]), !retryDoneOf(twice.items, 7),
             match twice.settled {
                 Success { value: ItemsPageView { rows, totalCount, hasPrevious, hasNext } } =>
                     length(rows) == 5 && totalCount == 7 && !hasPrevious && hasNext
@@ -287,13 +255,11 @@ module MultishotRetryItemsCases {
                 Success { value: ItemsPageView { totalCount } } => totalCount == 7
                 _ => false
             },
-            structuralEquals(retryTitles(lost.lists), ["Shopping", "X", "Y", "Z"]),
-            structuralEquals(retryIds(lost.lists), [1, 2, 3, 4]), length(lost.lists) == 4,
-            length(lost.items) == 7, structuralEquals(lost.items, retrySevenItems()),
-            structuralEquals(retryItemIds(lost.items), [1, 2, 3, 4, 5, 6, 7]),
-            retryCount(retryTitles(lost.lists), "Z") == 1,
-            calm.readings == 3, twice.readings == 3, lost.readings == 3,
-            length(calm.events) == 0, length(twice.events) == 0, length(lost.events) == 0
-        ])
+            retryTitlesAre(lost, ["Shopping", "X", "Y", "Z"]),
+            retryIdsAre(lost, [1, 2, 3, 4]), length(lost.lists) == 4,
+            length(lost.items) == 7, structuralEquals(lost.items, seven),
+            retryItemIdsAre(lost, [1, 2, 3, 4, 5, 6, 7]),
+            retryHasTitles(lost, "Z", 1)
+        ], retryCalm([calm, twice, lost]))), [])
     }
 }

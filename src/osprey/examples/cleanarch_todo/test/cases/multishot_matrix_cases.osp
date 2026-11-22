@@ -92,6 +92,10 @@ fn mxBranch(probe, at) = toString(mxAnswer(probe, at))
 /// Branch `at` of `probe` is exactly the independent answer.
 fn mxAgrees(probe, at, alone) = mxBranch(probe, at) == toString(alone)
 
+/// Every branch of `probe` is the independent run of its entry in `asks`.
+fn mxAgreesAll(probe, store, asks) = mapList(range(0, length(asks)) |> toList, fn(at) =>
+    mxAgrees(probe, at, mxAlone(TodoHarness::admin(), store, listGet(asks, at) ?: GetTodos)))
+
 /// Branch `at` refused an anonymous caller.
 fn mxUnauthorized(probe, at) = match mxAnswer(probe, at) {
     Error { message: Unauthorized } => true
@@ -148,21 +152,19 @@ fn mxItemFixes(title) = [
     CreateItem { item: NewItem { listId: 1, title: title } }
 ]
 
-/// The fix probe of the first of `fixes` over `store`, against an
-/// independent run of every fixed request.
-fn mxFixChecks(store, fixes) = {
-    let probe = TodoHarness::probed(TodoHarness::admin(), store.lists, store.items, WhichFixesWork { request: listGet(fixes, 0) ?: GetTodos })
-    listConcat(mxTraceless(probe, store, 4, 6), [
-        mxAgrees(probe, 0, mxAlone(TodoHarness::admin(), store, listGet(fixes, 0) ?: GetTodos)),
-        mxAgrees(probe, 1, mxAlone(TodoHarness::admin(), store, listGet(fixes, 1) ?: GetTodos)),
-        mxAgrees(probe, 2, mxAlone(TodoHarness::admin(), store, listGet(fixes, 2) ?: GetTodos)),
-        mxAgrees(probe, 3, mxAlone(TodoHarness::admin(), store, listGet(fixes, 3) ?: GetTodos)),
-        length(TodoProbe::fixes()) == 4
-    ])
+/// The probe of `question` over `store`: four branches, six readings, every
+/// branch an independent run of its entry in `asks`, and `catalogue` four long.
+fn mxProbeChecks(store, question, asks, catalogue) = {
+    let probe = TodoHarness::probed(TodoHarness::admin(), store.lists, store.items, question)
+    listConcat(mxTraceless(probe, store, 4, 6), listConcat(mxAgreesAll(probe, store, asks), [length(catalogue) == 4]))
 }
 
-/// A title of `size` characters.
-fn mxWide(size) = foldList(range(0, size) |> toList, "", fn(built, _i) => built + "y")
+/// The fix probe of the first of `fixes` over `store`, against an
+/// independent run of every fixed request.
+fn mxFixChecks(store, fixes) = mxProbeChecks(store, WhichFixesWork { request: listGet(fixes, 0) ?: GetTodos }, fixes, TodoProbe::fixes())
+
+/// A title of `size` y characters.
+fn mxWide(size) = retryWideTitle(size, "y")
 
 /// Titles at and around every validation boundary.
 fn mxTitles() = [
@@ -204,17 +206,15 @@ fn mxShaped(listId) = [
 ]
 
 /// The plan probe of `listId` over `store`, against an independent query per shape.
-fn mxPlanChecks(store, listId) = {
-    let probe = TodoHarness::probed(TodoHarness::admin(), store.lists, store.items, PagePlan { listId: listId })
-    let shapes = mxShaped(listId)
-    listConcat(mxTraceless(probe, store, 4, 6), [
-        mxAgrees(probe, 0, mxAlone(TodoHarness::admin(), store, listGet(shapes, 0) ?: GetTodos)),
-        mxAgrees(probe, 1, mxAlone(TodoHarness::admin(), store, listGet(shapes, 1) ?: GetTodos)),
-        mxAgrees(probe, 2, mxAlone(TodoHarness::admin(), store, listGet(shapes, 2) ?: GetTodos)),
-        mxAgrees(probe, 3, mxAlone(TodoHarness::admin(), store, listGet(shapes, 3) ?: GetTodos)),
-        length(TodoProbe::shapes()) == 4
-    ])
-}
+fn mxPlanChecks(store, listId) = mxProbeChecks(store, PagePlan { listId: listId }, mxShaped(listId), TodoProbe::shapes())
+
+/// Every (store, request) pair's checks, folded into one list in that order.
+fn mxOverStores(checks) = foldList(mxStores(), [], fn(all, store) =>
+    foldList(mxRequests(), all, fn(more, ask) => listConcat(more, checks(store, ask))))
+
+/// Every (store, title) pair's checks, folded into one list in that order.
+fn mxOverTitles(checks) = foldList(mxStores(), [], fn(all, store) =>
+    foldList(mxTitles(), all, fn(more, title) => listConcat(more, checks(store, title))))
 
 /// Whether no candidate fix rewrites `ask`, so every fix branch answers alike.
 fn mxUnrewritten(ask) = match ask {
@@ -270,10 +270,10 @@ fn mxRetryChecks(store, ask, rivals) = {
     ]
 }
 
-/// The conflict explanation of `outcome`, or "" for any other outcome.
-fn mxConflict(outcome) = match outcome {
-    Error { message: Conflict { why } } => why
-    _ => ""
+/// Assert `checks` holds exactly `count` checks and none fails ([TESTING-EQUALITY]).
+fn mxReported(count, label, checks) = {
+    expect(length(checks), count)
+    expect(TodoHarness::failures(label, checks), [])
 }
 
 /// Three rivals exhaust the retries: the third conflict answers, all three
@@ -282,7 +282,7 @@ fn mxExhaustedChecks(store, ask) = {
     let fought = TodoHarness::contested(["R1", "R2", "R3"], store.lists, store.items, ask)
     match mxCommits(store, ask) {
         true => [
-            contains(mxConflict(fought.settled), "attempt 3:"),
+            contains(retryWhy(fought.settled), "attempt 3:"),
             mxSame(fought.lists, mxRivalled(store, ["R1", "R2", "R3"]).lists),
             mxSame(fought.items, store.items),
             length(fought.events) == 0,
@@ -304,19 +304,16 @@ module MultishotMatrixCases {
     /// retried request is exactly an independent run after its rivals
     /// committed: 420 x 5 = 2100 assertions.
     export fn retriesMatchIndependentRunsCase() = {
-        let checks = foldList(mxStores(), [], fn(all, store) => foldList(mxRequests(), all, fn(more, ask) =>
-            foldList(mxRivalQueues(), more, fn(rest, rivals) => listConcat(rest, mxRetryChecks(store, ask, rivals)))))
-        expect(length(checks), 2100)
-        expect(TodoHarness::failures("every retried request is an independent run after its rivals", checks), [])
+        let checks = mxOverStores(fn(store, ask) =>
+            foldList(mxRivalQueues(), [], fn(rest, rivals) => listConcat(rest, mxRetryChecks(store, ask, rivals))))
+        mxReported(2100, "every retried request is an independent run after its rivals", checks)
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY]: three rivals beat every attempt
     /// of every request over every store: 84 x 5 = 420 assertions.
     export fn exhaustedRetriesKeepNothingCase() = {
-        let checks = foldList(mxStores(), [], fn(all, store) =>
-            foldList(mxRequests(), all, fn(more, ask) => listConcat(more, mxExhaustedChecks(store, ask))))
-        expect(length(checks), 420)
-        expect(TodoHarness::failures("an exhausted retry keeps only the rivals", checks), [])
+        let checks = mxOverStores(mxExhaustedChecks)
+        mxReported(420, "an exhausted retry keeps only the rivals", checks)
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ] [MULTI-HANDLE-MANY] [MULTI-REPLAY]:
@@ -324,27 +321,24 @@ module MultishotMatrixCases {
     /// what that principal alone would get, the start principal changes
     /// nothing, and no probe keeps a row or an event: 21 x 4 x 3 x 8 = 2016.
     export fn authzBranchesMatchIndependentRunsCase() = {
-        let checks = foldList(mxStores(), [], fn(all, store) =>
-            foldList(mxRequests(), all, fn(more, ask) => listConcat(more, mxAuthzChecks(store, ask))))
-        expect(length(checks), 2016)
-        expect(TodoHarness::failures("every authorization branch is an independent run", checks), [])
+        let checks = mxOverStores(mxAuthzChecks)
+        mxReported(2016, "every authorization branch is an independent run", checks)
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ]: the answers do not depend on who
     /// started the request, for every request over every store (84 x 3).
     export fn authzIgnoresTheStartingPrincipalCase() = {
-        let checks = foldList(mxStores(), [], fn(all, store) => foldList(mxRequests(), all, fn(more, ask) => {
+        let checks = mxOverStores(fn(store, ask) => {
             let anonymous = TodoHarness::probed(TodoHarness::anonymous(), store.lists, store.items, WhoMayRun { request: ask })
             let member = TodoHarness::probed(TodoHarness::user(), store.lists, store.items, WhoMayRun { request: ask })
             let admin = TodoHarness::probed(TodoHarness::admin(), store.lists, store.items, WhoMayRun { request: ask })
-            listConcat(more, [
+            [
                 mxSame(anonymous.answers, member.answers),
                 mxSame(member.answers, admin.answers),
                 anonymous.readings == admin.readings
-            ])
-        }))
-        expect(length(checks), 252)
-        expect(TodoHarness::failures("the starting principal never changes a branch", checks), [])
+            ]
+        })
+        mxReported(252, "the starting principal never changes a branch", checks)
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ]: the guarded requests answer each
@@ -366,47 +360,41 @@ module MultishotMatrixCases {
                 length(purge.events) == 0
             ])
         })
-        expect(length(checks), 40)
-        expect(TodoHarness::failures("access rules answer each principal over every store", checks), [])
+        mxReported(40, "access rules answer each principal over every store", checks)
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE] [MULTI-REPLAY]: 14 titles x 8
     /// colours x 4 stores. Each fix branch is exactly an independent create
     /// of the fixed list: 448 probes x 10 = 4480 assertions.
     export fn listFixBranchesMatchIndependentRunsCase() = {
-        let checks = foldList(mxStores(), [], fn(all, store) => foldList(mxTitles(), all, fn(more, title) =>
-            foldList(mxColours(), more, fn(rest, colour) => listConcat(rest, mxFixChecks(store, mxListFixes(title, colour))))))
-        expect(length(checks), 4480)
-        expect(TodoHarness::failures("every list fix branch is an independent run", checks), [])
+        let checks = mxOverTitles(fn(store, title) =>
+            foldList(mxColours(), [], fn(rest, colour) => listConcat(rest, mxFixChecks(store, mxListFixes(title, colour)))))
+        mxReported(4480, "every list fix branch is an independent run", checks)
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE]: 14 titles x 4 stores for items,
     /// where the colour fix answers as sent: 56 x 11 = 616 assertions.
     export fn itemFixBranchesMatchIndependentRunsCase() = {
-        let checks = foldList(mxStores(), [], fn(all, store) => foldList(mxTitles(), all, fn(more, title) => {
+        let checks = mxOverTitles(fn(store, title) => {
             let fixes = mxItemFixes(title)
             let probe = TodoHarness::probed(TodoHarness::admin(), store.lists, store.items, WhichFixesWork { request: listGet(fixes, 0) ?: GetTodos })
-            listConcat(more, listConcat(mxFixChecks(store, fixes), [
-                mxBranch(probe, 0) == mxBranch(probe, 3)
-            ]))
-        }))
-        expect(length(checks), 616)
-        expect(TodoHarness::failures("every item fix branch is an independent run", checks), [])
+            listConcat(mxFixChecks(store, fixes), [mxBranch(probe, 0) == mxBranch(probe, 3)])
+        })
+        mxReported(616, "every item fix branch is an independent run", checks)
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE]: a request no fix rewrites
     /// answers alike in all four branches, over every store (21 x 4 x 7).
     export fn untouchedRequestsAnswerAlikeCase() = {
-        let checks = foldList(mxStores(), [], fn(all, store) => foldList(mxRequests(), all, fn(more, ask) => {
+        let checks = mxOverStores(fn(store, ask) => {
             let probe = TodoHarness::probed(TodoHarness::admin(), store.lists, store.items, WhichFixesWork { request: ask })
             let alone = mxAlone(TodoHarness::admin(), store, ask)
-            listConcat(more, listConcat(mxTraceless(probe, store, 4, 6), [
+            listConcat(mxTraceless(probe, store, 4, 6), [
                 mxAgrees(probe, 0, alone),
                 !mxUnrewritten(ask) || mxAlike(probe.answers)
-            ]))
-        }))
-        expect(length(checks), 588)
-        expect(TodoHarness::failures("a request no fix rewrites answers alike", checks), [])
+            ])
+        })
+        mxReported(588, "a request no fix rewrites answers alike", checks)
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN] [MULTI-HANDLE-MANY]: 13 item counts
@@ -415,15 +403,15 @@ module MultishotMatrixCases {
     export fn planBranchesMatchIndependentQueriesCase() = {
         let checks = foldList([0, 1, 2, 4, 5, 6, 9, 10, 11, 49, 50, 51, 60], [], fn(all, count) =>
             foldList([1, 2, 9], all, fn(more, listId) => listConcat(more, mxPlanChecks(mxPagedStore(count), listId))))
-        expect(length(checks), 390)
-        expect(TodoHarness::failures("every plan branch is an independent page query", checks), [])
+        mxReported(390, "every plan branch is an independent page query", checks)
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN]: every plan branch reports the
     /// whole list's count and the page flags its shape implies.
     export fn planFlagsFollowEveryShapeCase() = {
         let checks = foldList([0, 1, 4, 5, 6, 10, 11, 50, 51], [], fn(all, count) => {
-            let probe = TodoHarness::probed(TodoHarness::admin(), mxPagedStore(count).lists, mxPagedStore(count).items, PagePlan { listId: 1 })
+            let store = mxPagedStore(count)
+            let probe = TodoHarness::probed(TodoHarness::admin(), store.lists, store.items, PagePlan { listId: 1 })
             listConcat(all, mapList([[1, 5, 0], [2, 5, 1], [1, 10, 2], [1, 50, 3]], fn(shape) => {
                 let number = listGet(shape, 0) ?: 0
                 let size = listGet(shape, 1) ?: 0
@@ -438,7 +426,6 @@ module MultishotMatrixCases {
                 }
             }))
         })
-        expect(length(checks), 36)
-        expect(TodoHarness::failures("every page reports its count and flags", checks), [])
+        mxReported(36, "every page reports its count and flags", checks)
     }
 }
