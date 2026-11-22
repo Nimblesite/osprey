@@ -1,4 +1,30 @@
 # --- vsix sub-steps ---------------------------------------------------------
+# $(call _vsix_require_host,<platform pattern>,<name>) stops the build unless
+# this host's bundle directory matches: a VSIX only carries the binaries the
+# machine building it can run, so each vsix-rebuild-reinstall-* target is one
+# host's. Make's own `$(error)`, not a shell test, so the refusal also reads
+# correctly under the native-Windows PowerShell shell.
+_vsix_require_host = $(if $(filter $(1),$(EXT_PLATFORM)),,$(error this target is for $(2); this host bundles $(EXT_PLATFORM)))
+
+# The tools the Windows build reaches for, checked before a long build instead
+# of failing half way: MSYS2 packages by their pacman name, the rest from the
+# inherited Windows PATH.
+_vsix_windows_tools:
+	@missing=""; \
+	for tool in gcc:mingw-w64-ucrt-x86_64-gcc clang:mingw-w64-ucrt-x86_64-clang \
+	            llvm-ar:mingw-w64-ucrt-x86_64-llvm unzip:unzip; do \
+	  command -v ${tool%%:*} >/dev/null 2>&1 || missing="$missing ${tool#*:}"; done; \
+	[ -z "$missing" ] || { echo "FAIL: missing MSYS2 packages; run: pacman -S$missing"; exit 1; }; \
+	for tool in cargo node npm code; do \
+	  command -v $tool >/dev/null 2>&1 || { echo "FAIL: no $tool on the Windows PATH"; exit 1; }; done
+
+_vsix_rebuild_reinstall:
+	$(MAKE) _vsix_clean
+	$(MAKE) build
+	$(MAKE) _vsix_bundle
+	$(MAKE) _vsix_package
+	$(MAKE) _vsix_install
+
 # Zed's artifact is built once, in the build phase; launch-policy tests are
 # covered by the Rust workspace and stdio acceptance reuses the compiler.
 .PHONY: _zed_build _test_zed_stdio

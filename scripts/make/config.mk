@@ -12,7 +12,7 @@
 	_language-test _deslop _gpu-demo _graphics-shader \
 	_test_gc_stack_root _test_c_runtime _test_gpu_device _coverage_check_c_runtime _bank_test _test_bench_tools _test_registry _test_registry_blockers \
 	_runtime_klee _test_hunt_mock \
-	_vsix_clean _vsix_bundle _vsix_package _vsix_install _graphics _graphics-smoke
+	_vsix_rebuild_reinstall _vsix_windows_tools _vsix_clean _vsix_bundle _vsix_package _vsix_install _graphics _graphics-smoke
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -80,6 +80,8 @@ EXT_PLATFORM   ?= $(EXT_OS)-$(EXT_ARCH)
 # The extension spawns bin/win32-x64/osprey.exe on Windows (client-config.ts),
 # so the bundled executables carry the suffix there and nowhere else.
 EXE            ?= $(if $(filter win32,$(EXT_OS)),.exe,)
+# vsix-rebuild-reinstall-windows builds in this MSYS2 installation's UCRT64.
+MSYS2_ROOT     ?= C:/msys64
 
 # ---------------------------------------------------------------------------
 # Node dependency guard
