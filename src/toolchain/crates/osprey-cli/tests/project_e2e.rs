@@ -190,12 +190,7 @@ fn flat_project_pipeline_covers_scripts_directories_and_manifests() {
 
     let _ = flag_stdout(&project, "--llvm", &["define"], &[]);
 
-    let symbols = flag_stdout(
-        &project,
-        "--symbols",
-        &["bank::Api::route"],
-        &["__osp_"],
-    );
+    let symbols = flag_stdout(&project, "--symbols", &["bank::Api::route"], &["__osp_"]);
     assert_project_main_symbol_is_local(&symbols, &project.join("main.ospml"));
 
     // An ordinary script keeps its own names: no project name mangling.
