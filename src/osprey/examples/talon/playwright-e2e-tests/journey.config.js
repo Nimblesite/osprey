@@ -1,5 +1,5 @@
 // Talon Bank's journey (app/self-test.json) in real Chromium. Each run starts its own fresh server
-// (ledger.js), so there is no webServer here. Every shot is a golden beside the app, one folder per
+// (ledger.js); the only webServer is the static web client. Every shot is a golden beside the app, one folder per
 // platform since fonts render differently; 0.5% of pixels may differ, the limit every host's
 // goldens share. Linux goldens come from the official Playwright image:
 //   docker run --platform linux/amd64 -p 3000:3000 mcr.microsoft.com/playwright:v1.64.1-noble \
@@ -7,6 +7,7 @@
 //   OSPREY_GOLDENS_PLATFORM=linux PW_TEST_CONNECT_WS_ENDPOINT=ws://127.0.0.1:3000/ \
 //     PW_TEST_CONNECT_EXPOSE_NETWORK='<loopback>' npx playwright test -c journey.config.js --update-snapshots
 const { defineConfig } = require('@playwright/test');
+const { WEB, webClient } = require('./web-client');
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -18,5 +19,6 @@ module.exports = defineConfig({
   // A browser on another machine (PW_TEST_CONNECT_WS_ENDPOINT) names its own platform here.
   snapshotPathTemplate: `../app/goldens/web/${process.env.OSPREY_GOLDENS_PLATFORM ?? '{platform}'}/{testName}/{arg}{ext}`,
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.005 } },
-  use: { baseURL: 'http://127.0.0.1:18790', screenshot: 'only-on-failure' },
+  use: { baseURL: WEB, screenshot: 'only-on-failure' },
+  webServer: webClient,
 });

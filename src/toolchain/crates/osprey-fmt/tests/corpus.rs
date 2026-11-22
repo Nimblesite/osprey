@@ -52,16 +52,10 @@ fn collect(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
             if path.file_name().is_none_or(|name| name != "build") {
                 collect(&path, ext, out);
             }
-        } else if path.extension().is_some_and(|e| e == ext) && !is_generated(&path) {
+        } else if path.extension().is_some_and(|e| e == ext) {
             out.push(path);
         }
     }
-}
-
-/// The generated web bundle (build output, never committed) is JavaScript in an Osprey
-/// string, explicitly excluded from Plan 0019's hand-written corpus baseline.
-fn is_generated(path: &Path) -> bool {
-    path.ends_with("src/osprey/examples/talon/backend/web/bundle.ospml")
 }
 
 /// Format every corpus source of one extension, collecting **every** file that

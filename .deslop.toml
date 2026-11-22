@@ -18,7 +18,6 @@ exclude = [
   "src/osprey/packages/tiktoken/src/tables.py",
   "src/osprey/packages/tokenizers/src/Category.py",
   "src/osprey/packages/tokenizers/src/NfcData.py",
-  "src/osprey/examples/talon/backend/web/bundle.ospml",
   "src/osprey/examples/gpui/painting/src/logo.ospml",
   "src/toolchain/compiler/runtime/klee/hunt_format_cases.inc",
   "src/toolchain/website/src/_includes/benchmarks-tables.html",

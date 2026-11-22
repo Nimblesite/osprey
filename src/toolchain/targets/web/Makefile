@@ -9,24 +9,24 @@ include Makefile
 
 .PHONY: bank bank-build
 
-## bank: Rebuild and run the Talon Bank showcase for manual testing.
-##       Opens http://127.0.0.1:18790 (dashboard) / /api/accounts (JSON API).
-##       The hold marker keeps the server up; Ctrl-C removes it and exits.
+## bank: Rebuild and run the Talon Bank showcase for manual testing: two processes, the web client
+##       (static files on http://127.0.0.1:18791) and the server it calls (JSON API on :18790).
+##       The hold marker keeps the server up; Ctrl-C removes it and stops both.
 bank: _bank-web
-	@echo "==> Talon Bank live on http://127.0.0.1:18790  (Ctrl-C to stop)"
+	@echo "==> Talon Bank: web client http://127.0.0.1:18791, API http://127.0.0.1:18790  (Ctrl-C to stop)"
 	@touch /tmp/talon_bank.hold
-	@trap 'rm -f /tmp/talon_bank.hold' EXIT INT TERM; \
+	@node src/toolchain/hosts/web/scripts/serve.mjs --root src/toolchain/hosts/web/build/talon --port 18791 & web=$$!; \
+	  trap 'rm -f /tmp/talon_bank.hold; kill $$web 2>/dev/null' EXIT INT TERM; \
 	  (if command -v open >/dev/null && command -v curl >/dev/null; then \
 	    attempts=0; \
 	    until accounts="$$(curl -fsS http://127.0.0.1:18790/api/accounts 2>/dev/null)" && [[ "$$accounts" == *'"Priya Sharma"'* ]]; do \
 	      attempts=$$((attempts + 1)); [ "$$attempts" -ge 200 ] && exit 0; sleep 0.1; \
 	    done; \
-	    open http://127.0.0.1:18790; \
+	    open http://127.0.0.1:18791; \
 	  fi) & \
 	  ./$(BIN) src/osprey/examples/talon/backend --run
 
-## bank-build: Rebuild Talon Bank's Osprey Native app for the browser and embed it in its server.
-##             Requires Node and a WASI sysroot; the generated bundle
-##             is build output, never committed.
+## bank-build: Rebuild Talon Bank's web client (static files in src/toolchain/hosts/web/build/talon).
+##             Requires Node and a WASI sysroot.
 bank-build: _bank-web
 endif

@@ -3,20 +3,11 @@ use super::*;
 #[test]
 fn module_files_use_the_assembled_project_graph() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let main_warnings = bank_warnings();
-    for (relative, expected) in [
-        (
-            "src/osprey/examples/talon/backend/main.ospml",
-            main_warnings.as_slice(),
-        ),
-        ("src/osprey/examples/talon/backend/web/pages.ospml", &[]),
-    ] {
-        let path = root.join(relative);
-        let source = std::fs::read_to_string(&path).expect("read module example");
-        let uri = format!("file://{}", path.display());
-        let diagnostics = compute(&source, &uri, U16);
-        assert_warnings(&diagnostics, expected);
-    }
+    let path = root.join("src/osprey/examples/talon/backend/main.ospml");
+    let source = std::fs::read_to_string(&path).expect("read module example");
+    let uri = format!("file://{}", path.display());
+    let diagnostics = compute(&source, &uri, U16);
+    assert_warnings(&diagnostics, &bank_warnings());
 }
 
 fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
@@ -29,56 +20,56 @@ fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
         (
             "unused-pattern-binding",
             "unused pattern binding `message`",
-            (20, 22, 20, 29),
+            (19, 22, 19, 29),
         ),
         (
             "unused-variable",
             "unused variable `freed`",
-            (21, 12, 21, 17),
+            (20, 12, 20, 17),
         ),
         (
             "unused-pattern-binding",
             "unused pattern binding `message`",
-            (23, 14, 23, 21),
+            (22, 14, 22, 21),
         ),
         (
             "unused-pattern-binding",
             "unused pattern binding `message`",
-            (49, 14, 49, 21),
+            (45, 14, 45, 21),
         ),
         (
             "unused-pattern-binding",
             "unused pattern binding `value`",
-            (50, 16, 50, 21),
+            (46, 16, 46, 21),
         ),
         (
             "unused-variable",
             "unused variable `slept`",
-            (51, 12, 51, 17),
+            (47, 12, 47, 17),
         ),
         (
             "unused-variable",
             "unused variable `listening`",
-            (71, 4, 71, 13),
+            (67, 4, 67, 13),
         ),
-        ("unused-variable", "unused variable `held`", (77, 4, 77, 8)),
+        ("unused-variable", "unused variable `held`", (73, 4, 73, 8)),
         (
             "unused-variable",
             "unused variable `stopped`",
-            (78, 4, 78, 11),
+            (74, 4, 74, 11),
         ),
         (
             "unused-variable",
             "unused variable `closed`",
-            (79, 4, 79, 10),
+            (75, 4, 75, 10),
         ),
-        ("unused-variable", "unused variable `made`", (86, 4, 86, 8)),
+        ("unused-variable", "unused variable `made`", (82, 4, 82, 8)),
         (
             "unused-parameter",
             "unused parameter `headers`",
-            (95, 29, 95, 36),
+            (90, 29, 90, 36),
         ),
-        ("unused-variable", "unused variable `seen`", (96, 4, 96, 8)),
+        ("unused-variable", "unused variable `seen`", (91, 4, 91, 8)),
     ]
 }
 
@@ -126,8 +117,8 @@ fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
     let main_path = root.join("src/osprey/examples/talon/backend/main.ospml");
     let main = std::fs::read_to_string(&main_path).expect("read ML module example");
     let unresolved = main.replace(
-        "import \"bank/web\" as web",
-        "import \"missing/web\" as web",
+        "import bank::Metrics\n",
+        "import bank::Metrics\nimport \"missing/web\" as web\n",
     );
     let diagnostics = compute(&unresolved, &format!("file://{}", main_path.display()), U16);
     assert!(

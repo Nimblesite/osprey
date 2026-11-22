@@ -86,7 +86,7 @@ fn temp_project(name: &str) -> (PathBuf, String) {
     (path, namespace)
 }
 
-const FIXTURE_SOURCES: [&str; 11] = [
+const FIXTURE_SOURCES: [&str; 9] = [
     "osprey.toml",
     "main.ospml",
     "lib/sqlite.ospml",
@@ -96,8 +96,6 @@ const FIXTURE_SOURCES: [&str; 11] = [
     "store/ledger.ospml",
     "store/metrics.ospml",
     "api/routes.ospml",
-    "web/bundle.ospml",
-    "web/pages.ospml",
 ];
 
 /// The module the project-layout tests import their `answer` from.
@@ -195,7 +193,7 @@ fn flat_project_pipeline_covers_scripts_directories_and_manifests() {
     let symbols = flag_stdout(
         &project,
         "--symbols",
-        &["bank/web::Pages::render"],
+        &["bank::Api::route"],
         &["__osp_"],
     );
     assert_project_main_symbol_is_local(&symbols, &project.join("main.ospml"));

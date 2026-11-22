@@ -9,7 +9,7 @@
 # floor. Without this line the archive is whatever an earlier target happened to
 # leave behind, so a plain `make clean && make ci` fails on a coverage number
 # that says nothing about the code that changed. Build what the gate measures.
-_test_rust: _runtime_wasm $(BANK_BUNDLE)
+_test_rust: _runtime_wasm
 	@echo "==> [rust] running tests with coverage..."
 	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
 	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --manifest-path src/toolchain/Cargo.toml --workspace --profile ci --lcov --output-path $(RUST_LCOV) 2>&1 | tee $(RUST_LOG)
@@ -23,7 +23,7 @@ RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result -- $(RUST_SHARD_WO
 RUST_SHARD_ARGS_rest := -- $(addprefix --skip ,$(RUST_SHARD_PACKAGES) $(RUST_SHARD_WORKBENCH))
 
 .PHONY: _test_rust_shard
-_test_rust_shard: _runtime_wasm $(BANK_BUNDLE)
+_test_rust_shard: _runtime_wasm
 	@echo "==> [rust] running shard $(RUST_SHARD) with coverage..."
 	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
 	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --manifest-path src/toolchain/Cargo.toml --workspace --profile ci --lcov --output-path $(RUST_LCOV) $(RUST_SHARD_ARGS_$(RUST_SHARD)) 2>&1 | tee $(RUST_LOG)
@@ -450,12 +450,12 @@ _gpu-demo: build
 	@echo "==> rendering gpu* kernel demo on the host backend (CPU)"
 	./$(BIN) src/osprey/tests/core/gpu/raster.test.$(if $(filter ml,$(FLAVOR)),ospml,osp) --run
 
-# The same suite against an ALREADY-BUILT binary. Its only prerequisite is the bundle file, present in
-# the downloaded `osprey-build` artifact, so the staged pipeline runs it as is. Going
+# The same suite against an ALREADY-BUILT binary. No prerequisites, so the
+# staged pipeline can run it on the downloaded `osprey-build` artifact. Going
 # through the `bank` suite there rebuilt the whole workspace and then ran `tsc -b`
 # in vscode-extension, whose node_modules that job never installs — three
 # TS2688 errors and a dead stage, for work the build job had already done.
-_bank_test: $(BANK_BUNDLE)
+_bank_test:
 	@echo "==> Bank native tests (osprey test)..."
 	./$(BIN) test src/osprey/examples/talon/backend/test
 
@@ -546,7 +546,7 @@ _deslop:
 # ends on "N programs, F failed"; any F above 0 fails the build.
 .PHONY: _check_programs
 _check_programs: export OSPREY_BIN = $(abspath $(BIN))
-_check_programs: $(BANK_BUNDLE)
+_check_programs:
 	node scripts/ci/test-check-programs.mjs --compiler $(abspath $(BIN))
 	set -o pipefail && $(BIN) scripts/ci/check-programs.py --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 

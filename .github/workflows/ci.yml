@@ -160,7 +160,7 @@ jobs:
         run: |
           npm ci --prefix src/toolchain/hosts/web
           node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/talon/app --title "Talon Bank" --out src/toolchain/hosts/web/build/talon \
-            --module src/osprey/examples/talon/backend/web/bundle.ospml --namespace bank/web
+            --argument http://127.0.0.1:18790
 
       - name: Build the extension bundle
         run: make _vsix_bundle
@@ -201,7 +201,9 @@ jobs:
             src/toolchain/compiler/lib/
             src/toolchain/compiler/bin/*.a
             target/wasm32-wasip2/debug/osprey_zed.wasm
-            src/osprey/examples/talon/backend/web/bundle.ospml
+            src/toolchain/hosts/web/build/talon/index.html
+            src/toolchain/hosts/web/build/talon/host.js
+            src/toolchain/hosts/web/build/talon/host.css
           retention-days: 7
           if-no-files-found: error
 
@@ -1390,17 +1392,6 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ steps.cargo.outputs.cache-primary-key }}
-
-      # Talon Bank's server embeds the web client the build job generated; it is build output, never
-      # committed. Only that file is taken: the artifact's Linux compiler must not replace this one.
-      - uses: actions/download-artifact@v8
-        if: matrix.part == 'Talon Bank'
-        with:
-          name: osprey-build
-          path: ${{ runner.temp }}/osprey-build
-      - name: Take the generated Talon Bank web bundle
-        if: matrix.part == 'Talon Bank'
-        run: cp "$RUNNER_TEMP/osprey-build/src/osprey/examples/talon/backend/web/bundle.ospml" src/osprey/examples/talon/backend/web/bundle.ospml
 
       - uses: actions/setup-node@v7
         if: matrix.part == 'Light Orchestra'

@@ -17,8 +17,13 @@ module Api
         log : string => Unit
 
     // The `headers` string is spliced verbatim into the wire response, so
-    // each header line must carry its own CRLF terminator.
-    json status body = HttpResponse(status = status, headers = "Content-Type: application/json\r\n", contentType = "application/json", streamFd = -1, isComplete = true, partialBody = body)
+    // each header line must carry its own CRLF terminator. The web client is served from its own
+    // origin, so every reply lets any origin read it (the API holds no cookies or credentials).
+    cors () = "Access-Control-Allow-Origin: *\r\n"
+    json status body = HttpResponse(status = status, headers = "Content-Type: application/json\r\n${cors ()}", contentType = "application/json", streamFd = -1, isComplete = true, partialBody = body)
+
+    // The browser's preflight before a cross-origin JSON POST.
+    preflight () = HttpResponse(status = 204, headers = "${cors ()}Access-Control-Allow-Methods: GET, POST\r\nAccess-Control-Allow-Headers: Content-Type\r\nAccess-Control-Max-Age: 600\r\n", contentType = "text/plain", streamFd = -1, isComplete = true, partialBody = "")
 
     refuse why = json 422 (Json::error why)
 
@@ -144,4 +149,5 @@ module Api
             "/api/withdraw" => onWithdraw body
             "/api/transfer" => onTransfer body
             _ => json 404 "{\"error\":\"no such endpoint\"}"
+        "OPTIONS" => preflight ()
         _ => json 404 "{\"error\":\"no such endpoint\"}"

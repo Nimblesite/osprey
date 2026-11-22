@@ -11,7 +11,7 @@ include Makefile
 
 ## bank: Talon Bank's journey (app/self-test.json, the file every host plays) in the iPhone simulator against a
 ##       fresh backend, each shot compared with app/goldens/ios. The backend runs natively, so it links the runtime.
-bank: _runtime $(BANK_BUNDLE)
+bank: _runtime
 	$(BANK_LEDGER) env $(BANK_IOS) bash src/toolchain/hosts/swift/ios.sh ios-sim --journey
 
 ## casting: Run the casting player's native UI journey with the simulator visible.
