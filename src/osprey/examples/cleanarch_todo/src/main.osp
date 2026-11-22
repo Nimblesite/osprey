@@ -1,0 +1,36 @@
+// Ported from jasontaylordev/CleanArchitecture (MIT), src/Web/Program.cs: the composition root.
+// Where the C# builds a DI container, scans assemblies and registers five behaviours in an order
+// it must get right, this installs handlers in lexical scope ([EXAMPLE-CLEANARCH-INV-REDUNDANT]).
+
+namespace todo;
+
+import todo::EdgeServer
+import todo::EdgeTodo
+import todo::TodoHost
+import todo::TodoReplay
+
+/// One request through the pipeline; its events are logged once it settles (LogTodoItemCompleted).
+fn onRequest(method, path, _headers, body) = {
+    let settled = TodoHost::withAuth(operator(), fn() =>
+        TodoReplay::asSent(fn() =>
+            TodoHost::withEventReport(fn() => EdgeTodo::answer(method, path, body))))
+    forEachList(TodoHost::eventLines(settled.events), fn(line) => perform Log.info(line))
+    settled.settled
+}
+
+/// The party every request runs as until the edge reads one from the request.
+fn operator() = Principal { name: "admin@example.com", roles: ["Administrator"], policies: ["CanPurge"] }
+
+/// The handlers that outlive a request: the log, the clock and the store. The rest are per
+/// request, so a captured continuation never leaves the request that made it.
+fn main() -> int = {
+    handle Log {
+        info message => print("info: ${message}")
+        warn message => print("warn: ${message}")
+        error message => print("error: ${message}")
+    }
+    TodoHost::withClock(0, 0, fn() =>
+        TodoHost::withStore([], [], fn() =>
+            TodoReplay::withRollback(fn() => EdgeServer::serve(onRequest, 8080))))
+    0
+}

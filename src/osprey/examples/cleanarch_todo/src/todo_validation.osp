@@ -1,0 +1,44 @@
+// Ported from jasontaylordev/CleanArchitecture (MIT), the four *CommandValidator.cs files: every
+// failure is collected, as FluentValidation does ([EXAMPLE-CLEANARCH-INV-FAITHFUL]).
+
+namespace todo;
+
+import todo::TodoDomain
+import todo::TodoRequest
+
+/// The FluentValidation rules, collected, as one function per concern.
+module TodoValidation {
+    /// Every rule a request breaks, collected: never just the first.
+    export fn problems(request) = match request {
+        CreateList { list: NewList { title, colour } } => listProblems(-1, title, colour)
+        UpdateList { edit: ListEdit { id, title, colour } } => listProblems(id, title, colour)
+        CreateItem { item: NewItem { title } } => titleProblems(title)
+        UpdateItem { edit: ItemEdit { title } } => titleProblems(title)
+        _ => []
+    }
+
+    fn listProblems(excludeId, title, colour) = listConcat(
+        titleProblems(title),
+        listConcat(uniqueProblems(excludeId, title), colourProblems(colour)))
+
+    fn titleProblems(title) = listConcat(
+        problemWhen(isEmpty(title), "'Title' must not be empty."),
+        problemWhen(length(title) > 200, "'Title' must be at most 200 characters."))
+
+    /// BeUniqueTitle: no other list holds this title.
+    fn uniqueProblems(excludeId, title) = problemWhen(
+        title != "" && length(filterList(perform Store.lists(), fn(list) =>
+            list.title == title && list.id != excludeId)) > 0,
+        "'Title' must be unique.")
+
+    /// Blank means Grey; anything else must be a colour Colour.From accepts.
+    fn colourProblems(colour) = match TodoDomain::colourFrom(TodoDomain::colourOr(colour, TodoDomain::grey())) {
+        Success _ => []
+        Error { message } => [message]
+    }
+
+    fn problemWhen(broken, message) = match broken {
+        true => [message]
+        false => []
+    }
+}

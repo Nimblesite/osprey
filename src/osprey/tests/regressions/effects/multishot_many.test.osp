@@ -1,0 +1,241 @@
+/// Multi-shot (`many`) continuations — plan 0016 phase 3 acceptance.
+/// One `many` continuation is resumed any number of times; every resume runs
+/// an independent branch that re-enters exactly at the choice point, so work
+/// before the capture never re-runs and each branch's own state is its own.
+/// Implements [MULTI-HANDLE-MANY], [MULTI-HANDLE-MANY-LEXICAL],
+/// [EFFECTS-RESUME-NESTING], [EFFECTS-FINALIZATION], [MULTI-FALSIFY].
+
+effect Choice {
+    /// Offer one decision. The handler may answer this request any number of
+    /// times, and every answer runs its own branch of the remainder.
+    control many pick: fn(int) -> int
+}
+
+effect Journal {
+    /// Append `line` to the transcript. Declared `replayable`: a re-entered
+    /// branch re-performing the notes inside the captured remainder is the
+    /// promised semantics, while notes before the capture stay single
+    /// ([MULTI-REPLAY]).
+    replayable note: fn(string) -> Unit
+}
+
+effect Audit {
+    /// Record a watched activation closing. Replayable: every branch's own
+    /// activation closes exactly ([MULTI-REPLAY], [EFFECTS-FINALIZATION]).
+    replayable close: fn(string) -> Unit
+}
+
+/// Ask, then record which branch is running. The `note` before the pick must
+/// appear exactly however many times the body itself ran — never again per
+/// resume; the `note` after it belongs to whichever branch answers.
+fn gather(seed) = {
+    perform Journal.note("enter\n")
+    let chosen = perform Choice.pick(seed)
+    perform Journal.note("branch ${chosen}\n")
+    "b${chosen}"
+}
+
+/// Two decisions in sequence. Re-entering the first after a whole branch of
+/// the second settled must replay neither the opening note nor the second
+/// decision's own settled branches.
+fn staged(seed) = {
+    perform Journal.note("before\n")
+    let first = perform Choice.pick(seed)
+    perform Journal.note("mid\n")
+    let second = perform Choice.pick(first)
+    perform Journal.note("after\n")
+    "r${first}-${second}"
+}
+
+/// A nested `Choice` region completing before the outer decision suspends.
+/// The nested region and its note run exactly however many times the body
+/// runs; resuming the outer decision replays neither.
+fn layered(seed) = {
+    let boosted = {
+        handle Choice {
+            pick _inner => resume(1002)
+        }
+        perform Choice.pick(seed)
+    }
+    perform Journal.note("inner ${boosted}\n")
+    let settled = perform Choice.pick(boosted)
+    "L${settled}"
+}
+
+/// [MULTI-FALSIFY] pure search — every alternative is resumed and every
+/// branch answer is collected; the transcript proves each branch ran its own
+/// suffix exactly.
+fn everyAnswerCase() = {
+    mut log = ""
+    let answers = {
+        handle Journal {
+            note text => { log = "${log}${text}" }
+        }
+        handle Choice {
+            pick _bound => {
+                let low = resume(4)
+                let mid = resume(5)
+                let high = resume(6)
+                "${low},${mid},${high}"
+            }
+        }
+        gather(4)
+    }
+    print("answers=${answers}")
+    print("log=[${log}]")
+    checkAll("every resume collects its own branch answer", [
+        answers == "b4,b5,b6",
+        log == "enter\nbranch 4\nbranch 5\nbranch 6\n"
+    ])
+}
+
+/// Retrying the first decision starts a fresh branch at its choice point: the
+/// opening note stays single, and the second decision re-runs per new branch
+/// without replaying the branches it already settled.
+fn retryWithoutReplayCase() = {
+    mut log = ""
+    let stagedAnswer = {
+        handle Journal {
+            note text => { log = "${log}${text}" }
+        }
+        handle Choice {
+            pick _bound => {
+                let first = resume(0)
+                let second = resume(1)
+                "${first}|${second}"
+            }
+        }
+        staged(7)
+    }
+    print("staged=${stagedAnswer}")
+    print("log=[${log}]")
+    checkAll("a retried decision replays neither earlier nor later work", [
+        stagedAnswer == "r0-0|r0-1|r1-0|r1-1",
+        log == "before\nmid\nafter\nafter\nmid\nafter\nafter\n"
+    ])
+}
+
+/// `many` is an upper bound, never a promise: zero answers abandon the
+/// remainder (its suffix never runs), and a single answer runs it exactly.
+fn zeroAndSingleCase() = {
+    mut zeroLog = ""
+    let zeroAnswer = {
+        handle Journal {
+            note text => { zeroLog = "${zeroLog}${text}" }
+        }
+        handle Choice {
+            pick _bound => "none"
+        }
+        gather(5)
+    }
+    print("zero=${zeroAnswer}")
+    print("zero log=[${zeroLog}]")
+    mut singleLog = ""
+    let singleAnswer = {
+        handle Journal {
+            note text => { singleLog = "${singleLog}${text}" }
+        }
+        handle Choice {
+            pick bound => resume(bound)
+        }
+        gather(5)
+    }
+    print("single=${singleAnswer}")
+    print("single log=[${singleLog}]")
+    checkAll("zero answers abandon the remainder and a single answer runs it", [
+        zeroAnswer == "none",
+        singleAnswer == "b5",
+        singleLog == "enter\nbranch 5\n"
+    ])
+}
+
+/// Every branch finalizes its own activation exactly, and a branch abandoned
+/// at the decision point unwinds its activation's cleanup exactly ([MULTI-COST-ABORT]).
+fn branchFinalizersCase() = {
+    mut branchLog = ""
+    let branches = {
+        handle Audit {
+            close text => { branchLog = "${branchLog}${text}" }
+        }
+        handle Choice {
+            pick _bound => {
+                let first = resume(5)
+                let second = resume(6)
+                "${first}&${second}"
+            }
+        }
+        {
+            let chosen = {
+                handle Journal {
+                    note text => { branchLog = "${branchLog}${text}" }
+                    finally => perform Audit.close("close\n")
+                }
+                perform Choice.pick(5)
+            }
+            "v${chosen}"
+        }
+    }
+    print("branches=${branches}")
+    print("branch log=[${branchLog}]")
+    mut abandonLog = ""
+    let abandoned = {
+        handle Audit {
+            close text => { abandonLog = "${abandonLog}${text}" }
+        }
+        handle Choice {
+            pick _bound => "dropped"
+        }
+        {
+            let chosen = {
+                handle Journal {
+                    note text => { abandonLog = "${abandonLog}${text}" }
+                    finally => perform Audit.close("close\n")
+                }
+                perform Choice.pick(6)
+            }
+            "v${chosen}"
+        }
+    }
+    print("abandoned=${abandoned}")
+    print("abandoned log=[${abandonLog}]")
+    checkAll("branch finalizers run exactly per branch and per abandonment", [
+        branches == "v5&v6",
+        abandoned == "dropped",
+        abandonLog == "close\n"
+    ])
+}
+
+/// A nested handler region completed before the outer capture survives every
+/// resumption of the outer decision without being replayed.
+fn nestedRegionsCase() = {
+    mut log = ""
+    let layeredAnswer = {
+        handle Journal {
+            note text => { log = "${log}${text}" }
+        }
+        handle Choice {
+            pick bound => {
+                let first = resume(bound)
+                let second = resume(1003)
+                "${first}~${second}"
+            }
+        }
+        layered(2)
+    }
+    print("layered=${layeredAnswer}")
+    print("layered log=[${log}]")
+    checkAll("a nested region is not replayed across outer resumptions", [
+        layeredAnswer == "L1002~L1003",
+        log == "inner 1002\n"
+    ])
+}
+
+print("=== multi-shot many continuations ===")
+
+exactTests([
+    { name: "a many continuation resumed for every alternative collects each branch answer", work: everyAnswerCase },
+    { name: "a retried decision replays neither earlier nor later work", work: retryWithoutReplayCase },
+    { name: "zero answers abandon the remainder and a single answer runs it", work: zeroAndSingleCase },
+    { name: "branch finalizers run exactly per branch and per abandonment", work: branchFinalizersCase },
+    { name: "a nested region is not replayed across outer resumptions", work: nestedRegionsCase }
+])

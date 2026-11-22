@@ -154,7 +154,8 @@ fn walk_arms(arms: &[MatchArm], bound: &mut Vec<String>, out: &mut BTreeSet<Stri
 }
 
 /// Every name a pattern binds in its arm's scope.
-pub(crate) fn pattern_bindings(p: &Pattern) -> Vec<String> {
+#[must_use]
+pub fn pattern_bindings(p: &Pattern) -> Vec<String> {
     match p {
         Pattern::Wildcard | Pattern::Literal(_) => Vec::new(),
         Pattern::Constructor {

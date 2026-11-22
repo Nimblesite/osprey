@@ -1,0 +1,89 @@
+// Ported from jasontaylordev/CleanArchitecture (MIT), the container wiring of both DependencyInjection.cs
+// files: the outer-ring handlers, which tests install too ([EXAMPLE-CLEANARCH-BOOK-DETAILS]).
+
+namespace todo;
+
+import todo::TodoDomain
+import todo::TodoRequest
+
+/// The outer ring: one handler per boundary.
+module TodoHost {
+    /// ApplicationDbContext: an in-memory store.
+    export fn withStore(seedLists, seedItems, work) = {
+        mut lists = seedLists
+        mut items = seedItems
+        mut nextList = satAdd(length(seedLists), 1)
+        mut nextItem = satAdd(length(seedItems), 1)
+        handle Store {
+            lists => lists
+            items => items
+            nextListId => {
+                nextList = satAdd(nextList, 1)
+                satSub(nextList, 1)
+            }
+            nextItemId => {
+                nextItem = satAdd(nextItem, 1)
+                satSub(nextItem, 1)
+            }
+            saveList list => { lists = listAppend(filterList(lists, fn(l) => l.id != list.id), list) }
+            saveItem item => { items = listAppend(filterList(items, fn(i) => i.id != item.id), item) }
+            dropList id => {
+                lists = filterList(lists, fn(l) => l.id != id)
+                items = filterList(items, fn(i) => i.listId != id)
+            }
+            dropItem id => { items = filterList(items, fn(i) => i.id != id) }
+            dropAllLists => {
+                lists = []
+                items = []
+            }
+            dump => Snap { lists: lists, items: items, nextList: nextList, nextItem: nextItem }
+            load snap => {
+                lists = snap.lists
+                items = snap.items
+                nextList = snap.nextList
+                nextItem = snap.nextItem
+            }
+        }
+        work()
+    }
+
+    /// IUser: the signed-in party, answered once per request.
+    export fn withAuth(principal, work) = {
+        handle Auth {
+            who => resume(principal)
+        }
+        work()
+    }
+
+    /// INotification delivery, buffered: a rewound attempt publishes nothing.
+    export fn withEventReport(work) = {
+        mut buffer: List<TodoItemCompleted> = []
+        handle Events {
+            publish event => { buffer = listAppend(buffer, event) }
+            mark => length(buffer)
+            rewind mark => { buffer = prefixOf(buffer, mark) }
+        }
+        { settled: work(), events: buffer }
+    }
+
+    fn prefixOf(events, mark) = foldList(events, { at: 0, rows: [] }, fn(walk, event) => {
+        at: satAdd(walk.at, 1),
+        rows: match walk.at < mark { true => listAppend(walk.rows, event) false => walk.rows }
+    }).rows
+
+    /// LogTodoItemCompleted: the line each published event logs.
+    export fn eventLines(events) = mapList(events, fn(event) =>
+        "CleanArchitecture Domain Event: TodoItemCompletedEvent for '${event.title}' (#${toString(event.itemId)})")
+
+    /// TimeProvider: a clock that advances `step` milliseconds per reading.
+    export fn withClock(start, step, work) = {
+        mut tick = start
+        handle Clock {
+            nowMs => {
+                tick = satAdd(tick, step)
+                tick
+            }
+        }
+        work()
+    }
+}

@@ -13,8 +13,20 @@ module Shell
             true => Success(value = code)
             false => Error(message = "Exit ${code}: ${command}")
 
+    character (text, index) = synth::PcmWords::byte (byteAt text index ?: 32)
+
+    (** `text`'s bytes as lowercase hex digits. *)
+    export hex text = join (mapList (toList (range (0, length text)), \index => character (text, index))) ""
+
+    // Windows spawns through cmd.exe, which knows no single quotes, so the POSIX line goes to MSYS2's `sh` as
+    // hex: cmd sees only digits inside one double-quoted word. `IFS=` and `set -f` keep the decoded line one
+    // unglobbed word for `eval`.
+    hosted line = match (env "OS" ?: "") == "Windows_NT"
+        true => "sh -c \"set -f; IFS=; eval $(echo ${hex line} | xxd -r -p)\""
+        false => line
+
     (** Run `command` under `timeout seconds`; a non-zero exit is an error naming the command. *)
-    export ran (seconds, command) = match spawnProcess "timeout ${seconds} ${command}" reported
+    export ran (seconds, command) = match spawnProcess (hosted "timeout ${seconds} ${command}") reported
         Error _ => Error(message = "Could not start: ${command}")
         Success process => ended (command, process, awaitProcess process)
 

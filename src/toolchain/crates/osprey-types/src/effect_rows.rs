@@ -21,6 +21,7 @@ mod handlers;
 #[cfg(test)]
 mod identity_tests;
 mod index;
+pub(crate) use index::Callables;
 #[cfg(test)]
 mod mask_tests;
 mod methods;

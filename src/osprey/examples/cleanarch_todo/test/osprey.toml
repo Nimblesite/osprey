@@ -1,0 +1,8 @@
+[project]
+name = "cleanarch-todo-tests"
+source_roots = ["cases", "../src/todo_domain.osp", "../src/todo_effects.osp", "../src/todo_request.osp", "../src/todo_validation.osp", "../src/todo_lists.osp", "../src/todo_items.osp", "../src/todo_dispatch.osp", "../src/todo_host.osp", "../src/todo_probe.osp", "../src/todo_replay.osp", "../src/edge_todo.osp", "../../../packages/json/src"]
+default_namespace = "todo"
+entry = "cases/main.osp"
+
+[modules]
+allow_wildcard_imports = false

@@ -145,6 +145,7 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     let original = instrumented.as_ref().unwrap_or(program);
     let (lowered, mut prog) = solve(original, &options, reused)?;
     let program = &lowered;
+    reject_stack_bound_many(program)?;
     let elaborated = prog.elaborate_calls(program);
     let program = &elaborated;
     let mut cg = Codegen::with_options(prog, options);
@@ -463,4 +464,40 @@ fn coerce_return(cg: &mut Codegen, name: &str, body: Value) -> Result<Value> {
     // the OTHER direction: `coerce_to` boxes it with its shape descriptor
     // ([`crate::anybox`]), which is where the erasing transfer happens (#208).
     crate::cast::coerce_to(cg, body, ret_ty)
+}
+
+/// A `many` arm must reach the backend as closures ([MULTI-HANDLE-MANY]). A
+/// handler that still names a `many` operation here would be emitted on the
+/// one-shot suspended stack and answer a second resumption with a
+/// continuation that no longer exists, so the build stops instead.
+fn reject_stack_bound_many(program: &Program) -> Result<()> {
+    struct StackBound {
+        operations: osprey_ast::OperationTable,
+        found: Option<String>,
+    }
+    impl osprey_ast::AstVisitor for StackBound {
+        fn expression(&mut self, expression: &Expr) {
+            let Expr::Handler { effect, arms, .. } = expression else {
+                return;
+            };
+            let many = arms.iter().find(|arm| {
+                self.operations.multiplicity_of(effect, &arm.operation)
+                    == osprey_ast::Multiplicity::Many
+            });
+            if let (None, Some(arm)) = (&self.found, many) {
+                self.found = Some(format!("{effect}.{}", arm.operation));
+            }
+        }
+    }
+    let mut visitor = StackBound {
+        operations: osprey_ast::OperationTable::collect(program),
+        found: None,
+    };
+    osprey_ast::walk_program(program, &mut visitor);
+    visitor.found.map_or(Ok(()), |operation| {
+        Err(crate::error::CodegenError::invalid(format!(
+            "`{operation}` is declared `many` and its handler was not rewritten into closures; \
+a suspended stack cannot be resumed twice"
+        )))
+    })
 }

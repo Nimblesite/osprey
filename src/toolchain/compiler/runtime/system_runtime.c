@@ -187,6 +187,9 @@ static void *process_monitor_thread(void *arg) {
   return NULL;
 }
 
+// cmd.exe's own line limit (8191 characters) plus the terminator.
+#define WIN_COMMAND_LINE_MAX 8192
+
 // The Win32 twin. [BUILTIN-PROCESS-FAILURE] is platform-neutral, so this must
 // unwind exactly as the POSIX path does: pipes checked separately so a failed
 // second one does not strand the first, the record's mutex destroyed on every
@@ -194,7 +197,11 @@ static void *process_monitor_thread(void *arg) {
 // handle is released.
 int64_t spawn_process_with_handler(const char *command,
                                    ProcessEventHandler handler) {
-  if (!command || !handler) {
+  // A command longer than the command line is refused before anything is
+  // created: truncating it would run a different, cut-off command.
+  char cmdline[WIN_COMMAND_LINE_MAX];
+  int written = command && handler ? snprintf(cmdline, sizeof(cmdline), "cmd.exe /c %s", command) : -1;
+  if (written < 0 || (size_t)written >= sizeof(cmdline)) {
     return -1;
   }
 
@@ -247,10 +254,6 @@ int64_t spawn_process_with_handler(const char *command,
     close_handle_pair(err_rd, err_wr);
     return abandon_process(proc, -4);
   }
-
-  // Build "cmd.exe /c <command>" in a mutable buffer (CreateProcess needs one).
-  char cmdline[8192];
-  snprintf(cmdline, sizeof(cmdline), "cmd.exe /c %s", command);
 
   STARTUPINFOA si = {0};
   si.cb = sizeof(si);

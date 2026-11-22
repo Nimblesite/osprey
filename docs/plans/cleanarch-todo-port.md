@@ -37,7 +37,7 @@ Multiplicity is declared ([MULTI-DECL]) and handler obligations are explicit ([M
 
 ### [EXAMPLE-CLEANARCH-INV-NO-SKIP] Multi-shot is never skipped
 
-No agent may skip, stub, defer, simulate or downgrade any multi-shot use in [EXAMPLE-CLEANARCH-INV-MULTISHOT], **even if the compiler does not support it yet**. That rules out:
+No agent may skip, stub, defer, simulate or downgrade any multi-shot use in [EXAMPLE-CLEANARCH-INV-MULTISHOT]. The compiler runs `many` continuations on every target ([EFFECTS-INV-MULTISHOT-REAL](0016-algebraic-effects-and-handlers.md)), so a red multi-shot test is a defect to fix, in the compiler when the compiler is wrong. That rules out:
 
 - one-shot handlers standing in for multi-shot ones;
 - loops or re-dispatching that imitate a resume;
@@ -53,6 +53,10 @@ Skipping is an egregious violation.
 ### [EXAMPLE-CLEANARCH-INV-ELEGANT] More elegant than the original
 
 Each Osprey behaviour is shorter than its C# behaviour class plus its registration. The port has no marker interfaces, generic pipeline ceremony, `next` delegate, reflection or registration order to get wrong. Each handler is a small pure function. The README backs this with a line-count table and short side-by-side excerpts.
+
+### [EXAMPLE-CLEANARCH-INV-HALF] Half the code, doing the same thing
+
+The Osprey files that reproduce the C# behaviour are at most half the size of the C# files they reproduce, in total lines and in code lines (lines that are neither blank nor comments). The README lists the C# files counted and the ones left out because the port does not reproduce them. Osprey-only capability lives in its own modules (`todo_replay.osp`, `todo_probe.osp`) and is counted separately, never hidden in the port and never excluded by a comment. Cramming statements onto one line to pass the count is a defect.
 
 ### [EXAMPLE-CLEANARCH-INV-BETTER] Why Osprey over C#
 
@@ -105,6 +109,7 @@ The suite is not in the CI pipeline yet. Adding it is a later, explicit step.
 
 ## Status
 
-- [ ] Port written by a pi agent under the lead's review (`zai/glm-5.3`, 2026-11-22)
-- [ ] Every invariant above checked by the lead against the code and the tests
-- [ ] Committed. Tests not yet wired into `make` or CI.
+- [x] Port written. A pi agent (`zai/glm-5.3`, 2026-11-22) drafted it with one-shot handlers only; the lead rewrote the pipeline, the handlers and the tests.
+- [x] Every invariant above checked against the code and the tests: 34 tests pass under GC and ARC, 7 of them assert the four multi-shot uses, and the app serves real requests.
+- [x] Committed on `feat/multishot-continuations` with the compiler change it needs.
+- [ ] Wire the suite into `make` and CI.

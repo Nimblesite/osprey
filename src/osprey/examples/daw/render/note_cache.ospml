@@ -138,10 +138,6 @@ module NoteCache
     // Every distinct note of the song, in the order the song first reaches it.
     jobs song = listSortBy (foldList (toList (range (0, length song.tracks)), [], \(held, track) => listed (song, held, track)), sooner)
 
-    character (text, index) = synth::PcmWords::byte (byteAt text index ?: 32)
-
-    hex text = join (mapList (toList (range (0, length text)), \index => character (text, index))) ""
-
     entry (lanes, index) =
         before = foldList (toList (range (0, index)), 0, \(sum, lane) => satAdd sum (satMul 4 (length (listGet lanes lane ?: []))))
         count = length (listGet lanes index ?: [])
@@ -154,7 +150,7 @@ module NoteCache
     // A safetensors file in hex: the header's length, the header, then each lane's float32 samples.
     packed lanes =
         top = header lanes
-        "${synth::PcmWords::le32 (length top)}00000000${hex top}${body lanes}"
+        "${synth::PcmWords::le32 (length top)}00000000${Shell::hex top}${body lanes}"
 
     // Each maker owns its hex input and publishes a complete binary by atomic rename.
     publish = "staged=$(mktemp \"$2.XXXXXX\") || exit 1; if xxd -r -p \"$1\" \"$staged\" && [ \"$(wc -c < \"$staged\")\" -eq \"$3\" ] && mv -f \"$staged\" \"$2\"; then rm -f \"$1\"; else rm -f \"$staged\"; exit 1; fi"

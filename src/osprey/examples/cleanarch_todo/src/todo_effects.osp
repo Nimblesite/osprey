@@ -1,0 +1,57 @@
+// Osprey-only: the boundaries the inner circles own ([EXAMPLE-CLEANARCH-BOOK-BOUNDARY]). The C# spreads
+// them over IApplicationDbContext, IUser, IIdentityService, ILogger<T> and TimeProvider.
+
+namespace todo;
+
+/// IApplicationDbContext. `replayable`: a resumed transaction repeats its work on a rolled-back store.
+effect Store {
+    replayable lists: fn() -> List<TodoList>
+    replayable items: fn() -> List<TodoItem>
+    replayable nextListId: fn() -> int
+    replayable nextItemId: fn() -> int
+    replayable saveList: fn(TodoList) -> Unit
+    replayable saveItem: fn(TodoItem) -> Unit
+    replayable dropList: fn(int) -> Unit
+    replayable dropItem: fn(int) -> Unit
+    replayable dropAllLists: fn() -> Unit
+    /// The whole state, read and replaced: what a rollback needs.
+    replayable dump: fn() -> Snap
+    replayable load: fn(Snap) -> Unit
+}
+
+type Snap = { lists: List<TodoList>, items: List<TodoItem>, nextList: int, nextItem: int }
+
+/// INotification publishing, buffered until the request settles.
+effect Events {
+    replayable publish: fn(TodoItemCompleted) -> Unit
+    replayable mark: fn() -> int
+    replayable rewind: fn(int) -> Unit
+}
+
+type Principal = { name: string, roles: List<string>, policies: List<string> }
+
+/// IUser. `who` is `many` ([MULTI-DECL]): the app answers once, the what-if handler once per
+/// principal for the SAME request ([EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ]).
+effect Auth {
+    control many replayable who: fn() -> Principal
+}
+
+/// ILogger<T>. Not replayable: the compiler rejects a region that could log twice ([MULTI-REPLAY]).
+effect Log {
+    info: fn(string) -> Unit
+    warn: fn(string) -> Unit
+    error: fn(string) -> Unit
+}
+
+/// TimeProvider.
+effect Clock {
+    replayable nowMs: fn() -> int
+}
+
+/// Every way a request fails, in place of exceptions; no arm resumes, so the answer ends it.
+effect Fail {
+    control replayable noList: fn(int) -> TodoList
+    control replayable noItem: fn(int) -> TodoItem
+    control replayable refuse: fn(Fault) -> Unit
+}
+

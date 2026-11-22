@@ -38,6 +38,7 @@ pub(crate) fn validate(program: &Program, target: &str) -> Result<(), String> {
         error: None,
         required: required_builtins(program),
         operations: OperationTable::collect(program),
+        captured: osprey_types::captured_effects(program),
     };
     walk_program(program, &mut visitor);
     visitor.error.map_or(Ok(()), Err)?;
@@ -67,6 +68,9 @@ struct Capabilities<'a> {
     error: Option<String>,
     required: BTreeSet<String>,
     operations: OperationTable,
+    /// Effects a `many` region runs as closures: they need no continuation
+    /// support from the target ([MULTI-WASM]).
+    captured: BTreeSet<String>,
 }
 
 impl Capabilities<'_> {
@@ -364,12 +368,11 @@ impl AstVisitor for Capabilities<'_> {
             // Declared control operations need continuation support even when
             // an arm abandons without resuming. Implements [MULTI-WASM].
             Expr::Handler { effect, arms, .. } => {
+                let base = osprey_ast::effect_name::base(effect);
                 for arm in arms {
-                    if !self
-                        .operations
-                        .mode_of(osprey_ast::effect_name::base(effect), &arm.operation)
-                        .is_control()
-                    {
+                    let suspends = self.operations.mode_of(base, &arm.operation).is_control()
+                        && !self.captured.contains(base);
+                    if !suspends {
                         continue;
                     }
                     // A module-scoped effect reaches here under its encoded

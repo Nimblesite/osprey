@@ -1,0 +1,180 @@
+// End-to-end cases for the todo list use cases: creation, validation
+// permutations, renaming, recolouring, deletion, GetTodos and purge
+// ([EXAMPLE-CLEANARCH-INV-FAITHFUL], [EXAMPLE-CLEANARCH-INV-TESTS]).
+
+namespace todo;
+
+import todo::TodoHarness
+
+/// The GetTodos priority lookup, as the C# enum order produces it.
+fn priorityLookup() = [
+    Lookup { id: 0, name: "None" },
+    Lookup { id: 1, name: "Low" },
+    Lookup { id: 2, name: "Medium" },
+    Lookup { id: 3, name: "High" }
+]
+
+/// The GetTodos colour lookup, as the C# declares it.
+fn colourLookup() = [
+    ColourChoice { code: "#E05C4D", name: "Red" },
+    ColourChoice { code: "#D98B2B", name: "Orange" },
+    ColourChoice { code: "#4CAF50", name: "Green" },
+    ColourChoice { code: "#26A69A", name: "Teal" },
+    ColourChoice { code: "#5C6BC0", name: "Blue" },
+    ColourChoice { code: "#AB47BC", name: "Purple" },
+    ColourChoice { code: "#78909C", name: "Grey" }
+]
+
+module ListsCases {
+    /// Create a list, then read it back through GetTodos.
+    export fn createRoundTripCase() = {
+        let made = TodoHarness::request(TodoHarness::admin(), 0, [], [], CreateList {
+            list: NewList { title: "Shopping", colour: "" }
+        })
+        expect(made.settled, Success { value: CreatedId { value: 1 } })
+        let view = TodoHarness::request(TodoHarness::admin(), 0, [
+            TodoHarness::seedList(1, "Shopping", TodoDomain::grey())
+        ], [], GetTodos)
+        expect(view.settled, Success { value: TodosView {
+            priorities: priorityLookup(),
+            colours: colourLookup(),
+            lists: [ListView {
+                id: 1,
+                title: "Shopping",
+                colour: "#78909C",
+                items: []
+            }]
+        } })
+    }
+
+    /// Every colour the value object accepts round-trips; the one the C#
+    /// throws UnsupportedColourException for arrives as a typed fault.
+    export fn colourPermutationsCase() = {
+        forEachList(TodoDomain::supportedColours(), fn(code) => {
+            let made = TodoHarness::request(TodoHarness::admin(), 0, [], [], CreateList {
+                list: NewList { title: "List ${code}", colour: code
+                }
+            })
+            expect(made.settled, Success { value: CreatedId { value: 1 } })
+        })
+        let bad = TodoHarness::request(TodoHarness::admin(), 0, [], [], CreateList {
+            list: NewList { title: "Impossible", colour: "#FFF000" }
+        })
+        expect(bad.settled, Error { message: ValidationFault {
+            problems: ["UnsupportedColour: '#FFF000' is not a supported colour"]
+        } })
+    }
+
+    /// The CreateTodoList validator's rules, together: required, length,
+    /// uniqueness and the colour rule all fire in ONE answer.
+    export fn collectsEveryListProblemCase() = {
+        let long = foldList(range(0, 201) |> toList, "", fn(built, _i) => built + "x")
+        let seeded = [TodoHarness::seedList(1, "Shopping", "#78909C")]
+        let broken = TodoHarness::request(TodoHarness::admin(), 0, seeded, [], CreateList {
+            list: NewList { title: long, colour: "#HotPink" }
+        })
+        expect(broken.settled, Error { message: ValidationFault { problems: [
+            "'Title' must be at most 200 characters.",
+            "UnsupportedColour: '#HotPink' is not a supported colour"
+        ] } })
+        let empty = TodoHarness::request(TodoHarness::admin(), 0, seeded, [], CreateList {
+            list: NewList { title: "", colour: "" }
+        })
+        expect(empty.settled, Error { message: ValidationFault {
+            problems: ["'Title' must not be empty."]
+        } })
+        let taken = TodoHarness::request(TodoHarness::admin(), 0, seeded, [], CreateList {
+            list: NewList { title: "Shopping", colour: "" }
+        })
+        expect(taken.settled, Error { message: ValidationFault {
+            problems: ["'Title' must be unique."]
+        } })
+    }
+
+    /// UpdateTodoList: rename, keep the colour when none was sent, and the
+    /// uniqueness rule excludes the list being renamed.
+    export fn updateAndRenameCase() = {
+        let seeded = [TodoHarness::seedList(1, "Shopping", "#78909C")]
+        let renamed = TodoHarness::request(TodoHarness::admin(), 0, seeded, [], UpdateList {
+            edit: ListEdit { id: 1, title: "Groceries", colour: "" }
+        })
+        expect(renamed.settled, Success { value: Updated })
+        let recoloured = TodoHarness::request(TodoHarness::admin(), 0, [
+            TodoHarness::seedList(1, "Groceries", "#78909C")
+        ], [], UpdateList { edit: ListEdit { id: 1, title: "Groceries", colour: "#AB47BC" } })
+        expect(recoloured.settled, Success { value: Updated })
+        let selfTitled = TodoHarness::request(TodoHarness::admin(), 0, [
+            TodoHarness::seedList(1, "Groceries", "#AB47BC")
+        ], [], UpdateList { edit: ListEdit { id: 1, title: "Groceries", colour: "" } })
+        expect(selfTitled.settled, Success { value: Updated })
+        let clash = TodoHarness::request(TodoHarness::admin(), 0, [
+            TodoHarness::seedList(1, "Groceries", "#AB47BC"),
+            TodoHarness::seedList(2, "Banking", "#78909C")
+        ], [], UpdateList { edit: ListEdit { id: 1, title: "Banking", colour: "" } })
+        expect(clash.settled, Error { message: ValidationFault {
+            problems: ["'Title' must be unique."]
+        } })
+    }
+
+    /// Missing lists answer the typed NotFound fault, never a fake row.
+    export fn missingListAnswersNotFoundCase() = {
+        let updated = TodoHarness::request(TodoHarness::admin(), 0, [], [], UpdateList {
+            edit: ListEdit { id: 9, title: "Ghost", colour: "" }
+        })
+        expect(updated.settled, Error { message: NotFound { kind: "TodoList", id: 9 } })
+        let deleted = TodoHarness::request(TodoHarness::admin(), 0, [], [], DeleteList { id: 9 })
+        expect(deleted.settled, Error { message: NotFound { kind: "TodoList", id: 9 } })
+    }
+
+    /// DeleteTodoList removes the list and cascades its items away.
+    export fn deleteCascadesCase() = {
+        let after = TodoHarness::rowsAfter(TodoHarness::admin(), 0, [
+            TodoHarness::seedList(1, "Shopping", "#78909C"),
+            TodoHarness::seedList(2, "Banking", "#AB47BC")
+        ], [
+            TodoHarness::seedItem(1, 1, "Milk", false),
+            TodoHarness::seedItem(2, 2, "Tax", false)
+        ], DeleteList { id: 1 })
+        expect(after.lists, [TodoHarness::seedList(2, "Banking", "#AB47BC")])
+        expect(after.items, [TodoHarness::seedItem(2, 2, "Tax", false)])
+        expect(after.events, [])
+    }
+
+    /// GetTodos orders lists by title and nests each list's items.
+    export fn getTodosOrdersByTitleCase() = {
+        let view = TodoHarness::request(TodoHarness::admin(), 0, [
+            TodoHarness::seedList(1, "Shopping", "#78909C"),
+            TodoHarness::seedList(2, "Banking", "#AB47BC")
+        ], [
+            TodoHarness::seedItem(1, 1, "Milk", false),
+            TodoHarness::seedItem(2, 2, "Tax", true)
+        ], GetTodos)
+        expect(view.settled, Success { value: TodosView {
+            priorities: priorityLookup(),
+            colours: colourLookup(),
+            lists: [
+                ListView { id: 2, title: "Banking", colour: "#AB47BC", items: [
+                    ItemView { id: 2, title: "Tax", done: true, priority: "None", note: "" }
+                ] },
+                ListView { id: 1, title: "Shopping", colour: "#78909C", items: [
+                    ItemView { id: 1, title: "Milk", done: false, priority: "None", note: "" }
+                ] }
+            ]
+        } })
+    }
+
+    /// PurgeTodoLists drops every list; its answer is the count.
+    export fn purgeClearsEverythingCase() = {
+        let purged = TodoHarness::request(TodoHarness::admin(), 0, [
+            TodoHarness::seedList(1, "Shopping", "#78909C"),
+            TodoHarness::seedList(2, "Banking", "#AB47BC")
+        ], [TodoHarness::seedItem(1, 1, "Milk", false)], PurgeTodoLists)
+        expect(purged.settled, Success { value: Purged { count: 2 } })
+        let emptied = TodoHarness::request(TodoHarness::admin(), 0, [], [], GetTodos)
+        expect(emptied.settled, Success { value: TodosView {
+            priorities: priorityLookup(),
+            colours: colourLookup(),
+            lists: []
+        } })
+    }
+}

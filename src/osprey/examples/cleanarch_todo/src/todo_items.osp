@@ -1,0 +1,89 @@
+// Ported from jasontaylordev/CleanArchitecture (MIT), src/Application/TodoItems: each use case is a
+// straight line over the Store and Events boundaries ([EXAMPLE-CLEANARCH-BOOK-BOUNDARY]).
+
+namespace todo;
+
+import todo::TodoDomain
+import todo::TodoRequest
+
+/// The todo-item use cases.
+module TodoItems {
+    /// CreateTodoItemCommand: answers the new id.
+    export fn create(item) = {
+        let fresh = TodoItem {
+            id: perform Store.nextItemId(),
+            listId: item.listId,
+            title: item.title,
+            note: "",
+            priority: LevelNone,
+            done: false
+        }
+        perform Store.saveItem(fresh)
+        CreatedId { value: fresh.id }
+    }
+
+    /// Completing an item raises TodoItemCompletedEvent, exactly once per flip.
+    export fn update(edit) = {
+        let item = found(edit.id)
+        match edit.done && !item.done {
+            true => perform Events.publish(TodoDomain::completed(item))
+            false => {}
+        }
+        perform Store.saveItem(item { done: edit.done })
+        Updated
+    }
+
+    /// UpdateTodoItemDetailCommand: list, note and priority.
+    export fn updateDetail(detail) = {
+        let item = found(detail.id)
+        perform Store.saveItem(item {
+            listId: detail.listId,
+            note: detail.note,
+            priority: TodoDomain::priorityFrom(detail.priority)
+        })
+        Updated
+    }
+
+    /// DeleteTodoItemCommand.
+    export fn delete(id) = {
+        perform Store.dropItem(found(id).id)
+        Updated
+    }
+
+    /// GetTodoItemsWithPaginationQuery. `Paging.window` decides the page ([EXAMPLE-CLEANARCH-MULTISHOT-PLAN]).
+    export fn page(query) = {
+        let window = perform Paging.window(query)
+        let rows = listSortBy(
+            filterList(perform Store.items(), fn(item) => item.listId == window.listId),
+            TodoDomain::byItemTitle)
+        ItemsPageView {
+            rows: mapList(rowsOf(rows, window.pageNumber, window.pageSize), itemView),
+            totalCount: length(rows),
+            hasPrevious: window.pageNumber > 1,
+            hasNext: satMul(window.pageNumber, window.pageSize) < length(rows)
+        }
+    }
+
+    /// One item as every query reports it.
+    export fn itemView(item) = ItemView {
+        id: item.id,
+        title: item.title,
+        done: item.done,
+        priority: TodoDomain::priorityName(item.priority),
+        note: item.note
+    }
+
+    /// The item, or the NotFound fault: the request ends there.
+    fn found(id) = match filterList(perform Store.items(), fn(item) => item.id == id) {
+        [item] => item
+        _ => perform Fail.noItem(id)
+    }
+
+    fn rowsOf(items, pageNumber, pageSize) = foldList(items, { at: 0, rows: [] }, fn(walk, item) => {
+        let from = satMul(satSub(pageNumber, 1), pageSize)
+        match walk.at >= from && walk.at < satAdd(from, pageSize) {
+            true => { at: satAdd(walk.at, 1), rows: listAppend(walk.rows, item) }
+            false => { at: satAdd(walk.at, 1), rows: walk.rows }
+        }
+    }).rows
+}

@@ -1,0 +1,27 @@
+// Ported from jasontaylordev/CleanArchitecture (MIT), src/Web/Program.cs: `app.Run()`. The only
+// module that opens a socket, so everything the tests compile builds for every target, wasm32
+// included ([EXAMPLE-CLEANARCH-BOOK-DATA], [MULTI-WASM-MANY]).
+
+namespace todo;
+
+/// The transport: the socket the edge's routes are served on.
+module EdgeServer {
+    /// Listen on `port`, handing each request to `onRequest`.
+    export fn serve(onRequest, port) = {
+        let listening = andThen(httpCreateServer(port, "127.0.0.1"), fn(server) =>
+            httpListen(server, onRequest))
+        match listening {
+            Success => {
+                print("cleanarch-todo API on 127.0.0.1:${toString(port)} — the pipeline is effect handlers; this file is only the edge")
+                hold()
+            }
+            Error { message } => print("cannot listen on 127.0.0.1:${toString(port)}: ${message}")
+        }
+    }
+
+    /// Keep the handler scope that owns every cell alive while serving.
+    fn hold() -> Unit = {
+        sleep(3600000)
+        hold()
+    }
+}

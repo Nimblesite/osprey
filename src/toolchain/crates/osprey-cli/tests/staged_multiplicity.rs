@@ -174,39 +174,6 @@ fn main() = {
         &["Job.quit", "unwind"],
         "expected a truthful `abort`-not-yet-unwound rejection",
     ),
-    // a many arm is rejected because no re entrant continuation exists.
-    // [MULTI-HANDLE-MANY] [MULTI-COST] Native resume is ONE suspended stack,
-    // switched to and never switched back; a live pthread stack cannot be
-    // cloned, so `many` has no representation until plan 0016 builds one.
-    //
-    // Accepting the declaration anyway would answer a re-entrant request with a
-    // continuation that cannot be re-entered — a silently wrong answer, which
-    // the broken-code process forbids. So the rejection IS the contract, and it
-    // must name the operation and the plan that lifts it.
-    //
-    // The [MULTI-HANDLE-MANY-LEXICAL] relaxation this program needs (a lambda
-    // the arm CONSUMES before returning does have a live continuation) is
-    // phase 5, and lands with the runtime that makes the program runnable.
-    (
-        r#"
-effect Choice { control many pick: fn(int) -> int }
-fn search(bound) = perform Choice.pick(bound)
-fn main() = {
-    let best = {
-        handle Choice {
-            pick bound => range(0, bound) |> fold(0, |carried, option| => {
-                let answered = resume(option)
-                match answered > carried { true => answered false => carried }
-            })
-        }
-        search(3)
-    }
-    print("best=${best}")
-}
-"#,
-        &["Choice.pick", "re-entrant continuation"],
-        "expected a truthful `many`-has-no-representation rejection",
-    ),
     // a many handler over a non replayable body is rejected at the handle site.
     // [MULTI-REPLAY-CHECK] [MULTI-FALSIFY] gate 2. Resuming twice re-runs the
     // remainder of the handled computation, so every non-`E` entry of that
@@ -261,39 +228,16 @@ fn main() = {
 }
 "#;
 
-const MANY_ON_WASM: &str = r#"
-effect Choice { control many pick: fn(int) -> int }
-fn search(bound) = perform Choice.pick(bound)
-fn main() = {
-    let best = {
-        handle Choice {
-            pick bound => resume(bound)
-        }
-        search(3)
-    }
-    print("best=${best}")
-}
-"#;
-
 #[test]
-fn wasm32_names_the_continuation_operation_it_cannot_yet_run() {
+fn wasm32_names_the_once_continuation_it_cannot_yet_run() {
     // [MULTI-WASM] The stack-switching proposal specifies ONE-SHOT
-    // continuations, so `once` is the multiplicity `wasm32` acquires when that
-    // proposal lands — with no change to user code. Until then the rejection
-    // must name the operation, replacing the undifferentiated
-    // "resumable algebraic effects (`resume`)" the target checker emits today.
-    // A row that cannot say which effects will start working is a row that
-    // cannot be planned against.
-    //
-    // The current frontend rejects `many` before any target gate. This is a
-    // representation limitation, not a permanent wasm ban: portable reusable
-    // frames or CPS may satisfy the same source contract.
-    for (source, operation) in [(ONCE_ON_WASM, "Async.await"), (MANY_ON_WASM, "Choice.pick")] {
-        let (ok, err) = compile_for_target(source, "wasm32");
-        assert!(!ok, "wasm32 cannot run {operation}'s continuation yet");
-        assert!(
-            err.contains(operation),
-            "the rejection must name {operation}, got: {err}"
-        );
-    }
+    // continuations, so a `once` continuation outside every `many` region is
+    // what wasm32 acquires when that proposal lands. Until then the rejection
+    // names the operation. `many` is never part of that limit.
+    let (ok, err) = compile_for_target(ONCE_ON_WASM, "wasm32");
+    assert!(!ok, "wasm32 cannot run Async.await's continuation yet");
+    assert!(
+        err.contains("Async.await"),
+        "the rejection must name Async.await, got: {err}"
+    );
 }
