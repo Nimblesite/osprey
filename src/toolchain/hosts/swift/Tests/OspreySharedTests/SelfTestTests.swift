@@ -156,6 +156,20 @@ final class SelfTestTests: RenderingTestCase {
         XCTAssertEqual(options.appArguments, ["before", "middle", "after", "last"])
     }
 
+    // [UI-MACHINE-SELF-TEST] The host reads its self-test from every argument it was given: the
+    // application's list has `--self-test` and `--resources` removed, so a launch that read it there
+    // started the ordinary app and waited for a person forever.
+    func testALaunchIsASelfTestEvenThoughTheApplicationNeverSeesTheFlag() throws {
+        let given = ["--resources", "media", "--self-test", "script.json", "shots", "--headless", "--store", "state", "project"]
+        let options = try XCTUnwrap(HostLaunch.selfTest(from: given))
+        XCTAssertEqual(options.script, "script.json")
+        XCTAssertEqual(options.shots, "shots")
+        XCTAssertTrue(options.headless)
+        XCTAssertEqual(options.store, "state")
+        XCTAssertEqual(options.appArguments, ["project"])
+        XCTAssertNil(try HostLaunch.selfTest(from: ["--resources", "media", "project"]))
+    }
+
     func testOptionsRejectMissingValuesAndBadPatience() {
         let missing = [
             ["--self-test"], ["--self-test", "script.json"],
@@ -280,6 +294,19 @@ final class SelfTestTests: RenderingTestCase {
         XCTAssertEqual(try regions.attempt(step("choose", "From account", "1")), sent(30, "1"))
         XCTAssertEqual(try regions.attempt(step("choose", "To account", "Nobody")), .waiting("nothing named \"To account\" offers \"Nobody\""))
         XCTAssertFalse(regions.outline.contains("Managed portfolio"))
+        // A list row keeps its words in its child, as Osprey Agent's chat history does: the row is
+        // chosen by them, while a tab is never chosen by the words of its page.
+        let chat = { (key: String, words: String) in
+            Tree.object(["key": .string(key), "child": .object(["kind": .string("text"), "text": .string(words)])])
+        }
+        let history = Tree.object(["kind": .string("rows"), "event": .number(40), "rows": .array([
+            chat("c1", "Explain this project: what it does"), chat("c2", "Find how this project runs its tests"),
+        ])])
+        let shell = Tree.object(["kind": .string("column"), "children": .array([tabs, .object(["kind": .string("slot"), "key": .string("chats")])])])
+        let both = SelfTestRegions(nodes: [("root", shell), ("chats", history)])
+        XCTAssertEqual(try both.attempt(step("choose", "Find how this project")),
+                       .sending(SelfTestSend(region: "chats", ordinal: 40, value: .string("c2"))))
+        XCTAssertEqual(try both.attempt(step("choose", "Managed portfolio")), .waiting("nothing offers \"Managed portfolio\""))
     }
 
     func testOutlineListsControlsAndVisibleText() {

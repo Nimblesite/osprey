@@ -20,6 +20,13 @@ public enum HostLaunch {
         return arguments(from: given)
     }
 
+    /// The self-test this launch asks for, read from every argument the host was given: the
+    /// application's own list below has `--self-test` removed, so it cannot tell a self-test apart
+    /// from an ordinary launch ([UI-MACHINE-SELF-TEST]).
+    public static func selfTest(from given: [String]) throws -> SelfTestOptions? {
+        try SelfTestOptions.parse(given)
+    }
+
     /// The application's own arguments: `--resources`, `--self-test` and what each names are not among them.
     public static func arguments(from given: [String]) -> [String] {
         var stripped: [String] = []
