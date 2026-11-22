@@ -5,6 +5,7 @@ definition by definition, under GC and ARC. A control that must diverge proves t
 comparison can fail."""
 import argparse
 import itertools
+import json
 import os
 import re
 import struct
@@ -21,7 +22,7 @@ FLOATS = [0.0, -0.0, 0.005, 0.01, 0.25, 0.5, 0.75, 0.99, 0.995, 1.0, 2.0, 3.5, -
 POINTS = 160
 """The most points one definition is evaluated at; a larger grid is sampled by stride."""
 CHUNK = 16
-EXPORT = re.compile(r"^    export (\w+) : (.+)$", re.M)
+EXPORT = re.compile(r"^    export (\w+)( =)?", re.M)
 LITERAL = re.compile(r"(?<![\w.])\d+\.\d+")
 SHOW = 'def shown (x : Float) : String := if x.isNaN then "nan" else toString x.toBits\n'
 
@@ -54,13 +55,36 @@ def bits(text: str) -> str:
     return "nan" if value != value else str(struct.unpack(">Q", struct.pack(">d", value))[0])
 
 
-def definitions(module: str) -> list[tuple[str, list[str], str]]:
-    """`(name, parameter types, result type)` of every exported definition."""
+def kind(inferred: str) -> str:
+    """The oracle's axis for an inferred type: a flag, or a float (an unconstrained `number`
+    reads as the Lean `Float` the source declares)."""
+    return "bool" if inferred == "bool" else "float"
+
+
+def definitions(compiler: Path, work: Path, stem: str, module: str) -> list[tuple[str, list[str], str]]:
+    """`(name, parameter types, result type)` of every exported definition, in source order. The
+    generated module carries no type headers ([MATH-CODE-EMIT]), so the types are the ones the
+    compiler infers for it; an export with no parameters is a float constant."""
+    path = work / f"{stem}.ospml"
+    path.write_text(module)
+    symbols = json.loads(run([str(compiler), str(path), "--symbols"], work))
+    inferred = {
+        entry["name"].split("::")[-1]: entry
+        for entry in symbols
+        if entry.get("kind") == "function"
+    }
     found = []
-    for name, signature in EXPORT.findall(module):
-        *params, result = signature.split(" -> ")
-        types = params[0].strip("()").split(", ") if params else []
-        found.append((name, types, result))
+    for name, constant in EXPORT.findall(module):
+        if constant:
+            found.append((name, [], "float"))
+            continue
+        entry = inferred.get(name)
+        if entry is None:
+            raise SystemExit(f"FAIL {stem}: the compiler reports no signature for export `{name}`")
+        types = [kind(parameter["type"]) for parameter in entry["parameters"]]
+        found.append((name, types, kind(entry["returnType"])))
+    if not found:
+        raise SystemExit(f"FAIL {stem}: the generated module exports no definition to compare")
     return found
 
 
@@ -124,7 +148,7 @@ def check(compiler: Path, source: Path) -> int:
         (work / source.name).write_text(source.read_text())
         _ = run(["lean", "-o", f"{source.stem}.olean", source.name], work)
         module = run([str(compiler), "math", str(source)], work)
-        defs = definitions(module)
+        defs = definitions(compiler, work, source.stem, module)
         literals = sorted(set(LITERAL.findall(re.sub(r"\(\*\*.*?\*\)|//.*", "", module))))
         named = re.search(r"^namespace (\S+)", source.read_text(), re.M)
         lean = lean_values(work, source.stem, f"{named.group(1)}." if named else "", defs, literals)

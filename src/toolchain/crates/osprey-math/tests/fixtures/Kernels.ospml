@@ -22,7 +22,7 @@ module Kernels
     tau = 6.283185307179586
 
     (** One cycle of a sine per unit phase. *)
-    export sine phase = sin (tau * phase)
+    export sine (phase: float) = sin (tau * phase)
 
     (** `sq`, generated from Kernels.lean. *)
     export sq x = pow (x, 2.0)
@@ -33,7 +33,7 @@ module Kernels
     (** `shifted`, generated from Kernels.lean. *)
     export shifted x = (-1.0) * x + 0.001 + 250.0 - (-1.0) * pow (x, 2.0)
 
-    half x =
+    half (x: float) =
         y = x / 2.0
         sqrt y + abs (x * 2.0)
 

@@ -2,6 +2,7 @@
 
 use crate::literal::is_zero;
 use crate::model::{Def, Expr, Module, Op, Tail, Ty};
+use crate::settle::Written;
 
 const INDENT: &str = "    ";
 /// How tightly an application binds, and the binding an operand needs to
@@ -9,8 +10,9 @@ const INDENT: &str = "    ";
 const APPLICATION: u8 = 7;
 const ATOM: u8 = 8;
 
-/// The module's source text. `file` is the Lean file's name, for the header.
-pub(crate) fn emit(file: &str, module: &Module) -> String {
+/// The module's source text with each definition written as `written` says.
+/// `file` is the Lean file's name, for the header.
+pub(crate) fn emit(file: &str, module: &Module, written: &[Written]) -> String {
     let mut out = Out(format!(
         "// Generated from {file} by `osprey math` [MATH-CODE-EMIT]. Do not edit: change the Lean source.\n"
     ));
@@ -20,11 +22,12 @@ pub(crate) fn emit(file: &str, module: &Module) -> String {
     }
     out.line(0, &format!("(** Mathematics generated from {file}. *)"));
     out.line(0, &format!("module {}", module.name));
+    let bare = Written::default();
     for (index, def) in module.defs.iter().enumerate() {
         if index > 0 {
             out.0.push('\n');
         }
-        out.definition(file, def, module.defs.get(..index).unwrap_or_default());
+        out.definition(file, def, written.get(index).unwrap_or(&bare));
     }
     out.0
 }
@@ -38,7 +41,7 @@ impl Out {
         self.0.push('\n');
     }
 
-    fn definition(&mut self, file: &str, def: &Def, earlier: &[Def]) {
+    fn definition(&mut self, file: &str, def: &Def, written: &Written) {
         let name = &def.name;
         let doc = def.doc.clone().filter(|doc| !doc.is_empty());
         let generated = format!("`{name}`, generated from {file}.");
@@ -46,11 +49,10 @@ impl Out {
             self.line(1, &format!("(** {} *)", doc.replace("*)", "* )")));
         }
         let export = if def.public { "export " } else { "" };
-        let pinned = crate::pin::annotated(def, earlier);
-        if pinned.is_none() {
+        if written.header {
             self.line(1, &format!("{export}{name} : {}", signature(def)));
         }
-        let inline = pinned.clone().unwrap_or_default();
+        let inline = &written.annotated;
         let names: Vec<String> = def
             .params
             .iter()
@@ -68,7 +70,7 @@ impl Out {
             ([one], true) => format!("{name} {one}"),
             (many, _) => format!("{name} ({})", many.join(", ")),
         };
-        let visible = if pinned.is_some() { export } else { "" };
+        let visible = if written.header { "" } else { export };
         self.tail(&def.body, 1, &format!("{visible}{head} ="));
     }
 

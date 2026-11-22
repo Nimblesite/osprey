@@ -9,10 +9,10 @@ mod lex;
 mod literal;
 mod model;
 mod names;
-mod pin;
 mod read;
 mod reader;
 mod refusal;
+mod settle;
 mod term;
 
 pub use refusal::{Code, Refusal};
@@ -33,5 +33,6 @@ pub fn generate(file: impl AsRef<std::path::Path>, source: &str) -> Result<Strin
     let tokens = lex::lex(source)?;
     let stem = name.strip_suffix(".lean").unwrap_or(&name);
     let module = read::read(stem, &tokens)?;
-    Ok(emit::emit(&name, &module))
+    let written = settle::settled(&name, &module);
+    Ok(emit::emit(&name, &module, &written))
 }
