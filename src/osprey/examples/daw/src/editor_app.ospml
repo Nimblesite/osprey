@@ -35,7 +35,9 @@ module EditorApp
 
     tapped (context, editor, action) = match action
         ShowModules => patchTool (editor, editor(paletteShown = !(patchVisible editor) || !editor.paletteShown))
-        ShowDetails => patchTool (editor, ui::Pick::either (patchVisible editor && (EditorView::paneled editor).detailsShown, editor(detailsShown = false, selected = -1), editor(detailsShown = true)))
+        // [DAW-INSPECTOR] View → Patch Controls shows the panel; only its Close puts it away and lets go of the module.
+        ShowDetails => patchTool (editor, editor(detailsShown = true))
+        CloseDetails => Runtime::step (editor(detailsShown = false, selected = -1))
         Undo => DawSession::restored (editor, EditorHistory::undo editor)
         Redo => DawSession::restored (editor, EditorHistory::redo editor)
         LoadSample => SamplePicker::choose editor

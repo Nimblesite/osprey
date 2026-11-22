@@ -263,6 +263,7 @@ type EditorAction =
     Surface
     ShowModules
     ShowDetails
+    CloseDetails
     PluginPath
     LoadSample
     BuiltinSample

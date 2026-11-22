@@ -820,3 +820,17 @@ closedPanel d =
     expect ((Drive::holding closed).selected, -1)
     expect ((Drive::holding closed).detailsShown, false)
     closed
+
+// [DAW-INSPECTOR] [DAW-MENU] View → Patch Controls shows the patch panel and its Add component picker, with or
+// without a chosen module; only the panel's Close puts it away. The self-test every host plays relies on this.
+patchControlsShowsPanelJourney () =
+    built = patched ["sine", "gain", "output"]
+    expect ((Drive::holding built).selected >= 0, true)
+    viewShows (built, "Add component", true)
+    shown = Drive::press (built, "Patch Controls")
+    viewShows (shown, "Add component", true)
+    expect ((Drive::holding shown).selected, (Drive::holding built).selected)
+    closed = closedPanel shown
+    viewShows (closed, "Add component", false)
+    reopened = Drive::press (closed, "Patch Controls")
+    viewShows (reopened, "Add component", true)
