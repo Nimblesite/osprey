@@ -100,8 +100,9 @@ wireDragJourney () =
     cablesOf (missed, before)
     expect ((Drive::holding missed).wireDragging, false)
 
-// [DAW-INSPECTOR] A module without skin art is edited where it is shown: every parameter is a slider on the canvas,
-// a press sets it as one undoable edit, and no caption sends the user to another panel.
+// [DAW-INSPECTOR] A module without skin art is edited where it is shown: choosing it docks the patch panel,
+// whose Controls scene turns every parameter as a dial, a press sets it as one undoable edit, and no caption
+// sends the user to another panel.
 grainPan d = match synth::Graphs::node ((Drive::holding d).graph, 0)
     synth::Invalid _ => 0.0 - 9.0
     synth::Valid n => match listGet (filterList (n.parameters, \p => p.label == "Pan")) 0
@@ -110,57 +111,59 @@ grainPan d = match synth::Graphs::node ((Drive::holding d).graph, 0)
 
 canvasInspectorJourney added =
     expect (uitest::Views::letters (added.drivenSeen, "Edit in Patch controls"), false)
-    forEachList (["Grain cloud 0", "Parameters", "Playback rate", "Grain gain", "Pan"], \text => lettersIn (added, text))
+    forEachList (["Grain cloud 0", "Playback rate", "Grain gain", "Pan"], \text => lettersIn (added, text))
+    viewShows (added, "Parameters", true)
     expect (uitest::Views::letters (added.drivenSeen, "Connections"), false)
-    forEachList (["Playback rate", "Grain gain", "Pan"], \name => expect (uitest::Semantics::offered (added.drivenSeen.renderedAccess, "Grain cloud 0 ${name}"), true))
+    forEachList (["Playback rate", "Grain gain", "Pan"], \name => reads (dialOf (added, name), \dial => expect (dial.accessLabel, "Grain cloud 0 ${name}")))
     // Every control is bounded, starts inside its range and names its unit where it has one.
     valid (synth::Graphs::node ((Drive::holding added).graph, 0), \n =>
         expect (length n.parameters, 21)
         forEachList (n.parameters, \p => expect (p.minimum < p.maximum && p.initial >= p.minimum && p.initial <= p.maximum, true))
         forEachList (["Source position (samples)", "Grain length (frames)", "Onset interval / mean (frames)", "Timing jitter (frames)", "Region end frame (exclusive)", "Boundary (0 loop, 1 one-shot)", "Window (0 Hann, 1 ASR)"], \label => expect (length (filterList (n.parameters, \p => p.label == label)), 1)))
-    // [DAW-CONTROLS-DIAL] Pan is a dial: press it, hold, lift 45 units for a quarter of its range; sideways
-    // movement does nothing; the turn is one undo; Escape puts back the value the turn began with.
+    // [DAW-CONTROLS-DIAL] Pan is a dial in the panel's Controls scene: press it, hold, lift 45 units for a quarter
+    // of its range; sideways movement does nothing; the turn is one undo; Escape puts back the value it began with.
     before = (Drive::holding added).graph
     start = grainPan added
-    area = portIn (added, "Grain cloud 0 Pan")
-    expect (area.accessValue, start)
-    expect (area.accessMin < area.accessMax, true)
-    at = uitest::Semantics::point (area, 0.5)
-    pressed = Drive::pointer (added, at.pointX, at.pointY, true)
-    expect ((Drive::holding pressed).dial != synth::DialIdle, true)
-    expect (structuralEquals ((Drive::holding pressed).graph, before), true)
-    sideways = Drive::pointer (pressed, at.pointX - 90.0, at.pointY, true)
-    expect (structuralEquals ((Drive::holding sideways).graph, before), true)
-    lifted = Drive::pointer (sideways, at.pointX - 90.0, at.pointY - 45.0, true)
-    expect (grainPan lifted, synth::DialMath::dragged (start, 45.0, area.accessMin, area.accessMax, 0.0))
-    expect (grainPan lifted > start, true)
-    turns = [{ offset = 0.0 - 400.0, value = area.accessMax }, { offset = 400.0, value = area.accessMin }, { offset = 0.0 - 45.0, value = grainPan lifted }]
-    back = foldList (turns, lifted, \(d, turn) =>
-        next = Drive::pointer (d, at.pointX, at.pointY + turn.offset, true)
-        expect (grainPan next, turn.value)
-        next)
-    released = Drive::pointer (back, at.pointX, at.pointY - 45.0, false)
-    expect ((Drive::holding released).dial, synth::DialIdle)
-    expect (grainPan released, grainPan lifted)
-    canvasDialUndo (released, before, at, start, grainPan lifted)
+    reads (dialOf (added, "Pan"), \area =>
+        expect (area.accessValue, start)
+        expect (area.accessMin < area.accessMax, true)
+        at = uitest::Semantics::point (area, 0.5)
+        pressed = dialPointer (added, at.pointX, at.pointY, true, false)
+        expect ((Drive::holding pressed).dial != synth::DialIdle, true)
+        expect (structuralEquals ((Drive::holding pressed).graph, before), true)
+        sideways = dialPointer (pressed, at.pointX - 90.0, at.pointY, true, false)
+        expect (structuralEquals ((Drive::holding sideways).graph, before), true)
+        lifted = dialPointer (sideways, at.pointX - 90.0, at.pointY - 45.0, true, false)
+        expect (grainPan lifted, synth::DialMath::dragged (start, 45.0, area.accessMin, area.accessMax, 0.0))
+        expect (grainPan lifted > start, true)
+        turns = [{ offset = 0.0 - 400.0, value = area.accessMax }, { offset = 400.0, value = area.accessMin }, { offset = 0.0 - 45.0, value = grainPan lifted }]
+        back = foldList (turns, lifted, \(d, turn) =>
+            next = dialPointer (d, at.pointX, at.pointY + turn.offset, true, false)
+            expect (grainPan next, turn.value)
+            next)
+        released = dialPointer (back, at.pointX, at.pointY - 45.0, false, false)
+        expect ((Drive::holding released).dial, synth::DialIdle)
+        expect (grainPan released, grainPan lifted)
+        canvasDialUndo (released, before, at, start, grainPan lifted))
 
 canvasDialUndo (released, before, at, start, liftedValue) =
     undone = prismTap (released, "Undo")
     expect (structuralEquals ((Drive::holding undone).graph, before), true)
-    again = Drive::pointer (Drive::pointer (undone, at.pointX, at.pointY, true), at.pointX, at.pointY - 90.0, true)
+    again = dialPointer (dialPointer (undone, at.pointX, at.pointY, true, false), at.pointX, at.pointY - 90.0, true, false)
     expect (grainPan again > liftedValue, true)
     escaped = Drive::key (again, "escape", true)
     expect (grainPan escaped, start)
     expect ((Drive::holding escaped).dial, synth::DialIdle)
-    idle = Drive::pointer (escaped, at.pointX, at.pointY - 90.0, false)
+    idle = dialPointer (escaped, at.pointX, at.pointY - 90.0, false, false)
     expect (grainPan idle, start)
 
 // [SYNTH-ADVANCED-GRAINS-IMPORT] Only the latest request may change the selected grain source.
 sampleChoiceJourney () =
     added = prismTap (prismTap (editorLaunched ["--empty"], "Modules"), "Add Grain cloud")
     canvasInspectorJourney added
-    opened = Drive::press (added, "Patch Controls")
-    first = Drive::press (opened, "Load WAV sample")
+    // The chosen cloud keeps the panel docked on its own: View → Patch Controls would put it away, not open it.
+    expect (sceneCount (added, synth::Controls), 1)
+    first = Drive::press (added, "Load WAV sample")
     // A high note exceeds the built-in source's 16x rate and must preserve the editable graph.
     errs (synth::EditorState::tune (Drive::holding first, 100))
     second = Drive::press (first, "Load WAV sample")
@@ -171,8 +174,8 @@ sampleChoiceJourney () =
     expect ((Drive::holding stale).sampleTicket, ticket)
     cancelled = Drive::completed (stale, ticket, true, "")
     expect ((Drive::holding cancelled).sampleTicket, "")
-    sameGraph (opened, cancelled)
-    expect (length (Drive::holding opened).past, length (Drive::holding cancelled).past)
+    sameGraph (added, cancelled)
+    expect (length (Drive::holding added).past, length (Drive::holding cancelled).past)
     sampleFileJourney cancelled
     pitchRangeJourney ()
     projectRefusalJourney ()
@@ -296,7 +299,9 @@ sourceOf (n, name, frames) = match n.processor
 
 // Deleting a routed module restores its parameters, position and cables as one operation.
 historyRemovalJourney () =
-    opened = Drive::press (editorLaunched [], "Patch Controls")
+    // The launch selection docks the patch panel: View → Patch Controls would put it away, not open it.
+    opened = editorLaunched []
+    expect (sceneCount (opened, synth::Controls), 1)
     changed = Drive::choose (dialTapped (opened, "Cutoff"), "Cutoff", "3200")
     removed = deleteNode (changed, (Drive::holding changed).selected)
     nodesOf (removed, 4)

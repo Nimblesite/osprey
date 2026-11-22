@@ -414,6 +414,11 @@ dialTapped (d, label) = match dialOf (d, label)
         expect ((Drive::holding asked).dialEntry != "", true)
         asked
 
+// [DAW-CONTROLS-DIAL] One press and release on a Patch Controls page button, turning the panel's dial pages.
+pageTapped (d, label) =
+    at = controlPoint (d, label, 0.5)
+    dialPointer (dialPointer (d, at.pointX, at.pointY, true, false), at.pointX, at.pointY, false, false)
+
 tuned (driven, node, label, words) = Drive::choose (dialTapped (inspectorSelected (driven, node), label), label, words)
 
 panelFrequency driven = initialOf ((Drive::holding driven).graph, 0, "frequency")
@@ -439,8 +444,10 @@ panelDialHistory (selected, released, coarse) =
 // value, Shift turns a tenth as fast, sideways movement does nothing, the whole turn is one undo, and the value
 // can be typed after a press that never moved; a bad entry is refused and the field stays open.
 panelDialJourney selected =
-    expect (length selected.drivenSeen.renderedScenes, 3)
+    // The chosen module's panel docks one Controls scene beside the canvas; the keyboard deck no longer renders by default.
+    expect (length selected.drivenSeen.renderedScenes, 2)
     expect (length (filterList (selected.drivenSeen.renderedScenes, \ordinal => dialTarget (selected, ordinal))), 1)
+    viewShows (selected, "Parameters", true)
     before = (Drive::holding selected).graph
     expect (panelFrequency selected, 440.0)
     expect (Drive::letters (selected, "440.00 Hz"), true)
@@ -509,14 +516,15 @@ dialPagesJourney () =
         expect (Semantics::offered (end, "Next parameters"), false)))
     offeredIn (grain, "Previous parameters", false)
     offeredIn (grain, "Next parameters", true)
-    middle = prismTap (grain, "Next parameters")
+    middle = pageTapped (grain, "Next parameters")
     offeredIn (middle, "Grain cloud 0 Pan spread", true)
-    last = prismTap (middle, "Next parameters")
+    last = pageTapped (middle, "Next parameters")
     offeredIn (last, "Grain cloud 0 Boundary", true)
     offeredIn (last, "Next parameters", false)
-    opened = Drive::press (last, "Patch Controls")
-    previous = controlPoint (opened, "Previous parameters", 0.5)
-    back = dialPointer (dialPointer (opened, previous.pointX, previous.pointY, true, false), previous.pointX, previous.pointY, false, false)
+    // The grain cloud keeps the panel docked on its own: View → Patch Controls would put it away, not open it.
+    viewShows (last, "Parameters", true)
+    previous = controlPoint (last, "Previous parameters", 0.5)
+    back = dialPointer (dialPointer (last, previous.pointX, previous.pointY, true, false), previous.pointX, previous.pointY, false, false)
     spread = dialTapped (back, "Pan spread")
     changed = Drive::choose (spread, "Pan spread", "0.5")
     reads (dialOf (changed, "Pan spread"), \a => expect (a.accessValue, 0.5))
