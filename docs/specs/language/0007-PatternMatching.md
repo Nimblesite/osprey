@@ -203,11 +203,76 @@ A nested pattern tests and binds exactly as it would as the pattern of its own `
 
 Exhaustiveness and reachability ([TYPE-MATCH-EXHAUSTIVE](#exhaustiveness-and-unreachable-arms-type-match-exhaustive)) are decided over the nested patterns as a whole. A `match` is rejected when some value reaches no arm, and the diagnostic shows one such value as a pattern, for example `Node(Leaf, Node(_, _))`. An arm that no value can reach because earlier arms cover it is rejected as unreachable.
 
+## Or-patterns — [PATTERN-OR]
+
+**Status: not implemented.** [The or-patterns and min/max plan](../../plans/or-patterns-and-min-max.md) owns delivery. Until it lands, the compiler rejects `|` between patterns and each alternative needs its own arm.
+
+An or-pattern is two or more patterns separated by `|`. It matches a value when any of its alternatives does, so arms that share a body are written once.
+
+```osprey
+type Token = Digit(int) | Letter(string) | Space | Tab | Newline
+type Shape = Circle { r: float } | Square { side: float } | Dot | Empty
+
+fn kind(token) = match token {
+    Space | Tab | Newline               => "blank"
+    Digit(0 | 1)                        => "bit"
+    Digit(_)                            => "digit"
+    Letter("a" | "e" | "i" | "o" | "u") => "vowel"
+    Letter(_)                           => "consonant"
+}
+
+fn size(shape) = match shape {
+    Circle { r: size } | Square { side: size } => size
+    Dot | Empty                                => 0.0
+}
+```
+
+```osprey-ml
+type Token = Digit int | Letter string | Space | Tab | Newline
+type Shape = Circle(r : float) | Square(side : float) | Dot | Empty
+
+kind token = match token
+    Space | Tab | Newline                 => "blank"
+    Digit (0 | 1)                         => "bit"
+    Digit _                               => "digit"
+    Letter ("a" | "e" | "i" | "o" | "u")  => "vowel"
+    Letter _                              => "consonant"
+
+size shape = match shape
+    Circle(r = size) | Square(side = size) => size
+    Dot | Empty                            => 0.0
+```
+
+**[PATTERN-OR-SYNTAX]** `|` binds more loosely than every other pattern form. An or-pattern may be a whole arm's pattern or any nested pattern ([PATTERN-NESTED](#nested-patterns--pattern-nested)): a constructor argument, a named field, a `Success` or `Error` payload, a tuple component, a list element or a row field. Inside a delimited slot its alternatives end at the next `,` or closing delimiter. ML writes a nested or-pattern in parentheses when the slot is juxtaposed, as in `Digit (0 | 1)`. A leading or trailing `|` is rejected, and so is a single alternative in parentheses used only to group. In Default, `|` after a pattern is always an alternative: the lambda form `|x| => body` starts an expression and cannot start an arm.
+
+Each flavor uses its own spelling for the same node:
+
+| Flavor | Spelling |
+| --- | --- |
+| Default | `Space \| Tab => body` |
+| ML | `Space \| Tab => body` |
+| Python | `case Space() \| Tab():` |
+| TypeScript | Adjacent `case` labels with no statements between them: `case "space": case "tab": return body;` |
+
+TypeScript keeps rejecting fallthrough out of a case that has statements ([FLAVOR-TS-UNIONS](0054-TypeScriptFlavorSyntax.md)); only labels with nothing between them join into one or-pattern.
+
+**[PATTERN-OR-ORDER]** Alternatives are tried left to right, and the first that matches supplies the arm's bindings. Testing an alternative has no effect other than the test, so the order is observable only through which bindings are taken.
+
+**[PATTERN-OR-BINDINGS]** Every alternative of one or-pattern binds the same set of names, and each name has one type across all of them. The compiler rejects an alternative that omits a name another one binds, naming the variable and the alternative, and rejects a name whose types do not unify with an ordinary type error at the later binder. `_` binds nothing, so alternatives with no bindings always agree. A binding follows [PATTERN-BINDING-SCOPE](#binding-scope--pattern-binding-scope) exactly as in a plain arm. `Success { value: v } | Error { message: v }` is legal only when the Result's `T` and `E` are the same type ([PATTERN-RESULT-BINDERS](#result-binder-roles--pattern-result-binders)).
+
+**[PATTERN-OR-TYPE]** Each alternative is typed against the scrutinee's type, or the slot's type when nested, as if it were the only pattern there. An alternative naming a variant of another union, or a literal of another type, is a type error.
+
+**[PATTERN-OR-EXHAUSTIVE]** An or-pattern covers the union of what its alternatives cover. Exhaustiveness and reachability ([TYPE-MATCH-EXHAUSTIVE](#exhaustiveness-and-unreachable-arms-type-match-exhaustive)) treat `A | B => body` as the arms `A => body` and `B => body` in that order. An alternative no value can reach, because an earlier arm or an earlier alternative of the same pattern already covers it, is rejected as unreachable, and the diagnostic points at that alternative, not the whole arm.
+
+**[PATTERN-OR-BODY]** The arm body is checked and compiled once. The result equals writing one arm per alternative with that body, without the duplicated code: every flavor lowers to one `Pattern::Or` node, never to copied arms. The body's effects are its own. A `many` continuation captured in the body of an or-pattern arm resumes as it does in a plain arm, with the same answers under GC, ARC and wasm32 ([MULTI-WASM-MANY](0017-AlgebraicEffects.md)).
+
 ## Exhaustiveness and unreachable arms [TYPE-MATCH-EXHAUSTIVE]
 
 A match over `bool`, `Result`, or a known union must cover every case, either
 explicitly or with a catch-all. A duplicate variant arm is unreachable, as is
-every arm after `_` or a lower-case binding; the compiler rejects both.
+every arm after `_` or a lower-case binding; the compiler rejects both. An
+or-pattern counts as one arm per alternative
+([PATTERN-OR-EXHAUSTIVE](#or-patterns--pattern-or)).
 
 A match over `any` is never exhaustive — its row is not known until run time —
 so it always requires a catch-all

@@ -25,6 +25,7 @@ These come before every other open item in `docs/plans/`. Each is a defect again
   - [x] Backend: an arm that tests below its top runs `nested::capture` and falls through to the next arm on any failed test, on union, row and `Result` matches; bindings install only once the whole pattern matched. GC, ARC and wasm32 corpus green
   - [x] Corpus regression (both flavors, `core/foundations/checks`) mixing trees, `Result` in `Result`, union payloads, literals and lists three levels deep; `failscompilation/` rejections for a non-exhaustive nest, unreachable nested arms and a name bound twice (`match_not_exhaustive`, `match_unreachable_after_catch_all`)
   - [x] Spec: "not implemented" status and the [TYPE-UNION-POSITIONAL] note removed; ML spelling specified in [PATTERN-NESTED] and [FLAVOR-ML-MATCH]
+- [ ] **Or-patterns ([PATTERN-OR](../specs/language/0007-PatternMatching.md#or-patterns--pattern-or)) and `min` / `max` ([BUILTIN-MIN-MAX](../specs/runtime/0012-Built-InFunctions.md)).** Arms that share a body are copied, and every program writes its own `min`. Specs written; delivery is in [or-patterns and min/max](or-patterns-and-min-max.md).
 
 ### Error system
 

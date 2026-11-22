@@ -410,7 +410,8 @@ type Tree = Leaf | Node Tree Tree
 type Shape = Circle float | Rect(width : float, height : float)
 ```
 
-`|` is a type-declaration separator, not an expression operator or or-pattern.
+`|` separates union variants in a type declaration and alternatives in an or-pattern
+([PATTERN-OR](0007-PatternMatching.md#or-patterns--pattern-or)). It is not an expression operator.
 Layout variants remain available. Positional payloads lower to numeric internal
 field names shared with Default positional unions.
 
@@ -430,7 +431,8 @@ list patterns such as `[]`, `[one]`, and `[head, ...tail]`. A constructor's
 slots nest as its construction does: `Node (Node l _) Leaf` positionally, and
 `Error(message = Overflow by)` by field
 ([PATTERN-NESTED](0007-PatternMatching.md#nested-patterns--pattern-nested)).
-Or-patterns are rejected; write one arm per alternative.
+`A | B => body` is an or-pattern; a nested one in a juxtaposed slot takes parentheses, as in
+`Digit (0 | 1)` ([PATTERN-OR](0007-PatternMatching.md#or-patterns--pattern-or), not implemented yet).
 
 A constructor payload binder takes its **column**, not the field that shares its
 spelling, so `Node l r` may rename freely against a named payload as well as a
