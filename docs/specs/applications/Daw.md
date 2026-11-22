@@ -301,5 +301,5 @@ The [Timeline designs](../../designs/prism-timeline/README.md) propose more than
 
 - The current app includes the timeline and piano roll, one patch per track, main outputs, stereo groups, group sidechains and the independent Space send. Transport and project commands are available from the menu bar.
 - Nested racks still require engine and editor support. A detached Timeline requires a second FerroUI window sharing the project session.
-- **Channels ([SYNTH-GRAPH-CHANNELS]):** stereo by default with unlimited channels; each track and Master declare their layout in the project file, in the proposed model. Split, Join and Route already carry multichannel audio inside saved patches. At the track boundary, the engine folds a stereo sink to mono before panning.
-- **Engine limits:** the engine is mono per track before panning and allows at most 64 tracks. Its limits are documented in the [daw README](../../../src/osprey/examples/daw/README.md).
+- **Channels ([SYNTH-GRAPH-CHANNELS], [DAW-MODULAR-LAYOUT]):** every track, bus, Space and Master carries as many channels as the project's layout sets, stereo by default. Playing and rendering carry every channel from source to Master. Nothing folds a track to mono.
+- **Engine limits:** at most 64 tracks. Its limits are documented in the [daw README](../../../src/osprey/examples/daw/README.md).

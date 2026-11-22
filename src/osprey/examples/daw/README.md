@@ -87,9 +87,9 @@ For example, `{"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabl
 | `BellInstrument`, `MalletInstrument` | `ModalBanks` with bell or bar ratios, one impulse | ring for `decay` whatever the note length |
 | `OperatorInstrument` | two `PhaseOperators` detuned up and down by `detune` cents | the phase-distortion breakpoint eases toward a sine over `bloom` |
 | `DrumInstrument` | sine `PhaseOperators` body with a pitch drop plus an `Exciters` noise burst | lasts `decay` (at most 1 s) whatever the note length |
-| `PatchInstrument` | `PatchVoices` builds a graph per note. The mono scheduler uses 8,192-frame blocks. Graphs with MIDI, control signals or multichannel ports run through `GraphClips` in blocks of up to 1,024 frames at 48 kHz | settings can follow note pitch or velocity. A stereo sink is averaged before the track panner |
+| `PatchInstrument` | `PatchVoices` builds a graph per note. The scheduler uses 8,192-frame blocks. Graphs with MIDI, control signals or multichannel ports run through `GraphClips` in blocks of up to 1,024 frames at 48 kHz | settings can follow note pitch or velocity |
 
-Limits: rendering is not realtime and allocates per sample; a note lasts at most 960,000 frames and a piece 28,800,000; tracks are mono before panning.
+Limits: rendering is not realtime and allocates per sample; a note lasts at most 960,000 frames and a piece 28,800,000. Every track carries the project's channel layout, stereo by default ([DAW-MODULAR-LAYOUT]). The engine still folds a track to one channel before panning, which breaks that rule and is listed as open in the [plan](../../../../docs/plans/advanced-synthesis.md).
 
 ## What the host tools do
 
