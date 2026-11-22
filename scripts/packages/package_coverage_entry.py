@@ -16,6 +16,7 @@ import json
 import os
 import tomllib
 from pathlib import Path
+from package_coverage_projects import APPS_DIR, PACKAGES_DIR, declared_roots
 
 ORACLE = "entry.expectedoutput"
 
@@ -93,10 +94,24 @@ def measured_problems(module, root, kind, name, files, log):
     if issues:
         return [f"entry probe: {issue}; log {log}" for issue in issues]
     try:
-        entry = entry_name(root, kind, name)
+        source, own_path = entry_source(root, kind, name)
     except ValueError as error:
         return [f"entry probe: {error}; log {log}"]
-    return counter_problems(entries, entry, log)
+    if own_path is not None:
+        return counter_problems(entries, own_path, log)
+    return shared_counter_problems(module, root, files, source, log)
+
+
+def shared_counter_problems(module, root, files, source, log):
+    """Check the shared entry's own counters without crediting them to the app."""
+    key = source.relative_to(root).as_posix()
+    matches = [body for path, body in files.items() if Path(os.path.normpath(root / path)) == source]
+    if len(matches) != 1:
+        return [f"entry probe expected one source report for {key}; log {log}"]
+    entry, issues = module.validate_source_file(source, key, matches[0])
+    if issues:
+        return [f"entry probe: {issue}; log {log}" for issue in issues]
+    return counter_problems([entry], key, log)
 
 
 def output_problems(module, stdout, oracle, log):
@@ -112,8 +127,8 @@ def output_problems(module, stdout, oracle, log):
     return [f"entry probe output differs from {ORACLE}: {module.first_mismatch(raw, expected)}; log {log}"]
 
 
-def entry_name(root, kind, name):
-    """The project's own entry as a logical own path; a fault is a ValueError."""
+def entry_source(root, kind, name):
+    """Resolve the project entry and its own reporting path, if it has one."""
     manifest = root / kind / name / "osprey.toml"
     try:
         project = tomllib.loads(manifest.read_text()).get("project")
@@ -122,12 +137,16 @@ def entry_name(root, kind, name):
     if not isinstance(project, dict):
         raise ValueError(f"{manifest} has no [project] table")
     entry = project.get("entry")
-    if not isinstance(entry, str) or not entry:
+    if not isinstance(entry, str) or not entry or "\x00" in entry or Path(entry).is_absolute():
         raise ValueError(f"{manifest} project.entry is not a source path: {entry!r}")
-    try:
-        return str(Path(entry).relative_to("src"))
-    except ValueError as error:
-        raise ValueError(f"{manifest} project.entry {entry!r} is not under src/") from error
+    source = (manifest.parent / entry).resolve()
+    own = (manifest.parent / "src").resolve()
+    if source.is_relative_to(own):
+        return source, source.relative_to(own).as_posix()
+    if kind == APPS_DIR and source.is_relative_to(root / PACKAGES_DIR):
+        if any(source.is_relative_to(path) for path in declared_roots(manifest.parent, project)):
+            return source, None
+    raise ValueError(f"{manifest} project.entry {entry!r} is not under src/ or a declared shared package root")
 
 
 def counter_problems(entries, entry, log):

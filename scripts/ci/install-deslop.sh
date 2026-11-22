@@ -28,6 +28,7 @@ BASE_URL="https://github.com/Nimblesite/Deslop/releases/download/v${DESLOP_VERSI
 case "$(uname -s)" in
     Linux)  os=linux ;;
     Darwin) os=macos ;;
+    MINGW*|MSYS*|CYGWIN*) os=windows ;;
     *) fail "Unsupported OS for deslop install: $(uname -s) — install manually: $BASE_URL" ;;
 esac
 case "$(uname -m)" in
@@ -37,7 +38,8 @@ case "$(uname -m)" in
 esac
 
 stem="deslop-${DESLOP_VERSION}-${os}-${arch}"
-asset="${stem}.tar.gz"
+# Windows releases are a zip of .exe tools; the others a tarball of bare ones.
+if [[ "$os" == windows ]]; then asset="${stem}.zip"; exe=.exe; else asset="${stem}.tar.gz"; exe=""; fi
 
 # Pick an install dir on PATH (explicit arg wins; else writable system bin; else user bin).
 dest="${1:-}"
@@ -47,7 +49,7 @@ fi
 if [[ -n "${GITHUB_PATH:-}" ]]; then
     echo "$dest" >> "$GITHUB_PATH"
 fi
-if [[ -x "$dest/deslop" && -x "$dest/deslop-mcp" && "$("$dest/deslop" --version)" == "deslop $DESLOP_VERSION" ]]; then
+if [[ -x "$dest/deslop$exe" && -x "$dest/deslop-mcp$exe" && "$("$dest/deslop$exe" --version)" == "deslop $DESLOP_VERSION" ]]; then
     ok "deslop $DESLOP_VERSION already installed ($dest/deslop)"
     exit 0
 fi
@@ -70,9 +72,12 @@ fi
 [[ "$expected" == "$actual" ]] || fail "SHA-256 mismatch: expected $expected, got $actual"
 ok "checksum verified"
 
-tar -xzf "$tmp/$asset" -C "$tmp"
+if [[ "$os" == windows ]]; then unzip -q "$tmp/$asset" -d "$tmp"; else tar -xzf "$tmp/$asset" -C "$tmp"; fi
 for tool in deslop deslop-mcp; do
-    install -m 0755 "$tmp/$stem/$tool" "$dest/$tool"
+    # The archive holds each tool in its versioned folder or at its top.
+    found="$(find "$tmp" -type f -name "$tool$exe" | head -n 1)"
+    [[ -n "$found" ]] || fail "$asset holds no $tool$exe"
+    install -m 0755 "$found" "$dest/$tool$exe"
     ok "installed $tool ${DESLOP_VERSION} → $dest/$tool"
 done
 

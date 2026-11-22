@@ -98,6 +98,7 @@ module HostModulation
 
     controls parameters = mapList (parameters, \p => ParameterStamp(stampKey = p.key, stampValue = p.initial))
 
+    (** Snapshot unmodulated controls so a retained worker can receive edits on the next block. *)
     export stamps graph = mapList (filterList (graph.nodes, external), \n => HostedStamp(stampNode = n.identity, stampControls = controls (manual (graph, n))))
 
     // A changed dial on a retained worker takes effect on the next block, also off the modulation grid.
@@ -105,6 +106,7 @@ module HostModulation
         [] => Outcomes::carried (outcome, \points => point (points, p, 0, p.initial))
         _ => outcome
 
+    (** Prepend changed manual controls at sample zero while keeping scheduled automation within the block budget. *)
     export edits (graph, previous, n, automation) = match filterList (previous, \old => old.stampNode == n.identity)
         [prior] => changedPoints (prior, manual (graph, n), automation)
         _ => Success(value = automation)

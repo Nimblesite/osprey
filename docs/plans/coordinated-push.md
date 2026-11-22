@@ -38,7 +38,7 @@ The [hosted run for `d4341c9ac`](https://github.com/Nimblesite/osprey/actions/ru
 - A timed solver trace attributes 33.2 s to `canvasInspectorJourney`, 35.9 s to `sampleFileJourney`, and 14.3 s to `panelDialJourney` in the seventh sweep. Moving the mutable bench state into its handler reduces whole-program sweeps from seven to two. All six focused voice and editor tests pass with this scoped state and the corrected voice assertion calls. Splitting the canvas Undo/Escape checks further reduced its seventh-sweep time to 0.15 s. A later replay entered the next proof phase with around 3 GiB resident. The full local TAP run completed after the inspector fixture repair.
 - Sampling the stock release compiler located two source proofs. The first used the signal-forwarding specialization with 3,526 functions. Its error path fell back to the 3,520-function original. A diagnostic build must surface the first error to identify which specialization prevents reuse of the source proof [TYPE-EFFECT-PROOF-COUNT].
 - Use `node scripts/ci/preflight.mjs --list --only='gpui\.yml:|winui\.yml:'` to locate the desktop replay commands. Run macOS checks on macOS and verify Linux resource use and WinUI goldens on their native runners. Preflight lists checks that require another host or GitHub runner data as skipped.
-- The push lock holder runs `make ci` once the targeted checks are green and the branch is clean. `make push` validates that exact commit.
+- The push lock holder runs `make ci` once the targeted checks are green and the branch is clean, then uses `git push` for the exact tested commit.
 
 ## Rules
 
@@ -49,7 +49,7 @@ The [hosted run for `d4341c9ac`](https://github.com/Nimblesite/osprey/actions/ru
 
 ## Enforcement
 
-- [x] **`make push`:** refuses unless `make ci` left a stamp for `git rev-parse HEAD` and `gh run list --branch <b> --status in_progress` is empty. It runs `git push` only after both checks pass. AGENTS.md replaces raw `git push` with `make push`.
+- [x] **Direct push.** The lock holder verifies that `target/ci-green` matches `git rev-parse HEAD` and checks GitHub for queued or running CI on the branch. Push the verified SHA with `git push origin "$tested:refs/heads/$branch"`.
 - [x] **`ci.yml` concurrency:** `cancel-in-progress: false` in `ci.yml` and the workflows it calls (Windows, GPUI, WinUI). A new push then waits behind the running run instead of destroying it. GitHub keeps only the newest pending run, so this costs at most one queued run.
 - [x] **Synth tests 16 and 19:** fixed by `d591e96a5`. At HEAD they pass locally under GC and ARC (byte-exact golden, ARC leak-free).
 - [x] **WinUI synth goldens:** refreshed by `3d8588a23`. `970615da3` added `undo-delay` and undo/redo steps but no goldens, and `d591e96a5` removes the oscillator's MIDI inlet, which changes every synth picture. Goldens can only be drawn on Windows, so take them from the `winui-self-test` artifact of the first run at HEAD, check each picture by eye and push them as that run's red fix.

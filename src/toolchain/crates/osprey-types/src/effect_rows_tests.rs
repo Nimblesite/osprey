@@ -5,7 +5,7 @@
 //! test. A handler is lexical authority, not permission that may escape in a
 //! closure.
 
-use crate::testutil::{accepts, rejects_with, typecheck};
+use crate::testutil::{accepts, parse_rejects_with, rejects_with, typecheck};
 use crate::{check_program, TypeError};
 use osprey_ast::Stmt;
 use osprey_syntax::{parse_program_with_flavor, Flavor};
@@ -218,6 +218,24 @@ fn open_rows_transport_callback_effects_to_the_handler_in_both_flavors() {
         let errors = check_program(&parsed.program);
         assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
     }
+}
+
+#[test]
+fn explicit_row_tails_require_lowercase_names_in_both_flavors() {
+    let default = "effect Log { write: fn(string) -> Unit }\nfn invalid() -> Unit ![Log | Tail] = perform Log.write(\"event\")\n";
+    let ml = "effect Log\n    write : string => Unit\ninvalid : Unit -> Unit ![Log | Tail]\ninvalid () = perform Log.write \"event\"\n";
+    rejects_with(
+        Flavor::Default,
+        default,
+        "invalid effect row variable; use a lowercase name",
+    );
+    parse_rejects_with(
+        Flavor::Ml,
+        ml,
+        "effect row variable must start with a lowercase letter",
+    );
+    accepts(Flavor::Default, default.replace("Tail]", "tail]"));
+    accepts(Flavor::Ml, ml.replace("Tail]", "tail]"));
 }
 
 #[test]

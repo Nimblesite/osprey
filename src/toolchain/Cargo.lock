@@ -1019,6 +1019,11 @@ dependencies = [
 [[package]]
 name = "osprey-math"
 version = "0.0.0-dev"
+dependencies = [
+ "osprey-ast",
+ "osprey-syntax",
+ "osprey-types",
+]
 
 [[package]]
 name = "osprey-profiler"

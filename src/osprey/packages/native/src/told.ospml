@@ -37,6 +37,23 @@ type Walked A =
 
 (** Tells a region's node tree and collects its bindings in one depth-first walk, so an event ordinal always names the control drawn with it ([NATIVE-SHM-NODES], [UI-EVENTS]). *)
 module Tell
+    (** The field name carried by a told value. *)
+    export nameOf value = match value
+        ToldText name _ => name
+        ToldCount name _ => name
+        ToldReal name _ => name
+        ToldFlag name _ => name
+        ToldRecord name _ => name
+        ToldList name _ => name
+        ToldScene name _ _ => name
+
+    (** The nested values in a told record, scene or list. *)
+    export childrenOf value = match value
+        ToldRecord _ members => members
+        ToldScene _ members _ => members
+        ToldList _ items => items
+        _ => []
+
     (** The name of a tone, as hosts read it. *)
     export tone value = match value
         Primary => "primary"

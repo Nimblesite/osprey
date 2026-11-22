@@ -283,11 +283,13 @@ public sealed class CapabilitiesTests
         Assert.True(opened.Ok, opened.Error);
         var key = Docs.Text(Receipt(opened), "session");
         Assert.NotEmpty(key);
-        Ask Exchange(string input, long limit = 100) => Process(11, "exchange", Text(1, "process"), Text(2, "session-exchange"),
-            Text(3, "session"), Text(3, key), Text(3, "stdinText"), Text(3, input), Number(4, 5_000), Number(5, limit));
-        foreach (var line in new[] { "first", "second" })
+        Ask Exchange(string input, long limit = 100, long timeout = 5_000) => Process(11, "exchange", Text(1, "process"), Text(2, "session-exchange"),
+            Text(3, "session"), Text(3, key), Text(3, "stdinText"), Text(3, input), Number(4, timeout), Number(5, limit));
+        // The first exchange's budget also covers the child's start-up: a cold powershell.exe on a loaded
+        // runner takes longer than 5 s to reach ReadLine, so it gets the 60 s ceiling and the warm one 5 s.
+        foreach (var (line, timeout) in new[] { ("first", 60_000L), ("second", 5_000L) })
         {
-            var reply = await host.Answer(Exchange(line));
+            var reply = await host.Answer(Exchange(line, timeout: timeout));
             Assert.True(reply.Ok, reply.Error);
             Assert.Equal(line, Docs.Text(Receipt(reply), "output"));
         }
@@ -364,6 +366,20 @@ public sealed class CapabilitiesTests
         if (OperatingSystem.IsWindows())
         {
             Assert.EndsWith("cmd.exe", Child.Resolve("cmd", Environment.SystemDirectory), StringComparison.OrdinalIgnoreCase);
+            // MSYS2's usr\bin holds an extensionless bash script named cmd. Windows never runs a file
+            // without an executable extension, so a lookup passes over it to the real cmd.exe.
+            var msys = Directory.CreateTempSubdirectory("osprey-msys-");
+            try
+            {
+                File.WriteAllText(Path.Combine(msys.FullName, "cmd"), "#!/usr/bin/env bash\n\"$COMSPEC\" \"$@\"\n");
+                var path = msys.FullName + Path.PathSeparator + Environment.SystemDirectory;
+                Assert.Equal(Path.Combine(Environment.SystemDirectory, "cmd.exe"), Child.Resolve("cmd", path), ignoreCase: true);
+                Assert.Throws<HostException>(() => Child.Resolve("cmd", msys.FullName));
+            }
+            finally
+            {
+                msys.Delete(true);
+            }
         }
         else
         {

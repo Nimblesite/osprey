@@ -36,26 +36,36 @@ function collectPageErrors(page) {
 async function openApp(page) {
   await page.goto('/');
   await expect(page).toHaveTitle('Talon Bank');
-  await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+  await expectCurrentPage(page, 'Overview');
   await expect(page.getByText('Contacting the ledger')).toHaveCount(0);
 }
 
-async function tab(page, name) {
-  await page.getByRole('tab', { name }).click();
-  await expect(page.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
+function navigation(page, name) {
+  return page.getByRole('button', { name, exact: true });
 }
 
-// A notice reads `words`; a person dismisses it by pressing it, which uncovers the page.
+async function expectCurrentPage(page, name) {
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(name === 'Move' ? 'Move money' : name);
+  await expect(navigation(page, name).locator('..')).toHaveCSS('background-color', 'rgb(255, 107, 74)');
+}
+
+async function goToPage(page, name) {
+  await navigation(page, name).click();
+  await expectCurrentPage(page, name);
+}
+
 async function noticed(page, words) {
-  await expect(page.getByRole('alert')).toContainText(words);
-  await page.getByRole('alert').click();
-  await expect(page.getByRole('alert')).toHaveCount(0);
+  const message = page.getByText(words, { exact: true });
+  const dismiss = page.getByRole('button', { name: 'Dismiss', exact: true });
+  await expect(message).toBeVisible();
+  await dismiss.click();
+  await expect(dismiss).toHaveCount(0);
+  await expect(message).toHaveCount(0);
 }
 
 async function moveMoney(page, mode, fields) {
-  await tab(page, 'Move money');
-  await page.getByRole('combobox', { name: 'Movement' }).selectOption(mode);
+  await goToPage(page, 'Move');
+  await page.getByRole('button', { name: mode, exact: true }).click();
   for (const [label, value] of fields.choose ?? []) await page.getByRole('combobox', { name: label }).selectOption(value);
   await page.getByRole('textbox', { name: 'Amount' }).fill(fields.amount);
   await page.getByRole('textbox', { name: 'Description' }).fill(fields.note ?? '');
@@ -116,28 +126,29 @@ async function drawsTheOverview({ page }) {
   expect(errors).toEqual([]);
 }
 
-async function visitsEveryTab({ page }) {
+async function visitsEveryPage({ page }) {
   await openApp(page);
-  await tab(page, 'Accounts');
+  await expect(page.getByRole('button', { name: /^(Overview|Accounts|Move|Activity|Security)$/ })).toHaveCount(5);
+  await goToPage(page, 'Accounts');
   await expect(page.getByText('Ready to move')).toBeVisible();
-  await tab(page, 'Activity');
+  await goToPage(page, 'Activity');
   await expect(page.getByRole('textbox', { name: 'Search' })).toBeVisible();
-  await tab(page, 'Security');
+  await goToPage(page, 'Security');
   await expect(page.getByText('Storage isolation')).toBeVisible();
-  await tab(page, 'Move money');
+  await goToPage(page, 'Move');
   await expect(page.getByRole('button', { name: 'Confirm transfer' })).toBeVisible();
-  await tab(page, 'Overview');
+  await goToPage(page, 'Overview');
   await page.getByRole('button', { name: 'Full history' }).click();
-  await expect(page.getByRole('tab', { name: 'Activity' })).toHaveAttribute('aria-selected', 'true');
+  await expectCurrentPage(page, 'Activity');
 }
 
 async function filtersAndSearchesActivity({ page }) {
   await openApp(page);
-  await tab(page, 'Activity');
-  await page.getByRole('combobox', { name: 'Show' }).selectOption('refused');
+  await goToPage(page, 'Activity');
+  await page.getByRole('button', { name: /^Declined \d+$/ }).click();
   await expect(page.getByText('vintage synthesizer')).toBeVisible();
   await expect(page.getByText('rent — 12 Fern St')).toHaveCount(0);
-  await page.getByRole('combobox', { name: 'Show' }).selectOption('all');
+  await page.getByRole('button', { name: /^All \d+$/ }).click();
   await page.getByRole('textbox', { name: 'Search' }).fill('PRIYA');
   await expect(page.getByText('research grant Q1')).toBeVisible();
   await expect(page.getByText('dinner split')).toHaveCount(0);
@@ -149,9 +160,9 @@ async function depositsAndTransfersAtomically({ page, request }) {
   const one = await accountById(request, 1);
   const two = await accountById(request, 2);
   await openApp(page);
-  await moveMoney(page, 'deposit', { choose: [['Deposit to', '1']], amount: '12.34', note: 'Native deposit flow', confirm: 'Confirm deposit' });
+  await moveMoney(page, 'Deposit', { choose: [['Deposit to', '1']], amount: '12.34', note: 'Native deposit flow', confirm: 'Confirm deposit' });
   await noticed(page, 'Deposit complete');
-  await moveMoney(page, 'transfer', { choose: [['From account', '1'], ['To account', '2']], amount: '$10.00', note: 'Atomic native transfer', confirm: 'Confirm transfer' });
+  await moveMoney(page, 'Transfer', { choose: [['From account', '1'], ['To account', '2']], amount: '$10.00', note: 'Atomic native transfer', confirm: 'Confirm transfer' });
   await noticed(page, 'Transfer complete');
   expect((await accountById(request, 1)).cents).toBe(one.cents + 234);
   expect((await accountById(request, 2)).cents).toBe(two.cents + 1000);
@@ -161,8 +172,8 @@ async function depositsAndTransfersAtomically({ page, request }) {
 
 async function showsLedgerRefusals({ page, request }) {
   await openApp(page);
-  await moveMoney(page, 'withdraw', { choose: [['Withdraw from', '3']], amount: '99,999.99', note: 'Native protected refusal', confirm: 'Confirm withdrawal' });
-  await expect(page.getByRole('alert')).toContainText('Operation refused');
+  await moveMoney(page, 'Withdraw', { choose: [['Withdraw from', '3']], amount: '99,999.99', note: 'Native protected refusal', confirm: 'Confirm withdrawal' });
+  await expect(page.getByText('Operation refused', { exact: true })).toBeVisible();
   await noticed(page, 'insufficient funds');
   const feed = await (await request.get('/api/activity')).json();
   expect(feed[0]).toMatchObject({ account: 3, kind: 'refused', cents: 9999999, note: 'Native protected refusal' });
@@ -172,10 +183,10 @@ async function refusesMalformedMoney({ page, request }) {
   const before = await (await request.get('/api/accounts')).json();
   await openApp(page);
   for (const amount of INVALID_AMOUNTS) {
-    await moveMoney(page, 'deposit', { amount, confirm: 'Confirm deposit' });
+    await moveMoney(page, 'Deposit', { amount, confirm: 'Confirm deposit' });
     await noticed(page, 'Check the amount');
   }
-  await moveMoney(page, 'transfer', { choose: [['From account', '2'], ['To account', '2']], amount: '5', confirm: 'Confirm transfer' });
+  await moveMoney(page, 'Transfer', { choose: [['From account', '2'], ['To account', '2']], amount: '5', confirm: 'Confirm transfer' });
   await noticed(page, 'Choose two accounts');
   expect(await (await request.get('/api/accounts')).json()).toEqual(before);
 }
@@ -190,7 +201,7 @@ async function opensAnAccount({ page, request }) {
   await noticed(page, 'Account opened');
   const accounts = await (await request.get('/api/accounts')).json();
   expect(accounts.at(-1).owner).toBe('<img src=x onerror=alert(1)> Ada');
-  await tab(page, 'Accounts');
+  await goToPage(page, 'Accounts');
   await expect(page.getByText('<img src=x onerror=alert(1)> Ada').first()).toBeVisible();
   await expect(page.locator('#osprey-root img[src="x"]')).toHaveCount(0);
 }
@@ -198,7 +209,7 @@ async function opensAnAccount({ page, request }) {
 async function fitsAPhone({ page }) {
   await page.setViewportSize({ width: 390, height: 844 });
   await openApp(page);
-  await tab(page, 'Activity');
+  await goToPage(page, 'Activity');
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 }
@@ -212,7 +223,7 @@ test.describe('Talon Bank JSON API', () => {
 
 test.describe('Talon Bank as an Osprey Native app in the browser', () => {
   test('draws the portfolio overview with no errors and no host branding', drawsTheOverview);
-  test('moves between all five tabs', visitsEveryTab);
+  test('moves between all five pages', visitsEveryPage);
   test('filters and searches the activity journal', filtersAndSearchesActivity);
   test('deposits and atomically transfers funds', depositsAndTransfersAtomically);
   test('reports a refused overdraft with the ledger\'s reason', showsLedgerRefusals);

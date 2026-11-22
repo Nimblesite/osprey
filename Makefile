@@ -159,11 +159,6 @@ _invalidate_ci_stamp:
 _ci-contracts:
 	node --test scripts/ci/ci-scope.test.mjs scripts/ci/preflight.test.mjs
 
-## push: The only way to push ([CI-PUSH-GREEN], docs/plans/coordinated-push.md). Hold the TMC lock PUSH-<branch> first. Refuses unless make ci passed on this exact HEAD and no CI run on the branch is queued or running; then pushes.
-.PHONY: push
-push:
-	scripts/ci/push.sh
-
 _runtime_wasm _test_wasm_goldens: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 
 ## preflight: Every check the PR workflows run (each run: step and the emulator script, read from ci.yml and the workflows it calls), each run even after one fails, coverage gates last; prints a PASS/FAIL/SKIP table (also target/preflight/summary.md) and fails if any check failed. ONLY=<regex> runs a subset.

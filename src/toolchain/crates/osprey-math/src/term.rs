@@ -149,8 +149,20 @@ impl Reader<'_> {
     }
 
     fn local_name(&mut self) -> Result<String, Refusal> {
-        if let Some(name) = self.ident().filter(|name| self.in_scope(name)) {
-            let fix = format!("`{name}` is already in scope; a `let` takes a new name");
+        self.new_name(|_| false, "a `let`")
+    }
+
+    /// A binder's name, refused when it shadows a name in scope or one `also_taken` names.
+    pub(crate) fn new_name(
+        &mut self,
+        also_taken: impl Fn(&str) -> bool,
+        binder: &str,
+    ) -> Result<String, Refusal> {
+        let shadowed = self
+            .ident()
+            .filter(|name| self.in_scope(name) || also_taken(name));
+        if let Some(name) = shadowed {
+            let fix = format!("`{name}` is already in scope; {binder} takes a new name");
             return self.refuse(Code::ShadowedName, fix);
         }
         self.fresh_name(crate::model::reserved)

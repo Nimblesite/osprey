@@ -359,7 +359,7 @@
         "threshold": 90.8
       },
       "native": {
-        "threshold": 98.0,
+        "threshold": 98.1,
         "language": "osprey"
       },
       "numpy": {
@@ -440,7 +440,7 @@
       },
       "synth": {
         "language": "osprey",
-        "threshold": 92.2
+        "threshold": 92.5
       },
       "express": {
         "threshold": 96.0,

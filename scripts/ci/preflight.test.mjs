@@ -3,95 +3,75 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { withTempDir } from './ci-bundle-fixture.mjs'
 import { jobHost, matrixRows, plan, runCheck, skipReason, steps, workflowFiles } from './preflight.mjs'
 
-test('a preflight selector must run a check to report green', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'osprey-preflight-selector-'))
-  try {
-    mkdirSync(join(directory, '.github/workflows'), { recursive: true })
-    writeFileSync(join(directory, '.github/workflows/ci.yml'), 'jobs:\n')
-    mkdirSync(join(directory, 'scripts/make'), { recursive: true })
-    writeFileSync(join(directory, 'Makefile'), '')
-    const script = fileURLToPath(new URL('./preflight.mjs', import.meta.url))
-    const result = spawnSync(process.execPath, [script, '--only=Missing check'], { cwd: directory, encoding: 'utf8' })
-    assert.equal(result.status, 1)
-    assert.match(result.stderr, /No CI checks match/)
-    const otherHost = process.platform === 'win32' ? 'macos-15' : 'windows-latest'
-    writeFileSync(join(directory, '.github/workflows/ci.yml'), [
-      'jobs:', '  foreign:', `    runs-on: ${otherHost}`, '    steps:',
-      '      - name: Native replay', '        run: ./check',
-    ].join('\n'))
-    const skipped = spawnSync(process.execPath, [script, '--only=Native replay'], { cwd: directory, encoding: 'utf8' })
-    assert.equal(skipped.status, 1)
-    assert.match(skipped.stdout, /SKIP.*Native replay/)
-    assert.match(skipped.stderr, /None of the selected CI checks ran/)
-  } finally {
-    rmSync(directory, { recursive: true, force: true })
-  }
-})
+test('a preflight selector must run a check to report green', () => withTempDir('preflight-selector', (directory) => {
+  mkdirSync(join(directory, '.github/workflows'), { recursive: true })
+  writeFileSync(join(directory, '.github/workflows/ci.yml'), 'jobs:\n')
+  mkdirSync(join(directory, 'scripts/make'), { recursive: true })
+  writeFileSync(join(directory, 'Makefile'), '')
+  const script = fileURLToPath(new URL('./preflight.mjs', import.meta.url))
+  const result = spawnSync(process.execPath, [script, '--only=Missing check'], { cwd: directory, encoding: 'utf8' })
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /No CI checks match/)
+  const otherHost = process.platform === 'win32' ? 'macos-15' : 'windows-latest'
+  writeFileSync(join(directory, '.github/workflows/ci.yml'), [
+    'jobs:', '  foreign:', `    runs-on: ${otherHost}`, '    steps:',
+    '      - name: Native replay', '        run: ./check',
+  ].join('\n'))
+  const skipped = spawnSync(process.execPath, [script, '--only=Native replay'], { cwd: directory, encoding: 'utf8' })
+  assert.equal(skipped.status, 1)
+  assert.match(skipped.stdout, /SKIP.*Native replay/)
+  assert.match(skipped.stderr, /None of the selected CI checks ran/)
+}))
 
-test('local preflight keeps failing commands and mixed output in chronological order', () => {
-  const output = mkdtempSync(join(tmpdir(), 'osprey-preflight-'))
-  try {
-    const host = { darwin: 'macos', win32: 'windows' }[process.platform] ?? 'linux'
-    const command = 'echo first; echo diagnostic >&2; echo last; exit 7'
-    const result = runCheck({ command, host, env: {}, directory: '.', job: 'fixture', name: 'mixed output' }, 0, output)
-    assert.equal(result.status, 'FAIL')
-    assert.equal(readFileSync(result.log, 'utf8'), `$ ${command}\nfirst\ndiagnostic\nlast\n`)
-  } finally {
-    rmSync(output, { recursive: true, force: true })
-  }
-})
+test('local preflight keeps failing commands and mixed output in chronological order', () => withTempDir('preflight', (output) => {
+  const host = { darwin: 'macos', win32: 'windows' }[process.platform] ?? 'linux'
+  const command = 'echo first; echo diagnostic >&2; echo last; exit 7'
+  const result = runCheck({ command, host, env: {}, directory: '.', job: 'fixture', name: 'mixed output' }, 0, output)
+  assert.equal(result.status, 'FAIL')
+  assert.equal(readFileSync(result.log, 'utf8'), `$ ${command}\nfirst\ndiagnostic\nlast\n`)
+}))
 
-test('preflight CLI writes every selected check, including checks after a failure', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'osprey-preflight-run-'))
-  try {
-    const workflow = join(directory, '.github/workflows')
-    mkdirSync(workflow, { recursive: true })
-    const host = { darwin: 'macos-15', win32: 'windows-latest' }[process.platform] ?? 'ubuntu-latest'
-    writeFileSync(join(workflow, 'ci.yml'), [
-      'jobs:', '  replay:', `    runs-on: ${host}`, '    steps:',
-      '      - name: Check first', '        shell: bash', '        run: false',
-      '      - name: Check second', '        shell: bash', '        run: printf second',
-    ].join('\n'))
-    const script = fileURLToPath(new URL('./preflight.mjs', import.meta.url))
-    const result = spawnSync(process.execPath, [script, '--only=Check'], { cwd: directory, encoding: 'utf8' })
-    const output = join(directory, 'target/preflight')
-    assert.equal(result.status, 1)
-    assert.equal(readFileSync(join(output, '000.log'), 'utf8'), '$ false\n')
-    assert.equal(readFileSync(join(output, '001.log'), 'utf8'), '$ printf second\nsecond')
-    assert.match(readFileSync(join(output, 'summary.md'), 'utf8'), /FAIL.*Check first[^\n]*\n.*PASS.*Check second/)
-  } finally {
-    rmSync(directory, { recursive: true, force: true })
-  }
-})
+test('preflight CLI writes every selected check, including checks after a failure', () => withTempDir('preflight-run', (directory) => {
+  const workflow = join(directory, '.github/workflows')
+  mkdirSync(workflow, { recursive: true })
+  const host = { darwin: 'macos-15', win32: 'windows-latest' }[process.platform] ?? 'ubuntu-latest'
+  writeFileSync(join(workflow, 'ci.yml'), [
+    'jobs:', '  replay:', `    runs-on: ${host}`, '    steps:',
+    '      - name: Check first', '        shell: bash', '        run: false',
+    '      - name: Check second', '        shell: bash', '        run: printf second',
+  ].join('\n'))
+  const script = fileURLToPath(new URL('./preflight.mjs', import.meta.url))
+  const result = spawnSync(process.execPath, [script, '--only=Check'], { cwd: directory, encoding: 'utf8' })
+  const output = join(directory, 'target/preflight')
+  assert.equal(result.status, 1)
+  assert.equal(readFileSync(join(output, '000.log'), 'utf8'), '$ false\n')
+  assert.equal(readFileSync(join(output, '001.log'), 'utf8'), '$ printf second\nsecond')
+  assert.match(readFileSync(join(output, 'summary.md'), 'utf8'), /FAIL.*Check first[^\n]*\n.*PASS.*Check second/)
+}))
 
-test('preflight keeps distinct environments and hosts for the same command', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'osprey-preflight-environment-'))
-  try {
-    const file = join(directory, 'ci.yml')
-    const job = (name, host, mode) => [
-      `  ${name}:`, `    runs-on: ${host}`, '    env:', `      MODE: ${mode}`,
-      '    steps:', '      - name: Compile', '        env:', '          FORMAT: json',
-      '        run: ./check', '',
-    ].join('\n')
-    writeFileSync(file, 'env:\n  FORMAT: text\n  COLOR: never\njobs:\n'
-      + job('gc', 'ubuntu-latest', 'gc') + job('arc', 'ubuntu-latest', 'arc')
-      + job('windows', 'windows-latest', 'gc') + job('repeat', 'ubuntu-latest', 'gc'))
-    const checks = plan([file])
-    assert.deepEqual(checks.map(({ host, env }) => [host, env]), [
-      ['linux', { MODE: 'gc', FORMAT: 'json', COLOR: 'never' }],
-      ['linux', { MODE: 'arc', FORMAT: 'json', COLOR: 'never' }],
-      ['windows', { MODE: 'gc', FORMAT: 'json', COLOR: 'never' }],
-    ])
-  } finally {
-    rmSync(directory, { recursive: true, force: true })
-  }
-})
+test('preflight keeps distinct environments and hosts for the same command', () => withTempDir('preflight-environment', (directory) => {
+  const file = join(directory, 'ci.yml')
+  const job = (name, host, mode) => [
+    `  ${name}:`, `    runs-on: ${host}`, '    env:', `      MODE: ${mode}`,
+    '    steps:', '      - name: Compile', '        env:', '          FORMAT: json',
+    '        run: ./check', '',
+  ].join('\n')
+  writeFileSync(file, 'env:\n  FORMAT: text\n  COLOR: never\njobs:\n'
+    + job('gc', 'ubuntu-latest', 'gc') + job('arc', 'ubuntu-latest', 'arc')
+    + job('windows', 'windows-latest', 'gc') + job('repeat', 'ubuntu-latest', 'gc'))
+  const checks = plan([file])
+  assert.deepEqual(checks.map(({ host, env }) => [host, env]), [
+    ['linux', { MODE: 'gc', FORMAT: 'json', COLOR: 'never' }],
+    ['linux', { MODE: 'arc', FORMAT: 'json', COLOR: 'never' }],
+    ['windows', { MODE: 'gc', FORMAT: 'json', COLOR: 'never' }],
+  ])
+}))
 
 const checks = plan()
 const commands = checks.map((check) => check.command)

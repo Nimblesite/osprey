@@ -18,6 +18,7 @@ import ui::Pick
 import ui::Views
 import ui::Streams
 import ui::Surfaces
+import ui::Tell
 import ui::Tellings
 import uitests::Probes
 
@@ -87,8 +88,13 @@ sceneCaseASceneEncodesItsPrimitivesAsFlat () =
     expect ((etchAt (shapes, 5)).etchIndex, 1)
     expect ((etchAt (shapes, 6)).etchText, "Score 3")
     // The button binds control 0 and the scene control 1, as their told event members say.
-    expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0)
-    expect (memberCount (insideTold (childTold (toldOf held, 1)), "event", 0 - 1), 1)
+    expect (childEvent (held, 0), 0)
+    expect (childEvent (held, 1), 1)
+    root = toldOf held
+    scene = childTold (root, 1)
+    expect (Tell::nameOf scene, "")
+    expect (length (Tell::childrenOf (memberTold (insideTold root, "children"))), 2)
+    expect (length (Tell::childrenOf (memberTold (insideTold scene, "width"))), 0)
     binds (walked, 2)
     zoomed = Ui::zoomed (0.75, 1536.0, 828.0, [], drawn, Typed)
     expect (etchedAt (firstRows (drawnOf zoomed), 0), "20 2 1536.0 828.0 0.75 0.0 0.0 0 0 ")
@@ -117,6 +123,12 @@ sceneSaid (binding, input) = match Surfaces::scene (sceneHeld (binding), 0, inpu
 // `binding`, which owns no scene, refuses `value` as the wrong kind.
 notScene (binding, value) = expect (sceneSaid (binding, value), "A non-scene control was sent a value of the wrong kind")
 
+sceneKeyInput (name, down) = ui::Key(keyName = name, keyDown = down)
+
+scenePointerInput (x, y, down, shift) = ui::Pointer(pointerX = x, pointerY = y, pointerDown = down, pointerShift = shift)
+
+sceneViewInput (width, height) = ui::Viewed(viewWidth = width, viewHeight = height)
+
 // [UI-SCENE]: a path carries its builder commands, outline, paint and transform in the order a
 // host's path builder takes them, with float colours a host can use without rounding.
 (** a path sends its steps, outline, paint and transform. *)
@@ -136,20 +148,20 @@ sceneCaseAPathEncodesItsStepsOutlinePaint () =
 (** a scene binding delivers keys, pointer positions and its region's size in scene units. *)
 sceneCaseASceneBindingDeliversKeysAndPointer () =
     scene = ui::SceneInput(action = Typed)
-    expect (sceneSaid (scene, ui::Key(keyName = "ArrowLeft", keyDown = true)), "key ArrowLeft true")
-    expect (sceneSaid (scene, ui::Pointer(pointerX = 12.5, pointerY = 3.0, pointerDown = false, pointerShift = false)), "pointer 12.5 3.0 false false")
-    expect (sceneSaid (scene, ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = true, pointerShift = true)), "pointer 1.0 2.0 true true")
-    expect (sceneSaid (scene, ui::Viewed(viewWidth = 1536.0, viewHeight = 1008.0)), "viewed 1536.0 1008.0")
-    expect (sceneSaid (scene, ui::Viewed(viewWidth = 0.5, viewHeight = 2.25)), "viewed 0.5 2.25")
-    notScene (ui::Tap(action = Load), ui::Key(keyName = "ArrowLeft", keyDown = true))
-    notScene (ui::TextInput(action = Load), ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = false, pointerShift = false))
-    notScene (ui::FlagInput(action = Load), ui::Viewed(viewWidth = 4.0, viewHeight = 2.0))
-    notScene (ui::ChoiceInput(action = Load), ui::Key(keyName = "a", keyDown = false))
+    expect (sceneSaid (scene, sceneKeyInput ("ArrowLeft", true)), "key ArrowLeft true")
+    expect (sceneSaid (scene, scenePointerInput (12.5, 3.0, false, false)), "pointer 12.5 3.0 false false")
+    expect (sceneSaid (scene, scenePointerInput (1.0, 2.0, true, true)), "pointer 1.0 2.0 true true")
+    expect (sceneSaid (scene, sceneViewInput (1536.0, 1008.0)), "viewed 1536.0 1008.0")
+    expect (sceneSaid (scene, sceneViewInput (0.5, 2.25)), "viewed 0.5 2.25")
+    notScene (ui::Tap(action = Load), sceneKeyInput ("ArrowLeft", true))
+    notScene (ui::TextInput(action = Load), scenePointerInput (1.0, 2.0, false, false))
+    notScene (ui::FlagInput(action = Load), sceneViewInput (4.0, 2.0))
+    notScene (ui::ChoiceInput(action = Load), sceneKeyInput ("a", false))
     // Every remaining control that takes another value kind refuses the same key value.
-    forEachList ([ui::SizeInput(action = Load), ui::PlaceInput(action = Load), ui::StrokeInput(action = Load), ui::LassoInput(action = Load)], \binding => notScene (binding, ui::Key(keyName = "a", keyDown = true)))
+    forEachList ([ui::SizeInput(action = Load), ui::PlaceInput(action = Load), ui::StrokeInput(action = Load), ui::LassoInput(action = Load)], \binding => notScene (binding, sceneKeyInput ("a", true)))
     // A surface that drew no scene at that control number refuses too.
     bare = Surfaces::idle 0
-    bareScene = match Surfaces::scene (bare, 0, ui::Key(keyName = "a", keyDown = true))
+    bareScene = match Surfaces::scene (bare, 0, sceneKeyInput ("a", true))
         Error problem => problem
         Success _ => "delivered"
     expect (bareScene, "Unknown control 0")
@@ -171,8 +183,8 @@ sceneCaseAFrameEventDeliversItsElapsedSeconds () =
     expect (frameRefusal (0.0 - 1.0), "Invalid frame elapsed time")
     started = Probes::started ()
     after = Probes::framed (started, 0.016)
-    expect (Probes::problem after, "")
-    expect ((Probes::stored after).counter.tally, 0)
+    expectNoProblem after
+    surfaceTally (after, 0)
     expect (after.surfaceSession.sessionContext.now, 9)
 
 // [UI-SCENE]: the animate request turns the host's frame clock on or off.
@@ -222,7 +234,7 @@ sceneCaseAPairEncodesItsLabelAndValue () =
     held = Ui::column [Ui::pair ("Digest", "sha256:ab"), Ui::button ("Go", "play", Increment)]
     binds (drawnOf held, 1)
     expect (spelled (childTold (toldOf held, 0)), "{kind=\"pair\",label=\"Digest\",value=\"sha256:ab\"}")
-    expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0 - 1)
+    expect (childEvent (held, 0), 0 - 1)
     delivers (held, [ui::Tap(action = Increment)])
 
 isLinux platform = match platform
@@ -274,8 +286,8 @@ sceneCaseASceneRowsCarryEveryShapeInDrawingOrder () =
     expect (length rows, 9)
     expect (join (mapList (rows, \row => "${row.etchCode}")) ",", "20,21,0,2,7,7,1,4,3")
     // The button binds control 0 and the scene control 1, as their told event members say.
-    expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0)
-    expect (memberCount (insideTold (childTold (toldOf held, 1)), "event", 0 - 1), 1)
+    expect (childEvent (held, 0), 0)
+    expect (childEvent (held, 1), 1)
     binds (walked, 2)
 
 // [NATIVE-SHM-NODES]: a region's node is told under its key; a slot names that key, and a key no region holds tells no scene.
@@ -306,10 +318,10 @@ sceneCaseShapeRowsReadBackEveryFieldA () =
 sceneCaseAnOpenSurfaceKeepsItsStoreIn () =
     first = Probes::started ()
     expect (first.surfaceSession.sessionContext.platform, "linux")
-    expect ((Probes::stored first).counter.tally, 0)
+    surfaceTally (first, 0)
     tapped = Probes::tapped (first, 0)
-    expect ((Probes::stored tapped).counter.tally, 1)
-    expect ((Probes::stored first).counter.tally, 0)
+    surfaceTally (tapped, 1)
+    surfaceTally (first, 0)
     expect (Probes::asked first, "")
 
 // [UI-EVENTS]: a refused event leaves the store whole and still answering its own controls.
@@ -320,12 +332,12 @@ sceneCaseARefusedEventLeavesTheSurfaceWhole () =
     refused = Probes::posted (moved, 9, "")
     expect (Probes::problem refused, "Unknown control 9")
     expect (Probes::asked refused, "")
-    expect ((Probes::stored refused).counter.tally, 1)
+    surfaceTally (refused, 1)
     unknown = Probes::sent (moved, Probes::touchAt (7, 42, 0, "", "", 0.0, 0.0, false))
     expect (Probes::problem unknown, "Unknown event kind 42")
-    expect ((Probes::stored unknown).counter.tally, 1)
+    surfaceTally (unknown, 1)
     delivered = Probes::tapped (moved, 0)
-    expect (Probes::problem delivered, "")
+    expectNoProblem delivered
     expect (Probes::tickets delivered, "load:1")
 
 // One scene holding a single disc at `layer`, so the drawing order names the container it was found in.
@@ -363,7 +375,7 @@ sceneCaseASurfaceDeliversCompletionsPhasesAnd () =
     done = Probes::finished (first, "load:1", true, "saved")
     expect ((Probes::stored done).note.memo, "saved")
     phased = Probes::phased (done, "active")
-    expect (Probes::problem phased, "")
+    expectNoProblem phased
     framed = Probes::framed (phased, 0.5)
     expect (framed.surfaceSession.sessionContext.now, 9)
     broken = Probes::sent (framed, Probes::touchAt (10, 99, 0, "", "", 0.0, 0.0, false))

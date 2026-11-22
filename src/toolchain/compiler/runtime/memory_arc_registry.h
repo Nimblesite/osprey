@@ -176,10 +176,8 @@ static void arc_remove(uintptr_t *slot) {
   // sample; their tombstones used to fill the table between rebuilds.)
   size_t mask = g_cap - 1;
   size_t hole = (size_t)(slot - g_tab);
+  // Removal never leaves a tombstone, so every occupied slot in the run is a member.
   for (size_t at = (hole + 1) & mask; g_tab[at] != 0; at = (at + 1) & mask) {
-    if (g_tab[at] == OSP_ARC_TOMB) {
-      continue;
-    }
     size_t home = arc_hash(g_tab[at], g_cap);
     int stays = hole <= at ? (hole < home && home <= at)
                            : (hole < home || home <= at);

@@ -71,12 +71,13 @@ object ViewCheck {
         return Touch.control(node.count("event").toLong(), delivered(node)).also { store.send(it) }
     }
 
-    /** Every control under `node`, depth first in the order the walk told them. */
+    /** Every control under `node`, depth first in the order the walk told them. A slot holds one
+     * node or a list of them: a frame's `body`, a tab's `child` and a split's `pane` are single. */
     private fun controls(node: Tree, found: MutableList<Tree>, depth: Int) {
         if (depth > 64) return
         if (node.text("kind") in CONTROLS && node["event"] != null) found.add(node)
         for (name in listOf("children", "body", "toolbar", "items", "child", "pane", "aside"))
-            node.list(name).forEach { controls(it, found, depth + 1) }
+            (node[name]?.let { it.array ?: listOf(it) } ?: emptyList()).forEach { controls(it, found, depth + 1) }
     }
 
     /** The words the control's binding expects: a tap's emptiness, a flip, a key or the field's words. */

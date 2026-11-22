@@ -106,7 +106,7 @@ module ProofNotation
     additionInstances () = [
         natInstance ("instAddNat", "Add", "Add.mk", "Nat.add"),
         mixedInstance ("instHAdd", "Add", "Add.add", "Add.mk", "HAdd", "HAdd.mk"),
-
+        Decl(name = "outParam", params = ["u"], ty = Pi "x" (Sort (Param "u")) (Sort (Param "u")), body = Definition (Lam "x" (Sort (Param "u")) (BVar 0)))
     ]
     (** Each operator family is one pinned tree: its type former, its binary
         function and its constructor, renamed per operator. *)

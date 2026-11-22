@@ -8,3 +8,8 @@ repository.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+osprey-syntax.workspace = true
+osprey-types.workspace = true
+osprey-ast.workspace = true

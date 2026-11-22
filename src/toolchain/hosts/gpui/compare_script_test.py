@@ -21,12 +21,26 @@ STUB_HEADER = '#!/usr/bin/env bash\nset -euo pipefail\n. "$FIXTURE_BIN/_stub.sh"
 # The window stub answers with the reference's window number 4100 and the port's 4200, so each
 # capture is identifiable in the event log.
 WINDOW_STUB = """record probe "$1"
-if [ "$1" = painting-reference ] && [ "${FIXTURE_NO_REFERENCE:-0}" != 1 ]; then echo "4100 1000 700"; fi
-if [ "$1" = osprey-gpui ] && [ "${FIXTURE_NO_PORT_WINDOW:-0}" != 1 ]; then
-    if grep -q '^port-build-end' "$FIXTURE_EVENTS" && grep -q '^port-launch ' "$FIXTURE_EVENTS"; then
-        echo "4200 1000 700"
-    fi
-fi
+# A fast probe must not let the parent reap a child before it records its launch.
+await_launch() {
+    for _ in $(seq 1 100); do
+        grep -q "^$1-launch " "$FIXTURE_EVENTS" && return 0
+        "$FIXTURE_REAL_SLEEP" 0.02
+    done
+    return 1
+}
+case "$1" in
+    painting-reference)
+        await_launch reference
+        if [ "${FIXTURE_NO_REFERENCE:-0}" != 1 ]; then echo "4100 1000 700"; fi
+        ;;
+    osprey-gpui)
+        await_launch port
+        if [ "${FIXTURE_NO_PORT_WINDOW:-0}" != 1 ] && grep -q '^port-build-end' "$FIXTURE_EVENTS"; then
+            echo "4200 1000 700"
+        fi
+        ;;
+esac
 """
 
 # The port's entry point, as painting/run.sh behaves: it builds in both modes, exports the

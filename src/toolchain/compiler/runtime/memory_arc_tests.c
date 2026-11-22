@@ -148,11 +148,19 @@ static void t_wrapped_cluster(void) {
     CHECK(*arc_missed(key) != key);
     key += 8;
   }
+  // [MEM-ARC-RECENT] A member a lookup confirmed answers from the recent cache, a non-member
+  // twice from the missed cache, and removal clears the recent entry it leaves behind.
+  uintptr_t stranger = key;
+  CHECK(arc_lookup_body(keys[0]) == arc_hdr((void *)keys[0]) && *arc_recent(keys[0]) == keys[0]);
+  CHECK(arc_lookup_body(keys[0]) == arc_hdr((void *)keys[0]));
+  CHECK(arc_lookup_body(stranger) == NULL && *arc_missed(stranger) == stranger);
+  CHECK(arc_lookup_body(stranger) == NULL);
   for (size_t i = 0; i < 3; ++i) {
     CHECK(arc_find(keys[i]) == &g_tab[g_cap - 1]);
     arc_remove(arc_find(keys[i]));
     CHECK(arc_find(keys[i]) == NULL && g_present == 2 - i);
   }
+  CHECK(*arc_recent(keys[0]) != keys[0] && arc_lookup_body(keys[0]) == NULL);
 }
 
 int main(void) {

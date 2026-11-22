@@ -179,12 +179,22 @@ suite("workbench VSIX browser", () => {
       await press(frame, "Natural arithmetic");
       const picker = frame.getByRole("combobox", { name: "Theorem", exact: true });
       const selected = await picker.inputValue();
-      for (const [index, [symbol, background]] of [["moon", "rgb(255, 255, 255)"], ["sun.max", "rgb(41, 50, 45)"], ["moon", "rgb(255, 255, 255)"]].entries()) {
+      // [UI-COMPONENTS] A picker is a menu button: it shows the surface behind it,
+      // and its ink is the application's for the appearance in force.
+      const inks: string[] = [];
+      for (const [index, symbol] of ["moon", "sun.max", "moon"].entries()) {
         if (index > 0) await press(frame, "Switch appearance");
         await appearance(frame).locator(`[data-symbol="${symbol}"]`).waitFor();
-        assert.strictEqual(await picker.evaluate((node) => getComputedStyle(node).backgroundColor), background);
+        const drawn = await picker.evaluate((node) => {
+          const style = getComputedStyle(node);
+          return { ink: style.color, fill: style.backgroundColor };
+        });
+        assert.strictEqual(drawn.fill, "rgba(0, 0, 0, 0)", "the picker has no fill of its own");
+        inks.push(drawn.ink);
         assert.strictEqual(await picker.inputValue(), selected);
       }
+      assert.notStrictEqual(inks[1], inks[0], "the picker's ink follows the application's appearance");
+      assert.strictEqual(inks[2], inks[0], "switching back restores the first appearance's ink");
     }, "failure-field-appearance");
   });
 

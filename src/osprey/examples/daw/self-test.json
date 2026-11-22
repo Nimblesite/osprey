@@ -50,7 +50,7 @@
     {"gone": "Canvas Mixer 6"},
     {"invoke": "Redo"},
     {"wait": "Canvas Mixer 6"},
-    {"invoke": "Patch controls"},
+    {"invoke": "Patch Controls"},
     {"wait": "Add component"},
     {"choose": "Delay 5"},
     {"gone": "Connections"},

@@ -53,7 +53,9 @@ struct HostApp: App {
 // Launch arguments belong to the application; AppKit would otherwise read paths among them as documents to open, and open no window. A string, not a Boolean: the open panel service reads this default as text and crashes on any other type.
 UserDefaults.standard.set("NO", forKey: "NSTreatUnknownArgumentsAsOpen")
 
-let launch = HostLaunch.ready(from: Array(CommandLine.arguments.dropFirst()))
+let given = Array(CommandLine.arguments.dropFirst())
+// Registers the application's faces and resources folder; the self-test reads every given argument.
+_ = HostLaunch.ready(from: given)
 if CommandLine.arguments.contains("--open-check") {
     exit(MainActor.assumeIsolated { SelfCheck.opened() })
 }
@@ -62,7 +64,7 @@ if CommandLine.arguments.contains("--view-check") {
     exit(MainActor.assumeIsolated { SelfCheck.run() })
 }
 do {
-    if let options = try SelfTestOptions.parse(launch) {
+    if let options = try HostLaunch.selfTest(from: given) {
         MainActor.assumeIsolated { runSelfTest(options) }
     } else {
         HostApp.main()

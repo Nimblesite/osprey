@@ -202,6 +202,7 @@ module GraphClips
             true => scheduled (plan, clips, held, frames, remaining)
             false => Outcomes::carried (RenderInputs::component (plan, identity), \n => node (plan, clips, held, frames, n, remaining))
 
+    (** Prepare a render order that rejects cycles even through delay components. *)
     export ordered graph = Graphs::prepare (graph(nodes = mapList (graph.nodes, acyclic)))
 
     prepared (graph, clips, held, frames) = match Graphs::prepare graph

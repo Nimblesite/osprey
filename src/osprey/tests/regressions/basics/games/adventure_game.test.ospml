@@ -130,7 +130,7 @@ battleRound (banner, health) =
     print "${banner} ${playerDamage} damage!\nDragon health remaining: ${remaining}\n"
     remaining
 
-// Simulate battle rounds
+(** The dragon's remaining health after the first strike. *)
 remainingHealth1 = battleRound ("🥊 Round 1: You strike for", enemyHealth)
 remainingHealth2 = battleRound ("🥊 Round 2: Another powerful blow for", remainingHealth1)
 

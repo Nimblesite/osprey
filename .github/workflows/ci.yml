@@ -397,6 +397,10 @@ jobs:
         # no-op when the binary is present, so it needs no help succeeding.
         run: cargo install cargo-llvm-cov --locked
 
+      - name: Install DAW render tools
+        if: ${{ matrix.shard == 'rest' }}
+        run: sudo apt-get install -y ffmpeg xxd
+
       - name: Tests with coverage
         run: make _test_rust_shard RUST_SHARD=${{ matrix.shard }}
 
@@ -1092,9 +1096,9 @@ jobs:
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v7
-      # scripts/mobile/goldens.test.mjs decodes the LFS-stored phone golden; a pointer is not a picture.
-      - name: Fetch the Android phone goldens
-        run: git lfs install --local && git lfs pull --include="src/osprey/examples/tally/goldens/android/**"
+      # scripts/mobile/goldens.test.mjs and the Talon browser journey decode LFS-stored goldens; a pointer is not a picture.
+      - name: Fetch the Android phone and Talon browser goldens
+        run: git lfs install --local && git lfs pull --include="src/osprey/examples/tally/goldens/android/**,src/osprey/examples/talon/app/goldens/web/linux/**"
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -1332,6 +1336,7 @@ jobs:
             minutes: 5
             run: make -C src/toolchain/targets/tests qwen-pull-headless
           - part: Talon Bank
+            runner: macos-26
             minutes: 22
             run: make -C src/toolchain/targets/ios/tests bank
           - part: Workbench
@@ -1425,6 +1430,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Require successful coverage producers and package manager suites
+        id: producers
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
@@ -1442,17 +1448,17 @@ jobs:
           python3 scripts/ci/merge_lcov.py target/coverage/rust/{coverage-rust-packages,coverage-rust-workbench,coverage-rust-rest}/lcov.info > target/coverage/lcov.info.tmp
           mv target/coverage/lcov.info.tmp target/coverage/lcov.info
       - uses: actions/download-artifact@v8
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.producers.outcome == 'success' }}
         with:
           name: coverage-extension
           path: src/toolchain/vscode-extension/coverage/
       - uses: actions/download-artifact@v8
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.producers.outcome == 'success' }}
         with:
           name: coverage-packages
           path: target/coverage/packages/
       - uses: actions/download-artifact@v8
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.producers.outcome == 'success' }}
         with:
           name: coverage-c-runtime
           path: src/toolchain/compiler/bin/cov/
@@ -1462,15 +1468,15 @@ jobs:
         run: make _coverage_check_rust
 
       - name: VS Code extension thresholds
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.producers.outcome == 'success' }}
         run: make _coverage_check_vscode_extension
 
       - name: Package thresholds
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.producers.outcome == 'success' }}
         run: make _coverage_check_packages
 
       - name: C runtime thresholds
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.producers.outcome == 'success' }}
         run: make _coverage_check_c_runtime
 
       - name: Upload combined coverage

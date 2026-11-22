@@ -10,6 +10,7 @@ import {
   createRequestExecutor,
   type CapabilityHost,
 } from "../../client/src/osprey-ui/capabilities";
+import { unionKinds } from "./native-rows-kit";
 
 const HOST_CALL = 11;
 const HTTP = 10;
@@ -357,11 +358,7 @@ suite("package workspace capabilities", () => {
     // Every `Capability` constructor in src/osprey/packages/native/src/capability.ospml, as the encoder names it
     // ([NATIVE-HOSTS-COVERAGE]): a capability added to the framework fails here until this host answers or refuses it.
     const answered = new Set(ANSWERED_CAPABILITIES);
-    const source = fs.readFileSync(path.resolve(__dirname, "..", "..", "..", "..", "..", "osprey", "packages", "native", "src", "capability.ospml"), "utf8").replace(/\r/g, "");
-    const block = source.slice(source.indexOf("type Capability ="));
-    const body = block.slice(0, block.search(/\n\S/));
-    const kinds = [...body.matchAll(/^ {4}([A-Z]\w*)$/gm)].map((match) =>
-      match[1] === "ReadPropertyLists" ? "read-plists" : match[1].replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase());
+    const kinds = unionKinds("capability.ospml", "type Capability =", { ReadPropertyLists: "read-plists" });
     assert.strictEqual(kinds.length, 25, kinds.join(","));
     const refused = kinds.filter((kind) => !answered.has(kind));
     assert.deepStrictEqual([...answered, ...refused].sort(), [...kinds].sort());

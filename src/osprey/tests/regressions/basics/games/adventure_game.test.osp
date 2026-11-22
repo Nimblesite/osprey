@@ -132,7 +132,7 @@ fn battleRound(banner, health) = {
     remaining
 }
 
-// Simulate battle rounds
+/// The dragon's remaining health after the first strike.
 let remainingHealth1 = battleRound("🥊 Round 1: You strike for", enemyHealth)
 let remainingHealth2 = battleRound("🥊 Round 2: Another powerful blow for", remainingHealth1)
 

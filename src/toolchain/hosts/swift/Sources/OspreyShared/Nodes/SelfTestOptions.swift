@@ -32,6 +32,7 @@ public struct SelfTestOptions: Equatable {
                 options.script = try value(argument)
                 options.shots = try value(argument)
             case "--headless": options.headless = true
+            case "--resources": _ = try value(argument)
             case "--update-goldens": options.updateGoldens = true
             case "--goldens": options.goldens = try value(argument)
             case "--http-double": options.httpDouble = try value(argument)
@@ -162,8 +163,9 @@ public struct SelfTestRegions {
         for exact in [true, false] {
             for field in ["tabs", "rows", "choices"] {
                 for (key, root) in nodes {
+                    // A tab is named by its label, never by the words of its page; a list row's words are its child.
                     let wanted = { (row: Tree) in
-                        Self.holds(row.without("child"), words) && (!exact || row.text("label") == words || row.text("label").hasSuffix(" · " + words) || row.text("key") == words)
+                        Self.holds(field == "tabs" ? row.without("child") : row, words) && (!exact || row.text("label") == words || row.text("label").hasSuffix(" · " + words) || row.text("key") == words)
                     }
                     let named = { (node: Tree) in picker.map { node.text("label") == $0 || node.text("title") == $0 } ?? true }
                     guard let node = Self.find(root, { $0["event"]?.int != nil && named($0) && $0.list(field).contains(where: wanted) }) else { continue }

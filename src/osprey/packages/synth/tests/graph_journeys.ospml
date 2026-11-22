@@ -48,6 +48,8 @@ refused (outcome, expected) = match outcome
 
 monoPort (name, rate, unit) = synth::Port(name = name, rate = rate, channels = 1, unit = unit)
 
+audioClipFixture (identity, channels, samples) = synth::NodeClip(clipNode = identity, clipChannels = channels, clipSamples = samples, clipNotes = [])
+
 missingPort () = synth::Port(name = "missing", rate = synth::Audio, channels = 0, unit = synth::Amplitude)
 
 node (identity, processor, inputs, outputs) = synth::Node(identity = identity, processor = processor, inputs = inputs, outputs = outputs, parameters = [])
@@ -325,7 +327,7 @@ clipFrom (clips, identity) = match synth::ClipInputs::completed (clips, identity
     Success clip => clip
     Error why =>
         expect (synth::Faults::detail why, "a rendered node clip")
-        synth::NodeClip(clipNode = identity, clipChannels = 0, clipSamples = [], clipNotes = [])
+        audioClipFixture (identity, 0, [])
 
 channelOf (clip, frame, channel) = listGet clip.clipSamples (satAdd (satMul frame clip.clipChannels) channel) ?: 999.0
 
