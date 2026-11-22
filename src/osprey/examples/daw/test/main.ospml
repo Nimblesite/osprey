@@ -469,6 +469,8 @@ test ("a larger window drops the keyboard and moves the inspector at their size,
 
 test ("a patch opened in its own window keeps its inspector in that window however the song window is sized", \() => Runtime::guarded (\() => hosted detachedRoomJourney))
 
+test ("a module chosen on the main window's Patch page shows its properties in the docked panel, never on the canvas", \() => Runtime::guarded (\() => hosted mainPanelJourney))
+
 test ("launched with a player, every key hands its own clip to that player alone and the controls stay silent", \() => bench (\() =>
     begunWithPlayer ()
     silent ()

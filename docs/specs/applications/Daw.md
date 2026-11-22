@@ -262,7 +262,7 @@ The daw answers Open Sound Control over UDP, so a control surface, a lighting de
 
 ## The inspector [DAW-INSPECTOR]
 
-Selecting a module shows it in the inspector on the canvas: its name and a slider for each parameter with its value and unit. Connect and disconnect cables on the canvas. Right-click a node and choose **Delete node** to remove it. File → Settings stores the VST3 folder. Prism discovers its plug-ins in the background on launch and when the folder changes. A press or a drag on a slider sets the parameter, as one undoable edit. This is the same for a module the skin draws and for one it does not.
+Selecting a module shows it in the patch panel docked beside the canvas, never on the canvas itself: its name and a dial for each parameter with its value and unit. The panel's Close puts it away and lets go of the module. Connect and disconnect cables on the canvas. Right-click a node and choose **Delete node** to remove it. File → Settings stores the VST3 folder. Prism discovers its plug-ins in the background on launch and when the folder changes. A press or a drag on a slider sets the parameter, as one undoable edit. This is the same for a module the skin draws and for one it does not.
 
 ## Pages [DAW-PAGES]
 

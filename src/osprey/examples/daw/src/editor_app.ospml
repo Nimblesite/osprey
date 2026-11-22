@@ -35,7 +35,7 @@ module EditorApp
 
     tapped (context, editor, action) = match action
         ShowModules => patchTool (editor, editor(paletteShown = !(patchVisible editor) || !editor.paletteShown))
-        ShowDetails => patchTool (editor, editor(detailsShown = !(patchVisible editor) || !editor.detailsShown))
+        ShowDetails => patchTool (editor, ui::Pick::either (patchVisible editor && (EditorView::paneled editor).detailsShown, editor(detailsShown = false, selected = -1), editor(detailsShown = true)))
         ShowKeyboard => patchTool (editor, editor(keyboardShown = !(patchVisible editor) || !editor.keyboardShown, armedNote = -1))
         Undo => DawSession::restored (editor, EditorHistory::undo editor)
         Redo => DawSession::restored (editor, EditorHistory::redo editor)
@@ -300,13 +300,15 @@ module EditorApp
     controlled (context, editor, action, input) = match action
         Keyboard => ui::Inputs::route (input, \(_, _) => Runtime::step editor, \(x, y, down, _) => dockPointer (context, editor, x, y, down), \(w, _) => Runtime::step (editor(keyboardWidth = w)), \(_, _) => Runtime::step editor)
         PatchSurface =>
-            patch = EditorView::patchWindow editor
+            patch = EditorView::paneled (editor(page = PatchPage))
             moved = surfaced (context, patch, input, \(w, h) => viewed (patch, w, h))
-            next = moved.stepStore
-            moved(stepStore = next(page = editor.page, detailsShown = editor.detailsShown))
+            next = EditorView::unpaneled (editor, moved.stepStore)
+            moved(stepStore = next(page = editor.page))
         Surface => match patchApart editor
             true => surfaced (context, editor, input, \(w, h) => Runtime::step (editor(songWidth = w, songHeight = h)))
-            false => surface (context, editor, input)
+            false =>
+                moved = surface (context, EditorView::paneled editor, input)
+                moved(stepStore = EditorView::unpaneled (editor, moved.stepStore))
         Controls => dialInput (editor, input)
         _ => Runtime::step editor
 

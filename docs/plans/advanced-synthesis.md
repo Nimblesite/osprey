@@ -351,6 +351,24 @@ Added on request after the families: a piano-roll project file rendered offline 
 - [ ] Playback on Windows and Linux; `afplay` is macOS only.
 - [ ] Detect an intro's tempo and key instead of measuring them by hand.
 
+### Every processing point is a pluggable effect [SYNTH-ARRANGEMENT-EFFECTS]
+
+Deferred until #427 is merged and the user approves; the repository is in stabilisation mode. Every place in the synth and the daw that processes a signal becomes an operation of an Osprey effect, so a handler supplies the processing. Examples are summing onto a bus, gain, pan, envelopes, filters, waveshaping, delays and the master stage. The default handler calls today's kernels (`ArrangeMath.bused`, `panLeft`, `panRight`, `enveloped`, `synth::Limiters` and others), so rendered output stays identical and the production proofs in [SYNTH-DSP-PROOFS](../specs/runtime/Synthesis.md) still describe the default.
+
+An analog summing handler replaces the plain weighted sum at the mixing operation. A console's nonlinear stages sit in fixed places: a gentle curve on each channel before the sum, and a summing-amplifier and transformer curve on the bus after it. Placement matters because saturation does not commute with addition (sat(a) + sat(b) ≠ sat(a + b)): only bus saturation makes sources intermodulate. The handler models:
+
+- channel and bus saturation, slightly asymmetric for even harmonics, built from the antialiased `Waveshapers` and the oversamplers;
+- band limits: a one-pole high-pass near 10–20 Hz (coupling capacitors and transformers) and a low-pass near 30–80 kHz (amplifier bandwidth);
+- noise that rises with the number of summed channels (op-amp noise gain), seeded for deterministic renders;
+- channel gain tolerances near ±1 % and small crosstalk;
+- rail clipping and slew limiting when the bus is driven hard.
+
+Each drive defaults to zero, which reproduces the clean sum exactly. The linear core keeps the mixing proofs (`mixSuperposition`, `mixPower`, `panEqualPower`); every nonlinear stage needs its own proof, as the waveshaper stages already have.
+
+- [ ] List every processing call site in `@osprey/synth` and the daw, and declare one effect per kind of processing.
+- [ ] Route each call site through its effect with a default handler that is byte-identical to the current output on the existing goldens.
+- [ ] Write the analog summing handler, with a test that sat(a) + sat(b) differs from sat(a + b) and that zero drive equals the plain sum.
+
 ## Deferred acceptance checklist [SYNTH-ADVANCED-VERIFY]
 
 Testing resumed on 21 November 2026. Record results for the stated workload, backend and host before checking each gate.

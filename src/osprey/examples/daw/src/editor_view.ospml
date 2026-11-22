@@ -213,11 +213,11 @@ module EditorView
     nodeOrder editor = listConcat (filterList (editor.graph.nodes, \n => n.identity != editor.selected)) (filterList (editor.graph.nodes, \n => n.identity == editor.selected))
 
     (** Hit testing follows complete card layers, so covered controls cannot steal a click. *)
-    export nodeAt (editor, px, py) = match graphArea (editor, px, py)
+    export nodeAt (editor, px, py) = match graphArea (editor, py)
         true => cardAt (editor, px, py)
         false => -1
 
-    graphArea (editor, px, py) = py >= 66.0 && py < 789.0 + ui::Machines::number (editor.skin, "spareHeight") && (editor.detailsShown || editor.selected < 0 || px < rightX (editor, 1210.0))
+    graphArea (editor, py) = py >= 66.0 && py < 789.0 + ui::Machines::number (editor.skin, "spareHeight")
 
     cardAt (editor, px, py) = foldList (nodeOrder editor, -1, \(found, n) =>
         at = EditorLayout::position (editor, n.identity)
@@ -296,11 +296,9 @@ module EditorView
         true => CableCanvas::drag (editor, px, py, down)
         false => ordinaryPointer (editor, px, py, down)
 
-    ordinaryPointer (editor, px, py, down) = match ModuleInspector::pointed (editor, px, py, down)
-        Success next => next
-        Error _ => match editor.dragging >= 0 || editor.paletteDrag != "" || graphArea (editor, px, py)
-            true => canvasPointer (editor, px, py, down)
-            false => editor
+    ordinaryPointer (editor, px, py, down) = match editor.dragging >= 0 || editor.paletteDrag != "" || graphArea (editor, py)
+        true => canvasPointer (editor, px, py, down)
+        false => editor
 
     canvasPointer (editor, px, py, down) = match editor.paletteDrag != ""
         true => match down
@@ -440,15 +438,14 @@ module EditorView
         library = match editor.paletteShown || editor.paletteDrag != ""
             true => mapList (palette (), \primitive => Header::placedShape (primitive, 0.0, 0.0, satMul (satAdd (length ordered) 1) 100))
             false => []
-        details = ModuleInspector::shapes editor
-        chrome = listConcat details (listAppend (toolbar editor) (text (editor.message, 32.0, 767.0, 12.0, 170, 12)))
+        chrome = listAppend (toolbar editor) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))
         shapes = ui::Lists::flatten [(CardArts::scenery editor).artShapes, CableCanvas::shapes editor, nodes, mapList (chrome, \item => Header::placedShape (item, 0.0, 0.0, PrismArt::chromeLayer editor)), library, NodeContext::shapes editor]
         scene = Ui::zoomed (pageZoom, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, ui::Pick::either (editor.patchWindowSerial > 0, PatchSurface, Surface))
         access = listConcat (toolbarItems editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) (CardArts::controls (editor, n)))))
         extra = match editor.paletteShown
             true => paletteAccess ()
             false => []
-        Ui::described (scene, listConcat (listConcat access (CableCanvas::access editor)) (listConcat extra (listConcat (ModuleInspector::access editor) (NodeContext::access editor))))
+        Ui::described (scene, listConcat (listConcat access (CableCanvas::access editor)) (listConcat extra (NodeContext::access editor)))
 
     inspector editor =
         style = ui::Frames::inset (16, 12, 16, 12)
@@ -491,12 +488,17 @@ module EditorView
         panel = Ui::framed (frame(frameGrow = true), content)
         Ui::row [ui::Spacer, Ui::framed (frame(frameWidth = 310), Ui::column [header, panel])]
 
-    root () = content (editorSlice ())
+    root () = content (paneled (editorSlice ()))
 
-    detached () = content (patchWindow (editorSlice ()))
+    detached () =
+        editor = editorSlice ()
+        content (paneled (editor(page = PatchPage)))
 
-    (** [DAW-PAGES-PATCH-WINDOW] The patch window's view: its Patch page, with the chosen module's properties in the patch panel docked beside the canvas. *)
-    export patchWindow editor = editor(page = PatchPage, detailsShown = editor.detailsShown || editor.selected >= 0)
+    (** [DAW-INSPECTOR] A Patch page shows the chosen module's properties in the patch panel docked beside the canvas, never on the canvas. *)
+    export paneled editor = editor(detailsShown = editor.detailsShown || editor.selected >= 0)
+
+    (** The stored editor after a step taken on its paneled view: the panel stays as stored unless the step itself opened or closed it. *)
+    export unpaneled (before, after) = after(detailsShown = ui::Pick::either (after.detailsShown == (paneled before).detailsShown, before.detailsShown, after.detailsShown))
 
     content editor =
         match editor.outputEdit

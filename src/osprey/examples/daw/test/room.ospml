@@ -880,24 +880,48 @@ sceneCount (d, wanted) = length (filterList (d.drivenSeen.renderedScenes, \ordin
 // A press and release on the patch window's canvas.
 patchClick (d, x, y) = sceneEvent (sceneEvent (d, synth::PatchSurface, ui::Hosting::pointer, x, y, true), synth::PatchSurface, ui::Hosting::pointer, x, y, false)
 
-// A label the chosen Gain module's properties or the canvas would carry.
-moduleProperty label = startsWith label "Inspector" || startsWith label "Gain 2 " || startsWith label "Canvas "
+// A label only the properties of the Gain module `identity` carry: the skin's canvas inspector or a dial named after the module.
+moduleProperty (label, identity) = startsWith label "Inspector" || startsWith label "Gain ${identity} "
 
-// [DAW-PAGES-PATCH-WINDOW] A module chosen on the patch window's canvas shows its properties in the patch panel
-// docked in that window, never on the song window, and choosing the canvas's empty space puts the panel away.
-panelShowsChosen d =
+// The keys track's Gain card chosen with a press and release on the Patch page the `wanted` scene draws: its
+// properties are in the docked patch panel and nowhere on that canvas; `check` goes on from there.
+chooseGain (d, wanted, identity, check) =
     expect (sceneCount (d, synth::Controls), 0)
     viewShows (d, "Parameters", false)
-    cards = filterList (sceneAccess (d, synth::PatchSurface), \a => startsWith a.accessLabel "Canvas " && !contains a.accessLabel ":")
+    cards = filterList (sceneAccess (d, wanted), \a => startsWith a.accessLabel "Canvas " && !contains a.accessLabel ":")
     expect (length cards, 3)
     reads (listGet (filterList (cards, \a => startsWith a.accessLabel "Canvas Gain")) 0, \card =>
-        chosen = patchClick (d, card.accessLeft + card.accessWidth / 2.0, card.accessTop + 16.0)
-        expect ((Drive::holding chosen).selected, 2)
+        x = card.accessLeft + card.accessWidth / 2.0
+        y = card.accessTop + 16.0
+        chosen = sceneEvent (sceneEvent (d, wanted, ui::Hosting::pointer, x, y, true), wanted, ui::Hosting::pointer, x, y, false)
+        expect ((Drive::holding chosen).selected, identity)
         expect ((Drive::holding chosen).detailsShown, false)
         expect (sceneCount (chosen, synth::Controls), 1)
         viewShows (chosen, "Parameters", true)
         reads (dialOf (chosen, "Gain"), \dial => expect (dial.accessWidth > 0.0, true))
-        expect ((Drive::holding chosen).page, synth::TimelinePage)
-        song = sceneAccess (chosen, synth::Surface)
-        expect (length (filterList (song, \a => startsWith a.accessLabel "Track ")) > 0, true)
-        expect (mapList (filterList (song, \a => moduleProperty a.accessLabel), \a => a.accessLabel), []))
+        expect (mapList (filterList (sceneAccess (chosen, wanted), \a => moduleProperty (a.accessLabel, identity)), \a => a.accessLabel), [])
+        check chosen)
+
+// [DAW-PAGES-PATCH-WINDOW] A module chosen on the patch window's canvas shows its properties in the patch panel
+// docked in that window, never on the song window.
+panelShowsChosen d = chooseGain (d, synth::PatchSurface, 2, \chosen =>
+    expect ((Drive::holding chosen).page, synth::TimelinePage)
+    song = sceneAccess (chosen, synth::Surface)
+    expect (length (filterList (song, \a => startsWith a.accessLabel "Track ")) > 0, true)
+    expect (mapList (filterList (song, \a => moduleProperty (a.accessLabel, 2) || startsWith a.accessLabel "Canvas "), \a => a.accessLabel), []))
+
+// [DAW-INSPECTOR] On the main window's Patch page a chosen module's properties are in the docked patch panel,
+// never drawn on the canvas; the panel's Close puts it away and lets go of the module.
+mainPanelJourney () =
+    built = patched ["sine", "gain", "output"]
+    expect ((Drive::holding built).page, synth::PatchPage)
+    expect ((Drive::holding built).patchWindowSerial, 0)
+    closed = Drive::press (built, "Close")
+    expect ((Drive::holding closed).selected, -1)
+    expect ((Drive::holding closed).detailsShown, false)
+    chooseGain (closed, synth::Surface, 1, \chosen =>
+        again = Drive::press (chosen, "Close")
+        expect ((Drive::holding again).selected, -1)
+        expect ((Drive::holding again).detailsShown, false)
+        expect (sceneCount (again, synth::Controls), 0)
+        viewShows (again, "Parameters", false))

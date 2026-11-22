@@ -264,7 +264,7 @@ module PrismArt
     (** Original controls are scoped to an independently positioned graph node. *)
     export sliders (editor, n) = match role n.processor
         "custom" => []
-        _ => filterList (ui::Canvases::semantics (prepared (editor, n)), \a => (!inspectorArea a || (!editor.detailsShown && editor.selected == n.identity)) && supports (n, a))
+        _ => filterList (ui::Canvases::semantics (prepared (editor, n)), \a => !inspectorArea a && supports (n, a))
 
     sliderAt (editor, n, px, py) = length (filterList (CardArts::controls (editor, n), \a => px >= a.accessLeft && px <= a.accessLeft + a.accessWidth && py >= a.accessTop && py <= a.accessTop + a.accessHeight)) > 0
 
