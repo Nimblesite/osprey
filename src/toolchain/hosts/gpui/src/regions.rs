@@ -76,6 +76,13 @@ impl Regions {
         (regions, controls)
     }
 
+    pub fn detached(&self) -> Option<String> {
+        self.regions
+            .keys()
+            .find(|key| key.starts_with("window:"))
+            .cloned()
+    }
+
     /// The region drawn under `key`, if the frame told it.
     pub fn get(&self, key: &str) -> Option<&Region> {
         self.regions.get(key)

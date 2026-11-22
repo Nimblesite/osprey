@@ -20,22 +20,21 @@ module Lists
 
     (** The first item that `matches`, or an error when none does. *)
     export find<T> : (List<T>, (T) -> bool) -> Result<T, string>
-    find (items, matches) = match listGet (filterList (items, matches)) 0
+    find (items, matches) = match listGet items (position (items, matches))
         Error _ => Error(message = "index out of bounds")
         Success item => Success(value = item)
 
-    locate<T> : (int, List<T>, (T) -> bool, int) -> int
-    locate (found, items, matches, index) = match found >= 0
-        true => found
-        false => match listGet items index
-            Success item => match matches item
-                true => index
-                false => found
-            Error _ => found
+    // Stops at the first match: no list of the matches is built ([DAW-PERF-ROUND]).
+    sought<T> : (List<T>, (T) -> bool, int) -> int
+    sought (items, matches, index) = match listGet items index
+        Error _ => 0 - 1
+        Success item => match matches item
+            true => index
+            false => sought (items, matches, satAdd index 1)
 
     (** The index of the first item that matches, or -1. *)
     export position<T> : (List<T>, (T) -> bool) -> int
-    position (items, matches) = range (0, length items) |> fold (0 - 1) (\(found, index) => locate (found, items, matches, index))
+    position (items, matches) = sought (items, matches, 0)
 
     (** The launch argument after `flag`, or `otherwise` when `flag` is absent or last. *)
     export after (arguments, flag, otherwise) =
@@ -54,7 +53,15 @@ module Lists
 
     (** The groups' items in order, as one list. *)
     export flatten<T> : List<List<T>> -> List<T>
-    flatten groups = range (0, length groups) |> fold [] (\(out, index) => listConcat out (listGet groups index ?: []))
+    flatten groups = spanned (groups, 0, length groups)
+
+    // The groups from `start` up to `stop` as one list, joined by halves: an item is copied once per halving,
+    // not once per group after it.
+    spanned (groups, start, stop) = match satSub stop start < 2
+        true => listGet groups start ?: []
+        false =>
+            middle = satAdd start (intDiv (satSub stop start) 2)
+            listConcat (spanned (groups, start, middle)) (spanned (groups, middle, stop))
 
     (** The items from index `start` up to but excluding `stop`; indexes past the end contribute nothing. *)
     export slice<T> : (List<T>, int, int) -> List<T>

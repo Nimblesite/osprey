@@ -18,10 +18,8 @@ struct SharedTransform {
     /// The region's size in scene units, which the application is told when it changes.
     let viewed: (width: Double, height: Double)
 
-    /// Places the scene at its fixed `zoom`, or with zoom 0 as large as fits the region whole;
-    /// a fixed zoom never magnifies the scene past what its region fits whole either, so a
-    /// narrow window sees the whole artboard instead of clipping it. A zero-sized scene is in
-    /// window pixels.
+    /// A negative zoom fixes the scale, zero fits the scene, and positive zoom caps the fit.
+    /// A zero-sized scene is in window pixels.
     init(size: CGSize, scene: SharedScene) {
         guard scene.width > 0, scene.height > 0 else {
             scale = 1
@@ -29,7 +27,7 @@ struct SharedTransform {
             return
         }
         let fit = min(size.width / scene.width, size.height / scene.height)
-        let chosen = scene.zoom == 0 ? fit : min(scene.zoom, fit)
+        let chosen = scene.zoom < 0 ? -scene.zoom : scene.zoom == 0 ? fit : min(scene.zoom, fit)
         scale = CGFloat(chosen)
         viewed = (size.width / chosen, size.height / chosen)
     }

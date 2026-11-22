@@ -1,1 +1,3 @@
 unreachable match arm: an earlier catch-all already covers every case
+unreachable match arm: earlier arms cover every value `Node(Leaf, Leaf)` matches
+unreachable match arm: earlier arms cover every value `Error { message: Success { value: 7 } }` matches

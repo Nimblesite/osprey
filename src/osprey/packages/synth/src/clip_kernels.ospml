@@ -10,7 +10,7 @@ module ClipKernels
             Success clip => match ClipInputs::sourceChannel (plan.graph, cable, channel)
                 Error why => Error(message = why)
                 Success selected => match listGet clip.clipSamples (satAdd (satMul index clip.clipChannels) selected)
-                    Error _ => Error(message = "index out of bounds")
+                    Error _ => Error(message = MissingResource(detail = "index out of bounds"))
                     Success sample => Success(value = listAppend values (NodeSample(identity = cable.source, value = sample)))
 
     delay (plan, n, frame) = match n.processor
@@ -19,42 +19,34 @@ module ClipKernels
 
     retained (n, frame, samples) = match RenderInputs::held (frame, n.identity)
         Error why => Error(message = why)
-        Success held => match RenderInputs::sample (frame, n.identity)
-            Error why => Error(message = why)
-            Success sample => Success(value = ClipKernel(heldKernel = held, kernelSamples = listPrepend samples sample))
+        Success held => Outcomes::carried (RenderInputs::sample (frame, n.identity), \sample => Success(value = ClipKernel(heldKernel = held, kernelSamples = listPrepend samples sample)))
 
     rendered (plan, snapshot, n, held, values) =
         frame = SampleFrame(states = [held.heldKernel], values = values)
         match RenderKernels::step (plan, 48000.0, snapshot, frame, n.identity)
             Error why => Error(message = why)
-            Success next => match delay (plan, n, next)
-                Error why => Error(message = why)
-                Success finished => retained (n, finished, held.kernelSamples)
+            Success next => Outcomes::carried (delay (plan, n, next), \finished => retained (n, finished, held.kernelSamples))
 
     sample (plan, snapshot, clips, cables, n, channel, outcome, index) = match outcome
         Error why => Error(message = why)
-        Success held => match foldList (cables, Success(value = []), \(values, cable) => source (plan, clips, index, channel, values, cable))
-            Error why => Error(message = why)
-            Success values => rendered (plan, snapshot, n, held, values)
+        Success held => Outcomes::carried (foldList (cables, Success(value = []), \(values, cable) => source (plan, clips, index, channel, values, cable)), \values => rendered (plan, snapshot, n, held, values))
 
     channel (plan, snapshot, clips, n, frames, states, outcome, channel) = match outcome
         Error why => Error(message = why)
         Success buffers => match listGet states channel
-            Error _ => Error(message = "index out of bounds")
+            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
             Success saved =>
                 initial = ClipKernel(heldKernel = saved, kernelSamples = [])
                 // [SYNTH-HOST-GRAPH] The frozen block has one cable set per channel, not per sample.
                 cables = filterList (plan.graph.cables, \c => c.destination == n.identity)
-                match foldList (toList (range (0, frames)), Success(value = initial), \(held, index) => sample (plan, snapshot, clips, cables, n, channel, held, index))
-                    Error why => Error(message = why)
-                    Success result => Success(value = listAppend buffers (result(kernelSamples = listReverse result.kernelSamples)))
+                Outcomes::carried (foldList (toList (range (0, frames)), Success(value = initial), \(held, index) => sample (plan, snapshot, clips, cables, n, channel, held, index)), \result => Success(value = listAppend buffers (result(kernelSamples = listReverse result.kernelSamples))))
 
     interleave (buffers, channels, outcome, index) = match outcome
         Error why => Error(message = why)
         Success samples => match listGet buffers (index % channels)
-            Error _ => Error(message = "index out of bounds")
+            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
             Success channel => match listGet channel.kernelSamples (intDiv index channels)
-                Error _ => Error(message = "index out of bounds")
+                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
                 Success sample => Success(value = listPrepend samples sample)
 
     capacity (frames, channels) = channels >= 1 && channels <= 64 && frames > 0 && satMul frames channels <= 65536
@@ -65,22 +57,18 @@ module ClipKernels
         snapshot = Parameters::initial (graph(nodes = [n]))
         match foldList (toList (range (0, length states)), Success(value = []), \(outcome, index) => channel (plan, snapshot, clips, n, frames, states, outcome, index))
             Error why => Error(message = why)
-            Success buffers => match foldList (toList (range (0, satMul frames (length states))), Success(value = []), \(outcome, index) => interleave (buffers, length states, outcome, index))
-                Error why => Error(message = why)
-                Success reversed => Success(value = ClipKernel(heldKernel = mapList (buffers, \buffer => buffer.heldKernel), kernelSamples = listReverse reversed))
+            Success buffers => Outcomes::carried (foldList (toList (range (0, satMul frames (length states))), Success(value = []), \(outcome, index) => interleave (buffers, length states, outcome, index)), \reversed => Success(value = ClipKernel(heldKernel = mapList (buffers, \buffer => buffer.heldKernel), kernelSamples = listReverse reversed)))
 
     (** Continue each channel's DSP state across blocks. Allocation remains outside a device callback. *)
     export block (plan, clips, n, frames, states) = match capacity (frames, length states) && length (filterList (plan.graph.nodes, \component => structuralEquals (component, n))) == 1 && length (filterList (states, \held => held.identity == n.identity)) == length states
-        false => Error(message = "The kernel block has invalid capacity, component or state identities.")
+        false => Error(message = InvalidConfiguration(detail = "The kernel block has invalid capacity, component or state identities."))
         true => match ClipLayouts::channels n
             Error why => Error(message = why)
             Success count => match count == length states
-                false => Error(message = "Kernel state channels differ from the component layout.")
+                false => Error(message = IncompatibleLayout(detail = "Kernel state channels differ from the component layout."))
                 true => continued (plan, clips, n, frames, states)
 
     (** Independent per-channel state preserves oscillator, filter and delay behavior. *)
     export render (plan, clips, n, frames, channels) = match capacity (frames, channels)
-        false => Error(message = "The graph clip exceeds its channel or frame capacity.")
-        true => match block (plan, clips, n, frames, mapList (toList (range (0, channels)), \_ => RenderInputs::initialState n))
-            Error why => Error(message = why)
-            Success rendered => Success(value = rendered.kernelSamples)
+        false => Error(message = ExhaustedCapacity(detail = "The graph clip exceeds its channel or frame capacity."))
+        true => Outcomes::carried (block (plan, clips, n, frames, mapList (toList (range (0, channels)), \_ => RenderInputs::initialState n)), \rendered => Success(value = rendered.kernelSamples))

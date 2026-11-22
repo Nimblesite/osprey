@@ -114,7 +114,7 @@ pub fn unused_symbols(program: &Program) -> Vec<UnusedSymbol> {
         bindings: Vec::new(),
         scope: Vec::new(),
         method_reads: method_reads(program, &types.methods),
-        constructors: types.ctors.into_keys().collect(),
+        constructors: types.ctors.keys().cloned().collect(),
     };
     let owner = Owner {
         name: "",

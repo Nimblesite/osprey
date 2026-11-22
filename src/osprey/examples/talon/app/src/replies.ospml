@@ -1,0 +1,44 @@
+// Implements [UI-EFFECTS] for Talon Bank: a completed request's reply, read from the host-held
+// slice its ticket names. Listings replace what the store holds; a mutation reports its outcome
+// and fetches both listings again, so every screen shows the ledger as it now stands.
+namespace talon
+
+import ui::Runtime
+import talon::Ledger
+import talon::Update
+
+(** How Talon Bank answers each completed request. *)
+module Replies
+    body ticket = perform ui::Slices.fetch ticket
+
+    settled store = match store.bankLoads > 0
+        true => store(bankLoads = satSub store.bankLoads 1)
+        false => store
+
+    unavailable (store, what) =
+        held = settled store
+        held(bankNotice = Notice(noticeTone = "danger", noticeHeading = "Bank data unavailable", noticeDetail = "The ${what} request failed. Refresh to try again."))
+
+    listed (store, outcome, fill) = match Ledger::ok outcome
+        true => Runtime::step (fill (settled store))
+        false => Runtime::step (unavailable (store, "listing"))
+
+    done ticket = match ticket
+        "open" => "Account opened"
+        "deposit" => "Deposit complete"
+        "withdraw" => "Withdrawal complete"
+        _ => "Transfer complete"
+
+    // A mutation's outcome, then both listings again: refused or not, the journal changed.
+    mutated (store, ticket, outcome) =
+        idle = store(bankBusy = false)
+        next = match Ledger::ok outcome
+            true => idle(bankOpening = false, bankNotice = Notice(noticeTone = "good", noticeHeading = done ticket, noticeDetail = "The ledger and activity journal are now up to date."))
+            false => idle(bankNotice = Notice(noticeTone = "danger", noticeHeading = "Operation refused", noticeDetail = Ledger::refusal (body ticket, Ledger::status outcome)))
+        Update::hydrate next
+
+    (** Applies the reply to the request under `ticket`. *)
+    export completed (store, ticket, outcome) = match ticket
+        "accounts" => listed (store, outcome, \held => held(bankAccounts = Ledger::accounts (body ticket)))
+        "activity" => listed (store, outcome, \held => held(bankJournal = Ledger::journal (body ticket)))
+        _ => mutated (store, ticket, outcome)

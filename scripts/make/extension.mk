@@ -42,11 +42,13 @@ REGISTRY_CLIENT_SOURCES := $(shell find src/osprey/packages/manager -type f \( -
 target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
 	$(BIN) build src/osprey/packages/manager/cli --quiet --no-warnings -o $@
 
-PACKAGE_WORKSPACE_SOURCES := $(shell find src/osprey/packages/manager/editor src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
+NATIVE_HOST_ENTRY := src/osprey/packages/native/host/entry.ospml
+
+PACKAGE_WORKSPACE_SOURCES := $(NATIVE_HOST_ENTRY) $(shell find src/osprey/packages/manager/editor src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
 target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm
 	$(BIN) build src/osprey/packages/manager/editor --target=wasm32 --quiet --no-warnings -o $@
 
-WORKBENCH_SOURCES := src/osprey/workbench/osprey.toml $(shell find src/osprey/workbench/src src/osprey/examples/proof/kernel/src src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f -name '*.ospml')
+WORKBENCH_SOURCES := $(NATIVE_HOST_ENTRY) src/osprey/workbench/osprey.toml $(shell find src/osprey/workbench/src src/osprey/examples/proof/kernel/src src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f -name '*.ospml')
 target/workbench.wasm: $(BIN) $(WORKBENCH_SOURCES) | _runtime_wasm
 	$(BIN) build src/osprey/workbench --target=wasm32 --quiet --no-warnings -o $@
 
@@ -69,7 +71,7 @@ target/local-registry.stamp: target/osprey-pkg scripts/packages/stage-local-regi
 	scripts/packages/stage-local-registry.sh target/osprey-pkg target/local-registry
 	@touch $@
 
-_vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/osprey-registry target/workbench.wasm
+_vsix_bundle: target/osprey-pkg target/local-registry.stamp target/package-workspace.wasm target/osprey-registry target/workbench.wasm
 	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey$(EXE)"; \
 	cp target/osprey-pkg "$$DEST/osprey-pkg$(EXE)"; \
@@ -100,7 +102,7 @@ _vsix_verify:
 	done
 	diff -qr src/osprey/workbench/lessons "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/lessons"
 	diff -qr -x lessons -x osprey-logo.png -x proof-libraries src/osprey/workbench/assets "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench"
-	python3 scripts/proof/workbench-proof-assets.py "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench" --check
+	scripts/proof/workbench-proof-assets.py "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench" --check
 	cmp src/toolchain/website/src/assets/images/logo.png "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/osprey-logo.png"
 	cd $(EXT_DIR) && node scripts/verify-package-client.mjs
 

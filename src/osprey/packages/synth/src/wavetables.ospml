@@ -1,0 +1,121 @@
+// [SYNTH-ADVANCED-TABLES] Prepared wavetable banks: spectra become octave mip levels, each exactly bandlimited.
+namespace synth
+
+(** Build outside rendering; playback picks the richest level whose top harmonic stays below 0.45 of the rate. *)
+module Wavetables
+    // Pair amplitudes with phases; unequal lengths leave the shorter count, which preparation rejects.
+    harmonics (amplitudes, phases, number) = match amplitudes
+        [] => []
+        [amplitude, ...moreAmplitudes] => match phases
+            [] => []
+            [phase, ...morePhases] => listPrepend (harmonics (moreAmplitudes, morePhases, satAdd number 1)) (TableHarmonic(number = number, amplitude = amplitude, phase = phase))
+
+    value (partials, position, base) = foldList (partials, base, \(total, h) => total + TableMath::harmonic (h.amplitude, toFloat h.number, h.phase, position))
+
+    // Add only the new harmonics to the preceding level, in their original order.
+    bank (partials, indices, size, limit) = match limit == 1
+        true =>
+            first = filterList (partials, \h => h.number == 1)
+            samples = mapList (indices, \i => value (first, toFloat i / toFloat size, 0.0))
+            { full = TableLevel(harmonics = 1, samples = samples), lower = [] }
+        false =>
+            prior = bank (partials, indices, size, intDiv limit 2)
+            last = prior.full
+            extra = filterList (partials, \h => h.number > last.harmonics && h.number <= limit)
+            samples = match extra
+                [] => last.samples
+                _ => mapList (indices, \i => value (extra, toFloat i / toFloat size, listGet last.samples i ?: 0.0))
+            { full = TableLevel(harmonics = limit, samples = samples), lower = listPrepend prior.lower last }
+
+    peak samples = foldList (samples, 0.0, \(highest, sample) => TableMath::larger (highest, TableMath::magnitude sample))
+
+    // All mip levels use the peak of the full-band result.
+    frame (size, count, harmonics) =
+        partials = filterList (harmonics, \h => h.amplitude != 0.0)
+        built = bank (partials, toList (range (0, size)), size, count)
+        highest = peak built.full.samples
+        levels = listPrepend built.lower built.full
+        match highest <= 1.0
+            true => TableFrame(levels = levels)
+            false =>
+                scale = 1.0 / highest
+                TableFrame(levels = mapList (levels, \item => item(samples = mapList (item.samples, \sample => scale * sample))))
+
+    finite value = value == value && TableMath::magnitude value <= 1000000.0
+
+    validSpectrum (count, spectrum) = length spectrum.amplitudes == count && length spectrum.phases == count && length (filterList (spectrum.amplitudes, \a => finite a && TableMath::magnitude a <= 4.0)) == count && length (filterList (spectrum.phases, finite)) == count
+
+    validSize (size, count) = Ffts::valid size && count >= 1 && count <= intDiv size 4 && count <= 256
+
+    (** Size is a power of two 64–4,096; 1–64 frames share 1 to size/4 (at most 256) harmonics, amplitudes within ±4. *)
+    export prepare (size, spectra) = match spectra
+        [] => Error(message = InvalidConfiguration(detail = "A wavetable needs at least one spectrum."))
+        [first, ..._rest] =>
+            count = length first.amplitudes
+            match validSize (size, count) && length spectra <= 64 && length (filterList (spectra, \s => validSpectrum (count, s))) == length spectra
+                false => Error(message = InvalidConfiguration(detail = "Invalid wavetable size, frame count or spectrum."))
+                true => Success(value = Wavetable(size = size, harmonics = count, frames = mapList (spectra, \s => frame (size, count, harmonics (s.amplitudes, s.phases, 1)))))
+
+    shaped (size, count, numbers, amplitude) = frame (size, count, mapList (numbers, \n => TableHarmonic(number = n, amplitude = amplitude (toFloat n), phase = 0.0)))
+
+    (** Four frames morphing sine → triangle → square → saw, each bandlimited to `count` harmonics. *)
+    export classic (size, count) = match validSize (size, count)
+        false => Error(message = InvalidConfiguration(detail = "Invalid wavetable size, frame count or spectrum."))
+        true =>
+            numbers = toList (range (1, satAdd count 1))
+            Success(value = Wavetable(size = size, harmonics = count, frames = [shaped (size, count, numbers, TableMath::sineAmplitude), shaped (size, count, numbers, TableMath::triangleAmplitude), shaped (size, count, numbers, TableMath::squareAmplitude), shaped (size, count, numbers, TableMath::sawAmplitude)]))
+
+    (** Rate 8–384 kHz; negative frequency plays backwards and zero holds; position 0–1 morphs frames;
+        phase 0–1 offsets the read point (phase modulation) without changing the running phase. *)
+    export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && TableMath::magnitude config.frequency < config.sampleRate * 0.45 && config.position >= 0.0 && config.position <= 1.0 && config.amplitude >= 0.0 && config.amplitude <= 1.0 && config.phase >= 0.0 && config.phase <= 1.0
+        true => Success(value = config)
+        false => Error(message = InvalidConfiguration(detail = "Invalid wavetable rate, frequency, position or amplitude."))
+
+    (** Zero phase. Hard sync is `reset`, which returns this state. *)
+    export initial = WavetableState(phase = 0.0)
+
+    (** Hard sync: restart the cycle at the exact sample the caller applies it. *)
+    export reset _ = initial
+
+    selected (levels, limit) = listGet (filterList (levels, \l => toFloat l.harmonics <= limit)) 0
+
+    read (frame, limit, phase) = match selected (frame.levels, limit)
+        Error _ => Success(value = 0.0)
+        Success chosen =>
+            position = phase * toFloat (length chosen.samples)
+            match floatToInt (floor position)
+                Error _ => Error(message = NumericalFailure(detail = "Wavetable phase is not finite."))
+                Success index => match listGet chosen.samples index
+                    Error _ => Error(message = InvalidConfiguration(detail = "Wavetable phase is outside the table."))
+                    Success a => match listGet chosen.samples ((satAdd index 1) % length chosen.samples)
+                        Error _ => Error(message = InvalidConfiguration(detail = "Wavetable phase is outside the table."))
+                        Success b => Success(value = Interpolation::linear (a, b, GrainMath::fraction position))
+
+    frameAt (table, index) = match listGet table.frames index
+        Error _ => Error(message = MissingResource(detail = "Wavetable frame is missing."))
+        Success found => Success(value = found)
+
+    upper (lower, fraction) = match fraction > 0.0
+        true => satAdd lower 1
+        false => lower
+
+    blended (table, config, held, lower, fraction) = match frameAt (table, lower)
+        Error why => Error(message = why)
+        Success one => match frameAt (table, upper (lower, fraction))
+            Error why => Error(message = why)
+            Success other =>
+                limit = TableMath::harmonicLimit (config.frequency, config.sampleRate)
+                // The phase offset moves the read point only; the running phase is unaffected.
+                reading = Waves::wrap (held.phase + config.phase)
+                match read (one, limit, reading)
+                    Error why => Error(message = why)
+                    Success a => match read (other, limit, reading)
+                        Error why => Error(message = why)
+                        Success b => Success(value = WavetableSample(sample = config.amplitude * Interpolation::linear (a, b, fraction), next = WavetableState(phase = Waves::wrap (held.phase + config.frequency / config.sampleRate))))
+
+    (** One sample: linear interpolation within the table, linear crossfade between adjacent frames. *)
+    export next (table, config, held) =
+        place = config.position * toFloat (satSub (length table.frames) 1)
+        match floatToInt (floor place)
+            Error _ => Error(message = NumericalFailure(detail = "Wavetable position is not finite."))
+            Success lower => blended (table, config, held, lower, GrainMath::fraction place)

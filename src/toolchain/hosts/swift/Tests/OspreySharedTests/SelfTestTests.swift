@@ -156,6 +156,20 @@ final class SelfTestTests: RenderingTestCase {
         XCTAssertEqual(options.appArguments, ["before", "middle", "after", "last"])
     }
 
+    // [UI-MACHINE-SELF-TEST] The host reads its self-test from every argument it was given: the
+    // application's list has `--self-test` and `--resources` removed, so a launch that read it there
+    // started the ordinary app and waited for a person forever.
+    func testALaunchIsASelfTestEvenThoughTheApplicationNeverSeesTheFlag() throws {
+        let given = ["--resources", "media", "--self-test", "script.json", "shots", "--headless", "--store", "state", "project"]
+        let options = try XCTUnwrap(HostLaunch.selfTest(from: given))
+        XCTAssertEqual(options.script, "script.json")
+        XCTAssertEqual(options.shots, "shots")
+        XCTAssertTrue(options.headless)
+        XCTAssertEqual(options.store, "state")
+        XCTAssertEqual(options.appArguments, ["project"])
+        XCTAssertNil(try HostLaunch.selfTest(from: ["--resources", "media", "project"]))
+    }
+
     func testOptionsRejectMissingValuesAndBadPatience() {
         let missing = [
             ["--self-test"], ["--self-test", "script.json"],
@@ -251,6 +265,48 @@ final class SelfTestTests: RenderingTestCase {
         XCTAssertEqual(try regions.attempt(step("choose", "GLM-5.3")), composerSend(20, .string("zai/glm-5.3")))
         XCTAssertEqual(try regions.attempt(step("choose", "Highspeed")), composerSend(20, .string("zai/glm-5.3-highspeed")))
         XCTAssertEqual(try regions.attempt(step("choose", "Max")), composerSend(21, .string("max")))
+    }
+
+    /// A tab bar shows every tab's name but only the chosen tab's page, and `choose` picks a tab
+    /// by its name; a picker named first narrows a choice two pickers both offer.
+    func testTabsShowOnlyTheChosenPageAndNamedPickersNarrowAChoice() throws {
+        func owners(_ label: String, _ event: Int) -> Tree {
+            control("picker", label, event, ["choices": .array([
+                .object(["key": .string("1"), "label": .string("#1 · Amelia Chen")]),
+                .object(["key": .string("2"), "label": .string("#2 · Marcus Webb")]),
+            ])])
+        }
+        let page = Tree.object(["kind": .string("column"), "children": .array([owners("From account", 30), owners("To account", 31)])])
+        let tab = { (key: String, label: String, child: Tree) in Tree.object(["key": .string(key), "label": .string(label), "child": child]) }
+        let tabs = Tree.object(["kind": .string("tabs"), "selected": .string("move"), "event": .number(32), "tabs": .array([
+            tab("overview", "Overview", .object(["kind": .string("text"), "text": .string("Managed portfolio")])),
+            tab("move", "Move money", page),
+        ])])
+        let regions = SelfTestRegions(nodes: [("root", tabs)])
+        let sent = { (ordinal: Int, value: String) in SelfTestAttempt.sending(SelfTestSend(region: "root", ordinal: ordinal, value: .string(value))) }
+        XCTAssertTrue(regions.shows("Overview"), "every tab's name is on show")
+        XCTAssertFalse(regions.shows("Managed portfolio"), "a page behind another tab is not")
+        XCTAssertTrue(regions.shows("Marcus Webb"))
+        XCTAssertEqual(try regions.attempt(step("gone", "Managed portfolio")), .sending(nil))
+        XCTAssertEqual(try regions.attempt(step("choose", "Overview")), sent(32, "overview"))
+        XCTAssertEqual(try regions.attempt(step("choose", "Marcus Webb")), sent(30, "2"))
+        XCTAssertEqual(try regions.attempt(step("choose", "To account", "Marcus Webb")), sent(31, "2"))
+        XCTAssertEqual(try regions.attempt(step("choose", "From account", "1")), sent(30, "1"))
+        XCTAssertEqual(try regions.attempt(step("choose", "To account", "Nobody")), .waiting("nothing named \"To account\" offers \"Nobody\""))
+        XCTAssertFalse(regions.outline.contains("Managed portfolio"))
+        // A list row keeps its words in its child, as Osprey Agent's chat history does: the row is
+        // chosen by them, while a tab is never chosen by the words of its page.
+        let chat = { (key: String, words: String) in
+            Tree.object(["key": .string(key), "child": .object(["kind": .string("text"), "text": .string(words)])])
+        }
+        let history = Tree.object(["kind": .string("rows"), "event": .number(40), "rows": .array([
+            chat("c1", "Explain this project: what it does"), chat("c2", "Find how this project runs its tests"),
+        ])])
+        let shell = Tree.object(["kind": .string("column"), "children": .array([tabs, .object(["kind": .string("slot"), "key": .string("chats")])])])
+        let both = SelfTestRegions(nodes: [("root", shell), ("chats", history)])
+        XCTAssertEqual(try both.attempt(step("choose", "Find how this project")),
+                       .sending(SelfTestSend(region: "chats", ordinal: 40, value: .string("c2"))))
+        XCTAssertEqual(try both.attempt(step("choose", "Managed portfolio")), .waiting("nothing offers \"Managed portfolio\""))
     }
 
     func testOutlineListsControlsAndVisibleText() {

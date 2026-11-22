@@ -1,5 +1,5 @@
 // [SYNTH-PERFORMANCE] UI-free bounded timbres for a preallocated host voice bank; the
-// timbres themselves are mathematics: Waves.lean.
+// timbres themselves are mathematics: waves.ospml.
 namespace synth
 
 (** Phase-continuous performance kernels with normalized tone and ring-modulation controls. *)

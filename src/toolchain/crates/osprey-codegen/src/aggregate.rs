@@ -74,10 +74,29 @@ fn gen_generic_record(cg: &mut Codegen, name: &str, fields: &[FieldAssignment]) 
         .collect::<Result<Vec<_>>>()?;
     let shape: Vec<String> = vals
         .iter()
-        .map(|(_, v)| crate::llty::record_slot_key(v))
+        .map(|(_, v)| {
+            crate::llty::record_slot_key(
+                v,
+                crate::types::record_owner(&cg.prog, held_name(v).as_deref()),
+            )
+        })
         .collect();
     let owner = cg.register_layout(format!("{name}#{}", shape.join(",")), layout_of(&vals));
     Ok(build_tagged_object(cg, owner, &vals))
+}
+
+/// The nominal type a field value carries: its owner tag, else the name of its
+/// inferred type, so a value read through a variable keys like a fresh literal.
+fn held_name(value: &Value) -> Option<String> {
+    value
+        .osp_ty
+        .clone()
+        .or_else(|| match value.inferred_type.as_ref()? {
+            osprey_types::Type::Record { name, .. } | osprey_types::Type::Con { name, .. } => {
+                Some(name.clone())
+            }
+            _ => None,
+        })
 }
 
 /// The declared field order of a literal, when there is no declaration to

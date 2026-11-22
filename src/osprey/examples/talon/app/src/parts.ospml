@@ -1,0 +1,81 @@
+// The pieces every Talon Bank screen shares: money as text, an account's card and a journal line.
+// Each is typed nodes in talon::Look's frames ([UI-COMPONENTS-FRAMED]), so every host draws them alike.
+namespace talon
+
+import ui::Frames
+import ui::Pick
+import ui::Ui
+import ui::Symbols
+import bank::Money
+import talon::Look
+
+(** Shared parts of the screens. *)
+module Parts
+    (** `cents` as the ledger prints money, such as `$4,250.05`. *)
+    export money cents = Money::show (Money::fromCents cents)
+
+    (** The sum of every balance. *)
+    export total accounts = foldList (accounts, 0, \(sum, account) => satAdd sum account.accountCents)
+
+    (** How many journal lines are of `kind`. *)
+    export counted (journal, kind) = length (filterList (journal, \line => line.movementKind == kind))
+
+    (** A section's head: a coral eyebrow over its heading, with an optional action at the end. *)
+    export titled<A> : (string, string, List<ui::Node<A>>) -> ui::Node<A>
+    titled (eyebrow, heading, actions) = Look::line (12, listConcat [Look::share (Look::stack (4, [Look::eyebrow (eyebrow, "coral"), Look::heading (heading, 24)]))] actions)
+
+    // An account's card: mint-edged when it is the chosen one.
+    card (account, chosen) =
+        style = Look::surface (Pick::either (chosen, "mintSoft", "white"), Pick::either (chosen, "mint", "ink150"), 20, 20)
+        Ui::framed (style(frameGap = 6), Ui::column [Look::chip (Symbols::name ui::Person, Pick::either (chosen, "white", "mintSoft"), "mintDark", 36), Look::words (account.accountOwner, 14, "ink600"), Look::heading (money account.accountCents, 28), Look::words ("Talon account · #${account.accountId}", 12, "ink500")])
+
+    (** An account as a selectable card keyed by its id. *)
+    export accountRow (account, chosen) = Ui::entry (toString account.accountId, "", "", card (account, toString account.accountId == chosen))
+
+    (** The account cards, with the chosen one marked; choosing one opens it. *)
+    export accountRows (accounts, chosen) =
+        style = Frames::plain
+        Ui::framed (style(frameFlatRows = true, frameGap = 12), Ui::rows (mapList (accounts, \account => accountRow (account, chosen)), chosen, PickRow))
+
+    ink kind = match kind
+        "credit" => "mintDark"
+        "debit" => "ink900"
+        _ => "red"
+
+    soft kind = match kind
+        "credit" => "mintSoft"
+        "debit" => "ink100"
+        _ => "redSoft"
+
+    said kind = match kind
+        "credit" => "Money in"
+        "debit" => "Money out"
+        _ => "Declined"
+
+    mark kind = match kind
+        "credit" => Symbols::name ui::Add
+        "debit" => Symbols::name ui::Send
+        _ => Symbols::name ui::Warning
+
+    signed line = match line.movementKind
+        "credit" => "+${money line.movementCents}"
+        "debit" => "−${money line.movementCents}"
+        _ => money line.movementCents
+
+    (** One journal line: its kind as a chip and words, its note, whose account and the amount. *)
+    export movement line =
+        kind = line.movementKind
+        Look::line (12, [Look::chip (mark kind, soft kind, ink kind, 38), Look::share (Look::stack (2, [Look::strong (line.movementNote, 14, "ink900"), Look::words ("${said kind} · ${line.movementOwner} · Account #${line.movementAccount}", 12, "ink500")])), Look::strong (signed line, 15, ink kind)])
+
+    (** A quiet state: its symbol, why there is nothing and what to do. *)
+    export empty (symbol, heading, detail) = Look::line (12, [Look::chip (symbol, "ink100", "ink500", 38), Look::share (Look::stack (2, [Look::strong (heading, 14, "ink900"), Look::words (detail, 12, "ink500")]))])
+
+    listed (lines, limit, symbol, heading, detail) = match lines
+        [] => [empty (symbol, heading, detail)]
+        _ => mapList (ui::Lists::slice (lines, 0, limit), movement)
+
+    (** The first `limit` journal lines on a card, or an empty state saying why there are none. *)
+    export journal (lines, limit, symbol, heading, detail) = Look::card (Look::stack (14, listed (lines, limit, symbol, heading, detail)))
+
+    (** An account picker for a form, labelled `heading`. *)
+    export picker (heading, accounts, chosen, bind) = Look::choices (heading, Ui::picker (heading, mapList (accounts, \account => Ui::choice (toString account.accountId, "#${account.accountId} · ${account.accountOwner}")), chosen, bind))

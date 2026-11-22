@@ -21,9 +21,9 @@ namespace Osprey.Host.WinUI;
 /// live between frames and are reused, so a frame that moves a thousand discs only moves them. Keys
 /// and the pointer reach the canvas's binding in scene units.
 /// </summary>
-sealed class SceneView
+sealed partial class SceneView
 {
-    readonly ContentControl holder = new()
+    readonly Holder holder = new()
     {
         IsTabStop = true,
         UseSystemFocusVisuals = false,
@@ -72,6 +72,33 @@ sealed class SceneView
     void Refreshed(object? sender, object args) => hovered = false;
 
     Scene? shown;
+
+    /// <summary>The window-unit size the shown scene opens at, or null when it fits its region.</summary>
+    public (double Width, double Height)? Opening => shown?.Opening;
+
+    // A scene that opens at a size asks for it, up to what it is offered: laid out in a window it
+    // takes its region as before, and measured without a limit it reports its whole artboard.
+    sealed partial class Holder : ContentControl
+    {
+        Size wanted;
+
+        public Size Wanted
+        {
+            get => wanted;
+            set
+            {
+                if (value == wanted) return;
+                wanted = value;
+                InvalidateMeasure();
+            }
+        }
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            var inner = base.MeasureOverride(availableSize);
+            return new Size(Math.Max(inner.Width, Math.Min(wanted.Width, availableSize.Width)), Math.Max(inner.Height, Math.Min(wanted.Height, availableSize.Height)));
+        }
+    }
 
     /// <summary>The element that holds the scene in the page.</summary>
     public FrameworkElement Element => holder;
@@ -168,12 +195,12 @@ sealed class SceneView
     // After this event, since the frame it draws can rebuild the control that raised it.
     void Later(Action act) => holder.DispatcherQueue.TryEnqueue(() => act());
 
-    // A scene with a size is drawn at its fixed zoom from the region's top left and clipped to itself,
-    // so a larger window shows more canvas and resizes nothing, and never magnified past what the
-    // region fits whole; one without a size is in window pixels.
+    // A scene with a size is drawn at its scale from the region's top left and clipped to itself, so a
+    // larger window shows more canvas and resizes nothing; one without a size is in window pixels.
     void Fitted(Scene scene)
     {
         shown = scene;
+        holder.Wanted = scene.Opening is { } opening ? new Size(opening.Width, opening.Height) : default;
         if (scene.Width <= 0 || scene.Height <= 0)
         {
             canvas.Clip = null;
@@ -181,10 +208,8 @@ sealed class SceneView
             Viewed((holder.ActualWidth, holder.ActualHeight));
             return;
         }
-        var whole = Math.Min(holder.ActualWidth / scene.Width, holder.ActualHeight / scene.Height);
-        var scale = scene.Zoom > 0 ? Math.Min(scene.Zoom, whole) : whole;
-        if (scale <= 0) return;
-        var viewport = (Width: holder.ActualWidth / scale, Height: holder.ActualHeight / scale);
+        var scale = scene.Scale;
+        var viewport = scene.Viewport(holder.ActualWidth, holder.ActualHeight);
         canvas.Clip = new RectangleGeometry { Rect = new Rect(0, 0, viewport.Width, viewport.Height) };
         canvas.RenderTransform = new ScaleTransform { ScaleX = scale, ScaleY = scale };
         Viewed(viewport);
@@ -355,6 +380,13 @@ sealed class SceneView
     void Pressed(PointerRoutedEventArgs args)
     {
         holder.Focus(FocusState.Pointer);
+        var point = args.GetCurrentPoint(canvas);
+        if (point.Properties.IsRightButtonPressed)
+        {
+            emit(Touch.Secondary(ordinal, point.Position.X, point.Position.Y));
+            args.Handled = true;
+            return;
+        }
         canvas.CapturePointer(args.Pointer);
         Pointed(args, down: true);
     }

@@ -422,6 +422,6 @@ pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
 mod constructors;
 mod last_use;
 mod unwind;
-pub(crate) use constructors::consume_into_store;
+pub(crate) use constructors::{consume_into_store, transfer_or_retain};
 pub(crate) use last_use::release_dead_after;
 pub(crate) use unwind::instrument as instrument_unwind;

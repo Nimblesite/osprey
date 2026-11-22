@@ -169,3 +169,23 @@ _test_proof_unicode:
 	python3 scripts/proof/test-proof-literals.py
 
 .PHONY: _test_proof_ci $(PROOF_BATCH_TARGETS) $(PROOF_CORPUS_TARGETS)
+
+# [SYNTH-DSP-PROOFS] Check the current source export with the Osprey kernel.
+.PHONY: _test_synthesis_proofs
+SYNTHESIS_THEOREMS := weightedOverlapAdd travelingWavePropagation additivePeriod overlapNormalizationNecessary interpolatorFactor interpolatorEndpoints interpolatorConstant zeroPulseIndices hannEndpoints
+SYNTHESIS_THEOREMS += allpassMagnitude allpassRecurrence antiderivativeAverage antiderivativeOffset antiderivativeConstantCurve hannQuarterEnergy hannEighthEnergy
+SYNTHESIS_THEOREMS += radixTwoSplit radixTwoUpper realBinConjugate binAdditive binHomogeneous
+
+_test_synthesis_proofs: $(PROOF_BATCH_TARGETS)
+	$(MAKE) _check_synthesis_proofs
+
+.PHONY: _check_synthesis_proofs
+_check_synthesis_proofs:
+	cd src/toolchain/benchmarks/proof/tools && lake build lean4export Synthesis
+	@set -e; for name in $(SYNTHESIS_THEOREMS); do \
+		theorem="Synthesis.$$name"; export_file="$(abspath target/proof)/$$theorem.ndjson"; \
+		(cd src/toolchain/benchmarks/proof/tools && lake exe lean4export Synthesis -- "$$theorem") > "$$export_file"; \
+		printf '%s\t%s\n' "$$export_file" "$$theorem" | target/proof/openai/check-batch.arc > "$$export_file.result"; \
+		cat "$$export_file.result"; test "$$(cat "$$export_file.result")" = "PASS $$theorem | axioms: none"; \
+	done
+	@bash scripts/proof/production-fft.sh

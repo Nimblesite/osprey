@@ -220,6 +220,20 @@ fn extra_docs_export_signatures_aliases_and_module_docs_verbatim() {
             &["fn wrap<T>(value: T) -> T"],
         ),
         (
+            "extra_docs_constrained",
+            "osp",
+            "/// Shows.\nfn show(x) = toString(x)\n",
+            "show",
+            &["fn show(x: printable) -> string", "Shows."],
+        ),
+        (
+            "extra_docs_ml_constrained",
+            "ospml",
+            "(** Sorts. *)\nsorted xs = listSort xs\n",
+            "sorted",
+            &["List<sortable> -> List<sortable>", "Sorts."],
+        ),
+        (
             "extra_docs_ml_module",
             "ospml",
             "module Numbers\n    (** Members. *)\n    export twice n = n * 2\n",

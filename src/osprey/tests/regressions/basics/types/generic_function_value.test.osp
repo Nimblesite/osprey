@@ -1,0 +1,14 @@
+/// [TYPE-GENERICS-FN] [BUILTIN-LIST-FOLD] A generic callback passed by name must
+/// preserve floating-point values through the same instantiation as its lambda wrapper.
+fn joined(left, right) = foldList(right, left, fn(all, value) => listAppend(all, value))
+fn flattened(parts) = foldList(parts, [], joined)
+fn wrapped(parts) = foldList(parts, [], fn(all, part) => joined(all, part))
+
+let floats = flattened([[1.5, 2.0], [], [3.0, -0.25]])
+let words = flattened([["a", "bc"], ["d"]])
+let counts = flattened([[1, 2], [3]])
+let levels = flattened([[{ level: 0.5 }], [{ level: 2.25 }]])
+let twice = mapList([0.75, 48000.0], fn(x) => x)
+let picked = foldList([0.5, 1.25], 0.0, fn(sum, x) => sum + x)
+
+print("floats ${join(mapList(floats, toString), ",")} wrapped ${join(mapList(wrapped([[1.5], [2.0]]), toString), ",")} words ${join(words, ",")} counts ${join(mapList(counts, toString), ",")} levels ${toString(foldList(levels, 0.0, fn(sum, r) => sum + r.level))} twice ${join(mapList(twice, toString), ",")} picked ${toString(picked)}")

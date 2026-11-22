@@ -119,7 +119,7 @@ mod on_disk {
     // the handler arm ([LSP-IMPLEMENTATIONS-EFFECT-HANDLERS]).
     #[test]
     fn effect_navigation_crosses_project_files() {
-        let (source, uri) = example_source("projects/modules/src/api/routes.ospml");
+        let (source, uri) = example_source("talon/backend/api/routes.ospml");
         let hover = credit_hover(&source, &uri);
         crate::testkit::shows(
             &hover,
@@ -136,7 +136,7 @@ mod on_disk {
         assert_eq!(locations.len(), 1, "{locations:?}");
         let handler = locations.first().expect("one Store.credit handler");
         assert!(handler.uri.ends_with("store/ledger.ospml"), "{handler:?}");
-        let (ledger, _) = example_source("projects/modules/src/store/ledger.ospml");
+        let (ledger, _) = example_source("talon/backend/store/ledger.ospml");
         let (line, column) = locate(&ledger, CREDIT_PERFORM);
         let end = column.saturating_add(width(CREDIT_OPERATION));
         assert_eq!(handler.span, (line, column, line, end));
@@ -159,7 +159,7 @@ mod on_disk {
     // handler arm in that same file ([LSP-IMPLEMENTATIONS-EFFECT-HANDLERS]).
     #[test]
     fn implementations_at_a_declaration_answer_in_the_editors_uri_spelling() {
-        let relative = "projects/modules/src/store/ledger.ospml";
+        let relative = "talon/backend/store/ledger.ospml";
         let (source, uri) = example_source(relative);
         let (line, column, ..) = span_in(&source, "debit : (int, int, string)", "debit");
         let found: Vec<(String, Span)> = crate::test_support::implementations(
@@ -240,7 +240,7 @@ mod on_disk {
     // an operation queried from the signature lists the module's handler arms.
     #[test]
     fn implementations_on_a_signature_operation_list_the_handler_arms() {
-        let metrics = "projects/modules/src/store/metrics.ospml";
+        let metrics = "talon/backend/store/metrics.ospml";
         let expected = spans_in(metrics, &["hit _path =>"], "hit");
         let found = implementations_at(metrics, "hit : string => int", "hit");
         assert_eq!(found, expected);

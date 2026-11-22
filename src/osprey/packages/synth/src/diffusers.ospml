@@ -1,0 +1,23 @@
+// [SYNTH-ADVANCED-NONLINEAR] Series Schroeder allpass diffusion as a standalone building block.
+namespace synth
+
+(** Each stage is `v = x + g·v[n−D]`, `y = v[n−D] − g·v`: unity magnitude at every frequency for |g| < 1,
+    so a chain smears transients in time without colouring their spectrum. *)
+module Diffusers
+    (** Gain must satisfy |g| <= 0.9 for a stability margin; delays are fractional samples per stage. *)
+    export valid (delays, gain) = abs gain <= 0.9 && length delays >= 1 && length (filterList (delays, \d => d >= 1.0)) == length delays
+
+    stage (remaining, delays, gain, input, done) = match remaining
+        [] => Success(value = DiffuserSample(sample = input, lines = done))
+        [line, ...rest] => match delays
+            [] => Error(message = IncompatibleLayout(detail = "Diffuser delays do not match its lines."))
+            [delay, ...others] => match DelayLines::tap (line, delay)
+                Error why => Error(message = why)
+                Success delayed =>
+                    internal = NonlinearMath::schroederIn (input, delayed, gain)
+                    stage (rest, others, gain, NonlinearMath::schroederOut (internal, delayed, gain), listAppend done (DelayLines::push (line, internal)))
+
+    (** One sample through every stage in order, returning the output and every stage's next line. *)
+    export next (lines, delays, gain, input) = match valid (delays, gain) && length lines == length delays
+        false => Error(message = InvalidConfiguration(detail = "Diffusers need one fractional delay >= 1 per line and |gain| <= 0.9."))
+        true => stage (lines, delays, gain, input, [])

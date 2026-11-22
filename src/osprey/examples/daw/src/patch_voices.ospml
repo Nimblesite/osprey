@@ -1,0 +1,298 @@
+// [SYNTH-ARRANGEMENT-ROUTING] One note played through a routed graph of components.
+namespace daw
+
+(** A routing names components, their settings and the cables between them. Each note builds that graph
+    with its own values (a setting can follow the note's frequency or velocity), renders it through the
+    reference `Renderer`, and shapes the result with a linear attack and release around the note's gate.
+    Sizes are in samples: a waveguide, bowed string, strike comb or delay needs room for its lowest pitch. *)
+module PatchVoices
+    hertz note = synth::Waves::midiFrequency (toFloat note.pitch)
+
+    ok value = Success(value = value)
+
+    (** A synth refusal as the sentence the song shows: the boundary from `synth::Fault` to the project's text errors. *)
+    export told outcome = match outcome
+        Error fault => Error(message = synth::Faults::detail fault)
+        Success value => Success(value = value)
+
+    chained (outcome, step) = synth::Outcomes::carried (outcome, \value => step value)
+
+    counted (items, keep) = length (filterList (items, keep))
+
+    resolved (note, setting) = match setting.follow
+        Constant => setting.value
+        Pitched => ArrangeMath::scaled (setting.value, hertz note)
+        Struck => ArrangeMath::scaled (setting.value, note.velocity)
+
+    constructorKey (item, key) = item.component == "route" && startsWith key "channel" || item.component == "wavetable" && key == "harmonics" || item.component == "spectral" && key == "hop"
+
+    // Older project files imply the original table and hop. Explicit construction settings are whole constants.
+    option (item, key, fallback) = match filterList (item.settings, \setting => setting.key == key)
+        [] => ok fallback
+        [setting] => match floatToInt setting.value
+            Success whole => match setting.follow == Constant && toFloat whole == setting.value
+                true => ok whole
+                false => Error(message = "Module ${item.identity} needs a whole constant for ${key}.")
+            Error _ => Error(message = "Module ${item.identity} needs an integer for ${key}.")
+        _ => Error(message = "Module ${item.identity} repeats ${key}.")
+
+    classic (size, count) = match count > 0 && count <= 256 && count <= intDiv size 4
+        true => told (synth::Wavetables::classic (size, count))
+        false => Error(message = "The wavetable harmonic count is outside the table's bounds.")
+
+    tableSize item = ui::Pick::either (item.size == 0, 1024, item.size)
+
+    tableNode item =
+        size = tableSize item
+        chained (option (item, "harmonics", 128), \count => chained (classic (size, count), \table => ok (synth::Components::wavetable (item.identity, table, 220.0))))
+
+    sources item = match item.component
+        "exciter" => ok (synth::Components::exciter (item.identity, item.seed))
+        "sine" => ok (synth::Components::sine (item.identity, 440.0))
+        "wavetable" => tableNode item
+        "additive" => ok (synth::Components::additive (item.identity, 220.0))
+        "operator" => ok (synth::Components::phaseOperator (item.identity, 220.0, 0.0))
+        "bowed" => ok (synth::Components::bowed (item.identity, 220.0, item.size))
+        "lfo" => ok (synth::Components::lfo (item.identity, 1.0))
+        other => Error(message = "Unknown module \"${other}\".")
+
+    resonant item = match item.component
+        "resonator" => ok (synth::Components::resonator (item.identity, 440.0))
+        "modal" => ok (synth::Components::modalBank (item.identity, 440.0, 3.0))
+        "waveguide" => ok (synth::Components::waveguide (item.identity, 220.0, item.size))
+        "strikeComb" => ok (synth::Components::strikeComb (item.identity, 220.0, item.size))
+        "fractionalDelay" => ok (synth::Components::fractionalDelay (item.identity, 1.0, item.size))
+        "lossFilter" => ok (synth::Components::lossFilter (item.identity, 0.99, 0.5))
+        "allpass" => ok (synth::Components::allpass (item.identity, 0.5))
+        "modulatedLowpass" => ok (synth::Components::modulatedLowpass (item.identity, 1000.0, 0.7))
+        "lowpass" => ok (synth::Components::lowpass (item.identity, 1000.0, 0.7))
+        _ => sources item
+
+    effects item = match item.component
+        "shaper" => ok (synth::Components::shaper (item.identity, 0.0, 1.5))
+        "shifter" => ok (synth::Components::shifter (item.identity, 0.0))
+        "spectral" => chained (option (item, "hop", intDiv item.size 4), \hop => ok (synth::Components::spectral (item.identity, item.size, hop, 0.0)))
+        "pitchShifter" => ok (synth::Components::pitchShifter (item.identity, item.size, 0.0, 0.0))
+        "reverb" => ok (synth::Components::reverb (item.identity, 2.0))
+        "smoother" => ok (synth::Components::smoother (item.identity, 0.01))
+        _ => resonant item
+
+    // [SYNTH-GRAPH-CHANNELS] Each output's channelN constant selects an input, or -1 for silence.
+    mapped (item, count) = match synth::Graphs::channelCount count
+        false => Error(message = "A channel route needs an output for each entry in its map.")
+        true => chained (foldList (toList (range (0, count)), ok [], \(result, i) =>
+            chained (result, \entries => chained (option (item, "channel${i}", -2), \entry =>
+                match entry >= -1 && entry < item.size
+                    true => ok (listAppend entries entry)
+                    false => Error(message = "Route output ${i} names a missing input channel.")))), \entries => ok (synth::Components::routeChannels (item.identity, item.size, entries)))
+
+    channels item = match synth::Graphs::channelCount item.size
+        false => Error(message = "The graph cannot prepare a port with ${item.size} channels.")
+        true => match item.component
+            "split" => ok (synth::Components::split (item.identity, item.size))
+            "join" => ok (synth::Components::join (item.identity, item.size))
+            _ => mapped (item, length item.settings)
+
+    midiOscillator identity =
+        oscillator = synth::Components::sine (identity, 440.0)
+        ok (oscillator(inputs = [synth::Port(name = "notes", rate = synth::Events, channels = 1, unit = synth::Notes)]))
+
+    made item = match item.component
+        "vst3" => synth::PluginDocuments::restored (item.identity, item.asset)
+        "split" => channels item
+        "join" => channels item
+        "panner" => ok (synth::Components::panner (item.identity, item.size, 0.0))
+        "route" => channels item
+        "midiOscillator" => midiOscillator item.identity
+        "midiNote" => ok (synth::Components::midiNote (item.identity, 60.0, 0.8, 6000.0))
+        "stereo" => ok (synth::Components::stereo item.identity)
+        "downmix" => ok (synth::Components::downmix item.identity)
+        "stereoOutput" => ok (synth::Components::stereoOutput item.identity)
+        "stereoModulatedGain" => ok (synth::Components::modulatedGain (item.identity, 2, 1.0))
+        "sample" => chained (sampled item.asset, \resource => ok (synth::Components::samplePlayer (item.identity, resource)))
+        "grainCloud" => grained item
+        "gain" => ok (synth::Components::gain (item.identity, 1.0))
+        "modulatedGain" => ok (synth::Components::modulatedGain (item.identity, 1, 1.0))
+        "mixer" => match item.size == 0
+            true => ok (synth::Components::mixer item.identity)
+            false => ok (synth::Components::mix (item.identity, item.size, 1.0, 1.0))
+        "delay" => ok (synth::Components::delay (item.identity, item.size))
+        "output" => ok (synth::Components::output item.identity)
+        _ => effects item
+
+    (** The built-in sample's name; an imported sample is named by its file path. *)
+    export builtinName = "Built-in harmonic sample"
+
+    (** The original single-cycle source a new grain cloud plays, also selectable after importing a WAV. *)
+    export builtinSample () = synth::SampleResource(name = builtinName, sampleRate = 48000, sourceChannels = 1, rootFrequency = 46.875, samples = mapList (toList (range (0, 1024)), \index => ArrangeMath::grainSample (toFloat index)))
+
+    // A grain cloud's room: 16 grains unless the project gives a size.
+    room size = match size == 0
+        true => grainRoom
+        false => size
+
+    // Grain clouds hold up to 16 grains unless the project gives a size.
+    grainRoom = 16
+
+    decoded (path, size, bytes) = match length bytes == size
+        false => Error(message = "The file size changed during import.")
+        true => told (synth::SampleResources::decodeWave (path, 60.0, bytes))
+
+    (** The sample a grain cloud plays: the WAV at `path` (1–8 MiB, named by its path), or the built-in one for "". *)
+    export sampled path = match path == ""
+        true => ok (builtinSample ())
+        false => match fileSize path
+            Error why => Error(message = why)
+            Success size => match size >= 12 && size <= 8388608
+                false => Error(message = "Choose a WAV file between 12 bytes and 8 MiB.")
+                true => chained (readFileBytes (path, 0, satAdd size 1), \bytes => decoded (path, size, bytes))
+
+    (** The last part of a path: what Prism shows for an imported sample. *)
+    export fileName path = foldList (split (replace path "\\" "/" ?: path) "/" ?: [path], path, \(_, part) => part)
+
+    grained item = chained (sampled item.asset, \resource => ok (synth::Components::granular (item.identity, resource, room item.size, item.seed)))
+
+    known (n, setting) = counted (n.parameters, \p => p.key == setting.key) == 1
+
+    optionControl (n, setting) = match setting.key
+        "enabled" => synth::Components::withOption (n, setting.key, "Enabled", 1.0, setting.value)
+        "waveform" => synth::Components::withOption (n, setting.key, "Waveform", 3.0, setting.value)
+        _ => n
+
+    placed (note, item, n) = tuned (note, item.component, foldList (item.settings, n, optionControl), filterList (item.settings, \s => constructorKey (item, s.key) == false))
+
+    tuned (note, component, n, settings) = match counted (settings, \setting => known (n, setting)) == length settings
+        false => Error(message = "Module \"${component}\" has no such setting.")
+        true => ok (synth::Patches::adjusted (n, mapList (settings, \setting => synth::ParameterValue(node = n.identity, key = setting.key, value = resolved (note, setting)))))
+
+    nodeAdded (note, outcome, item, make) = chained (outcome, \nodes => chained (make item, \n => chained (placed (note, item, n), \tuned => ok (listAppend nodes tuned))))
+
+    cabled routing = mapList (routing.cables, \cable => synth::Components::route (cable.source, cable.outlet, cable.destination, cable.inlet))
+
+    dry (sink, samples, frame) = match synth::RenderInputs::sample (frame, sink)
+        Error why => Error(message = why)
+        Success value => Success(value = listAppend samples value)
+
+    (** Capture one mono output directly, keeping oscillator and feedback state between blocks. *)
+    export dryBlock (plan, rate, controls, current, count, sink) = told (synth::Renderer::capture (plan, rate, controls, current, count, \(samples, frame) => dry (sink, samples, frame)))
+
+    // The scheduler carries state across every block, including the final partial block.
+    (** Partition a note into bounded DSP blocks. *)
+    export counts (total, limit) = listAppend (mapList (toList (range (0, intDiv total limit)), \_ => limit)) (total % limit)
+
+    heard (samples, frame) = match listGet samples frame
+        Error _ => 0.0
+        Success value => value
+
+    (** Apply the same voice attack and release to every exported audio lane. *)
+    export shaped (samples, noteSpan: NoteSpan, routing: Routing, rate) = mapList (toList (range (0, length samples)), \frame => ArrangeMath::enveloped (heard (samples, frame), toFloat frame, noteSpan.gate, routing.attack, routing.release, rate))
+
+    finished run = match run.fault == ""
+        true => ok run.samples
+        false => Error(message = run.fault)
+
+    played (graph, plan, noteSpan, routing, rate) = match filterList (graph.nodes, \n => n.processor == synth::Sink)
+        [sink] => chained (told (synth::Renderer::start graph), \audio =>
+            controls = synth::Parameters::initial graph
+            initial = synth::Timeline(audio = audio, observation = [])
+            run = foldList (counts (noteSpan.total, 8192), ok initial, \(held, count) => chained (held, \current => dryBlock (plan, rate, controls, current, count, sink.identity)))
+            chained (run, \done => ok (shaped (done.observation, noteSpan, routing, rate))))
+        _ => Error(message = "The patch needs one audio output.")
+
+    graphed (nodes, cables) = match synth::Patches::built (nodes, cables)
+        synth::Invalid fault => Error(message = "The routing is not a valid graph: ${fault}.")
+        synth::Valid graph => ok graph
+
+    assembled (note, routing, make) = chained (foldList (routing.nodes, ok [], \(outcome, item) => nodeAdded (note, outcome, item, make)), \nodes => graphed (nodes, cabled routing))
+
+    (** The routing as one graph, with its settings resolved for this note. *)
+    export patched (note, routing) = assembled (note, routing, made)
+
+    sameAsset (item, resource) = item.asset == resource.name || item.asset == "" && resource.name == builtinName
+
+    reused (item, previous) = match previous.processor
+        synth::TableOscillator table => match item.component == "wavetable" && tableSize item == table.size
+            true => chained (option (item, "harmonics", 128), \count =>
+                match count == table.harmonics
+                    true => ok (synth::Components::wavetable (item.identity, table, 220.0))
+                    false => made item)
+            false => made item
+        synth::SamplePlayer resource => match item.component == "sample" && sameAsset (item, resource)
+            true => ok (synth::Components::samplePlayer (item.identity, resource))
+            false => made item
+        synth::Granular resource _ _ => match item.component == "grainCloud" && sameAsset (item, resource)
+            true => ok (synth::Components::granular (item.identity, resource, room item.size, item.seed))
+            false => made item
+        _ => made item
+
+    restored (graph, item) = match synth::Graphs::node (graph, item.identity)
+        synth::Valid previous => reused (item, previous)
+        synth::Invalid _ => made item
+
+    (** Resolve new controls against the note while retaining its loaded samples and generated wavetables. *)
+    export repatched (note, routing, graph) = assembled (note, routing, \item => restored (graph, item))
+
+    // [DAW-PATCH-HEARD] Only what reaches the output plays: a module left unwired in Prism stays in the
+    // patch, silent, instead of refusing every note.
+    (** Keep exactly the ancestors of the main output and the active send roots. *)
+    export audible (graph, taps) =
+        roots = listConcat (mapList (filterList (graph.nodes, \n => n.processor == synth::Sink), \n => n.identity)) taps
+        ids = synth::Graphs::inputAncestors (graph.cables, roots)
+        cables = filterList (graph.cables, \c => mapContains ids (toString c.source) && mapContains ids (toString c.destination))
+        match length cables == 0
+            true => Error(message = "The routing has nothing wired to its output.")
+            false => graphed (filterList (graph.nodes, \n => mapContains ids (toString n.identity)), cables)
+
+    // A mono audio input the renderer needs wired, with no cable in it.
+    unplugged (graph : synth::Graph, n, index) = match listGet n.inputs index
+        Error _ => false
+        Success port => port.rate == synth::Audio && port.channels == 1 && synth::ClipLayouts::optional (n, port) == false && length (filterList (graph.cables, \c => c.destination == n.identity && c.inlet == index)) == 0
+
+    grounds (graph, quiet, n) = mapList (filterList (toList (range (0, length n.inputs)), \index => unplugged (graph, n, index)), \index => synth::Components::route (quiet, 0, n.identity, index))
+
+    above (top, n) = match n.identity > top
+        true => n.identity
+        false => top
+
+    // [DAW-PATCH-HEARD] An input left unplugged hears silence: one still oscillator (0 Hz, so every sample is 0)
+    // feeds every such input. A patch being rewired keeps playing what is wired, and one whose output has
+    // nothing in it is a silent track, so a pulled cable never refuses the song.
+    (** The graph with every unplugged mono audio input fed silence. *)
+    export grounded (graph : synth::Graph) =
+        quiet = satAdd (foldList (graph.nodes, 0, above)) 1
+        match foldList (graph.nodes, [], \(cables, n) => listConcat cables (grounds (graph, quiet, n)))
+            [] => ok graph
+            silent => graphed (listAppend graph.nodes (synth::Components::sine (quiet, 0.0)), listConcat graph.cables silent)
+
+    clipBlock (graph, sink, run, count) = match run.fault == "" && count > 0
+        false => run
+        true => match synth::GraphClips::next (graph, run.held, count)
+            Error why => run(fault = synth::Faults::detail why)
+            Success step => match step
+                synth::BlockWaiting _ _ => run(fault = "An external plug-in needs its audio worker.")
+                synth::BlockReady held clips => match told (chained (synth::ClipInputs::completed (clips, sink), synth::GraphClips::trackSamples))
+                    Error why => run(fault = why)
+                    Success audio => run(held = held, samples = synth::Sequences::joined (run.samples, audio))
+
+    clipVoice (graph, noteSpan, routing, rate) = match rate == 48000.0
+        false => Error(message = "MIDI, control and multichannel patch voices require a 48000 Hz project.")
+        true => match filterList (graph.nodes, \n => n.processor == synth::Sink)
+            [sink] =>
+                initial = NoteRun(held = synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), samples = [], fault = "")
+                run = foldList (counts (noteSpan.total, 1024), initial, \(current, count) => clipBlock (graph, sink.identity, current, count))
+                chained (finished run, \audio => ok (shaped (audio, noteSpan, routing, rate)))
+            _ => Error(message = "The patch needs one audio output.")
+
+    routed (graph, noteSpan, routing, rate) = match synth::Graphs::prepare graph
+        synth::Invalid fault => Error(message = "The routing cannot be scheduled: ${fault}.")
+        synth::Valid plan => match length (filterList (graph.nodes, synth::ClipLayouts::requiresClips)) > 0
+            true => clipVoice (graph, noteSpan, routing, rate)
+            false => played (graph, plan, noteSpan, routing, rate)
+
+    (** A routing whose gate can play: attack and release are 0.001–10 s. *)
+    export enveloped routing = match routing.attack >= 0.001 && routing.attack <= 10.0 && routing.release >= 0.001 && routing.release <= 10.0
+        false => Error(message = "A routing's attack and release must be 0.001 to 10 s.")
+        true => ok routing
+
+    (** Render one note through the routing. *)
+    export render (note, noteSpan, rate, routing) = chained (enveloped routing, \_ => chained (patched (note, routing), \graph => chained (grounded graph, \whole => chained (audible (whole, []), \heard => routed (heard, noteSpan, routing, rate)))))

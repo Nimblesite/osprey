@@ -91,10 +91,7 @@ fn known_lambda(
     (params, body, position): crate::builder::LambdaDef,
     env: Option<crate::closure::Environment>,
 ) -> Callback {
-    let sig = cg
-        .prog
-        .lambda_type(cg.source_function.as_deref(), position)
-        .and_then(|ty| Codegen::fn_value_sig(&cg.prog, ty));
+    let sig = crate::expr::inline_sig(cg, position);
     match env {
         Some(env) => Callback::Closed(env, params, body, sig, position),
         None => Callback::Lambda(params, body, sig, position),

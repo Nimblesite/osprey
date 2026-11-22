@@ -1,0 +1,188 @@
+// [DAW-MIX-BUS-TAP] Patch and Bus routing edit the same track's sends in the project.
+namespace synth
+
+import ui::Ui
+import ui::Runtime
+
+(** Inspect an internal audio outlet and connect a parallel send into a declared stereo bus. *)
+module SendEditor
+    key (node, outlet) = "${node}/${outlet}"
+
+    connection (editor, graph, cable) = match Graphs::node (graph, cable.destination)
+        Invalid _ => "Missing destination"
+        Valid target => match listGet target.inputs cable.inlet
+            Success pin => "${EditorView::componentName (editor, target)} · ${pin.name}"
+            Error _ => "Missing inlet"
+
+    option (editor, graph, n, index) = match listGet n.outputs index
+        Error _ => []
+        Success port => match port.rate == Audio && port.unit == Amplitude && (port.channels == 1 || port.channels == 2)
+            false => []
+            true =>
+                wires = filterList (graph.cables, \c => c.source == n.identity && c.outlet == index)
+                [SendPort(portKey = key (n.identity, index), portCaption = "${EditorView::componentName (editor, n)} · ${port.name}", portNode = n.identity, portOutlet = index, portChannels = port.channels, connections = mapList (wires, \c => connection (editor, graph, c)))]
+
+    options (editor, graph) = ui::Lists::flatten (mapList (graph.nodes, \n => ui::Lists::flatten (mapList (toList (range (0, length n.outputs)), \i => option (editor, graph, n, i)))))
+
+    opened (editor, draft) = Runtime::step (editor(outputEdit = EditingSend(draft = draft), message = ""))
+
+    previous (editor, draft, track, identity) = match ui::Lists::find (track.sends, \s => s.sendId == identity)
+        Error _ => Runtime::step (editor(message = "The selected send is missing."))
+        Success old => opened (editor, draft(editingId = identity, sourceKey = key (old.source, old.outlet), targetBus = old.bus, levelText = toString (daw::ArrangeMath::scaled (old.level, 100.0)), sendActive = old.enabled))
+
+    begin (editor, track, graph, identity) =
+        ports = options (editor, graph)
+        preferred = key (ui::Pick::either (editor.source >= 0, editor.source, editor.selected), ui::Pick::either (editor.source >= 0, editor.outlet, 0))
+        match listGet ports 0
+            Error _ => Runtime::step (editor(message = "This patch has no mono or stereo audio outlet."))
+            Success first =>
+                chosen = ui::Lists::find (ports, \p => editor.page == PatchPage && p.portKey == preferred) ?: first
+                bus = match listGet editor.song.buses 0
+                    Error _ => ""
+                    Success group => group.name
+                draft = SendDraft(routeOffset = 0, editingId = -1, sourceKey = chosen.portKey, targetBus = bus, levelText = "20", sendActive = true, options = ports)
+                match identity < 0
+                    true => opened (editor, draft)
+                    false => previous (editor, draft, track, identity)
+
+    (** Start from the selected patch outlet, or choose any available outlet in Bus routing. *)
+    export open (editor, identity) = match listGet editor.song.tracks editor.track
+        Error _ => Runtime::step (editor(message = "Select a track first."))
+        Success track => match daw::TrackPatches::patch track
+            Error why => Runtime::step (editor(message = why))
+            Success graph => begin (editor, track, graph, identity)
+
+    (** Browse sibling cables and sends while retaining every edited field. *)
+    export page (editor, offset) = match editor.outputEdit
+        EditingSend draft => opened (editor, draft(routeOffset = offset))
+        _ => Runtime::step editor
+
+    (** Update the draft. Song transport previews valid changes to an existing send. *)
+    export typed (editor, action, text) = match editor.outputEdit
+        EditingSend draft => match action
+            SendSource => opened (editor, draft(routeOffset = 0, sourceKey = text))
+            SendDestination => opened (editor, draft(targetBus = text))
+            SendLevel => opened (editor, draft(levelText = text))
+            FlipSend => opened (editor, draft(sendActive = !draft.sendActive))
+            _ => Runtime::step editor
+        _ => Runtime::step editor
+
+    edited (editor, draft, port, value) = match listGet editor.song.tracks editor.track
+        Error _ => Error(message = "Select a track first.")
+        Success track =>
+            identity = ui::Pick::either (draft.editingId >= 0, draft.editingId, satAdd 1 (foldList (track.sends, 0, \(highest, s) => ui::Pick::either (s.sendId > highest, s.sendId, highest))))
+            route = daw::AudioSend(sendId = identity, source = port.portNode, outlet = port.portOutlet, bus = draft.targetBus, level = daw::ArrangeMath::scaled (value, 0.01), enabled = draft.sendActive)
+            routes = match draft.editingId < 0
+                true => listAppend track.sends route
+                false => mapList (track.sends, \s => ui::Pick::either (s.sendId == identity, route, s))
+            daw::Projects::replaced (editor.song, editor.track, track(sends = routes))
+
+    selectedPort : SendDraft -> Result<SendPort, string>
+    selectedPort draft = ui::Lists::find (draft.options, \p => p.portKey == draft.sourceKey)
+
+    (** The mix shared by live preview and Save, checked against the available outlets and buses. *)
+    export candidate (editor, draft) = match selectedPort draft
+        Error _ => Error(message = "Choose an audio outlet.")
+        Success port => match parseFloat draft.levelText
+            Error _ => Error(message = "Enter a send level from 0 to 100%.")
+            Success value => match value >= 0.0 && value <= 100.0
+                true => Outcomes::carried (daw::BusMix::named (editor.song, draft.targetBus), \_ => edited (editor, draft, port, value))
+                false => Error(message = "Enter a send level from 0 to 100%.")
+
+    (** Save the send and all existing patch cables in the one project file. *)
+    export commit editor = match editor.outputEdit
+        EditingSend draft => DawSession::savedTrack (editor, editor.track, candidate (editor, draft))
+        _ => Runtime::step editor
+
+    (** Remove the selected parallel send from the project. *)
+    export remove editor = match editor.outputEdit
+        EditingSend draft => match listGet editor.song.tracks editor.track
+            Error _ => Runtime::step (editor(message = "Select a track first."))
+            Success track => DawSession::savedTrack (editor, editor.track, daw::Projects::replaced (editor.song, editor.track, track(sends = filterList (track.sends, \s => s.sendId != draft.editingId))))
+        _ => Runtime::step editor
+
+    siblings (editor, draft, port) = match listGet editor.song.tracks editor.track
+        Error _ => []
+        Success track =>
+            taps = filterList (track.sends, \tap => tap.sendId != draft.editingId && tap.source == port.portNode && tap.outlet == port.portOutlet)
+            listConcat port.connections (mapList (taps, \tap => "${tap.bus} · ${SendList::level tap}"))
+
+    connections (offset, names) = match names
+        [] => []
+        _ =>
+            endAt = SendList::endAt (offset, length names)
+            visible = mapList (ui::Lists::slice (names, offset, endAt), Ui::text)
+            pages = SendList::paging (offset, endAt, length names, \at => PagePortRoutes(offset = at))
+            [Ui::section ("Other routes from this port", "", listConcat visible pages)]
+
+    (** The composer mirrors the route inspector in the approved Add send design. *)
+    export form (editor, draft) =
+        style = ui::Frames::inset (4, 8, 4, 8)
+        track = listGet editor.song.tracks editor.track
+        port = selectedPort draft
+        routes = match port
+            Error _ => []
+            Success selected => siblings (editor, draft, selected)
+        selectedTrack = match track
+            Success voice => voice.name
+            Error _ => ""
+        channels = match port
+            Success chosen => ui::Pick::either (chosen.portChannels == 2, "Stereo audio", "Mono audio")
+            Error _ => ""
+        source = Ui::picker ("Source outlet", mapList (draft.options, \p => Ui::choice (p.portKey, p.portCaption)), draft.sourceKey, SendSource)
+        dest = Ui::picker ("Destination bus", mapList (editor.song.buses, \bus => Ui::choice (bus.name, bus.name)), draft.targetBus, SendDestination)
+        actions = [Ui::button ("Cancel", "", CloseOutput), Ui::action (ui::Pick::either (draft.editingId < 0, "Connect send", "Save send"), "", ui::Plain, draft.targetBus != "", CommitSend)]
+        heading = Ui::styled (ui::Pick::either (draft.editingId < 0, "New send", "Edit send"), ui::Heading, ui::Primary)
+        help = ui::Pick::either (length editor.song.buses == 0, "Create a stereo bus from the Routing menu first.", editor.message)
+        controls = [Ui::styled ("ROUTE INSPECTOR", ui::Eyebrow, ui::Secondary), heading, Ui::styled (selectedTrack, ui::Callout, ui::Accent), source, Ui::caption channels, dest, Ui::field ("Send level (%)", draft.levelText, "20", SendLevel), Ui::button (ui::Pick::either (draft.sendActive, "Mute send", "Enable send"), "", FlipSend)]
+        related = connections (draft.routeOffset, routes)
+        bottom = ui::Lists::flatten [ui::Pick::either (help == "", [], [Ui::text help]), [Ui::row actions], ui::Pick::either (draft.editingId < 0, [], [Ui::button ("Remove send", "", DeleteSend)])]
+        local = EditorView::theme ()
+        Ui::themed (local(spacing = [4, 6, 12, 20, 28, 36]), Ui::framed (style(frameTextSize = 13, frameControlHeight = 30), Ui::column (ui::Lists::flatten [controls, related, bottom])))
+
+(** [DAW-MIX-BUS-TAP] Inspect parallel sends from the selected track's internal outlets. *)
+module SendList
+    pageSize = 3
+
+    source (editor, graph, tap) = match Graphs::node (graph, tap.source)
+        Invalid _ => "Missing source node ${tap.source}"
+        Valid node => match listGet node.outputs tap.outlet
+            Error _ => "Missing outlet ${tap.outlet} on node ${tap.source}"
+            Success pin => "${EditorView::componentName (editor, node)} · ${pin.name}"
+
+    (** Saved send gain and bypass state as shown in the inspector. *)
+    export level tap =
+        amount = TimelineView::percent tap.level
+        ui::Pick::either (tap.enabled, amount, "${amount} · Muted")
+
+    route (editor, graph, tap) =
+        path = match daw::BusPaths::path (editor.song.buses, tap.bus)
+            Success names => join names " → "
+            Error why => why
+        edit = Ui::button ("Edit send ${tap.sendId} · ${tap.bus}…", "", BeginSend(identity = tap.sendId))
+        Ui::section (source (editor, graph, tap), "", [Ui::text path, Ui::caption (level tap), edit])
+
+    (** Exclusive end of this page of a connection list. *)
+    export endAt (offset, count) = ui::Pick::either (satAdd offset pageSize < count, satAdd offset pageSize, count)
+
+    (** Both route inspectors use the same navigation and number of visible entries. *)
+    export paging (offset, stop, count, setPage) = match count > pageSize
+        false => []
+        true => [Ui::row [Ui::action ("Previous", "", ui::Plain, offset > 0, setPage (satSub offset pageSize)), Ui::caption ("${satAdd offset 1}–${stop} of ${count}"), Ui::action ("Next", "", ui::Plain, stop < count, setPage stop)]]
+
+    sendRows (editor, track, offset) = match daw::TrackPatches::patch track
+        Error why => [Ui::text why]
+        Success graph =>
+            count = length track.sends
+            stop = endAt (offset, count)
+            entries = mapList (ui::Lists::slice (track.sends, offset, stop), \tap => route (editor, graph, tap))
+            listConcat entries (paging (offset, stop, count, \at => BrowseSends(offset = at)))
+
+    (** Show each tap's origin, level, mute state and group chain alongside the canvas. *)
+    export form (editor, offset) = match listGet editor.song.tracks editor.track
+        Error _ => Ui::text "Select a track first."
+        Success voice =>
+            title = [Ui::styled ("PATCH SENDS", ui::Eyebrow, ui::Secondary), Ui::styled (voice.name, ui::Heading, ui::Primary)]
+            actions = Ui::row [Ui::button ("Add send…", "", BeginSend(identity = -1)), Ui::button ("Close", "", CloseOutput)]
+            local = EditorView::theme ()
+            Ui::themed (local(spacing = [4, 6, 12, 20, 28, 36]), Ui::column (listConcat title (listAppend (sendRows (editor, voice, offset)) actions)))

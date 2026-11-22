@@ -1,8 +1,8 @@
 [project]
 name = "registry-editor"
-source_roots = ["../../native/src", "../../graphics/src", "../../json/src", "../../vscode/src", "../core/src/bytes.osp", "../core/src/checked.osp", "../core/src/names.osp", "../core/src/order.osp", "src"]
+source_roots = ["../../native/host/entry.ospml", "../../native/src", "../../graphics/src", "../../json/src", "../../vscode/src", "../core/src/bytes.osp", "../core/src/checked.osp", "../core/src/names.osp", "../core/src/order.osp", "src"]
 default_namespace = "registry_editor"
-entry = "src/main.ospml"
+entry = "../../native/host/entry.ospml"
 
 [modules]
 allow_wildcard_imports = false

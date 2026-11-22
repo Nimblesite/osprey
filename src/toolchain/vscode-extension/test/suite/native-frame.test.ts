@@ -228,6 +228,17 @@ suite("native shared rows", () => {
     assert.deepStrictEqual(sceneTransform({ width: 200, height: 100, zoom: 0 }, 400, 400), { scale: 2, viewedWidth: 200, viewedHeight: 200 });
     assert.deepStrictEqual(sceneTransform({ width: 200, height: 100, zoom: 0.75 }, 160, 400), { scale: 0.75, viewedWidth: 160 / 0.75, viewedHeight: 400 / 0.75 });
     assert.deepStrictEqual(sceneTransform({ width: 200, height: 100, zoom: 0.75 }, 50, 25), { scale: 0.25, viewedWidth: 200, viewedHeight: 100 });
+    const fixed = (zoom: number) => shown({ views: [{ kind: 13 }], scenes: [{ code: 20, x: 200, y: 100, width: zoom }] }).scenes.get(0);
+    const scene = fixed(-2);
+    assert.ok(scene);
+    assert.strictEqual(scene.zoom, -2);
+    for (const [width, height] of [[50, 25], [800, 400]] as const) {
+      const transform = sceneTransform(scene, width, height);
+      assert.deepStrictEqual(transform, { scale: 2, viewedWidth: width / 2, viewedHeight: height / 2 });
+      assert.deepStrictEqual(scenePoint(transform, 28, 12), { x: 14, y: 6 });
+    }
+    assert.throws(() => fixed(-Infinity), /not finite/);
+    assert.throws(() => fixed(NaN), /not finite/);
     assert.deepStrictEqual(sceneTransform({ width: 0, height: 0, zoom: 1 }, 300, 200), { scale: 1, viewedWidth: 300, viewedHeight: 200 });
     assert.deepStrictEqual(scenePoint({ scale: 2, viewedWidth: 10, viewedHeight: 10 }, 100, 60), { x: 50, y: 30 });
   });
@@ -403,6 +414,16 @@ suite("native shared frame", () => {
       body: { kind: "text", text: "Kept", role: "body", tone: "primary" } }) });
     assert.ok(!html.includes("body{"), html);
     assert.ok(html.includes("Kept"));
+  });
+
+  test("plain and styled titles and headings keep their heading level in the browser", () => {
+    for (const [role, tag] of [["title", "h1"], ["heading", "h2"], ["body", "p"]]) {
+      for (const content of [{ kind: "text", text: "Overview" },
+        { kind: "rich-text", runs: [{ text: "Overview", ink: "", italic: false }] }]) {
+        const html = renderWorkspace({ regions: region({ ...content, role }) });
+        assert.ok(html.includes(`<${tag} class="osp-text`) && html.includes(`</${tag}>`), html);
+      }
+    }
   });
 
   test("inline mathematical and source runs retain emphasis colours and escaped wording", () => {

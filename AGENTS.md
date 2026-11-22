@@ -9,7 +9,9 @@
 
 ## Workflow
 - ❌ subagents, linked worktrees, git hooks (delete them). Primary checkout only; git = commit/push
-- 🚫 **Coordinated pushes only ([CI-PUSH-LOCK], [docs/plans/coordinated-push.md](docs/plans/coordinated-push.md)).** ❌ raw `git push`. One agent holds the TMC lock `PUSH-<branch>`; the rest commit and message it. It runs `make ci` (stamps HEAD), then `make push`, which refuses unless that exact HEAD passed and no CI run on the branch is queued or running. It owns that run to green
+- 🐍🚫 **Running Python (CPython, `python3`) is banned**, ad hoc scripts included (generators, analysis, one-liners). ✅ Write the script in **Python flavor Osprey** (a `.py` file starting with `# osprey: flavor=python`) and run it with **`osprey`**; its math goes in Lean ([MATH-CODE])
+- 🎼🚫 **Music is hand-written.** Never generate notes, patterns, arrangements or project files with a script, loop or generator; every note of a song in `src/osprey/examples/daw/tracks/` is composed and written by hand
+- **Coordinated pushes ([CI-PUSH-LOCK], [docs/plans/coordinated-push.md](docs/plans/coordinated-push.md)).** The agent holding the TMC lock `PUSH-<branch>` runs `make ci`, verifies the stamp matches the exact commit and checks GitHub for queued or running CI before using `git push`. Other agents commit and message the lock holder, who owns the run to green
 - **Offload legwork (repetitive, simple work) to pi agents**, model per [PiNotes model comparison](../PiNotes/MODEL-COMPARISON.md), always that family's newest id in `pi --list-models` (today: `zai/glm-5.3-flash` repetitive/fixtures/tests, `zai/glm-5.3` scoped code/reviews, `deepseek/deepseek-flash` code/oracles, `kimi-coding/k3.1-pro-highspeed` UI, `deepseek/deepseek-v4-pro` narrow audits only); `pi auth check --model <id>` first, out of credit → tell user, take the next; register each pi on TMC, delete its identity when it exits; you own their output: review and fix it
 - **Tokens:** check file size before reading, grep first, smallest diff
 - **Put strict timeouts on heavy CPU runs like KLEE or LLMs** run with lower CPU priority if possible
@@ -65,7 +67,7 @@ Three phases, each once — ❌ mixing them:
     escape s = escapeControls (replace s "\"" "\\\"" ?: "") 1
 ```
 
-- **Math is written in Lean, never in Osprey ([MATH-CODE](docs/specs/tooling/MathToCode.md)).** A formula is a `def` in a `.lean` file under a source root; the toolchain generates its Osprey module into `.osprey/math/` (untracked, never edited). ❌ hand-written math in `.osp*`, ❌ committing a generated module. 🚫 Designing or extending an Osprey-specific math format is prohibited unless Lean's format cannot express the functionality, proven in the spec ([MATH-CODE-LEAN]); an unread Lean construct means extend the reader. Well-known formulas live in [`@osprey/math`](src/osprey/packages/math/README.md), each the formula Mathlib states, quoted from the pinned Mathlib commit
+- **Write production formulas in native Osprey (`.ospml`).** Keep Lean theorem statements and proofs alongside the proof tooling. Derive their executable definitions from the shipped Osprey source, state the assumptions, and require the proof to fail on a relevant source mutation. Record any notation that reads worse than the equivalent Lean in the language spec and implementation plan. Cite the original formula and pinned Mathlib declaration where applicable. [Formula and proof contract](docs/specs/tooling/MathToCode.md)
 - **Osprey: JSON and database access stay at the edges** — decode into typed records in one boundary module (via `@osprey/json`'s `Doc`) or behind an effect; ❌ `Json` values, `JsonInt`/`jsonIndex` matching or SQL in business logic
 - **Website:** CSS ≤ 1.8k LOC, `prose`-prefixed classes, ❌ Tailwind; every site-local CSS/JS URL carries a content hash ([WEBSITE-ASSET-VERSIONS])
 
@@ -73,6 +75,7 @@ Three phases, each once — ❌ mixing them:
 - **Spec IDs:** hierarchical slugs (`[GROUP-TOPIC-DETAIL]`), ❌ numbers; cite in code (`// Implements [PARSER-EFFECTS-HANDLE]`) and tests. On disagreement, fix the stale source
 - Prose wraps naturally. ❌ ASCII art: [typeDiagram](https://typediagram.dev/docs/language-reference.html) for data types, mermaid otherwise
 - Read [`docs/messaging.md`](docs/messaging.md) before touching user-facing text
+- Given any page, ask the question "what concept am I explaining to the user?". Then ask, "does this clearly introduce the concept and then give examples, videos and screenshots of how to implement the concept?". If not correct it.
 
 ## Commands
 `make help` + [`Makefile`](Makefile) first; new features add their command and expected result there. Skills: `.agents/skills/<name>/SKILL.md`, then `node scripts/ci/link-skills.mjs`. ❌ commit generated files (`src/toolchain/website/src/spec/*.md`, `src/toolchain/website/src/assets/vendor/`) — edit `docs/specs/`

@@ -1,0 +1,28 @@
+WEBVTT
+
+00:00.000 --> 00:05.000
+Prism opens Broken Circuitry: Reassembly, 17 tracks at 97.5 BPM. Clicking the glass track at bar 19 opens its notes in the piano roll.
+
+00:05.000 --> 00:12.000
+Select the C7, drag its velocity to 90%, then drag the track's Space reverb send down. Each edit is saved to the project file.
+
+00:12.000 --> 00:22.000
+The Patch page shows glass's voice: additive partials through a smoother. Drag a Delay in from the module list.
+
+00:22.000 --> 00:28.000
+Click an output socket, then an input socket, to wire the smoother into the delay and the delay into the output.
+
+00:28.000 --> 00:33.000
+The inspector lists each module's parameters and connections. Play auditions the patch.
+
+00:33.000 --> 00:39.000
+Mix shows every track's gain, pan, output bus and Space send. Pulling glow's send down shows its group bus: EQ and a compressor keyed from the kick.
+
+00:39.000 --> 00:43.000
+Space is the shared reverb: size, decay and damping.
+
+00:43.000 --> 00:47.000
+Back on the Timeline, Play renders bars 19 and 20 from the edited project. The render wait is cut.
+
+00:47.000 --> 00:59.000
+What you hear is the audio Osprey rendered, edits included.

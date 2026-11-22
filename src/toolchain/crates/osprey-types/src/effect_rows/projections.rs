@@ -1,41 +1,28 @@
 //! Effect row projections.
 use super::{
     ordered_values, project_callable, project_deep, project_element, project_fiber_value,
-    project_success_value, Analyzer, BTreeMap, BTreeSet, CallArguments, Callable, ParameterUse,
-    Projection, Requirement, Requirements, Summary, Value,
+    project_success_value, shift_value_levels, Analyzer, BTreeMap, BTreeSet, CallArguments,
+    Callable, ParameterUse, Projection, Requirement, Requirements, Summary, Value,
 };
 
 impl Analyzer<'_> {
     pub(super) fn projection_absent(&self, value: &Value, path: &[Projection]) -> bool {
-        match path.split_first() {
-            Some((projection, remaining)) if !value.unknown_structure => {
-                value.proves_projection_absent(projection)
-                    || match borrowed_structural_child(value, projection) {
-                        ProjectionChild::Borrowed(child) => {
-                            self.projection_absent(child, remaining)
-                        }
-                        ProjectionChild::Missing => false,
-                        ProjectionChild::Owned => self.owned_projection_absent(value.clone(), path),
-                    }
-            }
-            _ => false,
+        let Some((projection, remaining)) = path.split_first() else {
+            return false;
+        };
+        if value.proves_projection_absent(projection) {
+            return true;
         }
-    }
-
-    fn owned_projection_absent(&self, mut value: Value, path: &[Projection]) -> bool {
-        for projection in path {
-            if value.unknown_structure {
-                return false;
-            }
-            if value.proves_projection_absent(projection) {
-                return true;
-            }
-            let Some(next) = self.project_path(value, std::slice::from_ref(projection)) else {
-                return false;
-            };
-            value = next;
+        if remaining.is_empty() || value.unknown_structure {
+            return false;
         }
-        false
+        match borrowed_structural_child(value, projection) {
+            ProjectionChild::Borrowed(child) => self.projection_absent(child, remaining),
+            ProjectionChild::Missing => false,
+            ProjectionChild::Owned => self
+                .project_borrowed_fallback(value, std::slice::from_ref(projection))
+                .is_some_and(|child| self.projection_absent(&child, remaining)),
+        }
     }
 
     pub(super) fn project_borrowed_path(
@@ -43,19 +30,36 @@ impl Analyzer<'_> {
         value: &Value,
         path: &[Projection],
     ) -> Option<Value> {
+        self.project_lifted_path(value, path, 0)
+    }
+
+    pub(super) fn project_lifted_path(
+        &self,
+        value: &Value,
+        path: &[Projection],
+        levels: usize,
+    ) -> Option<Value> {
         let mut selected = value;
         let mut remaining = path;
         while let Some((projection, rest)) = remaining.split_first() {
             match borrowed_structural_child(selected, projection) {
                 ProjectionChild::Borrowed(child) => selected = child,
                 ProjectionChild::Missing => return None,
-                ProjectionChild::Owned => {
+                ProjectionChild::Owned if levels == 0 => {
                     return self.project_borrowed_fallback(selected, remaining);
+                }
+                ProjectionChild::Owned => {
+                    // Invoking an opaque projection must see the lifted caller provenance.
+                    let mut lifted = value.clone();
+                    shift_value_levels(&mut lifted, levels, 0);
+                    return self.project_path(lifted, path);
                 }
             }
             remaining = rest;
         }
-        Some(selected.clone())
+        let mut lifted = selected.clone();
+        shift_value_levels(&mut lifted, levels, 0);
+        Some(lifted)
     }
 
     fn project_borrowed_fallback(&self, value: &Value, path: &[Projection]) -> Option<Value> {
@@ -63,10 +67,11 @@ impl Analyzer<'_> {
             Some((Projection::Field(field), remaining)) => self
                 .project_borrowed_field(value, field)
                 .and_then(|projected| self.project_path(projected, remaining)),
-            Some((Projection::Returned(_), _)) => value
+            Some((Projection::Returned(arguments), remaining)) => value
                 .callable
-                .clone()
-                .and_then(|callable| self.project_path(Value::from_callable(callable), path)),
+                .as_ref()
+                .and_then(|callable| self.project_borrowed_return(callable, arguments))
+                .and_then(|projected| self.project_path(projected, remaining)),
             _ => self.project_path(value.clone(), path),
         }
     }
@@ -149,7 +154,9 @@ impl Analyzer<'_> {
             Some(Callable::Alternatives(choices)) => {
                 self.project_return_choices(choices, &arguments)
             }
-            Some(Callable::Known(known)) => self.project_known_return(*known, &arguments),
+            Some(Callable::Known(known)) => {
+                self.project_known_return(&known.parameters, known.returned, &arguments)
+            }
             callable => Self::project_other_return(callable, arguments),
         }
     }
@@ -180,13 +187,29 @@ impl Analyzer<'_> {
         returned
     }
 
-    fn project_known_return(
+    fn project_borrowed_return(
         &self,
-        known: super::KnownCallable,
+        callable: &Callable,
         arguments: &CallArguments,
     ) -> Option<Value> {
-        let values = ordered_values(&known.parameters, &arguments.positional, &arguments.named);
-        self.project_bound_return(known.returned, &values)
+        match callable {
+            Callable::Known(known) => {
+                self.project_known_return(&known.parameters, known.returned.clone(), arguments)
+            }
+            callable => {
+                self.project_call_return(Value::from_callable(callable.clone()), arguments.clone())
+            }
+        }
+    }
+
+    fn project_known_return(
+        &self,
+        parameters: &[String],
+        returned: Option<Box<Value>>,
+        arguments: &CallArguments,
+    ) -> Option<Value> {
+        let values = ordered_values(parameters, &arguments.positional, &arguments.named);
+        self.project_bound_return(returned, &values)
     }
 
     pub(super) fn invoke_with_values(
@@ -219,7 +242,7 @@ impl Analyzer<'_> {
             Callable::Known(known) => {
                 let values =
                     ordered_values(&known.parameters, &arguments.positional, &arguments.named);
-                self.substitute_summary_at(known.summary.clone(), 0, &values)
+                self.substitute_summary_at(known.summary, 0, &values)
             }
             Callable::Unknown => Summary {
                 unresolved_dynamic_call: true,
@@ -302,6 +325,31 @@ fn owned_return_choices_do_not_clone_their_payloads() {
 
 #[cfg(test)]
 #[test]
+fn borrowed_known_return_does_not_clone_deferred_calls() {
+    super::identity_tests::with_empty_analyzer(|analyzer| {
+        let mut known = super::KnownCallable {
+            parameters: vec!["callback".to_owned()],
+            summary: Summary::default(),
+            returned: Some(Box::new(Value::unknown_value())),
+        };
+        assert!(known.summary.parameter_uses.insert(ParameterUse {
+            level: 0,
+            index: 0,
+            projection: Vec::new(),
+            arguments: CallArguments {
+                positional: vec![Some(Value::unknown_value()); 128],
+                named: Vec::new(),
+            },
+            scopes: Vec::new(),
+        }));
+        let value = Value::from_callable(Callable::Known(Box::new(known)));
+        let projection = Projection::Returned(Box::default());
+        assert_projection_budget(&analyzer, &value, projection, 1);
+    });
+}
+
+#[cfg(test)]
+#[test]
 fn borrowed_structural_projection_clones_only_the_selected_subtree() {
     super::identity_tests::with_empty_analyzer(|analyzer| {
         let value = Value {
@@ -312,9 +360,28 @@ fn borrowed_structural_projection_clones_only_the_selected_subtree() {
             ..Value::default()
         };
         let projection = Projection::Field("selected".to_owned());
-        for value in [value.clone(), projection_metadata(value, 10)] {
+        for value in [value.clone(), projection_metadata(value.clone(), 10)] {
             assert_projection_budget(&analyzer, &value, projection.clone(), 1);
         }
+        let callable = Callable::Alternatives(vec![
+            super::model_values::returning_unknown(0),
+            Callable::Unknown,
+        ]);
+        let with_callable = Value {
+            callable: Some(callable),
+            ..value
+        };
+        let (projected, clones) = super::provenance::measured_clones(|| {
+            analyzer.project_borrowed_field(&with_callable, "selected")
+        });
+        assert_eq!(
+            projected,
+            analyzer.project_owned_field(with_callable, "selected")
+        );
+        assert_eq!(
+            clones, 1,
+            "known callable returns are irrelevant to field projection"
+        );
     });
 }
 
@@ -396,11 +463,31 @@ fn borrowed_projection_matches_owned_projection_for_mixed_paths_and_metadata() {
                 let leaf = projection_metadata(Value::default(), mode);
                 let value =
                     projection_metadata(projection_container(&projection_container(&leaf)), mode);
+                let mut current = Some(value.clone());
+                let absent = path.iter().any(|step| {
+                    let Some(parent) = current.take() else {
+                        return false;
+                    };
+                    if parent.unknown_structure || parent.proves_projection_absent(step) {
+                        return !parent.unknown_structure;
+                    }
+                    current = analyzer.project_path(parent, std::slice::from_ref(step));
+                    false
+                });
                 assert_eq!(
-                    analyzer.project_borrowed_path(&value, &path),
-                    analyzer.project_path(value.clone(), &path),
+                    analyzer.projection_absent(&value, &path),
+                    absent,
                     "{mode}: {path:?}"
                 );
+                for levels in [0, 1, 3] {
+                    let mut lifted = value.clone();
+                    shift_value_levels(&mut lifted, levels, 0);
+                    assert_eq!(
+                        analyzer.project_lifted_path(&value, &path, levels),
+                        analyzer.project_path(lifted, &path),
+                        "{mode}, {levels}: {path:?}"
+                    );
+                }
             }
         }
     });
@@ -433,6 +520,13 @@ fn borrowed_payload_and_missing_projection_clone_budgets() {
             assert_projection_budget(&analyzer, &value, step, 1);
         }
         assert_missing_projection_budgets(&analyzer);
+        for projection in projection_steps() {
+            let (absent, clones) = super::provenance::measured_clones(|| {
+                analyzer.projection_absent(&value, std::slice::from_ref(&projection))
+            });
+            assert_eq!(absent, value.proves_projection_absent(&projection));
+            assert_eq!(clones, 0, "terminal absence check cloned {projection:?}");
+        }
         value.result_payload = None;
         let _ = value
             .fields

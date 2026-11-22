@@ -209,7 +209,7 @@ impl<'a> Inspector<'a> {
                     }
                 }
             }
-            Expr::List(items, _) => self.exprs(items, in_owner_arm, position),
+            Expr::List(items, _) => self.values(items, in_owner_arm, position),
             Expr::Map(entries) => {
                 for entry in entries {
                     self.expr(&entry.key, in_owner_arm, position);
@@ -217,13 +217,21 @@ impl<'a> Inspector<'a> {
                 }
             }
             Expr::Object(fields) | Expr::TypeConstructor { fields, .. } => {
-                self.fields(fields, in_owner_arm, position);
+                self.values(
+                    fields.iter().map(|field| &field.value),
+                    in_owner_arm,
+                    position,
+                );
             }
             Expr::Update { record, fields } => {
                 if self.is_cell(record) {
                     self.access(record, in_owner_arm, position);
                 }
-                self.fields(fields, in_owner_arm, position);
+                self.values(
+                    fields.iter().map(|field| &field.value),
+                    in_owner_arm,
+                    position,
+                );
             }
             Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
                 self.expr(left, in_owner_arm, position);
@@ -244,8 +252,12 @@ impl<'a> Inspector<'a> {
                 named_arguments,
             } => {
                 self.expr(function, in_owner_arm, position);
-                self.exprs(arguments, in_owner_arm, position);
-                self.named(named_arguments, in_owner_arm, position);
+                self.values(arguments, in_owner_arm, position);
+                self.values(
+                    named_arguments.iter().map(|named| &named.value),
+                    in_owner_arm,
+                    position,
+                );
             }
             Expr::MethodCall {
                 target,
@@ -254,8 +266,12 @@ impl<'a> Inspector<'a> {
                 ..
             } => {
                 self.expr(target, in_owner_arm, position);
-                self.exprs(arguments, in_owner_arm, position);
-                self.named(named_arguments, in_owner_arm, position);
+                self.values(arguments, in_owner_arm, position);
+                self.values(
+                    named_arguments.iter().map(|named| &named.value),
+                    in_owner_arm,
+                    position,
+                );
             }
             Expr::FieldAccess { target, .. } => self.expr(target, in_owner_arm, position),
             Expr::Index { target, index } => {
@@ -312,8 +328,12 @@ impl<'a> Inspector<'a> {
                 position: perform_position,
                 ..
             } => {
-                self.exprs(arguments, in_owner_arm, *perform_position);
-                self.named(named_arguments, in_owner_arm, *perform_position);
+                self.values(arguments, in_owner_arm, *perform_position);
+                self.values(
+                    named_arguments.iter().map(|named| &named.value),
+                    in_owner_arm,
+                    *perform_position,
+                );
             }
             Expr::Handler {
                 stage: _,
@@ -413,31 +433,14 @@ impl<'a> Inspector<'a> {
         self.allow_owner_handlers = previous;
     }
 
-    fn exprs(&mut self, values: &[Expr], inside: bool, position: Option<Position>) {
+    fn values<'v>(
+        &mut self,
+        values: impl IntoIterator<Item = &'v Expr>,
+        inside: bool,
+        position: Option<Position>,
+    ) {
         for value in values {
             self.expr(value, inside, position);
-        }
-    }
-
-    fn fields(
-        &mut self,
-        fields: &[osprey_ast::FieldAssignment],
-        inside: bool,
-        position: Option<Position>,
-    ) {
-        for field in fields {
-            self.expr(&field.value, inside, position);
-        }
-    }
-
-    fn named(
-        &mut self,
-        values: &[osprey_ast::NamedArgument],
-        inside: bool,
-        position: Option<Position>,
-    ) {
-        for value in values {
-            self.expr(&value.value, inside, position);
         }
     }
 

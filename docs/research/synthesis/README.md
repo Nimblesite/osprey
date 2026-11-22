@@ -1,5 +1,7 @@
 # Synthesis research [SYNTH-RESEARCH]
 
+The [2026-11-17 focused collection](#neural-granular-and-physical-synthesis-synth-research-focused) supports the [proposed package and Prism contracts](../../specs/runtime/Synthesis.md#advanced-synthesis-proposal-synth-advanced) and [delivery plan](../../plans/prism-synth-routing.md#advanced-synthesis-delivery-plan-prism-advanced-plan).
+
 Research gathered on 2026-11-14 for the independent `@osprey/synth` toolkit. Light Orchestra and Prism are consumers, not the architecture. The [library contract](../../specs/runtime/Synthesis.md) separates delivered functionality from proposed capabilities. This is a curated starting collection, not a systematic review or a claim of novelty.
 
 Entries link to primary papers, author publications, institutional records or official engineering documentation. Summaries describe the cited work; **Osprey experiments** are our proposed applications, not claims made by those authors. Publication dates below come from the work or its bibliographic record, rather than search-engine crawl dates. Full papers and third-party implementations retain their own licences; this collection contains links and brief annotations, not redistributed paper PDFs.
@@ -7,6 +9,8 @@ Entries link to primary papers, author publications, institutional records or of
 ## Reading path [SYNTH-RESEARCH-PATH]
 
 Start with Puckette for signals and synthesis, Chowning for modulation, Välimäki/Pekonen/Nam for oscillator aliasing, and Zavalishin for stateful filters. Then study waveshaping antialiasing, spectral and physical models. Read DDSP alongside its review and newer parameter-discovery work to distinguish useful learnable controls from expensive waveform generation. Keep real-time callback constraints beside every algorithm.
+
+For morphing between two analysed sounds, the [spectral morphing note](spectral-morphing.md) compares the literature's methods and justifies the Blend, Envelope and Partial modes [SYNTH-SPECTRAL-MORPH].
 
 The architectural opportunity is a common graph and parameter language that supports hand-designed, physically modelled and learned instruments, with interchangeable offline/reference and real-time renderers. This is a design hypothesis to test, not an established research breakthrough.
 
@@ -119,3 +123,58 @@ The architectural opportunity is a common graph and parameter language that supp
 | VST3 hosting | Third-party plug-in graph nodes | Host lifecycle tests, sample-offset events, latency compensation, state restoration and process-failure handling |
 
 For each experiment retain its source revision, dataset/patch inputs, sample rate, block schedule, compiler flags, hardware, audio output and result tables. Pair objective measurements with level-matched listening comparisons. An attractive demo or a paper's headline result is insufficient to label a component production-ready.
+
+## Neural, granular and physical synthesis [SYNTH-RESEARCH-FOCUSED]
+
+Collected 2026-11-17. The following annotations describe primary publications and manufacturer documentation. Proposed applications are design decisions for Osprey. Product descriptions establish documented behavior, with listening, source-level reproduction and target-device benchmarks remaining future work. Source versions are identified where available.
+
+### Neural models and deployed tools [SYNTH-RESEARCH-NEURAL]
+
+| Source | Technical contribution and consequence for the design |
+| --- | --- |
+| Caillon and Esling, *RAVE* (2021 preprint) | A variational autoencoder uses a compact latent representation, multiband synthesis and two-stage training. Expose model-specific latent controls and measure buffering, lookahead and processing separately. The paper's throughput result does not establish Prism latency. [Paper](https://arxiv.org/abs/2111.05011) |
+| Engel et al., *DDSP* (ICLR 2020) | Differentiable signal-processing operators let learned models control structured synthesis. Pitch/loudness-conditioned harmonic and noise resynthesis suggests an editable timbre-transfer module. Pitch-estimation errors and polyphonic inputs need explicit evaluation. [Paper](https://arxiv.org/abs/2001.04643) |
+| Défossez et al., *High Fidelity Neural Audio Compression* (2022 preprint) | EnCodec learns an encoder/decoder and quantized audio representation. Codec tokens require model-specific metadata and compatible codebooks. Reconstructing compressed audio alone supplies no text conditioning or interpretable timbre axis. [Paper](https://arxiv.org/abs/2210.13438), [implementation](https://github.com/facebookresearch/encodec) |
+| Liu et al., *AudioLDM* (ICML 2023) | Text-conditioned latent diffusion generates audio using CLAP representations. Use an asynchronous asset-generation job with seed, model revision and output provenance, followed by ordinary sample loading. [Paper](https://arxiv.org/abs/2301.12503), [proceedings](https://proceedings.mlr.press/v202/liu23f.html) |
+| Magenta DDSP-VST | Provides neural timbre-transfer effects and a MIDI-playable synthesizer. This motivates separate Audio and MIDI input modes, with visible pitch tracking and level control. [Developer repository](https://github.com/magenta/ddsp-vst), [official plugin catalog](https://magenta.withgoogle.com/plugins) |
+| IRCAM `nn~` | Hosts exported neural models in Max and Pure Data, including RAVE models. Model methods and channel dimensions form an integration contract. Prism must obtain these from a validated manifest. [Developer repository](https://github.com/acids-ircam/nn_tilde) |
+| Neutone FX | The published catalog includes DDSP instrument models and RAVE timbre-transfer models with declared input/output layouts. A model browser should expose those capabilities and provenance before insertion. [Official model catalog](https://neutone.jp/fx/models) |
+
+### Granular instruments [SYNTH-RESEARCH-GRANULAR-PRODUCTS]
+
+Truax's author overview describes dense clouds of short events and links his *Real-Time Granular Synthesis with a Digital Signal Processor* (Computer Music Journal 12(2), 1988). This supplies the scheduling/windowing foundation. The proposed 2–500 ms control range is a musical design choice extending beyond the overview's typical short-grain examples. [Author overview and bibliography](https://www.sfu.ca/~truax/gran.html)
+
+| Instrument and inspected source | Documented approach | Proposed Prism application |
+| --- | --- | --- |
+| Pigments, manual 5.0 | Granulation is part of the Sample engine. The indexed official manual establishes that relationship. Full PDF retrieval exceeded the browser limit, so detailed control parity remains unverified. | A sample waveform with position, grain size and density in the selected module inspector. [Official manual](https://dl.arturia.net/products/pigments/manual/pigments_Manual_5_0_0_EN.pdf) |
+| Portal, Grain Controls help page | Captures incoming audio into a buffer, with grain density, length, count, pitch, reverse, offset, shape and feedback. Timing controls can use rhythmic relationships. | An explicit live-input mode with capture/freeze, tempo synchronization and reproducible randomness. [Manufacturer technical guide](https://support.output.com/en/articles/10297851-grain-controls) |
+| Quanta 2, manufacturer product documentation | A sample-based grain voice combines grain rate, pitch, direction, shape, length and position with synthesis sources and modulation. | Per-note grain voices and modulation destinations with visible resource limits. [Manufacturer documentation](https://www.audiodamage.com/collections/granular-synthesis/products/ad055-quanta-2) |
+| Tasty Chips GR-1, manual 3.4.b | Hardware granular instrument organized around samples, scan position and direct grain controls. | Waveform scanning, frozen-position performance and direct numeric control alongside gestures. [Manufacturer manual](https://www.tastychips.nl/downloads/GR-1/UserManual/User-manual-GR-1-v3.4.b.pdf) |
+| Make Noise Morphagene, manufacturer manual | Organizes material into Reels, Splices and Genes. Gene Size, Slide, Morph and Vari-Speed control microsound playback. Recording and playback can operate independently. | Region selection and grain scanning with independently specified capture, transport and pitch behavior. [Manufacturer manual](https://www.makenoisemusic.com/wp-content/uploads/2024/03/morphagene-manual.pdf) |
+
+### Physical instruments and numerical methods [SYNTH-RESEARCH-PHYSICAL-PRODUCTS]
+
+Bilbao et al., *Physical modeling, algorithms and sound synthesis — The NESS Project*, Computer Music Journal 43(2–3), 15–30, is recorded by Edinburgh as published in 2020. It discusses numerical simulation and the relationship between physical systems and synthesis algorithms. Use energy behavior and numerical stability as design obligations for strings, tubes, membranes and coupled bodies. The source's publication record takes precedence over search crawl dates. [Institutional full text](https://www.pure.ed.ac.uk/ws/portalfiles/portal/121715237/cmj_ness_aam.pdf)
+
+| Instrument | Documented approach | Proposed Prism application |
+| --- | --- | --- |
+| Mutable Instruments Rings | Modal resonator, sympathetic strings and a dispersive string model, with excitation supplied externally or internally. | Independently routable excitation and body, plus compact material, brightness, damping and position controls. [Original-author manual](https://pichenettes.github.io/mutable-instruments-documentation/modules/rings/manual/) |
+| Mutable Instruments Elements | Modal voice with blow, bow and strike exciters, geometry and material controls. | Excitation choices with physically meaningful controls and visible body response. [Original-author manual](https://pichenettes.github.io/mutable-instruments-documentation/modules/elements/manual/) |
+| Rings/Elements clones | The original documentation supplies a reference design. Clone hardware and alternate firmware may change modes, controls and behavior. | Record exact firmware revision and hardware before parity testing. No clone-wide compatibility claim follows from the original manual. [Original source repository](https://github.com/pichenettes/eurorack) |
+| AAS Chromaphone 3 | Couples resonant objects so they exchange energy, alongside excitation and resonator controls. | Coupling belongs inside a bounded coupled-body processor with a documented energy model. [Manufacturer manual, Coupling of Resonators](https://www.applied-acoustics.com/chromaphone-3/manual/) |
+| Ableton Collision, Live 12 manual | Mallet/noise excitation and resonator sections expose the construction of a physical percussion voice. | A strike-to-body workflow and material presets with editable parameters. [Official instrument reference](https://www.ableton.com/en/live-manual/12/live-instrument-reference/#collision) |
+| Ableton Tension, Live 12 manual | Models string excitation, damping, termination, pickup and body. Exciters include bow, hammer, bouncing hammer and plectrum. | Separate playing gesture from string/body properties, with conditional controls for each exciter. [Official instrument reference](https://www.ableton.com/en/live-manual/12/live-instrument-reference/#tension) |
+
+The earlier Washington-hosted Smith paper now redirects to authentication, and Stanford's book blocks automated retrieval. Keep those bibliographic leads with that access limitation. The accessible NESS paper and original instrument manuals support this proposal's physical-model requirements.
+
+### Combining the methods and assessing originality [SYNTH-RESEARCH-HYBRID]
+
+| Prior art | Consequence for the proposed combined method |
+| --- | --- |
+| *Neural Granular Sound Synthesis* (2020 preprint, revised 2021) | Learned grain representations and trajectories already exist. A neural grain generator alone is established prior art. [Paper](https://arxiv.org/abs/2008.01393) |
+| Castle, Adcock and Barrass, *Integrated Modal and Granular Synthesis of Haptic Tapping and Scratching Sounds* (Eurohaptics 2002) | Combines granular scratching and modal tapping for interactive objects. The author publication page and indexed paper abstract establish this precedent. Full mirrored PDF retrieval failed. [Author publication entry](https://sonification.com/2002/10/10/haptic-scratching-and-tapping/), [paper mirror](https://citeseerx.ist.psu.edu/document?doi=8bb69ce847735352895718172f138fae43e3a5f2&repid=rep1&type=pdf) |
+| *Differentiable Modal Synthesis for Physical Modeling of Planar String Sound and Motion Simulation* (NeurIPS 2024) | Differentiable physical modal models already connect learned control and instrument physics. [Conference publication](https://papers.nips.cc/paper_files/paper/2024/hash/0232cafe8d1909a01019abe8af32f3e1-Abstract-Conference.html), [preprint](https://arxiv.org/abs/2407.05516) |
+| *Stable Differentiable Modal Synthesis for Learning Nonlinear Dynamics* (2026) | Stability-aware learned modal dynamics are also prior art. Evaluate its assumptions before selecting a stability parameterization. [Paper](https://arxiv.org/abs/2601.10453), [authors' implementation](https://github.com/victorzheleznov/jaes-modal-node) |
+| sonicLAB SSNN | The manufacturer describes a spiking neural network driving multiple engines including granular and modal engines. Shared neural event triggering is already a product design. [Manufacturer description](https://www.sonic-lab.com/ssnn-page) |
+
+Our proposed experiment gives each grain a contact position, duration, force budget and latent descriptor within one evolving physical body. The body's previous modal state influences subsequent grain selection and timing. A learned controller proposes these interactions, and a checked physical update constrains them. The potential contribution is this particular state-dependent interaction and its controllable behavior. Originality remains a hypothesis after this bounded search. The [combined-method contract](../../specs/runtime/Synthesis.md#combined-grain-and-body-method-synth-advanced-hybrid) defines the algorithm and comparisons needed to evaluate it.

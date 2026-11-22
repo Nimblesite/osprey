@@ -32,6 +32,7 @@ public struct SelfTestOptions: Equatable {
                 options.script = try value(argument)
                 options.shots = try value(argument)
             case "--headless": options.headless = true
+            case "--resources": _ = try value(argument)
             case "--update-goldens": options.updateGoldens = true
             case "--goldens": options.goldens = try value(argument)
             case "--http-double": options.httpDouble = try value(argument)
@@ -118,9 +119,10 @@ public struct SelfTestRegions {
         self.nodes = reached.sorted().compactMap { key in all[key].map { (key: key, node: $0) } }
     }
 
-    // What a closed disclosure holds is not on show.
+    // What a closed disclosure holds is not on show, and a tab bar shows every tab's name but only the chosen tab's page.
     private static func inside(_ node: Tree) -> [Tree] {
         if node.text("kind") == "disclosure", !node.flag("expanded") { return [] }
+        if node.text("kind") == "tabs" { return node.list("tabs").map { tab in tab.text("key") == node.text("selected") ? tab : tab.without("child") } }
         return node.object?.values.flatMap { $0.array ?? [$0] }.filter { $0.object != nil } ?? []
     }
 
@@ -155,15 +157,18 @@ public struct SelfTestRegions {
 
     private func enabled(_ node: Tree) -> Bool { node["enabled"]?.bool ?? true }
 
-    private func chooser(_ words: String) -> SelfTestSend? {
+    /// A choice of a tab bar, row list or picker; `picker`, when given, names the one control to choose in.
+    private func chooser(_ words: String, in picker: String? = nil) -> SelfTestSend? {
         // An exact choice wins over a substring, so `High` picks an effort picker's `High` before a model named `Highspeed`, and `GLM-5.3` picks `GLM · GLM-5.3` before `GLM · GLM-5.3 Highspeed`.
         for exact in [true, false] {
-            for field in ["rows", "choices"] {
+            for field in ["tabs", "rows", "choices"] {
                 for (key, root) in nodes {
+                    // A tab is named by its label, never by the words of its page; a list row's words are its child.
                     let wanted = { (row: Tree) in
-                        Self.holds(row, words) && (!exact || row.text("label") == words || row.text("label").hasSuffix(" · " + words) || row.text("key") == words)
+                        Self.holds(field == "tabs" ? row.without("child") : row, words) && (!exact || row.text("label") == words || row.text("label").hasSuffix(" · " + words) || row.text("key") == words)
                     }
-                    guard let node = Self.find(root, { $0["event"]?.int != nil && $0.list(field).contains(where: wanted) }) else { continue }
+                    let named = { (node: Tree) in picker.map { node.text("label") == $0 || node.text("title") == $0 } ?? true }
+                    guard let node = Self.find(root, { $0["event"]?.int != nil && named($0) && $0.list(field).contains(where: wanted) }) else { continue }
                     if let row = node.list(field).first(where: wanted) {
                         return SelfTestSend(region: key, ordinal: node.count("event"), value: .string(row.text("key")))
                     }
@@ -191,6 +196,9 @@ public struct SelfTestRegions {
         case "type":
             guard let found = named(try word(0)) else { return .waiting("no field is named \"\(try word(0))\"") }
             return .sending(SelfTestSend(region: found.region, ordinal: found.node.count("event"), value: .string(try word(1))))
+        case "choose" where step.words.count == 2:
+            guard let send = chooser(try word(1), in: try word(0)) else { return .waiting("nothing named \"\(try word(0))\" offers \"\(try word(1))\"") }
+            return .sending(send)
         case "choose":
             guard let send = chooser(try word(0)) else { return .waiting("nothing offers \"\(try word(0))\"") }
             return .sending(send)

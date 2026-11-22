@@ -12,3 +12,29 @@ let description = match color {
 }
 
 print(description) 
+
+// [PATTERN-NESTED] Exhaustiveness is decided over nested patterns as a whole,
+// and the diagnostic shows one value no arm reaches.
+type Tree = Leaf | Node(Tree, Tree)
+type MathError = DivZero | Overflow { by: int }
+
+fn leftmost(tree) = match tree {
+    Node(Leaf, _) => 1
+    Node(Node(_, _), Leaf) => 2
+    Leaf => 0
+}
+
+fn explain(result) = match result {
+    Success { value: 0 } => "zero"
+    Error { message: Overflow { by } } => "over by ${by}"
+    Error { message: DivZero } => "divided by zero"
+}
+
+// A name binds once per arm: `Node(x, x)` has no one value for `x`.
+fn same(tree) = match tree {
+    Node(Node(x, _), x) => 1
+    _ => 0
+}
+
+print("${leftmost(Leaf)} ${explain(Success { value: 1 })} ${same(Leaf)}")
+

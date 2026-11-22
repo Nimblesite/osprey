@@ -6,7 +6,7 @@
 )]
 
 use crate::check_program;
-use crate::testutil::{accepts, bad, ok, rejects_with};
+use crate::testutil::{accepts, bad, bad_with, ok, rejects_with};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 
 #[test]
@@ -23,28 +23,38 @@ fn checks_arithmetic_and_let() {
 
 #[test]
 fn interpolation_rejects_unprintable_aggregates() {
-    for (flavor, source) in [
+    let direct = "cannot convert value for interpolation: List<(int) -> int>";
+    let carried = format!("{direct}; `render` needs a printable argument");
+    for (flavor, source, message) in [
         (
             Flavor::Default,
             "let xs = [fn(n) => n + 1]\nprint(\"[${xs}]\")\n",
+            direct.to_owned(),
         ),
-        (Flavor::Ml, "xs = [\\n => n + 1]\nprint \"[${xs}]\"\n"),
+        (
+            Flavor::Ml,
+            "xs = [\\n => n + 1]\nprint \"[${xs}]\"\n",
+            direct.to_owned(),
+        ),
         (
             Flavor::Default,
             "fn render(x) = \"[${x}]\"\nprint(render([fn(n) => n + 1]))\n",
+            carried.clone(),
         ),
         (
             Flavor::Ml,
             "render x = \"[${x}]\"\nprint (render [\\n => n + 1])\n",
+            carried.clone(),
         ),
     ] {
         let parsed = parse_program_with_flavor(source, flavor);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
         let errors = check_program(&parsed.program);
+        // [TYPE-CONSTRAINTS]: reported on line 2, where the value is decided.
         assert!(
             errors
                 .iter()
-                .any(|e| e.message == "cannot convert value for interpolation: List<(int) -> int>"),
+                .any(|e| e.message == message && e.position.is_some_and(|p| p.line == 2)),
             "{flavor}: {errors:?}"
         );
     }
@@ -312,8 +322,7 @@ fn elvis_rejects_a_scrutinee_that_is_not_a_result() {
     // inherit the ORDINARY match auto-wrap rule — under which any value may
     // be matched as if wrapped in `Success` — and `5 ?: -1` type-checked and
     // printed `5`, with the fallback silently unreachable.
-    let errs = bad("let dead = 5 ?: -1\n");
-    assert!(errs.iter().any(|e| e.message.contains("`?:`")), "{errs:?}");
+    bad_with("let dead = 5 ?: -1\n", "`?:`");
 }
 
 #[test]

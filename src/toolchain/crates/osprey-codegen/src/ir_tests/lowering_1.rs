@@ -1,14 +1,37 @@
 use super::*;
+use crate::testkit::contents;
+
+/// `Type::con` without the namespace noise, so a fixture's shape reads.
+fn con(name: &str, args: Vec<osprey_types::Type>) -> osprey_types::Type {
+    osprey_types::Type::con(name, args)
+}
+
+/// A fresh builder plus a handle typed `word_base<elements>` — the
+/// word-shape tests' fixture. The outer constructor is the handle's own
+/// word, before any `#` payload tag.
+fn typed_word(
+    reg: &str,
+    word: &str,
+    elements: Vec<osprey_types::Type>,
+) -> (builder::Codegen, Value) {
+    let mut value = Value::handle(reg, word);
+    let base = word.split('#').next().unwrap_or(word);
+    value.inferred_type = Some(con(base, elements));
+    (builder::Codegen::new(), value)
+}
+
+/// `src` must fail codegen with an error whose text mentions `needle`.
+pub(super) fn compile_err_contains(src: &str, needle: &str) {
+    assert!(
+        compile_err(src).to_string().contains(needle),
+        "{src:?} must be rejected mentioning {needle:?}"
+    );
+}
 
 #[test]
 fn map_words_recover_nested_values_from_inference_when_join_erased_the_owner() {
-    let mut cg = builder::Codegen::new();
-    let mut map = Value::handle("%map", "Map");
-    let nested = osprey_types::Type::con("List", vec![osprey_types::Type::con("float", vec![])]);
-    map.inferred_type = Some(osprey_types::Type::con(
-        "Map",
-        vec![osprey_types::Type::con("string", vec![]), nested],
-    ));
+    let nested = con("List", vec![con("float", vec![])]);
+    let (mut cg, map) = typed_word("%map", "Map", vec![con("string", vec![]), nested]);
     let value = collections::runtime_map_get(&mut cg, &map, &Value::new("0", LType::I64))
         .expect("a checked map lookup");
     assert_eq!(value.result_inner, Some(LType::Ptr));
@@ -17,10 +40,8 @@ fn map_words_recover_nested_values_from_inference_when_join_erased_the_owner() {
 
 #[test]
 fn list_words_use_concrete_inference_over_an_empty_literal_element_tag() {
-    let mut cg = builder::Codegen::new();
-    let mut list = Value::handle("%list", "List#i8*");
-    let integer = osprey_types::Type::con("int", vec![]);
-    list.inferred_type = Some(osprey_types::Type::con("List", vec![integer.clone()]));
+    let integer = con("int", vec![]);
+    let (mut cg, list) = typed_word("%list", "List#i8*", vec![integer.clone()]);
     let value = collections::elem_value(&mut cg, &list, "%word");
     assert_eq!(value.ty, LType::I64);
     assert_eq!(value.inferred_type, Some(integer));
@@ -28,10 +49,8 @@ fn list_words_use_concrete_inference_over_an_empty_literal_element_tag() {
 
 #[test]
 fn list_words_recover_nested_handles_from_inference_when_owner_is_untyped() {
-    let mut cg = builder::Codegen::new();
-    let mut rows = Value::handle("%rows", "List");
-    let nested = osprey_types::Type::con("List", vec![osprey_types::Type::con("int", vec![])]);
-    rows.inferred_type = Some(osprey_types::Type::con("List", vec![nested.clone()]));
+    let nested = con("List", vec![con("int", vec![])]);
+    let (mut cg, rows) = typed_word("%rows", "List", vec![nested.clone()]);
     let value = collections::elem_value(&mut cg, &rows, "%word");
     assert_eq!(value.ty, LType::Ptr);
     assert_eq!(value.osp_ty.as_deref(), Some("List#i64"));
@@ -102,7 +121,7 @@ fn check_lowers_with_label_and_named_body_calls_through() {
     let ir = module("fn body() = check(\"sum\", 4, 2 + 2)\ntest(\"named\", body)\n");
     // The label operand is a real string pointer, not the expect null.
     shows(&ir, &["@osp_test_assert(i8* %"]);
-    testkit::contents(&ir, &[], &["@osp_test_assert(i8* null"]);
+    contents(&ir, &[], &["@osp_test_assert(i8* null"]);
     shows(&ir, &["call i32 @osp_test_begin(i8*"]);
 }
 
@@ -133,29 +152,25 @@ fn grouped_assertions_emit_one_soft_assertion_per_condition() {
     assert!(compile_err("let checks = [true]\nexpectAll(checks)\n")
         .to_string()
         .contains("must be a list literal"));
-    assert!(compile_err("expectAll([])\n")
-        .to_string()
-        .contains("at least one condition"));
+    compile_err_contains("expectAll([])\n", "at least one condition");
 }
 
 #[test]
 fn programs_without_tests_keep_the_plain_exit_path() {
     let ir = module("print(\"hi\")\n");
-    testkit::contents(&ir, &[], &["osp_test_finalize"]);
-    shows(&ir, &["ret i32 0"]);
+    contents(&ir, &["ret i32 0"], &["osp_test_finalize"]);
 }
 
 #[test]
 fn user_functions_shadow_testing_builtins() {
     // [TESTING-SHADOWING] a user `check` compiles as an ordinary call.
     let ir = module("fn check(t: int) -> int = satAdd(t, 1)\nlet r = check(4)\nprint(r)\n");
-    testkit::contents(&ir, &[], &["osp_test_assert"]);
-    shows(&ir, &["call i64 @check(i64 4)"]);
+    contents(&ir, &["call i64 @check(i64 4)"], &["osp_test_assert"]);
     // …and so does an extern declaration of the same name.
     let ir = module(
         "extern fn check(a: int, b: int, c: int) -> int\nlet r = check(1, 2, 3)\nprint(r)\n",
     );
-    testkit::contents(&ir, &[], &["osp_test_assert"]);
+    contents(&ir, &[], &["osp_test_assert"]);
 }
 
 #[test]
@@ -219,15 +234,9 @@ fn assertion_operands_render_success_payloads_without_hiding_errors() {
 fn testing_builtin_arity_errors_are_loud() {
     // The type gate rejects these in the CLI; codegen still fails loudly
     // on its own rather than emitting a broken call.
-    assert!(compile_err("test(\"only name\")\n")
-        .to_string()
-        .contains("test needs"));
-    assert!(compile_err("expect(1)\n")
-        .to_string()
-        .contains("expect needs"));
-    assert!(compile_err("check(\"l\", 1)\n")
-        .to_string()
-        .contains("check needs"));
+    compile_err_contains("test(\"only name\")\n", "test needs");
+    compile_err_contains("expect(1)\n", "expect needs");
+    compile_err_contains("check(\"l\", 1)\n", "check needs");
 }
 
 #[test]
@@ -266,6 +275,28 @@ fn debug_compile_emits_source_level_metadata() {
     );
 }
 
+/// The breakpoint fixture's program: `decl` names the State effect (plain
+/// or `control`), `tail` is the arm's result expression — `let inner = 41`
+/// lands on line 7 either way.
+fn arm_debug_module(decl: &str, tail: &str) -> String {
+    debug_module(&format!(
+        "{decl}\n\
+             fn bump() -> int !State = perform State.get()\n\
+             fn main() -> int {{\n\
+             let r = {{\n\
+             handle State {{\n\
+             get => {{\n\
+             let inner = 41\n\
+             {tail}\n\
+             }}\n\
+             }}\n\
+             bump()\n\
+             }}\n\
+             print(\"r=${{toString(r)}}\")\n\
+             0 }}\n"
+    ))
+}
+
 #[test]
 fn a_breakpoint_inside_a_handler_arm_body_has_a_line_to_bind_to() {
     // A handler arm is emitted as its own LLVM function, and a nested
@@ -275,22 +306,7 @@ fn a_breakpoint_inside_a_handler_arm_body_has_a_line_to_bind_to() {
     // line table. A debugger has nothing to bind a breakpoint to there, so
     // one set inside the arm never fires even though the arm runs.
     // [DEBUGGER-DBG-DECLARE]
-    let ir = debug_module(
-        "effect State { get: fn() -> int }\n\
-             fn bump() -> int !State = perform State.get()\n\
-             fn main() -> int {\n\
-             let r = {\n\
-             handle State {\n\
-             get => {\n\
-             let inner = 41\n\
-             inner\n\
-             }\n\
-             }\n\
-             bump()\n\
-             }\n\
-             print(\"r=${toString(r)}\")\n\
-             0 }\n",
-    );
+    let ir = arm_debug_module("effect State { get: fn() -> int }", "inner");
 
     shows(&ir, &["!DISubprogram(name: \"__handler_State_get_"]);
     // `let inner = 41` is line 7, inside the arm.
@@ -298,22 +314,7 @@ fn a_breakpoint_inside_a_handler_arm_body_has_a_line_to_bind_to() {
 
     // A `resume`-using arm is emitted down a separate path, and it is the
     // same construct to the author — so it must be just as debuggable.
-    let resuming = debug_module(
-        "effect State { control get: fn() -> int }\n\
-             fn bump() -> int !State = perform State.get()\n\
-             fn main() -> int {\n\
-             let r = {\n\
-             handle State {\n\
-             get => {\n\
-             let inner = 41\n\
-             resume(inner)\n\
-             }\n\
-             }\n\
-             bump()\n\
-             }\n\
-             print(\"r=${toString(r)}\")\n\
-             0 }\n",
-    );
+    let resuming = arm_debug_module("effect State { control get: fn() -> int }", "resume(inner)");
 
     shows(&resuming, &["!DILocation(line: 7,"]);
 }
@@ -328,7 +329,7 @@ fn generic_list_default_keeps_each_call_sites_element_depth() {
         Flavor::Python,
     );
     let ir = compile_program(&program).expect("nested list defaults must compile");
-    testkit::contents(&ir, &[], &["call i64 @osp_strlen"]);
+    contents(&ir, &[], &["call i64 @osp_strlen"]);
 }
 
 #[test]
@@ -336,7 +337,7 @@ fn generic_function_inlines_at_call_site() {
     // A polymorphic function is specialised by inlining, so no monomorphic
     // definition is emitted; the call computes directly at the use site.
     let ir = module("fn identity(x) = x\nlet a = identity(7)\nprint(\"v=${a}\")\n");
-    testkit::contents(&ir, &[], &["@identity"]);
+    contents(&ir, &[], &["@identity"]);
 }
 
 #[test]
@@ -350,11 +351,8 @@ fn generic_function_as_an_iterator_callback_inlines_not_calls_a_missing_symbol()
              let t = range(1, 4) |> fold(0, choose)\n\
              print(\"t=${t}\")\n",
     );
-    testkit::contents(&ir, &[], &["@choose"]);
-    assert!(
-        ir.contains("icmp eq i64") && ir.contains("phi i64"),
-        "the reducer body must be emitted inline"
-    );
+    contents(&ir, &[], &["@choose"]);
+    shows(&ir, &["icmp eq i64", "phi i64"]);
 }
 
 #[test]
@@ -370,8 +368,7 @@ fn fold_with_a_record_accumulator_lowers_and_recovers_the_pointer() {
              let r = range(1, 3) |> fold(Box { n: 7 }, bump)\n\
              print(\"n=${r.n}\")\n",
     );
-    shows(&ir, &["inttoptr i64"]);
-    testkit::contents(&ir, &[], &["@bump"]);
+    contents(&ir, &["inttoptr i64"], &["@bump"]);
 }
 
 #[test]
@@ -381,6 +378,23 @@ fn fold_transfers_owned_callback_results_but_retains_borrowed_accumulators() {
     let borrowed = function_body(&ir, "define internal i8* @borrowed()");
     assert_eq!(fresh.matches("call void @osp_retain(").count(), 1, "only the seed needs a retain; a newly owned callback result transfers to the loop slot:\n{fresh}");
     assert_eq!(borrowed.matches("call void @osp_retain(").count(), 2, "a borrowed callback result must be retained before the old accumulator is released:\n{borrowed}");
+}
+
+#[test]
+fn list_builder_moves_fresh_records_and_retains_borrowed_records() {
+    let ir = module("type Box = { n: int }\nfn made(items: List<int>) = mapList(items, fn(i) => Box { n: i })\nfn kept(items: List<Box>) = mapList(items, fn(item) => item)\n");
+    let made = function_body(&ir, "define internal i8* @made(");
+    let kept = function_body(&ir, "define internal i8* @kept(");
+    contents(
+        &made,
+        &["@osprey_list_builder_push_of"],
+        &["call void @osp_retain("],
+    );
+    contents(
+        &kept,
+        &["call void @osp_retain(", "@osprey_list_builder_push_of"],
+        &[],
+    );
 }
 
 #[test]
@@ -407,8 +421,7 @@ fn spawn_lowers_to_a_per_instance_closure_cell() {
         "an erased scalar fiber result must not be probed as a managed pointer:\n{ir}"
     );
     shows(&ir, &["define internal i64 @__fiber_thunk_0(i8* %__env)"]);
-    testkit::contents(&ir, &[], &["@__fiber_cap_"]);
-    shows(&ir, &["call i64 @fiber_await(i64"]);
+    contents(&ir, &["call i64 @fiber_await(i64"], &["@__fiber_cap_"]);
 }
 
 #[test]
@@ -482,10 +495,7 @@ fn erasure_boxes_with_one_way_ownership() {
     // releases the referent through the box: `{ i8* desc, i64 payload }`
     // with word 1 marked is meta 513.
     let producer = function_body(&ir, "define internal i8* @dynamic()");
-    assert!(
-        producer.contains("@osp_alloc_tagged_noinit(") && producer.contains(", i64 513)"),
-        "an erasing return must box its referent with a managed payload:\n{producer}"
-    );
+    shows(&producer, &["@osp_alloc_tagged_noinit(", ", i64 513)"]);
     shows(
         &producer,
         &["store i8* null, i8** %arc.s0", "@osp.any.desc.string"],
@@ -494,6 +504,5 @@ fn erasure_boxes_with_one_way_ownership() {
     // no new box, no descriptor reference — and the borrowed return is
     // retained (+1) rather than entered in the ledger as a fresh owner.
     let pass = function_body(&ir, "define internal i8* @identity(i8* %$p0)");
-    testkit::contents(&pass, &[], &["@osp.any.desc"]);
-    shows(&pass, &["@osp_retain"]);
+    contents(&pass, &["@osp_retain"], &["@osp.any.desc"]);
 }

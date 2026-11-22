@@ -272,19 +272,24 @@ public sealed class CapabilitiesTests
     public async Task AProcessSessionExchangesBoundedLinesAndClosesItsWorker()
     {
         var host = Host();
-        var shell = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
+        var windows = OperatingSystem.IsWindows();
+        var executable = windows ? Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe") : "/bin/cat";
         const string echo = "while ($null -ne ($line = [Console]::ReadLine())) { [Console]::WriteLine($line) }";
-        var opened = await host.Answer(Process(11, "open", Text(1, "process"), Text(2, "session-open"),
-            Text(3, "executable"), Text(3, shell), Text(3, "argv"), Text(3, "-NoProfile"),
-            Text(3, "argv"), Text(3, "-NonInteractive"), Text(3, "argv"), Text(3, "-Command"), Text(3, "argv"), Text(3, echo)));
+        AskField[] arguments = windows
+            ? [Text(3, "argv"), Text(3, "-NoProfile"), Text(3, "argv"), Text(3, "-NonInteractive"), Text(3, "argv"), Text(3, "-Command"), Text(3, "argv"), Text(3, echo)]
+            : [];
+        var opened = await host.Answer(Process(11, "open",
+            [Text(1, "process"), Text(2, "session-open"), Text(3, "executable"), Text(3, executable), .. arguments]));
         Assert.True(opened.Ok, opened.Error);
         var key = Docs.Text(Receipt(opened), "session");
         Assert.NotEmpty(key);
-        Ask Exchange(string input, long limit = 100) => Process(11, "exchange", Text(1, "process"), Text(2, "session-exchange"),
-            Text(3, "session"), Text(3, key), Text(3, "stdinText"), Text(3, input), Number(4, 5_000), Number(5, limit));
-        foreach (var line in new[] { "first", "second" })
+        Ask Exchange(string input, long limit = 100, long timeout = 5_000) => Process(11, "exchange", Text(1, "process"), Text(2, "session-exchange"),
+            Text(3, "session"), Text(3, key), Text(3, "stdinText"), Text(3, input), Number(4, timeout), Number(5, limit));
+        // The first exchange's budget also covers the child's start-up: a cold powershell.exe on a loaded
+        // runner takes longer than 5 s to reach ReadLine, so it gets the 60 s ceiling and the warm one 5 s.
+        foreach (var (line, timeout) in new[] { ("first", 60_000L), ("second", 5_000L) })
         {
-            var reply = await host.Answer(Exchange(line));
+            var reply = await host.Answer(Exchange(line, timeout: timeout));
             Assert.True(reply.Ok, reply.Error);
             Assert.Equal(line, Docs.Text(Receipt(reply), "output"));
         }
@@ -358,7 +363,28 @@ public sealed class CapabilitiesTests
         Assert.Equal((1, 3, 1), (Child.Whole(accented, 2, false), Child.Whole(accented, 3, false), Child.Whole(accented, 2, true)));
         Assert.Equal((0, 4, 3), (Child.Whole(smile, 3, false), Child.Whole(smile, 9, false), Child.Whole(smile[..3], 3, true)));
         Assert.Equal(0, Child.Whole([], 8, false));
-        Assert.EndsWith("cmd.exe", Child.Resolve("cmd", Environment.SystemDirectory), StringComparison.OrdinalIgnoreCase);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.EndsWith("cmd.exe", Child.Resolve("cmd", Environment.SystemDirectory), StringComparison.OrdinalIgnoreCase);
+            // MSYS2's usr\bin holds an extensionless bash script named cmd. Windows never runs a file
+            // without an executable extension, so a lookup passes over it to the real cmd.exe.
+            var msys = Directory.CreateTempSubdirectory("osprey-msys-");
+            try
+            {
+                File.WriteAllText(Path.Combine(msys.FullName, "cmd"), "#!/usr/bin/env bash\n\"$COMSPEC\" \"$@\"\n");
+                var path = msys.FullName + Path.PathSeparator + Environment.SystemDirectory;
+                Assert.Equal(Path.Combine(Environment.SystemDirectory, "cmd.exe"), Child.Resolve("cmd", path), ignoreCase: true);
+                Assert.Throws<HostException>(() => Child.Resolve("cmd", msys.FullName));
+            }
+            finally
+            {
+                msys.Delete(true);
+            }
+        }
+        else
+        {
+            Assert.EndsWith("sh", Child.Resolve("sh", Environment.GetEnvironmentVariable("PATH") ?? ""), StringComparison.Ordinal);
+        }
     }
 
     // ---- the model double a self-test answers http with [WINUI-HOST-SELF-TEST] ----

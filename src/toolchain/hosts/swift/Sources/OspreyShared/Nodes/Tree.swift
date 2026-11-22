@@ -21,6 +21,8 @@ public indirect enum Tree: Sendable, Equatable {
     public var whole: Int? { if case let .number(value) = self, value == value.rounded(), (0...9_007_199_254_740_991).contains(value) { return Int(value) } else { return nil } }
     public var array: [Tree]? { if case let .array(value) = self { return value } else { return nil } }
     public var object: [String: Tree]? { if case let .object(value) = self { return value } else { return nil } }
+    /// This record without the member `name`; anything else unchanged.
+    public func without(_ name: String) -> Tree { object.map { .object($0.filter { $0.key != name }) } ?? self }
 
     /// The words a control event carries for this value: nothing, text, a flag or a whole number.
     public var words: String {

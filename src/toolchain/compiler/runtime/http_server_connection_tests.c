@@ -114,6 +114,18 @@ static void assert_served(const char *reply, const char *connection) {
   assert(strstr(reply, "\r\n\r\nserved") != NULL);
 }
 
+static void expect_reply(int fd, const char *request, const char *connection) {
+  char reply[1024];
+  send_text(fd, request);
+  read_reply(fd, reply, sizeof(reply));
+  assert_served(reply, connection);
+}
+
+static void expect_closed_and_finish(int fd) {
+  assert(closed_by_server(fd));
+  close(fd);
+}
+
 // A client that sends half a request holds one connection, never the server.
 void test_server_serves_a_client_while_another_is_silent(void) {
   int64_t server = start_connection_server();
@@ -138,35 +150,21 @@ void test_server_serves_a_client_while_another_is_silent(void) {
 // close; HTTP/1.0 closes unless the client asks to keep it.
 void test_server_keeps_alive_as_node_does(void) {
   int64_t server = start_connection_server();
-  char reply[1024];
   int fd = open_client();
   for (int round = 0; round < 3; round++) {
-    send_text(fd, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
-    read_reply(fd, reply, sizeof(reply));
-    assert_served(reply, KEPT);
+    expect_reply(fd, "GET / HTTP/1.1\r\nHost: x\r\n\r\n", KEPT);
   }
-  send_text(fd, "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
-  read_reply(fd, reply, sizeof(reply));
-  assert_served(reply, CLOSED);
-  assert(closed_by_server(fd));
-  close(fd);
+  expect_reply(fd, "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n", CLOSED);
+  expect_closed_and_finish(fd);
 
   fd = open_client();
-  send_text(fd, "GET / HTTP/1.0\r\n\r\n");
-  read_reply(fd, reply, sizeof(reply));
-  assert_served(reply, CLOSED);
-  assert(closed_by_server(fd));
-  close(fd);
+  expect_reply(fd, "GET / HTTP/1.0\r\n\r\n", CLOSED);
+  expect_closed_and_finish(fd);
 
   fd = open_client();
-  send_text(fd, "GET / HTTP/1.0\r\nConnection: keep-alive\r\n\r\n");
-  read_reply(fd, reply, sizeof(reply));
-  assert_served(reply, KEPT);
-  send_text(fd, "GET / HTTP/1.1\r\nHost: x\r\nconnection: Close\r\n\r\n");
-  read_reply(fd, reply, sizeof(reply));
-  assert_served(reply, CLOSED);
-  assert(closed_by_server(fd));
-  close(fd);
+  expect_reply(fd, "GET / HTTP/1.0\r\nConnection: keep-alive\r\n\r\n", KEPT);
+  expect_reply(fd, "GET / HTTP/1.1\r\nHost: x\r\nconnection: Close\r\n\r\n", CLOSED);
+  expect_closed_and_finish(fd);
   assert(http_stop_server(server) == 0);
   assert(atomic_load(&g_served) == 7);
 }
@@ -187,11 +185,8 @@ void test_server_ends_half_closed_and_pipelined_connections(void) {
   close(fd);
 
   fd = open_client();
-  send_text(fd, "GET /a HTTP/1.1\r\nHost: x\r\n\r\nGET /b HTTP/1.1\r\nHost: x\r\n\r\n");
-  read_reply(fd, reply, sizeof(reply));
-  assert_served(reply, CLOSED);
-  assert(closed_by_server(fd));
-  close(fd);
+  expect_reply(fd, "GET /a HTTP/1.1\r\nHost: x\r\n\r\nGET /b HTTP/1.1\r\nHost: x\r\n\r\n", CLOSED);
+  expect_closed_and_finish(fd);
   assert(http_stop_server(server) == 0);
   assert(atomic_load(&g_served) == 2);
 }

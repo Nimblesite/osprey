@@ -10,26 +10,47 @@ module GrainScheduler
         clock = GrainClock(position = position, nextOnset = position, timing = timing, seed = seed)
         match valid clock
             true => Success(value = clock)
-            false => Error(message = "Invalid grain clock, interval, jitter or seed.")
+            false => Error(message = InvalidConfiguration(detail = "Invalid grain clock, interval, jitter or seed."))
 
     continued (held, end) = match held.next.nextOnset >= end
         true =>
             clock = held.next
             Success(value = held(positions = listReverse held.positions, next = clock(position = end)))
-        false => match floatToInt (GrainMath::nextSeed (toFloat held.next.seed))
-            Error why => Error(message = why)
-            Success seed => match floatToInt (GrainTimings::interval (held.next.timing, seed))
-                Error why => Error(message = why)
-                Success interval => match interval >= 1 && held.next.nextOnset <= satSub 9223372036854775807 interval
-                    false => Error(message = "The grain scheduler exhausted its onset clock.")
-                    true =>
-                        clock = held.next
-                        continued (held(positions = listPrepend held.positions clock.nextOnset, next = clock(nextOnset = satAdd clock.nextOnset interval, seed = seed)), end)
+        false => Outcomes::whole (GrainMath::nextSeed (toFloat held.next.seed), \seed => Outcomes::whole (GrainTimings::interval (held.next.timing, seed), \interval => onset (held, end, seed, interval)))
+
+    onset (held, end, seed, interval) = match interval >= 1 && held.next.nextOnset <= satSub 9223372036854775807 interval
+        false => Error(message = ExhaustedCapacity(detail = "The grain scheduler exhausted its onset clock."))
+        true =>
+            clock = held.next
+            continued (held(positions = listPrepend held.positions clock.nextOnset, next = clock(nextOnset = satAdd clock.nextOnset interval, seed = seed)), end)
 
     (** Returns absolute onsets in [position, position + frames); at most one onset per sample. Retain the returned clock. *)
     export block (clock, frames) = match valid clock && frames >= 1 && frames <= 2048 && clock.position <= satSub 9223372036854775807 frames
-        false => Error(message = "Invalid grain scheduler state or block size.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid grain scheduler state or block size."))
         true => continued (GrainOnsets(positions = [], next = clock), satAdd clock.position frames)
 
     (** Map onsets to playback controls, or construct GrainEvents individually for independent distributions. *)
     export events (positions, controls) = mapList (positions, \position => GrainEvent(position = position, controls = controls))
+
+(** [SYNTH-ADVANCED-GRAINS-SCHEDULING] Causal pitch marks from a separate bipolar reference with one rising zero crossing per cycle. *)
+module PitchMarks
+    (** Start without a preceding negative sample; an initial nonnegative sample does not invent an onset. *)
+    export prepare position = match position >= 0
+        true => Success(value = PitchMarkClock(position = position, belowZero = false))
+        false => Error(message = InvalidConfiguration(detail = "Invalid pitch reference sample position."))
+
+    collect (outcome, sample) = match outcome
+        Error why => Error(message = why)
+        Success held => match sample >= -1.0 && sample <= 1.0
+            false => Error(message = NumericalFailure(detail = "Pitch reference samples must be finite and normalised."))
+            true =>
+                clock = held.next
+                positions = match clock.belowZero && sample >= 0.0
+                    true => listPrepend held.positions clock.position
+                    false => held.positions
+                Success(value = PitchMarkBlock(positions = positions, next = PitchMarkClock(position = satAdd clock.position 1, belowZero = sample < 0.0)))
+
+    (** Return absolute offsets for GrainScheduler.events. The first nonnegative sample owns a crossing, without lookahead. *)
+    export block (clock, samples) = match length samples >= 1 && length samples <= 2048 && clock.position >= 0 && clock.position <= satSub 9223372036854775807 (length samples)
+        false => Error(message = ExhaustedCapacity(detail = "Invalid pitch reference block or exhausted sample clock."))
+        true => Outcomes::carried (foldList (samples, Success(value = PitchMarkBlock(positions = [], next = clock)), collect), \held => Success(value = held(positions = listReverse held.positions)))

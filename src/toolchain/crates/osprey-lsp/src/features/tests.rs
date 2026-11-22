@@ -368,11 +368,10 @@ fn a_symbol_declared_in_a_sibling_file_resolves_across_the_project() {
     // go-to-definition went nowhere, even though the compiler links both
     // files into one program. Implements [LSP-WORKSPACE].
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../osprey/examples/projects/modules");
-    let entry = root.join("src/main.ospml");
+        .join("../../../osprey/examples/talon/backend");
+    let entry = root.join("main.ospml");
     let text = std::fs::read_to_string(&entry).expect("read the composition root");
-    let uri =
-        crate::test_support::repo_uri("../../../osprey/examples/projects/modules/src/main.ospml");
+    let uri = crate::test_support::repo_uri("../../../osprey/examples/talon/backend/main.ospml");
     let (line, column) = position_of(&text, "Ledger::sqlite");
 
     let hovered = hover(&text, &uri, line, column, U16).expect("cross-file hover");

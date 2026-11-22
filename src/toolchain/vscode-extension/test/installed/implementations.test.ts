@@ -7,7 +7,7 @@
 // [LSP-DEFINITION-LOCAL]
 //
 // gpt2 is the Default flavor across three projects that share `../model`;
-// modules is the ML flavor with a qualified handler value, a `handler` bound
+// talon is the ML flavor with a qualified handler value, a `handler` bound
 // to a name, and an effect promised by a `signature`.
 
 import * as assert from "assert";
@@ -35,18 +35,18 @@ const GPU = "gpt2/model/gpu.osp";
 const MODEL = "gpt2/model/model.osp";
 const GENERATE = "gpt2/generate/generate.osp";
 const TRAIN = "gpt2/train/train.osp";
-const LEDGER = "modules/src/store/ledger.ospml";
-const METRICS = "modules/src/store/metrics.ospml";
-const ROUTES = "modules/src/api/routes.ospml";
-const MAIN = "modules/src/main.ospml";
+const LEDGER = "talon/backend/store/ledger.ospml";
+const METRICS = "talon/backend/store/metrics.ospml";
+const ROUTES = "talon/backend/api/routes.ospml";
+const MAIN = "talon/backend/main.ospml";
 
 /** Example directories copied into the workspace; gpt2's weights are not. */
 const COPIES: [string, string][] = [
   ["llms/gpt2/model", "gpt2/model"],
   ["llms/gpt2/generate", "gpt2/generate"],
   ["llms/gpt2/train", "gpt2/train"],
-  ["projects/modules/osprey.toml", "modules/osprey.toml"],
-  ["projects/modules/src", "modules/src"],
+  ["talon/backend/osprey.toml", "talon/backend/osprey.toml"],
+  ...["main.ospml", "api", "domain", "lib", "store", "web"].map((part): [string, string] => [`talon/backend/${part}`, `talon/backend/${part}`]),
 ];
 
 const site = (
@@ -130,7 +130,7 @@ const faultCases = (): Case[] => [
   { from: ARITH_HEAD, expect: [ARITH_HEAD] },
 ];
 
-// --- modules (ML): `Store`, `Audit` and the signature-promised `MetricsFx` --
+// --- talon (ML): `Store`, `Audit` and the signature-promised `MetricsFx` --
 
 /** Each `Store` operation's arm in `handler Store`, and who performs it. */
 const STORE: Record<string, { arm: string; performs: string[] }> = {

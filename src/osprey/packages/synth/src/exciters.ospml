@@ -1,0 +1,40 @@
+// [SYNTH-ADVANCED-PHYSICAL-PRIMITIVES] Deterministic excitation sources for physical and modal models.
+namespace synth
+
+(** Impulse or seeded coloured-noise bursts, once or repeating at an exact sample interval. *)
+module Exciters
+    (** Age zero fires immediately; the seed is a Park–Miller state in 1–2,147,483,646. *)
+    export initial seed = ExciterState(age = 0.0, seed = toFloat seed, smoothed = 0.0)
+
+    colour excitation = match excitation
+        ImpulseExcitation => true
+        NoiseExcitation amount => amount >= 0.0 && amount <= 1.0
+
+    (** Strength is linear 0–1; duration 1–48,000 samples; interval 0 fires once, otherwise 1–1,048,576. *)
+    export configure config = match config.strength >= 0.0 && config.strength <= 1.0 && config.duration >= 1 && config.duration <= 48000 && config.interval >= 0 && config.interval <= 1048576 && colour config.excitation
+        true => Success(value = config)
+        false => Error(message = InvalidConfiguration(detail = "Invalid exciter strength, duration, interval or colour."))
+
+    (** A one-shot holds its age at the burst end; a repeating burst restarts at its interval. *)
+    aged (config, age) = match config.interval == 0
+        true => min (age + 1.0, toFloat config.duration)
+        false => match age + 1.0 >= toFloat config.interval
+            true => 0.0
+            false => age + 1.0
+
+    min (one, other) = match one < other
+        true => one
+        false => other
+
+    impulse (config, held) = match held.age == 0.0
+        true => config.strength
+        false => 0.0
+
+    noise (config, held, amount) =
+        smoothed = PhysicalMath::coloured (held.smoothed, PhysicalMath::bipolar held.seed, amount)
+        ExciterSample(sample = smoothed * PhysicalMath::burst (config.strength, held.age, toFloat config.duration), next = ExciterState(age = aged (config, held.age), seed = GrainMath::nextSeed held.seed, smoothed = smoothed))
+
+    (** One sample with an accepted configuration and a state from this module. *)
+    export next (config, held) = match config.excitation
+        ImpulseExcitation => ExciterSample(sample = impulse (config, held), next = held(age = aged (config, held.age)))
+        NoiseExcitation amount => noise (config, held, amount)

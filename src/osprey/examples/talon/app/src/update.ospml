@@ -1,0 +1,97 @@
+// Implements [UI-STORE] and [UI-EVENTS] for Talon Bank: every change to the store is one pure step
+// from a typed message. Validation happens here, before any request is made, on every platform.
+namespace talon
+
+import ui::Runtime
+import talon::Amounts
+import talon::Ledger
+
+(** How Talon Bank answers each message. *)
+module Update
+    quiet () = Notice(noticeTone = "", noticeHeading = "", noticeDetail = "")
+
+    blank () = Draft(draftAccount = "1", draftFrom = "1", draftTo = "2", draftAmount = "", draftNote = "", draftOwner = "")
+
+    (** The store a launch starts from, talking to the API at `server`, before anything has loaded. *)
+    export launched server = Bank(bankServer = server, bankPage = "overview", bankMode = "transfer", bankChosen = "1", bankFilter = "all", bankSearch = "", bankOpening = false, bankLoads = 0, bankBusy = false, bankAccounts = [], bankJournal = [], bankDraft = blank (), bankNotice = quiet ())
+
+    (** Fetches both listings again. *)
+    export hydrate store = Runtime::asking (store(bankLoads = 2), Ledger::hydrate store.bankServer)
+
+    noticed (store, tone, heading, detail) = store(bankNotice = Notice(noticeTone = tone, noticeHeading = heading, noticeDetail = detail))
+
+    refused (store, heading, detail) = Runtime::step (noticed (store, "danger", heading, detail))
+
+    // A mutation is sent once: while one is in flight, another submit changes nothing.
+    sending (store, ticket, path, body) = match store.bankBusy
+        true => Runtime::step store
+        false => Runtime::asking (store(bankBusy = true, bankNotice = quiet ()), [Ledger::call (store.bankServer, ticket, "POST", path, body)])
+
+    (** Opens an account for the owner typed into the dialog. *)
+    export openAccount store = match trim store.bankDraft.draftOwner
+        "" => refused (store, "Owner name required", "Enter the client’s full name to open the account.")
+        owner => sending (store, "open", "/api/accounts", Ledger::opening owner)
+
+    number text = parseInt text ?: 0
+
+    single (store, ticket, path, account) =
+        draft = store.bankDraft
+        cents = Amounts::cents draft.draftAmount
+        match number account > 0 && cents > 0
+            false => refused (store, "Check the amount", "Choose an account and enter a positive amount.")
+            true => sending (store, ticket, path, Ledger::single (number account, cents, trim draft.draftNote))
+
+    transfer store =
+        draft = store.bankDraft
+        cents = Amounts::cents draft.draftAmount
+        match draft.draftFrom == draft.draftTo
+            true => refused (store, "Choose two accounts", "Source and destination must be different.")
+            false => match number draft.draftFrom > 0 && number draft.draftTo > 0 && cents > 0
+                false => refused (store, "Check the transfer", "Choose both accounts and enter a positive amount.")
+                true => sending (store, "transfer", "/api/transfer", Ledger::paired (number draft.draftFrom, number draft.draftTo, cents, trim draft.draftNote))
+
+    (** Sends the movement form for the chosen mode. *)
+    export submitMove store = match store.bankMode
+        "deposit" => single (store, "deposit", "/api/deposit", store.bankDraft.draftAccount)
+        "withdraw" => single (store, "withdraw", "/api/withdraw", store.bankDraft.draftAccount)
+        _ => transfer store
+
+    (** Applies a tap. *)
+    export tapped (store, action) = match action
+        Refresh => hydrate store
+        OpenDialog => Runtime::step (store(bankOpening = true))
+        CloseDialog => Runtime::step (store(bankOpening = false))
+        SubmitOpen => openAccount store
+        SubmitMove => submitMove store
+        Dismiss => Runtime::step (store(bankNotice = quiet ()))
+        QuickMove mode => Runtime::step (store(bankPage = "move", bankMode = mode))
+        SeePage page => Runtime::step (paged (store, page))
+        ShowKind kind => Runtime::step (store(bankFilter = kind))
+        _ => Runtime::step store
+
+    pages () = ["overview", "accounts", "move", "activity", "security"]
+
+    paged (store, page) = match listContains (pages ()) page
+        true => store(bankPage = page)
+        false => store
+
+    drafted (store, draft) = Runtime::step (store(bankDraft = draft))
+
+    // An account chosen in a list becomes the one every form starts from.
+    chosen (store, key) =
+        draft = store.bankDraft
+        Runtime::step (store(bankChosen = key, bankPage = "accounts", bankDraft = draft(draftAccount = key, draftFrom = key)))
+
+    (** Applies an edit or a choice: the words typed, or the key chosen. *)
+    export typed (store, action, words) =
+        draft = store.bankDraft
+        match action
+            EditAmount => drafted (store, draft(draftAmount = words))
+            EditNote => drafted (store, draft(draftNote = words))
+            EditOwner => drafted (store, draft(draftOwner = words))
+            EditSearch => Runtime::step (store(bankSearch = words))
+            PickAccount => drafted (store, draft(draftAccount = words))
+            PickFrom => drafted (store, draft(draftFrom = words))
+            PickTo => drafted (store, draft(draftTo = words))
+            PickRow => chosen (store, words)
+            _ => Runtime::step store

@@ -50,7 +50,7 @@ object RenderControls {
         view.text = if (iconOnly) "" else tree.text("label")
         view.textSize = Type.sp("body", inherited)
         view.setTypeface(Type.face(inherited, "body"))
-        view.setTextColor(buttonInk(tree, theme))
+        view.setTextColor(buttonInk(tree, theme, inherited))
         view.gravity = Gravity.CENTER
         view.maxLines = 1
         view.minHeight = touchHeight(view.context, inherited)
@@ -58,7 +58,7 @@ object RenderControls {
         view.setPadding(across, 0, across, 0)
         view.isEnabled = tree.flag("enabled")
         view.alpha = if (tree.flag("enabled")) 1f else 0.45f
-        view.background = surfaceOf(buttonFill(tree, theme), buttonCorner(view, inherited, iconOnly).toFloat(), null)
+        view.background = surfaceOf(buttonFill(tree, theme, inherited), buttonCorner(view, inherited, iconOnly).toFloat(), null)
         view.compoundDrawablePadding = dp(view.context, 6.0)
         leadSymbol(view, tree, theme, inherited, iconOnly)
         view.contentDescription = tree.text("label")
@@ -73,22 +73,23 @@ object RenderControls {
         view.setCompoundDrawables(null, null, null, null)
         if (name.isEmpty() || !Symbols.known(name)) return
         val size = if (inherited.symbolSize > 0) inherited.symbolSize else if (iconOnly) 18 else 12
-        val glyph = Symbols.drawable(view.context, name, buttonInk(tree, theme), size)
+        val glyph = Symbols.drawable(view.context, name, buttonInk(tree, theme, inherited), size)
         if (inherited.trailingSymbols) view.setCompoundDrawables(null, null, glyph, null)
         else view.setCompoundDrawables(glyph, null, null, null)
     }
 
     /** A role's ink: filled buttons carry the on-accent ink, destructive the danger tone. */
-    private fun buttonInk(tree: Tree, theme: ThemeResolver): Int = when (tree.text("role")) {
+    private fun buttonInk(tree: Tree, theme: ThemeResolver, inherited: Inherited): Int = when (tree.text("role")) {
         "filled", "prominent" -> theme.colour("onAccent") ?: 0xFFFFFFFF.toInt()
         "destructive" -> theme.colour("danger") ?: 0xFFFF3B30.toInt()
-        else -> theme.text()
+        // [UI-COMPONENTS-FRAMED] A plain button takes its frame's ink.
+        else -> theme.colour(inherited.inkName) ?: theme.text()
     }
 
-    /** A role's fill: filled buttons the accent, quiet and plain the soft primary. */
-    private fun buttonFill(tree: Tree, theme: ThemeResolver): Int = when (tree.text("role")) {
+    /** A role's fill: filled buttons the accent, quiet ones clear, plain the soft primary. */
+    private fun buttonFill(tree: Tree, theme: ThemeResolver, inherited: Inherited): Int = when (tree.text("role")) {
         "filled", "prominent" -> theme.accent()
-        else -> theme.overlay(0.07)
+        else -> if (inherited.quiet) 0 else theme.overlay(0.07)
     }
 
     /** Plain buttons take 8-point corners; an icon-only button is round. */

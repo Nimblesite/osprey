@@ -16,24 +16,29 @@ use std::collections::BTreeSet;
 impl Checker {
     pub(super) fn bind_structural(
         &mut self,
-        fields: &[(String, String)],
+        slots: &[(String, Pattern)],
         open: bool,
         disc: &Type,
         local: &mut TypeEnv,
     ) {
+        let fields = &osprey_ast::row_binders(slots);
         // Before ANY scrutinee-shaped reasoning, and so uniformly for a concrete
         // row and an erased one: a repeated field name makes the two halves of
         // the compiler disagree about the same pattern.
         if self.reject_duplicate_fields(fields) {
-            self.bind_fresh(fields, local);
+            self.bind_fresh(slots, local);
             return;
         }
         let dp = self.ctx.expose(disc);
         if dp.is_named(names::ANY) {
-            for (_, binder) in fields {
-                if !binder.is_empty() {
-                    local.insert(binder.clone(), Scheme::mono(Type::any()));
+            for (field, slot) in slots {
+                if !slot.is_irrefutable() {
+                    self.errors.push(TypeError::new(format!(
+                        "field `{field}` of an `any` row is itself `any`; bind it and match it \
+                         in its own structural match"
+                    )));
                 }
+                self.bind_pattern(slot, &Type::any(), local);
             }
             return;
         }
@@ -47,21 +52,20 @@ impl Checker {
             self.errors.push(TypeError::new(format!(
                 "a structural pattern needs a record or `any` scrutinee{found}"
             )));
-            self.bind_fresh(fields, local);
+            self.bind_fresh(slots, local);
             return;
         };
         if let Some(hidden) = self.hidden_row(&dp, fields) {
             self.errors.push(hidden);
-            self.bind_fresh(fields, local);
+            self.bind_fresh(slots, local);
             return;
         }
         self.check_row_selects(fields, open, &dp, &row);
-        for (fname, binder) in fields {
-            if binder.is_empty() {
-                continue;
-            }
+        // Each slot is matched at its field's type, nested to any depth
+        // ([PATTERN-NESTED]).
+        for (fname, slot) in slots {
             let ft = row.get(fname).cloned().unwrap_or_else(|| self.ctx.fresh());
-            local.insert(binder.clone(), Scheme::mono(ft));
+            self.bind_pattern(slot, &ft, local);
         }
     }
 
@@ -109,12 +113,10 @@ impl Checker {
     /// Bind every named binder in `fields` to a fresh variable — the recovery
     /// taken whenever the scrutinee cannot supply field types, so the arm body
     /// still type-checks against the names it wrote instead of cascading.
-    fn bind_fresh(&mut self, fields: &[(String, String)], local: &mut TypeEnv) {
-        for (_, binder) in fields {
-            if !binder.is_empty() {
-                let fv = self.ctx.fresh();
-                local.insert(binder.clone(), Scheme::mono(fv));
-            }
+    fn bind_fresh(&mut self, slots: &[(String, Pattern)], local: &mut TypeEnv) {
+        for (_, slot) in slots {
+            let fv = self.ctx.fresh();
+            self.bind_pattern(slot, &fv, local);
         }
     }
 

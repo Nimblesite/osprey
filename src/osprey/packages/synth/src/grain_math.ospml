@@ -1,0 +1,92 @@
+namespace synth
+
+(** Sample-grain mathematics [SYNTH-ADVANCED-GRAINS]. *)
+module GrainMath
+    (** Periodic source addressing also supports negative playback rates. *)
+    export wrapped (position, size) =
+        value = position - floor (floatDiv (position, size)) * size
+        match value >= size
+            true => 0.0
+            false => value
+
+    (** Equal-power stereo placement for pan in [-1, 1]. *)
+    export leftGain pan = cos ((pan + 1.0) * 0.7853981633974483)
+
+    (** Right-channel equal-power pan gain. *)
+    export rightGain pan = sin ((pan + 1.0) * 0.7853981633974483)
+
+    (** Advance and wrap a fractional source position. *)
+    export cursor (position: float, rate, size: float) = wrapped (position + rate, size)
+
+    (** Linear ASR window. Positive fractions partition the lifetime; both endpoints are exactly zero. *)
+    export asr (age, duration, attack, release) = match age <= 0.0 || age >= duration - 1.0
+        true => 0.0
+        false => match age < attack * (duration - 1.0)
+            true => floatDiv (age, attack * (duration - 1.0))
+            false => match age > (1.0 - release) * (duration - 1.0)
+                true => floatDiv (duration - 1.0 - age, release * (duration - 1.0))
+                false => 1.0
+
+    (** Apply the grain amplitude and envelope to one sample. *)
+    export weighted (sample: float, amplitude, envelope) = sample * amplitude * envelope
+
+    (** Apply a channel placement gain. *)
+    export placed (sample: float, gain) = sample * gain
+
+    (** Fractional sample offset above the preceding integer. *)
+    export fraction position = position - floor position
+
+    (** Add two grain contributions. *)
+    export summed (a: float, b) = a + b
+
+    (** Park–Miller state update with multiplier 48271; all integer products fit binary64 exactly. *)
+    export nextSeed seed =
+        product = seed * 48271.0
+        product - floor (product / 2147483647.0) * 2147483647.0
+
+    (** Inclusive integer inter-onset jitter; zero jitter is strictly periodic. *)
+    export interval (period, jitter, seed) = period + floor ((seed - 1.0) / 2147483646.0 * (2.0 * jitter + 1.0)) - jitter
+
+    (** Discrete censored exponential gap: inverse CDF, rounded up, then capped. Never a zero gap. *)
+    export exponentialInterval (mean, maximum, seed) =
+        gap = ceil ((-1.0) * mean * ln (1.0 - seed / 2147483647.0))
+        match gap < 1.0
+            true => 1.0
+            false => match gap > maximum
+                true => maximum
+                false => gap
+
+    (** Lifetime-average events per rendered frame; no elapsed frames means no measured density yet. *)
+    export density (events, frames) = match frames <= 0.0
+        true => 0.0
+        false => floatDiv (events, frames)
+
+    (** Uniform bounded values; equal endpoints hold a parameter while its stream still advances. *)
+    export uniform (low, high, seed) = low + (high - low) * ((seed - 1.0) / 2147483646.0)
+
+    (** Inclusive discrete uniform range, with finite generator quantisation bias. *)
+    export discrete (low, high, seed) = low + floor ((high - low + 1.0) * ((seed - 1.0) / 2147483646.0))
+
+    (** Offset stream initialization stays in the nonzero Park–Miller state domain. *)
+    export streamSeed (seed, offset) =
+        value = seed - 1.0 + offset
+        1.0 + value - floor (value / 2147483646.0) * 2147483646.0
+
+    (** Clip symmetric parameter spreads to the declared valid control domain. *)
+    export spreadLow (center: float, spread, low) = match center - spread < low
+        true => low
+        false => center - spread
+
+    (** Clamp the upper end of a parameter spread. *)
+    export spreadHigh (center: float, spread, high) = match center + spread > high
+        true => high
+        false => center + spread
+
+    (** Advance an absolute fractional sample address, wrapping into [first, limit) when requested. *)
+    export regionCursor (position, rate, first, limit, looping) = match looping
+        true =>
+            next = first + cursor (position - first, rate, limit - first)
+            match next >= limit
+                true => first
+                false => next
+        false => position + rate

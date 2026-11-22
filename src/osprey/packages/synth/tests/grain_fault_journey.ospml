@@ -1,0 +1,28 @@
+import synth::GrainGraph
+import synth::Grains
+
+// [SYNTH-ADVANCED-GRAINS-INTEGRATION] Invalid edits do not advance the running grain clock.
+withoutGrainKey (n, key) = n(parameters = filterList (n.parameters, \p => p.key != key))
+
+displayedGrains snapshot =
+    handle static Signal<synth::GrainObservation>
+        read => snapshot
+    Grains::observe ()
+
+grainFaultJourney (node, cloud) =
+    forEachList (["period", "jitter", "maximumGap", "regionStart", "regionEnd", "variationSeed"], \key =>
+        refusedWith (GrainGraph::prepare (grainSet (node, key, 2.5)), wholeCounts ()))
+    forEachList (["start", "variationSeed"], \key =>
+        refusedAs (GrainGraph::prepare (withoutGrainKey (node, key)), "resource", "index out of bounds"))
+    refusedAs (GrainGraph::block (withoutGrainKey (node, "rateSpread"), cloud, 4), "resource", "index out of bounds")
+    refusedAs (GrainGraph::prepare (synth::Components::sine (7, 440.0)), "resource", "The component is not a grain cloud.")
+    expect (cloud.clock.position, 0)
+    expect (cloud.pool.position, 0)
+    quiet = displayedGrains (Grains::observation cloud.pool)
+    expect (quiet.samplePosition, 0)
+    expect (quiet.activeGrains, 0)
+    succeeds (Grains::block (cloud.pool, 4), \block =>
+        current = displayedGrains (Grains::observation block.next)
+        expect (current.samplePosition, 4)
+        expect (current.capacity, quiet.capacity)
+        expect (current.sourceFrames, quiet.sourceFrames))

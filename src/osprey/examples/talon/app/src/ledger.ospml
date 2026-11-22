@@ -1,0 +1,63 @@
+// Implements [UI-EFFECTS] for Talon Bank: the HTTP edge. Requests to the ledger API are typed
+// `Http` capabilities the host performs; their bodies arrive in host-held slices and are decoded
+// here, once, into `Account` and `Movement` records. No JSON reaches the screens or the update.
+namespace talon
+
+import ui::Doc
+import ui::Requests
+
+(** The ledger API's requests and replies. *)
+module Ledger
+    // Large enough for every demo account and journal line; a longer reply is refused by the host.
+    replyLimit () = 1048576
+
+    // Ten seconds, in milliseconds.
+    replyDeadline () = 10000
+
+    jsonHeader () = ui::Header(headerName = "Content-Type", headerValue = "application/json")
+
+    (** A request to the API at `server` whose reply is held under the slice named `ticket`. *)
+    export call (server, ticket, method, path, body) = Requests::ask (ticket, ui::Http(method = method, url = server + path, headers = [jsonHeader ()], body = body, responseLimit = replyLimit (), deadline = replyDeadline (), httpSlice = ticket))
+
+    (** Both listings, fetched together. *)
+    export hydrate server = [call (server, "accounts", "GET", "/api/accounts", ""), call (server, "activity", "GET", "/api/activity", "")]
+
+    (** The HTTP status a completed request's receipt names; zero when the host refused it. *)
+    export status outcome = match outcome
+        Success receipt => Doc::number (Doc::parse receipt, "status")
+        Error _ => 0
+
+    (** Whether a completed request's status is a 2xx success. *)
+    export ok outcome =
+        code = status outcome
+        code >= 200 && code < 300
+
+    account item = Account(accountId = Doc::number (item, "id"), accountOwner = Doc::text (item, "owner"), accountCents = Doc::number (item, "cents"))
+
+    movement item = Movement(movementAccount = Doc::number (item, "account"), movementKind = Doc::text (item, "kind"), movementCents = Doc::number (item, "cents"), movementNote = Doc::text (item, "note"), movementOwner = Doc::text (item, "owner"))
+
+    (** The accounts a `/api/accounts` reply lists. *)
+    export accounts body = mapList (Doc::items (Doc::parse body), account)
+
+    (** The journal a `/api/activity` reply lists, newest first. *)
+    export journal body = mapList (Doc::items (Doc::parse body), movement)
+
+    (** The refusal a failed reply explains, or a sentence for its bare status. *)
+    export refusal (body, code) = match Doc::text (Doc::parse body, "error")
+        "" => bare code
+        reason => reason
+
+    bare code = match code
+        0 => "The app could not reach the ledger. Check your connection and try again."
+        _ => match code >= 500
+            true => "The ledger failed with HTTP ${code}. Try again shortly."
+            false => "The ledger refused the request with HTTP ${code}."
+
+    (** The body that opens an account for `owner`. *)
+    export opening owner = Doc::write (JsonObject [Doc::str ("name", owner)])
+
+    (** The body of a deposit or withdrawal. *)
+    export single (account, cents, note) = Doc::write (JsonObject [Doc::num ("account", account), Doc::num ("cents", cents), Doc::str ("note", note)])
+
+    (** The body of a transfer. *)
+    export paired (from, to, cents, note) = Doc::write (JsonObject [Doc::num ("from", from), Doc::num ("to", to), Doc::num ("cents", cents), Doc::str ("note", note)])

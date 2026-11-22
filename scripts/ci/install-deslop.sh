@@ -25,15 +25,10 @@ fail() { echo -e "${RED}✗ $*${RESET}" >&2; exit 1; }
 DESLOP_VERSION="0.41.0"
 BASE_URL="https://github.com/Nimblesite/Deslop/releases/download/v${DESLOP_VERSION}"
 
-# Already at this release? Nothing to do (keeps `make setup` idempotent).
-if command -v deslop-mcp &>/dev/null && command -v deslop &>/dev/null && deslop --version 2>/dev/null | grep -q "${DESLOP_VERSION}"; then
-    ok "deslop ${DESLOP_VERSION} already installed ($(command -v deslop))"
-    exit 0
-fi
-
 case "$(uname -s)" in
     Linux)  os=linux ;;
     Darwin) os=macos ;;
+    MINGW*|MSYS*|CYGWIN*) os=windows ;;
     *) fail "Unsupported OS for deslop install: $(uname -s) — install manually: $BASE_URL" ;;
 esac
 case "$(uname -m)" in
@@ -43,12 +38,20 @@ case "$(uname -m)" in
 esac
 
 stem="deslop-${DESLOP_VERSION}-${os}-${arch}"
-asset="${stem}.tar.gz"
+# Windows releases are a zip of .exe tools; the others a tarball of bare ones.
+if [[ "$os" == windows ]]; then asset="${stem}.zip"; exe=.exe; else asset="${stem}.tar.gz"; exe=""; fi
 
 # Pick an install dir on PATH (explicit arg wins; else writable system bin; else user bin).
 dest="${1:-}"
 if [[ -z "$dest" ]]; then
     if [[ -w /usr/local/bin ]]; then dest=/usr/local/bin; else dest="$HOME/.local/bin"; fi
+fi
+if [[ -n "${GITHUB_PATH:-}" ]]; then
+    echo "$dest" >> "$GITHUB_PATH"
+fi
+if [[ -x "$dest/deslop$exe" && -x "$dest/deslop-mcp$exe" && "$("$dest/deslop$exe" --version)" == "deslop $DESLOP_VERSION" ]]; then
+    ok "deslop $DESLOP_VERSION already installed ($dest/deslop)"
+    exit 0
 fi
 mkdir -p "$dest"
 
@@ -69,16 +72,14 @@ fi
 [[ "$expected" == "$actual" ]] || fail "SHA-256 mismatch: expected $expected, got $actual"
 ok "checksum verified"
 
-tar -xzf "$tmp/$asset" -C "$tmp"
+if [[ "$os" == windows ]]; then unzip -q "$tmp/$asset" -d "$tmp"; else tar -xzf "$tmp/$asset" -C "$tmp"; fi
 for tool in deslop deslop-mcp; do
-    install -m 0755 "$tmp/$stem/$tool" "$dest/$tool"
+    # The archive holds each tool in its versioned folder or at its top.
+    found="$(find "$tmp" -type f -name "$tool$exe" | head -n 1)"
+    [[ -n "$found" ]] || fail "$asset holds no $tool$exe"
+    install -m 0755 "$found" "$dest/$tool$exe"
     ok "installed $tool ${DESLOP_VERSION} → $dest/$tool"
 done
-
-# CI: make the install dir discoverable by subsequent steps.
-if [[ -n "${GITHUB_PATH:-}" ]]; then
-    echo "$dest" >> "$GITHUB_PATH"
-fi
 
 # Local: nudge if the dir isn't already on PATH.
 case ":$PATH:" in

@@ -92,7 +92,7 @@ impl Checker {
         let constrained_builtin = name.is_some_and(constrained_builtin);
         if let (Some(name), Some(receiver)) = (name, args.first()) {
             if constrained_builtin {
-                let name = self.sited_use(name);
+                let name = self.here_use(name);
                 self.builtin_uses.push((name, receiver.clone()));
             }
         }

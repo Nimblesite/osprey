@@ -28,9 +28,9 @@ fn term(result: &str, lean: &str) -> String {
     assert_eq!(lines.len(), 1, "{lean}: {lines:?}");
     lines
         .concat()
-        .strip_prefix("f (x, y, b) = ")
-        .unwrap_or_else(|| panic!("{lines:?}"))
-        .to_owned()
+        .split_once(") = ")
+        .filter(|(head, _)| head.starts_with("f ("))
+        .map_or_else(|| panic!("{lines:?}"), |(_, right)| right.to_owned())
 }
 
 /// Every `Lean term => Osprey term` case, as a definition body of type `result`.
@@ -196,7 +196,12 @@ fn branches_and_bindings_become_matches_and_blocks() {
         "private def f (x : Float) : Float := let y := x * 2; let z : Float := y + 1; z * y\n";
     assert_eq!(
         body(source),
-        ["f x =", "    y = x * 2.0", "    z = y + 1.0", "    z * y"]
+        [
+            "f (x: float) =",
+            "    y = x * 2.0",
+            "    z = y + 1.0",
+            "    z * y"
+        ]
     );
     let source = "private def f (x : Float) : Float :=\n  let y := if x < 0 then\n      let n := -x\n      n\n    else x\n  if y > 1 then 1 else\n    let h := y / 2\n    h\n";
     let lines = [
@@ -214,7 +219,7 @@ fn branches_and_bindings_become_matches_and_blocks() {
     ];
     assert_eq!(body(source), lines);
     let source = "private def f (x : Float) : Float :=\n  let y := x\n    + 1\n  y\n";
-    assert_eq!(body(source), ["f x =", "    y = x + 1.0", "    y"]);
+    assert_eq!(body(source), ["f (x: float) =", "    y = x + 1.0", "    y"]);
 }
 
 #[test]
@@ -222,23 +227,38 @@ fn definitions_carry_their_types_documentation_and_visibility() {
     let source = "/-- Twice\n   `x`, closed *) early. -/\ndef twice (x : Float) : Float := 2 * x\n\n/-- Hidden. -/\nprivate def k : Float := 3\ndef limit : Float := k\ndef near (x y : Float) : Bool := twice x < limit\n/-- -/\ndef same (b : Bool) : Bool := b\n";
     let lines = [
         "(** Twice `x`, closed * ) early. *)",
-        "export twice : float -> float",
-        "twice x = 2.0 * x",
+        "export twice (x: float) = 2.0 * x",
         "",
         "(** Hidden. *)",
         "k = 3.0",
         "",
         "(** `limit`, generated from Case.lean. *)",
-        "export limit : float",
-        "limit = k",
+        "export limit = k",
         "",
         "(** `near`, generated from Case.lean. *)",
-        "export near : (float, float) -> bool",
-        "near (x, y) = twice x < limit",
+        "export near (x: float, y: float) = twice x < limit",
         "",
         "(** `same`, generated from Case.lean. *)",
-        "export same : bool -> bool",
-        "same b = b",
+        "export same (b: bool) = b",
+    ];
+    assert_eq!(body(source), lines);
+}
+
+#[test]
+/// A result the checker fixes needs no header, at every arity; `sinh` below keeps one.
+fn a_result_the_checker_fixes_needs_no_header_at_any_arity() {
+    let source = "private def root (x : Float) : Float := Float.sqrt x\ndef fixed : Float := root 9\ndef unary (x : Float) : Float := root x\ndef both (x y : Float) : Float := root x\n";
+    let lines = [
+        "root x = sqrt x",
+        "",
+        "(** `fixed`, generated from Case.lean. *)",
+        "export fixed = root 9.0",
+        "",
+        "(** `unary`, generated from Case.lean. *)",
+        "export unary x = root x",
+        "",
+        "(** `both`, generated from Case.lean. *)",
+        "export both (x, y: float) = root x",
     ];
     assert_eq!(body(source), lines);
 }
@@ -277,11 +297,15 @@ fn opened_float_functions_are_written_as_mathlib_writes_them() {
 #[test]
 fn a_source_may_define_a_builtins_name_when_it_never_calls_that_builtin() {
     let source = "open Float (exp)\nprivate def sinh (x : Float) : Float := (exp x - exp (-x)) / 2\nprivate def cosh (x : Float) : Float := (exp x + exp (-x)) / 2\nprivate def tanh (x : Float) : Float := sinh x / cosh x\n";
+    // `/` by a literal does not fix a float result, so these keep their headers.
     let lines = [
+        "sinh : float -> float",
         "sinh x = (exp x - exp ((-1.0) * x)) / 2.0",
         "",
+        "cosh : float -> float",
         "cosh x = (exp x + exp ((-1.0) * x)) / 2.0",
         "",
+        "tanh : float -> float",
         "tanh x = floatDiv (sinh x, cosh x)",
     ];
     assert_eq!(body(source), lines);
@@ -291,4 +315,108 @@ fn a_source_may_define_a_builtins_name_when_it_never_calls_that_builtin() {
 fn what_only_lean_checks_generates_nothing() {
     let source = "/-! Module docs with a `def` inside. -/\n-- a comment with def and /- no opening\n/- block /- nested -/ still a comment def -/\n#eval \"a string -- not a comment \\\" def\"\n#check @Float.sqrt\n  -- an indented continuation\n  |>.toString\n#print Float\n/-- A doc before a check is dropped. -/\n#guard 'x' == 'x' ∧ [1, 2].length == 2\nprivate def k : Float := 1 -- trailing\n#eval k\n";
     assert_eq!(body(source), ["k = 1.0"]);
+}
+
+/// Each case is `Lean definition => its generated definition line`: the body fixes every
+/// type it can, one inline annotation per still-open group fixes the rest, and no
+/// `name : type` header repeats what inference derives [MATH-CODE-EMIT-ELEGANT].
+const HEADS_ANNOTATE_ONLY_WHAT_INFERENCE_CANNOT_DERIVE: &[&str] = &[
+    "def f (x : Float) : Float := x * 2 => export f (x: float) = x * 2.0",
+    "def f (x : Float) : Float := Float.sqrt x => export f x = sqrt x",
+    "def f (x y : Float) : Float := x / y => export f (x, y) = floatDiv (x, y)",
+    "def f (x y : Float) : Float := x * y => export f (x: float, y: float) = x * y",
+    "def f (x y : Float) : Float := x * y + 1 => export f (x: float, y: float) = x * y + 1.0",
+    "def f (x y : Float) : Bool := x < y => export f (x: float, y) = x < y",
+    "def f (x y : Float) : Bool := x < y && y > 0 => export f (x, y) = x < y && y > 0.0",
+    "def f (x y z : Float) : Float := x * y + z * z => export f (x: float, y: float, z: float) = x * y + z * z",
+    "def f (x y z : Float) : Bool := x * y < 1 && z == z => export f (x, y, z: float) = x * y < 1.0 && z == z",
+    "def f (a b : Bool) : Bool := a && b => export f (a, b) = a && b",
+    "def f (a b : Bool) : Bool := a == b => export f (a: bool, b) = a == b",
+    "def f (a : Bool) : Bool := !a => export f a = !a",
+    "def f (x : Float) : Float := Float.abs x => export f (x: float) = abs x",
+    "def f (x : Float) : Float := Float.abs (x + 1) => export f (x: float) = abs (x + 1.0)",
+    "def f (x y z : Float) : Float := if x < y then z else x => export f (x: float, y, z) = match x < y",
+    "def f (x y : Float) : Float := let s := x + y\n  Float.cos s => export f (x: float, y: float) =",
+    "def f (x y : Float) : Float := let s := x * y\n  s => export f (x: float, y: float) =",
+    "def f (x y : Float) : Float := x => export f (x: float, y: float) = x",
+    "def f : Float := 2 => export f = 2.0",
+];
+
+#[test]
+fn heads_annotate_only_what_inference_cannot_derive() {
+    for case in HEADS_ANNOTATE_ONLY_WHAT_INFERENCE_CANNOT_DERIVE {
+        let (lean, line) = case.split_once(" => ").unwrap_or_else(|| panic!("{case}"));
+        let lines = body(&format!("{lean}\n"));
+        assert_eq!(
+            lines.get(1).map(String::as_str),
+            Some(line),
+            "{case}: {lines:?}"
+        );
+        assert!(
+            !lines.iter().any(|text| text.contains(" : ")),
+            "{case}: {lines:?}"
+        );
+    }
+}
+
+#[test]
+fn a_definition_called_before_pins_its_arguments_to_its_lean_types() {
+    let source = "def sq (x y : Float) : Float := x * y\ndef twice (x : Float) : Float := sq x x\ndef same (a b : Bool) : Bool := a == b\ndef both (p q : Bool) : Bool := same p q\ndef g (w q : Float) : Float := w * w + w / q\ndef h (w q : Float) : Float := w / q * g w q\ndef low (w q : Float) : Float := 1 / Float.sqrt ((1 - w * w) * (1 - w * w) + w * w / (q * q))\ndef high (w q : Float) : Float := w * w * low w q\n";
+    let heads: Vec<String> = body(source)
+        .into_iter()
+        .filter(|line| line.starts_with("export"))
+        .collect();
+    let want = [
+        "export sq (x: float, y: float) = x * y",
+        "export twice (x: float) = sq (x, x)",
+        "export same (a: bool, b) = a == b",
+        "export both (p: bool, q) = same (p, q)",
+        // Arithmetic between open values defaults them to `int`, and `floatDiv` is open over `int`
+        // too: left bare, `g` and `low` took `int`. Each keeps the parameter that fixes the rest.
+        "export g (w: float, q) = w * w + floatDiv (w, q)",
+        "export h (w: float, q) = floatDiv (w, q) * g (w, q)",
+        "export low (w: float, q) = floatDiv (1.0, sqrt ((1.0 - w * w) * (1.0 - w * w) + floatDiv (w * w, q * q)))",
+        "export high (w: float, q) = w * w * low (w, q)",
+    ];
+    assert_eq!(heads, want);
+}
+
+/// [MATH-CODE-EMIT] The generated module means what its Lean source means: every definition the
+/// checker infers takes and returns exactly its Lean types, where a `Float` may also stay
+/// `number`. This is the property every expected text above encodes. It is checked against
+/// the checker itself, so it cannot drift from it: `stretchCents` once inferred `b` and `k` as
+/// `int`, because arithmetic between open values defaults to `int`.
+#[test]
+fn every_generated_definition_infers_its_lean_types() {
+    let source = "def stretchCents (b k : Float) : Float := 600 * Float.log (1 + b * k * k) / Float.log 2\ndef vertex (a b c : Float) : Float := if a - 2 * b + c == 0 then 0 else 0.5 * (a - c) / (a - 2 * b + c)\ndef g (w q : Float) : Float := w * w + w / q\ndef low (w q : Float) : Float := 1 / Float.sqrt ((1 - w * w) * (1 - w * w) + w * w / (q * q))\ndef high (w q : Float) : Float := w * w * low w q\ndef same (a b : Bool) : Bool := a == b\ndef both (p q : Bool) : Bool := same p q\ndef near (x y : Float) : Bool := x * y < 1\n";
+    let fixture = include_str!("fixtures/Kernels.lean");
+    for (file, lean) in [("Case.lean", source), ("Kernels.lean", fixture)] {
+        let text = generate(file, lean).unwrap_or_else(|refusal| panic!("{refusal}"));
+        let parsed = osprey_syntax::parse_program_with_flavor(&text, osprey_syntax::Flavor::Ml);
+        assert!(parsed.errors.is_empty(), "{text}");
+        let types = osprey_types::infer_program(&parsed.program);
+        let mut seen = 0;
+        for (name, (params, result)) in types.functions.iter() {
+            let Some(own) = text.lines().find(|line| {
+                line.trim_start().starts_with(&format!(
+                    "export {}",
+                    name.rsplit("::").next().unwrap_or(name)
+                ))
+            }) else {
+                continue;
+            };
+            seen += 1;
+            for ty in params.iter().chain(std::iter::once(result)) {
+                let shown = ty.to_string();
+                assert!(
+                    shown == "float" || shown == "bool" || shown == "number",
+                    "{own}: `{name}` infers `{shown}`, not a Lean type"
+                );
+            }
+        }
+        assert!(
+            seen >= 3,
+            "{file}: the generated definitions were found ({seen})"
+        );
+    }
 }

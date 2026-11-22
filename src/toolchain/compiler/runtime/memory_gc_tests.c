@@ -37,17 +37,23 @@ static void t_budget_spike_guard(void) {
 
 // A fresh block is non-NULL, distinct, and fully writable across its length.
 static void t_alloc_distinct_writable(void) {
-  void *a = osp_alloc(32);
-  void *b = osp_alloc(32);
-  void *c = osp_alloc(64);
-  CHECK(a && b && c);
-  CHECK(a != b && b != c && a != c);
-  memset(a, 0xAB, 32);
-  memset(b, 0xCD, 32);
-  memset(c, 0xEF, 64);
-  CHECK(((unsigned char *)a)[0] == 0xAB && ((unsigned char *)a)[31] == 0xAB);
-  CHECK(((unsigned char *)b)[0] == 0xCD && ((unsigned char *)b)[31] == 0xCD);
-  CHECK(((unsigned char *)c)[0] == 0xEF && ((unsigned char *)c)[63] == 0xEF);
+  enum { FRESH = 3 };
+  static const struct {
+    size_t size;
+    unsigned char byte;
+  } fresh[FRESH] = {{32, 0xAB}, {32, 0xCD}, {64, 0xEF}};
+  unsigned char *block[FRESH];
+  for (int i = 0; i < FRESH; i++) {
+    block[i] = osp_alloc(fresh[i].size);
+    CHECK(block[i] != NULL);
+    memset(block[i], fresh[i].byte, fresh[i].size);
+  }
+  for (int i = 0; i < FRESH; i++) {
+    for (int j = 0; j < FRESH; j++) {
+      CHECK((i == j) == (block[i] == block[j])); // every pair distinct
+    }
+    CHECK(block[i][0] == fresh[i].byte && block[i][fresh[i].size - 1] == fresh[i].byte);
+  }
 }
 
 // Pointer layout masks are ARC-only; both tagged forms
@@ -176,18 +182,73 @@ __attribute__((noinline)) static void scrub_stack(void) {
   }
 }
 
-static void t_immortal_pins_without_roots(void) {
+// Both hidden-ref tests share one cycle: build the masked refs in a callee
+// frame, scrub it, bury it under churn, and collect twice — after it, only
+// what a pin (or a leaf flag) keeps can still be alive.
+static HiddenRefs hidden_cycle(void (*make)(volatile HiddenRefs *)) {
   volatile HiddenRefs refs;
-  make_hidden(&refs);
+  make(&refs);
   scrub_stack();
   (void)alloc_churn(100000, 48);
   scrub_stack();
   osp_collect();
   osp_collect();
+  return refs;
+}
+
+// A string reached only through its masked word survived intact, length and
+// all; one nothing kept reads back reclaimed (-1).
+static void check_string_alive(uintptr_t hidden, int64_t len, const char *text) {
+  const char *kept = (const char *)(hidden ^ HIDE_MASK);
+  CHECK(osp_mem_string_length(kept) == len && strcmp(kept, text) == 0);
+}
+
+static void check_string_reclaimed(uintptr_t hidden) {
+  CHECK(osp_mem_string_length((const char *)(hidden ^ HIDE_MASK)) == -1);
+}
+
+static void t_immortal_pins_without_roots(void) {
+  HiddenRefs refs = hidden_cycle(make_hidden);
   char *kept = (char *)(refs.child ^ HIDE_MASK);
-  CHECK(osp_mem_string_length(kept) == 5 && strcmp(kept, "child") == 0);
+  check_string_alive(refs.child, 5, "child");
   CHECK(((void **)(refs.pin ^ HIDE_MASK))[0] == kept);
-  CHECK(osp_mem_string_length((char *)(refs.unpinned ^ HIDE_MASK)) == -1); // unpinned is reclaimed
+  check_string_reclaimed(refs.unpinned); // unpinned is reclaimed
+}
+
+// [GC-TRACE-LEAF] Two pinned blocks each hold a string's address. The pointer block keeps
+// its string alive; the one declared a scalar leaf (OSP_MEM_RAW, as a float list leaf is)
+// is never scanned, so a word that looks like an address does not retain anything.
+__attribute__((noinline)) static void make_leaf_pair(volatile HiddenRefs *out) {
+  char *traced = osp_alloc_tagged(7, OSP_MEM_STRING);
+  char *ignored = osp_alloc_tagged(8, OSP_MEM_STRING);
+  void **holder = osp_alloc(2 * sizeof(void *));
+  void **leaf = osp_alloc(2 * sizeof(void *));
+  CHECK(traced && ignored && holder && leaf);
+  memcpy(traced, "traced", 7);
+  memcpy(ignored, "ignored", 8);
+  holder[0] = traced;
+  holder[1] = NULL;
+  leaf[0] = ignored;
+  leaf[1] = NULL;
+  osp_mem_set_layout(leaf, OSP_MEM_RAW);
+  osp_mem_immortal(holder);
+  osp_mem_immortal(leaf);
+  out->pin = (uintptr_t)leaf ^ HIDE_MASK;
+  out->child = (uintptr_t)traced ^ HIDE_MASK;
+  out->unpinned = (uintptr_t)ignored ^ HIDE_MASK;
+}
+
+static void t_leaf_bodies_are_not_traced(void) {
+  HiddenRefs refs = hidden_cycle(make_leaf_pair);
+  char *traced = (char *)(refs.child ^ HIDE_MASK);
+  check_string_alive(refs.child, 6, "traced");
+  check_string_reclaimed(refs.unpinned); // only a leaf held it
+  CHECK(((void **)(refs.pin ^ HIDE_MASK))[1] == NULL); // the leaf itself survives, pinned
+  void **relaid = (void **)(refs.pin ^ HIDE_MASK);
+  osp_mem_set_layout(relaid, OSP_MEM_PTR_ARRAY); // a pointer layout clears the leaf flag
+  osp_mem_set_layout(relaid, OSP_MEM_RAW);
+  osp_collect();
+  CHECK(osp_mem_string_length(traced) == 6); // re-laying a leaf never touches its neighbours
 }
 
 // A stack-rooted block survives arbitrary collection pressure byte-for-byte.
@@ -366,6 +427,7 @@ int main(int argc, char **argv) {
   t_free_noop();
   t_reclaims_unrooted();
   t_immortal_pins_without_roots();
+  t_leaf_bodies_are_not_traced();
   t_root_keeps_alive();
   t_interior_pointer();
   t_sweep_reseats_survivors();

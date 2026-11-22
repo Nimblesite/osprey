@@ -1,0 +1,53 @@
+// [SYNTH-ADVANCED-PHASE] Graph adapter for phase operators with optional modulation and sync inputs.
+namespace synth
+
+import synth::RenderInputs
+
+(** Phase holds the ramp, integrators the feedback history; storage the last sync value and decimator. *)
+module OperatorKernels
+    pulse (index, ratio, offset) = PulseControls(index = index, ratio = ratio, offset = offset)
+
+    shape (selector, breakpoint, first, second) = Outcomes::chosen (selector, [PlainPhase, DistortedPhase(breakpoint = breakpoint), WindowedPhase(index = first.index, ratio = first.ratio), WavePulsePhase(breakpoint = breakpoint, first = first, second = second)], "Shape must be 0 plain, 1 PD, 2 windowed PM or 3 WPPM.")
+
+    // Storage: the last sync sample, then the oversampling decimator history.
+    operator (held: KernelState, previousSync) = OperatorState(phase = held.phase, previous = held.integratorOne, older = held.integratorTwo, sync = previousSync)
+
+    kept (held, next, history) = held(phase = next.phase, integratorOne = next.previous, integratorTwo = next.older, delay = history)
+
+    direct (frame, held, config, modulation, sync, previousSync) =
+        step = PhaseOperators::next (config, operator (held, previousSync), modulation, sync)
+        history = match floatBits previousSync == floatBits sync
+            true => held.delay
+            false => listPrepend (Sequences::drop (held.delay, 1)) sync
+        Success(value = RenderInputs::emitted (frame, kept (held, step.next, history), step.sample))
+
+    doubled (frame, held, config, modulation, sync, previousSync) = Outcomes::carried (PhaseOperators::oversampled (config, OversampledOperator(operator = operator (held, previousSync), down = Sequences::drop (held.delay, 1)), modulation, sync), \step => Success(value = RenderInputs::emitted (frame, kept (held, step.next.operator, listPrepend step.next.down step.next.operator.sync), step.sample)))
+
+    stepped (frame, held, config, modulation, sync, oversample) = match listGet held.delay 0
+        Error _ => Error(message = MissingResource(detail = "Operator state is empty."))
+        Success previousSync => match oversample >= 0.5
+            true => doubled (frame, held, config, modulation, sync, previousSync)
+            false => direct (frame, held, config, modulation, sync, previousSync)
+
+    // The two optional inlets travel together as (modulation, sync).
+    inputs (plan, frame, identity) = match RenderInputs::optional (plan, frame, identity, 0)
+        Error why => Error(message = why)
+        Success modulation => Outcomes::carried (RenderInputs::optional (plan, frame, identity, 1), \sync => Success(value = Complex(re = modulation, im = sync)))
+
+    settings (snapshot, identity) = RenderInputs::setting (snapshot, identity, "frequency", \frequency => RenderInputs::setting (snapshot, identity, "shape", \selector => RenderInputs::setting (snapshot, identity, "breakpoint", \breakpoint => RenderInputs::setting (snapshot, identity, "index", \index => RenderInputs::setting (snapshot, identity, "ratio", \ratio => RenderInputs::setting (snapshot, identity, "offset", \offset => RenderInputs::setting (snapshot, identity, "index2", \index2 => RenderInputs::setting (snapshot, identity, "ratio2", \ratio2 => RenderInputs::setting (snapshot, identity, "offset2", \offset2 => RenderInputs::setting (snapshot, identity, "depth", \depth => RenderInputs::setting (snapshot, identity, "spread", \spread => RenderInputs::setting (snapshot, identity, "feedback", \feedback => RenderInputs::setting (snapshot, identity, "amplitude", \amplitude => RenderInputs::setting (snapshot, identity, "oversample", \oversample => Success(value = OperatorControls(selector = selector, breakpoint = breakpoint, first = pulse (index, ratio, offset), second = pulse (index2, ratio2, offset2), frequency = frequency, depth = depth, spread = spread, feedback = feedback, amplitude = amplitude, oversample = oversample))))))))))))))))
+
+    configured (rate, c) = Outcomes::carried (shape (c.selector, c.breakpoint, c.first, c.second), \kind =>
+        PhaseOperators::configure (OperatorConfig(sampleRate = rate, frequency = c.frequency, shape = kind, depth = c.depth, spread = c.spread, feedback = c.feedback, amplitude = c.amplitude)))
+
+    (** Prepare a phase operator for a block with constant controls. Modulation and sync remain audio-rate. *)
+    export prepare (rate, snapshot, identity) = match settings (snapshot, identity)
+        Error _ => LiveOperator
+        Success c => match configured (rate, c)
+            Error _ => LiveOperator
+            Success config => FixedOperator(config = config, oversample = c.oversample)
+
+    (** Read modulation and sync for this sample, then update the phase and feedback state. *)
+    export process (plan, rate, snapshot, frame, held, prepared) = match prepared
+        FixedOperator config oversample => Outcomes::carried (inputs (plan, frame, held.identity), \pair => stepped (frame, held, config, pair.re, pair.im, oversample))
+        LiveOperator => Outcomes::carried (settings (snapshot, held.identity), \c =>
+            Outcomes::carried (inputs (plan, frame, held.identity), \pair => Outcomes::carried (configured (rate, c), \config => stepped (frame, held, config, pair.re, pair.im, c.oversample))))

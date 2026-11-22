@@ -3,16 +3,15 @@
 // its own. A control that delivers an event carries the control number the row names, nothing
 // else (mirrors hosts/gpui/src/view.rs).
 
+import { escapeHtml } from "../html.js";
+
+export { escapeHtml };
+
 import { FLAGS, type Control, type Shown } from "./rows.js";
 
 export interface RenderOptions {
   /** Approved image and sprite sources, resolved by the extension host. */
   readonly assets?: ReadonlyMap<string, string>;
-}
-
-/** Escape text and attribute values before interpolating application text into markup. */
-export function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function ink(value: number): string {

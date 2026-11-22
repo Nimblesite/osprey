@@ -1,0 +1,8 @@
+[project]
+name = "talon-bank-app"
+source_roots = ["../../../packages/native/host", "main.ospml", "src", "../../../packages/native/src", "../../../packages/graphics/src", "../../../packages/json/src", "../backend/domain/money.ospml"]
+default_namespace = "app"
+entry = "../../../packages/native/host/entry.ospml"
+
+[modules]
+allow_wildcard_imports = false

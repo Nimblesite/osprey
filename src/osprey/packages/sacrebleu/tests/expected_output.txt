@@ -5,6 +5,9 @@ ok text.map_indexed
 ok text.digit
 ok text.alnum
 ok text.collapse
+ok text.segments.empty
+ok text.segments.aligned
+ok text.segments.ragged
 ok ngrams.word
 ok ngrams.order2
 ok ngrams.char
@@ -3083,4 +3086,4 @@ ok bleu.score_corpus
 ok chrf.score_corpus
 ok bleu.BLEUScore
 ok chrf.CHRFScore
-3085 passed, 0 failed
+3088 passed, 0 failed

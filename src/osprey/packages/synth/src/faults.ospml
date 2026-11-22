@@ -1,0 +1,13 @@
+// [SYNTH-ADVANCED-CORE-MODELS] Every module refusal is a typed `Fault` (dsp.td) carrying its user-facing detail.
+namespace synth
+
+(** Callers match the class to recover (fix a setting, free capacity, supply a resource, change the route, or
+    discard a nonfinite result) and show `detail` to the user. *)
+module Faults
+    (** The sentence a host shows for this fault. *)
+    export detail fault = match fault
+        InvalidConfiguration text => text
+        ExhaustedCapacity text => text
+        MissingResource text => text
+        IncompatibleLayout text => text
+        NumericalFailure text => text

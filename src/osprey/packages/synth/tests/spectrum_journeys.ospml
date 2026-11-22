@@ -1,0 +1,190 @@
+// [SYNTH-TEST-SPECTRUM] Spectral analysis of rendered audio. Every oscillator, filter, effect, source and example
+// patch is read back by a Hann-windowed Fourier probe (ProbeMath.lean): partials against the Fourier series of their
+// shapes, responses against their transfer functions, and pitch to a fraction of a cent.
+import synth::Components
+import synth::Filters
+import synth::Oscillators
+import synth::Patches
+import synth::PhysicalMath
+import synth::Sequences
+import synth::SpectralMath
+
+probeRate = 48000.0
+
+probed (sum, sample, window, frequency, n) = { re = sum.re + ProbeMath::windowedRe (sample, window, frequency, n, probeRate), im = sum.im + ProbeMath::windowedIm (sample, window, frequency, n, probeRate) }
+
+// The amplitude of the sine at `frequency` in `samples`, read through a Hann window over all of them.
+levelAt (samples, frequency) =
+    size = toFloat (length samples)
+    sums = foldList (toList (range (0, length samples)), { re = 0.0, im = 0.0 }, \(sum, n) => probed (sum, listGet samples n ?: 0.0, SpectralMath::hann (toFloat n, size), frequency, toFloat n))
+    ProbeMath::sineAmplitude (sums.re, sums.im, size)
+
+decibelsAt (samples, frequency) = ProbeMath::decibels (levelAt (samples, frequency))
+
+louder (levels, top, i) = match (listGet levels i ?: -999.0) > (listGet levels top ?: -999.0)
+    true => i
+    false => top
+
+// The loudest frequency within a semitone of `near`, in cents from it: 41 probes 5 cents apart, then the vertex of
+// the parabola through the loudest three in decibels. A peak at the edge reads ±95 or more: out of tune.
+pitchCents (samples, near) = pitchSpan (samples, near, 100.0)
+
+// The same within `span` cents either side, for partials closer together than a semitone.
+pitchSpan (samples, near, span) =
+    step = span / 20.0
+    levels = mapList (toList (range (0, 41)), \i => decibelsAt (samples, ProbeMath::centsUp (near, toFloat i * step - span)))
+    best = foldList (toList (range (1, 40)), 1, \(top, i) => louder (levels, top, i))
+    toFloat best * step - span + step * ProbeMath::vertex (listGet levels (satSub best 1) ?: 0.0, listGet levels best ?: 0.0, listGet levels (satAdd best 1) ?: 0.0)
+
+within (label, got, want, tolerance) = match abs (got - want) <= tolerance
+    true => expect (true, true)
+    false => expect ("${label}: ${got}", "${label}: ${want} ± ${tolerance}")
+
+below (label, got, limit) = match got <= limit
+    true => expect (true, true)
+    false => expect ("${label}: ${got}", "${label}: at most ${limit}")
+
+above (label, got, limit) = match got >= limit
+    true => expect (true, true)
+    false => expect ("${label}: ${got}", "${label}: at least ${limit}")
+
+inTune (label, samples, near, cents) = within ("${label} pitch (cents)", pitchCents (samples, near), 0.0, cents)
+
+inTuneWithin (label, samples, near, span, cents) = within ("${label} pitch (cents)", pitchSpan (samples, near, span), 0.0, cents)
+
+oscStep (config, run) =
+    out = Oscillators::next (config, run.held)
+    { held = out.next, samples = listAppend run.samples out.sample }
+
+oscillated (waveform, frequency, width, count) =
+    config = synth::OscillatorConfig(sampleRate = probeRate, frequency = frequency, pulseWidth = width, waveform = waveform)
+    (foldList (toList (range (0, count)), { held = Oscillators::initial, samples = [] }, \(run, _) => oscStep (config, run))).samples
+
+// The Fourier amplitude of harmonic `k` of each shape: 2/(πk), 4|sin(πkw)|/(πk), 8/(πk)² odd, or the sine alone.
+fourier (shape, k) = match shape.wave
+    synth::Saw => ProbeMath::sawHarmonic k
+    synth::Pulse => ProbeMath::pulseHarmonic (k, shape.width)
+    synth::Triangle => ProbeMath::triangleHarmonic k
+    synth::Sine => ProbeMath::sineHarmonic k
+
+shapes () = [{ name = "sine", wave = synth::Sine, width = 0.5, exact = true }, { name = "saw", wave = synth::Saw, width = 0.5, exact = true }, { name = "square", wave = synth::Pulse, width = 0.5, exact = true }, { name = "pulse 1/4", wave = synth::Pulse, width = 0.25, exact = true }, { name = "pulse 1/10", wave = synth::Pulse, width = 0.1, exact = false }, { name = "triangle", wave = synth::Triangle, width = 0.5, exact = true }]
+
+// Each partial holds its Fourier amplitude, never louder and at most polyBLEP's roll-off quieter; a partial the
+// series lacks is absent to the probe's floor.
+partialHeld (shape, samples, fundamental, k) =
+    frequency = fundamental * toFloat k
+    want = fourier (shape, toFloat k)
+    got = ProbeMath::decibels (levelAt (samples, frequency))
+    label = "${shape.name} ${fundamental} Hz harmonic ${k}"
+    match want < 0.000000000001
+        true => match shape.exact
+            true => below (label, got, -120.0)
+            false => below ("${label} null", got - decibelsAt (samples, fundamental), 0.0 - ProbeMath::blepNull frequency)
+        false =>
+            below ("${label} over its series", got - ProbeMath::decibels want, 0.02)
+            above ("${label} under its series", got - ProbeMath::decibels want, 0.0 - ProbeMath::blepAllowance frequency)
+
+seriesHeld (shape, fundamental) =
+    samples = oscillated (shape.wave, fundamental, shape.width, 4800)
+    inTune ("${shape.name} ${fundamental} Hz", samples, fundamental, 0.05)
+    count = floatToInt (20000.0 / fundamental) ?: 0
+    forEachList (toList (range (1, satAdd count 1)), \k => partialHeld (shape, samples, fundamental, k))
+
+// Partials past Nyquist fold back; polyBLEP holds the loudest fold at least 34 dB under the fundamental.
+aliasHeld (shape, fundamental, folded) =
+    samples = oscillated (shape.wave, fundamental, shape.width, 4800)
+    forEachList (folded, \f => below ("${shape.name} ${fundamental} Hz fold at ${f} Hz", decibelsAt (samples, f) - decibelsAt (samples, fundamental), -34.0))
+
+filterStep (c, run, frequency, n) =
+    out = Filters::next (c, run.held, sin (6.283185307179586 * frequency * toFloat n / probeRate))
+    { held = out.next, low = listAppend run.low out.low, band = listAppend run.band out.band, high = listAppend run.high out.high }
+
+// A sine through the state-variable filter settles for 4,800 frames; its last 4,800 hold the bilinear response.
+responseHeld r = match Filters::configure (synth::FilterConfig(sampleRate = probeRate, cutoff = r.cutoff, resonance = r.q))
+    Error why => expect (synth::Faults::detail why, "")
+    Success c =>
+        run = foldList (toList (range (0, 9600)), { held = Filters::initial, low = [], band = [], high = [] }, \(held, n) => filterStep (c, held, r.frequency, n))
+        w = ProbeMath::warpedRatio (r.frequency, r.cutoff, probeRate)
+        label = "SVF ${r.cutoff} Hz Q ${r.q} at ${r.frequency} Hz"
+        within ("${label} low", decibelsAt (Sequences::drop (run.low, 4800), r.frequency), ProbeMath::decibels (ProbeMath::lowGain (w, r.q)), 0.001)
+        within ("${label} band", decibelsAt (Sequences::drop (run.band, 4800), r.frequency), ProbeMath::decibels (ProbeMath::bandGain (w, r.q)), 0.001)
+        within ("${label} high", decibelsAt (Sequences::drop (run.high, 4800), r.frequency), ProbeMath::decibels (ProbeMath::highGain (w, r.q)), 0.001)
+
+responses () = foldList ([250.0, 1000.0, 5000.0, 15000.0], [], \(all, cutoff) => foldList ([0.5, 0.707, 2.0, 5.0], all, \(rows, q) => foldList ([50.0, 250.0, 1000.0, 4000.0, 12000.0, 20000.0], rows, \(acc, f) => listAppend acc { cutoff = cutoff, q = q, frequency = f })))
+
+registerSpectrumJourneys () =
+    test ("every oscillator shape's partials hold the Fourier series of its shape at three pitches, in tune to 0.05 cents, and its folded partials stay 34 dB down [SYNTH-TEST-SPECTRUM]", \() => arithmetic (\() =>
+        forEachList (shapes (), \shape => forEachList ([500.0, 1000.0, 2000.0], \fundamental => seriesHeld (shape, fundamental)))
+        forEachList ([{ name = "saw", wave = synth::Saw, width = 0.5, exact = true }, { name = "square", wave = synth::Pulse, width = 0.5, exact = true }], \shape => aliasHeld (shape, 1100.0, [22700.0, 20500.0, 18300.0]))))
+    test ("the state-variable filter's low, band and high outputs follow the bilinear second-order response within 0.001 dB at four cutoffs, four Qs and six frequencies [SYNTH-TEST-SPECTRUM]", \() => arithmetic (\() =>
+        forEachList (responses (), responseHeld)))
+    registerSpectrumEffects ()
+
+setTo (n, pairs) = Patches::adjusted (n, mapList (pairs, \p => synth::ParameterValue(node = 0, key = p.key, value = p.value)))
+
+spectrumChain nodes =
+    routes = mapList (toList (range (1, length nodes)), \i => Components::route (satSub i 1, 0, i, 0))
+    accepted (Patches::built (nodes, routes))
+
+// 8,192 frames rendered through `nodes` in a chain, from `first` on.
+renderedFrom (nodes, first) = Sequences::drop ((blockOf (spectrumChain nodes, 8192)).samples, first)
+
+// The last 4,800 frames (10 Hz bins) of a sine at `frequency` through one processor.
+processedAt (processor, frequency) = renderedFrom ([Components::sine (0, frequency), processor, Components::output 2], 3392)
+
+processed processor = processedAt (processor, 1000.0)
+
+omega frequency = PhysicalMath::omega (frequency, probeRate)
+
+// Single-sideband shifting moves 1 kHz by `shift` alone: the image 40 dB down, the carrier gone. Ring modulation
+// splits it into both sidebands at half amplitude.
+sidebandsHeld shift =
+    s = processed (Components::shifter (1, shift))
+    within ("SSB ${shift} Hz shifted", decibelsAt (s, 1000.0 + shift), 0.0, 0.01)
+    below ("SSB ${shift} Hz image", decibelsAt (s, 1000.0 - shift), -40.0)
+    below ("SSB ${shift} Hz carrier", decibelsAt (s, 1000.0), -100.0)
+    r = processed (setTo (Components::shifter (1, shift), [{ key = "ring", value = 1.0 }]))
+    forEachList ([1000.0 + shift, 1000.0 - shift], \f => within ("ring ${shift} Hz sideband ${f}", decibelsAt (r, f), ProbeMath::decibels 0.5, 0.01))
+    below ("ring ${shift} Hz carrier", decibelsAt (r, 1000.0), -100.0)
+    m = processed (setTo (Components::shifter (1, shift), [{ key = "mix", value = 0.5 }]))
+    forEachList ([1000.0, 1000.0 + shift], \f => within ("half-mixed SSB ${shift} Hz at ${f}", decibelsAt (m, f), ProbeMath::decibels 0.5, 0.01))
+
+// An odd curve makes odd harmonics only; bias breaks the symmetry and brings the even ones.
+shapedHeld c =
+    s = processed (setTo (Components::shaper (1, c.curve, c.drive), [{ key = "bias", value = c.bias }]))
+    label = "shaper curve ${c.curve} drive ${c.drive} bias ${c.bias}"
+    above ("${label} fundamental", decibelsAt (s, 1000.0), -20.0)
+    forEachList (c.present, \k => above ("${label} harmonic ${k}", decibelsAt (s, 1000.0 * k), -45.0))
+    forEachList (c.absent, \k => below ("${label} harmonic ${k}", decibelsAt (s, 1000.0 * k), -120.0))
+
+shapings () = [{ curve = 0.0, drive = 3.0, bias = 0.0, present = [3.0, 5.0], absent = [2.0, 4.0, 6.0] }, { curve = 0.0, drive = 3.0, bias = 0.5, present = [2.0, 3.0], absent = [] }, { curve = 1.0, drive = 3.0, bias = 0.0, present = [3.0, 5.0], absent = [2.0, 4.0] }, { curve = 2.0, drive = 1.0, bias = 0.0, present = [3.0], absent = [2.0, 4.0, 5.0, 7.0] }, { curve = 3.0, drive = 3.0, bias = 0.0, present = [3.0, 5.0], absent = [2.0, 4.0] }]
+
+// Lossless processors keep a sine's level exactly; the loss filter, linear fractional delay and smoother follow
+// their transfer functions.
+levelHeld (label, processor, frequency, want, tolerance) = within ("${label} at ${frequency} Hz", decibelsAt (processedAt (processor, frequency), frequency), ProbeMath::decibels want, tolerance)
+
+transfersHeld frequency =
+    forEachList ([-0.9, -0.5, 0.0, 0.5, 0.9], \a => levelHeld ("allpass ${a}", Components::allpass (1, a), frequency, 1.0, 0.000001))
+    forEachList ([1, 480, 3000], \count => levelHeld ("delay ${count}", Components::delay (1, count), frequency, 1.0, 0.000001))
+    forEachList ([0.25, 0.5, 1.0], \g => levelHeld ("gain ${g}", Components::gain (1, g), frequency, g, 0.000001))
+    forEachList ([{ d = 1.25, fraction = 0.25 }, { d = 4.5, fraction = 0.5 }, { d = 7.75, fraction = 0.75 }], \f => levelHeld ("fractional delay ${f.d}", Components::fractionalDelay (1, f.d, 64), frequency, ProbeMath::twoTapGain (1.0, f.fraction, omega frequency), 0.0001))
+    forEachList ([{ g = 0.9, b = 0.5 }, { g = 0.99, b = 0.0 }, { g = 0.5, b = 1.0 }], \l => levelHeld ("loss ${l.g} ${l.b}", Components::lossFilter (1, l.g, l.b), frequency, ProbeMath::twoTapGain (l.g, PhysicalMath::smoothing l.b, omega frequency), 0.0001))
+    forEachList ([0.001, 0.01, 0.1], \t => levelHeld ("smoother ${t} s", Components::smoother (1, t), frequency, ProbeMath::onePoleGain (PhysicalMath::smoothingCoefficient (t, probeRate), omega frequency), 0.001))
+    // A linear reverb cannot move a steady sine; the shortest room settles 40 dB before the window opens at 3,392.
+    inTuneWithin ("reverb keeps a sine at ${frequency} Hz", processedAt (setTo (Components::reverb (1, 0.1), [{ key = "size", value = 0.25 }]), frequency), frequency, 20.0, 0.1)
+    levelHeld ("spectral pass", Components::spectral (1, 1024, 256, 0.0), frequency, 1.0, 0.000001)
+
+// The spectral band transform keeps 2–4 kHz and removes the rest.
+bandHeld () =
+    banded = setTo (Components::spectral (1, 1024, 256, 2.0), [{ key = "low", value = 2000.0 }, { key = "high", value = 4000.0 }])
+    within ("spectral band keeps 3 kHz", decibelsAt (processedAt (banded, 3000.0), 3000.0), 0.0, 0.05)
+    forEachList ([500.0, 1000.0, 8000.0], \f => below ("spectral band removes ${f} Hz", decibelsAt (processedAt (banded, f), f), -100.0))
+
+registerSpectrumEffects () =
+    test ("frequency shifting moves a sine by its shift alone, ring modulation splits it in two, and the mix blends dry with wet [SYNTH-TEST-SPECTRUM]", \() => arithmetic (\() =>
+        forEachList ([100.0, -100.0, 250.0, -730.0, 3000.0], sidebandsHeld)))
+    test ("waveshaping curves make only the harmonics their symmetry allows, and every linear processor holds its transfer function at four frequencies [SYNTH-TEST-SPECTRUM]", \() => arithmetic (\() =>
+        forEachList (shapings (), shapedHeld)
+        forEachList ([200.0, 1000.0, 5000.0, 15000.0], transfersHeld)
+        bandHeld ()))
+    registerSpectrumSources ()

@@ -1,0 +1,246 @@
+// [DAW-HEADER] One header on every page: the page tabs and an icon transport, drawn as the design draws them
+// (docs/designs/prism-timeline/piano-roll.png). Every other command lives in the window's menu bar ([DAW-MENU]).
+// Timeline and Mix are 1440 by 940 units, the design's pixels halved; the Patch page draws the same tabs larger.
+namespace synth
+
+import ui::Scenes
+
+(** The header every page shares: page tabs, the song strip, the transport group and the status footer. *)
+module Header
+    edge () = Scenes::rgb (72, 64, 112)
+    plate () = Scenes::rgb (38, 33, 66)
+    quiet () = Scenes::rgb (200, 194, 228)
+    sounding () = Scenes::rgb (79, 218, 150)
+    rule () = Scenes::rgb (44, 38, 72)
+
+    // A scene colour as a path's solid paint.
+    paint colour = ui::Solid(tint = Scenes::hex (shiftRight colour 8, 1.0))
+
+    (** A rounded plate with a one-unit border: the design's button and field. *)
+    export plaque (left, top, width, height, fill, depth) = [EditorView::rounded (left, top, width, height, 7.0, ui::Fill, paint fill, depth), EditorView::rounded (left, top, width, height, 7.0, ui::Line(width = 1.0, dashes = [], bevel = false), paint (edge ()), satAdd depth 1)]
+
+    pages = ["Timeline", "Track patch", "Bus routing"]
+
+    (** The page behind tab `index`, in the header's order. *)
+    export tabPage index = match index
+        0 => TimelinePage
+        1 => PatchPage
+        _ => MixPage
+
+    slot page = match page
+        TimelinePage => 0
+        PatchPage => 1
+        MixPage => 2
+
+    (** The Patch page's header is 66 units tall where the design's is 59: its tabs are this much larger. *)
+    export patchScale () = 1.1186
+
+    (** The three page tabs' hit areas, left to right, `k` times the design's size; the open page's is selected. *)
+    export tabAreas (editor, k) = mapList (toList (range (0, 3)), \i => TimelineView::area (listGet pages i ?: "", k * (273.0 + toFloat i * 119.5), k * 12.0, k * 115.0, k * 34.0, i == slot editor.page))
+
+    line (points, tint) = Scenes::strip (points, tint, 1.7, 13)
+
+    // A tab's icon whose left edge is x and whose middle is y, in steps of `u`: lanes, a patch cable, faders.
+    icon (index, x, y, u, tint) = match index
+        0 => [line ([x, y - 5.0 * u, x + 10.0 * u, y - 5.0 * u], tint), line ([x + 5.0 * u, y, x + 15.0 * u, y], tint), line ([x, y + 5.0 * u, x + 8.0 * u, y + 5.0 * u], tint)]
+        1 => [Scenes::disc (x + 2.0 * u, y - 4.0 * u, 2.4 * u, tint, 13), Scenes::disc (x + 13.0 * u, y + 4.0 * u, 2.4 * u, tint, 13), line ([x + 2.0 * u, y - 4.0 * u, x + 7.5 * u, y - 4.0 * u, x + 7.5 * u, y + 4.0 * u, x + 13.0 * u, y + 4.0 * u], tint)]
+        _ => [line ([x + 2.0 * u, y - 7.0 * u, x + 2.0 * u, y + 7.0 * u], tint), line ([x + 7.5 * u, y - 7.0 * u, x + 7.5 * u, y + 7.0 * u], tint), line ([x + 13.0 * u, y - 7.0 * u, x + 13.0 * u, y + 7.0 * u], tint), Scenes::disc (x + 2.0 * u, y + 2.0 * u, 2.6 * u, tint, 13), Scenes::disc (x + 7.5 * u, y - 3.0 * u, 2.6 * u, tint, 13), Scenes::disc (x + 13.0 * u, y + 3.0 * u, 2.6 * u, tint, 13)]
+
+    tab (a, index, k) =
+        words = TimelineView::label (a.accessLabel, a.accessLeft + k * 40.0, a.accessTop + k * 9.5, k * 13.0, ui::Pick::either (a.accessSelected, TimelineView::ink (), quiet ()), 0, 13)
+        marks = listConcat (icon (index, a.accessLeft + k * 13.0, a.accessTop + k * 17.0, k, ui::Pick::either (a.accessSelected, TimelineView::accent (), TimelineView::dim ()))) [words]
+        match a.accessSelected
+            true => listConcat (plaque (a.accessLeft, a.accessTop, a.accessWidth, a.accessHeight, plate (), 11)) marks
+            false => marks
+
+    (** The page tabs with the rule that parts them from the name, `k` times the design's size. *)
+    export tabs (editor, k) = foldList (toList (range (0, 3)), [TimelineView::box (k * 256.0, k * 15.0, 1.0, k * 28.0, edge (), 11)], \(all, i) =>
+        match listGet (tabAreas (editor, k)) i
+            Error _ => all
+            Success a => listConcat all (tab (a, i, k)))
+
+    // [DAW-TRANSPORT-STOP-IDLE] An idle Stop has no hit target.
+    export stopArea (running, label, left, top, width, height) = ui::Pick::either (running, [TimelineView::area (label, left, top, width, height, false)], [])
+
+    divider (left, top, height) = TimelineView::box (left, top + 6.0, 1.0, height - 12.0, edge (), 13)
+
+    // A play triangle, green while `playing`, in the cell at `left`, and a stop square in the next one.
+    playStop (left, top, cell, height, playing) =
+        x = left + cell / 2.0
+        y = top + height / 2.0
+        [divider (left + cell, top, height), Scenes::path ([ui::Polygon(corners = [x - 6.0, y - 8.5, x + 8.0, y, x - 6.0, y + 8.5], closed = true)], ui::Fill, paint (ui::Pick::either (playing, sounding (), TimelineView::ink ())), 13), TimelineView::box (x + cell - 6.5, y - 6.5, 13.0, 13.0, ui::Pick::either (playing, TimelineView::ink (), edge ()), 13)]
+
+    (** The transport group over those cells: Play and Stop on one plate. *)
+    export transport (left, top, cell, height, playing) = listConcat (plaque (left, top, cell * 2.0, height, Scenes::rgb (27, 23, 50), 11)) (playStop (left, top, cell, height, playing))
+
+    // The song's transport as the design draws it: return to start, Play and Stop on one plate.
+    // [DAW-TRANSPORT-LOOP] The Loop toggle: a closed track with its arrowhead, lit while Loop is on.
+    loopCell editor =
+        colour = ui::Pick::either (editor.looping, TimelineView::accent (), TimelineView::dim ())
+        listConcat (plaque (1222.0, 80.0, 46.5, 43.0, Scenes::rgb (27, 23, 50), 11)) [EditorView::rounded (1234.0, 94.0, 22.5, 15.0, 7.0, ui::Line(width = 2.0, dashes = [], bevel = false), paint colour, 13), Scenes::path ([ui::Polygon(corners = [1243.0, 89.5, 1249.5, 94.0, 1243.0, 98.5], closed = true)], ui::Fill, paint colour, 13)]
+
+    // The position shown: the beat sounding while the song plays, else the start marker.
+    position editor = match editor.playBeat < 0.0
+        true => "${threeDigits (satAdd editor.rollBar 1)}.01.01"
+        false => "${threeDigits (satAdd (DawSession::bar (editor.song, editor.playBeat)) 1)}.0${floatToInt (TimelineGeometry::beatInBar (editor.playBeat, DawSession::measure editor.song, DawSession::unit editor.song)) ?: 1}.01"
+
+    songTransport editor =
+        x = 1277.0 + 46.5 / 2.0
+        listConcat (listConcat (plaque (1277.0, 80.0, 139.5, 43.0, Scenes::rgb (27, 23, 50), 11)) [divider (1323.5, 80.0, 43.0), TimelineView::box (x - 8.0, 93.0, 2.5, 17.0, TimelineView::ink (), 13), Scenes::path ([ui::Polygon(corners = [x + 8.0, 93.0, x - 4.5, 101.5, x + 8.0, 110.0], closed = true)], ui::Fill, paint (TimelineView::ink ()), 13)]) (playStop (1323.5, 80.0, 46.5, 43.0, editor.songTicket != ""))
+
+    caps (words, left, top) = TimelineView::label (words, left, top, 10.0, TimelineView::dim (), 0, 3)
+
+    readout (name, value, left) = listConcat (plaque (left - 7.0, 73.0, 83.0, 55.0, Scenes::rgb (31, 26, 52), 2)) [caps (name, left, 77.0), TimelineView::label (value, left, 101.0, 19.0, TimelineView::ink (), 0, 3)]
+
+    // A tempo as the design writes it: one decimal unless it needs two.
+    tempo value =
+        whole = floatToInt (TimelineGeometry::percent value) ?: 0
+        ui::Pick::either (whole % 10 == 0, "${intDiv whole 100}.${intDiv (whole % 100) 10}", TimelineView::hundredths value)
+
+    // The selected track and where its sound goes.
+    route editor = match listGet editor.song.tracks editor.track
+        Error _ => ""
+        Success voice => "${voice.name}  /  ${TimelineView::destination voice}"
+
+    threeDigits bar = "${ui::Pick::either (bar < 100, "0", "")}${ui::Pick::either (bar < 10, "0", "")}${bar}"
+
+    (** Cover the page subtitle baked into the skin. The selected tab names the page. *)
+    export patchSubtitle editor = match length (PrismArt::atlas editor.skin) > 15
+        true => [TimelineView::box (180.0, 40.0, 100.0, 21.0, Scenes::rgb (17, 16, 33), 11)]
+        false => []
+
+    column (index, bars, count, most) =
+        left = TimelineGeometry::overviewX (index, bars)
+        right = left + TimelineGeometry::overviewWidth bars
+        top = TimelineGeometry::overviewTop (count, most)
+        ui::Polygon(corners = [left, top, right, top, right, 122.0, left, 122.0], closed = true)
+
+    (** The song overview's columns, cached when a song opens: one per bar, as tall as the bar is busy. *)
+    export overview song =
+        beats = daw::Arrangements::beats song
+        bars = satAdd (floatToInt (TimelineGeometry::playableBar (beats, beats, DawSession::measure song)) ?: 0) 1
+        starts = ui::Lists::flatten (mapList (song.tracks, \voice => mapList (voice.notes, \note => DawSession::bar (song, note.start))))
+        counts = mapList (toList (range (0, bars)), \bar => length (filterList (starts, \at => at == bar)))
+        most = foldList (counts, 0, \(best, count) => ui::Pick::either (count > best, count, best))
+        mapList (toList (range (0, bars)), \bar => column (toFloat bar, toFloat bars, toFloat (listGet counts bar ?: 0), toFloat most))
+
+    // [DAW-TIMELINE-ZOOM] Once the lanes are zoomed, a line under the overview marks the part of the song they show.
+    inView editor = match editor.laneZoom > 1.0
+        false => []
+        true =>
+            left = TimelineGeometry::overviewX (TimelineView::shownFrom editor, TimelineView::beats editor)
+            [TimelineView::box (left, 127.0, TimelineGeometry::overviewX (TimelineView::shownFrom editor + TimelineView::shownBeats editor, TimelineView::beats editor) - left, 2.0, TimelineView::accent (), 4)]
+
+    // The overview with the piano roll's two bars framed; nothing until a song is open.
+    overviewShapes editor = match length editor.overview
+        0 => []
+        bars => listConcat (inView editor) [caps ("SONG OVERVIEW", 468.0, 77.0), Scenes::path (editor.overview, ui::Fill, paint (Scenes::rgb (96, 86, 150)), 3), EditorView::rounded (TimelineGeometry::overviewX (toFloat editor.rollBar, toFloat bars) - 2.0, 95.0, 2.0 * (TimelineGeometry::overviewWidth (toFloat bars) + 2.0) + 2.0, 30.0, 2.0, ui::Line(width = 1.2, dashes = [], bevel = false), paint (TimelineView::accent ()), 4)]
+
+    // The skin's logo when its atlas carries one (entry 15), then the name vertically centred in the header band.
+    brand editor = listConcat (ui::Pick::either (length (PrismArt::atlas editor.skin) > 15, [Scenes::sprite (15, 123.0, 29.5, 46.0, 46.0, 0.0, Scenes::rgb (255, 255, 255), 2)], [])) [TimelineView::label ("Prism", 151.0, 19.5, 20.0, TimelineView::ink (), 0, 3)]
+
+    // The song strip: title, tempo, meter, the playhead's bar and the transport.
+    strip editor = listConcat (listConcat [caps ("ARRANGEMENT", 24.0, 77.0), TimelineView::label (editor.song.title, 24.0, 99.0, 24.0, TimelineView::ink (), 0, 3)] (listConcat (overviewShapes editor) (listConcat (readout ("BPM", tempo editor.song.tempo, 877.0)) (readout ("METER", "${editor.song.meterTop}/${editor.song.meterBottom}", 967.0))))) (listConcat (listConcat (plaque (1051.0, 76.0, 160.0, 51.0, Scenes::rgb (20, 17, 38), 2)) [caps ("POSITION", 1065.0, 84.0), TimelineView::label (position editor, 1065.0, 101.0, 19.0, TimelineView::ink (), 0, 4)]) (listConcat (loopCell editor) (songTransport editor)))
+
+    // The status footer: what is sounding, the song's rate, the last thing the app said and the selected track's route.
+    footer editor =
+        phase = DawSession::phase editor
+        live = phase != "Stopped"
+        [TimelineView::box (0.0, 909.0, 1440.0, 1.0, rule (), 3), TimelineView::box (22.0, 921.0, 8.0, 8.0, ui::Pick::either (live, sounding (), TimelineView::dim ()), 3), TimelineView::label (phase, 37.0, 918.0, 11.0, ui::Pick::either (live, sounding (), quiet ()), 0, 3), TimelineView::label ("${intDiv editor.song.sampleRate 1000} kHz", 119.0, 918.0, 11.0, quiet (), 0, 3), TimelineView::label ("Stereo", 184.0, 918.0, 11.0, quiet (), 0, 3), TimelineView::label (editor.message, 260.0, 918.0, 11.0, TimelineView::accent (), 0, 3), TimelineView::label (route editor, 1416.0, 918.0, 11.0, quiet (), 2, 3)]
+
+    (** How far right a song page starts in a region wider than the page ([DAW-HEADER]). *)
+    export shift editor = TimelineGeometry::centred (ui::Machines::number (editor.skin, "viewWidth"), ui::Machines::number (editor.skin, "viewHeight"))
+
+    (** Translate a primitive and place it on the requested drawing layer. *)
+    export placedShape (primitive, dx, dy, layer) = match primitive
+        ui::Rect x y w h angle colour depth => ui::Rect(x = x + dx, y = y + dy, w = w, h = h, angle = angle, color = colour, depth = satAdd depth layer)
+        ui::Disc x y radius colour depth => ui::Disc(x = x + dx, y = y + dy, radius = radius, color = colour, depth = satAdd depth layer)
+        ui::Strip points colour stroke depth =>
+            shifted = match dx == 0.0 && dy == 0.0
+                true => points
+                false => mapList (toList (range (0, length points)), \i => (listGet points i ?: 0.0) + ui::Pick::either (i % 2 == 0, dx, dy))
+            ui::Strip(points = shifted, color = colour, stroke = stroke, depth = satAdd depth layer)
+        ui::Sprite sprite x y w h angle colour depth => ui::Sprite(sprite = sprite, x = x + dx, y = y + dy, w = w, h = h, angle = angle, color = colour, depth = satAdd depth layer)
+        ui::Glyphs words x y size colour depth => ui::Glyphs(glyphs = words, x = x + dx, y = y + dy, size = size, color = colour, depth = satAdd depth layer)
+        ui::Lettering words x y size colour depth anchor weight => ui::Lettering(letters = words, x = x + dx, y = y + dy, size = size, color = colour, depth = satAdd depth layer, anchor = anchor, weight = weight)
+        ui::Path steps outline paint x y scale depth => ui::Path(steps = steps, outline = outline, paint = paint, moveX = x + dx, moveY = y + dy, scale = scale, depth = satAdd depth layer)
+
+    (** A song page's shapes where the page sits in its region. *)
+    export placed (editor, shapes) =
+        dx = shift editor
+        match dx == 0.0
+            true => shapes
+            false => mapList (shapes, \shape => placedShape (shape, dx, 0.0, 0))
+
+    (** A song page's hit areas where the page sits in its region. *)
+    export placedAreas (editor, areas) =
+        dx = shift editor
+        mapList (areas, \a => a(accessLeft = a.accessLeft + dx))
+
+    // What a song page shows before a song is open: what is missing and the one way forward.
+    emptyArea () = TimelineView::area ("Open song", 640.0, 470.0, 160.0, 40.0, false)
+
+    empty () = listConcat [TimelineView::label ("No song open", 720.0, 380.0, 28.0, TimelineView::ink (), 1, 3), TimelineView::label ("Open a song to see its tracks, notes and routing.", 720.0, 426.0, 14.0, TimelineView::dim (), 1, 3), TimelineView::label ("Open Song…", 720.0, 482.0, 14.0, TimelineView::ink (), 1, 13)] (plaque (640.0, 470.0, 160.0, 40.0, Scenes::rgb (52, 41, 110), 11))
+
+    (** The hit areas of a song page's header: the page tabs, then Open song before a song is open, or Return
+        to start, Play and Stop once one is. *)
+    export songAreas editor = match length editor.song.tracks
+        0 => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, [emptyArea ()]))
+        _ => listConcat (tabAreas (editor, 1.0)) (placedAreas (editor, listConcat [TimelineView::area ("Return to start", 1277.0, 80.0, 46.5, 43.0, false), TimelineView::area ("Play", 1323.5, 80.0, 46.5, 43.0, false), TimelineView::area ("Loop", 1222.0, 80.0, 46.5, 43.0, editor.looping), TimelineView::area ("Edit BPM", 870.0, 73.0, 83.0, 55.0, false), TimelineView::area ("Edit meter", 960.0, 73.0, 83.0, 55.0, false)] (stopArea (editor.songTicket != "", "Stop", 1370.0, 80.0, 46.5, 43.0))))
+
+    (** The command behind header area `index` of a song page. *)
+    export songAction (editor, index) = match index < 3
+        true => ShowPage(page = tabPage index)
+        false => match length editor.song.tracks
+            0 => OpenTrack(index = -2)
+            _ => match index
+                3 => PickTrack(index = editor.track, bar = 0)
+                4 => PlaySong
+                5 => ToggleLoop
+                8 => StopSong
+                _ => EditTiming
+
+    (** The part of a song page that stays at the window's edge: the background and the top bar with the name
+        and the tabs, as wide as the region. *)
+    export bar editor =
+        width = 1440.0 + 2.0 * shift editor
+        listConcat [TimelineView::box (0.0, 0.0, width, 940.0, Scenes::rgb (16, 13, 33), 0), TimelineView::box (0.0, 0.0, width, 59.0, Scenes::rgb (17, 16, 33), 1), TimelineView::box (0.0, 59.0, width, 1.0, rule (), 3)] (listConcat (brand editor) (tabs (editor, 1.0)))
+
+    (** The part of a song page that sits in the middle: the song strip and footer around the page's body, or
+        the invitation to open a song. *)
+    export page (editor, body) = match length editor.song.tracks
+        0 => empty ()
+        _ => listConcat (listConcat [TimelineView::box (0.0, 142.0, 1440.0, 1.0, rule (), 1)] (strip editor)) (listConcat (footer editor) body)
+
+(** [DAW-HEADER-TIMING] BPM and meter are project edits, committed together to disk and history. *)
+module SongTimingEditor
+    export open editor = match editor.songTicket != ""
+        true => ui::Runtime::step (editor(message = "Stop playback to edit song timing."))
+        false => ui::Runtime::step (editor(outputEdit = SongTiming(bpm = "${editor.song.tempo}", meter = "${editor.song.meterTop}/${editor.song.meterBottom}"), message = ""))
+
+    export form (editor, bpm, meter) = ui::Ui::dialog ("Song timing", ui::Ui::column [ui::Ui::field ("BPM", bpm, "20–400", TempoText), ui::Ui::field ("Time signature", meter, "4/4", PickMeter), ui::Ui::caption editor.message, ui::Ui::row [ui::Ui::button ("Cancel", "", CloseOutput), ui::Ui::button ("Apply timing", "", ApplyTiming)]], CloseOutput)
+
+    export typed (editor, value, tempo) = match editor.outputEdit
+        SongTiming bpm meter => ui::Runtime::step (editor(outputEdit = SongTiming(bpm = ui::Pick::either (tempo, value, bpm), meter = ui::Pick::either (tempo, meter, value))))
+        _ => ui::Runtime::step editor
+
+    parsed (editor, bpm, meter) = match split meter "/"
+        Success [n, d] =>
+            top = parseInt (trim n) ?: 0
+            bottom = parseInt (trim d) ?: 0
+            speed = parseFloat (trim bpm) ?: 0.0
+            match speed >= 20.0 && speed <= 400.0 && daw::Arrangements::validMeter (top, bottom)
+                true =>
+                    song = editor.song
+                    Success(value = song(tempo = speed, meterTop = top, meterBottom = bottom))
+                false => Error(message = "Enter 20–400 BPM and a time signature such as 3/4 or 6/8.")
+        _ => Error(message = "Enter a time signature such as 3/4 or 6/8.")
+
+    export apply editor = match editor.outputEdit
+        SongTiming bpm meter =>
+            step = DawSession::savedTrack (editor, editor.track, parsed (editor, bpm, meter))
+            next = step.stepStore
+            match next.outputEdit
+                OutputClosed => step(stepStore = next(overview = Header::overview next.song))
+                _ => step
+        _ => ui::Runtime::step editor

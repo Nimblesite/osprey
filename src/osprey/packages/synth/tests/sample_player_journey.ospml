@@ -1,0 +1,17 @@
+import synth::Components
+import synth::Parameters
+import synth::Renderer
+
+// [SYNTH-SIGNALS] A moving playback cursor reads the gain and speed that take effect on that frame.
+sampleControlJourney () =
+    mono = grainResource (24000, 440.0, [1.0, 0.0, -1.0, 0.5])
+    stereo = mono(sourceChannels = 2, samples = [1.0, 1.0, -0.5, 0.5, -1.0, -1.0, 0.75, 0.25])
+    forEachList ([mono, stereo], \resource =>
+        graph = built ([Components::samplePlayer (1, resource), Components::output 2], [cable (1, 2)])
+        sameSamples ((blockOf (graph, 10)).samples, [1.0, 0.5, 0.0, -0.5, -1.0, -0.25, 0.5, 0.25, 0.0, 0.0])
+        gain = synth::ParameterChange(node = 1, key = "gain", value = 0.5, revision = 0, samplePosition = 1)
+        speed = gain(key = "rate", value = 2.0, revision = 1, samplePosition = 2)
+        succeeds (Renderer::automated (planFor graph, 48000.0, Parameters::initial graph, rendered (Renderer::start graph), 8, [gain, speed]), \done =>
+            sameSamples (done.audio.samples, [1.0, 0.25, 0.0, -0.5, 0.25, 0.0, 0.0, 0.0])
+            expect (done.observation.revision, 2)
+            expect (done.observation.samplePosition, 8)))

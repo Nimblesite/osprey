@@ -1,66 +1,704 @@
 import synth::Components
+import synth::Interpolation
 import synth::GrainMath
 import synth::Grains
 import synth::GrainWindows
 import synth::GrainTimings
+import synth::PitchMarks
 import synth::GrainScheduler
 import synth::GrainSpreads
 import synth::GrainDistributions
+import synth::GrainCapture
 import synth::GrainClouds
 import synth::GrainGraph
+import synth::SampleResources
 
 // [SYNTH-ADVANCED-GRAINS-WINDOWS] [SYNTH-ADVANCED-GRAINS-TIMING] [SYNTH-ADVANCED-GRAINS-SCHEDULING]
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] [SYNTH-ADVANCED-GRAINS-INTEGRATION] Grain shapes, onset clocks,
 // variation streams and the graph module refuse every invalid control with its own message.
+// [SYNTH-ADVANCED-GRAINS-PLAYBACK] [SYNTH-ADVANCED-GRAINS-OVERLOAD] Every exact sample value below is derived
+// from the Lean oracle formulas in grain_math.ospml, not from recorded implementation output.
 
 grainControls window = synth::GrainControls(window = window, start = 1.0, rate = 1.0, duration = 8, amplitude = 0.5, pan = 0.0)
 
-retunedParameter (key, value, p) = match p.key == key
+// Direct control construction for journeys that need exact shapes and positions.
+grainShaped (window, start, rate, duration, amplitude, pan) = synth::GrainControls(window = window, start = start, rate = rate, duration = duration, amplitude = amplitude, pan = pan)
+
+// The symmetric half/half ASR used by the exact-value journeys below.
+grainAsr (start, rate, duration, amplitude, pan) = grainShaped (synth::AsrWindow(attack = 0.5, release = 0.5), start, rate, duration, amplitude, pan)
+
+// The same replacement on any granular node, so journeys can prepare their own capacity and source.
+grainParameterOr (key, value, p) = match p.key == key
     true => p(initial = value)
     false => p
 
-// The granular node with one parameter's initial value replaced.
-retuned (key, value) =
-    n = granularNode ()
-    n(parameters = mapList (n.parameters, \p => retunedParameter (key, value, p)))
+grainSet (n, key, value) = n(parameters = mapList (n.parameters, \p => grainParameterOr (key, value, p)))
+
+// The default granular node with one parameter's initial value replaced.
+retuned (key, value) = grainSet (granularNode (), key, value)
+
+grainTuned (n, changes) = foldList (changes, n, \(held, change) => grainSet (held, change.key, change.value))
+
+// A descriptor lookup that fails visibly instead of silently matching nothing.
+grainParameterOf (n, key) = match listGet (filterList (n.parameters, \p => p.key == key)) 0
+    Error _ => synth::Parameter(key = "absent", label = "absent", unit = synth::Ratio, minimum = -1.0, maximum = -1.0, initial = -1.0, automatable = false)
+    Success p => p
+
+grainResource (rate, root, samples) = synth::SampleResource(name = "grain source", sampleRate = rate, sourceChannels = 1, rootFrequency = root, samples = samples)
+
+grainFlatSource () = grainResource (48000, 440.0, [1.0, 1.0, 1.0, 1.0])
+
+grainTestNode (resource, capacity, seed) = Components::granular (1, resource, capacity, seed)
+
+// Descriptor rows: one field of one parameter's descriptor checked against its expected value.
+grainDescriptorWants (node, pick, rows) = forEachList (rows, \row => expect (pick (grainParameterOf (node, row.key)), row.want))
+
+// The "rate" descriptor initial for a source at the given rate, i.e. the default read increment.
+grainRateDefault rate =
+    node = grainTestNode (grainResource (rate, 440.0, [0.5, -0.5, 0.25, -0.25]), 4, 7)
+    descriptor = grainParameterOf (node, "rate")
+    descriptor.initial
+
+// [SYNTH-ADVANCED-GRAINS-TIMING] Park–Miller state update with multiplier 48271 and modulus 2147483647,
+// written out from the Lean oracle so seed streams are checked independently of the module under test.
+grainParkMiller seed =
+    product = seed * 48271.0
+    product - floor (product / 2147483647.0) * 2147483647.0
+
+grainNextSeed seed = match floatToInt (grainParkMiller (toFloat seed))
+    Error _ => 0
+    Success value => value
+
+grainAdvancedOnce seeds = synth::GrainSeeds(position = grainNextSeed seeds.position, rate = grainNextSeed seeds.rate, duration = grainNextSeed seeds.duration, amplitude = grainNextSeed seeds.amplitude, pan = grainNextSeed seeds.pan)
+
+grainAdvancedTimes (seeds, count) = foldList (toList (range (0, count)), seeds, \(held, _) => grainAdvancedOnce held)
+
+grainEventAt (events, at) = match listGet events at
+    Error _ => synth::GrainEvent(position = -1, controls = grainControls synth::HannWindow)
+    Success event => event
+
+grainVoiceAt (voices, at) = match listGet voices at
+    Error _ => synth::GrainVoiceObservation(identity = -1, cursor = -99.0, age = -1, duration = -1, sourceFrames = -1, fromPreviousSource = false, region = synth::GrainRegion(first = 0, limit = 0, boundary = synth::LoopSource))
+    Success voice => voice
+
+grainDurations events = mapList (events, \event => event.controls.duration)
+
+grainQuiet count = mapList (toList (range (0, count)), \i => toFloat (i % 8) / 8.0)
+
+grainRising (previous, position) = match previous >= -1 && position > previous
+    true => position
+    false => -1
+
+grainStrictlyRising positions = foldList (positions, -1, grainRising) >= 0
+
+// One varied-block run over arbitrary partitions, accumulating interleaved-by-block audio for comparison.
+grainCloudStep (held, size) = match GrainClouds::variedBlock (held.cloud, held.ranges, size)
+    Error why =>
+        expect (synth::Faults::detail why, "a varied cloud block")
+        held
+    Success block => { cloud = block.next, ranges = held.ranges, audio = listConcat held.audio (listConcat block.left block.right) }
+
+grainCloudAudio (cloud, ranges, sizes) = foldList (sizes, { cloud = cloud, ranges = ranges, audio = [] }, grainCloudStep)
 
 wholeCounts () = "Grain timing requires whole output-sample counts."
 
 timingModes () = "Grain timing must be 0 (periodic jitter) or 1 (bounded exponential)."
 
+// One spread journey row: the clipped minimum and maximum of a single control field.
+grainSpreadPair (center, spread, pick, low, high) =
+    succeeds (GrainSpreads::around (center, 4, spread), \got =>
+        expect (pick got.minimum, low)
+        expect (pick got.maximum, high))
+
+// A clock prepared at sample zero and run for one block, in a single step.
+schedulerRan (timing, seed, size) = match GrainScheduler::prepare (0, timing, seed)
+    Error why => Error(message = why)
+    Success clock => GrainScheduler::block (clock, size)
+
+// ASR window values and rendered samples checked row by row at the tolerances used below.
+windowRows (window, duration, tolerance, rows) = forEachList (rows, \c => near (GrainWindows::value (window, c.age, duration), c.want, tolerance))
+
+sampleRows (samples, rows) = forEachList (rows, \c => near (listGet samples c.at ?: 9.0, c.want, 0.000000000000001))
+
+// Near-equality rows at the machine tolerance shared by the exact-value journeys.
+tightRows rows = forEachList (rows, \r => near (r.got, r.want, 0.000000000000001))
+
 diverges outcome = refusedWith (outcome, "The grain player and scheduler clocks have diverged.")
+
+grainBadSource () = "Grains require 2–1048576 finite normalised mono samples and capacity 1–256."
+
+grainBadControls () = "Invalid grain source, controls or revision."
+
+grainBlockAfterTrigger (pool, controls, size, inspect) =
+    succeeds (Grains::trigger (pool, controls), \born => succeeds (Grains::block (born.pool, size), inspect))
+
+// [SYNTH-ADVANCED-GRAINS-PLAYBACK] Opposite-polarity samples reveal a tail reading the wrong buffer.
+overlapSources pool =
+    controls = grainControls synth::HannWindow
+    old = controls(start = 3.0, duration = 3, amplitude = 1.0, pan = -1.0)
+    succeeds (Grains::trigger (pool, old), \first =>
+        succeeds (Grains::replaceSource (first.pool, [-1.0, -1.0]), \swapped =>
+            watched = Grains::observation swapped
+            expect (watched.sourceFrames == 2 && watched.retiredFrames == 4 && watched.activeGrains == 1, true)
+            forEachList (watched.voices, \voice => expect (voice.identity == 0 && voice.fromPreviousSource && voice.cursor == 3.0 && voice.sourceFrames == 4, true))
+            refusedWith (Grains::replaceSource (swapped, [0.0, 0.0]), "The previous sample still has active grains.")
+            succeeds (Grains::trigger (swapped, old(start = 0.0, pan = 1.0)), \second =>
+                succeeds (Grains::block (second.pool, 3), \audio =>
+                    near (listGet audio.left 1 ?: 0.0, 1.0, 0.000001)
+                    near (listGet audio.right 1 ?: 0.0, -1.0, 0.000001)
+                    expect (length audio.next.retiredSource, 0)
+                    succeeds (Grains::replaceSource (audio.next, [0.0, 0.0]), \next =>
+                        expect (next.nextIdentity == 2 && next.position == 3 && next.revision == 2, true))))))
+
+// [SYNTH-ADVANCED-CORE-RESOURCES] The upper bound is exclusive; last-tap interpolation stays in the region.
+regionJourney (pool, boundary, rate, start, expected, remaining) =
+    controls = grainControls synth::HannWindow
+    region = synth::GrainRegion(first = 1, limit = 3, boundary = boundary)
+    succeeds (Grains::withRegion (pool, region), \chosen =>
+        refusedWith (Grains::trigger (chosen, controls(start = 0.0)), grainBadControls ())
+        succeeds (Grains::trigger (chosen, controls(start = start, rate = rate, pan = -1.0, amplitude = 1.0, duration = 3)), \admitted =>
+            succeeds (Grains::block (admitted.pool, 2), \block =>
+                near (listGet block.left 1 ?: 99.0, expected, 0.000001)
+                expect (length block.next.voices, remaining))))
+
+// [SYNTH-ADVANCED-GRAINS-SCHEDULING] Freeze and thaw share a bounded mono source with the normal player.
+captureJourney writer =
+    refusedWith (GrainCapture::write (writer, [0.0, floatFromBits 9218868437227405312]), "Capture samples must be finite and within [-1, 1].")
+    refusedWith (GrainCapture::write (writer, []), "Invalid capture state, block size or sample clock.")
+    refusedWith (GrainCapture::resource (writer, "capture", 60.0), "Freeze a valid capture before preparing a sample resource.")
+    refusedWith (GrainCapture::freeze writer, "Freeze requires at least two captured frames.")
+    succeeds (GrainCapture::write (writer, [0.0, 0.25]), \first =>
+        succeeds (GrainCapture::write (first, [0.5, 0.75, 1.0]), \second =>
+            succeeds (GrainCapture::freeze second, \frozen =>
+                expect (structuralEquals (frozen.samples, [0.25, 0.5, 0.75, 1.0]) && frozen.written == 5, true)
+                refusedWith (GrainCapture::write (frozen, [0.0]), "Resume capture before writing.")
+                succeeds (GrainCapture::resource (frozen, "captured", 60.0), \resource =>
+                    expect (resource.sampleRate == 24000 && resource.sourceChannels == 1, true)
+                    sameStructure (resource.samples, frozen.samples))
+                succeeds (GrainCapture::thaw frozen, \resumed =>
+                    succeeds (GrainCapture::write (resumed, [-1.0, 0.0, 0.25, 0.5, 0.75]), \next =>
+                        expect (next.written == 10 && structuralEquals (next.samples, [0.0, 0.25, 0.5, 0.75]), true)
+                        sameStructure (frozen.samples, [0.25, 0.5, 0.75, 1.0]))))))
+
+// Each upward crossing in an external monophonic reference owns exactly one absolute sample.
+pitchMarkJourney () =
+    succeeds (PitchMarks::prepare 27, \clock =>
+        succeeds (PitchMarks::block (clock, [0.5, -0.5, 0.0, 0.0, 0.5, -0.5, 0.25]), \whole =>
+            sameStructure (whole.positions, [29, 33])
+            succeeds (PitchMarks::block (clock, [0.5, -0.5]), \head =>
+                succeeds (PitchMarks::block (head.next, [0.0, 0.0, 0.5, -0.5, 0.25]), \tail =>
+                    sameStructure (listConcat head.positions tail.positions, whole.positions)
+                    sameStructure (tail.next, whole.next))))
+        refusedWith (PitchMarks::block (clock, [-0.5, 1.5]), "Pitch reference samples must be finite and normalised.")
+        refusedWith (PitchMarks::block (clock, []), "Invalid pitch reference block or exhausted sample clock."))
+
+sourceJourneys () =
+    succeeds (GrainCapture::prepare (4, 24000), captureJourney)
+    succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 2), overlapSources)
+    succeeds (Grains::prepare ([0.75, -1.0, 1.0, -0.5], 1), \pool =>
+        regionJourney (pool, synth::LoopSource, 1.0, 1.5, 0.0, 1)
+        regionJourney (pool, synth::OneShotSource, 1.0, 1.5, 1.0, 0)
+        regionJourney (pool, synth::LoopSource, -1.0, 1.0, 1.0, 1)
+        regionJourney (pool, synth::OneShotSource, -1.0, 1.0, 0.0, 0)
+        regionJourney (pool, synth::OneShotSource, 0.0, 2.75, 1.0, 1))
+
+// [SYNTH-ADVANCED-GRAINS-PLAYBACK] Linear interpolation, loop wrap and exact ASR shaping in one grain.
+grainInterpolationJourney () =
+    controls = grainAsr (0.0, 0.5, 5, 1.0, -1.0)
+    succeeds (Grains::prepare ([0.0, 1.0], 1), \pool =>
+        grainBlockAfterTrigger (pool, controls, 5, \rendered =>
+            sameSamples (rendered.left, [0.0, 0.25, 1.0, 0.25, 0.0])
+            sameSamples (rendered.right, [0.0, 0.0, 0.0, 0.0, 0.0])
+            exactRows ([{ got = length rendered.next.voices, want = 0 }, { got = rendered.next.position, want = 5 }])))
+
+// Wrap is the default policy; a one-shot grain stops the moment its cursor leaves the region.
+grainBoundaryJourney () =
+    controls = grainAsr (2.0, 1.0, 7, 1.0, -1.0)
+    succeeds (Grains::prepare ([0.0, 0.25, 0.5, 0.75], 1), \pool =>
+        expect (pool.region.boundary, synth::LoopSource)
+        succeeds (Grains::withRegion (pool, synth::GrainRegion(first = 0, limit = 3, boundary = synth::OneShotSource)), \once =>
+            succeeds (Grains::trigger (once, controls), \born =>
+                succeeds (Grains::next born.pool, \frame =>
+                    expect (frame.left, 0.0)
+                    expect (length frame.next.voices, 0)
+                    // The same controls under the wrap policy keep the grain alive and wrap the cursor to the first frame.
+                    succeeds (Grains::trigger (pool, controls(rate = 2.0)), \looping =>
+                        succeeds (Grains::next looping.pool, \wrapped =>
+                            observed = Grains::observation wrapped.next
+                            expect (length observed.voices, 1)
+                            expect ((grainVoiceAt (observed.voices, 0)).cursor, 0.0))))))
+        // Reverse traversal wraps backwards onto the last region frame on every tap.
+        reverse = grainAsr (1.0, -1.0, 5, 1.0, -1.0)
+        region = synth::GrainRegion(first = 1, limit = 4, boundary = synth::LoopSource)
+        succeeds (Grains::withRegion (pool, region), \narrow =>
+            grainBlockAfterTrigger (narrow, reverse, 5, \rendered =>
+                sameSamples (rendered.left, [0.0, 0.375, 0.5, 0.125, 0.0])
+                expect (length rendered.next.voices, 0))))
+
+// [SYNTH-ADVANCED-GRAINS-PLAYBACK] Equal-power placement and stereo summing without implicit clipping.
+grainPlacementJourney () =
+    window = synth::AsrWindow(attack = 0.25, release = 0.25)
+    sustained = grainShaped (window, 0.0, 0.0, 11, 1.0, 0.0)
+    succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 2), \pool =>
+        // A centred grain reaches both channels at cos(pi/4) = sin(pi/4) with unity sum of squared gains.
+        grainBlockAfterTrigger (pool, sustained, 6, \middle =>
+            tightRows ([{ got = listGet middle.left 5 ?: 9.0, want = 0.7071067811865476 }, { got = listGet middle.right 5 ?: 9.0, want = 0.7071067811865476 }]))
+        // Hard-left and hard-right grains keep their own channel and sum into both at unity sustain.
+        succeeds (Grains::trigger (pool, sustained(pan = -1.0)), \left =>
+            succeeds (Grains::trigger (left.pool, sustained(pan = 1.0)), \both =>
+                expect (both.accepted, true)
+                succeeds (Grains::block (both.pool, 6), \spread =>
+                    tightRows ([{ got = listGet spread.left 5 ?: 9.0, want = 1.0 }, { got = listGet spread.right 5 ?: 9.0, want = 1.0 }])
+                    exactRows ([{ got = listGet spread.left 0 ?: 9.0, want = 0.0 }, { got = listGet spread.right 0 ?: 9.0, want = 0.0 }]))))
+        // Summed peaks may exceed unity: gain staging belongs to the caller.
+        succeeds (Grains::trigger (pool, sustained(pan = 0.0)), \first =>
+            grainBlockAfterTrigger (first.pool, sustained(pan = 0.0), 6, \loud =>
+                near (listGet loud.left 5 ?: 9.0, 1.4142135623730951, 0.000000000000001)
+                expect ((listGet loud.left 5 ?: 0.0) > 1.0, true))))
+
+// Independent lifetime and rate: one grain expires while the other keeps its own cursor and age.
+grainLifetimeJourney () =
+    short = grainAsr (0.0, 0.0, 5, 1.0, -1.0)
+    long = grainAsr (2.0, 1.0, 11, 1.0, 1.0)
+    succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 2), \pool =>
+        succeeds (Grains::trigger (pool, short), \first =>
+            grainBlockAfterTrigger (first.pool, long, 5, \rendered =>
+                watched = Grains::observation rendered.next
+                expect (watched.activeGrains, 1)
+                survivor = grainVoiceAt (watched.voices, 0)
+                expect (survivor.identity == 1 && survivor.age == 5 && survivor.duration == 11, true)
+                expect (survivor.cursor, 3.0))))
+
+// [SYNTH-ADVANCED-GRAINS-OVERLOAD] Reject-new admission: counted, never stolen, audio untouched.
+grainOverloadJourney () =
+    controls = grainAsr (0.0, 0.0, 11, 1.0, -1.0)
+    succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 1), \pool =>
+        // Before the first rendered frame density is zero while the counts are already available.
+        succeeds (Grains::trigger (pool, controls), \born =>
+            fresh = Grains::observation born.pool
+            exactRows ([{ got = fresh.requestedGrains, want = 1 }, { got = fresh.acceptedGrains, want = 1 }, { got = fresh.rejectedGrains, want = 0 }, { got = fresh.activeGrains, want = 1 }, { got = fresh.capacity, want = 1 }, { got = fresh.stolenGrains, want = 0 }])
+            exactRows ([{ got = fresh.requestedPerFrame, want = 0.0 }, { got = fresh.acceptedPerFrame, want = 0.0 }])
+            expect (fresh.revision >= fresh.acceptedGrains, true)
+            // Valid requests at capacity are counted without replacing, truncating or restarting a grain.
+            succeeds (Grains::block (born.pool, 3), \aged =>
+                succeeds (Grains::trigger (aged.next, controls), \full =>
+                    expect (full.accepted, false)
+                    sameStructure (full.pool.voices, aged.next.voices)
+                    watched = Grains::observation full.pool
+                    exactRows ([{ got = watched.requestedGrains, want = 2 }, { got = watched.acceptedGrains, want = 1 }, { got = watched.rejectedGrains, want = 1 }, { got = watched.stolenGrains, want = 0 }])
+                    expect (watched.revision >= watched.acceptedGrains, true)
+                    tightRows ([{ got = watched.requestedPerFrame, want = 2.0 / 3.0 }, { got = watched.acceptedPerFrame, want = 1.0 / 3.0 }])
+                    // The rejection changed no audio: either pool renders the same samples and state.
+                    succeeds (Grains::block (full.pool, 4), \rejected =>
+                        succeeds (Grains::block (aged.next, 4), \plain =>
+                            sameStructure (rejected.left, plain.left)
+                            sameStructure (rejected.right, plain.right)
+                            sameStructure (rejected.next.voices, plain.next.voices)
+                            expect (rejected.next.position, 7)))
+                    // Scheduled rendering consumes rejected events, counts them and advances normally.
+                    succeeds (Grains::scheduled (aged.next, 5, GrainScheduler::events ([3, 4, 4], controls)), \consumed =>
+                        counted = Grains::observation consumed.next
+                        exactRows ([{ got = counted.requestedGrains, want = 4 }, { got = counted.acceptedGrains, want = 1 }, { got = counted.rejectedGrains, want = 3 }, { got = counted.activeGrains, want = 1 }, { got = counted.stolenGrains, want = 0 }])
+                        tightRows ([{ got = counted.requestedPerFrame, want = 0.5 }, { got = counted.acceptedPerFrame * 48000.0, want = 6000.0 }])
+                        expect (counted.samplePosition, 8)
+                        // Invalid controls fail the whole immutable operation and publish nothing.
+                        refusedWith (Grains::scheduled (aged.next, 4, [synth::GrainEvent(position = 3, controls = controls(duration = 2))]), grainBadControls ())
+                        succeeds (Grains::block (aged.next, 2), \recovered => expect (recovered.next.position, 5)))))))
+
+// Preparation validates source data and capacity; triggers validate every control bound.
+grainValidationJourney () =
+    controls = grainControls synth::HannWindow
+    forEachList ([[], [0.5], [0.5, 1.5], [0.5, floatFromBits 9218868437227405312]], \bad => refusedWith (Grains::prepare (bad, 1), grainBadSource ()))
+    forEachList ([0, -1, 257], \capacity => refusedWith (Grains::prepare ([0.5, -0.5], capacity), grainBadSource ()))
+    succeeds (Grains::prepare ([0.5, -0.5], 256), \full => expect ((Grains::observation full).capacity, 256))
+    succeeds (Grains::prepare ([0.5, -0.5, 0.25, -0.25], 1), \pool =>
+        expect (pool.region.first == 0 && pool.region.limit == 4 && pool.region.boundary == synth::LoopSource, true)
+        forEachList ([controls(start = -0.5), controls(start = 4.0), controls(rate = 16.5), controls(rate = -16.5), controls(duration = 2), controls(duration = 65537), controls(amplitude = -0.1), controls(amplitude = 1.1), controls(pan = -1.5), controls(pan = 1.5), controls(window = synth::AsrWindow(attack = 1.0, release = 1.0)), controls(rate = floatFromBits 9218868437227405312)], \bad =>
+            refusedWith (Grains::trigger (pool, bad), grainBadControls ()))
+        forEachList ([controls(start = 0.0), controls(rate = 16.0), controls(rate = -16.0), controls(duration = 3), controls(duration = 65536), controls(amplitude = 0.0), controls(amplitude = 1.0), controls(pan = -1.0), controls(pan = 1.0)], \good =>
+            succeeds (Grains::trigger (pool, good), \ok => expect (ok.accepted, true)))
+        // Regions are absolute and half-open: first inclusive, limit exclusive and within the source.
+        forEachList ([synth::GrainRegion(first = 0, limit = 0, boundary = synth::LoopSource), synth::GrainRegion(first = -1, limit = 2, boundary = synth::LoopSource), synth::GrainRegion(first = 2, limit = 2, boundary = synth::LoopSource), synth::GrainRegion(first = 1, limit = 5, boundary = synth::LoopSource)], \bad =>
+            refusedWith (Grains::withRegion (pool, bad), "Invalid grain pool or source region."))
+        succeeds (Grains::withRegion (pool, synth::GrainRegion(first = 3, limit = 4, boundary = synth::OneShotSource)), \narrow => expect (narrow.region.first == 3 && narrow.region.limit == 4, true))
+        // Exhausted revision and identity counters refuse instead of wrapping.
+        refusedWith (Grains::trigger (pool(revision = 9223372036854775807), controls), grainBadControls ())
+        refusedWith (Grains::trigger (pool(nextIdentity = 9223372036854775807), controls), grainBadControls ())
+        refusedWith (Grains::next (pool(position = 9223372036854775807)), "Invalid grain pool or exhausted sample clock."))
+
+// [SYNTH-ADVANCED-GRAINS-SCHEDULING] Ordered absolute events land before their own sample, in caller order.
+grainEventOrderJourney () =
+    controls = grainAsr (0.0, 1.0, 5, 0.5, -1.0)
+    succeeds (Grains::prepare ([0.25, -0.25, 0.5, -0.5], 2), \pool =>
+        events = [synth::GrainEvent(position = 2, controls = controls(pan = -1.0)), synth::GrainEvent(position = 2, controls = controls(start = 1.0, pan = 1.0))]
+        succeeds (Grains::scheduled (pool, 4, events), \rendered =>
+            // Nothing sounds before the event sample, and the new grain's first frame is the zero endpoint.
+            sameSamples (rendered.left, [0.0, 0.0, 0.0, -0.0625])
+            sameSamples (rendered.right, [0.0, 0.0, 0.0, 0.125])
+            watched = Grains::observation rendered.next
+            expect (watched.activeGrains, 2)
+            exactRows ([{ got = (grainVoiceAt (watched.voices, 0)).identity, want = 0 }, { got = (grainVoiceAt (watched.voices, 1)).identity, want = 1 }])
+            exactRows ([{ got = (grainVoiceAt (watched.voices, 0)).cursor, want = 2.0 }, { got = (grainVoiceAt (watched.voices, 1)).cursor, want = 3.0 }]))
+        // The half-open block window: events before the block or at its end belong elsewhere.
+        forEachList ([[synth::GrainEvent(position = -1, controls = controls)], [synth::GrainEvent(position = 4, controls = controls)], [synth::GrainEvent(position = 2, controls = controls), synth::GrainEvent(position = 1, controls = controls)]],
+            \events => refusedWith (Grains::scheduled (pool, 4, events), "Grain events must be ordered and belong to this block's half-open sample interval."))
+        refusedWith (Grains::scheduled (pool, 4, mapList (grainQuiet 2049, \_ => synth::GrainEvent(position = 0, controls = controls))), "Invalid grain block size, clock or event capacity.")
+        succeeds (Grains::scheduled (pool, 4, mapList (grainQuiet 2048, \_ => synth::GrainEvent(position = 0, controls = controls))), \many =>
+            expect (length many.left, 4)))
+
+// [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Five separately seeded streams, inclusive uniform durations.
+grainDistributionJourney () =
+    controls = grainControls synth::HannWindow
+    low = controls(start = 0.0, rate = 1.0, duration = 8, amplitude = 0.25, pan = -0.5)
+    high = controls(start = 3.0, rate = 2.0, duration = 12, amplitude = 0.75, pan = 0.5)
+    ranges = synth::GrainDistribution(minimum = low, maximum = high)
+    fixed = synth::GrainDistribution(minimum = low, maximum = low)
+    succeeds (GrainDistributions::seeded 7, \seeds =>
+        // One checked seed per stream, initialised by offset from the caller's seed.
+        exactRows ([{ got = seeds.position, want = 7 }, { got = seeds.rate, want = 104736 }, { got = seeds.duration, want = 130370 }, { got = seeds.amplitude, want = 155928 }, { got = seeds.pan, want = 196620 }])
+        // The first event advances every stream once and draws each value by the Lean formulas.
+        succeeds (GrainDistributions::events ([0], ranges, 16, seeds), \single =>
+            event = grainEventAt (single.events, 0)
+            expect (event.position, 0)
+            tightRows ([{ got = event.controls.start, want = 0.00047203525944802469 }, { got = event.controls.rate, want = 1.3542491056530261 }, { got = event.controls.amplitude, want = 0.50246980297609212 }, { got = event.controls.pan, want = -0.080388221964601658 }])
+            expect (event.controls.duration, 12)
+            sameStructure (single.next, grainAdvancedOnce seeds))
+        // Duration is inclusive discrete uniform: every value in [8, 12] is reachable, in a replayable order.
+        succeeds (GrainDistributions::events (toList (range (0, 12)), ranges, 16, seeds), \batch =>
+            expect (length batch.events, 12)
+            sameStructure (grainDurations batch.events, [12, 11, 9, 9, 9, 12, 9, 9, 8, 11, 9, 8])
+            forEachList (grainDurations batch.events, \duration => expect (duration >= 8 && duration <= 12, true))
+            sameStructure (batch.next, grainAdvancedTimes (seeds, 12)))
+        // Empty batches advance no randomness; non-empty batches with fixed ranges still advance.
+        succeeds (GrainDistributions::events ([], ranges, 16, seeds), \none => sameStructure (none.next, seeds))
+        succeeds (GrainDistributions::events ([5], fixed, 16, seeds), \held =>
+            sameStructure ((grainEventAt (held.events, 0)).controls, low)
+            sameStructure (held.next, grainAdvancedOnce seeds))
+        // Identical window settings and ordered minima are required at both ends.
+        forEachList ([synth::GrainDistribution(minimum = low(window = synth::AsrWindow(attack = 0.25, release = 0.25)), maximum = high), synth::GrainDistribution(minimum = low(start = 3.5), maximum = high), synth::GrainDistribution(minimum = low(rate = 2.5), maximum = high), synth::GrainDistribution(minimum = low(duration = 13), maximum = high), synth::GrainDistribution(minimum = low(amplitude = 0.8), maximum = high), synth::GrainDistribution(minimum = low(pan = 0.6), maximum = high)], \bad =>
+            refusedWith (GrainDistributions::events ([0], bad, 16, seeds), "Invalid grain distribution bounds, sample positions or random seeds."))
+        forEachList ([seeds(position = 0), seeds(rate = 2147483647), seeds(duration = -5), seeds(amplitude = 0), seeds(pan = 2147483647)], \bad =>
+            refusedWith (GrainDistributions::events ([0], ranges, 16, bad), "Invalid grain distribution bounds, sample positions or random seeds."))
+        forEachList ([[0, -1], [5, 3], toList (range (0, 2049))], \positions =>
+            refusedWith (GrainDistributions::events (positions, ranges, 16, seeds), "Invalid grain distribution bounds, sample positions or random seeds."))
+        forEachList ([1, 1048577], \size => refusedWith (GrainDistributions::events ([0], ranges, size, seeds), "Invalid grain distribution bounds, sample positions or random seeds."))
+        succeeds (GrainDistributions::events (toList (range (0, 2048)), ranges, 16, seeds), \full => expect (length full.events, 2048)))
+
+// [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Symmetric widths clip to the declared control domains.
+grainSpreadJourney () =
+    controls = grainControls synth::HannWindow
+    still = synth::GrainSpread(position = 0.0, rate = 0.0, duration = 0, amplitude = 0.0, pan = 0.0)
+    grainSpreadPair (controls(start = 1.0), still(position = 3.0), \d => d.start, 0.0, 3.0)
+    grainSpreadPair (controls(rate = 0.0), still(rate = 20.0), \d => d.rate, -16.0, 16.0)
+    grainSpreadPair (controls(duration = 65533), still(duration = 65533), \d => d.duration, 3, 65536)
+    grainSpreadPair (controls, still(amplitude = 1.0, pan = 2.0), \d => d.amplitude, 0.0, 1.0)
+    grainSpreadPair (controls, still(amplitude = 1.0, pan = 2.0), \d => d.pan, -1.0, 1.0)
+    // Zero widths hold every parameter while producing an exactly fixed distribution.
+    succeeds (GrainSpreads::around (controls, 4, still), \held =>
+        sameStructure (held.minimum, held.maximum)
+        sameStructure (held.minimum, controls))
+    forEachList ([still(position = 4.0), still(rate = 33.0), still(duration = 65534), still(amplitude = 1.5), still(pan = 2.5)], \bad =>
+        refusedWith (GrainSpreads::around (controls, 4, bad), "Invalid grain variation center or spread."))
+    forEachList ([controls(start = 4.0), controls(rate = 17.0), controls(rate = -17.0), controls(duration = 2), controls(duration = 65537), controls(amplitude = 1.5), controls(pan = 1.5), controls(window = synth::AsrWindow(attack = 0.8, release = 0.8))], \bad =>
+        refusedWith (GrainSpreads::around (bad, 4, still), "Invalid grain variation center or spread."))
+    refusedWith (GrainSpreads::around (controls, 1, still), "Invalid grain variation center or spread.")
+
+wideGrainDistribution () =
+    low = grainShaped (synth::HannWindow, 0.0, 0.0, 12, 0.0, -1.0)
+    high = grainShaped (synth::HannWindow, 3.0, 0.0, 16, 1.0, 1.0)
+    synth::GrainDistribution(minimum = low, maximum = high)
+
+variedCloud seed = GrainClouds::prepare ((grainFlatSource ()).samples, 4, synth::PeriodicTiming(period = 1, jitter = 0), 3, seed)
+
+// [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] [SYNTH-ADVANCED-GRAINS-OVERLOAD] One immutable varied-block operation owns pool,
+// clock and seeds; rejected onsets are consumed, counted and never stolen.
+grainCloudCommitJourney () =
+    source = [1.0, 1.0, 1.0, 1.0]
+    controls = grainAsr (0.0, 0.0, 5, 1.0, -1.0)
+    succeeds (GrainClouds::prepare (source, 1, synth::PeriodicTiming(period = 1, jitter = 0), 11, 7), \cloud =>
+        expect (cloud.pool.position == 0 && cloud.clock.position == 0, true)
+        // Onsets every frame against capacity one: a freed slot rebirths at sample five, the rest are counted, none stolen.
+        succeeds (GrainClouds::block (cloud, controls, 8), \played =>
+            sameSamples (played.left, [0.0, 0.5, 1.0, 0.5, 0.0, 0.0, 0.5, 1.0])
+            sameSamples (played.right, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            watched = GrainClouds::observation played.next
+            exactRows ([{ got = watched.playback.requestedGrains, want = 8 }, { got = watched.playback.acceptedGrains, want = 2 }, { got = watched.playback.rejectedGrains, want = 6 }, { got = watched.playback.stolenGrains, want = 0 }, { got = watched.playback.activeGrains, want = 1 }, { got = watched.nextOnset, want = 8 }, { got = watched.playback.samplePosition, want = 8 }, { got = played.next.pool.position, want = 8 }, { got = played.next.clock.position, want = 8 }])
+            expect (watched.playback.revision >= watched.playback.acceptedGrains, true)
+            nearRows ([{ got = watched.playback.requestedPerFrame, want = 1.0, within = 0.0 }, { got = watched.playback.acceptedPerFrame * 48000.0, want = 12000.0, within = 0.000000000000001 }])
+            // Any error returns neither partial result: the retained cloud still renders afterwards.
+            refusedWith (GrainClouds::variedBlock (played.next, synth::GrainDistribution(minimum = controls(amplitude = 1.0), maximum = controls(amplitude = 0.0)), 4), "Invalid grain distribution bounds, sample positions or random seeds.")
+            succeeds (GrainClouds::block (played.next, controls, 4), \again => expect (again.next.pool.position, 12))))
+    // Rejected onsets consume their draws: eight onsets advance all five streams exactly eight times.
+    succeeds (GrainDistributions::seeded 7, \base =>
+        succeeds (variedCloud 7, \seeded =>
+            succeeds (GrainClouds::variedBlock (seeded, wideGrainDistribution (), 8), \drawn =>
+                sameStructure (drawn.next.seeds, grainAdvancedTimes (base, 8))
+                counted = GrainClouds::observation drawn.next
+                exactRows ([{ got = counted.playback.requestedGrains, want = 8 }, { got = counted.playback.acceptedGrains, want = 4 }, { got = counted.playback.rejectedGrains, want = 4 }, { got = counted.playback.activeGrains, want = 4 }]))))
+
+// Identical seeds replay identical audio across irregular partitions; different seeds draw different grains.
+grainCloudReplayJourney () =
+    wide = wideGrainDistribution ()
+    blocks = [8, 31, 5]
+    succeeds (variedCloud 21, \first =>
+        succeeds (variedCloud 21, \replay =>
+            run = grainCloudAudio (first, wide, blocks)
+            again = grainCloudAudio (replay, wide, blocks)
+            exactRows ([{ got = length run.audio, want = 88 }, { got = run.cloud.pool.position, want = 44 }, { got = run.cloud.clock.position, want = 44 }])
+            sameStructure (run.audio, again.audio)
+            sameStructure (run.cloud.seeds, again.cloud.seeds)
+            succeeds (variedCloud 999999, \other =>
+                differed = grainCloudAudio (other, wide, blocks)
+                expect (structuralEquals (run.audio, differed.audio), false)
+                expect (structuralEquals (run.cloud.seeds, differed.cloud.seeds), false))))
+
+// [SYNTH-ADVANCED-GRAINS-WINDOWS] Latched windows: control changes reach later triggers only.
+grainWindowLatchingJourney () =
+    node = grainTuned (grainTestNode (grainFlatSource (), 2, 7), [{ key = "start", value = 0.0 }, { key = "rate", value = 0.0 }, { key = "duration", value = 13.0 }, { key = "period", value = 6.0 }, { key = "jitter", value = 0.0 }, { key = "gain", value = 1.0 }, { key = "pan", value = -1.0 }, { key = "window", value = 1.0 }, { key = "attack", value = 0.5 }, { key = "release", value = 0.5 }])
+    switched = grainTuned (node, [{ key = "attack", value = 0.25 }, { key = "release", value = 0.25 }])
+    succeeds (GrainGraph::prepare node, \cloud =>
+        succeeds (GrainGraph::block (node, cloud, 6), \first =>
+            // The first grain uses attack/release 0.5 over 12 interior frames: ages 1..5 ramp 1/6..5/6.
+            sampleRows (first.left, [{ at = 0, want = 0.0 }, { at = 1, want = 0.16666666666666666 }, { at = 2, want = 0.3333333333333333 }, { at = 3, want = 0.5 }, { at = 4, want = 0.6666666666666666 }, { at = 5, want = 0.8333333333333334 }])
+            sameSamples (first.right, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            born = Grains::observation first.next.pool
+            expect ((grainVoiceAt (born.voices, 0)).duration, 13)
+            // The surviving grain keeps its latched fractions while the grain born at 6 uses the new ones.
+            succeeds (GrainGraph::block (switched, first.next, 6), \second =>
+                sampleRows (second.left, [{ at = 0, want = 1.0 }, { at = 1, want = 1.1666666666666667 }, { at = 2, want = 1.3333333333333333 }, { at = 3, want = 1.5 }, { at = 4, want = 1.3333333333333333 }, { at = 5, want = 1.1666666666666667 }])
+                watched = Grains::observation second.next.pool
+                exactRows ([{ got = watched.activeGrains, want = 2 }, { got = watched.acceptedGrains, want = 2 }]))))
+
+// [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS-GRAPH] Widths default to zero, never reseed and never touch active grains.
+grainGraphVariationJourney () =
+    node = granularNode ()
+    grainDescriptorWants (node, \p => p.initial, [{ key = "positionSpread", want = 0.0 }, { key = "rateSpread", want = 0.0 }, { key = "durationSpread", want = 0.0 }, { key = "gainSpread", want = 0.0 }, { key = "panSpread", want = 0.0 }])
+    // Source-position spread is limited to [0, sourceSize - 1], matching the graph center control.
+    grainDescriptorWants (node, \p => p.maximum, [{ key = "positionSpread", want = 3.0 }, { key = "start", want = 3.0 }, { key = "rateSpread", want = 32.0 }, { key = "durationSpread", want = 65533.0 }, { key = "gainSpread", want = 1.0 }, { key = "panSpread", want = 2.0 }])
+    succeeds (GrainDistributions::seeded 7, \base =>
+        succeeds (GrainGraph::prepare node, \cloud =>
+            // variationSeed initialises the five offset seed states exactly once, when preparing a new cloud.
+            sameStructure (cloud.seeds, base)
+            succeeds (GrainGraph::block (node, cloud, 16), \first =>
+                // Default period 2400 frames: one onset at sample zero advances each stream exactly once.
+                sameStructure (first.next.seeds, grainAdvancedOnce base)
+                succeeds (GrainGraph::block (grainSet (node, "variationSeed", 999.0), first.next, 16), \second =>
+                    sameStructure (second.next.seeds, first.next.seeds)
+                    // Changing widths neither reseeds nor disturbs the active grain: no new onsets, identical state.
+                    widened = grainTuned (node, [{ key = "gainSpread", value = 1.0 }, { key = "panSpread", value = 2.0 }, { key = "rateSpread", value = 0.5 }])
+                    succeeds (GrainGraph::block (widened, first.next, 16), \spread =>
+                        sameStructure (spread.left, second.left)
+                        sameStructure (spread.right, second.right)
+                        sameStructure (spread.next, second.next)
+                        // The first block itself is audible and the grain is still alive.
+                        expect (foldList (first.left, 0.0, \(sum, value) => sum + abs value) > 0.0, true)
+                        retained = Grains::observation first.next.pool
+                        expect (retained.activeGrains, 1))))))
+
+// [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS-GRAPH] Invalid widths, seeds and region starts fail before rendering.
+grainGraphVariationRefusalJourney () =
+    node = granularNode ()
+    refusedWith (GrainGraph::prepare (grainSet (node, "variationSeed", 0.0)), "Invalid grain variation seed.")
+    refusedWith (GrainGraph::prepare (grainSet (node, "variationSeed", 2147483647.0)), "Invalid grain variation seed.")
+    succeeds (GrainClouds::prepare ([0.5, -0.5, 0.25, -0.25], 4, synth::PeriodicTiming(period = 4, jitter = 0), 1, 7), \cloud =>
+        forEachList ([{ key = "rateSpread", value = 33.0 }, { key = "gainSpread", value = 1.5 }, { key = "panSpread", value = 2.5 }, { key = "positionSpread", value = 4.0 }, { key = "durationSpread", value = 65534.0 }], \c =>
+            refusedWith (GrainGraph::block (grainSet (node, c.key, c.value), cloud, 8), "Invalid grain variation center or spread.")))
+    // Start positions and their spread must stay inside the selected region.
+    regionNode = grainTuned (node, [{ key = "regionStart", value = 1.0 }, { key = "regionEnd", value = 3.0 }])
+    succeeds (GrainGraph::prepare (grainSet (regionNode, "start", 1.0)), \cloud =>
+        refusedWith (GrainGraph::block (regionNode, cloud, 8), "Grain start positions and spread must stay inside the selected region."))
+
+// One transposition row per resource: the requested note at the graph's 48 kHz rate.
+playbackWants (resource, rows) = forEachList (rows, \held => succeeds (SampleResources::playbackRate (resource, held.note, 48000.0), \speed => near (speed, held.want, 0.000000000001)))
+
+// [SYNTH-SAMPLES-IMPORT] The pure preparation API preserves rate, channels and interleaved PCM and tunes by root.
+// The little-endian RIFF bytes come from the shared builders in wave_journeys.
+grainImportJourney () =
+    // The mono grain consumer uses equal half weights: (1.0 + -1.0)/2 = 0 and (0.5 + 0.25)/2 = 0.375.
+    stereo = wavFile (3, 2, 44100, 32, wavJoin [wavWord32 1065353216, wavWord32 3212836864, wavWord32 1056964608, wavWord32 1048576000])
+    succeeds (SampleResources::decodeWave ("stereo", 69.0, stereo), \resource =>
+        exactRows ([{ got = resource.sampleRate, want = 44100 }, { got = resource.sourceChannels, want = 2 }, { got = (synth::Resources::sample resource).frames, want = 2 }])
+        expect (resource.rootFrequency, 440.0)
+        sameSamples (resource.samples, [1.0, -1.0, 0.5, 0.25])
+        reversed = wavFile (3, 2, 44100, 32, wavJoin [wavWord32 3212836864, wavWord32 1065353216, wavWord32 1048576000, wavWord32 1056964608])
+        succeeds (SampleResources::decodeWave ("stereo", 69.0, reversed), \other =>
+            expect ((synth::Resources::sample other).hash != (synth::Resources::sample resource).hash, true))
+        succeeds (GrainGraph::prepare (grainTestNode (resource, 4, 7)), \cloud => sameSamples (cloud.pool.source, [0.0, 0.375])))
+    // 24-bit PCM at its original rate, still mono, tuned from MIDI 60.
+    succeeds (SampleResources::decodeWave ("mono24", 60.0, wavFile (1, 1, 96000, 24, [0, 0, 64, 0, 0, 192])), \resource =>
+        exactRows ([{ got = resource.sampleRate, want = 96000 }, { got = resource.sourceChannels, want = 1 }])
+        sameSamples (resource.samples, [0.5, -0.5])
+        near (resource.rootFrequency, 261.6255653005986, 0.000000001))
+    // Unknown chunks are skipped within checked lengths and padding.
+    skipped = wavPack [wavMonoFmt (), wavChunk ("LIST", [7, 8, 9]), wavChunk ("data", [0, 64, 0, 128])]
+    succeeds (SampleResources::decodeWave ("skipped", 69.0, skipped), \resource => sameSamples (resource.samples, [0.5, -1.0]))
+    // Duplicate data chunks, truncated bodies and single-frame files are explicit errors.
+    refusedWith (SampleResources::decodeWave ("dupe", 69.0, wavPack [wavMonoFmt (), wavChunk ("data", [0, 64, 0, 128]), wavChunk ("data", [0, 64])]), "Duplicate WAV data chunk.")
+    refusedWith (SampleResources::decodeWave ("cut", 69.0, wavPack [wavMonoFmt (), wavJoin [wavText "data", wavWord32 100]]), "Truncated WAV chunk body or padding.")
+    refusedWith (SampleResources::decodeWave ("one", 69.0, wavFile (1, 1, 48000, 16, [0, 64])), "WAV requires 2–1048576 complete sample frames.")
+    // Transposition uses the rate ratio times the pitch ratio, never the file length.
+    shortWave = synth::WaveSamples(sampleRate = 48000, channels = 1, frames = 4, samples = [0.5, -0.5, 0.25, -0.25])
+    longWave = synth::WaveSamples(sampleRate = 48000, channels = 1, frames = 64, samples = grainQuiet 64)
+    succeeds (SampleResources::fromWave ("short", 60.0, shortWave), \short =>
+        succeeds (SampleResources::fromWave ("long", 60.0, longWave), \long =>
+            playbackWants (short, [{ note = 36.0, want = 0.25 }, { note = 48.0, want = 0.5 }, { note = 60.0, want = 1.0 }, { note = 72.0, want = 2.0 }, { note = 84.0, want = 4.0 }])
+            playbackWants (long, [{ note = 36.0, want = 0.25 }, { note = 48.0, want = 0.5 }, { note = 60.0, want = 1.0 }, { note = 72.0, want = 2.0 }, { note = 84.0, want = 4.0 }])))
+    // [SYNTH-ADVANCED-GRANULAR] Pitch spans -24..+24 semitones; a 96 kHz source doubles the read increment.
+    succeeds (SampleResources::fromWave ("high", 60.0, shortWave(sampleRate = 96000)), \high =>
+        playbackWants (high, [{ note = 36.0, want = 0.5 }, { note = 84.0, want = 8.0 }, { note = 96.0, want = 16.0 }])
+        refusedAs (SampleResources::playbackRate (high, 97.0, 48000.0), "capacity", "The requested sample transposition exceeds the grain rate limit."))
+
+// [SYNTH-SAMPLES-IMPORT] The granular node takes the resource; its default rate compensates the source rate.
+grainDescriptorJourney () =
+    tightRows ([{ got = grainRateDefault 44100, want = 0.91875 }, { got = grainRateDefault 48000, want = 1.0 }, { got = grainRateDefault 96000, want = 2.0 }, { got = grainRateDefault 192000, want = 4.0 }])
+    node = granularNode ()
+    // [SYNTH-ADVANCED-GRANULAR] Density defaults to 20 grains/second at the 48 kHz graph rate: a 2400-frame onset interval.
+    expect ((grainParameterOf (node, "period")).initial, 2400.0)
+    near (48000.0 / (grainParameterOf (node, "period")).initial, 20.0, 0.0)
+    // [SYNTH-ADVANCED-GRANULAR] Window defaults to Hann and the wrap boundary policy is the default.
+    grainDescriptorWants (node, \p => p.initial, [{ key = "window", want = 0.0 }, { key = "boundary", want = 0.0 }, { key = "attack", want = 0.25 }, { key = "release", want = 0.25 }, { key = "variationSeed", want = 7.0 }, { key = "regionStart", want = 0.0 }, { key = "regionEnd", want = 4.0 }])
+    // [SYNTH-ADVANCED-GRANULAR] Size keeps at least two output frames; output gain and pan keep their declared domains.
+    expect ((grainParameterOf (node, "duration")).minimum, 3.0)
+    expect ((grainParameterOf (node, "duration")).minimum >= 2.0, true)
+    grainDescriptorWants (node, \p => p.minimum, [{ key = "gain", want = 0.0 }, { key = "pan", want = -1.0 }, { key = "rate", want = -16.0 }, { key = "maximumGap", want = 1.0 }, { key = "variationSeed", want = 1.0 }, { key = "start", want = 0.0 }])
+    grainDescriptorWants (node, \p => p.maximum, [{ key = "gain", want = 1.0 }, { key = "pan", want = 1.0 }, { key = "rate", want = 16.0 }, { key = "jitter", want = 1048575.0 }, { key = "variationSeed", want = 2147483646.0 }])
+    // [SYNTH-ADVANCED-GRANULAR] Capacity is prepared explicitly and reported by the pool, never silently substituted.
+    succeeds (Grains::prepare ([0.5, -0.5], 128), \pooled => expect ((Grains::observation pooled).capacity, 128))
+    succeeds (GrainGraph::prepare node, \cloud =>
+        expect (cloud.pool.region.boundary, synth::LoopSource)
+        expect (cloud.pool.capacity, 4))
+
+// [SYNTH-ADVANCED-GRAINS-SCHEDULING] Bounded capture: ring retention, block limits and immutable freeze.
+grainCaptureBoundsJourney () =
+    forEachList ([{ capacity = 1, rate = 24000 }, { capacity = 1048577, rate = 24000 }, { capacity = 4, rate = 7999 }, { capacity = 4, rate = 192001 }], \c =>
+        refusedWith (GrainCapture::prepare (c.capacity, c.rate), "Capture requires 2–1048576 mono frames at 8–192 kHz."))
+    succeeds (GrainCapture::prepare (2, 8000), \smallest => expect (smallest.capacity, 2))
+    succeeds (GrainCapture::prepare (1048576, 192000), \largest => expect (largest.sampleRate, 192000))
+    succeeds (GrainCapture::prepare (3, 48000), \writer =>
+        refusedWith (GrainCapture::write (writer, grainQuiet 2049), "Invalid capture state, block size or sample clock.")
+        // Forged capture state is refused rather than silently repaired.
+        refusedWith (GrainCapture::write (writer(written = 5), [0.0]), "Invalid capture state, block size or sample clock.")
+        refusedWith (GrainCapture::thaw (writer(written = 5)), "Invalid capture state.")
+        succeeds (GrainCapture::write (writer, grainQuiet 2048), \big =>
+            exactRows ([{ got = big.written, want = 2048 }, { got = length big.samples, want = 3 }])
+            // Only the most recent capacity frames survive each append.
+            succeeds (GrainCapture::write (big, [0.5, 0.75, 1.0, -1.0]), \wrapped =>
+                expect (wrapped.written, 2052)
+                sameStructure (wrapped.samples, [0.75, 1.0, -1.0])
+                succeeds (GrainCapture::freeze wrapped, \frozen =>
+                    succeeds (GrainCapture::resource (frozen, "frozen", 69.0), \resource =>
+                        expect (resource.rootFrequency, 440.0)
+                        expect (resource.sampleRate, 48000)
+                        sameStructure (resource.samples, frozen.samples))))))
 
 registerGrainJourneys () =
     test ("grain windows and timing selectors decode exactly and refuse unsupported modes", \() => arithmetic (\() =>
+        pitchMarkJourney ()
         // ASR over 11 frames: a 2-frame attack ramp, a held sustain, then a 3-frame release.
-        forEachList ([{ age = 0, want = 0.0 }, { age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 5, want = 1.0 }, { age = 8, want = 2.0 / 3.0 }, { age = 10, want = 0.0 }], \c => near (GrainWindows::value (synth::AsrWindow(attack = 0.2, release = 0.3), c.age, 11), c.want, 0.000000000001))
-        near (GrainWindows::value (synth::HannWindow, 5, 11), 1.0, 0.000000000001)
-        forEachList ([{ shape = synth::AsrWindow(attack = 0.5, release = 0.5), ok = true }, { shape = synth::AsrWindow(attack = 0.6, release = 0.5), ok = false }, { shape = synth::AsrWindow(attack = 0.0, release = 0.5), ok = false }, { shape = synth::AsrWindow(attack = 1.0, release = 0.0), ok = false }, { shape = synth::HannWindow, ok = true }], \c => expect (GrainWindows::valid c.shape, c.ok))
-        succeeds (GrainWindows::decode (1.0, 0.25, 0.25), \shape => expect (structuralEquals (shape, synth::AsrWindow(attack = 0.25, release = 0.25)), true))
-        succeeds (GrainWindows::decode (0.0, 0.9, 0.9), \shape => expect (structuralEquals (shape, synth::HannWindow), true))
-        refusedWith (GrainWindows::decode (1.0, 0.75, 0.5), "Grain attack and release must be positive fractions whose sum is at most one.")
+        windowRows (synth::AsrWindow(attack = 0.2, release = 0.3), 11, 0.000000000001, [{ age = 0, want = 0.0 }, { age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 5, want = 1.0 }, { age = 8, want = 2.0 / 3.0 }, { age = 10, want = 0.0 }])
+        // [SYNTH-ADVANCED-GRAINS-WINDOWS] [SYNTH-ADVANCED-GRANULAR] Both shapes return exactly zero at
+        // the first and last sample for every duration: grain envelopes reach zero at both endpoints.
+        forEachList ([synth::HannWindow, synth::AsrWindow(attack = 0.25, release = 0.25)], \shape =>
+            forEachList ([3, 4, 5, 9, 11, 4800], \duration =>
+                forEachList ([0, duration - 1], \age => expect (GrainWindows::value (shape, age, duration), 0.0))))
+        // The symmetric Hann hits unity at its centre and misses the peak on short discrete grains.
+        tightRows ([{ got = GrainWindows::value (synth::HannWindow, 5, 11), want = 1.0 }, { got = GrainWindows::value (synth::HannWindow, 2, 5), want = 1.0 }, { got = GrainWindows::value (synth::HannWindow, 1, 3), want = 1.0 }])
+        nearRows ([{ got = GrainWindows::value (synth::HannWindow, 1, 11), want = GrainWindows::value (synth::HannWindow, 9, 11), within = 0.000000000000001 }, { got = GrainWindows::value (synth::HannWindow, 1, 4), want = GrainWindows::value (synth::HannWindow, 2, 4), within = 0.000000000000001 }])
+        forEachList ([1, 2], \age => near (GrainWindows::value (synth::HannWindow, age, 4), 0.75, 0.000000000000001))
+        expect (GrainWindows::value (synth::HannWindow, 1, 4) < 1.0, true)
+        // Attack/release fractions partition duration - 1 into linear ramps and an exact unity sustain.
+        windowRows (synth::AsrWindow(attack = 0.5, release = 0.5), 11, 0.000000000000001, [{ age = 1, want = 0.2 }, { age = 2, want = 0.4 }, { age = 3, want = 0.6 }, { age = 4, want = 0.8 }, { age = 5, want = 1.0 }, { age = 6, want = 0.8 }, { age = 9, want = 0.2 }])
+        windowRows (synth::AsrWindow(attack = 0.25, release = 0.25), 9, 0.000000000000001, [{ age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 6, want = 1.0 }, { age = 7, want = 0.5 }])
+        windowRows (synth::AsrWindow(attack = 0.5, release = 0.5), 5, 0.000000000000001, [{ age = 1, want = 0.5 }, { age = 2, want = 1.0 }, { age = 3, want = 0.5 }])
+        forEachList ([{ shape = synth::AsrWindow(attack = 0.5, release = 0.5), ok = true }, { shape = synth::AsrWindow(attack = 0.25, release = 0.75), ok = true }, { shape = synth::AsrWindow(attack = 0.6, release = 0.5), ok = false }, { shape = synth::AsrWindow(attack = 0.0, release = 0.5), ok = false }, { shape = synth::AsrWindow(attack = 1.0, release = 0.0), ok = false }, { shape = synth::AsrWindow(attack = 0.5, release = 0.5000001), ok = false }, { shape = synth::AsrWindow(attack = 1.000001, release = 0.000001), ok = false }, { shape = synth::AsrWindow(attack = floatFromBits 9218868437227405312, release = 0.5), ok = false }, { shape = synth::HannWindow, ok = true }], \c => expect (GrainWindows::valid c.shape, c.ok))
+        succeeds (GrainWindows::decode (1.0, 0.25, 0.25), \shape => sameStructure (shape, synth::AsrWindow(attack = 0.25, release = 0.25)))
+        succeeds (GrainWindows::decode (0.0, 0.9, 0.9), \shape => sameStructure (shape, synth::HannWindow))
+        forEachList ([{ attack = 0.75, release = 0.5 }, { attack = 0.0, release = 0.25 }, { attack = 0.25, release = floatFromBits 9218868437227405312 }],
+            \c => refusedWith (GrainWindows::decode (1.0, c.attack, c.release), "Grain attack and release must be positive fractions whose sum is at most one."))
         forEachList ([2.0, 0.5, -1.0], \mode => refusedWith (GrainWindows::decode (mode, 0.25, 0.25), "Grain window must be 0 (Hann) or 1 (ASR)."))
-        forEachList ([{ timing = synth::ExponentialTiming(mean = 1.0, maximum = 1), ok = true }, { timing = synth::ExponentialTiming(mean = 0.5, maximum = 1), ok = false }, { timing = synth::ExponentialTiming(mean = 1.0, maximum = 0), ok = false }, { timing = synth::ExponentialTiming(mean = 1048577.0, maximum = 9), ok = false }, { timing = synth::PeriodicTiming(period = 4, jitter = 4), ok = false }], \c => expect (GrainTimings::valid c.timing, c.ok))
+        // [SYNTH-ADVANCED-GRAINS-TIMING] Exponential mean in [1, 1048576] and integer maximum in [1, 1048576].
+        forEachList ([{ timing = synth::ExponentialTiming(mean = 1.0, maximum = 1), ok = true }, { timing = synth::ExponentialTiming(mean = 0.5, maximum = 1), ok = false }, { timing = synth::ExponentialTiming(mean = 0.999, maximum = 9), ok = false }, { timing = synth::ExponentialTiming(mean = 1048576.0, maximum = 1048576), ok = true }, { timing = synth::ExponentialTiming(mean = 1048577.0, maximum = 9), ok = false }, { timing = synth::ExponentialTiming(mean = 1.0, maximum = 0), ok = false }, { timing = synth::ExponentialTiming(mean = 1.0, maximum = 1048577), ok = false }, { timing = synth::PeriodicTiming(period = 1, jitter = 0), ok = true }, { timing = synth::PeriodicTiming(period = 0, jitter = 0), ok = false }, { timing = synth::PeriodicTiming(period = 1048577, jitter = 0), ok = false }, { timing = synth::PeriodicTiming(period = 1048576, jitter = 1048575), ok = true }, { timing = synth::PeriodicTiming(period = 4, jitter = 4), ok = false }], \c => expect (GrainTimings::valid c.timing, c.ok))
         expect (GrainTimings::interval (synth::ExponentialTiming(mean = 10.0, maximum = 100), 1073741824), 7.0)
-        succeeds (GrainTimings::decode (1.0, 10, 0, 100), \timing => expect (structuralEquals (timing, synth::ExponentialTiming(mean = 10.0, maximum = 100)), true))
-        succeeds (GrainTimings::decode (0.0, 4, 1, 0), \timing => expect (structuralEquals (timing, synth::PeriodicTiming(period = 4, jitter = 1)), true))
-        refusedWith (GrainTimings::decode (1.0, 0, 0, 100), "Invalid grain timing distribution or bounds.")
+        succeeds (GrainTimings::decode (1.0, 10, 0, 100), \timing => sameStructure (timing, synth::ExponentialTiming(mean = 10.0, maximum = 100)))
+        succeeds (GrainTimings::decode (0.0, 4, 1, 0), \timing => sameStructure (timing, synth::PeriodicTiming(period = 4, jitter = 1)))
+        // Inactive settings do not alter the selected distribution: exponential mode ignores the jitter field.
+        succeeds (GrainTimings::decode (1.0, 10, 600, 9600), \timing => sameStructure (timing, synth::ExponentialTiming(mean = 10.0, maximum = 9600)))
+        forEachList ([{ mode = 1.0, mean = 0, jitter = 0, maximum = 100 }, { mode = 0.0, mean = 1048577, jitter = 0, maximum = 1 }, { mode = 1.0, mean = 1048577, jitter = 0, maximum = 100 }],
+            \c => refusedWith (GrainTimings::decode (c.mode, c.mean, c.jitter, c.maximum), "Invalid grain timing distribution or bounds."))
         forEachList ([2.0, 0.25], \mode => refusedWith (GrainTimings::decode (mode, 4, 1, 9), timingModes ()))))
     test ("generated grain math clips, caps and wraps at every boundary", \() => arithmetic (\() =>
-        forEachList ([{ got = GrainMath::exponentialInterval (10.0, 100.0, 1073741824.0), want = 7.0 }, { got = GrainMath::exponentialInterval (1000.0, 5.0, 1000000000.0), want = 5.0 }, { got = GrainMath::exponentialInterval (1.0, 10.0, 0.0), want = 1.0 }, { got = GrainMath::density (3.0, 0.0), want = 0.0 }, { got = GrainMath::density (3.0, 4.0), want = 0.75 }], \c => expect (c.got, c.want))
-        forEachList ([{ got = GrainMath::spreadLow (0.5, 1.0, 0.0), want = 0.0 }, { got = GrainMath::spreadLow (5.0, 1.0, 0.0), want = 4.0 }, { got = GrainMath::spreadHigh (5.0, 1.0, 5.5), want = 5.5 }, { got = GrainMath::spreadHigh (5.0, 1.0, 10.0), want = 6.0 }, { got = GrainMath::wrapped (-0.0000000000000001, 4.0), want = 0.0 }, { got = GrainMath::wrapped (-1.0, 4.0), want = 3.0 }], \c => expect (c.got, c.want))
-        near (GrainMath::asr (8.0, 11.0, 0.2, 0.3), 2.0 / 3.0, 0.000000000001)))
+        exactRows ([{ got = GrainMath::exponentialInterval (10.0, 100.0, 1073741824.0), want = 7.0 }, { got = GrainMath::exponentialInterval (1000.0, 5.0, 1000000000.0), want = 5.0 }, { got = GrainMath::exponentialInterval (1.0, 10.0, 0.0), want = 1.0 }, { got = GrainMath::exponentialInterval (2.5, 50.0, 1.0), want = 1.0 }, { got = GrainMath::exponentialInterval (2.5, 50.0, 2147483646.0), want = 50.0 }, { got = GrainMath::exponentialInterval (10.0, 5.0, 2147483646.0), want = 5.0 }, { got = GrainMath::density (3.0, 0.0), want = 0.0 }, { got = GrainMath::density (3.0, 4.0), want = 0.75 }, { got = GrainMath::density (8.0, 8.0), want = 1.0 }])
+        exactRows ([{ got = GrainMath::spreadLow (0.5, 1.0, 0.0), want = 0.0 }, { got = GrainMath::spreadLow (5.0, 1.0, 0.0), want = 4.0 }, { got = GrainMath::spreadHigh (5.0, 1.0, 5.5), want = 5.5 }, { got = GrainMath::spreadHigh (5.0, 1.0, 10.0), want = 6.0 }, { got = GrainMath::wrapped (-0.0000000000000001, 4.0), want = 0.0 }, { got = GrainMath::wrapped (-1.0, 4.0), want = 3.0 }, { got = GrainMath::wrapped (4.0, 4.0), want = 0.0 }, { got = GrainMath::wrapped (-1.0, 3.0), want = 2.0 }])
+        near (GrainMath::asr (8.0, 11.0, 0.2, 0.3), 2.0 / 3.0, 0.000000000001)
+        // [SYNTH-ADVANCED-GRAINS-PLAYBACK] Equal-power placement: the squared gains sum to one.
+        forEachList ([-1.0, -0.5, 0.0, 0.5, 1.0], \pan => near (GrainMath::leftGain pan * GrainMath::leftGain pan + GrainMath::rightGain pan * GrainMath::rightGain pan, 1.0, 0.000000000000001))
+        exactRows ([{ got = GrainMath::leftGain (-1.0), want = 1.0 }, { got = GrainMath::rightGain (-1.0), want = 0.0 }, { got = GrainMath::rightGain 1.0, want = 1.0 }])
+        tightRows ([{ got = GrainMath::leftGain 0.0, want = 0.7071067811865476 }, { got = GrainMath::rightGain 0.0, want = 0.7071067811865476 }, { got = GrainMath::leftGain (-0.5), want = 0.9238795325112867 }, { got = GrainMath::rightGain (-0.5), want = 0.3826834323650898 }])
+        // Periodic linear interpolation is the declared, non-bandlimited resampler.
+        exactRows ([{ got = Interpolation::linear (0.25, 0.75, 0.5), want = 0.5 }, { got = Interpolation::linear (-1.0, 0.00000000000000001, 1.0), want = 0.00000000000000001 }, { got = Interpolation::linear (-1.0, 1.0, 0.25), want = -0.5 }, { got = GrainMath::fraction 3.25, want = 0.25 }, { got = GrainMath::fraction 4.0, want = 0.0 }])
+        // Park-Miller update with multiplier 48271 and modulus 2147483647.
+        exactRows ([{ got = GrainMath::nextSeed 1.0, want = 48271.0 }, { got = GrainMath::nextSeed 48271.0, want = 182605794.0 }, { got = GrainMath::nextSeed 2147483646.0, want = 2147435376.0 }, { got = grainParkMiller 48271.0, want = 182605794.0 }])
+        // Inclusive integer jitter spans [period - jitter, period + jitter] at the seed extremes.
+        exactRows ([{ got = GrainMath::interval (4.0, 2.0, 1.0), want = 2.0 }, { got = GrainMath::interval (4.0, 2.0, 2147483646.0), want = 6.0 }, { got = GrainMath::interval (5.0, 0.0, 12345.0), want = 5.0 }])
+        // Uniform and discrete draws, including both endpoints of an inclusive discrete range.
+        exactRows ([{ got = GrainMath::uniform (0.0, 1.0, 1.0), want = 0.0 }, { got = GrainMath::uniform (0.5, 0.5, 12345.0), want = 0.5 }, { got = GrainMath::discrete (3.0, 3.0, 999.0), want = 3.0 }, { got = GrainMath::discrete (3.0, 5.0, 1.0), want = 3.0 }, { got = GrainMath::discrete (3.0, 5.0, 2147483646.0), want = 5.0 }])
+        // Absolute region cursors: wrap inside [first, limit), plain advance for one-shot.
+        exactRows ([{ got = GrainMath::regionCursor (2.0, 1.0, 1.0, 3.0, true), want = 1.0 }, { got = GrainMath::regionCursor (1.0, -1.0, 1.0, 4.0, true), want = 3.0 }, { got = GrainMath::regionCursor (2.0, 1.0, 0.0, 4.0, false), want = 3.0 }, { got = GrainMath::regionCursor (2.0, 0.0, 0.0, 4.0, true), want = 2.0 }])
+        near (GrainMath::density (1.0, 8.0), 0.125, 0.0)))
     test ("onset clocks follow the seeded exponential stream and refuse exhausted or invalid clocks", \() => arithmetic (\() =>
         forEachList ([{ at = -1, seed = 1 }, { at = 0, seed = 0 }], \c => refusedWith (GrainScheduler::prepare (c.at, synth::PeriodicTiming(period = 4, jitter = 0), c.seed), "Invalid grain clock, interval, jitter or seed."))
-        succeeds (GrainScheduler::prepare (0, synth::ExponentialTiming(mean = 10.0, maximum = 100), 1), \clock => succeeds (GrainScheduler::block (clock, 64), \onsets =>
-            expect (structuralEquals (onsets.positions, [0, 1, 2, 12, 35]), true)
-            expect (onsets.next.position == 64 && onsets.next.nextOnset == 70 && onsets.next.seed == 2078669041, true)))
+        succeeds (schedulerRan (synth::ExponentialTiming(mean = 10.0, maximum = 100), 1, 64), \onsets =>
+            sameStructure (onsets.positions, [0, 1, 2, 12, 35])
+            expect (onsets.next.position == 64 && onsets.next.nextOnset == 70 && onsets.next.seed == 2078669041, true))
+        // The first onset is immediate, gaps never repeat a sample and the stream survives partitions.
+        succeeds (schedulerRan (synth::ExponentialTiming(mean = 7.5, maximum = 40), 99, 200), \whole =>
+            sameStructure (whole.positions, [0, 1, 6, 12, 15, 29, 41, 72, 76, 77, 85, 101, 106, 114, 116, 123, 132, 144, 150, 167, 176, 180, 182, 183, 191, 194, 196, 199])
+            expect (whole.next.position == 200 && whole.next.nextOnset == 221 && whole.next.seed == 2020237872, true)
+            expect (length whole.positions, 28)
+            expect (grainStrictlyRising whole.positions, true)
+            succeeds (schedulerRan (synth::ExponentialTiming(mean = 7.5, maximum = 40), 99, 64), \a =>
+                succeeds (GrainScheduler::block (a.next, 31), \b =>
+                    succeeds (GrainScheduler::block (b.next, 105), \c =>
+                        sameStructure (listConcat (listConcat a.positions b.positions) c.positions, whole.positions)
+                        sameStructure (c.next, whole.next)))))
+        // Periodic jitter uses the same seed stream: [period - jitter, period + jitter] gaps.
+        succeeds (schedulerRan (synth::PeriodicTiming(period = 5, jitter = 3), 11, 60), \jittered =>
+            sameStructure (jittered.positions, [0, 2, 10, 16, 23, 29, 31, 37, 41, 49, 52])
+            expect (jittered.next.nextOnset == 60 && jittered.next.seed == 2115326081, true)
+            expect (grainStrictlyRising jittered.positions, true))
+        // Zero jitter is strictly periodic for every seed.
+        forEachList ([1, 12345, 2147483646], \seed =>
+            succeeds (schedulerRan (synth::PeriodicTiming(period = 5, jitter = 0), seed, 60), \fixed =>
+                expect (length fixed.positions, 12)
+                forEachList (toList (range (0, 12)), \i => expect (listGet fixed.positions i ?: -1, i * 5))))
+        // Maximum one: one onset per sample, at most 2048 per block.
+        succeeds (schedulerRan (synth::ExponentialTiming(mean = 1.0, maximum = 1), 5, 2048), \every =>
+            exactRows ([{ got = length every.positions, want = 2048 }, { got = listGet every.positions 2047 ?: -1, want = 2047 }])
+            expect (grainStrictlyRising every.positions, true))
+        // Switching policy preserves the pending onset and seed; only later gaps use the new policy.
+        succeeds (schedulerRan (synth::PeriodicTiming(period = 5, jitter = 3), 11, 20), \first =>
+                sameStructure (first.positions, [0, 2, 10, 16])
+                expect (first.next.nextOnset == 23 && first.next.seed == 1734574184, true)
+                resumed = synth::GrainClock(position = first.next.position, nextOnset = first.next.nextOnset, timing = synth::ExponentialTiming(mean = 2.0, maximum = 6), seed = first.next.seed)
+                succeeds (GrainScheduler::block (resumed, 20), \switched =>
+                    sameStructure (switched.positions, [23, 26, 27, 30, 31, 36, 37])
+                    expect (switched.next.nextOnset == 43 && switched.next.seed == 2115326081, true)))
         succeeds (GrainScheduler::prepare (9223372036854775743, synth::PeriodicTiming(period = 1048576, jitter = 0), 1), \late => refusedWith (GrainScheduler::block (late, 64), "The grain scheduler exhausted its onset clock."))
         refusedWith (GrainScheduler::block (synth::GrainClock(position = 0, nextOnset = 0, timing = synth::PeriodicTiming(period = 4, jitter = 0), seed = 1), 2049), "Invalid grain scheduler state or block size.")
+        // Forged clocks, invalid policies and zero-length blocks are refused without partial state.
+        forEachList ([synth::GrainClock(position = 4, nextOnset = 3, timing = synth::PeriodicTiming(period = 4, jitter = 0), seed = 1), synth::GrainClock(position = 0, nextOnset = 0, timing = synth::ExponentialTiming(mean = 0.5, maximum = 9), seed = 1), synth::GrainClock(position = 0, nextOnset = 0, timing = synth::PeriodicTiming(period = 4, jitter = 4), seed = 1)], \bad =>
+            refusedWith (GrainScheduler::block (bad, 8), "Invalid grain scheduler state or block size."))
+        // The refused zero-length block left the fresh clock untouched.
+        refusedWith (schedulerRan (synth::PeriodicTiming(period = 4, jitter = 0), 1, 0), "Invalid grain scheduler state or block size.")
+        succeeds (schedulerRan (synth::PeriodicTiming(period = 4, jitter = 0), 1, 8), \after => sameStructure (after.positions, [0, 4]))
         controls = grainControls synth::HannWindow
         forEachList (GrainScheduler::events ([3, 9], controls), \event => expect (structuralEquals (event.controls, controls) && (event.position == 3 || event.position == 9), true))
         expect (length (GrainScheduler::events ([3, 9], controls)), 2)))
     test ("variation streams, spreads and clouds refuse forged seeds, bounds and diverged clocks", \() => arithmetic (\() =>
+        grainDistributionJourney ()
+        grainSpreadJourney ()
+        grainCloudCommitJourney ()
+        grainCloudReplayJourney ()
         forEachList ([0, 2147483647, -5], \seed => refusedWith (GrainDistributions::seeded seed, "Invalid grain variation seed."))
         controls = grainControls synth::HannWindow
         ranges = synth::GrainDistribution(minimum = controls, maximum = controls)
@@ -72,7 +710,7 @@ registerGrainJourneys () =
         forEachList ([{ size = 16, spread = still(position = -1.0) }, { size = 1, spread = still }], \c => refusedWith (GrainSpreads::around (controls, c.size, c.spread), "Invalid grain variation center or spread."))
         source = [0.5, -0.5, 0.25, -0.25]
         periodic = synth::PeriodicTiming(period = 4, jitter = 0)
-        refusedWith (GrainClouds::prepare ([0.5], 4, periodic, 1, 7), "Grains require 2–1048576 finite normalised mono samples and capacity 1–256.")
+        refusedWith (GrainClouds::prepare ([0.5], 4, periodic, 1, 7), grainBadSource ())
         refusedWith (GrainClouds::prepare (source, 4, periodic, 0, 7), "Invalid grain clock, interval, jitter or seed.")
         refusedWith (GrainClouds::prepare (source, 4, periodic, 1, 0), "Invalid grain variation seed.")
         succeeds (GrainClouds::prepare (source, 4, periodic, 1, 7), \cloud =>
@@ -87,19 +725,45 @@ registerGrainJourneys () =
             diverges (GrainClouds::block (diverged, controls, 8))
             diverges (GrainClouds::variedBlock (diverged, ranges, 8)))))
     test ("the grain graph module decodes whole controls and refuses fractional, unknown or foreign settings", \() => arithmetic (\() =>
+        grainWindowLatchingJourney ()
+        grainGraphVariationJourney ()
+        grainGraphVariationRefusalJourney ()
         forEachList ([{ key = "period", value = 2.5, why = wholeCounts () }, { key = "duration", value = 7.5, why = wholeCounts () }, { key = "variationSeed", value = 1.5, why = wholeCounts () }, { key = "timing", value = 2.0, why = timingModes () }, { key = "window", value = 2.0, why = "Grain window must be 0 (Hann) or 1 (ASR)." }], \c => refusedWith (GrainGraph::prepare (retuned (c.key, c.value)), c.why))
         refusedWith (GrainGraph::prepare (Components::gain (1, 1.0)), "The component is not a grain cloud.")
+        refusedWith (GrainGraph::prepare (retuned ("boundary", 0.5)), "Grain boundary must be 0 (loop) or 1 (one-shot).")
+        refusedWith (GrainGraph::prepare (retuned ("regionEnd", 0.0)), "Invalid grain pool or source region.")
+        refusedWith (GrainGraph::prepare (grainTestNode (synth::SampleResource(name = "", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5]), 4, 7)), "Invalid grain sample metadata.")
+        original = granularNode ()
+        legacy = original(parameters = filterList (original.parameters, \p => p.key != "regionStart" && p.key != "regionEnd" && p.key != "boundary"))
+        succeeds (GrainGraph::prepare legacy, \cloud => expect (cloud.pool.region.first == 0 && cloud.pool.region.limit == length cloud.pool.source && cloud.pool.region.boundary == synth::LoopSource, true))
+        partial = original(parameters = filterList (original.parameters, \p => p.key != "regionEnd"))
+        refusedWith (GrainGraph::prepare partial, "Incomplete grain source region.")
         succeeds (GrainGraph::prepare (granularNode ()), \cloud =>
+            grainFaultJourney (granularNode (), cloud)
             forEachList ([{ n = Components::gain (1, 1.0), at = 0, ok = false }, { n = granularNode (), at = 0, ok = true }, { n = granularNode (), at = 1, ok = false }], \c => expect (GrainGraph::compatible (c.n, cloud, c.at), c.ok))
-            forEachList ([{ key = "durationSpread", value = 0.5, why = wholeCounts () }, { key = "timing", value = 3.0, why = timingModes () }], \c => refusedWith (GrainGraph::block (retuned (c.key, c.value), cloud, 8), c.why)))
-        hollow = synth::GrainPool(source = [], capacity = 1, voices = [], revision = 0, position = 0, nextIdentity = 0)
+            forEachList ([{ key = "durationSpread", value = 0.5, why = wholeCounts () }, { key = "timing", value = 3.0, why = timingModes () }], \c => refusedWith (GrainGraph::block (retuned (c.key, c.value), cloud, 8), c.why))
+            // Interleaved output carries exact left/right pairs for the device transport.
+            succeeds (GrainGraph::block (granularNode (), cloud, 4), \played =>
+                succeeds (GrainGraph::interleaved (synth::GrainBlock(left = played.left, right = played.right, next = played.next.pool)), \samples =>
+                    expect (length samples, 8)
+                    nearRows ([{ got = listGet samples 0 ?: 9.0, want = listGet played.left 0 ?: 8.0, within = 0.0 }, { got = listGet samples 1 ?: 9.0, want = listGet played.right 0 ?: 8.0, within = 0.0 }, { got = listGet samples 6 ?: 9.0, want = listGet played.left 3 ?: 8.0, within = 0.0 }, { got = listGet samples 7 ?: 9.0, want = listGet played.right 3 ?: 8.0, within = 0.0 }]))))
+        hollow = synth::GrainPool(source = [], region = synth::GrainRegion(first = 0, limit = 0, boundary = synth::LoopSource), retiredSource = [], retiredBefore = 0, capacity = 1, voices = [], revision = 0, position = 0, nextIdentity = 0)
         forEachList ([synth::GrainBlock(left = [], right = [], next = hollow), synth::GrainBlock(left = [0.5], right = [], next = hollow)], \block => refusedWith (GrainGraph::interleaved block, "Grain output channels have invalid lengths."))))
     test ("direct grain pools reject bad triggers, count a full pool and render ordered single-frame blocks", \() => arithmetic (\() =>
+        sourceJourneys ()
+        grainInterpolationJourney ()
+        grainBoundaryJourney ()
+        grainPlacementJourney ()
+        grainLifetimeJourney ()
+        grainOverloadJourney ()
+        grainValidationJourney ()
+        grainEventOrderJourney ()
         controls = grainControls synth::HannWindow
         succeeds (Grains::prepare ([0.5, -0.5, 0.25, -0.25], 1), \pool =>
-            refusedWith (Grains::trigger (pool, controls(duration = 2)), "Invalid grain source, controls or revision.")
+            refusedWith (Grains::trigger (pool, controls(duration = 2)), grainBadControls ())
             succeeds (Grains::trigger (pool, controls), \first =>
                 expect (first.accepted && length first.pool.voices == 1 && first.pool.revision == 1 && first.pool.nextIdentity == 1, true)
+                // [SYNTH-ADVANCED-GRAINS-OVERLOAD] A valid request at capacity is counted, not stolen.
                 succeeds (Grains::trigger (first.pool, controls), \full =>
                     expect (full.accepted, false)
                     expect (structuralEquals (full.pool.voices, first.pool.voices) && full.pool.revision == 2 && full.pool.nextIdentity == 1, true)
@@ -109,6 +773,26 @@ registerGrainJourneys () =
                     succeeds (Grains::next full.pool, \one => expect (one.left == 0.0 && one.right == 0.0 && one.next.position == 1 && length one.next.voices == 1, true))
                     succeeds (Grains::block (full.pool, 3), \three => expect (length three.left == 3 && three.next.position == 3, true))))
             refusedWith (Grains::next (pool(position = 9223372036854775807)), "Invalid grain pool or exhausted sample clock.")
-            refusedWith (Grains::block (pool, 0), "Invalid grain block size, clock or event capacity.")
-            refusedWith (Grains::scheduled (pool, 4, [synth::GrainEvent(position = 2, controls = controls), synth::GrainEvent(position = 1, controls = controls)]), "Grain events must be ordered and belong to this block's half-open sample interval.")
-            refusedWith (Grains::scheduled (pool, 4, [synth::GrainEvent(position = 4, controls = controls)]), "Grain events must be ordered and belong to this block's half-open sample interval."))))
+            forEachList ([0, 2049], \size => refusedWith (Grains::block (pool, size), "Invalid grain block size, clock or event capacity."))
+            forEachList ([[synth::GrainEvent(position = 2, controls = controls), synth::GrainEvent(position = 1, controls = controls)], [synth::GrainEvent(position = 4, controls = controls)]],
+                \events => refusedWith (Grains::scheduled (pool, 4, events), "Grain events must be ordered and belong to this block's half-open sample interval.")))))
+    test ("prepared grain samples keep their rate, channels and tuning through import and graph descriptors", \() => arithmetic (\() =>
+        grainImportJourney ()
+        grainDescriptorJourney ()
+        grainCaptureBoundsJourney ()
+        // [SYNTH-SAMPLES-IMPORT] Metadata gates every consumer: name, rate, channels and root frequency.
+        kit = synth::SampleResource(name = "kit", sampleRate = 48000, sourceChannels = 2, rootFrequency = 440.0, samples = [0.5, -0.5])
+        forEachList ([kit(name = ""), kit(sampleRate = 7999), kit(sampleRate = 192001), kit(sourceChannels = 3), kit(rootFrequency = 0.5), kit(rootFrequency = 20000.5)], \bad =>
+            expect (SampleResources::metadata bad, false))
+        refusedWith (SampleResources::prepare (kit(samples = [0.5, 1.5])), grainBadSource ())
+        refusedWith (SampleResources::prepare (kit(sampleRate = 192001)), "Invalid sample resource name, sample rate, source channels or root frequency.")
+        // A frozen capture becomes the same tuned mono resource the graph consumes.
+        succeeds (GrainCapture::prepare (2, 48000), \writer =>
+            succeeds (GrainCapture::write (writer, [0.25, -0.25]), \held =>
+                succeeds (GrainCapture::freeze held, \frozen =>
+                    succeeds (GrainCapture::resource (frozen, "capture", 69.0), \resource =>
+                        expect (SampleResources::metadata resource, true)
+                        expect (resource.rootFrequency, 440.0)
+                        expect (length resource.samples, 2)
+                        succeeds (GrainGraph::prepare (grainTestNode (resource, 4, 7)), \cloud =>
+                            exactRows ([{ got = cloud.pool.capacity, want = 4 }, { got = cloud.pool.region.limit, want = 2 }]))))))))

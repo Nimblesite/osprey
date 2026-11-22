@@ -57,3 +57,52 @@ fn every_agent_project_finishes_type_checking_within_the_budget() -> std::io::Re
     assert!(failed.is_empty(), "{}", failed.join("\n"));
     Ok(())
 }
+
+/// How many times longer a program four times the size may take to lower. Time
+/// linear in the program gives 4; a table copied at every call gives 16 or more.
+const GROWTH_LIMIT: u32 = 10;
+const SMALL_PROGRAM: usize = 1000;
+const LOWERING_RUNS: usize = 2;
+
+/// `functions` functions that each call one generic helper.
+fn generic_callers(functions: usize) -> std::io::Result<Vec<u8>> {
+    use std::io::Write;
+    let mut source = b"fn same(x) = x\n".to_vec();
+    for i in 0..functions {
+        writeln!(source, "fn f{i}() = same({i})")?;
+    }
+    source.extend_from_slice(b"print(\"${f0()}\")\n");
+    Ok(source)
+}
+
+/// The fastest of several runs that lower a program of `functions` generic callers to LLVM IR.
+fn lowering_time(functions: usize) -> std::io::Result<Duration> {
+    let source = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("callers{functions}.osp"));
+    std::fs::write(&source, generic_callers(functions)?)?;
+    let mut fastest = Duration::MAX;
+    for _ in 0..LOWERING_RUNS {
+        let started = Instant::now();
+        let status = Command::new(env!("CARGO_BIN_EXE_osprey"))
+            .arg(&source)
+            .args(["--llvm", "--no-warnings"])
+            .stdout(Stdio::null())
+            .status()?;
+        assert!(status.success(), "{functions} generic callers: {status}");
+        fastest = fastest.min(started.elapsed());
+    }
+    Ok(fastest)
+}
+
+/// A generic call specializes the callee's types, never a copy of every table
+/// in the program: the build time of a large application is otherwise the
+/// square of its size ([DAW-PERF-BUILD], [TYPE-GENERICS-APPLY]).
+#[test]
+fn lowering_time_grows_with_the_program_and_not_with_its_square() -> std::io::Result<()> {
+    let small = lowering_time(SMALL_PROGRAM)?;
+    let large = lowering_time(SMALL_PROGRAM * 4)?;
+    assert!(
+        large < small * GROWTH_LIMIT,
+        "{SMALL_PROGRAM} generic callers lowered in {small:?}, four times as many in {large:?}"
+    );
+    Ok(())
+}

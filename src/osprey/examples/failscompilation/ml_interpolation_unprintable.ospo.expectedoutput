@@ -1,3 +1,15 @@
-cannot convert value for interpolation: List<Map<string, int>>
-cannot assert on a value with no rendering: List<Map<string, int>>
-cannot assert on a value with no rendering: (int) -> int
+7:0: cannot convert value for interpolation: List<Map<string, int>>
+8:0: cannot assert on a value with no rendering: List<Map<string, int>>
+9:0: cannot assert on a value with no rendering: (int) -> int
+22:8: cannot convert value to string: (int) -> int; `show1` needs a printable argument
+22:8: cannot convert value to string: List<Map<string, int>>; `show2` needs a printable argument
+22:8: cannot convert value to string: Map<string, int>; `show3` needs a printable argument
+23:8: `length` supports only string, List<T>, or Map<string, V>; got int; `size1` needs a sized argument
+23:8: `length` supports only string, List<T>, or Map<string, V>; got bool; `size2` needs a sized argument
+23:8: `length` supports only string, List<T>, or Map<string, V>; got (int) -> int; `size3` needs a sized argument
+24:0: `listSort` supports only List<int> or List<string>; got List<bool>; `sort1` needs a sortable argument
+25:0: `listSort` supports only List<int> or List<string>; got List<float>; `sort2` needs a sortable argument
+26:0: `listSort` supports only List<int> or List<string>; got List<Map<string, int>>; `sort3` needs a sortable argument
+27:9: cannot order `(int) -> int` with `<`: ordering is decided only for int, float, string and bool; `less1` needs a comparable argument
+27:9: cannot order `List<Map<string, int>>` with `<`: ordering is decided only for int, float, string and bool; `less2` needs a comparable argument
+27:9: cannot order `Map<string, int>` with `<`: ordering is decided only for int, float, string and bool; `less3` needs a comparable argument

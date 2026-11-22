@@ -1,0 +1,90 @@
+// The mathematics of the oscillators and performance timbres. Phase is normalised to one cycle
+// per unit, `step` is the phase advanced per sample (frequency over sample rate), and every
+// output is nominally within `[-1, 1]`.
+//
+// The polynomial corrections reduce aliasing at each discontinuity; they do not eliminate it
+// ([SYNTH-RESEARCH-ANTIALIASING]).
+namespace synth
+
+(** Waves of `@osprey/synth` [SYNTH-DSP] [SYNTH-PERFORMANCE] *)
+module Waves
+    (** MIDI equal-tempered pitch with A4 = 440 Hz [SYNTH-HOST-MIDI-OSCILLATOR]. *)
+    export midiFrequency pitch = 440.0 * pow (2.0, (pitch - 69.0) / 12.0)
+
+    (** Note velocity scales oscillator amplitude, independent of waveform selection. *)
+    export velocitySample (sample: float, velocity) = sample * velocity
+
+    (** The fractional part of a phase: a phase wrapped into `[0, 1)`. *)
+    export wrap phase = phase - floor phase
+
+    (** The integral of a local linear discontinuity correction (polyBLEP), one sample either side of a step. *)
+    export blep (phase, step) = match step <= 0.0
+        true => 0.0
+        false => match phase < step
+            true =>
+                x = floatDiv (phase, step)
+                x + x - x * x - 1.0
+            false => match phase > 1.0 - step
+                true =>
+                    x = floatDiv (phase - 1.0, step)
+                    x * x + x + x + 1.0
+                false => 0.0
+
+    (** The integral of the BLEP residual (polyBLAMP), for a corner in the waveform. *)
+    export blamp (phase, step) = match step <= 0.0
+        true => 0.0
+        false => match phase < step
+            true => pow (1.0 - floatDiv (phase, step), 3.0) / 3.0
+            false => match phase > 1.0 - step
+                true => pow (1.0 + floatDiv (phase - 1.0, step), 3.0) / 3.0
+                false => 0.0
+
+    (** One cycle of a sine per unit phase. *)
+    export sine phase = sin (6.283185307179586 * phase)
+
+    (** A sawtooth rising from -1 to 1, corrected at its wrap. *)
+    export saw (phase, step) = 2.0 * phase - 1.0 - blep (phase, step)
+
+    (** A pulse that is high for `width` of the cycle, corrected at both edges. *)
+    export pulse (phase, step, width) =
+        plain = match phase < width
+            true => 1.0
+            false => -1.0
+        plain + blep (phase, step) - blep (wrap (phase - width), step)
+
+    (** A triangle whose derivative jumps by +8 and -8, corrected at both corners. *)
+    export triangle (phase, step) = 1.0 - 4.0 * abs (phase - 0.5) + 4.0 * step * (blamp (phase, step) - blamp (wrap (phase - 0.5), step))
+
+    (** The partial at `multiple` times the fundamental, silent once it would pass Nyquist. *)
+    export harmonic (phase, step, multiple) = match step * multiple < 0.5
+        true => sine (phase * multiple)
+        false => 0.0
+
+    (** A glassy timbre: the fundamental with a third harmonic that grows with `tone`. *)
+    export glass (phase, step: float, tone) = sine phase * (1.0 - tone * 0.3) + harmonic (phase, step, 3.0) * tone * 0.3
+
+    (** A bass timbre: the fundamental with a second harmonic that grows with `tone`. *)
+    export bass (phase, step: float, tone) = sine phase * 0.65 + harmonic (phase, step, 2.0) * (0.1 + tone * 0.25)
+
+    (** A hollow timbre: the fundamental with odd harmonics that grow with `tone`. *)
+    export hollow (phase, step: float, tone) = sine phase * 0.6 + harmonic (phase, step, 3.0) * (0.1 + tone * 0.15) + harmonic (phase, step, 5.0) * tone * 0.15
+
+    (** Phase modulation by the octave above, deepening with `tone`. *)
+    export modulated (phase, tone) = sine (phase + (0.05 + tone * 0.3) * sine (phase * 2.0))
+
+    (** Ring modulation: `warp` fades the dry signal into inharmonic sidebands at seven times the fundamental. *)
+    export ring (dry, phase, warp) = dry * (1.0 - warp + warp * sine (phase * 7.0))
+
+    (** A bipolar oscillator becomes a normalized control signal. *)
+    export unipolar sample = (sample + 1.0) / 2.0
+
+    (** A normalized modulation input scales an explicit linear gain. *)
+    export controlledGain (sample: float, level, control) = sample * level * control
+
+    (** A normalized cutoff signal sweeps from 1 Hz to the configured cutoff. *)
+    export controlledCutoff (cutoff, control) = 1.0 + (cutoff - 1.0) * control
+
+    (** Linear note-off envelope includes a full first sample and an exact zero final sample. *)
+    export releaseGain (remaining, duration) = match remaining <= 1.0
+        true => 0.0
+        false => floatDiv (remaining - 1.0, duration - 1.0)

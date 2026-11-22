@@ -86,6 +86,26 @@ def project_dirs(root: Path, kind: str) -> set[str]:
     return {path.name for path in base.iterdir() if path.is_dir() and (path / "osprey.toml").is_file()}
 
 
+def declared_roots(suite, project):
+    """The extra roots a suite manifest declares, type-checked before any traversal.
+
+    A mistyped shape would otherwise be iterated (a string is a sequence of
+    characters, one of them "/"), so the whole filesystem could be crawled
+    instead of the fixture. Nothing is skipped: a bad shape is a fault.
+    """
+    if project is None:
+        return []
+    if not isinstance(project, dict):
+        raise ValueError(f"{(suite / 'osprey.toml')} has no [project] table")
+    declared = project.get("source_roots", [])
+    if not isinstance(declared, list):
+        raise ValueError(f"{(suite / 'osprey.toml')} source_roots must be a list, not {type(declared).__name__}")
+    for root in declared:
+        if not isinstance(root, str) or "\x00" in root:
+            raise ValueError(f"{(suite / 'osprey.toml')} source_roots entry is not a path: {root!r}")
+    return [(suite / root).resolve() for root in declared]
+
+
 def normalize_components(raw: object) -> list[str] | None:
     if not isinstance(raw, str) or not raw.strip():
         return None

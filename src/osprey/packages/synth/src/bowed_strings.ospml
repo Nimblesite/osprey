@@ -1,0 +1,35 @@
+// [SYNTH-ADVANCED-PHYSICAL-INSTRUMENTS] Bowed string: two delay segments, inverting ends, bow friction table.
+namespace synth
+
+(** Smith's bowed-string waveguide as in STK `Bowed`: the bow sits at `position` between a neck and a bridge
+    segment, both ends invert, the bridge end applies the loss filter, and the bow injects
+    `Δv · table(Δv)` into both segments. The table is clipped to [0.01, 0.98], so injection is bounded. *)
+module BowedStrings
+    loop config = config.sampleRate / config.frequency - PhysicalMath::smoothing config.brightness
+
+    neckDelay config = (1.0 - config.position) * loop config
+
+    bridgeDelay config = config.position * loop config
+
+    (** Pressure 0–1, bow velocity 0–1, position 0.05–0.5 of the string from the bridge. *)
+    export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 20.0 && config.frequency < config.sampleRate * 0.25 && config.decay >= 0.01 && config.decay <= 60.0 && config.brightness >= 0.0 && config.brightness <= 1.0 && config.position >= 0.05 && config.position <= 0.5 && config.pressure >= 0.0 && config.pressure <= 1.0 && config.velocity >= 0.0 && config.velocity <= 1.0 && config.capacity >= 4 && config.capacity <= 96000 && bridgeDelay config >= 1.0 && neckDelay config <= toFloat (config.capacity - 1)
+        true => Success(value = config)
+        false => Error(message = ExhaustedCapacity(detail = "Invalid bowed-string controls, or the tuned segments do not fit their capacity."))
+
+    (** Allocate both segments outside rendering. *)
+    export initial config = Outcomes::carried (DelayLines::prepare config.capacity, \line => Success(value = BowState(neck = line, bridge = line, loss = LossFilters::initial)))
+
+    loss config = LossConfig(gain = PhysicalMath::decayGain (config.decay, config.sampleRate / config.frequency, config.sampleRate), brightness = config.brightness)
+
+    bowed (config, held, neckEnd, bridgeEnd) =
+        lost = LossFilters::next (loss config, held.loss, bridgeEnd)
+        bridgeReflection = 0.0 - lost.sample
+        nutReflection = 0.0 - neckEnd
+        difference = config.velocity - (bridgeReflection + nutReflection)
+        injected = difference * PhysicalMath::bowTable (difference, PhysicalMath::bowSlope config.pressure)
+        BowSample(sample = bridgeEnd, next = BowState(neck = DelayLines::push (held.neck, PhysicalMath::flushed (bridgeReflection + injected)), bridge = DelayLines::push (held.bridge, PhysicalMath::flushed (nutReflection + injected)), loss = lost.next))
+
+    (** One sample; the output is the wave arriving at the bridge. *)
+    export next (config, held) = match DelayLines::tap (held.neck, neckDelay config)
+        Error why => Error(message = why)
+        Success neckEnd => Outcomes::carried (DelayLines::tap (held.bridge, bridgeDelay config), \bridgeEnd => Success(value = bowed (config, held, neckEnd, bridgeEnd)))

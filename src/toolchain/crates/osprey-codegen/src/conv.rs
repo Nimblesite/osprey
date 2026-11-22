@@ -31,9 +31,11 @@ pub(crate) fn as_num(cg: &mut Codegen, v: Value, to: Numeric) -> Result<Value> {
             return as_num(cg, i, to);
         }
         LType::Str | LType::Ptr => {
-            return Err(CodegenError::invalid(
-                "expected a number, found a string/handle",
-            ))
+            let reason = "expected a number, found a string/handle";
+            return Err(CodegenError::invalid(match cg.source_function.as_deref() {
+                Some(name) => format!("{reason} in {}", osprey_ast::symbol::demangle_message(name)),
+                None => reason.to_owned(),
+            }));
         }
         LType::Any => return Err(read_through_erasure()),
     };
@@ -306,6 +308,11 @@ mod tests {
         let widened = as_num(&mut cg, Value::new("0", LType::I32), Numeric::FLOAT)
             .expect("int32 is a number");
         assert_eq!(widened.ty, LType::F64);
+        cg.source_function = Some("note_label".to_owned());
+        assert_eq!(
+            as_i64(&mut cg, Value::new("null", LType::Ptr)).unwrap_err(),
+            CodegenError::invalid("expected a number, found a string/handle in note_label")
+        );
         assert_eq!(
             integer.unwrap_err(),
             CodegenError::invalid("expected a number, found a string/handle")

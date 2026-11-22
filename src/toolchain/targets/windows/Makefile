@@ -5,7 +5,7 @@
 ROOT ?= ../../../..
 APP_PS1 ?= pwsh -NoProfile -File $(ROOT)/src/toolchain/hosts/winui/app.ps1
 
-.PHONY: agent storage flock graphics painting signal-flow synth probe casting tally
+.PHONY: agent bank storage flock graphics painting signal-flow synth probe casting tally
 
 ## graphics: Build the Direct3D 12 graphics host and run the animated GPU demo from the MSYS2 UCRT64
 ##           shell. The Osprey sources are the same files macOS draws through Metal; SCENE=kali|opal|character
@@ -49,6 +49,11 @@ probe:
 ##          with its DnsServiceBrowse helper and plays an MP3 on one. Needs MSYS2's OpenSSL.
 casting:
 	$(APP_PS1) -App casting
+
+## bank: Open Talon Bank, the same Osprey Native app as the web, Android and iPhone, in its sandbox. Start its
+##       API first (`make -C src/toolchain/targets/web bank`); the package is exempted to reach this machine.
+bank:
+	$(APP_PS1) -App talon
 
 ## tally: Open Tally, the shared-memory view example ([NATIVE-SHM-VIEW]), in its sandbox.
 tally:

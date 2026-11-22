@@ -7,14 +7,21 @@ module GraphClips
         Delay _ => n(processor = Amplifier)
         _ => n
 
-    stateful n = match n.processor
+    (** Whether a component keeps DSP memory between blocks. *)
+    export stateful n = match n.processor
         Stereo => false
+        Panner => false
+        Split => false
+        Join => false
+        Route _ => false
+        Downmix => false
         Sink => false
         MidiNotes => false
-        External _ => false
+        External _ _ => false
         _ => true
 
-    validBank (graph, bank, position) = match Graphs::node (graph, bank.kernelNode)
+    (** Whether stored memory still fits its node in this graph at this clock position. *)
+    export validBank (graph, bank, position) = match Graphs::node (graph, bank.kernelNode)
         Invalid _ => false
         Valid n => match bank.kernelMemory
             GrainMemory cloud => GrainGraph::compatible (n, cloud, position)
@@ -26,33 +33,37 @@ module GraphClips
                     Error _ => false
                     Success count => stateful n && length states == count && length (filterList (states, \saved => saved.identity == n.identity)) == count
 
+    clipsAt (clips, identity) = length (filterList (clips, \clip => clip.clipNode == identity))
+
+    banksAt (held, identity) = filterList (held.graphKernels, \bank => bank.kernelNode == identity)
+
     // Suspended graphs retain already-rendered grain memory at the end of this block.
-    bankPosition (held, frames, clips, identity) = match length (filterList (clips, \clip => clip.clipNode == identity)) == 1
+    bankPosition (held, frames, clips, identity) = match clipsAt (clips, identity) == 1
         true => satAdd held.graphPosition frames
         false => held.graphPosition
 
     stored (held, n, memory) = held(graphKernels = listAppend (filterList (held.graphKernels, \old => old.kernelNode != n.identity)) (NodeKernels(kernelNode = n.identity, kernelMemory = memory)))
 
-    validState (graph, held, frames, clips) = held.graphPosition >= 0 && held.graphPosition <= satSub 9223372036854775807 frames && length (filterList (held.graphKernels, \bank => validBank (graph, bank, bankPosition (held, frames, clips, bank.kernelNode)) && length (filterList (held.graphKernels, \other => other.kernelNode == bank.kernelNode)) == 1)) == length held.graphKernels && (held.graphPosition == 0 || length held.graphKernels == length (filterList (graph.nodes, stateful)))
-
-    converted (graph, clips, n) = match ClipInputs::routed (graph, clips, n.identity, 0)
-        Error why => Error(message = why)
-        Success clip => match clip.clipChannels == 1
-            false => Error(message = "Mono-to-stereo requires one audio channel.")
-            true => Success(value = foldList (clip.clipSamples, [], \(samples, value) => listConcat samples [value, value]))
+    validState (graph, held, frames, clips) = held.graphPosition >= 0 && held.graphPosition <= satSub 9223372036854775807 frames && length (filterList (held.graphKernels, \bank => validBank (graph, bank, bankPosition (held, frames, clips, bank.kernelNode)) && length (banksAt (held, bank.kernelNode)) == 1)) == length held.graphKernels && (held.graphPosition == 0 || length held.graphKernels == length (filterList (graph.nodes, stateful)))
 
     emitted (plan, clips, held, frames, n, channels, samples, notes, remaining) =
         clip = NodeClip(clipNode = n.identity, clipChannels = channels, clipSamples = samples, clipNotes = notes)
         scheduled (plan, listAppend clips clip, held, frames, remaining)
 
-    kernels (held, n, channels) = match filterList (held.graphKernels, \bank => bank.kernelNode == n.identity)
-        [bank] => match bank.kernelMemory
-            ChannelMemory states => Success(value = states)
-            _ => Error(message = "The component has incompatible DSP memory.")
+    resumeState (held, identity, read, prepare, missing, duplicate) = match banksAt (held, identity)
+        [bank] => read bank.kernelMemory
         [] => match held.graphPosition == 0
-            true => Success(value = mapList (toList (range (0, channels)), \_ => RenderInputs::initialState n))
-            false => Error(message = "A continuing graph lost its component state.")
-        _ => Error(message = "A component has duplicate kernel state.")
+            true => prepare ()
+            false => Error(message = MissingResource(detail = missing))
+        _ => Error(message = IncompatibleLayout(detail = duplicate))
+
+    channelMemory memory = match memory
+        ChannelMemory states => Success(value = states)
+        _ => Error(message = IncompatibleLayout(detail = "The component has incompatible DSP memory."))
+
+    kernels (held, n, channels) =
+        prepare = \() => Success(value = mapList (toList (range (0, channels)), \_ => RenderInputs::initialState n))
+        resumeState (held, n.identity, channelMemory, prepare, "A continuing graph lost its component state.", "A component has duplicate kernel state.")
 
     processed (plan, clips, held, frames, n, channels, remaining) = match kernels (held, n, channels)
         Error why => Error(message = why)
@@ -62,14 +73,12 @@ module GraphClips
                 nextHeld = stored (held, n, ChannelMemory(channels = rendered.heldKernel))
                 emitted (plan, clips, nextHeld, frames, n, channels, rendered.kernelSamples, [], remaining)
 
-    grainState (held, n) = match filterList (held.graphKernels, \bank => bank.kernelNode == n.identity)
-        [bank] => match bank.kernelMemory
-            GrainMemory cloud => Success(value = cloud)
-            _ => Error(message = "The grain cloud has incompatible DSP memory.")
-        [] => match held.graphPosition == 0
-            true => GrainGraph::prepare n
-            false => Error(message = "A continuing graph lost its grain-cloud state.")
-        _ => Error(message = "A grain cloud has duplicate DSP memory.")
+    grainMemory memory = match memory
+        GrainMemory cloud => Success(value = cloud)
+        _ => Error(message = IncompatibleLayout(detail = "The grain cloud has incompatible DSP memory."))
+
+    grainState (held, n) =
+        resumeState (held, n.identity, grainMemory, \() => GrainGraph::prepare n, "A continuing graph lost its grain-cloud state.", "A grain cloud has duplicate DSP memory.")
 
     granular (plan, clips, held, frames, n, remaining) = match grainState (held, n)
         Error why => Error(message = why)
@@ -81,14 +90,12 @@ module GraphClips
                     nextHeld = stored (held, n, GrainMemory(cloud = rendered.next))
                     emitted (plan, clips, nextHeld, frames, n, 2, samples, [], remaining)
 
-    midiState (held, n) = match filterList (held.graphKernels, \bank => bank.kernelNode == n.identity)
-        [bank] => match bank.kernelMemory
-            MidiMemory voice => Success(value = voice)
-            _ => Error(message = "The MIDI oscillator has incompatible DSP memory.")
-        [] => match held.graphPosition == 0
-            true => Success(value = MidiOscillators::initial n)
-            false => Error(message = "A continuing MIDI oscillator lost its voice state.")
-        _ => Error(message = "A MIDI oscillator has duplicate DSP memory.")
+    midiMemory memory = match memory
+        MidiMemory voice => Success(value = voice)
+        _ => Error(message = IncompatibleLayout(detail = "The MIDI oscillator has incompatible DSP memory."))
+
+    midiState (held, n) =
+        resumeState (held, n.identity, midiMemory, \() => Success(value = MidiOscillators::initial n), "A continuing MIDI oscillator lost its voice state.", "A MIDI oscillator has duplicate DSP memory.")
 
     midi (plan, clips, held, frames, n, remaining) = match midiState (held, n)
         Error why => Error(message = why)
@@ -98,65 +105,135 @@ module GraphClips
                 next = stored (held, n, MidiMemory(voice = rendered.heldKernel))
                 emitted (plan, clips, next, frames, n, 1, rendered.kernelSamples, [], remaining)
 
+    // [SYNTH-ADVANCED-CORE-PORTS] Explicit stereo-to-mono adapter: the documented (left + right) / 2 downmix.
+    downmixed (graph, clips, n) = match ClipInputs::routed (graph, clips, n.identity, 0)
+        Error why => Error(message = why)
+        Success clip => match clip.clipChannels == 2
+            false => Error(message = IncompatibleLayout(detail = "Stereo-to-mono requires two audio channels."))
+            true => Success(value = pairs clip.clipSamples)
+
+    (** The mono track panner accepts a mono sink or the mean of its stereo sink's left and right. *)
+    export trackSamples clip = match clip.clipChannels
+        1 => Success(value = clip.clipSamples)
+        2 => match length clip.clipSamples % 2 == 0
+            true => Success(value = pairs clip.clipSamples)
+            false => Error(message = IncompatibleLayout(detail = "The stereo output ended on an incomplete frame."))
+        _ => Error(message = IncompatibleLayout(detail = "Choose a mono or stereo track output."))
+
+    pairs samples = match samples
+        [] => []
+        [left, ...rest] => match rest
+            [] => []
+            [right, ...more] => listPrepend (pairs more) (WaveMath::mono (left, right))
+
+    // [SYNTH-GRAPH-CHANNELS] Split's one interleaved clip serves every outlet: an outlet indexes its channel.
+    splitClip (graph, clips, n) = match ClipInputs::routed (graph, clips, n.identity, 0)
+        Error why => Error(message = why)
+        Success clip => match clip.clipChannels == length n.outputs
+            false => Error(message = IncompatibleLayout(detail = "Split outlets must match the input layout."))
+            true => Success(value = clip.clipSamples)
+
+    withInlet (graph, clips, n, outcome, index) = match outcome
+        Error why => Error(message = why)
+        Success found => Outcomes::carried (ClipInputs::routed (graph, clips, n.identity, index), \clip => Success(value = listAppend found clip))
+
+    joinedInlets (graph, clips, n) = foldList (toList (range (0, length n.inputs)), Success(value = []), \(outcome, index) => withInlet (graph, clips, n, outcome, index))
+
+    woven (sources, outcome, frame) = match outcome
+        Error why => Error(message = why)
+        Success samples => foldList (sources, Success(value = samples), \(outcome, clip) => Outcomes::carried (outcome, \values => ClipInputs::appended (values, listGet clip.clipSamples frame)))
+
+    (** Interleave N one-channel inputs into one N-channel clip, in inlet order. *)
+    joined (graph, clips, n) = match joinedInlets (graph, clips, n)
+        Error why => Error(message = why)
+        Success sources => match sources
+            [] => Error(message = InvalidConfiguration(detail = "A join needs at least one input."))
+            [first, ..._] => match length (filterList (sources, \clip => clip.clipChannels == 1 && length clip.clipSamples == length first.clipSamples)) == length sources
+                false => Error(message = IncompatibleLayout(detail = "Join inputs need one channel each and equal sample counts."))
+                true => foldList (toList (range (0, length first.clipSamples)), Success(value = []), \(outcome, frame) => woven (sources, outcome, frame))
+
+    entrySample (clip, frame, entry) = match (entry < 0)
+        true => Success(value = 0.0)
+        false => listGet clip.clipSamples (satAdd (satMul frame clip.clipChannels) entry)
+
+    remapped (clip, entries, outcome, frame) = match outcome
+        Error why => Error(message = why)
+        Success samples => foldList (entries, Success(value = samples), \(outcome, entry) => Outcomes::carried (outcome, \values => ClipInputs::appended (values, entrySample (clip, frame, entry))))
+
+    (** Copy each mapped input channel (or silence) per frame; the map length fixes the output width. *)
+    routing (graph, clips, n, entries) = match ClipInputs::routed (graph, clips, n.identity, 0)
+        Error why => Error(message = why)
+        Success clip => foldList (toList (range (0, intDiv (length clip.clipSamples) clip.clipChannels)), Success(value = []), \(outcome, frame) => remapped (clip, entries, outcome, frame))
+
+    copied (plan, clips, held, frames, n, channels, remaining, outcome) = Outcomes::carried (outcome, \samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining))
+
+    panned (graph, clips, n, channels) = Outcomes::carried (Seek::first (n.parameters, \p => p.key == "pan"), \pan =>
+        match pan.initial >= -1.0 && pan.initial <= 1.0
+            false => Error(message = InvalidConfiguration(detail = "Pan must be between -1 and 1."))
+            true =>
+                gains = mapList (toList (range (0, channels)), \lane => WaveMath::panGain (toFloat channels, toFloat lane, pan.initial))
+                Outcomes::carried (ClipInputs::routed (graph, clips, n.identity, 0), \input => Success(value = Sequences::flattened (mapList (input.clipSamples, \sample => mapList (gains, \gain => GrainMath::placed (sample, gain)))))))
+
     routed (plan, clips, held, frames, n, channels, remaining) = match n.processor
-        Stereo => match converted (plan.graph, clips, n)
-            Error why => Error(message = why)
-            Success samples => emitted (plan, clips, held, frames, n, channels, samples, [], remaining)
-        Sink => match ClipInputs::routed (plan.graph, clips, n.identity, 0)
-            Error why => Error(message = why)
-            Success clip => emitted (plan, clips, held, frames, n, channels, clip.clipSamples, [], remaining)
+        Stereo => copied (plan, clips, held, frames, n, channels, remaining, routing (plan.graph, clips, n, [0, 0]))
+        Panner => copied (plan, clips, held, frames, n, channels, remaining, panned (plan.graph, clips, n, channels))
+        Split => copied (plan, clips, held, frames, n, channels, remaining, splitClip (plan.graph, clips, n))
+        Join => copied (plan, clips, held, frames, n, channels, remaining, joined (plan.graph, clips, n))
+        Route entries => copied (plan, clips, held, frames, n, channels, remaining, routing (plan.graph, clips, n, entries))
+        Downmix => copied (plan, clips, held, frames, n, channels, remaining, downmixed (plan.graph, clips, n))
+        Sink => Outcomes::carried (ClipInputs::routed (plan.graph, clips, n.identity, 0), \clip => emitted (plan, clips, held, frames, n, channels, clip.clipSamples, [], remaining))
         _ => processed (plan, clips, held, frames, n, channels, remaining)
+
+    hostRequest (graph, clips, n, held, frames) = Outcomes::carried (ClipInputs::requestAt (graph, clips, n, held.graphPosition, frames), \request =>
+        Outcomes::carried (HostModulation::edits (graph, held.graphHosted, n, request.parameters), \points => Success(value = request(parameters = points))))
 
     node (plan, clips, held, frames, n, remaining) = match n.processor
         Oscillator => match MidiOscillators::connected (plan.graph, n)
             true => midi (plan, clips, held, frames, n, remaining)
             false => processed (plan, clips, held, frames, n, 1, remaining)
         Granular _ _ _ => granular (plan, clips, held, frames, n, remaining)
-        External _ => match ClipInputs::requestAt (plan.graph, clips, n, held.graphPosition, frames)
-            Error why => Error(message = why)
-            Success request => Success(value = BlockWaiting(request = request, pending = GraphPending(pendingGraph = plan.graph, pendingState = held, pendingClips = clips, pendingFrames = frames, pendingNode = n.identity)))
-        MidiNotes => match MidiClips::timeline (n, held.graphPosition, frames)
-            Error why => Error(message = why)
-            Success notes => emitted (plan, clips, held, frames, n, 0, [], notes, remaining)
-        _ => match ClipLayouts::channels n
-            Error why => Error(message = why)
-            Success count => routed (plan, clips, held, frames, n, count, remaining)
+        External _ _ => Outcomes::carried (hostRequest (plan.graph, clips, n, held, frames), \request => Success(value = BlockWaiting(request = request, pending = GraphPending(pendingGraph = plan.graph, pendingState = held, pendingClips = clips, pendingFrames = frames, pendingNode = n.identity))))
+        MidiNotes => Outcomes::carried (MidiClips::timeline (n, held.graphPosition, frames), \notes => emitted (plan, clips, held, frames, n, 0, [], notes, remaining))
+        _ => Outcomes::carried (ClipLayouts::channels n, \count => routed (plan, clips, held, frames, n, count, remaining))
 
     scheduled (plan, clips, held, frames, identities) = match identities
-        [] => Success(value = BlockReady(held = held(graphPosition = satAdd held.graphPosition frames), clips = clips))
-        [identity, ...remaining] => match length (filterList (clips, \clip => clip.clipNode == identity)) == 1
+        [] => Success(value = BlockReady(held = held(graphPosition = satAdd held.graphPosition frames, graphHosted = HostModulation::stamps plan.graph), clips = clips))
+        [identity, ...remaining] => match clipsAt (clips, identity) == 1
             true => scheduled (plan, clips, held, frames, remaining)
-            false => match RenderInputs::component (plan, identity)
-                Error why => Error(message = why)
-                Success n => node (plan, clips, held, frames, n, remaining)
+            false => Outcomes::carried (RenderInputs::component (plan, identity), \n => node (plan, clips, held, frames, n, remaining))
+
+    (** Prepare a render order that rejects cycles even through delay components. *)
+    export ordered graph = Graphs::prepare (graph(nodes = mapList (graph.nodes, acyclic)))
 
     prepared (graph, clips, held, frames) = match Graphs::prepare graph
-        Invalid _ => Error(message = "The graph has invalid nodes or routes.")
-        Valid _ => match Graphs::prepare (graph(nodes = mapList (graph.nodes, acyclic)))
-            Invalid _ => Error(message = "Hosted graph rendering requires an acyclic graph.")
+        Invalid _ => Error(message = InvalidConfiguration(detail = "The graph has invalid nodes or routes."))
+        Valid _ => match ordered graph
+            Invalid _ => Error(message = InvalidConfiguration(detail = "Hosted graph rendering requires an acyclic graph."))
             Valid plan => scheduled (plan(graph = graph), clips, held, frames, plan.order)
 
-    checked (graph, clips, held, frames) = match ClipLayouts::bounded (graph, frames) && validState (graph, held, frames, clips) && length (filterList (graph.nodes, \n => n.processor == Sink)) == 1 && length (filterList (graph.nodes, \n => ClipLayouts::connected (graph, n))) == length graph.nodes && length (filterList (clips, \clip => ClipLayouts::validClipAt (graph, held.graphPosition, frames, clip) && length (filterList (clips, \other => other.clipNode == clip.clipNode)) == 1)) == length clips
-        false => Error(message = "The block needs one output, connected inputs and valid bounded buffers and state.")
+    checked (graph, clips, held, frames) = match ClipLayouts::bounded (graph, frames) && validState (graph, held, frames, clips) && length (filterList (graph.nodes, \n => n.processor == Sink)) == 1 && length (filterList (graph.nodes, \n => ClipLayouts::connected (graph, n))) == length graph.nodes && length (filterList (clips, \clip => ClipLayouts::validClipAt (graph, held.graphPosition, frames, clip) && clipsAt (clips, clip.clipNode) == 1)) == length clips
+        false => Error(message = IncompatibleLayout(detail = "The block needs one output, connected inputs and valid bounded buffers and state."))
         true => prepared (graph, clips, held, frames)
 
     (** Continue a graph clock and its independent channel states into a fresh block. *)
     export next (graph, held, frames) = checked (graph, [], held, frames)
 
+    origin () = GraphState(graphHosted = [], graphPosition = 0, graphKernels = [])
+
     (** Start an acyclic graph at sample zero; hosted instances belong to the caller. *)
-    export start (graph, frames) = next (graph, GraphState(graphPosition = 0, graphKernels = []), frames)
+    export start (graph, frames) = next (graph, origin (), frames)
 
     (** Resume only the pending external node, using its frozen graph and exact response shape. *)
-    export replied (pending, clip) = match clip.clipNode == pending.pendingNode && length (filterList (pending.pendingClips, \old => old.clipNode == clip.clipNode)) == 0
-        false => Error(message = "The worker response does not belong to the pending node.")
+    export replied (pending, clip) = match clip.clipNode == pending.pendingNode && clipsAt (pending.pendingClips, clip.clipNode) == 0
+        false => Error(message = InvalidConfiguration(detail = "The worker response does not belong to the pending node."))
         true => match Graphs::node (pending.pendingGraph, pending.pendingNode)
-            Invalid _ => Error(message = "The pending component is absent.")
+            Invalid _ => Error(message = MissingResource(detail = "The pending component is absent."))
             Valid n => match n.processor
-                External _ => checked (pending.pendingGraph, listAppend pending.pendingClips clip, pending.pendingState, pending.pendingFrames)
-                _ => Error(message = "Only an external component can resume a worker response.")
+                External _ _ => checked (pending.pendingGraph, listAppend pending.pendingClips clip, pending.pendingState, pending.pendingFrames)
+                _ => Error(message = InvalidConfiguration(detail = "Only an external component can resume a worker response."))
 
     (** Whole-clip execution uses the same scheduler, with a zero-origin clock. *)
-    export advance (graph, clips, frames) = match checked (graph, clips, GraphState(graphPosition = 0, graphKernels = []), frames)
+    export advance (graph, clips, frames) = match checked (graph, clips, origin (), frames)
         Error why => Error(message = why)
         Success action => match action
             BlockReady _ rendered => Success(value = ClipReady(clips = rendered))

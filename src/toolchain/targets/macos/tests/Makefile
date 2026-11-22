@@ -82,6 +82,52 @@ qwen-headless: _runtime
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(MAKE) -C $(ROOT) _qwen-suite MEMORY=arc QWEN_GPU=metal
 
+## daw-icon: Verify the macOS DAW launches from a bundle with the original Prism Dock icon.
+.PHONY: daw-icon
+daw-icon:
+	bash src/toolchain/targets/macos/tests/prism-icon.sh
+
+## daw-events-headless: The daw's event budget on the FerroUI host, with no window: dragging a Prism module
+##                      and tapping Timeline lanes each answer within one 60 Hz display frame.
+.PHONY: daw-events-headless
+daw-events-headless: daw-icon _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	mkdir -p target/prism-app
+	nice -n 10 $(BIN) src/osprey/examples/daw --compile --target=macos -o target/prism-app/libOspreyApp.a
+	OSPREY_NATIVE_APP_DIR="$(CURDIR)/target/prism-app" OSPREY_RUNTIME_DIR="$(CURDIR)/src/toolchain/compiler/lib" \
+	OSPREY_NATIVE_ABI="$(CURDIR)/src/toolchain/compiler/runtime/native_abi.h" \
+	nice -n 10 cargo test --manifest-path src/toolchain/hosts/ferroui/Cargo.toml --release --features desktop \
+	    --test prism_events --test daw_events -- --nocapture
+
+## daw-playback-rate: Verify cold live rendering at 1.5× real time and report start time and longest block gap.
+DAW_RATE_RENDERER ?= target/daw-profile/rate-renderer
+DAW_RATE_SONG ?= src/osprey/examples/daw/tracks/codex-version.json
+DAW_RATE_FROM ?= 0
+DAW_RATE_BEATS ?= 2
+.PHONY: daw-playback-rate
+daw-playback-rate: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	mkdir -p target/daw-profile
+	nice -n 10 $(BIN) build src/osprey/examples/daw/render --memory=arc -o "$(DAW_RATE_RENDERER)"
+	node scripts/make/daw-playback-rate.mjs "$(DAW_RATE_RENDERER)" "$(DAW_RATE_SONG)" "$(DAW_RATE_FROM)" "$(DAW_RATE_BEATS)"
+
+## daw-profile: Measure the daw and say where the time goes ([DAW-PERF]): milliseconds per kind of user action on
+##              every page, then a 1 ms sample of the Timeline, Mix and Patch pages and of the song renderer, each
+##              attributed to Osprey functions and the runtime calls they make. Reports in target/daw-profile.
+.PHONY: daw-profile
+daw-profile: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	bash scripts/make/daw-profile.sh
+
+## daw-video: The daw in a real window, clicked and dragged like a user: a note's velocity and a Space send on the
+##            Timeline, a Delay added and wired into a patch and auditioned, a send, bus and reverb on Mix, then
+##            Play renders the edited bars. Each step must change the screen and Play must render audio. Writes target/daw-video/prism-journey.mp4 (with the bars as
+##            its soundtrack) and the step screenshots. Needs screen recording and accessibility access. [DAW-VIDEO]
+.PHONY: daw-video
+daw-video: _runtime_macos
+	$(MAKE) -C src/toolchain/targets/macos _daw-renderer
+	bash scripts/make/daw-video.sh target/daw-video
+
 ## synth: Add, drag and connect module nodes, then close/reopen the keyboard in a native window.
 .PHONY: synth
 synth:
@@ -152,3 +198,13 @@ synth-vst:
 ## synth-vst-headless: The same Prism VST journey without a window, using real worker processes.
 synth-vst-headless:
 	$(MAKE) -C $(ROOT) _prism_vst_ui_test PRISM_TEST_MODE=--headless
+
+## synth-vst-spectrum: Measure the real Dragonfly or TAL output in the built Prism host.
+.PHONY: synth-vst-spectrum
+synth-vst-spectrum:
+	cd "$(ROOT)" && node src/toolchain/hosts/synth_vst/spectrum.mjs "$(VST3_FOLDER)" "$(or $(VST3_CASE),dragonfly)" "$(or $(VST3_UI),headless)"
+
+## synth-vst-editors: Edit installed VST3 parameters and open, focus, close and reopen each native editor.
+.PHONY: synth-vst-editors
+synth-vst-editors:
+	cd "$(ROOT)" && node src/toolchain/hosts/synth_vst/editors.mjs "$(VST3_FOLDER)"

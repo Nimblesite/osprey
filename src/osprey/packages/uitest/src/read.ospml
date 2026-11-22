@@ -38,11 +38,12 @@ type Rendered =
     renderedAccess : List<ui::Accessible>
     renderedRequests : List<string>
     renderedOrdinal : int
+    renderedScenes : List<int>
 
 (** Reads a walked view as a host would ([NATIVE-SHM-VIEW]). *)
 module Read
     (** Nothing seen yet. *)
-    export blank () = Rendered(renderedControls = [], renderedLetters = [], renderedCurves = [], renderedAccess = [], renderedRequests = [], renderedOrdinal = 0 - 1)
+    export blank () = Rendered(renderedControls = [], renderedLetters = [], renderedCurves = [], renderedAccess = [], renderedRequests = [], renderedOrdinal = 0 - 1, renderedScenes = [])
 
     rowAt<A> : (ui::Walk<A>, int) -> ui::Seated
     rowAt (walk, index) = listGet walk.walkRows index ?: Views::blank
@@ -95,21 +96,10 @@ module Read
     trees walk = (gathered (walk, names walk, Views::none, 0, [])).rebuilt
 
     (** Everything a record, list or scene holds, or none. *)
-    export inside told = match told
-        ui::ToldRecord _ members => members
-        ui::ToldScene _ members _ => members
-        ui::ToldList _ items => items
-        _ => []
+    export inside told = ui::Tell::childrenOf told
 
     (** A told value's member name, or "" when it carries none. *)
-    export name told = match told
-        ui::ToldText key _ => key
-        ui::ToldCount key _ => key
-        ui::ToldReal key _ => key
-        ui::ToldFlag key _ => key
-        ui::ToldRecord key _ => key
-        ui::ToldList key _ => key
-        ui::ToldScene key _ _ => key
+    export name told = ui::Tell::nameOf told
 
     textNamed (name, found, member) = match member
         ui::ToldText key text => Pick::either (key == name && found == "", text, found)
@@ -209,9 +199,12 @@ module Read
     // The control number of the first scene: the `event` of the record its sketch names.
     sceneOrdinal<A> : (ui::Walk<A>, List<string>) -> int
     sceneOrdinal (walk, all) = match listGet walk.walkSketches 0
-        Success first => whole ((gathered (walk, all, first.sketchedRow, satAdd first.sketchedRow 1, [])).rebuilt, "event", 0 - 1)
+        Success first => ordinalOf (walk, all, first)
         Error _ => 0 - 1
+
+    // The control number of one scene.
+    ordinalOf (walk, all, sketch) = whole ((gathered (walk, all, sketch.sketchedRow, satAdd sketch.sketchedRow 1, [])).rebuilt, "event", 0 - 1)
 
     (** A walked view and the requests its step sent, as a host reads them. *)
     export seen<A> : (ui::Walk<A>, List<ui::Request>) -> Rendered
-    seen (walk, asked) = Rendered(renderedControls = Lists::flatten (mapList (trees walk, controls)), renderedLetters = Lists::flatten (mapList (shapes walk, lettered)), renderedCurves = Lists::flatten (mapList (shapes walk, curved)), renderedAccess = Lists::flatten (mapList (walk.walkSketches, \s => s.sketchedAs.sketchAccess)), renderedRequests = mapList (asked, \r => Requests::kind r.capability), renderedOrdinal = sceneOrdinal (walk, names walk))
+    seen (walk, asked) = Rendered(renderedControls = Lists::flatten (mapList (trees walk, controls)), renderedLetters = Lists::flatten (mapList (shapes walk, lettered)), renderedCurves = Lists::flatten (mapList (shapes walk, curved)), renderedAccess = Lists::flatten (mapList (walk.walkSketches, \s => s.sketchedAs.sketchAccess)), renderedRequests = mapList (asked, \r => Requests::kind r.capability), renderedOrdinal = sceneOrdinal (walk, names walk), renderedScenes = mapList (walk.walkSketches, \s => ordinalOf (walk, names walk, s)))

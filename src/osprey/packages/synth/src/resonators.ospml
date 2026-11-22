@@ -1,0 +1,29 @@
+// [SYNTH-ADVANCED-PHYSICAL-PRIMITIVES] Two-pole damped resonators with prepared coefficients and explicit state.
+namespace synth
+
+(** Coupled-form resonator: pole radius from a 60 dB decay time, angle from frequency. Without input the
+    state's norm falls by the radius every sample whatever the coefficients, so control changes re-tune
+    stored energy but can never add to it. `PeakScale` gives about `gain` at the resonant peak for
+    sustained input (a band-pass); `ImpulseScale` makes a struck ring whose envelope starts at `gain`. *)
+module Resonators
+    (** Zero stored energy. *)
+    export initial = ResonatorState(real = 0.0, imag = 0.0)
+
+    (** Prepared coefficients; the state is kept across changes. *)
+    export coefficients config =
+        radius = PhysicalMath::decayGain (config.decay, 1.0, config.sampleRate)
+        angle = PhysicalMath::omega (config.frequency, config.sampleRate)
+        input = match config.scale
+            PeakScale => PhysicalMath::peakInput (radius, angle, config.gain)
+            ImpulseScale => config.gain
+        ResonatorCoefficients(input = input, cosine = PhysicalMath::coupledCosine (radius, angle), sine = PhysicalMath::coupledSine (radius, angle))
+
+    (** Frequency is below 0.45 of the rate; decay is 1 ms–60 s, so the pole radius stays below one. *)
+    export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency > 0.0 && config.frequency < config.sampleRate * 0.45 && config.decay >= 0.001 && config.decay <= 60.0 && config.gain >= -8.0 && config.gain <= 8.0
+        true => Success(value = coefficients config)
+        false => Error(message = InvalidConfiguration(detail = "Invalid resonator rate, frequency, decay or gain (|gain| <= 8)."))
+
+    (** One step with accepted coefficients. *)
+    export next (c, held, input) =
+        imag = PhysicalMath::flushed (PhysicalMath::coupledImag (held.real, held.imag, c.cosine, c.sine))
+        ResonatorSample(sample = imag, next = ResonatorState(real = PhysicalMath::flushed (PhysicalMath::coupledReal (held.real, held.imag, c.cosine, c.sine, c.input * input)), imag = imag))

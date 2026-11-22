@@ -5,7 +5,7 @@
 //! exact inputs. A function none of whose inputs moved would recompute the
 //! very row and return it already holds; re-analysing only the moved
 //! functions and their readers reaches the same fixed point as sweeping all.
-use super::BTreeSet;
+use super::{BTreeSet, CallableEnv};
 use std::cell::RefCell;
 
 thread_local! {
@@ -31,18 +31,21 @@ pub(super) fn recording<T>(analysis: impl FnOnce() -> T) -> (T, BTreeSet<usize>)
     (result, read.unwrap_or_default())
 }
 
-/// The functions the next sweep must re-analyse after `moved` moved: each
-/// moved function, whose settled history changed, and every function whose
-/// last analysis read one. The file scope seeds every body, so a moved
-/// function it read makes every function's input change.
-pub(super) fn affected(
-    moved: &BTreeSet<usize>,
-    file_reads: &BTreeSet<usize>,
-    reads: &[BTreeSet<usize>],
-) -> BTreeSet<usize> {
-    if !moved.is_disjoint(file_reads) {
-        return (0..reads.len()).collect();
+/// The file scope seeds every body. Only a different computed environment
+/// requires all the bodies to run again.
+pub(super) fn invalidate_scope(
+    previous: Option<&CallableEnv>,
+    current: &CallableEnv,
+    dirty: &mut BTreeSet<usize>,
+    function_count: usize,
+) {
+    if previous.is_some_and(|scope| scope != current) {
+        dirty.extend(0..function_count);
     }
+}
+
+/// Re-analyse moved functions and the functions whose last analysis read one.
+pub(super) fn affected(moved: &BTreeSet<usize>, reads: &[BTreeSet<usize>]) -> BTreeSet<usize> {
     let readers = reads.iter().enumerate();
     readers
         .filter(|(id, read)| moved.contains(id) || !read.is_disjoint(moved))

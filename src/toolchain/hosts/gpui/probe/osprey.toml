@@ -1,8 +1,8 @@
 [project]
 name = "gpui-probe"
-source_roots = [".", "src", "../../../../osprey/packages/native/src", "../../../../osprey/packages/graphics/src", "../../../../osprey/packages/json/src"]
+source_roots = ["../../../../osprey/packages/native/host/entry.ospml", ".", "src", "../../../../osprey/packages/native/src", "../../../../osprey/packages/graphics/src", "../../../../osprey/packages/json/src"]
 default_namespace = "app"
-entry = "main.ospml"
+entry = "../../../../osprey/packages/native/host/entry.ospml"
 
 [modules]
 allow_wildcard_imports = false

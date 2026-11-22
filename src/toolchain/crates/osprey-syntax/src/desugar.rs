@@ -48,6 +48,45 @@ pub(crate) fn ctor_pattern(name: String, binders: Vec<String>) -> Pattern {
     }
 }
 
+/// `Ctor(p, …)` in either flavor. A lone binder under a `Result`
+/// constructor binds the payload by role, exactly as `Success found` does
+/// ([PATTERN-RESULT-BINDERS]); anything else takes its column
+/// ([PATTERN-NESTED]).
+pub(crate) fn positional_ctor_pattern(name: String, slots: Vec<Pattern>) -> Pattern {
+    if let [Pattern::Binding(binder)] = slots.as_slice() {
+        if is_result_ctor(&name) {
+            return ctor_pattern(name, vec![binder.clone()]);
+        }
+    }
+    Pattern::Constructor {
+        name,
+        fields: Vec::new(),
+        sub_patterns: slots,
+    }
+}
+
+/// `Ctor { a, b: p }` / ML `Ctor(a = p)`: bare fields bind by name; once any
+/// slot is a pattern the arm carries every slot as a labelled alias
+/// ([PATTERN-NESTED]).
+pub(crate) fn labelled_ctor_pattern(name: String, slots: Vec<(String, Pattern)>) -> Pattern {
+    if slots
+        .iter()
+        .all(|(field, slot)| slot.slot_binder() == field)
+    {
+        return Pattern::Constructor {
+            name,
+            fields: slots.into_iter().map(|(field, _)| field).collect(),
+            sub_patterns: Vec::new(),
+        };
+    }
+    let (fields, sub_patterns) = slots.into_iter().unzip();
+    Pattern::Constructor {
+        name,
+        fields,
+        sub_patterns,
+    }
+}
+
 /// The two-arm boolean match that conditional forms in both flavors desugar
 /// to: Default `if`/`else` and the Default ternary `{ c } ? a : b`.
 pub(crate) fn bool_match(condition: Expr, then: Expr, otherwise: Expr) -> Expr {

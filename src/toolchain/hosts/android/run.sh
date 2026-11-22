@@ -4,7 +4,7 @@
 # verdict line. Modelled on src/osprey/examples/mobile/android/run.sh.
 #   run.sh [--view-check|--golden]
 # `--golden` opens the application, waits for it to settle and compares the screen, without its
-# system bars, with the application's `goldens/android/<width>-ready.png` (scripts/mobile/goldens.py).
+# system bars, with the application's `goldens/android/<width>-ready.png` (scripts/mobile/goldens.mjs).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
@@ -21,6 +21,8 @@ app=${OSPREY_ANDROID_APP:-"$repo/src/osprey/examples/tally"}
 case "$app" in /*) ;; *) app="$repo/$app" ;; esac
 apk="$here/host/build/outputs/apk/debug/host-debug.apk"
 "$adb" -s "$serial" install -r "$apk"
+# A development server on this machine, such as a demo API, is reached on the device through these ports.
+for port in ${OSPREY_ANDROID_REVERSE:-}; do "$adb" -s "$serial" reverse "tcp:$port" "tcp:$port" >/dev/null; done
 activity="$id/org.ospreylang.host.HostActivity"
 "$adb" -s "$serial" shell am force-stop "$id"
 if [[ ${1:-} == --view-check ]]; then
@@ -61,6 +63,6 @@ if [[ ${1:-} == --golden ]]; then
         mv "$shot.next" "$shot"
     done
     rm -f "$shot.next"
-    cd "$repo" && exec python3 scripts/mobile/goldens.py "$shot" "$app/goldens/android"
+    cd "$repo" && exec node scripts/mobile/goldens.mjs "$shot" "$app/goldens/android"
 fi
 printf '\nRunning %s on %s\n' "$id" "$serial"

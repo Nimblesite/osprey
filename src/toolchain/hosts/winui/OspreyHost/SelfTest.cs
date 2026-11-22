@@ -14,7 +14,7 @@ namespace Osprey.Host.WinUI;
 /// <c>--self-test</c> [WINUI-HOST-SELF-TEST]: drives the real window from a script that lives beside
 /// the application, through the controls' own automation peers, and saves what the window shows.
 /// A script names only what a person sees: words on screen, a button's label, a row's text. Steps:
-/// <c>wait</c> and <c>gone</c> for words, <c>invoke</c> a button, <c>toggle</c> a switch,
+/// <c>wait</c> and <c>gone</c> for words, <c>invoke</c> a button or a context-menu command, <c>toggle</c> a switch,
 /// <c>choose</c> a row, <c>type</c> into a field, <c>set</c> a slider to a value, <c>drag</c> a scene
 /// element by a distance in its units, <c>key</c> to press a key in a scene,
 /// <c>frames</c> to let the steady clock run that many 1/60 s frames, <c>sleep</c> for seconds,
@@ -37,6 +37,9 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         // The pictures are drawn at the display's scale, so their goldens are kept per scale [WINUI-HOST-GOLDENS].
         File.WriteAllText(Path.Combine(shots, "scale.txt"), $"{Math.Round(window.Scale * 100)}");
         string? failure;
+        var root = window.Content as FrameworkElement;
+        if (root is not null) root.LayoutUpdated += Laid;
+        CompositionTarget.Rendered += Drew;
         try
         {
             failure = await Perform(Steps(File.ReadAllText(script))) ?? Reported();
@@ -44,6 +47,11 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         catch (Exception problem) when (problem is IOException or JsonException or InvalidOperationException or KeyNotFoundException)
         {
             failure = problem.Message;
+        }
+        finally
+        {
+            if (root is not null) root.LayoutUpdated -= Laid;
+            CompositionTarget.Rendered -= Drew;
         }
         log.AppendLine(failure is null ? "PASS" : $"FAIL {failure}");
         File.WriteAllText(Path.Combine(shots, "self-test.txt"), log.ToString());
@@ -121,9 +129,25 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         {
             return late;
         }
+        // The first frame of a large scene comes well after its layout, and until it is drawn Windows
+        // composes the window blank. A layout that changes nothing visible is never drawn, so the
+        // wait for it gives up after a moment instead of failing.
+        for (var waited = TimeSpan.Zero; owed && waited < Undrawn; waited += Poll)
+        {
+            await Task.Delay(Poll);
+        }
         await Shoot(name);
         return null;
     }
+
+    static readonly TimeSpan Undrawn = TimeSpan.FromSeconds(3);
+
+    // Whether a layout pass has happened that no drawn frame has shown yet.
+    bool owed;
+
+    void Laid(object? sender, object args) => owed = true;
+
+    void Drew(object? sender, RenderedEventArgs args) => owed = false;
 
     bool RowsDrawn() => window.Content is not { } root || Tree(root).OfType<ListView>().Where(Shown).All(list =>
         list.Items.Count == 0 || list.Items[0] is FrameworkElement { ActualHeight: > 0 } first && VisualTreeHelper.GetParent(first) is not null);
@@ -169,12 +193,29 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         if (Find(words) is { } named && Up<ButtonBase>(named) is { IsEnabled: true } exact) return exact;
         var buttons = Tree(root).OfType<ButtonBase>().Where(button => Shown(button) && button.IsEnabled).ToArray();
         return buttons.FirstOrDefault(button => Says(button, words) || Named(button) == words)
-            ?? buttons.FirstOrDefault(button => Named(button).Contains(words, StringComparison.Ordinal));
+            ?? buttons.FirstOrDefault(button => Named(button).Contains(words, StringComparison.Ordinal))
+            ?? Commanded(words);
     }
+
+    // An enabled command of that name in a shown element's context menu, in any of its submenus, as a
+    // right-click and then a click reach it.
+    FrameworkElement? Commanded(string words) => window.Content is { } root
+        ? Tree(root).OfType<FrameworkElement>().Where(Shown).Select(element => element.ContextFlyout).OfType<MenuFlyout>()
+            .SelectMany(menu => Commands(menu.Items)).FirstOrDefault(entry => entry.IsEnabled && entry.Text == words)
+        : null;
+
+    static IEnumerable<MenuFlyoutItem> Commands(IEnumerable<MenuFlyoutItemBase> items) => items.SelectMany(item => item switch
+    {
+        MenuFlyoutSubItem group => Commands(group.Items),
+        MenuFlyoutItem entry => new[] { entry },
+        _ => Array.Empty<MenuFlyoutItem>(),
+    });
 
     static string Named(ButtonBase button) => AutomationProperties.GetName(button) is { Length: > 0 } name ? name : button.Content as string ?? "";
 
-    static string? Invoke(FrameworkElement element) => Up<ButtonBase>(element) switch
+    static string? Invoke(FrameworkElement element) => element is MenuFlyoutItem entry
+        ? Invoked(() => new MenuFlyoutItemAutomationPeer(entry).Invoke())
+        : Up<ButtonBase>(element) switch
     {
         ToggleButton header when Up<Expander>(header) is { } disclosure => Invoked(() => Flipped(new ExpanderAutomationPeer(disclosure))),
         AppBarButton bar => Invoked(() => new AppBarButtonAutomationPeer(bar).Invoke()),

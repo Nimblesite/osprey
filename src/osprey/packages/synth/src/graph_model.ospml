@@ -29,6 +29,18 @@ type Parameter =
     initial : float
     automatable : bool
 
+type TableLevel =
+    harmonics : int
+    samples : List<float>
+
+type TableFrame =
+    levels : List<TableLevel>
+
+type Wavetable =
+    size : int
+    harmonics : int
+    frames : List<TableFrame>
+
 type SampleResource =
     name : string
     sampleRate : int
@@ -37,14 +49,47 @@ type SampleResource =
     samples : List<float>
 
 type Processor =
+    SamplePlayer
+        resource : SampleResource
     Granular
         resource : SampleResource
         capacity : int
         seed : int
+    Exciter
+        seed : int
+    Resonator
+    Modal
+    Waveguide
+        capacity : int
+    FractionalDelay
+        capacity : int
+    LossFilter
+    Allpass
+    TableOscillator
+        table : Wavetable
+    Additive
+    Spectral
+        size : int
+        hop : int
+    Shaper
+    Reverb
+    Shifter
+    PhaseOperator
+    Bowed
+        capacity : int
+    Smoother
+    StrikeComb
+        capacity : int
+    Downmix
     Lfo
     ModulatedGain
     MidiNotes
     Stereo
+    Panner
+    Split
+    Join
+    Route
+        channelMap : List<int>
     Oscillator
     Filter
     Amplifier
@@ -54,6 +99,7 @@ type Processor =
         samples : int
     External
         identifier : string
+        latency : int
 
 type Node =
     identity : int
@@ -77,6 +123,28 @@ type Prepared =
     order : List<int>
     feedback : List<Cable>
 
+type RankedNode =
+    component : Node
+    ordinal : int
+
+type RouteIndex Inlets Fanout Counts =
+    occupiedInlets : Inlets
+    destinations : Fanout
+    dependencies : Counts
+    delayedInputs : List<Cable>
+
+type ReadyNodes =
+    NoReadyNode
+    ReadyNode
+        ordinal : int
+        depth : int
+        left : ReadyNodes
+        right : ReadyNodes
+
+type ReadyQueue Counts =
+    readyNodes : ReadyNodes
+    remainingInputs : Counts
+
 type GraphFault =
     DuplicateNode
     MissingNode
@@ -87,7 +155,6 @@ type GraphFault =
     DuplicateParameter
     InvalidParameter
     Cycle
-    Capacity
     MissingParameter
     StaleRevision
     InvalidFrame
@@ -121,3 +188,81 @@ type ParameterChange =
     value : float
     revision : int
     samplePosition : int
+
+type SnapshotSlot =
+    latest : Observation
+    published : int
+    delivered : int
+
+type SlotRead =
+    observation : Observation
+    coalesced : int
+    next : SnapshotSlot
+
+type CommandStatus =
+    Pending
+        edit : ParameterChange
+    Applied
+        revision : int
+    Rejected
+        fault : GraphFault
+
+type CommandReceipt =
+    status : CommandStatus
+    snapshot : Observation
+
+type MacroTarget =
+    node : int
+    key : string
+    minimum : float
+    maximum : float
+    exponent : float
+
+type Macro =
+    name : string
+    targets : List<MacroTarget>
+
+type SavedNode =
+    identity : int
+    kind : string
+    version : int
+    settings : List<int>
+    resource : string
+    values : List<ParameterValue>
+    inputs : int
+
+type PatchDocument =
+    format : int
+    nodes : List<SavedNode>
+    cables : List<Cable>
+    macros : List<Macro>
+
+type NamedResource =
+    name : string
+    sample : SampleResource
+
+type NamedTable =
+    name : string
+    table : Wavetable
+
+type PatchResources =
+    samples : List<NamedResource>
+    tables : List<NamedTable>
+
+type ResourceIdentity =
+    name : string
+    hash : int
+    channels : int
+    sampleRate : int
+    frames : int
+    version : int
+
+type PathLatency =
+    latencyNode : int
+    arrival : int
+
+type Alignment =
+    alignedGraph : Graph
+    arrivals : List<PathLatency>
+    lastDelay : int
+    reservedSamples : int

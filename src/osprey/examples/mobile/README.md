@@ -2,7 +2,7 @@
 
 An iPhone and Android application using algebraic effects for SQLite and HTTP requests. Shared Osprey code owns state, issue decoding, local notes, bookmarks, and the UI description. A callable handler turns typed requests into commands for SwiftUI and Android hosts.
 
-For a banking workflow shared across web, Android and iOS, see [Talon Bank's native apps](../projects/modules/mobile/README.md).
+For a banking app that runs from one Osprey Native source on the web, Android and iOS, see [Talon Bank](../talon/README.md).
 
 <p align="center">
   <img src="../../../toolchain/website/src/assets/images/mobile/issue-inbox-ios.png" alt="Issue Inbox showing live GitHub issues on the iPhone 17 Pro simulator" width="280" />

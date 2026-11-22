@@ -43,28 +43,24 @@ module PcmWords
     // Read the ASCII byte directly: decoding audio must not allocate eight tiny
     // strings and perform eight substring searches for every float32 sample.
     nibble (text, at) = match byteAt text at
-        Error why => Error(message = why)
+        Error _ => Error(message = MissingResource(detail = "Truncated PCM word."))
         Success character => match character >= 48 && character <= 57
             true => Success(value = satSub character 48)
             false => match character >= 65 && character <= 70
                 true => Success(value = satSub character 55)
-                false => Error(message = "Invalid uppercase PCM hexadecimal digit.")
+                false => Error(message = MissingResource(detail = "Invalid uppercase PCM hexadecimal digit."))
 
     readByte (text, at) = match nibble (text, at)
         Error why => Error(message = why)
-        Success high => match nibble (text, satAdd at 1)
-            Error why => Error(message = why)
-            Success low => Success(value = bitOr (shiftLeft high 4) low)
+        Success high => Outcomes::carried (nibble (text, satAdd at 1), \low => Success(value = bitOr (shiftLeft high 4) low))
 
     readPart (text, at, outcome, index) = match outcome
         Error why => Error(message = why)
-        Success bits => match readByte (text, satAdd at (satMul index 2))
-            Error why => Error(message = why)
-            Success part => Success(value = bitOr bits (shiftLeft part (satMul index 8)))
+        Success bits => Outcomes::carried (readByte (text, satAdd at (satMul index 2)), \part => Success(value = bitOr bits (shiftLeft part (satMul index 8))))
 
     (** Decode one complete uppercase hexadecimal word without accepting truncated bytes. *)
     export read32 (text, at) = match at >= 0 && at <= satSub (length text) 8
-        false => Error(message = "Truncated PCM word.")
+        false => Error(message = MissingResource(detail = "Truncated PCM word."))
         // Four fixed bytes need no per-sample index list or capturing fold closure.
         true => readPart (text, at, readPart (text, at, readPart (text, at, readPart (text, at, Success(value = 0), 0), 1), 2), 3)
 
@@ -77,5 +73,5 @@ module PcmWords
                 false => bits
             value = toFloat (float32FromBits (toInt32 signed))
             match value == value && abs value <= 1000000.0
-                false => Error(message = "The worker returned non-finite or excessive audio.")
+                false => Error(message = NumericalFailure(detail = "The worker returned non-finite or excessive audio."))
                 true => Success(value = value)

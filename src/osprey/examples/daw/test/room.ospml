@@ -1,0 +1,810 @@
+// The synth given room ([UI-MACHINE-FLOW-SYNTH], [UI-MACHINE-CANVAS]): a larger window drops the
+// keyboard deck to its bottom and moves the inspector to its right, each key and switch its own
+// size, and a struck key still plays the patch at its pitch from where it now is.
+
+import uitest::Drive
+
+// The window resized to `width` by `height`.
+resizedTo (d, width, height) = Drive::viewed (d, width, height)
+
+viewed (width, height) = post (\d => resizedTo (d, width, height))
+
+// The accessible `edge` of the labelled element, in canvas points.
+edgeOf (edge, label) = match edge
+    "left" => (element label).accessLeft
+    "width" => (element label).accessWidth
+    _ => (element label).accessTop
+
+// The horizontal distance between two labelled elements.
+gapBetween (left, right) = edgeOf ("left", left) - edgeOf ("left", right)
+
+// The deck `dy` lower and the inspector `dx` further right than at the design size, `gap` being their distance there; the graph's nodes stay.
+roomFor (gap, dx, dy) =
+    forEachList (["Play C4", "Play C#4"], \key => near (edgeOf ("top", key), 866.0 + dy))
+    near (edgeOf ("left", "Play C4"), 480.0)
+    near (edgeOf ("width", "Play C4"), 60.0)
+    near (gapBetween ("Inspector bypass: Bypass Filter", "Bypass Filter"), gap + dx)
+
+roomyKeys () =
+    begun ()
+    knobNumber ("spareHeight", 0.0)
+    gap = gapBetween ("Inspector bypass: Bypass Filter", "Bypass Filter")
+    roomFor (gap, 0.0, 0.0)
+    viewed (1836.0, 1258.0)
+    knobNumber ("spareWidth", 300.0)
+    roomFor (gap, 300.0, 250.0)
+    knobNumber ("spareHeight", 250.0)
+    expect (runCount (), 0)
+    struck ("C4", 261.6256)
+    struck ("A#4", 466.1638)
+    switched ("Inspector bypass: Bypass Filter", "processOn", false)
+    expect (runCount (), 0)
+    switched ("Inspector bypass: Enable Filter", "processOn", true)
+    viewed (1536.0, 1008.0)
+    roomFor (gap, 0.0, 0.0)
+    struck ("E3", 164.8138)
+
+// [PRISM-ROUTING-EDITOR] The same real host event path used by the modular surface.
+editorUiJourney () =
+    opened = openedEditor ["--empty"]
+    showsIn (opened, "Add component", true)
+    output = chained (opened, ["sine", "gain", "output"])
+    drawn = ui::Surfaces::seen (output.drivenSurface, output.drivenProgram)
+    forEachList (drawn.walkSketches, \sketch => forEachList (sketch.sketchedAs.sketchShapes, \shape =>
+        match shape
+            ui::Rect _ _ _ _ angle _ _ => expect (angle, 0.0)
+            _ => expect (true, true)))
+    offeredIn (output, "Canvas output 0:0", true)
+    lettersIn (output, "Oscillator 0")
+    offeredIn (output, "Canvas input 1:0", true)
+    portAt (output, "Canvas input 1:0", 505.0, 157.5)
+    canvasSource = grabbedAt (output, 488.5, 169.5)
+    heldIs (canvasSource, \held => held.source, 0)
+    canvasCable = drawnFrom (canvasSource, 488.5, 169.5, 519.0, 171.5)
+    expect ((Drive::holding canvasCable).message, "Patch updated.")
+    expect ("canvas cables: ${length (Drive::holding canvasCable).graph.cables}", "canvas cables: 1")
+    canvasSelected = drawnFrom (canvasCable, 519.0, 171.5, 660.0, 170.0)
+    expect ("canvas selection: ${(Drive::holding canvasSelected).selected}", "canvas selection: 1")
+    background = Drive::pointer (canvasSelected, 800.0, 500.0, true)
+    sameGraph (background, canvasSelected)
+    // [PRISM-ROUTING-LAYOUT] Dragging moves ports and cables without changing the audio graph.
+    dragged = Drive::pointer (canvasSelected, 720.0, 300.0, true)
+    movedPort = portIn (dragged, "Canvas input 1:0")
+    expect (structuralEquals ([movedPort.accessLeft, movedPort.accessTop], [565.0, 287.5]), true)
+    sameGraph (dragged, canvasSelected)
+    layout = ui::Surfaces::seen (dragged.drivenSurface, dragged.drivenProgram)
+    cables = ui::Lists::flatten (mapList (layout.walkSketches, \sketch => filterList (sketch.sketchedAs.sketchShapes, \shape =>
+        match shape
+            ui::Path _ outline _ _ _ _ depth => depth == 1 && structuralEquals (outline, ui::Line(width = 3.0, dashes = [], bevel = false))
+            _ => false)))
+    countOf (cables, 1)
+    forEachList (cables, \shape =>
+        match shape
+            ui::Path steps _ paint _ _ _ _ =>
+                expect (structuralEquals (paint, ui::Solid(tint = ui::Scenes::hex (16745538, 1.0))), true)
+                expect (structuralEquals (steps, [ui::MoveTo(toX = 488.5, toY = 169.5), ui::CubicTo(toX = 579.0, toY = 301.5, ctrlAX = 558.5, ctrlAY = 169.5, ctrlBX = 509.0, ctrlBY = 301.5)]), true)
+            _ => expect (false, true))
+    sameHeld (dragged, canvasSelected, \held => held.revision)
+    released = Drive::pointer (dragged, 720.0, 300.0, false)
+    hovered = Drive::pointer (released, 600.0, 400.0, false)
+    still = portIn (hovered, "Canvas input 1:0")
+    expect (structuralEquals ([still.accessLeft, still.accessTop], [movedPort.accessLeft, movedPort.accessTop]), true)
+    disconnected = cutCable (released, "Cable 0:0 to 1:0")
+    rearmed = Drive::pointer (disconnected, 488.5, 169.5, true)
+    reconnected = drawnFrom (rearmed, 488.5, 169.5, 579.0, 301.5)
+    cablesOf (reconnected, 1)
+    erased = deleteNode (released, 0)
+    portAt (erased, "Canvas input 1:0", 565.0, 287.5)
+    offsetGrab = Drive::pointer (released, 730.0, 310.0, true)
+    offsetMove = grabbedAt (offsetGrab, 750.0, 340.0)
+    portAt (offsetMove, "Canvas input 1:0", 585.0, 317.5)
+    invalidPoint = synth::EditorView::pointed ((Drive::holding offsetMove), floatFromBits 9221120237041090560, 0.0, false)
+    expect (invalidPoint.dragging, -1)
+    expect (structuralEquals (invalidPoint.positions, (Drive::holding offsetMove).positions), true)
+    bounded = Drive::pointer (offsetMove, -100.0, 1000.0, false)
+    portAt (bounded, "Canvas input 1:0", 0.0, 687.5)
+    second = audioLinked (audioLinked (output, 0, 1), 1, 2)
+    cablesOf (second, 2)
+    feedbackSource = grabbedAt (second, 801.0, 171.5)
+    feedbackMoved = Drive::pointer (feedbackSource, 519.0, 171.5, true)
+    heldIs (feedbackMoved, \held => held.wireDragging, true)
+    feedback = Drive::pointer (feedbackMoved, 519.0, 171.5, false)
+    sameGraph (feedback, second)
+    mentions (feedback, "loop")
+    heard = pressedFor (second, "Audition Patch", 1)
+    firstAsk (heard, \request =>
+        match request.capability
+            ui::Run executable arguments _ _ _ _ =>
+                expect (executable, "/usr/bin/perl")
+                expect (startsWith (listGet arguments 2 ?: "") "52494646" && contains (listGet arguments 2 ?: "") "0300010080BB0000", true)
+            _ => expect (false, true))
+    previewedShows (heard, "{\"status\":1,\"stderr\":\"device disconnected\"}", "Playback failed: device disconnected")
+    previewedShows (heard, "{\"status\":0,\"stderr\":\"\"}", "Preview finished.")
+    previewedShows (heard, "{}", "Playback failed: The host returned no valid process exit status.")
+    failed = Drive::ran (heard, "prism-preview", 1, "device disconnected")
+    lettersIn (failed, "Playback failed: device disconnected")
+    unrelated = Drive::ran (failed, "another-job", 0, "")
+    sameHeld (unrelated, failed, \held => held.message)
+    tuned = choseAt (second, 0, "Frequency", "880")
+    tunedGraph = (Drive::holding tuned).graph
+    parameterAt (tunedGraph, 0, 0, \parameter => expect (parameter.initial, 880.0))
+    invalid = choseAt (tuned, 0, "Frequency", "not a frequency")
+    sameGraph (invalid, tuned)
+    selected = inspectorSelected (invalid, 1)
+    removed = deleteNode (selected, 1)
+    nodesOf (removed, 2)
+    expect (uitest::Views::letters (removed.drivenSeen, "Gain 1"), false)
+    cablesOf (removed, 0)
+
+descriptorFixture = "{\"id\":\"0CDBB66985D548A9BFD8371909D24BB3\",\"name\":\"ADelay\",\"inputs\":2,\"outputs\":2,\"notes\":false,\"parameters\":[{\"id\":100,\"name\":\"Delay\",\"initial\":1.0,\"automatable\":true}]}"
+
+// [PRISM-ROUTING-VST] Discovery and creation travel through host requests, receipts and slices.
+pluginUiJourney () =
+    handle ui::Slices
+        fetch key => match key
+            "prism-vst:list:1" => "[\"/plugins/adelay.vst3\"]"
+            "prism-vst:scan:2" => "{\"event\":\"vst.class\",\"id\":\"0CDBB66985D548A9BFD8371909D24BB3\",\"name\":\"ADelay\",\"bundle\":\"/plugins/adelay.vst3\",\"categories\":\"Fx|Delay\"}\n"
+            "prism-vst:describe:3" => descriptorFixture
+            "prism-vst:describe:4" => descriptorFixture
+            _ => match startsWith key "prism-worker:"
+                true => zeroStereoResponse ()
+                false => "malformed metadata"
+    home = "target/daw-tests/vst-home"
+    _root = makeDir "target/daw-tests"
+    _homeDir = makeDir home
+    _prefs = makeDir "${home}/.prism"
+    _initial = writeFile "${home}/.prism/vst3-folder" "/plugins"
+    launch = Drive::launchedAt (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "macos", ["--empty", "--vst-worker", "/worker/osprey-vst-worker"], home)
+    opened = Drive::press (launch, "Patch Controls")
+    showsIn (opened, "Scan VST3", false)
+    showsIn (opened, "VST3 folder", false)
+    scanning = receipt (opened, "prism-vst:list:1")
+    firstAsk (scanning, \request =>
+        match request.capability
+            ui::Run executable arguments timeout limit _ _ =>
+                expect (executable, "/worker/osprey-vst-worker")
+                expect (structuralEquals (arguments, ["scan", "/plugins/adelay.vst3"]), true)
+                expect (structuralEquals ([timeout, limit], [10000, 1048576]), true)
+            _ => expect (false, true))
+    scanned = receipt (scanning, "prism-vst:scan:2")
+    loading = vstAdded scanned
+    countOf (loading.drivenSurface.surfaceAsked, 1)
+    added = receipt (loading, "prism-vst:describe:3")
+    offeredIn (added, "ADelay 0 Delay", true)
+    nodesOf (added, 1)
+    lettersIn (added, "ADelay 0")
+    current = Drive::holding added
+    original = current.graph
+    frozen = original(nodes = mapList (original.nodes, nonAutomatable))
+    disabled = current(graph = frozen)
+    refusedControl = edited (disabled, 0, "vst:100", "0.25")
+    expect (structuralEquals (refusedControl.graph, frozen), true)
+
+    unchosenAt (added, 0, "Delay", "1.5")
+    stale = told (added, "prism-vst:describe:3", "{\"status\":0,\"stderr\":\"\"}")
+    nodesOf (stale, 1)
+    secondLoading = vstAdded added
+    twice = receipt (secondLoading, "prism-vst:describe:4")
+    expect (structuralEquals ([length (Drive::holding twice).graph.nodes, length (Drive::holding twice).pluginBindings], [2, 2]), true)
+    connected = audioLinked (twice, 0, 1)
+    cablesOf (connected, 1)
+    sink = chained (connected, ["sine", "stereo", "stereo-output"])
+    finished = audioLinked (audioLinked (audioLinked (sink, 2, 3), 3, 0), 1, 4)
+    lfoPatch = component (finished, "lfo")
+    armedModulator = prismTap (lfoPatch, "Canvas output 5:0")
+    inspectorShows (armedModulator, 0, "Modulate Delay")
+    controlled = inspectorAction (armedModulator, 0, "Modulate Delay")
+    projectPluginJourney (Drive::holding (choseAt (controlled, 1, "Delay", "0.25")))
+    hostedModulationJourney (Drive::holding controlled).graph
+    cablesOf (controlled, 5)
+    unbound = cutCable (controlled, "Cable 5:0 to 0:1")
+    cablesOf (unbound, 4)
+    expect (structuralEquals ((Drive::holding unbound).graph.cables, (Drive::holding finished).graph.cables), true)
+    restoresParameter ((Drive::holding unbound).graph)
+    wrongSource = prismTap (controlled, "Canvas output 2:0")
+    refusedModulation = inspectorAction (wrongSource, 0, "Modulate Delay")
+    sameGraph (refusedModulation, controlled)
+    audition = pressedFor (finished, "Audition Patch", 1)
+    firstAsk (audition, \request =>
+        match request.capability
+            ui::HostCall host operation arguments timeout limit slice =>
+                expect (host, "process")
+                expect (operation, "session-open")
+                expect (timeout, 10000)
+                expect (limit, 4194304)
+                expect (startsWith slice "prism-audio:", true)
+                expect (length arguments > 3, true)
+            _ => expect (false, true))
+    _ = pressedFor (audition, "Audition Patch", 0)
+    heldAudition = Drive::holding audition
+    forEachList ([[], listConcat heldAudition.renderPending heldAudition.renderPending], \pending =>
+        lost = synth::GraphPreview::completed (heldAudition(renderPending = pending), heldAudition.renderTicket, Success(value = "{\"status\":0,\"session\":\"orphan\"}"))
+        expect (contains lost.stepStore.message "no unique pending graph request", true)
+        expect (length lost.stepStore.renderPending, 0)
+        expect (lost.stepStore.renderTicket, ""))
+    changed = deleteNode (audition, 1)
+    openedAudio = sessioned (changed, "prism-audio:1:0:open", "effect-zero")
+    heldIs (changed, \held => length held.pluginBindings, 1)
+    sessionsOf (openedAudio, 1)
+    nextEffect = receipt (openedAudio, "prism-audio:1:0:0:block")
+    match (Drive::holding nextEffect).renderPending
+        [pending] =>
+            expect (pending.pendingNode, 1)
+            countOf (pending.pendingGraph.nodes, length (Drive::holding audition).graph.nodes)
+        _ => expect (false, true)
+    askedOf (nextEffect, 1)
+    ticketOf (receipt (nextEffect, "prism-audio:1:0:0:block"), "prism-audio:1:1:open")
+    openedSecond = sessioned (nextEffect, "prism-audio:1:1:open", "effect-one")
+    firstPair = receipt (openedSecond, "prism-audio:1:1:0:block")
+    ticketOf (firstPair, "prism-audio:device:1:open")
+    deviceOpened = audioDone firstPair
+    deviceCounterJourney (Drive::holding deviceOpened)
+    sessionsOf (deviceOpened, 3)
+    secondPair = audioDone deviceOpened
+    ticketOf (secondPair, "prism-audio:1:0:2048:block")
+    played = foldList (toList (range (0, 30)), secondPair, \(previous, _) =>
+        match (Drive::holding previous).renderTicket == ""
+            true => previous
+            false => audioDone previous)
+    lettersIn (played, "Preview finished.")
+    askedOf (played, 3)
+    drainedOf played
+    forEachList ([firstPair, deviceOpened, secondPair], \running =>
+        stopped = stoppedFrom running
+        lettersIn (stopped, "Playback stopped.")
+        drainedOf stopped)
+    live = Drive::press (finished, "Play Patch")
+    continuing = foldList (toList (range (0, 40)), live, \(previous, _) => audioDone previous)
+    expect ((Drive::holding continuing).renderContinuous, true)
+    expect ((Drive::holding continuing).renderTicket != "", true)
+    lettersIn (stoppedFrom continuing, "Playback stopped.")
+    crashed = failedWith (audition, "prism-audio:1:0:open", "plug-in failed")
+    lettersIn (crashed, "Graph playback failed: plug-in failed")
+    countOf ((Drive::holding crashed).renderPending, 0)
+    malformed = receipt (vstAdded twice, "prism-vst:describe:5")
+    sameGraph (malformed, twice)
+    failed = failedWith (scanning, "prism-vst:scan:2", "module unavailable")
+    mentions (failed, "module unavailable")
+    preferences = Drive::press (scanning, "Settings…")
+    replaced = Drive::press (Drive::choose (preferences, "VST3 folder", "/another-folder"), "Save settings")
+    expect (readFile "${home}/.prism/vst3-folder" ?: "", "/another-folder")
+    ignored = receipt (replaced, "prism-vst:scan:2")
+    countOf ((Drive::holding ignored).catalog, 0)
+    removedSecond = deleteNode (connected, 1)
+    expect (structuralEquals ([length (Drive::holding removedSecond).pluginBindings, length (Drive::holding removedSecond).graph.cables], [1, 0]), true)
+    removed = deleteNode (added, 0)
+    countOf ((Drive::holding removed).graph.nodes, 0)
+    countOf ((Drive::holding removed).pluginBindings, 0)
+
+// [SYNTH-HOST-STREAM] Independent wire bytes, channel layouts and malformed worker replies.
+hostWireJourney () =
+    layout = synth::HostLayout(inputChannels = 1, outputChannels = 1, acceptsNotes = false)
+    block = synth::HostBlock(frames = 2, notes = [], parameters = [], samples = [0.25, -0.5])
+    succeeds (synth::HostPackets::clip (layout, block), \hex => expect (hex, "0200000000000000000000000000803E000000BF"))
+    response = "4F53563101000000010000000000000002000000000000000000803E000000BF"
+    succeeds (synth::HostResponses::clip (response, layout, 2), \rendered =>
+        expect (structuralEquals ([rendered.renderFrames, rendered.renderChannels], [2, 1]), true)
+        expect (structuralEquals (rendered.renderSamples, [0.25, -0.5]), true))
+    forEachList ([response + "00", take response 62, ""], \text =>
+        errs (synth::HostResponses::clip (text, layout, 2)))
+    empty = block(frames = 0)
+    short = block(samples = [0.25])
+    misbound = block(parameters = [automationPoint 2])
+    forEachList ([empty, short], refusedPacket)
+    refusedPacket misbound
+    note = noteOn (42, 300, 0.5)
+    succeeds (synth::HostPackets::clip (layout(inputChannels = 0, outputChannels = 2, acceptsNotes = true), block(frames = 512, notes = [note], samples = [])), \hex => expect (hex, "000100000000000000000000000100000100000000000000010000002C0000003C000000000000002A0000000000003F"))
+    succeeds (synth::WaveFiles::interleaved (48000, 2, [0.25, -0.5, 0.0, 1.0]), \hex =>
+        expect (contains hex "0300020080BB000000DC050008002000", true)
+        expect (contains hex "6661637404000000020000006461746110000000", true))
+
+// [PRISM-ROUTING-MIDI] MIDI sources and stereo sinks are genuine menu-created graph components.
+midiMenuJourney () =
+    opened = openedEditor ["--empty"]
+    notes = component (opened, "midi-note")
+    nodesOf (notes, 1)
+    selected = inspectorSelected (notes, 0)
+    forEachList (["Pitch", "Velocity"], \text => reads (dialOf (selected, text), \dial => expect (dial.accessMax > dial.accessMin, true)))
+    offeredIn (notes, "Canvas output 0:0", true)
+    output = component (notes, "stereo-output")
+    nodesOf (output, 2)
+    incompatible = linkedCables (output, 0, 1, 0, 0)
+    mentions (incompatible, "different rates")
+    gain = chained (output, ["lfo", "modulated-gain"])
+    nodesOf (gain, 4)
+    reads (dialOf (inspectorSelected (gain, 2), "Frequency"), \dial => expect (dial.accessMax > dial.accessMin, true))
+    modulated = linkedCables (gain, 2, 3, 1, 1)
+    _ = linkedCables (modulated, 2, 1, 0, 1)
+    tuned = choseAt (output, 0, "Pitch", "72")
+    unchosenAt (tuned, 0, "Velocity", "1.1")
+
+// [SYNTH-HOST-MIDI] Independent event expectations exercise exact block-boundary ownership.
+midiTimingJourney () =
+    source = synth::Components::midiNote (7, 60.0, 0.75, 256.0)
+    on = noteOn (7, 0, 0.75)
+    off = on(kind = 2, velocity = 0.0)
+    windowed (source, 0, 256, [on])
+    windowed (source, 256, 256, [off])
+    succeeds (synth::MidiClips::window (source, 0, 512), \notes =>
+        expect (structuralEquals (notes, [on, off(offset = 256)]), true)
+        layout = synth::HostLayout(inputChannels = 0, outputChannels = 2, acceptsNotes = true)
+        block = synth::HostBlock(frames = 512, notes = notes, parameters = [], samples = [])
+        succeeds (synth::HostPackets::clip (layout, block), \bytes => expect (length bytes > 100, true)))
+    windowed (source, 512, 256, [])
+    detuned = [synth::Components::midiNote (7, 60.5, 0.75, 256.0), synth::Components::midiNote (7, 60.0, 1.01, 256.0), synth::Components::midiNote (7, 60.0, 0.75, 256.5), synth::Components::sine (7, 440.0)]
+    forEachList (detuned, \bad => refusedWindow (bad, 0, 512))
+    refusedWindow (source, 65535, 2)
+
+// [SYNTH-HOST-GRAPH] Built-in kernels agree exactly across graph execution strategies.
+graphClipJourney () =
+    modulationJourney ()
+    graph = (synth::EditorState::preset ()).graph
+    succeeds (builtinRender (graph, 257), \reference =>
+        succeeds (clipReady (graph, 257, 3), \output =>
+            expect (structuralEquals (output.clipSamples, reference.samples), true)
+            expect (output.clipChannels, 1)
+            countOf (output.clipSamples, 257)
+            malformed = output(clipSamples = [0.0])
+            refuses (graph, [malformed], 257)
+            refuses (graph, [output, output], 257)))
+    forEachList ([0, -1, 32769], \frames =>
+        refuses (graph, [], frames))
+    refuses (graph(cables = []), [], 257)
+
+// The modulation patch the palette builds: five modules wired source to sink, detuned wide and swept slowly.
+modulationPatch () =
+    adds = mapList (["sine", "stereo", "lfo", "modulated-gain", "stereo-output"], \kind => synth::Add(kind = kind))
+    wires = mapList ([[0, 1, 0], [1, 3, 0], [2, 3, 1], [3, 4, 0]], \route =>
+        [synth::Source(identity = listGet route 0 ?: 0, outlet = 0), synth::Connect(identity = listGet route 1 ?: 0, inlet = listGet route 2 ?: 0)])
+    editor = foldList (listConcat adds (ui::Lists::flatten wires), synth::EditorState::initial (), synth::EditorState::tapped)
+    edited (edited (editor, 0, "frequency", "12000"), 2, "frequency", "0")
+
+// [SYNTH-GRAPH-MODULATION] One control stream broadcasts across both stereo channels.
+modulationJourney () =
+    editor = modulationPatch ()
+    countOf (editor.graph.cables, 4)
+    succeeds (clipOutput editor.graph, \output =>
+        expect (output.clipChannels, 2)
+        half = [0.0, 0.0, 0.25, 0.25, 0.0, 0.0, -0.25, -0.25]
+        expected = listConcat half half
+        countOf (output.clipSamples, length expected)
+        forEachList (toList (range (0, length expected)), \index =>
+            reads (listGet output.clipSamples index, \value => near (value, listGet expected index ?: 99.0)))
+        moving = edited (editor, 2, "frequency", "20")
+        succeeds (clipOutput moving.graph, \modulated => differs (modulated.clipSamples, output.clipSamples)))
+    errs (clipOutput (synth::EditorState::tapped (editor, synth::Disconnect(identity = 3, inlet = 1))).graph)
+    refuses (editor.graph, [deadClip (2, 8, -0.1)], 8)
+
+// [SYNTH-HOST-MODULATION] Graph cables become exact normalized native automation points.
+projectPluginJourney editor =
+    song = arrangedSong (120.0, 48000, [arrangedBell ("Hosted pair", 1.0, [arrangedNote (0.0, 1.0)])])
+    succeeds (daw::PatchRecords::savedAt (song, 0, editor.graph, editor.positions), \saved => succeeds (reopened saved, \opened =>
+        succeeds (daw::TrackPatches::picked (opened, 0), \graph =>
+            expect (structuralEquals (graph, editor.graph), true)
+            first = synth::DawSession::opened (editor(song = opened, catalog = []), 0)
+            expect (structuralEquals (first.graph, graph), true)
+            missing = synth::GraphPreview::play (first, "macos")
+            expect (contains missing.stepStore.message "unavailable in the configured folder", true)
+            bindings = first.pluginBindings
+            expect (length bindings, 2)
+            forEachList (bindings, \binding =>
+                expect (binding.pluginModule, "")
+                expect ((synth::Plugins::resolved (editor.catalog, binding)).pluginModule, "/plugins/adelay.vst3")))))
+
+hostedModulationJourney graph =
+    waiting (graph, 256, \identity => \block =>
+        expect (identity, 0)
+        expect (structuralEquals ([length block.parameters, length block.samples], [2, 512]), true)
+        reads (listGet block.parameters 0, \first =>
+            expect (structuralEquals ([first.identity, first.offset], [100, 0]), true)
+            expect (first.value, 0.5))
+        reads (listGet block.parameters 1, \second =>
+            expect (second.offset, 128)
+            expect (second.value > 0.5 && second.value < 1.0, true)))
+    valid (modulatedBy (graph, "vst:100"), \same => expect (structuralEquals (same, graph), true))
+    refusesGraph (modulatedBy (graph, "vst:unknown"))
+    refuses (graph, [deadClip (5, 256, 1.1)], 256)
+
+// Fails the test unless `result` is an error.
+// One press and release at the same canvas point.
+clickAt (driven, x, y) = Drive::pointer (Drive::pointer (driven, x, y, true), x, y, false)
+
+// The Prism editor, freshly launched on macOS with these arguments.
+editorLaunched args = Drive::launched (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "macos", args)
+
+// The editor's canvas, opened by its menu button.
+openedEditor args = Drive::press (editorLaunched args, "Patch Controls")
+
+// One palette component of this `kind` added through the real menu.
+component (driven, kind) = Drive::choose (driven, "Add component", kind)
+
+// The palette's `kinds` added in order, each to the component before it.
+chained (driven, kinds) = foldList (kinds, driven, component)
+
+// The identified module's inspector, showing `text`.
+inspectorShows (driven, identity, text) = showsIn (inspectorSelected (driven, identity), text, true)
+
+// The driven surface letters `text`.
+lettersIn (driven, text) = expect (Drive::letters (driven, text), true)
+
+// The labelled canvas port as the host sees it.
+portIn (driven, label) = uitest::Semantics::element (driven.drivenSeen.renderedAccess, label)
+
+// A pointer pressed onto the canvas.
+grabbedAt (driven, x, y) = Drive::pointer (driven, x, y, true)
+
+// A cable drawn on: release where it was grabbed, press where it lands.
+drawnFrom (held, fromX, fromY, toX, toY) = Drive::pointer (Drive::pointer (held, fromX, fromY, false), toX, toY, true)
+
+// One field of the driven state, which must be `want`.
+heldIs (driven, read, want) = expect (read (Drive::holding driven), want)
+
+// The same field of two driven states, which must agree.
+sameHeld (one, other, read) = expect (read (Drive::holding one) == read (Drive::holding other), true)
+
+// The driven state's message, which must mention `text`.
+mentions (driven, text) = expect (contains (Drive::holding driven).message text, true)
+
+// A control pressed; the host must be asked `count` times.
+pressedFor (driven, label, count) =
+    pressed = Drive::press (driven, label)
+    askedOf (pressed, count)
+    pressed
+
+// The first typed host request of the last step, checked by `check`.
+firstAsk (driven, check) =
+    match listGet driven.drivenSurface.surfaceAsked 0
+        Error _ => expect (false, true)
+        Success request => check request
+
+cutCable (session, label) = Drive::key (prismTap (session, label), "backspace", true)
+
+deleteNode (session, identity) =
+    editor = Drive::holding session
+    at = synth::EditorLayout::position (editor, identity)
+    menu = Drive::sent (session, ui::Touch(touchNow = session.drivenNow, touchKind = ui::Hosting::secondary, touchOrdinal = session.drivenSeen.renderedOrdinal, touchWords = "", touchDetail = "", touchX = at.layoutX, touchY = at.layoutY, touchDown = false, touchShift = false))
+    offeredIn (menu, "Delete node", true)
+    prismTap (menu, "Delete node")
+
+linked (from, source, destination, inlet) = prismTap (prismTap (from, "Canvas output ${source}:0"), "Canvas input ${destination}:${inlet}")
+
+audioLinked (from, source, destination) = linked (from, source, destination, 0)
+
+linkedCables (from, source, destination, inlet, count) =
+    wired = linked (from, source, destination, inlet)
+    cablesOf (wired, count)
+    wired
+
+// A chooser of the identified module's inspector.
+choseAt (driven, identity, label, value) =
+    selected = inspectorSelected (driven, identity)
+    Drive::choose (dialTapped (selected, label), label, value)
+
+// A chooser the identified module's inspector refuses.
+unchosenAt (driven, identity, label, value) = sameGraph (choseAt (driven, identity, label, value), driven)
+
+// One more scanned ADelay added through the real menu.
+vstAdded driven = Drive::choose (driven, "Add component", "vst:0CDBB66985D548A9BFD8371909D24BB3")
+
+// A parameter of the editor state edited through the typed boundary.
+edited (editor, identity, key, value) = synth::EditorState::typed (editor, synth::EditParameter(identity = identity, key = key), value)
+
+// A host completion the driver acknowledges.
+told (driven, ticket, body) = Drive::completed (driven, ticket, true, body)
+
+// A host completion acknowledged with an empty success receipt.
+receipt (driven, ticket) = told (driven, ticket, "{\"status\":0,\"stderr\":\"\"}")
+
+// A host completion acknowledged with a `session` receipt.
+sessioned (driven, ticket, session) = told (driven, ticket, "{\"status\":0,\"session\":\"${session}\"}")
+
+// A host completion acknowledged with a failing receipt.
+failedWith (driven, ticket, stderr) = Drive::completed (driven, ticket, true, "{\"status\":1,\"stderr\":\"${stderr}\"}")
+
+// A preview receipt, and the readout it must show.
+previewedShows (driven, body, text) =
+    answered = previewed (driven, body)
+    lettersIn (answered, text)
+
+// The driven state's render ticket.
+ticketOf (driven, want) = heldIs (driven, \held => held.renderTicket, want)
+
+// The driven state's open render sessions.
+sessionsOf (driven, count) = countOf ((Drive::holding driven).renderSessions, count)
+
+// The driven state's graph modules.
+nodesOf (driven, count) = countOf ((Drive::holding driven).graph.nodes, count)
+
+// Any counted thing.
+countOf (counted, want) = expect (length counted, want)
+
+// The driven state left with no render session and no ticket.
+drainedOf driven =
+    ticketOf (driven, "")
+    countOf ((Drive::holding driven).renderSessions, 0)
+
+// Playback stopped from `driven`.
+stoppedFrom driven = audioDone (Drive::press (driven(drivenProgram = synth::EditorApp::program ()), "Stop Patch"))
+
+// A note-on at `offset` for this `identity`.
+noteOn (identity, offset, velocity) = synth::HostNote(kind = 1, offset = offset, pitch = 60, channel = 0, identity = identity, velocity = velocity)
+
+// The source's notes of one window, which must be exactly `want`.
+windowed (source, start, span, want) = succeeds (synth::MidiClips::window (source, start, span), \notes => expect (structuralEquals (notes, want), true))
+
+// Two structures, which must differ.
+differs (one, other) = expect (structuralEquals (one, other), false)
+
+// A malformed packet the host must refuse.
+refusedPacket bad = errs (synth::HostPackets::packet (1, bad))
+
+// Module 100's automation point at `offset`.
+automationPoint offset = synth::HostParameter(identity = 100, offset = offset, value = 0.5)
+
+// A window the source must refuse.
+refusedWindow (source, start, span) = errs (synth::MidiClips::window (source, start, span))
+
+// The graph's module-5 automation inlet bound to `key`.
+modulatedBy (graph, key) = synth::HostModulation::connect (graph, 5, 0, 0, key)
+
+// A cached module clip of constant `sample`, which the graph must refuse.
+deadClip (identity, frames, sample) = synth::NodeClip(clipNode = identity, clipChannels = 1, clipSamples = mapList (toList (range (0, frames)), \_ => sample), clipNotes = [])
+
+// The graph advanced with `clips`, which must be refused.
+refuses (graph, clips, frames) = errs (synth::GraphClips::advance (graph, clips, frames))
+
+// The graph's first hosted module, or the test fails.
+waiting (graph, frames, check) =
+    outcome = synth::GraphClips::advance (graph, [], frames)
+    match outcome
+        Error _ => expect (false, true)
+        Success action => match action
+            synth::ClipWaiting identity block _ => check identity block
+            synth::ClipReady _ => expect (false, true)
+
+// The unbound module's automation, restored to its initial value.
+restoresParameter graph = waiting (graph, 256, \_ => \block => reads (listGet block.parameters 0, \restored => expect (restored.value, 1.0)))
+
+// A graph advanced to ready clips, or why it cannot be.
+clipReady (graph, frames, channels) = unhosted (synth::GraphClips::advance (graph, [], frames), channels)
+
+// The advance outcome's ready clips, with hosted modules refused.
+unhosted (outcome, channels) = match outcome
+    Error why => Error(message = why)
+    Success action => match action
+        synth::ClipReady clips => synth::ClipInputs::completed (clips, channels)
+        _ => Error(message = synth::IncompatibleLayout(detail = "Unexpected external processor"))
+
+// The modulation patch's eight-frame stereo output.
+clipOutput graph = clipReady (graph, 8, 4)
+
+// The graph rendered by the built-in kernels alone, or why it cannot be.
+builtinRender (graph, frames) = match synth::Graphs::prepare graph
+    synth::Invalid _ => Error(message = synth::InvalidConfiguration(detail = "graph cannot be prepared"))
+    synth::Valid plan => match synth::Renderer::start graph
+        Error why => Error(message = why)
+        Success held => synth::Renderer::block (plan, 48000.0, synth::Parameters::initial graph, held, frames)
+
+errs result = match result
+    Error _ => expect (true, true)
+    Success _ => expect (false, true)
+
+// A bypass or enable switch pressed, which must flip `name`.
+switched (label, name, expected) =
+    tap label
+    flag (name, expected)
+
+// Fails the test unless `outcome` is refused.
+refusesGraph outcome = match outcome
+    synth::Invalid _ => expect (true, true)
+    synth::Valid _ => expect (false, true)
+
+nonAutomatable n = n(parameters = mapList (n.parameters, frozenParameter))
+
+// A parameter with its automation refused.
+frozenParameter p = p(automatable = false)
+
+// [DAW-MIX-BUS-TAP] A send leaves the existing patch cable in place, reads its outlet before
+// track gain and sums with other independently scaled taps into the same stereo bus.
+tapJourney () =
+    keys = keysTrack ()
+    voice = keys(gain = 0.0, notes = [daw::Note(pitch = 60, start = 0.0, length = 0.015, velocity = 1.0)])
+    song = routedTo (timeline [voice], [padsBus (1.0, "")])
+    encoded (song, \text =>
+        routes = "[{\"sendId\":1,\"source\":1,\"outlet\":0,\"bus\":\"pads\",\"level\":0.5,\"enabled\":true},{\"sendId\":2,\"source\":2,\"outlet\":0,\"bus\":\"pads\",\"level\":0.25,\"enabled\":true}]"
+        // Both the pre-sends project and a current project with no sends enter through the public JSON boundary.
+        bare = replace text "\"sends\":[]," "" ?: text
+        withSends = replace bare "\"positions\":" "\"sends\":${routes},\"positions\":" ?: bare
+        succeeds (daw::SongFiles::decode withSends, \opened => trackAt (opened, 0, \track =>
+            succeeds (daw::Arrangements::added (opened, daw::Arrangements::empty, track, 128), \mixed =>
+                expect (length mixed.groups, 1)
+                reads (listGet mixed.groups 0, \group =>
+                    expect (group.name, "pads")
+                    expect (length group.left, 128)
+                    succeeds (daw::Arrangements::part (song, voice, 128), \dry =>
+                        forEachList ([9, 31, 83, 120], \i =>
+                            reference = listGet dry i ?: 0.0
+                            expect (abs reference > 0.000001, true)
+                            sampleAt (group.left, i, reference * 1.25 * daw::ArrangeMath::panLeft 0.0)
+                            sampleAt (group.right, i, reference * 1.25 * daw::ArrangeMath::panRight 0.0)
+                            sampleAt (mixed.left, i, 0.0))))
+                encoded (opened, \saved => expect (contains saved "\"sendId\":2", true))))))
+
+// [DAW-RENDER-PLAY] The project plays as one loop over time: each block advances every track, its bus
+// (EQ and kick-keyed compressor) and its send together into Master.
+playedNote (start, length) = daw::Note(pitch = 60, start = start, length = length, velocity = 0.9)
+
+playedKick notes = daw::Track(name = "kick", instrument = daw::DrumInstrument(hit = daw::Hit(sweep = 2.0, noise = 0.3, colour = 0.5, decay = 0.05)), gain = 1.0, pan = -0.4, bus = "", sends = [], positions = [], notes = notes)
+
+playedBus ratio =
+    bus = shaped (padsBus (ratio, "kick"))
+    bus(compressor = daw::Compressor(threshold = -30.0, ratio = ratio, knee = 3.0, attack = 0.002, release = 0.03, sidechain = "kick"))
+
+playedSong ratio =
+    bell = bellTrack ()
+    keys = keysTrack ()
+    tap = daw::AudioSend(sendId = 1, source = 1, outlet = 0, bus = "pads", level = 0.5, enabled = true)
+    pair = daw::OperatorInstrument(tone = daw::Tone(breakpoint = 0.4, feedback = 0.15, attack = 0.01, release = 0.015, bloom = 0.1, detune = -8.0))
+    op = bell(name = "pair", instrument = pair, sends = [tap], notes = [playedNote (0.01, 0.03), playedNote (0.02, 0.06), playedNote (0.12, 0.03)])
+    tracks = [op, playedKick [playedNote (0.0, 0.05), playedNote (0.1, 0.05), playedNote (0.125, 0.05)], bell(bus = "pads", notes = [playedNote (0.05, 0.1), playedNote (0.2, 0.1)]), keys(pan = 0.3, sends = [tap], notes = [playedNote (0.0, 0.015), playedNote (0.2, 0.015)])]
+    routedTo (timeline tracks, [playedBus ratio])
+
+// Master's next block is exactly `size` frames on each side, and nothing else leaves it.
+playedBlock (song, streaming, outcome, size) = match outcome
+    Error why => Error(message = why)
+    Success take => match daw::Playback::step (song, take.playing, size, streaming)
+        Error why => Error(message = why)
+        Success played =>
+            expect (length played.left, size)
+            expect (length played.right, size)
+            Success(value = daw::Take(playing = played.playing, lefts = listAppend take.lefts played.left, rights = listAppend take.rights played.right))
+
+playedIn (song, streaming, sizes, check) = succeeds (daw::Playback::start song, \playing =>
+    succeeds (foldList (sizes, Success(value = daw::Take(playing = playing, lefts = [], rights = [])), \(outcome, size) => playedBlock (song, streaming, outcome, size)), \take =>
+        expect (take.playing.cursor, 6000)
+        check (daw::Take(playing = take.playing, lefts = [ui::Lists::flatten take.lefts], rights = [ui::Lists::flatten take.rights]))))
+
+sideOf (take, right) = match right
+    true => listGet take.rights 0 ?: []
+    false => listGet take.lefts 0 ?: []
+
+sameSide (one, other) =
+    expect (length other, length one)
+    forEachList (toList (range (0, length one)), \i => sampleAt (other, i, listGet one i ?: 0.0))
+
+sameMaster (one, other) =
+    sameSide (sideOf (one, false), sideOf (other, false))
+    sameSide (sideOf (one, true), sideOf (other, true))
+
+loudest side = foldList (side, 0.0, \(high, value) => synth::TableMath::larger (high, abs value))
+
+sidesDiffer (one, other) = length (filterList (toList (range (0, length one)), \i => abs ((listGet one i ?: 0.0) - (listGet other i ?: 0.0)) > 0.000001)) > 0
+
+liveDialBlock (place, stream, check) = succeeds (daw::LiveControls::receive ("${place}/knobs/live/controls", stream), \applied =>
+    succeeds (daw::Playback::next (applied.controlScore, applied.playing, 64), \packet => check (packet, applied(playing = packet.playing))))
+
+// [DAW-TRANSPORT-LIVE-CONTROLS] A running patch applies inspector values after the current device block.
+livePatchDialJourney () =
+    graph = patched ["sine", "gain", "output"]
+    playing = audioDone (Drive::press (graph, "Play Patch"))
+    expect (loudest (Drive::holding playing).scopeSamples > 0.01, true)
+    changed = tuned (playing, 1, "Gain", "0")
+    expect ((Drive::holding changed).renderTicket, (Drive::holding playing).renderTicket)
+    quiet = audioDone changed
+    expect (loudest (Drive::holding quiet).scopeSamples, 0.0)
+    restored = audioDone (tuned (quiet, 1, "Gain", "0.5"))
+    expect (loudest (Drive::holding restored).scopeSamples > 0.01, true)
+    expect ((Drive::holding restored).renderContinuous, true)
+
+// [DAW-TRANSPORT-LIVE-CONTROLS] Drive a real knob before release, then read the song producer's control channel.
+liveDialJourney () =
+    place = "target/daw-tests/live-dial"
+    _root = makeDir "target/daw-tests"
+    _dir = makeDir place
+    track = keysTrack ()
+    score = timeline [track(notes = [daw::Note(pitch = 60, start = 0.0, length = 1.0, velocity = 1.0)])]
+    succeeds (daw::Projects::saved (score, "${place}/knobs.json"), \_ =>
+        session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
+        started = Drive::press (session, "Play Song")
+        chosen = inspectorSelected (Drive::press (started, "Patch Controls"), 2)
+        reads (dialOf (chosen, "Gain"), \dial =>
+            x = dial.accessLeft + dial.accessWidth / 2.0
+            y = dial.accessTop + dial.accessHeight / 2.0
+            down = dialPointer (chosen, x, y, true, false)
+            moving = dialPointer (down, x, y + 160.0, true, false)
+            expect ((Drive::holding moving).dial != synth::DialIdle, true)
+            expect ((Drive::holding moving).songTicket, "daw-song:live:${place}/knobs/live")
+            reads (dialOf (moving, "Gain"), \seen => expect (seen.accessValue, 0.0))
+            succeeds (daw::Playback::start score, \initial =>
+                succeeds (daw::Playback::next (score, initial, 512), \first =>
+                    stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score, noteFolders = [])
+                    liveDialBlock (place, stream, \(quiet, muted) =>
+                        expect (loudest quiet.left, 0.0)
+                        expect (loudest quiet.right, 0.0)
+                        louder = dialPointer (moving, x, y - 60.0, true, false)
+                        expect ((Drive::holding louder).dial != synth::DialIdle, true)
+                        reads (dialOf (louder, "Gain"), \raised =>
+                            expect (raised.accessValue > dial.accessValue, true)
+                            liveDialBlock (place, muted, \(loud, applied) =>
+                                expect (applied.controlVersion > muted.controlVersion, true)
+                                expect (loudest loud.left > 0.01, true)
+                                released = dialPointer (louder, x, y - 60.0, false, false)
+                                expect ((Drive::holding released).dial, synth::DialIdle)
+                                reads (dialOf (released, "Gain"), \kept => expect (kept.accessValue, raised.accessValue))
+                                liveDialBlock (place, applied, \(after, settled) =>
+                                    expect (settled.playing.cursor, 704)
+                                    succeeds (daw::Playback::next (applied.controlScore, applied.playing, 64), \expected =>
+                                        expect (sidesDiffer (expected.left, after.left), false))))))))))
+
+// [DAW-TRANSPORT-LIVE-CONTROLS] A gain edit changes the sounding note on the next block.
+liveKnobJourney () =
+    track = keysTrack ()
+    note = daw::Note(pitch = 60, start = 0.0, length = 0.125, velocity = 1.0)
+    score = timeline [track(notes = [note])]
+    routing = daw::TrackPatches::routing track.instrument
+    muted = routing(nodes = mapList (routing.nodes, \n => ui::Pick::either (n.component == "gain", n(settings = [daw::Setting(key = "gain", value = 0.0, follow = daw::Constant)]), n)))
+    quiet = score(tracks = [track(notes = [note], instrument = daw::PatchInstrument(routing = muted))])
+    succeeds (daw::Playback::start score, \start =>
+        succeeds (daw::Playback::next (score, start, 512), \first =>
+            expect (loudest first.left > 0.01, true)
+            pitched = routing(nodes = mapList (routing.nodes, \n => ui::Pick::either (n.component == "sine", n(settings = [daw::Setting(key = "frequency", value = 1.0, follow = daw::Pitched)]), n)))
+            tuned = score(tracks = [track(notes = [note], instrument = daw::PatchInstrument(routing = pitched))])
+            succeeds (daw::Playback::next (score, first.playing, 128), \reference =>
+                succeeds (daw::Playback::next (tuned, first.playing, 128), \changed =>
+                    expect (abs ((listGet reference.left 0 ?: 1.0) - (listGet changed.left 0 ?: -1.0)) < 0.02, true)
+                    expect (sidesDiffer (reference.left, changed.left), true)))
+            succeeds (daw::Playback::next (quiet, first.playing, 128), \silent =>
+                expect (loudest silent.left, 0.0)
+                expect (loudest silent.right, 0.0)
+                succeeds (daw::Playback::next (score, silent.playing, 128), \again =>
+                    expect (again.playing.cursor, 768)
+                    expect (loudest again.left > 0.01, true)))))
+
+// [DAW-TRANSPORT-LIVE-SPEED] Overlapping identical attacks share one recording, including its send lanes.
+streamedRepeatJourney () =
+    first = playedNote (0.0, 0.01)
+    tap = daw::AudioSend(sendId = 1, source = 1, outlet = 0, bus = "pads", level = 0.5, enabled = true)
+    keys = keysTrack ()
+    voice = keys(sends = [tap], notes = [first, first, first(start = 0.25)])
+    song = routedTo (timeline [voice], [padsBus (1.0, "")])
+    succeeds (daw::Playback::start song, \playing =>
+        succeeds (daw::Playback::step (song, playing, 128, true), \attack =>
+            reads (listGet attack.playing.tracks 0, \track =>
+                expect (length track.made, 0)
+                expect (length track.recordings, 1)
+                // A maker can publish the same note before the streamed recording finishes.
+                succeeds (daw::Arrangements::lanesOf (song, voice, [tap], first), \expected =>
+                    published = track(made = [daw::Made(struck = first, chord = expected)])
+                    prior = attack.playing
+                    ready = prior(tracks = [published])
+                    succeeds (daw::Playback::step (song, ready, 5400, true), \done =>
+                        reads (listGet done.playing.tracks 0, \last => expect (length last.made, 1))))
+                succeeds (daw::Arrangements::focused (song, voice, track, 128), \edited => expect (length edited.recordings, 0)))
+            succeeds (daw::Playback::step (song, attack.playing, 5400, true), \release =>
+                reads (listGet release.playing.tracks 0, \track =>
+                    expect (length track.recordings, 0)
+                    expect (length track.made, 1)
+                    reads (listGet track.made 0, \take => succeeds (daw::Arrangements::lanesOf (song, voice, [tap], first), \expected => expect (structuralEquals (take.chord, expected), true))))
+                succeeds (daw::Playback::step (song, release.playing, 640, true), \again =>
+                    reads (listGet again.playing.tracks 0, \track => reads (listGet track.sounding 0, \sound => expect (sound.driver == daw::RecordedNote, true)))))))
+
+masterPlayJourney () =
+    streamedRepeatJourney ()
+    hosted livePatchDialJourney
+    liveKnobJourney ()
+    song = playedSong 4.0
+    playedIn (song, false, [6000], \whole =>
+        expect (loudest (sideOf (whole, false)) > 0.01, true)
+        expect (loudest (sideOf (whole, true)) > 0.01, true)
+        // Any block size plays the same Master: every stage carries its state across the block edge.
+        forEachList ([[1000, 1000, 1000, 1000, 1000, 1000], [4097, 1903], [3000, 3000], [1, 2499, 1, 3499], [2500, 2500, 1000]], \sizes =>
+            forEachList ([false, true], \streaming => playedIn (song, streaming, sizes, \blocks => sameMaster (whole, blocks))))
+        // Tracks play together, so their order in the project does not change Master.
+        playedIn (song(tracks = listReverse song.tracks), false, [2048, 2048, 1904], \reordered => sameMaster (whole, reordered))
+        // The kick keys the pads bus inside the same block it sounds in.
+        playedIn (playedSong 1.0, false, [6000], \open => expect (sidesDiffer (sideOf (whole, false), sideOf (open, false)), true)))
+    // A bad note or route fails before anything plays.
+    failsWith (daw::Playback::start (timeline [playedKick [playedNote (sqrt (-1.0), 0.1)]]), "kick: a note start is not finite.")
+    failsWith (daw::Playback::start (timeline [playedKick [playedNote (0.5, 0.1), playedNote (-0.25, 0.1)]]), "kick: a note starts before the piece.")
+    bell = bellTrack ()
+    failsWith (daw::Playback::start (timeline [bell(bus = "pads")]), "bell: Bus pads is not in the song.")

@@ -67,9 +67,6 @@ launchWith (platform, folder, arguments) =
     given = foldList (arguments, start.drivenSurface, \(held, text) => Surfaces::argued (held, text))
     hosted (\() => perform Host.drive (stepped (start, ui::Views::quiet (\() => Hosting::opened (given, start.drivenProgram, start.drivenNow, 0, platform, folder, false)))))
 
-// One typed host event, sent the way a host sends it.
-post event = hosted (\() => perform Host.drive (Drive::sent (driven, event)))
-
 // One host event for the control numbered `ordinal`, delivering `words`.
 controlTouch (d, ordinal, words) = ui::Touch(touchNow = d.drivenNow, touchKind = Hosting::control, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false)
 
@@ -88,19 +85,13 @@ chose path = hosted (\() => perform Host.drive (Drive::chosen (driven, "choose",
 
 seen () = driven.drivenSeen
 
-controls () = driven.drivenSeen.renderedControls
-
 control label = Views::control (seen (), label)
 
 storeNow () = Drive::holding driven
 
-stageOf store = store.walk.walkStage
+stageNow () = (storeNow ()).walk.walkStage
 
-stageNow () = stageOf (storeNow ())
-
-openOf store = store.place.openFolder
-
-openNow () = openOf (storeNow ())
+openNow () = (storeNow ()).place.openFolder
 
 // The regions the program draws, in order, as the boundary lowered them.
 regionKeys () = hosted (\() => join (mapList ((App::program ()).programRender (storeNow (), storeNow (), [], []), \region => region.snapshotKey)) ",")
@@ -154,17 +145,13 @@ enters action = match action
 trees () = hosted (\() => Read::trees (Surfaces::seen (driven.drivenSurface, driven.drivenProgram)))
 
 // The region told under `key`, or an empty record when the frame holds none.
-regionTold key = match Lists::find (trees (), \told => Read::name told == "region" && Read::words (Read::inside told, "key") == key)
-    Success found => found
-    Error _ => ui::ToldRecord(recordName = "", members = [])
+regionTold key = Lists::find (trees (), \told => Read::name told == "region" && Read::words (Read::inside told, "key") == key) ?: ui::ToldRecord(recordName = "", members = [])
 
 // The component of kind `name` under `tree`, depth first, or an empty record when none is told.
 kinded (name, tree) = Read::kinded ([tree], name, \_ => true)
 
 // The component of kind `name` labelled `label` in the open folder's region, or an empty record.
-labelled (name, label) = match Lists::find (filterList (Read::under (regionTold "folder"), \told => Read::words (Read::inside told, "kind") == name), \told => Read::words (Read::inside told, "label") == label)
-    Success found => found
-    Error _ => ui::ToldRecord(recordName = "", members = [])
+labelled (name, label) = Lists::find (filterList (Read::under (regionTold "folder"), \told => Read::words (Read::inside told, "kind") == name), \told => Read::words (Read::inside told, "label") == label) ?: ui::ToldRecord(recordName = "", members = [])
 
 // The entry records of the rows told under `region`, in drawing order.
 rowsIn region = Read::inside (Read::member (Read::inside (kinded ("rows", regionTold region)), "rows"))
@@ -182,25 +169,25 @@ chooseIn (d, key) = hosted (\() => perform Host.drive (Drive::sent (d, controlTo
 rowNames () = join (mapList (listingKeys (), \key => Disk::name ("windows", key)), ",")
 
 // The symbol leading the listing row keyed `key`, or "" when it is not drawn.
-symbolOf key = match Lists::find (rowsIn "listing", \entry => Read::words (Read::inside entry, "key") == key)
-    Success entry => Read::words (Read::inside entry, "symbol")
-    Error _ => ""
+symbolOf key = Read::words (Read::inside (Lists::find (rowsIn "listing", \entry => Read::words (Read::inside entry, "key") == key) ?: ui::ToldRecord(recordName = "", members = [])), "symbol")
 
 // The symbol leading the listing row named `name`.
-rowSymbol name = match Lists::find (listingKeys (), \key => Disk::name ("windows", key) == name)
-    Success key => symbolOf key
-    Error _ => ""
+rowSymbol name = symbolOf (Lists::find (listingKeys (), \key => Disk::name ("windows", key) == name) ?: "")
 
 // ---- the tests' scenarios ----
 
 // Storage launched on Windows for a person whose home is `home`.
 launch () = launchWith ("windows", home, [])
 
+// The host holds `text` as the measured slice, and the first walk completes.
+delivered text =
+    perform Host.holding text
+    complete ("walk:1", true, "")
+
 // A launch whose first walk completed with the host holding `text` as the measured slice.
 walkedIn text =
     launch ()
-    perform Host.holding text
-    complete ("walk:1", true, "")
+    delivered text
 
 walked () = walkedIn (homeWalk ())
 
@@ -230,9 +217,7 @@ test ("a finished walk redraws only the listing, largest first, with unreadable 
     expect (rowSymbol ("notes.txt"), "document")
     noProblems ()))
 test ("switching hidden items off leaves them out of the ranking", \() => bench (\() =>
-    launch ()
-    perform Host.holding (homeWalk ())
-    complete ("walk:1", true, "")
+    walked ()
     typed ("Hidden items", "false")
     changedNothing ()
     expect (rowNames (), "Videos,Code,notes.txt,OneDrive,Private")
@@ -248,8 +233,7 @@ test ("a rescan cancels the running walk, and the old walk's completion changes 
     launch ()
     press "Rescan"
     expect (askedKinds (), "cancel cancel:1;measure-folders walk:2")
-    perform Host.holding (homeWalk ())
-    complete ("walk:1", true, "")
+    delivered (homeWalk ())
     changedNothing ()
     expect (stageNow (), "measuring")))
 test ("Up from a folder measures the folder that encloses it", \() => bench (\() =>
@@ -278,9 +262,7 @@ test ("a cancelled choice changes nothing", \() => bench (\() =>
     changedNothing ()
     expect (openNow (), home)))
 test ("a folder row opens that folder and a file row does not", \() => bench (\() =>
-    launch ()
-    perform Host.holding (homeWalk ())
-    complete ("walk:1", true, "")
+    walked ()
     after = driven
     chooseIn (after, home + "\\Videos")
     expect (measuringNow (), home + "\\Videos")
@@ -296,8 +278,7 @@ test ("a folder that disappeared says it is gone", \() => bench (\() =>
     wordsIn "This folder is gone"))
 test ("words and units follow the platform", \() => bench (\() =>
     launchWith ("macos", "/Users/ada", [])
-    perform Host.holding (macWalk ())
-    complete ("walk:1", true, "")
+    delivered (macWalk ())
     wordsIn "Show in Finder"
     wordsIn "1.5 MB"
     walked ()
@@ -333,9 +314,7 @@ test ("sizes count in the units each platform shows", \() =>
 // replaying the same launch and the same typed events through the three entry points: no document, no
 // host-held state, and the redrawn frame tells the same regions.
 restoredSession () =
-    launch ()
-    perform Host.holding (homeWalk ())
-    complete ("walk:1", true, "")
+    walked ()
     typed ("Hidden items", "false")
     storeNow ()
 

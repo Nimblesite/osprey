@@ -100,7 +100,7 @@ suite("workbench bundle completeness", () => {
     const result = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "vscode:prepublish"],
       { cwd: root, encoding: "utf8", shell: process.platform === "win32", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.ok(result.stdout.includes("live wasm frame: PASS"), result.stdout);
+    for (const name of ["Package workspace", "Workbench"]) assert.ok(result.stdout.includes(`${name} live wasm frame: PASS`), result.stdout);
     for (const name of ["wasi", "wasi-runner", "wasi-worker"]) assert.ok(fs.statSync(path.join(root, "out/client/src/osprey-ui", `${name}.js`)).size > 0);
   });
 

@@ -25,47 +25,58 @@ pub(super) fn project_field_value(
     );
     projected
 }
+pub(super) fn project_borrowed_field_value(value: &Value, field: &str) -> Option<Value> {
+    let mut projected = value.fields.get(field).cloned();
+    project_unknown_structure(value.unknown_structure, &mut projected);
+    if let Some(callable) = &value.callable {
+        project_borrowed_callable_field(callable, field, &mut projected);
+    }
+    projected
+}
+
+fn project_borrowed_callable_field(
+    callable: &Callable,
+    field: &str,
+    projected: &mut Option<Value>,
+) {
+    match callable {
+        Callable::Alternatives(choices) => {
+            for choice in choices {
+                project_borrowed_callable_field(choice, field, projected);
+            }
+        }
+        Callable::Parameter { .. } => {
+            project_callable(
+                Some(callable.clone()),
+                Projection::Field(field.to_owned()),
+                projected,
+            );
+        }
+        Callable::Known(_) | Callable::Unknown => {}
+    }
+}
+
 pub(super) fn project_element(mut value: Value) -> Option<Value> {
     let payload = value.element.take().map(|value| *value);
-    project_tail(
-        payload,
-        value.unknown_structure,
-        value.callable,
-        Projection::Element,
-    )
+    project_from(payload, value, Projection::Element)
 }
 pub(super) fn project_success_value(mut value: Value) -> Option<Value> {
     let mut payload = value.result_payload.take().map(|value| *value);
     if let Some(field) = value.fields.remove("value") {
         merge_optional_value(&mut payload, field);
     }
-    project_tail(
-        payload,
-        value.unknown_structure,
-        value.callable,
-        Projection::SuccessValue,
-    )
+    project_from(payload, value, Projection::SuccessValue)
 }
 pub(super) fn project_fiber_value(mut value: Value) -> Option<Value> {
     let payload = value.fiber_payload.take().map(|value| *value);
-    project_tail(
-        payload,
-        value.unknown_structure,
-        value.callable,
-        Projection::FiberValue,
-    )
+    project_from(payload, value, Projection::FiberValue)
 }
-/// Add what a value's own erased box or callable contributes to the payload
-/// `projected` it holds.
-fn project_tail(
-    mut projected: Option<Value>,
-    unknown: bool,
-    callable: Option<Callable>,
-    projection: Projection,
-) -> Option<Value> {
-    project_unknown_structure(unknown, &mut projected);
-    project_callable(callable, projection, &mut projected);
-    projected
+/// Projects `payload` out of `value`, adding what `value`'s own erased box or
+/// callable contributes.
+fn project_from(mut payload: Option<Value>, value: Value, projection: Projection) -> Option<Value> {
+    project_unknown_structure(value.unknown_structure, &mut payload);
+    project_callable(value.callable, projection, &mut payload);
+    payload
 }
 fn project_unknown_structure(unknown: bool, projected: &mut Option<Value>) {
     if unknown {
@@ -127,30 +138,21 @@ fn leaf_metadata(value: &Value) -> Value {
 /// `Unknown`: fail-closed and idempotent, so the recursion through values
 /// reaches the finite fixed point [EFFECTS-PROVENANCE] requires. A real
 /// closure always names its parameters, so only joined alternatives flatten.
-pub(super) fn stabilize_merged_callables(value: &Value) -> Value {
-    let mut stabilized = value.clone();
-    if let Some(Callable::Alternatives(choices)) = &mut stabilized.callable {
-        super::provenance::map_alternatives(choices, |branch| {
-            *branch = stabilize_merged_callables(branch);
-        });
-    }
-    if let Some(Callable::Known(known)) = &value.callable {
-        if known.parameters.is_empty() && !known.summary.parameter_uses.is_empty() {
-            stabilized.callable = Some(Callable::Unknown);
+pub(super) fn stabilize_merged_callables(value: &mut Value) {
+    match &mut value.callable {
+        Some(Callable::Alternatives(choices)) => {
+            super::provenance::map_alternatives(choices, stabilize_merged_callables);
         }
+        Some(Callable::Known(known))
+            if known.parameters.is_empty() && !known.summary.parameter_uses.is_empty() =>
+        {
+            value.callable = Some(Callable::Unknown);
+        }
+        _ => {}
     }
-    stabilized.fields = value
-        .fields
-        .iter()
-        .map(|(name, nested)| (name.clone(), stabilize_merged_callables(nested)))
-        .collect();
-    stabilized.element = stabilize_boxed(value.element.as_deref());
-    stabilized.result_payload = stabilize_boxed(value.result_payload.as_deref());
-    stabilized.fiber_payload = stabilize_boxed(value.fiber_payload.as_deref());
-    stabilized
-}
-fn stabilize_boxed(nested: Option<&Value>) -> Option<Box<Value>> {
-    nested.map(|nested| Box::new(stabilize_merged_callables(nested)))
+    for child in value.container_children_mut() {
+        stabilize_merged_callables(child);
+    }
 }
 
 pub(super) fn project_callable(

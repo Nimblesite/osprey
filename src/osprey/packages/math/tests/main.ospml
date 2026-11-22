@@ -1,6 +1,7 @@
 import math::Real
 import math::Quadratic
 import math::AffineMap
+import math::Chebyshev
 
 close (got, want) = abs (got - want) <= 0.000000000001 * (1.0 + abs want)
 
@@ -86,3 +87,36 @@ test ("a line map starts at its first point, ends at its second and is linear be
     expect (AffineMap::lineMap (2.0, 10.0, 2.0), 18.0)
     expect (all (points, \c => close (AffineMap::lineMap (-4.0, 4.0, c), 8.0 * c - 4.0)), true)
     expect (all (points, \a => AffineMap::lineMap (a, a, 0.3) == a), true))
+
+unit = [-1.0, -0.75, -0.5, -0.1, 0.0, 0.3, 0.5, 0.9, 1.0]
+
+harmonics = [0.0, 1.0, 2.0, 3.0, 5.0, 8.0]
+
+test ("sinc is one at zero, zero at every multiple of pi, even, and sin x / x elsewhere", \() =>
+    expect (Real::sinc 0.0, 1.0)
+    expect (all ([1.0, 2.0, 3.0, 7.0], \k => abs (Real::sinc (k * Real::pi)) <= 0.0000000000001), true)
+    expect (all (points, \x => Real::sinc x == Real::sinc (-1.0 * x)), true)
+    expect (all ([-3.5, -1.0, -0.25, 0.5, 2.0, 6.0], \x => close (Real::sinc x, floatDiv (sin x, x))), true)
+    near (Real::sinc (floatDiv (Real::pi, 2.0)), floatDiv (2.0, Real::pi))
+    expect (all ([0.000001, 0.001], \x => Real::sinc x < 1.0 && Real::sinc x > 0.999), true))
+
+test ("real powers give equal-tempered pitch ratios and decibel gains, and agree with pow", \() =>
+    near (Real::rpow (2.0, floatDiv (1.0, 12.0)), 1.0594630943592953)
+    near (Real::rpow (2.0, floatDiv (7.0, 12.0)), 1.4983070768766815)
+    near (Real::rpow (2.0, 1.0), 2.0)
+    near (Real::rpow (10.0, -0.3), 0.5011872336272722)
+    near (Real::rpow (10.0, 1.0), 10.0)
+    expect (Real::rpow (5.0, 0.0), 1.0)
+    expect (all ([0.25, 0.5, 2.0, 3.0, 10.0], \x => all (points, \y => close (Real::rpow (x, y), pow (x, y)))), true)
+    expect (all ([0.5, 2.0, 3.0], \x => close (Real::rpow (x, 0.5) * Real::rpow (x, 0.5), x)), true)
+    expect (all ([-2.0, -0.5, 1.5], \y => close (Real::rpow (2.0, y) * Real::rpow (2.0, -1.0 * y), 1.0)), true))
+
+test ("Chebyshev T turns a cosine into its harmonic and keeps the polynomials and their recurrence", \() =>
+    expect (all (unit, \x => close (Chebyshev::firstKind (0.0, x), 1.0)), true)
+    expect (all (unit, \x => close (Chebyshev::firstKind (1.0, x), x)), true)
+    expect (all (unit, \x => abs (Chebyshev::firstKind (2.0, x) - (2.0 * x * x - 1.0)) <= 0.000000000001), true)
+    expect (all (unit, \x => abs (Chebyshev::firstKind (3.0, x) - (4.0 * x * x * x - 3.0 * x)) <= 0.000000000001), true)
+    expect (all (harmonics, \n => all (unit, \x => abs (Chebyshev::firstKind (n + 2.0, x) - (2.0 * x * Chebyshev::firstKind (n + 1.0, x) - Chebyshev::firstKind (n, x))) <= 0.00000000001)), true)
+    expect (all (harmonics, \n => all ([0.0, 0.4, 1.1, 2.5], \t => abs (Chebyshev::firstKind (n, cos t) - cos (n * t)) <= 0.00000000001)), true)
+    expect (all (harmonics, \n => abs (Chebyshev::firstKind (n, 1.0) - 1.0) <= 0.000000000001), true)
+    expect (Chebyshev::firstKind (2.0, 1.5) == Chebyshev::firstKind (2.0, 1.5), false))

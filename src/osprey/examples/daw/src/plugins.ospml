@@ -1,0 +1,96 @@
+// [PRISM-ROUTING-VST] Untrusted modules are inspected in bounded disposable workers.
+namespace synth
+
+import ui::Runtime
+import ui::Requests
+
+(** Native discovery and node creation; stale completions never edit a newer patch. *)
+module Plugins
+    problem (editor, text) = Runtime::step (editor(pluginTicket = "", message = text))
+
+    requested (editor, operation, arguments, selectedClass) =
+        serial = satAdd editor.pluginSerial 1
+        ticket = "prism-vst:${operation}:${serial}"
+        next = editor(pluginSerial = serial, pluginTicket = ticket, pluginClassId = selectedClass, message = "Inspecting VST3 module.")
+        Runtime::asking (next, [Requests::ask (ticket, ui::Run(executable = editor.workerPath, arguments = arguments, timeout = 10000, outputLimit = 1048576, plist = false, runSlice = ticket))])
+
+    preference editor = "${ui::MachineDocs::folder editor.keysPath}/vst3-folder"
+
+    scan editor = match editor.workerPath == "" || editor.pluginPath == ""
+        true => Runtime::step editor
+        false => requested (editor(scanQueue = [], scanWarning = ""), "list", ["list", editor.pluginPath], "")
+
+    export startup (context, first) =
+        editor = first.stepStore
+        fallback = match context.platform
+            "macos" => "/Library/Audio/Plug-Ins/VST3"
+            "windows" => "C:/Program Files/Common Files/VST3"
+            _ => "${context.home}/.vst3"
+        folder = readFile (preference editor) ?: fallback
+        discovery = scan (editor(pluginPath = folder))
+        first(stepStore = discovery.stepStore, requests = listConcat first.requests discovery.requests)
+
+    export save editor = match editor.outputEdit
+        PluginSettings folder =>
+            closed = editor(outputEdit = OutputClosed)
+            match folder == editor.pluginPath
+                true => Runtime::step closed
+                false =>
+                    _dir = makeDir (ui::MachineDocs::folder editor.keysPath)
+                    match writeFile (preference editor) folder
+                        Error why => Runtime::step (editor(message = "Could not save VST3 folder: ${why}"))
+                        Success _ => scan (closed(pluginPath = folder, pluginBindings = mapList (closed.pluginBindings, \b => b(pluginModule = "")), catalog = [], scanQueue = [], scanWarning = "", pluginTicket = "", pluginClassId = ""))
+        _ => Runtime::step editor
+
+    projected (bindings, n) = match n.processor
+        External identifier _ => listAppend bindings (PluginBinding(pluginNode = n.identity, pluginModule = "", pluginClass = identifier, pluginName = identifier))
+        _ => bindings
+
+    export projectBindings graph = foldList (graph.nodes, [], projected)
+
+    export resolved (catalog, binding) = match ui::Lists::find (catalog, \entry => entry.classId == binding.pluginClass)
+        Success entry => binding(pluginModule = entry.bundle, pluginName = entry.className)
+        Error _ => binding
+
+    export create (editor, identifier) = match filterList (editor.catalog, \entry => length editor.scanQueue == 0 && entry.classId == identifier)
+        [entry] => requested (editor, "describe", ["describe", entry.bundle, identifier], identifier)
+        _ => Runtime::step (editor(message = "Choose an available VST3 plug-in."))
+
+    added (editor, descriptor, n, bundle) = match Graphs::add (editor.graph, n)
+        Invalid _ => problem (editor, "The VST3 node could not be added to this graph.")
+        Valid graph =>
+            binding = PluginBinding(pluginNode = n.identity, pluginModule = bundle, pluginClass = descriptor.identifier, pluginName = descriptor.name)
+            Runtime::step (editor(graph = graph, pluginBindings = listAppend editor.pluginBindings binding, selected = n.identity, nextIdentity = satAdd n.identity 1, revision = satAdd editor.revision 1, pluginTicket = "", message = "Added ${descriptor.name}."))
+
+    described (editor, text) = match PluginDocuments::describe text
+        Error why => problem (editor, why)
+        Success descriptor => match descriptor.identifier == editor.pluginClassId && descriptor.name != "" && editor.nextIdentity < 9223372036854775807
+            false => problem (editor, "The VST3 descriptor does not match the requested class.")
+            true => match Hosted::component (editor.nextIdentity, descriptor)
+                Invalid _ => problem (editor, "The VST3 descriptor has invalid ports or parameters.")
+                Valid n => match ui::Lists::find (editor.catalog, \entry => entry.classId == descriptor.identifier)
+                    Success entry => added (editor, descriptor, n, entry.bundle)
+                    Error why => problem (editor, why)
+
+    advance (editor, queue) = match queue
+        [] => Runtime::step (editor(scanQueue = [], pluginTicket = "", pluginBindings = mapList (editor.pluginBindings, \binding => resolved (editor.catalog, binding)), message = ui::Pick::either (editor.scanWarning == "", "${length editor.catalog} VST3 plug-ins available.", editor.scanWarning)))
+        [bundle, ..._] => requested (editor(scanQueue = queue), "scan", ["scan", bundle], "")
+
+    scanned (editor, bundle, rest, outcome) = match outcome
+        Error why => advance (editor(scanWarning = "Could not inspect ${bundle}: ${why}"), rest)
+        Success classes =>
+            fresh = filterList (classes, \entry => !ui::Lists::any (editor.catalog, \known => known.classId == entry.classId))
+            advance (editor(catalog = listConcat editor.catalog (mapList (fresh, \entry => entry(bundle = bundle)))), rest)
+
+    (** Only the exact outstanding ticket may consume its host-held output slice. *)
+    export completed (editor, ticket, outcome) = match ticket != editor.pluginTicket || ticket == ""
+        true => Runtime::step editor
+        false => match editor.scanQueue
+            [bundle, ...rest] => scanned (editor, bundle, rest, synth::Outcomes::carried (ProcessResults::checked outcome, \_ => PluginDocuments::scan (perform ui::Slices.fetch ticket)))
+            [] => match ProcessResults::checked outcome
+                Error why => problem (editor, "VST3 inspection failed: ${why}")
+                Success _ => match editor.pluginClassId == ""
+                    true => match PluginDocuments::bundles (perform ui::Slices.fetch ticket)
+                        Success paths => advance (editor, paths)
+                        Error why => problem (editor, why)
+                    false => described (editor, perform ui::Slices.fetch ticket)

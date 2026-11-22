@@ -119,6 +119,7 @@ fn container(ctx: &mut Ctx, kind: &str, node: &Tree) -> AnyElement {
         "empty" => screens::empty(ctx, node),
         "progress" => screens::progress(ctx, node),
         "rows" => controls::rows(ctx, node),
+        "context-menu" => controls::context_menu(ctx, node),
         "picker" => controls::picker(ctx, node),
         "themed" => themed(ctx, node),
         "meter" => meter(ctx, node),

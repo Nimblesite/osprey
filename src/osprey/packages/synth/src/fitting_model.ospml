@@ -1,0 +1,52 @@
+namespace synth
+
+// Generated from typeDiagram [CONV-OSPREY].
+type FitParameter =
+    node : int
+    key : string
+    minimum : float
+    maximum : float
+
+type FitConfig =
+    parameters : List<FitParameter>
+    seed : int
+    evaluations : int
+    tolerance : float
+
+type FitCandidate =
+    values : List<float>
+    loss : float
+
+type FitSearch =
+    best : FitCandidate
+    step : float
+    seed : float
+    evaluations : int
+    history : List<float>
+
+type FitResult =
+    best : FitCandidate
+    evaluations : int
+    history : List<float>
+    converged : bool
+
+type ParameterScale =
+    LinearScale
+    LogarithmicScale
+
+type ModulationRule =
+    Unmodulated
+    Replacing
+        inlet : int
+    Multiplying
+        inlet : int
+    Exponential
+        inlet : int
+        octaves : float
+
+type Activity =
+    active : int
+    capacity : int
+    stolen : int
+    energy : float
+    held : bool

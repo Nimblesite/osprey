@@ -160,7 +160,7 @@ public sealed class ProtocolTests
     {
         foreach (var code in new[] { 27L, 28L, 32L, 99L, 102L, long.MaxValue })
         {
-            Assert.Throws<HostException>(() => RowReaderTests.Read([], [], [new NativeAsk(0, code, 0, 0)], []));
+            RefusedBy([], [new NativeAsk(0, code, 0, 0)]);
         }
     }
 
@@ -236,9 +236,7 @@ public sealed class ProtocolTests
         rows.Count(spacing, "", 8);
         rows.Count(theme, "feedback", 200);
         rows.Count(theme, "settle", 300);
-        var region = rows.Record(-1, "region");
-        rows.Field(region, "key", "root");
-        var node = rows.Record(region, "node");
+        var node = rows.Region("root");
         rows.Field(node, "kind", "text");
         rows.Field(node, "text", "Hi");
 
@@ -256,14 +254,10 @@ public sealed class ProtocolTests
     public void AToldFrameKeepsItsRegionsInOrderAndTheirWholeTrees()
     {
         var rows = new ToldRows();
-        var first = rows.Record(-1, "region");
-        rows.Field(first, "key", "root");
-        var slot = rows.Record(first, "node");
+        var slot = rows.Region("root");
         rows.Field(slot, "kind", "slot");
         rows.Field(slot, "key", "listing");
-        var second = rows.Record(-1, "region");
-        rows.Field(second, "key", "listing");
-        var stack = rows.Record(second, "node");
+        var stack = rows.Region("listing");
         rows.Field(stack, "kind", "stack");
         rows.Field(stack, "axis", "vertical");
         var children = rows.List(stack, "children");
@@ -297,9 +291,7 @@ public sealed class ProtocolTests
     public void ATreeDeeperThanTheBoundIsRefused()
     {
         var rows = new ToldRows();
-        var region = rows.Record(-1, "region");
-        rows.Field(region, "key", "root");
-        var nested = rows.Record(region, "node");
+        var nested = rows.Region("root");
         for (var level = 0; level <= Told.Depth; level++)
         {
             nested = rows.Record(nested, "body");
@@ -311,9 +303,7 @@ public sealed class ProtocolTests
     public void ATreeDeeperThanTheBoundIsRefusedExtraATreeAtTheBoundIsDrawn()
     {
         var rows = new ToldRows();
-        var region = rows.Record(-1, "region");
-        rows.Field(region, "key", "root");
-        var nested = rows.Record(region, "node");
+        var nested = rows.Region("root");
         for (var level = 0; level < Told.Depth - 1; level++)
         {
             nested = rows.Record(nested, "body");
@@ -341,9 +331,7 @@ public sealed class ProtocolTests
     public void AToldRecordWithAScenesRowsCarriesItsRow()
     {
         var rows = new ToldRows();
-        var region = rows.Record(-1, "region");
-        rows.Field(region, "key", "root");
-        var scene = rows.Record(region, "node");
+        var scene = rows.Region("root");
         rows.Field(scene, "kind", "scene");
         rows.Real(scene, "width", 320);
         rows.Count(scene, "event", 2);
@@ -358,8 +346,8 @@ public sealed class ProtocolTests
     public void ARegionThatDidNotChangeKeepsItsTreeAndItsRevision()
     {
         var store = new RegionStore();
-        Assert.Equal(["root", "listing"], store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("empty"))])));
-        Assert.Equal([], store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("empty"))])));
+        Assert.Equal(["root", "listing"], store.Apply(ListingFrame("empty")));
+        Assert.Equal([], store.Apply(ListingFrame("empty")));
         Assert.Equal(0, store.Find(RegionStore.Root)?.Revision);
         Assert.Equal(0, store.Find("listing")?.Revision);
     }
@@ -368,12 +356,12 @@ public sealed class ProtocolTests
     public void TheRegionStoreReplacesPatchedRegionsAndKeepsTheRest()
     {
         var store = new RegionStore();
-        store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("empty"))]));
-        var changed = store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("rows"))]));
+        store.Apply(ListingFrame("empty"));
+        var changed = store.Apply(ListingFrame("rows"));
         Assert.Equal(["listing"], changed);
         Assert.Equal(0, store.Find(RegionStore.Root)?.Revision);
         Assert.Equal(("rows", 1L), (store.Find("listing")!.Node.Text("kind"), store.Find("listing")!.Revision));
-        Assert.Equal(["listing"], store.Apply(new ToldFrame(null, [("root", Slot("listing"))])));
+        Assert.Equal(["listing"], store.Apply(ListingFrame()));
         Assert.Null(store.Find("listing"));
         Assert.Single(store.All);
         Assert.Equal(("root", 0L), (store.Find(RegionStore.Root)!.Key, store.Find(RegionStore.Root)!.Revision));
@@ -383,20 +371,22 @@ public sealed class ProtocolTests
     public void TheRegionStoreReplacesPatchedRegionsAndKeepsTheRestExtraADroppedRegionComesBack()
     {
         var store = new RegionStore();
-        store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("rows"))]));
-        Assert.Equal(["listing"], store.Apply(new ToldFrame(null, [("root", Slot("listing"))])));
-        var back = store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("rows"))]));
+        store.Apply(ListingFrame("rows"));
+        Assert.Equal(["listing"], store.Apply(ListingFrame()));
+        var back = store.Apply(ListingFrame("rows"));
         Assert.Equal(["listing"], back);
         Assert.Equal(("rows", 0L), (store.Find("listing")!.Node.Text("kind"), store.Find("listing")!.Revision));
-        Assert.Equal(["listing"], store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("stack"))])));
+        Assert.Equal(["listing"], store.Apply(ListingFrame("stack")));
         Assert.Equal(("stack", 1L), (store.Find("listing")!.Node.Text("kind"), store.Find("listing")!.Revision));
     }
 
-    /// <summary>A slot component naming another region.</summary>
-    static Node Slot(string key) => Node.Of(new Dictionary<string, Node> { ["kind"] = Node.Of("slot"), ["key"] = Node.Of(key) });
-
-    /// <summary>A component of one kind.</summary>
-    static Node Kind(string kind) => Node.Of(new Dictionary<string, Node> { ["kind"] = Node.Of(kind) });
+    static ToldFrame ListingFrame(string? kind = null)
+    {
+        var root = Node.Of(new Dictionary<string, Node> { ["kind"] = Node.Of("slot"), ["key"] = Node.Of("listing") });
+        return new ToldFrame(null, kind is null
+            ? [("root", root)]
+            : [("root", root), ("listing", Node.Of(new Dictionary<string, Node> { ["kind"] = Node.Of(kind) }))]);
+    }
 
     /// <summary>Rows laid out exactly as told.ospml writes them: every name and every value in one text run.</summary>
     sealed class ToldRows
@@ -415,6 +405,14 @@ public sealed class ProtocolTests
 
         /// <summary>A record, or a component when its kind member follows.</summary>
         public int Record(int parent, string hint) => Row(RowKind.Record, parent, hint, 0, 0, 0);
+
+        /// <summary>A named region and its root node.</summary>
+        public int Region(string key)
+        {
+            var region = Record(-1, "region");
+            Field(region, "key", key);
+            return Record(region, "node");
+        }
 
         /// <summary>A list of items.</summary>
         public int List(int parent, string hint) => Row(RowKind.List, parent, hint, 0, 0, 0);

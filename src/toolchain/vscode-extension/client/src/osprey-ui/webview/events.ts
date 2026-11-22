@@ -111,7 +111,7 @@ export interface SceneTransform {
 export function sceneTransform(scene: SceneExtent, regionWidth: number, regionHeight: number): SceneTransform {
   if (scene.width === 0) return { scale: 1, viewedWidth: regionWidth, viewedHeight: regionHeight };
   const whole = Math.min(regionWidth / scene.width, regionHeight / scene.height);
-  const scale = scene.zoom === 0 ? whole : Math.min(scene.zoom, whole);
+  const scale = scene.zoom < 0 ? -scene.zoom : scene.zoom === 0 ? whole : Math.min(scene.zoom, whole);
   if (!(scale > 0) || !Number.isFinite(scale)) return { scale: 1, viewedWidth: regionWidth, viewedHeight: regionHeight };
   return { scale, viewedWidth: regionWidth / scale, viewedHeight: regionHeight / scale };
 }
@@ -120,3 +120,30 @@ export function sceneTransform(scene: SceneExtent, regionWidth: number, regionHe
 export function scenePoint(transform: SceneTransform, clientX: number, clientY: number): { x: number; y: number } {
   return { x: clientX / transform.scale, y: clientY / transform.scale };
 }
+
+export interface FrameMessage {
+  readonly type: "frame";
+  readonly shapes: ArrayBuffer;
+  readonly views: ArrayBuffer;
+  readonly text: ArrayBuffer;
+  readonly assets: Readonly<Record<string, string>>;
+  readonly diagnostics: readonly string[];
+}
+
+/** A frame the Node renderer told as component markup; the runs ride along for its scenes. */
+export interface RenderMessage extends Omit<FrameMessage, "type"> {
+  readonly type: "render";
+  readonly html: string;
+}
+
+export interface BusyMessage {
+  readonly type: "busy";
+  readonly active: boolean;
+}
+
+export interface FatalMessage {
+  readonly type: "fatal";
+  readonly message: string;
+}
+
+export type HostMessage = RenderMessage | FrameMessage | BusyMessage | FatalMessage;

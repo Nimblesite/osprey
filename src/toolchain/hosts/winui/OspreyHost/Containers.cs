@@ -240,11 +240,21 @@ sealed partial class Renderer
         return body;
     }
 
+    // A section is a titled submenu of its own buttons, as the GPUI host opens it [UI-COMPONENTS-CONTEXT-MENU].
     MenuFlyoutItemBase MenuItem(Scope scope, Node item)
     {
+        if (item.Text("kind") == "section")
+        {
+            var group = new MenuFlyoutSubItem { Text = item.Text("title") };
+            foreach (var child in item.Items("children"))
+            {
+                group.Items.Add(MenuItem(scope, child));
+            }
+            return group;
+        }
         if (item.Text("kind") != "button")
         {
-            Refused($"A context menu holds buttons, not {item.Text("kind")} nodes");
+            Refused($"A context menu holds buttons and sections, not {item.Text("kind")} nodes");
             return new MenuFlyoutSeparator();
         }
         var entry = new MenuFlyoutItem { Text = item.Text("label"), Icon = IconOf(item.Text("symbol")), IsEnabled = item.Flag("enabled") };

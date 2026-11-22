@@ -2,6 +2,7 @@
 
 use crate::literal::is_zero;
 use crate::model::{Def, Expr, Module, Op, Tail, Ty};
+use crate::settle::Written;
 
 const INDENT: &str = "    ";
 /// How tightly an application binds, and the binding an operand needs to
@@ -9,8 +10,9 @@ const INDENT: &str = "    ";
 const APPLICATION: u8 = 7;
 const ATOM: u8 = 8;
 
-/// The module's source text. `file` is the Lean file's name, for the header.
-pub(crate) fn emit(file: &str, module: &Module) -> String {
+/// The module's source text with each definition written as `written` says.
+/// `file` is the Lean file's name, for the header.
+pub(crate) fn emit(file: &str, module: &Module, written: &[Written]) -> String {
     let mut out = Out(format!(
         "// Generated from {file} by `osprey math` [MATH-CODE-EMIT]. Do not edit: change the Lean source.\n"
     ));
@@ -20,11 +22,12 @@ pub(crate) fn emit(file: &str, module: &Module) -> String {
     }
     out.line(0, &format!("(** Mathematics generated from {file}. *)"));
     out.line(0, &format!("module {}", module.name));
+    let bare = Written::default();
     for (index, def) in module.defs.iter().enumerate() {
         if index > 0 {
             out.0.push('\n');
         }
-        out.definition(file, def);
+        out.definition(file, def, written.get(index).unwrap_or(&bare));
     }
     out.0
 }
@@ -38,23 +41,37 @@ impl Out {
         self.0.push('\n');
     }
 
-    fn definition(&mut self, file: &str, def: &Def) {
+    fn definition(&mut self, file: &str, def: &Def, written: &Written) {
         let name = &def.name;
         let doc = def.doc.clone().filter(|doc| !doc.is_empty());
         let generated = format!("`{name}`, generated from {file}.");
         if let Some(doc) = doc.or_else(|| def.public.then_some(generated)) {
             self.line(1, &format!("(** {} *)", doc.replace("*)", "* )")));
         }
-        if def.public {
-            self.line(1, &format!("export {name} : {}", signature(def)));
+        let export = if def.public { "export " } else { "" };
+        if written.header {
+            self.line(1, &format!("{export}{name} : {}", signature(def)));
         }
-        let names: Vec<&str> = def.params.iter().map(|(param, _)| param.as_str()).collect();
-        let head = match names.as_slice() {
-            [] => name.clone(),
-            [one] => format!("{name} {one}"),
-            many => format!("{name} ({})", many.join(", ")),
+        let inline = &written.annotated;
+        let names: Vec<String> = def
+            .params
+            .iter()
+            .enumerate()
+            .map(|(index, (param, ty))| {
+                if inline.contains(&index) {
+                    format!("{param}: {}", ty.osprey())
+                } else {
+                    param.clone()
+                }
+            })
+            .collect();
+        let head = match (names.as_slice(), inline.is_empty()) {
+            ([], _) => name.clone(),
+            ([one], true) => format!("{name} {one}"),
+            (many, _) => format!("{name} ({})", many.join(", ")),
         };
-        self.tail(&def.body, 1, &format!("{head} ="));
+        let visible = if written.header { "" } else { export };
+        self.tail(&def.body, 1, &format!("{visible}{head} ="));
     }
 
     /// `lead` and then the term: on one line, as a `match`, or as a block.

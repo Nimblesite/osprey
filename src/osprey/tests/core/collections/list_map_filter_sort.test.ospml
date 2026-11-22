@@ -30,6 +30,9 @@ eagerCombinatorsCase () =
     checkAll "filterList keeps matching elements in index order" [
         join (filterList words (\word => word != "beta")) "," == "alpha,gamma",
         join (filterList ["a", "b", "c"] (\w => w != "b")) "," == "a,c",
+        length (filterList words (\word => word != "beta")) == 2,
+        isEmpty (filterList ints (\n => n > 3)),
+        !(isEmpty (filterList ints (\n => n == 1))),
         listLength (filterList ints (\n => n > 1)) == 2,
         (listGet (filterList ints (\n => n > 1)) 0 ?: 0) == 3,
         (listGet (filterList ints (\n => n > 1)) 1 ?: 0) == 2

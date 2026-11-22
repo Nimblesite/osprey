@@ -102,6 +102,9 @@ module MachineDocs
 
     choiceOf c = Ui::choice (Doc::text (c, "key"), Doc::text (c, "label"))
 
+    // The first of `keys` present in `c`, or "" when none is.
+    firstKey (c, keys) = (Lists::find (keys, \key => Doc::has (c, key))) ?: ""
+
     // A literal as the value it reads as: a flag, number, text or list of choices; anything else is unset.
     literal j = match Doc::kind j
         "bool" => Values::flag (jsonBool j ?: false)
@@ -110,11 +113,9 @@ module MachineDocs
         "list" => Values::list (mapList (Doc::items j, choiceOf))
         _ => Unset
 
-    comparisonOf c = (Lists::find (["eq", "ne", "lt", "gt"], \key => Doc::has (c, key))) ?: ""
-
     compared (c, by, key) = Compared(comparedInput = Doc::text (c, "input"), comparedBy = by, comparedWith = literal (Doc::field (c, key)))
 
-    comparing c = match comparisonOf c
+    comparing c = match firstKey (c, ["eq", "ne", "lt", "gt"])
         "eq" => compared (c, Equal, "eq")
         "ne" => compared (c, Unequal, "ne")
         "lt" => compared (c, Below, "lt")
@@ -122,7 +123,7 @@ module MachineDocs
         _ => AnyOf(anyOf = [])
 
     // A `when`: absent always holds; an unknown form never does.
-    condition c = match (Lists::find (["all", "any", "not", "fired", "state", "input"], \key => Doc::has (c, key))) ?: ""
+    condition c = match firstKey (c, ["all", "any", "not", "fired", "state", "input"])
         "all" => AllOf(allOf = mapList (Doc::items (Doc::field (c, "all")), condition))
         "any" => AnyOf(anyOf = mapList (Doc::items (Doc::field (c, "any")), condition))
         "not" => Negated(negated = condition (Doc::field (c, "not")))
@@ -155,7 +156,9 @@ module MachineDocs
 
     repeat item = match Doc::has (item, "each")
         false => Once
-        true => Each(eachIn = Doc::text (Doc::field (item, "each"), "in"), eachDx = Doc::decimal (Doc::field (item, "each"), "dx"), eachDy = Doc::decimal (Doc::field (item, "each"), "dy"))
+        true =>
+            each = Doc::field (item, "each")
+            Each(eachIn = Doc::text (each, "in"), eachDx = Doc::decimal (each, "dx"), eachDy = Doc::decimal (each, "dy"))
 
     figure name = match name
         "disc" => DiscFigure

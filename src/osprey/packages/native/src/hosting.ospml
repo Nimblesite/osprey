@@ -55,6 +55,9 @@ module Hosting
     (** The appearance changed: `down` when dark. *)
     export appearance = 11
 
+    (** A secondary click at a scene position, opening its contextual actions. *)
+    export secondary = 12
+
     (** The capability code of a diagnostic ask: its text says why an event was refused. *)
     export diagnostic = 101
 
@@ -75,6 +78,7 @@ module Hosting
         8 => Success(value = Surfaces::completed (touch.touchWords, touch.touchDown, touch.touchDetail))
         9 => Success(value = Surfaces::phased touch.touchWords)
         10 => Surfaces::framed touch.touchX
+        12 => scene (held, touch, ContextClick(contextX = touch.touchX, contextY = touch.touchY))
         other => Error(message = "Unknown event kind ${other}")
 
     // A refused event changes nothing, draws the same store and tells the host why.

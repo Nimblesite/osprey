@@ -17,8 +17,8 @@ module GrainTimings
     export decode (mode, period, jitter, maximum) = match mode
         0.0 => checked (PeriodicTiming(period = period, jitter = jitter))
         1.0 => checked (ExponentialTiming(mean = toFloat period, maximum = maximum))
-        _ => Error(message = "Grain timing must be 0 (periodic jitter) or 1 (bounded exponential).")
+        _ => Error(message = InvalidConfiguration(detail = "Grain timing must be 0 (periodic jitter) or 1 (bounded exponential)."))
 
     checked timing = match valid timing
         true => Success(value = timing)
-        false => Error(message = "Invalid grain timing distribution or bounds.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid grain timing distribution or bounds."))

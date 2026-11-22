@@ -1,0 +1,25 @@
+// [NATIVE-SHM-BOUNDARY] [NATIVE-SHM-EVENT] Each native application owns one surface.
+// The application supplies its initial store, program, platform effects and typed Keep operation.
+namespace app
+import ui::Surfaces
+import ui::Hosting
+
+mut held = Surfaces::idle (initial ())
+
+hosted work =
+    handle Keep
+        keep next => held := next
+    platform work
+
+kept next =
+    perform Keep.keep next
+    Hosting::answer next
+
+(** Gathers one launch argument, in order, before `open`. *)
+argument text = hosted (\() => kept (Surfaces::argued (held, text)))
+
+(** Draws the first frame for the host's clock, zone offset, platform, home folder and appearance. *)
+open (now, offset, platform, home, dark) = hosted (\() => kept (Hosting::opened (held, program (), now, offset, platform, home, dark)))
+
+(** Delivers one host event and draws the next frame; nonzero when it was refused, which changes nothing. *)
+event (now, kind, ordinal, words, detail, x, y, down, shift) = hosted (\() => kept (Hosting::touched (held, program (), now, kind, ordinal, words, detail, x, y, down, shift)))

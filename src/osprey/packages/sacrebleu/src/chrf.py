@@ -11,7 +11,7 @@ points spell its inverse as `remove_whitespace`).
 """
 
 from sacrebleu.Ngrams import char_ngrams, word_ngrams_from_tokens, counter_total, counter_matched
-from sacrebleu.Text import map_indexed
+from sacrebleu.Text import map_indexed, segment_references
 
 __all__ = ["CHRFScore", "CHRF", "score_sentence", "score_corpus", "sentence_chrf", "corpus_chrf"]
 
@@ -216,20 +216,9 @@ def score_sentence(chrf, hypothesis, references):
     return chrf_score(segment_stats(chrf, hypothesis, references), chrf)
 
 
-def transpose_row(docs, i):
-    """Reference segment `i` of every document."""
-    return map_indexed(docs, lambda d: unwrap_or(listGet(unwrap_or(listGet(docs, d), []), i), ""))
-
-
-def transpose(docs):
-    """Documents (each a list of segments) as per-segment reference lists."""
-    n = foldList(docs, 0, lambda m, doc: len(doc) if len(doc) > m else m)
-    return toList(map(range(n), lambda i: transpose_row(docs, i)))
-
-
 def score_corpus(chrf, hypotheses, references):
     """chrF over a corpus; `references` is a list of reference documents."""
-    seg_refs = transpose(references)
+    seg_refs = segment_references(references)
     stats = fold(range(len(hypotheses)), zeros_int(3 * order(chrf)), lambda acc, i: add_int_lists(
         acc, segment_stats(chrf, unwrap_or(listGet(hypotheses, i), ""), unwrap_or(listGet(seg_refs, i), []))))
     return chrf_score(stats, chrf)

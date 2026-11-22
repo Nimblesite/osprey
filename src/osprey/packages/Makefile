@@ -11,9 +11,11 @@ include Makefile
 .PHONY: package-coverage package-checks package-coverage-record
 
 .PHONY: synth
-## synth: Run UI-free synthesis, routing and Signal journeys with source coverage.
+## synth: Run UI-free synthesis, routing and Signal journeys with source coverage, then compile every
+##        project built on synth (the daw, its test and render projects, the pocket orchestra kernel).
 synth:
 	python3 scripts/packages/package_coverage.py --collect --compiler $(BIN) --package synth --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+	node scripts/make/package-consumers.mjs $(BIN) synth
 
 ## package-coverage: per-package source coverage — collect, then gate all 24.
 ##                   Reruns each src/osprey/packages/<name>/tests suite with `osprey test

@@ -2,9 +2,9 @@
 
 All package infrastructure and libraries live here. [manager/](manager/README.md) contains the package client, registry server, resolver and their tests. The sibling library directories use the same manifests, publishing, installation and coverage rules across Default, ML and Python flavor. Porting a Python project's API does not create a separate kind of package.
 
-## Mathematics is written in Lean
+## Mathematical sources
 
-A package's mathematics is a `.lean` file in its `src/`, never hand-written Osprey: [math](math/README.md) is the standard library of well-known formulas, each the one Mathlib states; [synth/src/Waves.lean](synth/src/Waves.lean) and [micrograd/src/Libm.lean](micrograd/src/Libm.lean) hold those packages' mathematics. The toolchain generates the Osprey module on every build into the package's `.osprey/math/`, which is not tracked, and the coverage gate counts that module as the package's own code. `osprey math <file.lean>` prints what a source generates. Contract and the Lean fragment that is read today: [Math to code](../../../docs/specs/tooling/MathToCode.md).
+The [synth package](synth/README.md) implements its DSP formulas in native Osprey. Its proof suite extracts definitions from the shipped source. The [math](math/README.md) and [micrograd](micrograd/src/Libm.lean) packages use Lean sources. For those packages the toolchain generates Osprey modules under `.osprey/math/`, and the coverage gate counts them as package code. [Math to code](../../../docs/specs/tooling/MathToCode.md) describes that workflow.
 
 ## Licensing and provenance audit
 

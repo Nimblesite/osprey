@@ -10,14 +10,14 @@ pub(super) fn advance_function(
     analyzer: &Analyzer<'_>,
     id: usize,
     function: &Function<'_>,
-    rows: &mut [Summary],
-    returns: &mut [Option<Value>],
+    row: Option<&mut Summary>,
+    slot: Option<&mut Option<Value>>,
     history: &mut ReturnHistory,
 ) -> bool {
     let (mut actual, returned) = analyzer.function_body_model(function);
     actual.widen();
     let merge = history.merge_for(id);
-    let mut changed = rows.get_mut(id).is_some_and(|row| {
+    let mut changed = row.is_some_and(|row| {
         let before = (merge != Merge::Join).then(|| recomputed_part(row));
         let moved = row.merge_inferred_row(actual, analyzer.rows.get(id), merge);
         if let Some(before) = before {
@@ -25,7 +25,7 @@ pub(super) fn advance_function(
         }
         moved
     });
-    if let (Some(returned), Some(slot)) = (returned, returns.get_mut(id)) {
+    if let (Some(returned), Some(slot)) = (returned, slot) {
         changed |= advance_return(slot, returned, id, history);
     }
     changed
@@ -100,7 +100,7 @@ type RecomputedPart = (bool, u64);
 fn recomputed_part(row: &Summary) -> RecomputedPart {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    format!("{:?}", row.parameter_uses).hash(&mut hasher);
+    row.parameter_uses.hash(&mut hasher);
     (row.unresolved_dynamic_call, hasher.finish())
 }
 
@@ -113,13 +113,12 @@ struct Recomputed {
     joined: bool,
 }
 
-/// One function's returns so far, whether they have cycled, the joined
-/// returns since, and whether those cycled too.
+/// One function's returns for the current phase. Once a cycle advances the
+/// phase, the earlier provenance can no longer affect convergence.
 #[derive(Default)]
 struct Returns {
     seen: BTreeSet<Value>,
     joined: bool,
-    joined_seen: BTreeSet<Value>,
     terminal: bool,
 }
 
@@ -158,14 +157,17 @@ impl ReturnHistory {
     fn settle(&mut self, id: usize, before: Option<&Value>, computed: Value) -> Value {
         let recursive = self.recursive.contains(&id);
         let returns = self.returns.entry(id).or_default();
-        let revisited = returns.seen.contains(&computed);
-        returns.joined |= before != Some(&computed) && revisited;
-        returns.joined |= recursive && before.is_some();
         if !returns.joined {
-            if !revisited {
-                let _ = returns.seen.insert(computed.clone());
+            let revisited = returns.seen.contains(&computed);
+            returns.joined =
+                before.is_some() && recursive || before != Some(&computed) && revisited;
+            if !returns.joined {
+                if !revisited {
+                    let _ = returns.seen.insert(computed.clone());
+                }
+                return computed;
             }
-            return computed;
+            returns.seen.clear();
         }
         returns.join(before, computed)
     }
@@ -177,10 +179,11 @@ impl Returns {
         joined.union(computed);
         if !self.terminal {
             let widened = joined.clone().widened().widened();
-            self.terminal = before != Some(&widened) && !self.joined_seen.insert(widened.clone());
+            self.terminal = before != Some(&widened) && !self.seen.insert(widened.clone());
             if !self.terminal {
                 return widened;
             }
+            self.seen.clear();
         }
         super::provenance::terminal_value(joined)
     }
@@ -232,8 +235,15 @@ pub(super) fn converge(
     let mut history = ReturnHistory::new(super::recursion::recursive_functions(index));
     let mut reads = vec![BTreeSet::new(); index.functions.len()];
     let mut dirty: BTreeSet<usize> = (0..index.functions.len()).collect();
+    let mut previous_scope = None;
     while !dirty.is_empty() {
-        dirty = solve.sweep(&dirty, (rows, returns), &mut history, &mut reads);
+        dirty = solve.sweep(
+            dirty,
+            (rows, returns),
+            &mut history,
+            &mut reads,
+            &mut previous_scope,
+        );
     }
 }
 
@@ -249,15 +259,20 @@ impl Solve<'_> {
     /// back and return the functions the next sweep must re-analyse.
     fn sweep(
         &self,
-        dirty: &BTreeSet<usize>,
+        mut dirty: BTreeSet<usize>,
         (rows, returns): (&mut Vec<Summary>, &mut Vec<Option<Value>>),
         history: &mut ReturnHistory,
         reads: &mut [BTreeSet<usize>],
+        previous_scope: &mut Option<CallableEnv>,
     ) -> BTreeSet<usize> {
         let (index, instances) = (self.index, self.instances);
-        let (file_scope, file_reads) = super::worklist::recording(|| {
-            file_scope_env(index, instances, self.statements, rows, returns)
-        });
+        let file_scope = file_scope_env(index, instances, self.statements, rows, returns);
+        super::worklist::invalidate_scope(
+            previous_scope.as_ref(),
+            &file_scope,
+            &mut dirty,
+            reads.len(),
+        );
         let analyzer = Analyzer {
             index,
             rows,
@@ -265,40 +280,44 @@ impl Solve<'_> {
             instances,
             file_scope,
         };
-        let mut next = (rows.clone(), returns.clone());
-        let moved = self.advance(&analyzer, dirty, &mut next, history, reads);
-        // `analyzer` borrows `rows`/`returns`; its last use is the advance
-        // above, so the borrow has ended by the time the new state is written.
-        (*rows, *returns) = next;
-        super::worklist::affected(&moved, &file_reads, reads)
-    }
-
-    /// Advance each dirty function one iteration, recording what it read;
-    /// returns the functions that moved.
-    fn advance(
-        &self,
-        analyzer: &Analyzer<'_>,
-        dirty: &BTreeSet<usize>,
-        (rows, returns): &mut (Vec<Summary>, Vec<Option<Value>>),
-        history: &mut ReturnHistory,
-        reads: &mut [BTreeSet<usize>],
-    ) -> BTreeSet<usize> {
-        let mut moved = BTreeSet::new();
-        for &id in dirty {
-            let Some(function) = self.index.functions.get(id) else {
+        // All functions read the same pre-sweep state. Hold only changed slots until
+        // that borrow ends, leaving every clean function's provenance in place.
+        let mut updates = Vec::new();
+        for id in dirty {
+            let Some(function) = index.functions.get(id) else {
                 continue;
             };
+            let mut row = rows.get(id).cloned();
+            let mut returned = returns.get(id).cloned();
             let (changed, read) = super::worklist::recording(|| {
-                advance_function(analyzer, id, function, rows, returns, history)
+                advance_function(
+                    &analyzer,
+                    id,
+                    function,
+                    row.as_mut(),
+                    returned.as_mut(),
+                    history,
+                )
             });
             if let Some(slot) = reads.get_mut(id) {
                 *slot = read;
             }
             if changed {
-                let _ = moved.insert(id);
+                updates.push((id, row, returned));
             }
         }
-        moved
+        *previous_scope = Some(analyzer.file_scope);
+        let mut moved = BTreeSet::new();
+        for (id, row, returned) in updates {
+            if let (Some(slot), Some(row)) = (rows.get_mut(id), row) {
+                *slot = row;
+            }
+            if let (Some(slot), Some(returned)) = (returns.get_mut(id), returned) {
+                *slot = returned;
+            }
+            let _ = moved.insert(id);
+        }
+        super::worklist::affected(&moved, reads)
     }
 }
 
@@ -436,3 +455,34 @@ mod settle_tests;
 #[cfg(test)]
 #[path = "solver_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[test]
+fn sparse_sweep_leaves_unread_return_trees_in_place() {
+    let parsed = osprey_syntax::parse_program("fn active()=1\nfn unused()=2\n");
+    assert_eq!(parsed.errors, []);
+    let index = Index::collect(&parsed.program);
+    let solve = Solve {
+        index: &index,
+        instances: &Instances::default(),
+        statements: &parsed.program.statements,
+    };
+    let trees = |unread| {
+        let mut rows = vec![Summary::default(); 2];
+        let mut returns = vec![None, Some(unread)];
+        let mut reads = vec![BTreeSet::new(); 2];
+        super::provenance::measured_clones(|| {
+            solve.sweep(
+                BTreeSet::from([0]),
+                (&mut rows, &mut returns),
+                &mut ReturnHistory::default(),
+                &mut reads,
+                &mut None,
+            )
+        })
+    };
+    assert_eq!(
+        trees(Value::default()),
+        trees(super::model_values::snapshot_value())
+    );
+}

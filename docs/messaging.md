@@ -1,79 +1,118 @@
 # Writing about Osprey
 
-**Real code. Visible results. One next step.** This brief covers the homepage, videos, README, examples and documentation. Pair it with the [Osprey design system](../src/toolchain/website/design_system.md).
+This brief governs every word about Osprey: the homepage, README, videos, docs, talks and posts. Pair it with the [design system](../src/toolchain/website/design_system.md).
 
-## What Osprey is for
+## The answer
 
-Osprey is for **apps, backends, ML and AI, and mathematics**, and it is built to be good at all of them. Say this first, before any feature list, and back each area with a real example: Osprey Native apps on macOS, Windows, Linux, iOS, Android and the web; HTTP backends; language models built on the `@osprey/transformers` port and running on native GPU kernels; machine-checked proofs. Name Windows whenever you list desktop platforms.
+> **Osprey is uncompromising: safe, elegant and fast, with no trade between them. It already runs real apps on Mac, Windows, iPhone and Android, web servers, and AI models on the GPU.**
 
-## The three pillars
+Second sentence, when there is room:
 
-**Safe, elegant, fast.** Say all three together, in this order, on first mention; removing them from the homepage, README or an introduction is a regression.
+> **Write the logic once and the compiler checks all of it. Handlers decide where it runs: SwiftUI or WinUI, CPU or GPU, the real disk or a test.**
 
-- **Safety: fewer bugs.** No panics: expected failures are `Result` values the caller must handle, matching is exhaustive, integer arithmetic follows an explicit `Arith` policy, and effects make outside work visible and replaceable. Keep the qualifications below beside these claims.
-- **Elegance: more program, less text.** Inferred types, effects instead of plumbing, concurrency without a separate async form. Less text means fewer tokens: cheaper for AI agents and easier for people.
-- **Performance: native from the start.** LLVM native binaries with no VM or JIT warm-up, static handler selection, lightweight fibers, a memory backend chosen per build. Attach every relative figure to a published benchmark.
+Every longer pitch expands these two sentences and never replaces them. The products are proof, not a boundary: never present them as the full list of what Osprey is for, and name only products that run today. Lead with things everyone knows (apps, websites, AI) in everyday words; specialist work such as the DAW, audio synthesis and proofs follows, never first. Push **uncompromising**, not breadth. "General purpose", "build anything" and "one language for everything" sound watered down; never lead with them. The breadth is evidence that nothing was traded away, not the pitch.
+
+## Uncompromising
+
+Osprey's design defers trade-offs to you instead of making them for you. Each choice has an option that goes all the way, and you can pick another:
+
+- **Elegance:** the ML flavor is uncompromising on elegance. Prefer braces? Choose the Default flavor; it is the same language.
+- **Deterministic performance:** ARC frees memory at known points, with no collector pauses. Prefer throughput? Choose tracing GC.
+- **Interop:** always uncompromising. C, Swift, Python and the platform UI toolkits are called directly, with no choice to make.
+
+Osprey never trades one pillar for another: no safety bought with speed, no speed bought with boilerplate. Each domain gets a tool that competes with the best on its own terms. These are the domains proven so far, each by a product that runs today; add a row when a new one ships:
+
+| You build | With Osprey | Show |
+| --- | --- | --- |
+| Desktop and mobile apps | Osprey Native: one app, drawn with SwiftUI, WinUI and Android widgets or on a GPU canvas | Issue Inbox, Storage, Tally |
+| Backends | HTTP and WebSocket servers, SQL and storage behind handlers, fibers | Talon Bank |
+| AI and ML | Python-flavor ports of `torch`, `transformers` and `numpy`; GPU kernels on Metal or OpenCL | GPT-2 from published weights |
+| Audio | `@osprey/synth`: modular, FM, modal, physical and granular voices, buses, side-chain compression | Prism DAW, Light Orchestra |
+| Maths and proof | Formulas written in Lean, compiled to Osprey; an independent proof kernel | Proof Workbench, Mathlib port |
+| Web | WebAssembly, the browser playground, shared web clients | Playground, WebAssembly studio |
+| Tooling | Compiler, language server, debugger, profiler, formatter, package manager, KLEE bug hunting | VS Code extension |
+
+Name Windows whenever you list desktop platforms, and say which hosts run which app.
+
+The domains hold together because their boundaries are **effects**: typed, checked by the compiler, and swappable without touching the code that uses them. Effects are the reason, not the headline.
+
+## Safe, elegant, fast
+
+Say all three together, in this order, on first mention. Dropping them from the homepage, README or an introduction is a regression. Tie every feature to one of them; a feature that fits none stays out of introductory copy.
+
+- **Safe: no part can crash another.** No panics. Failures are `Result` values the caller must handle, matching is exhaustive, integer arithmetic follows an explicit `Arith` policy, and effects make outside work visible.
+- **Elegant: more program, less text.** Inferred types, effects instead of plumbing, concurrency without a separate async form. Less text is cheaper for AI agents and easier for people.
+- **Fast: native from the start.** LLVM native code with no VM or JIT warm-up, static handler selection, lightweight fibers, GPU kernels when a handler asks for them. Every relative figure links a published benchmark.
 
 ## Osprey Native
 
-**Osprey Native (`@osprey/native`) is a headline feature.** One Osprey app (state, logic and UI) compiles ahead of time to native code, and each host draws it either with the platform's own native widgets (SwiftUI, WinUI, Android) or on a GPU canvas (the GPUI host). Say how this differs, concretely: Flutter and Compose Multiplatform draw their own widgets everywhere instead of the platform's; React Native runs JavaScript in an engine. Osprey Native does neither: native code, native widgets or a canvas, your choice per host. Show the real apps (Issue Inbox, Prism Synth, the casting player) rather than describing them. Keep host coverage honest: name which hosts run which app.
+**Osprey Native (`@osprey/native`) is a headline feature.** One Osprey app (state, logic and UI) compiles ahead of time to native code. Each host draws it with the platform's own widgets (SwiftUI, WinUI, Android) or on a GPU canvas (GPUI). Say the difference concretely: Flutter and Compose Multiplatform draw their own copies of the widgets; React Native runs JavaScript in an engine. Show the real apps, and name which hosts run which app.
 
-## Message order
+## Show one move: same logic, different handler
+
+- **Apps:** Issue Inbox's state and screens run on iOS and Android; only the host differs.
+- **AI:** GPT-2 is written once against a `Tensor` effect. One handler runs it on the CPU, another on the GPU.
+- **Backends:** an install writes to the real disk; a test swaps in a full disk and checks the rollback.
+- **Audio:** an effect's gain law is a Lean formula; Prism and its offline renderer call the same generated code.
+
+Short on space? Keep the one example that fits the audience.
+
+## By audience
+
+- **App developers:** "Write your app once and ship it with each platform's own widgets. No JavaScript engine, no toolkit drawing copies of the widgets."
+- **Python and ML:** "Keep `def`, `lambda` and f-strings; gain static types and native GPU kernels. GPT-2 runs from the published weights."
+- **Backend:** "No panics, no hidden I/O. Every failure is a `Result`; every outside call is an effect you swap in tests."
+- **Audio:** "Patch, mix and render in one language, with the DSP maths written as formulas. No collector pauses under ARC."
+- **Mathematicians:** "Write the formula in Lean and run it as compiled Osprey."
+- **Skeptics:** "It is actively evolving. Here is a real app and its test suite; try it on your workload." Then link the [limits](#qualifications-to-preserve).
+
+## Order and form
 
 1. **What it's for**, with one real example.
-2. **Effects:** `effect` declares a need, `perform` requests it, a `handler` or `handle` block implements it. Show the benefit with storage, logging, platform services or tests.
+2. **Effects:** `effect` declares a need, `perform` requests it, a `handler` or `handle` block provides it. Show storage, logging, platform services or tests.
 3. **Types:** inference removes annotations; exhaustive matching and `Result` keep cases and failures visible.
-4. **Syntax flavors, one language:** Default braces, ML indentation, Python-style syntax or TypeScript syntax. Say **syntax flavor** and define it on first mention. Show them together; the initial selection is Default (.osp). Never imply that an arbitrary TypeScript/Python etc program or package runs unchanged.
-5. **Platforms:** Osprey Native apps, WebAssembly, and C ABI libraries for mobile hosts.
+4. **Syntax flavors:** one language written four ways: Default (`.osp`, braces), ML (`.ospml`, indentation), Python and TypeScript. Say **syntax flavor** and define it on first mention; Default is selected first.
+5. **Platforms:** Osprey Native, WebAssembly, C ABI libraries for mobile hosts.
 
-A short introduction needs only the first point, proof, and a next step. Homepage section labels are words, never numbers. A video demonstrates one change, narrating what is on screen.
+A short intro needs point 1, proof and one next step: the playground, an example or a guide. Homepage section labels are words, never numbers. A video shows one change and narrates what is on screen.
 
-## Python to GPU
+## Wording
 
-Invite Python users to port computation into Osprey’s Python flavor: keep familiar `def`, `lambda`, and f-strings; gain inferred static types and checked effects. Show the GPT-2 port and its real source. One `Tensor` effect has CPU and GPU handlers; the handler decides where the arithmetic runs. Metal and OpenCL execute the GPU operations. Retain Python tooling and libraries through explicit interop.
+- Concrete verbs and runnable examples, not slogans, repeated summaries or compiler delivery logs. Keep each limit beside the claim it qualifies.
+- Say "Python flavor" for Osprey, and start its samples with `# osprey: flavor=python`. "Python" means CPython. Never imply an arbitrary Python or TypeScript program or package runs unchanged, that a marker comment ports a program, or that the compiler offloads it automatically.
+- A callable handler runs the zero-argument function passed to it; creating the handler runs nothing. `handle` covers the rest of its block; the old `in`/`do` forms are invalid.
+- Value operations return to their callers. Declared `control` operations may resume or answer directly; resumption restores the handled scope.
+- Static handler selection removes runtime effect dispatch, not every call or allocation. Never say "zero-cost".
+- Compare other languages through specific semantics and executed examples. No claims of completeness, unmeasured speed, or replacing Swift, Python or Rust: Osprey hosts and interoperates with platform code.
+- A specification is not proof of implementation. The [effects spec](specs/language/0017-AlgebraicEffects.md) defines semantics, [plan 0016](plans/0016-algebraic-effects-and-handlers.md) records limits, and the [handler examples](../src/osprey/examples/handlers/README.md), [bank](../src/osprey/examples/talon/README.md) and [mobile apps](../src/osprey/examples/mobile/README.md) demonstrate them.
 
-Do not imply an arbitrary Python program or package runs unchanged, that a marker comment ports a program, or that the compiler automatically offloads it. Python flavor is Osprey, shared tensor storage over the Python bridge is planned, and acceleration requires measurements. Link to the porting example and place those limits beside the claim.
+## Banned
 
-## Wording and proof
-
-- Connect each feature to one of the three pillars (safety, elegance, performance). A feature that connects to none of them does not belong in introductory copy.
-- Prefer concrete verbs and runnable examples over slogans, repeated summaries, or compiler delivery logs. Keep limitations beside the claims they qualify.
-- A callable handler runs the zero-argument function passed to it; creating the handler runs no work. Explain that the callback delays execution until the handler is active. `handle` covers the rest of its block; the removed `in/do` forms are invalid.
-- Value operations return to their callers. Declared `control` operations may resume or answer directly. Arms run outside their own activation and can forward outward; resumption restores the handled scope.
-- Static handler selection removes runtime effect dispatch, not every call or allocation. Never say “zero-cost.” Operation types and required handlers are checked; open-row prototypes are not independently quantified effect rows in function types.
-- Say “Python flavor” for Osprey and start its samples with `# osprey: flavor=python`. Reserve “Python” for CPython programs. ML curried calls and Default flat calls differ; do not promise identical code generation for unrelated programs.
-- Compare other languages through specific semantics and executed examples. Avoid claims of completeness, unmeasured performance, or replacing every framework.
-
-The [effects specification](specs/language/0017-AlgebraicEffects.md) defines semantics; [plan 0016](plans/0016-algebraic-effects-and-handlers.md) records limits; [handler examples](../src/osprey/examples/handlers/README.md) demonstrate support. The [bank](../src/osprey/examples/projects/modules/README.md) and [mobile apps](../src/osprey/examples/mobile/README.md) demonstrate host boundaries. A specification alone is not proof of implementation.
-
-## Maturity and invitation
-
-The phrase "Logic, in flight" is banned in every form: it says nothing about Osprey. Use **Safe, elegant, fast.** instead.
-
-The maturity labels "alpha" and "experimental" are banned in Osprey messaging. Do not use either to describe the language or imply production readiness. Use **actively evolving**: Osprey is being used to build real applications, including the macOS storage app and Vigil, while language and tooling changes still require validation.
-
-Preferred copy: **Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.** Keep concrete feature limits beside the relevant claim. Invite people to build and report failures without promising stability or support that has not been demonstrated.
+- "Logic, in flight", in any form.
+- "Alpha" and "experimental". Say **actively evolving**: **Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.**
+- "A new programming language" as the first line.
+- "Does everything" or "runs any Python program". Name the real products.
+- Effects jargon before the reader knows what Osprey is for.
 
 ## Qualifications to preserve
 
-- Osprey is actively evolving. Native dynamic resumption is deep and single-shot; reusable continuations, owned escaping resumptions, and full scoped row polymorphism remain delivery work in plan 0016.
-- WebAssembly and mobile C ABI targets support value effects and static discharge; unsupported dynamic control operations are rejected before linking.
-- Integer arithmetic is checked against explicit `Arith` policies. The host runtime invokes them; device-kernel faults currently abort instead of calling a recovering policy. Qualify no-trap claims with this delivery limit. Total wrapping/saturating helpers name their behavior; `checkedAdd`, `checkedSub`, and `checkedMul` return `Result`. See [arithmetic effects](specs/language/0037-ArithmeticEffects.md).
-- Explain the GC default through its concrete tradeoff: ordinary retain/release calls are no-ops, avoiding ARC reference-count updates at ownership changes, while accepting delayed reclamation and collection pauses. Both modes are automatic; do not imply GC is universally faster or ARC requires ownership annotations.
-- Native builds default to tracing GC; ARC is the alternative managed backend. Unmanaged allocation requires explicit `--memory=none` and retains general allocations. The old `--memory=default` spelling is rejected. Windows native users must select ARC because tracing GC is outside the supported Windows contract. Strict static-memory checking and tail-call optimization are not implemented.
-- Mobile C ABI targets default to ARC. [Host ABI version 1](specs/compiler/iOSCodegen.md#calling-the-host-ios-host-imports) copies strings returned by host imports into Osprey-managed memory. Hosts copy exported text while input borrows remain valid, then call `osprey_release_string` exactly once; they never use libc `free` on that pointer. Platform networking belongs to the native host.
-- Project modules and cross-flavor imports work. The package manager is in progress under `src/osprey/packages/manager/` (plan 0020): the folder registry, folder publication, dependency resolution, verified fetching and locked builds run in Osprey. The dedicated hosted package website, authenticated public publishing and trust services remain planned. See the [package manager guide](../src/toolchain/website/src/docs/package-manager.md).
-- GPU is vendor-neutral; optional CUDA interop is separate. [GPT-2](../src/osprey/examples/llms/gpt2/README.md) loads published weights; one static `Tensor` effect has host-list and GPU handlers. The handler decides where arithmetic runs. GPU operations execute on Metal or OpenCL with software binary64; buffers stay device-resident. Tokenization, loading, and readback remain on the host; kernels are not fused. Device transcendental results can differ from host libm in the last digit; sampled tests do not prove universal correct rounding. Never claim automatic offloading, universal acceleration, or bit-for-bit transcendental parity. See the [GPU contract](specs/runtime/0034-GPUComputation.md).
-- Calling C crosses Osprey's memory-safety boundary. Package source scanning marks native `extern` declarations as unclassified, so source-bundle validation and local folder publication reject them. This publication rule does not establish complete runtime confinement of untrusted packages; see the [package guide](../src/toolchain/website/src/docs/package-manager.md#supply-chain-controls-and-remaining-work).
+- **Effects:** native dynamic resumption is deep and single-shot; reusable continuations, owned escaping resumptions and full scoped row polymorphism are plan 0016 work. WebAssembly and mobile C ABI targets support value effects and static discharge, and reject unsupported dynamic control before linking.
+- **Arithmetic:** integer arithmetic follows explicit `Arith` policies called by the host runtime; device-kernel faults abort instead of calling a recovering policy, so qualify no-trap claims. Formulas generated from Lean keep IEEE float division. `checkedAdd`, `checkedSub` and `checkedMul` return `Result`. See [arithmetic effects](specs/language/0037-ArithmeticEffects.md).
+- **Memory:** native builds default to tracing GC; ARC is the alternative, and Windows native users must select ARC. Explain the GC tradeoff concretely: no reference-count updates, but delayed reclamation and collection pauses. Neither needs ownership annotations, and neither is universally faster. `--memory=none` is explicit and leaks general allocations; `--memory=default` is rejected. Strict static-memory checking and tail-call optimization are not implemented.
+- **Mobile ABI:** mobile C ABI targets default to ARC. [Host ABI version 1](specs/compiler/iOSCodegen.md#calling-the-host-ios-host-imports) copies host-import strings into Osprey memory; hosts copy exported text, then call `osprey_release_string` exactly once and never libc `free`. Platform networking belongs to the native host.
+- **Packages:** the folder registry, publication, resolution, verified fetching and locked builds run today (plan 0020). The hosted package site, authenticated public publishing and trust services are planned. See the [package guide](../src/toolchain/website/src/docs/package-manager.md).
+- **GPU:** vendor-neutral Metal and OpenCL with software binary64; CUDA interop is separate. Buffers stay on the device; tokenization, loading and readback stay on the host; kernels are not fused. Device transcendentals can differ from host libm in the last digit. Never claim automatic offloading, universal acceleration or bit-for-bit transcendental parity. Shared tensor storage over the Python bridge is planned. See the [GPU contract](specs/runtime/0034-GPUComputation.md).
+- **Audio:** Prism renders offline and then plays; there is no real-time audio callback yet. VST3 hosting is incomplete. The full DAW runs on macOS; Windows runs the patch editor.
+- **C interop:** calling C crosses Osprey's memory-safety boundary. Package publication rejects native `extern` declarations, which does not confine untrusted packages at runtime; see [supply-chain controls](../src/toolchain/website/src/docs/package-manager.md#supply-chain-controls-and-remaining-work).
 
-Update claims when the implementation and its verification change. A feature appearing in a specification does not by itself establish support.
+Update a claim when its implementation and verification change.
 
 ## Proof development and the Lean oracle
 
-Osprey uses Lean as a development oracle for the initial compatible discipline: pinned statements, proof terms, axiom reports and executed reference behaviour provide concrete checks while Osprey develops its own kernel, frontend, automation and mathematics libraries. This is a cooperative reference relationship. Describe Osprey's capabilities, remaining work and reproducible evidence; do not position the project as competing with Lean or treat benchmark ordering as a product objective. Performance checks remain engineering gates, with their existing requirements intact.
+Lean is Osprey's development oracle for the first compatible discipline: pinned statements, proof terms, axiom reports and reference behaviour check Osprey while it builds its own kernel, frontend, automation and libraries. The relationship is cooperative. Never position Osprey as competing with Lean, and never treat benchmark ordering as a goal; performance checks stay as engineering gates.
 
-Lean accepting a certificate is reference evidence, not permission for Osprey to accept an unsound proof. Distinguish a kernel implementation defect from an inconsistent set of assumptions or a proposed change to the logical theory. The [wrong-structure projection exploit reported in Lean issue 14576](https://github.com/leanprover/lean4/issues/14576) is a concrete implementation counterexample to retain as a rejection regression, independently reviewed against the intended rules. Do not describe an implementation bug as proof that Lean's underlying mathematics is inconsistent. Oracle disagreements require investigation; copying the oracle's bug is never a resolution.
+Lean accepting a certificate is reference evidence, never permission for Osprey to accept an unsound proof. Separate a kernel bug from inconsistent assumptions or a change to the theory. The [wrong-structure projection exploit in Lean issue 14576](https://github.com/leanprover/lean4/issues/14576) is an implementation bug, kept as a rejection regression; it does not show Lean's mathematics is inconsistent. Investigate every oracle disagreement, and never copy the oracle's bug.
 
-The compiler owns only the generic discipline protocol. Each theory remains a selectable, versioned package that can be fixed, replaced or forked without changing ordinary Osprey's Hindley-Milner rules. Changing a checker, rule or axiom policy invalidates the affected proof receipts and caches and requires fresh checking. A fork does not inherit mathematical validity from its parent, and a proof depending on a withdrawn assumption remains unavailable until reconstructed. Pluggability enables correction; it does not by itself prove consistency.
+The compiler owns only the discipline protocol. Each theory is a versioned package that can be fixed, replaced or forked without touching Hindley-Milner rules. Changing a checker, rule or axiom policy invalidates the affected proof receipts and requires fresh checking. A fork inherits no validity from its parent, and pluggability alone proves no consistency.
 
-Independence means Osprey can author, elaborate, check and replay the supported proofs, build its mathematics library and compile verified programs without Lean installed or invoked. Retain Lean and other independent checkers as external development oracles after that point. Track this through the [completion milestones](plans/0041-dependent-types-and-mathlib.md#completion-milestones-proof-completion), with imported certificate coverage, source translation and locally reconstructed proofs reported separately.
+Independence means Osprey authors, checks and replays the supported proofs, builds its maths library and compiles verified programs without Lean installed. Lean stays as an external oracle afterwards. Track it through the [completion milestones](plans/0041-dependent-types-and-mathlib.md#completion-milestones-proof-completion), reporting imported certificates, source translation and locally reconstructed proofs separately.

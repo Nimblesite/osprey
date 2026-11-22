@@ -1,0 +1,307 @@
+// [PRISM-ROUTING-EDITOR] Pure editor commands; the synth library owns every routing rule.
+namespace synth
+
+(** Draft graph editing shared by native controls and canvas interactions. *)
+module EditorState
+    (** A fresh patch; identities are monotonic and never reused after deletion. *)
+    export initial () = Editor(skin = ui::MachineDocs::faulty "", graph = Graphs::empty, past = [], future = [], gesture = [], assetFolder = "src/osprey/packages/signal_flow/skins/prism", paletteShown = false, detailsShown = false, keyboardShown = true, keyboardWidth = 1536.0, paletteDrag = "", note = 57, armedNote = -1, scopeSamples = [], positions = [], flowPositions = [], panX = 0.0, panY = 0.0, panning = PanIdle, dragging = -1, grabX = 0.0, grabY = 0.0, layoutRevision = 0, selected = -1, nextIdentity = 0, source = -1, outlet = 0, wireDragging = false, wireMonitor = false, wireX = 0.0, wireY = 0.0, selectedCable = -1, revision = 0, message = "Add an instrument and an output to begin.", workerPath = "", audioPath = "", pluginPath = "", scanQueue = [], scanWarning = "", catalog = [], pluginBindings = [], sampleSerial = 0, sampleTicket = "", pluginSerial = 0, patchWindowSerial = 0, editorWindows = [], pluginTicket = "", pluginClassId = "", renderPending = [], renderBindings = [], renderSerial = 0, renderTicket = "", renderSessions = [], renderOpening = false, renderInput = "", renderDevicePending = [], renderGraph = Graphs::empty, renderProject = "", renderTrack = -1, renderDeviceKey = "", renderEmptyCallbacks = 0, renderContinuous = false, renderStopping = false, cards = [], art = [], page = PatchPage, outputEdit = OutputClosed, laneTop = 0, laneZoom = 1.0, laneStart = 0.0, laneTraces = [], overview = [], keymap = Keymaps::preset "Prism", keysPath = "", mixFader = FaderIdle, dial = DialIdle, dialOffset = 0, dialEntry = "", fineHeld = false, song = DawSession::blank (), songPath = "", renderer = "", track = -1, patchTrack = -1, selectedNote = -1, rollDrag = RollIdle, rollBar = 0, playEnd = 0, playBeat = -1.0, playClock = 0.0, looping = false, songTicket = "")
+
+    (** Available component factories expose their real audio or event ports. *)
+    export kinds = ["grain-cloud", "sine", "filter", "gain", "mixer", "delay", "output", "midi-note", "stereo", "stereo-output", "lfo", "modulated-gain"]
+
+    (** [SYNTH-ADVANCED-PRISM] Advanced modules, offered in the native picker so the canvas palette keeps its
+        original layout and artwork. *)
+    export advancedKinds = ["sample", "exciter", "waveguide", "bowed-string", "strike-comb", "resonator", "modal-bank", "fractional-delay", "loss-filter", "allpass", "wavetable", "additive", "spectral", "pitch-shifter", "shaper", "reverb", "shifter", "phase-operator", "smoother", "split", "join", "route", "panner"]
+
+    (** The browsing groups, in picker order. *)
+    export categories = ["Sources", "Grains", "Physical", "Spectral", "Modulators", "Effects", "Utilities", "Output"]
+
+    (** The browsing group of a component kind. *)
+    export category kind = match kind
+        "sample" => "Sources"
+        "sine" => "Sources"
+        "midi-note" => "Sources"
+        "wavetable" => "Sources"
+        "additive" => "Sources"
+        "phase-operator" => "Sources"
+        "grain-cloud" => "Grains"
+        "exciter" => "Physical"
+        "waveguide" => "Physical"
+        "bowed-string" => "Physical"
+        "strike-comb" => "Physical"
+        "resonator" => "Physical"
+        "modal-bank" => "Physical"
+        "spectral" => "Spectral"
+        "pitch-shifter" => "Effects"
+        "lfo" => "Modulators"
+        "modulated-gain" => "Modulators"
+        "smoother" => "Modulators"
+        "filter" => "Effects"
+        "delay" => "Effects"
+        "fractional-delay" => "Effects"
+        "loss-filter" => "Effects"
+        "allpass" => "Effects"
+        "shaper" => "Effects"
+        "reverb" => "Effects"
+        "shifter" => "Effects"
+        "gain" => "Utilities"
+        "mixer" => "Utilities"
+        "stereo" => "Utilities"
+        "output" => "Output"
+        "stereo-output" => "Output"
+        _ => "Utilities"
+
+    (** Every component the picker can add, grouped by category in `categories` order. *)
+    export pickerKinds () = foldList (categories, [], \(all, group) => listConcat all (filterList (listConcat kinds advancedKinds, \kind => category kind == group)))
+
+
+    (** Human-readable names for the available component factories. *)
+    export title kind = match kind
+        "sample" => "Sample"
+        "grain-cloud" => "Grain cloud"
+        "lfo" => "LFO modulator"
+        "modulated-gain" => "Modulated stereo gain"
+        "sine" => "Sine oscillator"
+        "filter" => "Low-pass filter"
+        "gain" => "Gain"
+        "mixer" => "Mixer"
+        "split" => "Channel split"
+        "join" => "Channel join"
+        "route" => "Channel route"
+        "panner" => "Panner"
+        "delay" => "Delay"
+        "midi-note" => "MIDI note generator"
+        "stereo" => "Mono to stereo"
+        "stereo-output" => "Stereo output"
+        "output" => "Audio output"
+        "exciter" => "Exciter (impulse/noise)"
+        "waveguide" => "Waveguide string"
+        "bowed-string" => "Bowed string"
+        "strike-comb" => "Strike position comb"
+        "resonator" => "Resonator"
+        "modal-bank" => "Modal bank"
+        "fractional-delay" => "Fractional delay"
+        "loss-filter" => "Loss filter"
+        "allpass" => "Allpass dispersion"
+        "wavetable" => "Wavetable oscillator"
+        "additive" => "Additive partials"
+        "spectral" => "Spectral processor"
+        "pitch-shifter" => "FFT pitch shifter"
+        "shaper" => "Waveshaper"
+        "reverb" => "FDN reverb"
+        "shifter" => "Frequency shifter"
+        "phase-operator" => "Phase operator (WPPM)"
+        "smoother" => "Smoother"
+        _ => "Unknown component"
+
+    grainCloud identity =
+        resource = daw::PatchVoices::builtinSample ()
+        cloud = Components::granular (identity, resource, 16, 1)
+        withParameter (cloud, "rate", WaveMath::playbackRate (48000.0, 48000.0, 220.0, resource.rootFrequency))
+
+    // Factories wrap their built component in the shared `Valid` constructor.
+    made component = Valid(value = component)
+
+    factory (kind, identity) = match kind
+        "sample" => match daw::PatchVoices::sampled "src/osprey/examples/daw/tracks/samples/808-kick.wav"
+            Error _ => Invalid(fault = InvalidNode)
+            Success resource => made (Components::samplePlayer (identity, resource))
+        "grain-cloud" => made (grainCloud identity)
+        "lfo" => made (Components::lfo (identity, 2.0))
+        "modulated-gain" => made (Components::modulatedGain (identity, 2, 0.5))
+        "sine" => made (Components::sine (identity, 440.0))
+        "filter" => made (Components::modulatedLowpass (identity, 4000.0, 0.707))
+        "gain" => made (Components::gain (identity, 0.25))
+        "mixer" => made (Components::mixer identity)
+        "delay" => made (Components::delay (identity, 2400))
+        "midi-note" => made (Components::midiNote (identity, 60.0, 0.8, 6000.0))
+        "stereo" => made (Components::stereo identity)
+        "split" => made (Components::split (identity, 2))
+        "join" => made (Components::join (identity, 2))
+        "route" => made (Components::routeChannels (identity, 2, [1, 0]))
+        "panner" => made (Components::panner (identity, 2, 0.0))
+        "stereo-output" => made (Components::stereoOutput identity)
+        "output" => made (Components::output identity)
+        _ => advanced (kind, identity)
+
+    // Advanced modules start at musically useful, level-safe defaults (A3 pitch, struck responses).
+    advanced (kind, identity) = match kind
+        "exciter" => made (Components::exciter (identity, 7))
+        "waveguide" => made (Components::waveguide (identity, 220.0, 2400))
+        "bowed-string" => made (Components::bowed (identity, 220.0, 2400))
+        "strike-comb" => made (Components::strikeComb (identity, 220.0, 2400))
+        "resonator" => made (Components::resonator (identity, 220.0))
+        "modal-bank" => made (Components::modalBank (identity, 220.0, 3.0))
+        "fractional-delay" => made (Components::fractionalDelay (identity, 240.5, 4800))
+        "loss-filter" => made (Components::lossFilter (identity, 0.9, 0.5))
+        "allpass" => made (Components::allpass (identity, 0.4))
+        "wavetable" => wavetable identity
+        "additive" => made (Components::additive (identity, 220.0))
+        "spectral" => made (Components::spectral (identity, 1024, 256, 0.0))
+        "pitch-shifter" => made (Components::pitchShifter (identity, 1024, 7.0, 0.0))
+        "shaper" => made (Components::shaper (identity, 0.0, 2.0))
+        "reverb" => made (Components::reverb (identity, 2.5))
+        "shifter" => made (Components::shifter (identity, 5.0))
+        "phase-operator" => made (Components::phaseOperator (identity, 220.0, 3.0))
+        "smoother" => made (Components::smoother (identity, 0.01))
+        _ => Invalid(fault = InvalidNode)
+
+    wavetable identity = match Wavetables::classic (1024, 64)
+        Error _ => Invalid(fault = InvalidNode)
+        Success table => made (Components::wavetable (identity, table, 220.0))
+
+    (** Describe the rejected graph edit or project patch. *)
+    export faultText fault = match fault
+        Cycle => "That route forms a loop without a delay. The previous patch is unchanged."
+        IncompatiblePorts => "These ports have different rates, units or channels."
+        MissingNode => "That component no longer exists."
+        InvalidPort => "That port or cable no longer exists."
+        _ => "The edit was rejected; the previous patch is unchanged."
+
+    rejected (editor, fault) = editor(message = faultText fault)
+
+    absent editor = editor(message = "That component no longer exists.")
+
+    published (editor, outcome) = match outcome
+        Invalid fault => rejected (editor, fault)
+        Valid graph => editor(graph = graph, selectedCable = -1, revision = satAdd editor.revision 1, message = "Patch updated.")
+
+    added (editor, kind) = match editor.nextIdentity == 9223372036854775807
+        true => editor(message = "No more component identities are available.")
+        false => match factory (kind, editor.nextIdentity)
+            Invalid fault => rejected (editor, fault)
+            Valid n => match Graphs::add (editor.graph, n)
+                Invalid fault => rejected (editor, fault)
+                Valid graph => editor(graph = graph, selected = n.identity, nextIdentity = satAdd n.identity 1, revision = satAdd editor.revision 1, message = "Added ${title kind}.")
+
+    selected (editor, identity) = match Graphs::node (editor.graph, identity)
+        Invalid fault => rejected (editor, fault)
+        Valid _ => editor(selected = identity)
+
+    armed (editor, identity, outlet) = match Graphs::node (editor.graph, identity)
+        Invalid fault => editor(message = faultText fault)
+        Valid n => match listGet n.outputs outlet
+            Error _ => editor(message = "That output port does not exist.")
+            Success p => editor(source = identity, outlet = outlet, message = "Choose an input for ${identity}: ${p.name}.")
+
+    disconnected (editor, identity, inlet) = match listGet (filterList (editor.graph.cables, \c => c.destination == identity && c.inlet == inlet)) 0
+        Error _ => editor(message = "That input has no cable.")
+        Success cable => published (editor, Graphs::disconnect (editor.graph, cable))
+
+    removed editor = match Graphs::remove (editor.graph, editor.selected)
+        Invalid fault => rejected (editor, fault)
+        Valid graph =>
+            next = published (editor, Valid(value = graph))
+            next(selected = -1, source = -1, dragging = -1, positions = filterList (editor.positions, \p => p.layoutNode != editor.selected), pluginBindings = filterList (editor.pluginBindings, \binding => binding.pluginNode != editor.selected), message = "Component and its cables removed.")
+
+    (** One native or canvas action produces one immutable editor snapshot. *)
+    export tapped (editor, action) = match action
+        Add kind => added (editor, kind)
+        Select identity => selected (editor, identity)
+        Source identity outlet => armed (editor, identity, outlet)
+        Connect identity inlet => published (editor, Graphs::rewire (editor.graph, Components::route (editor.source, editor.outlet, identity, inlet)))
+        Disconnect identity inlet => disconnected (editor, identity, inlet)
+        Modulate identity key => published (editor, HostModulation::connect (editor.graph, editor.source, editor.outlet, identity, key))
+        RemoveCable => match listGet editor.graph.cables editor.selectedCable
+            Error _ => editor(message = "Select a cable to remove.")
+            Success cable => published (editor, Graphs::disconnect (editor.graph, cable))
+        Remove => removed editor
+        _ => editor
+
+    parameterValue (key, value, descriptor : Parameter) = match descriptor.key == key
+        true => descriptor(initial = value)
+        false => descriptor
+
+    nodeValue (identity, key, value, n) = match n.identity == identity
+        true => withParameter (n, key, value)
+        false => n
+
+    appliedValue (editor, identity, key, value) =
+        graph = editor.graph
+        snapshot = Parameters::initial graph
+        edit = ParameterChange(node = identity, key = key, value = value, revision = snapshot.revision, samplePosition = snapshot.samplePosition)
+        match Parameters::apply (editor.graph, snapshot, edit)
+            Invalid _ => editor(message = "That parameter value is outside its allowed range.")
+            Valid _ => published (editor(dialEntry = ""), Valid(value = graph(nodes = mapList (editor.graph.nodes, \n => nodeValue (identity, key, value, n)))))
+
+    checkedValue (editor, identity, key, value) = match Graphs::node (editor.graph, identity)
+        Invalid _ => absent editor
+        Valid n => match length (filterList (n.parameters, \p => p.key == key && p.automatable)) == 1
+            false => editor(message = "This host cannot edit non-automatable parameters.")
+            true => appliedValue (editor, identity, key, value)
+
+    (** Parse text once at the UI edge and validate against the component's descriptor. *)
+    export typed (editor, action, text) = match action
+        Select _ => match parseInt text
+            Error _ => editor(message = "Choose a module from the list.")
+            Success identity => selected (editor, identity)
+        Add _ => tapped (editor, Add(kind = text))
+        EditParameter identity key => match parseFloat text
+            Error _ => editor(message = "Enter a finite number for this parameter.")
+            Success value => checkedValue (editor, identity, key, value)
+        _ => editor
+
+    withParameter (n, key, value) = n(parameters = mapList (n.parameters, \p => parameterValue (key, value, p)))
+
+    // Re-raise a lower-level message unchanged.
+    relayed why = Error(message = why)
+
+    // A key a module cannot reach (below a string's 20 Hz, above a bow's 12 kHz) refuses the whole strike.
+    keyFollow (n, note) =
+        frequency = Waves::midiFrequency (toFloat note)
+        match length (filterList (n.parameters, \p => p.key == "frequency" && (frequency < p.minimum || frequency > p.maximum))) == 0
+            true => Success(value = withParameter (n, "frequency", frequency))
+            false => Error(message = "Module ${n.identity} cannot play MIDI note ${note}: ${frequency} Hz is outside its pitch range.")
+
+    pitched (note, n) = match n.processor
+        Granular resource _ _ => match SampleResources::playbackRate (resource, toFloat note, 48000.0)
+            Error why => relayed "Grain cloud ${n.identity}: ${why}"
+            Success rate => Success(value = withParameter (n, "rate", rate))
+        MidiNotes => Success(value = withParameter (n, "pitch", toFloat note))
+        _ => keyedFrequency (note, n)
+
+    // Advanced modules with a pitch-like `frequency` parameter follow the keyboard; effects keep theirs.
+    keyedFrequency (note, n) = match Kinds::keyFrequency n.processor
+        true => keyFollow (n, note)
+        false => Success(value = n)
+
+    pitchNext (note, outcome, n) = match outcome
+        Error why => relayed why
+        Success nodes => match pitched (note, n)
+            Error why => relayed why
+            Success next => Success(value = listPrepend nodes next)
+
+    (** Transpose the patch atomically. A grain outside its rate range rejects the whole key strike. *)
+    export tune (editor, note) = match note >= 0 && note <= 127
+        false => Error(message = "Choose a MIDI note from 0 to 127.")
+        true => match foldList (editor.graph.nodes, Success(value = []), \(held, n) => pitchNext (note, held, n))
+            Error why => relayed why
+            Success nodes =>
+                graph = editor.graph
+                Success(value = editor(graph = graph(nodes = listReverse nodes), note = note, armedNote = -1, revision = satAdd editor.revision 1))
+
+    (** A playable starting patch; the menu can add more independent instances. *)
+    export preset () =
+        base = foldList ([Add(kind = "sine"), Add(kind = "filter"), Add(kind = "gain"), Add(kind = "output"), Source(identity = 0, outlet = 0), Connect(identity = 1, inlet = 0), Source(identity = 1, outlet = 0), Connect(identity = 2, inlet = 0), Source(identity = 2, outlet = 0), Connect(identity = 3, inlet = 0)], initial (), tapped)
+        base
+
+    (** The opening performance patch adds a real LFO-to-gain modulation route. *)
+    export studioPreset () =
+        withLfo = tapped (preset (), Add(kind = "lfo"))
+        graph = withLfo.graph
+        modulated = withLfo(graph = graph(nodes = mapList (graph.nodes, \n =>
+            match n.identity == 2
+                true => Components::modulatedGain (2, 1, 0.25)
+                false => n)))
+        routed = tapped (tapped (modulated, Source(identity = 4, outlet = 0)), Connect(identity = 2, inlet = 1))
+        match tune (routed(selected = 1, positions = [daw::NodePosition(layoutNode = 0, layoutX = 175.5, layoutY = 438.5), daw::NodePosition(layoutNode = 1, layoutX = 607.0, layoutY = 432.0), daw::NodePosition(layoutNode = 2, layoutX = 1035.0, layoutY = 436.5), daw::NodePosition(layoutNode = 3, layoutX = 609.0, layoutY = 695.0), daw::NodePosition(layoutNode = 4, layoutX = 605.0, layoutY = 161.0)]), 57)
+            Success ready => ready
+            Error why => routed(message = why)
+
+    (** Optional processor controls are explicit graph parameters, never UI-only flags. *)
+    export configured (editor, identity, key, label, maximum, value) = match Graphs::node (editor.graph, identity)
+        Invalid _ => absent editor
+        Valid n =>
+            updated = Components::withOption (n, key, label, maximum, value)
+            graph = editor.graph
+            published (editor, Graphs::add (graph(nodes = filterList (graph.nodes, \p => p.identity != identity)), updated))

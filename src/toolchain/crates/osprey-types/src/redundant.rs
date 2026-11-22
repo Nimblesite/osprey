@@ -268,7 +268,7 @@ fn snapshot(types: crate::info::ProgramTypes) -> Snapshot {
             let _ = published.insert(format!("constraint {owner} {index} {name}"), ty.clone());
         }
     }
-    for (position, site) in &types.performs {
+    for (position, site) in types.performs.iter() {
         publish_operation(
             &mut published,
             &format!("perform {}:{}", position.0, position.1),
@@ -276,7 +276,7 @@ fn snapshot(types: crate::info::ProgramTypes) -> Snapshot {
             &site.effect_args,
         );
     }
-    for (position, site) in &types.handler_ops {
+    for (position, site) in types.handler_ops.iter() {
         for (operation, op) in &site.ops {
             publish_operation(
                 &mut published,
@@ -288,7 +288,7 @@ fn snapshot(types: crate::info::ProgramTypes) -> Snapshot {
     }
     Snapshot {
         types: published,
-        methods: types.methods,
+        methods: std::sync::Arc::unwrap_or_clone(types.methods),
     }
 }
 

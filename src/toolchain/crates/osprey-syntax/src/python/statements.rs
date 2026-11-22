@@ -1,5 +1,5 @@
 //! Lexical Python suites lower to Osprey blocks and flat functions.
-use super::context::{children, position, unit, Lowerer, Result};
+use super::context::{callback, children, position, unit, Lowerer, Result};
 use crate::{AnnotationTarget, BindingKind};
 use osprey_ast::{Expr, Program, Stmt};
 use tree_sitter::Node;
@@ -237,7 +237,7 @@ impl Lowerer<'_> {
         })?;
         Ok(super::context::apply(
             Expr::Identifier("forEach".into()),
-            vec![iter, loop_callback(&name, body, node)],
+            vec![iter, callback(&[&name], body, node)],
         ))
     }
 
@@ -297,21 +297,6 @@ fn suite_block(node: Node<'_>, statements: Vec<Stmt>, value: Option<Expr>) -> Ex
     let position = Some(position(node));
     let value = value.map(|value| Box::new(crate::desugar::positioned(value, position)));
     crate::desugar::block(statements, value, position)
-}
-
-/// The callback a `for` statement hands to `forEach`: one iteration variable,
-/// the loop body, and no explicit return type.
-fn loop_callback(name: &str, body: Expr, node: Node<'_>) -> Expr {
-    Expr::Lambda {
-        parameters: vec![osprey_ast::Parameter {
-            name: name.into(),
-            ty: None,
-            inline_constraint: false,
-        }],
-        return_type: None,
-        body: Box::new(body),
-        position: Some(position(node)),
-    }
 }
 
 /// Attach an attribute docstring to the preceding declaration, reporting

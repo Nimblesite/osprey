@@ -1,0 +1,38 @@
+import synth::Components
+import synth::GraphClips
+import synth::GraphRebase
+
+// [SYNTH-ADVANCED-CORE-PORTS] Keep a sounding oscillator while replacing the delay it feeds.
+banksAt (held, identity) = filterList (held.graphKernels, \bank => bank.kernelNode == identity)
+
+delayAfterEdit (held, identity, size) = match banksAt (held, identity)
+    [bank] => match bank.kernelMemory
+        synth::ChannelMemory channels => match channels
+            [mono] => sameSamples (mono.delay, mapList (toList (range (0, size)), \_ => 0.0))
+            _ => unexpected ()
+        _ => unexpected ()
+    _ => unexpected ()
+
+rebaseRunning held =
+    oscillator = Components::sine (1, 440.0)
+    sink = Components::output 3
+    before = banksAt (held, 1)
+    expect (length before, 1)
+    forEachList ([{ id = 2, size = 16 }, { id = 4, size = 8 }], \row =>
+        graph = built ([oscillator, Components::delay (row.id, row.size), sink], [cable (1, row.id), cable (row.id, 3)])
+        succeeds (GraphRebase::rebased (graph, held), \next =>
+            expect (next.graphPosition, 64)
+            sameStructure (banksAt (next, 1), before)
+            delayAfterEdit (next, row.id, row.size)))
+    cloud = Components::granular (4, grainFlatSource (), 4, 7)
+    changed = built ([cloud, Components::stereoOutput 3], [cable (4, 3)])
+    refusedAs (GraphRebase::rebased (changed, held), "configuration", "A grain cloud added to a running graph needs a restart (its clock starts at zero).")
+    expect (length (banksAt (held, 2)), 1)
+
+rebaseJourney () =
+    graph = serial ([Components::sine (1, 440.0), Components::delay (2, 8), Components::output 3])
+    succeeds (GraphClips::start (graph, 64), \step => checkRebaseBlock step)
+
+checkRebaseBlock step = match step
+    synth::BlockReady held _ => rebaseRunning held
+    synth::BlockWaiting _ _ => unexpected ()

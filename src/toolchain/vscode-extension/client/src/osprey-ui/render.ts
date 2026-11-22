@@ -24,6 +24,8 @@ export interface RenderOptions {
   readonly slices?: ReadonlyMap<string, string>;
   readonly resolveAsset?: (source: string) => string;
   readonly loadingText?: string;
+  /** Whether each screen carries the Osprey lockup, as the VS Code panel does; a host drawing someone else's application leaves it off. */
+  readonly brand?: boolean;
 }
 
 interface Context extends RenderOptions {
@@ -92,22 +94,27 @@ function children(node: Record<string, unknown>, ctx: Context): string {
   return items(node, "children").map((item) => child(item, ctx)).join("");
 }
 
-function textNode(node: Record<string, unknown>): string {
+function textElement(node: Record<string, unknown>, content: string, tone: string, extraClass = ""): string {
   const role = oneOf(text(node, "role"), ROLES, "body");
+  const tag = role === "title" ? "h1" : role === "heading" ? "h2" : "p";
+  return `<${tag} class="osp-text${extraClass} osp-role-${role} osp-tone-${tone}">${content}</${tag}>`;
+}
+
+function textNode(node: Record<string, unknown>): string {
   const tone = oneOf(text(node, "tone"), TONES, "primary");
-  return `<p class="osp-text osp-role-${role} osp-tone-${tone}">${escapeHtml(text(node, "text"))}</p>`;
+  return textElement(node, escapeHtml(text(node, "text")), tone);
 }
 
 function richText(node: Record<string, unknown>): string {
-  const role = oneOf(text(node, "role"), ROLES, "body");
   if (!Array.isArray(node.runs) || node.runs.length > 100000) throw new Error("Rich text requires a bounded run list");
   const content = node.runs.map(run => {
     if (!record(run) || typeof run.text !== "string" || typeof run.italic !== "boolean" || typeof run.ink !== "string") throw new Error("Rich text run is malformed");
     if (run.ink !== "" && !/^[a-z][a-zA-Z0-9-]{0,31}$/.test(run.ink)) throw new Error("Rich text ink must name a theme token");
     const ink = run.ink === "" ? "" : `color:var(--osp-brand-${run.ink});`;
-    return `<span style="${ink}font-style:${run.italic ? "italic" : "normal"}">${escapeHtml(run.text)}</span>`;
+    const emphasis = run.emphasis === "strong" ? "font-weight:600;" : run.emphasis === "code" ? "font-family:var(--osp-font-mono);" : "";
+    return `<span style="${ink}${emphasis}font-style:${run.italic ? "italic" : "normal"}">${escapeHtml(run.text)}</span>`;
   }).join("");
-  return `<p class="osp-text osp-rich-text osp-role-${role} osp-tone-primary">${content}</p>`;
+  return textElement(node, content, "primary", " osp-rich-text");
 }
 
 function math(node: Record<string, unknown>, ctx: Context): string {
@@ -193,6 +200,10 @@ function swatch(node: Record<string, unknown>): string {
   return `<span class="osp-swatch" style="--osp-swatch-light:${light};--osp-swatch-dark:${dark}"><span></span><span>${escapeHtml(text(node, "name"))}</span></span>`;
 }
 
+function lockup(ctx: Context): string {
+  return ctx.brand === false ? "" : `<div class="osp-brand-lockup">${brand(ctx)}<span class="osp-brand-name">Osprey</span></div>`;
+}
+
 function brand(ctx: Context): string {
   return ctx.assetUri
     ? `<img class="osp-brand" src="${escapeHtml(ctx.assetUri)}" alt="Osprey" />`
@@ -226,7 +237,7 @@ function screen(node: Record<string, unknown>, ctx: Context): string {
   const title = text(node, "title");
   const subtitle = text(node, "subtitle");
   const toolbar = items(node, "toolbar").map((item) => child(item, ctx)).join("");
-  return `<div class="osp-screen"><header class="osp-screen-header"><div class="osp-brand-lockup">${brand(ctx)}<span class="osp-brand-name">Osprey</span></div><div class="osp-screen-titles"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div><div class="osp-toolbar">${toolbar}</div></header><div class="osp-screen-body">${children(node, ctx)}</div></div>`;
+  return `<div class="osp-screen"><header class="osp-screen-header">${lockup(ctx)}<div class="osp-screen-titles"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div><div class="osp-toolbar">${toolbar}</div></header><div class="osp-screen-body">${children(node, ctx)}</div></div>`;
 }
 
 function split(node: Record<string, unknown>, ctx: Context): string {
@@ -335,7 +346,8 @@ function choiceList(node: Record<string, unknown>): string {
 }
 
 function picker(node: Record<string, unknown>, ctx: Context): string {
-  return `<label class="osp-field"><span>${escapeHtml(text(node, "label"))}</span><select data-commit="submit"${control(ctx, node, "string", text(node, "selected"))}>${choiceList(node)}</select></label>`;
+  // [UI-COMPONENTS] A picker is a menu button showing its choice, as SwiftUI and Android draw it; its label is its accessible name.
+  return `<span class="osp-picker"><select aria-label="${escapeHtml(text(node, "label"))}" data-commit="submit"${control(ctx, node, "string", text(node, "selected"))}>${choiceList(node)}</select>${symbol("chevron.down", ctx)}</span>`;
 }
 
 function disclosure(node: Record<string, unknown>, ctx: Context): string {

@@ -258,6 +258,22 @@ class EntryManifestTests(CoverageTestCase):
         self.assert_diagnosed(self.app('[project]\nname = "workbench"\nentry = "tests/main.ospml"\n'),
                               "is not under src/")
 
+    def test_declared_shared_entry_is_checked_without_counting_dependency_lines(self):
+        source = "src/osprey/packages/demo/src/lib.py"
+        manifest = '[project]\nname = "workbench"\nsource_roots = ["../packages/demo/src", "src"]\nentry = "../packages/demo/src/lib.py"\n'
+        for key, counters, expected in ((source, 10, 0), (source, 0, 1), ("elsewhere/" + source, 10, 1)):
+            with self.subTest(path=key, counters=counters):
+                report = entry_report(counters, key=key)
+                fixture = self.workbench(entry={"report": report, "stdout": ENTRY_ORACLE + ENTRY_FOOTER}, manifest=manifest)
+                result = fixture.collect("--project", "src/osprey/workbench")
+                self.assert_exit(result, expected)
+                if expected == 0:
+                    self.assertIn("9/10 own source lines", result.stdout)
+                    (fixture.root / source).write_text(py_source(11))
+                    stale = fixture.check("--project", "src/osprey/workbench")
+                    self.assert_exit(stale, 1)
+                    self.assertIn("stale or altered coverage evidence", stale.stdout)
+
     def test_non_string_entry_declarations_are_diagnosed(self):
         for value in ("3", '["src/lib.py"]', "true"):
             with self.subTest(entry=value):

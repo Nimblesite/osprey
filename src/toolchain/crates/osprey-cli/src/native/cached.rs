@@ -19,7 +19,7 @@ pub(super) fn ir(input: &CompilationInput, options: NativeOptions<'_>) -> Result
         return std::fs::read_to_string(file).map_err(|error| io_error(file, &error));
     }
     let program = input.codegen_program(options.kind == osprey_debug::BuildKind::Coverage);
-    let ir = compile_ir(input.debug_path(), &program, options.kind).map_err(|error| {
+    let ir = compile_ir(|| input.debug_source(), &program, options.kind).map_err(|error| {
         eprintln!("{}: {error}", input.display_path());
         ExitCode::FAILURE
     })?;

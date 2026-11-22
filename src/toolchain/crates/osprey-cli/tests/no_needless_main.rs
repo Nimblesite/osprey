@@ -46,7 +46,7 @@ fn example_files(dir: &Path) -> Vec<PathBuf> {
 fn documentation_files(root: &Path) -> Vec<PathBuf> {
     let mut files = [
         root.join("src/osprey/tests"),
-        root.join("src/osprey/examples/projects/modules/test"),
+        root.join("src/osprey/examples/talon/backend/test"),
         root.join("src/toolchain/vscode-extension/test"),
     ]
     .iter()

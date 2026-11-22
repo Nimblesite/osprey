@@ -154,7 +154,10 @@ def validated_hits(lines: dict, line_count: int, key: str) -> tuple[dict, list[s
 
 
 def validate_own_file(root: Path, kind: str, name: str, key: str, rel: tuple[str, ...], body: object) -> tuple[dict | None, list[str]]:
-    local = own_source_file(root, kind, name, rel)
+    return validate_source_file(own_source_file(root, kind, name, rel), key, body)
+
+
+def validate_source_file(local: Path, key: str, body: object) -> tuple[dict | None, list[str]]:
     if not local.is_file():
         return None, [f"missing executable source file: {key}"]
     lines = body.get("lines") if isinstance(body, dict) else None

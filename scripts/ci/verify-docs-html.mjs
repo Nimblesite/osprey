@@ -26,7 +26,7 @@ const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..',
 // an ES import resolves from THIS file's directory rather than the caller's. Ask
 // each subproject that already installs it, and say which ones were tried when
 // none has it: a gate that cannot run must fail, never quietly report success.
-const PLAYWRIGHT_HOSTS = ['src/osprey/examples/projects/modules/e2e', 'website'];
+const PLAYWRIGHT_HOSTS = ['src/osprey/examples/talon/playwright-e2e-tests', 'src/toolchain/website'];
 const loadChromium = () => {
   for (const host of PLAYWRIGHT_HOSTS) {
     const anchor = path.join(REPO, host, 'package.json');
@@ -75,11 +75,11 @@ for (const theme of THEMES) {
     '--docs-page', path.join(WORK, 'guides'),
     '--docs-css', path.join(WORK, 'brand.css'),
     '--docs-css', path.join(WORK, 'override.css'),
-    path.join(REPO, 'src/osprey/examples/projects/modules'),
+    path.join(REPO, 'src/osprey/examples/talon/backend'),
   ]);
   // …and without, so the themes can be compared as themselves rather than as
   // the override that was deliberately forced on all three above.
-  generate(`plain-${theme}`, ['--docs-theme', theme, path.join(REPO, 'src/osprey/examples/projects/modules')]);
+  generate(`plain-${theme}`, ['--docs-theme', theme, path.join(REPO, 'src/osprey/examples/talon/backend')]);
 }
 generate('site-symbols', [path.join(WORK, 'symbols')]);
 
@@ -250,8 +250,11 @@ check('every parameter of a curried function is named',
 check('each effect links to the page documenting it',
   declaration.effects.length === 2 && declaration.effects.every((href) => fs.existsSync(
     path.resolve(WORK, 'plain-osprey/api', href))), JSON.stringify(declaration.effects));
+const routeFile = 'api/routes.ospml';
+const routeSource = fs.readFileSync(path.join(REPO, 'src/osprey/examples/talon/backend', routeFile), 'utf8');
+const routeLine = routeSource.split('\n').findIndex(line => /^\s*route method path body =/.test(line)) + 1;
 check('the page says which file and line declares it',
-  /Defined in src\/api\/routes\.ospml\s*, line \d+\./.test(declaration.provenance ?? ''),
+  routeLine > 0 && declaration.provenance === `Defined in ${routeFile}, line ${routeLine}.`,
   declaration.provenance);
 check('the breadcrumb links the module that owns the declaration',
   declaration.crumb.includes('../api/bank-api.html'), JSON.stringify(declaration.crumb));

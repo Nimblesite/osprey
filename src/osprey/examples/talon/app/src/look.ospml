@@ -1,0 +1,179 @@
+// Implements [UI-THEME] and [UI-COMPONENTS-FRAMED] for Talon Bank: the bank's palette, type and
+// shapes as theme tokens and frames. Every surface below is a frame naming tokens, so the browser,
+// SwiftUI and Android hosts draw the same bank from the same values and hold no colour of their own.
+namespace talon
+
+import ui::Frames
+import ui::Pick
+import ui::Ui
+
+(** Talon's visual language: the palette, the type scale and the surfaces every page is built from. *)
+module Look
+    // The bank's palette. Talon is a light design, so both appearances carry the same colours.
+    palette () = [token ("paper", "#F7F7F2"), token ("white", "#FFFFFF"), token ("ink950", "#071A1C"), token ("ink900", "#0A2426"), token ("ink850", "#102E30"), token ("ink800", "#17383A"), token ("ink700", "#2D5051"), token ("ink600", "#4F6D6C"), token ("ink500", "#718987"), token ("ink400", "#9AA9A5"), token ("ink300", "#C5CECA"), token ("ink200", "#DDE3DF"), token ("ink150", "#E9ECE8"), token ("ink100", "#F2F4F0"), token ("coral", "#FF6B4A"), token ("coralDark", "#D94D31"), token ("coralSoft", "#FFF0E9"), token ("mint", "#9EE2C3"), token ("mintDark", "#1E795A"), token ("mintSoft", "#E5F8EF"), token ("gold", "#E4B654"), token ("goldSoft", "#FFF7DF"), token ("red", "#C83852"), token ("redSoft", "#FFF0F2"), token ("toastGood", "#155D48"), token ("toastBad", "#88273B")]
+
+    // The roles every host reads, named onto the palette.
+    roles () = [token ("canvas", "#F7F7F2"), token ("text", "#0A2426"), token ("primary", "#0A2426"), token ("secondary", "#4F6D6C"), token ("accent", "#FF6B4A"), token ("onAccent", "#FFFFFF"), token ("good", "#1E795A"), token ("caution", "#9A6B00"), token ("danger", "#C83852"), token ("inset", "#FFFFFF"), token ("raised", "#FFFFFF"), token ("surface", "#FFFFFF"), token ("border", "#DDE3DF"), token ("line", "#DDE3DF"), token ("selection", "#E5F8EF")]
+
+    token (name, colour) = ui::Token(tokenName = name, tokenLight = colour, tokenDark = colour)
+
+    (** Talon's theme: the palette and roles, a spacing scale in points and its motion durations. *)
+    export theme () = ui::Theme(tokens = listConcat (palette ()) (roles ()), spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 280)
+
+    // ---- type ----
+
+    // A face at `size` points with the bank's line box and tracking.
+    face (size, tracking) =
+        style = Frames::text ("Inter", size, false)
+        style(frameHug = false, frameLineHeight = toFloat size * 1.4, frameTracking = tracking)
+
+    said (words, size, tracking, ink, emphasis, role) = Ui::framed (face (size, tracking), Ui::rich ([Ui::emphasised (words, ink, emphasis)], role))
+
+    (** Body copy at `size` in the `ink` token. *)
+    export words (words, size, ink) = said (words, size, 0.0, ink, "", ui::Body)
+
+    (** Bold copy at `size` in the `ink` token. *)
+    export strong (words, size, ink) = said (words, size, 0.0, ink, "strong", ui::Body)
+
+    (** A heading: bold, tight and in the deepest ink. *)
+    headingText (words, size, role) = said (words, size, toFloat size * -0.035, "ink950", "strong", role)
+
+    (** A section heading for the page's accessibility outline. *)
+    export heading (words, size) = headingText (words, size, ui::Heading)
+
+    (** The top-level heading of the current page. *)
+    export title (words, size) = headingText (words, size, ui::Title)
+
+    (** A small spaced capital label above a heading. *)
+    export eyebrow (words, ink) = said (toUpperCase words, 11, 1.6, ink, "strong", ui::Body)
+
+    // ---- surfaces ----
+
+    (** A frame with `fill`, a `line` border, `radius` corners and `pad` points inside. *)
+    export surface (fill, line, radius, pad) =
+        style = Frames::inset (pad, pad, pad, pad)
+        style(frameFill = fill, frameLine = line, frameRadius = radius, frameGap = 12)
+
+    (** A white card with a hairline border. *)
+    export card<A> : ui::Node<A> -> ui::Node<A>
+    card content = Ui::framed (surface ("white", "ink150", 18, 20), content)
+
+    (** The dark card the portfolio sits on. *)
+    export hero<A> : ui::Node<A> -> ui::Node<A>
+    hero content =
+        style = surface ("ink800", "", 26, 28)
+        Ui::framed (style(frameShadow = "floating", frameGap = 14), content)
+
+    (** The dark guidance card. *)
+    export dark<A> : ui::Node<A> -> ui::Node<A>
+    dark content = Ui::framed (surface ("ink900", "", 22, 24), content)
+
+    (** A square chip of `size` points holding a symbol in `ink` on `fill`. *)
+    export chip<A> : (string, string, string, int) -> ui::Node<A>
+    chip (symbol, fill, ink, size) =
+        style = Frames::plain
+        Ui::framed (style(frameWidth = size, frameHeight = size, frameFill = fill, frameInk = ink, frameRadius = 12, frameAlign = "center", frameCross = "center", frameSymbolSize = 16), Ui::icon symbol)
+
+    (** Children `gap` points apart down the page. *)
+    export stack<A> : (int, List<ui::Node<A>>) -> ui::Node<A>
+    stack (gap, children) =
+        style = Frames::plain
+        Ui::framed (style(frameGap = gap), Ui::column children)
+
+    (** Children `gap` points apart across the page, centred on one line. *)
+    export line<A> : (int, List<ui::Node<A>>) -> ui::Node<A>
+    line (gap, children) =
+        style = Frames::plain
+        Ui::framed (style(frameGap = gap, frameAlign = "center"), Ui::row children)
+
+    (** Children `gap` points apart across the page at their own width. *)
+    export cluster<A> : (int, List<ui::Node<A>>) -> ui::Node<A>
+    cluster (gap, children) =
+        style = Frames::plain
+        Ui::framed (style(frameGap = gap, frameAlign = "center", frameHug = true), Ui::row children)
+
+    (** A child that takes an equal share of its row. *)
+    export share<A> : ui::Node<A> -> ui::Node<A>
+    share content =
+        style = Frames::plain
+        Ui::framed (style(frameGrow = true), content)
+
+    // ---- controls ----
+
+    // A button on a rounded frame: the frame draws the surface, the button only its label.
+    pill (fill, ink, line) =
+        style = Frames::plain
+        style(frameFill = fill, frameInk = ink, frameLine = line, frameRadius = 12, frameHug = true, frameQuietControls = true, frameControlHeight = 44, frameControlPadding = 12, frameFont = "Inter", frameTextSize = 14)
+
+    (** The main action: a coral pill. *)
+    export primary<A> : (string, string, bool, A) -> ui::Node<A>
+    primary (label, symbol, enabled, act) = Ui::framed (pill ("coral", "white", ""), Ui::action (label, symbol, ui::Plain, enabled, act))
+
+    (** A quiet action on a white pill. *)
+    export secondary<A> : (string, string, A) -> ui::Node<A>
+    secondary (label, symbol, act) = Ui::framed (pill ("white", "ink900", "ink200"), Ui::button (label, symbol, act))
+
+    (** A quiet action on the dark surfaces. *)
+    export ghost<A> : (string, string, A) -> ui::Node<A>
+    ghost (label, symbol, act) = Ui::framed (pill ("ink700", "white", ""), Ui::button (label, symbol, act))
+
+    (** An action drawn as its symbol alone on a dark round pill; its label stays its accessible name. *)
+    export round<A> : (string, string, A) -> ui::Node<A>
+    round (label, symbol, act) =
+        style = pill ("ink700", "white", "")
+        Ui::framed (style(frameIconOnly = true, frameControlPadding = 0, frameRadius = 22), Ui::button (label, symbol, act))
+
+    (** A text action in mint, with its symbol after the words. *)
+    export link<A> : (string, string, A) -> ui::Node<A>
+    link (label, symbol, act) =
+        style = pill ("", "mintDark", "")
+        Ui::framed (style(frameControlPadding = 0, frameTrailingSymbols = true), Ui::button (label, symbol, act))
+
+    // One choice on a track, filling its share: `fill` and `ink` as chosen or not.
+    choice (fill, ink, label, act) =
+        style = pill (fill, ink, "")
+        Ui::framed (style(frameHug = false, frameGrow = true, frameCross = "center", frameControlHeight = 38, frameControlPadding = 2, frameRadius = 10, frameTextSize = 12), Ui::button (label, "", act))
+
+    // A row of choices on a rounded track of `fill`.
+    track (fill, items) =
+        style = surface (fill, "", 13, 4)
+        Ui::framed (style(frameGap = 4), Ui::row items)
+
+    (** One segment: the chosen one on white, the rest quiet on the track. *)
+    export segment<A> : (string, bool, A) -> ui::Node<A>
+    segment (label, chosen, act) = choice (Pick::either (chosen, "white", ""), Pick::either (chosen, "ink950", "ink600"), label, act)
+
+    (** A segmented control: its segments on a soft track. *)
+    export segments<A> : List<ui::Node<A>> -> ui::Node<A>
+    segments items = track ("ink150", items)
+
+    (** One page in the dark band: the chosen one on coral. *)
+    export page<A> : (string, bool, A) -> ui::Node<A>
+    page (label, chosen, act) = choice (Pick::either (chosen, "coral", ""), Pick::either (chosen, "white", "ink300"), label, act)
+
+    (** The pages on the dark band's own track. *)
+    export pages<A> : List<ui::Node<A>> -> ui::Node<A>
+    pages items = track ("ink850", items)
+
+    (** A form field on a white box. *)
+    export field<A> : ui::Node<A> -> ui::Node<A>
+    field content =
+        style = Frames::plain
+        Ui::framed (style(frameFont = "Inter", frameTextSize = 15, frameControlHeight = 44), content)
+
+    (** A menu of choices under its own label, on a white box: `heading` names it as `content` does. *)
+    export choices<A> : (string, ui::Node<A>) -> ui::Node<A>
+    choices (heading, content) =
+        box = surface ("white", "ink200", 8, 0)
+        Ui::framed (Frames::plain, Ui::column [said (heading, 11, 0.0, "ink600", "strong", ui::Body), Ui::framed (box(frameFont = "Inter", frameTextSize = 15, frameControlHeight = 44, frameQuietControls = true, frameInk = "ink900"), content)])
+
+    // ---- notices ----
+
+    (** A toast in `fill`: the heading, the detail and the action that dismisses it. *)
+    export toast<A> : (string, string, string, A) -> ui::Node<A>
+    toast (fill, title, detail, act) =
+        style = surface (fill, "", 16, 16)
+        close = pill ("", "white", "")
+        seat = Frames::inset (16, 16, 16, 16)
+        card = style(frameShadow = "floating", frameInk = "white", frameHug = true)
+        Ui::framed (seat(frameCross = "center"), Ui::framed (card, Ui::row [Ui::framed (Frames::plain, Ui::column [strong (title, 15, "white"), words (detail, 13, "white")]), Ui::framed (close(frameControlPadding = 10), Ui::button ("Dismiss", "", act))]))

@@ -15,9 +15,6 @@ module AppCases
     (** The conjunction proof `swapHeading` opens, ended by its final two steps. *)
     export swapProof (first, second) = swapHeading () + "\nProof.\nAssume h : p ∧ q.\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\n${first}\n${second}"
 
-    (** The proof with its final two steps swapped, so the kernel refuses it. *)
-    swapped () = swapProof ("From hp.", "From hq.")
-
     (** The one-statement document the typing cases share. *)
     tautology () = "Theorem t. For all p, p → p."
 
@@ -64,7 +61,7 @@ module AppCases
 
     (** [WORKBENCH-VERDICT] The kernel refuses the swapped proof at its sixth row, where the refused step was written. *)
     export underline () =
-        expect (check (freshTyped (swapped ())), "rejected at 5")
+        expect (check (freshTyped (swapProof ("From hp.", "From hq."))), "rejected at 5")
         expect (check (freshTyped (swapProof ("From hq.", "From hp."))), "checked at -1")
 
     (** The control number the retired board's host still names: no binding this app issues carries it. *)
@@ -88,12 +85,11 @@ module AppCases
 
     (** The diagnostics a host was told about, so a refusal is visible rather than silent. *)
     diagnostics envelope = Drive::problem envelope
-    export lassoed first = Drive::stray (first, retired (), "[0]")
 
     (** [UI-EFFECTS-RECOGNISE] The retired board asks for no recognition, offers no review control, and a stray ink completion changes no document and no verdict. *)
     export lasso () =
         written = freshTyped (tautology ())
-        asked = lassoed written
+        asked = Drive::stray (written, retired (), "[0]")
         unasked asked
         unwritten asked
         expect (diagnostics asked, "Unknown control ${retired ()}")
@@ -109,13 +105,9 @@ module AppCases
         expect (join (completedOf restored, ","), "and-swap/judge-wrong-order")
 
     // Learn, then open the fourth lesson, `and-swap`.
-    examplesOpen () =
-        shown = Drive::press (Drive::loaded (), "root", "Examples")
-        flagged (Drive::stored shown, ["learning"])
-        shown
-
     export opened () =
-        listed = examplesOpen ()
+        listed = Drive::press (Drive::loaded (), "root", "Examples")
+        flagged (Drive::stored listed, ["learning"])
         Drive::pressNth (listed, "Open", 3)
 
     stage id = "challenge:and-swap/" + id
@@ -138,13 +130,9 @@ module AppCases
         Success found => Doc::text (Doc::field (found, "mark"), "kind")
         Error _ => "none"
 
-    submitted (envelope, text) =
-        typed = answered (envelope, "state-swapped-goal", text)
-        Drive::press (typed, stage "state-swapped-goal", "Submit")
-
     (** [LESSONS-STATE] [LESSONS-PROGRESS] A right answer is marked by the kernel and saved as progress; a wrong one is marked wrong and saves nothing. *)
     marked (text, mark) =
-        answer = submitted (opened (), text)
+        answer = Drive::press (answered (opened (), "state-swapped-goal", text), stage "state-swapped-goal", "Submit")
         expect (marking answer, mark)
         answer
 
@@ -168,12 +156,8 @@ module AppCases
         unasked after
         expect (marking after, "")
         expect (has (regionJson (focused, stage "state-swapped-goal"), "\"value\":\"q\""), true)
-        typedAnswer ()
-
-    (** Typing into the focused answer still redraws only that challenge after a stray legacy ink answer was dropped. *)
-    typedAnswer () =
-        lesson = opened ()
-        answeredLesson = answered (lesson, "state-swapped-goal", "q ∧ p")
+        // Typing into the focused answer still redraws only that challenge after a stray legacy ink answer was dropped.
+        answeredLesson = answered (opened (), "state-swapped-goal", "q ∧ p")
         expect (Drive::keys answeredLesson, stage "state-swapped-goal")
         expect (has (regionJson (answeredLesson, stage "state-swapped-goal"), "\"value\":\"q ∧ p\""), true)
 
@@ -305,7 +289,6 @@ module AppCases
         named = Drive::choose (first, "document", "Untitled solution", Drive::quoted "My argument")
         written = typed (named, source)
         paper = Drive::press (written, "root", "Proof")
-        rows = Drive::kindedIn ("rows", paper, "document")
         Drive::chosen (paper, "document", "0")
 
     sameWorking (before, after) =
@@ -372,9 +355,7 @@ module WorkflowCases
         savedWorking ()
 
     savedWorking () =
-        restored = AppCases::reopened (AppCases::freshTyped ("Keep this calculation."))
-        WorkspaceCases::withoutDrawing (stored restored)
-        AppCases::kept (restored, "Keep this calculation.")
+        AppCases::intact (AppCases::reopened (AppCases::freshTyped ("Keep this calculation.")), "Keep this calculation.")
 
     (** The accepted sample names its canonical step and inserts it through its own control. *)
     insertedExample accepted =
@@ -404,30 +385,22 @@ module WorkflowCases
             false => 49
         expect (Doc::number (bodyStyle entry, "height"), expectedHeight)
 
-    expectHeaderGeometry envelope =
-        actions = Drive::namedIn ("header-actions", envelope, "heading")
+    expectRestart guide =
+        actions = Drive::namedIn ("header-actions", guide, "heading")
         style = AppCases::framed actions
         expect (Doc::number (style, "gap"), 9)
         expect (length (bodyChildren actions), 4)
         expect (Doc::number (Doc::field (childAt (actions, 1), "style"), "width"), 40)
         expect (Doc::number (Doc::field (childAt (actions, 2), "style"), "width"), 44)
-
-    expectCompletionLeading envelope =
-        expect (expectLeading (Drive::namedIn ("proof-completion", envelope, "document")), 16.0)
-
-    expectRestart guide =
-        expectHeaderGeometry guide
-        expectCompletionLeading guide
+        expect (expectLeading (Drive::namedIn ("proof-completion", guide, "document")), 16.0)
         restarted = Drive::press (guide, "document", "Start the example again")
         expectStepInset restarted
-        before = stored guide
-        after = stored restarted
         expect (AppCases::check guide, "checked at -1")
-        expect (Doc::text (after, "text"), restartedText ())
-        expect (Doc::number (after, "selectedStep"), -1)
+        AppCases::kept (restarted, restartedText ())
+        expect (Doc::number (stored restarted, "selectedStep"), -1)
         expect (startsWith (AppCases::check restarted, "checked"), false)
-        WorkspaceCases::withoutDrawing (after)
-        expect (structuralEquals (Doc::field (before, "exampleBackup")) (Doc::field (after, "exampleBackup")), true)
+        WorkspaceCases::withoutDrawing (stored restarted)
+        expect (structuralEquals (Doc::field (stored guide, "exampleBackup")) (Doc::field (stored restarted, "exampleBackup")), true)
         returned = moved (restarted, "root", "Return to working", ["guided"], false)
         AppCases::kept (returned, "")
 
@@ -507,7 +480,7 @@ module WorkflowCases
         cancelled = Drive::cancelled (requested, "workspace:saved")
         expect (Doc::text (stored requested, "notice"), "Workspace opened. Supported statements have been checked again.")
         AppCases::agrees (stored cancelled, stored requested, ["notice"])
-        expect (Doc::write (stored cancelled), Doc::write (stored requested))
+        AppCases::identical (cancelled, requested)
         noticeAfter (requested, "workspace:saved", "working.json", "Workspace saved.")
         loaded = reopened source
         AppCases::kept (loaded, savedSource ())

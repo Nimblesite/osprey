@@ -1,4 +1,4 @@
-// [SYNTH-DSP] Stateful reference oscillators. Their waveforms are mathematics: Waves.lean.
+// [SYNTH-DSP] Stateful reference oscillators. Their waveforms are mathematics: waves.ospml.
 namespace synth
 
 (** Checked configuration and explicit phase continuity, independent of any audio device. *)
@@ -9,7 +9,7 @@ module Oscillators
     (** Preparation validates finite controls and a strictly sub-Nyquist frequency. *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 0.0 && config.frequency < config.sampleRate * 0.5 && config.pulseWidth >= 0.01 && config.pulseWidth <= 0.99
         true => Success(value = config)
-        false => Error(message = "Invalid oscillator sample rate, frequency or pulse width.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid oscillator sample rate, frequency or pulse width."))
 
     shaped (config, held, step) = match config.waveform
         Sine => Waves::sine held.phase

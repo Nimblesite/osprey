@@ -103,8 +103,14 @@ EXE            ?= $(if $(filter win32,$(EXT_OS)),.exe,)
 EXT_NODE_DEPS         = $(EXT_DIR)/node_modules/.package-lock.json
 WEBSITE_NODE_DEPS     = src/toolchain/website/node_modules/.package-lock.json
 WEBCOMPILER_NODE_DEPS = src/toolchain/webcompiler/node_modules/.package-lock.json
-BANK_WEB_NODE_DEPS    = src/osprey/examples/projects/modules/web/node_modules/.package-lock.json
-BANK_E2E_NODE_DEPS    = src/osprey/examples/projects/modules/e2e/node_modules/.package-lock.json
+BANK_WEB_NODE_DEPS    = src/toolchain/hosts/web/node_modules/.package-lock.json
+BANK_E2E_NODE_DEPS    = src/osprey/examples/talon/playwright-e2e-tests/node_modules/.package-lock.json
+# Talon Bank's one Osprey Native app, as the generic Android and SwiftUI hosts take it.
+BANK_APP     = src/osprey/examples/talon/app
+BANK_ANDROID = OSPREY_ANDROID_APP=$(BANK_APP) OSPREY_ANDROID_ID=org.ospreylang.talon OSPREY_ANDROID_NAME="Talon Bank" OSPREY_ANDROID_REVERSE=18790
+BANK_IOS     = OSPREY_SWIFT_APP=$(BANK_APP) OSPREY_IOS_NAME="Talon Bank" OSPREY_IOS_ID=org.ospreylang.talon
+# Runs a command while a fresh Talon backend answers, so every host's journey sees the same ledger.
+BANK_LEDGER  = node src/osprey/examples/talon/playwright-e2e-tests/ledger.js
 
 # Build logs and coverage reports live under target/, never in the repo root.
 LOG_DIR      = target/logs

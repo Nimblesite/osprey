@@ -1405,7 +1405,8 @@
      "{{assets}}/skins/prism/header.png",
      "{{assets}}/skins/prism/tools.png",
      "{{assets}}/skins/prism/inspector.png",
-     "{{assets}}/skins/prism/legend.png"
+     "{{assets}}/skins/prism/legend.png",
+     "{{assets}}/skins/prism/logo.png"
     ],
     "shapes": [
 {"shape": "sprite", "index": 0, "x": 2560.0, "y": 1506.0, "w": 5120, "h": 2880, "depth": 0},

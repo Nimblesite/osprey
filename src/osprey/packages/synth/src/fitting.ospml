@@ -1,0 +1,128 @@
+// [SYNTH-ADVANCED-LEARNED] Offline parameter fitting through the production graph renderer.
+namespace synth
+
+(** Fits chosen node parameters so a rendered block's log spectrum approaches a target's. The caller's
+    graph is never modified: `apply` returns a separate, revalidated graph only when asked. Deterministic
+    for a seed; `start`/`advance` run one evaluation at a time so a host can show progress or cancel. *)
+module Fitting
+    descriptor (graph, parameter) = match Graphs::node (graph, parameter.node)
+        Invalid _ => Error(message = MissingResource(detail = "A fitted parameter names an absent node."))
+        Valid n => match listGet (filterList (n.parameters, \p => p.key == parameter.key && p.automatable)) 0
+            Error _ => Error(message = InvalidConfiguration(detail = "A fitted parameter is not an automatable parameter of its node."))
+            Success found => match parameter.minimum < parameter.maximum && parameter.minimum >= found.minimum && parameter.maximum <= found.maximum
+                false => Error(message = InvalidConfiguration(detail = "A fitted range must be non-empty and inside the parameter's declared range."))
+                true => Success(value = found.initial)
+
+    starting (graph, outcome, parameter) = match outcome
+        Error why => Error(message = why)
+        Success values => Outcomes::carried (descriptor (graph, parameter), \initial => Success(value = listAppend values (FitMath::normalised (FitMath::clip (initial, parameter.minimum, parameter.maximum), parameter.minimum, parameter.maximum))))
+
+    // Replace one node parameter's initial value; renders read initial values as their snapshot.
+    tuned (n, parameter, value) = match n.identity == parameter.node
+        false => n
+        true => n(parameters = mapList (n.parameters, \p => retuned (p, parameter, value)))
+
+    retuned (p, parameter, value) = match p.key == parameter.key
+        true => p(initial = FitMath::denormalised (value, parameter.minimum, parameter.maximum))
+        false => p
+
+    invalidValues () = Error(message = InvalidConfiguration(detail = "Fitted values must match the parameters one-to-one and lie in [0, 1]."))
+
+    (** Recheck each target against the current patch before adopting its normalised value. *)
+    export applied (graph, parameters, values) = match parameters
+        [] => match values
+            [] => Success(value = graph)
+            _ => invalidValues ()
+        [parameter, ...rest] => match values
+            [] => invalidValues ()
+            [value, ...others] => match value >= 0.0 && value <= 1.0
+                false => invalidValues ()
+                true => Outcomes::carried (descriptor (graph, parameter), \_ =>
+                    applied (graph(nodes = mapList (graph.nodes, \n => tuned (n, parameter, value))), rest, others))
+
+    windowed samples = Sequences::mapIndexed (samples, \(index, value) => value * SpectralMath::hann (toFloat index, toFloat (length samples)))
+
+    (** Hann-windowed power spectrum of a power-of-two block. *)
+    export spectrum samples = match Ffts::forward (windowed samples)
+        Error why => Error(message = why)
+        Success bins => Success(value = mapList (bins, \b => SpectralMath::power (b.re, b.im)))
+
+    rendered (graph, frames) = match Graphs::prepare graph
+        Invalid _ => Error(message = InvalidConfiguration(detail = "A candidate graph is invalid."))
+        Valid plan => match Renderer::start graph
+            Error why => Error(message = why)
+            Success initial => Outcomes::carried (Renderer::block (plan, 48000.0, Parameters::initial graph, initial, frames), \block => spectrum block.samples)
+
+    loss (candidate, target) = foldList (Sequences::combined (candidate, target, \(c, t) => FitMath::binLoss (c, t)), 0.0, \(sum, value) => sum + value) / toFloat (length target)
+
+    (** Render normalised values and score them against target powers. *)
+    export evaluate (graph, config, target, values) = match applied (graph, config.parameters, values)
+        Error why => Error(message = why)
+        Success candidate => match rendered (candidate, satMul (satSub (length target) 1) 2)
+            Error why => Error(message = why)
+            Success powers => match length powers == length target
+                false => Error(message = IncompatibleLayout(detail = "Candidate and target spectra differ in size."))
+                true => Success(value = FitCandidate(values = values, loss = loss (powers, target)))
+
+    valid (config, target) = length config.parameters >= 1 && length config.parameters <= 16 && config.seed >= 1 && config.seed <= 2147483646 && config.evaluations >= 1 && config.evaluations <= 10000 && config.tolerance > 0.0 && config.tolerance < 1.0 && Ffts::valid (length target)
+
+    (** Validate the job and score the graph's current values; the target is a power-of-two block at 48 kHz. *)
+    export start (graph, config, target) = match valid (config, target)
+        false => Error(message = InvalidConfiguration(detail = "A fit needs 1-16 parameters, a seed, 1-10000 evaluations, a tolerance in (0, 1) and a 64-4096 sample target."))
+        true => match spectrum target
+            Error why => Error(message = why)
+            Success powers => match foldList (config.parameters, Success(value = []), \(outcome, parameter) => starting (graph, outcome, parameter))
+                Error why => Error(message = why)
+                Success values => Outcomes::carried (evaluate (graph, config, powers, values), \first => Success(value = FitSearch(best = first, step = 0.25, seed = toFloat config.seed, evaluations = 1, history = [first.loss])))
+
+    // The draw carries proposed values in `best.values` and the advancing seed; its loss is not yet known.
+    drawn (values, seed) = FitSearch(best = FitCandidate(values = values, loss = 0.0), step = 0.0, seed = seed, evaluations = 0, history = [])
+
+    exploring (config, search) = search.evaluations < intDiv config.evaluations 4
+
+    moved (config, search, value, seed) = match exploring (config, search)
+        true => FitMath::explored seed
+        false => FitMath::perturbed (value, search.step, seed)
+
+    perturbation (config, search, outcome, value) =
+        seed = GrainMath::nextSeed outcome.seed
+        drawn (listAppend outcome.best.values (moved (config, search, value, seed)), seed)
+
+    // Draw one candidate: uniform while exploring, then a seeded step around the best; one seed per value.
+    proposed (config, search) = foldList (search.best.values, drawn ([], search.seed), \(outcome, value) => perturbation (config, search, outcome, value))
+
+    (** Whether the search has spent its budget or its step fell below tolerance. *)
+    export finished (config, search) = search.evaluations >= config.evaluations || search.step < config.tolerance
+
+    // Exploration keeps the step; refinement adapts it by the one-fifth rule.
+    step (config, search, improved) = match exploring (config, search)
+        true => search.step
+        false => FitMath::adapted (search.step, improved)
+
+    chosen (config, search, draw, candidate) = match candidate.loss < search.best.loss
+        true => FitSearch(best = candidate, step = step (config, search, 1.0), seed = draw.seed, evaluations = satAdd search.evaluations 1, history = listAppend search.history candidate.loss)
+        false => FitSearch(best = search.best, step = step (config, search, 0.0), seed = draw.seed, evaluations = satAdd search.evaluations 1, history = listAppend search.history search.best.loss)
+
+    (** One evaluation: uniform exploration for the first quarter of the budget, then a (1+1)-ES with the
+        one-fifth rule; history records the best loss after each. *)
+    export advance (graph, config, target, search) = match spectrum target
+        Error why => Error(message = why)
+        Success powers =>
+            draw = proposed (config, search)
+            Outcomes::carried (evaluate (graph, config, powers, draw.best.values), \candidate => Success(value = chosen (config, search, draw, candidate)))
+
+    running (graph, config, target, outcome) = match outcome
+        Error why => Error(message = why)
+        Success search => match finished (config, search)
+            true => Success(value = FitResult(best = search.best, evaluations = search.evaluations, history = search.history, converged = search.step < config.tolerance))
+            false => running (graph, config, target, advance (graph, config, target, search))
+
+    (** Run to completion. Failure returns an error and leaves the caller's graph untouched. *)
+    export fit (graph, config, target) = running (graph, config, target, start (graph, config, target))
+
+    (** Explicitly adopt a result: a new, revalidated graph; the original stays available for rejection. *)
+    export apply (graph, config, result) = match applied (graph, config.parameters, result.best.values)
+        Error why => Error(message = why)
+        Success candidate => match Graphs::prepare candidate
+            Invalid _ => Error(message = InvalidConfiguration(detail = "The fitted graph failed validation; keep the original."))
+            Valid plan => Success(value = plan.graph)

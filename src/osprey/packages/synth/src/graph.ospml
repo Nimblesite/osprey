@@ -1,10 +1,41 @@
 // Implements [SYNTH-GRAPH]. Graph edits are pure; a rejected edit preserves the caller's graph.
 namespace synth
 
+(** Searching a list for one item. *)
+module Seek
+    (** The first item that `matches`, found without building a list of the matches: the renderer asks this for every node of every sample ([DAW-PERF-ROUND]). *)
+    export first<T> : (List<T>, (T) -> bool) -> Result<T, Fault>
+    first (items, matches) = from (items, matches, 0)
+
+    from<T> : (List<T>, (T) -> bool, int) -> Result<T, Fault>
+    from (items, matches, index) = match listGet items index
+        Error _ => Error(message = MissingResource(detail = "No item matches."))
+        Success item => match matches item
+            true => Success(value = item)
+            false => from (items, matches, index + 1)
+
 (** Immutable graph editing and checked scheduling before rendering begins. *)
 module Graphs
     (** A graph with no components or routes. *)
     export empty = Graph(nodes = [], cables = [])
+
+    (** Index each destination's upstream node IDs once for graph traversal. *)
+    export inputSources cables = foldList (cables, Map(), \(index, cable) =>
+        key = toString cable.destination
+        mapSet index key (listPrepend (mapGet index key ?: []) cable.source))
+
+    visitInputs (inputs, pending, visited) = match pending
+        [] => visited
+        [identity, ...rest] =>
+            key = toString identity
+            match mapContains visited key
+                true => visitInputs (inputs, rest, visited)
+                false =>
+                    next = foldList (mapGet inputs key ?: [], rest, \(held, source) => listPrepend held source)
+                    visitInputs (inputs, next, mapSet visited key true)
+
+    (** The given roots and every upstream node, including through delayed feedback. *)
+    export inputAncestors (cables, roots) = visitInputs (inputSources cables, roots, Map())
 
     (** Locate one component by stable identity. *)
     export node (graph, identity) = match listGet (filterList (graph.nodes, \n => n.identity == identity)) 0
@@ -16,20 +47,40 @@ module Graphs
 
     validParameter p = p.key != "" && p.minimum <= p.initial && p.initial <= p.maximum && abs p.minimum <= 1000000000000.0 && abs p.maximum <= 1000000000000.0
 
-    validPort p = p.name != "" && p.channels >= 1 && p.channels <= 64
+    (** The channel count the current graph engine can prepare for one port. *)
+    export channelCount count = count >= 1 && count <= 64
+
+    validPort p = p.name != "" && channelCount p.channels
 
     all<T> : (List<T>, (T) -> bool) -> bool
     all (items, predicate) = foldList (items, true, \(ok, item) => ok && predicate item)
 
     processorValid processor = match processor
-        Granular resource capacity seed => match Grains::prepare (resource.samples, capacity)
+        SamplePlayer resource => match SampleResources::prepare resource
             Error _ => false
-            Success _ => SampleResources::metadata resource && seed >= 1 && seed <= 2147483646
+            Success _ => true
+        Granular resource capacity seed => match SampleResources::prepare resource
+            Error _ => false
+            Success _ => capacity >= 1 && capacity <= 256 && seed >= 1 && seed <= 2147483646
         Delay count => count >= 1 && count <= 1920000
-        External identity => identity != ""
+        Exciter seed => seed >= 1 && seed <= 2147483646
+        Spectral size hop => Ffts::valid size && (hop == intDiv size 4 || hop == intDiv size 8)
+        TableOscillator table => length table.frames >= 1 && length table.frames <= 64 && length (filterList (table.frames, \frame => length frame.levels >= 1 && length (filterList (frame.levels, \level => length level.samples == table.size)) == length frame.levels)) == length table.frames
+        Waveguide capacity => capacity >= 4 && capacity <= 96000
+        Bowed capacity => capacity >= 4 && capacity <= 96000
+        StrikeComb capacity => capacity >= 2 && capacity <= 96000
+        FractionalDelay capacity => capacity >= 2 && capacity <= 1920000
+        External identity latency => identity != "" && latency >= 0 && latency <= 1920000
         _ => true
 
-    validNode n = n.identity >= 0 && processorValid n.processor && all (n.inputs, validPort) && all (n.outputs, validPort)
+    validNode n = n.identity >= 0 && routed n && processorValid n.processor && all (n.inputs, validPort) && all (n.outputs, validPort)
+
+    // [SYNTH-GRAPH-CHANNELS] Every map entry names an input channel or silence; anything else is invalid.
+    routed n = match n.processor
+        Route entries => match listGet n.inputs 0
+            Error _ => false
+            Success input => length (filterList (entries, \entry => entry >= -1 && entry < input.channels)) == length entries
+        _ => true
 
     checkedNode n = match validNode n
         false => Invalid(fault = InvalidNode)
@@ -43,12 +94,10 @@ module Graphs
         Invalid fault => Invalid(fault = fault)
         Valid _ => Valid(value = graph(nodes = listAppend graph.nodes n))
 
-    (** Add a validated component, refusing duplicate identities and resource overflow. *)
-    export add (graph, n) = match length graph.nodes >= 256
-        true => Invalid(fault = Capacity)
-        false => match node (graph, n.identity)
-            Valid _ => Invalid(fault = DuplicateNode)
-            Invalid _ => inserted (graph, n)
+    (** Add a component with a unique, stable identity. *)
+    export add (graph, n) = match node (graph, n.identity)
+        Valid _ => Invalid(fault = DuplicateNode)
+        Invalid _ => inserted (graph, n)
 
     port (ports, index) = match listGet ports index
         Error _ => Invalid(fault = InvalidPort)
@@ -72,50 +121,106 @@ module Graphs
 
     occupied (graph, cable) = length (filterList (graph.cables, \c => c.destination == cable.destination && c.inlet == cable.inlet)) != 0
 
-    connected (graph : Graph, cable) = match checkedCable (graph, cable)
+    (** Connect compatible typed ports, requiring explicit mixing for multiple sources. *)
+    export connect (graph : Graph, cable) = match checkedCable (graph, cable)
         Invalid fault => Invalid(fault = fault)
         Valid _ => match occupied (graph, cable)
             true => Invalid(fault = OccupiedInput)
             false => Valid(value = graph(cables = listAppend graph.cables cable))
-
-    (** Connect compatible typed ports, requiring explicit mixing for multiple sources. *)
-    export connect (graph, cable) = match length graph.cables >= 2048
-        true => Invalid(fault = Capacity)
-        false => connected (graph, cable)
 
     // Explicit delay nodes publish old state first and consume incoming cables after the schedule.
     delayed processor = match processor
         Delay _ => true
         _ => false
 
-    feedback (graph, cable) = match node (graph, cable.destination)
-        Valid destination => delayed destination.processor
-        Invalid _ => false
-
-    containsId (ids, identity) = length (filterList (ids, \i => i == identity)) != 0
-
-    ready (graph, done, n) = all (filterList (graph.cables, \c => c.destination == n.identity), \c => feedback (graph, c) || containsId (done, c.source))
-
-    schedule (graph, remaining, done) = match length remaining == 0
-        true => Valid(value = Prepared(graph = graph, order = done, feedback = filterList (graph.cables, \c => feedback (graph, c))))
-        false => match listGet (filterList (remaining, \n => ready (graph, done, n))) 0
-            Error _ => Invalid(fault = Cycle)
-            Success next => schedule (graph, filterList (remaining, \n => n.identity != next.identity), listAppend done next.identity)
-
-    addChecked (outcome, n) = match outcome
+    indexNode (outcome, n) = match outcome
         Invalid fault => Invalid(fault = fault)
-        Valid graph => add (graph, n)
+        Valid nodes => match mapContains nodes (toString n.identity)
+            true => Invalid(fault = DuplicateNode)
+            false => match checkedNode n
+                Invalid fault => Invalid(fault = fault)
+                Valid component => Valid(value = mapSet nodes (toString n.identity) (RankedNode(component = component, ordinal = mapLength nodes)))
 
-    connectChecked (outcome, cable) = match outcome
-        Invalid fault => Invalid(fault = fault)
-        Valid graph => connect (graph, cable)
+    linked (routes, cable, source, destination) =
+        key = "${cable.destination}/${cable.inlet}"
+        match mapContains routes.occupiedInlets key
+            true => Invalid(fault = OccupiedInput)
+            false =>
+                next = routes(occupiedInlets = mapSet routes.occupiedInlets key true)
+                match delayed destination.component.processor
+                    true => Valid(value = next(delayedInputs = listPrepend next.delayedInputs cable))
+                    false =>
+                        downstream = mapGet routes.destinations (toString source.ordinal) ?: []
+                        count = mapGet routes.dependencies (toString destination.ordinal) ?: 0
+                        Valid(value = next(destinations = mapSet routes.destinations (toString source.ordinal) (listPrepend downstream destination.ordinal), dependencies = mapSet routes.dependencies (toString destination.ordinal) (satAdd count 1)))
 
-    (** Revalidate public records, including graphs reconstructed from a stored patch. *)
-    export prepare graph = match foldList (graph.nodes, Valid(value = empty), addChecked)
+    indexCable (nodes, outcome, cable) = match outcome
         Invalid fault => Invalid(fault = fault)
-        Valid nodes => match foldList (graph.cables, Valid(value = nodes), connectChecked)
-            Invalid fault => Invalid(fault = fault)
-            Valid checked => schedule (checked, checked.nodes, [])
+        Valid routes => match mapGet nodes (toString cable.source)
+            Error _ => Invalid(fault = MissingNode)
+            Success source => match mapGet nodes (toString cable.destination)
+                Error _ => Invalid(fault = MissingNode)
+                Success destination => match joinedPorts (source.component, destination.component, cable)
+                    Invalid fault => Invalid(fault = fault)
+                    Valid _ => linked (routes, cable, source, destination)
+
+    // A leftist min-heap preserves the first ready node in declaration order, including after fan-in.
+    depth heap = match heap
+        NoReadyNode => 0
+        ReadyNode _ height _ _ => height
+
+    branch (ordinal, left, right) = match depth left >= depth right
+        true => ReadyNode(ordinal = ordinal, depth = satAdd 1 (depth right), left = left, right = right)
+        false => ReadyNode(ordinal = ordinal, depth = satAdd 1 (depth left), left = right, right = left)
+
+    meld (one, other) = match one
+        NoReadyNode => other
+        ReadyNode first _ left right => match other
+            NoReadyNode => one
+            ReadyNode second _ lower upper => match first <= second
+                true => branch (first, left, meld (right, other))
+                false => branch (second, lower, meld (upper, one))
+
+    enqueue (ready, ordinal) = meld (ready, ReadyNode(ordinal = ordinal, depth = 1, left = NoReadyNode, right = NoReadyNode))
+
+    release (queue, ordinal) =
+        count = satSub (mapGet queue.remainingInputs (toString ordinal) ?: 0) 1
+        ready = match count == 0
+            true => enqueue (queue.readyNodes, ordinal)
+            false => queue.readyNodes
+        queue(readyNodes = ready, remainingInputs = mapSet queue.remainingInputs (toString ordinal) count)
+
+    schedule (graph, routes, queue, ordered) = match queue.readyNodes
+        NoReadyNode => match length ordered == length graph.nodes
+            false => Invalid(fault = Cycle)
+            true => Valid(value = Prepared(graph = graph, order = listReverse ordered, feedback = listReverse routes.delayedInputs))
+        ReadyNode ordinal _ left right => match listGet graph.nodes ordinal
+            Error _ => Invalid(fault = MissingNode)
+            Success n =>
+                downstream = mapGet routes.destinations (toString ordinal) ?: []
+                next = foldList (downstream, queue(readyNodes = meld (left, right)), release)
+                schedule (graph, routes, next, listPrepend ordered n.identity)
+
+    roots (routes, count) = foldList (toList (range (0, count)), NoReadyNode, \(heap, ordinal) =>
+        match mapContains routes.dependencies (toString ordinal)
+            true => heap
+            false => enqueue (heap, ordinal))
+
+    indexed graph = match foldList (graph.nodes, Valid(value = Map()), indexNode)
+        Invalid fault => Invalid(fault = fault)
+        Valid nodes =>
+            emptyRoutes = RouteIndex(occupiedInlets = Map(), destinations = Map(), dependencies = Map(), delayedInputs = [])
+            foldList (graph.cables, Valid(value = emptyRoutes), \(outcome, cable) => indexCable (nodes, outcome, cable))
+
+    (** Validate every component and endpoint in a bulk graph edit before publication. *)
+    export checked graph = match indexed graph
+        Invalid fault => Invalid(fault = fault)
+        Valid _ => Valid(value = graph)
+
+    (** Revalidate stored records and schedule typed routes by their endpoints. *)
+    export prepare graph = match indexed graph
+        Invalid fault => Invalid(fault = fault)
+        Valid routes => schedule (graph, routes, ReadyQueue(readyNodes = roots (routes, length graph.nodes), remainingInputs = routes.dependencies), [])
 
     // [PRISM-ROUTING-DELIVERY] Publish only a completely validated replacement.
     edited graph = match prepare graph

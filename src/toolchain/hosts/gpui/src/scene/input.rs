@@ -29,6 +29,8 @@ pub(super) fn interactive<'b>(
     let mut elements = decoded.access.to_vec();
     elements.extend(super::text::labels(&decoded.shapes, scale, window));
     let access = super::access::overlay(&handle, &binding, &elements, scale);
+    let contextual = handle.clone();
+    let scene_key = key.clone();
     let binding_for_paint = binding;
     let surface = div()
         .id(view::id(row))
@@ -45,6 +47,14 @@ pub(super) fn interactive<'b>(
             MouseButton::Left,
             mouse_down(handle.clone(), focus, binding, key.clone()),
         )
+        .on_mouse_down(MouseButton::Right, move |event, window, cx| {
+            contextual.update(cx, |view, cx| {
+                if let Some(transform) = view.scene_transforms.get(&scene_key) {
+                    let (x, y) = transform.scene(event.position);
+                    view.send(Touch::secondary(binding.ordinal, x, y), window, cx);
+                }
+            });
+        })
         .on_mouse_up(
             MouseButton::Left,
             mouse_up(handle.clone(), binding, key.clone()),
@@ -165,7 +175,7 @@ fn mouse_move(
     key: String,
 ) -> impl Fn(&MouseMoveEvent, &mut Window, &mut App) {
     move |event, window, cx| {
-        let down = event.pressed_button.is_some();
+        let down = event.pressed_button == Some(MouseButton::Left);
         pointer(
             &handle,
             &binding,

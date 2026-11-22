@@ -1,0 +1,112 @@
+// [SYNTH-ADVANCED-SPECTRAL-PITCH] Peak-locked phase-vocoder pitch shifting with formant control.
+namespace synth
+
+(** Each spectral peak moves to the bin of its true frequency times `ratio` and carries the bins nearest it
+    along unchanged in shape (Laroche and Dolson, 1999), so a partial keeps its whole window lobe and its level.
+    The peak's phase advances at its new frequency; the bins around it keep their analysed phase offset from it
+    (identity phase locking), so overlapping frames add rather than cancel. The formant envelope then moves by
+    `formant` [SYNTH-ADVANCED-SPECTRAL-FORMANT]. Formulas: spectral_math.ospml. *)
+module SpectralPeaks
+    // Source bins carry (magnitude, true bin); analysed phases carry (phase, true bin); motion the last output phase.
+    part (bins, k) = match listGet bins k
+        Error _ => Complex(re = 0.0, im = 0.0)
+        Success value => value
+
+    peak (sources, k) =
+        here = (part (sources, k)).re
+        here > 0.000000001 && here > (part (sources, satSub k 1)).re && here >= (part (sources, satAdd k 1)).re
+
+    // The latest peak met in a sweep, -1 before the first: sweeping up gives the peak at or below each bin,
+    // sweeping down (built back to front, so it reads in order) the peak at or above it.
+    swept (sources, found, k) = match peak (sources, k)
+        true => listPrepend found k
+        false => listPrepend found (listGet found 0 ?: -1)
+
+    nearer (k, low, high) = match low < 0 || (high >= 0 && satSub high k < satSub k low)
+        true => high
+        false => low
+
+    // The peak each bin belongs to: the nearest one, the lower on a tie; -1 in a frame with no peak.
+    owners sources =
+        indices = toList (range (0, length sources))
+        lows = listReverse (foldList (indices, [], \(found, k) => swept (sources, found, k)))
+        highs = foldList (listReverse indices, [], \(found, k) => swept (sources, found, k))
+        mapList (indices, \k => nearer (k, listGet lows k ?: -1, listGet highs k ?: -1))
+
+    // Output bin for bin `k` of the region around peak `p`: the whole region moves by the same bins, so the
+    // lobe's centre lands nearest the peak's true frequency times the ratio.
+    target (sources, ratio, p, k) = match floatToInt (SpectralMath::peakShift ((part (sources, p)).im, ratio))
+        Error _ => -1
+        Success moved => satAdd k moved
+
+    // One sortable key per contribution: output bin first, then the source bin.
+    keyed (sources, ratio, owner, k) = match owner < 0
+        true => -1
+        false => keyFor (target (sources, ratio, owner, k), k, length sources)
+
+    keyFor (j, k, count) = match j >= 0 && j < count
+        true => satAdd (satMul j 65536) k
+        false => -1
+
+    // The peak's synthesis phase: its last output phase at the new bin advanced at the shifted frequency.
+    peakPhase (config, shape, motion, p) = SpectralMath::principal ((part (motion, target (shape.sources, shape.ratio, p, p))).re + SpectralMath::binAdvance ((part (shape.sources, p)).im * shape.ratio, toFloat config.hop, toFloat config.size))
+
+    // Bin k's locked synthesis phase: the peak's phase plus the bin's analysed offset from the peak.
+    contribution (config, shape, motion, k) =
+        p = listGet shape.owners k ?: 0
+        phase = SpectralMath::lockedPhase (peakPhase (config, shape, motion, p), (part (shape.phases, k)).re, (part (shape.phases, p)).re)
+        level = (part (shape.sources, k)).re
+        Complex(re = SpectralMath::polarRe (level, phase), im = SpectralMath::polarIm (level, phase))
+
+    added (sum, value) = Complex(re = sum.re + value.re, im = sum.im + value.im)
+
+    // Sum every sorted contribution landing on output bin `j`, from key position `at`.
+    gathered (config, shape, motion, keys, at, j, sum) = match listGet keys at
+        Error _ => { at = at, sum = sum }
+        Success key => match intDiv key 65536 == j
+            false => { at = at, sum = sum }
+            true => gathered (config, shape, motion, keys, satAdd at 1, j, added (sum, contribution (config, shape, motion, key % 65536)))
+
+    // The envelope at a fractional bin; outside the spectrum it is silent.
+    shaped (levels, bin) = match floatToInt (SpectralMath::nearest bin)
+        Error _ => 0.0
+        Success index => listGet levels index ?: 0.0
+
+    (** The envelope [SYNTH-ADVANCED-SPECTRAL-FORMANT]: the loudest magnitude (each bin's real part) within
+        about 150 Hz, which runs through a harmonic sound's partial peaks rather than the gaps between them. *)
+    export envelope (config, sources) =
+        radius = floatToInt (SpectralMath::envelopeRadius (toFloat config.size, config.sampleRate)) ?: 1
+        Sequences::mapIndexed (sources, \(index, _) => foldList (toList (range (atLeastZero (satSub index radius), atMost (satAdd index (satAdd radius 1), length sources))), 0.0, \(most, k) => TableMath::larger (most, (part (sources, k)).re)))
+
+    atLeastZero value = match value < 0
+        true => 0
+        false => value
+
+    atMost (value, limit) = match value > limit
+        true => limit
+        false => value
+
+    // A bin under envelope(j / ratio) moves to sit under envelope(j / formant); equal ratios give exactly 1.
+    formed (shape, j, value) =
+        gain = SpectralMath::formantGain (shaped (shape.levels, toFloat j / shape.formant), shaped (shape.levels, toFloat j / shape.ratio))
+        Complex(re = value.re * gain, im = value.im * gain)
+
+    // An empty output bin keeps turning at its own frequency, ready for a partial to land on it.
+    resting (config, motion, j) = SpectralMath::principal ((part (motion, j)).re + SpectralMath::binAdvance (toFloat j, toFloat config.hop, toFloat config.size))
+
+    phaseOf (config, motion, j, value) = match SpectralMath::magnitude (value.re, value.im) > 0.0
+        true => SpectralMath::angle (value.re, value.im)
+        false => resting (config, motion, j)
+
+    output (config, shape, motion, keys, run, j) =
+        found = gathered (config, shape, motion, keys, run.at, j, Complex(re = 0.0, im = 0.0))
+        value = formed (shape, j, found.sum)
+        { at = found.at, bins = listAppend run.bins value, motion = listAppend run.motion (Complex(re = phaseOf (config, motion, j, found.sum), im = 0.0)) }
+
+    (** One frame shifted by `ratio` with its formants moved by `formant`, from its (magnitude, true bin)
+        `sources`, analysed `phases` and the last frame's output phases `motion`. *)
+    export shifted (config, sources, phases, motion, ratio, formant) =
+        owned = owners sources
+        shape = { sources = sources, phases = phases, owners = owned, ratio = ratio, formant = formant, levels = envelope (config, sources) }
+        keys = listSort (filterList (Sequences::mapIndexed (owned, \(k, owner) => keyed (sources, ratio, owner, k)), \key => key >= 0))
+        foldList (toList (range (0, length sources)), { at = 0, bins = [], motion = [] }, \(run, j) => output (config, shape, motion, keys, run, j))

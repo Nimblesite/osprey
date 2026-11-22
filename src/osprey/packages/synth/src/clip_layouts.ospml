@@ -11,9 +11,34 @@ module ClipLayouts
         Error _ => false
         Success first => length n.inputs == inputs && length n.outputs == outputs && audio (listConcat n.inputs n.outputs) && length (filterList (listConcat n.inputs n.outputs, \p => p.channels == first.channels)) == inputs + outputs
 
-    stereo n = match n.inputs
+    monoTo (n, acceptsWidth) = match n.inputs
         [input] => match n.outputs
-            [output] => input.channels == 1 && output.channels == 2 && audio [input, output]
+            [output] => input.channels == 1 && acceptsWidth output.channels && audio [input, output]
+            _ => false
+        _ => false
+
+    downmix n = match n.inputs
+        [input] => match n.outputs
+            [output] => input.channels == 2 && output.channels == 1 && audio [input, output]
+            _ => false
+        _ => false
+
+    splitting n = match n.inputs
+        [input] => audio [input] && audio n.outputs && length n.outputs == input.channels && length (filterList (n.outputs, \port => port.channels == 1)) == length n.outputs
+        _ => false
+
+    joining n = match n.outputs
+        [output] => audio [output] && audio n.inputs && length n.inputs == output.channels && length (filterList (n.inputs, \port => port.channels == 1)) == length n.inputs
+        _ => false
+
+    mapped n = match n.processor
+        Route entries => entries
+        _ => []
+
+    (** [SYNTH-GRAPH-CHANNELS] Route's map length fixes the output width; graph validation ranged its entries. *)
+    routing n = match n.inputs
+        [input] => match n.outputs
+            [output] => audio [input, output] && length (mapped n) == output.channels && length (mapped n) >= 1
             _ => false
         _ => false
 
@@ -30,7 +55,8 @@ module ClipLayouts
                 [first, ..._rest] => audioCount == 0 || first.rate == Audio
             audioCount <= 1 && noteCount <= 1 && audioCount + noteCount + controlCount == length n.inputs && length n.outputs == 1 && audio n.outputs && layout.outputChannels >= 1 && audioFirst
 
-    control port = port.rate == Control && port.unit == Normalised && port.channels == 1
+    (** A single-channel normalised control-rate port. *)
+    export control port = port.rate == Control && port.unit == Normalised && port.channels == 1
 
     modulated n = match n.inputs
         [input, modulation] => match n.outputs
@@ -46,26 +72,52 @@ module ClipLayouts
         Error _ => false
         Success port => port.name == "cutoff"
 
+    (** A block with events, control generators or multiple audio channels uses the clip scheduler. *)
+    export requiresClips n = match n.processor
+        Lfo => true
+        ModulatedGain => true
+        External _ _ => true
+        MidiNotes => true
+        Stereo => true
+        Panner => true
+        _ => length (filterList (listConcat n.inputs n.outputs, \p => p.channels != 1)) > 0
+
     (** Processor layouts are exact: no ignored extra ports or implicit channel conversion. *)
     export supported n = match n.processor
         Granular _ _ _ => uniform (n, 0, 1) && length (filterList (n.outputs, \port => port.channels == 2)) == 1
         Lfo => lfo n
+        SamplePlayer _ => uniform (n, 0, 1)
+        Exciter _ => uniform (n, 0, 1)
+        TableOscillator _ => length n.inputs == 4 && length (filterList (n.inputs, control)) == 4 && length n.outputs == 1 && audio n.outputs
+        Additive => uniform (n, 0, 1)
+        Spectral _ _ => uniform (n, 2, 1)
+        PhaseOperator => uniform (n, 2, 1)
+        Bowed _ => uniform (n, 0, 1)
         ModulatedGain => modulated n
         Filter => uniform (n, 1, 1) || (modulated n && cutoffPort n)
         MidiNotes => length n.inputs == 0 && length n.outputs == 1 && notes n.outputs
-        Stereo => stereo n
+        Stereo => monoTo (n, \width => width == 2)
+        Panner => monoTo (n, Graphs::channelCount)
+        Split => splitting n
+        Join => joining n
+        Route _ => routing n
+        Downmix => downmix n
         Oscillator => oscillator n
         Sink => uniform (n, 1, 0)
         Mixer => uniform (n, 2, 1)
-        External _ => external n
+        External _ _ => external n
         _ => uniform (n, 1, 1)
 
     oscillator n = length n.inputs <= 1 && notes n.inputs && length n.outputs == 1 && audio n.outputs && length (filterList (n.outputs, \p => p.channels == 1)) == 1
 
-    optional (n, port) = match n.processor
+    (** Inputs that may stay unplugged: their parameters then apply unchanged. *)
+    export optional (n, port) = match n.processor
         Oscillator => port.rate == Events
-        External _ => port.rate == Control
+        External _ _ => port.rate == Control
         Filter => port.rate == Control && port.name == "cutoff"
+        Spectral _ _ => port.name == "side"
+        TableOscillator _ => port.rate == Control
+        PhaseOperator => true
         _ => false
 
     (** Required inputs must be wired; unplugged optional controls retain their parameter. *)
@@ -80,21 +132,28 @@ module ClipLayouts
     export channels n = match n.processor
         MidiNotes => Success(value = 0)
         Sink => match listGet n.inputs 0
-            Error _ => Error(message = "index out of bounds")
+            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
             Success port => Success(value = port.channels)
+        Split => Success(value = length n.outputs)
         _ => match listGet n.outputs 0
-            Error _ => Error(message = "index out of bounds")
+            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
             Success port => Success(value = port.channels)
 
     delay n = match n.processor
+        SamplePlayer resource => length resource.samples
         Granular resource _ _ => length resource.samples
-        Delay count => match channels n
+        TableOscillator table => foldList (table.frames, 0, \(total, frame) => foldList (frame.levels, total, \(sum, level) => satAdd sum (length level.samples)))
+        _ => match channels n
             Error _ => 1920001
-            Success width => satMul count width
-        _ => 0
+            Success width => satMul (RenderInputs::storage n.processor) width
+
+    // The executor holds one clip per node until the block completes (16M float64 samples = 128 MiB).
+    cacheWidth (total, n) = match channels n
+        Error _ => 16777217
+        Success width => satAdd total width
 
     (** Bound all per-channel delay state before any buffer is allocated. *)
-    export bounded (graph, frames) = frames > 0 && frames <= 32768 && foldList (graph.nodes, 0, \(total, n) => satAdd total (delay n)) <= 1920000 && length (filterList (graph.nodes, \n => supported n)) == length graph.nodes
+    export bounded (graph, frames) = frames > 0 && frames <= 32768 && satMul frames (foldList (graph.nodes, 0, cacheWidth)) <= 16777216 && SpectralKernels::affordable graph && foldList (graph.nodes, 0, \(total, n) => satAdd total (delay n)) <= 1920000 && length (filterList (graph.nodes, \n => supported n)) == length graph.nodes
 
     noteClip (n, first, frames, clip) = match n.processor
         MidiNotes => match MidiClips::timeline (n, first, frames)

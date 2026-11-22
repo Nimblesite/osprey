@@ -46,9 +46,7 @@ module MidiOscillators
             Error why => Error(message = why)
             Success next => match RenderInputs::held (next, n.identity)
                 Error why => Error(message = why)
-                Success kernel => match RenderInputs::sample (next, n.identity)
-                    Error why => Error(message = why)
-                    Success value => Success(value = ClipKernel(heldKernel = advanced (voice(kernel = kernel)), kernelSamples = listPrepend samples (Waves::velocitySample (value, gain voice))))
+                Success kernel => Outcomes::carried (RenderInputs::sample (next, n.identity), \value => Success(value = ClipKernel(heldKernel = advanced (voice(kernel = kernel)), kernelSamples = listPrepend samples (Waves::velocitySample (value, gain voice)))))
 
     sample (plan, n, notes, release, outcome, index) = match outcome
         Error why => Error(message = why)
@@ -64,11 +62,9 @@ module MidiOscillators
 
     (** Retain note ownership and oscillator phase across blocks; events at a boundary belong to the next block. *)
     export block (plan, clips, n, voice, frames) = match valid (n, voice) && frames >= 1 && frames <= 32768
-        false => Error(message = "Invalid MIDI oscillator state or frame capacity.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid MIDI oscillator state or frame capacity."))
         true => match ClipInputs::routed (plan.graph, clips, n.identity, 0)
             Error why => Error(message = why)
             Success clip => match length clip.clipNotes <= 1024 && ordered (clip.clipNotes, 0) && length (filterList (clip.clipNotes, \note => HostPackets::validNote (frames, note))) == length clip.clipNotes
-                false => Error(message = "Invalid or unordered MIDI oscillator events.")
-                true => match foldList (toList (range (0, frames)), Success(value = ClipKernel(heldKernel = voice, kernelSamples = [])), \(held, index) => sample (plan, n, clip.clipNotes, release, held, index))
-                    Error why => Error(message = why)
-                    Success rendered => Success(value = rendered(kernelSamples = listReverse rendered.kernelSamples))
+                false => Error(message = InvalidConfiguration(detail = "Invalid or unordered MIDI oscillator events."))
+                true => Outcomes::carried (foldList (toList (range (0, frames)), Success(value = ClipKernel(heldKernel = voice, kernelSamples = [])), \(held, index) => sample (plan, n, clip.clipNotes, release, held, index)), \rendered => Success(value = rendered(kernelSamples = listReverse rendered.kernelSamples)))

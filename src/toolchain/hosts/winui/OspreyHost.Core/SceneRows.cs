@@ -66,15 +66,24 @@ public sealed record LinearPaint(double Angle, Tint From, double FromAt, Tint To
 /// <summary>One element of a scene's accessibility tree [UI-MACHINE-A11Y]: bounds in scene units and, for a slider, its value and range.</summary>
 public sealed record Accessible(string Role, string Label, double X, double Y, double W, double H, double Value, double Min, double Max, bool Selected);
 
-/// <summary>One checked scene: its unit space (zero for window pixels), its zoom in pixels per unit (0 fits it to its region), its atlas and its shapes.</summary>
+/// <summary>
+/// One checked scene: its unit space (zero for window pixels), its zoom in pixels per unit, its atlas
+/// and its shapes. The scene draws at the magnitude of its zoom, with 0 meaning one window unit per
+/// scene unit [WINUI-HOST-SCENE-SCALE].
+/// </summary>
 public sealed record Scene(double Width, double Height, double Zoom, IReadOnlyList<string> Atlas, IReadOnlyList<Shape> Shapes, IReadOnlyList<Accessible> Access)
 {
     /// <summary>
     /// The size, in window units, of the window an application that is this one scene opens at: its
-    /// units times its zoom. A scene of window pixels or at zoom 0 fits whatever region holds it, so it
-    /// asks for no size.
+    /// units times its scale. A scene in window pixels takes the region provided by its container.
     /// </summary>
-    public (double Width, double Height)? Opening => Width > 0 && Height > 0 && Zoom > 0 ? (Width * Zoom, Height * Zoom) : null;
+    public (double Width, double Height)? Opening => Width > 0 && Height > 0 ? (Width * Scale, Height * Scale) : null;
+
+    /// <summary>Window units per scene unit.</summary>
+    public double Scale => Width <= 0 || Height <= 0 || Zoom == 0 ? 1 : Math.Abs(Zoom);
+
+    /// <summary>The visible region in scene units.</summary>
+    public (double Width, double Height) Viewport(double width, double height) => (width / Scale, height / Scale);
 }
 
 /// <summary>
@@ -105,7 +114,8 @@ public static class SceneReader
                     throw new HostException("A scene names no canvas row, or one twice");
                 }
                 var row = (int)head.Index;
-                current = new Growing(FrameReader.Extent(head.X, row), FrameReader.Extent(head.Y, row), FrameReader.Extent(head.Width, row));
+                // The row is already finite, and a zoom of either sign is a scale, so only the extent is checked.
+                current = new Growing(FrameReader.Extent(head.X, row), FrameReader.Extent(head.Y, row), head.Width);
                 all[row] = current;
                 continue;
             }

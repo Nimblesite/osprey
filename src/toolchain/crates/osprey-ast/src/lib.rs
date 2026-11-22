@@ -44,7 +44,7 @@ pub use handler_value::{handler_function, handler_value, Clauses};
 pub use multiplicity::{
     Multiplicity, OperationMode, OperationTable, CONTROL_KEYWORD, REPLAYABLE_KEYWORD,
 };
-pub use pattern::Pattern;
+pub use pattern::{row_binders, Pattern};
 pub use resume::resumes_on_one_path;
 pub use signature::{EffectOperation, SignatureItem, SignatureType};
 pub use stack::with_stack;
@@ -351,17 +351,17 @@ pub fn record_expression(
 }
 
 /// The canonical [`Pattern::Structural`] a tuple pattern `(a, b)` lowers to:
-/// slot *i* is the decimal field [`positional_field_name`], its binder the
-/// written name (empty for `_`). One definition for both flavors, so ML
+/// slot *i* is the decimal field [`positional_field_name`], its pattern the
+/// written one. One definition for both flavors, so ML
 /// `(a, b)` and Default `(a, b)` produce byte-identical AST
 /// ([PATTERN-TUPLE], [FLAVOR-ML-TUPLE]).
 #[must_use]
-pub fn tuple_pattern(binders: Vec<String>) -> Pattern {
+pub fn tuple_pattern(slots: Vec<Pattern>) -> Pattern {
     Pattern::Structural {
-        fields: binders
+        fields: slots
             .into_iter()
             .enumerate()
-            .map(|(i, binder)| (positional_field_name(i), binder))
+            .map(|(i, slot)| (positional_field_name(i), slot))
             .collect(),
         open: false,
     }

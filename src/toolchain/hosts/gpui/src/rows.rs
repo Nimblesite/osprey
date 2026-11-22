@@ -6,10 +6,8 @@
 
 use std::collections::HashMap;
 
-use gpui_kit::accesskit::Role;
-
 use crate::frame::{AskRow, Frame, Streamed, ViewRow};
-use crate::scene::{access::Access, Outline, Paint, Shape, Step, Tint};
+use crate::scene::{Access, Outline, Paint, Role, Shape, Step, Tint};
 
 /// What a row draws, by its `kind` ([NATIVE-SHM-VIEW]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -281,6 +279,16 @@ fn extent(value: f64) -> Result<f32, String> {
     }
 }
 
+/// Negative zoom fixes the scale. It crosses the scene boundary as an f32 of the same sign and magnitude range.
+fn scene_zoom(value: f64) -> Result<f32, String> {
+    let zoom = value as f32;
+    if zoom.is_finite() && (value == 0.0 || zoom != 0.0) {
+        Ok(zoom)
+    } else {
+        Err("an unrepresentable scene zoom".to_owned())
+    }
+}
+
 fn colour(value: i64) -> Result<u32, String> {
     u32::try_from(value).map_err(|_| "a colour outside 0xRRGGBBAA".to_owned())
 }
@@ -533,6 +541,36 @@ fn tinted(row: &Streamed) -> Result<u32, String> {
     colour(row.colour)
 }
 
+fn text_shape(rows: &mut Rows, head: &Streamed, depth: f32) -> Result<Shape, String> {
+    let text = rows.text(head)?;
+    let (x, y, size) = (f(head, 0), f(head, 1), f(head, 2));
+    let colour = tinted(head)?;
+    if head.code == 4 {
+        return Ok(Shape::Glyphs {
+            text,
+            x,
+            y,
+            size,
+            colour,
+            depth,
+        });
+    }
+    let anchor = u8::try_from(head.index)
+        .ok()
+        .filter(|anchor| *anchor <= 2)
+        .ok_or_else(|| "an unknown lettering anchor".to_owned())?;
+    Ok(Shape::Lettering {
+        text,
+        x,
+        y,
+        size,
+        colour,
+        depth,
+        anchor,
+        weight: f(head, 3),
+    })
+}
+
 fn shape(rows: &mut Rows, head: &Streamed) -> Result<Shape, String> {
     let depth = head.depth as f32;
     match head.code {
@@ -569,28 +607,8 @@ fn shape(rows: &mut Rows, head: &Streamed) -> Result<Shape, String> {
             tint: tinted(head)?,
             depth,
         }),
-        4 => Ok(Shape::Glyphs {
-            text: rows.text(head)?,
-            x: f(head, 0),
-            y: f(head, 1),
-            size: f(head, 2),
-            colour: tinted(head)?,
-            depth,
-        }),
+        4 | 6 => text_shape(rows, head, depth),
         5 => path(rows, head),
-        6 => Ok(Shape::Lettering {
-            text: rows.text(head)?,
-            x: f(head, 0),
-            y: f(head, 1),
-            size: f(head, 2),
-            colour: tinted(head)?,
-            depth,
-            anchor: u8::try_from(head.index)
-                .ok()
-                .filter(|a| *a <= 2)
-                .ok_or_else(|| "an unknown lettering anchor".to_owned())?,
-            weight: f(head, 3),
-        }),
         other => Err(format!("an unknown scene code {other}")),
     }
 }
@@ -619,8 +637,7 @@ fn element(rows: &mut Rows, head: &Streamed) -> Result<Option<Access>, String> {
         value: head.values[4],
         min: range.values[0],
         max: range.values[1],
-        // Only a menu item is announced as the current choice ([UI-MACHINE-A11Y]).
-        selected: role == Role::MenuItem && head.colour & 1 != 0,
+        selected: head.colour & 1 != 0,
     }))
 }
 
@@ -658,7 +675,7 @@ fn scenes(
                 Scene {
                     width,
                     height,
-                    zoom: extent(head.values[2])?,
+                    zoom: scene_zoom(head.values[2])?,
                     ..Scene::default()
                 },
             );

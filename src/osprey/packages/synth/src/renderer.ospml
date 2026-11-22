@@ -8,44 +8,49 @@ import synth::RenderKernels
 module Renderer
     mono port = port.rate == Audio && port.channels == 1 && port.unit == Amplitude
 
-    validPorts n = length (filterList (listConcat n.inputs n.outputs, \port => mono port || (n.processor == Oscillator && port.rate == Events && port.unit == Notes && port.channels == 1) || (n.processor == Filter && port.rate == Control && port.unit == Normalised && port.channels == 1 && port.name == "cutoff"))) == length n.inputs + length n.outputs
+    validPorts n = length (filterList (listConcat n.inputs n.outputs, \port => mono port || (n.processor == Oscillator && port.rate == Events && port.unit == Notes && port.channels == 1) || (ClipLayouts::control port && ClipLayouts::optional (n, port)))) == length n.inputs + length n.outputs
 
     layout n = match n.processor
         Oscillator => ClipLayouts::supported n
         Sink => length n.inputs == 1 && length n.outputs == 0
         Mixer => length n.inputs == 2 && length n.outputs == 1
         Filter => ClipLayouts::supported n
-        External _ => false
+        External _ _ => false
+        SamplePlayer _ => length n.inputs == 0 && length n.outputs == 1
+        Exciter _ => length n.inputs == 0 && length n.outputs == 1
+        TableOscillator _ => length n.inputs == 4 && length n.outputs == 1
+        Additive => length n.inputs == 0 && length n.outputs == 1
+        Spectral _ _ => length n.inputs == 2 && length n.outputs == 1
+        PhaseOperator => length n.inputs == 2 && length n.outputs == 1
+        Bowed _ => length n.inputs == 0 && length n.outputs == 1
         _ => length n.inputs == 1 && length n.outputs == 1
 
     validNode n = validPorts n && layout n
 
     outputs graph = filterList (graph.nodes, \n => n.processor == Sink)
 
-    delaySize n = match n.processor
-        Delay count => count
-        _ => 0
+    delaySize n = RenderInputs::storage n.processor
 
     midiCable (graph, c) = match Graphs::node (graph, c.destination)
         Valid n => n.processor == Oscillator
         Invalid _ => true
 
-    supported plan = length (filterList (plan.graph.cables, \c => midiCable (plan.graph, c))) == 0 && length (filterList (plan.graph.nodes, validNode)) == length plan.graph.nodes && length (outputs plan.graph) == 1 && length (filterList (plan.graph.nodes, \n => ClipLayouts::connected (plan.graph, n))) == length plan.graph.nodes && foldList (plan.graph.nodes, 0, \(total, n) => satAdd total (delaySize n)) <= 1920000
+    supported plan = SpectralKernels::affordable plan.graph && length (filterList (plan.graph.cables, \c => midiCable (plan.graph, c))) == 0 && length (filterList (plan.graph.nodes, validNode)) == length plan.graph.nodes && length (outputs plan.graph) == 1 && length (filterList (plan.graph.nodes, \n => ClipLayouts::connected (plan.graph, n))) == length plan.graph.nodes && foldList (plan.graph.nodes, 0, \(total, n) => satAdd total (delaySize n)) <= 1920000
 
     (** Prepare and allocate reference state. Unknown layouts and external plug-ins are explicit errors. *)
     export start graph = match Graphs::prepare graph
-        Invalid _ => Error(message = "The graph is invalid; inspect Graphs.prepare for the typed fault.")
+        Invalid _ => Error(message = InvalidConfiguration(detail = "The graph is invalid; inspect Graphs.prepare for the typed fault."))
         Valid plan => match supported plan
-            false => Error(message = "Reference rendering requires mono audio, one output and supported bounded processors.")
+            false => Error(message = IncompatibleLayout(detail = "Reference rendering requires mono audio, one output and supported bounded processors."))
             true => Success(value = RenderInputs::initial plan)
 
-    nextNode (plan, rate, snapshot, outcome, identity) = match outcome
-        Error why => Error(message = why)
-        Success frame => RenderKernels::step (plan, rate, snapshot, frame, identity)
+    scheduledNodes (plan, rate, snapshot, fixed, states) = mapList (plan.order, \identity => RenderKernels::schedule (plan, identity, rate, snapshot, fixed, states))
+
+    nextNode (plan, rate, snapshot, outcome, component) = Outcomes::carried (outcome, \frame => RenderKernels::resolved (plan, rate, snapshot, frame, component))
 
     (** Write a delay after its output has been read for the current sample. *)
     delayed (frame, held, input) = match held.delay
-        [] => Error(message = "Delay state is empty.")
+        [] => Error(message = MissingResource(detail = "Delay state is empty."))
         [_head, ...tail] =>
             next = held(delay = listAppend tail input)
             Success(value = frame(states = mapList (frame.states, \s => replace (next, s))))
@@ -57,13 +62,9 @@ module Renderer
     (** Commit one routed delay input after the corresponding output sample. *)
     export writeDelay (plan, frame, identity, inlet) = match RenderInputs::input (plan, frame, identity, inlet)
         Error why => Error(message = why)
-        Success input => match RenderInputs::held (frame, identity)
-            Error why => Error(message = why)
-            Success held => delayed (frame, held, input)
+        Success input => Outcomes::carried (RenderInputs::held (frame, identity), \held => delayed (frame, held, input))
 
-    nextDelay (plan, outcome, cable) = match outcome
-        Error why => Error(message = why)
-        Success frame => writeDelay (plan, frame, cable.destination, cable.inlet)
+    nextDelay (plan, outcome, cable) = Outcomes::carried (outcome, \frame => writeDelay (plan, frame, cable.destination, cable.inlet))
 
     higher (one, other) = match one > other
         true => one
@@ -71,7 +72,7 @@ module Renderer
 
     meter (previous, value) = Meter(identity = value.identity, peak = higher (previous.peak, abs value.value), energy = previous.energy + value.value * value.value, count = satAdd previous.count 1)
 
-    measured (meters, value) = match listGet (filterList (meters, \m => m.identity == value.identity)) 0
+    measured (meters, value) = match Seek::first (meters, \m => m.identity == value.identity)
         Error _ => listAppend meters (Meter(identity = value.identity, peak = abs value.value, energy = value.value * value.value, count = 1))
         Success previous => mapList (meters, \m => updatedMeter (previous, value, m))
 
@@ -85,28 +86,37 @@ module Renderer
     export observed (snapshot, rendered) = snapshot(samplePosition = rendered.position, components = mapList (rendered.meters, \m => ComponentState(node = m.identity, activeVoices = 0, peak = m.peak, rms = sqrt (m.energy / toFloat m.count))))
 
     finished (plan, rendered, frame) = match listGet (outputs plan.graph) 0
-        Error _ => Error(message = "index out of bounds")
-        Success sink => match RenderInputs::sample (frame, sink.identity)
-            Error why => Error(message = why)
-            Success output => Success(value = Rendered(states = frame.states, samples = listAppend rendered.samples output, position = satAdd rendered.position 1, meters = metered (rendered.meters, frame.values)))
+        Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+        Success sink => Outcomes::carried (RenderInputs::sample (frame, sink.identity), \output => Success(value = Rendered(states = frame.states, samples = listAppend rendered.samples output, position = satAdd rendered.position 1, meters = metered (rendered.meters, frame.values))))
 
-    sample (plan, rate, snapshot, rendered) =
+    evaluated (plan, nodes, rate, snapshot, rendered) =
         initial = SampleFrame(states = rendered.states, values = [])
-        scheduled = foldList (plan.order, Success(value = initial), \(outcome, identity) => nextNode (plan, rate, snapshot, outcome, identity))
-        match foldList (plan.feedback, scheduled, \(outcome, cable) => nextDelay (plan, outcome, cable))
-            Error why => Error(message = why)
-            Success frame => finished (plan, rendered, frame)
+        scheduled = foldList (nodes, Success(value = initial), \(outcome, component) => nextNode (plan, rate, snapshot, outcome, component))
+        foldList (plan.feedback, scheduled, \(outcome, cable) => nextDelay (plan, outcome, cable))
 
-    nextSample (plan, rate, snapshot, outcome) = match outcome
-        Error why => Error(message = why)
-        Success rendered => sample (plan, rate, snapshot, rendered)
+    sample (plan, nodes, rate, snapshot, rendered) = Outcomes::carried (evaluated (plan, nodes, rate, snapshot, rendered), \frame => finished (plan, rendered, frame))
+
+    captured (plan, nodes, rate, snapshot, progress, accept) = Outcomes::carried (evaluated (plan, nodes, rate, snapshot, progress.audio), \frame =>
+        audio = progress.audio
+        Outcomes::carried (accept (progress.observation, frame), \seen => Success(value = progress(audio = audio(states = frame.states, position = satAdd progress.audio.position 1), observation = seen))))
+
+    (** Fold selected node outputs from the same reference-rendered frames, including delayed feedback. *)
+    export capture (plan, rate, snapshot, progress, count, accept) = match validBlock (rate, progress.audio, count) && supported plan
+        false => Error(message = InvalidConfiguration(detail = "Invalid render rate, block size, position or layout."))
+        true =>
+            nodes = scheduledNodes (plan, rate, snapshot, true, progress.audio.states)
+            foldList (toList (range (0, count)), Success(value = progress), \(outcome, _) => Outcomes::carried (outcome, \current => captured (plan, nodes, rate, snapshot, current, accept)))
+
+    nextSample (plan, nodes, rate, snapshot, outcome) = Outcomes::carried (outcome, \rendered => sample (plan, nodes, rate, snapshot, rendered))
 
     validBlock (rate, rendered, count) = rate >= 8000.0 && rate <= 384000.0 && count >= 0 && count <= 8192 && rendered.position >= 0 && rendered.position <= satSub 9223372036854775807 count
 
     (** Render a bounded block; returns only this block's samples and the next persistent state. *)
     export block (plan, rate, snapshot, rendered, count) = match validBlock (rate, rendered, count) && supported plan
-        false => Error(message = "Invalid render rate, block size, position or layout.")
-        true => foldList (toList (range (0, count)), Success(value = rendered(samples = [], meters = [])), \(outcome, _) => nextSample (plan, rate, snapshot, outcome))
+        false => Error(message = InvalidConfiguration(detail = "Invalid render rate, block size, position or layout."))
+        true =>
+            nodes = scheduledNodes (plan, rate, snapshot, true, rendered.states)
+            foldList (toList (range (0, count)), Success(value = rendered(samples = [], meters = [])), \(outcome, _) => nextSample (plan, nodes, rate, snapshot, outcome))
 
     ordered (events, previous, stop) = match events
         [] => true
@@ -115,30 +125,25 @@ module Renderer
     edit (graph, outcome, command) = match outcome
         Error why => Error(message = why)
         Success snapshot => match Parameters::apply (graph, snapshot, command)
-            Invalid _ => Error(message = "Automation parameter, revision or sample position was rejected.")
+            Invalid _ => Error(message = InvalidConfiguration(detail = "Automation parameter, revision or sample position was rejected."))
             Valid next => Success(value = next)
 
-    automatedSample (plan, rate, events, timeline) =
+    automatedSample (plan, nodes, rate, events, timeline) =
         current = timeline.observation
         now = current(samplePosition = timeline.audio.position)
         due = filterList (events, \event => event.samplePosition == timeline.audio.position)
         match foldList (due, Success(value = now), \(outcome, command) => edit (plan.graph, outcome, command))
             Error why => Error(message = why)
-            Success snapshot => match sample (plan, rate, snapshot, timeline.audio)
-                Error why => Error(message = why)
-                Success audio => Success(value = Timeline(audio = audio, observation = snapshot))
+            Success snapshot => Outcomes::carried (sample (plan, nodes, rate, snapshot, timeline.audio), \audio => Success(value = Timeline(audio = audio, observation = snapshot)))
 
-    nextAutomated (plan, rate, events, outcome) = match outcome
-        Error why => Error(message = why)
-        Success timeline => automatedSample (plan, rate, events, timeline)
+    nextAutomated (plan, nodes, rate, events, outcome) = Outcomes::carried (outcome, \timeline => automatedSample (plan, nodes, rate, events, timeline))
 
-    publish outcome = match outcome
-        Error why => Error(message = why)
-        Success timeline => Success(value = timeline(observation = observed (timeline.observation, timeline.audio)))
+    publish outcome = Outcomes::carried (outcome, \timeline => Success(value = timeline(observation = observed (timeline.observation, timeline.audio))))
 
     (** Apply ordered absolute-frame parameter events before their exact sample, preserving same-frame order. *)
     export automated (plan, rate, snapshot, rendered, count, events) = match validBlock (rate, rendered, count) && supported plan && length events <= 1024 && ordered (events, rendered.position, satAdd rendered.position count)
-        false => Error(message = "Invalid automation block, ordering or event capacity.")
+        false => Error(message = InvalidConfiguration(detail = "Invalid automation block, ordering or event capacity."))
         true =>
+            nodes = scheduledNodes (plan, rate, snapshot, false, rendered.states)
             initial = Timeline(audio = rendered(samples = [], meters = []), observation = snapshot)
-            publish (foldList (toList (range (0, count)), Success(value = initial), \(outcome, _) => nextAutomated (plan, rate, events, outcome)))
+            publish (foldList (toList (range (0, count)), Success(value = initial), \(outcome, _) => nextAutomated (plan, nodes, rate, events, outcome)))

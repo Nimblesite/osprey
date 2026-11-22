@@ -14,7 +14,8 @@ impl Checker {
                 Some(site) => self.ctx.exposed_at(resolved, site),
                 None => resolved,
             };
-            let operation = crate::builtin_constraints::operation_name(&name);
+            let located = crate::builtin_constraints::operation_name(&name);
+            let (operation, callee) = crate::builtin_constraints::split_via(located);
             let message = self
                 .undecided_comparison(operation, &resolved)
                 .or_else(|| self.undecided_structural_equals(operation, &resolved))
@@ -24,7 +25,7 @@ impl Checker {
                 });
             if let Some(message) = message {
                 self.errors.push(
-                    TypeError::new(message)
+                    TypeError::new(required_by(message, &name, callee))
                         .with_pos(crate::builtin_constraints::source_position(&name)),
                 );
             }
@@ -144,5 +145,20 @@ pub(super) fn discard_error(ty: &Type, explicit: bool) -> Option<String> {
             "a `{other}` value cannot be discarded; bind it with `let _ =` \
              if that is deliberate, or remove the statement"
         )),
+    }
+}
+
+/// A constraint's message, naming the generic function whose body needs it
+/// and the constraint it places, when the error is reported at the call that
+/// decided the type: "...; `show` needs a printable argument"
+/// [TYPE-CONSTRAINTS].
+fn required_by(message: String, key: &str, callee: Option<&str>) -> String {
+    let constraint = crate::builtin_constraints::constraint_of(key);
+    match (callee, constraint) {
+        (Some(callee), Some((constraint, _))) => {
+            format!("{message}; `{callee}` needs a {constraint} argument")
+        }
+        (Some(callee), None) => format!("{message}; required by `{callee}`"),
+        (None, _) => message,
     }
 }

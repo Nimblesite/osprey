@@ -217,13 +217,8 @@ impl Reader<'_> {
     }
 
     fn parameter_name(&mut self, params: &[(String, Ty)]) -> Result<String, Refusal> {
-        let taken =
-            |name: &str| self.in_scope(name) || params.iter().any(|(other, _)| other == name);
-        if let Some(name) = self.ident().filter(|name| taken(name)) {
-            let fix = format!("`{name}` is already in scope; a parameter takes a new name");
-            return self.refuse(Code::ShadowedName, fix);
-        }
-        self.fresh_name(crate::model::reserved)
+        let earlier = |name: &str| params.iter().any(|(other, _)| other == name);
+        self.new_name(earlier, "a parameter")
     }
 
     fn result_type(&mut self) -> Result<Ty, Refusal> {

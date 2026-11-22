@@ -1,9 +1,10 @@
 //! ML expressions lowering.
+use super::lower_pattern;
 use super::{
     curry_position, flat_params, in_scope, is_bound, lower_interpolation, lower_items,
     lower_lambda, params_scope, positional_construction, render_type, scope_of, type_expr, unquote,
     Expr, FieldAssignment, HandlerArm, MapEntry, MatchArm, MlArm, MlClauses, MlExpr, MlField,
-    MlHandleArm, MlItem, MlParam, MlPattern, MlType, Pattern, Position, SymbolPath, TypeExpr,
+    MlHandleArm, MlItem, MlParam, MlPattern, MlType, Position, SymbolPath, TypeExpr,
 };
 use crate::ml::cst::{MlBinder, MlSelectArm, MlSelectOperation};
 use osprey_ast::SelectOperation;
@@ -324,47 +325,6 @@ pub(in crate::ml) fn lower_arm(arm: MlArm) -> MatchArm {
     MatchArm {
         pattern: lower_pattern(arm.pattern),
         body: crate::desugar::positioned(lower_expr(arm.body), Some(arm.pos)),
-    }
-}
-
-pub(in crate::ml) fn lower_pattern(pattern: MlPattern) -> Pattern {
-    match pattern {
-        MlPattern::Wildcard => Pattern::Wildcard,
-        MlPattern::Int(n) => Pattern::Literal(Box::new(Expr::Integer(n))),
-        MlPattern::Float(x) => Pattern::Literal(Box::new(Expr::Float(x))),
-        MlPattern::Str(raw) => Pattern::Literal(Box::new(lower_string(&raw, None))),
-        MlPattern::Bool(b) => Pattern::Literal(Box::new(Expr::Bool(b))),
-        MlPattern::Bind(name) => Pattern::Binding(crate::ml::binding_ranges::pattern(name)),
-        MlPattern::Structural { fields, open } => Pattern::Structural {
-            fields: fields
-                .into_iter()
-                .map(crate::ml::binding_ranges::pattern)
-                .map(|f| (f.clone(), f))
-                .collect(),
-            open,
-        },
-        // The parser guarantees every slot is a binder or `_`; `_` binds
-        // nothing, spelled as the empty binder.
-        MlPattern::Tuple(elements) => osprey_ast::tuple_pattern(
-            elements
-                .into_iter()
-                .map(|p| match p {
-                    MlPattern::Bind(name) => crate::ml::binding_ranges::pattern(name),
-                    _ => String::new(),
-                })
-                .collect(),
-        ),
-        MlPattern::Ctor { name, fields } => crate::desugar::ctor_pattern(
-            name,
-            fields
-                .into_iter()
-                .map(crate::ml::binding_ranges::pattern)
-                .collect(),
-        ),
-        MlPattern::List { elements, rest } => Pattern::List {
-            elements: elements.into_iter().map(lower_pattern).collect(),
-            rest: rest.map(crate::ml::binding_ranges::pattern),
-        },
     }
 }
 

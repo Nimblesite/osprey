@@ -457,7 +457,7 @@ _gpu-demo: build
 # TS2688 errors and a dead stage, for work the build job had already done.
 _bank_test:
 	@echo "==> Bank native tests (osprey test)..."
-	./$(BIN) test src/osprey/examples/projects/modules/test
+	./$(BIN) test src/osprey/examples/talon/backend/test
 
 # Osprey package system (src/osprey/packages/manager/): one process runs every suite from the
 # src/osprey/packages/manager/tests project with core, host and CLI sources assembled together,
@@ -510,7 +510,7 @@ _language-test: build
 
 _lint: $(EXT_NODE_DEPS)
 	@echo "==> Linting..."
-	node --test scripts/ci/root-layout.test.mjs scripts/ci/preflight.test.mjs
+	node --test scripts/ci/root-layout.test.mjs scripts/ci/preflight.test.mjs scripts/make/package-consumers.test.mjs
 	node scripts/ci/root-layout.mjs
 	node scripts/ci/verify-node-deps-guard.mjs
 	node scripts/ci/verify-no-dead-code.mjs
@@ -528,12 +528,13 @@ _lint: $(EXT_NODE_DEPS)
 # _deslop: Code-duplication gate. Fails the build when measured
 # duplication exceeds the ceiling in .deslop.toml (exit 3). The ceiling (no exclusions: every file counts)
 # lives in that committed config — the single source of truth.
-# The installer resolves the latest release for both local and hosted CI.
+# The installer pins the scanner for both local and hosted CI.
 
+DESLOP_BIN_DIR := $(CURDIR)/target/ci-tools
 _deslop:
 	@echo "==> Duplication gate (deslop)..."
-	bash scripts/ci/install-deslop.sh
-	deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
+	bash scripts/ci/install-deslop.sh "$(DESLOP_BIN_DIR)"
+	"$(DESLOP_BIN_DIR)/deslop" . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
 
 # Package, agent and Python-port steps behind `make test`.
 .PHONY: _test_packages _coverage_check_packages
@@ -546,7 +547,7 @@ _deslop:
 .PHONY: _check_programs
 _check_programs: export OSPREY_BIN = $(abspath $(BIN))
 _check_programs:
-	python3 scripts/ci/test-check-programs.py --compiler $(abspath $(BIN))
+	node scripts/ci/test-check-programs.mjs --compiler $(abspath $(BIN))
 	set -o pipefail && $(BIN) scripts/ci/check-programs.py --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 
 # [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages

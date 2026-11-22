@@ -33,12 +33,12 @@ impl Drop for Scratch {
     }
 }
 
-fn osprey() -> Command {
-    in_repository(Command::new(env!("CARGO_BIN_EXE_osprey")))
-}
+#[path = "common/launcher.rs"]
+mod launcher;
+use launcher::osprey;
 
 fn in_repository(mut command: Command) -> Command {
-    let _ = command.current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../.."));
+    let _ = command.current_dir(launcher::repo_root());
     command
 }
 
@@ -528,4 +528,46 @@ fn programs_read_their_arguments_and_environment() {
         2,
         "arguments after -- need --run",
     );
+}
+
+/// [TYPE-ANNOTATION-REDUNDANT] The redundant-annotation analyser re-infers the whole program once per
+/// proof, so a build never pays for it: it is its own pass, run by `--analyse`, and by
+/// `--warnings-as-errors` so the gate that fails on a removable annotation still does. The cheap
+/// advice (an unused parameter) is given either way, and `--no-warnings` gives none.
+#[test]
+fn a_build_runs_the_redundant_annotation_analyser_only_when_asked() {
+    let scratch = Scratch::new("analyse");
+    let program = scratch.write(
+        "main.osp",
+        "fn greet(unused) -> string = \"hi\"\nprint(greet(1))\n",
+    );
+    let unused = "unused parameter `unused`";
+    let redundant = "redundant return type annotation on `greet`";
+    let no_flags: &[&str] = &[];
+    let plain_advice: &[&str] = &[unused, "1 warning (unused-parameter)"];
+    for (flags, exit, present, absent) in [
+        (no_flags, 0, plain_advice, Some("redundant")),
+        (
+            &["--analyse"],
+            0,
+            &[
+                unused,
+                redundant,
+                "2 warnings (redundant-annotation, unused-parameter)",
+            ],
+            None,
+        ),
+        (&["--warnings-as-errors"], 1, &[redundant], None),
+        (&["--no-warnings"], 0, &[], Some("warning")),
+        (&["--no-warnings", "--analyse"], 0, &[redundant], None),
+    ] {
+        let (code, _, advice) = finished(osprey().arg(&program).arg("--check").args(flags));
+        assert_eq!(code, Some(exit), "{flags:?}: {advice}");
+        for &text in present {
+            assert!(advice.contains(text), "{flags:?} missing {text}: {advice}");
+        }
+        if let Some(text) = absent {
+            assert!(!advice.contains(text), "{flags:?} emitted {text}: {advice}");
+        }
+    }
 }

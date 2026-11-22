@@ -5,24 +5,21 @@ sealed (s, whole, size, head, tail) =
     structuralEquals([s == whole, length(s) == size, startsWith(s, head), endsWith(s, tail)], [true, true, true, true])
 
 (** True when every condition listed in `wanted` holds. *)
-allHold wanted = match wanted
-    [] => true
-    [head, ...tail] => head && allHold(tail)
+allHold wanted = foldList(wanted, true, \(holds, item) => holds && item)
 
 (** Every item of `kept` occurs in `s` and no item of `absent` does. *)
-mentions (s, kept, absent) = match kept
-    [] => noneIn(s, absent)
-    [head, ...tail] => contains(s, head) && mentions(s, tail, absent)
+mentions (s, kept, absent) = foldList(kept, noneIn(s, absent), \(holds, item) => holds && contains(s, item))
 
 (** No item of `absent` occurs in `s`. *)
-noneIn (s, absent) = match absent
-    [] => true
-    [head, ...tail] => !contains(s, head) && noneIn(s, tail)
+noneIn (s, absent) = foldList(absent, true, \(holds, item) => holds && !contains(s, item))
 
 (** `sealed` plus `mentions` in one row: exact transcript with required and
     forbidden substrings. *)
 sealedMentions (s, whole, size, head, tail, kept, absent) =
     sealed(s, whole, size, head, tail) && mentions(s, kept, absent)
+
+(** Append `item` and a bar to `base`. *)
+barOn (base, item) = "${base}${item}|"
 
 
 (** `listGet(xs, index)` succeeds with exactly `wanted` ([BUILTIN-LIST-GET]). *)
@@ -73,11 +70,7 @@ continuedValue value = requirePositive(value) + 2
 
 (** Request three replacements so handler state and substitution order are visible. *)
 recoverThree : Unit -> int ![RecoveryError, Arith]
-recoverThree () =
-    first = perform RecoveryError.missingInt("first")
-    second = perform RecoveryError.missingInt("second")
-    third = perform RecoveryError.missingInt("third")
-    first + second + third 
+recoverThree () = foldList(["first", "second", "third"], 0, \(sum, reason) => sum + perform RecoveryError.missingInt(reason))
 
 (** Report one broken rule while returning Unit so later checks still execute. *)
 reportIf broken = \message => match broken
@@ -187,7 +180,7 @@ repeatedRecoveryStateCase () =
         handle RecoveryError
             missingInt reason =>
                 recoveries := recoveries + 1 
-                reasons := "${reasons}${reason}|"
+                reasons := barOn(reasons, reason)
                 recoveries * 10 
         recoverThree()
 
@@ -206,7 +199,7 @@ collectAllReportsCase () =
         handle RecoveryError
             report field =>
                 reports := reports + 1 
-                fields := "${fields}${field}|"
+                fields := barOn(fields, field)
         validateRecord("")((0 - 3) )("")
 
     // Validation reaches its final value after all four broken rules report.
@@ -239,6 +232,13 @@ withShortage (answer, work) =
         shortage requested available => answer(requested)(available)
     work()
 
+(** Run `work` under a PolicyError region answering `score` and `label`. *)
+withPolicy (score, label, work) =
+    handle PolicyError
+        score _key => score
+        label _key => label
+    work()
+
 (** Verify the same effectful function can run under two local recovery policies. *)
 twoPoliciesCase () =
     skipped = withShortage(\_requested => \_available => 0, \() => shipmentTotal())
@@ -257,10 +257,7 @@ spliced (before, inner, after) = "${toString(before)}|${inner}|${toString(after)
 
 (** Verify an inner same-effect arm overrides one operation and then disappears. *)
 nestedOverrideCase () =
-    rendered =
-        handle PolicyError
-            score _key => 10
-            label _key => "outer"
+    rendered = withPolicy(10, "outer", \() =>
         before = perform PolicyError.score("before")
         inside =
             handle PolicyError
@@ -269,7 +266,7 @@ nestedOverrideCase () =
             inheritedLabel = perform PolicyError.label("inside")
             "${toString(innerScore)}:${inheritedLabel}"
         after = perform PolicyError.score("after")
-        spliced(before, inside, after)
+        spliced(before, inside, after))
 
     // The inner score wins, the outer label remains reachable, and score restores.
     checkAll "nested override and restoration" [
@@ -286,7 +283,7 @@ outerEffectCompositionCase () =
         handle AuditError
             note message =>
                 noteCount := noteCount + 1 
-                notes := "${notes}${message}|"
+                notes := barOn(notes, message)
         handle RecoveryError
             missingInt reason =>
                 perform AuditError.note("handler saw ${reason}")
@@ -448,6 +445,9 @@ tallyOne value =
     scaled = perform Tally.scale(value)
     perform Tally.add(scaled)
 
+(** Traverse `xs` handing every element to the handler-backed tally in order. *)
+tallyEach xs = forEachList(xs, \value => tallyOne(value))
+
 (** StepError asks for one contribution per recursion level. *)
 effect StepError
     (** Supply the contribution for recursion `depth`. *)
@@ -488,6 +488,10 @@ crossEffectBody () =
     rank = perform PolicyError.score("order")
     perform AuditError.note("scored ${toString(rank)}")
     "${name}:${toString(filled)}:${toString(allowed)}:${toString(rank)}"
+
+(** Stack the RecoveryError, StockError and PolicyError policies around one body. *)
+stackedRun (missing, answer, score, label) =
+    withMissingInt(missing, \() => withShortage(answer, \() => withPolicy(score, label, \() => crossEffectBody())))
 
 (** TextError supplies replacement text and numbers whose shape the caller inspects. *)
 effect TextError
@@ -785,22 +789,18 @@ higherOrderRecoveryCase () =
             add value =>
                 total := total + value 
                 steps := steps + 1 
-                trail := "${trail}${toString(value)}|"
-        forEachList(none, \value => tallyOne(value))
-        forEachList(one, \value => tallyOne(value))
-        forEachList(dup, \value => tallyOne(value))
-        forEachList(mixed, \value => tallyOne(value))
-        forEachList(nested, \inner => forEachList(inner, \value => tallyOne(value)))
+                trail := barOn(trail, toString(value))
+        forEachList([none, one, dup, mixed] + nested, tallyEach)
         "finished"
     negated =
         handle Tally
             scale value => 0 - value 
             add value =>
                 negatives := negatives + value 
-        forEachList(mixed, \value => tallyOne(value))
+        tallyEach(mixed)
         "negated"
 
-    // Twelve elements are visited in five traversals: 7 doubles to 14, three
+    // Twelve elements are visited across six groups: 7 doubles to 14, three
     // 3s to 6 each (18), 1..5 to 2..10 (30) and [[10,20],[30]] to 20+40+60
     // (120). 14 + 18 + 30 + 120 == 182.
     checkAll "a lambda handed to a higher-order function reaches the handler" [
@@ -972,29 +972,15 @@ multiEffectRegionCase () =
                 "priority"
         crossEffectBody()
     reordered =
-        handle PolicyError
-            score _key => 25
-            label _key => "priority"
-        handle StockError
-            shortage _requested available => available
-        handle RecoveryError
-            missingInt _reason => 6
         handle AuditError
             note message =>
-                auditTrail := "${auditTrail}${message}|"
-        crossEffectBody()
+                auditTrail := barOn(auditTrail, message)
+        stackedRun(6, \_requested => \available => available, 25, "priority")
     generous =
         handle AuditError
             note _message =>
-                generousAudits := generousAudits + 1 
-        handle RecoveryError
-            missingInt _reason => 2
-        handle StockError
-            shortage requested available => requested + available 
-        handle PolicyError
-            score _key => 0
-            label _key => "basic"
-        crossEffectBody()
+                generousAudits := generousAudits + 1
+        stackedRun(2, \requested => \available => requested + available, 0, "basic")
 
     // The body draws 6 from RecoveryError, 4 from StockError, "priority" and
     // 25 from PolicyError and audits three times, so 3+1+1+2 == 7 arm entries.
@@ -1056,7 +1042,7 @@ boundaryValueRecoveryCase () =
         handle TextError
             fill field =>
                 fills := fills + 1 
-                seen := "${seen}${field}${toString(fills)}|"
+                seen := barOn(seen, "${field}${toString(fills)}")
                 match fills
                     1 => ""
                     2 => "x"

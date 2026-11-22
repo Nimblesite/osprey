@@ -3,7 +3,6 @@
 //! assignment to an enclosing `let` is handler-owned state.
 //! Implements [FLAVOR-TS-EFFECTS] and [EFFECTS-HANDLER-STATE].
 use super::context::{Lowerer, Result};
-use super::statements::Body;
 use osprey_ast::{Clauses, Expr, HandlerArm, Stage};
 use oxc_ast::ast::{
     ArrowFunctionBody, ArrowFunctionExpression, CallExpression, Expression, ObjectExpression,
@@ -199,16 +198,7 @@ impl Lowerer<'_> {
                 .into_iter()
                 .map(|parameter| parameter.name)
                 .collect();
-            let body = match &arrow.body {
-                ArrowFunctionBody::FunctionBody(body) => {
-                    Body::Statements(&body.statements, body.span)
-                }
-                other => match other.as_expression() {
-                    Some(expression) => Body::Expression(expression),
-                    None => return lowerer.unsupported(arrow.span, "arrow function body"),
-                },
-            };
-            Ok((params, lowerer.function_body(&arrow.params, None, &body)?))
+            Ok((params, lowerer.arrow_body(arrow, None)?))
         })
     }
 }

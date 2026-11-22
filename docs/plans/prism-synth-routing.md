@@ -1,5 +1,7 @@
 # Prism modular synthesis and VST hosting [PRISM-ROUTING]
 
+The [advanced synthesis delivery plan](#advanced-synthesis-delivery-plan-prism-advanced-plan) covers neural, granular, physical and combined methods and their Prism interfaces.
+
 The synth package remains UI-free. Prism becomes an editable instrument graph: add oscillators, effects, MIDI generators, modulators and VST3 host nodes from a menu, connect compatible ports, adjust parameters and hear the resulting graph. Existing audio and control work must remain usable while a replacement graph is validated. See [SYNTH-GRAPH], [SYNTH-SIGNALS], [SYNTH-RENDER] and [SYNTH-HOST-VST] in the [synthesis specification](../specs/runtime/Synthesis.md).
 
 The original `codex/prism-synth-routing` work merged as PR #412. Completion continues on `codex/prism-plan-completion` in the dedicated `~/.codex/worktrees/prism-synth-routing/osprey` worktree, created from the latest local code after fetching `origin/main` on 19 November 2026. The original branch was based on `math-to-code` at `e3ebc1399`; its 03:00 Australia/Melbourne checkpoint on 16 November remains below. Historical measurements describe their recorded checkpoint, not current release readiness.
@@ -12,11 +14,22 @@ The original `codex/prism-synth-routing` work merged as PR #412. Completion cont
 - [x] Expand typed component descriptors and rendering for MIDI generators, modulators and effects; declare new models in typeDiagram and derive their representations.
 - [x] Replace Prism's fixed patch mapping with the synth graph, with a component menu, selectable nodes, compatible cable endpoints and parameter inspection.
 - [ ] Publish applied graph/parameter revisions and component activity through Signals without a UI dependency in the package.
-- [ ] Implement actual VST3 discovery, out-of-process scanning, activation, processing, MIDI/automation, state save/restore and disposal as an external graph node.
-- [ ] Verify an SDK instrument and effect with real audio, MIDI, parameter and state round trips; surface unavailable or failed plug-ins explicitly.
+- [x] Implement actual VST3 discovery, out-of-process scanning, activation, processing, MIDI/automation, state save/restore and disposal as an external graph node. The worker session can snapshot both states and restore them in a fresh process by class ID.
+- [x] Verify an SDK instrument and effect with real audio, MIDI, parameter and state round trips; surface unavailable or failed plug-ins explicitly. ADelay and mda JX10 pass independent-process restore tests, malformed-state rejection and real processing.
 - [ ] Exercise native and canvas interfaces with loaded headless and windowed journeys, screenshots and audio evidence; retain cross-platform availability with explicit platform limits.
 - [ ] Run static analysis, required CI preparation and coverage checks; coordinate a single validated push and inspect its CI result.
 - [ ] Record remaining limitations and remove only this task's temporary processes/artifacts.
+
+## Timeline, track patches and bus routing [PRISM-ROUTING-TIMELINE]
+
+- [x] Register the [six design screenshots and interaction contract](../designs/prism-timeline/README.md) and the [typed routing model](../designs/prism-timeline/routing.td) for the combined Prism DAW.
+- [x] Open a timeline track in Prism with its notes, gain, pan, output and Space send in the same arrangement. The track-opening journey exercises built-in and patched voices, and the project JSON journey reopens their mix and timeline.
+- [x] Create, cancel, edit and remove independent sends from internal mono and stereo outlets to named groups through the native Routing menu. The host journey verifies the complete saved project, and the audio journey sums two pre-fader taps from one note evaluation. [DAW-MIX-BUS-TAP]
+- [x] Browse every internal send from the Mix graph or Routing menu. The native host opens and edits the fourth of four sends on a single outlet, verifies both pages, cancels a draft and checks that removing one tap retains all siblings. [DAW-MIX-BUS-TAP]
+- [x] Route group outputs through other groups to Master. Validate missing destinations and cycles before saving. Both declaration orders produce the same stereo samples, and muting the downstream group silences the path. [DAW-MIX-BUS-OUTPUT]
+- [x] Remove the per-patch component and cable counts. The synth schedules 2,052 components and 2,051 cables under GC and ARC, and a saved project with 256 unity gains renders sample-for-sample like a direct connection. Dependent feedback and per-block memory limits remain explicit. [SYNTH-GRAPH]
+- [ ] Support nested patch racks in track and bus graphs. Exercise the design walkthrough with a second send from an occupied source outlet and a refused zero-delay loop.
+- [ ] Open or focus the detached Timeline from Prism, preserving the session, playhead, selected track and undo history across both windows. Compare the rendered states with the design on the FerroUI hosts.
 
 ## Acceptance evidence [PRISM-ROUTING-VERIFY]
 
@@ -44,8 +57,8 @@ The current component picker offers the six already rendered reference processor
 - [x] Pin and build the official SDK and a separate native scanning/processing worker without installing user plug-ins.
 - [x] Scan real ADelay and mda modules by stable VST3 class IDs.
 - [x] Initialize, activate and process a real effect and instrument, including note-on/off delivery, finite-output checks, teardown and unload; six bounded worker tests pass on macOS arm64.
-- [ ] Add parameter automation, controller/component state round trips and restart notifications.
-- [ ] Add bounded streaming transport and connect external processor instances to synth graph ports and parameter Signals.
+- [x] Add parameter automation, controller/component state round trips and restart notifications. Changing the JX10 program triggers a real controller restart notification. Unsupported topology changes stop the worker with an explicit diagnostic.
+- [x] Add bounded streaming transport and connect external processor instances to synth graph ports and parameter Signals. The synth and native Prism journeys check the worker packets, modulation points and device output.
 - [x] Drive VST discovery/creation and actual playback from Prism's component menu.
 
 `make -C src/toolchain/targets/tests synth-vst` is the repeatable entry point. The ADelay probe measured peak 0.25 from an input impulse; mda JX10 measured peak 0.652497 from MIDI note events. These checks prove real loaded-binary audio processing, not live UI routing, arbitrary plug-in compatibility, process sandboxing or note-release correctness. The seven Prism journeys also pass under ARC. The default-app switch is complete; no full CI push has occurred yet.
@@ -87,14 +100,14 @@ The expanded app suite passes eleven journeys; the synth package passes seventee
 - [x] Execute MIDI → real mda JX10 → real ADelay → real ADelay → stereo playback through native UI controls and bounded workers.
 - [x] Compare captured effect PCM exactly against its upstream buffer with the SDK delay's documented one-sample minimum; confirm note-on at frame zero and note-off at frame 6000.
 - [x] Share built-in kernels with the mono reference renderer and verify exact PCM equality, malformed-cache rejection, frozen graph/binding ownership and stale completion handling.
-- [ ] Implement continuous device rendering, persistent hosted instances, live modulation, graph persistence and latency compensation.
+- [x] Implement continuous device rendering, persistent hosted instances, live modulation, graph persistence and latency compensation. The live Dragonfly journey changes the mix during one device session. The CHOW Tape journey compares 12,288 stereo frames against the delayed dry route plus the hosted output.
 
-The native headless journey now runs 36 steps with real processes and playback. The host-free app suite has twelve loaded journeys. The graph clip renderer is deliberately bounded and offline; feedback stays in the reference renderer, and nonzero plug-in latency is reported explicitly. Windowed screenshot evidence and full CI remain outstanding.
+The macOS windowed and headless patch journeys route a note generator through TAL-NoiseMaker and Dragonfly Room Reverb, edit the controls, verify the stereo tail, and write the captured PCM to a WAV.
 
 ### Routed LFO modulation [PRISM-ROUTING-MODULATION]
 
 - [x] Add an independent normalized sine LFO and stereo controlled-gain component to the native menu and canvas graph.
-- [x] Share oscillator kernels, author transfer formulas in Lean, and broadcast control samples without implicitly changing audio channel widths.
+- [x] Share oscillator kernels, implement transfer formulas in native Osprey, and broadcast control samples without implicitly changing audio channel widths.
 - [x] Verify exact stereo PCM for constant control, changing PCM for moving control, missing-input rejection and invalid-control rejection.
 - [x] Extend the real native VST journey to 42 steps including an LFO-controlled stereo gain before playback; retain exact upstream VST PCM checks.
 - [x] Route normalized modulators into automatable hosted parameters.
@@ -133,7 +146,7 @@ The full CI, Windows, GPUI, WinUI, release, release-scope and Dependabot workflo
 - [x] Store typed per-node positions separately from the audio graph, preserving grab offsets and moving cards, cables and accessible port bounds together.
 - [x] Keep layout-only edits out of the audio revision; clamp dragged cards and port targets to the canvas, reject nonfinite coordinates and release pointer capture.
 - [x] Verify all twelve app journeys under GC and ARC, and the rebuilt native host's 44-step real VST/audio journey including a card drag.
-- [x] Author placement mathematics in Lean and compare 544 values against generated Osprey under both memory backends.
+- [x] Retain the placement reference coverage (544 values compared under both memory backends at the original implementation). Maintain placement formulas in the native Osprey geometry modules.
 - [ ] Verify actual window screenshots; the previously confirmed locked desktop still leaves this unproved.
 
 The UI model is generated from `editor.td`; the synth library remains UI-free. Evidence is in `target/pr-validation/prism-drag-*`. Continuous device rendering, persistent hosted instances, saved patches, full CI and the repository duplication gate remain unfinished.
@@ -239,7 +252,8 @@ The twelve loaded application journeys retain their assertions and add device re
 - [x] Generate the monotonic device observation counter from the canonical editor model; show persistent queue warnings and reject decreasing counters.
 - [x] Pass all 10 native worker checks, including deliberate queue starvation and diagnostics, and all 12 loaded application journeys under GC and ARC.
 - [x] Build the latest macOS bundle in this worktree; retain all code and test assertions.
-- [ ] Resolve sustained playback starvation: both latest native reruns fail the unchanged zero-empty-queue assertion, including an isolated rerun. Finite exact VST PCM still passes. Earlier zero-starvation evidence does not establish repeatable reliability.
+- [x] Run the windowed TAL-NoiseMaker → Dragonfly Room patch three times for 960 UI frames. The device accepted 813056, 811008 and 811008 stereo frames with zero empty callbacks. Each run verified at least ten seconds actually played, exact VST and device PCM, pitch and a stereo reverb tail (`49e8bab28`).
+- [x] Repeat sustained playback on the GPUI macOS host with mda JX10, two ADelay instances and the real audio device. Three consecutive 960-frame UI runs played 802816, 802816, 800768 stereo frames with zero empty callbacks and all four sessions exited after Stop. The locked display prevented the screenshot step, so the playback repeats omitted that step. Evidence: `target/ci-prep/vst-current/three-complete-{1,2,3}.log`.
 - [ ] Resolve root CI: both Deslop 0.42 and installed 0.41 report 4.1% against the unchanged 4.0% gate; make ci stops there.
 - [ ] Verify windowed tests after the Mac is unlocked; currently unavailable.
 
@@ -265,7 +279,9 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Compile the current Prism source with warnings treated as errors.
 - [x] Re-run all twelve application journeys under GC: all pass.
 - [x] Rebuild the pinned VST SDK worker and pass all ten CTest checks, including real instrument/effect streams and audio-device diagnostics.
-- [ ] Complete native headless and windowed VST/audio journeys against the rebuilt app.
+- [x] Restore a captured parameter change in a fresh worker for TAL-NoiseMaker, CHOWTapeModel and four Dragonfly plug-ins. A stereo impulse independently verifies the restored dry mix on every Dragonfly effect. The same test detects a deliberately restored wrong preset (`917b7cce9`).
+- [x] Disconnect a modulation cable during playback with the Dragonfly Room editor open. The windowed patch journey verifies the plug-in receives the saved dry level, then follows mute and restore edits. All 153600 stereo frames reached the device without starvation in this run (`eadb9e12c`).
+- [x] Complete native headless and windowed VST/audio journeys against the rebuilt app. The 60-step TAL–Dragonfly patch and six settings steps pass in both modes. The captured stereo WAV matches the routed effect output.
 - [ ] Resolve any reproduced playback failures before claiming smooth sustained playback.
 
 ### PCM decoding wrap-up [PRISM-ROUTING-PCM-ALLOCATION]
@@ -274,7 +290,7 @@ The active branch is now `codex/prism-synth-routing` in the primary checkout; th
 - [x] Compare the real worker directly with the recording wrapper: the direct finite audition passes, but an additional healthy-status assertion before Stop exposes starvation during sustained playback too (`direct-live-confirm.log`). The wrapper is not the sole cause.
 - [x] Remove the four-element index list and capturing fold closure allocated for each decoded PCM word; preserve byte order, bounds checks and malformed-input errors.
 - [x] Pass all twenty-two synth journeys under both GC and ARC after that change (`pcm-fixed-gc.log`, `pcm-fixed-arc.log`).
-- [ ] Verify sustained native playback with the changed decoder; package correctness does not prove realtime throughput.
+- [x] Verify sustained native patch playback with both the three-instance SDK chain and the two-vendor render described above.
 
 ## Restore the Prism presentation [PRISM-ROUTING-PRESENTATION]
 
@@ -325,3 +341,73 @@ The previously prepared native Undo/Redo journey edits are preserved in version 
 See [SYNTH-HOST-MIDI-OSCILLATOR]. Manual audition on 19 November 2026 reported four empty-queue callbacks. No Prism automated tests were run, and they are excluded from current work by the user's latest instruction.
 
 Implementation checkpoint [SYNTH-HOST-MIDI-OSCILLATOR-RELEASE]: generated voice state retains release length/remaining frames. `Components.sine` exposes `releaseFrames`, defaulting to 240 frames at 48 kHz; matching note-off latches it, repeated/unrelated note-offs leave the tail intact, and note-on cancels it without resetting oscillator phase. Package strict compilation passed; rendered/audio evidence is still pending under the current testing pause.
+
+## Advanced synthesis delivery plan [PRISM-ADVANCED-PLAN]
+
+The 2026-11-17 handoff supplies the proposed delivery sequence below. The [active implementation checklist](advanced-synthesis.md) owns processor milestones and their status. The [package and UI specification](../specs/runtime/Synthesis.md#advanced-synthesis-proposal-synth-advanced) defines acceptance. The [research guide](../research/synthesis/README.md#neural-granular-and-physical-synthesis-synth-research-focused) compares the papers and instruments behind these choices.
+
+### Repository baseline and dependencies [PRISM-ADVANCED-BASELINE]
+
+The proposal started from the package's `graph.td`, `render.td`, `src/clip_kernels.ospml`, README and Prism's `editor.td`. Reuse graph identities, typed cables, parameter revisions and retained block processing. The 17 November baseline used basic/external processor variants, oscillator/filter/delay kernel state and a fixed 48000 Hz clip path. The [family checkpoint](advanced-synthesis.md#advanced-family-checkpoint-synth-advanced-families-checkpoint) records subsequent changes. Keep the 16 November sustained-device failure open until fresh device evidence meets the contract.
+
+| Layer | Integration and evidence |
+| --- | --- |
+| Schemas | Extend typeDiagram sources and regenerate. Round-trip old graphs and exercise missing and unknown fields. |
+| DSP mathematics | Implement native Osprey formulas and prove properties of their parsed bodies for windows, interpolation, modal transitions, waveguide tuning, energy accounting and controller mappings. Check reference parity. |
+| Package processing | Carry grain scheduling, body state and neural request descriptors through public preparation/block interfaces, validation and observations. |
+| Host adapters | Bound asset decoding, model execution and generated-asset jobs. Reuse worker ownership/cancellation with a dedicated typed model protocol. |
+| Prism | Extend existing editor state, palette, cards, inspector and keyboard gestures within the single accessible routing workspace. |
+| Evidence | Extend loaded package/app journeys and platform screenshots. Keep artifacts below `target/`. |
+
+### Shared foundation [PRISM-ADVANCED-FOUNDATION]
+
+Follow the [shared component checklist](advanced-synthesis.md#shared-component-foundation-synth-advanced-core). Exercise invalid state, rate changes, asset generations, irregular partitions, unavailable models, cancellation and migration before extending behavior. Validate dimensions, products, limits, finite data and model operators before preparation. Thread format, processor-specific state and asset lifetimes through scalar and graph execution. Measure producer queues, fault publication, latency, cancellation ownership and device starvation. Preserve seeds, applied parameter semantics and hashes across save/reload and relinking.
+
+Exit evidence covers old-processor results, rejected state, irregular-block parity and transactional replacement under GC and ARC on supported hosts. Exercise wasm32 package execution and explicit backend unavailability. Use the supported memory backend on native Windows.
+
+### Granular package and interface [PRISM-ADVANCED-GRANULAR]
+
+The [granular checklist](advanced-synthesis.md#granular-synthesis-synth-advanced-grains) records the current kernel, scheduler, asset and graph work. Use seeded event traces and window/resampling oracles for reverse and single-frame sources, replacement, capture wrap, zero/max density and exhaustion. Verify the shared sample/live kernel, independent pitch and scan, region boundaries, source retention and visible overload counts.
+
+Drive sample import, notes, pitch changes at fixed scan, freeze, replacement during tails, capacity exhaustion, undo and save/reload through the Granular card and inspector. Exercise Size, Density, Pitch, Scan, Capture, Freeze, waveform/region gestures and numeric equivalents. Compare audio, applied state and screenshots; measure pitch and alias energy against the reference resampler. Demonstrate a frozen pad and time-stretched transient with reproducible event traces. GR-1 and Morphagene inform navigation, Quanta and Pigments inform sample voices, and Portal informs live capture.
+
+### Physical package and interface [PRISM-ADVANCED-PHYSICAL]
+
+Use the [physical processor checklist](advanced-synthesis.md#physical-and-modal-synthesis-synth-advanced-physical) for implementation status. Pin equations, boundary conditions, modal weights and ranges for bars, plates, membranes, strings and tubes. Establish impulse, tuning, decay and energy oracles. Progress from modal bodies and strike/pluck through fractional-delay strings/tubes to bounded bow/blow feedback. Exercise convergence failure, joint coupling, automation and material changes before live use.
+
+Drive Exciter, Modal Body, String and Tube through palette selection, conditional controls, pickup/contact gestures and mode/energy observations. Save and reload struck metal, damped membrane, plucked/bowed string and blown tube patches after varying velocity, pickup, material and coupling. Collect isolated-mode tuning/T60, decay/energy bounds, solver-exhaustion evidence and headless/windowed screenshots. Rings/Elements inform exciter/body controls, Chromaphone informs coupling, and Collision/Tension inform gestures.
+
+### Neural package and interface [PRISM-ADVANCED-NEURAL]
+
+1. Select redistributable RAVE, DDSP, codec and text-to-audio fixtures independently. Record exact hashes, operator/runtime compatibility, licenses and available training-data provenance.
+2. Benchmark load, warm-up, execution distribution, memory, hop/lookahead and cancellation on Windows and other target hosts. Select a backend only after the chosen models execute with bounded operator support. ONNX export and TorchScript are candidates.
+3. Exercise manifest rejection, worker loss, late replies, shape errors and codebook bounds before wiring real inference through typed effects. Retain history across irregular blocks.
+4. Verify RAVE transfer and DDSP Audio/MIDI with latency-compensated mixing and pitch confidence. Run real codec encode/decode fixtures.
+5. Generate validated assets with cancellation. Preserve prompt, duration, seed and model revision. Exercise Preview and Insert independently.
+6. Drive model selection, capability/error display, latent or harmonic/noise controls, codec inspection and generation. Cover missing assets, replacement, stale results, cancellation and save/reload.
+
+Collect genuine audio, held-out measurements and lifecycle evidence for each capability. Record backend-specific nondeterminism in replay metadata. Offline text generation has an independent delivery gate. Live transfer also requires measured deadlines.
+
+### Combined synthesis experiments [PRISM-ADVANCED-HYBRID]
+
+Use one evolving body and learned grain contacts. Its energy affects the timing, location and texture of later contacts. The [combined-method contract](../specs/runtime/Synthesis.md#combined-grain-and-body-method-synth-advanced-hybrid) defines the state transition and work budget.
+
+| Experiment | Deliverable | Decision evidence |
+| --- | --- | --- |
+| Body-dependent contacts | Analytic controller, then learned scheduler/texture decoder with energy-constrained forces | Initial body state changes future contact traces only with Interaction enabled. |
+| Joint sound analysis | Estimate editable grain dictionary, contact envelope and material from reference audio | Held-out reconstruction and edits compared with independent parameter fitting. |
+| Text-directed interactions | Generate contact/material trajectories for the same body | Prompt relevance, valid trajectories and predictable manual edits compared with generated-audio resampling. |
+
+Review the full neural-granular, haptic modal/granular and differentiable-modal papers and broaden the prior-art search around contact-state feedback and energy-constrained learning. Define state units, force projection, material-change work, bounded transitions and failure behavior in native Osprey. Prove the energy bound against the production transition function. Establish analytic controls and ablation fixtures before training with disjoint recording/body splits, fixed seeds and matched budgets.
+
+Evaluate offline, then run the learned controller through the neural lifecycle. Capture event traces, constrained updates, energy, latency and audio. Exercise the Combined module's Texture, Material, Body memory, Interaction and Energy controls, contact map, timeline, energy inspector, numeric/keyboard alternatives and controller selection. Compare ordinary routed grains/resonator, open-loop contacts, analytic feedback, learned control without energy features and the full method under matched loudness and latency. Retain negative results. Production work needs repeatable musical value within energy/resource limits. Joint analysis and text trajectories require independent evidence.
+
+### Verification and delivery sequence [PRISM-ADVANCED-DELIVERY]
+
+Shared preparation/assets/state precede granular and physical processing. Deliver the matching UI and journey at each stage. Neural work depends on backend selection and worker lifetime handling. The combined renderer depends on all three foundations, its native energy model, checked energy bound and analytic baseline. Measure that baseline before training the controller.
+
+Use `make -C src/osprey/packages synth` for package verification and `make -C src/toolchain/targets/tests synth` for the host-free Prism suite when verification resumes. Windows has a synth launch target in its [platform Makefile](../../src/toolchain/targets/windows/Makefile). Verify platform-specific launch, windowed and headless journeys through the appropriate scoped targets.
+
+Delivery requires the [acceptance matrix](../specs/runtime/Synthesis.md#acceptance-contract-synth-advanced-verify) with real assets/models and public entry points. Verify Windows sandbox capabilities, keyboard accessibility, resize behavior and screenshots on every advertised host. Require a ten-minute maximum-workload run with zero starvation and callback allocation/lock instrumentation before claiming continuous playback. Record delivered capabilities and constraints in package and Prism documentation. Keep unverified milestones open.
+
+Resolve resampling quality thresholds, membrane/tube reference models, runtime and redistributable model selection, platform memory/performance limits and the hybrid training dataset with their named experiments before optimizing dependent paths. Numerical defaults remain testable starting points.

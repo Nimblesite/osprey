@@ -9,7 +9,8 @@ import tempfile
 from datetime import datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path
-from package_coverage_projects import PACKAGES_DIR, gate_entries, report_name
+from package_coverage_entry import ORACLE, entry_source
+from package_coverage_projects import PACKAGES_DIR, declared_roots, gate_entries, report_name
 
 GENERATED_DIRS = frozenset({"target", "__pycache__", "node_modules"})
 COMMENT_OR_STRING = re.compile(r'''"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|//[^\n]*|/\*|\(\*''')
@@ -113,25 +114,6 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def declared_roots(suite, project):
-    """The extra roots a suite manifest declares, type-checked before any traversal.
-
-    A mistyped shape would otherwise be iterated (a string is a sequence of
-    characters, one of them "/"), so the whole filesystem could be crawled
-    instead of the fixture. Nothing is skipped: a bad shape is a fault.
-    """
-    if project is None:
-        return []
-    if not isinstance(project, dict):
-        raise ValueError(f"{(suite / 'osprey.toml')} has no [project] table")
-    declared = project.get("source_roots", [])
-    if not isinstance(declared, list):
-        raise ValueError(f"{(suite / 'osprey.toml')} source_roots must be a list, not {type(declared).__name__}")
-    for root in declared:
-        if not isinstance(root, str) or "\x00" in root:
-            raise ValueError(f"{(suite / 'osprey.toml')} source_roots entry is not a path: {root!r}")
-    return [(suite / root).resolve() for root in declared]
-
 
 def source_inputs(root, name, kind=PACKAGES_DIR):
     root = Path(root).resolve()
@@ -142,7 +124,18 @@ def source_inputs(root, name, kind=PACKAGES_DIR):
     files = {package / "osprey.toml", suite / "osprey.toml", suite / "expected_output.txt"}
     for base in roots:
         files.update(root_inputs(base))
+    files.update(probed_entry(root, name, kind, suite))
     return {path.relative_to(root).as_posix(): digest(path) for path in sorted(files)}
+
+
+def probed_entry(root, name, kind, suite):
+    if not (suite / ORACLE).is_file():
+        return []
+    try:
+        source, _ = entry_source(root, kind, name)
+    except ValueError:
+        return []  # The entry probe reports invalid project declarations.
+    return [source] if source.is_file() else []
 
 
 def root_inputs(base: Path) -> set[Path]:

@@ -13,6 +13,8 @@ pub struct DebugSource {
     pub filename: String,
     /// Directory containing the source file.
     pub directory: String,
+    /// Inclusive flattened source ranges and their original paths, in line order.
+    pub ranges: Vec<(u32, u32, PathBuf)>,
 }
 
 impl DebugSource {
@@ -31,6 +33,7 @@ impl DebugSource {
         DebugSource {
             filename,
             directory: absolute_directory(path.parent()),
+            ranges: Vec::new(),
         }
     }
 

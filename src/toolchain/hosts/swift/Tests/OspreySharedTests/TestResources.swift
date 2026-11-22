@@ -290,12 +290,13 @@ final class FrameWire {
     }
 
     /// The frame these rows make, checked as the host checks it.
-    func read() throws -> Shown {
+    func read(shapes: [OspNativeShape] = []) throws -> Shown {
         try rows.withUnsafeBufferPointer { views in
             try text.data(using: .utf8)!.withUnsafeBytes { run in
                 try asks.withUnsafeBufferPointer { asked in
-                    try SharedRows.read(shapes: UnsafeBufferPointer(start: nil, count: 0), views: views,
-                                         text: UnsafeRawBufferPointer(run), asks: asked)
+                    try shapes.withUnsafeBufferPointer { scenes in
+                        try SharedRows.read(shapes: scenes, views: views, text: UnsafeRawBufferPointer(run), asks: asked)
+                    }
                 }
             }
         }

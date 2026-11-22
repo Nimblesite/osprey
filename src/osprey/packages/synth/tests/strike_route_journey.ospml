@@ -1,0 +1,22 @@
+import synth::Components
+
+// [SYNTH-ADVANCED-PHYSICAL-INSTRUMENTS] At 6 kHz one period occupies eight frames of a 48 kHz graph.
+strikeRouteJourney () =
+    source = Components::samplePlayer (1, grainResource (48000, 440.0, [1.0, 0.0, 0.0, 0.0]))
+    sink = Components::output 3
+    comb = Components::strikeComb (2, 6000.0, 16)
+    forEachList ([{ position = 0.25, expected = [1.0, 0.0, -1.0, 0.0, 0.0] }, { position = 0.3125, expected = [1.0, 0.0, -0.5, -0.5, 0.0] }], \row =>
+        graph = serial ([source, grainSet (comb, "position", row.position), sink])
+        sameSamples ((blockOf (graph, 5)).samples, row.expected))
+    forEachList ([Components::split (2, 1), Components::join (2, 1), Components::panner (2, 1, 0.0), Components::routeChannels (2, 1, [0])], \adapter =>
+        sameSamples ((blockOf (serial ([source, adapter, sink]), 4)).samples, [1.0, 0.0, 0.0, 0.0]))
+    sameSamples ((blockOf (serial ([source, Components::routeChannels (2, 1, [-1]), sink]), 4)).samples, [0.0, 0.0, 0.0, 0.0])
+
+physicalCountJourney () =
+    source = Components::exciter (1, 7)
+    forEachList ([{ key = "duration", value = 1.5 }, { key = "interval", value = 72.5 }, { key = "excitation", value = 0.5 }], \bad =>
+        graph = built ([grainSet (source, bad.key, bad.value), Components::output 2], [cable (1, 2)])
+        renderRefused (synth::Renderer::block (planFor graph, 48000.0, synth::Parameters::initial graph, rendered (synth::Renderer::start graph), 4)))
+    modal = grainSet (Components::modalBank (2, 220.0, 1.0), "modes", 2.5)
+    graph = serial ([source, modal, Components::output 3])
+    renderRefused (synth::Renderer::block (planFor graph, 48000.0, synth::Parameters::initial graph, rendered (synth::Renderer::start graph), 4))

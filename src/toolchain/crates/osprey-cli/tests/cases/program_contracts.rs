@@ -1,8 +1,23 @@
 //! Whole-program contracts through the CLI: written type arguments, exit statuses, JSON stdin, the source graph, warning flags and hunt.
 
-use super::{run_args, run_args_with_stdin, run_file, run_source, temp_dir, temp_osp};
+use super::{run_args, run_args_with_stdin, run_file, run_source, temp_dir, temp_osp, Out};
 use std::path::Path;
 use std::process::Command;
+
+/// `prog` under `mode` plus `extra` flags, asserted accepted under that mode.
+fn accepted(prog: &Path, mode: &str, extra: &[&str]) -> Out {
+    let args: Vec<&str> = [mode].into_iter().chain(extra.iter().copied()).collect();
+    let out = run_file(prog, &args);
+    assert_eq!(out.code, Some(0), "{mode}: {}", out.stderr);
+    out
+}
+
+/// An accepted quiet run prints nothing on stdout: the progress line is gone,
+/// so only diagnostics could remain on stderr.
+fn assert_quiet_accept(out: &Out) {
+    assert_eq!(out.code, Some(0), "stderr={}", out.stderr);
+    assert!(out.stdout.trim().is_empty(), "{}", out.stdout);
+}
 
 /// The whole call-site type-application pipeline — parse, check, lower, emit,
 /// link, run — for the shape that has no other spelling: a binder appearing in
@@ -303,16 +318,14 @@ fn warnings_as_errors_fails_only_on_opt_in_and_keeps_the_diagnostics() {
         strict.expect_rejected(&["unused parameter `ignored`", "1 warning (unused-parameter)"]);
         assert!(!strict.stdout.contains("ok ("), "{mode}: {}", strict.stdout);
 
-        let skipped = run_file(&warned, &[mode, "--no-warnings"]);
-        assert_eq!(skipped.code, Some(0), "{mode}: {}", skipped.stderr);
+        let skipped = accepted(&warned, mode, &["--no-warnings"]);
         assert!(
             !skipped.stderr.contains("warning"),
             "{mode}: {}",
             skipped.stderr
         );
 
-        let fine = run_file(&clean, &[mode, "--warnings-as-errors"]);
-        assert_eq!(fine.code, Some(0), "{mode}: {}", fine.stderr);
+        let _ = accepted(&clean, mode, &["--warnings-as-errors"]);
 
         let errors = run_file(&broken, &[mode, "--warnings-as-errors"]);
         errors.expect_rejected(&["cannot unify string with int"]);
@@ -356,15 +369,22 @@ fn bare_result_variants_compile_and_select_the_correct_arm() {
 fn quiet_silences_progress_and_keeps_warnings() {
     // `--quiet` is progress-only. A warning is a diagnostic: it names a defect
     // in the program, so it prints under `--quiet` exactly as it does without.
-    let prog = temp_osp("quiet_warn", "let n: int = 42\nprint(\"v=${n}\")\n");
-    let loud = run_file(&prog, &["--check"]);
-    assert_eq!(loud.code, Some(0), "stderr={}", loud.stderr);
-    assert!(loud.stderr.contains("redundant"), "{}", loud.stderr);
-    assert!(loud.stdout.contains(": ok ("), "{}", loud.stdout);
-    let o = run_file(&prog, &["--check", "--quiet"]);
-    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
-    assert!(o.stdout.trim().is_empty(), "{}", o.stdout);
-    assert_eq!(o.stderr, loud.stderr, "--quiet changed the diagnostics");
+    let prog = temp_osp(
+        "quiet_warn",
+        "fn answer(spare) = 42\nlet n: int = answer(0)\nprint(\"v=${n}\")\n",
+    );
+    for (args, quiet_args, warning) in [
+        (vec!["--check"], vec!["--check", "--quiet"], "unused"),
+        (vec!["--analyse"], vec!["--analyse", "--quiet"], "redundant"),
+    ] {
+        let loud = run_file(&prog, &args);
+        assert_eq!(loud.code, Some(0), "stderr={}", loud.stderr);
+        assert!(loud.stderr.contains(warning), "{}", loud.stderr);
+        assert!(loud.stdout.contains(": ok ("), "{}", loud.stdout);
+        let o = run_file(&prog, &quiet_args);
+        assert_quiet_accept(&o);
+        assert_eq!(o.stderr, loud.stderr, "--quiet changed the diagnostics");
+    }
 }
 
 #[test]
@@ -375,8 +395,7 @@ fn no_warnings_skips_the_warning_pass() {
         "let n: int = 42\nprint(\"v=${n}\")\n",
         &["--check", "--quiet", "--no-warnings"],
     );
-    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
-    assert!(o.stdout.trim().is_empty(), "{}", o.stdout);
+    assert_quiet_accept(&o);
     assert!(o.stderr.trim().is_empty(), "{}", o.stderr);
 }
 

@@ -9,7 +9,7 @@
 //! spellings are the language's canonical ones, so inferred types print
 //! exactly as they appear in source and diagnostics.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
 /// Identifier for an inference type variable.
@@ -239,12 +239,18 @@ fn map_type_fields(
 /// mark of a polymorphic signature that must be specialised per use.
 #[must_use]
 pub fn has_type_var(ty: &Type) -> bool {
+    any_type_var(ty, &|_| true)
+}
+
+/// Whether `ty` mentions a type variable that `found` accepts.
+pub(crate) fn any_type_var(ty: &Type, found: &impl Fn(VarId) -> bool) -> bool {
+    let any = |types: &[Type]| types.iter().any(|ty| any_type_var(ty, found));
     match ty {
-        Type::Var(_) => true,
-        Type::Con { args, .. } => args.iter().any(has_type_var),
-        Type::Fun { params, ret } => params.iter().any(has_type_var) || has_type_var(ret),
-        Type::Record { fields, .. } => fields.values().any(has_type_var),
-        Type::Union { variants, .. } => variants.iter().any(has_type_var),
+        Type::Var(var) => found(*var),
+        Type::Con { args, .. } => any(args),
+        Type::Fun { params, ret } => any(params) || any_type_var(ret, found),
+        Type::Record { fields, .. } => fields.values().any(|ty| any_type_var(ty, found)),
+        Type::Union { variants, .. } => any(variants),
     }
 }
 
@@ -272,6 +278,59 @@ pub const HOLE: &str = "_";
 #[must_use]
 pub fn render_with_holes(ty: &Type) -> String {
     for_reader(ty).to_string()
+}
+
+/// `ty` with each constrained variable spelled as its constraint, so a reader
+/// sees `List<printable>` where the checker holds `List<t3>`. An
+/// unconstrained variable stays a hole [TYPE-CONSTRAINTS].
+#[must_use]
+pub fn with_constraints<S: std::hash::BuildHasher>(
+    ty: &Type,
+    constraints: &HashMap<VarId, &'static str, S>,
+) -> Type {
+    let over = |ts: &[Type]| {
+        ts.iter()
+            .map(|t| with_constraints(t, constraints))
+            .collect()
+    };
+    match ty {
+        Type::Var(var) => constraints
+            .get(var)
+            .map_or_else(|| ty.clone(), |constraint| Type::prim(*constraint)),
+        Type::Con { name, args } => Type::con(name.clone(), over(args)),
+        Type::Fun { params, ret } => Type::fun(over(params), with_constraints(ret, constraints)),
+        Type::Record { name, fields } => Type::Record {
+            name: name.clone(),
+            fields: fields
+                .iter()
+                .map(|(k, v)| (k.clone(), with_constraints(v, constraints)))
+                .collect(),
+        },
+        Type::Union { name, variants } => Type::Union {
+            name: name.clone(),
+            variants: over(variants),
+        },
+    }
+}
+
+/// Every type variable in `ty`, in first-seen order.
+pub(crate) fn vars_of(ty: &Type) -> Vec<VarId> {
+    let mut found = Vec::new();
+    let mut pending = vec![ty];
+    while let Some(ty) = pending.pop() {
+        match ty {
+            Type::Var(var) if !found.contains(var) => found.push(*var),
+            Type::Var(_) => {}
+            Type::Con { args, .. } => pending.extend(args),
+            Type::Fun { params, ret } => {
+                pending.extend(params);
+                pending.push(ret);
+            }
+            Type::Record { fields, .. } => pending.extend(fields.values()),
+            Type::Union { variants, .. } => pending.extend(variants),
+        }
+    }
+    found
 }
 
 /// Canonical effect identity shared by inference and field contracts.

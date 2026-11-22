@@ -1,0 +1,279 @@
+namespace daw
+
+// Generated from typeDiagram [CONV-OSPREY].
+type Request =
+    project : string
+    folder : string
+    from : float
+    beats : float
+
+type Written =
+    parts : List<string>
+    fault : string
+
+type Tone =
+    breakpoint : float
+    feedback : float
+    attack : float
+    release : float
+    bloom : float
+    detune : float
+
+type Hit =
+    sweep : float
+    noise : float
+    colour : float
+    decay : float
+
+type Follow =
+    Constant
+    Pitched
+    Struck
+
+type Setting =
+    key : string
+    value : float
+    follow : Follow
+
+type PatchNode =
+    identity : int
+    component : string
+    size : int
+    seed : int
+    asset : string
+    settings : List<Setting>
+
+type PatchCable =
+    source : int
+    outlet : int
+    destination : int
+    inlet : int
+
+type Routing =
+    nodes : List<PatchNode>
+    cables : List<PatchCable>
+    attack : float
+    release : float
+
+type Instrument =
+    PatchInstrument
+        routing : Routing
+    PluckInstrument
+        brightness : float
+        decay : float
+    BowInstrument
+        pressure : float
+        brightness : float
+        vibrato : float
+    BellInstrument
+        decay : float
+        brightness : float
+    MalletInstrument
+        decay : float
+        brightness : float
+    OperatorInstrument
+        tone : Tone
+    DrumInstrument
+        hit : Hit
+
+type Note =
+    pitch : int
+    start : float
+    length : float
+    velocity : float
+
+type NodePosition =
+    layoutNode : int
+    layoutX : float
+    layoutY : float
+
+type AudioSend =
+    sendId : int
+    source : int
+    outlet : int
+    bus : string
+    level : float
+    enabled : bool
+
+type TapLane =
+    tapNode : int
+    tapOutlet : int
+    tapChannel : int
+    tapGain : float
+
+type Capture K =
+    captureState : K
+    captureLanes : List<List<float>>
+
+type Track =
+    name : string
+    instrument : Instrument
+    gain : float
+    pan : float
+    bus : string
+    sends : List<AudioSend>
+    positions : List<NodePosition>
+    notes : List<Note>
+
+type Equaliser =
+    low : float
+    mid : float
+    high : float
+
+type Compressor =
+    threshold : float
+    ratio : float
+    knee : float
+    attack : float
+    release : float
+    sidechain : string
+
+type Bus =
+    name : string
+    output : string
+    gain : float
+    equaliser : Equaliser
+    compressor : Compressor
+
+type Arrangement =
+    title : string
+    tempo : float
+    meterTop : int
+    meterBottom : int
+    sampleRate : int
+    buses : List<Bus>
+    tracks : List<Track>
+
+type NoteRun S =
+    held : S
+    samples : List<float>
+    fault : string
+
+type NoteSpan =
+    gate : float
+    total : int
+
+type VoicePair A B =
+    one : A
+    other : B
+
+type Cue =
+    due : int
+    note : Note
+
+type NoteMemory =
+    ScalarNote
+        audio : synth::Rendered
+    MultichannelNote
+        clock : synth::GraphState<synth::ProcessorMemory<synth::KernelState>>
+
+type ActivePatch =
+    plan : synth::Prepared
+    ports : List<TapLane>
+    span : NoteSpan
+    attack : float
+    release : float
+    memory : NoteMemory
+
+type ActiveOperator =
+    span : NoteSpan
+    tone : Tone
+    firstHz : float
+    secondHz : float
+    phases : VoicePair<synth::OperatorState, synth::OperatorState>
+    sends : List<AudioSend>
+
+type NoteDriver =
+    RecordedNote
+    PerformingNote
+        patch : ActivePatch
+    PerformingOperator
+        pair : ActiveOperator
+
+type Sounding =
+    cue : Cue
+    at : int
+    lanes : List<List<float>>
+    driver : NoteDriver
+
+type Made =
+    struck : Note
+    chord : List<List<float>>
+
+type NoteJob =
+    track : int
+    due : int
+    note : Note
+
+type TrackPlay =
+    edited : bool
+    pending : List<Cue>
+    sounding : List<Sounding>
+    sends : List<AudioSend>
+    made : List<Made>
+    recordings : List<Made>
+
+type Advanced =
+    play : TrackPlay
+    buses : Buses
+
+type Heard =
+    plays : List<TrackPlay>
+    buses : Buses
+
+type BusState =
+    name : string
+    leftBand : BandState
+    rightBand : BandState
+    level : float
+
+type Mastering =
+    buses : Buses
+    states : List<BusState>
+
+type Playing =
+    score : Arrangement
+    cursor : int
+    tracks : List<TrackPlay>
+    states : List<BusState>
+
+type LiveStream =
+    playing : Playing
+    controlVersion : int
+    controlScore : Arrangement
+    noteFolders : List<string>
+
+type Played =
+    playing : Playing
+    left : List<float>
+    right : List<float>
+
+type Take =
+    playing : Playing
+    lefts : List<List<float>>
+    rights : List<List<float>>
+
+type Stereo =
+    name : string
+    left : List<float>
+    right : List<float>
+
+type Keyed =
+    name : string
+    samples : List<float>
+
+type Buses =
+    left : List<float>
+    right : List<float>
+    groups : List<Stereo>
+    keys : List<Keyed>
+
+type BandState =
+    low : float
+    band : float
+    level : float
+
+type Mixdown =
+    left : List<float>
+    right : List<float>
+    peak : float

@@ -1,5 +1,6 @@
 // [SYNTH-DEVICE-QUEUE] Producer-side decoding; callbacks only return preallocated buffers.
 #include "hex_text.h"
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -56,11 +57,15 @@ class Device {
         uint32_t frames = 0;
     };
     AudioQueueRef queue = nullptr;
-    std::array<Slot, 4> slots;
+    static constexpr size_t MaxLivePackets = 9;
+    static constexpr uint32_t LiveQueueFrames = 960; // 20 ms at 48 kHz.
+    static constexpr uint32_t RecoveryQueueFrames = 1440;
+    static constexpr uint32_t RecoveryStableFrames = Rate / 10; // 100 ms of submitted audio.
+    std::array<Slot, MaxLivePackets> slots;
     std::atomic<uint64_t> returned{0}, accepted{0}, emptyCallbacks{0};
     std::atomic<bool> draining{false};
     uint32_t channels = 0;
-    uint64_t reportedEmpty = 0;
+    uint64_t reportedEmpty = 0, lastEmptyFrame = 0;
     bool running = false, finished = false;
     std::string error;
 
@@ -105,11 +110,20 @@ class Device {
         return true;
     }
 
-    Slot* available() {
+    Slot* available(uint32_t frames) {
+        const auto sent = accepted.load(std::memory_order_relaxed);
+        const auto recovering = reportedEmpty && sent - lastEmptyFrame < RecoveryStableFrames;
+        const auto budget = recovering ? RecoveryQueueFrames : LiveQueueFrames;
+        const auto count = std::clamp<size_t>((budget + frames - 1) / frames, 4, slots.size());
+        const auto beforeEnqueue = (count - 1) * frames;
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
         do {
-            for (auto& slot : slots) if (slot.available.load(std::memory_order_acquire)) return &slot;
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            // Recovery slots can still be occupied when the normal limit resumes.
+            if (!running || sent - returned.load(std::memory_order_acquire) <= beforeEnqueue) {
+                for (size_t i = 0; i < count; ++i)
+                    if (slots[i].available.load(std::memory_order_acquire)) return &slots[i];
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds(250));
         } while (std::chrono::steady_clock::now() < deadline);
         error = "Audio output did not return a buffer within two seconds";
         return nullptr;
@@ -124,7 +138,7 @@ public:
         if (finished) return rejected("The audio stream has already drained");
         if (accepted.load() > std::numeric_limits<uint64_t>::max() - block.frames) return rejected("Audio sample clock exhausted");
         if (!open(block.channels)) return false;
-        auto* slot = available();
+        auto* slot = available(block.frames);
         if (!slot) return false;
         slot->available.store(false, std::memory_order_relaxed);
         slot->frames = block.frames;
@@ -132,6 +146,7 @@ public:
         std::memcpy(slot->buffer->mAudioData, block.samples.data(), slot->buffer->mAudioDataByteSize);
         accepted.fetch_add(block.frames, std::memory_order_release);
         if (!checked(AudioQueueEnqueueBuffer(queue, slot->buffer, 0, nullptr), "AudioQueueEnqueueBuffer")) return false;
+        if (running) return true;
         // Two producer blocks prepare the device before its first callback.
         unsigned queued = 0;
         for (auto& held : slots) if (!held.available.load(std::memory_order_acquire)) ++queued;
@@ -154,14 +169,15 @@ public:
     }
 
     void receipt() {
+        const auto sent = accepted.load(std::memory_order_acquire);
         const auto empty = emptyCallbacks.load(std::memory_order_acquire);
         if (empty > reportedEmpty) {
             std::cerr << "{\"event\":\"audio.queue_empty\",\"count\":" << empty
-                      << ",\"acceptedFrames\":" << accepted.load() << "}\n";
+                      << ",\"acceptedFrames\":" << sent << "}\n";
             reportedEmpty = empty;
+            lastEmptyFrame = sent;
         }
         const auto done = returned.load(std::memory_order_acquire);
-        const auto sent = accepted.load(std::memory_order_acquire);
         std::cout << "{\"status\":0,\"acceptedFrames\":" << sent << ",\"returnedFrames\":" << done
                   << ",\"queuedFrames\":" << sent - done << ",\"channels\":" << channels
                   << ",\"emptyCallbacks\":" << empty << ",\"running\":" << (running ? "true" : "false") << "}\n" << std::flush;

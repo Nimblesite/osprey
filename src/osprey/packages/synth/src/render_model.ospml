@@ -1,12 +1,28 @@
 namespace synth
 
 // Generated from typeDiagram [CONV-OSPREY].
+type KernelMemory =
+    KernelIdle
+    SpectralRunning
+        stream : synth::SpectralState
+    BowRunning
+        bow : synth::BowState
+    ReverbRunning
+        reverb : synth::ReverbState
+    ModalRunning
+        settings : synth::ModalConfig
+        bank : synth::ModalBank
+        resonators : synth::ModalState
+    ShifterRunning
+        shifter : synth::ShifterState
+
 type KernelState =
     identity : int
     phase : float
     integratorOne : float
     integratorTwo : float
     delay : List<float>
+    memory : KernelMemory
 
 type NodeSample =
     identity : int
@@ -32,3 +48,25 @@ type Timeline T =
     audio : Rendered
     observation : T
 
+type Stage =
+    Ready
+    Running
+    Releasing
+        remaining : int
+    Disposed
+
+type Transition =
+    Prepare
+        rate : float
+        block : int
+    Activate
+    Reset
+    ReleaseTail
+    Dispose
+
+type Instance P =
+    stage : Stage
+    rate : float
+    block : int
+    plan : P
+    audio : Rendered

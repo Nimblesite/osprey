@@ -9,9 +9,10 @@ include Makefile
 
 .PHONY: bank casting casting-headless casting-update inbox tally tally-headless
 
-## bank: Talon Bank against its live API on Android.
-bank: _android-bank _runtime
-	OSPREY_ANDROID_SKIP_BUILD=1 python3 scripts/mobile/bank-mobile-test.py -- bash src/osprey/examples/projects/modules/mobile/android/test.sh
+## bank: Talon Bank on the selected Android device: the host opens it with no person present, requires a
+##       first frame and presses its first control. Its rules are tested host-free by `tests bank-app`.
+bank:
+	$(BANK_ANDROID) bash src/toolchain/hosts/android/run.sh --view-check
 
 ## casting: Build and run native casting journeys on the selected emulator/device, recording screenshots.
 casting:

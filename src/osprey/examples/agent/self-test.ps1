@@ -42,7 +42,9 @@ try {
     if ($LASTEXITCODE -ne 0) { Fail 'the demo project was not made' }
     # The doubled model runs `python3`, as on macOS. Where that name does not run Python (Windows may have
     # only `python`, or the Store's stub), a shim earlier on the PATH the tools inherit answers to it.
-    & cmd /d /c 'python3 -c "import sys" >nul 2>&1'
+    # cmd by its own path: MSYS2's usr\bin, first on the PATH, has a bash script named `cmd` that Windows
+    # would offer to open with an app chooser over the window under test.
+    & $env:ComSpec /d /c 'python3 -c "import sys" >nul 2>&1'
     if ($LASTEXITCODE -ne 0) {
         $shims = Join-Path $work 'bin'
         New-Item -ItemType Directory -Force $shims | Out-Null

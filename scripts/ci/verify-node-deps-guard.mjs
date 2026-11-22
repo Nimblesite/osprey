@@ -35,8 +35,8 @@ const GUARDED = new Map([
   ['src/toolchain/vscode-extension', 'EXT_NODE_DEPS'],
   ['src/toolchain/website', 'WEBSITE_NODE_DEPS'],
   ['src/toolchain/webcompiler', 'WEBCOMPILER_NODE_DEPS'],
-  ['src/osprey/examples/projects/modules/web', 'BANK_WEB_NODE_DEPS'],
-  ['src/osprey/examples/projects/modules/e2e', 'BANK_E2E_NODE_DEPS'],
+  ['src/toolchain/hosts/web', 'BANK_WEB_NODE_DEPS'],
+  ['src/osprey/examples/talon/playwright-e2e-tests', 'BANK_E2E_NODE_DEPS'],
 ])
 
 // Make variables that resolve to a guarded directory.

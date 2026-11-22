@@ -324,4 +324,6 @@ fn inferred_parameter(doc: &Typed<'_>, function: &SymbolInfo, index: usize) -> O
 }
 
 #[cfg(test)]
+mod signature_tests;
+#[cfg(test)]
 mod tests;

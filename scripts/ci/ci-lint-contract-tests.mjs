@@ -6,18 +6,21 @@
 // so this file needs no workflow parser of its own.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { readFileSync, readdirSync, mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { job, workflowText } from './ci-workflow-text.mjs'
+import { withTempDir } from './ci-bundle-fixture.mjs'
+
+const ciFile = '.github/workflows/ci.yml'
+const workflow = workflowText(ciFile)
 
 const LINT_COMMANDS = ['node scripts/ci/verify-no-dead-code.mjs',
   'node scripts/packages/verify-package-licenses.mjs', 'node --test scripts/packages/test-package-licenses.mjs']
 
 test('Zed builds in phase one and tests the cached compiler once in phase two', () => {
-  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
-  const build = workflow.split('\n  build:')[1].split('\n  analyse:')[0]
-  const extension = workflow.split('\n  test-extension:')[1].split('\n  test-wasm:')[0]
+  const build = job('build', ciFile)
+  const extension = job('test-extension', ciFile)
   assert.match(build, /rustup target add wasm32-wasip2/)
   assert.match(build, /make -C src\/toolchain\/zed-extension build/)
   assert.match(build, /target\/wasm32-wasip2\/debug\/osprey_zed\.wasm/)
@@ -29,8 +32,7 @@ test('Zed builds in phase one and tests the cached compiler once in phase two', 
 })
 
 test('WASM tests use only their toolchain and retain every acceptance step', () => {
-  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
-  const wasm = workflow.split('\n  test-wasm:')[1].split('\n  test-website:')[0]
+  const wasm = job('test-wasm', ciFile)
   assert.doesNotMatch(wasm, /setup-osprey-compiler|libc6-dbg|lldb/)
   assert.match(wasm, /apt-get install -y clang llvm lld wabt zsh/)
   assert.match(wasm, /timeout-minutes: 6/)
@@ -44,7 +46,6 @@ test('WASM tests use only their toolchain and retain every acceptance step', () 
 
 test('Only the Linux profiler suite installs glibc debug symbols', () => {
   const setup = readFileSync('.github/actions/setup-osprey-compiler/action.yml', 'utf8')
-  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
   assert.doesNotMatch(setup, /(?:apt_install|apt-get install)[^\n]*libc6-dbg/)
   assert.match(workflow, /- name: Profiler suite\n        run: \|\n[\s\S]*?install -y libc6-dbg\n          make _test_profiler/)
 })
@@ -64,14 +65,12 @@ test('the compiler setup restores no staged GPUI dependency sources', () => {
 })
 
 test('analysis checks the workspace without rebuilding the release compiler', () => {
-  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
-  const analyse = workflow.split('\n  analyse:')[1].split('\n  check-programs:')[0]
+  const analyse = job('analyse', ciFile)
   assert.match(analyse, /uses: \.\/\.github\/actions\/setup-osprey-compiler\n        with:\n          build: 'false'/)
 })
 
 test('Website E2E reuses the current build and can still run when it is skipped', () => {
-  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
-  const website = workflow.split('\n  test-website:')[1].split('\n  test-integration:')[0]
+  const website = job('test-website', ciFile)
   assert.match(website, /^    needs: build$/m)
   assert.match(website, /^    if: \$\{\{ !cancelled\(\) \}\}$/m)
   assert.match(website, /Download compiler artifacts\n        if: \$\{\{ needs\.build\.result == 'success' \}\}[\s\S]*?name: osprey-build/)
@@ -133,15 +132,14 @@ export const registerLintContracts = (build) => {
 }
 
 function deadCodeFixture(product, tests) {
-  const root = mkdtempSync(join(tmpdir(), 'osprey-dead-code-'))
-  try {
+  return withTempDir('dead-code', (root) => {
     mkdirSync(join(root, 'scripts/ci'), { recursive: true })
     mkdirSync(join(root, 'crates/fixture/src'), { recursive: true })
     writeFileSync(join(root, 'scripts/ci/check.mjs'), readFileSync('scripts/ci/verify-no-dead-code.mjs'))
     writeFileSync(join(root, 'crates/fixture/src/main.rs'), product)
     writeFileSync(join(root, 'crates/fixture/src/tests.rs'), tests)
     return spawnSync(process.execPath, [join(root, 'scripts/ci/check.mjs')], { encoding: 'utf8' })
-  } finally { rmSync(root, { recursive: true, force: true }) }
+  })
 }
 
 test('dead-code gate distinguishes test module helpers from unused product code', () => {

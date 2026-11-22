@@ -6,13 +6,10 @@ fn module_files_use_the_assembled_project_graph() {
     let main_warnings = bank_warnings();
     for (relative, expected) in [
         (
-            "src/osprey/examples/projects/modules/src/main.ospml",
+            "src/osprey/examples/talon/backend/main.ospml",
             main_warnings.as_slice(),
         ),
-        (
-            "src/osprey/examples/projects/modules/src/web/pages.ospml",
-            &[],
-        ),
+        ("src/osprey/examples/talon/backend/web/pages.ospml", &[]),
     ] {
         let path = root.join(relative);
         let source = std::fs::read_to_string(&path).expect("read module example");
@@ -94,7 +91,7 @@ fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
     // inferred implementations carry no redundant annotations, every export
     // is documented, and the `_` handler parameters leave nothing unused.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let path = root.join("src/osprey/examples/projects/modules/test/accounts.test.ospml");
+    let path = root.join("src/osprey/examples/talon/backend/test/accounts.test.ospml");
     let source = std::fs::read_to_string(&path).expect("read module test suite");
     let diagnostics = compute(&source, &format!("file://{}", path.display()), U16);
     assert_warnings(&diagnostics, &[]);
@@ -126,7 +123,7 @@ fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
 #[test]
 fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let main_path = root.join("src/osprey/examples/projects/modules/src/main.ospml");
+    let main_path = root.join("src/osprey/examples/talon/backend/main.ospml");
     let main = std::fs::read_to_string(&main_path).expect("read ML module example");
     let unresolved = main.replace(
         "import \"bank/web\" as web",

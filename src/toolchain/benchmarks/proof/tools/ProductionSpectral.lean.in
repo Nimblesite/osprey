@@ -1,0 +1,384 @@
+namespace ProductionFft
+
+/-- At both ends of a grain, the ASR window is silent for any attack and release. -/
+theorem grainAsrBoundarySamples (ops : Ops α) (attack release : α) (n : Nat)
+    (zeroCast : ops.toFloat 0 = ops.literal 0)
+    (exactLast : ops.minus (ops.toFloat (n+1)) (ops.literal 1) = ops.toFloat n)
+    (leRefl : ∀ x, ops.atMost x x = true) (geRefl : ∀ x, ops.atLeast x x = true) :
+    GrainWindows.value ops (.AsrWindow attack release) 0 (n+1) = ops.literal 0 ∧
+    GrainWindows.value ops (.AsrWindow attack release) n (n+1) = ops.literal 0 := by
+  unfold GrainWindows.value GrainMath.asr
+  dsimp only
+  constructor
+  · rw [zeroCast, leRefl]; rfl
+  · rw [exactLast, geRefl]; cases ops.atMost (ops.toFloat n) (ops.literal 0) <;> rfl
+
+/-- Interior samples use the attack ramp, the release ramp, or unity at
+    sustain. The two strict comparisons put the exact transition points on
+    the plateau for valid, nonoverlapping controls. -/
+theorem grainAsrInterior (ops : Ops α) (age duration : Nat) (attack release : α)
+    (started : ops.atMost (ops.toFloat age) (ops.literal 0) = false)
+    (unfinished : ops.atLeast (ops.toFloat age) (ops.minus (ops.toFloat duration) (ops.literal 1)) = false) :
+    GrainWindows.value ops (.AsrWindow attack release) age duration =
+      let sample := ops.toFloat age
+      let last := ops.minus (ops.toFloat duration) (ops.literal 1)
+      match ops.less sample (ops.times attack last) with
+      | true => ops.ieeeDivide sample (ops.times attack last)
+      | false => match ops.greater sample (ops.times (ops.minus (ops.literal 1) release) last) with
+        | true => ops.ieeeDivide (ops.minus last sample) (ops.times release last)
+        | false => ops.literal 1 := by
+  unfold GrainWindows.value GrainMath.asr
+  dsimp only
+  rw [started, unfinished]
+  rfl
+
+/-- A waveguide FIFO advances its stored samples by one site and places the
+    input at the newest end. Its allocated capacity is invariant. -/
+theorem delayPropagation (ops : Ops α) (oldest input : α) (rest : List α) :
+    (DelayLines.push ops ⟨oldest :: rest⟩ input).samples = rest ++ [input] ∧
+    (DelayLines.push ops ⟨oldest :: rest⟩ input).samples.length = (oldest :: rest).length := by
+  constructor
+  · rfl
+  · change (rest ++ [input]).length = rest.length + 1
+    induction rest with
+    | nil => rfl
+    | cons _ xs ih => exact congrArg Nat.succ ih
+
+/-- After a full traversal, the actual line holds the incoming waveform in
+    chronological order for every capacity, initial contents and input waveform. -/
+theorem delayFullTraversal (ops : Ops α) (old incoming : List α) (same : old.length = incoming.length) :
+    incoming.foldl (DelayLines.push ops) ⟨old⟩ = ⟨incoming⟩ := by
+  have appendAssoc (a b c : List α) : (a ++ b) ++ c = a ++ (b ++ c) := by
+    induction a with
+    | nil => rfl
+    | cons x xs ih => exact congrArg (List.cons x) ih
+  have appendNil (a : List α) : a ++ [] = a := by
+    induction a with
+    | nil => rfl
+    | cons x xs ih => exact congrArg (List.cons x) ih
+  have advance (xs ys carried : List α) (lengths : xs.length = ys.length) :
+      ys.foldl (DelayLines.push ops) ⟨xs ++ carried⟩ = ⟨carried ++ ys⟩ := by
+    induction xs generalizing ys carried with
+    | nil =>
+      cases ys with
+      | nil => exact congrArg DelayLine.mk (appendNil carried).symm
+      | cons _ _ => cases lengths
+    | cons x xs ih =>
+      cases ys with
+      | nil => cases lengths
+      | cons y ys =>
+        have tail := ih ys (carried ++ [y]) (Nat.succ.inj lengths)
+        change ys.foldl (DelayLines.push ops) ⟨(xs ++ carried) ++ [y]⟩ = _
+        rw [appendAssoc xs carried [y]]
+        exact tail.trans (congrArg DelayLine.mk (appendAssoc carried [y] ys))
+  have walked := advance old incoming [] same
+  rw [appendNil] at walked
+  exact walked
+
+/-- The playhead follows the extrapolated clock between the device's completed
+    and accepted frame counts; outside that interval it uses the corresponding boundary. -/
+theorem heardTimeClamped (ops : Ops α) (clock elapsed returned accepted rate : α) :
+    let now := ops.plus clock elapsed
+    let low := ops.ieeeDivide returned rate
+    let high := ops.ieeeDivide accepted rate
+    TimelineGeometry.heardSeconds ops clock elapsed returned accepted rate =
+      match ops.less now low with
+      | true => low
+      | false => match ops.greater now high with
+        | true => high
+        | false => now := rfl
+
+/-- The dial starts a drag at a vertical distance of two, in either direction. -/
+theorem dialMovement (ops : Ops α) (start current : α) :
+    DialMath.moved ops start current =
+      match ops.atLeast (ops.abs (ops.minus current start)) (ops.literal 2) with
+      | true => ops.literal 1
+      | false => ops.literal 0 := rfl
+
+/-- Translating the card centre by the recorded grab offset recovers the
+    pointer coordinate under exact cancellation. -/
+theorem canvasGrabOffset (ops : Ops α) (pointer centre : α)
+    (cancel : ∀ x y, ops.plus y (ops.minus x y) = x) :
+    CanvasGeometry.shifted ops centre (CanvasGeometry.offset ops pointer centre) = pointer :=
+  cancel pointer centre
+
+/-- Once the sample-rate-scaled attack completes, a held note passes the input sample. -/
+theorem envelopeSustain (ops : Ops α) (sample frame gate attack release rate : α)
+    (risen : ops.atLeast frame (ops.times attack rate) = true)
+    (held : ops.less frame gate = true)
+    (unit : ops.times sample (ops.literal 1) = sample) :
+    ArrangeMath.enveloped ops sample frame gate attack release rate = sample := by
+  unfold ArrangeMath.enveloped ArrangeMath.gated
+  rw [risen, held]
+  exact unit
+
+/-- After the gate and the sample-rate-scaled release, a finite sample is silent
+    under the stated zero multiplication law, independently of attack progress. -/
+theorem envelopeReleased (ops : Ops α) (sample frame gate attack release rate : α)
+    (pastGate : ops.less frame gate = false)
+    (ended : ops.atLeast frame (ops.plus gate (ops.times release rate)) = true)
+    (zero : ops.times sample (ops.literal 0) = ops.literal 0) :
+    ArrangeMath.enveloped ops sample frame gate attack release rate = ops.literal 0 := by
+  unfold ArrangeMath.enveloped ArrangeMath.gated
+  rw [pastGate, ended]
+  exact zero
+
+/-- At unsaturated addresses the base stage consumes exactly four successive strided
+    bins, or reports an incomplete frame if any required position is absent. -/
+theorem stridedQuartet (ops : Ops α) (values : List (Bin α)) (first stride : Nat) (sign : α)
+    (second : ops.satAdd first stride = first + stride)
+    (third : ops.satAdd (first + stride) stride = first + stride + stride)
+    (fourth : ops.satAdd (first + stride + stride) stride = first + stride + stride + stride) :
+    Ffts.four ops values first stride sign =
+      match (binAt values (first)), (binAt values (first + stride)), (binAt values (first + stride + stride)),
+          (binAt values (first + stride + stride + stride)) with
+      | some a, some b, some c, some d => .ok (Ffts.quartet ops a b c d sign)
+      | _, _, _, _ => .error ops.incompleteFrame := by
+  let reads (i j k : Nat) :=
+    match readBin values first with
+    | .error _ => Ffts.incomplete ops
+    | .ok a => match readBin values i with
+      | .error _ => Ffts.incomplete ops
+      | .ok b => match readBin values j with
+        | .error _ => Ffts.incomplete ops
+        | .ok c => match readBin values k with
+          | .error _ => Ffts.incomplete ops
+          | .ok d => Except.ok (Ffts.quartet ops a b c d sign)
+  change reads (ops.satAdd first stride) (ops.satAdd (ops.satAdd first stride) stride)
+    (ops.satAdd (ops.satAdd (ops.satAdd first stride) stride) stride) = _
+  rw [second, third, fourth]
+  dsimp only [reads, readBin, Ffts.incomplete]
+  cases binAt values first <;> cases binAt values (first + stride) <;>
+    cases binAt values (first + stride + stride) <;> cases binAt values (first + stride + stride + stride) <;> rfl
+
+/-- Four successive analysis or synthesis windows at one quarter-window spacing. -/
+def hannEnergy4 (ops : Ops α) (start hop size : α) : α :=
+  let square (i : α) := let w := SpectralMath.hann ops i size; ops.times w w
+  let i₁ := ops.plus start hop
+  let i₂ := ops.plus i₁ hop
+  let i₃ := ops.plus i₂ hop
+  ops.plus (ops.plus (square start) (square i₁)) (ops.plus (square i₂) (square i₃))
+
+/-- Half-amplitude cosine at the sample's angle. This gives the assumptions on
+    the primitive trig evaluations independently of the production subtraction. -/
+def halfCos (ops : Ops α) (i size : α) :=
+  ops.times ops.half (ops.cos (ops.ieeeDivide (ops.times ops.tau i) size))
+
+structure HannLaws (ops : Ops α) (neg : α → α) : Prop where
+  opposite : ∀ x, ops.minus ops.half (neg x) = ops.plus ops.half x
+  assoc : ∀ a b c, ops.plus (ops.plus a b) c = ops.plus a (ops.plus b c)
+  comm : ∀ a b, ops.plus a b = ops.plus b a
+  squares : ∀ a b, let sq x := ops.times x x
+    ops.plus (sq (ops.minus a b)) (sq (ops.plus a b)) =
+      ops.plus (ops.plus (sq a) (sq a)) (ops.plus (sq b) (sq b))
+
+def quarterPhases (ops : Ops α) (neg : α → α) (start hop size : α) : Prop :=
+  ∃ c s, halfCos ops start size = c ∧ halfCos ops (ops.plus start hop) size = neg s ∧
+    halfCos ops (ops.plus (ops.plus start hop) hop) size = neg c ∧
+    halfCos ops (ops.plus (ops.plus (ops.plus start hop) hop) hop) size = s ∧
+    ops.plus (ops.times c c) (ops.times s s) = ops.times ops.half ops.half
+
+/-- Smith (9.45). Opposite cosines cancel and the four squared production
+    window values sum to six times one half squared. -/
+theorem hannEnergyQuarter (ops : Ops α) (neg : α → α) (laws : HannLaws ops neg)
+    (start hop size : α) (angles : quarterPhases ops neg start hop size) :
+    hannEnergy4 ops start hop size = Synthesis.sixSquares ops.plus (fun x => ops.times x x) ops.half := by
+  obtain ⟨c, s, h₀, h₁, h₂, h₃, circle⟩ := angles
+  unfold hannEnergy4 SpectralMath.hann
+  simp only [halfCos] at h₀ h₁ h₂ h₃
+  simp only [h₀, h₁, h₂, h₃, laws.opposite]
+  exact Synthesis.hannQuarterEnergy ops.plus ops.minus (fun x => ops.times x x)
+    laws.assoc laws.comm laws.squares ops.half c s circle
+
+/-- At N/8 spacing, the four even shifts and the four odd shifts each give
+    the quarter-hop energy, for twelve times one half squared in total. -/
+theorem hannEnergyEighth (ops : Ops α) (neg : α → α) (laws : HannLaws ops neg)
+    (start hop size : α) (even : quarterPhases ops neg start (ops.plus hop hop) size)
+    (odd : quarterPhases ops neg (ops.plus start hop) (ops.plus hop hop) size) :
+    let energy := Synthesis.sixSquares ops.plus (fun x => ops.times x x) ops.half
+    ops.plus (hannEnergy4 ops start (ops.plus hop hop) size)
+      (hannEnergy4 ops (ops.plus start hop) (ops.plus hop hop) size) = ops.plus energy energy := by
+  dsimp only
+  rw [hannEnergyQuarter ops neg laws _ _ _ even, hannEnergyQuarter ops neg laws _ _ _ odd]
+
+/-- Reciprocal of the squared-Hann overlap gain, in the production evaluation order. -/
+theorem overlapNormalization (ops : Ops α) (size hop : α) :
+    SpectralStreams.overlapScale ops size hop =
+      ops.divide (ops.times (ops.literal 8) hop) (ops.times (ops.literal 3) size) := rfl
+
+/-- Smith (9.44). For unchanged frames and normalized effective window products,
+    accumulating contributions in playback order reconstructs the sample. -/
+theorem overlapReconstructs (ops : Ops α) (size hop sample : α) (products : List α)
+    (assoc : ∀ a b c, ops.times (ops.times a b) c = ops.times a (ops.times b c))
+    (dist : ∀ a b, ops.plus (ops.times sample a) (ops.times sample b) =
+      ops.times sample (ops.plus a b))
+    (zero : ops.times sample (ops.literal 0) = ops.literal 0)
+    (one : ops.times sample (ops.literal 1) = sample)
+    (normalized : products.foldl (fun acc w => ops.plus acc
+      (ops.times w (SpectralStreams.overlapScale ops size hop))) (ops.literal 0) = ops.literal 1) :
+    products.foldl (fun acc w => SpectralStreams.overlapped ops acc (ops.times sample w)
+      (SpectralStreams.overlapScale ops size hop)) (ops.literal 0) = sample := by
+  let scale := SpectralStreams.overlapScale ops size hop
+  have factor (xs : List α) (a : α) :
+      xs.foldl (fun acc w => SpectralStreams.overlapped ops acc (ops.times sample w) scale)
+        (ops.times sample a) =
+      ops.times sample (xs.foldl (fun acc w => ops.plus acc (ops.times w scale)) a) := by
+    induction xs generalizing a with
+    | nil => rfl
+    | cons w ws ih =>
+      have step : SpectralStreams.overlapped ops (ops.times sample a) (ops.times sample w) scale =
+          ops.times sample (ops.plus a (ops.times w scale)) := by
+        unfold SpectralStreams.overlapped
+        rw [assoc, dist]
+      simp only [List.foldl_cons, step]
+      exact ih _
+  have h := factor products (ops.literal 0)
+  rw [zero] at h
+  exact h.trans ((congrArg (ops.times sample) normalized).trans one)
+
+/-- Smith (9.44), converse: reconstructing every constant input in the
+    production accumulator also reconstructs one, so its effective gains sum to one. -/
+theorem overlapNecessary (ops : Ops α) (size hop : α) (products : List α)
+    (unit : ∀ w, ops.times (ops.literal 1) w = w)
+    (reconstructs : ∀ sample, products.foldl (fun acc w => SpectralStreams.overlapped ops acc
+      (ops.times sample w) (SpectralStreams.overlapScale ops size hop)) (ops.literal 0) = sample) :
+    products.foldl (fun acc w => ops.plus acc (ops.times w (SpectralStreams.overlapScale ops size hop)))
+      (ops.literal 0) = ops.literal 1 := by
+  let scale := SpectralStreams.overlapScale ops size hop
+  have unchanged (xs : List α) (initial : α) :
+      xs.foldl (fun acc w => SpectralStreams.overlapped ops acc (ops.times (ops.literal 1) w) scale) initial =
+      xs.foldl (fun acc w => ops.plus acc (ops.times w scale)) initial := by
+    induction xs generalizing initial with
+    | nil => rfl
+    | cons w ws ih =>
+      simp only [List.foldl_cons]
+      change List.foldl _ (ops.plus initial (ops.times (ops.times (ops.literal 1) w) scale)) ws = _
+      rw [unit w]
+      exact ih _
+  exact (unchanged products (ops.literal 0)).symm.trans (reconstructs (ops.literal 1))
+
+/-- Puckette's finite additive sum, including DC and the source order of accumulation. -/
+theorem additiveSample (ops : Ops α) (partials : List (Harmonic α)) (position base : α) :
+    Wavetables.value ops partials position base =
+      partials.foldl (fun sum h => ops.plus sum (ops.times h.amplitude
+        (ops.sin (ops.times ops.tau (ops.plus (ops.times (ops.toFloat h.number) position) h.phase)))) ) base := rfl
+
+/-- Each integer harmonic advances by a whole number of turns. Induction over the actual
+    fold preserves the sample for arbitrary amplitudes, phases and initial DC offset. -/
+theorem additivePeriod (ops : Ops α) (partials : List (Harmonic α)) (position base : α)
+    (advance : ∀ n x, ops.times (ops.toFloat n) (ops.plus x (ops.literal 1)) =
+      ops.plus (ops.times (ops.toFloat n) x) (ops.toFloat n))
+    (reorder : ∀ a b c, ops.plus (ops.plus a b) c = ops.plus (ops.plus a c) b)
+    (period : ∀ x n, ops.sin (ops.times ops.tau (ops.plus x (ops.toFloat n))) =
+      ops.sin (ops.times ops.tau x)) :
+    Wavetables.value ops partials (ops.plus position (ops.literal 1)) base =
+      Wavetables.value ops partials position base := by
+  induction partials generalizing base with
+  | nil => rfl
+  | cons h hs ih =>
+    have shifted : TableMath.harmonic ops h.amplitude (ops.toFloat h.number) h.phase
+        (ops.plus position (ops.literal 1)) =
+        TableMath.harmonic ops h.amplitude (ops.toFloat h.number) h.phase position := by
+      unfold TableMath.harmonic
+      rw [advance, reorder, period]
+    simp only [Wavetables.value, foldList, List.foldl_cons, shifted]
+    exact ih _
+
+open Ffts SpectralFrames
+
+/-- With exact scalar addition and multiplication, conjugating a finite bin
+    of real samples amounts to conjugating its root. The complex addition,
+    product and conjugation in the polynomial are production Osprey bodies. -/
+theorem realSamplesConjugate (ops : Ops α) (neg : α → α) (root : Bin α) (samples : List α)
+    (negate : ∀ a, ops.minus (ops.literal 0) a = neg a)
+    (negZero : neg (ops.literal 0) = ops.literal 0)
+    (involutive : ∀ a, neg (neg a) = a)
+    (negAdd : ∀ a b, neg (ops.plus a b) = ops.plus (neg a) (neg b))
+    (mulNeg : ∀ a b, ops.times a (neg b) = neg (ops.times a b))
+    (negMul : ∀ a b, ops.times (neg a) b = neg (ops.times a b)) :
+    let zero : Bin α := ⟨ops.literal 0, ops.literal 0⟩
+    let frame := samples.map (fun x => (⟨x, ops.literal 0⟩ : Bin α))
+    conjugate ops (Synthesis.bin (added ops) (turned ops) zero root id frame) =
+      Synthesis.bin (added ops) (turned ops) zero (conjugate ops root) id frame := by
+  have sum (a b : Bin α) : conjugate ops (added ops a b) =
+      added ops (conjugate ops a) (conjugate ops b) := by
+    unfold conjugate added; dsimp only; rw [negate, negate, negate, negAdd]
+  have product (a b : Bin α) : conjugate ops (turned ops a b) =
+      turned ops (conjugate ops a) (conjugate ops b) := by
+    unfold conjugate turned SpectralMath.productRe SpectralMath.productIm
+    dsimp only
+    rw [negate, negate, negate, mulNeg, negMul, involutive, mulNeg, negMul, negAdd]
+  have real (x : α) : conjugate ops ⟨x, ops.literal 0⟩ = ⟨x, ops.literal 0⟩ := by
+    unfold conjugate; dsimp only; rw [negate, negZero]
+  induction samples with
+  | nil => exact real _
+  | cons x xs ih =>
+    dsimp only [List.map, Synthesis.bin, id] at ih ⊢
+    rw [sum, product, real, ih]
+
+/-- DFT superposition for pointwise addition, with both complex operations
+    extracted from Osprey. The hypotheses describe exact scalar arithmetic. -/
+theorem addedDftBin (ops : Ops α) (zero : α) (root : Bin α) (x y : ι → Bin α) (indices : List ι)
+    (identity : ∀ a, ops.plus a zero = a)
+    (assoc : ∀ a b c, ops.plus (ops.plus a b) c = ops.plus a (ops.plus b c))
+    (comm : ∀ a b, ops.plus a b = ops.plus b a)
+    (dist : ∀ a b c, ops.times a (ops.plus b c) = ops.plus (ops.times a b) (ops.times a c))
+    (subSums : ∀ a b c d, ops.minus (ops.plus a b) (ops.plus c d) =
+      ops.plus (ops.minus a c) (ops.minus b d)) :
+    Synthesis.bin (added ops) (turned ops) ⟨zero, zero⟩ root (fun i => added ops (x i) (y i)) indices =
+      added ops (Synthesis.bin (added ops) (turned ops) ⟨zero, zero⟩ root x indices)
+        (Synthesis.bin (added ops) (turned ops) ⟨zero, zero⟩ root y indices) := by
+  have exchange (a b c d : α) : ops.plus (ops.plus a b) (ops.plus c d) =
+      ops.plus (ops.plus a c) (ops.plus b d) := by
+    rw [assoc a b, ← assoc b c, comm b c, assoc c b, assoc a c]
+  apply Synthesis.binAdditive
+  · intro a; cases a; unfold added; dsimp only; rw [identity, identity]
+  · intro a b c; unfold added; dsimp only; rw [assoc, assoc]
+  · intro a b; unfold added; rw [comm a.re, comm a.im]
+  · intro a b c
+    unfold added turned SpectralMath.productRe SpectralMath.productIm
+    dsimp only
+    rw [dist, dist, dist, dist, subSums, exchange]
+
+
+/-- Exact operation order for the shipped phase-vocoder normalization,
+    including the unit phasor selected for zero magnitude. -/
+theorem rotationComponents (ops : Ops α) (current previous : Bin α) :
+    let z := turned ops current (conjugate ops previous)
+    let m := ops.pow (ops.plus (ops.times z.re z.re) (ops.times z.im z.im)) ops.half
+    rotation ops current previous = match ops.atMost m (ops.literal 0) with
+      | true => ⟨ops.literal 1, ops.literal 0⟩
+      | false => ⟨ops.ieeeDivide z.re m, ops.ieeeDivide z.im m⟩ := by
+  dsimp only
+  rw [rotationConjugate]
+  unfold SpectralMath.unitRe SpectralMath.unitIm SpectralMath.magnitude SpectralMath.power
+  dsimp only
+  let z := turned ops current (conjugate ops previous)
+  let m := ops.pow (ops.plus (ops.times z.re z.re) (ops.times z.im z.im)) ops.half
+  cases ops.atMost m (ops.literal 0) <;> rfl
+
+/-- Under exact square-root and division laws a nonsilent measured rotation
+    has squared modulus one, independently of the input amplitudes. -/
+theorem rotationUnitPower (ops : Ops α) (current previous : Bin α) :
+    let z := turned ops current (conjugate ops previous)
+    let p := SpectralMath.power ops z.re z.im
+    let m := ops.pow p ops.half
+    ops.atMost m (ops.literal 0) = false →
+    ops.times m m = p →
+    (∀ x, ops.times (ops.ieeeDivide x m) (ops.ieeeDivide x m) =
+      ops.ieeeDivide (ops.times x x) (ops.times m m)) →
+    (∀ x y, ops.plus (ops.ieeeDivide x p) (ops.ieeeDivide y p) = ops.ieeeDivide (ops.plus x y) p) →
+    ops.ieeeDivide p p = ops.literal 1 →
+    let r := rotation ops current previous
+    SpectralMath.power ops r.re r.im = ops.literal 1 := by
+  intro z p m nonsilent square ratio join unit
+  rw [rotationComponents]
+  change ops.atMost (ops.pow (ops.plus (ops.times z.re z.re) (ops.times z.im z.im)) ops.half) (ops.literal 0) = false at nonsilent
+  dsimp only
+  rw [nonsilent]
+  change ops.plus (ops.times (ops.ieeeDivide z.re m) (ops.ieeeDivide z.re m))
+    (ops.times (ops.ieeeDivide z.im m) (ops.ieeeDivide z.im m)) = ops.literal 1
+  rw [ratio, ratio, square, join]
+  exact unit
+
+end ProductionFft

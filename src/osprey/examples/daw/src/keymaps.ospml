@@ -1,0 +1,90 @@
+// [DAW-KEYS] Keymaps: which keys run which command. Three ship with the daw; a fourth is the user's own file.
+// Shortcuts are spelled the way the host reads them: `Cmd+S`, `Shift+Space`, `Tab`, `OemPeriod`.
+namespace synth
+
+(** The daw's keymaps, the file a user writes one in, and the checks a keymap must pass. *)
+module Keymaps
+    bind (command, keys) = Shortcut(command = command, keys = keys)
+
+    prism () = Keymap(name = "Prism", shortcuts = [bind ("settings", "Cmd+OemComma"), bind ("open", "Cmd+O"), bind ("save", "Cmd+S"), bind ("render", "Cmd+R"), bind ("undo", "Cmd+Z"), bind ("redo", "Cmd+Shift+Z"), bind ("timeline", "Cmd+D1"), bind ("patch", "Cmd+D2"), bind ("routing", "Cmd+D3"), bind ("modules", "Cmd+L"), bind ("controls", "Cmd+I"), bind ("keyboard", "Cmd+K"), bind ("start", "Enter"), bind ("playSong", "Space"), bind ("stopSong", "Space"), bind ("loop", "L"), bind ("playPatch", "Shift+Space"), bind ("stopPatch", "Shift+Space"), bind ("audition", "Cmd+P"), bind ("previousTrack", "Cmd+Up"), bind ("nextTrack", "Cmd+Down"), bind ("previousBar", "Cmd+Left"), bind ("nextBar", "Cmd+Right"), bind ("zoomIn", "Cmd+OemPlus"), bind ("zoomOut", "Cmd+OemMinus"), bind ("zoomFit", "Cmd+D0")])
+
+    // Live's habits where the daw has the command: Tab changes view, the browser and detail view are on
+    // Cmd+Alt, M is the computer keyboard, Home returns to the start and the arrows move through tracks and time.
+    ableton () = Keymap(name = "Ableton Style", shortcuts = [bind ("render", "Cmd+Shift+R"), bind ("timeline", "Tab"), bind ("patch", "Shift+Tab"), bind ("routing", "Cmd+Alt+M"), bind ("modules", "Cmd+Alt+B"), bind ("controls", "Cmd+Alt+L"), bind ("keyboard", "M"), bind ("start", "Home"), bind ("audition", "Alt+Space"), bind ("previousTrack", "Up"), bind ("nextTrack", "Down"), bind ("previousBar", "Left"), bind ("nextBar", "Right"), bind ("zoomIn", "OemPlus"), bind ("zoomOut", "OemMinus")])
+
+    // Logic's habits: single letters open the editors (P piano roll, X mixer, Y library, I inspector, B the
+    // instrument's controls), Cmd+B bounces, Return goes to the start, comma and full stop step a bar.
+    logic () = Keymap(name = "Logic Style", shortcuts = [bind ("render", "Cmd+B"), bind ("timeline", "P"), bind ("patch", "B"), bind ("routing", "X"), bind ("modules", "Y"), bind ("controls", "I"), bind ("audition", "Alt+Space"), bind ("previousTrack", "Up"), bind ("nextTrack", "Down"), bind ("previousBar", "OemComma"), bind ("nextBar", "OemPeriod"), bind ("zoomIn", "Cmd+Right"), bind ("zoomOut", "Cmd+Left"), bind ("zoomFit", "Z")])
+
+    (** The keymaps the daw ships, by the names its menu shows. *)
+    export names = ["Prism", "Ableton Style", "Logic Style"]
+
+    (** The shipped keymap called `name`; any other name is Prism. *)
+    export preset name = match name
+        "Ableton Style" => ableton ()
+        "Logic Style" => logic ()
+        _ => prism ()
+
+    (** Every command a keymap can bind. *)
+    export commands () = mapList ((prism ()).shortcuts, \s => s.command)
+
+    found (keymap, command) = listGet (filterList (keymap.shortcuts, \s => s.command == command)) 0
+
+    (** The keys `keymap` gives `command`; a command it leaves out keeps its Prism keys, so none is without. *)
+    export keys (keymap, command) = match found (keymap, command)
+        Success s => s.keys
+        Error _ => match found (prism (), command)
+            Success s => s.keys
+            Error _ => ""
+
+    // Two commands may share keys only when they are never available together.
+    paired (one, other) = (one == "playSong" && other == "stopSong") || (one == "stopSong" && other == "playSong") || (one == "playPatch" && other == "stopPatch") || (one == "stopPatch" && other == "playPatch")
+
+    clash (keymap, command) = filterList (commands (), \other => other != command && !paired (command, other) && keys (keymap, other) == keys (keymap, command) && keys (keymap, command) != "")
+
+    (** `keymap` when every command it binds exists and no two commands that can be used together share keys;
+        else what is wrong with it. *)
+    export checked keymap =
+        unknown = filterList (keymap.shortcuts, \s => !ui::Lists::any (commands (), \command => command == s.command))
+        clashes = filterList (commands (), \command => length (clash (keymap, command)) > 0)
+        match listGet unknown 0
+            Success s => Error(message = "\"${s.command}\" is not a command. Commands: ${join (commands ()) ", "}.")
+            Error _ => match listGet clashes 0
+                Success command => Error(message = "${keys (keymap, command)} is on both ${command} and ${listGet (clash (keymap, command)) 0 ?: ""}.")
+                Error _ => match keymap.name == ""
+                    true => Error(message = "A keymap needs a name.")
+                    false => Success(value = keymap)
+
+    (** A keymap file's text as a checked keymap: `{"name": "Mine", "shortcuts": {"save": "Cmd+S"}}`. *)
+    export decode text =
+        doc = ui::Doc::parse text
+        binds = ui::Doc::field (doc, "shortcuts")
+        checked (Keymap(name = ui::Doc::text (doc, "name"), shortcuts = mapList (ui::Doc::keys binds, \command => bind (command, ui::Doc::text (binds, command)))))
+
+    (** `keymap` as the text of its file, every command spelled out so the file shows what can be changed. *)
+    export encode keymap = ui::Doc::write (JsonObject [ui::Doc::str ("name", keymap.name), JsonMember "shortcuts" (JsonObject (mapList (commands (), \command => ui::Doc::str (command, keys (keymap, command)))))])
+
+    folderOf path = join (ui::Lists::slice (split path "/" ?: [], 0, satSub (length (split path "/" ?: [])) 1)) "/"
+
+    (** The editor using `keymap`, the choice written to the user's keymap file for the next launch. *)
+    export chosen (editor, keymap) =
+        _folder = makeDir (folderOf editor.keysPath)
+        match writeFile editor.keysPath (encode keymap)
+            Success _ => editor(keymap = keymap, message = "Shortcuts: ${keymap.name}. Your keymap file is ${editor.keysPath}.")
+            Error why => editor(keymap = keymap, message = "Shortcuts: ${keymap.name} (not saved: ${why}).")
+
+    (** The editor after a keymap file was chosen: the keymap in use changes only when the file passes. *)
+    export loaded (editor, outcome) = match outcome
+        Error why => editor(message = why)
+        Success path => match path == ""
+            true => editor
+            false => match readFile path
+                Error why => editor(message = "Could not read ${path}: ${why}")
+                Success text => match decode text
+                    Error why => editor(message = "Shortcuts not changed. ${why}")
+                    Success keymap => chosen (editor, keymap)
+
+    (** The keymap in the user's file when it is there and passes, else Prism. *)
+    export stored path = match readFile path
+        Error _ => prism ()
+        Success text => decode text ?: prism ()

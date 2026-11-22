@@ -443,7 +443,7 @@ cycles. Unknown import targets and members include up to three visible candidate
 
 ## Tested Example
 
-[`src/osprey/examples/projects/modules/`](../../../src/osprey/examples/projects/modules) is the
+[`src/osprey/examples/talon/`](../../../src/osprey/examples/talon) is the
 end-to-end project fixture. `src/toolchain/crates/osprey-cli/tests/project_e2e.rs` checks
 directory/manifest inputs, AST flattening, LLVM output, source-name restoration,
 and byte-exact execution. `src/toolchain/crates/osprey-project/tests/` covers graph,

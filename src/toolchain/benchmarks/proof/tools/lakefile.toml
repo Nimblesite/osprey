@@ -63,3 +63,6 @@ name = "RecursorCases"
 
 [[lean_lib]]
 name = "SameSyntax"
+
+[[lean_lib]]
+name = "Synthesis"

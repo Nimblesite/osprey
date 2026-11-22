@@ -1,4 +1,19 @@
-cannot convert value for printing: { grow: (int) -> int, x: int }
-cannot convert value for printing: Holder
-cannot assert on a value with no rendering: { grow: (int) -> int, x: int }
-cannot assert on a value with no rendering: Map<string, int>
+29:4: cannot convert value for printing: { grow: (int) -> int, x: int }
+30:4: cannot convert value for printing: Holder
+31:4: cannot assert on a value with no rendering: { grow: (int) -> int, x: int }
+32:4: cannot assert on a value with no rendering: Map<string, int>
+33:16: cannot convert value to string: (int) -> int; `show1` needs a printable argument
+33:16: cannot convert value to string: Holder; `show2` needs a printable argument
+33:16: cannot convert value to string: Map<string, int>; `show3` needs a printable argument
+34:16: `length` supports only string, List<T>, or Map<string, V>; got int; `size1` needs a sized argument
+34:16: `length` supports only string, List<T>, or Map<string, V>; got bool; `size2` needs a sized argument
+34:16: `length` supports only string, List<T>, or Map<string, V>; got (int) -> int; `size3` needs a sized argument
+35:4: `listSort` supports only List<int> or List<string>; got List<bool>; `sort1` needs a sortable argument
+36:4: `listSort` supports only List<int> or List<string>; got List<float>; `sort2` needs a sortable argument
+37:4: `listSort` supports only List<int> or List<string>; got List<Holder>; `sort3` needs a sortable argument
+38:17: cannot order `(int) -> int` with `<`: ordering is decided only for int, float, string and bool; `less1` needs a comparable argument
+38:17: cannot order `Holder` with `<`: ordering is decided only for int, float, string and bool; `less2` needs a comparable argument
+38:17: cannot order `{ grow: (int) -> int, x: int }` with `<`: ordering is decided only for int, float, string and bool; `less3` needs a comparable argument
+39:4: cannot assert on a value with no rendering: (int) -> int; `same1` needs a printable argument
+40:4: cannot assert on a value with no rendering: Holder; `same2` needs a printable argument
+41:4: cannot assert on a value with no rendering: Map<string, int>; `same3` needs a printable argument

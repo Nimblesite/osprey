@@ -172,20 +172,24 @@ pub(crate) fn gen_receiver_directed(
     }
     let e = crate::expr::first_arg(args, named)
         .ok_or_else(|| CodegenError::invalid(format!("{name} needs one argument")))?;
-    let lowered = gen_expr(cg, e)?;
-    if lowered.result_inner.is_some() {
-        return Err(CodegenError::invalid(format!(
-            "{name} cannot consume an unhandled Result"
-        )));
-    }
-    let recv = lowered;
-    let count = match recv.osp_ty.as_deref() {
-        Some(owner) if is_list_owner(owner) => handle_i64(cg, &recv, "osprey_list_length"),
-        Some(o) if is_map_owner(o) => handle_i64(cg, &recv, "osprey_map_length"),
-        _ => match crate::listlit::lit_length(cg, &recv) {
-            Some(n) => n,
-            None => return crate::strings::gen_size(cg, name, recv).map(Some),
-        },
+    let count = if let Some(count) = crate::iter::filtered_count(cg, e)? {
+        count
+    } else {
+        let lowered = gen_expr(cg, e)?;
+        if lowered.result_inner.is_some() {
+            return Err(CodegenError::invalid(format!(
+                "{name} cannot consume an unhandled Result"
+            )));
+        }
+        let recv = lowered;
+        match recv.osp_ty.as_deref() {
+            Some(owner) if is_list_owner(owner) => handle_i64(cg, &recv, "osprey_list_length"),
+            Some(o) if is_map_owner(o) => handle_i64(cg, &recv, "osprey_map_length"),
+            _ => match crate::listlit::lit_length(cg, &recv) {
+                Some(n) => n,
+                None => return crate::strings::gen_size(cg, name, recv).map(Some),
+            },
+        }
     };
     Ok(Some(if name == "isEmpty" {
         let r = cg.emit_reg(format!("icmp eq i64 {}, 0", count.operand));

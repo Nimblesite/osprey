@@ -12,4 +12,4 @@ Language server, editor, documentation and test tools.
 - [Editor integration and distribution](EditorIntegration.md)
 - [Test runner and editor integration](TestRunner.md)
 - [Symbolic bug hunting with KLEE](SymbolicExecution.md)
-- [Math to code [MATH-CODE]](MathToCode.md): mathematics written in Lean, Osprey modules generated from it.
+- [Math to code [MATH-CODE]](MathToCode.md): native Osprey formulas, source-derived Lean proofs, and the Lean importer.

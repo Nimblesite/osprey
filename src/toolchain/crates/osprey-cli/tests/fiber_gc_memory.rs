@@ -48,17 +48,7 @@ fn garbage_made_with_fibers_is_reclaimed_in_every_backend() -> io::Result<()> {
             "3\n2\n18000000\n",
         ),
     ];
-    let mut wrong = Vec::new();
-    for (name, body, expected) in cases {
-        for memory in ["gc", "arc"] {
-            let result = answer(name, &format!("{CHURN}{body}"), memory)?;
-            if result.as_deref() != Ok(expected) {
-                wrong.push(format!("{name}/{memory}: {result:?}"));
-            }
-        }
-    }
-    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
-    Ok(())
+    check_cases(CHURN, cases)
 }
 
 /// Garbage to force collections, and a sum that reads every element of `items`.
@@ -111,10 +101,14 @@ fn values_only_the_runtime_holds_survive_collections_during_fibers() -> io::Resu
             "1800055\n1800210\n1800465\n1800820\n",
         ),
     ];
+    check_cases(LIVE_PRELUDE, cases)
+}
+
+fn check_cases<const N: usize>(prelude: &str, cases: [(&str, &str, &str); N]) -> io::Result<()> {
     let mut wrong = Vec::new();
     for (name, body, expected) in cases {
         for memory in ["gc", "arc"] {
-            let result = answer(name, &format!("{LIVE_PRELUDE}{body}"), memory)?;
+            let result = answer(name, &format!("{prelude}{body}"), memory)?;
             if result.as_deref() != Ok(expected) {
                 wrong.push(format!("{name}/{memory}: {result:?}"));
             }

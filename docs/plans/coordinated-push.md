@@ -15,16 +15,41 @@ Run [44498694913](https://github.com/Nimblesite/osprey/actions/runs/44498694913)
 
 That commit was pushed without a local `make ci` pass on the commit itself.
 
+## PR #427 verification
+
+The [hosted run for `d4341c9ac`](https://github.com/Nimblesite/osprey/actions/runs/44901015355) finished red. The PR stays open while these checks are verified on a replacement commit.
+
+- [ ] **Dependency audit.** OSV Scanner 2.6.0 reproduced four findings in the tracked FerroUI lock for `paste`, `zbus_names`, `zvariant` and `zvariant_derive`. Combining the two upstream drafts in scratch passed the 196-package lock scan, 66 macOS host library tests and the Linux X11 cross-check. Pin a reviewed revision containing both fixes and scan the tracked locks. [FerroUI #1029](https://github.com/wieslawsoltes/FerroUI/pull/1029) · [FerroUI #1030](https://github.com/wieslawsoltes/FerroUI/pull/1030) · [Hosted audit](https://github.com/Nimblesite/osprey/actions/runs/44901015355/job/136837099602)
+- [ ] **GPUI time limits.** The Linux and macOS jobs each compiled all app archives twice before reaching the 20-minute limit. `0f4698ccd` reuses the first build and passes the local workflow contract. Verify both hosted replays. [Linux](https://github.com/Nimblesite/osprey/actions/runs/44901015355/job/136837140504) [macOS](https://github.com/Nimblesite/osprey/actions/runs/44901015355/job/136837140545)
+- [ ] **DAW suite on Linux.** The runner terminated during DAW compilation. Earlier local replays reached about 20 GiB of resident memory. The release compiler now reaches TAP, with about 2.8 GiB during source checking and 3.8 GiB at code generation. The shared DAW target passed all 36 journeys locally through the graph rendering change in `300a7539b`. Verify the hosted Linux replay on the replacement commit. [Hosted suites](https://github.com/Nimblesite/osprey/actions/runs/44901015355/job/136837140556)
+- [ ] **WinUI Prism replay.** The failure screenshot shows that frame decoding rejected the negative fixed scene scale before the Modules label appeared. The production reader from `f3cfc074f` decodes the real Prism Patch and Keyboard launch frames, with the Modules control and both scales intact. Replay Prism and compare Windows goldens on the runner. [Hosted replay](https://github.com/Nimblesite/osprey/actions/runs/44901015355/job/136837145249)
+- [ ] **Build and coverage.** Local all-target workspace Clippy passes with warnings treated as errors after `a1183e8ed`, and the wide-record regression still verifies both selected callbacks. A clean Talon web build passes with ABI generation from `5ec9e5172`, and the exact synth coverage gate passes. Verify the hosted build and artifact producers on the replacement commit. [Clippy](https://github.com/Nimblesite/osprey/actions/runs/44901015355/job/136837186112) [Build](https://github.com/Nimblesite/osprey/actions/runs/44901015355/job/136837186146) [Coverage](https://github.com/Nimblesite/osprey/actions/runs/44901015355/job/136838272142)
+- [ ] **Duplication.** The shared Deslop 0.41.0 gate reported 22,629 duplicated lines out of 551,993, 550 above the 4% limit. The arrangement cases pass in GC and ARC after sharing fixture setup, and the focused transport journey passes with the same marker and zoom assertions. Rerun `make _deslop` on the intended push commit after removing the remaining duplication.
+
+### Local replay before the full build
+
+- [x] Preflight preserves workflow, job and step environment variables, and runs each distinct execution context once. Windows steps use their declared shell. A selection that skips every check exits with a failure status. The regression tests cover an identical command with different GC and ARC settings, a Windows host, and an exact duplicate.
+- [x] `make ci` and the hosted GPUI job run the same `make -C src/toolchain/targets/tests synth APP_SUITE_PREBUILT=1` entry point. The local test phase runs it first with the cached release build.
+- [x] Preflight writes a numbered log for each selected check and continues after a failure. Hosted CI and `make ci` run the same 93 contract tests. The actual preflight invocation passed the contract suite and logged the failing Deslop threshold using the shared, pinned `make _deslop` command.
+- Run `make _deslop` and the release audit first. They catch dependency and duplication failures before the app builds. The Make target installs the same Deslop version as CI.
+- To locate duplication involving the PR, run `git diff --no-ext-diff origin/main -- | target/ci-tools/deslop . --diff - --only-changed --nohtml --nojson --output target/deslop-pr`. The individual report entries show which parts of a clone occur on added lines. `make _deslop` remains the whole-repository gate.
+- Build the release CLI once. Run the shared DAW gate and record elapsed time and peak resident memory. A successful replay must reach TAP and finish all assertions.
+- [x] Verify the shared synth and UI test changes locally. All 91 synth package tests passed under GC and ARC. All 119 native UI tests passed under ARC. The `uitest` package source retained full line coverage.
+- A timed solver trace attributes 33.2 s to `canvasInspectorJourney`, 35.9 s to `sampleFileJourney`, and 14.3 s to `panelDialJourney` in the seventh sweep. Moving the mutable bench state into its handler reduces whole-program sweeps from seven to two. All six focused voice and editor tests pass with this scoped state and the corrected voice assertion calls. Splitting the canvas Undo/Escape checks further reduced its seventh-sweep time to 0.15 s. A later replay entered the next proof phase with around 3 GiB resident. The full local TAP run completed after the inspector fixture repair.
+- Sampling the stock release compiler located two source proofs. The first used the signal-forwarding specialization with 3,526 functions. Its error path fell back to the 3,520-function original. A diagnostic build must surface the first error to identify which specialization prevents reuse of the source proof [TYPE-EFFECT-PROOF-COUNT].
+- Use `node scripts/ci/preflight.mjs --list --only='gpui\.yml:|winui\.yml:'` to locate the desktop replay commands. Run macOS checks on macOS and verify Linux resource use and WinUI goldens on their native runners. Preflight lists checks that require another host or GitHub runner data as skipped.
+- The push lock holder runs `make ci` once the targeted checks are green and the branch is clean, then uses `git push` for the exact tested commit.
+
 ## Rules
 
 - [x] **[CI-PUSH-LOCK]** Only the agent holding the TMC lock `PUSH-<branch>` pushes. Every other agent commits locally and tells the holder on TMC which commits to include.
-- [x] **[CI-PUSH-GREEN]** A push follows a `make ci` pass on the exact HEAD being pushed. A commit added after that pass needs a new pass.
+- [x] **[CI-PUSH-GREEN]** A push follows a `make ci` pass on the exact commit being pushed. CI checks for a clean checkout at both ends of the run and verifies that HEAD still names the starting commit before writing approval. Source validation and the dependency audit finish before lint and test even with parallel Make.
 - [x] **[CI-PUSH-ONE-RUN]** There is no push while a CI run on the branch is in progress. The only exception is the fix for that run's red, pushed after it finishes.
 - [x] **[CI-PUSH-RED-OWNER]** The lock holder owns the run until it finishes. If it is red, they fix it locally, run `make ci` again and push once.
 
 ## Enforcement
 
-- [x] **`make push`:** refuses unless `make ci` left a stamp for `git rev-parse HEAD` and `gh run list --branch <b> --status in_progress` is empty. It runs `git push` only after both checks pass. AGENTS.md replaces raw `git push` with `make push`.
+- [x] **Direct push.** The lock holder verifies that `target/ci-green` matches `git rev-parse HEAD` and checks GitHub for queued or running CI on the branch. Push the verified SHA with `git push origin "$tested:refs/heads/$branch"`.
 - [x] **`ci.yml` concurrency:** `cancel-in-progress: false` in `ci.yml` and the workflows it calls (Windows, GPUI, WinUI). A new push then waits behind the running run instead of destroying it. GitHub keeps only the newest pending run, so this costs at most one queued run.
 - [x] **Synth tests 16 and 19:** fixed by `d591e96a5`. At HEAD they pass locally under GC and ARC (byte-exact golden, ARC leak-free).
 - [x] **WinUI synth goldens:** refreshed by `3d8588a23`. `970615da3` added `undo-delay` and undo/redo steps but no goldens, and `d591e96a5` removes the oscillator's MIDI inlet, which changes every synth picture. Goldens can only be drawn on Windows, so take them from the `winui-self-test` artifact of the first run at HEAD, check each picture by eye and push them as that run's red fix.

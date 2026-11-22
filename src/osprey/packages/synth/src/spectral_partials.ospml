@@ -1,0 +1,53 @@
+// [SYNTH-SPECTRAL-MORPH] Partial morphing, after Serra's spectral modelling synthesis (1989) and Tellman,
+// Haken and Holloway's timbre morphing (1995): spectral peaks of both inputs pair up in frequency order,
+// each pair glides in log frequency and log level, and its five-bin lobe is redrawn at the glided frequency
+// with accumulated synthesis phase.
+namespace synth
+
+(** Peak-matched morphing between the main and side spectra; `amount` 0 is the main input, 1 the side. *)
+module SpectralPartials
+    at (levels, index) = listGet levels index ?: 0.0
+
+    // A peak is a local maximum within 26 dB (5%) of the frame's loudest bin, above Hann sidelobes.
+    peak (levels, floor, index) = at (levels, index) > at (levels, satSub index 1) && at (levels, index) >= at (levels, satAdd index 1) && at (levels, index) > floor
+
+    // Fractional bin of a peak by parabolic interpolation of its log levels.
+    centre (levels, index) = toFloat index + SpectralMath::peakOffset (SpectralMath::logLevel (at (levels, satSub index 1)), SpectralMath::logLevel (at (levels, index)), SpectralMath::logLevel (at (levels, satAdd index 1)))
+
+    partials levels =
+        floor = 0.05 * foldList (levels, 0.0, \(most, level) => TableMath::larger (most, level))
+        mapList (filterList (toList (range (1, satSub (length levels) 1)), \index => peak (levels, floor, index)), \index => { bin = centre (levels, index), lobe = mapList (toList (range (-2, 3)), \offset => at (levels, satAdd index offset)) })
+
+    glided (one, other, amount) = { bin = SpectralMath::logBlend (one.bin, other.bin, amount), lobe = Sequences::combined (one.lobe, other.lobe, \(a, b) => SpectralMath::logBlend (a, b, amount)) }
+
+    faded (one, weight: float) = { bin = one.bin, lobe = mapList (one.lobe, \value => value * weight) }
+
+    // Pairs glide; a partial without a partner fades out (main) or in (side) where it stands.
+    paired (mains, sides, amount) =
+        both = Sequences::combined (mains, sides, \(one, other) => glided (one, other, amount))
+        leaving = mapList (Sequences::drop (mains, length both), \one => faded (one, 1.0 - amount))
+        arriving = mapList (Sequences::drop (sides, length both), \other => faded (other, amount))
+        listConcat (listConcat both leaving) arriving
+
+    // An output bin sums the lobes landing on it and turns at the frequency of the loudest of them.
+    landed (held, partial, j) = match floatToInt (SpectralMath::nearest partial.bin)
+        Error _ => held
+        Success middle => match listGet partial.lobe (satAdd (satSub j middle) 2)
+            Error _ => held
+            Success level =>
+                match level > held.loudest
+                    true => { level = held.level + level, loudest = level, bin = partial.bin, middle = middle }
+                    false => { level = held.level + level, loudest = TableMath::larger (level, held.loudest), bin = held.bin, middle = held.middle }
+
+    drawn (count, glides) = foldList (glides, mapList (toList (range (0, count)), \j => { level = 0.0, loudest = 0.0, bin = toFloat j, middle = j }), \(bins, partial) => Sequences::mapIndexed (bins, \(j, held) => landed (held, partial, j)))
+
+    magnitudes bins = mapList (bins, \value => SpectralMath::magnitude (value.re, value.im))
+
+    (** One morphed frame; `held.motion` carries each output bin's synthesis phase between frames. *)
+    export morphed (config, bins, sides, held, amount) =
+        out = drawn (length bins, paired (partials (magnitudes bins), partials (magnitudes sides), amount))
+        // Phase-locked lobes: the centre bin turns at the partial's frequency and each neighbour sits π
+        // from the next, as a Hann-windowed sinusoid's bins do.
+        turned = Sequences::combined (out, held.motion, \(bin, motion) => SpectralMath::principal (motion.re + SpectralMath::binAdvance (bin.bin, toFloat config.hop, toFloat config.size)))
+        phases = Sequences::mapIndexed (out, \(j, bin) => SpectralMath::lobePhase (listGet turned bin.middle ?: 0.0, toFloat (satSub j bin.middle)))
+        SpectralFrame(bins = Sequences::combined (out, phases, \(bin, phase) => Complex(re = SpectralMath::polarRe (bin.level, phase), im = SpectralMath::polarIm (bin.level, phase))), memory = held.memory, motion = mapList (phases, \phase => Complex(re = phase, im = 0.0)), captured = false)

@@ -1,6 +1,6 @@
 [project]
 name = "osprey-storage-tests"
-source_roots = ["../src/disk.ospml", "../src/browse.ospml", "../src/view.ospml", "../../../projects/modules/src/domain/json.ospml", "."]
+source_roots = ["../src/disk.ospml", "../src/browse.ospml", "../src/view.ospml", "../../../talon/backend/domain/json.ospml", "."]
 default_namespace = "storagetests"
 entry = "main.ospml"
 

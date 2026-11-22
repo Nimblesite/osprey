@@ -10,7 +10,7 @@ import { RENDERED_KINDS, renderWorkspace, type RenderOptions } from "../../clien
 import { renderShown } from "../../client/src/osprey-ui/webview/render";
 import { readFrame } from "../../client/src/osprey-ui/webview/rows";
 import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
-import { frame, type ControlSpec } from "./native-rows-kit";
+import { frame, unionKinds, type ControlSpec } from "./native-rows-kit";
 
 // The compiled test lives at <ext>/out/test/suite, so the extension root is three levels up.
 const extensionRoot = path.resolve(__dirname, "..", "..", "..");
@@ -130,6 +130,24 @@ suite("package workspace component renderer", () => {
     assert.strictEqual((html.match(/class="osp-pane"/g) ?? []).length, 2);
   });
 
+  test("a secret field hides its words, a long field wraps, and each field commits as told", () => {
+    const fieldOf = (shape: Record<string, unknown>) => ({
+      kind: "section", title: "Keys", footer: "",
+      children: [{ kind: "field", label: "API key", value: "sk-<1>", prompt: "Paste a key", secure: false, multiline: false, commit: "edit", event: 0, ...shape }],
+    });
+    const drawn = (shape: Record<string, unknown>) => renderWorkspace({ regions: regions(screen, fieldOf(shape)) });
+    const secret = drawn({ secure: true, commit: "submit" });
+    assert.ok(secret.includes('type="password"'), `a secure field never shows its key: ${secret}`);
+    assert.ok(secret.includes('data-commit="submit"'), secret);
+    assert.ok(secret.includes('value="sk-&lt;1&gt;"') && !secret.includes("sk-<1>"), secret);
+    const plain = drawn({});
+    assert.ok(plain.includes('type="text"') && plain.includes('data-commit="edit"'), plain);
+    const long = drawn({ multiline: true, value: "line one\n<b>two</b>" });
+    assert.ok(long.includes('<textarea aria-label="API key" rows="4" placeholder="Paste a key"'), long);
+    assert.ok(long.includes("&lt;b&gt;two&lt;/b&gt;</textarea>") && !long.includes("<b>two"), long);
+    assert.ok(!long.includes("<input"), "a multiline field is a text area, not an input");
+  });
+
   test("untrusted text and placeholders are escaped while slots render their region", () => {
     const html = renderWorkspace({ regions: regions(screen, rows), assetUri: "vscode-resource://icon.png" });
     assert.ok(!html.includes("<img src=x"), html);
@@ -165,6 +183,9 @@ suite("package workspace component renderer", () => {
     const html = renderWorkspace({ regions: regions(screen, rows), assetUri: "vscode-resource://approved-logo.png" });
     assert.ok(html.includes('<div class="osp-brand-lockup"><img class="osp-brand" src="vscode-resource://approved-logo.png" alt="Osprey" />'), html);
     assert.ok(renderWorkspace({ regions: regions(screen, rows) }).includes('<span class="osp-brand osp-brand-word">Osprey</span>'));
+    const unbranded = renderWorkspace({ regions: regions(screen, rows), brand: false });
+    assert.ok(!unbranded.includes("osp-brand"), "a host drawing another application leaves the lockup off");
+    assert.ok(unbranded.includes('<header class="osp-screen-header"><div class="osp-screen-titles">'), unbranded);
     assert.throws(() => renderWorkspace({ regions: regions({ kind: "brand" }) }), /Unknown native component: brand/);
   });
 
@@ -213,11 +234,7 @@ suite("package workspace component renderer", () => {
     // Every `Node` constructor in src/osprey/packages/native/src/node.ospml, as the walk names it
     // ([NATIVE-HOSTS-COVERAGE]), so a component added to the framework fails here until the
     // webview draws it or refuses it by name.
-    const source = fs.readFileSync(path.join(extensionRoot, "..", "..", "osprey", "packages", "native", "src", "node.ospml"), "utf8").replace(/\r/g, "");
-    const block = source.slice(source.indexOf("type Node A ="));
-    const body = block.slice(0, block.search(/\n\S/));
-    const kinds = [...body.matchAll(/^ {4}([A-Z]\w*)$/gm)].map((match) =>
-      match[1] === "Typeset" ? "math" : match[1].replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase());
+    const kinds = unionKinds("node.ospml", "type Node A =", { Typeset: "math" });
     assert.ok(kinds.includes("meter") && kinds.includes("context-menu") && kinds.includes("scene"), kinds.join(","));
     assert.deepStrictEqual([...RENDERED_KINDS].sort(), [...kinds].sort());
     const scene = renderWorkspace({ regions: regions({ kind: "scene", width: 400, height: 300, zoom: 0, event: 7 }) });

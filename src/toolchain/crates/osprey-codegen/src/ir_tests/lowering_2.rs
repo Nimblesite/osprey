@@ -1,4 +1,6 @@
+use super::lowering_1::compile_err_contains;
 use super::*;
+use crate::testkit::contents;
 
 /// Rendering an erased value goes through its descriptor's render
 /// function — never the raw word, which printed heap addresses as
@@ -29,15 +31,13 @@ fn structural_narrowing_compares_descriptors() {
              print(\"${describe(erased())}\")\n",
     );
     let body = function_body(&ir, "define internal i64 @describe(i8* %$p0)");
-    assert!(
-        body.contains("icmp eq i8* ") && body.contains("@osp.any.desc.row.x.y"),
-        "narrowing must be a descriptor pointer compare:\n{body}"
-    );
-    assert!(
-        !body.contains("@strcmp")
-            && !body.contains("@osp_string_equals")
-            && !body.contains("@osp_string_compare"),
-        "no name may be compared at run time:\n{body}"
+    // Narrowing is one descriptor pointer compare per candidate — and no
+    // field name may be compared at run time.
+    shows(&body, &["icmp eq i8* ", "@osp.any.desc.row.x.y"]);
+    contents(
+        &body,
+        &[],
+        &["@strcmp", "@osp_string_equals", "@osp_string_compare"],
     );
     // The erasure deep-boxes through the per-layout boxer, whose slots
     // hold one child box per field.
@@ -57,10 +57,8 @@ fn structural_match_on_a_concrete_record_is_static() {
              print(\"${fst(Pair(7, \\\"a\\\"))}\")\n",
     );
     let body = function_body(&ir, "define internal i64 @fst(i8* %$p0)");
-    assert!(
-        body.contains("load i64, i64*") && !body.contains("@osp.any.desc"),
-        "a concrete-record structural match binds statically:\n{body}"
-    );
+    // Field loads, no descriptor anywhere.
+    contents(&body, &["load i64, i64*"], &["@osp.any.desc"]);
 }
 
 #[test]
@@ -74,14 +72,10 @@ fn mixed_match_transfers_fresh_owners_and_retains_only_borrowed_arms() {
     let ir = module("type Node = Node(int)\nfn choose(flag: bool, old: Node) = match flag { true => old false => Node(7) }\n");
     let body = function_body(&ir, "define internal i8* @choose(i1 %$p0, i8* %$p1)");
     let (arms, joined) = body.split_once(" = phi i8* ").expect("managed match join");
-    assert!(
-        arms.contains("call void @osp_retain(i8* %$p1)"),
-        "the borrowed arm must acquire its own reference before joining:\n{body}"
-    );
-    assert!(
-        !joined.contains("call void @osp_retain("),
-        "the join transfers its reference without duplicating a freshly owned arm:\n{body}"
-    );
+    // The borrowed arm acquires its own reference before joining; the join
+    // then transfers it without duplicating a freshly owned arm.
+    shows(arms, &["call void @osp_retain(i8* %$p1)"]);
+    contents(joined, &[], &["call void @osp_retain("]);
 }
 
 #[test]
@@ -106,10 +100,10 @@ fn named_arguments_are_ordered_by_declaration() {
         "extern fn takeFirst(first: int, second: int) -> int\n\
              fn namedWitness() -> int = takeFirst(second: 22, first: 11)\n",
     );
-    assert!(
-        function_body(&external, "define internal i64 @namedWitness()")
-            .contains("@takeFirst(i64 11, i64 22)"),
-        "extern calls must preserve declaration order and the C ABI:\n{external}"
+    // Extern calls must preserve declaration order and the C ABI.
+    shows(
+        &function_body(&external, "define internal i64 @namedWitness()"),
+        &["@takeFirst(i64 11, i64 22)"],
     );
 }
 
@@ -133,18 +127,18 @@ fn foreign_ffi_callbacks_use_their_raw_code_pointer() {
 
 #[test]
 fn bound_capturing_ffi_callbacks_remain_rejected() {
-    let error = compile_err("extern fn print(callback: fn() -> int) -> int\nfn invoke(value) = {\nlet callback = fn() => value\nprint(callback)\n}\nlet answer = invoke(41)\n");
-    assert!(error
-        .to_string()
-        .contains("capturing lambda as an FFI callback"));
+    compile_err_contains(
+        "extern fn print(callback: fn() -> int) -> int\nfn invoke(value) = {\nlet callback = fn() => value\nprint(callback)\n}\nlet answer = invoke(41)\n",
+        "capturing lambda as an FFI callback",
+    );
 }
 
 #[test]
 fn computed_ffi_closures_are_never_passed_as_code() {
-    let error = compile_err("extern fn print(callback: fn() -> int) -> int\nlet callbacks = [fn() => 41]\nlet answer = print(match callbacks {\n[value] => value\n_ => fn() => 0\n})\n");
-    assert!(error
-        .to_string()
-        .contains("dynamic closure as an FFI callback"));
+    compile_err_contains(
+        "extern fn print(callback: fn() -> int) -> int\nlet callbacks = [fn() => 41]\nlet answer = print(match callbacks {\n[value] => value\n_ => fn() => 0\n})\n",
+        "dynamic closure as an FFI callback",
+    );
 }
 
 #[test]
@@ -237,6 +231,14 @@ fn list_builders_map_filter_fold_and_foreach() {
             "osprey_list_builder_seal",
         ],
     );
+    let counts = module(
+        "fn main() -> Unit = {\n\
+            let xs = listAppend(List(), 2.5)\n\
+            print(length(filterList(xs, |x| => x > 0.0)))\n\
+            print(isEmpty(filterList(xs, |x| => x < 0.0)))\n\
+         }\n",
+    );
+    assert!(!counts.contains("call i8* @osprey_list_builder_new_of"));
 }
 
 #[test]
@@ -256,8 +258,10 @@ fn iterator_lambda_callbacks_inline_and_let_bound() {
 fn iterator_callback_must_be_fn_or_lambda() {
     // A non-identifier, non-lambda expression in callback position fails
     // loudly (iter.rs callback_of's catch-all Err).
-    let err = compile_err("fn main() -> Unit = forEach(range(0, 3), 1 + 1)\n");
-    assert!(matches!(err, CodegenError::Unsupported(_)));
+    assert!(matches!(
+        compile_err("fn main() -> Unit = forEach(range(0, 3), 1 + 1)\n"),
+        CodegenError::Unsupported(_)
+    ));
 }
 
 // ---- closures / free variables ----
@@ -371,10 +375,7 @@ fn positional_sub_patterns_bind_by_slot_over_a_named_payload() {
     // fields 1 and 2 — field 0 is the tag. Both must be loaded, at their
     // declared LLVM types, for the two binders to have resolved by column.
     let body = function_body(&ir, "define internal i8* @render");
-    assert!(
-        body.contains("load i8*, i8**") && body.contains("load i64, i64*"),
-        "both payload slots must be loaded at their declared types:\n{body}"
-    );
+    shows(&body, &["load i8*, i8**", "load i64, i64*"]);
 }
 
 #[test]
@@ -397,8 +398,7 @@ fn positional_binders_ignore_field_names_even_when_they_collide() {
     // pointer `ptrtoint`-cast to i64 out of an `-> int` function, so the
     // program printed a raw heap address that changed between runs.
     let body = function_body(&ir, "define internal i64 @secondSlot");
-    testkit::contents(&body, &[], &["ptrtoint"]);
-    shows(&body, &["phi i64"]);
+    contents(&body, &["phi i64"], &["ptrtoint"]);
 }
 
 #[test]
@@ -471,6 +471,11 @@ fn list_pattern_match_binds_head_tail_and_fixed_lengths() {
             "icmp sge i64",
         ],
     );
+    let first = module(
+        "fn first(xs) = match xs { [head, ...rest] => head\n _ => 0 }\n\
+         fn main() -> Unit = print(first([1, 2]))\n",
+    );
+    assert!(!first.contains("call i8* @osprey_list_drop"));
     let corpus = module(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../osprey/tests/regressions/basics/pattern_matching/pattern_matching_complete.test.osp"

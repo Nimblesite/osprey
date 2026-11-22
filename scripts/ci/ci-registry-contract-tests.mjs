@@ -101,8 +101,7 @@ export function registerRegistryContracts() {
       assert.ok(registry.includes(`name: "Tests: package manager (${memory})"`))
       assert.ok(registry.includes(`run: make _test_registry REGISTRY_MEMORY=${memory}`))
       assertRealUv(registry, memory)
-      assert.ok(coverage.includes(`test-registry-${memory}`))
-      assert.ok(coverage.includes('test "${{ needs.test-registry-' + memory + '.result }}" = "success"'))
+      assert.match(coverage, new RegExp(`^    needs: \\[.*\\btest-registry-${memory}\\b.*\\]$`, 'm'))
     }
     const commands = makeRecipe('_test_registry', 'scripts/make/tests.mk')
     for (const script of ['publication', 'interruption']) assert.match(commands.join('\n'), new RegExp(`OSPREY_PACKAGE_CLIENT=.*REGISTRY_NATIVE_CLIENT.*python3 scripts/packages/test-package-${script}\\.py`))

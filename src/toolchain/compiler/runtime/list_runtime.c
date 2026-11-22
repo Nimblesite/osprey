@@ -290,7 +290,7 @@ OspreyList *osprey_list_append_of(OspreyList *l, int64_t v, int em) {
   /* Room in the tail? Slots from tail_count on are always zero (a chunk fills
      left to right), so no element is overwritten here. */
   if (l->tail_count < OSPREY_LIST_BRANCH) {
-    OspreyListNode *new_tail = clone_node(l->tail, node_layout(0, em));
+    OspreyListNode *new_tail = clone_slots(l->tail, node_layout(0, em), l->tail_count);
     new_tail->slots[l->tail_count] = v;
     osp_retain(l->root);
     osp_retain(l->front);

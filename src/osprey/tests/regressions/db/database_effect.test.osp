@@ -198,3 +198,101 @@ fn databaseEffectCase() = {
     }
 }
 test("Database capability binds, queries, and closes through its handler", databaseEffectCase)
+
+// --- The same bindings used directly, without the capability: SQLite through the
+// GENERIC C interop layer, out-parameters through the FFI pointer cells, values
+// always BOUND (?, ?), never interpolated. [FFI-LINK-DIRECTIVES] [FFI-PTR] [FFI-NO-DB-BUILTINS]
+
+/// SQLITE_OK = 0, SQLITE_DONE = 101. A friendly status for the OK code.
+fn okText(rc) = match rc {
+    0 => "ok"
+    _ => "err"
+}
+
+/// Prepare a statement and hand back the live stmt pointer (out-param via a cell).
+fn prepare(db, sql) = {
+    let cell = osprey_ffi_cell()
+    let _rc = sqlite3_prepare_v2(db: db, sql: sql, nByte: (0 - 1) , ppStmt: cell, tail: osprey_ffi_null())
+    let stmt = osprey_ffi_deref(cell: cell)
+    let _freed = osprey_ffi_free(cell: cell)
+    stmt
+}
+
+/// Step the statement once, release it, and report both statuses as `rc` and `fin`.
+fn runStatement(stmt) = {
+    let rc = sqlite3_step(stmt: stmt)
+    let fin = sqlite3_finalize(stmt: stmt)
+    { rc: rc, fin: fin }
+}
+
+/// Insert one user with BOUND parameters — no string interpolation of values.
+fn insertUser(db, uid, uname) = {
+    let stmt = prepare(db: db, sql: "INSERT INTO users(id, name) VALUES (?, ?)")
+    let _b1 = sqlite3_bind_int(stmt: stmt, idx: 1, val: uid)
+    let _b2 = sqlite3_bind_text(stmt: stmt, idx: 2, val: uname, nByte: (0 - 1) , destructor: osprey_ffi_transient())
+    runStatement(stmt: stmt).rc
+}
+
+/// Read the next row and print it as a typed (int, text) pair.
+fn printRow(stmt) = {
+    let rc = sqlite3_step(stmt: stmt)
+    print("user ${sqlite3_column_int(stmt: stmt, col: 0)} = ${sqlite3_column_text(stmt: stmt, col: 1)}")
+    rc
+}
+
+/// Create the users table over the FFI and hand back the exec status.
+fn createUsers(db) = sqlite3_exec(db: db, sql: "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)", cb: osprey_ffi_null(), arg: osprey_ffi_null(), errmsg: osprey_ffi_null())
+
+/// Open an in-memory database on `cell`, create the users table, and report both
+/// statuses alongside the live connection.
+fn openUsers(cell) = {
+    let openrc = sqlite3_open(filename: ":memory:", ppDb: cell)
+    let db = osprey_ffi_deref(cell: cell)
+    let ddlrc = createUsers(db: db)
+    { openrc: openrc, ddlrc: ddlrc, db: db }
+}
+
+let dbCell = osprey_ffi_cell()
+let opened = openUsers(cell: dbCell)
+let db = opened.db
+print("open ${okText(rc: opened.openrc)}\ncreate ${okText(rc: opened.ddlrc)}")
+
+let i1 = insertUser(db: db, uid: 1, uname: "Ada")
+let i2 = insertUser(db: db, uid: 2, uname: "Linus")
+print("inserted ${i1} ${i2}")
+
+let q = prepare(db: db, sql: "SELECT id, name FROM users ORDER BY id")
+let r1 = printRow(stmt: q)
+let r2 = printRow(stmt: q)
+let qfin = sqlite3_finalize(stmt: q)
+
+let cleanup = osprey_ffi_free(cell: dbCell)
+let closed = sqlite3_close(db: db)
+print("closed ${okText(rc: closed)}")
+
+/// Fold a table of status rows: each row's `got` codes must equal `want`,
+/// together with one further condition that is true for the same reason.
+fn assertStatuses(rows) = forEachList(rows, |row| => checkAll(row.label, [structuralEquals(row.got, row.want), row.extra]))
+
+/// Verifies generic FFI pointer cells, bound parameters, and typed row access.
+fn sqliteRoundTripCase() = {
+    let testCell = osprey_ffi_cell()
+    let setup = openUsers(cell: testCell)
+    let testDb = setup.db
+    let testInsert = insertUser(db: testDb, uid: 7, uname: "Grace")
+    let testQuery = prepare(db: testDb, sql: "SELECT id, name FROM users WHERE id = 7")
+    let testRow = sqlite3_step(stmt: testQuery)
+    let selectedId = sqlite3_column_int(stmt: testQuery, col: 0)
+    let selectedName = "${sqlite3_column_text(stmt: testQuery, col: 1)}"
+    let finished = runStatement(stmt: testQuery)
+    let testClosed = sqlite3_close(db: testDb)
+    let testFreed = osprey_ffi_free(cell: testCell)
+    // Setup agrees on SQLITE_OK, bound parameters produce SQLITE_DONE with the
+    // expected typed row, and statements, connections and pointer cells release.
+    assertStatuses([
+        { label: "SQLite setup status", got: [setup.openrc, setup.ddlrc], want: [0, 0], extra: okText(rc: setup.openrc) == "ok" },
+        { label: "SQLite bound row", got: [testInsert, testRow, selectedId, finished.rc], want: [101, 100, 7, 101], extra: selectedName == "Grace" },
+        { label: "SQLite cleanup status", got: [finished.fin, testClosed, testFreed], want: [0, 0, 0], extra: okText(rc: testClosed) == "ok" }
+    ])
+}
+test("SQLite FFI binds and reads a typed row", sqliteRoundTripCase)

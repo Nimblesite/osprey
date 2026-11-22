@@ -1,74 +1,74 @@
 ---
 layout: page
 title: Osprey documentation
-description: Start with algebraic effects and reusable handlers, then build native, web and mobile applications with Osprey.
+description: "Install Osprey, follow a guide, or watch real apps built with it: Mac, Windows, iPhone and Android apps, web servers and AI models on the GPU."
 ---
 
 {% from "native-capture.njk" import capture %}
 
-Osprey is built for **safety, elegance and performance**: typed effects and `Result` for handling failures, inferred types for concise code, and LLVM native compilation. Start with a storage handler, then use the same pattern in web and mobile apps.
+Osprey is uncompromising: safe, elegant and fast, with no trade between them. It compiles to native code through LLVM, failures are `Result` values you must handle, and types are inferred. The film below profiles a running Osprey program in VS Code.
 
 {% videoPlayer "profiler", true %}
 
 ## Start here
 
-- **[Algebraic effects](/docs/effects/)** — declare an operation, call a reusable handler, replace it in a test, and choose an arithmetic policy.
-- **[Run the same model on CPU or GPU](/docs/cpu-or-gpu/)**: GPT-2 runs on the CPU or the GPU by changing one handler.
+- **[Install Osprey](/docs/installation/)** — the compiler and LLVM/clang on macOS, Linux or Windows.
+- **[Try the Playground](/playground/)** — run programs in the browser, no install.
+- **[Build My First App](/docs/my-first-app/)** — a native CLI that reads, validates and updates a JSON file.
+- **[Algebraic effects](/docs/effects/)** — declare an operation, handle it, swap the handler in a test.
+- **[Run the same model on CPU or GPU](/docs/cpu-or-gpu/)** — GPT-2 runs on the CPU or the GPU by changing one handler.
 - **[Write Osprey in the Python flavor](/docs/python/flavor/)** — compile Python-style Osprey code, declare effects and call CPython through interop.
 - **[Call Python from Osprey, and Osprey from Python](/docs/python/interop/)** — the `Python` effect, `import osprey`, and test doubles for Python calls.
-- **[Python flavor for AI agents](/docs/python/for-ai/)** — commands, effect decorators, supported syntax and bug-reporting instructions for coding agents.
+- **[Python flavor for AI agents](/docs/python/for-ai/)** — commands, effect decorators and supported syntax, written for coding agents.
 - **[Write Osprey in the TypeScript flavor](/docs/typescript/flavor/)** — serve the Express README example natively, and see it measured against Express on Node.js.
-- **[Install Osprey](/docs/installation/)** — set up the compiler and LLVM/clang toolchain on macOS, Linux, or Windows.
-- **[Build My First App](/docs/my-first-app/)** — build a native CLI that reads, validates and updates a JSON file.
-- **[Try the Playground](/playground/)** — run small programs in the browser before setting up a local toolchain.
 
 ## Tutorials
 
-- **[Video tutorials](/docs/tutorials/)** — watch real apps, then run them with the accompanying commands.
-- **[Osprey and Swift interop on the Mac and iPhone](/docs/tutorials/swift-interop/)** — watch Storage call Swift through a generated C interface.
+- **[Video tutorials](/docs/tutorials/)** — real apps on film, with the commands to run them.
+- **[Osprey and Swift interop on the Mac and iPhone](/docs/tutorials/swift-interop/)** — Storage calls Swift through a generated C interface.
 
 ## Proofs and mathematics
 
-Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for compatible proof checking while Osprey builds its independent proof technology and replaceable disciplines.
+Osprey checks proofs with its own kernel and uses [Lean as an oracle](/docs/proofs/#lean-as-an-oracle) while it is built.
 
-- **[Proof video learning paths](/docs/proofs/)** - twelve short films, organised into six topics and two audience paths.
-- **[Use the Proof Workbench](/docs/proof-workbench/)** - write an argument, inspect hypotheses and goals, and work through guided lessons.
-- **[Mathlib port progress](/docs/mathlib-port/)** - real checked imports, reproducible commands and the remaining boundaries.
+- **[Proof films](/docs/proofs/)** — twelve short films on six topics, one cut for programmers and one for mathematicians.
+- **[Proof Workbench](/docs/proof-workbench/)** — write an argument and watch its hypotheses and goals.
+- **[Mathlib port progress](/docs/mathlib-port/)** — which imports check today, and the commands to recheck them.
 
 ## Build applications
 
-- **[Osprey Native](/docs/osprey-native/)** — the application framework: one store, signals, typed screens and capabilities; SwiftUI, VS Code and GPU hosts draw them.
-- **[Build a Mac and iPhone app](/docs/mac-and-iphone-apps/)** — build Storage and connect its logic to SwiftUI and platform services.
-- **[Build an iOS and Android app](/docs/mobile-apps/)** — handle application requests as native commands for SQLite, GitHub and reactive controls.
-- **[Build a web app](/docs/web-apps/)** — follow Talon Bank from storage and audit handlers to shared web, Android and iOS clients.
-- **[Explore the WebAssembly studio](/wasm/)** — compare the Default and ML flavors in a browser-hosted example.
-- **[Browse working examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/)** — study native, HTTP, WebSocket, terminal, graphics, and WebAssembly programs.
-- **[Document your modules](/docs/documentation/)** — generate HTML API references, add Markdown guides and custom CSS, and test documentation examples.
+- **[Audio synthesis](/docs/audio-synthesis/)** — Prism, a DAW written in Osprey: patch voices, mix through side-chained buses, render to WAV.
+- **[Osprey Native](/docs/osprey-native/)** — the app framework: one store, signals and typed screens, drawn by SwiftUI, VS Code or GPU hosts.
+- **[Build a Mac and iPhone app](/docs/mac-and-iphone-apps/)** — Storage, with its logic in Osprey and its screens in SwiftUI.
+- **[Build an iOS and Android app](/docs/mobile-apps/)** — native commands for SQLite, GitHub and reactive controls.
+- **[Build a web app](/docs/web-apps/)** — Talon Bank: one Osprey Native app compiled to WebAssembly, the same source on Android and iOS.
+- **[WebAssembly studio](/wasm/)** — the Default and ML flavors side by side in the browser.
+- **[Examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/)** — native, HTTP, WebSocket, terminal, graphics and WebAssembly programs.
+- **[Document your modules](/docs/documentation/)** — HTML API references, Markdown guides and tested examples.
 
-{{ capture("/assets/images/native/macos-synth.png", "Prism Synth · connect a patch and play it in a native macOS window.", "Prism Synth · connect a patch and play it in a native macOS window.", 2304, 1512) }}
+{{ capture("/assets/images/native/prism-mix-bus.webp", "Prism Mix page on macOS: tracks routed to group buses, a kick-keyed compressor, the Space reverb and Master", "Prism, the DAW written in Osprey, on its Mix page.", 1400, 914) }}
 
 ## Test and investigate
 
-- **[Hunt for bugs](/docs/hunt/)** — explore symbolic inputs with KLEE, inspect source-level findings and replay them on a native build.
+- **[Hunt for bugs](/docs/hunt/)** — KLEE explores symbolic inputs; replay each finding on a native build.
 
 ## Packages
 
-- **[Package manager](/docs/package-manager/)** — publish to a folder registry, resolve dependencies and build from verified, locked source. Hosted publishing remains planned.
-- **[Packages in VS Code](/docs/packages-in-vscode/)** — add and remove direct dependencies, review unverified-release warnings, then fetch and build locked source. Includes real editor screenshots.
-- **[Package specification](/spec/0029-packagemanagement/)** — the normative contract: folder registry, manifests, identity, resolution, locks, the REST API and the command surface.
+- **[Package manager](/docs/package-manager/)** — publish to a folder registry, resolve and lock dependencies, build from verified source. Hosted publishing is planned.
+- **[Packages in VS Code](/docs/packages-in-vscode/)** — add and remove dependencies, see unverified-release warnings, fetch and build.
+- **[Package specification](/spec/0029-packagemanagement/)** — registry, manifests, resolution, locks, REST API and commands.
 
 ## Language
 
-- **[Read the language specification](/spec/)** — the intended language contract; check feature status for current implementation limits.
-- **[Use dense computation buffers](/spec/0034-gpucomputation/)** — typed buffers and pure kernels, run on Metal or OpenCL when `OSPREY_GPU` selects a device and on the CPU otherwise.
-- **[Check feature status](/status/)** — see what works today, its current limits, and what is planned.
-- **[Browse keywords](/docs/keywords/)** — declarations, bindings, matching, imports, and literals.
+- **[Language specification](/spec/)** — the language as designed; feature status says what is built.
+- **[GPU computation](/spec/0034-gpucomputation/)** — typed buffers and pure kernels on Metal, OpenCL or the CPU, picked by `OSPREY_GPU`.
+- **[Feature status](/status/)** — what works today, its limits, and what is planned.
 
-A **syntax flavor** is a way to write Osprey; all four share its compiler, types and effects. Default uses `.osp` and braces; ML uses `.ospml` and indentation; [Python flavor](/docs/python/flavor/) uses `.py` with `# osprey: flavor=python`; [TypeScript flavor](/docs/typescript/flavor/) uses `.ts` files a project lists. Python-flavor and TypeScript-flavor files compile as Osprey, not CPython or JavaScript.
+Osprey has four **syntax flavors** with one compiler, type system and effect system: Default (`.osp`, braces), ML (`.ospml`, indentation), [Python](/docs/python/flavor/) (`.py` marked `# osprey: flavor=python`) and [TypeScript](/docs/typescript/flavor/) (`.ts` files a project lists). Python and TypeScript files compile as Osprey, not CPython or JavaScript.
 
 ## Reference
 
-- **[Functions](/docs/functions/)** — file I/O, strings, collections, processes, networking, JSON document queries, and concurrency.
+- **[Functions](/docs/functions/)** — files, strings, collections, processes, networking, JSON and concurrency.
 - **[Types](/docs/types/)** — built-in value and runtime types.
 - **[Operators](/docs/operators/)** — arithmetic, comparison, and pipeline operators.
 - **[Keywords](/docs/keywords/)** — language syntax by keyword.

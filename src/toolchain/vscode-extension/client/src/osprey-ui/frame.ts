@@ -23,9 +23,14 @@ function validateSwitches(style: Record<string, unknown>): void {
   }
 }
 
+/** A typeface the application bundles in assets/fonts, named by its file ([UI-COMPONENTS-FRAMED]). */
+function bundledFace(font: unknown): font is string {
+  return typeof font === "string" && /^[A-Z][A-Za-z0-9-]{0,63}$/.test(font);
+}
+
 function presentationValues(style: Record<string, unknown>) {
   const font = style.font ?? "", align = style.align ?? "start", cross = style.cross ?? "stretch";
-  if (!["", "serif", "sans", "mono"].includes(String(font))) throw new Error("Frame font must name a supported family");
+  if (!["", "serif", "sans", "mono"].includes(String(font)) && !bundledFace(font)) throw new Error("Frame font must name a supported family or a bundled typeface");
   if (!["start", "center", "end", "baseline"].includes(String(align))) throw new Error("Frame align must be start, center or end");
   if (!["stretch", "start", "center", "end"].includes(String(cross))) throw new Error("Frame cross must be stretch, start, center or end");
   validateSwitches(style);
@@ -43,7 +48,7 @@ function presentationValues(style: Record<string, unknown>) {
 
 function presentation(style: Record<string, unknown>): string[] {
   const { font, align, cross, controlPadding, controlHeight, tracking, leading, mathScale, size } = presentationValues(style);
-  return [...effects(style), `--osp-stack-align:${align === "start" ? "flex-start" : align === "end" ? "flex-end" : align}`, "display:flex", "flex-direction:column", `align-items:${cross}`, `justify-content:${align === "baseline" ? "start" : align}`, `align-content:${align}`, ...(font === "" ? [] : [`--osp-frame-font:var(--osp-font-${font})`]),
+  return [...effects(style), `--osp-stack-align:${align === "start" ? "flex-start" : align === "end" ? "flex-end" : align}`, "display:flex", "flex-direction:column", `align-items:${cross}`, `justify-content:${align === "baseline" ? "start" : align}`, `align-content:${align}`, ...(font === "" ? [] : [`--osp-frame-font:${bundledFace(font) ? `'${font}', var(--osp-font-sans)` : `var(--osp-font-${font})`}`]),
     ...(size === 0 ? [] : [`--osp-frame-text-size:${size}px`]),
     ...(mathScale === 0 ? [] : [`--osp-frame-math-scale:${mathScale}`]),
     ...(leading === 0 ? [] : [`--osp-frame-line-height:${leading}px`]),
@@ -93,7 +98,9 @@ function declarations(style: Record<string, unknown>): string[] {
   const border = edge === "all" ? "border" : `border-${edge}`;
   const surfaces = [["fill", "background"], ["ink", "color"], ["line", border]].flatMap(([key, property]) => {
     const colour = token(style, key);
-    return colour === "" ? [] : [`${property}:${key === "line" ? "1px solid " : ""}${colour}`];
+    if (colour === "") return [];
+    // [UI-COMPONENTS-FRAMED] A plain button inside takes the frame's ink.
+    return [`${property}:${key === "line" ? "1px solid " : ""}${colour}`, ...(key === "ink" ? [`--osp-frame-ink:${colour}`] : [])];
   });
   return [...presentation(style), ...dimensions(style), ...surfaces, `padding:${padding}`, `border-radius:${metric(style, "radius")}px`,
     `--osp-stack-gap:${metric(style, "gap")}px`];
