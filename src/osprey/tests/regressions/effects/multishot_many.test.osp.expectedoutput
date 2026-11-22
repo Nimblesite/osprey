@@ -36,5 +36,6 @@ layered=L1002~L1003
 layered log=[inner 1002
 ]
 ok 5 - a nested region is not replayed across outer resumptions
-1..5
-# tests=5 passed=5 failed=0 skipped=0
+ok 6 - deep many recursion answers every level and closes every region once
+1..6
+# tests=6 passed=6 failed=0 skipped=0

@@ -188,6 +188,35 @@ nestedRegionsCase () =
         log == "inner 1002\n"
     ]
 
+(** Deep many recursion: 530 nested requests, each level opening and finishing
+    its own Journal region whose finalizer reports to Audit. The handler stack
+    stays in step however deep the requests nest: every level is answered and
+    every finalizer runs once ([MULTI-HANDLE-MANY], [EFFECTS-FINALIZATION]). *)
+descendAudited n =
+    c = perform Choice.pick n
+    match n == 0
+        true => c
+        false =>
+            _noted =
+                handle Journal
+                    note _text => 0
+                    finally => perform Audit.close "F"
+                perform Journal.note "level"
+            satAdd c (descendAudited (satSub n 1))
+
+deepRecursionCase () =
+    mut closed = 0
+    total =
+        handle Audit
+            close _text => closed := satAdd closed 1
+        handle Choice
+            pick k => resume (satAdd k 1)
+        descendAudited 530
+    checkAll "deep many recursion answers every level and closes every region once" [
+        total == 141246,
+        closed == 530
+    ]
+
 print "=== multi-shot many continuations ==="
 
 exactTests [
@@ -195,5 +224,6 @@ exactTests [
     { name = "a retried decision replays neither earlier nor later work", work = retryWithoutReplayCase },
     { name = "zero answers abandon the remainder and a single answer runs it", work = zeroAndSingleCase },
     { name = "branch finalizers run exactly per branch and per abandonment", work = branchFinalizersCase },
-    { name = "a nested region is not replayed across outer resumptions", work = nestedRegionsCase }
+    { name = "a nested region is not replayed across outer resumptions", work = nestedRegionsCase },
+    { name = "deep many recursion answers every level and closes every region once", work = deepRecursionCase }
 ]
