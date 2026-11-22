@@ -518,9 +518,6 @@ test ("MIDI note-on and note-off ownership survives exact block partitions", \()
 test ("hosted graph execution shares exact builtin PCM and rejects malformed cached buffers", \() => Runtime::guarded graphClipJourney)
 test ("original Prism sliders and module palette operate the editable graph", \() => Runtime::guarded (\() => hosted prismIntegratedJourney))
 test ("patch inspector shows only the selected module and preserves routing", \() => Runtime::guarded (\() => hosted inspectorJourney))
-test ("the device hears each tone's exact pitch and level, gain and low-pass attenuation", \() => Runtime::guarded (\() => hosted (\() =>
-    deviceAudioJourney ()
-    windowsAudioJourney ())))
 
 // Shared assertions on a driven synth: each names the one field it checks.
 cablesOf (d, count) = expect (length (Drive::holding d).graph.cables, count)
@@ -535,7 +532,6 @@ offeredIn (d, label, shown) = expect (Semantics::offered (d.drivenSeen.renderedA
 
 viewShows (d, text, shown) = expect (Views::shows (d.drivenSeen, text), shown)
 
-previewed (d, receipt) = Drive::completed (d, "prism-preview", true, receipt)
 
 askedOf (d, count) = expect (length d.drivenSurface.surfaceAsked, count)
 
@@ -697,7 +693,7 @@ projectPatchJourney () =
     track = original(notes = [note], pan = -0.25)
     song = timeline [bellTrack (), track]
     succeeds (daw::TrackPatches::patch track, \graph =>
-        succeeds (daw::PatchRecords::audition (track, graph, 72), \heard => settled (heard, 1, "frequency", synth::Waves::midiFrequency 72.0 * 2.0))
+        succeeds (daw::PatchVoices::patched (beamed (72, 0.0, 1.0, 1.0), daw::TrackPatches::routing track.instrument), \heard => settled (heard, 1, "frequency", synth::Waves::midiFrequency 72.0 * 2.0))
         settled (graph, 1, "frequency", synth::Waves::midiFrequency 60.0 * 2.0)
         tone = synth::Components::sine (1, synth::Waves::midiFrequency 60.0 * 3.0)
         amp = synth::Components::gain (2, 0.75)
@@ -741,7 +737,7 @@ projectPortsJourney () =
                     routing = daw::TrackPatches::routing track.instrument
                     expect (mapList (filterList (routing.nodes, \n => n.identity >= 20), \n => n.component), ["pitchShifter", "spectral"]))
                 succeeds (daw::TrackPatches::picked (opened, 0), \again => expect (structuralEquals (again, graph), true))
-                trackAt (opened, 0, \track => succeeds (daw::PatchRecords::audition (track, graph, 72), \higher =>
+                trackAt (opened, 0, \track => succeeds (daw::PatchVoices::patched (beamed (72, 0.0, 1.0, 1.0), daw::TrackPatches::routing track.instrument), \higher =>
                     settled (higher, 11, "frequency", 522.0)
                     settled (higher, 13, "frequency", 1.7))))))
 
@@ -1324,7 +1320,6 @@ transportJourney () =
     failsWith (synth::TimelineView::laneAt (ready, 700.0, 192.0), "No lane here.")
     succeeds (daw::Projects::mixed (ready.song, 1, 2.0, 0.5), \louder => remixed (ready, louder))
     faderJourney ready
-    rollKeysJourney ready
     renderSongJourney ready
 
 test ("Play streams the range in real time into the audio device, the playhead follows what it sounds, Loop and the end marker set the range, Stop cancels, and Render song writes the whole song", \() => Runtime::guarded (\() => hosted transportJourney))

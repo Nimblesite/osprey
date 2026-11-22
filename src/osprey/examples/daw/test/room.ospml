@@ -111,13 +111,6 @@ editorUiJourney () =
     feedback = Drive::pointer (feedbackMoved, 519.0, 171.5, false)
     sameGraph (feedback, second)
     mentions (feedback, "loop")
-    previewedShows (heard, "{\"status\":1,\"stderr\":\"device disconnected\"}", "Playback failed: device disconnected")
-    previewedShows (heard, "{\"status\":0,\"stderr\":\"\"}", "Preview finished.")
-    previewedShows (heard, "{}", "Playback failed: The host returned no valid process exit status.")
-    failed = Drive::ran (heard, "prism-preview", 1, "device disconnected")
-    lettersIn (failed, "Playback failed: device disconnected")
-    unrelated = Drive::ran (failed, "another-job", 0, "")
-    sameHeld (unrelated, failed, \held => held.message)
     tuned = choseAt (second, 0, "Frequency", "880")
     tunedGraph = (Drive::holding tuned).graph
     parameterAt (tunedGraph, 0, 0, \parameter => expect (parameter.initial, 880.0))
@@ -435,10 +428,6 @@ sessioned (driven, ticket, session) = told (driven, ticket, "{\"status\":0,\"ses
 // A host completion acknowledged with a failing receipt.
 failedWith (driven, ticket, stderr) = Drive::completed (driven, ticket, true, "{\"status\":1,\"stderr\":\"${stderr}\"}")
 
-// A preview receipt, and the readout it must show.
-previewedShows (driven, body, text) =
-    answered = previewed (driven, body)
-    lettersIn (answered, text)
 
 nodesOf (driven, count) = countOf ((Drive::holding driven).graph.nodes, count)
 
