@@ -53,6 +53,15 @@ pub(crate) fn assert_rejected(source: &str, flavor: Flavor, needles: &[&str], wh
 /// whether it succeeded — the only path that runs the per-target capability
 /// gate [MULTI-WASM] and [STAGE-WASM] are checked by.
 pub(crate) fn compile_for_target(source: &str, target: &str) -> (bool, String) {
+    compile_for_target_with(source, target, &[])
+}
+
+/// [`compile_for_target`] with extra CLI flags, such as `--entry-only`.
+pub(crate) fn compile_for_target_with(
+    source: &str,
+    target: &str,
+    flags: &[&str],
+) -> (bool, String) {
     let dir = std::env::temp_dir().join(format!(
         "osprey_staged_{}_{:?}",
         std::process::id(),
@@ -66,6 +75,7 @@ pub(crate) fn compile_for_target(source: &str, target: &str) -> (bool, String) {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_osprey"))
         .args([input.as_os_str(), "--llvm".as_ref()])
         .arg(format!("--target={target}"))
+        .args(flags)
         .output();
     let _ = std::fs::remove_dir_all(&dir);
     match output {

@@ -20,7 +20,7 @@ mod staging;
 use many_permutations::MANY_PERMUTATIONS;
 use many_programs::MANY_RUNS;
 use osprey_syntax::Flavor;
-use staging::{assert_rejected, compile_for_target, compile_staged};
+use staging::{assert_rejected, compile_for_target, compile_for_target_with, compile_staged};
 
 /// Every multi-shot program: the base runs, then their permutations.
 fn every_run() -> impl Iterator<Item = &'static (&'static str, &'static str, &'static str)> {
@@ -204,10 +204,21 @@ fn every_cross_target_accepts_every_many_region() {
     // continuations, and so does every other cross target: the capability
     // gate must accept each program above. This test is the hard requirement;
     // a rejection here is a compiler defect, never a reason to skip.
-    for target in ["wasm32", "macos", "ios-sim", "android-arm64"] {
-        for (name, source, _) in every_run() {
+    // An app-library target builds the program as an app (`--entry-only`);
+    // as a full library every scalar function is a C export, and one that
+    // performs an unhandled effect is refused by the export contract (#281),
+    // never by the many-region gate.
+    for (name, source, _) in every_run() {
+        let (ok, err) = compile_for_target(source, "wasm32");
+        assert!(ok, "wasm32 must build `{name}`, got: {err}");
+        for target in ["macos", "ios-sim", "android-arm64"] {
+            let (ok, err) = compile_for_target_with(source, target, &["--entry-only"]);
+            assert!(ok, "{target} must build the app `{name}`, got: {err}");
             let (ok, err) = compile_for_target(source, target);
-            assert!(ok, "{target} must build `{name}`, got: {err}");
+            assert!(
+                ok || (err.contains("at library export") && err.contains("add a matching `handle`")),
+                "{target} library build of `{name}` may refuse only an effectful export, got: {err}"
+            );
         }
     }
 }
