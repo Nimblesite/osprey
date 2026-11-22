@@ -76,6 +76,15 @@ fn planRowIs(answers, at, row, spec) = match listGet(planRows(answers, at), row)
     _ => false
 }
 
+/// Every branch answered `total` rows in all, `counts` of them on its page and `nexts` for hasNext;
+/// only branch 1 (page 2) has a previous page.
+fn planShaped(answers, total, counts, nexts) = foldList(range(0, 4) |> toList, true, fn(ok, at) =>
+    ok && planTotal(answers, at) == total && planCount(answers, at) == (listGet(counts, at) ?: satSub(0, 1))
+        && planFlags(answers, at, at == 1, listGet(nexts, at) ?: false))
+
+/// One start reading, one settle per branch and the harness reading; four answers; no event.
+fn planCalm(plan) = plan.readings == 6 && length(plan.answers) == 4 && length(plan.events) == 0
+
 /// The stored rows as the queries see them, in stored order.
 fn planStoredTitles(items) = mapList(items, fn(item) => item.title)
 
@@ -99,14 +108,11 @@ module MultishotPlanCases {
         checkAll("four resumptions in shapes() order; sorting is by title, not id or seed order", [
             structuralEquals(TodoProbe::shapes(), ["page 1 of 5", "page 2 of 5", "page 1 of 10", "page 1 of 50"]),
             length(TodoProbe::shapes()) == 4,
-            plan.readings == 6, length(plan.answers) == 4, length(plan.events) == 0, length(plan.items) == 6,
+            planCalm(plan), length(plan.items) == 6,
             structuralEquals(planTitles(plan.answers, 0), ["d", "n", "o", "p", "s"]), structuralEquals(planTitles(plan.answers, 1), ["t"]),
             structuralEquals(planTitles(plan.answers, 2), ["d", "n", "o", "p", "s", "t"]), structuralEquals(planTitles(plan.answers, 3), ["d", "n", "o", "p", "s", "t"]),
             structuralEquals(planIds(plan.answers, 0), [3, 2, 6, 5, 4]), structuralEquals(planIds(plan.answers, 1), [1]),
-            planTotal(plan.answers, 0) == 6, planTotal(plan.answers, 1) == 6, planTotal(plan.answers, 2) == 6, planTotal(plan.answers, 3) == 6,
-            planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 1, planCount(plan.answers, 2) == 6, planCount(plan.answers, 3) == 6,
-            planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, false),
-            planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
+            planShaped(plan.answers, 6, [5, 1, 6, 6], [true, false, false, false]),
             planRowIs(plan.answers, 0, 0, planSpec(3, "d", false)), planRowIs(plan.answers, 0, 3, planSpec(5, "p", true)),
             planRowIs(plan.answers, 1, 0, planSpec(1, "t", false)),
             structuralEquals(plan.items, seeds),
@@ -124,14 +130,11 @@ module MultishotPlanCases {
         // no rows in list 1: rows [], totalCount 0, hasNext p*s < 0 false; branch 2 keeps hasPrevious true
         expect(plan.answers, [planPage([], 0, false, false), planPage([], 0, true, false), planPage([], 0, false, false), planPage([], 0, false, false)])
         checkAll("four empty pages for the asked list only; the other list's rows stay put", [
-            plan.readings == 6, length(plan.answers) == 4, length(plan.events) == 0, length(plan.items) == 2,
+            planCalm(plan), length(plan.items) == 2,
             structuralEquals(planTitles(plan.answers, 0), []), structuralEquals(planTitles(plan.answers, 1), []),
             structuralEquals(planTitles(plan.answers, 2), []), structuralEquals(planTitles(plan.answers, 3), []),
             structuralEquals(planRows(plan.answers, 0), []), structuralEquals(planRows(plan.answers, 1), []),
-            planTotal(plan.answers, 0) == 0, planTotal(plan.answers, 1) == 0, planTotal(plan.answers, 2) == 0, planTotal(plan.answers, 3) == 0,
-            planCount(plan.answers, 0) == 0, planCount(plan.answers, 1) == 0, planCount(plan.answers, 2) == 0, planCount(plan.answers, 3) == 0,
-            planFlags(plan.answers, 0, false, false), planFlags(plan.answers, 1, true, false),
-            planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
+            planShaped(plan.answers, 0, [0, 0, 0, 0], [false, false, false, false]),
             structuralEquals(plan.items, others), structuralEquals(planStoredTitles(plan.items), ["K1", "K2"]),
             structuralEquals(planStoredIds(plan.items), [1, 2]), structuralEquals(planStoredDones(plan.items), [false, false]),
             structuralEquals(plan.lists, [TodoHarness::seedList(1, "Empty", "#26A69A")])
@@ -176,14 +179,11 @@ module MultishotPlanCases {
         // totalCount 1: page 2 is empty; hasNext 5 < 1, 10 < 1 and 50 < 1 are all false
         expect(plan.answers, [planPage(done, 1, false, false), planPage([], 1, true, false), planPage(done, 1, false, false), planPage(done, 1, false, false)])
         checkAll("the single done row repeats on pages 1 of 5/10/50 and never on page 2", [
-            plan.readings == 6, length(plan.answers) == 4, length(plan.events) == 0,
+            planCalm(plan),
             structuralEquals(planTitles(plan.answers, 0), ["Q"]), structuralEquals(planTitles(plan.answers, 1), []),
             structuralEquals(planTitles(plan.answers, 2), ["Q"]), structuralEquals(planTitles(plan.answers, 3), ["Q"]),
             structuralEquals(planIds(plan.answers, 0), [1]), structuralEquals(planIds(plan.answers, 2), [1]), structuralEquals(planIds(plan.answers, 3), [1]),
-            planTotal(plan.answers, 0) == 1, planTotal(plan.answers, 1) == 1, planTotal(plan.answers, 2) == 1, planTotal(plan.answers, 3) == 1,
-            planCount(plan.answers, 0) == 1, planCount(plan.answers, 1) == 0, planCount(plan.answers, 2) == 1, planCount(plan.answers, 3) == 1,
-            planFlags(plan.answers, 0, false, false), planFlags(plan.answers, 1, true, false),
-            planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
+            planShaped(plan.answers, 1, [1, 0, 1, 1], [false, false, false, false]),
             planRowIs(plan.answers, 0, 0, planSpec(1, "Q", true)), planRowIs(plan.answers, 3, 0, planSpec(1, "Q", true)),
             structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["Q"]),
             structuralEquals(planStoredDones(plan.items), [true]),
@@ -202,14 +202,11 @@ module MultishotPlanCases {
         // sorted 1(id3), 10(id1), 2(id2, done), 20(id4); N=4: (2,5) empty, all hasNext false
         expect(plan.answers, [planPage(rows, 4, false, false), planPage([], 4, true, false), planPage(rows, 4, false, false), planPage(rows, 4, false, false)])
         checkAll("title order 1,10,2,20 on pages 1 of 5/10/50; page 2 of 5 plans nothing", [
-            plan.readings == 6, length(plan.answers) == 4, length(plan.events) == 0,
+            planCalm(plan),
             structuralEquals(planTitles(plan.answers, 0), ["1", "10", "2", "20"]), structuralEquals(planTitles(plan.answers, 1), []),
             structuralEquals(planTitles(plan.answers, 2), ["1", "10", "2", "20"]), structuralEquals(planTitles(plan.answers, 3), ["1", "10", "2", "20"]),
             structuralEquals(planIds(plan.answers, 0), [3, 1, 2, 4]), structuralEquals(planIds(plan.answers, 2), [3, 1, 2, 4]),
-            planTotal(plan.answers, 0) == 4, planTotal(plan.answers, 1) == 4, planTotal(plan.answers, 2) == 4, planTotal(plan.answers, 3) == 4,
-            planCount(plan.answers, 0) == 4, planCount(plan.answers, 1) == 0, planCount(plan.answers, 2) == 4, planCount(plan.answers, 3) == 4,
-            planFlags(plan.answers, 0, false, false), planFlags(plan.answers, 1, true, false),
-            planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
+            planShaped(plan.answers, 4, [4, 0, 4, 4], [false, false, false, false]),
             planRowIs(plan.answers, 0, 2, planSpec(2, "2", true)), planRowIs(plan.answers, 3, 0, planSpec(3, "1", false)),
             structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["10", "2", "1", "20"]),
             structuralEquals(planStoredIds(plan.items), [1, 2, 3, 4]), structuralEquals(planStoredDones(plan.items), [false, false, true, false])
@@ -227,7 +224,7 @@ module MultishotPlanCases {
         // sorted e(id5), g(id4), i(id3), k(id2), m(id1); N=5: (1,5) full with hasNext 5 < 5 false
         expect(plan.answers, [planPage(rows, 5, false, false), planPage([], 5, true, false), planPage(rows, 5, false, false), planPage(rows, 5, false, false)])
         checkAll("five rows on pages 1 of 5/10/50 and an empty page 2; the page boundary holds", [
-            plan.readings == 6, length(plan.answers) == 4, length(plan.events) == 0, length(plan.items) == 5,
+            planCalm(plan), length(plan.items) == 5,
             structuralEquals(planTitles(plan.answers, 0), ["e", "g", "i", "k", "m"]), structuralEquals(planTitles(plan.answers, 1), []),
             structuralEquals(planTitles(plan.answers, 2), ["e", "g", "i", "k", "m"]), structuralEquals(planTitles(plan.answers, 3), ["e", "g", "i", "k", "m"]),
             structuralEquals(planIds(plan.answers, 0), [5, 4, 3, 2, 1]), structuralEquals(planIds(plan.answers, 2), [5, 4, 3, 2, 1]),
@@ -254,15 +251,12 @@ module MultishotPlanCases {
         // sorted b(4),c(8),d(5),e(9),f(3 done),g(7),h(2),i(6),j(1); N=9: 5 + 4 across the (1,5)/(2,5) seam
         expect(plan.answers, [planPage(first5, 9, false, true), planPage(last4, 9, true, false), planPage(all9, 9, false, false), planPage(all9, 9, false, false)])
         checkAll("5 + 4 rows split at the (1,5)/(2,5) seam, then all nine twice over", [
-            plan.readings == 6, length(plan.answers) == 4, length(plan.events) == 0,
+            planCalm(plan),
             structuralEquals(planTitles(plan.answers, 0), ["b", "c", "d", "e", "f"]), structuralEquals(planTitles(plan.answers, 1), ["g", "h", "i", "j"]),
             structuralEquals(planTitles(plan.answers, 2), ["b", "c", "d", "e", "f", "g", "h", "i", "j"]),
             structuralEquals(planTitles(plan.answers, 3), ["b", "c", "d", "e", "f", "g", "h", "i", "j"]),
             structuralEquals(planIds(plan.answers, 0), [4, 8, 5, 9, 3]), structuralEquals(planIds(plan.answers, 1), [7, 2, 6, 1]),
-            planTotal(plan.answers, 0) == 9, planTotal(plan.answers, 1) == 9, planTotal(plan.answers, 2) == 9, planTotal(plan.answers, 3) == 9,
-            planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 4, planCount(plan.answers, 2) == 9, planCount(plan.answers, 3) == 9,
-            planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, false),
-            planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
+            planShaped(plan.answers, 9, [5, 4, 9, 9], [true, false, false, false]),
             planRowIs(plan.answers, 0, 4, planSpec(3, "f", true)), planRowIs(plan.answers, 1, 0, planSpec(7, "g", false)),
             structuralEquals(plan.items, seeds),
             structuralEquals(planStoredTitles(plan.items), ["j", "h", "f", "b", "d", "i", "g", "c", "e"]),
@@ -283,15 +277,12 @@ module MultishotPlanCases {
         // sorted f(8),h(7),j(6),l(4 done),n(3),p(2),r(1),t(5),v(9),x(10); N=10: page 2 of 5 is rows 6..10
         expect(plan.answers, [planPage(first5, 10, false, true), planPage(last5, 10, true, false), planPage(all10, 10, false, false), planPage(all10, 10, false, false)])
         checkAll("5 + 5 rows on pages of 5; one full page of 10 twice with hasNext false", [
-            plan.readings == 6, length(plan.answers) == 4, length(plan.events) == 0,
+            planCalm(plan),
             structuralEquals(planTitles(plan.answers, 0), ["f", "h", "j", "l", "n"]), structuralEquals(planTitles(plan.answers, 1), ["p", "r", "t", "v", "x"]),
             structuralEquals(planTitles(plan.answers, 2), ["f", "h", "j", "l", "n", "p", "r", "t", "v", "x"]),
             structuralEquals(planTitles(plan.answers, 3), ["f", "h", "j", "l", "n", "p", "r", "t", "v", "x"]),
             structuralEquals(planIds(plan.answers, 0), [8, 7, 6, 4, 3]), structuralEquals(planIds(plan.answers, 1), [2, 1, 5, 9, 10]),
-            planTotal(plan.answers, 0) == 10, planTotal(plan.answers, 1) == 10, planTotal(plan.answers, 2) == 10, planTotal(plan.answers, 3) == 10,
-            planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 5, planCount(plan.answers, 2) == 10, planCount(plan.answers, 3) == 10,
-            planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, false),
-            planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
+            planShaped(plan.answers, 10, [5, 5, 10, 10], [true, false, false, false]),
             planRowIs(plan.answers, 0, 3, planSpec(4, "l", true)), planRowIs(plan.answers, 1, 4, planSpec(10, "x", false)),
             planRowIs(plan.answers, 2, 9, planSpec(10, "x", false)),
             structuralEquals(plan.items, seeds),
@@ -312,15 +303,12 @@ module MultishotPlanCases {
         // sorted z0(10),z1(1),z2(6),z3(3),z4(8),z5(5),z5x(11 done),z6(9),z7(4),z8(7),z9(2)
         expect(plan.answers, [planPage(z04, 11, false, true), planPage(z58, 11, true, true), planPage(listConcat(z04, z58), 11, false, true), planPage(all11, 11, false, false)])
         checkAll("5 + 5 + 10 + 11 rows; z5x sorts between z5 and z6 by characters alone", [
-            plan.readings == 6, length(plan.answers) == 4, length(plan.events) == 0,
+            planCalm(plan),
             structuralEquals(planTitles(plan.answers, 0), ["z0", "z1", "z2", "z3", "z4"]), structuralEquals(planTitles(plan.answers, 1), ["z5", "z5x", "z6", "z7", "z8"]),
             structuralEquals(planTitles(plan.answers, 2), ["z0", "z1", "z2", "z3", "z4", "z5", "z5x", "z6", "z7", "z8"]),
             structuralEquals(planTitles(plan.answers, 3), ["z0", "z1", "z2", "z3", "z4", "z5", "z5x", "z6", "z7", "z8", "z9"]),
             structuralEquals(planIds(plan.answers, 0), [10, 1, 6, 3, 8]), structuralEquals(planIds(plan.answers, 1), [5, 11, 9, 4, 7]),
-            planTotal(plan.answers, 0) == 11, planTotal(plan.answers, 1) == 11, planTotal(plan.answers, 2) == 11, planTotal(plan.answers, 3) == 11,
-            planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 5, planCount(plan.answers, 2) == 10, planCount(plan.answers, 3) == 11,
-            planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, true),
-            planFlags(plan.answers, 2, false, true), planFlags(plan.answers, 3, false, false),
+            planShaped(plan.answers, 11, [5, 5, 10, 11], [true, true, true, false]),
             planRowIs(plan.answers, 1, 1, planSpec(11, "z5x", true)), planRowIs(plan.answers, 3, 10, planSpec(2, "z9", false)),
             planRowIs(plan.answers, 0, 0, planSpec(10, "z0", false)),
             structuralEquals(plan.items, seeds),
@@ -341,15 +329,12 @@ module MultishotPlanCases {
         // sorted 1(7),10(3),2(4),20(8),A(2 done),B(6),aa(5),b(1),c(9) from seeds [b,A,10,2,aa,B,1,20,c]
         expect(plan.answers, [planPage(first5, 9, false, true), planPage(last4, 9, true, false), planPage(all9, 9, false, false), planPage(all9, 9, false, false)])
         checkAll("digits before upper case before lower case, on every page shape", [
-            plan.readings == 6, length(plan.answers) == 4, length(plan.events) == 0,
+            planCalm(plan),
             structuralEquals(planTitles(plan.answers, 0), ["1", "10", "2", "20", "A"]), structuralEquals(planTitles(plan.answers, 1), ["B", "aa", "b", "c"]),
             structuralEquals(planTitles(plan.answers, 2), ["1", "10", "2", "20", "A", "B", "aa", "b", "c"]),
             structuralEquals(planTitles(plan.answers, 3), ["1", "10", "2", "20", "A", "B", "aa", "b", "c"]),
             structuralEquals(planIds(plan.answers, 0), [7, 3, 4, 8, 2]), structuralEquals(planIds(plan.answers, 1), [6, 5, 1, 9]),
-            planTotal(plan.answers, 0) == 9, planTotal(plan.answers, 1) == 9, planTotal(plan.answers, 2) == 9, planTotal(plan.answers, 3) == 9,
-            planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 4, planCount(plan.answers, 2) == 9, planCount(plan.answers, 3) == 9,
-            planFlags(plan.answers, 0, false, true), planFlags(plan.answers, 1, true, false),
-            planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
+            planShaped(plan.answers, 9, [5, 4, 9, 9], [true, false, false, false]),
             planRowIs(plan.answers, 0, 4, planSpec(2, "A", true)), planRowIs(plan.answers, 1, 0, planSpec(6, "B", false)),
             planRowIs(plan.answers, 1, 3, planSpec(9, "c", false)),
             structuralEquals(plan.items, seeds),
