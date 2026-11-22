@@ -233,7 +233,9 @@ test('local CI and hosted GPUI run the same DAW suite once with their built comp
   assert.equal(testRecipe.filter((line) => line === command.replace(/^make/, '$(MAKE)')).length, 1)
   const hosted = job('ubuntu-suites', '.github/workflows/gpui.yml')
   const setup = hosted.indexOf('uses: ./.github/actions/setup-osprey-compiler')
-  assert.ok(setup >= 0 && hosted.indexOf(command) > setup)
+  // The DAW part of the matrix runs its command in the step after the compiler is set up.
+  assert.equal(hosted.split(`run: ${command}\n`).length - 1, 1)
+  assert.ok(setup >= 0 && hosted.indexOf('run: ${{ matrix.run }}') > setup)
   assert.doesNotMatch(hosted, /osprey test src\/osprey\/examples\/daw\/test/)
   const planned = spawnSync('make', ['-n', ...command.split(' ').slice(1)], { encoding: 'utf8' })
   assert.equal(planned.status, 0, planned.stderr)

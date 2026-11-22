@@ -1,7 +1,7 @@
 name: GPUI host
 
 # Plan 0037 ([GPUI-HOST-TARGETS], [GPUI-HOST-VERIFICATION]): Linux runs every native, UI
-# and example suite in one job and the host's tests, clippy and headless app checks in another. The
+# and example suite in one job, the DAW suite beside it, and the host's tests, clippy and headless app checks in another. The
 # Mac runs every scripted app in a real window, clippy, and its archive and string-ownership tests.
 # Windows runs the probe smoke and opens Flock and Painting in real windows on the runner's desktop.
 # Linux compiles all six application archives once, in parallel, for its smoke and self-test runs.
@@ -88,12 +88,29 @@ jobs:
         env:
           OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
 
+  # The DAW suite alone takes about 11 minutes, so it runs beside the other suites, not after them.
   ubuntu-suites:
-    name: GPUI suites (ubuntu-latest)
+    name: GPUI suites (ubuntu-latest, ${{ matrix.part }})
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The native framework suite, then [UI-MACHINE-TEST]: the same suites as `make _ui-test`, then the examples.
+          - part: framework
+            run: |
+              ./target/release/osprey test src/osprey/packages/native/tests
+              ./target/release/osprey test src/osprey/packages/uitest/tests
+              ./target/release/osprey test src/osprey/examples/casting/test
+              ./target/release/osprey test src/osprey/packages/signal_flow/tests
+              ./target/release/osprey test src/osprey/examples/gpui/flock/test
+              ./target/release/osprey test src/osprey/examples/gpui/painting/test
+              ./target/release/osprey test src/osprey/examples/storage/test
+          - part: DAW
+            run: make -C src/toolchain/targets/tests synth APP_SUITE_PREBUILT=1
     steps:
       - uses: actions/checkout@v7
 
@@ -105,24 +122,8 @@ jobs:
       - name: Setup Osprey Compiler
         uses: ./.github/actions/setup-osprey-compiler
 
-      - name: Native framework suite
-        run: ./target/release/osprey test src/osprey/packages/native/tests
-
-      # [UI-MACHINE-TEST]: the same suites as `make _ui-test`.
-      - name: UI test framework suites
-        run: |
-          ./target/release/osprey test src/osprey/packages/uitest/tests
-          ./target/release/osprey test src/osprey/examples/casting/test
-          ./target/release/osprey test src/osprey/packages/signal_flow/tests
-
-      - name: DAW suite
-        run: make -C src/toolchain/targets/tests synth APP_SUITE_PREBUILT=1
-
-      - name: Example suites
-        run: |
-          ./target/release/osprey test src/osprey/examples/gpui/flock/test
-          ./target/release/osprey test src/osprey/examples/gpui/painting/test
-          ./target/release/osprey test src/osprey/examples/storage/test
+      - name: Suites (${{ matrix.part }})
+        run: ${{ matrix.run }}
 
   ubuntu:
     name: GPUI host (ubuntu-latest)
