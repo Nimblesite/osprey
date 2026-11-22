@@ -58,17 +58,28 @@ function Show-Failure {
 function Show-Window([Diagnostics.Process] $Process) {
     Add-Type -Namespace SelfTest -Name Foreground -MemberDefinition @'
 [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int x, int y, uint data, UIntPtr extra);
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
 [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
 '@
-    for ($tries = 0; $tries -lt 300 -and $Process.MainWindowHandle -eq 0 -and -not $Process.HasExited; $tries++) {
+    $startup = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $Process.HasExited -and $Process.MainWindowHandle -eq 0 -and $startup.Elapsed.TotalSeconds -lt 30) {
         Start-Sleep -Milliseconds 100
         $Process.Refresh()
     }
-    if ($Process.MainWindowHandle -eq 0) { return }
+    if ($Process.HasExited) { throw "The host exited with code $($Process.ExitCode) before opening its window" }
+    $window = $Process.MainWindowHandle
+    if ($window -eq 0) { throw "The host opened no window within 30 seconds" }
     [SelfTest.Foreground]::mouse_event(0x0001, 0, 0, 0, [UIntPtr]::Zero)
-    $null = [SelfTest.Foreground]::ShowWindow($Process.MainWindowHandle, 9)
-    $null = [SelfTest.Foreground]::SetForegroundWindow($Process.MainWindowHandle)
+    $null = [SelfTest.Foreground]::ShowWindow($window, 9)
+    $null = [SelfTest.Foreground]::SetForegroundWindow($window)
+    $activation = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $Process.HasExited -and [SelfTest.Foreground]::GetForegroundWindow() -ne $window -and $activation.Elapsed.TotalSeconds -lt 5) {
+        Start-Sleep -Milliseconds 100
+    }
+    if ([SelfTest.Foreground]::GetForegroundWindow() -ne $window) {
+        throw "The host window did not become the foreground window within 5 seconds"
+    }
 }
 
 # Each argument quoted as Windows reads a command line: backslashes before the closing quote are
@@ -79,7 +90,14 @@ function Format-Argument([string] $Text) {
 $quoted = @(if ($Headless) { '--headless' }) + @('--self-test', $Script, $Shots, $Dll) + $Arguments | ForEach-Object { Format-Argument $_ }
 $run = Start-Process -FilePath $Exe -ArgumentList $quoted -PassThru
 $null = $run.Handle  # keeps the exit code readable after a timed wait
-if (-not $Headless) { Show-Window $run }
+if (-not $Headless) {
+    try { Show-Window $run }
+    catch {
+        if (-not $run.HasExited) { Stop-Process -Id $run.Id -Force -ErrorAction SilentlyContinue }
+        Get-Content (Join-Path $Shots 'progress.txt') -ErrorAction SilentlyContinue
+        throw
+    }
+}
 if (-not $run.WaitForExit($Seconds * 1000)) {
     Show-Failure
     Stop-Process -Id $run.Id -Force
