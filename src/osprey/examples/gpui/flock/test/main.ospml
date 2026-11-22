@@ -188,8 +188,9 @@ afterTest ("p pauses and requests animate off", \() => loneEvent paused, \after 
 afterTest ("start sends all regions and the animate and score-read requests", started, \before => [caseOf "patched regions" "field,hud,panel,root" (regionKeys before), caseOf "requests" "animate,store-read" (requestKinds before), caseOf "score read limit" "4096" (askedWith (before, "scores:read", "limit"))])
 afterTest ("an empty round starts with five hundred more birds and one more hawk", \() => frameAfter ([], [hawk (35.0, 4.0)]), \after => [caseOf "birds" "1500" (countText (birdsOf after)), caseOf "hawks" "2" (countText (hawksOf after)), caseOf "round" "2" (toString (worldOf after).roundNumber)])
 
-// Zoom 0: the 320 by 200 field grows and shrinks with the window rather than sitting at one pixel a unit.
-frameRound ("the scene holds the ground, every bird, each hawk, the dog and the pen label", pair (), [hawk (180.0, 4.0)], \after => [caseOf "shape count" "11" (measured (after, "count")), caseOf "zoom" "0.0" (measured (after, "zoom")), caseOf "width" "320.0" (measured (after, "width")), caseOf "height" "200.0" (measured (after, "height"))])
+// Zoom 3: the app states its own scale, three window units per field unit, and resizing never changes it
+// [WINUI-HOST-SCENE-SCALE].
+frameRound ("the scene holds the ground, every bird, each hawk, the dog and the pen label", pair (), [hawk (180.0, 4.0)], \after => [caseOf "shape count" "11" (measured (after, "count")), caseOf "zoom" "3.0" (measured (after, "zoom")), caseOf "width" "320.0" (measured (after, "width")), caseOf "height" "200.0" (measured (after, "height"))])
 afterTest ("a completed scores read fills the best-score slice and drops zero rounds", scoresRead, \after => [caseOf "best scores" "40,30,20" (join (mapList (bestOf after, \value => toString value)) ","), caseOf "loaded" "true" (toString (scoresOf after).loaded)])
 
 // Off-field input tests drive many frames, so they use three birds and no hawk: an emptied field would start a new round and reset the dog.
