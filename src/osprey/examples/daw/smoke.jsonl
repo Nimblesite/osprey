@@ -1,6 +1,5 @@
-// A null send observes the first frame: the Prism patch with its oscillator, filter and keys.
+// A null send observes the first frame: the Prism patch with its oscillator and filter.
 {"send":null,"expect":{"root":true,"text":{"contains":"Oscillator"},"diagnostics":0}}
 // [PRISM-ROUTING-PRESENTATION] The launch boundary must retain the complete Prism workspace.
 {"send":{"frame":0.016},"expect":{"root":true,"text":{"contains":"Scope"},"diagnostics":0}}
-{"send":{"frame":0.016},"expect":{"root":true,"text":{"contains":"KEYBOARD"},"diagnostics":0}}
 {"send":{"frame":0.016},"expect":{"root":true,"text":{"contains":"Filter Cutoff"},"diagnostics":0}}

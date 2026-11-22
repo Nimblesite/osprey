@@ -2,7 +2,7 @@
 //! ([UI-PROTOCOL]): only the content-sized inset and no vertical scrolling are drawn, and a
 //! present member of the wrong type is malformed rather than read as its default.
 
-use super::{frame, viewports, Frame, Theme, Token, Tree};
+use super::{frame, inside, viewports, Frame, Theme, Token, Tree};
 use crate::rows::{Control, Fit, Kind, Look, Shown};
 
 /// A record of the named members, as the told rows of a record read back.
@@ -232,4 +232,31 @@ fn a_told_real_and_a_nameless_member_read_back() {
         ("negative", Tree::Real(-0.25)),
     ]);
     assert_eq!(frame.regions, vec![("root".to_owned(), node)]);
+}
+
+/// [UI-COMPONENTS-SPLITTER] An aside's columns are visited in drawing order, so the scene a key
+/// goes to and the outline an agent reads start with the trailing aside's pane, and with the
+/// column itself when it leads; a record's other members keep their place after them.
+#[test]
+fn an_aside_is_visited_in_drawing_order() {
+    let pane = record(&[("kind", text("scene"))]);
+    let column = record(&[("kind", text("framed"))]);
+    for (side, first, second) in [
+        ("trailing", &pane, &column),
+        ("leading", &column, &pane),
+        ("", &pane, &column),
+    ] {
+        let aside = record(&[
+            ("kind", text("aside")),
+            ("side", text(side)),
+            ("aside", column.clone()),
+            ("pane", pane.clone()),
+        ]);
+        let order = inside(&aside);
+        assert_eq!(order.len(), 4, "{side}: every member is still inside");
+        assert_eq!(order[0], first, "{side}");
+        assert_eq!(order[1], second, "{side}");
+    }
+    let other = record(&[("aside", column.clone()), ("pane", pane.clone())]);
+    assert_eq!(inside(&other)[0], &column, "only an aside is reordered");
 }

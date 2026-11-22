@@ -114,9 +114,22 @@ pub(crate) fn list<'a>(node: &'a Tree, name: &str) -> &'a [Tree] {
         .map_or(&[], Vec::as_slice)
 }
 
-/// Every value directly inside `node`: a record's members or a list's items.
+/// Every value directly inside `node`: a record's members or a list's items. An aside's two
+/// columns come first in the order they are drawn ([UI-COMPONENTS-SPLITTER]).
 pub(crate) fn inside(node: &Tree) -> Vec<&Tree> {
     match node {
+        Tree::Record(members) if string(node, "kind") == "aside" => {
+            let drawn = match string(node, "side") {
+                "leading" => ["aside", "pane"],
+                _ => ["pane", "aside"],
+            };
+            let columns = drawn.iter().filter_map(|name| members.get(*name));
+            let rest = members
+                .iter()
+                .filter(|(name, _)| !drawn.contains(&name.as_str()))
+                .map(|(_, value)| value);
+            columns.chain(rest).collect()
+        }
         Tree::Record(members) => members.values().collect(),
         Tree::Items(items) => items.iter().collect(),
         _ => Vec::new(),
