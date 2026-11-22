@@ -1,9 +1,56 @@
 # CI test flakiness review
 
-Read-only reviews of the test suites for flakiness, made 2026-11-23 by two GLM pis (zai/glm-5.3) and not yet independently verified line by line. Each finding gives file:line, mechanism, a failure scenario and a suggested root-cause fix. Status of fixes on `feat/consolidated`:
+Read-only reviews of the test suites for flakiness, made 2026-11-23 by two GLM pis (zai/glm-5.3) and not yet independently verified line by line. Each finding gives file:line, mechanism, a failure scenario and a suggested root-cause fix. Codex owns the open items (handed over on TMC).
 
-- [x] Fixed loopback ports shared by concurrent C suites and their AddressSanitizer twins (runtime finding 1, and every other fixed listener port in the C suites): each suite now binds a per-process block from `test_port` in `src/toolchain/compiler/runtime/test_loopback.h` ([CI-TEST-PORTS]).
-- [ ] Every other finding below is open.
+## Fix plan
+
+Root-cause fixes only: no retries, no wider timeouts used to hide a race, no skipped tests. Tick an item when its suite has passed twice in a row under `make -j9`, beside its AddressSanitizer twin.
+
+- [x] Fiber spawn under allocation failure: an empty handler stack needs no snapshot, and a snapshot that cannot be allocated refuses the spawn (-2) instead of aborting. Pinned by `test_spawn_with_handlers_survives_every_failed_allocation` (a61b34502).
+- [x] GPUI self-test keys reach the canvas beside a docked aside: `tree::inside` visits an aside's columns in drawing order (88dc8d98a). A context menu around a scene passes its free space down (a50913331).
+- [x] The deleted keyboard dock's steps are gone from Prism's `smoke.jsonl` and `self-test.json`, and its goldens are deleted (88dc8d98a).
+- [ ] **Fixed loopback ports ([CI-TEST-PORTS]), runtime finding 1 and more.** `make -j2 _test_c_runtime` runs a suite beside other suites and beside its own ASan twin, and they all bind the same fixed ports. Those are 18085–18101 (including `ORIGIN_PORT` in `http_runtime_tests.h` and `WS_LIVE_PORT` and `WS_DEAD_PORT` in `websocket_runtime_tests.c`), plus listeners on 8080, 8082, 8083 and 19001.
+  - Fix: `test_port(offset)` in `test_loopback.h` returns a port from a block of 24 chosen once per process. It starts at a pid-derived block from 20000 and takes the first block whose ports are all bindable.
+  - Keep the base in `OSP_TEST_PORT_BASE` with `setenv`. A per-translation-unit `static` let the origin and its client pick different blocks, and `test_client_chunked_response` hung in `origin_stop`.
+  - Every fixed port becomes a unique offset. URLs are built with `snprintf`.
+  - Status: written on 2026-11-23, then reverted because it was not verified. Its last parallel run timed out in the ASan http suite at 500 s, and whether that was load or a hang was not established. Run `sample <pid>` on any stall before landing it.
+- [ ] Runtime findings 2–11 and the UI findings below, in the order listed. Each fix replaces a sleep or a deadline with a signal the test waits on:
+  - wall-clock bounds in `http_read_tests.c`
+  - the dribble margin
+  - sleep-then-assert in `effects_runtime_tests.c` and `fiber_channel_tests.c`
+  - the SIGTERM-before-handler race in `websocket_runtime_tests.c`
+  - one-second loopback ceilings
+  - disconnect polling
+  - the DNS `.invalid` assumption
+  - ports assumed closed (18099 and port 1)
+  - the WinUI 300 s kill against 90 s per step
+  - the `build.py` deadlines
+  - Playwright `waitForTimeout`, with `retries: 1` masking flakes
+
+## Open issues blocking PR #428 (2026-11-23 hand-off)
+
+- [ ] **Duplication gate red.** `make _deslop` reports 4.2% (23471 of 560981 lines) against the 3.996181% ceiling in `.deslop.toml`: about 1,050 duplicated lines must go, and the ceiling only goes down. Most of the excess arrived since the last green run (cacb69095):
+  - `daw/test/main.ospml`, `voice.ospml`, `room.ospml` and `history.ospml`
+  - the cleanarch_todo `multishot_*_cases.osp`
+  - `osprey-cli/tests/common/many_programs.rs`, `staged_multiplicity.rs` and `staged_many.rs`
+
+  The cleanarch suite must stay at 91 passed and the same 9 failed.
+- [ ] **cleanarch_todo has 9 failing tests** (the same 9 before and after the dedup), for example "a missing list is missing in every fix branch" and "the page plan answers its four shapes in order". Find out why they fail; they are not new.
+- [ ] **Windows Prism docked panel:** a white toolbar strip where Undo and Redo belong, and a light-theme panel beside the dark canvas. Logged as [daw.md](daw.md) item 40. The 100% goldens record the current look; the 150% goldens still show the deleted keyboard dock.
+- [ ] **Canvas scale with the panel docked.** The user said "scale a bit off". With [DAW-LAYOUT-FIXED-SCALE] at one unit per point, a 1152-point window with the 320-point panel hides the right of the patch. Decide whether a docked panel narrows the page or the canvas fits its pane.
+- [ ] **CPython in CI.** `_prism_ui_test` and `_prism_vst_ui_test` run `python3 src/toolchain/hosts/synth_vst/build.py`, which AGENTS.md bans. Port it to Python-flavour Osprey.
+- [ ] **Uncommitted work by another agent.** The `has_many` gating in `osprey-ast/src/multiplicity.rs` and `osprey-types/src/multiplicity.rs` (it also drops a `sort_unstable`) was left in the tree for its owner, neither committed nor reverted.
+- [ ] **Multi-shot review leftovers** ([MULTI-HANDLE-MANY]):
+  - compile time grows about cubically with many resumes in one arm, and overflows the Rust stack near 10,000
+  - resume is capped near 512 by the syntax nesting limit
+  - the native stack overflows at a depth of 8,000
+  - false rejections #5 and #7 (a closure built from resume results; a handler value passed as a parameter) came back when 113404804 was reverted, because it broke cleanarch_todo
+- [ ] **The full `make ci` was not run before the 88dc8d98a push.** The failing jobs were reproduced and fixed locally one by one instead.
+
+## CI runtime
+
+- [ ] `Check: every Osprey program compiles` is the longest job (17 min; 994 s for the step in run 45027767330). It ran 600+ compiles in batches of 16, and each batch waited for its slowest member. `scripts/ci/check-programs.py` now keeps 16 in flight through an `xargs -P` pool, and each job writes its own exit code: 607 programs, 0 failed, in 4 min 55 s locally. Compare its CI time with that run. Split the programs across runners only if the pool alone does not bring the job under the Rust workspace's 17 min.
+- [ ] `Tests: Rust workspace (rest)` (17 min) and WinUI (16 min) are the next critical paths. macOS jobs also wait for runners: iOS Inbox started 13 min late.
 
 ## Runtime test-suite flakiness review (read-only)
 
