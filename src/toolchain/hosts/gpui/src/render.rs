@@ -191,7 +191,7 @@ fn stack(ctx: &mut Ctx, node: &Tree) -> AnyElement {
 }
 
 /// Whether a scene sits under this node, so its stacks pass free space down to it.
-fn holds_scene(ctx: &Ctx, node: &Tree, depth: usize) -> bool {
+pub(super) fn holds_scene(ctx: &Ctx, node: &Tree, depth: usize) -> bool {
     if depth > 32 {
         return false;
     }

@@ -251,12 +251,15 @@ pub(super) fn context_menu(ctx: &mut Ctx, tree: &Tree) -> AnyElement {
     };
     let items = list(tree, "items").to_vec();
     let handle = ctx.cx.entity();
+    // A menu around a scene passes the free space down to it, as a stack does.
+    let grows = holds_scene(ctx, body, 0);
     div()
         .id(format!(
             "{}:menu:{:?}",
             ctx.key,
             items.first().and_then(ordinal)
         ))
+        .when(grows, |this| this.flex().flex_col().flex_grow(1.).min_h_0())
         .child(super::node(ctx, body))
         .context_menu(move |menu, window, cx| {
             items.iter().fold(menu, |menu, item| {
