@@ -26,6 +26,16 @@ The panel and module card share the same Drive value on keysL’s Waveshaper 4. 
 
 Press the dial or its number and drag vertically. A 180-pixel upward drag traverses the range, and Shift reduces sensitivity tenfold. Sideways movement leaves the value in place. The orange arc starts at the minimum. Drive and decay use a logarithmic scale to give small values usable travel. On the keyboard, arrows step the value and Enter opens the numeric field. Double-press restores the module default, Escape cancels a drag, and one completed drag is one undo step. The prototype keeps edits in memory. The native implementation shares each parameter value with the project.
 
+## Instrument builder [PRISM-INSTRUMENT]
+
+The three proposed Instrument views use the Hook track’s FM pluck in *Lagos After Rain*. Play shows the same four controls at their saved sizes. Edit adds the spacing grid, resize handles and the selected control’s targets. Brightness opens the filter while decreasing high damping in the short room. MIDI learn waits for a controller movement. The OSC address stays visible and copies with one action. [Instrument builder specification](../../specs/applications/Daw.md#instrument-builder-prism-instrument)
+
+| Design screenshot | What to inspect |
+| --- | --- |
+| [Play](instrument-play.png) | Three knobs and a Room switch on the instrument face. |
+| [Edit and macro mapping](instrument-edit.png) | The selected knob’s two targets, opposite ranges and independent curves. |
+| [MIDI learn and OSC address](instrument-learn.png) | The listening state, cancel action and copyable OSC address. |
+
 ## Window commands [PRISM-TIMELINE-MENU]
 
 The agreed menu layout applies to Patch, Timeline and Mix. File holds Open Song, Save and Render Song. Edit holds Undo and Redo. View switches pages and toggles Modules, Patch Controls and Keyboard. Transport holds song playback and patch audition. The three page tabs and Play and Stop stay within reach on the canvas. The current page, project title and playback state remain visible when the menus close.
