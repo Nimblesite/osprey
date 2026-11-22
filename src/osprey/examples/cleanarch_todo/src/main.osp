@@ -4,6 +4,7 @@
 
 namespace todo;
 
+import todo::EdgeServer
 import todo::EdgeTodo
 import todo::TodoHost
 import todo::TodoReplay
@@ -30,6 +31,6 @@ fn main() -> int = {
     }
     TodoHost::withClock(0, 0, fn() =>
         TodoHost::withStore([], [], fn() =>
-            TodoReplay::withRollback(fn() => EdgeTodo::serve(onRequest, 8080))))
+            TodoReplay::withRollback(fn() => EdgeServer::serve(onRequest, 8080))))
     0
 }
