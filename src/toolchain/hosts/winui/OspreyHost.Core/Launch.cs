@@ -64,7 +64,11 @@ public sealed record Launch(string Library, string[] Arguments, string? Script, 
 public sealed record Doubles(string? Store, string? Http, string? Folder, double Patience)
 {
     /// <summary>No stand-ins: the person's store, network and picker, and the default patience.</summary>
-    public static Doubles None { get; } = new(null, null, null, 90);
+    public static Doubles None { get; } = new(null, null, null, DefaultPatience);
+
+    /// <summary>How many seconds a step may wait by default; the WinUI harness derives its whole-journey
+    /// kill from this times the script's step count.</summary>
+    public const double DefaultPatience = 90;
 
     /// <summary>The flags that set a stand-in, each followed by its value.</summary>
     public static IReadOnlySet<string> Flags { get; } = new HashSet<string> { "--store", "--http-double", "--folder-double", "--patience" };

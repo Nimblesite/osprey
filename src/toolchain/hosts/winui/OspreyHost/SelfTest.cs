@@ -26,7 +26,10 @@ namespace Osprey.Host.WinUI;
 sealed class SelfTest(HostWindow window, string script, string shots, bool onScreen, TimeSpan patience)
 {
     static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(100);
-    static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(400);
+    // How long a picture waits for the window to settle: every layout change drawn and the render
+    // stream quiet. A generous bound, since the wait itself is signalled by frame arrival.
+    static readonly TimeSpan Still = TimeSpan.FromSeconds(10);
+    static readonly TimeSpan Quiet = TimeSpan.FromMilliseconds(250);
 
     readonly StringBuilder log = new();
 
@@ -129,32 +132,47 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         {
             return late;
         }
-        // The first frame of a large scene comes well after its layout, and until it is drawn Windows
-        // composes the window blank. A layout that changes nothing visible is never drawn, so the
-        // wait for it gives up after a moment instead of failing.
-        for (var waited = TimeSpan.Zero; owed && waited < Undrawn; waited += Poll)
-        {
-            await Task.Delay(Poll);
-        }
-        await Shoot(name);
-        return null;
+        return await Shoot(name);
     }
 
-    static readonly TimeSpan Undrawn = TimeSpan.FromSeconds(3);
-
-    // Whether a layout pass has happened that no drawn frame has shown yet.
+    // Whether a layout pass has happened that no drawn frame has shown yet, and when a frame was
+    // last composed: the signals a picture settles on instead of a sleep.
     bool owed;
+    DateTime drew = DateTime.MinValue;
 
     void Laid(object? sender, object args) => owed = true;
 
-    void Drew(object? sender, RenderedEventArgs args) => owed = false;
+    void Drew(object? sender, RenderedEventArgs args)
+    {
+        owed = false;
+        drew = DateTime.UtcNow;
+    }
 
     bool RowsDrawn() => window.Content is not { } root || Tree(root).OfType<ListView>().Where(Shown).All(list =>
         list.Items.Count == 0 || list.Items[0] is FrameworkElement { ActualHeight: > 0 } first && VisualTreeHelper.GetParent(first) is not null);
 
-    async Task Shoot(string name)
+    // A picture is taken only once the window has settled [WINUI-HOST-SELF-TEST]: every layout
+    // change has been drawn (animations and a scene's first frame keep `owed` set until a frame
+    // shows them) and no frame has come for a moment, so an entrance or close animation is over —
+    // a window that has not changed since its last frame is quiet at once. A change whose frame
+    // never comes fails the step instead of capturing a blank or mid-animation picture.
+    async Task<string?> Settled(string what)
     {
-        await Task.Delay(Settle);
+        var clock = Stopwatch.StartNew();
+        while (owed || DateTime.UtcNow - drew < Quiet)
+        {
+            if (clock.Elapsed > Still)
+            {
+                return $"{what} never settled within {Still.TotalSeconds:0} s";
+            }
+            await Task.Delay(Poll);
+        }
+        return null;
+    }
+
+    async Task<string?> Shoot(string name)
+    {
+        var late = await Settled($"a picture of \"{name}\"");
         await Capture.Window(window.Handle, Path.Combine(shots, $"{name}.png"));
         File.WriteAllText(Path.Combine(shots, $"{name}.access.txt"), AccessTree() + Environment.NewLine);
         if (window.Content is { } content)
@@ -165,6 +183,7 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         {
             await Capture.Screen(window.Handle, Path.Combine(shots, $"{name}-screen.png"));
         }
+        return late;
     }
 
     async Task<string?> Act(string words, Func<FrameworkElement, string?> act, Func<string, FrameworkElement?>? finder = null, string absent = "nothing shows")
@@ -306,7 +325,10 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         if (Find(words) is null && Listed(words) is { } listed)
         {
             listed.List.ScrollIntoView(listed.Row);
-            await Task.Delay(Settle);
+            if (await Settled($"scrolling \"{words}\" into view") is { } late)
+            {
+                return late;
+            }
         }
         return await Act(words, Choose);
     }
