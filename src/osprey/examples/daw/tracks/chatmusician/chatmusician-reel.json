@@ -164,7 +164,7 @@
                             "settings": [
                                 {
                                     "key": "cutoff",
-                                    "value": 10,
+                                    "value": 9,
                                     "follow": "Pitched"
                                 },
                                 {
