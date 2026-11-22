@@ -297,12 +297,17 @@ fn stderr_text(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    // The run and session tests drive Unix executables; their helpers come with them.
+    #[cfg(unix)]
     use serde_json::json;
 
+    #[cfg(unix)]
     use crate::adapters::answer;
 
     use super::stderr_text;
+    #[cfg(unix)]
     use crate::ffi;
+    #[cfg(unix)]
     use crate::rows::{Ask, Field};
 
     #[cfg(unix)]
