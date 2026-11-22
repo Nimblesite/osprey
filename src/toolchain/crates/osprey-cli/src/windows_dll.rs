@@ -70,13 +70,6 @@ fn in_runtime(import: &Import) -> bool {
         .any(|prefix| import.symbol.starts_with(prefix))
 }
 
-/// Whether the runtime archive linked into the DLL defines `import` itself.
-fn in_runtime(import: &Import) -> bool {
-    crate::linking::HTTP_RUNTIME_EXTERNS
-        .iter()
-        .any(|prefix| import.symbol.starts_with(prefix))
-}
-
 /// The line codegen declares `import` with, if the library calls it.
 fn declaration<'a>(ir: &'a str, import: &Import) -> Option<&'a str> {
     let needle = format!("@{}(", import.symbol);

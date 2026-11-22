@@ -41,10 +41,11 @@ module Player
             synth::Outcomes::carried (Shell::ran (300, command), \_ => Success(value = destination))
 
     // Parts and the unfinished join are private to this render. Only a successful join replaces the last WAV.
+    // A umask, not `mkdir -m`: MSYS2 mounts NTFS `noacl`, so its mkdir cannot set a mode and fails after creating.
     staged (request, arrangement, mix) =
         destination = ui::Pick::either (request.beats > 0.0, piecePath request, songPath request)
         stage = request(folder = "${request.folder}/.bounce-${random ()}")
-        synth::Outcomes::carried (Shell::ran (10, "mkdir -m 700 ${Shell::quoted stage.folder}"), \_ =>
+        synth::Outcomes::carried (Shell::ran (10, "sh -c 'umask 077 && mkdir \"$1\"' sh ${Shell::quoted stage.folder}"), \_ =>
             result = synth::Outcomes::carried (parts (stage, arrangement, mix), \files => assembled (stage, files, destination))
             synth::Outcomes::carried (Shell::ran (10, "rm -rf ${Shell::quoted stage.folder}"), \_ => result))
 

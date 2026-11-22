@@ -70,4 +70,4 @@ main () =
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    started (request (args ()), listGet (args ()) 4 ?: "")
+    daw::Shell::hosted (\() => started (request (args ()), listGet (args ()) 4 ?: ""))
