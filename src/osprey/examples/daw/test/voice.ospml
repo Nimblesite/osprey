@@ -745,9 +745,9 @@ liveLaunched (place, tab, score, check) =
 
 // The song proven audible after `frames`, handed to `check` as a live stream.
 heardStream (score, frames, check) = succeeds (daw::Playback::start score, \initial =>
-    succeeds (daw::Playback::next (score, initial, frames), \before =>
+    succeeds (daw::Playback::step (score, initial, frames), \before =>
         expect (loudest before.left > 0.01, true)
-        check (daw::LiveStream(playing = before.playing, controlVersion = 0, controlScore = score, noteFolders = []))))
+        check (daw::LiveStream(playing = before.playing, controlVersion = 0, controlScore = score))))
 
 // [DAW-TRANSPORT-LIVE-CONTROLS] Read the same controls and audio block as the renderer between UI events.
 liveMixHistory (place, released, muted) =

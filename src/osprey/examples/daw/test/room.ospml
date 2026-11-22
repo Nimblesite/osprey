@@ -616,12 +616,12 @@ tapJourney () =
         bare = replace text "\"sends\":[]," "" ?: text
         withSends = replace bare "\"positions\":" "\"sends\":${routes},\"positions\":" ?: bare
         succeeds (daw::SongFiles::decode withSends, \opened => trackAt (opened, 0, \track =>
-            succeeds (daw::Arrangements::added (opened, daw::Arrangements::empty, track, 128), \mixed =>
+            succeeds (trackBuses (opened, daw::Arrangements::empty, track, 128), \mixed =>
                 expect (length mixed.groups, 1)
                 reads (listGet mixed.groups 0, \group =>
                     expect (group.name, "pads")
                     expect (length group.left, 128)
-                    succeeds (daw::Arrangements::part (song, voice, 128), \dry =>
+                    succeeds (trackPart (song, voice, 128), \dry =>
                         forEachList ([9, 31, 83, 120], \i =>
                             reference = listGet dry i ?: 0.0
                             expect (abs reference > 0.000001, true)
@@ -650,17 +650,17 @@ playedSong ratio =
     routedTo (timeline tracks, [playedBus ratio])
 
 // Master's next block is exactly `size` frames on each side, and nothing else leaves it.
-playedBlock (song, streaming, outcome, size) = match outcome
+playedBlock (song, outcome, size) = match outcome
     Error why => Error(message = why)
-    Success take => match daw::Playback::step (song, take.playing, size, streaming)
+    Success take => match daw::Playback::step (song, take.playing, size)
         Error why => Error(message = why)
         Success played =>
             expect (length played.left, size)
             expect (length played.right, size)
             Success(value = daw::Take(playing = played.playing, lefts = listAppend take.lefts played.left, rights = listAppend take.rights played.right))
 
-playedIn (song, streaming, sizes, check) = succeeds (daw::Playback::start song, \playing =>
-    succeeds (foldList (sizes, Success(value = daw::Take(playing = playing, lefts = [], rights = [])), \(outcome, size) => playedBlock (song, streaming, outcome, size)), \take =>
+playedIn (song, sizes, check) = succeeds (daw::Playback::start song, \playing =>
+    succeeds (foldList (sizes, Success(value = daw::Take(playing = playing, lefts = [], rights = [])), \(outcome, size) => playedBlock (song, outcome, size)), \take =>
         expect (take.playing.cursor, 6000)
         check (daw::Take(playing = take.playing, lefts = [ui::Lists::flatten take.lefts], rights = [ui::Lists::flatten take.rights]))))
 
@@ -681,7 +681,7 @@ loudest side = foldList (side, 0.0, \(high, value) => synth::TableMath::larger (
 sidesDiffer (one, other) = length (filterList (toList (range (0, length one)), \i => abs ((listGet one i ?: 0.0) - (listGet other i ?: 0.0)) > 0.000001)) > 0
 
 liveDialBlock (place, stream, check) = succeeds (daw::LiveControls::receive ("${place}/knobs/live/controls", stream), \applied =>
-    succeeds (daw::Playback::next (applied.controlScore, applied.playing, 64), \packet => check (packet, applied(playing = packet.playing))))
+    succeeds (daw::Playback::step (applied.controlScore, applied.playing, 64), \packet => check (packet, applied(playing = packet.playing))))
 
 // [DAW-TRANSPORT-LIVE-CONTROLS] A running patch applies inspector values after the current device block.
 livePatchDialJourney () =
@@ -716,8 +716,8 @@ liveDialJourney () =
             expect ((Drive::holding moving).songTicket, "daw-song:live:${place}/knobs/live")
             reads (dialOf (moving, "Gain"), \seen => expect (seen.accessValue, 0.0))
             succeeds (daw::Playback::start score, \initial =>
-                succeeds (daw::Playback::next (score, initial, 512), \first =>
-                    stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score, noteFolders = [])
+                succeeds (daw::Playback::step (score, initial, 512), \first =>
+                    stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score)
                     liveDialBlock (place, stream, \(quiet, muted) =>
                         expect (loudest quiet.left, 0.0)
                         expect (loudest quiet.right, 0.0)
@@ -733,7 +733,7 @@ liveDialJourney () =
                                 reads (dialOf (released, "Gain"), \kept => expect (kept.accessValue, raised.accessValue))
                                 liveDialBlock (place, applied, \(after, settled) =>
                                     expect (settled.playing.cursor, 704)
-                                    succeeds (daw::Playback::next (applied.controlScore, applied.playing, 64), \expected =>
+                                    succeeds (daw::Playback::step (applied.controlScore, applied.playing, 64), \expected =>
                                         expect (sidesDiffer (expected.left, after.left), false))))))))))
 
 // [DAW-TRANSPORT-LIVE-CONTROLS] A gain edit changes the sounding note on the next block.
@@ -745,64 +745,62 @@ liveKnobJourney () =
     muted = routing(nodes = mapList (routing.nodes, \n => ui::Pick::either (n.component == "gain", n(settings = [daw::Setting(key = "gain", value = 0.0, follow = daw::Constant)]), n)))
     quiet = score(tracks = [track(notes = [note], instrument = daw::PatchInstrument(routing = muted))])
     succeeds (daw::Playback::start score, \start =>
-        succeeds (daw::Playback::next (score, start, 512), \first =>
+        succeeds (daw::Playback::step (score, start, 512), \first =>
             expect (loudest first.left > 0.01, true)
             pitched = routing(nodes = mapList (routing.nodes, \n => ui::Pick::either (n.component == "sine", n(settings = [daw::Setting(key = "frequency", value = 1.0, follow = daw::Pitched)]), n)))
             tuned = score(tracks = [track(notes = [note], instrument = daw::PatchInstrument(routing = pitched))])
-            succeeds (daw::Playback::next (score, first.playing, 128), \reference =>
-                succeeds (daw::Playback::next (tuned, first.playing, 128), \changed =>
+            succeeds (daw::Playback::step (score, first.playing, 128), \reference =>
+                succeeds (daw::Playback::step (tuned, first.playing, 128), \changed =>
                     expect (abs ((listGet reference.left 0 ?: 1.0) - (listGet changed.left 0 ?: -1.0)) < 0.02, true)
                     expect (sidesDiffer (reference.left, changed.left), true)))
-            succeeds (daw::Playback::next (quiet, first.playing, 128), \silent =>
+            succeeds (daw::Playback::step (quiet, first.playing, 128), \silent =>
                 expect (loudest silent.left, 0.0)
                 expect (loudest silent.right, 0.0)
-                succeeds (daw::Playback::next (score, silent.playing, 128), \again =>
+                succeeds (daw::Playback::step (score, silent.playing, 128), \again =>
                     expect (again.playing.cursor, 768)
                     expect (loudest again.left > 0.01, true)))))
 
-// [DAW-TRANSPORT-LIVE-SPEED] Overlapping identical attacks share one recording, including its send lanes.
-streamedRepeatJourney () =
-    first = playedNote (0.0, 0.01)
-    tap = daw::AudioSend(sendId = 1, source = 1, outlet = 0, bus = "pads", level = 0.5, enabled = true)
-    keys = keysTrack ()
-    voice = keys(sends = [tap], notes = [first, first, first(start = 0.25)])
-    song = routedTo (timeline [voice], [padsBus (1.0, "")])
+// [DAW-RENDER-MASTER] Rendering runs the whole graph and exports Master; nothing else is ever rendered. After
+// one block, no note or track holds audio past that block: no note made whole, none kept for later.
+longer (most, lane) = match length lane > most
+    true => length lane
+    false => most
+
+heldFrames track = foldList (track.sounding, 0, \(most, sound) => foldList (sound.lanes, most, longer))
+
+onlyMasterJourney () = succeeds (daw::Playback::start (playedSong 4.0), \playing =>
+    succeeds (daw::Playback::step (playedSong 4.0, playing, 128), \played =>
+        forEachList (played.playing.tracks, \track => expect (heldFrames track <= 128, true))))
+
+// [DAW-MODULAR-LAYOUT] A track carries the project's two channels to Master. A patch that sounds only on its left
+// channel is heard only on Master's left: never folded to one channel and panned onto both sides.
+leftOnlyTrack () =
+    sine = piece (1, "sine", [daw::Setting(key = "frequency", value = 1.0, follow = daw::Pitched)])
+    join = daw::PatchNode(identity = 2, component = "join", size = 2, seed = 0, asset = "", settings = [])
+    freshTrack ("left", daw::PatchInstrument(routing = daw::Routing(nodes = [sine, join, piece (3, "stereoOutput", [])], cables = [cabled (1, 0, 2, 0), cabled (2, 0, 3, 0)], attack = 0.01, release = 0.1)))
+
+stereoTrackJourney () =
+    left = leftOnlyTrack ()
+    song = timeline [left(notes = [playedNote (0.0, 0.25)])]
     succeeds (daw::Playback::start song, \playing =>
-        succeeds (daw::Playback::step (song, playing, 128, true), \attack =>
-            reads (listGet attack.playing.tracks 0, \track =>
-                expect (length track.made, 0)
-                expect (length track.recordings, 1)
-                // A maker can publish the same note before the streamed recording finishes.
-                succeeds (daw::Arrangements::lanesOf (song, voice, [tap], first), \expected =>
-                    published = track(made = [daw::Made(struck = first, chord = expected)])
-                    prior = attack.playing
-                    ready = prior(tracks = [published])
-                    succeeds (daw::Playback::step (song, ready, 5400, true), \done =>
-                        reads (listGet done.playing.tracks 0, \last => expect (length last.made, 1))))
-                succeeds (daw::Arrangements::focused (song, voice, track, 128), \edited => expect (length edited.recordings, 0)))
-            succeeds (daw::Playback::step (song, attack.playing, 5400, true), \release =>
-                reads (listGet release.playing.tracks 0, \track =>
-                    expect (length track.recordings, 0)
-                    expect (length track.made, 1)
-                    reads (listGet track.made 0, \take => succeeds (daw::Arrangements::lanesOf (song, voice, [tap], first), \expected => expect (structuralEquals (take.chord, expected), true))))
-                succeeds (daw::Playback::step (song, release.playing, 640, true), \again =>
-                    reads (listGet again.playing.tracks 0, \track => reads (listGet track.sounding 0, \sound => expect (sound.driver == daw::RecordedNote, true)))))))
+        succeeds (daw::Playback::step (song, playing, 4800), \played =>
+            expect (loudest played.left > 0.01, true)
+            expect (loudest played.right, 0.0)))
 
 masterPlayJourney () =
-    streamedRepeatJourney ()
     hosted livePatchDialJourney
     liveKnobJourney ()
     song = playedSong 4.0
-    playedIn (song, false, [6000], \whole =>
+    playedIn (song, [6000], \whole =>
         expect (loudest (sideOf (whole, false)) > 0.01, true)
         expect (loudest (sideOf (whole, true)) > 0.01, true)
         // Any block size plays the same Master: every stage carries its state across the block edge.
         forEachList ([[1000, 1000, 1000, 1000, 1000, 1000], [4097, 1903], [3000, 3000], [1, 2499, 1, 3499], [2500, 2500, 1000]], \sizes =>
-            forEachList ([false, true], \streaming => playedIn (song, streaming, sizes, \blocks => sameMaster (whole, blocks))))
+            playedIn (song, sizes, \blocks => sameMaster (whole, blocks)))
         // Tracks play together, so their order in the project does not change Master.
-        playedIn (song(tracks = listReverse song.tracks), false, [2048, 2048, 1904], \reordered => sameMaster (whole, reordered))
+        playedIn (song(tracks = listReverse song.tracks), [2048, 2048, 1904], \reordered => sameMaster (whole, reordered))
         // The kick keys the pads bus inside the same block it sounds in.
-        playedIn (playedSong 1.0, false, [6000], \open => expect (sidesDiffer (sideOf (whole, false), sideOf (open, false)), true)))
+        playedIn (playedSong 1.0, [6000], \open => expect (sidesDiffer (sideOf (whole, false), sideOf (open, false)), true)))
     // A bad note or route fails before anything plays.
     failsWith (daw::Playback::start (timeline [playedKick [playedNote (sqrt (-1.0), 0.1)]]), "kick: a note start is not finite.")
     failsWith (daw::Playback::start (timeline [playedKick [playedNote (0.5, 0.1), playedNote (-0.25, 0.1)]]), "kick: a note starts before the piece.")

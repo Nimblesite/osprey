@@ -632,7 +632,21 @@ test ("tapping a timeline track opens its own patch in Prism; built-in tracks op
 // saved patch and in Prism but is silent: each note renders exactly as it does without it.
 strayed route = route(nodes = listConcat route.nodes [piece (9, "mixer", []), piece (8, "gain", [daw::Setting(key = "gain", value = 0.9, follow = daw::Constant)])], cables = listAppend route.cables (cabled (1, 0, 8, 0)))
 
-sampledNote (note, instrument) = daw::NoteRenders::render (note, 120.0, 48000.0, instrument)
+// [DAW-RENDER-PLAY] One track through the same block path Playback runs: its buses after `count` frames.
+trackBuses (song, buses, voice, count) = synth::Outcomes::carried (daw::Arrangements::opened (song, voice), \play =>
+    synth::Outcomes::carried (daw::Arrangements::advanceWindow (song, buses, voice, play, 0, count), \step => Success(value = step.buses)))
+
+// A track's own sound: played alone, centred at unity, read back from Master's left side.
+trackPart (song, voice, count) = synth::Outcomes::carried (trackBuses (song, daw::Arrangements::empty, voice(gain = 1.0, pan = 0.0, bus = "", sends = []), count), \buses =>
+    Success(value = mapList (buses.left, \value => value / daw::ArrangeMath::panLeft 0.0)))
+
+// A note as the graph plays it, from the first frame to the end of its span.
+sampledAt (note, instrument, tempo) = synth::Outcomes::carried (daw::NoteRenders::checkedSpan (note, tempo, 48000.0, instrument), \span =>
+    voice = freshTrack ("note", instrument)
+    song = timeline [voice]
+    trackPart (song(tempo = tempo), voice(notes = [note(start = 0.0)]), span.total))
+
+sampledNote (note, instrument) = sampledAt (note, instrument, 120.0)
 
 comparedNote (note, plain, patch, inspect) = succeeds (sampledNote (note, plain), \expected =>
     succeeds (sampledNote (note, patch), \heard =>
@@ -939,19 +953,17 @@ liveFolder = "${transportRoot}/bin/song/live"
 streams (step, message, from, beats, mode) =
     said (step, "daw-song:live:${liveFolder}", message)
     match asked step
-        // The song's earlier note makers are ended as the stream starts.
-        [ui::Run ran given _ _ _ _, ui::Cancel _, ui::Animate on] =>
+        [ui::Run ran given _ _ _ _, ui::Animate on] =>
             expect (ran, "/bin/sh")
             expect (length given, 9)
             expect (listGet given 0 ?: "", "-c")
-            // [DAW-TRANSPORT-LIVE-SPEED] The note makers start before the stream.
+            // [DAW-RENDER-MASTER] Play makes no note ahead of the graph: no maker runs beside the stream.
             command = listGet given 1 ?: ""
-            expect (contains command "warm \"$i\" \"$w\" \"$note_clock\" >/dev/null 2>&1 & m=", true)
-            expect (contains command "note_clock=\"$3/played.json\"", true)
-            expect (contains command "\"$3/controls\" makers", true)
+            expect (contains command " warm ", false)
+            expect (contains command "\"$3/controls\";", true)
             expect (mapList ([2, 3, 4, 5, 6, 7, 8], \index => listGet given index ?: ""), ["${transportRoot}/bin/worker", "${transportRoot}/bin/daw", "${liveFolder}/project.json", liveFolder, from, beats, mode])
             expect (on, true)
-        _ => expect (length step.requests, 3)
+        _ => expect (length step.requests, 2)
     expect (synth::DawSession::phase step.stepStore, "Playing")
     expect (step.stepStore.playClock, 0.0)
     expect (readFile "${liveFolder}/played.json" ?: "unread", "")
@@ -1423,8 +1435,8 @@ busJourney () =
     failsWith (daw::BusMix::mastered (routedTo (song, [padsBus (4.0, "snare")]), grouped ()), "Bus pads: sidechain snare is not a track in the song.")
     forEachList ([0.5, 21.0], \ratio => failsWith (daw::BusMix::mastered (routedTo (song, [padsBus (ratio, "kick")]), grouped ()), "Bus pads: gain must be 0 to 4, EQ -24 to 24 dB, ratio 1 to 20, knee 0 to 24 dB, attack and release 0 to 2 s."))
     routed = timeline [onPads (bellTrack ())]
-    failsWith (daw::Arrangements::added (routed, daw::Arrangements::empty, onPads (bellTrack ()), 10), "bell: Bus pads is not in the song.")
-    succeeds (daw::Arrangements::added (routedTo (routed, [padsBus (4.0, "bell")]), daw::Arrangements::empty, onPads (bellTrack ()), 10), keyedRoute)
+    failsWith (trackBuses (routed, daw::Arrangements::empty, onPads (bellTrack ()), 10), "bell: Bus pads is not in the song.")
+    succeeds (trackBuses (routedTo (routed, [padsBus (4.0, "bell")]), daw::Arrangements::empty, onPads (bellTrack ()), 10), keyedRoute)
     succeeds (readFile "src/osprey/examples/daw/tracks/codex-version.json", \text => decoded (text, projectBuses))
 
 test ("bus EQ passes at 0 dB, the sidechain ducks a bus by exactly its curve, routing and project buses are checked", \() => Runtime::guarded busJourney)
@@ -1439,7 +1451,7 @@ showcasePatch (voice, routing) =
         succeeds (daw::PatchRecords::routed (routing, graph), \saved =>
             succeeds (daw::PatchVoices::patched (preview, saved), \again => expect (structuralEquals (graph, again), true))))
     match voice.name == "Spore wheel" || voice.name == "Rivet pulse"
-        true => succeeds (daw::NoteRenders::render (preview, 138.0, 48000.0, voice.instrument), \samples =>
+        true => succeeds (sampledAt (preview, voice.instrument, 138.0), \samples =>
             expect (length samples > 1000, true)
             expect (ui::Lists::any (samples, \value => abs value > 0.00001), true))
         false => expect (length voice.notes > 0, true)
@@ -1483,6 +1495,8 @@ test ("cached note identity follows the sound across meter, mix and tempo edits"
 test ("two internal audio sends survive a project round trip and sum before the track fader", \() => ui::Runtime::guarded tapJourney)
 
 test ("the project plays as one loop over time: every track, bus and send advance together into Master, at any block size", \() => ui::Runtime::guarded masterPlayJourney)
+test ("rendering runs the graph into Master and renders nothing else: no note is made whole or kept", \() => ui::Runtime::guarded onlyMasterJourney)
+test ("a track carries the project's stereo channels to Master: a left-only patch is heard only on the left", \() => ui::Runtime::guarded stereoTrackJourney)
 
 // [DAW-PROJECT-MODEL] Every shipped score must open through the production project reader.
 test ("every example song opens with playable tracks", \() => Runtime::guarded (\() =>
@@ -1502,9 +1516,9 @@ test ("Violet Static opens the kick as a wired WAV sample", \() => ui::Runtime::
                     expect (daw::PatchVoices::fileName n.asset, "808-kick.wav")
                     succeeds (daw::PatchVoices::sampled n.asset, \resource =>
                         note = beamed (32, 0.0, 0.2, 1.0)
-                        span = daw::NoteSpan(gate = 1000.0, total = 256)
-                        succeeds (daw::PatchVoices::render (note, span, 48000.0, routing), \audio =>
-                            forEachList ([48, 64, 127, 255], \i => reads (listGet audio i, \actual => reads (listGet resource.samples i, \wanted => expect (actual, wanted))))))))))))
+                        song = timeline [kick]
+                        succeeds (trackPart (song, kick(notes = [note]), 256), \audio =>
+                            forEachList ([48, 64, 127, 255], \i => reads (listGet audio i, \actual => reads (listGet resource.samples i, \wanted => closeTo (actual, wanted))))))))))))
 
 test ("Every grain control can be reached and edited in both inspectors", \() => Runtime::guarded (\() => hosted dialPagesJourney))
 

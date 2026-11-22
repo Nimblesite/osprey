@@ -73,18 +73,25 @@ module Player
     kept (take, played) = Take(playing = played.playing, lefts = listPrepend take.lefts played.left, rights = listPrepend take.rights played.right)
 
     taken (arrangement, count, outcome) = synth::Outcomes::carried (outcome, \take =>
-        synth::Outcomes::carried (Playback::next (arrangement, take.playing, least (Playback::block, satSub count take.playing.cursor)), \played => Success(value = kept (take, reported (arrangement, count, played)))))
+        synth::Outcomes::carried (Playback::step (arrangement, take.playing, least (Playback::block, satSub count take.playing.cursor)), \played => Success(value = kept (take, reported (arrangement, count, played)))))
 
     // [DAW-RENDER-PLAY] The whole graph played once, block by block, keeping only Master.
     played (arrangement, count) = synth::Outcomes::carried (Playback::start arrangement, \playing =>
         foldList (toList (range (0, intDiv (satAdd count (satSub Playback::block 1)) Playback::block)), Success(value = Take(playing = playing, lefts = [], rights = [])), \(outcome, _) => taken (arrangement, count, outcome)))
 
-    mixed (request, arrangement, take) = match Arrangements::levelled (toFloat arrangement.sampleRate, ui::Lists::flatten (listReverse take.lefts), ui::Lists::flatten (listReverse take.rights))
-        Error why => Error(message = why)
-        Success mix =>
-            print "  mixed ${length mix.left} frames, peak ${mix.peak} before the true-peak limiter at -1 dBTP"
-            analysed (arrangement, mix)
-            staged (request, arrangement, mix)
+    loudest (high, value) = synth::TableMath::larger (high, synth::TableMath::magnitude value)
+
+    // [DAW-TRANSPARENCY] Master exactly as the graph made it: measured, never scaled or limited.
+    mastered (take: Take) =
+        left = ui::Lists::flatten (listReverse take.lefts)
+        right = ui::Lists::flatten (listReverse take.rights)
+        Mixdown(left = left, right = right, peak = foldList (right, foldList (left, 0.0, loudest), loudest))
+
+    mixed (request, arrangement, take) =
+        mix = mastered take
+        print "  Master: ${length mix.left} frames, peak ${mix.peak}"
+        analysed (arrangement, mix)
+        staged (request, arrangement, mix)
 
     (** Render the song into the request's folder; the result is the finished WAV's path. *)
     export rendered (request, arrangement) = match Arrangements::frames arrangement

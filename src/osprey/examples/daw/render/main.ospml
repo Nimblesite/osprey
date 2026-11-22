@@ -1,6 +1,6 @@
-// [SYNTH-ARRANGEMENT-PLAYER] [DAW-TRANSPORT-LIVE] daw <project.json> <output-folder> [<from-beat> <beats> [live|loop|warm <maker> <makers>]]
+// [SYNTH-ARRANGEMENT-PLAYER] [DAW-TRANSPORT-LIVE] daw <project.json> <output-folder> [<from-beat> <beats> [live|loop]]
 
-usage = "usage: daw <project.json> <output-folder> [<from-beat> <beats> [live|loop|warm <maker> <makers>]]"
+usage = "usage: daw <project.json> <output-folder> [<from-beat> <beats> [live|loop]]"
 
 // A number argument; absent reads 0 (the whole song), malformed reads -1 (refused).
 beatArgument (items, index) = match listGet items index
@@ -41,22 +41,14 @@ faulted (request, why) =
 // [DAW-TRANSPORT-LIVE] Play the window to standard output, once or as a loop.
 live (request, loop, source) = match daw::SongFiles::decode source
     Error why => faulted (request, why)
-    Success arrangement => match daw::Streams::played (request, windowed (request, arrangement), loop, listGet (args ()) 5 ?: "", (listGet (args ()) 6 ?: "") == "makers")
+    Success arrangement => match daw::Streams::played (request, windowed (request, arrangement), loop, listGet (args ()) 5 ?: "")
         Error why => faulted (request, why)
-        Success _ => 0
-
-// [DAW-TRANSPORT-LIVE-SPEED] One maker: keep its share of the window's notes for live play to read.
-warm (request, source) = match daw::SongFiles::decode source
-    Error why => refused why
-    Success arrangement => match daw::NoteCache::warmed (windowed (request, arrangement), request.folder, parseInt (listGet (args ()) 5 ?: "") ?: -1, parseInt (listGet (args ()) 6 ?: "") ?: 0, listGet (args ()) 7 ?: "")
-        Error why => refused why
         Success _ => 0
 
 routed (request, mode, source) = match mode
     "" => performed (request, source)
     "live" => live (request, false, source)
     "loop" => live (request, true, source)
-    "warm" => warm (request, source)
     _ => said (usage, 1)
 
 started (request, mode) = match request.project != "" && request.folder != "" && request.from >= 0.0 && request.beats >= 0.0 && daw::SongFiles::safe request.project && daw::SongFiles::safe request.folder
