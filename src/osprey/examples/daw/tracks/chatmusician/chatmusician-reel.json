@@ -10,8 +10,8 @@
             "output": "",
             "gain": 0.95,
             "equaliser": {
-                "low": 0.5,
-                "mid": 0,
+                "low": -1,
+                "mid": 1.5,
                 "high": 0.5
             },
             "compressor": {
@@ -28,7 +28,7 @@
             "output": "Glue",
             "gain": 0.95,
             "equaliser": {
-                "low": 1.5,
+                "low": 0,
                 "mid": -1.5,
                 "high": 1.5
             },
@@ -46,7 +46,7 @@
             "output": "Glue",
             "gain": 0.9,
             "equaliser": {
-                "low": -3,
+                "low": -6,
                 "mid": -0.5,
                 "high": 0.5
             },
@@ -64,7 +64,7 @@
             "output": "Glue",
             "gain": 0.95,
             "equaliser": {
-                "low": 1,
+                "low": 0,
                 "mid": -2,
                 "high": -6
             },
@@ -73,7 +73,7 @@
                 "ratio": 8,
                 "knee": 2,
                 "attack": 0.0005,
-                "release": 0.12,
+                "release": 0.2,
                 "sidechain": "Pump key"
             }
         },
@@ -83,7 +83,7 @@
             "gain": 0.95,
             "equaliser": {
                 "low": -4,
-                "mid": 0.5,
+                "mid": 1.5,
                 "high": 1.5
             },
             "compressor": {
@@ -30166,7 +30166,7 @@
                     "release": 0.42
                 }
             },
-            "gain": 2,
+            "gain": 1.25,
             "pan": 0,
             "bus": "Kit",
             "sends": [],
