@@ -2,6 +2,7 @@
 // client is static files; the application's own server is a separate process it talks to over HTTP.
 //   node scripts/serve.mjs --root <folder> --port <port>
 import { createServer } from "node:http";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -15,6 +16,7 @@ function option(flag) {
 
 const root = path.resolve(option("--root"));
 const port = Number(option("--port"));
+if (!existsSync(path.join(root, "index.html"))) throw new Error(`${root} holds no index.html: build the web client first (build.mjs; for Talon Bank, make _bank-web)`);
 
 /** The file a request path names inside `root`, or "" when it names nothing servable there. */
 function located(folder, url) {
