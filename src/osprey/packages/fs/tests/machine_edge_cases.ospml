@@ -1,0 +1,176 @@
+// Exhaustive machine edge cases: every document/template variant, malformed
+// inputs, cycle limits, request snapshots and pointer-state transitions.
+namespace uitests
+
+import ui::Canvases
+import ui::Doc
+import ui::Encode
+import ui::Events
+import ui::Lists
+import ui::MachineDocs
+import ui::Machines
+import ui::Messages
+import ui::Runtime
+import ui::Templates
+import ui::Ui
+import ui::Values
+
+completeMachine () = realMachine "packages/native/tests/complete.machine.json"
+
+completeNodes (machine, kind) = filterList (nativeWalk ([], nativeTree machine), \node => Doc::text (node, "kind") == kind)
+
+completeTemplateVariants () =
+    machine = completeMachine ()
+    expect (machine.machineFault, "")
+    forEachList (["Display", "Large", "Heading", "Lead", "Headline", "Eyebrow", "Mono", "Hello", "Badge", "Prominent", "Destructive", "Filled", "Pick", "Toggle", "Meter", "Progress", "Empty", "Framed child"], \text =>
+        expect (nativeShows (machine, text), true))
+    expect (nativeShows (machine, "Hidden"), false)
+    expect (length (completeNodes (machine, "image")), 1)
+    expect (length (completeNodes (machine, "framed")), 1)
+    expect (length (completeNodes (machine, "spacer")), 1)
+    expect (length (completeNodes (machine, "divider")), 1)
+    expect (length (completeNodes (machine, "scene")), 1)
+    framed = listGet (completeNodes (machine, "framed")) 0 ?: JsonNull
+    style = Doc::field (framed, "style")
+    expect (Doc::number (style, "width"), 300)
+    expect (Doc::number (style, "height"), 200)
+    expect (Doc::number (style, "padding"), 0)
+    expect (Doc::number (style, "left"), 12)
+    expect (Doc::text (style, "shadow"), "floating")
+    expect (Doc::flag (style, "grow"), true)
+    expect (length (Encode::walk ([], Templates::view machine)).bindings > 5, true)
+    expect (length (Canvases::semantics machine), 0)
+    viewed = Canvases::viewed (machine, 800.0, 600.0)
+    expect (Machines::number (viewed, "viewWidth"), 800.0)
+    expect (Machines::number (viewed, "spareWidth"), 0.0)
+
+completeCanvasVariants () =
+    machine = nativeFeed (completeMachine (), "skin", "canvas")
+    expect (nativeLetters (machine, "Hello"), true)
+    expect (nativeLetters (machine, "0:one:One"), true)
+    expect (nativeLetters (machine, "2:three:Three"), true)
+    expect (nativeLetters (machine, "Always Two"), true)
+    expect (nativeOffered (machine, "Fire One"), true)
+    expect (nativeOffered (machine, "Slide Three"), true)
+    expect (nativeOffered (machine, "Quiet"), false)
+    expect (nativeValue (machine, "Slide One"), 0.25)
+    heldPoint = nativePoint (nativeElement (machine, "Hold"), 0.5)
+    held = realPointer (machine, heldPoint, true)
+    expect (Canvases::holding held, true)
+    stillHeld = realPointer (held, heldPoint, true)
+    expect (Canvases::holding stillHeld, true)
+    released = realPointer (stillHeld, heldPoint, false)
+    expect (Canvases::holding released, false)
+    expect (Machines::text (released, "caption"), "Held")
+    outside = NativePoint(nativeX = 399.0, nativeY = 399.0)
+    outsideHeld = realPointer (released, outside, true)
+    expect (Canvases::holding outsideHeld, true)
+    outsideReleased = realPointer (outsideHeld, outside, false)
+    expect (Machines::text (outsideReleased, "caption"), "Held")
+    missed = Canvases::released (outsideReleased, 399.0, 399.0)
+    expect (Doc::write (MachineDocs::snapshot missed), Doc::write (MachineDocs::snapshot outsideReleased))
+
+completeDefensivePointerBranch () =
+    machine = nativeFeed (completeMachine (), "skin", "canvas")
+    match (Templates::skin machine).skinBoard
+        ui::Boarded _ _ _ _ _ areas =>
+            hold = listGet areas 8 ?: listGet areas 0 ?: ui::Area(areaX = ui::Fixed(fixedAt = 0.0), areaY = ui::Fixed(fixedAt = 0.0), areaW = ui::Fixed(fixedAt = 0.0), areaH = ui::Fixed(fixedAt = 0.0), areaRole = ui::Unannounced, areaLabel = "", areaLever = ui::Fire(fireName = ""), areaSlide = ui::Unslid, areaDrag = ui::Undragged, areaWhen = ui::Always, areaEach = ui::Once)
+            sliding = machine(machineGrip = ui::Sliding(slidArea = hold))
+            moved = Canvases::pointer (sliding, 1.0, 1.0, true)
+            expect (Doc::write (MachineDocs::snapshot moved), Doc::write (MachineDocs::snapshot sliding))
+        ui::Unboarded => expect ("canvas skin", "missing")
+
+completeInputFaults () =
+    machine = completeMachine ()
+    missing = Machines::put (machine, "missing", Values::text "x")
+    expect (missing.machineFault, "no input named \"missing\"")
+    wrongText = Machines::put (machine, "level", Values::text "high")
+    expect (wrongText.machineFault, "input \"level\" is a number")
+    wrongList = Machines::put (machine, "choices", Values::text "one")
+    expect (wrongList.machineFault, "input \"choices\" is a list")
+    unset = Machines::put (machine, "caption", Values::none ())
+    expect (unset.machineFault, "input \"caption\" is a text")
+    cleared = Machines::put (machine, "choices", Values::list [])
+    expect (length (Machines::choicesOf (cleared, "choices")), 0)
+    expect (length (Machines::choicesOf (machine, "caption")), 0)
+    expect (Machines::textual (machine, "missing"), false)
+    expect (Machines::holds (machine, ui::Compared(comparedInput = "caption", comparedBy = ui::Below, comparedWith = Values::number 1.0)), true)
+    expect (Machines::holds (machine, ui::Compared(comparedInput = "caption", comparedBy = ui::Above, comparedWith = Values::number (0.0 - 1.0))), true)
+    expect (join (mapList ([ui::IsBool, ui::IsNumber, ui::IsTrigger, ui::IsList, ui::IsText], MachineDocs::kindName)) ",", "bool,number,trigger,list,text")
+    withUnset = machine(knobs = mapList (machine.knobs, \knob => ui::Pick::either (knob.knobName == "caption", knob(knobValue = ui::Unset), knob)))
+    expect (Doc::kind (Doc::field (Doc::field (MachineDocs::snapshot withUnset, "inputs"), "caption")), "null")
+    rejected = match MachineDocs::load "{\"schema\":2,\"inputs\":{},\"layers\":[],\"view\":{\"kind\":\"spacer\"}}"
+        Success _ => "loaded"
+        Error problem => problem
+    expect (rejected, "schema: expected 1")
+
+completeLayerLimits () =
+    phases = [ui::StateSpec(phaseName = "a", phaseEnter = []), ui::StateSpec(phaseName = "b", phaseEnter = [])]
+    cyclingLayer = ui::MachineLayer(layerName = "loop", layerInitial = "a", layerPhases = phases, layerMoves = [ui::Transition(moveFrom = "a", moveTo = "b", moveWhen = ui::Always), ui::Transition(moveFrom = "b", moveTo = "a", moveWhen = ui::Always)])
+    cyclingBase = completeMachine ()
+    cycling = cyclingBase(machineLayers = [cyclingLayer], currents = [ui::Current(currentLayer = "loop", currentState = "a")])
+    begun = Machines::begin cycling
+    expect (begun.machineFault, "the machine is still moving after 32 rounds")
+    missingLayer = ui::MachineLayer(layerName = "loop", layerInitial = "a", layerPhases = [ui::StateSpec(phaseName = "a", phaseEnter = [])], layerMoves = [ui::Transition(moveFrom = "a", moveTo = "missing", moveWhen = ui::Always)])
+    missingBase = completeMachine ()
+    missing = missingBase(machineLayers = [missingLayer], currents = [ui::Current(currentLayer = "loop", currentState = "a")])
+    moved = Machines::begin missing
+    expect (Machines::current (moved, "loop"), "missing")
+    expect (moved.machineFault, "")
+
+completeRequestPayloads () =
+    native = realSkinned (playerMachine (), "midnight")
+    ready = Machines::feed (native, [Machines::fact ("receiver", Values::text "Living Room TV"), Machines::fact ("file", Values::text "/music/demo.mp3")])
+    connecting = Machines::pull (ready, ui::Fire(fireName = "play"), Values::none ())
+    start = match Lists::find (Machines::requests connecting, \ask => ask.askName == "cast.start")
+        Success ask => ask
+        Error _ => ui::Ask(askName = "", askInputs = [])
+    expect (Machines::askedText (start, "file"), "/music/demo.mp3")
+    expect (Machines::askedText (start, "receiver"), "Living Room TV")
+    expect (Machines::askedText (start, "missing"), "")
+    expect (Machines::askedNumber (start, "file"), 0.0)
+    playing = Machines::feed (Machines::taken connecting, [Machines::fact ("player", Values::text "PLAYING"), Machines::fact ("position", Values::number 50.0)])
+    turning = Machines::pull (playing, ui::Assign(assignName = "wantVolume", assignFire = "chooseVolume"), Values::text "0.5")
+    volume = match Lists::find (Machines::requests turning, \ask => ask.askName == "cast.volume")
+        Success ask => ask
+        Error _ => ui::Ask(askName = "", askInputs = [])
+    expect (Machines::askedNumber (volume, "wantVolume"), 0.5)
+    expect (Machines::askedNumber (volume, "missing"), 0.0)
+    seeking = Machines::pull (playing, ui::Fire(fireName = "seek"), Values::none ())
+    seek = match Lists::find (Machines::requests seeking, \ask => ask.askName == "cast.seek")
+        Success ask => ask
+        Error _ => ui::Ask(askName = "", askInputs = [])
+    expect (Machines::askedNumber (seek, "position"), 50.0)
+    expect (Machines::askedNumber (seek, "skip"), 0.0)
+
+completeEventAndConvenienceCases () =
+    completed = match Events::decode "{\"kind\":\"completed\",\"ticket\":\"job\",\"ok\":false,\"error\":\"denied\",\"now\":1}"
+        Success event => match event.eventBody
+            ui::Finished _ outcome => match outcome
+                Success _ => "accepted"
+                Error problem => problem
+            _ => "wrong event"
+        Error problem => problem
+    expect (completed, "denied")
+    board = listGet (Encode::walk ([], Ui::board ("strokes", 2, true, ui::Fire(fireName = "stroke"), ui::Fire(fireName = "lasso")))).nodes 0 ?: JsonNull
+    expect (Doc::text (board, "kind"), "board")
+    expect (Doc::text (board, "backdrop"), "")
+    field = listGet (Encode::walk ([], Ui::multiline ("Notes", "one\ntwo", "write", ui::Fire(fireName = "edit")))).nodes 0 ?: JsonNull
+    expect (Doc::flag (field, "multiline"), true)
+    expect (Doc::text (field, "commit"), "edit")
+    described = listGet (Encode::walk ([], Ui::described (Ui::button ("plain", "", ui::Fire(fireName = "go")), []))).nodes 0 ?: JsonNull
+    expect (Doc::text (described, "kind"), "button")
+    expect (length (Lists::slice (["a"], 2, 4)), 0)
+    expect (Lists::position ([], \(_item : string) => true), 0 - 1)
+    expect (join (mapList (Lists::sortBy ([3, 1, 2], \(a, b) => a < b), \n => "${n}")) ",", "1,2,3")
+    phased = Probes::post (Probes::started (), "{\"kind\":\"lifecycle\",\"phase\":\"resume\",\"now\":8}")
+    expect (Probes::problems phased, "")
+
+completeMachineCases () = Runtime::guarded (\() =>
+    completeTemplateVariants ()
+    completeCanvasVariants ()
+    completeDefensivePointerBranch ()
+    completeInputFaults ()
+    completeLayerLimits ()
+    completeRequestPayloads ()
+    completeEventAndConvenienceCases ())

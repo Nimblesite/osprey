@@ -1,0 +1,175 @@
+{
+ "schema": 1,
+ "name": "uitest-fixture",
+ "inputs": {
+  "skin": { "type": "text", "value": "tiny" },
+  "caption": { "type": "text", "value": "Hello" },
+  "selected": { "type": "text" },
+  "level": { "type": "number", "value": 0.25 },
+  "choices": {
+   "type": "list",
+   "value": [
+    { "key": "one", "label": "One" },
+    { "key": "two", "label": "Two" },
+    { "key": "three", "label": "Three" }
+   ]
+  },
+  "toggleMenu": { "type": "trigger" },
+  "chooseItem": { "type": "trigger" },
+  "dismiss": { "type": "trigger" }
+ },
+ "layers": [
+  {
+   "name": "menu",
+   "initial": "closed",
+   "states": {
+    "closed": {},
+    "open": {}
+   },
+   "transitions": [
+    {
+     "from": "open",
+     "to": "closed",
+     "when": {
+      "any": [
+       { "fired": "toggleMenu" },
+       { "fired": "chooseItem" },
+       { "fired": "dismiss" }
+      ]
+     }
+    },
+    {
+     "from": "*",
+     "to": "open",
+     "when": { "fired": "toggleMenu" }
+    }
+   ]
+  }
+ ],
+ "view": {
+  "kind": "stack",
+  "axis": "vertical",
+  "children": [
+   { "kind": "text", "text": "{{caption}}", "role": "title" },
+   {
+    "kind": "button",
+    "text": "Native action",
+    "symbol": "",
+    "on": { "set": "caption", "value": "Pressed" }
+   },
+   { "kind": "label", "text": "{{selected}}", "symbol": "" },
+   { "kind": "picker", "text": "Pick", "choices": "choices", "selected": "{{selected}}", "on": { "set": "selected" } }
+  ]
+ },
+ "skins": {
+  "tiny": {
+   "name": "Tiny canvas",
+   "motion": "disc",
+   "tokens": {},
+   "canvas": {
+    "width": 400,
+    "height": 400,
+    "atlas": [],
+    "shapes": [
+     {
+      "shape": "cable",
+      "points": [[10, 20], [110, 80]],
+      "stroke": 2,
+      "colour": "#252333",
+      "depth": 0
+     },
+     {
+      "shape": "text",
+      "text": "{{caption}}",
+      "x": 20,
+      "y": 20,
+      "size": 20,
+      "colour": "#252333",
+      "anchor": 0,
+      "weight": 400,
+      "depth": 1
+     },
+     {
+      "shape": "text",
+      "text": "Choice {{selected}}",
+      "x": 20,
+      "y": 50,
+      "size": 20,
+      "colour": "#252333",
+      "anchor": 0,
+      "weight": 400,
+      "depth": 1
+     },
+     {
+      "shape": "text",
+      "text": "{{item.label}}",
+      "x": 40,
+      "y": 160,
+      "size": 20,
+      "colour": "#252333",
+      "anchor": 0,
+      "weight": 400,
+      "depth": 2,
+      "each": { "in": "choices", "dy": 40 },
+      "when": { "state": "menu", "in": ["open"] }
+     }
+    ],
+    "listeners": [
+     {
+      "x": 20,
+      "y": 150,
+      "w": 200,
+      "h": 40,
+      "each": { "in": "choices", "dy": 40 },
+      "role": "menuitem",
+      "label": "{{item.label}}",
+      "on": { "set": "selected", "value": "{{item.key}}", "fire": "chooseItem" },
+      "when": { "state": "menu", "in": ["open"] }
+     },
+     {
+      "x": 220,
+      "y": 80,
+      "w": 150,
+      "h": 50,
+      "role": "popup",
+      "label": "Menu",
+      "on": { "fire": "toggleMenu" }
+     },
+     {
+      "x": 0,
+      "y": 0,
+      "w": 400,
+      "h": 400,
+      "role": "none",
+      "label": "Dismiss",
+      "on": { "fire": "dismiss" },
+      "when": { "state": "menu", "in": ["open"] }
+     },
+     {
+      "x": 20,
+      "y": 80,
+      "w": 150,
+      "h": 50,
+      "role": "button",
+      "label": "Press",
+      "on": { "set": "caption", "value": "Pressed" }
+     },
+     {
+      "x": 20,
+      "y": 300,
+      "w": 200,
+      "h": 30,
+      "role": "slider",
+      "label": "Level",
+      "slide": { "set": "level", "min": 0, "max": 1, "of": "level" }
+     }
+    ]
+   }
+  },
+  "plain": {
+   "name": "Plain native",
+   "motion": "disc",
+   "tokens": {}
+  }
+ }
+}
