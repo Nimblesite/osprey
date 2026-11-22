@@ -321,6 +321,17 @@ The three-band split is a start, not the EQ. Target: a parametric EQ as good as 
 - [ ] Addresses generated from daw.td; messages go through the same checked edits.
 - [ ] Feedback of playhead, meters and changed values.
 
+## Instrument builder [PRISM-INSTRUMENT]
+
+Near feature. Spec: [Daw.md](../specs/applications/Daw.md) section [PRISM-INSTRUMENT]. Builds on the synth package's `Macros` ([advanced-synthesis.md](advanced-synthesis.md), "macro controls"), [DAW-CONTROLS-DIAL], [DAW-MIDI-LEARN] and [DAW-OSC]. Each item lands with a loaded headless and windowed journey with screenshot goldens.
+
+- [ ] **Model ([PRISM-INSTRUMENT-MACRO]).** Declare the instrument in `daw.td` (controls with id, label, kind, position, size; macro targets with node, parameter, range, curve; MIDI and OSC bindings), generate the code, and store it with the patch in the project file. Journey: save, reopen, compare every field; a deleted module removes its targets with a notice; a second macro on one parameter is refused with the reason.
+- [ ] **Views and modes ([PRISM-INSTRUMENT-MODES]).** Patch view and Instrument view on one track patch; Play and Edit mode commands with keys in all three keymaps. Journey: switching renders identical Master PCM before and after.
+- [ ] **Play mode ([PRISM-INSTRUMENT-PLAY]).** Only controls drawn; a turn moves every target through `Macros` as one undo step. Journey: turn each control across its range and assert each target's value and the rendered Master audio change (cutoff measured from attenuation), undo restores them.
+- [ ] **Edit mode ([PRISM-INSTRUMENT-EDIT]).** Add, drag, resize by handles, grid snap, rename, change kind, delete; one undo step each; fixed control size across window sizes. Journey: many controls, many moves and resizes, screenshots per step, undo and redo of each.
+- [ ] **MIDI learn and OSC ([PRISM-INSTRUMENT-REMOTE]).** Learn binds a controller to a control; `/track/<n>/instrument/<control>` address with checked edits and feedback. Needs [DAW-MIDI] input and the [DAW-OSC] listener first. Journey: CC and OSC messages move the on-screen control and the targets; out-of-range messages are refused with the reason.
+- [ ] **Accessibility ([DAW-ACCESS]).** Name, value, range, kind, focus order and arrow-key steps reported and tested for every control.
+
 ## Pages [DAW-PAGES]
 
 - [x] Timeline, Mix and Patch pages on FerroUI ([screens](../../src/osprey/examples/daw/screens)).
