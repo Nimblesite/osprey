@@ -129,15 +129,21 @@ module Arrangements
     (** A track before it plays: every note cued at its start frame in start order, with its live sends. A
         note start that is not finite or before the piece, or a bus the song lacks, fails here. *)
     export opened (song, voice) = Outcomes::carried (reachable (song, voice), \_ => Outcomes::carried (live (song, voice), \sends =>
-        Outcomes::carried (SendRenders::collect (listSortBy (voice.notes, ordered), \note => cue (song, voice, note)), \cues => ok (TrackPlay(pending = cues, sounding = [], sends = sends)))))
+        Outcomes::carried (SendRenders::collect (listSortBy (voice.notes, ordered), \note => cue (song, voice, note)), \cues => ok (TrackPlay(pending = cues, sounding = [], sends = sends, made = [])))))
 
-    // [DAW-RENDER-PLAY] A note starts its own driver, which makes only the blocks the graph asks for.
-    started (song, voice, sends, due, sounding) = match voice.instrument
+    (** Start a note's own driver, which makes only the blocks the graph asks for. *)
+    export started (song, voice, sends, due, sounding) = match voice.instrument
         PatchInstrument routing => SendRenders::started (song, voice, sends, routing, due, sounding)
         OperatorInstrument tone => SendRenders::operatorStarted (song, voice, sends, tone, due)
         _ => SendRenders::voiceStarted (song, voice, sends, due)
 
-    struck (song, voice, play, due) = Outcomes::carried (started (song, voice, play.sends, due, play.sounding), \sound => ok (play(sounding = listAppend play.sounding sound)))
+    (** Whether two notes sound the same wherever they start: the same pitch, length and velocity. *)
+    export same (one, other) = one.pitch == other.pitch && one.length == other.length && one.velocity == other.velocity
+
+    // [DAW-TRANSPORT-LIVE-SPEED] A note starts sounding at its frame; a note a maker has kept is read, not made.
+    struck (song, voice, play, due) = match ui::Lists::find (play.made, \m => same (m.struck, due.note))
+        Success made => ok (play(sounding = listAppend play.sounding (Sounding(cue = due, at = due.due, driver = RecordedNote, lanes = made.chord))))
+        Error _ => Outcomes::carried (started (song, voice, play.sends, due, play.sounding), \sound => ok (play(sounding = listAppend play.sounding sound)))
 
     (** Only the instrument and its sends decide how a sounding note continues. *)
     export sameVoice (voice, prior) = structuralEquals (voice.instrument, prior.instrument) && structuralEquals (voice.sends, prior.sends)
@@ -147,7 +153,7 @@ module Arrangements
         true => ok play
         false => Outcomes::carried (live (song, voice), \sends =>
             Outcomes::carried (SendRenders::collect (play.sounding, \sound => revised (song, voice, sends, sound, from)), \sounds =>
-                ok (play(sounding = sounds, sends = sends))))
+                ok (play(sounding = sounds, sends = sends, made = []))))
 
     revised (song, voice, sends, sound, from) = match voice.instrument
         PatchInstrument routing => SendRenders::retuned (song, voice, sends, sound, from, routing)
@@ -180,6 +186,7 @@ module Arrangements
 
     (** Whether a sounding note still has sound after frame `until`. *)
     export lasting (until, voice) = match voice.driver
+        RecordedNote => satAdd voice.at (length (listGet voice.lanes 0 ?: [])) > until
         PerformingNote patch => satAdd voice.cue.due patch.span.total > until
         PerformingOperator pair => satAdd voice.cue.due pair.span.total > until
         PerformingVoice built => satAdd voice.cue.due built.span.total > until

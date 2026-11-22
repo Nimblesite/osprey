@@ -118,6 +118,16 @@ module SongFiles
     (** Write the complete project as JSON. *)
     export encode arrangement = encoded (ProjectCodec::writeArrangement arrangement)
 
+    audibleField member = match member
+        JsonMember name _ => name != "meterTop" && name != "meterBottom"
+
+    (** [DAW-TRANSPORT-LIVE-SPEED] Identify the dry and send samples of a note independently of its bar or the written meter. *)
+    export noteCacheKey (song, voice) =
+        source = song(title = "", buses = [], tracks = [voice(name = "", gain = 1.0, pan = 0.0, bus = "", positions = [], notes = [])])
+        match ProjectCodec::writeArrangement source
+            JsonObject members => encoded (JsonObject (filterList (members, audibleField)))
+            _ => Error(message = "A project note key requires an arrangement object.")
+
 (** [DAW-TRANSPORT-LIVE-CONTROLS] The editor publishes the current mix and instruments.
     The producer reads a complete revision between audio blocks, outside the device callback. *)
 module LiveControls

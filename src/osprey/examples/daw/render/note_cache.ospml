@@ -1,0 +1,258 @@
+// [DAW-TRANSPORT-LIVE-SPEED] Notes made ahead of the playhead, kept on disk between plays.
+namespace daw
+
+import synth::Outcomes
+
+(** A note's sound depends on its track's instrument and sends, the tempo, the rate and the note's pitch,
+    length and velocity, never on where it starts. Each such sound is made once and kept as one safetensors
+    file of float32 lanes under `<folder>/notes/<track key>/`. Live play reads a kept note in place of making
+    it; `warmed` is the maker: several run side by side, each taking its share of the song's distinct notes in
+    the order the song reaches them. A track whose instrument or sends change gets a new key, and the folders
+    of keys no track has any more are removed. *)
+module NoteCache
+    ok value = Success(value = value)
+
+    texts song = SendRenders::collect (song.tracks, \voice => SongFiles::noteCacheKey (song, voice))
+
+    labelled (dir, text) = match readFile "${dir}key.txt"
+        Error _ => false
+        Success label => label == text
+
+    // A new track has the same content address in the player and every maker, even before its folder exists.
+    home (folder, entries, text) = match ui::Lists::find (entries, \dir => endsWith dir "/" && labelled (dir, text))
+        Error _ => "${folder}/notes/${registry::Sha256::ofString text}"
+        Success dir => take dir (satSub (length dir) 1)
+
+    folders (keys, folder) =
+        entries = listDir "${folder}/notes" ?: []
+        mapList (keys, \text => home (folder, entries, text))
+
+    playableHome (song, voice, folder, entries) = match voice.notes
+        [] => ok ""
+        _ => Outcomes::carried (SongFiles::noteCacheKey (song, voice), \text => ok (home (folder, entries, text)))
+
+    (** Resolve note folders for tracks that sound in this range, preserving their track indexes. *)
+    export found (song, folder) =
+        entries = listDir "${folder}/notes" ?: []
+        SendRenders::collect (song.tracks, \voice => playableHome (song, voice, folder, entries))
+
+    noteName note = "${note.pitch}_${note.length}_${note.velocity}.st"
+
+    path (dir, note) = "${dir}/${noteName note}"
+
+    lane (file, index) = match loadTensor file "${index}"
+        Error why => Error(message = why)
+        Success samples => ok samples
+
+    read (file, lanes) = SendRenders::collect (toList (range (0, lanes)), \index => lane (file, index))
+
+    known (play, note) = match ui::Lists::find (play.made, \m => Arrangements::same (m.struck, note))
+        Success _ => true
+        Error _ => false
+
+    openingReady (play, until, index) = match listGet play.pending index
+        Error _ => true
+        Success cue => cue.due >= until || (known (play, cue.note) && openingReady (play, until, satAdd index 1))
+
+    // The dry pair and each send's pair: the lanes a stereo track's note carries.
+    channels sends = satAdd 2 (satMul 2 (length sends))
+
+    taken (dir, play, note) = match read (path (dir, note), channels play.sends)
+        Error _ => play
+        Success chord => play(made = listAppend play.made (Made(struck = note, chord = chord)))
+
+    seed (dir, play, cue) = match known (play, cue.note)
+        true => play
+        false => match fileSize (path (dir, cue.note))
+            Error _ => play
+            Success _ => taken (dir, play, cue.note)
+
+    seedDue (dir, play, until, index) = match listGet play.pending index
+        Error _ => play
+        Success cue => match cue.due < until
+            false => play
+            true => seedDue (dir, seed (dir, play, cue), until, satAdd index 1)
+
+    (** Pending cues are ordered by onset. Read cached notes through the current block. *)
+    export seeded (dir, play, until) = match dir == ""
+        true => play
+        false => seedDue (dir, play, until, 0)
+
+    spectral voice = match voice.instrument
+        PatchInstrument routing => ui::Lists::any (routing.nodes, \n => n.component == "spectral" || n.component == "pitchShifter")
+        _ => false
+
+    // A Fourier patch may need several seconds of preparation for simultaneous cold notes.
+    readyOpening : (Playing, List<string>, int, int) -> Playing
+    readyOpening (playing, dirs, horizon, attempts) =
+        tracks = synth::Sequences::mapIndexed (playing.tracks, \(i, track) => seeded (listGet dirs i ?: "", track, horizon))
+        ready = playing(tracks = tracks)
+        match attempts == 0 || ui::Lists::all (tracks, \track => openingReady (track, horizon, 0))
+            true => ready
+            false =>
+                sleep 25
+                readyOpening (ready, dirs, horizon, satSub attempts 1)
+
+    (** Read prepared opening notes immediately, with a bounded head start for cold makers. *)
+    export opening (song, playing, dirs) = match ui::Lists::any (song.tracks, \voice => spectral voice)
+        true => readyOpening (playing, dirs, 192000, 160)
+        false => readyOpening (playing, dirs, 48000, 96)
+
+    performing sound = match sound.driver
+        RecordedNote => false
+        _ => true
+
+    adopted (dir, sound, lanes, frames) = match read (path (dir, sound.cue.note), lanes)
+        Error _ => sound
+        Success chord => match ui::Lists::all (chord, \lane => length lane == frames)
+            true => sound(at = sound.cue.due, lanes = chord, driver = RecordedNote)
+            false => sound
+
+    recorded (dir, sound) = match sound.driver
+        RecordedNote => sound
+        PerformingNote patch => adopted (dir, sound, length patch.ports, patch.span.total)
+        PerformingOperator pair => adopted (dir, sound, channels pair.sends, pair.span.total)
+        PerformingVoice built => adopted (dir, sound, channels built.sends, built.span.total)
+
+    (** A note maker may finish after the attack. Resume its PCM at the next block's exact note age. *)
+    export sounding (dir, play, from, until) = match intDiv from 4096 == intDiv until 4096
+        true => play
+        false => match ui::Lists::any (play.sounding, performing)
+            false => play
+            true => play(sounding = mapList (play.sounding, \sound => recorded (dir, sound)))
+
+    joined (prior, lanes) = synth::Sequences::mapIndexed (lanes, \(index, samples) => listConcat (listGet prior index ?: []) samples)
+
+    // One whole note from the same block drivers live play runs, block after block.
+    whole (sound, total, rate, from, lanes) = match from >= total
+        true => ok lanes
+        false => Outcomes::carried (SendRenders::window (sound, from, satAdd from Playback::block, rate), \next =>
+            whole (next, total, rate, satAdd from Playback::block, joined (lanes, next.lanes)))
+
+    (** A whole note's dry and send lanes, made from the drivers that play it live. *)
+    lanesOf (song, voice, sends, note) = Outcomes::carried (NoteRenders::checkedSpan (note, song.tempo, toFloat song.sampleRate, voice.instrument), \span =>
+        Outcomes::carried (Arrangements::started (song, voice, sends, Cue(due = 0, note = note), []), \sound =>
+            whole (sound, span.total, toFloat song.sampleRate, 0, [])))
+
+    first (batch, track, cue) =
+        key = noteName cue.note
+        match mapContains batch.seen key
+            true => batch
+            false => { seen = mapSet batch.seen key true, jobs = listAppend batch.jobs (NoteJob(track = track, due = cue.due, note = cue.note)) }
+
+    listed (song, jobs, track) = match listGet song.tracks track
+        Error _ => jobs
+        Success voice => match Arrangements::opened (song, voice)
+            Error _ => jobs
+            Success play => (foldList (play.pending, { seen = Map(), jobs = jobs }, \(batch, cue) => first (batch, track, cue))).jobs
+
+    sooner (one, other) = match one.due < other.due
+        true => -1
+        false => match one.due > other.due
+            true => 1
+            false => 0
+
+    // Every distinct note of the song, in the order the song first reaches it.
+    jobs song = listSortBy (foldList (toList (range (0, length song.tracks)), [], \(held, track) => listed (song, held, track)), sooner)
+
+    entry (lanes, index) =
+        before = foldList (toList (range (0, index)), 0, \(sum, lane) => satAdd sum (satMul 4 (length (listGet lanes lane ?: []))))
+        count = length (listGet lanes index ?: [])
+        "\"${index}\":{\"dtype\":\"F32\",\"shape\":[${count}],\"data_offsets\":[${before},${satAdd before (satMul 4 count)}]}"
+
+    header lanes = "{${join (mapList (toList (range (0, length lanes)), \index => entry (lanes, index))) ","}}"
+
+    body lanes = join (mapList (lanes, \samples => join (mapList (samples, synth::PcmWords::float32)) "")) ""
+
+    // A safetensors file in hex: the header's length, the header, then each lane's float32 samples.
+    packed lanes =
+        top = header lanes
+        "${synth::PcmWords::le32 (length top)}00000000${Shell::hex top}${body lanes}"
+
+    // Each maker owns its hex input and publishes a complete binary by atomic rename.
+    publish = "staged=$(mktemp \"$2.XXXXXX\") || exit 1; if xxd -r -p \"$1\" \"$staged\" && [ \"$(wc -c < \"$staged\")\" -eq \"$3\" ] && mv -f \"$staged\" \"$2\"; then rm -f \"$1\"; else rm -f \"$staged\"; exit 1; fi"
+
+    kept (file, tag, lanes) =
+        source = "${file}.${tag}.hex"
+        data = packed lanes
+        match writeFile source data
+            Error why => Error(message = why)
+            Success _ => Shell::ran (60, "sh -c ${Shell::quoted publish} sh ${Shell::quoted source} ${Shell::quoted file} ${intDiv (byteLength data) 2}")
+
+    // Readers use the same tensor decoder: a partial file must be rebuilt even when its path exists.
+    ensure (song, voice, dir, tag, job, sends, clock) =
+        file = path (dir, job.note)
+        match read (file, channels sends)
+            Success _ => ok 0
+            Error _ =>
+                _ready = match clock != "" && job.due > leadFrames
+                    true => waitForClock (clock, job.due, -1)
+                    false => 0
+                Outcomes::carried (lanesOf (song, voice, sends, job.note), \lanes =>
+                    Outcomes::carried (kept (file, tag, lanes), \_ => ok 1))
+
+    made (song, dirs, tag, job, clock) = match listGet dirs job.track
+        Error _ => Error(message = "A cached note has no track folder.")
+        Success dir => match listGet song.tracks job.track
+            Error _ => Error(message = "A cached note has no track.")
+            Success voice => Outcomes::carried (Arrangements::opened (song, voice(notes = [])), \play => ensure (song, voice, dir, tag, job, play.sends, clock))
+
+    share (all, worker, workers) = filterList (toList (range (0, length all)), \index => index % workers == worker)
+
+    // Eight seconds of work ahead at the live device's fixed 48 kHz.
+    leadFrames = 384000
+
+    // A stopped or absent clock releases the maker back to its ordinary offline schedule.
+    waitForClock (clock, due, previous) = match readFile clock
+        Error _ => 0
+        Success text => match jsonInt (ui::Doc::field (ui::Doc::parse text, "returnedFrames"))
+            Error _ => 0
+            Success frame => match frame <= previous || due <= satAdd frame leadFrames
+                true => 0
+                false =>
+                    sleep 200
+                    waitForClock (clock, due, frame)
+
+    turn (song, dirs, tag, all, index, clock) = match listGet all index
+        Error _ => Error(message = "A cache worker has no job at this index.")
+        Success job => made (song, dirs, tag, job, clock)
+
+    worked (song, dirs, tag, all, indexes, clock) = foldList (indexes, ok 0, \(total, index) => Outcomes::carried (total, \count => Outcomes::carried (turn (song, dirs, tag, all, index, clock), \added => ok (satAdd count added))))
+
+    stale (dirs, entry) = endsWith entry "/" && length (filterList (dirs, \dir => "${dir}/" == entry)) == 0
+
+    // Folders of keys no track has any more: an edited instrument's old notes.
+    swept (folder, dirs) = match listDir "${folder}/notes"
+        Error why => Error(message = why)
+        Success entries => match filterList (entries, \entry => stale (dirs, entry) && SongFiles::safe entry)
+            [] => ok 0
+            old => Outcomes::carried (Shell::ran (60, "rm -r ${join (mapList (old, Shell::quoted)) " "}"), \_ => ok (length old))
+
+    label (dirs, keys, index) = match listGet dirs index
+        Error _ => Error(message = "A cache label has no folder.")
+        Success dir => match listGet keys index
+            Error _ => Error(message = "A cache label has no key.")
+            Success key => match writeFile "${dir}/key.txt" key
+                Error why => Error(message = "Cannot write ${dir}/key.txt: ${why}")
+                Success _ => ok 1
+
+    // Ordinary cache setup stays on the maker thread. The CLI also accepts a missing parent path.
+    cacheRoot folder = match makeDir "${folder}/notes"
+        Success made => ok made
+        Error _ => Shell::ran (20, "mkdir -p ${Shell::quoted folder}/notes")
+
+    prepared (keys, folder, dirs, worker) = match Outcomes::carried (cacheRoot folder, \_ => SendRenders::collect (dirs, \dir => makeDir dir))
+        Error why => Error(message = why)
+        Success _ => match worker == 0
+            false => ok 0
+            true => Outcomes::carried (SendRenders::collect (toList (range (0, length dirs)), \index => label (dirs, keys, index)), \_ => swept (folder, dirs))
+
+    (** Maker `worker` of `workers`: makes and keeps its share of the song's distinct notes that are not kept
+        yet, in song order. Maker 0 first removes the note folders no track uses. Yields how many it made. *)
+    export warmed (song, folder, worker, workers, clock) = match worker >= 0 && worker < workers && workers <= 64
+        false => Error(message = "A maker needs its number, from 0, and the count of makers, at most 64.")
+        true => Outcomes::carried (texts song, \keys =>
+            dirs = folders (keys, folder)
+            Outcomes::carried (prepared (keys, folder, dirs, worker), \_ =>
+                all = jobs song
+                worked (song, dirs, "w${worker}-${random ()}", all, share (all, worker, workers), clock)))

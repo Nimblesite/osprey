@@ -176,10 +176,12 @@ module SendRenders
         run = NoteRenders::operatorFrames (sound.cue.note, pair, rate, satSub first sound.cue.due, satSub stop sound.cue.due)
         ok (sound(at = first, lanes = builtIn (run.samples, pair.sends), driver = PerformingOperator(pair = pair(phases = run.held))))
 
-    (** Render the overlap with this device block, continuing the same note at its exact sample age. *)
+    (** Render the overlap with this device block, continuing the same note at its exact sample age.
+        [DAW-TRANSPORT-LIVE-SPEED] A prepared note already holds every sample of its whole life. *)
     export window (sound, from, until, rate) =
         first = ui::Pick::either (from > sound.cue.due, from, sound.cue.due)
         match sound.driver
+            RecordedNote => ok sound
             PerformingVoice built => voicePortion (sound, built, first, stopAt (sound.cue.due, built.span.total, until), rate)
             PerformingOperator pair => operatorPortion (sound, pair, first, stopAt (sound.cue.due, pair.span.total, until), rate)
             PerformingNote patch =>

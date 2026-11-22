@@ -211,6 +211,7 @@ type ActiveVoice =
     sends : List<AudioSend>
 
 type NoteDriver =
+    RecordedNote
     PerformingNote
         patch : ActivePatch
     PerformingOperator
@@ -224,10 +225,20 @@ type Sounding =
     lanes : List<List<float>>
     driver : NoteDriver
 
+type Made =
+    struck : Note
+    chord : List<List<float>>
+
+type NoteJob =
+    track : int
+    due : int
+    note : Note
+
 type TrackPlay =
     pending : List<Cue>
     sounding : List<Sounding>
     sends : List<AudioSend>
+    made : List<Made>
 
 type Advanced =
     play : TrackPlay
@@ -257,6 +268,7 @@ type LiveStream =
     playing : Playing
     controlVersion : int
     controlScore : Arrangement
+    noteFolders : List<string>
 
 type Played =
     playing : Playing

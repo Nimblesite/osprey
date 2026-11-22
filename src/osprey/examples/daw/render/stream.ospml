@@ -3,7 +3,8 @@ namespace daw
 
 (** Live play: the project's graph played block by block, each block of Master printed as soon as it is made,
     as one line of hex holding a 48 kHz float WAV the audio device adapter accepts. Master reaches the device
-    exactly as the graph made it ([DAW-TRANSPARENCY]). *)
+    exactly as the graph made it ([DAW-TRANSPARENCY]). Notes a maker has kept ahead of the play head are read
+    from the note cache instead of being made ([DAW-TRANSPORT-LIVE-SPEED]). *)
 module Streams
     // Frames per printed block: half the device's largest, so sound starts and stops sooner.
     block = 4096
@@ -33,11 +34,37 @@ module Streams
     // Two 160-frame packets prime the device in 6.7 ms at 48 kHz.
     size path = ui::Pick::either (path == "", block, 160)
 
+    silent = TrackPlay(pending = [], sounding = [], sends = [], made = [])
+
+    // [DAW-TRANSPORT-LIVE-SPEED] Notes due in the next block that a maker has kept are read, not made; a note
+    // already sounding joins its kept lanes at the note's exact current age.
+    warm (dirs, playing, index, until) =
+        track = listGet playing.tracks index ?: silent
+        match listGet dirs index
+            Error _ => track
+            Success dir => match dir == ""
+                true => track
+                false => NoteCache::sounding (dir, NoteCache::seeded (dir, track, until), playing.cursor, until)
+
+    seeded (dirs, playing, until) = playing(tracks = mapList (toList (range (0, length playing.tracks)), \index => warm (dirs, playing, index, until)))
+
+    // Makers belong to the patch that started playback. Discard its folder only for a changed voice.
+    retained (stream, next, index) = match listGet stream.controlScore.tracks index
+        Error _ => ""
+        Success prior => match listGet next.controlScore.tracks index
+            Error _ => ""
+            Success voice => ui::Pick::either (Arrangements::sameVoice (voice, prior), listGet stream.noteFolders index ?: "", "")
+
+    changed (stream, next) = match next.controlVersion == stream.controlVersion
+        true => next
+        false => next(noteFolders = mapList (toList (range (0, length stream.noteFolders)), \index => retained (stream, next, index)))
+
     advanced (path, count, stream) =
         frames = least (size path, satSub count stream.playing.cursor)
         synth::Outcomes::carried (LiveControls::receive (path, stream), \received =>
-            synth::Outcomes::carried (Playback::step (received.controlScore, received.playing, frames), \played =>
-                synth::Outcomes::carried (sent (received.controlScore, played), \playing => acknowledged (path, received(playing = playing)))))
+            next = changed (stream, received)
+            synth::Outcomes::carried (Playback::step (next.controlScore, seeded (next.noteFolders, next.playing, satAdd next.playing.cursor frames), frames), \played =>
+                synth::Outcomes::carried (sent (next.controlScore, played), \playing => acknowledged (path, next(playing = playing)))))
 
     // input flushes the printed audio before waiting. Each device receipt permits one more packet.
     acknowledged (path, next) = match path == ""
@@ -56,8 +83,17 @@ module Streams
     pass (path, count, start) = foldList (toList (range (0, intDiv (satAdd count (satSub (size path) 1)) (size path))), start, \(outcome, _) =>
         synth::Outcomes::carried (outcome, \stream => advanced (path, count, stream)))
 
+    kept (fresh, last, index) =
+        track = listGet fresh.tracks index ?: silent
+        prior = listGet last.tracks index ?: track
+        track(made = prior.made)
+
+    // [DAW-TRANSPORT-LIVE-SPEED] The project back at its first frame, every track keeping the notes it has
+    // already read: a loop makes each distinct note once, in its first pass.
+    rewound (arrangement, last) = synth::Outcomes::carried (Playback::start arrangement, \fresh => Success(value = fresh(tracks = mapList (toList (range (0, length fresh.tracks)), \index => kept (fresh, last, index)))))
+
     again (path, count, outcome) = synth::Outcomes::carried (outcome, \last =>
-        pass (path, count, synth::Outcomes::carried (Playback::start last.controlScore, \playing => Success(value = last(playing = playing)))))
+        pass (path, count, synth::Outcomes::carried (rewound (last.controlScore, last.playing), \playing => Success(value = last(playing = playing)))))
 
     // A loop is exactly its beats, pass after pass; one pass rings out to the piece's end.
     measured (request, arrangement, loop) = match loop
@@ -70,9 +106,14 @@ module Streams
             true => foldList (toList (range (0, passes)), initial, \(outcome, _) => again (path, count, outcome))
             false => synth::Outcomes::carried (pass (path, count, initial), \stream => drained (path, stream))
 
-    initial arrangement = synth::Outcomes::carried (Playback::start arrangement, \playing => Success(value = LiveStream(playing = playing, controlVersion = 0, controlScore = arrangement)))
+    initial (arrangement, folder, withMakers) = synth::Outcomes::carried (Playback::start arrangement, \playing =>
+        synth::Outcomes::carried (NoteCache::found (arrangement, folder), \dirs =>
+            ready = match withMakers
+                true => NoteCache::opening (arrangement, playing, dirs)
+                false => playing
+            Success(value = LiveStream(playing = ready, controlVersion = 0, controlScore = arrangement, noteFolders = dirs))))
 
-    (** Play the requested window, reading live parameter revisions between device blocks. *)
-    export played (request, arrangement, loop, path) = match arrangement.sampleRate == 48000
+    (** Play the requested window, reading live parameter revisions and prepared notes between device blocks. *)
+    export played (request, arrangement, loop, path, withMakers) = match arrangement.sampleRate == 48000
         false => Error(message = "Live play needs a 48 kHz project; this one is ${arrangement.sampleRate} Hz.")
-        true => synth::Outcomes::carried (measured (request, arrangement, loop), \count => ran (path, count, loop, initial arrangement))
+        true => synth::Outcomes::carried (measured (request, arrangement, loop), \count => ran (path, count, loop, initial (arrangement, request.folder, withMakers)))

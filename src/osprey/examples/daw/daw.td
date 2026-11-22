@@ -31,15 +31,18 @@ type ActivePatch { plan: Prepared ports: List<TapLane> span: NoteSpan attack: Fl
 type ActiveOperator { span: NoteSpan tone: Tone firstHz: Float secondHz: Float phases: VoicePair<OperatorState, OperatorState> sends: List<AudioSend> }
 union BuiltInState { Plucked { guide: WaveguideState burst: ExciterState capacity: Int brightness: Float decay: Float } Bowed { strand: BowState capacity: Int pressure: Float brightness: Float depth: Float } Rung { bank: ModalBank modes: ModalState } Drummed { tone: OperatorState burst: ExciterState noise: ExciterConfig hit: Hit } }
 type ActiveVoice { span: NoteSpan current: BuiltInState sends: List<AudioSend> }
-union NoteDriver { PerformingNote { patch: ActivePatch } PerformingOperator { pair: ActiveOperator } PerformingVoice { voice: ActiveVoice } }
+union NoteDriver { RecordedNote {} PerformingNote { patch: ActivePatch } PerformingOperator { pair: ActiveOperator } PerformingVoice { voice: ActiveVoice } }
 type Sounding { cue: Cue at: Int lanes: List<List<Float>> driver: NoteDriver }
-type TrackPlay { pending: List<Cue> sounding: List<Sounding> sends: List<AudioSend> }
+# [DAW-TRANSPORT-LIVE-SPEED] A prepared note: one distinct note's dry and send lanes, made ahead of the play head.
+type Made { struck: Note chord: List<List<Float>> }
+type NoteJob { track: Int due: Int note: Note }
+type TrackPlay { pending: List<Cue> sounding: List<Sounding> sends: List<AudioSend> made: List<Made> }
 type Advanced { play: TrackPlay buses: Buses }
 type Heard { plays: List<TrackPlay> buses: Buses }
 type BusState { name: String leftBand: BandState rightBand: BandState level: Float }
 type Mastering { buses: Buses states: List<BusState> }
 type Playing { score: Arrangement cursor: Int tracks: List<TrackPlay> states: List<BusState> }
-type LiveStream { playing: Playing controlVersion: Int controlScore: Arrangement }
+type LiveStream { playing: Playing controlVersion: Int controlScore: Arrangement noteFolders: List<String> }
 type Played { playing: Playing left: List<Float> right: List<Float> }
 type Take { playing: Playing lefts: List<List<Float>> rights: List<List<Float>> }
 type Stereo { name: String left: List<Float> right: List<Float> }

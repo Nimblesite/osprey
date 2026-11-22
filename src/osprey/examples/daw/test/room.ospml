@@ -610,7 +610,7 @@ liveDialJourney () =
             reads (dialOf (moving, "Gain"), \seen => expect (seen.accessValue, 0.0))
             succeeds (daw::Playback::start score, \initial =>
                 succeeds (daw::Playback::step (score, initial, 512), \first =>
-                    stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score)
+                    stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score, noteFolders = [])
                     liveDialBlock (place, stream, \(quiet, muted) =>
                         expect (loudest quiet.left, 0.0)
                         expect (loudest quiet.right, 0.0)
