@@ -8,6 +8,10 @@ mod bounded;
 mod bounded_program;
 
 use std::io;
+use std::os::unix::process::CommandExt;
+use std::path::Path;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 /// About 2.5 GB of garbage per `churn()`, none of it retained.
 const CHURN: &str = "fn churn() = range(0, 2000000) |> fold(0, fn(sum, i) => wrapAdd(sum, length(listAppend([1, 2, 3, 4, 5, 6, 7, 8], i))))\nprint(length(listAppend([1, 2], 3)))\n";
@@ -196,11 +200,6 @@ fn a_heap_that_only_grows_ends_at_its_ceiling() -> io::Result<()> {
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
     Ok(())
 }
-
-use std::os::unix::process::CommandExt;
-use std::path::Path;
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
 
 /// How long a case waits for the compiled program to prove it is running.
 const START_BUDGET: Duration = Duration::from_secs(60);
