@@ -159,14 +159,14 @@ The example follows Robert C. Martin's rules, not the project layout the C# temp
 
 ## Half the code
 
-The port is half the size of the C# it reproduces in code lines (626 of 1,252). In total lines it is 6 over half (843 of 1,675) since `edge_server.osp` split out the socket: a defect against [EXAMPLE-CLEANARCH-INV-HALF] still to fix.
+The port is half the size of the C# it reproduces, counted two ways ([EXAMPLE-CLEANARCH-INV-HALF]).
 
 | | Files | Lines | Code lines |
 | --- | --- | --- | --- |
 | C# files the port reproduces | 54 | 1,675 | 1,252 |
-| Osprey port | 11 | 843 | 626 |
-| Osprey only: retry and rollback, [todo_replay.osp](src/todo_replay.osp) | 1 | 124 | 93 |
-| Osprey only: what-if probes, [todo_probe.osp](src/todo_probe.osp) | 1 | 119 | 80 |
+| Osprey port | 11 | 823 | 606 |
+| Osprey only: retry and rollback, [todo_replay.osp](src/todo_replay.osp) | 1 | 123 | 92 |
+| Osprey only: what-if probes, [todo_probe.osp](src/todo_probe.osp) | 1 | 117 | 78 |
 
 A code line is a line that is neither blank nor a comment. The C# count takes `src/Domain`, `src/Application`, `src/Web/Endpoints`, `src/Web/Infrastructure`, `src/Web/Services`, `src/Web/Program.cs`, the `DependencyInjection.cs` files, `ApplicationDbContext.cs`, the entity configurations and `DispatchDomainEventsInterceptor.cs` at the pinned commit. It leaves out what the port does not reproduce: the weather forecast and user endpoints, the three OpenAPI transformers, audit stamps (`AuditableEntityInterceptor.cs`, `BaseAuditableEntity.cs`) and `Result.cs`.
 
