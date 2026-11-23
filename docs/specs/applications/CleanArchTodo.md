@@ -1,4 +1,4 @@
-# Clean Architecture todo port: Osprey makes MediatR redundant
+# Clean Architecture todo example: Osprey makes MediatR redundant
 
 ## The concept
 
@@ -37,7 +37,7 @@ Multiplicity is declared ([MULTI-DECL]) and handler obligations are explicit ([M
 
 ### [EXAMPLE-CLEANARCH-INV-NO-SKIP] Multi-shot is never skipped
 
-No agent may skip, stub, defer, simulate or downgrade any multi-shot use in [EXAMPLE-CLEANARCH-INV-MULTISHOT]. The compiler runs `many` continuations on every target ([EFFECTS-INV-MULTISHOT-REAL](0016-algebraic-effects-and-handlers.md)), so a red multi-shot test is a defect to fix, in the compiler when the compiler is wrong. That rules out:
+No agent may skip, stub, defer, simulate or downgrade any multi-shot use in [EXAMPLE-CLEANARCH-INV-MULTISHOT]. The compiler runs `many` continuations on every target ([EFFECTS-INV-MULTISHOT-REAL](../../plans/0016-algebraic-effects-and-handlers.md)), so a red multi-shot test is a defect to fix, in the compiler when the compiler is wrong. That rules out:
 
 - one-shot handlers standing in for multi-shot ones;
 - loops or re-dispatching that imitate a resume;
@@ -105,11 +105,5 @@ End-to-end use-case tests cover many permutations under GC and ARC. They assert:
 - that domain events from abandoned branches are not published;
 - that all validation failures are collected.
 
-The suite is not in the CI pipeline yet. Adding it is a later, explicit step.
+`make -C src/toolchain/targets/tests cleanarch` runs the suite under GC and ARC, and CI runs `make _test_cleanarch` beside the Osprey Agent suites.
 
-## Status
-
-- [x] Port written. A pi agent (`zai/glm-5.3`, 2026-11-22) drafted it with one-shot handlers only; the lead rewrote the pipeline, the handlers and the tests.
-- [x] Every invariant above checked against the code and the tests: 34 tests pass under GC and ARC, 7 of them assert the four multi-shot uses, and the app serves real requests.
-- [x] Committed on `feat/multishot-continuations` with the compiler change it needs.
-- [ ] Wire the suite into `make` and CI.

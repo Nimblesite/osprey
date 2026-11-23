@@ -34,7 +34,7 @@ Checked against the published v0.4.0 source on 2026-11-16, and confirmed on TMC 
 - [x] Bump `lspkit`, `lspkit-server` and `lsp-profiler` to 0.6.0 together in `src/toolchain/Cargo.toml` and refresh `Cargo.lock`. Keep `sysinfo` matched to the version `lsp-profiler` pins.
 - [x] Bump `@nimblesite/lsp-profiler-ui` (to 0.6.0) in `src/toolchain/vscode-extension/package.json` if lspkit publishes a matching UI release.
 - [x] Fix any API breaks in `osprey-lsp`; no shims. None: it builds unchanged and the 259 LSP and 21 profiler tests pass.
-- [ ] Keep Osprey's own guard: 32 unknown-method requests through the real server leave `in_flight: 0` (`Dispatcher` `Debug`).
+- [x] Keep Osprey's own guard: 32 unknown-method requests through the real server leave `in_flight: 0` (`Dispatcher` `Debug`). Test: `unknown_methods_leave_no_request_in_flight`; 261 LSP tests pass.
 - [ ] `cargo test -p osprey-lsp`, then `make ci`, then one coordinated push.
 - [ ] Re-measure with `heap -s` after the idle sweep: live heap at or below 128 MB.
 - [ ] Release Osprey, then verify the released extension binary's live heap before closing anything.

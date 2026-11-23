@@ -2,8 +2,13 @@
 //! Exact golden stdout, positive assertions, zero failures and a clean ARC exit
 //! are mandatory; native TAP and port totals prove the same acceptance contract.
 
+#![cfg(unix)]
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
+#[path = "common/bounded.rs"]
+mod bounded;
 #[path = "common/oracle_transcript.rs"]
 mod oracle_transcript;
 #[path = "common/package_matrix.rs"]
@@ -67,24 +72,43 @@ fn the_complete_torch_suite_discharges_its_storage_handlers() {
     assert!(errors.is_empty(), "residual diagnostics: {errors:#?}");
 }
 
-fn run(suite: &Path, memory: &str, cache: &Path) -> (bool, String, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
+/// A package suite may build a large program, but never more than this.
+const SUITE_BUDGET: bounded::Budget = bounded::Budget {
+    memory_mb: 4096,
+    deadline: Duration::from_secs(600),
+};
+
+/// The suite's package folder name, for temp file names.
+fn package_name(suite: &Path) -> String {
+    suite
+        .parent()
+        .and_then(Path::file_name)
+        .map_or_else(String::new, |name| name.to_string_lossy().into_owned())
+}
+
+/// Runs one suite under one backend inside `budget`. Returns the
+/// command line it ran and the bounded run, or why it could not start.
+fn run(
+    suite: &Path,
+    memory: &str,
+    cache: &Path,
+    budget: bounded::Budget,
+) -> (String, std::io::Result<bounded::Bounded>) {
+    let backend = format!("--memory={memory}");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
+    let _ = command
         .current_dir(repo())
         .arg(suite)
-        .args(["--run", "--quiet", &format!("--memory={memory}")])
+        .args(["--run", "--quiet", &backend])
         .env("OSPREY_ARC_DEBUG", "1")
-        .env("OSPREY_TEST_CACHE_DIR", cache)
-        .output();
-    output.map_or_else(
-        |error| (false, String::new(), error.to_string()),
-        |out| {
-            (
-                out.status.success(),
-                String::from_utf8_lossy(&out.stdout).into_owned(),
-                String::from_utf8_lossy(&out.stderr).into_owned(),
-            )
-        },
-    )
+        .env("OSPREY_TEST_CACHE_DIR", cache);
+    let line = format!("osprey {} --run --quiet {backend}", suite.display());
+    let stem = format!(
+        "osprey_package_{}_{}_{memory}",
+        std::process::id(),
+        package_name(suite)
+    );
+    (line, bounded::run_command(command, &stem, budget))
 }
 
 /// The live-object count of the single ARC exit sentinel, `None` when the
@@ -117,23 +141,27 @@ fn every_python_oracle_golden_records_nonzero_successful_assertions() -> std::io
     Ok(())
 }
 
-fn failures(suite: &Path, memory: &str, cache: &Path) -> Vec<String> {
+fn failures(suite: &Path, memory: &str, cache: &Path, budget: bounded::Budget) -> Vec<String> {
     let name = suite.display();
     let golden = std::fs::read_to_string(suite.join("expected_output.txt")).unwrap_or_default();
-    let (ok, stdout, stderr) = run(suite, memory, cache);
+    let (line, outcome) = run(suite, memory, cache, budget);
+    let run = match outcome {
+        Ok(run) => run,
+        Err(error) => return vec![format!("{name} [{memory}] could not run `{line}`: {error}")],
+    };
+    let context = format!("{name} [{memory}] `{line}` ({})", run.summary());
     let mut problems = Vec::new();
-    if !ok {
+    if run.code != Some(0) || run.stopped.is_some() {
+        problems.push(format!("{context} exited unsuccessfully:\n{}", run.stderr));
+    }
+    if golden.is_empty() || run.stdout != golden {
         problems.push(format!(
-            "{name} [{memory}] exited unsuccessfully:\n{stderr}"
+            "{context} output differs from expected_output.txt:\n{}",
+            run.stdout
         ));
     }
-    if golden.is_empty() || stdout != golden {
-        problems.push(format!(
-            "{name} [{memory}] output differs from expected_output.txt:\n{stdout}"
-        ));
-    }
-    if memory == "arc" && arc_live(&stderr).as_deref() != Some("0") {
-        problems.push(format!("{name} [arc] did not exit leak-free:\n{stderr}"));
+    if memory == "arc" && arc_live(&run.stderr).as_deref() != Some("0") {
+        problems.push(format!("{context} did not exit leak-free:\n{}", run.stderr));
     }
     problems
 }
@@ -149,7 +177,7 @@ fn matrix_problems(suites: &[PathBuf], cache: &Path) -> Vec<String> {
     let lanes: Vec<&[(&Path, &str)]> = jobs.chunk_by(|a, b| a.0 == b.0).collect();
     schedule(&lanes, MATRIX_WORKERS, |lane| {
         lane.iter()
-            .flat_map(|(suite, memory)| failures(suite, memory, cache))
+            .flat_map(|(suite, memory)| failures(suite, memory, cache, SUITE_BUDGET))
             .collect()
     })
 }
@@ -195,6 +223,42 @@ fn every_ported_package_matches_its_cpython_oracle_under_every_memory_backend(
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
     Ok(())
+}
+
+/// Plan 0048: a killed or over-cap suite logs its command, memory backend,
+/// peak RSS and elapsed time, so the runner's own log diagnoses the crash.
+#[test]
+fn a_suite_killed_at_its_budget_logs_command_backend_peak_and_time() -> std::io::Result<()> {
+    let suites = suites();
+    let suite = suites.first().expect("a package suite");
+    let cache = package_cache()?;
+    let over_cap = bounded::Budget {
+        memory_mb: 0,
+        deadline: SUITE_BUDGET.deadline,
+    };
+    let too_slow = bounded::Budget {
+        memory_mb: SUITE_BUDGET.memory_mb,
+        deadline: Duration::ZERO,
+    };
+    for memory in BACKENDS {
+        for (budget, limit) in [(over_cap, "budget 0 MiB"), (too_slow, "0ns)")] {
+            let problems = failures(suite, memory, &cache, budget);
+            let first = problems.first().expect("a killed suite is a failure");
+            let command = format!(
+                "`osprey {} --run --quiet --memory={memory}`",
+                suite.display()
+            );
+            assert!(first.contains(&command), "{first}");
+            assert!(first.contains(&format!("[{memory}]")), "{first}");
+            assert!(first.contains("killed by a signal"), "{first}");
+            assert!(first.contains(", peak "), "{first}");
+            assert!(first.contains(" MiB, "), "{first}");
+            assert!(first.contains("stopped at "), "{first}");
+            assert!(first.contains(limit), "{first}");
+            assert!(first.contains("exited unsuccessfully"), "{first}");
+        }
+    }
+    std::fs::remove_dir_all(cache)
 }
 
 fn package_cache() -> std::io::Result<PathBuf> {

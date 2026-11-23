@@ -14,7 +14,7 @@ tags: [flavors, typescript, express, http, video, tutorials]
 
 The TypeScript flavor is Osprey written in TypeScript syntax: the `osprey` compiler checks it with Osprey's types and effects and builds a native binary, with no Node.js. The film opens on the Express port's comparison bench, run live: the same Express applications, served by Osprey and by Express on Node.js, under the same load. Then it serves the Express README example natively, requests it, runs Express's own web-service example as ported, and changes a reply.
 
-The flavor is in progress. What works today is listed [below](#what-works-today), beside what does not. The contract is [spec 0054](https://github.com/Nimblesite/osprey/blob/main/docs/specs/language/0054-TypeScriptFlavorSyntax.md), and [plan 0061](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0061-typescript-flavor.md) records what is built.
+The flavor is in progress. What works today is listed [below](#what-works-today), beside what does not. The contract is [spec 0054](https://github.com/Nimblesite/osprey/blob/main/docs/specs/language/0054-TypeScriptFlavorSyntax.md).
 
 ## Express on Osprey, measured against Node.js
 

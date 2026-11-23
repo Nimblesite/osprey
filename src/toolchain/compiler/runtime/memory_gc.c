@@ -80,6 +80,8 @@ typedef struct {
 #define GC_PERSISTENT (GC_FINAL | GC_STRING | GC_PINNED | GC_LEAF)
 
 #include "heap_lock.h"
+#include "memory_heap_limit.h"
+#include "run_parent_watch.h"
 
 // heap_lock.h governs mutual exclusion; g_off below governs whether collection
 // may run once a second allocator is seen. The two are orthogonal.
@@ -275,6 +277,7 @@ static void gc_scan_pinned(void) {
 }
 
 static void gc_collect_locked(void) {
+  heap_note_peak(g_bytes);
   g_ms_top = 0;
   gc_scan_roots();
   gc_scan_pinned();
@@ -289,19 +292,7 @@ static void gc_collect_locked(void) {
   gc_sweep();
 }
 
-#ifdef OSP_SYMBOLIC
-// Symbolic runs have one thread, so nothing is ever waited for.
-static const int g_collection_wanted = 0;
-static const size_t g_retry_at = 0;
-static void gc_safepoint(void) {
-  if (gc_may_collect()) {
-    gc_collect_locked();
-  }
-}
-static void gc_wake_safepoint(void) {}
-#else
 #include "memory_gc_safepoint.h"
-#endif
 
 // --- allocation core (g_lock held) -------------------------------------------
 
@@ -322,6 +313,7 @@ static void gc_init_main(void) {
     }
   }
   g_debug = getenv("OSPREY_GC_DEBUG") != NULL;
+  heap_limit_arm();
   g_init = 1;
 }
 
@@ -356,6 +348,9 @@ static void *gc_managed_alloc(size_t size, uint32_t flags) {
   if (g_collection_wanted || (g_bytes > g_thresh && g_bytes >= g_retry_at)) {
     gc_safepoint();
   }
+  if (heap_over_limit(g_bytes, size) && !gc_make_room(size)) {
+    return NULL;
+  }
   void *p = malloc(size ? size : 1);
   if (!p) {
     return NULL;
@@ -374,8 +369,8 @@ static void *gc_managed_alloc(size_t size, uint32_t flags) {
 void *osp_alloc(int64_t size) { return osp_alloc_tagged(size, OSP_MEM_RAW); }
 
 // Link anchor (memory_hooks.h): main calls this so an allocation-free program
-// still extracts this object. The collector arms lazily; nothing to do here.
-void osp_mem_boot(void) {}
+// still extracts this object. The collector arms lazily; only the runner watch starts here.
+void osp_mem_boot(void) { run_parent_watch(); }
 
 // [PORT-STRING-NUL-OWNERSHIP] Length lives in the existing bounded allocation entry.
 void *osp_alloc_tagged(int64_t size, int64_t meta) {

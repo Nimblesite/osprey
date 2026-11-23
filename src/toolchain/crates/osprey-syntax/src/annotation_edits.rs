@@ -61,7 +61,7 @@ pub fn annotation_edits(source: &str, flavor: Flavor) -> Vec<AnnotationEdit> {
         Flavor::Default => default_edits(source),
         Flavor::Ml => crate::ml::annotation_edits(source),
         Flavor::Python => crate::python::annotation_edits(source),
-        // Editor annotation edits for TypeScript are plan 0061 phase E.
+        // TypeScript gets no editor annotation edits.
         Flavor::TypeScript => Vec::new(),
     };
     edits.extend(crate::fragment_ranges::collect(

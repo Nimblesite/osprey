@@ -295,6 +295,7 @@ fn suite_command(
         .arg(file)
         .args(["--run", "--quiet", "--no-warnings"])
         .env(TEST_CACHE_DIR_ENV, std::path::absolute(cache_dir)?);
+    crate::toolchain::ends_with_this_process(&mut command);
     if let Some(memory) = memory {
         let _ = command.arg(format!("--memory={memory}"));
     }

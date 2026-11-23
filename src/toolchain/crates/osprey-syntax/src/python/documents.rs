@@ -94,6 +94,7 @@ impl Lowerer<'_> {
     }
 }
 
+/// Implements [DOC-PYTHON-DOCSTRING-CLEAN].
 /// A docstring as PEP 257 `inspect.cleandoc` reads it: every line after the
 /// first loses the indentation they share, so an example fenced inside an
 /// indented docstring keeps only the indentation its own code carries.

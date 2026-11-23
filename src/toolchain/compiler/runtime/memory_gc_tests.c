@@ -412,6 +412,10 @@ int main(int argc, char **argv) {
     debug_stats_child();
     return 0;
   }
+  if (argc == 3 && strcmp(argv[1], "--ceiling") == 0) {
+    ceiling_child(argv[2]);
+    return 0;
+  }
   CHECK(argc == 1);
   // Floor the collection budget at 1 MiB BEFORE the first allocation so the
   // spike guard exercises the budget with a deterministic knob. gc_init_main
@@ -435,6 +439,7 @@ int main(int argc, char **argv) {
   t_many_rooted_survive();
   t_finalizer_at_sweep();
   t_debug_reports(argv[0]);
+  t_heap_ceiling(argv[0]);
   t_scanned_blocks_are_roots();
   t_threads_collect_together();
   t_parked_thread_stays_a_root();

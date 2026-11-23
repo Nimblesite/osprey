@@ -437,7 +437,7 @@ fn an_undocumented_export_is_located_in_the_file_that_wrote_it() {
         ],
     );
     let input = CompilationInput::load_project(root.to_string_lossy().as_ref()).expect("assembles");
-    let warnings = input.undocumented_exports();
+    let warnings = input.documentation_warnings();
     std::fs::remove_dir_all(&root).expect("cleanup");
     let [warning] = warnings.as_slice() else {
         panic!("one warning expected: {warnings:?}");

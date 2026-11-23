@@ -1,17 +1,18 @@
-//! Undocumented exports as editor warnings. Implements [DOC-EXPORT-REQUIRED].
+//! Undocumented and unexampled exports as editor warnings. Implements
+//! [DOC-EXPORT-REQUIRED] and [DOC-EXPORT-EXAMPLE-REQUIRED].
 
 use lspkit::vfs::PositionEncoding;
 use lspkit_server::Diagnostic;
 use osprey_ast::Program;
 
-/// One warning per undocumented export in this file, read from the file as
+/// One warning per undocumented or unexampled export in this file, read from the file as
 /// written: project assembly flattens modules away.
 pub(crate) fn diagnostics(
     source: &str,
     program: &Program,
     encoding: PositionEncoding,
 ) -> Vec<Diagnostic> {
-    osprey_types::undocumented_exports(program)
+    osprey_types::documentation_warnings(program)
         .iter()
         .filter_map(|export| {
             let position = export.position?;
@@ -41,6 +42,12 @@ mod tests {
     fn an_undocumented_export_is_an_editor_warning_on_its_line() {
         let source = "(** Doubling. *)\nmodule Api\n    export double x = x * 2\n";
         assert_eq!(codes(source), [("undocumented-export".to_owned(), 2)]);
+    }
+
+    #[test]
+    fn a_documented_export_without_an_example_is_an_editor_warning_on_its_line() {
+        let source = "(** Doubling. *)\nmodule Api\n    (** Twice `x`. *)\n    export double x = x * 2\n";
+        assert_eq!(codes(source), [("unexampled-export".to_owned(), 3)]);
     }
 
     #[test]

@@ -1,12 +1,20 @@
 //! A test program's runaway costs the whole machine, so each run sits in its own
-//! process group and the group dies at its memory or time budget.
+//! process group and the group dies at its memory or time budget. Every run
+//! records its peak group RSS and elapsed time, so a killed or over-cap run says
+//! what it was doing (plan 0048).
 use std::io;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-const MEMORY_BUDGET_MB: u64 = 1024;
-const RUN_DEADLINE: Duration = Duration::from_secs(120);
+/// The memory and time a run may use before its process group is killed.
+#[derive(Clone, Copy)]
+pub(crate) struct Budget {
+    pub(crate) memory_mb: u64,
+    pub(crate) deadline: Duration,
+}
+
+const POLL: Duration = Duration::from_millis(50);
 
 pub(crate) struct Bounded {
     pub(crate) stdout: String,
@@ -14,6 +22,25 @@ pub(crate) struct Bounded {
     pub(crate) code: Option<i32>,
     /// Why the group was killed, when it was.
     pub(crate) stopped: Option<String>,
+    pub(crate) peak_mb: u64,
+    pub(crate) elapsed: Duration,
+}
+
+impl Bounded {
+    /// One line naming the run's exit, peak memory and time.
+    pub(crate) fn summary(&self) -> String {
+        let exit = self
+            .code
+            .map_or_else(|| "killed by a signal".to_string(), |c| format!("exit {c}"));
+        let stop = self
+            .stopped
+            .as_deref()
+            .map_or_else(String::new, |why| format!(", {why}"));
+        format!(
+            "{exit}, peak {} MiB, {:.1?}{stop}",
+            self.peak_mb, self.elapsed
+        )
+    }
 }
 
 /// Resident memory of every process in `group`, in MiB.
@@ -29,50 +56,48 @@ fn group_rss_mb(group: u32) -> io::Result<u64> {
     Ok(kib / 1024)
 }
 
-/// Runs `source` as `<name>.osp` with `args`; stderr goes to a file so a chatty
-/// program can't fill a pipe nobody drains while it is being watched.
-pub(crate) fn run_within_budget(
-    name: &str,
-    source: &str,
-    args: &[&str],
-    envs: &[(&str, &str)],
-) -> io::Result<Bounded> {
-    let stem = format!("osprey_bounded_{}_{name}", std::process::id());
-    let path = std::env::temp_dir().join(format!("{stem}.osp"));
+/// Runs `command` in its own process group under `budget`. Both streams go to
+/// files, so a chatty program can't fill a pipe nobody drains while it is watched.
+pub(crate) fn run_command(mut command: Command, stem: &str, budget: Budget) -> io::Result<Bounded> {
+    let out_path = std::env::temp_dir().join(format!("{stem}.stdout"));
     let err_path = std::env::temp_dir().join(format!("{stem}.stderr"));
-    std::fs::write(&path, source)?;
-    let mut child = Command::new(env!("CARGO_BIN_EXE_osprey"))
-        .arg(&path)
-        .args(args)
-        .envs(envs.iter().copied())
-        .stdout(Stdio::piped())
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(std::fs::File::create(&out_path)?)
         .stderr(std::fs::File::create(&err_path)?)
         .process_group(0)
         .spawn()?;
     let started = Instant::now();
-    let stopped = loop {
-        if child.try_wait()?.is_some() {
-            break None;
+    let mut peak_mb = 0;
+    let (status, stopped) = loop {
+        if let Some(status) = child.try_wait()? {
+            break (status, None);
         }
         let rss = group_rss_mb(child.id())?;
-        if rss > MEMORY_BUDGET_MB || started.elapsed() > RUN_DEADLINE {
+        peak_mb = peak_mb.max(rss);
+        if rss > budget.memory_mb || started.elapsed() > budget.deadline {
             let group = format!("-{}", child.id());
             let _ = Command::new("kill").args(["-9", &group]).status()?;
-            break Some(format!(
-                "stopped at {rss} MiB after {:?}",
-                started.elapsed()
-            ));
+            let why = format!(
+                "stopped at {rss} MiB after {:.1?} (budget {} MiB, {:?})",
+                started.elapsed(),
+                budget.memory_mb,
+                budget.deadline
+            );
+            break (child.wait()?, Some(why));
         }
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(POLL);
     };
-    let output = child.wait_with_output()?;
+    let stdout = std::fs::read_to_string(&out_path)?;
     let stderr = std::fs::read_to_string(&err_path)?;
-    std::fs::remove_file(&path)?;
+    std::fs::remove_file(&out_path)?;
     std::fs::remove_file(&err_path)?;
     Ok(Bounded {
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stdout,
         stderr,
-        code: output.status.code(),
+        code: status.code(),
         stopped,
+        peak_mb,
+        elapsed: started.elapsed(),
     })
 }

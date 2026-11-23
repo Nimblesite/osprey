@@ -18,7 +18,7 @@
 //! [TYPE-GENERICS-FN], the function-value contract in
 //! `docs/specs/language/0004-TypeSystem.md` (plan 0002 retired).
 
-use crate::builder::{Codegen, FnSig, ParamSig};
+use crate::builder::{Codegen, FiberSig, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
@@ -109,11 +109,18 @@ fn instantiation_key(name: &str, values: &[Value]) -> String {
 fn slot_spelling(v: &Value) -> String {
     let owner = v.osp_ty.clone().unwrap_or_default();
     let result = v.result_inner.map_or_else(String::new, |i| i.to_string());
+    let fiber = v.fiber_elem.map_or_else(String::new, |e| {
+        format!(
+            "{}{}",
+            e.as_str(),
+            v.fiber_elem_owner.as_deref().unwrap_or_default()
+        )
+    });
     let inferred = v
         .inferred_type
         .as_ref()
         .map_or_else(String::new, crate::types::abi_spelling);
-    format!("{}:{owner}:{result}:{inferred}", v.ty.as_str())
+    format!("{}:{owner}:{result}:{inferred}:{fiber}", v.ty.as_str())
 }
 
 /// The callee's declared signature as the CURRENT call's specialization sees
@@ -304,12 +311,13 @@ fn unresolved(name: &str) -> CodegenError {
 }
 
 /// The parameter slot an argument travels in, keeping its Result layout so a
-/// `Result` argument stays one block rather than an erased word.
+/// `Result` argument stays one block rather than an erased word, and a handle's
+/// element so `await` and `recv` inside the instantiation can unbox it (#340).
 fn param_of(v: &Value) -> ParamSig {
     ParamSig {
         ty: v.ty,
         result_inner: v.result_inner,
-        fiber: None,
+        fiber: FiberSig::carried(v),
         inferred_type: v.inferred_type.clone(),
     }
 }

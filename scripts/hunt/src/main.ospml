@@ -14,7 +14,12 @@ main () = match Inventory::discover ()
 
 listedThen programs = match Inventory::unportable ()
     Error message => print "hunt: cannot read the unportable list: ${message}"
-    Success rows => deliver (Sweep::run (programs, rows))
+    Success rows => checkedThen (programs, rows, Inventory::stale (programs, rows))
+
+// A stale row hides nothing it claims to, so the sweep refuses to run on one (#341).
+checkedThen (programs, rows, stale) = match stale
+    [] => deliver (Sweep::run (programs, rows))
+    _ => print "hunt: ${Inventory::UNPORTABLE} lists programs the hunt does not sweep; delete or fix these rows:\n${join (stale, "\n")}"
 
 deliver outcomes = match Report::write (Report::OUT, outcomes)
     Success bytes => print "hunt: ${Report::OUT} (${toString bytes} bytes): ${Report::tally outcomes}"

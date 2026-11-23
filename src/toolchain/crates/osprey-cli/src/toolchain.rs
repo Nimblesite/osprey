@@ -3,7 +3,8 @@
 //! tool name, a failed exit and a missing program are reported one way.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, ExitStatus};
+use std::time::Duration;
 
 /// The tool to invoke for `env`, defaulting to `default` when unset.
 pub(crate) fn tool(env: &str, default: &str) -> String {
@@ -86,6 +87,59 @@ impl Drop for Scratch {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.path);
     }
+}
+
+/// [RUN-PARENT-DEATH] Names the process whose death ends a run: a compiled
+/// program reads it at start and ends when that process, its parent, is gone.
+pub(crate) const RUN_PARENT: &str = "OSPREY_RUN_PARENT";
+
+/// The longest this process waits before looking at its program and runner again.
+const RUN_POLL_CEILING: Duration = Duration::from_millis(50);
+
+/// Makes the program `command` starts end with this process.
+pub(crate) fn ends_with_this_process(command: &mut Command) {
+    let _ = command.env(RUN_PARENT, std::process::id().to_string());
+}
+
+/// [RUN-PARENT-DEATH] Runs `command` to completion as a program that ends with
+/// this process. When the process that started this one named itself as its
+/// runner, the program is ended as soon as that runner is gone.
+pub(crate) fn run_watched(mut command: Command) -> std::io::Result<ExitStatus> {
+    ends_with_this_process(&mut command);
+    let Some(runner) = named_runner() else {
+        return command.status();
+    };
+    let mut child = command.spawn()?;
+    let mut pause = Duration::from_millis(1);
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(status);
+        }
+        if runner_gone(runner) {
+            child.kill()?;
+            return child.wait();
+        }
+        std::thread::sleep(pause);
+        pause = (pause * 2).min(RUN_POLL_CEILING);
+    }
+}
+
+/// The runner this process ends with: its parent, when the parent named itself.
+fn named_runner() -> Option<u32> {
+    let named = std::env::var(RUN_PARENT).ok()?.parse().ok()?;
+    (!runner_gone(named)).then_some(named)
+}
+
+/// Whether `runner` is no longer the process that started this one.
+#[cfg(unix)]
+fn runner_gone(runner: u32) -> bool {
+    std::os::unix::process::parent_id() != runner
+}
+
+/// No parent is reported here, so no runner is ever watched.
+#[cfg(not(unix))]
+fn runner_gone(_runner: u32) -> bool {
+    true
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@
 
 ## Invariant — [EFFECTS-INV-MULTISHOT-REAL]
 
-Multi-shot (`many`) continuations are built for real: resumed any number of times, with independent branches. No agent may refuse, defer, scope down, stub, simulate (re-dispatch or loops), feature-flag or downgrade them to `once`, even while the compiler support is unfinished. Tests always assert multi-shot behaviour. A test that is red because the support is missing stays red; it is never weakened, skipped or deleted ([COMPILER-RED-FAILS]). Violating this is an egregious defect. See also [EXAMPLE-CLEANARCH-INV-NO-SKIP] in [the Clean Architecture port plan](cleanarch-todo-port.md).
+Multi-shot (`many`) continuations are built for real: resumed any number of times, with independent branches. No agent may refuse, defer, scope down, stub, simulate (re-dispatch or loops), feature-flag or downgrade them to `once`, even while the compiler support is unfinished. Tests always assert multi-shot behaviour. A test that is red because the support is missing stays red; it is never weakened, skipped or deleted ([COMPILER-RED-FAILS]). Violating this is an egregious defect. See also [EXAMPLE-CLEANARCH-INV-NO-SKIP] in [the Clean Architecture todo spec](../specs/applications/CleanArchTodo.md).
 
 ## Invariant — [EFFECTS-INV-MULTISHOT-PORTABLE]
 

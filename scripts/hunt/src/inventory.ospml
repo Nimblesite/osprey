@@ -98,3 +98,7 @@ module Inventory
         found => trim (drop (firstOf found, satAdd (length program, 1)))
 
     firstOf rows = listGet (rows, 0) ?: ""
+
+    (** The rows whose program the hunt does not sweep. A deleted, renamed or
+        never-enumerated program skips nothing, so its row is stale (#341). *)
+    export stale (programs, rows) = filterList (rows, \row => !listContains (programs, segment (row, " ", 0)))

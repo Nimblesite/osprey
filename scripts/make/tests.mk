@@ -186,7 +186,7 @@ C_LIBS_websocket_runtime_tests = -pthread $(OSSL_LIBS)
 # Owns tls_client_runtime.c and file_server_runtime.c: a loopback OpenSSL echo
 # server (18092/18093) and a plain TCP client against the one-file server.
 C_FLAGS_net_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_net_runtime_tests = runtime/net_runtime_tests.c runtime/file_server_tests.c runtime/tls_client_runtime.c runtime/file_server_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_net_runtime_tests = runtime/net_runtime_tests.c runtime/file_server_tests.c runtime/file_server_link_tests.c runtime/tls_client_runtime.c runtime/file_server_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_net_runtime_tests = -pthread $(OSSL_LIBS)
 # Owns media_render_runtime.c: real posix_spawnp calls against fake tools.
 C_SRC_media_render_runtime_tests = runtime/media_render_runtime_tests.c runtime/media_render_runtime.c
@@ -567,6 +567,11 @@ _coverage_check_packages:
 _test_agent:
 	set -o pipefail && $(BIN) src/osprey/examples/agent/test --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 	$(BIN) src/osprey/examples/agent/test-app --run --quiet --no-warnings
+
+.PHONY: _test_cleanarch
+# The Clean Architecture todo port's use cases, multi-shot handlers included, under GC and ARC. [EXAMPLE-CLEANARCH-INV-TESTS]
+_test_cleanarch:
+	for memory in gc arc; do $(BIN) test src/osprey/examples/cleanarch_todo/test --memory=$$memory || exit 1; done
 
 .PHONY: _test_python_app_ports
 

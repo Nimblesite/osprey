@@ -66,7 +66,22 @@ test ("reasonFor answers a listed program's reason and nothing for others", \() 
     expect (Inventory::reasonFor ("a/b", ROWS), "")
     expect (Inventory::reasonFor ("a/b.osp", []), "")
     expect (length (Inventory::unportable () ?: []) > 50, true)
-    expect (Inventory::reasonFor ("src/osprey/examples/llms/gpt2/model/backends.osp", Inventory::unportable () ?: []), "a module of the gpt2 example, not a program of its own"))
+    expect (Inventory::reasonFor ("src/osprey/examples/tui/api_browser.osp", Inventory::unportable () ?: []), "HTTP needs sockets: `http_create_client` is outside the module"))
+
+BROWSER = "src/osprey/examples/tui/api_browser.osp"
+BOGUS = "src/osprey/examples/no_such_program.osp a reason that skips nothing"
+
+test ("stale answers every unportable row whose program the hunt does not sweep (#341)", \() =>
+    expect (join (Inventory::stale (["a/b.osp", "a/c"], ROWS), "|"), "a/b.ospml other")
+    expect (join (Inventory::stale ([], ROWS), "|"), join (ROWS, "|"))
+    expect (length (Inventory::stale (["a/b.osp", "a/b.ospml", "a/c"], ROWS)), 0)
+    expect (length (Inventory::stale (["a/b.osp"], [])), 0)
+    expect (join (Inventory::stale (["a/b"], ["a/b.osp x"]), "|"), "a/b.osp x")
+    corpus = Inventory::discover () ?: []
+    rows = Inventory::unportable () ?: []
+    expect (join (Inventory::stale (corpus, rows), "\n"), "")
+    expect (listContains (Inventory::stale (filterList (corpus, \p => p != BROWSER), rows), "${BROWSER} ${Inventory::reasonFor (BROWSER, rows)}"), true)
+    expect (join (Inventory::stale (corpus, listAppend (rows, BOGUS)), "|"), BOGUS))
 
 CLEAN = "{\"explored\":{\"paths\":4,\"completed\":4},\"findings\":[]}"
 ABORT = "{\"class\":\"abort\",\"file\":\"crash.osp\",\"line\":4,\"message\":\"abort <9>\"}"

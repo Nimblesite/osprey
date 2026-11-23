@@ -73,5 +73,7 @@ void t_unregistered_thread_exit_is_a_no_op(void);
 void t_multithread_disables_collection(void);
 void debug_stats_child(void);
 void t_debug_reports(const char *self);
+void ceiling_child(const char *mode);
+void t_heap_ceiling(const char *self);
 
 #endif

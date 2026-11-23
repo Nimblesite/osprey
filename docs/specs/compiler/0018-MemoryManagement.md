@@ -141,6 +141,30 @@ finalizer registration, multithread notification, and collection. Backends
 that do not use a hook implement it as a no-op. This ABI keeps emitted IR
 independent of the selected native backend.
 
+### Heap Ceiling [MEM-HEAP-CEILING]
+
+The managed heap of a native program has a ceiling under both reclaiming backends. It is `OSPREY_HEAP_MAX_MB` mebibytes when that variable holds a positive number, and half of the machine's physical memory otherwise. Where the host does not report its physical memory (Windows and WebAssembly today) there is no ceiling unless the variable sets one.
+
+The ceiling counts what the heap holds, not what the program has allocated in total:
+
+- **GC** counts the bytes of every tracked block. Before a request would pass the ceiling the collector runs, so garbage is reclaimed first. While other threads are slow to park it asks again, for about a second in total.
+- **ARC** counts the bytes it holds from the system allocator, which includes dead blocks parked for reuse. Before a request would pass the ceiling every parked block is returned to the system.
+
+A request that still does not fit has two outcomes:
+
+- A single block larger than the whole ceiling is refused. The allocator returns no block, as it does for any size the system cannot serve, and the runtime operation that asked reports its own typed error.
+- Otherwise the heap is full of blocks still in use. The runtime writes one line to standard error and ends the process with status 71, after flushing standard output:
+
+  ```text
+  osprey: heap limit exceeded: backend=gc limit_bytes=67108864 peak_bytes=67102720 request_bytes=8192
+  ```
+
+  `peak_bytes` is the most the heap ever held and never exceeds `limit_bytes`.
+
+Ending the process is a runtime quarantine, not a language operation: compiled code allocates at sites that have no failure branch, so a refusal there would be a store through a null pointer, and growing without a bound takes memory from every other process on the machine. Making exhaustion a value the program can handle needs allocation to be an effect, which is not planned.
+
+Symbolic runs have no ceiling; the engine bounds their memory. Checked by `t_heap_ceiling` in `memory_gc_thread_tests.c` and `memory_arc_tests.c`, and by `a_heap_that_only_grows_ends_at_its_ceiling` in `src/toolchain/crates/osprey-cli/tests/fiber_gc_memory.rs`.
+
 ### Conservative Tracing GC [GC-TRACE-CONSERVATIVE]
 
 The native GC records managed allocation base addresses and conservatively

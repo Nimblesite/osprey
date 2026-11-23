@@ -13,8 +13,8 @@ use osprey_syntax::{parse_program_with_flavor, Flavor};
 /// Parse `src` under `flavor`, failing the test if the snippet does not parse:
 /// a program that never reaches the checker (or analyzer) must not be scored
 /// as "no diagnostics".
-/// A per-flavor fixture table has no TypeScript column until
-/// [FLAVOR-TS-EFFECTS] lands (plan 0061 phase D); reaching one is a test bug.
+/// A per-flavor fixture table has no TypeScript column yet
+/// ([FLAVOR-TS-EFFECTS]); reaching one is a test bug.
 pub(crate) fn no_typescript_fixture() -> ! {
     panic!("this fixture has no TypeScript-flavor spelling yet ([FLAVOR-TS-EFFECTS])")
 }
