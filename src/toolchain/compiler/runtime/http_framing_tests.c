@@ -123,7 +123,7 @@ static void check_interim_heads_are_checked(void) {
 // Framing that is complete needs no close, and framing that isn't stays refused.
 static void check_reads_that_never_saw_the_close(void) {
   int64_t patient = shared_origin_client;
-  shared_origin_client = http_create_client((char *)(uintptr_t) "http://127.0.0.1:18088", 150);
+  shared_origin_client = http_create_client(TEST_URL("http", ORIGIN_PORT), 150);
   assert(shared_origin_client > 0);
   origin_holds_connections = true;
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\n\r\nhalf a bo", BODY_CUT);

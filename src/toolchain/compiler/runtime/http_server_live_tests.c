@@ -19,8 +19,8 @@
 // [HTTP-SERVER].
 // ---------------------------------------------------------------------------
 
-#define SERVER_TEST_PORT 18089
-#define KEEP_ALIVE_TEST_PORT 18094
+#define SERVER_TEST_PORT test_port(4)
+#define KEEP_ALIVE_TEST_PORT test_port(9)
 
 static int64_t g_self_stop_server = -1;
 

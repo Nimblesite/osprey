@@ -9,11 +9,11 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
 - [x] Fiber spawn under allocation failure: an empty handler stack needs no snapshot, and a snapshot that cannot be allocated refuses the spawn (-2) instead of aborting. Pinned by `test_spawn_with_handlers_survives_every_failed_allocation` (a61b34502).
 - [x] GPUI self-test keys reach the canvas beside a docked aside: `tree::inside` visits an aside's columns in drawing order (88dc8d98a). A context menu around a scene passes its free space down (a50913331).
 - [x] The deleted keyboard dock's steps are gone from Prism's `smoke.jsonl` and `self-test.json`, and its goldens are deleted (88dc8d98a).
-- [ ] **Fixed loopback ports ([CI-TEST-PORTS]), runtime finding 1 and more.** `make -j2 _test_c_runtime` runs a suite beside other suites and beside its own ASan twin, and they all bind the same fixed ports. Those are 18085–18101 (including `ORIGIN_PORT` in `http_runtime_tests.h` and `WS_LIVE_PORT` and `WS_DEAD_PORT` in `websocket_runtime_tests.c`), plus listeners on 8080, 8082, 8083 and 19001.
+- [x] **Fixed loopback ports ([CI-TEST-PORTS]), runtime finding 1 and more.** `make -j2 _test_c_runtime` runs a suite beside other suites and beside its own ASan twin, and they all bind the same fixed ports. Those are 18085–18101 (including `ORIGIN_PORT` in `http_runtime_tests.h` and `WS_LIVE_PORT` and `WS_DEAD_PORT` in `websocket_runtime_tests.c`), plus listeners on 8080, 8082, 8083 and 19001.
   - Fix: `test_port(offset)` in `test_loopback.h` returns a port from a block of 24 chosen once per process. It starts at a pid-derived block from 20000 and takes the first block whose ports are all bindable.
   - Keep the base in `OSP_TEST_PORT_BASE` with `setenv`. A per-translation-unit `static` let the origin and its client pick different blocks, and `test_client_chunked_response` hung in `origin_stop`.
   - Every fixed port becomes a unique offset. URLs are built with `snprintf`.
-  - Status: written on 2026-11-23, then reverted because it was not verified. Its last parallel run timed out in the ASan http suite at 500 s, and whether that was load or a hang was not established. Run `sample <pid>` on any stall before landing it.
+  - Status: landed on 2026-11-23. The block is chosen in a constructor before main, so no thread or forked child picks its own. Verified by `make -j4 _test_c_runtime` (coverage and ASan twins side by side) on Ubuntu 26.04 with GCC 15.2, green, and the http, net and websocket suites in parallel on macOS.
 - [ ] Runtime findings 2–11 and the UI findings below, in the order listed. Each fix replaces a sleep or a deadline with a signal the test waits on:
   - wall-clock bounds in `http_read_tests.c`
   - the dribble margin

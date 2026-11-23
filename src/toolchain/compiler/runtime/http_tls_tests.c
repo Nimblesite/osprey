@@ -20,7 +20,7 @@
 // chain, so peer verification is asserted end to end [HTTP-STATUS-CLIENT].
 // ---------------------------------------------------------------------------
 
-#define TLS_PORT 18090
+#define TLS_PORT test_port(5)
 
 // A self-signed root (basicConstraints CA:TRUE) when issuer is NULL, otherwise
 // a leaf signed by that issuer. `san` is an X509V3 value such as
@@ -290,7 +290,7 @@ static int64_t tls_bounded_exchange(EVP_PKEY *key, X509 *leaf, const char *reply
   tls_origin_start(&origin, leaf, key, reply);
   origin.hold_open = hold_open; // read only once the request below has arrived
   origin.drip_us = drip_us;
-  int64_t client_id = http_create_client((char *)(uintptr_t) "https://127.0.0.1:18090", timeout_ms);
+  int64_t client_id = http_create_client(TEST_URL("https", TLS_PORT), timeout_ms);
   assert(client_id > 0);
   return tls_fetch(&origin, client_id);
 }

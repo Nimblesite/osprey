@@ -35,7 +35,7 @@ static void expect_bounded_failure(int64_t code, uint64_t started, int64_t timeo
 
 static void use_client_with_timeout(int64_t timeout_ms) {
   shared_origin_client =
-      http_create_client((char *)(uintptr_t) "http://127.0.0.1:18088", timeout_ms);
+      http_create_client(TEST_URL("http", ORIGIN_PORT), timeout_ms);
   assert(shared_origin_client > 0);
 }
 
@@ -249,7 +249,7 @@ static void check_huge_timeout(void) {
   ScriptedOrigin origin;
   origin_start(&origin, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
   origin.reply_delay_us = 100000;
-  int64_t client = http_create_client((char *)(uintptr_t) "http://127.0.0.1:18088",
+  int64_t client = http_create_client(TEST_URL("http", ORIGIN_PORT),
                                       ((int64_t)1 << 32) + 1);
   assert(client > 0);
   assert(http_get(client, (char *)(uintptr_t) "/", (char *)(uintptr_t) "") == 200);
@@ -262,7 +262,7 @@ static void check_status_only_builtins(void) {
   ScriptedOrigin origin;
   origin_start(&origin, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
   origin.hold_open = true;
-  int64_t client = http_create_client((char *)(uintptr_t) "http://127.0.0.1:18088", 20000);
+  int64_t client = http_create_client(TEST_URL("http", ORIGIN_PORT), 20000);
   uint64_t started = osp_monotonic_ms();
   assert(http_get(client, (char *)(uintptr_t) "/", (char *)(uintptr_t) "") == 200);
   assert(elapsed_ms_since(started) < 1500);
@@ -423,7 +423,7 @@ static void check_handshake_bound(void) {
   origin_start_bytes(&origin, hello, sizeof hello);
   origin.raw_request = true;
   origin.drip_us = BOUND_DRIP_US;
-  int64_t client = http_create_client((char *)(uintptr_t) "https://127.0.0.1:18088", BOUND_TIMEOUT_MS);
+  int64_t client = http_create_client(TEST_URL("https", ORIGIN_PORT), BOUND_TIMEOUT_MS);
   assert(client > 0);
   uint64_t started = osp_monotonic_ms();
   int64_t code = http_get_response(client, (char *)(uintptr_t) "/x", (char *)(uintptr_t) "");
@@ -447,7 +447,7 @@ static void check_send_bound(void) {
   origin_start(&origin, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
   origin.trickle_bytes = TRICKLE_BYTES;
   origin.trickle_us = TRICKLE_US;
-  int64_t client = http_create_client((char *)(uintptr_t) "http://127.0.0.1:18088", BOUND_TIMEOUT_MS);
+  int64_t client = http_create_client(TEST_URL("http", ORIGIN_PORT), BOUND_TIMEOUT_MS);
   assert(client > 0);
   long live = test_alloc_live();
   uint64_t started = osp_monotonic_ms();

@@ -21,9 +21,10 @@ int64_t websocket_send(int64_t ws_id, char *message);
 int64_t websocket_close(int64_t ws_id);
 void websocket_keep_alive(void);
 
+#define WS_LIVE_PORT test_port(1)
+#define WS_DEAD_PORT test_port(2) // accepts, then closes without a handshake response
+
 enum {
-  WS_LIVE_PORT = 18086,
-  WS_DEAD_PORT = 18087, // accepts, then closes without a handshake response
   WS_TRIES = 100,
   WS_POLL_US = 20000,
   WS_IO_TIMEOUT_S = 5

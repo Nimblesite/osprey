@@ -4,6 +4,7 @@
 #include "memory_hooks.h"
 #include "string_runtime.h"
 #include "http_shared.h"
+#include "test_loopback.h"
 
 // Shared declarations for the HTTP runtime suite TUs (http_runtime_tests.c,
 // http_origin_tests.c, http_tls_tests.c, http_server_live_tests.c), which link
@@ -45,7 +46,7 @@ void server_test_exchange(int port, const char *request, char *reply,
 
 // A raw TCP origin answering with exact bytes, NULs included, defined in
 // http_origin_tests.c.
-#define ORIGIN_PORT 18088
+#define ORIGIN_PORT test_port(3)
 
 typedef struct {
   int listen_fd;

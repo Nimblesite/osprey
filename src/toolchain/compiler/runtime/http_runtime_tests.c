@@ -11,7 +11,7 @@
 #include "http_runtime_tests.h"
 
 // Port burned by test_server_handle_exhaustion (see http_server_live_tests.c).
-#define SERVER_TEST_PORT 18089
+#define SERVER_TEST_PORT test_port(4)
 
 // Creates a loopback server on `port` and asserts the table took it.
 static int64_t create_test_server(int64_t port) {
@@ -80,7 +80,7 @@ void test_http_create_server(void) {
   check_http_creation_allocation_failures();
 
   // Test valid server creation
-  int64_t server_id = create_test_server(8080);
+  int64_t server_id = create_test_server(test_port(17));
   printf("✅ Created server with ID: %" PRId64 "\n", server_id);
 
   // Test invalid port
@@ -102,7 +102,7 @@ void test_http_server_lifecycle(void) {
   printf("Testing HTTP server lifecycle...\n");
 
   // Create server
-  int64_t server_id = create_test_server(8082);
+  int64_t server_id = create_test_server(test_port(18));
   printf("✅ Server created: %" PRId64 "\n", server_id);
 
   // Start listening
@@ -220,7 +220,7 @@ static HttpResponse *live_handler(char *method, char *path, char *headers,
   return live_response(200, "X-Test: yes\r\n", "pong");
 }
 
-#define LIVE_PORT 18085
+#define LIVE_PORT test_port(0)
 #define LIVE_TRIES 50
 
 // Cross-TU forwarders for the allocation injector: test_alloc.h's arming
@@ -269,7 +269,7 @@ static HttpResponse *post_handler(char *method, char *path, char *headers,
   return live_response(201, "X-Echo: posted\r\n", "created");
 }
 
-#define POST_PORT 18091
+#define POST_PORT test_port(6)
 
 void test_post_response_loopback(void) {
   printf("Testing http_post_response loopback...\n");
