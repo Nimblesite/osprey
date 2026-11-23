@@ -17,17 +17,20 @@ impl Checker {
     /// constructors; a known union/`Result` needs every variant — unless a
     /// catch-all arm is present.
     pub(super) fn check_exhaustive(&mut self, disc: &Type, arms: &[MatchArm]) {
-        if arms.iter().any(|a| self.is_catch_all(&a.pattern)) {
+        let dp = self.ctx.apply(disc);
+        if arms
+            .iter()
+            .any(|a| self.is_catch_all(&a.pattern, dp.is_named(names::ANY)))
+        {
             return;
         }
-        let dp = self.ctx.apply(disc);
         match &dp {
             t if t.is_named(names::BOOL) => self.check_bool_exhaustive(arms),
             // An erased value's row is not known until run time, so no set of
             // structural arms can cover it ([TYPE-ANY], [TYPE-MATCH-EXHAUSTIVE]).
-            t if t.is_named(names::ANY) => self.errors.push(TypeError::new(
-                "a match over `any` is never exhaustive: add a catch-all arm",
-            )),
+            t if t.is_named(names::ANY) => {
+                self.errors.push(TypeError::new(super::ERASED_CATCH_ALL));
+            }
             Type::Con { name, .. } if self.union_variants.contains_key(name) => {
                 let all = self.union_variants.get(name).cloned().unwrap_or_default();
                 let covered: HashSet<String> = arms
@@ -129,9 +132,10 @@ impl Checker {
     /// so it is not flagged non-exhaustive), or a genuine variable binding. A
     /// capitalised bare name is a (possibly mis-spelled) constructor attempt — not
     /// a catch-all — so the missing/unknown-variant path reports it.
-    fn is_catch_all(&self, pattern: &Pattern) -> bool {
+    fn is_catch_all(&self, pattern: &Pattern, erased: bool) -> bool {
         match pattern {
-            Pattern::Wildcard | Pattern::TypeAnnotated { .. } => true,
+            Pattern::Wildcard => true,
+            Pattern::TypeAnnotated { .. } => !erased,
             Pattern::Binding(name) => self.is_variable_binding(name),
             _ => false,
         }

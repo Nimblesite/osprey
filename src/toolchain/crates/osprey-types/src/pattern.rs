@@ -26,6 +26,8 @@ mod tests_constructors;
 mod tests_structural;
 mod usefulness;
 
+const ERASED_CATCH_ALL: &str = "a match over `any` is never exhaustive: add a catch-all arm";
+
 fn is_result(t: &Type) -> bool {
     matches!(t, Type::Con { name, .. } if name == names::RESULT)
 }
@@ -54,7 +56,8 @@ impl Checker {
             .collect::<Vec<_>>();
         let result = self.match_result(result, &bodies);
         if arms.iter().any(|arm| usefulness::nested(&arm.pattern)) {
-            self.check_nested_match(arms);
+            let erased = self.ctx.expose(&disc).is_named(names::ANY);
+            self.check_nested_match(arms, erased);
         } else {
             self.check_exhaustive(&disc, arms);
             self.check_redundant_arms(arms, &disc);
