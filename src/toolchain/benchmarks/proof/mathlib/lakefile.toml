@@ -12,3 +12,10 @@ rev = "v4.25.0"
 name = "lean4export"
 git = "https://github.com/leanprover/lean4export"
 rev = "cfefafacc917b2d14c5f9bb092ed337f71317a4a"
+
+# The exhaustive manifest generator, compiled: interpreted, it walks a small
+# closure for minutes ([PROOF-COMPLETION-MATHLIB]).
+[[lean_exe]]
+name = "manifest"
+root = "Manifest"
+supportInterpreter = true

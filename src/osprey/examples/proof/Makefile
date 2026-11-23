@@ -8,7 +8,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: proof math
+.PHONY: proof math mathlib-manifest
 
 ## math: Math to code against Lean (spec MATH-CODE, needs Lean 4.25.0). Every tracked
 ##       math source is accepted by the pinned Lean, and Lean computes the same bits
@@ -18,6 +18,14 @@ include Makefile
 math: build
 	python3 scripts/math/math-oracle.py --compiler $(BIN)
 
+
+## mathlib-manifest: The exhaustive manifest of pinned Mathlib (tag v4.25.0, plan 0041 M5) under
+##                   target/proof/mathlib: every module with its imports, every declaration it
+##                   reaches with kind, hashes, direct dependencies and assumed axioms, and every
+##                   source and licence with its sha256. Expect `mathlib 1ccd71f8...`, the totals
+##                   line `{"declarations":655176,...,"modules":9347,"root":"Mathlib"}` and both sha256s.
+mathlib-manifest:
+	bash scripts/proof/mathlib-manifest.sh
 
 ## proof: Proof CI locally (plan 0041). Fresh Lean exports must be byte-identical
 ##        (Lean 4.25.0); recorder (18) and corpus/staging (41) regressions pass;
