@@ -352,4 +352,23 @@ fn main() = {
 "#,
         "total=12 lists=10,20|10,70|60,20|60,70 kept=20402 walked=done+done+done+done log=v7 v8 v0 v0 v8 v0 \n",
     ),
+    (
+        // A capturing function called with named arguments keeps their names
+        // once the call is split, so each branch binds the same parameters.
+        "a capturing call with named arguments keeps them across the split",
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+fn ask(seed, scale) = satMul(perform Choice.pick(seed), scale)
+fn main() = {
+    let all = {
+        handle Choice {
+            pick bound => satAdd(resume(bound), resume(7))
+        }
+        ask(scale: 10, seed: 2)
+    }
+    print("all=${all}")
+}
+"#,
+        "all=90\n",
+    ),
 ];
