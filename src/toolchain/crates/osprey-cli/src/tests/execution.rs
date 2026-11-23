@@ -45,6 +45,27 @@ fn link_args_selects_gc_archive_and_validates_backend() {
     );
     assert!(!arc.iter().any(|a| a.contains("_gc.a")), "{arc:?}");
     assert!(!gc.iter().any(|a| a.contains("_arc.a")), "{gc:?}");
+    // [MEM-OWNERSHIP-STATIC] Ownership links its own runtime, never ARC's.
+    let owned = link_args("call void @osprey_list_empty()", "", "ownership");
+    assert!(
+        owned.iter().any(|a| a.contains("_ownership.a")) || owned.is_empty(),
+        "ownership backend must select a *_ownership archive when one is present: {owned:?}"
+    );
+    assert!(
+        !owned
+            .iter()
+            .any(|a| a.contains("_arc.a") || a.contains("_gc.a")),
+        "{owned:?}"
+    );
+    let names =
+        ["libfiber_runtime.a", "libhttp_runtime.a"].map(|base| runtime_name(base, "ownership"));
+    assert_eq!(
+        names,
+        [
+            "libfiber_runtime_ownership.a",
+            "libhttp_runtime_ownership.a"
+        ]
+    );
     // Unmanaged execution requires the explicit none option.
     assert_eq!(parse_memory("gc").as_deref(), Ok("gc"));
     assert_eq!(parse_memory("none").as_deref(), Ok("none"));

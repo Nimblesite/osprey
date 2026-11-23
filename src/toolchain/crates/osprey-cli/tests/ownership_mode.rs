@@ -11,7 +11,11 @@ use repo_root::repo_root;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-const CLEAN_EXIT: &str = "[osp-arc] exit: 0 live objects, ";
+/// The exit report of the ownership runtime, which is not ARC's: it keeps no
+/// reference counts and frees each value at its one release.
+const CLEAN_EXIT: &str = "[osp-ownership] exit: 0 live objects, ";
+/// No block was handed a second reference at run time.
+const NONE_SHARED: &str = "[osp-ownership]   shared: 0 blocks kept to exit";
 /// Programs every value of which has one provable owner.
 const ACCEPTED: &str = "src/osprey/tests/regressions/ownership";
 /// Programs the collector runs and ownership refuses, each beside the exact
@@ -22,7 +26,7 @@ fn osprey(program: &Path, arguments: &[&str]) -> std::io::Result<Output> {
     Command::new(env!("CARGO_BIN_EXE_osprey"))
         .arg(program)
         .args(arguments)
-        .env("OSPREY_ARC_DEBUG", "1")
+        .env("OSPREY_OWNERSHIP_DEBUG", "1")
         // Freed memory is overwritten, so reading a freed value shows.
         .env("MallocScribble", "1")
         .output()
@@ -55,6 +59,14 @@ fn assert_accepted(program: &Path) -> std::io::Result<()> {
     assert_eq!(text(&collected.stdout), golden, "{name} under gc");
     assert_eq!(text(&owned.stdout), golden, "{name} under ownership");
     assert!(stderr.contains(CLEAN_EXIT), "{name} left blocks: {stderr}");
+    assert!(
+        stderr.contains(NONE_SHARED),
+        "{name} shared blocks: {stderr}"
+    );
+    assert!(
+        !stderr.contains("[osp-arc]"),
+        "{name} linked the ARC runtime: {stderr}"
+    );
     Ok(())
 }
 

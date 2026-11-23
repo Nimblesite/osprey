@@ -88,7 +88,7 @@ PROF_T = -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-st
 # One row per test binary. C_SRC_<name> lists sources relative to src/toolchain/compiler/,
 # C_FLAGS_<name> extra compile flags, C_LIBS_<name> trailing libraries, and
 # C_PROFILE_<name> optionally replaces the default $(T) flag core.
-C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
+C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_ownership_tests memory_gc_tests \
   host_import_gc_tests host_import_arc_tests \
   memory_pool_tests memory_golden_tests gpu_runtime_tests gpu_shader_tests gpu_float_tests gpu_opencl_tests gpu_selection_tests gpu_no_device_tests \
   list_tests map_tests string_runtime_tests float_spelling_portable_tests json_runtime_tests \
@@ -105,6 +105,8 @@ C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc_layout_te
 # to its ABI out of line so gcov measures the entry points used by programs.
 C_FLAGS_memory_arc_tests = -fno-inline
 C_LIBS_memory_arc_tests = -pthread
+C_SRC_memory_ownership_tests = runtime/memory_ownership_tests.c runtime/memory_ownership.c
+C_LIBS_memory_ownership_tests = -pthread
 C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc_page_tests.c runtime/memory_gc_thread_tests.c runtime/memory_gc.c
 C_SRC_host_import_gc_tests = runtime/host_import_tests.c runtime/native_bridge.c runtime/native_bridge_lifecycle.c runtime/native_scene.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_gc.c
 C_SRC_host_import_arc_tests = $(filter-out runtime/memory_gc.c,$(C_SRC_host_import_gc_tests)) runtime/memory_arc.c

@@ -61,6 +61,7 @@ pub(crate) fn runtime_name(base: &str, memory: &str) -> String {
     let suffix = match memory {
         "gc" => "_gc",
         "arc" => "_arc",
+        crate::invocation::OWNERSHIP => "_ownership",
         _ => "",
     };
     format!("{}{suffix}.a", base.trim_end_matches(".a"))

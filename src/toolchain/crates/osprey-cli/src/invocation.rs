@@ -298,7 +298,7 @@ fn parse_named_value(cli: &mut Cli, flag: &str, memory_given: &mut bool) -> Resu
         Some(("--debug-out", value)) => crate::debug_options::set_output(cli, value, true)?,
         Some(("--flavor", value)) => cli.flavor = Some(parse_flavor(value)?),
         Some(("--memory", value)) => {
-            cli.memory = linked_backend(parse_memory(value)?);
+            cli.memory = parse_memory(value)?;
             *memory_given = true;
         }
         Some(("--target", value)) => cli.target = parse_target(value)?,
@@ -370,14 +370,15 @@ pub(super) fn parse_memory(value: &str) -> Result<String, String> {
 /// The backend `--memory=ownership` selects.
 pub(crate) const OWNERSHIP: &str = "ownership";
 
-/// The runtime a backend links. A program `ownership` accepts counts no
-/// reference, so the reference-counting runtime frees each value at its one
-/// release [MEM-OWNERSHIP-STATIC].
-fn linked_backend(memory: String) -> String {
-    if memory == OWNERSHIP {
-        "arc".into()
-    } else {
-        memory
+/// The environment variable that arms a tracked-heap backend's exit report,
+/// and the prefix of the report's totals line: ARC counts references
+/// [GC-ARC-PERCEUS]; `ownership` links its own runtime, which frees each value
+/// at its one release and counts nothing [MEM-OWNERSHIP-STATIC].
+pub(crate) fn exit_audit(memory: &str) -> Option<(&'static str, &'static str)> {
+    match memory {
+        "arc" => Some(("OSPREY_ARC_DEBUG", "[osp-arc] exit: ")),
+        OWNERSHIP => Some(("OSPREY_OWNERSHIP_DEBUG", "[osp-ownership] exit: ")),
+        _ => None,
     }
 }
 

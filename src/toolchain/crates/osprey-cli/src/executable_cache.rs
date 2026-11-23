@@ -126,13 +126,9 @@ fn compiler_path(compiler: &str) -> Option<PathBuf> {
 }
 
 pub(super) fn hash_runtime_identity<H: std::hash::Hasher>(memory: &str, state: &mut H) {
-    let suffix = match memory {
-        "gc" => "_gc",
-        "arc" => "_arc",
-        _ => "",
-    };
     for prefix in ["libfiber_runtime", "libhttp_runtime"] {
-        let runtime = find_runtime_lib(&format!("{prefix}{suffix}.a")).map(PathBuf::from);
+        let name = crate::linking::runtime_name(prefix, memory);
+        let runtime = find_runtime_lib(&name).map(PathBuf::from);
         hash_file_identity(runtime.as_deref(), state);
     }
 }

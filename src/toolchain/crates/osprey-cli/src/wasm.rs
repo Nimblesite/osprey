@@ -38,6 +38,9 @@ const RUNTIME_LIB_NONE: &str = "libosprey_runtime_wasm.a";
 /// managed allocator and the ARC ownership shims. It is the wasm32 default, so
 /// this is the archive a plain `--target=wasm32` build takes. [WASM-TARGET-MEMORY]
 const RUNTIME_LIB_ARC: &str = "libosprey_runtime_wasm_arc.a";
+/// The ownership twin `--memory=ownership` links: the same units over a heap that
+/// frees each value at its one release and counts nothing [MEM-OWNERSHIP-STATIC].
+const RUNTIME_LIB_OWNERSHIP: &str = "libosprey_runtime_wasm_ownership.a";
 /// The managed backend a wasm32 build links when the user left `--memory` off.
 const DEFAULT_MEMORY: &str = "arc";
 /// Candidate multiarch lib subdir names inside a WASI sysroot, newest first.
@@ -129,10 +132,10 @@ pub(crate) fn build_with_memory(
 
 /// The runtime archive a memory backend links. [WASM-TARGET-MEMORY]
 fn runtime_lib(memory: &str) -> &'static str {
-    if memory == "arc" {
-        RUNTIME_LIB_ARC
-    } else {
-        RUNTIME_LIB_NONE
+    match memory {
+        "arc" => RUNTIME_LIB_ARC,
+        crate::invocation::OWNERSHIP => RUNTIME_LIB_OWNERSHIP,
+        _ => RUNTIME_LIB_NONE,
     }
 }
 
