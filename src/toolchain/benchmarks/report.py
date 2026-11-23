@@ -28,17 +28,18 @@ from typing import Callable, Optional
 
 from merge_results import TIMING, atomic_write, valid_timing
 
-ORDER: list[str] = ["osprey-arc", "osprey-gc", "rust", "rust-checked", "c", "csharp",
+ORDER: list[str] = ["osprey-arc", "osprey-gc", "osprey-ownership", "rust", "rust-checked", "c", "csharp",
                     "dart", "typescript", "codon", "ocaml", "haskell", "osprey-wasm", "rust-wasm", "c-wasm"]
 LABEL: dict[str, str] = {"osprey-arc": "Osprey (ARC)",
                          "osprey-gc": "Osprey (GC)",
+                         "osprey-ownership": "Osprey (ownership)",
                          "rust": "Rust", "rust-checked": "Rust (checked)", "c": "C",
                          "csharp": "C# (AOT)", "dart": "Dart (AOT)", "typescript": "TypeScript",
                          "codon": "Codon",
                          "ocaml": "OCaml", "haskell": "Haskell",
                          "osprey-wasm": "Osprey (wasm)", "rust-wasm": "Rust (wasm)",
                          "c-wasm": "C (wasm)"}
-OSPREY_COLUMNS = ("osprey-arc", "osprey-gc", "osprey-wasm")
+OSPREY_COLUMNS = ("osprey-arc", "osprey-gc", "osprey-ownership", "osprey-wasm")
 REPO = Path(__file__).resolve().parent.parent.parent.parent
 
 Cell = dict[str, object]
