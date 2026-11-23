@@ -65,18 +65,19 @@ miniTokens () = toGpu ([3, 1])
 noBias () = floats ([0.0, 0.0, 0.0, 0.0, 0.0])
 (** Every block parameter in GPT-2's checkpoint order, unwrapped once per case. *)
 blockParams (grid0, grid3, grid4, grid8, grid9, grid10) =
-    andThen(param(0, grid0),
-        \ln1gain => andThen(param(1, grid0),
-        \ln1bias => andThen(param(2, grid3),
-        \qkvWeight => andThen(param(3, grid4),
-        \qkvBias => andThen(param(4, grid8),
-        \projWeight => andThen(param(5, grid0),
-        \projBias => andThen(param(6, grid0),
-        \ln2gain => andThen(param(7, grid0),
-        \ln2bias => andThen(param(8, grid9),
-        \fcWeight => andThen(param(9, grid10),
-        \fcBias => andThen(param(10, grid9),
-        \outWeight => andThen(param(11, grid0), \outBias => Success(value = { ln1gain = ln1gain, ln1bias = ln1bias, qkvWeight = qkvWeight, qkvBias = qkvBias, projWeight = projWeight, projBias = projBias, ln2gain = ln2gain, ln2bias = ln2bias, fcWeight = fcWeight, fcBias = fcBias, outWeight = outWeight, outBias = outBias })))))))))))))
+    use ln1gain <- andThen (param(0, grid0))
+    use ln1bias <- andThen (param(1, grid0))
+    use qkvWeight <- andThen (param(2, grid3))
+    use qkvBias <- andThen (param(3, grid4))
+    use projWeight <- andThen (param(4, grid8))
+    use projBias <- andThen (param(5, grid0))
+    use ln2gain <- andThen (param(6, grid0))
+    use ln2bias <- andThen (param(7, grid0))
+    use fcWeight <- andThen (param(8, grid9))
+    use fcBias <- andThen (param(9, grid10))
+    use outWeight <- andThen (param(10, grid9))
+    use outBias <- andThen (param(11, grid0))
+    Success(value = { ln1gain = ln1gain, ln1bias = ln1bias, qkvWeight = qkvWeight, qkvBias = qkvBias, projWeight = projWeight, projBias = projBias, ln2gain = ln2gain, ln2bias = ln2bias, fcWeight = fcWeight, fcBias = fcBias, outWeight = outWeight, outBias = outBias })
 (** A LayerNorm's gain and bias, unwrapped together. *)
 lnParams (gainGrid) =
     andThen(param(0, gainGrid), \gain => andThen(param(1, gainGrid), \bias => Success(value = { gain = gain, bias = bias })))
@@ -126,7 +127,10 @@ scoresFrom (qkv, t, first, grid0) =
 (** Softmax of every causal row: fold its peak, spend it in the shift, fold the
     partition sum, spend that in the divide. *)
 probsOf (scores, t, n, first, grid0, grid1) =
-    andThen(gpuMap(grid0, \row => rowMax(scores, row, t, first + row % n)), \peaks => andThen(gpuMap(grid1, \i => causalWeight(scores, peaks, t, n, first, i)), \weights => andThen(gpuMap(grid0, \row => sumRange(weights, row * t, t)), \sums => gpuMap(grid1, \i => at(weights, i) / at(sums, intDiv(i, t))))))
+    use peaks <- andThen (gpuMap(grid0, \row => rowMax(scores, row, t, first + row % n)))
+    use weights <- andThen (gpuMap(grid1, \i => causalWeight(scores, peaks, t, n, first, i)))
+    use sums <- andThen (gpuMap(grid0, \row => sumRange(weights, row * t, t)))
+    gpuMap(grid1, \i => at(weights, i) / at(sums, intDiv(i, t)))
 (** Causal multi-head self-attention for positions first..t-1 of qkv [t, qkvWidth],
     as [t - first, width]. *)
 attentionFrom (qkv, t, first, grid0, grid1, grid2) =
@@ -134,26 +138,30 @@ attentionFrom (qkv, t, first, grid0, grid1, grid2) =
 attention (qkv, t, grid0, grid1, grid2) = attentionFrom(qkv, t, 0, grid0, grid1, grid2)
 (** One pre-norm block: attention and MLP, each with a residual. *)
 block (x, t, grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9, grid10, grid11) =
-    andThen(blockParams(grid0, grid3, grid4, grid8, grid9, grid10),
-        \w => andThen(layerNorm(x, w.ln1gain, w.ln1bias, grid1, grid2),
-        \normed => andThen(linear(normed, t, width, qkvWidth, w.qkvWeight, w.qkvBias, grid5),
-        \qkv => andThen(attention(qkv, t, grid6, grid7, grid2),
-        \attended => andThen(linear(attended, t, width, width, w.projWeight, w.projBias, grid2),
-        \projected => blockAfterAttention(x, projected, t, w, grid1, grid2, grid11))))))
+    use w <- andThen (blockParams(grid0, grid3, grid4, grid8, grid9, grid10))
+    use normed <- andThen (layerNorm(x, w.ln1gain, w.ln1bias, grid1, grid2))
+    use qkv <- andThen (linear(normed, t, width, qkvWidth, w.qkvWeight, w.qkvBias, grid5))
+    use attended <- andThen (attention(qkv, t, grid6, grid7, grid2))
+    use projected <- andThen (linear(attended, t, width, width, w.projWeight, w.projBias, grid2))
+    blockAfterAttention(x, projected, t, w, grid1, grid2, grid11)
 (** Complete the residual and MLP only after both attention products succeeded. *)
 blockAfterAttention (x, attended, t, w, grid1, grid2, grid11) =
-    andThen(gpuZipWith(x, attended, addF),
-        \x2 => andThen(layerNorm(x2, w.ln2gain, w.ln2bias, grid1, grid2),
-        \normed => andThen(linear(normed, t, width, mlpWidth, w.fcWeight, w.fcBias, grid11),
-        \projected => andThen(gpuMap(projected, gelu),
-        \activated => andThen(linear(activated, t, mlpWidth, width, w.outWeight, w.outBias, grid2), \output => gpuZipWith(x2, output, addF))))))
+    use x2 <- andThen (gpuZipWith(x, attended, addF))
+    use normed <- andThen (layerNorm(x2, w.ln2gain, w.ln2bias, grid1, grid2))
+    use projected <- andThen (linear(normed, t, width, mlpWidth, w.fcWeight, w.fcBias, grid11))
+    use activated <- andThen (gpuMap(projected, gelu))
+    use output <- andThen (linear(activated, t, mlpWidth, width, w.outWeight, w.outBias, grid2))
+    gpuZipWith(x2, output, addF)
 (** Token plus position embeddings, [t, width]. *)
 embed (tokens, positions, ids, grid0) = gpuMap (grid0, \i => at (tokens, (gpuGet (ids, intDiv (i, width)) ?: 0) * width + i % width) + at (positions, i))
 (** The token table transposed to [width, vocab], so the tied readout is one product. *)
 transposed (table, grid0) = gpuMap (grid0, \i => at (table, (i % vocab) * width + intDiv (i, vocab)))
 (** The final position's normalised state against every token row. *)
 logitsOf (x, t, table, grid0, grid1, grid2) =
-    andThen(gpuMap(grid0, \c => at(x, (t - 1) * width + c)), \last => andThen(transposed(table, grid1), \readout => andThen(noBias(), \bias => linear(last, 1, width, vocab, readout, bias, grid2))))
+    use last <- andThen (gpuMap(grid0, \c => at(x, (t - 1) * width + c)))
+    use readout <- andThen (transposed(table, grid1))
+    use bias <- andThen (noBias())
+    linear(last, 1, width, vocab, readout, bias, grid2)
 (** The first index holding the peak: a fold for the peak, a filter for its index. *)
 argmax (logits, grid0) =
     andThen(gpuFold(logits, at(logits, 0), maxF), \peak => andThen(gpuFilter(grid0, \v => at(logits, v) == peak), \indices => Success(value = gpuGet(indices, 0) ?: -1)))
