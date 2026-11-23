@@ -181,7 +181,7 @@ pub(super) fn emit_resuming_body_fn(
     caps: &[ArmCap],
     env_ty: &str,
 ) -> Result<AnswerShape> {
-    let saved = cg.enter_nested_fn();
+    let saved = cg.enter_nested_body(body);
     reload_env(cg, caps, env_ty);
     let body = crate::expr::gen_body(cg, body)?;
     let answer = AnswerShape::of(&body);
@@ -246,7 +246,7 @@ pub(super) fn emit_resuming_arm_fn(
     arm: &HandlerArm,
     spec: &ArmFnSpec<'_>,
 ) -> Result<()> {
-    let saved = cg.enter_nested_fn();
+    let saved = cg.enter_nested_body(&arm.body);
     cg.begin_nested_debug(spec.name, arm.position);
     reload_env(cg, spec.caps, spec.env_ty);
     let mut params = vec![

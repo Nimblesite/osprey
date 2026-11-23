@@ -34,7 +34,7 @@ pub(crate) fn gen_spawn(cg: &mut Codegen, e: &Expr) -> Result<Value> {
     let thunk = format!("__fiber_thunk_{id}");
     let caps = crate::closure::capture_list(cg, &[], e);
     let cell_ty = crate::closure::cell_struct_ty(&caps);
-    let saved = cg.enter_nested_fn();
+    let saved = cg.enter_nested_body(e);
     crate::closure::reload_captures(cg, &cell_ty, &caps);
     let elem = thunk_body(cg, e);
     cg.exit_nested_fn(saved, "i64", &thunk, &[(LType::Ptr, String::from("__env"))]);

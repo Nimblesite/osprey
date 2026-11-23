@@ -201,7 +201,10 @@ fn nestedPatternCase() = {
     checkAll("nested matches restore the containing arm", [selected == "3:2", value == 100])
 }
 
-effect PatternCounter { set: fn(int) -> int }
+effect PatternCounter {
+    set: fn(int) -> int
+    readAfterWrite: fn() -> int
+}
 fn mutablePatternCase() = {
     mut value = 100
     handle PatternCounter {
@@ -209,13 +212,20 @@ fn mutablePatternCase() = {
             value = next
             value
         }
+        readAfterWrite => {
+            mut local = 7
+            let read = || => local
+            local = 11
+            read()
+        }
     }
     let readOuter = || => value
     let selectedReader = match Pick(2) { Pick(value) => || => value Other => || => value }
     let selected = selectedReader()
     let updated = perform PatternCounter.set(101)
     checkAll("pattern values shadow cell storage without changing it", [
-        selected == 2, selectedReader() == 2, updated == 101, value == 101, readOuter() == 101
+        selected == 2, selectedReader() == 2, updated == 101, value == 101, readOuter() == 101,
+        perform PatternCounter.readAfterWrite() == 11
     ])
 }
 
