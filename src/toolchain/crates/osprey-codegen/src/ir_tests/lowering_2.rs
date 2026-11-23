@@ -63,8 +63,10 @@ fn structural_match_on_a_concrete_record_is_static() {
 
 #[test]
 fn match_lowers_to_phi() {
-    let ir = module("fn pick(a: int, b: int) -> int = match a < b { true => a false => b }\n");
-    shows(&ir, &["icmp", "br i1", "phi i64"]);
+    lowers(
+        "fn pick(a: int, b: int) -> int = match a < b { true => a false => b }\n",
+        &["icmp", "br i1", "phi i64"],
+    );
 }
 
 #[test]
@@ -109,20 +111,16 @@ fn named_arguments_are_ordered_by_declaration() {
 
 #[test]
 fn bound_ffi_callbacks_use_raw_code_pointers() {
-    let ir = module(
+    lowers(
         "extern fn print(callback: fn() -> int) -> int\n\
          let callback = fn() => 41\nlet answer = print(callback)\n",
+        &["bitcast i64 ()* @__callback_"],
     );
-    shows(&ir, &["bitcast i64 ()* @__callback_"]);
 }
 
 #[test]
 fn foreign_ffi_callbacks_use_their_raw_code_pointer() {
-    let ir = module("extern fn print(callback: fn() -> int) -> int\nextern fn read() -> int\nlet answer = print(read)\n");
-    shows(
-        &ir,
-        &["declare i64 @read()", "bitcast i64 ()* @read to i8*"],
-    );
+    lowers("extern fn print(callback: fn() -> int) -> int\nextern fn read() -> int\nlet answer = print(read)\n", &["declare i64 @read()", "bitcast i64 ()* @read to i8*"]);
 }
 
 #[test]
@@ -192,7 +190,7 @@ fn range_pipeline_map_filter_foreach_and_fold() {
     // range → map (record stage) → filter (record stage) → forEach (replay
     // both stages, counted loop), plus a fold accumulator. Exercises iter.rs
     // callback_of (named + lambda), replay, for_each, fold, acc_*.
-    let ir = module(
+    lowers(
         "fn dbl(x: int) -> int = satMul(x, 2)\n\
              fn big(x: int) -> bool = x > 4\n\
              fn add(a: int, b: int) -> int = satAdd(a, b)\n\
@@ -201,8 +199,8 @@ fn range_pipeline_map_filter_foreach_and_fold() {
                let s = range(1, 6) |> fold(0, add)\n\
                print(\"sum=${s}\")\n\
              }\n",
+        &["@osp_alloc", "icmp ne i64", "alloca i64"],
     );
-    shows(&ir, &["@osp_alloc", "icmp ne i64", "alloca i64"]);
 }
 
 #[test]
@@ -245,13 +243,13 @@ fn list_builders_map_filter_fold_and_foreach() {
 fn iterator_lambda_callbacks_inline_and_let_bound() {
     // An inline lambda and a let-bound lambda both serve as iterator
     // callbacks — iter.rs callback_of's Lambda arms + the lambdas cache.
-    let ir = module(
+    lowers(
         "fn main() -> Unit = {\n\
                let f = fn(x: int) => satAdd(x, 1)\n\
                range(0, 3) |> map(f) |> forEach(fn(x: int) => print(\"v=${x}\"))\n\
              }\n",
+        &["call"],
     );
-    shows(&ir, &["call"]);
 }
 
 #[test]
@@ -271,7 +269,7 @@ fn closure_captures_map_list_object_and_interpolation_free_vars() {
     // A returned closure capturing several outer locals exercises
     // freevars.rs Map/Object/List/interpolation walks and closure.rs
     // capture_list + reload_captures + cell_value (malloc cell).
-    let ir = module(
+    lowers(
         "fn make(a: int, b: int) -> () -> int = fn() -> int => {\n\
                let m = { \"k\": a }\n\
                let o = { x: b, y: a }\n\
@@ -283,15 +281,15 @@ fn closure_captures_map_list_object_and_interpolation_free_vars() {
                let g = make(1, 2)\n\
                print(\"r=${g()}\")\n\
              }\n",
+        &["call i8* @osp_alloc", "bitcast i8* %__env"],
     );
-    shows(&ir, &["call i8* @osp_alloc", "bitcast i8* %__env"]);
 }
 
 #[test]
 fn nested_closure_returns_closure_value_in_block_tail() {
     // A closure value as a block tail (closure.rs lambda_value path) and a
     // capture-free closure (the constant-global cell branch in cell_value).
-    let ir = module(
+    lowers(
         "fn outer() -> () -> int = {\n\
                let k = 9\n\
                fn() => k\n\
@@ -302,8 +300,8 @@ fn nested_closure_returns_closure_value_in_block_tail() {
                let b = pure()\n\
                print(\"${a()} ${b()}\")\n\
              }\n",
+        &["private unnamed_addr constant { i8* }"],
     );
-    shows(&ir, &["private unnamed_addr constant { i8* }"]);
 }
 
 #[test]
@@ -489,7 +487,7 @@ fn result_match_success_and_error_arms() {
     // Error message (pattern.rs gen_result_match, emit_result_arm). The
     // Result is a bound value, so it exists; a `listGet` matched directly is
     // fused instead (`matching_a_list_lookup_allocates_no_result`).
-    let ir = module(
+    lowers(
         "fn main() -> Unit = {\n\
                let xs = listAppend(List(), 10)\n\
                let found = listGet(xs, 0)\n\
@@ -498,6 +496,6 @@ fn result_match_success_and_error_arms() {
                  Error { message } => print(\"e=${message}\")\n\
                }\n\
              }\n",
+        &["icmp eq i8"],
     );
-    shows(&ir, &["icmp eq i8"]);
 }

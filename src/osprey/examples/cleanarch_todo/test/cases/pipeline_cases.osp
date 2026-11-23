@@ -1,0 +1,87 @@
+// The cross-cutting pipeline cases: LoggingBehaviour, the rescue arm over
+// typed faults, ValidationBehaviour's collection, PerformanceBehaviour's
+// 500 ms warning and after-settle event publication
+// ([EXAMPLE-CLEANARCH-INV-TESTS]).
+
+namespace todo;
+
+import todo::TodoHarness
+
+module PipelineCases {
+    /// LoggingBehaviour writes one structured line naming the request and
+    /// the user, before the use case runs.
+    export fn loggingCase() = {
+        let heard = TodoHarness::witnessed(TodoHarness::admin(), 0, [], [], CreateList {
+            list: NewList { title: "Shopping", colour: "" }
+        })
+        checkAll("one info line names request and user", [
+            length(heard.lines) == 1,
+            contains(firstLine(heard.lines), "CreateTodoListCommand"),
+            contains(firstLine(heard.lines), "admin@example.com"),
+            contains(firstLine(heard.lines), "info:")
+        ])
+    }
+
+    /// The rescue arm logs the unhandled fault kinds at error level and
+    /// passes every fault through untouched — expected 4xx faults are not
+    /// logged as errors, the conflict is.
+    export fn rescueCase() = {
+        let clash = TodoHarness::witnessed(TodoHarness::admin(), 0, [
+            TodoHarness::seedList(1, "Shopping", "#78909C")
+        ], [], CreateList { list: NewList { title: "Shopping", colour: "" } })
+        checkAll("validation faults pass without an error line", [
+            length(clash.lines) == 1,
+            contains(firstLine(clash.lines), "info:")
+        ])
+        let missing = TodoHarness::witnessed(TodoHarness::admin(), 0, [], [], DeleteList { id: 9 })
+        checkAll("not-found faults pass without an error line", [
+            length(missing.lines) == 1,
+            contains(firstLine(missing.lines), "info:")
+        ])
+    }
+
+    /// PerformanceBehaviour warns above 500 ms and stays quiet at or below it:
+    /// the request reads the clock when it starts and when it settles, and the
+    /// fixture clock advances one step per reading, so a request takes one step.
+    export fn performanceCase() = {
+        let slow = TodoHarness::witnessed(TodoHarness::admin(), 600, [], [], GetTodos)
+        checkAll("600 elapsed milliseconds warn", [
+            length(slow.lines) == 2,
+            contains(lineAt(slow.lines, 1), "warn:"),
+            contains(lineAt(slow.lines, 1), "GetTodosQuery"),
+            contains(lineAt(slow.lines, 1), "600 milliseconds")
+        ])
+        let quick = TodoHarness::witnessed(TodoHarness::admin(), 0, [], [], GetTodos)
+        let onTheLine = TodoHarness::witnessed(TodoHarness::admin(), 500, [], [], GetTodos)
+        let justOver = TodoHarness::witnessed(TodoHarness::admin(), 501, [], [], GetTodos)
+        checkAll("no elapsed milliseconds, no warning", [
+            length(quick.lines) == 1,
+            contains(firstLine(quick.lines), "info:")
+        ])
+        checkAll("exactly 500 milliseconds is quiet and 501 warns", [
+            length(onTheLine.lines) == 1,
+            length(justOver.lines) == 2,
+            contains(lineAt(justOver.lines, 1), "501 milliseconds")
+        ])
+    }
+
+    /// Domain events publish after the request settles, once each, through
+    /// the LogTodoItemCompleted handler's line.
+    export fn eventPublicationCase() = {
+        let heard = TodoHarness::witnessed(TodoHarness::admin(), 0, [
+            TodoHarness::seedList(1, "Shopping", "#78909C")
+        ], [TodoHarness::seedItem(1, 1, "Milk", false)], UpdateItem {
+            edit: ItemEdit { id: 1, title: "Milk", done: true }
+        })
+        checkAll("the completion event publishes once, after settling", [
+            length(heard.events) == 1,
+            contains(join(TodoHost::eventLines(heard.events), ";"), "TodoItemCompletedEvent for 'Milk' (#1)")
+        ])
+    }
+}
+
+/// The first captured line, or "".
+fn firstLine(lines) = listGet(lines, 0) ?: ""
+
+/// Line `at` of the captured log, or "".
+fn lineAt(lines, at) = listGet(lines, at) ?: ""

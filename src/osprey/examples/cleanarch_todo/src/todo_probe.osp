@@ -1,0 +1,119 @@
+// Osprey-only: three questions MediatR cannot ask. Each installs ONE handler
+// around the unchanged pipeline, and that handler resumes the SAME captured
+// request more than once ([EXAMPLE-CLEANARCH-INV-MULTISHOT]). A `next()`
+// delegate runs once; a continuation runs as often as its handler resumes it.
+
+namespace todo;
+
+import todo::TodoDispatch
+import todo::TodoRequest
+
+/// A candidate repair of a title.
+type TitleFix = Trimmed | CutShort
+
+/// What-if questions over the real pipeline.
+module TodoProbe {
+    /// [EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ]: who may run `request`? One answer
+    /// per principal in `principals()` order, from one sent request. Each
+    /// branch's writes and events are undone before the next ([MULTI-REPLAY]).
+    export fn whoMayRun(request) = {
+        handle Auth {
+            who => {
+                let base = perform Store.dump()
+                let mark = perform Events.mark()
+                listConcat(undone(base, mark, resume(anonymous())), listConcat(
+                    undone(base, mark, resume(member())),
+                    undone(base, mark, resume(administrator()))))
+            }
+        }
+        dryRun(request)
+    }
+
+    /// [EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE]: which fix makes `request`
+    /// valid? One answer per fix in `fixes()` order. Validation still
+    /// collects every failure in each branch.
+    export fn whichFixesWork(request) = {
+        handle Rules {
+            candidate sent => {
+                let base = perform Store.dump()
+                let mark = perform Events.mark()
+                listConcat(undone(base, mark, resume(sent)), listConcat(
+                    undone(base, mark, resume(retitled(sent, Trimmed))),
+                    listConcat(
+                        undone(base, mark, resume(retitled(sent, CutShort))),
+                        undone(base, mark, resume(recoloured(sent))))))
+            }
+        }
+        dryRun(request)
+    }
+
+    /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN]: one pagination query, answered for
+    /// every page shape in `shapes()` order.
+    export fn pagePlan(listId) = {
+        handle Paging {
+            window asked => listConcat(resume(shaped(asked, 1, 5)), listConcat(
+                resume(shaped(asked, 2, 5)),
+                listConcat(resume(shaped(asked, 1, 10)), resume(shaped(asked, 1, 50)))))
+        }
+        dryRun(ItemsWithPagination { query: shaped(ItemQuery { listId: listId, pageNumber: 1, pageSize: 10 }, 1, 10) })
+    }
+
+    /// The principals `whoMayRun` answers for, in order.
+    export fn principals() = [anonymous(), member(), administrator()]
+
+    /// The fixes `whichFixesWork` tries, in order.
+    export fn fixes() = ["as sent", "title trimmed", "title cut to 200 characters", "default colour"]
+
+    /// The page shapes `pagePlan` reads, in order.
+    export fn shapes() = ["page 1 of 5", "page 2 of 5", "page 1 of 10", "page 1 of 50"]
+
+    /// The pipeline for one branch. Logging is handled here, inside the
+    /// replayed region, and discarded: the compiler rejects a multi-shot
+    /// region whose replay could log twice ([MULTI-REPLAY-CHECK]).
+    fn dryRun(request) = {
+        handle Log {
+            info _line => {}
+            warn _line => {}
+            error _line => {}
+        }
+        [TodoDispatch::dispatch(request)]
+    }
+
+    /// A branch's answers, once its writes and events are rolled back.
+    fn undone(base, mark, answers) = {
+        perform Store.load(base)
+        perform Events.rewind(mark)
+        answers
+    }
+
+    fn anonymous() = Principal { name: "", roles: [], policies: [] }
+
+    fn member() = Principal { name: "alice@example.com", roles: ["User"], policies: [] }
+
+    fn administrator() = Principal { name: "admin@example.com", roles: ["Administrator"], policies: ["CanPurge"] }
+
+    fn shaped(query, number, size) = ItemQuery { listId: query.listId, pageNumber: number, pageSize: size }
+
+    fn retitled(request, fix) = match request {
+        CreateList { list } => CreateList { list: NewList { title: fixed(fix, list.title), colour: list.colour } }
+        UpdateList { edit } => UpdateList { edit: ListEdit {
+            id: edit.id,
+            title: fixed(fix, edit.title),
+            colour: edit.colour
+        } }
+        CreateItem { item: fresh } => CreateItem { item: NewItem { listId: fresh.listId, title: fixed(fix, fresh.title) } }
+        UpdateItem { edit } => UpdateItem { edit: ItemEdit { id: edit.id, title: fixed(fix, edit.title), done: edit.done } }
+        _ => request
+    }
+
+    fn fixed(fix, title) = match fix {
+        Trimmed => trim(title)
+        CutShort => take(title, 200)
+    }
+
+    fn recoloured(request) = match request {
+        CreateList { list } => CreateList { list: NewList { title: list.title, colour: "" } }
+        UpdateList { edit } => UpdateList { edit: ListEdit { id: edit.id, title: edit.title, colour: "" } }
+        _ => request
+    }
+}

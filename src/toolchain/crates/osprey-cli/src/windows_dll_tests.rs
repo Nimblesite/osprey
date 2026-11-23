@@ -133,11 +133,23 @@ fn the_entry_checks_every_slot_before_running_the_program() {
 fn only_the_boundary_is_dllexported() {
     let (dll, slotted, abi) = adapted(SOURCE);
     let exported: Vec<&str> = dll.lines().filter(|l| l.contains("dllexport")).collect();
+    // The entry, the bridge table and the ownership ABI (version and string release), then the
+    // application's exports and one binder per slot.
     assert_eq!(
         exported.len(),
-        2 + abi.exports.len() + slotted.len(),
+        4 + abi.exports.len() + slotted.len(),
         "{exported:#?}"
     );
+    for boundary in [
+        "@osprey_main(",
+        "@osprey_host_abi_version(",
+        "@osprey_release_string(",
+    ] {
+        assert!(
+            exported.iter().any(|line| line.contains(boundary)),
+            "{boundary} in {exported:#?}"
+        );
+    }
     assert_eq!(
         exported
             .iter()
@@ -150,6 +162,39 @@ fn only_the_boundary_is_dllexported() {
         assert!(
             exported.iter().any(|line| line.contains(&needle)),
             "{needle}"
+        );
+    }
+}
+
+/// [WINUI-HOST-DLL] The header is the DLL's contract: every function it declares is exported. A
+/// host checks the import ownership ABI through `osprey_host_abi_version` and gives back a
+/// returned string through `osprey_release_string`, so a DLL without them breaks both.
+#[test]
+fn every_function_the_header_declares_is_exported() {
+    let (dll, slotted, abi) = adapted(SOURCE);
+    let header = header(&abi.exports, &slotted, "app.osp", "windows-x64");
+    let declared: Vec<&str> = header
+        .lines()
+        .filter(|line| !line.starts_with("//") && line.ends_with(");"))
+        .filter_map(|line| line.split('(').next()?.rsplit(' ').next())
+        .filter(|name| name.starts_with("osprey_"))
+        .collect();
+    for wanted in [
+        "osprey_main",
+        "osprey_host_abi_version",
+        "osprey_release_string",
+    ] {
+        assert!(
+            declared.contains(&wanted),
+            "the header declares {wanted}: {declared:?}"
+        );
+    }
+    for name in &declared {
+        let exported = format!(" @{name}(");
+        assert!(
+            dll.lines()
+                .any(|line| line.starts_with("define dllexport") && line.contains(&exported)),
+            "the header declares {name}, but the DLL does not export it"
         );
     }
 }

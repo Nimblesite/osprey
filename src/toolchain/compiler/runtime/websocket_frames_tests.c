@@ -5,12 +5,14 @@
 // code it is refused with. Client frames are built by hand here, so no test
 // trusts the encoder or parser it checks.
 #include "http_shared.h"
+#include "test_loopback.h"
 #include "test_alloc.h"
 #include "websocket_test_helpers.h"
 
 #include <assert.h>
 
-enum { FRAMES_PORT = 18097, OVER_THE_LIMIT = 16385, PACKED_FRAMES = 3, CODEC_LIMIT = 65536, ODD_SIZE = 333 };
+#define FRAMES_PORT test_port(13)
+enum { OVER_THE_LIMIT = 16385, PACKED_FRAMES = 3, CODEC_LIMIT = 65536, ODD_SIZE = 333 };
 enum { OP_CONT = 0x0, OP_TEXT = 0x1, OP_BINARY = 0x2, OP_CLOSE = 0x8, OP_PING = 0x9, OP_PONG = 0xA };
 enum { FIN = 0x80, RSV1 = 0x40, MASKED = 0x80 };
 

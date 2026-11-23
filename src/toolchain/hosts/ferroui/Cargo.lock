@@ -33,126 +33,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-broadcast"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "435a87a52755b8f27fcf321ac4f04b2802e337c8c4872923137471ec39c37532"
-dependencies = [
- "event-listener",
- "event-listener-strategy",
- "futures-core",
- "pin-project-lite",
-]
-
-[[package]]
-name = "async-channel"
-version = "2.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "924ed96dd52d1b75e9c1a3e6275715fd320f5f9439fb5a4a11fa51f4221158d2"
-dependencies = [
- "concurrent-queue",
- "event-listener-strategy",
- "futures-core",
- "pin-project-lite",
-]
-
-[[package]]
-name = "async-executor"
-version = "1.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f426a31126c735126297bc5ea7a521263c9faff4f63ca415267ee625651c4f37"
-dependencies = [
- "async-task",
- "concurrent-queue",
- "fastrand",
- "futures-lite",
- "pin-project-lite",
- "slab",
-]
-
-[[package]]
-name = "async-io"
-version = "2.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "456b8a8feb6f42d237746d4b3e9a178494627745c3c56c6ea55d92ba50d026fc"
-dependencies = [
- "autocfg",
- "cfg-if",
- "concurrent-queue",
- "futures-io",
- "futures-lite",
- "parking",
- "polling",
- "rustix",
- "slab",
- "windows-sys",
-]
-
-[[package]]
-name = "async-lock"
-version = "3.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0876700b0d007ad25d5508865a4259c3af9af6d296bf663a0d586d0bc3369f6f"
-dependencies = [
- "event-listener",
- "event-listener-strategy",
- "pin-project-lite",
-]
-
-[[package]]
-name = "async-process"
-version = "2.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc50921ec0055cdd8a16de48773bfeec5c972598674347252c0399676be7da75"
-dependencies = [
- "async-channel",
- "async-io",
- "async-lock",
- "async-signal",
- "async-task",
- "blocking",
- "cfg-if",
- "event-listener",
- "futures-lite",
- "rustix",
-]
-
-[[package]]
-name = "async-recursion"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f8abc12baad266b1c8cec146854c195b5864b4221d4b2ca7296a7ae82d9e451"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.10",
-]
-
-[[package]]
-name = "async-signal"
-version = "0.2.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52b5aaafa020cf5053a01f2a60e8ff5dccf550f0f77ec54a4e47285ac2bab485"
-dependencies = [
- "async-io",
- "async-lock",
- "atomic-waker",
- "cfg-if",
- "futures-core",
- "futures-io",
- "rustix",
- "signal-hook-registry",
- "slab",
- "windows-sys",
-]
-
-[[package]]
-name = "async-task"
-version = "4.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
-
-[[package]]
 name = "async-trait"
 version = "0.1.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -162,12 +42,6 @@ dependencies = [
  "quote",
  "syn 3.0.10",
 ]
-
-[[package]]
-name = "atomic-waker"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "autocfg"
@@ -202,29 +76,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
-name = "blocking"
-version = "1.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a70e4329df6cb94385eed412ec92375c3cdd8a6e502493d1229b6414e4036dfa"
-dependencies = [
- "async-channel",
- "async-task",
- "futures-io",
- "futures-lite",
- "piper",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.20.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87a0cf66fd1eb2fb7b822cb78370d82303750809bc6ba855f3f58e517d3238db"
 
 [[package]]
-name = "cc"
-version = "1.11.2"
+name = "bytes"
+version = "1.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33ef9e3e8154a45c7a95cff4c1299702106ad94062d7bb85fdc5d3a5afd91d45"
+checksum = "776dfebd015e2d8732c684a2c71003674ccb49457b539b9e82151ba38e96dd7c"
+
+[[package]]
+name = "cc"
+version = "1.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02f0e023adb368345ce0ca6cdfc0f24a06554468d0e8503e14a0841de79bfa69"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -259,15 +126,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "concurrent-queue"
-version = "2.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
 name = "crc32fast"
 version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -275,12 +133,6 @@ checksum = "2b929dd2a135771f40afabd1073f85eed59c800b7c61901e5c254270497dad64"
 dependencies = [
  "cfg-if",
 ]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.8.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
 name = "deranged"
@@ -312,27 +164,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
-name = "enumflags2"
-version = "0.7.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1027f7680c853e056ebcec683615fb6fbbc07dbaa13b4d5d9442b146ded4ecef"
-dependencies = [
- "enumflags2_derive",
- "serde",
-]
-
-[[package]]
-name = "enumflags2_derive"
-version = "0.7.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67c78a4d8fdf9953a5c9d458f9efe940fd97a0cab0941c075a813ac594733827"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -349,26 +180,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "event-listener"
-version = "5.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a23add41df1562121a9393cb065eab5146a1242410f23a644851e90cfd669d2"
-dependencies = [
- "parking",
- "pin-project-lite",
-]
-
-[[package]]
-name = "event-listener-strategy"
-version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
-dependencies = [
- "event-listener",
- "pin-project-lite",
-]
-
-[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -377,14 +188,14 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 [[package]]
 name = "ferroui-base"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "bitflags",
  "ferroui-build-scan",
+ "ferroui-ident-macros",
  "ferroui-system",
  "icu_locale_core",
  "libc",
- "paste",
  "rust_decimal",
  "rustc-hash",
  "smallvec",
@@ -395,7 +206,7 @@ dependencies = [
 [[package]]
 name = "ferroui-build"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ferroui-base",
  "ferroui-build-scan",
@@ -409,7 +220,7 @@ dependencies = [
 [[package]]
 name = "ferroui-build-scan"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -419,7 +230,7 @@ dependencies = [
 [[package]]
 name = "ferroui-controls"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "bitflags",
  "ferroui-base",
@@ -433,7 +244,7 @@ dependencies = [
 [[package]]
 name = "ferroui-desktop"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ferroui-base",
  "ferroui-controls",
@@ -447,7 +258,7 @@ dependencies = [
 [[package]]
 name = "ferroui-dialogs"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ferroui-base",
  "ferroui-build",
@@ -460,7 +271,7 @@ dependencies = [
 [[package]]
 name = "ferroui-freedesktop"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "bitflags",
  "ferroui-base",
@@ -475,7 +286,7 @@ dependencies = [
 [[package]]
 name = "ferroui-harfbuzz"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ferroui-base",
  "ferroui-controls",
@@ -483,9 +294,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ferroui-ident-macros"
+version = "0.6.0-preview.1"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
+
+[[package]]
 name = "ferroui-markup"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ferroui-base",
 ]
@@ -493,7 +309,7 @@ dependencies = [
 [[package]]
 name = "ferroui-markup-xaml"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ferroui-base",
  "ferroui-build-scan",
@@ -505,7 +321,7 @@ dependencies = [
 [[package]]
 name = "ferroui-markup-xaml-loader"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ferroui-base",
  "ferroui-build-scan",
@@ -520,7 +336,7 @@ dependencies = [
 [[package]]
 name = "ferroui-metal"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ferroui-base",
 ]
@@ -528,7 +344,7 @@ dependencies = [
 [[package]]
 name = "ferroui-microcom"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "uuid",
 ]
@@ -536,7 +352,7 @@ dependencies = [
 [[package]]
 name = "ferroui-native"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "cc",
  "ferroui-base",
@@ -551,13 +367,12 @@ dependencies = [
 [[package]]
 name = "ferroui-opengl"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ferroui-base",
  "ferroui-build-scan",
  "ferroui-controls",
  "libc",
- "paste",
 ]
 
 [[package]]
@@ -576,7 +391,7 @@ dependencies = [
 [[package]]
 name = "ferroui-remote-protocol"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ferroui-system",
  "uuid",
@@ -585,7 +400,7 @@ dependencies = [
 [[package]]
 name = "ferroui-skia"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "cc",
  "ferroui-base",
@@ -600,15 +415,17 @@ dependencies = [
 [[package]]
 name = "ferroui-system"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
+ "icu_locale_core",
  "smallvec",
+ "url",
 ]
 
 [[package]]
 name = "ferroui-themes-fluent"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ferroui-base",
  "ferroui-build",
@@ -620,7 +437,7 @@ dependencies = [
 [[package]]
 name = "ferroui-view"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ferroui-base",
  "ferroui-build-scan",
@@ -634,7 +451,7 @@ dependencies = [
 [[package]]
 name = "ferroui-view-macros"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -644,7 +461,7 @@ dependencies = [
 [[package]]
 name = "ferroui-vulkan"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "ash",
  "ferroui-base",
@@ -653,7 +470,7 @@ dependencies = [
 [[package]]
 name = "ferroui-win32"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "bitflags",
  "ferroui-base",
@@ -670,7 +487,7 @@ dependencies = [
 [[package]]
 name = "ferroui-x11"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "bitflags",
  "ferroui-base",
@@ -714,9 +531,9 @@ dependencies = [
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -732,19 +549,6 @@ name = "futures-io"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "53c0fa8157de1303bfffdaa1cc2a673bfffb60102f76b0ef4441659124373fed"
-
-[[package]]
-name = "futures-lite"
-version = "2.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f78e10609fe0e0b3f4157ffab1876319b5b0db102a2c60dc4626306dc46b44ad"
-dependencies = [
- "fastrand",
- "futures-core",
- "futures-io",
- "parking",
- "pin-project-lite",
-]
 
 [[package]]
 name = "futures-task"
@@ -804,21 +608,15 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.17.1"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+checksum = "735eaa21a6a5ffb2e84362faaeb90c05ba8e19797ca30428478cb6ea3a4921bc"
 
 [[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
-
-[[package]]
-name = "hermit-abi"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
 name = "hex"
@@ -1047,7 +845,7 @@ dependencies = [
 [[package]]
 name = "microcom-codegen"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 
 [[package]]
 name = "minimal-lexical"
@@ -1063,6 +861,17 @@ checksum = "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
 dependencies = [
  "adler2",
  "simd-adler32",
+]
+
+[[package]]
+name = "mio"
+version = "1.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20521a903f02b0a573cd6840e9d0a5a0cc043d361fe924092cd70f8556cc9c4a"
+dependencies = [
+ "libc",
+ "wasi",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1139,18 +948,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "parking"
-version = "2.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
-
-[[package]]
-name = "paste"
-version = "1.0.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
-
-[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1163,35 +960,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c938015719552d665fd0553b90d96cd7ff58e83e4c061ca99e6bb78865a72752"
 
 [[package]]
-name = "piper"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c835479a4443ded371d6c535cbfd8d31ad92c5d23ae9770a61bc155e4992a3c1"
-dependencies = [
- "atomic-waker",
- "fastrand",
- "futures-io",
-]
-
-[[package]]
 name = "pkg-config"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
-
-[[package]]
-name = "polling"
-version = "3.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d0e4f59085d47d8241c88ead0f274e8a0cb551f3625263c05eb8dd897c34218"
-dependencies = [
- "cfg-if",
- "concurrent-queue",
- "hermit-abi",
- "pin-project-lite",
- "rustix",
- "windows-sys",
-]
 
 [[package]]
 name = "potential_utf"
@@ -1216,15 +988,6 @@ checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "proc-macro-crate"
-version = "3.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
-dependencies = [
- "toml_edit",
 ]
 
 [[package]]
@@ -1424,7 +1187,7 @@ checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
 [[package]]
 name = "skia-bindings"
 version = "0.153.3"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "bindgen",
  "cc",
@@ -1458,6 +1221,16 @@ name = "smallvec"
 version = "1.16.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3244542535d5de959d90ec55d1b5ff0fd2bb7b1310223907d5f11932847f7b59"
+
+[[package]]
+name = "socket2"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
+dependencies = [
+ "libc",
+ "windows-sys",
+]
 
 [[package]]
 name = "stable_deref_trait"
@@ -1564,10 +1337,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "toml"
-version = "1.2.1+spec-1.1.0"
+name = "tokio"
+version = "1.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5755c51863cdac711f1956baf8eb9588e060755f7d3c4c979e70ea1e1f32cd7"
+checksum = "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
+dependencies = [
+ "bytes",
+ "libc",
+ "mio",
+ "pin-project-lite",
+ "signal-hook-registry",
+ "socket2",
+ "tracing",
+ "windows-sys",
+]
+
+[[package]]
+name = "toml"
+version = "1.2.2+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5426cb1b964690d913f6c5c1a1ae0b42f428ec506bb4d452876d7a209c9bca3b"
 dependencies = [
  "indexmap",
  "serde_core",
@@ -1588,22 +1377,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "toml_edit"
-version = "0.25.19+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd43688c4858d7264ae1cf9a9f874a67c3feb74a883b1cd7bebd6a4ea8307218"
-dependencies = [
- "indexmap",
- "toml_datetime",
- "toml_parser",
- "winnow",
-]
-
-[[package]]
 name = "toml_parser"
-version = "1.1.5+spec-1.1.0"
+version = "1.1.6+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
+checksum = "e6769c452d71ba30696c6b37770c439a9cc9110f47f7d5cdbeda79840ef5ea31"
 dependencies = [
  "winnow",
 ]
@@ -1664,9 +1441,9 @@ checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 
 [[package]]
 name = "url"
-version = "2.5.8"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",
@@ -1709,13 +1486,19 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "walkdir"
-version = "2.5.0"
+version = "2.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29790946404f91d9c5d06f9874efddea1dc06c5efe94541a7d6863108e3a5e4b"
+checksum = "b42e295b7452c4604982280d8586001fcad9b8b201cac67bca9771e7a7475403"
 dependencies = [
  "same-file",
  "winapi-util",
 ]
+
+[[package]]
+name = "wasi"
+version = "0.11.1+wasi-snapshot-preview1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
 
 [[package]]
 name = "wasm-bindgen"
@@ -1925,7 +1708,7 @@ dependencies = [
 [[package]]
 name = "xamlx"
 version = "0.6.0-preview.1"
-source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0382c045058498063d94acd30c9c87b029d0971c#0382c045058498063d94acd30c9c87b029d0971c"
+source = "git+https://github.com/wieslawsoltes/FerroUI?rev=0cdbd6f730ce618f9731b27b39366c80a3f0fafc#0cdbd6f730ce618f9731b27b39366c80a3f0fafc"
 dependencies = [
  "roxmltree",
 ]
@@ -1971,70 +1754,63 @@ dependencies = [
 
 [[package]]
 name = "zbus"
-version = "5.19.0"
+version = "6.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5db4be7c075cb421e4b7ee645541604239bd243ba7c357511f4ff3a74b555907"
+checksum = "9a7f9f5dd97fa527c1202ba1cb35d48e07f77d4de8542317c854f7aef22b0668"
 dependencies = [
- "async-broadcast",
- "async-executor",
- "async-io",
- "async-lock",
- "async-process",
- "async-recursion",
- "async-task",
  "async-trait",
- "blocking",
- "enumflags2",
- "event-listener",
+ "bitflags",
+ "endi",
  "futures-core",
- "futures-lite",
  "hex",
  "libc",
  "ordered-stream",
  "rustix",
  "serde",
  "serde_repr",
+ "socket2",
+ "tokio",
  "tracing",
  "uds_windows",
  "uuid",
  "windows-sys",
  "winnow",
  "zbus_macros",
- "zbus_names",
- "zvariant",
+ "zbus_utils",
+ "zcheapstr",
+ "zruntime",
 ]
 
 [[package]]
 name = "zbus_macros"
-version = "5.19.0"
+version = "6.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2990635d09ade6df1868f72f8cac69a876a90981e8bd3c40b1be413f8dc88f40"
+checksum = "2f5aa7f2c4ea81b7ccfb26bafefdb4d1a44dd9d4f82c8426173a3727311743e4"
 dependencies = [
- "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn 3.0.10",
- "zbus_names",
- "zvariant",
- "zvariant_utils",
+ "zbus_utils",
 ]
 
 [[package]]
-name = "zbus_names"
-version = "4.3.5"
+name = "zbus_utils"
+version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "812a12be4ead7a59e18ea8f047d08add0066b73bc62fc1467066a2472ae088dd"
+checksum = "af55e52da295311b368c45bcae221f020e28e97a2420360170ce389218e76ec7"
 dependencies = [
+ "proc-macro2",
+ "quote",
  "serde",
+ "syn 3.0.10",
  "winnow",
- "zvariant",
 ]
 
 [[package]]
 name = "zcheapstr"
-version = "1.3.0"
+version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2347b6f50c4f669a282af57bf950debeacb9ce86de21b5b12932178dda691315"
+checksum = "2da34e7164b75d803c3197b86e6cf61b874106fbd472c5082575a8bc5fbd0907"
 dependencies = [
  "serde",
 ]
@@ -2107,42 +1883,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
-name = "zvariant"
-version = "5.15.1"
+name = "zruntime"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80bf6d6cd6a4b601acb64cfb8284cdc643fcfa75ef26ae3c46ec8aa4e8a1fbb7"
+checksum = "ac67096b97c00742108c4674db6bb6178adb78c4b66a506b0e4a7a9593aa5d9e"
 dependencies = [
- "endi",
- "enumflags2",
- "serde",
- "winnow",
- "zcheapstr",
- "zvariant_derive",
- "zvariant_utils",
-]
-
-[[package]]
-name = "zvariant_derive"
-version = "5.15.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef2672456ba1cb54b5eaec136e63135b3c7495fb938e53b28a62e633496d486d"
-dependencies = [
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn 3.0.10",
- "zvariant_utils",
-]
-
-[[package]]
-name = "zvariant_utils"
-version = "4.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bad0294361a320b694a328460dc73add56c306150f5cb6bfafc44446120008a3"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde",
- "syn 3.0.10",
- "winnow",
+ "futures-core",
+ "futures-io",
+ "rustix",
+ "socket2",
+ "tracing",
+ "windows-sys",
 ]

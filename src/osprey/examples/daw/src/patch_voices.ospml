@@ -180,25 +180,6 @@ module PatchVoices
     (** Partition a note into bounded DSP blocks. *)
     export counts (total, limit) = listAppend (mapList (toList (range (0, intDiv total limit)), \_ => limit)) (total % limit)
 
-    heard (samples, frame) = match listGet samples frame
-        Error _ => 0.0
-        Success value => value
-
-    (** Apply the same voice attack and release to every exported audio lane. *)
-    export shaped (samples, noteSpan: NoteSpan, routing: Routing, rate) = mapList (toList (range (0, length samples)), \frame => ArrangeMath::enveloped (heard (samples, frame), toFloat frame, noteSpan.gate, routing.attack, routing.release, rate))
-
-    finished run = match run.fault == ""
-        true => ok run.samples
-        false => Error(message = run.fault)
-
-    played (graph, plan, noteSpan, routing, rate) = match filterList (graph.nodes, \n => n.processor == synth::Sink)
-        [sink] => chained (told (synth::Renderer::start graph), \audio =>
-            controls = synth::Parameters::initial graph
-            initial = synth::Timeline(audio = audio, observation = [])
-            run = foldList (counts (noteSpan.total, 8192), ok initial, \(held, count) => chained (held, \current => dryBlock (plan, rate, controls, current, count, sink.identity)))
-            chained (run, \done => ok (shaped (done.observation, noteSpan, routing, rate))))
-        _ => Error(message = "The patch needs one audio output.")
-
     graphed (nodes, cables) = match synth::Patches::built (nodes, cables)
         synth::Invalid fault => Error(message = "The routing is not a valid graph: ${fault}.")
         synth::Valid graph => ok graph
@@ -264,35 +245,8 @@ module PatchVoices
             [] => ok graph
             silent => graphed (listAppend graph.nodes (synth::Components::sine (quiet, 0.0)), listConcat graph.cables silent)
 
-    clipBlock (graph, sink, run, count) = match run.fault == "" && count > 0
-        false => run
-        true => match synth::GraphClips::next (graph, run.held, count)
-            Error why => run(fault = synth::Faults::detail why)
-            Success step => match step
-                synth::BlockWaiting _ _ => run(fault = "An external plug-in needs its audio worker.")
-                synth::BlockReady held clips => match told (chained (synth::ClipInputs::completed (clips, sink), synth::GraphClips::trackSamples))
-                    Error why => run(fault = why)
-                    Success audio => run(held = held, samples = synth::Sequences::joined (run.samples, audio))
-
-    clipVoice (graph, noteSpan, routing, rate) = match rate == 48000.0
-        false => Error(message = "MIDI, control and multichannel patch voices require a 48000 Hz project.")
-        true => match filterList (graph.nodes, \n => n.processor == synth::Sink)
-            [sink] =>
-                initial = NoteRun(held = synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), samples = [], fault = "")
-                run = foldList (counts (noteSpan.total, 1024), initial, \(current, count) => clipBlock (graph, sink.identity, current, count))
-                chained (finished run, \audio => ok (shaped (audio, noteSpan, routing, rate)))
-            _ => Error(message = "The patch needs one audio output.")
-
-    routed (graph, noteSpan, routing, rate) = match synth::Graphs::prepare graph
-        synth::Invalid fault => Error(message = "The routing cannot be scheduled: ${fault}.")
-        synth::Valid plan => match length (filterList (graph.nodes, synth::ClipLayouts::requiresClips)) > 0
-            true => clipVoice (graph, noteSpan, routing, rate)
-            false => played (graph, plan, noteSpan, routing, rate)
-
     (** A routing whose gate can play: attack and release are 0.001–10 s. *)
     export enveloped routing = match routing.attack >= 0.001 && routing.attack <= 10.0 && routing.release >= 0.001 && routing.release <= 10.0
         false => Error(message = "A routing's attack and release must be 0.001 to 10 s.")
         true => ok routing
 
-    (** Render one note through the routing. *)
-    export render (note, noteSpan, rate, routing) = chained (enveloped routing, \_ => chained (patched (note, routing), \graph => chained (grounded graph, \whole => chained (audible (whole, []), \heard => routed (heard, noteSpan, routing, rate)))))

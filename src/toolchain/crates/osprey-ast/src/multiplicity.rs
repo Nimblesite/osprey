@@ -147,6 +147,14 @@ impl OperationTable {
             .map_or_else(Multiplicity::default, |d| d.multiplicity)
     }
 
+    /// Whether an indexed operation can resume a continuation repeatedly.
+    #[must_use]
+    pub fn has_many(&self) -> bool {
+        self.declared
+            .values()
+            .any(|operation| operation.multiplicity == Multiplicity::Many)
+    }
+
     /// Whether re-performing `effect.operation` is acceptable to the program.
     /// Implements [MULTI-REPLAY].
     #[must_use]

@@ -410,7 +410,8 @@ type Tree = Leaf | Node Tree Tree
 type Shape = Circle float | Rect(width : float, height : float)
 ```
 
-`|` is a type-declaration separator, not an expression operator or or-pattern.
+`|` separates union variants in a type declaration and alternatives in an or-pattern
+([PATTERN-OR](0007-PatternMatching.md#or-patterns--pattern-or)). It is not an expression operator.
 Layout variants remain available. Positional payloads lower to numeric internal
 field names shared with Default positional unions.
 
@@ -430,7 +431,8 @@ list patterns such as `[]`, `[one]`, and `[head, ...tail]`. A constructor's
 slots nest as its construction does: `Node (Node l _) Leaf` positionally, and
 `Error(message = Overflow by)` by field
 ([PATTERN-NESTED](0007-PatternMatching.md#nested-patterns--pattern-nested)).
-Or-patterns are rejected; write one arm per alternative.
+`A | B => body` is an or-pattern; a nested one in a juxtaposed slot takes parentheses, as in
+`Digit (0 | 1)` ([PATTERN-OR](0007-PatternMatching.md#or-patterns--pattern-or)).
 
 A constructor payload binder takes its **column**, not the field that shares its
 spelling, so `Node l r` may rename freely against a named payload as well as a
@@ -553,6 +555,21 @@ to `Expr::Select` ([CONCURRENCY-SELECT](0011-LightweightFibersAndConcurrency.md#
 `[FLAVOR-ML-BLOCK]` A function body, match arm, handler arm, or spawned body may
 be an indented sequence. Its final expression is the block value; preceding
 lines are statements. It lowers to `Expr::Block { statements, value }`.
+
+`[FLAVOR-ML-USE]` A `use` line passes the rest of its block to a call as a final
+callback, as in the Default flavor
+([BLOCK-USE](0008-BlockExpressions.md#flat-binding-with-use-block-use)):
+`use p <- f (a, b)` is `f (a, b, \p => <rest>)`, `use p <- f (a)` is
+`f (a, \p => <rest>)` and `use <- f ()` is `f (\() => <rest>)`. Two binders,
+`use p, q <- f (a)`, make the uncurried callback `\(p, q) =>`. The `<` and `-` of
+`<-` must touch.
+
+```osprey-ml
+total (a, b) =
+    use x <- andThen (parseInt a)
+    use y <- andThen (parseInt b)
+    Success(value = x + y)
+```
 
 ## Canonical Lowering Table
 

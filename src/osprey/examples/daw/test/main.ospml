@@ -467,6 +467,12 @@ test ("menus, skin changes, node selections, node and slider drags stay quiet; a
 test ("a larger window drops the keyboard and moves the inspector at their size, and the keys still play", \() => bench (\() =>
     roomyKeys ()))
 
+test ("a patch opened in its own window keeps its inspector in that window however the song window is sized", \() => Runtime::guarded (\() => hosted detachedRoomJourney))
+
+test ("a module chosen on the main window's Patch page shows its properties in the docked panel, never on the canvas", \() => Runtime::guarded (\() => hosted mainPanelJourney))
+
+test ("View → Patch Controls toggles the patch panel: it puts away a docked panel and shows a hidden one", \() => Runtime::guarded (\() => hosted patchControlsTogglesPanelJourney))
+
 test ("launched with a player, every key hands its own clip to that player alone and the controls stay silent", \() => bench (\() =>
     begunWithPlayer ()
     silent ()
@@ -518,9 +524,6 @@ test ("MIDI note-on and note-off ownership survives exact block partitions", \()
 test ("hosted graph execution shares exact builtin PCM and rejects malformed cached buffers", \() => Runtime::guarded graphClipJourney)
 test ("original Prism sliders and module palette operate the editable graph", \() => Runtime::guarded (\() => hosted prismIntegratedJourney))
 test ("patch inspector shows only the selected module and preserves routing", \() => Runtime::guarded (\() => hosted inspectorJourney))
-test ("the device hears each tone's exact pitch and level, gain and low-pass attenuation", \() => Runtime::guarded (\() => hosted (\() =>
-    deviceAudioJourney ()
-    windowsAudioJourney ())))
 
 // Shared assertions on a driven synth: each names the one field it checks.
 cablesOf (d, count) = expect (length (Drive::holding d).graph.cables, count)
@@ -535,7 +538,6 @@ offeredIn (d, label, shown) = expect (Semantics::offered (d.drivenSeen.renderedA
 
 viewShows (d, text, shown) = expect (Views::shows (d.drivenSeen, text), shown)
 
-previewed (d, receipt) = Drive::completed (d, "prism-preview", true, receipt)
 
 askedOf (d, count) = expect (length d.drivenSurface.surfaceAsked, count)
 
@@ -632,7 +634,21 @@ test ("tapping a timeline track opens its own patch in Prism; built-in tracks op
 // saved patch and in Prism but is silent: each note renders exactly as it does without it.
 strayed route = route(nodes = listConcat route.nodes [piece (9, "mixer", []), piece (8, "gain", [daw::Setting(key = "gain", value = 0.9, follow = daw::Constant)])], cables = listAppend route.cables (cabled (1, 0, 8, 0)))
 
-sampledNote (note, instrument) = daw::NoteRenders::render (note, 120.0, 48000.0, instrument)
+// [DAW-RENDER-PLAY] One track through the same block path Playback runs: its buses after `count` frames.
+trackBuses (song, buses, voice, count) = synth::Outcomes::carried (daw::Arrangements::opened (song, voice), \play =>
+    synth::Outcomes::carried (daw::Arrangements::advanceWindow (song, buses, voice, play, 0, count), \step => Success(value = step.buses)))
+
+// A track's own sound: played alone, centred at unity, read back from Master's left side.
+trackPart (song, voice, count) = synth::Outcomes::carried (trackBuses (song, daw::Arrangements::empty, voice(gain = 1.0, pan = 0.0, bus = "", sends = []), count), \buses =>
+    Success(value = mapList (buses.left, \value => value / daw::ArrangeMath::panLeft 0.0)))
+
+// A note as the graph plays it, from the first frame to the end of its span.
+sampledAt (note, instrument, tempo) = synth::Outcomes::carried (daw::NoteRenders::checkedSpan (note, tempo, 48000.0, instrument), \span =>
+    voice = freshTrack ("note", instrument)
+    song = timeline [voice]
+    trackPart (song(tempo = tempo), voice(notes = [note(start = 0.0)]), span.total))
+
+sampledNote (note, instrument) = sampledAt (note, instrument, 120.0)
 
 comparedNote (note, plain, patch, inspect) = succeeds (sampledNote (note, plain), \expected =>
     succeeds (sampledNote (note, patch), \heard =>
@@ -683,7 +699,7 @@ projectPatchJourney () =
     track = original(notes = [note], pan = -0.25)
     song = timeline [bellTrack (), track]
     succeeds (daw::TrackPatches::patch track, \graph =>
-        succeeds (daw::PatchRecords::audition (track, graph, 72), \heard => settled (heard, 1, "frequency", synth::Waves::midiFrequency 72.0 * 2.0))
+        succeeds (daw::PatchVoices::patched (beamed (72, 0.0, 1.0, 1.0), daw::TrackPatches::routing track.instrument), \heard => settled (heard, 1, "frequency", synth::Waves::midiFrequency 72.0 * 2.0))
         settled (graph, 1, "frequency", synth::Waves::midiFrequency 60.0 * 2.0)
         tone = synth::Components::sine (1, synth::Waves::midiFrequency 60.0 * 3.0)
         amp = synth::Components::gain (2, 0.75)
@@ -727,7 +743,7 @@ projectPortsJourney () =
                     routing = daw::TrackPatches::routing track.instrument
                     expect (mapList (filterList (routing.nodes, \n => n.identity >= 20), \n => n.component), ["pitchShifter", "spectral"]))
                 succeeds (daw::TrackPatches::picked (opened, 0), \again => expect (structuralEquals (again, graph), true))
-                trackAt (opened, 0, \track => succeeds (daw::PatchRecords::audition (track, graph, 72), \higher =>
+                trackAt (opened, 0, \track => succeeds (daw::PatchVoices::patched (beamed (72, 0.0, 1.0, 1.0), daw::TrackPatches::routing track.instrument), \higher =>
                     settled (higher, 11, "frequency", 522.0)
                     settled (higher, 13, "frequency", 1.7))))))
 
@@ -880,7 +896,6 @@ saveJourney arrangement =
     old = synth::EditorState::initial ()
     reopened = synth::DawSession::loaded (old(patchTrack = 1), path)
     expect (reopened.patchTrack, -1)
-    expect (reopened.keyboardShown, false)
     selected = synth::DawSession::picked (reopened, 1)
     patch = (synth::DawSession::shown (selected, synth::PatchPage)).stepStore
     expect (patch.patchTrack, 1)
@@ -939,19 +954,17 @@ liveFolder = "${transportRoot}/bin/song/live"
 streams (step, message, from, beats, mode) =
     said (step, "daw-song:live:${liveFolder}", message)
     match asked step
-        // The song's earlier note makers are ended as the stream starts.
-        [ui::Run ran given _ _ _ _, ui::Cancel _, ui::Animate on] =>
+        [ui::Run ran given _ _ _ _, ui::Animate on] =>
             expect (ran, "/bin/sh")
             expect (length given, 9)
             expect (listGet given 0 ?: "", "-c")
-            // [DAW-TRANSPORT-LIVE-SPEED] The note makers start before the stream.
+            // [DAW-RENDER-MASTER] Play makes no note ahead of the graph: no maker runs beside the stream.
             command = listGet given 1 ?: ""
-            expect (contains command "warm \"$i\" \"$w\" \"$note_clock\" >/dev/null 2>&1 & m=", true)
-            expect (contains command "note_clock=\"$3/played.json\"", true)
-            expect (contains command "\"$3/controls\" makers", true)
+            expect (contains command " warm ", false)
+            expect (contains command "\"$3/controls\";", true)
             expect (mapList ([2, 3, 4, 5, 6, 7, 8], \index => listGet given index ?: ""), ["${transportRoot}/bin/worker", "${transportRoot}/bin/daw", "${liveFolder}/project.json", liveFolder, from, beats, mode])
             expect (on, true)
-        _ => expect (length step.requests, 3)
+        _ => expect (length step.requests, 2)
     expect (synth::DawSession::phase step.stepStore, "Playing")
     expect (step.stepStore.playClock, 0.0)
     expect (readFile "${liveFolder}/played.json" ?: "unread", "")
@@ -1055,24 +1068,6 @@ rangeJourney ready =
     said (synth::DawSession::ended (playing.stepStore, 3), "daw-song:live:${liveFolder}", "Stop first to move the end marker.")
     said (synth::DawSession::started (playing.stepStore, 0), "daw-song:live:${liveFolder}", "Stop first to move the start marker.")
 
-keyStruck action = match action
-    synth::Strike note => note
-    _ => -1
-
-// [DAW-ROLL-KEYS] A press on the keyboard beside the piano roll strikes the pitch of that row; the roll itself
-// still selects notes.
-rollKeysJourney opened =
-    ready = synth::DawSession::picked (opened, 0)
-    expect (ready.track, 0)
-    expect (synth::TimelineGeometry::keyPitch (542.0, 72.0, 12.0), 72.0)
-    expect (synth::TimelineGeometry::keyPitch (563.6, 72.0, 12.0), 72.0)
-    expect (synth::TimelineGeometry::keyPitch (564.0, 72.0, 12.0), 71.0)
-    expect (synth::TimelineGeometry::keyPitch (801.9, 72.0, 12.0), 61.0)
-    succeeds (synth::TimelineView::rollAt (ready, 30.0, 542.0), \top => succeeds (synth::TimelineView::rollAt (ready, 30.0, 801.0), \bottom => expect (keyStruck top >= keyStruck bottom && keyStruck bottom >= 0, true)))
-    succeeds (synth::TimelineView::rollAt (ready, 75.9, 600.0), \action => expect (keyStruck action >= 0, true))
-    succeeds (synth::TimelineView::rollAt (ready, 76.0, 600.0), \action => expect (keyStruck action, -1))
-    succeeds (synth::TimelineView::rollAt (ready, 30.0, 802.0), \action => expect (keyStruck action, -1))
-
 gainOf (editor, index) = match listGet editor.song.tracks index
     Error _ => -1.0
     Success voice => voice.gain
@@ -1119,41 +1114,41 @@ songFolder = "${transportRoot}/bin/song/song"
 rendererTranscript (first, transcript, expected) =
     handle ui::Slices
         fetch key => ui::Pick::either (key == "prism-song-report", transcript, "")
-    said (synth::DawSession::completed (first.stepStore, "daw-song:bounce:${songFolder}", Success(value = "{\"status\":0,\"stderr\":\"\"}")), "", expected)
+    said (synth::DawSession::completed (first.stepStore, "daw-song:render:${songFolder}", Success(value = "{\"status\":0,\"stderr\":\"\"}")), "", expected)
 
 // The copy runs through the native process callback.
 fixtureCopyEvent (_pid, _kind, _text) = print ""
 
-bounceJourney ready =
-    // A previous run's finished bounce would otherwise count as this project's audio.
+renderSongJourney ready =
+    // A previous run's finished render would otherwise count as this project's audio.
     _made = makeDir songFolder
     _cleared = writeFile "${songFolder}/song.wav" ""
     expect (synth::Header::songAction (ready, 0), synth::ShowPage(page = synth::TimelinePage))
     expect (synth::Header::songAction (ready, 1), synth::ShowPage(page = synth::PatchPage))
     expect (synth::Header::songAction (ready, 2), synth::ShowPage(page = synth::MixPage))
-    said (synth::DawSession::bounce (ready(renderer = "")), "", "Prism was launched without its song renderer, so it cannot play or render this song.")
-    first = synth::DawSession::bounce ready
-    said (first, "daw-song:bounce:${songFolder}", "Rendering all of Bridge.")
+    said (synth::DawSession::renderSong (ready(renderer = "")), "", "Prism was launched without its song renderer, so it cannot play or render this song.")
+    first = synth::DawSession::renderSong ready
+    said (first, "daw-song:render:${songFolder}", "Rendering all of Bridge.")
     ranWith (first, "${transportRoot}/bin/daw", ["${songFolder}/project.json", songFolder])
     expect (fileSize "${songFolder}/song.wav" ?: -1, 0)
     encoded (song (), \text => expect (readFile "${songFolder}/project.json" ?: "", text))
     expect (synth::DawSession::phase first.stepStore, "Rendering…")
-    said (synth::DawSession::bounce first.stepStore, "daw-song:bounce:${songFolder}", "The song is already playing; Stop first.")
-    said (synth::DawSession::play first.stepStore, "daw-song:bounce:${songFolder}", "The song is already playing; Stop first.")
-    said (synth::DawSession::completed (first.stepStore, "daw-song:bounce:${songFolder}", rendererSaid "daw: refused"), "", "Rendering failed: daw: refused")
+    said (synth::DawSession::renderSong first.stepStore, "daw-song:render:${songFolder}", "The song is already playing; Stop first.")
+    said (synth::DawSession::play first.stepStore, "daw-song:render:${songFolder}", "The song is already playing; Stop first.")
+    said (synth::DawSession::completed (first.stepStore, "daw-song:render:${songFolder}", rendererSaid "daw: refused"), "", "Rendering failed: daw: refused")
     rendererTranscript (first, "daw: Bridge\ndaw: unknown patch setting.\n", "Rendering failed: daw: unknown patch setting.")
     rendererTranscript (first, "", "Rendering failed: The renderer produced no audio.")
     succeeds (writeFile "${songFolder}/song.wav" (join (mapList (toList (range (0, 64)), \_ => "RIFF")) ""), \_ => expect (true, true))
     rendererTranscript (first, "daw: interrupted", "Rendering failed: daw: interrupted")
-    said (synth::DawSession::bounce ready, "daw-song:bounce:${songFolder}", "Rendering all of Bridge.")
+    said (synth::DawSession::renderSong ready, "daw-song:render:${songFolder}", "Rendering all of Bridge.")
     succeeds (spawnProcess "cp src/osprey/examples/daw/tracks/samples/808-hat.wav '${songFolder}/song.wav'" fixtureCopyEvent, \process =>
         expect (awaitProcess process, 0)
         _closed = cleanupProcess process
         expect ((fileSize "${songFolder}/song.wav" ?: 0) > 44, true))
-    done = synth::DawSession::completed (first.stepStore, "daw-song:bounce:${songFolder}", rendererSaid "daw: wrote it")
+    done = synth::DawSession::completed (first.stepStore, "daw-song:render:${songFolder}", rendererSaid "daw: wrote it")
     said (done, "", "Rendered ${songFolder}/song.wav.")
     expect (length done.requests, 0)
-    said (synth::DawSession::bounce ready, "", "${songFolder}/song.wav is already this project.")
+    said (synth::DawSession::renderSong ready, "", "${songFolder}/song.wav is already this project.")
     said (synth::DawSession::stop first.stepStore, "", "Stopped.")
 
 // A song whose last note ends on a bar line: the end of the ruler is that last bar, never the empty one after it,
@@ -1264,14 +1259,11 @@ stopJourney ready =
     live = idle(songTicket = "daw-song:live:project")
     expect (synth::Header::songAction (live, songStopAt live), synth::StopSong)
     expect (songStopAt (synth::DawSession::stop live).stepStore, -1)
-    expect (songStopAt (idle(renderDeviceKey = "audition")), -1)
     ended = synth::DawSession::completed (live, live.songTicket, rendererSaid "")
     expect (songStopAt ended.stepStore, -1)
-    bounce = idle(songTicket = "daw-song:bounce:project")
-    expect (synth::Header::songAction (bounce, songStopAt bounce), synth::StopSong)
+    rendering = idle(songTicket = "daw-song:render:project")
+    expect (synth::Header::songAction (rendering, songStopAt rendering), synth::StopSong)
     expect (synth::EditorView::toolbarAt (idle, 900.0, 32.0) ?: -1, -1)
-    patch = idle(renderTicket = "opening")
-    expect (synth::EditorView::toolbarAction (synth::EditorView::toolbarAt (patch, 900.0, 32.0) ?: -1), synth::StopGraph)
 
 // A finished song: the playhead resets, only `asks` stays outstanding, and the phase is Stopped.
 halted (step, asks) =
@@ -1323,8 +1315,6 @@ transportJourney () =
     rangeJourney ready
     expect (synth::Header::songAction (ready, 5), synth::ToggleLoop)
     held = stopped.stepStore
-    auditioning = held(renderDeviceKey = "device")
-    expect (synth::DawSession::phase auditioning, "Auditioning")
     home = synth::DawSession::stop stopped.stepStore
     said (home, "", stopped.stepStore.message)
     expect (stopped.stepStore.rollBar, 5)
@@ -1336,8 +1326,7 @@ transportJourney () =
     failsWith (synth::TimelineView::laneAt (ready, 700.0, 192.0), "No lane here.")
     succeeds (daw::Projects::mixed (ready.song, 1, 2.0, 0.5), \louder => remixed (ready, louder))
     faderJourney ready
-    rollKeysJourney ready
-    bounceJourney ready
+    renderSongJourney ready
 
 test ("Play streams the range in real time into the audio device, the playhead follows what it sounds, Loop and the end marker set the range, Stop cancels, and Render song writes the whole song", \() => Runtime::guarded (\() => hosted transportJourney))
 
@@ -1423,8 +1412,8 @@ busJourney () =
     failsWith (daw::BusMix::mastered (routedTo (song, [padsBus (4.0, "snare")]), grouped ()), "Bus pads: sidechain snare is not a track in the song.")
     forEachList ([0.5, 21.0], \ratio => failsWith (daw::BusMix::mastered (routedTo (song, [padsBus (ratio, "kick")]), grouped ()), "Bus pads: gain must be 0 to 4, EQ -24 to 24 dB, ratio 1 to 20, knee 0 to 24 dB, attack and release 0 to 2 s."))
     routed = timeline [onPads (bellTrack ())]
-    failsWith (daw::Arrangements::added (routed, daw::Arrangements::empty, onPads (bellTrack ()), 10), "bell: Bus pads is not in the song.")
-    succeeds (daw::Arrangements::added (routedTo (routed, [padsBus (4.0, "bell")]), daw::Arrangements::empty, onPads (bellTrack ()), 10), keyedRoute)
+    failsWith (trackBuses (routed, daw::Arrangements::empty, onPads (bellTrack ()), 10), "bell: Bus pads is not in the song.")
+    succeeds (trackBuses (routedTo (routed, [padsBus (4.0, "bell")]), daw::Arrangements::empty, onPads (bellTrack ()), 10), keyedRoute)
     succeeds (readFile "src/osprey/examples/daw/tracks/codex-version.json", \text => decoded (text, projectBuses))
 
 test ("bus EQ passes at 0 dB, the sidechain ducks a bus by exactly its curve, routing and project buses are checked", \() => Runtime::guarded busJourney)
@@ -1439,7 +1428,7 @@ showcasePatch (voice, routing) =
         succeeds (daw::PatchRecords::routed (routing, graph), \saved =>
             succeeds (daw::PatchVoices::patched (preview, saved), \again => expect (structuralEquals (graph, again), true))))
     match voice.name == "Spore wheel" || voice.name == "Rivet pulse"
-        true => succeeds (daw::NoteRenders::render (preview, 138.0, 48000.0, voice.instrument), \samples =>
+        true => succeeds (sampledAt (preview, voice.instrument, 138.0), \samples =>
             expect (length samples > 1000, true)
             expect (ui::Lists::any (samples, \value => abs value > 0.00001), true))
         false => expect (length voice.notes > 0, true)
@@ -1467,22 +1456,11 @@ test ("Silt Relay opens its wired synth families and sounds its granular and MID
 
 test ("every synthesis family plays a real, finite, repeatable note through the song renderer, pitched ones in tune", \() => Runtime::guarded familiesJourney)
 
-// [DAW-TRANSPORT-LIVE-SPEED] Only changes to the sound of an individual note require it to be made again.
-noteCacheIdentityJourney () =
-    voice = keysTrack ()
-    song = timeline [voice]
-    succeeds (daw::SongFiles::noteCacheKey (song, voice), \key =>
-        moved = voice(name = "Elsewhere", gain = 0.25, pan = -0.8, bus = "Pads", notes = [])
-        succeeds (daw::SongFiles::noteCacheKey (song(title = "Renamed", meterTop = 7, meterBottom = 8), moved), \same => expect (same, key))
-        succeeds (daw::SongFiles::noteCacheKey (song(tempo = 80.0), voice), \changed => expect (changed == key, false))
-        succeeds (daw::SongFiles::noteCacheKey (song(sampleRate = 44100), voice), \changed => expect (changed == key, false))
-        succeeds (daw::SongFiles::noteCacheKey (song, bellTrack ()), \changed => expect (changed == key, false)))
-
-test ("cached note identity follows the sound across meter, mix and tempo edits", \() => ui::Runtime::guarded noteCacheIdentityJourney)
-
 test ("two internal audio sends survive a project round trip and sum before the track fader", \() => ui::Runtime::guarded tapJourney)
 
 test ("the project plays as one loop over time: every track, bus and send advance together into Master, at any block size", \() => ui::Runtime::guarded masterPlayJourney)
+test ("rendering runs the graph into Master and renders nothing else: no note is made whole or kept", \() => ui::Runtime::guarded onlyMasterJourney)
+test ("a track carries the project's stereo channels to Master: a left-only patch is heard only on the left", \() => ui::Runtime::guarded stereoTrackJourney)
 
 // [DAW-PROJECT-MODEL] Every shipped score must open through the production project reader.
 test ("every example song opens with playable tracks", \() => Runtime::guarded (\() =>
@@ -1502,9 +1480,9 @@ test ("Violet Static opens the kick as a wired WAV sample", \() => ui::Runtime::
                     expect (daw::PatchVoices::fileName n.asset, "808-kick.wav")
                     succeeds (daw::PatchVoices::sampled n.asset, \resource =>
                         note = beamed (32, 0.0, 0.2, 1.0)
-                        span = daw::NoteSpan(gate = 1000.0, total = 256)
-                        succeeds (daw::PatchVoices::render (note, span, 48000.0, routing), \audio =>
-                            forEachList ([48, 64, 127, 255], \i => reads (listGet audio i, \actual => reads (listGet resource.samples i, \wanted => expect (actual, wanted))))))))))))
+                        song = timeline [kick]
+                        succeeds (trackPart (song, kick(notes = [note]), 256), \audio =>
+                            forEachList ([48, 64, 127, 255], \i => reads (listGet audio i, \actual => reads (listGet resource.samples i, \wanted => closeTo (actual, wanted))))))))))))
 
 test ("Every grain control can be reached and edited in both inspectors", \() => Runtime::guarded (\() => hosted dialPagesJourney))
 

@@ -51,7 +51,7 @@ pub struct Menu {
 
 thread_local! {
     /// The host of this UI thread, so a capability answered on a worker thread finds it again.
-    static CURRENT: RefCell<Weak<Host>> = RefCell::new(Weak::new());
+    static CURRENT: RefCell<Weak<Host>> = const { RefCell::new(Weak::new()) };
 }
 
 /// The application's regions, its last frame and the state of the tree that shows them.

@@ -75,11 +75,11 @@ wavMonoData () = wavChunk ("data", [0, 64, 0, 128])
 // [SYNTH-ADVANCED-SPECTRAL-FORMANT] A vowel-like voice: harmonics of 156.25 Hz under one resonance at 1 kHz.
 formantRate = 16000.0
 
-formantVoiceAt (centre, n) = foldList (toList (range (1, 40)), 0.0, \(sum, k) => sum + sin (6.283185307179586 * 156.25 * toFloat k * toFloat n / formantRate) / (1.0 + pow ((156.25 * toFloat k - centre) / 120.0, 2.0)))
+formantVoiceAt (centre, n) = foldList (toList (range (1, 40)), 0.0, \(sum, k) => sum + sin (tau * 156.25 * toFloat k * toFloat n / formantRate) / (1.0 + pow ((156.25 * toFloat k - centre) / 120.0, 2.0)))
 
 formantVoice n = formantVoiceAt (1000.0, n)
 
-formantTone (level, n) = level * sin (6.283185307179586 * 500.0 * toFloat n / formantRate)
+formantTone (level, n) = level * sin (tau * 500.0 * toFloat n / formantRate)
 
 // Every spectral journey below shares one 16 kHz rate, 1,024-sample window and 256-sample hop.
 spectralConfig transform = synth::SpectralConfig(sampleRate = formantRate, size = 1024, hop = 256, transform = transform, mix = 1.0)
@@ -99,18 +99,18 @@ spectralFor (config, voices, count) = foldList (toList (range (0, count)), Succe
 
 formantRendered config = spectralRendered (config, { main = formantVoice, side = \_ => 0.0 })
 
-// One shared runner for every journey result: the rendered samples go to `use`, a refusal is asserted exactly.
-renderedHeld (rendered, use) = match rendered
+// One shared runner for every journey result: the rendered samples go to `consume`, a refusal is asserted exactly.
+renderedHeld (rendered, consume) = match rendered
     Error why => expect (synth::Faults::detail why, "")
-    Success run => use run.samples
+    Success run => consume run.samples
 
-formantWindowed (samples, n) = (listGet samples n ?: 0.0) * (0.5 - 0.5 * cos (6.283185307179586 * toFloat (n - 3072) / 1024.0))
+formantWindowed (samples, n) = (listGet samples n ?: 0.0) * (0.5 - 0.5 * cos (tau * toFloat (n - 3072) / 1024.0))
 
 // Hann-windowed DFT magnitude of the final 1,024 samples at one frequency.
 formantLevel (samples, frequency) =
     tail = toList (range (3072, 4096))
-    re = foldList (tail, 0.0, \(sum, n) => sum + formantWindowed (samples, n) * cos (6.283185307179586 * frequency * toFloat n / formantRate))
-    im = foldList (tail, 0.0, \(sum, n) => sum + formantWindowed (samples, n) * sin (6.283185307179586 * frequency * toFloat n / formantRate))
+    re = foldList (tail, 0.0, \(sum, n) => sum + formantWindowed (samples, n) * cos (tau * frequency * toFloat n / formantRate))
+    im = foldList (tail, 0.0, \(sum, n) => sum + formantWindowed (samples, n) * sin (tau * frequency * toFloat n / formantRate))
     sqrt (re * re + im * im)
 
 formantLevels config = match formantRendered config
@@ -186,7 +186,7 @@ morphLevel (config, voices, frequency) = match spectralRendered (config, voices)
     Success run => formantLevel (run.samples, frequency) / 256.0
 
 // A harmonic tone: six partials falling as 1/k.
-partialsTone (fundamental, count, n) = foldList (toList (range (1, satAdd count 1)), 0.0, \(sum, k) => sum + sin (6.283185307179586 * fundamental * toFloat k * toFloat n / formantRate) / toFloat k)
+partialsTone (fundamental, count, n) = foldList (toList (range (1, satAdd count 1)), 0.0, \(sum, k) => sum + sin (tau * fundamental * toFloat k * toFloat n / formantRate) / toFloat k)
 
 harmonicTone (fundamental, n) = partialsTone (fundamental, 6, n)
 
@@ -343,16 +343,16 @@ registerWaveJourneys () =
         exactRows ([{ got = Waves::wrap 0.25, want = 0.25 }, { got = Waves::wrap 1.25, want = 0.25 }, { got = Waves::wrap (-0.25), want = 0.75 }, { got = Waves::wrap 3.0, want = 0.0 }])
         nearRows ([{ got = Waves::blep (0.25, 0.5), want = -0.25, within = 0.000000001 }, { got = Waves::blep (0.75, 0.5), want = 0.25, within = 0.000000001 }, { got = Waves::blep (0.5, 0.5), want = 0.0, within = 0.000000001 }, { got = Waves::blep (0.3, 0.0), want = 0.0, within = 0.000000001 }, { got = Waves::blep (0.3, -0.5), want = 0.0, within = 0.000000001 }, { got = Waves::blep (0.999, 0.01), want = 0.81, within = 0.000000001 }])
         nearRows ([{ got = Waves::blamp (0.25, 0.5), want = 0.0416666666666667, within = 0.000000001 }, { got = Waves::blamp (0.75, 0.5), want = 0.0416666666666667, within = 0.000000001 }, { got = Waves::blamp (0.1, 0.2), want = 0.0416666666666667, within = 0.000000001 }, { got = Waves::blamp (0.5, 0.5), want = 0.0, within = 0.000000001 }, { got = Waves::blamp (0.9, 0.0), want = 0.0, within = 0.000000001 }])
-        nearRows ([{ got = Waves::sine 0.25, want = 1.0, within = 0.000000000001 }, { got = Waves::sine 0.0, want = 0.0, within = 0.0 }, { got = Waves::sine 0.5, want = 0.0, within = 0.000000000001 }, { got = Waves::sine 0.75, want = -1.0, within = 0.000000000001 }, { got = Waves::sine 0.125, want = sin (6.283185307179586 * 0.125), within = 0.0 }])
+        nearRows ([{ got = Waves::sine 0.25, want = 1.0, within = 0.000000000001 }, { got = Waves::sine 0.0, want = 0.0, within = 0.0 }, { got = Waves::sine 0.5, want = 0.0, within = 0.000000000001 }, { got = Waves::sine 0.75, want = -1.0, within = 0.000000000001 }, { got = Waves::sine 0.125, want = turn 0.125, within = 0.0 }])
         exactRows ([{ got = Waves::saw (0.0, 0.01), want = 0.0 }, { got = Waves::saw (0.25, 0.01), want = -0.5 }, { got = Waves::saw (0.5, 0.01), want = 0.0 }, { got = Waves::saw (0.75, 0.01), want = 0.5 }])
         exactRows ([{ got = Waves::pulse (0.25, 0.01, 0.5), want = 1.0 }, { got = Waves::pulse (0.75, 0.01, 0.5), want = -1.0 }, { got = Waves::pulse (0.0, 0.01, 0.5), want = 0.0 }, { got = Waves::pulse (0.5, 0.01, 0.5), want = 0.0 }])
         nearRows ([{ got = Waves::triangle (0.5, 0.0), want = 1.0, within = 0.0 }, { got = Waves::triangle (0.25, 0.0), want = 0.0, within = 0.0 }, { got = Waves::triangle (0.0, 0.0), want = -1.0, within = 0.0 }, { got = Waves::triangle (0.75, 0.01), want = 0.0, within = 0.000000000001 }, { got = Waves::triangle (0.5, 0.01), want = 0.9866666666666667, within = 0.000000001 }, { got = Waves::harmonic (0.25, 0.01, 3.0), want = -1.0, within = 0.000000000001 }, { got = Waves::harmonic (0.125, 0.01, 2.0), want = 1.0, within = 0.000000000001 }])
         exactRows ([{ got = Waves::harmonic (0.25, 0.2, 3.0), want = 0.0 }, { got = Waves::harmonic (0.25, 0.25, 2.0), want = 0.0 }])
-        nearRows ([{ got = Waves::glass (0.25, 0.01, 0.0), want = 1.0, within = 0.000000000001 }, { got = Waves::glass (0.25, 0.01, 1.0), want = sin (6.283185307179586 * 0.25) * 0.7 + sin (6.283185307179586 * 0.75) * 0.3, within = 0.000000000001 }, { got = Waves::bass (0.25, 0.2, 1.0), want = sin (6.283185307179586 * 0.25) * 0.65, within = 0.000000000001 }, { got = Waves::bass (0.125, 0.01, 0.0), want = sin (6.283185307179586 * 0.125) * 0.65 + sin (6.283185307179586 * 0.25) * 0.1, within = 0.000000000001 }, { got = Waves::hollow (0.25, 0.2, 1.0), want = sin (6.283185307179586 * 0.25) * 0.6, within = 0.000000000001 }, { got = Waves::hollow (0.25, 0.01, 1.0), want = sin (6.283185307179586 * 0.25) * 0.6 + sin (6.283185307179586 * 0.75) * 0.25 + sin (6.283185307179586 * 1.25) * 0.15, within = 0.000000000001 }])
+        nearRows ([{ got = Waves::glass (0.25, 0.01, 0.0), want = 1.0, within = 0.000000000001 }, { got = Waves::glass (0.25, 0.01, 1.0), want = turn 0.25 * 0.7 + turn 0.75 * 0.3, within = 0.000000000001 }, { got = Waves::bass (0.25, 0.2, 1.0), want = turn 0.25 * 0.65, within = 0.000000000001 }, { got = Waves::bass (0.125, 0.01, 0.0), want = turn 0.125 * 0.65 + turn 0.25 * 0.1, within = 0.000000000001 }, { got = Waves::hollow (0.25, 0.2, 1.0), want = turn 0.25 * 0.6, within = 0.000000000001 }, { got = Waves::hollow (0.25, 0.01, 1.0), want = turn 0.25 * 0.6 + turn 0.75 * 0.25 + turn 1.25 * 0.15, within = 0.000000000001 }])
         expect (Waves::modulated (0.0, 0.0), 0.0)
-        near (Waves::modulated (0.25, 1.0), sin (6.283185307179586 * (0.25 + 0.35 * sin (6.283185307179586 * 0.5))), 0.000000000001)
+        near (Waves::modulated (0.25, 1.0), sin (tau * (0.25 + 0.35 * turn 0.5)), 0.000000000001)
         exactRows ([{ got = Waves::ring (0.5, 0.0, 0.0), want = 0.5 }, { got = Waves::ring (0.5, 0.0, 1.0), want = 0.0 }])
-        near (Waves::ring (0.5, 0.25, 1.0), sin (6.283185307179586 * 1.75) * 0.5, 0.000000000001)
+        near (Waves::ring (0.5, 0.25, 1.0), turn 1.75 * 0.5, 0.000000000001)
         exactRows ([{ got = Waves::unipolar (-1.0), want = 0.0 }, { got = Waves::unipolar 0.0, want = 0.5 }, { got = Waves::unipolar 0.25, want = 0.625 }, { got = Waves::unipolar 1.0, want = 1.0 }])
         exactRows ([{ got = Waves::controlledGain (0.5, 2.0, 0.25), want = 0.25 }, { got = Waves::controlledGain (-0.5, 0.5, 1.0), want = -0.25 }])
         exactRows ([{ got = Waves::controlledCutoff (1000.0, 0.0), want = 1.0 }, { got = Waves::controlledCutoff (1000.0, 0.5), want = 500.5 }, { got = Waves::controlledCutoff (1000.0, 1.0), want = 1000.0 }, { got = Waves::controlledCutoff (20000.0, 0.25), want = 5000.75 }])

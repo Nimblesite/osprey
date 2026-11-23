@@ -43,7 +43,7 @@ module HostModulation
         Success clip => match clip.clipChannels == 1
             false => Error(message = IncompatibleLayout(detail = "A parameter modulator must have one control channel."))
             true => match listGet clip.clipSamples offset
-                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+                Error _ => Error(message = Outcomes::indexOutOfBounds)
                 Success sample => Success(value = sample)
 
     point (values, p, offset, number) = match startsWith p.key "vst:" && number >= 0.0 && number <= 1.0 && length values < 1024

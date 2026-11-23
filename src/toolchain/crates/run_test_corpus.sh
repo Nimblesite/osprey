@@ -81,10 +81,13 @@ esac
 # rejected for a missing capability or for a boundary the scalar C ABI cannot
 # express, each pinned in src/osprey/tests/MOBILE_UNPORTABLE.txt.
 # Ratchet UP as goldens are added; never lower it to turn a red build green.
+# The multi-shot regression pair counts on EVERY target: a `many` continuation
+# is a closure, so wasm32 and the mobile C ABI run it as native does
+# ([MULTI-WASM-MANY], [CI-MULTISHOT-WASM]).
 case $TARGET in
-  wasm32)            GOLDEN_MIN=213 ;;
-  ios-sim|macos|android*) GOLDEN_MIN=228 ;;
-  *)                 GOLDEN_MIN=285 ;;
+  wasm32)            GOLDEN_MIN=216 ;;
+  ios-sim|macos|android*) GOLDEN_MIN=232 ;;
+  *)                 GOLDEN_MIN=289 ;;
 esac
 
 # [GPU-KERNEL-EXTRACT] differential. The extracted-kernel lowering and the
@@ -137,9 +140,9 @@ run_worker() {
 # Golden precedence for a program at $1, echoing the chosen path (empty if none):
 #   1. <file>.expectedoutput                     — per-file golden
 #   2. <file>.expectedoutput.<uname>             — OS-specific output
-#   3. <stem>.test.osp.expectedoutput            — an ML or TypeScript twin shares the Default golden
+#   3. <stem>.test.osp.expectedoutput            — an ML, Python or TypeScript twin shares the Default golden
 #   4. <stem>.test.osp.expectedoutput.<uname>    — ...and its OS-specific form
-# Rules 3 and 4 are what make Default, ML and TypeScript twins share ONE file:
+# Rules 3 and 4 are what make all flavor twins share ONE file:
 # every flavor is required to run byte-identically, so one golden proves it
 # ([FLAVOR-IR-EQUIV], [FLAVOR-TS-VERIFICATION]).
 golden_for() {
@@ -244,8 +247,13 @@ trap cleanup_results EXIT
 trap 'cleanup_results; exit 130' INT TERM
 
 while IFS= read -r -d $'\0' f; do
+  # Standalone Python suites explicitly opt in ([FLAVOR-PYTHON-SELECT]).
+  if [[ $f == *.py ]] && ! awk '/^[[:space:]]*# ?osprey: flavor=python[[:space:]]*$/ {found=1; exit}
+    /^[[:space:]]*($|#|\/\/)/ {next} {exit} END {exit !found}' "$f"; then
+    continue
+  fi
   FILES+=("$f")
-done < <(find "$TESTDIR" \( -name '*.test.osp' -o -name '*.test.ospml' -o -name '*.test.ts' \) -print0 | LC_ALL=C sort -z)
+done < <(find "$TESTDIR" \( -name '*.test.osp' -o -name '*.test.ospml' -o -name '*.test.ts' -o -name '*.test.py' \) -print0 | LC_ALL=C sort -z)
 
 # Programs that contend for an OS resource are run one at a time. Two kinds do:
 #
@@ -387,6 +395,27 @@ if [[ -n $MANIFEST ]]; then
     echo "$TARGET SKIP SET CHANGED. Skips are holes; this set is reviewed, not inferred." >&2
     echo "Port the feature, or justify the change and edit ${MANIFEST#$ROOT/}:" >&2
     diff -u <(print -r -- "$expected") <(print -r -- "$actual") | sed -n '3,$p' | sed 's/^/  /' >&2
+  fi
+  # [CI-MULTISHOT-WASM] A `many` continuation is a closure the compiler writes,
+  # so no target can lack it and wasm32 runs every one ([MULTI-WASM-MANY]). A
+  # row naming a program that declares a `many` operation is therefore never a
+  # reviewed hole: it is a compiler defect, and it fails the build however the
+  # row is worded.
+  many_rows=()
+  if [[ -f "$MANIFEST" ]]; then
+    for row in ${(f)"$(grep -vE '^[[:space:]]*(#|$)' "$MANIFEST")"}; do
+      program=${row%% *}
+      if [[ -f $ROOT/$program ]] \
+         && grep -qE 'control[[:space:]]+many[[:space:]]+[A-Za-z_]|@many\b' "$ROOT/$program"; then
+        many_rows+=("$program")
+      fi
+    done
+  fi
+  if (( ${#many_rows} > 0 )); then
+    skips_ok=0
+    echo "$TARGET SKIPS A MULTI-SHOT PROGRAM. \`many\` runs on every target, wasm32 included [MULTI-WASM-MANY]." >&2
+    echo "Fix the compiler; a multi-shot program may never be listed in ${MANIFEST#$ROOT/}:" >&2
+    for item in $many_rows; do echo "  $item" >&2; done
   fi
 fi
 echo "TEST_CORPUS_GOLDEN_PASS=$golden_pass TEST_CORPUS_GOLDEN_FAIL=$golden_fail TEST_CORPUS_GOLDEN_MISSING=$golden_missing (floor $GOLDEN_MIN)"

@@ -78,6 +78,8 @@ impl OspreyEngine {
     fn answer(&self, query: Query) -> Report {
         let enc = self.encoding();
         match query {
+            // An open document gets the redundancy proof; a closed file the sweep
+            // reads from disk gets the cheap advice ([LSP-MEMORY-RETENTION]).
             Query::Diagnostics(uri) => Report::Diagnostics(match self.diagnostic_text(&uri) {
                 Ok(text) => {
                     diagnostics::analyze_cached(
@@ -86,6 +88,7 @@ impl OspreyEngine {
                         enc,
                         Some(&self.vfs),
                         &self.project_cache,
+                        self.vfs.text(&uri).is_some(),
                     )
                     .diagnostics
                 }
@@ -122,14 +125,24 @@ impl OspreyEngine {
                 include_declaration,
             } => Report::Locations(self.locate(&at, false, include_declaration)),
             Query::SignatureHelp(at) => Report::Signature(self.signature(&at)),
-            Query::Completion(at) => Report::Completion(crate::complete::completion(
-                &self.text(&at.uri),
-                at.uri.as_str(),
-                at.line,
-                at.character,
-                enc,
-                &self.typed_view(at.uri.as_str()),
-            )),
+            Query::Completion(at) => {
+                let text = self.text(&at.uri);
+                let uri = at.uri.as_str();
+                let view = if crate::server::scope::lock(self).whole_project() {
+                    self.project_cache
+                        .view_for_buffer(uri, &self.vfs, Some(&text))
+                } else {
+                    self.project_cache.view(uri, &self.vfs)
+                };
+                Report::Completion(crate::complete::completion(
+                    &text,
+                    uri,
+                    at.line,
+                    at.character,
+                    enc,
+                    &view,
+                ))
+            }
         }
     }
 

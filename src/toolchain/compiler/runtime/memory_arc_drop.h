@@ -13,11 +13,7 @@ static void arc_free_or_recycle(void *body) {
     return; // slot stays present; recycled in place for the next same-size
             // alloc
   }
-  uintptr_t *slot = arc_find((uintptr_t)body);
-  if (slot) {
-    arc_remove(slot); // g_present-- (g_live already decremented above)
-  }
-  free(h);
+  arc_return_block(body); // g_present-- (g_live already decremented above)
 }
 
 // --- release: worklist drop over the kind/mask layout

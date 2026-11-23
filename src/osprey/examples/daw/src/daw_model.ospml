@@ -183,12 +183,41 @@ type ActiveOperator =
     phases : VoicePair<synth::OperatorState, synth::OperatorState>
     sends : List<AudioSend>
 
+type BuiltInState =
+    Plucked
+        guide : synth::WaveguideState
+        burst : synth::ExciterState
+        capacity : int
+        brightness : float
+        decay : float
+    Bowed
+        strand : synth::BowState
+        capacity : int
+        pressure : float
+        brightness : float
+        depth : float
+    Rung
+        bank : synth::ModalBank
+        modes : synth::ModalState
+    Drummed
+        tone : synth::OperatorState
+        burst : synth::ExciterState
+        noise : synth::ExciterConfig
+        hit : Hit
+
+type ActiveVoice =
+    span : NoteSpan
+    current : BuiltInState
+    sends : List<AudioSend>
+
 type NoteDriver =
     RecordedNote
     PerformingNote
         patch : ActivePatch
     PerformingOperator
         pair : ActiveOperator
+    PerformingVoice
+        voice : ActiveVoice
 
 type Sounding =
     cue : Cue
@@ -206,12 +235,10 @@ type NoteJob =
     note : Note
 
 type TrackPlay =
-    edited : bool
     pending : List<Cue>
     sounding : List<Sounding>
     sends : List<AudioSend>
     made : List<Made>
-    recordings : List<Made>
 
 type Advanced =
     play : TrackPlay

@@ -100,11 +100,6 @@ def required(name):
     return Success(value=name) if name != "" else Error(message="model is required")
 
 
-def default_sampling():
-    """The served defaults: the model's context, a bounded reply, greedy sampling."""
-    return Sampling(num_ctx=CONTEXT, num_predict=NUM_PREDICT, temperature=TEMPERATURE, seed=0)
-
-
 def sampling_of(options):
     """The request's `options` object over the served defaults."""
     return Sampling(

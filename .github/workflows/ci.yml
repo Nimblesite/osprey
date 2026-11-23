@@ -160,7 +160,7 @@ jobs:
         run: |
           npm ci --prefix src/toolchain/hosts/web
           node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/talon/app --title "Talon Bank" --out src/toolchain/hosts/web/build/talon \
-            --module src/osprey/examples/talon/backend/web/bundle.ospml --namespace bank/web
+            --argument http://127.0.0.1:18790
 
       - name: Build the extension bundle
         run: make _vsix_bundle
@@ -201,7 +201,9 @@ jobs:
             src/toolchain/compiler/lib/
             src/toolchain/compiler/bin/*.a
             target/wasm32-wasip2/debug/osprey_zed.wasm
-            src/osprey/examples/talon/backend/web/bundle.ospml
+            src/toolchain/hosts/web/build/talon/index.html
+            src/toolchain/hosts/web/build/talon/host.js
+            src/toolchain/hosts/web/build/talon/host.css
           retention-days: 7
           if-no-files-found: error
 
@@ -1138,6 +1140,9 @@ jobs:
 
       - name: Osprey Agent suites
         run: make _test_agent
+
+      - name: Clean Architecture todo suite (GC and ARC)
+        run: make _test_cleanarch
 
       - name: Install bank e2e dependencies
         run: npm ci

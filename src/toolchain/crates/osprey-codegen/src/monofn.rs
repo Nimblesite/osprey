@@ -18,7 +18,7 @@
 //! [TYPE-GENERICS-FN], the function-value contract in
 //! `docs/specs/language/0004-TypeSystem.md` (plan 0002 retired).
 
-use crate::builder::{Codegen, FnSig, ParamSig};
+use crate::builder::{Codegen, FiberSig, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
@@ -65,10 +65,13 @@ pub(crate) fn specialize(
             args.len()
         )));
     }
-    let values = args
-        .iter()
-        .map(|a| gen_expr(cg, a))
-        .collect::<Result<Vec<_>>>()?;
+    // Caller expressions keep the caller's types: an argument that is itself a
+    // call of `name` selects its own instantiation ([TYPE-GENERICS-APPLY]).
+    let values = cg.with_caller_types(|cg| {
+        args.iter()
+            .map(|a| gen_expr(cg, a))
+            .collect::<Result<Vec<_>>>()
+    })?;
     specialize_values(cg, name, parameters, body, values)
 }
 
@@ -101,16 +104,18 @@ fn instantiation_key(name: &str, values: &[Value]) -> String {
 }
 
 /// One argument's contribution to the key: its LLVM type, its owner tag (a
-/// `Gpu#double` buffer and a bare handle are different instantiations) and its
-/// Result layout.
+/// `Gpu#double` buffer and a bare handle are different instantiations), its
+/// Result layout, its inferred ABI spelling and, for a fiber or channel handle,
+/// the whole element ABI `param_of` stamps on the instantiation (#340).
 fn slot_spelling(v: &Value) -> String {
     let owner = v.osp_ty.clone().unwrap_or_default();
     let result = v.result_inner.map_or_else(String::new, |i| i.to_string());
+    let fiber = FiberSig::carried(v).map_or_else(String::new, |sig| format!("{sig:?}"));
     let inferred = v
         .inferred_type
         .as_ref()
         .map_or_else(String::new, crate::types::abi_spelling);
-    format!("{}:{owner}:{result}:{inferred}", v.ty.as_str())
+    format!("{}:{owner}:{result}:{inferred}:{fiber}", v.ty.as_str())
 }
 
 /// The callee's declared signature as the CURRENT call's specialization sees
@@ -188,6 +193,10 @@ fn emit_at(
     let _ = cg.monofns.insert(key, target.clone());
     let saved = cg.enter_nested_fn();
     let position = cg.fn_defs.get(name).and_then(|(_, _, position)| *position);
+    // The body is its own caller: a call written inside it, the self-call
+    // included, takes its argument types from this instantiation, not from
+    // the call that selected it.
+    let selecting_caller = cg.application_caller.take();
     let (plist, emitted) = cg.within_source_function(name, |cg| {
         crate::closure::begin_source(cg, name, position);
         let plist = crate::cast::bind_params(cg, parameters, params, owners.iter().cloned(), 0);
@@ -199,6 +208,7 @@ fn emit_at(
         cg.cov_hit_inline_fn(name);
         (plist, lower_body(cg, body, &target.sig))
     });
+    cg.application_caller = selecting_caller;
     let spelling = crate::llty::ret_spelling(ret.0, ret.1);
     // Restore the enclosing function BEFORE propagating, so a failed body never
     // leaves the host's emission state clobbered ([`crate::gpu_kernel`] does
@@ -296,12 +306,13 @@ fn unresolved(name: &str) -> CodegenError {
 }
 
 /// The parameter slot an argument travels in, keeping its Result layout so a
-/// `Result` argument stays one block rather than an erased word.
+/// `Result` argument stays one block rather than an erased word, and a handle's
+/// element so `await` and `recv` inside the instantiation can unbox it (#340).
 fn param_of(v: &Value) -> ParamSig {
     ParamSig {
         ty: v.ty,
         result_inner: v.result_inner,
-        fiber: None,
+        fiber: FiberSig::carried(v),
         inferred_type: v.inferred_type.clone(),
     }
 }
@@ -367,6 +378,61 @@ mod tests {
             super::slot_spelling(&integer),
             super::slot_spelling(&text),
             "distinct parameter ABIs must not share an instantiation"
+        );
+    }
+
+    /// #340: two fiber handles share an instantiation only when every part of
+    /// the element ABI `param_of` stamps agrees, and the stamp is that ABI.
+    #[test]
+    fn instantiation_keys_distinguish_every_part_of_a_fiber_element() {
+        use crate::llty::LType;
+        let handle = crate::llty::Value::new("%fiber", LType::I64);
+        let with = |elem, result_inner, owner: Option<&str>, payload: Option<&str>| {
+            let mut v = handle.clone();
+            v.fiber_elem = Some(elem);
+            v.fiber_elem_result_inner = result_inner;
+            v.fiber_elem_owner = owner.map(str::to_owned);
+            v.fiber_elem_payload_owner = payload.map(str::to_owned);
+            v
+        };
+        let shapes = [
+            with(LType::I64, None, None, None),
+            with(LType::Str, None, None, None),
+            with(LType::Ptr, None, None, None),
+            with(LType::Any, None, None, None),
+            with(LType::Ptr, None, Some("List#i64"), None),
+            with(LType::Ptr, None, Some("List#i8*"), None),
+            with(LType::Ptr, Some(LType::I64), None, None),
+            with(LType::Ptr, Some(LType::F64), None, None),
+            with(LType::Ptr, Some(LType::Ptr), None, Some("List#i64")),
+            with(LType::Ptr, Some(LType::Ptr), None, Some("List#i8*")),
+        ];
+        for (i, a) in shapes.iter().enumerate() {
+            let stamped = super::param_of(a)
+                .fiber
+                .expect("a handle stamps its element");
+            assert_eq!(
+                Some(stamped),
+                crate::builder::FiberSig::carried(a),
+                "shape {i}"
+            );
+            for (j, b) in shapes.iter().enumerate().skip(i + 1) {
+                assert_ne!(
+                    super::slot_spelling(a),
+                    super::slot_spelling(b),
+                    "shapes {i} and {j}"
+                );
+            }
+            assert_eq!(
+                super::slot_spelling(a),
+                super::slot_spelling(&a.clone()),
+                "shape {i}"
+            );
+        }
+        assert_eq!(
+            super::param_of(&handle).fiber,
+            None,
+            "a plain word stamps no element"
         );
     }
 

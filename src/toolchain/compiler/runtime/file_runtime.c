@@ -109,10 +109,6 @@ char *osp_io_error_take(void) {
 
 // --- reading ----------------------------------------------------------------
 
-// Starting capacity, then doubling. Sized so ordinary source and config files
-// are read in a single fread with no reallocation.
-#define FILE_READ_CHUNK_BYTES 65536
-
 // Double `*cap`, or report failure. The NUL terminator lives in the capacity,
 // so the caller's usable room is always `*cap - 1`.
 static char *grow_buffer(char *buf, size_t *cap) {
@@ -137,7 +133,8 @@ static char *read_stream(FILE *file, const char *filename) {
   // the whole array to the solver. No modeled file exceeds its stream cap.
   size_t cap = osp_hunt_file_buffer_capacity();
 #else
-  size_t cap = FILE_READ_CHUNK_BYTES;
+  // Read an ordinary source or config file in one allocation, then grow as needed.
+  size_t cap = 64U * 1024U;
 #endif
   size_t len = 0;
   char *content = malloc(cap);
@@ -241,6 +238,20 @@ static const char OP_LIST_DIR[] = "listDir";
 static const char OP_KIND_OF[] = "kindOf";
 static const char OP_MAKE_DIR[] = "makeDir";
 
+#if !defined(__wasm__) && !defined(OSP_SYMBOLIC)
+// The listing a platform's entry walk filled: sealed when every entry was
+// pushed, otherwise NULL with the reason recorded, never a partial list.
+static OspreyList *list_dir_sealed(OspreyListBuilder *builder, int failure, const char *path) {
+  OspreyList *list = builder == NULL ? NULL : osprey_list_builder_seal(builder);
+  if (failure != 0) {
+    osp_release(list);
+    osp_io_error_set(OP_LIST_DIR, path, failure);
+    return NULL;
+  }
+  return list;
+}
+#endif
+
 #if !defined(__wasm__) && !defined(OSP_SYMBOLIC) && !defined(_WIN32)
 // One directory entry's full path, with OSP_PATH_SEP appended when the entry
 // is a directory. A symlink is never a directory here (lstat, not stat), so a
@@ -311,13 +322,7 @@ OspreyList *osprey_list_dir(const char *path) {
   OspreyListBuilder *builder = osprey_list_builder_new_of(1);
   int failure = builder == NULL ? ENOMEM : push_entries(dir, path, builder);
   (void)closedir(dir);
-  OspreyList *list = builder == NULL ? NULL : osprey_list_builder_seal(builder);
-  if (failure != 0) {
-    osp_release(list);
-    osp_io_error_set(OP_LIST_DIR, path, failure);
-    return NULL;
-  }
-  return list;
+  return list_dir_sealed(builder, failure, path);
 }
 
 // [BUILTIN-FILE-KIND] "dir", "file" or "other" for one path, from stat — the
@@ -358,10 +363,12 @@ int64_t osprey_make_dir(const char *path) {
   osp_io_error_set(OP_MAKE_DIR, path, failure == EEXIST ? ENOTDIR : failure);
   return -1;
 }
+#elif defined(_WIN32) && !defined(OSP_SYMBOLIC)
+#include "file_dirs_win.h"
 #else
-// wasm32 (no directory syscalls in this WASI profile), KLEE's bitcode libc
-// (no dirent or mkdir: an unmodelled call) and Windows (no POSIX dirent yet)
-// refuse every directory operation with the reason, never a fake answer.
+// wasm32 (no directory syscalls in this WASI profile) and KLEE's bitcode libc
+// (no dirent or mkdir: an unmodelled call) refuse every directory operation
+// with the reason, never a fake answer.
 static const char NO_DIRECTORIES[] = "no directory operations on this target";
 
 OspreyList *osprey_list_dir(const char *path) {

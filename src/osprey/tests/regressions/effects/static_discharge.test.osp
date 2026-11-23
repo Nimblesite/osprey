@@ -73,6 +73,11 @@ let partialValue = exactArithmetic(fn() => {
     pairTotal()
 })
 
+/// [PATTERN-OR-BODY] A staged operation reads the payload of either variant.
+fn stagedPair(input) = match input {
+    Success { value: n } | Error { message: n } => satAdd(n, perform Pair.second())
+}
+
 fn firstOnly() = {
     handle Pair {
         first => 2
@@ -101,7 +106,9 @@ let stagedValue = exactArithmetic(fn() => {
         pairTotal()
     }
     let installer = firstOnly()
-    "${direct}|${helper}|${installer}"
+    let left = stagedPair(Success { value: 3 })
+    let right = stagedPair(Error { message: 9 })
+    "${direct}|${helper}|${installer}|${left}|${right}"
 })
 
 effect Stash<T> {
@@ -125,5 +132,5 @@ let genericValue = {
 test("inferred effect rows discharge only under matching handlers", fn() => exactArithmetic(fn() => checkAll("static discharge values", [
     structuralEquals([directValue, transitiveValue, callbackValue], [7, 11, 13]),
     structuralEquals([delayedValue, partialValue, genericValue], [17, 42, 19]),
-    stagedValue == "42|42|42"
+    stagedValue == "42|42|42|43|49"
 ])))

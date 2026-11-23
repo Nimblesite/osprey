@@ -9,7 +9,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent bank casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow daw daw-gpui daw-render daw-play storage tally probe
+.PHONY: agent bank casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow prism daw-gpui daw-render daw-play storage tally probe
 
 .PHONY: pocket-orchestra _pocket-orchestra-models
 ## pocket-orchestra: Open Light Orchestra: this Mac plays audio, phones join by QR and WebSocket.
@@ -103,11 +103,11 @@ daw-gpui: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/daw/run.sh
 
-## daw: Open SONG in the FerroUI timeline, mixer and Prism studio. Defaults to Broken Circuitry: Reassembly.
-##      [DAW-PROJECT] [PRISM-ROUTING-TIMELINE]
-daw: SONG = src/osprey/examples/daw/tracks/codex-version.json
-daw: _runtime_macos _daw-renderer
-	PRISM_PROJECT="$(SONG)" OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/ferroui/scripts/prism.sh
+## prism: Install Prism.app in /Applications so it opens from Spotlight. Set SONG to open a project after installing.
+##        [DAW-PROJECT] [PRISM-ROUTING-TIMELINE]
+prism: SONG =
+prism: _runtime_macos _daw-renderer
+	PRISM_PROJECT="$(SONG)" OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/ferroui/scripts/prism.sh --install
 
 ## storage: Rebuild the compiler, the Mac runtime and the Osprey Storage app,
 ##          then open it: where your disk space goes, folder by folder.

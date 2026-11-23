@@ -3,6 +3,8 @@ namespace synth
 
 (** Each patch is an ordinary validated graph with visible routing and safe initial output levels. *)
 module Patches
+    fiveStageNodes = [0, 1, 2, 3, 4]
+
     (** Build a graph from nodes and routes, stopping at the first typed fault. *)
     export built (nodes, cables) = Graphs::checked (Graph(nodes = nodes, cables = cables))
 
@@ -21,7 +23,7 @@ module Patches
     chain identities = mapList (Sequences::drop (identities, 1), \identity => Components::route (satSub identity 1, 0, identity, 0))
 
     (** Noise-burst plucked string (A3) into a gentle reverb. *)
-    export pluckedString () = built ([Components::exciter (0, 7), Components::waveguide (1, 220.0, 2400), Components::reverb (2, 2.0), Components::gain (3, 0.6), Components::output 4], chain [0, 1, 2, 3, 4])
+    export pluckedString () = built ([Components::exciter (0, 7), Components::waveguide (1, 220.0, 2400), Components::reverb (2, 2.0), Components::gain (3, 0.6), Components::output 4], chain fiveStageNodes)
 
     (** Struck bell modes, lightly saturated. *)
     export struckMetal () = built ([Components::exciter (0, 11), Components::modalBank (1, 330.0, 3.0), Components::shaper (2, 0.0, 1.5), Components::output 3], chain [0, 1, 2, 3])
@@ -36,19 +38,19 @@ module Patches
 
     (** Plucked string through the spectral freeze (transform 1). Hold starts released: raise it while the
         string sounds to capture that spectrum; a hold engaged from silence captures silence. *)
-    export spectralFreeze () = built ([Components::exciter (0, 5), Components::waveguide (1, 196.0, 2400), set (Components::spectral (2, 1024, 256, 1.0), [value ("hold", 0.0)]), Components::gain (3, 0.5), Components::output 4], chain [0, 1, 2, 3, 4])
+    export spectralFreeze () = built ([Components::exciter (0, 5), Components::waveguide (1, 196.0, 2400), set (Components::spectral (2, 1024, 256, 1.0), [value ("hold", 0.0)]), Components::gain (3, 0.5), Components::output 4], chain fiveStageNodes)
 
     (** Cross-synthesis: a bowed string's spectrum morphed halfway onto a stiff additive tone (side input). *)
     export crossSynthesis () = built ([Components::bowed (0, 196.0, 2400), set (Components::additive (1, 130.81), [value ("inharmonicity", 0.0004)]), set (Components::spectral (2, 1024, 256, 5.0), [value ("amount", 0.5)]), Components::gain (3, 0.6), Components::output 4], [Components::route (0, 0, 2, 0), Components::route (1, 0, 2, 1), Components::route (2, 0, 3, 0), Components::route (3, 0, 4, 0)])
 
     (** Spectral motion: a WPPM tone smeared over time, then shifted up three bins. *)
-    export spectralMotion () = built ([Components::phaseOperator (0, 110.0, 3.0), set (Components::spectral (1, 1024, 256, 4.0), [value ("amount", 0.9)]), set (Components::spectral (2, 1024, 256, 3.0), [value ("shift", 3.0)]), Components::gain (3, 0.6), Components::output 4], chain [0, 1, 2, 3, 4])
+    export spectralMotion () = built ([Components::phaseOperator (0, 110.0, 3.0), set (Components::spectral (1, 1024, 256, 4.0), [value ("amount", 0.9)]), set (Components::spectral (2, 1024, 256, 3.0), [value ("shift", 3.0)]), Components::gain (3, 0.6), Components::output 4], chain fiveStageNodes)
 
     sineSource () = SampleResource(name = "One-cycle sine", sampleRate = 48000, sourceChannels = 1, rootFrequency = 46.875, samples = mapList (toList (range (0, 1024)), \index => Waves::sine (toFloat index / 1024.0)))
 
     (** A grain cloud at about 330 Hz (rate 7.04 × the 46.875 Hz source cycle), downmixed explicitly, ringing a
         band-pass resonator into the reverb (hosted executor, 2,048-frame grain blocks). *)
-    export granularResonance () = built ([set (Components::granular (0, sineSource (), 16, 1), [value ("rate", 7.04), value ("gain", 0.3)]), Components::downmix 1, set (Components::resonator (2, 330.0), [value ("response", 0.0), value ("gain", 1.0), value ("decay", 0.5)]), Components::reverb (3, 3.0), Components::output 4], chain [0, 1, 2, 3, 4])
+    export granularResonance () = built ([set (Components::granular (0, sineSource (), 16, 1), [value ("rate", 7.04), value ("gain", 0.3)]), Components::downmix 1, set (Components::resonator (2, 330.0), [value ("response", 0.0), value ("gain", 1.0), value ("decay", 0.5)]), Components::reverb (3, 3.0), Components::output 4], chain fiveStageNodes)
 
     // [SYNTH-ADVANCED-GRAINS-INTEGRATION] Each preset keeps its modulation cable in the editable graph.
     cloudPatch (cloud, control, lfoRate, processor) =
@@ -85,7 +87,7 @@ module Patches
     export shiftedFeedback () = built ([Components::exciter (0, 9), Components::mixer 1, Components::shifter (2, 7.0), Components::gain (3, 0.7), Components::delay (4, 2400), Components::output 5], [Components::route (0, 0, 1, 0), Components::route (1, 0, 2, 0), Components::route (2, 0, 3, 0), Components::route (3, 0, 4, 0), Components::route (4, 0, 1, 1), Components::route (1, 0, 5, 0)])
 
     (** Frequency-shifted resonator feeding a frozen-capable reverb: an evolving inharmonic texture. *)
-    export feedbackTexture () = built ([Components::exciter (0, 3), Components::resonator (1, 440.0), Components::shifter (2, 7.0), Components::reverb (3, 8.0), Components::output 4], chain [0, 1, 2, 3, 4])
+    export feedbackTexture () = built ([Components::exciter (0, 3), Components::resonator (1, 440.0), Components::shifter (2, 7.0), Components::reverb (3, 8.0), Components::output 4], chain fiveStageNodes)
 
     (** WPPM carrier phase-modulated by a second operator, through a soft clipper. *)
     export phaseNetwork () = built ([Components::phaseOperator (0, 220.0, 0.0), Components::phaseOperator (1, 110.0, 3.0), Components::shaper (2, 2.0, 1.2), Components::output 3], chain [0, 1, 2, 3])

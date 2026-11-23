@@ -5,7 +5,7 @@
 
 ## Invariant — [EFFECTS-INV-MULTISHOT-REAL]
 
-Multi-shot (`many`) continuations are built for real: resumed any number of times, with independent branches. No agent may refuse, defer, scope down, stub, simulate (re-dispatch or loops), feature-flag or downgrade them to `once`, even while the compiler support is unfinished. Tests always assert multi-shot behaviour. A test that is red because the support is missing stays red; it is never weakened, skipped or deleted ([COMPILER-RED-FAILS]). Violating this is an egregious defect. See also [EXAMPLE-CLEANARCH-INV-NO-SKIP] in [the Clean Architecture port plan](cleanarch-todo-port.md).
+Multi-shot (`many`) continuations are built for real: resumed any number of times, with independent branches. No agent may refuse, defer, scope down, stub, simulate (re-dispatch or loops), feature-flag or downgrade them to `once`, even while the compiler support is unfinished. Tests always assert multi-shot behaviour. A test that is red because the support is missing stays red; it is never weakened, skipped or deleted ([COMPILER-RED-FAILS]). Violating this is an egregious defect. See also [EXAMPLE-CLEANARCH-INV-NO-SKIP] in [the Clean Architecture todo spec](../specs/applications/CleanArchTodo.md).
 
 ## Invariant — [EFFECTS-INV-MULTISHOT-PORTABLE]
 
@@ -17,6 +17,14 @@ Multi-shot continuations are a compiler feature, not a platform trick. The compi
 - no dependence on threads to represent a continuation.
 
 A design that needs any of these is rejected, however well it works on one machine. A target never gets a weaker `many`: it runs the portable representation ([MULTI-WASM]).
+
+## Invariant — [EFFECTS-INV-MULTISHOT-GENERAL]
+
+The compiler has one mechanism for multi-shot continuations, and it reads one fact: an operation is declared `many`. It never names, counts or special-cases an effect, an operation, a handler shape, an example or a use case. Retry, backtracking search, what-if authorization, validation fixes and pagination plans are handlers written in ordinary Osprey source; the compiler does not know them. A change that adds a named case for any of them to the compiler or runtime is rejected.
+
+## Invariant — [EFFECTS-INV-MULTISHOT-WASM]
+
+wasm32 fully supports multi-shot continuations ([MULTI-WASM-MANY], [WASM-TARGET-EFFECTS-MANY]). Every `many` program that runs natively compiles and runs on wasm32 and prints the same bytes. No agent may reject, skip, stub, feature-flag or downgrade `many` on wasm32, give it a separate golden, or move its tests out of the required `CI` job ([CI-MULTISHOT-WASM]). A change that makes a `many` program fail or differ on wasm32 is a defect in that change, and fixing the compiler is the only remedy.
 
 ## Prerequisites in place
 
@@ -38,19 +46,23 @@ Callable handler values, block-scoped `handle`, declared value/control modes, re
 
 ## Phase 3 — Reusable continuations
 
-- [ ] Build a reusable continuation representation (CPS/frames or another portable backend) that preserves the captured remainder independently per branch, replacing the single-shot pthread stack ([MULTI-HANDLE-MANY], [MULTI-HANDLE-MANY-LEXICAL], [MULTI-COST]). Files: `src/toolchain/compiler/runtime/effects_coro.c` / `effects_runtime.c`, `src/toolchain/crates/osprey-codegen`. Remove `unimplemented_many` in `src/toolchain/crates/osprey-types/src/multiplicity.rs`. Keep the existing handle-site rejections (`many` over a non-replayable body, captured mutable state, or a fiber-spanning continuation) as fixtures ([MULTI-REPLAY-CHECK], [MULTI-REPLAY-STATE], [MULTI-REPLAY-FIBER]). Acceptance: a pure search yields all alternatives; independent branch state; no replay of work before capture; retrying one operation does not replay later work; add a positive `many` case to `src/toolchain/crates/osprey-cli/tests/staged_multiplicity.rs` and `src/osprey/tests/effects/multiplicity/`.
+- [x] Build a reusable continuation representation (CPS/frames or another portable backend) that preserves the captured remainder independently per branch, replacing the single-shot pthread stack ([MULTI-HANDLE-MANY], [MULTI-HANDLE-MANY-LEXICAL], [MULTI-COST]). Files: `src/toolchain/compiler/runtime/effects_coro.c` / `effects_runtime.c`, `src/toolchain/crates/osprey-codegen`. Remove `unimplemented_many` in `src/toolchain/crates/osprey-types/src/multiplicity.rs`. Keep the existing handle-site rejections (`many` over a non-replayable body, captured mutable state, or a fiber-spanning continuation) as fixtures ([MULTI-REPLAY-CHECK], [MULTI-REPLAY-STATE], [MULTI-REPLAY-FIBER]). Acceptance: a pure search yields all alternatives; independent branch state; no replay of work before capture; retrying one operation does not replay later work; add a positive `many` case to `src/toolchain/crates/osprey-cli/tests/staged_multiplicity.rs` and `src/osprey/tests/effects/multiplicity/`. Done in `src/toolchain/crates/osprey-types/src/many/`: the code after a request becomes a closure and a handler becomes a function over requests. Evidence: `src/toolchain/crates/osprey-cli/tests/staged_many.rs` and `src/osprey/tests/regressions/effects/multishot_many.test.{osp,ospml}`, byte-exact under GC, ARC and wasm32.
+
+- [x] Let a `many` continuation cross the list builtins `mapList`, `foldList`, `forEachList` and `filterList`: each has a step-returning form in `src/toolchain/crates/osprey-types/src/many/helpers.rs`, pinned by `staged_many.rs`.
+
+- [ ] Let a `many` continuation cross an iterator stage (`range(..) |> fold(..)`), and lower a captured effect with type parameters by instantiating its request layout per use. Both are rejected by name today (`what_a_many_continuation_cannot_cross_is_rejected_by_name`). Acceptance: those programs run and print every branch, and their rejection cases are deleted.
 
 ## Phase 4 — Targets, traces, editor
 
 - [ ] Reproduce or close the review lead (2026-11-06, unconfirmed): static-handler monotonicity is not transitive, and invalid unused arms are erased before they are checked (`osprey-ast/src/stage.rs`, `lower_static.rs`). A confirmed case becomes a GitHub bug.
 - [ ] Run the 63 resumable-effect corpus programs on the macOS host target. They are skipped there with "a suspended continuation cannot cross or outlive a synchronous host call" (`tests/effects/{multiplicity,resume,scope}`, `tests/modules/{ml_layout_depth,module_effects_rows,signature_ascription}`).
-- [ ] Run continuation programs on native and wasm32 with identical answers; support `once` on wasm32 when the stack-switching backend provides it and keep `many` portable (no permanent ban); keep rejecting missing capabilities before linking, naming the operation ([MULTI-WASM], [STAGE-WASM]). Files: `src/toolchain/crates/osprey-cli/src/target_capabilities.rs`, `src/toolchain/crates/osprey-cli/tests/target_capabilities.rs`, `src/toolchain/crates/osprey-cli/tests/staged_multiplicity.rs`. Acceptance: `ONCE_ON_WASM` compiles and runs; `MANY_ON_WASM` runs once a portable representation exists; capability rejections still name the operation.
+- [ ] Run `once` continuation programs on wasm32 when the stack-switching backend provides them, with answers identical to native; keep rejecting that missing capability before linking, naming the operation ([MULTI-WASM], [STAGE-WASM]). `many` is not part of this task: it already runs on wasm32 and must keep doing so ([EFFECTS-INV-MULTISHOT-WASM]). Files: `src/toolchain/crates/osprey-cli/src/target_capabilities.rs`, `src/toolchain/crates/osprey-cli/tests/target_capabilities.rs`, `src/toolchain/crates/osprey-cli/tests/staged_multiplicity.rs`. Acceptance: `ONCE_ON_WASM` compiles and runs; `MANY_ON_WASM` keeps compiling and running; capability rejections still name the operation.
 
 - [ ] Ship the effect trace: a debug build and DAP view record the resolved perform site, actual runtime handler instance and resumption branch, innermost first; static-discharged sites are excluded ([MULTI-TRACE], [DEBUGGER-EFFECT-TRACE]). Files: `src/toolchain/crates/osprey-debug`, debug codegen, VS Code extension DAP view. Acceptance: a paused session shows the trace and selecting an entry navigates to the perform or arm.
 
 - [ ] Ship the LSP replay-boundary view ([LSP-EFFECT-MULTIPLICITY]): on a `many` handler arm, `textDocument/implementation` returns the perform sites that arm can answer (its replay set); a handler region whose arms are all tail-resumptive over `once` operations publishes the "declaring Log static would remove it from the runtime" hint. Files: `src/toolchain/crates/osprey-lsp/src/effects/implementations.rs`, `src/toolchain/crates/osprey-lsp/src/effects/tests.rs`. Acceptance: tests pin both reports.
 
-- [ ] Align `src/toolchain/tree-sitter-osprey-ml/grammar.js` `operation_declaration` with the parser: the editor grammar accepts a multiplicity without `control` (`many op : …`), which the ML parser (`src/toolchain/crates/osprey-syntax/src/ml/parser/effect_declarations.rs`, `operation_markers`) and [MULTI-DECL] reject; nest `multiplicity` under `operation_mode` in the editor grammar ([MULTI-DECL]). Acceptance: `many op : int => int` fails to parse as an operation declaration in the ML grammar corpus.
+- [x] The ML editor grammar requires `control` before a multiplicity marker [MULTI-DECL]. The grammar corpus rejects `many op : int => int` and checks all three control multiplicities, replayable operations and contextual names. The rejection failed before the fix and all four corpus cases passed afterward (2026-11-23).
 
 ## Constraints
 

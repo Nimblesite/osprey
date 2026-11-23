@@ -50,14 +50,6 @@ fn read_error(name: &str, error: std::io::Error) -> String {
     }
 }
 
-/// Gives the smoke runner the same missing-entry response as an empty store.
-pub(crate) fn missing_read(ask: &Ask) -> Result<String, String> {
-    Ok(read_error(
-        &field(ask, 1, "name")?,
-        std::io::ErrorKind::NotFound.into(),
-    ))
-}
-
 /// Atomically replaces an entry with text already held under a slice key.
 fn write(ask: &Ask) -> Result<String, String> {
     let path = entry(&field(ask, 1, "name")?)?;

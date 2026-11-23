@@ -24,8 +24,11 @@
 #include "memory_hooks.h"
 #include "effects_scanned.h"
 
-// Maximum handler stack depth per fiber
-#define MAX_HANDLER_STACK_DEPTH 1024
+// The handler stack grows on demand ([MULTI-HANDLE-MANY]: every resume of a
+// many continuation reinstalls its handlers, so depth follows the program's
+// request nesting). It starts small and doubles up to this ceiling per fiber.
+#define INITIAL_HANDLER_STACK_CAPACITY 64
+#define MAX_HANDLER_STACK_DEPTH (1 << 20)
 // No handler is live for an operation: the empty evidence slot.
 #define NO_HANDLER (-1)
 
@@ -48,7 +51,12 @@ typedef struct {
 
 // HandlerStack per thread/fiber
 typedef struct {
-    HandlerEntry stack[MAX_HANDLER_STACK_DEPTH];
+    HandlerEntry *stack;  // capacity entries, contiguous so scopes copy runs of them
+    int capacity;
+    // Pushes refused at the ceiling or on allocation failure. While any is
+    // outstanding every push is refused and each pop consumes one refusal, so
+    // pops stay paired with their pushes and never unlink a live entry.
+    int refused;
     int evidence[OSP_MAX_OPERATION_IDS];  // operation id -> innermost live entry
     int top;  // Index of top element (-1 means empty)
     HandlerScope *suspended;
@@ -78,6 +86,14 @@ static void ensure_handler_stack_initialized(void) {
             fprintf(stderr, "FATAL: Failed to allocate handler stack\n");
             abort();
         }
+        g_handler_stack->stack =
+            (HandlerEntry *)malloc((size_t)INITIAL_HANDLER_STACK_CAPACITY * sizeof(HandlerEntry));
+        if (g_handler_stack->stack == NULL) {
+            fprintf(stderr, "FATAL: Failed to allocate handler stack\n");
+            abort();
+        }
+        g_handler_stack->capacity = INITIAL_HANDLER_STACK_CAPACITY;
+        g_handler_stack->refused = 0;
         g_handler_stack->top = -1;
         g_handler_stack->suspended = NULL;
         clear_evidence(g_handler_stack);
@@ -110,6 +126,37 @@ static void unlink_range(HandlerStack *stack, int from, int to_exclusive) {
     }
 }
 
+// Room for `needed` entries: doubles the stack up to MAX_HANDLER_STACK_DEPTH.
+// Returns 0 when the room exists, 1 at the ceiling or when allocation fails.
+static int reserve_entries(HandlerStack *stack, int needed) {
+    if (needed <= stack->capacity) {
+        return 0;
+    }
+    if (needed > MAX_HANDLER_STACK_DEPTH) {
+        return 1;
+    }
+    int capacity = stack->capacity;
+    while (capacity < needed) {
+        capacity = capacity > MAX_HANDLER_STACK_DEPTH / 2 ? MAX_HANDLER_STACK_DEPTH : capacity * 2;
+    }
+    HandlerEntry *grown =
+        (HandlerEntry *)realloc(stack->stack, (size_t)capacity * sizeof(HandlerEntry));
+    if (grown == NULL) {
+        return 1;
+    }
+    stack->stack = grown;
+    stack->capacity = capacity;
+    return 0;
+}
+
+// A well-formed push the stack cannot hold is counted, so the pop codegen still
+// issues consumes the refusal instead of unlinking a live entry. A bad id or
+// depth is a compiler defect, refused without a pairing pop.
+static int refuse_push(void) {
+    g_handler_stack->refused++;
+    return 1;
+}
+
 static int push_rejected(int operation_id, int base) {
     if (operation_id < 0 || operation_id >= OSP_MAX_OPERATION_IDS) {
         fprintf(stderr, "FATAL: Invalid operation id %d\n", operation_id);
@@ -119,9 +166,10 @@ static int push_rejected(int operation_id, int base) {
         fprintf(stderr, "FATAL: Invalid handler activation depth %d\n", base);
         return 1;
     }
-    if (g_handler_stack->top >= MAX_HANDLER_STACK_DEPTH - 1) {
+    if (g_handler_stack->refused > 0 ||
+        reserve_entries(g_handler_stack, g_handler_stack->top + 2)) {
         fprintf(stderr, "FATAL: Handler stack overflow (depth > %d)\n", MAX_HANDLER_STACK_DEPTH);
-        return 1;
+        return refuse_push();
     }
     return 0;
 }
@@ -204,6 +252,10 @@ int64_t __osprey_instance_new(void) {
 // Returns 0 on success, -1 on stack underflow
 int __osprey_handler_pop(void) {
     ensure_handler_stack_initialized();
+    if (g_handler_stack->refused > 0) {
+        g_handler_stack->refused--;
+        return 0;
+    }
     if (g_handler_stack->top < 0) {
         fprintf(stderr, "FATAL: Handler stack underflow\n");
         return -1;
@@ -279,6 +331,10 @@ void __osprey_handler_restore_scope(HandlerScope *scope) {
     if (scope == NULL || scope != g_handler_stack->suspended ||
         scope->owner != g_handler_stack || scope->base != g_handler_stack->top + 1) {
         fprintf(stderr, "FATAL: Unbalanced handler scope restoration\n");
+        abort();
+    }
+    if (reserve_entries(g_handler_stack, scope->base + scope->count)) {
+        fprintf(stderr, "FATAL: Failed to grow the handler stack for a restored scope\n");
         abort();
     }
     memcpy(&g_handler_stack->stack[scope->base], scope->entries,
@@ -407,6 +463,7 @@ void __osprey_handler_stack_cleanup(void) {
             g_handler_stack->suspended = scope->previous;
             free(scope);
         }
+        free(g_handler_stack->stack);
         free(g_handler_stack);
         g_handler_stack = NULL;
     }
@@ -414,22 +471,36 @@ void __osprey_handler_stack_cleanup(void) {
 
 // HandlerSnapshot for copying handler state across fiber boundaries
 struct HandlerSnapshot {
-    HandlerEntry entries[MAX_HANDLER_STACK_DEPTH];
     int count;
+    HandlerEntry entries[];
 };
 
-// Snapshot the current thread's handler stack (called in parent before fiber_spawn)
-// Returns a heap-allocated snapshot that the caller must pass to __osprey_handler_restore
-HandlerSnapshot *__osprey_handler_snapshot(void) {
+// Copy the current thread's handler stack into *out (called in the parent before
+// a spawn). An empty stack needs no copy: *out is NULL and restoring NULL keeps a
+// fresh thread's empty stack. Returns -1, with *out NULL, when the copy cannot be
+// allocated, so a spawn is refused instead of starting without its handlers.
+int __osprey_handler_try_snapshot(HandlerSnapshot **out) {
     ensure_handler_stack_initialized();
-    HandlerSnapshot *snap = (HandlerSnapshot *)malloc(sizeof(HandlerSnapshot));
-    if (snap == NULL) {
+    int depth = g_handler_stack->top + 1;
+    *out = NULL;
+    if (depth == 0) return 0;
+    HandlerSnapshot *snap = (HandlerSnapshot *)malloc(sizeof(HandlerSnapshot) +
+                                                     (size_t)depth * sizeof(HandlerEntry));
+    if (snap == NULL) return -1;
+    snap->count = depth;
+    memcpy(snap->entries, g_handler_stack->stack, (size_t)depth * sizeof(HandlerEntry));
+    *out = snap;
+    return 0;
+}
+
+// The snapshot a compiled continuation owns. Quarantine: generated code has no
+// refusal path here, so a failed copy stops the process like the coroutine start.
+HandlerSnapshot *__osprey_handler_snapshot(void) {
+    HandlerSnapshot *snap = NULL;
+    if (__osprey_handler_try_snapshot(&snap) != 0) {
         fprintf(stderr, "FATAL: Failed to allocate handler snapshot\n");
         abort();
     }
-    int depth = g_handler_stack->top + 1;
-    snap->count = depth;
-    memcpy(snap->entries, g_handler_stack->stack, (size_t)depth * sizeof(HandlerEntry));
     return snap;
 }
 
@@ -439,7 +510,11 @@ HandlerSnapshot *__osprey_handler_snapshot(void) {
 void __osprey_handler_restore(HandlerSnapshot *snap) {
     if (snap == NULL) return;
     ensure_handler_stack_initialized();
-    int count = snap->count < MAX_HANDLER_STACK_DEPTH ? snap->count : MAX_HANDLER_STACK_DEPTH;
+    int count = snap->count;
+    if (reserve_entries(g_handler_stack, count)) {
+        fprintf(stderr, "FATAL: Failed to grow the handler stack for a fiber snapshot\n");
+        abort();
+    }
     memcpy(g_handler_stack->stack, snap->entries, (size_t)count * sizeof(HandlerEntry));
     g_handler_stack->top = count - 1;
     clear_evidence(g_handler_stack);

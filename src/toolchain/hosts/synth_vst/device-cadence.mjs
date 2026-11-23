@@ -42,9 +42,16 @@ try {
     assert.ok(receipt.queuedFrames <= 960, 'steady playback must accept at most 20 ms ahead of a live edit');
   }
   assert.equal(receipt.emptyCallbacks, 0, 'the device ran empty with prepared audio available');
-  await delay(100);
-  receipt = await exchange(line);
+  const deadline = performance.now() + 3_000;
+  do {
+    receipt = await exchange('!status\n');
+    if (receipt.emptyCallbacks > 0) break;
+    await delay(10);
+  } while (performance.now() < deadline);
   assert.ok(receipt.emptyCallbacks > 0, 'a deliberately late producer must register a queue drain');
+  assert.equal(receipt.acceptedFrames, 900 * frames);
+  assert.equal(receipt.queuedFrames, 0);
+  receipt = await exchange(line);
   let recoveredDepth = 0;
   for (let i = 0; i < 120; ++i) {
     receipt = await exchange(line);

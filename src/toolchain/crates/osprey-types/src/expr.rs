@@ -15,6 +15,7 @@ use std::collections::{BTreeMap, HashMap};
 mod apply;
 mod arith;
 mod arms;
+mod callback_arity;
 mod calls;
 mod construct;
 #[cfg(test)]

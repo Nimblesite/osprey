@@ -229,10 +229,14 @@ test.describe("desktop interactions", () => {
     const targetVisible = await page.locator(href).isVisible();
     expect(targetVisible).toBeTruthy();
 
-    // Scroll spy marks an active link.
-    await page.evaluate(() => window.scrollBy(0, 1200));
-    await page.waitForTimeout(400);
-    await expect(page.locator(".docs-nav-desktop .toc-link.active")).toHaveCount(1);
+    // Scrolling by hand clears the clicked section and updates the active link.
+    const active = page.locator(".docs-nav-desktop .toc-link.active");
+    await expect(active).toHaveAttribute("href", href);
+    await page.locator(href).hover();
+    await page.mouse.wheel(0, -10_000);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await expect(active).toHaveCount(1);
+    await expect(active).toHaveAttribute("href", await links.first().getAttribute("href"));
   });
 
   test("prose headings render as plain text, not links", async ({ page }) => {

@@ -33,7 +33,7 @@ void *osp_gc_realloc(void *old, size_t size) {
     return osp_gc_malloc(size);
   }
   heap_lock();
-  OspGcEnt *e = gc_lookup((uintptr_t)old);
+  const OspGcMeta *e = gc_lookup((uintptr_t)old);
   size_t oldsize = e ? e->size : 0;
   void *p = gc_managed_alloc(size, 0); // `old` stays reachable on the caller frame
   heap_unlock();

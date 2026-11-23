@@ -42,18 +42,21 @@ impl Parser<'_> {
         MlArm { pattern, body, pos }
     }
 
-    /// A match pattern, plus the diagnostic for the or-pattern users reach for
-    /// once `|` lexes: `|` separates union *variants*, never patterns
-    /// ([FLAVOR-ML-UNION-INLINE]).
+    /// A match pattern: one atom, or two or more joined by `|` into an
+    /// or-pattern ([PATTERN-OR-SYNTAX]). In a pattern `|` joins alternatives;
+    /// in a type declaration it still separates variants. A nested
+    /// or-pattern in a juxtaposed slot is written in parentheses,
+    /// `Digit (0 | 1)`, which [`Self::group_pattern`] reads through here.
     pub(in crate::ml) fn pattern(&mut self) -> MlPattern {
-        let pat = self.pattern_atom();
-        if matches!(self.peek(), TokKind::Pipe) {
-            self.error("or-patterns are not supported; write one arm per alternative");
-            while self.eat(&TokKind::Pipe) {
-                let _ = self.pattern_atom();
-            }
+        let first = self.pattern_atom();
+        if !matches!(self.peek(), TokKind::Pipe) {
+            return first;
         }
-        pat
+        let mut alternatives = vec![first];
+        while self.eat(&TokKind::Pipe) {
+            alternatives.push(self.pattern_atom());
+        }
+        MlPattern::Or(alternatives)
     }
 
     /// `( p )` groups a single pattern and is erased at parse time

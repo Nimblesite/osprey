@@ -398,7 +398,15 @@ fn dependency_reports_assemble_modules_and_keep_source_names() -> std::io::Resul
 }
 
 #[test]
-fn reactive_programs_match_both_flavors_and_release_all_arc_values() {
+fn reactive_programs_match_flavors_and_release_all_arc_values() {
+    assert_flavored_output(
+        "reactive_views",
+        "py",
+        include_str!("../../../../osprey/tests/effects/staged/reactive_signals.test.py"),
+        include_str!(
+            "../../../../osprey/tests/effects/staged/reactive_signals.test.osp.expectedoutput"
+        ),
+    );
     for (name, sources, expected) in [
         (
             "reactive_views",
@@ -451,7 +459,14 @@ fn reactive_static_reads_leave_no_runtime_effect_dispatch() {
 
 #[test]
 fn signal_iterators_consumed_inside_the_handler_remain_valid() {
+    assert_flavored_output(
+        "helper_shadow",
+        "py",
+        "@static_effect\nclass Read:\n    def get() -> int: ...\ndef value():\n    return perform(Read.get())\ndef run(n, work):\n    @static_handler(Read)\n    class answer:\n        def get():\n            return n\n    return answer(work)\ndef second():\n    value = lambda: 3\n    return run(2, value)\nprint(f\"{run(1, value)}:{second()}\")\n",
+        "1:3\n",
+    );
     for (extension, source) in [
+        ("py", "@static_effect\nclass Signal:\n    def read() -> int: ...\n@static_handler(Signal)\nclass ones:\n    def read():\n        return 1\ndef collect():\n    return signalSnapshot(lambda: toList(map(range(0, 2), lambda _i: perform(Signal.read()))))\ncached = ones(collect)\nprint(f\"{unwrap_or(listGet(cached.value, 0), 0)}:{unwrap_or(listGet(cached.value, 1), 0)}\")\n"),
         ("osp", "static effect Signal { read: fn() -> int }\nlet cached = { handle static Signal { read => 1 }\nsignalSnapshot(|| => range(0, 2) |> map(fn(_i) => perform Signal.read()) |> toList()) }\nprint(\"${listGet(cached.value, 0) ?: 0}:${listGet(cached.value, 1) ?: 0}\")\n"),
         ("ospml", "static effect Signal\n    read : Unit => int\ncached =\n    handle static Signal\n        read => 1\n    signalSnapshot (\\() => range 0 2 |> map (\\_i => perform Signal.read ()) |> toList)\nprint \"${listGet cached.value 0 ?: 0}:${listGet cached.value 1 ?: 0}\"\n"),
     ] {

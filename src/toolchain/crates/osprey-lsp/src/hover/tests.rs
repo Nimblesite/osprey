@@ -345,6 +345,23 @@ fn hover_on_a_keyword_explains_it() {
         let md = hover_at(src, "file:///a.osp", line, kw);
         assert!(md.contains(kw), "hover for `{kw}` names it: {md}");
     }
+    // [BLOCK-USE] `use` is a keyword in both flavors, so it hovers too.
+    for (src, uri) in [
+        (
+            "fn main() = {\n    use x <- andThen(Success { value: 1 })\n    x\n}\n",
+            "file:///a.osp",
+        ),
+        (
+            "main () =\n    use x <- andThen (Success(value = 1))\n    x\n",
+            "file:///a.ospml",
+        ),
+    ] {
+        let md = hover_at(src, uri, 1, "use");
+        assert!(
+            md.contains("rest of its block"),
+            "hover for `use` in {uri}: {md}"
+        );
+    }
 }
 
 #[test]

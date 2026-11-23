@@ -91,6 +91,11 @@ badge t = match t
     Solid   => "🔵 SOLID"
     Starter => "🟢 STARTER"
 
+(** Whether a tier can still rise: one or-pattern arm for both lower tiers ([PATTERN-OR]). *)
+upgradable t = match t
+    Solid | Starter => true
+    Epic => false
+
 (** ACT 1: the same [account] body runs against a real ledger and a dry run. *)
 showWorlds () =
     print "OSPREY FEATURE TOUR\n══════════════════════════════════════\nACT 1 · algebraic effects — same code, two worlds"
@@ -128,7 +133,8 @@ megaShowcaseCase () =
         !(even 3),
         structuralEquals [badge (tier 499), badge (tier 500), badge (tier 1999)] ["🟢 STARTER", "🔵 SOLID", "🔵 SOLID"],
         structuralEquals [badge (tier 2000), badge Starter] ["🟣 EPIC", "🟢 STARTER"],
-        structuralEquals [badge Solid, badge Epic] ["🔵 SOLID", "🟣 EPIC"]
+        structuralEquals [badge Solid, badge Epic] ["🔵 SOLID", "🟣 EPIC"],
+        upgradable Starter, upgradable (tier 500), !(upgradable Epic), !(upgradable (tier 2000))
     ]
 
 mut faulted = false

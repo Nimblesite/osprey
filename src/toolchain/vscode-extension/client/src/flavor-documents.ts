@@ -18,12 +18,6 @@ export interface FlavorSource {
   readonly path: string;
 }
 
-/** The first-line marker of each flavor. */
-const MARKERS: ReadonlyArray<[SharedFlavor, string]> = [
-  ["typescript", "// osprey: flavor=typescript"],
-  ["python", "# osprey: flavor=python"],
-];
-
 /** The manifest key that lists each flavor's sources. */
 const KEYS: ReadonlyArray<[SharedFlavor, string]> = [
   ["typescript", "typescript_sources"],
@@ -39,25 +33,69 @@ export function listedSources(
   manifestText: string,
 ): FlavorSource[] {
   const directory = path.dirname(manifestPath);
-  return KEYS.flatMap(([language, key]) => {
+  const project = projectSettings(manifestText);
+  const sources = KEYS.flatMap(([language, key]) => {
     const list =
       new RegExp(`^\\s*${key}\\s*=\\s*\\[([^\\]]*)\\]`, "m").exec(
-        manifestText,
+        project,
       )?.[1] ?? "";
     return [...list.matchAll(/"([^"]+)"/g)].map((match) => ({
       language,
       path: path.resolve(directory, match[1]),
     }));
   });
+  const entry = /^\s*entry\s*=\s*"([^"]+)"/m.exec(project)?.[1];
+  if (entry) {
+    const absolute = path.resolve(directory, entry);
+    const language = sharedFlavor(entry);
+    if (language && !sources.some((source) => source.path === absolute))
+      sources.push({ language, path: absolute });
+  }
+  return sources;
 }
 
-/** The flavor a file's first non-blank line marks, if any. */
+/** Read only project assignments, preserving hash characters inside quoted paths. */
+function projectSettings(manifest: string): string {
+  const settings: string[] = [];
+  let project = false;
+  for (const line of manifest.split("\n")) {
+    const clean = line
+      .replace(/"(?:\\.|[^"\\])*"|#.*$/g, (part) =>
+        part.startsWith("#") ? "" : part,
+      )
+      .trim();
+    if (/^\[[\w.-]+\]$/.test(clean)) project = clean === "[project]";
+    else if (project) settings.push(clean);
+  }
+  return settings.join("\n");
+}
+
+function sharedFlavor(file: string): SharedFlavor | undefined {
+  if (file.endsWith(".ts")) return "typescript";
+  if (file.endsWith(".py")) return "python";
+  return undefined;
+}
+
+/** Match the compiler's leading-comment flavor markers. */
 export function markedFlavor(text: string): SharedFlavor | undefined {
-  const first = text
-    .split("\n")
-    .find((line) => line.trim() !== "")
-    ?.trim();
-  return MARKERS.find(([, marker]) => marker === first)?.[0];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (/^# ?osprey: flavor=\s*python$/.test(trimmed)) return "python";
+    if (/^\/\/ ?osprey: flavor=\s*typescript$/.test(trimmed))
+      return "typescript";
+    if (trimmed && !/^(#|\/\/)/.test(trimmed)) break;
+  }
+  return undefined;
+}
+
+/** Whether a marker or the nearest manifest selects this shared-extension file. */
+export function claimedFlavorFile(file: string, manifest: string): boolean {
+  return (
+    claimedFile(file, path.basename(file)).length > 0 ||
+    listedSources(manifest, readText(manifest)).some(
+      (source) => source.path === file,
+    )
+  );
 }
 
 /** One document filter per claimed file, by its exact path. */
@@ -124,13 +162,11 @@ function claimedFile(full: string, name: string): FlavorSource[] {
   if (name === "osprey.toml") {
     return listedSources(full, readText(full));
   }
-  if (!name.endsWith(".ts") && !name.endsWith(".py")) {
+  const extension = sharedFlavor(name);
+  if (!extension) {
     return [];
   }
-  const language = markedFlavor(readText(full).slice(0, 512));
-  const extension: SharedFlavor = name.endsWith(".ts")
-    ? "typescript"
-    : "python";
+  const language = markedFlavor(readText(full));
   return language === extension ? [{ language, path: full }] : [];
 }
 

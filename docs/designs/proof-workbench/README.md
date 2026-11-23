@@ -2,7 +2,7 @@
 
 **Historical prototype.** The user retired the freehand board and handwriting workflow. The current Workbench uses mathematical documents, typed formulas and proof steps, with optional source. Follow [the current implementation contract](../../specs/applications/0051-ProofWorkbench.md) and [production acceptance status](design-qa.md); the board workflows and acceptance references below record the earlier design study. Fresh native and installed-VSIX acceptance remains required for the revised application.
 
-Explore the historical [visual gallery](index.html) and [interactive demo](prototype/index.html). Both open directly from disk. No server, package installation or separate repository is needed.
+Explore the historical [visual gallery](index.html); it opens directly from disk. The interactive demo was a compiled bundle and is no longer in the repository; its authored source stays in `prototype/source/`.
 
 This is the Paper & Slate design direction, revised with the user and reviewed with Claude through TMC. It is a design artifact inside Osprey. It is not the production application or a proof checker.
 
@@ -98,7 +98,7 @@ The revised study uses a full-width tablet board, one fixed board coordinate sys
 
 A fresh round with three independent reviewers covered visual design, working interactions and mathematical credibility. It corrected hidden phone import errors, off-screen source, cramped navigation, missing dialog focus, caret insertion, lost camera state and an unsupported-input diagnostic that incorrectly claimed a mismatch. Native dialogs now support Escape and contain keyboard focus; draft completion uses neutral text while unchecked.
 
-[Design QA](design-qa.md) records the captures, functional checks and remaining limitations. The standalone-file regression proves that opening `prototype/index.html` directly renders the application; it no longer needs Vite or localhost.
+[Design QA](design-qa.md) records the captures, functional checks and remaining limitations.
 
 ## Artifact provenance
 
@@ -106,6 +106,6 @@ The chalk example and original visual studies were made with the built-in image-
 
 ## Files for implementers
 
-`prototype/index.html` is the self-contained playable artifact. `prototype/source/` retains the authored design-reference source; it is not another project or the production implementation. `prototype/checks/` retains the browser/state verification sources, using the repository’s existing website browser tooling. `prototype/LICENSES/` retains embedded third-party notices. There is no nested `AGENTS.md`, package manifest, hosting scaffold or `node_modules` directory.
+`prototype/source/` retains the authored design-reference source; it is not another project or the production implementation. `prototype/checks/` retains the state regression. There is no nested `AGENTS.md`, package manifest, hosting scaffold or `node_modules` directory.
 
-Run the state regressions from the repository root with `node --test docs/designs/proof-workbench/prototype/checks/workspace.test.mjs` (six passes). From `docs/designs/proof-workbench/prototype`, `node checks/file-open-check.mjs` runs eight browser regressions for file opening, responsive feedback, keyboard focus, notation, unsupported input and board framing; `node checks/capture.mjs` exercises and captures the workflows. These checks need the existing `src/toolchain/website/node_modules/playwright` installation; opening the artifact does not.
+Run the state regressions from the repository root with `node --test docs/designs/proof-workbench/prototype/checks/workspace.test.mjs` (six passes).

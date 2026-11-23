@@ -44,7 +44,7 @@ fn emit_cleanup_fn(
     caps: &[ArmCap],
     env_ty: &str,
 ) -> Result<()> {
-    let saved = cg.enter_nested_fn();
+    let saved = cg.enter_nested_body(cleanup);
     cg.begin_nested_debug(name, position);
     // Cleanup cannot resume the continuation it outlives.
     let outer_resume = cg.resume_ctx.take();

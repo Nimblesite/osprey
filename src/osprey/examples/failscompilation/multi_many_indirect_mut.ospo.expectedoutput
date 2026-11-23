@@ -1,0 +1,1 @@
+29:12: handler arm `Choice.pick` captures mutable binding `log`; a `many` arm cannot own state — combine resumptions through the value `resume` returns

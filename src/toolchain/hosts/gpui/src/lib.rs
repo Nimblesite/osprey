@@ -8,6 +8,7 @@
 //! [`android_main`] NativeActivity calls instead of `main`.
 
 mod adapters;
+mod app;
 mod clock;
 #[cfg(test)]
 mod coverage;

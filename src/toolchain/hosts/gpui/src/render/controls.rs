@@ -251,12 +251,15 @@ pub(super) fn context_menu(ctx: &mut Ctx, tree: &Tree) -> AnyElement {
     };
     let items = list(tree, "items").to_vec();
     let handle = ctx.cx.entity();
+    // A menu around a scene passes the free space down to it, as a stack does.
+    let grows = holds_scene(ctx, body, 0);
     div()
         .id(format!(
             "{}:menu:{:?}",
             ctx.key,
             items.first().and_then(ordinal)
         ))
+        .when(grows, |this| this.flex().flex_col().flex_grow(1.).min_h_0())
         .child(super::node(ctx, body))
         .context_menu(move |menu, window, cx| {
             items.iter().fold(menu, |menu, item| {
@@ -349,5 +352,17 @@ fn forward(
     window: &mut Window,
     cx: &mut Context<HostView>,
 ) {
-    view.send(Touch::control(binding.ordinal, &value.words()), window, cx);
+    view.send(Touch::control(binding.ordinal, &words(value)), window, cx);
+}
+
+/// The words a control event carries for this value: nothing, text, a flag or a whole number.
+fn words(value: &Tree) -> String {
+    match value {
+        Tree::Text(text) => text.clone(),
+        Tree::Bool(on) => on.to_string(),
+        Tree::Whole(whole) => whole.to_string(),
+        Tree::Real(real) if real.fract() == 0. && real.abs() < 9e15 => (*real as i64).to_string(),
+        Tree::Real(real) => real.to_string(),
+        Tree::Null | Tree::Items(_) | Tree::Record(_) => String::new(),
+    }
 }

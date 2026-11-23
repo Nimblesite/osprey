@@ -110,15 +110,14 @@ _graphics-smoke: build _runtime_macos _graphics-shader
 	done
 endif
 
-## _bank-web: Build Talon Bank's Osprey Native app for the browser through the web host and embed the page in
-##            its server. Requires Node and a WASI sysroot; the generated Osprey Bundle is committed so native
-##            and CI builds need neither.
+## _bank-web: Build Talon Bank's web client, the Osprey Native app for the browser, as static files in
+##            src/toolchain/hosts/web/build/talon. Requires Node and a WASI sysroot.
 .PHONY: _bank-web
 _bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 _bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS) $(EXT_NODE_DEPS)
 	@echo "==> Building Talon Bank for the web host..."
 	OSPREY_BIN="$(CURDIR)/$(BIN)" node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/talon/app --title "Talon Bank" \
-		--out src/toolchain/hosts/web/build/talon --module src/osprey/examples/talon/backend/web/bundle.ospml --namespace bank/web
+		--out src/toolchain/hosts/web/build/talon --argument http://127.0.0.1:18790
 
 # GPT-2 settings and the one-time weight download behind gpt2 and gpt2-train.
 GPT2_DIR    := src/osprey/examples/llms/gpt2

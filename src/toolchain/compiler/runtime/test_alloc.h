@@ -27,6 +27,7 @@
 #define OSPREY_TEST_ALLOC_H
 
 #include <dlfcn.h>
+#include <errno.h>
 #include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -56,6 +57,7 @@ static _Atomic long osp_alloc_live_blocks;
 static void *(*osp_real_malloc)(size_t);
 static void *(*osp_real_calloc)(size_t, size_t);
 static void *(*osp_real_realloc)(void *, size_t);
+static int (*osp_real_memalign)(void **, size_t, size_t);
 static void (*osp_real_free)(void *);
 static int osp_alloc_resolving;
 
@@ -106,8 +108,17 @@ OSP_ALLOC_ENTRY static inline void osp_resolve_real_allocators(void) {
   osp_real_malloc = (void *(*)(size_t))dlsym(RTLD_NEXT, "malloc");
   osp_real_calloc = (void *(*)(size_t, size_t))dlsym(RTLD_NEXT, "calloc");
   osp_real_realloc = (void *(*)(void *, size_t))dlsym(RTLD_NEXT, "realloc");
+  osp_real_memalign = (int (*)(void **, size_t, size_t))dlsym(RTLD_NEXT, "posix_memalign");
   osp_real_free = (void (*)(void *))dlsym(RTLD_NEXT, "free");
   osp_alloc_resolving = 0;
+}
+
+// An allocator that refuses says why, as every real one does: glibc reads errno
+// after a NULL from inside pthread_create and asserts it is ENOMEM, so a silent
+// refusal aborts the binary instead of failing the one call that drew it.
+OSP_ALLOC_ENTRY static inline void *osp_refused(void) {
+  errno = ENOMEM;
+  return NULL;
 }
 
 // True exactly once per armed allocation, counting down the successes first.
@@ -153,7 +164,7 @@ OSP_ALLOC_ENTRY void *malloc(size_t bytes) {
     return osp_bootstrap_alloc(bytes);
   }
   if (osp_alloc_should_fail(bytes)) {
-    return NULL;
+    return osp_refused();
   }
   void *at = osp_real_malloc(bytes);
   if (at != NULL) {
@@ -170,14 +181,14 @@ OSP_ALLOC_ENTRY void *calloc(size_t count, size_t size) {
   osp_resolve_real_allocators();
   size_t bytes = count * size;
   if (size != 0 && count > (size_t)-1 / size) {
-    return NULL; // the product overflowed; no allocator can honour it
+    return osp_refused(); // the product overflowed; no allocator can honour it
   }
   if (osp_real_calloc == NULL) {
     void *at = osp_bootstrap_alloc(bytes);
     return at == NULL ? NULL : memset(at, 0, bytes);
   }
   if (osp_alloc_should_fail(bytes)) {
-    return NULL;
+    return osp_refused();
   }
   void *at = osp_real_calloc(count, size);
   if (at != NULL) {
@@ -189,7 +200,7 @@ OSP_ALLOC_ENTRY void *calloc(size_t count, size_t size) {
 OSP_ALLOC_ENTRY void *realloc(void *at, size_t bytes) {
   osp_resolve_real_allocators();
   if (osp_alloc_should_fail(bytes)) {
-    return NULL; // the caller still owns `at`, exactly as C requires
+    return osp_refused(); // the caller still owns `at`, exactly as C requires
   }
   if (osp_from_bootstrap(at)) {
     // The arena records no block sizes, so the copy is bounded by what is
@@ -206,6 +217,20 @@ OSP_ALLOC_ENTRY void *realloc(void *at, size_t bytes) {
     atomic_fetch_add(&osp_alloc_live_blocks, 1); // realloc(NULL, n) is a malloc
   }
   return grown;
+}
+
+// Aligned blocks come back through `free` like any other, so they are counted
+// and refusable like any other: the collector takes its size-class pages this way.
+OSP_ALLOC_ENTRY int posix_memalign(void **out, size_t alignment, size_t bytes) {
+  osp_resolve_real_allocators();
+  if (osp_real_memalign == NULL || osp_alloc_should_fail(bytes)) {
+    return ENOMEM;
+  }
+  int failed = osp_real_memalign(out, alignment, bytes);
+  if (!failed) {
+    atomic_fetch_add(&osp_alloc_live_blocks, 1);
+  }
+  return failed;
 }
 
 // strdup allocates too, and libc's own copy of it does NOT route through the

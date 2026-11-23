@@ -1,17 +1,20 @@
-//! Undocumented exports as editor warnings. Implements [DOC-EXPORT-REQUIRED].
+//! Per-file advice as editor warnings: undocumented and unexampled exports,
+//! repeated literals and consecutive prints. Implements [DOC-EXPORT-REQUIRED],
+//! [DOC-EXPORT-EXAMPLE-REQUIRED], [TYPE-WARNINGS-REPEATED-LITERAL] and
+//! [TYPE-WARNINGS-CONSECUTIVE-PRINT].
 
 use lspkit::vfs::PositionEncoding;
 use lspkit_server::Diagnostic;
 use osprey_ast::Program;
 
-/// One warning per undocumented export in this file, read from the file as
+/// One warning per undocumented or unexampled export and repeated literal in this file, read from the file as
 /// written: project assembly flattens modules away.
 pub(crate) fn diagnostics(
     source: &str,
     program: &Program,
     encoding: PositionEncoding,
 ) -> Vec<Diagnostic> {
-    osprey_types::undocumented_exports(program)
+    osprey_types::source_warnings(program)
         .iter()
         .filter_map(|export| {
             let position = export.position?;
@@ -41,6 +44,25 @@ mod tests {
     fn an_undocumented_export_is_an_editor_warning_on_its_line() {
         let source = "(** Doubling. *)\nmodule Api\n    export double x = x * 2\n";
         assert_eq!(codes(source), [("undocumented-export".to_owned(), 2)]);
+    }
+
+    #[test]
+    fn a_documented_export_without_an_example_is_an_editor_warning_on_its_line() {
+        let source =
+            "(** Doubling. *)\nmodule Api\n    (** Twice `x`. *)\n    export double x = x * 2\n";
+        assert_eq!(codes(source), [("unexampled-export".to_owned(), 3)]);
+    }
+
+    #[test]
+    fn a_literal_written_three_times_is_an_editor_warning_at_its_first_use() {
+        let source = "a () = \"connection refused\"\nb () = \"connection refused\"\nc () = \"connection refused\"\n";
+        assert_eq!(codes(source), [("repeated-literal".to_owned(), 0)]);
+    }
+
+    #[test]
+    fn prints_in_a_row_are_one_editor_warning_at_the_first() {
+        let source = "x = 1\nprint \"a\"\nprint \"b\"\nprint \"${x}\"\n";
+        assert_eq!(codes(source), [("consecutive-print".to_owned(), 1)]);
     }
 
     #[test]

@@ -19,6 +19,9 @@ module Graphs
     (** A graph with no components or routes. *)
     export empty = Graph(nodes = [], cables = [])
 
+    (** The parameter of node `n` keyed `key`, or the out-of-range error when it has none. *)
+    export parameterNamed (n, key) = listGet (filterList (n.parameters, \p => p.key == key)) 0
+
     (** Index each destination's upstream node IDs once for graph traversal. *)
     export inputSources cables = foldList (cables, Map(), \(index, cable) =>
         key = toString cable.destination

@@ -4,10 +4,11 @@ This host runs any [Osprey Native](../../../osprey/packages/native/README.md) ap
 
 ```sh
 node src/toolchain/hosts/web/scripts/build.mjs --app <application folder> --title <title> --out <folder> \
-    [--module <file.ospml> --namespace <namespace>]
+    [--argument <launch argument>]
+node src/toolchain/hosts/web/scripts/serve.mjs --root <folder> --port <port>
 ```
 
-The build compiles the application with `--target=wasm32` and writes `index.html`, `host.js` (the host with the application inlined) and `host.css` to `--out`. Serve that folder from any web server. `--module` also writes the three files as an Osprey module whose `page`, `script` and `style` functions a server written in Osprey can return, as [Talon Bank](../../../osprey/examples/talon/README.md) does.
+The build compiles the application with `--target=wasm32` and writes `index.html`, `host.js` (the host with the application inlined) and `host.css` to `--out`. Serve that folder from any web server; `serve.mjs` serves it on this machine. They are build output, never committed. The application gets the page's origin as its first launch argument; `--argument` names another, such as the API server [Talon Bank](../../../osprey/examples/talon/README.md) calls.
 
 ## How it works
 

@@ -1,0 +1,104 @@
+// The edge cases: the same routes, verbs and status codes as
+// src/Web/Endpoints/TodoLists.cs and TodoItems.cs, exercised as functions —
+// no socket, no server ([EXAMPLE-CLEANARCH-INV-FAITHFUL]).
+
+namespace todo;
+
+import todo::TodoHarness
+
+module EdgeCases {
+    /// POST /api/TodoLists: 201, a Location header, the bare new id.
+    export fn createListRouteCase() = {
+        let made = TodoHarness::route(TodoHarness::admin(), "POST", "/api/TodoLists",
+            "{\"title\":\"Shopping\"}")
+        checkAll("201 with location and bare id body", [
+            made.status == 201,
+            contains(made.headers, "Location: /api/TodoLists/1\r\n"),
+            made.partialBody == "1",
+            contains(made.headers, "application/json")
+        ])
+    }
+
+    /// GET /api/TodoLists: 200 with the whole view; 401 when anonymous,
+    /// because the endpoint group calls RequireAuthorization().
+    export fn getListsRouteCase() = {
+        let view = TodoHarness::route(TodoHarness::admin(), "GET", "/api/TodoLists", "")
+        checkAll("200 json view", [
+            view.status == 200,
+            contains(view.partialBody, "\"priorities\":[{\"id\":0,\"name\":\"None\"}"),
+            contains(view.partialBody, "\"colours\":[{\"code\":\"#E05C4D\",\"name\":\"Red\"}"),
+            contains(view.partialBody, "\"lists\":[]")
+        ])
+        let denied = TodoHarness::route(TodoHarness::anonymous(), "GET", "/api/TodoLists", "")
+        checkAll("anonymous 401", [denied.status == 401])
+    }
+
+    /// POST an invalid list: 400 with the validation problem details.
+    export fn invalidListRouteCase() = {
+        let broken = TodoHarness::route(TodoHarness::admin(), "POST", "/api/TodoLists",
+            "{\"title\":\"\",\"colour\":\"#HotPink\"}")
+        checkAll("400 problem details collect every failure", [
+            broken.status == 400,
+            contains(broken.partialBody, "One or more validation errors occurred."),
+            contains(broken.partialBody, "'Title' must not be empty."),
+            contains(broken.partialBody, "UnsupportedColour: '#HotPink' is not a supported colour")
+        ])
+    }
+
+    /// PUT /api/TodoLists/{id}: 400 when the ids disagree, 204 when they
+    /// agree, 404 when the list is missing; DELETE answers 204 or 404.
+    export fn updateAndDeleteListRouteCase() = {
+        let lists = [TodoHarness::seedList(2, "Savings", "#AB47BC")]
+        let put = fn(path, body) => TodoHarness::routeOver(lists, [], TodoHarness::admin(), "PUT", path, body)
+        let delete = fn(path) => TodoHarness::routeOver(lists, [], TodoHarness::admin(), "DELETE", path, "")
+        let mismatch = put("/api/TodoLists/2", "{\"id\":3,\"title\":\"Ghost\"}")
+        checkAll("id mismatch is a 400", [mismatch.status == 400])
+        let ok = put("/api/TodoLists/2", "{\"id\":2,\"title\":\"Banking\"}")
+        checkAll("matching ids update with 204 and no body", [
+            ok.status == 204,
+            isEmpty(ok.partialBody)
+        ])
+        let ghost = put("/api/TodoLists/9", "{\"id\":9,\"title\":\"Ghost\"}")
+        checkAll("updating a missing list is a 404", [ghost.status == 404])
+        let removed = delete("/api/TodoLists/2")
+        checkAll("delete answers 204", [removed.status == 204])
+        let absent = delete("/api/TodoLists/9")
+        checkAll("deleting a missing list is a 404", [absent.status == 404])
+    }
+
+    /// The item routes: POST 201, PUT/PATCH 204, DELETE 204, and the
+    /// pagination query on GET.
+    export fn itemRoutesCase() = {
+        let made = TodoHarness::route(TodoHarness::admin(), "POST", "/api/TodoItems",
+            "{\"listId\":1,\"title\":\"Milk\"}")
+        checkAll("201 with item location", [
+            made.status == 201,
+            contains(made.headers, "Location: /api/TodoItems/1\r\n")
+        ])
+        let lists = [TodoHarness::seedList(1, "Shopping", "#78909C")]
+        let items = [TodoHarness::seedItem(1, 1, "Milk", false)]
+        let detail = TodoHarness::routeOver(lists, items, TodoHarness::admin(), "PATCH",
+            "/api/TodoItems/UpdateDetail/1", "{\"id\":1,\"listId\":1,\"priority\":2,\"note\":\"soon\"}")
+        let stray = TodoHarness::route(TodoHarness::admin(), "PATCH",
+            "/api/TodoItems/UpdateDetail/1", "{\"id\":1,\"listId\":1,\"priority\":2,\"note\":\"soon\"}")
+        let done = TodoHarness::routeOver(lists, items, TodoHarness::admin(), "PUT",
+            "/api/TodoItems/1", "{\"id\":1,\"title\":\"Milk\",\"done\":true}")
+        let gone = TodoHarness::routeOver(lists, items, TodoHarness::admin(), "DELETE", "/api/TodoItems/1", "")
+        checkAll("patch update detail 204, put 204, delete 204, missing 404", [
+            detail.status == 204,
+            stray.status == 404,
+            done.status == 204,
+            gone.status == 204
+        ])
+        let paged = TodoHarness::route(TodoHarness::admin(), "GET",
+            "/api/TodoItems?listId=1&pageNumber=1&pageSize=10", "")
+        checkAll("pagination query answers the page json", [
+            paged.status == 200,
+            contains(paged.partialBody, "\"totalCount\":0"),
+            contains(paged.partialBody, "\"hasPreviousPage\":false"),
+            contains(paged.partialBody, "\"hasNextPage\":false")
+        ])
+        let unknown = TodoHarness::route(TodoHarness::admin(), "GET", "/api/Nope", "")
+        checkAll("unknown routes 404", [unknown.status == 404])
+    }
+}

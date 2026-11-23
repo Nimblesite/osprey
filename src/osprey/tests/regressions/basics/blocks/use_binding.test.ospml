@@ -1,0 +1,135 @@
+(** ML-flavor twin of use_binding.test.osp, sharing its golden. Cross-contract
+    oracle for [BLOCK-USE], [BLOCK-USE-RESULT], [ERR-PAYLOAD] and
+    [FLAVOR-ML-BLOCK]: `use p <- f (a)` passes the rest of its block to
+    `f (a, \p => ...)`, so every chain reads one step per line. *)
+
+(** Step `i` adds `i` to `x`, or fails with a payload naming the step and input. *)
+step (i, x, failAt) = match i == failAt
+    true => Error(message = "step ${toString i} refused ${toString x}")
+    false => Success(value = x + i)
+
+(** A guard: passes `x` through when it reaches `n`. *)
+atLeast (x, n) = match x >= n
+    true => Success(value = x)
+    false => Error(message = "${toString x} is below ${toString n}")
+
+(** A resource scope, not a Result: brackets what its body returns. *)
+scoped (label, body) = "<${label}>${body ()}</${label}>"
+
+(** A callee whose callback takes two values. *)
+both (x, y, next) = next (x, y)
+
+shown result = match result
+    Success value => "ok ${toString value}"
+    Error message => "error: ${message}"
+
+one failAt =
+    use a <- andThen (step (1, 0, failAt))
+    Success(value = a)
+
+two failAt =
+    use a <- andThen (step (1, 0, failAt))
+    use b <- andThen (step (2, a, failAt))
+    Success(value = a * 10 + b)
+
+eight failAt =
+    use a <- andThen (step (1, 0, failAt))
+    use b <- andThen (step (2, a, failAt))
+    use c <- andThen (step (3, b, failAt))
+    use d <- andThen (step (4, c, failAt))
+    use e <- andThen (step (5, d, failAt))
+    use f <- andThen (step (6, e, failAt))
+    use g <- andThen (step (7, f, failAt))
+    use h <- andThen (step (8, g, failAt))
+    Success(value = h * 100 + a)
+
+twelve failAt =
+    use a <- andThen (step (1, 0, failAt))
+    use b <- andThen (step (2, a, failAt))
+    use c <- andThen (step (3, b, failAt))
+    use d <- andThen (step (4, c, failAt))
+    use e <- andThen (step (5, d, failAt))
+    use f <- andThen (step (6, e, failAt))
+    use g <- andThen (step (7, f, failAt))
+    use h <- andThen (step (8, g, failAt))
+    use i <- andThen (step (9, h, failAt))
+    use j <- andThen (step (10, i, failAt))
+    use k <- andThen (step (11, j, failAt))
+    use l <- andThen (step (12, k, failAt))
+    Success(value = l + b)
+
+(** `_` guards: the checked value is discarded, a failure still stops the chain. *)
+guarded x =
+    use _ <- andThen (atLeast (x, 3))
+    use _ <- andThen (atLeast (x * 2, 10))
+    Success(value = x * 7)
+
+(** The binder-less form and a two-value callback, around a Result chain. *)
+framed x =
+    use <- scoped ("outer")
+    use p, q <- both (x, x + 1)
+    use <- scoped ("inner")
+    shown (two (p * q))
+
+(** `use` inside a match arm. *)
+byKind (kind, n) = match kind
+    "chain" =>
+        use v <- andThen (step (1, n, 9))
+        use _ <- andThen (atLeast (v, 2))
+        Success(value = v * v)
+    _ => Error(message = "unknown kind ${kind}")
+
+effect Audit
+    (** One number to audit. *)
+    check : int => Unit
+
+auditAll () =
+    perform Audit.check 1
+    perform Audit.check 4
+    "audited"
+
+(** `use` inside a handler arm: each audited number runs its own chain. *)
+audit () =
+    mut seen = ""
+    done =
+        handle Audit
+            check n =>
+                outcome =
+                    use v <- andThen (atLeast (n, 2))
+                    Success(value = v * 3)
+                seen := "${seen}[${shown outcome}]"
+        auditAll ()
+    "${done} ${seen}"
+
+(** Every position of a chain fails with its own payload. *)
+everyFailure (chain, positions) = join (mapList (positions, \k => shown (chain k))) " / "
+
+(** `use` inside a lambda. *)
+lifted () = mapList ([0, 1, 4], \n =>
+    outcome =
+        use v <- andThen (step (1, n, 2))
+        use w <- andThen (atLeast (v, 2))
+        Success(value = w + 100)
+    shown outcome)
+
+exactArithmetic (\() => print "one: ${shown (one 9)} | ${shown (one 1)}\ntwo: ${shown (two 9)} | ${shown (two 1)} | ${shown (two 2)}\neight ok: ${shown (eight 99)}\neight fails: ${everyFailure (eight, [1, 2, 3, 4, 5, 6, 7, 8])}\ntwelve ok: ${shown (twelve 99)}\ntwelve fails: ${everyFailure (twelve, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])}\nguards: ${shown (guarded 5)} | ${shown (guarded 2)} | ${shown (guarded 4)}\nframed: ${framed 1} | ${framed 3}\narms: ${shown (byKind ("chain", 4))} | ${shown (byKind ("chain", 0))} | ${shown (byKind ("other", 1))}\nlambdas: ${toString (lifted ())}\nhandler: ${audit ()}")
+
+(** [LEX-USE-ARROW] Outside a `use` head, `x<-1` still reads as `x < -1`. *)
+belowMinusOne x = x<-1
+
+(** Exact payloads at both ends and the middle of the longest chain. *)
+useBindingCase () = checkAll "use binding chains" [
+    shown (twelve 99) == "ok 81",
+    shown (twelve 1) == "error: step 1 refused 0",
+    shown (twelve 7) == "error: step 7 refused 21",
+    shown (twelve 12) == "error: step 12 refused 66",
+    shown (eight 99) == "ok 3601",
+    structuralEquals (lifted ()) ["error: 1 is below 2", "ok 102", "ok 105"],
+    framed 3 == "<outer><inner>ok 13</inner></outer>",
+    audit () == "audited [error: 1 is below 2][ok 12]",
+    belowMinusOne (-5),
+    !(belowMinusOne (-1)),
+    !(belowMinusOne 3)
+]
+
+test "use flattens chains of every length and passes each Error through unchanged" (exactly useBindingCase)

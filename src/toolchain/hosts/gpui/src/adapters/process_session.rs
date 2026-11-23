@@ -119,12 +119,12 @@ impl Session {
         super::process::stop(&mut self.child);
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(super) fn id(&self) -> u32 {
         self.child.id()
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(super) fn exited(&mut self) -> Result<bool, String> {
         self.child
             .try_wait()

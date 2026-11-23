@@ -1020,6 +1020,14 @@ Erasing an `int`, `float` or `bool` keeps a scalar row: those values carry no
 fields, so every field-naming arm declines and only a binding or `_` arm selects
 them.
 
+A handle's element is never erased. `Fiber<T>` and `Channel<T>` hand `T` back
+through `await` and `recv` as an unboxed word, so a handle with a concrete
+element passed where `Fiber<any>` or `Channel<any>` is declared is rejected
+(`a fiber or channel with a concrete element cannot be passed as a `Fiber<any>`
+or `Channel<any>``) instead of `await` reading that word as a box. Leave the
+parameter to inference, or write its element type
+(`failscompilation/fiber_any_element.ospo` and its ML twin).
+
 > **Status: implemented.** An erased value is a pointer to a two-word box
 > `{ desc, payload }` whose descriptor names its runtime shape, on every
 > memory backend and both flavors. The one-way rule holds at annotations
@@ -1226,6 +1234,29 @@ This is a conservative simplification. A callback that supplies arguments, perfo
 
 A handler still needs a callback to delay execution until its scope is installed: `policy(work)` preserves that delay. `policy(work())` does not.
 
+## Repeated literals `[TYPE-WARNINGS-REPEATED-LITERAL]`
+
+A string of 12 or more characters, or a non-empty list of literals spelled in 12 or more characters, written 3 or more times in one source file is a constant that was never named. Every copy must change together, and a missed copy drifts silently. The compiler's warning listing and the language server report `repeated-literal` once per literal, at the statement that holds its first use, with how many times it is written:
+
+```osprey
+fn refused() = "connection refused"
+fn retry() = "connection refused"
+fn report() = "connection refused" // warning: the literal `"connection refused"` is written 3 times in this file; name it once as a constant
+```
+
+Write `let refusal = "connection refused"` once and use the name. Literals in patterns are not counted, because a pattern cannot name a constant. Two literals that differ in any character are different literals. A message quotes at most 32 characters of the literal. The count is per file as written, before project assembly, so two files that each write a literal twice are not reported. Implemented in `osprey-types/src/repeated_literal.rs`.
+
+## Consecutive prints `[TYPE-WARNINGS-CONSECUTIVE-PRINT]`
+
+Osprey writes one interpolated `print` where other languages write a run of them: the output is one value the reader sees whole. Two or more `print` calls in a row, with no other statement between them, at the top level, in a namespace or in any block (a block's trailing value included), are one `consecutive-print` warning at the first call of the run, in every flavor:
+
+```osprey
+print("total")
+print("${total}") // warning (at the line above): 2 `print` calls in a row: join them into one interpolated `print`
+```
+
+Write `print("total\n${total}")`. A `print` separated from the next by any other statement starts a new run. The compiler's warning listing and the language server both report it (`osprey-types/src/consecutive_print.rs`).
+
 ## Unused symbols `[TYPE-WARNINGS-UNUSED]`
 
 A program that passes type checking reports a Warning for each unread lexical binding below. These warnings do not change compilation, evaluation, generated code or exit status. The CLI includes them in the same source-grouped listing as redundant annotations; the editor reports the same rule and message on the written identifier and marks it unnecessary.
@@ -1239,6 +1270,19 @@ A program that passes type checking reports a Warning for each unread lexical bi
 
 Usage is resolved by lexical binding identity. A shadowing declaration cannot count as a read of the outer binding. The initializer of `let x = x` reads the previous `x`, before introducing the new one. Captures in nested functions, handlers and spawned fibers count as reads. Assignment to a mutable local alone does not read it. Pattern names belong to their own arm; a name used in another arm cannot discharge its warning. Reading an actual callable field does not read a same-named free function.
 
-Names beginning with `_` explicitly opt out. Module and top-level declaration names are excluded because they can be used through exports or native entry points. Parameters in their function bodies are still checked. Pattern binders inside a top-level expression remain local to that expression and are checked normally. Foreign declarations, effect operation declarations and signature members have no body to analyze and do not receive unused-parameter warnings. Compiler-generated curry or annotation-checking bindings are not user declarations and must not be reported as unused variables. An invalid program receives no speculative unused-symbol warnings.
+Names beginning with `_` explicitly opt out. Module and top-level declaration names are excluded because they can be used through exports or native entry points; a private module member is checked by [TYPE-WARNINGS-UNUSED-PRIVATE] instead. Parameters in their function bodies are still checked. Pattern binders inside a top-level expression remain local to that expression and are checked normally. Foreign declarations, effect operation declarations and signature members have no body to analyze and do not receive unused-parameter warnings. Compiler-generated curry or annotation-checking bindings are not user declarations and must not be reported as unused variables. An invalid program receives no speculative unused-symbol warnings.
 
 Unused warnings offer no automatic deletion: an unread binding can still evaluate an effectful initializer, and a parameter can be part of a call contract. Removing either would require a separate proof.
+
+## Unused private module members `[TYPE-WARNINGS-UNUSED-PRIVATE]`
+
+A module is a closed boundary: an item it does not export can be named only from inside it. A private function or value that no expression of its module names is dead code, so it is one `unused-private` warning at its declaration, in every flavor:
+
+```osprey
+module Cart {
+    fn orphan(x) = x * 2 // warning: private function `Cart::orphan` is never used; delete it
+    export fn total(x) = x
+}
+```
+
+Delete it. The check is by spelling, not binding: an identifier, path segment, field, method or updated record of the same name anywhere in the module, nested modules included, counts as a read. The rule can therefore miss dead code (a function that only calls itself), but it never reports live code. A Python-flavor file is a module that exports what its `__all__` lists. Exported items, top-level declarations, types, and modules ascribed a signature (whose surface the signature names) are never reported. The compiler's warning listing and the language server report it (`osprey-types/src/unused_private.rs`). Warnings never change a build's exit status, but the program check fails on this one: every tracked program must be free of dead private members ([CI-PROGRAMS-COMPILE]).

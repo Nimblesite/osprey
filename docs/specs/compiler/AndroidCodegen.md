@@ -34,7 +34,7 @@ Records, collections, closures, and effect handlers remain internal. A scalar wr
 
 ## Target capability checks [ANDROID-TARGET-CAPABILITIES]
 
-The compiler rejects dynamic `control` operations, including arms that never resume, and unavailable native process, HTTP, and WebSocket operations. Diagnostics identify the target and offending operation before LLVM or linking. The same principle applies to [WASM](0022-WebAssemblyTarget.md) and iOS.
+Multi-shot (`many`) continuations, and every effect a `many` region captures, are compiled to ordinary closures and are supported, exactly as on [WASM](0022-WebAssemblyTarget.md#multi-shot-continuations-wasm-target-effects-many) ([MULTI-WASM-MANY](../language/0017-AlgebraicEffects.md)). The compiler rejects a `once` or `abort` `control` operation outside every `many` region, including arms that never resume, and unavailable native process, HTTP, and WebSocket operations. Diagnostics identify the target and offending operation before LLVM or linking. The same rules apply to WASM and iOS.
 
 Callable value handlers, block-scoped value handlers, and effects eliminated during compilation remain usable. Platform networking is provided by the host through the C ABI or an application command protocol. Explicit scalar host imports remain legal; the final Android application link must provide their implementations.
 

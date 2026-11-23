@@ -76,6 +76,7 @@ impl Regions {
         (regions, controls)
     }
 
+    /// The key of the detached region in the current frame, when one was drawn.
     pub fn detached(&self) -> Option<String> {
         self.regions
             .keys()

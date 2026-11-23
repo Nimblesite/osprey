@@ -31,14 +31,24 @@ fn captured_lambda_bodies_keep_debug_scopes_in_both_flavors() -> Result<(), Stri
 }
 
 pub(super) fn lambda_debug_ir(source: &str, flavor: Flavor) -> Result<String, String> {
-    let program = parsed_source(source, flavor, "lambda.osp")?.program;
+    let path = match flavor {
+        Flavor::Default => "lambda.osp",
+        Flavor::Ml => "lambda.ospml",
+        Flavor::Python => "lambda.py",
+        Flavor::TypeScript => "lambda.ts",
+    };
+    let program = parsed_source(source, flavor, path)?.program;
     let errors = osprey_types::check_program(&program);
     assert!(errors.is_empty(), "{flavor}: {errors:?}");
     let ir = osprey_codegen::compile_program_debug(
         &program,
-        osprey_codegen::DebugSource::from_path("lambda.osp"),
+        osprey_codegen::DebugSource::from_path(path),
     )
     .map_err(|error| format!("{flavor}: {error}"))?;
+    assert!(
+        ir.contains(&format!("!DIFile(filename: \"{path}\"")),
+        "{flavor}: source filename"
+    );
     for definition in ir.lines().filter(|line| line.starts_with("define ")) {
         if let Some((_, attachment)) = definition.split_once("!dbg ") {
             let scope = attachment.trim_end_matches(" {");
@@ -87,6 +97,9 @@ fn bound_argument_and_ffi_lambdas_keep_their_debug_scopes() -> Result<(), String
         ("apply f n = f n\nmain () = print (apply (\\x => wrapMul x 2) 21)", Flavor::Ml, "__closure_fn_", 2),
         ("extern fn invoke(f: (int) -> int, n: int) -> int\nfn main() = print(invoke(fn(x) => wrapMul(x, 2), 21))", Flavor::Default, "__callback_", 1),
         ("extern invoke (f : int -> int) (n : int) -> int\nmain () = print (invoke (\\x => wrapMul x 2) 21)", Flavor::Ml, "__callback_", 1),
+        ("def main():\n    f = lambda x: wrapMul(x, 2)\n    print(f(21))", Flavor::Python, "__closure_fn_", 2),
+        ("def apply(f, n):\n    return f(n)\ndef main():\n    print(apply(lambda x: wrapMul(x, 2), 21))", Flavor::Python, "__closure_fn_", 2),
+        ("from typing import Callable\n@extern\ndef invoke(f: Callable[[int], int], n: int) -> int: ...\ndef main():\n    print(invoke(lambda x: wrapMul(x, 2), 21))", Flavor::Python, "__callback_", 1),
     ];
     for (source, flavor, name, arg) in paths {
         let ir = lambda_debug_ir(source, flavor)?;
@@ -259,6 +272,23 @@ fn generic_record_parameters_keep_their_field_types_in_debug_metadata() -> Resul
                 assert!(referenced_metadata(&ir, field, "baseType: ")?.contains("DW_ATE_float"));
             }
         }
+    }
+    Ok(())
+}
+
+/// [MODULES-ABI] Debugger names are source identities; linkage stays encoded.
+#[test]
+fn module_debug_frames_keep_source_names_in_both_flavors() -> Result<(), String> {
+    for (source, flavor) in [
+        ("namespace \"billing/api\";\nmodule Tax { export fn add(n) = satAdd(n, 1) }\nfn main() = print(Tax::add(41))", Flavor::Default),
+        ("namespace \"billing/api\"\nmodule Tax\n    export add n = satAdd n 1\nmain () = print (Tax::add 41)", Flavor::Ml),
+    ] {
+        let program = super::assembled_if_module_aware(parsed_source(source, flavor, "debug.osp")?)?;
+        let ir = osprey_codegen::compile_program_debug(&program, osprey_codegen::DebugSource::from_path("debug.osp"))
+            .map_err(|error| format!("{flavor}: {error}"))?;
+        let linkage = osprey_ast::symbol::mangle(["billing/api", "Tax", "add"]);
+        assert!(ir.contains("!DISubprogram(name: \"billing/api::Tax::add\", scope:"), "{flavor}: {ir}");
+        assert!(ir.contains(&format!("define internal i64 @{linkage}(")), "preserve native ABI");
     }
     Ok(())
 }

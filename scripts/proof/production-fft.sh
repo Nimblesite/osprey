@@ -47,7 +47,7 @@ check_export() {
         printf '%s\t%s\n' "$out/$file" "$name" | "$checker.$backend"
     fi
 }
-for theorem in validatedTransformSchedule negativeFrameRejected advertisedSizesAccepted shaperSymmetricInterval hardClipPositiveInterval tanhUpperPlateau upperClipRails wavefolderPair rotationComponents rotationUnitPower realSamplesConjugate addedDftBin grainAsrBoundarySamples grainAsrInterior windowedModulation windowedZeroIndex supportedTransformDepths transformSchedule overlapNecessary hannEnergyEighth hannEnergyQuarter delayPropagation delayFullTraversal heardTimeClamped dialMovement canvasGrabOffset envelopeSustain envelopeReleased stridedQuartet additiveSample additivePeriod rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
+for theorem in validatedTransformSchedule mixSuperposition mixPower panEqualPower panHardLeft negativeFrameRejected advertisedSizesAccepted shaperSymmetricInterval hardClipPositiveInterval tanhUpperPlateau upperClipRails wavefolderPair rotationComponents rotationUnitPower realSamplesConjugate addedDftBin grainAsrBoundarySamples grainAsrInterior windowedModulation windowedZeroIndex supportedTransformDepths transformSchedule overlapNecessary hannEnergyEighth hannEnergyQuarter delayPropagation delayFullTraversal heardTimeClamped dialMovement canvasGrabOffset envelopeSustain envelopeReleased stridedQuartet additiveSample additivePeriod rotationArithmetic combinedCorrect quartetCorrect conjugateComponents conjugateTwice combinedDftBins scaledComponents scaledDftBin rotationConjugate strikeDifference strikePeriodicNull allpassStateStep allpassFactoredStep allpassTransfer allpassSteadyMagnitude shaperBypass shaperMidpoint shaperQuotient shaperIntervalAverage shaperCurvePair shaperPrimitiveOffset shaperConstantSegment interpolationEndpoints interpolationInterior interpolationWeights interpolationConstant wavePulseZeroIndices phasePulse wavePulseSegments grainHannEndpoints grainHannInterior grainHannBoundarySamples overlapNormalization overlapReconstructs; do
     name="ProductionFft.$theorem"
     LEAN_PATH="$out:$lean_path" "$exporter" ProductionFft -- "$name" > "$out/$theorem.ndjson"
     for backend in gc arc wasm; do
@@ -101,6 +101,10 @@ reject_edit heardTimeClamped 's/floatDiv (returned, rate), floatDiv (accepted, r
 reject_edit dialMovement 's/abs (y - startY) >= 2.0/abs (y - startY) >= 1.0/' "${arrange%/*}/dial_math.ospml"
 reject_edit canvasGrabOffset 's/= pointer - centre/= centre - pointer/' "${arrange%/*}/canvas_geometry.ospml"
 reject_edit envelopeReleased 's/frame >= gate + release/frame >= gate + attack/' "$arrange"
+reject_edit mixSuperposition 's/existing + gain [*] sample/existing + sample/' "$arrange"
+reject_edit mixPower 's/existing + gain [*] sample/existing + gain * gain * sample/' "$arrange"
+reject_edit panEqualPower 's/panRight pan = sin (0.7853981633974483/panRight pan = sin (0.7853981633974484/' "$arrange"
+reject_edit panHardLeft 's/panLeft pan = cos (0.7853981633974483 [*] (pan + 1.0))/panLeft pan = cos (0.7853981633974483 * (pan - 1.0))/' "$arrange"
 reject_edit envelopeSustain 's/attack [*] sampleRate, release [*] sampleRate/release * sampleRate, attack * sampleRate/' "$arrange"
 reject_edit stridedQuartet 's/third = satAdd second stride/third = satAdd first stride/'
 reject_edit stridedQuartet 's/quartet (a, b, c, d, sign))/quartet (a, c, b, d, sign))/'

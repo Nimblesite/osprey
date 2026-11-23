@@ -58,4 +58,5 @@ For native replay the same entry is emitted with the same builders; the replay b
 - `wrapped_module_targets_x86_64_and_sets_the_stream_cap` and `program_module_carries_locations_for_findings` (`src/toolchain/crates/osprey-cli/src/hunt/module.rs`): the wrapped module targets x86_64 Linux and appends `@osp_hunt_input_bytes`.
 - The closed-module check runs inside `_runtime_klee` (`make build`) when the toolchain is present, as above.
 - `hunt_tests.rs` (`src/toolchain/crates/osprey-cli/src/hunt/`) runs the whole pipeline — compile, link, run, scan, replay, report, exit code — against a stand-in `klee`; the real engine is covered by the deterministic programs under `src/osprey/tests/hunt/`, and the mock library by `make _test_hunt_mock`.
-- Not built: `klee_entry_is_built_from_inferred_types` (the harness) and `klee_corpus_parses_with_pinned_llvm` (the `llvm-as` corpus check).
+- `klee_corpus_parses_with_pinned_llvm` (`src/toolchain/crates/osprey-cli/src/hunt/spec_engine_tests.rs`, run by `make _test_hunt`): the symbolic module of every `src/osprey/tests/` program with a golden, ML twins included, parses with `llvm-as` from KLEE's pinned LLVM 19.
+- Not built: `klee_entry_is_built_from_inferred_types` (the harness).

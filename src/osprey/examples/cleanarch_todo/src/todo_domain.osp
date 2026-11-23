@@ -1,0 +1,89 @@
+// Ported from jasontaylordev/CleanArchitecture (MIT), src/Domain: entities, Colour, PriorityLevel and
+// TodoItemCompletedEvent. Entities import nothing ([EXAMPLE-CLEANARCH-BOOK-DEPENDENCY]).
+
+namespace todo;
+
+/// PriorityLevel: None = 0, Low = 1, Medium = 2, High = 3.
+type Priority = LevelNone | LevelLow | LevelMedium | LevelHigh
+
+/// The `Colour` value object's payload: a supported hex code.
+type Colour = { code: string }
+
+/// A whole todo list.
+type TodoList = { id: int, title: string, colour: string }
+
+/// One todo item; UpdateDetail changes `listId`, `note` and `priority`.
+type TodoItem = { id: int, listId: int, title: string, note: string, priority: Priority, done: bool }
+
+/// TodoItemCompletedEvent, raised when Done flips false to true.
+type TodoItemCompleted = { itemId: int, listId: int, title: string }
+
+/// The todo entities and value objects, free of every framework concern.
+module TodoDomain {
+    /// The colour codes Colour.From accepts, in the C# declaration order.
+    export fn supportedColours() = [
+        "#E05C4D", "#D98B2B", "#4CAF50", "#26A69A", "#5C6BC0", "#AB47BC", "#78909C"
+    ]
+
+    /// A shared ascending comparator for `listSortBy`.
+    export fn order(a, b) = if a < b { -1 } else { if a > b { 1 } else { 0 } }
+
+    /// The display name of a supported colour code.
+    export fn colourName(code) = match code {
+        "#E05C4D" => "Red"
+        "#D98B2B" => "Orange"
+        "#4CAF50" => "Green"
+        "#26A69A" => "Teal"
+        "#5C6BC0" => "Blue"
+        "#AB47BC" => "Purple"
+        _ => "Grey"
+    }
+
+    /// Colour.From, total: a supported code, or the failure the C# throws.
+    export fn colourFrom(code) = match listContains(supportedColours(), code) {
+        true => Success { value: Colour { code: code } }
+        false => Error { message: "UnsupportedColour: '${code}' is not a supported colour" }
+    }
+
+    /// The default list colour when a request omits one: Colour.Grey.
+    export fn grey() = "#78909C"
+
+    /// `Colour.From(request.Colour ?? Colour.Grey)`: blank means Grey.
+    export fn colourOr(asked, whenBlank) = match isEmpty(trim(asked)) {
+        true => whenBlank
+        false => asked
+    }
+
+    /// PriorityLevel from its wire number; unknown numbers read as None.
+    export fn priorityFrom(level) = match level {
+        1 => LevelLow
+        2 => LevelMedium
+        3 => LevelHigh
+        _ => LevelNone
+    }
+
+    /// A priority's wire number, the enum value it came from.
+    export fn priorityLevel(priority) = match priority {
+        LevelLow => 1
+        LevelMedium => 2
+        LevelHigh => 3
+        LevelNone => 0
+    }
+
+    /// A priority's display name, `PriorityLevel.ToString()`.
+    export fn priorityName(priority) = match priority {
+        LevelNone => "None"
+        LevelLow => "Low"
+        LevelMedium => "Medium"
+        LevelHigh => "High"
+    }
+
+    /// TodoItemCompletedEvent: what the Done setter raises on a false-to-true flip.
+    export fn completed(item) = TodoItemCompleted { itemId: item.id, listId: item.listId, title: item.title }
+
+    /// Order two todo lists by title.
+    export fn byListTitle(a: TodoList, b: TodoList) = order(a.title, b.title)
+
+    /// Order two todo items by title.
+    export fn byItemTitle(a: TodoItem, b: TodoItem) = order(a.title, b.title)
+}

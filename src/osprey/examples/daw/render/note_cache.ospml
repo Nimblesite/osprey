@@ -54,7 +54,10 @@ module NoteCache
         Error _ => true
         Success cue => cue.due >= until || (known (play, cue.note) && openingReady (play, until, satAdd index 1))
 
-    taken (dir, play, note) = match read (path (dir, note), satAdd 1 (satMul 2 (length play.sends)))
+    // The dry pair and each send's pair: the lanes a stereo track's note carries.
+    channels sends = satAdd 2 (satMul 2 (length sends))
+
+    taken (dir, play, note) = match read (path (dir, note), channels play.sends)
         Error _ => play
         Success chord => play(made = listAppend play.made (Made(struck = note, chord = chord)))
 
@@ -99,16 +102,17 @@ module NoteCache
         RecordedNote => false
         _ => true
 
-    adopted (dir, sound, channels, frames) = match read (path (dir, sound.cue.note), channels)
+    adopted (dir, sound, lanes, frames) = match read (path (dir, sound.cue.note), lanes)
         Error _ => sound
-        Success lanes => match ui::Lists::all (lanes, \lane => length lane == frames)
-            true => sound(at = sound.cue.due, lanes = lanes, driver = RecordedNote)
+        Success chord => match ui::Lists::all (chord, \lane => length lane == frames)
+            true => sound(at = sound.cue.due, lanes = chord, driver = RecordedNote)
             false => sound
 
     recorded (dir, sound) = match sound.driver
         RecordedNote => sound
         PerformingNote patch => adopted (dir, sound, length patch.ports, patch.span.total)
-        PerformingOperator pair => adopted (dir, sound, satAdd 1 (satMul 2 (length pair.sends)), pair.span.total)
+        PerformingOperator pair => adopted (dir, sound, channels pair.sends, pair.span.total)
+        PerformingVoice built => adopted (dir, sound, channels built.sends, built.span.total)
 
     (** A note maker may finish after the attack. Resume its PCM at the next block's exact note age. *)
     export sounding (dir, play, from, until) = match intDiv from 4096 == intDiv until 4096
@@ -116,6 +120,19 @@ module NoteCache
         false => match ui::Lists::any (play.sounding, performing)
             false => play
             true => play(sounding = mapList (play.sounding, \sound => recorded (dir, sound)))
+
+    joined (prior, lanes) = synth::Sequences::mapIndexed (lanes, \(index, samples) => listConcat (listGet prior index ?: []) samples)
+
+    // One whole note from the same block drivers live play runs, block after block.
+    whole (sound, total, rate, from, lanes) = match from >= total
+        true => ok lanes
+        false => Outcomes::carried (SendRenders::window (sound, from, satAdd from Playback::block, rate), \next =>
+            whole (next, total, rate, satAdd from Playback::block, joined (lanes, next.lanes)))
+
+    (** A whole note's dry and send lanes, made from the drivers that play it live. *)
+    lanesOf (song, voice, sends, note) = Outcomes::carried (NoteRenders::checkedSpan (note, song.tempo, toFloat song.sampleRate, voice.instrument), \span =>
+        Outcomes::carried (Arrangements::started (song, voice, sends, Cue(due = 0, note = note), []), \sound =>
+            whole (sound, span.total, toFloat song.sampleRate, 0, [])))
 
     first (batch, track, cue) =
         key = noteName cue.note
@@ -138,10 +155,6 @@ module NoteCache
     // Every distinct note of the song, in the order the song first reaches it.
     jobs song = listSortBy (foldList (toList (range (0, length song.tracks)), [], \(held, track) => listed (song, held, track)), sooner)
 
-    character (text, index) = synth::PcmWords::byte (byteAt text index ?: 32)
-
-    hex text = join (mapList (toList (range (0, length text)), \index => character (text, index))) ""
-
     entry (lanes, index) =
         before = foldList (toList (range (0, index)), 0, \(sum, lane) => satAdd sum (satMul 4 (length (listGet lanes lane ?: []))))
         count = length (listGet lanes index ?: [])
@@ -154,7 +167,7 @@ module NoteCache
     // A safetensors file in hex: the header's length, the header, then each lane's float32 samples.
     packed lanes =
         top = header lanes
-        "${synth::PcmWords::le32 (length top)}00000000${hex top}${body lanes}"
+        "${synth::PcmWords::le32 (length top)}00000000${Shell::hex top}${body lanes}"
 
     // Each maker owns its hex input and publishes a complete binary by atomic rename.
     publish = "staged=$(mktemp \"$2.XXXXXX\") || exit 1; if xxd -r -p \"$1\" \"$staged\" && [ \"$(wc -c < \"$staged\")\" -eq \"$3\" ] && mv -f \"$staged\" \"$2\"; then rm -f \"$1\"; else rm -f \"$staged\"; exit 1; fi"
@@ -169,13 +182,13 @@ module NoteCache
     // Readers use the same tensor decoder: a partial file must be rebuilt even when its path exists.
     ensure (song, voice, dir, tag, job, sends, clock) =
         file = path (dir, job.note)
-        match read (file, satAdd 1 (satMul 2 (length sends)))
+        match read (file, channels sends)
             Success _ => ok 0
             Error _ =>
                 _ready = match clock != "" && job.due > leadFrames
                     true => waitForClock (clock, job.due, -1)
                     false => 0
-                Outcomes::carried (Arrangements::lanesOf (song, voice, sends, job.note), \lanes =>
+                Outcomes::carried (lanesOf (song, voice, sends, job.note), \lanes =>
                     Outcomes::carried (kept (file, tag, lanes), \_ => ok 1))
 
     made (song, dirs, tag, job, clock) = match listGet dirs job.track

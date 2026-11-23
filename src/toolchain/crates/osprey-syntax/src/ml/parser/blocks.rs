@@ -99,6 +99,9 @@ impl Parser<'_> {
         if matches!(self.peek(), TokKind::KwHandle) {
             return Some(Box::new(self.handle_line()));
         }
+        if matches!(self.peek(), TokKind::KwUse) {
+            return Some(Box::new(self.use_line()));
+        }
         match self.item() {
             Some(MlItem::Expr { value, .. }) if self.at_block_end() => Some(Box::new(value)),
             Some(item) => {

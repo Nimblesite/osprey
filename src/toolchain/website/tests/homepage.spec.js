@@ -93,7 +93,7 @@ test.describe("homepage flight and source examples", () => {
     const tap = (names) => `${names.map((name, i) => `ok ${i + 1} - ${name}\n`).join("")}1..${names.length}\n# tests=${names.length} passed=${names.length} failed=0 skipped=0\n`;
     const [pair, trio] = [tap(["a full disk rolls the manifest back", "a healthy disk writes manifest then lock"]), tap(["a healthy disk installs", "a full disk rolls the manifest back", "a read-only disk changes nothing"])];
     const outputs = [pair, null, trio, pair, "version = 3\n", "30\n", "locked osprey.toml\nwriting osprey.lock\nunlocked osprey.toml\ninstalled\nstopped: another install holds osprey.toml\n",
-      { rejects: "`Versions.pick` is declared `many`, but a re-entrant continuation does not exist" }, { rejects: "handler for `Versions.pick` may resume more than once, but the handled expression requires non-replayable effect `Files.write`" }];
+      "serde 2, toml 1\n", { rejects: "handler for `Versions.pick` may resume more than once, but the handled expression requires non-replayable effect `Files.write`" }];
     await expect(blocks).toHaveCount(outputs.length);
     for (let i = 0; i < outputs.length; i++) {
       const [lang, source] = [await blocks.nth(i).getAttribute("class"), await blocks.nth(i).textContent()];

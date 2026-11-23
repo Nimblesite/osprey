@@ -241,9 +241,9 @@ latencyJourney () =
                 latencyPartitions (aligned, synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = []), steady (5, 0.0), [2, 3, 9, 12]))
 
 (** [SYNTH-HOST-MODULATION] Inspect a running VST awaiting its next audio block. *)
-waitingBlock (step, use) = match step
+waitingBlock (step, consume) = match step
     synth::BlockReady _ _ => unexpected ()
-    synth::BlockWaiting request pending => use (request, pending)
+    synth::BlockWaiting request pending => consume (request, pending)
 
 afterUnplug (graph, reply) = readyBlock (reply, \(held, _) =>
     succeeds (synth::GraphRebase::rebased (graph, held), \next =>

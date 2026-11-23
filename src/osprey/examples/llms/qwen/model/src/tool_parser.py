@@ -171,11 +171,6 @@ def earliest(buffer, tags):
     return foldList(found, -1, lambda best, at: at if best < 0 or at < best else best)
 
 
-def emitted(buffer, tags):
-    """Everything in `buffer` except a trailing partial tag."""
-    return take(buffer, len(buffer) - len(held(buffer, tags)))
-
-
 def held(buffer, tags):
     """The longest suffix of `buffer` that is still a proper prefix of one of `tags`."""
     return fold(

@@ -12,7 +12,7 @@
 	_language-test _deslop _gpu-demo _graphics-shader \
 	_test_gc_stack_root _test_c_runtime _test_gpu_device _coverage_check_c_runtime _bank_test _test_bench_tools _test_registry _test_registry_blockers \
 	_runtime_klee _test_hunt_mock \
-	_vsix_clean _vsix_bundle _vsix_package _vsix_install _graphics _graphics-smoke
+	_vsix_rebuild_reinstall _vsix_windows_tools _vsix_clean _vsix_bundle _vsix_package _vsix_install _graphics _graphics-smoke
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -80,6 +80,8 @@ EXT_PLATFORM   ?= $(EXT_OS)-$(EXT_ARCH)
 # The extension spawns bin/win32-x64/osprey.exe on Windows (client-config.ts),
 # so the bundled executables carry the suffix there and nowhere else.
 EXE            ?= $(if $(filter win32,$(EXT_OS)),.exe,)
+# vsix-rebuild-reinstall-windows builds in this MSYS2 installation's UCRT64.
+MSYS2_ROOT     ?= C:/msys64
 
 # ---------------------------------------------------------------------------
 # Node dependency guard
@@ -130,12 +132,13 @@ RUST_LOG     = $(LOG_DIR)/rust-test.log
 # applies to the archives only; the unit-test profile uses WARN.
 # -Wimplicit-fallthrough, -Wswitch-enum and -Wunreachable-code: every case
 # falls through only on purpose, every enum switch names every member, and no
-# dead code survives in the shipped runtime.
+# dead code survives in the shipped runtime. -Wunused-macros (in WARN, WASM_CFLAGS
+# and osprey-runtime-sys) rejects a #define no line of its file uses.
 # EVERY flag here MUST be understood by BOTH clang (macOS/dev) and gcc (Linux
 # CI + the web-compiler Docker builder). clang-only spellings such as
 # -Wmissing-variable-declarations break `make _runtime` under gcc — keep the set
 # to the portable intersection.
-WARN     ?= -Werror -Wall -Wextra -Wshadow -Wpointer-arith -Wvla -Wundef -Wredundant-decls -Wcast-qual -Wcast-align -Wold-style-definition -Wbad-function-cast
+WARN     ?= -Werror -Wall -Wextra -Wunused-macros -Wshadow -Wpointer-arith -Wvla -Wundef -Wredundant-decls -Wcast-qual -Wcast-align -Wold-style-definition -Wbad-function-cast
 WARN_MAX ?= $(WARN) -Wstrict-prototypes -Wwrite-strings -Wimplicit-fallthrough -Wswitch-enum -Wunreachable-code
 # C runtime compile flag profiles (hardened; mirror the original recipes).
 # -fno-omit-frame-pointer is load-bearing: the profiler captures stacks by a
@@ -220,7 +223,7 @@ WASI_SYSROOT ?= $(shell for d in "$$OSPREY_WASI_SYSROOT" \
   /opt/wasi-sdk/share/wasi-sysroot "$$WASI_SDK_PATH/share/wasi-sysroot" \
   /usr/share/wasi-sysroot; do [ -n "$$d" ] && [ -d "$$d" ] && { echo "$$d"; exit; }; done; \
   [ -f /usr/lib/wasm32-wasip1/crt1-command.o ] && echo /usr)
-WASM_CFLAGS  ?= --target=$(WASM_TARGET) --sysroot=$(WASI_SYSROOT) -O2 -std=c11 -Wall -Wextra -Werror -c
+WASM_CFLAGS  ?= --target=$(WASM_TARGET) --sysroot=$(WASI_SYSROOT) -O2 -std=c11 -Wall -Wextra -Wunused-macros -Werror -c
 
 # wasm_validate: structural check of the modules named in $(1). wasm-validate
 # ships with wabt and is genuinely optional, so an ABSENT binary skips loudly —

@@ -103,6 +103,15 @@ def badge(t):
             return "🟢 STARTER"
 
 
+def upgradable(t):
+    """Whether a tier can still rise: one or-pattern arm for both lower tiers ([PATTERN-OR])."""
+    match t:
+        case Solid() | Starter():
+            return True
+        case Epic():
+            return False
+
+
 def show_worlds():
     """ACT 1: the same account() body runs against a real ledger and a dry run."""
     print("OSPREY FEATURE TOUR\n══════════════════════════════════════\nACT 1 · algebraic effects — same code, two worlds")
@@ -151,6 +160,10 @@ def mega_showcase_case():
         badge(Starter()) == "🟢 STARTER",
         badge(Solid()) == "🔵 SOLID",
         badge(Epic()) == "🟣 EPIC",
+        upgradable(Starter()),
+        upgradable(tier(500)),
+        not upgradable(Epic()),
+        not upgradable(tier(2000)),
     ])
 
 

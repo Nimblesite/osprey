@@ -42,6 +42,9 @@ pub(crate) fn lower_proved(
     if !structural.is_empty() {
         return Err(stage_errors(structural));
     }
+    if crate::many::applies(program) {
+        return lower_captured(program);
+    }
     if !has_staging(program) {
         let lowered = osprey_ast::stage::lower(program).map_err(stage_errors)?;
         return Ok((lowered, None));
@@ -53,13 +56,7 @@ pub(crate) fn lower_proved(
     // enclosing `handle static Echo<int>`. Use the already checked site
     // instantiations for this backend copy before matching regions; otherwise
     // the rewrite silently leaves a request that the checker proved handled.
-    let mut resolved = materialize_signal_queries(checked, &solved.types);
-    for statement in &mut resolved.statements {
-        mutate::statement_children_mut(statement, &mut |expression| {
-            resolve_effect_mentions(expression, &solved.types);
-        });
-    }
-    forwarders::drop_witnesses(&mut resolved);
+    let resolved = resolved_signals(checked, &solved);
     let lowered = osprey_ast::stage::lower(&resolved).map_err(stage_errors)?;
     // A source proof that deferred a static arm's GPU callback cannot certify
     // the concrete callback substituted by discharge. [STAGE-GPU-LEGAL]
@@ -69,6 +66,20 @@ pub(crate) fn lower_proved(
     }
     let discharged = !retains_static_operation(checked, &lowered);
     Ok((lowered, discharged.then_some(solved.exports)))
+}
+
+/// A program with a `many` operation: its source is proved as written, static
+/// handlers are discharged, and every region whose continuation a handler
+/// captures is rewritten into closures. The rewrite proves nothing new, so the
+/// source proof answers for it. Implements [MULTI-HANDLE-MANY],
+/// [TYPE-EFFECT-PROOF-COUNT].
+fn lower_captured(program: &Program) -> Result<(Program, Option<LibraryExports>), Vec<TypeError>> {
+    let solved = solved_source(program)?;
+    let checked = solved.copy.as_ref().unwrap_or(program);
+    let resolved = resolved_signals(checked, &solved);
+    let discharged = osprey_ast::stage::lower(&resolved).map_err(stage_errors)?;
+    let lowered = crate::many::lower(&discharged)?;
+    Ok((lowered, Some(solved.exports)))
 }
 
 /// Whether discharge left a static operation behind: one reached only through
@@ -105,6 +116,20 @@ struct SolvedSource {
     types: crate::ProgramTypes,
     exports: LibraryExports,
     deferred_gpu_kernel: bool,
+}
+
+/// The backend copy static lowering consumes: the checked program with its
+/// signal queries materialized, its effect mentions resolved to the solved
+/// site instantiations, and its forwarder witnesses dropped.
+fn resolved_signals(checked: &Program, solved: &SolvedSource) -> Program {
+    let mut resolved = materialize_signal_queries(checked, &solved.types);
+    for statement in &mut resolved.statements {
+        mutate::statement_children_mut(statement, &mut |expression| {
+            resolve_effect_mentions(expression, &solved.types);
+        });
+    }
+    forwarders::drop_witnesses(&mut resolved);
+    resolved
 }
 
 fn solved_source(program: &Program) -> Result<SolvedSource, Vec<TypeError>> {

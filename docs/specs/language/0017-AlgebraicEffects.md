@@ -425,11 +425,11 @@ Source validation evidence, mutation authority and replay-relevant operation and
 
 ## WebAssembly — [STAGE-WASM]
 
-`[STAGE-WASM]` Static discharge requires no runtime continuation and is portable when the resulting ordinary program is supported. Dynamic value handlers likewise need no captured continuation. Neither fact proves support for dynamic control or cleanup.
+`[STAGE-WASM]` Static discharge requires no runtime continuation and is portable when the resulting ordinary program is supported. Dynamic value handlers likewise need no captured continuation. Multi-shot (`many`) control is supported on wasm32 without exception ([MULTI-WASM-MANY]). A `once` or `abort` continuation outside every `many` region is the only dynamic control that still depends on a target capability.
 
 ### Multiplicity on wasm32 — [MULTI-WASM]
 
-`[MULTI-WASM]` Continuation semantics are independent of the target. A backend without a required capability MUST reject it before linking, naming the effect, operation and capability. Host-native pthread support does not imply support in a native mobile library.
+`[MULTI-WASM]` Continuation semantics are independent of the target. Every backend, wasm32 included, MUST run `many` ([MULTI-WASM-MANY]); no backend may lack it. For `once` and `abort` outside a `many` region, a backend without the required capability MUST reject the program before linking, naming the effect, operation and capability. Host-native pthread support does not imply support in a native mobile library.
 
 | Operation shape | Backend obligation |
 |---|---|
@@ -437,9 +437,16 @@ Source validation evidence, mutation authority and replay-relevant operation and
 | Dynamic value | Value dispatch without capturing a continuation |
 | Control `abort` | Non-local transfer plus complete cleanup |
 | Control `once` | Owned affine continuation |
-| Control `many` | Reusable continuation with independent branches |
+| Control `many` | Reusable continuation with independent branches, on every target ([MULTI-WASM-MANY]) |
 
-A one-shot platform stack-switch primitive does not prohibit multi-shot implementation through CPS or another portable representation. There is no permanent source-language ban on `many` for wasm32.
+`[MULTI-WASM-MANY]` wasm32 fully supports multi-shot continuations. This is an invariant of the language, with no exception:
+
+- A program whose `many` regions compile and run on a native target MUST compile and run on wasm32, and MUST print the same bytes.
+- The compiler MUST NOT reject a `many` operation, its handler, or any effect a `many` region captures on wasm32 for want of a continuation capability. A `many` continuation is an ordinary heap closure that the compiler writes, so it needs no stack switching, no threads and no platform primitive ([EFFECTS-INV-MULTISHOT-PORTABLE](../../plans/0016-algebraic-effects-and-handlers.md)).
+- An effect whose handler sits between a `many` request and the handler that answers it is captured with it and runs the same way, so a `once` or non-resuming `control` operation inside a `many` region is supported on wasm32 too.
+- A `many` program MUST NOT be skipped, downgraded to `once`, or given a separate expected output on wasm32. The test corpus runs every `many` program under GC, ARC and wasm32 against one golden, and that run is a required CI check ([CI-MULTISHOT-WASM](../compiler/0022-WebAssemblyTarget.md#effect-support-wasm-target-effects)).
+
+A `once` continuation outside every `many` region still needs the target's one-shot stack primitive and is rejected by name until wasm32 provides it. That limit never applies to `many`.
 
 ## Reactive signals — [STAGE-SIGNALS]
 
@@ -519,7 +526,7 @@ A value arm returns the operation result and implicitly continues on normal retu
 
 ## Cost model — [MULTI-COST]
 
-`[MULTI-COST]` Static interpretation eliminates handler dispatch; value interpretation needs no captured continuation; abort needs transfer and cleanup; once needs an affine continuation; many needs reusable branch state. CPS, persistent frames and safe stack segments are permitted implementation choices. One-shot limits uses of a captured continuation, not the number of runtime switches. No representation implies a universal performance advantage.
+`[MULTI-COST]` Static interpretation eliminates handler dispatch; value interpretation needs no captured continuation; abort needs transfer and cleanup; once needs an affine continuation; many needs reusable branch state. CPS, persistent frames and safe stack segments are permitted implementation choices for `once` and `abort`. A `many` continuation MUST use a representation every target runs, with no machine-stack copying ([MULTI-WASM-MANY]). One-shot limits uses of a captured continuation, not the number of runtime switches. No representation implies a universal performance advantage.
 
 `[MULTI-COST-ABORT]` Dropping a continuation runs the finalizers of abandoned regions in nesting order and releases every owned operand. The rule applies to early exit, cancellation and abort. A successful resume transfers ownership appropriately; it must not make finalizers run twice. [EFFECTS-FINALIZATION] owns lifetime and ordering; [CANCEL-FINALLY](0036-StructuredConcurrency.md#finalizers--cancel-finally) owns cancellation shielding.
 

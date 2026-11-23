@@ -86,7 +86,7 @@ module Renderer
     export observed (snapshot, rendered) = snapshot(samplePosition = rendered.position, components = mapList (rendered.meters, \m => ComponentState(node = m.identity, activeVoices = 0, peak = m.peak, rms = sqrt (m.energy / toFloat m.count))))
 
     finished (plan, rendered, frame) = match listGet (outputs plan.graph) 0
-        Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+        Error _ => Error(message = Outcomes::indexOutOfBounds)
         Success sink => Outcomes::carried (RenderInputs::sample (frame, sink.identity), \output => Success(value = Rendered(states = frame.states, samples = listAppend rendered.samples output, position = satAdd rendered.position 1, meters = metered (rendered.meters, frame.values))))
 
     evaluated (plan, nodes, rate, snapshot, rendered) =

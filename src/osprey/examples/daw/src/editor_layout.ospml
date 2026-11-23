@@ -106,7 +106,7 @@ module PrismArt
 
     owns (mark, name) = belongs (mark, name) && length (filterList (["source", "process", "control", "output", "monitor"], \other => other != name && belongs (mark, other))) == 0
 
-    parameter (n, key, otherwise) = match listGet (filterList (n.parameters, \p => p.key == key)) 0
+    parameter (n, key, otherwise) = match synth::Graphs::parameterNamed (n, key)
         Error _ => otherwise
         Success p => p.initial
 
@@ -264,7 +264,7 @@ module PrismArt
     (** Original controls are scoped to an independently positioned graph node. *)
     export sliders (editor, n) = match role n.processor
         "custom" => []
-        _ => filterList (ui::Canvases::semantics (prepared (editor, n)), \a => (!inspectorArea a || (!editor.detailsShown && editor.selected == n.identity)) && supports (n, a))
+        _ => filterList (ui::Canvases::semantics (prepared (editor, n)), \a => !inspectorArea a && supports (n, a))
 
     sliderAt (editor, n, px, py) = length (filterList (CardArts::controls (editor, n), \a => px >= a.accessLeft && px <= a.accessLeft + a.accessWidth && py >= a.accessTop && py <= a.accessTop + a.accessHeight)) > 0
 

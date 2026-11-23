@@ -218,19 +218,38 @@ pub(crate) fn fn_type(cg: &Codegen, name: &str) -> Option<Type> {
 /// cell-backed global is two loads: the address, then the live value at it.
 pub(crate) fn read(cg: &mut Codegen, name: &str) -> Option<Value> {
     let slot = cg.module_globals.get(name).cloned()?;
-    let storage = slot.storage().as_str();
-    let raw = cg.emit_reg(format!(
-        "load {storage}, {storage}* @{symbol}",
-        symbol = slot.symbol
-    ));
-    let raw = if slot.cell {
-        let pointee = slot.sig.ty.as_str();
-        let typed = cg.emit_reg(format!("bitcast i8* {raw} to {pointee}*"));
-        cg.emit_reg(format!("load {pointee}, {pointee}* {typed}"))
-    } else {
-        raw
+    Some(read_slot(cg, &slot))
+}
+
+fn read_slot(cg: &mut Codegen, slot: &GlobalSlot) -> Value {
+    let (ptr, ty) = destination(cg, slot);
+    let ty = ty.as_str();
+    let value = cg.emit_reg(format!("load {ty}, {ty}* {ptr}"));
+    crate::cast::incoming_param(cg, value, slot.sig.clone(), slot.owner.clone())
+}
+
+/// Bind a file lambda's capture from its declaration scope. A mutable capture
+/// keeps the module cell's address through every lifted arm [EFFECTS-HANDLER-STATE].
+pub(crate) fn bind_capture(cg: &mut Codegen, name: &str) {
+    let Some(slot) = cg.module_globals.get(name).cloned() else {
+        return;
     };
-    Some(crate::cast::incoming_param(cg, raw, slot.sig, slot.owner))
+    if slot.cell {
+        let (ptr, pointee) = destination(cg, &slot);
+        cg.bind_cell(
+            name,
+            CellSlot {
+                ptr,
+                pointee,
+                osp_ty: slot.owner,
+                inferred_type: Some(slot.ty),
+            },
+            false,
+        );
+    } else {
+        let value = read_slot(cg, &slot);
+        cg.bind(name, value);
+    }
 }
 
 /// Publish the value a file-scope `let` just bound. The global is an owner, so

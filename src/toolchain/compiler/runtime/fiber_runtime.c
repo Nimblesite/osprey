@@ -17,7 +17,7 @@
 
 // Forward declarations for effect handler snapshot/restore
 typedef struct HandlerSnapshot HandlerSnapshot;
-HandlerSnapshot *__osprey_handler_snapshot(void);
+int __osprey_handler_try_snapshot(HandlerSnapshot **out);
 void __osprey_handler_restore(HandlerSnapshot *snap);
 void __osprey_handler_stack_cleanup(void);
 
@@ -227,9 +227,15 @@ static int64_t fiber_spawn_internal(int64_t (*fn)(void),
   if (!fiber) {
     return -2; // Memory allocation failed
   }
+  // No memory for the parent's handlers: the spawn is refused, never run without them.
+  if (__osprey_handler_try_snapshot(&fiber->handler_snapshot) != 0) {
+    osp_mem_scanned_free(fiber);
+    return -2;
+  }
   pthread_mutex_lock(&runtime_mutex);
   if (!reserve_handle()) {
     pthread_mutex_unlock(&runtime_mutex);
+    osp_mem_scanned_free(fiber->handler_snapshot); // a scanned block, as the copy was made
     osp_mem_scanned_free(fiber);
     return -2;
   }
@@ -244,7 +250,6 @@ static int64_t fiber_spawn_internal(int64_t (*fn)(void),
   fiber->completed = false;
   fiber->running = false;
   fiber->uses_thread = !deterministic_mode;
-  fiber->handler_snapshot = __osprey_handler_snapshot();
   pthread_mutex_init(&fiber->mutex, NULL);
   pthread_cond_init(&fiber->cond, NULL);
   fibers[id] = fiber;

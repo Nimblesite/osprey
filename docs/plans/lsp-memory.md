@@ -4,7 +4,7 @@ Goal: an idle `osprey lsp` on this repository stays bounded, and it picks up lsp
 
 Coordinated on TMC: `osprey-lsp-memory` (Osprey), `codex-memory-leak-fix` (lspkit). lspkit's side: `lspkit/docs/plans/memory-leak-fixes.md` and `memory-leak-audit.md`.
 
-## Osprey's own leak (done, unpushed)
+## Osprey's own leak
 
 - [x] Reproduce against the released 0.29.0 binary. An idle server's footprint grew past 5 GB in VS Code. In a 280 s run that only initializes, live heap reached 890 MB in 3.27M allocations and was still climbing.
 - [x] Root cause. The repository diagnostics sweep checks every project, and `ProjectCache.latest` and `SourceCache.disk` pinned every project's analysis and parsed files forever.
@@ -12,11 +12,11 @@ Coordinated on TMC: `osprey-lsp-memory` (Osprey), `codex-memory-leak-fix` (lspki
 - [x] Fix in `ddf589022`. Keep the projects of open documents plus the 4 most recently loaded, and evict the rest. After the same run, live heap is 128 MB in 317k allocations.
 - [x] Pushed to `codex/prism-synth-routing`. Also in PR #411 to main: `fix/lsp-sweep-memory`, with fmt, clippy and the 257 LSP tests passing on its exact tree.
 - [x] An open shared file pinned every project that lists it. Fixed by pinning only its own project (`an_open_shared_file_does_not_pin_its_dependents`).
-- [ ] PR #411 CI green, merge, release, then verify the released extension binary's live heap.
+- [x] PR #411 passed CI and merged on 2026-11-16. On 2026-11-23 the installed v0.31.1 extension binary completed its diagnostics sweep of 1,407 files in 1,456 seconds. macOS `heap -s` measured 17,281,216 live bytes (16.48 MiB in 107,322 allocations), below the 128 MB limit. Physical footprint was 107.2 MB at idle and peaked at 956.6 MB.
 
 ## lspkit repairs that reach Osprey
 
-Osprey pins `lspkit`, `lspkit-server` and `lsp-profiler` at `0.4.0` in `src/toolchain/Cargo.toml`. It uses `Dispatcher`, `DiagnosticsBus`, `Vfs`, `jsonrpc` framing, `live::Session` and the profiler service.
+At the start of this review Osprey pinned `lspkit`, `lspkit-server` and `lsp-profiler` at `0.4.0` in `src/toolchain/Cargo.toml`. It uses `Dispatcher`, `DiagnosticsBus`, `Vfs`, `jsonrpc` framing, `live::Session` and the profiler service.
 
 Checked against the published v0.4.0 source on 2026-11-16, and confirmed on TMC by `codex-memory-leak-fix`: **none of the five repairs changes Osprey's memory at runtime.** The upgrade is hygiene. Osprey's memory bug is its own, fixed in `ddf589022`.
 
@@ -34,12 +34,11 @@ Checked against the published v0.4.0 source on 2026-11-16, and confirmed on TMC 
 - [x] Bump `lspkit`, `lspkit-server` and `lsp-profiler` to 0.6.0 together in `src/toolchain/Cargo.toml` and refresh `Cargo.lock`. Keep `sysinfo` matched to the version `lsp-profiler` pins.
 - [x] Bump `@nimblesite/lsp-profiler-ui` (to 0.6.0) in `src/toolchain/vscode-extension/package.json` if lspkit publishes a matching UI release.
 - [x] Fix any API breaks in `osprey-lsp`; no shims. None: it builds unchanged and the 259 LSP and 21 profiler tests pass.
-- [ ] Keep Osprey's own guard: 32 unknown-method requests through the real server leave `in_flight: 0` (`Dispatcher` `Debug`).
-- [ ] `cargo test -p osprey-lsp`, then `make ci`, then one coordinated push.
-- [ ] Re-measure with `heap -s` after the idle sweep: live heap at or below 128 MB.
-- [ ] Release Osprey, then verify the released extension binary's live heap before closing anything.
+- [x] Keep Osprey's own guard: 32 unknown-method requests through the real server leave `in_flight: 0` (`Dispatcher` `Debug`). Test: `unknown_methods_leave_no_request_in_flight`; 261 LSP tests pass.
+- [x] `cargo test -p osprey-lsp`, then `make ci`, then one coordinated push. 261 LSP tests pass (2026-11-23); the bump shipped through PR #417 (lspkit 0.10.1), merged 2026-11-20 with the required `CI` check green, and is in v0.31.1.
+- [x] Re-measure with `heap -s` after the idle sweep. On 2026-11-23 the worktree release build published diagnostics for all 1,406 files after initialize, then sent the diagnostics progress end notification at 1,280 s. macOS `heap -s` measured 17,293,072 live bytes (16.49 MiB, 107,338 allocations), below the 128 MB limit. Physical footprint remained 2.2 GB and peaked at 3.9 GB during the sweep.
 
-## Open, not yet fixed
+## Verified server fixes
 
 - [x] The server quit with `analysis backlog limit reached` when 256 messages were queued, and VS Code restarted it until it gave up. Now requests that don't fit get `ServerCancelled` (-32802) so the client retries, notifications wait for room, and the session never ends. Test: `a_request_flood_is_answered_and_never_ends_the_session`. In PR #411.
 - [x] Idle CPU at 100% (#384). Every watched save and every tab close re-queued the whole repository sweep, and the cache keeps only 4 closed projects, so each save re-checked all 191 projects. A watched change or a close now re-checks only the projects it affects, plus newly discovered files, and an in-progress sweep is kept, not restarted. Test: `watched_changes_recheck_only_the_projects_they_affect` (8 projects; one save went from 8 analyses to 1).

@@ -67,11 +67,7 @@ typedef struct {
   ProcessEventHandler handler; // Callback for events
 } ProcessResult;
 
-// Global process tracking
-static ProcessResult *processes[MAX_PROCESSES];
-static int64_t next_process_id = 1;
-static pthread_mutex_t process_mutex = PTHREAD_MUTEX_INITIALIZER;
-
+#include "system_process_records.h"
 #include "system_process_posix.h"
 
 // Clean up process resources
@@ -111,27 +107,12 @@ typedef struct {
   ProcessEventHandler handler;
 } ProcessResult;
 
-static ProcessResult *processes[MAX_PROCESSES];
-static int64_t next_process_id = 1;
-static pthread_mutex_t process_mutex = PTHREAD_MUTEX_INITIALIZER;
+#include "system_process_records.h"
 
 // Close both ends of a handle pair created for a process that will not run.
 static void close_handle_pair(HANDLE first, HANDLE second) {
   CloseHandle(first);
   CloseHandle(second);
-}
-
-// Release a process record that never reached its monitor thread. The caller
-// holds process_mutex and no other thread can see `proc`, so this is the only
-// owner. Returns `code` so every half-built teardown is one statement and the
-// four paths that share it cannot drift apart -- and so this half of the file
-// releases exactly what the POSIX half does, the per-record mutex included.
-static int64_t abandon_process(ProcessResult *proc, int64_t code) {
-  free(proc->command);
-  pthread_mutex_destroy(&proc->mutex);
-  free(proc);
-  pthread_mutex_unlock(&process_mutex);
-  return code;
 }
 
 // Drain whatever is currently readable on a pipe, dispatching it to the handler.
@@ -187,6 +168,9 @@ static void *process_monitor_thread(void *arg) {
   return NULL;
 }
 
+// cmd.exe's own line limit (8191 characters) plus the terminator.
+#define WIN_COMMAND_LINE_MAX 8192
+
 // The Win32 twin. [BUILTIN-PROCESS-FAILURE] is platform-neutral, so this must
 // unwind exactly as the POSIX path does: pipes checked separately so a failed
 // second one does not strand the first, the record's mutex destroyed on every
@@ -194,7 +178,11 @@ static void *process_monitor_thread(void *arg) {
 // handle is released.
 int64_t spawn_process_with_handler(const char *command,
                                    ProcessEventHandler handler) {
-  if (!command || !handler) {
+  // A command longer than the command line is refused before anything is
+  // created: truncating it would run a different, cut-off command.
+  char cmdline[WIN_COMMAND_LINE_MAX];
+  int written = command && handler ? snprintf(cmdline, sizeof(cmdline), "cmd.exe /c %s", command) : -1;
+  if (written < 0 || (size_t)written >= sizeof(cmdline)) {
     return -1;
   }
 
@@ -247,10 +235,6 @@ int64_t spawn_process_with_handler(const char *command,
     close_handle_pair(err_rd, err_wr);
     return abandon_process(proc, -4);
   }
-
-  // Build "cmd.exe /c <command>" in a mutable buffer (CreateProcess needs one).
-  char cmdline[8192];
-  snprintf(cmdline, sizeof(cmdline), "cmd.exe /c %s", command);
 
   STARTUPINFOA si = {0};
   si.cb = sizeof(si);

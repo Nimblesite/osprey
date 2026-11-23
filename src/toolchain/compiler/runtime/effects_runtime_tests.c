@@ -48,7 +48,7 @@ static long g_checks = 0;
     assert(c);                                                                 \
   } while (0)
 
-#define MAX_DEPTH 1024 // mirrors MAX_HANDLER_STACK_DEPTH
+#define MAX_DEPTH (1 << 20) // mirrors MAX_HANDLER_STACK_DEPTH
 
 // Operation ids as codegen would intern them: one per (effect, operation).
 enum {
@@ -138,14 +138,21 @@ static void t_operation_id_bound(void) {
   CHECK(__osprey_handler_pop() == 0);
 }
 
-// The stack holds exactly MAX_DEPTH entries; the next push reports -1 and
-// leaves the depth unchanged, and every entry pops back off cleanly.
+// The stack grows to exactly MAX_DEPTH entries; the next push reports -1 and
+// leaves the depth unchanged. A refused push still owns its pop: while it is
+// outstanding every push is refused, its pop consumes the refusal without
+// unlinking a live entry, and then every entry pops back off cleanly.
 static void t_overflow_exact(void) {
   for (int i = 0; i < MAX_DEPTH; i++) {
     push_ok(OP_DEEP, fn_a, NULL);
   }
   CHECK(__osprey_handler_depth() == MAX_DEPTH);
   CHECK(__osprey_handler_push_scoped(OP_DEEP, (void *)fn_a, NULL, __osprey_handler_depth()) == -1);
+  CHECK(__osprey_handler_depth() == MAX_DEPTH);
+  CHECK(__osprey_handler_push_scoped(OP_DEEP, (void *)fn_a, NULL, __osprey_handler_depth()) == -1);
+  CHECK(__osprey_handler_pop() == 0);
+  CHECK(__osprey_handler_depth() == MAX_DEPTH);
+  CHECK(__osprey_handler_pop() == 0);
   CHECK(__osprey_handler_depth() == MAX_DEPTH);
   for (int i = 0; i < MAX_DEPTH; i++) {
     CHECK(__osprey_handler_pop() == 0);

@@ -4,7 +4,7 @@ Contract: [0036-StructuredConcurrency](../specs/language/0036-StructuredConcurre
 
 ## Constraints
 
-- Native-only at first: the whole design rides the pthread/continuation runtime; keep spec 0036 claims qualified until a wasm story exists ([0022-WebAssemblyTarget](../specs/compiler/0022-WebAssemblyTarget.md)).
+- Native-only at first: the whole design rides the pthread/continuation runtime; keep spec 0036 claims qualified until a wasm story exists for fibers (multi-shot continuations are not part of that runtime and already run on wasm32, [EFFECTS-INV-MULTISHOT-WASM]) ([0022-WebAssemblyTarget](../specs/compiler/0022-WebAssemblyTarget.md)).
 - Deterministic mode ([CONCURRENCY-DETERMINISTIC]) is sequential: `cancel` before the victim's driving `await` must still dequeue it; turn order must be spawn order.
 - Staged effects: retain captured-state ownership and alias evidence through discharge; erased dispatch is absent from the runtime turn graph; residual memory access still requires the same synchronization/exclusivity proof.
 - Dropped continuations are a new ARC leak surface: every corpus program runs under `gc` and `arc`; the ARC lane's zero-leak sentinel is the oracle.

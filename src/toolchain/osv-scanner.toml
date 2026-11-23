@@ -5,19 +5,3 @@
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0543"
 reason = "chrono is unmaintained (an informational notice; no vulnerable code path and no fixed version). It reaches us only through the vendored third-party GPUI 0.8.1 stack (gpui-base, gpui-component, gpui-pre, notify-rust); drop this entry when that stack moves to jiff or time."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0436"
-reason = "paste is unmaintained (no vulnerable code path, no fixed version). It reaches us only through the pinned FerroUI host (src/toolchain/hosts/ferroui); drop this entry when the pin moves past wieslawsoltes/FerroUI#1029, which removes paste."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0370"
-reason = "zvariant 5 is unmaintained (no vulnerable code path, no fixed 5.x). It reaches us only through the pinned FerroUI host's FreeDesktop services; drop this entry when the pin moves past wieslawsoltes/FerroUI#1030 (zbus 6)."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0371"
-reason = "zbus_names 4 is unmaintained (no vulnerable code path, no fixed 4.x). It reaches us only through the pinned FerroUI host's FreeDesktop services; drop this entry when the pin moves past wieslawsoltes/FerroUI#1030 (zbus 6)."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0372"
-reason = "zvariant_derive 5 is unmaintained (no vulnerable code path, no fixed 5.x). It reaches us only through the pinned FerroUI host's FreeDesktop services; drop this entry when the pin moves past wieslawsoltes/FerroUI#1030 (zbus 6)."

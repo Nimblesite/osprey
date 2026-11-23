@@ -45,7 +45,7 @@ pub use multiplicity::{
     Multiplicity, OperationMode, OperationTable, CONTROL_KEYWORD, REPLAYABLE_KEYWORD,
 };
 pub use pattern::{row_binders, Pattern};
-pub use resume::resumes_on_one_path;
+pub use resume::{resumes_on_one_path, statement_value};
 pub use signature::{EffectOperation, SignatureItem, SignatureType};
 pub use stack::with_stack;
 pub use stage::{Stage, STATIC_STAGE_KEYWORD};

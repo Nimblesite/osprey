@@ -31,6 +31,15 @@ pub(in crate::ml) fn lower_pattern(pattern: MlPattern) -> Pattern {
             elements: elements.into_iter().map(lower_pattern).collect(),
             rest: rest.map(crate::ml::binding_ranges::pattern),
         },
+        MlPattern::Or(alternatives) => Pattern::Or(
+            alternatives
+                .into_iter()
+                .flat_map(|alternative| match lower_pattern(alternative) {
+                    Pattern::Or(nested) => nested,
+                    single => vec![single],
+                })
+                .collect(),
+        ),
     }
 }
 

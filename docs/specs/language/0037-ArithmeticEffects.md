@@ -32,6 +32,7 @@ Integer arithmetic returns `int`. Failure is neither erased nor raised: an opera
 | `/` | `float`, MAY perform `Arith.divideByZero` | same | same |
 | `%` | `int`, MAY perform `Arith.remainderByZero` | `float`, MAY perform `Arith.divideByZero` | `float` (int promoted), MAY perform `Arith.divideByZero` |
 | unary `-`, `abs` | `int`, MAY perform `Arith.overflow` | `float` (total) | — |
+| `min`, `max` ([BUILTIN-MIN-MAX](../runtime/0012-Built-InFunctions.md)) | `int` (total) | `float` (IEEE 754-2019 `minimum`/`maximum`, total) | rejected: convert one argument |
 
 Outside the `Arith` channel: string, list and map `+` overloads; float `+ - *` and unary float `-` as plain IEEE-754 ([FLOAT-IEEE-RESULTS]); the negated-literal fold [ARITH-NEG-LITERAL](0013-ErrorHandling.md#negated-literals--arith-neg-literal); and `checkedAdd`/`checkedSub`/`checkedMul`, which return `Result<int, string>` for code that wants overflow as data.
 

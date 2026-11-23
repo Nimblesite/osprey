@@ -3,13 +3,15 @@
 // list holds the live ones and nothing else, however many have come and gone, and
 // stopping ends them all before their state goes. [BUILTIN-WEBSOCKET-LIFECYCLE]
 #include "http_shared.h"
+#include "test_loopback.h"
 #include "websocket_test_helpers.h"
 
 #include <assert.h>
 #include <stdatomic.h>
 
+#define WS_LIFE_PORT test_port(11)
+
 enum {
-  WS_LIFE_PORT = 18095,
   WS_PAST_THE_OLD_LIMIT = 1100,
   WS_POLLS = 300,
   WS_POLL_US = 10000,

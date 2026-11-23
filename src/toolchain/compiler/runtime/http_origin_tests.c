@@ -382,7 +382,7 @@ void test_client_malformed_chunks(void) {
 void test_client_tls_handshake_failure(void) {
   ScriptedOrigin origin;
   origin_start(&origin, NULL); // speaks no TLS
-  int64_t client_id = expect_client_get("https://127.0.0.1:18088", "/secure", -12);
+  int64_t client_id = expect_client_get(TEST_URL("https", ORIGIN_PORT), "/secure", -12);
   origin_stop(&origin);
   assert(origin.request[0] != 'G'); // never reached the wire as plaintext
   http_close_client(client_id);

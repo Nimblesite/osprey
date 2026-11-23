@@ -96,7 +96,7 @@ C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   test_file_runtime tensor_list_tests \
   test_http_length_validation http_server_send_tests http_server_request_tests \
   fiber_runtime_tests http_runtime_tests http_shared_tests \
-  websocket_runtime_tests net_runtime_tests media_render_runtime_tests \
+  websocket_runtime_tests net_runtime_tests file_server_tests media_render_runtime_tests \
   profiler_runtime_tests profiler_stream_tests coverage_runtime_tests
 C_SRC_memory_gc_stack_root_tests = runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c
 C_LIBS_memory_gc_stack_root_tests = -pthread
@@ -105,7 +105,7 @@ C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc_layout_te
 # to its ABI out of line so gcov measures the entry points used by programs.
 C_FLAGS_memory_arc_tests = -fno-inline
 C_LIBS_memory_arc_tests = -pthread
-C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc_thread_tests.c runtime/memory_gc.c
+C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc_page_tests.c runtime/memory_gc_thread_tests.c runtime/memory_gc.c
 C_SRC_host_import_gc_tests = runtime/host_import_tests.c runtime/native_bridge.c runtime/native_bridge_lifecycle.c runtime/native_scene.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_gc.c
 C_SRC_host_import_arc_tests = $(filter-out runtime/memory_gc.c,$(C_SRC_host_import_gc_tests)) runtime/memory_arc.c
 C_FLAGS_host_import_gc_tests = -DOSP_NATIVE_TEST
@@ -183,11 +183,17 @@ C_LIBS_http_shared_tests = -pthread $(OSSL_LIBS)
 C_FLAGS_websocket_runtime_tests = $(OSSL_CFLAGS)
 C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_lifecycle_tests.c runtime/websocket_frames_tests.c runtime/websocket_frames.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/random_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_websocket_runtime_tests = -pthread $(OSSL_LIBS)
-# Owns tls_client_runtime.c and file_server_runtime.c: a loopback OpenSSL echo
-# server (18092/18093) and a plain TCP client against the one-file server.
+# Owns tls_client_runtime.c: a loopback OpenSSL echo server (18092/18093).
 C_FLAGS_net_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_net_runtime_tests = runtime/net_runtime_tests.c runtime/file_server_tests.c runtime/tls_client_runtime.c runtime/file_server_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_net_runtime_tests = runtime/net_runtime_tests.c runtime/tls_client_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_net_runtime_tests = -pthread $(OSSL_LIBS)
+# Owns file_server_runtime.c: a plain TCP client against the one-file and folder
+# server on port 0. Windows CI runs it too (_test_file_server), where the server's
+# Winsock start-up lives in http_shared.c.
+FILE_SERVER_WINSOCK = $(if $(MSYSTEM),runtime/http_shared.c runtime/random_runtime.c)
+C_FLAGS_file_server_tests = $(if $(MSYSTEM),$(OSSL_CFLAGS))
+C_SRC_file_server_tests = runtime/file_server_tests.c runtime/file_server_link_tests.c runtime/file_server_test_files.c runtime/file_server_runtime.c $(FILE_SERVER_WINSOCK)
+C_LIBS_file_server_tests = -pthread $(if $(MSYSTEM),$(OSSL_LIBS) -lbcrypt -lws2_32)
 # Owns media_render_runtime.c: real posix_spawnp calls against fake tools.
 C_SRC_media_render_runtime_tests = runtime/media_render_runtime_tests.c runtime/media_render_runtime.c
 C_PROFILE_profiler_runtime_tests = $(PROF_T)
@@ -207,6 +213,13 @@ C_GC_SHIM_SOURCES = $(patsubst bin/gc/%.o,runtime/%.c,$(filter bin/gc/%,$(FIB_OB
 C_SUITE_BUILD = $(foreach src,$(sort $(C_SRC_$(1))),$(CC) $(call C_SUITE_FLAGS,$(1),,,$(4)) $(if $(and $(call C_SUITE_GC,$(1)),$(filter $(src),$(C_GC_SHIM_SOURCES))),-include $(2)runtime/osp_gc_shim.h) -c $(2)$(src) -o $(call C_SUITE_OBJECT,$(1),$(src),$(3)) && ) $(CC) $(foreach src,$(sort $(C_SRC_$(1))),$(call C_SUITE_OBJECT,$(1),$(src),$(3))) $(C_LIBS_$(1)) $(C_TEST_MEMORY_LIBS) -lm $(4) -o $(3)
 C_SUITE_CMD = echo "--- $(1)" && $(call C_SUITE_BUILD,$(1),,bin/$(1)) && ./bin/$(1)
 
+# [FFI-FILE-SERVER-FOLDER] The file server's suite alone, built and run in place: how
+# Windows CI proves hostile names and links answer 404 there.
+.PHONY: _test_file_server
+_test_file_server:
+	@echo "==> [c-runtime] file server suite..."
+	@cd src/toolchain/compiler && $(call C_SUITE_CMD,file_server_tests)
+
 _test_gc_stack_root:
 	@echo "==> [c-runtime] GC caller-stack root regression..."
 	@cd src/toolchain/compiler && $(call C_SUITE_CMD,memory_gc_stack_root_tests)
@@ -214,7 +227,7 @@ _test_gc_stack_root:
 C_COV_DIR ?= src/toolchain/compiler/bin/cov
 C_BUILD_TARGETS = $(addprefix _build_c_suite_,$(C_TEST_SUITES))
 C_TEST_TARGETS = $(addprefix _test_c_suite_,$(C_TEST_SUITES))
-C_ASAN_SUITES ?= fiber_runtime_tests http_runtime_tests net_runtime_tests websocket_runtime_tests
+C_ASAN_SUITES ?= fiber_runtime_tests http_runtime_tests net_runtime_tests websocket_runtime_tests file_server_tests
 C_ASAN_BUILD_TARGETS = $(addprefix _build_c_asan_,$(C_ASAN_SUITES))
 C_ASAN_TEST_TARGETS = $(addprefix _test_c_asan_,$(C_ASAN_SUITES))
 .PHONY: _build_c_runtime_tests $(C_BUILD_TARGETS) $(C_TEST_TARGETS) $(C_ASAN_BUILD_TARGETS) $(C_ASAN_TEST_TARGETS)
@@ -281,7 +294,9 @@ _test_hunt:
 	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f src/toolchain/compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
 	  echo "(KLEE not installed — src/osprey/tests/hunt skipped)"; exit 0; fi; \
 	echo "==> [hunt] src/osprey/tests/hunt expectations..."; \
-	$(HUNT_CARGO_TEST) --test hunt_engine -- --ignored --exact every_deterministic_hunt_program_matches_its_expectation_on_both_backends
+	$(HUNT_CARGO_TEST) --test hunt_engine -- --ignored --exact every_deterministic_hunt_program_matches_its_expectation_on_both_backends && \
+	echo "==> [hunt] every corpus module parses with KLEE's pinned LLVM 19 [SYMEX-CODEGEN]..." && \
+	$(HUNT_CARGO_TEST) --bin osprey -- --ignored --exact hunt::spec_engine_tests::klee_corpus_parses_with_pinned_llvm
 
 # No skip path: run by hand (`make -C src/osprey/tests/hunt hunt-crashes`), it must detect and natively
 # reproduce every planted failure.
@@ -567,6 +582,11 @@ _coverage_check_packages:
 _test_agent:
 	set -o pipefail && $(BIN) src/osprey/examples/agent/test --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 	$(BIN) src/osprey/examples/agent/test-app --run --quiet --no-warnings
+
+.PHONY: _test_cleanarch
+# The Clean Architecture todo port's use cases, multi-shot handlers included, under GC and ARC. [EXAMPLE-CLEANARCH-INV-TESTS]
+_test_cleanarch:
+	for memory in gc arc; do $(BIN) test src/osprey/examples/cleanarch_todo/test --memory=$$memory || exit 1; done
 
 .PHONY: _test_python_app_ports
 

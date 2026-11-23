@@ -1,0 +1,97 @@
+// Ported from jasontaylordev/CleanArchitecture (MIT), src/Application/Common/Behaviours/*.cs and MediatR's
+// ISender: five IPipelineBehavior<,> classes and their `next()` become one function ([EXAMPLE-CLEANARCH-INV-REDUNDANT]).
+
+namespace todo;
+
+import todo::TodoItems
+import todo::TodoLists
+import todo::TodoReplay
+import todo::TodoRequest
+import todo::TodoValidation
+
+/// ISender and the five MediatR behaviours.
+module TodoDispatch {
+    /// ISender.Send: one line per behaviour, in order. The rest of the function is `next()`.
+    export fn dispatch(request) = {
+        let principal = perform Auth.who()
+        perform Log.info("CleanArchitecture Request: ${TodoRequest::requestName(request)} by ${principal.name}")
+        let startedAt = perform Clock.nowMs()
+        let outcome = TodoReplay::transacted(fn() => attempt(request, principal))
+        logUnhandled(request, outcome)
+        warnWhenSlow(request, startedAt)
+        outcome
+    }
+
+    /// One attempt. UnhandledExceptionBehaviour's catch is the `Fail` handler ([FAILURE-EXPLICIT]).
+    fn attempt(request, principal) = {
+        handle Fail {
+            noList id => Error { message: NotFound { kind: "TodoList", id: id } }
+            noItem id => Error { message: NotFound { kind: "TodoItem", id: id } }
+            refuse fault => Error { message: fault }
+        }
+        Success { value: TodoReplay::inTransaction(fn() => {
+            authorize(principal, TodoRequest::accessRules(request))
+            run(validated(request))
+        }) }
+    }
+
+    /// AuthorizationBehaviour: the [Authorize] rules, read from data instead of reflection.
+    fn authorize(principal, rules) = match filterList(rules, fn(rule) => !allows(principal, rule)) {
+        [] => {}
+        [broken, ..._] => perform Fail.refuse(denial(broken))
+    }
+
+    fn allows(principal, rule) = match rule {
+        MustSignIn => principal.name != ""
+        InRole { names } => foldList(names, false, fn(held, role) =>
+            held || listContains(principal.roles, role))
+        HoldsPolicy { name } => listContains(principal.policies, name)
+    }
+
+    fn denial(rule) = match rule {
+        MustSignIn => Unauthorized
+        InRole _ => Forbidden { why: "not in role" }
+        HoldsPolicy { name } => Forbidden { why: "policy ${name} not held" }
+    }
+
+    /// ValidationBehaviour: every validator runs, every failure is collected.
+    fn validated(request) = {
+        let candidate = perform Rules.candidate(request)
+        match TodoValidation::problems(candidate) {
+            [] => {}
+            problems => perform Fail.refuse(ValidationFault { problems: problems })
+        }
+        candidate
+    }
+
+    /// UnhandledExceptionBehaviour's log line: only a conflict is unexpected.
+    fn logUnhandled(request, outcome) = match outcome {
+        Error { message: Conflict { why } } => perform Log.error(
+            "CleanArchitecture Request: Unhandled Exception for Request ${TodoRequest::requestName(request)}: conflict: ${why}")
+        _ => {}
+    }
+
+    /// PerformanceBehaviour: a warning when the request took over 500 ms.
+    fn warnWhenSlow(request, startedAt) = {
+        let elapsed = satSub(perform Clock.nowMs(), startedAt)
+        match elapsed > 500 {
+            true => perform Log.warn("CleanArchitecture Long Running Request: ${TodoRequest::requestName(request)} (${toString(elapsed)} milliseconds)")
+            false => {}
+        }
+    }
+
+    /// IRequestHandler binding: one match, where MediatR reflects over types.
+    fn run(request) = match request {
+        CreateList { list } => TodoLists::create(list)
+        UpdateList { edit } => TodoLists::update(edit)
+        DeleteList { id } => TodoLists::delete(id)
+        GetTodos => TodoLists::getTodos()
+        CreateItem { item: fresh } => TodoItems::create(fresh)
+        UpdateItem { edit } => TodoItems::update(edit)
+        UpdateItemDetail { detail } => TodoItems::updateDetail(detail)
+        DeleteItem { id } => TodoItems::delete(id)
+        ItemsWithPagination { query } => TodoItems::page(query)
+        PurgeTodoLists => TodoLists::purge()
+    }
+
+}

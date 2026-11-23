@@ -2,6 +2,7 @@
 // Osprey's web host from the WebAssembly build of the same app Android and iOS run. Every control
 // is found by its accessible role and name, as a person with a screen reader would find it.
 const { test, expect } = require('@playwright/test');
+const { API } = require('../web-client');
 
 test.describe.configure({ mode: 'serial' });
 
@@ -20,7 +21,7 @@ const MALFORMED_MUTATIONS = [
 const INVALID_AMOUNTS = ['-0.50', '1..2', '1.001', '1.00evil', '12,34', '$'];
 
 async function accountById(request, id) {
-  const accounts = await (await request.get('/api/accounts')).json();
+  const accounts = await (await request.get(API + '/api/accounts')).json();
   return accounts.find((account) => account.id === id);
 }
 
@@ -73,7 +74,7 @@ async function moveMoney(page, mode, fields) {
 }
 
 async function listsSeededAccounts({ request }) {
-  const reply = await request.get('/api/accounts');
+  const reply = await request.get(API + '/api/accounts');
   expect(reply.status()).toBe(200);
   expect(await reply.json()).toEqual([
     { id: 1, owner: 'Amelia Chen', cents: 246240, balance: '$2,462.40' },
@@ -83,7 +84,7 @@ async function listsSeededAccounts({ request }) {
 }
 
 async function servesActivityJournal({ request }) {
-  const reply = await request.get('/api/activity');
+  const reply = await request.get(API + '/api/activity');
   expect(reply.status()).toBe(200);
   const feed = await reply.json();
   expect(feed).toHaveLength(7);
@@ -93,13 +94,13 @@ async function servesActivityJournal({ request }) {
 }
 
 async function rejectsMalformedMutations({ request }) {
-  const before = await (await request.get('/api/accounts')).json();
+  const before = await (await request.get(API + '/api/accounts')).json();
   for (const [path, data, error] of MALFORMED_MUTATIONS) {
-    const reply = await request.post(path, { data });
+    const reply = await request.post(API + path, { data });
     expect(reply.status()).toBe(422);
     expect(await reply.json()).toEqual({ error });
   }
-  expect(await (await request.get('/api/accounts')).json()).toEqual(before);
+  expect(await (await request.get(API + '/api/accounts')).json()).toEqual(before);
 }
 
 async function servesHostAnd404s({ request }) {
@@ -111,7 +112,15 @@ async function servesHostAnd404s({ request }) {
   expect((await script.body()).byteLength).toBeGreaterThan(100_000);
   const styles = await request.get('/host.css');
   expect(styles.headers()['content-type']).toContain('text/css');
-  for (const path of ['/app.js', '/nowhere', '/api/nowhere']) expect((await request.get(path)).status()).toBe(404);
+  for (const path of ['/app.js', '/nowhere', '/api/accounts', '/../build.mjs']) expect((await request.get(path)).status()).toBe(404);
+  // The server is the API alone: it never serves the web client, and lets the client's origin read it.
+  for (const path of ['/', '/host.js', '/nowhere', '/api/nowhere']) expect((await request.get(API + path)).status()).toBe(404);
+  const listing = await request.get(API + '/api/accounts');
+  expect(listing.headers()['access-control-allow-origin']).toBe('*');
+  const preflight = await request.fetch(API + '/api/deposit', { method: 'OPTIONS', headers: { Origin: 'http://127.0.0.1:18791', 'Access-Control-Request-Method': 'POST' } });
+  expect(preflight.status()).toBe(204);
+  expect(preflight.headers()['access-control-allow-methods']).toContain('POST');
+  expect(preflight.headers()['access-control-allow-headers']).toContain('Content-Type');
 }
 
 async function drawsTheOverview({ page }) {
@@ -166,7 +175,7 @@ async function depositsAndTransfersAtomically({ page, request }) {
   await noticed(page, 'Transfer complete');
   expect((await accountById(request, 1)).cents).toBe(one.cents + 234);
   expect((await accountById(request, 2)).cents).toBe(two.cents + 1000);
-  const feed = await (await request.get('/api/activity')).json();
+  const feed = await (await request.get(API + '/api/activity')).json();
   expect(feed.filter((entry) => entry.note === 'Atomic native transfer').map((entry) => entry.kind).sort()).toEqual(['credit', 'debit']);
 }
 
@@ -175,12 +184,12 @@ async function showsLedgerRefusals({ page, request }) {
   await moveMoney(page, 'Withdraw', { choose: [['Withdraw from', '3']], amount: '99,999.99', note: 'Native protected refusal', confirm: 'Confirm withdrawal' });
   await expect(page.getByText('Operation refused', { exact: true })).toBeVisible();
   await noticed(page, 'insufficient funds');
-  const feed = await (await request.get('/api/activity')).json();
+  const feed = await (await request.get(API + '/api/activity')).json();
   expect(feed[0]).toMatchObject({ account: 3, kind: 'refused', cents: 9999999, note: 'Native protected refusal' });
 }
 
 async function refusesMalformedMoney({ page, request }) {
-  const before = await (await request.get('/api/accounts')).json();
+  const before = await (await request.get(API + '/api/accounts')).json();
   await openApp(page);
   for (const amount of INVALID_AMOUNTS) {
     await moveMoney(page, 'Deposit', { amount, confirm: 'Confirm deposit' });
@@ -188,7 +197,7 @@ async function refusesMalformedMoney({ page, request }) {
   }
   await moveMoney(page, 'Transfer', { choose: [['From account', '2'], ['To account', '2']], amount: '5', confirm: 'Confirm transfer' });
   await noticed(page, 'Choose two accounts');
-  expect(await (await request.get('/api/accounts')).json()).toEqual(before);
+  expect(await (await request.get(API + '/api/accounts')).json()).toEqual(before);
 }
 
 async function opensAnAccount({ page, request }) {
@@ -199,7 +208,7 @@ async function opensAnAccount({ page, request }) {
   await page.getByRole('textbox', { name: 'Account owner' }).fill('<img src=x onerror=alert(1)> Ada');
   await page.getByRole('button', { name: 'Create account' }).click();
   await noticed(page, 'Account opened');
-  const accounts = await (await request.get('/api/accounts')).json();
+  const accounts = await (await request.get(API + '/api/accounts')).json();
   expect(accounts.at(-1).owner).toBe('<img src=x onerror=alert(1)> Ada');
   await goToPage(page, 'Accounts');
   await expect(page.getByText('<img src=x onerror=alert(1)> Ada').first()).toBeVisible();
@@ -218,7 +227,7 @@ test.describe('Talon Bank JSON API', () => {
   test('lists seeded accounts with exact machine and display money', listsSeededAccounts);
   test('serves a newest-first, double-entry activity journal', servesActivityJournal);
   test('rejects malformed mutations without changing balances', rejectsMalformedMutations);
-  test('serves the web host and proper 404 statuses', servesHostAnd404s);
+  test('serves the web client apart from the API, with CORS and proper 404 statuses', servesHostAnd404s);
 });
 
 test.describe('Talon Bank as an Osprey Native app in the browser', () => {

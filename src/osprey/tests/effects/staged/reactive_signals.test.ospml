@@ -120,6 +120,7 @@ evaluationAndNoOp () =
     handle Audit
         note text =>
             trail := "${trail}${text}"
+            print "audit ${text}"
     first = underCount (2, \() => signalSnapshot (factory ()))
     idle = underCount (9, \() => signalRefresh first [] (factory ()))
     metadata = signalDependencies (factory ())

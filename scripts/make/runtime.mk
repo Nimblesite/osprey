@@ -126,14 +126,21 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/tls_client_runtime.c        -o bin/tls_client_runtime.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/file_server_runtime.c       -o bin/file_server_runtime.o && \
 	  $(CC) $(A) runtime/media_render_runtime.c -o bin/media_render_runtime.o && \
-	  $(RM) bin/libfiber_runtime.a bin/libhttp_runtime.a bin/libfiber_runtime_gc.a bin/libhttp_runtime_gc.a bin/libfiber_runtime_arc.a bin/libhttp_runtime_arc.a && \
-	  $(AR) rcs bin/libfiber_runtime.a $(FIB_OBJ) && \
-	  $(AR) rcs bin/libhttp_runtime.a  $(HTTP_OBJ) && \
-	  $(AR) rcs bin/libfiber_runtime_gc.a $(FIB_OBJ_GC) && \
-	  $(AR) rcs bin/libhttp_runtime_gc.a  $(HTTP_OBJ_GC) && \
-	  $(AR) rcs bin/libfiber_runtime_arc.a $(FIB_OBJ_ARC) && \
-	  $(AR) rcs bin/libhttp_runtime_arc.a  $(HTTP_OBJ_ARC) && \
-	  cp bin/libfiber_runtime.a bin/libhttp_runtime.a bin/libfiber_runtime_gc.a bin/libhttp_runtime_gc.a bin/libfiber_runtime_arc.a bin/libhttp_runtime_arc.a lib/
+	  stage=$$(mktemp -d bin/.native-archives.XXXXXX) && \
+	  trap 'rm -rf "$$stage"' EXIT && \
+	  publish_archive() { \
+	    name=$$1; shift; \
+	    $(AR) rcs "$$stage/$$name" "$$@" && \
+	    cp "$$stage/$$name" "$$stage/lib-copy" && \
+	    mv -f "$$stage/$$name" "bin/$$name" && \
+	    mv -f "$$stage/lib-copy" "lib/$$name"; \
+	  } && \
+	  publish_archive libfiber_runtime.a $(FIB_OBJ) && \
+	  publish_archive libhttp_runtime.a $(HTTP_OBJ) && \
+	  publish_archive libfiber_runtime_gc.a $(FIB_OBJ_GC) && \
+	  publish_archive libhttp_runtime_gc.a $(HTTP_OBJ_GC) && \
+	  publish_archive libfiber_runtime_arc.a $(FIB_OBJ_ARC) && \
+	  publish_archive libhttp_runtime_arc.a $(HTTP_OBJ_ARC)
 	@touch $@
 
 # Cross-compile the portable C-runtime subset to a wasm32-wasip1 archive that

@@ -135,7 +135,7 @@ void origin_stop(ScriptedOrigin *origin) {
 
 int64_t origin_client(void) {
   int64_t client_id = http_create_client(
-      (char *)(uintptr_t) "http://127.0.0.1:18088", 2000);
+      TEST_URL("http", ORIGIN_PORT), 2000);
   assert(client_id > 0);
   return client_id;
 }

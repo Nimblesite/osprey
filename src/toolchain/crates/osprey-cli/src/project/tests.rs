@@ -214,7 +214,11 @@ fn project_symbol_mapping_changes_exact_names_and_localizes_positions() {
         source_name_by_mangled: source_names,
         ..empty_project(std::collections::BTreeMap::new())
     };
-    let json = project_symbols_json(osprey_lsp::symbols_json(&project.program), &project);
+    let json = project_symbols_json(
+        osprey_lsp::symbols_json(&project.program),
+        &project,
+        &project.program,
+    );
     crate::testkit::contents(
         &json,
         &[
@@ -298,17 +302,20 @@ fn project_symbol_projection_is_a_noop_on_unmappable_input() {
     let project = empty_project(std::collections::BTreeMap::new());
     // Non-JSON input is returned verbatim.
     assert_eq!(
-        project_symbols_json("not json".to_string(), &project),
+        project_symbols_json("not json".to_string(), &project, &project.program),
         "not json"
     );
     // Valid JSON that is not an array is also returned verbatim.
     assert_eq!(
-        project_symbols_json("{\"a\":1}".to_string(), &project),
+        project_symbols_json("{\"a\":1}".to_string(), &project, &project.program),
         "{\"a\":1}"
     );
     // An array entry that is not an object, has no mapped name, and no
     // position exercises every early-return guard in update_project_symbol.
-    assert_eq!(project_symbols_json("[42]".to_string(), &project), "[42]");
+    assert_eq!(
+        project_symbols_json("[42]".to_string(), &project, &project.program),
+        "[42]"
+    );
 }
 
 #[test]
@@ -409,12 +416,12 @@ fn an_exported_module_members_signature_is_never_reported_redundant() {
         "contract-warnings",
         &[
             ("osprey.toml", "[project]\nname = \"exp\"\nsource_roots = [\"src\", \"main.ospml\"]\ndefault_namespace = \"app\"\nentry = \"main.ospml\"\n"),
-            ("src/flow.ospml", "namespace lib\n\n(** Loud text. *)\nmodule Flow\n    (** `text`, shouted. *)\n    export shout : string -> string\n    shout text = loud text\n    loud : string -> string\n    loud text = text + \"!\"\n"),
+            ("src/flow.ospml", "namespace lib\n\n(** Loud text. *)\nmodule Flow\n    (** `text`, shouted.\n    # Examples\n    ```osprey\n    print (Flow::shout \"hi\")\n    ```\n    *)\n    export shout : string -> string\n    shout text = loud text\n    loud : string -> string\n    loud text = text + \"!\"\n"),
             ("main.ospml", "namespace app\n\nimport lib::Flow\n\nprint (Flow::shout \"hi\")\n"),
         ],
     );
     let input = CompilationInput::load_project(root.to_string_lossy().as_ref()).expect("assembles");
-    let warnings = crate::warnings::collect(&input, true);
+    let warnings = crate::warnings::collect(&input, true, None);
     std::fs::remove_dir_all(&root).expect("cleanup");
     let messages: Vec<&str> = warnings.iter().map(|w| w.message.as_str()).collect();
     assert_eq!(
@@ -437,7 +444,7 @@ fn an_undocumented_export_is_located_in_the_file_that_wrote_it() {
         ],
     );
     let input = CompilationInput::load_project(root.to_string_lossy().as_ref()).expect("assembles");
-    let warnings = input.undocumented_exports();
+    let warnings = input.source_warnings();
     std::fs::remove_dir_all(&root).expect("cleanup");
     let [warning] = warnings.as_slice() else {
         panic!("one warning expected: {warnings:?}");

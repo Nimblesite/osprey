@@ -77,7 +77,7 @@ The policy is one handler you can read and replace, not a crash buried in a plug
 ## Run it
 
 ```sh
-make -C src/toolchain/targets/macos daw            # open Prism on a song
+make -C src/toolchain/targets/macos prism          # install Prism for Spotlight
 make -C src/toolchain/targets/macos daw-render SONG=src/osprey/examples/daw/tracks/phosphor-drift.json
 make -C src/toolchain/targets/macos daw-play SONG=src/osprey/examples/daw/tracks/phosphor-drift.json
 ```

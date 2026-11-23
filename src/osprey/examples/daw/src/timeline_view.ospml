@@ -66,8 +66,6 @@ module TimelineView
         TimelinePage => 1
         MixPage => 2
 
-    tile (a, fill) = [EditorView::panel (a.accessLeft, a.accessTop, a.accessWidth, a.accessHeight, fill, 10), label (a.accessLabel, a.accessLeft + a.accessWidth / 2.0, a.accessTop + 12.0, 16.0, ink (), 1, 11)]
-
     track editor = listGet editor.song.tracks editor.track
 
     songBeats song =
@@ -461,10 +459,7 @@ module TimelineView
                 high = pitchTop notes
                 rows = pitchRows (notes, high)
                 index = ui::Lists::position (voice.notes, \note => hitNote (editor, rollStart editor, high, rows, x, y, note))
-                // [DAW-ROLL-KEYS] A press on the keyboard beside the roll sounds that pitch through the track's patch.
-                match x >= 0.0 && x < 76.0 && y >= 542.0 && y < 802.0
-                    true => Success(value = Strike(note = floatToInt (TimelineGeometry::keyPitch (y, toFloat high, toFloat rows)) ?: 60))
-                    false => Success(value = SelectNote(index = index))
+                Success(value = SelectNote(index = index))
             Error _ => Error(message = "Select a track first.")
 
     chosen editor = match track editor

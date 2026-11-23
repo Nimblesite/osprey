@@ -2,6 +2,7 @@
 // directory, leaves from `--list-tests`, their docs, and workspace discovery
 // through a bounded queue and file watchers.
 
+import { claimedFlavorFile } from "./flavor-documents";
 import { existsSync } from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -18,8 +19,8 @@ import {
 import { runCompiler } from "./test-explorer-process";
 import { dropSkipWarnings } from "./test-explorer-skips";
 
-/** The discovery glob — both flavors ([TESTING-FILE-CONVENTION]). */
-export const TEST_FILE_GLOB = "**/*.test.{osp,ospml}";
+/** The discovery glob — all source flavors ([TESTING-FILE-CONVENTION]). */
+export const TEST_FILE_GLOB = "**/*.test.{osp,ospml,py,ts}";
 export const DIRECTORY_ID_PREFIX = "osprey-test-directory:";
 
 /** A test file's Explorer label: workspace-relative path, or basename outside one. */
@@ -231,7 +232,18 @@ export function isBuildOutput(uri: vscode.Uri): boolean {
 
 /** Whether `uri` names a test file ([TESTING-FILE-CONVENTION]). */
 export function isTestFile(uri: vscode.Uri): boolean {
-  return /\.test\.osp(ml)?$/.test(uri.fsPath);
+  return (
+    /\.test\.osp(ml)?$/.test(uri.fsPath) ||
+    (isSharedSuite(uri) &&
+      claimedFlavorFile(
+        uri.fsPath,
+        path.join(projectRootOf(uri), "osprey.toml"),
+      ))
+  );
+}
+
+function isSharedSuite(uri: vscode.Uri): boolean {
+  return /\.test\.(py|ts)$/.test(uri.fsPath);
 }
 
 /**
@@ -308,7 +320,7 @@ export async function scanWorkspaceTestFiles(
     vscode.workspace.findFiles(glob, BUILD_OUTPUT_GLOB),
 ): Promise<void> {
   const uris = (await findFiles(TEST_FILE_GLOB)).filter(
-    (uri) => !isBuildOutput(uri),
+    (uri) => !isBuildOutput(uri) && isTestFile(uri),
   );
   const found = new Set(uris.map((uri) => fileTestId(uri.toString())));
   for (const item of fileItems(controller.items)) {
@@ -316,7 +328,7 @@ export async function scanWorkspaceTestFiles(
     if (
       !found.has(item.id) &&
       item.uri !== undefined &&
-      !existsSync(item.uri.fsPath)
+      (!existsSync(item.uri.fsPath) || !isTestFile(item.uri))
     ) {
       removeTestFile(controller, item.uri);
     }
@@ -371,7 +383,7 @@ export function makeDiscovery(
 } {
   // A file deleted while its discovery waited in the queue stays out of the tree.
   const schedule = makeDiscoveryQueue((uri) =>
-    existsSync(uri.fsPath)
+    existsSync(uri.fsPath) && isTestFile(uri)
       ? refreshTestFile(controller, uri, resolveCompiler())
       : Promise.resolve(removeTestFile(controller, uri)),
   );
@@ -386,22 +398,25 @@ export function makeDiscovery(
         ),
     );
   };
+  const rescan = () => scanWorkspaceTestFiles(controller, schedule, findFiles);
   const changed = (uri: vscode.Uri): Promise<void> =>
     isBuildOutput(uri)
       ? Promise.resolve()
-      : isTestFile(uri)
-        ? schedule([uri])
-        : project(uri);
+      : path.basename(uri.fsPath) === "osprey.toml"
+        ? rescan()
+        : isSharedSuite(uri) || isTestFile(uri)
+          ? schedule([uri])
+          : project(uri);
   return {
     changed,
     deleted: (uri) => {
-      if (isTestFile(uri)) {
+      if (isSharedSuite(uri) || isTestFile(uri)) {
         removeTestFile(controller, uri);
         return Promise.resolve();
       }
       return changed(uri);
     },
-    rescan: () => scanWorkspaceTestFiles(controller, schedule, findFiles),
+    rescan,
   };
 }
 

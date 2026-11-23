@@ -1,0 +1,6 @@
+// [TYPE-ANY] [CONCURRENCY-HANDLES] A fiber hands its result back as an unboxed
+// word, so a `Fiber<int>` cannot travel as a `Fiber<any>`: `await` read the raw
+// 7 as an `any` box and the program segfaulted (exit 139) with no message.
+fn sevenLater() = 7
+fn awaitErased(fib: Fiber<any>) = await(fib)
+print(toString(awaitErased(spawn sevenLater())))

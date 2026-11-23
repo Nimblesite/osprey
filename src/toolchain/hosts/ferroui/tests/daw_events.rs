@@ -148,6 +148,24 @@ fn choose_menu(regions: &mut Regions, title: &str, label: &str) -> Shown {
     shown
 }
 
+/// Opens `path` through File > Open Song… and the host's file-picker answer.
+fn open_song(regions: &mut Regions, path: &std::path::Path) -> Shown {
+    choose_menu(regions, "File", "Open Song…");
+    Library::event(0, &Touch::completed("daw-open", Ok(path.display().to_string()))).expect("open the chosen song")
+}
+
+/// Adds a send from keysL's first outlet to `bus` at `level` percent, muted or not.
+fn add_send(regions: &mut Regions, bus: &str, level: &str, muted: bool) {
+    choose_control(regions, "button", "Add send…", "");
+    choose_control(regions, "picker", "Source outlet", "3/0");
+    choose_control(regions, "picker", "Destination bus", bus);
+    choose_control(regions, "field", "Send level (%)", level);
+    if muted {
+        choose_control(regions, "button", "Mute send", "");
+    }
+    choose_control(regions, "button", "Connect send", "");
+}
+
 fn named_control<'a>(node: &'a Tree, kind: &str, label: &str) -> Option<&'a std::collections::BTreeMap<String, Tree>> {
     match node {
         Tree::Record(fields) => {
@@ -281,11 +299,7 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     }
     point(canvas, (665.0, 437.0), true);
     regions.adopt(&point(canvas, (665.0, 437.0), false).0).expect("select keysL");
-    choose_control(regions, "button", "Add send…", "");
-    choose_control(regions, "picker", "Source outlet", "3/0");
-    choose_control(regions, "picker", "Destination bus", "pads");
-    choose_control(regions, "field", "Send level (%)", "25");
-    choose_control(regions, "button", "Connect send", "");
+    add_send(regions, "pads", "25", false);
     expected["tracks"][5]["sends"] = serde_json::json!([
         {"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabled":true}
     ]);
@@ -301,21 +315,12 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     point(canvas, (665.0, 251.0), false);
     point(canvas, (665.0, 437.0), true);
     regions.adopt(&point(canvas, (665.0, 437.0), false).0).expect("return to keysL");
-    choose_control(regions, "button", "Add send…", "");
-    choose_control(regions, "picker", "Source outlet", "3/0");
-    choose_control(regions, "picker", "Destination bus", "Keys bus");
-    choose_control(regions, "field", "Send level (%)", "75");
-    choose_control(regions, "button", "Mute send", "");
-    choose_control(regions, "button", "Connect send", "");
+    add_send(regions, "Keys bus", "75", true);
     let second = serde_json::json!({"sendId":2,"source":3,"outlet":0,"bus":"Keys bus","level":0.75,"enabled":false});
     expected["tracks"][5]["sends"].as_array_mut().expect("keysL sends").push(second.clone());
     assert_eq!(read(), expected, "the same outlet feeds two independent groups");
     for id in [3, 4] {
-        choose_control(regions, "button", "Add send…", "");
-        choose_control(regions, "picker", "Source outlet", "3/0");
-        choose_control(regions, "picker", "Destination bus", "pads");
-        choose_control(regions, "field", "Send level (%)", "40");
-        choose_control(regions, "button", "Connect send", "");
+        add_send(regions, "pads", "40", false);
         let tap = serde_json::json!({"sendId":id,"source":3,"outlet":0,"bus":"pads","level":0.4,"enabled":true});
         expected["tracks"][5]["sends"].as_array_mut().expect("keysL sends").push(tap);
     }
@@ -477,8 +482,7 @@ fn drag_piano_note(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
 fn spectral_picker(regions: &mut Regions, song: &std::path::Path) {
     let copy = song.with_file_name("spectral.json");
     std::fs::copy(repo("osprey/examples/daw/tracks/silt-relay.json"), &copy).expect("copy the spectral project");
-    choose_menu(regions, "File", "Open Song…");
-    let loaded = Library::event(0, &Touch::completed("daw-open", Ok(copy.display().to_string()))).expect("open the spectral project");
+    let loaded = open_song(regions, &copy);
     regions.adopt(&loaded).expect("load timeline");
     let mix = choose_menu(regions, "View", "Bus Routing");
     let read = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(&copy).expect("project")).expect("JSON");
@@ -563,8 +567,7 @@ fn modulation_sockets(regions: &mut Regions, song: &std::path::Path) {
     track["positions"].as_array_mut().expect("layout").push(serde_json::json!({"layoutNode":4,"layoutX":610,"layoutY":530}));
     std::fs::write(&copy, serde_json::to_vec(&project).expect("encoded project")).expect("test copy");
     let open = |regions: &mut Regions| {
-        choose_menu(regions, "File", "Open Song…");
-        let timeline = Library::event(0, &Touch::completed("daw-open", Ok(copy.display().to_string()))).expect("reopen project");
+        let timeline = open_song(regions, &copy);
         regions.adopt(&timeline).expect("timeline");
         tablepad_patch(regions, false)
     };
@@ -684,8 +687,7 @@ fn position_on_release(regions: &mut Regions, song: &std::path::Path) {
     assert!(normalized(saved) == normalized(expected), "release persists exactly one layout edit");
     let reopened = song.with_extension("reload.json");
     std::fs::copy(song, &reopened).expect("separate path for a fresh load");
-    choose_menu(regions, "File", "Open Song…");
-    let loaded = Library::event(0, &Touch::completed("daw-open", Ok(reopened.display().to_string()))).expect("load the saved file");
+    let loaded = open_song(regions, &reopened);
     regions.adopt(&loaded).expect("fresh project");
     let (_, (restored_x, restored_y), restored_outlet) = tablepad_card(regions, false);
     std::fs::remove_file(reopened).expect("remove the reopened project copy");
@@ -743,8 +745,7 @@ fn dense_timeline_drag(regions: &mut Regions, song: &std::path::Path, mut projec
     }
     let dense = song.with_file_name("dense.json");
     std::fs::write(&dense, serde_json::to_vec(&project).expect("encode dense song")).expect("write dense song");
-    choose_menu(regions, "File", "Open Song…");
-    let opened = Library::event(0, &Touch::completed("daw-open", Ok(dense.display().to_string()))).expect("open dense song");
+    let opened = open_song(regions, &dense);
     assert!(shows_label(&opened, "Arrangement"), "the dense project opens on its Timeline");
     regions.adopt(&opened).expect("draw dense timeline");
     let canvas = regions.get("root").and_then(|root| scene(&root.node)).expect("timeline canvas");
@@ -807,8 +808,7 @@ fn tapping_timeline_lanes_answers_every_tap_within_one_display_frame() {
     position_on_release(&mut regions, &song);
     modulation_sockets(&mut regions, &song);
     spectral_picker(&mut regions, &song);
-    choose_menu(&mut regions, "File", "Open Song…");
-    let reset = Library::event(0, &Touch::completed("daw-open", Ok(song.display().to_string()))).expect("return to the test project");
+    let reset = open_song(&mut regions, &song);
     regions.adopt(&reset).expect("restore the timeline");
     menu_bar(&mut regions);
     type_into_canvas_dial(&mut regions, &song);

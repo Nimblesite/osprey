@@ -159,7 +159,7 @@ pub(crate) fn raw_callback_lambda(
     let (param_tys, ..) = sig;
     let (ret_spelling, plist) = spelling(sig);
     let name = format!("__callback_{}", cg.next_lambda_id());
-    let saved = cg.enter_nested_fn();
+    let saved = cg.enter_nested_body(body);
     begin_named_source(cg, &name, source_name, position);
     let params = bind_params_from(cg, parameters, param_tys, 0);
     source_parameters(cg, parameters, 0);

@@ -4,7 +4,7 @@ import synth::EditorApp
 
 (** Retains the application-specific surface between host calls. *)
 effect Keep
-    keep : ui::Surface<synth::Editor<synth::Graph, synth::GraphPending<synth::Graph, synth::ProcessorMemory<synth::KernelState>>, synth::GraphState<synth::ProcessorMemory<synth::KernelState>>, ui::Machine>, synth::EditorAction> => Unit
+    keep : ui::Surface<synth::Editor<synth::Graph, ui::Machine>, synth::EditorAction> => Unit
 
 initial () = synth::EditorState::initial ()
 program () = EditorApp::program ()

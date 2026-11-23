@@ -103,10 +103,12 @@ What Osprey takes from this:
 
 ### `[BLOCK-USE-RESULT]` One bind function for `Result`
 
-The standard library gains one `Result` bind function, `try(result, next)`.
-Its behaviour is today's `Checked::andThen`: it passes `Error { message }`
-through unchanged (`[ERR-PAYLOAD]`). Every copy of `andThen` in packages and
-tests is deleted and replaced by this one function.
+The prelude already has the one `Result` bind, `andThen(result, next)`, and
+`use` names it. It passes `Error { message }` through unchanged
+(`[ERR-PAYLOAD]`), as `Checked::andThen` does. Every other copy of `andThen` in
+packages and tests is deleted, and its callers use the prelude one. Gleam names
+this function `try`, but `try` is a reserved word in the Python and TypeScript
+flavors, so a prelude `try` could not be called from them.
 
 ### `[BLOCK-USE-REJECT]` Rejections
 
@@ -152,13 +154,13 @@ After, in the ML flavor:
 
 ```osprey-ml
 export acceptHandover (registry, transferId, proof) =
-    use t <- try (G::transferOf (registry, transferId))
-    use _ <- try (live t)
-    use m <- try (G::membershipOf (registry, t.proposed))
-    use p <- try (G::principalOf (registry, m.principal))
-    use _ <- try (liveAcceptingHuman (p, proof))
-    use pkg <- try (G::packageOf (registry, t.package))
-    use _ <- try (G::requireProof (proof, m.principal, t.proposed, acceptance (t, pkg)))
+    use t <- andThen (G::transferOf (registry, transferId))
+    use _ <- andThen (live t)
+    use m <- andThen (G::membershipOf (registry, t.proposed))
+    use p <- andThen (G::principalOf (registry, m.principal))
+    use _ <- andThen (liveAcceptingHuman (p, proof))
+    use pkg <- andThen (G::packageOf (registry, t.package))
+    use _ <- andThen (G::requireProof (proof, m.principal, t.proposed, acceptance (t, pkg)))
     Success (value = G::replaceTransfer (registry, t { acceptance = Maybe::some proof, status = G::Accepted }))
 ```
 
@@ -168,7 +170,7 @@ The binder is on the left of every step, and the answer is the last line.
 
 ## Phases
 
-- [ ] **1. Tests first (red).**
+- [x] **1. Tests first (red).** Done 2026-11-23: `regressions/basics/blocks/use_binding.test.{osp,ospml}` (1, 2, 8 and 12 binds, an Error at every position, guards, `use <-`, two binders, match arms, a handler arm, lambdas, a resource scope, `x<-1`), seven `failscompilation/*use_*` programs and `cross_flavor_ir_equiv/use_binding.rs` (IR identical to the pyramid). The golden came from running the hand-written pyramid; both twins were red until Phase 2.
   - Add a regression to `src/osprey/tests/regressions/` with ML and Default
     twins that share one golden output. It covers:
     - 1, 2, 8 and 12 binds in a row;
@@ -181,14 +183,15 @@ The binder is on the left of every step, and the answer is the last line.
       pyramid.
   - Add one `failscompilation` program per rule in `[BLOCK-USE-REJECT]`.
   - Add a `[LEX-USE-ARROW]` test showing that `x<-1` is still a comparison.
-- [ ] **2. Compiler.**
+- [x] **2. Compiler.** Done 2026-11-23: `use_statement` in the tree-sitter grammar, `use` in the ML parser (`ml/parser/uses.rs`), lowering beside `handle` in both flavors, `use` binds through the prelude `andThen` (a `try` copy was added, then deleted: `try` is reserved in Python and TypeScript), the callback-arity message in the checker, `[BLOCK-USE]` and `[LEX-USE-ARROW]` in spec 0008, `[BLOCK-USE-RESULT]` in 0013, `[FLAVOR-ML-USE]` in 0024, hover and highlighting. Both twins match the golden under GC, ARC and wasm32. `use` is now reserved, so four synth test parameters named `use` became `consume`.
+  The ML editor grammar parses the full use-binding fixture, including pair and wildcard binders, tight comparisons and generic calls. Its 18 Rust tests and four layout tests pass.
   - Add `use` and `<-` to the tree-sitter grammar and the ML lexer.
   - Add the `use` statement to both parsers.
   - Desugar it in AST lowering.
-  - Add `try` to the prelude.
+  - Bind through the prelude `andThen`.
   - Update the specs, and the LSP's hover and highlighting.
 - [ ] **3. Rewrite every pyramid.** Work through the 46 files, deepest first:
-  - Rewrite each pyramid with `use`, and delete every local `andThen`.
+  - Rewrite each pyramid with `use`, and delete every module-local `andThen` (such as `Checked::andThen`).
   - Remove the lambda type annotations the rewrite makes unnecessary.
   - Import `registry::Governance as G`.
   - Flatten the nested `match bool` ladders (`withinHold`, `stillCurrent`)
@@ -207,7 +210,8 @@ The binder is on the left of every step, and the answer is the last line.
 
 ## Done when
 
-- `rg '\bandThen\(' src/osprey` returns nothing.
+- `rg 'fn andThen|export andThen' src/osprey` returns nothing: the prelude
+  `andThen` is the only one.
 - The nesting lint is green with no exclusions.
 - No function in `src/osprey` nests a lambda or a `match` more than 2 deep.
 

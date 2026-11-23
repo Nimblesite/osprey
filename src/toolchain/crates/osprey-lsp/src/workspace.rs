@@ -20,14 +20,7 @@ pub struct Sibling {
     pub(crate) flavor: osprey_syntax::Flavor,
 }
 
-/// The directory of the nearest enclosing `osprey.toml`, if any.
-#[must_use]
-pub(crate) fn project_root(file: &Path) -> Option<PathBuf> {
-    file.parent()?
-        .ancestors()
-        .find(|directory| directory.join("osprey.toml").is_file())
-        .map(Path::to_path_buf)
-}
+pub(crate) use osprey_project::project_root;
 
 /// How many ancestors of a file are searched for neighbouring projects.
 const NEIGHBOUR_DEPTH: usize = 4;

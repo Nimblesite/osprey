@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent bank bank-app casting flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth tally workbench workbench-proof-assets
+.PHONY: agent bank bank-app casting cleanarch flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth tally workbench workbench-proof-assets
 
 ## agent: Osprey Agent's turn logic and its real update path, with scripted completions.
 agent: _runtime
@@ -22,6 +22,11 @@ bank: build
 ##           tabs, filters, validation and every ledger request.
 bank-app:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/talon/app/test
+
+## cleanarch: The Clean Architecture todo port's use cases under GC and ARC. [EXAMPLE-CLEANARCH-INV-TESTS]
+cleanarch: _runtime
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(MAKE) _test_cleanarch
 
 ## casting: The casting player, driven by accessible label. [UI-MACHINE-TEST]
 casting:

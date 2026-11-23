@@ -61,6 +61,17 @@ impl Warnings {
         Self::judged(&project.program, &|symbol| project.exported_member(symbol))
     }
 
+    /// The cheap advice alone, as a plain CLI build reports it: the
+    /// redundancy proof re-infers the whole program once per trial, so the
+    /// repository sweep never pays it for a project nobody has open
+    /// ([LSP-MEMORY-RETENTION]).
+    pub(crate) fn unproved(project: &osprey_project::AssembledProject) -> Self {
+        Self {
+            unused: osprey_types::unused_symbols(&project.program),
+            ..Self::none()
+        }
+    }
+
     fn judged(program: &Program, contract: &dyn Fn(&str) -> bool) -> Self {
         Self {
             redundant: osprey_types::redundant_annotation_sites_for(program, |_| true, contract),

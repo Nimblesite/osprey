@@ -149,8 +149,11 @@ char *osp_string_join_list(OspreyList *list, const char *sep) {
 
 void osp_string_list_free(osp_string_list *list) { osp_release(list); }
 
-#if defined(__linux__) || defined(__ANDROID__)
 // glibc and bionic call .init_array entries with (argc, argv, envp); keep them.
+// KLEE calls constructors with no arguments and rejects the whole module when one
+// takes three, so a symbolic run has no arguments [SYMEX-CORPUS].
+#if (defined(__linux__) || defined(__ANDROID__)) && !defined(OSP_SYMBOLIC)
+#define OSP_ARGV_FROM_CONSTRUCTOR 1
 static int osp_saved_argc;
 static char **osp_saved_argv;
 __attribute__((constructor)) static void osp_save_argv(int argc, char **argv, char **envp) {
@@ -193,8 +196,10 @@ static osp_string_list *osp_args_wasi(void) {
 osp_string_list *osp_process_args(void) {
 #if defined(__APPLE__)
     return osp_args_from(*_NSGetArgc(), *_NSGetArgv());
-#elif defined(__linux__) || defined(__ANDROID__)
+#elif defined(OSP_ARGV_FROM_CONSTRUCTOR)
     return osp_args_from(osp_saved_argc, osp_saved_argv);
+#elif defined(OSP_SYMBOLIC)
+    return osp_args_from(0, NULL);
 #elif defined(_WIN32)
     return osp_args_from(__argc, __argv);
 #elif defined(__wasm__)

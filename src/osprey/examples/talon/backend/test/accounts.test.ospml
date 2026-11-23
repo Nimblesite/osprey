@@ -38,27 +38,52 @@ module AccountCases
         Fail reason => Fail(reason = reason)
         Skip why => Skip(why = why)
 
-    (** --- account-opening rule --- *)
+    (** account-opening rule.
+    # Examples
+    ```osprey
+    test "namable enforces a non-empty owner" AccountCases::namableCase
+    ```
+    *)
     export namableCase () =
         real = andThen (check ("a real name is namable", true, Accounts::namable "Amelia Chen")) (check ("single char is namable", true, Accounts::namable "x"))
         andThen real (check ("empty name is refused", false, Accounts::namable ""))
 
-    (** --- movement-amount rule --- *)
+    (** movement-amount rule.
+    # Examples
+    ```osprey
+    test "movable enforces positive whole cents" AccountCases::movableCase
+    ```
+    *)
     export movableCase () =
         pos = andThen (check ("positive cents move", true, Accounts::movable 5000)) (check ("one cent moves", true, Accounts::movable 1))
         zeroNeg = andThen (check ("zero does not move", false, Accounts::movable 0)) (check ("negative does not move", false, Accounts::movable (-250)))
         andThen pos zeroNeg
 
-    (** --- the Outcome union both API and main pattern-match --- *)
+    (** the Outcome union both API and main pattern-match.
+    # Examples
+    ```osprey
+    test "Outcome classifies landed vs refused" AccountCases::outcomeCase
+    ```
+    *)
     export outcomeCase () =
         andThen (check ("landed carries the new balance", "landed 3600", settle (Landed(balance = 3600)))) (check ("refused carries the reason", "refused insufficient funds", settle (Refused(why = "insufficient funds"))))
 
-    (** --- JSON rendering, escaping the owner name through the encoder --- *)
+    (** JSON rendering, escaping the owner name through the encoder.
+    # Examples
+    ```osprey
+    test "Account renders escaped JSON" AccountCases::jsonCase
+    ```
+    *)
     export jsonCase () =
         plain = check ("plain account row", "{${q}id${q}:1,${q}owner${q}:${q}Amelia Chen${q},${q}cents${q}:246240,${q}balance${q}:${q}$2,462.40${q}}", Accounts::json (Account(id = 1, owner = "Amelia Chen", balance = 246240)))
         andThen plain (check ("owner with a quote stays valid JSON", "{${q}id${q}:9,${q}owner${q}:${q}a${bs}${q}b${q},${q}cents${q}:0,${q}balance${q}:${q}$0.00${q}}", Accounts::json (Account(id = 9, owner = "a${q}b", balance = 0))))
 
-    (** --- fixed-width TUI row alignment --- *)
+    (** fixed-width TUI row alignment.
+    # Examples
+    ```osprey
+    test "Account renders an aligned TUI row" AccountCases::rowCase
+    ```
+    *)
     export rowCase () =
         wide = check ("row pads owner and right-aligns money", "│  1 │ Amelia Chen  │ $2,462.40 │", Accounts::row (Account(id = 1, owner = "Amelia Chen", balance = 246240)))
         andThen wide (check ("short owner and small balance pad out", "│  3 │ Bo           │     $0.05 │", Accounts::row (Account(id = 3, owner = "Bo", balance = 5))))
@@ -81,7 +106,12 @@ module AccountCases
                 Landed(balance = balance)
             return outcome => settle outcome
 
-    (** --- a reused handler keeps its balance; a fresh factory call starts its own --- *)
+    (** a reused handler keeps its balance; a fresh factory call starts its own.
+    # Examples
+    ```osprey
+    test "handler values reuse state and isolate factory instances" AccountCases::mockedVaultCase
+    ```
+    *)
     export mockedVaultCase () =
         flush = vault 9000
         broke = vault 40
@@ -90,7 +120,12 @@ module AccountCases
         reused = andThen landed (check ("reusing a handler keeps its balance", "landed 4000", flush rent))
         andThen reused (check ("independent handler refuses via the guard", "refused blocked by guard", broke rent))
 
-    (** --- a refused amount never reaches storage: the spy handler stays untouched --- *)
+    (** a refused amount never reaches storage: the spy handler stays untouched.
+    # Examples
+    ```osprey
+    test "invalid payments never perform storage operations" AccountCases::guardCase
+    ```
+    *)
     export guardCase () =
         mut touched = false
         spy = handler Vault

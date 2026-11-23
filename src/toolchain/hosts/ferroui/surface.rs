@@ -93,6 +93,8 @@ impl PartialEq for SceneData {
     }
 }
 
+ferroui_base::styled_value!(SceneData);
+
 /// Where the scene's input goes: the host and the control number the framework issued.
 #[derive(Clone, Default)]
 pub struct SceneLink {
@@ -105,6 +107,8 @@ impl PartialEq for SceneLink {
         self.ordinal == other.ordinal && Weak::ptr_eq(&self.host, &other.host)
     }
 }
+
+ferroui_base::styled_value!(SceneLink);
 
 impl SceneLink {
     fn send(&self, touch: impl FnOnce(i64) -> Touch) {

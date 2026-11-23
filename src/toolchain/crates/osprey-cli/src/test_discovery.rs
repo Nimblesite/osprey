@@ -19,7 +19,10 @@ pub(crate) fn discover(path: &Path) -> Vec<PathBuf> {
 
 pub(crate) fn is_test_file(path: &Path) -> bool {
     matches_file_name(path, |name| {
-        name.ends_with(".test.osp") || name.ends_with(".test.ospml") || name.ends_with(".test.ts")
+        name.ends_with(".test.osp")
+            || name.ends_with(".test.ospml")
+            || name.ends_with(".test.ts")
+            || (name.ends_with(".test.py") && osprey_project::python_source(path))
     })
 }
 
@@ -94,6 +97,10 @@ mod tests {
         std::fs::create_dir_all(&skipped).expect("mkdir target");
         std::fs::write(root.join("b.test.osp"), "").expect("write b");
         std::fs::write(nested.join("a.test.ospml"), "").expect("write a");
+        std::fs::write(nested.join("chosen.test.py"), "# osprey: flavor=python\n")
+            .expect("write Python suite");
+        std::fs::write(nested.join("ordinary.test.py"), "import unittest\n")
+            .expect("write Python control");
         std::fs::write(root.join("ignore.osp"), "").expect("write ignore");
         std::fs::write(skipped.join("c.test.osp"), "").expect("write skipped");
 
@@ -105,11 +112,15 @@ mod tests {
         let found = discover(&root);
         assert_eq!(
             found,
-            vec![root.join("b.test.osp"), nested.join("a.test.ospml")]
-                .into_iter()
-                .collect::<std::collections::BTreeSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>()
+            vec![
+                root.join("b.test.osp"),
+                nested.join("a.test.ospml"),
+                nested.join("chosen.test.py")
+            ]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>()
         );
 
         // An unreadable directory yields nothing rather than panicking.

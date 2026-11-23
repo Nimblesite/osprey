@@ -1,0 +1,402 @@
+// Validation exploration ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE]): every case
+// sends ONE captured request through `WhichFixesWork`, which resumes it once
+// per candidate fix in `TodoProbe::fixes()` order ([MULTI-DECL],
+// [MULTI-HANDLE-MANY]). Each branch still collects every validation failure
+// ([EXAMPLE-CLEANARCH-INV-FAITHFUL]), and each branch's writes and events are
+// undone before the next branch ([MULTI-REPLAY], [MULTI-REPLAY-STATE]).
+//
+// Derivations the cases below rely on. The fixture clock advances one per
+// reading; `WhichFixesWork` captures at `Rules.candidate`, one reading after
+// the request starts, so a probe reads the clock exactly six times: one start,
+// one settle reading per fix, one final reading for the report
+// ([MULTI-HANDLE-MANY]: the captured start never re-runs). Each probe branch
+// reopens the store snapshot taken at the capture, so a passing CreateList
+// branch answers the id `length(seedLists) + 1` and a passing CreateItem
+// branch answers `length(seedItems) + 1`, the same in every branch, and no
+// branch's row or event survives ([MULTI-REPLAY]).
+
+namespace todo;
+
+import todo::TodoHarness
+import todo::TodoProbe
+
+/// Three seeded lists, list 2 titled with 250 x characters.
+fn fixLongSeeds() = [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, retryWide(250), "#D98B2B"), TodoHarness::seedList(3, "Banking", "#AB47BC")]
+
+/// Two seeded lists, list 2 titled with the 200-character prefix "Shopping" + 192 x.
+fn fixPrefixSeeds() = [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, "Shopping" + retryWide(192), "#AB47BC")]
+
+/// Three one-letter lists, so a fresh list's id is 4.
+fn fixAbcSeeds() = [TodoHarness::seedList(1, "A", "#78909C"), TodoHarness::seedList(2, "B", "#D98B2B"), TodoHarness::seedList(3, "C", "#4CAF50")]
+
+/// The three title rule texts, verbatim.
+fn fixTooLong() = "'Title' must be at most 200 characters."
+fn fixEmptyTitle() = "'Title' must not be empty."
+fn fixUniqueTitle() = "'Title' must be unique."
+
+/// The four answers of four branches that all answer `answer`: the list length
+/// is the resume count ([MULTI-HANDLE-MANY]).
+fn fixAll(answer) = [answer, answer, answer, answer]
+
+/// The colour fault for one unsupported code: the message embeds the code as sent.
+fn fixColourFault(code) = faults(["UnsupportedColour: '${code}' is not a supported colour"])
+
+/// Only the trim branch answers `differs`; the others answer `same`.
+fn fixOnlyTrim(same, differs) = [same, differs, same, same]
+
+/// Only the cut branch answers `rescued`; the others fault the length.
+fn fixOnlyCut(rescued) = [faults([fixTooLong()]), faults([fixTooLong()]), rescued, faults([fixTooLong()])]
+
+/// Only the default-colour branch changes the answer.
+fn fixRecoloured(original, recoloured) = [original, original, original, recoloured]
+
+/// Only the default-colour branch answers `rescued`; the others fault `code`.
+fn fixOnlyRecolour(code, rescued) = fixRecoloured(fixColourFault(code), rescued)
+
+/// Branches 1-2 answer `both`; the cut branch answers `cut`; the recolour
+/// branch keeps only the colour fault for '#Bad'.
+fn fixBadColourSplits(both, cut) = [
+    both, both,
+    faults(["UnsupportedColour: '#Bad' is not a supported colour"]),
+    cut
+]
+
+/// The four branch answers the over-long '#HotPink' request collects.
+fn fixHotPinkAnswers() = [
+    faults([fixTooLong(), "UnsupportedColour: '#HotPink' is not a supported colour"]),
+    faults([fixTooLong(), "UnsupportedColour: '#HotPink' is not a supported colour"]),
+    faults(["UnsupportedColour: '#HotPink' is not a supported colour"]),
+    faults([fixTooLong()])
+]
+
+/// What every WhichFixesWork probe proves about its surroundings ([MULTI-REPLAY],
+/// [MULTI-HANDLE-MANY], [MULTI-REPLAY-STATE]): six clock readings, and every
+/// branch's writes and events undone, so the rows are exactly the seeds.
+fn fixUndone(probe, lists, items) = [
+    probe.readings == 6,
+    structuralEquals(probe.lists, lists),
+    structuralEquals(probe.items, items),
+    noEvents(probe)
+]
+
+/// Branch 4 answers as branch 1 for item requests: `recoloured` is the identity
+/// there, so the default-colour fix cannot change the candidate ([MULTI-HANDLE-MANY]).
+fn fixEndsAgree(probe) = match probe.answers {
+    [first, _second, _third, fourth] => toString(first) == toString(fourth)
+    _ => false
+}
+
+/// Four branch answers came back.
+fn fixFourAnswers(probe) = [length(probe.answers) == 4]
+
+/// An item probe also proves branch 4 answers exactly as branch 1.
+fn fixEndsAgreeToo(probe) = [fixEndsAgree(probe)]
+
+/// Branch 4 agrees with branch 1 and four answers came back.
+fn fixEndsAndFour(probe) = [fixEndsAgree(probe), length(probe.answers) == 4]
+
+/// The one shape every case here takes: probe `request` as the administrator
+/// over `lists` and `items`, expect the four branch answers, and prove the
+/// probe kept nothing — plus whatever `extra` checks the case needs.
+fn fixCase(why, lists, items, request, answers, extra) = {
+    let probe = TodoHarness::probed(TodoHarness::admin(), lists, items, WhichFixesWork { request: request })
+    expect(probe.answers, answers)
+    expect(TodoHarness::failures(why, listConcat(fixUndone(probe, lists, items), extra(probe))), [])
+}
+
+/// `fixCase` over the standard two-list three-item seeds, nothing extra.
+fn fixChecked(why, request, answers) = fixCase(why, retryLists(), retryItems(), request, answers, fixNothing)
+
+/// `fixChecked` over the seeds whose second list title is 250 x characters.
+fn fixLongChecked(why, request, answers) = fixCase(why, fixLongSeeds(), retryItems(), request, answers, fixNothing)
+
+/// `fixChecked` over the seeds whose second list title starts with the 200-character prefix.
+fn fixPrefixChecked(why, request, answers) = fixCase(why, fixPrefixSeeds(), retryItems(), request, answers, fixNothing)
+
+/// One WhichFixesWork probe over the standard seeds, started as `principal`.
+fn fixProbed(principal, request) = TodoHarness::probed(principal, retryLists(), retryItems(), WhichFixesWork { request: request })
+
+/// No extra checks.
+fn fixNothing(_probe) = []
+
+module MultishotValidateCases {
+    /// Title length edges over CreateList ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): the empty rule fires at
+    /// length 0 in all four fixes; the 200 rule fires only above 200, so 199 and
+    /// 200 pass, and only the cut-to-200 fix rescues 201, 250 and 400.
+    export fn titleLengthsCase() = {
+        forEachList([1, 199, 200], fn(size) =>
+            fixChecked("a fitting title passes in every branch; six readings, nothing kept",
+                CreateList { list: NewList { title: retryWide(size), colour: "#AB47BC" } },
+                fixAll(createdId(3))))
+        fixChecked("an empty title stays empty through every fix; uniqueness skips the blank title",
+            CreateList { list: NewList { title: "", colour: "#AB47BC" } },
+            fixAll(faults([fixEmptyTitle()])))
+        forEachList([201, 250, 400], fn(size) =>
+            fixChecked("only the cut-to-200 fix rescues an over-long title",
+                CreateList { list: NewList { title: retryWide(size), colour: "#AB47BC" } },
+                fixOnlyCut(createdId(3))))
+    }
+
+    /// Padded, tabbed and whitespace-only titles over CreateList
+    /// ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE], [EXAMPLE-CLEANARCH-INV-FAITHFUL],
+    /// [MULTI-REPLAY]): trimming exposes a duplicate or an empty only in the trim
+    /// branch; a 202-character padded title fails as sent and both title fixes
+    /// rescue it; the empty check reads raw length, so three spaces pass as sent.
+    export fn paddedTitleCase() = {
+        fixChecked("only the trim branch turns padded Shopping into the seeded duplicate",
+            CreateList { list: NewList { title: "  Shopping  ", colour: "#4CAF50" } },
+            fixOnlyTrim(createdId(3), faults([fixUniqueTitle()])))
+        fixChecked("tab and newline padding trims to the seeded Banking title",
+            CreateList { list: NewList { title: "\tBanking\n", colour: "#26A69A" } },
+            fixOnlyTrim(createdId(3), faults([fixUniqueTitle()])))
+        fixChecked("three spaces are not empty as sent but trim to empty; uniqueness skips blanks",
+            CreateList { list: NewList { title: "   ", colour: "" } },
+            fixOnlyTrim(createdId(3), faults([fixEmptyTitle()])))
+        fixChecked("a 202-character padded title trims to 200 and cuts to 200",
+            CreateList { list: NewList { title: " " + retryWide(200) + " ", colour: "#AB47BC" } },
+            [faults([fixTooLong()]), createdId(3), createdId(3), faults([fixTooLong()])])
+    }
+
+    /// UpdateList uniqueness excludes the edited id ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): keeping a list's own
+    /// title is legal in all four fixes, another list's short title faults in all
+    /// four, and padding exposes the collision only in the trim branch.
+    export fn trimmedDuplicateListCase() = {
+        fixChecked("a list's own title never collides: the edited id is excluded",
+            UpdateList { edit: ListEdit { id: 1, title: "Shopping", colour: "#AB47BC" } },
+            fixAll(updatedOk()))
+        fixChecked("no fix changes a short title, so all four branches hit list 2's title",
+            UpdateList { edit: ListEdit { id: 1, title: "Banking", colour: "#AB47BC" } },
+            fixAll(faults([fixUniqueTitle()])))
+        fixChecked("only the trim branch turns padded Banking into list 2's title",
+            UpdateList { edit: ListEdit { id: 1, title: "  Banking  ", colour: "#AB47BC" } },
+            fixOnlyTrim(updatedOk(), faults([fixUniqueTitle()])))
+        fixChecked("trim lands on the list's own title, which the edit itself excludes",
+            UpdateList { edit: ListEdit { id: 1, title: "  Shopping  ", colour: "#AB47BC" } },
+            fixAll(updatedOk()))
+    }
+
+    /// UpdateList of a missing id ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): every branch whose
+    /// candidate passes validation reaches the store and answers the typed
+    /// NotFound; a branch whose candidate fails validation answers its collected
+    /// problems instead, with the colour fault collected beside the title fault.
+    export fn missingListEveryBranchCase() = {
+        fixChecked("a valid candidate for a missing list is NotFound in all four branches",
+            UpdateList { edit: ListEdit { id: 99, title: "Travel", colour: "#5C6BC0" } },
+            fixAll(missingRow("TodoList", 99)))
+        fixChecked("id 0 has no row either, so every branch misses",
+            UpdateList { edit: ListEdit { id: 0, title: "Travel", colour: "#5C6BC0" } },
+            fixAll(missingRow("TodoList", 0)))
+        fixChecked("only the cut fix validates, so only it reaches the missing id",
+            UpdateList { edit: ListEdit { id: 99, title: retryWide(250), colour: "" } },
+            fixOnlyCut(missingRow("TodoList", 99)))
+        fixChecked("empty and colour collect together until recolour; uniqueness skips the blank title",
+            UpdateList { edit: ListEdit { id: 99, title: "", colour: "#ffee00" } },
+            fixRecoloured(faults([fixEmptyTitle(), "UnsupportedColour: '#ffee00' is not a supported colour"]),
+                faults([fixEmptyTitle()])))
+    }
+
+    /// Every supported colour ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): Colour.From accepts each
+    /// declared code, so all four branches of all seven probes create list 3.
+    export fn everySupportedColourCase() = {
+        forEachList(TodoDomain::supportedColours(), fn(code) =>
+            fixChecked("${code} passes in every branch; six readings, nothing kept",
+                CreateList { list: NewList { title: "Travel", colour: code } },
+                fixAll(createdId(3))))
+        checkAll("the catalogue holds exactly the seven declared codes", [
+            length(TodoDomain::supportedColours()) == 7,
+            TodoDomain::grey() == "#78909C",
+            listContains(TodoDomain::supportedColours(), TodoDomain::grey())
+        ])
+    }
+
+    /// Unsupported colours ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): the fault embeds the
+    /// code exactly as sent — case, spelling and padding all matter — and only
+    /// the default-colour fix rescues the branch, since neither title fix
+    /// touches the colour.
+    export fn unsupportedColourCase() = {
+        forEachList(["#e05c4d", "#12345", "Red", "#HotPink", " #AB47BC "], fn(code) =>
+            fixChecked("${code} faults as sent, trimmed and cut; the default colour fixes it",
+                CreateList { list: NewList { title: "Travel", colour: code } },
+                fixOnlyRecolour(code, createdId(3))))
+    }
+
+    /// Blank and whitespace colours mean grey ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [MULTI-REPLAY]): `Colour.From(colour ?? Colour.Grey)` reads every blank
+    /// spelling as the supported grey, so all four branches of each probe pass.
+    export fn blankColourGreyCase() = {
+        forEachList(["", "   ", "\t\n", " \t "], fn(colour) =>
+            fixChecked("a blank colour reads as grey in all four branches",
+                CreateList { list: NewList { title: "Travel", colour: colour } },
+                fixAll(createdId(3))))
+    }
+
+    /// CreateItem titles ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): items collect only the
+    /// two title rules — no uniqueness against seeded item titles, no colour rule
+    /// — and the default-colour fix leaves item requests untouched, so branch 4
+    /// answers exactly as branch 1 ([MULTI-HANDLE-MANY]).
+    export fn createItemTitleRulesCase() = {
+        fixChecked("an empty item title faults in all four branches; three seeds mean the next id is 4",
+            CreateItem { item: NewItem { listId: 1, title: "" } },
+            fixAll(faults([fixEmptyTitle()])))
+        fixChecked("a duplicate seeded item title is legal: items have no unique rule",
+            CreateItem { item: NewItem { listId: 2, title: "Milk" } },
+            fixAll(createdId(4)))
+        fixChecked("only the cut fix rescues a 201-character item title",
+            CreateItem { item: NewItem { listId: 1, title: retryWide(201) } },
+            fixOnlyCut(createdId(4)))
+        fixChecked("spaces pass as sent, trim to empty, and survive the cut",
+            CreateItem { item: NewItem { listId: 1, title: "   " } },
+            fixOnlyTrim(createdId(4), faults([fixEmptyTitle()])))
+        fixChecked("padded Milk passes everywhere; no item uniqueness and no colour rule",
+            CreateItem { item: NewItem { listId: 1, title: "  Milk  " } },
+            fixAll(createdId(4)))
+    }
+
+    /// UpdateItem fixes ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE], [MULTI-REPLAY],
+    /// [MULTI-HANDLE-MANY]): the default-colour fix is the identity for items, so
+    /// branch 4's answer equals branch 1's in every probe; a valid candidate for a
+    /// missing id answers the typed NotFound wherever validation passes.
+    export fn updateItemFixesCase() = {
+        fixCase("a fitting edit updates in all four branches", retryLists(), retryItems(),
+            UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: true } },
+            fixAll(updatedOk()), fixEndsAgreeToo)
+        fixCase("a valid edit for a missing item is NotFound everywhere", retryLists(), retryItems(),
+            UpdateItem { edit: ItemEdit { id: 99, title: "Milk", done: false } },
+            fixAll(missingRow("TodoItem", 99)), fixEndsAgreeToo)
+        fixCase("only the cut fix validates, and it updates the found item", retryLists(), retryItems(),
+            UpdateItem { edit: ItemEdit { id: 1, title: retryWide(201), done: false } },
+            fixOnlyCut(updatedOk()), fixEndsAgreeToo)
+        fixCase("an empty title faults in all four branches", retryLists(), retryItems(),
+            UpdateItem { edit: ItemEdit { id: 1, title: "", done: false } },
+            fixAll(faults([fixEmptyTitle()])), fixEndsAgreeToo)
+    }
+
+    /// Every problem collects, in rule order ([EXAMPLE-CLEANARCH-INV-FAITHFUL],
+    /// [EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE], [MULTI-REPLAY]): title length,
+    /// then uniqueness, then colour — per branch, never just the first fault.
+    /// Uniqueness reads the store, so a seeded 250-x list makes the long title
+    /// collide, and the edited id excludes its own row from the match.
+    export fn collectsAllProblemsInOrderCase() = {
+        fixLongChecked("as sent and trimmed collect length, uniqueness and colour in order; cut drops two; recolour drops one",
+            CreateList { list: NewList { title: retryWide(250), colour: "#Bad" } },
+            fixBadColourSplits(faults([fixTooLong(), fixUniqueTitle(), "UnsupportedColour: '#Bad' is not a supported colour"]),
+                faults([fixTooLong(), fixUniqueTitle()])))
+        fixChecked("uniqueness collects before colour; the recolour branch keeps the duplicate",
+            CreateList { list: NewList { title: "Shopping", colour: "#Bad" } },
+            [faults([fixUniqueTitle(), "UnsupportedColour: '#Bad' is not a supported colour"]),
+             faults([fixUniqueTitle(), "UnsupportedColour: '#Bad' is not a supported colour"]),
+             faults([fixUniqueTitle(), "UnsupportedColour: '#Bad' is not a supported colour"]),
+             faults([fixUniqueTitle()])])
+        let missingTitle = faults([fixEmptyTitle()])
+        let missingTitleAndColour = faults([fixEmptyTitle(), "UnsupportedColour: '#Bad' is not a supported colour"])
+        fixLongChecked("an empty title skips uniqueness and remains after recolour",
+            CreateList { list: NewList { title: "", colour: "#Bad" } },
+            fixRecoloured(missingTitleAndColour, missingTitle))
+        fixLongChecked("list 2's own 250-x title excludes itself, so uniqueness never collects",
+            UpdateList { edit: ListEdit { id: 2, title: retryWide(250), colour: "#Bad" } },
+            fixBadColourSplits(faults([fixTooLong(), "UnsupportedColour: '#Bad' is not a supported colour"]),
+                faults([fixTooLong()])))
+    }
+
+    /// The cut fix keeps the FIRST 200 characters ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [EXAMPLE-CLEANARCH-INV-FAITHFUL], [MULTI-REPLAY]): cut a 204-character
+    /// title whose first 200 are a seeded row and that branch faults with
+    /// uniqueness, not length — the fault names the collision the cut created.
+    /// With a leading space the slice keeps the space, so the cut title is fresh.
+    export fn cutKeepsFirst200Case() = {
+        fixPrefixChecked("cutting to 200 lands exactly on list 2's seeded 200-character title",
+            CreateList { list: NewList { title: "Shopping" + retryWide(192) + "tail", colour: "#5C6BC0" } },
+            fixOnlyCut(faults([fixUniqueTitle()])))
+        fixPrefixChecked("the cut of a fresh 205-character title collides with nothing",
+            CreateList { list: NewList { title: "Brand" + retryWide(196) + "tail", colour: "#5C6BC0" } },
+            fixOnlyCut(createdId(3)))
+        fixPrefixChecked("the cut rename collides with list 2 while the edit excludes only list 1",
+            UpdateList { edit: ListEdit { id: 1, title: "Shopping" + retryWide(192) + "tail", colour: "#5C6BC0" } },
+            fixOnlyCut(faults([fixUniqueTitle()])))
+        fixPrefixChecked("the cut slice keeps the leading space, so it misses every seeded title",
+            CreateList { list: NewList { title: " " + "Shopping" + retryWide(192) + "tail ", colour: "#5C6BC0" } },
+            fixOnlyCut(createdId(3)))
+    }
+
+    /// The fixes answer for every principal alike ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [MULTI-REPLAY], [MULTI-HANDLE-MANY]): none of these requests carries an
+    /// access rule, so anonymous, user and administrator collect the same four
+    /// branch answers from the same six clock readings.
+    export fn fixesArePrincipalFreeCase() = {
+        let request = CreateList { list: NewList { title: retryWide(201), colour: "#HotPink" } }
+        let asAdmin = fixProbed(TodoHarness::admin(), request)
+        expect(asAdmin.answers, fixHotPinkAnswers())
+        let asUser = fixProbed(TodoHarness::user(), request)
+        expect(asUser.answers, asAdmin.answers)
+        let asAnonymous = fixProbed(TodoHarness::anonymous(), request)
+        expect(asAnonymous.answers, asAdmin.answers)
+        expect(TodoHarness::failures("all three principals collect the same four answers; nothing kept", listConcat(
+            fixUndone(asAdmin, retryLists(), retryItems()),
+            listConcat(fixUndone(asUser, retryLists(), retryItems()),
+                fixUndone(asAnonymous, retryLists(), retryItems())))), [])
+        fixChecked("anonymous still gets full validation: UpdateItem carries no sign-in rule",
+            UpdateItem { edit: ItemEdit { id: 99, title: "", done: false } },
+            fixAll(faults([fixEmptyTitle()])))
+    }
+
+    /// The fresh id comes from the seed count ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE],
+    /// [MULTI-REPLAY], [MULTI-REPLAY-STATE]): `withStore` answers
+    /// `length(seedLists) + 1` and every branch reopens the same snapshot, so all
+    /// four branches answer the same id whatever the seeds, and none of them keeps it.
+    export fn seedCountSetsNewIdCase() = {
+        fixCase("no seeds: the first list id is 1 in all four branches", [], [],
+            CreateList { list: NewList { title: "Travel", colour: "#D98B2B" } },
+            fixAll(createdId(1)), fixFourAnswers)
+        fixCase("two seeds: every branch answers 3", retryLists(), retryItems(),
+            CreateList { list: NewList { title: "Travel", colour: "#D98B2B" } },
+            fixAll(createdId(3)), fixFourAnswers)
+        fixCase("three seeds: every branch answers 4 and the rows stay the seeds", fixAbcSeeds(), retryItems(),
+            CreateList { list: NewList { title: "Travel", colour: "#D98B2B" } },
+            fixAll(createdId(4)), fixFourAnswers)
+    }
+
+    /// The resume count IS the fixes list ([MULTI-HANDLE-MANY], [MULTI-DECL],
+    /// [EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE], [MULTI-REPLAY]): four answers for
+    /// every request kind, six clock readings each — one start, never re-run —
+    /// and `fixes()` spells the exact branch order.
+    export fn resumeCountIsFixesCase() = {
+        expect(TodoProbe::fixes(), ["as sent", "title trimmed", "title cut to 200 characters", "default colour"])
+        fixCase("CreateList resumes four times", retryLists(), retryItems(),
+            CreateList { list: NewList { title: "Travel", colour: "" } },
+            fixAll(createdId(3)), fixFourAnswers)
+        fixCase("UpdateList resumes four times", retryLists(), retryItems(),
+            UpdateList { edit: ListEdit { id: 1, title: "Renamed", colour: "#26A69A" } },
+            fixAll(updatedOk()), fixFourAnswers)
+        fixCase("CreateItem resumes four times", retryLists(), retryItems(),
+            CreateItem { item: NewItem { listId: 2, title: "Fresh" } },
+            fixAll(createdId(4)), fixFourAnswers)
+        fixCase("UpdateItem resumes four times", retryLists(), retryItems(),
+            UpdateItem { edit: ItemEdit { id: 3, title: "Tax", done: true } },
+            fixAll(updatedOk()), fixEndsAndFour)
+    }
+
+    /// A branch's completion event never leaks ([MULTI-REPLAY],
+    /// [MULTI-REPLAY-STATE], [EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE]): every resume
+    /// that flips Done raises TodoItemCompleted inside its own branch, and the
+    /// probe rewinds it, so the report stays empty and the rows stay the seeds.
+    export fn abandonedBranchEventsCase() = {
+        fixChecked("all four branches complete item 1 and none publishes",
+            UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: true } },
+            fixAll(updatedOk()))
+        fixChecked("the cut branch completes and rolls back; the others never reach the item",
+            UpdateItem { edit: ItemEdit { id: 1, title: retryWide(201), done: true } },
+            fixOnlyCut(updatedOk()))
+        fixChecked("item 2's completion is rewound in every branch too",
+            UpdateItem { edit: ItemEdit { id: 2, title: "Bread", done: true } },
+            fixAll(updatedOk()))
+        fixChecked("done false raises nothing and keeps every row byte-for-byte",
+            UpdateItem { edit: ItemEdit { id: 3, title: "Tax", done: false } },
+            fixAll(updatedOk()))
+    }
+}

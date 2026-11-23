@@ -1,0 +1,14 @@
+one: ok 1 | error: step 1 refused 0
+two: ok 13 | error: step 1 refused 0 | error: step 2 refused 1
+eight ok: ok 3601
+eight fails: error: step 1 refused 0 / error: step 2 refused 1 / error: step 3 refused 3 / error: step 4 refused 6 / error: step 5 refused 10 / error: step 6 refused 15 / error: step 7 refused 21 / error: step 8 refused 28
+twelve ok: ok 81
+twelve fails: error: step 1 refused 0 / error: step 2 refused 1 / error: step 3 refused 3 / error: step 4 refused 6 / error: step 5 refused 10 / error: step 6 refused 15 / error: step 7 refused 21 / error: step 8 refused 28 / error: step 9 refused 36 / error: step 10 refused 45 / error: step 11 refused 55 / error: step 12 refused 66
+guards: ok 35 | error: 2 is below 3 | error: 8 is below 10
+framed: <outer><inner>error: step 2 refused 1</inner></outer> | <outer><inner>ok 13</inner></outer>
+arms: ok 25 | error: 1 is below 2 | error: unknown kind other
+lambdas: ["error: 1 is below 2", "ok 102", "ok 105"]
+handler: audited [error: 1 is below 2][ok 12]
+ok 1 - use flattens chains of every length and passes each Error through unchanged
+1..1
+# tests=1 passed=1 failed=0 skipped=0

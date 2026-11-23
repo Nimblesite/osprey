@@ -71,20 +71,6 @@ impl Tree {
             _ => None,
         }
     }
-
-    /// The words a control event carries for this value: nothing, text, a flag or a whole number.
-    pub(crate) fn words(&self) -> String {
-        match self {
-            Self::Text(text) => text.clone(),
-            Self::Bool(on) => (*on).to_string(),
-            Self::Whole(whole) => whole.to_string(),
-            Self::Real(real) if real.fract() == 0. && real.abs() < 9e15 => {
-                (*real as i64).to_string()
-            }
-            Self::Real(real) => real.to_string(),
-            Self::Null | Self::Items(_) | Self::Record(_) => String::new(),
-        }
-    }
 }
 
 /// Reads a string member of a well-formed record.
@@ -114,9 +100,22 @@ pub(crate) fn list<'a>(node: &'a Tree, name: &str) -> &'a [Tree] {
         .map_or(&[], Vec::as_slice)
 }
 
-/// Every value directly inside `node`: a record's members or a list's items.
+/// Every value directly inside `node`: a record's members or a list's items. An aside's two
+/// columns come first in the order they are drawn ([UI-COMPONENTS-SPLITTER]).
 pub(crate) fn inside(node: &Tree) -> Vec<&Tree> {
     match node {
+        Tree::Record(members) if string(node, "kind") == "aside" => {
+            let drawn = match string(node, "side") {
+                "leading" => ["aside", "pane"],
+                _ => ["pane", "aside"],
+            };
+            let columns = drawn.iter().filter_map(|name| members.get(*name));
+            let rest = members
+                .iter()
+                .filter(|(name, _)| !drawn.contains(&name.as_str()))
+                .map(|(_, value)| value);
+            columns.chain(rest).collect()
+        }
         Tree::Record(members) => members.values().collect(),
         Tree::Items(items) => items.iter().collect(),
         _ => Vec::new(),
@@ -315,4 +314,5 @@ fn shape(value: &Tree) -> &'static str {
 }
 
 #[cfg(test)]
+#[path = "tree/tests.rs"]
 mod tests;

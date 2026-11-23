@@ -32,7 +32,10 @@ static void *refusable_realloc(void *old, size_t size) { return g_refuse_realloc
 #define malloc(size) refusable_malloc(size)
 #define calloc(n, size) refusable_calloc((n), (size))
 #define realloc(old, size) refusable_realloc((old), (size))
+// The ceiling ends a child without atexit, so its coverage is written first.
+#define _Exit(status) (OSP_GCOV_DUMP(), _exit(status))
 #include "memory_arc.c"
+#undef _Exit
 #undef malloc
 #undef calloc
 #undef realloc
@@ -82,10 +85,12 @@ static void flush_coverage_and_exit(int signal_number) {
   OSP_GCOV_DUMP();
   _exit(ABORTED_STATUS);
 }
-// A fatal guard runs in a forked child, which must abort naming what ran out.
-static void aborts_naming(void (*scenario)(void), const char *message) {
+// What the last guarded child wrote to stderr.
+static char g_seen[256];
+// A fatal guard runs in a forked child, which must end with `expected`, naming what ran out.
+static void dies_naming(void (*scenario)(void), const char *message, int expected) {
   int err[2];
-  char seen[128];
+  char *seen = g_seen;
   int status;
   CHECK(pipe(err) == 0);
   (void)fflush(NULL);
@@ -98,13 +103,13 @@ static void aborts_naming(void (*scenario)(void), const char *message) {
     _exit(0); // no abort: the status check below fails
   }
   close(err[1]);
-  ssize_t n = read(err[0], seen, sizeof seen - 1);
+  ssize_t n = read(err[0], seen, sizeof g_seen - 1);
   close(err[0]);
   CHECK(n > 0);
   seen[n] = '\0';
   CHECK(strstr(seen, message) != NULL);
   CHECK(waitpid(child, &status, 0) == child);
-  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == ABORTED_STATUS);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == expected);
 }
 static void exhaust_worklist(void) {
   g_refuse_realloc = 1;
@@ -129,8 +134,8 @@ static void t_allocator_refusal(void) {
   CHECK(osp_arc_live_objects() == live + 1);
   osp_release(after);
   CHECK(osp_arc_live_objects() == live);
-  aborts_naming(exhaust_worklist, "ARC release worklist exhausted");
-  aborts_naming(exhaust_registry, "ARC allocation registry exhausted");
+  dies_naming(exhaust_worklist, "ARC release worklist exhausted", ABORTED_STATUS);
+  dies_naming(exhaust_registry, "ARC allocation registry exhausted", ABORTED_STATUS);
   CHECK(g_wl_top <= g_wl_cap && g_used < g_cap); // the children changed only themselves
 }
 // [GC-ARC-PERCEUS] A cluster whose home is the last bucket wraps through zero.
@@ -163,6 +168,46 @@ static void t_wrapped_cluster(void) {
   CHECK(*arc_recent(keys[0]) != keys[0] && arc_lookup_body(keys[0]) == NULL);
 }
 
+// [MEM-HEAP-CEILING] A heap that keeps everything ends at its ceiling, naming the limit, a
+// peak within one block of it and the request it refused. One block no heap under the
+// ceiling could hold is refused instead, garbage never counts against a live program,
+// and dead blocks parked for reuse are handed back before the ceiling stops anything.
+#define CEILING_ROOM ((size_t)1 << 20)
+#define CEILING_BLOCK ((size_t)64 << 10)
+#define CEILING_PARKED 12000
+static void fill_past_the_ceiling(void) {
+  g_heap_peak = g_arc_resident; // the ceiling starts here, so the peak does too
+  g_heap_limit = g_arc_resident + CEILING_ROOM;
+  for (;;) {
+    (void)osp_alloc((int64_t)CEILING_BLOCK);
+  }
+}
+static void t_heap_ceiling(void) {
+  static void *parked[CEILING_PARKED];
+  size_t unlimited = g_heap_limit, limit = 0, peak = 0, request = 0;
+  dies_naming(fill_past_the_ceiling, "osprey: heap limit exceeded: backend=arc", OSP_HEAP_EXHAUSTED_STATUS);
+  CHECK(sscanf(g_seen, "osprey: heap limit exceeded: backend=arc limit_bytes=%zu peak_bytes=%zu request_bytes=%zu",
+               &limit, &peak, &request) == 3);
+  CHECK(limit == g_arc_resident + CEILING_ROOM && request == CEILING_BLOCK);
+  CHECK(peak <= limit && peak > limit - CEILING_BLOCK - OSP_ARC_HDR - OSP_POOL_GRAIN);
+  g_heap_limit = limit;
+  g_heap_peak = g_arc_resident;
+  CHECK(osp_alloc((int64_t)(2 * limit)) == NULL && osp_arc_malloc(2 * limit) == NULL);
+  for (int i = 0; i < 128; i++) {
+    osp_release(mk(CEILING_BLOCK, OSP_MEM_RAW)); // eight ceilings of garbage
+  }
+  for (size_t width = 48; width <= 80; width += 32) { // three quarters of the room, twice over
+    for (int i = 0; i < CEILING_PARKED * 48 / (int)width; i++) {
+      parked[i] = mk(width, OSP_MEM_RAW);
+    }
+    for (int i = 0; i < CEILING_PARKED * 48 / (int)width; i++) {
+      osp_release(parked[i]);
+    }
+  }
+  CHECK(g_arc_resident <= limit && g_heap_peak <= limit);
+  g_heap_limit = unlimited;
+}
+
 int main(void) {
   // Precedes the first allocation: arc_arm_debug() latches once, forever.
   (void)setenv("OSPREY_ARC_DEBUG", "2", 1);
@@ -176,7 +221,7 @@ int main(void) {
   t_list_hdr_kinds(); t_list_hdr_edges(); t_list_hdr_extern();
   t_deep_chain(); t_alloc_noinit(); t_mask_direct(); t_wide_fanout();
   t_registry_churn(); t_slot_reuse(); t_diagnostic_counters();
-  t_allocator_refusal();
+  t_allocator_refusal(); t_heap_ceiling();
   // Everything below runs LOCKED (notify is monotonic): the shim suite
   // re-exercises the whole ABI down the heap_lock mutex branch.
   t_multithreaded(); t_owned_text_lifetime(); t_shim_malloc_calloc_free();

@@ -34,9 +34,31 @@ impl Lowerer<'_> {
             "dotted_name" | "identifier" => self.capture(node),
             "class_pattern" => self.constructor_pattern(node),
             "list_pattern" => self.list_pattern(node),
+            "union_pattern" => self.or_pattern(node),
             "true" | "false" | "integer" | "float" | "string" => self.literal_pattern(node),
             _ => self.unsupported(node),
         }
+    }
+
+    /// `case A() | B():` — each alternative binds from the same scope, and
+    /// the first alternative's bindings are the arm's ([PATTERN-OR-SYNTAX],
+    /// [PATTERN-OR-BINDINGS]; the checker holds the rest to the same names).
+    fn or_pattern(&mut self, node: Node<'_>) -> Result<Pattern> {
+        let before = self.binding_snapshot();
+        let mut first = None;
+        let mut alternatives = Vec::new();
+        for child in children(node) {
+            self.restore_bindings(before.clone());
+            match self.pattern(child)? {
+                Pattern::Or(nested) => alternatives.extend(nested),
+                single => alternatives.push(single),
+            }
+            if first.is_none() {
+                first = Some(self.binding_snapshot());
+            }
+        }
+        self.restore_bindings(first.unwrap_or(before));
+        Ok(Pattern::Or(alternatives))
     }
 
     fn capture(&mut self, node: Node<'_>) -> Result<Pattern> {
@@ -77,8 +99,10 @@ impl Lowerer<'_> {
         let mut fields = Vec::new();
         let mut sub_patterns = Vec::new();
         for child in children(node).into_iter().skip(1) {
-            let inner = Self::first(child)?;
-            if inner.kind() == "keyword_pattern" {
+            if let Some(inner) = child
+                .named_child(0)
+                .filter(|inner| inner.kind() == "keyword_pattern")
+            {
                 let (field, binder) = self.field_pattern(inner)?;
                 if fields.contains(&field) {
                     return Err(Self::error(

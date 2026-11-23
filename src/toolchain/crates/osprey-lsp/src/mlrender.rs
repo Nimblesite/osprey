@@ -33,7 +33,7 @@ pub const fn fence(flavor: Flavor) -> &'static str {
 #[must_use]
 pub fn signature(flavor: Flavor, sig: &str) -> String {
     match flavor {
-        // TypeScript hover keeps the canonical rendering until plan 0061 phase E.
+        // TypeScript hover uses the canonical rendering.
         Flavor::Default | Flavor::TypeScript => sig.to_owned(),
         Flavor::Ml => ml_signature(sig),
         Flavor::Python => python_signature(sig),

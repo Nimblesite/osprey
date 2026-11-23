@@ -1,32 +1,58 @@
 type Signature = (&'static str, &'static [&'static str], &'static str);
 
-pub(super) fn signatures(module: &str) -> Result<&'static [Signature], String> {
-    Ok(match module {
-        "CanvasGeometry" => &[("offset", &["α", "α"], "α"), ("shifted", &["α", "α"], "α")],
-        "DialMath" => &[("moved", &["α", "α"], "α")],
-        "FitMath" => &[("clip", &["α", "α", "α"], "α")],
-        "TimelineGeometry" => &[("heardSeconds", &["α", "α", "α", "α", "α"], "α")],
-        "DelayLines" => &[("push", &["DelayLine α", "α"], "DelayLine α")],
-        "ArrangeMath" => &[
+/// Each production module the proof reads, with the signature of every function it proves.
+const SIGNATURES: &[(&str, &[Signature])] = &[
+    (
+        "CanvasGeometry",
+        &[("offset", &["α", "α"], "α"), ("shifted", &["α", "α"], "α")],
+    ),
+    ("DialMath", &[("moved", &["α", "α"], "α")]),
+    ("FitMath", &[("clip", &["α", "α", "α"], "α")]),
+    (
+        "TimelineGeometry",
+        &[("heardSeconds", &["α", "α", "α", "α", "α"], "α")],
+    ),
+    (
+        "DelayLines",
+        &[("push", &["DelayLine α", "α"], "DelayLine α")],
+    ),
+    (
+        "ArrangeMath",
+        &[
             ("gated", &["α", "α", "α", "α"], "α"),
             ("enveloped", &["α", "α", "α", "α", "α", "α"], "α"),
+            ("panLeft", &["α"], "α"),
+            ("panRight", &["α"], "α"),
+            ("bused", &["α", "α", "α"], "α"),
         ],
-        "PhaseMath" => &[
+    ),
+    (
+        "PhaseMath",
+        &[
             ("window", &["α"], "α"),
             ("windowedPhase", &["α", "α", "α"], "α"),
         ],
-        "PhaseOperators" => &[
+    ),
+    (
+        "PhaseOperators",
+        &[
             ("basePhase", &["α", "α"], "α"),
             ("pulse", &["α", "Pulse α"], "α"),
             ("shaped", &["PhaseShape α", "α"], "α"),
         ],
-        "GrainMath" => &[("asr", &["α", "α", "α", "α"], "α")],
-        "GrainWindows" => &[
+    ),
+    ("GrainMath", &[("asr", &["α", "α", "α", "α"], "α")]),
+    (
+        "GrainWindows",
+        &[
             ("hann", &["α", "α"], "α"),
             ("value", &["Envelope α", "Nat", "Nat"], "α"),
         ],
-        "Interpolation" => &[("linear", &["α", "α", "α"], "α")],
-        "NonlinearMath" => &[
+    ),
+    ("Interpolation", &[("linear", &["α", "α", "α"], "α")]),
+    (
+        "NonlinearMath",
+        &[
             ("tanh", &["α"], "α"),
             ("hard", &["α"], "α"),
             ("cubic", &["α"], "α"),
@@ -36,13 +62,22 @@ pub(super) fn signatures(module: &str) -> Result<&'static [Signature], String> {
             ("cubicIntegral", &["α"], "α"),
             ("foldIntegral", &["α"], "α"),
         ],
-        "Waveshapers" => &[
+    ),
+    (
+        "Waveshapers",
+        &[
             ("curve", &["Curve", "α"], "α"),
             ("integral", &["Curve", "α"], "α"),
             ("shaped", &["Shaper", "α", "α"], "α"),
         ],
-        "Allpasses" => &[("next", &["α", "AllpassState α", "α"], "AllpassSample α")],
-        "StrikeCombs" => &[
+    ),
+    (
+        "Allpasses",
+        &[("next", &["α", "AllpassState α", "α"], "AllpassSample α")],
+    ),
+    (
+        "StrikeCombs",
+        &[
             ("delay", &["Strike α"], "α"),
             (
                 "next",
@@ -50,13 +85,22 @@ pub(super) fn signatures(module: &str) -> Result<&'static [Signature], String> {
                 "Except ops.Fault (LineSample α (DelayLine α))",
             ),
         ],
-        "SpectralStreams" => &[
+    ),
+    (
+        "SpectralStreams",
+        &[
             ("overlapScale", &["α", "α"], "α"),
             ("overlapped", &["α", "α", "α"], "α"),
         ],
-        "TableMath" => &[("harmonic", &["α", "α", "α", "α"], "α")],
-        "Wavetables" => &[("value", &["List (Harmonic α)", "α", "α"], "α")],
-        "SpectralMath" => &[
+    ),
+    ("TableMath", &[("harmonic", &["α", "α", "α", "α"], "α")]),
+    (
+        "Wavetables",
+        &[("value", &["List (Harmonic α)", "α", "α"], "α")],
+    ),
+    (
+        "SpectralMath",
+        &[
             ("power", &["α", "α"], "α"),
             ("magnitude", &["α", "α"], "α"),
             ("unitRe", &["α", "α"], "α"),
@@ -66,12 +110,18 @@ pub(super) fn signatures(module: &str) -> Result<&'static [Signature], String> {
             ("productRe", &["α", "α", "α", "α"], "α"),
             ("productIm", &["α", "α", "α", "α"], "α"),
         ],
-        "SpectralFrames" => &[
+    ),
+    (
+        "SpectralFrames",
+        &[
             ("scaled", &["Bin α", "α"], "Bin α"),
             ("turned", &["Bin α", "Bin α"], "Bin α"),
             ("rotation", &["Bin α", "Bin α"], "Bin α"),
         ],
-        "Ffts" => &[
+    ),
+    (
+        "Ffts",
+        &[
             ("valid", &["Int"], "Bool"),
             ("incomplete", &[], "Except ops.Fault (List (Bin α))"),
             ("conjugate", &["Bin α"], "Bin α"),
@@ -99,6 +149,13 @@ pub(super) fn signatures(module: &str) -> Result<&'static [Signature], String> {
                 "Except ops.Fault (List (Bin α))",
             ),
         ],
-        other => return Err(format!("unsupported production module {other}")),
-    })
+    ),
+];
+
+pub(super) fn signatures(module: &str) -> Result<&'static [Signature], String> {
+    SIGNATURES
+        .iter()
+        .find(|(name, _)| *name == module)
+        .map(|(_, found)| *found)
+        .ok_or_else(|| format!("unsupported production module {module}"))
 }

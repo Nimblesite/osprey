@@ -5,7 +5,7 @@
 //!
 //! `path` (default `.`) is a single file run as-is, a project directory (one
 //! holding `osprey.toml`) run as one suite, or a directory searched
-//! recursively for `*.test.osp` / `*.test.ospml`, sorted for determinism,
+//! recursively for the flavor suites in [TESTING-FILE-CONVENTION], sorted for determinism,
 //! skipping hidden, `target`, and `node_modules` directories. Each file
 //! compiles and runs like `osprey <file> --run --quiet --no-warnings`: a suite is
 //! executed, not reviewed, and the warning pass re-infers the whole program
@@ -277,6 +277,7 @@ fn run_suite(
     if let Some(directory) = &scratch {
         let _ = command.current_dir(&directory.path);
     }
+    crate::toolchain::runner_alive()?;
     command.output()
 }
 
@@ -295,6 +296,7 @@ fn suite_command(
         .arg(file)
         .args(["--run", "--quiet", "--no-warnings"])
         .env(TEST_CACHE_DIR_ENV, std::path::absolute(cache_dir)?);
+    crate::toolchain::ends_with_this_process(&mut command);
     if let Some(memory) = memory {
         let _ = command.arg(format!("--memory={memory}"));
     }

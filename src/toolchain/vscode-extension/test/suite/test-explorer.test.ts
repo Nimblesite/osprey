@@ -308,6 +308,52 @@ suite("Osprey Test Explorer", () => {
       assert.match(String(item.error), /ENOENT|nonexistent/);
     });
 
+    test("discovery follows opted-in Python and TypeScript suites", async function () {
+      const osprey = requireCompiler(this, compiler, 30000);
+      const py = fixtures.write(
+        "selected.test.py",
+        '# metadata\n#osprey: flavor=python\ntest("selected", lambda: expect(1, 1))\n',
+      );
+      const ts = fixtures.write(
+        "selected.test.ts",
+        '// osprey: flavor=typescript\ntest("selected", () => expect(1, 1));\n',
+      );
+      const plain = fixtures.write("ordinary.test.py", "assert True\n");
+      const controller = newController();
+      const discovery = makeDiscovery(
+        controller,
+        () => osprey,
+        () => Promise.resolve([py, ts, plain]),
+      );
+      assertClassified(isTestFile, [py, ts], [plain]);
+      await discovery.rescan();
+      assert.strictEqual(fileItems(controller.items).length, 2);
+      for (const uri of [py, ts]) {
+        assert.strictEqual(
+          controller.items.get(fileTestId(uri.toString()))?.children.size,
+          1,
+        );
+      }
+      fs.writeFileSync(py.fsPath, "assert True\n");
+      await discovery.changed(py);
+      fs.rmSync(ts.fsPath);
+      await discovery.deleted(ts);
+      assert.strictEqual(fileItems(controller.items).length, 0);
+      const manifest = fixtures.write(
+        "osprey.toml",
+        '[project]\npython_sources = ["selected.test.py"]\n',
+      );
+      fs.writeFileSync(py.fsPath, 'test("manifest", lambda: expect(2, 2))\n');
+      await discovery.changed(manifest);
+      assert.strictEqual(
+        controller.items.get(fileTestId(py.toString()))?.children.size,
+        1,
+      );
+      fs.rmSync(manifest.fsPath);
+      await discovery.deleted(manifest);
+      assert.strictEqual(fileItems(controller.items).length, 0);
+    });
+
     test("discovery reacts to test files, modules, and build output", async function () {
       const osprey = requireCompiler(this, compiler, 60000);
       const projectDir = fs.mkdtempSync(path.join(fixtures.path, "project-"));

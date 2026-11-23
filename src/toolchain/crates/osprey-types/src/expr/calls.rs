@@ -25,6 +25,9 @@ impl Checker {
             return self.infer_method_call(site, parts, env);
         }
         let (fname, ft) = self.infer_callee(function, env);
+        if self.callback_arity_mismatch(fname.as_deref(), &ft, arguments) {
+            return self.ctx.fresh();
+        }
         let args = self.ordered_arg_types(fname.as_deref(), &ft, arguments, named, env);
         self.apply_bound_fn(fname.as_deref(), &ft, args, env)
     }

@@ -125,6 +125,10 @@ fn link_argv_uses_crt1_runtime_archive_and_libc() {
     assert!(argv.iter().any(|a| a == "-lc"));
     assert!(argv.iter().any(|a| a == "--export=osp_alloc"));
     assert!(!argv.iter().any(|a| a.contains(WEB_DISPATCH)));
+    // [MULTI-WASM-MANY] An 8 MiB stack below the data: deep many recursion
+    // fits, and an overflow traps instead of overwriting static data.
+    assert!(argv.iter().any(|a| a == "--stack-first"));
+    assert!(argv.iter().any(|a| a == "stack-size=8388608"));
     let oi = argv.iter().position(|a| a == "-o").expect("has -o");
     assert_eq!(argv.get(oi + 1).map(String::as_str), Some("/out/p.wasm"));
 }

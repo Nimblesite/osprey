@@ -3,7 +3,7 @@
 //! refuse, and read host-held slices through `native_slice`. The pinning tests of the slice store
 //! live in `ffi_import_tests.rs` and the frame's own tests in `ffi_frame_tests.rs`.
 
-use super::test_support::{poison, serial, LIVE_BUFFERS, TEXT_BYTES};
+use super::test_support::{poison, serial, slice, LIVE_BUFFERS, TEXT_BYTES};
 use super::*;
 use crate::frame;
 use std::sync::atomic::{AtomicI32, AtomicIsize, AtomicUsize};
@@ -331,12 +331,12 @@ fn import_text(pointer: *const c_char) -> Result<String, String> {
 
 fn snapshot_observation() -> Result<String, String> {
     let key = held("snapshot-test")?;
-    let pointer = native_slice(key.as_ptr());
+    let pointer = slice(key.as_ptr());
     std::thread::spawn(|| put_slice("snapshot-test", "after"))
         .join()
         .map_err(|_| "slice writer panicked".to_owned())??;
     let first = import_text(pointer)?;
-    let again = import_text(native_slice(key.as_ptr()))?;
+    let again = import_text(slice(key.as_ptr()))?;
     let latest = get_slice("snapshot-test").ok_or("missing latest slice")?;
     Ok(format!("{first}|{again}|{latest}"))
 }
@@ -353,7 +353,7 @@ fn nested_output() -> i64 {
 
 fn bounded_observation() -> Result<String, String> {
     let key = held("allocation-test")?;
-    let pointer = native_slice(key.as_ptr());
+    let pointer = slice(key.as_ptr());
     std::thread::spawn(|| {
         let replacement = "w".repeat(TEXT_BYTES);
         (0..256).try_for_each(|_| put_slice("allocation-test", &replacement))
@@ -369,9 +369,9 @@ fn empty_key_observation() -> Result<String, String> {
     let invalid = [0xff_u8, 0];
     let missing = held("missing-import-key").expect("valid key");
     let pointers = [
-        native_slice(std::ptr::null()),
-        native_slice(invalid.as_ptr().cast()),
-        native_slice(missing.as_ptr()),
+        slice(std::ptr::null()),
+        slice(invalid.as_ptr().cast()),
+        slice(missing.as_ptr()),
     ];
     let texts: Result<Vec<_>, _> = pointers.into_iter().map(import_text).collect();
     Ok(format!("{texts:?}"))
@@ -396,7 +396,7 @@ fn nested_dispatch_output() -> i64 {
 fn poisoned_callback_output() -> i64 {
     poison(slices());
     let key = held("snapshot-test").expect("valid key");
-    let _ = native_slice(key.as_ptr());
+    let _ = slice(key.as_ptr());
     if MODE.load(Ordering::SeqCst) == 9 {
         let _ = Library::open(0, 0, "nested", "/home", false);
     }

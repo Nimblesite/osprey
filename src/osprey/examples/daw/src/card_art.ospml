@@ -47,7 +47,7 @@ module CardArts
         base = match same (before.skin, after.skin)
             true => after
             false => after(art = [])
-        base(art = listConcat [scenery base, dock base] (cards base))
+        base(art = listPrepend (cards base) (scenery base))
 
     // The art kept in `slot` while its `wanted` key is current, else drawn now.
     fixed (editor, slot, wanted, draw) = match listGet (filterList (editor.art, \art => art.artNode == slot && art.artKey == wanted)) 0
@@ -62,12 +62,3 @@ module CardArts
 
     (** The header, inspector and legend: redrawn when the selection, its settings or the note change, not on a move. *)
     export scenery editor = fixed (editor, -1, sceneryKey editor, \() => CardArt(artNode = -1, artKey = sceneryKey editor, artShapes = PrismArt::background editor, artControls = []))
-
-    dockKey editor = "${sceneryKey editor}:${editor.keyboardShown}:${editor.keyboardWidth}"
-
-    dockDrawn editor = match editor.keyboardShown
-        false => CardArt(artNode = -2, artKey = dockKey editor, artShapes = [], artControls = [])
-        true => CardArt(artNode = -2, artKey = dockKey editor, artShapes = PrismArt::deck (PrismArt::keyboardEditor editor), artControls = PrismArt::keyboardAccess (PrismArt::keyboardEditor editor))
-
-    (** The keyboard dock's artwork and keys, kept while the note and the dock's size stay. *)
-    export dock editor = fixed (editor, -2, dockKey editor, \() => dockDrawn editor)

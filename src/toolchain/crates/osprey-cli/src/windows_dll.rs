@@ -8,7 +8,10 @@
 //! no slot: the archive answers it inside the DLL. Only the boundary is exported: the entry, the
 //! C exports, the binders and the shared-memory bridge table.
 
-use super::{c_header, defines, llvm_params, rename_symbol, CType, Export, HostAbi, Import, ENTRY};
+use super::{
+    c_header, defines, llvm_params, rename_symbol, CType, Export, HostAbi, Import, ENTRY,
+    HOST_ABI_VERSION, RELEASE_STRING,
+};
 use std::fmt::Write as _;
 
 /// What `osprey_main` returns while an import slot is still empty.
@@ -97,11 +100,15 @@ fn reject_binder_clashes(ir: &str, slotted: &[Import]) -> Result<(), String> {
     }
 }
 
-/// Marks the C exports `dllexport`, so the DLL exports them and nothing else of the program.
+/// Marks the C exports `dllexport`, so the DLL exports them and nothing else of the program,
+/// together with the ownership ABI every header declares: the version a host checks and the
+/// release a host calls on a returned string.
 fn dllexported(ir: &str, exports: &[Export]) -> String {
     let needles: Vec<String> = exports
         .iter()
-        .map(|export| format!(" @{}(", export.c_name))
+        .map(|export| export.c_name.as_str())
+        .chain([HOST_ABI_VERSION, RELEASE_STRING])
+        .map(|name| format!(" @{name}("))
         .collect();
     ir.split_inclusive('\n')
         .map(|line| match line.strip_prefix("define ") {

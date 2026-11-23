@@ -80,7 +80,29 @@ def flash_attn_func(q, k, v, shapes, softmax_scale, causal, window_left, window_
     softmax_scale is qk^T's scale; causal is bottom-right aligned; window_left and
     window_right are local-attention distances (-1 unlimited); alibi_slopes holds one
     slope per query head ([] for none); dropout_p is always 0. Returns out, the
-    softmax log-sum-exp, and the probabilities (when return_attn_probs)."""
+    softmax log-sum-exp, and the probabilities (when return_attn_probs).
+
+    # Examples
+    ```osprey
+    from flash_attn import Attention, Core
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=3, heads_q=1, heads_k=1, headdim=1)
+            r = Attention.flash_attn_func([1.0, 2.0], [1.0, 2.0, 3.0], [10.0, 20.0, 30.0], shapes, 1.0, True, -1, -1, [], True)
+            print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(r.probs)}]")
+
+    show()
+    ```
+    ```output
+    [[17.31058578630005, 28.50937092220868]] [[2.313261687518223, 6.142931628499899]] [[0.2689414213699951, 0.7310585786300049, 0.0, 0.015876239976466765, 0.11731042782619838, 0.8668133321973349]]
+    ```
+    """
     n_out = shapes.batch * shapes.seqlen_q * shapes.heads_q * shapes.headdim
     out = toList(map(range(n_out), lambda o: out_element(q, k, v, shapes, softmax_scale, causal, window_left, window_right, alibi_slopes, o)))
     n_lse = shapes.batch * shapes.heads_q * shapes.seqlen_q
@@ -104,5 +126,27 @@ def flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_k, _max_seqlen_q, _
     """flash-attn's flash_attn_varlen_func: independent flash_attn_func over each
     sequence delimited by the cumulative lengths, outputs concatenated. max_seqlen_q
     and max_seqlen_k are accepted for API parity and unused (the shapes come off the
-    cumulative lengths)."""
+    cumulative lengths).
+
+    # Examples
+    ```osprey
+    from flash_attn import Attention
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            r = Attention.flash_attn_varlen_func([1.0, 2.0], [3.0, 4.0], [10.0, 20.0], [0, 1, 2], [0, 1, 2], 1, 1, 1, 1, 1, 1.0, False, -1, -1, [], False)
+            empty = Attention.flash_attn_varlen_func([], [], [], [0], [0], 0, 0, 1, 1, 1, 1.0, False, -1, -1, [], False)
+            print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(empty.out)}] [{toString(empty.lse)}]")
+
+    show()
+    ```
+    ```output
+    [[10.0, 20.0]] [[3.0, 8.0]] [[]] [[]]
+    ```
+    """
     return fold(range(len(cu_seqlens_q) - 1), FlashResult(out=[], lse=[], probs=[]), lambda acc, b: append_seq(acc, q, k, v, cu_seqlens_q, cu_seqlens_k, heads_q, heads_k, headdim, softmax_scale, causal, window_left, window_right, alibi_slopes, return_attn_probs, b))

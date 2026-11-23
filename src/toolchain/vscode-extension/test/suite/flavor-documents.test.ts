@@ -38,6 +38,13 @@ suite("flavor documents", () => {
     ]);
   });
 
+  test("an entry opts in its shared extension only inside the project section", () => {
+    const text = '[package]\nentry = "other.ts"\n[project] # root\nentry = "main.test.py"\n[dependencies]\npython_sources = ["helper.py"]\n';
+    assert.deepStrictEqual(listedSources(manifest, text), [
+      { language: "python", path: path.resolve("/work/shop/main.test.py") },
+    ]);
+  });
+
   test("a manifest without flavor lists claims nothing", () => {
     assert.deepStrictEqual(
       listedSources(manifest, '[project]\nname = "plain"\n'),

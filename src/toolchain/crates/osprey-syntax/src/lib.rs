@@ -28,6 +28,16 @@ pub(crate) const HANDLE_NEEDS_A_BLOCK: &str =
 pub(crate) const NOTHING_TO_HANDLE: &str =
     "this `handle` has nothing to handle; put the handled statements after it";
 
+/// A `use` with no enclosing block, in either flavor. Implements [BLOCK-USE-REJECT].
+pub(crate) const USE_NEEDS_A_BLOCK: &str =
+    "`use` must be a block statement: it passes the rest of its block to the call as a callback";
+
+/// A `use` on the last line of its block, in either flavor.
+pub(crate) const USE_NEEDS_A_REST: &str = "this `use` has nothing after it: its callback is the rest of the block, so put the steps it guards after it";
+
+/// A `use` whose right-hand side is not a call, in either flavor.
+pub(crate) const USE_NEEDS_A_CALL: &str = "`use` needs a call after `<-`, such as `use x <- andThen(step())`: the rest of the block is passed as its last argument";
+
 mod annotation_edits;
 #[cfg(test)]
 mod annotation_edits_tests;

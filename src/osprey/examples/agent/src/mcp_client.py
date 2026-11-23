@@ -417,11 +417,6 @@ def ping_replies(texts):
     return join(mapList(pings, lambda message: Mcp.encode_line(Mcp.ping_response(J.object_at(message, "id")))), "\n")
 
 
-def response_text_of(message_text):
-    """Tool text from one tagged message text, for the host-free suite."""
-    return call_text_of(message_text)
-
-
 def header_value(result, wanted):
     """One HTTP response header, case-insensitively, empty when absent."""
     headers = J.list_at(result, "headers")

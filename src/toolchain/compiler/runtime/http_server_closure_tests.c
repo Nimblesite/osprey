@@ -16,8 +16,8 @@
 // bare function pointer — crossed.
 // ---------------------------------------------------------------------------
 
-#define CLOSURE_PORT 18100
-#define CLOSURE_HELD_PORT 18101
+#define CLOSURE_PORT test_port(15)
+#define CLOSURE_HELD_PORT test_port(16)
 #define CLOSURE_HEADERS "Content-Type: application/json\r\nX-Closure: yes\r\n"
 
 extern int64_t http_listen_closure(int64_t server_id, void *closure);

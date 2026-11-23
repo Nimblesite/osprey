@@ -1,0 +1,125 @@
+// Osprey-only: resuming a request. MediatR's `next()` delegate runs once, so the C#
+// has none of this: a transaction that resumes the SAME captured request after a
+// lost commit, and the defaults the what-if probes replace ([EXAMPLE-CLEANARCH-INV-MULTISHOT]).
+
+namespace todo;
+
+import todo::TodoDomain
+import todo::TodoHost
+
+/// One transaction. `begin` is `many` ([MULTI-DECL]): a lost commit resumes the SAME
+/// request from here ([EXAMPLE-CLEANARCH-MULTISHOT-RETRY]).
+effect Tx {
+    control many replayable begin: fn() -> int
+}
+
+/// Which request to validate: the one sent, or one per candidate fix ([EXAMPLE-CLEANARCH-MULTISHOT-VALIDATE]).
+effect Rules {
+    control many replayable candidate: fn(Request) -> Request
+}
+
+/// Which page to read: the one asked, or several shapes ([EXAMPLE-CLEANARCH-MULTISHOT-PLAN]).
+effect Paging {
+    control many replayable window: fn(ItemQuery) -> ItemQuery
+}
+
+/// Optimistic transactions over the store.
+effect Rollback {
+    /// Open a transaction: remember the rows, answer the store version.
+    replayable begin: fn() -> int
+    /// Commit at that version; a rival who got in first rolls these writes back and fails it.
+    replayable commitAt: fn(int) -> Result<Unit, string>
+    /// Test seam: queue a rival writer who lands before the next commit.
+    rival: fn(string) -> Unit
+}
+
+/// The transaction that retries, and the answers the app gives the probes' questions.
+module TodoReplay {
+    /// Run `attempt`; after a lost commit resume it again from `Tx.begin`, up to three
+    /// attempts, with the lost attempt's events unpublished ([MULTI-REPLAY]).
+    export fn transacted(attempt) = {
+        handle Tx {
+            begin => {
+                let mark = perform Events.mark()
+                let first = resume(1)
+                let second = match lostCommit(first) {
+                    true => resume(rewound(mark, 2))
+                    false => first
+                }
+                let third = match lostCommit(second) {
+                    true => resume(rewound(mark, 3))
+                    false => second
+                }
+                match lostCommit(third) {
+                    true => rewound(mark, third)
+                    false => third
+                }
+            }
+        }
+        attempt()
+    }
+
+    /// `work` inside one attempt's transaction: a lost commit refuses, naming the attempt.
+    export fn inTransaction(work) = {
+        let number = perform Tx.begin()
+        let version = perform Rollback.begin()
+        let reply = work()
+        match perform Rollback.commitAt(version) {
+            Success _ => {}
+            Error { message } => perform Fail.refuse(Conflict { why: "attempt ${toString(number)}: ${message}" })
+        }
+        reply
+    }
+
+    /// Transactions over the whole store: a rival's commit restores the rows the
+    /// transaction opened on, adds the rival's list and fails the commit.
+    export fn withRollback(work) = {
+        mut version = 1
+        mut opened = perform Store.dump()
+        mut rivals: List<string> = []
+        handle Rollback {
+            begin => {
+                opened = perform Store.dump()
+                version
+            }
+            commitAt expected => match rivals {
+                [] => Success { value: {} }
+                [title, ...queued] => {
+                    perform Store.load(opened)
+                    perform Store.saveList(TodoList {
+                        id: perform Store.nextListId(),
+                        title: title,
+                        colour: TodoDomain::grey()
+                    })
+                    version = satAdd(version, 1)
+                    rivals = queued
+                    Error { message: "store changed under transaction at ${toString(expected)}, now ${toString(version)}" }
+                }
+            }
+            rival title => { rivals = listAppend(rivals, title) }
+        }
+        work()
+    }
+
+    /// The request as sent and the page as asked: the app answers each once.
+    export fn asSent(work) = TodoHost::relog({
+        handle Rules {
+            candidate request => resume(request)
+        }
+        handle Paging {
+            window query => resume(query)
+        }
+        TodoHost::holdingLog(work)
+    })
+
+    fn lostCommit(outcome) = match outcome {
+        Error { message: Conflict _ } => true
+        _ => false
+    }
+
+    /// `next` (an attempt number, or the last conflict) once the lost attempt's events are unpublished.
+    fn rewound(mark, next) = {
+        perform Events.rewind(mark)
+        next
+    }
+}

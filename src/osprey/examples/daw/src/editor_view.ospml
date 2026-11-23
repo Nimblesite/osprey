@@ -7,7 +7,7 @@ import ui::Scenes
 
 (** The modular patch's component menu, canvas, ports and parameter inspector. *)
 module EditorView
-    editorSlice () = perform Signal<Editor<Graph, GraphPending<Graph, ProcessorMemory<KernelState>>, GraphState<ProcessorMemory<KernelState>>, ui::Machine>>.read ()
+    editorSlice () = perform Signal<Editor<Graph, ui::Machine>>.read ()
 
     (** The name Prism shows for a processor. *)
     export processorTitle processor = match processor
@@ -213,11 +213,11 @@ module EditorView
     nodeOrder editor = listConcat (filterList (editor.graph.nodes, \n => n.identity != editor.selected)) (filterList (editor.graph.nodes, \n => n.identity == editor.selected))
 
     (** Hit testing follows complete card layers, so covered controls cannot steal a click. *)
-    export nodeAt (editor, px, py) = match graphArea (editor, px, py)
+    export nodeAt (editor, px, py) = match graphArea (editor, py)
         true => cardAt (editor, px, py)
         false => -1
 
-    graphArea (editor, px, py) = py >= 66.0 && py < 789.0 + ui::Machines::number (editor.skin, "spareHeight") && (editor.detailsShown || editor.selected < 0 || px < rightX (editor, 1210.0))
+    graphArea (editor, py) = py >= 66.0 && py < 789.0 + ui::Machines::number (editor.skin, "spareHeight")
 
     cardAt (editor, px, py) = foldList (nodeOrder editor, -1, \(found, n) =>
         at = EditorLayout::position (editor, n.identity)
@@ -296,11 +296,9 @@ module EditorView
         true => CableCanvas::drag (editor, px, py, down)
         false => ordinaryPointer (editor, px, py, down)
 
-    ordinaryPointer (editor, px, py, down) = match ModuleInspector::pointed (editor, px, py, down)
-        Success next => next
-        Error _ => match editor.dragging >= 0 || editor.paletteDrag != "" || graphArea (editor, px, py)
-            true => canvasPointer (editor, px, py, down)
-            false => editor
+    ordinaryPointer (editor, px, py, down) = match editor.dragging >= 0 || editor.paletteDrag != "" || graphArea (editor, py)
+        true => canvasPointer (editor, px, py, down)
+        false => editor
 
     canvasPointer (editor, px, py, down) = match editor.paletteDrag != ""
         true => match down
@@ -334,7 +332,7 @@ module EditorView
     shape (editor, n, layer) =
         at = EditorLayout::position (editor, n.identity)
         artwork = mapList ((CardArts::card (editor, n)).artShapes, \item => Header::placedShape (item, at.layoutX, at.layoutY, layer))
-        details = listConcat (listConcat (cardTitle (editor, n, at)) (monitorTrace (editor, n, at))) (listConcat (portShapes (editor, at, n.inputs, false)) (portShapes (editor, at, n.outputs, true)))
+        details = listConcat (cardTitle (editor, n, at)) (listConcat (portShapes (editor, at, n.inputs, false)) (portShapes (editor, at, n.outputs, true)))
         listConcat artwork (mapList (details, \item => Header::placedShape (item, 0.0, 0.0, layer)))
 
     (** A module's card, drawn from the skin: the costly part `CardArts` keeps. *)
@@ -374,13 +372,6 @@ module EditorView
 
     cardTitle (editor, n, at) = listConcat [text (componentName (editor, n), x at - 120.0, y at - 104.0, 11.0, 160, 8)] (midiLabel (editor, n, at))
 
-    monitorTrace (editor, n, at) = match n.processor == Sink && length editor.scopeSamples > 1
-        false => []
-        true => [Scenes::strip (foldList (toList (range (0, length editor.scopeSamples)), [], \(points, i) =>
-            match listGet editor.scopeSamples i
-                Error _ => points
-                Success value => listConcat points [CanvasGeometry::waveX (x at, toFloat i), CanvasGeometry::waveY (y at, value)]), Scenes::rgb (80, 229, 216), 2.5, 6)]
-
     palette () = listConcat [Scenes::rect (98.0, 420.0, 196.0, 708.0, 0.0, Scenes::rgb (19, 16, 36), 20), text ("MODULES", 18.0, 82.0, 15.0, 166, 22), text ("Click or drag to add", 18.0, 104.0, 12.0, 135, 22)] (foldList (toList (range (0, length EditorState::kinds)), [], \(all, i) => listConcat all [panel (12.0, CanvasGeometry::paletteY (toFloat i) - 17.0, 172.0, 35.0, 2563389, 21), text (EditorState::title (listGet EditorState::kinds i ?: ""), 22.0, CanvasGeometry::paletteY (toFloat i) - 8.0, 12.0, 224, 22)]))
 
     paletteAccess () = mapList (toList (range (0, length EditorState::kinds)), \i => accessible ("Add ${EditorState::title (listGet EditorState::kinds i ?: "")}", 12.0, CanvasGeometry::paletteY (toFloat i) - 17.0, 172.0, 35.0, false))
@@ -390,20 +381,18 @@ module EditorView
 
     // [DAW-HEADER] The Patch page's header: the shared tabs, the transport and Add module. Every other command
     // is in the window's menu bar ([DAW-MENU]).
-    toolbar editor = listConcat (listConcat (listConcat (Header::patchSubtitle editor) (Header::tabs (editor, Header::patchScale ()))) (Header::transport (826.0, 14.0, 50.0, 38.0, GraphPreview::active editor))) (listAppend (Header::plaque (943.0, 14.0, 134.0, 38.0, Scenes::rgb (52, 41, 110), 11)) (Scenes::lettering ("+  Add module", 1010.0, 25.0, 14.0, Scenes::rgb (240, 236, 255), 1, 500.0, 13)))
+    toolbar editor = listConcat (listConcat (Header::patchSubtitle editor) (Header::tabs (editor, Header::patchScale ()))) (listAppend (Header::plaque (943.0, 14.0, 134.0, 38.0, Scenes::rgb (52, 41, 110), 11)) (Scenes::lettering ("+  Add module", 1010.0, 25.0, 14.0, Scenes::rgb (240, 236, 255), 1, 500.0, 13)))
 
     toolbarItems editor =
-        buttons = [accessible ("Modules", 943.0, 14.0, 134.0, 38.0, editor.paletteShown), accessible ("Play patch", 826.0, 14.0, 50.0, 38.0, false), accessible ("Undo", rightX (editor, 1108.0), 15.0, 40.0, 37.0, false), accessible ("Redo", rightX (editor, 1160.0), 15.0, 40.0, 37.0, false)]
-        listConcat buttons (listConcat (Header::tabAreas (editor, Header::patchScale ())) (Header::stopArea (GraphPreview::active editor, "Stop playback", 876.0, 14.0, 50.0, 38.0)))
+        buttons = [accessible ("Modules", 943.0, 14.0, 134.0, 38.0, editor.paletteShown), accessible ("Undo", rightX (editor, 1108.0), 15.0, 40.0, 37.0, false), accessible ("Redo", rightX (editor, 1160.0), 15.0, 40.0, 37.0, false)]
+        listConcat buttons (Header::tabAreas (editor, Header::patchScale ()))
 
     (** The command behind header area `index` of the Patch page. *)
     export toolbarAction index = match index
         0 => ShowModules
-        1 => PlayGraph
-        2 => Undo
-        3 => Redo
-        7 => StopGraph
-        _ => ShowPage(page = Header::tabPage (satSub index 4))
+        1 => Undo
+        2 => Redo
+        _ => ShowPage(page = Header::tabPage (satSub index 3))
 
     (** The header area under a point of the Patch page, if any. *)
     export toolbarAt (editor, x, y) = listGet (filterList (toList (range (0, length (toolbarItems editor))), \i =>
@@ -440,15 +429,14 @@ module EditorView
         library = match editor.paletteShown || editor.paletteDrag != ""
             true => mapList (palette (), \primitive => Header::placedShape (primitive, 0.0, 0.0, satMul (satAdd (length ordered) 1) 100))
             false => []
-        details = ModuleInspector::shapes editor
-        chrome = listConcat details (listAppend (toolbar editor) (text (editor.message, 32.0, 767.0, 12.0, 170, 12)))
+        chrome = listAppend (toolbar editor) (text (editor.message, 32.0, 767.0, 12.0, 170, 12))
         shapes = ui::Lists::flatten [(CardArts::scenery editor).artShapes, CableCanvas::shapes editor, nodes, mapList (chrome, \item => Header::placedShape (item, 0.0, 0.0, PrismArt::chromeLayer editor)), library, NodeContext::shapes editor]
         scene = Ui::zoomed (pageZoom, ui::Pick::either (editor.detailsShown, 1212.0, 1536.0), 828.0, PrismArt::atlas editor.skin, shapes, ui::Pick::either (editor.patchWindowSerial > 0, PatchSurface, Surface))
         access = listConcat (toolbarItems editor) (foldList (editor.graph.nodes, [], \(all, n) => listConcat all (listConcat (nodeAccess (editor, n)) (CardArts::controls (editor, n)))))
         extra = match editor.paletteShown
             true => paletteAccess ()
             false => []
-        Ui::described (scene, listConcat (listConcat access (CableCanvas::access editor)) (listConcat extra (listConcat (ModuleInspector::access editor) (NodeContext::access editor))))
+        Ui::described (scene, listConcat (listConcat access (CableCanvas::access editor)) (listConcat extra (NodeContext::access editor)))
 
     inspector editor =
         style = ui::Frames::inset (16, 12, 16, 12)
@@ -457,15 +445,6 @@ module EditorView
         heading = Ui::row [Ui::styled ("Patch", ui::Heading, ui::Primary), ui::Spacer, Ui::button ("Close", "dismiss", ShowDetails)]
         local = theme ()
         Ui::themed (local(spacing = [4, 8, 8, 16, 24, 32]), Ui::framed (style(frameTextSize = 12, frameControlHeight = 28), Ui::column (listConcat [heading, menu editor, chooser] (mapList (selected, \n => component (editor, n))))))
-
-    keyboardDock editor =
-        dock = CardArts::dock editor
-        closeX = editor.keyboardWidth - 156.0
-        marks = listAppend dock.artShapes (text ("Close keyboard ×", closeX + 8.0, 8.0, 14.0, 190, 12))
-        keys = mapList (dock.artControls, \key => key(accessTop = key.accessTop - 828.0))
-        access = listAppend keys (accessible ("Close keyboard", closeX, 0.0, 150.0, 32.0, false))
-        style = ui::Frames::plain
-        Ui::framed (style(frameHeight = 135), Ui::described (Ui::zoomed (-0.75, 1536.0, 180.0, PrismArt::atlas editor.skin, marks, Keyboard), access))
 
     // [DAW-MENU] [DAW-KEYS] The window's menu bar holds every command, each with the shortcut the keymap in use
     // gives it. A command that cannot run now is disabled, which also frees its keys for its counterpart.
@@ -476,13 +455,12 @@ module EditorView
     menus editor =
         song = length editor.song.tracks > 0
         playing = editor.songTicket != ""
-        sounding = GraphPreview::active editor
         last = satSub (length editor.song.tracks) 1
         [
             Ui::section ("File", "", [command (editor, "Settings…", "settings", true, ShowSettings), command (editor, "Open Song…", "open", true, OpenTrack(index = -2)), command (editor, "Save", "save", true, SaveProject), command (editor, "Render Song", "render", song, RenderSong)]),
             Ui::section ("Edit", "", [command (editor, "Undo", "undo", length editor.past > 0, Undo), command (editor, "Redo", "redo", length editor.future > 0, Redo)]),
-            Ui::section ("View", "", [command (editor, "Timeline", "timeline", true, ShowPage(page = TimelinePage)), command (editor, "Track Patch", "patch", true, ShowPage(page = PatchPage)), command (editor, "Bus Routing", "routing", true, ShowPage(page = MixPage)), command (editor, "Modules", "modules", true, ShowModules), command (editor, "Patch Controls", "controls", true, ShowDetails), command (editor, "Keyboard", "keyboard", true, ShowKeyboard), command (editor, "Zoom In", "zoomIn", song && editor.page == TimelinePage, ZoomLanes(factor = 1.25)), command (editor, "Zoom Out", "zoomOut", song && editor.page == TimelinePage, ZoomLanes(factor = 0.8)), command (editor, "Zoom to Fit", "zoomFit", song && editor.page == TimelinePage, ZoomLanes(factor = 0.0))]),
-            Ui::section ("Transport", "", [command (editor, "Return to Start", "start", song, PickTrack(index = editor.track, bar = 0)), command (editor, "Play Song", "playSong", song && !playing, PlaySong), command (editor, "Stop Song", "stopSong", playing, StopSong), command (editor, "Loop", "loop", song && !playing, ToggleLoop), command (editor, "Play Patch", "playPatch", !sounding, PlayGraph), command (editor, "Stop Patch", "stopPatch", sounding, StopGraph), command (editor, "Audition Patch", "audition", true, Audition), command (editor, "Previous Track", "previousTrack", song && editor.track > 0, PickTrack(index = satSub editor.track 1, bar = editor.rollBar)), command (editor, "Next Track", "nextTrack", song && editor.track < last, PickTrack(index = satAdd editor.track 1, bar = editor.rollBar)), command (editor, "Previous Bar", "previousBar", song && editor.rollBar > 0, PickTrack(index = editor.track, bar = satSub editor.rollBar 1)), command (editor, "Next Bar", "nextBar", song, PickTrack(index = editor.track, bar = satAdd editor.rollBar 1))]),
+            Ui::section ("View", "", [command (editor, "Timeline", "timeline", true, ShowPage(page = TimelinePage)), command (editor, "Track Patch", "patch", true, ShowPage(page = PatchPage)), command (editor, "Bus Routing", "routing", true, ShowPage(page = MixPage)), command (editor, "Modules", "modules", true, ShowModules), command (editor, "Patch Controls", "controls", true, ShowDetails), command (editor, "Zoom In", "zoomIn", song && editor.page == TimelinePage, ZoomLanes(factor = 1.25)), command (editor, "Zoom Out", "zoomOut", song && editor.page == TimelinePage, ZoomLanes(factor = 0.8)), command (editor, "Zoom to Fit", "zoomFit", song && editor.page == TimelinePage, ZoomLanes(factor = 0.0))]),
+            Ui::section ("Transport", "", [command (editor, "Return to Start", "start", song, PickTrack(index = editor.track, bar = 0)), command (editor, "Play Song", "playSong", song && !playing, PlaySong), command (editor, "Stop Song", "stopSong", playing, StopSong), command (editor, "Loop", "loop", song && !playing, ToggleLoop), command (editor, "Previous Track", "previousTrack", song && editor.track > 0, PickTrack(index = satSub editor.track 1, bar = editor.rollBar)), command (editor, "Next Track", "nextTrack", song && editor.track < last, PickTrack(index = satAdd editor.track 1, bar = editor.rollBar)), command (editor, "Previous Bar", "previousBar", song && editor.rollBar > 0, PickTrack(index = editor.track, bar = satSub editor.rollBar 1)), command (editor, "Next Bar", "nextBar", song, PickTrack(index = editor.track, bar = satAdd editor.rollBar 1))]),
             Ui::section ("Shortcuts", "", listAppend (mapList (Keymaps::names, \name => keymapChoice (editor, name))) (Ui::button ("Load From File…", "", LoadKeymap)))]
 
     routeInspector (editor, content) =
@@ -491,11 +469,17 @@ module EditorView
         panel = Ui::framed (frame(frameGrow = true), content)
         Ui::row [ui::Spacer, Ui::framed (frame(frameWidth = 310), Ui::column [header, panel])]
 
-    root () = content (editorSlice ())
+    root () = content (paneled (editorSlice ()))
 
     detached () =
         editor = editorSlice ()
-        content (editor(page = PatchPage))
+        content (paneled (editor(page = PatchPage)))
+
+    (** [DAW-INSPECTOR] A Patch page shows the chosen module's properties in the patch panel docked beside the canvas, never on the canvas. *)
+    export paneled editor = editor(detailsShown = editor.detailsShown || editor.selected >= 0)
+
+    (** The stored editor after a step taken on its paneled view: the panel stays as stored unless the step itself opened or closed it. *)
+    export unpaneled (before, after) = after(detailsShown = ui::Pick::either (after.detailsShown == (paneled before).detailsShown, before.detailsShown, after.detailsShown))
 
     content editor =
         match editor.outputEdit
@@ -512,19 +496,15 @@ module EditorView
             false => canvas editor
             true => Ui::aside (canvas editor, ui::Trailing, inspector editor, 320, Surface)
         grow = ui::Frames::plain
-        page = Ui::framed (grow(frameGrow = true), pane)
-        // The keyboard plays the patch, so it docks under the Patch page only.
-        match editor.keyboardShown && TimelineView::pageIndex editor.page == 0
-            false => page
-            true => Ui::column [page, keyboardDock editor]
+        Ui::framed (grow(frameGrow = true), pane)
 
     readyWindows editor = length (filterList (editor.editorWindows, \w => w.windowCycle > 1))
 
-    stamp editor = JsonString "${readyWindows editor}:${length editor.editorWindows}:${editor.patchWindowSerial}:${editor.revision}:${editor.layoutRevision}:${editor.panX}:${editor.panY}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${editor.keyboardShown}:${editor.keyboardWidth}:${length editor.scopeSamples}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${RollEdits::stamp editor.rollDrag}:${editor.rollBar}:${editor.laneTop}:${editor.laneZoom}:${editor.laneStart}:${RoutingPicker::stamp editor}:${editor.songTicket}:${editor.renderDeviceKey}:${editor.renderContinuous}:${editor.renderTicket}:${editor.keymap.name}:${editor.dial != DialIdle}:${editor.dialEntry}:${editor.dialOffset}:${editor.fineHeld}:${editor.songPath}:${length editor.song.tracks}"
+    stamp editor = JsonString "${readyWindows editor}:${length editor.editorWindows}:${editor.patchWindowSerial}:${editor.revision}:${editor.layoutRevision}:${editor.panX}:${editor.panY}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${RollEdits::stamp editor.rollDrag}:${editor.rollBar}:${editor.laneTop}:${editor.laneZoom}:${editor.laneStart}:${RoutingPicker::stamp editor}:${editor.songTicket}:${editor.keymap.name}:${editor.dial != DialIdle}:${editor.dialEntry}:${editor.dialOffset}:${editor.fineHeld}:${editor.songPath}:${length editor.song.tracks}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =
-        handle static Signal<Editor<Graph, GraphPending<Graph, ProcessorMemory<KernelState>>, GraphState<ProcessorMemory<KernelState>>, ui::Machine>>
+        handle static Signal<Editor<Graph, ui::Machine>>
             read => editor
         changed = signalChanges before editor stamp (signalDependencies editorSlice)
         primary = [Keyed::region (frames, "root", changed, root)]

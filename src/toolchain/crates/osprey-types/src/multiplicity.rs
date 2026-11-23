@@ -11,12 +11,14 @@
 //! [`effect_rows`](crate::effect_rows), which is the pass that already builds
 //! it. Implements [MULTI-HANDLE], [MULTI-REPLAY].
 
+mod state;
+
 use crate::TypeError;
 use osprey_ast::{
-    freevars::free_idents, resumes_on_one_path, walk_program, AstVisitor, Expr, HandlerArm,
-    Multiplicity, OperationTable, Program, Stmt,
+    resumes_on_one_path, walk_program, AstVisitor, HandlerArm, Multiplicity, OperationTable,
+    Program, Stmt,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The declared-operation index plus the `mut` bindings a `many` arm may not
 /// capture. The index itself lives in `osprey-ast` beside [`Multiplicity`], so
@@ -25,44 +27,44 @@ use std::collections::BTreeSet;
 #[derive(Debug, Default)]
 pub(crate) struct OperationAxis {
     table: OperationTable,
-    /// Every name bound with `mut` anywhere in the program. Read as a
-    /// conservative over-approximation: a `many` arm closing over any of these
-    /// names is rejected, which fails closed the way [MULTI-REPLAY-STATE]
-    /// requires.
-    mutable_bindings: BTreeSet<String>,
+    /// Each handler arm's scope-resolved `mut` reachability, keyed by the
+    /// arm's address in the program being checked: its own visible `mut`
+    /// cells plus those reached through called local callables. Implements
+    /// [MULTI-REPLAY-STATE]; `state` builds it.
+    arm_state: BTreeMap<usize, Vec<String>>,
 }
 
 impl OperationAxis {
-    /// Index every effect declaration and `mut` binding in `program`.
+    /// Index every effect declaration and each arm's scope-resolved state.
     pub(crate) fn collect(program: &Program) -> Self {
-        let mut mutables = MutableBindings::default();
-        walk_program(program, &mut mutables);
-        Self {
-            table: OperationTable::collect(program),
-            mutable_bindings: mutables.0,
-        }
+        let table = OperationTable::collect(program);
+        let arm_state = if table.has_many() {
+            // Only many arms owe the captured-state proof [MULTI-REPLAY-STATE].
+            state::State::collect(program)
+                .reachability()
+                .into_iter()
+                .map(|(at, cells)| (at, cells.into_iter().collect()))
+                .collect()
+        } else {
+            BTreeMap::new()
+        };
+        Self { table, arm_state }
     }
 
     /// How many times `effect.operation` may be answered ([MULTI-COMPAT]).
     pub(crate) fn multiplicity_of(&self, effect: &str, operation: &str) -> Multiplicity {
         self.table.multiplicity_of(effect, operation)
     }
-
-    /// Whether re-performing `effect.operation` is acceptable ([MULTI-REPLAY]).
-    pub(crate) fn is_replayable(&self, effect: &str, operation: &str) -> bool {
-        self.table.is_replayable(effect, operation)
-    }
-
-    /// The `mut` bindings an arm body closes over, sorted. Implements
-    /// [MULTI-REPLAY-STATE].
-    pub(crate) fn captured_mutables(&self, body: &Expr) -> Vec<String> {
-        let mut free = BTreeSet::new();
-        free_idents(body, &mut free);
-        free.intersection(&self.mutable_bindings).cloned().collect()
-    }
 }
 
-/// Every name bound with `mut`, at any nesting depth.
+/// Every name bound with `mut` in `program`, at any nesting depth.
+pub(crate) fn mutable_bindings(program: &Program) -> BTreeSet<String> {
+    let mut found = MutableBindings::default();
+    walk_program(program, &mut found);
+    found.0
+}
+
+/// The visitor behind [`mutable_bindings`].
 #[derive(Default)]
 struct MutableBindings(BTreeSet<String>);
 
@@ -103,7 +105,9 @@ pub(crate) fn arm_errors(
         Multiplicity::Once => Vec::new(),
         Multiplicity::Abort if resumes > 0 => at(abort_message(effect, operation)),
         Multiplicity::Abort => at(unimplemented_abort(effect, operation)),
-        Multiplicity::Many => at(many_message(axis, effect, arm, handled_row, fibered)),
+        Multiplicity::Many => {
+            many_message(axis, effect, arm, handled_row, fibered).map_or_else(Vec::new, at)
+        }
     }
 }
 
@@ -136,11 +140,10 @@ fn many_message(
     arm: &HandlerArm,
     handled_row: &BTreeSet<(String, String)>,
     fibered: Option<&str>,
-) -> String {
-    non_replayable_entry(axis, effect, &arm.operation, handled_row)
+) -> Option<String> {
+    non_replayable_entry(&axis.table, effect, &arm.operation, handled_row)
         .or_else(|| captured_state(axis, effect, arm))
         .or_else(|| fiber_boundary(effect, &arm.operation, fibered))
-        .unwrap_or_else(|| unimplemented_many(effect, &arm.operation))
 }
 
 /// The shared opening of the two rules that read the handled expression.
@@ -149,12 +152,14 @@ fn handled_opening(effect: &str, operation: &str) -> String {
 }
 
 /// Every operation in the coarse replay row owes the same replay promise,
-/// including sibling operations of the handled effect. The one exception is
-/// the arm's OWN operation: its perform is the choice point whose
-/// continuation `many` reuses, so re-entering it is the declared semantics,
-/// not replayed external work. Implements [MULTI-REPLAY-CHECK].
-fn non_replayable_entry(
-    axis: &OperationAxis,
+/// including sibling operations of the handled effect. Two entries are
+/// exempt: the arm's OWN operation, whose perform is the choice point whose
+/// continuation `many` reuses, and any operation declared `many` — answering
+/// a request however often it is re-performed is that declaration's stated
+/// semantics, so a re-issued request is not duplicated external work.
+/// Implements [MULTI-REPLAY-CHECK], [MULTI-HANDLE-MANY].
+pub(crate) fn non_replayable_entry(
+    axis: &OperationTable,
     effect: &str,
     operation: &str,
     handled_row: &BTreeSet<(String, String)>,
@@ -163,7 +168,7 @@ fn non_replayable_entry(
     handled_row
         .iter()
         .filter(|(row_effect, row_op)| row_effect != effect || row_op != operation)
-        .find(|(row_effect, row_op)| !axis.is_replayable(row_effect, row_op))
+        .find(|(row_effect, row_op)| !replayable(axis, row_effect, row_op))
         .map(|(offender_effect, offender_op)| {
             format!(
                 "{opening} expression requires non-replayable effect \
@@ -173,16 +178,29 @@ non-replayable work outside the region"
         })
 }
 
+/// Whether re-performing `effect.operation` is acceptable: the written
+/// `replayable` promise, or a `many` declaration that answers every
+/// re-issued request.
+fn replayable(axis: &OperationTable, effect: &str, operation: &str) -> bool {
+    axis.is_replayable(effect, operation)
+        || axis.multiplicity_of(effect, operation) == Multiplicity::Many
+}
+
 /// Handler-owned state is a single shared heap cell, so a second resumption
-/// would observe the first's writes. Implements [MULTI-REPLAY-STATE].
+/// would observe the first's writes — through a called local lambda just as
+/// directly, which is why the reachability follows callables. Implements
+/// [MULTI-REPLAY-STATE]; `state` resolves the arm's scope.
 fn captured_state(axis: &OperationAxis, effect: &str, arm: &HandlerArm) -> Option<String> {
     let operation = &arm.operation;
-    axis.captured_mutables(&arm.body).first().map(|captured| {
-        format!(
-            "handler arm `{effect}.{operation}` captures mutable binding `{captured}`; a `many` arm \
+    axis.arm_state
+        .get(&std::ptr::from_ref(arm).addr())
+        .and_then(|cells| cells.first())
+        .map(|captured| {
+            format!(
+                "handler arm `{effect}.{operation}` captures mutable binding `{captured}`; a `many` arm \
 cannot own state — combine resumptions through the value `resume` returns"
-        )
-    })
+            )
+        })
 }
 
 /// A resuming handler serializes one suspend-to-resume round trip per perform,
@@ -196,18 +214,6 @@ fn fiber_boundary(effect: &str, operation: &str, fibered: Option<&str>) -> Optio
 resumption of a continuation spanning a spawned fiber has no serialization order"
         )
     })
-}
-
-/// A region that breaks none of the replay rules is well formed and the
-/// compiler still cannot run it. Saying so is the whole obligation: accepting
-/// it would answer a re-entrant request with a continuation that cannot be
-/// re-entered, which is a silently wrong answer. Implements [MULTI-COST].
-fn unimplemented_many(effect: &str, operation: &str) -> String {
-    format!(
-        "`{effect}.{operation}` is declared `many`, but a re-entrant continuation does not exist: \
-native resume is one suspended stack, switched to and never switched back \
-(docs/plans/0016-algebraic-effects-and-handlers.md). Declare `{effect}.{operation}` `once`"
-    )
 }
 
 /// An `abort` arm reads its mode from the DECLARATION, so a `resume`-free arm

@@ -7,11 +7,10 @@ import bank::Sqlite
 import bank::Ledger
 import bank::Api
 import bank::Metrics
-import "bank/web" as web
 
 // One deterministic tour of the whole stack, driven over REAL HTTP by the
 // in-process client: JSON mutations, a refused overdraft, the JSON listing,
-// and the Osprey Native web page.
+// and the 404 a non-API path gets: the web client is served on its own, never by this server.
 fetch client path =
     reply = httpGetResponse client path ""
     match reply
@@ -36,10 +35,7 @@ drive client =
     print "[http] open=${amelia}/${marcus}/${priya} deposit=${salary}/${invoice}/${grant} rent=${rent} transfer=${dinner} overdraft=${synth}"
     print "--- GET /api/accounts ---\n${fetch client "/api/accounts"}"
     print "--- GET /api/activity ---\n${fetch client "/api/activity"}"
-    page = fetch client "/"
-    hasRoot = contains page "id=\"osprey-root\""
-    hasClient = contains page "src=\"host.js\""
-    print "--- GET / (Osprey Native app, web host) ---\nhtml=${startsWith page "<!doctype html>"} title=${contains page "<title>Talon Bank</title>"} appRoot=${hasRoot} client=${hasClient}"
+    print "--- GET / (API only) ---\n${fetch client "/"}"
 
 // Playwright hold: while /tmp/talon_bank.hold exists the server keeps serving
 // and the demo pauses right here — remove the file (or never create it) and
@@ -91,13 +87,10 @@ boot () =
         log line => print "[audit] ${line}"
     consoleAudit (\() => storage (\() => serve db))
 
-// The router: every request is counted by the state module, then dispatched —
-// `/api/*` to the JSON API, everything else to the browser-app host.
+// The router: every request is counted by the state module, then answered by the JSON API.
 handleRequest (method, path, headers, body) =
     seen = perform Metrics::MetricsFx.hit path
-    match startsWith path "/api"
-        true => Api::route method path body
-        false => web::Pages::render path
+    Api::route method path body
 
 main () =
     print "=== Talon Bank — one Osprey app, every module feature ==="

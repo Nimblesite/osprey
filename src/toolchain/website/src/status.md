@@ -24,7 +24,7 @@ Start with the [practical guide](/docs/effects/). The Default and ML flavors sup
 - Compile-time rejection of unhandled operations, including requests through helpers and callbacks.
 - Integer overflow and zero divisors request the built-in `Arith` effect; each region chooses its policy.
 
-Value handlers and static interpretation have native, WebAssembly and mobile paths. Dynamic control handlers require the native target. Open `!e` annotations have a closed-program prototype; independently quantified effect rows in function types, reusable continuations, owned escaping continuations, named instances, masking and finalizers remain unfinished. [Plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) records the evidence and remaining work.
+Value handlers and static interpretation have native, WebAssembly and mobile paths. Multi-shot (`many`) handlers run on native and WebAssembly with identical output: the compiler turns the code after each request into an ordinary closure, so no target needs stack switching for them. A `once` control handler outside a `many` region requires the native target. Open `!e` annotations have a closed-program prototype; independently quantified effect rows in function types, owned escaping continuations and `abort` unwinding remain unfinished. [Plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) records the evidence and remaining work.
 
 The [banking](/docs/web-apps/) and [mobile](/docs/mobile-apps/) examples use these handlers at their application boundaries.
 

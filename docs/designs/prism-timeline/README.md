@@ -22,9 +22,21 @@ On keysL, the Patch sends inspector shows four sends from the loss filter. Three
 
 ## Patch controls [DAW-CONTROLS-DIAL]
 
+Use the Instrument dial across Prism. Its recessed violet face sits inside a 270° track with a warm orange fill and a pale radial indicator. Compact module cards, Patch Controls and the Instrument face keep the same proportions at their control sizes. The focus ring sits outside the track, so the fill and indicator stay visible when the dial takes focus. [Instrument reference](instrument-play.png)
+
 The panel and module card share the same Drive value on keysL’s Waveshaper 4. The example opens at 1.40×, with zero bias and an output level of 0.60. Curve selects a named shape. Antialiasing and oversampling are switches. The ports show the actual connection from Loss filter 3 through Waveshaper 4 to Output 5. [Design screenshot](patch-controls.png) · [Fine adjustment in the inspector](dial-detail.png) · [Interactive dial prototype](patch-controls.html)
 
 Press the dial or its number and drag vertically. A 180-pixel upward drag traverses the range, and Shift reduces sensitivity tenfold. Sideways movement leaves the value in place. The orange arc starts at the minimum. Drive and decay use a logarithmic scale to give small values usable travel. On the keyboard, arrows step the value and Enter opens the numeric field. Double-press restores the module default, Escape cancels a drag, and one completed drag is one undo step. The prototype keeps edits in memory. The native implementation shares each parameter value with the project.
+
+## Instrument builder [PRISM-INSTRUMENT]
+
+The three proposed Instrument views use the Hook track’s FM pluck in *Lagos After Rain*. Play shows the same four controls at their saved sizes. Edit adds the spacing grid, resize handles and the selected control’s targets. Brightness opens the filter while decreasing high damping in the short room. MIDI learn waits for a controller movement. The OSC address stays visible and copies with one action. [Instrument builder specification](../../specs/applications/Daw.md#instrument-builder-prism-instrument)
+
+| Design screenshot | What to inspect |
+| --- | --- |
+| [Play](instrument-play.png) | Three knobs and a Room switch on the instrument face. |
+| [Edit and macro mapping](instrument-edit.png) | The selected knob’s two targets, opposite ranges and independent curves. |
+| [MIDI learn and OSC address](instrument-learn.png) | The listening state, cancel action and copyable OSC address. |
 
 ## Window commands [PRISM-TIMELINE-MENU]
 
@@ -38,7 +50,7 @@ Verify the change through the native menu and its keyboard shortcuts, including 
 
 | Design screenshot | What to inspect |
 | --- | --- |
-| [Track patch](track-patch.png) | The keysL voice splits into a clean path and a modulated filter rack. A mixer rejoins them. Track gain feeds both a stereo group and a mono send. |
+| [Track patch](track-patch.png) | The keysL voice splits into a clean path and a modulated filter rack. A mixer rejoins them. Track gain feeds both a stereo group and a send. |
 | [Add a send from an internal port](add-send.png) | Filter rack already feeds Mixer B. Start a second cable from that outlet, choose Echo, and set its level. **Connect send** publishes the extra branch. Cancel discards the preview. |
 | [Bus routing](bus-routing.png) | All 17 tracks with their output, pan, gain and Space send. Selecting keysL traces its dry signal and reverb return into Master. Selecting Space reveals the shared effect settings. |
 | [Piano roll](piano-roll.png) | The song overview holds the two-bar viewport. The selected G♯5 starts at beat 33 on keysL. The note and its velocity stem share a selection. |
@@ -77,7 +89,7 @@ The graph document composes the existing synth node and port types with the DAW 
 ## Integration in the combined app [PRISM-TIMELINE-INTEGRATION]
 
 1. The unified DAW owns one arrangement and graph revision. **Timeline** in the studio opens or focuses the companion window. **Show studio** returns to the selected track's patch. For the single-window host, these are view switches with the same selection and history.
-2. Materialize the current song faithfully. Map each routed instrument’s nodes, cables, note bindings, attack and release into its voice graph. Its mono sum feeds the track gain. One branch pans to the stereo mix and another branches before pan into Space at the saved send level. Preserve zero sends, reverb settings and master drive. Import built-in voices with their original parameters. The session master sums stereo dry and wet, then limits the mix. [Mix renderer](../../../src/osprey/examples/daw/src/arrangements.ospml)
+2. Materialize the current song faithfully. Map each routed instrument’s nodes, cables, note bindings, attack and release into its voice graph. Its output, in the project's channel layout, feeds the track gain. One branch pans to the stereo mix and another branches before pan into Space at the saved send level. Preserve zero sends and reverb settings. Nothing is added to Master. Import built-in voices with their original parameters. The session master sums stereo dry and wet, then limits the mix. [Mix renderer](../../../src/osprey/examples/daw/src/arrangements.ospml)
 3. The synth and FerroUI owners agreed on tap-to-patch, a common FerroUI surface across desktops, and the current Master/Space mapping as the first integration milestone. Named group buses, their EQ and sidechain compression, and assigning a track to a group now work in Mix. Individual internal mono or stereo outlets now send to named groups with independent levels, including multiple taps on the same track. Named groups can feed other groups and the Bus outputs inspector shows the route to Master. Nested patch racks remain design work.
 4. The Timeline, patch canvas and bus table dispatch edits to that same graph. Dragging a wire or editing a table cell updates both views. The host presents the shared Prism surface and routes input. The graph engine owns validation, preparation and activation.
 5. Project patches accept variable-length node and cable lists. The scheduler validates occupied inputs, typed ports and feedback, then orders every reachable dependency and disconnected component. A 2,052-node fan-out passes the package tests, and a saved 258-node chain of unity gains renders the same stereo samples as its direct connection. The offline clip engine sizes its memory budget by block length and channel count. MIDI, control and multichannel audio run at 48 kHz through that engine. A stereo track sink is averaged before the track panner. [Graph scheduler](../../../src/osprey/packages/synth/src/graph.ospml) · [Clip storage](../../../src/osprey/packages/synth/src/clip_layouts.ospml) · [DAW renderer](../../../src/osprey/examples/daw/src/patch_voices.ospml)

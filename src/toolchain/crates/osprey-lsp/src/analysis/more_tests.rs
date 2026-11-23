@@ -28,7 +28,7 @@ fn assert_doc_value(json: &serde_json::Value, pointer: &str, expected: &str) {
 
 /// [LSP-EFFECT-REQUIREMENTS] Inferred requirements are distinct from written bounds.
 #[test]
-fn symbols_publish_transitive_effect_requirements_in_both_flavors() -> Result<(), String> {
+fn symbols_publish_transitive_effect_requirements_in_all_three_flavors() -> Result<(), String> {
     for (source, flavor, ..) in EFFECT_REQUIREMENT_SOURCES {
         let program = parse_ok_flavored(source, flavor);
         assert_eq!(
@@ -62,9 +62,10 @@ fn symbols_publish_transitive_effect_requirements_in_both_flavors() -> Result<()
     Ok(())
 }
 
-const EFFECT_REQUIREMENT_SOURCES: [(&str, osprey_syntax::Flavor, &str, u32, u32); 2] = [
+const EFFECT_REQUIREMENT_SOURCES: [(&str, osprey_syntax::Flavor, &str, u32, u32); 3] = [
     ("effect Read { get: fn() -> int }\nfn leaf() = perform Read.get()\nfn relay() = leaf()\nfn safe() = {\n handle Read { get => 42 }\n relay()\n}\n", osprey_syntax::Flavor::Default, "file:///requirements.osp", 2, 4),
     ("effect Read\n    get : Unit => int\nleaf () = perform Read.get ()\nrelay () = leaf ()\nsafe () =\n    handle Read\n        get => 42\n    relay ()\n", osprey_syntax::Flavor::Ml, "file:///requirements.ospml", 3, 1),
+    ("# osprey: flavor=python\n@effect\nclass Read:\n    def get() -> int: ...\ndef leaf():\n    return perform(Read.get())\ndef relay():\n    return leaf()\n@handler(Read)\nclass answer:\n    def get():\n        return 42\ndef safe():\n    return answer(relay)\n", osprey_syntax::Flavor::Python, "file:///requirements.py", 6, 5),
 ];
 
 #[test]
@@ -403,4 +404,61 @@ fn symbol_kind_as_str_round_trips_each_variant() {
     assert_eq!(SymbolKind::Function.as_str(), "function");
     assert_eq!(SymbolKind::Variable.as_str(), "variable");
     assert_eq!(SymbolKind::Type.as_str(), "type");
+}
+
+/// [FLAVOR-PYTHON-VERIFICATION] Syntax edits and LSP navigation use the
+/// original CRLF buffer even after multibyte names and f-string literals.
+#[test]
+fn python_editor_ranges_address_original_bytes_and_utf16() {
+    use crate::test_support::{definition, references};
+    use lspkit::vfs::PositionEncoding;
+    let src = "# osprey: flavor=python\r\ndef show(café: str, name: str) -> str:\r\n    text: str = name + café\r\n    return f\"😀é{text}\"\r\nprint(show(\"a\", \"b\"))\r\n";
+    let uri = "file:///ranges.py";
+    let flavor = osprey_syntax::Flavor::Python;
+    let ranges = osprey_syntax::binding_ranges(src, flavor);
+    let names: Vec<_> = ranges
+        .iter()
+        .map(|binding| &src[binding.range.clone()])
+        .collect();
+    assert_eq!(names, ["café", "name", "text"]);
+    let annotations = osprey_syntax::annotation_edits(src, flavor);
+    let highlights: Vec<_> = annotations
+        .iter()
+        .map(|item| &src[item.highlight.clone()])
+        .collect();
+    assert_eq!(highlights, [": str", ": str", "-> str", ": str"]);
+    let mut erased = src.to_owned();
+    for edit in annotations
+        .iter()
+        .rev()
+        .flat_map(|item| item.edits.iter().rev())
+    {
+        erased.replace_range(edit.range.clone(), &edit.new_text);
+    }
+    assert_eq!(erased, src.replace(": str", "").replace(" -> str", ""));
+    let commented = "def echo(value: list[\n    # preserve 😀é\n    int\n]):\n    return value\n";
+    let edits = osprey_syntax::annotation_edits(commented, flavor);
+    assert_eq!(edits.len(), 1);
+    let mut clean = commented.to_owned();
+    for edit in edits.first().expect("one annotation").edits.iter().rev() {
+        clean.replace_range(edit.range.clone(), &edit.new_text);
+    }
+    assert!(clean.contains("# preserve 😀é"));
+    assert!(
+        osprey_syntax::parse_program_with_flavor(&clean, flavor)
+            .errors
+            .is_empty(),
+        "{clean:?}"
+    );
+    for (encoding, reference) in [
+        (PositionEncoding::Utf16, (3, 17, 3, 21)),
+        (PositionEncoding::Utf8, (3, 20, 3, 24)),
+    ] {
+        let defs = definition(src, uri, 3, reference.1 + 1, encoding);
+        let spans: Vec<_> = defs.iter().map(|loc| loc.span).collect();
+        assert_eq!(spans, [(2, 4, 2, 8)], "{encoding:?}");
+        let uses = references(src, uri, 2, 5, encoding, true);
+        let spans: Vec<_> = uses.iter().map(|loc| loc.span).collect();
+        assert_eq!(spans, [(2, 4, 2, 8), reference], "{encoding:?}");
+    }
 }

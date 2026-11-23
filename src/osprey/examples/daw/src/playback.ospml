@@ -6,7 +6,8 @@ import synth::Outcomes
 (** Playing is one loop over time, never one track after another. Each block advances every track's
     sounding notes over the same frames, routes them through their groups, sends and sidechain keys, runs
     every group's EQ and compressor, carrying all their state into the next block, and
-    yields Master's two sides. Nothing else leaves a block; rendering keeps Master's frames. *)
+    yields Master's two sides. Nothing else leaves a block: playing sends Master to the device, rendering writes it
+    to the export file. *)
 module Playback
     ok value = Success(value = value)
 
@@ -18,16 +19,6 @@ module Playback
         Outcomes::carried (SendRenders::collect (song.tracks, \voice => Arrangements::opened (song, voice)), \tracks =>
             ok (Playing(score = song, cursor = 0, tracks = tracks, states = []))))
 
-    (** Keep the focused track's patch running block by block, ready for the next dial movement. *)
-    export focused (playing, index) = match index < 0
-        true => ok playing
-        false => match listGet playing.score.tracks index
-            Error _ => Error(message = "The focused track is missing from the score.")
-            Success voice => match listGet playing.tracks index
-                Error _ => Error(message = "The focused track is missing from playback.")
-                Success play => Outcomes::carried (Arrangements::focused (playing.score, voice, play, playing.cursor), \ready =>
-                    ok (playing(tracks = synth::Sequences::mapIndexed (playing.tracks, \(i, track) => ui::Pick::either (i == index, ready, track)))))
-
     silence count = mapList (toList (range (0, count)), \_ => 0.0)
 
     // Master and every group start each block with `count` silent frames, so every processor runs every block.
@@ -35,25 +26,23 @@ module Playback
         quiet = silence count
         Buses(left = quiet, right = quiet, groups = mapList (song.buses, \bus => Stereo(name = bus.name, left = quiet, right = quiet)), keys = [])
 
-    trackStep (song, playing, held, index, from, until, streaming) = match listGet song.tracks index
+    trackStep (song, playing, held, index, from, until) = match listGet song.tracks index
         Error _ => Error(message = "A track is missing.")
         Success voice => match listGet playing.tracks index
             Error _ => Error(message = "A track is missing.")
             Success play => match listGet playing.score.tracks index
                 Error _ => Error(message = "The playing track has no previous patch.")
                 Success prior => Outcomes::carried (Arrangements::refreshed (song, voice, prior, play, from), \ready =>
-                    Outcomes::carried (Arrangements::advanceWindow (song, held.buses, voice, ready, from, until, streaming), \step => ok (Heard(plays = listAppend held.plays step.play, buses = step.buses))))
+                    Outcomes::carried (Arrangements::advanceWindow (song, held.buses, voice, ready, from, until), \step => ok (Heard(plays = listAppend held.plays step.play, buses = step.buses))))
 
     // Every track advances over the same frames into the same buses.
-    heard (song, playing, buses, from, until, streaming) = foldList (toList (range (0, length song.tracks)), ok (Heard(plays = [], buses = buses)), \(outcome, index) => Outcomes::carried (outcome, \held => trackStep (song, playing, held, index, from, until, streaming)))
+    heard (song, playing, buses, from, until) = foldList (toList (range (0, length song.tracks)), ok (Heard(plays = [], buses = buses)), \(outcome, index) => Outcomes::carried (outcome, \held => trackStep (song, playing, held, index, from, until)))
 
     (** Play the next `frames` frames: Master's left and right sides for them, and the project after them. *)
-    export step (song, playing, frames, streaming) =
+    export step (song, playing, frames) =
         from = playing.cursor
         until = satAdd from frames
-        Outcomes::carried (heard (song, playing, seeded (song, frames), from, until, streaming), \tracked =>
+        Outcomes::carried (heard (song, playing, seeded (song, frames), from, until), \tracked =>
             Outcomes::carried (BusMix::stepped (song, tracked.buses, playing.states), \master =>
                 ok (Played(playing = Playing(score = song, cursor = until, tracks = tracked.plays, states = master.states), left = master.buses.left, right = master.buses.right))))
 
-    (** Advance an offline render, retaining complete notes for reuse. *)
-    export next (song, playing, frames) = step (song, playing, frames, false)

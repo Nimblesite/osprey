@@ -5,6 +5,7 @@
 // and dash (Linux /bin/sh) runs no EXIT trap on an untrapped SIGTERM, so
 // either way the marker leaks and every later bank-*-test refuses to start.
 const { defineConfig } = require('@playwright/test');
+const { WEB, API, webClient } = require('./web-client');
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -15,16 +16,16 @@ module.exports = defineConfig({
   workers: 1,
   reporter: [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:18790',
+    baseURL: WEB,
     screenshot: 'only-on-failure',
   },
-  webServer: {
+  webServer: [{
     command:
       'touch /tmp/talon_bank.hold && trap "rm -f /tmp/talon_bank.hold" EXIT INT TERM && ../../../../../target/release/osprey ../backend --run',
     cwd: __dirname,
-    url: 'http://127.0.0.1:18790/api/accounts',
+    url: `${API}/api/accounts`,
     reuseExistingServer: false,
     timeout: 120_000,
     gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
-  },
+  }, webClient],
 });

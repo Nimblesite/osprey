@@ -82,7 +82,7 @@ pub fn binding_ranges(source: &str, flavor: Flavor) -> Vec<BindingRange> {
         Flavor::Default => crate::default::binding_ranges(source),
         Flavor::Ml => crate::ml::binding_ranges(source),
         Flavor::Python => crate::python::binding_ranges(source),
-        // Editor binding ranges for TypeScript are plan 0061 phase E.
+        // TypeScript gets no editor binding ranges.
         Flavor::TypeScript => Vec::new(),
     };
     ranges.extend(crate::fragment_ranges::collect(

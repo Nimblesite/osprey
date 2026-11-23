@@ -1,6 +1,6 @@
 // Assertion-driven tests for the extern-callable network units: a failed
-// assert aborts the binary. This suite OWNS tls_client_runtime.c and, through
-// file_server_tests.c, file_server_runtime.c.
+// assert aborts the binary. This suite OWNS tls_client_runtime.c; the file server
+// has its own suite, file_server_tests.c.
 //
 // Everything runs against real loopback sockets in this process: an OpenSSL
 // echo server with a self-signed certificate for the TLS session, so the unit is
@@ -8,6 +8,7 @@
 //   [FFI-TLS-CLIENT]      dial, hex writes, exact-count hex reads, status, close
 //   [FFI-TLS-UNVERIFIED]  a self-signed peer is accepted
 #include "http_shared.h"
+#include "test_loopback.h"
 
 #include <assert.h>
 #include <openssl/err.h>
@@ -22,9 +23,11 @@ char *osprey_tls_recv_hex(int64_t handle, int64_t count, int64_t timeout_ms);
 int64_t osprey_tls_status(int64_t handle);
 int64_t osprey_tls_close(int64_t handle);
 char *osprey_net_local_address(char *host, int64_t port);
-void run_file_server_tests(void); // file_server_tests.c
 
-enum { ECHO_PORT = 18092, ECHO_CLOSE_PORT = 18093 };
+#define ECHO_PORT test_port(7)
+#define ECHO_CLOSE_PORT test_port(8)
+#define CLOSED_PORT test_port(14) // nothing in this block listens here
+#define PLAIN_PORT test_port(10)
 
 static char LOOPBACK[] = "127.0.0.1";
 static char NOWHERE[] = "no-such-host.invalid";
@@ -223,7 +226,7 @@ static void test_tls_argument_rejections(void) {
   assert(osprey_tls_connect(LOOPBACK, 0, 100) == -1);
   assert(osprey_tls_connect(NOWHERE, ECHO_PORT, 100) == -2);
   // Nothing listens on this port: the dial is refused.
-  assert(osprey_tls_connect(LOOPBACK, 18099, 500) == -4);
+  assert(osprey_tls_connect(LOOPBACK, CLOSED_PORT, 500) == -4);
 }
 
 static void test_tls_peer_close_is_reported(void) {
@@ -233,8 +236,8 @@ static void test_tls_peer_close_is_reported(void) {
 }
 
 static void test_tls_plain_listener_fails_handshake(void) {
-  int plain = listen_loopback(18094);
-  assert(osprey_tls_connect(LOOPBACK, 18094, 500) == -7);
+  int plain = listen_loopback(PLAIN_PORT);
+  assert(osprey_tls_connect(LOOPBACK, PLAIN_PORT, 500) == -7);
   close(plain);
 }
 
@@ -278,7 +281,6 @@ int main(void) {
   echo_stop(&closer);
   X509_free(cert);
   EVP_PKEY_free(key);
-  run_file_server_tests();
   printf("✅ network runtime tests passed\n");
   return 0;
 }

@@ -26,7 +26,7 @@ Android: `gpui-pre` 0.3.10 has no backend, and `gpui-pre-platform` has no Androi
 - [ ] Compare each skin's mobile pictures with the desktop's widgets at the same size: `src/osprey/examples/casting/skin_parity.py` scored Android against desktop at Sherbet 0.976 and Midnight 0.901; Poolside has not finished a run, and the script needs more than five minutes and a real window, so it is not in CI.
 - [x] Delete the SwiftUI and Java casting renderers. `src/toolchain/hosts/swift` stays for Osprey Agent.
 - [x] A fixed scene `zoom` is an upper bound: a narrower region fits the whole scene instead of clipping it, on every platform. The region around a scene takes the skin's colour, and the scene honours the safe area.
-- [ ] Windows: casting still runs on `src/toolchain/hosts/winui` (`src/osprey/examples/casting/README.md`). Audit whether `src/toolchain/hosts/gpui` can replace it there, and report.
+- [x] Windows: casting still runs on `src/toolchain/hosts/winui` (`src/osprey/examples/casting/README.md`). Audit whether `src/toolchain/hosts/gpui` can replace it there, and report. Verdict (2026-11-23): **no, casting stays on WinUI.** AGENTS.md requires every Windows app to use WinUI from the Windows App SDK, packaged as MSIX in an AppContainer, and says the GPUI examples run on the WinUI host there. The GPUI host does build and draw on Windows (`gpui.yml` job `windows`: the probe smoke and Flock and Painting in a real window), but only as an unpackaged `osprey-gpui.exe`, with no MSIX or AppContainer packaging (`src/toolchain/hosts/gpui/run.sh`). Casting's Windows-only pieces (the `windows/cast-browse.c` DnsServiceBrowse helper, OpenSSL linked into the DLL by `src/toolchain/hosts/winui/app.ps1`, and the `privateNetworkClientServer` and `internetClientServer` capabilities in `src/toolchain/targets/windows/apps.json`) are all wired to the WinUI package.
 - [x] Android screen readers: the scene's AccessKit tree reaches TalkBack, and the journey presses through its action.
 - [ ] iOS screen readers: the same tree through `accesskit_ios`.
 - [ ] Automate real NSD and Bonjour discovery against a published fixture. Android found a real TV by hand; its journey uses the receiver fixture so that it can never reach a real TV.
@@ -57,5 +57,5 @@ Both:
 
 Windows:
 
-- [ ] Finish the audit above. Until then casting stays on `src/toolchain/hosts/winui`, whose pictures in `src/osprey/examples/casting/goldens/windows` must match the current scene.
+- [x] Finish the audit above: casting stays on `src/toolchain/hosts/winui`, whose pictures in `src/osprey/examples/casting/goldens/windows` must match the current scene.
 - [ ] Recapture `src/osprey/examples/casting/goldens/windows/150` on a 150% display: CI's runner draws at 100%, so only `100` was refreshed after the shared scene changed.

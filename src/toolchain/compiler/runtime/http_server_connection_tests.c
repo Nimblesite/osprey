@@ -14,7 +14,7 @@
 // request as Node.js keeps it, and every way a connection ends is answered with
 // the `Connection` header Node.js sends for it.
 
-#define CONNECTION_TEST_PORT 18096
+#define CONNECTION_TEST_PORT test_port(12)
 #define LOAD_CLIENTS 16
 #define LOAD_REQUESTS 50
 #define PROMPT_MS 1000
