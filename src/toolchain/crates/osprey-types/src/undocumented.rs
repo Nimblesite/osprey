@@ -154,7 +154,7 @@ fn no_example(kind: &str, name: &str, position: Option<Position>) -> TypeWarning
     )
 }
 
-fn qualified(owner: &str, name: &str) -> String {
+pub(crate) fn qualified(owner: &str, name: &str) -> String {
     if owner.is_empty() {
         name.to_owned()
     } else {

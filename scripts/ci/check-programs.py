@@ -1,5 +1,6 @@
 # osprey: flavor=python
-"""[CI-PROGRAMS-COMPILE] Every tracked Osprey program compiles, or CI fails.
+"""[CI-PROGRAMS-COMPILE] Every tracked Osprey program compiles with no dead private
+module member ([TYPE-WARNINGS-UNUSED-PRIVATE]), or CI fails.
 
 Each tracked osprey.toml is a project, lowered to LLVM IR as a consumer and the
 editor see it ([PACKAGE-WORKSPACE]); its --source-graph names its member files.
@@ -25,6 +26,8 @@ EXCLUDED = ["/failscompilation/", "/sample-registry/", "/e2e/consumer/", "/fixtu
 MARKERS = ["# osprey: flavor=", "#osprey: flavor=", "// osprey: flavor=", "//osprey: flavor="]
 SOURCE_KEY = "\"source\":\""
 SOURCES_KEY = "\"sources\":["
+# [TYPE-WARNINGS-UNUSED-PRIVATE] Each dead private member, under the file it is written in.
+DEAD = 'substr($0, 1, 1) == "/" { file = $0 } index($0, "is never used; delete it") { print file ": " $0; dead++ } END { exit dead > 0 }'
 
 
 class Job:
@@ -81,12 +84,18 @@ def text(path):
 def project_job(index, directory):
     log = f"{WORK}/project-{index}.log"
     graph = f"{COMPILER} '{directory}' --source-graph > {WORK}/graph-{index}.json 2>> {log}"
-    return Job(path=directory, command=f"{graph} && {COMPILER} '{directory}' --llvm --quiet --no-warnings > /dev/null 2>> {log}", log=log)
+    return Job(path=directory, command=f"{graph} && {gated(directory, log)}", log=log)
 
 
 def file_job(index, path):
     log = f"{WORK}/file-{index}.log"
-    return Job(path=path, command=f"{COMPILER} '{path}' --llvm --quiet --no-warnings > /dev/null 2> {log}", log=log)
+    return Job(path=path, command=gated(path, log), log=log)
+
+
+def gated(path, log):
+    """Lowers `path`: its errors, or else each dead private member it warns of, fail the job into `log`."""
+    warnings = f"{log}.warnings"
+    return f"( {COMPILER} '{path}' --llvm --quiet > /dev/null 2> {warnings} || ( cat {warnings} >> {log}; false ) ) && awk '{DEAD}' {warnings} >> {log}"
 
 
 def launch(command):

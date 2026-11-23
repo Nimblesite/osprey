@@ -16,7 +16,6 @@ import registry::TypeDiagram
 /// integer, and `DateTime`/`Digest`/`Uuid`/string aliases are JSON strings.
 /// Failures carry a stable code and the JSON pointer of the offending value.
 module SchemaCheck {
-    let unknownType = "schema.unknown-type"
     let notObject = "schema.not-object"
     let missingField = "schema.missing-field"
     let unknownField = "schema.unknown-field"

@@ -29,7 +29,6 @@ module TreeGraphTests {
     fn key(scope, name) = Names::Key { scope: scope, name: name }
     fn requirement(scope, name) = ManifestModel::Requirement { package: key(scope, name), epoch: 1, minimumOrdinal: 1 }
     fn runtime(scope, name) = ManifestModel::Runtime { requirement: requirement(scope, name) }
-    fn buildEdge(scope, name) = ManifestModel::Build { requirement: requirement(scope, name) }
     fn pkg(s, deps) = Lockfile::Package { release: Fixture::idOf(s), dependencies: deps, surface: [] }
 
     fn files(name) = [Fixture::file("osprey.toml", "key = ${name}\n"), Fixture::file("src/${name}.osp", "fn ${name}() = 1\n")]
