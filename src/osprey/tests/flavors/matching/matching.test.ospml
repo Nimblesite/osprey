@@ -269,3 +269,116 @@ joinedCallablePatternCase () = checkAll ("joined callable Results retain their f
 ])
 
 test ("joined callable Results retain their payload signatures", joinedCallablePatternCase)
+
+(* Or-patterns ([PATTERN-OR]): one arm, several alternatives, one body. *)
+
+type Glyph = Space | Tab | Newline | Letter(c : string) | Digit(d : int) | Word(w : string)
+type Pt = Pt int int
+type Tri = Tri int int int
+type Cell = Cell Glyph int
+type Sized =
+    kind : string
+    n : int
+
+(** Payload-free alternatives, payload alternatives and a nested literal slot. *)
+glyphKind g = match g
+    Space | Tab | Newline => "blank"
+    Digit (0 | 1) => "bit"
+    Digit d => "digit ${d}"
+    Letter s | Word s => "text ${s}"
+
+(** Integer, string, bool and float literal alternatives. *)
+smallInt n = match n
+    0 | 1 | 2 => "small"
+    _ => "big"
+yes s = match s
+    "y" | "yes" | "Y" => true
+    _ => false
+either b = match b
+    true | false => "bool"
+unitish x = match x
+    0.0 | 1.0 => "unit"
+    _ => "other"
+
+orLiteralCase () = checkAll ("or-pattern variant and literal alternatives", [
+    glyphKind Space == "blank", glyphKind Tab == "blank", glyphKind Newline == "blank",
+    glyphKind (Digit(d = 0)) == "bit", glyphKind (Digit(d = 1)) == "bit",
+    glyphKind (Digit(d = 7)) == "digit 7",
+    glyphKind (Letter(c = "a")) == "text a", glyphKind (Word(w = "hi")) == "text hi",
+    smallInt 0 == "small", smallInt 1 == "small", smallInt 2 == "small",
+    smallInt 3 == "big", smallInt (0 - 1) == "big",
+    yes "y", yes "yes", yes "Y", yes "n" == false, yes "" == false,
+    either true == "bool", either false == "bool",
+    unitish 0.0 == "unit", unitish 1.0 == "unit", unitish 0.5 == "other"
+])
+
+test ("or-patterns join variant and literal alternatives", orLiteralCase)
+
+(** `Success` and `Error` alternatives binding one name of one type. *)
+resultText r = match r
+    Success s | Error s => "got ${s}"
+
+(** Positional payloads, lists with a rest binder and rows as alternatives. *)
+onAxis p = match p
+    Pt 0 _ | Pt _ 0 => "axis"
+    _ => "plane"
+shortList xs = match xs
+    [] | [_] => "short"
+    [a, b, ...rest] => "long ${wrapAdd (wrapAdd (a, b), listLength rest)}"
+rowSize (r : Sized) = match r
+    { kind = "s", n } | { kind = "m", n } => n
+    _ => 0
+
+(** Three levels: a Result holding a cell whose slots are or-patterns. *)
+deepBlank r = match r
+    Success (Cell (Space | Tab) (0 | 1)) | Error "blank" => "deep blank"
+    Success (Cell (Letter(c = "x" | "y")) _) => "deep letter"
+    _ => "deep other"
+
+orStructureCase () = checkAll ("or-pattern Result, payload, list, row and nested alternatives", [
+    resultText (Success(value = "a")) == "got a", resultText (Error(message = "b")) == "got b",
+    onAxis (Pt 0 5) == "axis", onAxis (Pt 5 0) == "axis", onAxis (Pt 0 0) == "axis",
+    onAxis (Pt 2 3) == "plane",
+    shortList [] == "short", shortList [9] == "short", shortList [1, 2, 3, 4] == "long 5",
+    rowSize (Sized(kind = "s", n = 3)) == 3, rowSize (Sized(kind = "m", n = 4)) == 4,
+    rowSize (Sized(kind = "l", n = 5)) == 0,
+    deepBlank (Success(value = Cell Space 0)) == "deep blank",
+    deepBlank (Success(value = Cell Tab 1)) == "deep blank",
+    deepBlank (Error(message = "blank")) == "deep blank",
+    deepBlank (Success(value = Cell Space 2)) == "deep other",
+    deepBlank (Success(value = Cell (Letter(c = "x")) 9)) == "deep letter",
+    deepBlank (Success(value = Cell (Letter(c = "y")) 9)) == "deep letter",
+    deepBlank (Success(value = Cell (Letter(c = "z")) 9)) == "deep other",
+    deepBlank (Error(message = "other")) == "deep other"
+])
+
+test ("or-patterns cover Results, payloads, lists, rows and three-level nests", orStructureCase)
+
+(** [PATTERN-OR-ORDER]: when both alternatives match, the first supplies `x`. *)
+firstWins t = match t
+    Tri x 0 _ | Tri _ x 0 => x
+    _ => 0 - 1
+
+(** A function-valued binder taken from either alternative. *)
+pickCall r = match r
+    Success f | Error f => f 10
+
+(** A closure capturing the binder escapes the arm. *)
+adder t = match t
+    Pt n 0 | Pt 0 n => \x => wrapAdd (x, n)
+    _ => \x => x
+
+orBindingCase () =
+    mut n = 100
+    shadowed = match Pt 4 0
+        Pt n 0 | Pt 0 n => n
+        _ => 0
+    checkAll ("or-pattern bindings follow order and scope", [
+        firstWins (Tri 5 0 0) == 5, firstWins (Tri 3 7 0) == 7, firstWins (Tri 5 1 7) == 0 - 1,
+        pickCall (Success(value = \x => wrapMul (x, 2))) == 20,
+        pickCall (Error(message = \x => wrapAdd (x, 1))) == 11,
+        shadowed == 4, n == 100,
+        adder (Pt 3 0) 1 == 4, adder (Pt 0 6) 1 == 7, adder (Pt 2 2) 1 == 1
+    ])
+
+test ("or-pattern bindings follow order, scope and closures", orBindingCase)
