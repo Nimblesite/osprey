@@ -456,6 +456,14 @@ fn hover_on_pattern_binders_and_lambda_parameters_shows_their_inferred_types() {
         crate::testkit::shows(&md, &[expected, "```osprey-ml"]);
     }
 
+    // [PATTERN-OR-BINDINGS] A binder of every or-pattern alternative hovers
+    // with its one type in each alternative and in the body.
+    let alternatives = "type G = Letter { c: string } | Word { w: string }\nfn text(g) = match g {\n    Letter { c: s } | Word { w: s } => {\n        s\n    }\n}\nlet t = text(Word { w: \"hi\" })\n";
+    for (line, needle) in [(2, "s }"), (2, "s } =>"), (3, "s\n")] {
+        let md = binder_hover(alternatives, "file:///alternatives.osp", line, needle);
+        crate::testkit::shows(&md, &["s: string"]);
+    }
+
     // A tuple-style ML parameter list is a pattern over one argument, so its
     // names are binders too (#372).
     let tupled = "total (left, right) = satAdd (left, right)\n\nlet t = total (1, 2)\n";
