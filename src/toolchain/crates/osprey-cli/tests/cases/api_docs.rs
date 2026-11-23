@@ -4,7 +4,8 @@ use super::{finish, osprey, read_text, temp_dir};
 
 /// Writes the project manifest `manifest` into `root`'s `osprey.toml`.
 pub(super) fn write_manifest(root: &std::path::Path, manifest: &str) {
-    std::fs::write(root.join("osprey.toml"), manifest).expect("manifest");
+    let written = std::fs::write(root.join("osprey.toml"), manifest);
+    assert!(written.is_ok(), "manifest fixture: {written:?}");
 }
 
 pub(super) fn export(
