@@ -53,6 +53,11 @@ impl Resolver<'_> {
                 }
                 locals.values.extend(rest.iter().cloned());
             }
+            Pattern::Or(alternatives) => {
+                for alternative in alternatives {
+                    self.rewrite_pattern(alternative, context, locals);
+                }
+            }
             Pattern::Binding(name) => match self.nullary_constructor(name, context) {
                 // The Default parser spells a payload-free variant pattern
                 // (`Dry => …`) as a binding; the checker reads it as the

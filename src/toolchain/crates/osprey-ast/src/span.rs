@@ -412,6 +412,11 @@ fn offset_pattern(pattern: &mut Pattern, offset: u32) {
                 offset_pattern(element, offset);
             }
         }
+        Pattern::Or(alternatives) => {
+            for alternative in alternatives {
+                offset_pattern(alternative, offset);
+            }
+        }
         Pattern::Wildcard | Pattern::Structural { .. } | Pattern::Binding(_) => {}
     }
 }

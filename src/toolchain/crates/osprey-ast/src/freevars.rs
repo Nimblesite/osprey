@@ -183,6 +183,8 @@ pub fn pattern_bindings(p: &Pattern) -> Vec<String> {
             names.extend(rest.clone());
             names
         }
+        // Every alternative binds the same names ([PATTERN-OR-BINDINGS]).
+        Pattern::Or(alternatives) => alternatives.first().map_or_default(pattern_bindings),
         Pattern::Binding(n) => vec![n.clone()],
     }
 }

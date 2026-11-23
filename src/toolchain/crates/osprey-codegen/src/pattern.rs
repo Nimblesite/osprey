@@ -12,6 +12,7 @@ use crate::expr::gen_expr;
 use crate::llty::Value;
 use osprey_ast::{Expr, MatchArm, Pattern};
 
+mod alternatives;
 mod list;
 mod literal;
 mod nested;
@@ -68,6 +69,9 @@ pub(crate) fn gen_match(cg: &mut Codegen, value: &Expr, arms: &[MatchArm]) -> Re
         return Ok(fused);
     }
     let disc = gen_expr(cg, value)?;
+    if any_arm(arms, |p| matches!(p, Pattern::Or(_))) {
+        return alternatives::gen_alternatives_match(cg, &disc, arms);
+    }
     if arms.iter().any(|a| is_result_arm(&a.pattern))
         && (disc.result_inner.is_some()
             || union_owner(cg, arms).is_none_or(|owner| owner == "Result"))

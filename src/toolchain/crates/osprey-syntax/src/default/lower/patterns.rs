@@ -43,6 +43,7 @@ impl Lowerer<'_> {
                 Pattern::Literal(Box::new(signed))
             }
             "list_pattern" => self.lower_list_pattern(inner),
+            "or_pattern" => Pattern::Or(self.alternatives(inner)),
             "structural_pattern" => Pattern::Structural {
                 fields: self.row_slots(inner),
                 open: Self::has_row_rest(inner),
@@ -71,6 +72,19 @@ impl Lowerer<'_> {
             }
             _ => Pattern::Wildcard,
         }
+    }
+
+    /// The alternatives of `A | B | C` in written order: the grammar nests
+    /// `|` to the left, so a nested or-pattern's alternatives are spliced in
+    /// and one flat [`Pattern::Or`] results ([PATTERN-OR-SYNTAX]).
+    fn alternatives(&self, node: Node<'_>) -> Vec<Pattern> {
+        let mut cursor = node.walk();
+        node.children_by_field_name("alternative", &mut cursor)
+            .flat_map(|child| match self.lower_pattern(child) {
+                Pattern::Or(nested) => nested,
+                single => vec![single],
+            })
+            .collect()
     }
 
     /// Each `field` / `field: pattern` slot of a brace pattern in written

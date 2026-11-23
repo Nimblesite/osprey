@@ -38,3 +38,28 @@ fn same(tree) = match tree {
 
 print("${leftmost(Leaf)} ${explain(Success { value: 1 })} ${same(Leaf)}")
 
+// [PATTERN-OR-EXHAUSTIVE] An or-pattern covers only its alternatives; the
+// witness names a value none of them reaches.
+fn warm(c) = match c {
+    Red | Green => "warm"
+}
+
+// [PATTERN-OR-BINDINGS] Every alternative binds the same names at one type.
+type Token = Word { w: string } | Num { n: int } | Gap
+fn text(t) = match t {
+    Word { w: s } | Gap => s
+    Num { n } => "${n}"
+}
+fn mixed(t) = match t {
+    Word { w: v } | Num { n: v } => "mixed"
+    Gap => "gap"
+}
+
+// [PATTERN-OR-TYPE] An alternative naming another union's variant is a type error.
+fn foreign(c) = match c {
+    Red | Leaf => "red"
+    _ => "other"
+}
+
+print("${warm(Red)} ${text(Gap)} ${mixed(Gap)} ${foreign(Blue)}")
+

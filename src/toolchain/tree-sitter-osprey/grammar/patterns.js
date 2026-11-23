@@ -20,8 +20,15 @@ module.exports = {
       seq(field('name', $.identifier), optional(field('binding', $.identifier))), // bare var / capture
       $.structural_pattern, // { name, age } / { name, .. }
       $.tuple_pattern, // (a, b) — positional row [PATTERN-TUPLE]
+      $.or_pattern, // A | B — alternatives, one body [PATTERN-OR-SYNTAX]
       '_',
     ),
+  // `|` binds more loosely than every other pattern form, so inside `(…)`,
+  // `{…}` and `[…]` slots the alternatives end at the next `,` or closer. A
+  // pattern never starts with `|`, so the lambda form `|x| => body` can only
+  // ever start an arm's body, never an arm ([PATTERN-OR-SYNTAX]).
+  or_pattern: ($) =>
+    prec.left(-1, seq(field('alternative', $.pattern), '|', field('alternative', $.pattern))),
   // `{ name, age }` closed row / `{ name, .. }` open row. The `..` marker
   // lives here, not in field_pattern, so the structural ternary and the
   // `Ctor { … }` forms — which share field_pattern — cannot spell an open
