@@ -60,7 +60,28 @@ def no_layer():
 
 def param_count(nin, nouts):
     """The length of micrograd's `MLP.parameters()`: per layer, per neuron, the
-    weights then the bias."""
+    weights then the bias.
+
+    # Examples
+    ```osprey
+    from micrograd import NN
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            none: list[int] = []
+            print(f"[{NN.param_count(3, [4, 4, 1])}] [{NN.param_count(2, none)}]")
+
+    show()
+    ```
+    ```output
+    [41] [0]
+    ```
+    """
     sizes = listConcat([nin], nouts)
     return fold(range(len(nouts)), 0, lambda total, i: total + (unwrap_or(listGet(sizes, i), 0) + 1) * unwrap_or(listGet(nouts, i), 0))
 
@@ -68,25 +89,102 @@ def param_count(nin, nouts):
 def init_mlp(g, nin, nouts, params):
     """micrograd's `MLP(nin, nouts)` construction: parameter leaves in
     `parameters()` order, taking their data from `params`. Build on an empty
-    graph so the ids stay equal to `parameters()`."""
+    graph so the ids stay equal to `parameters()`.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine, NN
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            g = NN.init_mlp(Engine.empty(), 2, [1], [0.5, -1.5, 2.0])
+            print(f"[{Engine.size(g)}] [{Engine.data(g, 0)}] [{Engine.data(g, 2)}]")
+
+    show()
+    ```
+    ```output
+    [3] [0.5] [2.0]
+    ```
+    """
     return fold(range(param_count(nin, nouts)), g, lambda acc, i: value(acc, unwrap_or(listGet(params, i), 0.0)))
 
 
 def neuron_at(offset, nin, nonlin):
-    """The `Neuron` whose weights start at parameter id `offset`."""
+    """The `Neuron` whose weights start at parameter id `offset`.
+
+    # Examples
+    ```osprey
+    from micrograd import NN
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            n = NN.neuron_at(3, 2, True)
+            print(f"{toString(n.weights)} [{n.bias}] [{n.nonlin}]")
+
+    show()
+    ```
+    ```output
+    [3, 4] [5] [true]
+    ```
+    """
     return Neuron(weights=toList(map(range(nin), lambda i: offset + i)), bias=offset + nin, nonlin=nonlin)
 
 
 def layer_at(offset, nin, nout, nonlin):
     """The `Layer` whose neurons start at parameter id `offset`, each consuming
-    `nin + 1` ids."""
+    `nin + 1` ids.
+
+    # Examples
+    ```osprey
+    from micrograd import NN
+    l = NN.layer_at(0, 2, 2, False)
+    n = unwrap_or(listGet(l.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
+    print(f"[{len(l.neurons)}] {toString(n.weights)} [{n.bias}] [{n.nonlin}]")
+    ```
+    ```output
+    [2] [0, 1] [2] [false]
+    ```
+    """
     return Layer(neurons=toList(map(range(nout), lambda j: neuron_at(offset + j * (nin + 1), nin, nonlin))))
 
 
 def mlp_of(nin, nouts):
     """The `MLP` records over a graph built by `init_mlp`: layers in
     construction order, each layer nonlinear except the last, as micrograd's
-    MLP builds them."""
+    MLP builds them.
+
+    # Examples
+    ```osprey
+    from micrograd import NN
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            m = NN.mlp_of(2, [3, 1])
+            l1 = unwrap_or(listGet(m.layers, 1), NN.Layer(neurons=[]))
+            n_last = unwrap_or(listGet(l1.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
+            print(f"[{len(m.layers)}] [{len(l1.neurons)}] [{n_last.nonlin}]")
+
+    show()
+    ```
+    ```output
+    [2] [1] [false]
+    ```
+    """
     sizes = listConcat([nin], nouts)
     last = len(nouts) - 1
     walked = fold(range(len(nouts)), Built(offset=0, layers=[]), lambda st, i: Built(
@@ -107,14 +205,59 @@ def step_product(acc, w, x, op):
 def call_neuron(g, n, xs):
     """micrograd's `Neuron.__call__` with bare-number inputs: the activation is
     `sum(wi * xi, b)` — the bias first, each product a leaf and a `*` node —
-    then `relu` when the neuron is nonlinear."""
+    then `relu` when the neuron is nonlinear.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine, NN
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            g1 = NN.init_mlp(Engine.empty(), 2, [1], [0.5, -1.5, 2.0])
+            g2 = NN.call_neuron(g1, NN.neuron_at(0, 2, False), [1.0, 1.0])
+            print(f"[{Engine.data(g2, Engine.top(g2))}] [{Engine.size(g2)}]")
+
+    show()
+    ```
+    ```output
+    [1.0] [9]
+    ```
+    """
     walked = fold(range(len(n.weights)), Cursor(graph=g, id=n.bias), lambda acc, i: step_product(acc, unwrap_or(listGet(n.weights, i), -1), unwrap_or(listGet(xs, i), 0.0), mul_const))
     return relu(walked.graph, walked.id) if n.nonlin else walked.graph
 
 
 def call_neuron_values(g, n, x_ids):
     """micrograd's `Neuron.__call__` over Value inputs (node ids): the same
-    accumulation without wrapping the inputs in leaves."""
+    accumulation without wrapping the inputs in leaves.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine, NN
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            g1 = NN.init_mlp(Engine.empty(), 2, [1], [0.5, -1.5, 2.0])
+            g2 = Engine.value(Engine.value(g1, 1.0), -2.0)
+            g3 = NN.call_neuron_values(g2, NN.neuron_at(0, 2, False), [3, 4])
+            print(f"[{Engine.data(g3, Engine.top(g3))}] [{Engine.size(g3)}]")
+
+    show()
+    ```
+    ```output
+    [5.5] [9]
+    ```
+    """
     walked = fold(range(len(n.weights)), Cursor(graph=g, id=n.bias), lambda acc, i: step_product(acc, unwrap_or(listGet(n.weights, i), -1), unwrap_or(listGet(x_ids, i), -1), mul))
     return relu(walked.graph, walked.id) if n.nonlin else walked.graph
 
@@ -132,20 +275,90 @@ def layer_neuron(acc, n, call, inputs):
 
 def call_layer(g, l, xs):
     """micrograd's `Layer.__call__` with bare-number inputs: each neuron over
-    the same inputs, in construction order; returns the graph and output ids."""
+    the same inputs, in construction order; returns the graph and output ids.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine, NN
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            g = NN.init_mlp(Engine.empty(), 2, [2], [0.5, -1.5, 2.0, 1.0, -0.5, 3.0])
+            l = unwrap_or(listGet(NN.mlp_of(2, [2]).layers, 0), NN.Layer(neurons=[]))
+            fwd = NN.call_layer(g, l, [1.0, 1.0])
+            print(f"[{Engine.data(fwd.graph, Engine.top(fwd.graph))}] {toString(fwd.outputs)}")
+
+    show()
+    ```
+    ```output
+    [3.5] [11, 17]
+    ```
+    """
     return over_neurons(l, g, lambda acc, n: layer_neuron(acc, n, call_neuron, xs))
 
 
 def call_layer_values(g, l, x_ids):
     """micrograd's `Layer.__call__` over Value inputs: each neuron over the
-    same output ids, in construction order; returns the graph and output ids."""
+    same output ids, in construction order; returns the graph and output ids.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine, NN
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            g1 = NN.init_mlp(Engine.empty(), 2, [2], [0.5, -1.5, 2.0, 1.0, -0.5, 3.0])
+            g2 = Engine.value(Engine.value(g1, 1.0), 2.0)
+            l = unwrap_or(listGet(NN.mlp_of(2, [2]).layers, 0), NN.Layer(neurons=[]))
+            fwd = NN.call_layer_values(g2, l, [6, 7])
+            print(f"[{Engine.data(fwd.graph, Engine.top(fwd.graph))}] {toString(fwd.outputs)}")
+
+    show()
+    ```
+    ```output
+    [3.0] [11, 15]
+    ```
+    """
     return over_neurons(l, g, lambda acc, n: layer_neuron(acc, n, call_neuron_values, x_ids))
 
 
 def call_mlp(g, m, xs):
     """micrograd's `MLP.__call__`: layer 0 over the bare-number inputs, then
     every later layer over the previous layer's output ids. With no layers the
-    graph is returned unchanged."""
+    graph is returned unchanged.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine, NN
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            g = NN.init_mlp(Engine.empty(), 2, [2, 1], [0.5, -1.5, 2.0, 1.0, -0.5, 3.0, 0.5, 0.5, -1.0])
+            out = NN.call_mlp(g, NN.mlp_of(2, [2, 1]), [1.0, 1.0])
+            bare = NN.call_mlp(Engine.empty(), NN.mlp_of(2, []), [1.0, 1.0])
+            print(f"[{Engine.data(out, Engine.top(out))}] [{Engine.size(out)}] [{Engine.size(bare)}]")
+
+    show()
+    ```
+    ```output
+    [1.25] [27] [0]
+    ```
+    """
     first_layer = unwrap_or(listGet(m.layers, 0), no_layer())
     walked = fold(range(1, len(m.layers)), call_layer(g, first_layer, xs), lambda st, i: call_layer_values(st.graph, unwrap_or(listGet(m.layers, i), no_layer()), st.outputs))
     return walked.graph
@@ -158,12 +371,42 @@ def layer_params(l):
 
 def parameters(m):
     """micrograd's `MLP.parameters()`: every neuron's weights then bias, layer
-    by layer — on a fresh graph, the ids 0..param_count-1 in order."""
+    by layer — on a fresh graph, the ids 0..param_count-1 in order.
+
+    # Examples
+    ```osprey
+    from micrograd import NN
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            print(f"[{len(NN.parameters(NN.mlp_of(2, [2])))}] {toString(NN.parameters(NN.mlp_of(2, [2])))}")
+
+    show()
+    ```
+    ```output
+    [6] [0, 1, 2, 3, 4, 5]
+    ```
+    """
     return foldList(m.layers, [], lambda acc, l: listConcat(acc, layer_params(l)))
 
 
 def sgd_step(params: list[float], grads: list[float], ids: list[int], lr: float) -> list[float]:
     """The README demo's update as a function: `p.data += -lr * p.grad` for
     every parameter, returning the new parameter list. `grads` is indexed by
-    node id; `ids` selects each parameter's gradient."""
+    node id; `ids` selects each parameter's gradient.
+
+    # Examples
+    ```osprey
+    from micrograd import NN
+    print(f"{toString(NN.sgd_step([1.0, 2.0], [0.5, -1.0, 0.0], [0, 1], 0.1))}")
+    ```
+    ```output
+    [0.95, 2.1]
+    ```
+    """
     return toList(map(range(len(params)), lambda i: unwrap_or(listGet(params, i), 0.0) + (-lr) * unwrap_or(listGet(grads, unwrap_or(listGet(ids, i), 0)), 0.0)))
