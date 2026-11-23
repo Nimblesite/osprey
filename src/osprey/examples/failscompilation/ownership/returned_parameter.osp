@@ -1,6 +1,9 @@
 // [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
 // `pick` can return its parameter, so it takes ownership of it, and one
-// statement gives the same value to it twice.
+// statement gives the same value to it twice. `firstOr` is generic, so its
+// parameters stay borrowed and its `match` cannot yield one where another arm
+// yields a new list; the refusal names `firstOr`, whose body is lowered inside
+// the caller that instantiates it.
 type Box = { text: string }
 
 fn pick(box, n) = match n {
@@ -8,7 +11,12 @@ fn pick(box, n) = match n {
     _ => Box { text: "none${toString(n)}" }
 }
 
+fn firstOr(xs, fallback) = match xs {
+    [] => fallback
+    [head, ...tail] => listPrepend(tail, head)
+}
+
 fn main() = {
     let made = Box { text: "a${toString(1)}" }
-    print("${pick(made, 0).text}${pick(made, 3).text}")
+    print("${pick(made, 0).text}${pick(made, 3).text}${listLength(firstOr([1], [2]))}")
 }

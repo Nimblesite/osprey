@@ -207,15 +207,19 @@ impl Codegen {
     /// Lower part of top-level source function `name` — its own body, or a
     /// generic body inlined elsewhere — so its position-keyed inferred types
     /// resolve to that function's copy ([`osprey_types::SiteTable`]), then
-    /// restore the enclosing function.
+    /// restore the enclosing function. What the ownership check reports while
+    /// lowering it names `name`, not the caller it is inlined into
+    /// [MEM-OWNERSHIP-STATIC].
     pub(crate) fn within_source_function<R>(
         &mut self,
         name: &str,
         lower: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let enclosing = self.source_function.replace(name.to_owned());
+        let reporting = std::mem::replace(&mut self.ownership.function, name.to_owned());
         let result = lower(self);
         self.source_function = enclosing;
+        self.ownership.function = reporting;
         result
     }
 
