@@ -294,7 +294,9 @@ _test_hunt:
 	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f src/toolchain/compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
 	  echo "(KLEE not installed — src/osprey/tests/hunt skipped)"; exit 0; fi; \
 	echo "==> [hunt] src/osprey/tests/hunt expectations..."; \
-	$(HUNT_CARGO_TEST) --test hunt_engine -- --ignored --exact every_deterministic_hunt_program_matches_its_expectation_on_both_backends
+	$(HUNT_CARGO_TEST) --test hunt_engine -- --ignored --exact every_deterministic_hunt_program_matches_its_expectation_on_both_backends && \
+	echo "==> [hunt] every corpus module parses with KLEE's pinned LLVM 19 [SYMEX-CODEGEN]..." && \
+	$(HUNT_CARGO_TEST) --bin osprey -- --ignored --exact hunt::spec_engine_tests::klee_corpus_parses_with_pinned_llvm
 
 # No skip path: run by hand (`make -C src/osprey/tests/hunt hunt-crashes`), it must detect and natively
 # reproduce every planted failure.

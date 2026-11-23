@@ -350,3 +350,109 @@ fn a_fiber_program_lowers_symbolically() {
         ],
     );
 }
+
+// ---- [SYMEX-CODEGEN] KleeCodegen.md Verification ----------------------------
+
+/// The `llvm-as` of the LLVM KLEE is pinned to, searched as
+/// `scripts/make/config.mk` searches for `KLEE_LLVM_BIN`.
+fn pinned_llvm_as() -> Option<std::path::PathBuf> {
+    let explicit = std::env::var("OSPREY_KLEE_LLVM")
+        .ok()
+        .map(std::path::PathBuf::from);
+    let known = [
+        "/opt/homebrew/opt/llvm@19/bin",
+        "/usr/local/opt/llvm@19/bin",
+        "/home/linuxbrew/.linuxbrew/opt/llvm@19/bin",
+        "/usr/lib/llvm-19/bin",
+    ];
+    explicit
+        .into_iter()
+        .chain(known.iter().map(std::path::PathBuf::from))
+        .map(|directory| directory.join("llvm-as"))
+        .find(|tool| tool.is_file())
+}
+
+/// Every corpus program with a golden: the programs `run_test_corpus.sh`
+/// runs, an ML twin sharing its Default twin's `.osp.expectedoutput`.
+fn golden_programs(directory: &Path, found: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return;
+    };
+    for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+        let text = path.display().to_string();
+        let golden = format!(
+            "{}.expectedoutput",
+            text.strip_suffix("ml").unwrap_or(&text)
+        );
+        if path.is_dir() {
+            golden_programs(&path, found);
+        } else if (text.ends_with(".osp") || text.ends_with(".ospml"))
+            && Path::new(&golden).is_file()
+        {
+            found.push(text);
+        }
+    }
+}
+
+/// Why the symbolic module of `path` does not parse with `llvm_as`, if it does not.
+fn unparsed(llvm_as: &Path, path: &str, scratch: &Path) -> Option<String> {
+    let cli = crate::invocation::parse_args(&[path.to_string()]).ok()?;
+    let input = match crate::pipeline::load_input(&cli) {
+        Ok(input) => input,
+        Err(_) => return Some(format!("{path}: does not load")),
+    };
+    let module = match module::symbolic_module(&input, 64) {
+        Ok(module) => module,
+        Err(error) => return Some(format!("{path}: symbolic build: {error}")),
+    };
+    if let Err(error) = std::fs::write(scratch, module) {
+        return Some(format!("{path}: {error}"));
+    }
+    let parsed = std::process::Command::new(llvm_as)
+        .arg(scratch)
+        .args(["-o", "/dev/null"])
+        .output();
+    match parsed {
+        Ok(out) if out.status.success() => None,
+        Ok(out) => Some(format!(
+            "{path}: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )),
+        Err(error) => Some(format!("{path}: {error}")),
+    }
+}
+
+/// Every module of the `src/osprey/tests/` corpus parses with KLEE's pinned
+/// LLVM 19, so a construct newer LLVM accepts never reaches KLEE first.
+#[test]
+#[ignore = "needs KLEE's LLVM 19"]
+fn klee_corpus_parses_with_pinned_llvm() {
+    let llvm_as =
+        pinned_llvm_as().expect("LLVM 19 llvm-as: install llvm@19 or set OSPREY_KLEE_LLVM");
+    let corpus = Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../osprey/tests"
+    ));
+    let mut programs = Vec::new();
+    golden_programs(corpus, &mut programs);
+    programs.sort();
+    assert!(programs.len() > 300, "{} corpus programs", programs.len());
+    assert!(
+        programs.iter().any(|p| p.ends_with(".ospml")),
+        "ML twins are in the corpus"
+    );
+    let scratch =
+        std::env::temp_dir().join(format!("osprey-klee-corpus-{}.ll", std::process::id()));
+    let failures: Vec<String> = programs
+        .iter()
+        .filter_map(|p| unparsed(&llvm_as, p, &scratch))
+        .collect();
+    let _ = std::fs::remove_file(&scratch);
+    assert!(
+        failures.is_empty(),
+        "{} of {} programs:\n{}",
+        failures.len(),
+        programs.len(),
+        failures.join("\n")
+    );
+}
