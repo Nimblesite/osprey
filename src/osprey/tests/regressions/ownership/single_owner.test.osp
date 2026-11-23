@@ -97,6 +97,21 @@ fn owned() = {
     "owned ${toString(listLength(tags))} ${chosen.text} ${other.text}"
 }
 
+/// An arm that yields a literal yields no reference, so it joins an arm that
+/// yields a new value without either being counted.
+fn label(box, n) = {
+    let shown = match n {
+        0 => "none"
+        _ => "has ${box.text} x${toString(n)}"
+    }
+    "${shown}!"
+}
+
+fn literals() = {
+    let made = Box { text: "made${toString(1)}" }
+    "literals ${label(made, 0)} ${label(made, 2)}"
+}
+
 /// An Error owns its message once and joins a Success without a copy; a
 /// variant with no fields is one static value.
 fn find(n) = match n {
@@ -206,4 +221,4 @@ fn borrows() = {
     "borrows ${shown} ${same.text} ${toString(listLength(noise))} ${left.text}"
 }
 
-print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}")
+print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}")

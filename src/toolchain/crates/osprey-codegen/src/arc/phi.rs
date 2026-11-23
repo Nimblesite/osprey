@@ -53,10 +53,23 @@ fn arm_owned(cg: &Codegen, value: &Value, mark: usize) -> bool {
 /// gate, keeping the caller's dup/drop. Clear transferred slots so abandonment
 /// cannot release both an incoming owner and its phi. [GC-ARC-PERCEUS]
 pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value, mark: usize) {
-    if !managed(cg, out) || !incoming_owners_match(cg, incoming, mark, |_| true) {
+    // An arm that yields a literal or an immortal singleton yields no reference:
+    // only the other arms need an owner to hand to the join, and releasing the
+    // join on that arm's path releases nothing.
+    let counted: Vec<String> = incoming
+        .iter()
+        .filter(|operand| operand.starts_with('%') && !cg.is_rodata(operand))
+        .cloned()
+        .collect();
+    let every_arm_counted = counted.len() == incoming.len();
+    let incoming = counted.as_slice();
+    let owned = !incoming.is_empty() && incoming_owners_match(cg, incoming, mark, |_| true);
+    if !managed(cg, out) || !owned {
         return;
     }
-    let all_pure = incoming_owners_match(cg, incoming, mark, |e| e.pure_scalar);
+    // The unique release is for a block the join alone owns, never a literal.
+    let all_pure =
+        every_arm_counted && incoming_owners_match(cg, incoming, mark, |e| e.pure_scalar);
     for slot in take_phi_slots(cg, incoming, mark) {
         cg.emit(format!("store i8* null, i8** {slot}"));
     }
