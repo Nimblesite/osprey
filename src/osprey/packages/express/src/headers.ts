@@ -7,7 +7,16 @@
  * `Name: value` lines. [TS-PORT-EXPRESS-SURFACE]
  */
 
-/** The value of the first header called `name`, or an error when the request has none. */
+/** The value of the first header called `name`, or an error when the request has none.
+ * # Examples
+ * ```osprey
+ * const headers = "Host: localhost:3000\r\nX-Request-Id:  42 \r\n";
+ * print(`[${headerOf(headers, "host")}] [${headerOf(headers, "X-REQUEST-ID")}] [${headerOf(headers, "Cookie")}]`);
+ * ```
+ * ```output
+ * [Success(localhost:3000)] [Success(42)] [Error(no such header)]
+ * ```
+ */
 export function headerOf(headers: string, name: string): Result<string, string> {
   return lineValue(headers, `${toLowerCase(name)}:`);
 }
