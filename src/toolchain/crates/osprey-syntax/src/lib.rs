@@ -36,7 +36,7 @@ pub(crate) const USE_NEEDS_A_BLOCK: &str =
 pub(crate) const USE_NEEDS_A_REST: &str = "this `use` has nothing after it: its callback is the rest of the block, so put the steps it guards after it";
 
 /// A `use` whose right-hand side is not a call, in either flavor.
-pub(crate) const USE_NEEDS_A_CALL: &str = "`use` needs a call after `<-`, such as `use x <- try(step())`: the rest of the block is passed as its last argument";
+pub(crate) const USE_NEEDS_A_CALL: &str = "`use` needs a call after `<-`, such as `use x <- andThen(step())`: the rest of the block is passed as its last argument";
 
 mod annotation_edits;
 #[cfg(test)]
