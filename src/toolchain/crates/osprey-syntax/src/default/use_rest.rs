@@ -8,19 +8,7 @@ use osprey_ast::{Expr, Parameter};
 use tree_sitter::Node;
 
 pub(super) fn check(root: Node<'_>, errors: &mut Vec<SyntaxError>) {
-    let mut cursor = root.walk();
-    let mut stack = vec![root];
-    while let Some(node) = stack.pop() {
-        if node.kind() == "use_statement" {
-            if let Some(message) = rejection(node) {
-                errors.push(SyntaxError {
-                    message: message.to_owned(),
-                    position: super::position_from_point(node.start_position()),
-                });
-            }
-        }
-        stack.extend(node.named_children(&mut cursor));
-    }
+    super::handle_rest::walk_errors(root, "use_statement", rejection, errors);
 }
 
 fn rejection(statement: Node<'_>) -> Option<&'static str> {

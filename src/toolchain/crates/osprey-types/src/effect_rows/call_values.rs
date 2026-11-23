@@ -348,12 +348,7 @@ impl Analyzer<'_> {
         if name == "signalRefresh" {
             if let Some(old) = arguments
                 .first()
-                .or_else(|| {
-                    named
-                        .iter()
-                        .find(|argument| argument.name == "cached")
-                        .map(|argument| &argument.value)
-                })
+                .or_else(|| super::names::named_value(named, "cached"))
                 .and_then(|argument| self.value(argument, scope, env))
                 .and_then(|old| super::project_field(old, "value"))
             {
