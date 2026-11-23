@@ -371,4 +371,32 @@ fn main() = {
 "#,
         "all=90\n",
     ),
+    (
+        // A named function applied to the request, and an arm that resumes
+        // inside its own nested handler and through a local lambda: the
+        // nested handler's arms resume their own continuation, not the arm's.
+        "a named call, a nested handler and a lambda inside the arm",
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+effect Note { replayable say: fn(int) -> int }
+fn double(n) = satMul(n, 2)
+fn main() = {
+    let all = {
+        handle Choice {
+            pick n => {
+                let left = {
+                    handle Note { say k => satAdd(k, 1) }
+                    satAdd(resume(n), perform Note.say(0))
+                }
+                let scale = fn(x) => satMul(x, 3)
+                satAdd(left, scale(resume(satAdd(n, 1))))
+            }
+        }
+        double(perform Choice.pick(1))
+    }
+    print("all=${all}")
+}
+"#,
+        "all=15\n",
+    ),
 ];

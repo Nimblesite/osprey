@@ -1,2 +1,4 @@
 // [ARITH-EFFECT-CONST] A constant fold that overflows is a compile error naming the expression.
 print(9223372036854775807 + 1)
+print(-(-9223372036854775807 - 1))
+print(-(9223372036854775807 * 2))

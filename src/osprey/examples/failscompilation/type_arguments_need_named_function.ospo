@@ -1,0 +1,5 @@
+// [SYNTAX-TYPE-ARGUMENTS]: type arguments apply only to a named, declared function:
+// not a call result, not an unknown name, not an unknown qualified path.
+fn same<t>(x: t) -> t = x
+fn pickOne() = same
+print("${pickOne()<int>(1)} ${undefinedThing<int>(2)} ${Mod::gone<int>(3)}")
