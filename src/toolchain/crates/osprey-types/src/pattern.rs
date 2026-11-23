@@ -54,6 +54,7 @@ impl Checker {
             .collect::<Vec<_>>();
         let result = self.match_result(result, &bodies);
         if arms.iter().any(|arm| usefulness::nested(&arm.pattern)) {
+            self.check_any_catch_all(&disc, arms);
             self.check_nested_match(arms);
         } else {
             self.check_exhaustive(&disc, arms);

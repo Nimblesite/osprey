@@ -12,7 +12,20 @@ use osprey_ast::Pattern;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
 
+/// An erased value's row is not known until run time, so no set of
+/// structural arms covers it ([TYPE-ANY], [TYPE-MATCH-EXHAUSTIVE]).
+const ANY_NEVER_EXHAUSTIVE: &str = "a match over `any` is never exhaustive: add a catch-all arm";
+
 impl Checker {
+    /// A match over an erased `any` needs a catch-all however its arms are
+    /// spelled, or-patterns and nested patterns included.
+    pub(super) fn check_any_catch_all(&mut self, disc: &Type, arms: &[MatchArm]) {
+        let caught = arms.iter().any(|arm| self.is_catch_all(&arm.pattern));
+        if !caught && self.ctx.apply(disc).is_named(names::ANY) {
+            self.errors.push(TypeError::new(ANY_NEVER_EXHAUSTIVE));
+        }
+    }
+
     /// Enforce exhaustiveness where it is unambiguous: `bool` needs both
     /// constructors; a known union/`Result` needs every variant — unless a
     /// catch-all arm is present.
@@ -23,11 +36,7 @@ impl Checker {
         let dp = self.ctx.apply(disc);
         match &dp {
             t if t.is_named(names::BOOL) => self.check_bool_exhaustive(arms),
-            // An erased value's row is not known until run time, so no set of
-            // structural arms can cover it ([TYPE-ANY], [TYPE-MATCH-EXHAUSTIVE]).
-            t if t.is_named(names::ANY) => self.errors.push(TypeError::new(
-                "a match over `any` is never exhaustive: add a catch-all arm",
-            )),
+            t if t.is_named(names::ANY) => self.errors.push(TypeError::new(ANY_NEVER_EXHAUSTIVE)),
             Type::Con { name, .. } if self.union_variants.contains_key(name) => {
                 let all = self.union_variants.get(name).cloned().unwrap_or_default();
                 let covered: HashSet<String> = arms
