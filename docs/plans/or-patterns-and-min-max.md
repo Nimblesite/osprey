@@ -82,7 +82,7 @@ Expand existing suites. Add no new test file.
 - [x] Binding cases: the same binder taken from each alternative, a function-valued binder, a closure that captures the binder and escapes the arm, a binder shadowing a `mut` cell ([PATTERN-BINDING-SCOPE])
 - [x] Order cases: overlapping alternatives where only the first can supply the binding ([PATTERN-OR-ORDER])
 - [x] Multi-shot: an or-pattern arm whose body performs a `control many` operation, resumed two and three times, in `osprey-cli/tests/common/many_permutations.rs` and the multi-shot corpus, with identical output under GC, ARC and wasm32
-- [ ] Python and TypeScript twins share the Default golden
+- [x] Python and TypeScript twins share the Default golden. All 15 Python cases match its exact bytes under GC, ARC, wasm32 and the macOS host.
 - [x] `src/osprey/examples/failscompilation/`: an alternative that omits a binder, binders of two types, an unreachable alternative after an earlier arm, an alternative repeated inside one pattern, a leading `|`, a trailing `|`, an alternative of another union, and a non-exhaustive match whose witness is shown. Expand `match_not_exhaustive` and `match_unreachable_after_catch_all`
 - [x] The lambda generic-uses regression executes a lambda arm followed by an or-pattern arm, calls the returned functions for both alternatives and the fallback, and matches its golden under GC, ARC and wasm32.
 - [x] Full corpus passed under GC and ARC (337 goldens each) and wasm32 (253 goldens, 84 declared capability exclusions). All 22 alternate GPU runs passed on each backend. Documentation checks passed (94 GC, 93 ARC, 94 wasm32).
