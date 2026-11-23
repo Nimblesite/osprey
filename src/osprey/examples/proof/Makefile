@@ -8,7 +8,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: proof math mathlib-manifest
+.PHONY: proof math mathlib-manifest mathlib-ledger
 
 ## math: Math to code against Lean (spec MATH-CODE, needs Lean 4.25.0). Every tracked
 ##       math source is accepted by the pinned Lean, and Lean computes the same bits
@@ -26,6 +26,17 @@ math: build
 ##                   line `{"declarations":655176,...,"modules":9347,"root":"Mathlib"}` and both sha256s.
 mathlib-manifest:
 	bash scripts/proof/mathlib-manifest.sh
+
+## mathlib-ledger: Check pinned Mathlib in dependency order (plan 0041 M5). Writes one incremental
+##                 lean4export file per module under target/proof/mathlib/incremental (only what
+##                 no earlier file declared), then checks MODULES of them (default 1) against the
+##                 environment the earlier ones built. One `accepted <name>` or `rejected <name>:
+##                 <reason>` line per item, then `ledger: accepted A rejected R unread files U of
+##                 655176 declarations`.
+mathlib-ledger: build
+	cd src/toolchain/benchmarks/proof/mathlib && PATH="$$HOME/.elan/bin:$$PATH" lake exe incremental Mathlib $(CURDIR)/target/proof/mathlib/incremental 0 $(or $(MODULES),1)
+	$(BIN) src/osprey/examples/proof/ledger --compile --no-warnings -o target/proof/ledger
+	target/proof/ledger target/proof/mathlib/incremental $(or $(MODULES),1) 655176
 
 ## proof: Proof CI locally (plan 0041). Fresh Lean exports must be byte-identical
 ##        (Lean 4.25.0); recorder (18) and corpus/staging (41) regressions pass;

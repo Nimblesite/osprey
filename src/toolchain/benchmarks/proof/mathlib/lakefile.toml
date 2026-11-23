@@ -19,3 +19,10 @@ rev = "cfefafacc917b2d14c5f9bb092ed337f71317a4a"
 name = "manifest"
 root = "Manifest"
 supportInterpreter = true
+
+# Incremental per-module exports in dependency order, written by lean4export's own
+# exporter, for the dependency-order ledger ([PROOF-COMPLETION-MATHLIB]).
+[[lean_exe]]
+name = "incremental"
+root = "IncrementalExport"
+supportInterpreter = true
