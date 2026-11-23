@@ -1,5 +1,5 @@
 //! A sweep re-analyses exactly the functions whose inputs moved.
-use super::{affected, invalidate_scope, record_read, recording};
+use super::{affected, invalidate_scope, record_read, recording, scope_recording};
 use crate::effect_rows::expr_args::{assert_metadata_written, assert_model_metadata_matches};
 use crate::effect_rows::field_rows::tests::analyzer as empty_analyzer;
 use crate::effect_rows::recursion::Callees;
@@ -461,23 +461,49 @@ fn assert_alias_route(
         &vec![Summary::default(); count],
         &vec![None; count],
     );
-    assert_scope_invalidation(leaf, count, &initial, &analyzer.file_scope);
+    let scope_reads = function_scope_reads(&analyzer);
+    assert!(
+        scope_reads
+            .get(function_id(index, "main"))
+            .is_some_and(|read| read.contains("alias")),
+        "main reads the file-scope alias: {scope_reads:?}"
+    );
+    assert_scope_invalidation(leaf, &scope_reads, &initial, &analyzer.file_scope);
+}
+
+fn function_scope_reads(analyzer: &Analyzer<'_>) -> Vec<BTreeSet<String>> {
+    let functions = analyzer.index.functions.iter();
+    functions
+        .map(|function| {
+            scope_recording(|| {
+                let _ = analyzer.function_body(function);
+                let _ = analyzer.function_return(function);
+            })
+            .1
+        })
+        .collect()
 }
 
 fn assert_scope_invalidation(
     leaf: usize,
-    count: usize,
+    scope_reads: &[BTreeSet<String>],
     initial: &CallableEnv,
     converged: &CallableEnv,
 ) {
     for previous in [None, Some(converged)] {
         let mut dirty = set(&[leaf]);
-        invalidate_scope(previous, converged, &mut dirty, count);
+        invalidate_scope(previous, converged, &mut dirty, scope_reads);
         assert_eq!(dirty, set(&[leaf]));
     }
     let mut dirty = set(&[leaf]);
-    invalidate_scope(Some(initial), converged, &mut dirty, count);
-    assert_eq!(dirty, (0..count).collect());
+    invalidate_scope(Some(initial), converged, &mut dirty, scope_reads);
+    let readers = scope_reads.iter().enumerate();
+    let alias_readers = readers
+        .filter(|(_, read)| read.contains("alias"))
+        .map(|(id, _)| id);
+    let expected: BTreeSet<usize> = alias_readers.chain([leaf]).collect();
+    assert!(expected.len() > 1, "the alias has a reader besides leaf");
+    assert_eq!(dirty, expected);
 }
 
 #[test]
@@ -542,11 +568,11 @@ fn scope_program(unrelated: usize, aliased: bool) -> String {
         .collect::<Vec<_>>()
         .concat();
     let alias = if aliased {
-        "let alias = make()\nfn main() = alias()\n"
+        "fn idle(x) = x\nmut held = idle(make())\nfn main() = held() + make()()\n"
     } else {
-        "fn main() = make()()\n"
+        "fn idle(x) = x\nfn main() = make()() + make()()\n"
     };
-    format!("effect Alarm {{ring:fn()->int}}\nfn make() = fn() => perform Alarm.ring()\n{alias}{pure}")
+    format!("effect Alarm {{ring:fn()->int}}\nfn make() = f0()\nfn f0() = f1()\nfn f1() = f2()\nfn f2() = fn() => perform Alarm.ring()\n{alias}{pure}")
 }
 
 fn body_models(source: &str) -> usize {
@@ -574,10 +600,4 @@ fn a_changed_file_scope_entry_re_models_only_its_readers() {
         small, large,
         "the alias's extra models must not grow with unrelated functions"
     );
-}
-#[test]
-fn zz_debug_scope_counts() {
-    for n in [4, 64] {
-        eprintln!("n={n} with={} without={}", body_models(&scope_program(n, true)), body_models(&scope_program(n, false)));
-    }
 }

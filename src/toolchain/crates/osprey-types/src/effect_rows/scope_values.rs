@@ -3,7 +3,7 @@
 //! scope, and the file scope alone holds every top-level value. A copy shares
 //! the layers beneath it and owns only the names bound since.
 
-use super::{HashMap, Value};
+use super::{BTreeSet, HashMap, Value};
 use std::sync::Arc;
 
 /// A value map whose copies share everything bound before they were made.
@@ -17,10 +17,18 @@ pub(super) struct ScopeValues {
 
 impl ScopeValues {
     pub(super) fn get(&self, name: &str) -> Option<&Value> {
-        match self.own.get(name) {
-            Some(own) => own.as_ref(),
-            None => self.shared.get(name),
+        if let Some(own) = self.own.get(name) {
+            return own.as_ref();
         }
+        super::worklist::record_scope_read(name);
+        self.shared.get(name)
+    }
+
+    /// The names bound to a different value here than in `other`.
+    pub(super) fn changed_names(&self, other: &ScopeValues) -> BTreeSet<String> {
+        let mine = self.entries().filter(|(n, v)| other.get(n) != Some(*v));
+        let theirs = other.entries().filter(|(n, _)| self.get(n).is_none());
+        mine.chain(theirs).map(|(n, _)| n.clone()).collect()
     }
 
     pub(super) fn contains_key(&self, name: &str) -> bool {
@@ -108,7 +116,8 @@ impl ScopeValues {
         let shared = self
             .shared
             .iter()
-            .filter(|(n, _)| !self.own.contains_key(*n));
+            .filter(|(n, _)| !self.own.contains_key(*n))
+            .inspect(|(n, _)| super::worklist::record_scope_read(n));
         own.chain(shared)
     }
 

@@ -24,6 +24,17 @@ impl CallableEnv {
 }
 
 impl CallableEnv {
+    /// The value names `other` rebinds, when values are all that differ; `None`
+    /// when any other part of the environment changed too.
+    pub(super) fn changed_values(&self, other: &CallableEnv) -> Option<super::BTreeSet<String>> {
+        let rest_equal = self.shadowed == other.shadowed
+            && self.channel_payloads == other.channel_payloads
+            && self.handler_returns == other.handler_returns
+            && self.static_answers == other.static_answers
+            && self.deferred_arm_parameters == other.deferred_arm_parameters;
+        rest_equal.then(|| self.values.changed_names(&other.values))
+    }
+
     /// Whether `expression` names a compile-time arm parameter whose operand
     /// discharge will supply.
     pub(super) fn deferred_arm_parameter(&self, expression: &super::Expr) -> bool {

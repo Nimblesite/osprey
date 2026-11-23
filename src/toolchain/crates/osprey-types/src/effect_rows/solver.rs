@@ -238,7 +238,7 @@ pub(super) fn converge(
         callees: &callees,
     };
     let mut history = ReturnHistory::new(callees.recursive());
-    let mut reads = vec![BTreeSet::new(); index.functions.len()];
+    let mut reads = super::worklist::Inputs::new(index.functions.len());
     let mut dirty: BTreeSet<usize> = (0..index.functions.len()).collect();
     let mut previous_scope = None;
     while !dirty.is_empty() {
@@ -268,7 +268,7 @@ impl Solve<'_> {
         mut dirty: BTreeSet<usize>,
         (rows, returns): (&mut Vec<Summary>, &mut Vec<Option<Value>>),
         history: &mut ReturnHistory,
-        reads: &mut [BTreeSet<usize>],
+        reads: &mut super::worklist::Inputs,
         previous_scope: &mut Option<CallableEnv>,
     ) -> BTreeSet<usize> {
         let (index, instances) = (self.index, self.instances);
@@ -277,7 +277,7 @@ impl Solve<'_> {
             previous_scope.as_ref(),
             &file_scope,
             &mut dirty,
-            reads.len(),
+            &reads.scope,
         );
         // A function still waiting on a dirty callee is modelled once that callee settles.
         let waiting: BTreeSet<usize> = dirty
@@ -302,7 +302,7 @@ impl Solve<'_> {
             };
             let mut row = rows.get(id).cloned();
             let mut returned = returns.get(id).cloned();
-            let (changed, read) = super::worklist::recording(|| {
+            let ((changed, read), scope_read) = super::worklist::recorded_inputs(|| {
                 advance_function(
                     &analyzer,
                     id,
@@ -312,9 +312,7 @@ impl Solve<'_> {
                     history,
                 )
             });
-            if let Some(slot) = reads.get_mut(id) {
-                *slot = read;
-            }
+            reads.set(id, read, scope_read);
             if changed {
                 updates.push((id, row, returned));
             }
@@ -330,7 +328,7 @@ impl Solve<'_> {
             }
             let _ = moved.insert(id);
         }
-        let mut next = super::worklist::affected(&moved, reads);
+        let mut next = super::worklist::affected(&moved, &reads.functions);
         next.extend(waiting);
         next
     }
@@ -487,7 +485,7 @@ fn sparse_sweep_leaves_unread_return_trees_in_place() {
     let trees = |unread| {
         let mut rows = vec![Summary::default(); 2];
         let mut returns = vec![None, Some(unread)];
-        let mut reads = vec![BTreeSet::new(); 2];
+        let mut reads = super::worklist::Inputs::new(2);
         super::provenance::measured_clones(|| {
             solve.sweep(
                 BTreeSet::from([0]),
