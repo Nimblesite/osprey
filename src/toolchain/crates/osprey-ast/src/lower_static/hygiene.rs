@@ -44,7 +44,11 @@ impl Resolver {
     }
 
     fn bind(&mut self, name: &mut String, scope: &mut Scope) {
-        let pinned = self.pinned.as_ref().and_then(|chosen| chosen.get(name.as_str())).cloned();
+        let pinned = self
+            .pinned
+            .as_ref()
+            .and_then(|chosen| chosen.get(name.as_str()))
+            .cloned();
         let resolved = pinned.unwrap_or_else(|| self.fresh(name));
         let _ = scope.insert(name.clone(), resolved.clone());
         *name = resolved;

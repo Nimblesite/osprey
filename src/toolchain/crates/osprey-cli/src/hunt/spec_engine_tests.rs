@@ -386,7 +386,9 @@ fn golden_programs(directory: &Path, found: &mut Vec<String>) {
         );
         if path.is_dir() {
             golden_programs(&path, found);
-        } else if (text.ends_with(".osp") || text.ends_with(".ospml"))
+        } else if path
+            .extension()
+            .is_some_and(|ext| ext == "osp" || ext == "ospml")
             && Path::new(&golden).is_file()
         {
             found.push(text);
@@ -397,9 +399,8 @@ fn golden_programs(directory: &Path, found: &mut Vec<String>) {
 /// Why the symbolic module of `path` does not parse with `llvm_as`, if it does not.
 fn unparsed(llvm_as: &Path, path: &str, scratch: &Path) -> Option<String> {
     let cli = crate::invocation::parse_args(&[path.to_string()]).ok()?;
-    let input = match crate::pipeline::load_input(&cli) {
-        Ok(input) => input,
-        Err(_) => return Some(format!("{path}: does not load")),
+    let Ok(input) = crate::pipeline::load_input(&cli) else {
+        return Some(format!("{path}: does not load"));
     };
     let module = match module::symbolic_module(&input, 64) {
         Ok(module) => module,
@@ -438,7 +439,9 @@ fn klee_corpus_parses_with_pinned_llvm() {
     programs.sort();
     assert!(programs.len() > 300, "{} corpus programs", programs.len());
     assert!(
-        programs.iter().any(|p| p.ends_with(".ospml")),
+        programs
+            .iter()
+            .any(|p| Path::new(p).extension().is_some_and(|ext| ext == "ospml")),
         "ML twins are in the corpus"
     );
     let scratch =
