@@ -28,7 +28,7 @@ Constraints:
 ## Phase B — core-lowering triples and LLVM equivalence
 
 - [x] [FLAVOR-PYTHON-BOUNDARY] Flat-call triples for host reductions, device kernels and record-held Result values compare their position-free canonical AST and full LLVM module in Default, ML and Python. The device case also requires a real launch site and extracted kernel source.
-- [ ] [FLAVOR-PYTHON-TYPING] [FLAVOR-PYTHON-EXPRESSIONS] Complete positive/rejection triples in `src/toolchain/crates/osprey-syntax/tests/python.rs` for the remaining surface: PEP 484/526/585/591/695 edge forms; unsupported tuple/slice/generator syntax, default/variadic arguments, class bodies/bases/dunders, early/partial returns, attribute/index mutation, and `try`/`except`/`raise`/coroutine machinery. Acceptance: exact rejection spans/messages shared with the Default/ML convention.
+- [x] [FLAVOR-PYTHON-TYPING] [FLAVOR-PYTHON-EXPRESSIONS] PEP 484/526/585/591/695 declarations compare equal to the Default and ML canonical contracts. The Python syntax suite pins exact diagnostics and original byte positions for unsupported tuple, slice, generator, parameter, class, return, mutation, exception and coroutine forms. All 30 Python frontend tests passed on 2026-11-23.
 
 ## Phase C — effects, fibers, signals; shared handler-state repair
 

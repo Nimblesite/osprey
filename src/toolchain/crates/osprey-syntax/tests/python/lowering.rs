@@ -416,3 +416,6 @@ fn recovery_locations_survive_unicode_and_crlf() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[path = "typing_matrix.rs"]
+mod typing_matrix;
