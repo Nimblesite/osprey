@@ -177,7 +177,12 @@ module ManifestDeps {
     /// The root's grants from all three dependency tables, one per key,
     /// sorted by key with canonical capability sets; a bad capability is
     /// `manifest.dependency.capability`.
-    export fn grants(root) = andThen(tableGrants(root, "dependencies", []), fn(value) => andThen(tableGrants(root, "build-dependencies", value), fn(value) => andThen(tableGrants(root, "test-dependencies", value), fn(value) => Success { value: nonEmpty(mergedGrants(value)) })))
+    export fn grants(root) = {
+        use runtime <- andThen(tableGrants(root, "dependencies", []))
+        use build <- andThen(tableGrants(root, "build-dependencies", runtime))
+        use all <- andThen(tableGrants(root, "test-dependencies", build))
+        Success { value: nonEmpty(mergedGrants(all)) }
+    }
 
     /// All three dependency tables as canonical, sorted edges.
     export fn dependencies(root) = andThen(tableEdges(root, "dependencies", []), fn(value) => withBuild(root, value))

@@ -188,13 +188,15 @@ module Governance {
     /// other organizations' admins and workflows all fail here.
     export fn requireAdmin(registry, pkg: Package, proof, statement) = match proof.membership == pkg.admin {
         false => Error { message: "governance.admin.not-current" }
-        true => andThen(membershipOf(registry, proof.membership), fn(m: Membership) =>
-            andThen(activeMemberOf(m), fn(_) =>
-                andThen(principalOf(registry, m.principal), fn(p: Principal) =>
-                    andThen(livePrincipal(p), fn(_) =>
-                        andThen(humanPrincipal(p), fn(_) =>
-                            andThen(requireHumanCeremony(proof), fn(_) =>
-                                requireProof(proof, m.principal, m.id, statement)))))))
+        true => {
+            use m <- andThen(membershipOf(registry, proof.membership))
+            use _ <- andThen(activeMemberOf(m))
+            use p <- andThen(principalOf(registry, m.principal))
+            use _ <- andThen(livePrincipal(p))
+            use _ <- andThen(humanPrincipal(p))
+            use _ <- andThen(requireHumanCeremony(proof))
+            requireProof(proof, m.principal, m.id, statement)
+        }
     }
 
     /// The canonical statements every proof signs. A statement binds the

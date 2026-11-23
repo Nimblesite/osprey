@@ -42,12 +42,13 @@ module TomlParser {
 
     /// A header's key path, its closing bracket(s), its line tail, and the
     /// table `define` creates for the header's segments.
-    fn headerChain(doc, c, start, closer, define) =
-        andThen(TomlValues::parseKeyPath(c), fn(path) =>
-            andThen(closer(path.at), fn(close) =>
-                andThen(TomlLexer::skipLineTail(close), fn(tail) =>
-                    andThen(define(doc, headerSegs(path.segs, start)), fn(defined) =>
-                        Success { value: Step { doc: defined, at: tail } }))))
+    fn headerChain(doc, c, start, closer, define) = {
+        use path <- andThen(TomlValues::parseKeyPath(c))
+        use close <- andThen(closer(path.at))
+        use tail <- andThen(TomlLexer::skipLineTail(close))
+        use defined <- andThen(define(doc, headerSegs(path.segs, start)))
+        Success { value: Step { doc: defined, at: tail } }
+    }
 
     fn parseKeyValue(doc, c) = andThen(TomlValues::parseKeyPath(c), fn(value) => kvEquals(doc, value))
 
