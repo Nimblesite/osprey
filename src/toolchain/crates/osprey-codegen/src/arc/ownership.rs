@@ -33,6 +33,8 @@ pub enum Need {
     Joined,
     /// A file-scope binding or a cell holds it as well as its owner.
     Shared,
+    /// It is passed to a function that takes ownership of that parameter.
+    Given,
 }
 
 impl Need {
@@ -44,6 +46,7 @@ impl Need {
             Need::Kept => "it is handed to a fiber, channel, handler or collection that keeps it",
             Need::Joined => "one arm of a `match` yields it while another arm yields a new value",
             Need::Shared => "a file-scope binding or cell holds it as well as its owner",
+            Need::Given => "it is given to a function that takes ownership of it",
         }
     }
 }
@@ -112,6 +115,8 @@ pub(crate) struct OwnershipCheck {
     pub(crate) position: Option<Position>,
     pub(crate) function: String,
     pub(crate) found: Vec<SecondOwner>,
+    /// Which parameters each function owns [MEM-OWNERSHIP-STATIC-PARAMETERS].
+    pub(crate) owned_parameters: super::OwnedParameters,
     /// Where each suspended function's nested function began in `found`.
     nested: Vec<usize>,
 }
@@ -124,6 +129,7 @@ impl OwnershipCheck {
             position: None,
             function: String::new(),
             found: Vec::new(),
+            owned_parameters: super::OwnedParameters::new(),
             nested: Vec::new(),
         }
     }

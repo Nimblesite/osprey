@@ -266,7 +266,10 @@ refused, when:
 - it is stored in a record, union, list, closure or cell while its owner keeps
   it;
 - a function returns a parameter, a field of one, or a file-scope binding;
-- one arm of a `match` yields it where another arm yields a new value;
+- one arm of a `match` yields a value something else still owns where another
+  arm yields a new value;
+- it is given to a function that takes ownership of that parameter while the
+  caller reads it again;
 - it is handed to a fiber, channel, handler or collection that keeps it;
 - a file-scope binding holds it as well as its owner.
 
@@ -304,6 +307,32 @@ The second is a value read from a `mut` binding or a file-scope binding,
 which can be replaced while the borrower still reads it. A borrower can be
 read and passed to functions. Storing it, returning it or handing it to a
 fiber needs an owner and is refused.
+
+### Owned parameters [MEM-OWNERSHIP-STATIC-PARAMETERS]
+
+A parameter is a borrow unless the function can return it. A function whose
+result can be one of its parameters, as an accumulator or a function that picks
+between its argument and a new value does, takes ownership of that parameter:
+the caller gives a fresh value or a binding at its last use, and the function
+returns the value or frees it. Giving a value the caller reads again is
+refused at the call:
+
+```text
+main.osp: 13:4: ownership: `made` needs a second owner in `main`: it is given to a function that takes ownership of it; it is read again at 14:4 [MEM-OWNERSHIP-STATIC]
+```
+
+The rule is inferred, never written, and holds under reference counting too,
+where it saves the count a returned parameter needed. It applies to a function
+of an executable that is called only by name. A function passed as a value, a
+generic function, and every function of a library a host calls keep borrowed
+parameters, because their callers can't know which parameters are owned.
+
+### Moves on one path [MEM-OWNERSHIP-STATIC-PATHS]
+
+A binding may be given away where no path through the statement reads it
+twice and nothing reads it afterwards. When only some paths give it away, as
+when one arm of a `match` stores or returns it, the binding is released on the
+other paths and not on that one.
 
 ### Rules for shared values [MEM-OWNERSHIP-STATIC-RULES]
 

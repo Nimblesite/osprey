@@ -74,9 +74,25 @@ fn mixed_match_transfers_fresh_owners_and_retains_only_borrowed_arms() {
     let ir = module("type Node = Node(int)\nfn choose(flag: bool, old: Node) = match flag { true => old false => Node(7) }\n");
     let body = function_body(&ir, "define internal i8* @choose(i1 %$p0, i8* %$p1)");
     let (arms, joined) = body.split_once(" = phi i8* ").expect("managed match join");
-    // The borrowed arm acquires its own reference before joining; the join
+    // `choose` can return `old`, so it owns that parameter
+    // [MEM-OWNERSHIP-STATIC-PARAMETERS]: the arm that yields it gives the
+    // reference up by clearing its slot, and nothing is counted. The join
     // then transfers it without duplicating a freshly owned arm.
-    shows(arms, &["call void @osp_retain(i8* %$p1)"]);
+    let (_, after_entry) = arms
+        .split_once("store i8* %$p1, i8** %arc.s0")
+        .expect("the function owns `old`");
+    contents(
+        after_entry,
+        &["store i8* null, i8** %arc.s0"],
+        &["call void @osp_retain("],
+    );
+    contents(joined, &[], &["call void @osp_retain("]);
+    // An arm that yields a FIELD of a parameter yields a borrow: it acquires
+    // its own reference before joining.
+    let ir = module("type Node = Node(int)\ntype Wrap = { node: Node }\nfn choose(flag: bool, old: Wrap) = match flag { true => old.node false => Node(7) }\n");
+    let body = function_body(&ir, "define internal i8* @choose(i1 %$p0, i8* %$p1)");
+    let (arms, joined) = body.split_once(" = phi i8* ").expect("managed match join");
+    shows(arms, &["call void @osp_retain("]);
     contents(joined, &[], &["call void @osp_retain("]);
 }
 
@@ -85,10 +101,20 @@ fn repeated_borrowed_match_operands_each_acquire_their_own_reference() {
     let ir = module("type Node = Node(int)\nfn choose(which: int, old: Node) = match which { 0 => old 1 => old _ => Node(7) }\n");
     let body = function_body(&ir, "define internal i8* @choose(i64 %$p0, i8* %$p1)");
     let (arms, _) = body.split_once(" = phi i8* ").expect("managed match join");
+    // `old` is an owned parameter. The first arm that yields it gives its
+    // reference up; the second names the same operand on another path and
+    // acquires its own, so every exit carries exactly one reference.
+    let (_, after_entry) = arms
+        .split_once("store i8* %$p1, i8** %arc.s0")
+        .expect("the function owns `old`");
+    let given = after_entry.matches("store i8* null, i8** %arc.s0").count();
+    let counted = after_entry
+        .matches("call void @osp_retain(i8* %$p1)")
+        .count();
     assert_eq!(
-        arms.matches("call void @osp_retain(i8* %$p1)").count(),
-        2,
-        "each borrowed predecessor must acquire its own reference:\n{body}"
+        (given, counted),
+        (1, 1),
+        "each predecessor that yields the parameter must carry one reference:\n{body}"
     );
 }
 

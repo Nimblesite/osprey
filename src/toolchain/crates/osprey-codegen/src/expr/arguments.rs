@@ -152,6 +152,7 @@ pub(crate) fn call_with_values(cg: &mut Codegen, name: &str, args: Vec<Value>) -
             .collect::<Result<Vec<_>>>()?,
         _ => args,
     };
+    crate::arc::give_arguments(cg, name, &coerced);
     let typed = crate::llty::comma_join(&coerced, Value::typed);
     // A function declared `-> Result<T, E>` hands back a Result block pointer.
     if let Some(inner) = cg.fn_ret_result_inner(name) {

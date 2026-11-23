@@ -1,6 +1,6 @@
 // [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
-// One arm returns the caller's value, the other a new one: the caller cannot
-// tell whether it owns the result.
+// `pick` can return its parameter, so it takes ownership of it, and one
+// statement gives the same value to it twice.
 type Box = { text: string }
 
 fn pick(box, n) = match n {

@@ -74,6 +74,29 @@ fn wrapped(n) = {
 
 fn paths() = "paths ${pick(0).text} ${pick(3).text} ${wrapped(0)} ${wrapped(5)}"
 
+/// A function that can return its parameter takes ownership of it: the caller
+/// gives a fresh value or a binding at its last use, and gets one value back.
+fn collect(n, acc) = match n {
+    0 => acc
+    _ => collect(wrapSub(n, 1), listAppend(acc, "t${toString(n)}"))
+}
+
+fn keep(box) = box
+
+fn choose(box, n) = match n {
+    0 => box
+    _ => Box { text: "none${toString(n)}" }
+}
+
+fn owned() = {
+    let tags = collect(3, [])
+    let made = Box { text: "a${toString(1)}" }
+    let kept = keep(made)
+    let chosen = choose(kept, 0)
+    let other = choose(Box { text: "b${toString(2)}" }, 4)
+    "owned ${toString(listLength(tags))} ${chosen.text} ${other.text}"
+}
+
 /// An Error owns its message once and joins a Success without a copy; a
 /// variant with no fields is one static value.
 fn find(n) = match n {
@@ -127,4 +150,4 @@ fn borrows() = {
     "borrows ${shown} ${same.text} ${toString(listLength(noise))} ${left.text}"
 }
 
-print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${errors()}\n${captures()}\n${borrows()}")
+print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${errors()}\n${captures()}\n${borrows()}")

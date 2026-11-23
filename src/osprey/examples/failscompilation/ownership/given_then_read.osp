@@ -1,0 +1,15 @@
+// [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
+// `choose` can return its parameter, so it takes ownership of it: the caller
+// cannot give the value away and read it again.
+type Box = { text: string }
+
+fn choose(box, n) = match n {
+    0 => box
+    _ => Box { text: "none${toString(n)}" }
+}
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    let kept = choose(made, 0)
+    print("${kept.text}${made.text}")
+}

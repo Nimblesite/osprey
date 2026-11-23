@@ -497,8 +497,13 @@ fn erasure_boxes_with_one_way_ownership() {
         &["store i8* null, i8** %arc.s0", "@osp.any.desc.string"],
     );
     // The pass-through function receives and returns the box UNTOUCHED:
-    // no new box, no descriptor reference — and the borrowed return is
-    // retained (+1) rather than entered in the ledger as a fresh owner.
+    // no new box, no descriptor reference. It can return its parameter, so
+    // it owns it [MEM-OWNERSHIP-STATIC-PARAMETERS]: the caller gives the
+    // reference and the function hands the same one back, counting nothing.
     let pass = function_body(&ir, "define internal i8* @identity(i8* %$p0)");
-    contents(&pass, &["@osp_retain"], &["@osp.any.desc"]);
+    contents(
+        &pass,
+        &["store i8* %$p0, i8** %arc.s0", "ret i8* %$p0"],
+        &["@osp_retain", "@osp_release", "@osp.any.desc"],
+    );
 }

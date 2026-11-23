@@ -158,6 +158,7 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     crate::anybox::seed_rows(&mut cg);
 
     record_declarations(&mut cg, program);
+    crate::arc::infer_owned_parameters(&mut cg, program);
     crate::gpu_device::record(&mut cg, program);
 
     let mut top_level: Vec<&Stmt> = Vec::new();
@@ -399,6 +400,7 @@ fn emit_function_body(
             .and_then(|types| types.get(i))
             .cloned();
         cg.emit_debug_param(&p.name, &v, i);
+        crate::arc::own_parameter(cg, name, i, &p.name, &v);
         cg.bind(p.name.clone(), v);
         params.push((pty.ty, reg));
     }

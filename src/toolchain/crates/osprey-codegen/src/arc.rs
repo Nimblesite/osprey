@@ -19,7 +19,12 @@ use crate::llty::Value;
 mod borrows;
 mod moves;
 mod ownership;
+mod params;
 pub(crate) use borrows::{bind_let, note_rebound};
+pub(crate) use params::{
+    give_arguments, infer as infer_owned_parameters, own_parameter, scope_parameters,
+    OwnedParameters,
+};
 mod phi;
 mod reads;
 pub(crate) use moves::{
@@ -70,6 +75,8 @@ pub(crate) struct ArcLedger {
     movable: moves::Movable,
     /// The same for each statement enclosing that one, outermost first.
     enclosing: Vec<moves::Movable>,
+    /// Owned parameters still waiting for the body block that scopes them.
+    unscoped_parameters: Vec<String>,
     /// Bindings that borrow, and what they borrow from [MEM-OWNERSHIP-STATIC-BORROWS].
     borrows: borrows::Borrows,
 }
@@ -82,6 +89,7 @@ impl ArcLedger {
             cond_floors: Vec::new(),
             movable: moves::Movable::default(),
             enclosing: Vec::new(),
+            unscoped_parameters: Vec::new(),
             borrows: borrows::Borrows::default(),
         }
     }

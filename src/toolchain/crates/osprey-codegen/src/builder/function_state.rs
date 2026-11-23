@@ -18,6 +18,13 @@ pub(crate) enum Linkage {
     Executable,
 }
 
+impl Codegen {
+    /// Whether nothing outside the module calls its functions by name.
+    pub(crate) fn only_entry_is_external(&self) -> bool {
+        matches!(self.linkage, Linkage::Executable)
+    }
+}
+
 impl Linkage {
     /// The linkage keyword `define` takes for `name`, with its trailing space.
     fn keyword(self, name: &str) -> &'static str {
