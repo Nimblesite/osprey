@@ -58,3 +58,19 @@ test("thousands of record fibers", fn() => check("sum and last", "4498500 w2999"
 test("thousands of channels", fn() => check("sum", "4498500", "${sumOfChannels(0, 0)}"))
 test("strings through fibers and channels", fn() => check("last", "w2999", wordsThroughChannels(0, "")))
 test("an old handle survives thousands more", reusableHandles)
+
+/// #340: a recursive wait loop with no annotations awaits the fiber it was passed,
+/// one generic body instantiated for an int, a string and a record fiber.
+fn waitLoop(fib, spins) = match fiberDone(fib) {
+    1 => await(fib)
+    _ => waitLoop(fib, wrapAdd(spins, 1))
+}
+
+fn waitedValues() = {
+    let number = waitLoop(spawn twice(21), 0)
+    let text = waitLoop(spawn word(9), 0)
+    let pair = waitLoop(spawn pairOf(5), 0)
+    check("int, string and record", "42 w9 5 w5", "${number} ${text} ${pair.index} ${pair.label}")
+}
+
+test("a recursive loop awaits the fiber it was passed", waitedValues)
