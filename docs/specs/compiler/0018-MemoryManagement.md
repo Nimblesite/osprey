@@ -271,10 +271,12 @@ refused, when:
 - a file-scope binding holds it as well as its owner.
 
 The diagnostic gives the statement, the function, the binding that names the
-value when one does, and which of these applies:
+value when one does, which of these applies, and the other use that keeps the
+value from moving: a later read with its place, or a second read in the same
+statement.
 
 ```text
-main.osp: 6:4: ownership: `made` needs a second owner in `main`: it is stored in a new value while its owner keeps it [MEM-OWNERSHIP-STATIC]
+main.osp: 8:4: ownership: `made` needs a second owner in `main`: it is stored in a new value while its owner keeps it; it is read again at 9:4 [MEM-OWNERSHIP-STATIC]
 ```
 
 A fresh value passed straight to its use is moved and never refused. A binding

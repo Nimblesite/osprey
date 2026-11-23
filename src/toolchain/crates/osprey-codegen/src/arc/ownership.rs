@@ -48,6 +48,30 @@ impl Need {
     }
 }
 
+/// The other use that keeps a named value from moving to the one reported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OtherUse {
+    /// A later statement reads it, here when the statement has a position.
+    ReadLater(Option<Position>),
+    /// The same statement reads it again, or reads it where it may not run.
+    ReadAgainHere,
+}
+
+impl fmt::Display for OtherUse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OtherUse::ReadLater(Some(at)) => {
+                write!(f, "it is read again at {}:{}", at.line, at.column)
+            }
+            OtherUse::ReadLater(None) => write!(f, "it is read again later"),
+            OtherUse::ReadAgainHere => write!(
+                f,
+                "this statement reads it more than once or on a path that may not run"
+            ),
+        }
+    }
+}
+
 /// One value the ledger could not give a single owner.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SecondOwner {
@@ -59,6 +83,8 @@ pub struct SecondOwner {
     pub value: Option<String>,
     /// Why the reference is needed.
     pub need: Need,
+    /// What else uses the value, when the ledger knows.
+    pub other: Option<OtherUse>,
 }
 
 impl fmt::Display for SecondOwner {
@@ -71,12 +97,11 @@ impl fmt::Display for SecondOwner {
             Some(name) => write!(f, "`{name}` needs a second owner")?,
             None => write!(f, "a value needs a second owner")?,
         }
-        write!(
-            f,
-            " in `{}`: {} [MEM-OWNERSHIP-STATIC]",
-            self.function,
-            self.need.reason()
-        )
+        write!(f, " in `{}`: {}", self.function, self.need.reason())?;
+        if let Some(other) = self.other {
+            write!(f, "; {other}")?;
+        }
+        write!(f, " [MEM-OWNERSHIP-STATIC]")
     }
 }
 
@@ -130,11 +155,15 @@ pub(crate) fn second_owner(cg: &mut Codegen, operand: &str, name: Option<&str>, 
         return;
     }
     let value = name.map(str::to_owned).or_else(|| cg.name_of(operand));
+    let other = value
+        .as_deref()
+        .and_then(|name| super::moves::other_use(cg, name));
     let found = SecondOwner {
         position: cg.ownership.position,
         function: osprey_ast::symbol::demangle_message(&cg.ownership.function).into_owned(),
         value,
         need,
+        other,
     };
     if !cg.ownership.found.contains(&found) {
         cg.ownership.found.push(found);

@@ -25,7 +25,7 @@ pub(crate) use moves::{
     begin as begin_moves, begin_statement as begin_statement_moves, end as end_moves,
 };
 pub(crate) use ownership::{second_owner, verdict as ownership_verdict, OwnershipCheck};
-pub use ownership::{set_ownership_check, Need, SecondOwner};
+pub use ownership::{set_ownership_check, Need, OtherUse, SecondOwner};
 pub(crate) use phi::{borrowed_phi_arms, move_phi_owners, promote_phi_arm};
 
 const RETAIN_DECL: &str = "declare void @osp_retain(i8*)";

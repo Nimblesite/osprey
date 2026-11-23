@@ -5,9 +5,9 @@
 //! once, and never read after it, gives up its reference to the record, list or
 //! binding that takes the value there. Nothing is counted and nothing is
 //! released: the reference the binding held becomes the taker's.
-use super::{Codegen, Entry};
+use super::{Codegen, Entry, OtherUse};
 use osprey_ast::{Expr, Stmt};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The bindings the statement being lowered may move, and where it started.
 #[derive(Default)]
@@ -16,6 +16,8 @@ pub(crate) struct Movable {
     scope: Option<usize>,
     depth: usize,
     conditionals: usize,
+    /// Why each binding the statement reads keeps its value, for diagnostics.
+    kept: BTreeMap<String, OtherUse>,
 }
 
 /// Operators that always evaluate both operands, each once.
@@ -105,6 +107,20 @@ impl Reads {
         }
     }
 
+    /// Why each name read here keeps its value: read again in this statement,
+    /// or still read after it (`live`).
+    fn kept(&self, live: &BTreeSet<String>) -> BTreeMap<String, OtherUse> {
+        let again = self
+            .more
+            .iter()
+            .map(|name| (name.clone(), OtherUse::ReadAgainHere));
+        let later = self
+            .once
+            .intersection(live)
+            .map(|name| (name.clone(), OtherUse::ReadLater(None)));
+        later.chain(again).collect()
+    }
+
     fn sole(self) -> BTreeSet<String> {
         self.once.difference(&self.more).cloned().collect()
     }
@@ -121,33 +137,76 @@ fn statement_value(stmt: &Stmt) -> Option<&Expr> {
 /// `value` is about to be lowered with `live` still read after it in its block:
 /// note the bindings it may move. A binding moves only from the scope that made
 /// it ([`take`]), so the rest of that block is all that can read it again.
-pub(crate) fn begin(cg: &mut Codegen, value: &Expr, live: &BTreeSet<String>) {
+/// Returns what the enclosing statement could move, for [`end`] to put back.
+#[must_use]
+pub(crate) fn begin(cg: &mut Codegen, value: &Expr, live: &BTreeSet<String>) -> Movable {
     let mut reads = Reads::default();
     reads.visit(value);
-    cg.arc.movable = Movable {
+    // What the enclosing statement knows about a binding still holds inside it.
+    let mut kept = cg.arc.movable.kept.clone();
+    if cg.ownership.on {
+        kept.extend(reads.kept(live));
+    }
+    let inner = Movable {
         names: reads.sole().difference(live).cloned().collect(),
         scope: cg.scope_id(),
         depth: cg.arc.frames.len(),
         conditionals: cg.arc.cond_floors.len(),
+        kept,
     };
+    std::mem::replace(&mut cg.arc.movable, inner)
+}
+
+/// What else uses `name`, when the statement being lowered could not move it.
+pub(super) fn other_use(cg: &Codegen, name: &str) -> Option<OtherUse> {
+    cg.arc.movable.kept.get(name).copied()
 }
 
 /// [`begin`] for a block statement followed by `rest` and the block's `tail`.
+/// A statement with no value to lower moves nothing.
+#[must_use]
 pub(crate) fn begin_statement<S: std::borrow::Borrow<Stmt>>(
     cg: &mut Codegen,
     stmt: &Stmt,
     rest: &[S],
-    tail: Option<&Expr>,
-) {
-    if let Some(value) = statement_value(stmt) {
-        let live = super::last_use::live_after(cg, rest, tail);
-        begin(cg, value, &live);
+    tail: Option<(&Expr, Option<osprey_ast::Position>)>,
+) -> Movable {
+    let Some(value) = statement_value(stmt) else {
+        return std::mem::take(&mut cg.arc.movable);
+    };
+    let live = super::last_use::live_after(cg, rest, tail.map(|(value, _)| value));
+    let outer = begin(cg, value, &live);
+    place_later_reads(cg, rest);
+    if let Some((value, at)) = tail {
+        let mut read = BTreeSet::new();
+        osprey_ast::freevars::free_idents(value, &mut read);
+        place_reads(cg, &read, at);
+    }
+    outer
+}
+
+/// Give each binding read later the position of the first statement of `rest`
+/// that reads it.
+fn place_later_reads<S: std::borrow::Borrow<Stmt>>(cg: &mut Codegen, rest: &[S]) {
+    for stmt in rest {
+        let mut read = BTreeSet::new();
+        osprey_ast::freevars::free_idents_of_stmts(std::slice::from_ref(stmt), None, &mut read);
+        place_reads(cg, &read, crate::stmt::stmt_position(stmt.borrow()));
     }
 }
 
-/// The statement is lowered: nothing may move until the next one begins.
-pub(crate) fn end(cg: &mut Codegen) {
-    cg.arc.movable = Movable::default();
+/// Every binding read later and not yet placed that `read` names is read `at`.
+fn place_reads(cg: &mut Codegen, read: &BTreeSet<String>, at: Option<osprey_ast::Position>) {
+    for (name, other) in &mut cg.arc.movable.kept {
+        if *other == OtherUse::ReadLater(None) && read.contains(name) {
+            *other = OtherUse::ReadLater(at);
+        }
+    }
+}
+
+/// The statement is lowered: the enclosing one, `outer`, resumes.
+pub(crate) fn end(cg: &mut Codegen, outer: Movable) {
+    cg.arc.movable = outer;
 }
 
 /// Take the ledger entry of the movable binding whose value is `operand`. The
