@@ -129,6 +129,10 @@ module Governance {
 
     export fn livePrincipal(principal: Principal) = required(isLive(principal), principal, "governance.principal.suspended")
 
+    export fn liveHuman(principal: Principal) = andThen(livePrincipal(principal), fn(p: Principal) => humanPrincipal(p))
+
+    export fn activeMembershipOf(registry, id) = andThen(membershipOf(registry, id), fn(m: Membership) => activeMemberOf(m))
+
     /// The live human principal behind a membership: the actor every
     /// organizational decision is signed by.
     export fn humanMemberOf(registry, m: Membership) = andThen(principalOf(registry, m.principal), fn(p: Principal) => humanPrincipal(p))
@@ -139,6 +143,8 @@ module Governance {
         Draft | Active => Success { value: pkg }
         _ => Error { message: refusalCode(pkg.status) }
     }
+
+    export fn writablePackage(registry, id) = andThen(packageOf(registry, id), fn(pkg: Package) => writable(pkg))
 
     /// Operational authorization needs an active package: a draft has no
     /// releases, and frozen, deprecated and tombstoned packages refuse

@@ -16,8 +16,7 @@ module GovernanceHandover {
     /// A proposal is only a proposal: it grants no rights and the admin
     /// reference does not move.
     export fn proposeHandover(registry, id, transferId, proposed, proof, now) = {
-        use pkg <- andThen(Governance::packageOf(registry, id))
-        use _ <- andThen(Governance::writable(pkg))
+        use pkg <- andThen(Governance::writablePackage(registry, id))
         use _ <- andThen(noLiveProposal(registry, id))
         use _ <- andThen(recipient(registry, pkg, proposed))
         use _ <- andThen(Governance::requireAdmin(registry, pkg, proof,
@@ -97,11 +96,9 @@ module GovernanceHandover {
     export fn hold() = holdHours
 
     fn recipientPrincipal(registry, id) = {
-        use m <- andThen(Governance::membershipOf(registry, id))
-        use _ <- andThen(Governance::activeMemberOf(m))
+        use m <- andThen(Governance::activeMembershipOf(registry, id))
         use p <- andThen(Governance::principalOf(registry, m.principal))
-        use _ <- andThen(Governance::livePrincipal(p))
-        use _ <- andThen(Governance::humanPrincipal(p))
+        use _ <- andThen(Governance::liveHuman(p))
         Success { value: p.id }
     }
 
@@ -110,16 +107,14 @@ module GovernanceHandover {
     fn recipient(registry, pkg: Governance::Package, proposed) = match proposed == pkg.admin {
         true => Error { message: "governance.recipient.self" }
         false => {
-            use m <- andThen(Governance::membershipOf(registry, proposed))
-            use _ <- andThen(Governance::activeMemberOf(m))
+            use m <- andThen(Governance::activeMembershipOf(registry, proposed))
             use _ <- andThen(Governance::sameOrgMember(m, pkg.org))
             Governance::humanMemberOf(registry, m)
         }
     }
 
     fn liveAcceptingHuman(p: Governance::Principal, proof) = {
-        use _ <- andThen(Governance::livePrincipal(p))
-        use _ <- andThen(Governance::humanPrincipal(p))
+        use _ <- andThen(Governance::liveHuman(p))
         Governance::requireHumanCeremony(proof)
     }
 

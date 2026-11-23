@@ -34,8 +34,7 @@ module GovernanceTransitions {
     /// recipient must be a human member; each custodian's proof is then
     /// verified for this exact decision.
     export fn grantCustodianship(registry, org, target, proofA, proofB) = {
-        use m <- andThen(Governance::membershipOf(registry, target))
-        use _ <- andThen(Governance::activeMemberOf(m))
+        use m <- andThen(Governance::activeMembershipOf(registry, target))
         use _ <- andThen(Governance::sameOrgMember(m, org))
         use _ <- andThen(distinctProofs(proofA, proofB))
         use _ <- andThen(Governance::humanMemberOf(registry, m))
@@ -51,8 +50,7 @@ module GovernanceTransitions {
     /// decision is checked first: an actor who is no active custodian of the
     /// target's organization never reaches the structural protections.
     export fn revokeMembership(registry, target, proof) = {
-        use m <- andThen(Governance::membershipOf(registry, target))
-        use _ <- andThen(Governance::activeMemberOf(m))
+        use m <- andThen(Governance::activeMembershipOf(registry, target))
         use _ <- andThen(custodianProof(registry, m.org, Governance::revocationStatement(m.org, target), proof))
         use _ <- andThen(notLastCustodian(registry, m))
         use _ <- andThen(administersNothing(registry, m))
@@ -131,8 +129,7 @@ module GovernanceTransitions {
     /// A writable package and the current administrator's fresh proof of
     /// `statementOf(pkg)`; the transition's effect is `apply(pkg)`.
     fn adminDecision(registry, id, proof, statementOf, apply) = {
-        use pkg <- andThen(Governance::packageOf(registry, id))
-        use _ <- andThen(Governance::writable(pkg))
+        use pkg <- andThen(Governance::writablePackage(registry, id))
         use _ <- andThen(Governance::requireAdmin(registry, pkg, proof, statementOf(pkg)))
         Success { value: apply(pkg) }
     }
@@ -142,8 +139,7 @@ module GovernanceTransitions {
     /// capturing both authority epochs. There is no `admin` permission and
     /// no implicit operational authority for the administrator.
     export fn grantPermission(registry, id, grantId, proof, membership, permission, expiresAt, now) = {
-        use pkg <- andThen(Governance::packageOf(registry, id))
-        use _ <- andThen(Governance::writable(pkg))
+        use pkg <- andThen(Governance::writablePackage(registry, id))
         use m <- andThen(subject(registry, pkg, membership))
         use _ <- andThen(Governance::requireAdmin(registry, pkg, proof,
             Governance::grantStatement(pkg.key, pkg.authorityEpoch, membership, permission, expiresAt)))
@@ -162,8 +158,7 @@ module GovernanceTransitions {
     /// [PACKAGE-OWNERSHIP-PERMISSIONS]; the row remains auditable.
     export fn revokeGrant(registry, grantId, proof) = {
         use g <- andThen(Governance::grantOf(registry, grantId))
-        use pkg <- andThen(Governance::packageOf(registry, g.package))
-        use _ <- andThen(Governance::writable(pkg))
+        use pkg <- andThen(Governance::writablePackage(registry, g.package))
         use _ <- andThen(Governance::requireAdmin(registry, pkg, proof,
             Governance::revokeGrantStatement(pkg.key, pkg.authorityEpoch, grantId)))
         Success { value: Governance::replaceGrant(registry, g { status: Governance::GrantRevoked }) }
@@ -182,8 +177,7 @@ module GovernanceTransitions {
     /// administrator's proof is accepted.
     export fn renewGrant(registry, grantId, newGrantId, proof, expiresAt, now) = {
         use old <- andThen(Governance::grantOf(registry, grantId))
-        use pkg <- andThen(Governance::packageOf(registry, old.package))
-        use _ <- andThen(Governance::writable(pkg))
+        use pkg <- andThen(Governance::writablePackage(registry, old.package))
         use _ <- andThen(soleActive(registry, old))
         use _ <- andThen(freshExpiry(expiresAt, now))
         use _ <- andThen(Governance::requireAdmin(registry, pkg, proof,
@@ -220,8 +214,7 @@ module GovernanceTransitions {
     }
 
     fn adminMember(registry, org, admin) = {
-        use m <- andThen(Governance::membershipOf(registry, admin))
-        use _ <- andThen(Governance::activeMemberOf(m))
+        use m <- andThen(Governance::activeMembershipOf(registry, admin))
         Governance::sameOrgMember(m, org)
     }
 
@@ -285,8 +278,7 @@ module GovernanceTransitions {
     }
 
     fn subject(registry, pkg: Governance::Package, membership) = {
-        use m <- andThen(Governance::membershipOf(registry, membership))
-        use _ <- andThen(Governance::activeMemberOf(m))
+        use m <- andThen(Governance::activeMembershipOf(registry, membership))
         Governance::sameOrgMember(m, pkg.org)
     }
 
