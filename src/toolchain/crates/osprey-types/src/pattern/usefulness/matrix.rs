@@ -1,13 +1,13 @@
 //! Row operations for match exhaustiveness and reachability.
 
-use super::{Row, Space};
+use super::{Row, Space, OPEN_ROW, ROW};
 
 /// The constructors heading a column's rows, first seen first.
 pub(super) fn column_heads(matrix: &[Row]) -> Vec<String> {
     let mut heads: Vec<String> = Vec::new();
     for row in matrix {
         if let Some(Space::Ctor(name, _)) = row.first() {
-            if !heads.contains(name) {
+            if !name.starts_with(OPEN_ROW) && !heads.contains(name) {
                 heads.push(name.clone());
             }
         }
@@ -24,6 +24,7 @@ pub(super) fn specialize(matrix: &[Row], name: &str, arity: usize) -> Vec<Row> {
             let (head, rest) = row.split_first()?;
             let args = match head {
                 Space::Ctor(head, args) if head == name => args.clone(),
+                Space::Ctor(head, args) => project_open_row(head, args, name)?,
                 Space::Opaque(key, _) if key == name => Vec::new(),
                 Space::Any => vec![Space::Any; arity],
                 _ => return None,
@@ -31,6 +32,22 @@ pub(super) fn specialize(matrix: &[Row], name: &str, arity: usize) -> Vec<Row> {
             Some([args.as_slice(), rest].concat())
         })
         .collect()
+}
+
+/// An earlier open row covers extensions of its fields. Reorder its slots
+/// into the target field order, filling unconstrained fields with wildcards.
+fn project_open_row(head: &str, slots: &[Space], target: &str) -> Option<Row> {
+    let fields = head.strip_prefix(OPEN_ROW)?;
+    let target = target
+        .strip_prefix(OPEN_ROW)
+        .or_else(|| target.strip_prefix(ROW))?;
+    let names: Vec<_> = target.split(',').filter(|name| !name.is_empty()).collect();
+    let mut projected = vec![Space::Any; names.len()];
+    for (field, slot) in fields.split(',').zip(slots) {
+        let index = names.binary_search(&field).ok()?;
+        *projected.get_mut(index)? = slot.clone();
+    }
+    Some(projected)
 }
 
 /// Each row headed by an or-pattern as one row per alternative, in order:

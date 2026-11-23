@@ -33,7 +33,8 @@ type Row = Vec<Space>;
 
 /// The constructor name a closed row pattern is analysed under: its fields,
 /// sorted, so `{ x, y }` and `{ y, x }` are one shape.
-const ROW_OPEN: &str = "{";
+const ROW: &str = "{";
+const OPEN_ROW: &str = "..{";
 
 /// The two list constructors the analysis reads `[…]` patterns as.
 const LIST_NIL: &str = "[]";
@@ -137,7 +138,7 @@ impl Checker {
                 fields,
                 sub_patterns,
             } => self.constructor_space(name, fields, sub_patterns),
-            Pattern::Structural { fields, open } => self.row_space(pattern, fields, *open),
+            Pattern::Structural { fields, open } => self.row_space(fields, *open),
             // An or-pattern directly inside another is spliced in, so every
             // alternative is checked in its own context ([PATTERN-OR-EXHAUSTIVE]).
             Pattern::Or(alternatives) => Space::Or(
@@ -196,12 +197,8 @@ impl Checker {
         Space::Ctor(name.to_owned(), args)
     }
 
-    /// A closed row is the one shape of its record; an open row selects by a
-    /// subset of fields, so it is analysed as a value of its own.
-    fn row_space(&self, pattern: &Pattern, fields: &[(String, Pattern)], open: bool) -> Space {
-        if open {
-            return Space::Opaque(format!("{pattern:p}"), "{ .. }".to_owned());
-        }
+    /// Sorted field names align structural slots regardless of their source order.
+    fn row_space(&self, fields: &[(String, Pattern)], open: bool) -> Space {
         let mut sorted: Vec<&(String, Pattern)> = fields.iter().collect();
         sorted.sort_by(|a, b| a.0.cmp(&b.0));
         let name = sorted
@@ -210,7 +207,8 @@ impl Checker {
             .collect::<Vec<_>>()
             .join(",");
         let args = sorted.iter().map(|(_, slot)| self.space(slot)).collect();
-        Space::Ctor(format!("{ROW_OPEN}{name}"), args)
+        let prefix = if open { OPEN_ROW } else { ROW };
+        Space::Ctor(format!("{prefix}{name}"), args)
     }
 
     fn arity(&self, name: &str) -> usize {
@@ -232,7 +230,7 @@ impl Checker {
         if name == LIST_NIL || name == LIST_CONS {
             return Some(vec![(LIST_NIL.to_owned(), 0), (LIST_CONS.to_owned(), 2)]);
         }
-        if let Some(row) = name.strip_prefix(ROW_OPEN) {
+        if let Some(row) = name.strip_prefix(ROW) {
             return Some(vec![(name.to_owned(), row.split(',').count())]);
         }
         let info = self.ctors.get(name)?;
@@ -342,11 +340,14 @@ impl Checker {
         let shown: Vec<String> = args.iter().map(|arg| self.render(arg)).collect();
         match name.as_str() {
             LIST_CONS => render_list(space, &|space| self.render(space)),
+            _ if let Some(fields) = name.strip_prefix(OPEN_ROW) => {
+                labelled("", fields.split(',').map(str::to_owned), &shown, true)
+            }
             _ if args.is_empty() => name.clone(),
             names::SUCCESS => format!("Success {{ value: {} }}", shown.join(", ")),
             "Error" => format!("Error {{ message: {} }}", shown.join(", ")),
-            _ => match name.strip_prefix(ROW_OPEN) {
-                Some(row) => labelled("", row.split(',').map(str::to_owned), &shown),
+            _ => match name.strip_prefix(ROW) {
+                Some(row) => labelled("", row.split(',').map(str::to_owned), &shown, false),
                 None => self.render_ctor(name, &shown),
             },
         }
@@ -362,7 +363,7 @@ impl Checker {
         {
             return format!("{name}({})", shown.join(", "));
         }
-        labelled(&format!("{name} "), declared.into_iter(), shown)
+        labelled(&format!("{name} "), declared.into_iter(), shown, false)
     }
 }
 
@@ -393,10 +394,16 @@ fn render_list(space: &Space, render: &dyn Fn(&Space) -> String) -> String {
 }
 
 /// `Name { a: x, b: y }`, or `{ a: x }` for a bare row.
-fn labelled(prefix: &str, fields: impl Iterator<Item = String>, shown: &[String]) -> String {
+fn labelled(
+    prefix: &str,
+    fields: impl Iterator<Item = String>,
+    shown: &[String],
+    open: bool,
+) -> String {
     let slots: Vec<String> = fields
         .zip(shown)
         .map(|(field, value)| format!("{field}: {value}"))
+        .chain(open.then(|| "..".to_owned()))
         .collect();
     format!("{prefix}{{ {} }}", slots.join(", "))
 }

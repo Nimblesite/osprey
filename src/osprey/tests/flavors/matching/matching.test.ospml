@@ -335,6 +335,11 @@ rowSize (r : Sized) = match r
     { kind = "s", n } | { kind = "m", n } => n
     _ => 0
 
+openBand (r : Sized) = match r
+    { kind = "old", .. } => 1
+    { n = 2 | 3, kind = "s" | "m", .. } => 2
+    _ => 0
+
 (** Three levels: a Result holding a cell whose slots are or-patterns. *)
 deepBlank r = match r
     Success (Cell (Space | Tab) (0 | 1)) | Error "blank" => "deep blank"
@@ -350,6 +355,8 @@ orStructureCase () = checkAll ("or-pattern Result, payload, list, row and nested
     shortList [] == "short", shortList [9] == "short", shortList [1, 2, 3, 4] == "long 5",
     rowSize (Sized(kind = "s", n = 3)) == 3, rowSize (Sized(kind = "m", n = 4)) == 4,
     rowSize (Sized(kind = "l", n = 5)) == 0,
+    openBand (Sized(kind = "old", n = 2)) == 1, openBand (Sized(kind = "m", n = 2)) == 2,
+    openBand (Sized(kind = "s", n = 3)) == 2, openBand (Sized(kind = "s", n = 4)) == 0,
     deepBlank (Success(value = Cell Space 0)) == "deep blank",
     deepBlank (Success(value = Cell Tab 1)) == "deep blank",
     deepBlank (Error(message = "blank")) == "deep blank",

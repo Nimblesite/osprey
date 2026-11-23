@@ -39,3 +39,11 @@ fn twice(c) = match c {
 }
 print("${shade(Red)} ${twice(Blue)}")
 
+// [PATTERN-OR-EXHAUSTIVE] An open row selects fields even on a wider record.
+type Tagged = { kind: string, n: int }
+fn rowClass(row: Tagged) = match row {
+    { kind: "old", .. } => 0
+    { n: _, kind: "new" | "old" | "new", .. } => 1
+    _ => 2
+}
+print(rowClass({ kind: "new", n: 9 }))

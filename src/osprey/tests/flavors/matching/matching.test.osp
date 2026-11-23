@@ -340,6 +340,12 @@ fn tailLen(b) = match b {
 }
 fn rowSize(r: Sized) = match r { { kind: "s", n } | { kind: "m", n } => n _ => 0 }
 
+fn openBand(r: Sized) = match r {
+    { kind: "old", .. } => 1
+    { n: 2 | 3, kind: "s" | "m", .. } => 2
+    _ => 0
+}
+
 /// Three levels: a Result holding a cell whose slots are or-patterns.
 fn deepBlank(r) = match r {
     Success { value: Cell(Space | Tab, 0 | 1) } | Error { message: "blank" } => "deep blank"
@@ -358,6 +364,8 @@ fn orStructureCase() = checkAll("or-pattern Result, payload, list, row and neste
     tailLen(Wrap([])) == 0 - 1, tailLen(Nest([[1], [2]])) == 0 - 1, tailLen(Hollow) == 0 - 1,
     rowSize({ kind: "s", n: 3 }) == 3, rowSize({ kind: "m", n: 4 }) == 4,
     rowSize({ kind: "l", n: 5 }) == 0,
+    openBand({ kind: "old", n: 2 }) == 1, openBand({ kind: "m", n: 2 }) == 2,
+    openBand({ kind: "s", n: 3 }) == 2, openBand({ kind: "s", n: 4 }) == 0,
     deepBlank(Success { value: Cell(Space, 0) }) == "deep blank",
     deepBlank(Success { value: Cell(Tab, 1) }) == "deep blank",
     deepBlank(Error { message: "blank" }) == "deep blank",
