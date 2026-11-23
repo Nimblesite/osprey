@@ -26,6 +26,7 @@ const UNUSED_IMPORT: &str = "unused-import";
 pub(crate) fn warnings(
     contributions: &[Contribution],
     used: &BTreeSet<(usize, String)>,
+    referenced: &BTreeSet<(usize, SymbolKey)>,
     sources: &[SourceMetadata],
 ) -> Vec<ProjectWarning> {
     // A discipline's checker reads imports itself: each importing file's
@@ -46,7 +47,7 @@ pub(crate) fn warnings(
                 .filter(move |import| !python_sibling(contribution, import, sources))
                 .map(move |import| ProjectWarning {
                     rule: UNUSED_IMPORT,
-                    message: format!("import `{}` is never used", spelled(import)),
+                    message: message(index, import, referenced),
                     position: crate::advice::position(
                         import.position,
                         contribution.source,
@@ -79,6 +80,28 @@ fn unused(index: usize, import: &ImportDecl, used: &BTreeSet<(usize, String)>) -
             .all(|binding| !used.contains(&(index, binding)))
 }
 
+/// "never used" when no name of the file refers to the imported target at
+/// all; "redundant" when names do, through the file's own namespace.
+fn message(index: usize, import: &ImportDecl, referenced: &BTreeSet<(usize, SymbolKey)>) -> String {
+    let target = target(import);
+    let named = referenced.iter().any(|(owner, key)| {
+        *owner == index && key.namespace == target.namespace && key.path.starts_with(&target.path)
+    });
+    if named {
+        let module = target.source_name();
+        format!("import `{}` is redundant: `{module}` is in this file's namespace and resolves without it", spelled(import))
+    } else {
+        format!("import `{}` is never used", spelled(import))
+    }
+}
+
+fn target(import: &ImportDecl) -> SymbolKey {
+    SymbolKey::new(
+        import.target.namespace.label(),
+        import.target.path.segments.clone(),
+    )
+}
+
 /// The local names an import introduces.
 fn bindings(import: &ImportDecl) -> Vec<String> {
     match &import.selection {
@@ -93,11 +116,7 @@ fn bindings(import: &ImportDecl) -> Vec<String> {
 
 /// The import as Default writes it: `a::B`, `a::B as C` or `a::B::{x, y as z}`.
 fn spelled(import: &ImportDecl) -> String {
-    let target = SymbolKey::new(
-        import.target.namespace.label(),
-        import.target.path.segments.clone(),
-    )
-    .source_name();
+    let target = target(import).source_name();
     match &import.selection {
         ImportSelection::Whole => match &import.alias {
             Some(alias) => format!("{target} as {alias}"),

@@ -280,7 +280,8 @@ fn an_import_nothing_resolves_through_is_reported_and_a_used_one_is_not() -> Res
         ]
     );
     assert_eq!(unused_imports(&[noisy, library.clone()])?.len(), 2);
-    // A module of the importing namespace resolves without its import.
+    // A module of the importing namespace resolves without its import, so a
+    // name through it makes the import redundant, not unused.
     let sibling = parsed(
         "main.osp",
         Flavor::Default,
@@ -288,7 +289,7 @@ fn an_import_nothing_resolves_through_is_reported_and_a_used_one_is_not() -> Res
     );
     assert_eq!(
         unused_imports(&[library.clone(), sibling])?,
-        ["import `billing::Tax` is never used"]
+        ["import `billing::Tax` is redundant: `billing::Tax` is in this file's namespace and resolves without it"]
     );
     let ml = parsed(
         "main.ospml",

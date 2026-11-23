@@ -56,6 +56,7 @@ pub(crate) fn assemble(
             &metadata,
             &state_boundaries,
             &resolution.used_imports,
+            &resolution.referenced,
         );
         Ok(AssembledProject {
             source_dependencies: resolution.source_dependencies,

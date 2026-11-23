@@ -23,6 +23,9 @@ pub(crate) struct Resolution {
     pub opaque_aliases: bool,
     /// The import bindings resolution used, per contribution ([MODULES-IMPORT-UNUSED]).
     pub used_imports: BTreeSet<(usize, String)>,
+    /// Each `(contribution, declaration)` a name of that contribution resolved
+    /// to, however it was spelled ([MODULES-IMPORT-UNUSED]).
+    pub referenced: BTreeSet<(usize, SymbolKey)>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +79,9 @@ pub(crate) struct Resolver<'a> {
     /// Each `(contribution, binding)` an import introduced that some name
     /// resolved through ([MODULES-IMPORT-UNUSED]).
     pub used_imports: BTreeSet<(usize, String)>,
+    /// Each `(contribution, declaration)` a name of that contribution resolved
+    /// to, however it was spelled ([MODULES-IMPORT-UNUSED]).
+    pub referenced: BTreeSet<(usize, SymbolKey)>,
 }
 
 pub(crate) fn flatten(
@@ -110,6 +116,7 @@ pub(crate) fn flatten(
         entry_main_count: 0,
         extern_names: BTreeMap::new(),
         used_imports: BTreeSet::new(),
+        referenced: BTreeSet::new(),
     };
     resolver.classify_constants();
     for (index, contribution) in contributions.iter().enumerate() {
@@ -180,6 +187,7 @@ impl Resolver<'_> {
             errors: self.errors,
             opaque_aliases: self.aliases.values().any(|alias| alias.opaque),
             used_imports: self.used_imports,
+            referenced: self.referenced,
         }
     }
 

@@ -93,11 +93,13 @@ pub(crate) fn warnings(
     sources: &[SourceMetadata],
     boundaries: &[StateBoundary],
     used_imports: &BTreeSet<(usize, String)>,
+    referenced: &BTreeSet<(usize, crate::model::SymbolKey)>,
 ) -> Vec<ProjectWarning> {
     let mut warnings = namespace_warnings(config, contributions, sources);
     warnings.extend(crate::unused_imports::warnings(
         contributions,
         used_imports,
+        referenced,
         sources,
     ));
     if !config.published_library {
