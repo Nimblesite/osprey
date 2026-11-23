@@ -5,6 +5,7 @@
 namespace todo;
 
 import todo::TodoDomain
+import todo::TodoHost
 
 /// One transaction. `begin` is `many` ([MULTI-DECL]): a lost commit resumes the SAME
 /// request from here ([EXAMPLE-CLEANARCH-MULTISHOT-RETRY]).
@@ -101,15 +102,15 @@ module TodoReplay {
     }
 
     /// The request as sent and the page as asked: the app answers each once.
-    export fn asSent(work) = {
+    export fn asSent(work) = TodoHost::relog({
         handle Rules {
             candidate request => resume(request)
         }
         handle Paging {
             window query => resume(query)
         }
-        work()
-    }
+        TodoHost::holdingLog(work)
+    })
 
     fn lostCommit(outcome) = match outcome {
         Error { message: Conflict _ } => true
