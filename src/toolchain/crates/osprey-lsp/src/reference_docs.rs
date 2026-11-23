@@ -113,7 +113,7 @@ const KEYWORD_DOCS: [(&str, &str); 32] = [
     ),
     (
         "use",
-        "Passes the rest of its block to a call as its last argument, a callback: `use x <- try(step())`.",
+        "Passes the rest of its block to a call as its last argument, a callback: `use x <- andThen(step())`.",
     ),
     (
         "resume",

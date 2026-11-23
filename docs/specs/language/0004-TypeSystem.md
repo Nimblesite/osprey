@@ -1246,6 +1246,17 @@ fn report() = "connection refused" // warning: the literal `"connection refused"
 
 Write `let refusal = "connection refused"` once and use the name. Literals in patterns are not counted, because a pattern cannot name a constant. Two literals that differ in any character are different literals. A message quotes at most 32 characters of the literal. The count is per file as written, before project assembly, so two files that each write a literal twice are not reported. Implemented in `osprey-types/src/repeated_literal.rs`.
 
+## Consecutive prints `[TYPE-WARNINGS-CONSECUTIVE-PRINT]`
+
+Osprey writes one interpolated `print` where other languages write a run of them: the output is one value the reader sees whole. Two or more `print` calls in a row, with no other statement between them, at the top level, in a namespace or in any block (a block's trailing value included), are one `consecutive-print` warning at the first call of the run, in every flavor:
+
+```osprey
+print("total")
+print("${total}") // warning (at the line above): 2 `print` calls in a row: join them into one interpolated `print`
+```
+
+Write `print("total\n${total}")`. A `print` separated from the next by any other statement starts a new run. The compiler's warning listing and the language server both report it (`osprey-types/src/consecutive_print.rs`).
+
 ## Unused symbols `[TYPE-WARNINGS-UNUSED]`
 
 A program that passes type checking reports a Warning for each unread lexical binding below. These warnings do not change compilation, evaluation, generated code or exit status. The CLI includes them in the same source-grouped listing as redundant annotations; the editor reports the same rule and message on the written identifier and marks it unnecessary.

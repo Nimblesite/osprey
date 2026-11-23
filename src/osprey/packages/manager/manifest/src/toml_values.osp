@@ -45,7 +45,6 @@ module TomlValues {
     let letterF = 102
 
     fn isDigit1to9(b) = b >= 49 && b <= 57
-    fn isUpper(b) = b >= 65 && b <= 90
     fn isBareKeyByte(b) = Bytes::isAlnum(b) || b == byteUnderscore || b == byteMinus
     fn keyEndByte(b) = b == byteDot || b == byteEq || b == byteRBracket || b == byteSpace || b == byteTab || b == byteCr || b == byteNewline || b == -1
 

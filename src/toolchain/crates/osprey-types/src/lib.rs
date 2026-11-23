@@ -92,6 +92,9 @@ mod redundant_contract_tests;
 mod redundant_sites;
 mod site_applications;
 pub use site_applications::SiteApplications;
+mod consecutive_print;
+#[cfg(test)]
+mod consecutive_print_tests;
 #[cfg(test)]
 mod redundant_corpus_tests;
 #[cfg(test)]
@@ -133,6 +136,7 @@ pub use check::{
     check_and_publish, check_program, check_program_exports, effect_check_count, erased_var,
     infer_program, CheckedProgram,
 };
+pub use consecutive_print::{consecutive_prints, CONSECUTIVE_PRINT};
 pub use effect_rows::LibraryExports;
 pub use error::TypeError;
 pub use info::{

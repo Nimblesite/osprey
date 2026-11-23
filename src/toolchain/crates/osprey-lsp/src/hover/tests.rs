@@ -348,11 +348,11 @@ fn hover_on_a_keyword_explains_it() {
     // [BLOCK-USE] `use` is a keyword in both flavors, so it hovers too.
     for (src, uri) in [
         (
-            "fn main() = {\n    use x <- try(Success { value: 1 })\n    x\n}\n",
+            "fn main() = {\n    use x <- andThen(Success { value: 1 })\n    x\n}\n",
             "file:///a.osp",
         ),
         (
-            "main () =\n    use x <- try (Success(value = 1))\n    x\n",
+            "main () =\n    use x <- andThen (Success(value = 1))\n    x\n",
             "file:///a.ospml",
         ),
     ] {

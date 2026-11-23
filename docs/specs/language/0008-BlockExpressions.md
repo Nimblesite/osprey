@@ -106,18 +106,18 @@ block** to a call as that call's last argument, a callback.
 
 ```osprey
 fn order(id) = {
-    use customer <- try(findCustomer(id))
-    use _ <- try(checkCredit(customer))
-    use invoice <- try(bill(customer))
+    use customer <- andThen(findCustomer(id))
+    use _ <- andThen(checkCredit(customer))
+    use invoice <- andThen(bill(customer))
     Success { value: invoice.total }
 }
 ```
 
 ```osprey-ml
 order id =
-    use customer <- try (findCustomer id)
-    use _ <- try (checkCredit customer)
-    use invoice <- try (bill customer)
+    use customer <- andThen (findCustomer id)
+    use _ <- andThen (checkCredit customer)
+    use invoice <- andThen (bill customer)
     Success(value = invoice.total)
 ```
 
@@ -145,7 +145,7 @@ Each is a compile error that names the fix:
 - a `use` outside any block, such as at the top of a file;
 - a right-hand side that is not a call, such as `use x <- 42`;
 - a callee that passes its callback a different number of values than the
-  `use` binds: "`try` passes 1 value to its callback, but this callback takes
+  `use` binds: "`andThen` passes 1 value to its callback, but this callback takes
   2". The same message reports a written lambda of the wrong arity.
 
 ### Lexing [LEX-USE-ARROW]

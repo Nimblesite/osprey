@@ -566,8 +566,8 @@ callback, as in the Default flavor
 
 ```osprey-ml
 total (a, b) =
-    use x <- try (parseInt a)
-    use y <- try (parseInt b)
+    use x <- andThen (parseInt a)
+    use y <- andThen (parseInt b)
     Success(value = x + y)
 ```
 

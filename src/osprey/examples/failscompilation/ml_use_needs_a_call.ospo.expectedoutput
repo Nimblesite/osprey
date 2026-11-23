@@ -1,1 +1,1 @@
-5:4: `use` needs a call after `<-`, such as `use x <- try(step())`: the rest of the block is passed as its last argument
+5:4: `use` needs a call after `<-`, such as `use x <- andThen(step())`: the rest of the block is passed as its last argument

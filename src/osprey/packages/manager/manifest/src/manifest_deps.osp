@@ -167,8 +167,6 @@ module ManifestDeps {
 
     fn tableGrants(root, kind, sofar) = foldList(tablePairs(root, kind), Success { value: sofar }, fn(acc, pair) => Checked::andThen(acc, fn(value) => concatenated(value, grantOf(pair))))
 
-    fn missingGrant() = ManifestModel::Grant { package: Names::Key { scope: "", name: "" }, capabilities: [] }
-
     fn grantKey(g: ManifestModel::Grant) = g.package
     fn grantCapabilities(g: ManifestModel::Grant) = g.capabilities
 
