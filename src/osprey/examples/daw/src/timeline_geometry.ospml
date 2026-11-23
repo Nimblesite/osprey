@@ -142,9 +142,6 @@ module TimelineGeometry
     (** Pitch y. *)
     export pitchY (pitch, high, rows) = 542.0 + (high - pitch) * floatDiv (260.0, rows)
 
-    (** [DAW-ROLL-KEYS] The pitch of the key row under `y`: the inverse of `pitchY`. *)
-    export keyPitch (y, high, rows) = high - floor (floatDiv (y - 542.0, floatDiv (260.0, rows)))
-
     (** Reserve the native typeface's ascent and descent within the two inset note edges. *)
     export noteLabelSize height = FitMath::clip ((height - 2.0) / 1.32, 0.0, 12.0)
 

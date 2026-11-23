@@ -48,14 +48,8 @@ module CanvasGeometry
     (** Key x. *)
     export keyX index = 24.0 + index * 56.0
 
-    (** Miniature waveform coordinates are bounded by the card's display. *)
-    export waveX (centre, index) = centre - 94.0 + index * 3.0
-
     (** Wave y. *)
     export waveY (centre, sample) = centre - FitMath::clip (sample, -1.0, 1.0) * 25.0
-
-    (** Draw the oscillator's configured sine shape, not an invented audio meter. *)
-    export sinePoint index = sin (index * 0.3)
 
     (** Match the original Prism logarithmic cutoff slider. *)
     export cutoffPosition hz = floatDiv (ln (hz / 20.0), ln 1000.0)

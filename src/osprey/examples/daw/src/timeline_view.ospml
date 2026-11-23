@@ -66,8 +66,6 @@ module TimelineView
         TimelinePage => 1
         MixPage => 2
 
-    tile (a, fill) = [EditorView::panel (a.accessLeft, a.accessTop, a.accessWidth, a.accessHeight, fill, 10), label (a.accessLabel, a.accessLeft + a.accessWidth / 2.0, a.accessTop + 12.0, 16.0, ink (), 1, 11)]
-
     track editor = listGet editor.song.tracks editor.track
 
     songBeats song =

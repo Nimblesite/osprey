@@ -326,9 +326,6 @@ module PrismArt
             ui::Unboarded => skin
             ui::Boarded _ _ zoom atlas marks areas => skin(skinBoard = ui::Boarded(boardWidth = ui::Fixed(fixedAt = width), boardHeight = ui::Fixed(fixedAt = height), boardZoom = zoom, boardAtlas = atlas, boardMarks = marks, boardAreas = areas))))
 
-    (** Reset the keyboard viewport independently of the resizable patch workspace. *)
-    export keyboardEditor editor = editor(skin = ui::Canvases::viewed (sized (editor.skin, 1536.0, 1008.0), 1536.0, 1008.0))
-
 (** [PRISM-ROUTING-CABLES] One curve supplies painting, hit testing and accessible actions. *)
 module CableCanvas
     endpoints (editor, cable) =
