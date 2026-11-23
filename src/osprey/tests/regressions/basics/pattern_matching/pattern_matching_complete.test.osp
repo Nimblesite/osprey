@@ -202,6 +202,15 @@ showElvis("good elvis", divide(a: 10, b: 2))
 print("ok toString  = ${toString(okCalc)}\nbad toString = ${toString(badDiv)}")
 
 /// Replays every meaningful branch with value-level assertions.
+/// [PATTERN-OR-SYNTAX] An arm whose body is a lambda (`|x| => …`) followed by an
+/// or-pattern arm: `|` after a pattern always joins alternatives, and the
+/// lambda form only ever starts a body.
+fn pickScale(tag) = match tag {
+    "double" => |x| => wrapMul(x, 2)
+    "same" | "id" => |x| => x
+    _ => |_x| => 0
+}
+
 fn patternMatchingCase() = {
     let capturedText = "captured callback"
     let escaped = capturedLoaders("escaped")
@@ -280,6 +289,7 @@ fn patternMatchingCase() = {
         structuralEquals([literalHead([7, 8]), isEven(0), isEven(2)], [1, 1, 1]),
         structuralEquals([isEven(4), isEven(42), intDiv(10, 5)], [1, 0, 2]),
         literalHead([8, 7]) == -1,
+        structuralEquals([pickScale("double")(4), pickScale("id")(4), pickScale("same")(5), pickScale("other")(9)], [8, 4, 5, 0]),
         divisionFailed,
         (divide(a: 10, b: 2) ?: 0.0) == 5.0
     ])
