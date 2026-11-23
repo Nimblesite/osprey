@@ -62,9 +62,7 @@ module ManifestModel {
 
     /// The requirement inside any edge.
     export fn requirementOf(edge) = match edge {
-        Runtime { requirement } => requirement
-        Build { requirement } => requirement
-        Test { requirement } => requirement
+        Runtime { requirement } | Build { requirement } | Test { requirement } => requirement
     }
 
     /// The key any edge requires.

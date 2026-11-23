@@ -193,10 +193,8 @@ fn treeRow(tree: int, i: int, sel: int) = {
 
 // The cursor a key asks for: the two arrows and their j/k aliases, else unchanged.
 fn nextSel(sel: int, n: int, key: string) = match key {
-    "Up"   => moveUp(sel)
-    "k"    => moveUp(sel)
-    "Down" => moveDown(sel: sel, n: n)
-    "j"    => moveDown(sel: sel, n: n)
+    "Up" | "k"   => moveUp(sel)
+    "Down" | "j" => moveDown(sel: sel, n: n)
     _      => sel
 }
 
@@ -284,8 +282,7 @@ fn browseLoop(repo: string, path: string, tree: int, sel: int, n: int) -> Unit !
 
 fn browseKey(repo: string, path: string, tree: int, sel: int, n: int, key: string) -> Unit ![Console, Terminal, Http] = match key {
     "Enter" => openEntry(repo: repo, path: path, tree: tree, sel: sel, n: n)
-    "Esc"   => perform Console.print("")
-    "u"     => perform Console.print("")
+    "Esc" | "u" => perform Console.print("")
     _       => browseLoop(repo: repo, path: path, tree: tree, sel: nextSel(sel: sel, n: n, key: key), n: n)
 }
 
@@ -326,8 +323,7 @@ fn uiLoop(doc: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = {
 }
 
 fn handleKey(doc: int, sel: int, n: int, key: string) -> Unit ![Console, Terminal, Http] = match key {
-    "q"     => endApp()
-    "Esc"   => endApp()
+    "q" | "Esc" => endApp()
     "Enter" => openRepo(doc: doc, sel: sel, n: n)
     _       => uiLoop(doc: doc, sel: nextSel(sel: sel, n: n, key: key), n: n)
 }

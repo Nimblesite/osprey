@@ -133,8 +133,7 @@ module Governance {
     /// Package writes need a writable lifecycle status
     /// [PACKAGE-OWNERSHIP-MAINTENANCE]; each refusal names its status.
     export fn writable(pkg: Package) = match pkg.status {
-        Draft => Success { value: pkg }
-        Active => Success { value: pkg }
+        Draft | Active => Success { value: pkg }
         _ => Error { message: refusalCode(pkg.status) }
     }
 
