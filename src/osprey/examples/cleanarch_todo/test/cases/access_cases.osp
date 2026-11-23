@@ -30,7 +30,7 @@ module AccessCases {
             TodoHarness::seedList(1, "Shopping", "#78909C")
         ], [], PurgeTodoLists)
         expect(user.settled, Error { message: Forbidden { why: "not in role" } })
-        let admin = TodoHarness::request(TodoHarness::admin(), 0, [
+        let admin = TodoHarness::adminAsks([
             TodoHarness::seedList(1, "Shopping", "#78909C")
         ], [], PurgeTodoLists)
         expect(admin.settled, Success { value: Purged { count: 1 } })

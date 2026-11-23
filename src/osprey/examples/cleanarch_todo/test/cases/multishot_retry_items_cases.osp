@@ -21,12 +21,12 @@ module MultishotRetryItemsCases {
         let orphan = retryAsked(["Rival"], retryItems(), CreateItem {
             item: NewItem { listId: 42, title: "Nails" } })
         let bare = retryAsked(["X", "Y"], [], ask)
-        expect(calm.settled, Success { value: CreatedId { value: 4 } })
-        expect(twice.settled, Success { value: CreatedId { value: 4 } })
+        expect(calm.settled, createdId(4))
+        expect(twice.settled, createdId(4))
         retryExpectGaveUp(lost)
         retryExpectEmptyTitle(empty)
-        expect(orphan.settled, Success { value: CreatedId { value: 4 } })
-        expect(bare.settled, Success { value: CreatedId { value: 1 } })
+        expect(orphan.settled, createdId(4))
+        expect(bare.settled, createdId(1))
         let landed = listAppend(retryItems(),
             TodoItem { id: 4, listId: 1, title: "Nails", note: "", priority: LevelNone, done: false })
         expect(TodoHarness::failures("item ids follow the seed count; lost rows are restored; refusals burn no rival", listConcat([
@@ -34,8 +34,8 @@ module MultishotRetryItemsCases {
             retryTitlesAre(calm, ["Shopping", "Banking"]),
             retryItemIdsAre(twice, [1, 2, 3, 4]),
             retryStoredAs(twice, ["Shopping", "Banking", "X", "Y"], [1, 2, 3, 4]),
-            structuralEquals(lost.items, retryItems()), retryIdsAre(lost, [1, 2, 3, 4, 5]),
-            structuralEquals(empty.items, retryItems()), retryIdsAre(empty, [1, 2]),
+            retryItemsKept(lost), retryIdsAre(lost, [1, 2, 3, 4, 5]),
+            retryItemsKept(empty), retryIdsAre(empty, [1, 2]),
             structuralEquals(orphan.items, listAppend(retryItems(),
                 TodoItem { id: 4, listId: 42, title: "Nails", note: "", priority: LevelNone, done: false })),
             retryItemIdsAre(bare, [1]), retryIdsAre(bare, [1, 2, 3, 4])
@@ -69,9 +69,9 @@ module MultishotRetryItemsCases {
             structuralEquals(calm.items, moved), structuralEquals(twice.items, moved),
             retryIdsAre(twice, [1, 2, 3, 4]),
             retryTitlesAre(twice, ["Shopping", "Banking", "X", "Y"]),
-            structuralEquals(lost.items, retryItems()), retryIdsAre(lost, [1, 2, 3, 4, 5]),
+            retryItemsKept(lost), retryIdsAre(lost, [1, 2, 3, 4, 5]),
             length(lost.lists) == 5,
-            structuralEquals(missing.items, retryItems()), retryIdsAre(missing, [1, 2]),
+            retryItemsKept(missing), retryIdsAre(missing, [1, 2]),
             structuralEquals(unknown.items, [
                 TodoHarness::seedItem(1, 1, "Milk", false),
                 TodoHarness::seedItem(2, 1, "Bread", false),
@@ -103,9 +103,9 @@ module MultishotRetryItemsCases {
             retryItemIdsAre(one, [1, 3]),
             retryStoredAs(one, ["Shopping", "Banking", "Rival"], [1, 2, 3]),
             retryItemIdsAre(twice, [1, 3]), retryIdsAre(twice, [1, 2, 3, 4]),
-            structuralEquals(lost.items, retryItems()), retryItemIdsAre(lost, [1, 2, 3]),
+            retryItemsKept(lost), retryItemIdsAre(lost, [1, 2, 3]),
             retryIdsAre(lost, [1, 2, 3, 4, 5]), length(lost.lists) == 5,
-            structuralEquals(missing.items, retryItems()), length(missing.items) == 3,
+            retryItemsKept(missing), length(missing.items) == 3,
             retryIdsAre(missing, [1, 2])
         ], retryCalm([calm, one, twice, lost, missing]))), [])
     }
@@ -166,11 +166,11 @@ module MultishotRetryItemsCases {
             item: NewItem { listId: 1, title: "Nails" } })
         let bare = retryAsked(["X", "Y"], [], CreateItem {
             item: NewItem { listId: 1, title: "Nails" } })
-        expect(big.settled, Success { value: CreatedId { value: 8 } })
+        expect(big.settled, createdId(8))
         retryExpectGaveUp(bigger)
-        expect(gapped.settled, Success { value: CreatedId { value: 4 } })
-        expect(items.settled, Success { value: CreatedId { value: 5 } })
-        expect(bare.settled, Success { value: CreatedId { value: 1 } })
+        expect(gapped.settled, createdId(4))
+        expect(items.settled, createdId(5))
+        expect(bare.settled, createdId(1))
         expect(TodoHarness::failures("new ids follow the seed counts, not the seed ids", listConcat([
             retryTitlesAre(big, ["L1", "L2", "L3", "L4", "L5", "X", "Y", "Mine"]),
             retryIdsAre(big, [1, 2, 3, 4, 5, 6, 7, 8]), length(big.lists) == 8,

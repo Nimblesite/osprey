@@ -29,14 +29,14 @@ module MultishotAuthzGuardCases {
         checkAll("four page shapes x three branches: reads store nothing, publish nothing [MULTI-REPLAY]", [
             authzReadsEveryBranch([first, second, whole, wide]),
             length(first.items) == 7, length(second.items) == 7, length(whole.items) == 7, length(wide.items) == 7,
-            length(first.events) == 0, length(second.events) == 0, length(whole.events) == 0, length(wide.events) == 0,
-            structuralEquals(first.lists, authzTwoLists()), length(first.answers) == 3
+            noEvents(first), noEvents(second), noEvents(whole), noEvents(wide),
+            authzListsKept(first), answeredThree(first)
         ])
         let empty = authzAsAdmin(authzTwoLists(), seeds, authzQuery(2, 1, 5))
         // List 2 holds no items: every branch answers an empty page, totalCount 0, hasPrevious false, hasNext false.
         expect(empty.answers, authzAllBranches(authzPageView(2, seeds, 1, 5)))
         checkAll("an empty list plans the same empty page three times", [
-            empty.readings == 7, length(empty.events) == 0, length(empty.items) == 7
+            empty.readings == 7, noEvents(empty), length(empty.items) == 7
         ])
     }
 
@@ -59,8 +59,8 @@ module MultishotAuthzGuardCases {
         checkAll("four edges x three branches: same page for every principal [MULTI-HANDLE-MANY]", [
             authzReadsEveryBranch([middle, tail, nothing, late]),
             length(middle.items) == 7, length(tail.items) == 7, length(late.items) == 7,
-            length(middle.answers) == 3, length(tail.answers) == 3,
-            length(middle.events) == 0, length(tail.events) == 0, length(nothing.events) == 0, length(late.events) == 0,
+            answeredThree(middle), answeredThree(tail),
+            noEvents(middle), noEvents(tail), noEvents(nothing), noEvents(late),
             structuralEquals(authzBranchTexts(middle), ["page view", "page view", "page view"]),
             structuralEquals(authzBranchTexts(late), ["page view", "page view", "page view"])
         ])
@@ -68,7 +68,7 @@ module MultishotAuthzGuardCases {
         checkAll("the start principal changes nothing", [
             authzSameAnswers(starts),
             authzReadsEveryBranch(starts),
-            authzEvery(starts, fn(report) => length(report.events) == 0)
+            authzEvery(starts, noEvents)
         ])
     }
 
@@ -82,25 +82,25 @@ module MultishotAuthzGuardCases {
         let five = authzAsAnonymous(authzFiveLists(), [], PurgeTodoLists)
         // Anonymous breaks sign-in first, the user breaks the Administrator role, and the administrator purges
         // exactly length(lists) lists: 0, 1, 2 and 5.
-        expect(bare.answers, [authzUnauthorized(), authzDenied("not in role"), Success { value: Purged { count: 0 } }])
-        expect(solo.answers, [authzUnauthorized(), authzDenied("not in role"), Success { value: Purged { count: 1 } }])
-        expect(pair.answers, [authzUnauthorized(), authzDenied("not in role"), Success { value: Purged { count: 2 } }])
-        expect(five.answers, [authzUnauthorized(), authzDenied("not in role"), Success { value: Purged { count: 5 } }])
+        expect(bare.answers, [authzUnauthorized(), authzDenied("not in role"), purgedCount(0)])
+        expect(solo.answers, [authzUnauthorized(), authzDenied("not in role"), purgedCount(1)])
+        expect(pair.answers, [authzUnauthorized(), authzDenied("not in role"), purgedCount(2)])
+        expect(five.answers, [authzUnauthorized(), authzDenied("not in role"), purgedCount(5)])
         checkAll("four store sizes: rows equal the seeds after every probe [MULTI-REPLAY]", [
             authzReadsEveryBranch([bare, solo, pair, five]),
-            length(bare.answers) == 3, length(pair.answers) == 3, length(five.items) == 0,
+            answeredThree(bare), answeredThree(pair), length(five.items) == 0,
             structuralEquals(bare.lists, []),
             structuralEquals(authzTitlesOf(solo.lists), ["Solo"]),
-            structuralEquals(pair.lists, authzTwoLists()),
-            structuralEquals(pair.items, authzThreeItems()),
+            authzListsKept(pair),
+            authzItemsKept(pair),
             structuralEquals(authzTitlesOf(five.lists), ["City1", "City2", "City3", "City4", "City5"]),
-            length(bare.events) == 0, length(solo.events) == 0, length(pair.events) == 0, length(five.events) == 0
+            noEvents(bare), noEvents(solo), noEvents(pair), noEvents(five)
         ])
         let starts = authzFromEachStart(authzTwoLists(), authzThreeItems(), PurgeTodoLists)
         checkAll("the start principal changes nothing", [
             authzSameAnswers(starts),
             authzReadsEveryBranch(starts),
-            authzEvery(starts, fn(report) => structuralEquals(report.items, authzThreeItems()))
+            authzEvery(starts, authzItemsKept)
         ])
     }
 
@@ -115,22 +115,22 @@ module MultishotAuthzGuardCases {
         let notInRole = authzDenied("not in role")
         // Exact denials: Unauthorized for the anonymous branch, "not in role" for the user branch (role is
         // broken before policy is ever consulted), Purged 2 for the administrator branch.
-        expect(probe.answers, [refused, notInRole, Success { value: Purged { count: 2 } }])
+        expect(probe.answers, [refused, notInRole, purgedCount(2)])
         let again = authzAsAdmin(authzTwoLists(), authzThreeItems(), PurgeTodoLists)
         // The same question from another start principal: the identical three answers, branch for branch.
         expect(again.answers, probe.answers)
         let five = authzAsAnonymous(authzFiveLists(), [], PurgeTodoLists)
         // The ladder is store-independent: only the count follows the seeds.
-        expect(five.answers, [refused, notInRole, Success { value: Purged { count: 5 } }])
+        expect(five.answers, [refused, notInRole, purgedCount(5)])
         checkAll("three runs: exact branch texts, rows restored, events empty [MULTI-REPLAY]", [
             authzReadsEveryBranch([probe, again, five]),
-            length(probe.answers) == 3, length(again.answers) == 3, length(five.answers) == 3,
-            structuralEquals(probe.lists, authzTwoLists()),
-            structuralEquals(probe.items, authzThreeItems()),
-            structuralEquals(again.items, authzThreeItems()),
+            answeredThree(probe), answeredThree(again), answeredThree(five),
+            authzListsKept(probe),
+            authzItemsKept(probe),
+            authzItemsKept(again),
             structuralEquals(five.items, []),
             structuralEquals(authzTitlesOf(five.lists), ["City1", "City2", "City3", "City4", "City5"]),
-            length(probe.events) == 0, length(again.events) == 0, length(five.events) == 0,
+            noEvents(probe), noEvents(again), noEvents(five),
             structuralEquals(authzBranchTexts(probe), ["unauthorized", "forbidden not in role", "purged 2"]),
             structuralEquals(authzBranchTexts(five), ["unauthorized", "forbidden not in role", "purged 5"])
         ])
@@ -138,8 +138,8 @@ module MultishotAuthzGuardCases {
         checkAll("every start principal reports the same refusal-and-purge triple", [
             length(starts) == 3, authzSameAnswers(starts),
             authzReadsEveryBranch(starts),
-            authzEvery(starts, fn(report) => length(report.events) == 0),
-            authzEvery(starts, fn(report) => structuralEquals(report.lists, authzTwoLists()))
+            authzEvery(starts, noEvents),
+            authzEvery(starts, authzListsKept)
         ])
     }
 
@@ -156,13 +156,13 @@ module MultishotAuthzGuardCases {
             let probe = authzAsAnonymous(authzTwoLists(), authzThreeItems(), ask)
             // No rule, no denial: all three branches succeed and answer identically however the request mutates the store.
             checkAll("a rule-free request runs and answers identically in all three branches [MULTI-HANDLE-MANY]", [
-                length(probe.answers) == 3,
+                answeredThree(probe),
                 match probe.answers { [Success _, Success _, Success _] => true _ => false },
                 match authzBranchTexts(probe) { [one, two, three] => one == two && two == three _ => false },
                 probe.readings == 7,
-                structuralEquals(probe.lists, authzTwoLists()),
-                structuralEquals(probe.items, authzThreeItems()),
-                length(probe.events) == 0
+                authzListsKept(probe),
+                authzItemsKept(probe),
+                noEvents(probe)
             ])
         })
     }
@@ -178,14 +178,14 @@ module MultishotAuthzGuardCases {
         expect(reads.answers, [authzUnauthorized(), Success { value: view }, Success { value: view }])
         let purge = authzAsAnonymous(authzTwoLists(), authzThreeItems(), PurgeTodoLists)
         // The full ladder: Unauthorized, then "not in role", then the purge of two lists.
-        expect(purge.answers, [authzUnauthorized(), authzDenied("not in role"), Success { value: Purged { count: 2 } }])
+        expect(purge.answers, [authzUnauthorized(), authzDenied("not in role"), purgedCount(2)])
         checkAll("the two guarded requests, three branches each [MULTI-HANDLE-MANY]", [
             authzReadsEveryBranch([reads, purge]),
-            length(reads.answers) == 3, length(purge.answers) == 3,
+            answeredThree(reads), answeredThree(purge),
             length(reads.items) == 3, length(purge.items) == 3,
-            structuralEquals(reads.lists, authzTwoLists()), structuralEquals(purge.lists, authzTwoLists()),
-            structuralEquals(reads.items, authzThreeItems()), structuralEquals(purge.items, authzThreeItems()),
-            length(reads.events) == 0, length(purge.events) == 0,
+            authzListsKept(reads), authzListsKept(purge),
+            authzItemsKept(reads), authzItemsKept(purge),
+            noEvents(reads), noEvents(purge),
             structuralEquals(authzBranchTexts(reads), ["unauthorized", "todos view", "todos view"]),
             structuralEquals(authzBranchTexts(purge), ["unauthorized", "forbidden not in role", "purged 2"]),
             match reads.answers { [_, Success { value: mine }, Success { value: root }] => structuralEquals(mine, root) _ => false }
@@ -197,10 +197,10 @@ module MultishotAuthzGuardCases {
             authzSameAnswers(readStarts), authzSameAnswers(purgeStarts),
             authzReadsEveryBranch(readStarts),
             authzReadsEveryBranch(purgeStarts),
-            authzEvery(readStarts, fn(report) => length(report.events) == 0),
-            authzEvery(purgeStarts, fn(report) => length(report.events) == 0),
-            authzEvery(readStarts, fn(report) => structuralEquals(report.items, authzThreeItems())),
-            authzEvery(purgeStarts, fn(report) => structuralEquals(report.lists, authzTwoLists()))
+            authzEvery(readStarts, noEvents),
+            authzEvery(purgeStarts, noEvents),
+            authzEvery(readStarts, authzItemsKept),
+            authzEvery(purgeStarts, authzListsKept)
         ])
     }
 
@@ -215,31 +215,31 @@ module MultishotAuthzGuardCases {
         checkAll("GetTodos: the same refusal-and-view triple from every start", [
             length(reads) == 3, authzSameAnswers(reads),
             authzReadsEveryBranch(reads),
-            authzEvery(reads, fn(report) => length(report.events) == 0),
-            authzEvery(reads, fn(report) => structuralEquals(report.lists, authzTwoLists())),
-            authzEvery(reads, fn(report) => structuralEquals(report.items, authzThreeItems()))
+            authzEvery(reads, noEvents),
+            authzEvery(reads, authzListsKept),
+            authzEvery(reads, authzItemsKept)
         ])
         checkAll("CreateList: the same new id 3 from every start", [
             length(creates) == 3, authzSameAnswers(creates),
             authzEvery(creates, fn(report) => structuralEquals(authzBranchTexts(report), ["created 3", "created 3", "created 3"])),
             authzReadsEveryBranch(creates),
-            authzEvery(creates, fn(report) => length(report.events) == 0),
-            authzEvery(creates, fn(report) => structuralEquals(report.items, authzThreeItems()))
+            authzEvery(creates, noEvents),
+            authzEvery(creates, authzItemsKept)
         ])
         checkAll("PurgeTodoLists: the same unauthorized, forbidden, purge-2 triple from every start", [
             length(purges) == 3, authzSameAnswers(purges),
             authzEvery(purges, fn(report) => structuralEquals(authzBranchTexts(report), ["unauthorized", "forbidden not in role", "purged 2"])),
             authzReadsEveryBranch(purges),
-            authzEvery(purges, fn(report) => length(report.events) == 0),
-            authzEvery(purges, fn(report) => structuralEquals(report.lists, authzTwoLists()))
+            authzEvery(purges, noEvents),
+            authzEvery(purges, authzListsKept)
         ])
         let first = authzAsAnonymous(authzTwoLists(), authzThreeItems(), authzNewItem(1, "Dentist"))
         let second = authzAsUser(authzTwoLists(), authzThreeItems(), authzNewItem(1, "Dentist"))
         let third = authzAsAdmin(authzTwoLists(), authzThreeItems(), authzNewItem(1, "Dentist"))
         // The three branch answers are identical across all three start principals, item id 4 each time.
-        expect(first.answers, authzAllBranches(authzCreated(4)))
-        expect(second.answers, authzAllBranches(authzCreated(4)))
-        expect(third.answers, authzAllBranches(authzCreated(4)))
+        expect(first.answers, authzAllBranches(createdId(4)))
+        expect(second.answers, authzAllBranches(createdId(4)))
+        expect(third.answers, authzAllBranches(createdId(4)))
         checkAll("three explicit starts agree branch for branch", [
             authzReadsEveryBranch([first, second, third]),
             structuralEquals(authzBranchTexts(first), authzBranchTexts(second)),

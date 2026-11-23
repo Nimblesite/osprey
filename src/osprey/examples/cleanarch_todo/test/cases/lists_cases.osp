@@ -28,11 +28,11 @@ fn colourLookup() = [
 module ListsCases {
     /// Create a list, then read it back through GetTodos.
     export fn createRoundTripCase() = {
-        let made = TodoHarness::request(TodoHarness::admin(), 0, [], [], CreateList {
+        let made = TodoHarness::adminAsks([], [], CreateList {
             list: NewList { title: "Shopping", colour: "" }
         })
         expect(made.settled, Success { value: CreatedId { value: 1 } })
-        let view = TodoHarness::request(TodoHarness::admin(), 0, [
+        let view = TodoHarness::adminAsks([
             TodoHarness::seedList(1, "Shopping", TodoDomain::grey())
         ], [], GetTodos)
         expect(view.settled, Success { value: TodosView {
@@ -51,13 +51,13 @@ module ListsCases {
     /// throws UnsupportedColourException for arrives as a typed fault.
     export fn colourPermutationsCase() = {
         forEachList(TodoDomain::supportedColours(), fn(code) => {
-            let made = TodoHarness::request(TodoHarness::admin(), 0, [], [], CreateList {
+            let made = TodoHarness::adminAsks([], [], CreateList {
                 list: NewList { title: "List ${code}", colour: code
                 }
             })
             expect(made.settled, Success { value: CreatedId { value: 1 } })
         })
-        let bad = TodoHarness::request(TodoHarness::admin(), 0, [], [], CreateList {
+        let bad = TodoHarness::adminAsks([], [], CreateList {
             list: NewList { title: "Impossible", colour: "#FFF000" }
         })
         expect(bad.settled, Error { message: ValidationFault {
@@ -70,20 +70,20 @@ module ListsCases {
     export fn collectsEveryListProblemCase() = {
         let long = foldList(range(0, 201) |> toList, "", fn(built, _i) => built + "x")
         let seeded = [TodoHarness::seedList(1, "Shopping", "#78909C")]
-        let broken = TodoHarness::request(TodoHarness::admin(), 0, seeded, [], CreateList {
+        let broken = TodoHarness::adminAsks(seeded, [], CreateList {
             list: NewList { title: long, colour: "#HotPink" }
         })
         expect(broken.settled, Error { message: ValidationFault { problems: [
             "'Title' must be at most 200 characters.",
             "UnsupportedColour: '#HotPink' is not a supported colour"
         ] } })
-        let empty = TodoHarness::request(TodoHarness::admin(), 0, seeded, [], CreateList {
+        let empty = TodoHarness::adminAsks(seeded, [], CreateList {
             list: NewList { title: "", colour: "" }
         })
         expect(empty.settled, Error { message: ValidationFault {
             problems: ["'Title' must not be empty."]
         } })
-        let taken = TodoHarness::request(TodoHarness::admin(), 0, seeded, [], CreateList {
+        let taken = TodoHarness::adminAsks(seeded, [], CreateList {
             list: NewList { title: "Shopping", colour: "" }
         })
         expect(taken.settled, Error { message: ValidationFault {
@@ -95,19 +95,19 @@ module ListsCases {
     /// uniqueness rule excludes the list being renamed.
     export fn updateAndRenameCase() = {
         let seeded = [TodoHarness::seedList(1, "Shopping", "#78909C")]
-        let renamed = TodoHarness::request(TodoHarness::admin(), 0, seeded, [], UpdateList {
+        let renamed = TodoHarness::adminAsks(seeded, [], UpdateList {
             edit: ListEdit { id: 1, title: "Groceries", colour: "" }
         })
         expect(renamed.settled, Success { value: Updated })
-        let recoloured = TodoHarness::request(TodoHarness::admin(), 0, [
+        let recoloured = TodoHarness::adminAsks([
             TodoHarness::seedList(1, "Groceries", "#78909C")
         ], [], UpdateList { edit: ListEdit { id: 1, title: "Groceries", colour: "#AB47BC" } })
         expect(recoloured.settled, Success { value: Updated })
-        let selfTitled = TodoHarness::request(TodoHarness::admin(), 0, [
+        let selfTitled = TodoHarness::adminAsks([
             TodoHarness::seedList(1, "Groceries", "#AB47BC")
         ], [], UpdateList { edit: ListEdit { id: 1, title: "Groceries", colour: "" } })
         expect(selfTitled.settled, Success { value: Updated })
-        let clash = TodoHarness::request(TodoHarness::admin(), 0, [
+        let clash = TodoHarness::adminAsks([
             TodoHarness::seedList(1, "Groceries", "#AB47BC"),
             TodoHarness::seedList(2, "Banking", "#78909C")
         ], [], UpdateList { edit: ListEdit { id: 1, title: "Banking", colour: "" } })
@@ -118,11 +118,11 @@ module ListsCases {
 
     /// Missing lists answer the typed NotFound fault, never a fake row.
     export fn missingListAnswersNotFoundCase() = {
-        let updated = TodoHarness::request(TodoHarness::admin(), 0, [], [], UpdateList {
+        let updated = TodoHarness::adminAsks([], [], UpdateList {
             edit: ListEdit { id: 9, title: "Ghost", colour: "" }
         })
         expect(updated.settled, Error { message: NotFound { kind: "TodoList", id: 9 } })
-        let deleted = TodoHarness::request(TodoHarness::admin(), 0, [], [], DeleteList { id: 9 })
+        let deleted = TodoHarness::adminAsks([], [], DeleteList { id: 9 })
         expect(deleted.settled, Error { message: NotFound { kind: "TodoList", id: 9 } })
     }
 
@@ -142,7 +142,7 @@ module ListsCases {
 
     /// GetTodos orders lists by title and nests each list's items.
     export fn getTodosOrdersByTitleCase() = {
-        let view = TodoHarness::request(TodoHarness::admin(), 0, [
+        let view = TodoHarness::adminAsks([
             TodoHarness::seedList(1, "Shopping", "#78909C"),
             TodoHarness::seedList(2, "Banking", "#AB47BC")
         ], [
@@ -165,12 +165,12 @@ module ListsCases {
 
     /// PurgeTodoLists drops every list; its answer is the count.
     export fn purgeClearsEverythingCase() = {
-        let purged = TodoHarness::request(TodoHarness::admin(), 0, [
+        let purged = TodoHarness::adminAsks([
             TodoHarness::seedList(1, "Shopping", "#78909C"),
             TodoHarness::seedList(2, "Banking", "#AB47BC")
         ], [TodoHarness::seedItem(1, 1, "Milk", false)], PurgeTodoLists)
         expect(purged.settled, Success { value: Purged { count: 2 } })
-        let emptied = TodoHarness::request(TodoHarness::admin(), 0, [], [], GetTodos)
+        let emptied = TodoHarness::adminAsks([], [], GetTodos)
         expect(emptied.settled, Success { value: TodosView {
             priorities: priorityLookup(),
             colours: colourLookup(),
