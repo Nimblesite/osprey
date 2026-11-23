@@ -102,7 +102,8 @@ static void gc_ms_push(uintptr_t w) {
     size_t cap = g_ms_cap ? g_ms_cap * 2 : OSP_GC_INIT_MARK_STACK;
     uintptr_t *ms = (uintptr_t *)realloc(g_ms, cap * sizeof(uintptr_t));
     if (!ms) {
-      return; // drop the candidate; conservative scanning will re-find it later
+      g_ms_dropped = 1; // `w` is marked but untraced: gc_trace re-scans the marked blocks
+      return;
     }
     g_ms = ms;
     g_ms_cap = cap;

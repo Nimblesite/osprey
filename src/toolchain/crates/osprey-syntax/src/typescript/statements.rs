@@ -336,17 +336,44 @@ impl Lowerer<'_> {
     }
 
     /// `switch (value.kind)` is an exhaustive match over the union's variants.
+    /// Adjacent `case` labels with no statements between them share the next
+    /// case's body: one arm whose pattern is the or-pattern of their variants
+    /// ([PATTERN-OR-SYNTAX]). A label left with no body after it is the
+    /// fallthrough the flavor rejects.
     fn switch(&mut self, switch: &SwitchStatement<'_>, tail: bool) -> Result<Expr> {
         let subject = self.switch_subject(switch)?;
-        let arms = switch
-            .cases
-            .iter()
-            .map(|case| self.case(case, &subject, tail))
-            .collect::<Result<_>>()?;
+        let mut arms = Vec::new();
+        let mut labels: Vec<String> = Vec::new();
+        for case in &switch.cases {
+            let name = self.case_variant(case)?;
+            if case.consequent.is_empty() {
+                labels.push(name);
+                continue;
+            }
+            let shared = std::mem::take(&mut labels);
+            arms.push(self.case(case, name, shared, &subject, tail)?);
+        }
+        if let Some(last) = switch.cases.last().filter(|_| !labels.is_empty()) {
+            return Err(self.error(
+                last.span,
+                "a `case` must end with a body; fallthrough is rejected",
+            ));
+        }
         Ok(Expr::Match {
             value: Box::new(Expr::Identifier(subject)),
             arms,
         })
+    }
+
+    /// The variant a `case` label names.
+    fn case_variant(&self, case: &SwitchCase<'_>) -> Result<String> {
+        let Some(Expression::StringLiteral(kind)) = &case.test else {
+            return Err(self.error(
+                case.span,
+                "each `case` names one `kind` string; `default` is rejected, list every kind",
+            ));
+        };
+        Ok(variant_name(&self.string(kind)?))
     }
 
     fn switch_subject(&self, switch: &SwitchStatement<'_>) -> Result<String> {
@@ -363,14 +390,16 @@ impl Lowerer<'_> {
         ))
     }
 
-    fn case(&mut self, case: &SwitchCase<'_>, subject: &str, tail: bool) -> Result<MatchArm> {
-        let Some(Expression::StringLiteral(kind)) = &case.test else {
-            return Err(self.error(
-                case.span,
-                "each `case` names one `kind` string; `default` is rejected, list every kind",
-            ));
-        };
-        let name = variant_name(&self.string(kind)?);
+    /// One arm: the variants of the labels before it (`shared`) and its own,
+    /// each binding the fields the body reads.
+    fn case(
+        &mut self,
+        case: &SwitchCase<'_>,
+        name: String,
+        shared: Vec<String>,
+        subject: &str,
+        tail: bool,
+    ) -> Result<MatchArm> {
         let statements = self.case_statements(case, tail)?;
         self.narrowed.push(Narrowing {
             subject: subject.to_owned(),
@@ -378,9 +407,19 @@ impl Lowerer<'_> {
             fields: Vec::new(),
         });
         let body = self.scoped(false, tail, |lowerer| lowerer.block(&statements, case.span));
-        let fields = self.narrowed.pop().map(|narrowing| narrowing.fields);
+        let fields = self.narrowed.pop().map_or_default(|narrowing| narrowing.fields);
+        let mut alternatives: Vec<Pattern> = shared
+            .into_iter()
+            .map(|label| variant_pattern(label, fields.clone()))
+            .collect();
+        alternatives.push(variant_pattern(name, fields));
+        let pattern = if alternatives.len() == 1 {
+            alternatives.pop().unwrap_or(Pattern::Wildcard)
+        } else {
+            Pattern::Or(alternatives)
+        };
         Ok(MatchArm {
-            pattern: variant_pattern(name, fields.unwrap_or_default()),
+            pattern,
             body: crate::desugar::positioned(body?, Some(self.at(case.span))),
         })
     }

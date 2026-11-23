@@ -4,6 +4,7 @@
 // table. Part of the memory_gc suite (memory_gc_tests.c runs these).
 
 #include "gc_tests_shared.h"
+#include "test_alloc.h"
 
 #define PAGE_HIDE ((uintptr_t)0x3C3C3C3C3C3C3C3Cull)
 #define SMALL_MAX 1024 // the largest size a page serves
@@ -191,13 +192,47 @@ void pages_off_child(void) {
   printf("pages off\n");
 }
 
-static void t_pages_knob(const char *self) {
+// [GC-TRACE-CONSERVATIVE] The mark stack is refused the memory it asks for
+// while a collection is tracing. The block whose entry found no room is marked
+// all the same, so everything it points at must still be traced and kept.
+#define FAMILIES 64
+#define MARK_STACK_BYTES (((size_t)1u << 14) * sizeof(uintptr_t)) // the stack's first request
+static void **g_family[FAMILIES];
+
+__attribute__((noinline)) static void build_families(void) {
+  for (int i = 0; i < FAMILIES; i++) {
+    void **parent = osp_alloc(2 * sizeof(void *));
+    void **child = osp_alloc(2 * sizeof(void *));
+    CHECK(parent != NULL && child != NULL);
+    child[0] = text_block(40, fill_byte(i));
+    parent[0] = child;
+    g_family[i] = parent;
+  }
+}
+
+void mark_stack_refused_child(void) {
+  build_families();
+  scrub_stack();
+  osp_alloc_fail_size(MARK_STACK_BYTES);
+  osp_collect();
+  CHECK(atomic_load(&osp_alloc_successes_left) == -1); // the refusal was drawn
+  osp_alloc_fail_off();
+  (void)alloc_churn(20000, 40); // takes over any cell that was wrongly freed
+  for (int i = 0; i < FAMILIES; i++) {
+    void *const *child = g_family[i][0];
+    const char *text = child[0];
+    CHECK(osp_mem_string_length(text) == 39 && text[0] == fill_byte(i) && text[38] == fill_byte(i));
+  }
+  printf("mark stack refused\n");
+}
+
+static void t_child_prints(const char *self, const char *setup, const char *flag, const char *want) {
   char command[4096], line[64] = "";
-  int length = snprintf(command, sizeof command, "OSPREY_GC_PAGES=0 '%s' --pages-off", self);
+  int length = snprintf(command, sizeof command, "%s '%s' %s", setup, self, flag);
   CHECK(length > 0 && (size_t)length < sizeof command);
   FILE *child = popen(command, "r");
   CHECK(child != NULL);
-  CHECK(fgets(line, sizeof line, child) != NULL && strcmp(line, "pages off\n") == 0);
+  CHECK(fgets(line, sizeof line, child) != NULL && strcmp(line, want) == 0);
   CHECK(pclose(child) == 0);
 }
 
@@ -206,5 +241,6 @@ void t_size_class_pages(const char *self) {
   t_only_a_base_names_a_block();
   t_pages_fill_reuse_and_return();
   t_large_blocks_stay_in_the_table();
-  t_pages_knob(self);
+  t_child_prints(self, "OSPREY_GC_PAGES=0", "--pages-off", "pages off\n");
+  t_child_prints(self, "", "--mark-stack-refused", "mark stack refused\n");
 }

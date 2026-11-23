@@ -204,6 +204,18 @@ static void gc_pages_scan_pinned(void) {
   }
 }
 
+// Scan every marked cell again [GC-TRACE-CONSERVATIVE]: see gc_rescan_marked.
+static void gc_pages_rescan_marked(void) {
+  for (size_t i = 0; i < g_pages_cap; i++) {
+    const OspGcPage *page = g_pages[i];
+    for (uint32_t c = 0; page && c < page->bump; c++) {
+      if ((page->meta[c].mark & (GC_USED | GC_MARKED | GC_LEAF)) == (GC_USED | GC_MARKED)) {
+        gc_scan_range(gc_cell_at(page, c), gc_cell_at(page, c) + page->meta[c].size);
+      }
+    }
+  }
+}
+
 // Run the finalizer of every dying cell that carries one, before any cell is
 // reused: a finalizer may ask the collector about a block that outlives it.
 static void gc_pages_finalize_dead(void (*finalize)(void *body)) {

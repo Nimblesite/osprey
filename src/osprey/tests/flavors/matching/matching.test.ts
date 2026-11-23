@@ -381,3 +381,94 @@ function joinedCallablePatternCase() {
 }
 
 test("joined callable Results retain their payload signatures", joinedCallablePatternCase);
+
+// Or-patterns ([PATTERN-OR]): adjacent `case` labels with no statements
+// between them share one body. A `switch` tests `kind` only, so the twin
+// spells Default's literal, list and row alternatives as expressions.
+type Glyph =
+  | { readonly kind: "space" }
+  | { readonly kind: "tab" }
+  | { readonly kind: "newline" }
+  | { readonly kind: "letter"; readonly text: string }
+  | { readonly kind: "word"; readonly text: string }
+  | { readonly kind: "digit"; readonly d: int };
+
+/** Payload-free alternatives, and payload alternatives that bind one field. */
+function glyphKind(g: Glyph) {
+  switch (g.kind) {
+    case "space":
+    case "tab":
+    case "newline":
+      return "blank";
+    case "letter":
+    case "word":
+      return `text ${g.text}`;
+    case "digit":
+      return g.d === 0 || g.d === 1 ? "bit" : `digit ${g.d}`;
+  }
+}
+
+function orLiteralCase() {
+  const small = (n) => (n === 0 || n === 1 || n === 2 ? "small" : "big");
+  return checkAll("or-pattern variant and literal alternatives", [
+    glyphKind({ kind: "space" }) === "blank", glyphKind({ kind: "tab" }) === "blank",
+    glyphKind({ kind: "newline" }) === "blank",
+    glyphKind({ kind: "digit", d: 0 }) === "bit", glyphKind({ kind: "digit", d: 1 }) === "bit",
+    glyphKind({ kind: "digit", d: 7 }) === "digit 7",
+    glyphKind({ kind: "letter", text: "a" }) === "text a",
+    glyphKind({ kind: "word", text: "hi" }) === "text hi",
+    small(0) === "small", small(2) === "small", small(3) === "big",
+  ]);
+}
+
+test("or-patterns join variant and literal alternatives", orLiteralCase);
+
+type Shape =
+  | { readonly kind: "square"; readonly size: int }
+  | { readonly kind: "circle"; readonly size: int }
+  | { readonly kind: "line"; readonly size: int }
+  | { readonly kind: "dot" };
+
+/** Three labels share a body that reads the field every one of them has. */
+function measure(s: Shape) {
+  switch (s.kind) {
+    case "square":
+    case "circle":
+    case "line":
+      return s.size;
+    case "dot":
+      return 0;
+  }
+}
+
+function orStructureCase() {
+  return checkAll("or-pattern Result, payload, list, row and nested alternatives", [
+    measure({ kind: "square", size: 3 }) === 3, measure({ kind: "circle", size: 4 }) === 4,
+    measure({ kind: "line", size: 5 }) === 5, measure({ kind: "dot" }) === 0,
+  ]);
+}
+
+test("or-patterns cover Results, payloads, lists, rows and three-level nests", orStructureCase);
+
+/** A closure capturing the field read from either alternative escapes the arm. */
+function adder(s: Shape) {
+  switch (s.kind) {
+    case "square":
+    case "circle":
+      return (x) => wrapAdd(x, s.size);
+    case "line":
+    case "dot":
+      return (x) => x;
+  }
+}
+
+function orBindingCase() {
+  const size = 100;
+  return checkAll("or-pattern bindings follow order and scope", [
+    adder({ kind: "square", size: 3 })(1) === 4, adder({ kind: "circle", size: 6 })(1) === 7,
+    adder({ kind: "line", size: 9 })(1) === 1, adder({ kind: "dot" })(1) === 1,
+    measure({ kind: "circle", size: 2 }) === 2, size === 100,
+  ]);
+}
+
+test("or-pattern bindings follow order, scope and closures", orBindingCase);

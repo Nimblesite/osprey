@@ -420,6 +420,10 @@ int main(int argc, char **argv) {
     pages_off_child();
     return 0;
   }
+  if (argc == 2 && strcmp(argv[1], "--mark-stack-refused") == 0) {
+    mark_stack_refused_child();
+    return 0;
+  }
   if (argc == 3 && strcmp(argv[1], "--ceiling") == 0) {
     ceiling_child(argv[2]);
     return 0;

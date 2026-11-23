@@ -96,7 +96,8 @@ void osp_mem_immortal(void *p);
 // Announce that a second thread is about to be able to touch the heap. The
 // fiber runtime calls this once, immediately before the pthread_create that
 // spawns a real fiber thread. ARC uses it to trip from its single-threaded
-// lock-free fast path to a mutexed one; default/gc are unsynchronized no-ops.
+// lock-free fast path to a mutexed one; the tracing collector takes its heap lock from then on; the
+// unmanaged backend does nothing.
 // Idempotent and monotonic. [MEM-BACKENDS]
 void osp_mem_notify_multithreaded(void);
 

@@ -115,6 +115,7 @@ static uintptr_t g_highest = 0;          // the highest base ever tracked
 static uintptr_t *g_ms = NULL; // mark stack of pending object bases
 static size_t g_ms_cap = 0;
 static size_t g_ms_top = 0;
+static int g_ms_dropped = 0; // a push found no memory this collection
 
 static size_t g_bytes = 0;                          // managed bytes since last GC
 static size_t g_min_heap = OSP_GC_MIN_HEAP_BYTES;   // floor for the adaptive budget
@@ -191,13 +192,7 @@ __attribute__((unused)) static void gc_scan_others(const OspGcBaton *self) {
 
 // --- collect -----------------------------------------------------------------
 
-// Caller holds g_lock. The root provider covers all active callers and globals.
-static void gc_collect_locked(void) {
-  heap_note_peak(g_bytes);
-  g_ms_top = 0;
-  gc_scan_roots();
-  gc_scan_pinned();
-
+static void gc_trace_pending(void) {
   while (g_ms_top > 0) {
     uintptr_t w = g_ms[--g_ms_top];
     const OspGcMeta *e = gc_lookup(w);
@@ -205,6 +200,29 @@ static void gc_collect_locked(void) {
       gc_scan_range(w, w + e->size);
     }
   }
+}
+
+// Trace everything the roots reach. A block whose mark-stack entry found no
+// memory is marked but was never scanned, so while any entry was dropped every
+// marked block is scanned again: each pass marks at least one more block or
+// drops nothing, and no live block is left untraced [GC-TRACE-CONSERVATIVE].
+static void gc_trace(void) {
+  gc_trace_pending();
+  while (g_ms_dropped) {
+    g_ms_dropped = 0;
+    gc_rescan_marked();
+    gc_trace_pending();
+  }
+}
+
+// Caller holds g_lock. The root provider covers all active callers and globals.
+static void gc_collect_locked(void) {
+  heap_note_peak(g_bytes);
+  g_ms_top = 0;
+  gc_scan_roots();
+  gc_scan_pinned();
+
+  gc_trace();
   gc_sweep();
 }
 
