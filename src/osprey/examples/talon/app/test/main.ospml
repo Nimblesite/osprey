@@ -92,6 +92,38 @@ choices (label, expected) = match Lists::find (Views::labelled (driven.drivenSee
     Success c => expect (join c.controlChoices ",", expected)
     Error _ => expect ("no picker labelled ${label}", expected)
 
+// Both listings answered again, as every mutation's reply asks for them.
+reloaded () =
+    expect ((store ()).bankLoads, 2)
+    reply ("accounts", 200, accountsReply ())
+    reply ("activity", 200, activityReply ())
+    expect ((store ()).bankLoads, 0)
+
+// A one-dollar withdrawal the ledger answers with HTTP `code` and `body`, then its notice dismissed.
+refusedWith (code, body, detail) =
+    press "Withdraw"
+    typed ("Withdraw from", "1")
+    typed ("Amount", "1")
+    press "Confirm withdrawal"
+    reply ("withdraw", code, body)
+    shows "Operation refused"
+    expect ((store ()).bankNotice.noticeTone, "danger")
+    expect ((store ()).bankNotice.noticeDetail, detail)
+    expect ((store ()).bankBusy, false)
+    reloaded ()
+    press "Dismiss"
+
+// A movement in `mode` the ledger accepts, showing `heading`.
+movedWith (mode, confirm, ticket, heading) =
+    press mode
+    typed ("Amount", "9.5")
+    typed ("To account", "3")
+    press confirm
+    reply (ticket, 200, "{}")
+    shows heading
+    expect ((store ()).bankNotice.noticeTone, "good")
+    reloaded ()
+
 test ("typed amounts read as whole cents, and anything else as zero", \() =>
     expect (Amounts::cents "$1,980.25", 198025)
     expect (Amounts::cents "1980.25", 198025)
@@ -258,3 +290,73 @@ test ("the new-account dialog needs an owner, then opens the account and closes"
     press "Open account"
     press "Cancel"
     expect ((store ()).bankOpening, false)))
+test ("a pending movement is sent once, and another movement waits for its reply", \() => bench (\() =>
+    loaded ()
+    press "Deposit"
+    typed ("Amount", "25.00")
+    typed ("Description", "One tap")
+    press "Confirm deposit"
+    expect (asked (), "POST http://127.0.0.1:18790/api/deposit {\"account\":1,\"cents\":2500,\"note\":\"One tap\"} deposit")
+    press "Confirm deposit"
+    askedNothing ()
+    press "Transfer"
+    typed ("From account", "1")
+    typed ("To account", "2")
+    typed ("Amount", "5")
+    press "Confirm transfer"
+    askedNothing ()
+    expect ((store ()).bankBusy, true)
+    reply ("deposit", 200, "{}")
+    expect ((store ()).bankBusy, false)
+    press "Confirm transfer"
+    expect (asked (), "POST http://127.0.0.1:18790/api/transfer {\"from\":1,\"to\":2,\"cents\":500,\"note\":\"One tap\"} transfer")))
+test ("every refused or unreachable reply becomes a notice that names its cause", \() => bench (\() =>
+    loaded ()
+    refusedWith (503, "", "The ledger failed with HTTP 503. Try again shortly.")
+    refusedWith (403, "", "The ledger refused the request with HTTP 403.")
+    refusedWith (0, "", "The app could not reach the ledger. Check your connection and try again.")
+    refusedWith (400, "{\"error\":\"Connection timed out\"}", "Connection timed out")
+    expect ((store ()).bankNotice.noticeHeading, "")))
+test ("every successful movement shows its own notice and reloads both listings", \() => bench (\() =>
+    loaded ()
+    movedWith ("Withdraw", "Confirm withdrawal", "withdraw", "Withdrawal complete")
+    movedWith ("Deposit", "Confirm deposit", "deposit", "Deposit complete")
+    movedWith ("Transfer", "Confirm transfer", "transfer", "Transfer complete")))
+test ("notes and owners keep quotes, newlines and Unicode, trimmed and escaped", \() => bench (\() =>
+    loaded ()
+    press "Deposit"
+    typed ("Deposit to", "2")
+    typed ("Amount", " $1,234.56 ")
+    typed ("Description", "  Deposit \"日本語\"\nready  ")
+    press "Confirm deposit"
+    expect (asked (), "POST http://127.0.0.1:18790/api/deposit {\"account\":2,\"cents\":123456,\"note\":\"Deposit \\\"日本語\\\"\\nready\"} deposit")
+    reply ("deposit", 200, "{}")
+    press "Open account"
+    typed ("Account owner", "  Nora \"N\" Okafor 日本語  ")
+    press "Create account"
+    expect (asked (), "POST http://127.0.0.1:18790/api/accounts {\"name\":\"Nora \\\"N\\\" Okafor 日本語\"} open")))
+test ("filter and search intersect while the journal's totals stay complete", \() => bench (\() =>
+    loaded ()
+    press "Activity"
+    press "In 1"
+    typed ("Search", "Marcus")
+    shows "No matching activity"
+    shows "All 3"
+    shows "Declined 1"
+    typed ("Search", "salary")
+    expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", "March salary")
+    press "Declined 1"
+    shows "No matching activity"
+    typed ("Search", "")
+    expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", "vintage synthesizer")))
+test ("an empty ledger draws usable empty states", \() => bench (\() =>
+    launchWith []
+    reply ("accounts", 200, "[]")
+    reply ("activity", 200, "[]")
+    expect ((store ()).bankLoads, 0)
+    shows "$0.00"
+    press "Accounts"
+    shows "No accounts yet"
+    press "Activity"
+    shows "All 0"
+    shows "No matching activity"))
