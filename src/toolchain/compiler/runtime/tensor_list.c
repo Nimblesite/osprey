@@ -14,7 +14,6 @@
 #include <errno.h>
 #include <stdio.h>
 #include <sys/stat.h>
-#include <stdlib.h>
 #include <string.h>
 
 static const char OP_LOAD_TENSOR[] = "loadTensor";
@@ -95,13 +94,6 @@ OspreyList *osprey_read_file_bytes(const char *path, int64_t offset, int64_t cou
     return NULL;
   }
   return list;
-}
-
-// Broken-code quarantine: a host interpretation whose weights fail to load
-// would otherwise run on whatever its caller substituted. It aborts naming why.
-void *osprey_tensor_panic(const char *message) {
-  (void)fprintf(stderr, "tensor load cannot continue: %s\n", message ? message : "unknown failure");
-  abort();
 }
 
 // [BUILTIN-FILE-SIZE] The byte length of the regular file at `path`, from
