@@ -12,8 +12,7 @@ module TodoValidation {
     export fn problems(request) = match request {
         CreateList { list: NewList { title, colour } } => listProblems(-1, title, colour)
         UpdateList { edit: ListEdit { id, title, colour } } => listProblems(id, title, colour)
-        CreateItem { item: NewItem { title } } => titleProblems(title)
-        UpdateItem { edit: ItemEdit { title } } => titleProblems(title)
+        CreateItem { item: NewItem { title } } | UpdateItem { edit: ItemEdit { title } } => titleProblems(title)
         _ => []
     }
 
