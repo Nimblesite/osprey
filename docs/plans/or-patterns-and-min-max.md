@@ -64,7 +64,7 @@ This is a language gap that blocks top tier, ranked with the gaps in [generic er
 - [x] ARC: a binder taken from either alternative is retained and released once, with no leak and no double release on the alternative that failed part-way
 - [x] wasm32: the same blocks and phis; corpus green under `OSPREY_TARGET=wasm32`
 - [x] `many` lowering (`osprey-types/src/many`): a `match` with or-pattern arms inside a `many` region is rewritten with the arm kept whole; a request captured in the body resumes once per `resume` call with the alternative's bindings ([MULTI-HANDLE-MANY], [MULTI-REPLAY])
-- [ ] Static handler discharge and staged effects ([STAGE-WASM]) pass the node through unchanged
+- [x] Static handler discharge and staged effects ([STAGE-WASM]) pass the node through unchanged
 
 ### Tooling
 

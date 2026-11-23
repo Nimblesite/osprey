@@ -81,12 +81,15 @@ fn compile_in_flavor(source: &str, flavor: Flavor, label: &str) -> String {
 
 const STATIC_SOURCE: &str = r#"
 static effect Alloc { scratch: fn(int) -> int }
+fn scratchFor(input) = match input {
+    Success { value: size } | Error { message: size } => perform Alloc.scratch(size)
+}
 fn main() = {
     let used = {
         handle static Alloc {
             scratch bytes => satMul(bytes, 4)
         }
-        perform Alloc.scratch(16)
+        satAdd(scratchFor(Success { value: 7 }), scratchFor(Error { message: 9 }))
     }
     print("scratch=${used}")
 }
