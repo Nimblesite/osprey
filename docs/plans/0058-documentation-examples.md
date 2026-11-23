@@ -95,7 +95,7 @@ that example as Default. Every such fence in the repository is relabelled
 - [x] Examples for all 22 `@osprey/json` exports, run under GC, ARC and wasm32 (22 passed each, 2026-11-23)
 - [x] The corpus doctest pass covers `src/osprey/packages/` (`corpus_doctests.sh` runs each package with an example as a project; floor 28)
 - [ ] `[DOC-EXAMPLE-FLAVORS]` parser, harness, exporter, website tabs, relabelling
-- [x] `[DOC-EXPORT-EXAMPLE-REQUIRED]` warning: `unexampled-export` in `osprey-types/src/undocumented.rs`, shown by the CLI and the language server; tests in `undocumented_tests.rs` and `osprey-lsp/src/undocumented.rs`
+- [x] `[DOC-EXPORT-EXAMPLE-REQUIRED]` warning: `unexampled-export` in `osprey-types/src/undocumented.rs`, shown by `--check` and the language server while packages add examples. `program_contracts.rs` verifies strict source checks and strict builds during rollout.
 - [ ] Examples in every package until `make -C src/osprey/packages` reports no `unexampled-export`
 - [ ] Promote `unexampled-export` to an error in the package build
 - [ ] Spec sections added to 0026 and DocumentationTools, with IDs cited in the code and tests (done for WRAPPER-DEPTH, DOCSTRING-CLEAN and EXAMPLE-REQUIRED; FLAVORS moves when built)

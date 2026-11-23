@@ -159,8 +159,9 @@ own. Private declarations are not reported.
 
 ### Exported examples `[DOC-EXPORT-EXAMPLE-REQUIRED]`
 
-Wherever `undocumented-export` is reported (the compiler's warning listing and
-the language server), the `unexampled-export` warning is reported too, for:
+`--check` and the language server report `unexampled-export` while packages
+add examples. With `--check --warnings-as-errors`, it fails the check just
+like every other reported warning. The rule covers:
 
 - a documented exported function, value or extern whose comment has no
   `# Examples` section, or whose section holds no example fence, and
