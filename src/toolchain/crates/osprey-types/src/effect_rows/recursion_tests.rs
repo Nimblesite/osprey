@@ -1,5 +1,5 @@
 //! Which functions lie on a reference cycle.
-use super::recursive_functions;
+use super::Callees;
 use crate::effect_rows::Index;
 use std::collections::BTreeSet;
 
@@ -7,7 +7,7 @@ fn cycles_by_name(source: &str) -> BTreeSet<String> {
     let parsed = osprey_syntax::parse_program(source);
     assert_eq!(parsed.errors, []);
     let index = Index::collect(&parsed.program);
-    let recursive = recursive_functions(&index);
+    let recursive = Callees::of(&index).recursive();
     let named = index.functions.iter().enumerate();
     named
         .filter(|(id, _)| recursive.contains(id))

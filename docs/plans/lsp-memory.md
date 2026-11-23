@@ -37,6 +37,36 @@ Checked against the published v0.4.0 source on 2026-11-16, and confirmed on TMC 
 - [x] Keep Osprey's own guard: 32 unknown-method requests through the real server leave `in_flight: 0` (`Dispatcher` `Debug`). Test: `unknown_methods_leave_no_request_in_flight`; 261 LSP tests pass.
 - [x] `cargo test -p osprey-lsp`, then `make ci`, then one coordinated push. 261 LSP tests pass (2026-11-23); the bump shipped through PR #417 (lspkit 0.10.1), merged 2026-11-20 with the required `CI` check green, and is in v0.31.1.
 - [x] Re-measure with `heap -s` after the idle sweep: live heap at or below 128 MB. Met 2026-11-23: osprey-codex-checkin ran the worktree build (with `a25ac44f1`, `8c84e0c69`, `b552ed3f9`) through the complete repository sweep, 1,406 of 1,406 files: 16.49 MiB live heap after it (2.2 GB footprint, held by the allocator). Earlier on this run: 2026-11-23, initialize-only run on this repository, 280 s: released v0.31.1 holds 63 MB live with its sweep still publishing (448 diagnostics); the worktree build at `0c5725f73` holds 868 MB in 6.9M allocations with the sweep stuck at 81. `sample` puts the stuck sweep in the DAW project (`src/osprey/examples/daw`, added after v0.31.1 by #427): `osprey src/osprey/examples/daw --check --no-warnings` alone takes 32.7 s and 1.46 GB, and the redundant-annotation pass adds its trials on top. The cache rule holds; the type checker's cost on DAW is the blocker. Fix that, then re-measure until the sweep finishes. Progress: `a25ac44f1` keeps the redundancy proof out of the sweep for closed files (idle live heap 49–66 MB once the sweep passes DAW); `8c84e0c69` and `b552ed3f9` cut the checker's per-generalization obligation scans (4,411 generalizations rescanned 59.7M obligations on DAW), about 15% of DAW's check time.
+  - Measured 2026-11-24 with `sample` on `osprey src/osprey/examples/daw --check`
+    (release, 8,305 main-thread samples): 68% is the effect-row solver
+    (`effect_rows::solver::converge` → `advance_function` → `function_body_model`),
+    while all of HM inference is the remaining ~32%, of which the environment's
+    free-variable walk in `generalize` is about 6%. A level-based `generalize`
+    would therefore save at most about 6%. `c4f1b397a` (field resolution
+    visits only method, index and field relations) saved about 4%. The solver
+    models function bodies 32,259 times for 2,976 functions (about 11 each),
+    across two passes of 37 Jacobi sweeps each. Six sweeps model nearly every
+    function. Four of them are whole-program re-dirties from
+    `worklist::invalidate_scope`, which dirties every function whenever the
+    file-scope environment changes at all (3,876 models). The rest follow
+    from sweeps reading pre-sweep state in id order, so each callee change
+    re-dirties its callers on the next sweep. The candidate fixes are to
+    invalidate only the readers of the scope entries that changed, and to
+    defer a dirty function while a callee outside its own component is still
+    dirty. `recursion.rs` already proves an acyclic function settles once its
+    callees do. Either fix must keep diagnostics and IR byte-identical over
+    the corpus and DAW. Separately, `Analyzer::scoped_env` clones the whole
+    file-scope `CallableEnv` (`HashMap<String, Value>`) for every body model
+    (32,259 clones on DAW). Sharing the file-scope base behind an `Arc` with a
+    per-body overlay would remove those copies.
+  - Done 2026-11-24: a dirty function now waits while a callee outside its
+    own component is still dirty (`recursion::Callees::waits`), so callees
+    settle first. Back to back, `osprey src/osprey/examples/daw --check` user
+    time fell from 36.9/37.9 s to 29.3/30.3 s, and `src/osprey/examples/daw/test
+    --check` from 256 s to 77 s. `--check` output is byte-identical over all
+    617 corpus and failscompilation programs, all 161 projects and the DAW.
+    osprey-types passes 980/980. Still open: per-entry scope invalidation and
+    the shared file-scope base.
 
 ## Open, not yet fixed
 

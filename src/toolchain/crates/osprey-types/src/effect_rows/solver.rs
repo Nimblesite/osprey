@@ -14,6 +14,8 @@ pub(super) fn advance_function(
     slot: Option<&mut Option<Value>>,
     history: &mut ReturnHistory,
 ) -> bool {
+    #[cfg(test)]
+    BODY_MODELS.with(|models| models.set(models.get() + 1));
     let (mut actual, returned) = analyzer.function_body_model(function);
     actual.widen();
     let merge = history.merge_for(id);
@@ -124,7 +126,7 @@ struct Returns {
 
 impl ReturnHistory {
     /// A history for one fixed point whose `recursive` functions can feed
-    /// their own returns back ([`super::recursion::recursive_functions`]).
+    /// their own returns back ([`super::recursion::Callees::recursive`]).
     pub(super) fn new(recursive: BTreeSet<usize>) -> Self {
         Self {
             returns: HashMap::new(),
@@ -227,12 +229,14 @@ pub(super) fn converge(
     rows: &mut Vec<Summary>,
     returns: &mut Vec<Option<Value>>,
 ) {
+    let callees = super::recursion::Callees::of(index);
     let solve = Solve {
         index,
         instances,
         statements,
+        callees: &callees,
     };
-    let mut history = ReturnHistory::new(super::recursion::recursive_functions(index));
+    let mut history = ReturnHistory::new(callees.recursive());
     let mut reads = vec![BTreeSet::new(); index.functions.len()];
     let mut dirty: BTreeSet<usize> = (0..index.functions.len()).collect();
     let mut previous_scope = None;
@@ -252,6 +256,7 @@ struct Solve<'a> {
     index: &'a Index<'a>,
     instances: &'a Instances,
     statements: &'a [Stmt],
+    callees: &'a super::recursion::Callees,
 }
 
 impl Solve<'_> {
@@ -273,6 +278,13 @@ impl Solve<'_> {
             &mut dirty,
             reads.len(),
         );
+        // A function still waiting on a dirty callee is modelled once that callee settles.
+        let waiting: BTreeSet<usize> = dirty
+            .iter()
+            .copied()
+            .filter(|id| self.callees.waits(*id, &dirty))
+            .collect();
+        dirty.retain(|id| !waiting.contains(id));
         let analyzer = Analyzer {
             index,
             rows,
@@ -317,7 +329,9 @@ impl Solve<'_> {
             }
             let _ = moved.insert(id);
         }
-        super::worklist::affected(&moved, reads)
+        let mut next = super::worklist::affected(&moved, reads);
+        next.extend(waiting);
+        next
     }
 }
 
@@ -462,10 +476,12 @@ fn sparse_sweep_leaves_unread_return_trees_in_place() {
     let parsed = osprey_syntax::parse_program("fn active()=1\nfn unused()=2\n");
     assert_eq!(parsed.errors, []);
     let index = Index::collect(&parsed.program);
+    let callees = super::recursion::Callees::of(&index);
     let solve = Solve {
         index: &index,
         instances: &Instances::default(),
         statements: &parsed.program.statements,
+        callees: &callees,
     };
     let trees = |unread| {
         let mut rows = vec![Summary::default(); 2];
@@ -485,4 +501,10 @@ fn sparse_sweep_leaves_unread_return_trees_in_place() {
         trees(Value::default()),
         trees(super::model_values::snapshot_value())
     );
+}
+
+#[cfg(test)]
+std::thread_local! {
+    /// How many function bodies `advance_function` has modelled.
+    pub(super) static BODY_MODELS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }

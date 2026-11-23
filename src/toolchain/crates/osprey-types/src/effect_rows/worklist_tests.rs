@@ -2,7 +2,7 @@
 use super::{affected, invalidate_scope, record_read, recording};
 use crate::effect_rows::expr_args::{assert_metadata_written, assert_model_metadata_matches};
 use crate::effect_rows::field_rows::tests::analyzer as empty_analyzer;
-use crate::effect_rows::recursion::recursive_functions;
+use crate::effect_rows::recursion::Callees;
 use crate::effect_rows::solver::{
     advance_function, clear_verdicts, converge, file_scope_env, ReturnHistory,
 };
@@ -180,7 +180,7 @@ fn whole_pass(
     statements: &[Stmt],
     state: &mut SolverState,
 ) {
-    let mut history = ReturnHistory::new(recursive_functions(index));
+    let mut history = ReturnHistory::new(Callees::of(index).recursive());
     while reference_step(index, instances, statements, state, &mut history) {}
 }
 
@@ -308,7 +308,7 @@ fn ordinary_step_visits(depth: usize) -> usize {
     let body = (0..depth).fold("value".to_owned(), |value, _| format!("sink({value})"));
     let source = format!("fn sink(value)=value\nfn caller(value)={body}\n");
     with_program(&source, |index, statements| {
-        assert!(recursive_functions(index).is_empty());
+        assert!(Callees::of(index).recursive().is_empty());
         let original = seeded_instances();
         let state = model(index, &original, statements, worklist_pass);
         let optimized = original.clone();
@@ -495,4 +495,40 @@ fn the_alias_oracle_retains_the_actual_rejection_diagnostics() {
         ALIAS_PROGRAM,
         &["outside its declared row", "Alarm.ring"],
     );
+}
+
+/// `depth + 1` functions written callers first, each calling the next, the
+/// last performing `Alarm.ring`: the order in which a sweep that models
+/// every dirty function would model each caller before its callee settles.
+fn chain_program(depth: usize) -> String {
+    let calls = (0..depth)
+        .map(|i| format!("fn f{i}() = f{}()\n", i + 1))
+        .collect::<Vec<_>>()
+        .concat();
+    format!("effect Alarm {{ring:fn()->int}}\n{calls}fn f{depth}() = perform Alarm.ring()\n")
+}
+
+/// A caller waits for its callees, so each body is modelled a bounded number
+/// of times per pass however deep the chain, and the fixed point is exactly
+/// the whole-program schedule's.
+#[test]
+fn a_caller_waits_for_its_callees_and_reaches_the_same_fixed_point() {
+    let mut counts = Vec::new();
+    for depth in [1, 2, 4, 8, 16, 32] {
+        with_program(&chain_program(depth), |index, statements| {
+            let instances = Instances::default();
+            crate::effect_rows::solver::BODY_MODELS.with(|models| models.set(0));
+            let worklist = model(index, &instances, statements, worklist_pass);
+            counts.push(crate::effect_rows::solver::BODY_MODELS.with(core::cell::Cell::get));
+            let whole = model(index, &instances, statements, whole_pass);
+            assert_eq!(worklist, whole, "depth {depth}: the fixed point moved");
+            assert!(
+                worklist.0.iter().all(requires_ring),
+                "depth {depth}: every caller requires Alarm.ring"
+            );
+        });
+    }
+    // Three models per function across the structural and provenance passes;
+    // modelling every dirty caller at once took 5 per function plus 2.
+    assert_eq!(counts, [6, 9, 15, 27, 51, 99]);
 }
