@@ -304,6 +304,8 @@ static size_t fiber_record_bytes(void) {
   return 0;
 }
 
+extern int64_t fiber_set_deterministic_mode(bool enabled);
+
 static int64_t handler_seeing_fiber(void *ignored) {
   (void)ignored;
   return __osprey_handler_lookup_in(41, 0) == (void *)handler_seeing_fiber ? 7 : 0;
@@ -312,7 +314,12 @@ static int64_t handler_seeing_fiber(void *ignored) {
 // With handlers installed, every allocation a spawn makes may fail, the parent's
 // handler copy included: each size refuses the spawn (-2) or runs a fiber that
 // sees the parent's handler, and neither leaks a byte. Implements [MULTI-HANDLE-MANY].
+// The fibers are queued, not threaded: every refusal comes before a thread
+// exists, and glibc sets up and tears down a detached thread's TLS through
+// this same counted malloc, so an earlier fiber's thread still exiting would
+// move the process-wide live count under the next refusal's check.
 void test_spawn_with_handlers_survives_every_failed_allocation(void) {
+  assert(fiber_set_deterministic_mode(true) == 0);
   for (int handlers = 1; handlers <= 3; handlers++) {
     for (int i = 0; i < handlers; i++) {
       assert(__osprey_handler_push_scoped(41, (void *)handler_seeing_fiber, NULL,
@@ -336,6 +343,37 @@ void test_spawn_with_handlers_survives_every_failed_allocation(void) {
     assert(__osprey_handler_depth() == handlers);
     __osprey_handler_stack_cleanup();
   }
+  assert(fiber_set_deterministic_mode(false) == 0);
+}
+
+// With a handler installed, the spawn that finds the handle table full has
+// already copied the parent's handlers into a collector-scanned block; when the
+// table cannot grow, that copy goes back through the scanned free, never libc's
+// (glibc aborts on the interior pointer). Each spawn lets the record and the copy
+// through and refuses the next allocation, which only the full table's growth
+// makes. Implements [MULTI-HANDLE-MANY].
+void test_spawn_refused_by_a_full_handle_table_frees_the_handler_copy(void) {
+  assert(fiber_set_deterministic_mode(true) == 0);
+  assert(__osprey_handler_push_scoped(41, (void *)handler_seeing_fiber, NULL,
+                                      __osprey_handler_depth()) == 0);
+  int refused = 0;
+  for (int spawns = 0; spawns < (1 << 17) && refused == 0; spawns++) {
+    long live = test_alloc_live();
+    test_alloc_fail_after(2);
+    int64_t fiber = fiber_spawn_env(handler_seeing_fiber, NULL);
+    test_alloc_fail_off();
+    if (fiber == -2) {
+      refused++;
+      assert(test_alloc_live() == live && "a refused growth must free the handler copy");
+    } else {
+      assert(fiber > 0 && fiber_await(fiber) == 7);
+    }
+  }
+  assert(refused == 1 && "the full table's growth must be refused once");
+  int64_t grown = fiber_spawn_env(handler_seeing_fiber, NULL);
+  assert(grown > 0 && fiber_await(grown) == 7 && "the next spawn grows the table");
+  __osprey_handler_stack_cleanup();
+  assert(fiber_set_deterministic_mode(false) == 0);
 }
 
 void test_listener_spawn_failure_is_reported(void) {

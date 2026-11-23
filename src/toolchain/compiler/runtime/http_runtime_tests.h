@@ -92,6 +92,7 @@ void expect_response_bytes_n(const char *reply, size_t len, int64_t status,
 // The first two drive the allocation injector that lives in the main TU.
 void test_alloc_fail_off(void);
 void test_alloc_fail_size(size_t bytes);
+void test_alloc_fail_after(long successes);
 long test_alloc_live(void);
 void test_http_create_client(void);
 void test_http_create_server(void);
@@ -127,6 +128,7 @@ void test_closure_listener_serves_requests(void);
 void test_closure_listen_rejections(void);
 void test_stop_server_with_client_connected(void);
 void test_spawn_with_handlers_survives_every_failed_allocation(void);
+void test_spawn_refused_by_a_full_handle_table_frees_the_handler_copy(void);
 void test_listener_spawn_failure_is_reported(void);
 void test_client_gone_follows_the_served_client(void);
 void test_keep_alive_waits_for_its_listeners(void);

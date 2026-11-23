@@ -235,7 +235,7 @@ static int64_t fiber_spawn_internal(int64_t (*fn)(void),
   pthread_mutex_lock(&runtime_mutex);
   if (!reserve_handle()) {
     pthread_mutex_unlock(&runtime_mutex);
-    free(fiber->handler_snapshot);
+    osp_mem_scanned_free(fiber->handler_snapshot); // a scanned block, as the copy was made
     osp_mem_scanned_free(fiber);
     return -2;
   }
