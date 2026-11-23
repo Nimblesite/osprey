@@ -290,7 +290,7 @@ class Fault:
         region, `lenient` never performs it.
 
         # Examples
-        ```osprey
+        ```osprey native
         from testing import Check
 
         def halt_message():
@@ -333,7 +333,7 @@ def strictly(work) -> Result[None, str]:
     bug, so it stops the suite rather than substitute a value.
 
     # Examples
-    ```osprey
+    ```osprey native
     from testing import Check
 
     def plus(a, b):
@@ -362,7 +362,7 @@ def run(cases):
     the suite stopped.
 
     # Examples
-    ```osprey
+    ```osprey native
     from testing import Check
 
     def plus(a, b):
