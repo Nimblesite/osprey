@@ -66,7 +66,14 @@ impl Checker {
                 self.check_alternatives(earlier, row);
             }
         }
-        if let Some(witness) = self.useful(&rows, &[Space::Any]) {
+        // A witness that is `_` at the top names no constructor: the scrutinee is
+        // an open domain (a number, a string, an open row), whose exhaustiveness
+        // the compiler does not prove ([TYPE-MATCH-EXHAUSTIVE]), as for a match
+        // without or-patterns.
+        let witness = self
+            .useful(&rows, &[Space::Any])
+            .filter(|witness| !matches!(witness.first(), Some(Space::Any)));
+        if let Some(witness) = witness {
             self.errors.push(TypeError::new(format!(
                 "non-exhaustive match: no arm matches `{}`",
                 self.render_row(&witness)
@@ -116,10 +123,15 @@ impl Checker {
                 sub_patterns,
             } => self.constructor_space(name, fields, sub_patterns),
             Pattern::Structural { fields, open } => self.row_space(pattern, fields, *open),
+            // An or-pattern directly inside another is spliced in, so every
+            // alternative is checked in its own context ([PATTERN-OR-EXHAUSTIVE]).
             Pattern::Or(alternatives) => Space::Or(
                 alternatives
                     .iter()
-                    .map(|alternative| self.space(alternative))
+                    .flat_map(|alternative| match self.space(alternative) {
+                        Space::Or(nested) => nested,
+                        single => vec![single],
+                    })
                     .collect(),
             ),
         }

@@ -325,9 +325,17 @@ fn resultText(r) = match r {
     Success { value: s } | Error { message: s } => "got ${s}"
 }
 
-/// Positional payloads, lists with a rest binder and rows as alternatives.
+/// Positional payloads, lists and rows as alternatives.
 fn onAxis(p) = match p { Pt(0, _) | Pt(_, 0) => "axis" _ => "plane" }
 fn shortList(xs) = match xs { [] | [_] => "short" [a, b, ...rest] => "long ${wrapAdd(wrapAdd(a, b), listLength(rest))}" }
+
+/// A binder that is a list tail (+1) in one alternative and a borrowed
+/// element or another tail in the next: ARC releases it exactly once.
+type Box = Wrap(List<int>) | Boxed(List<int>) | Nest(List<List<int>>) | Hollow
+fn tailLen(b) = match b {
+    Wrap([_, ...xs]) | Boxed([_, _, ...xs]) | Nest([xs]) => listLength(xs)
+    _ => 0 - 1
+}
 fn rowSize(r: Sized) = match r { { kind: "s", n } | { kind: "m", n } => n _ => 0 }
 
 /// Three levels: a Result holding a cell whose slots are or-patterns.
@@ -342,6 +350,8 @@ fn orStructureCase() = checkAll("or-pattern Result, payload, list, row and neste
     onAxis(Pt(0, 5)) == "axis", onAxis(Pt(5, 0)) == "axis", onAxis(Pt(0, 0)) == "axis",
     onAxis(Pt(2, 3)) == "plane",
     shortList([]) == "short", shortList([9]) == "short", shortList([1, 2, 3, 4]) == "long 5",
+    tailLen(Wrap([1, 2, 3])) == 2, tailLen(Boxed([1, 2, 3])) == 1, tailLen(Nest([[4, 5, 6, 7]])) == 4,
+    tailLen(Wrap([])) == 0 - 1, tailLen(Nest([[1], [2]])) == 0 - 1, tailLen(Hollow) == 0 - 1,
     rowSize({ kind: "s", n: 3 }) == 3, rowSize({ kind: "m", n: 4 }) == 4,
     rowSize({ kind: "l", n: 5 }) == 0,
     deepBlank(Success { value: Cell(Space, 0) }) == "deep blank",

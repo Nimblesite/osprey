@@ -53,6 +53,7 @@ This is a language gap that blocks top tier, ranked with the gaps in [generic er
 - [x] Binding agreement ([PATTERN-OR-BINDINGS]): the same name set in every alternative, one unified type per name. The diagnostic names the missing variable and the alternative that omits it
 - [x] `osprey-types/src/pattern/usefulness.rs`: expand an or-pattern into its alternatives for exhaustiveness and reachability; report an unreachable alternative at that alternative's range, with the usual witness for a non-exhaustive match
 - [x] Binder walks handle the new node: `osprey-ast/src/lower_static/hygiene.rs`, `osprey-ast/src/stage_rows/callables.rs`, `osprey-project/src/patterns.rs` and `osprey-project/src/opaque.rs`
+- [ ] An or-pattern inside an open row slot (`{ kind: "s" | "m", .. }`) is checked alternative by alternative: today the open row is one opaque space, so an unreachable alternative there is accepted (review of 1df00739b, F2)
 - [ ] An opaque record's constructor stays unmatchable outside its module through an or-pattern alternative
 - [ ] `any` scrutinee: an or-pattern of type-annotation patterns follows [TYPE-ANY]; it never makes the match exhaustive
 

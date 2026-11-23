@@ -65,7 +65,7 @@ This is a specified subset of typed Python annotation notation over Osprey seman
 | `a if condition else b` | Shared boolean `Expr::Match` |
 | `if`/`elif`/`else` suites | Nested shared boolean matches |
 | `match value: case ...:` | Osprey exhaustive pattern match; no `__match_args__` |
-| `case A() \| B():` | Or-pattern ([PATTERN-OR](0007-PatternMatching.md#or-patterns--pattern-or)); every alternative binds the same names. Not implemented yet |
+| `case A() \| B():` | Or-pattern ([PATTERN-OR](0007-PatternMatching.md#or-patterns--pattern-or)); every alternative binds the same names |
 | `min(a, b)`, `max(a, b)` | The `min` and `max` builtins ([BUILTIN-MIN-MAX](../runtime/0012-Built-InFunctions.md)); exactly two arguments, no iterable, `key=` or `default=` form. Not implemented yet |
 | `f"{value}"` | Osprey interpolation; no format specifiers, conversions, or debug `=` initially |
 | `len(value)` | Existing constrained `length` builtin |
