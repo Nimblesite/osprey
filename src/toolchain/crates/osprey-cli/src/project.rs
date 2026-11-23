@@ -154,13 +154,14 @@ impl CompilationInput {
         }
     }
 
-    /// Every undocumented export, read from each source as written: project
+    /// Every per-file warning, read from each source as written: project
     /// assembly flattens modules away, so the flattened program cannot say
-    /// what was exported. Positions land in the flattened space, like every
-    /// other warning's ([DOC-EXPORT-REQUIRED]).
-    pub(crate) fn documentation_warnings(&self) -> Vec<osprey_types::TypeWarning> {
+    /// what was exported or which file repeats a literal. Positions land in
+    /// the flattened space, like every other warning's ([DOC-EXPORT-REQUIRED],
+    /// [TYPE-WARNINGS-REPEATED-LITERAL]).
+    pub(crate) fn source_warnings(&self) -> Vec<osprey_types::TypeWarning> {
         let CompilationUnit::Project(project) = &self.unit else {
-            return osprey_types::documentation_warnings(self.program());
+            return osprey_types::source_warnings(self.program());
         };
         project
             .sources
@@ -168,7 +169,7 @@ impl CompilationInput {
             .flat_map(|source| {
                 let parsed =
                     osprey_syntax::parse_program_with_flavor(&source.source, source.flavor);
-                osprey_types::documentation_warnings(&parsed.program)
+                osprey_types::source_warnings(&parsed.program)
                     .into_iter()
                     .map(|mut warning| {
                         if let Some(position) = &mut warning.position {

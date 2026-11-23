@@ -1,18 +1,19 @@
-//! Undocumented and unexampled exports as editor warnings. Implements
-//! [DOC-EXPORT-REQUIRED] and [DOC-EXPORT-EXAMPLE-REQUIRED].
+//! Per-file advice as editor warnings: undocumented and unexampled exports
+//! and repeated literals. Implements [DOC-EXPORT-REQUIRED],
+//! [DOC-EXPORT-EXAMPLE-REQUIRED] and [TYPE-WARNINGS-REPEATED-LITERAL].
 
 use lspkit::vfs::PositionEncoding;
 use lspkit_server::Diagnostic;
 use osprey_ast::Program;
 
-/// One warning per undocumented or unexampled export in this file, read from the file as
+/// One warning per undocumented or unexampled export and repeated literal in this file, read from the file as
 /// written: project assembly flattens modules away.
 pub(crate) fn diagnostics(
     source: &str,
     program: &Program,
     encoding: PositionEncoding,
 ) -> Vec<Diagnostic> {
-    osprey_types::documentation_warnings(program)
+    osprey_types::source_warnings(program)
         .iter()
         .filter_map(|export| {
             let position = export.position?;
@@ -46,8 +47,15 @@ mod tests {
 
     #[test]
     fn a_documented_export_without_an_example_is_an_editor_warning_on_its_line() {
-        let source = "(** Doubling. *)\nmodule Api\n    (** Twice `x`. *)\n    export double x = x * 2\n";
+        let source =
+            "(** Doubling. *)\nmodule Api\n    (** Twice `x`. *)\n    export double x = x * 2\n";
         assert_eq!(codes(source), [("unexampled-export".to_owned(), 3)]);
+    }
+
+    #[test]
+    fn a_literal_written_three_times_is_an_editor_warning_at_its_first_use() {
+        let source = "a () = \"connection refused\"\nb () = \"connection refused\"\nc () = \"connection refused\"\n";
+        assert_eq!(codes(source), [("repeated-literal".to_owned(), 0)]);
     }
 
     #[test]

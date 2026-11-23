@@ -1234,6 +1234,18 @@ This is a conservative simplification. A callback that supplies arguments, perfo
 
 A handler still needs a callback to delay execution until its scope is installed: `policy(work)` preserves that delay. `policy(work())` does not.
 
+## Repeated literals `[TYPE-WARNINGS-REPEATED-LITERAL]`
+
+A string of 12 or more characters, or a non-empty list of literals spelled in 12 or more characters, written 3 or more times in one source file is a constant that was never named. Every copy must change together, and a missed copy drifts silently. The compiler's warning listing and the language server report `repeated-literal` once per literal, at the statement that holds its first use, with how many times it is written:
+
+```osprey
+fn refused() = "connection refused"
+fn retry() = "connection refused"
+fn report() = "connection refused" // warning: the literal `"connection refused"` is written 3 times in this file; name it once as a constant
+```
+
+Write `let refusal = "connection refused"` once and use the name. Literals in patterns are not counted, because a pattern cannot name a constant. Two literals that differ in any character are different literals. A message quotes at most 32 characters of the literal. The count is per file as written, before project assembly, so two files that each write a literal twice are not reported. Implemented in `osprey-types/src/repeated_literal.rs`.
+
 ## Unused symbols `[TYPE-WARNINGS-UNUSED]`
 
 A program that passes type checking reports a Warning for each unread lexical binding below. These warnings do not change compilation, evaluation, generated code or exit status. The CLI includes them in the same source-grouped listing as redundant annotations; the editor reports the same rule and message on the written identifier and marks it unnecessary.
