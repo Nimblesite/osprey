@@ -61,17 +61,20 @@ pairsPair (m, keys, values) = zipHold (keys, values, "absent", (0 - 2), \(key, w
     bound to the wrong record cannot pass by matching only one field. *)
 entryReads (entry, title, score, active) = entry.title == title && entry.score == score && entry.active == active
 
+(** True when `ok` holds for every listed key: the one key fold that allPresent, nonePresent, and keysAgree share. *)
+keysAll keys ok = foldList keys true (\(found, key) => found && ok key)
+
 (** Every listed key is present in `m` ([BUILTIN-MAP-CONTAINS]). *)
-allPresent (m, keys) = foldList keys true (\(found, key) => found && mapContains m key)
+allPresent (m, keys) = keysAll keys (\key => mapContains m key)
 
 (** No listed key is present in `m`. *)
-nonePresent (m, keys) = foldList keys true (\(clear, key) => clear && !(mapContains m key))
+nonePresent (m, keys) = keysAll keys (\key => !(mapContains m key))
 
 (** `m` holds `present`, lacks every `absent` key, and has exactly `n` bindings. *)
 mapProfile (m, present, absent, n) = mapContains m present && nonePresent (m, absent) && mapLength m == n
 
 (** True when `first` and `second` bind every listed key to the same value. *)
-keysAgree (first, second, keys) = foldList keys true (\(agree, k) => agree && intAtKey (first, k) == intAtKey (second, k))
+keysAgree (first, second, keys) = keysAll keys (\k => intAtKey (first, k) == intAtKey (second, k))
 
 (** The list holds `want` and lacks `absent`, so a view shows exactly that item. *)
 showsOnly (xs, want, absent) = allListed (xs, [want]) && noneListed (xs, [absent])
@@ -86,8 +89,7 @@ viewsList (m, keysAbsent, keysPresent, valuesAbsent, valuesPresent) =
     noneListed (mapKeys m, keysAbsent) && allListed (mapKeys m, keysPresent) && noneListed (mapValues m, valuesAbsent) && allListed (mapValues m, valuesPresent)
 
 (** The order-independent total of a value view; a view shorter than six entries adds nothing past its end ([BUILTIN-MAP-VALUES]). *)
-valueViewTotal values =
-    (listGet values 0 ?: 0) + (listGet values 1 ?: 0) + (listGet values 2 ?: 0) + (listGet values 3 ?: 0) + (listGet values 4 ?: 0) + (listGet values 5 ?: 0)
+valueViewTotal values = range (0, 6) |> fold 0 (\(total, i) => total + (listGet values i ?: 0))
 
 (** Both views of `m` report exactly `n` entries ([BUILTIN-COLLECTION-LENGTH]). *)
 viewsLengthIs (m, n) = structuralEquals [listLength (mapKeys m), listLength (mapValues m)] [n, n]
@@ -249,6 +251,7 @@ exactTests [
     indistinguishable — the blind spot issue #211 lives in. *)
 typedValueRetrievalCase () =
     titles = ["a" => "alpha", "b" => "beta", "c" => "gamma"]
+    titleAt = \key => valueOr (titles, key, "none")
     scores = ["half" => 0.5, "quarter" => 1.25]
     flags = ["on" => true, "off" => false]
     blank = Entry(title = "none", score = 0.0, active = false)
@@ -269,9 +272,9 @@ typedValueRetrievalCase () =
     checkAll "string values survive mapGet" [
         valuesHold (titles, ["a", "b", "c"], ["alpha", "beta", "gamma"], "none") && structuralEquals [titles["a"] ?: "none", titles["b"] ?: "none", titles["c"] ?: "none"] ["alpha", "beta", "gamma"],
         structuralEquals [mapGet titles "a" ?: "none", mapGet titles "c" ?: "none"] [titles["a"] ?: "other", titles["c"] ?: "other"] && structuralEquals [length (valueOr (titles, "a", "")), length (valueOr (titles, "b", ""))] [5, 4],
-        contains (valueOr (titles, "c", "none")) "amm" && startsWith (valueOr (titles, "a", "none")) "alp",
-        endsWith (valueOr (titles, "b", "none")) "eta" && toUpperCase (valueOr (titles, "b", "none")) == "BETA",
-        "${valueOr (titles, "a", "none")}+${valueOr (titles, "b", "none")}" == "alpha+beta" && absentTitle == "mapGet: key not found",
+        contains (titleAt ("c")) "amm" && startsWith (titleAt ("a")) "alp",
+        endsWith (titleAt ("b")) "eta" && toUpperCase (titleAt ("b")) == "BETA",
+        "${titleAt ("a")}+${titleAt ("b")}" == "alpha+beta" && absentTitle == "mapGet: key not found",
         valueOr (titles, "zzz", "absent") == "absent" && mapProfile (titles, "a", ["zzz"], 3)
     ]
 
@@ -279,7 +282,7 @@ typedValueRetrievalCase () =
     // merged map still yields strings ([BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE],
     // [BUILTIN-MAP-MERGE]).
     checkAll "string values survive every map producer" [
-        allValuesHold ([mapSet titles "a" "replaced", withoutB], [["a", "b"], ["a", "c"]], [["replaced", "beta"], ["alpha", "gamma"]], "none") && valueOr (titles, "a", "none") == "alpha",
+        allValuesHold ([mapSet titles "a" "replaced", withoutB], [["a", "b"], ["a", "c"]], [["replaced", "beta"], ["alpha", "gamma"]], "none") && titleAt ("a") == "alpha",
         valueOr (withoutB, "b", "gone") == "gone" && nonePresent (withoutB, ["b"]),
         lengthsHold ([withoutB, titles], [2, 3]) && valuesHold (withDelta, ["d", "a"], ["delta", "alpha"], "none"),
         valueOr ((mapMerge titles (["a" => "right wins"])), "a", "none") == "right wins" && mapLength withDelta == 4,

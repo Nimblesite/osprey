@@ -45,7 +45,10 @@ nativeLabels machine = join (mapList (Canvases::semantics machine, \e => e.acces
 
 nativeElement (machine, label) = match Lists::find (Canvases::semantics machine, nativeLabelled label)
     Success element => element
-    Error _ => ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessSelected = false, accessMovable = false)
+    Error _ => nativeBlank ()
+
+// The blank accessible element a missing label or unannounce scene entry reads as.
+nativeBlank () = ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessSelected = false, accessMovable = false)
 
 // Whether `e` is the element announcing `label`.
 nativeLabelled label = \e => e.accessLabel == label
@@ -84,20 +87,14 @@ nativeChosen machine = match Lists::find (controlsOf (fireTold (Templates::view 
     Success picker => chosenLabel (memberItems (insideTold picker, "choices"), memberText (insideTold picker, "selected"))
     Error _ => ""
 
-// The text of a lettering or glyphs shape.
-shapeText shape = match shape
+// The text of a lettering or glyphs shape, or "".
+shapeWords shape = match shape
     ui::Lettering text _ _ _ _ _ _ _ => text
     ui::Glyphs text _ _ _ _ _ => text
     _ => ""
 
-// Whether a shape letters or glyphs text.
-shapeLetters shape = match shape
-    ui::Lettering _ _ _ _ _ _ _ _ => true
-    ui::Glyphs _ _ _ _ _ => true
-    _ => false
-
 // The texts the machine's scenes letter, in drawing order.
-nativeLettered machine = Lists::flatten (mapList ((nativeTree machine).walkSketches, \drawn => mapList (filterList (drawn.sketchedAs.sketchShapes, shapeLetters), shapeText)))
+nativeLettered machine = Lists::flatten (mapList ((nativeTree machine).walkSketches, \drawn => mapList (filterList (drawn.sketchedAs.sketchShapes, \shape => shapeWords shape != ""), shapeWords)))
 
 // Whether the machine's scenes letter `text`.
 nativeLetters (machine, text) = Lists::any (nativeLettered machine, \lettered => lettered == text)
@@ -123,6 +120,9 @@ slidTo (machine, label, fraction) =
     expect (nativeValue (slid, label), fraction)
     slid
 
+// The state after `label`'s slider slides through every `fraction`, each checked to read back.
+slidThrough (machine, fractions) = foldList (fractions, machine, \(before, fraction) => slidTo (before, "Level", fraction))
+
 machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
     expect (nativeLabels fresh, "Menu|Press|Level")
     expectVia (nativeOffered, fresh, [{ name = "Menu", value = true }, { name = "Dismiss", value = false }])
@@ -137,7 +137,7 @@ machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
     expect (join (mapList ([start, middle, end], \point => "${point.nativeX},${point.nativeY}")) ";", "20.0,315.0;120.0,315.0;220.0,315.0")
     pressed = Canvases::act (fresh, "Press", 0.5)
     expectVia (nativeLetters, pressed, [{ name = "Pressed", value = true }, { name = "Hello", value = false }])
-    full = foldList ([0.0, 0.5, 1.0], pressed, \(before, fraction) => slidTo (before, "Level", fraction))
+    full = slidThrough (pressed, [0.0, 0.5, 1.0])
     released = nativeReleaseAt (full, "Level", 0.75)
     opened = Canvases::act (released, "Menu", 0.5)
     expect (nativeLabels opened, "One|Two|Three|Menu|Press|Level")
@@ -158,7 +158,7 @@ machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
     expectVia (nativeSelected, againOpened, [{ name = "Two", value = true }, { name = "One", value = false }, { name = "Three", value = false }, { name = "Menu", value = false }])
     expect (nativeSelected (chosen, "Menu"), false)
     // The scene's accessibility tree carries the chosen item with its bounds, read as typed records.
-    access = Lists::find (Lists::flatten (mapList (nativeScenes againOpened, \scene => scene.sketchAccess)), \e => e.accessLabel == "Two") ?: ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessSelected = false, accessMovable = false)
+    access = Lists::find (Lists::flatten (mapList (nativeScenes againOpened, \scene => scene.sketchAccess)), \e => e.accessLabel == "Two") ?: nativeBlank ()
     expect ("${Canvases::roleName access.accessRole}/${access.accessLeft},${access.accessTop},${access.accessWidth},${access.accessHeight}/${access.accessValue}/${access.accessMin},${access.accessMax}/${access.accessSelected}/${access.accessMovable}", "menuitem/20.0,190.0,200.0,40.0/0.0/0.0,0.0/true/false")
     again = foldList (["Updated", "Second input"], chosen, \(before, text) => nativeFeed (before, "caption", text))
     expectVia (nativeLetters, again, [{ name = "Second input", value = true }, { name = "Updated", value = false }, { name = "Pressed", value = false }])

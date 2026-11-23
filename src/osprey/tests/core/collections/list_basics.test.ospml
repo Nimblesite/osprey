@@ -23,11 +23,6 @@ oobAt (xs, index) = match listGet xs index
     Success _value => false
     Error message => message.index == index && message.length == listLength xs
 
-(** Every listed index of `xs` answers `Error` with that exact record. *)
-allOob (xs, indices) = match indices
-    [] => true
-    [index, ...rest] => oobAt (xs, index) && allOob (xs, rest)
-
 (** grownBy extends `xs` by listAppend with each element of `values`, in order. *)
 grownBy (xs, values) = match values
     [] => xs
@@ -61,6 +56,9 @@ rowsHold (xs, indices, wants, fallback) =
 
 (** listLength as a first-class value, so answersHold can fold length rows. *)
 lengthOf xs = listLength xs
+
+(** answersHold(lengthOf, ...): every list of `lists` has its partner length. *)
+lengthsHold (lists, wants) = answersHold (lengthOf, lists, wants)
 
 (** sentinelSlot is the out-of-range fallback record every typed bounds check reads fields from. *)
 sentinelSlot () = Slot(label = "missing", weight = 0.0, ready = false)
@@ -164,7 +162,7 @@ constructionAndIdentityCase () =
     abPlusA = a + b + a
 
     // Every legacy length observation remains an independent assertion.
-    checkAll "legacy construction and operation lengths" [ answersHold (lengthOf, [empty, a, b, reversed, restored, concatenated, listConcat empty a, listConcat a empty, a + a, a + b + a, prepended, a], [0, 3, 2, 3, 3, 5, 3, 3, 6, 8, 4, 3]) ]
+    checkAll "legacy construction and operation lengths" [ lengthsHold ([empty, a, b, reversed, restored, concatenated, listConcat empty a, listConcat a empty, a + a, a + b + a, prepended, a], [0, 3, 2, 3, 3, 5, 3, 3, 6, 8, 4, 3]) ]
 
     // Constituent checks ensure the old length-only observations cannot hide corrupt contents.
     checkAll "construction and reverse contents" [ intElementsHold ([a, b, reversed, restored, prepended], [[1, 2, 3], [10, 20], [3, 2, 1], [1, 2, 3], [0, 1, 2, 3]]) ]
@@ -213,7 +211,7 @@ iterationAndPersistenceCase () =
     checkAll "iteration constituent values" [ intElementsHold ([a, reversed, combined], [[1, 2, 3], [3, 2, 1], [1, 2, 3, 10, 20]]) ]
 
     // The six generation lengths, retained g2 length, and all branch lengths mirror the old golden.
-    checkAll "persistent generation and branch lengths" [ answersHold (lengthOf, [g0, g1, g2, g3, g4, g5, g2, x, y, y2, g3], [0, 1, 2, 3, 4, 5, 2, 4, 4, 5, 3]) ]
+    checkAll "persistent generation and branch lengths" [ lengthsHold ([g0, g1, g2, g3, g4, g5, g2, x, y, y2, g3], [0, 1, 2, 3, 4, 5, 2, 4, 4, 5, 3]) ]
 
     // Added content checks prove later generations and sibling branches do not mutate their ancestors.
     checkAll "persistent generation and branch contents" [
@@ -234,7 +232,7 @@ tailBoundaryCase () =
     doubled = listConcat t4 t4
 
     // All six legacy tail-boundary length observations remain independent.
-    checkAll "tail boundary legacy lengths" [ answersHold (lengthOf, [t, t2, t3, t4, reversed, doubled], [10, 20, 30, 35, 35, 70]) ]
+    checkAll "tail boundary legacy lengths" [ lengthsHold ([t, t2, t3, t4, reversed, doubled], [10, 20, 30, 35, 35, 70]) ]
 
     // Boundary indices assert actual content before, at, and after the 32-element trie tail split.
     checkAll "tail boundary contents" [
@@ -269,7 +267,7 @@ indexingPatternsAndDispatchCase () =
         answersHold (\i => commands[i] ?: "missing", [0, 2, 1], ["echo hello", "echo test", "echo world"]),
         oobAt (commands, 5),
         oobAt (empty, 0),
-        answersHold (lengthOf, [commands, empty], [3, 0])
+        lengthsHold ([commands, empty], [3, 0])
     ]
 
     // Every legacy classify, recursive sum, and wildcard-rest result remains directly asserted.
@@ -307,8 +305,8 @@ indexingPatternsAndDispatchCase () =
     // operand is normalised to a runtime list first, so all four combinations of
     // literal and handle concatenate and keep their order.
     checkAll "list literal and runtime handle concatenate in either position" [
-        answersHold (lengthOf, [commands + commands, commands + empty, empty + commands], [6, 3, 3]),
-        answersHold (lengthOf, [a + [7, 8], [7, 8] + a], [5, 5]),
+        lengthsHold ([commands + commands, commands + empty, empty + commands], [6, 3, 3]),
+        lengthsHold ([a + [7, 8], [7, 8] + a], [5, 5]),
         listContains (commands + empty) "echo test",
         !(listContains (empty + commands) "echo missing"),
         intRowsHold ([[7, 8] + a, a + [7, 8]], [[0, 2], [3, 4]], [[7, 1], [7, 8]]),
@@ -371,7 +369,7 @@ typedElementRetrievalCase () =
     // [BUILTIN-LIST-CONCAT]).
     checkAll "string elements survive every list producer" [
         allRowsHold ([listReverse words, listPrepend words "zero", withDelta, words + ["delta"], ["zero"] + words], [[0, 2], [0, 1], [3, 0], [3], [0, 1]], [["gamma", "alpha"], ["zero", "alpha"], ["delta", "alpha"], ["delta"], ["zero", "alpha"]], "none"),
-        answersHold (lengthOf, [withDelta, listPrepend words "zero"], [4, 4]),
+        lengthsHold ([withDelta, listPrepend words "zero"], [4, 4]),
         membershipHolds (words, ["beta"], ["delta"]),
         listContains withDelta "delta",
         elementOr ((listReverse (listReverse words)), 1, "none") == "beta"
@@ -617,7 +615,7 @@ stringListPatternCase () =
         membershipHolds (odd, ["", " "], ["A"]),
         membershipHolds (dup, ["same", "other"], ["missing"]),
         noneListed (noWords, [""]),
-        answersHold (lengthOf, [dup, odd, listReverse dup], [4, 6, 4]),
+        lengthsHold ([dup, odd, listReverse dup], [4, 6, 4]),
         elementOr (dup, 0, "x") == elementOr (dup, 3, "y"),
         elementOr (dup, 0, "x") != elementOr (dup, 2, "y"),
         listLength words == 3
@@ -659,7 +657,7 @@ floatAndBoolListPatternCase () =
     // ([BUILTIN-LIST-REVERSE], [BUILTIN-LIST-CONCAT]).
     checkAll "float head-tail recursion sums every element exactly once" [
         answersHold (sumFloats, [noFloats, oneFloat, twoFloats, ratios, quarters, dupFloats, listReverse ratios, listReverse quarters, ratios + twoFloats, twoFloats + ratios, noFloats + ratios, ratios + noFloats, ratios + ratios, listAppend ratios 0.5, listPrepend ratios 0.5, [0.25], [0.25, 0.25]], [0.0, 1.5, 1.0, 4.5, 1.5, 5.0, 4.5, 1.5, 5.5, 5.5, 4.5, 4.5, 9.0, 5.0, 5.0, 0.25, 0.5]),
-        answersHold (lengthOf, [ratios, ratios + twoFloats], [3, 5]),
+        lengthsHold ([ratios, ratios + twoFloats], [3, 5]),
         membershipHolds (ratios, [1.25], [1.5]),
         listContains dupFloats 2.0
     ]
@@ -681,7 +679,7 @@ floatAndBoolListPatternCase () =
         allListed (mixed, [false, true]),
         noneListed (allOn, [false]),
         noneListed (allOff, [true]),
-        answersHold (lengthOf, [mixed + allOff, listReverse allOn], [6, 3]),
+        lengthsHold ([mixed + allOff, listReverse allOn], [6, 3]),
         countTrue (mixed + allOff) == 2,
         tailLength mixed == 2,
         tailLength noFlags == ((0 - 1) )
@@ -738,7 +736,7 @@ recordListPatternCase () =
     // Building `trio` left `slots` untouched. A record has no decided `==`
     // ([BOOL-EQUALITY]), so membership is asked of a key, the label.
     checkAll "record lists stay persistent and are searched by key" [
-        answersHold (lengthOf, [slots, trio, listAppend trio missingSlot], [2, 3, 4]),
+        lengthsHold ([slots, trio, listAppend trio missingSlot], [2, 3, 4]),
         slotLabels slots == "left>right>",
         readySlots slots == 1,
         totalWeight slots == 4.0,
@@ -789,7 +787,7 @@ nestedListCase () =
         listLength firstRow == 2,
         sumList firstRow == 3,
         elementsAre (firstRow, [1, 2], 0),
-        answersHold (lengthOf, [secondRow, thirdRow], [3, 4]),
+        lengthsHold ([secondRow, thirdRow], [3, 4]),
         answersHold (sumList, [secondRow, thirdRow], [12, 30]),
         rowsHold (secondRow, [2], [5], 0),
         intAt (thirdRow, 3) == 9,
@@ -806,7 +804,7 @@ nestedListCase () =
     checkAll "nested list patterns read outer arm and inner length" [
         answersHold (shapeOf, [oneRow, twoRows, rows, grown], ["single", "pair", "long+2", "long+3"]),
         answersHold (describeMatrix, [oneRow, twoRows, rows, grown, withEmptyRow, reversedRows], ["one row of 3", "rows 1+2", "head 2 then 2 more", "head 2 then 3 more", "head 2 then 3 more", "head 4 then 2 more"]),
-        answersHold (lengthOf, [headOr (rows, emptyRow), headOr (reversedRows, emptyRow), secondOr (twoRows, emptyRow)], [2, 4, 2]),
+        lengthsHold ([headOr (rows, emptyRow), headOr (reversedRows, emptyRow), secondOr (twoRows, emptyRow)], [2, 4, 2]),
         structuralEquals [sumList (headOr (rows, emptyRow)), sumList (secondOr (rows, emptyRow)), sumList (secondOr (oneRow, emptyRow))] [3, 12, 0],
         tailLength rows == 2,
         tailLength oneRow == 0
@@ -816,8 +814,8 @@ nestedListCase () =
     // the stored row keeps its own contents ([BOOL-EQUALITY] decides no `==`
     // for lists, so the rows are compared by their sums).
     checkAll "nested lists stay isolated when a retrieved row grows" [
-        answersHold (lengthOf, [rows, grown, reversedRows, doubledRows], [3, 4, 3, 6]),
-        answersHold (lengthOf, [firstRow, biggerFirstRow], [2, 3]),
+        lengthsHold ([rows, grown, reversedRows, doubledRows], [3, 4, 3, 6]),
+        lengthsHold ([firstRow, biggerFirstRow], [2, 3]),
         sumInner rows == 45,
         sumList biggerFirstRow == 102,
         sumList firstRow == 3,
@@ -971,11 +969,11 @@ boundaryIndexCase () =
     // `forty` repeats "s0".."s4", so the element at index i is "s${i % 5}":
     // index 30 -> "s0", 31 -> "s1", 32 -> "s2" (the tail split), 39 -> "s4".
     checkAll "string list index boundaries around the 32-element tail" [
-        answersHold (lengthOf, [five, ten, twenty, forty], [5, 10, 20, 40]),
+        lengthsHold ([five, ten, twenty, forty], [5, 10, 20, 40]),
         lastIndex == 39,
         allRowsHold ([forty, listReverse forty, listAppend forty "tail", listPrepend forty "head"], [[0, 4, 5, 30, 31, 32, 33, lastIndex], [0, 7, 39], [40, 32], [0, 33]], [["s0", "s4", "s0", "s0", "s1", "s2", "s3", "s4"], ["s4", "s2", "s0"], ["tail", "s2"], ["head", "s2"]], "?"),
         rowsHold (forty, [40, 1000, negIndex, farNegIndex], ["past", "past", "past", "past"], "past"),
-        answersHold (lengthOf, [listAppend forty "tail", forty], [41, 40])
+        lengthsHold ([listAppend forty "tail", forty], [41, 40])
     ]
 
     // The Error branch is taken for every element type. Asserting BOTH fallbacks
@@ -1028,7 +1026,7 @@ foldSeedCase () =
     doubled = range (0, 3) |> fold [] (\(acc, i) => listConcat (acc, [i, i]))
     seeded = grownFrom (3, 6, [1, 2], identity)
     checkAll "fold over a list-literal seed" [
-        answersHold (lengthOf, [squares, doubled, seeded], [4, 6, 5]),
+        lengthsHold ([squares, doubled, seeded], [4, 6, 5]),
         answersHold (sumList, [squares, doubled, seeded], [30, 6, 15]),
         intAt (squares, 3) == 16,
         listLength words == 3,

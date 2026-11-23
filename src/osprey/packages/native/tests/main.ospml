@@ -67,9 +67,7 @@ checked (node, count, wanted, inputs) =
     delivers (node, inputs)
 
 // What `words` mean to `binding`, spelt as the message kind and its value, or the refusal.
-said (binding, words) = match Surfaces::told (binding, words)
-    Error problem => problem
-    Success message => routed message
+said (binding, words) = delivered (Surfaces::told (binding, words))
 
 // Every binding in `cases`, each beside the words it is sent and the message that routes or the refusal it names.
 expectSaid cases = forEachList (cases, \probe => expect (said (probe.binding, probe.words), probe.expected))
@@ -675,23 +673,14 @@ journeyRegions (_, _, frames, _) = [Keyed::region (frames, Surfaces::rootKey, []
 journeyProgram () = ui::Program(programInit = \_ => Runtime::step [], programUpdate = \(_, heard, message) => Runtime::step (listAppend heard (routed message)), programRender = journeyRegions, programTheme = \_ => Probes::palette ())
 
 // The control numbers of the board's stroke, its lasso and the scene, found by what each delivers.
-strokes binding = match binding
-    ui::StrokeInput _ => true
-    _ => false
+bindingSort binding = match binding
+    ui::StrokeInput _ => "stroke"
+    ui::LassoInput _ => "lasso"
+    ui::SceneInput _ => "scene"
+    ui::Tap _ => "tap"
+    _ => ""
 
-lassos binding = match binding
-    ui::LassoInput _ => true
-    _ => false
-
-scenes binding = match binding
-    ui::SceneInput _ => true
-    _ => false
-
-taps binding = match binding
-    ui::Tap _ => true
-    _ => false
-
-numbered (held, pick) = Lists::position (held.surfaceBound, pick)
+numbered (held, sort) = Lists::position (held.surfaceBound, \binding => bindingSort binding == sort)
 
 // One host event of `kind`, sent through the real shared-frame writer.
 journeyTouch (kind, ordinal, words, detail, x, y, down) = Probes::touchAt (9, kind, ordinal, words, detail, x, y, down)
@@ -709,10 +698,10 @@ heardAll held = join held.surfaceSession.sessionStore "|"
 journeyCase () =
     opened = Views::shared (\() => Hosting::opened (Surfaces::idle [], journeyProgram (), 1, 0, "macos", "", false))
     surfaceBinds (opened, 4)
-    board = numbered (opened, strokes)
-    lasso = numbered (opened, lassos)
-    scene = numbered (opened, scenes)
-    go = numbered (opened, taps)
+    board = numbered (opened, "stroke")
+    lasso = numbered (opened, "lasso")
+    scene = numbered (opened, "scene")
+    go = numbered (opened, "tap")
     expect ("${board},${lasso},${scene},${go}", "0,1,2,3")
     // A stroke arrives as its points, then its end: width 3 at clock 77.
     pointed = journeyStep (journeyStep (opened, journeyTouch (Hosting::point, 0, "", "", 2.0, 3.0, false)), journeyTouch (Hosting::point, 0, "", "", 4.0, 6.0, false))
@@ -769,8 +758,7 @@ journeyCase () =
     expect (Runtime::guarded (\() => 7 % zero), 0)
     expect (Runtime::guarded (\() => biggest + 1), 0 - biggest - 1)
     // A scene in window pixels has no unit space: it tells a zero size at a zoom of one.
-    expectTold (Ui::canvas ([Scenes::disc (1.0, 1.0, 1.0, 0, 0)], Load), "{scene 0.0x0.0x1.0,kind=\"scene\",width=~0.0,height=~0.0,zoom=~1.0,event=#0}")
-    delivers (Ui::canvas ([Scenes::disc (1.0, 1.0, 1.0, 0, 0)], Load), [ui::SceneInput(action = Load)])
+    toldAndDelivered (Ui::canvas ([Scenes::disc (1.0, 1.0, 1.0, 0, 0)], Load), "{scene 0.0x0.0x1.0,kind=\"scene\",width=~0.0,height=~0.0,zoom=~1.0,event=#0}", [ui::SceneInput(action = Load)])
     // Every symbol has its own name.
     expect (join (mapList ([ui::Clock, ui::Person, ui::Cursor, ui::Chevron, ui::Send, ui::Terminal, ui::Edit, ui::Panel, ui::Sparkle], \symbol => Symbols::name symbol)) ",", "clock,person,cursor,chevron,send,terminal,edit,panel,sparkle")
 
