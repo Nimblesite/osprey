@@ -29,6 +29,7 @@ The [hosted run for `d4341c9ac`](https://github.com/Nimblesite/osprey/actions/ru
 ### Local replay before the full build
 
 - [x] Preflight preserves workflow, job and step environment variables, and runs each distinct execution context once. Windows steps use their declared shell. A selection that skips every check exits with a failure status. The regression tests cover an identical command with different GC and ARC settings, a Windows host, and an exact duplicate.
+- [x] Preflight runs the compiler setup action's C runtime and release compiler builds before dependent tests. Jobs configured with `build: false` reuse those artifacts. The contract test verifies this order and the version setting.
 - [x] `make ci` and the hosted GPUI job run the same `make -C src/toolchain/targets/tests synth APP_SUITE_PREBUILT=1` entry point. The local test phase runs it first with the cached release build.
 - [x] Preflight writes a numbered log for each selected check and continues after a failure. Hosted CI and `make ci` run the same 93 contract tests. The actual preflight invocation passed the contract suite and logged the failing Deslop threshold using the shared, pinned `make _deslop` command.
 - Run `make _deslop` and the release audit first. They catch dependency and duplication failures before the app builds. The Make target installs the same Deslop version as CI.

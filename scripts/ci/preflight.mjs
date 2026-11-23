@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url'
 import { workflowJobs, workflowText } from './ci-workflow-text.mjs'
 
 const CI = '.github/workflows/ci.yml'
+const COMPILER_SETUP = './.github/actions/setup-osprey-compiler'
 const OUT = 'target/preflight'
 
 // CI splits the Rust tests into shards whose reports a later step merges; locally one
@@ -69,23 +70,37 @@ export function matrixRows(block) {
   return included.length ? included : inline.reduce((rows, options) => rows.flatMap((row) => options.map((option) => ({ ...row, ...option }))), [{}])
 }
 
-/** The command of a step: its `run:`, or the `script:` an action runs. */
-function commandOf(lines) {
-  const withAt = lines.findIndex((line) => line.startsWith('        with:'))
-  return field(lines, 'run', 8) ?? (withAt < 0 ? undefined : field(nested(lines, withAt + 1), 'script', 0))
+function compilerSteps(options) {
+  if (field(options, 'build', 0) === 'false') return []
+  const version = field(options, 'version', 0) ?? ''
+  const action = workflowText(`${COMPILER_SETUP}/action.yml`).replace(/^/gm, '  ')
+  return steps(action).filter((step) => step.condition === "inputs.build == 'true'").map((step) => ({
+    ...step,
+    env: Object.fromEntries(Object.entries(step.env).map(([key, value]) => [key, value.replace(/\$\{\{\s*inputs\.version\s*\}\}/g, () => version)])),
+  }))
+}
+
+/** One step's local checks, expanding the compiler composite's build steps. */
+function stepChecks(lines) {
+  const withAt = lines.findIndex((line) => line === '        with:')
+  const options = withAt < 0 ? [] : nested(lines, withAt + 1)
+  if (field(lines, 'uses', 8) === COMPILER_SETUP) return compilerSteps(options)
+  const run = field(lines, 'run', 8) ?? field(options, 'script', 0)
+  if (!run) return []
+  return [{
+    name: field(lines, 'name', 8) ?? '',
+    run,
+    condition: field(lines, 'if', 8) ?? '',
+    directory: field(lines, 'working-directory', 8) ?? '.',
+    env: envOf(lines, 8),
+    shell: field(lines, 'shell', 8)?.split(' ')[0],
+  }]
 }
 
 /** Each step of a job: its command, condition, directory and env. */
 export function steps(block) {
   const body = block.split(/^ {4}steps:$/m)[1] ?? ''
-  return body.split(/^ {6}- /m).slice(1).map((text) => `        ${text}`.split('\n')).map((lines) => ({
-    name: field(lines, 'name', 8) ?? '',
-    run: commandOf(lines),
-    condition: field(lines, 'if', 8) ?? '',
-    directory: field(lines, 'working-directory', 8) ?? '.',
-    env: envOf(lines, 8),
-    shell: field(lines, 'shell', 8)?.split(' ')[0],
-  })).filter((step) => step.run)
+  return body.split(/^ {6}- /m).slice(1).flatMap((text) => stepChecks(`        ${text}`.split('\n')))
 }
 
 /** Whether a step runs for this matrix row: failure diagnostics, fallbacks and other rows' steps do not. */
