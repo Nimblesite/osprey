@@ -50,23 +50,23 @@ impl Checker {
         external: &BTreeSet<VarId>,
         vars: &mut Vec<VarId>,
     ) {
-        // No bindings change while finding the connected component.
-        let free_vars: Vec<_> = self
-            .builtin_uses
-            .iter()
-            .map(|(_, ty)| {
-                #[cfg(test)]
-                CONNECTION_SCANS.with(|scans| scans.set(scans.get() + 1));
-                let mut free = BTreeSet::new();
-                self.ctx.free_vars(ty, &mut free);
-                free
-            })
-            .collect();
+        // No bindings change while finding the connected component. Substituted,
+        // an obligation is tested for the component without a set; only one
+        // that joins it has its variables collected, once.
+        for (_, ty) in &mut self.builtin_uses {
+            self.ctx.apply_in_place(ty);
+        }
+        let mut joined = vec![false; self.builtin_uses.len()];
         let mut connected: BTreeSet<_> = vars.iter().copied().collect();
         loop {
             let before = connected.len();
-            for free in &free_vars {
-                if !free.is_disjoint(&connected) {
+            for ((_, ty), joined) in self.builtin_uses.iter().zip(&mut joined) {
+                if !*joined && holds_var(ty, &|var| connected.contains(&var)) {
+                    *joined = true;
+                    #[cfg(test)]
+                    CONNECTION_SCANS.with(|scans| scans.set(scans.get() + 1));
+                    let mut free = BTreeSet::new();
+                    self.ctx.free_vars(ty, &mut free);
                     connected.extend(free.difference(external));
                 }
             }
