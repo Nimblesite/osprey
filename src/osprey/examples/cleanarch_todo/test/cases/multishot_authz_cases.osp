@@ -123,6 +123,12 @@ fn authzAsAdmin(seedLists, seedItems, request) = authzProbed(TodoHarness::admin(
 fn authzFromEachStart(seedLists, seedItems, request) = mapList(TodoProbe::principals(), fn(who) =>
     authzProbed(who, seedLists, seedItems, request))
 
+/// One `authzFromEachStart` question: three identical runs, all inert per `extra`.
+fn authzStartInert(seedLists, seedItems, request, why, extra) = {
+    let starts = authzFromEachStart(seedLists, seedItems, request)
+    checkAll(why, [length(starts) == 3, authzSameAnswers(starts), authzReadsEveryBranch(starts), authzEvery(starts, extra)])
+}
+
 /// The eight requests with no access rule, each valid against two lists and three items.
 fn authzUnguardedRequests() = [
     authzNewList("Travel", "#5C6BC0"), authzEditList(2, "Budget", "#4CAF50"), authzDropList(2),
@@ -198,15 +204,9 @@ module MultishotAuthzCases {
             blank.readings == 7, noEvents(blank),
             structuralEquals(authzTitlesOf(blank.lists), ["Solo"])
         ])
-        let starts = authzFromEachStart([], [], authzNewList("Travel", ""))
         // The start principal never reaches the branches: whoMayRun answers Auth itself.
-        checkAll("the start principal changes no answer, no reading, no row", [
-            length(starts) == 3, authzSameAnswers(starts),
-            authzReadsEveryBranch(starts),
-            authzEvery(starts, noEvents),
-            authzEvery(starts, fn(report) => structuralEquals(report.lists, [])),
-            authzEvery(starts, fn(report) => structuralEquals(report.items, []))
-        ])
+        authzStartInert([], [], authzNewList("Travel", ""), "the start principal changes no answer, no reading, no row",
+            fn(report) => noEvents(report) && structuralEquals(report.lists, []) && structuralEquals(report.items, []))
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ], [MULTI-REPLAY]: UpdateList has no
@@ -292,13 +292,8 @@ module MultishotAuthzCases {
             structuralEquals(authzTitlesOf(authzViewLists(view)), ["Banking", "Shopping"]),
             match authzViewLists(view) { [banking, shopping] => length(banking.items) == 1 && length(shopping.items) == 2 _ => false }
         ])
-        let starts = authzFromEachStart(authzTwoLists(), authzThreeItems(), GetTodos)
-        checkAll("the start principal changes nothing", [
-            authzSameAnswers(starts),
-            authzReadsEveryBranch(starts),
-            authzEvery(starts, authzItemsKept),
-            authzEvery(starts, fn(report) => structuralEquals(authzBranchTexts(report), ["unauthorized", "todos view", "todos view"]))
-        ])
+        authzStartInert(authzTwoLists(), authzThreeItems(), GetTodos, "the start principal changes nothing",
+            fn(report) => authzItemsKept(report) && structuralEquals(authzBranchTexts(report), ["unauthorized", "todos view", "todos view"]))
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ], [MULTI-REPLAY]: CreateItem has no
@@ -324,12 +319,8 @@ module MultishotAuthzCases {
             authzItemsKept(empty), structuralEquals(bare.items, []),
             noEvents(fresh), noEvents(orphan), noEvents(empty), noEvents(bare)
         ])
-        let starts = authzFromEachStart(authzTwoLists(), authzThreeItems(), authzNewItem(1, "Dentist"))
-        checkAll("the start principal changes nothing", [
-            length(starts) == 3, authzSameAnswers(starts),
-            authzEvery(starts, fn(report) => structuralEquals(authzBranchTexts(report), ["created 4", "created 4", "created 4"])),
-            authzReadsEveryBranch(starts)
-        ])
+        authzStartInert(authzTwoLists(), authzThreeItems(), authzNewItem(1, "Dentist"), "the start principal changes nothing",
+            fn(report) => structuralEquals(authzBranchTexts(report), ["created 4", "created 4", "created 4"]))
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ], [MULTI-REPLAY]: UpdateItem has no
@@ -410,12 +401,7 @@ module MultishotAuthzCases {
             length(bare.items) == 0, length(bare.lists) == 0,
             noEvents(drop), noEvents(missing), noEvents(bare)
         ])
-        let starts = authzFromEachStart(authzTwoLists(), authzThreeItems(), authzDropItem(3))
-        checkAll("the start principal changes nothing", [
-            length(starts) == 3, authzSameAnswers(starts),
-            authzReadsEveryBranch(starts),
-            authzEvery(starts, noEvents),
-            authzEvery(starts, authzItemsKept)
-        ])
+        authzStartInert(authzTwoLists(), authzThreeItems(), authzDropItem(3), "the start principal changes nothing",
+            fn(report) => noEvents(report) && authzItemsKept(report))
     }
 }
