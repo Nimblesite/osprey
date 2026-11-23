@@ -24,7 +24,9 @@ fn main() -> std::io::Result<()> {
         .define("_FORTIFY_SOURCE", "2")
         .flag_if_supported("-fstack-protector-strong")
         .flag_if_supported("-std=c11")
+        .flag("-Wunused-macros")
         .warnings(true)
+        .warnings_into_errors(true)
         .compile("osprey_runtime_ffi");
     Ok(())
 }
