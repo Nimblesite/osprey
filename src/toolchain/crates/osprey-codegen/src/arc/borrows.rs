@@ -83,6 +83,14 @@ fn replaceable(cg: &Codegen, name: &str) -> bool {
         || cg.module_globals.contains_key(name)
 }
 
+/// Every binding `borrower` borrows from, through any chain of borrowers.
+pub(super) fn lenders_of(cg: &Codegen, borrower: &str) -> BTreeSet<String> {
+    let mut found = BTreeSet::from([borrower.to_owned()]);
+    keep_lenders(cg, &mut found);
+    let _ = found.remove(borrower);
+    found
+}
+
 /// Every binding a live borrower was read from is live too.
 pub(super) fn keep_lenders(cg: &Codegen, live: &mut BTreeSet<String>) {
     let mut pending: Vec<String> = live.iter().cloned().collect();

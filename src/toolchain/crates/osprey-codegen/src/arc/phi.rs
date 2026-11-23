@@ -15,7 +15,17 @@ pub(crate) fn borrowed_phi_arms(cg: &Codegen, incoming: &[Value], mark: usize) -
 /// theirs, while a borrowed arm takes its own before joining. Outer owners stay
 /// live on every path and are never consumed by this promotion.
 pub(crate) fn promote_phi_arm(cg: &mut Codegen, value: &Value, borrowed: bool) {
-    if borrowed {
+    if !borrowed {
+        return;
+    }
+    // An arm that yields a binding at its last use gives that reference to the
+    // join; the other arms still release the binding [GC-ARC-PERCEUS].
+    if let Some(slot) = super::moves::give_up(cg, &value.operand) {
+        cg.emit(format!("store i8* null, i8** {slot}"));
+        own(cg, value);
+        return;
+    }
+    {
         let pointer = super::as_i8ptr(cg, value);
         super::second_owner(cg, &value.operand, None, super::Need::Joined);
         super::ownership_call(cg, super::RETAIN_DECL, "retain", &pointer);

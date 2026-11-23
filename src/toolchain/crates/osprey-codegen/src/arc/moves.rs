@@ -1,129 +1,27 @@
 //! Moving a named owner at its last use [GC-ARC-PERCEUS] (Perceus TR §2.2,
 //! "ownership transfer at the last use"; docs/specs/compiler/0018-MemoryManagement.md).
 //!
-//! A binding read exactly once by a statement, on a path that runs exactly
-//! once, and never read after it, gives up its reference to the record, list or
-//! binding that takes the value there. Nothing is counted and nothing is
-//! released: the reference the binding held becomes the taker's.
-use super::{Codegen, Entry, OtherUse};
-use osprey_ast::{Expr, Stmt};
+//! A binding no path of a statement reads twice, and nothing reads after it,
+//! gives up its reference to the record, list, closure or binding that takes
+//! the value there. Nothing is counted and nothing is released: the reference
+//! the binding held becomes the taker's.
+use super::reads::Reads;
+use super::{Codegen, Entry, FrameKind, OtherUse};
+use osprey_ast::{Expr, Position, Stmt};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The bindings the statement being lowered may move, and where it started.
 #[derive(Default)]
 pub(crate) struct Movable {
     names: BTreeSet<String>,
+    /// Movable names whose one read runs on only some paths. Their owner stays
+    /// in the ledger: the paths that never take the value still release it.
+    sometimes: BTreeSet<String>,
     scope: Option<usize>,
     depth: usize,
     conditionals: usize,
     /// Why each binding the statement reads keeps its value, for diagnostics.
     kept: BTreeMap<String, OtherUse>,
-}
-
-/// Operators that always evaluate both operands, each once.
-const STRICT: [&str; 11] = ["+", "-", "*", "/", "%", "==", "!=", "<", "<=", ">", ">="];
-
-/// The expression an interpolated part embeds, if it embeds one.
-fn embedded(part: &osprey_ast::InterpolatedPart) -> Option<&Expr> {
-    match part {
-        osprey_ast::InterpolatedPart::Expr(e) => Some(e),
-        osprey_ast::InterpolatedPart::Text(_) => None,
-    }
-}
-
-/// How often a statement reads each name.
-#[derive(Default)]
-struct Reads {
-    once: BTreeSet<String>,
-    more: BTreeSet<String>,
-}
-
-impl Reads {
-    fn read(&mut self, name: &str) {
-        if !self.once.insert(name.to_owned()) {
-            let _ = self.more.insert(name.to_owned());
-        }
-    }
-
-    /// Each name the lambda `e` closes over is read once, by its capture.
-    fn captures(&mut self, e: &Expr) {
-        let mut free = BTreeSet::new();
-        osprey_ast::freevars::free_idents(e, &mut free);
-        for name in &free {
-            self.read(name);
-        }
-    }
-
-    /// Every name `e` mentions is read some unknown number of times.
-    fn unknown(&mut self, e: &Expr) {
-        let mut free = BTreeSet::new();
-        osprey_ast::freevars::free_idents(e, &mut free);
-        self.more.extend(free);
-    }
-
-    /// Count reads through the forms whose operands each run exactly once.
-    /// Anything else may branch, loop or defer, so what it mentions isn't
-    /// counted as one read.
-    fn visit(&mut self, e: &Expr) {
-        match e {
-            Expr::Integer(_) | Expr::Float(_) | Expr::Str(_) | Expr::Bool(_) => {}
-            Expr::Identifier(name) => self.read(name),
-            // A closure cell is built once and takes each capture once.
-            Expr::Lambda { .. } => self.captures(e),
-            Expr::List(items, _) => self.visit_all(items),
-            Expr::InterpolatedStr(parts) => self.visit_all(parts.iter().filter_map(embedded)),
-            Expr::FieldAccess { target, .. } => self.visit(target),
-            Expr::Unary { operand, .. } => self.visit(operand),
-            Expr::Binary {
-                op, left, right, ..
-            } if STRICT.contains(&op.as_str()) => self.visit_all([&**left, &**right]),
-            _ => self.visit_application(e),
-        }
-    }
-
-    /// A constructor or a call: every field and argument runs once.
-    fn visit_application(&mut self, e: &Expr) {
-        match e {
-            Expr::TypeConstructor { name, fields, .. } => {
-                let _ = self.more.insert(name.clone());
-                self.visit_all(fields.iter().map(|field| &field.value));
-            }
-            Expr::Call {
-                function,
-                arguments,
-                named_arguments,
-            } => {
-                self.visit(function);
-                self.visit_all(arguments);
-                self.visit_all(named_arguments.iter().map(|argument| &argument.value));
-            }
-            _ => self.unknown(e),
-        }
-    }
-
-    fn visit_all<'a>(&mut self, operands: impl IntoIterator<Item = &'a Expr>) {
-        for operand in operands {
-            self.visit(operand);
-        }
-    }
-
-    /// Why each name read here keeps its value: read again in this statement,
-    /// or still read after it (`live`).
-    fn kept(&self, live: &BTreeSet<String>) -> BTreeMap<String, OtherUse> {
-        let again = self
-            .more
-            .iter()
-            .map(|name| (name.clone(), OtherUse::ReadAgainHere));
-        let later = self
-            .once
-            .intersection(live)
-            .map(|name| (name.clone(), OtherUse::ReadLater(None)));
-        later.chain(again).collect()
-    }
-
-    fn sole(self) -> BTreeSet<String> {
-        self.once.difference(&self.more).cloned().collect()
-    }
 }
 
 /// The value expression a statement evaluates, if it is one that can move.
@@ -134,27 +32,73 @@ fn statement_value(stmt: &Stmt) -> Option<&Expr> {
     }
 }
 
+/// The reads `value` makes, with each read of a borrower counted against every
+/// binding it borrows from: storing the borrower stores their value.
+fn reads_of(cg: &Codegen, value: &Expr) -> Reads {
+    let mut reads = Reads::of(value);
+    let borrowed: Vec<(String, u8)> = reads
+        .counted()
+        .flat_map(|(name, many)| {
+            let count = if many { 2 } else { 1 };
+            super::borrows::lenders_of(cg, name)
+                .into_iter()
+                .map(move |lender| (lender, count))
+        })
+        .collect();
+    for (lender, count) in borrowed {
+        reads.add(&lender, count);
+    }
+    reads
+}
+
+/// Why each name `reads` mentions keeps its value: some path reads it twice,
+/// or it is still read after the statement (`live`).
+fn kept(reads: &Reads, live: &BTreeSet<String>) -> BTreeMap<String, OtherUse> {
+    reads
+        .counted()
+        .filter_map(|(name, many)| {
+            let other = if many {
+                OtherUse::ReadAgainHere
+            } else if live.contains(name) {
+                OtherUse::ReadLater(None)
+            } else {
+                return None;
+            };
+            Some((name.clone(), other))
+        })
+        .collect()
+}
+
 /// `value` is about to be lowered with `live` still read after it in its block:
 /// note the bindings it may move. A binding moves only from the scope that made
 /// it ([`take`]), so the rest of that block is all that can read it again.
-/// Returns what the enclosing statement could move, for [`end`] to put back.
-#[must_use]
-pub(crate) fn begin(cg: &mut Codegen, value: &Expr, live: &BTreeSet<String>) -> Movable {
-    let mut reads = Reads::default();
-    reads.visit(value);
+/// The enclosing statement's state waits on a stack for [`end`] to put back.
+pub(crate) fn begin(cg: &mut Codegen, value: &Expr, live: &BTreeSet<String>) {
+    let reads = reads_of(cg, value);
     // What the enclosing statement knows about a binding still holds inside it.
-    let mut kept = cg.arc.movable.kept.clone();
+    let mut known = cg.arc.movable.kept.clone();
     if cg.ownership.on {
-        kept.extend(reads.kept(live));
+        known.extend(kept(&reads, live));
     }
+    let names: BTreeSet<String> = reads
+        .counted()
+        .filter(|(name, many)| !many && !live.contains(*name))
+        .map(|(name, _)| name.clone())
+        .collect();
     let inner = Movable {
-        names: reads.sole().difference(live).cloned().collect(),
+        sometimes: names
+            .iter()
+            .filter(|name| reads.sometimes(name))
+            .cloned()
+            .collect(),
+        names,
         scope: cg.scope_id(),
         depth: cg.arc.frames.len(),
         conditionals: cg.arc.cond_floors.len(),
-        kept,
+        kept: known,
     };
-    std::mem::replace(&mut cg.arc.movable, inner)
+    let outer = std::mem::replace(&mut cg.arc.movable, inner);
+    cg.arc.enclosing.push(outer);
 }
 
 /// What else uses `name`, when the statement being lowered could not move it.
@@ -164,25 +108,25 @@ pub(super) fn other_use(cg: &Codegen, name: &str) -> Option<OtherUse> {
 
 /// [`begin`] for a block statement followed by `rest` and the block's `tail`.
 /// A statement with no value to lower moves nothing.
-#[must_use]
 pub(crate) fn begin_statement<S: std::borrow::Borrow<Stmt>>(
     cg: &mut Codegen,
     stmt: &Stmt,
     rest: &[S],
-    tail: Option<(&Expr, Option<osprey_ast::Position>)>,
-) -> Movable {
+    tail: Option<(&Expr, Option<Position>)>,
+) {
     let Some(value) = statement_value(stmt) else {
-        return std::mem::take(&mut cg.arc.movable);
+        let outer = std::mem::take(&mut cg.arc.movable);
+        cg.arc.enclosing.push(outer);
+        return;
     };
     let live = super::last_use::live_after(cg, rest, tail.map(|(value, _)| value));
-    let outer = begin(cg, value, &live);
+    begin(cg, value, &live);
     place_later_reads(cg, rest);
     if let Some((value, at)) = tail {
         let mut read = BTreeSet::new();
         osprey_ast::freevars::free_idents(value, &mut read);
         place_reads(cg, &read, at);
     }
-    outer
 }
 
 /// Give each binding read later the position of the first statement of `rest`
@@ -196,7 +140,7 @@ fn place_later_reads<S: std::borrow::Borrow<Stmt>>(cg: &mut Codegen, rest: &[S])
 }
 
 /// Every binding read later and not yet placed that `read` names is read `at`.
-fn place_reads(cg: &mut Codegen, read: &BTreeSet<String>, at: Option<osprey_ast::Position>) {
+fn place_reads(cg: &mut Codegen, read: &BTreeSet<String>, at: Option<Position>) {
     for (name, other) in &mut cg.arc.movable.kept {
         if *other == OtherUse::ReadLater(None) && read.contains(name) {
             *other = OtherUse::ReadLater(at);
@@ -204,41 +148,104 @@ fn place_reads(cg: &mut Codegen, read: &BTreeSet<String>, at: Option<osprey_ast:
     }
 }
 
-/// The statement is lowered: the enclosing one, `outer`, resumes.
-pub(crate) fn end(cg: &mut Codegen, outer: Movable) {
-    cg.arc.movable = outer;
+/// The statement is lowered: the enclosing one resumes.
+pub(crate) fn end(cg: &mut Codegen) {
+    cg.arc.movable = cg.arc.enclosing.pop().unwrap_or_default();
 }
 
-/// Take the ledger entry of the movable binding whose value is `operand`. The
-/// lowering must still be where the statement started: in its scope, at most
-/// its own statement frame deep, and inside no conditional opened since.
+impl Movable {
+    /// Whether the lowering is still where this statement started: in its
+    /// scope, at most its own statement frame deep, and inside no conditional
+    /// opened since.
+    fn on_every_path(&self, cg: &Codegen) -> bool {
+        cg.scope_id() == self.scope
+            && cg.arc.frames.len() <= self.depth + 1
+            && cg.arc.cond_floors.len() == self.conditionals
+    }
+
+    /// Whether the lowering is still inside this statement, on whatever path:
+    /// no loop body or other scope frame has opened above it.
+    fn encloses(&self, cg: &Codegen) -> bool {
+        let above = cg.arc.kinds.get(self.depth..).unwrap_or(&[]);
+        above.iter().all(|kind| *kind == FrameKind::Statement)
+    }
+
+    /// Where the ledger holds the binding this statement may move whose value
+    /// is `operand`, and its name. A binding's owner is in the innermost scope
+    /// frame open when the statement began ([`super::push_parent`]) and moves
+    /// only from the scope that made it.
+    fn find(&self, cg: &Codegen, operand: &str) -> Option<(Place, String)> {
+        let scope = self.scope?;
+        let below = cg.arc.kinds.get(..self.depth)?;
+        let frame = below.iter().rposition(|kind| *kind == FrameKind::Scope)?;
+        let at = cg.arc.frames.get(frame)?.iter().rposition(|e| {
+            e.operand == operand
+                && e.binding_scope == Some(scope)
+                && e.name
+                    .as_ref()
+                    .is_some_and(|name| self.names.contains(name))
+        })?;
+        let name = cg.arc.frames.get(frame)?.get(at)?.name.clone()?;
+        Some(((frame, at), name))
+    }
+
+    /// [`Movable::find`] for a path only some runs of this statement take. The
+    /// innermost statement gives up there only a binding it reads on such a
+    /// path; an enclosing one gives up anything it may move, since everything
+    /// nested in it counts as one read of it.
+    fn find_on_some_path(
+        &self,
+        cg: &Codegen,
+        operand: &str,
+        innermost: bool,
+    ) -> Option<(Place, String)> {
+        let found = self.find(cg, operand).filter(|_| self.encloses(cg))?;
+        (!innermost || self.sometimes.contains(&found.1)).then_some(found)
+    }
+}
+
+/// A ledger entry's frame and its index there.
+type Place = (usize, usize);
+
+/// Take the ledger entry of the movable binding whose value is `operand`, on
+/// a path every run of the statement takes.
 pub(super) fn take(cg: &mut Codegen, operand: &str) -> Option<Entry> {
     let movable = &cg.arc.movable;
-    let here = movable.scope.is_some()
-        && cg.scope_id() == movable.scope
-        && cg.arc.frames.len() <= movable.depth + 1
-        && cg.arc.cond_floors.len() == movable.conditionals;
-    if !here {
+    let (place, name) = movable.find(cg, operand)?;
+    if movable.sometimes.contains(&name) || !movable.on_every_path(cg) {
         return None;
     }
-    let scope = movable.scope;
-    // A binding's owner is in the innermost scope frame ([`super::push_parent`]).
-    let innermost = cg
-        .arc
-        .kinds
-        .iter()
-        .rposition(|kind| *kind == super::FrameKind::Scope)?;
-    let frame = cg.arc.frames.get_mut(innermost)?;
-    let at = frame.iter().rposition(|e| {
-        e.operand == operand
-            && e.binding_scope == scope
-            && e.name
-                .as_ref()
-                .is_some_and(|name| movable.names.contains(name))
-    })?;
-    let entry = frame.remove(at);
-    if let Some(name) = &entry.name {
-        let _ = cg.arc.movable.names.remove(name);
+    let _ = cg.arc.movable.names.remove(&name);
+    Some(cg.arc.frames.get_mut(place.0)?.remove(place.1))
+}
+
+/// The statement, innermost first, that may give up the binding whose value
+/// is `operand` on the path being lowered: `None` for the innermost, else its
+/// index among the enclosing ones.
+fn giver(cg: &Codegen, operand: &str) -> Option<(Option<usize>, Place, String)> {
+    if let Some((place, name)) = cg.arc.movable.find_on_some_path(cg, operand, true) {
+        return Some((None, place, name));
     }
-    Some(entry)
+    let enclosing = cg.arc.enclosing.iter().enumerate().rev();
+    enclosing.into_iter().find_map(|(level, movable)| {
+        let (place, name) = movable.find_on_some_path(cg, operand, false)?;
+        Some((Some(level), place, name))
+    })
+}
+
+/// The slot of the movable binding whose value is `operand`, for the caller to
+/// clear: the binding gives its reference up here. On a path only some runs
+/// take, its owner stays in the ledger, so the other paths still release it
+/// and this one releases the cleared slot, which is nothing.
+pub(super) fn give_up(cg: &mut Codegen, operand: &str) -> Option<String> {
+    if let Some(entry) = take(cg, operand) {
+        return Some(entry.slot);
+    }
+    let (level, place, name) = giver(cg, operand)?;
+    let movable = match level {
+        Some(level) => cg.arc.enclosing.get_mut(level)?,
+        None => &mut cg.arc.movable,
+    };
+    let _ = movable.names.remove(&name);
+    Some(cg.arc.frames.get(place.0)?.get(place.1)?.slot.clone())
 }

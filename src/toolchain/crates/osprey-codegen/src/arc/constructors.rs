@@ -57,7 +57,7 @@ fn take_owner(cg: &mut Codegen, operand: &str) -> Option<String> {
             .map(|at| frame.remove(at).slot)
     });
     // Else a binding at its last use gives up the reference it holds.
-    fresh.or_else(|| super::moves::take(cg, operand).map(|e| e.slot))
+    fresh.or_else(|| super::moves::give_up(cg, operand))
 }
 
 #[cfg(test)]

@@ -53,6 +53,27 @@ fn lastUses() = {
     "last uses ${pair.left.text}${pair.right.text}${toString(listLength(boxes))}"
 }
 
+/// A binding one arm of a `match` takes is given up on that path and released
+/// on the others.
+fn pick(n) = {
+    let made = Box { text: "made${toString(n)}" }
+    match n {
+        0 => made
+        _ => Box { text: "other${toString(n)}" }
+    }
+}
+
+fn wrapped(n) = {
+    let made = Box { text: "made${toString(n)}" }
+    let pair = match n {
+        0 => Pair { left: made, right: Box { text: "right" } }
+        _ => Pair { left: Box { text: "left" }, right: Box { text: "other${toString(n)}" } }
+    }
+    "${pair.left.text}+${pair.right.text}"
+}
+
+fn paths() = "paths ${pick(0).text} ${pick(3).text} ${wrapped(0)} ${wrapped(5)}"
+
 /// An Error owns its message once and joins a Success without a copy; a
 /// variant with no fields is one static value.
 fn find(n) = match n {
@@ -106,4 +127,4 @@ fn borrows() = {
     "borrows ${shown} ${same.text} ${toString(listLength(noise))} ${left.text}"
 }
 
-print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${errors()}\n${captures()}\n${borrows()}")
+print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${errors()}\n${captures()}\n${borrows()}")

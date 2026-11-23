@@ -53,10 +53,9 @@ fn gen_block_contents(
     cg.with_local_scope(|cg| {
         for (i, s) in statements.iter().enumerate() {
             let rest = statements.get(i + 1..).unwrap_or(&[]);
-            let outer =
-                crate::arc::begin_statement_moves(cg, s, rest, value.map(|tail| (tail, position)));
+            crate::arc::begin_statement_moves(cg, s, rest, value.map(|tail| (tail, position)));
             let lowered = crate::stmt::gen_local_stmt(cg, s);
-            crate::arc::end_moves(cg, outer);
+            crate::arc::end_moves(cg);
             lowered?;
             // Last-use drops: names the continuation no longer references die
             // here, not at function end [GC-ARC-PERCEUS].
@@ -67,9 +66,9 @@ fn gen_block_contents(
             || Ok(Value::unit()),
             |e| {
                 // Nothing in this block is read after its tail [GC-ARC-PERCEUS].
-                let outer = crate::arc::begin_moves(cg, e, &std::collections::BTreeSet::new());
+                crate::arc::begin_moves(cg, e, &std::collections::BTreeSet::new());
                 let result = tail(cg, e);
-                crate::arc::end_moves(cg, outer);
+                crate::arc::end_moves(cg);
                 result
             },
         );

@@ -21,6 +21,7 @@ mod moves;
 mod ownership;
 pub(crate) use borrows::{bind_let, note_rebound};
 mod phi;
+mod reads;
 pub(crate) use moves::{
     begin as begin_moves, begin_statement as begin_statement_moves, end as end_moves,
 };
@@ -67,6 +68,8 @@ pub(crate) struct ArcLedger {
     cond_floors: Vec<(usize, usize)>,
     /// Bindings the statement being lowered may move at their last use.
     movable: moves::Movable,
+    /// The same for each statement enclosing that one, outermost first.
+    enclosing: Vec<moves::Movable>,
     /// Bindings that borrow, and what they borrow from [MEM-OWNERSHIP-STATIC-BORROWS].
     borrows: borrows::Borrows,
 }
@@ -78,6 +81,7 @@ impl ArcLedger {
             kinds: vec![FrameKind::Scope],
             cond_floors: Vec::new(),
             movable: moves::Movable::default(),
+            enclosing: Vec::new(),
             borrows: borrows::Borrows::default(),
         }
     }
