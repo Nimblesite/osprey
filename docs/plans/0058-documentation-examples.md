@@ -115,7 +115,7 @@ declaration with its module path, just as `undocumented-export` does.
 - [x] `[DOC-DOCTEST-WRAPPER-DEPTH]` test and fix: `doctests/synthesize.rs` names each runner by role and depth, and `tests/cases/doctests.rs` (`doctests_run_in_packages_whose_default_namespace_is_their_own_in_every_flavor`) runs examples at namespace and module depth in all three flavors.
 - [x] `[DOC-PYTHON-DOCSTRING-CLEAN]` test and fix: `python/documents.rs` cleans every docstring as PEP 257 `inspect.cleandoc` does, and the same `doctests.rs` package runs an example fenced inside an indented docstring.
 - [x] Examples for all 22 `@osprey/json` exports, run under GC, ARC and wasm32 (22 passed each, 2026-11-23)
-- [ ] The corpus doctest pass covers `src/osprey/packages/`
+- [x] The corpus doctest pass covers `src/osprey/packages/` (`corpus_doctests.sh` runs each package with an example as a project; floor 28)
 - [ ] `[DOC-EXAMPLE-FLAVORS]` parser, harness, exporter, website tabs, relabelling
 - [ ] `[DOC-EXPORT-EXAMPLE-REQUIRED]` warning, examples in every package, warning promoted to an error
 - [ ] Spec sections added to 0026 and DocumentationTools, with IDs cited in the code and tests
