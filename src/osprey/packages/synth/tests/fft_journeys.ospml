@@ -10,7 +10,7 @@ fftImpulse (index, size) = match index
         false => 0.0
 
 fftImpulseBin (index, size) =
-    angle = -6.283185307179586 * toFloat index / toFloat size
+    angle = -tau * toFloat index / toFloat size
     { re = 0.75 * cos angle - 0.5 * cos (4.0 * angle) + 0.25 * cos (-3.0 * angle), im = 0.75 * sin angle - 0.5 * sin (4.0 * angle) + 0.25 * sin (-3.0 * angle) }
 
 fftImpulseJourney size =

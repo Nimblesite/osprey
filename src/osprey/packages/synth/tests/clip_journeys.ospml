@@ -45,9 +45,7 @@ heldVoice (held, node, check) = match filterList (held.graphKernels, \bank => ba
         _ => unexpected ()
     _ => unexpected ()
 
-// One sample of a 48 kHz sine at gain and frequency, and the linear release gain ending at frame end.
-tone (gain, frequency, i) = gain * sin (6.283185307179586 * frequency * toFloat i / 48000.0)
-
+// The linear release gain ending at frame end.
 tail (end, i) = (end - toFloat i) / 239.0
 
 // Frames from..until of samples match want at each frame index.
@@ -86,7 +84,7 @@ presetHeard outcome =
     whole = outputClip (output, synth::GraphClips::advance (graph, [], 1024))
     expect (whole.clipChannels == 1 && length whole.clipSamples == 1024, true)
     forEachList (whole.clipSamples, \sample => expect (sample == sample && abs sample <= 1.0, true))
-    expect (foldList (whole.clipSamples, 0.0, \(energy, sample) => energy + abs sample) > 0.0, true)
+    expect (absSum whole.clipSamples > 0.0, true)
     graphRun (graph, output, [512, 512], \clock audio =>
         sameSamples (audio, whole.clipSamples)
         graphRun (graph, output, [512, 512], \againClock againAudio =>
@@ -231,8 +229,8 @@ registerClipJourneys () =
         graph = midiInstrument (69.0, 0.5, 8.0)
         whole = outputClip (3, synth::GraphClips::advance (graph, [], 256))
         expect (whole.clipChannels == 1 && length whole.clipSamples == 256, true)
-        traced (whole.clipSamples, 0, 8, \i => tone (0.5, 440.0, i))
-        traced (whole.clipSamples, 8, 247, \i => tail (247.0, i) * tone (0.5, 440.0, i))
+        traced (whole.clipSamples, 0, 8, \i => sineAt (0.5, 440.0, i))
+        traced (whole.clipSamples, 8, 247, \i => tail (247.0, i) * sineAt (0.5, 440.0, i))
         forEachList (toList (range (247, 256)), \i => expect ((listGet whole.clipSamples i ?: 9.0), 0.0))
         forEachList ([[4, 4, 248], [8, 248], [1, 255], [128, 128]], \sizes => graphRun (graph, 3, sizes, \_clock audio => sameSamples (audio, whole.clipSamples)))
         graphRun (graph, 3, [128, 128], \clock _audio =>
@@ -246,25 +244,25 @@ registerClipJourneys () =
         plan = planFor (midiInstrument (69.0, 0.5, 8.0))
         fresh = synth::MidiOscillators::initial (midiOscillator ())
         played (plan, fresh, [keyed (1, 0, 69, 1, 0.5), keyed (2, 4, 69, 1, 0.0), keyed (1, 8, 81, 9, 0.9)], 16, \rendered =>
-            traced (rendered.kernelSamples, 0, 4, \i => tone (0.5, 440.0, i))
-            traced (rendered.kernelSamples, 4, 8, \i => tail (243.0, i) * tone (0.5, 440.0, i))
-            traced (rendered.kernelSamples, 8, 16, \i => 0.9 * sin (6.283185307179586 * (3520.0 + 880.0 * (toFloat i - 8.0)) / 48000.0))
+            traced (rendered.kernelSamples, 0, 4, \i => sineAt (0.5, 440.0, i))
+            traced (rendered.kernelSamples, 4, 8, \i => tail (243.0, i) * sineAt (0.5, 440.0, i))
+            traced (rendered.kernelSamples, 8, 16, \i => 0.9 * sin (tau * (3520.0 + 880.0 * (toFloat i - 8.0)) / rate))
             expect (rendered.heldKernel.active == true && rendered.heldKernel.pitch == 81 && rendered.heldKernel.noteIdentity == 9 && rendered.heldKernel.velocity == 0.9, true)
             expect (rendered.heldKernel.releaseRemaining == 0 && rendered.heldKernel.releaseLength == 0, true)
             near (rendered.heldKernel.kernel.phase, 0.22, 0.000000001))
         played (plan, fresh, [keyed (1, 0, 69, 1, 0.5), keyed (2, 3, 60, 2, 0.0), keyed (2, 5, 69, 3, 0.0)], 8, \held =>
-            traced (held.kernelSamples, 0, 8, \i => tone (0.5, 440.0, i))
+            traced (held.kernelSamples, 0, 8, \i => sineAt (0.5, 440.0, i))
             expect (held.heldKernel.active == true && held.heldKernel.pitch == 69 && held.heldKernel.noteIdentity == 1 && held.heldKernel.velocity == 0.5, true))
         played (plan, fresh, [keyed (1, 0, 69, 1, 0.5), keyed (1, 2, 69, 1, 0.0)], 6, \released =>
-            traced (released.kernelSamples, 0, 2, \i => tone (0.5, 440.0, i))
-            traced (released.kernelSamples, 2, 6, \i => tail (241.0, i) * tone (0.5, 440.0, i))
+            traced (released.kernelSamples, 0, 2, \i => sineAt (0.5, 440.0, i))
+            traced (released.kernelSamples, 2, 6, \i => tail (241.0, i) * sineAt (0.5, 440.0, i))
             expect (released.heldKernel.active == false && released.heldKernel.releaseRemaining == 236 && released.heldKernel.releaseLength == 240, true))))
     test ("granular clouds retain deterministic stereo state across partitions and refuse forged memory", \() => arithmetic (\() =>
         expect (synth::ClipLayouts::supported (granularNode ()), true)
         whole = outputClip (2, synth::GraphClips::advance (granularGraph (), [], 512))
         expect (whole.clipChannels == 2 && length whole.clipSamples == 1024, true)
         forEachList (whole.clipSamples, \sample => expect (sample == sample && abs sample <= 1.0, true))
-        expect (foldList (whole.clipSamples, 0.0, \(energy, sample) => energy + abs sample) > 0.0, true)
+        expect (absSum whole.clipSamples > 0.0, true)
         graphRun (granularGraph (), 2, [256, 256], \clock audio =>
             expect (clock.graphPosition == 512 && length clock.graphKernels == 1, true)
             expect (length audio, 1024)
