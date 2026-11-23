@@ -1,9 +1,10 @@
 // [MODULES-OPAQUE-TYPES] An opaque record's fields are hidden outside the
 // declaring module however they are reached: a direct read, a generic
 // accessor the client wrote itself (its obligation keeps the site it was
-// written at when it travels to the call), a structural pattern, and a
-// non-destructive update. The module's own exported accessor is the only way
-// through, so `Ids::value` is fine and the four client uses are not.
+// written at when it travels to the call), a structural pattern, each
+// alternative of an or-pattern, and a non-destructive update. The module's own
+// exported accessor is the only way through, so `Ids::value` is fine and the
+// five client uses are not.
 namespace opq;
 
 module Ids {
@@ -19,6 +20,12 @@ fn main() = {
     let viaPattern = match id {
         { value } => value
     }
+    // [PATTERN-OR] An alternative is a pattern like any other: it cannot read
+    // the hidden field either.
+    let viaAlternative = match id {
+        { value: 0 } | { value: 1 } => "small"
+        _ => "other"
+    }
     let bumped = id { value: 9 }
-    print("${id.value} ${peek(id)} ${viaPattern} ${Ids::value(id)} ${Ids::value(bumped)}")
+    print("${id.value} ${peek(id)} ${viaPattern} ${Ids::value(id)} ${Ids::value(bumped)} ${viaAlternative}")
 }
