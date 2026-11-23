@@ -17,6 +17,7 @@ pub(crate) struct CompilationInput {
     display_path: String,
     debug_path: String,
     output: OutputDefault,
+    example_warnings: Option<Vec<osprey_types::TypeWarning>>,
 }
 
 #[derive(Debug)]
@@ -61,6 +62,21 @@ impl CompilationInput {
             display_path: path.to_string(),
             debug_path: path.to_string(),
             output: OutputDefault::Source(path.to_string()),
+            example_warnings: None,
+        }
+    }
+
+    /// The checked program contains the example's context after inlining.
+    /// Its source warnings come from the authored snippet. [TYPE-WARNINGS-REPEATED-LITERAL]
+    pub(crate) fn doctest(
+        path: &str,
+        source: String,
+        program: Program,
+        example_warnings: Vec<osprey_types::TypeWarning>,
+    ) -> Self {
+        Self {
+            example_warnings: Some(example_warnings),
+            ..Self::script(path, source, program)
         }
     }
 
@@ -128,6 +144,7 @@ impl CompilationInput {
             display_path,
             debug_path,
             output,
+            example_warnings: None,
         }
     }
 
@@ -160,6 +177,9 @@ impl CompilationInput {
     /// the flattened space, like every other warning's ([DOC-EXPORT-REQUIRED],
     /// [TYPE-WARNINGS-REPEATED-LITERAL]).
     pub(crate) fn source_warnings(&self) -> Vec<osprey_types::TypeWarning> {
+        if let Some(warnings) = &self.example_warnings {
+            return warnings.clone();
+        }
         let CompilationUnit::Project(project) = &self.unit else {
             return osprey_types::source_warnings(self.program());
         };

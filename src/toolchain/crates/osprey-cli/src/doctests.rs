@@ -93,6 +93,11 @@ fn run_example(
     if crate::report_syntax_errors(name, &parsed.errors) {
         return Err("documentation example contains syntax errors".into());
     }
+    let warnings = if cli.warnings == crate::invocation::Warnings::Skip {
+        Vec::new()
+    } else {
+        osprey_types::source_warnings(&parsed.program)
+    };
     let synthesized = synthesize::program(
         &sources.sources,
         sources.config.as_ref(),
@@ -107,6 +112,6 @@ fn run_example(
         .collect::<Vec<_>>()
         .join("\n");
     let source = format!("{context}\n{}", example.code);
-    let input = CompilationInput::script(name, source, synthesized.checked);
+    let input = CompilationInput::doctest(name, source, synthesized.checked, warnings);
     execute::check(cli, &input, synthesized.backend, example)
 }
