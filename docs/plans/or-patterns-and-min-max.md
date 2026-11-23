@@ -89,7 +89,7 @@ Expand existing suites. Add no new test file.
 
 ### Use it
 
-- [ ] `src/osprey/examples/cleanarch_todo`: join the arms of `TodoRequest`, `TodoDispatch` and the test matrix that share a body, then recount the "Half the code" table in its README
+- [x] `src/osprey/examples/cleanarch_todo`: join the arms of `TodoRequest`, `TodoDispatch` and the test matrix that share a body, then recount the "Half the code" table in its README (routes, title validation and matrix arms; the recount shows total lines 6 over half, logged in the README)
 - [ ] Sweep `src/osprey/` for adjacent arms with identical bodies and join them; deslop `top-offenders` goes down
 
 ## `min` and `max`
