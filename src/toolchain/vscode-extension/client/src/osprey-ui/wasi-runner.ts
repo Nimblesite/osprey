@@ -31,12 +31,6 @@ export type WorkerRequest =
       readonly ordinal: number; readonly words: string; readonly detail: string; readonly x: number;
       readonly y: number; readonly down: boolean; readonly shift: boolean; readonly slices: SliceDelta };
 
-export interface WorkerReply {
-  readonly id: number;
-  readonly result?: FrameResult;
-  readonly error?: string;
-}
-
 export interface OpenOptions {
   readonly now: number;
   readonly offset: number;

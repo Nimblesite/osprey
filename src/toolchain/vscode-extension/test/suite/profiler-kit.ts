@@ -198,14 +198,6 @@ export async function executeError(name: string, params: Record<string, unknown>
   }
 }
 
-/** Assert one wire call is refused with exactly `code`; returns the refusal. */
-export async function assertWireError(name: string, params: Record<string, unknown>, code: number, what: string): Promise<{ code: number; message: string }> {
-  const error = await executeError(name, params);
-  assert.ok(error !== undefined, `${what}: the call must be refused, not answered`);
-  assert.equal(error.code, code, `${what}: ${error.message}`);
-  return error;
-}
-
 /** Start a CPU session on `pid`, let it sample for `windowMs`, stop it; both replies. */
 export async function sampleCpu(pid: number, windowMs: number, extra: Record<string, unknown> = {}): Promise<{ started: StartProfileResult; report: ProfileReport }> {
   const started = await execute<StartProfileResult>("cpu.start", { pid, ...extra });
@@ -328,11 +320,6 @@ export function useLspSuite(prefix: string, cleanup: () => void = () => undefine
 /** Open `file` so decorations have an editor to land on. */
 export async function openSource(file: string): Promise<vscode.TextEditor> {
   return vscode.window.showTextDocument(await vscode.workspace.openTextDocument(file), { preview: false });
-}
-
-/** Write one `osprey.profiler.*` setting globally; `undefined` restores its default. */
-export async function setProfilerSetting(key: string, value: unknown): Promise<void> {
-  await vscode.workspace.getConfiguration("osprey.profiler").update(key, value, vscode.ConfigurationTarget.Global);
 }
 
 /** Profile `pid` from its Processes row; resolves once the session records. */
