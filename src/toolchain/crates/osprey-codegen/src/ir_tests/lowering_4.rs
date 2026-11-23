@@ -20,25 +20,19 @@ main () =
 "#;
 
 #[test]
-fn value_captured_handler_state_is_quarantined_in_default() {
-    assert_handler_state_quarantine(Flavor::Default, GLOBAL_HANDLER_STATE);
-}
-
-#[test]
-fn value_captured_handler_state_is_quarantined_in_ml() {
-    assert_handler_state_quarantine(Flavor::Ml, GLOBAL_HANDLER_STATE_ML);
-}
-
-fn assert_handler_state_quarantine(flavor: Flavor, source: &str) {
-    let parsed = parse_program_with_flavor(source, flavor);
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    assert_eq!(
-        compile_program(&parsed.program).map(|_| ()),
-        Err(CodegenError::Unsupported(
-            "quarantined assignment to value-captured handler state `stored`: shared cell identity is missing".into()
-        )),
-        "[EFFECTS-HANDLER-STATE] {flavor} must never silently discard a state write"
-    );
+fn a_file_handler_writes_the_original_cell_through_a_function() {
+    for (flavor, source) in [
+        (Flavor::Default, GLOBAL_HANDLER_STATE),
+        (Flavor::Ml, GLOBAL_HANDLER_STATE_ML),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let ir = compile_program(&parsed.program).expect("handler keeps its shared cell");
+        assert!(
+            ir.contains("@osp.g.stored"),
+            "{flavor}: missing module storage"
+        );
+    }
 }
 
 const SHADOWED_HANDLER_STATE: &str = r#"mut stored = "outer"

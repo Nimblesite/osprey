@@ -284,6 +284,48 @@ fn binders_arguments_and_signals_survive_static_discharge() {
     assert_cases(BINDER_CASES);
 }
 
+/// A caller parameter shadows the global while the file handler updates it.
+/// The first snapshot remains live through a managed replacement and self-store.
+#[test]
+fn file_handler_writes_are_visible_through_every_reference() {
+    for (extension, source) in [
+        (
+            "osp",
+            r#"mut stored = "seed"
+effect Storage { save: fn(string) -> Unit }
+let storage = handler Storage { save value => { stored = value } }
+fn save(stored) = storage(fn() => perform Storage.save(stored))
+fn main() = {
+    save("first")
+    let first = stored
+    save("${stored}-second")
+    save(stored)
+    print("${first}/${stored}")
+}
+"#,
+        ),
+        (
+            "ospml",
+            r#"mut stored = "seed"
+effect Storage
+    save : string => Unit
+storage = handler Storage
+    save value =>
+        stored := value
+save stored = storage (\() => perform Storage.save stored)
+main () =
+    save "first"
+    first = stored
+    save "${stored}-second"
+    save stored
+    print "${first}/${stored}"
+"#,
+        ),
+    ] {
+        assert_flavored_output("global_handler", extension, source, "first/first-second\n");
+    }
+}
+
 #[test]
 fn captured_mutable_state_is_shared_with_specialized_helpers() {
     for (extension, source) in [
