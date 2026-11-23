@@ -2,6 +2,11 @@
 
 use super::{finish, osprey, read_text, temp_dir};
 
+/// Writes the project manifest `manifest` into `root`'s `osprey.toml`.
+pub(super) fn write_manifest(root: &std::path::Path, manifest: &str) {
+    std::fs::write(root.join("osprey.toml"), manifest).expect("manifest");
+}
+
 pub(super) fn export(
     source: &str,
     extension: &str,
@@ -145,11 +150,7 @@ fn api_docs_include_type_shapes_operation_signatures_and_authorship() {
 #[test]
 fn api_docs_merge_project_namespaces_and_keep_both_file_docs() {
     let root = temp_dir("docs_mixed_project");
-    std::fs::write(
-        root.join("osprey.toml"),
-        "[project]\nname = \"docs\"\nentry = \"main.osp\"\n",
-    )
-    .expect("manifest");
+    write_manifest(&root, "[project]\nname = \"docs\"\nentry = \"main.osp\"\n");
     std::fs::write(
         root.join("main.osp"),
         "//! Application docs.\nnamespace common {\nmodule Numbers { export fn value() = 42 }\n}\n",
@@ -169,7 +170,7 @@ fn api_docs_merge_project_namespaces_and_keep_both_file_docs() {
 #[test]
 fn api_docs_export_library_projects_without_an_application_entry() {
     let root = temp_dir("docs_library_project");
-    std::fs::write(root.join("osprey.toml"), "[project]\nname = \"library\"\n").expect("manifest");
+    write_manifest(&root, "[project]\nname = \"library\"\n");
     std::fs::write(
         root.join("numbers.osp"),
         "module Numbers { export fn value() = 42 }\n",
@@ -377,11 +378,7 @@ fn api_docs_honor_file_flavor_overrides_and_reject_project_overrides() {
     );
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     assert!(read_text(&output.join("api/label.md")).contains("label : Unit -> string"));
-    std::fs::write(
-        root.join("osprey.toml"),
-        "[project]\nname = \"flavor\"\nflavor = \"ml\"\n",
-    )
-    .expect("manifest");
+    write_manifest(&root, "[project]\nname = \"flavor\"\nflavor = \"ml\"\n");
     let result = finish(
         osprey()
             .args(["--docs", "--flavor", "ml"])

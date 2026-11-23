@@ -194,17 +194,24 @@ FIB_OBJ_ARC += bin/gpu_opencl.o
 ifeq ($(UNAME_S),Linux)
 GPU_DEVICE_LIBS += -ldl -pthread
 endif
+# The ownership twin of the ARC archives [MEM-OWNERSHIP-STATIC]: the same shimmed
+# units over the shared tracked heap, with memory_ownership.c, which keeps no
+# reference counts, in place of memory_arc.c. Recursive, so it sees the GPU
+# objects appended above.
+FIB_OBJ_OWNERSHIP = $(patsubst bin/memory_arc.o,bin/memory_ownership.o,$(FIB_OBJ_ARC))
+HTTP_OBJ_OWNERSHIP = $(patsubst bin/memory_arc.o,bin/memory_ownership.o,$(HTTP_OBJ_ARC))
 # The iOS and Android archives carry no device adapter: their gpu_runtime is
 # compiled without the adapter flags, so every kernel and product runs the host
 # oracle and a device selection is the no-adapter error [GPU-BACKEND-DEVICE].
 MOBILE_RT_SRC ?= $(filter-out system_runtime $(basename $(notdir $(GPU_DEVICE_OBJ))),$(basename $(notdir $(FIB_OBJ))))
 MOBILE_ARC_RT_SRC ?= memory_arc $(filter-out memory_runtime,$(MOBILE_RT_SRC))
+MOBILE_OWNERSHIP_RT_SRC ?= memory_ownership $(filter-out memory_runtime,$(MOBILE_RT_SRC))
 MOBILE_ARC_SHIM_SRC ?= $(patsubst bin/arc/%.o,%,$(filter bin/arc/%,$(FIB_OBJ_ARC)))
 NATIVE_RUNTIME_CONFIG ?= src/toolchain/compiler/bin/.native-runtime-config
 NATIVE_RUNTIME_STAMP ?= src/toolchain/compiler/bin/.native-runtime.stamp
 NATIVE_RUNTIME_INPUTS ?= $(filter-out src/toolchain/compiler/runtime/%_tests.c src/toolchain/compiler/runtime/test_http_length_validation.c src/toolchain/compiler/runtime/test_openssl.c src/toolchain/compiler/runtime/test_system_runtime.c src/toolchain/compiler/runtime/test_file_runtime.c src/toolchain/compiler/runtime/web_runtime.c,$(wildcard src/toolchain/compiler/runtime/*.c)) $(wildcard src/toolchain/compiler/runtime/*.h)
 NATIVE_RUNTIME_INPUTS += $(wildcard src/toolchain/compiler/runtime/*.m src/toolchain/compiler/runtime/*.metal)
-NATIVE_RUNTIME_ARCHIVES ?= src/toolchain/compiler/bin/libfiber_runtime.a src/toolchain/compiler/bin/libhttp_runtime.a src/toolchain/compiler/bin/libfiber_runtime_gc.a src/toolchain/compiler/bin/libhttp_runtime_gc.a src/toolchain/compiler/bin/libfiber_runtime_arc.a src/toolchain/compiler/bin/libhttp_runtime_arc.a src/toolchain/compiler/lib/libfiber_runtime.a src/toolchain/compiler/lib/libhttp_runtime.a src/toolchain/compiler/lib/libfiber_runtime_gc.a src/toolchain/compiler/lib/libhttp_runtime_gc.a src/toolchain/compiler/lib/libfiber_runtime_arc.a src/toolchain/compiler/lib/libhttp_runtime_arc.a
+NATIVE_RUNTIME_ARCHIVES ?= src/toolchain/compiler/bin/libfiber_runtime.a src/toolchain/compiler/bin/libhttp_runtime.a src/toolchain/compiler/bin/libfiber_runtime_gc.a src/toolchain/compiler/bin/libhttp_runtime_gc.a src/toolchain/compiler/bin/libfiber_runtime_arc.a src/toolchain/compiler/bin/libhttp_runtime_arc.a src/toolchain/compiler/lib/libfiber_runtime.a src/toolchain/compiler/lib/libhttp_runtime.a src/toolchain/compiler/lib/libfiber_runtime_gc.a src/toolchain/compiler/lib/libhttp_runtime_gc.a src/toolchain/compiler/lib/libfiber_runtime_arc.a src/toolchain/compiler/lib/libhttp_runtime_arc.a src/toolchain/compiler/bin/libfiber_runtime_ownership.a src/toolchain/compiler/bin/libhttp_runtime_ownership.a src/toolchain/compiler/lib/libfiber_runtime_ownership.a src/toolchain/compiler/lib/libhttp_runtime_ownership.a
 
 # WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make -C src/toolchain/website wasm`.
 # Compiles the portable C-runtime subset (no pthreads/sockets/OpenSSL/syscalls)
@@ -261,6 +268,9 @@ WASM_RT_SRC  ?= native_scene native_bridge native_bridge_lifecycle memory_runtim
 WASM_ARC_LIB      ?= libosprey_runtime_wasm_arc.a
 WASM_ARC_SHIM_SRC ?= string_runtime string_runtime_list list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec file_runtime
 WASM_ARC_RT_SRC   ?= memory_arc $(filter-out memory_runtime,$(WASM_RT_SRC))
+# The ownership twin, linked by `--memory=ownership` on wasm32 [MEM-OWNERSHIP-STATIC].
+WASM_OWNERSHIP_LIB    ?= libosprey_runtime_wasm_ownership.a
+WASM_OWNERSHIP_RT_SRC ?= memory_ownership $(filter-out memory_arc,$(WASM_ARC_RT_SRC))
 
 # Symbolic execution with KLEE [SYMEX-RUNTIME-BITCODE]. The portable runtime
 # subset plus the mock C library compile to one bitcode module with the pinned

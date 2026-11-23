@@ -142,18 +142,18 @@ fn vectorCaseUploaded(input0, input1, input2, input3) = {
     let ay = input1
     let bx = input2
     let by = input3
-    use axbx <- withBuffer(gpuZipWith(ax, bx, fpMul))
-    use ayby <- withBuffer(gpuZipWith(ay, by, fpMul))
-    use dots <- withBuffer(gpuZipWith(axbx, ayby, sumInts))
-    use axby <- withBuffer(gpuZipWith(ax, by, fpMul))
-    use aybx <- withBuffer(gpuZipWith(ay, bx, fpMul))
-    use cross <- withBuffer(gpuZipWith(axby, aybx, subInts))
-    use ayax <- withBuffer(gpuZipWith(ay, ax, fpMul))
+    use axbx <- multiplied(ax, bx)
+    use ayby <- multiplied(ay, by)
+    use dots <- added(axbx, ayby)
+    use axby <- multiplied(ax, by)
+    use aybx <- multiplied(ay, bx)
+    use cross <- subtracted(axby, aybx)
+    use ayax <- multiplied(ay, ax)
     use negAy <- withBuffer(gpuMap(ay, negFp))
-    use axNegAy <- withBuffer(gpuZipWith(ax, negAy, fpMul))
-    use perp <- withBuffer(gpuZipWith(axNegAy, ayax, sumInts))
-    use axay <- withBuffer(gpuZipWith(ax, ay, fpMul))
-    use selfCross <- withBuffer(gpuZipWith(axay, ayax, subInts))
+    use axNegAy <- multiplied(ax, negAy)
+    use perp <- added(axNegAy, ayax)
+    use axay <- multiplied(ax, ay)
+    use selfCross <- subtracted(axay, ayax)
     checkAll("fixed-point vector algebra", [
         elementsFrom(dots, 0, 0, [1024, 1024, 3072, 2048]), elementsAt(cross, 1, [0, 2], [0, 0]),
         elementsAt(cross, 0, [1, 3], [2048, 2048]), totalIs(dots, 7168), totalIs(cross, 4096),
@@ -279,10 +279,10 @@ fn circleCase() = {
     circleCaseUploaded(input0, input1, input2, input3, input4, input5)
 }
 fn circleCaseUploaded(input0, input1, input2, input3, input4, input5) = {
-    use dx <- withBuffer(gpuZipWith(input0, input1, subInts))
-    use dy <- withBuffer(gpuZipWith(input2, input3, subInts))
+    use dx <- subtracted(input0, input1)
+    use dy <- subtracted(input2, input3)
     use dist2 <- withBuffer(gpuZipWith(dx, dy, addSquares))
-    use reach <- withBuffer(gpuZipWith(input4, input5, sumInts))
+    use reach <- added(input4, input5)
     use thresh <- withBuffer(gpuMap(reach, sqrOf))
     use hit <- withBuffer(gpuZipWith(dist2, thresh, leqI))
     checkAll("circle broadphase", [
@@ -367,7 +367,7 @@ fn blendCaseUploaded(input0, input1, input2) = {
     use inverse <- withBuffer(gpuMap(alpha, invAlpha))
     use base <- withBuffer(gpuZipWith(input1, inverse, scaleColor))
     use layer <- withBuffer(gpuZipWith(input2, alpha, scaleColor))
-    use blended <- withBuffer(gpuZipWith(base, layer, sumInts))
+    use blended <- added(base, layer)
     checkAll("alpha blending", [
         elementsAt(blended, 0, [0, 2], [white(), white()]), redOf(at(blended, 1, 0)) == 127, greenOf(at(blended, 1, 0)) == 127, blueOf(at(blended, 1, 0)) == 0,
         redOf(at(blended, 3, 0)) == 63, greenOf(at(blended, 3, 0)) == 191, blueOf(at(blended, 3, 0)) == 0, sumIs(gpuMap(blended, luminance), 754),
@@ -467,10 +467,10 @@ fn emptyWorldWithUploaded(indices0, input0, input1, input2, input3, input4) = {
     use squares <- withBuffer(gpuMap(none, sqrOf))
     use live <- withBuffer(gpuFilter(none, alive))
     use prefix <- withBuffer(gpuScan(none, 0, sumInts))
-    use forward <- withBuffer(gpuZipWith(none, input1, sumInts))
-    use backward <- withBuffer(gpuZipWith(input2, none, subInts))
-    use left <- withBuffer(gpuZipWith(input3, none, sumInts))
-    use stepped <- withBuffer(gpuZipWith(left, input4, sumInts))
+    use forward <- added(none, input1)
+    use backward <- subtracted(input2, none)
+    use left <- added(input3, none)
+    use stepped <- added(left, input4)
     use total <- withBuffer(gpuFold(none, 0, sumInts))
     use seeded <- withBuffer(gpuFold(none, 9999, boundMin))
     use speed <- withBuffer(gpuFold(none, 0, speedOf))
@@ -493,11 +493,11 @@ fn raggedCaseUploaded(input0, input1, input2, input3) = {
     let pos = input0
     let vel = input1
     let acc = input2
-    use change <- withBuffer(gpuZipWith(vel, acc, sumInts))
-    use stepped <- withBuffer(gpuZipWith(pos, change, sumInts))
-    use swapped <- withBuffer(gpuZipWith(change, pos, sumInts))
-    use doubled <- withBuffer(gpuZipWith(pos, pos, sumInts))
-    use shortest <- withBuffer(gpuZipWith(input3, pos, subInts))
+    use change <- added(vel, acc)
+    use stepped <- added(pos, change)
+    use swapped <- added(change, pos)
+    use doubled <- added(pos, pos)
+    use shortest <- subtracted(input3, pos)
     checkAll("ragged streams truncate", [
         gpuLengthIs(change, 2), gpuLengthIs(stepped, 2), elementsFrom(stepped, 0, 0, [111, 222]), totalIs(stepped, 333),
         at(stepped, 2, negFp(1)) == negFp(1), gpuLengthIs(swapped, 2), totalIs(swapped, 333), gpuLengthIs(doubled, 5), gpuLengthIs(shortest, 1)
@@ -526,3 +526,8 @@ exactTests([
     { name: "every combinator survives an empty world", work: emptyWorldCase },
     { name: "ragged entity streams truncate to the shortest", work: raggedCase }
 ])
+
+// Pairwise GPU steps, each buffer freed when `next` returns.
+fn added(a, b, next) = withBuffer(gpuZipWith(a, b, sumInts), next)
+fn multiplied(a, b, next) = withBuffer(gpuZipWith(a, b, fpMul), next)
+fn subtracted(a, b, next) = withBuffer(gpuZipWith(a, b, subInts), next)

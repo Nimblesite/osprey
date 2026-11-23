@@ -68,11 +68,19 @@ pub(crate) struct Collector<'a> {
     pub(crate) entry_source: Option<usize>,
 }
 
-impl Diagnostics for Collector<'_> {
-    fn sink(&mut self) -> (&[SourceMetadata], &mut Vec<ProjectError>) {
-        (self.sources, &mut self.errors)
-    }
+/// Implements `Diagnostics` for a pass that owns `sources` and `errors` fields.
+macro_rules! impl_diagnostics {
+    ($pass:ident) => {
+        impl Diagnostics for $pass<'_> {
+            fn sink(&mut self) -> (&[SourceMetadata], &mut Vec<ProjectError>) {
+                (self.sources, &mut self.errors)
+            }
+        }
+    };
 }
+pub(crate) use impl_diagnostics;
+
+impl_diagnostics!(Collector);
 
 impl Collector<'_> {
     #[expect(

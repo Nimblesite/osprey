@@ -178,8 +178,8 @@ captureFoldedCase () =
     use input0 <- upload ([toFloat32(1.0), toFloat32(3.0), toFloat32(4.0), toFloat32(8.0)])
     use input1 <- upload ([toFloat32(2.0), toFloat32(4.0)])
     use input2 <- upload ([])
-    use total <- withBuffer (gpuFold(input0, toFloat32(0.0), addF))
-    use peak <- withBuffer (gpuFold(input0, at(input0, 0), maxF))
+    use total <- summed (input0)
+    use peak <- peaked (input0)
     checkAll("capture folded from another buffer", [
     total == toFloat32(16.0), peak == toFloat32(8.0), sumsTo(gpuMap(input1, \x => x / total), toFloat32(0.375)), gpuSatisfies(gpuMap(input1, \x => x / total), \share => elementIs(share, 0, toFloat32(0.0), toFloat32(0.125))), sumsTo(gpuMap(input1, \x => x - peak), toFloat32(-10.0)), sumsTo(gpuMap(input1, \x => peak * x), toFloat32(48.0)), gpuEquals(gpuFold(input0, toFloat32(0.0), minF), toFloat32(0.0)), gpuEquals(gpuFold(input0, at(input0, 0), minF), toFloat32(1.0)), sumsTo(gpuMap(input0, \w => w / total), toFloat32(1.0)), gpuLengthIs(gpuFilter(input0, \w => w * toFloat32(4.0) >= total), 2), gpuSatisfies(gpuZipWith(input1, input1, mulF), \products => sumsTo(gpuMap(products, \p => p / total), toFloat32(1.25))), gpuEquals(gpuFold(input2, total, addF), toFloat32(16.0))
     ])
@@ -222,7 +222,7 @@ weightedSumCase () =
     use input3 <- upload ([toFloat32(0.5), toFloat32(0.25), toFloat32(0.125), toFloat32(0.125)])
     use input4 <- upload ([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)])
     use input5 <- upload ([toFloat32(1.0), toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)])
-    use wtot <- withBuffer (gpuFold(input1, toFloat32(0.0), addF))
+    use wtot <- summed (input1)
     use normw <- withBuffer (gpuMap(input1, \w => w / wtot))
     checkAll("weighted sums", [
     wtot == toFloat32(8.0), dotIs(input0, input1, toFloat32(21.0)), dotOf(input0, input1, \total => total / wtot == toFloat32(2.625)), sumIs(normw, toFloat32(1.0)), elementsAt(normw, toFloat32(0.0), [2, 0], [toFloat32(0.5), toFloat32(0.125)]), dotIs(input0, normw, toFloat32(2.625)), dotIs(input2, input3, toFloat32(5.0)), dotIs(input0, input4, toFloat32(0.0)), dotOf(input0, input5, \total => sumOf(input0, \plain => total == plain)), sumsTo(gpuZipWith(input0, input1, \(v, w) => wtot * v * w), toFloat32(168.0)), sumsTo(gpuMap(input0, \v => v / wtot), toFloat32(1.25))
@@ -258,7 +258,7 @@ normalizeCase () =
     use input0 <- upload ([toFloat32(1.0), toFloat32(3.0), toFloat32(5.0), toFloat32(9.0)])
     use input1 <- upload ([toFloat32(4.0), toFloat32(4.0)])
     use lo <- withBuffer (gpuFold(input0, at(input0, 0), minF))
-    use hi <- withBuffer (gpuFold(input0, at(input0, 0), maxF))
+    use hi <- peaked (input0)
     use scaled <- withBuffer (gpuMap(input0, \v => (v - lo) / (hi - lo)))
     checkAll("normalisation", [
     lo == toFloat32(1.0), hi == toFloat32(9.0), elementIs(scaled, 0, toFloat32(9.9), toFloat32(0.0)), elementsFrom(scaled, 1, toFloat32(0.0), [toFloat32(0.25), toFloat32(0.5), toFloat32(1.0)]), sumIs(scaled, toFloat32(1.75)), meanIs(scaled, toFloat32(0.4375)), sumsTo(gpuMap(input0, \v => (hi - v) / (hi - lo)), toFloat32(2.25)), gpuEquals(gpuFold(input0, hi, minF), toFloat32(1.0)), gpuLengthIs(gpuFilter(input0, \v => v > lo), 3), degenerate(0.5, \() => gpuSatisfies(gpuMap(input1, \v => (v - toFloat32(4.0)) / toFloat32(0.0)), \flat => sumIs(flat, toFloat32(1.0))))
@@ -358,3 +358,7 @@ exactTests [
 { name = "dense layers stack bias and activation over gathered rows", work = layerCase },
 { name = "gradient descent converges on the true weight", work = trainCase }
 ]
+
+// Folded GPU reductions, each buffer freed when `next` returns.
+summed (xs, next) = withBuffer(gpuFold(xs, toFloat32(0.0), addF), next)
+peaked (xs, next) = withBuffer(gpuFold(xs, at(xs, 0), maxF), next)

@@ -532,3 +532,52 @@ fn a_caller_waits_for_its_callees_and_reaches_the_same_fixed_point() {
     // modelling every dirty caller at once took 5 per function plus 2.
     assert_eq!(counts, [6, 9, 15, 27, 51, 99]);
 }
+
+/// `unrelated` pure functions beside a `leaf` whose row settles while a
+/// file-scope `alias` names it, so the file scope changes mid-solve; with
+/// `aliased` false the alias line is absent.
+fn scope_program(unrelated: usize, aliased: bool) -> String {
+    let pure = (0..unrelated)
+        .map(|i| format!("fn u{i}() = {i}\n"))
+        .collect::<Vec<_>>()
+        .concat();
+    let alias = if aliased {
+        "let alias = make()\nfn main() = alias()\n"
+    } else {
+        "fn main() = make()()\n"
+    };
+    format!("effect Alarm {{ring:fn()->int}}\nfn make() = fn() => perform Alarm.ring()\n{alias}{pure}")
+}
+
+fn body_models(source: &str) -> usize {
+    let mut count = 0;
+    with_program(source, |index, statements| {
+        crate::effect_rows::solver::BODY_MODELS.with(|models| models.set(0));
+        let _ = model(index, &Instances::default(), statements, worklist_pass);
+        count = crate::effect_rows::solver::BODY_MODELS.with(core::cell::Cell::get);
+    });
+    count
+}
+
+/// [EFFECT-ROW-SOLVER] A file-scope entry that changes re-models only the
+/// functions that read it. Invalidating every function on any scope change
+/// made the cost of one alias grow with the size of the file, which is the
+/// editor's whole-workspace startup sweep pegging a core for minutes.
+#[test]
+fn a_changed_file_scope_entry_re_models_only_its_readers() {
+    let extra = |unrelated| {
+        body_models(&scope_program(unrelated, true)) - body_models(&scope_program(unrelated, false))
+    };
+    let (small, large) = (extra(4), extra(64));
+    assert!(small > 0, "the alias must change the file scope mid-solve");
+    assert_eq!(
+        small, large,
+        "the alias's extra models must not grow with unrelated functions"
+    );
+}
+#[test]
+fn zz_debug_scope_counts() {
+    for n in [4, 64] {
+        eprintln!("n={n} with={} without={}", body_models(&scope_program(n, true)), body_models(&scope_program(n, false)));
+    }
+}

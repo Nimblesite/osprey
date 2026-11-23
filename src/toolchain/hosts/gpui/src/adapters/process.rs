@@ -383,11 +383,9 @@ mod tests {
     /// Rejects output beyond the requested byte limit.
     fn run_rejects_output_over_limit() {
         let result = answer(&run_request("/bin/echo", &["too large"], 1_000, 3));
-        assert!(
-            result
-                .err()
-                .is_some_and(|problem| problem.contains("exceeds the 3 byte limit"))
-        );
+        assert!(result
+            .err()
+            .is_some_and(|problem| problem.contains("exceeds the 3 byte limit")));
     }
 
     #[test]

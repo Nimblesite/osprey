@@ -1,6 +1,7 @@
 //! Project flattening and logical-name resolution.
 //! Implements [MODULES-ABI], [MODULES-ENTRYPOINT], and [MODULES-INIT].
 
+use crate::collect::impl_diagnostics;
 use crate::collect_support::Diagnostics;
 use crate::contribution::Contribution;
 use crate::imports::ImportScope;
@@ -134,11 +135,7 @@ pub(crate) fn flatten(
     resolver.finish()
 }
 
-impl Diagnostics for Resolver<'_> {
-    fn sink(&mut self) -> (&[SourceMetadata], &mut Vec<ProjectError>) {
-        (self.sources, &mut self.errors)
-    }
-}
+impl_diagnostics!(Resolver);
 
 impl Resolver<'_> {
     fn finish(mut self) -> Resolution {

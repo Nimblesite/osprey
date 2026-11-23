@@ -56,6 +56,7 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(B) runtime/memory_runtime.c       -o bin/memory_runtime.o && \
 	  $(CC) $(B) runtime/memory_gc.c            -o bin/memory_gc.o && \
 	  $(CC) $(B) runtime/memory_arc.c           -o bin/memory_arc.o && \
+	  $(CC) $(B) runtime/memory_ownership.c     -o bin/memory_ownership.o && \
 	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/list_runtime.c     -o bin/gc/list_runtime.o && \
 	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/list_rebuild.c     -o bin/gc/list_rebuild.o && \
 	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/map_runtime.c      -o bin/gc/map_runtime.o && \
@@ -140,14 +141,17 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  publish_archive libfiber_runtime_gc.a $(FIB_OBJ_GC) && \
 	  publish_archive libhttp_runtime_gc.a $(HTTP_OBJ_GC) && \
 	  publish_archive libfiber_runtime_arc.a $(FIB_OBJ_ARC) && \
-	  publish_archive libhttp_runtime_arc.a $(HTTP_OBJ_ARC)
+	  publish_archive libhttp_runtime_arc.a $(HTTP_OBJ_ARC) && \
+	  publish_archive libfiber_runtime_ownership.a $(FIB_OBJ_OWNERSHIP) && \
+	  publish_archive libhttp_runtime_ownership.a $(HTTP_OBJ_OWNERSHIP)
 	@touch $@
 
 # Cross-compile the portable C-runtime subset to a wasm32-wasip1 archive that
 # osprey links for `--target=wasm32`. One shell so `cd` persists. Fails loudly
 # if no WASI sysroot is found. Output: src/toolchain/compiler/{bin,lib}/libosprey_runtime_wasm.a
 # (the `--memory=none` passthrough) and the ARC twin
-# libosprey_runtime_wasm_arc.a that `--memory=arc` links [WASM-TARGET-MEMORY].
+# libosprey_runtime_wasm_arc.a that `--memory=arc` links [WASM-TARGET-MEMORY], and its
+# ownership twin libosprey_runtime_wasm_ownership.a [MEM-OWNERSHIP-STATIC].
 _runtime_wasm:
 	@if [ -z "$(WASI_SYSROOT)" ]; then \
 	  echo "ERROR: no WASI sysroot found. Install it with 'brew install lld wasi-libc'"; \
@@ -164,7 +168,9 @@ _runtime_wasm:
 	    $(WASM_CC) $(WASM_CFLAGS) $$shim runtime/$$u.c -o bin/wasm/arc/$$u.o || exit 1; \
 	  done && \
 	  $(WASM_AR) rcs bin/$(WASM_ARC_LIB) $(addprefix bin/wasm/arc/,$(addsuffix .o,$(WASM_ARC_RT_SRC))) && \
-	  cp bin/libosprey_runtime_wasm.a bin/$(WASM_ARC_LIB) lib/
+	  $(WASM_CC) $(WASM_CFLAGS) runtime/memory_ownership.c -o bin/wasm/arc/memory_ownership.o && \
+	  $(WASM_AR) rcs bin/$(WASM_OWNERSHIP_LIB) $(addprefix bin/wasm/arc/,$(addsuffix .o,$(WASM_OWNERSHIP_RT_SRC))) && \
+	  cp bin/libosprey_runtime_wasm.a bin/$(WASM_ARC_LIB) bin/$(WASM_OWNERSHIP_LIB) lib/
 
 # The runtime bitcode `osprey hunt` links under KLEE [SYMEX-RUNTIME-BITCODE]:
 # the portable runtime subset plus the mock C library, compiled with KLEE's

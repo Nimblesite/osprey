@@ -1,6 +1,7 @@
 //! Executable documentation is checked through the public CLI.
 //! Implements [DOC-DOCTEST-HARNESS].
 
+use super::api_docs::write_manifest;
 use super::{run_file, run_source, temp_dir, temp_osp};
 
 /// The `--doctests` run exited 0 and reported exactly `tally`.
@@ -190,11 +191,10 @@ fn doctests_preserve_stdout_whitespace_exactly() {
 #[test]
 fn doctests_work_in_mixed_flavor_projects() {
     let root = temp_dir("documentation_project");
-    std::fs::write(
-        root.join("osprey.toml"),
+    write_manifest(
+        &root,
         "[project]\nname = \"doc_project\"\nentry = \"main.osp\"\n",
-    )
-    .expect("manifest");
+    );
     std::fs::write(
         root.join("main.osp"),
         "import support::Labels\nfn main() = print(Labels::label())\n",

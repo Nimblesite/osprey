@@ -44,7 +44,7 @@ static void arc_wl_push(uintptr_t body) {
 // Decrement a resolved managed header; queue the body at rc==0, immortal: no-op.
 // A NULL header (an unresolved child: foreign, rodata or NULL) is a no-op too.
 static void arc_drop_hdr(void *child, OspArcHdr *h) {
-  if (h && h->rc >= 0 && --h->rc == 0) {
+  if (h && OSP_HEAP_DROP_LAST(h)) {
     arc_wl_push((uintptr_t)child);
   }
 }

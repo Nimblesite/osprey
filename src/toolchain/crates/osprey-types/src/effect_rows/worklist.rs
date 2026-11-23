@@ -40,6 +40,7 @@ pub(super) fn invalidate_scope(
     function_count: usize,
 ) {
     if previous.is_some_and(|scope| scope != current) {
+        eprintln!("SCOPE-INVALIDATE all {function_count} (dirty before {})", dirty.len());
         dirty.extend(0..function_count);
     }
 }
